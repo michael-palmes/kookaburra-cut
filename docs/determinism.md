@@ -169,14 +169,20 @@ Determinism rules specific to the composite path:
 
 The extended transition types (blur, push, zoom, whip, procedural luma/iris,
 glitch) live in **separate GLSL3 materials** (`engine/transitionShader.ts`) so
-the original crossfade/dip/slide/wipe programs stay source-identical, and the
-v14 pack (slice, dissolve, warp) is a third generation for the same reason;
-legacy projects' byte-identity is structural. Glitch/slice/dissolve randomness
-is an integer PCG hash (never `fract(sin)`: integer ops are exact across
-compiles); all tap counts and per-type defaults are export contract; unknown
-transition types degrade to crossfade with a warning. Progress easing
-(`ease: smooth | snappy`) is applied CPU-side before the uniforms, endpoints
-preserved; absent means linear, so stored specs keep exact bytes.
+the original crossfade/dip/slide/wipe programs stay source-identical, the
+v14 pack (slice, dissolve, warp) is a third generation for the same reason,
+and the v15 pack (inkbleed, flowmorph, shockwave, glasssweep, rackfocus,
+halftone, lightsweep, shatter, pixelstretch, chromasplit, datamosh, prism,
+spinblur) is a fourth; legacy projects' byte-identity is structural. All
+hashed randomness is an integer PCG hash (never `fract(sin)`: integer ops are
+exact across compiles); all tap counts, kernel positions, noise octaves and
+per-type defaults are export contract; unknown transition types degrade to
+crossfade with a warning. The v15 body opens with an explicit endpoint guard
+(progress <= 0 selects A raw, >= 1 selects B raw) on top of the bell
+convention, so seam frames stay byte-equal to the solo neighbours even for
+accumulation-heavy types (weighted bokeh sums, rotation resampling). Progress
+easing (`ease: smooth | snappy`) is applied CPU-side before the uniforms,
+endpoints preserved; absent means linear, so stored specs keep exact bytes.
 
 ## Embedded video
 
@@ -225,7 +231,7 @@ picture-only; sound belongs to the project soundtrack (below).
 ## Audio
 
 A project may declare ONE soundtrack (`project.json`
-`audio: { file, gainDb?, fadeInMs?, fadeOutMs?, startOffsetMs? }`,
+`audio: { file, gainDb?, fadeInMs?, fadeOutMs?, fadeOutCurve?, startOffsetMs? }`,
 assets-relative). The output hash covers the audio bytes, so `Verify ×2` gates
 the mix like every pixel. Rules:
 
@@ -240,15 +246,18 @@ the mix like every pixel. Rules:
   heuristics are not a duration contract). Fades are `afade` with fixed-decimal
   seconds derived from integer ms; gain is `volume=<dB>`; every filter string is
   identical run-to-run.
-- **Every soundtrack fades out at the TIMELINE's end by default.** `fadeOutMs`
+- **Every soundtrack fades out at its AUDIBLE end by default.** `fadeOutMs`
   omitted → `DEFAULT_AUDIO_FADE_OUT_MS` (1000); an explicit `0` opts out. The
   default is applied ONCE, in `loadProject`'s audio resolver
   (`withAudioDefaults`, engine/project.ts): preview and export read the same
-  resolved object, so the lanes cannot disagree. Fade curves are `curve=qsin`
-  (quarter-sine, both directions; the argv shape is pinned by
-  `audio_graph_tests`), and the fade-out anchor is the padded/cut timeline
-  length, never the track's own end. The null path is unaffected by ANY of this:
-  no `audio` block, no `-af`.
+  resolved object, so the lanes cannot disagree. The fade-in is `curve=qsin`;
+  the fade-out takes `fadeOutCurve` ("smooth" qsin default, "linear" tri,
+  "scurve" hsin, "exponential" exp, "logarithmic" log; unknown ids degrade to
+  qsin) and anchors at the AUDIBLE end: the earlier of the track running out
+  (post-offset, via the probed `trackDurationMs`) and the padded/cut timeline
+  length. A track that outlasts the video therefore keeps the legacy timeline
+  anchor byte-for-byte (the argv shape is pinned by `audio_graph_tests`). The
+  null path is unaffected by ANY of this: no `audio` block, no `-af`.
 - **Codec per container:** AAC 192k in `.mp4`, `pcm_s16le` in `.mov` (ProRes),
   both under `-flags:a +bitexact` (suppresses the encoder tag; the existing
   `-fflags +bitexact -map_metadata -1` already covers the muxer). PCM is
@@ -707,9 +716,20 @@ camera exactly:
   a material only when a shadow-CASTING light lights it; and the only casting
   light is `<SceneStage>`'s key, which casts ONLY when the scene stages a
   floor/backdrop AND the theme's shadow technique is `"map"`. Every unstaged
-  project is therefore untouched. Procedural presentation shadows remain
+  project is therefore untouched. The devices' presentation shadows remain
   independent: `Device` still defaults to `"soft"` while its meshes also
   cast and receive real shadows when the map rig is active.
+- **Device presentation shadows are one analytic projector, and export
+  contract.** `toolkit/device/shadowProjector.ts` back-projects the device's
+  rounded-rect silhouette from a receiver plane toward a virtual key light,
+  widening the penumbra with the occluder's distance from that plane. All three
+  modes are parameter sets over it (`DEVICE_SHADOW_MODES`), and the silhouette
+  comes from STATIC catalog constants (`DeviceShadowSpec`, measured per model
+  beside `fittedHeight`), never the runtime bbox, so a clean clone without the
+  licensed glbs casts the same shadow as a build with them. Every value is a
+  pure function of the frame's pose, including the motion presets, so a float
+  lift softens and slides its own shadow without any accumulation. Changing a
+  mode parameter or a model's silhouette re-renders every staged device.
 - **The shadow rig is export contract.** Theme tokens (mapSize, softness→radius,
   bias, catcher opacity/tint) plus the fixed constants in SceneStage
   (LIGHT_RADIUS, the ortho shadow frustum ±8 / near 0.5 / far 30, radius scale 8,
@@ -1221,20 +1241,43 @@ rolling-gate project (`showcase-tour`):
 | Project | 16:9 | 9:16 | 1:1 | 4:5 | 5:4 | 3:2 | 2:3 | phone | phone-landscape |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `ws:launch-2026` (legacy sentinel: must stay EQUAL) | `eb89826c…` | stale | stale | stale | — | — | — | — | — |
-| `showcase-tour` (rolling gate) | `28beda34…` | `b3e3dd72…` | stale | stale | stale | stale (pre-trim) | — | — | — |
-| `transition-spike` (transition gate) | `6b058e1b…` | `74e02850…` | — | — | — | — | — | — | — |
+| `showcase-tour` (rolling gate) | `13b5994d…` | stale | stale | stale | stale | stale (pre-trim) | — | — | — |
+| `transition-spike` (transition gate) | `fb727cac…` | `a6383707…` | — | — | — | — | — | — | — |
 | `transition-bg-spike` (animated-background transition gate) | `2df76336…` | — | — | — | — | — | — | — | — |
-| `compare-spike` (before/after comparison gate) | `b6883733…` | stale | stale | stale | — | — | — | — | — |
-| `image-flip-spike` (image-orientation gate, eyeball it) | `ca4419d4…` | — | — | — | — | — | — | — | — |
+| `compare-spike` (before/after comparison gate) | stale | stale | stale | stale | — | — | — | — | — |
+| `image-flip-spike` (image-orientation gate, eyeball it) | stale | — | — | — | — | — | — | — | — |
 | `ws:layered-screenshot-spike` (LS gate, machine-local) | `4ec7b223…` | — | — | — | — | — | — | — | — |
 | `ws:video-window-spike` (VideoWindow gate, machine-local) | `6dfe68a6…` | — | — | — | — | — | — | — | — |
-| `ws:lighting-spike-fable` (v9 lighting gate, machine-local) | `fe701549…` | — | — | — | — | — | — | — | — |
-| `ws:camera-rig-spike-opus` (camera rig gate, machine-local) | `f5107f56…` | — | — | — | — | — | — | — | — |
-| `ws:multi-device-spike` (deviceLayout gate, machine-local) | `fb2d4f84…` | `c940b3b2…` | `ceb8e74c…` | — | — | — | — | — | — |
-| `ws:dof-spike` (depth-of-field gate, machine-local) | `a7a37eb0…` | `58d0ac28…` | — | — | — | — | — | — | — |
+| `ws:lighting-spike-fable` (v9 lighting gate, machine-local) | stale | — | — | — | — | — | — | — | — |
+| `ws:camera-rig-spike-opus` (camera rig gate, machine-local) | stale | — | — | — | — | — | — | — | — |
+| `ws:multi-device-spike` (deviceLayout gate, machine-local) | stale | stale | stale | — | — | — | — | — | — |
+| `ws:dof-spike` (depth-of-field gate, machine-local) | stale | stale | — | — | — | — | — | — | — |
 | `ws:chart-spike` (chart gate, machine-local) | `d58ff1f2…` | stale | stale | stale | — | — | — | — | — |
-| `ws:duplicate-spike` (scene-id heal gate, machine-local) | `c1888139…` | — | — | — | — | — | — | — | — |
-| `ws:overlay-spike` (overlay gate, machine-local) | `e5bc2b79…` | — | — | — | — | — | — | — | — |
+| `ws:duplicate-spike` (scene-id heal gate, machine-local) | stale | — | — | — | — | — | — | — | — |
+| `ws:overlay-spike` (overlay gate, machine-local) | stale | — | — | — | — | — | — | — | — |
+
+> **2026-08-25 (analytic device shadows: a DELIBERATE rebase):** the three
+> presentation shadow modes moved off their fixed-size textures and the flat
+> sun sweep onto ONE analytic projector that casts the device's real silhouette
+> (`toolkit/device/shadowProjector.ts`). Every staged DEVICE therefore renders
+> differently: `showcase-tour` 16:9 re-recorded at `13b5994d…` after a passed
+> Verify ×2 and an eyeballed frame, and every other baseline over a
+> device-staging project is stale until its own leg reruns (`compare-spike`,
+> `image-flip-spike`, `ws:multi-device-spike`, `ws:camera-rig-spike-opus`,
+> `ws:lighting-spike-fable`, `ws:dof-spike`, `ws:duplicate-spike`,
+> `ws:overlay-spike`). `ws:launch-2026` stages NO device, so the
+> null-for-legacy sentinel stayed EQUAL at `eb89826c…` through the change, and
+> `ws:device-video-spike` verified identical twice (`fe0e886b…`) as the
+> feature-matched gate. The sun sweep itself settled as ONE convex polygon on
+> the receiver (the outline hulled with its swept copy, `sunSweepHull`), offset
+> to match its root blur and eased over one full-span smoothstep ramp: a single
+> soft shape with a gentle fade, where probing root, band and far copies
+> separately read as overlapping shadows. Record both AFTER the reserved-word fix: a shader whose
+> fragment stage ANGLE rejects fails SILENTLY (the quad simply never draws), so
+> the first pass of these legs recorded a device with no shadow at all. A
+> vitest now guards the shader source against every GLSL reserved word. The opt-in `deviceTrack` keyframes that ship beside it
+> move nothing on their own: no bundled project, template or repo fixture
+> carries the block, and a scene without one samples the resting pose.
 
 > **2026-08-23 (media hosting is authored: the `window` host):** where a media
 > entry renders now follows its HOST alone, never its kind or its chrome.
@@ -1724,6 +1767,17 @@ rolling-gate project (`showcase-tour`):
 > change: re-recorded `showcase-tour` `da74c52b…` → `97af238c…` (Verify ×2
 > EQUAL) after eyeballing the abyss scene's raised device via
 > `--action screenshot`.
+
+> **2026-08-25 (v15 transition pack):** thirteen new shader types (inkbleed,
+> flowmorph, shockwave, glasssweep, rackfocus, halftone, lightsweep, shatter,
+> pixelstretch, chromasplit, datamosh, prism, spinblur) landed as a fourth
+> material generation with an explicit endpoint guard; every earlier program
+> stays source-identical and both merge anchors held EQUAL in the same session
+> (`showcase-tour` `28beda34…`, `ws:launch-2026` `eb89826c…`).
+> `transition-spike` gained thirteen scenes covering every new seam, a
+> deliberate content change: re-recorded `6b058e1b…` → `fb727cac…` (16:9) and
+> `74e02850…` → `a6383707…` (9:16), Verify ×2 EQUAL in both aspects, after
+> eyeballing all thirteen seams mid-transition via `--action screenshot`.
 
 > **2026-07-20 (transition ownership flip, manifest v2):** both anchors held
 > EQUAL through the flip (`da74c52b…` on the migrated v2 manifest, `b70c9788…`

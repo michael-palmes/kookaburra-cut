@@ -17,6 +17,7 @@ const SCENE_INSPECTOR_SCREEN_TITLES: Record<string, string> = {
   "frame.icon": "Panel icon",
   "frame.decorations": "Decorations",
   "compare.edit": "Comparison",
+  "terminal.edit": "Terminal",
   "chart.edit": "Chart",
   "chart.font": "Chart font",
   "chart.position": "Position",

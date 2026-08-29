@@ -1,9 +1,15 @@
 import { parseFontString } from "../theme/fontRef";
-import { parseBackdropSpec, parseBackgroundSpec, parseTextAnimationSpec } from "../theme/schema";
+import {
+  parseBackdropSpec,
+  parseBackgroundSpec,
+  parseTextAnimationSpec,
+  parseTextLookSpec,
+} from "../theme/schema";
 import type {
   FontRef,
   LightingSpec,
   TextAnimationSpec,
+  TextLookSpec,
   ThemeBackdrop,
   ThemeBackground,
 } from "../theme/tokens";
@@ -40,6 +46,7 @@ import {
   DEFAULT_SCENE_MEDIA_WINDOW_RADIUS,
   sceneMediaFromLegacy,
 } from "./sceneMedia";
+import { parseSceneTerminal, type SceneDocTerminal } from "./sceneTerminal";
 
 export type { SceneDocDof } from "./dof";
 
@@ -165,6 +172,30 @@ export interface SceneDocDeviceLayout {
   /** Edge-to-edge spacing in world units, authored for 16:9; narrower aspects compress the whole layout proportionally. */
   gap?: number;
   devices?: Record<string, SceneDocDeviceLayoutDelta>;
+}
+
+/** One device's pose at a key: a DELTA on whatever the scene already resolves for it (the layout block, or its own placement), so the motion presets keep layering on top and deleting the track reverts exactly. Offsets and rotations add, scale multiplies, and `lidDeg` is the one absolute (an angle has no meaningful delta). Every field is optional and an absent one holds the device's resting value, the lighting-pose rule. */
+export interface SceneDocDevicePose {
+  offset?: [number, number, number];
+  rotationDeg?: [number, number, number];
+  scale?: number;
+  /** Laptops only: the lid opening this key holds, in degrees. */
+  lidDeg?: number;
+}
+
+/** One device-track key: a time plus the poses it moves, by device id. A device absent from `pose` holds its resting pose through that key. */
+export interface SceneDocDeviceKey {
+  id: string;
+  /** Scene-local time, ms. */
+  tMs: number;
+  pose: Record<string, SceneDocDevicePose>;
+}
+
+export interface SceneDocDeviceSegment {
+  from: string;
+  to: string;
+  /** An `engine/ease.ts` name (unknown names degrade at sample time). */
+  ease: string;
 }
 
 /** One staged 3D object, deliberately shaped like the device entry: a stable scene-local id plus a library reference and the shared placement block. */
@@ -513,6 +544,8 @@ export interface SceneDoc {
   images?: SceneDocImageSpec[];
   /** The live multi-device layout block; see `SceneDocDeviceLayout`. */
   deviceLayout?: SceneDocDeviceLayout;
+  /** Opt-in device animation: one track for the scene, each key carrying a pose per device id (the lighting-track shape). Absent means every device renders exactly as it does without it. */
+  deviceTrack?: { keys: SceneDocDeviceKey[]; segments: SceneDocDeviceSegment[] };
   /** Staged 3D objects from the object library, rendered by `ObjectsFallback` on any scene. */
   objects?: SceneDocObjectSpec[];
   camera?: {
@@ -540,6 +573,12 @@ export interface SceneDoc {
   textAnimationForce?: boolean;
   /** Per-managed-item whole-spec motion exceptions, keyed by the item's stable key. */
   textAnimationOverrides?: Record<string, TextAnimationSpec>;
+  /** Text-look override: a whole spec replacing the theme's `textLook` for this scene (the textAnimation pattern, what the picker writes); explicit per-primitive TSX props still win unless `textLookForce`. */
+  textLook?: TextLookSpec;
+  /** Flips the resolution order for this scene (the panel's Override): text primitives ignore their own TSX look props and follow the sidecar/theme spec instead; absent means the normal prop-wins order. */
+  textLookForce?: boolean;
+  /** Per-managed-item whole-spec look exceptions, keyed by the item's stable key. */
+  textLookOverrides?: Record<string, TextLookSpec>;
   /** Partial lighting override: each present field fully replaces the layer below's (see `mergeLighting`); the long-shadow look is typically a per-scene low-elevation `sun` + `shadow` override rather than a whole new theme. Deep validation lives in `sceneLighting.ts`. */
   lighting?: LightingSpec;
   /** Overlay override: merges over the manifest's deck-wide `frame` for this scene (see `mergeFrameSpec`); `cutout` may be omitted to inherit the deck's shape, and `{enabled:false}` opts the scene out entirely. */
@@ -552,6 +591,8 @@ export interface SceneDoc {
   compare?: SceneDocCompare;
   /** The chart block (one per scene): data, appearance, axes, labels and the keyframed data track. Defaults and sampling live in `sceneChart.ts`. */
   chart?: SceneDocChart;
+  /** The terminal block (one per scene): screen-locked panel content, interactive in preview and Present, exporting its captured snapshot. Defaults and layout live in `sceneTerminal.ts`. */
+  terminal?: SceneDocTerminal;
   /** Which animated track drives this scene; absent = "camera" (null-for-legacy). Switching never deletes the other tracks' keys. */
   animatedTrack?: "camera" | "layeredScreenshot" | "compare" | "chart" | "lighting";
 }
@@ -1000,6 +1041,46 @@ const CHART_HEX = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
 /** A chart colour as authored: one of the four theme tokens by name, or a hex (the FrameChip rule). */
 const isChartColour = (v: unknown): v is string =>
   typeof v === "string" && (THEME_COLOUR_TOKENS.includes(v) || CHART_HEX.test(v));
+
+/** Field-level parse for the device animation track (degrade-not-throw): a malformed key or segment drops alone, and an empty key list drops the block so absence stays legible. */
+function parseDeviceTrack(raw: unknown, source: string): SceneDoc["deviceTrack"] {
+  const track = isRecord(raw) ? raw : {};
+  const keys: SceneDocDeviceKey[] = [];
+  for (const entry of Array.isArray(track.keys) ? (track.keys as unknown[]) : []) {
+    if (!isRecord(entry) || typeof entry.id !== "string" || !finiteNum(entry.tMs)) {
+      console.warn(`[sceneDoc] ${source}: deviceTrack key is malformed, dropped`);
+      continue;
+    }
+    const pose: Record<string, SceneDocDevicePose> = {};
+    for (const [deviceId, raw] of Object.entries(isRecord(entry.pose) ? entry.pose : {})) {
+      if (!isRecord(raw)) {
+        console.warn(`[sceneDoc] ${source}: deviceTrack pose "${deviceId}" is malformed, dropped`);
+        continue;
+      }
+      const out: SceneDocDevicePose = {};
+      if (finiteV3(raw.offset)) out.offset = [...raw.offset];
+      if (finiteV3(raw.rotationDeg)) out.rotationDeg = [...raw.rotationDeg];
+      if (finiteNum(raw.scale)) out.scale = raw.scale;
+      if (finiteNum(raw.lidDeg)) out.lidDeg = raw.lidDeg;
+      pose[deviceId] = out;
+    }
+    keys.push({ id: entry.id, tMs: entry.tMs, pose });
+  }
+  const segments = (Array.isArray(track.segments) ? (track.segments as unknown[]) : []).filter(
+    (s): s is SceneDocDeviceSegment => {
+      const seg = s as SceneDocDeviceSegment | null;
+      const ok =
+        !!seg &&
+        typeof seg === "object" &&
+        typeof seg.from === "string" &&
+        typeof seg.to === "string" &&
+        typeof seg.ease === "string";
+      if (!ok) console.warn(`[sceneDoc] ${source}: deviceTrack segment is malformed, dropped`);
+      return ok;
+    },
+  );
+  return keys.length > 0 ? { keys, segments } : undefined;
+}
 
 /** Field-level parse for the deviceLayout block (degrade-not-throw): an unknown preset falls back to `row` so the block survives, malformed deltas drop alone. Resolution maths lives in `toolkit/device/layout.ts`. */
 function parseDeviceLayout(raw: unknown, source: string): SceneDocDeviceLayout | undefined {
@@ -1933,6 +2014,10 @@ export function parseSceneDoc(raw: unknown, source: string): SceneDoc | undefine
     const images = parseSceneImages(doc.images, source);
     if (images) out.images = images;
   }
+  if (doc.deviceTrack !== undefined) {
+    const deviceTrack = parseDeviceTrack(doc.deviceTrack, source);
+    if (deviceTrack) out.deviceTrack = deviceTrack;
+  }
   if (doc.deviceLayout !== undefined) {
     const deviceLayout = parseDeviceLayout(doc.deviceLayout, source);
     if (deviceLayout) out.deviceLayout = deviceLayout;
@@ -2008,6 +2093,21 @@ export function parseSceneDoc(raw: unknown, source: string): SceneDoc | undefine
   } else if (doc.textAnimationOverrides !== undefined) {
     console.warn(`[sceneDoc] ${source}: textAnimationOverrides isn't an object, dropped`);
   }
+  if (doc.textLook !== undefined) {
+    const textLook = parseTextLookSpec(doc.textLook, source);
+    if (textLook) out.textLook = textLook;
+  }
+  if (doc.textLookForce === true) out.textLookForce = true;
+  if (isRecord(doc.textLookOverrides)) {
+    const overrides: Record<string, TextLookSpec> = {};
+    for (const [key, value] of Object.entries(doc.textLookOverrides)) {
+      const spec = parseTextLookSpec(value, `${source} textLookOverrides.${key}`);
+      if (spec) overrides[key] = spec;
+    }
+    if (Object.keys(overrides).length > 0) out.textLookOverrides = overrides;
+  } else if (doc.textLookOverrides !== undefined) {
+    console.warn(`[sceneDoc] ${source}: textLookOverrides isn't an object, dropped`);
+  }
   if (doc.lighting !== undefined) {
     const lighting = normalizeLighting(doc.lighting, source);
     if (lighting) out.lighting = lighting;
@@ -2037,6 +2137,10 @@ export function parseSceneDoc(raw: unknown, source: string): SceneDoc | undefine
   if (doc.chart !== undefined) {
     const chart = parseChart(doc.chart, source);
     if (chart) out.chart = chart;
+  }
+  if (doc.terminal !== undefined) {
+    const terminal = parseSceneTerminal(doc.terminal, source);
+    if (terminal) out.terminal = terminal;
   }
   if (
     doc.animatedTrack === "camera" ||

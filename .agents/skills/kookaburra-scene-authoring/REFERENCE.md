@@ -92,8 +92,14 @@ normally and simply shows no editing affordances.
       "media": { "src": "assets/demo.mp4", "kind": "video", "startMs": 0, "fit": "cover" },
       "placement": { "position": [0, -0.3, 0], "rotationDeg": [0, 0, 0], "scale": 1 },
       "motion": { "preset": "none" },        // opt-in: none|turntable|float|tilt-reveal|push-in (+ params)
-      "shadow": "soft",                      // soft | long | sun | none ("sun" = the Rotato-style
-                                             // 45° silhouette sweep on a flat plane behind the device)
+      "shadow": "soft",                      // one analytic projector casts the device's REAL silhouette
+                                             // (size, yaw, lid, float). Floor family: soft (tight contact
+                                             // pool), long (low rake), studio (opposed key + fill), overhead
+                                             // (tabletop pool), backlight (toward the camera), feather (pool
+                                             // only), window (wide + airy), wetfloor (short sharp forward
+                                             // fade). Behind-plane family: sun (45° fade), drop (the
+                                             // app-store card offset). Or none. NOTE: a staged floor runs
+                                             // real map shadows and the presentation shadow stands down.
       "lidDeg": 90                           // laptops only: lid opening in degrees (0 closed, default 90)
     }
   ],
@@ -110,6 +116,13 @@ normally and simply shows no editing affordances.
     "preset": "toe-in",                      // "row" | "toe-in" | "arc" | "cascade" | "hero" | "depth-pair"
     "gap": 0.35,                             // edge-to-edge world units at 16:9; other aspects compress
     "devices": { "d2": { "offset": [0.1,0,-0.2], "rotationDeg": [0,-4,0], "scale": 1.1 } }  // per-device deltas on the preset base
+  },
+  "deviceTrack": {                           // OPT-IN device animation (see "Device tracks")
+    "keys": [
+      { "id": "k1", "tMs": 0,   "pose": { "d1": { "offset": [0,0,0], "rotationDeg": [0,0,0], "scale": 1 } } },
+      { "id": "k2", "tMs": 900, "pose": { "d1": { "offset": [0.6,0.4,0], "scale": 1.2 }, "d2": { "lidDeg": 100 } } }
+    ],
+    "segments": [ { "from": "k1", "to": "k2", "ease": "inOutCubic" } ]
   },
   "animatedTrack": "camera"                  // which keyed track animates this scene:
                                              // "camera" (the absent default) or "layeredScreenshot";
@@ -458,6 +471,8 @@ replaces the deck's outright (never deep-merges); other fields override field-by
                                   // { "type": "image", "src": "assets/panel.png" } (cover-cropped)
   "icon": "🚀",                   // emoji or project-relative asset path, drawn above the title
   "chip": { "label": "New", "icon": "circle-check", "colour": "accent" },
+                                  // the label registers textKey "chip": textStyle.chipSize
+                                  // scales it (the pill hugs the label)
   "decorations": [                // marks placed on the panel: EXACTLY one of "src" or "text"
     { "id": "a1", "src": "assets/avatar.png", "position": [-0.62, 0.3],
       "size": 0.12, "rotationDeg": 0, "shape": "circle", "layer": "above" },
@@ -530,10 +545,31 @@ sphere — EXPORT CONTRACT constants) and the resolved backdrop (sidecar `backdr
 theme's): cyclorama `floor` / `gradient` plane / `image` plane, all UNLIT exact-colour
 (`toneMapped:false`) with `ShadowMaterial` catchers. Real key-light shadow maps run ONLY
 when a backdrop is staged AND `lighting.shadow.technique === "map"` (the hybrid rule —
-everywhere else devices keep their procedural blob shadows). `useSceneStaged()` tells a
+everywhere else devices keep their own presentation shadows, `toolkit/device/shadowProjector.ts`). `useSceneStaged()` tells a
 primitive whether a stage owns the lighting (Device/HeroObject stand their bundled lit
 sets down). Environments (`environment.source`: bundled `kookaburra:*` HDRI/Lightformer ids)
 apply at the compositor seam per scene — never mount drei `<Environment>` in a staged scene.
+
+### Device tracks
+
+`deviceTrack` keyframes the scene's devices: ONE track, each key carrying a pose
+per device id (the lighting-track shape), so a multi-device scene moves in
+concert on one lane. It is opt-in, and absent means every device renders exactly
+as it does without it.
+
+A pose is a **delta on whatever the scene already resolves** for that device (the
+`deviceLayout` block, or its own `placement`): `offset` and `rotationDeg` ADD,
+`scale` MULTIPLIES, and `lidDeg` is the one absolute, since an angle has no
+meaningful delta. Absent fields hold the device's resting value, so a key only
+carries what it moves, and deleting the block reverts the scene exactly.
+
+The `motion` presets still layer ON TOP of the sampled pose, so a device can
+drift across the stage while gently floating. The presentation shadow follows the
+whole result: a keyed lift detaches and softens its own shadow.
+
+In the app: the device drill's **Motion > Keyframes** toggle opens the Devices
+lane, "＋ Animation" adds the first one, and dragging the gizmo shapes the key
+nearest the playhead.
 
 ### Fixed background (v11)
 
@@ -609,7 +645,13 @@ Staging toggle writes `backdrop: {type:"none"}` to reveal image/video fills):
   "lighting": { "key": { "azimuthDeg": 40 }, "shadow": { "opacity": 0.3 } },  // partial merge
   "textAnimation": { "in": "fade-scale", "out": "none", "staggerMs": 90,
                      "stagger": "word", "shine": true },  // v11 whole-spec text motion
-  "textAnimationForce": true  // v11 · M6: sidecar/theme spec BEATS TSX animation props
+  "textAnimationForce": true,  // v11 · M6: sidecar/theme spec BEATS TSX animation props
+  "textLook": { "preset": "gradient", "colorA": "#7cd6ff", "colorB": "#2b6bff",
+                "angleDeg": 90 },            // whole-spec text style (what the app's
+                                             // Text-style panel writes; see "Text looks")
+  "textLookForce": true,                     // sidecar/theme look BEATS TSX look props
+  "textLookOverrides": { "title": { "preset": "outline", "hollow": false } }
+                                             // per-textKey looks, over the scene spec
 }
 ```
 
@@ -623,7 +665,10 @@ all chart text), per chart (sidecar `chart.font`) or per text element (sidecar
 exports never follow a macOS font update; if a pinned file goes missing it re-pins by
 installed name, and an uninstalled family warns and falls back to Inter. Theme
 `textAnimation` (`{in, out, staggerMs, stagger?, startScale?, shine?, direction?,
-delivery?}`) drives AnimatedHeadline's default preset path — see Text primitives. Fonts note: troika shares ONE SDF atlas across all
+delivery?, delayMs?}`) drives AnimatedHeadline's default preset path — see Text primitives. Theme
+`textLook` (`{preset, colorA?, colorB?, angleDeg?, strokeEm?, hollow?, intensity?,
+offsetEm?, curveDeg?}`) sets the default text style the same way: see "Text looks
+(Text style)". Fonts note: troika shares ONE SDF atlas across all
 fonts and `preloadAppFonts` claims cells SEQUENTIALLY in canonical order — adding or
 reordering bundled faces is a REBASE EVENT (docs/determinism.md "Fonts").
 
@@ -657,13 +702,23 @@ bridge. Devices from the sidecar render as `{devices.map((d) => <Device key={d.i
   text: string
   from?: number          // in-animation start, ms (default 0)
   to?: number            // in-animation end, ms (default 600)
-  preset?: TextPresetName     // "fade" | "fade-up" | "blur-in" | "slide" | "mask-reveal"
-                              // | "fade-scale" | "twist-scale" (v11·M3) | "none"
+  preset?: TextPresetName     // "none" | "fade" | "fade-up" | "blur-in" | "slide"
+                              // | "mask-reveal" | "fade-scale" | "twist-scale"
+                              // | "scatter-scale" | the wave-2 creative pack:
+                              // "tracking" | "slam" | "dolly" | "chromatic"
+                              // | "line-stretch" | "highlight-wipe" | "rise-mask"
+                              // | "word-cycle" | "ribbon" | "stand-up" | "spring-pop"
+                              // | "spotlight" | "underline-draw" | "orbit"
+                              // | "weight-build" | "develop" | "flip-cascade"
+                              // | "converge" | "glint-wipe" | "vapor"
+                              // ("static" = fully still, the inspector's None)
                               // default: the THEME's textAnimation.in — omit unless overriding
   outPreset?: TextPresetName  // out preset; plays only when outAt is set (default theme out)
   outAt?: number              // out start, ms; plays over the same duration as the in
   stagger?: "char" | "word"   // v8·M4: per-unit stagger (one mesh, per-glyph shader)
   staggerMs?: number          // per-unit delay; default theme textAnimation.staggerMs
+  delayMs?: number            // hold before the in starts (≥ 0; the out never shifts);
+                              // default theme textAnimation.delayMs
   ease?: EaseName             // v8·M4: engine/ease names; default theme motion.easings.standard
   // ── the motion pack (v11·M3) ────────────────────────────────────────────────
   startScale?: number         // fade-scale: starts here, lands at 1 (0.8 grows in, 1.15
@@ -672,7 +727,8 @@ bridge. Devices from the sidecar render as `{devices.map((d) => <Device key={d.i
                               // WHOLE element during the scale-in, masked to the glyphs
                               // (fixed look — no params)
   direction?: "from-left" | "from-right"  // twist-scale: entry side (default from-left;
-                              // a 60° perspective card turn around Y, scaling from 0.92)
+                              // a 60° perspective card turn around Y, scaling from 0.92);
+                              // orbit: which way the arc sweeps
   delivery?: "all-at-once" | "by-paragraph" | "by-paragraph-group"
                               // all-at-once FORCES the whole-block path even when the
                               // theme staggers. Paragraphs = \n; groups = blank lines
@@ -685,6 +741,38 @@ bridge. Devices from the sidecar render as `{devices.map((d) => <Device key={d.i
   // a short initial fade.
   // Defaults to char granularity (35ms spread); delivery="all-at-once" collapses it to
   // one block unit. Out mirrors back toward the camera.
+  // ── the wave-2 creative pack (motion-pack v2): 20 presets, ALL sampled per-unit
+  // through the stagger shader (even all-at-once mounts one whole-block unit); per-unit
+  // randomness is the same seeded hash as scatter-scale, never Math.random.
+  // Cinematic block (no forced granularity: the whole element unless you stagger):
+  //   "slam"           drops in oversized and soft, lands with a small compression bump
+  //   "chromatic"      R/B colour-split echoes converge into focus as it fades in
+  //   "line-stretch"   a glowing collapsed line stretches open into the text (shine band)
+  //   "underline-draw" the rule draws on first, then the text rises in; the out
+  //                    re-draws, holds, then wipes the rule off
+  //   "weight-build"   type thickens from hairline to full weight (SDF weight offset)
+  //   "glint-wipe"     a left→right wipe behind a tight, bright accent glint band
+  // Per-WORD (forced word granularity when nothing else chose):
+  //   "dolly"          words pull forward out of the deep (hashed per-word extra depth)
+  //   "highlight-wipe" an accent block grows over each word, then chases off revealing it
+  //   "rise-mask"      words rise into view through a hard baseline mask
+  //   "word-cycle"     words take the stage one at a time, centred, popping in and out
+  //   "ribbon"         words turn in about Y like a ribbon settling flat (camera bow)
+  //   "stand-up"       words tip upright from lying flat, with a tiny settle drop
+  //   "spring-pop"     pops up to size on a damped spring (first overshoot ≈ 1.06)
+  //   "spotlight"      a walking emphasis lights each word in turn (accent tint + a
+  //                    small lift); words outside the walk rest dimmed
+  // Per-CHARACTER (forced char granularity when nothing else chose):
+  //   "tracking"       letters converge from spread and soft to tight and sharp
+  //   "orbit"          letters sweep in along a 140° arc about the block centre; honours
+  //                    `direction` (from-left/from-right flips the sweep)
+  //   "develop"        letters sharpen into view in seeded-random order (photo develop)
+  //   "flip-cascade"   letters flip up from face-down, with a mid-flip dip
+  //   "converge"       letters streak in horizontally from both screen edges
+  //   "vapor"          text condenses out of rising, wobbling vapour (hashed per-char
+  //                    rates); also designed to read well as an OUT preset
+  // Only fade-up/slide/scatter-scale honour a spec `distance`; in the wave-2 pack only
+  // "orbit" honours `direction`. All pack constants are golden-pinned export contract.
   face?: "headline" | "body"  // which theme font face (default headline)
   color?: "text" | "muted" | "accent"  // theme colour TOKEN (never raw hexes). Setting it
                               // PINS the fill: the sidecar can't override and the app's
@@ -698,6 +786,12 @@ bridge. Devices from the sidecar render as `{devices.map((d) => <Device key={d.i
   defaultColor?: "text" | "muted" | "accent"  // fill when neither color nor the sidecar
                               // set one (default "text"): the design default that stays
                               // app-editable
+  look?: string               // text-look preset name (see "Text looks (Text style)");
+                              // resolution follows the textAnimation pattern: prop >
+                              // sidecar textLook > theme textLook, textLookForce flips it
+  lookParams?: Partial<TextLookSpec>  // look param overrides riding beside `look`:
+                              // colorA/colorB/angleDeg/strokeEm/hollow/intensity/
+                              // offsetEm/curveDeg
   position?: [x, y, z]
   fontSize?: number      // default 0.6
   // ── layout ──────────────────────────────────────────────────────────────────
@@ -763,6 +857,10 @@ app-version slide is the worked example.
   to?: number                 // (default 1100)
   position?: [x, y, z]        // offset added after the built-in optical centring
   iconWidth?: number          // world units, height follows the image (default 1.4)
+  titleSize?: number          // title label size, world units (default 0.36); the
+                              // sidecar's titleSize multiplier still applies on top
+  subtitleSize?: number       // hero subtitle size, world units (default 0.82); the
+                              // sidecar's subtitleSize multiplier still applies on top
   titleColor?: "text" | "muted" | "accent" | string    // beats textStyle.titleColor
   subtitleColor?: "text" | "muted" | "accent" | string // beats textStyle.subtitleColor
 />
@@ -777,7 +875,8 @@ render as SDF glyphs in the text colour. Write them straight into sidecar text. 
 projects cache emoji rasters in `assets/.emoji-cache/` (write-once, deterministic); bundled
 projects should not use emoji. `ExtrudedText` (3D) stays ASCII-only.
 
-The preset table (v11 · M6 — the full vocabulary):
+The preset table (v11 · M6; the 20 wave-2 presets and their forced granularities are
+listed in the prop comments above):
 
 | Preset | Motion | Params | Notes |
 |---|---|---|---|
@@ -810,6 +909,47 @@ primitives IGNORE their own TSX animation props and follow the sidecar/theme spe
 to make a scene's motion app-editable, prefer REMOVING the TSX preset props over
 leaving the force flag set.
 
+### Text looks (Text style)
+
+The styling twin of the motion presets: a named text STYLE with per-look params,
+resolved exactly like the motion. Theme `textLook` default > sidecar `textLook` (whole
+spec, what the app's Text-style panel writes) > TSX `look`/`lookParams` props, with
+`textLookForce: true` flipping the order (look props ignored) and
+`textLookOverrides.<textKey>` keying a look to one text element. `"none"` and
+nothing-configured both run the legacy fill path verbatim (the null-for-legacy
+contract). Look defaults and clamp bounds are golden-pinned contract
+(`src/toolkit/text/looks.ts`).
+
+```jsonc
+"textLook": { "preset": "gradient", "colorA": "#ffd76e", "colorB": "#ff7a3c",
+              "angleDeg": 120 }
+```
+
+The nine looks and their params (every param optional; absent `colorA` falls back to
+the theme accent):
+
+| Look | Style | Params |
+|---|---|---|
+| `gradient` | two-stop fill across the measured block | `colorA` → `colorB` (default: a darkened colorA) along `angleDeg` (default 90: vertical, colorA on top) |
+| `outline` | stroke around each glyph | `strokeEm` (default 0.035, max 0.2) in colorA; `hollow` (default true) hides the fill, `false` keeps fill + stroke |
+| `neon` | persistent glow halo + slightly brightened core | colorA the glow; `intensity` (0..1, default 0.6) scales radius and opacity |
+| `offset-print` | one tinted under-layer copy, offset down-right | colorA the under-ink; `offsetEm` (default 0.06) |
+| `highlight-block` | persistent accent blocks behind each word | colorA the block fill |
+| `frosted` | softened, slightly bolder glyphs under a held cool shine | `intensity` scales the frost |
+| `arc` | bends the baseline along a circular arc | `curveDeg` (default 60; positive arcs upward) |
+| `glass-3d` | extruded glass twin (3D, transmission) | colorA the tint (default clear), `intensity` |
+| `chrome-3d` | extruded polished-metal twin (3D) | colorA the tint (default accent) |
+
+Mechanics: `outline` and `neon` ride plain troika material props (stroke, outlineBlur),
+so they work on every render path; `gradient`, `offset-print`, `highlight-block`,
+`frosted` and `arc` mount the stagger shader path, and combine freely with any motion
+preset. The 3D looks re-render the headline as EXTRUDED geometry: real depth and
+bevels, lit by the scene's lighting and environment (no bundled rig), same string, size,
+anchor and world placement. Motion presets there degrade to whole-block transforms from
+the unit-0 sample (alpha drives material opacity; a mask sweep degrades to its covered
+fraction; SDF-only fields are ignored). Emoji cannot extrude: a headline containing
+emoji falls back to the flat text path and DROPS the look entirely.
+
 ```ts
 
 <ImageCard                    // v8·M4: flat colour-exact image plane (icons/logos/stills)
@@ -826,6 +966,9 @@ leaving the force flag set.
   format?: (n: number) => string   // default: rounded integer
   position?: [x, y, z]
   fontSize?: number      // default 0.5
+  textKey?: string       // sidecar style key: registers the row in Edit text and applies
+                         // the textStyle.<textKey> Size/Color/Font/OffsetX/OffsetY/
+                         // RotationDeg overrides (Size multiplies fontSize)
 />
 ```
 
@@ -1012,6 +1155,9 @@ shadow are analytic per-pixel SDF + UV maths, deterministic by construction. Gat
   bevel?                 // default true
   tone?                  // "text" (default) | "accent" | "muted" — theme colour token
   lit?                   // default true: bundles the shared LightRig
+  textKey?               // sidecar style key: Edit-text row + the textStyle
+                         // Size/Color/OffsetX/OffsetY/RotationDeg overrides (no Font:
+                         // the extruded typeface is bundled)
 />
 <ParticleField
   count? seed?           // instanced scatter drawn from createSeededRandom(seed) (defaults 200 / 1)
@@ -1110,7 +1256,7 @@ Declared on the OUTGOING scene (manifest `"version": 2`): `"transition": { "type
 (clamped) overlap; the last scene never carries one. Always write `"version": 2` at the
 manifest top level when authoring transitions. Legacy unversioned manifests stored each
 transition on the incoming scene instead; the loader shifts them (identical output) and any
-app edit migrates the file in place, so never mix the two placements in one file. Thirteen
+app edit migrates the file in place, so never mix the two placements in one file. Twenty-six
 types; unknown types degrade to `crossfade` with a console warning. All params are
 optional (defaults shown); every value is clamped on load. Any transition may also carry
 `ease`: `"linear"` (absent, the byte contract for stored specs) | `"smooth"` | `"snappy"`,
@@ -1131,9 +1277,22 @@ applied CPU-side to progress with endpoints preserved.
 | `slice` | move | `direction` [1,0] · `intensity` 0.35 (stagger) · `blocks[0]` strip count | hash-staggered strips slide out revealing B |
 | `dissolve` | mask | `intensity` 0.35 (noise scale) · `softness` 0.08 | organic value-noise threshold, soft edge |
 | `warp` | mix | `intensity` 0.2 · `center` [0.5,0.5] | lens pull toward centre, restrained RGB split at mid |
+| `inkbleed` | mask | `direction` [0,-1] · `intensity` 0.5 (bleed scale) · `softness` 0.12 | noise-perturbed frontier wicks along the axis, melty edge |
+| `flowmorph` | mix | `intensity` 0.4 (flow) · `parallax` 0.5 (drift asymmetry) | curl-noise currents advect A out and B in |
+| `shockwave` | mask | `center` [0.5,0.5] · `intensity` 0.5 (refraction) · `softness` 0.1 (front width) · `steps` 1 (aftershocks, 1-3) | refractive pressure front with dispersion + crest lift |
+| `glasssweep` | mask | `direction` [1,0] · `softness` 0.18 (bar width) · `intensity` 0.5 (refraction) | refracting bar, per-channel dispersion, rim light |
+| `rackfocus` | mix | `intensity` 0.5 (max defocus) · `softness` 0.25 (highlight bloom) · `shape` "linear" (disc) \| "hex" | 19-tap aperture bokeh, highlight-weighted |
+| `halftone` | mix | `direction` [1,0] (screen angle) · `blocks[0]` 45 (dot pitch) · `intensity` 0.3 (ink gain) · `shape` "radial" (dot) \| "linear" (line) · `color` (ink; default theme background) | per-channel rotated print screens through an ink plate |
+| `lightsweep` | mask | `direction` [1,0] · `softness` 0.15 (streak width) · `intensity` 0.6 (bloom) · `color` (flash tint; picker bakes #ffffff) | anamorphic streak flare over a band reveal |
+| `shatter` | mask | `direction` [0,-1] · `blocks[0]` 12 (cell density) · `intensity` 0.5 (scatter) · `parallax` 0.5 (stagger) | voronoi shards drift/rotate out, rim-lit edges |
+| `pixelstretch` | mix | `direction` [0,-1] · `intensity` 0.5 (streak length) · `softness` 0.15 (key band) | luma-keyed smear, bright pixels hold longest |
+| `chromasplit` | mix | `direction` [1,0] · `intensity` 0.4 (split distance) · `softness` 0.2 (ghost overlap) | channels peel apart, reconverge into B |
+| `datamosh` | mix | `blocks[0]` 28 (blocks across) · `steps` 10 (refresh stages) · `intensity` 0.6 (mosh strength) | macroblock motion smear + hashed I-frame refresh sweep |
+| `prism` | mix | `steps` 6 (facets, 3-16) · `intensity` 0.5 (refraction spin) · `center` [0.5,0.5] | faceted refraction fold with edge glints |
+| `spinblur` | mix | `center` [0.5,0.5] · `intensity` 0.5 (whirl) · `shape` "linear" (clockwise) \| "radial" (anticlockwise) | partial-rotation whip under 12-tap angular blur |
 
 `direction` is one of the four unit axes. Gate project: `fixtures/transition-spike` (every
-non-slide/wipe seam incl. the v14 pack + eased boundaries); `ws:launch-2026` keeps
+non-slide/wipe seam incl. the v14 and v15 packs + eased boundaries); `ws:launch-2026` keeps
 slide/wipe coverage.
 
 ## Project manifest v3 fields (effects · camera · persistent)
@@ -1242,7 +1401,7 @@ Add new tokens here; never hard-code values in scenes.
 
 | Primitive / feature | Phase | State |
 | --- | --- | --- |
-| `AnimatedHeadline`, `AnimatedCounter` | v0 | basic reveal/count (stagger/ease TODO) |
+| `AnimatedHeadline`, `AnimatedCounter` | v0 | implemented: reveal/count, presets + per-unit stagger + ease (v8-v11), the wave-2 pack, text looks |
 | Deterministic export loop | v0 | implemented (`src/engine/exporter.ts`); byte-identical confirmed |
 | Multi-format selection | v1 | implemented — 16:9 / 9:16 / 1:1 via `useFormat` |
 | Cross-scene transitions | v1 | implemented — crossfade / dip / slide / wipe |

@@ -26,13 +26,16 @@ const enginePin = (() => {
 
 function setNameOf(stem) {
   if (stem.startsWith("tm-")) return `textanim-${stem.slice(3)}`;
+  if (stem.startsWith("tl-")) return `textlook-${stem.slice(3)}`;
   if (/^(bgp?|shadow|stage|kind|object|chart|chartanim)-/.test(stem)) return stem;
   return null;
 }
 const isClip = (stem, set) =>
   stem.startsWith("tm-")
     ? set !== "textanim-none"
-    : (stem.startsWith("bg-") && !stem.startsWith("bgp-")) || stem.startsWith("chartanim-");
+    : stem.startsWith("tl-") ||
+      (stem.startsWith("bg-") && !stem.startsWith("bgp-")) ||
+      stem.startsWith("chartanim-");
 
 function collectSets() {
   const sets = new Map();

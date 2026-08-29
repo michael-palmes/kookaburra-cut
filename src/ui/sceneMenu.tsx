@@ -9,15 +9,17 @@ export type SceneMenuIconId =
   | "rename"
   | "duplicate"
   | "copy-to-project"
+  | "copy-from-project"
   | "insert-preset"
   | "save-preset"
   | "duration"
   | "manage"
   | "copy-background"
   | "paste-background"
+  | "move-to-group"
   | "delete";
 
-/** Leading glyphs for the scene menu and the scene manager's footer: the Project tab's 20-viewBox stroke style. */
+/** Leading glyphs shared by the scene, media and project card menus: the Project tab's 20-viewBox stroke style. */
 export function SceneMenuIcon({ id }: { id: SceneMenuIconId }) {
   switch (id) {
     case "rename":
@@ -63,6 +65,21 @@ export function SceneMenuIcon({ id }: { id: SceneMenuIconId }) {
         >
           <rect x="9.5" y="4.5" width="7" height="11" rx="1.5" />
           <path d="M3.5 10h5.5M6.5 7.5L9 10l-2.5 2.5" />
+        </svg>
+      );
+    case "copy-from-project":
+      return (
+        <svg
+          width="17"
+          height="17"
+          viewBox="0 0 20 20"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          aria-hidden="true"
+        >
+          <rect x="3.5" y="4.5" width="7" height="11" rx="1.5" />
+          <path d="M11 10h5.5M14 7.5L16.5 10 14 12.5" />
         </svg>
       );
     case "insert-preset":
@@ -153,6 +170,20 @@ export function SceneMenuIcon({ id }: { id: SceneMenuIconId }) {
           <path d="M7.5 4H6a1.5 1.5 0 00-1.5 1.5v10A1.5 1.5 0 006 17h8a1.5 1.5 0 001.5-1.5v-10A1.5 1.5 0 0014 4h-1.5" />
           <rect x="7.5" y="2.5" width="5" height="3" rx="1" />
           <path d="M7 13.5l2-2 1.5 1.5 1.5-1.5 1.5 1.5" />
+        </svg>
+      );
+    case "move-to-group":
+      return (
+        <svg
+          width="17"
+          height="17"
+          viewBox="0 0 20 20"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          aria-hidden="true"
+        >
+          <path d="M3.5 6A1.5 1.5 0 015 4.5h3l1.5 2H15A1.5 1.5 0 0116.5 8v6.5A1.5 1.5 0 0115 16H5a1.5 1.5 0 01-1.5-1.5V6z" />
         </svg>
       );
     case "delete":

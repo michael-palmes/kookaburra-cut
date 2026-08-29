@@ -24,6 +24,9 @@ export function DebouncedRange({
   label,
   onCommit,
   onInput,
+  overflowMax = false,
+  overflowMin = false,
+  formatValue,
   disabled = false,
 }: {
   value: number;
@@ -34,6 +37,12 @@ export function DebouncedRange({
   onCommit: (v: number) => void;
   /** When present, the drag's debounced ticks call this (live, history-less) and `onCommit` fires only on release. */
   onInput?: (v: number) => void;
+  /** Soft max: the track still spans min..max, but a typed value past max is kept and the thumb pins at 100%. */
+  overflowMax?: boolean;
+  /** Soft min: the mirror of `overflowMax`, a typed value below min is kept and the thumb pins at 0%. */
+  overflowMin?: boolean;
+  /** Spelling of the value button (default `toFixed(2)`); typing edits the plain number. */
+  formatValue?: (v: number) => string;
   disabled?: boolean;
 }) {
   const [v, setV] = useState(value);
@@ -87,13 +96,16 @@ export function DebouncedRange({
     }
     onCommit(dragValue.current);
   }
-  // Double-click the number to type a value: clamps to [min, max] but keeps the typed precision.
+  // Double-click the number to type a value: clamps to [min, max] but keeps the typed precision (a soft end doesn't clamp its own side).
   function finishEdit(commit: boolean) {
     setEditing(false);
     if (!commit) return;
     const parsed = Number(text);
     if (!Number.isFinite(parsed)) return;
-    const clamped = Math.min(max, Math.max(min, parsed));
+    const clamped = Math.min(
+      overflowMax ? Number.POSITIVE_INFINITY : max,
+      Math.max(overflowMin ? Number.NEGATIVE_INFINITY : min, parsed),
+    );
     if (pending.current !== null) {
       window.clearTimeout(pending.current);
       pending.current = null;
@@ -111,7 +123,7 @@ export function DebouncedRange({
         min={min}
         max={max}
         step={step}
-        value={v}
+        value={Math.min(overflowMax ? max : v, Math.max(overflowMin ? min : v, v))}
         aria-label={label}
         disabled={disabled}
         onChange={(e) => schedule(Number(e.target.value))}
@@ -149,11 +161,11 @@ export function DebouncedRange({
           title="Double-click to type a value"
           disabled={disabled}
           onDoubleClick={() => {
-            setText(v.toFixed(2));
+            setText(formatValue ? String(Number(v.toFixed(3))) : v.toFixed(2));
             setEditing(true);
           }}
         >
-          {v.toFixed(2)}
+          {formatValue ? formatValue(v) : v.toFixed(2)}
         </button>
       )}
     </span>

@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "name": "Text motion — flip-cascade",
+  "text": {
+    "headline": "SHOWTIME"
+  },
+  "textAnimation": { "in": "flip-cascade", "out": "none", "staggerMs": 0 }
+}

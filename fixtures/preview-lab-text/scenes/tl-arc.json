@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "name": "Text look — arc",
+  "text": {
+    "headline": "FULL CIRCLE"
+  },
+  "textAnimation": { "in": "fade", "out": "none", "staggerMs": 0 },
+  "textLook": { "preset": "arc" }
+}

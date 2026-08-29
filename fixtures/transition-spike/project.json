@@ -98,6 +98,122 @@
     },
     {
       "file": "scenes/12-warp.tsx",
+      "durationMs": 1800,
+      "transition": {
+        "type": "inkbleed",
+        "durationMs": 800,
+        "ease": "smooth"
+      }
+    },
+    {
+      "file": "scenes/13-inkbleed.tsx",
+      "durationMs": 1800,
+      "transition": {
+        "type": "flowmorph",
+        "durationMs": 900,
+        "ease": "smooth"
+      }
+    },
+    {
+      "file": "scenes/14-flowmorph.tsx",
+      "durationMs": 1800,
+      "transition": {
+        "type": "shockwave",
+        "durationMs": 600,
+        "steps": 2
+      }
+    },
+    {
+      "file": "scenes/15-shockwave.tsx",
+      "durationMs": 1800,
+      "transition": {
+        "type": "glasssweep",
+        "durationMs": 700,
+        "ease": "smooth"
+      }
+    },
+    {
+      "file": "scenes/16-glasssweep.tsx",
+      "durationMs": 1800,
+      "transition": {
+        "type": "rackfocus",
+        "durationMs": 800,
+        "shape": "hex",
+        "ease": "smooth"
+      }
+    },
+    {
+      "file": "scenes/17-rackfocus.tsx",
+      "durationMs": 1800,
+      "transition": {
+        "type": "halftone",
+        "durationMs": 700
+      }
+    },
+    {
+      "file": "scenes/18-halftone.tsx",
+      "durationMs": 1800,
+      "transition": {
+        "type": "lightsweep",
+        "durationMs": 500,
+        "color": "#ffffff",
+        "ease": "smooth"
+      }
+    },
+    {
+      "file": "scenes/19-lightsweep.tsx",
+      "durationMs": 1800,
+      "transition": {
+        "type": "shatter",
+        "durationMs": 700,
+        "ease": "smooth"
+      }
+    },
+    {
+      "file": "scenes/20-shatter.tsx",
+      "durationMs": 1800,
+      "transition": {
+        "type": "pixelstretch",
+        "durationMs": 600
+      }
+    },
+    {
+      "file": "scenes/21-pixelstretch.tsx",
+      "durationMs": 1800,
+      "transition": {
+        "type": "chromasplit",
+        "durationMs": 500,
+        "ease": "smooth"
+      }
+    },
+    {
+      "file": "scenes/22-chromasplit.tsx",
+      "durationMs": 1800,
+      "transition": {
+        "type": "datamosh",
+        "durationMs": 500
+      }
+    },
+    {
+      "file": "scenes/23-datamosh.tsx",
+      "durationMs": 1800,
+      "transition": {
+        "type": "prism",
+        "durationMs": 700,
+        "ease": "smooth"
+      }
+    },
+    {
+      "file": "scenes/24-prism.tsx",
+      "durationMs": 1800,
+      "transition": {
+        "type": "spinblur",
+        "durationMs": 400,
+        "ease": "smooth"
+      }
+    },
+    {
+      "file": "scenes/25-spinblur.tsx",
       "durationMs": 1800
     }
   ]

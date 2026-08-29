@@ -21,6 +21,7 @@ import { HEADER_EMOJIS } from "../SceneTextFields";
 import {
   applyManagedTextStructuralAction,
   type ConfirmManagedTextTakeover,
+  describeManagedTextLook,
   describeManagedTextMotion,
   type ManagedTextStructuralAction,
   managedTextGroupAlignment,
@@ -111,6 +112,8 @@ export interface ManagedTextDrillProps {
   onSelectGroup?: (groupKey: string | null) => void;
   onSelectItem: (itemKey: string | null) => void;
   onOpenMotion: (itemKey: string) => void;
+  /** Opens the text-style (look) drill; absent hides the row. */
+  onOpenLook?: (itemKey: string) => void;
   onEditFont: (itemKey: string) => void;
   theme?: Theme;
   colourDefaults?: Readonly<Record<string, string>>;
@@ -128,6 +131,8 @@ export interface ManagedTextDrillProps {
   mutateIcon?: (doc: SceneDoc, itemKey: string, value: string | undefined) => SceneDoc | null;
   notice?: string | null;
   disabled?: boolean;
+  /** The host's Delete key reaches the drill here: holds the selected-element delete while the drill is live. */
+  deleteSelectedRef?: { current: (() => boolean) | null };
 }
 
 const TYPE_OPTIONS: SegmentedOption<SceneManagedTextItemType>[] = [
@@ -242,10 +247,15 @@ function TextAlignmentIcon({ align }: { align: SceneTextAlign }) {
 export function TextControlIcon({
   type,
 }: {
-  type: "gap" | "indent" | "motion" | "spacing" | "font" | "colour";
+  type: "gap" | "indent" | "motion" | "spacing" | "font" | "colour" | "look";
 }) {
   const glyph =
-    type === "gap" ? (
+    type === "look" ? (
+      <>
+        <path d="m9.5 2.5 4 4L6 14l-3.5.5L3 11z" />
+        <path d="m8 4 4 4" />
+      </>
+    ) : type === "gap" ? (
       <>
         <path d="M3 4h10M3 12h10" />
         <path d="M8 6v4M6.5 7.5 8 6l1.5 1.5M6.5 8.5 8 10l1.5-1.5" />
@@ -268,6 +278,34 @@ export function TextControlIcon({
       <>
         <path d="M3 8h10" />
         <path d="m9.5 4.5 3.5 3.5-3.5 3.5" />
+      </>
+    );
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      {glyph}
+    </svg>
+  );
+}
+
+/** The All lines / This line scope glyphs; shared by the motion and style drills' segments. */
+export function TextScopeIcon({ scope }: { scope: "all" | "item" }) {
+  const glyph =
+    scope === "all" ? (
+      <path d="M3 4.5h10M3 8h10M3 11.5h10" />
+    ) : (
+      <>
+        <path d="M3 4.5h10M3 11.5h10" opacity="0.4" />
+        <path d="M3 8h10" />
       </>
     );
   return (
@@ -364,7 +402,9 @@ function CopyField({
   label,
   multiline = false,
   disabled,
+  onInput,
   onCommit,
+  onCancel,
   onReturn,
   inputRef,
 }: {
@@ -372,14 +412,40 @@ function CopyField({
   label: string;
   multiline?: boolean;
   disabled?: boolean;
+  /** Live tick per keystroke: the preview follows without minting history. */
+  onInput?: (value: string) => void;
   onCommit: (value: string) => void;
+  /** Escape: restores the pre-edit copy and returns it, or null when nothing was written. */
+  onCancel?: () => string | null;
   onReturn?: (value: string) => void;
   inputRef?: (element: HTMLInputElement | null) => void;
 }) {
   const [draft, setDraft] = useState(value);
-  useEffect(() => setDraft(value), [value]);
+  // While the user is typing the draft owns the field: live-write echoes lag the keystrokes and must not clobber it.
+  const editingRef = useRef(false);
+  const cancelledRef = useRef(false);
+  useEffect(() => {
+    if (!editingRef.current) setDraft(value);
+  }, [value]);
+  const change = (next: string) => {
+    editingRef.current = true;
+    setDraft(next);
+    onInput?.(next);
+  };
   const commit = () => {
-    if (draft !== value) onCommit(draft);
+    editingRef.current = false;
+    if (cancelledRef.current) {
+      cancelledRef.current = false;
+      return;
+    }
+    // A live session must always commit (it collapses the ticks into one undo step), even when the echo caught up.
+    if (onInput || draft !== value) onCommit(draft);
+  };
+  const cancel = (element: HTMLInputElement | HTMLTextAreaElement) => {
+    cancelledRef.current = true;
+    editingRef.current = false;
+    setDraft(onCancel?.() ?? value);
+    element.blur();
   };
   if (multiline) {
     return (
@@ -389,13 +455,10 @@ function CopyField({
         value={draft}
         disabled={disabled}
         rows={3}
-        onChange={(event) => setDraft(event.target.value)}
+        onChange={(event) => change(event.target.value)}
         onBlur={commit}
         onKeyDown={(event) => {
-          if (event.key === "Escape") {
-            setDraft(value);
-            event.currentTarget.blur();
-          }
+          if (event.key === "Escape") cancel(event.currentTarget);
         }}
       />
     );
@@ -407,17 +470,16 @@ function CopyField({
       aria-label={label}
       value={draft}
       disabled={disabled}
-      onChange={(event) => setDraft(event.target.value)}
+      onChange={(event) => change(event.target.value)}
       onBlur={commit}
       onKeyDown={(event) => {
         if (event.key === "Enter") {
           event.preventDefault();
+          editingRef.current = false;
+          onCommit(draft);
           onReturn?.(draft);
         }
-        if (event.key === "Escape") {
-          setDraft(value);
-          event.currentTarget.blur();
-        }
+        if (event.key === "Escape") cancel(event.currentTarget);
       }}
     />
   );
@@ -435,6 +497,7 @@ export function ManagedTextDrill({
   onSelectGroup = () => undefined,
   onSelectItem,
   onOpenMotion,
+  onOpenLook,
   onEditFont,
   theme = defaultTheme,
   colourDefaults = {},
@@ -450,6 +513,7 @@ export function ManagedTextDrill({
   mutateIcon,
   notice,
   disabled = false,
+  deleteSelectedRef,
 }: ManagedTextDrillProps) {
   const optionsFor = (source: SceneDoc) => virtualOptionsForDoc?.(source) ?? virtualOptions;
   const model = deriveManagedTextModel(doc, registrations, optionsFor(doc));
@@ -475,6 +539,7 @@ export function ManagedTextDrill({
   const itemDrag = useRef<PointerReorderDrag | null>(null);
   const pointDrag = useRef<PointerReorderDrag | null>(null);
   const baselines = useRef(new Map<string, SceneDoc>());
+  const copySessions = useRef(new Map<string, { baseline: SceneDoc; value: string }>());
   const pointRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const [pendingPointFocus, setPendingPointFocus] = useState<"add" | string | null>(null);
   const [itemDragVisual, setItemDragVisual] = useState<PointerReorderDrag | null>(null);
@@ -590,6 +655,23 @@ export function ManagedTextDrill({
       },
     });
   };
+
+  // The Delete key removes the selected element only; the last element takes its emptied group with it (closing the drill).
+  const deleteSelectedElement = () => {
+    if (disabled || !selectedGroup || chromeGroup || !selected) return false;
+    if (isSingleItemGroup) {
+      void runStructural({ type: "remove-group", groupKey: selectedGroup.key });
+    } else {
+      void runStructural({ type: "remove-item", itemKey: selected.key });
+    }
+    return true;
+  };
+  if (deleteSelectedRef) deleteSelectedRef.current = deleteSelectedElement;
+  useEffect(() => {
+    return () => {
+      if (deleteSelectedRef) deleteSelectedRef.current = null;
+    };
+  }, [deleteSelectedRef]);
 
   const openAddMenu = (button: HTMLButtonElement) => {
     if (!selectedGroup || disabled) return;
@@ -814,47 +896,51 @@ export function ManagedTextDrill({
     }
   };
 
-  const commitCopy = (item: SceneManagedTextItem, value: string) => {
-    if (disabled) return;
-    const next = setManagedTextCopy(doc, item.key, value, registrations, optionsFor(doc));
-    if (next) {
-      void writeDoc({
-        preview: next,
-        history: "edit text copy",
-        baseline: doc,
-        applyToCurrent: (current) =>
-          setManagedTextCopy(current, item.key, value, registrations, optionsFor(current)) ??
-          current,
-      });
-    }
-  };
-
-  const commitPointCopy = (item: SceneManagedTextItem, pointKey: string, value: string) => {
-    if (disabled) return;
-    const next = setManagedTextPointCopy(
-      doc,
-      item.key,
-      pointKey,
-      value,
-      registrations,
-      optionsFor(doc),
-    );
-    if (next) {
-      void writeDoc({
-        preview: next,
-        history: "edit bullet copy",
-        baseline: doc,
-        applyToCurrent: (current) =>
-          setManagedTextPointCopy(
-            current,
-            item.key,
-            pointKey,
-            value,
-            registrations,
-            optionsFor(current),
-          ) ?? current,
-      });
-    }
+  /** Copy fields write live while typing (the styleControl baseline pattern): history-free ticks per keystroke, one undo step on commit. */
+  const liveCopyControl = (
+    sessionKey: string,
+    committedValue: string,
+    history: string,
+    mutate: (source: SceneDoc, value: string) => SceneDoc | null,
+  ) => {
+    const write = (value: string, live: boolean) => {
+      if (disabled) return;
+      let session = copySessions.current.get(sessionKey);
+      if (live && !session) {
+        session = { baseline: doc, value: committedValue };
+        copySessions.current.set(sessionKey, session);
+      }
+      const baseline = session?.baseline ?? doc;
+      if (!live) copySessions.current.delete(sessionKey);
+      const next = mutate(baseline, value);
+      const applyToCurrent = (current: SceneDoc) => mutate(current, value) ?? current;
+      if (next) {
+        void writeDoc(
+          live
+            ? { preview: next, history: false, baseline, applyToCurrent }
+            : { preview: next, history, baseline, historyFromBaseline: true, applyToCurrent },
+        );
+      } else if (session) {
+        // The draft returned to the session's starting copy: restore it without minting history.
+        void writeDoc({ preview: baseline, history: false, baseline, applyToCurrent });
+      }
+    };
+    return {
+      onInput: (value: string) => write(value, true),
+      onCommit: (value: string) => write(value, false),
+      onCancel: () => {
+        const session = copySessions.current.get(sessionKey);
+        copySessions.current.delete(sessionKey);
+        if (!session) return null;
+        void writeDoc({
+          preview: session.baseline,
+          history: false,
+          baseline: session.baseline,
+          applyToCurrent: (current) => mutate(current, session.value) ?? current,
+        });
+        return session.value;
+      },
+    };
   };
 
   const commitIcon = (itemKey: string, value: string | undefined) => {
@@ -1012,6 +1098,21 @@ export function ManagedTextDrill({
   const motionValue = `${describeManagedTextMotion(motionSpec)}${
     hasItemMotion ? " · This line" : " · All lines"
   }`;
+  const lookSpec = selected
+    ? (doc.textLookOverrides?.[selected.key] ??
+      model.textLookOverrides?.[selected.key] ??
+      doc.textLook)
+    : undefined;
+  const hasItemLook =
+    selected !== null &&
+    (doc.textLookOverrides?.[selected.key] !== undefined ||
+      model.textLookOverrides?.[selected.key] !== undefined);
+  const lookValue = `${describeManagedTextLook(lookSpec)}${
+    hasItemLook ? " · This line" : " · All lines"
+  }`;
+  // Controls the mounted primitive flags inert; a row with no hint shows everything.
+  const inertControls = new Set(selected ? (model.inertStyleControls?.[selected.key] ?? []) : []);
+  const showLookRow = onOpenLook !== undefined && selected?.type !== "icon";
 
   return (
     <div className="inspector-drill text-inspector-drill" aria-busy={disabled || undefined}>
@@ -1242,7 +1343,19 @@ export function ManagedTextDrill({
                     label={`${itemLabel(selected.type)} copy`}
                     multiline
                     disabled={disabled}
-                    onCommit={(value) => commitCopy(selected, value)}
+                    {...liveCopyControl(
+                      `copy:${selected.key}`,
+                      selected.text ?? "",
+                      "edit text copy",
+                      (source, value) =>
+                        setManagedTextCopy(
+                          source,
+                          selected.key,
+                          value,
+                          registrations,
+                          optionsFor(source),
+                        ),
+                    )}
                   />
                 )}
                 {selected.type === "bullets" && (
@@ -1305,7 +1418,20 @@ export function ManagedTextDrill({
                             inputRef={(element) => {
                               pointRefs.current[point.key] = element;
                             }}
-                            onCommit={(value) => commitPointCopy(selected, point.key, value)}
+                            {...liveCopyControl(
+                              `copy:${selected.key}:${point.key}`,
+                              point.text,
+                              "edit bullet copy",
+                              (source, value) =>
+                                setManagedTextPointCopy(
+                                  source,
+                                  selected.key,
+                                  point.key,
+                                  value,
+                                  registrations,
+                                  optionsFor(source),
+                                ),
+                            )}
                             onReturn={(afterPointText) =>
                               void runStructural({
                                 type: "add-point",
@@ -1518,124 +1644,136 @@ export function ManagedTextDrill({
               </div>
             </section>
 
-            {selected.type !== "icon" && (
-              <DrillGroup label="Style">
-                <ActionRow
-                  icon={<TextControlIcon type="font" />}
-                  label="Font"
-                  value={
-                    typeof displayedTextStyle?.[`${selected.key}Font`] === "string"
-                      ? String(displayedTextStyle[`${selected.key}Font`]).split("@")[0]
-                      : "Theme"
-                  }
-                  disabled={disabled}
-                  onClick={() => onEditFont(selected.key)}
-                />
-                {(() => {
-                  const styleKey = `${selected.key}Color`;
-                  const override = doc.textStyle?.[styleKey];
-                  const virtualColour = model.textStyle?.[styleKey];
-                  const defaultToken =
-                    colourDefaults[selected.key] ??
-                    (selected.type === "subtitle" ? "muted" : "text");
-                  const defaultColour = resolveColour(defaultToken);
-                  const currentColour = resolveColour(
-                    typeof override === "string"
-                      ? override
-                      : typeof virtualColour === "string"
-                        ? virtualColour
-                        : defaultToken,
-                  );
-                  return (
-                    <div className="popover-row text-inspector-colour-row">
-                      <span className="action-row-icon">
-                        <TextControlIcon type="colour" />
-                      </span>
-                      <span className="popover-inline">Colour</span>
-                      <span className="action-row-value">{currentColour.toUpperCase()}</span>
-                      <ColourPicker
-                        key={selected.key}
-                        value={currentColour}
-                        defaultValue={defaultColour}
-                        label={`${itemLabel(selected.type)} colour`}
-                        disabled={disabled}
-                        theme={theme}
-                        onCommit={(hex) => commitColour(selected.key, hex)}
-                        onReset={
-                          typeof override === "string"
-                            ? () => commitColour(selected.key, undefined)
-                            : undefined
-                        }
-                      />
-                    </div>
-                  );
-                })()}
-              </DrillGroup>
-            )}
+            {selected.type !== "icon" &&
+              (!inertControls.has("font") || !inertControls.has("colour")) && (
+                <DrillGroup label="Style">
+                  {!inertControls.has("font") && (
+                    <ActionRow
+                      icon={<TextControlIcon type="font" />}
+                      label="Font"
+                      value={
+                        typeof displayedTextStyle?.[`${selected.key}Font`] === "string"
+                          ? String(displayedTextStyle[`${selected.key}Font`]).split("@")[0]
+                          : "Theme"
+                      }
+                      disabled={disabled}
+                      onClick={() => onEditFont(selected.key)}
+                    />
+                  )}
+                  {!inertControls.has("colour") &&
+                    (() => {
+                      const styleKey = `${selected.key}Color`;
+                      const override = doc.textStyle?.[styleKey];
+                      const virtualColour = model.textStyle?.[styleKey];
+                      const defaultToken =
+                        colourDefaults[selected.key] ??
+                        (selected.type === "subtitle" ? "muted" : "text");
+                      const defaultColour = resolveColour(defaultToken);
+                      const currentColour = resolveColour(
+                        typeof override === "string"
+                          ? override
+                          : typeof virtualColour === "string"
+                            ? virtualColour
+                            : defaultToken,
+                      );
+                      return (
+                        <div className="popover-row text-inspector-colour-row">
+                          <span className="action-row-icon">
+                            <TextControlIcon type="colour" />
+                          </span>
+                          <span className="popover-inline">Colour</span>
+                          <span className="action-row-value">{currentColour.toUpperCase()}</span>
+                          <ColourPicker
+                            key={selected.key}
+                            value={currentColour}
+                            defaultValue={defaultColour}
+                            label={`${itemLabel(selected.type)} colour`}
+                            disabled={disabled}
+                            theme={theme}
+                            onCommit={(hex) => commitColour(selected.key, hex)}
+                            onReset={
+                              typeof override === "string"
+                                ? () => commitColour(selected.key, undefined)
+                                : undefined
+                            }
+                          />
+                        </div>
+                      );
+                    })()}
+                </DrillGroup>
+              )}
 
             {!selectedIconNeedsTakeover && (
               <DrillGroup label="Placement">
                 <div className="text-inspector-numeric-grid">
-                  <NumberField
-                    label="Size %"
-                    decimals={0}
-                    min={10}
-                    max={400}
-                    step={1}
-                    disabled={disabled}
-                    {...styleControl(
-                      "size",
-                      managedTextStyleValue(displayedDoc, selected.key, "size") * 100,
-                      "text size",
-                    )}
-                    onInput={(value) =>
-                      styleControl("size", value, "text size").onInput(value / 100)
-                    }
-                    onCommit={(value) =>
-                      styleControl("size", value, "text size").onCommit(value / 100)
-                    }
-                  />
-                  <NumberField
-                    label="X"
-                    decimals={2}
-                    min={-10}
-                    max={10}
-                    step={0.01}
-                    disabled={disabled}
-                    {...styleControl(
-                      "x",
-                      managedTextStyleValue(displayedDoc, selected.key, "x"),
-                      "text X position",
-                    )}
-                  />
-                  <NumberField
-                    label="Y"
-                    decimals={2}
-                    min={-10}
-                    max={10}
-                    step={0.01}
-                    disabled={disabled}
-                    {...styleControl(
-                      "y",
-                      managedTextStyleValue(displayedDoc, selected.key, "y"),
-                      "text Y position",
-                    )}
-                  />
-                  <NumberField
-                    label="Rotation °"
-                    decimals={1}
-                    min={-180}
-                    max={180}
-                    step={0.5}
-                    disabled={disabled}
-                    {...styleControl(
-                      "rotation",
-                      managedTextStyleValue(displayedDoc, selected.key, "rotation"),
-                      "text rotation",
-                    )}
-                  />
+                  {!inertControls.has("size") && (
+                    <NumberField
+                      label="Size %"
+                      decimals={0}
+                      min={10}
+                      max={400}
+                      step={1}
+                      disabled={disabled}
+                      {...styleControl(
+                        "size",
+                        managedTextStyleValue(displayedDoc, selected.key, "size") * 100,
+                        "text size",
+                      )}
+                      onInput={(value) =>
+                        styleControl("size", value, "text size").onInput(value / 100)
+                      }
+                      onCommit={(value) =>
+                        styleControl("size", value, "text size").onCommit(value / 100)
+                      }
+                    />
+                  )}
+                  {!inertControls.has("x") && (
+                    <NumberField
+                      label="X"
+                      decimals={2}
+                      min={-10}
+                      max={10}
+                      step={0.01}
+                      disabled={disabled}
+                      {...styleControl(
+                        "x",
+                        managedTextStyleValue(displayedDoc, selected.key, "x"),
+                        "text X position",
+                      )}
+                    />
+                  )}
+                  {!inertControls.has("y") && (
+                    <NumberField
+                      label="Y"
+                      decimals={2}
+                      min={-10}
+                      max={10}
+                      step={0.01}
+                      disabled={disabled}
+                      {...styleControl(
+                        "y",
+                        managedTextStyleValue(displayedDoc, selected.key, "y"),
+                        "text Y position",
+                      )}
+                    />
+                  )}
+                  {!inertControls.has("rotation") && (
+                    <NumberField
+                      label="Rotation °"
+                      decimals={1}
+                      min={-180}
+                      max={180}
+                      step={0.5}
+                      disabled={disabled}
+                      {...styleControl(
+                        "rotation",
+                        managedTextStyleValue(displayedDoc, selected.key, "rotation"),
+                        "text rotation",
+                      )}
+                    />
+                  )}
                 </div>
-                {selected.type !== "icon" && (
+                {selected.type !== "icon" && !inertControls.has("spacing") && (
                   <InspectorSliderRow
                     icon={<TextControlIcon type="spacing" />}
                     label="Spacing"
@@ -1654,7 +1792,7 @@ export function ManagedTextDrill({
             )}
 
             {!selectedIconNeedsTakeover && !chromeItem && (
-              <DrillGroup label="Motion">
+              <DrillGroup label={showLookRow ? "Motion and style" : "Motion"}>
                 <ActionRow
                   icon={<TextControlIcon type="motion" />}
                   label="Text motion"
@@ -1662,6 +1800,15 @@ export function ManagedTextDrill({
                   disabled={disabled}
                   onClick={() => onOpenMotion(selected.key)}
                 />
+                {showLookRow && (
+                  <ActionRow
+                    icon={<TextControlIcon type="look" />}
+                    label="Text style"
+                    value={lookValue}
+                    disabled={disabled}
+                    onClick={() => onOpenLook?.(selected.key)}
+                  />
+                )}
               </DrillGroup>
             )}
           </>

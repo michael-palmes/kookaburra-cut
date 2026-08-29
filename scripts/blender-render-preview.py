@@ -2,7 +2,7 @@
 
 Run via Blender's CLI (see scripts/render-device-previews.sh):
 
-    blender -b <colour>.blend --python scripts/blender-render-preview.py -- <out>.png [size] [fill]
+    blender -b <colour>.blend --python scripts/blender-render-preview.py -- <out>.png [size] [fill] [roll]
 
 The vendor .blends ship a complete studio (active camera + area-light rig + packed HDRI
 world, Cycles) — this script only makes the shot card-friendly: transparent film (the
@@ -24,6 +24,9 @@ out = argv[0]
 size = int(argv[1]) if len(argv) > 1 else 640
 # Fraction of the frame the subject's bounding sphere should span.
 fill = float(argv[2]) if len(argv) > 2 else 0.9
+# Camera roll (degrees about its view axis) so a portrait-authored vendor studio can
+# card a landscape device (the iPad); matches the export's corrective roll.
+roll = float(argv[3]) if len(argv) > 3 else 0.0
 
 scene = bpy.context.scene
 scene.render.engine = "CYCLES"
@@ -37,12 +40,15 @@ scene.render.filepath = out
 
 # The studio backdrops would defeat the transparent film (same nodes HIDDEN_NODES culls in
 # the app): "BG Plane" (iPhone 15 Pro), "Bg" (iPhone 17 Pro), "Cube"/"View_Blocker"
-# (MacBook). Match loosely in case of suffixes.
-BACKDROPS = ("bg plane", "bg", "cube", "view blocker")
+# (MacBook). "Apple Pencil Pro" is the accessory the iPad vendor stages beside the device
+# (excluded from the exported glb too). Match loosely in case of suffixes; hide descendants
+# since the pencil is an empty with mesh children.
+BACKDROPS = ("bg plane", "bg", "cube", "view blocker", "apple pencil pro")
 for obj in bpy.data.objects:
     name = obj.name.replace("_", " ").lower()
     if any(name == b or name.startswith(f"{b}.") for b in BACKDROPS):
-        obj.hide_render = True
+        for hidden in [obj, *obj.children_recursive]:
+            hidden.hide_render = True
 
 # Dolly the vendor camera along its own view axis so the subject's bounding sphere spans
 # the same frame fraction for every device; each vendor frames its studio differently.
@@ -75,6 +81,8 @@ if cam:
     # Aim precisely at the subject centre so the reframe never crops it.
     cam.rotation_mode = "XYZ"
     cam.rotation_euler = (-direction).to_track_quat("-Z", "Y").to_euler("XYZ")
+    if roll:
+        cam.rotation_euler.rotate_axis("Z", math.radians(roll))
 
 scene.render.use_stamp = False  # never bake file-path/host metadata into committed previews
 bpy.ops.render.render(write_still=True)

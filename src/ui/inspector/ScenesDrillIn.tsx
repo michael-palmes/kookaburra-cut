@@ -39,6 +39,7 @@ export function ScenesDrillIn({
   onPasteBackground,
   onDelete,
   onCopyToProject,
+  onCopyFromProject,
   onInsertPreset,
   onSaveAsPreset,
 }: {
@@ -61,6 +62,8 @@ export function ScenesDrillIn({
   onDelete: (indices: number[]) => void;
   /** Open the copy-to-project drill for the given selection (the host routes the request). */
   onCopyToProject: (indices: number[]) => void;
+  /** Open the copy-from-project drill (selection-independent, so it seats apart on the left). */
+  onCopyFromProject: () => void;
   /** Open the preset gallery, inserting at this manifest index (the host mounts PresetGalleryModal). */
   onInsertPreset: (position: number) => void;
   /** Save one scene into the preset library (the host mounts SavePresetModal, which owns the write). */
@@ -295,6 +298,16 @@ export function ScenesDrillIn({
         </p>
       </div>
       <div className="inspector-drill-actions">
+        <button
+          type="button"
+          className="btn btn-left"
+          disabled={busy}
+          title="Copy scenes from another project"
+          onClick={onCopyFromProject}
+        >
+          <SceneMenuIcon id="copy-from-project" />
+          Copy from…
+        </button>
         <button
           type="button"
           className="btn"

@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "name": "Text look — frosted",
+  "text": {
+    "headline": "CRYSTAL"
+  },
+  "textAnimation": { "in": "fade", "out": "none", "staggerMs": 0 },
+  "textLook": { "preset": "frosted" }
+}

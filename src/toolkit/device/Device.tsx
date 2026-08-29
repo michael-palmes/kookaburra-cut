@@ -11,19 +11,13 @@ import {
 import {
   Box3,
   type BufferAttribute,
-  ClampToEdgeWrapping,
   Color,
-  DataTexture,
   type Group,
-  LinearFilter,
   type Material,
   type Mesh,
   MeshBasicMaterial,
   type MeshStandardMaterial,
   type Object3D,
-  RGBAFormat,
-  ShaderMaterial,
-  Vector2,
   Vector3,
 } from "three";
 import { useClipTexture } from "../../engine/clipTexture";
@@ -38,6 +32,7 @@ import { registerPresentTiming } from "../../engine/presentTimingRegistry";
 import { resolveAssetUrl } from "../../engine/project";
 import { SceneOutline } from "../../engine/SceneOutline";
 import { ProjectIdContext, SceneDocContext, useSceneContext } from "../../engine/sceneContext";
+import { deviceTrackPoseAt, resolveDeviceTrack } from "../../engine/sceneDeviceTrack";
 import type { SceneDeviceProps } from "../../engine/sceneDoc";
 import { coverCropRect, remapUv, type UvRect } from "../../engine/screenFit";
 import { useTimeline } from "../../engine/timeline";
@@ -54,10 +49,12 @@ import {
   resolveAvailableDeviceId,
 } from "./catalog";
 import { DeviceGizmo } from "./DeviceGizmo";
+import { DeviceShadow } from "./DeviceShadow";
 import { type DevicePose, deviceGizmoMovedY } from "./gizmoCommit";
 import { resolveDeviceLayout } from "./layout";
 import { HIDDEN_NODES } from "./models";
 import { useScreenImageTexture } from "./screenTexture";
+import type { DeviceShadowMode, ShadowPose } from "./shadowProjector";
 import { deviceFittedHeight, resolveDeviceWorldAnchor } from "./worldAnchor";
 
 /** Media shown on the device screen. Videos ride the deterministic clip-frame pipeline. */
@@ -97,7 +94,7 @@ export interface DevicePlacement {
   resolvedLayout?: { position: V3; rotationDeg: V3; scale: number };
 }
 
-export type DeviceShadowMode = "soft" | "long" | "sun" | "none";
+export type { DeviceShadowMode };
 
 export function effectiveDeviceShadowMode(shadow: DeviceShadowMode | undefined): DeviceShadowMode {
   return shadow ?? "soft";
@@ -160,20 +157,6 @@ const TURNTABLE_SWAY_RAD = Math.PI / 4;
 const TARGET_WORLD_HEIGHT = 2.6;
 /** Ground plane sits just under the auto-fit device's bottom edge. */
 const GROUND_EPSILON = 0.02;
-/** Yaw of the long shadow: away from the key light at [4, 6, 5] (floor direction −4, −5). */
-const LONG_SHADOW_YAW = Math.atan2(5, -4) - Math.PI / 2;
-
-// ── Sun-sweep shadow (export contract) ───────────────────────────────
-/** Sweep length in world units before the placement scale (≈ 1.3 device heights). */
-const SUN_LENGTH = 3.4;
-/** Penumbra half-widths at the root and the tail of the sweep. */
-const SUN_BLUR_NEAR = 0.06;
-const SUN_BLUR_FAR = 0.85;
-/** Rounded-rect corner radius of the silhouette. */
-const SUN_CORNER_RADIUS = 0.18;
-/** How far behind the device the flat shadow plane sits. */
-const SUN_Z_BACK = -0.45;
-
 /** Geometric specular AA (Kaplanyan/Tokuyoshi-Kaplanyan): widens roughness by the perturbed-normal's screen-space variance to kill normal-map specular shimmer (three's own geometryRoughness derives from the non-perturbed normal and misses it); the σ²/κ constants are export contract, applied only to Device's private material clones, never the shared drei glTF cache that DeviceMockup/HeroObject also read. */
 const GSAA_FRAGMENT = /* glsl */ `#include <lights_physical_fragment>
 {
@@ -316,194 +299,6 @@ function ScreenImageLoaded(props: {
   return null;
 }
 
-/** Procedural shadow alpha textures: pure functions of pixel coordinates (DataTexture, no canvas rasteriser), generated once per run; `alphaMap` samples the green channel and all channels carry the same value. */
-function makeShadowTexture(
-  width: number,
-  height: number,
-  alphaAt: (u: number, v: number) => number,
-): DataTexture {
-  const data = new Uint8Array(width * height * 4);
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      const a = alphaAt((x + 0.5) / width, (y + 0.5) / height);
-      const byte = Math.round(Math.min(1, Math.max(0, a)) * 255);
-      const i = (y * width + x) * 4;
-      data[i] = byte;
-      data[i + 1] = byte;
-      data[i + 2] = byte;
-      data[i + 3] = 255;
-    }
-  }
-  const tex = new DataTexture(data, width, height, RGBAFormat);
-  tex.minFilter = LinearFilter;
-  tex.magFilter = LinearFilter;
-  tex.wrapS = ClampToEdgeWrapping;
-  tex.wrapT = ClampToEdgeWrapping;
-  tex.generateMipmaps = false;
-  tex.needsUpdate = true;
-  return tex;
-}
-
-let softTex: DataTexture | undefined;
-function softShadowTexture(): DataTexture {
-  if (!softTex) {
-    // Tight elliptical falloff: strong core under the device, smooth to nothing at the rim.
-    softTex = makeShadowTexture(64, 64, (u, v) => {
-      const dx = u * 2 - 1;
-      const dy = v * 2 - 1;
-      const r = Math.sqrt(dx * dx + dy * dy);
-      const t = Math.max(0, 1 - r);
-      return 0.55 * t * t;
-    });
-  }
-  return softTex;
-}
-
-let longTex: DataTexture | undefined;
-function longShadowTexture(): DataTexture {
-  if (!longTex) {
-    // "Long and smooth": u runs along the shadow's length (0 = under the device), v across its width; soft head, long eased tail, gentle width falloff.
-    longTex = makeShadowTexture(128, 64, (u, v) => {
-      const across = Math.max(0, 1 - Math.abs(v * 2 - 1));
-      const head = Math.min(1, u / 0.08); // quick ramp-in so the shadow roots under the device
-      const tail = (1 - u) ** 1.7;
-      return 0.5 * across * across * head * tail;
-    });
-  }
-  return longTex;
-}
-
-function DeviceShadow(props: { mode: "soft" | "long"; scale: number; groundY: number }) {
-  const { mode, scale, groundY } = props;
-  const material = useMemo(
-    () =>
-      new MeshBasicMaterial({
-        color: new Color(0x000000),
-        alphaMap: mode === "soft" ? softShadowTexture() : longShadowTexture(),
-        transparent: true,
-        depthWrite: false,
-        toneMapped: false,
-      }),
-    [mode],
-  );
-  useLayoutEffect(() => () => material.dispose(), [material]);
-
-  if (mode === "soft") {
-    return (
-      <mesh
-        rotation={[-Math.PI / 2, 0, 0]}
-        position={[0, groundY, 0]}
-        scale={[2.1 * scale, 1.0 * scale, 1]}
-      >
-        <planeGeometry args={[1, 1]} />
-        <primitive object={material} attach="material" />
-      </mesh>
-    );
-  }
-  return (
-    <group rotation={[0, LONG_SHADOW_YAW, 0]}>
-      {/* Length runs along local +x from under the device; the group yaws it away from the key light. */}
-      <mesh
-        rotation={[-Math.PI / 2, 0, 0]}
-        position={[1.7 * scale, groundY, 0]}
-        scale={[4.2 * scale, 1.5 * scale, 1]}
-      >
-        <planeGeometry args={[1, 1]} />
-        <primitive object={material} attach="material" />
-      </mesh>
-    </group>
-  );
-}
-
-// language=GLSL
-const SUN_VERT = /* glsl */ `
-uniform vec2 uSize;
-uniform vec2 uOffset;
-varying vec2 vPos;
-void main() {
-  vPos = (uv - 0.5) * uSize + uOffset;
-  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-}
-`;
-
-// language=GLSL
-const SUN_FRAG = /* glsl */ `
-uniform vec2 uHalf;
-uniform float uRadius;
-uniform float uLen;
-uniform vec2 uBlur;
-varying vec2 vPos;
-const vec2 SUN_DIR = vec2(0.7071067811865476, -0.7071067811865476);
-const float SUN_OPACITY = 0.34;
-float sdRoundBox(vec2 p, vec2 b, float r) {
-  vec2 q = abs(p) - b + r;
-  return length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - r;
-}
-void main() {
-  float along = clamp(dot(vPos, SUN_DIR), 0.0, uLen);
-  float t = along / uLen;
-  vec2 q = vPos - SUN_DIR * along;
-  float d = sdRoundBox(q, uHalf, uRadius);
-  float blur = mix(uBlur.x, uBlur.y, t);
-  float coverage = 1.0 - smoothstep(-blur, blur, d);
-  float fade = pow(1.0 - t, 1.3);
-  gl_FragColor = vec4(0.0, 0.0, 0.0, coverage * fade * SUN_OPACITY);
-}
-`;
-
-/** The Rotato-style sun sweep: the device's rounded-rect silhouette extruded 45° down-right on a flat plane behind the device (an analytic SDF, pure function of the footprint — no light, no jitter, no accumulation). Sits outside the animated inner group like the blob shadows, so it tracks placement position/scale but deliberately not float/spin. */
-function SunShadow({
-  scale,
-  aspect,
-  fittedHeight,
-}: {
-  scale: number;
-  aspect: number;
-  fittedHeight: number;
-}) {
-  const dims = useMemo(() => {
-    const halfH = (fittedHeight / 2) * scale;
-    const halfW = halfH * aspect;
-    const len = SUN_LENGTH * scale;
-    const margin = (SUN_BLUR_FAR + 0.1) * scale;
-    const along = len * Math.SQRT1_2;
-    return {
-      halfW,
-      halfH,
-      len,
-      width: halfW * 2 + along + margin * 2,
-      height: halfH * 2 + along + margin * 2,
-      offsetX: along / 2,
-      offsetY: -along / 2,
-    };
-  }, [scale, aspect, fittedHeight]);
-  const material = useMemo(
-    () =>
-      new ShaderMaterial({
-        transparent: true,
-        depthWrite: false,
-        vertexShader: SUN_VERT,
-        fragmentShader: SUN_FRAG,
-        uniforms: {
-          uSize: { value: new Vector2(dims.width, dims.height) },
-          uOffset: { value: new Vector2(dims.offsetX, dims.offsetY) },
-          uHalf: { value: new Vector2(dims.halfW, dims.halfH) },
-          uRadius: { value: SUN_CORNER_RADIUS * scale },
-          uLen: { value: dims.len },
-          uBlur: { value: new Vector2(SUN_BLUR_NEAR * scale, SUN_BLUR_FAR * scale) },
-        },
-      }),
-    [dims, scale],
-  );
-  useLayoutEffect(() => () => material.dispose(), [material]);
-  return (
-    <mesh position={[dims.offsetX, dims.offsetY, SUN_Z_BACK * scale]}>
-      <planeGeometry args={[dims.width, dims.height]} />
-      <primitive object={material} attach="material" />
-    </mesh>
-  );
-}
-
 /** The pillar device primitive: the export preamble awaits `preloadCatalogModels` / `preextractClips` / `preloadProjectImages` so every frame renders synchronously after load; see docs/determinism.md and docs/decisions.md. */
 export function Device(props: DeviceProps) {
   const {
@@ -631,7 +426,7 @@ export function Device(props: DeviceProps) {
   useLayoutEffect(() => () => screenMaterial.dispose(), [screenMaterial]);
 
   // Clone once per (model, colour) since drei's glTF cache is shared: hide helper nodes, swap the display material, and give every lit material a private clone (Object3D.clone shares materials) so colour overrides and GSAA apply without touching the shared cache that DeviceMockup/HeroObject also read; then recentre + auto-fit.
-  const { root, fit, screens, aspect, lidNode, lidBaseX, bodySize } = useMemo(() => {
+  const { root, fit, screens, lidNode, lidBaseX, bodySize } = useMemo(() => {
     const clone = scene.clone(true);
     const screens: Mesh[] = [];
     const hide: Object3D[] = [];
@@ -684,8 +479,6 @@ export function Device(props: DeviceProps) {
         : size.y > 1e-6
           ? fitTarget / size.y
           : 1;
-    // The fitted body's width/height ratio; the sun shadow's silhouette footprint.
-    const aspect = size.y > 1e-6 ? size.x / size.y : 0.5;
     // The hinge's authored rotation; the lid effect scales it by lidDeg / openDeg.
     const lidBaseX = lidNode ? (lidNode as Object3D).rotation.x : 0;
     // Perf-probe marker: the no-devices elimination pass hides these roots.
@@ -694,7 +487,6 @@ export function Device(props: DeviceProps) {
       root: clone,
       fit,
       screens,
-      aspect,
       lidNode,
       lidBaseX,
       bodySize: [size.x, size.y, size.z] as V3,
@@ -702,12 +494,22 @@ export function Device(props: DeviceProps) {
   }, [scene, activeSpec, colourSpec, screenMaterial]);
   const fittedHeight = deviceFittedHeight(activeSpec.id);
 
-  // Lid angle: a static pose from the doc (pure data, no clock), applied pre-paint.
+  // The opt-in keyframe track: a delta on the resolved placement, sampled before the motion presets so both layer.
+  const sceneDoc = useContext(SceneDocContext);
+  const track = useMemo(() => resolveDeviceTrack(sceneDoc ?? undefined), [sceneDoc]);
+  const authoredLidDeg = lidDeg ?? activeSpec.lid?.defaultDeg;
+  const keyed = deviceTrackPoseAt(track, id ?? "", localMs, authoredLidDeg);
+
+  // Lid angle: the doc's pose, or the track's when a key holds one; a pure function of the frame either way, applied pre-paint.
+  const renderedLidDeg = keyed.lidDeg ?? authoredLidDeg;
   useLayoutEffect(() => {
     if (!lidNode || !activeSpec.lid) return;
-    const open = Math.max(0, Math.min(activeSpec.lid.openDeg, lidDeg ?? activeSpec.lid.defaultDeg));
+    const open = Math.max(
+      0,
+      Math.min(activeSpec.lid.openDeg, renderedLidDeg ?? activeSpec.lid.defaultDeg),
+    );
     (lidNode as Object3D).rotation.x = lidBaseX * (open / activeSpec.lid.openDeg);
-  }, [lidNode, lidBaseX, lidDeg, activeSpec]);
+  }, [lidNode, lidBaseX, renderedLidDeg, activeSpec]);
 
   // Real shadows on map-shadowed stages flip the private clone's meshes; inert (no recompiles, no shadow passes) for unstaged scenes, where no shadow-casting light exists.
   useLayoutEffect(() => {
@@ -761,12 +563,31 @@ export function Device(props: DeviceProps) {
       break;
   }
 
-  const groundY = -(fittedHeight / 2) * raw.scale - GROUND_EPSILON;
+  // The keyed scale carries the device AND its grounding, so a scaled key still stands on the floor.
+  const animatedScale = raw.scale * keyed.scale;
+  const groundY = -(fittedHeight / 2) * animatedScale - GROUND_EPSILON;
+  // Everything the inner group applies, handed to the shadow projector so the cast follows the pose.
+  const shadowPose: ShadowPose = {
+    scale: animatedScale,
+    rotation: [
+      (raw.rotationDeg[0] + keyed.rotationDeg[0]) * DEG2RAD + introRotX,
+      (raw.rotationDeg[1] + keyed.rotationDeg[1]) * DEG2RAD + spinY + introRotY,
+      (raw.rotationDeg[2] + keyed.rotationDeg[2]) * DEG2RAD,
+    ],
+    offset: [keyed.offset[0], keyed.offset[1] + floatY, keyed.offset[2]],
+    introScale,
+    lidDeg: keyed.lidDeg ?? 0,
+  };
   // Grounded placement: the pure anchor resolver is shared with object-bound camera aims.
   const grounded = (pose: DevicePose): V3 =>
     resolveDeviceWorldAnchor(
       { model: activeSpec.id },
-      { position: pose.position, rotationDeg: pose.rotationDeg, scale: pose.scale, ground },
+      {
+        position: pose.position,
+        rotationDeg: pose.rotationDeg,
+        scale: pose.scale * keyed.scale,
+        ground,
+      },
       stageFloorY,
     ) ?? pose.position;
   const renderedCommitted = { ...committed, position: grounded(committed) };
@@ -789,24 +610,20 @@ export function Device(props: DeviceProps) {
             </Environment>
           </>
         )}
-        {shadowMode === "sun" ? (
-          <SunShadow scale={raw.scale} aspect={aspect} fittedHeight={fittedHeight} />
-        ) : (
-          shadowMode !== "none" && (
-            <DeviceShadow mode={shadowMode} scale={raw.scale} groundY={groundY} />
-          )
+        {shadowMode !== "none" && (
+          <DeviceShadow spec={activeSpec} mode={shadowMode} pose={shadowPose} groundY={groundY} />
         )}
-        {/* Float rides an inner group so the ground shadow stays put. */}
+        {/* Float rides an inner group; the shadow reads its pose instead of riding with it, so the receiver stays on the floor while the occluder lifts. */}
         <group
-          position={[0, floatY, 0]}
+          position={[keyed.offset[0], keyed.offset[1] + floatY, keyed.offset[2]]}
           rotation={[
-            raw.rotationDeg[0] * DEG2RAD + introRotX,
-            raw.rotationDeg[1] * DEG2RAD + spinY + introRotY,
-            raw.rotationDeg[2] * DEG2RAD,
+            (raw.rotationDeg[0] + keyed.rotationDeg[0]) * DEG2RAD + introRotX,
+            (raw.rotationDeg[1] + keyed.rotationDeg[1]) * DEG2RAD + spinY + introRotY,
+            (raw.rotationDeg[2] + keyed.rotationDeg[2]) * DEG2RAD,
           ]}
           scale={introScale}
         >
-          <group scale={raw.scale * fit}>
+          <group scale={animatedScale * fit}>
             <primitive object={root} />
             {editTarget && (
               <SceneOutline

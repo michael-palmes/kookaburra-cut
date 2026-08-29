@@ -377,26 +377,29 @@ export function Welcome({
   );
   const railRows = useMemo(() => welcomeRailRows(sections), [sections]);
   const section = librarySection(activeRowId);
+  // Searching projects is global: the rail follows to All while a query is active (the ThemePicker convention); library rows keep their own scoped search.
+  const effectiveRowId = trimmedQuery && section === null ? ALL_PROJECTS : activeRowId;
   const visibleProjects = useMemo(
-    () => filterProjectLibrary(projects ?? [], activeRowId, query),
-    [projects, activeRowId, query],
+    () => filterProjectLibrary(projects ?? [], effectiveRowId, query),
+    [projects, effectiveRowId, query],
   );
   const groups = sections[0].rows.slice(2).map((row) => row.label);
   const slugs = useMemo(() => (projects ?? []).map((p) => p.slug), [projects]);
-  const inheritedGroup = selectedProjectGroup(activeRowId);
+  const inheritedGroup = selectedProjectGroup(effectiveRowId);
 
   useEffect(() => {
     if (!railRows.some((row) => row.id === activeRowId)) setActiveRowId(ALL_PROJECTS);
   }, [activeRowId, railRows]);
 
-  /** Crossing between the projects and the library drops the search, which scopes to one of them. */
+  /** Crossing between the projects and the library drops the search, which scopes to one of them; picking a project row during a live search also clears it (the search ran global). */
   const selectRow = (id: string) => {
-    if ((librarySection(id) === null) !== (section === null)) setQuery("");
+    const targetsLibrary = librarySection(id) !== null;
+    if (targetsLibrary !== (section !== null) || (!targetsLibrary && trimmedQuery)) setQuery("");
     setActiveRowId(id);
   };
 
   const onRailKeyDown = (e: React.KeyboardEvent) => {
-    const next = nextWelcomeRailRow(railRows, activeRowId, e.key);
+    const next = nextWelcomeRailRow(railRows, effectiveRowId, e.key);
     if (!next) return;
     e.preventDefault();
     selectRow(next.id);
@@ -511,9 +514,9 @@ export function Welcome({
                   <button
                     key={row.id}
                     type="button"
-                    className={`project-library-rail-row${activeRowId === row.id ? " selected" : ""}${row.id === UNGROUPED_PROJECTS ? " spaced" : ""}`}
-                    aria-pressed={activeRowId === row.id}
-                    tabIndex={activeRowId === row.id ? 0 : -1}
+                    className={`project-library-rail-row${effectiveRowId === row.id ? " selected" : ""}${row.id === UNGROUPED_PROJECTS ? " spaced" : ""}`}
+                    aria-pressed={effectiveRowId === row.id}
+                    tabIndex={effectiveRowId === row.id ? 0 : -1}
                     onClick={() => selectRow(row.id)}
                   >
                     <LibraryRailIcon id={row.iconId} />

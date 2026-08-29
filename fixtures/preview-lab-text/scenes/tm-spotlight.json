@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "name": "Text motion — spotlight",
+  "text": {
+    "headline": "Built for the way you work"
+  },
+  "textAnimation": { "in": "spotlight", "out": "none", "staggerMs": 0 }
+}

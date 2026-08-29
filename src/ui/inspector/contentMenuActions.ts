@@ -46,6 +46,7 @@ const CONTENT_TYPES = new Set<SceneOverviewContentType>([
   "chart",
   "screenshotStack",
   "comparison",
+  "terminal",
 ]);
 
 export const OBJECT_DUPLICATE_NUDGE_X = 0.25;
@@ -82,7 +83,8 @@ export function contentMenuActions(row: SceneOverviewRowModel): ContentMenuActio
     kind === "object" ||
     kind === "chart" ||
     kind === "screenshotStack" ||
-    kind === "comparison"
+    kind === "comparison" ||
+    kind === "terminal"
   ) {
     actions.push("delete");
   }
@@ -340,6 +342,18 @@ export function planContentDelete(
       apply: (next) => {
         delete next.compare;
         if (next.animatedTrack === "compare") delete next.animatedTrack;
+      },
+    };
+  }
+
+  // A live session survives the block (harmless: keyed by scene stem, it reattaches if the terminal is re-added, and dies with the app otherwise).
+  if (target.kind === "terminal" && context.doc.terminal) {
+    return {
+      history: "delete terminal",
+      nextRowId: null,
+      nextSelection: null,
+      apply: (next) => {
+        delete next.terminal;
       },
     };
   }

@@ -660,6 +660,8 @@ body {
   align-items: center;
   justify-content: space-between;
   gap: var(--space-3);
+  /* A floor, not a layout: the toggles column is the only shrinkable child, so wrapping the actions drops them to their own line instead of chopping the Video/Images toggle against the drill's overflow-x. */
+  flex-wrap: wrap;
 }
 /* The source + kind toggle rows stack on the left; the Add button keeps the right edge. */
 .media-browser-toggles {
@@ -718,6 +720,27 @@ body {
 .media-browser-cleanup {
   flex-shrink: 0;
   white-space: nowrap;
+}
+
+/* Narrow hosts collapse the cleanup action into a ⋯ overflow; `flex: none` keeps it out of the width the Video/Images toggle needs. */
+.media-browser-more {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: var(--hit-min);
+  height: var(--hit-min);
+  padding: 0;
+  color: var(--text-secondary);
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-xs);
+  cursor: pointer;
+}
+
+.media-browser-more:hover {
+  color: var(--text-primary);
+  background: var(--surface-hover);
 }
 
 .unused-list {
@@ -4888,6 +4911,17 @@ button.beat-status {
   background: var(--warning);
   border-color: transparent;
 }
+.anim-lane.lane-device {
+  --lane-accent: var(--info);
+}
+.anim-lane.lane-device .anim-seg {
+  border-color: rgba(76, 159, 239, 0.48);
+  background: rgba(76, 159, 239, 0.12);
+}
+.anim-lane.lane-device .anim-lane-row > .btn.primary {
+  background: var(--info);
+  border-color: transparent;
+}
 
 .anim-key {
   position: absolute;
@@ -5984,11 +6018,36 @@ button.beat-status {
   min-width: 0;
 }
 
+.transition-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  flex: 1 1 55%;
+  min-width: 0;
+}
+
+/* Feel groups are fieldsets (the group-chips precedent) — strip the UA chrome. */
+.transition-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.transition-group-title {
+  font-size: var(--text-xs);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
 .transition-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.5rem;
-  flex: 1 1 55%;
   min-width: 0;
   align-content: start;
 }
@@ -6067,6 +6126,12 @@ button.beat-status {
 .transition-dip {
   display: inline-flex;
   align-items: center;
+  gap: 0.4rem;
+}
+
+.transition-advanced {
+  display: flex;
+  flex-direction: column;
   gap: 0.4rem;
 }
 
@@ -7870,6 +7935,41 @@ button.inspector-scene-overview-group-main:hover .inspector-scene-overview-group
   border-color: var(--accent-border);
 }
 
+/* Music drill: fade-out shape chips lead with their curve glyph (fieldset reset — it exists for the accessible label, not for chrome). */
+.music-fade-curves {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.music-fade-curves .chip {
+  display: inline-flex;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+/* Copy-from-project scene list: scene-manager rows re-used as a tick list. */
+.scene-pick-row {
+  cursor: pointer;
+}
+
+.scene-pick-check {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  color: var(--accent-text);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-xs);
+}
+
+.scene-pick-row.selected .scene-pick-check {
+  border-color: var(--accent-border);
+}
+
 .project-copy-thumb {
   position: relative;
   display: flex;
@@ -8696,6 +8796,21 @@ button.inspector-scene-overview-group-main:hover .inspector-scene-overview-group
   padding-inline: 12px;
 }
 
+/* Delivery + timing pin below the scrolling preset grid: a flex sibling of the scroll region (the .inspector-drill-actions seat), so it can never overlap the last cards. */
+.text-motion-footer {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: var(--space-5);
+  padding: 10px 12px 12px;
+  background: var(--surface-panel);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.text-motion-drill:has(.text-motion-footer) .text-motion-scroll {
+  padding-bottom: var(--space-6);
+}
+
 .text-inspector-copy-sheet {
   display: flex;
   flex-direction: column;
@@ -9158,6 +9273,22 @@ textarea.text-inspector-copy-input {
 .text-motion-preset-card:disabled {
   color: var(--text-disabled);
   cursor: default;
+}
+
+/* The text-style drill's cards lead with a look glyph beside the label. */
+.text-look-preset-grid .text-motion-preset-card span {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.text-look-preset-grid .text-motion-preset-card span svg {
+  flex: none;
+  color: var(--text-secondary);
+}
+
+.text-look-preset-grid .text-motion-preset-card.selected span svg {
+  color: var(--accent);
 }
 
 .text-motion-delivery-grid {
@@ -11500,4 +11631,64 @@ textarea.text-inspector-copy-input {
 
 .library-stale-badge svg {
   color: var(--warning);
+}
+
+/* ── Scene terminal overlay ─────────────────────────────────────── */
+/* The live xterm over the active scene's terminal block (SceneTerminalOverlay): positioned as frame fractions inside the stage frame, empty regions click-through. */
+.scene-terminal-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.scene-terminal-host {
+  position: absolute;
+  overflow: hidden;
+  pointer-events: auto;
+  cursor: text;
+}
+
+.scene-terminal-host.focused {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 2px;
+}
+
+.scene-terminal-scale {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-origin: 0 0;
+}
+
+.scene-terminal-chip {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--border-default);
+  background: var(--surface-raised);
+  color: var(--text-primary);
+  font-size: 12px;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.scene-terminal-chip:hover {
+  background: var(--surface-elevated);
+}
+
+.scene-terminal-chip.quiet {
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.scene-terminal-host:hover .scene-terminal-chip.quiet,
+.scene-terminal-chip.quiet:focus-visible {
+  opacity: 1;
 }

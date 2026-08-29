@@ -194,13 +194,16 @@ describe("TextMotionDrill", () => {
     expect(html).not.toContain("By group");
     expect(html).toContain('aria-label="Text motion easing"');
     expect(captures.sliders.map((slider) => slider.label)).toEqual([
+      "Start size",
       "Stagger",
       "Duration",
       "Distance",
-      "Start size",
+      "Delay start",
     ]);
     expect(captures.sliders.every((slider) => slider.icon !== undefined)).toBe(true);
     expect(captures.toggles).toEqual([expect.objectContaining({ label: "Shine", checked: true })]);
+    // Delivery + Timing pin in the footer while the preset grid scrolls above them.
+    expect(html).toContain('class="text-motion-footer"');
   });
 
   it("does not render invalid delivery choices for an Icon", () => {
@@ -292,9 +295,10 @@ describe("TextMotionDrill", () => {
     );
 
     expect(captures.sliders.map((slider) => slider.label)).toEqual([
-      "Distance",
       "Start size",
       "Duration",
+      "Distance",
+      "Delay start",
     ]);
     expect(captures.segments.at(-1)?.options.map((option) => option.label)).toEqual([
       "Left",
@@ -302,5 +306,25 @@ describe("TextMotionDrill", () => {
     ]);
     expect(captures.toggles).toEqual([expect.objectContaining({ label: "Shine", checked: true })]);
     expect(html).toContain("Left Right");
+  });
+
+  it("edits Delay start in seconds, writing whole milliseconds without a hard cap", () => {
+    const doc: SceneDoc = {
+      version: 1,
+      textAnimation: { in: "fade", out: "none", staggerMs: 0, delayMs: 4500 },
+    };
+    const writes: Parameters<ManagedTextWrite>[0][] = [];
+    const writeDoc: ManagedTextWrite = (request) => {
+      writes.push(request);
+    };
+    renderToStaticMarkup(<TextMotionDrill {...props(doc)} writeDoc={writeDoc} />);
+
+    const delay = captures.sliders.find((slider) => slider.label === "Delay start");
+    // The stored 4.5s survives past the 3s track max.
+    expect(delay?.value).toBe(4.5);
+    delay?.onCommit(1.234);
+
+    expect(writes.map((write) => write.history)).toEqual(["text motion delay"]);
+    expect(writes[0]?.preview.textAnimation?.delayMs).toBe(1234);
   });
 });

@@ -1,5 +1,5 @@
 import { Text } from "@react-three/drei";
-import { useEffect, useMemo, useState } from "react";
+import { useContext, useEffect, useId, useLayoutEffect, useMemo, useState } from "react";
 import { Color, MeshBasicMaterial, SRGBColorSpace, Vector2 } from "three";
 import { useTheme } from "../theme";
 import { fontUrl } from "../theme/fonts";
@@ -10,6 +10,9 @@ import type { V3 } from "../toolkit/types";
 import { FrameIcon } from "./FrameIcon";
 import { FrameSymbol } from "./FrameSymbol";
 import { useHeldLocalMs } from "./presentHold";
+import { SceneDocContext, useSceneContext } from "./sceneContext";
+import { useTextKeyRegistry } from "./textKeyRegistry";
+import { textStyleValue } from "./textStyleResolve";
 import { useTimeline } from "./timeline";
 
 const COLOUR_TOKENS = ["background", "text", "accent", "muted"] as const;
@@ -75,6 +78,7 @@ export function FrameChip({
   from,
   to,
   anchorFrac = 0,
+  textKey,
 }: {
   chip: FrameChipSpec;
   position: V3;
@@ -84,8 +88,13 @@ export function FrameChip({
   to: number;
   /** Horizontal anchor of `position[0]` against the pill: 0 = left edge (default), 0.5 = centre, 1 = right edge. */
   anchorFrac?: number;
+  /** The sidecar style key the label honours: registers the pill in the Edit-text drill and `textStyle.<textKey>Size` scales the label (the pill hugs it). */
+  textKey?: string;
 }) {
   const theme = useTheme();
+  const doc = useContext(SceneDocContext);
+  const sceneIndex = useSceneContext()?.index;
+  const mountId = useId();
   const { localMs: rawLocalMs } = useTimeline();
   const localMs = useHeldLocalMs(rawLocalMs);
   const [bounds, setBounds] = useState<Bounds | null>(null);
@@ -97,9 +106,25 @@ export function FrameChip({
   const labelColour = contrastToken(theme, fill);
   const fade = to <= from ? 1 : Math.min(1, Math.max(0, (localMs - from) / (to - from)));
 
+  // Report the label to the registry so the drill offers Size % (copy stays chip-owned); the FrameIcon guard keeps managed scenes untouched.
+  const sizeMul = textStyleValue(doc, textKey, "Size");
+  const label = chip.label;
+  useLayoutEffect(() => {
+    if (sceneIndex === undefined || !textKey || doc?.managedText !== undefined) return;
+    useTextKeyRegistry.getState().register(sceneIndex, textKey, mountId, {
+      resolvedText: label,
+      managedType: "subtitle",
+      styleCapable: true,
+      // The pill owns its face, contrast fill and placement; the label honours Size.
+      inertStyleControls: ["font", "colour", "x", "y", "rotation"],
+      style: { size: typeof sizeMul === "number" ? sizeMul : 1 },
+    });
+    return () => useTextKeyRegistry.getState().unregister(sceneIndex, textKey, mountId);
+  }, [sceneIndex, textKey, mountId, doc?.managedText, label, sizeMul]);
+
   // Proportions from the reference chip (~64px tall): 30px label, 38px mark, 10px corner.
   const padX = height * 0.55;
-  const labelSize = height * 0.47;
+  const labelSize = typeof sizeMul === "number" ? height * 0.47 * sizeMul : height * 0.47;
   const markSize = height * 0.594;
   const markGap = height * 0.34;
   const markAdvance = chip.icon ? markSize + markGap : 0;

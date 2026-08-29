@@ -267,6 +267,59 @@ describe("ManagedTextDrill", () => {
     expect(html).not.toContain("draggable=");
   });
 
+  it("hides the style controls a mounted primitive flags inert", () => {
+    const doc: SceneDoc = { version: 1, text: { chip: "On time" } };
+    const registrations: VirtualManagedTextRegistration[] = [
+      {
+        key: "chip",
+        text: "On time",
+        type: "subtitle",
+        inertStyleControls: ["font", "colour", "x", "y", "rotation"],
+      },
+    ];
+    const html = renderToStaticMarkup(
+      <ManagedTextDrill {...props(doc, "chip")} registrations={registrations} />,
+    );
+
+    expect(html).not.toContain(">Font<");
+    expect(html).not.toContain(">Colour<");
+    expect(html).not.toContain(">Style<");
+    expect(captures.numbers.map((field) => field.label)).toEqual(["Size %"]);
+    expect(captures.sliders.map((slider) => slider.label)).toEqual(["Spacing"]);
+    expect(html).toContain("Text motion");
+  });
+
+  it("keeps every style control for a row with no capability hint", () => {
+    const doc: SceneDoc = { version: 1, text: { total: "128" } };
+    const registrations: VirtualManagedTextRegistration[] = [
+      { key: "total", text: "128", type: "subtitle" },
+    ];
+    const html = renderToStaticMarkup(
+      <ManagedTextDrill {...props(doc, "total")} registrations={registrations} />,
+    );
+
+    expect(html).toContain(">Font<");
+    expect(html).toContain(">Colour<");
+    expect(captures.numbers.map((field) => field.label)).toEqual([
+      "Size %",
+      "X",
+      "Y",
+      "Rotation °",
+    ]);
+    expect(captures.sliders.map((slider) => slider.label)).toEqual(["Spacing"]);
+  });
+
+  it("offers the Text style row beside motion when a look opener is wired", () => {
+    const doc: SceneDoc = { ...managedDoc(), textLook: { preset: "neon" } };
+    const html = renderToStaticMarkup(
+      <ManagedTextDrill {...props(doc)} onOpenLook={() => undefined} />,
+    );
+
+    expect(html).toContain(">Motion and style<");
+    expect(html).toContain(">Text style<");
+    expect(html).toContain("Neon · All lines");
+  });
+
   it("shows newly added text immediately in the line list and copy editor", () => {
     const result = applyManagedTextStructuralAction(
       { version: 1, managedText: { items: [] } },
@@ -633,5 +686,61 @@ describe("ManagedTextDrill", () => {
     const resetDoc = reset?.applyToCurrent({ ...doc, name: "Concurrent" });
     expect(resetDoc?.name).toBe("Concurrent");
     expect(resetDoc?.textStyle).toBeUndefined();
+  });
+
+  it("deletes only the selected element from a multi-element group", async () => {
+    const doc = managedDoc();
+    const writes: Parameters<ManagedTextWrite>[0][] = [];
+    const writeDoc: ManagedTextWrite = (request) => {
+      writes.push(request);
+    };
+    const deleteSelectedRef: { current: (() => boolean) | null } = { current: null };
+    renderToStaticMarkup(
+      <ManagedTextDrill
+        {...props(doc)}
+        writeDoc={writeDoc}
+        deleteSelectedRef={deleteSelectedRef}
+      />,
+    );
+
+    expect(deleteSelectedRef.current?.()).toBe(true);
+
+    await vi.waitFor(() => expect(writes).toHaveLength(1));
+    expect(writes[0]?.history).toBe("remove text line");
+    expect(writes[0]?.preview.managedText?.items.map((item) => item.key)).toEqual([
+      "title",
+      "icon",
+    ]);
+  });
+
+  it("deletes the emptied group and closes the drill for the last element", async () => {
+    const doc: SceneDoc = {
+      version: 1,
+      managedText: {
+        items: [{ key: "title", type: "title", text: "Only line" }],
+        groups: [{ key: "text", itemKeys: ["title"] }],
+      },
+    };
+    const writes: Parameters<ManagedTextWrite>[0][] = [];
+    const writeDoc: ManagedTextWrite = (request) => {
+      writes.push(request);
+    };
+    const onBack = vi.fn();
+    const deleteSelectedRef: { current: (() => boolean) | null } = { current: null };
+    renderToStaticMarkup(
+      <ManagedTextDrill
+        {...props(doc, "title")}
+        onBack={onBack}
+        writeDoc={writeDoc}
+        deleteSelectedRef={deleteSelectedRef}
+      />,
+    );
+
+    expect(deleteSelectedRef.current?.()).toBe(true);
+
+    await vi.waitFor(() => expect(writes).toHaveLength(1));
+    expect(writes[0]?.history).toBe("remove text group");
+    expect(writes[0]?.preview.managedText?.items).toEqual([]);
+    await vi.waitFor(() => expect(onBack).toHaveBeenCalledTimes(1));
   });
 });

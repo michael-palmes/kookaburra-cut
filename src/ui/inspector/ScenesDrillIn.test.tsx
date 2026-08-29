@@ -23,6 +23,7 @@ function render(busy = false) {
       onPasteBackground={vi.fn()}
       onDelete={vi.fn()}
       onCopyToProject={vi.fn()}
+      onCopyFromProject={vi.fn()}
       onInsertPreset={vi.fn()}
       onSaveAsPreset={vi.fn()}
     />,
@@ -34,27 +35,29 @@ function footer(html: string) {
 }
 
 describe("ScenesDrillIn", () => {
-  it("seats From preset, Duplicate and Delete buttons in the footer", () => {
+  it("seats Copy from, From preset, Duplicate and Delete buttons in the footer", () => {
     const html = render();
     expect(html).toContain('class="inspector-drill-actions"');
+    expect(html).toContain("Copy from…<");
     expect(html).toContain("From preset");
     expect(html).toContain(">Duplicate<");
     expect(html).toContain(">Delete<");
+    expect(html).toContain('class="btn btn-left"');
     expect(html).toContain('class="btn scene-manager-delete"');
   });
 
   it("gives every footer button a leading icon", () => {
-    expect(footer(render()).match(/viewBox="0 0 20 20"/g)).toHaveLength(3);
+    expect(footer(render()).match(/viewBox="0 0 20 20"/g)).toHaveLength(4);
   });
 
-  it("disables the selection actions with nothing selected, never the preset insert", () => {
+  it("disables the selection actions with nothing selected, never Copy from or the preset insert", () => {
     expect(footer(render()).match(/disabled=""/g)).toHaveLength(2);
   });
 
   it("disables the whole footer while an op is in flight", () => {
     const html = footer(render(true));
     expect(html).toContain(">Working…<");
-    expect(html.match(/disabled=""/g)).toHaveLength(3);
+    expect(html.match(/disabled=""/g)).toHaveLength(4);
   });
 
   it("renders one row per scene with its length", () => {

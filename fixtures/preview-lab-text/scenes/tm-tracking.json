@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "name": "Text motion — tracking",
+  "text": {
+    "headline": "PRECISION"
+  },
+  "textAnimation": { "in": "tracking", "out": "none", "staggerMs": 0 }
+}

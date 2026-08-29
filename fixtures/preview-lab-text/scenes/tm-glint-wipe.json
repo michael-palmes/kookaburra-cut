@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "name": "Text motion — glint-wipe",
+  "text": {
+    "headline": "FLAGSHIP"
+  },
+  "textAnimation": { "in": "glint-wipe", "out": "none", "staggerMs": 0 }
+}

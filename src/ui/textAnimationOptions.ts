@@ -15,9 +15,9 @@ export interface TextPresetMeta {
   hint: string;
   /** fade-scale: the startScale slider + Shine toggle apply. */
   hasScaleParams?: boolean;
-  /** twist-scale: the from-left/from-right chips apply. */
+  /** twist-scale and orbit: the from-left/from-right chips apply. */
   hasDirection?: boolean;
-  /** scatter-scale: per-character by design, "all at once" would collapse it. */
+  /** scatter-scale and the per-glyph wave-2 presets: per-character by design, "all at once" would collapse it. */
   perCharacter?: boolean;
 }
 
@@ -45,6 +45,81 @@ export const TEXT_PRESET_CATALOG: readonly TextPresetMeta[] = [
     preset: "scatter-scale",
     label: "Scatter scale",
     hint: "Every character flies in from the camera on its own clock",
+    perCharacter: true,
+  },
+  {
+    preset: "tracking",
+    label: "Tracking",
+    hint: "Letters spread and sharpen into place",
+    perCharacter: true,
+  },
+  { preset: "slam", label: "Slam", hint: "Drops in oversized and lands with a soft snap" },
+  { preset: "dolly", label: "Dolly", hint: "Words pull forward out of the deep" },
+  { preset: "chromatic", label: "Chromatic", hint: "Colour-split echoes converge into focus" },
+  {
+    preset: "line-stretch",
+    label: "Line stretch",
+    hint: "A glowing line stretches open into text",
+  },
+  {
+    preset: "highlight-wipe",
+    label: "Highlight wipe",
+    hint: "An accent block sweeps each word into view",
+  },
+  {
+    preset: "rise-mask",
+    label: "Rise mask",
+    hint: "Words rise into view through a baseline mask",
+  },
+  { preset: "word-cycle", label: "Word cycle", hint: "Words take the stage one at a time" },
+  { preset: "ribbon", label: "Ribbon", hint: "Words turn in like a ribbon settling flat" },
+  { preset: "stand-up", label: "Stand up", hint: "Words tip upright from lying flat" },
+  { preset: "spring-pop", label: "Spring pop", hint: "Pops up to size on a damped spring" },
+  {
+    preset: "spotlight",
+    label: "Spotlight",
+    hint: "A walking emphasis lights each word in turn",
+  },
+  {
+    preset: "underline-draw",
+    label: "Underline draw",
+    hint: "An underline draws on, then the text rises in",
+  },
+  {
+    preset: "orbit",
+    label: "Orbit",
+    hint: "Letters sweep in along an arc",
+    hasDirection: true,
+    perCharacter: true,
+  },
+  {
+    preset: "weight-build",
+    label: "Weight build",
+    hint: "Type thickens from hairline to full weight",
+  },
+  {
+    preset: "develop",
+    label: "Develop",
+    hint: "Letters sharpen into view in random order",
+    perCharacter: true,
+  },
+  {
+    preset: "flip-cascade",
+    label: "Flip cascade",
+    hint: "Letters flip up from face-down",
+    perCharacter: true,
+  },
+  {
+    preset: "converge",
+    label: "Converge",
+    hint: "Letters streak in from both edges",
+    perCharacter: true,
+  },
+  { preset: "glint-wipe", label: "Glint wipe", hint: "Wipes on behind a bright accent glint" },
+  {
+    preset: "vapor",
+    label: "Vapour",
+    hint: "Text condenses out of drifting vapour",
     perCharacter: true,
   },
 ] as const;
@@ -85,6 +160,8 @@ export interface TextAnimationDraft {
   delivery: DeliveryChoice;
   /** null = the delivery's default delay (written explicitly). */
   staggerMs: number | null;
+  /** Wait before the in animation starts, ms (0 = none). */
+  delayMs: number;
   startScale: number;
   shine: boolean;
   direction: TextDirection;
@@ -96,10 +173,16 @@ export function defaultDraft(preset: TextPresetName): TextAnimationDraft {
     out: "none",
     delivery: "default",
     staggerMs: null,
+    delayMs: 0,
     startScale: DEFAULT_START_SCALE,
     shine: false,
     direction: "from-left",
   };
+}
+
+/** Spell a millisecond delay in seconds at ms precision, trailing zeroes trimmed ("0.5s", "1.234s"). */
+export function formatDelaySeconds(ms: number): string {
+  return `${Number((ms / 1000).toFixed(3))}s`;
 }
 
 /** The whole-spec sidecar shape for a draft; what `doc.textAnimation` receives. */
@@ -111,11 +194,15 @@ export function draftToSpec(draft: TextAnimationDraft): TextAnimationSpec {
   };
   if (draft.delivery === "word" || draft.delivery === "char") spec.stagger = draft.delivery;
   else if (draft.delivery !== "default") spec.delivery = draft.delivery;
+  if (draft.delayMs > 0) spec.delayMs = draft.delayMs;
   if (draft.preset === "fade-scale") {
     if (draft.startScale !== DEFAULT_START_SCALE) spec.startScale = draft.startScale;
     if (draft.shine) spec.shine = true;
   }
-  if (draft.preset === "twist-scale" && draft.direction === "from-right") {
+  if (
+    (draft.preset === "twist-scale" || draft.preset === "orbit") &&
+    draft.direction === "from-right"
+  ) {
     spec.direction = "from-right";
   }
   return spec;
@@ -130,6 +217,7 @@ export function specToDraft(spec: TextAnimationSpec): TextAnimationDraft {
   if (spec.staggerMs > 0 && spec.staggerMs !== DELIVERY_DEFAULT_MS[draft.delivery]) {
     draft.staggerMs = spec.staggerMs;
   }
+  if (spec.delayMs !== undefined && spec.delayMs > 0) draft.delayMs = spec.delayMs;
   if (spec.startScale !== undefined) draft.startScale = spec.startScale;
   if (spec.shine !== undefined) draft.shine = spec.shine;
   if (spec.direction !== undefined) draft.direction = spec.direction;
@@ -143,5 +231,10 @@ export function describeSpec(spec: TextAnimationSpec | undefined): string {
   const label = meta?.label ?? spec.in;
   const delivery = spec.stagger ?? spec.delivery;
   const deliveryLabel = DELIVERY_OPTIONS.find((o) => o.id === delivery)?.label;
-  return deliveryLabel && delivery !== "all-at-once" ? `${label} · ${deliveryLabel}` : label;
+  const parts = [label];
+  if (deliveryLabel && delivery !== "all-at-once") parts.push(deliveryLabel);
+  if (spec.delayMs !== undefined && spec.delayMs > 0) {
+    parts.push(`${formatDelaySeconds(spec.delayMs)} delay`);
+  }
+  return parts.join(" · ");
 }

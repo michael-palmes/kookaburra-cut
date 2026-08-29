@@ -1,5 +1,6 @@
 import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useDeviceEditStore } from "../../engine/deviceEditStore";
+import { useDeviceTrackEditStore } from "../../engine/deviceTrackEditStore";
 import { optionPreviewStill } from "../../engine/optionPreviews";
 import type { SceneDoc, SceneDocDeviceSpec } from "../../engine/sceneDocSchema";
 import {
@@ -11,11 +12,13 @@ import {
   resolveAvailableDeviceId,
 } from "../../toolkit/device/catalog";
 import {
+  type DeviceMediaSpec,
   type DeviceMotionPreset,
   type DevicePlacement,
   type DeviceShadowMode,
   effectiveDeviceShadowMode,
 } from "../../toolkit/device/Device";
+import { DEVICE_SHADOW_CHOICES } from "../../toolkit/device/shadowProjector";
 import type { V3 } from "../../toolkit/types";
 import { ComparisonSideIcon } from "../ComparisonSideIcon";
 import { ColourPicker } from "../colour/ColourPicker";
@@ -116,12 +119,7 @@ const DEVICE_MOTIONS: Array<{
   { id: "tilt-reveal", label: "Tilt reveal" },
 ];
 
-const DEVICE_SHADOWS: Array<{ id: DeviceShadowMode; label: string }> = [
-  { id: "soft", label: "Soft contact" },
-  { id: "long", label: "Long & smooth" },
-  { id: "sun", label: "Sun sweep" },
-  { id: "none", label: "None" },
-];
+const DEVICE_SHADOWS = DEVICE_SHADOW_CHOICES;
 
 const DEVICE_POSES: Array<{ id: string; label: string; rotationDeg: V3 }> = [
   { id: "front", label: "Front on", rotationDeg: [0, 0, 0] },
@@ -316,7 +314,7 @@ function ChevronIcon() {
 function DeviceControlIcon({
   type,
 }: {
-  type: "x" | "y" | "depth" | "tilt" | "turn" | "roll" | "size" | "lid";
+  type: "x" | "y" | "depth" | "tilt" | "turn" | "roll" | "size" | "lid" | "delay";
 }) {
   const glyph = {
     x: <path d="M2.6 8h10.8M4.8 5.8 2.6 8l2.2 2.2M11.2 5.8 13.4 8l-2.2 2.2" />,
@@ -346,6 +344,13 @@ function DeviceControlIcon({
       <>
         <path d="M3 12.5h10" />
         <path d="M4.5 11.5 6 4.5h6l1.5 7" />
+      </>
+    ),
+    delay: (
+      <>
+        <circle cx="8" cy="8.8" r="4.8" />
+        <path d="M8 6.4v2.4l1.9 1.2" />
+        <path d="M6.4 2.2h3.2" />
       </>
     ),
   }[type];
@@ -419,6 +424,26 @@ function DeviceMotionIcon({ preset }: { preset: DeviceMotionPreset }) {
       ) : (
         <path d="M5 4.5l10.5 2v7L5 15.5z" />
       )}
+    </svg>
+  );
+}
+
+/** Keyframes: the lane's own diamond on a track, so the toggle reads as the timeline it opens. */
+function KeyframeIcon() {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M2.5 10h3M14.5 10h3" />
+      <path d="m10 5.5 4.5 4.5L10 14.5 5.5 10z" />
     </svg>
   );
 }
@@ -499,6 +524,7 @@ export function DeviceDrillIn({
   const nextDeviceButtonRef = useRef<HTMLButtonElement>(null);
   const pendingNavigationFocus = useRef<"previous" | "next" | null>(null);
   const gizmoMode = useDeviceEditStore((state) => state.gizmoMode);
+  const trackOpen = useDeviceTrackEditStore((state) => state.open);
   const devices = doc.devices ?? [];
   const deviceIndex = devices.findIndex((candidate) => candidate.id === deviceId);
   const device = devices[deviceIndex];
@@ -539,9 +565,7 @@ export function DeviceDrillIn({
     );
   }
 
-  const patchDevice = (mutate: DeviceMutation, history: string, preview = false) => {
-    if (settingsDisabled) return;
-    const patch = (next: SceneDoc) => mutateDocDevice(next, device.id, mutate);
+  const patchWithGesture = (patch: (next: SceneDoc) => void, history: string, preview: boolean) => {
     if (preview) {
       if (!dragBaseline.current) dragBaseline.current = structuredClone(doc);
       const baseline = dragBaseline.current;
@@ -556,6 +580,11 @@ export function DeviceDrillIn({
     dragBaseline.current = null;
     if (baseline) void commitFromBaseline(baseline, patch);
     else void patchDoc(patch, { history });
+  };
+
+  const patchDevice = (mutate: DeviceMutation, history: string, preview = false) => {
+    if (settingsDisabled) return;
+    patchWithGesture((next) => mutateDocDevice(next, device.id, mutate), history, preview);
   };
 
   const duplicate = () => {
@@ -586,6 +615,21 @@ export function DeviceDrillIn({
     if (!candidate) return;
     pendingNavigationFocus.current = direction;
     onSelectDevice(candidate.id);
+  };
+
+  // The device track is one per scene, so its toggle reveals the lane rather than editing this device; a scene that already carries keys always shows it.
+  const keyframesOn = trackOpen || doc.deviceTrack !== undefined;
+  const setKeyframesOn = (on: boolean) => {
+    if (settingsDisabled) return;
+    useDeviceTrackEditStore.getState().setOpen(on);
+    if (!on && doc.deviceTrack !== undefined) {
+      void patchDoc(
+        (next) => {
+          delete next.deviceTrack;
+        },
+        { history: "device keyframes off" },
+      );
+    }
   };
 
   // The After side edits the narrow `compare.b` surface: finish, shadow and screen media. Model, arrangement, position, motion and lid stay shared, so they only render for Before.
@@ -628,6 +672,32 @@ export function DeviceDrillIn({
       },
       { history: "match the before side" },
     );
+  };
+
+  // Screen video start delay: seconds in the UI, `media.startMs` in the doc (0 deletes the field). After writes its own `compare.b.media` override, materialising an inherited spec first.
+  const setScreenDelay = (seconds: number, preview = false) => {
+    if (settingsDisabled) return;
+    const base = routing.media;
+    if (base?.kind !== "video") return;
+    const startMs = Math.max(0, Math.round(seconds * 1000));
+    const apply = (spec: DeviceMediaSpec): DeviceMediaSpec => {
+      const media = { ...spec };
+      if (startMs === 0) delete media.startMs;
+      else media.startMs = startMs;
+      return media;
+    };
+    const patch = after
+      ? (next: SceneDoc) => {
+          if (!next.compare) return;
+          next.compare.b ??= {};
+          next.compare.b.media ??= {};
+          next.compare.b.media[device.id] = apply(next.compare.b.media[device.id] ?? base);
+        }
+      : (next: SceneDoc) =>
+          mutateDocDevice(next, device.id, (_next, candidate) => {
+            if (candidate.media?.kind === "video") candidate.media = apply(candidate.media);
+          });
+    patchWithGesture(patch, "screen start delay", preview);
   };
 
   const modelId: DeviceId = resolveAvailableDeviceId(device.model);
@@ -787,7 +857,23 @@ export function DeviceDrillIn({
           editDisabled={!routing.editVideoTarget}
           onChange={() => onChangeScreenMedia(device.id)}
           onEdit={onEditScreenMedia ? () => onEditScreenMedia(device.id) : undefined}
-        />
+        >
+          {routing.media?.kind === "video" && (
+            <InspectorSliderRow
+              icon={<DeviceControlIcon type="delay" />}
+              label="Start delay"
+              value={(routing.media.startMs ?? 0) / 1000}
+              min={0}
+              max={10}
+              step={0.1}
+              overflowMax
+              formatValue={(v) => `${Number(v.toFixed(2))}s`}
+              disabled={settingsDisabled}
+              onInput={(value) => setScreenDelay(value, true)}
+              onCommit={(value) => setScreenDelay(value)}
+            />
+          )}
+        </MediaSourceGroup>
 
         {!after && (
           <DrillGroup label="Arrangement">
@@ -838,6 +924,8 @@ export function DeviceDrillIn({
                       min={axis === 0 ? -3 : axis === 1 ? -1.5 : -2}
                       max={axis === 0 ? 3 : axis === 1 ? 1.5 : 2}
                       step={0.01}
+                      overflowMin
+                      overflowMax
                       onInput={(value) =>
                         patchDevice(
                           (next, candidate) =>
@@ -1014,6 +1102,13 @@ export function DeviceDrillIn({
               <span className="drill-group-hint">
                 Moves the device itself. For a cinematic move, animate the Camera instead.
               </span>
+              <ToggleRow
+                icon={<KeyframeIcon />}
+                label="Keyframes"
+                description="Opens the Devices lane, where keys move every device in the scene. The preset above still plays on top."
+                checked={keyframesOn}
+                onChange={setKeyframesOn}
+              />
             </DrillGroup>
           )}
 

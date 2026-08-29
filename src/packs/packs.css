@@ -289,6 +289,21 @@
   color: var(--text-dim, #a7b0bb);
 }
 
+.packs-terminal-review-row {
+  margin-top: 8px;
+}
+
+.packs-terminal-command {
+  display: block;
+  margin-top: 3px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.3);
+  font-family: var(--font-mono, Menlo, monospace);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
 .packs-pack-title {
   margin: 8px 0 2px;
   font-size: 20px;

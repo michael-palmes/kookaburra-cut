@@ -39,6 +39,7 @@ import {
 } from "./engine/clips";
 import { useClockStore } from "./engine/clock";
 import { useCompareEditStore } from "./engine/compareEditStore";
+import { useDeviceTrackEditStore } from "./engine/deviceTrackEditStore";
 import { listEdits, openEdit, openEditNamed } from "./engine/edit";
 import { useEffectsStore } from "./engine/effectsStore";
 import { canvasHandle, ExportBridge } from "./engine/exportBridge";
@@ -72,23 +73,28 @@ import {
   setPreviewAudioMuted,
   setPreviewAudioProject,
   syncPreviewAudioPlaying,
+  updatePreviewAudioSpec,
 } from "./engine/previewAudio";
 import { setPreviewClipStride, setPreviewPlaybackActive } from "./engine/previewMedia";
 import { SETTLE_STEPS, settleProjectOpen } from "./engine/previewSettle";
 import {
   type AudioMarkersSpec,
   bumpWorkspaceReloadToken,
+  DEFAULT_AUDIO_FADE_OUT_MS,
   isEditableProjectId,
   isWorkspaceProjectId,
   type LoadedProject,
   listAllProjects,
   loadProject,
   nativeProjectSlug,
+  type ProjectAudio,
+  type ProjectAudioSpec,
   type ProjectListing,
   projectFolderPath,
   resolveAssetPath,
   sceneFileStem,
   WORKSPACE_PROJECT_PREFIX,
+  withAudioDefaults,
 } from "./engine/project";
 import {
   duplicateProjectScene,
@@ -150,6 +156,7 @@ import { CompareAnimationLane } from "./ui/CompareAnimationLane";
 import { openChartDataModal } from "./ui/chartDataModalStore";
 import { setProjectPaletteSource } from "./ui/colour/projectPalette";
 import { DecorationGizmo } from "./ui/DecorationGizmo";
+import { DeviceAnimationLane } from "./ui/DeviceAnimationLane";
 import { NewProjectDialog, SetupFailedDialog, TrustGateModal } from "./ui/dialogs";
 import { ExportModal, type ExportSelection } from "./ui/ExportModal";
 import { OverlayImageGizmo } from "./ui/ImageOverlayGizmo";
@@ -163,7 +170,9 @@ import { animationLaneMasterOpen, clearSecondaryLaneSelections } from "./ui/lane
 import { MediaLibrary } from "./ui/MediaLibrary";
 import { PlaybackBar } from "./ui/PlaybackBar";
 import { PresentModal } from "./ui/PresentModal";
+import { SceneTerminalOverlay } from "./ui/SceneTerminalOverlay";
 import { ShortcutsSheet } from "./ui/ShortcutsSheet";
+import { TerminalGizmo } from "./ui/TerminalGizmo";
 import { TerminalPanel } from "./ui/TerminalPanel";
 import { TextGizmo } from "./ui/TextGizmo";
 import { ThemeMode } from "./ui/ThemeMode";
@@ -634,6 +643,50 @@ export default function App() {
       setToast({ kind: "success", message: `Soundtrack: ${rel.split("/").pop()}` });
     } catch (e) {
       setToast({ kind: "error", message: `Soundtrack failed: ${String(e)}` });
+    }
+  }
+
+  /** Live envelope while a Music slider drags: preview-only, nothing writes. */
+  const handlePreviewAudio = useCallback((patch: Partial<ProjectAudioSpec>) => {
+    const current = loadedProjectRef.current;
+    if (!current?.audio) return;
+    updatePreviewAudioSpec({ ...current.audio, ...patch });
+  }, []);
+
+  /** Merge mix fields into project.json's audio block (file and markers kept) with manifest history, then patch the loaded project in place so the drill, beat lane and preview envelope follow without a reload flash. */
+  async function handlePatchAudio(patch: Partial<ProjectAudioSpec>) {
+    const current = loadedProjectRef.current;
+    if (!current?.audio || !isEditableProjectId(current.id)) return;
+    try {
+      const slug = nativeProjectSlug(current.id);
+      const manifestBefore = await readProjectManifestSnapshot(slug);
+      const manifest = JSON.parse(manifestBefore);
+      if (typeof manifest.audio?.file !== "string") return;
+      const audio = { ...manifest.audio, ...patch };
+      // House defaults store as ABSENCE so untouched projects never carry the keys; fadeOutMs 0 is the explicit opt-out and stays.
+      if (audio.gainDb === 0) delete audio.gainDb;
+      if (audio.fadeInMs === 0) delete audio.fadeInMs;
+      if (audio.startOffsetMs === 0) delete audio.startOffsetMs;
+      if (audio.fadeOutMs === DEFAULT_AUDIO_FADE_OUT_MS) delete audio.fadeOutMs;
+      if (audio.fadeOutCurve === "smooth") delete audio.fadeOutCurve;
+      await invoke("set_project_audio", { slug, audio });
+      pushHistory({
+        label: "music settings",
+        changes: [
+          {
+            kind: "manifest",
+            slug,
+            before: manifestBefore,
+            after: await readProjectManifestSnapshot(slug),
+            reload: false,
+          },
+        ],
+      });
+      const merged = withAudioDefaults({ ...current.audio, ...patch }) as ProjectAudio;
+      setProject((prev) => (prev?.audio ? { ...prev, audio: merged } : prev));
+      updatePreviewAudioSpec(merged);
+    } catch (e) {
+      setToast({ kind: "error", message: `Music settings failed: ${String(e)}` });
     }
   }
 
@@ -1492,6 +1545,7 @@ export default function App() {
   const mediaSectionOpen = useGizmoSectionOpen("media");
   const textSectionOpen = useGizmoSectionOpen("text");
   const chartSectionOpen = useGizmoSectionOpen("chart");
+  const terminalSectionOpen = useGizmoSectionOpen("terminal");
   const lsLaneOpen = useLayeredScreenshotEditStore((s) => s.laneOpen);
   const lsEditOpen = useLayeredScreenshotEditStore((s) => s.laneOpen || s.open);
   // The F-001 consent request `loadProject` is currently blocked on, if any.
@@ -1512,7 +1566,11 @@ export default function App() {
   // A charted scene stacks the data lane the same way, so its keys are reachable without a drill.
   const chartPresent = !!project?.sceneDocs[camSceneIndex]?.chart;
   const lightingLaneOpen = useLightingEditStore((state) => state.open);
-  const stackedLanes = comparePresent || chartPresent || lightingLaneOpen;
+  // The opt-in device lane: the inspector's Keyframes toggle reveals it, and a scene that already carries a track always shows it.
+  const deviceLaneOpen =
+    useDeviceTrackEditStore((state) => state.open) ||
+    !!project?.sceneDocs[camSceneIndex]?.deviceTrack;
+  const stackedLanes = comparePresent || chartPresent || lightingLaneOpen || deviceLaneOpen;
   const animationLaneOpen = animationLaneMasterOpen(lsActive, cameraEditOpen, lsLaneOpen);
   useEffect(() => {
     if (!animationLaneOpen) clearSecondaryLaneSelections();
@@ -2160,6 +2218,15 @@ export default function App() {
                   {/* The scene tree itself is shared with the hidden render window (engine/StageScenes): scenes resolve assets against the loaded project, which lags the store's projectId by a render during a switch (see ProjectIdContext). */}
                   <StageScenes project={project} />
                 </Canvas>
+                {/* The live scene terminal: below the tool and gizmo layers so their handles stay reachable, self-gated on the doc's terminal block and paused playback. */}
+                {project && isWorkspaceProjectId(project.id) && !exporting && !isAutoRun && (
+                  <SceneTerminalOverlay
+                    project={project}
+                    sceneIndex={camSceneIndex}
+                    aspect={format.width / format.height}
+                    onDocChanged={handleDocChanged}
+                  />
+                )}
                 {/* Armed move tool drag surface (camera or screenshot stack, per the active scene's animated track): DOM above the canvas, exactly the letterboxed frame, so drags map 1:1 to rendered pixels. The ghost path rides the same guard, above the tool surface but click-through except on its key dots. */}
                 {project &&
                   isEditableProjectId(project.id) &&
@@ -2226,6 +2293,18 @@ export default function App() {
                     <ChartHeroGizmo
                       project={project}
                       sceneIndex={camSceneIndex}
+                      onDocChanged={handleDocChanged}
+                    />
+                  )}
+                {project &&
+                  isWorkspaceProjectId(project.id) &&
+                  !exporting &&
+                  !isAutoRun &&
+                  terminalSectionOpen && (
+                    <TerminalGizmo
+                      project={project}
+                      sceneIndex={camSceneIndex}
+                      aspect={format.width / format.height}
                       onDocChanged={handleDocChanged}
                     />
                   )}
@@ -2375,6 +2454,8 @@ export default function App() {
               onSetAppIcon={(rel) => void handleSetAppIcon(rel)}
               onSetSoundtrack={() => void handleSetSoundtrack()}
               onRemoveSoundtrack={() => void handleRemoveSoundtrack()}
+              onPatchAudio={(patch) => void handlePatchAudio(patch)}
+              onPreviewAudio={handlePreviewAudio}
               onOpenEditVideo={(i, rel, slot, targetId) =>
                 void handleOpenEditVideo(i, rel, slot, targetId)
               }
@@ -2400,6 +2481,14 @@ export default function App() {
                   message: `Copied ${count} scene${count === 1 ? "" : "s"} to ${destName}`,
                 })
               }
+              onScenesCopiedFrom={(sourceName, count) => {
+                bumpWorkspaceReloadToken();
+                setLoadNonce((n) => n + 1);
+                setToast({
+                  kind: "success",
+                  message: `Copied ${count} scene${count === 1 ? "" : "s"} from ${sourceName}`,
+                });
+              }}
             />
           )}
         </div>
@@ -2408,7 +2497,7 @@ export default function App() {
       {/* The timeline dock: a full-width row of the app grid (the rail and inspector end above it); Animate scene controls the lane stack and its lane-to-cell connector. */}
       {editorView && (
         <TimelineDock
-          connectorActive={animationLaneOpen || lightingLaneOpen}
+          connectorActive={animationLaneOpen || lightingLaneOpen || deviceLaneOpen}
           activeIndex={camSceneIndex}
           lane={
             project && isEditableProjectId(project.id) && !exporting && !isAutoRun ? (
@@ -2424,6 +2513,15 @@ export default function App() {
                 )}
                 {chartPresent && (
                   <ChartAnimationLane
+                    project={project}
+                    sceneIndex={camSceneIndex}
+                    open={animationLaneOpen}
+                    onDocChanged={handleDocChanged}
+                    onSceneDuration={(i, ms) => void handleSceneDuration(i, ms)}
+                  />
+                )}
+                {deviceLaneOpen && (
+                  <DeviceAnimationLane
                     project={project}
                     sceneIndex={camSceneIndex}
                     open={animationLaneOpen}

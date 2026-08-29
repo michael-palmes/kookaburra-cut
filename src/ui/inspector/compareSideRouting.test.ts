@@ -138,12 +138,12 @@ describe("device routing", () => {
     });
     expect(deviceSideRouting(next, "d2", "b")).toMatchObject({
       mediaTarget: "compareDevice",
-      editVideoTarget: null,
+      editVideoTarget: "compareDevice",
     });
   });
 
-  it("has nothing to edit for an image, or for a device that is no longer in the scene", () => {
-    expect(deviceSideRouting(doc(), "d2", "a").editVideoTarget).toBeNull();
+  it("routes an image to the editor too, but has nothing to edit for a device that is no longer in the scene", () => {
+    expect(deviceSideRouting(doc(), "d2", "a").editVideoTarget).toBe("device");
     expect(deviceSideRouting(doc(), "gone", "b")).toMatchObject({
       media: undefined,
       inheritsMedia: true,

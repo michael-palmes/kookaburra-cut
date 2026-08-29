@@ -1,9 +1,9 @@
 import type { DeviceEditCommitPayload } from "../../engine/deviceEditStore";
-import type { SceneDocDeviceLayoutDelta } from "../../engine/sceneDocSchema";
+import type { SceneDocDeviceLayoutDelta, SceneDocDevicePose } from "../../engine/sceneDocSchema";
 import type { V3 } from "../types";
 import type { DevicePlacement } from "./Device";
 
-/** Turns a finished device gizmo drag into exactly what the Position drill's sliders would write, so a laid-out scene keeps editing its `deviceLayout` delta and a block-less one keeps editing raw placement. One rule for both branches: `committed = authored + (dragged - rendered)`, positions and rotations adding, scale multiplying. Differencing against the RENDERED pose (what the gizmo started from) is what survives everything the render does on top: DevicesFallback's portrait scale factor, templates' frozen multipliers, the layout resolver's own composition and the ground clamp. */
+/** Turns a finished device gizmo drag into exactly what the Position drill's sliders would write, so a laid-out scene keeps editing its `deviceLayout` delta and a block-less one keeps editing raw placement, while a keyframed scene shapes the key nearest the playhead. One rule for every branch: `committed = authored + (dragged - rendered)`, positions and rotations adding, scale multiplying. Differencing against the RENDERED pose (what the gizmo started from) is what survives everything the render does on top: DevicesFallback's portrait scale factor, templates' frozen multipliers, the layout resolver's own composition and the ground clamp. */
 
 export interface DevicePose {
   position: V3;
@@ -24,6 +24,8 @@ export interface DeviceCommitInput {
   authored: DevicePlacement;
   /** This device's current `deviceLayout` delta; present only while a block is live, which is the branch the sliders take. */
   delta?: SceneDocDeviceLayoutDelta;
+  /** The key nearest the playhead and this device's pose in it; present only while the scene carries a device track, and it OUTRANKS the other two branches (the keyed pose is what the render is showing). */
+  keyed?: { keyId: string; pose: SceneDocDevicePose };
 }
 
 /** What `Device` renders a placement with no position at, so a first drag lands where it was dropped (the drill's own -0.3 fallback would teleport it). */
@@ -55,6 +57,22 @@ export function deviceGizmoCommit(input: DeviceCommitInput): DeviceEditCommitPay
   const { deviceId, sceneIndex, dragged, rendered, committed, authored, delta } = input;
   const clearGround = authored.ground === true && deviceGizmoMovedY(dragged, rendered);
   const positionBase = clearGround ? committed : rendered;
+  if (input.keyed) {
+    const { keyId, pose } = input.keyed;
+    return {
+      sceneIndex,
+      deviceId,
+      kind: "key",
+      keyId,
+      pose: {
+        ...pose,
+        offset: moved(pose.offset ?? ZERO, dragged.position, positionBase.position, 3),
+        rotationDeg: moved(pose.rotationDeg ?? ZERO, dragged.rotationDeg, rendered.rotationDeg, 1),
+        scale: resized(pose.scale ?? 1, dragged.scale, rendered.scale),
+      },
+      ...(clearGround ? { clearGround: true as const } : {}),
+    };
+  }
   if (delta) {
     return {
       sceneIndex,

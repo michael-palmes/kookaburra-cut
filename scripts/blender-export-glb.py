@@ -3,14 +3,19 @@ Headless glTF (GLB) export for Kookaburra Cut's DeviceMockup asset pipeline.
 
 Run via Blender's CLI (see scripts/prepare-device-model.sh):
 
-    blender -b <file>.blend --python scripts/blender-export-glb.py -- <out>.glb [yaw-deg]
+    blender -b <file>.blend --python scripts/blender-export-glb.py -- <out>.glb [yaw-deg] [roll-deg] [exclude] [screen-material]
 
 Exports the whole scene as a single binary GLB, Y-up for three.js, with modifiers
 applied. An optional yaw (degrees about the up axis) corrects vendors whose model faces
-away from glTF +Z at identity (the app's front-on contract). Draco is left OFF on
-purpose: drei's `useGLTF` defaults its Draco decoder to a CDN, which breaks the app's
-offline + deterministic-export contract. Texture/mesh size is handled downstream by
-gltf-transform. See docs/determinism.md.
+away from glTF +Z at identity (the app's front-on contract); an optional roll (degrees
+about the front axis, after the yaw) re-orients a portrait-authored slab to landscape
+(the iPad). An optional exclude list (comma-separated object names) removes those objects
+and their descendants before export (the iPad blend stages an Apple Pencil beside the
+device). A roll also needs the screen material name: the app maps media through the screen
+mesh's UVs in glTF orientation (v=0 at the top), so a rolled screen re-rotates its UVs to
+match. Draco is left OFF on purpose: drei's `useGLTF` defaults its Draco decoder to
+a CDN, which breaks the app's offline + deterministic-export contract. Texture/mesh size
+is handled downstream by gltf-transform. See docs/determinism.md.
 """
 
 import math
@@ -25,13 +30,49 @@ argv = sys.argv
 argv = argv[argv.index("--") + 1 :] if "--" in argv else []
 out = argv[0] if argv else "/tmp/phone-generic.glb"
 yaw_deg = float(argv[1]) if len(argv) > 1 else 0.0
+roll_deg = float(argv[2]) if len(argv) > 2 else 0.0
+exclude = [n for n in (argv[3].split(",") if len(argv) > 3 else []) if n]
+screen_material = argv[4] if len(argv) > 4 else ""
 
-if yaw_deg:
-    rot = Matrix.Rotation(math.radians(yaw_deg), 4, "Z")
+for name in exclude:
+    root = bpy.data.objects.get(name)
+    if not root:
+        print(f"[blender-export-glb] WARNING: exclude object not found: {name}")
+        continue
+    for obj in [*root.children_recursive, root]:
+        bpy.data.objects.remove(obj, do_unlink=True)
+    print(f"[blender-export-glb] excluded {name} and its descendants")
+
+if yaw_deg or roll_deg:
+    # Yaw first (screen to Blender -Y, glTF +Z), then roll about that front axis.
+    rot = Matrix.Rotation(math.radians(roll_deg), 4, "Y") @ Matrix.Rotation(
+        math.radians(yaw_deg), 4, "Z"
+    )
     for obj in bpy.context.scene.objects:
         if obj.parent is None:
             obj.matrix_world = rot @ obj.matrix_world
-    print(f"[blender-export-glb] applied corrective yaw {yaw_deg} deg")
+    print(f"[blender-export-glb] applied corrective yaw {yaw_deg} deg, roll {roll_deg} deg")
+
+# A rolled screen keeps its vendor UVs, which the app reads in glTF orientation to map
+# media (u left to right, v=0 at the top): counter-rotate them so media stays upright.
+# These remaps run on Blender-space UVs (v flips at export), hence the mirrored signs.
+UV_ROLL = {
+    -90.0: lambda u, v: (1.0 - v, u),
+    90.0: lambda u, v: (v, 1.0 - u),
+    180.0: lambda u, v: (1.0 - u, 1.0 - v),
+}
+if roll_deg and screen_material:
+    remap = UV_ROLL.get(roll_deg)
+    if remap is None:
+        raise SystemExit(f"[blender-export-glb] no screen UV remap for roll {roll_deg}")
+    for obj in bpy.context.scene.objects:
+        if obj.type != "MESH":
+            continue
+        if not any(m and m.name == screen_material for m in obj.data.materials):
+            continue
+        for loop in obj.data.uv_layers.active.data:
+            loop.uv = remap(loop.uv[0], loop.uv[1])
+        print(f"[blender-export-glb] rotated screen UVs on {obj.name} for roll {roll_deg} deg")
 
 
 def linked_rgb(socket):
@@ -72,7 +113,7 @@ for mat in bpy.data.materials:
 
 
 def mix_shader_parts(mat):
-    """The (output, mix, BSDF at factor 0, BSDF at factor 1, mask) of an image-mixed two-Principled material, else None."""
+    """The (output, mix, BSDF at factor 0, BSDF at factor 1, mask node) of an image-mixed two-Principled material, else None."""
     nodes = mat.node_tree.nodes
     output = next((n for n in nodes if n.type == "OUTPUT_MATERIAL"), None)
     surface = output.inputs["Surface"] if output else None
@@ -87,8 +128,8 @@ def mix_shader_parts(mat):
         return None
     if not factor.is_linked or factor.links[0].from_node.type != "TEX_IMAGE":
         return None
-    image = factor.links[0].from_node.image
-    return (output, mix, shaders[0], shaders[1], image) if image else None
+    mask = factor.links[0].from_node
+    return (output, mix, shaders[0], shaders[1], mask) if mask.image else None
 
 
 # A Mix Shader is not expressible in glTF, so a material that mixes two Principled BSDFs
@@ -101,7 +142,8 @@ for mat in bpy.data.materials:
     parts = mix_shader_parts(mat)
     if not parts:
         continue
-    output, mix, at_zero, at_one, mask = parts
+    output, mix, at_zero, at_one, mask_node = parts
+    mask = mask_node.image
     for socket in ("Metallic", "Roughness", "IOR"):
         if abs(at_zero.inputs[socket].default_value - at_one.inputs[socket].default_value) > 1e-6:
             print(f"[blender-export-glb] WARNING: {mat.name} mixes differing {socket}, baking base colour only")
@@ -129,7 +171,17 @@ for mat in bpy.data.materials:
     links = mat.node_tree.links
     tex = mat.node_tree.nodes.new("ShaderNodeTexImage")
     tex.image = image
+    # glTF has no CLIP wrap; EXTEND clamps to the mask's (empty) border, which keeps a
+    # clipped print off UVs outside 0..1 (the iPad body tiles far outside the print tile).
+    tex.extension = "EXTEND" if mask_node.extension == "CLIP" else mask_node.extension
     links.new(tex.outputs["Color"], at_zero.inputs["Base Color"])
+    # A Metallic/Roughness link the exporter can't express (a ramp, not an image) would
+    # export as factor 1; drop it so the vendor's socket default survives instead.
+    for socket in ("Metallic", "Roughness"):
+        inp = at_zero.inputs[socket]
+        if inp.is_linked and inp.links[0].from_node.type != "TEX_IMAGE":
+            links.remove(inp.links[0])
+            print(f"[blender-export-glb] unlinked {socket} ramp on {mat.name}: exports {inp.default_value:.2f}")
     for link in list(output.inputs["Surface"].links):
         links.remove(link)
     links.new(at_zero.outputs["BSDF"], output.inputs["Surface"])

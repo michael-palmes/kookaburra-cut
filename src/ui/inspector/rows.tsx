@@ -182,6 +182,9 @@ export function InspectorSliderRow({
   step,
   onCommit,
   onInput,
+  overflowMax,
+  overflowMin,
+  formatValue,
   disabled = false,
 }: {
   icon: ReactNode;
@@ -192,6 +195,11 @@ export function InspectorSliderRow({
   step: number;
   onCommit: (value: number) => void;
   onInput?: (value: number) => void;
+  /** Soft max: typing past `max` keeps the value while the thumb pins at 100%. */
+  overflowMax?: boolean;
+  /** Soft min: typing below `min` keeps the value while the thumb pins at 0%. */
+  overflowMin?: boolean;
+  formatValue?: (value: number) => string;
   disabled?: boolean;
 }) {
   return (
@@ -209,6 +217,9 @@ export function InspectorSliderRow({
         disabled={disabled}
         onCommit={onCommit}
         onInput={onInput}
+        overflowMax={overflowMax}
+        overflowMin={overflowMin}
+        formatValue={formatValue}
       />
     </div>
   );

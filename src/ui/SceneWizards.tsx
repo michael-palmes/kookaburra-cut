@@ -31,6 +31,7 @@ import {
   resolveAvailableDeviceId,
 } from "../toolkit/device/catalog";
 import type { DeviceMotionPreset, DeviceShadowMode } from "../toolkit/device/Device";
+import { DEVICE_SHADOW_CHOICES } from "../toolkit/device/shadowProjector";
 import { ComparisonSideIcon } from "./ComparisonSideIcon";
 import { ColourPicker } from "./colour/ColourPicker";
 import { applyDeviceChoice } from "./deviceChoice";
@@ -163,12 +164,7 @@ export const MOTION_OPTIONS: { id: string; label: string }[] = [
   { id: "tilt-reveal", label: "Tilt reveal" },
 ];
 
-export const SHADOW_OPTIONS: { id: string; label: string }[] = [
-  { id: "soft", label: "Soft contact" },
-  { id: "long", label: "Long & smooth" },
-  { id: "sun", label: "Sun sweep" },
-  { id: "none", label: "None" },
-];
+export const SHADOW_OPTIONS: { id: string; label: string }[] = DEVICE_SHADOW_CHOICES;
 
 function secondsLabel(ms: number): string {
   return `${(ms / 1000).toFixed(1).replace(/\.0$/, "")}s`;

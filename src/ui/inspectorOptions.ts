@@ -8,6 +8,7 @@ import type {
   SceneManagedTextItem,
 } from "../engine/sceneDocSchema";
 import { resolveSceneDocMedia } from "../engine/sceneMedia";
+import { resolveSceneTerminal } from "../engine/sceneTerminal";
 import type { ChartType } from "../toolkit/chart/types";
 import { DEVICE_CATALOG, isDeviceId, resolveAvailableDeviceSpec } from "../toolkit/device/catalog";
 import type { FrameSpec } from "../toolkit/frame/types";
@@ -123,7 +124,8 @@ export type SceneOverviewContentType =
   | "object"
   | "chart"
   | "screenshotStack"
-  | "comparison";
+  | "comparison"
+  | "terminal";
 
 export type SceneOverviewSettingType =
   | "overlay"
@@ -142,7 +144,8 @@ export type SceneOverviewSelectionTarget =
   | { kind: "object"; id: string }
   | { kind: "chart" }
   | { kind: "screenshotStack" }
-  | { kind: "comparison" };
+  | { kind: "comparison" }
+  | { kind: "terminal" };
 
 export interface SceneOverviewMediaHint {
   kind: "image" | "video";
@@ -341,6 +344,14 @@ function durationOverviewValue(durationMs: number): string {
   return `${(durationMs / 1000).toFixed(2)} s`;
 }
 
+/** The terminal row's value: the grid size, flagging a block that would export its empty frame. */
+function terminalOverviewValue(doc: SceneDoc): string {
+  const terminal = resolveSceneTerminal(doc);
+  if (!terminal) return "";
+  const size = `${terminal.cols}x${terminal.rows}`;
+  return terminal.snapshot?.src ? size : `${size} · No snapshot`;
+}
+
 function addOptions(doc: SceneDoc | undefined): SceneOverviewAddOptionModel[] {
   const definitions: Array<{
     id: SceneOverviewContentType;
@@ -361,6 +372,7 @@ function addOptions(doc: SceneDoc | undefined): SceneOverviewAddOptionModel[] {
       present: !!doc?.layeredScreenshot,
     },
     { id: "comparison", label: "Comparison", singleton: true, present: !!doc?.compare },
+    { id: "terminal", label: "Terminal", singleton: true, present: !!doc?.terminal },
   ];
   return definitions.map(({ id, label, singleton, present }) => {
     const disabledReason = !doc
@@ -553,6 +565,16 @@ export function deriveSceneOverview(input: SceneOverviewInput): SceneOverviewMod
       value: comparisonOverviewValue(doc),
       selectionTarget: { kind: "comparison" },
       openRoute: "compare.edit",
+    });
+  }
+  if (doc?.terminal) {
+    standalone.push({
+      id: "terminal",
+      type: "terminal",
+      label: "Terminal",
+      value: terminalOverviewValue(doc),
+      selectionTarget: { kind: "terminal" },
+      openRoute: "terminal.edit",
     });
   }
 
@@ -771,6 +793,9 @@ export function drillFollowsScene(id: string, scene: SceneDrillCapability): bool
   if (id.startsWith("text.font:")) return scene.textKeys.includes(id.slice("text.font:".length));
   if (id.startsWith("text.motion:")) {
     return scene.textKeys.includes(id.slice("text.motion:".length));
+  }
+  if (id.startsWith("text.look:")) {
+    return scene.textKeys.includes(id.slice("text.look:".length));
   }
   const textIconScreen = textIconInspectorScreenForRoute(id);
   if (textIconScreen) return scene.textKeys.includes(textIconScreen.itemKey);

@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "name": "Text motion — stand-up",
+  "text": {
+    "headline": "Ready to launch"
+  },
+  "textAnimation": { "in": "stand-up", "out": "none", "staggerMs": 0 }
+}

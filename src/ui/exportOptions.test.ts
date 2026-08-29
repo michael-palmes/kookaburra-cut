@@ -15,6 +15,7 @@ import {
   resolveDraft,
   slugifyPresetName,
   specChips,
+  terminalSnapshotWarning,
   withPosterFrame,
 } from "./exportOptions";
 
@@ -232,5 +233,39 @@ describe("the Custom draft", () => {
   it("slugifies preset names to workspace slugs", () => {
     expect(slugifyPresetName("My LinkedIn (tight) Preset!")).toBe("my-linkedin-tight-preset");
     expect(slugifyPresetName("  Ünïcode  ")).toBe("n-code");
+  });
+});
+
+describe("terminal snapshot pre-flight", () => {
+  const files = ["scenes/01-intro.tsx", "scenes/02-demo.tsx"];
+
+  it("stays quiet with no terminals or with baked snapshots", () => {
+    expect(terminalSnapshotWarning([undefined, { name: "Demo" }], files)).toBeNull();
+    expect(
+      terminalSnapshotWarning(
+        [{ terminal: { snapshot: { grid: [], src: "assets/terminal-01-intro.png" } } }],
+        files,
+      ),
+    ).toBeNull();
+  });
+
+  it("warns per uncaptured terminal, naming the doc or falling back to the file stem", () => {
+    const one = terminalSnapshotWarning([{ name: "Intro", terminal: {} }, undefined], files);
+    expect(one).toContain('"Intro"');
+    expect(one).toContain("empty prompt");
+    const stem = terminalSnapshotWarning([undefined, { terminal: {} }], files);
+    expect(stem).toContain('"02-demo"');
+  });
+
+  it("treats a grid without a baked src as uncaptured and lists every scene", () => {
+    const both = terminalSnapshotWarning(
+      [
+        { name: "Intro", terminal: { snapshot: { grid: [] } } },
+        { name: "Demo", terminal: {} },
+      ],
+      files,
+    );
+    expect(both).toContain('"Intro", "Demo"');
+    expect(both).toContain("empty prompts");
   });
 });

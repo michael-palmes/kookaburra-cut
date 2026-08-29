@@ -50,7 +50,7 @@ export interface ThemeLightSpec {
   color?: string;
 }
 
-/** Shadow-map tokens: fixed values are an EXPORT CONTRACT (the GSAA σ²/κ precedent). Shadows render only when a scene stages a floor/backdrop (hybrid decision); the v7 procedural blob shadows remain the default everywhere else. */
+/** Shadow-map tokens: fixed values are an EXPORT CONTRACT (the GSAA σ²/κ precedent). Shadows render only when a scene stages a floor/backdrop (hybrid decision); the devices' own analytic presentation shadows remain the default everywhere else. */
 export interface ThemeShadowSpec {
   technique: "map" | "none";
   /** False disables real cast shadows and catchers while retaining the configured style. */
@@ -312,6 +312,8 @@ export interface TextAnimationSpec {
   staggerMs: number;
   /** Stagger granularity when staggerMs > 0 (default "word"). */
   stagger?: "char" | "word";
+  /** Hold before the in starts, ms (clamped to ≥ 0 at resolve; the out never shifts). */
+  delayMs?: number;
   /** fade-scale: starting scale, landing at 1 (clamped 0.05-4 at resolve; default 0.8). */
   startScale?: number;
   /** fade-scale: sweep the soft white shine band once during the scale-in. */
@@ -326,6 +328,28 @@ export interface TextAnimationSpec {
   distance?: number;
   /** An engine/ease.ts name. Absent keeps the theme's standard easing. */
   ease?: string;
+}
+
+/** Named text style presets (the "text look" catalogue), overridable per primitive and per scene via the sidecar's `textLook` (whole-spec, the textAnimation pattern). Params are per-look optionals, clamped and defaulted at resolve (toolkit/text/looks.ts). */
+export interface TextLookSpec {
+  /** "none" or a TEXT_LOOK_NAMES entry; unknown names coerce at resolve, never at parse. */
+  preset: string;
+  /** Primary look colour, hex. Absent falls back to the theme accent at render. */
+  colorA?: string;
+  /** Gradient stop B, hex. Absent renders a darkened colorA. */
+  colorB?: string;
+  /** Gradient axis in degrees (default 90, vertical). */
+  angleDeg?: number;
+  /** Outline stroke width in em (default 0.035). */
+  strokeEm?: number;
+  /** Outline: hide the fill, stroke only (default true). */
+  hollow?: boolean;
+  /** Neon glow / glass strength scalar 0..1 (default 0.6). */
+  intensity?: number;
+  /** Offset-print under-layer displacement in em (default 0.06). */
+  offsetEm?: number;
+  /** Arc: total bend in degrees, positive arcs upward (default 60). */
+  curveDeg?: number;
 }
 
 /** Card surfaces (layered-screenshot screens): corner radius as a fraction of the card's short edge, clamped 0..0.5 at parse. Absent themes take the toolkit's tuned constant. */
@@ -369,6 +393,7 @@ export interface Theme {
     easings: { standard: string; emphasized: string };
   };
   textAnimation?: TextAnimationSpec;
+  textLook?: TextLookSpec;
   card?: ThemeCard;
   /** v9 shape in memory (the v8 `key` alias normalises to `sun` on read); theme JSON files stay v8. */
   lighting?: LightingSpec;

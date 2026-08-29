@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "name": "Text motion — orbit",
+  "text": {
+    "headline": "MOMENTUM"
+  },
+  "textAnimation": { "in": "orbit", "out": "none", "staggerMs": 0 }
+}

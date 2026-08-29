@@ -73,11 +73,14 @@ import {
 import type { Resolved, ResolvedTransition } from "./sceneTimeline";
 import {
   EXT2_MIN_TYPE,
+  EXT3_MIN_TYPE,
   EXTENDED_MIN_TYPE,
   fragmentShader,
   fragmentShaderExt,
   fragmentShaderExt2,
   fragmentShaderExt2Hdr,
+  fragmentShaderExt3,
+  fragmentShaderExt3Hdr,
   fragmentShaderExtHdr,
   fragmentShaderHdr,
   SHAPE_ID,
@@ -113,6 +116,9 @@ interface CompositorState {
   /** v14 pack (types 10-12, GLSL3), its own generation for the same reason. */
   materialExt2: ShaderMaterial;
   materialExt2Hdr: ShaderMaterial;
+  /** v15 pack (types 13-25, GLSL3), its own generation for the same reason. */
+  materialExt3: ShaderMaterial;
+  materialExt3Hdr: ShaderMaterial;
   /** The comparison mask pair (before/after split), its own generation so it never recompiles the transition programs. */
   compareMaterial: ShaderMaterial;
   compareMaterialHdr: ShaderMaterial;
@@ -292,6 +298,8 @@ function ensureState(w: number, h: number): CompositorState {
   const materialExtHdr = makeCompositeMaterial(fragmentShaderExtHdr, true);
   const materialExt2 = makeCompositeMaterial(fragmentShaderExt2, true);
   const materialExt2Hdr = makeCompositeMaterial(fragmentShaderExt2Hdr, true);
+  const materialExt3 = makeCompositeMaterial(fragmentShaderExt3, true);
+  const materialExt3Hdr = makeCompositeMaterial(fragmentShaderExt3Hdr, true);
   const compareMaterial = makeCompareMaterial(compareFragmentShader);
   const compareMaterialHdr = makeCompareMaterial(compareFragmentShaderHdr);
   const quadScene = new Scene();
@@ -323,6 +331,8 @@ function ensureState(w: number, h: number): CompositorState {
     materialExtHdr,
     materialExt2,
     materialExt2Hdr,
+    materialExt3,
+    materialExt3Hdr,
     compareMaterial,
     compareMaterialHdr,
     mesh,
@@ -877,6 +887,11 @@ export function renderComposited(
         renderDofOverCanvas(gl, scene, camera, soloDof, dofUnion, size.x, size.y);
       }
     }
+    // Unframed scenes can still register panel content (the terminal block), drawn over the finished frame exactly as the overlay branch draws its own; a framed scene never reaches this (its draw sits inside the branch above).
+    if (!overlay) {
+      const panel = panelFor(idx);
+      if (panel) drawFramePanelOver(gl, scene, camera, hosts, persistent, panel, null);
+    }
     gl.setRenderTarget(prevTarget);
     releaseIdlePools({
       sceneTarget: !!overlay && usesSceneTarget(overlay),
@@ -987,6 +1002,11 @@ export function renderComposited(
       gl.setRenderTarget(tgtA);
       gl.render(scene, camera);
     }
+    // Panel content on a scene with no overlay PLAN (the terminal block). Guarded on the raw plan, not `overlayA`, so a framed scene under the hdr lane keeps its no-panel fallback unchanged.
+    if (!(overlays?.[tr.fromIndex] ?? null)) {
+      const panelA = panelFor(tr.fromIndex);
+      if (panelA) drawFramePanelOver(gl, scene, camera, hosts, persistent, panelA, tgtA);
+    }
   }
 
   const sideDofB = dofUnion && cameras?.b?.dof ? cameras.b.dof : null;
@@ -1052,6 +1072,11 @@ export function renderComposited(
       gl.setRenderTarget(tgtB);
       gl.render(scene, camera);
     }
+    // The B-side twin of the A-side no-plan panel draw above.
+    if (!(overlays?.[tr.toIndex] ?? null)) {
+      const panelB = panelFor(tr.toIndex);
+      if (panelB) drawFramePanelOver(gl, scene, camera, hosts, persistent, panelB, tgtB);
+    }
   }
 
   // The composite quad ignores `camera`; sets the dominant scene's pose here so both overlay branches below render the persistent layer with it, and the same for render state (which also feeds the dip-colour fallback in setCompositeUniforms below).
@@ -1065,17 +1090,21 @@ export function renderComposited(
   // Effects: composites in linear into the composer (which owns tone-map + sRGB encode); no effects: composites straight to the default FB with sRGB encode, the original path, unchanged.
   const id = TYPE_ID[tr.type];
   const activeMaterial =
-    id >= EXT2_MIN_TYPE
+    id >= EXT3_MIN_TYPE
       ? hdrLane
-        ? st.materialExt2Hdr
-        : st.materialExt2
-      : id >= EXTENDED_MIN_TYPE
+        ? st.materialExt3Hdr
+        : st.materialExt3
+      : id >= EXT2_MIN_TYPE
         ? hdrLane
-          ? st.materialExtHdr
-          : st.materialExt
-        : hdrLane
-          ? st.materialHdr
-          : st.material;
+          ? st.materialExt2Hdr
+          : st.materialExt2
+        : id >= EXTENDED_MIN_TYPE
+          ? hdrLane
+            ? st.materialExtHdr
+            : st.materialExt
+          : hdrLane
+            ? st.materialHdr
+            : st.material;
   st.mesh.material = activeMaterial;
   setCompositeUniforms(
     activeMaterial.uniforms,

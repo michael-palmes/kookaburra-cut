@@ -4,6 +4,150 @@ All notable changes to Kookaburra Cut are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.15.1] - 2026-08-26
+
+### Fixed
+
+- The iPad Pro 13 now appears in the device catalogue. The 0.15.0 build was
+  packaged without the iPad's 3D model, so the device it introduced was hidden
+  from the pickers and any saved reference to it rendered as the Android
+  handset.
+
+## [0.15.0] - 2026-08-25
+
+### Added
+
+- Thirteen new shader transitions in a fourth material generation: ink bleed,
+  flow morph, shockwave, glass sweep, rack focus, halftone, light sweep,
+  shatter, pixel stretch, chroma split, datamosh, prism fold and spin blur,
+  each with its own options.
+- A declarative options schema on the transition catalogue: every transition's
+  parameters (intensity, softness, focal point, blocks, steps, parallax,
+  shapes) now render as labelled controls in the picker, including the
+  previously hidden parameters on the existing thirteen types.
+- Hovering a transition card plays that transition in the picker's live
+  preview, so a click is no longer needed to see it.
+- The picker groups its cards into four feel sections: dissolves and focus,
+  wipes and reveals, motion, digital and bold.
+- Devices cast their real shadow from one analytic projector that follows the
+  true silhouette and pose, so lifts, spins and lid angles read correctly.
+- Ten presentation shadow modes in one ordered picker, from Soft contact
+  through to Wet floor, including a sun sweep that draws the outline and its
+  swept copy as one hull fading down the screen diagonal.
+- Device keyframes: pose deltas per device sit under the motion presets with
+  their own Devices timeline lane, and a gizmo drag shapes the nearest key.
+- The iPad Pro 13 joins the device catalogue as its first tablet, in Silver and
+  Space Black, with preview cards, screen media and the analytic cast shadow.
+- A Start delay in the device Screen group holds a screen video's first frame
+  until the delay elapses, set in seconds and settable per comparison side.
+
+### Changed
+
+- The Left-right, Up-down and Depth device position sliders keep any typed
+  value, in the device drill and in Arrange devices; the thumb pins at either
+  end of the track rather than clamping the number.
+- Presentation shadows stand down on staged floors, where the floor already
+  receives the scene's own shadows.
+
+### Fixed
+
+- The transition drill stays open when a transition or option is applied;
+  leaving is back, cancel or Escape.
+
+## [0.14.0] - 2026-08-25
+
+### Added
+
+- A creative text motion pack: twenty in and out presets sampled per character
+  or per word, among them orbit, slam, highlight wipe, word cycle, spotlight,
+  converge and vapor, driven by new per-unit fields for rotation, stretch, mask
+  clip, accent mix, SDF weight and chromatic echoes.
+- Nine named text looks, themeable and settable per line: gradient, outline,
+  neon, offset print, highlight block, frosted, arc, plus 3D glass and chrome.
+- A Text style catalogue drill with a rendered preview card for every motion
+  preset and look, a delay start, and a pinned delivery and timing footer.
+- Size as a percentage on every typography element, reaching the counter, the
+  brand lockup, chips and 3D text.
+
+### Changed
+
+- Project cards on the welcome screen open the shared context menu from the
+  overflow button and on right click, with leading icons and a move to group
+  glyph.
+- Welcome search covers every project, with the rail following to All, and
+  picking a group clears the query.
+
+### Fixed
+
+- Text drill copy fields write while you type: the preview follows each
+  keystroke, the edit commits as one undo step, and Escape restores the copy as
+  it was.
+- Delete in the text drill removes the selected element rather than the group.
+  The last element takes its emptied group with it and closes the drill.
+
+## [0.13.0] - 2026-08-24
+
+### Added
+
+- A redesigned Scene inspector: a full-height, content-first surface with
+  stacked navigation, first-click selection on the canvas, and first-class
+  editing for images, devices, lighting, comparisons and objects. Ordered copy,
+  styles, icons and motion live in managed Text groups, and frame chrome is
+  separated from scene content.
+- Twenty-four new themes across professional, expressive, digital-asset and
+  finance categories, browsable by category with search, Recent and My themes,
+  keyboard navigation and lazy previews. Four bundled fonts and two static
+  backdrops come with them.
+- Twelve app-update templates, backed by a sample art pack so every device
+  screen shows believable UI, plus rendered card art in the picker that cycles
+  on hover.
+- Phone and Phone Landscape aspects, with the iPhone 17 Pro panel at its native
+  1206x2622.
+- Still images in the video editor as two second freeze clips, and one scene
+  media family with authored Stage, Overlay and Window hosts, drag gizmos,
+  window chrome on any host and several videos in a scene.
+- A scene manager that deletes a whole selection, a Delete unused sheet that
+  clears unreferenced assets, a colour picker with a foldable spectrum,
+  ninety-six presets, a native eyedropper and the project's own colours, and
+  scene lengths in minutes and seconds.
+- A keyed divider angle for comparison scenes: keys are authored in the
+  timeline lane, then refined by a slider and an angle field that edit the key
+  nearest the playhead. Grip styles, a hex divider colour and tints come with
+  them, and Before/After selectors move inside Device, Theme, Background and
+  Lighting.
+- Devices are offered by what the build carries, and the After side gains its
+  own staging, finish, shadow and Edit video.
+
+### Changed
+
+- The comparison divider rides through transitions instead of standing down, so
+  a comparison stays whole as one scene blends into the next.
+- Space commits and plays from numeric, hex and slider fields, header trash
+  icons lose their confirm step, and Delete removes the selected content.
+- The media picker preview opens inside the inspector, with chevrons and arrow
+  keys stepping the grid, and the Content header takes an accent-filled Add
+  button distinct from the per-type add icons.
+- Copy to project is an inspector drill with snapshot cards, and duplicate
+  names warn as you type.
+- Terminal autoruns queue on FIFO tickets, take their own dev port and launch
+  without stealing focus, so they sit beside an interactive session instead of
+  fighting it.
+
+### Fixed
+
+- Adding or reordering scenes no longer strands a device over a title scene.
+  Scene document edits address the written file rather than an index captured
+  before the write, and duplicating mints fresh ids.
+- A file used both as a device screen and as an image backdrop is no longer
+  flipped upside down by mount order.
+- Gizmos track a framed scene's cutout viewport, and a transparent panel with a
+  shaped cutout composes through it.
+- The media browser toolbar wraps rather than clipping a control, and its bulk
+  sweep collapses into an overflow menu where the bar is narrow.
+- Chart lines and areas trim at the value axis bounds, scene rows stand down
+  while their rename field is live, and the compare pane letterboxes beside the
+  preview instead of covering the controls.
+
 ## [0.12.0] - 2026-08-07
 
 ### Added

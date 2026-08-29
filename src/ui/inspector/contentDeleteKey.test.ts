@@ -109,6 +109,11 @@ describe("the Scene tab's Delete key", () => {
     expect(sceneTabSource).toContain('applyCurrentContentPlan(row, "delete", project.id');
     expect(sceneTabSource).toContain('{ type: "remove-group", groupKey: row.selectionTarget.id }');
   });
+
+  it("routes the text drill to the selected element before the group trash", () => {
+    expect(sceneTabSource).toContain('gizmoDomainForDrillStack(inspector.drillStack) === "text"');
+    expect(sceneTabSource).toContain("deleteSelectedTextItemRef.current?.()");
+  });
 });
 
 describe("clickInspectorRemoveAction", () => {

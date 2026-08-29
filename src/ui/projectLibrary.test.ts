@@ -11,6 +11,7 @@ import {
   projectGroupRows,
   selectedProjectGroup,
   sortProjectsByRecency,
+  sortProjectsByUpdated,
   UNGROUPED_PROJECTS,
   welcomeRailRows,
   welcomeRailSections,
@@ -127,6 +128,32 @@ describe("sortProjectsByRecency", () => {
   it("leaves the caller's array alone", () => {
     const input = [...rows];
     sortProjectsByRecency(input);
+    expect(input).toEqual(rows);
+  });
+});
+
+describe("sortProjectsByUpdated", () => {
+  const rows = [
+    { name: "Stale", contentMtimeMs: 100, lastOpenedMs: 900 },
+    { name: "Fresh", contentMtimeMs: 800, lastOpenedMs: null },
+    { name: "Opened only", contentMtimeMs: null, lastOpenedMs: 500 },
+    { name: "Alpha tie", contentMtimeMs: 800, lastOpenedMs: null },
+    { name: "Untouched", contentMtimeMs: null, lastOpenedMs: null },
+  ];
+
+  it("orders by content edit first, falls back to last opened, ties by name", () => {
+    expect(sortProjectsByUpdated(rows).map((p) => p.name)).toEqual([
+      "Alpha tie",
+      "Fresh",
+      "Opened only",
+      "Stale",
+      "Untouched",
+    ]);
+  });
+
+  it("leaves the caller's array alone", () => {
+    const input = [...rows];
+    sortProjectsByUpdated(input);
     expect(input).toEqual(rows);
   });
 });

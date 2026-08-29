@@ -53,6 +53,7 @@ import {
   resolveTemplateManagedTextCopy,
   usesSpecialisedTextRenderer,
 } from "./managedText";
+import { SceneTerminalPanel } from "./SceneTerminalPanel";
 import { type ResolvedChart, resolveChart } from "./sceneChart";
 import { SceneContext, SceneDocContext, SceneThemeContext } from "./sceneContext";
 import { useSceneDoc } from "./sceneDoc";
@@ -334,6 +335,7 @@ function PanelContent({ frame }: { frame: FrameSpec }) {
           from={700}
           to={1300}
           anchorFrac={chipAnchor}
+          textKey="chip"
         />
       )}
       {chart && slot && <MountedChart chart={chart} panel={slot.rect} />}
@@ -352,7 +354,7 @@ function PanelContent({ frame }: { frame: FrameSpec }) {
   );
 }
 
-/** Hosts one scene's overlay panel content, mounted in App.tsx as a SIBLING of the scene hosts (never a child), so it lays out against the full frame, not the cutout, and the compositor can draw it over the composited slide. Provides the scene contexts it needs (time, doc, theme) but deliberately NO `FormatContext`, so `useFormat()` resolves the real frame; registers its group so the compositor can gate it to the active scene. */
+/** Hosts one scene's screen-locked panel content, mounted as a SIBLING of the scene hosts (never a child), so it lays out against the full frame, not the cutout, and the compositor can draw it over the composited slide. Carries the frame overlay's editorial column and/or the doc's terminal window, so a scene needs only one registered panel group whichever it declares. Provides the scene contexts it needs (time, doc, theme) but deliberately NO `FormatContext`, so `useFormat()` resolves the real frame; registers its group so the compositor can gate it to the active scene. */
 export function FramePanel({
   index,
   startMs,
@@ -366,14 +368,14 @@ export function FramePanel({
   durationMs: number;
   doc?: SceneDoc;
   theme?: Theme;
-  frame: FrameSpec;
+  frame?: FrameSpec;
 }) {
   const key = useId();
   const groupRef = useRef<Group>(null);
-  const hasSceneImages = useMemo(
-    () => sceneMediaInFrame(resolveSceneDocMedia(doc)).length > 0,
-    [doc],
-  );
+  const hasTerminal = !!doc?.terminal;
+  // The registry flag really asks for the one-after-composite draw on comparison scenes; a terminal needs it exactly as first-class Overlay images do.
+  const hasSceneImages =
+    useMemo(() => sceneMediaInFrame(resolveSceneDocMedia(doc)).length > 0, [doc]) || hasTerminal;
 
   useEffect(() => {
     const group = groupRef.current;
@@ -387,7 +389,10 @@ export function FramePanel({
       <SceneDocContext.Provider value={doc ?? null}>
         <SceneThemeContext.Provider value={theme ?? null}>
           <group ref={groupRef} visible={false}>
-            <PanelContent frame={frame} />
+            {frame && <PanelContent frame={frame} />}
+            {hasTerminal && (
+              <SceneTerminalPanel orderBase={nextFrameStackOrder(frame?.decorations ?? []) + 64} />
+            )}
           </group>
         </SceneThemeContext.Provider>
       </SceneDocContext.Provider>

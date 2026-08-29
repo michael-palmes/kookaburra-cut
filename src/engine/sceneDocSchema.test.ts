@@ -575,6 +575,88 @@ describe("parseSceneDoc", () => {
     expect(bad).toBeDefined();
   });
 
+  it("parses textAnimation.delayMs through the sidecar and per-key overrides", () => {
+    const doc = parseSceneDoc(
+      {
+        version: 1,
+        textAnimation: { in: "fade", out: "none", staggerMs: 0, delayMs: 250 },
+        textAnimationOverrides: {
+          hero: { in: "slide", out: "none", staggerMs: 0, delayMs: 400.5 },
+        },
+      },
+      "test",
+    );
+    expect(doc?.textAnimation?.delayMs).toBe(250);
+    expect(doc?.textAnimationOverrides?.hero?.delayMs).toBe(400.5);
+    // An invalid delayMs drops the field alone, never the spec.
+    const bad = parseSceneDoc(
+      { version: 1, textAnimation: { in: "fade", out: "none", delayMs: "soon" } },
+      "test",
+    );
+    expect(bad?.textAnimation).toEqual({ in: "fade", out: "none", staggerMs: 0 });
+  });
+
+  it("parses the textLook sidecar trio (the textAnimation pattern)", () => {
+    const doc = parseSceneDoc(
+      {
+        version: 1,
+        textLook: { preset: "gradient", colorA: "#ff0055", colorB: "#220011", angleDeg: 45 },
+        textLookForce: true,
+        textLookOverrides: {
+          "title-1": { preset: "outline", strokeEm: 0.05, hollow: true },
+          "bad-1": { colorA: "#fff" },
+        },
+      },
+      "test",
+    );
+    expect(doc?.textLook).toEqual({
+      preset: "gradient",
+      colorA: "#ff0055",
+      colorB: "#220011",
+      angleDeg: 45,
+    });
+    expect(doc?.textLookForce).toBe(true);
+    // Overrides parse per-entry: the preset-less entry drops alone.
+    expect(doc?.textLookOverrides).toEqual({
+      "title-1": { preset: "outline", strokeEm: 0.05, hollow: true },
+    });
+  });
+
+  it("degrades malformed textLook fields without touching the doc", () => {
+    // A spec with no preset drops the field, never the doc.
+    const bad = parseSceneDoc({ version: 1, textLook: { colorA: "#fff" } }, "test");
+    expect(bad?.textLook).toBeUndefined();
+    expect(bad).toBeDefined();
+    // Wrong-typed params drop per-field, the rest of the spec survives; unknown fields are ignored.
+    const mixed = parseSceneDoc(
+      {
+        version: 1,
+        textLook: { preset: "neon", intensity: "high", curveDeg: 30, sparkle: true },
+      },
+      "test",
+    );
+    expect(mixed?.textLook).toEqual({ preset: "neon", curveDeg: 30 });
+    // Out-of-range numbers pass through parse verbatim; clamping happens at resolve.
+    const wide = parseSceneDoc({ version: 1, textLook: { preset: "neon", intensity: 5 } }, "test");
+    expect(wide?.textLook).toEqual({ preset: "neon", intensity: 5 });
+    // A non-true force and a non-object overrides map both drop.
+    const off = parseSceneDoc(
+      { version: 1, textLookForce: "yes", textLookOverrides: ["nope"] },
+      "test",
+    );
+    expect(off?.textLookForce).toBeUndefined();
+    expect(off?.textLookOverrides).toBeUndefined();
+  });
+
+  it("leaves legacy docs without textLook fields untouched (null-for-legacy)", () => {
+    const doc = parseSceneDoc({ version: 1, name: "Legacy" }, "test");
+    expect(doc).toBeDefined();
+    expect(doc?.textLook).toBeUndefined();
+    expect(doc?.textLookForce).toBeUndefined();
+    expect(doc?.textLookOverrides).toBeUndefined();
+    expect(doc && "textLook" in doc).toBe(false);
+  });
+
   it("parses the fixed-background override and degrades invalid ones (v11)", () => {
     const doc = parseSceneDoc(
       { version: 1, background: { type: "image", src: "kookaburra:loft-studio", parallax: 0.05 } },
@@ -698,6 +780,54 @@ describe("parseSceneDoc", () => {
     );
     expect(degraded?.deviceLayout).toEqual({ preset: "row", devices: { d3: { scale: 2 } } });
     expect(parseSceneDoc({ version: 1, deviceLayout: 7 }, "test")?.deviceLayout).toBeUndefined();
+    vi.restoreAllMocks();
+  });
+
+  it("round-trips a deviceTrack block and degrades its bad entries alone", () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const block = {
+      keys: [
+        { id: "k1", tMs: 0, pose: { d1: { offset: [0, 0, 0] } } },
+        {
+          id: "k2",
+          tMs: 800,
+          pose: {
+            d1: { offset: [1, 0.5, 0], rotationDeg: [0, 20, 0], scale: 1.4 },
+            d2: { lidDeg: 30 },
+          },
+        },
+      ],
+      segments: [{ from: "k1", to: "k2", ease: "outCubic" }],
+    };
+    expect(parseSceneDoc({ version: 1, deviceTrack: block }, "test")?.deviceTrack).toEqual(block);
+
+    const degraded = parseSceneDoc(
+      {
+        version: 1,
+        deviceTrack: {
+          keys: [
+            { id: "k1", tMs: "soon", pose: {} },
+            {
+              id: "k2",
+              tMs: 100,
+              pose: { d1: { offset: [1, 2], scale: "big", lidDeg: 12 }, d2: 7 },
+            },
+          ],
+          segments: [{ from: "k2", ease: "linear" }],
+        },
+      },
+      "test",
+    );
+    expect(degraded?.deviceTrack).toEqual({
+      keys: [{ id: "k2", tMs: 100, pose: { d1: { lidDeg: 12 } } }],
+      segments: [],
+    });
+
+    // An empty or malformed track drops whole, so absence stays legible.
+    expect(
+      parseSceneDoc({ version: 1, deviceTrack: { keys: [] } }, "test")?.deviceTrack,
+    ).toBeUndefined();
+    expect(parseSceneDoc({ version: 1, deviceTrack: 7 }, "test")?.deviceTrack).toBeUndefined();
     vi.restoreAllMocks();
   });
 

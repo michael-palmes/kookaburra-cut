@@ -1,11 +1,31 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { Theme } from "../../theme/tokens";
 import {
+  CHROMA_EM,
+  CONVERGE_EM,
+  CONVERGE_STREAK,
   computeStaggerUnits,
   DEFAULT_START_SCALE,
+  DEVELOP_SOFT_EM,
+  DOLLY_EM,
+  DOLLY_JITTER_EM,
+  DOLLY_NEAR_EM,
+  DOLLY_SOFT_EM,
   EDGE_SENTINEL,
+  FLIP_DIP_EM,
+  FLIP_RAD,
+  GLINT_HALF_W,
+  GLINT_INTENSITY,
   hasOwnAnimationProps,
+  LINE_SCALE_X0,
+  LINE_SCALE_Y0,
   MAX_STAGGER_UNITS,
+  ORBIT_SWEEP_RAD,
+  presetNeedsShaderPath,
+  RIBBON_BOW_EM,
+  RIBBON_RAD,
+  RISE_MASK_EM,
+  RISE_MASK_EXIT,
   resolveTextAnimation,
   resolveTextAnimationWithDoc,
   SCATTER_DEPTH_EM,
@@ -14,15 +34,41 @@ import {
   SCATTER_ROLL_MIN_RAD,
   SCATTER_TILT_RAD,
   SHINE_HALF_W,
+  SHINE_INTENSITY,
+  SLAM_OUT_SCALE,
+  SLAM_OVERSHOOT,
+  SLAM_SOFT_EM,
+  SLAM_START_SCALE,
+  SPOT_DIM,
+  SPOT_SCALE,
+  SPRING_DAMP,
+  SPRING_OUT_BUMP,
+  SPRING_START_SCALE,
+  STAND_RAD,
+  STAND_SETTLE_EM,
   STATIC_TEXT_PRESET,
   sampleTextUnit,
   shineBand,
   type TextAnimTiming,
+  type TextPresetName,
+  type TextUnitSample,
+  TRACK_SOFT_EM,
+  TRACK_SPREAD,
+  TRACK_TIGHTEN,
   TWIST_RAD,
   TWIST_START_SCALE,
   textAnimationEndMs,
+  textAnimationWindowToMs,
+  UNDERLINE_RISE_EM,
+  underlineProgress,
   unitHash01,
   unitIndexForKey,
+  VAPOR_RATE_MIN,
+  VAPOR_RISE_EM,
+  VAPOR_SOFT_EM,
+  VAPOR_WOBBLE_EM,
+  WEIGHT_EM,
+  WORD_CYCLE_POP_SCALE,
 } from "./presets";
 
 const baseTheme: Theme = {
@@ -182,6 +228,54 @@ describe("resolveTextAnimation", () => {
     if (!anim || !legacy) throw new Error("expected resolved text animation");
     expect(textAnimationEndMs(200, 1100, anim)).toBe(650);
     expect(textAnimationEndMs(200, 1100, legacy)).toBe(1100);
+  });
+
+  it("resolves delayMs props > doc > theme, treating 0 and absent identically", () => {
+    const delayTheme: Theme = {
+      ...baseTheme,
+      textAnimation: { in: "fade", out: "none", staggerMs: 0, delayMs: 400 },
+    };
+    expect(resolveTextAnimation({}, delayTheme)?.delayMs).toBe(400);
+    const docSpec = { in: "fade", out: "none", staggerMs: 0, delayMs: 250 };
+    expect(resolveTextAnimation({}, delayTheme, docSpec)?.delayMs).toBe(250);
+    expect(resolveTextAnimation({ delayMs: 120 }, delayTheme, docSpec)?.delayMs).toBe(120);
+    // 0 resolves EXACTLY like absent (the written-then-zeroed sidecar case).
+    expect(resolveTextAnimation({ delayMs: 0 }, themed)).toEqual(resolveTextAnimation({}, themed));
+    // The prop alone opts a legacy theme in (the staggerMs precedent).
+    expect(resolveTextAnimation({ delayMs: 200 }, baseTheme)).toMatchObject({
+      preset: "fade",
+      delayMs: 200,
+    });
+    // No delay anywhere leaves the field off entirely (the null-for-legacy contract).
+    expect("delayMs" in (resolveTextAnimation({}, themed) ?? {})).toBe(false);
+  });
+
+  it("clamps a negative delayMs to 0 with a single warning", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      expect(resolveTextAnimation({ delayMs: -123 }, themed)?.delayMs).toBeUndefined();
+      resolveTextAnimation({ delayMs: -123 }, themed);
+      expect(warn).toHaveBeenCalledTimes(1);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it("shifts the effective in end by delayMs while the window end stays put", () => {
+    const delayed = resolveTextAnimation({}, baseTheme, {
+      in: "fade-up",
+      out: "none",
+      staggerMs: 0,
+      delayMs: 300,
+      durationMs: 450,
+    });
+    if (!delayed) throw new Error("expected resolved text animation");
+    expect(textAnimationWindowToMs(200, 1100, delayed)).toBe(650);
+    expect(textAnimationEndMs(200, 1100, delayed)).toBe(950);
+    const noDuration = resolveTextAnimation({ delayMs: 300 }, themed);
+    if (!noDuration) throw new Error("expected resolved text animation");
+    expect(textAnimationWindowToMs(200, 1100, noDuration)).toBe(1100);
+    expect(textAnimationEndMs(200, 1100, noDuration)).toBe(1400);
   });
 
   it("selects a keyed exception while retaining the scene-wide base for other items", () => {
@@ -675,6 +769,7 @@ describe("resolveTextAnimationWithDoc (v11 · M6 — the force override)", () =>
     expect(hasOwnAnimationProps({})).toBe(false);
     expect(hasOwnAnimationProps({ preset: "fade" })).toBe(true);
     expect(hasOwnAnimationProps({ staggerMs: 40 })).toBe(true);
+    expect(hasOwnAnimationProps({ delayMs: 200 })).toBe(true);
     expect(hasOwnAnimationProps({ delivery: "by-paragraph" })).toBe(true);
   });
 });
@@ -774,5 +869,653 @@ describe("unitIndexForKey (the shader walk's CPU twin)", () => {
 
   it("clamps to the last unit past every edge", () => {
     expect(unitIndexForKey(units([EDGE_SENTINEL]), 1e31)).toBe(0);
+  });
+});
+
+// ── Wave-2 creative pack ─────────────────────────────────────────────────────
+
+const WAVE2_PRESETS = [
+  "tracking",
+  "slam",
+  "dolly",
+  "chromatic",
+  "line-stretch",
+  "highlight-wipe",
+  "rise-mask",
+  "word-cycle",
+  "ribbon",
+  "stand-up",
+  "spring-pop",
+  "spotlight",
+  "underline-draw",
+  "orbit",
+  "weight-build",
+  "develop",
+  "flip-cascade",
+  "converge",
+  "glint-wipe",
+  "vapor",
+] as const;
+const LEGACY_PRESETS = [
+  "fade",
+  "fade-up",
+  "blur-in",
+  "slide",
+  "mask-reveal",
+  "fade-scale",
+  "twist-scale",
+  "scatter-scale",
+] as const;
+
+/** The motion-pack v2 fields at their neutral defaults (Math.abs tolerates ±0). */
+function expectNeutralV2(s: TextUnitSample, label: string) {
+  expect(Math.abs(s.rotXRad), label).toBe(0);
+  expect(s.scaleX, label).toBe(1);
+  expect(s.scaleY, label).toBe(1);
+  expect(s.clipFinal, label).toBe(false);
+  expect(Math.abs(s.colorMix), label).toBe(0);
+  expect(Math.abs(s.weightEm), label).toBe(0);
+  expect(Math.abs(s.softEm), label).toBe(0);
+  expect(Math.abs(s.chromaEm), label).toBe(0);
+  expect(s.highlight, label).toEqual([0, 0]);
+}
+
+describe("wave-2 resolution (forced granularities + direction)", () => {
+  const forcedChar = ["tracking", "orbit", "develop", "flip-cascade", "converge", "vapor"] as const;
+  const forcedWord = [
+    "dolly",
+    "highlight-wipe",
+    "rise-mask",
+    "word-cycle",
+    "ribbon",
+    "stand-up",
+    "spring-pop",
+    "spotlight",
+  ] as const;
+
+  it("forces char with the char default delay", () => {
+    for (const preset of forcedChar) {
+      const anim = resolveTextAnimation({ preset }, baseTheme);
+      expect(anim?.granularity, preset).toBe("char");
+      expect(anim?.staggerMs, preset).toBe(35);
+    }
+  });
+
+  it("forces word with the word default delay", () => {
+    for (const preset of forcedWord) {
+      const anim = resolveTextAnimation({ preset }, baseTheme);
+      expect(anim?.granularity, preset).toBe("word");
+      expect(anim?.staggerMs, preset).toBe(90);
+    }
+  });
+
+  it("an out-only wave-2 preset still forces (vapor is designed as an out)", () => {
+    const anim = resolveTextAnimation({ preset: "fade", outPreset: "vapor" }, baseTheme);
+    expect(anim?.granularity).toBe("char");
+  });
+
+  it("explicit choices still win over the forced default", () => {
+    expect(
+      resolveTextAnimation({ preset: "tracking", delivery: "all-at-once" }, baseTheme)?.granularity,
+    ).toBeNull();
+    expect(resolveTextAnimation({ preset: "dolly", stagger: "char" }, baseTheme)?.granularity).toBe(
+      "char",
+    );
+  });
+
+  it("block wave-2 presets stay block when nothing chose", () => {
+    for (const preset of [
+      "slam",
+      "chromatic",
+      "line-stretch",
+      "underline-draw",
+      "weight-build",
+      "glint-wipe",
+    ] as const) {
+      expect(resolveTextAnimation({ preset }, baseTheme)?.granularity, preset).toBeNull();
+    }
+  });
+
+  it("direction reaches orbit's sweep sign the way it reaches twist-scale", () => {
+    expect(resolveTextAnimation({ preset: "orbit" }, baseTheme)?.params.twistDir).toBe(1);
+    expect(
+      resolveTextAnimation({ preset: "orbit", direction: "from-right" }, baseTheme)?.params
+        .twistDir,
+    ).toBe(-1);
+  });
+});
+
+describe("presetNeedsShaderPath", () => {
+  it("true for every wave-2 preset, false for every legacy path", () => {
+    for (const preset of WAVE2_PRESETS) expect(presetNeedsShaderPath(preset), preset).toBe(true);
+    const legacy: TextPresetName[] = ["none", STATIC_TEXT_PRESET, ...LEGACY_PRESETS];
+    for (const preset of legacy) expect(presetNeedsShaderPath(preset), preset).toBe(false);
+  });
+});
+
+describe("the null-for-legacy contract (v2 fields stay neutral)", () => {
+  const ctx = { count: 3, unitCenterEm: [1, 0] as const };
+
+  it("every legacy preset samples neutral v2 fields across in, rest and out", () => {
+    for (const preset of LEGACY_PRESETS) {
+      for (const ms of [100, 300, 500, 1150, 1250]) {
+        const s = sampleTextUnit(timing({ preset, outPreset: preset }, 1000), 0, ms, ctx);
+        expectNeutralV2(s, `${preset} @ ${ms}`);
+      }
+    }
+  });
+
+  it("pins a complete legacy sample byte-for-byte (fade-up mid-flight)", () => {
+    expect(sampleTextUnit(timing({ preset: "fade-up" }), 0, 300)).toEqual({
+      alpha: 0.5,
+      dxEm: 0,
+      dyEm: -0.175,
+      scale: 1,
+      blurEm: 0,
+      sweep: [0, 1],
+      rotYRad: 0,
+      shineU: -1,
+      rotZRad: 0,
+      dzEm: 0,
+      rotXRad: 0,
+      scaleX: 1,
+      scaleY: 1,
+      clipFinal: false,
+      colorMix: 0,
+      weightEm: 0,
+      softEm: 0,
+      chromaEm: 0,
+      highlight: [0, 0],
+    });
+  });
+
+  it("every wave-2 preset returns to neutral v2 fields at rest (p=1, no out)", () => {
+    for (const preset of WAVE2_PRESETS) {
+      for (const unit of [0, 2]) {
+        const s = sampleTextUnit(timing({ preset, outPreset: "none" }), unit, 5000, {
+          count: 3,
+          unitCenterEm: [1.5, 0.2],
+        });
+        expectNeutralV2(s, `${preset} unit ${unit}`);
+      }
+    }
+  });
+});
+
+describe("wave-2 preset goldens", () => {
+  it("tracking converges toward the centre and sharpens; the out drifts wider", () => {
+    const ctx = { count: 4, unitCenterEm: [2, 0] as const };
+    const tIn = timing({ preset: "tracking", granularity: "char" });
+    const start = sampleTextUnit(tIn, 0, 100, ctx);
+    expect(start.alpha).toBe(0);
+    expect(start.dxEm).toBeCloseTo(-2 * TRACK_TIGHTEN, 12);
+    expect(start.softEm).toBeCloseTo(TRACK_SOFT_EM, 12);
+    const mid = sampleTextUnit(tIn, 0, 300, ctx);
+    expect(mid.dxEm).toBeCloseTo(-TRACK_TIGHTEN, 12);
+    expect(mid.alpha).toBeCloseTo(0.5, 12);
+    const tOut = timing({ preset: "tracking", outPreset: "tracking", granularity: "char" }, 1000);
+    const out = sampleTextUnit(tOut, 0, 1200, ctx);
+    expect(out.dxEm).toBeCloseTo(2 * TRACK_SPREAD * 0.5, 12);
+    expect(out.softEm).toBeCloseTo(TRACK_SOFT_EM * 0.5, 12);
+    expect(out.alpha).toBeCloseTo(0.5, 12);
+  });
+
+  it("slam drops from oversize with a capped landing dip", () => {
+    const tIn = timing({ preset: "slam" });
+    const start = sampleTextUnit(tIn, 0, 100);
+    expect(start.scale).toBeCloseTo(SLAM_START_SCALE, 12);
+    expect(start.softEm).toBeCloseTo(SLAM_SOFT_EM, 12);
+    expect(start.alpha).toBe(0);
+    expect(sampleTextUnit(tIn, 0, 260).alpha).toBeCloseTo(1, 12);
+    // p = 0.85: the landing bump's midpoint, the full compression
+    expect(sampleTextUnit(tIn, 0, 440).scale).toBeCloseTo(
+      1 + (SLAM_START_SCALE - 1) * 0.15 - SLAM_OVERSHOOT,
+      12,
+    );
+    expect(sampleTextUnit(tIn, 0, 500).scale).toBeCloseTo(1, 12);
+    const out = sampleTextUnit(timing({ preset: "slam", outPreset: "slam" }, 1000), 0, 1200);
+    expect(out.scale).toBeCloseTo(1 + (SLAM_OUT_SCALE - 1) * 0.5, 12);
+    expect(out.alpha).toBeCloseTo(0.5, 12);
+    expect(out.softEm).toBeCloseTo(SLAM_SOFT_EM * 0.5, 12);
+  });
+
+  it("dolly pulls forward from hashed depth and exits past the camera", () => {
+    const one = { count: 1 } as const;
+    const depth = DOLLY_EM + DOLLY_JITTER_EM * unitHash01(0, 3);
+    const tIn = timing({ preset: "dolly", granularity: "word" });
+    const start = sampleTextUnit(tIn, 0, 100, one);
+    expect(start.dzEm).toBeCloseTo(-depth, 12);
+    expect(start.softEm).toBeCloseTo(DOLLY_SOFT_EM, 12);
+    expect(start.alpha).toBe(0);
+    expect(sampleTextUnit(tIn, 0, 300, one).dzEm).toBeCloseTo(-depth / 2, 12);
+    const out = sampleTextUnit(timing({ preset: "dolly", outPreset: "dolly" }, 1000), 0, 1200, one);
+    expect(out.dzEm).toBeCloseTo(DOLLY_NEAR_EM * 0.5, 12);
+    expect(out.alpha).toBeCloseTo(0.5, 12);
+  });
+
+  it("chromatic converges the split then re-splits on the out", () => {
+    const tIn = timing({ preset: "chromatic" });
+    expect(sampleTextUnit(tIn, 0, 100).chromaEm).toBeCloseTo(CHROMA_EM, 12);
+    const mid = sampleTextUnit(tIn, 0, 300);
+    expect(mid.chromaEm).toBeCloseTo(CHROMA_EM / 2, 12);
+    expect(mid.alpha).toBeCloseTo(0.5, 12);
+    const out = sampleTextUnit(
+      timing({ preset: "chromatic", outPreset: "chromatic" }, 1000),
+      0,
+      1200,
+    );
+    expect(out.chromaEm).toBeCloseTo(CHROMA_EM / 2, 12);
+    expect(out.alpha).toBeCloseTo(0.5, 12);
+  });
+
+  it("line-stretch opens from a line with the shine tied to the opening", () => {
+    const tIn = timing({ preset: "line-stretch" });
+    const start = sampleTextUnit(tIn, 0, 100);
+    expect(start.scaleY).toBeCloseTo(LINE_SCALE_Y0, 12);
+    expect(start.scaleX).toBeCloseTo(LINE_SCALE_X0, 12);
+    expect(start.shineU).toBe(0);
+    expect(sampleTextUnit(tIn, 0, 200).alpha).toBeCloseTo(0.5, 12);
+    const mid = sampleTextUnit(tIn, 0, 300);
+    expect(mid.scaleY).toBeCloseTo(1 - (1 - LINE_SCALE_Y0) / 2, 12);
+    expect(mid.alpha).toBe(1);
+    expect(mid.shineU).toBeCloseTo(0.5, 12);
+    // out: collapse first, fade over the back half
+    const tOut = timing({ preset: "line-stretch", outPreset: "line-stretch" }, 1000);
+    const oMid = sampleTextUnit(tOut, 0, 1200);
+    expect(oMid.scaleY).toBeCloseTo(1 - (1 - LINE_SCALE_Y0) / 2, 12);
+    expect(oMid.alpha).toBeCloseTo(1, 12);
+    expect(sampleTextUnit(tOut, 0, 1300).alpha).toBeCloseTo(0.5, 12);
+  });
+
+  it("highlight-wipe sweeps the block on, chases it off, and mirrors on the out", () => {
+    const tIn = timing({ preset: "highlight-wipe", granularity: "word" });
+    const grow = sampleTextUnit(tIn, 0, 200);
+    expect(grow.highlight).toEqual([0, 0.5]);
+    expect(grow.sweep).toEqual([0, 0]);
+    expect(grow.alpha).toBe(1);
+    const chase = sampleTextUnit(tIn, 0, 400);
+    expect(chase.highlight).toEqual([0.5, 1]);
+    expect(chase.sweep).toEqual([0, 0.5]);
+    const rest = sampleTextUnit(tIn, 0, 500);
+    expect(rest.highlight).toEqual([0, 0]);
+    expect(rest.sweep).toEqual([0, 1]);
+    const tOut = timing(
+      { preset: "highlight-wipe", outPreset: "highlight-wipe", granularity: "word" },
+      1000,
+    );
+    const collect = sampleTextUnit(tOut, 0, 1100);
+    expect(collect.highlight).toEqual([0.5, 1]);
+    expect(collect.sweep).toEqual([0, 0.5]);
+    const leave = sampleTextUnit(tOut, 0, 1300);
+    expect(leave.highlight).toEqual([0, 0.5]);
+    expect(leave.sweep).toEqual([0, 0]);
+  });
+
+  it("rise-mask rises through its final bounds and exits up through the same mask", () => {
+    const tIn = timing({ preset: "rise-mask", granularity: "word" });
+    const start = sampleTextUnit(tIn, 0, 100);
+    expect(start.dyEm).toBeCloseTo(-RISE_MASK_EM, 12);
+    expect(start.clipFinal).toBe(true);
+    expect(start.alpha).toBe(0);
+    const mid = sampleTextUnit(tIn, 0, 300);
+    expect(mid.dyEm).toBeCloseTo(-RISE_MASK_EM / 2, 12);
+    expect(mid.alpha).toBeCloseTo(0.75, 12);
+    const rest = sampleTextUnit(tIn, 0, 500);
+    expect(rest.clipFinal).toBe(false);
+    expect(Math.abs(rest.dyEm)).toBe(0);
+    const tOut = timing({ preset: "rise-mask", outPreset: "rise-mask" }, 1000);
+    const out = sampleTextUnit(tOut, 0, 1200);
+    expect(out.dyEm).toBeCloseTo(RISE_MASK_EM * RISE_MASK_EXIT * 0.5, 12);
+    expect(out.clipFinal).toBe(true);
+    expect(out.alpha).toBeCloseTo(1, 12);
+    expect(sampleTextUnit(tOut, 0, 1300).alpha).toBeCloseTo(0.5, 12);
+  });
+
+  it("word-cycle slots words through the block centre; the last word holds", () => {
+    const ctx = { count: 3, unitCenterEm: [2, 0] as const };
+    const tIn = timing({ preset: "word-cycle", granularity: "word" });
+    const active = sampleTextUnit(tIn, 0, 150, ctx);
+    expect(active.alpha).toBe(1);
+    expect(active.scale).toBe(1);
+    expect(active.dxEm).toBe(-2);
+    expect(sampleTextUnit(tIn, 1, 150, ctx).alpha).toBe(0);
+    const popping = sampleTextUnit(tIn, 0, 100 + (400 * 0.125) / 3, ctx);
+    expect(popping.alpha).toBeCloseTo(0.5, 9);
+    expect(popping.scale).toBeCloseTo(1 - (1 - WORD_CYCLE_POP_SCALE) * 0.5, 9);
+    const leaving = sampleTextUnit(tIn, 0, 100 + (400 * 0.875) / 3, ctx);
+    expect(leaving.alpha).toBeCloseTo(0.5, 9);
+    const rest = sampleTextUnit(tIn, 2, 5000, ctx);
+    expect(rest.alpha).toBe(1);
+    expect(rest.dxEm).toBe(-2);
+    expect(sampleTextUnit(tIn, 0, 5000, ctx).alpha).toBe(0);
+    // The out rewinds the walk and ends empty.
+    const tOut = timing(
+      { preset: "word-cycle", outPreset: "word-cycle", granularity: "word" },
+      1000,
+    );
+    const oMid = sampleTextUnit(tOut, 1, 1200, ctx);
+    expect(oMid.alpha).toBe(1);
+    expect(oMid.dxEm).toBe(-2);
+    expect(sampleTextUnit(tOut, 0, 1200, ctx).alpha).toBe(0);
+    expect(sampleTextUnit(tOut, 2, 1200, ctx).alpha).toBe(0);
+    expect(sampleTextUnit(tOut, 0, 1400, ctx).alpha).toBe(0);
+  });
+
+  it("ribbon turns in about Y with a toward-camera bow, out continues the turn", () => {
+    const tIn = timing({ preset: "ribbon", granularity: "word" });
+    const start = sampleTextUnit(tIn, 0, 100);
+    expect(start.rotYRad).toBeCloseTo(RIBBON_RAD, 12);
+    expect(start.alpha).toBe(0);
+    const mid = sampleTextUnit(tIn, 0, 300);
+    expect(mid.rotYRad).toBeCloseTo(RIBBON_RAD / 2, 12);
+    expect(mid.dzEm).toBeCloseTo(RIBBON_BOW_EM, 12);
+    const out = sampleTextUnit(timing({ preset: "ribbon", outPreset: "ribbon" }, 1000), 0, 1200);
+    expect(out.rotYRad).toBeCloseTo(-RIBBON_RAD / 2, 12);
+    expect(out.dzEm).toBeCloseTo(RIBBON_BOW_EM, 12);
+    expect(out.alpha).toBeCloseTo(0.5, 12);
+  });
+
+  it("stand-up tips upright then falls flat forward", () => {
+    const tIn = timing({ preset: "stand-up", granularity: "word" });
+    const start = sampleTextUnit(tIn, 0, 100);
+    expect(start.rotXRad).toBeCloseTo(-STAND_RAD, 12);
+    expect(start.dyEm).toBeCloseTo(-STAND_SETTLE_EM, 12);
+    expect(start.alpha).toBe(0);
+    expect(sampleTextUnit(tIn, 0, 240).alpha).toBeCloseTo(1, 12);
+    expect(sampleTextUnit(tIn, 0, 300).rotXRad).toBeCloseTo(-STAND_RAD / 2, 12);
+    const out = sampleTextUnit(
+      timing({ preset: "stand-up", outPreset: "stand-up" }, 1000),
+      0,
+      1200,
+    );
+    expect(out.rotXRad).toBeCloseTo(STAND_RAD / 2, 12);
+    expect(out.alpha).toBeCloseTo(0.5, 12);
+  });
+
+  it("spring-pop overshoots under 1.06 and lands exactly at 1", () => {
+    const tIn = timing({ preset: "spring-pop", granularity: "word" });
+    expect(sampleTextUnit(tIn, 0, 100).scale).toBeCloseTo(SPRING_START_SCALE, 12);
+    expect(sampleTextUnit(tIn, 0, 100).alpha).toBe(0);
+    // p = 0.4: cos(SPRING_FREQ × 0.4) = −1, the first (largest) overshoot
+    const peak = sampleTextUnit(tIn, 0, 260).scale;
+    expect(peak).toBeCloseTo(1 - (SPRING_START_SCALE - 1) * Math.exp(-SPRING_DAMP * 0.4), 12);
+    expect(peak).toBeGreaterThan(1.05);
+    expect(peak).toBeLessThan(1.06);
+    expect(sampleTextUnit(tIn, 0, 500).scale).toBeCloseTo(1, 12);
+    const tOut = timing({ preset: "spring-pop", outPreset: "spring-pop" }, 1000);
+    // q = 0.175: the anticipation bump's peak
+    const bumped = sampleTextUnit(tOut, 0, 1070);
+    expect(bumped.scale).toBeCloseTo(
+      (1 + SPRING_OUT_BUMP) * (1 + (SPRING_START_SCALE - 1) * 0.175),
+      9,
+    );
+    const gone = sampleTextUnit(tOut, 0, 1400);
+    expect(gone.alpha).toBe(0);
+    expect(gone.scale).toBeCloseTo(SPRING_START_SCALE, 9);
+  });
+
+  it("spotlight walks emphasis across the words, leaving them lit", () => {
+    const ctx = { count: 3 } as const;
+    const tIn = timing({ preset: "spotlight", granularity: "word" });
+    const peakMs = 100 + 400 / 6; // unit 0's slot peak
+    const peak = sampleTextUnit(tIn, 0, peakMs, ctx);
+    expect(peak.alpha).toBeCloseTo(1, 9);
+    expect(peak.colorMix).toBeCloseTo(1, 9);
+    expect(peak.scale).toBeCloseTo(1 + SPOT_SCALE, 9);
+    const waiting = sampleTextUnit(tIn, 2, peakMs, ctx);
+    expect(waiting.alpha).toBeCloseTo(SPOT_DIM, 12);
+    expect(waiting.colorMix).toBe(0);
+    const rising = sampleTextUnit(tIn, 0, 100 + 400 / 12, ctx); // t = 0.25: half emphasis
+    expect(rising.colorMix).toBeCloseTo(0.5, 9);
+    expect(rising.alpha).toBeCloseTo(SPOT_DIM + (1 - SPOT_DIM) * 0.5, 9);
+    const done = sampleTextUnit(tIn, 0, 100 + 800 / 3, ctx); // the walk has passed
+    expect(done.alpha).toBeCloseTo(1, 9);
+    expect(done.colorMix).toBe(0);
+    const out = sampleTextUnit(
+      timing({ preset: "spotlight", outPreset: "spotlight", granularity: "word" }, 1000),
+      0,
+      1200,
+      ctx,
+    );
+    expect(out.alpha).toBeCloseTo(0.5, 9);
+  });
+
+  it("underline-draw: the text rises late while the rule owns the start", () => {
+    const tIn = timing({ preset: "underline-draw" });
+    const early = sampleTextUnit(tIn, 0, 220); // p = 0.3: text not started
+    expect(early.alpha).toBe(0);
+    expect(early.dyEm).toBeCloseTo(-UNDERLINE_RISE_EM, 12);
+    const mid = sampleTextUnit(tIn, 0, 360); // p = 0.65 → u = 0.5
+    expect(mid.alpha).toBeCloseTo(0.5, 12);
+    expect(mid.dyEm).toBeCloseTo(-UNDERLINE_RISE_EM / 2, 12);
+    const out = sampleTextUnit(
+      timing({ preset: "underline-draw", outPreset: "underline-draw" }, 1000),
+      0,
+      1140, // q = 0.35 → v = 0.5
+    );
+    expect(out.alpha).toBeCloseTo(0.5, 12);
+    expect(out.dyEm).toBeCloseTo(-UNDERLINE_RISE_EM / 2, 12);
+  });
+
+  it("orbit sweeps in on an arc about the block centre, honouring direction", () => {
+    const ctx = { count: 5, unitCenterEm: [2, 0] as const };
+    const dir = (twistDir: 1 | -1) =>
+      timing({
+        preset: "orbit",
+        granularity: "char",
+        params: { startScale: 0.8, shine: false, twistDir },
+      });
+    const start = sampleTextUnit(dir(1), 0, 100, ctx);
+    expect(start.rotZRad).toBeCloseTo(ORBIT_SWEEP_RAD, 12);
+    expect(start.dxEm).toBeCloseTo(2 * (Math.cos(ORBIT_SWEEP_RAD) - 1), 12);
+    expect(start.dyEm).toBeCloseTo(2 * Math.sin(ORBIT_SWEEP_RAD), 12);
+    expect(start.alpha).toBe(0);
+    const mid = sampleTextUnit(dir(1), 0, 300, ctx);
+    expect(mid.rotZRad).toBeCloseTo(ORBIT_SWEEP_RAD / 2, 12);
+    expect(mid.alpha).toBe(1);
+    expect(sampleTextUnit(dir(-1), 0, 100, ctx).rotZRad).toBeCloseTo(-ORBIT_SWEEP_RAD, 12);
+    // out re-curls the other way and spins off
+    const tOut = timing(
+      {
+        preset: "orbit",
+        outPreset: "orbit",
+        granularity: "char",
+        params: { startScale: 0.8, shine: false, twistDir: 1 },
+      },
+      1000,
+    );
+    const out = sampleTextUnit(tOut, 0, 1200, ctx);
+    const theta = -ORBIT_SWEEP_RAD * 0.5;
+    expect(out.rotZRad).toBeCloseTo(theta, 12);
+    expect(out.dxEm).toBeCloseTo(2 * (Math.cos(theta) - 1), 12);
+    expect(out.dyEm).toBeCloseTo(2 * Math.sin(theta), 12);
+    expect(out.alpha).toBeCloseTo(0.5, 12);
+  });
+
+  it("weight-build thickens from hairline, thins out on the out", () => {
+    const tIn = timing({ preset: "weight-build" });
+    expect(sampleTextUnit(tIn, 0, 100).weightEm).toBeCloseTo(-WEIGHT_EM, 12);
+    expect(sampleTextUnit(tIn, 0, 300).weightEm).toBeCloseTo(-WEIGHT_EM / 2, 12);
+    expect(sampleTextUnit(tIn, 0, 220).alpha).toBeCloseTo(1, 12);
+    const out = sampleTextUnit(
+      timing({ preset: "weight-build", outPreset: "weight-build" }, 1000),
+      0,
+      1200,
+    );
+    expect(out.weightEm).toBeCloseTo(-WEIGHT_EM / 2, 12);
+    expect(out.alpha).toBeCloseTo(0.5, 12);
+  });
+
+  it("develop reveals in seeded random order (hashed delay, salt 4)", () => {
+    const ctx = { count: 13 } as const;
+    const tIn = timing({ preset: "develop", granularity: "char" });
+    for (const i of [0, 5, 9]) {
+      const delay = unitHash01(i, 4) * 600;
+      const s = sampleTextUnit(tIn, i, 100 + delay + 200, ctx);
+      expect(s.alpha, `unit ${i}`).toBeCloseTo(0.5, 9);
+      expect(s.softEm, `unit ${i}`).toBeCloseTo(DEVELOP_SOFT_EM / 2, 9);
+    }
+    const tOut = timing({ preset: "develop", outPreset: "develop", granularity: "char" }, 1000);
+    const o = sampleTextUnit(tOut, 0, 1000 + unitHash01(0, 4) * 600 + 200, ctx);
+    expect(o.alpha).toBeCloseTo(0.5, 9);
+    expect(o.softEm).toBeCloseTo(DEVELOP_SOFT_EM / 2, 9);
+  });
+
+  it("flip-cascade flips up from face-down with a mid-flip dip", () => {
+    const tIn = timing({ preset: "flip-cascade", granularity: "char" });
+    const start = sampleTextUnit(tIn, 0, 100);
+    expect(start.rotXRad).toBeCloseTo(FLIP_RAD, 12);
+    expect(start.alpha).toBe(0);
+    const mid = sampleTextUnit(tIn, 0, 300);
+    expect(mid.rotXRad).toBeCloseTo(FLIP_RAD / 2, 12);
+    expect(mid.dyEm).toBeCloseTo(-FLIP_DIP_EM, 12);
+    expect(sampleTextUnit(tIn, 0, 180).alpha).toBeCloseTo(1, 12);
+    const out = sampleTextUnit(
+      timing({ preset: "flip-cascade", outPreset: "flip-cascade", granularity: "char" }, 1000),
+      0,
+      1200,
+    );
+    expect(out.rotXRad).toBeCloseTo(-FLIP_RAD / 2, 12);
+    expect(out.dyEm).toBeCloseTo(-FLIP_DIP_EM, 12);
+    expect(out.alpha).toBeCloseTo(0.5, 12);
+  });
+
+  it("converge streaks in from both edges (sign of the unit centre)", () => {
+    const tIn = timing({ preset: "converge", granularity: "char" });
+    const right = { count: 5, unitCenterEm: [2, 0] as const };
+    const left = { count: 5, unitCenterEm: [-2, 0] as const };
+    expect(sampleTextUnit(tIn, 0, 100, right).dxEm).toBeCloseTo(CONVERGE_EM, 12);
+    expect(sampleTextUnit(tIn, 0, 100, left).dxEm).toBeCloseTo(-CONVERGE_EM, 12);
+    expect(sampleTextUnit(tIn, 0, 100, right).scaleX).toBeCloseTo(1, 12);
+    const mid = sampleTextUnit(tIn, 0, 300, right);
+    expect(mid.dxEm).toBeCloseTo(CONVERGE_EM / 2, 12);
+    expect(mid.scaleX).toBeCloseTo(1 + CONVERGE_STREAK, 9); // streak peaks mid-travel
+    expect(sampleTextUnit(tIn, 0, 180, right).alpha).toBeCloseTo(1, 12);
+    const out = sampleTextUnit(
+      timing({ preset: "converge", outPreset: "converge", granularity: "char" }, 1000),
+      0,
+      1200,
+      right,
+    );
+    expect(out.dxEm).toBeCloseTo(CONVERGE_EM / 2, 12);
+    expect(out.scaleX).toBeCloseTo(1 + CONVERGE_STREAK, 9);
+    expect(out.alpha).toBeCloseTo(0.5, 12);
+  });
+
+  it("glint-wipe wipes with the shine tracking the edge (accent constants pinned)", () => {
+    const tIn = timing({ preset: "glint-wipe" });
+    const mid = sampleTextUnit(tIn, 0, 300);
+    expect(mid.sweep).toEqual([0, 0.5]);
+    expect(mid.shineU).toBeCloseTo(0.5, 12);
+    expect(mid.alpha).toBe(1);
+    const out = sampleTextUnit(
+      timing({ preset: "glint-wipe", outPreset: "glint-wipe" }, 1000),
+      0,
+      1100,
+    );
+    expect(out.sweep).toEqual([0.25, 1]);
+    expect(out.shineU).toBeCloseTo(0.25, 12);
+    expect(GLINT_HALF_W).toBe(0.06);
+    expect(GLINT_INTENSITY).toBe(0.85);
+    expect(GLINT_HALF_W).toBeLessThan(SHINE_HALF_W);
+    expect(GLINT_INTENSITY).toBeGreaterThan(SHINE_INTENSITY);
+  });
+
+  it("vapor dissolves upward with hashed wobble and rate jitter; the in condenses", () => {
+    const one = { count: 1 } as const;
+    const vaporDur = (i: number) =>
+      400 * (VAPOR_RATE_MIN + (1 - VAPOR_RATE_MIN) * unitHash01(i, 6));
+    const phase = unitHash01(0, 5) * 2 * Math.PI;
+    const tOut = timing({ preset: "fade", outPreset: "vapor", granularity: "char" }, 1000);
+    const o = sampleTextUnit(tOut, 0, 1000 + vaporDur(0) / 2, one);
+    expect(o.alpha).toBeCloseTo(0.5, 9);
+    expect(o.dyEm).toBeCloseTo(VAPOR_RISE_EM / 2, 9);
+    expect(o.dxEm).toBeCloseTo(Math.sin(Math.PI + phase) * VAPOR_WOBBLE_EM * 0.5, 9);
+    expect(o.softEm).toBeCloseTo(VAPOR_SOFT_EM / 2, 9);
+    const tIn = timing({ preset: "vapor", granularity: "char" });
+    const mid = sampleTextUnit(tIn, 0, 100 + vaporDur(0) / 4, one);
+    expect(mid.alpha).toBeCloseTo(0.25, 9);
+    expect(mid.dyEm).toBeCloseTo(VAPOR_RISE_EM * 0.75, 9);
+    expect(mid.softEm).toBeCloseTo(VAPOR_SOFT_EM * 0.75, 9);
+    expect(mid.dxEm).toBeCloseTo(Math.sin(0.75 * 2 * Math.PI + phase) * VAPOR_WOBBLE_EM * 0.75, 9);
+  });
+});
+
+describe("underlineProgress (the companion rule)", () => {
+  it("draws over the first UNDERLINE_DRAW_P of the eased in window", () => {
+    const t = timing({ preset: "underline-draw", outPreset: "none" });
+    expect(underlineProgress(t, 0)).toBe(0);
+    expect(underlineProgress(t, 100)).toBe(0);
+    expect(underlineProgress(t, 180)).toBeCloseTo(0.5, 12); // p = 0.2
+    expect(underlineProgress(t, 260)).toBeCloseTo(1, 12); // p = UNDERLINE_DRAW_P
+    expect(underlineProgress(t, 2000)).toBe(1);
+  });
+
+  it("out: re-draws, holds, then wipes off", () => {
+    const t = timing({ preset: "underline-draw", outPreset: "underline-draw" }, 1000);
+    expect(underlineProgress(t, 1080)).toBeCloseTo(0.5, 12); // q = 0.2: re-drawing
+    expect(underlineProgress(t, 1200)).toBe(1); // q = 0.5: the hold
+    expect(underlineProgress(t, 1340)).toBeCloseTo(0.5, 12); // q = 0.85: wiping
+    expect(underlineProgress(t, 1400)).toBe(0);
+  });
+
+  it("a non-underline out wipes the rule with the fade", () => {
+    const t = timing({ preset: "underline-draw", outPreset: "fade" }, 1000);
+    expect(underlineProgress(t, 1200)).toBeCloseTo(0.5, 12);
+  });
+
+  it("returns 0 when neither side is underline-draw, and during a foreign in", () => {
+    expect(underlineProgress(timing({ preset: "fade", outPreset: "fade" }), 300)).toBe(0);
+    const t = timing({ preset: "fade", outPreset: "underline-draw" }, 1000);
+    expect(underlineProgress(t, 300)).toBe(0);
+    expect(underlineProgress(t, 1080)).toBeCloseTo(0.5, 12);
+  });
+});
+
+describe("sampleTextUnit delayMs (the delayed-start hold)", () => {
+  it("holds the pre-entry state until from + delayMs, then plays the in verbatim", () => {
+    const delayed = timing({ delayMs: 300 });
+    const plain = timing();
+    // 1ms before the delayed start: exactly the undelayed pre-entry sample.
+    expect(sampleTextUnit(delayed, 0, 399)).toEqual(sampleTextUnit(plain, 0, 99));
+    expect(sampleTextUnit(delayed, 0, 399).alpha).toBe(0);
+    // Mid-in: exactly the undelayed sample half the window in.
+    expect(sampleTextUnit(delayed, 0, 600)).toEqual(sampleTextUnit(plain, 0, 300));
+    expect(sampleTextUnit(delayed, 0, 900).alpha).toBe(1);
+  });
+
+  it("composes additively with per-unit stagger", () => {
+    const delayed = timing({ delayMs: 300 });
+    const plain = timing();
+    // unit 2 starts at from + delayMs + 2 × staggerMs.
+    expect(sampleTextUnit(delayed, 2, 499).alpha).toBe(0);
+    expect(sampleTextUnit(delayed, 2, 700)).toEqual(sampleTextUnit(plain, 2, 400));
+  });
+
+  it("never shifts the out: a delayed in composes with an on-schedule out", () => {
+    // in 100→500 delayed to start at 900; the out still starts at outAt 1000.
+    const t = timing({ delayMs: 800 }, 1000);
+    const s = sampleTextUnit(t, 0, 1100);
+    // p = 0.5 (in mid-flight), q = 0.25 (out on schedule): fade × fade.
+    expect(s.alpha).toBeCloseTo(0.5 * 0.75, 12);
+  });
+
+  it("shifts block-progress walks (word-cycle) by the same delay", () => {
+    const delayed = timing({ preset: "word-cycle", outPreset: "none", staggerMs: 0, delayMs: 300 });
+    const plain = timing({ preset: "word-cycle", outPreset: "none", staggerMs: 0 });
+    const ctx = { count: 3 };
+    expect(sampleTextUnit(delayed, 1, 550, ctx)).toEqual(sampleTextUnit(plain, 1, 250, ctx));
+  });
+
+  it("delays the underline draw with the text, out still on schedule", () => {
+    const delayed = timing({ preset: "underline-draw", outPreset: "none", delayMs: 300 });
+    const plain = timing({ preset: "underline-draw", outPreset: "none" });
+    expect(underlineProgress(delayed, 399)).toBe(0);
+    expect(underlineProgress(delayed, 520)).toBeCloseTo(underlineProgress(plain, 220), 12);
+    const withOut = timing(
+      { preset: "underline-draw", outPreset: "underline-draw", delayMs: 800 },
+      1000,
+    );
+    expect(underlineProgress(withOut, 1080)).toBeCloseTo(0.5, 12); // q = 0.2: re-drawing on time
   });
 });

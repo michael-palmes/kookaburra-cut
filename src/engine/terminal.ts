@@ -26,6 +26,8 @@ export async function spawnTerminalSession(opts: {
   command?: string;
   /** Directory prepended to the child's PATH (survives /etc/zprofile's path_helper); packaged apps inherit launchd's bare PATH, and the default Claude install adds its dir in ~/.zshrc, which a login non-interactive shell never sources. */
   pathPrepend?: string;
+  /** Opts out of the F-006 workspace confinement (scene terminals open a user-chosen start path). */
+  allowExternalCwd?: boolean;
   onExit?: (code: number) => void;
 }): Promise<TerminalSession> {
   const { term } = opts;
@@ -73,6 +75,7 @@ export async function spawnTerminalSession(opts: {
       pathPrepend: opts.pathPrepend ?? null,
       cols: term.cols,
       rows: term.rows,
+      allowExternalCwd: opts.allowExternalCwd ?? false,
     },
     onData: channel,
   });

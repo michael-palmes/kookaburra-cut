@@ -41,6 +41,8 @@ type ProjectLibraryItem = Pick<WorkspaceProjectInfo, "group" | "name" | "slug">;
 
 type ProjectRecencyItem = Pick<WorkspaceProjectInfo, "name" | "lastOpenedMs">;
 
+type ProjectUpdatedItem = Pick<WorkspaceProjectInfo, "name" | "lastOpenedMs" | "contentMtimeMs">;
+
 export function projectGroupRows(projects: ProjectLibraryItem[]): ProjectGroupRow[] {
   const counts = new Map<string, number>();
   let ungrouped = 0;
@@ -160,24 +162,42 @@ export function selectedProjectGroup(groupId: string): string | undefined {
   return groupId.startsWith(GROUP_PREFIX) ? groupId.slice(GROUP_PREFIX.length) : undefined;
 }
 
-/** Most-recently-opened first, ties (and never-opened projects) by name. Returns a new array; the welcome screen and the copy-to-project drill share this one order. */
+/** Most-recently-opened first, ties (and never-opened projects) by name. Returns a new array; the welcome screen's one order. */
 export function sortProjectsByRecency<T extends ProjectRecencyItem>(projects: T[]): T[] {
   return [...projects].sort(
     (a, b) => (b.lastOpenedMs ?? 0) - (a.lastOpenedMs ?? 0) || a.name.localeCompare(b.name),
   );
 }
 
-/** The card's relative "Opened …" line; null when the project has never been opened. */
-export function formatLastOpened(ms: number | null): string | null {
+/** Most-recently-edited first (content mtime, falling back to last opened), ties by name. Returns a new array; the copy-to and copy-from project pickers share this one order. */
+export function sortProjectsByUpdated<T extends ProjectUpdatedItem>(projects: T[]): T[] {
+  return [...projects].sort(
+    (a, b) =>
+      (b.contentMtimeMs ?? b.lastOpenedMs ?? 0) - (a.contentMtimeMs ?? a.lastOpenedMs ?? 0) ||
+      a.name.localeCompare(b.name),
+  );
+}
+
+function relativeLine(verb: string, ms: number | null): string | null {
   if (!ms) return null;
   const elapsed = Date.now() - ms;
   const minutes = Math.round(elapsed / 60_000);
-  if (minutes < 1) return "Opened just now";
+  if (minutes < 1) return `${verb} just now`;
   const rtf = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
-  if (minutes < 60) return `Opened ${rtf.format(-minutes, "minute")}`;
+  if (minutes < 60) return `${verb} ${rtf.format(-minutes, "minute")}`;
   const hours = Math.round(minutes / 60);
-  if (hours < 24) return `Opened ${rtf.format(-hours, "hour")}`;
-  return `Opened ${rtf.format(-Math.round(hours / 24), "day")}`;
+  if (hours < 24) return `${verb} ${rtf.format(-hours, "hour")}`;
+  return `${verb} ${rtf.format(-Math.round(hours / 24), "day")}`;
+}
+
+/** The card's relative "Opened …" line; null when the project has never been opened. */
+export function formatLastOpened(ms: number | null): string | null {
+  return relativeLine("Opened", ms);
+}
+
+/** The picker card's relative "Updated …" line; null without a content mtime. */
+export function formatLastUpdated(ms: number | null): string | null {
+  return relativeLine("Updated", ms);
 }
 
 /** Restrained line-art placeholder for cards with no snapshot yet (no emoji, §3.12). */

@@ -1,6 +1,6 @@
 {
   "name": "kookaburra-cut",
-  "version": "0.12.0",
+  "version": "0.15.1",
   "private": true,
   "type": "module",
   "license": "MIT OR Apache-2.0",
@@ -31,8 +31,9 @@
     "assets:phone": "bash scripts/prepare-device-model.sh iphone-15-pro",
     "assets:iphone-17-pro": "bash scripts/prepare-device-model.sh iphone-17-pro",
     "assets:macbook-pro-16": "bash scripts/prepare-device-model.sh macbook-pro-16",
+    "assets:ipad-pro-13": "bash scripts/prepare-device-model.sh ipad-pro-13",
     "assets:android": "bash scripts/prepare-android-model.sh",
-    "assets:devices": "bash scripts/prepare-device-model.sh iphone-15-pro && bash scripts/prepare-device-model.sh iphone-17-pro && bash scripts/prepare-device-model.sh macbook-pro-16",
+    "assets:devices": "bash scripts/prepare-device-model.sh iphone-15-pro && bash scripts/prepare-device-model.sh iphone-17-pro && bash scripts/prepare-device-model.sh macbook-pro-16 && bash scripts/prepare-device-model.sh ipad-pro-13",
     "assets:device-previews": "bash scripts/render-device-previews.sh",
     "assets:text3d-font": "node scripts/prepare-text3d-font.mjs",
     "assets:emoji-fonts": "node scripts/prepare-emoji-fonts.mjs",

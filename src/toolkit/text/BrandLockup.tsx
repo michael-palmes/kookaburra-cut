@@ -24,9 +24,9 @@ import {
   lockupLayout,
 } from "./brandLockupLayout";
 
-/** Title label size, world units. */
+/** Default title label size, world units. */
 const TITLE_SIZE = 0.36;
-/** Hero subtitle size, world units. */
+/** Default hero subtitle size, world units. */
 const SUBTITLE_SIZE = 0.82;
 
 export interface BrandLockupProps {
@@ -43,6 +43,10 @@ export interface BrandLockupProps {
   position?: V3;
   /** Icon width in world units; height follows the image's aspect. */
   iconWidth?: number;
+  /** Title label size in world units (default 0.36); the sidecar's `titleSize` multiplier still applies on top. */
+  titleSize?: number;
+  /** Hero subtitle size in world units (default 0.82); the sidecar's `subtitleSize` multiplier still applies on top. */
+  subtitleSize?: number;
   /** Title fill token or raw hex (default "muted"); beats the sidecar's `textStyle.titleColor`. */
   titleColor?: "text" | "muted" | "accent" | (string & {});
   /** Subtitle fill token or raw hex; beats the sidecar's `textStyle.subtitleColor`. */
@@ -51,7 +55,14 @@ export interface BrandLockupProps {
 
 /** Horizontal brand lockup: app icon left, small muted title over a large hero subtitle to its right, revealed as ONE unit (fade-scale + a single shine sweep). Text lives in the sidecar under `title`/`subtitle`; centring and overflow shrink come from character-count estimates so layout never waits on font measurement. */
 export function BrandLockup(props: BrandLockupProps) {
-  const { from = 200, to = 1100, position = [0, 0, 0], iconWidth = 1.4 } = props;
+  const {
+    from = 200,
+    to = 1100,
+    position = [0, 0, 0],
+    iconWidth = 1.4,
+    titleSize = TITLE_SIZE,
+    subtitleSize = SUBTITLE_SIZE,
+  } = props;
   const format = useFormat();
   const doc = useContext(SceneDocContext);
   const templateManaged = isTemplateManagedText(doc);
@@ -86,8 +97,8 @@ export function BrandLockup(props: BrandLockupProps) {
     title,
     subtitle,
     iconWidth,
-    titleSize: TITLE_SIZE,
-    subtitleSize: SUBTITLE_SIZE,
+    titleSize,
+    subtitleSize,
     usableWidth,
   });
   const templateIconSize = iconWidth / ASSET_ICON_SCALE;
@@ -120,7 +131,7 @@ export function BrandLockup(props: BrandLockupProps) {
             textKey="title"
             {...titleTiming}
             position={[0, 0.46, 0]}
-            fontSize={TITLE_SIZE}
+            fontSize={titleSize}
             anchorX="left"
             textAlign="left"
             color={props.titleColor}
@@ -132,7 +143,7 @@ export function BrandLockup(props: BrandLockupProps) {
             textKey="subtitle"
             {...subtitleTiming}
             position={[0, -0.28, 0]}
-            fontSize={SUBTITLE_SIZE}
+            fontSize={subtitleSize}
             anchorX="left"
             textAlign="left"
             color={props.subtitleColor}

@@ -181,6 +181,8 @@ pub struct ProjectInfo {
     pub snapshot_mtime_ms: Option<u64>,
     /// When this project was last opened (unix ms), for welcome-screen ordering.
     pub last_opened_ms: Option<u64>,
+    /// Newest content edit (unix ms) across the manifest, scenes and assets, for last-updated ordering.
+    pub content_mtime_ms: Option<u64>,
     /// Welcome-screen group heading from the manifest, when the project belongs to one.
     pub group: Option<String>,
 }
@@ -645,6 +647,20 @@ fn file_mtime_ms(path: &Path) -> Option<u64> {
         .map(|d| d.as_millis() as u64)
 }
 
+/// Newest mtime (unix ms) across the files a project edit touches: the manifest plus everything directly under `scenes/` and `assets/`.
+fn content_mtime_ms(project: &Path) -> Option<u64> {
+    let mut newest = file_mtime_ms(&project.join(MANIFEST_FILENAME));
+    for dir in ["scenes", "assets"] {
+        let Ok(entries) = std::fs::read_dir(project.join(dir)) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            newest = newest.max(file_mtime_ms(&entry.path()));
+        }
+    }
+    newest
+}
+
 /// A workspace project's snapshot image path (`.kookaburra/snapshots/<slug>.png`).
 pub(crate) fn snapshot_file(root: &Path, slug: &str) -> PathBuf {
     root.join(STATE_DIR_NAME)
@@ -884,6 +900,7 @@ pub fn list_projects(
                 .then(|| snap.to_string_lossy().into_owned()),
             snapshot_mtime_ms,
             last_opened_ms: last_opened.get(&slug).copied(),
+            content_mtime_ms: content_mtime_ms(&path),
             group,
             slug,
         });
@@ -1510,6 +1527,7 @@ pub fn create_project(
         snapshot_path: None,
         snapshot_mtime_ms: None,
         last_opened_ms: None,
+        content_mtime_ms: content_mtime_ms(&dir),
         group,
         slug,
     })

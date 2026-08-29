@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "name": "Text motion — weight-build",
+  "text": {
+    "headline": "BOLDER"
+  },
+  "textAnimation": { "in": "weight-build", "out": "none", "staggerMs": 0 }
+}

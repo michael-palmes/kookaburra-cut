@@ -5,6 +5,7 @@ import {
   isEditableProjectId,
   type LoadedProject,
   nativeProjectSlug,
+  type ProjectAudioSpec,
   projectFolderPath,
   sceneFileStem,
 } from "../../engine/project";
@@ -34,7 +35,9 @@ import { commitFocusedInspectorEdit } from "../textEditFocus";
 import { useThemeCardMenu } from "../themeCardMenu";
 import { useEscapeClose } from "../useEscapeClose";
 import { InspectorNavigationShell } from "./InspectorNavigationShell";
+import { MusicDrillIn } from "./MusicDrillIn";
 import { ProjectCopyDrill } from "./ProjectCopyDrill";
+import { ProjectCopyFromDrill } from "./ProjectCopyFromDrill";
 import { ActionRow, DrillBack, PopoverChoice, RowIcon } from "./rows";
 import { ScenesDrillIn } from "./ScenesDrillIn";
 import { SceneTab } from "./SceneTab";
@@ -118,6 +121,8 @@ export function InspectorPanel({
   onSetAppIcon,
   onSetSoundtrack,
   onRemoveSoundtrack,
+  onPatchAudio,
+  onPreviewAudio,
   onOpenEditVideo,
   onDocChanged,
   onTimingChanged,
@@ -134,6 +139,7 @@ export function InspectorPanel({
   onSetRenderSettings,
   onSetTypography,
   onScenesCopied,
+  onScenesCopiedFrom,
 }: {
   project: LoadedProject;
   aspect: AspectName;
@@ -155,6 +161,10 @@ export function InspectorPanel({
   onSetAppIcon: (rel: string) => void;
   onSetSoundtrack: () => void;
   onRemoveSoundtrack: () => void;
+  /** Commit mix fields into project.json's audio block (App owns the merge + history). */
+  onPatchAudio: (patch: Partial<ProjectAudioSpec>) => void;
+  /** Live preview envelope while a Music slider drags; nothing writes. */
+  onPreviewAudio: (patch: Partial<ProjectAudioSpec>) => void;
   onOpenEditVideo: (
     sceneIndex: number,
     mediaRel: string,
@@ -189,6 +199,8 @@ export function InspectorPanel({
   onSetTypography: (headline: string | null, body: string | null, chart: string | null) => void;
   /** Every scene in a Copy-to-project run landed; App toasts. */
   onScenesCopied: (destName: string, count: number) => void;
+  /** Every scene in a Copy-from-project run landed; App reloads this project and toasts. */
+  onScenesCopiedFrom: (sourceName: string, count: number) => void;
 }) {
   // Editability, not tree: a template or preset opened from the Library edits exactly like a project.
   const editable = isEditableProjectId(project.id);
@@ -197,9 +209,8 @@ export function InspectorPanel({
   const setTab = useUiStore((s) => s.setInspectorTab);
 
   // Which row's popover/menu is open; doubles as the row-selected state ("exactly one row selected at a time").
-  const [openRow, setOpenRow] = useState<"aspect" | "music" | "playback" | "render" | null>(null);
+  const [openRow, setOpenRow] = useState<"aspect" | "playback" | "render" | null>(null);
   const previewQuality = useUiStore((s) => s.previewQuality);
-  const [confirmRemoveMusic, setConfirmRemoveMusic] = useState(false);
   useEscapeClose(() => setOpenRow(null), openRow !== null);
 
   // The Scene tab follows the playhead's dominant scene (decision 2); same derive-don't-subscribe selector the EditBar uses.
@@ -224,16 +235,8 @@ export function InspectorPanel({
   // biome-ignore lint/correctness/useExhaustiveDependencies: deliberate reset-on-switch
   useEffect(() => {
     setOpenRow(null);
-    setConfirmRemoveMusic(false);
     useUiStore.getState().resetInspectorDrill();
   }, [project.id, tab]);
-
-  // The music remove confirmation disarms itself (the EditBar pattern).
-  useEffect(() => {
-    if (!confirmRemoveMusic) return;
-    const t = window.setTimeout(() => setConfirmRemoveMusic(false), 3000);
-    return () => window.clearTimeout(t);
-  }, [confirmRemoveMusic]);
 
   // The stage's slowdown badge: land on the Project tab first (the reset-on-switch effect above runs before this one), then open the Playback options popover.
   const playbackNonce = useUiStore((s) => s.playbackOptionsNonce);
@@ -371,7 +374,7 @@ export function InspectorPanel({
       setDrillIn("project.appIcon");
     },
     aspect: () => setOpenRow(openRow === "aspect" ? null : "aspect"),
-    music: () => setOpenRow(openRow === "music" ? null : "music"),
+    music: editable ? () => setDrillIn("project.music") : undefined,
     playback: () => setOpenRow(openRow === "playback" ? null : "playback"),
     render: () => setOpenRow(openRow === "render" ? null : "render"),
   };
@@ -445,7 +448,7 @@ export function InspectorPanel({
                   projectPath={projectFolder}
                   kindToggle
                   globalToggle
-                  cleanupUnused
+                  cleanupUnused="menu"
                   refreshKey={mediaRefreshKey + mediaRefresh}
                   cardMenu={mediaCardMenu({
                     slug: nativeProjectSlug(project.id),
@@ -557,6 +560,26 @@ export function InspectorPanel({
               onScenesCopied(destName, count);
             }}
           />
+        ) : (tab === "project" || !editable) && drillIn === "project.music" && editable ? (
+          <MusicDrillIn
+            audio={project.audio}
+            onBack={() => setDrillIn(null)}
+            onChooseTrack={onSetSoundtrack}
+            onRemoveTrack={onRemoveSoundtrack}
+            onPatch={onPatchAudio}
+            onPreview={onPreviewAudio}
+          />
+        ) : (tab === "project" || !editable) &&
+          drillIn === "project.scenes.copyFrom" &&
+          editable ? (
+          <ProjectCopyFromDrill
+            slug={nativeProjectSlug(project.id)}
+            onBack={() => setDrillIn(null)}
+            onDone={(sourceName, count) => {
+              setDrillIn(null);
+              onScenesCopiedFrom(sourceName, count);
+            }}
+          />
         ) : (tab === "project" || !editable) && drillIn === "project.scenes" && editable ? (
           <>
             <ScenesDrillIn
@@ -592,6 +615,7 @@ export function InspectorPanel({
                 void onDeleteScenes(indices).finally(() => setScenesBusy(false));
               }}
               onCopyToProject={requestSceneCopy}
+              onCopyFromProject={() => setDrillIn("project.scenes.copyFrom")}
               onInsertPreset={setInsertingPreset}
               onSaveAsPreset={setSavingPreset}
             />
@@ -755,39 +779,6 @@ export function InspectorPanel({
                         }
                       />
                     </div>
-                  </div>
-                )}
-                {row.id === "music" && openRow === "music" && (
-                  <div className="inspector-popover" role="menu">
-                    <button
-                      type="button"
-                      role="menuitem"
-                      className="inspector-popover-item"
-                      onClick={() => {
-                        setOpenRow(null);
-                        onSetSoundtrack();
-                      }}
-                    >
-                      {soundtrackName ? "Replace track…" : "Choose track…"}
-                    </button>
-                    {soundtrackName && (
-                      <button
-                        type="button"
-                        role="menuitem"
-                        className={`inspector-popover-item${confirmRemoveMusic ? " danger" : ""}`}
-                        onClick={() => {
-                          if (!confirmRemoveMusic) {
-                            setConfirmRemoveMusic(true);
-                            return;
-                          }
-                          setConfirmRemoveMusic(false);
-                          setOpenRow(null);
-                          onRemoveSoundtrack();
-                        }}
-                      >
-                        {confirmRemoveMusic ? "Really remove?" : `Remove ${soundtrackName}`}
-                      </button>
-                    )}
                   </div>
                 )}
               </div>

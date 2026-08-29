@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "name": "Text look — glass-3d",
+  "text": {
+    "headline": "LUMINOUS"
+  },
+  "textAnimation": { "in": "fade", "out": "none", "staggerMs": 0 },
+  "textLook": { "preset": "glass-3d" },
+  "background": {
+    "type": "gradient",
+    "spec": { "type": "linear", "angleDeg": 90, "stops": [["#0b0e1a", 0], ["#1c2545", 1]] }
+  },
+  "backdrop": { "type": "none" }
+}

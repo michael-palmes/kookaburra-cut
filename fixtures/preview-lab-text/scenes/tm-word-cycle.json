@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "name": "Text motion — word-cycle",
+  "text": {
+    "headline": "Fast. Simple. Yours."
+  },
+  "textAnimation": { "in": "word-cycle", "out": "none", "staggerMs": 0 }
+}

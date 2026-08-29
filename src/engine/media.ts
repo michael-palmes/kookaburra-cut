@@ -48,6 +48,20 @@ export async function importMediaBytes(
   return rel;
 }
 
+/** One scene's terminal snapshot PNG, overwriting the canonical `assets/terminal-<stem>.png` in place (recaptures re-bake at one home; callers bump `assetVersionStore` so mounted readers re-fetch). Same inventory refresh and media-changed broadcast as the other imports. */
+export async function writeTerminalSnapshot(
+  slug: string,
+  sceneStem: string,
+  bytes: Uint8Array,
+): Promise<string> {
+  const rel = await invoke<string>("write_terminal_snapshot", bytes, {
+    headers: { "x-kookaburra-slug": slug, "x-kookaburra-stem": sceneStem },
+  });
+  await refreshWorkspaceAssets(`ws:${slug}`);
+  await emit("kookaburra://media-changed", null);
+  return rel;
+}
+
 /** Copy a picked CSV into the project's assets/ for the chart data modal; returns the project-relative path. No inventory refresh or media-changed broadcast: csv is deliberately not a media type, so it never lists in a picker. */
 export function importChartData(
   slug: string,

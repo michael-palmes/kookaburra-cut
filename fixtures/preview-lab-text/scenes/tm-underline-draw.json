@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "name": "Text motion — underline-draw",
+  "text": {
+    "headline": "Now available"
+  },
+  "textAnimation": { "in": "underline-draw", "out": "none", "staggerMs": 0 }
+}
