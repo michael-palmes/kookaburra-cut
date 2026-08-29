@@ -16,14 +16,14 @@ name = "kookaburra_cut_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
-tauri-build = { version = "2.6.3", features = [] }
+tauri-build = { version = "=2.6.3", features = [] }
 
 [dependencies]
 serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 log = "0.4"
 # protocol-asset: workspace/caches load in the webview as asset: URLs (v9 · M2).
-tauri = { version = "2.11.3", features = ["protocol-asset"] }
+tauri = { version = "=2.11.5", features = ["protocol-asset", "unstable"] }
 tauri-plugin-log = "2"
 tauri-plugin-shell = "2"
 tauri-plugin-dialog = "2"
@@ -46,6 +46,7 @@ getrandom = "0.4"
 base64 = { version = "0.23", default-features = false, features = ["std"] }
 # Naming the type of `RunEvent::Opened { urls }` (Open With); already in the lock via tauri.
 url = "2"
+png = "=0.18.1"
 
 # macOS-only: reach the real NSMenuItem to set a true SF Symbol on the Settings
 # menu entry (Tauri/muda's NativeIcon can't reference systemSymbolName images).
@@ -60,6 +61,8 @@ objc2-app-kit = { version = "0.3", features = [
   "NSMenu",
   "NSMenuItem",
   "NSImage",
+  "NSImageRep",
+  "NSBitmapImageRep",
   "NSColor",
   "NSColorSampler",
   "NSColorSpace",
@@ -68,7 +71,17 @@ objc2-app-kit = { version = "0.3", features = [
   "objc2-core-foundation",
 ] }
 objc2-foundation = "0.3"
+objc2-web-kit = { version = "=0.3.2", default-features = false, features = [
+  "std",
+  "objc2-core-foundation",
+  "objc2-app-kit",
+  "block2",
+  "WKWebView",
+  "WKWebViewConfiguration",
+  "WKSnapshotConfiguration",
+] }
 block2 = "0.6"
+wry = "=0.55.1"
 
 # macOS 27 dyld rejects optimised proc-macro dylibs (mis-aligned LINKEDIT string pool); opt-level 0 here covers only build scripts and proc macros, the shipped binary is unaffected.
 [profile.release.build-override]

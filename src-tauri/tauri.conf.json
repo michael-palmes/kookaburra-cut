@@ -58,7 +58,7 @@
     "macOS": {
       "signingIdentity": null,
       "hardenedRuntime": true,
-      "minimumSystemVersion": "13.0"
+      "minimumSystemVersion": "26.0"
     },
     "externalBin": ["bin/ffmpeg", "bin/ffprobe"],
     "resources": {

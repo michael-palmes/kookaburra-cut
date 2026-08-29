@@ -24,6 +24,7 @@ mod settings_win;
 mod tap_dot_frames;
 mod theme;
 mod updater;
+mod website;
 mod workspace;
 
 use std::io::Read;
@@ -1174,6 +1175,7 @@ pub fn run() {
         .manage(bridge::EditorContextState::default())
         .manage(packs_win::PacksState::default())
         .manage(pack::commands::PackState::default())
+        .manage(website::WebsiteState::default())
         .setup(move |app| {
             // The main window exists (config-created); strip its webview's white layer.
             #[cfg(target_os = "macos")]
@@ -1386,7 +1388,7 @@ pub fn run() {
             }
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![
+        .invoke_handler(website::guard_invoke(tauri::generate_handler![
             show_character_palette,
             sample_screen_colour,
             start_export,
@@ -1559,8 +1561,19 @@ pub fn run() {
             pack::commands::apply_import,
             pack::commands::discard_staged_pack,
             pack::commands::workspace_root_path,
-            pack::commands::open_imported_project
-        ])
+            pack::commands::open_imported_project,
+            website::website_open,
+            website::website_grant_origin,
+            website::website_revoke_origin,
+            website::website_list_grants,
+            website::website_resume_pending,
+            website::website_set_bounds,
+            website::website_set_zoom,
+            website::website_action,
+            website::website_capture,
+            website::website_hide,
+            website::website_close
+        ]))
         .build(tauri::generate_context!())
         .expect("error while running Kookaburra Cut")
         .run(|app, event| {
