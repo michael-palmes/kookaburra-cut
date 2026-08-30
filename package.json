@@ -37,6 +37,7 @@
     "assets:device-previews": "bash scripts/render-device-previews.sh",
     "assets:text3d-font": "node scripts/prepare-text3d-font.mjs",
     "assets:emoji-fonts": "node scripts/prepare-emoji-fonts.mjs",
+    "acceptance:app": "node scripts/acceptance-app.mjs",
     "kookaburra:run": "bash scripts/kookaburra-run.sh",
     "gate": "bash scripts/gate.sh",
     "gate:merge": "bash scripts/kookaburra-run.sh --action verify --project showcase-tour,ws:launch-2026 --aspect 16:9",
