@@ -62,6 +62,20 @@ export function websiteSessionClaimsStage(session: SceneWebsiteSession | undefin
   return session?.active === true || session?.pendingOrigin != null;
 }
 
+export function websiteSessionCanShow(
+  session: SceneWebsiteSession,
+  wantsLive: boolean,
+  suspended: boolean,
+): boolean {
+  return (
+    wantsLive &&
+    !suspended &&
+    session.viewId !== null &&
+    session.state === "ready" &&
+    session.pendingOrigin === null
+  );
+}
+
 export const WEBSITE_ACTIVATE_REQUEST_EVENT = "kookaburra:website-activate-request";
 export const WEBSITE_DEACTIVATE_REQUEST_EVENT = "kookaburra:website-deactivate-request";
 

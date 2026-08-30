@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { SceneWebsiteSession } from "./sceneWebsiteSession";
-import { websiteSessionClaimsStage } from "./sceneWebsiteSession";
+import { websiteSessionCanShow, websiteSessionClaimsStage } from "./sceneWebsiteSession";
 
 function session(patch: Partial<SceneWebsiteSession> = {}): SceneWebsiteSession {
   return {
@@ -37,5 +37,39 @@ describe("websiteSessionClaimsStage", () => {
         }),
       ),
     ).toBe(true);
+  });
+});
+
+describe("websiteSessionCanShow", () => {
+  const ready = session({ viewId: "website-1", state: "ready" });
+
+  it("allows an explicitly requested ready view", () => {
+    expect(websiteSessionCanShow(ready, true, false)).toBe(true);
+  });
+
+  it("fails closed while editor chrome obscures the stage", () => {
+    expect(websiteSessionCanShow(ready, true, true)).toBe(false);
+  });
+
+  it("rejects implicit, pending and incomplete views", () => {
+    expect(websiteSessionCanShow(ready, false, false)).toBe(false);
+    expect(
+      websiteSessionCanShow(session({ viewId: "website-1", state: "loading" }), true, false),
+    ).toBe(false);
+    expect(
+      websiteSessionCanShow(
+        session({
+          viewId: "website-1",
+          state: "ready",
+          pendingOrigin: {
+            origin: "https://www.apple.com",
+            loopback: false,
+            initial: false,
+          },
+        }),
+        true,
+        false,
+      ),
+    ).toBe(false);
   });
 });

@@ -138,6 +138,14 @@ keeps the poster visible until the approved page is ready, then swaps to the
 native view. A failed load returns to the poster with a discreet app-owned
 unavailable state.
 
+The child WKWebView always sits above the editor WKWebView, so DOM stacking
+cannot place app chrome over it. Mounting any `.modal-overlay` hides and
+defocuses the native view, exposes the poster below it, and restores the same
+view only after the final blocking overlay closes. Export applies the same
+rule. Restoration remains conditional on the same scene still requesting live
+mode and the view still being ready. Hiding preserves page state, but does not
+pause page scripts or network activity.
+
 One Website and one Terminal may coexist. Website is the top interactive layer
 and only one block owns input. While Website is focused, deck keys stand down.
 Shift+Esc releases focus; the first outside click releases without advancing.
@@ -194,7 +202,8 @@ macOS 26 app must prove:
    denial behave as documented.
 6. App-wide cookies persist separately from Safari, project grants remain
    separate, loopback grants expire on restart and per-site clearing works.
-7. Capture, failure fallback, view cleanup and inactive LRU eviction work.
+7. Capture, failure fallback, modal occlusion, view cleanup and inactive LRU
+   eviction work.
 8. Public HTTPS, a controlled multi-origin authenticated SPA and an HTTP
    loopback fixture all pass.
 
@@ -213,4 +222,5 @@ the feature does not ship with a weaker substitute.
 - Opener-dependent OAuth, protected media and non-snapshotable surfaces may not
   work; image import is the fallback.
 - Native content cannot receive WebGL effects, masks or animated transforms.
+- A hidden live view may continue running page scripts and network requests.
 - LRU eviction loses unsaved in-page state.

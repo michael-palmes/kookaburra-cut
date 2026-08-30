@@ -2192,11 +2192,12 @@ export default function App() {
                     onDocChanged={handleDocChanged}
                   />
                 )}
-                {project && isWorkspaceProjectId(project.id) && !exporting && !isAutoRun && (
+                {project && isWorkspaceProjectId(project.id) && !isAutoRun && (
                   <SceneWebsiteOverlay
                     project={project}
                     sceneIndex={camSceneIndex}
                     aspect={format.width / format.height}
+                    suspended={exporting}
                     onDocChanged={handleDocChanged}
                   />
                 )}

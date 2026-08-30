@@ -1,5 +1,5 @@
 import { listen } from "@tauri-apps/api/event";
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import { useCameraEditStore } from "../engine/cameraEditStore";
 import {
   type LoadedProject,
@@ -31,9 +31,11 @@ import {
   useSceneWebsiteSessionStore,
   WEBSITE_ACTIVATE_REQUEST_EVENT,
   WEBSITE_DEACTIVATE_REQUEST_EVENT,
+  websiteSessionCanShow,
 } from "../engine/sceneWebsiteSession";
 import { useEditorStore } from "../store/editorStore";
 import { useGizmoDocWrite } from "./gizmo/gizmoDocWrite";
+import { useBlockingModalOverlay } from "./modalOverlayPresence";
 
 const OPEN_ICON = (
   <svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true">
@@ -85,11 +87,13 @@ export function SceneWebsiteOverlay({
   project,
   sceneIndex,
   aspect,
+  suspended,
   onDocChanged,
 }: {
   project: LoadedProject;
   sceneIndex: number;
   aspect: number;
+  suspended: boolean;
   onDocChanged: (sceneIndex: number, doc: SceneDoc) => void;
 }) {
   const doc = project.sceneDocs[sceneIndex] ?? null;
@@ -100,11 +104,22 @@ export function SceneWebsiteOverlay({
   const projectPath = workspaceProjectPath(slug);
   const stem = sceneFileStem(project.sceneFiles[sceneIndex] ?? "");
   const key = sceneWebsiteKey(project.id, stem);
+  const activeKeyRef = useRef(key);
+  activeKeyRef.current = key;
   const session = useSceneWebsiteSessionStore((state) => state.sessions[key]);
   const patchSession = useSceneWebsiteSessionStore((state) => state.patch);
   const { commit } = useGizmoDocWrite(project, sceneIndex, onDocChanged);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const wantsLiveRef = useRef(false);
+  const suspendedRef = useRef(suspended);
+  const { present: modalBlocked, presentRef: modalBlockedRef } = useBlockingModalOverlay();
+  suspendedRef.current = suspended;
+  const blocked = suspended || modalBlocked;
+
+  const isSuspended = useCallback(
+    () => suspendedRef.current || modalBlockedRef.current,
+    [modalBlockedRef],
+  );
 
   const layout = useMemo(
     () => (website ? sceneWebsiteLayout(website, { width: aspect, height: 1 }) : null),
@@ -116,15 +131,61 @@ export function SceneWebsiteOverlay({
     return websiteBoundsForFrame(rootRef.current.getBoundingClientRect(), layout, aspect);
   }, [layout, aspect]);
 
+  const hideView = useCallback(
+    async (viewId: string | null) => {
+      patchSession(key, { active: false, focused: false });
+      if (!viewId) return;
+      await hideWebsite(viewId).catch(() => {});
+      await performWebsiteAction(viewId, "releaseFocus").catch(() => {});
+    },
+    [key, patchSession],
+  );
+
+  const showReadyView = useCallback(
+    async (viewId: string) => {
+      const canShow = () => {
+        const current = sceneWebsiteSession(key);
+        return (
+          activeKeyRef.current === key &&
+          current.viewId === viewId &&
+          websiteSessionCanShow(current, wantsLiveRef.current, isSuspended())
+        );
+      };
+      if (!canShow()) return;
+      const nextBounds = bounds();
+      if (!nextBounds) return;
+      try {
+        await setWebsiteBounds(viewId, nextBounds);
+        if (!canShow()) {
+          await hideView(viewId);
+          return;
+        }
+        await showWebsite(viewId);
+        if (!canShow()) {
+          await hideView(viewId);
+          return;
+        }
+        patchSession(key, { active: true });
+      } catch (error) {
+        if (!canShow()) {
+          await hideView(viewId);
+          return;
+        }
+        patchSession(key, { state: "failed", active: false, error: errorMessage(error) });
+      }
+    },
+    [bounds, hideView, isSuspended, key, patchSession],
+  );
+
   const activate = useCallback(
     async (requestedOrigins?: string[]) => {
       if (!website?.url || !projectPath || !stem) return;
       const nextBounds = bounds();
       if (!nextBounds) return;
-      const existing = sceneWebsiteSession(key).viewId;
-      if (existing) await hideWebsite(existing).catch(() => {});
       wantsLiveRef.current = true;
       patchSession(key, { state: "loading", active: false, error: null });
+      const existing = sceneWebsiteSession(key).viewId;
+      if (existing) await hideView(existing);
       try {
         const response = await openWebsite({
           projectPath,
@@ -146,25 +207,32 @@ export function SceneWebsiteOverlay({
               : null,
         });
         if (response.state === "ready") {
-          await showWebsite(response.viewId);
-          patchSession(key, { active: true });
+          await showReadyView(response.viewId);
         }
       } catch (error) {
         wantsLiveRef.current = false;
         patchSession(key, { state: "failed", active: false, error: errorMessage(error) });
       }
     },
-    [website, projectPath, stem, bounds, patchSession, key],
+    [website, projectPath, stem, bounds, patchSession, key, hideView, showReadyView],
   );
 
   const deactivate = useCallback(async () => {
     wantsLiveRef.current = false;
     const current = sceneWebsiteSession(key);
-    patchSession(key, { active: false, focused: false });
-    if (!current.viewId) return;
-    await hideWebsite(current.viewId).catch(() => {});
-    await performWebsiteAction(current.viewId, "releaseFocus").catch(() => {});
-  }, [key, patchSession]);
+    await hideView(current.viewId);
+  }, [key, hideView]);
+
+  useLayoutEffect(() => {
+    const current = sceneWebsiteSession(key);
+    if (blocked) {
+      void hideView(current.viewId);
+      return;
+    }
+    if (current.viewId && websiteSessionCanShow(current, wantsLiveRef.current, false)) {
+      void showReadyView(current.viewId);
+    }
+  }, [blocked, key, hideView, showReadyView]);
 
   useEffect(() => {
     const activateFromInspector = (event: Event) => {
@@ -200,24 +268,18 @@ export function SceneWebsiteOverlay({
             : null,
       });
       if (event.payload.state === "ready" && wantsLiveRef.current) {
-        void showWebsite(event.payload.viewId)
-          .then(() => patchSession(key, { active: true }))
-          .catch((error) =>
-            patchSession(key, { state: "failed", active: false, error: errorMessage(error) }),
-          );
+        void showReadyView(event.payload.viewId);
       } else if (
         event.payload.state === "blocked" ||
         event.payload.state === "failed" ||
         event.payload.state === "unavailable"
       ) {
-        void hideWebsite(event.payload.viewId).catch(() => {});
-        patchSession(key, { active: false, focused: false });
+        void hideView(event.payload.viewId);
       }
     }).then(keep);
     void listen<WebsiteOriginRequestEvent>(WEBSITE_ORIGIN_REQUEST_EVENT, (event) => {
       const current = sceneWebsiteSession(key);
       if (event.payload.viewId !== current.viewId) return;
-      void hideWebsite(event.payload.viewId).catch(() => {});
       patchSession(key, {
         active: false,
         focused: false,
@@ -227,6 +289,7 @@ export function SceneWebsiteOverlay({
           initial: false,
         },
       });
+      void hideView(event.payload.viewId);
     }).then(keep);
     void listen<WebsiteFocusEvent>(WEBSITE_FOCUS_EVENT, (event) => {
       const current = sceneWebsiteSession(key);
@@ -238,12 +301,12 @@ export function SceneWebsiteOverlay({
       mounted = false;
       for (const unlisten of unlisteners) unlisten();
     };
-  }, [key, patchSession]);
+  }, [key, patchSession, hideView, showReadyView]);
 
   useEffect(() => {
     const root = rootRef.current;
     const current = session;
-    if (!root || !layout || !current?.viewId || !wantsLiveRef.current) return;
+    if (!root || !layout || !current?.viewId || !current.active) return;
     const update = () => {
       const nextBounds = bounds();
       if (nextBounds) void setWebsiteBounds(current.viewId as string, nextBounds).catch(() => {});
@@ -327,7 +390,7 @@ export function SceneWebsiteOverlay({
     if (!initial) void activate();
   }, [key, patchSession, activate]);
 
-  if (!website || !layout || playing || cameraArmed) return null;
+  if (!website || !layout || playing || cameraArmed || blocked) return null;
   const current = session ?? sceneWebsiteSession(key);
   const pageStyle = rectStyle(layout.page, aspect);
   const controlWidth = `${((layout.toolbarHeight * 0.72) / aspect) * 100}%`;
