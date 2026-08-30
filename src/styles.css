@@ -8077,6 +8077,20 @@ button.inspector-scene-overview-group-main:hover .inspector-scene-overview-group
   flex: 1;
   justify-content: center;
 }
+
+.inspector-subtabs.website-viewport-presets {
+  align-self: stretch;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 2px;
+}
+
+.website-viewport-presets .inspector-subtab {
+  justify-content: center;
+  min-width: 0;
+  padding: 0 8px;
+}
+
 /* The object placement drill's rhythm: clear air above every labelled group (less for the first, which sits under the drill title), content hugging its own label, and the gizmo pills stripped of their stock margins so they align with the 8px label inset and their hint reads attached. */
 .object-drill .drill-group {
   margin-top: var(--space-7);

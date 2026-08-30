@@ -6860,8 +6860,29 @@ export function SceneTab({
                   }
                 />
               </DrillGroup>
+              <DrillGroup
+                label="Export poster"
+                hint="The PNG becomes a project asset and may travel in packs. Check the current page for account details, tokens or other secrets before capturing."
+              >
+                <ActionRow
+                  icon={<WebsiteActionIcon kind="capture" />}
+                  label={websiteCaptureBusy ? "Capturing…" : "Capture current view"}
+                  value={captureValue}
+                  chevron={false}
+                  disabled={!liveReady || websiteCaptureBusy}
+                  onClick={() => void captureCurrentWebsite()}
+                />
+                <ActionRow
+                  icon={<WebsiteActionIcon kind="image" />}
+                  label="Choose image…"
+                  chevron={false}
+                  disabled={websiteCaptureBusy}
+                  onClick={() => void chooseWebsiteImage()}
+                />
+              </DrillGroup>
               <DrillGroup label="Viewport">
                 <SegmentedRow
+                  className="website-viewport-presets"
                   ariaLabel="Website viewport preset"
                   options={[
                     {
@@ -7091,26 +7112,6 @@ export function SceneTab({
                     }
                   />
                 </div>
-              </DrillGroup>
-              <DrillGroup
-                label="Export poster"
-                hint="The PNG becomes a project asset and may travel in packs. Check the current page for account details, tokens or other secrets before capturing."
-              >
-                <ActionRow
-                  icon={<WebsiteActionIcon kind="capture" />}
-                  label={websiteCaptureBusy ? "Capturing…" : "Capture current view"}
-                  value={captureValue}
-                  chevron={false}
-                  disabled={!liveReady || websiteCaptureBusy}
-                  onClick={() => void captureCurrentWebsite()}
-                />
-                <ActionRow
-                  icon={<WebsiteActionIcon kind="image" />}
-                  label="Choose image…"
-                  chevron={false}
-                  disabled={websiteCaptureBusy}
-                  onClick={() => void chooseWebsiteImage()}
-                />
               </DrillGroup>
               {websiteGrants.length > 0 && (
                 <DrillGroup
