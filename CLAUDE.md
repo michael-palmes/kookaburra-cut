@@ -57,6 +57,8 @@ pnpm package:dmg       # DMG only, from an already-built release/Kookaburra Cut.
 pnpm release           # guards -> package:signed -> zip + checksum -> tag -> draft GH release
 ```
 
+For native Computer Use verification, run `pnpm acceptance:app` and target only the full `.app` path it prints. Never use `Kookaburra Cut`, `com.mpalmes.kookaburracut` or `/Applications/Kookaburra Cut.app`; if the helper fails, stop rather than falling back.
+
 **Gate economy:** the default per-change gate is ONE feature-matched project
 Verify ×2 in 16:9 (`showcase-tour` is the rolling gate project, ~2 min). The
 legacy sentinel gates PRE-MERGE: `pnpm gate:merge` runs showcase-tour +
