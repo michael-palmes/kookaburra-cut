@@ -149,7 +149,7 @@ function CaptureImage({
     texture.needsUpdate = true;
   }, [texture]);
   const material = useMemo(() => {
-    const next = new MeshBasicMaterial({ transparent: false, depthWrite: false, map: texture });
+    const next = new MeshBasicMaterial({ transparent: true, depthWrite: false, map: texture });
     next.toneMapped = false;
     return next;
   }, [texture]);

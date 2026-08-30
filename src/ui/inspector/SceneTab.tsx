@@ -10,6 +10,7 @@ import {
   useSyncExternalStore,
 } from "react";
 import { flushSync } from "react-dom";
+import { refreshWorkspaceAssets } from "../../engine/assetInventory";
 import { useCameraEditStore } from "../../engine/cameraEditStore";
 import { useChartEditStore } from "../../engine/chartEditStore";
 import { useClockStore } from "../../engine/clock";
@@ -6716,6 +6717,7 @@ export function SceneTab({
       source: "snapshot" | "image",
     ) => {
       if (!website) return;
+      await refreshWorkspaceAssets(project.id);
       useAssetVersionStore.getState().bump(project.id, result.src);
       await patchDoc(
         (next) => {
