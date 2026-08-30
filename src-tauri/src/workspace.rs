@@ -110,6 +110,9 @@ pub struct AppSettings {
     /// Publishers whose packs have been imported before, keyed by manifest key id (trust on first use).
     #[serde(default)]
     pub known_publishers: HashMap<String, KnownPublisher>,
+    /// Approved Website origins keyed by canonical project path; loopback grants remain session-only.
+    #[serde(default)]
+    pub website_origin_grants: HashMap<String, Vec<String>>,
 }
 
 /// Self-declared pack publisher details. Never verified: the signing key is what identifies an install, this is only what it calls itself.

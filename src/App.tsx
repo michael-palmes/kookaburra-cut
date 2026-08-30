@@ -170,6 +170,7 @@ import { MediaLibrary } from "./ui/MediaLibrary";
 import { PlaybackBar } from "./ui/PlaybackBar";
 import { PresentModal } from "./ui/PresentModal";
 import { SceneTerminalOverlay } from "./ui/SceneTerminalOverlay";
+import { SceneWebsiteOverlay } from "./ui/SceneWebsiteOverlay";
 import { ShortcutsSheet } from "./ui/ShortcutsSheet";
 import { TerminalGizmo } from "./ui/TerminalGizmo";
 import { TerminalPanel } from "./ui/TerminalPanel";
@@ -195,6 +196,7 @@ import {
   docPatchMatchesProject,
   resolveDocPatchIndex,
 } from "./ui/useSceneDocPatch";
+import { WebsiteGizmo } from "./ui/WebsiteGizmo";
 import { Welcome } from "./ui/Welcome";
 
 /** A recessed matte over the letterboxed stage while a freshly-opened project settles, with an honest step-based progress bar (no fabricated animation); never rendered in autorun. */
@@ -1518,6 +1520,7 @@ export default function App() {
   const textSectionOpen = useGizmoSectionOpen("text");
   const chartSectionOpen = useGizmoSectionOpen("chart");
   const terminalSectionOpen = useGizmoSectionOpen("terminal");
+  const websiteSectionOpen = useGizmoSectionOpen("website");
   const lsLaneOpen = useLayeredScreenshotEditStore((s) => s.laneOpen);
   const lsEditOpen = useLayeredScreenshotEditStore((s) => s.laneOpen || s.open);
   // The F-001 consent request `loadProject` is currently blocked on, if any.
@@ -2189,6 +2192,15 @@ export default function App() {
                     onDocChanged={handleDocChanged}
                   />
                 )}
+                {project && isWorkspaceProjectId(project.id) && !isAutoRun && (
+                  <SceneWebsiteOverlay
+                    project={project}
+                    sceneIndex={camSceneIndex}
+                    aspect={format.width / format.height}
+                    suspended={exporting}
+                    onDocChanged={handleDocChanged}
+                  />
+                )}
                 {/* Armed move tool drag surface (camera or screenshot stack, per the active scene's animated track): DOM above the canvas, exactly the letterboxed frame, so drags map 1:1 to rendered pixels. The ghost path rides the same guard, above the tool surface but click-through except on its key dots. */}
                 {project &&
                   isWorkspaceProjectId(project.id) &&
@@ -2264,6 +2276,18 @@ export default function App() {
                   !isAutoRun &&
                   terminalSectionOpen && (
                     <TerminalGizmo
+                      project={project}
+                      sceneIndex={camSceneIndex}
+                      aspect={format.width / format.height}
+                      onDocChanged={handleDocChanged}
+                    />
+                  )}
+                {project &&
+                  isWorkspaceProjectId(project.id) &&
+                  !exporting &&
+                  !isAutoRun &&
+                  websiteSectionOpen && (
+                    <WebsiteGizmo
                       project={project}
                       sceneIndex={camSceneIndex}
                       aspect={format.width / format.height}

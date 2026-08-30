@@ -439,6 +439,7 @@ describe("deriveSceneOverview", () => {
         },
         compare: {},
         terminal: {},
+        website: {},
       }),
       { frame: { cutout: { shape: "rounded-rect" } } },
     );
@@ -446,7 +447,7 @@ describe("deriveSceneOverview", () => {
     for (const id of ["device", "text", "image", "video", "object"] as const) {
       expect(options[id]).toMatchObject({ singleton: false, disabled: false });
     }
-    for (const id of ["chart", "screenshotStack", "comparison", "terminal"] as const) {
+    for (const id of ["chart", "screenshotStack", "comparison", "terminal", "website"] as const) {
       expect(options[id]).toMatchObject({
         singleton: true,
         disabled: true,
@@ -463,6 +464,7 @@ describe("deriveSceneOverview", () => {
       "screenshotStack",
       "comparison",
       "terminal",
+      "website",
     ]);
   });
 });

@@ -15,6 +15,8 @@ interface PresentStore {
   scenesCommitted: boolean;
   /** True while the slide's terminal owns the keyboard: the deck keys and click-to-advance stand down. */
   terminalFocused: boolean;
+  /** True while a live Website child view owns input. */
+  websiteFocused: boolean;
   setSceneCount: (n: number) => void;
   dispatch: (e: DeckEvent) => void;
   setAnchor: (sceneIndex: number, clockMs: number) => void;
@@ -22,6 +24,7 @@ interface PresentStore {
   setVideoPaused: (paused: boolean) => void;
   setScenesCommitted: (committed: boolean) => void;
   setTerminalFocused: (focused: boolean) => void;
+  setWebsiteFocused: (focused: boolean) => void;
   reset: () => void;
 }
 
@@ -33,6 +36,7 @@ export const usePresentStore = create<PresentStore>((set, get) => ({
   videoPaused: false,
   scenesCommitted: false,
   terminalFocused: false,
+  websiteFocused: false,
   setSceneCount: (n) => set({ sceneCount: n }),
   dispatch: (e) => set({ deck: stepDeck(get().deck, e, get().sceneCount) }),
   setAnchor: (sceneIndex, clockMs) =>
@@ -43,6 +47,7 @@ export const usePresentStore = create<PresentStore>((set, get) => ({
   setVideoPaused: (paused) => set({ videoPaused: paused }),
   setScenesCommitted: (committed) => set({ scenesCommitted: committed }),
   setTerminalFocused: (focused) => set({ terminalFocused: focused }),
+  setWebsiteFocused: (focused) => set({ websiteFocused: focused }),
   reset: () =>
     set({
       deck: initialDeckState(),
@@ -51,5 +56,6 @@ export const usePresentStore = create<PresentStore>((set, get) => ({
       videoPaused: false,
       scenesCommitted: false,
       terminalFocused: false,
+      websiteFocused: false,
     }),
 }));

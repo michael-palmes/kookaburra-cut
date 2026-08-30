@@ -2,6 +2,7 @@
 
 import type { AspectName } from "../engine/format";
 import type { SceneDocTerminal } from "../engine/sceneTerminal";
+import { resolveSceneWebsite, type SceneDocWebsite } from "../engine/sceneWebsite";
 import {
   type EncodeSpec,
   EXPORT_PRESET_VERSION,
@@ -352,6 +353,38 @@ export function terminalSnapshotWarning(
   return names.length === 1
     ? `Heads up: the terminal in ${list} has no captured snapshot, so it exports as an empty prompt. Capture one from the scene's Terminal panel.`
     : `Heads up: the terminals in ${list} have no captured snapshots, so they export as empty prompts. Capture them from each scene's Terminal panel.`;
+}
+
+/** Missing and stale Website captures remain non-blocking, but export must name every scene whose poster is not current. */
+export function websiteCaptureWarning(
+  sceneDocs: ({ name?: string; website?: SceneDocWebsite } | undefined)[],
+  sceneFiles: string[],
+): string | null {
+  const issues: { name: string; stale: boolean }[] = [];
+  sceneDocs.forEach((doc, index) => {
+    const website = resolveSceneWebsite(doc);
+    if (!website || (website.capture && !website.captureStale)) return;
+    const file = sceneFiles[index] ?? "";
+    issues.push({
+      name: doc?.name ?? file.replace(/^scenes\//, "").replace(/\.tsx$/, ""),
+      stale: website.captureStale,
+    });
+  });
+  if (issues.length === 0) return null;
+  const missing = issues.filter((issue) => !issue.stale).map((issue) => `"${issue.name}"`);
+  const stale = issues.filter((issue) => issue.stale).map((issue) => `"${issue.name}"`);
+  const parts: string[] = [];
+  if (missing.length > 0) {
+    parts.push(
+      `${missing.join(", ")} ${missing.length === 1 ? "has no Website capture and exports an empty browser frame" : "have no Website captures and export empty browser frames"}`,
+    );
+  }
+  if (stale.length > 0) {
+    parts.push(
+      `${stale.join(", ")} ${stale.length === 1 ? "has a stale Website capture" : "have stale Website captures"}`,
+    );
+  }
+  return `Heads up: ${parts.join("; ")}. Capture the current view from each scene's Website panel to refresh its export poster.`;
 }
 
 /** Slug for Save-as-preset: the workspace slug rules (lowercase, hyphenated). */
