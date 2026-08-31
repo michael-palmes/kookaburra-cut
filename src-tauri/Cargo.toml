@@ -83,7 +83,7 @@ objc2-web-kit = { version = "=0.3.2", default-features = false, features = [
   "WKWebsiteDataStore",
 ] }
 block2 = "0.6"
-wry = "=0.55.1"
+wry = "=0.56.1"
 
 # macOS 27 dyld rejects optimised proc-macro dylibs (mis-aligned LINKEDIT string pool); opt-level 0 here covers only build scripts and proc macros, the shipped binary is unaffected.
 [profile.release.build-override]
