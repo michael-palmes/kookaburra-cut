@@ -1,4 +1,5 @@
 import { createUserCatalogue, type LibraryItemInfo, listUserTemplates } from "./library";
+import { watchLibraryDocuments } from "./libraryDocuments";
 import { fsUrl } from "./media";
 import { ledgerItems, type PreviewLedger, previewContentHash } from "./presets";
 import {
@@ -550,7 +551,7 @@ function buildCatalogue(): TemplateEntry[] {
   return entries.sort(compareEntries);
 }
 
-/** The BUNDLED catalogue in picker order: Blank, then category order, stable before beta, then `order`, then name. Memoised, since the globs are eager and nothing here can change at runtime. */
+/** The bundled catalogue in picker order, refreshed by content updates during development. */
 export function listTemplates(): TemplateEntry[] {
   if (!catalogue) catalogue = buildCatalogue();
   return catalogue;
@@ -601,12 +602,30 @@ export function refreshUserTemplates(): Promise<TemplateEntry[]> {
   return userTemplates.refresh();
 }
 
-/** For `useSyncExternalStore`: fires whenever the user half changes. */
+/** Subscribe to workspace refreshes and bundled document updates. */
 export function subscribeTemplates(listener: () => void): () => void {
-  return userTemplates.subscribe(listener);
+  bundledListeners.add(listener);
+  const unsubscribe = userTemplates.subscribe(listener);
+  return () => {
+    bundledListeners.delete(listener);
+    unsubscribe();
+  };
 }
 
 let merged: { version: number; entries: TemplateEntry[] } | null = null;
+const bundledListeners = new Set<() => void>();
+
+watchLibraryDocuments(
+  import.meta.hot,
+  "projects",
+  { "template.json": templateGlob, "project.json": projectGlob, scenes: sidecarGlob },
+  () => {
+    catalogue = null;
+    merged = null;
+    staleCache.clear();
+    for (const listener of bundledListeners) listener();
+  },
+);
 
 /** Bundled and user templates in one picker order. Synchronous by design: the bundled half is there on the first frame, the user half appears when its listing lands. The result is memoised per refresh, so it is safe as a `useSyncExternalStore` snapshot. */
 export function listAllTemplates(): TemplateEntry[] {

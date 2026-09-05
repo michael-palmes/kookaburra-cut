@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "name": "Layered screenshot",
+  "tagline": "A 3D stack of app screens",
+  "category": "starters",
+  "tags": ["layeredscreenshot", "starter"],
+  "order": 70,
+  "status": "stable",
+  "preview": 0
+}

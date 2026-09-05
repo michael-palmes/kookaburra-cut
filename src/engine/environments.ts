@@ -25,6 +25,7 @@ import warehouseUrl from "../assets/hdri/warehouse.hdr?url";
 import type { FixtureSpec, LightingSpec, Theme } from "../theme/tokens";
 import { fixtureWorldInstances } from "./fixtures";
 import { resolveProjectHdrUrl } from "./project";
+import { projectAssetRevision } from "./projectAssetRevision";
 import type { SceneDoc } from "./sceneDocSchema";
 import { resolveLighting, resolveLightingColour } from "./sceneLighting";
 
@@ -61,11 +62,15 @@ export const BUNDLED_ENVIRONMENT_IDS: readonly string[] = [
 /** Resolved textures by cache key; `null` marks a source that failed/isn't wired (warned once). */
 const loaded = new Map<string, Texture | null>();
 const inflight = new Map<string, Promise<Texture | null>>();
+const revisedSources = new Map<string, { projectId: string; rel: string }>();
 
 /** The environments cache key for an authored source: bundled ids and "none" pass through; project-relative user paths key per project so two projects' "assets/studio.hdr" never collide. */
 export function environmentCacheKey(projectId: string | undefined, source: string): string {
   if (source.startsWith("kookaburra:") || source === NONE_SOURCE) return source;
-  return `${projectId ?? ""}|${source}`;
+  const revision = projectAssetRevision(projectId);
+  const key = `${projectId ?? ""}|${source}${revision ? `|${revision}` : ""}`;
+  if (revision) revisedSources.set(key, { projectId: projectId ?? "", rel: source });
+  return key;
 }
 
 /** The PMREM texture for a cache key, or null while loading / for unknown or "none" sources. Sync, called per render target at the compositor seam. */
@@ -109,8 +114,8 @@ async function loadEnvironment(gl: WebGLRenderer, key: string): Promise<Texture 
     // User project sources ("<projectId>|<rel>"): resolve to a loadable URL, throwing on a missing file so the preload barrier fails the run loudly rather than exporting without reflections.
     const split = key.indexOf("|");
     if (split >= 0) {
-      const projectId = key.slice(0, split);
-      const rel = key.slice(split + 1);
+      const projectId = revisedSources.get(key)?.projectId ?? key.slice(0, split);
+      const rel = revisedSources.get(key)?.rel ?? key.slice(split + 1);
       const url = resolveProjectHdrUrl(projectId, rel);
       const equirect = await loadEquirect(url, /\.exr$/i.test(rel));
       const texture = pmrem.fromEquirectangular(equirect).texture;
@@ -257,8 +262,8 @@ async function loadEquirectForKey(key: string): Promise<Texture | null> {
   let exr = false;
   const split = key.indexOf("|");
   if (split >= 0) {
-    const rel = key.slice(split + 1);
-    url = resolveProjectHdrUrl(key.slice(0, split), rel);
+    const rel = revisedSources.get(key)?.rel ?? key.slice(split + 1);
+    url = resolveProjectHdrUrl(revisedSources.get(key)?.projectId ?? key.slice(0, split), rel);
     exr = /\.exr$/i.test(rel);
   } else {
     if (key === SOFTBOX_SOURCE) return null;

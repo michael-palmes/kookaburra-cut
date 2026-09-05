@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "name": "Comparison",
+  "tagline": "Devices side by side, old and new",
+  "category": "starters",
+  "tags": ["comparison", "starter"],
+  "order": 30,
+  "status": "stable",
+  "preview": 0
+}

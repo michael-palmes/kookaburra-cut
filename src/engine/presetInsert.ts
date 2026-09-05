@@ -1,4 +1,6 @@
+import { isWorkspaceBackedProjectId, nativeProjectSlug, parseProjectId } from "./project";
 import { copySceneToProject } from "./projectEdit";
+import { ensureProjectTrusted } from "./projectTrust";
 
 /** Native insertion copies the scene and its assets at the requested position in one manifest write. */
 
@@ -19,6 +21,12 @@ export async function insertPresetScene(opts: {
   presetProjectId: string;
   position: number;
 }): Promise<InsertedPresetScene> {
+  if (isWorkspaceBackedProjectId(opts.presetProjectId)) {
+    await ensureProjectTrusted(
+      nativeProjectSlug(opts.presetProjectId),
+      parseProjectId(opts.presetProjectId).slug,
+    );
+  }
   const copied = await copySceneToProject(
     opts.presetProjectId,
     0,

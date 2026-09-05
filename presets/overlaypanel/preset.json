@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "name": "Overlay title",
+  "tagline": "A full-panel title, no scene window",
+  "category": "starters",
+  "tags": ["overlaypanel", "starter"],
+  "order": 140,
+  "status": "stable",
+  "preview": 0
+}

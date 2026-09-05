@@ -2103,6 +2103,22 @@ button.beat-status {
   min-width: 0;
 }
 
+.preset-gallery .template-gallery-results {
+  max-height: min(42vh, 25rem);
+  overflow-y: auto;
+  padding: 2px;
+}
+
+.preset-gallery-placement {
+  min-width: 0;
+  padding: 0;
+  border: 0;
+}
+
+.preset-gallery-placement legend {
+  margin-bottom: var(--space-2);
+}
+
 .template-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -2112,6 +2128,11 @@ button.beat-status {
   overflow-y: auto;
   padding: var(--space-1);
   min-width: 0;
+}
+
+.preset-gallery .template-grid {
+  max-height: none;
+  overflow: visible;
 }
 
 .template-card {
@@ -4055,54 +4076,6 @@ button.beat-status {
   width: min(46rem, calc(100% - 2rem));
   max-height: calc(100vh - var(--chrome-top, 0px) - 4rem);
   overflow-y: auto;
-}
-
-.kind-picker {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: var(--space-4);
-}
-
-/* The type step: fifteen presets sit four across (the last row runs short). */
-.wizard-kind-wide {
-  width: min(68rem, calc(100% - 2rem));
-}
-
-.kind-card {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  padding: var(--space-4);
-  font: inherit;
-  text-align: left;
-  color: var(--text-primary);
-  background: var(--surface-raised);
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-}
-
-.kind-card:hover {
-  border-color: var(--border-strong);
-}
-
-.kind-card.selected {
-  border-color: var(--accent-border);
-  background: var(--accent-subtle);
-}
-
-.kind-card-label {
-  font-weight: 590;
-}
-
-/* Bundled still from the option-previews pipeline; absent files simply drop the img. */
-.kind-card-preview {
-  width: 100%;
-  aspect-ratio: 16 / 9;
-  object-fit: cover;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--border-default);
-  background: var(--surface-recessed);
 }
 
 /* Device catalog cards: preview art follows the selected colour swatch. */

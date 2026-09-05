@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "name": "Title",
+  "text": {
+    "title": "Ship faster",
+    "subtitle": "Make it yours"
+  },
+  "managedText": {
+    "layout": "template",
+    "items": [
+      {
+        "key": "title",
+        "type": "title",
+        "text": "Ship faster"
+      },
+      {
+        "key": "subtitle",
+        "type": "subtitle",
+        "text": "Make it yours"
+      }
+    ]
+  }
+}

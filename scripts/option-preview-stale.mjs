@@ -27,7 +27,7 @@ const enginePin = (() => {
 function setNameOf(stem) {
   if (stem.startsWith("tm-")) return `textanim-${stem.slice(3)}`;
   if (stem.startsWith("tl-")) return `textlook-${stem.slice(3)}`;
-  if (/^(bgp?|shadow|stage|kind|object|chart|chartanim)-/.test(stem)) return stem;
+  if (/^(bgp?|shadow|stage|object|chart|chartanim)-/.test(stem)) return stem;
   return null;
 }
 const isClip = (stem, set) =>

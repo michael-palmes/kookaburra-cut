@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "name": "Image",
+  "tagline": "An image filling the whole frame",
+  "category": "starters",
+  "tags": ["image", "starter"],
+  "order": 100,
+  "status": "stable",
+  "preview": 0
+}

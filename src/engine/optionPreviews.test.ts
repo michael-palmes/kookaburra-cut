@@ -7,7 +7,7 @@ import { TEXT_LOOK_NAMES } from "../toolkit/text/looks";
 import { TEXT_PRESET_NAMES } from "../toolkit/text/presets";
 import { optionPreviewJobs } from "./optionPreviews";
 import { resolveChart } from "./sceneChart";
-import { parseSceneDoc, type SceneManagedTextBlock } from "./sceneDocSchema";
+import { parseSceneDoc } from "./sceneDocSchema";
 import { largestSceneText } from "./sceneTextRegistry";
 
 // The committed bgp-* fixtures, loaded through the same glob machinery the app uses for bundled docs.
@@ -44,25 +44,6 @@ const chartAnimFixtures = import.meta.glob<Record<string, unknown>>(
   "../../fixtures/preview-lab-chart-anim/scenes/*.json",
   { eager: true, import: "default" },
 );
-
-// The wizard's committed kind cards, which must mirror native scaffold ownership.
-const kindStageFixtures = import.meta.glob<{
-  managedText?: SceneManagedTextBlock;
-  videoWindow?: Record<string, unknown>;
-  backdrop?: Record<string, unknown>;
-}>("../../fixtures/preview-lab-stage/scenes/kind-*.json", { eager: true, import: "default" });
-
-const kindStageAssets = import.meta.glob("../../fixtures/preview-lab-stage/assets/*");
-
-const kindVideoWindowSource = import.meta.glob<string>(
-  "../../fixtures/preview-lab-stage/scenes/kind-videowindow.tsx",
-  { eager: true, query: "?raw", import: "default" },
-)["../../fixtures/preview-lab-stage/scenes/kind-videowindow.tsx"];
-
-const videoWindowTemplateSource = import.meta.glob<string>(
-  "../../src-tauri/templates/scenes/videowindow.tsx.tmpl",
-  { eager: true, query: "?raw", import: "default" },
-)["../../src-tauri/templates/scenes/videowindow.tsx.tmpl"];
 
 /** One chart fixture's build length against the window its capture sees: a still captures the scene MIDDLE, a clip the whole window, so a build running past either shows a half-drawn chart on the card. */
 function chartBuildMs(doc: unknown, stem: string): number {
@@ -104,163 +85,13 @@ describe("optionPreviewJobs (the set-naming contract)", () => {
     ]);
   });
 
-  it("maps shadow-*, stage-*, kind-* and object-* stems to same-named still sets", () => {
-    const jobs = optionPreviewJobs([
-      "shadow-soft",
-      "stage-gradient",
-      "kind-appversion",
-      "object-lantern",
-    ]);
+  it("maps shadow-*, stage-* and object-* stems to same-named still sets", () => {
+    const jobs = optionPreviewJobs(["shadow-soft", "stage-gradient", "object-lantern"]);
     expect(jobs).toEqual([
       { stem: "shadow-soft", set: "shadow-soft", kind: "still" },
       { stem: "stage-gradient", set: "stage-gradient", kind: "still" },
-      { stem: "kind-appversion", set: "kind-appversion", kind: "still" },
       { stem: "object-lantern", set: "object-lantern", kind: "still" },
     ]);
-  });
-
-  it("pins managed-text ownership for every wizard kind fixture", () => {
-    const ownership = Object.fromEntries(
-      Object.entries(kindStageFixtures).map(([path, doc]) => {
-        const stem =
-          path
-            .split("/")
-            .pop()
-            ?.replace(/^kind-|\.json$/g, "") ?? path;
-        return [stem, doc.managedText ?? null];
-      }),
-    );
-
-    expect(ownership).toEqual({
-      appversion: {
-        layout: "template",
-        items: [
-          { key: "icon", type: "icon", icon: "assets/app-icon.png" },
-          { key: "title", type: "subtitle", text: "Your App" },
-          { key: "subtitle", type: "title", text: "3.1.5" },
-        ],
-      },
-      blank: {
-        layout: "template",
-        items: [{ key: "title", type: "title", text: "" }],
-      },
-      chart: {
-        layout: "template",
-        items: [{ key: "title", type: "title", text: "Revenue by quarter" }],
-      },
-      comparison: {
-        layout: "template",
-        items: [
-          { key: "title", type: "title", text: "The redesign" },
-          { key: "subtitle", type: "subtitle", text: "" },
-        ],
-      },
-      device: {
-        layout: "template",
-        items: [
-          { key: "title", type: "title", text: "Ship faster" },
-          { key: "subtitle", type: "subtitle", text: "" },
-        ],
-      },
-      deviceonly: null,
-      image: null,
-      layeredscreenshot: {
-        layout: "template",
-        items: [{ key: "title", type: "title", text: "Screenshots in motion" }],
-      },
-      overlayend: {
-        layout: "template",
-        items: [
-          { key: "title", type: "title", text: "Ship faster" },
-          { key: "subtitle", type: "subtitle", text: "Make it yours" },
-        ],
-      },
-      overlaypanel: {
-        layout: "template",
-        items: [
-          { key: "title", type: "title", text: "Ship faster" },
-          { key: "subtitle", type: "subtitle", text: "Make it yours" },
-        ],
-      },
-      overlaystart: {
-        layout: "template",
-        items: [
-          { key: "title", type: "title", text: "Ship faster" },
-          { key: "subtitle", type: "subtitle", text: "Make it yours" },
-        ],
-      },
-      title: {
-        layout: "template",
-        items: [
-          { key: "title", type: "title", text: "Ship faster" },
-          { key: "subtitle", type: "subtitle", text: "Make it yours" },
-        ],
-      },
-      titleicon: {
-        layout: "template",
-        items: [
-          { key: "icon", type: "icon", icon: "🚀" },
-          { key: "title", type: "title", text: "Ship faster" },
-          { key: "subtitle", type: "subtitle", text: "Make it yours" },
-        ],
-      },
-      video: null,
-      videowindow: {
-        layout: "template",
-        items: [
-          { key: "title", type: "title", text: "Show the whole flow" },
-          {
-            key: "subtitle",
-            type: "subtitle",
-            text: "A focused window for your screen recording",
-          },
-        ],
-      },
-    });
-  });
-
-  it("ships every managed image icon referenced by a wizard kind fixture", () => {
-    const availableAssets = new Set(
-      Object.keys(kindStageAssets).map((path) =>
-        path.replace("../../fixtures/preview-lab-stage/", ""),
-      ),
-    );
-    const imageIcons = Object.values(kindStageFixtures)
-      .flatMap((doc) => doc.managedText?.items ?? [])
-      .flatMap((item) =>
-        item.type === "icon" && item.icon?.startsWith("assets/") ? [item.icon] : [],
-      );
-
-    expect([...new Set(imageIcons)].sort()).toEqual(["assets/app-icon.png"]);
-    for (const icon of imageIcons) expect(availableAssets.has(icon), icon).toBe(true);
-  });
-
-  it("keeps the video-window card on the shipped composition and two-line placement", () => {
-    const instantiatedTemplate = videoWindowTemplateSource
-      .replaceAll("__NAME__", "Kind: video window")
-      .replaceAll("__STEM__", "kind-videowindow")
-      .replaceAll("__SCENE_ID__", "lab-kind-videowindow")
-      .replaceAll("__DURATION_MS__", "3650");
-    const sceneDefinition = (source: string) => source.slice(source.indexOf("export default"));
-
-    expect(sceneDefinition(kindVideoWindowSource)).toBe(sceneDefinition(instantiatedTemplate));
-    expect(
-      kindStageFixtures["../../fixtures/preview-lab-stage/scenes/kind-videowindow.json"],
-    ).toMatchObject({
-      managedText: {
-        layout: "template",
-        items: [
-          { key: "title", type: "title", text: "Show the whole flow" },
-          {
-            key: "subtitle",
-            type: "subtitle",
-            text: "A focused window for your screen recording",
-          },
-        ],
-      },
-      videoWindow: { scale: 0.65, offset: [0, -0.08] },
-      backdrop: { type: "none" },
-    });
   });
 
   it("maps bg-<shader> stems to same-named CLIP sets (animated fills preview in motion)", () => {
@@ -473,11 +304,6 @@ describe("optionPreviewJobs (the set-naming contract)", () => {
         chartSceneMs("preview-lab-chart", stem) / 2,
       );
     }
-    // The kind card runs the SCAFFOLDER's animation defaults, so a slower default would capture it mid-build.
-    const kind = kindStageFixtures["../../fixtures/preview-lab-stage/scenes/kind-chart.json"];
-    expect(chartBuildMs(kind, "kind-chart")).toBeLessThanOrEqual(
-      chartSceneMs("preview-lab-stage", "kind-chart") / 2,
-    );
   });
 
   it("every chart build-in fixture finishes inside its clip window, hold included", () => {

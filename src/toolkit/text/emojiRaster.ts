@@ -1,21 +1,11 @@
 import { invoke } from "@tauri-apps/api/core";
 import { SRGBColorSpace, type Texture, TextureLoader } from "three";
 import { fsUrl } from "../../engine/media";
-import {
-  isWorkspaceBackedProjectId,
-  nativeProjectSlug,
-  resolveAssetPath,
-} from "../../engine/project";
+import { isEditableProjectId, nativeProjectSlug, resolveAssetPath } from "../../engine/project";
 import type { SceneDoc } from "../../engine/sceneDocSchema";
 import { type EmojiCluster, prepareEmojiText } from "./emojiText";
 
-/**
- * The colour-emoji raster cache. Each unique cluster is drawn ONCE with the system
- * font (Apple Color Emoji via canvas 2D) and frozen as a PNG in the project's own
- * `assets/.emoji-cache/`; determinism comes from that write-once file, not from the
- * renderer, exactly like system-font pinning. Workspace projects persist to disk;
- * bundled projects keep a session-only in-memory cache (recorded non-goal).
- */
+/** Emoji rasters freeze to project PNGs when editable; read-only bundled projects keep session rasters. */
 
 /** Raster cell size; doubles as the cache filename's generator-version suffix (bumped 256 → 320 when ink-centred blitting replaced advance-centred drawing). */
 export const EMOJI_RASTER_SIZE = 320;
@@ -144,7 +134,7 @@ async function resolveKey(key: string, cluster: string): Promise<void> {
     warnOnce(key, `[emoji] the system font cannot draw "${cluster}" (${key}); it will not render`);
     return;
   }
-  if (projectId && isWorkspaceBackedProjectId(projectId)) {
+  if (projectId && isEditableProjectId(projectId)) {
     const bytes = new Uint8Array(await blob.arrayBuffer());
     try {
       await invoke("write_emoji_raster", bytes, {

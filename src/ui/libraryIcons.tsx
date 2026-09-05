@@ -82,6 +82,7 @@ export const TEMPLATE_CATEGORY_ICONS: Record<string, ReactElement> = {
 
 export const PRESET_CATEGORY_ICONS: Record<string, ReactElement> = {
   all: GRID_ICON,
+  starters: GRID_ICON,
   uncategorised: UNCATEGORISED_ICON,
   openers: railIcon(
     <>

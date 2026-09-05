@@ -639,6 +639,7 @@ export function InspectorPanel({
             {insertingPreset !== null && (
               <PresetGalleryModal
                 slug={nativeProjectSlug(project.id)}
+                project={project}
                 position={insertingPreset}
                 // A new scene file, so the whole project reloads; the host selects it when it takes the file.
                 onDone={(inserted) => {

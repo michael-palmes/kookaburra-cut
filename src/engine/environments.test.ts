@@ -6,6 +6,7 @@ import {
   environmentCacheKey,
   resolveSceneEnvironment,
 } from "./environments";
+import { setProjectAssetRevision } from "./projectAssetRevision";
 
 function makeTheme(overrides: Partial<Theme> = {}): Theme {
   return {
@@ -26,6 +27,14 @@ function makeTheme(overrides: Partial<Theme> = {}): Theme {
 }
 
 describe("environmentCacheKey", () => {
+  it("rebuilds user HDR reflections for each hidden poster source revision", () => {
+    const projectId = "ws-preset:hdr-poster";
+    setProjectAssetRevision(projectId, "first");
+    const first = environmentCacheKey(projectId, "assets/studio.hdr");
+    setProjectAssetRevision(projectId, "second");
+    expect(environmentCacheKey(projectId, "assets/studio.hdr")).not.toBe(first);
+    expect(environmentCacheKey(projectId, "kookaburra:warehouse")).toBe("kookaburra:warehouse");
+  });
   it("passes bundled ids and none through, keys user paths per project", () => {
     expect(environmentCacheKey("ws:a", "kookaburra:warehouse")).toBe("kookaburra:warehouse");
     expect(environmentCacheKey("ws:a", "none")).toBe("none");

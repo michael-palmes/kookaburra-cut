@@ -411,7 +411,7 @@ export function PlaybackBar({
             type="button"
             className="pb-new-scene"
             disabled={exporting}
-            title="Add a scene (opens the scene wizard)"
+            title="Choose a scene from App presets or My presets"
             onPointerDown={holdPointer}
             onClick={onNewScene}
           >
@@ -423,6 +423,7 @@ export function PlaybackBar({
       {insertingPreset !== null && project && (
         <PresetGalleryModal
           slug={nativeProjectSlug(project.id)}
+          project={project}
           position={insertingPreset}
           onDone={(inserted) => {
             setInsertingPreset(null);

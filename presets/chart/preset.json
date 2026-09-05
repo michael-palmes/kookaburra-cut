@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "name": "Chart",
+  "tagline": "Your numbers as a 3D chart",
+  "category": "starters",
+  "tags": ["chart", "starter"],
+  "order": 80,
+  "status": "stable",
+  "preview": 0
+}

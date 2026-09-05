@@ -1,4 +1,13 @@
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { listen } from "@tauri-apps/api/event";
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { createPortal } from "react-dom";
 import { insertPresetScene } from "../engine/presetInsert";
 import {
@@ -11,12 +20,17 @@ import {
   searchPresets,
   subscribePresets,
 } from "../engine/presets";
-import { PRESET_CATEGORY_ICONS } from "./libraryIcons";
+import { type LoadedProject, sceneFileStem } from "../engine/project";
+import { ensureSceneThumbs, listCachedSceneThumbs } from "../engine/sceneThumbs";
+import { gapFromPlacement, placementFromGap } from "./insertMath";
+import { LibraryRailIcon, PRESET_CATEGORY_ICONS, railIcon } from "./libraryIcons";
 import { modalHost } from "./modalHost";
 import { PresetCard } from "./PresetCard";
+import { SceneInsertTimeline } from "./SceneInsertTimeline";
+import type { WizardSceneInfo } from "./SceneWizards";
 import { useEscapeClose } from "./useEscapeClose";
 
-/** The From-preset gallery: every scene preset (bundled first, then the user's own) as a searchable card grid behind category chips, inserting the chosen one into the open project through the cross-project copy machinery (`engine/presetInsert`). It borrows the welcome library's card and category icons, so one preset looks the same wherever it is shown; filtering and counts are the registry's pure helpers, so the rules are unit-tested without rendering. Portals to the chrome root, since the inspector's drill pages animate with a transform, which would otherwise become the containing block for a fixed overlay. */
+/** New scene and From preset share the library catalogue, cards and native insertion path. */
 
 /** One heading's worth of cards. Categories keep their catalogue order and empty ones drop out; presets filing under none land in a trailing Uncategorised group. */
 export interface PresetGroup {
@@ -41,44 +55,138 @@ export function groupPresetsByCategory(entries: readonly PresetEntry[]): PresetG
 }
 
 type ChipId = PresetCategoryId | "all";
+type PresetSourceTab = "app" | "mine";
 
-/** Insert a scene from the preset library. The chosen preset's scene copies in at `position` (a fresh id minted natively, its assets copied along, the project's own theme applying by construction); `onDone` hands the host the new scene so it can reload and select it. */
+export function presetsForSource(
+  entries: readonly PresetEntry[],
+  source: PresetSourceTab,
+): PresetEntry[] {
+  return entries.filter((entry) => (entry.source === "user") === (source === "mine"));
+}
+
+export function resolvePresetSelection(
+  entries: readonly PresetEntry[],
+  selectedId: string | null,
+): PresetEntry | null {
+  return selectedId === null
+    ? (entries[0] ?? null)
+    : (entries.find((entry) => entry.id === selectedId) ?? null);
+}
+
+/** The requested position seeds the placement strip; success returns the committed file for reload and selection. */
 export function PresetGalleryModal({
   slug,
   position,
+  project,
+  scenes: suppliedScenes,
+  thumbs: suppliedThumbs,
+  onNeedThumbs,
   onDone,
   onCancel,
 }: {
-  /** Destination workspace project slug (no `ws:` prefix). */
+  /** Native destination slug or scoped template id. */
   slug: string;
   /** Manifest index the new scene should land at (past the end appends). */
   position: number;
+  project?: LoadedProject;
+  scenes?: WizardSceneInfo[];
+  thumbs?: Record<string, string>;
+  onNeedThumbs?: () => void;
   onDone: (inserted: { file: string; index: number; name: string }) => void;
   onCancel: () => void;
 }) {
+  const titleId = useId();
+  const panelId = useId();
   const entries = useSyncExternalStore(subscribePresets, listAllPresets, listAllPresets);
+  const scenes = useMemo<WizardSceneInfo[]>(
+    () =>
+      suppliedScenes ??
+      project?.slots.map((slot, index) => ({
+        index,
+        id: slot.id,
+        file: project.sceneFiles[index],
+        stem: sceneFileStem(project.sceneFiles[index]),
+        name: project.sceneDocs[index]?.name ?? null,
+        durationMs: slot.durationMs,
+        startMs: slot.startMs,
+        doc: project.sceneDocs[index],
+      })) ??
+      [],
+    [suppliedScenes, project],
+  );
+  const [placement, setPlacement] = useState(() => placementFromGap(position, scenes.length));
+  const [cachedThumbs, setCachedThumbs] = useState<Record<string, string>>({});
+  const [source, setSource] = useState<PresetSourceTab>("app");
   const [query, setQuery] = useState("");
   const [chip, setChip] = useState<ChipId>("all");
   const [selected, setSelected] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const refreshTicket = useRef(0);
   const gridRef = useRef<HTMLDivElement>(null);
   useEscapeClose(onCancel, !busy);
 
-  // The user's half hydrates behind the bundled one; the store subscription repaints when it lands.
   useEffect(() => {
-    refreshUserPresets().catch((e) => setError(String(e)));
+    if (!project) {
+      onNeedThumbs?.();
+      return;
+    }
+    const controller = new AbortController();
+    const update = (thumbs: Record<string, string>) => {
+      if (!controller.signal.aborted) setCachedThumbs(thumbs);
+    };
+    void listCachedSceneThumbs(project)
+      .then(update)
+      .catch(() => {});
+    void ensureSceneThumbs(project, { signal: controller.signal })
+      .then(update)
+      .catch(() => {});
+    const stop = listen("kookaburra://thumbs-updated", () => {
+      void listCachedSceneThumbs(project)
+        .then(update)
+        .catch(() => {});
+    });
+    return () => {
+      controller.abort();
+      void stop.then((unlisten) => unlisten());
+    };
+  }, [project, onNeedThumbs]);
+
+  const refresh = useCallback(async () => {
+    const ticket = ++refreshTicket.current;
+    setRefreshing(true);
+    try {
+      await refreshUserPresets();
+      if (ticket === refreshTicket.current) setLoadError(null);
+    } catch (e) {
+      if (ticket === refreshTicket.current) setLoadError(String(e));
+    } finally {
+      if (ticket === refreshTicket.current) setRefreshing(false);
+    }
   }, []);
 
+  useEffect(() => {
+    void refresh();
+    return () => {
+      refreshTicket.current += 1;
+    };
+  }, [refresh]);
+
   const category = chip === "all" ? null : chip;
+  const sourceEntries = useMemo(() => presetsForSource(entries, source), [entries, source]);
   const visible = useMemo(
-    () => searchPresets(entries, { query, category }),
-    [entries, query, category],
+    () => searchPresets(sourceEntries, { query, category }),
+    [sourceEntries, query, category],
   );
-  const counts = useMemo(() => presetCategoryCounts(entries, { query }), [entries, query]);
+  const counts = useMemo(
+    () => presetCategoryCounts(sourceEntries, { query }),
+    [sourceEntries, query],
+  );
   const groups = useMemo(() => groupPresetsByCategory(visible), [visible]);
   const flat = useMemo(() => groups.flatMap((group) => group.entries), [groups]);
-  const active = flat.find((entry) => entry.id === selected) ?? flat[0] ?? null;
+  const active = resolvePresetSelection(flat, selected);
 
   const cards = () =>
     Array.from(gridRef.current?.querySelectorAll<HTMLElement>(".template-card") ?? []);
@@ -102,9 +210,9 @@ export function PresetGalleryModal({
     el?.scrollIntoView({ block: "nearest" });
   };
 
-  const insert = async () => {
-    if (!active || busy) return;
-    if (active.sceneCount !== 1) {
+  const insert = async (preset = active) => {
+    if (!preset || busy) return;
+    if (preset.sceneCount !== 1) {
       setError("This preset must contain exactly one scene before it can be inserted.");
       return;
     }
@@ -113,10 +221,10 @@ export function PresetGalleryModal({
     try {
       const inserted = await insertPresetScene({
         destSlug: slug,
-        presetProjectId: active.projectId,
-        position,
+        presetProjectId: preset.projectId,
+        position: project || suppliedScenes ? gapFromPlacement(placement, scenes.length) : position,
       });
-      onDone({ file: inserted.file, index: inserted.index, name: active.name });
+      onDone({ file: inserted.file, index: inserted.index, name: preset.name });
     } catch (e) {
       setError(String(e));
       setBusy(false);
@@ -124,9 +232,13 @@ export function PresetGalleryModal({
   };
 
   const onGridKeyDown = (e: React.KeyboardEvent) => {
+    if (busy) return;
     if (e.key === "Enter") {
       e.preventDefault();
-      void insert();
+      const focusedId = (e.target as Element)
+        .closest("[data-preset-id]")
+        ?.getAttribute("data-preset-id");
+      void insert(resolvePresetSelection(flat, focusedId ?? selected));
       return;
     }
     const anchor = flat.findIndex((entry) => entry.id === active?.id);
@@ -152,10 +264,47 @@ export function PresetGalleryModal({
   ];
 
   return createPortal(
-    <div className="modal-overlay" role="dialog" aria-modal="true" aria-label="Insert from preset">
-      <div className="modal wizard-wide">
-        <h2>Insert from preset</h2>
+    <div className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby={titleId}>
+      <div className="modal wizard-wide wizard-place-wide preset-gallery">
+        <h2 id={titleId}>New scene</h2>
         <div className="template-gallery">
+          <div className="wizard-presets" role="tablist" aria-label="Preset library">
+            {(["app", "mine"] as const).map((tab) => (
+              <button
+                key={tab}
+                type="button"
+                role="tab"
+                id={`${panelId}-${tab}`}
+                aria-controls={panelId}
+                aria-selected={source === tab}
+                tabIndex={source === tab ? 0 : -1}
+                className={`chip${source === tab ? " selected" : ""}`}
+                disabled={busy}
+                onClick={() => {
+                  setSource(tab);
+                  setChip("all");
+                }}
+                onKeyDown={(event) => {
+                  if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+                  event.preventDefault();
+                  const next =
+                    event.key === "Home"
+                      ? "app"
+                      : event.key === "End"
+                        ? "mine"
+                        : tab === "app"
+                          ? "mine"
+                          : "app";
+                  setSource(next);
+                  setChip("all");
+                  document.getElementById(`${panelId}-${next}`)?.focus();
+                }}
+              >
+                <LibraryRailIcon id={tab === "app" ? "app-presets" : "presets"} />
+                {tab === "app" ? "App presets" : "My presets"}
+              </button>
+            ))}
+          </div>
           <div className="template-gallery-bar">
             <input
               className="modal-input template-gallery-search"
@@ -163,6 +312,7 @@ export function PresetGalleryModal({
               placeholder="Search presets…"
               aria-label="Search presets"
               value={query}
+              disabled={busy}
               onChange={(e) => setQuery(e.target.value)}
             />
             <span className="template-gallery-count" aria-live="polite">
@@ -176,7 +326,7 @@ export function PresetGalleryModal({
                 type="button"
                 className={`chip${chip === row.id ? " selected" : ""}`}
                 aria-pressed={chip === row.id}
-                disabled={row.id !== "all" && row.count === 0}
+                disabled={busy || (row.id !== "all" && row.count === 0)}
                 onClick={() => setChip(row.id)}
               >
                 {PRESET_CATEGORY_ICONS[row.id]}
@@ -184,62 +334,103 @@ export function PresetGalleryModal({
               </button>
             ))}
           </fieldset>
-          {flat.length === 0 ? (
-            <div className="template-empty">
-              <p>
-                {entries.length === 0
-                  ? "No scene presets yet. Right-click a scene and choose “Save as preset…” to start your library."
-                  : query
-                    ? `No presets match “${query}”.`
-                    : "No presets match these filters."}
-              </p>
-              {entries.length > 0 && (
-                <button
-                  type="button"
-                  className="btn"
-                  onClick={() => {
-                    setQuery("");
-                    setChip("all");
-                  }}
-                >
-                  Clear filters
-                </button>
-              )}
-            </div>
-          ) : (
-            <div
-              ref={gridRef}
-              className="template-gallery-results"
-              role="radiogroup"
-              aria-label="Scene presets"
-              onKeyDown={onGridKeyDown}
-            >
-              {groups.map((group) => (
-                <div key={group.id}>
-                  <span className="modal-hint">{group.label}</span>
-                  <div className="template-grid">
-                    {group.entries.map((entry) => (
-                      <PresetCard
-                        key={entry.id}
-                        entry={entry}
-                        selected={active?.id === entry.id}
-                        tabStop={active?.id === entry.id}
-                        onSelect={() => setSelected(entry.id)}
-                      />
-                    ))}
+          <div id={panelId} role="tabpanel" aria-labelledby={`${panelId}-${source}`} inert={busy}>
+            {flat.length === 0 ? (
+              <div className="template-empty">
+                <p>
+                  {sourceEntries.length === 0
+                    ? source === "mine"
+                      ? "No presets yet. Save a scene as a preset, or edit a copy from App presets in the library."
+                      : "No app presets are available."
+                    : query
+                      ? `No presets match “${query}”.`
+                      : "No presets match these filters."}
+                </p>
+                {sourceEntries.length > 0 && (
+                  <button
+                    type="button"
+                    className="btn"
+                    onClick={() => {
+                      setQuery("");
+                      setChip("all");
+                    }}
+                  >
+                    Clear filters
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div
+                ref={gridRef}
+                className="template-gallery-results"
+                role="radiogroup"
+                aria-label="Scene presets"
+                onKeyDown={onGridKeyDown}
+              >
+                {groups.map((group) => (
+                  <div key={group.id}>
+                    <span className="modal-hint">{group.label}</span>
+                    <div className="template-grid">
+                      {group.entries.map((entry) => (
+                        <PresetCard
+                          key={entry.id}
+                          entry={entry}
+                          selected={active?.id === entry.id}
+                          tabStop={(active?.id ?? flat[0]?.id) === entry.id}
+                          onSelect={() => {
+                            if (!busy) setSelected(entry.id);
+                          }}
+                        />
+                      ))}
+                    </div>
                   </div>
-                </div>
-              ))}
-            </div>
-          )}
+                ))}
+              </div>
+            )}
+          </div>
         </div>
+        {(project || suppliedScenes) && (
+          <fieldset className="preset-gallery-placement" disabled={busy} inert={busy}>
+            <legend className="wizard-label">Where?</legend>
+            <SceneInsertTimeline
+              scenes={scenes}
+              thumbs={suppliedThumbs ?? cachedThumbs}
+              value={placement}
+              onChange={(value) => {
+                if (!busy) setPlacement(value);
+              }}
+            />
+          </fieldset>
+        )}
         <p className="modal-hint">
-          The scene and its media copy in after the selected one, using this project's theme and
-          styling while keeping scene overrides.
+          Insert a copy, then edit it in the scene inspector. The copy uses this project's theme and
+          keeps the preset's scene overrides.
         </p>
+        {selected !== null && !active && (
+          <p className="modal-hint" role="status">
+            The selected preset is no longer shown. Choose another preset or clear the filters.
+          </p>
+        )}
+        {loadError && (
+          <div>
+            <p className="modal-error">{loadError}</p>
+            <button
+              type="button"
+              className="btn"
+              disabled={busy || refreshing}
+              onClick={() => void refresh()}
+            >
+              {railIcon(
+                <path d="M20 5v5h-5M4 19v-5h5M6 8a7 7 0 0 1 12-2l2 4M4 14l2 4a7 7 0 0 0 12-2" />,
+              )}
+              {refreshing ? "Refreshing…" : "Retry library refresh"}
+            </button>
+          </div>
+        )}
         {error && <p className="modal-error">{error}</p>}
         <div className="modal-actions">
           <button type="button" className="btn" onClick={onCancel} disabled={busy}>
+            {railIcon(<path d="m6 6 12 12M18 6 6 18" />)}
             Cancel
           </button>
           <button
@@ -248,6 +439,7 @@ export function PresetGalleryModal({
             disabled={busy || !active}
             onClick={() => void insert()}
           >
+            {railIcon(<path d="M12 5v14M5 12h14" />)}
             {busy ? "Inserting…" : "Insert scene"}
           </button>
         </div>

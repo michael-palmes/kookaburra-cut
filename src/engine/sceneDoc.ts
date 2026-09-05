@@ -13,7 +13,6 @@ import { type ManagedTextRenderRole, resolveTemplateManagedTextCopy } from "./ma
 import { useObjectRegistry } from "./objectRegistry";
 import {
   isEditableProjectId,
-  isWorkspaceBackedProjectId,
   type LoadedProject,
   nativeProjectSlug,
   type ProjectManifest,
@@ -39,7 +38,7 @@ import { useTextKeyRegistry } from "./textKeyRegistry";
 
 /** Scene-document IO and hooks: docs load beside their scene modules in `loadProject` into `LoadedProject.sceneDocs` and reach components via `SceneHost`'s `SceneDocContext`, but the engine (camera sampling, duration sync) reads `LoadedProject.sceneDocs` directly so export never touches React context or the editor store; schema and validation live in `sceneDocSchema.ts`. */
 
-/** Loads the sidecar beside a manifest scene entry, keyed off the manifest file (never the TSX's `defineScene` id, which may differ from the stem); missing is the normal case and returns undefined. Workspace reads go through `invoke` every time so the fingerprint-poll reload always sees fresh content. `bundledDir` is the project's root-absolute glob folder (projects/ or the dev-only fixtures/ tree), so fixture sidecars resolve too. */
+/** Editable sidecars read fresh through native IO; read-only bundled scenes use their build-time imports. */
 export async function loadSceneDoc(
   projectId: string,
   sceneFile: string,
@@ -48,7 +47,7 @@ export async function loadSceneDoc(
 ): Promise<SceneDoc | undefined> {
   const docFile = sceneFile.replace(/\.tsx$/, ".json");
   if (docFile === sceneFile) return undefined;
-  if (isWorkspaceBackedProjectId(projectId)) {
+  if (isEditableProjectId(projectId)) {
     const slug = nativeProjectSlug(projectId);
     try {
       const text = await invoke<string | null>("read_scene_doc", { slug, file: docFile });

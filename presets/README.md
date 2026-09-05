@@ -34,7 +34,7 @@ media. See [Editable content library](../docs/content-library.md).
 | `version`  | Manifest schema version (1)                                        |
 | `name`     | Card title                                                         |
 | `tagline`  | One line under the title                                           |
-| `category` | `openers`, `features`, `stats-charts`, `devices` or `closers`      |
+| `category` | `starters`, `openers`, `features`, `stats-charts`, `devices` or `closers`      |
 | `tags`     | Free-text search terms                                             |
 | `order`    | Within-category sort; ties break on name                           |
 | `status`   | `stable` or `beta`                                                 |
@@ -53,9 +53,10 @@ colours, type and motion only through `useTheme()`, layout against
 `useFormat()`, user-visible strings in the sidecar, assets project-relative.
 Author with the `kookaburra-scene-authoring` skill.
 
-Card art is one committed JPEG per preset in `src/assets/preset-previews/`,
-rendered by the preset-previews autorun. A preset with no still degrades to the
-swatch card rather than failing the build.
+Card art starts as a committed JPEG in `src/assets/preset-previews/`. Editing a
+preset refreshes its authoritative `poster.png` through the background render
+window at the saved preview frame, in 16:9. Both galleries use that poster when
+present and otherwise use the committed JPEG. A preset without either uses a swatch.
 
 ```bash
 pnpm kookaburra:run --action preset-previews                    # every bundled preset
@@ -66,7 +67,15 @@ Each run captures the ONE frame `preview` names, promotes it to
 `src/assets/preset-previews/<slug>.jpg` and records the preset in the staleness
 ledger below.
 
-## The bundled starter set
+## The bundled catalogue
+
+New scene and App presets share all 21 entries. Scene starters contains the 15
+original pictured options, in their existing order: Device + title, Device only,
+Comparison, Title, Title + icon, App version, Layered screenshot, Chart, Video,
+Image, Video window, Cutout start, Cutout end, Overlay title and Blank. Each has
+its own editable scene document and local sample media.
+
+The six additional presets remain:
 
 | Slug | Category | What it is |
 | ---- | -------- | ---------- |
@@ -74,14 +83,13 @@ ledger below.
 | `feature-compare` | features | One handset under a wiping before/after divider |
 | `stat-counter` | stats-charts | A big number counting to the result |
 | `chart-reveal` | stats-charts | A titled column chart rising in |
-| `hero-device` | devices | A handset playing a capture under a camera push |
+| `hero-device` | devices | A handset playing a capture |
 | `closing-cta` | closers | App mark, name and the call to action |
 
-All six carry `themeId: kookaburra-studio-white` and target every aspect. They
+All presets carry `themeId: kookaburra-studio-white` and target every aspect. They
 pin nothing theme-specific: colours come from tokens, animated backgrounds run
-on `themeColors: true` (the live Theme preset) or name a theme gradient, and no
-scene sidecar pins a `themeId` or a font family. That is what lets a preset
-restyle the moment it lands in someone else's project.
+on `themeColors: true` (the live Theme preset) or name a theme gradient, and scene overrides stay explicit. Insertions inherit the destination theme,
+so token-based styling adapts to the project.
 
 ## Preview staleness
 

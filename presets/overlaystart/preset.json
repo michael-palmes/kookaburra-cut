@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "name": "Cutout start",
+  "tagline": "Panel text beside a scene window",
+  "category": "starters",
+  "tags": ["overlaystart", "starter"],
+  "order": 120,
+  "status": "stable",
+  "preview": 0
+}

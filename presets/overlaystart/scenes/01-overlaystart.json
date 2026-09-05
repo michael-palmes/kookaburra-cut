@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "name": "Cutout start",
+  "text": {
+    "title": "Ship faster",
+    "subtitle": "Make it yours"
+  },
+  "managedText": {
+    "layout": "template",
+    "items": [
+      {
+        "key": "title",
+        "type": "title",
+        "text": "Ship faster"
+      },
+      {
+        "key": "subtitle",
+        "type": "subtitle",
+        "text": "Make it yours"
+      }
+    ]
+  },
+  "frame": {
+    "cutout": {
+      "shape": "rounded-rect",
+      "side": "start"
+    },
+    "chip": {
+      "label": "New",
+      "icon": "circle-check",
+      "colour": "accent"
+    }
+  }
+}

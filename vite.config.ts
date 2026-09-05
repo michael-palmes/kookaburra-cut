@@ -3,6 +3,7 @@ import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
+import { contentHmr } from "./vite.content-hmr.ts";
 
 // Tauri sets this when running on a physical device / over the LAN.
 const host = process.env.TAURI_DEV_HOST;
@@ -22,7 +23,7 @@ const presetsDir = fileURLToPath(new URL("./presets", import.meta.url));
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), contentHmr()],
 
   define: {
     __PROJECTS_DIR__: JSON.stringify(projectsDir),

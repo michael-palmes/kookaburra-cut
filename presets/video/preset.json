@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "name": "Video",
+  "tagline": "A video filling the whole frame",
+  "category": "starters",
+  "tags": ["video", "starter"],
+  "order": 90,
+  "status": "stable",
+  "preview": 0
+}

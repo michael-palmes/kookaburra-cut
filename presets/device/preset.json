@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "name": "Device + title",
+  "tagline": "A titled phone playing your media",
+  "category": "starters",
+  "tags": ["device", "starter"],
+  "order": 10,
+  "status": "stable",
+  "preview": 0
+}

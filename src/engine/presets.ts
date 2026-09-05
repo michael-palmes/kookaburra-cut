@@ -1,8 +1,10 @@
 import { createUserCatalogue, type LibraryItemInfo, listUserPresets } from "./library";
+import { watchLibraryDocuments } from "./libraryDocuments";
 import { fsUrl } from "./media";
 import {
   outgoingSceneTransitions,
   type ProjectManifest,
+  parseProjectId,
   rememberWorkspaceLibraryPath,
   WORKSPACE_PROJECT_PREFIX,
 } from "./project";
@@ -18,6 +20,7 @@ export const PRESET_PREVIEW_WIDTH = 640;
 
 /** The shipped categories, in rail order. */
 export const PRESET_CATEGORIES = [
+  { id: "starters", label: "Scene starters" },
   { id: "openers", label: "Openers" },
   { id: "features", label: "Features" },
   { id: "stats-charts", label: "Stats & charts" },
@@ -206,10 +209,20 @@ const previewGlob = import.meta.glob<string>("../assets/preset-previews/*.jpg", 
   import: "default",
   eager: true,
 });
+const posterGlob = import.meta.glob<string>("/presets/*/poster.png", {
+  query: "?url",
+  import: "default",
+  eager: true,
+});
+const changedSincePoster = new Set<string>();
 
 /** The committed card still for a bundled preset, or null while the art doesn't exist yet. */
 export function bundledPresetPreview(slug: string): string | null {
-  return previewGlob[`../assets/preset-previews/${slug}.jpg`] ?? null;
+  return (
+    posterGlob[`/presets/${slug}/poster.png`] ??
+    previewGlob[`../assets/preset-previews/${slug}.jpg`] ??
+    null
+  );
 }
 
 // ── Preview staleness (dev only) ──────────────────────────────────────────
@@ -276,6 +289,7 @@ const staleCache = new Map<string, boolean>();
 /** Dev only: this bundled preset's committed still is older than its authored JSON. False in release, for a preset with no art yet (the swatch already says so) and for the user's own presets. */
 export function isPresetPreviewStale(slug: string): boolean {
   if (!import.meta.env.DEV) return false;
+  if (posterGlob[`/presets/${slug}/poster.png`]) return changedSincePoster.has(slug);
   const cached = staleCache.get(slug);
   if (cached !== undefined) return cached;
   const manifest = presetGlob[`/presets/${slug}/preset.json`];
@@ -442,7 +456,7 @@ function buildCatalogue(): PresetEntry[] {
   return sortPresetEntries(entries);
 }
 
-/** The bundled catalogue in gallery order. Memoised, since the globs are eager and nothing here can change at runtime. */
+/** The bundled catalogue in gallery order, refreshed by content updates during development. */
 export function listPresets(): PresetEntry[] {
   catalogue ??= buildCatalogue();
   return catalogue;
@@ -492,12 +506,63 @@ export function refreshUserPresets(): Promise<PresetEntry[]> {
   return userPresets.refresh();
 }
 
-/** For `useSyncExternalStore`: fires whenever the user half changes. */
+/** Subscribe to workspace refreshes and bundled document updates. */
 export function subscribePresets(listener: () => void): () => void {
-  return userPresets.subscribe(listener);
+  bundledListeners.add(listener);
+  const unsubscribe = userPresets.subscribe(listener);
+  return () => {
+    bundledListeners.delete(listener);
+    unsubscribe();
+  };
 }
 
 let merged: { version: number; entries: PresetEntry[] } | null = null;
+const bundledListeners = new Set<() => void>();
+const editListeners = new Set<(projectId: string) => void>();
+
+export function subscribePresetEdits(listener: (projectId: string) => void): () => void {
+  editListeners.add(listener);
+  return () => {
+    editListeners.delete(listener);
+  };
+}
+
+function notifyBundledPresetChange() {
+  catalogue = null;
+  merged = null;
+  staleCache.clear();
+  for (const listener of bundledListeners) listener();
+}
+
+export function updateBundledPresetPoster(projectId: string, mtimeMs: number | null): void {
+  const { scope, slug } = parseProjectId(projectId);
+  if (!import.meta.env.DEV || scope !== "preset") return;
+  const path = `/presets/${slug}/poster.png`;
+  posterGlob[path] = `${path}?v=${mtimeMs ?? Date.now()}`;
+  changedSincePoster.delete(slug);
+  notifyBundledPresetChange();
+}
+
+watchLibraryDocuments(
+  import.meta.hot,
+  "presets",
+  {
+    "preset.json": presetGlob,
+    "project.json": projectGlob,
+    "poster.png": posterGlob,
+    scenes: sidecarGlob,
+    assets: {},
+  },
+  (path) => {
+    const slug = path.split("/")[2];
+    if (path.endsWith("/poster.png")) changedSincePoster.delete(slug);
+    else {
+      changedSincePoster.add(slug);
+      for (const listener of editListeners) listener(`preset:${slug}`);
+    }
+    notifyBundledPresetChange();
+  },
+);
 
 /** Bundled and user presets in one gallery order. Synchronous by design: the bundled half is there on the first frame, the user half appears when its listing lands. The result is memoised per refresh, so it is safe as a `useSyncExternalStore` snapshot. */
 export function listAllPresets(): PresetEntry[] {

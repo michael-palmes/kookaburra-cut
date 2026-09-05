@@ -1149,6 +1149,111 @@ mod tests {
     }
 
     #[test]
+    fn a_saved_canonical_starter_reuses_the_latest_edits_without_changing_existing_scenes() {
+        let source = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .join("presets/title");
+        let originals = [
+            "project.json",
+            "scenes/01-title.tsx",
+            "scenes/01-title.json",
+        ]
+        .map(|file| (file, std::fs::read(source.join(file)).unwrap()));
+        let root = scratch_dir();
+        let project = root.join("project");
+        let library = root.join("presets");
+        std::fs::create_dir_all(project.join("scenes")).unwrap();
+        atomic_write_json(
+            &project.join(MANIFEST_FILENAME),
+            &serde_json::json!({
+                "version": 2, "defaultTransition": null, "themeId": "kookaburra-studio-white",
+                "formats": ["16:9"], "scenes": []
+            }),
+        )
+        .unwrap();
+        let first = crate::scene_doc::copy_scene_between(
+            &source,
+            &project,
+            0,
+            "preset:title",
+            "project",
+            None,
+            None,
+        )
+        .unwrap();
+        let stem = first
+            .scene
+            .file
+            .strip_prefix("scenes/")
+            .unwrap()
+            .trim_end_matches(".tsx");
+        let saved = save_preset(&project, &library, stem).unwrap();
+        let saved_dir = library.join(&saved.slug);
+        let mut doc = read_json(&saved_dir.join(&first.scene.doc_file)).unwrap();
+        doc["text"]["title"] = serde_json::json!("An improved reusable title");
+        let updated_title = doc["text"]["title"].clone();
+        for item in doc["managedText"]["items"].as_array_mut().unwrap() {
+            if item["key"] == "title" {
+                item["text"] = updated_title.clone();
+            }
+        }
+        doc["background"] = serde_json::json!({ "type": "image", "src": "assets/improved.png" });
+        doc["duration"] = serde_json::json!({ "mode": "manual" });
+        atomic_write_json(&saved_dir.join(&first.scene.doc_file), &doc).unwrap();
+        write(
+            &saved_dir.join("assets/improved.png"),
+            "improved preset image",
+        );
+        let mut manifest = read_json(&saved_dir.join(MANIFEST_FILENAME)).unwrap();
+        manifest["scenes"][0]["durationMs"] = serde_json::json!(1234);
+        atomic_write_json(&saved_dir.join(MANIFEST_FILENAME), &manifest).unwrap();
+        let tsx_path = saved_dir.join(&first.scene.file);
+        let tsx = std::fs::read_to_string(&tsx_path).unwrap().replace(
+            &format!("durationMs: {}", first.scene.duration_ms),
+            "durationMs: 1234",
+        );
+        std::fs::write(&tsx_path, &tsx).unwrap();
+
+        let again = crate::scene_doc::copy_scene_between(
+            &saved_dir,
+            &project,
+            0,
+            &format!("ws-preset:{}", saved.slug),
+            "project",
+            None,
+            None,
+        )
+        .unwrap();
+        assert_eq!(again.index, 1);
+        assert_eq!(again.scene.duration_ms, 1234);
+        assert_ne!(again.scene.scene_id, first.scene.scene_id);
+        assert_eq!(
+            read_json(&project.join(&again.scene.doc_file)).unwrap(),
+            doc
+        );
+        assert!(std::fs::read_to_string(project.join(&again.scene.file))
+            .unwrap()
+            .contains("durationMs: 1234"));
+        assert_eq!(
+            std::fs::read(project.join("assets/improved.png")).unwrap(),
+            b"improved preset image"
+        );
+        assert_eq!(
+            read_json(&project.join(&first.scene.doc_file)).unwrap()["text"]["title"],
+            "Ship faster"
+        );
+        assert_eq!(
+            read_json(&project.join(MANIFEST_FILENAME)).unwrap()["scenes"][0]["durationMs"],
+            first.scene.duration_ms
+        );
+        for (file, bytes) in originals {
+            assert_eq!(std::fs::read(source.join(file)).unwrap(), bytes);
+        }
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
     fn bundled_preset_insertion_copies_shared_samples_without_overwriting_the_destination() {
         let base = scratch_dir();
         let source = base.join("bundled");

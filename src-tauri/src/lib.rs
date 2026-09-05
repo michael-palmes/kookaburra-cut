@@ -17,6 +17,7 @@ mod objects;
 mod pack;
 mod packs_win;
 mod present;
+mod preset_posters;
 mod pty;
 mod render_win;
 mod scene_doc;
@@ -1209,7 +1210,6 @@ macro_rules! kookaburra_handler {
             scene_doc::apply_project_transition_to_all,
             scene_doc::set_project_theme,
             scene_doc::set_project_audio,
-            scene_doc::scaffold_scene,
             scene_doc::duplicate_scene,
             scene_doc::copy_scene_to_project,
             scene_doc::list_project_scenes,
@@ -1229,6 +1229,11 @@ macro_rules! kookaburra_handler {
             render_win::render_cancel_thumbs,
             render_win::render_take_thumb_job,
             render_win::thumbs_pending_count,
+            preset_posters::render_submit_preset_poster,
+            preset_posters::render_reset_preset_posters,
+            preset_posters::render_take_preset_poster,
+            preset_posters::render_finish_preset_poster,
+            preset_posters::write_preset_poster,
             objects::list_objects,
             objects::read_object,
             objects::import_object,
@@ -1382,6 +1387,7 @@ pub fn run() {
         .manage(present::PresentState::default())
         .manage(render_win::RenderWindowState::default())
         .manage(render_win::ThumbQueueState::default())
+        .manage(preset_posters::PresetPosterQueueState::default())
         .manage(bridge::EditorContextState::default())
         .manage(packs_win::PacksState::default())
         .manage(theme_editor_win::ThemeEditorState::default())

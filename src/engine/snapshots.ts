@@ -9,7 +9,7 @@ import {
 import { awaitTextSync } from "./exporter";
 import { isExporting } from "./exportState";
 import { hideGizmoHandles } from "./gizmoRegistry";
-import { isWorkspaceBackedProjectId, type LoadedProject, nativeProjectSlug } from "./project";
+import { type LoadedProject, nativeProjectSlug, parseProjectId } from "./project";
 
 /** Preview-frame capture off the live canvas, used by welcome snapshots and scene thumbs. UI niceties, not part of the export path: nothing here runs during an export/autorun, every failure is silent (cards keep their placeholders), and the determinism contract is untouched (the preview clock is borrowed and restored). */
 
@@ -121,9 +121,23 @@ export async function captureCurrentFrame(width: number): Promise<Uint8Array | n
   return paintAndReadCanvas(width, "jpeg");
 }
 
-/** Welcome-card snapshot: one representative frame to `.kookaburra/snapshots/<slug>.png`; returns whether a snapshot was written. */
-export async function captureSnapshot(project: LoadedProject): Promise<boolean> {
-  if (!isWorkspaceBackedProjectId(project.id)) return false;
+export interface SnapshotSaved {
+  projectId: string;
+  path: string;
+  mtimeMs: number | null;
+}
+
+export function canCaptureSnapshot(projectId: string): boolean {
+  const { scope } = parseProjectId(projectId);
+  return scope === "workspace" || scope === "ws-template";
+}
+
+/** Saves a representative frame to the project's snapshot or the library item's authoritative poster. */
+export async function captureSnapshot(
+  project: LoadedProject,
+  onSaved?: (snapshot: SnapshotSaved) => void,
+): Promise<boolean> {
+  if (!canCaptureSnapshot(project.id)) return false;
   const isCurrent = () => canvasCommittedProject() === project;
   if (!isCurrent()) return false;
   const slug = nativeProjectSlug(project.id);
@@ -134,8 +148,11 @@ export async function captureSnapshot(project: LoadedProject): Promise<boolean> 
       "png",
       isCurrent,
     );
-    if (!bytes || !isCurrent()) return false;
-    await invoke("write_snapshot", bytes, { headers: { "x-kookaburra-slug": slug } });
+    if (!bytes || !isCurrent() || isExporting()) return false;
+    const saved = await invoke<Omit<SnapshotSaved, "projectId">>("write_snapshot", bytes, {
+      headers: { "x-kookaburra-slug": slug },
+    });
+    onSaved?.({ projectId: project.id, ...saved });
     return true;
   }).catch((e) => {
     console.warn("[snapshot] capture failed:", e);

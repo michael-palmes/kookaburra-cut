@@ -1,169 +1,31 @@
 ---
-description: Scaffold a new Kookaburra Cut scene (TSX + sidecar doc) and register it in its project.json
-argument-hint: <project> <scene-name> [device|deviceonly|comparison|title|titleicon|appversion|layeredscreenshot|chart|video|image|videowindow|overlaystart|overlayend|overlaypanel|rig|blank]
+description: Insert a saved Kookaburra Cut scene preset and apply requested edits
+argument-hint: <project> <scene-name> [preset-slug]
 ---
 
-Create a new scene for the Kookaburra Cut project `$1` named `$2`, of kind `$3` (default `device` if the
-user mentions a device/media (`deviceonly` when they want no title copy), `comparison`
-for a labelled before/after pair of devices with two screen recordings, `appversion` for
-an app icon + version lockup, `layeredscreenshot` for a 3D stack of app screens, `chart`
-for data as the scene's hero, `video`
-for a full-frame background video, `image` for a full-frame background image,
-`videowindow` for a floating screen recording on a backing stage, `titleicon` for a title
-with an icon above it, `overlaystart`/`overlayend` for a panel beside a scene cutout
-window (window on the start or end side), `overlaypanel` for a full panel with no scene
-window (content centres), `rig` for a free-camera fly-through, else `title`; `blank` only
-when asked).
+Create a scene in project `$1` named `$2`, starting from saved preset `$3`.
 
-For the 15 native kinds, the app's scaffolder (`scaffold_scene` in
-`src-tauri/src/scene_doc.rs`) and this command emit identical scenes from the same
-templates. `rig` is the one command-only kind and intentionally extends the title
-template with a free-camera track.
+1. Use `kookaburra-scene-authoring`. Read the project's manifest and the available
+   `presets/*/preset.json` documents. Choose the matching saved preset from its
+   name and tags; use `title` when no particular composition was requested.
+   `rig` starts from `title`, then adds the requested free-camera track.
+2. Read that preset's `project.json` and its one scene. The saved TSX, sidecar,
+   duration and media are authoritative. If the canonical preset is unavailable,
+   report that and use the app's New scene gallery when available.
+3. Insert through the app's shared preset-copy operation when available. For
+   repository file authoring, copy the scene to a fresh destination file stem and
+   give its `defineScene` a unique ID. Copy referenced assets, renaming collisions
+   and updating references without overwriting existing project assets.
+4. Register the copied scene once, after the current scene unless another position
+   was requested. Preserve its saved duration and scene effects. Keep the destination
+   project's theme and defaults; retain explicit source scene overrides. Do not copy
+   the preset project's soundtrack, global camera or persistent layer.
+5. Apply only the requested edits to the copied sidecar and its display name.
+   Preserve managed text, embedded labels, devices, chart data and media not being
+   changed. A later preset edit affects future insertions, not this independent copy.
+6. Follow the scene-authoring validation loop: load the scene, fix reported errors,
+   capture a frame and inspect it. Check both landscape and portrait for layout edits.
 
-Steps:
-
-1. Invoke the `kookaburra-scene-authoring` skill; follow its rules and its "Scene documents"
-   section (the sidecar schema).
-2. Determine the next numeric prefix by listing `projects/$1/scenes/` (e.g. `03`), and
-   slugify the name: stem = `<NN>-<slug>` (e.g. `03-hero-demo`).
-3. Read the TSX template for the kind from `src-tauri/templates/scenes/<kind>.tsx.tmpl`
-   (`deviceonly` uses `device.tsx.tmpl`; `comparison` uses `comparison.tsx.tmpl`;
-   `titleicon` and `overlaypanel` use
-   `title.tsx.tmpl`; `overlaystart`/`overlayend` use `overlay.tsx.tmpl`, whose scene
-   clear lifts the background toward the text colour; `videowindow` uses
-   `videowindow.tsx.tmpl`) and replace the placeholders: `__SCENE_ID__` = the slug, `__STEM__` = the stem, `__NAME__` =
-   the human name, `__DURATION_MS__` = the duration (step 5). Write it to
-   `projects/$1/scenes/<stem>.tsx`.
-4. Write the sidecar `projects/$1/scenes/<stem>.json` per the skill's schema: `version: 1`,
-   `name`, `duration` (step 5), and the compatibility `text` map. The
-   title/titleicon/overlay/device/comparison/videowindow kinds seed `title` (the user's
-   copy, else `""`) AND `subtitle: ""` (empty strings keep both inspector rows visible);
-   appversion seeds `title` (app name, else `"Your App"`) and `subtitle` (version, else
-   `"1.0"`). `chart`, `layeredscreenshot`, `blank` and `rig` scenes write only `title`,
-   and only when the user supplied copy. `deviceonly`, `video` and `image` scenes write
-   no text keys.
-   Never write the legacy `headline` key for a new scene.
-
-   A new scene that intentionally ships scene text also gets inspector-owned
-   `managedText: { "layout": "template", "items": [...] }`. `layout: "template"`
-   preserves the TSX template's specialised placement for copy/style/motion edits. The
-   inspector removes the flag when a structural edit needs the generic responsive stack.
-   Use this exact ordered mapping, with every item carrying its own authoritative value:
-   - title: Title `title`, Subtitle `subtitle` (retain explicit empty items)
-   - titleicon: Icon `icon` from `headerIcon`, then Title `title`, Subtitle `subtitle`
-   - overlaystart/overlayend/overlaypanel: Title, Subtitle, then optional Bullets
-     `bullets`; keep the original newline string in `text` and split trimmed non-empty
-     lines into stable `points` keyed `bullets-point-1`, `bullets-point-2`, and so on
-   - device and comparison: Title `title`, Subtitle `subtitle`
-   - appversion: Icon `icon` = `assets/app-icon.png`, Subtitle `title` (small app name),
-     then Title `subtitle` (hero version)
-   - videowindow: Title `title`, Subtitle `subtitle`
-   - chart, layeredscreenshot and blank: one Title item, including an empty slot when copy is omitted
-   - rig: one Title item only when copy was supplied
-   - deviceonly, video and image: no managed block because they ship no scene text;
-     their first Add Text operation has zero legacy items and does not ask for takeover
-
-   Keep comparison `beforeLabel`/`afterLabel` only in `text`. They are embedded device
-   annotations, not managed scene lines. For an overlay kind, merge its frame over the
-   project-level frame. A resolved claiming frame owns the stable managed `frameIcon`
-   item, including explicit `icon: ""` precedence that removes an inherited frame icon.
-   A scene template's own icon remains the stable managed `icon` item. When both exist,
-   keep both visible and editable at their specialised placements. A frame with
-   `claimsSceneText: false` keeps its icon as embedded panel chrome instead. Then per
-   kind:
-   - device/deviceonly: one `devices[0]` entry (`id: "d1"`, catalog `model`/`colour`,
-     `media` if given, `motion: { "preset": "none" }`) and NO `shadow` key for either
-     kind, so Device auto-resolves it (map shadows over a staged floor, soft blob when
-     floating). device: `placement` position `[0, -0.3, 0]`, `rotationDeg: [0, 0, 0]`,
-     `scale: 1`. deviceonly: position `[0, 0, 0]` (no title to clear), `scale: 1.35`
-     (dominant framing), `ground: true` (rests on a staged floor when the theme has one).
-     Both kinds get a `camera` block `{ "keys": [{ "id": "k1", "tMs": 0, "pose": {
-     "target": [0, 0.1, 0], "azimuthDeg": 0, "elevationDeg": 0, "distance": <d> } }],
-     "segments": [] }` framing the phone larger than the engine default pose (the empty
-     `segments` array is required): `<d>` is `4.2` for device and `4.5` for deviceonly,
-     the closest clip-safe distance at its 1.35 scale.
-   - comparison: seeds EMPTY `text.beforeLabel` and `text.afterLabel` (the chips appear
-     only when copy is typed), 2-4 device entries (`d1`..`dn`, default 2) sharing the
-     catalog `model`/`colour` with per-device media in order, `motion: { "preset":
-     "none" }`, NO `shadow` key and NO `placement` (auto-resolve, as above), plus a
-     `deviceLayout` block `{ "preset": "toe-in", "gap": 0.35 }`: the engine resolves
-     positions per aspect from it (`resolveDeviceLayout`), so devices carry no
-     hand-authored positions.
-   - titleicon: `headerIcon` (the user's emoji or `assets/` image path, else `"🚀"`).
-   - overlaystart/overlayend: `frame` = `{ "cutout": { "shape": "rounded-rect", "side":
-     "start"|"end" }, "background": "background" }`; NO starter chip (the panel fill and
-     its cutout paint whether or not the panel carries content); user bullet lines (one
-     per line) go to the managed Bullets item and its `text.bullets` compatibility mirror.
-   - overlaypanel: `frame` = `{ "cutout": { "shape": "none" } }`; no scene shows through
-     and content centres by default (the `"none"` shape's alignment default). With no
-     window to read, a copy-less panel would be a flat fill, so `text.title` seeds
-     `"Your title"` when the user gave none. User bullet lines use the same managed
-     Bullets item and compatibility mirror as the cutout variants.
-   - layeredscreenshot: a `layeredScreenshot` block with one layer (`{ "id": "l1",
-     "visible": true, "z": 0, "items": [...] }`, the first screen as `{ "id": "i1",
-     "kind": "screen", "src": "assets/<file>", "media": "image"|"video", "attach": null }`
-     when media was given, else an empty items array) and the default pose `{ "spread": 0,
-     "azimuthDeg": 0, "elevationDeg": 0, "zoom": 1, "pan": [0, 0] }`.
-   - chart: a `chart` block seeded `{ "type": "column", "dimension": "3d", "mount": "hero",
-     "data": { "categories": ["April", "May", "June", "July"], "series": [{ "id": "s1",
-     "name": "Region 1", "values": [17, 26, 53, 96] }, { "id": "s2", "name": "Region 2",
-     "values": [55, 43, 70, 58] }] } }`. `type` takes the chart the user asked for
-     (`column`, `stackedColumn`, `bar`, `stackedBar`, `line`, `area`, `stackedArea`, `pie`),
-     `dimension` is `"2d"` when they want a flat chart, and their own numbers replace the
-     starter `data` (the app's wizard offers three starter sets: revenue quarters, weekly
-     growth, share split). `style`, `axis`, `labels`, `animation` and `track`
-     stay ABSENT so `resolveChart` owns every default, and series carry no `colour` so the
-     theme palette drives them. The sidecar also seeds `backdrop: { "type": "none" }`:
-     the chart floats on the scene background rather than boxed by staged scenery
-     (toggle the backdrop back on in the inspector). Text: `title` only, and only when
-     the user gave copy.
-   - video: no text keys and a `background` block `{ "type": "video", "src":
-     "assets/<file>" }` (the media the user gave, else the bundled
-     `assets/sample-laptop-recording.mp4`).
-   - image: no text keys and a `background` block `{ "type": "image", "src":
-     "assets/<file>" }` when an image was given; without one the scene keeps the theme
-     background (no bundled sample image).
-   - rig: uses `title.tsx.tmpl` (command only; the native scaffolder has no rig kind, and
-     the inspector's camera presets cover the same workflow in the app) and seeds
-     `cameraMode: "rig"` plus a
-     `cameraRig` block from the fly-through preset shape relative to the base camera at
-     `[0, 0, 5]`: four tangent-aim keys spread across the duration (positions
-     `[-1.2,0.5,6.6]`, `[-0.5,0.2,4.6]`, `[0.4,0,2.8]`, `[1.0,0.1,1.4]`, each key's `at`
-     baked to the NEXT position), segments `linear`, default smoothing (no `smooth`
-     field). See `docs/camera.md`.
-   - videowindow: a `videoWindow` block `{ "media": { "src": "assets/<file>", "aspect":
-     <width/height when known> }, "radius": "macos", "border": { "enabled": false,
-     "color": "#ffffff", "width": 0.0035, "opacity": 0.12 } }` (media defaults to the
-     bundled laptop sample). Add `recording: true` only when the media is detected as a
-     raw macOS window recording. When title and subtitle are both non-empty, add
-     `scale: 0.65` and `offset: [0, -0.08]`; when exactly one is non-empty, add only
-     `offset: [0, -0.05]`; with no copy, omit both fields so engine defaults apply. Add
-     `backdrop: { "type": "none" }` to the sidecar so staged scenery cannot clip the
-     floating window's shadow. Keep `shadow` and `motion` absent for engine defaults.
-   Then, when the kind wrote NO `background` of its own (every kind but video, and image
-   with a pick), copy `project.json`'s `appliedBackground` blocks into the sidecar: its
-   `background`, and its `backdrop` unless the kind already wrote one. Absent stamp = the
-   scene follows the theme.
-5. Duration: video media → follow-media and `durationMs` = the video's length
-   (`ffprobe -v error -show_entries format=duration -of default=nw=1:nk=1 <file>`,
-   seconds → ms, rounded): `{ "mode": "follow-media", "sourceDeviceId": "d1" }` for the
-   device kinds, `{ "mode": "follow-media", "source": "videoWindow" }` for videowindow,
-   `{ "mode": "follow-media" }` (no source) for the video kind. comparison: probe EVERY
-   video slot and set `durationMs` to the longest; the sidecar stays UNPINNED
-   (`{ "mode": "follow-media" }`, no `sourceDeviceId`) because the engine's rule is
-   longest-wins; no videos at all → manual.
-   Otherwise `{ "mode": "manual" }` and **4000ms**, except the chart kind, which takes
-   **5000ms** (its build-in and value counters need room to land).
-6. Register the scene in `projects/$1/project.json` under `scenes` with its `file` and
-   `durationMs`, in order. The `file` must not already appear in `scenes` (the loader
-   hard-errors on duplicates: copy the TSX and sidecar to a fresh stem instead of
-   reusing one). New scenes join with a crossfade by default: seed
-   `"transition": { "type": "crossfade", "durationMs": 600 }` on the previous scene's
-   entry, and on the new entry too when it isn't last; never overwrite an existing
-   transition.
-7. Verify: `pnpm build`, `pnpm test`, `pnpm lint` — fix and rerun until clean.
-8. Tell the user to preview with `/preview $1`, and to gate with `Verify ×2` before relying
-   on the scene (the skill's validation loop).
-
-Media rules: the referenced media must already live in `projects/$1/assets/` (copy it there
-if the user points elsewhere); reference it project-relatively (`assets/<file>`).
+To change the reusable original, open Welcome → Presets → App presets in a dev
+build, edit and save the preset there. New scene uses those same saved documents.
+User presets remain editable in packaged builds; bundled presets offer Edit a copy.

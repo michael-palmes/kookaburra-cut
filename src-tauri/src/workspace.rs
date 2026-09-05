@@ -1220,13 +1220,52 @@ pub fn set_present_options(
     save_settings(&app, &state, settings)
 }
 
-fn snapshot_target(root: &Path, id: &str) -> Result<PathBuf, String> {
+pub(crate) fn snapshot_target(
+    root: &Path,
+    bundled_presets: Option<&Path>,
+    id: &str,
+) -> Result<PathBuf, String> {
     let (scope, slug) = parse_project_id(id)?;
     let project = match scope {
         ProjectScope::Workspace => return Ok(snapshot_file(root, slug)),
         ProjectScope::UserTemplate => templates_dir(root).join(slug),
-        ProjectScope::UserPreset => presets_dir(root).join(slug),
-        _ => return Err("automatic snapshots only update your workspace library".into()),
+        ProjectScope::UserPreset => {
+            let presets = presets_dir(root);
+            let expected = root
+                .canonicalize()
+                .map_err(|e| e.to_string())?
+                .join("presets");
+            if presets.canonicalize().map_err(|e| e.to_string())? != expected {
+                return Err("preset library resolves outside the workspace".into());
+            }
+            let project = presets.join(slug);
+            if project.canonicalize().map_err(|e| e.to_string())? != expected.join(slug) {
+                return Err("preset poster resolves outside its library folder".into());
+            }
+            project
+        }
+        ProjectScope::BundledPreset => {
+            let presets = bundled_presets
+                .ok_or("bundled preset posters are read-only outside a dev checkout")?;
+            let checkout = presets
+                .parent()
+                .ok_or("preset library has no checkout")?
+                .canonicalize()
+                .map_err(|e| e.to_string())?;
+            let presets = presets.canonicalize().map_err(|e| e.to_string())?;
+            if presets != checkout.join("presets") {
+                return Err("preset library resolves outside the checkout".into());
+            }
+            let project = presets.join(slug);
+            let resolved = project.canonicalize().map_err(|e| e.to_string())?;
+            if resolved != project || !project.join(crate::library::PRESET_MANIFEST).is_file() {
+                return Err("snapshot target is not a bundled preset folder".into());
+            }
+            project
+        }
+        ProjectScope::BundledTemplate => {
+            return Err("automatic snapshots do not update bundled templates".into())
+        }
     };
     if !project.join(MANIFEST_FILENAME).is_file() {
         return Err("snapshot target is not a project".into());
@@ -1234,13 +1273,43 @@ fn snapshot_target(root: &Path, id: &str) -> Result<PathBuf, String> {
     Ok(project.join("poster.png"))
 }
 
-/// Persist a workspace project snapshot or library poster, validating the PNG before an atomic write.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SnapshotWritten {
+    pub path: String,
+    pub mtime_ms: Option<u64>,
+}
+
+pub(crate) fn preset_poster_target(
+    app: &AppHandle,
+    state: &State<'_, SettingsState>,
+    slug: &str,
+) -> Result<PathBuf, String> {
+    if !is_preset_id(slug)? {
+        return Err("poster target must be a scene preset".into());
+    }
+    let root = require_root(app, state)?;
+    #[cfg(debug_assertions)]
+    let bundled_presets = Some(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../presets"));
+    #[cfg(not(debug_assertions))]
+    let bundled_presets: Option<PathBuf> = None;
+    let path = snapshot_target(&root, bundled_presets.as_deref(), slug)?;
+    let project = project_dir_mut(app, state, slug)?
+        .canonicalize()
+        .map_err(|e| e.to_string())?;
+    if path.parent().and_then(|p| p.canonicalize().ok()).as_ref() != Some(&project) {
+        return Err("preset poster does not match the editable folder".into());
+    }
+    Ok(path)
+}
+
+/// Preset posters use the render queue; other welcome cards still use the editor snapshot.
 #[tauri::command]
 pub fn write_snapshot(
     app: AppHandle,
     state: State<'_, SettingsState>,
     request: tauri::ipc::Request,
-) -> Result<(), String> {
+) -> Result<SnapshotWritten, String> {
     let slug = request
         .headers()
         .get("x-kookaburra-slug")
@@ -1257,14 +1326,54 @@ pub fn write_snapshot(
     if bytes.len() > 5 * 1024 * 1024 {
         return Err("snapshot too large".into());
     }
+    if is_preset_id(&slug)? {
+        return Err("preset posters must be captured through the render queue".into());
+    }
     let root = require_root(&app, &state)?;
-    let path = snapshot_target(&root, &slug)?;
+    let path = snapshot_target(&root, None, &slug)?;
+    write_snapshot_file(&path, bytes, || Ok(true))?.ok_or_else(|| "snapshot was superseded".into())
+}
+
+pub(crate) fn write_snapshot_file(
+    path: &Path,
+    bytes: &[u8],
+    can_publish: impl FnOnce() -> Result<bool, String>,
+) -> Result<Option<SnapshotWritten>, String> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
-    let tmp = path.with_extension("png.tmp");
-    std::fs::write(&tmp, bytes).map_err(|e| e.to_string())?;
-    std::fs::rename(&tmp, &path).map_err(|e| e.to_string())
+    let tmp = path.with_extension(format!(
+        "png.{}.{}.tmp",
+        std::process::id(),
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_err(|e| e.to_string())?
+            .as_nanos()
+    ));
+    use std::io::Write;
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&tmp)
+        .map_err(|e| e.to_string())?;
+    let result: Result<bool, String> = (|| {
+        file.write_all(bytes).map_err(|e| e.to_string())?;
+        if !can_publish()? {
+            return Ok(false);
+        }
+        std::fs::rename(&tmp, path).map_err(|e| e.to_string())?;
+        Ok(true)
+    })();
+    if !matches!(result, Ok(true)) {
+        let _ = std::fs::remove_file(&tmp);
+    }
+    if !result? {
+        return Ok(None);
+    }
+    Ok(Some(SnapshotWritten {
+        path: path.to_string_lossy().into_owned(),
+        mtime_ms: file_mtime_ms(path),
+    }))
 }
 
 // ── Scene thumbnails ──────────────────────────────────────────────────────
@@ -1818,10 +1927,40 @@ pub fn read_project_manifest(
     state: State<'_, SettingsState>,
     slug: String,
 ) -> Result<String, String> {
-    project_manifest_for_loading(
-        &project_dir(&app, &state, &slug)?,
-        parse_project_id(&slug)?.0,
-    )
+    let (scope, item) = parse_project_id(&slug)?;
+    let text = project_manifest_for_loading(&project_dir(&app, &state, &slug)?, scope)?;
+    let bundled_root = match scope {
+        ProjectScope::BundledTemplate => Some(templates_root(&app)),
+        ProjectScope::BundledPreset => Some(presets_root(&app)),
+        _ => None,
+    };
+    if let Some(root) = bundled_root {
+        let assets = bundled_project_assets_path(&root, item)?;
+        app.asset_protocol_scope()
+            .allow_directory(assets, true)
+            .map_err(|e| format!("allowing library assets: {e}"))?;
+    }
+    Ok(text)
+}
+
+fn bundled_project_assets_path(root: &Path, slug: &str) -> Result<PathBuf, String> {
+    validate_slug(slug)?;
+    let root = root.canonicalize().map_err(|e| e.to_string())?;
+    let project = root.join(slug);
+    if project.canonicalize().map_err(|e| e.to_string())? != project {
+        return Err("bundled item must stay inside its library folder".into());
+    }
+    let assets = project.join("assets");
+    match std::fs::symlink_metadata(&assets) {
+        Ok(_) => {
+            if assets.canonicalize().map_err(|e| e.to_string())? != assets || !assets.is_dir() {
+                return Err("bundled assets must stay inside their item folder".into());
+            }
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => return Err(e.to_string()),
+    }
+    Ok(assets)
 }
 
 fn project_manifest_for_loading(project: &Path, scope: ProjectScope) -> Result<String, String> {
@@ -2293,6 +2432,46 @@ mod tests {
     }
 
     #[test]
+    fn bundled_asset_scope_includes_new_and_existing_emoji_caches_only_under_the_item() {
+        let root = scratch_dir();
+        let item = root.join("titleicon");
+        std::fs::create_dir_all(&item).unwrap();
+        let assets = bundled_project_assets_path(&root, "titleicon").unwrap();
+        assert_eq!(assets, item.canonicalize().unwrap().join("assets"));
+        assert!(!assets.exists());
+        let cache = assets.join(".emoji-cache");
+        std::fs::create_dir_all(&cache).unwrap();
+        let raster = cache.join("1f680@320.png");
+        std::fs::write(&raster, b"frozen emoji").unwrap();
+        assert_eq!(
+            bundled_project_assets_path(&root, "titleicon").unwrap(),
+            assets
+        );
+        assert!(raster.starts_with(&assets));
+        assert!(!item.join("project.json").starts_with(&assets));
+        assert!(!root.join("other/assets/image.png").starts_with(&assets));
+        assert!(bundled_project_assets_path(&root, "../titleicon").is_err());
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn bundled_asset_scope_refuses_item_and_asset_directory_symlinks() {
+        use std::os::unix::fs::symlink;
+        let root = scratch_dir();
+        let outside = scratch_dir();
+        std::fs::create_dir_all(outside.join("assets")).unwrap();
+        symlink(&outside, root.join("titleicon")).unwrap();
+        assert!(bundled_project_assets_path(&root, "titleicon").is_err());
+        std::fs::remove_file(root.join("titleicon")).unwrap();
+        std::fs::create_dir_all(root.join("titleicon")).unwrap();
+        symlink(outside.join("assets"), root.join("titleicon/assets")).unwrap();
+        assert!(bundled_project_assets_path(&root, "titleicon").is_err());
+        std::fs::remove_dir_all(root).unwrap();
+        std::fs::remove_dir_all(outside).unwrap();
+    }
+
+    #[test]
     fn only_presets_require_exactly_one_scene() {
         for id in ["preset:hero", "ws-preset:hero"] {
             assert!(require_multiple_scenes(id).is_err());
@@ -2315,19 +2494,96 @@ mod tests {
             std::fs::create_dir_all(&project).unwrap();
             std::fs::write(project.join(MANIFEST_FILENAME), "{}").unwrap();
             assert_eq!(
-                snapshot_target(&root, &format!("{scope}:hero")).unwrap(),
+                snapshot_target(&root, None, &format!("{scope}:hero")).unwrap(),
                 project.join("poster.png")
             );
-            assert!(snapshot_target(&root, &format!("{scope}:missing")).is_err());
+            assert!(snapshot_target(&root, None, &format!("{scope}:missing")).is_err());
         }
         assert_eq!(
-            snapshot_target(&root, "hero").unwrap(),
+            snapshot_target(&root, None, "hero").unwrap(),
             snapshot_file(&root, "hero")
         );
         for id in ["template:hero", "preset:hero", "ws-preset:../hero"] {
-            assert!(snapshot_target(&root, id).is_err());
+            assert!(snapshot_target(&root, None, id).is_err());
         }
         let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn bundled_preset_snapshots_require_a_dev_root_and_both_manifests() {
+        let root = scratch_dir();
+        let presets = root.join("checkout/presets");
+        let project = presets.join("hero");
+        std::fs::create_dir_all(&project).unwrap();
+        assert!(snapshot_target(&root, Some(&presets), "preset:hero").is_err());
+        std::fs::write(project.join(MANIFEST_FILENAME), "{}").unwrap();
+        assert!(snapshot_target(&root, Some(&presets), "preset:hero").is_err());
+        std::fs::write(project.join(crate::library::PRESET_MANIFEST), "{}").unwrap();
+        assert_eq!(
+            snapshot_target(&root, Some(&presets), "preset:hero").unwrap(),
+            project.canonicalize().unwrap().join("poster.png")
+        );
+        assert!(snapshot_target(&root, None, "preset:hero").is_err());
+        for id in [
+            "template:hero",
+            "preset:../hero",
+            "preset:hero/nested",
+            "unknown:hero",
+        ] {
+            assert!(snapshot_target(&root, Some(&presets), id).is_err());
+        }
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn bundled_preset_snapshots_reject_symlinked_libraries_and_items() {
+        let root = scratch_dir();
+        let presets = root.join("checkout/presets");
+        let outside = root.join("outside");
+        std::fs::create_dir_all(&presets).unwrap();
+        std::fs::create_dir_all(&outside).unwrap();
+        std::fs::write(outside.join(MANIFEST_FILENAME), "{}").unwrap();
+        std::fs::write(outside.join(crate::library::PRESET_MANIFEST), "{}").unwrap();
+        std::os::unix::fs::symlink(&outside, presets.join("hero")).unwrap();
+        assert!(snapshot_target(&root, Some(&presets), "preset:hero").is_err());
+        let other_checkout = root.join("other-checkout");
+        std::fs::create_dir_all(&other_checkout).unwrap();
+        let linked_presets = other_checkout.join("presets");
+        std::os::unix::fs::symlink(&presets, &linked_presets).unwrap();
+        assert!(snapshot_target(&root, Some(&linked_presets), "preset:hero").is_err());
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn workspace_preset_snapshots_reject_symlinked_libraries_and_items() {
+        let root = scratch_dir();
+        let workspace = root.join("workspace");
+        let outside = root.join("outside");
+        std::fs::create_dir_all(workspace.join("presets")).unwrap();
+        std::fs::create_dir_all(&outside).unwrap();
+        std::fs::write(outside.join(MANIFEST_FILENAME), "{}").unwrap();
+        std::os::unix::fs::symlink(&outside, workspace.join("presets/hero")).unwrap();
+        assert!(snapshot_target(&workspace, None, "ws-preset:hero").is_err());
+        let other_workspace = root.join("other-workspace");
+        std::fs::create_dir_all(&other_workspace).unwrap();
+        std::os::unix::fs::symlink(workspace.join("presets"), other_workspace.join("presets"))
+            .unwrap();
+        assert!(snapshot_target(&other_workspace, None, "ws-preset:hero").is_err());
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn snapshot_write_metadata_uses_the_frontend_field_names() {
+        let result = SnapshotWritten {
+            path: "/checkout/presets/hero/poster.png".into(),
+            mtime_ms: Some(42),
+        };
+        assert_eq!(
+            serde_json::to_value(result).unwrap(),
+            serde_json::json!({ "path": "/checkout/presets/hero/poster.png", "mtimeMs": 42 })
+        );
     }
 
     #[test]

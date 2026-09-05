@@ -69,6 +69,12 @@ import { useLayeredScreenshotEditStore } from "./engine/layeredScreenshotEditSto
 import { useLightingEditStore } from "./engine/lightingEditStore";
 import { ensureRectAreaLightUniforms } from "./engine/lightingState";
 import { importMedia } from "./engine/media";
+import { canQueuePresetPoster, queuePresetPoster } from "./engine/presetPosters";
+import {
+  refreshUserPresets,
+  subscribePresetEdits,
+  updateBundledPresetPoster,
+} from "./engine/presets";
 import {
   setPreviewAudioMuted,
   setPreviewAudioProject,
@@ -124,7 +130,7 @@ import type { SceneDoc } from "./engine/sceneDocSchema";
 import { planDeletes, planDuplicates, planMoves } from "./engine/sceneOrder";
 import { ensureSceneThumbs, listCachedSceneThumbs } from "./engine/sceneThumbs";
 import { activeSceneIndex } from "./engine/sceneTimeline";
-import { captureSnapshot } from "./engine/snapshots";
+import { canCaptureSnapshot, captureSnapshot, type SnapshotSaved } from "./engine/snapshots";
 import { frameWorldCutout } from "./engine/stageViewport";
 import { getLiveSession } from "./engine/terminal";
 import { ensureUserThemePreviews } from "./engine/themePreviews";
@@ -1749,13 +1755,38 @@ export default function App() {
     };
   }, [isAutoRun, view]);
 
-  // Library posters refresh after idle edits; ordinary project cards refresh on open.
+  // Preset jobs survive navigation; ordinary project snapshots capture while idle.
   const projectIdForSnapshot = project?.id;
   const librarySnapshotRevision =
     project && parseProjectId(project.id).scope !== "workspace" ? project : null;
+  const presetForPoster = project && canQueuePresetPoster(project.id) ? project : null;
+  useEffect(() => {
+    if (!presetForPoster || !projectReady || isAutoRun) return;
+    void queuePresetPoster(presetForPoster.id).catch((error) =>
+      console.warn("[preset-poster] queue:", error),
+    );
+  }, [presetForPoster, projectReady, isAutoRun]);
+  useEffect(() => {
+    if (isAutoRun) return;
+    return subscribePresetEdits((projectId) => {
+      void queuePresetPoster(projectId).catch((error) =>
+        console.warn("[preset-poster] queue:", error),
+      );
+    });
+  }, [isAutoRun]);
+  useEffect(() => {
+    const stop = listen<SnapshotSaved>("kookaburra://preset-poster-saved", ({ payload }) => {
+      if (parseProjectId(payload.projectId).scope === "preset") {
+        updateBundledPresetPoster(payload.projectId, payload.mtimeMs);
+      } else {
+        void refreshUserPresets().catch((error) => console.warn("[preset-poster] refresh:", error));
+      }
+    });
+    return () => void stop.then((unlisten) => unlisten());
+  }, []);
   useEffect(() => {
     if (!projectIdForSnapshot || !projectReady || isAutoRun || view !== "editor") return;
-    if (!isWorkspaceBackedProjectId(projectIdForSnapshot) || playing || exporting) return;
+    if (!canCaptureSnapshot(projectIdForSnapshot) || playing || exporting) return;
     const timer = window.setTimeout(() => {
       const current = loadedProjectRef.current;
       if (
@@ -2224,7 +2255,6 @@ export default function App() {
                   startMs: s.startMs,
                   doc: project.sceneDocs[i],
                 }))}
-                theme={project.theme}
                 readThumbs={() => listCachedSceneThumbs(project)}
                 captureThumbs={(signal) => ensureSceneThumbs(project, { signal })}
                 onProjectChanged={(focusSceneFile) => {

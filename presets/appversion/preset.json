@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "name": "App version",
+  "tagline": "Your app icon, name and version",
+  "category": "starters",
+  "tags": ["appversion", "starter"],
+  "order": 60,
+  "status": "stable",
+  "preview": 0
+}

@@ -20,6 +20,19 @@ beforeEach(() => {
 });
 
 describe("workspace library trust", () => {
+  it("passes background trust refusal through before any scene compiles or writes", async () => {
+    rememberWorkspaceLibraryPath("ws-preset:demo", "/workspace/presets/demo");
+    await expect(loadProject("ws-preset:demo", { trustMode: "stored-only" })).rejects.toThrow(
+      "Trust declined",
+    );
+    expect(ensureProjectTrusted).toHaveBeenCalledWith(
+      "ws-preset:demo",
+      "Imported content",
+      "stored-only",
+    );
+    expect(compileSceneModule).not.toHaveBeenCalled();
+    expect(invoke).toHaveBeenCalledTimes(1);
+  });
   it.each(["ws-template:demo", "ws-preset:demo"])(
     "requires consent before compiling or writing %s",
     async (id) => {

@@ -1,8 +1,0 @@
-{
-  "version": 1,
-  "name": "Kind: blank",
-  "managedText": {
-    "layout": "template",
-    "items": [{ "key": "title", "type": "title", "text": "" }]
-  }
-}

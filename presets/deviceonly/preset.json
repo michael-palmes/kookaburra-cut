@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "name": "Device only",
+  "tagline": "A centred phone with no title copy",
+  "category": "starters",
+  "tags": ["deviceonly", "starter"],
+  "order": 20,
+  "status": "stable",
+  "preview": 0
+}
