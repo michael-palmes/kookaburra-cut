@@ -1,9 +1,9 @@
 # Packs (`.kbpack`)
 
-One file that carries projects, themes, fonts, 3D objects, gradient presets,
-export presets and screenshots from one Mac to another. The use case is a
-company or an individual handing someone a starter kit: their projects, their
-brand theme, their brand font, their product model.
+One file that carries projects, templates, scene presets, themes, fonts, 3D
+objects, gradient presets, export presets and screenshots from one Mac to
+another. The use case is a company or an individual handing someone a starter
+kit: their projects, their brand theme, their brand font, their product model.
 
 Format owner: `src-tauri/src/pack/`. UI: `src/packs/` in the `packs` window.
 
@@ -40,6 +40,8 @@ byte-identical.
 manifest.json                          deflate, entry 0
 manifest.sig                           store, entry 1, 64-byte Ed25519 detached
 payload/projects/<slug>/…
+payload/templates/<slug>/…             a project folder plus template.json
+payload/presets/<slug>/…               a single-scene project folder plus preset.json
 payload/themes/<slug>/theme.json
 payload/fonts/<postscript>.ttf|otf
 payload/objects/<slug>/…
@@ -72,6 +74,23 @@ comparison go through `pack::scan`, which exists to guarantee exactly that.
 
 `modifiedAt` is a file mtime and can be wrong (a restored backup, a skewed
 clock). That is why hash decides first and date is only a tiebreak.
+
+`contents.templates` and `contents.presets` are `PackProject` in both languages:
+a template is a project folder plus `template.json`, a preset a single-scene one
+plus `preset.json`, so neither records anything a project does not.
+
+### Format version
+
+`formatVersion` is 2. v2 added `contents.templates` and `contents.presets`; a v1
+reader would parse a v2 manifest, silently drop both and half-import the pack, so
+the bump exists to make it refuse the file whole. The rule for the next kind is
+the same: bump when a reader that does not know the field would do the wrong
+thing with it, and leave it alone when the field is inert.
+
+v1 packs still read here, the two new lists defaulting to empty. `minAppVersion`
+is a separate, friendlier gate and can never exceed the shipping version (the
+app would refuse its own packs), so it rises only with a release; until then
+`formatVersion` is what turns a newer pack away.
 
 ## Signing and trust on first use
 
@@ -113,7 +132,9 @@ webview with IPC reach. Import writes files and never compiles. Each imported
 project still hits the existing F-001 gate the first time it is opened
 (`src/engine/projectTrust.ts`), because a trust grant is bound to a path and a
 fingerprint and an imported project has neither. There is a test asserting an
-imported project comes out untrusted.
+imported project comes out untrusted. Templates and presets carry scene code the
+same way, and the project a user creates from one is a new project at a new path,
+so it is untrusted for the same reason.
 
 Terminal scene content gets its own review: after apply, the summary screen
 reads the landed sidecars (never the author's manifest, which is
@@ -164,6 +185,9 @@ Implemented in `pack::read` and `pack::paths`, one test per item in
 | `yours-newer` | differs, local is newer | keep mine |
 | `unknown-age` | differs, no usable local mtime | keep mine |
 
+Templates and presets take the table unchanged: they are folder items keyed by
+slug, exactly like projects.
+
 Two per-kind overrides:
 
 - **Fonts default to skip on any byte mismatch.** The incumbent bytes are the
@@ -172,9 +196,31 @@ Two per-kind overrides:
 - **Screenshots default to keep both.** That folder is a bag, not a namespace.
 
 `keep both` suffixes `-2`, `-3`, matching the media convention. When a theme
-resolves to keep-both, every project in the same import that referenced it is
-rewritten to the new slug in the staging directory before anything moves.
-Projects not in the import are never touched.
+resolves to keep-both, every project, template and preset in the same import that
+referenced it is rewritten to the new slug in the staging directory before
+anything moves, in both `project.json` and the scene sidecars. A kept-both
+project, template or preset also re-stamps its own `project.json` `id`. Anything
+not in the import is never touched.
+
+## Apply order
+
+`ItemKind::APPLY_ORDER`: fonts, gradients, objects, themes, presets, templates,
+export presets, screenshots, projects. Things that get referenced go before
+things that reference them, which is why presets and templates land after themes
+(their `project.json` may name a `ws:` theme a keep-both just renamed) and why
+projects land last.
+
+An imported template or preset has `"source": "pack"` written into its
+`template.json` / `preset.json` while it is still in staging, so its provenance
+is recorded on disk rather than inferred. Bundled items never enter a pack: only
+the user's own `templates/` and `presets/` folders are enumerated.
+
+The stamp is the one thing that lands different from what was packed, so the
+recipient's copy no longer hashes equal to the author's: re-importing the same
+pack reads as a difference rather than as `identical`. That is the honest answer
+(the two copies really do differ, and by provenance), and the alternative,
+rewriting the author's file before hashing it, would break the rule that
+resolving a closure writes nothing.
 
 A replace moves the existing item to
 `<root>/.kookaburra/import-backup/<runId>/` first. It never deletes inline.
@@ -189,7 +235,9 @@ Excluded, because it is generated (`pack::scan::is_excluded`, extending
 `duplicate_project`'s skip-list):
 
 `exports/**`, `assets/.emoji-cache/**`, `.git/**`, `.claude/skills/**`,
-`edits/_tap_prefs.json`, `.DS_Store`, `._*`.
+`edits/_tap_prefs.json`, `.DS_Store`, `._*`. Templates and presets are project
+folders, so the same list applies to them; the unused-file review is not offered
+for either, because a template or preset carries only what it was saved with.
 
 Included despite looking generated: `CLAUDE.md` and `.claude/settings.json`,
 because both are only written when missing and users edit them.
@@ -212,12 +260,18 @@ is not the same question as redistribution, and the UI copy says so.
 
 ## Adding a new entity kind
 
-1. `model.rs`: add the `ItemKind` variant, its `payload_dir()` and
-   `workspace_dir()`, and its place in `APPLY_ORDER` (things that get referenced
-   go before things that reference them).
+1. `model.rs`: add the `ItemKind` variant, its `payload_dir()`,
+   `workspace_dir()` and `marker_file()`, its `PackContents` list, and its place
+   in `APPLY_ORDER` (things that get referenced go before things that reference
+   them). Bump `PACK_FORMAT_VERSION` if an older reader would half-import.
 2. `paths.rs`: add its extension allowlist.
-3. `deps.rs`: enumerate it, resolve its references, build its `PackItemBase`.
-4. `conflicts.rs`: nothing, unless it needs a per-kind default override.
-5. `apply.rs`: its move and its keep-both rename.
-6. `src/packs/types.ts` and `KIND_LABELS`.
-7. A hostile fixture in `pack::tests` if it introduces a new path shape.
+3. `deps.rs`: its `PackSelection` field, its `kind_tag`, then enumerate it,
+   resolve its references and build its `PackItemBase`.
+4. `conflicts.rs`: its `workspace_target`, its `plan_conflicts` loop, and a
+   per-kind default override only if it needs one.
+5. `apply.rs`: its `flatten` arm, its `label`, its move and its keep-both rename.
+6. `commands.rs`: `enumerate_all` and `closure_to_view`.
+7. `src/packs/types.ts` (`ItemKind`, `ITEM_KINDS`, `KIND_LABELS`,
+   `PackContents`), `src/engine/packs.ts` (`PackSelection`, `selectionKey`) and
+   the two views that flatten contents.
+8. A hostile fixture in `pack::tests` if it introduces a new path shape.

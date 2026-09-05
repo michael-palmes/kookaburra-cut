@@ -1,5 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useRef, useState } from "react";
+import { reorderCatalogue } from "../engine/catalogueOrder";
+import { devSetBuiltinThemeOrders, setWorkspaceThemeOrders } from "../engine/library";
 import {
   bundledThemePreviews,
   cachedThemePreviews,
@@ -11,12 +13,15 @@ import {
   filterThemeCatalogue,
   MY_THEMES_COLLECTION,
   parseThemeCatalogueMetadata,
+  readCatalogueOrder,
+  sortWorkspaceThemes,
   THEME_CATEGORIES,
   type ThemeCatalogueStage,
   type ThemeCategoryId,
 } from "../theme/catalogue";
 import { WORKSPACE_THEME_PREFIX } from "../theme/registry";
 import { parseThemeDoc } from "../theme/schema";
+import { canEditBundledThemes } from "./theme-editor/themeEditorIo";
 
 export type ThemeChoiceSource = "bundled" | "workspace";
 
@@ -34,6 +39,8 @@ export interface ThemeChoice {
   background: string;
   accent: string;
   text: string;
+  /** `catalogue.order`, when the document carries one; the sort key drag-reorder rewrites. */
+  order?: number;
 }
 
 export type ThemeCollectionId = "all" | "recent" | ThemeCategoryId | "my-themes";
@@ -206,10 +213,11 @@ export async function listThemeChoices(): Promise<ThemeChoice[]> {
           const raw: unknown = JSON.parse(json);
           const theme = parseThemeDoc(raw, id);
           if (!theme) return null;
+          const rawCatalogue = isRecord(raw) ? raw.catalogue : undefined;
           const metadata =
-            isRecord(raw) && raw.catalogue !== undefined
-              ? parseThemeCatalogueMetadata(raw.catalogue, id)
-              : undefined;
+            rawCatalogue !== undefined ? parseThemeCatalogueMetadata(rawCatalogue, id) : undefined;
+          // Read leniently: the reorder command writes `catalogue.order` alone, and a partial block the full parser rejects must still keep its sort key.
+          const order = readCatalogueOrder(rawCatalogue);
           const previews = await themePreviewKey(json)
             .then((key) => cachedThemePreviews(key))
             .catch(() => null);
@@ -227,6 +235,7 @@ export async function listThemeChoices(): Promise<ThemeChoice[]> {
             background: theme.colors.background,
             accent: theme.colors.accent,
             text: theme.colors.text,
+            ...(order === undefined ? {} : { order }),
           };
         } catch (error) {
           console.warn(`[theme] workspace theme "${id}" failed to list:`, error);
@@ -234,7 +243,12 @@ export async function listThemeChoices(): Promise<ThemeChoice[]> {
         }
       }),
     );
-    choices.push(...workspaceChoices.filter((choice): choice is ThemeChoice => choice !== null));
+    // My themes sort on `catalogue.order` when the documents carry one (drag-reorder writes it), alphabetically otherwise; the native listing's own order is only a tiebreak.
+    choices.push(
+      ...sortWorkspaceThemes(
+        workspaceChoices.filter((choice): choice is ThemeChoice => choice !== null),
+      ),
+    );
   } catch (error) {
     console.warn("[theme] listing workspace themes failed:", error);
   }
@@ -250,6 +264,9 @@ function ThemeCard({
   onSelect,
   onNavigate,
   onContextMenu,
+  drag,
+  dragging = false,
+  dropTarget = false,
 }: {
   choice: ThemeChoice;
   selected: boolean;
@@ -259,6 +276,16 @@ function ThemeCard({
   onSelect: () => void;
   onNavigate: (event: React.KeyboardEvent) => void;
   onContextMenu?: (event: React.MouseEvent) => void;
+  /** Pointer-drag handlers, present only where the grid can reorder. */
+  drag?: {
+    onPointerDown: (event: React.PointerEvent) => void;
+    onPointerMove: (event: React.PointerEvent) => void;
+    onPointerUp: (event: React.PointerEvent) => void;
+    /** True while a drag has passed the threshold; the card must swallow the click that follows. */
+    swallowClick: () => boolean;
+  };
+  dragging?: boolean;
+  dropTarget?: boolean;
 }) {
   const [frame, setFrame] = useState(0);
   const [previewIntent, setPreviewIntent] = useState(false);
@@ -272,13 +299,21 @@ function ThemeCard({
       tabIndex={tabIndex}
       aria-selected={selected}
       aria-label={`${choice.name}, ${choice.useLabel}`}
-      className={`theme-card${selected ? " selected" : ""}`}
+      className={`theme-card${selected ? " selected" : ""}${dragging ? " dragging" : ""}${
+        dropTarget ? " drop-target" : ""
+      }`}
       onPointerEnter={() => setPreviewIntent(true)}
+      onPointerDown={drag?.onPointerDown}
+      onPointerMove={drag?.onPointerMove}
+      onPointerUp={drag?.onPointerUp}
       onFocus={() => {
         setPreviewIntent(true);
         onFocus();
       }}
-      onClick={onSelect}
+      onClick={() => {
+        if (drag?.swallowClick()) return;
+        onSelect();
+      }}
       onContextMenu={onContextMenu}
       onKeyDown={(event) => {
         if (event.key === "Enter" || event.key === " ") {
@@ -342,9 +377,14 @@ export interface ThemeGridProps {
   onChange: (id: string) => void;
   onCardContextMenu?: (choice: ThemeChoice, event: React.MouseEvent) => void;
   ariaLabel?: string;
+  /** Present only where the listing has a writable order; a drag lands as one move (`from` lifted out, dropped at `to`). */
+  onReorder?: (from: number, to: number) => void;
 }
 
 const PAGE_JUMP = 6;
+
+/** How far a pointer travels before a press on a card becomes a drag instead of a click. */
+const CARD_DRAG_THRESHOLD_PX = 6;
 
 export function ThemeGrid({
   choices,
@@ -352,10 +392,35 @@ export function ThemeGrid({
   onChange,
   onCardContextMenu,
   ariaLabel = "Themes",
+  onReorder,
 }: ThemeGridProps) {
   const initialFocus = choices.some(({ id }) => id === value) ? value : choices[0]?.id;
   const [focusId, setFocusId] = useState<string | undefined>(initialFocus);
   const refs = useRef<(HTMLDivElement | null)[]>([]);
+  // Hand-rolled pointer drag (the scene manager's pattern), grid-aware: the drop index is whichever card the pointer is over, so it works across rows.
+  const dragRef = useRef<{ index: number; startX: number; startY: number; moved: boolean } | null>(
+    null,
+  );
+  const swallowClickRef = useRef(false);
+  const [drag, setDrag] = useState<{ from: number; over: number } | null>(null);
+
+  const cardIndexAt = (x: number, y: number): number | null => {
+    let nearestIndex: number | null = null;
+    let nearestDistance = Number.POSITIVE_INFINITY;
+    for (let index = 0; index < choices.length; index++) {
+      const node = refs.current[index];
+      if (!node) continue;
+      const rect = node.getBoundingClientRect();
+      const dx = x - (rect.left + rect.width / 2);
+      const dy = y - (rect.top + rect.height / 2);
+      const distance = dx * dx + dy * dy;
+      if (distance < nearestDistance) {
+        nearestDistance = distance;
+        nearestIndex = index;
+      }
+    }
+    return nearestIndex;
+  };
 
   useEffect(() => {
     if (!choices.some(({ id }) => id === focusId)) {
@@ -400,6 +465,53 @@ export function ThemeGrid({
     moveFocus(next);
   };
 
+  const dragHandlers = (index: number) =>
+    onReorder
+      ? {
+          onPointerDown: (event: React.PointerEvent) => {
+            if (event.button !== 0) return;
+            dragRef.current = {
+              index,
+              startX: event.clientX,
+              startY: event.clientY,
+              moved: false,
+            };
+          },
+          onPointerMove: (event: React.PointerEvent) => {
+            const current = dragRef.current;
+            if (!current) return;
+            if (
+              !current.moved &&
+              Math.hypot(event.clientX - current.startX, event.clientY - current.startY) <
+                CARD_DRAG_THRESHOLD_PX
+            ) {
+              return;
+            }
+            if (!current.moved) {
+              current.moved = true;
+              event.currentTarget.setPointerCapture(event.pointerId);
+            }
+            const over = cardIndexAt(event.clientX, event.clientY) ?? current.index;
+            setDrag({ from: current.index, over });
+          },
+          onPointerUp: () => {
+            const current = dragRef.current;
+            const landing = drag;
+            dragRef.current = null;
+            setDrag(null);
+            if (!current?.moved) return;
+            // The click event still fires after the pointer sequence; the card asks before selecting.
+            swallowClickRef.current = true;
+            if (landing && landing.over !== current.index) onReorder(current.index, landing.over);
+          },
+          swallowClick: () => {
+            const swallow = swallowClickRef.current;
+            swallowClickRef.current = false;
+            return swallow;
+          },
+        }
+      : undefined;
+
   return (
     <div className="theme-grid" role="listbox" aria-label={ariaLabel}>
       {choices.map((choice, index) => (
@@ -408,6 +520,9 @@ export function ThemeGrid({
           choice={choice}
           selected={value === choice.id}
           tabIndex={focusId === choice.id ? 0 : -1}
+          drag={dragHandlers(index)}
+          dragging={drag?.from === index}
+          dropTarget={drag !== null && drag.over === index && drag.from !== index}
           cardRef={(node) => {
             refs.current[index] = node;
           }}
@@ -423,11 +538,35 @@ export function ThemeGrid({
   );
 }
 
-export interface ThemeBrowserProps extends ThemeGridProps {
+export interface ThemeBrowserProps extends Omit<ThemeGridProps, "onReorder"> {
   layout?: "full" | "compact";
   initialCollection?: ThemeCollectionId;
   recentIds?: readonly string[];
   searchPlaceholder?: string;
+  /** Called after a drag has rewritten the catalogue orders, so the host can re-list. */
+  onReordered?: () => void;
+}
+
+/** Which listing a collection is showing, and so whether this build may rewrite its order: a use-case collection is bundled themes (checkout only, `catalogue.order` per JSON), My themes is the workspace. All/Recent mix both and search cuts across them, so neither reorders. */
+export function reorderableScope(
+  collection: ThemeCollectionId,
+  searching: boolean,
+): "bundled" | "workspace" | null {
+  if (searching || collection === "all" || collection === "recent") return null;
+  if (collection === MY_THEMES_COLLECTION.id) return "workspace";
+  return canEditBundledThemes ? "bundled" : null;
+}
+
+/** Re-sorts one visible page by a drag's id order; ids the listing no longer has are ignored, and anything the drag never saw keeps its place at the end. */
+export function applyDragOrder(
+  choices: readonly ThemeChoice[],
+  ids: readonly string[],
+): ThemeChoice[] {
+  const rank = new Map(ids.map((id, index) => [id, index]));
+  return [...choices].sort(
+    (a, b) =>
+      (rank.get(a.id) ?? Number.MAX_SAFE_INTEGER) - (rank.get(b.id) ?? Number.MAX_SAFE_INTEGER),
+  );
 }
 
 export function collectionAfterThemeSelection(
@@ -473,6 +612,7 @@ export function ThemeBrowser({
   initialCollection = "all",
   recentIds: suppliedRecentIds,
   searchPlaceholder = "Search themes",
+  onReordered,
 }: ThemeBrowserProps) {
   const [query, setQuery] = useState("");
   const searchRef = useRef<HTMLInputElement>(null);
@@ -482,8 +622,36 @@ export function ThemeBrowser({
   const recentIds = suppliedRecentIds ?? storedRecentIds;
   const searching = query.trim().length > 0;
   const effectiveCollection: ThemeCollectionId = searching ? "all" : activeCollection;
-  const visibleChoices = filterThemeChoices(choices, effectiveCollection, query, recentIds);
+  // Ids in the order the last drag left them, pinned to the listing they were dragged in: the grid follows the drop immediately, and the override lapses on its own the moment the host re-lists.
+  const [dragOrder, setDragOrder] = useState<{
+    of: readonly ThemeChoice[];
+    ids: string[];
+  } | null>(null);
+  const filtered = filterThemeChoices(choices, effectiveCollection, query, recentIds);
+  const visibleChoices =
+    dragOrder && dragOrder.of === choices ? applyDragOrder(filtered, dragOrder.ids) : filtered;
   const counts = countThemeChoicesByCollection(choices, recentIds);
+  const scope = reorderableScope(effectiveCollection, searching);
+
+  const reorder = (from: number, to: number) => {
+    if (!scope) return;
+    const ids = visibleChoices.map(({ id }) => id);
+    const { ids: next, orders, changed } = reorderCatalogue(ids, from, to);
+    if (!changed) return;
+    setDragOrder({ of: choices, ids: next });
+    const write =
+      scope === "workspace"
+        ? setWorkspaceThemeOrders(
+            orders.map((entry) => ({
+              ...entry,
+              id: entry.id.slice(WORKSPACE_THEME_PREFIX.length),
+            })),
+          )
+        : devSetBuiltinThemeOrders(orders);
+    void write
+      .then(() => onReordered?.())
+      .catch((error) => console.warn("[theme] writing the new order failed:", error));
+  };
 
   useEffect(() => {
     const changed = previousValue.current !== value;
@@ -565,13 +733,23 @@ export function ThemeBrowser({
         )}
         <div className="theme-browser-results">
           {visibleChoices.length > 0 ? (
-            <ThemeGrid
-              choices={visibleChoices}
-              value={value}
-              onChange={chooseTheme}
-              onCardContextMenu={onCardContextMenu}
-              ariaLabel={ariaLabel}
-            />
+            <>
+              <ThemeGrid
+                choices={visibleChoices}
+                value={value}
+                onChange={chooseTheme}
+                onCardContextMenu={onCardContextMenu}
+                ariaLabel={ariaLabel}
+                onReorder={scope && visibleChoices.length > 1 ? reorder : undefined}
+              />
+              {scope && visibleChoices.length > 1 && (
+                <p className="theme-browser-reorder-hint">
+                  {scope === "workspace"
+                    ? "Drag a card to reorder your library. The order saves into each theme.json."
+                    : "Drag a card to reorder this collection. The order saves into each built-in theme JSON."}
+                </p>
+              )}
+            </>
           ) : (
             <p className="theme-browser-empty" role="status">
               No themes found

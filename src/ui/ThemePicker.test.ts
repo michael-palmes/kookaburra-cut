@@ -19,6 +19,7 @@ vi.mock("../engine/themePreviews", () => ({
 
 import { BUILTIN_THEME_CATALOGUE, filterThemeCatalogue } from "../theme/catalogue";
 import {
+  applyDragOrder,
   builtinThemeChoices,
   collectionAfterThemeSelection,
   countThemeChoicesByCollection,
@@ -29,6 +30,7 @@ import {
   readRecentThemeIds,
   recordRecentThemeUse,
   recordSuccessfulThemeUse,
+  reorderableScope,
   type ThemeChoice,
   ThemeGrid,
 } from "./ThemePicker";
@@ -285,5 +287,59 @@ describe("listThemeChoices", () => {
       stage: "none",
       previews: ["plain-key-1.jpg"],
     });
+  });
+});
+
+describe("workspace ordering and drag reorder", () => {
+  it("sorts My themes on catalogue.order, alphabetically where there is none", async () => {
+    const ordered = (name: string, order?: number) =>
+      JSON.stringify(
+        workspaceDoc(name, {
+          category: "essentials",
+          useLabel: `${name} label`,
+          tags: [],
+          stage: "none",
+          ...(order === undefined ? {} : { order }),
+        }),
+      );
+    // A hand-written theme the strict catalogue parser rejects still keeps the order the reorder command wrote into it.
+    const partial = JSON.stringify(workspaceDoc("Partial", { order: 15 }));
+    mocks.invoke.mockResolvedValue([
+      { slug: "zebra", json: ordered("Zebra", 10) },
+      { slug: "unordered-b", json: ordered("Beta") },
+      { slug: "apple", json: ordered("Apple", 20) },
+      { slug: "unordered-a", json: ordered("Alpha") },
+      { slug: "partial", json: partial },
+    ]);
+    mocks.themePreviewKey.mockResolvedValue("key");
+    mocks.cachedThemePreviews.mockResolvedValue(null);
+
+    const choices = await listThemeChoices();
+    expect(choices.filter(({ source }) => source === "workspace").map(({ id }) => id)).toEqual([
+      "ws:zebra",
+      "ws:partial",
+      "ws:apple",
+      "ws:unordered-a",
+      "ws:unordered-b",
+    ]);
+  });
+
+  it("only offers a reorder where the listing has one writable order", () => {
+    expect(reorderableScope("my-themes", false)).toBe("workspace");
+    expect(reorderableScope("my-themes", true)).toBeNull();
+    expect(reorderableScope("all", false)).toBeNull();
+    expect(reorderableScope("recent", false)).toBeNull();
+    // Vitest runs as a dev build, so the checkout-only bundled case is the live one here.
+    expect(reorderableScope("essentials", false)).toBe("bundled");
+  });
+
+  it("re-sorts a page by a drag's ids and leaves unknown cards at the end", () => {
+    const page = [
+      choice({ id: "a", name: "A" }),
+      choice({ id: "b", name: "B" }),
+      choice({ id: "c", name: "C" }),
+    ];
+    expect(applyDragOrder(page, ["c", "a"]).map(({ id }) => id)).toEqual(["c", "a", "b"]);
+    expect(applyDragOrder(page, []).map(({ id }) => id)).toEqual(["a", "b", "c"]);
   });
 });

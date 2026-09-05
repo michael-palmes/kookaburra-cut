@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { type ChartTrackDoc, useChartTrackEditStore } from "../engine/chartTrackEditStore";
 import { pushHistory } from "../engine/history";
-import { isWorkspaceProjectId, type LoadedProject, workspaceSlug } from "../engine/project";
+import { isEditableProjectId, type LoadedProject, nativeProjectSlug } from "../engine/project";
 import { chartValuesAt, resolveChart } from "../engine/sceneChart";
 import { writeSceneDoc } from "../engine/sceneDoc";
 import type { SceneDoc } from "../engine/sceneDocSchema";
@@ -13,7 +13,7 @@ export function useChartTrackDoc(
   sceneIndex: number,
   onDocChanged: (sceneIndex: number, doc: SceneDoc) => void,
 ) {
-  const slug = isWorkspaceProjectId(project.id) ? workspaceSlug(project.id) : null;
+  const slug = isEditableProjectId(project.id) ? nativeProjectSlug(project.id) : null;
   const doc = project.sceneDocs[sceneIndex];
   const sceneFile = project.sceneFiles[sceneIndex];
   const [localDraft, setLocalDraft] = useState<ChartTrackDoc | null>(null);

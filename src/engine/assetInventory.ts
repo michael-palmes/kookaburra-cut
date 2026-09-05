@@ -4,9 +4,11 @@ import { invoke } from "@tauri-apps/api/core";
 const workspaceAssets = new Map<string, Set<string>>();
 
 export async function refreshWorkspaceAssets(projectId: string): Promise<void> {
-  if (!projectId.startsWith("ws:")) return;
+  if (!/^(ws|ws-template|ws-preset):/.test(projectId)) return;
   try {
-    const rels = await invoke<string[]>("list_project_assets", { slug: projectId.slice(3) });
+    const rels = await invoke<string[]>("list_project_assets", {
+      slug: projectId.startsWith("ws:") ? projectId.slice(3) : projectId,
+    });
     workspaceAssets.set(projectId, new Set(rels.map((rel) => rel.replace(/^\.?\//, ""))));
   } catch {
     workspaceAssets.delete(projectId);

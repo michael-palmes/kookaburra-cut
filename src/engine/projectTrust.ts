@@ -22,7 +22,15 @@ function isAutoRunLaunch(): Promise<boolean> {
 }
 
 /** The F-001 consent gate: no workspace scene code compiles until the user has allowed the project. Autorun launches auto-trust (the run itself is the user's consent, and a modal would hang the AFK Verify); a stored grant whose fingerprint still matches passes silently; otherwise the TrustGateModal asks, and a decline throws `TrustDeniedError`. */
-export async function ensureProjectTrusted(slug: string, name: string): Promise<void> {
+export async function ensureProjectTrusted(
+  slug: string,
+  name: string,
+  mode?: "stored-only",
+): Promise<void> {
+  if (mode === "stored-only") {
+    if (!(await invoke<boolean>("is_project_trusted", { slug }))) throw new TrustDeniedError(slug);
+    return;
+  }
   if (sessionTrusted.has(slug)) {
     // Re-stamp so in-session edits (the Claude terminal, external editors) stay trusted across restarts; a failure only means a re-ask next boot.
     await invoke("trust_project", { slug }).catch((e) =>

@@ -1,36 +1,36 @@
 import { describe, expect, it } from "vitest";
+import { useClockStore } from "../engine/clock";
 import type { SceneDoc } from "../engine/sceneDocSchema";
 import {
-  SCENE_KIND_OPTIONS,
+  sceneIndexAtPlayhead,
   sceneWizardCanEditTitle,
   sceneWizardTitleValue,
   setSceneWizardTitle,
+  type WizardSceneInfo,
 } from "./SceneWizards";
 
-const testProcess = (
-  globalThis as unknown as {
-    process: {
-      getBuiltinModule: (name: "fs") => {
-        readFileSync: (path: URL, encoding: "utf8") => string;
-      };
-    };
-  }
-).process;
-const rustScaffolderSource = testProcess
-  .getBuiltinModule("fs")
-  .readFileSync(new URL("../../src-tauri/src/scene_doc.rs", import.meta.url), "utf8");
-
-function rustSceneKinds(): string[] {
-  const body = rustScaffolderSource.match(
-    /let template = match options\.kind\.as_str\(\) \{([\s\S]*?)\n {4}\};/,
-  )?.[1];
-  expect(body).toBeDefined();
-  return [...new Set([...(body ?? "").matchAll(/"([a-z]+)"/g)].map((match) => match[1]))].sort();
-}
-
-describe("scene wizard kind parity", () => {
-  it("offers exactly the 15 kinds accepted by the native scaffolder", () => {
-    expect(SCENE_KIND_OPTIONS.map(({ id }) => id).sort()).toEqual(rustSceneKinds());
+describe("scene insertion at the playhead", () => {
+  it("uses the later overlapping scene and keeps the last scene at the end", () => {
+    const scenes: WizardSceneInfo[] = [0, 1, 2].map((index) => ({
+      index,
+      id: `scene-${index}`,
+      file: `scenes/0${index + 1}.tsx`,
+      stem: `0${index + 1}`,
+      name: null,
+      startMs: index * 3000,
+      durationMs: 4000,
+    }));
+    const previous = useClockStore.getState().currentMs;
+    try {
+      useClockStore.getState().setCurrentMs(0);
+      expect(sceneIndexAtPlayhead(scenes) + 1).toBe(1);
+      useClockStore.getState().setCurrentMs(3500);
+      expect(sceneIndexAtPlayhead(scenes) + 1).toBe(2);
+      useClockStore.getState().setCurrentMs(10000);
+      expect(sceneIndexAtPlayhead(scenes) + 1).toBe(3);
+    } finally {
+      useClockStore.getState().setCurrentMs(previous);
+    }
   });
 });
 

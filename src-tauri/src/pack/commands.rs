@@ -144,22 +144,28 @@ fn closure_to_view(closure: &deps::Closure) -> PackPlanView {
             .unwrap_or_default()
     };
 
-    for p in &closure.contents.projects {
-        items.push(SelectableItem {
-            kind: ItemKind::Project,
-            slug: p.base.slug.clone(),
-            name: p.base.name.clone(),
-            bytes: p.base.bytes,
-            detail: Some(format!(
-                "{} scene{} · {}",
-                p.scene_count,
-                if p.scene_count == 1 { "" } else { "s" },
-                p.formats.join(", ")
-            )),
-            required_by: required(ItemKind::Project, &p.base.slug),
-            embedding: None,
-            reference_only: None,
-        });
+    for (kind, list) in [
+        (ItemKind::Project, &closure.contents.projects),
+        (ItemKind::Template, &closure.contents.templates),
+        (ItemKind::Preset, &closure.contents.presets),
+    ] {
+        for p in list {
+            items.push(SelectableItem {
+                kind,
+                slug: p.base.slug.clone(),
+                name: p.base.name.clone(),
+                bytes: p.base.bytes,
+                detail: Some(format!(
+                    "{} scene{} · {}",
+                    p.scene_count,
+                    if p.scene_count == 1 { "" } else { "s" },
+                    p.formats.join(", ")
+                )),
+                required_by: required(kind, &p.base.slug),
+                embedding: None,
+                reference_only: None,
+            });
+        }
     }
     for t in &closure.contents.themes {
         items.push(SelectableItem {
@@ -314,6 +320,14 @@ fn enumerate_all(root: &Path) -> PackSelection {
 
     PackSelection {
         projects: dirs_with("", "project.json"),
+        templates: dirs_with(
+            ItemKind::Template.workspace_dir().unwrap_or_default(),
+            ItemKind::Template.marker_file().unwrap_or_default(),
+        ),
+        presets: dirs_with(
+            ItemKind::Preset.workspace_dir().unwrap_or_default(),
+            ItemKind::Preset.marker_file().unwrap_or_default(),
+        ),
         themes: dirs_with("themes", "theme.json"),
         fonts,
         objects: dirs_with("objects", "object.json"),

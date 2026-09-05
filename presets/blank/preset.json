@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "name": "Blank",
+  "tagline": "An empty scene to compose freely",
+  "category": "starters",
+  "tags": ["blank", "starter"],
+  "order": 150,
+  "status": "stable",
+  "preview": 0
+}

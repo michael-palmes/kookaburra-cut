@@ -3,6 +3,7 @@ import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
+import { contentHmr } from "./vite.content-hmr.ts";
 
 // Tauri sets this when running on a physical device / over the LAN.
 const host = process.env.TAURI_DEV_HOST;
@@ -16,13 +17,18 @@ const projectsDir = fileURLToPath(new URL("./projects", import.meta.url));
 // ever answers in dev; engine/project.ts gates every fixture glob on import.meta.env.DEV.
 const fixturesDir = fileURLToPath(new URL("./fixtures", import.meta.url));
 
+// The bundled scene-preset tree: one preset is a single-scene project folder, so it resolves
+// exactly like `projects/` (tauri.conf.json maps ../presets → Resources/presets).
+const presetsDir = fileURLToPath(new URL("./presets", import.meta.url));
+
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), contentHmr()],
 
   define: {
     __PROJECTS_DIR__: JSON.stringify(projectsDir),
     __FIXTURES_DIR__: JSON.stringify(fixturesDir),
+    __PRESETS_DIR__: JSON.stringify(presetsDir),
   },
 
   // Tauri serves the built bundle over a custom protocol (tauri://localhost),
@@ -81,8 +87,8 @@ export default defineConfig({
     minify: process.env.TAURI_DEBUG ? false : "oxc",
     sourcemap: !!process.env.TAURI_DEBUG,
     // One entry point per Tauri WebviewWindow: the main studio window, the M5 video
-    // editor, the present window, the M5.6 settings panel, the v13 packs window and
-    // the hidden background render window.
+    // editor, the present window, the M5.6 settings panel, the v13 packs window, the
+    // hidden background render window and the v14 theme editor.
     rollupOptions: {
       input: {
         main: fileURLToPath(new URL("./index.html", import.meta.url)),
@@ -91,6 +97,7 @@ export default defineConfig({
         settings: fileURLToPath(new URL("./settings.html", import.meta.url)),
         packs: fileURLToPath(new URL("./packs.html", import.meta.url)),
         render: fileURLToPath(new URL("./render.html", import.meta.url)),
+        themeEditor: fileURLToPath(new URL("./theme-editor.html", import.meta.url)),
       },
     },
   },

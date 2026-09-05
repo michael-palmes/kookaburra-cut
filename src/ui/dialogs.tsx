@@ -1,19 +1,18 @@
-import { type ReactElement, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { nameCollision, nameCollisionWarning } from "../engine/nameCollision";
 import {
   BLANK_TEMPLATE_ID,
-  formatTemplateDuration,
-  listTemplates,
+  listAllTemplates,
+  refreshUserTemplates,
   searchTemplates,
+  subscribeTemplates,
   TEMPLATE_CATEGORIES,
-  TEMPLATE_PREVIEW_COUNT,
-  TEMPLATE_USE_LABELS,
   type TemplateCategoryId,
-  type TemplateEntry,
   templateCategoryCounts,
 } from "../engine/templates";
 import { listProjects, slugifyName } from "../engine/workspace";
-import { builtinThemes, defaultTheme } from "../theme/registry";
+import { TEMPLATE_CATEGORY_ICONS } from "./libraryIcons";
+import { TemplateCard } from "./TemplateCard";
 import {
   builtinThemeChoices,
   listThemeChoices,
@@ -157,167 +156,11 @@ export function FreeCameraWarningModal({
   );
 }
 
-/** Inline stroked glyphs (the exportIcons idiom: pure UI chrome, CSP allows no remote assets). */
-function railIcon(children: ReactElement): ReactElement {
-  return (
-    <svg
-      className="template-rail-icon"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      {children}
-    </svg>
-  );
-}
+/** The rail's own collection: the user's saved templates, which also list under their categories. */
+const MINE_ROW = "mine";
+type GalleryRow = TemplateCategoryId | typeof MINE_ROW | null;
 
-const CATEGORY_ICONS: Record<string, ReactElement> = {
-  all: railIcon(
-    <>
-      <rect x="4" y="4" width="7" height="7" rx="1.5" />
-      <rect x="13" y="4" width="7" height="7" rx="1.5" />
-      <rect x="4" y="13" width="7" height="7" rx="1.5" />
-      <rect x="13" y="13" width="7" height="7" rx="1.5" />
-    </>,
-  ),
-  "app-updates": railIcon(
-    <>
-      <circle cx="12" cy="12" r="8" />
-      <path d="M12 16V8m0 0l-3.5 3.5M12 8l3.5 3.5" />
-    </>,
-  ),
-  "product-launch": railIcon(
-    <>
-      <path d="M12 3c3 2 4.2 6 3 9.5L12 15.5 9 12.5C7.8 9 9 5 12 3z" />
-      <path d="M9.5 12.5l-3 2.5 1 2.5 3-1.2M14.5 12.5l3 2.5-1 2.5-3-1.2M12 16v4" />
-      <circle cx="12" cy="8.4" r="1.2" />
-    </>,
-  ),
-  "marketing-social": railIcon(
-    <>
-      <path d="M18 5v14l-8-3.2H6.5A2.5 2.5 0 0 1 4 13.3v-2.6a2.5 2.5 0 0 1 2.5-2.5H10L18 5z" />
-      <path d="M8 16v3.5" />
-    </>,
-  ),
-  presentations: railIcon(
-    <>
-      <rect x="4" y="4.5" width="16" height="10.5" rx="1.5" />
-      <path d="M12 15v3m-3.5 2l3.5-2 3.5 2" />
-    </>,
-  ),
-  "finance-crypto": railIcon(
-    <>
-      <path d="M4 17l5-5 3 3 8-8" />
-      <path d="M16 7h4v4" />
-    </>,
-  ),
-  "ai-developer": railIcon(
-    <>
-      <path d="M5 7l5 5-5 5" />
-      <path d="M12 17h7" />
-    </>,
-  ),
-};
-
-/** The chips a card flags itself with, in reading order. */
-function cardFlags(entry: TemplateEntry): string[] {
-  const flags: string[] = [];
-  if (entry.status === "beta") flags.push("Beta");
-  if (entry.level === "showcase") flags.push("Showcase");
-  if (entry.storeLegal) flags.push("Store legal");
-  return flags;
-}
-
-/** One template card: a `div role="radio"`, not a `<button>`, since WKWebView won't reliably paint an `<img>` child inside a real button (the MediaBrowser lesson, same as ThemeCard). Mouse X across the poster cycles the four committed stills; with none rendered yet the card falls back to the template theme's swatch at the same 16:9 box, so the grid never reflows when the art lands. */
-function TemplateCard({
-  entry,
-  selected,
-  tabStop,
-  onSelect,
-}: {
-  entry: TemplateEntry;
-  selected: boolean;
-  /** The grid's single tab stop: the selection, or the first card when a filter hides it. */
-  tabStop: boolean;
-  onSelect: () => void;
-}) {
-  // The card rests on the manifest's poster frame; hovering still sweeps all four stills.
-  const poster = Math.min(TEMPLATE_PREVIEW_COUNT - 1, Math.max(0, entry.manifest.preview.poster));
-  const [frame, setFrame] = useState(poster);
-  const thumbRef = useRef<HTMLDivElement>(null);
-  const previews = entry.previews;
-  const src = previews ? previews[Math.min(frame, previews.length - 1)] : null;
-  const theme = builtinThemes[entry.themeId] ?? defaultTheme;
-  const flags = cardFlags(entry);
-  return (
-    // biome-ignore lint/a11y/useSemanticElements: a real <button> drops the img in WKWebView
-    <div
-      role="radio"
-      data-template-id={entry.id}
-      tabIndex={tabStop ? 0 : -1}
-      aria-checked={selected}
-      className={`template-card${selected ? " selected" : ""}`}
-      onClick={onSelect}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          onSelect();
-        }
-      }}
-    >
-      {/* biome-ignore lint/a11y/noStaticElementInteractions: hover-only preview cycling, the parent card carries the interactive semantics */}
-      <div
-        ref={thumbRef}
-        className="template-card-thumb"
-        onMouseMove={(e) => {
-          if (!previews || !thumbRef.current) return;
-          const rect = thumbRef.current.getBoundingClientRect();
-          const t = (e.clientX - rect.left) / Math.max(1, rect.width);
-          setFrame(
-            Math.min(TEMPLATE_PREVIEW_COUNT - 1, Math.max(0, Math.floor(t * previews.length))),
-          );
-        }}
-        onMouseLeave={() => setFrame(poster)}
-      >
-        {src ? (
-          <img src={src} alt="" loading="lazy" decoding="async" draggable={false} />
-        ) : (
-          <div className="template-card-swatch" style={{ background: theme.colors.background }}>
-            <span style={{ color: theme.colors.text }}>Aa</span>
-            <span className="template-card-accent" style={{ background: theme.colors.accent }} />
-          </div>
-        )}
-      </div>
-      <div className="template-card-body">
-        <span className="template-card-name">{entry.name}</span>
-        <p className="template-card-tagline">{entry.tagline}</p>
-        <span className="template-card-meta">
-          {`${entry.sceneCount} ${entry.sceneCount === 1 ? "scene" : "scenes"} · ${formatTemplateDuration(entry.durationMs)} · ${entry.primaryAspect}`}
-        </span>
-        {(entry.uses.length > 0 || flags.length > 0) && (
-          <span className="template-card-chips">
-            {entry.uses.slice(0, 2).map((use) => (
-              <span key={use} className="template-chip">
-                {TEMPLATE_USE_LABELS[use]}
-              </span>
-            ))}
-            {flags.map((flag) => (
-              <span key={flag} className="template-chip flag">
-                {flag}
-              </span>
-            ))}
-          </span>
-        )}
-      </div>
-    </div>
-  );
-}
-
-/** The template browser: a category rail with live counts, a global search, the one v1 facet chip (tier) and a scrolling card grid. Blank is pinned first in every view rather than sitting in a category, and is the default selection so Enter-to-create still works. Filtering is `searchTemplates`, a pure function in the registry, so the rules are unit-tested without rendering. */
+/** The template browser: a category rail with live counts, a global search, the one v1 facet chip (tier) and a scrolling card grid. Blank is pinned first in every view rather than sitting in a category, and is the default selection so Enter-to-create still works. The user's own templates merge into the catalogue (flagged with a "My template" chip) and collect under one rail row. Filtering is `searchTemplates`, a pure function in the registry, so the rules are unit-tested without rendering. */
 function TemplateGallery({
   value,
   onChange,
@@ -330,15 +173,27 @@ function TemplateGallery({
   query: string;
   onQueryChange: (query: string) => void;
 }) {
-  const entries = useMemo(() => listTemplates(), []);
-  const [category, setCategory] = useState<TemplateCategoryId | null>(null);
-  const [stashedCategory, setStashedCategory] = useState<TemplateCategoryId | null>(null);
+  const entries = useSyncExternalStore(subscribeTemplates, listAllTemplates);
+  const [category, setCategory] = useState<GalleryRow>(null);
+  const [stashedCategory, setStashedCategory] = useState<GalleryRow>(null);
+  const [libraryError, setLibraryError] = useState<string | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const railRef = useRef<HTMLFieldSetElement>(null);
   const gridRef = useRef<HTMLDivElement>(null);
+  // The workspace half lands behind the bundled catalogue, which renders on the first frame.
+  useEffect(() => {
+    refreshUserTemplates().catch((e) => setLibraryError(String(e)));
+  }, []);
   const counts = useMemo(() => templateCategoryCounts(entries, { query }), [entries, query]);
+  const mineCount = useMemo(
+    () => searchTemplates(entries, { query, source: "user" }).length,
+    [entries, query],
+  );
   const visible = useMemo(
-    () => searchTemplates(entries, { query, category }),
+    () =>
+      category === MINE_ROW
+        ? searchTemplates(entries, { query, source: "user" })
+        : searchTemplates(entries, { query, category }),
     [entries, query, category],
   );
   const tabStopId = visible.some((entry) => entry.id === value) ? value : visible[0]?.id;
@@ -373,7 +228,7 @@ function TemplateGallery({
     setCategory(null);
     setStashedCategory(null);
   };
-  const pickCategory = (next: TemplateCategoryId | null) => {
+  const pickCategory = (next: GalleryRow) => {
     setCategory(next);
     setStashedCategory(null);
   };
@@ -435,13 +290,14 @@ function TemplateGallery({
     }
   };
 
-  const railRows: { id: TemplateCategoryId | null; label: string; count: number }[] = [
+  const railRows: { id: GalleryRow; label: string; count: number }[] = [
     { id: null, label: "All", count: counts.all },
     ...TEMPLATE_CATEGORIES.map((c) => ({
-      id: c.id as TemplateCategoryId,
+      id: c.id as GalleryRow,
       label: c.label,
       count: counts.byCategory[c.id],
     })),
+    { id: MINE_ROW, label: "My templates", count: mineCount },
   ];
   const onRailKeyDown = (e: React.KeyboardEvent) => {
     const enabled = railRows.filter((r) => r.id === null || r.count > 0);
@@ -466,6 +322,11 @@ function TemplateGallery({
 
   return (
     <div className="template-gallery">
+      {libraryError && (
+        <p className="modal-error" role="alert">
+          {libraryError}
+        </p>
+      )}
       <div className="template-gallery-bar">
         <input
           ref={searchRef}
@@ -497,7 +358,7 @@ function TemplateGallery({
               disabled={row.id !== null && row.count === 0}
               onClick={() => pickCategory(row.id)}
             >
-              {CATEGORY_ICONS[row.id ?? "all"]}
+              {TEMPLATE_CATEGORY_ICONS[row.id ?? "all"]}
               <span className="template-rail-label">{row.label}</span>
               <span className="template-rail-count">{row.count}</span>
             </button>
@@ -514,7 +375,7 @@ function TemplateGallery({
                   onQueryChange("");
                 }}
               >
-                {`Back to ${TEMPLATE_CATEGORIES.find((c) => c.id === stashedCategory)?.label}`}
+                {`Back to ${railRows.find((row) => row.id === stashedCategory)?.label}`}
               </button>
             </div>
           )}
@@ -555,11 +416,14 @@ function TemplateGallery({
 /** Create-project dialog: the template browser + name, then the theme grid with hover-cycled previews. The theme applies to the new project's `project.json` after the template copy (`set_project_theme`). */
 export function NewProjectDialog({
   initialGroup,
+  initialTemplateId,
   onCreate,
   onCancel,
 }: {
   /** Preselected welcome-screen group (from a group heading's "+"). */
   initialGroup?: string | null;
+  /** Preselected template (the library's "New project from this…"). */
+  initialTemplateId?: string | null;
   onCreate: (
     name: string,
     templateId: string,
@@ -570,7 +434,7 @@ export function NewProjectDialog({
 }) {
   const [step, setStep] = useState<"details" | "theme">("details");
   const [name, setName] = useState("");
-  const [templateId, setTemplateId] = useState<string>(BLANK_TEMPLATE_ID);
+  const [templateId, setTemplateId] = useState<string>(initialTemplateId ?? BLANK_TEMPLATE_ID);
   const [themeId, setThemeId] = useState("kookaburra-studio-white");
   const [themes, setThemes] = useState<ThemeChoice[]>(builtinThemeChoices);
   const [group, setGroup] = useState(initialGroup ?? "");

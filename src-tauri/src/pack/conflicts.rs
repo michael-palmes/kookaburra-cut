@@ -15,13 +15,15 @@ use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
 /// Folder names the workspace root already owns; a pack project claiming one would shadow a whole library.
-const RESERVED_PROJECT_SLUGS: [&str; 6] = [
+const RESERVED_PROJECT_SLUGS: [&str; 8] = [
     "themes",
     "fonts",
     "gradients",
     "export-presets",
     "objects",
     "screenshots",
+    crate::library::TEMPLATES_DIR_NAME,
+    crate::library::PRESETS_DIR_NAME,
 ];
 
 /// How far the `-2`, `-3`, … walk goes before giving up.
@@ -117,11 +119,11 @@ pub(crate) fn workspace_target(
                 marker: Some("theme.json"),
             })
         }
-        ItemKind::Object => {
+        ItemKind::Object | ItemKind::Template | ItemKind::Preset => {
             validate_pack_slug(slug)?;
             Ok(Target {
                 path: library().join(slug),
-                marker: Some("object.json"),
+                marker: kind.marker_file(),
             })
         }
         ItemKind::Gradient | ItemKind::ExportPreset => {
@@ -190,11 +192,9 @@ fn split_name(kind: ItemKind, slug: &str) -> (String, Option<String>) {
 /// The recipient's display name for an item, falling back to its slug.
 pub(crate) fn local_name(kind: ItemKind, path: &Path, slug: &str) -> String {
     let doc = match kind {
-        ItemKind::Project => Some(path.join("project.json")),
-        ItemKind::Theme => Some(path.join("theme.json")),
-        ItemKind::Object => Some(path.join("object.json")),
         ItemKind::Gradient | ItemKind::ExportPreset => Some(path.to_path_buf()),
         ItemKind::Font | ItemKind::Screenshot => None,
+        _ => kind.marker_file().map(|marker| path.join(marker)),
     };
     doc.and_then(|p| std::fs::read_to_string(p).ok())
         .and_then(|text| serde_json::from_str::<Value>(&text).ok())
@@ -254,6 +254,16 @@ pub fn plan_conflicts(
     for theme in &contents.themes {
         if picked(&selection.themes, &theme.base.slug) {
             items.push(plan_item(root, ItemKind::Theme, &theme.base)?);
+        }
+    }
+    for template in &contents.templates {
+        if picked(&selection.templates, &template.base.slug) {
+            items.push(plan_item(root, ItemKind::Template, &template.base)?);
+        }
+    }
+    for preset in &contents.presets {
+        if picked(&selection.presets, &preset.base.slug) {
+            items.push(plan_item(root, ItemKind::Preset, &preset.base)?);
         }
     }
 
@@ -480,20 +490,14 @@ pub(crate) mod tests {
 
     pub(crate) fn put_local(root: &Path, kind: ItemKind, slug: &str, body: &str) {
         let target = workspace_target(root, kind, slug).unwrap();
-        match kind {
-            ItemKind::Project => write(&target.path.join("project.json"), body),
-            ItemKind::Theme => write(&target.path.join("theme.json"), body),
-            ItemKind::Object => write(&target.path.join("object.json"), body),
-            _ => write(&target.path, body),
+        match kind.marker_file() {
+            Some(marker) => write(&target.path.join(marker), body),
+            None => write(&target.path, body),
         }
     }
 
     fn marker_file(kind: ItemKind) -> &'static str {
-        match kind {
-            ItemKind::Project => "project.json",
-            ItemKind::Theme => "theme.json",
-            _ => "object.json",
-        }
+        kind.marker_file().unwrap_or("object.json")
     }
 
     fn selection_of(kind: ItemKind, slugs: &[&str]) -> PackSelection {
@@ -501,6 +505,8 @@ pub(crate) mod tests {
         let mut selection = PackSelection::default();
         match kind {
             ItemKind::Project => selection.projects = list,
+            ItemKind::Template => selection.templates = list,
+            ItemKind::Preset => selection.presets = list,
             ItemKind::Theme => selection.themes = list,
             ItemKind::Font => selection.fonts = list,
             ItemKind::Object => selection.objects = list,
@@ -511,24 +517,40 @@ pub(crate) mod tests {
         selection
     }
 
+    pub(crate) fn project_like(kind: ItemKind, base: PackItemBase) -> PackProject {
+        PackProject {
+            root: format!("payload/{}/{}", kind.payload_dir(), base.slug),
+            base,
+            manifest_version: 2,
+            scene_count: 1,
+            scene_files: vec!["scenes/01-hero.tsx".into()],
+            duration_ms: 2000,
+            formats: vec!["16:9".into()],
+            theme_id: "ws:acme-dark".into(),
+            requires: Default::default(),
+            has_scene_code: true,
+        }
+    }
+
     fn contents_for(kind: ItemKind, bases: Vec<PackItemBase>) -> PackContents {
         let mut contents = PackContents::default();
         match kind {
             ItemKind::Project => {
                 contents.projects = bases
                     .into_iter()
-                    .map(|base| PackProject {
-                        root: format!("payload/projects/{}", base.slug),
-                        base,
-                        manifest_version: 2,
-                        scene_count: 1,
-                        scene_files: vec!["scenes/01-hero.tsx".into()],
-                        duration_ms: 2000,
-                        formats: vec!["16:9".into()],
-                        theme_id: "ws:acme-dark".into(),
-                        requires: Default::default(),
-                        has_scene_code: true,
-                    })
+                    .map(|base| project_like(kind, base))
+                    .collect()
+            }
+            ItemKind::Template => {
+                contents.templates = bases
+                    .into_iter()
+                    .map(|base| project_like(kind, base))
+                    .collect()
+            }
+            ItemKind::Preset => {
+                contents.presets = bases
+                    .into_iter()
+                    .map(|base| project_like(kind, base))
                     .collect()
             }
             ItemKind::Theme => {
@@ -588,6 +610,8 @@ pub(crate) mod tests {
     fn every_state_takes_its_documented_default() {
         for kind in [
             ItemKind::Project,
+            ItemKind::Template,
+            ItemKind::Preset,
             ItemKind::Theme,
             ItemKind::Object,
             ItemKind::Gradient,
@@ -596,7 +620,7 @@ pub(crate) mod tests {
         ] {
             let root = scratch("plan-root");
             let staging = scratch("plan-staging");
-            let dir_shaped = matches!(kind, ItemKind::Project | ItemKind::Theme | ItemKind::Object);
+            let dir_shaped = kind.marker_file().is_some();
             let ext = if kind == ItemKind::Screenshot {
                 ".png"
             } else {

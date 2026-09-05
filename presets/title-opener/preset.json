@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "name": "Title opener",
+  "tagline": "A headline and one supporting line, scaled in with a shine sweep.",
+  "category": "openers",
+  "tags": ["title", "opener", "headline", "intro"],
+  "order": 10,
+  "status": "stable",
+  "preview": { "scene": 0, "atMs": 1400 }
+}

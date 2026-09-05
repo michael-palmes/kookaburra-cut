@@ -1,47 +1,19 @@
-//! Per-scene sidecar documents and the native scene scaffolder; a scene document is scenes/<stem>.json beside its TSX (the composition), holding the machine-editable half of a scene (name, text map, devices, camera track, duration mode) owned jointly by the app UI and Claude, with both writers sharing one atomic tmp+rename path and version guard so the frontend never touches files directly (see docs/decisions.md, "Project format & authoring").
+//! Per-scene sidecar documents and scene copying; a scene document is scenes/<stem>.json beside its TSX (the composition), holding the machine-editable half of a scene (name, text map, devices, camera track, duration mode) owned jointly by the app UI and Claude, with both writers sharing one atomic tmp+rename path and version guard so the frontend never touches files directly (see docs/decisions.md, "Project format & authoring").
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use serde_json::{json, Value};
 use tauri::{AppHandle, State};
 
-use crate::media;
 use crate::workspace::{self, SettingsState, MANIFEST_FILENAME};
 
 /// Newest sidecar schema this binary understands (`read`/`write` reject anything newer).
 const SCENE_DOC_VERSION: u64 = 1;
 
-/// Wizard/scaffold default when the scene has no video media to follow.
+/// Fallback for scene entries without a recorded duration.
 const DEFAULT_SCENE_DURATION_MS: u64 = 4000;
-
-/// Title and title-icon scenes are compact openers by default.
-const TITLE_SCENE_DURATION_MS: u64 = 2600;
-
-/// Chart scenes start longer than the default: the build-in and its counters need room to land.
-const CHART_SCENE_DURATION_MS: u64 = 5000;
-
-fn default_scene_duration_ms(kind: &str) -> u64 {
-    match kind {
-        "title" | "titleicon" => TITLE_SCENE_DURATION_MS,
-        "chart" => CHART_SCENE_DURATION_MS,
-        _ => DEFAULT_SCENE_DURATION_MS,
-    }
-}
-
-fn device_model_and_colour<'a>(
-    model: Option<&'a str>,
-    colour: Option<&'a str>,
-) -> (&'a str, &'a str) {
-    let model = model.unwrap_or("android");
-    let default_colour = match model {
-        "iphone-15-pro" => "natural-titanium",
-        "iphone-17-pro" | "macbook-pro-16" | "ipad-pro-13" => "silver",
-        _ => "graphite",
-    };
-    (model, colour.unwrap_or(default_colour))
-}
 
 fn transition_is_valid(spec: &Value) -> bool {
     spec.as_object()
@@ -80,7 +52,7 @@ fn seed_inserted_scene_transitions(
 }
 
 /// Validate and resolve a `scenes/<stem>.json` path under the project, traversal-hardened: reject anything that isn't exactly one flat path segment under `scenes/` (the `resolve_asset` lesson).
-fn scene_doc_path(root: &Path, slug: &str, file: &str) -> Result<PathBuf, String> {
+fn scene_doc_path(project: &Path, file: &str) -> Result<PathBuf, String> {
     let rest = file
         .strip_prefix("scenes/")
         .ok_or_else(|| format!("scene doc path must live under scenes/: {file:?}"))?;
@@ -91,7 +63,7 @@ fn scene_doc_path(root: &Path, slug: &str, file: &str) -> Result<PathBuf, String
     if !ok {
         return Err(format!("invalid scene doc path: {file:?}"));
     }
-    Ok(root.join(slug).join(file))
+    Ok(project.join(file))
 }
 
 /// Atomic JSON write: tmp + rename so a crash mid-save can never corrupt a document (the `edit.rs::write_doc` pattern; `project.json` writes here go through this too).
@@ -125,9 +97,7 @@ pub fn read_scene_doc(
     slug: String,
     file: String,
 ) -> Result<Option<String>, String> {
-    let root = workspace::require_root(&app, &state)?;
-    workspace::validate_slug(&slug)?;
-    let path = scene_doc_path(&root, &slug, &file)?;
+    let path = scene_doc_path(&workspace::project_dir(&app, &state, &slug)?, &file)?;
     match std::fs::read_to_string(&path) {
         Ok(text) => Ok(Some(text)),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
@@ -155,9 +125,7 @@ pub fn write_scene_doc(
             "this scene doc uses version {version} — it needs a newer Kookaburra Cut"
         ));
     }
-    let root = workspace::require_root(&app, &state)?;
-    workspace::validate_slug(&slug)?;
-    let path = scene_doc_path(&root, &slug, &file)?;
+    let path = scene_doc_path(&workspace::project_dir_mut(&app, &state, &slug)?, &file)?;
     atomic_write_json(&path, &doc)
 }
 
@@ -194,9 +162,7 @@ pub fn update_project_scene(
     index: usize,
     duration_ms: u64,
 ) -> Result<(), String> {
-    let root = workspace::require_root(&app, &state)?;
-    workspace::validate_slug(&slug)?;
-    let path = root.join(&slug).join(MANIFEST_FILENAME);
+    let path = workspace::project_dir_mut(&app, &state, &slug)?.join(MANIFEST_FILENAME);
     let text = std::fs::read_to_string(&path).map_err(|e| format!("reading project.json: {e}"))?;
     let mut manifest: Value =
         serde_json::from_str(&text).map_err(|e| format!("project.json isn't valid JSON: {e}"))?;
@@ -221,14 +187,12 @@ pub fn update_project_scene_transition(
     index: usize,
     transition: Option<Value>,
 ) -> Result<(), String> {
-    let root = workspace::require_root(&app, &state)?;
-    workspace::validate_slug(&slug)?;
     if let Some(spec) = &transition {
         if !transition_is_valid(spec) {
             return Err("transition must be an object with a string `type`".into());
         }
     }
-    let path = root.join(&slug).join(MANIFEST_FILENAME);
+    let path = workspace::project_dir_mut(&app, &state, &slug)?.join(MANIFEST_FILENAME);
     let text = std::fs::read_to_string(&path).map_err(|e| format!("reading project.json: {e}"))?;
     let mut manifest: Value =
         serde_json::from_str(&text).map_err(|e| format!("project.json isn't valid JSON: {e}"))?;
@@ -295,9 +259,7 @@ pub fn apply_project_transition_to_all(
     slug: String,
     transition: Option<Value>,
 ) -> Result<(), String> {
-    let root = workspace::require_root(&app, &state)?;
-    workspace::validate_slug(&slug)?;
-    let path = root.join(&slug).join(MANIFEST_FILENAME);
+    let path = workspace::project_dir_mut(&app, &state, &slug)?.join(MANIFEST_FILENAME);
     let text = std::fs::read_to_string(&path).map_err(|e| format!("reading project.json: {e}"))?;
     let mut manifest: Value =
         serde_json::from_str(&text).map_err(|e| format!("project.json isn't valid JSON: {e}"))?;
@@ -312,9 +274,8 @@ pub fn read_project_manifest_snapshot(
     state: State<'_, SettingsState>,
     slug: String,
 ) -> Result<String, String> {
-    let root = workspace::require_root(&app, &state)?;
-    workspace::validate_slug(&slug)?;
-    std::fs::read_to_string(root.join(&slug).join(MANIFEST_FILENAME)).map_err(|e| e.to_string())
+    std::fs::read_to_string(workspace::project_dir(&app, &state, &slug)?.join(MANIFEST_FILENAME))
+        .map_err(|e| e.to_string())
 }
 
 /// Restore a whole project.json snapshot, the undo/redo write surface only (feature edits keep their narrow commands); validated as JSON with a scenes array so a corrupt snapshot can never land, atomic tmp+rename.
@@ -325,14 +286,13 @@ pub fn write_project_manifest_snapshot(
     slug: String,
     text: String,
 ) -> Result<(), String> {
-    let root = workspace::require_root(&app, &state)?;
-    workspace::validate_slug(&slug)?;
     let manifest: Value =
         serde_json::from_str(&text).map_err(|e| format!("manifest isn't valid JSON: {e}"))?;
     if !manifest.get("scenes").map(Value::is_array).unwrap_or(false) {
         return Err("manifest needs a scenes array".into());
     }
-    let path = root.join(&slug).join(MANIFEST_FILENAME);
+    workspace::validate_scene_count(&slug, manifest["scenes"].as_array().unwrap().len())?;
+    let path = workspace::project_dir_mut(&app, &state, &slug)?.join(MANIFEST_FILENAME);
     atomic_write_json(&path, &manifest)
 }
 
@@ -344,9 +304,7 @@ pub fn remove_project_scene(
     slug: String,
     index: usize,
 ) -> Result<(), String> {
-    let root = workspace::require_root(&app, &state)?;
-    workspace::validate_slug(&slug)?;
-    let project = root.join(&slug);
+    let project = workspace::project_dir_mut(&app, &state, &slug)?;
     let path = project.join(MANIFEST_FILENAME);
     let text = std::fs::read_to_string(&path).map_err(|e| format!("reading project.json: {e}"))?;
     let mut manifest: Value =
@@ -389,9 +347,7 @@ pub fn move_project_scene(
     from: usize,
     to: usize,
 ) -> Result<(), String> {
-    let root = workspace::require_root(&app, &state)?;
-    workspace::validate_slug(&slug)?;
-    let path = root.join(&slug).join(MANIFEST_FILENAME);
+    let path = workspace::project_dir_mut(&app, &state, &slug)?.join(MANIFEST_FILENAME);
     let text = std::fs::read_to_string(&path).map_err(|e| format!("reading project.json: {e}"))?;
     let mut manifest: Value =
         serde_json::from_str(&text).map_err(|e| format!("project.json isn't valid JSON: {e}"))?;
@@ -626,10 +582,9 @@ pub fn duplicate_scene(
     slug: String,
     index: usize,
     position: Option<usize>,
-) -> Result<ScaffoldResult, String> {
-    let root = workspace::require_root(&app, &state)?;
-    workspace::validate_slug(&slug)?;
-    let project = root.join(&slug);
+) -> Result<SceneCopyResult, String> {
+    workspace::require_multiple_scenes(&slug)?;
+    let project = workspace::project_dir_mut(&app, &state, &slug)?;
     let manifest_path = project.join(MANIFEST_FILENAME);
     let text = std::fs::read_to_string(&manifest_path)
         .map_err(|e| format!("reading project.json: {e}"))?;
@@ -697,7 +652,7 @@ pub fn duplicate_scene(
             doc["name"] = json!(format!("{name} copy"));
         }
         remint_scene_doc_ids(&mut doc);
-        atomic_write_json(&scene_doc_path(&root, &slug, &new_doc_file)?, &doc)?;
+        atomic_write_json(&scene_doc_path(&project, &new_doc_file)?, &doc)?;
     }
 
     let scenes = manifest
@@ -719,7 +674,7 @@ pub fn duplicate_scene(
     }
     atomic_write_json(&manifest_path, &manifest)?;
 
-    Ok(ScaffoldResult {
+    Ok(SceneCopyResult {
         file: new_file,
         doc_file: new_doc_file,
         scene_id,
@@ -738,7 +693,7 @@ fn is_project_asset_ref(value: &str) -> bool {
 }
 
 /// Every `assets/...` path a scene's TSX mentions; over-capture is harmless because callers gate on the file existing in the source project.
-fn scan_asset_refs(text: &str) -> Vec<String> {
+pub(crate) fn scan_asset_refs(text: &str) -> Vec<String> {
     let bytes = text.as_bytes();
     let mut found: Vec<String> = Vec::new();
     let mut from = 0;
@@ -769,7 +724,7 @@ fn scan_asset_refs(text: &str) -> Vec<String> {
     found
 }
 
-fn collect_json_asset_refs(value: &Value) -> Vec<String> {
+pub(crate) fn collect_json_asset_refs(value: &Value) -> Vec<String> {
     fn walk(value: &Value, found: &mut Vec<String>, seen: &mut HashSet<String>) {
         match value {
             Value::String(path) if is_project_asset_ref(path) => {
@@ -883,8 +838,15 @@ fn copy_scene_assets(
     dest: &Path,
     tsx: &mut String,
     doc: &mut Option<Value>,
+    entry: &mut Value,
+    sample_pool: Option<&Path>,
 ) -> Result<(), String> {
     let mut refs = scan_asset_refs(tsx);
+    for rel in collect_json_asset_refs(entry) {
+        if !refs.contains(&rel) {
+            refs.push(rel);
+        }
+    }
     if let Some(doc) = doc.as_ref() {
         for rel in collect_json_asset_refs(doc) {
             if !refs.iter().any(|existing| existing == &rel) {
@@ -895,7 +857,18 @@ fn copy_scene_assets(
 
     let mut replacements = Vec::new();
     for rel in refs {
-        let src_path = project.join(&rel);
+        let local = project.join(&rel);
+        let src_path = if local.is_file() {
+            local
+        } else {
+            sample_pool
+                .zip(
+                    rel.strip_prefix("assets/")
+                        .filter(|name| !name.contains('/')),
+                )
+                .map(|(pool, name)| pool.join(name))
+                .unwrap_or(local)
+        };
         if !src_path.is_file() {
             continue;
         }
@@ -924,11 +897,19 @@ fn copy_scene_assets(
         if let Some(doc) = doc.as_mut() {
             rewrite_json_asset_refs(doc, &replacements);
         }
+        rewrite_json_asset_refs(entry, &replacements);
     }
     Ok(())
 }
 
-/// Copy a scene into ANOTHER workspace project: the TSX + sidecar land under a freshly numbered stem carrying an id unique in the destination (and a sidecar re-minted by `remint_scene_doc_ids`), every referenced `assets/` file copies along (identical bytes reuse the destination's file; a clash with different bytes free-names the copy and the scene text re-points), and the manifest entry appends with `durationMs` and `effects` (no outgoing transition: the scene lands last). Files write before the manifest, the duplicate_scene ordering.
+#[derive(Debug, Serialize)]
+pub struct CopiedSceneResult {
+    #[serde(flatten)]
+    pub scene: SceneCopyResult,
+    pub index: usize,
+}
+
+/// Copy scene content and assets, preserving effects and committing its final position in one manifest write.
 #[tauri::command]
 pub fn copy_scene_to_project(
     app: AppHandle,
@@ -936,15 +917,41 @@ pub fn copy_scene_to_project(
     slug: String,
     index: usize,
     dest_slug: String,
-) -> Result<ScaffoldResult, String> {
-    let root = workspace::require_root(&app, &state)?;
-    workspace::validate_slug(&slug)?;
-    workspace::validate_slug(&dest_slug)?;
+    position: Option<usize>,
+) -> Result<CopiedSceneResult, String> {
+    workspace::require_multiple_scenes(&dest_slug)?;
     if slug == dest_slug {
         return Err("pick a different project to copy into".into());
     }
-    let project = root.join(&slug);
-    let dest = root.join(&dest_slug);
+    let project = workspace::project_dir(&app, &state, &slug)?;
+    let dest = workspace::project_dir_mut(&app, &state, &dest_slug)?;
+    let sample_pool = matches!(
+        workspace::parse_project_id(&slug)?.0,
+        workspace::ProjectScope::BundledTemplate | workspace::ProjectScope::BundledPreset
+    )
+    .then(|| workspace::samples_root(&app));
+    copy_scene_between(
+        &project,
+        &dest,
+        index,
+        &slug,
+        &dest_slug,
+        position,
+        sample_pool.as_deref(),
+    )
+}
+
+pub(crate) fn copy_scene_between(
+    project: &Path,
+    dest: &Path,
+    index: usize,
+    slug: &str,
+    dest_slug: &str,
+    position: Option<usize>,
+    sample_pool: Option<&Path>,
+) -> Result<CopiedSceneResult, String> {
+    workspace::require_multiple_scenes(dest_slug)?;
+    let is_preset = workspace::is_preset_id(slug)?;
     let dest_manifest_path = dest.join(MANIFEST_FILENAME);
     if !dest_manifest_path.is_file() {
         return Err(format!("no project named {dest_slug} in the workspace"));
@@ -954,7 +961,13 @@ pub fn copy_scene_to_project(
         .map_err(|e| format!("reading project.json: {e}"))?;
     let source_manifest: Value =
         serde_json::from_str(&text).map_err(|e| format!("project.json isn't valid JSON: {e}"))?;
-    let source = source_manifest
+    let source_count = source_manifest
+        .get("scenes")
+        .and_then(Value::as_array)
+        .ok_or("project.json has no scenes array")?
+        .len();
+    workspace::validate_scene_count(slug, source_count)?;
+    let mut source = source_manifest
         .get("scenes")
         .and_then(Value::as_array)
         .ok_or("project.json has no scenes array")?
@@ -981,7 +994,19 @@ pub fn copy_scene_to_project(
         Err(e) => return Err(format!("reading {doc_file_src}: {e}")),
     };
 
-    copy_scene_assets(&project, &dest, &mut tsx, &mut doc)?;
+    copy_scene_assets(project, dest, &mut tsx, &mut doc, &mut source, sample_pool)?;
+
+    let dest_text = std::fs::read_to_string(&dest_manifest_path)
+        .map_err(|e| format!("reading {dest_slug}/project.json: {e}"))?;
+    let mut dest_manifest: Value = serde_json::from_str(&dest_text)
+        .map_err(|e| format!("{dest_slug}/project.json isn't valid JSON: {e}"))?;
+    migrate_manifest_transitions(&mut dest_manifest);
+    if is_preset {
+        inherit_preset_context(&mut doc, &dest_manifest);
+    }
+    let default_transition = is_preset
+        .then(|| project_default_transition(&dest_manifest))
+        .flatten();
 
     // Fresh stem in the destination, keeping the source's display name.
     let scenes_dir = dest.join("scenes");
@@ -1012,14 +1037,9 @@ pub fn copy_scene_to_project(
     atomic_write_text(&scenes_dir.join(format!("{stem}.tsx")), &tsx)?;
     if let Some(doc) = &mut doc {
         remint_scene_doc_ids(doc);
-        atomic_write_json(&scene_doc_path(&root, &dest_slug, &new_doc_file)?, doc)?;
+        atomic_write_json(&scene_doc_path(dest, &new_doc_file)?, doc)?;
     }
 
-    let dest_text = std::fs::read_to_string(&dest_manifest_path)
-        .map_err(|e| format!("reading {dest_slug}/project.json: {e}"))?;
-    let mut dest_manifest: Value = serde_json::from_str(&dest_text)
-        .map_err(|e| format!("{dest_slug}/project.json isn't valid JSON: {e}"))?;
-    migrate_manifest_transitions(&mut dest_manifest);
     let scenes = dest_manifest
         .get_mut("scenes")
         .and_then(Value::as_array_mut)
@@ -1032,15 +1052,56 @@ pub fn copy_scene_to_project(
     if let Some(effects) = source.get("effects") {
         entry["effects"] = effects.clone();
     }
-    scenes.push(entry);
+    let at = position.unwrap_or(scenes.len()).min(scenes.len());
+    scenes.insert(at, entry);
+    seed_inserted_scene_transitions(scenes, at, default_transition.as_ref());
     atomic_write_json(&dest_manifest_path, &dest_manifest)?;
 
-    Ok(ScaffoldResult {
-        file: new_file,
-        doc_file: new_doc_file,
-        scene_id,
-        duration_ms,
+    Ok(CopiedSceneResult {
+        scene: SceneCopyResult {
+            file: new_file,
+            doc_file: new_doc_file,
+            scene_id,
+            duration_ms,
+        },
+        index: at,
     })
+}
+
+fn inherit_preset_context(doc: &mut Option<Value>, manifest: &Value) {
+    let stamp = manifest
+        .get("appliedBackground")
+        .filter(|value| value.is_object());
+    if doc.is_none()
+        && stamp.is_some_and(|stamp| {
+            stamp.get("background").is_some() || stamp.get("backdrop").is_some()
+        })
+    {
+        *doc = Some(json!({ "version": SCENE_DOC_VERSION }));
+    }
+    let Some(doc) = doc.as_mut().filter(|value| value.is_object()) else {
+        return;
+    };
+    inherit_applied_background(doc, stamp);
+    let Some(icon) = resolved_claimed_frame_icon(doc, manifest.get("frame")) else {
+        return;
+    };
+    let Some(items) = doc
+        .get_mut("managedText")
+        .and_then(|managed| managed.get_mut("items"))
+        .and_then(Value::as_array_mut)
+    else {
+        return;
+    };
+    if !items
+        .iter()
+        .any(|item| item.get("key").and_then(Value::as_str) == Some("frameIcon"))
+    {
+        items.insert(
+            0,
+            json!({ "key": "frameIcon", "type": "icon", "icon": icon }),
+        );
+    }
 }
 
 /// One scene of a workspace project as listed to the copy-from picker.
@@ -1059,9 +1120,7 @@ pub fn list_project_scenes(
     state: State<'_, SettingsState>,
     slug: String,
 ) -> Result<Vec<SceneListing>, String> {
-    let root = workspace::require_root(&app, &state)?;
-    workspace::validate_slug(&slug)?;
-    let project = root.join(&slug);
+    let project = workspace::project_dir(&app, &state, &slug)?;
     let text = std::fs::read_to_string(project.join(MANIFEST_FILENAME))
         .map_err(|e| format!("reading {slug}/project.json: {e}"))?;
     let manifest: Value =
@@ -1100,9 +1159,7 @@ pub fn set_project_theme(
     slug: String,
     theme_id: String,
 ) -> Result<(), String> {
-    let root = workspace::require_root(&app, &state)?;
-    workspace::validate_slug(&slug)?;
-    let path = root.join(&slug).join(MANIFEST_FILENAME);
+    let path = workspace::project_dir_mut(&app, &state, &slug)?.join(MANIFEST_FILENAME);
     let text = std::fs::read_to_string(&path).map_err(|e| format!("reading project.json: {e}"))?;
     let mut manifest: Value =
         serde_json::from_str(&text).map_err(|e| format!("project.json isn't valid JSON: {e}"))?;
@@ -1118,8 +1175,6 @@ pub fn set_project_audio(
     slug: String,
     audio: Option<Value>,
 ) -> Result<(), String> {
-    let root = workspace::require_root(&app, &state)?;
-    workspace::validate_slug(&slug)?;
     if let Some(spec) = &audio {
         let ok = spec
             .as_object()
@@ -1130,7 +1185,7 @@ pub fn set_project_audio(
             return Err("audio must be an object with a string `file`".into());
         }
     }
-    let path = root.join(&slug).join(MANIFEST_FILENAME);
+    let path = workspace::project_dir_mut(&app, &state, &slug)?.join(MANIFEST_FILENAME);
     let text = std::fs::read_to_string(&path).map_err(|e| format!("reading project.json: {e}"))?;
     let mut manifest: Value =
         serde_json::from_str(&text).map_err(|e| format!("project.json isn't valid JSON: {e}"))?;
@@ -1453,106 +1508,14 @@ pub fn ensure_unique_scene_ids(
     state: State<'_, SettingsState>,
     slug: String,
 ) -> Result<SceneIdHeal, String> {
-    let root = workspace::require_root(&app, &state)?;
-    workspace::validate_slug(&slug)?;
-    Ok(heal_scene_ids(&root.join(&slug)))
-}
-
-// ── Scaffolder ────────────────────────────────────────────────────────────────
-
-// Scene TSX templates (compile-time baked, packaged-build safe); the same files are the single source for the `/new-scene` command, which reads them from the repo tree.
-const TSX_DEVICE: &str = include_str!("../templates/scenes/device.tsx.tmpl");
-const TSX_TITLE: &str = include_str!("../templates/scenes/title.tsx.tmpl");
-const TSX_OVERLAY: &str = include_str!("../templates/scenes/overlay.tsx.tmpl");
-const TSX_BLANK: &str = include_str!("../templates/scenes/blank.tsx.tmpl");
-const TSX_APP_VERSION: &str = include_str!("../templates/scenes/appversion.tsx.tmpl");
-const TSX_LAYERED_SCREENSHOT: &str = include_str!("../templates/scenes/layeredscreenshot.tsx.tmpl");
-const TSX_CHART: &str = include_str!("../templates/scenes/chart.tsx.tmpl");
-const TSX_VIDEO: &str = include_str!("../templates/scenes/video.tsx.tmpl");
-const TSX_IMAGE: &str = include_str!("../templates/scenes/image.tsx.tmpl");
-const TSX_VIDEO_WINDOW: &str = include_str!("../templates/scenes/videowindow.tsx.tmpl");
-const TSX_COMPARISON: &str = include_str!("../templates/scenes/comparison.tsx.tmpl");
-
-/// The video kind's default background, shipped in every project (`ensure_sample_assets`).
-const SAMPLE_LAPTOP_VIDEO: &str = "assets/sample-laptop-recording.mp4";
-
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ScaffoldOptions {
-    /// "device" | "deviceonly" | "comparison" | "title" | "titleicon" | "appversion" | "layeredscreenshot" | "chart" | "video" | "image" | "videowindow" | "overlaystart" | "overlayend" | "overlaypanel" | "blank".
-    pub kind: String,
-    /// Human scene name, e.g. "Hero demo" (sidecar `name`; slugified for the file stem).
-    pub name: String,
-    pub title: Option<String>,
-    pub subtitle: Option<String>,
-    /// Cutout scenes: newline-delimited bullet lines for the panel body (sidecar `text.bullets`).
-    #[serde(default)]
-    pub bullets: Option<String>,
-    pub device_model: Option<String>,
-    pub colour: Option<String>,
-    /// Project-relative media path (e.g. "assets/demo.mp4").
-    pub media_rel: Option<String>,
-    /// "video" | "image".
-    pub media_kind: Option<String>,
-    /// Comparison scenes: the second (after) device's media, same shapes as the first.
-    #[serde(default)]
-    pub media_rel_b: Option<String>,
-    #[serde(default)]
-    pub media_kind_b: Option<String>,
-    /// Comparison scenes: total device count (2-4, default 2).
-    #[serde(default)]
-    pub device_count: Option<usize>,
-    /// Comparison scenes: per-device media aligned to d1..dn; supersedes the rel/relB pair when present.
-    #[serde(default)]
-    pub media_slots: Option<Vec<ScaffoldMediaSlot>>,
-    #[serde(default)]
-    pub motion_preset: Option<String>,
-    #[serde(default)]
-    pub shadow: Option<String>,
-    /// Title-icon scenes: the sidecar `headerIcon` (emoji or asset path).
-    #[serde(default)]
-    pub header_icon: Option<String>,
-    /// Chart scenes: the wizard's type ("column", "bar", "pie"…), "2d"|"3d" and the starter dataset; each absent field keeps the chart arm's own default.
-    #[serde(default)]
-    pub chart_type: Option<String>,
-    #[serde(default)]
-    pub chart_dimension: Option<String>,
-    #[serde(default)]
-    pub chart_data: Option<ScaffoldChartData>,
-    /// Video-window scenes: the picked clip looked like a raw macOS window recording (the wizard's poster detection; Rust can't see pixels).
-    #[serde(default)]
-    pub recording: Option<bool>,
-    /// Insertion index in `project.json`'s scenes array (0 = start; omitted/out-of-range = append).
-    pub position: Option<usize>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ScaffoldMediaSlot {
-    pub rel: Option<String>,
-    /// "video" | "image".
-    pub kind: Option<String>,
-}
-
-/// One starter dataset for a chart scene: the block's `data`, rows aligned to `categories`.
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ScaffoldChartData {
-    pub categories: Vec<String>,
-    pub series: Vec<ScaffoldChartSeries>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ScaffoldChartSeries {
-    pub id: String,
-    pub name: Option<String>,
-    pub values: Vec<f64>,
+    Ok(heal_scene_ids(&workspace::project_dir_mut(
+        &app, &state, &slug,
+    )?))
 }
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ScaffoldResult {
+pub struct SceneCopyResult {
     pub file: String,
     pub doc_file: String,
     pub scene_id: String,
@@ -1591,18 +1554,18 @@ fn next_prefix(scenes_dir: &Path) -> u32 {
     max + 1
 }
 
-/// Copy the project's `appliedBackground` stamp (what "Apply everywhere" last wrote) onto a fresh sidecar, so a new scene matches the deck: skipped whole when the kind staged its own background (video, and image with a pick), and never over an explicit backdrop (the video window keeps its cleared stage).
+/// Inherit the project background stamp only when the scene has no explicit background or backdrop.
 fn inherit_applied_background(doc: &mut Value, stamp: Option<&Value>) {
-    let Some(stamp) = stamp.filter(|_| doc.get("background").is_none()) else {
+    let Some(stamp) =
+        stamp.filter(|_| doc.get("background").is_none() && doc.get("backdrop").is_none())
+    else {
         return;
     };
     if let Some(background) = stamp.get("background") {
         doc["background"] = background.clone();
     }
     if let Some(backdrop) = stamp.get("backdrop") {
-        if doc.get("backdrop").is_none() {
-            doc["backdrop"] = backdrop.clone();
-        }
+        doc["backdrop"] = backdrop.clone();
     }
 }
 
@@ -1663,544 +1626,450 @@ fn resolved_claimed_frame_icon(doc: &Value, deck_frame: Option<&Value>) -> Optio
     )
 }
 
-fn scaffold_managed_text(kind: &str, doc: &Value, deck_frame: Option<&Value>) -> Option<Value> {
-    fn item(key: &str, item_type: &str, text: &str) -> Value {
-        json!({ "key": key, "type": item_type, "text": text })
-    }
-
-    let text = doc.get("text").and_then(Value::as_object);
-    let title = text
-        .and_then(|values| values.get("title"))
-        .and_then(Value::as_str);
-    let subtitle = text
-        .and_then(|values| values.get("subtitle"))
-        .and_then(Value::as_str);
-    let claimed_frame_icon = resolved_claimed_frame_icon(doc, deck_frame);
-    let mut items = match kind {
-        "title" | "overlaystart" | "overlayend" | "overlaypanel" | "device" | "comparison"
-        | "videowindow" => vec![
-            item("title", "title", title.unwrap_or("")),
-            item("subtitle", "subtitle", subtitle.unwrap_or("")),
-        ],
-        "titleicon" => vec![
-            json!({
-                "key": "icon",
-                "type": "icon",
-                "icon": doc
-                    .get("headerIcon")
-                    .and_then(Value::as_str)
-                    .unwrap_or("🚀"),
-            }),
-            item("title", "title", title.unwrap_or("")),
-            item("subtitle", "subtitle", subtitle.unwrap_or("")),
-        ],
-        "appversion" => vec![
-            json!({ "key": "icon", "type": "icon", "icon": "assets/app-icon.png" }),
-            item("title", "subtitle", title.unwrap_or("Your App")),
-            item("subtitle", "title", subtitle.unwrap_or("1.0")),
-        ],
-        "chart" | "blank" | "layeredscreenshot" => {
-            vec![item("title", "title", title.unwrap_or(""))]
-        }
-        _ => return None,
+#[cfg(test)]
+mod preset_insertion_tests {
+    use super::{
+        atomic_write_json, collect_json_asset_refs, copy_scene_between, remint_scene_doc_ids,
+        rewrite_define_scene_id, scan_asset_refs, CopiedSceneResult,
     };
+    use serde_json::{json, Value};
+    use std::path::{Path, PathBuf};
+    use std::sync::atomic::{AtomicU32, Ordering};
 
-    if let Some(icon) = claimed_frame_icon {
-        items.insert(
-            0,
-            json!({ "key": "frameIcon", "type": "icon", "icon": icon }),
-        );
+    struct Fixture {
+        root: PathBuf,
+        source: PathBuf,
+        dest: PathBuf,
     }
 
-    if matches!(kind, "overlaystart" | "overlayend" | "overlaypanel") {
-        if let Some(bullets) = text
-            .and_then(|values| values.get("bullets"))
-            .and_then(Value::as_str)
-            .filter(|value| !value.trim().is_empty())
-        {
-            let points = bullets
-                .lines()
-                .map(str::trim)
-                .filter(|line| !line.is_empty())
-                .enumerate()
-                .map(|(index, line)| {
-                    json!({ "key": format!("bullets-point-{}", index + 1), "text": line })
-                })
-                .collect::<Vec<_>>();
-            items.push(json!({
-                "key": "bullets",
-                "type": "bullets",
-                "text": bullets,
-                "points": points,
-            }));
+    impl Fixture {
+        fn new(doc: Option<&Value>, manifest: &Value) -> Self {
+            static NEXT: AtomicU32 = AtomicU32::new(0);
+            let root = std::env::temp_dir().join(format!(
+                "kookaburra-preset-insertion-{}-{}",
+                std::process::id(),
+                NEXT.fetch_add(1, Ordering::Relaxed)
+            ));
+            let source = root.join("source");
+            let dest = root.join("dest");
+            for project in [&source, &dest] {
+                std::fs::create_dir_all(project.join("scenes")).unwrap();
+                std::fs::create_dir_all(project.join("assets")).unwrap();
+            }
+            std::fs::write(
+                source.join("scenes/01-hero.tsx"),
+                "export default defineScene({ id: 'hero', durationMs: 8765, Scene() { return null; } });",
+            )
+            .unwrap();
+            atomic_write_json(
+                &source.join("project.json"),
+                &json!({ "version": 2, "scenes": [{
+                    "file": "scenes/01-hero.tsx", "durationMs": 8765,
+                    "effects": { "vignette": { "enabled": true } }
+                }] }),
+            )
+            .unwrap();
+            if let Some(doc) = doc {
+                atomic_write_json(&source.join("scenes/01-hero.json"), doc).unwrap();
+            }
+            atomic_write_json(&dest.join("project.json"), manifest).unwrap();
+            for (index, scene) in manifest["scenes"].as_array().unwrap().iter().enumerate() {
+                std::fs::write(
+                    dest.join(scene["file"].as_str().unwrap()),
+                    format!("export default defineScene({{ id: 'hero-{index}' }});"),
+                )
+                .unwrap();
+            }
+            Self { root, source, dest }
+        }
+
+        fn insert(&self, slug: &str, position: Option<usize>) -> CopiedSceneResult {
+            copy_scene_between(&self.source, &self.dest, 0, slug, "dest", position, None).unwrap()
         }
     }
 
-    Some(json!({ "layout": "template", "items": items }))
-}
-
-/// Scaffold a scene natively: TSX from the bundled template + sidecar doc + project.json registration, all writes atomic; video media sets the duration to the media's length (duration-follow), title scenes use 2600ms, charts use 5000ms and other scenes use 4000ms.
-#[tauri::command]
-pub async fn scaffold_scene(
-    app: AppHandle,
-    state: State<'_, SettingsState>,
-    slug: String,
-    mut options: ScaffoldOptions,
-) -> Result<ScaffoldResult, String> {
-    let root = workspace::require_root(&app, &state)?;
-    workspace::validate_slug(&slug)?;
-    let project = root.join(&slug);
-    let manifest_path = project.join(MANIFEST_FILENAME);
-    if !manifest_path.is_file() {
-        return Err(format!("project \"{slug}\" has no project.json"));
-    }
-    let scaffold_manifest = std::fs::read_to_string(&manifest_path)
-        .ok()
-        .and_then(|text| serde_json::from_str::<Value>(&text).ok());
-    // The project-wide stamp the inspector's "Apply everywhere" leaves behind; absent, or any non-object, means new scenes follow the theme.
-    let applied_background = scaffold_manifest
-        .as_ref()
-        .and_then(|manifest| manifest.get("appliedBackground"))
-        .cloned()
-        .filter(Value::is_object);
-    let deck_frame = scaffold_manifest
-        .as_ref()
-        .and_then(|manifest| manifest.get("frame"))
-        .cloned()
-        .filter(Value::is_object);
-
-    let template = match options.kind.as_str() {
-        "device" | "deviceonly" => TSX_DEVICE,
-        "comparison" => TSX_COMPARISON,
-        // The overlay kinds ride the title base: the panel suppresses TitleBlock and shows the same text itself; the cutout pair's variant lifts the scene clear so the window reads against the flat panel.
-        "title" | "titleicon" | "overlaypanel" => TSX_TITLE,
-        "overlaystart" | "overlayend" => TSX_OVERLAY,
-        "blank" => TSX_BLANK,
-        "appversion" => TSX_APP_VERSION,
-        "layeredscreenshot" => TSX_LAYERED_SCREENSHOT,
-        "chart" => TSX_CHART,
-        "video" => TSX_VIDEO,
-        "image" => TSX_IMAGE,
-        "videowindow" => TSX_VIDEO_WINDOW,
-        other => return Err(format!("unknown scene kind {other:?}")),
-    };
-    let is_device_kind = matches!(options.kind.as_str(), "device" | "deviceonly");
-    let is_comparison = options.kind == "comparison";
-
-    // A video or video-window scene without a pick starts on the bundled laptop sample.
-    if matches!(options.kind.as_str(), "video" | "videowindow") && options.media_rel.is_none() {
-        options.media_rel = Some(SAMPLE_LAPTOP_VIDEO.into());
-        options.media_kind = Some("video".into());
-    }
-
-    let scenes_dir = project.join("scenes");
-    std::fs::create_dir_all(&scenes_dir).map_err(|e| e.to_string())?;
-    let base = slugify(&options.name);
-    let stem = format!("{:02}-{base}", next_prefix(&scenes_dir));
-    let scene_id = free_scene_id(&base, &collect_scene_ids(&scenes_dir));
-    let file = format!("scenes/{stem}.tsx");
-    let doc_file = format!("scenes/{stem}.json");
-
-    // Duration: follow the video when the scene owns one, else the wizard default.
-    let is_video = matches!(
-        options.kind.as_str(),
-        "device" | "deviceonly" | "video" | "videowindow"
-    ) && options.media_kind.as_deref() == Some("video")
-        && options.media_rel.is_some();
-    let mut duration_ms = default_scene_duration_ms(&options.kind);
-    let mut media_aspect: Option<f64> = None;
-    if is_video {
-        if let Some(rel) = &options.media_rel {
-            let abs = project.join(rel);
-            let probed = media::probe_media(&app, &abs).await?;
-            if probed.duration_ms > 0 {
-                duration_ms = probed.duration_ms;
-            }
-            if probed.width > 0 && probed.height > 0 {
-                media_aspect = Some(f64::from(probed.width) / f64::from(probed.height));
-            }
+    impl Drop for Fixture {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.root);
         }
     }
-    // Comparison: d1..dn from the slots array (falling back to the legacy rel/relB pair), count clamped 2-4.
-    let comparison_slots: Vec<(Option<String>, Option<String>)> = if is_comparison {
-        let mut slots: Vec<(Option<String>, Option<String>)> = match &options.media_slots {
-            Some(list) => list
-                .iter()
-                .map(|s| (s.rel.clone(), s.kind.clone()))
-                .collect(),
-            None => vec![
-                (options.media_rel.clone(), options.media_kind.clone()),
-                (options.media_rel_b.clone(), options.media_kind_b.clone()),
-            ],
-        };
-        let count = options
-            .device_count
-            .unwrap_or(slots.len().max(2))
-            .clamp(2, 4);
-        slots.resize(count, (None, None));
-        slots.truncate(count);
-        slots
-    } else {
-        Vec::new()
-    };
-    // Probe every video slot and follow the longest clip so no recording is cut short; the sidecar stays unpinned (the engine's follow-media rule is longest-wins).
-    let mut comparison_has_video = false;
-    if is_comparison {
-        let mut best: u64 = 0;
-        for (rel, kind) in &comparison_slots {
-            if kind.as_deref() != Some("video") {
-                continue;
+
+    fn read_json(path: &Path) -> Value {
+        serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap()
+    }
+
+    fn destination() -> Value {
+        json!({
+            "version": 2,
+            "themeId": "destination-theme",
+            "render": { "exposure": 0.8 },
+            "lighting": { "enabled": true },
+            "camera": { "mode": "rig" },
+            "persistent": { "logo": "assets/destination.png" },
+            "appliedBackground": {
+                "background": { "type": "image", "src": "assets/destination.png" },
+                "backdrop": { "type": "floor" }
+            },
+            "frame": { "cutout": { "shape": "rounded-rect" }, "icon": "assets/destination.png" },
+            "defaultTransition": { "type": "slide", "durationMs": 320 },
+            "scenes": [
+                { "file": "scenes/01-first.tsx", "durationMs": 4000, "transition": { "type": "wipe", "durationMs": 700 } },
+                { "file": "scenes/02-last.tsx", "durationMs": 4000 }
+            ]
+        })
+    }
+
+    #[test]
+    fn all_canonical_starters_copy_their_current_content_assets_duration_and_independent_ids() {
+        let repository = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
+        for slug in [
+            "device",
+            "deviceonly",
+            "comparison",
+            "title",
+            "titleicon",
+            "appversion",
+            "layeredscreenshot",
+            "chart",
+            "video",
+            "image",
+            "videowindow",
+            "overlaystart",
+            "overlayend",
+            "overlaypanel",
+            "blank",
+        ] {
+            let source = repository.join("presets").join(slug);
+            let source_manifest = read_json(&source.join("project.json"));
+            let entries = source_manifest["scenes"].as_array().unwrap();
+            assert_eq!(entries.len(), 1, "{slug}");
+            let file = entries[0]["file"].as_str().unwrap();
+            let doc_file = file.replace(".tsx", ".json");
+            let original_doc = std::fs::read(source.join(&doc_file)).unwrap();
+            let source_doc: Value = serde_json::from_slice(&original_doc).unwrap();
+            let tsx = std::fs::read_to_string(source.join(file)).unwrap();
+            let fixture = Fixture::new(
+                None,
+                &json!({ "version": 2, "defaultTransition": null, "scenes": [] }),
+            );
+            let mut copies = Vec::new();
+            for _ in 0..2 {
+                let copied = copy_scene_between(
+                    &source,
+                    &fixture.dest,
+                    0,
+                    &format!("preset:{slug}"),
+                    "dest",
+                    None,
+                    None,
+                )
+                .unwrap();
+                assert_eq!(
+                    copied.scene.duration_ms,
+                    entries[0]["durationMs"].as_u64().unwrap(),
+                    "{slug}"
+                );
+                assert_eq!(
+                    std::fs::read_to_string(fixture.dest.join(&copied.scene.file)).unwrap(),
+                    rewrite_define_scene_id(&tsx, &copied.scene.scene_id).unwrap(),
+                    "{slug}",
+                );
+                let mut landed = read_json(&fixture.dest.join(&copied.scene.doc_file));
+                if let Some(items) = landed
+                    .get_mut("managedText")
+                    .and_then(|managed| managed.get_mut("items"))
+                    .and_then(Value::as_array_mut)
+                {
+                    if !source_doc["managedText"]["items"]
+                        .as_array()
+                        .is_some_and(|items| items.iter().any(|item| item["key"] == "frameIcon"))
+                    {
+                        items.retain(|item| item["key"] != "frameIcon");
+                    }
+                }
+                let mut expected = source_doc.clone();
+                remint_scene_doc_ids(&mut expected);
+                assert_eq!(landed, expected, "{slug}");
+                for asset in scan_asset_refs(&tsx)
+                    .into_iter()
+                    .chain(collect_json_asset_refs(&source_doc))
+                {
+                    assert_eq!(
+                        std::fs::read(fixture.dest.join(&asset))
+                            .unwrap_or_else(|error| panic!("{slug}/{asset}: {error}")),
+                        std::fs::read(source.join(&asset)).unwrap(),
+                        "{slug}/{asset}",
+                    );
+                }
+                copies.push(copied);
             }
-            if let Some(rel) = rel {
-                comparison_has_video = true;
-                let probed = media::probe_media(&app, &project.join(rel)).await?;
-                if probed.duration_ms > best {
-                    best = probed.duration_ms;
+            assert_ne!(copies[0].scene.scene_id, copies[1].scene.scene_id, "{slug}");
+            assert_ne!(copies[0].scene.file, copies[1].scene.file, "{slug}");
+            let second_before =
+                std::fs::read(fixture.dest.join(&copies[1].scene.doc_file)).unwrap();
+            atomic_write_json(
+                &fixture.dest.join(&copies[0].scene.doc_file),
+                &json!({ "version": 1, "name": "Independent edit" }),
+            )
+            .unwrap();
+            assert_eq!(
+                std::fs::read(fixture.dest.join(&copies[1].scene.doc_file)).unwrap(),
+                second_before
+            );
+            assert_eq!(std::fs::read(source.join(&doc_file)).unwrap(), original_doc);
+            assert_eq!(std::fs::read_to_string(source.join(file)).unwrap(), tsx);
+            assert_eq!(read_json(&source.join("project.json")), source_manifest);
+        }
+    }
+
+    #[test]
+    fn a_chart_or_video_window_with_a_cleared_stage_keeps_its_visual_choice() {
+        let repository = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
+        for slug in ["chart", "videowindow"] {
+            let source = repository.join("presets").join(slug);
+            let mut doc = read_json(&source.join(format!("scenes/01-{slug}.json")));
+            doc["backdrop"] = json!({ "type": "none" });
+            let fixture = Fixture::new(Some(&doc), &destination());
+            for asset in collect_json_asset_refs(&doc) {
+                let target = fixture.source.join(&asset);
+                std::fs::create_dir_all(target.parent().unwrap()).unwrap();
+                std::fs::copy(source.join(&asset), target).unwrap();
+            }
+            let copied = fixture.insert("ws-preset:edited", None);
+            let landed = read_json(&fixture.dest.join(copied.scene.doc_file));
+            assert_eq!(landed["backdrop"], doc["backdrop"]);
+            assert_eq!(landed.get("background"), doc.get("background"));
+            assert_eq!(landed.get("chart"), doc.get("chart"));
+            assert_eq!(landed.get("media"), doc.get("media"));
+        }
+    }
+
+    #[test]
+    fn only_preset_insertion_adopts_destination_context_and_preserves_authored_content() {
+        let doc = json!({
+            "version": 1,
+            "name": "Hero",
+            "duration": { "mode": "follow-media", "source": "media", "sourceMediaId": "vid1" },
+            "media": [{ "id": "vid1", "kind": "video", "src": "assets/clip.mp4" }],
+            "managedText": {
+                "layout": "template",
+                "items": [
+                    { "key": "icon", "type": "icon", "icon": "rocket" },
+                    { "key": "title", "type": "title", "text": "Authored title" }
+                ],
+                "groups": [{ "key": "heading", "itemKeys": ["title"], "align": "end" }]
+            },
+            "text": { "title": "Authored title" },
+            "textStyle": { "titleColor": "accent" },
+            "camera": { "position": [1, 2, 3] },
+            "lighting": { "enabled": false },
+            "futureSetting": { "keep": true }
+        });
+        for slug in ["preset:hero", "ws-preset:hero", "source"] {
+            let manifest = destination();
+            let fixture = Fixture::new(Some(&doc), &manifest);
+            std::fs::write(fixture.source.join("assets/clip.mp4"), b"source clip").unwrap();
+            std::fs::write(
+                fixture.dest.join("assets/destination.png"),
+                b"destination image",
+            )
+            .unwrap();
+            let before = std::fs::read(fixture.source.join("scenes/01-hero.json")).unwrap();
+            let copied = fixture.insert(slug, Some(1));
+            let landed = read_json(&fixture.dest.join(&copied.scene.doc_file));
+            let mut expected = doc.clone();
+            let is_preset = slug != "source";
+            if is_preset {
+                expected["background"] = manifest["appliedBackground"]["background"].clone();
+                expected["backdrop"] = manifest["appliedBackground"]["backdrop"].clone();
+                expected["managedText"]["items"].as_array_mut().unwrap().insert(
+                    0,
+                    json!({ "key": "frameIcon", "type": "icon", "icon": "assets/destination.png" }),
+                );
+            }
+            assert_eq!(landed, expected, "{slug}");
+            assert_eq!(copied.scene.duration_ms, 8765);
+            assert_eq!(copied.index, 1);
+            assert_eq!(
+                std::fs::read(fixture.dest.join("assets/clip.mp4")).unwrap(),
+                b"source clip"
+            );
+            assert_eq!(
+                std::fs::read(fixture.dest.join("assets/destination.png")).unwrap(),
+                b"destination image"
+            );
+            assert_eq!(
+                std::fs::read(fixture.source.join("scenes/01-hero.json")).unwrap(),
+                before
+            );
+            let mut landed_manifest = read_json(&fixture.dest.join("project.json"));
+            let entry = landed_manifest["scenes"].as_array_mut().unwrap().remove(1);
+            assert_eq!(entry["durationMs"], 8765);
+            assert_eq!(entry["effects"], json!({ "vignette": { "enabled": true } }));
+            assert_eq!(
+                entry.get("transition"),
+                is_preset.then(|| &manifest["defaultTransition"])
+            );
+            assert_eq!(landed_manifest, manifest, "{slug}");
+        }
+    }
+
+    #[test]
+    fn preset_insertion_seeds_only_the_new_boundary_and_respects_hard_cuts() {
+        for (position, default_transition, tail_transition) in [
+            (
+                Some(0),
+                Some(json!({ "type": "slide", "durationMs": 320 })),
+                None,
+            ),
+            (
+                Some(1),
+                Some(json!({ "type": "slide", "durationMs": 320 })),
+                None,
+            ),
+            (
+                None,
+                Some(json!({ "type": "slide", "durationMs": 320 })),
+                None,
+            ),
+            (Some(99), None, None),
+            (Some(1), Some(Value::Null), None),
+            (None, Some(Value::Null), None),
+            (
+                None,
+                None,
+                Some(json!({ "type": "wipe", "durationMs": 700 })),
+            ),
+            (None, None, Some(Value::Null)),
+        ] {
+            let mut manifest = json!({ "version": 2, "scenes": [
+                { "file": "scenes/01-first.tsx", "durationMs": 4000 },
+                { "file": "scenes/02-last.tsx", "durationMs": 4000 }
+            ] });
+            if let Some(transition) = &default_transition {
+                manifest["defaultTransition"] = transition.clone();
+            }
+            if let Some(transition) = &tail_transition {
+                manifest["scenes"][1]["transition"] = transition.clone();
+            }
+            let fixture = Fixture::new(None, &manifest);
+            let copied = fixture.insert("preset:hero", position);
+            let landed = read_json(&fixture.dest.join("project.json"));
+            let at = position.unwrap_or(2).min(2);
+            assert_eq!(copied.index, at);
+            let default = default_transition
+                .unwrap_or_else(|| json!({ "type": "crossfade", "durationMs": 600 }));
+            let mut expected = manifest["scenes"].as_array().unwrap().clone();
+            let mut inserted = json!({
+                "file": copied.scene.file,
+                "durationMs": 8765,
+                "effects": { "vignette": { "enabled": true } }
+            });
+            if !default.is_null() {
+                if at < 2 {
+                    inserted["transition"] = default;
+                } else if tail_transition.is_none() {
+                    expected[1]["transition"] = default;
                 }
             }
-        }
-        if best > 0 {
-            duration_ms = best;
+            expected.insert(at, inserted);
+            assert_eq!(landed["scenes"], json!(expected));
+            assert!(!fixture.dest.join(copied.scene.doc_file).exists());
         }
     }
 
-    // The sidecar document (built here, not templated; Rust owns the schema).
-    let mut doc = json!({
-        "version": SCENE_DOC_VERSION,
-        "name": options.name,
-        "duration": if comparison_has_video {
-            json!({ "mode": "follow-media" })
-        } else if is_video && is_device_kind {
-            json!({ "mode": "follow-media", "sourceDeviceId": "d1" })
-        } else if is_video && options.kind == "videowindow" {
-            json!({ "mode": "follow-media", "source": "media", "sourceMediaId": "vid1" })
-        } else if is_video {
-            // No device: the resync falls back to the video background as the source.
-            json!({ "mode": "follow-media" })
-        } else {
-            json!({ "mode": "manual" })
-        },
-        "text": {},
-    });
-    // Text-bearing kinds seed the title/subtitle pair (empty strings keep the panel fields visible); app-version scenes seed the lockup with placeholder copy since an icon beside empty text reads as broken; other kinds write `title` only when copy was given (older scenes keep their legacy `headline` key).
-    let seeds_text_pair = matches!(
-        options.kind.as_str(),
-        "title"
-            | "titleicon"
-            | "overlaystart"
-            | "overlayend"
-            | "overlaypanel"
-            | "device"
-            | "comparison"
-            | "videowindow"
-    );
-    if seeds_text_pair {
-        doc["text"]["title"] = json!(options.title.as_deref().unwrap_or(""));
-        doc["text"]["subtitle"] = json!(options.subtitle.as_deref().unwrap_or(""));
-        if let Some(bullets) = options.bullets.as_deref().filter(|b| !b.trim().is_empty()) {
-            doc["text"]["bullets"] = json!(bullets);
-        }
-        if is_comparison {
-            // Neutral scaffold (batch 10): the label chips appear only when copy is typed.
-            doc["text"]["beforeLabel"] = json!("");
-            doc["text"]["afterLabel"] = json!("");
-        }
-    } else if options.kind == "appversion" {
-        doc["text"]["title"] = json!(options.title.as_deref().unwrap_or("Your App"));
-        doc["text"]["subtitle"] = json!(options.subtitle.as_deref().unwrap_or("1.0"));
-    } else {
-        if let Some(title) = &options.title {
-            doc["text"]["title"] = json!(title);
-        }
-        if let Some(subtitle) = &options.subtitle {
-            doc["text"]["subtitle"] = json!(subtitle);
+    #[test]
+    fn preset_insertion_keeps_explicit_background_and_backdrop_choices() {
+        for choice in [
+            json!({ "background": { "type": "color", "color": "#123456" } }),
+            json!({ "background": null }),
+            json!({ "backdrop": { "type": "none" } }),
+            json!({ "backdrop": null }),
+        ] {
+            let mut doc = json!({ "version": 1, "name": "Authored", "text": { "title": "Keep" } });
+            doc.as_object_mut()
+                .unwrap()
+                .extend(choice.as_object().unwrap().clone());
+            let fixture = Fixture::new(Some(&doc), &destination());
+            let copied = fixture.insert("ws-preset:hero", Some(1));
+            assert_eq!(read_json(&fixture.dest.join(copied.scene.doc_file)), doc);
         }
     }
-    if options.kind == "titleicon" {
-        doc["headerIcon"] = json!(options.header_icon.as_deref().unwrap_or("🚀"));
-    }
-    // Overlay trio: a sidecar frame stands alone when it carries a cutout; the panel variant uses the real full-panel shape ("none": no cutout, content centred). The cutout pair pins the panel to the flat background token, paired with the template's lifted scene clear.
-    let overlay_frame = match options.kind.as_str() {
-        "overlaystart" => Some(json!({
-            "cutout": { "shape": "rounded-rect", "side": "start" },
-            "background": "background",
-        })),
-        "overlayend" => Some(json!({
-            "cutout": { "shape": "rounded-rect", "side": "end" },
-            "background": "background",
-        })),
-        "overlaypanel" => Some(json!({
-            "cutout": { "shape": "none" },
-        })),
-        _ => None,
-    };
-    if let Some(frame) = overlay_frame {
-        // No starter chip: the slide pass paints the panel and its cutout whether or not the panel carries content. The full-panel variant has no cutout to read, so a copy-less one seeds a starter title instead of landing a flat, empty frame.
-        if options.kind == "overlaypanel" && doc["text"]["title"].as_str() == Some("") {
-            doc["text"]["title"] = json!("Your title");
-        }
-        doc["frame"] = frame;
-    }
-    if let Some(managed_text) = scaffold_managed_text(&options.kind, &doc, deck_frame.as_ref()) {
-        doc["managedText"] = managed_text;
-    }
-    if options.kind == "videowindow" {
-        if let Some(rel) = &options.media_rel {
-            let mut video = json!({});
-            if let Some(aspect) = media_aspect {
-                video["aspect"] = json!(aspect);
+
+    #[test]
+    fn preset_frame_icons_respect_existing_slots_and_scene_frame_overrides() {
+        for (slot, frame, expected_icon) in [
+            (
+                Some(json!({ "key": "frameIcon", "type": "icon", "icon": "" })),
+                None,
+                None,
+            ),
+            (
+                Some(json!({ "key": "frameIcon", "type": "icon", "icon": "star" })),
+                None,
+                None,
+            ),
+            (None, Some(json!({ "enabled": false })), None),
+            (None, Some(json!({ "claimsSceneText": false })), None),
+            (None, Some(json!({ "icon": "" })), Some("")),
+            (None, Some(json!({ "icon": "star" })), Some("star")),
+        ] {
+            let mut doc = json!({ "version": 1, "managedText": { "items": [
+                { "key": "title", "type": "title", "text": "Authored" }
+            ] } });
+            if let Some(slot) = slot {
+                doc["managedText"]["items"]
+                    .as_array_mut()
+                    .unwrap()
+                    .push(slot);
             }
-            let mut window = json!({
-                "radius": "macos",
-                "border": { "enabled": false, "color": "#ffffff", "width": 0.0035, "opacity": 0.12 },
-            });
-            if options.recording == Some(true) {
-                window["recording"] = json!(true);
+            if let Some(frame) = frame {
+                doc["frame"] = frame;
             }
-            // Text sits above the window: one line steps the window down, two also shrink it. The overlay position is half-frame relative, so it doubles the legacy whole-frame offset.
-            let title_line = options
-                .title
-                .as_deref()
-                .is_some_and(|t| !t.trim().is_empty());
-            let subtitle_line = options
-                .subtitle
-                .as_deref()
-                .is_some_and(|t| !t.trim().is_empty());
-            let (size, offset_y) = if title_line && subtitle_line {
-                (0.65, -0.16)
-            } else if title_line || subtitle_line {
-                (0.72, -0.10)
-            } else {
-                (0.72, 0.0)
-            };
-            doc["media"] = json!([{
-                "id": "vid1",
-                "kind": "video",
-                "src": rel,
-                "host": "overlay",
-                "stage": { "position": [0.0, 0.0, 0.0], "size": 5.3, "rotationDeg": [0.0, 0.0, 0.0] },
-                "overlay": {
-                    "position": [0.0, offset_y],
-                    "size": size,
-                    "rotationDeg": 0.0,
-                    "shape": "none",
-                    "layer": "below",
-                },
-                "window": window,
-                "video": video,
-            }]);
-            // The window floats over the scene's own background; staged scenery would clip its shadow.
-            doc["backdrop"] = json!({ "type": "none" });
-        }
-    }
-    if options.kind == "layeredscreenshot" {
-        // The optional first screen seeds the centre item; the builder grows the stack from there.
-        let mut items = Vec::new();
-        if let Some(rel) = &options.media_rel {
-            let media_kind = options.media_kind.as_deref().unwrap_or("image");
-            items.push(json!({
-                "id": "i1", "kind": "screen", "src": rel, "media": media_kind, "attach": null,
-            }));
-        }
-        doc["layeredScreenshot"] = json!({
-            "layers": [{ "id": "l1", "visible": true, "z": 0, "items": items }],
-            "pose": { "spread": 0, "azimuthDeg": 0, "elevationDeg": 0, "zoom": 1, "pan": [0, 0] },
-        });
-    }
-    if options.kind == "chart" {
-        // Starter data only: style, axis, labels and animation stay absent so `resolveChart` owns every default, and series carry no colour so the theme palette drives them.
-        let data = match &options.chart_data {
-            Some(picked) => json!({
-                "categories": picked.categories,
-                "series": picked
-                    .series
-                    .iter()
-                    .map(|s| json!({
-                        "id": s.id,
-                        "name": s.name.as_deref().unwrap_or(&s.id),
-                        "values": s.values,
-                    }))
-                    .collect::<Vec<_>>(),
-            }),
-            None => json!({
-                "categories": ["April", "May", "June", "July"],
-                "series": [
-                    { "id": "s1", "name": "Region 1", "values": [17, 26, 53, 96] },
-                    { "id": "s2", "name": "Region 2", "values": [55, 43, 70, 58] },
-                ],
-            }),
-        };
-        doc["chart"] = json!({
-            "type": options.chart_type.as_deref().unwrap_or("column"),
-            "dimension": options.chart_dimension.as_deref().unwrap_or("3d"),
-            "mount": "hero",
-            "data": data,
-        });
-        // The chart floats on the scene's own background; staged scenery boxes it in (toggle the backdrop back on in the inspector).
-        doc["backdrop"] = json!({ "type": "none" });
-    }
-    if options.kind == "video" {
-        if let Some(rel) = &options.media_rel {
-            doc["background"] = json!({ "type": "video", "src": rel });
-        }
-    }
-    // An image scene without a pick keeps the theme background (no bundled sample image).
-    if options.kind == "image" {
-        if let Some(rel) = &options.media_rel {
-            doc["background"] = json!({ "type": "image", "src": rel });
-        }
-    }
-    if is_device_kind {
-        let device_only = options.kind == "deviceonly";
-        // With no title to clear, the device-only kind sits centred and dominant, grounded when the theme stages a floor; the titled kind drops 0.3 under the headline.
-        let position = if device_only {
-            json!([0, 0, 0])
-        } else {
-            json!([0, -0.3, 0])
-        };
-        let mut placement = json!({
-            "position": position,
-            "rotationDeg": [0, 0, 0],
-            "scale": if device_only { 1.35 } else { 1.0 },
-        });
-        if device_only {
-            placement["ground"] = json!(true);
-        }
-        let (model, colour) =
-            device_model_and_colour(options.device_model.as_deref(), options.colour.as_deref());
-        let mut device = json!({
-            "id": "d1",
-            "model": model,
-            "colour": colour,
-            "placement": placement,
-            "motion": { "preset": options.motion_preset.as_deref().unwrap_or("none") },
-        });
-        // Both device kinds omit the field so Device auto-resolves: real map shadows over a staged floor, the soft blob when floating. An explicit option still wins.
-        if let Some(shadow) = options.shadow.as_deref() {
-            device["shadow"] = json!(shadow);
-        }
-        if let (Some(rel), Some(kind)) = (&options.media_rel, &options.media_kind) {
-            device["media"] = json!({ "src": rel, "kind": kind });
-        }
-        doc["devices"] = json!([device]);
-        // Closer poses than the engine default (target origin, distance 5): the titled phone goes to 75% of frame height, and device-only (1.35 scale) stops at 4.5, the closest clip-safe distance (~94%).
-        doc["camera"] = json!({
-            "keys": [{
-                "id": "k1",
-                "tMs": 0,
-                "pose": {
-                    "target": [0, 0.1, 0],
-                    "azimuthDeg": 0,
-                    "elevationDeg": 0,
-                    "distance": if device_only { 4.5 } else { 4.2 },
-                },
-            }],
-            "segments": [],
-        });
-    }
-    if is_comparison {
-        // Devices carry no placement: the deviceLayout block owns positions and the template resolves it per aspect.
-        let (model, colour) =
-            device_model_and_colour(options.device_model.as_deref(), options.colour.as_deref());
-        let mut list = Vec::new();
-        for (i, (rel, kind)) in comparison_slots.iter().enumerate() {
-            let mut device = json!({
-                "id": format!("d{}", i + 1),
-                "model": model,
-                "colour": colour,
-                "motion": { "preset": options.motion_preset.as_deref().unwrap_or("none") },
-            });
-            // Omitted so Device auto-resolves (the device kinds' contract); an explicit option still wins.
-            if let Some(shadow) = options.shadow.as_deref() {
-                device["shadow"] = json!(shadow);
+            let mut manifest = destination();
+            manifest
+                .as_object_mut()
+                .unwrap()
+                .remove("appliedBackground");
+            let fixture = Fixture::new(Some(&doc), &manifest);
+            let copied = fixture.insert("preset:hero", None);
+            if let Some(icon) = expected_icon {
+                doc["managedText"]["items"].as_array_mut().unwrap().insert(
+                    0,
+                    json!({ "key": "frameIcon", "type": "icon", "icon": icon }),
+                );
             }
-            if let (Some(rel), Some(kind)) = (rel, kind) {
-                device["media"] = json!({ "src": rel, "kind": kind });
-            }
-            list.push(device);
+            assert_eq!(read_json(&fixture.dest.join(copied.scene.doc_file)), doc);
         }
-        doc["devices"] = json!(list);
-        doc["deviceLayout"] = json!({ "preset": "toe-in", "gap": 0.35 });
     }
-    inherit_applied_background(&mut doc, applied_background.as_ref());
 
-    // TSX from the template; placeholders are dumb string replaces, keep them in sync with .claude/commands/new-scene.md, which interpolates the same files.
-    let tsx = template
-        .replace("__SCENE_ID__", &scene_id)
-        .replace("__STEM__", &stem)
-        .replace("__NAME__", &options.name)
-        .replace("__DURATION_MS__", &duration_ms.to_string());
-    atomic_write_text(&scenes_dir.join(format!("{stem}.tsx")), &tsx)?;
-
-    atomic_write_json(&scene_doc_path(&root, &slug, &doc_file)?, &doc)?;
-
-    // Register in project.json (atomic), at `position` when given (in range), else appended.
-    let text = std::fs::read_to_string(&manifest_path)
-        .map_err(|e| format!("reading project.json: {e}"))?;
-    let mut manifest: Value =
-        serde_json::from_str(&text).map_err(|e| format!("project.json isn't valid JSON: {e}"))?;
-    migrate_manifest_transitions(&mut manifest);
-    // Resolve after every async media probe so an Apply-to-all default saved while the wizard was working cannot be overwritten by a stale value.
-    let default_transition = project_default_transition(&manifest);
-    let scenes = manifest
-        .get_mut("scenes")
-        .and_then(Value::as_array_mut)
-        .ok_or("project.json has no scenes array")?;
-    let entry = json!({ "file": file, "durationMs": duration_ms });
-    let at = match options.position {
-        Some(index) if index < scenes.len() => {
-            scenes.insert(index, entry);
-            index
+    #[test]
+    fn an_unmanaged_preset_keeps_text_ownership_when_inheriting_context() {
+        for doc in [
+            None,
+            Some(json!({ "version": 1, "text": { "headline": "Legacy copy" } })),
+        ] {
+            let manifest = destination();
+            let fixture = Fixture::new(doc.as_ref(), &manifest);
+            let copied = fixture.insert("preset:hero", None);
+            let mut expected = doc.unwrap_or_else(|| json!({ "version": 1 }));
+            expected["background"] = manifest["appliedBackground"]["background"].clone();
+            expected["backdrop"] = manifest["appliedBackground"]["backdrop"].clone();
+            assert_eq!(
+                read_json(&fixture.dest.join(copied.scene.doc_file)),
+                expected
+            );
         }
-        _ => {
-            scenes.push(entry);
-            scenes.len() - 1
-        }
-    };
-    // Preserve the predecessor's existing boundary, including a hard cut, and seed only the genuinely new boundary.
-    seed_inserted_scene_transitions(scenes, at, default_transition.as_ref());
-    atomic_write_json(&manifest_path, &manifest)?;
-
-    Ok(ScaffoldResult {
-        file,
-        doc_file,
-        scene_id,
-        duration_ms,
-    })
+    }
 }
 
 #[cfg(test)]
-mod scaffold_default_tests {
+mod transition_default_tests {
     use super::{
-        apply_transition_to_manifest, default_scene_duration_ms, device_model_and_colour,
-        project_default_transition, seed_inserted_scene_transitions, transition_is_valid,
+        apply_transition_to_manifest, project_default_transition, seed_inserted_scene_transitions,
+        transition_is_valid,
     };
     use serde_json::{json, Value};
-
-    #[test]
-    fn title_kinds_start_at_two_point_six_seconds() {
-        assert_eq!(default_scene_duration_ms("title"), 2600);
-        assert_eq!(default_scene_duration_ms("titleicon"), 2600);
-        assert_eq!(default_scene_duration_ms("overlaypanel"), 4000);
-        assert_eq!(default_scene_duration_ms("chart"), 5000);
-    }
-
-    #[test]
-    fn device_scaffolds_default_to_the_bundled_android() {
-        assert_eq!(device_model_and_colour(None, None), ("android", "graphite"));
-        assert_eq!(
-            device_model_and_colour(Some("iphone-17-pro"), None),
-            ("iphone-17-pro", "silver")
-        );
-        assert_eq!(
-            device_model_and_colour(Some("iphone-15-pro"), None),
-            ("iphone-15-pro", "natural-titanium")
-        );
-        assert_eq!(
-            device_model_and_colour(Some("android"), Some("white")),
-            ("android", "white")
-        );
-    }
 
     #[test]
     fn transition_defaults_require_a_string_type() {
@@ -2313,10 +2182,10 @@ mod applied_background_tests {
     }
 
     #[test]
-    fn an_explicit_backdrop_survives_the_stamp() {
+    fn an_explicit_backdrop_keeps_the_entire_scene_background_choice() {
         let mut doc = json!({ "backdrop": { "type": "none" } });
         inherit_applied_background(&mut doc, Some(&stamp()));
-        assert_eq!(doc["background"]["type"], json!("color"));
+        assert!(doc.get("background").is_none());
         assert_eq!(doc["backdrop"]["type"], json!("none"));
     }
 
@@ -2337,368 +2206,9 @@ mod applied_background_tests {
 }
 
 #[cfg(test)]
-mod scaffold_managed_text_tests {
-    use super::scaffold_managed_text;
-    use serde_json::{json, Value};
-
-    fn template(items: Value) -> Value {
-        json!({ "layout": "template", "items": items })
-    }
-
-    #[test]
-    fn every_text_bearing_kind_gets_its_exact_managed_block() {
-        let cases = vec![
-            (
-                "title",
-                json!({ "text": { "title": "", "subtitle": "" } }),
-                template(json!([
-                    { "key": "title", "type": "title", "text": "" },
-                    { "key": "subtitle", "type": "subtitle", "text": "" },
-                ])),
-            ),
-            (
-                "titleicon",
-                json!({
-                    "text": { "title": "Launch", "subtitle": "Today" },
-                    "headerIcon": "🪄",
-                }),
-                template(json!([
-                    { "key": "icon", "type": "icon", "icon": "🪄" },
-                    { "key": "title", "type": "title", "text": "Launch" },
-                    { "key": "subtitle", "type": "subtitle", "text": "Today" },
-                ])),
-            ),
-            (
-                "overlaystart",
-                json!({
-                    "text": {
-                        "title": "Launch",
-                        "subtitle": "Today",
-                        "bullets": " First point \n\nSecond point  ",
-                    },
-                }),
-                template(json!([
-                    { "key": "title", "type": "title", "text": "Launch" },
-                    { "key": "subtitle", "type": "subtitle", "text": "Today" },
-                    {
-                        "key": "bullets",
-                        "type": "bullets",
-                        "text": " First point \n\nSecond point  ",
-                        "points": [
-                            { "key": "bullets-point-1", "text": "First point" },
-                            { "key": "bullets-point-2", "text": "Second point" },
-                        ],
-                    },
-                ])),
-            ),
-            (
-                "overlayend",
-                json!({ "text": { "title": "End", "subtitle": "Right" } }),
-                template(json!([
-                    { "key": "title", "type": "title", "text": "End" },
-                    { "key": "subtitle", "type": "subtitle", "text": "Right" },
-                ])),
-            ),
-            (
-                "overlaypanel",
-                json!({ "text": { "title": "Your title", "subtitle": "" } }),
-                template(json!([
-                    { "key": "title", "type": "title", "text": "Your title" },
-                    { "key": "subtitle", "type": "subtitle", "text": "" },
-                ])),
-            ),
-            (
-                "device",
-                json!({ "text": { "title": "Phone", "subtitle": "Silver" } }),
-                template(json!([
-                    { "key": "title", "type": "title", "text": "Phone" },
-                    { "key": "subtitle", "type": "subtitle", "text": "Silver" },
-                ])),
-            ),
-            (
-                "comparison",
-                json!({
-                    "text": {
-                        "title": "Then and now",
-                        "subtitle": "",
-                        "beforeLabel": "Before",
-                        "afterLabel": "After",
-                    },
-                }),
-                template(json!([
-                    { "key": "title", "type": "title", "text": "Then and now" },
-                    { "key": "subtitle", "type": "subtitle", "text": "" },
-                ])),
-            ),
-            (
-                "appversion",
-                json!({ "text": { "title": "Kookaburra", "subtitle": "3.1.5" } }),
-                template(json!([
-                    { "key": "icon", "type": "icon", "icon": "assets/app-icon.png" },
-                    { "key": "title", "type": "subtitle", "text": "Kookaburra" },
-                    { "key": "subtitle", "type": "title", "text": "3.1.5" },
-                ])),
-            ),
-            (
-                "videowindow",
-                json!({ "text": { "title": "", "subtitle": "" } }),
-                template(json!([
-                    { "key": "title", "type": "title", "text": "" },
-                    { "key": "subtitle", "type": "subtitle", "text": "" },
-                ])),
-            ),
-            (
-                "chart",
-                json!({ "text": { "title": "Quarterly revenue" } }),
-                template(json!([
-                    { "key": "title", "type": "title", "text": "Quarterly revenue" },
-                ])),
-            ),
-            (
-                "blank",
-                json!({ "text": { "title": "A blank beginning" } }),
-                template(json!([
-                    { "key": "title", "type": "title", "text": "A blank beginning" },
-                ])),
-            ),
-            (
-                "layeredscreenshot",
-                json!({ "text": { "title": "Three screens" } }),
-                template(json!([
-                    { "key": "title", "type": "title", "text": "Three screens" },
-                ])),
-            ),
-        ];
-
-        for (kind, doc, expected) in cases {
-            assert_eq!(
-                scaffold_managed_text(kind, &doc, None),
-                Some(expected),
-                "{kind}"
-            );
-        }
-    }
-
-    #[test]
-    fn every_text_scaffold_captures_a_claimed_frame_icon_in_its_own_slot() {
-        let doc = json!({ "text": { "title": "Launch", "subtitle": "Today" } });
-        let claimed = json!({
-            "cutout": { "shape": "rounded-rect" },
-            "icon": "assets/deck-mark.png",
-        });
-        let expected_with_icon = template(json!([
-            { "key": "frameIcon", "type": "icon", "icon": "assets/deck-mark.png" },
-            { "key": "title", "type": "title", "text": "Launch" },
-            { "key": "subtitle", "type": "subtitle", "text": "Today" },
-        ]));
-        for kind in [
-            "title",
-            "overlaystart",
-            "overlayend",
-            "overlaypanel",
-            "device",
-            "comparison",
-            "videowindow",
-        ] {
-            assert_eq!(
-                scaffold_managed_text(kind, &doc, Some(&claimed)),
-                Some(expected_with_icon.clone()),
-                "{kind}",
-            );
-        }
-
-        let title_icon = json!({
-            "text": { "title": "Launch", "subtitle": "Today" },
-            "headerIcon": "🪄",
-        });
-        assert_eq!(
-            scaffold_managed_text("titleicon", &title_icon, Some(&claimed)),
-            Some(template(json!([
-                { "key": "frameIcon", "type": "icon", "icon": "assets/deck-mark.png" },
-                { "key": "icon", "type": "icon", "icon": "🪄" },
-                { "key": "title", "type": "title", "text": "Launch" },
-                { "key": "subtitle", "type": "subtitle", "text": "Today" },
-            ]))),
-        );
-        assert_eq!(
-            scaffold_managed_text(
-                "appversion",
-                &json!({ "text": { "title": "Kookaburra", "subtitle": "3.1.5" } }),
-                Some(&claimed),
-            ),
-            Some(template(json!([
-                { "key": "frameIcon", "type": "icon", "icon": "assets/deck-mark.png" },
-                { "key": "icon", "type": "icon", "icon": "assets/app-icon.png" },
-                { "key": "title", "type": "subtitle", "text": "Kookaburra" },
-                { "key": "subtitle", "type": "title", "text": "3.1.5" },
-            ]))),
-        );
-        for kind in ["chart", "blank", "layeredscreenshot"] {
-            assert_eq!(
-                scaffold_managed_text(
-                    kind,
-                    &json!({ "text": { "title": "Optional title" } }),
-                    Some(&claimed),
-                ),
-                Some(template(json!([
-                    { "key": "frameIcon", "type": "icon", "icon": "assets/deck-mark.png" },
-                    { "key": "title", "type": "title", "text": "Optional title" },
-                ]))),
-                "{kind}",
-            );
-        }
-    }
-
-    #[test]
-    fn a_scene_frame_preserves_an_explicit_empty_icon_override() {
-        let doc = json!({
-            "text": { "title": "Launch", "subtitle": "Today" },
-            "frame": {
-                "cutout": { "shape": "rounded-rect", "side": "start" },
-                "icon": "",
-            },
-        });
-        let deck = json!({
-            "cutout": { "shape": "rounded-rect", "side": "end" },
-            "icon": "assets/deck-mark.png",
-        });
-        assert_eq!(
-            scaffold_managed_text("overlaystart", &doc, Some(&deck)),
-            Some(template(json!([
-                { "key": "frameIcon", "type": "icon", "icon": "" },
-                { "key": "title", "type": "title", "text": "Launch" },
-                { "key": "subtitle", "type": "subtitle", "text": "Today" },
-            ]))),
-        );
-    }
-
-    #[test]
-    fn scene_frame_flags_override_deck_opt_outs_field_by_field() {
-        let title = |frame: Value| {
-            json!({
-                "text": { "title": "Launch", "subtitle": "Today" },
-                "frame": frame,
-            })
-        };
-        let managed = |icon: &str| {
-            template(json!([
-                { "key": "frameIcon", "type": "icon", "icon": icon },
-                { "key": "title", "type": "title", "text": "Launch" },
-                { "key": "subtitle", "type": "subtitle", "text": "Today" },
-            ]))
-        };
-        let disabled = json!({
-            "cutout": { "shape": "rounded-rect" },
-            "enabled": false,
-            "icon": "assets/deck.png",
-        });
-        assert_eq!(
-            scaffold_managed_text(
-                "title",
-                &title(json!({ "enabled": true, "icon": "assets/scene.png" })),
-                Some(&disabled),
-            ),
-            Some(managed("assets/scene.png")),
-        );
-        assert_eq!(
-            scaffold_managed_text(
-                "title",
-                &title(json!({ "icon": "assets/scene.png" })),
-                Some(&disabled),
-            ),
-            Some(template(json!([
-                { "key": "title", "type": "title", "text": "Launch" },
-                { "key": "subtitle", "type": "subtitle", "text": "Today" },
-            ]))),
-        );
-
-        let unclaimed = json!({
-            "cutout": { "shape": "rounded-rect" },
-            "claimsSceneText": false,
-            "icon": "assets/deck.png",
-        });
-        assert_eq!(
-            scaffold_managed_text(
-                "title",
-                &title(json!({
-                    "claimsSceneText": true,
-                    "icon": "assets/scene.png",
-                })),
-                Some(&unclaimed),
-            ),
-            Some(managed("assets/scene.png")),
-        );
-
-        let deck = json!({
-            "cutout": { "shape": "rounded-rect" },
-            "icon": "assets/deck.png",
-        });
-        assert_eq!(
-            scaffold_managed_text(
-                "title",
-                &title(json!({ "icon": "assets/scene.png" })),
-                Some(&deck),
-            ),
-            Some(managed("assets/scene.png")),
-        );
-    }
-
-    #[test]
-    fn unclaimed_or_disabled_frames_add_no_frame_icon_item() {
-        let doc = json!({ "text": { "title": "Launch", "subtitle": "Today" } });
-
-        let expected_embedded_icon = template(json!([
-            { "key": "title", "type": "title", "text": "Launch" },
-            { "key": "subtitle", "type": "subtitle", "text": "Today" },
-        ]));
-        for frame in [
-            json!({
-                "cutout": { "shape": "rounded-rect" },
-                "icon": "assets/deck-mark.png",
-                "claimsSceneText": false,
-            }),
-            json!({
-                "cutout": { "shape": "rounded-rect" },
-                "icon": "assets/deck-mark.png",
-                "enabled": false,
-            }),
-            json!({
-                "cutout": { "shape": "unknown" },
-                "icon": "assets/deck-mark.png",
-            }),
-        ] {
-            assert_eq!(
-                scaffold_managed_text("overlaystart", &doc, Some(&frame)),
-                Some(expected_embedded_icon.clone())
-            );
-        }
-    }
-
-    #[test]
-    fn textless_kinds_stay_unmanaged_and_optional_title_kinds_own_their_slot() {
-        for kind in ["deviceonly", "video", "image"] {
-            assert_eq!(
-                scaffold_managed_text(kind, &json!({}), None),
-                None,
-                "{kind}"
-            );
-        }
-        for kind in ["chart", "blank", "layeredscreenshot"] {
-            assert_eq!(
-                scaffold_managed_text(kind, &json!({ "text": { "title": "  " } }), None,),
-                Some(template(json!([
-                    { "key": "title", "type": "title", "text": "  " },
-                ]))),
-                "{kind}",
-            );
-        }
-    }
-}
-
-#[cfg(test)]
 mod asset_scan_tests {
     use super::{collect_json_asset_refs, copy_scene_assets, scan_asset_refs};
-    use serde_json::json;
+    use serde_json::{json, Value};
     use std::sync::atomic::{AtomicU32, Ordering};
 
     fn temp_dir(label: &str) -> std::path::PathBuf {
@@ -2785,7 +2295,7 @@ mod asset_scan_tests {
             "note": format!("Preview assets/{name} here"),
         }));
 
-        copy_scene_assets(&project, &dest, &mut tsx, &mut doc).unwrap();
+        copy_scene_assets(&project, &dest, &mut tsx, &mut doc, &mut Value::Null, None).unwrap();
 
         let rewritten = "assets/Kākāpō @2 (final)-2.png";
         assert_eq!(doc.as_ref().unwrap()["images"][0]["src"], json!(rewritten));
@@ -2817,7 +2327,7 @@ mod asset_scan_tests {
             r#"const image = "assets/foo.png"; const unrelated = "my-assets/foo.png";"#.to_string();
         let mut doc = None;
 
-        copy_scene_assets(&project, &dest, &mut tsx, &mut doc).unwrap();
+        copy_scene_assets(&project, &dest, &mut tsx, &mut doc, &mut Value::Null, None).unwrap();
 
         assert_eq!(
             tsx,

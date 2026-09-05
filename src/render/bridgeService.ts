@@ -1,16 +1,20 @@
 import { invoke } from "@tauri-apps/api/core";
 import { emit } from "@tauri-apps/api/event";
 import { resolveScreenshotTimeMs } from "../engine/autorun";
+import { invalidateChangedClips } from "../engine/clips";
 import { awaitSceneHostsCommitted, captureFrameRgba, captureScreenshot } from "../engine/exporter";
 import { type AspectName, FORMATS, type FormatSpec, FPS } from "../engine/format";
 import {
   bumpWorkspaceReloadToken,
-  isWorkspaceProjectId,
+  isEditableProjectId,
   type LoadedProject,
   loadProject,
+  nativeProjectSlug,
+  projectIdForNativeSlug,
+  refreshBundledProjectAssets,
   sceneFileStem,
-  workspaceSlug,
 } from "../engine/project";
+import { setProjectAssetRevision } from "../engine/projectAssetRevision";
 import { awaitProjectCommitted } from "../engine/themePreviews";
 
 /** The render window's half of the capture bridge: claim one request per tick, load (or reload) the target project into this window's own canvas, render the frame through the deterministic export path and respond, all without touching the editor realm. Requests with an explicit --scene may target any project on disk; playhead requests (no scene) need the editor's open project, whose id/aspect/playhead arrive via the pushed editor context. Idle ticks drain the thumb queue instead (fast tier: same path, small buffer), parked while the editor is playing. */
@@ -42,6 +46,12 @@ interface ThumbTake {
   remaining: number;
 }
 
+interface PresetPosterTake {
+  slug: string;
+  revision: string;
+  atMs: number | null;
+}
+
 const BRIDGE_COMMANDS = { begin: "begin_bridge_screenshot", save: "save_bridge_screenshot" };
 
 /** Fast-tier thumb width; matches the legacy preview-canvas thumbs. */
@@ -59,22 +69,36 @@ export function startBridgeService(
 ): () => void {
   let busy = false;
   let current: LoadedState | null = null;
+  const ready = invoke("render_reset_preset_posters");
 
   /** Load (or reload) `targetId` at `format` unless the mounted tree is already exactly that. */
-  const ensureLoaded = async (targetId: string, format: FormatSpec): Promise<LoadedProject> => {
-    const fingerprint = isWorkspaceProjectId(targetId)
-      ? await invoke<string>("project_fingerprint", { slug: workspaceSlug(targetId) }).catch(
-          () => null,
-        )
-      : null;
+  const ensureLoaded = async (
+    targetId: string,
+    format: FormatSpec,
+    sourceRevision?: string,
+  ): Promise<LoadedProject> => {
+    const fingerprint =
+      sourceRevision ??
+      (isEditableProjectId(targetId)
+        ? await invoke<string>("project_fingerprint", { slug: nativeProjectSlug(targetId) }).catch(
+            () => null,
+          )
+        : null);
     if (
       !current ||
       current.project.id !== targetId ||
       current.fingerprint !== fingerprint ||
       current.formatName !== format.name
     ) {
+      if (sourceRevision) {
+        setProjectAssetRevision(targetId, sourceRevision);
+        await refreshBundledProjectAssets(targetId);
+        await invalidateChangedClips();
+      }
       bumpWorkspaceReloadToken();
-      const loaded = await loadProject(targetId);
+      const loaded = sourceRevision
+        ? await loadProject(targetId, { trustMode: "stored-only", readSavedThemes: true })
+        : await loadProject(targetId);
       apply(loaded, format);
       await awaitProjectCommitted(loaded);
       await awaitSceneHostsCommitted(loaded.slots.length);
@@ -158,7 +182,7 @@ export function startBridgeService(
     if (!take) return false;
     try {
       const format = contextFormat(context);
-      const project = await ensureLoaded(`ws:${take.slug}`, format);
+      const project = await ensureLoaded(projectIdForNativeSlug(take.slug), format);
       const index = project.sceneFiles.findIndex((f) => sceneFileStem(f) === take.stem);
       const slot = project.slots[index];
       if (!slot) return true;
@@ -189,7 +213,60 @@ export function startBridgeService(
     return true;
   };
 
+  const servePresetPoster = async (context: EditorContext | null): Promise<boolean> => {
+    if (!context || context.exportLocked || context.playing) return false;
+    const take = await invoke<PresetPosterTake | null>("render_take_preset_poster");
+    if (!take) return false;
+    const finish = (retry: boolean) =>
+      invoke("render_finish_preset_poster", {
+        slug: take.slug,
+        revision: take.revision,
+        retry,
+      });
+    const deferred = async () => {
+      const latest = await invoke<EditorContext | null>("get_editor_context").catch(() => null);
+      return !latest || latest.exportLocked || latest.playing;
+    };
+    try {
+      const format: FormatSpec = { name: "16:9", width: 640, height: 360 };
+      const project = await ensureLoaded(
+        projectIdForNativeSlug(take.slug),
+        FORMATS["16:9"],
+        take.revision,
+      );
+      if (project.slots.length !== 1) throw new Error("a preset poster needs exactly one scene");
+      if (await deferred()) {
+        await finish(true);
+        return false;
+      }
+      const tMs = resolveScreenshotTimeMs(
+        project,
+        "0",
+        take.atMs == null ? undefined : take.atMs / 1000,
+      );
+      const { rgba, width, height } = await captureFrameRgba(exportOptions(project, format), tMs);
+      const png = await rgbaToPng(rgba, width, height);
+      if (!png) throw new Error("could not encode preset poster");
+      if (await deferred()) {
+        await finish(true);
+        return false;
+      }
+      await invoke("write_preset_poster", png, {
+        headers: {
+          "x-kookaburra-slug": take.slug,
+          "x-kookaburra-revision": take.revision,
+        },
+      });
+    } catch (error) {
+      current = null;
+      await finish(false).catch(() => {});
+      console.warn(`[render-bridge] preset poster ${take.slug} failed:`, error);
+    }
+    return true;
+  };
+
   const tick = async (): Promise<void> => {
+    await ready;
     let request: BridgeRequest | null = null;
     try {
       request = await invoke<BridgeRequest | null>("bridge_claim_request");
@@ -203,7 +280,7 @@ export function startBridgeService(
     // Drain the whole thumb queue in one tick: the claim interval is timer-clamped (~2s hidden), so a job-per-tick cadence would stack seconds of idle wait between thumbs. Context re-reads keep the playback/export parking live mid-drain, and a capture request arriving mid-drain takes over.
     for (;;) {
       const context = await invoke<EditorContext | null>("get_editor_context").catch(() => null);
-      if (!(await serveThumb(context))) return;
+      if (!(await serveThumb(context)) && !(await servePresetPoster(context))) return;
       const next = await invoke<BridgeRequest | null>("bridge_claim_request").catch(() => null);
       if (next) {
         await serveCapture(next);

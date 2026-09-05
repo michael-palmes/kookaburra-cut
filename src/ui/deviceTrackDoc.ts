@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { type DeviceTrackDoc, useDeviceTrackEditStore } from "../engine/deviceTrackEditStore";
 import { pushHistory } from "../engine/history";
-import { isWorkspaceProjectId, type LoadedProject, workspaceSlug } from "../engine/project";
+import { isEditableProjectId, type LoadedProject, nativeProjectSlug } from "../engine/project";
 import { deviceTrackSnapshotAt, resolveDeviceTrack } from "../engine/sceneDeviceTrack";
 import { writeSceneDoc } from "../engine/sceneDoc";
 import type { SceneDoc, SceneDocDevicePose } from "../engine/sceneDocSchema";
@@ -12,7 +12,7 @@ export function useDeviceTrackDoc(
   sceneIndex: number,
   onDocChanged: (sceneIndex: number, doc: SceneDoc) => void,
 ) {
-  const slug = isWorkspaceProjectId(project.id) ? workspaceSlug(project.id) : null;
+  const slug = isEditableProjectId(project.id) ? nativeProjectSlug(project.id) : null;
   const doc = project.sceneDocs[sceneIndex];
   const sceneFile = project.sceneFiles[sceneIndex];
   const [localDraft, setLocalDraft] = useState<DeviceTrackDoc | null>(null);

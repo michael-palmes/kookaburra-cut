@@ -1,24 +1,16 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useId, useState } from "react";
-import { TRANSITION_CATALOG } from "../engine/transitionCatalog";
-import { SceneInsertTimeline } from "./SceneInsertTimeline";
-import { sceneIndexAtPlayhead, type WizardSceneInfo } from "./SceneWizards";
+import type { WizardSceneInfo } from "./SceneWizards";
 import { useEscapeClose } from "./useEscapeClose";
 
 /** Mini form wizards behind the terminal helper chips: each composes a concrete, well-formed prompt from a few fields, then hands it to the panel, which pastes it into the Claude session exactly like the old one-click templates (bracketed paste, never auto-submitted; the user can still edit before pressing Enter). */
 
-export type WizardKind = "new-scene" | "pacing" | "look" | "media";
+export type WizardKind = "pacing" | "look" | "media";
 
 const DURATION_PRESETS = [
   { label: "Quick", seconds: 2 },
   { label: "Standard", seconds: 4 },
   { label: "Long", seconds: 6 },
-] as const;
-
-// Derived from the picker's catalogue: one vocabulary everywhere.
-const TRANSITIONS = [
-  ...TRANSITION_CATALOG.map((m) => ({ id: m.type, label: m.label })),
-  { id: "none", label: "No transition" },
 ] as const;
 
 function secondsLabel(ms: number): string {
@@ -84,19 +76,13 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 export function HelperWizard({
   kind,
   scenes,
-  thumbs,
-  onNeedThumbs,
   slug,
   onInsert,
   onCancel,
 }: {
   kind: WizardKind;
-  /** The loaded project's scenes, for scene-aware dropdowns and the placement strip. */
+  /** The loaded project's scenes, for scene-aware dropdowns. */
   scenes: WizardSceneInfo[];
-  /** Scene-thumb paths by stem, for the placement strip's cards. */
-  thumbs: Record<string, string>;
-  /** Ask the host to capture missing/stale thumbs; only the new-scene kind shows cards. */
-  onNeedThumbs: () => void;
   /** Project slug, for the media listing. */
   slug: string;
   /** Receives the composed prompt (the panel pastes it, unsubmitted). */
@@ -109,14 +95,11 @@ export function HelperWizard({
   // Shared field state (each wizard uses the subset it renders).
   const [description, setDescription] = useState("");
   const [seconds, setSeconds] = useState(4);
-  // Seeded after the scene under the playhead, the place a new scene usually belongs.
-  const [placement, setPlacement] = useState(() => `after:${sceneIndexAtPlayhead(scenes)}`);
   // "media" defaults to "a new scene" (empty target, a file elsewhere); pacing targets a scene INDEX. One wizard mounts per open, so per-kind init is safe.
   const [sceneTarget, setSceneTarget] = useState(
     kind === "media" ? "" : scenes[0] ? String(scenes[0].index) : "",
   );
   const [scope, setScope] = useState("video");
-  const [transition, setTransition] = useState<string>("crossfade");
   const [mediaFiles, setMediaFiles] = useState<string[] | null>(null);
   const [mediaFile, setMediaFile] = useState("");
 
@@ -137,11 +120,6 @@ export function HelperWizard({
     };
   }, [kind, slug]);
 
-  // Only new-scene renders the placement strip, and it renders on open, so this is its mount.
-  useEffect(() => {
-    if (kind === "new-scene") onNeedThumbs();
-  }, [kind, onNeedThumbs]);
-
   // Named like the pickers, with the file as the unambiguous anchor: ids can repeat across scenes, files cannot.
   const sceneName = (file: string) => {
     const scene = scenes.find((s) => s.file === file);
@@ -151,23 +129,6 @@ export function HelperWizard({
   function compose(): string | null {
     const desc = description.trim();
     switch (kind) {
-      case "new-scene": {
-        if (!desc) return null;
-        const afterScene =
-          placement.startsWith("after:") && scenes[Number(placement.slice("after:".length))];
-        // Named like the strip's caption, with the file as the unambiguous anchor.
-        const where =
-          placement === "start"
-            ? "at the start"
-            : afterScene
-              ? `after the "${afterScene.name ?? afterScene.stem}" scene (${afterScene.file})`
-              : "at the end";
-        const enter =
-          transition === "none"
-            ? "with no transition"
-            : `with the previous scene exiting into it via a ${TRANSITIONS.find((t) => t.id === transition)?.label.toLowerCase()} (the transition goes on the previous scene's entry)`;
-        return `Add a new scene to this video: ${desc}. Place it ${where} in project.json, about ${seconds} seconds long, ${enter}.`;
-      }
       case "pacing": {
         const current = scenes[Number(sceneTarget)];
         if (!current) return null;
@@ -180,8 +141,12 @@ export function HelperWizard({
       }
       case "media": {
         if (!mediaFile || !desc) return null;
-        const where = sceneTarget === "" ? "a new scene at the end" : sceneName(sceneTarget);
-        return `Use my file ${mediaFile} in ${where}: ${desc}. Reference it by its relative path.`;
+        const starter =
+          sceneTarget === ""
+            ? "Insert a suitable scene from the preset library at the end first. "
+            : "";
+        const where = sceneTarget === "" ? "that new scene" : sceneName(sceneTarget);
+        return `${starter}Use my file ${mediaFile} in ${where}: ${desc}. Reference it by its relative path.`;
       }
     }
   }
@@ -189,7 +154,6 @@ export function HelperWizard({
   const prompt = compose();
 
   const titles: Record<WizardKind, string> = {
-    "new-scene": "New scene",
     pacing: "Change pacing",
     look: "Change the look",
     media: "Use my media",
@@ -197,47 +161,8 @@ export function HelperWizard({
 
   return (
     <div className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby={titleId}>
-      <div className={`modal${kind === "new-scene" ? " wizard-wide wizard-place-wide" : ""}`}>
+      <div className="modal">
         <h2 id={titleId}>{titles[kind]}</h2>
-
-        {kind === "new-scene" && (
-          <>
-            <Field label="What should it show?">
-              <textarea
-                className="modal-input wizard-textarea"
-                // biome-ignore lint/a11y/noAutofocus: the wizard exists to fill this field
-                autoFocus
-                placeholder="e.g. a headline saying “Now with offline mode” over a slow zoom"
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-              />
-            </Field>
-            <Field label="Where?">
-              <SceneInsertTimeline
-                scenes={scenes}
-                thumbs={thumbs}
-                value={placement}
-                onChange={setPlacement}
-              />
-            </Field>
-            <Field label="How long?">
-              <DurationField value={seconds} onChange={setSeconds} />
-            </Field>
-            <Field label="Comes in with">
-              <select
-                className="select"
-                value={transition}
-                onChange={(e) => setTransition(e.target.value)}
-              >
-                {TRANSITIONS.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.label}
-                  </option>
-                ))}
-              </select>
-            </Field>
-          </>
-        )}
 
         {kind === "pacing" && (
           <>

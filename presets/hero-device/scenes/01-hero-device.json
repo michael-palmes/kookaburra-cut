@@ -1,0 +1,69 @@
+{
+  "backdrop": {
+    "type": "none"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "pose": {
+          "azimuthDeg": 0,
+          "distance": 5,
+          "elevationDeg": 0,
+          "target": [0, 0, 0]
+        },
+        "tMs": 0
+      }
+    ],
+    "segments": []
+  },
+  "devices": [
+    {
+      "colour": "silver",
+      "id": "hero",
+      "media": {
+        "kind": "video",
+        "src": "assets/kooka-feed-loop-sample.mp4",
+        "startMs": 0
+      },
+      "model": "iphone-17-pro",
+      "motion": {
+        "preset": "none"
+      },
+      "placement": {
+        "position": [0, -0.378, 0],
+        "rotationDeg": [0, 0, 0],
+        "scale": 1
+      },
+      "shadow": "long"
+    }
+  ],
+  "managedText": {
+    "items": [
+      {
+        "key": "title",
+        "text": "Start typing",
+        "type": "title"
+      }
+    ]
+  },
+  "name": "Hero device",
+  "text": {
+    "subtitle": "",
+    "title": "Start typing"
+  },
+  "textAnimation": {
+    "in": "fade-up",
+    "out": "fade",
+    "stagger": "word",
+    "staggerMs": 90
+  },
+  "textStyle": {
+    "titleColor": "text",
+    "titleFont": "Inter@600",
+    "titleOffsetY": 1.52,
+    "titleRotationDeg": 0,
+    "titleSize": 1
+  },
+  "version": 1
+}

@@ -50,6 +50,10 @@ pnpm kookaburra:run --action create --project blank
 # four preview frames (16:9, 640px JPEG), promote into src/assets/template-previews/.
 pnpm kookaburra:run --action template-previews          # --project <id,...> selects
 
+# Scene-preset card art: load each bundled preset through its scoped id, capture its
+# manifest's one preview frame (16:9, 640px JPEG), promote into src/assets/preset-previews/.
+pnpm kookaburra:run --action preset-previews            # --project <slug,...> selects
+
 # Release. Needs KOOKABURRA_SIGNING_IDENTITY + KOOKABURRA_NOTARY_PROFILE, the pinned
 # static sidecar (pnpm setup:ffmpeg:release), and a GUI session (Finder styles the DMG).
 pnpm package:signed    # build + Developer ID sign + notarise + staple: app and DMG
@@ -87,6 +91,7 @@ Rust: the native shell is in `src-tauri/` (`cargo check --manifest-path src-taur
 - `src/theme/`: theme schema, bundled themes, fonts.
 - `src/store/`: zustand editor/preview state. The export path deliberately does NOT read it.
 - `projects/<project>/`: the file-based project format: `project.json` + `scenes/*.tsx` (+ per-scene sidecar `scenes/<stem>.json`) + `assets/`.
+- `presets/<preset>/`: bundled scene presets: a single-scene project folder plus `preset.json`; user presets mirror the shape at `~/Kookaburra Cut/presets/`.
 - `src-tauri/`: Rust shell, `tauri.conf.json`, `capabilities/`, `bin/` (sidecars).
 
 **Licensed assets:** the device model glbs live at `src/assets/models/licensed/`
@@ -120,6 +125,7 @@ Project skills are authored only in `.agents/skills`. Keep `.claude/skills` as t
 - Skill `kookaburra-skill-creator`: create new project skills/commands/primitives.
 - Skill `kookaburra-commit`: plan and create every commit (review, logical grouping, conventional messages).
 - Skill `kookaburra-pr-descriptions`: the fixed PR title/description standard; use for every PR opened in this repo.
+- Docs `docs/content-library.md`: editable templates, the shared New scene/App presets catalogue and standalone theme editing, including scoped IDs, reuse and preview ownership.
 - Docs `docs/packs.md`: the `.kbpack` format (archive layout, manifest, signing and TOFU, the extraction checklist, the conflict table). Read it before touching `src-tauri/src/pack/`.
 - Docs `docs/charts.md`: the chart subsystem (the sidecar `chart` block, the three mounts, the appearance and build-in preset catalogues, palette and number-formatting rules, the keyframed data track). Read it before touching `src/toolkit/chart/` or `src/engine/sceneChart.ts`.
 - Docs `docs/gizmos.md`: the gizmo subsystem (the 3D and 2D families, section-scoped outlines and click-to-select, the pointer-routing contract, the registries and coordinate spaces, what each drag writes, the export guards). Read it before touching `src/engine/gizmo*`, `src/engine/SceneGizmo.tsx`/`SceneOutline.tsx`, `src/ui/gizmo/`, or any gizmo host (`src/ui/TextGizmo.tsx`, `ChartHeroGizmo.tsx`, `DecorationGizmo.tsx`, `src/toolkit/device/DeviceGizmo.tsx`, `src/toolkit/objects/ObjectPrimitive.tsx`, `src/toolkit/chart/Chart.tsx`).
@@ -148,9 +154,12 @@ preview and Present, captured snapshot in export: `docs/scene-terminal.md`), one
 soundtrack per project, platform export presets, the studio workspace
 (`~/Kookaburra Cut`: welcome screen, media library, video editor, embedded
 Claude Code terminal), a packaged signed/notarised `.app`, the night-studio
-chrome (⌘K palette, right inspector, camera lane, playback bar), and `.kbpack`
-packs: one signed file carrying projects, themes, fonts, 3D objects, gradients,
-export presets and screenshots between machines (`docs/packs.md`).
+chrome (⌘K palette, right inspector, camera lane, playback bar), the
+template and scene-preset library with the theme editor window (dev builds
+edit the bundled sets in place), and `.kbpack`
+packs: one signed file carrying projects, templates, scene presets, themes,
+fonts, 3D objects, gradients, export presets and screenshots between machines
+(`docs/packs.md`).
 
 Operational anchors for any change:
 

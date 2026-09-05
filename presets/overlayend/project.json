@@ -1,0 +1,13 @@
+{
+  "id": "overlayend",
+  "name": "Cutout end",
+  "version": 2,
+  "themeId": "kookaburra-studio-white",
+  "formats": ["16:9", "9:16", "1:1", "4:5"],
+  "scenes": [
+    {
+      "file": "scenes/01-overlayend.tsx",
+      "durationMs": 3000
+    }
+  ]
+}

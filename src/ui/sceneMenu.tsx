@@ -10,6 +10,8 @@ export type SceneMenuIconId =
   | "duplicate"
   | "copy-to-project"
   | "copy-from-project"
+  | "insert-preset"
+  | "save-preset"
   | "duration"
   | "manage"
   | "copy-background"
@@ -78,6 +80,35 @@ export function SceneMenuIcon({ id }: { id: SceneMenuIconId }) {
         >
           <rect x="3.5" y="4.5" width="7" height="11" rx="1.5" />
           <path d="M11 10h5.5M14 7.5L16.5 10 14 12.5" />
+        </svg>
+      );
+    case "insert-preset":
+      return (
+        <svg
+          width="17"
+          height="17"
+          viewBox="0 0 20 20"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          aria-hidden="true"
+        >
+          <rect x="3.5" y="4.5" width="13" height="11" rx="1.5" />
+          <path d="M10 8v4M8 10h4" />
+        </svg>
+      );
+    case "save-preset":
+      return (
+        <svg
+          width="17"
+          height="17"
+          viewBox="0 0 20 20"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          aria-hidden="true"
+        >
+          <path d="M6 4.5A1.5 1.5 0 017.5 3h5A1.5 1.5 0 0114 4.5V17l-4-2.8L6 17z" />
         </svg>
       );
     case "duration":
@@ -177,6 +208,7 @@ export function sceneMenuItems(opts: {
   canRename: boolean;
   /** The delete may proceed: false for the last scene, or a selection covering every scene (Rust keeps at least one). */
   canDelete: boolean;
+  canAddScenes?: boolean;
   hasClipboard: boolean;
   onRename: () => void;
   onDuplicate: () => void;
@@ -190,6 +222,10 @@ export function sceneMenuItems(opts: {
   selectionCount?: number;
   /** Workspace projects only: opens the copy-to-project picker (bulk when selectionCount > 1). */
   onCopyToProject?: () => void;
+  /** Workspace projects only: opens the preset gallery, inserting after this scene. */
+  onInsertPreset?: () => void;
+  /** Workspace projects only: saves this scene into the preset library (single selection). */
+  onSaveAsPreset?: () => void;
 }): (ContextMenuItem | "separator")[] {
   const count = opts.selectionCount ?? 0;
   const bulk = count > 1;
@@ -202,12 +238,26 @@ export function sceneMenuItems(opts: {
       title: opts.canRename ? undefined : "This scene has no scene document yet",
       onSelect: opts.onRename,
     },
-    {
-      id: "duplicate",
-      label: bulk ? sceneSelectionLabel("Duplicate", count) : "Duplicate…",
-      icon: <SceneMenuIcon id="duplicate" />,
-      onSelect: opts.onDuplicate,
-    },
+    ...(opts.canAddScenes === false
+      ? []
+      : [
+          {
+            id: "duplicate",
+            label: bulk ? sceneSelectionLabel("Duplicate", count) : "Duplicate…",
+            icon: <SceneMenuIcon id="duplicate" />,
+            onSelect: opts.onDuplicate,
+          } as ContextMenuItem,
+        ]),
+    ...(opts.onInsertPreset && opts.canAddScenes !== false
+      ? [
+          {
+            id: "insert-preset",
+            label: "Insert from preset…",
+            icon: <SceneMenuIcon id="insert-preset" />,
+            onSelect: opts.onInsertPreset,
+          } as ContextMenuItem,
+        ]
+      : []),
     ...(opts.onCopyToProject
       ? [
           {
@@ -215,6 +265,19 @@ export function sceneMenuItems(opts: {
             label: bulk ? `Copy ${count} scenes to project…` : "Copy to project…",
             icon: <SceneMenuIcon id="copy-to-project" />,
             onSelect: opts.onCopyToProject,
+          } as ContextMenuItem,
+        ]
+      : []),
+    ...(opts.onSaveAsPreset
+      ? [
+          {
+            id: "save-preset",
+            label: "Save as preset…",
+            icon: <SceneMenuIcon id="save-preset" />,
+            // A preset is ONE scene, so a multi-selection has no meaning here.
+            disabled: bulk,
+            title: bulk ? "Presets hold a single scene" : undefined,
+            onSelect: opts.onSaveAsPreset,
           } as ContextMenuItem,
         ]
       : []),

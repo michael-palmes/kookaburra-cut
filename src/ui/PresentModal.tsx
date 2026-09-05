@@ -5,7 +5,7 @@ import { availableMonitors } from "@tauri-apps/api/window";
 import type { ReactElement } from "react";
 import { useEffect, useState } from "react";
 import type { AspectName } from "../engine/format";
-import { isWorkspaceProjectId, type LoadedProject, workspaceSlug } from "../engine/project";
+import { isWorkspaceProjectId, type LoadedProject, nativeProjectSlug } from "../engine/project";
 import { getSettings, type PresentOptions, setPresentOptions } from "../engine/workspace";
 import {
   DISPLAY_ICON,
@@ -96,7 +96,7 @@ export function PresentModal({
     const open = async () => {
       // The present window re-checks the F-001 gate against the STORED fingerprint; re-stamp from this already-consented session so in-session edits (e.g. a device tweak) never wedge it.
       if (isWorkspaceProjectId(project.id)) {
-        await invoke("trust_project", { slug: workspaceSlug(project.id) }).catch(() => {});
+        await invoke("trust_project", { slug: nativeProjectSlug(project.id) }).catch(() => {});
       }
       await invoke("open_present", {
         target: {

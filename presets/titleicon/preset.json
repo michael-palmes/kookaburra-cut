@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "name": "Title + icon",
+  "tagline": "A title with an icon above it",
+  "category": "starters",
+  "tags": ["titleicon", "starter"],
+  "order": 50,
+  "status": "stable",
+  "preview": 0
+}

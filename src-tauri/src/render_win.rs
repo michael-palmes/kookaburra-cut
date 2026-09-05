@@ -90,6 +90,9 @@ pub fn ensure_render_window(
     if app.get_webview_window("render").is_some() {
         return Ok(false);
     }
+    crate::preset_posters::restart_claimed(
+        &app.state::<crate::preset_posters::PresetPosterQueueState>(),
+    );
     state.beats.lock().unwrap().clear();
     WebviewWindowBuilder::new(&app, "render", WebviewUrl::App("render.html".into()))
         .title("Kookaburra Cut — Render")
@@ -153,8 +156,12 @@ pub fn render_take_thumb_job(
 
 /// Queued thumb jobs; the editor's pending probe alongside `bridge_pending_count`.
 #[tauri::command]
-pub fn thumbs_pending_count(queue: State<ThumbQueueState>) -> usize {
+pub fn thumbs_pending_count(
+    queue: State<ThumbQueueState>,
+    posters: State<crate::preset_posters::PresetPosterQueueState>,
+) -> usize {
     queue.0.lock().unwrap().as_ref().map_or(0, |b| b.jobs.len())
+        + crate::preset_posters::pending_count(&posters)
 }
 
 /// Close the render window (export lockout, idle teardown); a no-op when it is not open.
@@ -189,7 +196,12 @@ pub fn render_heartbeat(
         });
     }
     let idle_ms = now_ms().saturating_sub(*state.last_work_ms.lock().unwrap());
-    if idle_ms < IDLE_TEARDOWN_MS || queue.0.lock().unwrap().is_some() {
+    if idle_ms < IDLE_TEARDOWN_MS
+        || queue.0.lock().unwrap().is_some()
+        || crate::preset_posters::pending_count(
+            &app.state::<crate::preset_posters::PresetPosterQueueState>(),
+        ) > 0
+    {
         return;
     }
     if crate::bridge::bridge_pending_count(app.clone()).unwrap_or(0) > 0 {

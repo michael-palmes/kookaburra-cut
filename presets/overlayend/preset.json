@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "name": "Cutout end",
+  "tagline": "A scene window beside panel text",
+  "category": "starters",
+  "tags": ["overlayend", "starter"],
+  "order": 130,
+  "status": "stable",
+  "preview": 0
+}

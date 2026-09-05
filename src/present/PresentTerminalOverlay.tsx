@@ -2,9 +2,9 @@ import "@xterm/xterm/css/xterm.css";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import {
   type LoadedProject,
+  nativeProjectSlug,
+  projectFolderPath,
   sceneFileStem,
-  workspaceProjectPath,
-  workspaceSlug,
 } from "../engine/project";
 import { resolveSceneTerminal, sceneTerminalLayout } from "../engine/sceneTerminal";
 import {
@@ -37,7 +37,7 @@ export function PresentTerminalOverlay({
     () => (terminal ? resolveTerminalColours(terminal.theme, theme) : null),
     [terminal, theme],
   );
-  const slug = workspaceSlug(project.id);
+  const slug = nativeProjectSlug(project.id);
   const stem = sceneFileStem(project.sceneFiles[sceneIndex] ?? "");
   const key = sceneTerminalKey(slug, stem);
   const atRest = deck.phase === "entering" || deck.phase === "holding";
@@ -61,7 +61,7 @@ export function PresentTerminalOverlay({
   useEffect(() => {
     if (!terminal || !colours || !atRest || !stem) return;
     if (terminal.startPath || spawnPendingRef.current || getSceneTerminalSession(key)) return;
-    const cwd = workspaceProjectPath(slug);
+    const cwd = projectFolderPath(project.id);
     if (!cwd) return;
     spawnPendingRef.current = true;
     void startSceneTerminalSession({ key, cwd, terminal, colours })
@@ -71,7 +71,7 @@ export function PresentTerminalOverlay({
       .finally(() => {
         spawnPendingRef.current = false;
       });
-  }, [key, slug, stem, terminal, colours, atRest]);
+  }, [key, project.id, stem, terminal, colours, atRest]);
 
   // Attach the session's DOM (open fresh, re-append on a revisited slide); detach without killing on the way out.
   useEffect(() => {
@@ -195,7 +195,7 @@ export function PresentTerminalOverlay({
           }
           // The custom-start-path session the spawn effect deliberately skipped: this click is the consent.
           if (!colours || !stem || spawnPendingRef.current) return;
-          const cwd = terminal.startPath ?? workspaceProjectPath(slug);
+          const cwd = terminal.startPath ?? projectFolderPath(project.id);
           if (!cwd) return;
           spawnPendingRef.current = true;
           focusOnAttachRef.current = true;

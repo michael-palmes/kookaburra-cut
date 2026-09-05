@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "name": "Video window",
+  "tagline": "A floating screen recording",
+  "category": "starters",
+  "tags": ["videowindow", "starter"],
+  "order": 110,
+  "status": "stable",
+  "preview": 0
+}

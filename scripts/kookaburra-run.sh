@@ -9,6 +9,7 @@
 #   pnpm kookaburra:run --action verify --project launch-2026 --aspect all
 #   pnpm kookaburra:run --action export --project device-spike --aspect 16:9 --codec libx264
 #   pnpm kookaburra:run --action theme-previews          # regenerate stale theme previews
+#   pnpm kookaburra:run --action preset-previews         # regenerate src/assets/preset-previews/
 #   pnpm kookaburra:run --action option-previews         # regenerate src/assets/option-previews/
 #   pnpm kookaburra:run --action render-spike --at 300   # hidden render window throttling spike
 #
@@ -22,12 +23,13 @@
 #            so queued runs never clobber each other. last-run.json is copied back to the
 #            legacy ~/Kookaburra Cut/_autorun/last-run.json and dev.log is symlinked there.
 #
-# Flags:  --action verify|export|theme-previews|template-previews|option-previews|perf|screenshot|packroundtrip|create|render-spike (required)
+# Flags:  --action verify|export|theme-previews|template-previews|preset-previews|option-previews|perf|screenshot|packroundtrip|create|render-spike (required)
 #         --project <id[,id...]>   (default: the app's default project; theme-previews →
 #                  preview-lab-theme (incremental via the theme-preview manifest; --all re-records
 #                  every theme), option-previews → the preview-lab-* fixtures (incremental
 #                  via the src/assets/option-previews/manifest.json diff; --all re-records
-#                  everything); verify/export accept a
+#                  everything); preset-previews → every bundled preset slug (comma list);
+#                  verify/export accept a
 #                  comma list and run every project in ONE app boot, e.g. the gate pair)
 #         --aspect 16:9|9:16|1:1|4:5|5:4|3:2|2:3|phone|phone-landscape|all
 #                  (default: all = the standing three; perf and screenshot default to 16:9)
@@ -93,8 +95,8 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-if [[ "$ACTION" != "verify" && "$ACTION" != "export" && "$ACTION" != "theme-previews" && "$ACTION" != "template-previews" && "$ACTION" != "option-previews" && "$ACTION" != "perf" && "$ACTION" != "screenshot" && "$ACTION" != "packroundtrip" && "$ACTION" != "create" && "$ACTION" != "render-spike" ]]; then
-  echo "kookaburra:run: --action must be 'verify', 'export', 'theme-previews', 'template-previews', 'option-previews', 'perf', 'screenshot', 'packroundtrip', 'create' or 'render-spike'" >&2
+if [[ "$ACTION" != "verify" && "$ACTION" != "export" && "$ACTION" != "theme-previews" && "$ACTION" != "template-previews" && "$ACTION" != "preset-previews" && "$ACTION" != "option-previews" && "$ACTION" != "perf" && "$ACTION" != "screenshot" && "$ACTION" != "packroundtrip" && "$ACTION" != "create" && "$ACTION" != "render-spike" ]]; then
+  echo "kookaburra:run: --action must be 'verify', 'export', 'theme-previews', 'template-previews', 'preset-previews', 'option-previews', 'perf', 'screenshot', 'packroundtrip', 'create' or 'render-spike'" >&2
   exit 2
 fi
 if [[ -n "$APP" ]]; then
@@ -115,9 +117,21 @@ fi
 # workspace — only bundled projects can be pre-validated against the repo tree here.
 # Bundled projects ship from projects/; the dev-only gate spikes and preview labs live in
 # fixtures/ and load by the same bare id (dev builds only, see engine/project.ts).
-if [[ -n "$PROJECT" ]]; then
+if [[ -n "$PROJECT" && "$ACTION" != "preset-previews" ]]; then
   IFS=',' read -ra PROJECT_LIST <<<"$PROJECT"
   for P in "${PROJECT_LIST[@]}"; do
+    # Library ids resolve their scoped tree here; workspace-side scopes resolve in the app.
+    case "$P" in
+      template:*) P="${P#template:}" ;;
+      preset:*)
+        if [[ ! -f "$ROOT/presets/${P#preset:}/preset.json" ]]; then
+          echo "kookaburra:run: preset '${P#preset:}' not found at presets/${P#preset:}/preset.json" >&2
+          exit 2
+        fi
+        continue
+        ;;
+      ws-template:* | ws-preset:*) continue ;;
+    esac
     if [[ -n "$P" && "$P" != ws:* && ! -f "$ROOT/projects/$P/project.json" && ! -f "$ROOT/fixtures/$P/project.json" ]]; then
       echo "kookaburra:run: project '$P' not found at projects/$P/project.json or fixtures/$P/project.json" >&2
       echo "            available: $( (ls -1 "$ROOT/projects"; ls -1 "$ROOT/fixtures") 2>/dev/null | tr '\n' ' ')" >&2
@@ -340,6 +354,25 @@ if [[ "$ACTION" == "template-previews" ]]; then
   echo "kookaburra:run: template previews in $CREATE_ROOT"
 fi
 
+# preset-previews render the bundled presets/ tree in place (a preset IS a single-scene
+# project folder, so nothing is created in a workspace); staged art is cleared so the
+# promotion loop can only copy this run's sets. --project selects presets by slug.
+if [[ "$ACTION" == "preset-previews" ]]; then
+  if [[ -n "$PROJECT" ]]; then
+    IFS=',' read -r -a PRESET_IDS <<<"$PROJECT"
+    for preset in "${PRESET_IDS[@]}"; do
+      if [[ ! -f "$ROOT/presets/$preset/preset.json" ]]; then
+        echo "kookaburra:run: '$preset' has no presets/$preset/preset.json, so it is not a preset" >&2
+        exit 2
+      fi
+    done
+  elif [[ -z "$(ls -1 "$ROOT"/presets/*/preset.json 2>/dev/null)" ]]; then
+    echo "kookaburra:run: no bundled presets in presets/, nothing to capture"
+    exit 0
+  fi
+  rm -rf "$RUN_DIR/preset-previews"
+fi
+
 # KOOKABURRA_* is the canonical runtime channel (v9 · M2 — read by the native
 # get_autorun_config).
 export KOOKABURRA_ACTION="$ACTION"
@@ -523,7 +556,41 @@ if [[ "$ACTION" == "template-previews" ]]; then
       copied=$((copied + 1))
     done
   done
+  node "$ROOT/scripts/preset-preview-stale.mjs" commit template "${PROMOTED[@]}"
   echo "kookaburra:run: promoted $copied preview(s) → src/assets/template-previews/"
+fi
+
+# preset-previews: promote the staged card art into the repo (the template-previews block,
+# one still per preset: presets/<slug>/preset.json names a single preview frame).
+if [[ "$ACTION" == "preset-previews" ]]; then
+  SRC="$RUN_DIR/preset-previews"
+  DEST="$ROOT/src/assets/preset-previews"
+  mkdir -p "$DEST"
+  copied=0
+  PROMOTED=()
+  # Validate every staged set before changing any final preview.
+  for dir in "$SRC"/*/; do
+    [[ -d "$dir" ]] || continue
+    preset="$(basename "$dir")"
+    if [[ ! -f "$dir/1.jpg" ]]; then
+      echo "kookaburra:run: incomplete preset preview for $preset (missing 1.jpg)" >&2
+      exit 1
+    fi
+    PROMOTED+=("$preset")
+  done
+  # The run reported ok, so an empty batch means there was nothing to capture, not a failure.
+  if [[ "${#PROMOTED[@]}" -eq 0 ]]; then
+    echo "kookaburra:run: no preset previews were produced (nothing to capture)"
+    exit 0
+  fi
+  for preset in "${PROMOTED[@]}"; do
+    tmp="$DEST/.preset-preview-$preset.tmp"
+    cp "$SRC/$preset/1.jpg" "$tmp"
+    mv -f "$tmp" "$DEST/$preset.jpg"
+    copied=$((copied + 1))
+  done
+  node "$ROOT/scripts/preset-preview-stale.mjs" commit preset "${PROMOTED[@]}"
+  echo "kookaburra:run: promoted $copied preview(s) → src/assets/preset-previews/"
 fi
 
 # option-previews: encode clip sets (frame sequences → small H.264 loops via the

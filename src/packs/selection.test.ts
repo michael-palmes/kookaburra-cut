@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { EMPTY_SELECTION, selectionKey } from "../engine/packs";
 import {
   breakageWarning,
   countByKind,
@@ -11,7 +12,7 @@ import {
   toPlanSelection,
   totalBytes,
 } from "./selection";
-import type { SelectableItem } from "./types";
+import { ITEM_KINDS, KIND_LABELS, type SelectableItem } from "./types";
 
 const project = (slug: string, bytes = 100): SelectableItem => ({
   kind: "project",
@@ -117,5 +118,29 @@ describe("selection", () => {
     expect(slugifyFileName("Acme Brand Kit")).toBe("acme-brand-kit");
     expect(slugifyFileName("  ../../etc/passwd  ")).toBe("etc-passwd");
     expect(slugifyFileName("!!!")).toBe("kookaburra-pack");
+  });
+
+  // The Rust/TS mirror is a silent wire break when it drifts, so every kind must reach a rail and a selection field.
+  it("gives every kind a rail slot, a label and a selection field", () => {
+    for (const kind of ITEM_KINDS) {
+      expect(KIND_LABELS[kind]).toBeDefined();
+      expect(Array.isArray(EMPTY_SELECTION[selectionKey(kind)])).toBe(true);
+    }
+    expect(ITEM_KINDS).toContain("template");
+    expect(ITEM_KINDS).toContain("preset");
+  });
+
+  it("routes a template and a preset into their own selection lists", () => {
+    const items: SelectableItem[] = [
+      { kind: "template", slug: "acme-promo", name: "Acme Promo", bytes: 10, requiredBy: [] },
+      { kind: "preset", slug: "stat-hero", name: "Stat hero", bytes: 5, requiredBy: [] },
+    ];
+    let state = toggle(EMPTY_STATE, items[0], true);
+    state = toggle(state, items[1], true);
+    expect(toPlanSelection(state).templates).toEqual(["acme-promo"]);
+    expect(toPlanSelection(state).presets).toEqual(["stat-hero"]);
+    const build = toBuildSelection(state, items);
+    expect(build.templates).toEqual(["acme-promo"]);
+    expect(build.presets).toEqual(["stat-hero"]);
   });
 });

@@ -16,8 +16,8 @@ export interface CommandContext {
   projectId: string;
   /** A project finished loading (transport/export commands need one). */
   projectLoaded: boolean;
-  /** The loaded project is a workspace project (editing surfaces need native writes). */
-  isWorkspace: boolean;
+  /** This build may write to the loaded project (`isEditableProjectId`); editing surfaces need native writes. */
+  editable: boolean;
   /** The loaded project has a soundtrack (mute/remove-soundtrack). */
   hasAudio: boolean;
   /** The scene under the playhead already has a chart block (add seeds one, edit-data needs one). */
@@ -105,7 +105,7 @@ export function buildCommands(ctx: CommandContext): Command[] {
       title: "Media library…",
       group: "Project",
       keywords: ["assets", "video", "image", "import", "footage"],
-      enabled: editor && ctx.isWorkspace && !ctx.exporting,
+      enabled: editor && ctx.editable && !ctx.exporting,
       run: a.openMedia,
     },
     {
@@ -113,7 +113,7 @@ export function buildCommands(ctx: CommandContext): Command[] {
       title: "Theme…",
       group: "Project",
       keywords: ["style", "look", "colours", "colors", "fonts", "apply"],
-      enabled: editor && ctx.isWorkspace && !ctx.exporting,
+      enabled: editor && ctx.editable && !ctx.exporting,
       run: a.openTheme,
     },
     {
@@ -121,7 +121,7 @@ export function buildCommands(ctx: CommandContext): Command[] {
       title: "Edit screenshot stack…",
       group: "Project",
       keywords: ["layered", "screenshot", "stack", "builder", "layers", "screens"],
-      enabled: editor && ctx.isWorkspace && !ctx.exporting,
+      enabled: editor && ctx.editable && !ctx.exporting,
       run: a.editScreenshotStack,
     },
     {
@@ -129,7 +129,7 @@ export function buildCommands(ctx: CommandContext): Command[] {
       title: "Add chart",
       group: "Project",
       keywords: ["chart", "graph", "data", "column", "bar", "pie", "series", "numbers"],
-      enabled: editor && ctx.isWorkspace && !ctx.exporting && !ctx.hasChart,
+      enabled: editor && ctx.editable && !ctx.exporting && !ctx.hasChart,
       run: a.addChart,
     },
     {
@@ -137,7 +137,7 @@ export function buildCommands(ctx: CommandContext): Command[] {
       title: "Edit chart data…",
       group: "Project",
       keywords: ["chart", "data", "values", "series", "categories", "table", "grid", "csv"],
-      enabled: editor && ctx.isWorkspace && !ctx.exporting && ctx.hasChart,
+      enabled: editor && ctx.editable && !ctx.exporting && ctx.hasChart,
       run: a.editChartData,
     },
     {
@@ -145,7 +145,7 @@ export function buildCommands(ctx: CommandContext): Command[] {
       title: ctx.hasAudio ? "Replace soundtrack…" : "Choose soundtrack…",
       group: "Project",
       keywords: ["music", "audio", "track", "song", "sound"],
-      enabled: editor && ctx.isWorkspace && !ctx.exporting,
+      enabled: editor && ctx.editable && !ctx.exporting,
       run: a.setSoundtrack,
     },
     {
@@ -153,7 +153,7 @@ export function buildCommands(ctx: CommandContext): Command[] {
       title: "Remove soundtrack",
       group: "Project",
       keywords: ["music", "audio", "track", "delete"],
-      enabled: editor && ctx.isWorkspace && ctx.hasAudio && !ctx.exporting,
+      enabled: editor && ctx.editable && ctx.hasAudio && !ctx.exporting,
       run: a.removeSoundtrack,
     },
     {
@@ -179,7 +179,7 @@ export function buildCommands(ctx: CommandContext): Command[] {
       group: "View",
       keywords: ["claude", "terminal", "rail", "panel", "ai", "chat"],
       hint: "⌘E",
-      enabled: editor && ctx.isWorkspace,
+      enabled: editor && ctx.editable,
       run: a.toggleRail,
     },
     ...(Object.keys(FORMATS) as AspectName[]).map<Command>((name) => ({

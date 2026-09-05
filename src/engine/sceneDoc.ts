@@ -12,10 +12,10 @@ import { useLayeredScreenshotRegistry } from "./layeredScreenshotRegistry";
 import { type ManagedTextRenderRole, resolveTemplateManagedTextCopy } from "./managedText";
 import { useObjectRegistry } from "./objectRegistry";
 import {
-  isWorkspaceProjectId,
+  isEditableProjectId,
   type LoadedProject,
+  nativeProjectSlug,
   type ProjectManifest,
-  workspaceSlug,
 } from "./project";
 import { readProjectManifestSnapshot, writeProjectManifestSnapshot } from "./projectEdit";
 import { type ResolvedChart, resolveChart } from "./sceneChart";
@@ -38,7 +38,7 @@ import { useTextKeyRegistry } from "./textKeyRegistry";
 
 /** Scene-document IO and hooks: docs load beside their scene modules in `loadProject` into `LoadedProject.sceneDocs` and reach components via `SceneHost`'s `SceneDocContext`, but the engine (camera sampling, duration sync) reads `LoadedProject.sceneDocs` directly so export never touches React context or the editor store; schema and validation live in `sceneDocSchema.ts`. */
 
-/** Loads the sidecar beside a manifest scene entry, keyed off the manifest file (never the TSX's `defineScene` id, which may differ from the stem); missing is the normal case and returns undefined. Workspace reads go through `invoke` every time so the fingerprint-poll reload always sees fresh content. `bundledDir` is the project's root-absolute glob folder (projects/ or the dev-only fixtures/ tree), so fixture sidecars resolve too. */
+/** Editable sidecars read fresh through native IO; read-only bundled scenes use their build-time imports. */
 export async function loadSceneDoc(
   projectId: string,
   sceneFile: string,
@@ -47,8 +47,8 @@ export async function loadSceneDoc(
 ): Promise<SceneDoc | undefined> {
   const docFile = sceneFile.replace(/\.tsx$/, ".json");
   if (docFile === sceneFile) return undefined;
-  if (isWorkspaceProjectId(projectId)) {
-    const slug = workspaceSlug(projectId);
+  if (isEditableProjectId(projectId)) {
+    const slug = nativeProjectSlug(projectId);
     try {
       const text = await invoke<string | null>("read_scene_doc", { slug, file: docFile });
       if (text == null) return undefined;
@@ -205,8 +205,8 @@ export async function applyBackgroundToAllScenes(
   sourceIndex: number,
   onDocChanged: (sceneIndex: number, doc: SceneDoc, sceneFile?: string) => void,
 ): Promise<{ applied: number; failed: number }> {
-  if (!isWorkspaceProjectId(project.id)) return { applied: 0, failed: 0 };
-  const slug = workspaceSlug(project.id);
+  if (!isEditableProjectId(project.id)) return { applied: 0, failed: 0 };
+  const slug = nativeProjectSlug(project.id);
   const source = project.sceneDocs[sourceIndex];
   const changes: HistoryChange[] = [];
   let applied = 0;
@@ -410,8 +410,8 @@ export function clampDocTracksToDuration(doc: SceneDoc, durationMs: number): Sce
 
 /** Re-syncs every follow-media scene in a project (the `kookaburra://media-changed` sweep); workspace projects only, since bundled gate projects keep manual durations. Returns whether any scene's duration was rewritten so the caller can schedule a timing refresh. Deliberately omits `sceneFile`, so this background path never clamps keyframe tracks: an event-driven sweep must not delete keys with no undo entry; the user-gesture paths (duration commits, media swaps) carry the clamp with history. */
 export async function syncFollowMediaDurations(project: LoadedProject): Promise<boolean> {
-  if (!isWorkspaceProjectId(project.id)) return false;
-  const slug = workspaceSlug(project.id);
+  if (!isEditableProjectId(project.id)) return false;
+  const slug = nativeProjectSlug(project.id);
   let wrote = false;
   for (let i = 0; i < project.sceneDocs.length; i++) {
     try {

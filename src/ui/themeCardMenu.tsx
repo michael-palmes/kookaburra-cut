@@ -1,11 +1,13 @@
 import { invoke } from "@tauri-apps/api/core";
 import { type ReactNode, useState } from "react";
+import { devDeleteBuiltinTheme } from "../engine/library";
 import { WORKSPACE_THEME_PREFIX } from "../theme/registry";
 import { ContextMenu, type ContextMenuItem, type ContextMenuState } from "./ContextMenu";
 import { NamePromptModal } from "./NamePromptModal";
 import type { ThemeChoice } from "./ThemePicker";
+import { canEditBundledThemes, canEditTheme, openThemeEditor } from "./theme-editor/themeEditorIo";
 
-/** Theme-card right-click menu, shared by the project- and scene-theme drill-ins: workspace themes get Apply/Edit fonts/Edit in Claude Code/Rename/Delete, read-only built-ins get Apply/Duplicate…; Rename only touches the theme JSON's `name` field, never the slug folder. */
+/** Theme-card right-click menu, shared by the project- and scene-theme drill-ins: workspace themes get Apply/Edit/Edit fonts/Edit in Claude Code/Rename/Delete, read-only built-ins get Apply/Duplicate… (plus Edit and a real Delete in a checkout, where the bundled JSON is writable); Rename only touches the theme JSON's `name` field, never the slug folder. */
 export function useThemeCardMenu(opts: {
   /** Apply the theme in the host's sense (project apply vs scene override). */
   onApply: (themeId: string) => void;
@@ -31,6 +33,18 @@ export function useThemeCardMenu(opts: {
     const items: (ContextMenuItem | "separator")[] = [
       { id: "apply", label: "Apply", onSelect: () => opts.onApply(choice.id) },
     ];
+    // Bundled themes only open in a checkout: a release build has no repo-write command to save them with.
+    if (canEditTheme(choice.id)) {
+      items.push({
+        id: "edit",
+        label: "Edit…",
+        onSelect: () => {
+          void openThemeEditor(choice.id).catch((err) =>
+            console.warn("[theme] opening the editor failed:", err),
+          );
+        },
+      });
+    }
     if (isWs) {
       items.push(
         {
@@ -63,6 +77,20 @@ export function useThemeCardMenu(opts: {
         label: "Duplicate…",
         onSelect: () => opts.onManage({ view: "duplicate", themeId: choice.id }),
       });
+      // A checkout deletes the bundled JSON for real (locked answer 19); projects pointing at it fall back to kookaburra-default, which is the existing behaviour for any unknown id.
+      if (canEditBundledThemes) {
+        items.push("separator", {
+          id: "delete-builtin",
+          label: "Delete built-in…",
+          confirmLabel: "Delete from the repo?",
+          danger: true,
+          onSelect: () => {
+            void devDeleteBuiltinTheme(choice.id)
+              .then(opts.onChanged)
+              .catch((err) => console.warn("[theme] deleting the built-in failed:", err));
+          },
+        });
+      }
     }
     setMenu({ x: e.clientX, y: e.clientY, items });
   };

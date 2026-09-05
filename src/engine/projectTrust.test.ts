@@ -35,6 +35,27 @@ beforeEach(() => {
 });
 
 describe("ensureProjectTrusted", () => {
+  it("rejects changed sources in a background load without creating a hidden trust prompt", async () => {
+    const { ensureProjectTrusted, TrustDeniedError, useTrustStore } = await freshGate();
+    storedGrantValid = true;
+    await ensureProjectTrusted("ws-preset:demo", "Demo");
+    storedGrantValid = false;
+    autorunAction = "verify";
+    calls.length = 0;
+    await expect(ensureProjectTrusted("ws-preset:demo", "Demo", "stored-only")).rejects.toThrow(
+      TrustDeniedError,
+    );
+    expect(useTrustStore.getState().pending).toBeNull();
+    expect(calls).toEqual(["is_project_trusted"]);
+  });
+
+  it("allows background loading only while the stored source grant matches", async () => {
+    const { ensureProjectTrusted, useTrustStore } = await freshGate();
+    storedGrantValid = true;
+    await ensureProjectTrusted("ws-preset:demo", "Demo", "stored-only");
+    expect(useTrustStore.getState().pending).toBeNull();
+    expect(calls).toEqual(["is_project_trusted"]);
+  });
   it("passes silently on a valid stored grant, without a modal", async () => {
     const { ensureProjectTrusted, useTrustStore } = await freshGate();
     storedGrantValid = true;

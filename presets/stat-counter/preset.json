@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "name": "Stat counter",
+  "tagline": "One number counting to the result, framed by a lead-in and a unit.",
+  "category": "stats-charts",
+  "tags": ["counter", "stat", "number", "payoff"],
+  "order": 10,
+  "status": "stable",
+  "preview": { "scene": 0, "atMs": 2600 }
+}

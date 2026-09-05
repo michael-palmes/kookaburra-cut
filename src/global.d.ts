@@ -3,3 +3,6 @@ declare const __PROJECTS_DIR__: string;
 
 /** Absolute path to the DEV-only fixture tree (`fixtures/`: gate spikes and preview labs), injected the same way. Never bundled: a packaged build resolves no fixture project, so this is only ever read in dev. */
 declare const __FIXTURES_DIR__: string;
+
+/** Absolute path to the bundled scene-preset tree (`presets/`: one single-scene project folder per preset), injected the same way. DEV-only; a packaged build resolves the presets root from the .app's resources. */
+declare const __PRESETS_DIR__: string;

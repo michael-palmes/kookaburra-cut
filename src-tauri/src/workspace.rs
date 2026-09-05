@@ -353,6 +353,27 @@ pub(crate) fn slugify(name: &str) -> String {
     slug
 }
 
+/// Workspace folders owned by the app rather than by projects; a project taking one of these names would shadow a library, so creation and duplication both refuse them.
+const RESERVED_SLUGS: [&str; 8] = [
+    "themes",
+    "fonts",
+    "gradients",
+    "export-presets",
+    "objects",
+    "screenshots",
+    crate::library::TEMPLATES_DIR_NAME,
+    crate::library::PRESETS_DIR_NAME,
+];
+
+fn reject_reserved_slug(slug: &str) -> Result<(), String> {
+    if RESERVED_SLUGS.contains(&slug) {
+        return Err(format!(
+            "\"{slug}\" is a reserved folder name: pick another"
+        ));
+    }
+    Ok(())
+}
+
 /// Reject slugs that could escape the workspace when joined onto the root.
 pub(crate) fn validate_slug(slug: &str) -> Result<(), String> {
     let ok = !slug.is_empty()
@@ -367,13 +388,14 @@ pub(crate) fn validate_slug(slug: &str) -> Result<(), String> {
     }
 }
 
-/// The roots a frontend-supplied absolute path is allowed to resolve inside: the configured workspace (ws: assets + their exports/), the bundled projects tree (VideoClip/device media), the dev-only fixtures tree (gate spikes and preview labs, debug builds only) and the default ~/Kookaburra Cut (where bundled-project exports land); any may be absent since a missing root simply can't contain the file, best-effort so an unconfigured workspace still permits bundled assets.
+/// The roots a frontend-supplied absolute path is allowed to resolve inside: the configured workspace (ws: assets + their exports/), the bundled projects and presets trees (VideoClip/device media), the dev-only fixtures tree (gate spikes and preview labs, debug builds only) and the default ~/Kookaburra Cut (where bundled-project exports land); any may be absent since a missing root simply can't contain the file, best-effort so an unconfigured workspace still permits bundled assets.
 pub fn allowed_read_roots(app: &AppHandle, state: &State<'_, SettingsState>) -> Vec<PathBuf> {
     let mut roots = Vec::new();
     if let Ok(root) = require_root(app, state) {
         roots.push(root);
     }
     roots.push(templates_root(app));
+    roots.push(presets_root(app));
     if let Some(fixtures) = dev_fixtures_root() {
         roots.push(fixtures);
     }
@@ -408,7 +430,7 @@ pub fn confine_readable(
 }
 
 /// Where the bundled templates live: DEBUG binaries prefer the LIVE repo tree (baked in at compile time) because in dev, Tauri also copies resources beside the debug exe and that stale copy has previously shadowed newly added templates, matching the frontend's dev-tree-first resolution (engine/project.ts). RELEASE binaries prefer the resource tree (`bundle.resources` maps ../projects → Resources/projects): the packaged frontend resolves bundled assets against the resource dir, and preferring a dev checkout that happens to exist on the machine put that dir outside `allowed_read_roots`, silently failing clip extraction and breaking dev/packaged export parity on dev machines.
-fn templates_root(app: &AppHandle) -> PathBuf {
+pub(crate) fn templates_root(app: &AppHandle) -> PathBuf {
     let dev = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../projects");
     if cfg!(debug_assertions) && dev.is_dir() {
         return dev;
@@ -420,6 +442,141 @@ fn templates_root(app: &AppHandle) -> PathBuf {
         }
     }
     dev
+}
+
+/// Where the bundled scene presets live (`presets/` beside `projects/`), resolved with the same debug-tree-first / release-resource-first split as `templates_root` and for the same reasons.
+pub(crate) fn presets_root(app: &AppHandle) -> PathBuf {
+    let dev = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../presets");
+    if cfg!(debug_assertions) && dev.is_dir() {
+        return dev;
+    }
+    if let Ok(dir) = app.path().resource_dir() {
+        let bundled = dir.join("presets");
+        if bundled.is_dir() {
+            return bundled;
+        }
+    }
+    dev
+}
+
+/// The workspace folder holding the user's own templates; the writers create it on demand, so a missing folder reads as an empty library rather than an error (the themes/objects pattern).
+pub(crate) fn templates_dir(root: &Path) -> PathBuf {
+    root.join(crate::library::TEMPLATES_DIR_NAME)
+}
+
+/// The workspace folder holding the user's own scene presets, created on demand like `templates_dir`.
+pub(crate) fn presets_dir(root: &Path) -> PathBuf {
+    root.join(crate::library::PRESETS_DIR_NAME)
+}
+
+// Which tree a project id points into. Bare slugs are workspace projects (every caller before the library existed); the scoped forms address a template or preset folder.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ProjectScope {
+    Workspace,
+    UserTemplate,
+    UserPreset,
+    BundledTemplate,
+    BundledPreset,
+}
+
+/// Split a project id into its scope and slug. The slug is validated, so every caller's join can only land one level under a fixed root. Bundled scopes resolve in every build (release reads them from the app's resources, so presets can be inserted anywhere); writing to them is what `project_dir_mut` confines to a dev checkout.
+pub(crate) fn parse_project_id(id: &str) -> Result<(ProjectScope, &str), String> {
+    let Some((scope, slug)) = id.split_once(':') else {
+        validate_slug(id)?;
+        return Ok((ProjectScope::Workspace, id));
+    };
+    validate_slug(slug)?;
+    match scope {
+        "ws-template" => Ok((ProjectScope::UserTemplate, slug)),
+        "ws-preset" => Ok((ProjectScope::UserPreset, slug)),
+        "template" => Ok((ProjectScope::BundledTemplate, slug)),
+        "preset" => Ok((ProjectScope::BundledPreset, slug)),
+        _ => Err(format!("unknown project id: {id:?}")),
+    }
+}
+
+pub(crate) fn is_preset_id(id: &str) -> Result<bool, String> {
+    Ok(matches!(
+        parse_project_id(id)?.0,
+        ProjectScope::UserPreset | ProjectScope::BundledPreset
+    ))
+}
+
+pub(crate) fn require_multiple_scenes(id: &str) -> Result<(), String> {
+    if is_preset_id(id)? {
+        return Err("a scene preset must contain exactly one scene".into());
+    }
+    Ok(())
+}
+
+pub(crate) fn validate_scene_count(id: &str, count: usize) -> Result<(), String> {
+    if is_preset_id(id)? && count != 1 {
+        return Err("a scene preset must contain exactly one scene".into());
+    }
+    Ok(())
+}
+
+/// Whether this build may write to a scope: workspace trees always, the bundled trees only from a dev checkout.
+pub(crate) fn scope_writable(scope: ProjectScope) -> bool {
+    match scope {
+        ProjectScope::BundledTemplate | ProjectScope::BundledPreset => cfg!(debug_assertions),
+        _ => true,
+    }
+}
+
+/// The folder a project id names, for reading.
+pub fn project_dir(
+    app: &AppHandle,
+    state: &State<'_, SettingsState>,
+    id: &str,
+) -> Result<PathBuf, String> {
+    let (scope, slug) = parse_project_id(id)?;
+    Ok(match scope {
+        ProjectScope::Workspace => require_root(app, state)?.join(slug),
+        ProjectScope::UserTemplate => templates_dir(&require_root(app, state)?).join(slug),
+        ProjectScope::UserPreset => presets_dir(&require_root(app, state)?).join(slug),
+        ProjectScope::BundledTemplate => templates_root(app).join(slug),
+        ProjectScope::BundledPreset => presets_root(app).join(slug),
+    })
+}
+
+/// The folder a project id names, for writing: refuses the bundled trees outside a dev checkout.
+pub fn project_dir_mut(
+    app: &AppHandle,
+    state: &State<'_, SettingsState>,
+    id: &str,
+) -> Result<PathBuf, String> {
+    let (scope, _) = parse_project_id(id)?;
+    if !scope_writable(scope) {
+        return Err(format!(
+            "\"{id}\" is a bundled item: duplicate it to your library before editing"
+        ));
+    }
+    project_dir(app, state, id)
+}
+
+/// Where a `create_project` template id points: `ws:<slug>` is one of the user's own templates, anything else is a bundled one. The slug is validated first, so the join stays one level under whichever root it picked.
+pub(crate) fn template_source(
+    template_id: &str,
+    workspace: &Path,
+    bundled: &Path,
+) -> Result<PathBuf, String> {
+    match template_id.strip_prefix("ws:") {
+        Some(slug) => {
+            validate_slug(slug)?;
+            Ok(workspace.join(slug))
+        }
+        None => {
+            validate_slug(template_id)?;
+            Ok(bundled.join(template_id))
+        }
+    }
+}
+
+/// A filesystem-safe cache key for a project id: the scoped forms carry a colon, which `validate_slug` (rightly) refuses, so caches keyed by id fold the scope into the name.
+pub(crate) fn project_cache_key(id: &str) -> Result<String, String> {
+    parse_project_id(id)?;
+    Ok(id.replace(':', "@"))
 }
 
 /// The repo's dev-only fixture tree (`fixtures/`: gate spikes and preview labs), which is never bundled: DEBUG binaries read its clips like any bundled project, release binaries never see one (the frontend's fixture globs are dev-gated too).
@@ -445,7 +602,7 @@ fn skills_root(app: &AppHandle) -> PathBuf {
 
 /// Symlinks are recreated, never followed: a link pointing at an ancestor would recurse until the disk gave out, and a
 /// broken one would abort the whole copy on a file nobody can read.
-fn copy_dir_recursive(from: &Path, to: &Path) -> Result<(), String> {
+pub(crate) fn copy_dir_recursive(from: &Path, to: &Path) -> Result<(), String> {
     std::fs::create_dir_all(to).map_err(|e| e.to_string())?;
     for entry in std::fs::read_dir(from).map_err(|e| e.to_string())? {
         let entry = entry.map_err(|e| e.to_string())?;
@@ -528,7 +685,7 @@ fn content_mtime_ms(project: &Path) -> Option<u64> {
 }
 
 /// A workspace project's snapshot image path (`.kookaburra/snapshots/<slug>.png`).
-fn snapshot_file(root: &Path, slug: &str) -> PathBuf {
+pub(crate) fn snapshot_file(root: &Path, slug: &str) -> PathBuf {
     root.join(STATE_DIR_NAME)
         .join("snapshots")
         .join(format!("{slug}.png"))
@@ -849,13 +1006,11 @@ pub fn rename_project(
     slug: String,
     name: String,
 ) -> Result<(), String> {
-    validate_slug(&slug)?;
     let display_name = name.trim().to_owned();
     if display_name.is_empty() {
         return Err("the project needs a name".into());
     }
-    let root = require_root(&app, &state)?;
-    let path = root.join(&slug).join(MANIFEST_FILENAME);
+    let path = project_dir_mut(&app, &state, &slug)?.join(MANIFEST_FILENAME);
     let text = std::fs::read_to_string(&path).map_err(|e| format!("reading project.json: {e}"))?;
     let mut manifest: serde_json::Value =
         serde_json::from_str(&text).map_err(|e| format!("project.json isn't valid JSON: {e}"))?;
@@ -905,14 +1060,12 @@ pub fn set_project_typography(
     body: Option<String>,
     chart: Option<String>,
 ) -> Result<(), String> {
-    validate_slug(&slug)?;
     let headline = headline
         .map(|v| v.trim().to_owned())
         .filter(|v| !v.is_empty());
     let body = body.map(|v| v.trim().to_owned()).filter(|v| !v.is_empty());
     let chart = chart.map(|v| v.trim().to_owned()).filter(|v| !v.is_empty());
-    let root = require_root(&app, &state)?;
-    let path = root.join(&slug).join(MANIFEST_FILENAME);
+    let path = project_dir_mut(&app, &state, &slug)?.join(MANIFEST_FILENAME);
     let text = std::fs::read_to_string(&path).map_err(|e| format!("reading project.json: {e}"))?;
     let mut manifest: serde_json::Value =
         serde_json::from_str(&text).map_err(|e| format!("project.json isn't valid JSON: {e}"))?;
@@ -951,16 +1104,7 @@ pub fn duplicate_project(
     let display_name = name.trim().to_owned();
     let new_slug = slugify(&display_name);
     validate_slug(&new_slug)?;
-    if new_slug == "themes"
-        || new_slug == "fonts"
-        || new_slug == "gradients"
-        || new_slug == "export-presets"
-        || new_slug == "objects"
-    {
-        return Err(format!(
-            "\"{new_slug}\" is a reserved folder name — pick another"
-        ));
-    }
+    reject_reserved_slug(&new_slug)?;
     let root = require_root(&app, &state)?;
     let src = root.join(&slug);
     if !src.join(MANIFEST_FILENAME).is_file() {
@@ -1076,20 +1220,102 @@ pub fn set_present_options(
     save_settings(&app, &state, settings)
 }
 
-/// Persist a project's welcome-screen snapshot; the PNG bytes arrive as the raw invoke body (`InvokeBody::Raw`, same zero-copy path as `push_frame`), the target slug rides in the `x-kookaburra-slug` header, and there's light sanity checking: PNG magic + a size cap.
+pub(crate) fn snapshot_target(
+    root: &Path,
+    bundled_presets: Option<&Path>,
+    id: &str,
+) -> Result<PathBuf, String> {
+    let (scope, slug) = parse_project_id(id)?;
+    let project = match scope {
+        ProjectScope::Workspace => return Ok(snapshot_file(root, slug)),
+        ProjectScope::UserTemplate => templates_dir(root).join(slug),
+        ProjectScope::UserPreset => {
+            let presets = presets_dir(root);
+            let expected = root
+                .canonicalize()
+                .map_err(|e| e.to_string())?
+                .join("presets");
+            if presets.canonicalize().map_err(|e| e.to_string())? != expected {
+                return Err("preset library resolves outside the workspace".into());
+            }
+            let project = presets.join(slug);
+            if project.canonicalize().map_err(|e| e.to_string())? != expected.join(slug) {
+                return Err("preset poster resolves outside its library folder".into());
+            }
+            project
+        }
+        ProjectScope::BundledPreset => {
+            let presets = bundled_presets
+                .ok_or("bundled preset posters are read-only outside a dev checkout")?;
+            let checkout = presets
+                .parent()
+                .ok_or("preset library has no checkout")?
+                .canonicalize()
+                .map_err(|e| e.to_string())?;
+            let presets = presets.canonicalize().map_err(|e| e.to_string())?;
+            if presets != checkout.join("presets") {
+                return Err("preset library resolves outside the checkout".into());
+            }
+            let project = presets.join(slug);
+            let resolved = project.canonicalize().map_err(|e| e.to_string())?;
+            if resolved != project || !project.join(crate::library::PRESET_MANIFEST).is_file() {
+                return Err("snapshot target is not a bundled preset folder".into());
+            }
+            project
+        }
+        ProjectScope::BundledTemplate => {
+            return Err("automatic snapshots do not update bundled templates".into())
+        }
+    };
+    if !project.join(MANIFEST_FILENAME).is_file() {
+        return Err("snapshot target is not a project".into());
+    }
+    Ok(project.join("poster.png"))
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SnapshotWritten {
+    pub path: String,
+    pub mtime_ms: Option<u64>,
+}
+
+pub(crate) fn preset_poster_target(
+    app: &AppHandle,
+    state: &State<'_, SettingsState>,
+    slug: &str,
+) -> Result<PathBuf, String> {
+    if !is_preset_id(slug)? {
+        return Err("poster target must be a scene preset".into());
+    }
+    let root = require_root(app, state)?;
+    #[cfg(debug_assertions)]
+    let bundled_presets = Some(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../presets"));
+    #[cfg(not(debug_assertions))]
+    let bundled_presets: Option<PathBuf> = None;
+    let path = snapshot_target(&root, bundled_presets.as_deref(), slug)?;
+    let project = project_dir_mut(app, state, slug)?
+        .canonicalize()
+        .map_err(|e| e.to_string())?;
+    if path.parent().and_then(|p| p.canonicalize().ok()).as_ref() != Some(&project) {
+        return Err("preset poster does not match the editable folder".into());
+    }
+    Ok(path)
+}
+
+/// Preset posters use the render queue; other welcome cards still use the editor snapshot.
 #[tauri::command]
 pub fn write_snapshot(
     app: AppHandle,
     state: State<'_, SettingsState>,
     request: tauri::ipc::Request,
-) -> Result<(), String> {
+) -> Result<SnapshotWritten, String> {
     let slug = request
         .headers()
         .get("x-kookaburra-slug")
         .and_then(|v| v.to_str().ok())
         .ok_or("missing x-kookaburra-slug header")?
         .to_owned();
-    validate_slug(&slug)?;
     let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else {
         return Err("write_snapshot expects a raw binary body".into());
     };
@@ -1100,8 +1326,54 @@ pub fn write_snapshot(
     if bytes.len() > 5 * 1024 * 1024 {
         return Err("snapshot too large".into());
     }
+    if is_preset_id(&slug)? {
+        return Err("preset posters must be captured through the render queue".into());
+    }
     let root = require_root(&app, &state)?;
-    std::fs::write(snapshot_file(&root, &slug), bytes).map_err(|e| e.to_string())
+    let path = snapshot_target(&root, None, &slug)?;
+    write_snapshot_file(&path, bytes, || Ok(true))?.ok_or_else(|| "snapshot was superseded".into())
+}
+
+pub(crate) fn write_snapshot_file(
+    path: &Path,
+    bytes: &[u8],
+    can_publish: impl FnOnce() -> Result<bool, String>,
+) -> Result<Option<SnapshotWritten>, String> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    let tmp = path.with_extension(format!(
+        "png.{}.{}.tmp",
+        std::process::id(),
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_err(|e| e.to_string())?
+            .as_nanos()
+    ));
+    use std::io::Write;
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&tmp)
+        .map_err(|e| e.to_string())?;
+    let result: Result<bool, String> = (|| {
+        file.write_all(bytes).map_err(|e| e.to_string())?;
+        if !can_publish()? {
+            return Ok(false);
+        }
+        std::fs::rename(&tmp, path).map_err(|e| e.to_string())?;
+        Ok(true)
+    })();
+    if !matches!(result, Ok(true)) {
+        let _ = std::fs::remove_file(&tmp);
+    }
+    if !result? {
+        return Ok(None);
+    }
+    Ok(Some(SnapshotWritten {
+        path: path.to_string_lossy().into_owned(),
+        mtime_ms: file_mtime_ms(path),
+    }))
 }
 
 // ── Scene thumbnails ──────────────────────────────────────────────────────
@@ -1164,8 +1436,8 @@ pub fn list_scene_thumbs(
     slug: String,
 ) -> Result<SceneThumbs, String> {
     let root = require_root(&app, &state)?;
-    validate_slug(&slug)?;
-    let dir = scene_thumbs_dir(&root, &slug);
+    let project = project_dir(&app, &state, &slug)?;
+    let dir = scene_thumbs_dir(&root, &project_cache_key(&slug)?);
     let stamp = std::fs::read_to_string(dir.join(".stamp"))
         .ok()
         .map(|s| s.trim().to_owned());
@@ -1194,7 +1466,7 @@ pub fn list_scene_thumbs(
         stamp,
         thumbs,
         stamps,
-        source_stamps: scene_source_stamps(&root.join(&slug)),
+        source_stamps: scene_source_stamps(&project),
     })
 }
 
@@ -1216,7 +1488,7 @@ pub fn write_scene_thumb(
     let slug = header("x-kookaburra-slug")?;
     let stem = header("x-kookaburra-stem")?;
     let stamp = header("x-kookaburra-stamp")?;
-    validate_slug(&slug)?;
+    let key = project_cache_key(&slug)?;
     validate_slug(&stem)?;
     let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else {
         return Err("write_scene_thumb expects a raw binary body".into());
@@ -1229,7 +1501,7 @@ pub fn write_scene_thumb(
         return Err("thumb too large".into());
     }
     let root = require_root(&app, &state)?;
-    let dir = scene_thumbs_dir(&root, &slug);
+    let dir = scene_thumbs_dir(&root, &key);
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     std::fs::write(dir.join(format!("{stem}.png")), bytes).map_err(|e| e.to_string())?;
     std::fs::write(dir.join(format!("{stem}.stamp")), stamp).map_err(|e| e.to_string())
@@ -1252,7 +1524,6 @@ pub fn write_emoji_raster(
     };
     let slug = header("x-kookaburra-slug")?;
     let key = header("x-kookaburra-key")?;
-    validate_slug(&slug)?;
     // Key shape: hex codepoints dash-joined plus a @size suffix, e.g. `1f680-fe0f@256`.
     let valid_key = !key.is_empty()
         && key.len() <= 128
@@ -1274,8 +1545,9 @@ pub fn write_emoji_raster(
     if bytes.len() > 512 * 1024 {
         return Err("raster too large".into());
     }
-    let root = require_root(&app, &state)?;
-    let dir = root.join(&slug).join("assets").join(".emoji-cache");
+    let dir = project_dir_mut(&app, &state, &slug)?
+        .join("assets")
+        .join(".emoji-cache");
     let file = dir.join(format!("{key}.png"));
     if file.exists() {
         return Ok(());
@@ -1296,7 +1568,7 @@ fn require_template(template: &Path, template_id: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// Create a project from a bundled template: copy `project.json` + `scenes/` + `assets/`, rewrite the manifest id/name, add `exports/`/`edits/`, stamp the Claude Code provisioning (CLAUDE.md, `.claude/settings.json`, the scene-authoring skill), and `git init` (best-effort, since Claude Code only persists folder trust for git repos).
+/// Create a project from a template, bundled or one of the user's own (`ws:<slug>`): copy `project.json` + `scenes/` + `assets/` (never `template.json`), rewrite the manifest id/name, add `exports/`/`edits/`, stamp the Claude Code provisioning (CLAUDE.md, `.claude/settings.json`, the scene-authoring skill), and `git init` (best-effort, since Claude Code only persists folder trust for git repos).
 #[tauri::command]
 pub fn create_project(
     app: AppHandle,
@@ -1309,20 +1581,9 @@ pub fn create_project(
     let display_name = name.trim().to_owned();
     let slug = slugify(&display_name);
     validate_slug(&slug)?;
-    validate_slug(&template_id)?;
-    // Workspace folders owned by the app, not by projects, so these names are reserved.
-    if slug == "themes"
-        || slug == "fonts"
-        || slug == "gradients"
-        || slug == "export-presets"
-        || slug == "objects"
-    {
-        return Err(format!(
-            "\"{slug}\" is a reserved folder name — pick another"
-        ));
-    }
+    reject_reserved_slug(&slug)?;
 
-    let template = templates_root(&app).join(&template_id);
+    let template = template_source(&template_id, &templates_dir(&root), &templates_root(&app))?;
     require_template(&template, &template_id)?;
 
     let dir = root.join(&slug);
@@ -1348,7 +1609,7 @@ pub fn create_project(
         }
     }
 
-    for sub in ["scenes", "assets"] {
+    for sub in ["scenes", "assets", "edits"] {
         let src = template.join(sub);
         if src.is_dir() {
             copy_dir_recursive(&src, &dir.join(sub))?;
@@ -1456,9 +1717,7 @@ pub fn provision_project(
     state: State<'_, SettingsState>,
     slug: String,
 ) -> Result<bool, String> {
-    let root = require_root(&app, &state)?;
-    validate_slug(&slug)?;
-    let dir = root.join(&slug);
+    let dir = project_dir_mut(&app, &state, &slug)?;
     if !dir.join(MANIFEST_FILENAME).is_file() {
         return Err(format!("\"{slug}\" is not a project folder"));
     }
@@ -1477,7 +1736,7 @@ pub(crate) fn backfilled_sample_names(app: &AppHandle) -> Vec<String> {
 }
 
 /// The shared sample pool inside the bundled tree (`projects/_samples/`), the one source both creation and the backfill seed from.
-fn samples_root(app: &AppHandle) -> PathBuf {
+pub(crate) fn samples_root(app: &AppHandle) -> PathBuf {
     templates_root(app).join(SAMPLES_DIR_NAME)
 }
 
@@ -1506,7 +1765,10 @@ fn pool_sample_names(source_assets: &Path) -> Vec<String> {
 }
 
 /// Copy each pool sample into the project's assets/ only when missing; never clobbers. Fresh copies and existing untouched copies are ancient-stamped so they sit below the user's own media; a user-replaced file never matches the bundled bytes and keeps its own dates.
-fn copy_missing_sample_assets(source_assets: &Path, project_assets: &Path) -> Result<(), String> {
+pub(crate) fn copy_missing_sample_assets(
+    source_assets: &Path,
+    project_assets: &Path,
+) -> Result<(), String> {
     std::fs::create_dir_all(project_assets).map_err(|e| e.to_string())?;
     for (i, name) in pool_sample_names(source_assets).iter().enumerate() {
         let dst = project_assets.join(name);
@@ -1559,9 +1821,9 @@ pub fn project_fingerprint(
     state: State<'_, SettingsState>,
     slug: String,
 ) -> Result<String, String> {
-    let root = require_root(&app, &state)?;
-    validate_slug(&slug)?;
-    Ok(compute_project_fingerprint(&root.join(&slug)))
+    Ok(compute_project_fingerprint(&project_dir(
+        &app, &state, &slug,
+    )?))
 }
 
 /// The fingerprint behind `project_fingerprint`, shared with the trust gate so consent is bound to the exact sources it was given for.
@@ -1619,13 +1881,11 @@ pub fn is_project_trusted(
     state: State<'_, SettingsState>,
     slug: String,
 ) -> Result<bool, String> {
-    validate_slug(&slug)?;
-    let root = require_root(&app, &state)?;
+    let dir = project_dir(&app, &state, &slug)?;
     let settings = load_settings(&app, &state)?;
     let Some(record) = settings.trusted_projects.get(&slug) else {
         return Ok(false);
     };
-    let dir = root.join(&slug);
     Ok(trust_record_matches(
         record,
         &dir,
@@ -1640,9 +1900,7 @@ pub fn trust_project(
     state: State<'_, SettingsState>,
     slug: String,
 ) -> Result<(), String> {
-    validate_slug(&slug)?;
-    let root = require_root(&app, &state)?;
-    let dir = root.join(&slug);
+    let dir = project_dir(&app, &state, &slug)?;
     if !dir.join(MANIFEST_FILENAME).is_file() {
         return Err(format!("no project named \"{slug}\""));
     }
@@ -1662,17 +1920,77 @@ pub fn trust_project(
     save_settings(&app, &state, settings)
 }
 
-/// A workspace project's manifest text (the frontend parses + validates it).
+/// A project's manifest text (the frontend parses + validates it); `slug` is a workspace slug or a scoped library id (`project_dir`).
 #[tauri::command]
 pub fn read_project_manifest(
     app: AppHandle,
     state: State<'_, SettingsState>,
     slug: String,
 ) -> Result<String, String> {
-    let root = require_root(&app, &state)?;
-    validate_slug(&slug)?;
-    std::fs::read_to_string(root.join(&slug).join(MANIFEST_FILENAME))
-        .map_err(|e| format!("reading {slug}/project.json: {e}"))
+    let (scope, item) = parse_project_id(&slug)?;
+    let text = project_manifest_for_loading(&project_dir(&app, &state, &slug)?, scope)?;
+    let bundled_root = match scope {
+        ProjectScope::BundledTemplate => Some(templates_root(&app)),
+        ProjectScope::BundledPreset => Some(presets_root(&app)),
+        _ => None,
+    };
+    if let Some(root) = bundled_root {
+        let assets = bundled_project_assets_path(&root, item)?;
+        app.asset_protocol_scope()
+            .allow_directory(assets, true)
+            .map_err(|e| format!("allowing library assets: {e}"))?;
+    }
+    Ok(text)
+}
+
+fn bundled_project_assets_path(root: &Path, slug: &str) -> Result<PathBuf, String> {
+    validate_slug(slug)?;
+    let root = root.canonicalize().map_err(|e| e.to_string())?;
+    let project = root.join(slug);
+    if project.canonicalize().map_err(|e| e.to_string())? != project {
+        return Err("bundled item must stay inside its library folder".into());
+    }
+    let assets = project.join("assets");
+    match std::fs::symlink_metadata(&assets) {
+        Ok(_) => {
+            if assets.canonicalize().map_err(|e| e.to_string())? != assets || !assets.is_dir() {
+                return Err("bundled assets must stay inside their item folder".into());
+            }
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => return Err(e.to_string()),
+    }
+    Ok(assets)
+}
+
+fn project_manifest_for_loading(project: &Path, scope: ProjectScope) -> Result<String, String> {
+    let text = std::fs::read_to_string(project.join(MANIFEST_FILENAME))
+        .map_err(|e| format!("reading {}/project.json: {e}", project.display()))?;
+    let marker = match scope {
+        ProjectScope::UserTemplate | ProjectScope::BundledTemplate => {
+            crate::library::TEMPLATE_MANIFEST
+        }
+        ProjectScope::UserPreset | ProjectScope::BundledPreset => crate::library::PRESET_MANIFEST,
+        ProjectScope::Workspace => return Ok(text),
+    };
+    let name = std::fs::read_to_string(project.join(marker))
+        .ok()
+        .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok())
+        .and_then(|doc| {
+            doc.get("name")
+                .and_then(serde_json::Value::as_str)
+                .map(str::trim)
+                .filter(|name| !name.is_empty())
+                .map(str::to_owned)
+        });
+    let Some(name) = name else { return Ok(text) };
+    let mut manifest: serde_json::Value =
+        serde_json::from_str(&text).map_err(|e| format!("project.json isn't valid JSON: {e}"))?;
+    let Some(object) = manifest.as_object_mut() else {
+        return Ok(text);
+    };
+    object.insert("name".into(), serde_json::Value::String(name));
+    serde_json::to_string(&manifest).map_err(|e| e.to_string())
 }
 
 /// A workspace scene module's TSX source, for the runtime compiler; `file` is the manifest's project-relative module path (`scenes/<stem>.tsx`, persistent modules share the folder); traversal-hardened the same way as sidecar reads (`scene_doc::scene_doc_path`): exactly one flat path segment under `scenes/`.
@@ -1683,8 +2001,7 @@ pub fn read_scene_source(
     slug: String,
     file: String,
 ) -> Result<String, String> {
-    let root = require_root(&app, &state)?;
-    validate_slug(&slug)?;
+    let project = project_dir(&app, &state, &slug)?;
     let rest = file
         .strip_prefix("scenes/")
         .ok_or_else(|| format!("scene module path must live under scenes/: {file:?}"))?;
@@ -1695,8 +2012,7 @@ pub fn read_scene_source(
     if !ok {
         return Err(format!("invalid scene module path: {file:?}"));
     }
-    std::fs::read_to_string(root.join(&slug).join(&file))
-        .map_err(|e| format!("reading {slug}/{file}: {e}"))
+    std::fs::read_to_string(project.join(&file)).map_err(|e| format!("reading {slug}/{file}: {e}"))
 }
 
 pub(crate) const IMAGE_EXTENSIONS: &[&str] = &["png", "jpg", "jpeg", "webp"];
@@ -1736,21 +2052,21 @@ pub fn list_project_media(
     state: State<'_, SettingsState>,
     slug: String,
 ) -> Result<Vec<String>, String> {
-    project_media_rels(&require_root(&app, &state)?, &slug)
+    project_media_rels(&project_dir(&app, &state, &slug)?)
 }
 
-/// Every media rel in a project's `assets/`, newest added first: `list_project_media`'s body with the root already in hand, so other modules can list without plumbing a `State` through.
-pub(crate) fn project_media_rels(root: &Path, slug: &str) -> Result<Vec<String>, String> {
-    let mut files = list_by_extension_in(root, slug, MEDIA_EXTENSIONS)?;
-    sort_media_by_added(&root.join(slug), &mut files);
+/// Every media rel in a project's `assets/`, newest added first: `list_project_media`'s body with the folder already in hand, so other modules can list without plumbing a `State` through.
+pub(crate) fn project_media_rels(project: &Path) -> Result<Vec<String>, String> {
+    let mut files = list_by_extension_in(project, MEDIA_EXTENSIONS)?;
+    sort_media_by_added(project, &mut files);
     Ok(files)
 }
 
 /// Newest ADDED first: creation time, stamped now by touch_now at every user action and ancient on bundled content, so imports always surface, in-place rewrites never resurface a file, and seeded samples sit last. Stable, so the alphabetical pass breaks ties; unreadable stamps sink last. Rels carry the `assets/` prefix, so they join the PROJECT dir (joining the assets dir made every stat miss and silently left the list alphabetical).
-fn sort_media_by_added(project_dir: &Path, files: &mut [String]) {
+fn sort_media_by_added(project: &Path, files: &mut [String]) {
     files.sort_by_cached_key(|rel| {
         std::cmp::Reverse(
-            std::fs::metadata(project_dir.join(rel))
+            std::fs::metadata(project.join(rel))
                 .and_then(|m| m.created().or_else(|_| m.modified()))
                 .ok(),
         )
@@ -1763,16 +2079,11 @@ fn list_by_extension(
     slug: &str,
     extensions: &[&str],
 ) -> Result<Vec<String>, String> {
-    list_by_extension_in(&require_root(app, state)?, slug, extensions)
+    list_by_extension_in(&project_dir(app, state, slug)?, extensions)
 }
 
-fn list_by_extension_in(
-    root: &Path,
-    slug: &str,
-    extensions: &[&str],
-) -> Result<Vec<String>, String> {
-    validate_slug(slug)?;
-    let assets = root.join(slug).join("assets");
+fn list_by_extension_in(project: &Path, extensions: &[&str]) -> Result<Vec<String>, String> {
+    let assets = project.join("assets");
     let mut files = Vec::new();
     collect_files(&assets, &assets, extensions, &mut files)?;
     files.sort();
@@ -2009,6 +2320,309 @@ mod tests {
             settings.trusted_projects["sibling"].path,
             "/Users/x/Desktop/Vids/Kookaburra Cut copy/sibling"
         );
+    }
+
+    #[test]
+    fn the_app_s_own_workspace_folders_are_reserved_slugs() {
+        for name in [
+            "themes",
+            "fonts",
+            "gradients",
+            "export-presets",
+            "objects",
+            "screenshots",
+            "templates",
+            "presets",
+        ] {
+            assert!(reject_reserved_slug(name).is_err(), "{name} was allowed");
+        }
+        assert!(reject_reserved_slug("my-video").is_ok());
+        // The library dirs are the pair that must never drift out of the guard.
+        assert!(RESERVED_SLUGS.contains(&crate::library::TEMPLATES_DIR_NAME));
+        assert!(RESERVED_SLUGS.contains(&crate::library::PRESETS_DIR_NAME));
+    }
+
+    #[test]
+    fn project_ids_resolve_to_one_tree_each_and_never_escape() {
+        assert_eq!(
+            parse_project_id("launch-2026").unwrap(),
+            (ProjectScope::Workspace, "launch-2026")
+        );
+        assert_eq!(
+            parse_project_id("ws-template:my-launch").unwrap(),
+            (ProjectScope::UserTemplate, "my-launch")
+        );
+        assert_eq!(
+            parse_project_id("ws-preset:stat-hero").unwrap(),
+            (ProjectScope::UserPreset, "stat-hero")
+        );
+        // Bundled scopes resolve in every build; only WRITING them is dev-gated.
+        assert_eq!(
+            parse_project_id("template:blank").unwrap(),
+            (ProjectScope::BundledTemplate, "blank")
+        );
+        assert_eq!(
+            parse_project_id("preset:stat-hero").unwrap(),
+            (ProjectScope::BundledPreset, "stat-hero")
+        );
+        for scope in [
+            ProjectScope::Workspace,
+            ProjectScope::UserTemplate,
+            ProjectScope::UserPreset,
+        ] {
+            assert!(scope_writable(scope));
+        }
+        assert_eq!(
+            scope_writable(ProjectScope::BundledTemplate),
+            cfg!(debug_assertions)
+        );
+        assert_eq!(
+            scope_writable(ProjectScope::BundledPreset),
+            cfg!(debug_assertions)
+        );
+        // Every escape shape is refused, scoped or bare.
+        for id in [
+            "ws-template:../themes",
+            "ws-preset:a/b",
+            "ws-template:.hidden",
+            "ws-template:",
+            "..",
+            "a/b",
+            "",
+            "ws:launch",
+            "nonsense:launch",
+        ] {
+            assert!(parse_project_id(id).is_err(), "{id} was allowed");
+        }
+    }
+
+    #[test]
+    fn a_template_id_picks_the_users_library_or_the_bundled_tree() {
+        let workspace = PathBuf::from("/ws/templates");
+        let bundled = PathBuf::from("/app/projects");
+        assert_eq!(
+            template_source("blank", &workspace, &bundled).unwrap(),
+            bundled.join("blank")
+        );
+        assert_eq!(
+            template_source("ws:my-launch", &workspace, &bundled).unwrap(),
+            workspace.join("my-launch")
+        );
+        for id in ["ws:../themes", "ws:", "../projects", "ws:a/b"] {
+            assert!(
+                template_source(id, &workspace, &bundled).is_err(),
+                "{id} was allowed"
+            );
+        }
+    }
+
+    #[test]
+    fn scoped_cache_keys_do_not_collide_with_workspace_slugs() {
+        assert_eq!(project_cache_key("launch").unwrap(), "launch");
+        assert_eq!(
+            project_cache_key("ws-preset:stat-hero").unwrap(),
+            "ws-preset@stat-hero"
+        );
+        assert_ne!(
+            project_cache_key("ws-preset:stat-hero").unwrap(),
+            project_cache_key("ws-preset-stat-hero").unwrap()
+        );
+        assert!(project_cache_key("../escape").is_err());
+        assert!(project_cache_key("unknown:escape").is_err());
+    }
+
+    #[test]
+    fn bundled_asset_scope_includes_new_and_existing_emoji_caches_only_under_the_item() {
+        let root = scratch_dir();
+        let item = root.join("titleicon");
+        std::fs::create_dir_all(&item).unwrap();
+        let assets = bundled_project_assets_path(&root, "titleicon").unwrap();
+        assert_eq!(assets, item.canonicalize().unwrap().join("assets"));
+        assert!(!assets.exists());
+        let cache = assets.join(".emoji-cache");
+        std::fs::create_dir_all(&cache).unwrap();
+        let raster = cache.join("1f680@320.png");
+        std::fs::write(&raster, b"frozen emoji").unwrap();
+        assert_eq!(
+            bundled_project_assets_path(&root, "titleicon").unwrap(),
+            assets
+        );
+        assert!(raster.starts_with(&assets));
+        assert!(!item.join("project.json").starts_with(&assets));
+        assert!(!root.join("other/assets/image.png").starts_with(&assets));
+        assert!(bundled_project_assets_path(&root, "../titleicon").is_err());
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn bundled_asset_scope_refuses_item_and_asset_directory_symlinks() {
+        use std::os::unix::fs::symlink;
+        let root = scratch_dir();
+        let outside = scratch_dir();
+        std::fs::create_dir_all(outside.join("assets")).unwrap();
+        symlink(&outside, root.join("titleicon")).unwrap();
+        assert!(bundled_project_assets_path(&root, "titleicon").is_err());
+        std::fs::remove_file(root.join("titleicon")).unwrap();
+        std::fs::create_dir_all(root.join("titleicon")).unwrap();
+        symlink(outside.join("assets"), root.join("titleicon/assets")).unwrap();
+        assert!(bundled_project_assets_path(&root, "titleicon").is_err());
+        std::fs::remove_dir_all(root).unwrap();
+        std::fs::remove_dir_all(outside).unwrap();
+    }
+
+    #[test]
+    fn only_presets_require_exactly_one_scene() {
+        for id in ["preset:hero", "ws-preset:hero"] {
+            assert!(require_multiple_scenes(id).is_err());
+            assert!(validate_scene_count(id, 0).is_err());
+            assert!(validate_scene_count(id, 1).is_ok());
+            assert!(validate_scene_count(id, 2).is_err());
+        }
+        for id in ["hero", "template:hero", "ws-template:hero"] {
+            assert!(require_multiple_scenes(id).is_ok());
+            assert!(validate_scene_count(id, 2).is_ok());
+        }
+        assert!(validate_scene_count("ws-preset:../escape", 1).is_err());
+    }
+
+    #[test]
+    fn library_snapshots_update_the_item_poster_and_never_a_bundled_tree() {
+        let root = scratch_dir();
+        for (scope, folder) in [("ws-template", "templates"), ("ws-preset", "presets")] {
+            let project = root.join(folder).join("hero");
+            std::fs::create_dir_all(&project).unwrap();
+            std::fs::write(project.join(MANIFEST_FILENAME), "{}").unwrap();
+            assert_eq!(
+                snapshot_target(&root, None, &format!("{scope}:hero")).unwrap(),
+                project.join("poster.png")
+            );
+            assert!(snapshot_target(&root, None, &format!("{scope}:missing")).is_err());
+        }
+        assert_eq!(
+            snapshot_target(&root, None, "hero").unwrap(),
+            snapshot_file(&root, "hero")
+        );
+        for id in ["template:hero", "preset:hero", "ws-preset:../hero"] {
+            assert!(snapshot_target(&root, None, id).is_err());
+        }
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn bundled_preset_snapshots_require_a_dev_root_and_both_manifests() {
+        let root = scratch_dir();
+        let presets = root.join("checkout/presets");
+        let project = presets.join("hero");
+        std::fs::create_dir_all(&project).unwrap();
+        assert!(snapshot_target(&root, Some(&presets), "preset:hero").is_err());
+        std::fs::write(project.join(MANIFEST_FILENAME), "{}").unwrap();
+        assert!(snapshot_target(&root, Some(&presets), "preset:hero").is_err());
+        std::fs::write(project.join(crate::library::PRESET_MANIFEST), "{}").unwrap();
+        assert_eq!(
+            snapshot_target(&root, Some(&presets), "preset:hero").unwrap(),
+            project.canonicalize().unwrap().join("poster.png")
+        );
+        assert!(snapshot_target(&root, None, "preset:hero").is_err());
+        for id in [
+            "template:hero",
+            "preset:../hero",
+            "preset:hero/nested",
+            "unknown:hero",
+        ] {
+            assert!(snapshot_target(&root, Some(&presets), id).is_err());
+        }
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn bundled_preset_snapshots_reject_symlinked_libraries_and_items() {
+        let root = scratch_dir();
+        let presets = root.join("checkout/presets");
+        let outside = root.join("outside");
+        std::fs::create_dir_all(&presets).unwrap();
+        std::fs::create_dir_all(&outside).unwrap();
+        std::fs::write(outside.join(MANIFEST_FILENAME), "{}").unwrap();
+        std::fs::write(outside.join(crate::library::PRESET_MANIFEST), "{}").unwrap();
+        std::os::unix::fs::symlink(&outside, presets.join("hero")).unwrap();
+        assert!(snapshot_target(&root, Some(&presets), "preset:hero").is_err());
+        let other_checkout = root.join("other-checkout");
+        std::fs::create_dir_all(&other_checkout).unwrap();
+        let linked_presets = other_checkout.join("presets");
+        std::os::unix::fs::symlink(&presets, &linked_presets).unwrap();
+        assert!(snapshot_target(&root, Some(&linked_presets), "preset:hero").is_err());
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn workspace_preset_snapshots_reject_symlinked_libraries_and_items() {
+        let root = scratch_dir();
+        let workspace = root.join("workspace");
+        let outside = root.join("outside");
+        std::fs::create_dir_all(workspace.join("presets")).unwrap();
+        std::fs::create_dir_all(&outside).unwrap();
+        std::fs::write(outside.join(MANIFEST_FILENAME), "{}").unwrap();
+        std::os::unix::fs::symlink(&outside, workspace.join("presets/hero")).unwrap();
+        assert!(snapshot_target(&workspace, None, "ws-preset:hero").is_err());
+        let other_workspace = root.join("other-workspace");
+        std::fs::create_dir_all(&other_workspace).unwrap();
+        std::os::unix::fs::symlink(workspace.join("presets"), other_workspace.join("presets"))
+            .unwrap();
+        assert!(snapshot_target(&other_workspace, None, "ws-preset:hero").is_err());
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn snapshot_write_metadata_uses_the_frontend_field_names() {
+        let result = SnapshotWritten {
+            path: "/checkout/presets/hero/poster.png".into(),
+            mtime_ms: Some(42),
+        };
+        assert_eq!(
+            serde_json::to_value(result).unwrap(),
+            serde_json::json!({ "path": "/checkout/presets/hero/poster.png", "mtimeMs": 42 })
+        );
+    }
+
+    #[test]
+    fn scoped_library_loads_use_the_current_catalogue_name_without_rewriting_the_project() {
+        let root = scratch_dir();
+        let original = r#"{"name":"Original project","scenes":[{"file":"scenes/hero.tsx"}],"future":{"keep":true}}"#;
+        let project_path = root.join(MANIFEST_FILENAME);
+        std::fs::write(&project_path, original).unwrap();
+        for (marker, scopes) in [
+            (
+                crate::library::TEMPLATE_MANIFEST,
+                [ProjectScope::UserTemplate, ProjectScope::BundledTemplate],
+            ),
+            (
+                crate::library::PRESET_MANIFEST,
+                [ProjectScope::UserPreset, ProjectScope::BundledPreset],
+            ),
+        ] {
+            for name in ["Renamed library item", "Improved library item"] {
+                std::fs::write(
+                    root.join(marker),
+                    serde_json::json!({ "name": name }).to_string(),
+                )
+                .unwrap();
+                for scope in scopes {
+                    let text = project_manifest_for_loading(&root, scope).unwrap();
+                    let loaded: serde_json::Value = serde_json::from_str(&text).unwrap();
+                    assert_eq!(loaded["name"], name);
+                    assert_eq!(loaded["future"]["keep"], true);
+                    assert_eq!(loaded["scenes"][0]["file"], "scenes/hero.tsx");
+                }
+            }
+            assert_eq!(
+                project_manifest_for_loading(&root, ProjectScope::Workspace).unwrap(),
+                original
+            );
+            assert_eq!(std::fs::read_to_string(&project_path).unwrap(), original);
+        }
+        let _ = std::fs::remove_dir_all(root);
     }
 
     #[test]

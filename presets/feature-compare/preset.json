@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "name": "Before and after",
+  "tagline": "One handset under a wiping divider, the old screen giving way to the new.",
+  "category": "features",
+  "tags": ["compare", "before", "after", "wipe", "divider"],
+  "order": 10,
+  "status": "stable",
+  "preview": { "scene": 0, "atMs": 2300 }
+}

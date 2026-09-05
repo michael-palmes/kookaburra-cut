@@ -1,4 +1,13 @@
-import { outgoingSceneTransitions, type ProjectManifest } from "./project";
+import { createUserCatalogue, type LibraryItemInfo, listUserTemplates } from "./library";
+import { watchLibraryDocuments } from "./libraryDocuments";
+import { fsUrl } from "./media";
+import { ledgerItems, type PreviewLedger, previewContentHash } from "./presets";
+import {
+  outgoingSceneTransitions,
+  type ProjectManifest,
+  rememberWorkspaceLibraryPath,
+  WORKSPACE_PROJECT_PREFIX,
+} from "./project";
 import { buildSceneTimeline, timelineTotalMs } from "./sceneTimeline";
 
 /** The template registry. A bundled project is a template iff it ships `projects/<slug>/template.json`, so spikes and preview labs self-exclude with no hand-maintained allowlist. The manifest carries only what cannot be derived: duration, scene count, aspects and the default theme come from the sibling `project.json`, which is the drift class this design exists to kill. Card art is globbed (not imported) so a template shipped before its previews degrades to a swatch instead of failing the build, the theme-preview precedent. Everything here is synchronous, so the picker has no metadata loading state. */
@@ -41,6 +50,10 @@ export type TemplateTier = (typeof TEMPLATE_TIERS)[number];
 export const TEMPLATE_STATUSES = ["stable", "beta"] as const;
 export type TemplateStatus = (typeof TEMPLATE_STATUSES)[number];
 
+/** Where the folder lives: the bundled tree, an imported pack, or the user's workspace. */
+export const TEMPLATE_SOURCES = ["bundled", "pack", "user"] as const;
+export type TemplateSource = (typeof TEMPLATE_SOURCES)[number];
+
 /** Capability chips, verified against the sidecars by the validation suite so they cannot drift. */
 export const TEMPLATE_USES = [
   "device",
@@ -81,6 +94,7 @@ export type TemplatePreviewFrame = number | { scene: number; atMs: number };
 export interface TemplateManifest {
   version: number;
   name: string;
+  /** May be empty: a project converted to a template gets its tagline in the details modal. */
   tagline: string;
   /** Absent only for `blank`, which pins above the rail instead of living in a category. */
   category?: TemplateCategoryId;
@@ -98,8 +112,8 @@ export interface TemplateManifest {
   status: TemplateStatus;
   /** Reserved: only meaningful once packs carry templates. */
   minAppVersion?: string;
-  /** Reserved for the pack tier, always absent in v1. */
-  source?: "bundled" | "pack";
+  /** Absent means bundled; the app stamps `user` on everything it writes into the workspace. */
+  source?: TemplateSource;
 }
 
 /** 03's name for the same shape. */
@@ -230,8 +244,8 @@ function validateManifest(raw: unknown): TemplateManifestResult {
   if (typeof raw.name !== "string" || raw.name.trim().length === 0) {
     issues.push({ path: "name", message: "must be a non-empty string" });
   }
-  if (typeof raw.tagline !== "string" || raw.tagline.trim().length === 0) {
-    issues.push({ path: "tagline", message: "must be a non-empty string" });
+  if (typeof raw.tagline !== "string") {
+    issues.push({ path: "tagline", message: "must be a string" });
   }
   if (raw.category !== undefined && !CATEGORY_IDS.includes(raw.category as string)) {
     issues.push({ path: "category", message: `must be one of ${CATEGORY_IDS.join(", ")}` });
@@ -273,8 +287,8 @@ function validateManifest(raw: unknown): TemplateManifestResult {
   if (raw.minAppVersion !== undefined && typeof raw.minAppVersion !== "string") {
     issues.push({ path: "minAppVersion", message: "must be a string" });
   }
-  if (raw.source !== undefined && raw.source !== "bundled" && raw.source !== "pack") {
-    issues.push({ path: "source", message: "must be bundled or pack" });
+  if (raw.source !== undefined && !TEMPLATE_SOURCES.includes(raw.source as TemplateSource)) {
+    issues.push({ path: "source", message: `must be one of ${TEMPLATE_SOURCES.join(", ")}` });
   }
 
   if (issues.length > 0) {
@@ -298,7 +312,7 @@ function validateManifest(raw: unknown): TemplateManifestResult {
   if (raw.storeLegal !== undefined) manifest.storeLegal = raw.storeLegal as boolean;
   if (highlights) manifest.highlights = highlights;
   if (raw.minAppVersion !== undefined) manifest.minAppVersion = raw.minAppVersion as string;
-  if (raw.source !== undefined) manifest.source = raw.source as "bundled" | "pack";
+  if (raw.source !== undefined) manifest.source = raw.source as TemplateSource;
   return { success: true, data: manifest };
 }
 
@@ -341,9 +355,50 @@ export function bundledTemplatePreviews(templateId: string): string[] | null {
   return urls;
 }
 
+// Dev-only staleness, the preset catalogue's ledger one tree over (src/engine/presets.ts owns the hash and the contract); a release build folds both globs away.
+const sidecarGlob: Record<string, unknown> = import.meta.env.DEV
+  ? import.meta.glob<unknown>("/projects/*/scenes/*.json", { eager: true, import: "default" })
+  : {};
+const ledgerGlob: Record<string, PreviewLedger> = import.meta.env.DEV
+  ? import.meta.glob<PreviewLedger>("../assets/template-previews/*.json", {
+      eager: true,
+      import: "default",
+    })
+  : {};
+
+const staleCache = new Map<string, boolean>();
+
+/** Dev only: this bundled template's committed stills are older than its authored JSON. False in release, for a template with no art yet and for the user's own templates. */
+export function isTemplatePreviewStale(slug: string): boolean {
+  if (!import.meta.env.DEV) return false;
+  const cached = staleCache.get(slug);
+  if (cached !== undefined) return cached;
+  const manifest = templateGlob[`/projects/${slug}/template.json`];
+  const project = projectGlob[`/projects/${slug}/project.json`];
+  if (!manifest || !project || !bundledTemplatePreviews(slug)) return false;
+  const prefix = `/projects/${slug}/`;
+  const docs: [string, unknown][] = [
+    ["template.json", manifest],
+    ["project.json", project],
+  ];
+  for (const [path, doc] of Object.entries(sidecarGlob)) {
+    if (path.startsWith(`${prefix}scenes/`)) docs.push([path.slice(prefix.length), doc]);
+  }
+  const ledger = ledgerItems(ledgerGlob["../assets/template-previews/ledger.json"]);
+  const stale = ledger[slug] !== previewContentHash(docs);
+  staleCache.set(slug, stale);
+  return stale;
+}
+
 /** One catalogue row: the authored manifest, flattened, plus everything derived from `project.json`. */
 export interface TemplateEntry {
+  /** Catalogue id, and the id `create_project` takes: the folder slug for bundled templates, `ws:<slug>` for the user's own. */
   id: string;
+  /** The folder name, whichever tree it lives in. */
+  slug: string;
+  /** The project id that opens this template in the editor (`template:` / `ws-template:`). */
+  projectId: string;
+  source: TemplateSource;
   manifest: TemplateManifest;
   name: string;
   tagline: string;
@@ -393,12 +448,36 @@ function projectDurationMs(project: ProjectManifest): number {
   return timelineTotalMs(slots);
 }
 
-function toEntry(id: string, manifest: TemplateManifest, project: ProjectManifest): TemplateEntry {
+/** The editor project id for a catalogue id: `blank` → `template:blank`, `ws:mine` → `ws-template:mine`. */
+export function templateProjectId(id: string): string {
+  return id.startsWith(WORKSPACE_PROJECT_PREFIX)
+    ? `ws-template:${id.slice(WORKSPACE_PROJECT_PREFIX.length)}`
+    : `template:${id}`;
+}
+
+/** Everything the native listing already knows, so a user template doesn't re-derive it. */
+export interface TemplateEntryOverrides {
+  sceneCount?: number;
+  durationMs?: number;
+  previews?: string[] | null;
+}
+
+function toEntry(
+  id: string,
+  manifest: TemplateManifest,
+  project: ProjectManifest,
+  overrides: TemplateEntryOverrides = {},
+): TemplateEntry {
+  const isUser = id.startsWith(WORKSPACE_PROJECT_PREFIX);
+  const slug = isUser ? id.slice(WORKSPACE_PROJECT_PREFIX.length) : id;
   const category = manifest.category ?? null;
   const categoryLabel = category ? templateCategoryLabel(category) : null;
   const aspects = project.formats ?? [];
   return {
     id,
+    slug,
+    projectId: templateProjectId(id),
+    source: isUser ? "user" : (manifest.source ?? "bundled"),
     manifest,
     name: manifest.name,
     tagline: manifest.tagline,
@@ -413,12 +492,12 @@ function toEntry(id: string, manifest: TemplateManifest, project: ProjectManifes
     highlights: manifest.highlights ?? [],
     order: manifest.order,
     status: manifest.status,
-    sceneCount: project.scenes.length,
-    durationMs: projectDurationMs(project),
+    sceneCount: overrides.sceneCount ?? (project.scenes ?? []).length,
+    durationMs: overrides.durationMs ?? projectDurationMs(project),
     aspects,
     primaryAspect: aspects[0] ?? "16:9",
     themeId: project.themeId,
-    previews: bundledTemplatePreviews(id),
+    previews: overrides.previews !== undefined ? overrides.previews : bundledTemplatePreviews(slug),
     haystack: [
       manifest.name,
       manifest.tagline,
@@ -472,14 +551,96 @@ function buildCatalogue(): TemplateEntry[] {
   return entries.sort(compareEntries);
 }
 
-/** The whole catalogue in picker order: Blank, then category order, stable before beta, then `order`, then name. Memoised, since the globs are eager and nothing here can change at runtime. */
+/** The bundled catalogue in picker order, refreshed by content updates during development. */
 export function listTemplates(): TemplateEntry[] {
   if (!catalogue) catalogue = buildCatalogue();
   return catalogue;
 }
 
+// ── The user's own templates ──────────────────────────────────────────────
+
+function toUserEntry(info: LibraryItemInfo): TemplateEntry | null {
+  const id = `${WORKSPACE_PROJECT_PREFIX}${info.slug}`;
+  let manifest: TemplateManifest;
+  let project: ProjectManifest;
+  try {
+    const parsed = templateManifestSchema.safeParse(
+      JSON.parse(info.manifestJson),
+      `${info.slug}/template.json`,
+    );
+    if (!parsed.success) {
+      console.warn(`[templates] ${info.slug}/template.json ignored: ${parsed.error.message}`);
+      return null;
+    }
+    manifest = { ...parsed.data, source: "user" };
+    project = JSON.parse(info.projectJson) as ProjectManifest;
+  } catch (e) {
+    console.warn(`[templates] ${info.slug} ignored:`, e);
+    return null;
+  }
+  // Cache the folder so the asset resolvers can route `ws-template:<slug>` synchronously.
+  rememberWorkspaceLibraryPath(`ws-template:${info.slug}`, info.path);
+  return toEntry(id, manifest, project, {
+    sceneCount: info.sceneCount,
+    durationMs: info.durationMs,
+    // The project's snapshot, copied in at convert time: one still, so the card shows it instead of cycling four.
+    previews: info.posterPath
+      ? [`${fsUrl(info.posterPath)}?v=${info.posterModifiedAt ?? 0}`]
+      : null,
+  });
+}
+
+const userTemplates = createUserCatalogue(listUserTemplates, toUserEntry, "templates");
+
+/** The user's templates as the last refresh saw them; empty until `refreshUserTemplates` has run. */
+export function listUserTemplateEntries(): TemplateEntry[] {
+  return userTemplates.entries();
+}
+
+/** Re-read `~/Kookaburra Cut/templates/` and notify subscribers; call after any convert, edit or delete. */
+export function refreshUserTemplates(): Promise<TemplateEntry[]> {
+  return userTemplates.refresh();
+}
+
+/** Subscribe to workspace refreshes and bundled document updates. */
+export function subscribeTemplates(listener: () => void): () => void {
+  bundledListeners.add(listener);
+  const unsubscribe = userTemplates.subscribe(listener);
+  return () => {
+    bundledListeners.delete(listener);
+    unsubscribe();
+  };
+}
+
+let merged: { version: number; entries: TemplateEntry[] } | null = null;
+const bundledListeners = new Set<() => void>();
+
+watchLibraryDocuments(
+  import.meta.hot,
+  "projects",
+  { "template.json": templateGlob, "project.json": projectGlob, scenes: sidecarGlob },
+  () => {
+    catalogue = null;
+    merged = null;
+    staleCache.clear();
+    for (const listener of bundledListeners) listener();
+  },
+);
+
+/** Bundled and user templates in one picker order. Synchronous by design: the bundled half is there on the first frame, the user half appears when its listing lands. The result is memoised per refresh, so it is safe as a `useSyncExternalStore` snapshot. */
+export function listAllTemplates(): TemplateEntry[] {
+  const version = userTemplates.version();
+  if (!merged || merged.version !== version) {
+    merged = {
+      version,
+      entries: [...listTemplates(), ...userTemplates.entries()].sort(compareEntries),
+    };
+  }
+  return merged.entries;
+}
+
 export function findTemplate(id: string): TemplateEntry | undefined {
-  return listTemplates().find((entry) => entry.id === id);
+  return listAllTemplates().find((entry) => entry.id === id);
 }
 
 export interface TemplateFilter {
@@ -489,6 +650,8 @@ export interface TemplateFilter {
   category?: TemplateCategoryId | null;
   /** null/absent is both tiers. */
   tier?: TemplateTier | null;
+  /** null/absent is every source (the library's App templates / My templates split). */
+  source?: TemplateSource | null;
 }
 
 /** The picker's filter, pure so it is testable without rendering. Blank ignores the category filter: it is pinned first in every view rather than living in a category, so a rail row must never hide it. */
@@ -498,6 +661,7 @@ export function searchTemplates(
 ): TemplateEntry[] {
   const terms = (filter.query ?? "").trim().toLowerCase().split(/\s+/).filter(Boolean);
   return entries.filter((entry) => {
+    if (filter.source && entry.source !== filter.source) return false;
     if (filter.tier && entry.tier !== filter.tier) return false;
     if (filter.category && entry.category !== filter.category && entry.id !== BLANK_TEMPLATE_ID) {
       return false;

@@ -10,7 +10,7 @@
 import { Channel, invoke } from "@tauri-apps/api/core";
 import type { ImportOutcome, ImportPlan, ItemKind, ItemPlan, Resolution } from "../packs/types";
 import { EMPTY_SELECTION, type PackSelection, selectionKey } from "./packs";
-import { workspaceSlug } from "./project";
+import { nativeProjectSlug } from "./project";
 
 export interface RoundTripResult {
   /** `ws:<slug>` of the re-imported copy, ready to verify. */
@@ -37,7 +37,7 @@ function importedSlugFor(plan: ImportPlan, slug: string): string | null {
 }
 
 export async function runPackRoundTrip(projectId: string): Promise<RoundTripResult> {
-  const slug = workspaceSlug(projectId);
+  const slug = nativeProjectSlug(projectId);
   const root = await invoke<string>("workspace_root_path");
   const packPath = `${root}/_autorun/roundtrip/${slug}.kbpack`;
 

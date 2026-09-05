@@ -213,7 +213,7 @@ pub struct WebsiteState(Mutex<WebsiteRegistry>);
 pub fn trusted_invoke_label(label: &str) -> bool {
     matches!(
         label,
-        "main" | "present" | "settings" | "render" | "editor" | "packs"
+        "main" | "present" | "settings" | "render" | "editor" | "packs" | "theme-editor"
     )
 }
 
@@ -2057,10 +2057,19 @@ mod tests {
 
     #[test]
     fn only_local_app_webviews_are_trusted_invokers() {
-        for label in ["main", "present", "settings", "render", "editor", "packs"] {
+        for label in [
+            "main",
+            "present",
+            "settings",
+            "render",
+            "editor",
+            "packs",
+            "theme-editor",
+        ] {
             assert!(trusted_invoke_label(label));
         }
         assert!(!trusted_invoke_label("website-deadbeef"));
+        assert!(!trusted_invoke_label("theme-editor-website"));
     }
 
     #[test]

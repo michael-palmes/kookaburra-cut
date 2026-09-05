@@ -51,11 +51,11 @@ import { useObjectEditStore } from "./objectEditStore";
 import { preloadOverlayPanelImages } from "./overlayPanelTexture";
 import { overlayPanelImageSources, resolveOverlays } from "./overlayPlan";
 import {
-  isWorkspaceProjectId,
+  isWorkspaceBackedProjectId,
+  nativeProjectSlug,
   type ProjectAudio,
   preloadProjectImages,
   resolveAssetPath,
-  workspaceSlug,
 } from "./project";
 import { type RenderStateFingerprint, renderStateFingerprint } from "./renderFingerprint";
 import { buildSceneCameraTracks, hasSceneCameraTracks, resolveFrameCameras } from "./sceneCamera";
@@ -474,9 +474,10 @@ async function exportProjectHeld(
   const channel = new Channel<ExportProgress>();
   if (onProgress) channel.onmessage = onProgress;
 
-  // Workspace projects: strip the ws: prefix for the filename stem and pass the slug so the native side routes output to <workspace>/<slug>/exports/; bundled projects keep the legacy ~/Kookaburra Cut/<project>/ path (projectSlug absent).
-  const workspace = isWorkspaceProjectId(opts.projectId);
-  const slug = workspace ? workspaceSlug(opts.projectId) : null;
+  // Workspace-backed ids (projects and library items) pass their native slug so the output lands in that folder's own exports/; bundled ids keep the legacy ~/Kookaburra Cut/<project>/ path (projectSlug absent). The native side folds any scope prefix out of the filename stem.
+  const slug = isWorkspaceBackedProjectId(opts.projectId)
+    ? nativeProjectSlug(opts.projectId)
+    : null;
   await invoke("start_export", {
     options: {
       projectId: slug ?? opts.projectId,

@@ -7,10 +7,10 @@ import { useGizmoSectionOpen } from "../engine/gizmoSections";
 import { useImageEditStore } from "../engine/imageEditStore";
 import { mediaMeta } from "../engine/media";
 import {
-  isWorkspaceProjectId,
+  isEditableProjectId,
   type LoadedProject,
+  nativeProjectSlug,
   resolveAssetUrl,
-  workspaceSlug,
 } from "../engine/project";
 import type {
   SceneDocMediaSpec,
@@ -58,9 +58,9 @@ async function probeImageAspect(
   src: string,
   suffix: string,
 ): Promise<number | null> {
-  if (isWorkspaceProjectId(projectId)) {
+  if (isEditableProjectId(projectId)) {
     try {
-      const meta = await mediaMeta(workspaceSlug(projectId), src);
+      const meta = await mediaMeta(nativeProjectSlug(projectId), src);
       if (meta.width > 0 && meta.height > 0) return meta.width / meta.height;
     } catch {
       // The decode below is the fallback.

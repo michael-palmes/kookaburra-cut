@@ -10,6 +10,7 @@ import {
 } from "../engine/packs";
 import { FONT_DISCLAIMER, fontEmbeddingNotice } from "../ui/packs/fontCopy";
 import { PackGlyph } from "./PackGlyph";
+import { packProjectItems } from "./projectItems";
 import {
   breakageWarning,
   countByKind,
@@ -37,7 +38,7 @@ import {
   type SelectableItem,
 } from "./types";
 
-/** The rail is the seven stores plus a details pane; only the stores are real item kinds. */
+/** The rail is the nine stores plus a details pane; only the stores are real item kinds. */
 type Tab = ItemKind | "details";
 
 type Phase =
@@ -102,10 +103,7 @@ export function ExportView({ onClose }: { onClose: () => void }) {
 
   // Author-side terminal review: snapshots and pre-typed commands travel with the pack, so say so before the sign (docs/scene-terminal.md, Shared projects).
   const [terminalRows, setTerminalRows] = useState<TerminalReviewRow[]>([]);
-  const includedProjects = useMemo(
-    () => included.filter((i) => i.kind === "project").map((i) => ({ slug: i.slug, name: i.name })),
-    [included],
-  );
+  const includedProjects = useMemo(() => packProjectItems(included), [included]);
   useEffect(() => {
     let cancelled = false;
     if (includedProjects.length === 0) {

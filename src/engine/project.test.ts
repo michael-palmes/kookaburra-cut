@@ -1,11 +1,69 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   assertProjectRelative,
   assertUniqueSceneFiles,
+  isEditableProjectId,
+  nativeProjectSlug,
   outgoingSceneTransitions,
+  projectIdForNativeSlug,
   sceneMountKey,
 } from "./project";
 import type { TransitionSpec } from "./sceneTimeline";
+
+describe("nativeProjectSlug", () => {
+  it("strips the prefix of a workspace project", () => {
+    expect(nativeProjectSlug("ws:my-video")).toBe("my-video");
+  });
+
+  it("passes every scoped library id through verbatim", () => {
+    for (const id of ["ws-template:hero", "ws-preset:intro", "template:hero", "preset:intro"]) {
+      expect(nativeProjectSlug(id)).toBe(id);
+    }
+  });
+
+  it("passes a bare bundled id through verbatim", () => {
+    expect(nativeProjectSlug("showcase-tour")).toBe("showcase-tour");
+  });
+
+  it("round-trips through projectIdForNativeSlug", () => {
+    for (const id of ["ws:my-video", "ws-template:hero", "preset:intro"]) {
+      expect(projectIdForNativeSlug(nativeProjectSlug(id))).toBe(id);
+    }
+  });
+});
+
+describe("isEditableProjectId", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("always allows the workspace trees", () => {
+    for (const dev of [true, false]) {
+      vi.stubEnv("DEV", dev);
+      expect(isEditableProjectId("ws:my-video")).toBe(true);
+      expect(isEditableProjectId("ws-template:hero")).toBe(true);
+      expect(isEditableProjectId("ws-preset:intro")).toBe(true);
+    }
+  });
+
+  it("allows the bundled library trees only from a dev checkout", () => {
+    vi.stubEnv("DEV", true);
+    expect(isEditableProjectId("template:hero")).toBe(true);
+    expect(isEditableProjectId("preset:intro")).toBe(true);
+    vi.stubEnv("DEV", false);
+    expect(isEditableProjectId("template:hero")).toBe(false);
+    expect(isEditableProjectId("preset:intro")).toBe(false);
+  });
+
+  it("never allows a bare bundled or fixture id, dev included", () => {
+    // A bare slug reads as a WORKSPACE project natively, so a write would land in the wrong tree.
+    for (const dev of [true, false]) {
+      vi.stubEnv("DEV", dev);
+      expect(isEditableProjectId("showcase-tour")).toBe(false);
+      expect(isEditableProjectId("preview-lab-theme")).toBe(false);
+    }
+  });
+});
 
 describe("assertProjectRelative", () => {
   it("passes a legitimate assets path through unchanged", () => {

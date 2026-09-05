@@ -6,6 +6,7 @@ import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { type ITheme, Terminal } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { parseProjectId } from "../engine/project";
 import {
   binaryDir,
   CLAUDE_BREW_SWITCH_COMMAND,
@@ -26,9 +27,10 @@ import {
   spawnTerminalSession,
 } from "../engine/terminal";
 import { useUiStore } from "../store/uiStore";
-import type { Theme } from "../theme/tokens";
 import { HelperWizard, type WizardKind } from "./HelperWizards";
-import { EditSceneWizard, NewSceneWizard, type WizardSceneInfo } from "./SceneWizards";
+import { railIcon } from "./libraryIcons";
+import { PresetGalleryModal } from "./PresetGalleryModal";
+import { EditSceneWizard, sceneIndexAtPlayhead, type WizardSceneInfo } from "./SceneWizards";
 
 /** Embedded Claude Code panel: xterm.js with the DOM renderer (the WebGL addon is broken in current WebKit) bound to a native PTY; sessions live in the module-level registry (engine/terminal.ts) and outlive this component, so switching projects keeps them running; helper chips paste prompts via bracketed paste without submitting, so the user reviews before pressing Enter. */
 
@@ -73,7 +75,6 @@ export function TerminalPanel({
   cwd,
   projectName,
   scenes,
-  theme,
   readThumbs,
   captureThumbs,
   onProjectChanged,
@@ -86,8 +87,6 @@ export function TerminalPanel({
   projectName?: string | null;
   /** The loaded project's scenes, for the wizards (pickers + scene-aware dropdowns). */
   scenes: WizardSceneInfo[];
-  /** The project's theme, for the New-scene wizard's colour swatch defaults. */
-  theme: Theme;
   /** Scene-picker thumbnails straight from the cache: no capture, no clock borrow. */
   readThumbs: () => Promise<Record<string, string>>;
   /** Capture the scene-picker thumbnails that are missing or stale (borrows the preview clock). */
@@ -95,13 +94,16 @@ export function TerminalPanel({
   /** A native write changed project.json/scenes; reload the preview immediately. `focusSceneFile` lands the playhead on that scene after the reload. */
   onProjectChanged: (focusSceneFile?: string) => void;
 }) {
+  const scope = parseProjectId(slug).scope;
+  const canAddScenes = scope !== "preset" && scope !== "ws-preset";
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
   const [status, setStatus] = useState<PanelStatus>("idle");
   const [ready, setReady] = useState(false);
   const [hasPrior, setHasPrior] = useState(false);
-  const [wizard, setWizard] = useState<WizardKind | "new-scene-native" | "edit-scene" | null>(null);
+  const [wizard, setWizard] = useState<WizardKind | "new-scene" | "edit-scene" | null>(null);
+  const [newScenePosition, setNewScenePosition] = useState(0);
   const [moreOpen, setMoreOpen] = useState(false);
   const [thumbs, setThumbs] = useState<Record<string, string>>({});
   /** Why the last session ended immediately (shell error text), or null. */
@@ -377,16 +379,20 @@ export function TerminalPanel({
 
   /** Open a wizard, painting cached thumbs immediately AND submitting the stale ones straight away: the render window captures in the background (never the editor's clock, which the old pipeline scrubbed), so by the placement step the fresh thumbs are usually already in. */
   const openSceneWizard = useCallback(
-    (which: WizardKind | "new-scene-native" | "edit-scene") => {
+    (which: WizardKind | "new-scene" | "edit-scene") => {
+      if (!canAddScenes && which === "new-scene") return;
+      if (which === "new-scene") {
+        setNewScenePosition(sceneIndexAtPlayhead(scenesRef.current) + 1);
+      }
       setMoreOpen(false);
       setWizard(which);
-      if (which !== "new-scene-native" && which !== "edit-scene" && which !== "new-scene") return;
+      if (which !== "new-scene" && which !== "edit-scene") return;
       readThumbs()
         .then(addThumbs)
         .catch(() => {});
-      needThumbs();
+      if (which === "edit-scene") needThumbs();
     },
-    [readThumbs, addThumbs, needThumbs],
+    [readThumbs, addThumbs, needThumbs, canAddScenes],
   );
   // A closed wizard's queued thumbs are cancelled rather than left draining for nobody.
   useEffect(() => {
@@ -411,26 +417,29 @@ export function TerminalPanel({
     };
   }, [addThumbs]);
 
-  // The playback bar / ⌘K channel: a pending wizard request opens the matching wizard once the rail is mounted, then clears itself.
+  // The playback bar opens its requested picker once the rail has mounted.
   const railWizardRequest = useUiStore((s) => s.railWizardRequest);
   useEffect(() => {
     if (!railWizardRequest) return;
-    openSceneWizard(railWizardRequest === "new-scene" ? "new-scene-native" : "edit-scene");
+    openSceneWizard(railWizardRequest);
     useUiStore.getState().requestRailWizard(null);
   }, [railWizardRequest, openSceneWizard]);
 
   return (
     <div className="terminal-panel">
       <div className="rail-actions">
-        {/* Scaffold/edit are native, available with no Claude session. */}
-        <button
-          type="button"
-          className="btn primary btn-small"
-          title="Create a scene with the pickers — no typing needed"
-          onClick={() => openSceneWizard("new-scene-native")}
-        >
-          ＋ New scene
-        </button>
+        {/* Scene insertion and editing work without a Claude session. */}
+        {canAddScenes && (
+          <button
+            type="button"
+            className="btn primary btn-small"
+            title="Choose a scene from App presets or My presets"
+            onClick={() => openSceneWizard("new-scene")}
+          >
+            {railIcon(<path d="M12 5v14M5 12h14" />)}
+            New scene
+          </button>
+        )}
         <button
           type="button"
           className="btn btn-small"
@@ -592,14 +601,13 @@ export function TerminalPanel({
         </div>
       )}
 
-      {wizard === "new-scene-native" && (
-        <NewSceneWizard
+      {wizard === "new-scene" && canAddScenes && (
+        <PresetGalleryModal
           slug={slug}
-          projectPath={cwd}
+          position={newScenePosition}
           scenes={scenes}
           thumbs={thumbs}
           onNeedThumbs={needThumbs}
-          theme={theme}
           onDone={(result) => {
             setWizard(null);
             onProjectChanged(result.file);
@@ -621,12 +629,10 @@ export function TerminalPanel({
           onCancel={() => setWizard(null)}
         />
       )}
-      {wizard && wizard !== "new-scene-native" && wizard !== "edit-scene" && (
+      {wizard && wizard !== "new-scene" && wizard !== "edit-scene" && (
         <HelperWizard
           kind={wizard}
           scenes={scenes}
-          thumbs={thumbs}
-          onNeedThumbs={needThumbs}
           slug={slug}
           onInsert={(prompt) => {
             setWizard(null);

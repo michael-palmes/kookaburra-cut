@@ -82,6 +82,7 @@ export function moveWorkspace(parent?: string | null): Promise<string> {
   return invoke<string>("move_workspace", { parent: parent ?? null });
 }
 
+/** `templateId` is a bundled template slug or `ws:<slug>` for one of the user's own; the manifest itself (`template.json`) is never copied into the new project. Library commands live in engine/library.ts. */
 export function createProject(
   name: string,
   templateId: string,

@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "name": "Video",
+  "duration": { "mode": "follow-media" },
+  "background": {
+    "type": "video",
+    "src": "assets/sample-laptop-recording.mp4"
+  }
+}

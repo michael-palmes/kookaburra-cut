@@ -31,7 +31,7 @@ import {
 } from "../engine/layeredScreenshotPresets";
 import { fsUrl, type MediaMeta, mediaMeta } from "../engine/media";
 import type { LoadedProject } from "../engine/project";
-import { workspaceProjectPath, workspaceSlug } from "../engine/project";
+import { nativeProjectSlug, projectFolderPath } from "../engine/project";
 import type {
   LayeredScreenshotAttachSide,
   LayeredScreenshotItem,
@@ -158,8 +158,8 @@ export function LayeredScreenshotBuilder({
     if (empty) void commit(addLayer(block));
   }, [empty, commit, block]);
 
-  const slug = workspaceSlug(project.id);
-  const projectPath = workspaceProjectPath(slug) ?? "";
+  const slug = nativeProjectSlug(project.id);
+  const projectPath = projectFolderPath(project.id) ?? "";
 
   // One mediaMeta per screen item: width/height give the schematic (and the preset fit) each screen's true aspect, and video posters double as thumbnails.
   const [metas, setMetas] = useState<Record<string, MediaMeta>>({});

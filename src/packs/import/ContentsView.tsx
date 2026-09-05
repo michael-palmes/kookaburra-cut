@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import type { PackSelection } from "../../engine/packs";
+import { type PackSelection, selectionKey } from "../../engine/packs";
 import { restrictedFontNotice } from "../../ui/packs/fontCopy";
 import { formatBytes, ITEM_KINDS, type ItemKind, KIND_LABELS, type PackManifest } from "../types";
 
@@ -18,15 +18,22 @@ interface Entry {
 export function entriesFrom(manifest: PackManifest): Entry[] {
   const c = manifest.contents;
   const out: Entry[] = [];
-  for (const p of c.projects) {
-    out.push({
-      kind: "project",
-      slug: p.slug,
-      name: p.name,
-      bytes: p.bytes,
-      detail: `${p.sceneCount} scene${p.sceneCount === 1 ? "" : "s"} · ${Math.round(p.durationMs / 1000)}s · ${p.formats.join(", ")}`,
-      requires: p.requires,
-    });
+  // Projects, templates and presets are all project folders, so one row shape serves all three.
+  for (const [kind, list] of [
+    ["project", c.projects],
+    ["template", c.templates ?? []],
+    ["preset", c.presets ?? []],
+  ] as const) {
+    for (const p of list) {
+      out.push({
+        kind,
+        slug: p.slug,
+        name: p.name,
+        bytes: p.bytes,
+        detail: `${p.sceneCount} scene${p.sceneCount === 1 ? "" : "s"} · ${Math.round(p.durationMs / 1000)}s · ${p.formats.join(", ")}`,
+        requires: p.requires,
+      });
+    }
   }
   for (const t of c.themes) {
     out.push({
@@ -92,9 +99,11 @@ export function ContentsView({
   const counts: Record<string, number> = {};
   for (const e of included) counts[e.kind] = (counts[e.kind] ?? 0) + 1;
 
-  // Reverse dependency awareness: unticking something an included project needs is allowed, and named.
+  // Reverse dependency awareness: unticking something an included item needs is allowed, and named.
   const warnings: string[] = [];
-  for (const project of entries.filter((e) => e.kind === "project" && !dropped[KEY(e)])) {
+  const projectShaped = (kind: ItemKind) =>
+    kind === "project" || kind === "template" || kind === "preset";
+  for (const project of entries.filter((e) => projectShaped(e.kind) && !dropped[KEY(e)])) {
     const req = project.requires;
     if (!req) continue;
     for (const theme of req.themes) {
@@ -116,6 +125,8 @@ export function ContentsView({
 
   const selection: PackSelection = {
     projects: [],
+    templates: [],
+    presets: [],
     themes: [],
     fonts: [],
     objects: [],
@@ -124,18 +135,7 @@ export function ContentsView({
     screenshots: [],
   };
   for (const e of included) {
-    const field = (
-      {
-        project: "projects",
-        theme: "themes",
-        font: "fonts",
-        object: "objects",
-        gradient: "gradients",
-        exportPreset: "exportPresets",
-        screenshot: "screenshots",
-      } as const
-    )[e.kind];
-    selection[field].push(e.slug);
+    (selection[selectionKey(e.kind)] as string[]).push(e.slug);
   }
 
   const visible = entries.filter((e) => e.kind === tab);

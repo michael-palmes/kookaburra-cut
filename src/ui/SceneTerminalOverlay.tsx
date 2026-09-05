@@ -3,9 +3,9 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import { useCameraEditStore } from "../engine/cameraEditStore";
 import {
   type LoadedProject,
+  nativeProjectSlug,
+  projectFolderPath,
   sceneFileStem,
-  workspaceProjectPath,
-  workspaceSlug,
 } from "../engine/project";
 import type { SceneDoc } from "../engine/sceneDocSchema";
 import { resolveSceneTerminal, sceneTerminalLayout } from "../engine/sceneTerminal";
@@ -55,7 +55,7 @@ export function SceneTerminalOverlay({
   const cameraArmed = useCameraEditStore((s) => s.armedTool !== null);
   const { commit } = useGizmoDocWrite(project, sceneIndex, onDocChanged);
 
-  const slug = workspaceSlug(project.id);
+  const slug = nativeProjectSlug(project.id);
   const stem = sceneFileStem(project.sceneFiles[sceneIndex] ?? "");
   const key = sceneTerminalKey(slug, stem);
 
@@ -201,7 +201,7 @@ export function SceneTerminalOverlay({
 
   const start = useCallback(async () => {
     if (!terminal || !colours) return;
-    const cwd = terminal.startPath ?? workspaceProjectPath(slug);
+    const cwd = terminal.startPath ?? projectFolderPath(project.id);
     if (!cwd) return;
     // The registry bump re-runs the attach effect, which opens and focuses the fresh terminal.
     focusOnAttach.current = true;
@@ -211,7 +211,7 @@ export function SceneTerminalOverlay({
       focusOnAttach.current = false;
       console.warn("[terminal] session start failed:", e);
     }
-  }, [key, slug, terminal, colours]);
+  }, [key, project.id, terminal, colours]);
 
   if (!terminal || playing) return null;
   const layout = sceneTerminalLayout(terminal, { width: aspect, height: 1 });

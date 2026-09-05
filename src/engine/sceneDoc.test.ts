@@ -31,6 +31,7 @@ vi.mock("@tauri-apps/api/core", () => ({
       return null;
     }
     if (cmd === "read_project_manifest_snapshot") return manifestText;
+    if (cmd === "read_scene_doc") return sidecars.get(args?.file as string) ?? null;
     if (cmd === "write_project_manifest_snapshot") {
       manifestText = args?.text as string;
       return null;
@@ -45,6 +46,7 @@ import {
   applyBackgroundToAllScenes,
   applyEditRepoint,
   followMediaSources,
+  loadSceneDoc,
   resyncFollowMediaDuration,
   writeSceneDoc,
 } from "./sceneDoc";
@@ -52,6 +54,21 @@ import { parseSceneDoc, type SceneDoc, type SceneDocMediaSpec } from "./sceneDoc
 import { sceneMediaFamily, sceneMediaUsesWindowPath } from "./sceneMedia";
 
 const docWith = (parts: Partial<SceneDoc>): SceneDoc => ({ version: 1, ...parts }) as SceneDoc;
+
+describe("editable library scene documents", () => {
+  it.each(["preset:hero-device", "template:blank"])(
+    "reopens %s from current disk content",
+    async (id) => {
+      const staleImport = vi.fn(async () => ({ default: { version: 1, name: "Old" } }));
+      const docs = { "/presets/hero-device/scenes/one.json": staleImport };
+      sidecars.set("scenes/one.json", JSON.stringify({ version: 1, name: "First edit" }));
+      expect((await loadSceneDoc(id, "scenes/one.tsx", docs))?.name).toBe("First edit");
+      sidecars.set("scenes/one.json", JSON.stringify({ version: 1, name: "Second edit" }));
+      expect((await loadSceneDoc(id, "scenes/one.tsx", docs))?.name).toBe("Second edit");
+      expect(staleImport).not.toHaveBeenCalled();
+    },
+  );
+});
 
 const videoDevice = (id: string, src: string) => ({
   id,

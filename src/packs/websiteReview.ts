@@ -7,6 +7,7 @@ import {
   parseSceneWebsite,
   resolveSceneWebsite,
 } from "../engine/sceneWebsite";
+import { packProjectItems } from "./projectItems";
 import type { ImportOutcome } from "./types";
 
 export interface WebsiteOriginReview {
@@ -79,14 +80,8 @@ async function reviewProjectWebsites(
 }
 
 export async function reviewImportedWebsites(outcome: ImportOutcome): Promise<WebsiteReviewRow[]> {
-  const projects = outcome.results
-    .filter(
-      (result) =>
-        result.kind === "project" &&
-        (result.outcome === "added" ||
-          result.outcome === "replaced" ||
-          result.outcome === "keptBoth"),
-    )
-    .map((result) => ({ slug: result.slug, name: result.name }));
+  const projects = packProjectItems(
+    outcome.results.filter((result) => ["added", "replaced", "keptBoth"].includes(result.outcome)),
+  );
   return reviewProjectWebsites(projects);
 }

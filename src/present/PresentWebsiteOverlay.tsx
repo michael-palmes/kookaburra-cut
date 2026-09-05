@@ -1,11 +1,6 @@
 import { listen } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  type LoadedProject,
-  sceneFileStem,
-  workspaceProjectPath,
-  workspaceSlug,
-} from "../engine/project";
+import { type LoadedProject, projectFolderPath, sceneFileStem } from "../engine/project";
 import { resolveSceneWebsite, sceneWebsiteLayout } from "../engine/sceneWebsite";
 import {
   hideWebsite,
@@ -38,7 +33,7 @@ export function PresentWebsiteOverlay({
   const doc = project.sceneDocs[sceneIndex] ?? null;
   const website = useMemo(() => resolveSceneWebsite(doc ?? undefined), [doc]);
   const stem = sceneFileStem(project.sceneFiles[sceneIndex] ?? "");
-  const projectPath = workspaceProjectPath(workspaceSlug(project.id));
+  const projectPath = projectFolderPath(project.id);
   const layout = useMemo(
     () => (website ? sceneWebsiteLayout(website, { width: aspect, height: 1 }) : null),
     [website, aspect],

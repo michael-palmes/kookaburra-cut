@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "name": "Title",
+  "tagline": "A title on the theme background",
+  "category": "starters",
+  "tags": ["title", "starter"],
+  "order": 40,
+  "status": "stable",
+  "preview": 0
+}

@@ -1,0 +1,55 @@
+{
+  "version": 1,
+  "name": "Comparison",
+  "text": {
+    "title": "The redesign",
+    "subtitle": "",
+    "beforeLabel": "Before",
+    "afterLabel": "After"
+  },
+  "managedText": {
+    "layout": "template",
+    "items": [
+      {
+        "key": "title",
+        "type": "title",
+        "text": "The redesign"
+      },
+      {
+        "key": "subtitle",
+        "type": "subtitle",
+        "text": ""
+      }
+    ]
+  },
+  "devices": [
+    {
+      "id": "d1",
+      "model": "iphone-17-pro",
+      "colour": "silver",
+      "media": {
+        "src": "assets/sample-screenshot-1.jpg",
+        "kind": "image"
+      },
+      "motion": {
+        "preset": "none"
+      }
+    },
+    {
+      "id": "d2",
+      "model": "iphone-17-pro",
+      "colour": "silver",
+      "media": {
+        "src": "assets/sample-screenshot-2.jpg",
+        "kind": "image"
+      },
+      "motion": {
+        "preset": "none"
+      }
+    }
+  ],
+  "deviceLayout": {
+    "preset": "toe-in",
+    "gap": 0.35
+  }
+}

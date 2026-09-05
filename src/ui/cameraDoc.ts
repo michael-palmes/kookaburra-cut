@@ -3,7 +3,7 @@ import { useCameraEditStore } from "../engine/cameraEditStore";
 import { type CameraPose, sampleCameraTrack } from "../engine/cameraTrack";
 import { useFormat } from "../engine/format";
 import { pushHistory } from "../engine/history";
-import { isWorkspaceProjectId, type LoadedProject, workspaceSlug } from "../engine/project";
+import { isEditableProjectId, type LoadedProject, nativeProjectSlug } from "../engine/project";
 import {
   defaultOrbitPose,
   normalizeSceneCamera,
@@ -31,7 +31,7 @@ export function useCameraDoc(
   sceneIndex: number,
   onDocChanged: (sceneIndex: number, doc: SceneDoc) => void,
 ) {
-  const slug = isWorkspaceProjectId(project.id) ? workspaceSlug(project.id) : null;
+  const slug = isEditableProjectId(project.id) ? nativeProjectSlug(project.id) : null;
   const doc = project.sceneDocs[sceneIndex];
   const sceneFile = project.sceneFiles[sceneIndex];
   const slot = project.slots[sceneIndex];

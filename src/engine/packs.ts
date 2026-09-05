@@ -15,6 +15,8 @@ import type {
 
 export interface PackSelection {
   projects: string[];
+  templates: string[];
+  presets: string[];
   themes: string[];
   fonts: string[];
   objects: string[];
@@ -27,6 +29,8 @@ export interface PackSelection {
 
 export const EMPTY_SELECTION: PackSelection = {
   projects: [],
+  templates: [],
+  presets: [],
   themes: [],
   fonts: [],
   objects: [],
@@ -39,6 +43,10 @@ export function selectionKey(kind: ItemKind): keyof PackSelection {
   switch (kind) {
     case "project":
       return "projects";
+    case "template":
+      return "templates";
+    case "preset":
+      return "presets";
     case "theme":
       return "themes";
     case "font":
@@ -57,6 +65,8 @@ export function selectionKey(kind: ItemKind): keyof PackSelection {
 export function selectionCount(selection: PackSelection): number {
   return (
     selection.projects.length +
+    selection.templates.length +
+    selection.presets.length +
     selection.themes.length +
     selection.fonts.length +
     selection.objects.length +

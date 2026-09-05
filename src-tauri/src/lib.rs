@@ -10,12 +10,14 @@ mod export_presets;
 mod fonts;
 mod global_screenshots;
 mod gradients;
+mod library;
 mod loudness;
 mod media;
 mod objects;
 mod pack;
 mod packs_win;
 mod present;
+mod preset_posters;
 mod pty;
 mod render_win;
 mod scene_doc;
@@ -23,6 +25,7 @@ mod settings_win;
 #[path = "tap_dot_frames.generated.rs"]
 mod tap_dot_frames;
 mod theme;
+mod theme_editor_win;
 mod updater;
 mod website;
 mod workspace;
@@ -213,8 +216,8 @@ fn start_export(
         }
     }
 
-    // F-002: project_id and aspect build the output dir (bundled branch) and filename, so reject anything path-shaped BEFORE either is used.
-    workspace::validate_slug(&options.project_id)?;
+    // F-002: project_id and aspect build the output dir (bundled branch) and filename, so reject anything path-shaped BEFORE either is used. A scoped library id folds its colon to a dash (`project_cache_key`, at least as strict as `validate_slug`); every unscoped id passes through unchanged, so existing outputs and baselines keep their exact names.
+    let project_key = workspace::project_cache_key(&options.project_id)?;
     workspace::validate_slug(&options.aspect)?;
 
     // Workspace projects render into their own exports/ folder (self-contained projects); bundled/gate projects keep the legacy ~/Kookaburra Cut/<project>/ path so baseline tooling and hashes stay put (moved out of ~/Documents since macOS TCC guards Documents and kept breaking headless gates); both paths are built HERE, the frontend never supplies a path. "downloads" (app-triggered exports honouring the setting) routes only the FINAL file to ~/Downloads; terminal autoruns never send it.
@@ -227,18 +230,13 @@ fn start_export(
         app.path().download_dir().map_err(|e| e.to_string())?
     } else {
         match &options.project_slug {
-            Some(slug) => {
-                workspace::validate_slug(slug)?;
-                workspace::require_root(&app, &settings)?
-                    .join(slug)
-                    .join("exports")
-            }
+            Some(slug) => workspace::project_dir(&app, &settings, slug)?.join("exports"),
             None => app
                 .path()
                 .home_dir()
                 .map_err(|e| e.to_string())?
                 .join(workspace::WORKSPACE_DIR_NAME)
-                .join(&options.project_id),
+                .join(&project_key),
         }
     };
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
@@ -254,7 +252,7 @@ fn start_export(
         Some(spec) => spec.codec.container_ext(),
         None => options.codec.container_ext(),
     };
-    let base = format!("{}-{}{}", options.project_id, options.aspect, suffix);
+    let base = format!("{}-{}{}", project_key, options.aspect, suffix);
     let mut output = dir.join(format!("{base}.{ext}"));
     // Downloads is shared space: never overwrite, suffix Finder-style. The canonical paths keep overwrite semantics (baselines re-record in place).
     if to_downloads {
@@ -1141,6 +1139,223 @@ fn park_background_window(window: &tauri::WebviewWindow) {
     ));
 }
 
+// Release builds omit repo-write commands; every build guards Website webviews.
+macro_rules! kookaburra_handler {
+    ($($dev:path,)*) => {
+        website::guard_invoke(tauri::generate_handler![
+            show_character_palette,
+            sample_screen_colour,
+            start_export,
+            notify_export_done,
+            media::probe_audio,
+            media::delete_media,
+            media::unused_media,
+            media::rename_media,
+            loudness::measure_loudness,
+            beats::beat_cache_load,
+            beats::beat_cache_store,
+            media::import_app_icon,
+            media::import_audio,
+            push_frame,
+            finish_export,
+            cancel_export,
+            extract_clip_frames,
+            read_clip_frame,
+            ensure_clip_previews,
+            hash_file,
+            reveal_in_finder,
+            reveal_last_export,
+            get_autorun_config,
+            finish_autorun,
+            begin_screenshot,
+            save_screenshot,
+            workspace::get_settings,
+            workspace::init_workspace,
+            workspace::default_workspace_root,
+            workspace::user_home_dir,
+            workspace::move_workspace,
+            workspace::list_projects,
+            workspace::create_project,
+            workspace::read_project_manifest,
+            workspace::read_scene_source,
+            workspace::project_fingerprint,
+            workspace::is_project_trusted,
+            workspace::trust_project,
+            workspace::list_project_assets,
+            workspace::list_project_environments,
+            workspace::list_project_media,
+            workspace::set_last_project,
+            workspace::set_hardware_video,
+            workspace::set_export_to_downloads,
+            workspace::set_lag_warning,
+            workspace::rename_project,
+            workspace::set_project_group,
+            workspace::set_project_typography,
+            workspace::duplicate_project,
+            workspace::delete_project,
+            workspace::write_snapshot,
+            workspace::provision_project,
+            workspace::ensure_sample_assets,
+            workspace::list_scene_thumbs,
+            workspace::write_scene_thumb,
+            workspace::write_emoji_raster,
+            scene_doc::read_scene_doc,
+            scene_doc::write_scene_doc,
+            scene_doc::update_project_scene,
+            scene_doc::read_project_manifest_snapshot,
+            scene_doc::write_project_manifest_snapshot,
+            scene_doc::remove_project_scene,
+            scene_doc::move_project_scene,
+            scene_doc::update_project_scene_transition,
+            scene_doc::apply_project_transition_to_all,
+            scene_doc::set_project_theme,
+            scene_doc::set_project_audio,
+            scene_doc::duplicate_scene,
+            scene_doc::copy_scene_to_project,
+            scene_doc::list_project_scenes,
+            scene_doc::ensure_unique_scene_ids,
+            bridge::bridge_claim_request,
+            bridge::bridge_write_response,
+            bridge::begin_bridge_screenshot,
+            bridge::save_bridge_screenshot,
+            bridge::bridge_pending_count,
+            bridge::set_editor_context,
+            bridge::get_editor_context,
+            render_win::ensure_render_window,
+            render_win::close_render_window,
+            render_win::render_heartbeat,
+            render_win::render_window_status,
+            render_win::render_submit_thumbs,
+            render_win::render_cancel_thumbs,
+            render_win::render_take_thumb_job,
+            render_win::thumbs_pending_count,
+            preset_posters::render_submit_preset_poster,
+            preset_posters::render_reset_preset_posters,
+            preset_posters::render_take_preset_poster,
+            preset_posters::render_finish_preset_poster,
+            preset_posters::write_preset_poster,
+            objects::list_objects,
+            objects::read_object,
+            objects::import_object,
+            objects::write_object_thumbnail,
+            theme::list_themes,
+            theme::read_theme,
+            theme::write_theme,
+            theme::delete_theme,
+            theme::write_theme_preview,
+            theme::write_option_preview,
+            theme::list_theme_previews,
+            library::list_user_templates,
+            library::list_user_presets,
+            library::convert_project_to_template,
+            library::save_scene_as_preset,
+            library::duplicate_template_to_workspace,
+            library::duplicate_preset_to_workspace,
+            library::write_user_template_manifest,
+            library::write_user_preset_manifest,
+            library::delete_user_template,
+            library::delete_user_preset,
+            library::set_user_template_orders,
+            library::set_user_preset_orders,
+            library::set_workspace_theme_orders,
+            library::read_builtin_theme,
+            gradients::list_gradients,
+            gradients::write_gradient,
+            gradients::delete_gradient,
+            export_presets::list_export_presets,
+            export_presets::write_export_preset,
+            export_presets::delete_export_preset,
+            workspace::set_last_export_preset,
+            workspace::set_opening_poster_frame,
+            fonts::list_system_fonts,
+            fonts::list_workspace_fonts,
+            fonts::pin_system_font,
+            pty::pty_spawn,
+            pty::pty_write,
+            pty::pty_resize,
+            pty::pty_kill,
+            pty::pty_pause,
+            pty::pty_resume,
+            pty::detect_claude,
+            pty::has_claude_session,
+            claude_update::claude_version_info,
+            claude_update::dismiss_claude_update,
+            media::import_media,
+            media::import_media_bytes,
+            media::write_terminal_snapshot,
+            media::import_chart_data,
+            media::media_meta,
+            media::read_media_thumb,
+            global_screenshots::list_global_screenshots,
+            global_screenshots::import_global_screenshots,
+            global_screenshots::global_screenshot_meta,
+            global_screenshots::copy_to_global_screenshots,
+            global_screenshots::delete_global_screenshot,
+            settings_win::cache_stats,
+            settings_win::clear_media_cache,
+            settings_win::clear_clips_cache,
+            settings_win::sidecar_versions,
+            settings_win::hardware_video_support,
+            updater::check_for_update,
+            updater::set_update_consent,
+            updater::record_skipped_version,
+            updater::install_update_and_relaunch,
+            edit::open_edit,
+            edit::open_edit_named,
+            edit::reset_edit,
+            edit::get_editor_target,
+            edit::load_edit,
+            edit::save_edit,
+            edit::list_edits,
+            edit::render_edit,
+            present::open_present,
+            present::get_present_target,
+            workspace::set_present_options,
+            packs_win::get_packs_target,
+            packs_win::open_pack_export,
+            packs_win::open_pack_import,
+            packs_win::next_queued_pack,
+            theme_editor_win::open_theme_editor_window,
+            theme_editor_win::get_theme_editor_target,
+            fonts::font_embedding_for,
+            fonts::pin_fonts_for_pack,
+            pack::publisher::get_publisher_profile,
+            pack::publisher::set_publisher_profile,
+            pack::publisher::rotate_publisher_key,
+            pack::publisher::list_known_publishers,
+            pack::publisher::forget_publisher,
+            pack::commands::list_packables,
+            pack::commands::plan_pack,
+            pack::commands::build_pack,
+            pack::commands::cancel_pack_build,
+            pack::commands::reveal_pack,
+            pack::commands::inspect_pack,
+            pack::commands::read_pack_scene_source,
+            pack::commands::stage_pack,
+            pack::commands::apply_import,
+            pack::commands::discard_staged_pack,
+            pack::commands::workspace_root_path,
+            pack::commands::open_imported_project,
+            website::website_open,
+            website::website_grant_origin,
+            website::website_revoke_origin,
+            website::website_list_grants,
+            website::website_resume_pending,
+            website::website_set_bounds,
+            website::website_set_zoom,
+            website::website_show,
+            website::website_action,
+            website::website_capture,
+            website::website_import_image,
+            website::website_list_data,
+            website::website_clear_data,
+            website::website_hide,
+            website::website_close,
+            $($dev,)*
+        ])
+    };
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let background = autorun_background();
@@ -1158,7 +1373,7 @@ pub fn run() {
                 .build(),
         );
     }
-    builder
+    let builder = builder
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(ExportState::default())
         .manage(LastExport::default())
@@ -1172,8 +1387,10 @@ pub fn run() {
         .manage(present::PresentState::default())
         .manage(render_win::RenderWindowState::default())
         .manage(render_win::ThumbQueueState::default())
+        .manage(preset_posters::PresetPosterQueueState::default())
         .manage(bridge::EditorContextState::default())
         .manage(packs_win::PacksState::default())
+        .manage(theme_editor_win::ThemeEditorState::default())
         .manage(pack::commands::PackState::default())
         .manage(website::WebsiteState::default())
         .setup(move |app| {
@@ -1387,197 +1604,24 @@ pub fn run() {
                 });
             }
             Ok(())
-        })
-        .invoke_handler(website::guard_invoke(tauri::generate_handler![
-            show_character_palette,
-            sample_screen_colour,
-            start_export,
-            notify_export_done,
-            media::probe_audio,
-            media::delete_media,
-            media::unused_media,
-            media::rename_media,
-            loudness::measure_loudness,
-            beats::beat_cache_load,
-            beats::beat_cache_store,
-            media::import_app_icon,
-            media::import_audio,
-            push_frame,
-            finish_export,
-            cancel_export,
-            extract_clip_frames,
-            read_clip_frame,
-            ensure_clip_previews,
-            hash_file,
-            reveal_in_finder,
-            reveal_last_export,
-            get_autorun_config,
-            finish_autorun,
-            begin_screenshot,
-            save_screenshot,
-            workspace::get_settings,
-            workspace::init_workspace,
-            workspace::default_workspace_root,
-            workspace::user_home_dir,
-            workspace::move_workspace,
-            workspace::list_projects,
-            workspace::create_project,
-            workspace::read_project_manifest,
-            workspace::read_scene_source,
-            workspace::project_fingerprint,
-            workspace::is_project_trusted,
-            workspace::trust_project,
-            workspace::list_project_assets,
-            workspace::list_project_environments,
-            workspace::list_project_media,
-            workspace::set_last_project,
-            workspace::set_hardware_video,
-            workspace::set_export_to_downloads,
-            workspace::set_lag_warning,
-            workspace::rename_project,
-            workspace::set_project_group,
-            workspace::set_project_typography,
-            workspace::duplicate_project,
-            workspace::delete_project,
-            workspace::write_snapshot,
-            workspace::provision_project,
-            workspace::ensure_sample_assets,
-            workspace::list_scene_thumbs,
-            workspace::write_scene_thumb,
-            workspace::write_emoji_raster,
-            scene_doc::read_scene_doc,
-            scene_doc::write_scene_doc,
-            scene_doc::update_project_scene,
-            scene_doc::read_project_manifest_snapshot,
-            scene_doc::write_project_manifest_snapshot,
-            scene_doc::remove_project_scene,
-            scene_doc::move_project_scene,
-            scene_doc::update_project_scene_transition,
-            scene_doc::apply_project_transition_to_all,
-            scene_doc::set_project_theme,
-            scene_doc::set_project_audio,
-            scene_doc::scaffold_scene,
-            scene_doc::duplicate_scene,
-            scene_doc::copy_scene_to_project,
-            scene_doc::list_project_scenes,
-            scene_doc::ensure_unique_scene_ids,
-            bridge::bridge_claim_request,
-            bridge::bridge_write_response,
-            bridge::begin_bridge_screenshot,
-            bridge::save_bridge_screenshot,
-            bridge::bridge_pending_count,
-            bridge::set_editor_context,
-            bridge::get_editor_context,
-            render_win::ensure_render_window,
-            render_win::close_render_window,
-            render_win::render_heartbeat,
-            render_win::render_window_status,
-            render_win::render_submit_thumbs,
-            render_win::render_cancel_thumbs,
-            render_win::render_take_thumb_job,
-            render_win::thumbs_pending_count,
-            objects::list_objects,
-            objects::read_object,
-            objects::import_object,
-            objects::write_object_thumbnail,
-            theme::list_themes,
-            theme::read_theme,
-            theme::write_theme,
-            theme::delete_theme,
-            theme::write_theme_preview,
-            theme::write_option_preview,
-            theme::list_theme_previews,
-            gradients::list_gradients,
-            gradients::write_gradient,
-            gradients::delete_gradient,
-            export_presets::list_export_presets,
-            export_presets::write_export_preset,
-            export_presets::delete_export_preset,
-            workspace::set_last_export_preset,
-            workspace::set_opening_poster_frame,
-            fonts::list_system_fonts,
-            fonts::list_workspace_fonts,
-            fonts::pin_system_font,
-            pty::pty_spawn,
-            pty::pty_write,
-            pty::pty_resize,
-            pty::pty_kill,
-            pty::pty_pause,
-            pty::pty_resume,
-            pty::detect_claude,
-            pty::has_claude_session,
-            claude_update::claude_version_info,
-            claude_update::dismiss_claude_update,
-            media::import_media,
-            media::import_media_bytes,
-            media::write_terminal_snapshot,
-            media::import_chart_data,
-            media::media_meta,
-            media::read_media_thumb,
-            global_screenshots::list_global_screenshots,
-            global_screenshots::import_global_screenshots,
-            global_screenshots::global_screenshot_meta,
-            global_screenshots::copy_to_global_screenshots,
-            global_screenshots::delete_global_screenshot,
-            settings_win::cache_stats,
-            settings_win::clear_media_cache,
-            settings_win::clear_clips_cache,
-            settings_win::sidecar_versions,
-            settings_win::hardware_video_support,
-            updater::check_for_update,
-            updater::set_update_consent,
-            updater::record_skipped_version,
-            updater::install_update_and_relaunch,
-            edit::open_edit,
-            edit::open_edit_named,
-            edit::reset_edit,
-            edit::get_editor_target,
-            edit::load_edit,
-            edit::save_edit,
-            edit::list_edits,
-            edit::render_edit,
-            present::open_present,
-            present::get_present_target,
-            workspace::set_present_options,
-            packs_win::get_packs_target,
-            packs_win::open_pack_export,
-            packs_win::open_pack_import,
-            packs_win::next_queued_pack,
-            fonts::font_embedding_for,
-            fonts::pin_fonts_for_pack,
-            pack::publisher::get_publisher_profile,
-            pack::publisher::set_publisher_profile,
-            pack::publisher::rotate_publisher_key,
-            pack::publisher::list_known_publishers,
-            pack::publisher::forget_publisher,
-            pack::commands::list_packables,
-            pack::commands::plan_pack,
-            pack::commands::build_pack,
-            pack::commands::cancel_pack_build,
-            pack::commands::reveal_pack,
-            pack::commands::inspect_pack,
-            pack::commands::read_pack_scene_source,
-            pack::commands::stage_pack,
-            pack::commands::apply_import,
-            pack::commands::discard_staged_pack,
-            pack::commands::workspace_root_path,
-            pack::commands::open_imported_project,
-            website::website_open,
-            website::website_grant_origin,
-            website::website_revoke_origin,
-            website::website_list_grants,
-            website::website_resume_pending,
-            website::website_set_bounds,
-            website::website_set_zoom,
-            website::website_show,
-            website::website_action,
-            website::website_capture,
-            website::website_import_image,
-            website::website_list_data,
-            website::website_clear_data,
-            website::website_hide,
-            website::website_close
-        ]))
+        });
+
+    #[cfg(debug_assertions)]
+    let builder = builder.invoke_handler(kookaburra_handler![
+        library::dev_write_builtin_theme,
+        library::dev_delete_builtin_theme,
+        library::dev_set_builtin_theme_orders,
+        library::dev_write_template_manifest,
+        library::dev_delete_bundled_template,
+        library::dev_write_preset_manifest,
+        library::dev_delete_bundled_preset,
+        library::dev_set_template_orders,
+        library::dev_set_preset_orders,
+    ]);
+    #[cfg(not(debug_assertions))]
+    let builder = builder.invoke_handler(kookaburra_handler![]);
+
+    builder
         .build(tauri::generate_context!())
         .expect("error while running Kookaburra Cut")
         .run(|app, event| {

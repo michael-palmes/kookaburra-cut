@@ -110,14 +110,13 @@ fn sha256_file(path: &Path) -> Result<String, String> {
     Ok(crate::hex_digest(hasher.finalize().as_slice()))
 }
 
-/// A project-relative asset path, hardened against traversal (`assets/...` only).
-pub(crate) fn resolve_asset(root: &Path, slug: &str, rel: &str) -> Result<PathBuf, String> {
-    workspace::validate_slug(slug)?;
+/// Resolve an asset under the already resolved project folder, including scoped library items.
+pub(crate) fn resolve_asset_in(project: &Path, rel: &str) -> Result<PathBuf, String> {
     let clean = rel.trim_start_matches("./");
     if !clean.starts_with("assets/") || clean.split('/').any(|part| part == "..") {
         return Err(format!("not a project asset path: {rel}"));
     }
-    Ok(root.join(slug).join(clean))
+    Ok(project.join(clean))
 }
 
 /// Whether a sidecar run competes for the background-ffmpeg cap or runs unthrottled.
@@ -243,8 +242,7 @@ pub fn import_audio(
     slug: String,
     source_path: String,
 ) -> Result<String, String> {
-    let root = workspace::require_root(&app, &state)?;
-    workspace::validate_slug(&slug)?;
+    let project = workspace::project_dir_mut(&app, &state, &slug)?;
     let src = std::path::PathBuf::from(&source_path);
     let ext = extension_of(&src);
     if !workspace::AUDIO_EXTENSIONS.contains(&ext.as_str()) {
@@ -253,7 +251,7 @@ pub fn import_audio(
     if !src.is_absolute() || !src.is_file() {
         return Err(format!("audio file not found: {source_path}"));
     }
-    let assets = root.join(&slug).join("assets");
+    let assets = project.join("assets");
     std::fs::create_dir_all(&assets).map_err(|e| e.to_string())?;
     let stem = src
         .file_stem()
@@ -278,8 +276,7 @@ pub async fn import_app_icon(
     slug: String,
     source_path: String,
 ) -> Result<String, String> {
-    let root = workspace::require_root(&app, &state)?;
-    workspace::validate_slug(&slug)?;
+    let project = workspace::project_dir_mut(&app, &state, &slug)?;
     let src = std::path::PathBuf::from(&source_path);
     let ext = extension_of(&src);
     // gif rides along since the media grid lists it as an image; ffmpeg takes frame one.
@@ -289,7 +286,7 @@ pub async fn import_app_icon(
     if !src.is_absolute() || !src.is_file() {
         return Err(format!("image not found: {source_path}"));
     }
-    let assets = root.join(&slug).join("assets");
+    let assets = project.join("assets");
     std::fs::create_dir_all(&assets).map_err(|e| e.to_string())?;
     let dest = assets.join("app-icon.png");
     let tmp = assets.join("app-icon.tmp.png");
@@ -524,9 +521,8 @@ pub fn delete_media(
     slug: String,
     rel: String,
 ) -> Result<(), String> {
-    workspace::validate_slug(&slug)?;
     validate_asset_rel(&rel)?;
-    let project = workspace::require_root(&app, &state)?.join(&slug);
+    let project = workspace::project_dir_mut(&app, &state, &slug)?;
     let path = project.join(&rel);
     if !path.is_file() {
         return Err(format!("no asset at {rel}"));
@@ -554,10 +550,8 @@ pub fn unused_media(
     state: State<'_, SettingsState>,
     slug: String,
 ) -> Result<Vec<UnusedAsset>, String> {
-    let root = workspace::require_root(&app, &state)?;
-    workspace::validate_slug(&slug)?;
-    let rels = workspace::project_media_rels(&root, &slug)?;
-    let project = root.join(&slug);
+    let project = workspace::project_dir(&app, &state, &slug)?;
+    let rels = workspace::project_media_rels(&project)?;
     let texts = project_texts(&project);
     let backfilled: std::collections::HashSet<String> = workspace::backfilled_sample_names(&app)
         .into_iter()
@@ -591,7 +585,6 @@ pub fn rename_media(
     rel: String,
     new_name: String,
 ) -> Result<String, String> {
-    workspace::validate_slug(&slug)?;
     validate_asset_rel(&rel)?;
     let name = new_name.trim();
     if name.is_empty() || name.contains('/') || name.contains("..") || name.starts_with('.') {
@@ -608,7 +601,7 @@ pub fn rename_media(
     if !old_ext.eq_ignore_ascii_case(new_ext) {
         return Err(format!("keep the .{old_ext} extension"));
     }
-    let project = workspace::require_root(&app, &state)?.join(&slug);
+    let project = workspace::project_dir_mut(&app, &state, &slug)?;
     let from = project.join(&rel);
     if !from.is_file() {
         return Err(format!("no asset at {rel}"));
@@ -659,9 +652,7 @@ pub fn import_media(
     slug: String,
     paths: Vec<String>,
 ) -> Result<Vec<String>, String> {
-    let root = workspace::require_root(&app, &state)?;
-    workspace::validate_slug(&slug)?;
-    let assets = root.join(&slug).join("assets");
+    let assets = workspace::project_dir_mut(&app, &state, &slug)?.join("assets");
     std::fs::create_dir_all(&assets).map_err(|e| e.to_string())?;
 
     let mut imported = Vec::new();
@@ -707,7 +698,6 @@ pub fn import_media_bytes(
     request: tauri::ipc::Request,
 ) -> Result<Option<String>, String> {
     let slug = request_header(&request, "x-kookaburra-slug")?;
-    workspace::validate_slug(&slug)?;
     let name = plain_file_name(&request_header(&request, "x-kookaburra-name")?)?;
     let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else {
         return Err("import_media_bytes expects a raw binary body".into());
@@ -715,8 +705,7 @@ pub fn import_media_bytes(
     let Some((base, ext)) = media_stem_and_ext(Path::new(&name)) else {
         return Ok(None);
     };
-    let root = workspace::require_root(&app, &state)?;
-    let assets = root.join(&slug).join("assets");
+    let assets = workspace::project_dir_mut(&app, &state, &slug)?.join("assets");
     std::fs::create_dir_all(&assets).map_err(|e| e.to_string())?;
     let candidate = free_asset_name(&assets, &base, &ext);
     std::fs::write(assets.join(&candidate), bytes).map_err(|e| e.to_string())?;
@@ -731,7 +720,6 @@ pub fn write_terminal_snapshot(
     request: tauri::ipc::Request,
 ) -> Result<String, String> {
     let slug = request_header(&request, "x-kookaburra-slug")?;
-    workspace::validate_slug(&slug)?;
     let stem = request_header(&request, "x-kookaburra-stem")?;
     if stem.is_empty()
         || !stem
@@ -743,8 +731,7 @@ pub fn write_terminal_snapshot(
     let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else {
         return Err("write_terminal_snapshot expects a raw binary body".into());
     };
-    let root = workspace::require_root(&app, &state)?;
-    let assets = root.join(&slug).join("assets");
+    let assets = workspace::project_dir_mut(&app, &state, &slug)?.join("assets");
     std::fs::create_dir_all(&assets).map_err(|e| e.to_string())?;
     let name = format!("terminal-{stem}.png");
     let tmp = assets.join(format!("terminal-{stem}.tmp.png"));
@@ -763,7 +750,6 @@ pub fn import_chart_data(
     request: tauri::ipc::Request,
 ) -> Result<String, String> {
     let slug = request_header(&request, "x-kookaburra-slug")?;
-    workspace::validate_slug(&slug)?;
     let name = plain_file_name(&request_header(&request, "x-kookaburra-name")?)?;
     let name = Path::new(&name);
     let ext = extension_of(name);
@@ -781,8 +767,7 @@ pub fn import_chart_data(
     if base.is_empty() {
         base = "data".into();
     }
-    let root = workspace::require_root(&app, &state)?;
-    let assets = root.join(&slug).join("assets");
+    let assets = workspace::project_dir_mut(&app, &state, &slug)?.join("assets");
     std::fs::create_dir_all(&assets).map_err(|e| e.to_string())?;
     let candidate = free_asset_name(&assets, &base, &ext);
     std::fs::write(assets.join(&candidate), bytes).map_err(|e| e.to_string())?;
@@ -797,8 +782,7 @@ pub async fn media_meta(
     slug: String,
     rel: String,
 ) -> Result<MediaMeta, String> {
-    let root = workspace::require_root(&app, &state)?;
-    let abs = resolve_asset(&root, &slug, &rel)?;
+    let abs = resolve_asset_in(&workspace::project_dir(&app, &state, &slug)?, &rel)?;
     if !abs.is_file() {
         return Err(format!("asset not found: {rel}"));
     }

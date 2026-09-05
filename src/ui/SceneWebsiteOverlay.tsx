@@ -1,12 +1,7 @@
 import { listen } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import { useCameraEditStore } from "../engine/cameraEditStore";
-import {
-  type LoadedProject,
-  sceneFileStem,
-  workspaceProjectPath,
-  workspaceSlug,
-} from "../engine/project";
+import { type LoadedProject, projectFolderPath, sceneFileStem } from "../engine/project";
 import type { SceneDoc } from "../engine/sceneDocSchema";
 import { resolveSceneWebsite, sceneWebsiteLayout } from "../engine/sceneWebsite";
 import {
@@ -100,8 +95,7 @@ export function SceneWebsiteOverlay({
   const website = useMemo(() => resolveSceneWebsite(doc ?? undefined), [doc]);
   const playing = useEditorStore((state) => state.playing);
   const cameraArmed = useCameraEditStore((state) => state.armedTool !== null);
-  const slug = workspaceSlug(project.id);
-  const projectPath = workspaceProjectPath(slug);
+  const projectPath = projectFolderPath(project.id);
   const stem = sceneFileStem(project.sceneFiles[sceneIndex] ?? "");
   const key = sceneWebsiteKey(project.id, stem);
   const activeKeyRef = useRef(key);

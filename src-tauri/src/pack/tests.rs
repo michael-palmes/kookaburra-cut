@@ -495,6 +495,31 @@ const SOURCE_TREE: &[(&str, &[u8])] = &[
         b"{\"permissions\":{}}",
     ),
     (
+        "templates/acme-promo/template.json",
+        b"{\"version\":1,\"name\":\"Acme Promo\"}",
+    ),
+    (
+        "templates/acme-promo/project.json",
+        b"{\"id\":\"acme-promo\",\"version\":9}",
+    ),
+    (
+        "templates/acme-promo/scenes/01-hero.tsx",
+        b"export default defineScene({});\n",
+    ),
+    ("templates/acme-promo/poster.jpg", b"\xff\xd8\xff poster"),
+    (
+        "presets/stat-hero/preset.json",
+        b"{\"version\":1,\"name\":\"Stat hero\"}",
+    ),
+    (
+        "presets/stat-hero/project.json",
+        b"{\"id\":\"stat-hero\",\"version\":9}",
+    ),
+    (
+        "presets/stat-hero/scenes/01-stat.tsx",
+        b"export default defineScene({});\n",
+    ),
+    (
         "themes/acme-dark/theme.json",
         b"{\"id\":\"acme-dark\",\"version\":9}",
     ),
@@ -562,6 +587,30 @@ fn full_manifest(source: &Path) -> PackManifest {
                 manifest_version: 9,
                 scene_count: 1,
                 scene_files: vec!["01-hero.tsx".into()],
+                duration_ms: 4000,
+                formats: vec!["16:9".into()],
+                theme_id: "ws:acme-dark".into(),
+                requires: Default::default(),
+                has_scene_code: true,
+            }],
+            templates: vec![PackProject {
+                base: base("acme-promo"),
+                root: "payload/templates/acme-promo".into(),
+                manifest_version: 9,
+                scene_count: 1,
+                scene_files: vec!["01-hero.tsx".into()],
+                duration_ms: 4000,
+                formats: vec!["16:9".into()],
+                theme_id: "ws:acme-dark".into(),
+                requires: Default::default(),
+                has_scene_code: true,
+            }],
+            presets: vec![PackProject {
+                base: base("stat-hero"),
+                root: "payload/presets/stat-hero".into(),
+                manifest_version: 9,
+                scene_count: 1,
+                scene_files: vec!["01-stat.tsx".into()],
                 duration_ms: 4000,
                 formats: vec!["16:9".into()],
                 theme_id: "ws:acme-dark".into(),
@@ -699,6 +748,275 @@ fn round_trip_write_inspect_stage() {
     let mut outside = workspace.snapshot();
     outside.retain(|(path, _)| !path.starts_with(STATE_DIR_NAME));
     assert_eq!(outside, Workspace::new("rt-reference").snapshot());
+}
+
+// Templates and presets, end to end.
+
+/// One author workspace: a template and a preset, both bound to the same workspace theme.
+fn build_library_workspace(root: &Path) {
+    let project = |id: &str, scene: &str| {
+        format!(
+            r#"{{"id":"{id}","name":"{id}","version":2,"themeId":"ws:acme-dark","formats":["16:9"],
+                "scenes":[{{"file":"scenes/{scene}.tsx","durationMs":2000}}]}}"#
+        )
+    };
+    write_file(
+        &root.join("templates/acme-promo/template.json"),
+        br#"{"version":1,"name":"Acme Promo","tagline":"","order":10,"status":"stable","source":"user"}"#,
+    );
+    write_file(
+        &root.join("templates/acme-promo/project.json"),
+        project("acme-promo", "01-hero").as_bytes(),
+    );
+    write_file(
+        &root.join("templates/acme-promo/scenes/01-hero.tsx"),
+        b"export default defineScene({});\n",
+    );
+    write_file(
+        &root.join("templates/acme-promo/scenes/01-hero.json"),
+        br#"{"version":1,"themeId":"ws:acme-dark","text":{"title":"Hi"}}"#,
+    );
+    write_file(
+        &root.join("presets/stat-hero/preset.json"),
+        br#"{"version":1,"name":"Stat hero","tagline":"","tags":[],"order":10,"status":"stable","source":"user"}"#,
+    );
+    write_file(
+        &root.join("presets/stat-hero/project.json"),
+        project("stat-hero", "01-stat").as_bytes(),
+    );
+    write_file(
+        &root.join("presets/stat-hero/scenes/01-stat.tsx"),
+        b"export default defineScene({});\n",
+    );
+    write_file(
+        &root.join("themes/acme-dark/theme.json"),
+        br#"{"version":2,"name":"Acme Dark","mode":"dark"}"#,
+    );
+}
+
+/// The manifest half of `build_pack`, without the `AppHandle` a command needs.
+fn write_pack_from(closure: &super::deps::Closure, out: &Path) {
+    let files: Vec<PackFile> = closure
+        .files
+        .iter()
+        .map(|f| PackFile {
+            path: f.archive_path.clone(),
+            sha256: f.sha256.clone(),
+            bytes: f.bytes,
+        })
+        .collect();
+    let manifest = PackManifest {
+        format: PACK_FORMAT.into(),
+        format_version: PACK_FORMAT_VERSION,
+        app_version: APP_VERSION.into(),
+        min_app_version: "0.1.0".into(),
+        pack: PackMeta {
+            name: "Acme Library".into(),
+            description: None,
+            created_at: "2026-08-23T00:00:00Z".into(),
+        },
+        publisher: publisher(PUBLISHER_SEED),
+        contents: closure.contents.clone(),
+        totals: PackTotals {
+            files: files.len(),
+            bytes: files.iter().map(|f| f.bytes).sum(),
+        },
+        files,
+    };
+    let manifest_bytes = serde_json::to_vec(&manifest).expect("manifest");
+    let signature = signing_key(PUBLISHER_SEED).sign(&manifest_bytes).to_bytes();
+    let entries: Vec<PackEntry> = closure
+        .files
+        .iter()
+        .map(|f| PackEntry {
+            archive_path: f.archive_path.clone(),
+            source: f.source.clone(),
+        })
+        .collect();
+    write_pack(
+        out,
+        &manifest_bytes,
+        &signature,
+        &entries,
+        |_, _| {},
+        &|| false,
+    )
+    .expect("write_pack");
+}
+
+fn json_at(path: &Path) -> serde_json::Value {
+    let text = std::fs::read_to_string(path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+    serde_json::from_str(&text).expect("json")
+}
+
+fn field(path: &Path, key: &str) -> String {
+    json_at(path)
+        .get(key)
+        .and_then(|v| v.as_str())
+        .unwrap_or_default()
+        .to_owned()
+}
+
+/// The whole carriage: a template and a preset are packed with the theme they name, imported into a workspace that
+/// already owns both slugs, and land renamed, re-pointed at the renamed theme, and stamped as coming from a pack.
+#[test]
+fn templates_and_presets_round_trip_into_another_workspace() {
+    use super::apply::{apply_import, ItemOutcome};
+    use super::conflicts::plan_conflicts;
+    use super::deps::{item_key, resolve_closure, PackSelection};
+    use super::model::{ItemKind, Resolution};
+    use std::collections::HashMap;
+
+    let author = TempDir::new("lib-author");
+    let out = TempDir::new("lib-out");
+    let recipient = TempDir::new("lib-recipient");
+    build_library_workspace(author.path());
+
+    let selection = PackSelection {
+        templates: vec!["acme-promo".into()],
+        presets: vec!["stat-hero".into()],
+        ..Default::default()
+    };
+    let closure = resolve_closure(author.path(), &selection).expect("closure");
+
+    // The theme rides along because both library items name it, exactly as it would for a project.
+    assert_eq!(closure.contents.templates.len(), 1);
+    assert_eq!(closure.contents.presets.len(), 1);
+    assert_eq!(closure.contents.themes.len(), 1);
+    // The name comes from the item's own manifest, which is the only place a rename lands.
+    assert_eq!(closure.contents.templates[0].base.name, "Acme Promo");
+    assert_eq!(closure.contents.presets[0].base.name, "Stat hero");
+    assert_eq!(
+        closure.required_by.get("theme:acme-dark"),
+        Some(&vec![
+            "preset:stat-hero".to_owned(),
+            "template:acme-promo".to_owned()
+        ])
+    );
+    let paths: Vec<&str> = closure
+        .files
+        .iter()
+        .map(|f| f.archive_path.as_str())
+        .collect();
+    assert!(paths.contains(&"payload/templates/acme-promo/template.json"));
+    assert!(paths.contains(&"payload/presets/stat-hero/preset.json"));
+
+    let archive = out.path().join("acme-library.kbpack");
+    write_pack_from(&closure, &archive);
+
+    // The recipient already owns both slugs, so each keeps both.
+    write_file(
+        &recipient.path().join("templates/acme-promo/template.json"),
+        br#"{"version":1,"name":"Mine","source":"user"}"#,
+    );
+    write_file(
+        &recipient.path().join("templates/acme-promo/project.json"),
+        br#"{"id":"acme-promo","name":"Mine"}"#,
+    );
+    write_file(
+        &recipient.path().join("themes/acme-dark/theme.json"),
+        br#"{"version":2,"name":"My Acme Dark"}"#,
+    );
+
+    let inspection = inspect(&archive).expect("inspect");
+    let staged = stage(
+        &archive,
+        recipient.path(),
+        &inspection.manifest,
+        |_, _| {},
+        &|| false,
+    )
+    .expect("stage");
+
+    let plan = plan_conflicts(recipient.path(), &staged, &selection_with_theme()).expect("plan");
+    let template = plan
+        .items
+        .iter()
+        .find(|i| i.kind == ItemKind::Template)
+        .expect("template planned");
+    assert_eq!(template.keep_both_slug.as_deref(), Some("acme-promo-2"));
+    assert!(plan.items.iter().any(|i| i.kind == ItemKind::Preset));
+
+    let resolutions: HashMap<String, Resolution> = [
+        (item_key(ItemKind::Theme, "acme-dark"), Resolution::KeepBoth),
+        (
+            item_key(ItemKind::Template, "acme-promo"),
+            Resolution::KeepBoth,
+        ),
+        (item_key(ItemKind::Preset, "stat-hero"), Resolution::Replace),
+    ]
+    .into_iter()
+    .collect();
+
+    let outcome =
+        apply_import(recipient.path(), staged, &resolutions, |_, _, _| {}).expect("apply");
+    assert_eq!(outcome.stopped_at, None, "{:?}", outcome.results);
+
+    let landed = |kind: ItemKind| {
+        outcome
+            .results
+            .iter()
+            .find(|r| r.kind == kind)
+            .unwrap_or_else(|| panic!("no result for {kind:?}"))
+            .clone()
+    };
+    assert_eq!(landed(ItemKind::Template).outcome, ItemOutcome::KeptBoth);
+    assert_eq!(landed(ItemKind::Template).slug, "acme-promo-2");
+    assert_eq!(landed(ItemKind::Preset).outcome, ItemOutcome::Added);
+
+    let root = recipient.path();
+    // The incumbent template is untouched, the incoming one landed beside it.
+    assert_eq!(
+        field(&root.join("templates/acme-promo/template.json"), "name"),
+        "Mine"
+    );
+    let manifest = root.join("templates/acme-promo-2/template.json");
+    assert_eq!(field(&manifest, "name"), "Acme Promo");
+    assert_eq!(field(&manifest, "source"), "pack");
+    assert_eq!(
+        field(&root.join("presets/stat-hero/preset.json"), "source"),
+        "pack"
+    );
+
+    // Both library items follow the theme the keep-both moved, in the manifest and in the sidecar.
+    assert_eq!(
+        field(&root.join("templates/acme-promo-2/project.json"), "themeId"),
+        "ws:acme-dark-2"
+    );
+    assert_eq!(
+        field(&root.join("templates/acme-promo-2/project.json"), "id"),
+        "acme-promo-2"
+    );
+    assert_eq!(
+        field(
+            &root.join("templates/acme-promo-2/scenes/01-hero.json"),
+            "themeId"
+        ),
+        "ws:acme-dark-2"
+    );
+    assert_eq!(
+        field(&root.join("presets/stat-hero/project.json"), "themeId"),
+        "ws:acme-dark-2"
+    );
+    assert!(root
+        .join("templates/acme-promo-2/scenes/01-hero.tsx")
+        .is_file());
+    assert!(root.join("presets/stat-hero/scenes/01-stat.tsx").is_file());
+    assert_eq!(
+        field(&root.join("themes/acme-dark/theme.json"), "name"),
+        "My Acme Dark"
+    );
+    assert!(root.join("themes/acme-dark-2/theme.json").is_file());
+}
+
+/// The import-side selection: the same three items, with the theme the closure pulled in.
+fn selection_with_theme() -> super::deps::PackSelection {
+    super::deps::PackSelection {
+        templates: vec!["acme-promo".into()],
+        presets: vec!["stat-hero".into()],
+        themes: vec!["acme-dark".into()],
+        ..Default::default()
+    }
 }
 
 #[test]
@@ -1172,6 +1490,33 @@ fn refuses_hostile_paths_in_contents() {
         "expected a path refusal, got {}",
         error.variant()
     );
+}
+
+/// A template and a preset root reach `apply` exactly as a project root does, so they take the same check.
+#[test]
+fn refuses_hostile_library_roots_in_contents() {
+    for tag in ["template-root", "preset-root"] {
+        let source = TempDir::new(tag);
+        let escaping = PackProject {
+            root: "/etc".into(),
+            ..Default::default()
+        };
+        let mut contents = PackContents::default();
+        if tag == "template-root" {
+            contents.templates.push(escaping);
+        } else {
+            contents.presets.push(escaping);
+        }
+        let archive = Fixture::valid().contents(contents).build(source.path());
+        let error = inspect(&archive)
+            .err()
+            .unwrap_or_else(|| panic!("{tag} must be refused"));
+        assert!(
+            error.variant().starts_with("path"),
+            "{tag}: expected a path refusal, got {}",
+            error.variant()
+        );
+    }
 }
 
 /// Cancellation is checked per entry and unwinds through the same Drop as a refusal.

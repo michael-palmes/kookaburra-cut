@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "name": "Stat counter",
+  "text": {
+    "headline": "Now it takes",
+    "unit": "seconds"
+  },
+  "textAnimation": {
+    "in": "fade-up",
+    "out": "fade",
+    "stagger": "word",
+    "staggerMs": 90
+  },
+  "backdrop": {
+    "type": "none"
+  },
+  "background": {
+    "type": "scene3d",
+    "look": "dust-drift",
+    "themeColors": true,
+    "speed": 1,
+    "params": {
+      "count": 900,
+      "drift": 1,
+      "innerRadius": 10,
+      "opacity": 0.95,
+      "outerRadius": 26,
+      "pointSize": 0.09,
+      "twinkle": 0.6
+    },
+    "backing": {
+      "type": "gradient",
+      "gradient": "brand"
+    }
+  }
+}

@@ -3,7 +3,7 @@
 import { useAssetVersionStore } from "../store/assetVersionStore";
 import type { Theme } from "../theme/tokens";
 import { writeTerminalSnapshot } from "./media";
-import { isWorkspaceProjectId, workspaceSlug } from "./project";
+import { isWorkspaceProjectId, nativeProjectSlug } from "./project";
 import type { ResolvedSceneTerminal } from "./sceneTerminal";
 import { rasterTerminalSnapshot } from "./sceneTerminalRaster";
 import { resolveTerminalColours } from "./sceneTerminalTheme";
@@ -20,7 +20,7 @@ export async function bakeTerminalSnapshot(
   }
   const colours = resolveTerminalColours(terminal.theme, theme);
   const bytes = await rasterTerminalSnapshot(terminal, colours);
-  const rel = await writeTerminalSnapshot(workspaceSlug(projectId), sceneStem, bytes);
+  const rel = await writeTerminalSnapshot(nativeProjectSlug(projectId), sceneStem, bytes);
   useAssetVersionStore.getState().bump(projectId, rel);
   return rel;
 }

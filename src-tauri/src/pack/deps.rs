@@ -37,6 +37,10 @@ pub struct PackSelection {
     #[serde(default)]
     pub projects: Vec<String>,
     #[serde(default)]
+    pub templates: Vec<String>,
+    #[serde(default)]
+    pub presets: Vec<String>,
+    #[serde(default)]
     pub themes: Vec<String>,
     /// `"<family>@<weight>"`, the pack font key.
     #[serde(default)]
@@ -63,6 +67,8 @@ impl Default for PackSelection {
     fn default() -> Self {
         Self {
             projects: Vec::new(),
+            templates: Vec::new(),
+            presets: Vec::new(),
             themes: Vec::new(),
             fonts: Vec::new(),
             objects: Vec::new(),
@@ -80,6 +86,8 @@ impl PackSelection {
     fn picked(&self, kind: ItemKind, key: &str) -> bool {
         let list = match kind {
             ItemKind::Project => &self.projects,
+            ItemKind::Template => &self.templates,
+            ItemKind::Preset => &self.presets,
             ItemKind::Theme => &self.themes,
             ItemKind::Font => &self.fonts,
             ItemKind::Object => &self.objects,
@@ -95,6 +103,8 @@ impl PackSelection {
 pub fn kind_tag(kind: ItemKind) -> &'static str {
     match kind {
         ItemKind::Project => "project",
+        ItemKind::Template => "template",
+        ItemKind::Preset => "preset",
         ItemKind::Theme => "theme",
         ItemKind::Font => "font",
         ItemKind::Object => "object",
@@ -147,6 +157,12 @@ pub struct ReviewedAsset {
 #[serde(rename_all = "camelCase", tag = "kind", content = "detail")]
 pub enum ClosureWarning {
     MissingProject {
+        slug: String,
+    },
+    MissingTemplate {
+        slug: String,
+    },
+    MissingPreset {
         slug: String,
     },
     MissingTheme {
@@ -207,6 +223,8 @@ impl ClosureWarning {
     pub fn message(&self) -> String {
         match self {
             Self::MissingProject { slug } => format!("No project named \"{slug}\"."),
+            Self::MissingTemplate { slug } => format!("No template named \"{slug}\"."),
+            Self::MissingPreset { slug } => format!("No scene preset named \"{slug}\"."),
             Self::MissingTheme { slug, required_by } => {
                 format!("{required_by} uses the theme \"{slug}\", which is not in your workspace.")
             }
@@ -509,12 +527,15 @@ struct Resolver<'a> {
     required_by: BTreeMap<String, Vec<String>>,
     warnings: Vec<ClosureWarning>,
     projects: BTreeSet<String>,
+    templates: BTreeSet<String>,
+    presets: BTreeSet<String>,
     themes: BTreeSet<String>,
     fonts: BTreeSet<String>,
     objects: BTreeSet<String>,
     gradients: BTreeSet<String>,
     export_presets: BTreeSet<String>,
     screenshots: BTreeSet<String>,
+    /// Keyed `<kind>:<slug>`, because projects, templates and presets are all resolved the same way.
     project_requires: BTreeMap<String, PackRequires>,
     theme_requires: BTreeMap<String, PackRequires>,
     environments: Vec<(String, String)>,
@@ -530,6 +551,8 @@ impl<'a> Resolver<'a> {
             required_by: BTreeMap::new(),
             warnings: Vec::new(),
             projects: BTreeSet::new(),
+            templates: BTreeSet::new(),
+            presets: BTreeSet::new(),
             themes: BTreeSet::new(),
             fonts: BTreeSet::new(),
             objects: BTreeSet::new(),
@@ -590,6 +613,12 @@ impl<'a> Resolver<'a> {
         for slug in &self.selection.projects.clone() {
             self.require(ItemKind::Project, slug, None);
         }
+        for slug in &self.selection.templates.clone() {
+            self.require(ItemKind::Template, slug, None);
+        }
+        for slug in &self.selection.presets.clone() {
+            self.require(ItemKind::Preset, slug, None);
+        }
         for slug in &self.selection.themes.clone() {
             self.require(ItemKind::Theme, slug, None);
         }
@@ -611,7 +640,9 @@ impl<'a> Resolver<'a> {
 
         while let Some((kind, key, _)) = self.queue.pop() {
             match kind {
-                ItemKind::Project => self.visit_project(&key),
+                ItemKind::Project | ItemKind::Template | ItemKind::Preset => {
+                    self.visit_project(kind, &key)
+                }
                 ItemKind::Theme => self.visit_theme(&key),
                 ItemKind::Font => self.visit_font(&key),
                 ItemKind::Object => self.visit_object(&key),
@@ -623,22 +654,43 @@ impl<'a> Resolver<'a> {
         self.check_environments();
     }
 
-    fn visit_project(&mut self, slug: &str) {
-        let dir = self.root.join(slug);
-        if !dir.join(MANIFEST_FILENAME).is_file() {
-            self.warnings.push(ClosureWarning::MissingProject {
-                slug: slug.to_owned(),
+    /// Projects, templates and presets are all project folders, so one walk serves all three.
+    fn visit_project(&mut self, kind: ItemKind, slug: &str) {
+        let dir = self.dir(kind).join(slug);
+        let marked = kind
+            .marker_file()
+            .map(|marker| dir.join(marker).is_file())
+            .unwrap_or(false);
+        if !marked || !dir.join(MANIFEST_FILENAME).is_file() {
+            self.warnings.push(match kind {
+                ItemKind::Template => ClosureWarning::MissingTemplate {
+                    slug: slug.to_owned(),
+                },
+                ItemKind::Preset => ClosureWarning::MissingPreset {
+                    slug: slug.to_owned(),
+                },
+                _ => ClosureWarning::MissingProject {
+                    slug: slug.to_owned(),
+                },
             });
             return;
         }
-        self.projects.insert(slug.to_owned());
-        let label = item_key(ItemKind::Project, slug);
+        match kind {
+            ItemKind::Template => self.templates.insert(slug.to_owned()),
+            ItemKind::Preset => self.presets.insert(slug.to_owned()),
+            _ => self.projects.insert(slug.to_owned()),
+        };
+        let label = item_key(kind, slug);
+        let rel = match kind.workspace_dir() {
+            Some(library) => format!("{library}/{slug}"),
+            None => slug.to_owned(),
+        };
         let mut refs = DocRefs::default();
 
         match read_json(&dir.join(MANIFEST_FILENAME)) {
             Ok(doc) => scan_value(&doc, None, &mut refs),
             Err(detail) => self.warnings.push(ClosureWarning::UnreadableDocument {
-                path: format!("{slug}/{MANIFEST_FILENAME}"),
+                path: format!("{rel}/{MANIFEST_FILENAME}"),
                 detail,
             }),
         }
@@ -650,7 +702,7 @@ impl<'a> Resolver<'a> {
                 match read_json(&path) {
                     Ok(doc) => scan_value(&doc, None, &mut refs),
                     Err(detail) => self.warnings.push(ClosureWarning::UnreadableDocument {
-                        path: format!("{slug}/scenes/{name}"),
+                        path: format!("{rel}/scenes/{name}"),
                         detail,
                     }),
                 }
@@ -707,7 +759,7 @@ impl<'a> Resolver<'a> {
         requires.objects.sort();
         requires.fonts.sort();
         requires.fonts.dedup();
-        self.project_requires.insert(slug.to_owned(), requires);
+        self.project_requires.insert(label, requires);
     }
 
     fn visit_theme(&mut self, slug: &str) {
@@ -874,11 +926,16 @@ impl<'a> Resolver<'a> {
     /// A theme's environment map lives in a PROJECT's assets, so it only travels when a selected project carries it.
     fn check_environments(&mut self) {
         let environments = std::mem::take(&mut self.environments);
+        let carriers: Vec<PathBuf> = [
+            (ItemKind::Project, &self.projects),
+            (ItemKind::Template, &self.templates),
+            (ItemKind::Preset, &self.presets),
+        ]
+        .iter()
+        .flat_map(|(kind, slugs)| slugs.iter().map(|slug| self.dir(*kind).join(slug)))
+        .collect();
         for (label, source) in environments {
-            let carried = self
-                .projects
-                .iter()
-                .any(|slug| self.root.join(slug).join(&source).is_file());
+            let carried = carriers.iter().any(|dir| dir.join(&source).is_file());
             if !carried {
                 self.warnings.push(ClosureWarning::MissingEnvironment {
                     path: source,
@@ -960,11 +1017,33 @@ pub fn resolve_closure_with(
     let mut warnings = std::mem::take(&mut resolver.warnings);
 
     for slug in resolver.projects.clone() {
-        let (project, staged, mut assets) =
-            build_project(root, &slug, &resolver, selection, &mut warnings, mode);
+        let (project, staged, mut assets) = build_project(
+            root,
+            ItemKind::Project,
+            &slug,
+            &resolver,
+            selection,
+            &mut warnings,
+            mode,
+        );
         contents.projects.push(project);
         push_files(&mut files, staged);
         reviewed.append(&mut assets);
+    }
+    for (kind, slugs) in [
+        (ItemKind::Template, resolver.templates.clone()),
+        (ItemKind::Preset, resolver.presets.clone()),
+    ] {
+        for slug in slugs {
+            let (item, staged, _) =
+                build_project(root, kind, &slug, &resolver, selection, &mut warnings, mode);
+            if kind == ItemKind::Template {
+                contents.templates.push(item);
+            } else {
+                contents.presets.push(item);
+            }
+            push_files(&mut files, staged);
+        }
     }
     for slug in resolver.themes.clone() {
         let (theme, staged) = build_theme(root, &slug, &resolver, &mut warnings, mode);
@@ -1033,18 +1112,27 @@ fn push_files(out: &mut Vec<ClosureFile>, staged: Vec<StagedFile>) {
 
 fn build_project(
     root: &Path,
+    kind: ItemKind,
     slug: &str,
     resolver: &Resolver<'_>,
     selection: &PackSelection,
     warnings: &mut Vec<ClosureWarning>,
     mode: HashMode,
 ) -> (PackProject, Vec<StagedFile>, Vec<ReviewedAsset>) {
-    let dir = root.join(slug);
+    let dir = root
+        .join(kind.workspace_dir().unwrap_or_default())
+        .join(slug);
     let doc = read_json(&dir.join(MANIFEST_FILENAME)).unwrap_or(Value::Null);
     let summary = crate::workspace::manifest_summary(&dir);
-    let name = summary
-        .as_ref()
-        .map(|(n, _, _)| n.clone())
+    // A template or preset is renamed in its own manifest, never in `project.json`, and `local_name` reads the same
+    // file for the recipient's side, so both halves of a conflict row name the item the same way.
+    let name = kind
+        .marker_file()
+        .filter(|marker| *marker != MANIFEST_FILENAME)
+        .and_then(|marker| read_json(&dir.join(marker)).ok())
+        .and_then(|manifest| str_field(&manifest, "name"))
+        .filter(|name| !name.is_empty())
+        .or_else(|| summary.as_ref().map(|(n, _, _)| n.clone()))
         .unwrap_or_else(|| slug.to_owned());
 
     let mut candidates: Vec<(String, PathBuf)> = Vec::new();
@@ -1055,7 +1143,8 @@ fn build_project(
     let mut reviewed = Vec::new();
     let mut dropped: BTreeSet<String> = BTreeSet::new();
     for (rel, path) in &candidates {
-        if !rel.starts_with("assets/") {
+        // The unused-file review is a project feature: a template or preset carries only what it was saved with.
+        if kind != ItemKind::Project || !rel.starts_with("assets/") {
             continue;
         }
         let flattened = rel.ends_with(FLATTENED_SUFFIX);
@@ -1090,7 +1179,7 @@ fn build_project(
         candidates
             .into_iter()
             .map(|(rel, path)| {
-                let archive = archive_path(ItemKind::Project, &format!("{slug}/{rel}"));
+                let archive = archive_path(kind, &format!("{slug}/{rel}"));
                 (rel, archive, path)
             })
             .collect(),
@@ -1115,7 +1204,7 @@ fn build_project(
 
     let project = PackProject {
         base: base_from(slug, &name, &staged),
-        root: format!("payload/{}/{slug}", ItemKind::Project.payload_dir()),
+        root: format!("payload/{}/{slug}", kind.payload_dir()),
         manifest_version: doc.get("version").and_then(Value::as_u64).unwrap_or(1) as u32,
         scene_count: scene_files.len(),
         scene_files,
@@ -1124,7 +1213,7 @@ fn build_project(
         theme_id: str_field(&doc, "themeId").unwrap_or_default(),
         requires: resolver
             .project_requires
-            .get(slug)
+            .get(&item_key(kind, slug))
             .cloned()
             .unwrap_or_default(),
         has_scene_code: true,

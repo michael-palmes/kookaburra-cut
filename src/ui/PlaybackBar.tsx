@@ -8,13 +8,21 @@ import {
   useState,
 } from "react";
 import { isExporting } from "../engine/exportState";
-import { type AudioMarkersSpec, type LoadedProject, sceneFileStem } from "../engine/project";
+import {
+  type AudioMarkersSpec,
+  type LoadedProject,
+  nativeProjectSlug,
+  parseProjectId,
+  sceneFileStem,
+} from "../engine/project";
 import { ensureSceneThumbs, listCachedSceneThumbs } from "../engine/sceneThumbs";
 import { activeSceneIndex } from "../engine/sceneTimeline";
 import { useUiStore } from "../store/uiStore";
 import { BeatLane } from "./BeatLane";
 import { ContextMenu, type ContextMenuState } from "./ContextMenu";
 import { formatSceneLengthMs, parseSceneLengthMs } from "./durationText";
+import { PresetGalleryModal } from "./PresetGalleryModal";
+import { SavePresetModal } from "./SavePresetModal";
 import { SceneInsertTimeline } from "./SceneInsertTimeline";
 import type { WizardSceneInfo } from "./SceneWizards";
 import { sceneMenuItems } from "./sceneMenu";
@@ -31,7 +39,7 @@ export function PlaybackBar({
   readout,
   hasAudio,
   audioMuted,
-  isWorkspace,
+  editable,
   playRef,
   onTogglePlay,
   onToggleMute,
@@ -45,6 +53,7 @@ export function PlaybackBar({
   onUpdateAudioMarkers,
   onAddCameraKeyAtBeat,
   onSyncCameraToBeats,
+  onSceneInserted,
 }: {
   project: LoadedProject | null;
   playing: boolean;
@@ -55,7 +64,7 @@ export function PlaybackBar({
   readout: string;
   hasAudio: boolean;
   audioMuted: boolean;
-  isWorkspace: boolean;
+  editable: boolean;
   /** Host's play-button ref; its Space-key guard keys off it. */
   playRef: RefObject<HTMLButtonElement | null>;
   onTogglePlay: () => void;
@@ -79,6 +88,8 @@ export function PlaybackBar({
   onAddCameraKeyAtBeat: (ms: number) => void;
   /** Generate the owning scene's camera track from its key beats (the host resolves the scene). */
   onSyncCameraToBeats: (ms: number) => void;
+  /** A preset insert landed a new scene file: reload and select it. Optional, since the host's on-disk fingerprint poll picks the change up within a couple of seconds anyway. */
+  onSceneInserted?: (file: string) => void;
 }) {
   const trackRef = useRef<HTMLDivElement>(null);
   const scrubbing = useRef(false);
@@ -87,6 +98,10 @@ export function PlaybackBar({
   const [renaming, setRenaming] = useState<{ index: number; text: string } | null>(null);
   const [timing, setTiming] = useState<{ index: number; text: string } | null>(null);
   const [duplicating, setDuplicating] = useState<number | null>(null);
+  const [insertingPreset, setInsertingPreset] = useState<number | null>(null);
+  const [savingPreset, setSavingPreset] = useState<number | null>(null);
+  const scope = project ? parseProjectId(project.id).scope : null;
+  const canAddScenes = scope !== "preset" && scope !== "ws-preset";
 
   const spans = project ? sceneCellSpans(project.slots, durationMs) : [];
   const active = project ? activeSceneIndex(project.slots, currentMs) : 0;
@@ -99,7 +114,7 @@ export function PlaybackBar({
   };
 
   const openSceneMenu = (e: ReactMouseEvent, index: number) => {
-    if (!project || !isWorkspace || exporting || isExporting()) return;
+    if (!project || !editable || exporting || isExporting()) return;
     e.preventDefault();
     // Menus build once per open, so a plain snapshot read is enough.
     setMenu({
@@ -108,6 +123,7 @@ export function PlaybackBar({
       items: sceneMenuItems({
         canRename: !!project.sceneDocs[index],
         canDelete: project.slots.length > 1,
+        canAddScenes,
         hasClipboard: !!useUiStore.getState().backgroundClipboard,
         onRename: () => setRenaming({ index, text: sceneName(index) }),
         onDuplicate: () => setDuplicating(index),
@@ -123,6 +139,8 @@ export function PlaybackBar({
         onPasteBackground: () => onPasteBackground(index),
         onDelete: () => onDeleteScene(index),
         onCopyToProject: () => useUiStore.getState().requestSceneCopy([index]),
+        onInsertPreset: () => setInsertingPreset(index + 1),
+        onSaveAsPreset: () => setSavingPreset(index),
         onManage: () => {
           const ui = useUiStore.getState();
           ui.setInspectorTab("project");
@@ -134,7 +152,7 @@ export function PlaybackBar({
 
   // Double-click renames in place (same guards as the context menu's Rename).
   const startRename = (index: number) => {
-    if (!project || !isWorkspace || exporting || isExporting()) return;
+    if (!project || !editable || exporting || isExporting()) return;
     if (!project.sceneDocs[index]) return;
     setRenaming({ index, text: sceneName(index) });
   };
@@ -302,7 +320,7 @@ export function PlaybackBar({
           <BeatLane
             project={project}
             durationMs={durationMs}
-            isWorkspace={isWorkspace}
+            editable={editable}
             onSeek={onScrub}
             onUpdateMarkers={onUpdateAudioMarkers}
             onAddCameraKey={onAddCameraKeyAtBeat}
@@ -388,12 +406,12 @@ export function PlaybackBar({
         <span className="pb-readout" onPointerDown={holdPointer}>
           {readout}
         </span>
-        {isWorkspace && (
+        {editable && canAddScenes && (
           <button
             type="button"
             className="pb-new-scene"
             disabled={exporting}
-            title="Add a scene (opens the scene wizard)"
+            title="Choose a scene from App presets or My presets"
             onPointerDown={holdPointer}
             onClick={onNewScene}
           >
@@ -402,6 +420,26 @@ export function PlaybackBar({
         )}
       </div>
       {menu && <ContextMenu menu={menu} onClose={() => setMenu(null)} />}
+      {insertingPreset !== null && project && (
+        <PresetGalleryModal
+          slug={nativeProjectSlug(project.id)}
+          project={project}
+          position={insertingPreset}
+          onDone={(inserted) => {
+            setInsertingPreset(null);
+            onSceneInserted?.(inserted.file);
+          }}
+          onCancel={() => setInsertingPreset(null)}
+        />
+      )}
+      {savingPreset !== null && project && (
+        <SavePresetModal
+          projectSlug={nativeProjectSlug(project.id)}
+          sceneStem={sceneFileStem(project.sceneFiles[savingPreset])}
+          sceneName={sceneName(savingPreset)}
+          onClose={() => setSavingPreset(null)}
+        />
+      )}
       {duplicating !== null && project && (
         <DuplicateSceneDialog
           project={project}

@@ -2,12 +2,13 @@ import { useEffect, useRef, useState } from "react";
 import { useClockStore } from "../../engine/clock";
 import { type AspectName, aspectLabel, FORMATS } from "../../engine/format";
 import {
-  isWorkspaceProjectId,
+  isEditableProjectId,
   type LoadedProject,
+  nativeProjectSlug,
   type ProjectAudioSpec,
+  parseProjectId,
+  projectFolderPath,
   sceneFileStem,
-  workspaceProjectPath,
-  workspaceSlug,
 } from "../../engine/project";
 import { EXPOSURE_MAX, EXPOSURE_MIN, type RenderSettings } from "../../engine/renderSettings";
 import type { EditRepointSlot } from "../../engine/sceneDoc";
@@ -21,6 +22,8 @@ import { projectRows } from "../inspectorOptions";
 import { MediaBrowser } from "../MediaBrowser";
 import { mediaCardMenu } from "../mediaCardMenu";
 import { DuplicateSceneDialog } from "../PlaybackBar";
+import { PresetGalleryModal } from "../PresetGalleryModal";
+import { SavePresetModal } from "../SavePresetModal";
 import { DebouncedRange } from "../TextAnimationPicker";
 import {
   builtinThemeChoices,
@@ -124,6 +127,7 @@ export function InspectorPanel({
   onOpenEditVideo,
   onDocChanged,
   onTimingChanged,
+  onSceneInserted,
   onApplyTheme,
   onDeleteScene,
   onReorderScenes,
@@ -170,6 +174,8 @@ export function InspectorPanel({
   ) => void;
   onDocChanged: (sceneIndex: number, doc: SceneDoc) => void;
   onTimingChanged: () => void;
+  /** A preset insert landed a new scene file: reload and select it (falls back to `onTimingChanged`). */
+  onSceneInserted?: (file: string) => void;
   /** Apply a project theme (the picking drill-in; management stays in the ThemeMode modal behind "Manage themes…"). */
   onApplyTheme: (themeId: string) => Promise<void>;
   /** Trash-recoverable scene removal (the Scene tab's bottom Delete). */
@@ -197,7 +203,11 @@ export function InspectorPanel({
   /** Every scene in a Copy-from-project run landed; App reloads this project and toasts. */
   onScenesCopiedFrom: (sourceName: string, count: number) => void;
 }) {
-  const isWorkspace = isWorkspaceProjectId(project.id);
+  // Editability, not tree: a template or preset opened from the Library edits exactly like a project.
+  const editable = isEditableProjectId(project.id);
+  const scope = parseProjectId(project.id).scope;
+  const canAddScenes = scope !== "preset" && scope !== "ws-preset";
+  const projectFolder = projectFolderPath(project.id) ?? "";
   const tab = useUiStore((s) => s.inspector.tab);
   const setTab = useUiStore((s) => s.setInspectorTab);
 
@@ -219,10 +229,10 @@ export function InspectorPanel({
     });
   }, [project.slots]);
 
-  // A bundled project can't show the Scene tab; heal the store if we land there.
+  // A read-only project can't show the Scene tab; heal the store if we land there.
   useEffect(() => {
-    if (!isWorkspace && tab === "scene") setTab("project");
-  }, [isWorkspace, tab, setTab]);
+    if (!editable && tab === "scene") setTab("project");
+  }, [editable, tab, setTab]);
 
   // Collapse transient state when the project or tab changes; the drill-in state lives in the ui store and would otherwise survive a project switch.
   // biome-ignore lint/correctness/useExhaustiveDependencies: deliberate reset-on-switch
@@ -261,7 +271,7 @@ export function InspectorPanel({
   }, [sceneCopyNonce, tab, setTab]);
 
   const rows = projectRows({
-    isWorkspace,
+    editable,
     themeName: project.theme.name,
     typographyLabel:
       project.projectTypography?.headline ||
@@ -312,6 +322,9 @@ export function InspectorPanel({
   const [themeDraft, setThemeDraft] = useState<string>("");
   // The Duplicate… placement dialog for the Scenes drill-in's context menu.
   const [duplicating, setDuplicating] = useState<number | null>(null);
+  // The Scenes drill-in's preset flows: the gallery's target index, and the scene being saved.
+  const [insertingPreset, setInsertingPreset] = useState<number | null>(null);
+  const [savingPreset, setSavingPreset] = useState<number | null>(null);
   const [fontSlot, setFontSlot] = useState<TypographySlot>("headline");
   /** The slot's effective font: the manifest override when set, else the (already-overridden) resolved theme's face; charts fall back to the body face, which is what their labels take unset. */
   const typographyRef = (slot: TypographySlot) => {
@@ -352,7 +365,7 @@ export function InspectorPanel({
       setDrillIn("project.media");
     },
     scenes: () => setDrillIn("project.scenes"),
-    theme: isWorkspace
+    theme: editable
       ? () => {
           setThemeDraft(project.theme.id);
           setDrillIn("project.theme");
@@ -364,14 +377,14 @@ export function InspectorPanel({
       setDrillIn("project.appIcon");
     },
     aspect: () => setOpenRow(openRow === "aspect" ? null : "aspect"),
-    music: isWorkspace ? () => setDrillIn("project.music") : undefined,
+    music: editable ? () => setDrillIn("project.music") : undefined,
     playback: () => setOpenRow(openRow === "playback" ? null : "playback"),
     render: () => setOpenRow(openRow === "render" ? null : "render"),
   };
 
   return (
     <aside className="inspector" aria-label="Inspector">
-      {isWorkspace && (
+      {editable && (
         <div className="inspector-tabs-wrap">
           <div className="inspector-tabs" role="tablist">
             {(["project", "scene"] as const).map((t) => (
@@ -392,7 +405,7 @@ export function InspectorPanel({
       )}
 
       <InspectorNavigationShell resetKey={`${project.id}:${tab}`}>
-        {(tab === "project" || !isWorkspace) && drillIn === "project.appIcon" && isWorkspace ? (
+        {(tab === "project" || !editable) && drillIn === "project.appIcon" && editable ? (
           <div className="inspector-drill">
             <DrillBack label="Project" title="App icon" onClick={() => setDrillIn(null)} />
             <div className="inspector-drill-body">
@@ -403,8 +416,8 @@ export function InspectorPanel({
               <div className="inspector-media-host">
                 <MediaBrowser
                   inspectorPreview
-                  slug={workspaceSlug(project.id)}
-                  projectPath={workspaceProjectPath(workspaceSlug(project.id)) ?? ""}
+                  slug={nativeProjectSlug(project.id)}
+                  projectPath={projectFolder}
                   kinds={["image"]}
                   globalToggle
                   refreshKey={mediaRefreshKey + mediaRefresh}
@@ -413,7 +426,7 @@ export function InspectorPanel({
                     onSetAppIcon(rel);
                   }}
                   cardMenu={mediaCardMenu({
-                    slug: workspaceSlug(project.id),
+                    slug: nativeProjectSlug(project.id),
                     primaryLabel: "Set as icon",
                     onPrimary: (rel) => {
                       setDrillIn(null);
@@ -426,7 +439,7 @@ export function InspectorPanel({
               </div>
             </div>
           </div>
-        ) : (tab === "project" || !isWorkspace) && drillIn === "project.media" && isWorkspace ? (
+        ) : (tab === "project" || !editable) && drillIn === "project.media" && editable ? (
           <div className="inspector-drill">
             <DrillBack label="Project" title="Media library" onClick={() => setDrillIn(null)} />
             <div className="inspector-drill-body">
@@ -434,14 +447,14 @@ export function InspectorPanel({
               <div className="inspector-media-host">
                 <MediaBrowser
                   inspectorPreview
-                  slug={workspaceSlug(project.id)}
-                  projectPath={workspaceProjectPath(workspaceSlug(project.id)) ?? ""}
+                  slug={nativeProjectSlug(project.id)}
+                  projectPath={projectFolder}
                   kindToggle
                   globalToggle
                   cleanupUnused="menu"
                   refreshKey={mediaRefreshKey + mediaRefresh}
                   cardMenu={mediaCardMenu({
-                    slug: workspaceSlug(project.id),
+                    slug: nativeProjectSlug(project.id),
                     primaryLabel: "Insert",
                     onPrimary: (rel) => onInsertMedia(rel),
                     onChanged: () => setMediaRefresh((n) => n + 1),
@@ -451,7 +464,7 @@ export function InspectorPanel({
               </div>
             </div>
           </div>
-        ) : (tab === "project" || !isWorkspace) && drillIn === "project.theme" && isWorkspace ? (
+        ) : (tab === "project" || !editable) && drillIn === "project.theme" && editable ? (
           <div className="inspector-drill">
             <DrillBack label="Project" title="Theme" onClick={() => setDrillIn(null)} />
             <div className="inspector-drill-body">
@@ -479,9 +492,7 @@ export function InspectorPanel({
             </div>
             {themeMenu.menuElement}
           </div>
-        ) : (tab === "project" || !isWorkspace) &&
-          drillIn === "project.typography" &&
-          isWorkspace ? (
+        ) : (tab === "project" || !editable) && drillIn === "project.typography" && editable ? (
           <div className="inspector-drill">
             <DrillBack label="Project" title="Typography" onClick={() => setDrillIn(null)} />
             <div className="inspector-drill-body">
@@ -534,11 +545,9 @@ export function InspectorPanel({
               </button>
             </div>
           </div>
-        ) : (tab === "project" || !isWorkspace) &&
-          drillIn === "project.scenes.copyTo" &&
-          isWorkspace ? (
+        ) : (tab === "project" || !editable) && drillIn === "project.scenes.copyTo" && editable ? (
           <ProjectCopyDrill
-            slug={workspaceSlug(project.id)}
+            slug={nativeProjectSlug(project.id)}
             indices={sceneCopyIndices}
             sceneLabel={
               sceneCopyIndices.length > 1
@@ -554,7 +563,7 @@ export function InspectorPanel({
               onScenesCopied(destName, count);
             }}
           />
-        ) : (tab === "project" || !isWorkspace) && drillIn === "project.music" && isWorkspace ? (
+        ) : (tab === "project" || !editable) && drillIn === "project.music" && editable ? (
           <MusicDrillIn
             audio={project.audio}
             onBack={() => setDrillIn(null)}
@@ -563,18 +572,19 @@ export function InspectorPanel({
             onPatch={onPatchAudio}
             onPreview={onPreviewAudio}
           />
-        ) : (tab === "project" || !isWorkspace) &&
+        ) : (tab === "project" || !editable) &&
           drillIn === "project.scenes.copyFrom" &&
-          isWorkspace ? (
+          canAddScenes &&
+          editable ? (
           <ProjectCopyFromDrill
-            slug={workspaceSlug(project.id)}
+            slug={nativeProjectSlug(project.id)}
             onBack={() => setDrillIn(null)}
             onDone={(sourceName, count) => {
               setDrillIn(null);
               onScenesCopiedFrom(sourceName, count);
             }}
           />
-        ) : (tab === "project" || !isWorkspace) && drillIn === "project.scenes" && isWorkspace ? (
+        ) : (tab === "project" || !editable) && drillIn === "project.scenes" && editable ? (
           <>
             <ScenesDrillIn
               scenes={project.slots.map((slot, i) => ({
@@ -584,6 +594,7 @@ export function InspectorPanel({
                 hasDoc: !!project.sceneDocs[i],
               }))}
               busy={scenesBusy}
+              canAddScenes={canAddScenes}
               onBack={() => setDrillIn(null)}
               onReorder={(desired) => {
                 setScenesBusy(true);
@@ -610,6 +621,8 @@ export function InspectorPanel({
               }}
               onCopyToProject={requestSceneCopy}
               onCopyFromProject={() => setDrillIn("project.scenes.copyFrom")}
+              onInsertPreset={setInsertingPreset}
+              onSaveAsPreset={setSavingPreset}
             />
             {duplicating !== null && (
               <DuplicateSceneDialog
@@ -623,8 +636,33 @@ export function InspectorPanel({
                 onDuplicate={onDuplicateSceneAt}
               />
             )}
+            {insertingPreset !== null && (
+              <PresetGalleryModal
+                slug={nativeProjectSlug(project.id)}
+                project={project}
+                position={insertingPreset}
+                // A new scene file, so the whole project reloads; the host selects it when it takes the file.
+                onDone={(inserted) => {
+                  setInsertingPreset(null);
+                  if (onSceneInserted) onSceneInserted(inserted.file);
+                  else onTimingChanged();
+                }}
+                onCancel={() => setInsertingPreset(null)}
+              />
+            )}
+            {savingPreset !== null && (
+              <SavePresetModal
+                projectSlug={nativeProjectSlug(project.id)}
+                sceneStem={sceneFileStem(project.sceneFiles[savingPreset])}
+                sceneName={
+                  project.sceneDocs[savingPreset]?.name ??
+                  sceneFileStem(project.sceneFiles[savingPreset])
+                }
+                onClose={() => setSavingPreset(null)}
+              />
+            )}
           </>
-        ) : tab === "project" || !isWorkspace ? (
+        ) : tab === "project" || !editable ? (
           <div className="inspector-rows">
             {rows.map((row) => (
               <div key={row.id} className="inspector-row-anchor">

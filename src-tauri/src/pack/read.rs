@@ -166,8 +166,15 @@ fn validate_contents_paths(manifest: &PackManifest) -> Result<(), PackError> {
     for shot in &manifest.contents.screenshots {
         check(&shot.file)?;
     }
-    // A project root is a directory, so it is checked as a prefix rather than as an entry.
-    for project in &manifest.contents.projects {
+    // A project root is a directory, so it is checked as a prefix rather than as an entry. Templates and presets are
+    // project folders and reach `apply` the same way, so they go through the same check.
+    let contents = &manifest.contents;
+    for project in contents
+        .projects
+        .iter()
+        .chain(&contents.templates)
+        .chain(&contents.presets)
+    {
         let root = project.root.trim_end_matches('/');
         let probe = format!("{root}/project.json");
         validate_archive_path(&probe)?;

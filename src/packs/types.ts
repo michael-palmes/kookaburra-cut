@@ -1,10 +1,13 @@
 /** Mirrors `src-tauri/src/pack/model.rs`. Changing a shape here without changing it there is a silent wire break. */
 
 export const PACK_FORMAT = "kookaburra-pack";
-export const PACK_FORMAT_VERSION = 1;
+/** v2 carries templates and presets; a v1 reader refuses a v2 pack rather than half-importing it. */
+export const PACK_FORMAT_VERSION = 2;
 
 export type ItemKind =
   | "project"
+  | "template"
+  | "preset"
   | "theme"
   | "font"
   | "object"
@@ -15,6 +18,8 @@ export type ItemKind =
 /** Rail order, which is not apply order: this is what reads best to a human. */
 export const ITEM_KINDS: ItemKind[] = [
   "project",
+  "template",
+  "preset",
   "theme",
   "font",
   "object",
@@ -25,6 +30,8 @@ export const ITEM_KINDS: ItemKind[] = [
 
 export const KIND_LABELS: Record<ItemKind, { one: string; many: string }> = {
   project: { one: "Project", many: "Projects" },
+  template: { one: "Template", many: "Templates" },
+  preset: { one: "Scene preset", many: "Scene presets" },
   theme: { one: "Theme", many: "Themes" },
   font: { one: "Font", many: "Fonts" },
   object: { one: "3D object", many: "3D objects" },
@@ -65,6 +72,10 @@ export interface PackProject extends PackItemBase {
   hasSceneCode: boolean;
 }
 
+/** A template is a project folder plus `template.json`, a preset a single-scene one plus `preset.json`. */
+export type PackTemplate = PackProject;
+export type PackPreset = PackProject;
+
 export interface PackTheme extends PackItemBase {
   mode: "light" | "dark";
   docVersion: number;
@@ -98,6 +109,8 @@ export interface PackScreenshot extends PackItemBase {
 
 export interface PackContents {
   projects: PackProject[];
+  templates: PackTemplate[];
+  presets: PackPreset[];
   themes: PackTheme[];
   fonts: PackFont[];
   objects: PackObject[];

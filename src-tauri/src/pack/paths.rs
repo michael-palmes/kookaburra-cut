@@ -8,7 +8,8 @@ use std::path::PathBuf;
 /// Per-subtree allowlist. Anything not listed refuses with the path named.
 fn allowed_extensions(kind: ItemKind) -> &'static [&'static str] {
     match kind {
-        ItemKind::Project => &[
+        // A template and a preset are project folders, so they carry exactly what a project may carry.
+        ItemKind::Project | ItemKind::Template | ItemKind::Preset => &[
             "tsx", "json", "md", "txt", "png", "jpg", "jpeg", "webp", "gif", "mp4", "mov", "m4v",
             "webm", "hdr", "exr", "mp3", "wav", "m4a", "aac", "flac", "ogg",
         ],
@@ -143,6 +144,10 @@ mod tests {
         assert!(validate_archive_path("payload/projects/acme/CLAUDE.md").is_ok());
         assert!(validate_archive_path("payload/projects/acme/.claude/settings.json").is_ok());
         assert!(validate_archive_path("payload/themes/acme-dark/theme.json").is_ok());
+        assert!(validate_archive_path("payload/templates/acme-promo/template.json").is_ok());
+        assert!(validate_archive_path("payload/templates/acme-promo/poster.jpg").is_ok());
+        assert!(validate_archive_path("payload/presets/stat-hero/preset.json").is_ok());
+        assert!(validate_archive_path("payload/presets/stat-hero/scenes/01-hero.tsx").is_ok());
         assert!(validate_archive_path("payload/fonts/AcmeSans-Bold.ttf").is_ok());
         assert!(validate_archive_path("payload/objects/widget/model.glb").is_ok());
         assert!(validate_archive_path("payload/gradients/sunrise.json").is_ok());

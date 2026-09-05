@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { join, resourceDir } from "@tauri-apps/api/path";
 import type { ComponentType } from "react";
 import { TextureLoader } from "three";
-import { assetVersionSuffix } from "../store/assetVersionStore";
+import { assetVersionSuffix, useAssetVersionStore } from "../store/assetVersionStore";
 import { parseFontString } from "../theme/fontRef";
 import { collectThemeFontRefs, preloadAppFonts } from "../theme/fonts";
 import { resolveTheme } from "../theme/registry";
@@ -23,7 +23,11 @@ import { refreshWorkspaceAssets, workspaceAssetMissing } from "./assetInventory"
 import type { CameraKeyframe } from "./cameraTrack";
 import { preloadEffectLuts } from "./effects";
 import { mergeFrameSpec, parseFrameSpec } from "./frameSchema";
+import { listUserPresets, listUserTemplates } from "./library";
+import { watchLibraryDocuments } from "./libraryDocuments";
 import { fsUrl } from "./media";
+import { resolveSavedPosterTheme } from "./presetPosterThemes";
+import { withProjectAssetRevision } from "./projectAssetRevision";
 import { ensureProjectTrusted } from "./projectTrust";
 import { parseRenderSettings, type RenderSettings } from "./renderSettings";
 import { ensureSampleAssets } from "./sampleAssets";
@@ -75,7 +79,7 @@ export interface ProjectManifest {
   render?: unknown;
   /** Project-default lighting, the middle layer of theme -> project -> scene (see `mergeLighting`). Raw here (manifests are plain JSON.parse); validated on load with the usual degrade guard. Absent means the layer contributes nothing. */
   lighting?: unknown;
-  /** The background "Apply everywhere" last stamped across the project, so NEW scenes scaffold with it (`scaffold_scene` reads it; nothing on the render path does). Absent means new scenes follow the theme, and clearing one scene's background in the inspector leaves that scene reverted. */
+  /** The background last applied across the project; preset insertion inherits it when the source has no explicit background or backdrop. */
   appliedBackground?: { background?: ThemeBackground; backdrop?: ThemeBackdrop };
   /** Transition seeded onto new boundaries. Missing keeps the catalogue crossfade for older projects; null explicitly means a hard cut. */
   defaultTransition?: TransitionSpec | null;
@@ -234,8 +238,13 @@ const manifestGlob: LazyGlob<{ default: ProjectManifest }> = {
     ? import.meta.glob<{ default: ProjectManifest }>("/fixtures/*/project.json")
     : {}),
 };
+// The bundled scene presets (`presets/<slug>/`, one single-scene project each) are their own glob, never merged into `manifestGlob`: a preset slug must not enter `listProjectIds()` and collide with a project of the same name. They resolve through the `preset:` scope instead.
+const presetManifestGlob: LazyGlob<{ default: ProjectManifest }> = import.meta.glob<{
+  default: ProjectManifest;
+}>("/presets/*/project.json");
 const sceneGlob: LazyGlob<{ default: SceneModule }> = {
   ...import.meta.glob<{ default: SceneModule }>("/projects/*/scenes/*.tsx"),
+  ...import.meta.glob<{ default: SceneModule }>("/presets/*/scenes/*.tsx"),
   ...(import.meta.env.DEV
     ? import.meta.glob<{ default: SceneModule }>("/fixtures/*/scenes/*.tsx")
     : {}),
@@ -243,6 +252,7 @@ const sceneGlob: LazyGlob<{ default: SceneModule }> = {
 // Persistent (hoisted morph) modules share the scenes/ folder but default-export a plain component rather than a defineScene, hence the separately-typed glob over the same files.
 const persistentGlob: LazyGlob<{ default: ComponentType }> = {
   ...import.meta.glob<{ default: ComponentType }>("/projects/*/scenes/*.tsx"),
+  ...import.meta.glob<{ default: ComponentType }>("/presets/*/scenes/*.tsx"),
   ...(import.meta.env.DEV
     ? import.meta.glob<{ default: ComponentType }>("/fixtures/*/scenes/*.tsx")
     : {}),
@@ -250,6 +260,7 @@ const persistentGlob: LazyGlob<{ default: ComponentType }> = {
 // Scene sidecar documents live beside their TSX as `scenes/<stem>.json`.
 const sceneDocGlob: LazyGlob<{ default: unknown }> = {
   ...import.meta.glob<{ default: unknown }>("/projects/*/scenes/*.json"),
+  ...import.meta.glob<{ default: unknown }>("/presets/*/scenes/*.json"),
   ...(import.meta.env.DEV
     ? import.meta.glob<{ default: unknown }>("/fixtures/*/scenes/*.json")
     : {}),
@@ -267,6 +278,14 @@ const assetUrlGlob: Record<string, string> = {
       "/projects/*/assets/**/*.[jJ][pP][gG]",
       "/projects/*/assets/**/*.[jJ][pP][eE][gG]",
       "/projects/*/assets/**/*.[wW][eE][bB][pP]",
+      "/presets/*/assets/**/*.[pP][nN][gG]",
+      "/presets/*/assets/**/*.[jJ][pP][gG]",
+      "/presets/*/assets/**/*.[jJ][pP][eE][gG]",
+      "/presets/*/assets/**/*.[wW][eE][bB][pP]",
+      "/projects/_samples/*.[pP][nN][gG]",
+      "/projects/_samples/*.[jJ][pP][gG]",
+      "/projects/_samples/*.[jJ][pP][eE][gG]",
+      "/projects/_samples/*.[wW][eE][bB][pP]",
     ],
     {
       query: "?url",
@@ -291,11 +310,14 @@ const assetUrlGlob: Record<string, string> = {
 
 // Project-relative environment maps (v9 lighting: user `.hdr`/`.exr` IBL sources). A separate glob from images so `preloadProjectImages` never routes an HDR through TextureLoader.
 const assetHdrGlob: Record<string, string> = {
-  ...import.meta.glob<string>("/projects/*/assets/**/*.{hdr,exr}", {
-    query: "?url",
-    import: "default",
-    eager: true,
-  }),
+  ...import.meta.glob<string>(
+    ["/projects/*/assets/**/*.{hdr,exr}", "/presets/*/assets/**/*.{hdr,exr}"],
+    {
+      query: "?url",
+      import: "default",
+      eager: true,
+    },
+  ),
   ...fixtureAssetUrls(
     import.meta.env.DEV
       ? import.meta.glob("/fixtures/*/assets/**/*.{hdr,exr}", { query: "?url" })
@@ -310,6 +332,9 @@ function isFixtureProjectId(id: string): boolean {
 
 /** A bundled project's root-absolute folder, the prefix its glob keys share. */
 function bundledProjectDir(id: string): string {
+  const { scope, slug } = parseProjectId(id);
+  if (scope === "preset") return `/presets/${slug}`;
+  if (scope === "template") return `/projects/${slug}`;
   return isFixtureProjectId(id) ? `/fixtures/${id}` : `/projects/${id}`;
 }
 
@@ -337,6 +362,63 @@ export function previewLabProjectIds(): string[] {
 
 export const WORKSPACE_PROJECT_PREFIX = "ws:";
 
+// ── Scoped project ids ────────────────────────────────────────────────────
+// An id names both a folder and the tree it lives in. Bare ids are bundled projects
+// (`projects/`, plus `fixtures/` in dev), `ws:` is a workspace project, and the library scopes
+// name the template and preset trees on both sides: `template:`/`preset:` are the bundled
+// folders (create-from sources, writable only from a dev checkout) and `ws-template:`/
+// `ws-preset:` their workspace equivalents, which release builds may open and edit.
+
+export type ProjectScope =
+  | "bundled"
+  | "workspace"
+  | "template"
+  | "ws-template"
+  | "preset"
+  | "ws-preset";
+
+const SCOPE_PREFIXES: Record<Exclude<ProjectScope, "bundled">, string> = {
+  workspace: WORKSPACE_PROJECT_PREFIX,
+  "ws-template": "ws-template:",
+  "ws-preset": "ws-preset:",
+  template: "template:",
+  preset: "preset:",
+};
+
+/** Split an id into its tree and folder name; a bare id is a bundled project, so its slug IS the id. */
+export function parseProjectId(id: string): { scope: ProjectScope; slug: string } {
+  for (const [scope, prefix] of Object.entries(SCOPE_PREFIXES)) {
+    if (id.startsWith(prefix))
+      return { scope: scope as ProjectScope, slug: id.slice(prefix.length) };
+  }
+  return { scope: "bundled", slug: id };
+}
+
+/** True for any id whose folder lives in the workspace: a project or a library item. */
+export function isWorkspaceBackedProjectId(id: string): boolean {
+  const { scope } = parseProjectId(id);
+  return scope === "workspace" || scope === "ws-template" || scope === "ws-preset";
+}
+
+/** The `slug` argument the native commands take for a project id: only a workspace project drops its prefix, every scoped library id passes VERBATIM (the native `parse_project_id` resolves the scope itself). This is the ONE seam between the two id schemes; never slice a prefix by hand. */
+export function nativeProjectSlug(id: string): string {
+  const { scope, slug } = parseProjectId(id);
+  return scope === "workspace" ? slug : id;
+}
+
+/** The inverse seam: the id a native slug names, for the paths that only carry a slug (the render window's thumb jobs). */
+export function projectIdForNativeSlug(slug: string): string {
+  return slug.includes(":") ? slug : `${WORKSPACE_PROJECT_PREFIX}${slug}`;
+}
+
+/** Whether this build may write to the project behind an id: workspace projects and workspace library items always, the bundled library trees only from a dev checkout (a packaged app reads those out of its own resources). Bare bundled and fixture ids are never editable: the native side reads a bare slug as a WORKSPACE project, so writing on one would land in the wrong tree. */
+export function isEditableProjectId(id: string): boolean {
+  const { scope } = parseProjectId(id);
+  if (scope === "bundled") return false;
+  if (scope === "template" || scope === "preset") return import.meta.env.DEV;
+  return true;
+}
+
 /** One entry in the combined project picker. */
 export interface ProjectListing {
   id: string;
@@ -363,11 +445,6 @@ export function workspaceProjectPath(slug: string): string | null {
   return workspaceProjects.get(slug)?.path ?? null;
 }
 
-/** The project slug of a workspace project id (`"ws:my-video"` → `"my-video"`). */
-export function workspaceSlug(id: string): string {
-  return id.slice(WORKSPACE_PROJECT_PREFIX.length);
-}
-
 /** Bumped when project sources change on disk (App's fingerprint poll): keys the compiled-module cache, so a bump re-reads + recompiles every scene module while unchanged loads reuse theirs (UI writes never bump it). */
 let workspaceReloadToken = 0;
 
@@ -384,6 +461,37 @@ function requireWorkspaceProject(slug: string): WorkspaceProject {
     );
   }
   return project;
+}
+
+/** Absolute folders of workspace templates and presets, keyed by their scoped id; filled by the catalogue hydration (engine/templates.ts, engine/presets.ts) so the asset resolvers stay synchronous, exactly like `workspaceProjects`. */
+const workspaceLibraryPaths = new Map<string, string>();
+
+export function rememberWorkspaceLibraryPath(id: string, path: string): void {
+  workspaceLibraryPaths.set(id, path);
+}
+
+export function workspaceLibraryPath(id: string): string | null {
+  return workspaceLibraryPaths.get(id) ?? null;
+}
+
+function requireWorkspaceLibraryPath(id: string): string {
+  const path = workspaceLibraryPaths.get(id);
+  if (!path) {
+    throw new Error(
+      `Workspace library item "${id}" not found: it may have been renamed or deleted.`,
+    );
+  }
+  return path;
+}
+
+/** Re-scan the workspace templates or presets so a scoped id resolves its folder (the `refreshWorkspaceProjects` equivalent; a failed listing reads as "nothing there"). */
+async function refreshWorkspaceLibrary(scope: "ws-template" | "ws-preset"): Promise<void> {
+  try {
+    const infos = scope === "ws-template" ? await listUserTemplates() : await listUserPresets();
+    for (const info of infos) rememberWorkspaceLibraryPath(`${scope}:${info.slug}`, info.path);
+  } catch (e) {
+    console.warn(`[library] listing ${scope} items failed:`, e);
+  }
 }
 
 /** Re-scan the workspace (no workspace configured / native errors read as "no projects"). */
@@ -421,10 +529,33 @@ let projectsRoot: string | null = import.meta.env.DEV ? __PROJECTS_DIR__ : null;
 // The sibling fixtures tree, dev-only in every sense: it is never bundled, and no packaged build ever resolves a fixture id (the globs above are empty there).
 const fixturesRoot: string | null = import.meta.env.DEV ? __FIXTURES_DIR__ : null;
 
-/** Resolve the projects root exactly once. A no-op in dev; in a packaged app it asks Tauri for the resource dir. `loadProject` awaits this before returning, so every consumer of `resolveAssetPath` (clip extraction, hashing) runs after the root is known. */
+// The bundled scene-preset tree, resolved exactly like the projects root (tauri.conf.json maps ../presets → Resources/presets).
+let presetsRoot: string | null = import.meta.env.DEV ? __PRESETS_DIR__ : null;
+
+/** Resolve the bundled roots exactly once. A no-op in dev; in a packaged app it asks Tauri for the resource dir. `loadProject` awaits this before returning, so every consumer of `resolveAssetPath` (clip extraction, hashing) runs after the roots are known. */
 async function ensureProjectsRoot(): Promise<void> {
-  if (projectsRoot) return;
-  projectsRoot = await join(await resourceDir(), "projects");
+  if (projectsRoot && presetsRoot) return;
+  const resources = await resourceDir();
+  projectsRoot ??= await join(resources, "projects");
+  presetsRoot ??= await join(resources, "presets");
+}
+
+/** The absolute folder behind a project id, for the surfaces that need a real path (the Claude terminal's cwd, the media browsers' preview URLs, the titlebar identity). Null until the id's tree has resolved: workspace projects need `loadProject`, workspace library items their catalogue hydration, and the bundled trees `ensureProjectsRoot`. */
+export function projectFolderPath(id: string): string | null {
+  const { scope, slug } = parseProjectId(id);
+  switch (scope) {
+    case "workspace":
+      return workspaceProjectPath(slug);
+    case "ws-template":
+    case "ws-preset":
+      return workspaceLibraryPath(id);
+    case "template":
+      return projectsRoot ? `${projectsRoot}/${slug}` : null;
+    case "preset":
+      return presetsRoot ? `${presetsRoot}/${slug}` : null;
+    default:
+      return null;
+  }
 }
 
 /** Reject a project-relative path that could escape the project folder: no absolute paths, no ".." segments, never empty. Mirrors the intent of Rust's `media::resolve_asset` (frontend defence in depth; the native side stays the hard boundary). Returns the path with a leading "./" stripped. */
@@ -440,46 +571,113 @@ export function assertProjectRelative(rel: string): string {
   return clean;
 }
 
+// Existence oracle for the bundled library trees, keys only (lazy globs are never imported, so
+// nothing lands in dist): what a template or preset folder actually ships, and the shared pool.
+const bundledAssetKeys = new Set(
+  Object.keys({
+    ...import.meta.glob("/projects/*/assets/**", { query: "?url" }),
+    ...import.meta.glob("/presets/*/assets/**", { query: "?url" }),
+  }),
+);
+const samplePoolKeys = new Set(
+  Object.keys(import.meta.glob("/projects/_samples/*", { query: "?url" })),
+);
+
+for (const tree of ["presets", "projects"] as const) {
+  const updates: Record<string, string> = {};
+  watchLibraryDocuments(import.meta.hot, tree, { assets: updates }, (path) => {
+    const url = updates[path];
+    if (url) bundledAssetKeys.add(path);
+    else bundledAssetKeys.delete(path);
+    const urls = /\.(png|jpe?g|webp)$/i.test(path)
+      ? assetUrlGlob
+      : /\.(hdr|exr)$/i.test(path)
+        ? assetHdrGlob
+        : undefined;
+    if (urls) {
+      if (url) urls[path] = url;
+      else delete urls[path];
+    }
+    const [, , slug, ...relative] = path.split("/");
+    const scope = tree === "presets" ? "preset" : "template";
+    useAssetVersionStore.getState().bump(`${scope}:${slug}`, relative.join("/"));
+  });
+}
+
+/** Bundled templates ship no `assets/` folder: their scenes reference the shared pool by name and `create_project` seeds the copies. Opening one in place resolves the same way, by name, against `projects/_samples/`; only the bundled library scopes fall back, so a genuinely missing asset elsewhere still throws. */
+function samplePoolName(scope: ProjectScope, key: string, clean: string): string | null {
+  if (scope !== "template" && scope !== "preset") return null;
+  if (bundledAssetKeys.has(key)) return null;
+  if (!clean.startsWith("assets/")) return null;
+  const base = clean.slice("assets/".length);
+  if (base.includes("/")) return null;
+  return samplePoolKeys.has(`/projects/_samples/${base}`) ? base : null;
+}
+
 /** Resolve a project-relative asset path (e.g. `"assets/clip.mp4"`) to an absolute filesystem path so the native side can read it (ffmpeg pre-extraction, hashing). Valid only after a project has loaded (which resolves the packaged-app root; see `ensureProjectsRoot`). Rejects paths that could escape the project folder (see `assertProjectRelative`). */
 export function resolveAssetPath(projectId: string, relPath: string): string {
   const clean = assertProjectRelative(relPath);
-  if (isWorkspaceProjectId(projectId)) {
-    return `${requireWorkspaceProject(workspaceSlug(projectId)).path}/${clean}`;
+  const { scope, slug } = parseProjectId(projectId);
+  if (scope === "workspace") {
+    return `${requireWorkspaceProject(slug).path}/${clean}`;
   }
-  const root = isFixtureProjectId(projectId) ? fixturesRoot : projectsRoot;
+  if (scope === "ws-template" || scope === "ws-preset") {
+    return `${requireWorkspaceLibraryPath(projectId)}/${clean}`;
+  }
+  const root =
+    scope === "preset" ? presetsRoot : isFixtureProjectId(projectId) ? fixturesRoot : projectsRoot;
   if (!root) {
     throw new Error("Projects root not resolved yet — load a project before resolving assets.");
   }
-  return `${root}/${projectId}/${clean}`;
+  const pooled = samplePoolName(scope, `${bundledProjectDir(projectId)}/${clean}`, clean);
+  if (pooled) {
+    if (!projectsRoot) {
+      throw new Error("Projects root not resolved yet — load a project before resolving assets.");
+    }
+    return `${projectsRoot}/_samples/${pooled}`;
+  }
+  return `${root}/${slug}/${clean}`;
 }
 
 /** The URL key a project-relative asset loads under: bundled projects use their `import.meta.glob` key (the project-root-absolute path); workspace projects use an asset-protocol URL (one seam for dev and packaged). */
 function projectAssetKey(projectId: string, relPath: string): string {
   const clean = relPath.replace(/^\.?\//, "");
-  if (isWorkspaceProjectId(projectId)) {
-    return fsUrl(`${requireWorkspaceProject(workspaceSlug(projectId)).path}/${clean}`);
+  const { scope, slug } = parseProjectId(projectId);
+  if (scope === "workspace") {
+    return fsUrl(`${requireWorkspaceProject(slug).path}/${clean}`);
   }
-  return `${bundledProjectDir(projectId)}/${clean}`;
+  if (scope === "ws-template" || scope === "ws-preset") {
+    return fsUrl(`${requireWorkspaceLibraryPath(projectId)}/${clean}`);
+  }
+  const key = `${bundledProjectDir(projectId)}/${clean}`;
+  const pooled = samplePoolName(scope, key, clean);
+  return pooled ? `/projects/_samples/${pooled}` : key;
 }
 
 /** Resolve every `lut.url` in an effect config from project-relative (how project.json/themes author it) to its project glob key (how engine/effects.ts loads and caches it). Pure; returns fresh objects, never mutates (the theme's EffectsConfig is a shared module value). */
 function resolveLutUrls<T extends EffectsConfig | EffectsOverride>(projectId: string, cfg: T): T {
   if (!cfg.lut?.url) return cfg;
-  return { ...cfg, lut: { ...cfg.lut, url: projectAssetKey(projectId, cfg.lut.url) } };
+  return {
+    ...cfg,
+    lut: {
+      ...cfg.lut,
+      url: withProjectAssetRevision(projectId, projectAssetKey(projectId, cfg.lut.url)),
+    },
+  };
 }
 
 /** Resolve a project-relative IMAGE asset (e.g. `"assets/screen.png"`) to a Vite-fingerprinted URL loadable inside the webview (for a WebGL texture). Unlike `resolveAssetPath` (an absolute FS path for the native side), this is a bundled asset URL that survives the `base: "./"` packaged build. Throws with an actionable message if the asset is missing. */
 export function resolveAssetUrl(projectId: string, relPath: string): string {
   const key = projectAssetKey(projectId, relPath);
-  // Workspace assets load at their asset-protocol key, gated by the inventory: a known-missing file must throw here (callers degrade to nothing) rather than reject inside the texture loader, which fails an autorun via the boot trap even when an AssetBoundary contains it.
-  if (isWorkspaceProjectId(projectId)) {
+  // Workspace assets load at their asset-protocol key, gated by the inventory: a known-missing file must throw here (callers degrade to nothing) rather than reject inside the texture loader, which fails an autorun via the boot trap even when an AssetBoundary contains it. Library items (templates, presets) keep no inventory, so their key stands as-is.
+  if (isWorkspaceBackedProjectId(projectId)) {
     if (workspaceAssetMissing(projectId, relPath)) {
       throw new Error(
         `Image asset "${relPath}" not found in project "${projectId}". ` +
           "Put it under the project's assets/ folder and reference it relatively.",
       );
     }
-    return key;
+    return withProjectAssetRevision(projectId, key);
   }
   const url = assetUrlGlob[key];
   if (!url) {
@@ -488,20 +686,20 @@ export function resolveAssetUrl(projectId: string, relPath: string): string {
         "Put it under projects/<project>/assets/ and reference it relatively.",
     );
   }
-  return url;
+  return withProjectAssetRevision(projectId, url);
 }
 
 /** Resolve a project-relative environment map (`.hdr`/`.exr`) to a loadable URL. THROWS on a missing file, at resolve time, so a bad source fails an autorun loudly instead of exporting without reflections (the AssetBoundary lesson: boundary-caught errors still fail autoruns). */
 export function resolveProjectHdrUrl(projectId: string, relPath: string): string {
   const clean = assertProjectRelative(relPath);
-  if (isWorkspaceProjectId(projectId)) {
+  if (isWorkspaceBackedProjectId(projectId)) {
     if (workspaceEnvironmentMissing(projectId, clean)) {
       throw new Error(
         `Environment map "${relPath}" not found in project "${projectId}". ` +
           "Put a .hdr or .exr under the project's assets/ folder and reference it relatively.",
       );
     }
-    return projectAssetKey(projectId, clean);
+    return withProjectAssetRevision(projectId, projectAssetKey(projectId, clean));
   }
   const url = assetHdrGlob[`${bundledProjectDir(projectId)}/${clean}`];
   if (!url) {
@@ -510,17 +708,17 @@ export function resolveProjectHdrUrl(projectId: string, relPath: string): string
         "Put a .hdr or .exr under projects/<project>/assets/ and reference it relatively.",
     );
   }
-  return url;
+  return withProjectAssetRevision(projectId, url);
 }
 
 /** Workspace environment inventory (`.hdr`/`.exr` rel paths per project), refreshed on project load; mirrors assetInventory.ts for the environment glob. */
 const workspaceEnvironments = new Map<string, Set<string>>();
 
 async function refreshWorkspaceEnvironments(projectId: string): Promise<void> {
-  if (!isWorkspaceProjectId(projectId)) return;
+  if (!isWorkspaceBackedProjectId(projectId)) return;
   try {
     const rels = await invoke<string[]>("list_project_environments", {
-      slug: workspaceSlug(projectId),
+      slug: nativeProjectSlug(projectId),
     });
     workspaceEnvironments.set(projectId, new Set(rels.map((rel) => rel.replace(/^\.?\//, ""))));
   } catch {
@@ -536,10 +734,10 @@ function workspaceEnvironmentMissing(projectId: string, relPath: string): boolea
 
 /** The project's environment-map rel paths for the lighting picker ("assets/studio.hdr"). */
 export async function listProjectEnvironmentAssets(projectId: string): Promise<string[]> {
-  if (isWorkspaceProjectId(projectId)) {
+  if (isWorkspaceBackedProjectId(projectId)) {
     try {
       const rels = await invoke<string[]>("list_project_environments", {
-        slug: workspaceSlug(projectId),
+        slug: nativeProjectSlug(projectId),
       });
       return rels.map((rel) => rel.replace(/^\.?\//, "")).sort();
     } catch {
@@ -553,20 +751,46 @@ export async function listProjectEnvironmentAssets(projectId: string): Promise<s
     .sort();
 }
 
-/** Await every image asset of a project being fetched + decoded before frame 0, warming drei's `useTexture` cache so screen textures (e.g. DeviceMockup) resolve synchronously in the export loop. Called in the export preamble; video sources are handled separately by `preextractClips`. See docs/determinism.md. */
+/** Refresh hidden-render asset maps from disk without waiting for the dev server's HMR event. */
+export async function refreshBundledProjectAssets(projectId: string): Promise<void> {
+  if (!import.meta.env.DEV || parseProjectId(projectId).scope !== "preset") return;
+  const slug = nativeProjectSlug(projectId);
+  const [images, environments, media] = await Promise.all([
+    invoke<string[]>("list_project_assets", { slug }),
+    invoke<string[]>("list_project_environments", { slug }),
+    invoke<string[]>("list_project_media", { slug }),
+  ]);
+  const prefix = `${bundledProjectDir(projectId)}/`;
+  for (const map of [assetUrlGlob, assetHdrGlob]) {
+    for (const key of Object.keys(map)) if (key.startsWith(prefix)) delete map[key];
+  }
+  for (const key of bundledAssetKeys) {
+    if (key.startsWith(prefix) && /\.(png|jpe?g|webp|gif|mp4|mov|m4v|webm|hdr|exr)$/i.test(key))
+      bundledAssetKeys.delete(key);
+  }
+  for (const rel of [...images, ...environments, ...media]) bundledAssetKeys.add(`${prefix}${rel}`);
+  for (const rel of images) assetUrlGlob[`${prefix}${rel}`] = `${prefix}${rel}`;
+  for (const rel of environments) assetHdrGlob[`${prefix}${rel}`] = `${prefix}${rel}`;
+}
+
+/** Decode project images and warm the texture cache before frame 0. */
 export async function preloadProjectImages(projectId: string): Promise<void> {
   let urls: string[];
-  if (isWorkspaceProjectId(projectId)) {
+  if (isWorkspaceBackedProjectId(projectId)) {
     // The workspace equivalent of the eager glob: ask the native side for the project's image assets and load them at their asset-protocol URLs.
-    const slug = workspaceSlug(projectId);
+    const slug = nativeProjectSlug(projectId);
     const rels = await invoke<string[]>("list_project_assets", { slug });
     // Match ImageCard's cache-bust suffix so a re-imported icon warms the URL it will request.
-    urls = rels.map((rel) => projectAssetKey(projectId, rel) + assetVersionSuffix(projectId, rel));
+    urls = rels.map((rel) => resolveAssetUrl(projectId, rel) + assetVersionSuffix(projectId, rel));
   } else {
     const prefix = `${bundledProjectDir(projectId)}/`;
     urls = Object.entries(assetUrlGlob)
       .filter(([key]) => key.startsWith(prefix))
-      .map(([, url]) => url);
+      .map(
+        ([key, url]) =>
+          withProjectAssetRevision(projectId, url) +
+          assetVersionSuffix(projectId, key.slice(prefix.length)),
+      );
   }
   if (urls.length === 0) return;
   const loader = new TextureLoader();
@@ -610,8 +834,14 @@ async function importProjectModule<T>(
   what: string,
 ): Promise<T> {
   if (isWorkspaceProjectId(projectId)) {
-    const project = requireWorkspaceProject(workspaceSlug(projectId));
+    const project = requireWorkspaceProject(nativeProjectSlug(projectId));
     return importCompiledWorkspaceModule<T>(project.slug, file.replace(/^\.?\//, ""));
+  }
+  if (isWorkspaceBackedProjectId(projectId)) {
+    return importCompiledWorkspaceModule<T>(
+      nativeProjectSlug(projectId),
+      file.replace(/^\.?\//, ""),
+    );
   }
   const path = `${bundledProjectDir(projectId)}/${file}`;
   const load = glob[path];
@@ -638,10 +868,16 @@ export function assertUniqueSceneFiles(scenes: ProjectManifest["scenes"], label:
 
 /** Parse a project manifest from either source, with readable failures for hand-edited files. */
 async function loadManifest(id: string): Promise<ProjectManifest> {
-  if (isWorkspaceProjectId(id)) {
-    const slug = workspaceSlug(id);
-    if (!workspaceProjects.has(slug)) await refreshWorkspaceProjects();
-    requireWorkspaceProject(slug);
+  const scope = parseProjectId(id).scope;
+  if (scope !== "bundled") {
+    const slug = nativeProjectSlug(id);
+    if (scope === "workspace") {
+      if (!workspaceProjects.has(slug)) await refreshWorkspaceProjects();
+      requireWorkspaceProject(slug);
+    } else if ((scope === "ws-template" || scope === "ws-preset") && !workspaceLibraryPath(id)) {
+      await refreshWorkspaceLibrary(scope as "ws-template" | "ws-preset");
+      requireWorkspaceLibraryPath(id);
+    }
     const text = await invoke<string>("read_project_manifest", { slug });
     let manifest: ProjectManifest;
     try {
@@ -656,7 +892,7 @@ async function loadManifest(id: string): Promise<ProjectManifest> {
     return manifest;
   }
   const manifestPath = `${bundledProjectDir(id)}/project.json`;
-  const load = manifestGlob[manifestPath];
+  const load = manifestGlob[manifestPath] ?? presetManifestGlob[manifestPath];
   if (!load) {
     throw new Error(
       `Project "${id}" not found (no ${manifestPath}). Available: ${listProjectIds().join(", ") || "none"}`,
@@ -690,19 +926,26 @@ function parseProjectTypography(
   return out.headline || out.body || out.chart ? out : null;
 }
 
-/** `options.themeId` overrides the manifest's project theme for this LOAD ONLY (the theme-preview pipeline renders `preview-lab-theme` once per theme this way); it replaces the project-level theme (and so every scene without its own sidecar `themeId`), and nothing is written to disk. */
+/** `options.themeId` overrides the manifest's project theme for this LOAD ONLY (the theme-preview pipeline renders `preview-lab-theme` once per theme this way); it replaces the project-level theme (and so every scene without its own sidecar `themeId`). `options.theme` is the same override taking an ALREADY-PARSED theme, for a document that has no id to resolve yet (the theme editor's live specimen renders the unsaved draft through it); it outranks `themeId`. Neither writes anything to disk. */
 export async function loadProject(
   id: string,
-  options?: { themeId?: string },
+  options?: {
+    themeId?: string;
+    theme?: Theme;
+    trustMode?: "stored-only";
+    readSavedThemes?: boolean;
+  },
 ): Promise<LoadedProject> {
   await ensureProjectsRoot();
   const manifest = await loadManifest(id);
 
   // F-001 trust gate: no workspace scene code compiles until the user consents; bundled projects never gate. Reading the manifest above is inert (JSON only).
   let healedSceneIds: string[] | undefined;
-  if (isWorkspaceProjectId(id)) {
-    const slug = workspaceSlug(id);
-    await ensureProjectTrusted(slug, manifest.name || slug);
+  if (isWorkspaceBackedProjectId(id)) {
+    const slug = nativeProjectSlug(id);
+    if (options?.trustMode)
+      await ensureProjectTrusted(slug, manifest.name || slug, options.trustMode);
+    else await ensureProjectTrusted(slug, manifest.name || slug);
     // Trust first: declining must mean zero writes. The bump evicts pre-heal modules from `wsCompiledModules` so the imports below compile the rewritten bytes.
     const heal = await ensureUniqueSceneIds(slug);
     if (heal?.renamed.length) {
@@ -714,7 +957,7 @@ export async function loadProject(
           .join(", ")}`,
       );
     }
-    await ensureSampleAssets(slug);
+    if (isWorkspaceProjectId(id)) await ensureSampleAssets(slug);
     await refreshWorkspaceAssets(id);
     await refreshWorkspaceEnvironments(id);
   }
@@ -756,12 +999,15 @@ export async function loadProject(
   const typographyOverride = parseProjectTypography(manifest.typography, `${id}/project.json`);
   const applyTypography = (t: Theme): Theme =>
     typographyOverride ? { ...t, typography: { ...t.typography, ...typographyOverride } } : t;
-  const theme = applyTypography(await resolveTheme(options?.themeId ?? manifest.themeId));
+  const resolveProjectTheme = options?.readSavedThemes ? resolveSavedPosterTheme : resolveTheme;
+  const theme = applyTypography(
+    options?.theme ?? (await resolveProjectTheme(options?.themeId ?? manifest.themeId)),
+  );
 
   // Per-scene theme resolution: a sidecar `themeId` swaps the WHOLE theme for that scene; unknown ids fall back to the project's theme, scenes without an override share the project theme object.
   const sceneThemes = await Promise.all(
     sceneDocs.map((doc) =>
-      doc?.themeId ? resolveTheme(doc.themeId, theme).then(applyTypography) : theme,
+      doc?.themeId ? resolveProjectTheme(doc.themeId, theme).then(applyTypography) : theme,
     ),
   );
 
@@ -771,7 +1017,7 @@ export async function loadProject(
     compareBDocs.map((bDoc, i) =>
       bDoc
         ? bDoc.themeId
-          ? resolveTheme(bDoc.themeId, theme).then(applyTypography)
+          ? resolveProjectTheme(bDoc.themeId, theme).then(applyTypography)
           : sceneThemes[i]
         : undefined,
     ),
@@ -867,8 +1113,8 @@ export async function loadProject(
   }
 
   return {
-    // Workspace projects keep their prefixed id; every asset resolver routes on it.
-    id: isWorkspaceProjectId(id) ? id : manifest.id,
+    // Every scoped id (workspace projects, templates, presets) survives the load: the asset resolvers route on it, and only a plain bundled project falls back to its manifest id.
+    id: parseProjectId(id).scope === "bundled" ? manifest.id : id,
     name: manifest.name,
     theme,
     scenes,
