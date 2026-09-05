@@ -474,7 +474,9 @@ function toUserEntry(info: LibraryItemInfo): PresetEntry | null {
   return buildPresetEntry(id, manifest, project, {
     sceneCount: info.sceneCount,
     durationMs: info.durationMs,
-    previewUrl: info.posterPath ? fsUrl(info.posterPath) : null,
+    previewUrl: info.posterPath
+      ? `${fsUrl(info.posterPath)}?v=${info.posterModifiedAt ?? 0}`
+      : null,
   });
 }
 

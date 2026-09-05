@@ -29,6 +29,7 @@ const ROW_DRAG_THRESHOLD_PX = 5;
 export function ScenesDrillIn({
   scenes,
   busy,
+  canAddScenes = true,
   onBack,
   onReorder,
   onDuplicate,
@@ -46,6 +47,7 @@ export function ScenesDrillIn({
   scenes: SceneManagerRow[];
   /** An op is in flight; interactions disable rather than queue. */
   busy: boolean;
+  canAddScenes?: boolean;
   onBack: () => void;
   onReorder: (desired: number[]) => void;
   onDuplicate: (indices: number[]) => void;
@@ -179,6 +181,7 @@ export function ScenesDrillIn({
       items: sceneMenuItems({
         canRename: scene.hasDoc,
         canDelete: deletable.length > 0,
+        canAddScenes,
         hasClipboard: !!useUiStore.getState().backgroundClipboard,
         selectionCount: bulk?.length,
         onRename: () => startRename(scene),
@@ -298,43 +301,47 @@ export function ScenesDrillIn({
         </p>
       </div>
       <div className="inspector-drill-actions">
-        <button
-          type="button"
-          className="btn btn-left"
-          disabled={busy}
-          title="Copy scenes from another project"
-          onClick={onCopyFromProject}
-        >
-          <SceneMenuIcon id="copy-from-project" />
-          Copy from…
-        </button>
-        <button
-          type="button"
-          className="btn"
-          disabled={busy}
-          title="Insert a scene from your preset library"
-          onClick={() =>
-            onInsertPreset(
-              selection.length > 0 ? selection[selection.length - 1] + 1 : scenes.length,
-            )
-          }
-        >
-          <SceneMenuIcon id="insert-preset" />
-          From preset
-        </button>
-        <button
-          type="button"
-          className="btn"
-          disabled={busy || selection.length === 0}
-          onClick={() => {
-            setSelected(new Set());
-            setAnchor(null);
-            onDuplicate(selection);
-          }}
-        >
-          <SceneMenuIcon id="duplicate" />
-          {busy ? "Working…" : sceneSelectionLabel("Duplicate", selection.length)}
-        </button>
+        {canAddScenes && (
+          <>
+            <button
+              type="button"
+              className="btn btn-left"
+              disabled={busy}
+              title="Copy scenes from another project"
+              onClick={onCopyFromProject}
+            >
+              <SceneMenuIcon id="copy-from-project" />
+              Copy from…
+            </button>
+            <button
+              type="button"
+              className="btn"
+              disabled={busy}
+              title="Insert a scene from your preset library"
+              onClick={() =>
+                onInsertPreset(
+                  selection.length > 0 ? selection[selection.length - 1] + 1 : scenes.length,
+                )
+              }
+            >
+              <SceneMenuIcon id="insert-preset" />
+              From preset
+            </button>
+            <button
+              type="button"
+              className="btn"
+              disabled={busy || selection.length === 0}
+              onClick={() => {
+                setSelected(new Set());
+                setAnchor(null);
+                onDuplicate(selection);
+              }}
+            >
+              <SceneMenuIcon id="duplicate" />
+              {busy ? "Working…" : sceneSelectionLabel("Duplicate", selection.length)}
+            </button>
+          </>
+        )}
         <button
           type="button"
           className={`btn scene-manager-delete${confirmDelete ? " danger" : ""}`}

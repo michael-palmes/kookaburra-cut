@@ -43,7 +43,13 @@ export function TypographySection({
         <FontPicker
           value={current}
           onPick={(ref) =>
-            onPatch(setIn(doc, ["typography", slot], { family: ref.family, weight: ref.weight }))
+            onPatch(
+              setIn(
+                setIn(doc, ["typography", slot, "family"], ref.family),
+                ["typography", slot, "weight"],
+                ref.weight,
+              ),
+            )
           }
         />
       </div>

@@ -5,7 +5,6 @@ import {
   canonicalJson,
   DEFAULT_SUN,
   defaultGradientStops,
-  defaultLight,
   duplicateThemeDoc,
   EFFECT_DEFAULTS,
   environmentPath,
@@ -13,7 +12,6 @@ import {
   firstGradientName,
   getIn,
   isDirty,
-  nextLightId,
   parseThemeDraft,
   readBackdropKind,
   readBackgroundKind,
@@ -22,11 +20,12 @@ import {
   readFills,
   readGradients,
   readIdentity,
-  readLights,
   readSun,
   removeTag,
+  renameGradient,
   serialiseThemeDoc,
   setIn,
+  setSunEnabled,
   sunPath,
   type ThemeDoc,
   themeScope,
@@ -37,7 +36,7 @@ import {
   writeFills,
   writeGradients,
   writeIdentity,
-  writeLights,
+  writeStageGradient,
   writeSun,
 } from "./themeDraft";
 
@@ -156,6 +155,11 @@ describe("identity", () => {
     expect(getIn(next, ["catalogue", "hidden"])).toBeUndefined();
   });
 
+  it("keeps an entered order valid for the catalogue parser", () => {
+    const doc = writeIdentity(base(), { order: 1.5 });
+    expect(parseThemeCatalogueMetadata(doc.catalogue, "demo")?.order).toBe(2);
+  });
+
   it("de-duplicates tags case-insensitively", () => {
     expect(addTag(["Demo"], "demo")).toEqual(["Demo"]);
     expect(addTag(["Demo"], "  quiet ")).toEqual(["Demo", "quiet"]);
@@ -172,6 +176,42 @@ describe("chart colours", () => {
 });
 
 describe("gradients", () => {
+  it("keeps stage references and extra gradient fields when renamed or removed", () => {
+    const gradient = { type: "linear", angleDeg: 30, stops: defaultGradientStops(), future: 1 };
+    const doc: ThemeDoc = {
+      gradients: { brand: gradient },
+      backdrop: { type: "gradient", gradient: "brand" },
+      background: {
+        type: "scene3d",
+        look: "demo",
+        backing: { type: "gradient", gradient: "brand" },
+      },
+    };
+    const renamed = renameGradient(doc, "brand", "studio");
+    expect(getIn(renamed, ["gradients", "studio"])).toEqual(gradient);
+    expect(getIn(renamed, ["backdrop", "gradient"])).toBe("studio");
+    expect(getIn(renamed, ["background", "backing", "gradient"])).toBe("studio");
+    const edited = writeGradients(
+      renamed,
+      readGradients(renamed).map((entry) => ({ ...entry, angleDeg: 45 })),
+    );
+    expect(getIn(edited, ["gradients", "studio", "future"])).toBe(1);
+    const removed = writeGradients(edited, []);
+    expect(getIn(removed, ["backdrop", "gradient"])).toBeUndefined();
+    expect(getIn(removed, ["backdrop", "spec", "angleDeg"])).toBe(45);
+    expect(getIn(removed, ["background", "backing", "spec", "angleDeg"])).toBe(45);
+  });
+
+  it("replaces the inline spec when a named stage gradient is chosen", () => {
+    for (const key of ["background", "backdrop"] as const) {
+      const next = writeStageGradient(
+        { [key]: { type: "gradient", spec: { old: true }, parallax: 0.2 } },
+        key,
+        "brand",
+      );
+      expect(next[key]).toEqual({ type: "gradient", gradient: "brand", parallax: 0.2 });
+    }
+  });
   it("round-trips through the list form", () => {
     const doc = writeGradients(base(), [
       {
@@ -249,6 +289,11 @@ describe("parseThemeDraft", () => {
 });
 
 describe("stage blocks", () => {
+  it("recognises the image background used by shipped static themes", () => {
+    expect(
+      readBackgroundKind({ background: { type: "image", src: "kookaburra:linen-intelligence" } }),
+    ).toBe("image");
+  });
   it("reads an absent and an explicit-none block as the same off state", () => {
     expect(readBackdropKind(base())).toBe("off");
     expect(readBackdropKind(setIn(base(), ["backdrop"], { type: "none" }))).toBe("off");
@@ -273,6 +318,99 @@ describe("stage blocks", () => {
 });
 
 describe("lighting blocks", () => {
+  it("switches the sun off without dropping ambient or fills, then restores its settings", () => {
+    const doc = setIn(base(), ["lighting"], {
+      key: { azimuthDeg: 23, elevationDeg: 45, intensity: 3, kelvin: 3200 },
+      ambient: 0.4,
+      fills: [{ azimuthDeg: -40, elevationDeg: 10, intensity: 0.6 }],
+    });
+    const off = setSunEnabled(doc, false);
+    const rig = parseThemeDraft(off, "demo").theme?.lighting;
+    expect(rig?.sun?.enabled).toBe(false);
+    expect(rig?.ambient).toBe(0.4);
+    expect(rig?.fills).toHaveLength(1);
+    const on = setSunEnabled(off, true);
+    expect(parseThemeDraft(on, "demo").theme?.lighting?.sun).toMatchObject({
+      azimuthDeg: 23,
+      intensity: 3,
+      kelvin: 3200,
+    });
+    expect(readSun(on)?.enabled).toBe(true);
+  });
+  it("adds a renderable sun to a theme that had no lighting", () => {
+    const next = writeSun(base(), DEFAULT_SUN);
+    expect(parseThemeDraft(next, "demo").theme?.lighting?.sun?.intensity).toBe(
+      DEFAULT_SUN.intensity,
+    );
+    expect(getIn(next, ["lighting", "ambient"])).toBe(0);
+  });
+  it("turns off both sun aliases instead of reviving the legacy key", () => {
+    const next = writeSun(
+      { lighting: { sun: { intensity: 2 }, key: { intensity: 1 }, ambient: 0.5 } },
+      null,
+    );
+    expect(next.lighting).toEqual({ ambient: 0.5 });
+  });
+
+  it("keeps extra environment and fill fields when changing intensity", () => {
+    const doc: ThemeDoc = {
+      environment: {
+        source: "kookaburra:softbox",
+        intensity: 1,
+        rotationDeg: 0,
+        future: "environment",
+      },
+      lighting: { fills: [{ azimuthDeg: 0, elevationDeg: 30, intensity: 1, future: "fill" }] },
+    };
+    expect(getIn(writeEnvironment(doc, { intensity: 2 }), ["environment", "future"])).toBe(
+      "environment",
+    );
+    const next = writeFills(
+      doc,
+      readFills(doc).map((fill) => ({ ...fill, intensity: 2 })),
+    );
+    expect((getIn(next, ["lighting", "fills"]) as ThemeDoc[])[0].future).toBe("fill");
+  });
+  it("retains sun Kelvin and token fields when intensity changes", () => {
+    const doc: ThemeDoc = {
+      lighting: {
+        sun: {
+          azimuthDeg: 10,
+          elevationDeg: 40,
+          intensity: 2,
+          kelvin: 3200,
+          colorToken: "accent",
+          future: 1,
+        },
+        lights: [
+          {
+            id: "spot",
+            name: "Warm rim",
+            type: "spot",
+            intensity: 3,
+            kelvin: 2900,
+            colorToken: "accent",
+            target: [1, 2, 3],
+            distance: 12,
+            decay: 1.5,
+            angleDeg: 45,
+            penumbra: 0.4,
+            placement: { mode: "point", position: [3, 4, 5] },
+            future: 2,
+          },
+        ],
+      },
+    };
+    const sun = readSun(doc);
+    if (!sun) throw new Error("Expected a parsed sun");
+    const changedSun = writeSun(doc, { ...sun, intensity: 4 });
+    expect(getIn(changedSun, ["lighting", "sun"])).toMatchObject({
+      intensity: 4,
+      kelvin: 3200,
+      colorToken: "accent",
+      future: 1,
+    });
+  });
   const v8 = () =>
     setIn(base(), ["lighting"], {
       key: { azimuthDeg: 20, elevationDeg: 40, intensity: 3, color: "#fff5e8" },
@@ -318,33 +456,20 @@ describe("lighting blocks", () => {
     ).toBeUndefined();
   });
 
-  it("round-trips fills and emits only the fields a light's own type accepts", () => {
+  it("removes an emptied fill list", () => {
     expect(readFills(v8())).toHaveLength(1);
     expect(getIn(writeFills(v8(), []), ["lighting", "fills"])).toBeUndefined();
-
-    const area = { ...defaultLight("light-1"), type: "area" as const, castShadow: true };
-    const spot = {
-      ...defaultLight("light-2"),
-      type: "spot" as const,
-      placementMode: "point" as const,
-    };
-    const written = getIn(writeLights(base(), [area, spot]), ["lighting", "lights"]) as Record<
-      string,
-      unknown
-    >[];
-    expect(written[0]).toMatchObject({ type: "area", width: 2, height: 2 });
-    expect(written[0].castShadow).toBeUndefined();
-    expect(written[1]).toMatchObject({
-      type: "spot",
-      angleDeg: 45,
-      placement: { mode: "point", position: [0, 2, 4] },
-    });
-    expect(readLights(writeLights(base(), [area, spot]))).toHaveLength(2);
-    expect(nextLightId([{ id: "light-1" }, { id: "light-3" }])).toBe("light-2");
   });
 });
 
 describe("effects blocks", () => {
+  it("retains extra effect fields when an existing control changes", () => {
+    const doc = { effects: { grain: { intensity: 0.1, future: "keep" } } };
+    expect(getIn(writeEffect(doc, "grain", { intensity: 0.2 }), ["effects", "grain"])).toEqual({
+      intensity: 0.2,
+      future: "keep",
+    });
+  });
   it("writes an effect whole and deletes it rather than zeroing it", () => {
     expect(readEffect(base(), "bloom")).toBeNull();
     const on = writeEffect(base(), "bloom", { ...EFFECT_DEFAULTS.bloom, intensity: 1.4 });

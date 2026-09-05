@@ -74,6 +74,7 @@ import { snapshotSceneStageFloors } from "./stageRegistry";
 import { useTerminalEditStore } from "./terminalEditStore";
 import { configureDeterministicEngine } from "./timeline";
 import { awaitTitleMeasuresSettled } from "./titleBlockMeasure";
+import { useWebsiteEditStore } from "./websiteEditStore";
 
 /** Export encoder: libx264 is deterministic (the v0 default), videotoolbox is hardware-fast, prores_ks is software ProRes 422 HQ (10-bit 4:2:2, .mov container). */
 export type Codec = "libx264" | "h264_videotoolbox" | "prores_ks";
@@ -319,6 +320,7 @@ async function exportPreamble(
   useDeviceEditStore.getState().select(null);
   useImageEditStore.getState().select(null);
   useTerminalEditStore.getState().select(null);
+  useWebsiteEditStore.getState().select(null);
   // With themes, preloads exactly the fonts the project renders (bundled and workspace-pinned system fonts, plus sidecar `<key>Font` overrides); the no-theme form preloads the bundled defaults.
   await preloadAppFonts(
     opts.theme

@@ -1,10 +1,15 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useClockStore } from "./clock";
-import { canvasCommittedClockMs, canvasHandle, setCapturingPreview } from "./exportBridge";
+import {
+  canvasCommittedClockMs,
+  canvasCommittedProject,
+  canvasHandle,
+  setCapturingPreview,
+} from "./exportBridge";
 import { awaitTextSync } from "./exporter";
 import { isExporting } from "./exportState";
 import { hideGizmoHandles } from "./gizmoRegistry";
-import { isWorkspaceProjectId, type LoadedProject, nativeProjectSlug } from "./project";
+import { isWorkspaceBackedProjectId, type LoadedProject, nativeProjectSlug } from "./project";
 
 /** Preview-frame capture off the live canvas, used by welcome snapshots and scene thumbs. UI niceties, not part of the export path: nothing here runs during an export/autorun, every failure is silent (cards keep their placeholders), and the determinism contract is untouched (the preview clock is borrowed and restored). */
 
@@ -59,18 +64,20 @@ export async function captureFrameAt(
   tMs: number,
   width: number,
   format: "png" | "jpeg" = "png",
+  isCurrent: () => boolean = () => true,
 ): Promise<Uint8Array | null> {
+  if (!isCurrent()) return null;
   const clock = useClockStore.getState();
   clock.setCurrentMs(tMs);
   noteBorrowedSeek(tMs);
   if (!(await waitFor(() => canvasCommittedClockMs() === tMs, 1000))) return null;
   // The commit stamp is the React commit; clip textures stream in asynchronously, so give them a settle beat.
   await delay(200);
-  if (isExporting() || !canvasHandle.current) return null;
+  if (isExporting() || !canvasHandle.current || !isCurrent()) return null;
   // Text meshes freshly committed by this seek (a theme's font swap, a scene first entered here) may still be typesetting; headless windows never fire rAF, so nothing else kicks or completes them and a lone forced paint reads glyphs one capture late (the invisible-Playfair-title theme-preview bug). Kick and await quiescence exactly like the export loop, then give onSync-driven commits (mask-reveal bounds) a beat to land.
   await awaitTextSync(canvasHandle.current.scene);
   await delay(50);
-  if (isExporting() || !canvasHandle.current) return null;
+  if (isExporting() || !canvasHandle.current || !isCurrent()) return null;
   // Then force one synchronous preview render; the on-demand GL render is normally rAF-driven and WKWebView suspends rAF for occluded windows (the AFK lesson), so a headless `kookaburra:run --action theme-previews` would otherwise capture a stale buffer.
   return paintAndReadCanvas(width, format);
 }
@@ -116,14 +123,18 @@ export async function captureCurrentFrame(width: number): Promise<Uint8Array | n
 
 /** Welcome-card snapshot: one representative frame to `.kookaburra/snapshots/<slug>.png`; returns whether a snapshot was written. */
 export async function captureSnapshot(project: LoadedProject): Promise<boolean> {
-  if (!isWorkspaceProjectId(project.id)) return false;
+  if (!isWorkspaceBackedProjectId(project.id)) return false;
+  const isCurrent = () => canvasCommittedProject() === project;
+  if (!isCurrent()) return false;
   const slug = nativeProjectSlug(project.id);
   const written = await withBorrowedClock(async () => {
     const bytes = await captureFrameAt(
       Math.round(project.totalMs * SNAPSHOT_POINT),
       SNAPSHOT_WIDTH,
+      "png",
+      isCurrent,
     );
-    if (!bytes) return false;
+    if (!bytes || !isCurrent()) return false;
     await invoke("write_snapshot", bytes, { headers: { "x-kookaburra-slug": slug } });
     return true;
   }).catch((e) => {

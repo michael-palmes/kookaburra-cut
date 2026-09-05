@@ -48,6 +48,15 @@ describe("sceneSelectionLabel", () => {
 });
 
 describe("sceneMenuItems", () => {
+  it("keeps single-scene presets editable without adding another scene", () => {
+    const entries = items({ canAddScenes: false });
+    expect(entries.some((e) => e !== "separator" && e.id === "duplicate")).toBe(false);
+    expect(entries.some((e) => e !== "separator" && e.id === "insert-preset")).toBe(false);
+    expect(item(entries, "save-preset")).toBeDefined();
+    expect(item(entries, "copy-to-project")).toBeDefined();
+    expect(item(entries, "duration")).toBeDefined();
+  });
+
   it("relabels Duplicate, Copy to project and Delete for a multi-selection", () => {
     const entries = items({ selectionCount: 3 });
     expect(item(entries, "duplicate").label).toBe("Duplicate 3 scenes");

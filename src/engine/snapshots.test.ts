@@ -6,12 +6,13 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("./exportBridge", () => ({
   canvasHandle: { current: {} },
   canvasCommittedClockMs: vi.fn(() => 0),
+  canvasCommittedProject: vi.fn(() => null),
   setCapturingPreview: vi.fn(),
 }));
 vi.mock("./exporter", () => ({ awaitTextSync: vi.fn(async () => {}) }));
 vi.mock("./gizmoRegistry", () => ({ hideGizmoHandles: vi.fn(() => () => {}) }));
 vi.mock("./project", () => ({
-  isWorkspaceProjectId: (id: string) => id.startsWith("ws:"),
+  isWorkspaceBackedProjectId: (id: string) => /^(ws|ws-template|ws-preset):/.test(id),
   nativeProjectSlug: (id: string) => (id.startsWith("ws:") ? id.slice(3) : id),
 }));
 
@@ -20,6 +21,14 @@ beforeEach(() => {
 });
 
 describe("withBorrowedClock", () => {
+  it("does not seek or save a library poster after its project changed", async () => {
+    const { captureSnapshot } = await import("./snapshots");
+    const { invoke } = await import("@tauri-apps/api/core");
+    const project = { id: "ws-preset:demo", totalMs: 2000 } as import("./project").LoadedProject;
+    expect(await captureSnapshot(project)).toBe(false);
+    expect(useClockStore.getState().currentMs).toBe(1500);
+    expect(invoke).not.toHaveBeenCalled();
+  });
   it("gives the scrub position back when its own last seek is still current", async () => {
     const { noteBorrowedSeek, withBorrowedClock } = await import("./snapshots");
     await withBorrowedClock(async () => {

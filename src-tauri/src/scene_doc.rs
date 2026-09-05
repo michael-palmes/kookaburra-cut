@@ -319,6 +319,7 @@ pub fn write_project_manifest_snapshot(
     if !manifest.get("scenes").map(Value::is_array).unwrap_or(false) {
         return Err("manifest needs a scenes array".into());
     }
+    workspace::validate_scene_count(&slug, manifest["scenes"].as_array().unwrap().len())?;
     let path = workspace::project_dir_mut(&app, &state, &slug)?.join(MANIFEST_FILENAME);
     atomic_write_json(&path, &manifest)
 }
@@ -610,6 +611,7 @@ pub fn duplicate_scene(
     index: usize,
     position: Option<usize>,
 ) -> Result<ScaffoldResult, String> {
+    workspace::require_multiple_scenes(&slug)?;
     let project = workspace::project_dir_mut(&app, &state, &slug)?;
     let manifest_path = project.join(MANIFEST_FILENAME);
     let text = std::fs::read_to_string(&manifest_path)
@@ -750,7 +752,7 @@ pub(crate) fn scan_asset_refs(text: &str) -> Vec<String> {
     found
 }
 
-fn collect_json_asset_refs(value: &Value) -> Vec<String> {
+pub(crate) fn collect_json_asset_refs(value: &Value) -> Vec<String> {
     fn walk(value: &Value, found: &mut Vec<String>, seen: &mut HashSet<String>) {
         match value {
             Value::String(path) if is_project_asset_ref(path) => {
@@ -864,8 +866,15 @@ fn copy_scene_assets(
     dest: &Path,
     tsx: &mut String,
     doc: &mut Option<Value>,
+    entry: &mut Value,
+    sample_pool: Option<&Path>,
 ) -> Result<(), String> {
     let mut refs = scan_asset_refs(tsx);
+    for rel in collect_json_asset_refs(entry) {
+        if !refs.contains(&rel) {
+            refs.push(rel);
+        }
+    }
     if let Some(doc) = doc.as_ref() {
         for rel in collect_json_asset_refs(doc) {
             if !refs.iter().any(|existing| existing == &rel) {
@@ -876,7 +885,18 @@ fn copy_scene_assets(
 
     let mut replacements = Vec::new();
     for rel in refs {
-        let src_path = project.join(&rel);
+        let local = project.join(&rel);
+        let src_path = if local.is_file() {
+            local
+        } else {
+            sample_pool
+                .zip(
+                    rel.strip_prefix("assets/")
+                        .filter(|name| !name.contains('/')),
+                )
+                .map(|(pool, name)| pool.join(name))
+                .unwrap_or(local)
+        };
         if !src_path.is_file() {
             continue;
         }
@@ -905,11 +925,19 @@ fn copy_scene_assets(
         if let Some(doc) = doc.as_mut() {
             rewrite_json_asset_refs(doc, &replacements);
         }
+        rewrite_json_asset_refs(entry, &replacements);
     }
     Ok(())
 }
 
-/// Copy a scene into ANOTHER workspace project: the TSX + sidecar land under a freshly numbered stem carrying an id unique in the destination (and a sidecar re-minted by `remint_scene_doc_ids`), every referenced `assets/` file copies along (identical bytes reuse the destination's file; a clash with different bytes free-names the copy and the scene text re-points), and the manifest entry appends with `durationMs` and `effects` (no outgoing transition: the scene lands last). Files write before the manifest, the duplicate_scene ordering.
+#[derive(Debug, Serialize)]
+pub struct CopiedSceneResult {
+    #[serde(flatten)]
+    pub scene: ScaffoldResult,
+    pub index: usize,
+}
+
+/// Copy scene content and assets, preserving effects and committing its final position in one manifest write.
 #[tauri::command]
 pub fn copy_scene_to_project(
     app: AppHandle,
@@ -917,12 +945,40 @@ pub fn copy_scene_to_project(
     slug: String,
     index: usize,
     dest_slug: String,
-) -> Result<ScaffoldResult, String> {
+    position: Option<usize>,
+) -> Result<CopiedSceneResult, String> {
+    workspace::require_multiple_scenes(&dest_slug)?;
     if slug == dest_slug {
         return Err("pick a different project to copy into".into());
     }
     let project = workspace::project_dir(&app, &state, &slug)?;
     let dest = workspace::project_dir_mut(&app, &state, &dest_slug)?;
+    let sample_pool = matches!(
+        workspace::parse_project_id(&slug)?.0,
+        workspace::ProjectScope::BundledTemplate | workspace::ProjectScope::BundledPreset
+    )
+    .then(|| workspace::samples_root(&app));
+    copy_scene_between(
+        &project,
+        &dest,
+        index,
+        &slug,
+        &dest_slug,
+        position,
+        sample_pool.as_deref(),
+    )
+}
+
+pub(crate) fn copy_scene_between(
+    project: &Path,
+    dest: &Path,
+    index: usize,
+    slug: &str,
+    dest_slug: &str,
+    position: Option<usize>,
+    sample_pool: Option<&Path>,
+) -> Result<CopiedSceneResult, String> {
+    workspace::require_multiple_scenes(dest_slug)?;
     let dest_manifest_path = dest.join(MANIFEST_FILENAME);
     if !dest_manifest_path.is_file() {
         return Err(format!("no project named {dest_slug} in the workspace"));
@@ -932,7 +988,13 @@ pub fn copy_scene_to_project(
         .map_err(|e| format!("reading project.json: {e}"))?;
     let source_manifest: Value =
         serde_json::from_str(&text).map_err(|e| format!("project.json isn't valid JSON: {e}"))?;
-    let source = source_manifest
+    let source_count = source_manifest
+        .get("scenes")
+        .and_then(Value::as_array)
+        .ok_or("project.json has no scenes array")?
+        .len();
+    workspace::validate_scene_count(slug, source_count)?;
+    let mut source = source_manifest
         .get("scenes")
         .and_then(Value::as_array)
         .ok_or("project.json has no scenes array")?
@@ -959,7 +1021,7 @@ pub fn copy_scene_to_project(
         Err(e) => return Err(format!("reading {doc_file_src}: {e}")),
     };
 
-    copy_scene_assets(&project, &dest, &mut tsx, &mut doc)?;
+    copy_scene_assets(project, dest, &mut tsx, &mut doc, &mut source, sample_pool)?;
 
     // Fresh stem in the destination, keeping the source's display name.
     let scenes_dir = dest.join("scenes");
@@ -990,7 +1052,7 @@ pub fn copy_scene_to_project(
     atomic_write_text(&scenes_dir.join(format!("{stem}.tsx")), &tsx)?;
     if let Some(doc) = &mut doc {
         remint_scene_doc_ids(doc);
-        atomic_write_json(&scene_doc_path(&dest, &new_doc_file)?, doc)?;
+        atomic_write_json(&scene_doc_path(dest, &new_doc_file)?, doc)?;
     }
 
     let dest_text = std::fs::read_to_string(&dest_manifest_path)
@@ -1010,14 +1072,18 @@ pub fn copy_scene_to_project(
     if let Some(effects) = source.get("effects") {
         entry["effects"] = effects.clone();
     }
-    scenes.push(entry);
+    let at = position.unwrap_or(scenes.len()).min(scenes.len());
+    scenes.insert(at, entry);
     atomic_write_json(&dest_manifest_path, &dest_manifest)?;
 
-    Ok(ScaffoldResult {
-        file: new_file,
-        doc_file: new_doc_file,
-        scene_id,
-        duration_ms,
+    Ok(CopiedSceneResult {
+        scene: ScaffoldResult {
+            file: new_file,
+            doc_file: new_doc_file,
+            scene_id,
+            duration_ms,
+        },
+        index: at,
     })
 }
 
@@ -1037,9 +1103,7 @@ pub fn list_project_scenes(
     state: State<'_, SettingsState>,
     slug: String,
 ) -> Result<Vec<SceneListing>, String> {
-    let root = workspace::require_root(&app, &state)?;
-    workspace::validate_slug(&slug)?;
-    let project = root.join(&slug);
+    let project = workspace::project_dir(&app, &state, &slug)?;
     let text = std::fs::read_to_string(project.join(MANIFEST_FILENAME))
         .map_err(|e| format!("reading {slug}/project.json: {e}"))?;
     let manifest: Value =
@@ -1721,6 +1785,7 @@ pub async fn scaffold_scene(
     slug: String,
     mut options: ScaffoldOptions,
 ) -> Result<ScaffoldResult, String> {
+    workspace::require_multiple_scenes(&slug)?;
     let project = workspace::project_dir_mut(&app, &state, &slug)?;
     let manifest_path = project.join(MANIFEST_FILENAME);
     if !manifest_path.is_file() {
@@ -2670,7 +2735,7 @@ mod scaffold_managed_text_tests {
 #[cfg(test)]
 mod asset_scan_tests {
     use super::{collect_json_asset_refs, copy_scene_assets, scan_asset_refs};
-    use serde_json::json;
+    use serde_json::{json, Value};
     use std::sync::atomic::{AtomicU32, Ordering};
 
     fn temp_dir(label: &str) -> std::path::PathBuf {
@@ -2757,7 +2822,7 @@ mod asset_scan_tests {
             "note": format!("Preview assets/{name} here"),
         }));
 
-        copy_scene_assets(&project, &dest, &mut tsx, &mut doc).unwrap();
+        copy_scene_assets(&project, &dest, &mut tsx, &mut doc, &mut Value::Null, None).unwrap();
 
         let rewritten = "assets/Kākāpō @2 (final)-2.png";
         assert_eq!(doc.as_ref().unwrap()["images"][0]["src"], json!(rewritten));
@@ -2789,7 +2854,7 @@ mod asset_scan_tests {
             r#"const image = "assets/foo.png"; const unrelated = "my-assets/foo.png";"#.to_string();
         let mut doc = None;
 
-        copy_scene_assets(&project, &dest, &mut tsx, &mut doc).unwrap();
+        copy_scene_assets(&project, &dest, &mut tsx, &mut doc, &mut Value::Null, None).unwrap();
 
         assert_eq!(
             tsx,

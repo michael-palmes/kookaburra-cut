@@ -583,7 +583,9 @@ function toUserEntry(info: LibraryItemInfo): TemplateEntry | null {
     sceneCount: info.sceneCount,
     durationMs: info.durationMs,
     // The project's snapshot, copied in at convert time: one still, so the card shows it instead of cycling four.
-    previews: info.posterPath ? [fsUrl(info.posterPath)] : null,
+    previews: info.posterPath
+      ? [`${fsUrl(info.posterPath)}?v=${info.posterModifiedAt ?? 0}`]
+      : null,
   });
 }
 

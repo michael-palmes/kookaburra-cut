@@ -39,6 +39,7 @@ import {
   welcomeRailRows,
   welcomeRailSections,
 } from "./projectLibrary";
+import { ThemeEditorIcon } from "./theme-editor/icons";
 import { useEscapeClose } from "./useEscapeClose";
 
 function formatDuration(ms: number): string {
@@ -289,15 +290,17 @@ const SEARCH_LABELS: Record<string, string> = {
   [LIBRARY_APP_PRESETS]: "app presets",
 };
 
-/** The welcome screen: a rail of project groups above the library catalogues, and the matching grid beside it. Projects are snapshot cards sorted most-recently-opened first; the library rows show the user's saved templates and presets, plus, in a dev checkout, the bundled catalogues and the remaining bundled projects. */
+/** The welcome screen: a rail of project groups above the library catalogues, and the matching grid beside it. Projects are snapshot cards sorted most-recently-opened first; the library rows show the user's saved templates and presets, alongside the bundled catalogues, with the remaining bundled projects visible only in dev. */
 export function Welcome({
   onOpenProject,
   onNewProject,
+  onOpenThemes,
   refreshKey,
   focusSearchNonce,
 }: {
   onOpenProject: (projectId: string) => void;
   onNewProject: (options?: { group?: string | null; templateId?: string }) => void;
+  onOpenThemes: () => void;
   /** Bump to re-scan the workspace (e.g. after a create). */
   refreshKey: number;
   /** Bump to focus and select the search field (⌘F). */
@@ -353,8 +356,13 @@ export function Welcome({
           setProjects([]);
         }
       });
-    void refreshUserTemplates();
-    void refreshUserPresets();
+    Promise.all([refreshUserTemplates(), refreshUserPresets()])
+      .then(() => {
+        if (!cancelled) setError(null);
+      })
+      .catch((e) => {
+        if (!cancelled) setError(String(e));
+      });
     return () => {
       cancelled = true;
     };
@@ -371,10 +379,7 @@ export function Welcome({
     }),
     [templates, presets],
   );
-  const sections = useMemo(
-    () => welcomeRailSections(projects ?? [], counts, import.meta.env.DEV),
-    [projects, counts],
-  );
+  const sections = useMemo(() => welcomeRailSections(projects ?? [], counts), [projects, counts]);
   const railRows = useMemo(() => welcomeRailRows(sections), [sections]);
   const section = librarySection(activeRowId);
   // Searching projects is global: the rail follows to All while a query is active (the ThemePicker convention); library rows keep their own scoped search.
@@ -440,7 +445,7 @@ export function Welcome({
 
   // Bundled projects that are not templates stay reachable from App templates.
   const devProjects = useMemo(() => {
-    if (activeRowId !== LIBRARY_APP_TEMPLATES) return [];
+    if (!import.meta.env.DEV || activeRowId !== LIBRARY_APP_TEMPLATES) return [];
     const templateIds = new Set(templates.map((entry) => entry.id));
     return listProjectIds().filter(
       (id) => !templateIds.has(id) && (!trimmedQuery || id.includes(trimmedQuery)),
@@ -524,15 +529,32 @@ export function Welcome({
                     <span className="project-library-rail-count">{row.count}</span>
                   </button>
                 ))}
+                {railSection.id === "library" && (
+                  <button
+                    type="button"
+                    className="project-library-rail-row"
+                    onClick={onOpenThemes}
+                    onKeyDown={(e) => e.stopPropagation()}
+                  >
+                    <ThemeEditorIcon name="colours" />
+                    <span className="project-library-rail-label">Themes</span>
+                  </button>
+                )}
               </Fragment>
             ))}
           </fieldset>
 
           <main className="project-library-results">
             {error && (
-              <p className="modal-error" role="alert">
-                {error}
-              </p>
+              <div>
+                <p className="modal-error" role="alert">
+                  {error}
+                </p>
+                <button type="button" className="btn" onClick={() => setRetryNonce((n) => n + 1)}>
+                  <LibraryRailIcon id="templates" />
+                  Refresh library
+                </button>
+              </div>
             )}
             {section ? (
               <LibraryGrid

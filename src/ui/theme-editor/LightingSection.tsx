@@ -1,42 +1,29 @@
 import { BUNDLED_ENVIRONMENT_IDS, NONE_SOURCE, SOFTBOX_SOURCE } from "../../engine/environments";
 import type { Theme } from "../../theme/tokens";
 import { ColourPicker } from "../colour/ColourPicker";
-import {
-  Field,
-  IconButton,
-  IconOptions,
-  IconSelect,
-  IconToggle,
-  NumberField,
-  Section,
-} from "./fields";
-import { ThemeEditorIcon, type ThemeEditorIconName } from "./icons";
+import { Field, IconButton, IconSelect, IconToggle, NumberField, Section } from "./fields";
+import { ThemeEditorIcon } from "./icons";
+import { LightingEntitiesSection } from "./LightingEntitiesSection";
+import { ShadowSection } from "./ShadowSection";
+import { SunColourFields } from "./SunColourFields";
 import {
   DEFAULT_FILL,
   DEFAULT_SUN,
-  defaultLight,
   type FillDraft,
-  LIGHT_SPACES,
-  LIGHT_TYPES,
-  type LightDraft,
-  type LightType,
-  nextLightId,
   readAmbient,
   readAmbientColor,
   readEnvironment,
   readFills,
-  readFixtureSummaries,
-  readLights,
   readSun,
   setIn,
+  setSunEnabled,
   type ThemeDoc,
   writeEnvironment,
   writeFills,
-  writeLights,
   writeSun,
 } from "./themeDraft";
 
-/** Lighting: the THEME layer of the three-layer rig (theme -> project -> scene). The key light, the ambient wash, the v8 fill list the bundled themes still author, the v9 free lights, and the HDRI environment. Keyframes are scene-level and stay out of this window; fixtures list read-only until a theme needs one. */
+/** Lighting: the THEME layer of the three-layer rig (theme -> project -> scene). The key light, the ambient wash, the v8 fill list the bundled themes still author, the v9 free lights, and the HDRI environment. Keyframes are scene-level and stay out of this window. */
 
 const ENVIRONMENT_OPTIONS = [
   { id: "", label: "Inherit (no block)" },
@@ -48,13 +35,6 @@ const ENVIRONMENT_OPTIONS = [
   })),
 ];
 
-const TYPE_ICONS: Record<LightType, ThemeEditorIconName> = {
-  directional: "sun",
-  point: "light",
-  spot: "spot",
-  area: "panel",
-};
-
 export function LightingSection({
   doc,
   onPatch,
@@ -65,11 +45,10 @@ export function LightingSection({
   theme: Theme;
 }) {
   const sun = readSun(doc);
+  const sunEnabled = sun?.enabled === true;
   const ambient = readAmbient(doc);
   const ambientColor = readAmbientColor(doc);
   const fills = readFills(doc);
-  const lights = readLights(doc);
-  const fixtures = readFixtureSummaries(doc);
   const environment = readEnvironment(doc);
 
   const patchSun = (patch: Partial<NonNullable<typeof sun>>) =>
@@ -79,13 +58,6 @@ export function LightingSection({
       writeFills(
         doc,
         fills.map((fill, i) => (i === index ? { ...fill, ...patch } : fill)),
-      ),
-    );
-  const patchLight = (index: number, patch: Partial<LightDraft>) =>
-    onPatch(
-      writeLights(
-        doc,
-        lights.map((light, i) => (i === index ? { ...light, ...patch } : light)),
       ),
     );
 
@@ -102,13 +74,13 @@ export function LightingSection({
         <IconToggle
           icon="sun"
           offIcon="hidden"
-          label={sun ? "On" : "Off"}
-          checked={sun !== null}
-          onChange={(on) => onPatch(writeSun(doc, on ? DEFAULT_SUN : null))}
+          label={sunEnabled ? "On" : "Off"}
+          checked={sunEnabled}
+          onChange={(on) => onPatch(setSunEnabled(doc, on))}
         />
       </Field>
 
-      {sun && (
+      {sun && sunEnabled && (
         <>
           <Field
             label="Key direction"
@@ -157,6 +129,8 @@ export function LightingSection({
             </span>
           </Field>
 
+          <SunColourFields doc={doc} theme={theme} onPatch={onPatch} />
+
           <Field
             label="Key softness"
             icon="shadow"
@@ -179,13 +153,6 @@ export function LightingSection({
                 label={sun.castShadow ? "Casts shadow" : "No shadow"}
                 checked={sun.castShadow}
                 onChange={(castShadow) => patchSun({ castShadow })}
-              />
-              <IconToggle
-                icon="visible"
-                offIcon="hidden"
-                label={sun.enabled ? "Enabled" : "Muted"}
-                checked={sun.enabled}
-                onChange={(enabled) => patchSun({ enabled })}
               />
             </span>
           </Field>
@@ -327,220 +294,8 @@ export function LightingSection({
         </div>
       </Field>
 
-      <Field
-        label="Free lights"
-        icon="light"
-        hint="The v9 list: each light picks its own type and the space its placement resolves in."
-      >
-        <div className="theme-editor-light-list">
-          {lights.map((light, index) => (
-            <article key={light.id} className="theme-editor-light">
-              <header className="theme-editor-light-head">
-                <span>{light.id}</span>
-                <IconButton
-                  icon="remove"
-                  label="Delete"
-                  danger
-                  onClick={() =>
-                    onPatch(
-                      writeLights(
-                        doc,
-                        lights.filter((_, i) => i !== index),
-                      ),
-                    )
-                  }
-                />
-              </header>
-
-              <IconOptions
-                label={`${light.id} type`}
-                value={light.type}
-                onChange={(type) => patchLight(index, { type })}
-                options={LIGHT_TYPES.map((type) => ({
-                  id: type,
-                  label: type,
-                  icon: TYPE_ICONS[type],
-                }))}
-              />
-
-              <IconOptions
-                label={`${light.id} space`}
-                value={light.space}
-                onChange={(space) => patchLight(index, { space })}
-                options={LIGHT_SPACES.map((space) => ({
-                  id: space,
-                  label: space,
-                  icon: space === "world" ? "cube" : space === "camera" ? "specimen" : "identity",
-                }))}
-              />
-
-              <IconOptions
-                label={`${light.id} placement`}
-                value={light.placementMode}
-                onChange={(placementMode) => patchLight(index, { placementMode })}
-                options={[
-                  { id: "orbit", label: "Orbit", icon: "angle" },
-                  { id: "point", label: "Point", icon: "position" },
-                ]}
-              />
-
-              {light.placementMode === "orbit" ? (
-                <span className="theme-editor-inline">
-                  <NumberField
-                    label={`${light.id} azimuth`}
-                    value={light.azimuthDeg}
-                    min={-180}
-                    max={180}
-                    step={5}
-                    suffix="az"
-                    onCommit={(next) => patchLight(index, { azimuthDeg: next ?? 0 })}
-                  />
-                  <NumberField
-                    label={`${light.id} elevation`}
-                    value={light.elevationDeg}
-                    min={-90}
-                    max={90}
-                    step={5}
-                    suffix="el"
-                    onCommit={(next) => patchLight(index, { elevationDeg: next ?? 0 })}
-                  />
-                  <NumberField
-                    label={`${light.id} distance`}
-                    value={light.distance}
-                    min={0.1}
-                    max={60}
-                    step={0.5}
-                    suffix="d"
-                    onCommit={(next) => patchLight(index, { distance: next ?? 1 })}
-                  />
-                </span>
-              ) : (
-                <span className="theme-editor-inline">
-                  {(["x", "y", "z"] as const).map((axis, axisIndex) => (
-                    <NumberField
-                      key={axis}
-                      label={`${light.id} ${axis}`}
-                      value={light.position[axisIndex]}
-                      min={-60}
-                      max={60}
-                      step={0.1}
-                      suffix={axis}
-                      onCommit={(next) => {
-                        const position: [number, number, number] = [...light.position];
-                        position[axisIndex] = next ?? 0;
-                        patchLight(index, { position });
-                      }}
-                    />
-                  ))}
-                </span>
-              )}
-
-              <span className="theme-editor-inline">
-                <NumberField
-                  label={`${light.id} intensity`}
-                  value={light.intensity}
-                  min={0}
-                  max={100}
-                  step={0.1}
-                  onCommit={(next) => patchLight(index, { intensity: next ?? 0 })}
-                />
-                <ColourPicker
-                  theme={theme}
-                  label={`${light.id} colour`}
-                  value={light.color}
-                  onCommit={(hex) => patchLight(index, { color: hex })}
-                />
-                <IconToggle
-                  icon="visible"
-                  offIcon="hidden"
-                  label={light.enabled ? "Enabled" : "Muted"}
-                  checked={light.enabled}
-                  onChange={(enabled) => patchLight(index, { enabled })}
-                />
-                {(light.type === "directional" || light.type === "spot") && (
-                  <IconToggle
-                    icon="shadow"
-                    offIcon="hidden"
-                    label={light.castShadow ? "Casts shadow" : "No shadow"}
-                    checked={light.castShadow}
-                    onChange={(castShadow) => patchLight(index, { castShadow })}
-                  />
-                )}
-              </span>
-
-              {light.type === "spot" && (
-                <span className="theme-editor-inline">
-                  <NumberField
-                    label={`${light.id} cone`}
-                    value={light.angleDeg}
-                    min={1}
-                    max={170}
-                    step={1}
-                    suffix="deg"
-                    onCommit={(next) => patchLight(index, { angleDeg: next ?? 45 })}
-                  />
-                  <NumberField
-                    label={`${light.id} penumbra`}
-                    value={light.penumbra}
-                    min={0}
-                    max={1}
-                    step={0.05}
-                    onCommit={(next) => patchLight(index, { penumbra: next ?? 0 })}
-                  />
-                </span>
-              )}
-
-              {light.type === "area" && (
-                <span className="theme-editor-inline">
-                  <NumberField
-                    label={`${light.id} width`}
-                    value={light.width}
-                    min={0.1}
-                    max={40}
-                    step={0.1}
-                    suffix="w"
-                    onCommit={(next) => patchLight(index, { width: next ?? 1 })}
-                  />
-                  <NumberField
-                    label={`${light.id} height`}
-                    value={light.height}
-                    min={0.1}
-                    max={40}
-                    step={0.1}
-                    suffix="h"
-                    onCommit={(next) => patchLight(index, { height: next ?? 1 })}
-                  />
-                </span>
-              )}
-            </article>
-          ))}
-          <IconButton
-            icon="add"
-            label="Add light"
-            onClick={() =>
-              onPatch(writeLights(doc, [...lights, defaultLight(nextLightId(lights))]))
-            }
-          />
-        </div>
-      </Field>
-
-      {fixtures.length > 0 && (
-        <Field
-          label="Fixtures"
-          icon="panel"
-          hint="Emissive fixtures have no form here yet; they save through untouched."
-        >
-          <ul className="theme-editor-block-list">
-            {fixtures.map((fixture) => (
-              <li key={fixture.id}>
-                <ThemeEditorIcon name="panel" size={14} />
-                <span>{fixture.id}</span>
-                <code>{fixture.form}</code>
-              </li>
-            ))}
-          </ul>
-        </Field>
-      )}
+      <LightingEntitiesSection doc={doc} theme={theme} onPatch={onPatch} />
+      <ShadowSection doc={doc} theme={theme} onPatch={onPatch} />
 
       <p className="theme-editor-empty">
         Tone mapping and exposure are not theme fields: the display transform lives on each project

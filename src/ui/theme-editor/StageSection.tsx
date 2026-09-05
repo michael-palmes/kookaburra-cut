@@ -27,6 +27,7 @@ import {
   readBlock,
   setIn,
   type ThemeDoc,
+  writeStageGradient,
 } from "./themeDraft";
 
 /** Stage: the theme's default world-space staging (`backdrop`) and its camera-locked fill (`background`). Compact forms over the same document blocks the scene inspector writes per scene, reusing the shipped preset catalogues and option-preview stills; the inspector's own editors stay where they are (they write sidecars through an undo stack this window has no part in). */
@@ -42,6 +43,7 @@ const BACKGROUND_OPTIONS = [
   { id: "off", label: "Off", icon: "hidden" },
   { id: "color", label: "Colour", icon: "colours" },
   { id: "gradient", label: "Gradient", icon: "gradients" },
+  { id: "image", label: "Image", icon: "image" },
   { id: "shader", label: "Shader", icon: "shader" },
   { id: "scene3d", label: "3D", icon: "cube" },
 ] as const;
@@ -155,6 +157,14 @@ export function StageSection({
       );
     }
     if (kind === "shader") return applyShader(SHADER_BACKGROUND_IDS[0]);
+    if (kind === "image") {
+      return onPatch(
+        setIn(doc, ["background"], {
+          type: "image",
+          src: `kookaburra:${BUNDLED_BACKDROP_NAMES[0] ?? "loft-studio"}`,
+        }),
+      );
+    }
     applyScene3d(SCENE3D_BACKGROUND_IDS[0]);
   };
 
@@ -290,7 +300,7 @@ export function StageSection({
               icon="gradients"
               label="Backdrop gradient"
               value={typeof backdrop.gradient === "string" ? backdrop.gradient : ""}
-              onChange={(name) => patchBackdrop("gradient", name)}
+              onChange={(name) => onPatch(writeStageGradient(doc, "backdrop", name))}
               options={gradientOptions}
             />
           ) : (
@@ -374,7 +384,7 @@ export function StageSection({
               icon="gradients"
               label="Background gradient"
               value={typeof background.gradient === "string" ? background.gradient : ""}
-              onChange={(name) => patchBackground("gradient", name)}
+              onChange={(name) => onPatch(writeStageGradient(doc, "background", name))}
               options={gradientOptions}
             />
           ) : (
@@ -382,6 +392,25 @@ export function StageSection({
               This theme has no gradients yet, so the background carries an inline one.
             </p>
           )}
+        </Field>
+      )}
+
+      {backgroundKind === "image" && (
+        <Field
+          label="Background image"
+          icon="image"
+          hint="Bundled images remain available in every project using this theme."
+        >
+          <IconSelect
+            icon="image"
+            label="Background image"
+            value={typeof background.src === "string" ? background.src : ""}
+            onChange={(src) => patchBackground("src", src)}
+            options={BUNDLED_BACKDROP_NAMES.map((name) => ({
+              id: `kookaburra:${name}`,
+              label: name,
+            }))}
+          />
         </Field>
       )}
 
@@ -525,6 +554,7 @@ export function StageSection({
 
       {(backgroundKind === "color" ||
         backgroundKind === "gradient" ||
+        backgroundKind === "image" ||
         backgroundKind === "shader") && (
         <Field
           label="Parallax"

@@ -8,11 +8,12 @@ const scenes: SceneManagerRow[] = [
   { index: 2, name: "Outro", durationMs: 500, hasDoc: false },
 ];
 
-function render(busy = false) {
+function render(busy = false, canAddScenes = true) {
   return renderToStaticMarkup(
     <ScenesDrillIn
       scenes={scenes}
       busy={busy}
+      canAddScenes={canAddScenes}
       onBack={vi.fn()}
       onReorder={vi.fn()}
       onDuplicate={vi.fn()}
@@ -58,6 +59,15 @@ describe("ScenesDrillIn", () => {
     const html = footer(render(true));
     expect(html).toContain(">Working…<");
     expect(html.match(/disabled=""/g)).toHaveLength(4);
+  });
+
+  it("keeps presets editable without additive scene actions", () => {
+    const html = render(false, false);
+    expect(html).not.toContain("Copy from…<");
+    expect(html).not.toContain("From preset");
+    expect(html).not.toContain(">Duplicate<");
+    expect(html).toContain("Title");
+    expect(html).toContain(">Delete<");
   });
 
   it("renders one row per scene with its length", () => {

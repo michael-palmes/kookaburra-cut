@@ -45,6 +45,7 @@ import {
   slugifyPresetName,
   specChips,
   terminalSnapshotWarning,
+  websiteCaptureWarning,
   withPosterFrame,
 } from "./exportOptions";
 import { useEscapeClose } from "./useEscapeClose";
@@ -285,6 +286,7 @@ export function ExportModal({ project, currentAspect, busy, onExport, onClose }:
 
   // Selection-independent pre-flight (warn, never block): uncaptured terminals export their empty frame.
   const terminalWarning = terminalSnapshotWarning(project.sceneDocs, project.sceneFiles);
+  const websiteWarning = websiteCaptureWarning(project.sceneDocs, project.sceneFiles);
 
   const loudnessGainFor = useCallback(
     async (
@@ -556,6 +558,7 @@ export function ExportModal({ project, currentAspect, busy, onExport, onClose }:
               </span>
             </div>
             {terminalWarning && <p className="export-loudness export-warn">{terminalWarning}</p>}
+            {websiteWarning && <p className="export-loudness export-warn">{websiteWarning}</p>}
             {error && <p className="modal-error">{error}</p>}
           </section>
 

@@ -123,7 +123,9 @@ export function StageScenes({ project }: { project: LoadedProject | null }) {
           {/* Overlay panels: one per framed or terminal-carrying scene, siblings of the scene hosts so they lay out against the full frame (not the cutout). The compositor draws the active scene's panel over its composited slide. */}
           {project?.scenes.map((_, i) => {
             const frame = project.sceneFrames[i];
-            if (!frame && !project.sceneDocs[i]?.terminal) return null;
+            if (!frame && !project.sceneDocs[i]?.terminal && !project.sceneDocs[i]?.website) {
+              return null;
+            }
             const slot = project.slots[i];
             return (
               <FramePanel

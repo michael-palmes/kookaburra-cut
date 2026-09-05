@@ -5,6 +5,7 @@ import { WORKSPACE_THEME_PREFIX } from "../theme/registry";
 import type { FontRef } from "../theme/tokens";
 import { FontPicker } from "./FontPicker";
 import { NamePromptModal } from "./NamePromptModal";
+import { SceneMenuIcon } from "./sceneMenu";
 import {
   builtinThemeChoices,
   listThemeChoices,
@@ -12,6 +13,7 @@ import {
   ThemeBrowser,
   type ThemeChoice,
 } from "./ThemePicker";
+import { ThemeEditorIcon } from "./theme-editor/icons";
 import { canEditTheme, onThemeSaved, openThemeEditor } from "./theme-editor/themeEditorIo";
 import { useEscapeClose } from "./useEscapeClose";
 
@@ -28,21 +30,21 @@ export function ThemeMode({
   onThemeEdited,
   onClose,
 }: {
-  currentThemeId: string;
+  currentThemeId?: string;
   /** Land on a specific pane at open (the theme context menu). */
   initialView?: "fonts" | "duplicate";
   /** Pre-select a theme at open (rides with initialView). */
   initialThemeId?: string;
   /** Write the pick to project.json and reload the project. */
-  onApply: (themeId: string) => Promise<void>;
+  onApply?: (themeId: string) => Promise<void>;
   /** Create `~/Kookaburra Cut/themes/<slug>` from a base theme; returns the new ws id. */
-  onDuplicate: (name: string, baseThemeId: string) => Promise<string>;
+  onDuplicate: (name: string, baseThemeId: string, replace?: boolean) => Promise<string>;
   /** A ws theme's JSON changed; regenerate previews and reload if the project uses it. */
   onThemeEdited: (wsId: string, json: string) => Promise<void>;
   onClose: () => void;
 }) {
   const [choices, setChoices] = useState<ThemeChoice[]>(builtinThemeChoices);
-  const [selected, setSelected] = useState(initialThemeId ?? currentThemeId);
+  const [selected, setSelected] = useState(initialThemeId ?? currentThemeId ?? NEW_THEME_BASE_ID);
   const [view, setView] = useState<"browse" | "duplicate" | "fonts">(
     initialView === "duplicate" ? "duplicate" : "browse",
   );
@@ -121,17 +123,12 @@ export function ThemeMode({
   };
   useEffect(refresh, []);
 
-  // The theme editor window saved a document: re-list so the card follows it, and hand the new JSON to the host so previews regenerate and an open project using the theme reloads.
+  // App owns preview regeneration and project refresh across every theme window.
   useEffect(() => {
-    return onThemeSaved(({ themeId, json }) => {
+    return onThemeSaved(() => {
       void listThemeChoices().then(setChoices);
-      if (themeId.startsWith(WORKSPACE_THEME_PREFIX)) {
-        void onThemeEdited(themeId, json).catch((e) =>
-          console.warn("[theme] refreshing after an editor save failed:", e),
-        );
-      }
     });
-  }, [onThemeEdited]);
+  }, []);
 
   // Land on the fonts pane when asked (the context menu's Edit fonts); its draft seeding is async, so it rides the same openFonts the button uses.
   // biome-ignore lint/correctness/useExhaustiveDependencies: mount-only
@@ -160,7 +157,12 @@ export function ThemeMode({
   };
 
   return (
-    <div className="modal-overlay" role="dialog" aria-modal="true" aria-label="Project theme">
+    <div
+      className="modal-overlay"
+      role="dialog"
+      aria-modal="true"
+      aria-label={onApply ? "Project theme" : "Themes"}
+    >
       {naming && (
         <NamePromptModal
           title="New theme"
@@ -174,15 +176,16 @@ export function ThemeMode({
       )}
       <div className="modal wizard-wide wizard-theme-wide">
         <h2>
-          {view === "browse" && "Project theme"}
+          {view === "browse" && (onApply ? "Project theme" : "Themes")}
           {view === "duplicate" && "Duplicate theme"}
           {view === "fonts" && "Theme fonts"}
         </h2>
         {view === "browse" && (
           <>
             <p className="modal-hint">
-              Hover a card to preview its four scenes. Applying re-themes every scene that doesn't
-              set its own theme.
+              {onApply
+                ? "Hover a card to preview its four scenes. Applying re-themes every scene that doesn't set its own theme."
+                : "Create and improve themes for your projects. Duplicate a built-in theme to make it your own."}
             </p>
             <ThemeBrowser
               choices={choices}
@@ -193,6 +196,7 @@ export function ThemeMode({
             {error && <p className="modal-error">{error}</p>}
             <div className="modal-actions">
               <button type="button" className="btn" onClick={onClose} disabled={busy}>
+                <ThemeEditorIcon name="revert" />
                 Close
               </button>
               <button
@@ -202,6 +206,7 @@ export function ThemeMode({
                 disabled={busy}
                 title="Start a theme of your own from Studio White and open it in the editor"
               >
+                <ThemeEditorIcon name="add" />
                 New theme…
               </button>
               <button
@@ -210,6 +215,7 @@ export function ThemeMode({
                 onClick={() => setView("duplicate")}
                 disabled={busy}
               >
+                <SceneMenuIcon id="duplicate" />
                 Duplicate…
               </button>
               <button
@@ -227,6 +233,7 @@ export function ThemeMode({
                     : "Built-in themes are read-only: duplicate first"
                 }
               >
+                <SceneMenuIcon id="rename" />
                 Edit…
               </button>
               <button
@@ -240,6 +247,7 @@ export function ThemeMode({
                     : "Built-in themes are read-only: duplicate first"
                 }
               >
+                <ThemeEditorIcon name="typography" />
                 Edit fonts…
               </button>
               <button
@@ -254,7 +262,7 @@ export function ThemeMode({
                   run(async () => {
                     const slug = selected.slice(WORKSPACE_THEME_PREFIX.length);
                     await invoke("delete_theme", { slug });
-                    setSelected(currentThemeId);
+                    setSelected(currentThemeId ?? NEW_THEME_BASE_ID);
                     refresh();
                   });
                 }}
@@ -265,20 +273,24 @@ export function ThemeMode({
                     : "Built-in themes can't be deleted"
                 }
               >
+                <SceneMenuIcon id="delete" />
                 {confirmDelete ? "Really delete?" : "Delete…"}
               </button>
-              <button
-                type="button"
-                className="btn primary"
-                onClick={() =>
-                  run(async () => {
-                    await recordSuccessfulThemeUse(selected, () => onApply(selected));
-                  })
-                }
-                disabled={busy || selected === currentThemeId}
-              >
-                {busy ? "Applying…" : "Apply theme"}
-              </button>
+              {onApply && (
+                <button
+                  type="button"
+                  className="btn primary"
+                  onClick={() =>
+                    run(async () => {
+                      await recordSuccessfulThemeUse(selected, () => onApply(selected));
+                    })
+                  }
+                  disabled={busy || selected === currentThemeId}
+                >
+                  <ThemeEditorIcon name="save" />
+                  {busy ? "Applying…" : "Apply theme"}
+                </button>
+              )}
             </div>
           </>
         )}
@@ -292,7 +304,8 @@ export function ThemeMode({
                   className={`chip${fontSlot === slot ? " selected" : ""}`}
                   onClick={() => setFontSlot(slot)}
                 >
-                  {slot === "headline" ? "Headline" : "Body"} — {fontDraft[slot].family} ·{" "}
+                  <ThemeEditorIcon name={slot} />
+                  {slot === "headline" ? "Headline" : "Body"}: {fontDraft[slot].family} ·{" "}
                   {fontDraft[slot].weight}
                 </button>
               ))}
@@ -313,9 +326,11 @@ export function ThemeMode({
                 onClick={() => setView("browse")}
                 disabled={busy}
               >
+                <ThemeEditorIcon name="revert" />
                 Back
               </button>
               <button type="button" className="btn primary" onClick={saveFonts} disabled={busy}>
+                <ThemeEditorIcon name="save" />
                 {busy ? "Saving…" : "Save fonts"}
               </button>
             </div>
@@ -325,7 +340,7 @@ export function ThemeMode({
           <>
             <p className="modal-hint">
               Copies “{choices.find((c) => c.id === selected)?.name ?? selected}” into your
-              workspace as an editable theme (previews render once it's saved).
+              workspace, ready to edit and use in any project.
             </p>
             <input
               className="modal-input"
@@ -352,6 +367,7 @@ export function ThemeMode({
                 onClick={() => setView("browse")}
                 disabled={busy}
               >
+                <ThemeEditorIcon name="revert" />
                 Back
               </button>
               <button
@@ -365,7 +381,7 @@ export function ThemeMode({
                   }
                   setConfirmReplace(false);
                   run(async () => {
-                    const id = await onDuplicate(dupName, selected);
+                    const id = await onDuplicate(dupName, selected, dup.collides);
                     setSelected(id);
                     setView("browse");
                     setDupName("");
@@ -373,6 +389,7 @@ export function ThemeMode({
                   });
                 }}
               >
+                <SceneMenuIcon id="duplicate" />
                 {duplicateLabel}
               </button>
             </div>

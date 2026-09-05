@@ -13,7 +13,8 @@ export type GizmoDomain =
   | "media"
   | "text"
   | "decorations"
-  | "terminal";
+  | "terminal"
+  | "website";
 
 /** The canvas box in client pixels, as a plain object so the routing maths stays node-testable. */
 export interface StageRect {

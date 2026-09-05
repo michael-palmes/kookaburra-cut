@@ -23,6 +23,9 @@ marks a template under [`projects/`](../projects).
 
 User presets mirror the same shape at `~/Kookaburra Cut/presets/<slug>/`, saved
 from a scene in the app ("Save as preset") or duplicated from a bundled preset.
+Open a preset from Welcome to edit it. Presets stay single-scene documents; reuse
+adopts the destination project settings while preserving scene overrides and
+media. See [Editable content library](../docs/content-library.md).
 
 ## preset.json
 

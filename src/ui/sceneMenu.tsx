@@ -208,6 +208,7 @@ export function sceneMenuItems(opts: {
   canRename: boolean;
   /** The delete may proceed: false for the last scene, or a selection covering every scene (Rust keeps at least one). */
   canDelete: boolean;
+  canAddScenes?: boolean;
   hasClipboard: boolean;
   onRename: () => void;
   onDuplicate: () => void;
@@ -237,13 +238,17 @@ export function sceneMenuItems(opts: {
       title: opts.canRename ? undefined : "This scene has no scene document yet",
       onSelect: opts.onRename,
     },
-    {
-      id: "duplicate",
-      label: bulk ? sceneSelectionLabel("Duplicate", count) : "Duplicate…",
-      icon: <SceneMenuIcon id="duplicate" />,
-      onSelect: opts.onDuplicate,
-    },
-    ...(opts.onInsertPreset
+    ...(opts.canAddScenes === false
+      ? []
+      : [
+          {
+            id: "duplicate",
+            label: bulk ? sceneSelectionLabel("Duplicate", count) : "Duplicate…",
+            icon: <SceneMenuIcon id="duplicate" />,
+            onSelect: opts.onDuplicate,
+          } as ContextMenuItem,
+        ]),
+    ...(opts.onInsertPreset && opts.canAddScenes !== false
       ? [
           {
             id: "insert-preset",

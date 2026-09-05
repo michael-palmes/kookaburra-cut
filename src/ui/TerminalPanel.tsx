@@ -6,6 +6,7 @@ import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { type ITheme, Terminal } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { parseProjectId } from "../engine/project";
 import {
   binaryDir,
   CLAUDE_BREW_SWITCH_COMMAND,
@@ -95,6 +96,8 @@ export function TerminalPanel({
   /** A native write changed project.json/scenes; reload the preview immediately. `focusSceneFile` lands the playhead on that scene after the reload. */
   onProjectChanged: (focusSceneFile?: string) => void;
 }) {
+  const scope = parseProjectId(slug).scope;
+  const canAddScenes = scope !== "preset" && scope !== "ws-preset";
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
@@ -378,6 +381,7 @@ export function TerminalPanel({
   /** Open a wizard, painting cached thumbs immediately AND submitting the stale ones straight away: the render window captures in the background (never the editor's clock, which the old pipeline scrubbed), so by the placement step the fresh thumbs are usually already in. */
   const openSceneWizard = useCallback(
     (which: WizardKind | "new-scene-native" | "edit-scene") => {
+      if (!canAddScenes && (which === "new-scene-native" || which === "new-scene")) return;
       setMoreOpen(false);
       setWizard(which);
       if (which !== "new-scene-native" && which !== "edit-scene" && which !== "new-scene") return;
@@ -386,7 +390,7 @@ export function TerminalPanel({
         .catch(() => {});
       needThumbs();
     },
-    [readThumbs, addThumbs, needThumbs],
+    [readThumbs, addThumbs, needThumbs, canAddScenes],
   );
   // A closed wizard's queued thumbs are cancelled rather than left draining for nobody.
   useEffect(() => {
@@ -423,14 +427,16 @@ export function TerminalPanel({
     <div className="terminal-panel">
       <div className="rail-actions">
         {/* Scaffold/edit are native, available with no Claude session. */}
-        <button
-          type="button"
-          className="btn primary btn-small"
-          title="Create a scene with the pickers — no typing needed"
-          onClick={() => openSceneWizard("new-scene-native")}
-        >
-          ＋ New scene
-        </button>
+        {canAddScenes && (
+          <button
+            type="button"
+            className="btn primary btn-small"
+            title="Create a scene with the pickers, no typing needed"
+            onClick={() => openSceneWizard("new-scene-native")}
+          >
+            ＋ New scene
+          </button>
+        )}
         <button
           type="button"
           className="btn btn-small"
@@ -592,7 +598,7 @@ export function TerminalPanel({
         </div>
       )}
 
-      {wizard === "new-scene-native" && (
+      {wizard === "new-scene-native" && canAddScenes && (
         <NewSceneWizard
           slug={slug}
           projectPath={cwd}

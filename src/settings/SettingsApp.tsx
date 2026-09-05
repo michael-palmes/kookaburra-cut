@@ -1,6 +1,6 @@
 import { getVersion } from "@tauri-apps/api/app";
 import { invoke } from "@tauri-apps/api/core";
-import { open as openFolderPicker } from "@tauri-apps/plugin-dialog";
+import { ask, open as openFolderPicker } from "@tauri-apps/plugin-dialog";
 import { useCallback, useEffect, useState } from "react";
 import {
   type CacheStats,
@@ -14,6 +14,11 @@ import {
   sidecarVersions,
 } from "../engine/appCache";
 import { revealApp } from "../engine/reveal";
+import {
+  clearWebsiteData,
+  listWebsiteData,
+  type WebsiteDataRecord,
+} from "../engine/sceneWebsiteNative";
 import { formatUpdateStatus, useUpdateCheck } from "../engine/updates";
 import {
   defaultWorkspaceRoot,
@@ -29,6 +34,21 @@ import {
 import { UpdateAvailableDialog } from "../ui/updateDialogs";
 import { useNativeTextUndo } from "../ui/useNativeTextUndo";
 import { PublisherPane } from "./PublisherPane";
+
+function ClearDataIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true">
+      <path
+        d="M3.5 4.5h9M6 4.5V3.2h4v1.3m-5.5 0 .6 8.3h5.8l.6-8.3M7 6.5v4.2m2-4.2v4.2"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.35"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
 
 /** The Settings window: native titlebar, opened via the app menu (⌘,). Cache management (media previews + clip extractions), the workspace location (the only place it can be changed, since first run no longer asks), the opt-in update lane (toggle + Check now), and read-only info (sidecar versions, app version). */
 
@@ -51,6 +71,8 @@ export function SettingsApp() {
   const [hwSupport, setHwSupport] = useState<HardwareVideoSupport | null>(null);
   const [lagWarning, setLagWarning] = useState<LagWarningMode | null>(null);
   const [downloadsExport, setDownloadsExport] = useState<boolean | null>(null);
+  const [websiteData, setWebsiteData] = useState<WebsiteDataRecord[] | null>(null);
+  const [websiteDataBusy, setWebsiteDataBusy] = useState<string | null>(null);
 
   const refreshStats = useCallback(() => {
     cacheStats()
@@ -58,8 +80,18 @@ export function SettingsApp() {
       .catch((e) => setError(String(e)));
   }, []);
 
+  const refreshWebsiteData = useCallback(() => {
+    listWebsiteData()
+      .then(setWebsiteData)
+      .catch((e) => {
+        setWebsiteData([]);
+        setError(String(e));
+      });
+  }, []);
+
   useEffect(() => {
     refreshStats();
+    refreshWebsiteData();
     sidecarVersions()
       .then(setVersions)
       .catch(() => setVersions(null));
@@ -83,7 +115,7 @@ export function SettingsApp() {
     getVersion()
       .then(setAppVersion)
       .catch(() => setAppVersion(""));
-  }, [refreshStats]);
+  }, [refreshStats, refreshWebsiteData]);
 
   const toggleHardware = useCallback((enabled: boolean) => {
     setHwEnabled(enabled);
@@ -145,6 +177,34 @@ export function SettingsApp() {
       setError(String(e));
     }
   }, [relocate]);
+
+  const clearStoredWebsiteData = useCallback(
+    async (displayName?: string) => {
+      const target = displayName ? ` for ${displayName}` : " for every site";
+      const accepted = await ask(
+        `Clear Website data${target}? This signs the affected sites out, but does not change project origin approvals.`,
+        {
+          title: "Clear Website data?",
+          kind: "warning",
+          okLabel: "Clear data",
+          cancelLabel: "Cancel",
+        },
+      );
+      if (!accepted) return;
+      const busyKey = displayName ?? "all";
+      setWebsiteDataBusy(busyKey);
+      setError(null);
+      try {
+        await clearWebsiteData(displayName);
+        refreshWebsiteData();
+      } catch (e) {
+        setError(String(e));
+      } finally {
+        setWebsiteDataBusy(null);
+      }
+    },
+    [refreshWebsiteData],
+  );
 
   // Manual checks only in this window; the launch check belongs to the main window.
   const updates = useUpdateCheck({ autoCheck: false });
@@ -239,6 +299,51 @@ export function SettingsApp() {
             {busy === "clips" ? "Clearing…" : "Clear"}
           </button>
         </div>
+      </section>
+
+      <section className="settings-section">
+        <h2>Website data</h2>
+        <div className="settings-row">
+          <div className="settings-row-text">
+            <span className="settings-row-title">Dedicated browser profile</span>
+            <span className="muted settings-row-detail">
+              {websiteData === null
+                ? "Loading…"
+                : websiteData.length === 0
+                  ? "No stored site data"
+                  : `${websiteData.length} site${websiteData.length === 1 ? "" : "s"} with cookies or local data`}
+            </span>
+          </div>
+          <button
+            type="button"
+            className="btn"
+            disabled={websiteDataBusy !== null || !websiteData?.length}
+            onClick={() => void clearStoredWebsiteData()}
+          >
+            <ClearDataIcon />
+            {websiteDataBusy === "all" ? "Clearing…" : "Clear all"}
+          </button>
+        </div>
+        {websiteData?.map((record) => (
+          <div className="settings-row" key={record.displayName}>
+            <div className="settings-row-text">
+              <span className="settings-row-title">{record.displayName}</span>
+              <span className="muted settings-row-detail">
+                {record.dataTypes.length} stored data type
+                {record.dataTypes.length === 1 ? "" : "s"}
+              </span>
+            </div>
+            <button
+              type="button"
+              className="btn"
+              disabled={websiteDataBusy !== null}
+              onClick={() => void clearStoredWebsiteData(record.displayName)}
+            >
+              <ClearDataIcon />
+              {websiteDataBusy === record.displayName ? "Clearing…" : "Clear"}
+            </button>
+          </div>
+        ))}
       </section>
 
       <section className="settings-section">

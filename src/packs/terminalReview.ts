@@ -3,6 +3,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { readProjectManifestSnapshot } from "../engine/projectEdit";
 import { parseSceneTerminal } from "../engine/sceneTerminal";
+import { packProjectItems } from "./projectItems";
 import type { ImportOutcome } from "./types";
 
 export interface TerminalReviewRow {
@@ -73,13 +74,9 @@ export async function reviewProjectTerminals(
 export async function reviewImportedTerminals(
   outcome: ImportOutcome,
 ): Promise<TerminalReviewRow[]> {
-  const projects = outcome.results
-    .filter(
-      (r) =>
-        r.kind === "project" &&
-        (r.outcome === "added" || r.outcome === "replaced" || r.outcome === "keptBoth"),
-    )
-    .map((r) => ({ slug: r.slug, name: r.name }));
+  const projects = packProjectItems(
+    outcome.results.filter((result) => ["added", "replaced", "keptBoth"].includes(result.outcome)),
+  );
   const rows = await reviewProjectTerminals(projects);
   return rows.filter((r) => r.command || r.startPath);
 }

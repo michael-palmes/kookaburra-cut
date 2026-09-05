@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { createPortal } from "react-dom";
-import { saveSceneAsPreset } from "../engine/library";
+import { type LibraryItemInfo, saveSceneAsPreset } from "../engine/library";
 import { presetManifestSchema, refreshUserPresets } from "../engine/presets";
 import { ItemDetailsModal } from "./ItemDetailsModal";
 import type { ItemDetailsTarget } from "./libraryDetails";
@@ -24,22 +24,21 @@ export function SavePresetModal({
 }) {
   const [busy, setBusy] = useState(false);
   const [details, setDetails] = useState<ItemDetailsTarget | null>(null);
-  const [saved, setSaved] = useState<string | null>(null);
+  const [saved, setSaved] = useState<LibraryItemInfo | null>(null);
   const [error, setError] = useState<string | null>(null);
   useEscapeClose(onClose, !busy && !details);
 
   const save = async () => {
-    if (busy || saved || details) return;
+    if (busy || details) return;
     setBusy(true);
     setError(null);
     try {
-      const info = await saveSceneAsPreset(projectSlug, sceneStem);
+      const info = saved ?? (await saveSceneAsPreset(projectSlug, sceneStem));
+      setSaved(info);
       const parsed = presetManifestSchema.safeParse(JSON.parse(info.manifestJson), info.slug);
       await refreshUserPresets();
       if (parsed.success) {
         setDetails({ kind: "preset", source: "user", slug: info.slug, manifest: parsed.data });
-      } else {
-        setSaved(info.slug);
       }
     } catch (e) {
       setError(String(e));
@@ -52,7 +51,7 @@ export function SavePresetModal({
       <ItemDetailsModal
         target={details}
         title="File your new preset"
-        hint="It is in your preset library, ready to insert into any project."
+        hint="It is in your preset library. Reuse adopts the destination project's theme and styling while keeping scene overrides."
         submitLabel="Save details"
         onSaved={async () => {
           await refreshUserPresets();
@@ -70,15 +69,22 @@ export function SavePresetModal({
         <h2>Save “{sceneName}” as a preset</h2>
         <p className="modal-hint">
           {saved
-            ? `Saved as “${saved}”. It is in your preset library, ready to insert into any project.`
-            : "The scene, its document and the media it uses copy into your preset library. This project keeps its own."}
+            ? `Saved as “${saved.slug}”. It is in your preset library.`
+            : "The scene and its media copy into your preset library. Reuse adopts the destination project's theme and styling while keeping scene overrides."}
         </p>
         {error && <p className="modal-error">{error}</p>}
         <div className="modal-actions">
           {saved ? (
-            <button type="button" className="btn primary" onClick={onClose}>
-              Done
-            </button>
+            <>
+              {error && (
+                <button type="button" className="btn" disabled={busy} onClick={() => void save()}>
+                  {busy ? "Refreshing…" : "Retry library refresh"}
+                </button>
+              )}
+              <button type="button" className="btn primary" onClick={onClose} disabled={busy}>
+                Done
+              </button>
+            </>
           ) : (
             <>
               <button type="button" className="btn" onClick={onClose} disabled={busy}>

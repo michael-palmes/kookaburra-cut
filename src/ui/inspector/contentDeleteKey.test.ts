@@ -61,6 +61,8 @@ describe("contentDeleteRoute", () => {
       ["objects.placement"],
       ["chart.edit"],
       ["text"],
+      ["terminal.edit"],
+      ["website.edit"],
     ]) {
       expect(
         contentDeleteRoute(inspector({ drillStack, drillIn: drillStack.at(-1) ?? null })),

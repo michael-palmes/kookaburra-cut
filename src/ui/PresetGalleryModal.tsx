@@ -45,15 +45,12 @@ type ChipId = PresetCategoryId | "all";
 /** Insert a scene from the preset library. The chosen preset's scene copies in at `position` (a fresh id minted natively, its assets copied along, the project's own theme applying by construction); `onDone` hands the host the new scene so it can reload and select it. */
 export function PresetGalleryModal({
   slug,
-  sceneCount,
   position,
   onDone,
   onCancel,
 }: {
   /** Destination workspace project slug (no `ws:` prefix). */
   slug: string;
-  /** The destination's scene count before the insert. */
-  sceneCount: number;
   /** Manifest index the new scene should land at (past the end appends). */
   position: number;
   onDone: (inserted: { file: string; index: number; name: string }) => void;
@@ -70,7 +67,7 @@ export function PresetGalleryModal({
 
   // The user's half hydrates behind the bundled one; the store subscription repaints when it lands.
   useEffect(() => {
-    void refreshUserPresets();
+    refreshUserPresets().catch((e) => setError(String(e)));
   }, []);
 
   const category = chip === "all" ? null : chip;
@@ -107,6 +104,10 @@ export function PresetGalleryModal({
 
   const insert = async () => {
     if (!active || busy) return;
+    if (active.sceneCount !== 1) {
+      setError("This preset must contain exactly one scene before it can be inserted.");
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -114,7 +115,6 @@ export function PresetGalleryModal({
         destSlug: slug,
         presetProjectId: active.projectId,
         position,
-        sceneCountBefore: sceneCount,
       });
       onDone({ file: inserted.file, index: inserted.index, name: active.name });
     } catch (e) {
@@ -234,7 +234,8 @@ export function PresetGalleryModal({
           )}
         </div>
         <p className="modal-hint">
-          The scene and its media copy in after the selected one, restyled by this project's theme.
+          The scene and its media copy in after the selected one, using this project's theme and
+          styling while keeping scene overrides.
         </p>
         {error && <p className="modal-error">{error}</p>}
         <div className="modal-actions">

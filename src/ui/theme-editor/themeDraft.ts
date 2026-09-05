@@ -1,7 +1,7 @@
 import { THEME_CATEGORIES, type ThemeCategoryId } from "../../theme/catalogue";
 import { WORKSPACE_THEME_PREFIX } from "../../theme/registry";
 import { parseThemeDoc } from "../../theme/schema";
-import type { Theme } from "../../theme/tokens";
+import type { TextLookSpec, Theme, ThemeShadowSpec } from "../../theme/tokens";
 
 /** The theme editor's draft model: the RAW theme document as parsed JSON, never the resolved `Theme`. Every section patches this object, so the `catalogue` block, any block the editor has no form for yet, and anything a newer build writes all survive a round trip untouched. Pure module (no IO, no React) so the patch maths is unit-testable. */
 
@@ -149,7 +149,11 @@ export function writeIdentity(doc: ThemeDoc, patch: Partial<ThemeIdentity>): The
     next.useLabel.trim() === "" ? FALLBACK_USE_LABEL : next.useLabel,
   );
   out = setIn(out, ["catalogue", "tags"], next.tags);
-  out = setIn(out, ["catalogue", "order"], next.order ?? undefined);
+  out = setIn(
+    out,
+    ["catalogue", "order"],
+    next.order === null ? undefined : Math.max(0, Math.round(next.order)),
+  );
   out = setIn(out, ["catalogue", "hidden"], next.hidden ? true : undefined);
   // `stage` is derived elsewhere and has no form yet; a catalogue block without it never parses.
   const stage = getIn(doc, ["catalogue", "stage"]);
@@ -250,17 +254,68 @@ export function readGradients(doc: ThemeDoc): GradientEntry[] {
 
 /** Rewrites the whole `gradients` block from the editor's list, so a rename keeps its position instead of jumping to the end. */
 export function writeGradients(doc: ThemeDoc, entries: readonly GradientEntry[]): ThemeDoc {
-  if (entries.length === 0) return setIn(doc, ["gradients"], undefined);
+  const previous = readBlock(doc, "gradients");
   const block: Record<string, unknown> = {};
   for (const entry of entries) {
+    const original = previous[entry.name];
     block[entry.name] = {
+      ...(isRecord(original) ? original : {}),
       type: entry.type,
       angleDeg: entry.angleDeg,
       stops: entry.stops.map(([colour, position]) => [colour, position]),
       ...(entry.space ? { space: entry.space } : {}),
     };
+    if (!entry.space) delete (block[entry.name] as ThemeDoc).space;
   }
-  return setIn(doc, ["gradients"], block);
+  let next = setIn(doc, ["gradients"], entries.length ? block : undefined);
+  for (const [name, spec] of Object.entries(previous)) {
+    if (!(name in block)) next = mapGradientReferences(next, name, undefined, spec);
+  }
+  return next;
+}
+
+function mapGradientReferences(
+  doc: ThemeDoc,
+  oldName: string,
+  newName: string | undefined,
+  spec: unknown,
+): ThemeDoc {
+  const patch = (value: unknown): unknown => {
+    if (!isRecord(value)) return value;
+    let next = value;
+    if (value.type === "gradient" && value.gradient === oldName) {
+      next = setIn(value, ["gradient"], newName);
+      if (!newName && value.spec === undefined) next = setIn(next, ["spec"], spec);
+    }
+    if (isRecord(value.backing)) next = { ...next, backing: patch(value.backing) };
+    return next;
+  };
+  let next = doc;
+  for (const key of ["background", "backdrop"]) {
+    if (doc[key] !== undefined) next = setIn(next, [key], patch(doc[key]));
+  }
+  return next;
+}
+
+export function renameGradient(doc: ThemeDoc, oldName: string, wanted: string): ThemeDoc {
+  const entries = readGradients(doc);
+  const index = entries.findIndex(({ name }) => name === oldName);
+  if (index < 0) return doc;
+  const newName = uniqueGradientName(entries, wanted, index);
+  if (newName === oldName) return doc;
+  const gradients = readBlock(doc, "gradients");
+  const renamed = Object.fromEntries(
+    Object.entries(gradients).map(([name, spec]) => [name === oldName ? newName : name, spec]),
+  );
+  return mapGradientReferences(setIn(doc, ["gradients"], renamed), oldName, newName, undefined);
+}
+
+export function writeStageGradient(
+  doc: ThemeDoc,
+  key: "background" | "backdrop",
+  name: string,
+): ThemeDoc {
+  return setIn(setIn(doc, [key, "gradient"], name), [key, "spec"], undefined);
 }
 
 /** A gradient name free in `entries`, ignoring the entry at `skipIndex` (its own name during a rename). */
@@ -333,10 +388,10 @@ export function readCardRadius(doc: ThemeDoc): number | null {
 
 /** `off` covers both an absent block and an explicit `{ type: "none" }`: for a theme they render identically (the frame clears to `colors.background`), so the form offers one state and only writes when the user picks another. */
 export type BackdropKind = "off" | "floor" | "gradient" | "image";
-export type BackgroundKind = "off" | "color" | "gradient" | "shader" | "scene3d";
+export type BackgroundKind = "off" | "color" | "gradient" | "image" | "shader" | "scene3d";
 
 const BACKDROP_KINDS = new Set<string>(["floor", "gradient", "image"]);
-const BACKGROUND_KINDS = new Set<string>(["color", "gradient", "shader", "scene3d"]);
+const BACKGROUND_KINDS = new Set<string>(["color", "gradient", "image", "shader", "scene3d"]);
 
 export function readBackdropKind(doc: ThemeDoc): BackdropKind {
   const type = getIn(doc, ["backdrop", "type"]);
@@ -399,6 +454,7 @@ export function writeEnvironment(doc: ThemeDoc, patch: Partial<EnvironmentDraft>
   const path = environmentPath(doc);
   if (next.source.trim() === "") return setIn(doc, path, undefined);
   return setIn(doc, path, {
+    ...(isRecord(getIn(doc, path)) ? (getIn(doc, path) as ThemeDoc) : {}),
     source: next.source,
     intensity: next.intensity,
     rotationDeg: next.rotationDeg,
@@ -439,11 +495,46 @@ export function readSun(doc: ThemeDoc): SunDraft | null {
   };
 }
 
+export function setSunEnabled(doc: ThemeDoc, enabled: boolean): ThemeDoc {
+  return writeSun(doc, { ...(readSun(doc) ?? DEFAULT_SUN), enabled });
+}
+
+export function writeThemeShadow(doc: ThemeDoc, shadow: ThemeShadowSpec): ThemeDoc {
+  const parsed = parseThemeDraft(doc, "theme shadow");
+  const base = parsed.theme?.lighting ? doc : setSunEnabled(doc, true);
+  const previous = getIn(base, ["lighting", "shadow"]);
+  return setIn(base, ["lighting", "shadow"], {
+    ...(isRecord(previous) ? previous : {}),
+    ...shadow,
+  });
+}
+
+export function writeThemeTextLook(doc: ThemeDoc, spec: TextLookSpec | undefined): ThemeDoc {
+  if (!spec) return setIn(doc, ["textLook"], undefined);
+  const next = { ...(isRecord(doc.textLook) ? doc.textLook : {}) };
+  for (const key of [
+    "preset",
+    "colorA",
+    "colorB",
+    "angleDeg",
+    "strokeEm",
+    "hollow",
+    "intensity",
+    "offsetEm",
+    "curveDeg",
+  ] satisfies (keyof TextLookSpec)[])
+    delete next[key];
+  return setIn(doc, ["textLook"], { ...next, ...spec });
+}
+
 /** Rewrites the key light whole, keeping every optional field out of the file unless it differs from the engine default (`angularDeg` absent, shadows on, enabled). `null` removes it. */
 export function writeSun(doc: ThemeDoc, sun: SunDraft | null): ThemeDoc {
   const path = sunPath(doc);
-  if (!sun) return setIn(doc, path, undefined);
-  return setIn(doc, path, {
+  if (!sun)
+    return setIn(setIn(doc, ["lighting", "sun"], undefined), ["lighting", "key"], undefined);
+  const original = getIn(doc, path);
+  const next: ThemeDoc = {
+    ...(isRecord(original) ? original : {}),
     azimuthDeg: sun.azimuthDeg,
     elevationDeg: sun.elevationDeg,
     intensity: sun.intensity,
@@ -451,7 +542,16 @@ export function writeSun(doc: ThemeDoc, sun: SunDraft | null): ThemeDoc {
     ...(sun.angularDeg === null ? {} : { angularDeg: sun.angularDeg }),
     ...(sun.castShadow ? {} : { castShadow: false }),
     ...(sun.enabled ? {} : { enabled: false }),
-  });
+  };
+  if (sun.angularDeg === null) delete next.angularDeg;
+  if (sun.castShadow) delete next.castShadow;
+  if (sun.enabled) delete next.enabled;
+  if (sun.color !== readSun(doc)?.color) {
+    delete next.kelvin;
+    delete next.colorToken;
+  }
+  const out = setIn(doc, path, next);
+  return readAmbient(doc) === null ? setIn(out, ["lighting", "ambient"], 0) : out;
 }
 
 export function readAmbient(doc: ThemeDoc): number | null {
@@ -485,6 +585,7 @@ export function readFills(doc: ThemeDoc): FillDraft[] {
   return fills.map((entry) => {
     const record = isRecord(entry) ? entry : {};
     return {
+      ...record,
       azimuthDeg: isNum(record.azimuthDeg) ? record.azimuthDeg : DEFAULT_FILL.azimuthDeg,
       elevationDeg: isNum(record.elevationDeg) ? record.elevationDeg : DEFAULT_FILL.elevationDeg,
       intensity: isNum(record.intensity) ? record.intensity : DEFAULT_FILL.intensity,
@@ -498,148 +599,6 @@ export function writeFills(doc: ThemeDoc, fills: readonly FillDraft[]): ThemeDoc
     doc,
     ["lighting", "fills"],
     fills.length === 0 ? undefined : fills.map((f) => ({ ...f })),
-  );
-}
-
-export const LIGHT_TYPES = ["directional", "point", "spot", "area"] as const;
-export type LightType = (typeof LIGHT_TYPES)[number];
-export const LIGHT_SPACES = ["world", "camera", "subject"] as const;
-export type LightSpaceId = (typeof LIGHT_SPACES)[number];
-
-/** One v9 free light as the form edits it: both placements are carried so switching mode never loses the other set of numbers, and the writer only emits the live one. */
-export interface LightDraft {
-  id: string;
-  type: LightType;
-  space: LightSpaceId;
-  enabled: boolean;
-  intensity: number;
-  color: string;
-  castShadow: boolean;
-  placementMode: "orbit" | "point";
-  azimuthDeg: number;
-  elevationDeg: number;
-  distance: number;
-  position: [number, number, number];
-  /** spot only: the FULL cone in degrees. */
-  angleDeg: number;
-  /** spot only. */
-  penumbra: number;
-  /** area only. */
-  width: number;
-  /** area only. */
-  height: number;
-}
-
-export function defaultLight(id: string): LightDraft {
-  return {
-    id,
-    type: "directional",
-    space: "world",
-    enabled: true,
-    intensity: 1,
-    color: "#ffffff",
-    castShadow: false,
-    placementMode: "orbit",
-    azimuthDeg: -45,
-    elevationDeg: 25,
-    distance: 6,
-    position: [0, 2, 4],
-    angleDeg: 45,
-    penumbra: 0.4,
-    width: 2,
-    height: 2,
-  };
-}
-
-/** A light id free in `lights`; ids are the keyframe track's identity, so they are minted once and never re-minted (the batch 22 trap). */
-export function nextLightId(lights: readonly { id: string }[]): string {
-  const taken = new Set(lights.map(({ id }) => id));
-  for (let n = 1; ; n += 1) {
-    const candidate = `light-${n}`;
-    if (!taken.has(candidate)) return candidate;
-  }
-}
-
-const asTriple = (value: unknown, fallback: [number, number, number]): [number, number, number] =>
-  Array.isArray(value) && value.length === 3 && value.every(isNum)
-    ? [value[0] as number, value[1] as number, value[2] as number]
-    : fallback;
-
-export function readLights(doc: ThemeDoc): LightDraft[] {
-  const lights = readBlock(doc, "lighting").lights;
-  if (!Array.isArray(lights)) return [];
-  return lights.flatMap((entry, index): LightDraft[] => {
-    if (!isRecord(entry)) return [];
-    const base = defaultLight(typeof entry.id === "string" ? entry.id : `light-${index + 1}`);
-    const placement = isRecord(entry.placement) ? entry.placement : {};
-    return [
-      {
-        ...base,
-        type: LIGHT_TYPES.includes(entry.type as LightType) ? (entry.type as LightType) : base.type,
-        space: LIGHT_SPACES.includes(entry.space as LightSpaceId)
-          ? (entry.space as LightSpaceId)
-          : base.space,
-        enabled: entry.enabled !== false,
-        intensity: isNum(entry.intensity) ? entry.intensity : base.intensity,
-        color: typeof entry.color === "string" ? entry.color : base.color,
-        castShadow: entry.castShadow === true,
-        placementMode: placement.mode === "point" ? "point" : "orbit",
-        azimuthDeg: isNum(placement.azimuthDeg) ? placement.azimuthDeg : base.azimuthDeg,
-        elevationDeg: isNum(placement.elevationDeg) ? placement.elevationDeg : base.elevationDeg,
-        distance: isNum(placement.distance) ? placement.distance : base.distance,
-        position: asTriple(placement.position, base.position),
-        angleDeg: isNum(entry.angleDeg) ? entry.angleDeg : base.angleDeg,
-        penumbra: isNum(entry.penumbra) ? entry.penumbra : base.penumbra,
-        width: isNum(entry.width) ? entry.width : base.width,
-        height: isNum(entry.height) ? entry.height : base.height,
-      },
-    ];
-  });
-}
-
-/** Serialises the v9 light list, emitting only the fields the light's own type accepts (a `point` light with a `castShadow` is rejected at parse, and an area light cannot cast at all). */
-export function writeLights(doc: ThemeDoc, lights: readonly LightDraft[]): ThemeDoc {
-  if (lights.length === 0) return setIn(doc, ["lighting", "lights"], undefined);
-  const canCastShadow = (type: LightType) => type === "directional" || type === "spot";
-  return setIn(
-    doc,
-    ["lighting", "lights"],
-    lights.map((light) => ({
-      id: light.id,
-      type: light.type,
-      ...(light.space === "world" ? {} : { space: light.space }),
-      ...(light.enabled ? {} : { enabled: false }),
-      intensity: light.intensity,
-      color: light.color,
-      ...(light.castShadow && canCastShadow(light.type) ? { castShadow: true } : {}),
-      placement:
-        light.placementMode === "point"
-          ? { mode: "point", position: [...light.position] }
-          : {
-              mode: "orbit",
-              azimuthDeg: light.azimuthDeg,
-              elevationDeg: light.elevationDeg,
-              distance: light.distance,
-            },
-      ...(light.type === "spot" ? { angleDeg: light.angleDeg, penumbra: light.penumbra } : {}),
-      ...(light.type === "area" ? { width: light.width, height: light.height } : {}),
-    })),
-  );
-}
-
-/** Fixtures have no form yet (no bundled theme authors one at the theme layer); the section lists what a hand-written document carries so a save is never mistaken for a drop. */
-export function readFixtureSummaries(doc: ThemeDoc): { id: string; form: string }[] {
-  const fixtures = readBlock(doc, "lighting").fixtures;
-  if (!Array.isArray(fixtures)) return [];
-  return fixtures.flatMap((entry, index) =>
-    isRecord(entry)
-      ? [
-          {
-            id: typeof entry.id === "string" ? entry.id : `fixture-${index + 1}`,
-            form: typeof entry.form === "string" ? entry.form : "unknown",
-          },
-        ]
-      : [],
   );
 }
 
@@ -673,5 +632,10 @@ export function writeEffect(
   key: EffectKey,
   values: Record<string, number | string> | null,
 ): ThemeDoc {
-  return setIn(doc, ["effects", key], values ? { ...values } : undefined);
+  const previous = getIn(doc, ["effects", key]);
+  return setIn(
+    doc,
+    ["effects", key],
+    values ? { ...(isRecord(previous) ? previous : {}), ...values } : undefined,
+  );
 }

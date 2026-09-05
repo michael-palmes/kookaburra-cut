@@ -1737,6 +1737,28 @@ mod tests {
     }
 
     #[test]
+    fn website_capture_travels_as_a_referenced_project_asset() {
+        let root = fixture("website-capture");
+        write(&root, "acme/assets/website/01-hero.png", "website-png");
+        write(
+            &root,
+            "acme/scenes/01-hero.json",
+            r#"{"version":1,"website":{"url":"https://example.com","capture":{"src":"assets/website/01-hero.png","width":1440,"height":900,"source":"snapshot","fingerprint":"v1:test"}}}"#,
+        );
+        let mut selected = selection(&["acme"]);
+        selected.include_unreferenced_assets = false;
+        let closure = resolve_closure(&root, &selected).unwrap();
+        assert!(archive_paths(&closure)
+            .iter()
+            .any(|path| path.ends_with("assets/website/01-hero.png")));
+        assert!(!closure
+            .reviewed_assets
+            .iter()
+            .any(|asset| asset.rel == "assets/website/01-hero.png"));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
     fn item_bases_hash_content_and_stamp_the_newest_file() {
         let root = fixture("bases");
         let first = resolve_closure(&root, &selection(&["acme"])).unwrap();

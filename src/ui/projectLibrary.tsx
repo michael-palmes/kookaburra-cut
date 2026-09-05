@@ -6,7 +6,7 @@ export const ALL_PROJECTS = "all";
 export const UNGROUPED_PROJECTS = "ungrouped";
 const GROUP_PREFIX = "group:";
 
-/** The welcome rail's library rows: the user's own catalogues, then the bundled ones a dev checkout may edit. */
+/** The welcome rail's library rows: the user's own catalogues and the bundled catalogues they can copy and edit. */
 export const LIBRARY_TEMPLATES = "library:templates";
 export const LIBRARY_PRESETS = "library:presets";
 export const LIBRARY_APP_TEMPLATES = "library:app-templates";
@@ -72,27 +72,25 @@ export interface LibraryCounts {
   appPresets: number;
 }
 
-export function libraryRows(counts: LibraryCounts, showApp: boolean): ProjectGroupRow[] {
+export function libraryRows(counts: LibraryCounts): ProjectGroupRow[] {
   const rows: ProjectGroupRow[] = [
     { id: LIBRARY_TEMPLATES, label: "Templates", count: counts.templates, iconId: "templates" },
     { id: LIBRARY_PRESETS, label: "Presets", count: counts.presets, iconId: "presets" },
   ];
-  if (showApp) {
-    rows.push(
-      {
-        id: LIBRARY_APP_TEMPLATES,
-        label: "App templates",
-        count: counts.appTemplates,
-        iconId: "app-templates",
-      },
-      {
-        id: LIBRARY_APP_PRESETS,
-        label: "App presets",
-        count: counts.appPresets,
-        iconId: "app-presets",
-      },
-    );
-  }
+  rows.push(
+    {
+      id: LIBRARY_APP_TEMPLATES,
+      label: "App templates",
+      count: counts.appTemplates,
+      iconId: "app-templates",
+    },
+    {
+      id: LIBRARY_APP_PRESETS,
+      label: "App presets",
+      count: counts.appPresets,
+      iconId: "app-presets",
+    },
+  );
   return rows;
 }
 
@@ -106,11 +104,10 @@ export interface WelcomeRailSection {
 export function welcomeRailSections(
   projects: ProjectLibraryItem[],
   counts: LibraryCounts,
-  showApp: boolean,
 ): WelcomeRailSection[] {
   return [
     { id: "projects", label: "Projects", rows: projectGroupRows(projects) },
-    { id: "library", label: "Library", rows: libraryRows(counts, showApp) },
+    { id: "library", label: "Library", rows: libraryRows(counts) },
   ];
 }
 

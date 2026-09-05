@@ -2,7 +2,9 @@
 
 use serde::Serialize;
 use serde_json::Value;
-use std::path::PathBuf;
+use std::io::Write;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use tauri::{AppHandle, Manager, State};
 
 use crate::workspace::{require_root, validate_slug, SettingsState};
@@ -69,6 +71,7 @@ pub fn write_theme(
     state: State<'_, SettingsState>,
     slug: String,
     text: String,
+    overwrite: Option<bool>,
 ) -> Result<(), String> {
     let doc: Value =
         serde_json::from_str(&text).map_err(|e| format!("theme doc isn't valid JSON: {e}"))?;
@@ -88,9 +91,59 @@ pub fn write_theme(
         std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
     }
     let pretty = serde_json::to_string_pretty(&doc).map_err(|e| e.to_string())?;
-    let tmp = path.with_extension("json.tmp");
-    std::fs::write(&tmp, pretty + "\n").map_err(|e| e.to_string())?;
-    std::fs::rename(&tmp, &path).map_err(|e| e.to_string())
+    persist_theme_json(&path, &(pretty + "\n"), overwrite.unwrap_or(true))
+}
+
+fn persist_theme_json(path: &Path, text: &str, overwrite: bool) -> Result<(), String> {
+    static NEXT_WRITE: AtomicU64 = AtomicU64::new(0);
+    let nonce = NEXT_WRITE.fetch_add(1, Ordering::Relaxed);
+    let tmp = path.with_extension(format!("json.{}.{nonce}.tmp", std::process::id()));
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&tmp)
+        .map_err(|e| e.to_string())?;
+    let result = (|| {
+        file.write_all(text.as_bytes()).map_err(|e| e.to_string())?;
+        if overwrite {
+            std::fs::rename(&tmp, path).map_err(|e| e.to_string())
+        } else {
+            std::fs::hard_link(&tmp, path).map_err(|e| {
+                if e.kind() == std::io::ErrorKind::AlreadyExists {
+                    "A theme with this name already exists. Choose another name.".into()
+                } else {
+                    e.to_string()
+                }
+            })
+        }
+    })();
+    let _ = std::fs::remove_file(&tmp);
+    result
+}
+
+#[cfg(test)]
+mod write_tests {
+    use super::*;
+
+    #[test]
+    fn new_theme_never_replaces_an_existing_document() {
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir =
+            std::env::temp_dir().join(format!("theme-create-{}-{unique}", std::process::id()));
+        std::fs::create_dir(&dir).unwrap();
+        let path = dir.join("theme.json");
+        persist_theme_json(&path, "original", false).unwrap();
+        let error = persist_theme_json(&path, "replacement", false).unwrap_err();
+        assert!(error.contains("already exists"));
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "original");
+        assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 1);
+        persist_theme_json(&path, "replacement", true).unwrap();
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "replacement");
+        std::fs::remove_dir_all(dir).unwrap();
+    }
 }
 
 /// Delete a workspace theme's folder (delete parity with export presets). Workspace themes only, bundled ids never reach this (the UI offers Delete for `ws:` themes alone, and the slug points inside `~/Kookaburra Cut/themes/`); projects still referencing the theme degrade to the default at resolve time. The content-hash preview cache entry is left behind, it is a cache, not state.

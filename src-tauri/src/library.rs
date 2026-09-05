@@ -22,7 +22,7 @@ pub const TEMPLATE_MANIFEST: &str = "template.json";
 pub const PRESET_MANIFEST: &str = "preset.json";
 
 /// Card art beside an item's manifest, in the order the listing looks for it (converted templates carry the project snapshot, which is a PNG).
-const POSTER_NAMES: [&str; 2] = ["poster.jpg", "poster.png"];
+const POSTER_NAMES: [&str; 2] = ["poster.png", "poster.jpg"];
 
 /// Where the bundled theme documents live in the checkout, relative to the repo root.
 const BUILTIN_THEMES_REL: &str = "src/theme/builtin";
@@ -46,6 +46,7 @@ pub struct LibraryItemInfo {
     pub duration_ms: u64,
     pub scene_count: usize,
     pub poster_path: Option<String>,
+    pub poster_modified_at: Option<u64>,
 }
 
 /// One `{ slug, order }` pair of a drag-reorder batch.
@@ -130,11 +131,19 @@ fn read_item(dir: &Path, slug: &str, kind: Kind) -> Option<LibraryItemInfo> {
                 .map(|scenes| scenes.len())
         })
         .unwrap_or(0);
-    let poster_path = POSTER_NAMES
+    let poster = POSTER_NAMES
         .iter()
         .map(|name| dir.join(name))
-        .find(|path| path.is_file())
-        .map(|path| path.to_string_lossy().into_owned());
+        .find(|path| path.is_file());
+    let poster_modified_at = poster.as_ref().and_then(|path| {
+        std::fs::metadata(path)
+            .ok()?
+            .modified()
+            .ok()?
+            .duration_since(std::time::UNIX_EPOCH)
+            .ok()
+            .map(|duration| duration.as_millis() as u64)
+    });
     Some(LibraryItemInfo {
         slug: slug.to_owned(),
         path: dir.to_string_lossy().into_owned(),
@@ -142,7 +151,8 @@ fn read_item(dir: &Path, slug: &str, kind: Kind) -> Option<LibraryItemInfo> {
         project_json,
         duration_ms: manifest_summary(dir).map(|(_, ms, _)| ms).unwrap_or(0),
         scene_count,
-        poster_path,
+        poster_path: poster.map(|path| path.to_string_lossy().into_owned()),
+        poster_modified_at,
     })
 }
 
@@ -278,7 +288,7 @@ fn convert_project(
 
     std::fs::copy(source.join(MANIFEST_FILENAME), dir.join(MANIFEST_FILENAME))
         .map_err(|e| format!("copying project.json: {e}"))?;
-    for sub in ["scenes", "assets"] {
+    for sub in ["scenes", "assets", "edits"] {
         let from = source.join(sub);
         if from.is_dir() {
             workspace::copy_dir_recursive(&from, &dir.join(sub))?;
@@ -336,7 +346,17 @@ pub fn save_scene_as_preset(
 ) -> Result<LibraryItemInfo, String> {
     let root = require_root(&app, &state)?;
     let source = workspace::project_dir(&app, &state, &project_slug)?;
-    save_preset(&source, &presets_dir(&root), &scene_stem)
+    let item = save_preset(&source, &presets_dir(&root), &scene_stem)?;
+    if matches!(
+        workspace::parse_project_id(&project_slug)?.0,
+        workspace::ProjectScope::BundledPreset | workspace::ProjectScope::BundledTemplate
+    ) {
+        workspace::copy_missing_sample_assets(
+            &workspace::samples_root(&app),
+            &Path::new(&item.path).join("assets"),
+        )?;
+    }
+    Ok(item)
 }
 
 fn save_preset(source: &Path, library: &Path, scene_stem: &str) -> Result<LibraryItemInfo, String> {
@@ -345,9 +365,26 @@ fn save_preset(source: &Path, library: &Path, scene_stem: &str) -> Result<Librar
     let tsx =
         std::fs::read_to_string(source.join(&file)).map_err(|e| format!("reading {file}: {e}"))?;
     let doc_file = format!("scenes/{scene_stem}.json");
-    let doc_text = std::fs::read_to_string(source.join(&doc_file)).ok();
+    let doc_text = match std::fs::read_to_string(source.join(&doc_file)) {
+        Ok(text) => {
+            serde_json::from_str::<Value>(&text)
+                .map_err(|e| format!("{doc_file} isn't valid JSON: {e}"))?;
+            Some(text)
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+        Err(error) => return Err(format!("reading {doc_file}: {error}")),
+    };
 
     let source_manifest = read_json(&source.join(MANIFEST_FILENAME))?;
+    let scene = source_manifest
+        .get("scenes")
+        .and_then(Value::as_array)
+        .and_then(|scenes| {
+            scenes
+                .iter()
+                .find(|scene| scene.get("file") == Some(&Value::String(file.clone())))
+        })
+        .ok_or_else(|| format!("project.json does not contain {file}"))?;
     let name = doc_text
         .as_deref()
         .and_then(|text| serde_json::from_str::<Value>(text).ok())
@@ -393,9 +430,15 @@ fn save_preset(source: &Path, library: &Path, scene_stem: &str) -> Result<Librar
             .unwrap_or_else(|| serde_json::json!(DEFAULT_FORMATS)),
         "scenes": [{ "file": file, "durationMs": duration_ms }],
     });
-    if let Some(typography) = source_manifest.get("typography") {
-        project["typography"] = typography.clone();
+    for field in ["typography", "lighting", "render", "frame"] {
+        if let Some(value) = source_manifest.get(field) {
+            project[field] = value.clone();
+        }
     }
+    if let Some(effects) = scene.get("effects") {
+        project["scenes"][0]["effects"] = effects.clone();
+    }
+    copy_referenced_assets(source, &dir, "", Some(&project.to_string()))?;
     atomic_write_json(&dir.join(MANIFEST_FILENAME), &project)?;
     atomic_write_json(&dir.join(PRESET_MANIFEST), &starter_preset_manifest(&name))?;
     require_item(&dir, &slug, Kind::Preset)
@@ -423,10 +466,16 @@ fn copy_referenced_assets(
     doc_text: Option<&str>,
 ) -> Result<(), String> {
     let mut refs = crate::scene_doc::scan_asset_refs(tsx);
-    for rel in doc_text
-        .map(crate::scene_doc::scan_asset_refs)
-        .unwrap_or_default()
-    {
+    let doc_refs = doc_text
+        .map(|text| {
+            serde_json::from_str::<Value>(text)
+                .map_err(|e| format!("asset document isn't valid JSON: {e}"))
+        })
+        .transpose()?
+        .as_ref()
+        .map(crate::scene_doc::collect_json_asset_refs)
+        .unwrap_or_default();
+    for rel in doc_refs {
         if !refs.iter().any(|existing| existing == &rel) {
             refs.push(rel);
         }
@@ -464,7 +513,14 @@ fn duplicate_to_workspace(
             kind.bundled_root(app).join(id)
         }
     };
-    duplicate_item(&source, &library, kind)
+    let item = duplicate_item(&source, &library, kind)?;
+    if !id.starts_with("ws:") {
+        workspace::copy_missing_sample_assets(
+            &workspace::samples_root(app),
+            &Path::new(&item.path).join("assets"),
+        )?;
+    }
+    Ok(item)
 }
 
 fn duplicate_item(source: &Path, library: &Path, kind: Kind) -> Result<LibraryItemInfo, String> {
@@ -850,6 +906,10 @@ mod tests {
         let source = base.join("launch");
         let library = base.join("templates");
         sample_project(&source);
+        write(
+            &source.join("edits/demo.json"),
+            r#"{"name":"demo","sources":[]}"#,
+        );
         let snapshot = base.join("launch.png");
         write(&snapshot, "png");
 
@@ -864,6 +924,7 @@ mod tests {
         assert!(dir.join("scenes/01-open.tsx").is_file());
         assert!(dir.join("scenes/02-stat.json").is_file());
         assert!(dir.join("assets/unused.png").is_file());
+        assert!(dir.join("edits/demo.json").is_file());
         let manifest = read_json(&dir.join(TEMPLATE_MANIFEST)).unwrap();
         assert_eq!(manifest["name"], "Launch 2026");
         assert_eq!(manifest["source"], "user");
@@ -929,6 +990,203 @@ mod tests {
         assert!(save_preset(&source, &library, "../../etc/passwd").is_err());
 
         let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn saved_presets_keep_render_context_effects_and_exact_asset_names() {
+        let base = scratch_dir();
+        let source = base.join("launch");
+        let library = base.join("presets");
+        sample_project(&source);
+        let mut manifest = read_json(&source.join(MANIFEST_FILENAME)).unwrap();
+        manifest["lighting"] =
+            serde_json::json!({ "environment": { "source": "assets/studio.hdr" } });
+        manifest["render"] = serde_json::json!({ "toneMapping": "neutral", "exposure": 1.4 });
+        manifest["frame"] = serde_json::json!({ "type": "browser" });
+        manifest["typography"] = serde_json::json!({ "headline": "Inter@700" });
+        manifest["scenes"][1]["effects"] = serde_json::json!({ "vignette": { "enabled": true } });
+        atomic_write_json(&source.join(MANIFEST_FILENAME), &manifest).unwrap();
+        let doc = serde_json::json!({
+            "version": 1,
+            "name": "Stat hero",
+            "image": { "src": "assets/café (final).png" },
+            "website": {
+                "url": "https://example.com/",
+                "capture": { "src": "assets/website/capture.png", "contentHash": "hash" }
+            }
+        });
+        atomic_write_json(&source.join("scenes/02-stat.json"), &doc).unwrap();
+        for asset in ["studio.hdr", "café (final).png", "website/capture.png"] {
+            write(&source.join("assets").join(asset), asset);
+        }
+
+        let item = save_preset(&source, &library, "02-stat").unwrap();
+        let saved = library.join(item.slug);
+        let project = read_json(&saved.join(MANIFEST_FILENAME)).unwrap();
+        for field in ["lighting", "render", "frame", "typography"] {
+            assert_eq!(project[field], manifest[field]);
+        }
+        assert_eq!(
+            project["scenes"][0]["effects"],
+            manifest["scenes"][1]["effects"]
+        );
+        assert_eq!(read_json(&saved.join("scenes/02-stat.json")).unwrap(), doc);
+        for asset in ["studio.hdr", "café (final).png", "website/capture.png"] {
+            assert_eq!(
+                std::fs::read(saved.join("assets").join(asset)).unwrap(),
+                asset.as_bytes()
+            );
+        }
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn saving_a_preset_refuses_corrupt_or_unregistered_scenes_before_copying() {
+        let base = scratch_dir();
+        let source = base.join("launch");
+        let library = base.join("presets");
+        sample_project(&source);
+        write(&source.join("scenes/02-stat.json"), "{ broken");
+        assert!(save_preset(&source, &library, "02-stat").is_err());
+        write(&source.join("scenes/orphan.tsx"), "orphan");
+        assert!(save_preset(&source, &library, "orphan").is_err());
+        assert!(!library.exists());
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn a_saved_preset_inserts_at_its_final_position_with_scene_content_and_assets() {
+        let base = scratch_dir();
+        let source = base.join("source");
+        let library = base.join("presets");
+        let dest = base.join("dest");
+        sample_project(&source);
+        sample_project(&dest);
+        let source_doc = serde_json::json!({
+            "version": 1,
+            "name": "Stat hero",
+            "camera": { "position": [1, 2, 3] },
+            "lighting": { "environment": { "source": "assets/scene.hdr" } },
+            "frame": { "type": "browser" },
+            "website": { "url": "https://example.com", "capture": { "src": "assets/website/site.png" } }
+        });
+        atomic_write_json(&source.join("scenes/02-stat.json"), &source_doc).unwrap();
+        for asset in ["scene.hdr", "website/site.png", "grade.cube"] {
+            write(&source.join("assets").join(asset), "source asset");
+            write(&dest.join("assets").join(asset), "existing asset");
+        }
+        let mut manifest = read_json(&source.join(MANIFEST_FILENAME)).unwrap();
+        manifest["scenes"][1]["effects"] = serde_json::json!({
+            "vignette": { "enabled": true },
+            "lut": { "url": "assets/grade.cube", "intensity": 0.5 }
+        });
+        atomic_write_json(&source.join(MANIFEST_FILENAME), &manifest).unwrap();
+        let item = save_preset(&source, &library, "02-stat").unwrap();
+        let copied = crate::scene_doc::copy_scene_between(
+            &library.join(&item.slug),
+            &dest,
+            0,
+            &format!("ws-preset:{}", item.slug),
+            "dest",
+            Some(1),
+            None,
+        )
+        .unwrap();
+        assert_eq!(copied.index, 1);
+        let landed = read_json(&dest.join(MANIFEST_FILENAME)).unwrap();
+        assert_eq!(landed["scenes"].as_array().unwrap().len(), 3);
+        assert_eq!(landed["scenes"][1]["file"], copied.scene.file);
+        assert_eq!(
+            landed["scenes"][1]["effects"]["vignette"],
+            manifest["scenes"][1]["effects"]["vignette"]
+        );
+        assert_eq!(landed["scenes"][2]["file"], "scenes/02-stat.tsx");
+        let doc = read_json(&dest.join(copied.scene.doc_file)).unwrap();
+        assert_eq!(doc["camera"], source_doc["camera"]);
+        assert_eq!(doc["frame"], source_doc["frame"]);
+        assert_eq!(doc["website"]["url"], source_doc["website"]["url"]);
+        for rel in [
+            doc["lighting"]["environment"]["source"].as_str().unwrap(),
+            doc["website"]["capture"]["src"].as_str().unwrap(),
+            landed["scenes"][1]["effects"]["lut"]["url"]
+                .as_str()
+                .unwrap(),
+        ] {
+            assert_eq!(
+                std::fs::read_to_string(dest.join(rel)).unwrap(),
+                "source asset"
+            );
+        }
+        for asset in ["scene.hdr", "website/site.png", "grade.cube"] {
+            assert_eq!(
+                std::fs::read_to_string(dest.join("assets").join(asset)).unwrap(),
+                "existing asset"
+            );
+        }
+        let before = std::fs::read(dest.join(MANIFEST_FILENAME)).unwrap();
+        assert!(crate::scene_doc::copy_scene_between(
+            &source,
+            &dest,
+            0,
+            "ws-preset:malformed",
+            "dest",
+            None,
+            None
+        )
+        .is_err());
+        assert!(crate::scene_doc::copy_scene_between(
+            &source,
+            &dest,
+            0,
+            "source",
+            "ws-preset:dest",
+            None,
+            None
+        )
+        .is_err());
+        assert_eq!(std::fs::read(dest.join(MANIFEST_FILENAME)).unwrap(), before);
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn bundled_preset_insertion_copies_shared_samples_without_overwriting_the_destination() {
+        let base = scratch_dir();
+        let source = base.join("bundled");
+        let dest = base.join("dest");
+        let pool = base.join("pool");
+        sample_project(&source);
+        sample_project(&dest);
+        let mut manifest = read_json(&source.join(MANIFEST_FILENAME)).unwrap();
+        manifest["scenes"].as_array_mut().unwrap().remove(0);
+        atomic_write_json(&source.join(MANIFEST_FILENAME), &manifest).unwrap();
+        write(
+            &source.join("scenes/02-stat.json"),
+            r#"{"name":"Hero","media":{"src":"assets/shared.mp4"}}"#,
+        );
+        write(&pool.join("shared.mp4"), "bundled clip");
+        write(&dest.join("assets/shared.mp4"), "user clip");
+        let copied = crate::scene_doc::copy_scene_between(
+            &source,
+            &dest,
+            0,
+            "preset:hero",
+            "dest",
+            None,
+            Some(&pool),
+        )
+        .unwrap();
+        let doc = read_json(&dest.join(copied.scene.doc_file)).unwrap();
+        let rel = doc["media"]["src"].as_str().unwrap();
+        assert_ne!(rel, "assets/shared.mp4");
+        assert_eq!(
+            std::fs::read_to_string(dest.join(rel)).unwrap(),
+            "bundled clip"
+        );
+        assert_eq!(
+            std::fs::read_to_string(dest.join("assets/shared.mp4")).unwrap(),
+            "user clip"
+        );
+        let _ = std::fs::remove_dir_all(base);
     }
 
     #[test]
@@ -1003,8 +1261,10 @@ mod tests {
         assert!(item.poster_path.is_none());
 
         write(&dir.join("poster.png"), "png");
+        write(&dir.join("poster.jpg"), "old poster");
         let with_poster = read_item(&dir, "stat-hero", Kind::Template).unwrap();
         assert!(with_poster.poster_path.unwrap().ends_with("poster.png"));
+        assert!(with_poster.poster_modified_at.is_some());
 
         // A folder with no manifest is not a library item.
         assert!(read_item(&dir, "stat-hero", Kind::Preset).is_none());

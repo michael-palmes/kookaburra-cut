@@ -176,12 +176,13 @@ function TemplateGallery({
   const entries = useSyncExternalStore(subscribeTemplates, listAllTemplates);
   const [category, setCategory] = useState<GalleryRow>(null);
   const [stashedCategory, setStashedCategory] = useState<GalleryRow>(null);
+  const [libraryError, setLibraryError] = useState<string | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const railRef = useRef<HTMLFieldSetElement>(null);
   const gridRef = useRef<HTMLDivElement>(null);
   // The workspace half lands behind the bundled catalogue, which renders on the first frame.
   useEffect(() => {
-    void refreshUserTemplates();
+    refreshUserTemplates().catch((e) => setLibraryError(String(e)));
   }, []);
   const counts = useMemo(() => templateCategoryCounts(entries, { query }), [entries, query]);
   const mineCount = useMemo(
@@ -321,6 +322,11 @@ function TemplateGallery({
 
   return (
     <div className="template-gallery">
+      {libraryError && (
+        <p className="modal-error" role="alert">
+          {libraryError}
+        </p>
+      )}
       <div className="template-gallery-bar">
         <input
           ref={searchRef}

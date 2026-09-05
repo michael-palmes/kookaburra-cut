@@ -641,7 +641,7 @@ export function resolveAssetUrl(projectId: string, relPath: string): string {
   const key = projectAssetKey(projectId, relPath);
   // Workspace assets load at their asset-protocol key, gated by the inventory: a known-missing file must throw here (callers degrade to nothing) rather than reject inside the texture loader, which fails an autorun via the boot trap even when an AssetBoundary contains it. Library items (templates, presets) keep no inventory, so their key stands as-is.
   if (isWorkspaceBackedProjectId(projectId)) {
-    if (isWorkspaceProjectId(projectId) && workspaceAssetMissing(projectId, relPath)) {
+    if (workspaceAssetMissing(projectId, relPath)) {
       throw new Error(
         `Image asset "${relPath}" not found in project "${projectId}". ` +
           "Put it under the project's assets/ folder and reference it relatively.",
@@ -663,7 +663,7 @@ export function resolveAssetUrl(projectId: string, relPath: string): string {
 export function resolveProjectHdrUrl(projectId: string, relPath: string): string {
   const clean = assertProjectRelative(relPath);
   if (isWorkspaceBackedProjectId(projectId)) {
-    if (isWorkspaceProjectId(projectId) && workspaceEnvironmentMissing(projectId, clean)) {
+    if (workspaceEnvironmentMissing(projectId, clean)) {
       throw new Error(
         `Environment map "${relPath}" not found in project "${projectId}". ` +
           "Put a .hdr or .exr under the project's assets/ folder and reference it relatively.",
@@ -685,7 +685,7 @@ export function resolveProjectHdrUrl(projectId: string, relPath: string): string
 const workspaceEnvironments = new Map<string, Set<string>>();
 
 async function refreshWorkspaceEnvironments(projectId: string): Promise<void> {
-  if (!isWorkspaceProjectId(projectId)) return;
+  if (!isWorkspaceBackedProjectId(projectId)) return;
   try {
     const rels = await invoke<string[]>("list_project_environments", {
       slug: nativeProjectSlug(projectId),
@@ -813,12 +813,12 @@ export function assertUniqueSceneFiles(scenes: ProjectManifest["scenes"], label:
 /** Parse a project manifest from either source, with readable failures for hand-edited files. */
 async function loadManifest(id: string): Promise<ProjectManifest> {
   const scope = parseProjectId(id).scope;
-  if (isWorkspaceBackedProjectId(id)) {
+  if (scope !== "bundled") {
     const slug = nativeProjectSlug(id);
     if (scope === "workspace") {
       if (!workspaceProjects.has(slug)) await refreshWorkspaceProjects();
       requireWorkspaceProject(slug);
-    } else if (!workspaceLibraryPath(id)) {
+    } else if ((scope === "ws-template" || scope === "ws-preset") && !workspaceLibraryPath(id)) {
       await refreshWorkspaceLibrary(scope as "ws-template" | "ws-preset");
       requireWorkspaceLibraryPath(id);
     }
@@ -880,7 +880,7 @@ export async function loadProject(
 
   // F-001 trust gate: no workspace scene code compiles until the user consents; bundled projects never gate. Reading the manifest above is inert (JSON only).
   let healedSceneIds: string[] | undefined;
-  if (isWorkspaceProjectId(id)) {
+  if (isWorkspaceBackedProjectId(id)) {
     const slug = nativeProjectSlug(id);
     await ensureProjectTrusted(slug, manifest.name || slug);
     // Trust first: declining must mean zero writes. The bump evicts pre-heal modules from `wsCompiledModules` so the imports below compile the rewritten bytes.
@@ -894,7 +894,7 @@ export async function loadProject(
           .join(", ")}`,
       );
     }
-    await ensureSampleAssets(slug);
+    if (isWorkspaceProjectId(id)) await ensureSampleAssets(slug);
     await refreshWorkspaceAssets(id);
     await refreshWorkspaceEnvironments(id);
   }

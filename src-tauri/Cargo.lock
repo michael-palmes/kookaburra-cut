@@ -168,9 +168,9 @@ checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
 
 [[package]]
 name = "base64"
-version = "0.23.0"
+version = "0.23.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b25655df2c3cdd83c5e5b293b88acd880332b2ddadd7c30ac43144fdc0033da9"
+checksum = "ac07cdecf99051d9a5238b80f35af32cdeba5b336e55d957b318b50137e18da5"
 
 [[package]]
 name = "bit-set"
@@ -2057,7 +2057,7 @@ name = "kookaburra-cut"
 version = "0.15.1"
 dependencies = [
  "allsorts",
- "base64 0.23.0",
+ "base64 0.23.1",
  "block2",
  "core-foundation",
  "core-text",
@@ -2068,6 +2068,8 @@ dependencies = [
  "objc2",
  "objc2-app-kit",
  "objc2-foundation",
+ "objc2-web-kit",
+ "png 0.18.1",
  "portable-pty",
  "serde",
  "serde_json",
@@ -2083,6 +2085,7 @@ dependencies = [
  "trash",
  "url",
  "walkdir",
+ "wry",
  "zip",
 ]
 
@@ -2210,9 +2213,9 @@ dependencies = [
 
 [[package]]
 name = "log"
-version = "0.4.33"
+version = "0.4.34"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0ceec5bc11778974d1bcb055b18002eba7f4b3518b6a0081b3af5f21666da9ad"
+checksum = "f9f8bd3e56ce4dfc153cf470fffbfa98c7620958b312ca5c3a4b8d5181fd13c6"
 
 [[package]]
 name = "markup5ever"

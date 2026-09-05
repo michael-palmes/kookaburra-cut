@@ -135,12 +135,12 @@ pub struct RenderProgress {
 
 const EDIT_VERSION: u32 = 1;
 
-fn edits_dir(root: &Path, slug: &str) -> std::path::PathBuf {
-    root.join(slug).join("edits")
+fn edits_dir(project: &Path) -> std::path::PathBuf {
+    project.join("edits")
 }
 
-fn edit_path(root: &Path, slug: &str, name: &str) -> std::path::PathBuf {
-    edits_dir(root, slug).join(format!("{name}.json"))
+fn edit_path(project: &Path, name: &str) -> std::path::PathBuf {
+    edits_dir(project).join(format!("{name}.json"))
 }
 
 /// Atomic write (tmp + rename) so a crash mid-save can never corrupt `edit.json`; the "no interaction corrupts the document" half of the robustness contract.
@@ -166,24 +166,24 @@ struct TapPrefs {
     tap_size: Option<f64>,
 }
 
-fn tap_prefs_path(root: &Path, slug: &str) -> std::path::PathBuf {
-    edits_dir(root, slug).join("_tap_prefs.json")
+fn tap_prefs_path(project: &Path) -> std::path::PathBuf {
+    edits_dir(project).join("_tap_prefs.json")
 }
 
 /// Missing or corrupt prefs read as empty; they are a convenience, never an error.
-fn read_tap_prefs(root: &Path, slug: &str) -> TapPrefs {
-    std::fs::read_to_string(tap_prefs_path(root, slug))
+fn read_tap_prefs(project: &Path) -> TapPrefs {
+    std::fs::read_to_string(tap_prefs_path(project))
         .ok()
         .and_then(|text| serde_json::from_str(&text).ok())
         .unwrap_or_default()
 }
 
 /// Best-effort atomic write on every save carrying tap fields; a prefs failure never fails the save. Merges per field: a doc that never touched a field must not wipe another edit's saved preference.
-fn write_tap_prefs(root: &Path, slug: &str, doc: &EditDoc) {
+fn write_tap_prefs(project: &Path, doc: &EditDoc) {
     if doc.tap_style.is_none() && doc.tap_color.is_none() && doc.tap_size.is_none() {
         return;
     }
-    let mut prefs = read_tap_prefs(root, slug);
+    let mut prefs = read_tap_prefs(project);
     if doc.tap_style.is_some() {
         prefs.tap_style = doc.tap_style.clone();
     }
@@ -193,7 +193,7 @@ fn write_tap_prefs(root: &Path, slug: &str, doc: &EditDoc) {
     if doc.tap_size.is_some() {
         prefs.tap_size = doc.tap_size;
     }
-    let path = tap_prefs_path(root, slug);
+    let path = tap_prefs_path(project);
     let Some(dir) = path.parent() else { return };
     if std::fs::create_dir_all(dir).is_err() {
         return;
@@ -261,9 +261,8 @@ pub async fn open_edit(
     source_rel: String,
     scene_index: Option<usize>,
 ) -> Result<String, String> {
-    let root = workspace::require_root(&app, &settings)?;
-    workspace::validate_slug(&slug)?;
-    let source_abs = media::resolve_asset(&root, &slug, &source_rel)?;
+    let project = workspace::project_dir_mut(&app, &settings, &slug)?;
+    let source_abs = media::resolve_asset_in(&project, &source_rel)?;
     if !source_abs.is_file() {
         return Err(format!("source not found: {source_rel}"));
     }
@@ -277,16 +276,16 @@ pub async fn open_edit(
         name = "edit".into();
     }
 
-    let path = edit_path(&root, &slug, &name);
+    let path = edit_path(&project, &name);
     if !path.is_file() {
-        let doc = create_default_doc(&app, &root, &slug, &name, &source_rel).await?;
+        let doc = create_default_doc(&app, &project, &name, &source_rel).await?;
         write_doc(&path, &doc)?;
     }
 
     let target = EditTarget {
         slug: slug.clone(),
         name: name.clone(),
-        path: root.join(&slug).to_string_lossy().into_owned(),
+        path: project.to_string_lossy().into_owned(),
         source_rel: source_rel.clone(),
         scene_index,
     };
@@ -306,12 +305,11 @@ fn even(w: u32, h: u32) -> (u32, u32) {
 /// The fresh single-clip document `open_edit` seeds (and `reset_edit` recreates); an image seeds one default-length freeze instead of a full-span clip.
 async fn create_default_doc(
     app: &AppHandle,
-    root: &Path,
-    slug: &str,
+    project: &Path,
     name: &str,
     source_rel: &str,
 ) -> Result<EditDoc, String> {
-    let source_abs = media::resolve_asset(root, slug, source_rel)?;
+    let source_abs = media::resolve_asset_in(project, source_rel)?;
     if !source_abs.is_file() {
         return Err(format!("source not found: {source_rel}"));
     }
@@ -328,7 +326,7 @@ async fn create_default_doc(
         (probe.width, probe.height)
     };
     let fps = if probe.fps > 0.0 { probe.fps } else { 60.0 };
-    let prefs = read_tap_prefs(root, slug);
+    let prefs = read_tap_prefs(project);
     Ok(EditDoc {
         version: EDIT_VERSION,
         name: name.to_owned(),
@@ -370,10 +368,9 @@ pub fn open_edit_named(
     name: String,
     scene_index: Option<usize>,
 ) -> Result<String, String> {
-    let root = workspace::require_root(&app, &settings)?;
-    workspace::validate_slug(&slug)?;
+    let project = workspace::project_dir_mut(&app, &settings, &slug)?;
     workspace::validate_slug(&name)?;
-    let doc = read_doc(&edit_path(&root, &slug, &name))?;
+    let doc = read_doc(&edit_path(&project, &name))?;
     let source_rel = doc
         .sources
         .first()
@@ -382,7 +379,7 @@ pub fn open_edit_named(
     let target = EditTarget {
         slug: slug.clone(),
         name: name.clone(),
-        path: root.join(&slug).to_string_lossy().into_owned(),
+        path: project.to_string_lossy().into_owned(),
         source_rel,
         scene_index,
     };
@@ -400,14 +397,13 @@ pub async fn reset_edit(
     name: String,
     source_rel: String,
 ) -> Result<EditDoc, String> {
-    let root = workspace::require_root(&app, &settings)?;
-    workspace::validate_slug(&slug)?;
+    let project = workspace::project_dir_mut(&app, &settings, &slug)?;
     workspace::validate_slug(&name)?;
-    let path = edit_path(&root, &slug, &name);
+    let path = edit_path(&project, &name);
     if path.is_file() {
         let _ = std::fs::rename(&path, path.with_extension("json.bak"));
     }
-    let doc = create_default_doc(&app, &root, &slug, &name, &source_rel).await?;
+    let doc = create_default_doc(&app, &project, &name, &source_rel).await?;
     write_doc(&path, &doc)?;
     Ok(doc)
 }
@@ -430,10 +426,9 @@ pub fn load_edit(
     slug: String,
     name: String,
 ) -> Result<EditDoc, String> {
-    let root = workspace::require_root(&app, &settings)?;
-    workspace::validate_slug(&slug)?;
+    let project = workspace::project_dir(&app, &settings, &slug)?;
     workspace::validate_slug(&name)?;
-    read_doc(&edit_path(&root, &slug, &name))
+    read_doc(&edit_path(&project, &name))
 }
 
 /// Persist an edit document (autosave); the name is fixed at creation, the doc's own `name` must match, so a rename can't write outside its file.
@@ -445,11 +440,10 @@ pub fn save_edit(
     name: String,
     doc: EditDoc,
 ) -> Result<(), String> {
-    let root = workspace::require_root(&app, &settings)?;
-    workspace::validate_slug(&slug)?;
+    let project = workspace::project_dir_mut(&app, &settings, &slug)?;
     workspace::validate_slug(&name)?;
-    write_doc(&edit_path(&root, &slug, &name), &doc)?;
-    write_tap_prefs(&root, &slug, &doc);
+    write_doc(&edit_path(&project, &name), &doc)?;
+    write_tap_prefs(&project, &doc);
     Ok(())
 }
 
@@ -460,10 +454,9 @@ pub fn list_edits(
     settings: State<'_, SettingsState>,
     slug: String,
 ) -> Result<Vec<String>, String> {
-    let root = workspace::require_root(&app, &settings)?;
-    workspace::validate_slug(&slug)?;
+    let project = workspace::project_dir(&app, &settings, &slug)?;
     let mut names = Vec::new();
-    if let Ok(read) = std::fs::read_dir(edits_dir(&root, &slug)) {
+    if let Ok(read) = std::fs::read_dir(edits_dir(&project)) {
         for entry in read.flatten() {
             let path = entry.path();
             if path.extension().and_then(|s| s.to_str()) == Some("json") {
@@ -803,19 +796,18 @@ pub async fn render_edit(
     name: String,
     on_progress: Channel<RenderProgress>,
 ) -> Result<String, String> {
-    let root = workspace::require_root(&app, &settings)?;
-    workspace::validate_slug(&slug)?;
+    let project = workspace::project_dir_mut(&app, &settings, &slug)?;
     workspace::validate_slug(&name)?;
-    let mut doc = read_doc(&edit_path(&root, &slug, &name))?;
+    let mut doc = read_doc(&edit_path(&project, &name))?;
 
     // Resolve every referenced source to an absolute path up front (traversal-hardened), stashing it on a throwaway field the arg builder reads.
     for source in &mut doc.sources {
-        source.abs = media::resolve_asset(&root, &slug, &source.rel)?
+        source.abs = media::resolve_asset_in(&project, &source.rel)?
             .to_string_lossy()
             .into_owned();
     }
 
-    let assets = root.join(&slug).join("assets");
+    let assets = project.join("assets");
     std::fs::create_dir_all(&assets).map_err(|e| e.to_string())?;
     let rel = format!("assets/{name}-edited.mp4");
     let output = assets.join(format!("{name}-edited.mp4"));

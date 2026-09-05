@@ -12,6 +12,7 @@ import {
   type AudioMarkersSpec,
   type LoadedProject,
   nativeProjectSlug,
+  parseProjectId,
   sceneFileStem,
 } from "../engine/project";
 import { ensureSceneThumbs, listCachedSceneThumbs } from "../engine/sceneThumbs";
@@ -99,6 +100,8 @@ export function PlaybackBar({
   const [duplicating, setDuplicating] = useState<number | null>(null);
   const [insertingPreset, setInsertingPreset] = useState<number | null>(null);
   const [savingPreset, setSavingPreset] = useState<number | null>(null);
+  const scope = project ? parseProjectId(project.id).scope : null;
+  const canAddScenes = scope !== "preset" && scope !== "ws-preset";
 
   const spans = project ? sceneCellSpans(project.slots, durationMs) : [];
   const active = project ? activeSceneIndex(project.slots, currentMs) : 0;
@@ -120,6 +123,7 @@ export function PlaybackBar({
       items: sceneMenuItems({
         canRename: !!project.sceneDocs[index],
         canDelete: project.slots.length > 1,
+        canAddScenes,
         hasClipboard: !!useUiStore.getState().backgroundClipboard,
         onRename: () => setRenaming({ index, text: sceneName(index) }),
         onDuplicate: () => setDuplicating(index),
@@ -402,7 +406,7 @@ export function PlaybackBar({
         <span className="pb-readout" onPointerDown={holdPointer}>
           {readout}
         </span>
-        {editable && (
+        {editable && canAddScenes && (
           <button
             type="button"
             className="pb-new-scene"
@@ -419,7 +423,6 @@ export function PlaybackBar({
       {insertingPreset !== null && project && (
         <PresetGalleryModal
           slug={nativeProjectSlug(project.id)}
-          sceneCount={project.slots.length}
           position={insertingPreset}
           onDone={(inserted) => {
             setInsertingPreset(null);

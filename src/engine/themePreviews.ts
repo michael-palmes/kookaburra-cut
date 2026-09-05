@@ -1,5 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
+import { parseThemeDoc } from "../theme/schema";
 import { canvasCommittedProject } from "./exportBridge";
+import { isExporting } from "./exportState";
 import { yieldMacrotask } from "./macrotask";
 import { fsUrl } from "./media";
 import type { LoadedProject } from "./project";
@@ -91,7 +93,19 @@ export async function writeThemePreviews(
 
 /** A user theme's cache key: sha-256 of its JSON text (hex, truncated, slug-safe). */
 export async function themePreviewKey(themeJson: string): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(themeJson));
+  const canonicalise = (value: unknown): unknown => {
+    if (Array.isArray(value)) return value.map(canonicalise);
+    if (value !== null && typeof value === "object") {
+      return Object.fromEntries(
+        Object.entries(value)
+          .sort(([a], [b]) => a.localeCompare(b))
+          .map(([key, entry]) => [key, canonicalise(entry)]),
+      );
+    }
+    return value;
+  };
+  const canonical = JSON.stringify(canonicalise(JSON.parse(themeJson)));
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(canonical));
   return Array.from(new Uint8Array(digest))
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("")
@@ -110,24 +124,42 @@ export async function ensureUserThemePreviews(
   themeJson: string,
   applyProject: (loaded: LoadedProject) => void,
   restore: () => Promise<void>,
+  isCurrent: () => boolean = () => true,
 ): Promise<string[] | null> {
+  const canCapture = () => isCurrent() && !isExporting();
+  if (!canCapture()) return null;
   const key = await themePreviewKey(themeJson);
   const existing = await cachedThemePreviews(key).catch(() => null);
   if (existing) return existing;
   const { loadProject } = await import("./project");
   const { awaitSceneHostsCommitted } = await import("./exporter");
   const { preloadBundledBackdrops } = await import("../toolkit/stage/backdrops");
+  const theme = parseThemeDoc(JSON.parse(themeJson), themeId);
+  if (!theme) throw new Error("Cannot render previews for an invalid theme.");
+  let swapped = false;
   try {
-    await preloadBundledBackdrops();
-    const starter = await loadProject(THEME_PREVIEW_PROJECT_ID, { themeId });
-    applyProject(starter);
-    await awaitProjectCommitted(starter);
-    await awaitSceneHostsCommitted(starter.slots.length);
-    const frames = await captureThemePreviewFrames(starter);
-    if (!frames) return null;
-    await writeThemePreviews("cache", key, frames);
-    return cachedThemePreviews(key);
+    return await withBorrowedClock(async () => {
+      if (!canCapture()) return null;
+      await preloadBundledBackdrops();
+      const starter = await loadProject(THEME_PREVIEW_PROJECT_ID, {
+        theme: { ...theme, id: themeId },
+      });
+      if (!canCapture()) return null;
+      applyProject(starter);
+      swapped = true;
+      await awaitProjectCommitted(starter);
+      await awaitSceneHostsCommitted(starter.slots.length);
+      const frames: Uint8Array[] = [];
+      for (const tMs of themePreviewMiddles(starter)) {
+        if (!canCapture()) return null;
+        const bytes = await captureFrameAt(tMs, THEME_PREVIEW_WIDTH, "jpeg", canCapture);
+        if (!bytes || !canCapture()) return null;
+        frames.push(bytes);
+      }
+      await writeThemePreviews("cache", key, frames);
+      return cachedThemePreviews(key);
+    });
   } finally {
-    await restore();
+    if (swapped && canCapture()) await restore();
   }
 }

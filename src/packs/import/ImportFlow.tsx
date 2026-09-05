@@ -11,6 +11,7 @@ import {
 import { PackGlyph } from "../PackGlyph";
 import { reviewImportedTerminals, type TerminalReviewRow } from "../terminalReview";
 import type { ImportOutcome, ImportPlan, PackInspection, PackProgress, Resolution } from "../types";
+import { reviewImportedWebsites, type WebsiteReviewRow } from "../websiteReview";
 import { CodeView } from "./CodeView";
 import { ConflictsView } from "./ConflictsView";
 import { ContentsView } from "./ContentsView";
@@ -27,7 +28,12 @@ type Step =
   | { name: "staging"; progress: PackProgress | null }
   | { name: "conflicts"; plan: ImportPlan }
   | { name: "applying"; progress: PackProgress | null }
-  | { name: "summary"; outcome: ImportOutcome; terminals: TerminalReviewRow[] }
+  | {
+      name: "summary";
+      outcome: ImportOutcome;
+      terminals: TerminalReviewRow[];
+      websites: WebsiteReviewRow[];
+    }
   | { name: "error"; message: string };
 
 /** Trust, then contents, then conflicts. Nothing is written to disk until the user has seen what is inside: staging happens on Continue from the contents screen, not earlier. */
@@ -101,8 +107,11 @@ export function ImportFlow({
       const outcome = await applyImport(resolutions, (progress) =>
         setStep({ name: "applying", progress }),
       );
-      const terminals = await reviewImportedTerminals(outcome).catch(() => []);
-      setStep({ name: "summary", outcome, terminals });
+      const [terminals, websites] = await Promise.all([
+        reviewImportedTerminals(outcome).catch(() => []),
+        reviewImportedWebsites(outcome).catch(() => []),
+      ]);
+      setStep({ name: "summary", outcome, terminals, websites });
     } catch (e) {
       setStep({ name: "error", message: String(e) });
     }
@@ -217,6 +226,7 @@ export function ImportFlow({
         <SummaryView
           outcome={step.outcome}
           terminals={step.terminals}
+          websites={step.websites}
           queued={queued}
           onOpenProject={(slug) => {
             void invoke("open_imported_project", { slug }).catch(() => undefined);

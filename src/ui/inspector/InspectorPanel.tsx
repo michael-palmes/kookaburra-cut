@@ -6,6 +6,7 @@ import {
   type LoadedProject,
   nativeProjectSlug,
   type ProjectAudioSpec,
+  parseProjectId,
   projectFolderPath,
   sceneFileStem,
 } from "../../engine/project";
@@ -204,6 +205,8 @@ export function InspectorPanel({
 }) {
   // Editability, not tree: a template or preset opened from the Library edits exactly like a project.
   const editable = isEditableProjectId(project.id);
+  const scope = parseProjectId(project.id).scope;
+  const canAddScenes = scope !== "preset" && scope !== "ws-preset";
   const projectFolder = projectFolderPath(project.id) ?? "";
   const tab = useUiStore((s) => s.inspector.tab);
   const setTab = useUiStore((s) => s.setInspectorTab);
@@ -571,6 +574,7 @@ export function InspectorPanel({
           />
         ) : (tab === "project" || !editable) &&
           drillIn === "project.scenes.copyFrom" &&
+          canAddScenes &&
           editable ? (
           <ProjectCopyFromDrill
             slug={nativeProjectSlug(project.id)}
@@ -590,6 +594,7 @@ export function InspectorPanel({
                 hasDoc: !!project.sceneDocs[i],
               }))}
               busy={scenesBusy}
+              canAddScenes={canAddScenes}
               onBack={() => setDrillIn(null)}
               onReorder={(desired) => {
                 setScenesBusy(true);
@@ -634,7 +639,6 @@ export function InspectorPanel({
             {insertingPreset !== null && (
               <PresetGalleryModal
                 slug={nativeProjectSlug(project.id)}
-                sceneCount={project.slots.length}
                 position={insertingPreset}
                 // A new scene file, so the whole project reloads; the host selects it when it takes the file.
                 onDone={(inserted) => {

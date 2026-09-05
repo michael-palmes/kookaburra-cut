@@ -82,6 +82,7 @@ import {
   bumpWorkspaceReloadToken,
   DEFAULT_AUDIO_FADE_OUT_MS,
   isEditableProjectId,
+  isWorkspaceBackedProjectId,
   isWorkspaceProjectId,
   type LoadedProject,
   listAllProjects,
@@ -90,6 +91,7 @@ import {
   type ProjectAudio,
   type ProjectAudioSpec,
   type ProjectListing,
+  parseProjectId,
   projectFolderPath,
   resolveAssetPath,
   sceneFileStem,
@@ -171,6 +173,7 @@ import { MediaLibrary } from "./ui/MediaLibrary";
 import { PlaybackBar } from "./ui/PlaybackBar";
 import { PresentModal } from "./ui/PresentModal";
 import { SceneTerminalOverlay } from "./ui/SceneTerminalOverlay";
+import { SceneWebsiteOverlay } from "./ui/SceneWebsiteOverlay";
 import { ShortcutsSheet } from "./ui/ShortcutsSheet";
 import { TerminalGizmo } from "./ui/TerminalGizmo";
 import { TerminalPanel } from "./ui/TerminalPanel";
@@ -198,6 +201,7 @@ import {
   docPatchMatchesProject,
   resolveDocPatchIndex,
 } from "./ui/useSceneDocPatch";
+import { WebsiteGizmo } from "./ui/WebsiteGizmo";
 import { Welcome } from "./ui/Welcome";
 
 /** A recessed matte over the letterboxed stage while a freshly-opened project settles, with an honest step-based progress bar (no fabricated animation); never rendered in autorun. */
@@ -850,6 +854,7 @@ export default function App() {
   const handleDuplicateScene = useCallback(async (sceneIndex: number, position?: number) => {
     const current = loadedProjectRef.current;
     if (!current || !isEditableProjectId(current.id)) return;
+    if (["preset", "ws-preset"].includes(parseProjectId(current.id).scope)) return;
     try {
       // No history entry (delete's semantics: a manifest revert can't un-create files); a new TSX needs the full module reload.
       const result = await duplicateProjectScene(
@@ -883,6 +888,7 @@ export default function App() {
   const handleDuplicateScenes = useCallback(async (indices: number[]) => {
     const current = loadedProjectRef.current;
     if (!current || !isEditableProjectId(current.id)) return;
+    if (["preset", "ws-preset"].includes(parseProjectId(current.id).scope)) return;
     try {
       // One block after the last selected scene, in the sources' order (planDuplicates walks the cursor as the array grows).
       for (const { from, at } of planDuplicates(indices)) {
@@ -1400,42 +1406,92 @@ export default function App() {
     [project, armPollBaseline],
   );
 
-  // Duplicate a theme into `~/Kookaburra Cut/themes/<slug>/theme.json`, then render its previews by borrowing the canvas (preview-lab-theme under the new theme) and restore the project. The copy is of the SOURCE DOCUMENT, never the resolved theme: `catalogue` (collection, use label, tags) and any block a newer build wrote survive it.
+  const [pendingThemePreviews, setPendingThemePreviews] = useState<Record<string, string>>({});
+  const themePreviewRunning = useRef(false);
+  const [themePreviewBusy, setThemePreviewBusy] = useState(false);
+  const [themePreviewRetry, setThemePreviewRetry] = useState(0);
+  const previewContext = useRef({ view, exporting, playing });
+  previewContext.current = { view, exporting, playing };
+
+  const handleThemeEdited = useCallback(async (themeId: string, json: string) => {
+    setPendingThemePreviews((pending) => ({ ...pending, [themeId]: json }));
+  }, []);
+
   const handleDuplicateTheme = useCallback(
-    async (name: string, baseThemeId: string) => {
+    async (name: string, baseThemeId: string, replace = false) => {
       const slug = slugifyName(name);
       if (!slug) throw new Error("Give the theme a name.");
       const source = await readThemeSourceDoc(baseThemeId);
       const json = `${JSON.stringify(duplicateThemeDoc(source, slug, name.trim()), null, 2)}\n`;
-      await invoke("write_theme", { slug, text: json });
+      await invoke("write_theme", { slug, text: json, overwrite: replace });
       const wsId = `${WORKSPACE_THEME_PREFIX}${slug}`;
-      const current = project;
-      void ensureUserThemePreviews(wsId, json, applyLoadedProject, async () => {
-        if (current) applyLoadedProject(await loadProject(current.id));
-      }).catch((e) => {
-        console.warn("[theme] preview generation failed:", e);
-        setToast({ kind: "error", message: `Theme preview render failed: ${String(e)}` });
-      });
+      await handleThemeEdited(wsId, json);
       return wsId;
     },
-    [project, applyLoadedProject],
+    [handleThemeEdited],
   );
 
-  // A ws theme's JSON changed (fonts pane): regenerate its previews under the new content hash by borrowing the canvas; the restore reload re-resolves themes so an open project using it picks up the change immediately.
-  const handleThemeEdited = useCallback(
-    async (wsId: string, json: string) => {
-      const current = project;
-      await ensureUserThemePreviews(wsId, json, applyLoadedProject, async () => {
-        if (current) applyLoadedProject(await loadProject(current.id));
-      }).catch((e) => {
-        console.warn("[theme] preview regeneration failed:", e);
+  useEffect(() => {
+    if (
+      themePreviewRunning.current ||
+      view !== "editor" ||
+      !projectReady ||
+      exporting ||
+      playing ||
+      isAutoRun
+    )
+      return;
+    const entry = Object.entries(pendingThemePreviews)[0];
+    if (!entry) return;
+    const [themeId, json] = entry;
+    const currentId = useEditorStore.getState().projectId;
+    const isCurrent = () =>
+      previewContext.current.view === "editor" &&
+      !previewContext.current.exporting &&
+      !previewContext.current.playing &&
+      useEditorStore.getState().projectId === currentId;
+    themePreviewRunning.current = true;
+    setThemePreviewBusy(true);
+    const restore = async () => {
+      const restored = await loadProject(currentId);
+      if (isCurrent()) applyLoadedProject(restored);
+    };
+    let completed = false;
+    void ensureUserThemePreviews(themeId, json, applyLoadedProject, restore, isCurrent)
+      .then((urls) => {
+        completed = urls !== null;
+      })
+      .catch((e) => {
+        completed = true;
         setToast({ kind: "error", message: `Theme preview render failed: ${String(e)}` });
+      })
+      .finally(() => {
+        themePreviewRunning.current = false;
+        setThemePreviewBusy(false);
+        if (isCurrent()) setLoadNonce((n) => n + 1);
+        if (!completed) {
+          window.setTimeout(() => setThemePreviewRetry(themePreviewRetry + 1), 500);
+          return;
+        }
+        setPendingThemePreviews((pending) => {
+          if (pending[themeId] !== json) return pending;
+          const next = { ...pending };
+          delete next[themeId];
+          return next;
+        });
+        setThemesRefreshKey((n) => n + 1);
       });
-    },
-    [project, applyLoadedProject],
-  );
+  }, [
+    pendingThemePreviews,
+    themePreviewRetry,
+    view,
+    projectReady,
+    exporting,
+    playing,
+    isAutoRun,
+    applyLoadedProject,
+  ]);
 
-  // Theme editor window saves land here with no modal open; bundled saves in dev ride the builtin glob's HMR instead.
   useEffect(
     () =>
       onThemeSaved(({ themeId, json }) => {
@@ -1476,7 +1532,7 @@ export default function App() {
         if (cancelled) return;
         applyLoadedProject(loaded);
         // The scene-id heal rewrote TSX on disk: adopt those bytes as the poll's baseline so it doesn't fire a redundant reload.
-        if (loaded.healedSceneIds?.length && isWorkspaceProjectId(loaded.id)) {
+        if (loaded.healedSceneIds?.length && isWorkspaceBackedProjectId(loaded.id)) {
           armPollBaseline(nativeProjectSlug(loaded.id));
         }
         if (!isSwitch || isAutoRun) {
@@ -1546,6 +1602,7 @@ export default function App() {
   const textSectionOpen = useGizmoSectionOpen("text");
   const chartSectionOpen = useGizmoSectionOpen("chart");
   const terminalSectionOpen = useGizmoSectionOpen("terminal");
+  const websiteSectionOpen = useGizmoSectionOpen("website");
   const lsLaneOpen = useLayeredScreenshotEditStore((s) => s.laneOpen);
   const lsEditOpen = useLayeredScreenshotEditStore((s) => s.laneOpen || s.open);
   // The F-001 consent request `loadProject` is currently blocked on, if any.
@@ -1692,17 +1749,32 @@ export default function App() {
     };
   }, [isAutoRun, view]);
 
-  // Welcome-card snapshot: capture shortly after a workspace project renders, debounced so rapid switches don't thrash; never in auto-run mode. Keyed on the project ID, not the object, since every sidecar patch mints a new LoadedProject identity and a recapture borrows the clock (visible playhead blip otherwise).
+  // Library posters refresh after idle edits; ordinary project cards refresh on open.
   const projectIdForSnapshot = project?.id;
+  const librarySnapshotRevision =
+    project && parseProjectId(project.id).scope !== "workspace" ? project : null;
   useEffect(() => {
     if (!projectIdForSnapshot || !projectReady || isAutoRun || view !== "editor") return;
-    if (!isWorkspaceProjectId(projectIdForSnapshot)) return;
+    if (!isWorkspaceBackedProjectId(projectIdForSnapshot) || playing || exporting) return;
     const timer = window.setTimeout(() => {
       const current = loadedProjectRef.current;
-      if (current?.id === projectIdForSnapshot) void captureSnapshot(current);
+      if (
+        current?.id === projectIdForSnapshot &&
+        (!librarySnapshotRevision || current === librarySnapshotRevision)
+      ) {
+        void captureSnapshot(current);
+      }
     }, 1500);
     return () => window.clearTimeout(timer);
-  }, [projectIdForSnapshot, projectReady, isAutoRun, view]);
+  }, [
+    projectIdForSnapshot,
+    projectReady,
+    isAutoRun,
+    view,
+    playing,
+    exporting,
+    librarySnapshotRevision,
+  ]);
 
   // Auto-run mode (KOOKABURRA_* env via get_autorun_config, prefetched in main.tsx): point the store at the requested project on boot; a malformed config is reported to native (result file + non-zero exit) instead of running the UI.
   useEffect(() => {
@@ -1758,7 +1830,7 @@ export default function App() {
   useEffect(() => {
     useImageReconciliationStore.getState().bindProject(projectId);
   }, [projectId]);
-  const projectIdLoaded = project?.id;
+  const projectIdLoaded = themePreviewBusy ? projectId : project?.id;
   // A real project switch orphans any armed return position (never seek another project's clock); keyed on the id since in-memory doc patches swap the project object per pick.
   useEffect(() => {
     replayReturnMsRef.current = null;
@@ -1767,6 +1839,7 @@ export default function App() {
     useUiStore.getState().setBackgroundClipboard(null);
   }, [projectIdLoaded]);
   const togglePlay = useCallback(() => {
+    if (themePreviewRunning.current) return;
     if (!project || exporting || isExporting()) return;
     playUntilRef.current = null; // manual transport clears any bounded replay
     replayReturnMsRef.current = null; // …and owns the playhead from here
@@ -1896,11 +1969,11 @@ export default function App() {
       targetId?: string,
     ) => {
       if (!project) return;
-      // The video editor is workspace-project only: its documents live in `<workspace>/<slug>/edits/`.
-      if (!isWorkspaceProjectId(project.id)) {
+      // Saved video edits live beside the editable project or library item.
+      if (!isEditableProjectId(project.id)) {
         setToast({
           kind: "error",
-          message: "Editing video needs a project; create one from this item first.",
+          message: "Create an editable copy before editing its video.",
         });
         return;
       }
@@ -1923,7 +1996,7 @@ export default function App() {
 
   // Run the modal's selection. The chosen aspect sets the editor format first (the canvas FormatContext must commit before the export loop reads pixels); no `encode` means the frozen legacy path (Kookaburra Standard), presets/custom carry their resolved spec + name suffix.
   async function handleExport(sel: ExportSelection) {
-    if (!project || exporting) return;
+    if (!project || exporting || themePreviewRunning.current) return;
     setShowExport(false);
     setExporting(true);
     setProgress(null);
@@ -1981,7 +2054,7 @@ export default function App() {
       // Remember the pick per project (global fallback), restored on next modal open.
       void setLastExportPreset(project.id, sel.presetId).catch(() => {});
       // Refresh the welcome-card snapshot with the just-exported look.
-      if (isWorkspaceProjectId(project.id)) void captureSnapshot(project);
+      if (isWorkspaceBackedProjectId(project.id)) void captureSnapshot(project);
     } catch (e) {
       setToast({ kind: "error", message: `Export failed: ${String(e)}` });
     } finally {
@@ -1992,7 +2065,7 @@ export default function App() {
   }
 
   async function handleVerify() {
-    if (!project || exporting) return;
+    if (!project || exporting || themePreviewRunning.current) return;
     setExporting(true);
     setProgress(null);
     setToast(null);
@@ -2109,6 +2182,7 @@ export default function App() {
       {view === "welcome" && (
         <Welcome
           onOpenProject={openProject}
+          onOpenThemes={() => setThemeMode({})}
           onNewProject={(options) => {
             setNewProjectGroup(options?.group ?? null);
             setNewProjectTemplate(options?.templateId ?? null);
@@ -2219,11 +2293,20 @@ export default function App() {
                   <StageScenes project={project} />
                 </Canvas>
                 {/* The live scene terminal: below the tool and gizmo layers so their handles stay reachable, self-gated on the doc's terminal block and paused playback. */}
-                {project && isWorkspaceProjectId(project.id) && !exporting && !isAutoRun && (
+                {project && isEditableProjectId(project.id) && !exporting && !isAutoRun && (
                   <SceneTerminalOverlay
                     project={project}
                     sceneIndex={camSceneIndex}
                     aspect={format.width / format.height}
+                    onDocChanged={handleDocChanged}
+                  />
+                )}
+                {project && isEditableProjectId(project.id) && !isAutoRun && (
+                  <SceneWebsiteOverlay
+                    project={project}
+                    sceneIndex={camSceneIndex}
+                    aspect={format.width / format.height}
+                    suspended={exporting}
                     onDocChanged={handleDocChanged}
                   />
                 )}
@@ -2297,11 +2380,23 @@ export default function App() {
                     />
                   )}
                 {project &&
-                  isWorkspaceProjectId(project.id) &&
+                  isEditableProjectId(project.id) &&
                   !exporting &&
                   !isAutoRun &&
                   terminalSectionOpen && (
                     <TerminalGizmo
+                      project={project}
+                      sceneIndex={camSceneIndex}
+                      aspect={format.width / format.height}
+                      onDocChanged={handleDocChanged}
+                    />
+                  )}
+                {project &&
+                  isEditableProjectId(project.id) &&
+                  !exporting &&
+                  !isAutoRun &&
+                  websiteSectionOpen && (
+                    <WebsiteGizmo
                       project={project}
                       sceneIndex={camSceneIndex}
                       aspect={format.width / format.height}
@@ -2581,6 +2676,8 @@ export default function App() {
               }
             }}
             onNewScene={() => {
+              if (project && ["preset", "ws-preset"].includes(parseProjectId(project.id).scope))
+                return;
               useUiStore.getState().requestRailWizard("new-scene");
               setRailOpen(true);
             }}
@@ -2617,6 +2714,18 @@ export default function App() {
           onInstall={() => void updates.install()}
         />
       )}
+      {themePreviewBusy && (
+        <div
+          className="modal-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Updating theme previews"
+        >
+          <div className="modal" role="status">
+            Updating theme previews…
+          </div>
+        </div>
+      )}
       {pendingTrust && (
         <TrustGateModal
           name={pendingTrust.name}
@@ -2643,12 +2752,16 @@ export default function App() {
           onClose={() => setShowMedia(false)}
         />
       )}
-      {themeMode && project && isEditableProjectId(project.id) && (
+      {themeMode && (
         <ThemeMode
-          currentThemeId={project.theme.id}
+          currentThemeId={
+            editorView && project && isEditableProjectId(project.id) ? project.theme.id : undefined
+          }
           initialView={themeMode.view}
           initialThemeId={themeMode.themeId}
-          onApply={handleApplyTheme}
+          onApply={
+            editorView && project && isEditableProjectId(project.id) ? handleApplyTheme : undefined
+          }
           onDuplicate={handleDuplicateTheme}
           onThemeEdited={handleThemeEdited}
           onClose={() => {

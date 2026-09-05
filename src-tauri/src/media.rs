@@ -110,13 +110,7 @@ fn sha256_file(path: &Path) -> Result<String, String> {
     Ok(crate::hex_digest(hasher.finalize().as_slice()))
 }
 
-/// A project-relative asset path, hardened against traversal (`assets/...` only).
-pub(crate) fn resolve_asset(root: &Path, slug: &str, rel: &str) -> Result<PathBuf, String> {
-    workspace::validate_slug(slug)?;
-    resolve_asset_in(&root.join(slug), rel)
-}
-
-/// `resolve_asset` with the project folder already resolved (scoped library ids never reach a root+slug join).
+/// Resolve an asset under the already resolved project folder, including scoped library items.
 pub(crate) fn resolve_asset_in(project: &Path, rel: &str) -> Result<PathBuf, String> {
     let clean = rel.trim_start_matches("./");
     if !clean.starts_with("assets/") || clean.split('/').any(|part| part == "..") {
@@ -726,7 +720,6 @@ pub fn write_terminal_snapshot(
     request: tauri::ipc::Request,
 ) -> Result<String, String> {
     let slug = request_header(&request, "x-kookaburra-slug")?;
-    workspace::validate_slug(&slug)?;
     let stem = request_header(&request, "x-kookaburra-stem")?;
     if stem.is_empty()
         || !stem
@@ -738,8 +731,7 @@ pub fn write_terminal_snapshot(
     let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else {
         return Err("write_terminal_snapshot expects a raw binary body".into());
     };
-    let root = workspace::require_root(&app, &state)?;
-    let assets = root.join(&slug).join("assets");
+    let assets = workspace::project_dir_mut(&app, &state, &slug)?.join("assets");
     std::fs::create_dir_all(&assets).map_err(|e| e.to_string())?;
     let name = format!("terminal-{stem}.png");
     let tmp = assets.join(format!("terminal-{stem}.tmp.png"));

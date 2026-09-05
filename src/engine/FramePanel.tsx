@@ -54,6 +54,7 @@ import {
   usesSpecialisedTextRenderer,
 } from "./managedText";
 import { SceneTerminalPanel } from "./SceneTerminalPanel";
+import { SceneWebsitePanel } from "./SceneWebsitePanel";
 import { type ResolvedChart, resolveChart } from "./sceneChart";
 import { SceneContext, SceneDocContext, SceneThemeContext } from "./sceneContext";
 import { useSceneDoc } from "./sceneDoc";
@@ -373,9 +374,12 @@ export function FramePanel({
   const key = useId();
   const groupRef = useRef<Group>(null);
   const hasTerminal = !!doc?.terminal;
+  const hasWebsite = !!doc?.website;
   // The registry flag really asks for the one-after-composite draw on comparison scenes; a terminal needs it exactly as first-class Overlay images do.
   const hasSceneImages =
-    useMemo(() => sceneMediaInFrame(resolveSceneDocMedia(doc)).length > 0, [doc]) || hasTerminal;
+    useMemo(() => sceneMediaInFrame(resolveSceneDocMedia(doc)).length > 0, [doc]) ||
+    hasTerminal ||
+    hasWebsite;
 
   useEffect(() => {
     const group = groupRef.current;
@@ -392,6 +396,9 @@ export function FramePanel({
             {frame && <PanelContent frame={frame} />}
             {hasTerminal && (
               <SceneTerminalPanel orderBase={nextFrameStackOrder(frame?.decorations ?? []) + 64} />
+            )}
+            {hasWebsite && (
+              <SceneWebsitePanel orderBase={nextFrameStackOrder(frame?.decorations ?? []) + 128} />
             )}
           </group>
         </SceneThemeContext.Provider>

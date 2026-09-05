@@ -54,6 +54,7 @@ fn open_present_window(app: &AppHandle, target: &PresentTarget) -> Result<(), St
     window.on_window_event(move |event| {
         if matches!(event, tauri::WindowEvent::Destroyed) {
             crate::pty::kill_sessions_owned_by(&handle.state::<crate::pty::PtyState>(), "present");
+            crate::website::close_owner(&handle.state::<crate::website::WebsiteState>(), "present");
         }
     });
     #[cfg(target_os = "macos")]

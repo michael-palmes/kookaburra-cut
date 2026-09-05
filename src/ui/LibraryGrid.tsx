@@ -1,4 +1,4 @@
-import { Fragment, type ReactNode, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { type ReactNode, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { type CatalogueOrderEntry, renumberOrders } from "../engine/catalogueOrder";
 import {
   deleteUserPreset,
@@ -33,13 +33,18 @@ import {
 } from "../engine/templates";
 import { ContextMenu, type ContextMenuState } from "./ContextMenu";
 import type { ItemDetailsTarget, LibraryKind, LibrarySource } from "./libraryDetails";
-import { LibraryStaleIcon, PRESET_CATEGORY_ICONS, TEMPLATE_CATEGORY_ICONS } from "./libraryIcons";
+import {
+  LibraryMenuIcon,
+  LibraryStaleIcon,
+  PRESET_CATEGORY_ICONS,
+  TEMPLATE_CATEGORY_ICONS,
+} from "./libraryIcons";
 import { libraryCardMenuItems } from "./libraryMenus";
 import { dropTargetIndex, gridInsertionIndex } from "./libraryReorder";
 import { PresetCard } from "./PresetCard";
 import { TemplateCard } from "./TemplateCard";
 
-/** One catalogue as a card grid, grouped by category and reorderable inside each group: the welcome screen's Templates, Presets, App templates and App presets. The four differ only in which list they read and which write commands a drag or a delete lands on, so they share this component; the bundled pair renders in a dev checkout only, which is also the only place its write commands exist. */
+/** One catalogue as a card grid, grouped by category and reorderable inside each group: the welcome screen's Templates, Presets, App templates and App presets. The four differ only in which list they read and which write commands a drag or a delete lands on, so they share this component; release builds offer editable workspace copies of bundled items, while checkout writes stay dev-only. */
 
 const CARD_DRAG_THRESHOLD_PX = 5;
 
@@ -138,9 +143,11 @@ export function LibraryGrid({
   /** App templates hangs the remaining bundled projects here. */
   extra?: ReactNode;
 }) {
-  const templates = useSyncExternalStore(subscribeTemplates, listAllTemplates);
-  const presets = useSyncExternalStore(subscribePresets, listAllPresets);
+  const templates = useSyncExternalStore(subscribeTemplates, listAllTemplates, listAllTemplates);
+  const presets = useSyncExternalStore(subscribePresets, listAllPresets, listAllPresets);
   const [menu, setMenu] = useState<ContextMenuState | null>(null);
+  const [busy, setBusy] = useState(false);
+  const writable = source === "user" || import.meta.env.DEV;
   const [override, setOverride] = useState<{ from: unknown; key: string; ids: string[] } | null>(
     null,
   );
@@ -186,12 +193,22 @@ export function LibraryGrid({
     action.then(() => refresh()).catch((e) => onError(String(e)));
   };
 
-  const duplicate = (card: LibraryCard) =>
-    run(
-      card.kind === "template"
+  const duplicate = async (card: LibraryCard) => {
+    if (busy) return;
+    setBusy(true);
+    onError(null);
+    try {
+      const info = await (card.kind === "template"
         ? duplicateTemplateToWorkspace(card.id)
-        : duplicatePresetToWorkspace(card.id),
-    );
+        : duplicatePresetToWorkspace(card.id));
+      await refresh();
+      onOpen(`ws-${card.kind}:${info.slug}`);
+    } catch (e) {
+      onError(String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const remove = (card: LibraryCard) => {
     if (source === "user") {
@@ -207,9 +224,12 @@ export function LibraryGrid({
 
   const openMenu = (card: LibraryCard, e: React.MouseEvent) => {
     e.preventDefault();
+    const button = e.type === "click" ? (e.currentTarget as HTMLElement) : null;
+    const rect = button?.getBoundingClientRect();
     setMenu({
-      x: e.clientX,
-      y: e.clientY,
+      x: rect?.left ?? e.clientX,
+      y: rect?.bottom ?? e.clientY,
+      returnFocus: button,
       ariaLabel: `${card.entry.name} actions`,
       items: libraryCardMenuItems({
         kind,
@@ -226,9 +246,14 @@ export function LibraryGrid({
   };
 
   const commitOrder = (group: CategoryGroup, from: number, insertBefore: number) => {
+    if (!writable || query.trim() || busy) return;
     const ids = group.cards.map((card) => card.id);
     const to = dropTargetIndex(from, insertBefore);
     if (to === from) return;
+    if (group.cards[from].entry.status !== group.cards[to]?.entry.status) {
+      onError("Stable items stay before beta items. Reorder within the same status.");
+      return;
+    }
     const next = [...ids];
     const [moved] = next.splice(from, 1);
     next.splice(to, 0, moved);
@@ -249,6 +274,9 @@ export function LibraryGrid({
   const total = cards.length;
   return (
     <div className="library-grid-wrap">
+      {writable && query.trim() && cards.length > 1 && (
+        <p className="modal-hint">Clear the search to reorder items.</p>
+      )}
       {total === 0 && (
         <p className="welcome-no-matches">
           {query ? `Nothing matches “${query.trim()}”.` : emptyMessage(kind, source)}
@@ -258,6 +286,10 @@ export function LibraryGrid({
         <CategoryGrid
           key={group.key}
           group={group}
+          reorderable={writable && !query.trim() && !busy}
+          editable={writable}
+          busy={busy}
+          onDuplicate={duplicate}
           onActivate={(card) => onOpen(card.entry.projectId)}
           onContextMenu={openMenu}
           onReorder={(from, insertBefore) => commitOrder(group, from, insertBefore)}
@@ -272,11 +304,19 @@ export function LibraryGrid({
 /** One category's cards: a heading plus the grid the drag maths reads its boxes from. */
 function CategoryGrid({
   group,
+  reorderable,
+  editable,
+  busy,
+  onDuplicate,
   onActivate,
   onContextMenu,
   onReorder,
 }: {
   group: CategoryGroup;
+  reorderable: boolean;
+  editable: boolean;
+  busy: boolean;
+  onDuplicate: (card: LibraryCard) => void;
   onActivate: (card: LibraryCard) => void;
   onContextMenu: (card: LibraryCard, e: React.MouseEvent) => void;
   /** `insertBefore` is an index in the group's current order. */
@@ -291,14 +331,14 @@ function CategoryGrid({
     );
 
   const onPointerDown = (e: React.PointerEvent, index: number) => {
-    if (e.button !== 0) return;
+    if (e.button !== 0 || busy) return;
     e.preventDefault(); // else the drag sweeps a text selection across the grid
     e.currentTarget.setPointerCapture(e.pointerId);
     setDrag({ index, startX: e.clientX, startY: e.clientY, insertBefore: null });
   };
 
   const onPointerMove = (e: React.PointerEvent) => {
-    if (!drag) return;
+    if (!drag || !reorderable) return;
     const moved = Math.hypot(e.clientX - drag.startX, e.clientY - drag.startY);
     if (drag.insertBefore === null && moved < CARD_DRAG_THRESHOLD_PX) return;
     setDrag({ ...drag, insertBefore: gridInsertionIndex(cardBoxes(), e.clientX, e.clientY) });
@@ -353,14 +393,28 @@ function CategoryGrid({
                 interaction={interaction}
               />
             );
-          if (!isCardPreviewStale(card)) return <Fragment key={card.id}>{rendered}</Fragment>;
           return (
             <div key={card.id} className="library-card-slot">
               {rendered}
-              <span className="library-stale-badge" title={STALE_HINT}>
-                <LibraryStaleIcon />
-                Previews stale
-              </span>
+              <button
+                type="button"
+                className="btn"
+                aria-label={
+                  editable ? `Manage ${card.entry.name}` : `Edit a copy of ${card.entry.name}`
+                }
+                disabled={busy}
+                aria-haspopup={editable ? "menu" : undefined}
+                onClick={(e) => (editable ? onContextMenu(card, e) : onDuplicate(card))}
+              >
+                <LibraryMenuIcon id={editable ? "details" : "duplicate-to"} />
+                {editable ? "Manage" : "Edit a copy"}
+              </button>
+              {isCardPreviewStale(card) && (
+                <span className="library-stale-badge" title={STALE_HINT}>
+                  <LibraryStaleIcon />
+                  Previews stale
+                </span>
+              )}
             </div>
           );
         })}

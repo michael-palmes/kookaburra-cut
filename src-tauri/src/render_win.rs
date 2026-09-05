@@ -202,10 +202,7 @@ pub fn render_heartbeat(
 
 /// Liveness and beat history for the spike and the job watchdog.
 #[tauri::command]
-pub fn render_window_status(
-    app: AppHandle,
-    state: State<RenderWindowState>,
-) -> RenderWindowStatus {
+pub fn render_window_status(app: AppHandle, state: State<RenderWindowState>) -> RenderWindowStatus {
     let beats: Vec<RenderBeat> = state.beats.lock().unwrap().iter().cloned().collect();
     let last_beat_ago_ms = beats.last().map(|b| now_ms().saturating_sub(b.at_ms));
     RenderWindowStatus {

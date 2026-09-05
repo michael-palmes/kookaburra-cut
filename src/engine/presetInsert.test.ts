@@ -1,27 +1,40 @@
-import { describe, expect, it } from "vitest";
-import { presetInsertMove } from "./presetInsert";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { insertPresetScene } from "./presetInsert";
+import { copySceneToProject } from "./projectEdit";
 
-describe("presetInsertMove", () => {
-  it("appends without a move when the target is the end", () => {
-    expect(presetInsertMove(3, 3)).toBeNull();
-    expect(presetInsertMove(0, 0)).toBeNull();
+vi.mock("./projectEdit", () => ({ copySceneToProject: vi.fn() }));
+
+beforeEach(() => vi.clearAllMocks());
+
+describe("insertPresetScene", () => {
+  it("commits the placement in one copy and trusts the actual native index", async () => {
+    const copied = {
+      file: "scenes/04-title.tsx",
+      docFile: "scenes/04-title.json",
+      sceneId: "title-2",
+      durationMs: 4000,
+      index: 2,
+    };
+    vi.mocked(copySceneToProject).mockResolvedValue(copied);
+    await expect(
+      insertPresetScene({
+        destSlug: "launch",
+        presetProjectId: "ws-preset:title",
+        position: 20,
+      }),
+    ).resolves.toEqual(copied);
+    expect(copySceneToProject).toHaveBeenCalledExactlyOnceWith("ws-preset:title", 0, "launch", 20);
   });
 
-  it("walks the appended scene back to the target index", () => {
-    expect(presetInsertMove(3, 0)).toEqual({ from: 3, to: 0 });
-    expect(presetInsertMove(3, 2)).toEqual({ from: 3, to: 2 });
-    expect(presetInsertMove(1, 0)).toEqual({ from: 1, to: 0 });
-  });
-
-  it("clamps a target past the end back to the append", () => {
-    expect(presetInsertMove(2, 9)).toBeNull();
-  });
-
-  it("clamps a negative target to the front", () => {
-    expect(presetInsertMove(2, -4)).toEqual({ from: 2, to: 0 });
-  });
-
-  it("truncates fractional inputs rather than minting fractional indices", () => {
-    expect(presetInsertMove(3, 1.7)).toEqual({ from: 3, to: 1 });
+  it("surfaces a native failure without another mutation", async () => {
+    vi.mocked(copySceneToProject).mockRejectedValue(new Error("Preset needs one scene"));
+    await expect(
+      insertPresetScene({
+        destSlug: "launch",
+        presetProjectId: "preset:title",
+        position: 0,
+      }),
+    ).rejects.toThrow("Preset needs one scene");
+    expect(copySceneToProject).toHaveBeenCalledTimes(1);
   });
 });

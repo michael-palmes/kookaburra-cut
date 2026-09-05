@@ -38,8 +38,8 @@ describe("projectGroupRows", () => {
 });
 
 describe("welcomeRailSections", () => {
-  it("keeps the app catalogues out of a release build", () => {
-    const rows = welcomeRailRows(welcomeRailSections(projects, counts, false)).map((row) => row.id);
+  it("keeps bundled content accessible for browsing and editable copies", () => {
+    const rows = welcomeRailRows(welcomeRailSections(projects, counts)).map((row) => row.id);
     expect(rows).toEqual([
       ALL_PROJECTS,
       UNGROUPED_PROJECTS,
@@ -47,11 +47,13 @@ describe("welcomeRailSections", () => {
       "group:Marketing",
       LIBRARY_TEMPLATES,
       LIBRARY_PRESETS,
+      LIBRARY_APP_TEMPLATES,
+      LIBRARY_APP_PRESETS,
     ]);
   });
 
-  it("adds them for a dev checkout, with their counts", () => {
-    const sections = welcomeRailSections(projects, counts, true);
+  it("includes live counts for both user and bundled catalogues", () => {
+    const sections = welcomeRailSections(projects, counts);
     expect(sections.map((section) => section.label)).toEqual(["Projects", "Library"]);
     expect(sections[1].rows.map((row) => [row.id, row.count])).toEqual([
       [LIBRARY_TEMPLATES, 2],
@@ -72,7 +74,7 @@ describe("librarySection", () => {
 });
 
 describe("nextWelcomeRailRow", () => {
-  const rows = welcomeRailRows(welcomeRailSections(projects, counts, true));
+  const rows = welcomeRailRows(welcomeRailSections(projects, counts));
 
   it("rolls across the section boundary", () => {
     expect(nextWelcomeRailRow(rows, "group:Marketing", "ArrowDown")?.id).toBe(LIBRARY_TEMPLATES);

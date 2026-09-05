@@ -15,6 +15,7 @@ import {
   defaultGradientStops,
   type GradientEntry,
   readGradients,
+  renameGradient,
   type ThemeDoc,
   uniqueGradientName,
   writeGradients,
@@ -71,9 +72,7 @@ export function GradientsSection({
                   <TextField
                     label={`Gradient ${index + 1} name`}
                     value={entry.name}
-                    onCommit={(name) =>
-                      patchAt(index, { name: uniqueGradientName(entries, name, index) })
-                    }
+                    onCommit={(name) => onPatch(renameGradient(doc, entry.name, name))}
                   />
                   <IconButton
                     icon="remove"

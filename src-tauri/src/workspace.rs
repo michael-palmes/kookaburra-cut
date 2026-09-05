@@ -110,6 +110,9 @@ pub struct AppSettings {
     /// Publishers whose packs have been imported before, keyed by manifest key id (trust on first use).
     #[serde(default)]
     pub known_publishers: HashMap<String, KnownPublisher>,
+    /// Approved Website origins keyed by canonical project path; loopback grants remain session-only.
+    #[serde(default)]
+    pub website_origin_grants: HashMap<String, Vec<String>>,
 }
 
 /// Self-declared pack publisher details. Never verified: the signing key is what identifies an install, this is only what it calls itself.
@@ -492,6 +495,27 @@ pub(crate) fn parse_project_id(id: &str) -> Result<(ProjectScope, &str), String>
     }
 }
 
+pub(crate) fn is_preset_id(id: &str) -> Result<bool, String> {
+    Ok(matches!(
+        parse_project_id(id)?.0,
+        ProjectScope::UserPreset | ProjectScope::BundledPreset
+    ))
+}
+
+pub(crate) fn require_multiple_scenes(id: &str) -> Result<(), String> {
+    if is_preset_id(id)? {
+        return Err("a scene preset must contain exactly one scene".into());
+    }
+    Ok(())
+}
+
+pub(crate) fn validate_scene_count(id: &str, count: usize) -> Result<(), String> {
+    if is_preset_id(id)? && count != 1 {
+        return Err("a scene preset must contain exactly one scene".into());
+    }
+    Ok(())
+}
+
 /// Whether this build may write to a scope: workspace trees always, the bundled trees only from a dev checkout.
 pub(crate) fn scope_writable(scope: ProjectScope) -> bool {
     match scope {
@@ -551,9 +575,8 @@ pub(crate) fn template_source(
 
 /// A filesystem-safe cache key for a project id: the scoped forms carry a colon, which `validate_slug` (rightly) refuses, so caches keyed by id fold the scope into the name.
 pub(crate) fn project_cache_key(id: &str) -> Result<String, String> {
-    let key = id.replace(':', "-");
-    validate_slug(&key)?;
-    Ok(key)
+    parse_project_id(id)?;
+    Ok(id.replace(':', "@"))
 }
 
 /// The repo's dev-only fixture tree (`fixtures/`: gate spikes and preview labs), which is never bundled: DEBUG binaries read its clips like any bundled project, release binaries never see one (the frontend's fixture globs are dev-gated too).
@@ -1197,7 +1220,21 @@ pub fn set_present_options(
     save_settings(&app, &state, settings)
 }
 
-/// Persist a project's welcome-screen snapshot; the PNG bytes arrive as the raw invoke body (`InvokeBody::Raw`, same zero-copy path as `push_frame`), the target slug rides in the `x-kookaburra-slug` header, and there's light sanity checking: PNG magic + a size cap.
+fn snapshot_target(root: &Path, id: &str) -> Result<PathBuf, String> {
+    let (scope, slug) = parse_project_id(id)?;
+    let project = match scope {
+        ProjectScope::Workspace => return Ok(snapshot_file(root, slug)),
+        ProjectScope::UserTemplate => templates_dir(root).join(slug),
+        ProjectScope::UserPreset => presets_dir(root).join(slug),
+        _ => return Err("automatic snapshots only update your workspace library".into()),
+    };
+    if !project.join(MANIFEST_FILENAME).is_file() {
+        return Err("snapshot target is not a project".into());
+    }
+    Ok(project.join("poster.png"))
+}
+
+/// Persist a workspace project snapshot or library poster, validating the PNG before an atomic write.
 #[tauri::command]
 pub fn write_snapshot(
     app: AppHandle,
@@ -1210,7 +1247,6 @@ pub fn write_snapshot(
         .and_then(|v| v.to_str().ok())
         .ok_or("missing x-kookaburra-slug header")?
         .to_owned();
-    validate_slug(&slug)?;
     let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else {
         return Err("write_snapshot expects a raw binary body".into());
     };
@@ -1222,7 +1258,13 @@ pub fn write_snapshot(
         return Err("snapshot too large".into());
     }
     let root = require_root(&app, &state)?;
-    std::fs::write(snapshot_file(&root, &slug), bytes).map_err(|e| e.to_string())
+    let path = snapshot_target(&root, &slug)?;
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    let tmp = path.with_extension("png.tmp");
+    std::fs::write(&tmp, bytes).map_err(|e| e.to_string())?;
+    std::fs::rename(&tmp, &path).map_err(|e| e.to_string())
 }
 
 // ── Scene thumbnails ──────────────────────────────────────────────────────
@@ -1458,7 +1500,7 @@ pub fn create_project(
         }
     }
 
-    for sub in ["scenes", "assets"] {
+    for sub in ["scenes", "assets", "edits"] {
         let src = template.join(sub);
         if src.is_dir() {
             copy_dir_recursive(&src, &dir.join(sub))?;
@@ -1585,7 +1627,7 @@ pub(crate) fn backfilled_sample_names(app: &AppHandle) -> Vec<String> {
 }
 
 /// The shared sample pool inside the bundled tree (`projects/_samples/`), the one source both creation and the backfill seed from.
-fn samples_root(app: &AppHandle) -> PathBuf {
+pub(crate) fn samples_root(app: &AppHandle) -> PathBuf {
     templates_root(app).join(SAMPLES_DIR_NAME)
 }
 
@@ -1614,7 +1656,10 @@ fn pool_sample_names(source_assets: &Path) -> Vec<String> {
 }
 
 /// Copy each pool sample into the project's assets/ only when missing; never clobbers. Fresh copies and existing untouched copies are ancient-stamped so they sit below the user's own media; a user-replaced file never matches the bundled bytes and keeps its own dates.
-fn copy_missing_sample_assets(source_assets: &Path, project_assets: &Path) -> Result<(), String> {
+pub(crate) fn copy_missing_sample_assets(
+    source_assets: &Path,
+    project_assets: &Path,
+) -> Result<(), String> {
     std::fs::create_dir_all(project_assets).map_err(|e| e.to_string())?;
     for (i, name) in pool_sample_names(source_assets).iter().enumerate() {
         let dst = project_assets.join(name);
@@ -1773,8 +1818,40 @@ pub fn read_project_manifest(
     state: State<'_, SettingsState>,
     slug: String,
 ) -> Result<String, String> {
-    std::fs::read_to_string(project_dir(&app, &state, &slug)?.join(MANIFEST_FILENAME))
-        .map_err(|e| format!("reading {slug}/project.json: {e}"))
+    project_manifest_for_loading(
+        &project_dir(&app, &state, &slug)?,
+        parse_project_id(&slug)?.0,
+    )
+}
+
+fn project_manifest_for_loading(project: &Path, scope: ProjectScope) -> Result<String, String> {
+    let text = std::fs::read_to_string(project.join(MANIFEST_FILENAME))
+        .map_err(|e| format!("reading {}/project.json: {e}", project.display()))?;
+    let marker = match scope {
+        ProjectScope::UserTemplate | ProjectScope::BundledTemplate => {
+            crate::library::TEMPLATE_MANIFEST
+        }
+        ProjectScope::UserPreset | ProjectScope::BundledPreset => crate::library::PRESET_MANIFEST,
+        ProjectScope::Workspace => return Ok(text),
+    };
+    let name = std::fs::read_to_string(project.join(marker))
+        .ok()
+        .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok())
+        .and_then(|doc| {
+            doc.get("name")
+                .and_then(serde_json::Value::as_str)
+                .map(str::trim)
+                .filter(|name| !name.is_empty())
+                .map(str::to_owned)
+        });
+    let Some(name) = name else { return Ok(text) };
+    let mut manifest: serde_json::Value =
+        serde_json::from_str(&text).map_err(|e| format!("project.json isn't valid JSON: {e}"))?;
+    let Some(object) = manifest.as_object_mut() else {
+        return Ok(text);
+    };
+    object.insert("name".into(), serde_json::Value::String(name));
+    serde_json::to_string(&manifest).map_err(|e| e.to_string())
 }
 
 /// A workspace scene module's TSX source, for the runtime compiler; `file` is the manifest's project-relative module path (`scenes/<stem>.tsx`, persistent modules share the folder); traversal-hardened the same way as sidecar reads (`scene_doc::scene_doc_path`): exactly one flat path segment under `scenes/`.
@@ -2201,13 +2278,95 @@ mod tests {
     }
 
     #[test]
-    fn a_scoped_id_folds_its_colon_into_the_cache_key() {
+    fn scoped_cache_keys_do_not_collide_with_workspace_slugs() {
         assert_eq!(project_cache_key("launch").unwrap(), "launch");
         assert_eq!(
             project_cache_key("ws-preset:stat-hero").unwrap(),
-            "ws-preset-stat-hero"
+            "ws-preset@stat-hero"
+        );
+        assert_ne!(
+            project_cache_key("ws-preset:stat-hero").unwrap(),
+            project_cache_key("ws-preset-stat-hero").unwrap()
         );
         assert!(project_cache_key("../escape").is_err());
+        assert!(project_cache_key("unknown:escape").is_err());
+    }
+
+    #[test]
+    fn only_presets_require_exactly_one_scene() {
+        for id in ["preset:hero", "ws-preset:hero"] {
+            assert!(require_multiple_scenes(id).is_err());
+            assert!(validate_scene_count(id, 0).is_err());
+            assert!(validate_scene_count(id, 1).is_ok());
+            assert!(validate_scene_count(id, 2).is_err());
+        }
+        for id in ["hero", "template:hero", "ws-template:hero"] {
+            assert!(require_multiple_scenes(id).is_ok());
+            assert!(validate_scene_count(id, 2).is_ok());
+        }
+        assert!(validate_scene_count("ws-preset:../escape", 1).is_err());
+    }
+
+    #[test]
+    fn library_snapshots_update_the_item_poster_and_never_a_bundled_tree() {
+        let root = scratch_dir();
+        for (scope, folder) in [("ws-template", "templates"), ("ws-preset", "presets")] {
+            let project = root.join(folder).join("hero");
+            std::fs::create_dir_all(&project).unwrap();
+            std::fs::write(project.join(MANIFEST_FILENAME), "{}").unwrap();
+            assert_eq!(
+                snapshot_target(&root, &format!("{scope}:hero")).unwrap(),
+                project.join("poster.png")
+            );
+            assert!(snapshot_target(&root, &format!("{scope}:missing")).is_err());
+        }
+        assert_eq!(
+            snapshot_target(&root, "hero").unwrap(),
+            snapshot_file(&root, "hero")
+        );
+        for id in ["template:hero", "preset:hero", "ws-preset:../hero"] {
+            assert!(snapshot_target(&root, id).is_err());
+        }
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn scoped_library_loads_use_the_current_catalogue_name_without_rewriting_the_project() {
+        let root = scratch_dir();
+        let original = r#"{"name":"Original project","scenes":[{"file":"scenes/hero.tsx"}],"future":{"keep":true}}"#;
+        let project_path = root.join(MANIFEST_FILENAME);
+        std::fs::write(&project_path, original).unwrap();
+        for (marker, scopes) in [
+            (
+                crate::library::TEMPLATE_MANIFEST,
+                [ProjectScope::UserTemplate, ProjectScope::BundledTemplate],
+            ),
+            (
+                crate::library::PRESET_MANIFEST,
+                [ProjectScope::UserPreset, ProjectScope::BundledPreset],
+            ),
+        ] {
+            for name in ["Renamed library item", "Improved library item"] {
+                std::fs::write(
+                    root.join(marker),
+                    serde_json::json!({ "name": name }).to_string(),
+                )
+                .unwrap();
+                for scope in scopes {
+                    let text = project_manifest_for_loading(&root, scope).unwrap();
+                    let loaded: serde_json::Value = serde_json::from_str(&text).unwrap();
+                    assert_eq!(loaded["name"], name);
+                    assert_eq!(loaded["future"]["keep"], true);
+                    assert_eq!(loaded["scenes"][0]["file"], "scenes/hero.tsx");
+                }
+            }
+            assert_eq!(
+                project_manifest_for_loading(&root, ProjectScope::Workspace).unwrap(),
+                original
+            );
+            assert_eq!(std::fs::read_to_string(&project_path).unwrap(), original);
+        }
+        let _ = std::fs::remove_dir_all(root);
     }
 
     #[test]

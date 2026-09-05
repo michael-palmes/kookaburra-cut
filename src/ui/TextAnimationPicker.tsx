@@ -73,7 +73,7 @@ export function DebouncedRange({
   function schedule(next: number) {
     setV(next);
     dragValue.current = next;
-    if (onInput) dragged.current = true;
+    dragged.current = true;
     if (pending.current !== null) window.clearTimeout(pending.current);
     pending.current = window.setTimeout(
       () => {
@@ -88,13 +88,16 @@ export function DebouncedRange({
   }
   // Release ends a drag: flush the pending live tick and record ONE history commit.
   function release() {
-    if (!onInput || !dragged.current) return;
+    if (!dragged.current) return;
     dragged.current = false;
     if (pending.current !== null) {
       window.clearTimeout(pending.current);
       pending.current = null;
     }
-    onCommit(dragValue.current);
+    if (onInput || dragValue.current !== latest.current) {
+      latest.current = dragValue.current;
+      onCommit(dragValue.current);
+    }
   }
   // Double-click the number to type a value: clamps to [min, max] but keeps the typed precision (a soft end doesn't clamp its own side).
   function finishEdit(commit: boolean) {
@@ -129,6 +132,7 @@ export function DebouncedRange({
         onChange={(e) => schedule(Number(e.target.value))}
         onPointerUp={release}
         onKeyUp={release}
+        onBlur={release}
       />
       {editing ? (
         <input

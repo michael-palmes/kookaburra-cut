@@ -17,6 +17,7 @@ export interface LibraryItemInfo {
   sceneCount: number;
   /** The card still, absent until one has been captured. */
   posterPath: string | null;
+  posterModifiedAt?: number | null;
 }
 
 /** Dev-only commands are registered under `#[cfg(debug_assertions)]`, so a release binary carries no repo-write surface at all; failing here names that rather than surfacing a bare "command not found". */
@@ -145,7 +146,7 @@ export function devSetPresetOrders(entries: readonly CatalogueOrderEntry[]): Pro
 
 // ── The hydrating user half of a catalogue ────────────────────────────────
 
-/** The user side of a catalogue: entries start empty (bundled content renders on the first frame), `refresh` fills them in, and `version` bumps so callers can memoise the merged list instead of rebuilding it per render. Subscribers exist for `useSyncExternalStore`; a failed listing degrades to no user entries with a warning, never to a broken picker. */
+/** The user side of a catalogue: entries start empty (bundled content renders on the first frame), `refresh` fills them in, and `version` bumps so callers can memoise the merged list instead of rebuilding it per render. Subscribers exist for `useSyncExternalStore`; a failed listing preserves the last entries and rejects so the host can show a recoverable error. */
 export interface UserCatalogue<E> {
   entries(): E[];
   version(): number;
@@ -165,11 +166,13 @@ export function createUserCatalogue<E>(
 
   const refresh = async (): Promise<E[]> => {
     const mine = ++ticket;
-    let infos: LibraryItemInfo[] = [];
+    let infos: LibraryItemInfo[];
     try {
       infos = await list();
     } catch (e) {
+      if (mine !== ticket) return entries;
       console.warn(`[${label}] listing user items failed:`, e);
+      throw new Error(`Could not read your ${label} library: ${String(e)}`);
     }
     // A refresh started later (a write, then its re-list) owns the result; this one is stale.
     if (mine !== ticket) return entries;

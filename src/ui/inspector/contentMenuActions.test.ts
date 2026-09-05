@@ -59,6 +59,8 @@ describe("contentMenuActions", () => {
     [row("chart", { kind: "chart" }), ["edit", "delete"]],
     [row("screenshotStack", { kind: "screenshotStack" }), ["edit", "delete"]],
     [row("comparison", { kind: "comparison" }), ["edit", "delete"]],
+    [row("terminal", { kind: "terminal" }), ["edit", "delete"]],
+    [row("website", { kind: "website" }), ["edit", "delete"]],
   ];
 
   it.each(cases)("exposes only supported actions for %#", (contentRow, actions) => {
@@ -694,6 +696,24 @@ describe("planContentDelete", () => {
       doc,
     );
     expect(next.objects).toEqual([{ id: "o2", objectId: "sphere" }]);
+  });
+
+  it("removes Website content without touching its capture asset", () => {
+    const doc: SceneDoc = {
+      version: 1,
+      website: {
+        url: "https://example.com/",
+        capture: {
+          src: "assets/website/demo.png",
+          width: 1440,
+          height: 900,
+          source: "snapshot",
+          fingerprint: "v1:test",
+        },
+      },
+    };
+    const next = apply(planContentDelete(row("website", { kind: "website" }), { doc }), doc);
+    expect(next.website).toBeUndefined();
   });
 
   it.each([

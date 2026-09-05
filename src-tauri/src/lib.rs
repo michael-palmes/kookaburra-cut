@@ -26,6 +26,7 @@ mod tap_dot_frames;
 mod theme;
 mod theme_editor_win;
 mod updater;
+mod website;
 mod workspace;
 
 use std::io::Read;
@@ -1137,10 +1138,10 @@ fn park_background_window(window: &tauri::WebviewWindow) {
     ));
 }
 
-/// The whole command list, written once and expanded twice: `#[cfg]` cannot be applied inside `generate_handler!`, so the debug arm appends the dev-only library commands and the release arm appends nothing, leaving a release binary with no repo-write surface at all.
+// Release builds omit repo-write commands; every build guards Website webviews.
 macro_rules! kookaburra_handler {
     ($($dev:path,)*) => {
-        tauri::generate_handler![
+        website::guard_invoke(tauri::generate_handler![
             show_character_palette,
             sample_screen_colour,
             start_export,
@@ -1330,8 +1331,23 @@ macro_rules! kookaburra_handler {
             pack::commands::discard_staged_pack,
             pack::commands::workspace_root_path,
             pack::commands::open_imported_project,
+            website::website_open,
+            website::website_grant_origin,
+            website::website_revoke_origin,
+            website::website_list_grants,
+            website::website_resume_pending,
+            website::website_set_bounds,
+            website::website_set_zoom,
+            website::website_show,
+            website::website_action,
+            website::website_capture,
+            website::website_import_image,
+            website::website_list_data,
+            website::website_clear_data,
+            website::website_hide,
+            website::website_close,
             $($dev,)*
-        ]
+        ])
     };
 }
 
@@ -1370,6 +1386,7 @@ pub fn run() {
         .manage(packs_win::PacksState::default())
         .manage(theme_editor_win::ThemeEditorState::default())
         .manage(pack::commands::PackState::default())
+        .manage(website::WebsiteState::default())
         .setup(move |app| {
             // The main window exists (config-created); strip its webview's white layer.
             #[cfg(target_os = "macos")]
