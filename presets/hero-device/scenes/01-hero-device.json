@@ -10,11 +10,7 @@
           "azimuthDeg": 0,
           "distance": 5,
           "elevationDeg": 0,
-          "target": [
-            0,
-            0,
-            0
-          ]
+          "target": [0, 0, 0]
         },
         "tMs": 0
       }
@@ -35,16 +31,8 @@
         "preset": "none"
       },
       "placement": {
-        "position": [
-          0,
-          -0.378,
-          0
-        ],
-        "rotationDeg": [
-          0,
-          0,
-          0
-        ],
+        "position": [0, -0.378, 0],
+        "rotationDeg": [0, 0, 0],
         "scale": 1
       },
       "shadow": "long"
