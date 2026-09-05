@@ -411,11 +411,11 @@ export function PlaybackBar({
             type="button"
             className="pb-new-scene"
             disabled={exporting}
-            title="Choose a scene from App presets or My presets"
+            title="Choose a preset to add as a scene"
             onPointerDown={holdPointer}
             onClick={onNewScene}
           >
-            ＋ New scene
+            ＋ Add a scene
           </button>
         )}
       </div>

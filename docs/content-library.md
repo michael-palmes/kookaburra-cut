@@ -9,7 +9,7 @@ opening a project. The source documents remain authoritative.
 | Content | Create | Edit | Reuse |
 | --- | --- | --- | --- |
 | Template | Convert a project, or choose Edit a copy on an app template | Open from Templates, use the normal editor, edit card details | Create a new project from the template |
-| Scene preset | Save as preset from a scene, or copy an app preset | Open from Presets, edit its single scene and card details | Choose New scene and insert at the chosen position |
+| Scene preset | Save as preset from a scene, or copy an app preset | Open from Presets, edit its single scene and card details | Choose Add a scene and insert at the chosen position |
 | Theme | Open Themes from Welcome, then New or Duplicate | Open the theme editor, change settings and Save | Apply the theme to a project or scene |
 
 Workspace content is editable in every build. App content can be copied into
@@ -29,12 +29,12 @@ the same trust consent as an imported project.
 
 ## Preset contract
 
-New scene and Welcome's App presets use the same catalogue, cards and previews.
+Add a scene and Welcome's App presets use the same catalogue and previews.
 The 15 pictured starters live in the Scene starters category alongside the six
 existing presets. Their saved example text and media are editable content.
 
 To improve an original in development, open Welcome → Presets → App presets,
-open its card, edit in the normal inspector and save. New scene then inserts that
+open its card, edit in the normal inspector and save. Add a scene then inserts that
 saved version directly, without a separate text or media setup wizard. Insertion
 defaults to after the current scene; the gallery's timeline can choose another
 position. The new scene is selected for editing when insertion finishes.
@@ -102,7 +102,7 @@ The branch review corrected the following failures:
 - Theme controls discarded lighting fields and ignored named gradient changes.
 - Concurrent theme saves could race preview captures or cache the wrong document.
 - Failed catalogue refreshes erased visible entries or allowed repeat saves.
-- New scene generated separate defaults instead of inserting the editable preset.
+- New scene (now Add a scene) generated separate defaults instead of inserting the editable preset.
 - JSON saves reloaded the frontend, and delayed updates could restore older data.
 - Removing or filtering the selected preset silently selected a different scene.
 - Pack import reviews omitted Website origins and terminal commands in library items.

@@ -587,7 +587,7 @@ re-render, `--all` re-records everything).
 | --- | --- | --- | --- |
 | Appearance carousel | `chart-<stylePreset>` | still (a settled chart) | `preview-lab-chart` |
 | Build-in grid | `chartanim-<buildIn>` | clip plus poster, falling back to a still | `preview-lab-chart-anim` |
-| New scene and App presets | `chart` | still | `presets/chart` |
+| Add a scene and App presets | `chart` | still | `presets/chart` |
 
 The stem-to-set mapping lives in `optionPreviewJobs` (`src/engine/optionPreviews.ts`) and
 is mirrored by `scripts/option-preview-stale.mjs`; the two must move together. A missing
