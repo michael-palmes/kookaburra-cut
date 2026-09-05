@@ -6,6 +6,7 @@ import {
   gapFromPlacement,
   nearestGap,
   placementFromGap,
+  placementText,
 } from "./insertMath";
 
 const LAYOUT = { count: 3, cardWidth: 100, gapWidth: 8, padStart: 8 };
@@ -130,5 +131,24 @@ describe("edgeScrollVelocity", () => {
 
   it("degrades to zero on a zero band", () => {
     expect(edgeScrollVelocity(0, 0, 1000, 0)).toBe(0);
+  });
+});
+
+describe("placementText", () => {
+  const names = ["Headline", "Device 2"];
+
+  it("names the edges and the scene an interior gap follows", () => {
+    expect(placementText(0, names)).toBe("At the start");
+    expect(placementText(1, names)).toBe("After Headline");
+    expect(placementText(2, names)).toBe("At the end");
+  });
+
+  it("clamps past the ends", () => {
+    expect(placementText(-1, names)).toBe("At the start");
+    expect(placementText(5, names)).toBe("At the end");
+  });
+
+  it("reads an empty strip as the end", () => {
+    expect(placementText(0, [])).toBe("At the end");
   });
 });

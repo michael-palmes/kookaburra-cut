@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { fsUrl } from "../engine/media";
 import {
   edgeScrollVelocity,
@@ -7,22 +15,29 @@ import {
   gapFromPlacement,
   nearestGap,
   placementFromGap,
+  placementText,
   type StripLayout,
 } from "./insertMath";
 import type { WizardSceneInfo } from "./SceneWizards";
 
-/** Reusable insert-position strip: fixed-width scene cards with a draggable indicator that rubber-bands between the gaps (insertMath owns the geometry); encodes "start" | "end" | "after:<index>" so call sites swap without data changes. */
+/** Reusable insert-position strip: fixed-width scene cards on a fixed gap pitch (a gap column before, between and after the cards carries the divider) with a draggable marker that rubber-bands between the gaps (insertMath owns the geometry); encodes "start" | "end" | "after:<index>" so call sites swap without data changes. */
 export function SceneInsertTimeline({
   scenes,
   thumbs,
   value,
   onChange,
+  currentIndex = null,
+  caption = true,
 }: {
   scenes: WizardSceneInfo[];
   /** Thumb paths by scene stem; missing entries render placeholder frames. */
   thumbs: Record<string, string>;
   value: string;
   onChange: (value: string) => void;
+  /** The playhead scene, badged in the strip. */
+  currentIndex?: number | null;
+  /** The readout under the strip; a host whose primary action names the gap turns it off. */
+  caption?: boolean;
 }) {
   const scrollerRef = useRef<HTMLDivElement>(null);
   const cardsRef = useRef<HTMLDivElement>(null);
@@ -181,12 +196,7 @@ export function SceneInsertTimeline({
       ? elasticX(dragX, centres[activeGap], halfSpan)
       : centres[gap];
   const sceneLabel = (s: WizardSceneInfo) => s.name ?? s.id;
-  const valueText =
-    activeGap >= count
-      ? "At the end"
-      : activeGap === 0
-        ? "At the start"
-        : `After ${sceneLabel(scenes[activeGap - 1])}`;
+  const valueText = placementText(activeGap, scenes.map(sceneLabel));
 
   return (
     <div className="insert-timeline">
@@ -211,19 +221,24 @@ export function SceneInsertTimeline({
           onPointerCancel={(e) => endDrag(e, false)}
         >
           <div ref={cardsRef} className="insert-cards">
-            {scenes.map((s) => (
-              <div key={s.stem} className="insert-card">
-                <span className="insert-card-thumb">
-                  {thumbs[s.stem] ? (
-                    <img src={fsUrl(thumbs[s.stem])} alt="" draggable={false} />
-                  ) : (
-                    <span aria-hidden>·</span>
-                  )}
-                </span>
-                <span className="insert-card-name" title={sceneLabel(s)}>
-                  {sceneLabel(s)}
-                </span>
-              </div>
+            <span className="insert-gap" aria-hidden />
+            {scenes.map((s, i) => (
+              <Fragment key={s.stem}>
+                <div className={`insert-card${i === currentIndex ? " current" : ""}`}>
+                  {i === currentIndex && <span className="insert-card-playhead">playhead</span>}
+                  <span className="insert-card-thumb">
+                    {thumbs[s.stem] ? (
+                      <img src={fsUrl(thumbs[s.stem])} alt="" draggable={false} />
+                    ) : (
+                      <span aria-hidden>·</span>
+                    )}
+                  </span>
+                  <span className="insert-card-name" title={sceneLabel(s)}>
+                    {sceneLabel(s)}
+                  </span>
+                </div>
+                <span className="insert-gap" aria-hidden />
+              </Fragment>
             ))}
             {indicatorX !== undefined && (
               <div
@@ -231,6 +246,7 @@ export function SceneInsertTimeline({
                 style={{ left: `${indicatorX}px` }}
               >
                 <span className="insert-handle" />
+                <span className="insert-indicator-line" />
               </div>
             )}
           </div>
@@ -238,14 +254,16 @@ export function SceneInsertTimeline({
         {fades.start && <div className="insert-fade start" aria-hidden />}
         {fades.end && <div className="insert-fade end" aria-hidden />}
       </div>
-      <p className="insert-caption">
-        <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
-          <circle cx="8" cy="8" r="6.25" stroke="currentColor" strokeWidth="1.5" fill="none" />
-          <path d="M8 7.2v3.6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-          <circle cx="8" cy="4.9" r="0.9" fill="currentColor" />
-        </svg>
-        {valueText}
-      </p>
+      {caption && (
+        <p className="insert-caption">
+          <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
+            <circle cx="8" cy="8" r="6.25" stroke="currentColor" strokeWidth="1.5" fill="none" />
+            <path d="M8 7.2v3.6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+            <circle cx="8" cy="4.9" r="0.9" fill="currentColor" />
+          </svg>
+          {valueText}
+        </p>
+      )}
     </div>
   );
 }

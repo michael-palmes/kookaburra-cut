@@ -82,7 +82,12 @@ export const TEMPLATE_CATEGORY_ICONS: Record<string, ReactElement> = {
 
 export const PRESET_CATEGORY_ICONS: Record<string, ReactElement> = {
   all: GRID_ICON,
-  starters: GRID_ICON,
+  starters: railIcon(
+    <>
+      <rect x="4" y="5.5" width="16" height="13" rx="1.5" />
+      <path d="M4 10h16M9 5.5v4.5M15 5.5v4.5" />
+    </>,
+  ),
   uncategorised: UNCATEGORISED_ICON,
   openers: railIcon(
     <>
