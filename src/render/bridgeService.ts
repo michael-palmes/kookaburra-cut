@@ -2,7 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { emit, listen } from "@tauri-apps/api/event";
 import { resolveScreenshotTimeMs } from "../engine/autorun";
 import { invalidateChangedClips } from "../engine/clips";
-import { awaitSceneHostsCommitted, captureFrameRgba, captureScreenshot } from "../engine/exporter";
+import { captureFrameRgba, captureScreenshot } from "../engine/exporter";
 import { type AspectName, FORMATS, type FormatSpec, FPS } from "../engine/format";
 import { libraryPreviewFormat } from "../engine/libraryPreviewPoint";
 import {
@@ -106,7 +106,6 @@ export function startBridgeService(
         : await loadProject(targetId);
       apply(loaded, format);
       await awaitProjectCommitted(loaded);
-      await awaitSceneHostsCommitted(loaded.slots.length);
       current = { project: loaded, fingerprint, formatName: format.name };
     }
     return current.project;

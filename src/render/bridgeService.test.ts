@@ -2,7 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { resolveScreenshotTimeMs } from "../engine/autorun";
-import { captureFrameRgba } from "../engine/exporter";
+import { awaitSceneHostsCommitted, captureFrameRgba } from "../engine/exporter";
 import { type AspectName, FORMATS } from "../engine/format";
 import { loadProject } from "../engine/project";
 import { withProjectAssetRevision } from "../engine/projectAssetRevision";
@@ -231,6 +231,13 @@ describe("hidden library preview rendering", () => {
       "assets/app-icon.png?poster=saved-a",
       "assets/app-icon.png?poster=image-replaced",
     ]);
+  });
+
+  it("lets capture prepare cold assets before checking scene readiness", async () => {
+    stop = startBridgeService(vi.fn());
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(captureFrameRgba).toHaveBeenCalledTimes(1);
+    expect(awaitSceneHostsCommitted).not.toHaveBeenCalled();
   });
 
   it("reuses loaded content when only the capture settings change", async () => {
