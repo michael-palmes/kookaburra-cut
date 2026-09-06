@@ -522,7 +522,7 @@ export function ManagedTextDrill({
   const groupItems = selectedGroup?.items ?? [];
   const isSingleItemGroup = groupItems.length === 1;
   const selected = groupItems.find((item) => item.key === selectedItemKey) ?? groupItems[0] ?? null;
-  // Host chrome (the comparison chips) owns copy and style only: it has no group, no type and no reveal of its own.
+  // Scene-rendered labels expose copy and placement without structural edits.
   const chromeGroup = selectedGroup ? isChromeManagedTextGroup(selectedGroup) : false;
   const chromeItem = selected ? model.chromeKeys.includes(selected.key) : false;
   const resolvedVirtualOptions = optionsFor(doc);

@@ -142,6 +142,56 @@ function segmentWith(label: string): CapturedSegmentProps | undefined {
 }
 
 describe("ManagedTextDrill", () => {
+  it("offers working label typography and placement controls without structural actions", () => {
+    const doc: SceneDoc = {
+      version: 1,
+      managedText: {
+        layout: "template",
+        items: [{ key: "title", type: "title", text: "Heading" }],
+      },
+      text: { beforeLabel: "Before", afterLabel: "After" },
+    };
+    const writeDoc = vi.fn<ManagedTextWrite>();
+    const html = renderToStaticMarkup(
+      <ManagedTextDrill
+        {...props(doc, "beforeLabel")}
+        virtualOptions={{
+          embeddedText: [{ key: "beforeLabel", text: "Before", type: "subtitle" }],
+        }}
+        writeDoc={writeDoc}
+      />,
+    );
+    expect(html).toContain("Before");
+    expect(html).toContain(">Font<");
+    expect(html).not.toContain('aria-label="Add text element"');
+    expect(html).not.toContain('aria-label="Remove text group"');
+    expect(html).not.toContain('aria-label="Duplicate text group"');
+    expect(captures.numbers.map((field) => field.label)).toEqual([
+      "Size %",
+      "X",
+      "Y",
+      "Rotation °",
+    ]);
+    expect(captures.sliders.map((field) => field.label)).toContain("Spacing");
+
+    captures.numbers.find((field) => field.label === "X")?.onCommit(0.45);
+    const placementRequest = writeDoc.mock.calls.at(-1)?.[0];
+    if (!placementRequest) throw new Error("Expected a position write");
+    const placement = placementRequest.applyToCurrent(doc);
+    expect(placement.textStyle?.beforeLabelOffsetX).toBe(0.45);
+    expect(placement.managedText).toEqual(doc.managedText);
+
+    captures.colours[0]?.onCommit("#123456");
+    const colourRequest = writeDoc.mock.calls.at(-1)?.[0];
+    if (!colourRequest) throw new Error("Expected a colour write");
+    const coloured = colourRequest.applyToCurrent(placement);
+    expect(coloured.textStyle).toMatchObject({
+      beforeLabelColor: "#123456",
+      beforeLabelOffsetX: 0.45,
+    });
+    expect(coloured.managedText).toEqual(doc.managedText);
+    expect(coloured.text).toEqual(doc.text);
+  });
   it("shows legacy text-backed icons and bullet points honestly", () => {
     const iconHtml = renderToStaticMarkup(
       <ManagedTextDrill

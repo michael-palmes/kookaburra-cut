@@ -130,6 +130,14 @@ Rules:
   stack cannot render them and no structural action can move or delete
   them; clearing a chip's copy hides it. The drill's chips toggle stays
   the show/hide.
+- **Embedded comparison labels use the same Text controls.** The two-device
+  Comparison preset exposes "Before label" and "After label" without enabling
+  wipe chips. Its `useSceneText(..., "embedded")` registrations supply the rows;
+  copy stays in `text` and typography stays in `textStyle`. X/Y controls offset
+  the existing device-relative placement. Empty copy keeps its row so it can
+  be restored. Adding other text never transfers these labels into the managed
+  stack. Host chip registrations use the `managed` role, so disabled chips
+  cannot create phantom embedded rows on ordinary scenes.
 - SDR composites in the display domain via `sampleDisplay`; the HDR (fx)
   variant tone-maps both samples, composites in display space and inverts
   back through the exact ACES pair.

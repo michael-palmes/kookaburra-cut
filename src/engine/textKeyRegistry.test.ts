@@ -3,6 +3,7 @@ import { brandLockupManagedMotion } from "../toolkit/text/brandLockupLayout";
 import { deriveManagedTextModel, materialiseManagedText } from "./managedText";
 import {
   codedTextMotionNames,
+  embeddedTextRegistrations,
   nonSceneTextKeys,
   sceneOwnsAnyTextKey,
   sceneTextKeysConsumedBy,
@@ -16,6 +17,52 @@ import {
 beforeEach(() => useTextKeyRegistry.setState({ keys: {} }));
 
 describe("mounted text takeover registration", () => {
+  it("discovers embedded labels, including empty copy, without exposing inactive host chips", () => {
+    const registry = useTextKeyRegistry.getState();
+    registry.register(0, "beforeLabel", "host-chip", {
+      resolvedText: "Before",
+      managedTextRole: "managed",
+    });
+    registry.register(0, "afterLabel", "host-chip-b", {
+      resolvedText: "After",
+      managedTextRole: "managed",
+    });
+    expect(embeddedTextRegistrations(0)).toEqual([]);
+
+    registry.register(0, "beforeLabel", "scene-label", {
+      resolvedText: "Previous design",
+      managedTextRole: "embedded",
+    });
+    registry.register(0, "afterLabel", "empty-scene-label", {
+      resolvedText: "",
+      managedTextRole: "embedded",
+    });
+    registry.register(0, "frameIcon", "frame-icon", {
+      resolvedText: "",
+      managedType: "icon",
+      managedTextRole: "embedded",
+    });
+    expect(embeddedTextRegistrations(0)).toEqual([
+      { key: "beforeLabel", text: "Previous design", type: "subtitle" },
+      { key: "afterLabel", text: "", type: "subtitle" },
+    ]);
+    expect(virtualManagedTextRegistrations(0)).toEqual([]);
+
+    registry.unregister(0, "beforeLabel", "scene-label");
+    registry.unregister(0, "afterLabel", "empty-scene-label");
+    expect(embeddedTextRegistrations(0)).toEqual([]);
+  });
+
+  it("keeps a shared scene-owned key in its original text group", () => {
+    const registry = useTextKeyRegistry.getState();
+    registry.register(0, "caption", "scene", { resolvedText: "Scene caption" });
+    registry.register(0, "caption", "embedded", {
+      resolvedText: "Embedded caption",
+      managedTextRole: "embedded",
+    });
+    expect(embeddedTextRegistrations(0)).toEqual([]);
+    expect(virtualManagedTextRegistrations(0)).toEqual([{ key: "caption", text: "Scene caption" }]);
+  });
   it("merges resolved hook copy with the primitive's style and coded motion", () => {
     const registry = useTextKeyRegistry.getState();
     registry.register(3, "hero-title", "copy-mount", { resolvedText: "Fallback from code" });

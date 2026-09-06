@@ -1,4 +1,3 @@
-import { isCompareChipTextKey } from "../../engine/compareChipText";
 import { frameTextAlign } from "../../engine/framePanelLayout";
 import {
   clearTemplateManagedTextLayout,
@@ -462,7 +461,7 @@ export function applyManagedTextStructuralAction(
   virtualOptions: VirtualManagedTextOptions = {},
 ): ManagedTextStructuralResult | null {
   const model = deriveManagedTextModel(doc, registrations, virtualOptions);
-  // Appended host chrome never enters the block, so no structural action can move, copy or delete a chip row.
+  // Scene-rendered labels stay outside structural edits to the managed stack.
   const sourceItems = cloneItems(ownedManagedTextItems(model.items, model.chromeKeys));
   const items = cloneItems(sourceItems);
   const hadExplicitGroups = doc.managedText?.groups !== undefined;
@@ -500,7 +499,7 @@ export function applyManagedTextStructuralAction(
         : groups.length - 1;
       groups.splice(afterIndex < 0 ? groups.length : afterIndex + 1, 0, group);
     }
-    const itemKey = nextManagedTextKey("title", availableItemKeys(doc, items));
+    const itemKey = nextManagedTextKey("title", availableItemKeys(doc, [...items, ...model.items]));
     items.push(newItem("title", itemKey));
     group.itemKeys = [itemKey];
     selectedGroupKey = group.key;
@@ -526,7 +525,10 @@ export function applyManagedTextStructuralAction(
     for (const sourceKey of sourceGroup.itemKeys) {
       const source = items.find((item) => item.key === sourceKey);
       if (!source) continue;
-      const itemKey = nextManagedTextKey(source.key, availableItemKeys(doc, items));
+      const itemKey = nextManagedTextKey(
+        source.key,
+        availableItemKeys(doc, [...items, ...model.items]),
+      );
       const duplicate = cloneItemForGroup(source, itemKey, items);
       items.splice(insertAt, 0, duplicate);
       insertAt += 1;
@@ -569,7 +571,10 @@ export function applyManagedTextStructuralAction(
         ? groups.find((candidate) => candidate.itemKeys.includes(action.afterKey as string))
         : groups[groups.length - 1];
     if (action.groupKey && !group) return null;
-    const key = nextManagedTextKey(baseKey(itemType), availableItemKeys(doc, items));
+    const key = nextManagedTextKey(
+      baseKey(itemType),
+      availableItemKeys(doc, [...items, ...model.items]),
+    );
     const typeIndex = COPY_TYPE_ORDER.indexOf(itemType);
     const groupIndex =
       group && action.groupKey && !action.afterKey
@@ -606,7 +611,10 @@ export function applyManagedTextStructuralAction(
 
     switch (action.type) {
       case "duplicate-item": {
-        const key = nextManagedTextKey(item.key, availableItemKeys(doc, items));
+        const key = nextManagedTextKey(
+          item.key,
+          availableItemKeys(doc, [...items, ...model.items]),
+        );
         const duplicate = cloneItemForGroup(item, key, items);
         items.splice(itemIndex + 1, 0, duplicate);
         const group = groups.find((candidate) => candidate.key === selectedGroupKey);
@@ -780,8 +788,8 @@ export function setManagedTextCopy(
     blockItem.text = value;
     return next;
   }
-  // Chip copy lives in `text` under both ownerships: the block never carries host chrome.
-  if (next.managedText && !isCompareChipTextKey(itemKey)) return null;
+  const model = deriveManagedTextModel(doc, registrations, virtualOptions);
+  if (next.managedText && !model.chromeKeys.includes(itemKey)) return null;
   const item = virtualItem(doc, itemKey, registrations, virtualOptions);
   if (!item || item.type === "icon" || doc.text?.[itemKey] === value) return null;
   next.text = { ...next.text, [itemKey]: value };

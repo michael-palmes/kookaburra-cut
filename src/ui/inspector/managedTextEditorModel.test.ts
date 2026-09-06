@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
+import comparisonPreset from "../../../presets/comparison/scenes/01-comparison.json";
 import { bindHistory, pushHistory, takeRedo, takeUndo } from "../../engine/history";
 import type { VirtualManagedTextRegistration } from "../../engine/managedText";
-import type { SceneDoc } from "../../engine/sceneDocSchema";
+import { parseSceneDoc, type SceneDoc } from "../../engine/sceneDocSchema";
 import type { FrameSpec } from "../../toolkit/frame/types";
 import {
   applyManagedTextStructuralAction,
@@ -52,6 +53,70 @@ const registrations: VirtualManagedTextRegistration[] = [
 ];
 
 describe("managed text editor model", () => {
+  it("edits and restores the comparison preset's labels without taking over their layout", () => {
+    const doc = parseSceneDoc(comparisonPreset, "comparison preset");
+    if (!doc) throw new Error("Expected the comparison preset document");
+    const options = {
+      embeddedText: [
+        { key: "beforeLabel", text: "Before", type: "subtitle" as const },
+        { key: "afterLabel", text: "After", type: "subtitle" as const },
+      ],
+    };
+    const cleared = setManagedTextCopy(doc, "beforeLabel", "", [], options);
+    if (!cleared) throw new Error("Expected cleared label copy");
+    expect(cleared.text?.beforeLabel).toBe("");
+    const restored = setManagedTextCopy(cleared, "beforeLabel", "Original", [], options);
+    if (!restored) throw new Error("Expected restored label copy");
+    const coloured = setManagedTextColour(restored, "beforeLabel", "#abcdef", [], options);
+    if (!coloured) throw new Error("Expected a label colour override");
+    const positioned = setManagedTextStyle(coloured, "beforeLabel", "x", 0.3);
+    if (!positioned) throw new Error("Expected a label position override");
+    expect(positioned.textStyle).toMatchObject({
+      beforeLabelColor: "#abcdef",
+      beforeLabelOffsetX: 0.3,
+    });
+    expect(positioned.managedText).toEqual(doc.managedText);
+    expect(positioned.devices).toEqual(doc.devices);
+    expect(positioned.text?.afterLabel).toBe("After");
+
+    const added = applyManagedTextStructuralAction(positioned, { type: "add-group" }, [], options);
+    if (!added) throw new Error("Expected an added text group");
+    expect(added.doc.managedText?.items.map((item) => item.key)).not.toContain("beforeLabel");
+    expect(added.doc.managedText?.items.map((item) => item.key)).not.toContain("afterLabel");
+    expect(added.doc.text).toEqual(positioned.text);
+    expect(added.doc.textStyle).toEqual(positioned.textStyle);
+    expect(doc).toEqual(parseSceneDoc(comparisonPreset, "comparison preset"));
+  });
+
+  it("edits embedded copy outside a managed block using its declared key", () => {
+    const doc: SceneDoc = { version: 1, managedText: { items: [] } };
+    const options = { embeddedText: [{ key: "cardCaption", text: "Caption" }] };
+    expect(setManagedTextCopy(doc, "cardCaption", "Changed", [], options)).toEqual({
+      ...doc,
+      text: { cardCaption: "Changed" },
+    });
+    expect(setManagedTextCopy(doc, "missing", "No row", [], options)).toBeNull();
+    expect(
+      applyManagedTextStructuralAction(
+        doc,
+        { type: "remove-group", groupKey: "embedded-text:cardCaption" },
+        [],
+        options,
+      ),
+    ).toBeNull();
+  });
+
+  it("reserves embedded fallback keys when adding managed text", () => {
+    const result = applyManagedTextStructuralAction(
+      { version: 1, managedText: { items: [] } },
+      { type: "add-group" },
+      [],
+      { embeddedText: [{ key: "title", text: "Embedded fallback" }] },
+    );
+    if (!result) throw new Error("Expected a managed text group");
+    expect(result.selectedItemKey).toBe("title-2");
+    expect(result.doc.managedText?.items.map((item) => item.key)).toEqual(["title-2"]);
+  });
   it("projects only frame icons that claim scene text", () => {
     const frame = { icon: "🚀" } as FrameSpec;
     expect(managedTextVirtualOptionsForFrame(frame)).toEqual({
