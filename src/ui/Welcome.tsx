@@ -292,12 +292,20 @@ const SEARCH_LABELS: Record<string, string> = {
 
 /** The welcome screen: a rail of project groups above the library catalogues, and the matching grid beside it. Projects are snapshot cards sorted most-recently-opened first; the library rows show the user's saved templates and presets, alongside the bundled catalogues, with the remaining bundled projects visible only in dev. */
 export function Welcome({
+  activeRowId,
+  onActiveRowChange: setActiveRowId,
+  query,
+  onQueryChange: setQuery,
   onOpenProject,
   onNewProject,
   onOpenThemes,
   refreshKey,
   focusSearchNonce,
 }: {
+  activeRowId: string;
+  onActiveRowChange: (rowId: string) => void;
+  query: string;
+  onQueryChange: (query: string) => void;
   onOpenProject: (projectId: string) => void;
   onNewProject: (options?: { group?: string | null; templateId?: string }) => void;
   onOpenThemes: () => void;
@@ -307,8 +315,6 @@ export function Welcome({
   focusSearchNonce: number;
 }) {
   const [projects, setProjects] = useState<WorkspaceProjectInfo[] | null>(null);
-  const [query, setQuery] = useState("");
-  const [activeRowId, setActiveRowId] = useState(ALL_PROJECTS);
   const [scrolled, setScrolled] = useState(false);
   const [details, setDetails] = useState<{
     target: ItemDetailsTarget;
@@ -393,8 +399,9 @@ export function Welcome({
   const inheritedGroup = selectedProjectGroup(effectiveRowId);
 
   useEffect(() => {
+    if (projects === null || loadError) return;
     if (!railRows.some((row) => row.id === activeRowId)) setActiveRowId(ALL_PROJECTS);
-  }, [activeRowId, railRows]);
+  }, [activeRowId, railRows, projects, loadError, setActiveRowId]);
 
   /** Crossing between the projects and the library drops the search, which scopes to one of them; picking a project row during a live search also clears it (the search ran global). */
   const selectRow = (id: string) => {

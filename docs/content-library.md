@@ -16,6 +16,11 @@ Workspace content is editable in every build. App content can be copied into
 the workspace in release builds. Development builds can also edit the bundled
 documents in place. Native write commands enforce that distinction.
 
+Returning from a project, template or preset restores Welcome's selected tab or
+project group and search text for the current session. A group that no longer
+exists falls back to All after the workspace loads. Changing workspace resets
+the selection and search.
+
 Use `pnpm tauri dev` to edit bundled templates and presets. JSON saves update
 the content and catalogue without reloading the frontend. The editor reads saved
 sidecars from disk when reopening; external edits use its existing change poll.
