@@ -380,6 +380,32 @@ body {
   cursor: default;
 }
 
+.btn[aria-busy="true"] {
+  color: var(--text-secondary);
+}
+
+.button-spinner {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  border: 2px solid var(--border-default);
+  border-top-color: currentColor;
+  border-radius: 50%;
+  animation: button-spin 720ms linear infinite;
+}
+
+@keyframes button-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .button-spinner {
+    animation: none;
+  }
+}
+
 .btn.primary:disabled {
   color: rgba(16, 19, 12, 0.55);
   background: var(--accent);

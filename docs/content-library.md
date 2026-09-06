@@ -145,6 +145,8 @@ Opening or editing saved content refreshes valid slots at their saved capture
 points. Playback and export defer jobs, and source revisions reject obsolete
 results. Rendering never moves the editor's playhead. Failed captures retain the
 previous image and report the error in the inspector.
+Capture current frame shows a spinner and stays disabled until its preview has
+refreshed or failed. Its status identifies waits for playback or export to finish.
 
 Templates store slot images in `previews/1.png` through `previews/4.png`; presets
 store `poster.png`. A template's selected slot is its gallery cover, with the

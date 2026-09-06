@@ -2,7 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useClockStore } from "../../engine/clock";
-import { isExporting } from "../../engine/exportState";
+import { isExporting, subscribeExporting } from "../../engine/exportState";
 import type { AspectName } from "../../engine/format";
 import { fsUrl } from "../../engine/media";
 import { canQueuePresetPoster, queuePresetPoster } from "../../engine/presetPosters";
@@ -38,11 +38,14 @@ export function LibraryPreviewsSection({
 }) {
   const [state, setState] = useState<PreviewState | null>(null);
   const [slot, setSlot] = useState(0);
-  const [busy, setBusy] = useState(false);
+  const [saving, setSaving] = useState<"capture" | "cover" | null>(null);
   const [queued, setQueued] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const version = useRef(0);
   const playing = useEditorStore((state) => state.playing);
+  const exporting = useSyncExternalStore(subscribeExporting, isExporting, isExporting);
+  const busy = saving !== null;
+  const capturing = saving === "capture" || queued !== null;
   const templates = useSyncExternalStore(subscribeTemplates, listAllTemplates);
   const presets = useSyncExternalStore(subscribePresets, listAllPresets);
   const template = templates.find((entry) => entry.projectId === project.id);
@@ -73,8 +76,7 @@ export function LibraryPreviewsSection({
       "kookaburra://library-preview-saved",
       ({ payload }) => {
         if (disposed || payload.projectId !== slug) return;
-        setQueued((current) => (current === payload.slot ? null : current));
-        void load();
+        void load().then(() => setQueued((current) => (current === payload.slot ? null : current)));
       },
     );
     const failed = listen<{ projectId: string; slot: number; error: string }>(
@@ -99,7 +101,7 @@ export function LibraryPreviewsSection({
       : (template?.previews?.[index] ?? null),
   );
   const save = async (capture: boolean) => {
-    if (busy || !state || isExporting() || playing) return;
+    if (busy || capturing || !state || isExporting() || playing) return;
     const at = useClockStore.getState().currentMs;
     const scene = activeSceneIndex(project.slots, at);
     const sceneSlot = project.slots[scene];
@@ -110,7 +112,7 @@ export function LibraryPreviewsSection({
       atMs: Math.max(0, Math.min(sceneSlot.durationMs, at - sceneSlot.startMs)),
       aspect,
     };
-    setBusy(true);
+    setSaving(capture ? "capture" : "cover");
     setError(null);
     try {
       await settleContentEdits();
@@ -128,7 +130,7 @@ export function LibraryPreviewsSection({
       setError(String(e));
       setQueued(null);
     } finally {
-      setBusy(false);
+      setSaving(null);
     }
   };
   return (
@@ -185,26 +187,35 @@ export function LibraryPreviewsSection({
       <button
         type="button"
         className="btn chip-with-icon"
-        disabled={busy || !state || playing}
+        disabled={busy || capturing || !state || playing || exporting}
+        aria-busy={capturing || undefined}
         onClick={() => void save(true)}
       >
-        <ThemeEditorIcon name="image" />
-        Capture current frame
+        {capturing ? (
+          <span className="button-spinner" aria-hidden="true" />
+        ) : (
+          <ThemeEditorIcon name="image" />
+        )}
+        {capturing ? "Capturing…" : "Capture current frame"}
       </button>
       {state?.kind === "template" && (
         <button
           type="button"
           className="btn chip-with-icon"
-          disabled={busy || state.cover === slot || playing}
+          disabled={busy || capturing || state.cover === slot || playing || exporting}
           onClick={() => void save(false)}
         >
           <ThemeEditorIcon name="visible" />
           {state.cover === slot ? "Cover preview" : "Use as cover"}
         </button>
       )}
-      {queued !== null && (
+      {capturing && (
         <p className="inspector-hint" role="status">
-          Preview {queued + 1} queued. Rendering resumes when playback and export finish.
+          {exporting
+            ? `Preview ${(queued ?? slot) + 1} is waiting for export to finish.`
+            : playing
+              ? `Preview ${(queued ?? slot) + 1} is waiting for playback to finish.`
+              : `Capturing preview ${(queued ?? slot) + 1}…`}
         </p>
       )}
       {error && (
