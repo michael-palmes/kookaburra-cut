@@ -6,7 +6,7 @@ use std::time::UNIX_EPOCH;
 use serde::Serialize;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::bridge::EditorContextState;
 use crate::workspace::{self, SettingsState};
@@ -16,12 +16,15 @@ use crate::workspace::{self, SettingsState};
 pub struct PosterJob {
     slug: String,
     revision: String,
+    content_revision: String,
     at_ms: Option<f64>,
     slot: usize,
     scene_file: String,
     aspect: String,
     #[serde(skip)]
     claimed: bool,
+    #[serde(skip)]
+    priority: bool,
 }
 
 #[derive(Default)]
@@ -35,23 +38,27 @@ impl PosterQueue {
         self.completed.remove(&job_key(slug, slot));
     }
 
-    fn submit(&mut self, job: PosterJob, poster_exists: bool) {
+    fn submit(&mut self, mut job: PosterJob, poster_exists: bool) {
         let key = job_key(&job.slug, job.slot);
         if poster_exists && self.completed.get(&key) == Some(&job.revision) {
             return;
         }
-        if self
-            .jobs
-            .get(&key)
-            .is_some_and(|j| j.revision == job.revision)
-        {
-            return;
+        if let Some(previous) = self.jobs.get_mut(&key) {
+            if previous.revision == job.revision {
+                previous.priority |= job.priority;
+                return;
+            }
+            job.priority |= previous.priority;
         }
         self.jobs.insert(key, job);
     }
 
-    fn take(&mut self) -> Option<PosterJob> {
-        let job = self.jobs.values_mut().find(|job| !job.claimed)?;
+    fn take(&mut self, priority_only: bool) -> Option<PosterJob> {
+        let job = self
+            .jobs
+            .values_mut()
+            .filter(|job| !job.claimed && (!priority_only || job.priority))
+            .min_by_key(|job| !job.priority)?;
         job.claimed = true;
         Some(job.clone())
     }
@@ -121,11 +128,9 @@ fn collect_theme_ids(value: &Value, ids: &mut BTreeSet<String>) {
 
 fn source_revision(
     dir: &Path,
-    preset_bytes: Option<&[u8]>,
     theme_paths: impl Fn(&str) -> Option<PathBuf>,
 ) -> Result<String, String> {
-    let manifest = dir.join(crate::library_previews::manifest_name(dir));
-    let mut files = vec![dir.join("project.json"), manifest.clone()];
+    let mut files = vec![dir.join("project.json")];
     let mut folders = vec![dir.join("scenes"), dir.join("assets")];
     while let Some(folder) = folders.pop() {
         let Ok(entries) = std::fs::read_dir(&folder) else {
@@ -165,12 +170,8 @@ fn source_revision(
             file.extension().and_then(|e| e.to_str()),
             Some("json" | "tsx" | "ts" | "js")
         ) {
-            let bytes = match preset_bytes.filter(|_| file == manifest) {
-                Some(bytes) => bytes.to_vec(),
-                None => {
-                    std::fs::read(&file).map_err(|e| format!("reading {}: {e}", file.display()))?
-                }
-            };
+            let bytes =
+                std::fs::read(&file).map_err(|e| format!("reading {}: {e}", file.display()))?;
             if let Ok(json) = serde_json::from_slice::<Value>(&bytes) {
                 collect_theme_ids(&json, &mut themes);
             }
@@ -201,6 +202,32 @@ fn source_revision(
         .collect())
 }
 
+fn capture_job(
+    slug: &str,
+    slot: usize,
+    capture: crate::library_previews::CapturePoint,
+    content_revision: &str,
+) -> PosterJob {
+    let mut digest = Sha256::new();
+    digest.update(content_revision.as_bytes());
+    digest.update(serde_json::to_vec(&capture).expect("validated capture point"));
+    PosterJob {
+        slug: slug.into(),
+        revision: digest
+            .finalize()
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect(),
+        content_revision: content_revision.into(),
+        slot,
+        scene_file: capture.scene_file,
+        at_ms: Some(capture.at_ms),
+        aspect: capture.aspect,
+        claimed: false,
+        priority: false,
+    }
+}
+
 fn saved_jobs(
     app: &AppHandle,
     settings: &State<'_, SettingsState>,
@@ -214,7 +241,7 @@ fn saved_jobs(
     let project: Value = serde_json::from_slice(&project_bytes).map_err(|e| e.to_string())?;
     let (_, points) = crate::library_previews::points(&manifest, manifest_name == "template.json")?;
     let root = workspace::require_root(app, settings)?;
-    let revision = source_revision(&dir, Some(&bytes), |id| {
+    let revision = source_revision(&dir, |id| {
         if let Some(slug) = id.strip_prefix("ws:") {
             workspace::validate_slug(slug).ok()?;
             Some(root.join("themes").join(slug).join("theme.json"))
@@ -238,15 +265,7 @@ fn saved_jobs(
             continue;
         };
         jobs.push((
-            PosterJob {
-                slug: slug.into(),
-                revision: revision.clone(),
-                slot,
-                scene_file: capture.scene_file,
-                at_ms: Some(capture.at_ms),
-                aspect: capture.aspect,
-                claimed: false,
-            },
+            capture_job(slug, slot, capture, &revision),
             crate::library_previews::preview_path(&dir, slot),
         ));
     }
@@ -264,14 +283,29 @@ pub fn render_submit_preset_poster(
     settings: State<'_, SettingsState>,
     queue: State<PresetPosterQueueState>,
     slug: String,
+    priority_slot: Option<usize>,
 ) -> Result<(), String> {
     let jobs = saved_jobs(&app, &settings, &slug)?;
+    if priority_slot.is_some_and(|slot| !jobs.iter().any(|(job, _)| job.slot == slot)) {
+        return Err("The capture point is no longer valid. Recapture this slot.".into());
+    }
     let mut queue = queue.0.lock().unwrap();
     queue.jobs.retain(|_, job| {
         job.slug != slug || jobs.iter().any(|(current, _)| current.slot == job.slot)
     });
-    for (job, path) in jobs {
+    for (mut job, path) in jobs {
+        job.priority = priority_slot == Some(job.slot);
+        if job.priority {
+            queue.invalidate(&slug, job.slot);
+        }
         queue.submit(job, path.is_file());
+    }
+    let pending = !queue.jobs.is_empty();
+    drop(queue);
+    if pending {
+        crate::render_win::ensure_render_window(app.clone(), app.state())?;
+        app.emit_to("render", "kookaburra://library-preview-queued", ())
+            .map_err(|e| e.to_string())?;
     }
     Ok(())
 }
@@ -280,11 +314,12 @@ pub fn render_submit_preset_poster(
 pub fn render_take_preset_poster(
     queue: State<PresetPosterQueueState>,
     context: State<EditorContextState>,
+    priority_only: Option<bool>,
 ) -> Option<PosterJob> {
     if paused(&context) {
         return None;
     }
-    queue.0.lock().unwrap().take()
+    queue.0.lock().unwrap().take(priority_only.unwrap_or(false))
 }
 
 #[tauri::command]
@@ -402,11 +437,13 @@ mod tests {
         PosterJob {
             slug: slug.into(),
             revision: revision.into(),
+            content_revision: revision.into(),
             at_ms: Some(1200.0),
             slot: 0,
             scene_file: "scenes/hero.tsx".into(),
             aspect: "16:9".into(),
             claimed: false,
+            priority: false,
         }
     }
 
@@ -444,33 +481,33 @@ mod tests {
     fn latest_revision_supersedes_in_flight_without_cancelling_other_presets() {
         let mut queue = PosterQueue::default();
         queue.submit(job("preset:one", "a"), false);
-        let first = queue.take().unwrap();
+        let first = queue.take(false).unwrap();
         queue.submit(job("ws-preset:two", "x"), false);
         queue.submit(job("preset:one", "b"), false);
         assert!(!queue.owns(&first.slug, 0, &first.revision));
         queue.finish(&first.slug, 0, &first.revision, false);
         assert_eq!(queue.jobs.len(), 2);
-        let second = queue.take().unwrap();
+        let second = queue.take(false).unwrap();
         assert_eq!(second.revision, "b");
         queue.finish(&second.slug, 0, &second.revision, true);
-        assert_eq!(queue.take().unwrap().revision, "b");
-        assert_eq!(queue.take().unwrap().slug, "ws-preset:two");
+        assert_eq!(queue.take(false).unwrap().revision, "b");
+        assert_eq!(queue.take(false).unwrap().slug, "ws-preset:two");
     }
 
     #[test]
     fn duplicate_submissions_do_not_reclaim_a_job_or_repeat_a_completed_poster() {
         let mut queue = PosterQueue::default();
         queue.submit(job("preset:one", "a"), false);
-        queue.take().unwrap();
+        queue.take(false).unwrap();
         queue.submit(job("preset:one", "a"), false);
-        assert!(queue.take().is_none());
+        assert!(queue.take(false).is_none());
         queue.finish("preset:one", 0, "a", false);
         queue.completed.insert(job_key("preset:one", 0), "a".into());
         queue.submit(job("preset:one", "a"), true);
-        assert!(queue.take().is_none());
+        assert!(queue.take(false).is_none());
         queue.invalidate("preset:one", 0);
         queue.submit(job("preset:one", "a"), true);
-        assert!(queue.take().is_some());
+        assert!(queue.take(false).is_some());
     }
 
     #[test]
@@ -481,7 +518,7 @@ mod tests {
             next.slot = slot;
             queue.submit(next, false);
         }
-        let first = queue.take().unwrap();
+        let first = queue.take(false).unwrap();
         let mut replacement = job("ws-template:demo", "second");
         replacement.slot = first.slot;
         queue.submit(replacement, false);
@@ -493,14 +530,13 @@ mod tests {
     }
 
     #[test]
-    fn revision_covers_saved_preview_project_scene_assets_and_referenced_theme() {
+    fn content_revision_covers_project_scene_assets_and_referenced_theme() {
         let path = fixture();
         let theme = path.join("theme.json");
         std::fs::write(&theme, "first theme").unwrap();
-        let stamp = || source_revision(&path, None, |_| Some(theme.clone())).unwrap();
+        let stamp = || source_revision(&path, |_| Some(theme.clone())).unwrap();
         let mut previous = stamp();
         for (file, bytes) in [
-            ("preset.json", r#"{"preview":0}"#),
             ("project.json", r#"{"themeId":"ws:paper","changed":true}"#),
             ("scenes/hero.tsx", "updated scene"),
             ("scenes/hero.json", r#"{"text":{"title":"Second"}}"#),
@@ -520,20 +556,15 @@ mod tests {
     }
 
     #[test]
-    fn preview_frame_and_revision_use_the_same_manifest_snapshot() {
+    fn preview_settings_and_catalogue_metadata_do_not_reload_content() {
         let path = fixture();
-        let captured = std::fs::read(path.join("preset.json")).unwrap();
-        let before = source_revision(&path, Some(&captured), |_| None).unwrap();
+        let before = source_revision(&path, |_| None).unwrap();
         std::fs::write(
             path.join("preset.json"),
-            r#"{"preview":{"scene":0,"atMs":3000}}"#,
+            r#"{"name":"Renamed","preview":{"scene":0,"atMs":3000,"aspect":"9:16"}}"#,
         )
         .unwrap();
-        assert_eq!(
-            source_revision(&path, Some(&captured), |_| None).unwrap(),
-            before
-        );
-        assert_ne!(source_revision(&path, None, |_| None).unwrap(), before);
+        assert_eq!(source_revision(&path, |_| None).unwrap(), before);
         std::fs::remove_dir_all(path).unwrap();
     }
 
@@ -542,10 +573,10 @@ mod tests {
         let path = fixture();
         let poster = path.join("poster.png");
         std::fs::write(&poster, "current poster").unwrap();
-        let captured_revision = source_revision(&path, None, |_| None).unwrap();
+        let captured_revision = source_revision(&path, |_| None).unwrap();
         std::fs::write(path.join("scenes/hero.json"), "newer scene").unwrap();
         let result = workspace::write_snapshot_file(&poster, b"obsolete capture", || {
-            Ok(source_revision(&path, None, |_| None)? == captured_revision)
+            Ok(source_revision(&path, |_| None)? == captured_revision)
         })
         .unwrap();
         assert!(result.is_none());
@@ -554,11 +585,10 @@ mod tests {
             .unwrap()
             .flatten()
             .any(|entry| entry.file_name().to_string_lossy().ends_with(".tmp")));
-        let current = source_revision(&path, None, |_| None).unwrap();
+        let current = source_revision(&path, |_| None).unwrap();
         assert!(
             workspace::write_snapshot_file(&poster, b"fresh poster", || Ok(source_revision(
                 &path,
-                None,
                 |_| None
             )? == current))
             .unwrap()
@@ -566,6 +596,76 @@ mod tests {
         );
         assert_eq!(std::fs::read_to_string(&poster).unwrap(), "fresh poster");
         std::fs::remove_dir_all(path).unwrap();
+    }
+
+    #[test]
+    fn manual_capture_is_next_and_remains_prioritised_after_source_edits() {
+        let mut queue = PosterQueue::default();
+        queue.submit(job("preset:automatic", "a"), false);
+        let mut manual = job("ws-template:manual", "a");
+        manual.slot = 3;
+        queue.submit(manual.clone(), false);
+        assert!(queue.take(true).is_none());
+        manual.priority = true;
+        queue.submit(manual.clone(), false);
+        let first = queue.take(true).unwrap();
+        assert_eq!((first.slug.as_str(), first.slot), ("ws-template:manual", 3));
+        queue.submit(manual.clone(), false);
+        assert!(queue.take(true).is_none());
+        manual.revision = "edited".into();
+        manual.priority = false;
+        queue.submit(manual, false);
+        assert!(!queue.owns(&first.slug, first.slot, &first.revision));
+        let newer = queue.take(true).unwrap();
+        assert!(newer.priority);
+        queue.finish(&newer.slug, newer.slot, &newer.revision, true);
+        assert_eq!(queue.take(true).unwrap().revision, "edited");
+        assert_eq!(queue.take(false).unwrap().slug, "preset:automatic");
+    }
+
+    #[test]
+    fn changing_one_capture_preserves_completed_siblings_and_content_identity() {
+        let capture = crate::library_previews::CapturePoint {
+            scene: 0,
+            scene_file: "scenes/hero.tsx".into(),
+            at_ms: 1200.0,
+            aspect: "16:9".into(),
+        };
+        let mut queue = PosterQueue::default();
+        for slot in 0..4 {
+            let job = capture_job("template:demo", slot, capture.clone(), "content");
+            queue
+                .completed
+                .insert(job_key(&job.slug, slot), job.revision);
+        }
+        for slot in 0..4 {
+            let mut point = capture.clone();
+            if slot == 3 {
+                point.at_ms = 2400.0;
+            }
+            queue.submit(capture_job("template:demo", slot, point, "content"), true);
+        }
+        assert_eq!(queue.jobs.len(), 1);
+        let changed = queue.take(false).unwrap();
+        assert_eq!(changed.slot, 3);
+        assert_eq!(changed.content_revision, "content");
+        let mut point = capture.clone();
+        point.aspect = "9:16".into();
+        let portrait = capture_job("template:demo", 3, point.clone(), "content");
+        assert_ne!(portrait.revision, changed.revision);
+        point.scene_file = "scenes/other.tsx".into();
+        assert_ne!(
+            capture_job("template:demo", 3, point, "content").revision,
+            portrait.revision
+        );
+        for slot in 0..4 {
+            queue.submit(
+                capture_job("template:demo", slot, capture.clone(), "edited"),
+                true,
+            );
+        }
+        assert_eq!(queue.jobs.len(), 4);
+        assert!(!queue.owns(&changed.slug, changed.slot, &changed.revision));
     }
 
     #[test]

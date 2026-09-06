@@ -124,8 +124,8 @@ export function LibraryPreviewsSection({
       });
       setState(next);
       if (capture) setQueued(slot);
+      await queuePresetPoster(project.id, capture ? slot : undefined);
       await (state.kind === "template" ? refreshUserTemplates() : refreshUserPresets());
-      await queuePresetPoster(project.id);
     } catch (e) {
       setError(String(e));
       setQueued(null);

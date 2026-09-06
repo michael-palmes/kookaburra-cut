@@ -11,12 +11,12 @@ export function canQueuePresetPoster(projectId: string, dev = import.meta.env.DE
   );
 }
 
-export async function queuePresetPoster(projectId: string): Promise<void> {
+export async function queuePresetPoster(projectId: string, prioritySlot?: number): Promise<void> {
   if (!canQueuePresetPoster(projectId)) return;
   const { settlePendingContentEdits } = await import("../ui/settleContentEdits");
   await settlePendingContentEdits();
   const slug = nativeProjectSlug(projectId);
   if (["ws-preset", "ws-template"].includes(parseProjectId(projectId).scope))
     await ensureProjectTrusted(slug, slug);
-  await invoke("render_submit_preset_poster", { slug });
+  await invoke("render_submit_preset_poster", { slug, prioritySlot });
 }

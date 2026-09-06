@@ -141,6 +141,11 @@ list. Removed scenes or times beyond a shortened scene require recapture, while
 the previous image remains visible.
 
 Both content types use the background render queue after pending edits settle.
+Manual captures wake the renderer immediately and take priority over queued scene
+thumbnails and automatic library previews after the current render finishes.
+Changing one capture point refreshes that slot, reusing loaded content when its
+source and aspect are unchanged. Choosing a cover copies its existing image;
+preview settings do not invalidate the other slots.
 Opening or editing saved content refreshes valid slots at their saved capture
 points. Playback and export defer jobs, and source revisions reject obsolete
 results. Rendering never moves the editor's playhead. Failed captures retain the

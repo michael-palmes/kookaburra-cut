@@ -37,6 +37,15 @@ describe("preset poster scheduling", () => {
     );
     expect(invoke).toHaveBeenCalledExactlyOnceWith("render_submit_preset_poster", {
       slug: "ws-preset:hero",
+      prioritySlot: undefined,
+    });
+  });
+
+  it("promotes only the manually selected slot after pending edits settle", async () => {
+    await queuePresetPoster("ws-template:hero", 3);
+    expect(invoke).toHaveBeenCalledExactlyOnceWith("render_submit_preset_poster", {
+      slug: "ws-template:hero",
+      prioritySlot: 3,
     });
   });
 

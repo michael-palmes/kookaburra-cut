@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { emit } from "@tauri-apps/api/event";
+import { emit, listen } from "@tauri-apps/api/event";
 import { resolveScreenshotTimeMs } from "../engine/autorun";
 import { invalidateChangedClips } from "../engine/clips";
 import { awaitSceneHostsCommitted, captureFrameRgba, captureScreenshot } from "../engine/exporter";
@@ -50,6 +50,7 @@ interface ThumbTake {
 interface PresetPosterTake {
   slug: string;
   revision: string;
+  contentRevision: string;
   atMs: number | null;
   slot: number;
   sceneFile: string;
@@ -217,9 +218,14 @@ export function startBridgeService(
     return true;
   };
 
-  const servePresetPoster = async (context: EditorContext | null): Promise<boolean> => {
+  const servePresetPoster = async (
+    context: EditorContext | null,
+    priorityOnly = false,
+  ): Promise<boolean> => {
     if (!context || context.exportLocked || context.playing) return false;
-    const take = await invoke<PresetPosterTake | null>("render_take_preset_poster");
+    const take = await invoke<PresetPosterTake | null>("render_take_preset_poster", {
+      priorityOnly,
+    });
     if (!take) return false;
     const finish = (retry: boolean) =>
       invoke<boolean>("render_finish_preset_poster", {
@@ -237,7 +243,7 @@ export function startBridgeService(
       const project = await ensureLoaded(
         projectIdForNativeSlug(take.slug),
         FORMATS[take.aspect],
-        take.revision,
+        take.contentRevision,
       );
       const scene = project.sceneFiles.findIndex(
         (file) => file.replace(/^\.\//, "") === take.sceneFile.replace(/^\.\//, ""),
@@ -297,7 +303,12 @@ export function startBridgeService(
     // Drain the whole thumb queue in one tick: the claim interval is timer-clamped (~2s hidden), so a job-per-tick cadence would stack seconds of idle wait between thumbs. Context re-reads keep the playback/export parking live mid-drain, and a capture request arriving mid-drain takes over.
     for (;;) {
       const context = await invoke<EditorContext | null>("get_editor_context").catch(() => null);
-      if (!(await serveThumb(context)) && !(await servePresetPoster(context))) return;
+      if (
+        !(await servePresetPoster(context, true)) &&
+        !(await serveThumb(context)) &&
+        !(await servePresetPoster(context))
+      )
+        return;
       const next = await invoke<BridgeRequest | null>("bridge_claim_request").catch(() => null);
       if (next) {
         await serveCapture(next);
@@ -306,14 +317,22 @@ export function startBridgeService(
     }
   };
 
-  const timer = window.setInterval(() => {
-    if (busy) return;
+  let stopped = false;
+  const run = () => {
+    if (busy || stopped) return;
     busy = true;
     void tick().finally(() => {
       busy = false;
     });
-  }, 1000);
-  return () => window.clearInterval(timer);
+  };
+  const listening = listen("kookaburra://library-preview-queued", run);
+  void listening.then(run).catch(() => {});
+  const timer = window.setInterval(run, 1000);
+  return () => {
+    stopped = true;
+    window.clearInterval(timer);
+    void listening.then((unlisten) => unlisten()).catch(() => {});
+  };
 }
 
 function exportOptions(project: LoadedProject, format: FormatSpec) {

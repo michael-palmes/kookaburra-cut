@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { resolveScreenshotTimeMs } from "../engine/autorun";
 import { captureFrameRgba } from "../engine/exporter";
@@ -8,7 +9,10 @@ import { withProjectAssetRevision } from "../engine/projectAssetRevision";
 import { startBridgeService } from "./bridgeService";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
-vi.mock("@tauri-apps/api/event", () => ({ emit: vi.fn() }));
+vi.mock("@tauri-apps/api/event", () => ({
+  emit: vi.fn(),
+  listen: vi.fn(async () => vi.fn()),
+}));
 vi.mock("../engine/autorun", () => ({ resolveScreenshotTimeMs: vi.fn(() => 2400) }));
 vi.mock("../engine/exporter", () => ({
   awaitSceneHostsCommitted: vi.fn(),
@@ -32,6 +36,8 @@ let context: { playing: boolean; exportLocked: boolean; aspect: string };
 let jobs: {
   slug: string;
   revision: string;
+  contentRevision: string;
+  priority?: boolean;
   atMs: number | null;
   slot: number;
   sceneFile: string;
@@ -53,15 +59,21 @@ beforeEach(() => {
     {
       slug: "preset:hero",
       revision: "saved-a",
+      contentRevision: "saved-a",
       atMs: 2400,
       slot: 0,
       sceneFile: "hero.tsx",
       aspect: "16:9",
     },
   ];
-  vi.mocked(invoke).mockImplementation(async (command) => {
+  vi.mocked(invoke).mockImplementation(async (command, args) => {
     if (command === "get_editor_context") return { ...context };
-    if (command === "render_take_preset_poster") return jobs.shift() ?? null;
+    if (command === "render_take_preset_poster") {
+      const index = jobs.findIndex(
+        (job) => !(args as { priorityOnly: boolean }).priorityOnly || job.priority,
+      );
+      return index < 0 ? null : jobs.splice(index, 1)[0];
+    }
     if (command === "render_finish_preset_poster") return true;
     return null;
   });
@@ -202,14 +214,14 @@ describe("hidden library preview rendering", () => {
   );
 
   it("reloads a newly queued source revision for the same preset", async () => {
-    jobs.push({ ...jobs[0], revision: "saved-b" });
+    jobs.push({ ...jobs[0], revision: "saved-b", contentRevision: "saved-b" });
     stop = startBridgeService(vi.fn());
     await vi.advanceTimersByTimeAsync(1000);
     expect(loadProject).toHaveBeenCalledTimes(2);
   });
 
   it("requests a new texture URL when a later saved revision replaces an asset in place", async () => {
-    jobs.push({ ...jobs[0], revision: "image-replaced" });
+    jobs.push({ ...jobs[0], revision: "image-replaced", contentRevision: "image-replaced" });
     const requestedUrls: string[] = [];
     const apply = () =>
       requestedUrls.push(withProjectAssetRevision("preset:hero", "assets/app-icon.png"));
@@ -219,6 +231,55 @@ describe("hidden library preview rendering", () => {
       "assets/app-icon.png?poster=saved-a",
       "assets/app-icon.png?poster=image-replaced",
     ]);
+  });
+
+  it("reuses loaded content when only the capture settings change", async () => {
+    jobs.push({ ...jobs[0], revision: "different-point", atMs: 3000 });
+    stop = startBridgeService(vi.fn());
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(loadProject).toHaveBeenCalledTimes(1);
+    expect(captureFrameRgba).toHaveBeenCalledTimes(2);
+    expect(resolveScreenshotTimeMs).toHaveBeenLastCalledWith(project, "0", 3);
+  });
+
+  it("serves a manual slot before thumbnails and automatic previews", async () => {
+    jobs.push({ ...jobs[0], slot: 3, priority: true });
+    const original = vi.mocked(invoke).getMockImplementation();
+    let thumb = true;
+    vi.mocked(invoke).mockImplementation(async (command, args, options) => {
+      if (command === "render_take_thumb_job" && thumb) {
+        thumb = false;
+        return { slug: "preset:hero", stem: "hero.tsx", stamp: "thumb" };
+      }
+      return original?.(command, args, options);
+    });
+    stop = startBridgeService(vi.fn());
+    await vi.advanceTimersByTimeAsync(1000);
+    const writes = vi.mocked(invoke).mock.calls.filter(([name]) => name.startsWith("write_"));
+    expect(writes.map(([name]) => name)).toEqual([
+      "write_preset_poster",
+      "write_scene_thumb",
+      "write_preset_poster",
+    ]);
+    expect(new Headers(writes[0][2]?.headers).get("x-kookaburra-slot")).toBe("3");
+  });
+
+  it("wakes for a manual capture without waiting for the polling interval", async () => {
+    const manual = { ...jobs[0], priority: true };
+    jobs = [];
+    stop = startBridgeService(vi.fn());
+    await vi.advanceTimersByTimeAsync(0);
+    expect(captureFrameRgba).not.toHaveBeenCalled();
+    jobs.push(manual);
+    const wake = vi.mocked(listen).mock.calls[0][1];
+    wake({ event: "kookaburra://library-preview-queued", id: 1, payload: null });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(captureFrameRgba).toHaveBeenCalledTimes(1);
+    stop();
+    jobs.push(manual);
+    wake({ event: "kookaburra://library-preview-queued", id: 2, payload: null });
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(captureFrameRgba).toHaveBeenCalledTimes(1);
   });
 
   it("abandons an untrusted workspace preset and continues serving the next job", async () => {
