@@ -2,7 +2,7 @@ use crate::workspace::{self, ProjectScope, SettingsState};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -115,17 +115,28 @@ pub(crate) fn target(
     if !dir.join(marker).is_file() {
         return Err("The library manifest is missing.".into());
     }
-    let mut paths = vec![
-        dir.join(marker),
-        dir.join("previews"),
-        dir.join("poster.png"),
-        dir.join("poster.jpg"),
-    ];
-    paths.extend((0..4).flat_map(|slot| {
-        let png = preview_path(&dir, slot);
-        [png.clone(), png.with_extension("jpg")]
-    }));
-    for path in paths {
+    for path in checked_preview_images(&dir)? {
+        app.asset_protocol_scope()
+            .allow_file(path)
+            .map_err(|e| format!("Allowing library preview image: {e}"))?;
+    }
+    Ok(dir)
+}
+
+fn checked_preview_images(dir: &Path) -> Result<Vec<PathBuf>, String> {
+    let dir = dir.canonicalize().map_err(|e| e.to_string())?;
+    let marker = manifest_name(&dir);
+    let mut images = vec![dir.join("poster.png"), dir.join("poster.jpg")];
+    if marker == "template.json" {
+        images.extend((0..4).flat_map(|slot| {
+            let png = preview_path(&dir, slot);
+            [png.clone(), png.with_extension("jpg")]
+        }));
+    }
+    for path in [dir.join(marker), dir.join("previews")]
+        .iter()
+        .chain(&images)
+    {
         if path.exists()
             && !path
                 .canonicalize()
@@ -135,7 +146,8 @@ pub(crate) fn target(
             return Err("The preview path resolves outside its library item.".into());
         }
     }
-    Ok(dir)
+    images.retain(|path| path.is_file());
+    Ok(images)
 }
 
 fn read_json(path: &Path) -> Result<Value, String> {
@@ -417,6 +429,52 @@ mod tests {
             .unwrap()
             .ends_with("previews/3.png"));
         assert!(next.slots[1].path.as_ref().unwrap().ends_with("poster.png"));
+    }
+
+    #[test]
+    fn preview_access_covers_existing_images_without_exposing_project_files() {
+        let f = Fixture::new(true);
+        std::fs::write(f.0.join("previews/3.png"), b"third preview").unwrap();
+        std::fs::write(f.0.join("previews/4.jpg"), b"fourth preview").unwrap();
+        std::fs::write(f.0.join("previews/notes.txt"), b"private notes").unwrap();
+        let dir = f.0.canonicalize().unwrap();
+        assert_eq!(
+            checked_preview_images(&f.0).unwrap(),
+            [
+                dir.join("poster.png"),
+                dir.join("previews/3.png"),
+                dir.join("previews/4.jpg"),
+            ]
+        );
+        let preset = Fixture::new(false);
+        assert_eq!(
+            checked_preview_images(&preset.0).unwrap(),
+            [preset.0.canonicalize().unwrap().join("poster.png")]
+        );
+    }
+
+    #[test]
+    fn preview_access_includes_a_new_capture_when_the_target_is_reopened() {
+        let f = Fixture::new(false);
+        std::fs::remove_file(f.0.join("poster.png")).unwrap();
+        assert!(checked_preview_images(&f.0).unwrap().is_empty());
+        std::fs::write(f.0.join("poster.png"), b"captured image").unwrap();
+        assert_eq!(checked_preview_images(&f.0).unwrap().len(), 1);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn preview_access_rejects_images_and_preview_folders_outside_the_item() {
+        use std::os::unix::fs::symlink;
+
+        let outside = Fixture::new(false);
+        let image = Fixture::new(true);
+        symlink(outside.0.join("poster.png"), image.0.join("previews/2.png")).unwrap();
+        assert!(checked_preview_images(&image.0).is_err());
+        let folder = Fixture::new(true);
+        std::fs::remove_dir(folder.0.join("previews")).unwrap();
+        symlink(&outside.0, folder.0.join("previews")).unwrap();
+        assert!(checked_preview_images(&folder.0).is_err());
     }
 
     #[test]

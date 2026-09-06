@@ -149,8 +149,10 @@ previous image and report the error in the inspector.
 Templates store slot images in `previews/1.png` through `previews/4.png`; presets
 store `poster.png`. A template's selected slot is its gallery cover, with the
 legacy `poster.png` or `poster.jpg` retained until slot images exist. Listings
-expose all four images and refresh their URLs after capture. Duplication copies
-existing images and settings, including older bundled JPEG art, into the personal
+expose all four images and refresh their URLs after capture. Native preview access
+permits only the item's validated image files, including checkout captures, before
+returning paths or announcing a completed capture. Duplication copies existing
+images and settings, including older bundled JPEG art, into the personal
 item. Packs carry those files with the item. Personal previews are editable in
 every build; bundled originals require development mode.
 
