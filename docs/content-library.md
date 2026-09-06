@@ -9,6 +9,19 @@ fields, waits for a pending save, and prompts only for remaining unsaved changes
 Cancelled prompts and native failures leave the window available for another
 attempt; disposed listeners cannot destroy a newly opened window.
 
+In development, personal-theme menus offer **Move to app themes…**. The form
+chooses an unused bundled identity and a category. The theme editor saves its
+pending draft before the native move starts. Project, scene and comparison
+references are updated in the active workspace's projects, templates and
+presets, and in the current checkout's projects and presets. Other worktrees,
+historical packs and Git history are outside this operation.
+
+The move stages all changes and retains a journal, before/after documents and
+the original theme folder under the workspace's `.theme-moves` directory.
+Write failures roll back unchanged files and report any incomplete recovery.
+The personal theme leaves the library only after the destination and reference
+writes succeed. Other installations need a build containing the new app theme.
+
 ## Everyday workflow
 
 | Content | Create | Edit | Reuse |

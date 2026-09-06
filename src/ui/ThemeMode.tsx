@@ -16,6 +16,7 @@ import {
 } from "./ThemePicker";
 import { ThemeEditorIcon } from "./theme-editor/icons";
 import { canEditTheme, onThemeSaved, openThemeEditor } from "./theme-editor/themeEditorIo";
+import { onThemeMoved } from "./theme-editor/themeMove";
 import { useThemeCardMenu } from "./themeCardMenu";
 import { useEscapeClose } from "./useEscapeClose";
 
@@ -51,6 +52,14 @@ export function ThemeMode({
   const searchRef = useRef<HTMLInputElement>(null);
   const [choices, setChoices] = useState<ThemeChoice[]>(builtinThemeChoices);
   const [selected, setSelected] = useState(initialThemeId ?? currentThemeId ?? NEW_THEME_BASE_ID);
+  useEffect(
+    () =>
+      onThemeMoved(({ oldId, themeId }) => {
+        setSelected((current) => (current === oldId ? themeId : current));
+        void listThemeChoices().then(setChoices);
+      }),
+    [],
+  );
   const [view, setView] = useState<"browse" | "duplicate" | "fonts">(
     initialView === "duplicate" ? "duplicate" : "browse",
   );

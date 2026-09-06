@@ -19,6 +19,24 @@ const actions = (items: (ContextMenuItem | "separator")[]) =>
   items.filter((item): item is ContextMenuItem => item !== "separator");
 
 describe("theme card actions", () => {
+  it("offers moving personal themes only in development", () => {
+    const onMove = vi.fn();
+    const opts = { ...options(), onMove };
+    const personal = choice("ws:personal");
+    const dev = actions(buildThemeCardMenu(personal, opts, vi.fn(), true));
+    dev.find((item) => item.id === "move")?.onSelect();
+    expect(onMove).toHaveBeenCalledWith(personal);
+    expect(
+      actions(buildThemeCardMenu(personal, opts, vi.fn(), false)).some(
+        (item) => item.id === "move",
+      ),
+    ).toBe(false);
+    expect(
+      actions(buildThemeCardMenu(choice("studio"), opts, vi.fn(), true)).some(
+        (item) => item.id === "move",
+      ),
+    ).toBe(false);
+  });
   it("keeps release app themes read-only", () => {
     const items = actions(buildThemeCardMenu(choice("studio"), options(), vi.fn(), false));
     expect(items.map((item) => item.id)).toEqual(["duplicate"]);

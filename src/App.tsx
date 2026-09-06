@@ -201,6 +201,7 @@ import {
 } from "./ui/textEditFocus";
 import { duplicateThemeDoc } from "./ui/theme-editor/themeDraft";
 import { onThemeSaved, readThemeSourceDoc } from "./ui/theme-editor/themeEditorIo";
+import { onThemeMoved } from "./ui/theme-editor/themeMove";
 import { UpdateAvailableDialog, UpdateConsentDialog } from "./ui/updateDialogs";
 import {
   commitSceneDuration,
@@ -1517,6 +1518,31 @@ export default function App() {
 
   // Bumped by the error panel's Retry: workspace manifest fixes happen outside Vite's module graph, so nothing reloads automatically; the user retries once Claude fixed the file.
   const [loadNonce, setLoadNonce] = useState(0);
+
+  useEffect(
+    () =>
+      onThemeMoved(({ oldId, themeId, json }) => {
+        setPendingThemePreviews((pending) => {
+          const next = { ...pending, [themeId]: json };
+          delete next[oldId];
+          return next;
+        });
+        bindHistory(null);
+        bindHistory(useEditorStore.getState().projectId);
+        setThemesRefreshKey((key) => key + 1);
+        setLoadNonce((key) => key + 1);
+      }),
+    [],
+  );
+
+  useEffect(() => {
+    const changed = () => {
+      setThemesRefreshKey((key) => key + 1);
+      setLoadNonce((key) => key + 1);
+    };
+    window.addEventListener("kookaburra:themes-changed", changed);
+    return () => window.removeEventListener("kookaburra:themes-changed", changed);
+  }, []);
 
   useEffect(() => {
     // Retry (stage error panel) re-runs this load with otherwise-identical inputs.

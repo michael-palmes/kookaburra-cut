@@ -177,6 +177,10 @@ export function useSceneChart(): ResolvedChart | null {
 
 const sceneDocWriteQueues = new Map<string, Promise<void>>();
 
+export async function settleSceneDocWrites(): Promise<void> {
+  while (sceneDocWriteQueues.size) await Promise.all([...sceneDocWriteQueues.values()]);
+}
+
 /** Atomic, version-guarded sidecar write via the native command. */
 export async function writeSceneDoc(slug: string, sceneFile: string, doc: SceneDoc): Promise<void> {
   const file = sceneFile.replace(/\.tsx$/, ".json");

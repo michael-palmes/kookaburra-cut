@@ -3,6 +3,7 @@ import { type ReactNode, useState } from "react";
 import { devDeleteBuiltinTheme } from "../engine/library";
 import { WORKSPACE_THEME_PREFIX } from "../theme/registry";
 import { ContextMenu, type ContextMenuItem, type ContextMenuState } from "./ContextMenu";
+import { MoveThemeModal } from "./MoveThemeModal";
 import { NamePromptModal } from "./NamePromptModal";
 import { SceneMenuIcon } from "./sceneMenu";
 import type { ThemeChoice } from "./ThemePicker";
@@ -21,6 +22,7 @@ export interface ThemeCardMenuOptions {
   /** Rename/delete landed; re-list the choices. */
   onChanged: () => void;
   onError?: (message: string) => void;
+  onMove?: (choice: ThemeChoice) => void;
 }
 
 export function buildThemeCardMenu(
@@ -52,6 +54,12 @@ export function buildThemeCardMenu(
     });
   }
   if (isWs) {
+    if (dev && opts.onMove)
+      items.push({
+        id: "move",
+        label: "Move to app themes…",
+        onSelect: () => opts.onMove?.(choice),
+      });
     items.push(
       {
         id: "fonts",
@@ -127,12 +135,13 @@ export function useThemeCardMenu(opts: ThemeCardMenuOptions): {
 } {
   const [menu, setMenu] = useState<ContextMenuState | null>(null);
   const [renaming, setRenaming] = useState<ThemeChoice | null>(null);
+  const [moving, setMoving] = useState<ThemeChoice | null>(null);
   const openMenu = (choice: ThemeChoice, event: React.MouseEvent) => {
     event.preventDefault();
     setMenu({
       x: event.clientX,
       y: event.clientY,
-      items: buildThemeCardMenu(choice, opts, setRenaming),
+      items: buildThemeCardMenu(choice, { ...opts, onMove: setMoving }, setRenaming),
       returnFocus: event.currentTarget as HTMLElement,
     });
   };
@@ -140,6 +149,16 @@ export function useThemeCardMenu(opts: ThemeCardMenuOptions): {
   const menuElement = (
     <>
       {menu && <ContextMenu menu={menu} onClose={() => setMenu(null)} />}
+      {moving && (
+        <MoveThemeModal
+          choice={moving}
+          onCancel={() => setMoving(null)}
+          onMoved={() => {
+            setMoving(null);
+            opts.onChanged();
+          }}
+        />
+      )}
       {renaming && (
         <NamePromptModal
           title="Rename theme"

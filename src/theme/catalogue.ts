@@ -246,6 +246,12 @@ const BUILTIN_THEME_MODULES = import.meta.glob("./builtin/*.json", {
 
 export const BUILTIN_THEME_CATALOGUE = discoverBuiltinThemeCatalogue(BUILTIN_THEME_MODULES);
 
-export const THEME_LINEUP: readonly string[] = filterThemeCatalogue(BUILTIN_THEME_CATALOGUE).map(
+export let THEME_LINEUP: readonly string[] = filterThemeCatalogue(BUILTIN_THEME_CATALOGUE).map(
   ({ id }) => id,
 );
+
+export function refreshThemeLineup(): void {
+  const sorted = sortThemeCatalogue(BUILTIN_THEME_CATALOGUE);
+  BUILTIN_THEME_CATALOGUE.splice(0, BUILTIN_THEME_CATALOGUE.length, ...sorted);
+  THEME_LINEUP = filterThemeCatalogue(BUILTIN_THEME_CATALOGUE).map(({ id }) => id);
+}

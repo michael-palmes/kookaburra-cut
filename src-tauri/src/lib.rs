@@ -26,6 +26,8 @@ mod settings_win;
 mod tap_dot_frames;
 mod theme;
 mod theme_editor_win;
+#[cfg(debug_assertions)]
+mod theme_move;
 mod updater;
 mod website;
 mod workspace;
@@ -1607,17 +1609,21 @@ pub fn run() {
         });
 
     #[cfg(debug_assertions)]
-    let builder = builder.invoke_handler(kookaburra_handler![
-        library::dev_write_builtin_theme,
-        library::dev_delete_builtin_theme,
-        library::dev_set_builtin_theme_orders,
-        library::dev_write_template_manifest,
-        library::dev_delete_bundled_template,
-        library::dev_write_preset_manifest,
-        library::dev_delete_bundled_preset,
-        library::dev_set_template_orders,
-        library::dev_set_preset_orders,
-    ]);
+    let builder = builder
+        .manage(theme_move::ThemeMoveState::default())
+        .invoke_handler(kookaburra_handler![
+            theme_move::dev_move_theme,
+            theme_move::theme_editor_move_ready,
+            library::dev_write_builtin_theme,
+            library::dev_delete_builtin_theme,
+            library::dev_set_builtin_theme_orders,
+            library::dev_write_template_manifest,
+            library::dev_delete_bundled_template,
+            library::dev_write_preset_manifest,
+            library::dev_delete_bundled_preset,
+            library::dev_set_template_orders,
+            library::dev_set_preset_orders,
+        ]);
     #[cfg(not(debug_assertions))]
     let builder = builder.invoke_handler(kookaburra_handler![]);
 

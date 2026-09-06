@@ -205,6 +205,16 @@ export function builtinThemeChoices(): ThemeChoice[] {
 
 export async function listThemeChoices(): Promise<ThemeChoice[]> {
   const choices = builtinThemeChoices();
+  const bundledPreviews = Promise.all(
+    choices.map(async (choice) => {
+      if (choice.previews) return;
+      const entry = BUILTIN_THEME_CATALOGUE.find((entry) => entry.id === choice.id);
+      if (entry)
+        choice.previews = await themePreviewKey(JSON.stringify(entry.doc))
+          .then(cachedThemePreviews)
+          .catch(() => null);
+    }),
+  );
   try {
     const listings = await invoke<{ slug: string; json: string }[]>("list_themes");
     const workspaceChoices = await Promise.all(
@@ -253,6 +263,7 @@ export async function listThemeChoices(): Promise<ThemeChoice[]> {
   } catch (error) {
     console.warn("[theme] listing workspace themes failed:", error);
   }
+  await bundledPreviews;
   return choices;
 }
 
