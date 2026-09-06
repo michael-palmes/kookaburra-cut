@@ -38,7 +38,7 @@ media. See [Editable content library](../docs/content-library.md).
 | `tags`     | Free-text search terms                                             |
 | `order`    | Within-category sort; ties break on name                           |
 | `status`   | `stable` or `beta`                                                 |
-| `preview`  | The card still's capture point: `{ scene, atMs? }` or a scene index |
+| `preview`  | The card still's capture point: `{ scene, atMs?, aspect?, sceneFile? }` or a scene index |
 | `source`   | Reserved: `bundled` here, `user` in the workspace, `pack` from a pack |
 
 Everything else a card shows (scene count, length, aspects, theme) derives from
@@ -55,8 +55,9 @@ Author with the `kookaburra-scene-authoring` skill.
 
 Card art starts as a committed JPEG in `src/assets/preset-previews/`. Editing a
 preset refreshes its authoritative `poster.png` through the background render
-window at the saved preview frame, in 16:9. Both galleries use that poster when
-present and otherwise use the committed JPEG. A preset without either uses a swatch.
+window at the saved preview frame and aspect (16:9 for older entries). Both
+galleries use that poster when present and otherwise use the committed JPEG.
+A preset without either uses a swatch.
 
 ```bash
 pnpm kookaburra:run --action preset-previews                    # every bundled preset

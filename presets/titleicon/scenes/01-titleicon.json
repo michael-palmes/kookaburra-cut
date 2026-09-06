@@ -1,29 +1,34 @@
 {
-  "version": 1,
-  "name": "Title + icon",
-  "text": {
-    "title": "Ship faster",
-    "subtitle": "Make it yours"
-  },
   "headerIcon": "🚀",
   "managedText": {
-    "layout": "template",
     "items": [
       {
+        "icon": "🚀",
         "key": "icon",
-        "type": "icon",
-        "icon": "🚀"
+        "type": "icon"
       },
       {
         "key": "title",
-        "type": "title",
-        "text": "Ship faster"
+        "text": "Ship faster",
+        "type": "title"
       },
       {
         "key": "subtitle",
-        "type": "subtitle",
-        "text": "Make it yours"
+        "text": "Make it yours",
+        "type": "subtitle"
       }
-    ]
-  }
+    ],
+    "layout": "template"
+  },
+  "name": "Title + icon",
+  "text": {
+    "subtitle": "Make it yours",
+    "title": "Ship faster"
+  },
+  "textStyle": {
+    "iconOffsetY": -0.09,
+    "subtitleOffsetY": -0.37,
+    "titleOffsetY": -0.35
+  },
+  "version": 1
 }

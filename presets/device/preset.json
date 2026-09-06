@@ -1,10 +1,15 @@
 {
-  "version": 1,
-  "name": "Device + title",
-  "tagline": "A titled phone playing your media",
   "category": "starters",
-  "tags": ["device", "starter"],
+  "name": "Device + title",
   "order": 10,
+  "preview": {
+    "aspect": "16:9",
+    "atMs": 1500.0,
+    "scene": 0,
+    "sceneFile": "scenes/01-device.tsx"
+  },
   "status": "stable",
-  "preview": 0
+  "tagline": "A titled phone playing your media",
+  "tags": ["device", "starter"],
+  "version": 1
 }

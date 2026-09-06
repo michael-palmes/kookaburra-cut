@@ -4,6 +4,7 @@ import { canQueuePresetPoster, queuePresetPoster } from "./presetPosters";
 import { ensureProjectTrusted } from "./projectTrust";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
+vi.mock("../ui/settleContentEdits", () => ({ settlePendingContentEdits: vi.fn(async () => {}) }));
 vi.mock("./projectTrust", () => ({ ensureProjectTrusted: vi.fn() }));
 vi.mock("./project", () => ({
   parseProjectId: (id: string) => ({ scope: id.split(":")[0] }),
@@ -16,11 +17,14 @@ beforeEach(() => {
 });
 
 describe("preset poster scheduling", () => {
-  it("only permits workspace presets and development bundled presets", () => {
+  it("permits personal templates and presets, and bundled originals in development", () => {
     expect(canQueuePresetPoster("ws-preset:hero", false)).toBe(true);
     expect(canQueuePresetPoster("preset:hero", true)).toBe(true);
     expect(canQueuePresetPoster("preset:hero", false)).toBe(false);
-    for (const id of ["hero", "ws:hero", "template:hero", "ws-template:hero"]) {
+    expect(canQueuePresetPoster("ws-template:hero", false)).toBe(true);
+    expect(canQueuePresetPoster("template:hero", true)).toBe(true);
+    expect(canQueuePresetPoster("template:hero", false)).toBe(false);
+    for (const id of ["hero", "ws:hero"]) {
       expect(canQueuePresetPoster(id, true)).toBe(false);
     }
   });
@@ -33,6 +37,15 @@ describe("preset poster scheduling", () => {
     );
     expect(invoke).toHaveBeenCalledExactlyOnceWith("render_submit_preset_poster", {
       slug: "ws-preset:hero",
+      prioritySlot: undefined,
+    });
+  });
+
+  it("promotes only the manually selected slot after pending edits settle", async () => {
+    await queuePresetPoster("ws-template:hero", 3);
+    expect(invoke).toHaveBeenCalledExactlyOnceWith("render_submit_preset_poster", {
+      slug: "ws-template:hero",
+      prioritySlot: 3,
     });
   });
 

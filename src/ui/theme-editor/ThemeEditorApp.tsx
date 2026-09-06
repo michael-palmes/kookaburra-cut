@@ -33,6 +33,7 @@ import {
   readThemeDocText,
   writeThemeDocText,
 } from "./themeEditorIo";
+import { createThemeWindowClose } from "./themeWindowClose";
 
 /** The theme editor window shell: section nav on the left, the active form in the centre, the specimen on the right. It edits ONE raw theme document at a time, held as a JSON draft, so the catalogue block and any block without a form yet survive every save. */
 
@@ -74,6 +75,9 @@ export function ThemeEditorApp() {
   const loadVersion = useRef(0);
   const targetVersion = useRef(0);
   const pendingSave = useRef<Promise<void> | null>(null);
+  const movePending = useRef(false);
+  const draftRef = useRef({ doc, themeId });
+  draftRef.current = { doc, themeId };
 
   const dirty = doc !== null && draftIsDirty(doc, savedText);
   const dirtyRef = useRef(dirty);
@@ -148,22 +152,34 @@ export function ThemeEditorApp() {
     };
   }, [openTarget]);
 
-  // Unsaved-changes guard on close, the video editor's pattern.
   useEffect(() => {
-    const pending = getCurrentWindow().onCloseRequested(async (event) => {
-      await pendingSave.current;
-      flushSync(() => {
-        if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
-      });
-      if (!dirtyRef.current) return;
-      const close = await ask("This theme has unsaved changes. Close anyway?", {
-        title: "Unsaved changes",
-        kind: "warning",
-      });
-      if (!close) event.preventDefault();
+    const window = getCurrentWindow();
+    const close = createThemeWindowClose({
+      pendingSave: () => pendingSave.current,
+      flushInput: () =>
+        flushSync(() => {
+          if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+        }),
+      isDirty: () => dirtyRef.current,
+      confirmDiscard: () =>
+        ask("This theme has unsaved changes. Close anyway?", {
+          title: "Unsaved changes",
+          kind: "warning",
+        }),
+      destroy: () => window.destroy(),
+      onError: (e) => setError(`Couldn't close this theme: ${String(e)}`),
     });
+    const pending = window.onCloseRequested((event) => {
+      if (movePending.current) {
+        event.preventDefault();
+        return;
+      }
+      return close.onClose(event);
+    });
+    void pending.catch((e) => setError(`Couldn't register the close handler: ${String(e)}`));
     return () => {
-      void pending.then((un) => un());
+      close.dispose();
+      void pending.then((un) => un()).catch(() => {});
     };
   }, []);
 
@@ -192,16 +208,71 @@ export function ThemeEditorApp() {
     setError(null);
     const saving = writeThemeDocText(themeId, text)
       .then(async () => {
-        setSavedText(text);
+        flushSync(() => setSavedText(text));
         await emitThemeSaved({ themeId, json: text });
       })
       .catch((e) => setError(String(e)))
       .finally(() => {
         pendingSave.current = null;
-        setBusy(false);
+        setBusy(movePending.current);
       });
     pendingSave.current = saving;
   }, [doc, themeId]);
+
+  useEffect(() => {
+    if (!canEditBundledThemes) return;
+    let disposed = false;
+    const prepare = listen<{ requestId: number; themeId: string }>(
+      "kookaburra://theme-move-prepare",
+      async ({ payload }) => {
+        if (disposed) return;
+        let error: string | null = null;
+        try {
+          if (payload.themeId === draftRef.current.themeId) {
+            if (movePending.current) throw new Error("A theme move is already pending.");
+            movePending.current = true;
+            flushSync(() => {
+              if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+              setBusy(true);
+            });
+            await pendingSave.current;
+            const current = draftRef.current;
+            if (
+              !current.doc ||
+              current.themeId !== payload.themeId ||
+              !parseThemeDraft(current.doc, current.themeId).theme
+            )
+              throw new Error("Fix the theme before moving it.");
+            if (dirtyRef.current) {
+              const text = serialiseThemeDoc(current.doc);
+              await writeThemeDocText(current.themeId, text);
+              flushSync(() => setSavedText(text));
+              await emitThemeSaved({ themeId: current.themeId, json: text });
+            }
+          }
+        } catch (e) {
+          error = String(e);
+          setError(error);
+        }
+        await invoke("theme_editor_move_ready", { requestId: payload.requestId, error });
+      },
+    );
+    const finished = listen<{ oldId: string; themeId?: string; error?: string }>(
+      "kookaburra://theme-move-finished",
+      ({ payload }) => {
+        if (disposed || payload.oldId !== draftRef.current.themeId) return;
+        movePending.current = false;
+        setBusy(false);
+        if (payload.error) setError(payload.error);
+        else if (payload.themeId) openTarget(payload.themeId);
+      },
+    );
+    return () => {
+      disposed = true;
+      for (const pending of [prepare, finished])
+        void pending.then((unlisten) => unlisten()).catch(() => {});
+    };
+  }, [openTarget]);
 
   const revert = useCallback(() => {
     if (!themeId) return;

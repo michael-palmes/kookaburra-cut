@@ -25,6 +25,7 @@ import { type LoadedProject, sceneFileStem } from "../engine/project";
 import { ensureSceneThumbs, listCachedSceneThumbs } from "../engine/sceneThumbs";
 import { builtinThemes, defaultTheme } from "../theme/registry";
 import { gapFromPlacement, placementFromGap, placementText } from "./insertMath";
+import { LibraryModalHeader } from "./LibraryModalHeader";
 import { LibraryRailIcon, PRESET_CATEGORY_ICONS, railIcon } from "./libraryIcons";
 import { modalHost } from "./modalHost";
 import { SceneInsertTimeline } from "./SceneInsertTimeline";
@@ -377,37 +378,17 @@ export function PresetGalleryModal({
       aria-labelledby={titleId}
     >
       <div className="modal add-scene-modal">
-        <div className="add-scene-head">
-          <h2 id={titleId}>Add a scene</h2>
-          <div className="add-scene-search">
-            <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
-              <circle cx="7" cy="7" r="4.5" stroke="currentColor" strokeWidth="1.5" fill="none" />
-              <path
-                d="M10.5 10.5 14 14"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-              />
-            </svg>
-            <input
-              ref={searchRef}
-              className="modal-input"
-              type="search"
-              placeholder="Search by name or purpose…"
-              aria-label="Search presets"
-              value={query}
-              disabled={busy}
-              onChange={(e) => setQuery(e.target.value)}
-            />
-          </div>
-          <button
-            type="button"
-            className="modal-close"
-            aria-label="Close"
-            disabled={busy}
-            onClick={onCancel}
-          />
-        </div>
+        <LibraryModalHeader
+          title="Add a scene"
+          titleId={titleId}
+          query={query}
+          onQueryChange={setQuery}
+          searchRef={searchRef}
+          searchLabel="Search presets"
+          placeholder="Search by name or purpose…"
+          busy={busy}
+          onClose={onCancel}
+        />
         <div className="add-scene-body" inert={busy}>
           <div className="add-scene-rail">
             <fieldset className="add-scene-rail-list" aria-label="Preset categories">

@@ -1280,29 +1280,6 @@ pub struct SnapshotWritten {
     pub mtime_ms: Option<u64>,
 }
 
-pub(crate) fn preset_poster_target(
-    app: &AppHandle,
-    state: &State<'_, SettingsState>,
-    slug: &str,
-) -> Result<PathBuf, String> {
-    if !is_preset_id(slug)? {
-        return Err("poster target must be a scene preset".into());
-    }
-    let root = require_root(app, state)?;
-    #[cfg(debug_assertions)]
-    let bundled_presets = Some(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../presets"));
-    #[cfg(not(debug_assertions))]
-    let bundled_presets: Option<PathBuf> = None;
-    let path = snapshot_target(&root, bundled_presets.as_deref(), slug)?;
-    let project = project_dir_mut(app, state, slug)?
-        .canonicalize()
-        .map_err(|e| e.to_string())?;
-    if path.parent().and_then(|p| p.canonicalize().ok()).as_ref() != Some(&project) {
-        return Err("preset poster does not match the editable folder".into());
-    }
-    Ok(path)
-}
-
 /// Preset posters use the render queue; other welcome cards still use the editor snapshot.
 #[tauri::command]
 pub fn write_snapshot(

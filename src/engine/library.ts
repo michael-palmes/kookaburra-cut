@@ -18,6 +18,8 @@ export interface LibraryItemInfo {
   /** The card still, absent until one has been captured. */
   posterPath: string | null;
   posterModifiedAt?: number | null;
+  previewPaths?: (string | null)[];
+  previewModifiedAt?: (number | null)[];
 }
 
 /** Dev-only commands are registered under `#[cfg(debug_assertions)]`, so a release binary carries no repo-write surface at all; failing here names that rather than surfacing a bare "command not found". */

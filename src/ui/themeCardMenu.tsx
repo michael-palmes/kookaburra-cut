@@ -3,108 +3,169 @@ import { type ReactNode, useState } from "react";
 import { devDeleteBuiltinTheme } from "../engine/library";
 import { WORKSPACE_THEME_PREFIX } from "../theme/registry";
 import { ContextMenu, type ContextMenuItem, type ContextMenuState } from "./ContextMenu";
+import { MoveThemeModal } from "./MoveThemeModal";
 import { NamePromptModal } from "./NamePromptModal";
+import { SceneMenuIcon } from "./sceneMenu";
 import type { ThemeChoice } from "./ThemePicker";
-import { canEditBundledThemes, canEditTheme, openThemeEditor } from "./theme-editor/themeEditorIo";
+import { ThemeEditorIcon, type ThemeEditorIconName } from "./theme-editor/icons";
+import { canEditBundledThemes, openThemeEditor } from "./theme-editor/themeEditorIo";
 
-/** Theme-card right-click menu, shared by the project- and scene-theme drill-ins: workspace themes get Apply/Edit/Edit fonts/Edit in Claude Code/Rename/Delete, read-only built-ins get Apply/Duplicate… (plus Edit and a real Delete in a checkout, where the bundled JSON is writable); Rename only touches the theme JSON's `name` field, never the slug folder. */
-export function useThemeCardMenu(opts: {
+export interface ThemeCardMenuOptions {
   /** Apply the theme in the host's sense (project apply vs scene override). */
-  onApply: (themeId: string) => void;
+  onApply?: (themeId: string) => void;
   /** Open the ThemeMode modal on a specific pane (fonts / duplicate) for this theme. */
   onManage: (manage: { view: "fonts" | "duplicate"; themeId: string }) => void;
   /** Paste a starter prompt into the Claude session (the media Insert pattern). */
-  onEditInClaude: (choice: ThemeChoice) => void;
+  onEditInClaude?: (choice: ThemeChoice) => void;
   /** A ws theme's JSON changed; the App regenerates previews / reloads if in use. */
   onThemeEdited: (wsId: string, json: string) => Promise<void>;
   /** Rename/delete landed; re-list the choices. */
   onChanged: () => void;
-}): {
+  onError?: (message: string) => void;
+  onMove?: (choice: ThemeChoice) => void;
+}
+
+export function buildThemeCardMenu(
+  choice: ThemeChoice,
+  opts: ThemeCardMenuOptions,
+  onRename: (choice: ThemeChoice) => void,
+  dev = canEditBundledThemes,
+): (ContextMenuItem | "separator")[] {
+  const isWs = choice.id.startsWith(WORKSPACE_THEME_PREFIX);
+  const slug = choice.id.slice(WORKSPACE_THEME_PREFIX.length);
+  const items: (ContextMenuItem | "separator")[] = [];
+  if (opts.onApply)
+    items.push({ id: "apply", label: "Apply", onSelect: () => opts.onApply?.(choice.id) });
+  items.push({
+    id: "duplicate",
+    label: "Duplicate…",
+    onSelect: () => opts.onManage({ view: "duplicate", themeId: choice.id }),
+  });
+  // Bundled themes only open in a checkout: a release build has no repo-write command to save them with.
+  if (isWs || dev) {
+    items.push({
+      id: "edit",
+      label: "Edit…",
+      onSelect: () => {
+        void openThemeEditor(choice.id).catch((err) =>
+          (opts.onError ?? console.warn)(`Opening the theme editor failed: ${String(err)}`),
+        );
+      },
+    });
+  }
+  if (isWs) {
+    if (dev && opts.onMove)
+      items.push({
+        id: "move",
+        label: "Move to app themes…",
+        onSelect: () => opts.onMove?.(choice),
+      });
+    items.push(
+      {
+        id: "fonts",
+        label: "Edit fonts…",
+        onSelect: () => opts.onManage({ view: "fonts", themeId: choice.id }),
+      },
+      ...(opts.onEditInClaude
+        ? [
+            {
+              id: "claude",
+              label: "Edit in Claude Code",
+              onSelect: () => opts.onEditInClaude?.(choice),
+            },
+          ]
+        : []),
+      "separator",
+      { id: "rename", label: "Rename…", onSelect: () => onRename(choice) },
+      {
+        id: "delete",
+        label: "Delete",
+        confirmLabel: "Really delete?",
+        danger: true,
+        onSelect: () => {
+          void invoke("delete_theme", { slug })
+            .then(opts.onChanged)
+            .catch((err) =>
+              (opts.onError ?? console.warn)(`Deleting the theme failed: ${String(err)}`),
+            );
+        },
+      },
+    );
+  } else {
+    // A checkout deletes the bundled JSON for real (locked answer 19); projects pointing at it fall back to kookaburra-default, which is the existing behaviour for any unknown id.
+    if (dev) {
+      items.push("separator", {
+        id: "delete-builtin",
+        label: "Delete built-in…",
+        confirmLabel: "Delete from the repo?",
+        danger: true,
+        onSelect: () => {
+          void devDeleteBuiltinTheme(choice.id)
+            .then(opts.onChanged)
+            .catch((err) =>
+              (opts.onError ?? console.warn)(`Deleting the built-in theme failed: ${String(err)}`),
+            );
+        },
+      });
+    }
+  }
+  const icons: Record<string, ThemeEditorIconName> = {
+    apply: "save",
+    edit: "identity",
+    fonts: "typography",
+    claude: "specimen",
+    rename: "label",
+  };
+  for (const item of items) {
+    if (item === "separator") continue;
+    item.icon = item.id.startsWith("delete") ? (
+      <SceneMenuIcon id="delete" />
+    ) : item.id === "duplicate" ? (
+      <SceneMenuIcon id="duplicate" />
+    ) : (
+      <ThemeEditorIcon name={icons[item.id] ?? "colours"} />
+    );
+  }
+  return items;
+}
+
+export function useThemeCardMenu(opts: ThemeCardMenuOptions): {
   openMenu: (choice: ThemeChoice, e: React.MouseEvent) => void;
   menuElement: ReactNode;
 } {
   const [menu, setMenu] = useState<ContextMenuState | null>(null);
   const [renaming, setRenaming] = useState<ThemeChoice | null>(null);
-
-  const openMenu = (choice: ThemeChoice, e: React.MouseEvent) => {
-    e.preventDefault();
-    const isWs = choice.id.startsWith(WORKSPACE_THEME_PREFIX);
-    const slug = choice.id.slice(WORKSPACE_THEME_PREFIX.length);
-    const items: (ContextMenuItem | "separator")[] = [
-      { id: "apply", label: "Apply", onSelect: () => opts.onApply(choice.id) },
-    ];
-    // Bundled themes only open in a checkout: a release build has no repo-write command to save them with.
-    if (canEditTheme(choice.id)) {
-      items.push({
-        id: "edit",
-        label: "Edit…",
-        onSelect: () => {
-          void openThemeEditor(choice.id).catch((err) =>
-            console.warn("[theme] opening the editor failed:", err),
-          );
-        },
-      });
-    }
-    if (isWs) {
-      items.push(
-        {
-          id: "fonts",
-          label: "Edit fonts…",
-          onSelect: () => opts.onManage({ view: "fonts", themeId: choice.id }),
-        },
-        {
-          id: "claude",
-          label: "Edit in Claude Code",
-          onSelect: () => opts.onEditInClaude(choice),
-        },
-        "separator",
-        { id: "rename", label: "Rename…", onSelect: () => setRenaming(choice) },
-        {
-          id: "delete",
-          label: "Delete",
-          confirmLabel: "Really delete?",
-          danger: true,
-          onSelect: () => {
-            void invoke("delete_theme", { slug })
-              .then(opts.onChanged)
-              .catch((err) => console.warn("[theme] delete failed:", err));
-          },
-        },
-      );
-    } else {
-      items.push({
-        id: "duplicate",
-        label: "Duplicate…",
-        onSelect: () => opts.onManage({ view: "duplicate", themeId: choice.id }),
-      });
-      // A checkout deletes the bundled JSON for real (locked answer 19); projects pointing at it fall back to kookaburra-default, which is the existing behaviour for any unknown id.
-      if (canEditBundledThemes) {
-        items.push("separator", {
-          id: "delete-builtin",
-          label: "Delete built-in…",
-          confirmLabel: "Delete from the repo?",
-          danger: true,
-          onSelect: () => {
-            void devDeleteBuiltinTheme(choice.id)
-              .then(opts.onChanged)
-              .catch((err) => console.warn("[theme] deleting the built-in failed:", err));
-          },
-        });
-      }
-    }
-    setMenu({ x: e.clientX, y: e.clientY, items });
+  const [moving, setMoving] = useState<ThemeChoice | null>(null);
+  const openMenu = (choice: ThemeChoice, event: React.MouseEvent) => {
+    event.preventDefault();
+    setMenu({
+      x: event.clientX,
+      y: event.clientY,
+      items: buildThemeCardMenu(choice, { ...opts, onMove: setMoving }, setRenaming),
+      returnFocus: event.currentTarget as HTMLElement,
+    });
   };
 
   const menuElement = (
     <>
       {menu && <ContextMenu menu={menu} onClose={() => setMenu(null)} />}
+      {moving && (
+        <MoveThemeModal
+          choice={moving}
+          onCancel={() => setMoving(null)}
+          onMoved={() => {
+            setMoving(null);
+            opts.onChanged();
+          }}
+        />
+      )}
       {renaming && (
         <NamePromptModal
           title="Rename theme"
           label="Theme name"
           initial={renaming.name}
           submitLabel="Rename"
-          hint="Renames the theme everywhere it's listed — its folder on disk keeps its slug."
+          hint="Renames the theme everywhere it is listed. Its folder keeps its slug."
           onCancel={() => setRenaming(null)}
           onSubmit={async (name) => {
             const slug = renaming.id.slice(WORKSPACE_THEME_PREFIX.length);

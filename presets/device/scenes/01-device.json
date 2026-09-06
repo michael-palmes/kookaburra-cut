@@ -1,42 +1,48 @@
 {
-  "version": 1,
-  "name": "Device + title",
-  "text": {
-    "title": "Ship faster",
-    "subtitle": ""
-  },
-  "managedText": {
-    "layout": "template",
-    "items": [
-      {
-        "key": "title",
-        "type": "title",
-        "text": "Ship faster"
-      },
-      {
-        "key": "subtitle",
-        "type": "subtitle",
-        "text": ""
-      }
-    ]
+  "backdrop": {
+    "type": "none"
   },
   "devices": [
     {
-      "id": "d1",
-      "model": "iphone-17-pro",
       "colour": "silver",
+      "id": "d1",
       "media": {
-        "src": "assets/sample-screenshot-1.jpg",
-        "kind": "image"
+        "kind": "image",
+        "src": "assets/sample-screenshot-1.jpg"
       },
-      "placement": {
-        "position": [0, -0.3, 0],
-        "rotationDeg": [0, 0, 0],
-        "scale": 1
-      },
+      "model": "iphone-17-pro",
       "motion": {
         "preset": "none"
+      },
+      "placement": {
+        "position": [0, -0.31, 0],
+        "rotationDeg": [0, 0, 0],
+        "scale": 1.15
       }
     }
-  ]
+  ],
+  "managedText": {
+    "items": [
+      {
+        "key": "title",
+        "text": "Ship faster",
+        "type": "title"
+      },
+      {
+        "key": "subtitle",
+        "text": "",
+        "type": "subtitle"
+      }
+    ],
+    "layout": "template"
+  },
+  "name": "Device + title",
+  "text": {
+    "subtitle": "",
+    "title": "Ship faster"
+  },
+  "textStyle": {
+    "titleOffsetY": -0.15
+  },
+  "version": 1
 }

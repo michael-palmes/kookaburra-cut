@@ -125,6 +125,13 @@
   box-sizing: border-box;
 }
 
+fieldset {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
 html,
 body,
 #root {
@@ -371,6 +378,32 @@ body {
 .btn:disabled {
   color: var(--text-disabled);
   cursor: default;
+}
+
+.btn[aria-busy="true"] {
+  color: var(--text-secondary);
+}
+
+.button-spinner {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  border: 2px solid var(--border-default);
+  border-top-color: currentColor;
+  border-radius: 50%;
+  animation: button-spin 720ms linear infinite;
+}
+
+@keyframes button-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .button-spinner {
+    animation: none;
+  }
 }
 
 .btn.primary:disabled {
@@ -2148,7 +2181,7 @@ button.beat-status {
 .template-card-thumb img {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
   display: block;
 }
 
@@ -2584,6 +2617,116 @@ button.beat-status {
 
 .theme-browser-compact .theme-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.theme-browser-collection-label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.theme-browser-collection-label > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.theme-browser-collection-label .template-rail-icon {
+  width: 16px;
+  height: 16px;
+  flex: none;
+}
+
+.theme-library-modal .theme-library-hint {
+  margin: 0;
+  padding: 10px var(--space-7);
+}
+
+.theme-library-modal .theme-browser {
+  flex: 1;
+  overflow: hidden;
+}
+
+.theme-library-modal .theme-browser-body {
+  flex: 1;
+  grid-template-columns: 200px minmax(0, 1fr);
+  gap: 0;
+}
+
+.theme-library-modal .theme-browser-rail {
+  overflow-y: auto;
+  padding: 12px;
+  border-right: 1px solid var(--border-subtle);
+}
+
+.theme-library-modal .theme-browser-results {
+  max-height: none;
+  padding: 14px;
+}
+
+.theme-library-modal .theme-grid {
+  max-height: none;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 10px;
+  padding: 0;
+}
+
+.library-previews-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-5);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.library-previews-section h3,
+.library-preview-slots {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.library-preview-slots > button {
+  flex: 1;
+}
+
+.library-preview-card .template-card {
+  width: 100%;
+  cursor: default;
+}
+
+.theme-library-modal .theme-card {
+  padding: 0;
+  gap: 0;
+  overflow: hidden;
+}
+
+.theme-library-modal .theme-card-thumb {
+  border-radius: 0;
+}
+
+.theme-library-modal .theme-card-meta {
+  padding: 6px 8px;
+}
+
+.theme-library-modal .theme-card-name {
+  font-size: var(--text-xs);
+}
+
+.theme-library-modal .theme-card-use-label,
+.theme-library-modal .theme-card-mode {
+  display: none;
+}
+
+.theme-library-modal > .modal-actions {
+  flex: none;
+  padding: 12px 14px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.theme-library-modal > .modal-error {
+  margin: 0;
+  padding: 8px 14px;
 }
 
 /* ── Font picker (v8 · M5) ─────────────────────────────────────────────────── */
@@ -4654,7 +4797,7 @@ button.beat-status {
   display: block;
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
 }
 
 .add-scene-card-tick {

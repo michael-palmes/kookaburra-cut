@@ -24,13 +24,14 @@ import {
   verifyDeterminism,
 } from "./exporter";
 import { type AspectName, FORMATS, type FormatSpec, FPS, STANDING_ASPECTS } from "./format";
+import { libraryPreviewFormat, resolveLibraryPreviewPoint } from "./libraryPreviewPoint";
 import { captureOptionPreviews, optionPreviewSetsOf } from "./optionPreviews";
 import { runPackRoundTrip } from "./packRoundTrip";
 import { runPerfProbe } from "./perfProbe";
-import { listPresets, PRESET_PREVIEW_WIDTH, presetPreviewFrame } from "./presets";
+import { listPresets, presetPreviewFrame } from "./presets";
 import { type LoadedProject, loadProject, previewLabProjectIds, sceneFileStem } from "./project";
 import type { RenderStateFingerprint } from "./renderFingerprint";
-import { findTemplate, listTemplates, TEMPLATE_PREVIEW_WIDTH } from "./templates";
+import { findTemplate, listTemplates } from "./templates";
 import {
   awaitProjectCommitted,
   captureThemePreviewFrames,
@@ -570,14 +571,23 @@ export async function runAutoRun(
         };
         const frames: Uint8Array[] = [];
         for (const frame of entry.manifest.preview.frames) {
-          const spec = typeof frame === "number" ? { scene: frame, atMs: undefined } : frame;
+          const spec = resolveLibraryPreviewPoint(frame, created);
+          useEditorStore.getState().setFormat(FORMATS[spec.aspect]);
+          await nextCommit();
           const tMs = resolveScreenshotTimeMs(
             created,
             String(spec.scene),
             spec.atMs === undefined ? undefined : spec.atMs / 1000,
           );
-          const shot = await captureFrameRgba(opts, tMs);
-          frames.push(await rgbaToJpeg(shot.rgba, shot.width, shot.height, TEMPLATE_PREVIEW_WIDTH));
+          const shot = await captureFrameRgba({ ...opts, format: FORMATS[spec.aspect] }, tMs);
+          frames.push(
+            await rgbaToJpeg(
+              shot.rgba,
+              shot.width,
+              shot.height,
+              libraryPreviewFormat(spec.aspect).width,
+            ),
+          );
         }
         await writeThemePreviews("template", templateId, frames);
         results.push({
@@ -626,7 +636,9 @@ export async function runAutoRun(
         await nextCommit();
         await awaitProjectCommitted(loaded);
         await awaitSceneHostsCommitted(loaded.slots.length);
-        const frame = presetPreviewFrame(entry.manifest);
+        const frame = resolveLibraryPreviewPoint(presetPreviewFrame(entry.manifest), loaded);
+        useEditorStore.getState().setFormat(FORMATS[frame.aspect]);
+        await nextCommit();
         const tMs = resolveScreenshotTimeMs(
           loaded,
           String(frame.scene),
@@ -647,11 +659,16 @@ export async function runAutoRun(
             compareBDocs: loaded.compareBDocs,
             compareBThemes: loaded.compareBThemes,
             codec: config.codec,
-            format: FORMATS["16:9"],
+            format: FORMATS[frame.aspect],
           },
           tMs,
         );
-        const jpeg = await rgbaToJpeg(shot.rgba, shot.width, shot.height, PRESET_PREVIEW_WIDTH);
+        const jpeg = await rgbaToJpeg(
+          shot.rgba,
+          shot.width,
+          shot.height,
+          libraryPreviewFormat(frame.aspect).width,
+        );
         await writeThemePreviews("preset", entry.slug, [jpeg]);
         results.push({
           aspect: "16:9",

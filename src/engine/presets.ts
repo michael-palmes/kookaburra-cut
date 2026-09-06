@@ -1,5 +1,6 @@
 import { createUserCatalogue, type LibraryItemInfo, listUserPresets } from "./library";
 import { watchLibraryDocuments } from "./libraryDocuments";
+import { type LibraryPreviewPoint, parseLibraryPreviewPoint } from "./libraryPreviewPoint";
 import { fsUrl } from "./media";
 import {
   outgoingSceneTransitions,
@@ -38,7 +39,7 @@ export const PRESET_SOURCES = ["bundled", "pack", "user"] as const;
 export type PresetSource = (typeof PRESET_SOURCES)[number];
 
 /** The card still's capture point: a scene index (that scene's middle) or an explicit scene-local time. A one-scene project makes `scene` 0 in practice, but the shape matches templates so both catalogues capture through one code path. */
-export type PresetPreviewFrame = number | { scene: number; atMs?: number };
+export type PresetPreviewFrame = LibraryPreviewPoint;
 
 /** `presets/<slug>/preset.json`. The folder name is the id, never restated here, and the file is never copied into a project (inserting a preset copies the scene and its assets only). */
 export interface PresetManifest {
@@ -84,10 +85,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function isIndex(value: unknown): value is number {
-  return typeof value === "number" && Number.isInteger(value) && value >= 0;
-}
-
 function stringArray(
   value: unknown,
   path: string,
@@ -107,13 +104,8 @@ function stringArray(
 }
 
 function previewFrame(value: unknown, issues: PresetManifestIssue[]): PresetPreviewFrame {
-  if (isIndex(value)) return value;
-  if (isRecord(value) && isIndex(value.scene)) {
-    if (value.atMs === undefined) return { scene: value.scene };
-    if (typeof value.atMs === "number" && value.atMs >= 0) {
-      return { scene: value.scene, atMs: value.atMs };
-    }
-  }
+  const parsed = parseLibraryPreviewPoint(value);
+  if (parsed !== null) return parsed;
   issues.push({ path: "preview", message: "must be a scene index or { scene, atMs? }" });
   return 0;
 }
@@ -190,7 +182,7 @@ export const presetManifestSchema = {
 };
 
 /** The capture point as one shape, the bare-index form expanded (its scene's middle is resolved by the capture path, which knows the scene's length). */
-export function presetPreviewFrame(manifest: PresetManifest): { scene: number; atMs?: number } {
+export function presetPreviewFrame(manifest: PresetManifest): Exclude<LibraryPreviewPoint, number> {
   return typeof manifest.preview === "number" ? { scene: manifest.preview } : manifest.preview;
 }
 
@@ -534,11 +526,22 @@ function notifyBundledPresetChange() {
   for (const listener of bundledListeners) listener();
 }
 
-export function updateBundledPresetPoster(projectId: string, mtimeMs: number | null): void {
+export function updateBundledPresetManifest(projectId: string, manifest: unknown): void {
+  const { scope, slug } = parseProjectId(projectId);
+  if (scope !== "preset" || !presetManifestSchema.safeParse(manifest).success) return;
+  presetGlob[`/presets/${slug}/preset.json`] = manifest;
+  notifyBundledPresetChange();
+}
+
+export function updateBundledPresetPoster(
+  projectId: string,
+  mtimeMs: number | null,
+  nativePath?: string,
+): void {
   const { scope, slug } = parseProjectId(projectId);
   if (!import.meta.env.DEV || scope !== "preset") return;
   const path = `/presets/${slug}/poster.png`;
-  posterGlob[path] = `${path}?v=${mtimeMs ?? Date.now()}`;
+  posterGlob[path] = `${nativePath ? fsUrl(nativePath) : path}?v=${mtimeMs ?? Date.now()}`;
   changedSincePoster.delete(slug);
   notifyBundledPresetChange();
 }

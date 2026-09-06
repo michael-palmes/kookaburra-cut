@@ -19,7 +19,8 @@ export function TextLookSection({
     >
       <TextLookPanel
         current={theme.textLook}
-        theme={undefined}
+        mode="theme"
+        theme={theme}
         codedLook={false}
         force={false}
         onForce={() => {}}

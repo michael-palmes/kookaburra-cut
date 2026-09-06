@@ -68,6 +68,18 @@ fn scene_doc_path(project: &Path, file: &str) -> Result<PathBuf, String> {
 
 /// Atomic JSON write: tmp + rename so a crash mid-save can never corrupt a document (the `edit.rs::write_doc` pattern; `project.json` writes here go through this too).
 fn atomic_write_json(path: &Path, value: &Value) -> Result<(), String> {
+    if path
+        .file_name()
+        .is_some_and(|name| name == MANIFEST_FILENAME)
+    {
+        if let (Some(dir), Ok(bytes)) = (path.parent(), std::fs::read(path)) {
+            if let Ok(before) = serde_json::from_slice::<Value>(&bytes) {
+                if before.get("scenes") != value.get("scenes") {
+                    crate::library_previews::bind_scene_files(dir, &before)?;
+                }
+            }
+        }
+    }
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
     }

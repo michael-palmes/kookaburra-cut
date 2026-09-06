@@ -1,55 +1,61 @@
 {
-  "version": 1,
-  "name": "Comparison",
-  "text": {
-    "title": "The redesign",
-    "subtitle": "",
-    "beforeLabel": "Before",
-    "afterLabel": "After"
-  },
-  "managedText": {
-    "layout": "template",
-    "items": [
-      {
-        "key": "title",
-        "type": "title",
-        "text": "The redesign"
-      },
-      {
-        "key": "subtitle",
-        "type": "subtitle",
-        "text": ""
-      }
-    ]
+  "deviceLayout": {
+    "gap": 0.35,
+    "preset": "toe-in"
   },
   "devices": [
     {
-      "id": "d1",
-      "model": "iphone-17-pro",
       "colour": "silver",
+      "id": "d1",
       "media": {
-        "src": "assets/sample-screenshot-1.jpg",
-        "kind": "image"
+        "kind": "image",
+        "src": "assets/sample-screenshot-1.jpg"
       },
+      "model": "iphone-17-pro",
       "motion": {
         "preset": "none"
       }
     },
     {
-      "id": "d2",
-      "model": "iphone-17-pro",
       "colour": "silver",
+      "id": "d2",
       "media": {
-        "src": "assets/sample-screenshot-2.jpg",
-        "kind": "image"
+        "kind": "image",
+        "src": "assets/sample-screenshot-2.jpg"
       },
+      "model": "iphone-17-pro",
       "motion": {
         "preset": "none"
       }
     }
   ],
-  "deviceLayout": {
-    "preset": "toe-in",
-    "gap": 0.35
-  }
+  "managedText": {
+    "items": [
+      {
+        "key": "title",
+        "text": "The redesign",
+        "type": "title"
+      },
+      {
+        "key": "subtitle",
+        "text": "",
+        "type": "subtitle"
+      }
+    ],
+    "layout": "template"
+  },
+  "name": "Comparison",
+  "text": {
+    "afterLabel": "After",
+    "beforeLabel": "Before",
+    "subtitle": "",
+    "title": "The redesign"
+  },
+  "textStyle": {
+    "afterLabelOffsetX": 0.01,
+    "afterLabelOffsetY": 0.11,
+    "beforeLabelOffsetX": -0.01,
+    "beforeLabelOffsetY": 0.11
+  },
+  "version": 1
 }

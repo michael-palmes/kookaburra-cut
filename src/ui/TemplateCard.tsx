@@ -61,6 +61,7 @@ export function TemplateCard({
   tabStop,
   onSelect,
   interaction = {},
+  previewFrame,
 }: {
   entry: TemplateEntry;
   selected: boolean;
@@ -68,10 +69,12 @@ export function TemplateCard({
   tabStop: boolean;
   onSelect: () => void;
   interaction?: LibraryCardInteraction;
+  previewFrame?: number;
 }) {
   // The card rests on the manifest's poster frame; hovering still sweeps all four stills.
   const poster = Math.min(TEMPLATE_PREVIEW_COUNT - 1, Math.max(0, entry.manifest.preview.poster));
-  const [frame, setFrame] = useState(poster);
+  const [hoverFrame, setFrame] = useState<number | null>(null);
+  const frame = previewFrame ?? hoverFrame ?? poster;
   const thumbRef = useRef<HTMLDivElement>(null);
   const previews = entry.previews;
   const src = previews ? previews[Math.min(frame, previews.length - 1)] : null;
@@ -102,14 +105,14 @@ export function TemplateCard({
         ref={thumbRef}
         className="template-card-thumb"
         onMouseMove={(e) => {
-          if (!previews || !thumbRef.current) return;
+          if (previewFrame !== undefined || !previews || !thumbRef.current) return;
           const rect = thumbRef.current.getBoundingClientRect();
           const t = (e.clientX - rect.left) / Math.max(1, rect.width);
           setFrame(
             Math.min(TEMPLATE_PREVIEW_COUNT - 1, Math.max(0, Math.floor(t * previews.length))),
           );
         }}
-        onMouseLeave={() => setFrame(poster)}
+        onMouseLeave={() => setFrame(null)}
       >
         {src ? (
           <img src={src} alt="" loading="lazy" decoding="async" draggable={false} />

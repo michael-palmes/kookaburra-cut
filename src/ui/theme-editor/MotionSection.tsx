@@ -105,13 +105,13 @@ export function MotionSection({
       <Field
         label="Text motion"
         icon="motion"
-        hint="The theme's default text entrance. The first card clears the block, leaving the engine default."
+        hint="The text entrance used by scenes that follow this theme."
       >
         <div className="theme-editor-text-motion">
-          {/* No reference theme: this IS the theme, so the panel's first card reads as "no block". */}
           <TextMotionPanel
             current={textAnimation}
-            theme={undefined}
+            mode="theme"
+            theme={theme}
             codedMotion={false}
             force={false}
             onForce={() => {}}

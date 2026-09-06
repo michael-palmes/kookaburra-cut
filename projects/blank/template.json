@@ -1,21 +1,35 @@
 {
-  "version": 1,
+  "level": "starter",
   "name": "Blank",
+  "order": 0,
+  "personas": ["marketer", "co-founder", "pm", "developer", "finance"],
+  "preview": {
+    "frames": [
+      {
+        "aspect": "16:9",
+        "atMs": 2000.0,
+        "scene": 0,
+        "sceneFile": "scenes/01-headline.tsx"
+      },
+      {
+        "atMs": 1600,
+        "scene": 0
+      },
+      {
+        "atMs": 2600,
+        "scene": 0
+      },
+      {
+        "atMs": 3600,
+        "scene": 0
+      }
+    ],
+    "poster": 0
+  },
+  "status": "stable",
   "tagline": "One headline on the theme's stage, ready for whatever you build next.",
   "tags": ["blank", "empty", "scratch", "headline", "start here"],
-  "personas": ["marketer", "co-founder", "pm", "developer", "finance"],
-  "level": "starter",
   "tier": "safe",
   "uses": [],
-  "preview": {
-    "poster": 0,
-    "frames": [
-      { "scene": 0, "atMs": 600 },
-      { "scene": 0, "atMs": 1600 },
-      { "scene": 0, "atMs": 2600 },
-      { "scene": 0, "atMs": 3600 }
-    ]
-  },
-  "order": 0,
-  "status": "stable"
+  "version": 1
 }

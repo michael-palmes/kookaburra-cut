@@ -4,6 +4,24 @@ Templates, scene presets and themes are reusable documents that can be opened,
 edited and saved from Kookaburra Cut. Welcome exposes the library without first
 opening a project. The source documents remain authoritative.
 
+Theme-window closing owns a single pending close operation. It flushes focused
+fields, waits for a pending save, and prompts only for remaining unsaved changes.
+Cancelled prompts and native failures leave the window available for another
+attempt; disposed listeners cannot destroy a newly opened window.
+
+In development, personal-theme menus offer **Move to app themes…**. The form
+chooses an unused bundled identity and a category. The theme editor saves its
+pending draft before the native move starts. Project, scene and comparison
+references are updated in the active workspace's projects, templates and
+presets, and in the current checkout's projects and presets. Other worktrees,
+historical packs and Git history are outside this operation.
+
+The move stages all changes and retains a journal, before/after documents and
+the original theme folder under the workspace's `.theme-moves` directory.
+Write failures roll back unchanged files and report any incomplete recovery.
+The personal theme leaves the library only after the destination and reference
+writes succeed. Other installations need a build containing the new app theme.
+
 ## Everyday workflow
 
 | Content | Create | Edit | Reuse |
@@ -70,34 +88,96 @@ Scene-level overrides remain explicit and travel with the scene.
 
 ## Theme editing
 
+Themes uses the same header search, close control and card sizing as Add a scene.
+Category icons also appear in the inspector's compact theme browsers. Right-click
+a theme for its available actions; applying and Claude editing only appear in an
+editor context. Workspace themes can be duplicated from the menu too.
+
 The separate editor holds the raw document as a draft and previews it with a
 live specimen. Its controls cover identity, colours, gradients, fonts, motion,
 text style, backgrounds, staging, lights, fixtures, shadows and effects.
 Changing one field preserves other supported and unknown document fields.
+Text style and motion show the selected preset, including None for an omitted
+block. The theme editor has no Theme default option; scene inspectors retain it.
+Opening these controls does not create settings or mark the theme as changed.
 
 New themes cannot replace an existing theme accidentally. Duplication only
 replaces a collision after the existing confirmation flow. Closing or opening
-another theme includes any focused field in the unsaved-change check.
+another theme includes any focused field in the unsaved-change check. Closing
+waits for a pending save, prompts once for dirty changes and destroys a clean
+window directly. A cancelled prompt or failed save leaves the editor usable.
+Bundled saves refresh the runtime catalogue as well as the source document.
 
 Theme preview jobs use the exact saved document and a canonical JSON cache key.
 They run serially while the editor is idle, retain deferred work when the canvas
 is busy, and restore the playhead without restoring a project the user left.
+
+## Moving personal themes into the app
+
+Development builds offer Move to app themes from personal-theme context menus.
+The name and category start from the source. The resulting bundled identity must
+be unused; the action never replaces a bundled theme. Pending editor and inspector
+writes settle first, and the raw theme document retains its catalogue and unknown
+fields while receiving its new identity.
+
+The move updates matching project, scene and comparison theme references in the
+active workspace's projects, templates and presets, plus the current checkout's
+projects and presets. Other worktrees, installations, historical packs and Git
+history remain outside this operation. Other installations need a build containing
+the newly bundled theme.
+
+Each move keeps a journal, the original theme and original reference documents in
+`<workspace>/.theme-moves/`. The destination and reference changes are staged before
+publishing; the personal theme moves into recovery storage only after those writes
+succeed. Collisions and concurrent edits fail without replacing user changes.
+Failures report the recovery path and any incomplete rollback. An interrupted
+process leaves those recovery files available for manual recovery. Successful moves
+refresh theme lists, previews and affected open documents.
 
 ## Names and previews
 
 The library manifest supplies the item's display name in both its card and the
 editor. Its underlying project document does not need a second rename write.
 
-Preset posters refresh after opening or editing saved content. The background
-render window captures the saved preview frame at 16:9 without moving the editor's
-playhead. Playback and export defer jobs; source revisions reject obsolete results.
-Workspace template posters retain their normal idle capture. Poster URLs include
-modification times so both catalogues show updated images.
+The Project inspector has a Library previews section for editable templates and
+presets. Templates have four numbered slots and a cover choice; presets have one
+preview. Capture current frame saves the playhead's scene, scene-local time and
+aspect, including the photographic and phone formats. Cards contain the image inside their standard landscape frame, without
+cropping or changing the scene layout.
 
-Bundled presets save their refreshed preview to `poster.png` beside `preset.json`.
-Both preset galleries use that image. Saving it updates the cards without reloading
-the editor. Bundled templates and initial preset art use the preview autoruns in
-[`presets/README.md`](../presets/README.md). Development cards flag stale art.
+Capture points accept an optional `aspect` and `sceneFile`. Legacy points retain
+16:9 and midpoint behaviour. New captures follow their scene file through
+reordering; app scene edits bind legacy template points before changing the scene
+list. Removed scenes or times beyond a shortened scene require recapture, while
+the previous image remains visible.
+
+Both content types use the background render queue after pending edits settle.
+Manual captures wake the renderer immediately and take priority over queued scene
+thumbnails and automatic library previews after the current render finishes.
+Changing one capture point refreshes that slot, reusing loaded content when its
+source and aspect are unchanged. Choosing a cover copies its existing image;
+preview settings do not invalidate the other slots.
+Cold captures prepare assets before awaiting scene readiness through the shared
+export preamble.
+Opening or editing saved content refreshes valid slots at their saved capture
+points. Playback and export defer jobs, and source revisions reject obsolete
+results. Rendering never moves the editor's playhead. Failed captures retain the
+previous image and report the error in the inspector.
+Capture current frame shows a spinner and stays disabled until its preview has
+refreshed or failed. Its status identifies waits for playback or export to finish.
+
+Templates store slot images in `previews/1.png` through `previews/4.png`; presets
+store `poster.png`. A template's selected slot is its gallery cover, with the
+legacy `poster.png` or `poster.jpg` retained until slot images exist. Listings
+expose all four images and refresh their URLs after capture. Native preview access
+permits only the item's validated image files, including checkout captures, before
+returning paths or announcing a completed capture. Duplication copies existing
+images and settings, including older bundled JPEG art, into the personal
+item. Packs carry those files with the item. Personal previews are editable in
+every build; bundled originals require development mode.
+
+The preview autoruns in [`presets/README.md`](../presets/README.md) also honour
+saved aspects and scene files. Initial bundled art remains a fallback.
 Standalone theme edits have a live specimen immediately; their cached gallery
 art is generated when an editor canvas next becomes available.
 
@@ -120,6 +200,9 @@ The branch review corrected the following failures:
 
 Tests exercise save-to-insert behaviour, scoped paths, native scene invariants,
 collision handling, raw theme preservation, release library actions and capture
-ownership. Native acceptance uses the repository's branch-specific launcher.
+ownership, four-slot captures, aspect dimensions, scene removal and portable
+preview images. Native acceptance uses `pnpm acceptance:app` and its exact bundle
+path. Add `--dev-authoring` to include development library actions; the provenance
+record identifies that mode. The default remains a production frontend.
 Determinism and pack round-trip requirements remain in
 [`docs/determinism.md`](determinism.md).

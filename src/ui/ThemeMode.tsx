@@ -1,9 +1,10 @@
 import { invoke } from "@tauri-apps/api/core";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { nameCollision, nameCollisionWarning } from "../engine/nameCollision";
 import { WORKSPACE_THEME_PREFIX } from "../theme/registry";
 import type { FontRef } from "../theme/tokens";
 import { FontPicker } from "./FontPicker";
+import { LibraryModalHeader } from "./LibraryModalHeader";
 import { NamePromptModal } from "./NamePromptModal";
 import { SceneMenuIcon } from "./sceneMenu";
 import {
@@ -15,6 +16,8 @@ import {
 } from "./ThemePicker";
 import { ThemeEditorIcon } from "./theme-editor/icons";
 import { canEditTheme, onThemeSaved, openThemeEditor } from "./theme-editor/themeEditorIo";
+import { onThemeMoved } from "./theme-editor/themeMove";
+import { useThemeCardMenu } from "./themeCardMenu";
 import { useEscapeClose } from "./useEscapeClose";
 
 /** Main-window theme mode: browse the theme library, apply one to the project, start a new theme, or duplicate any theme into a workspace theme (the starting point for user themes, locked decision 11); modal shell per the MediaLibrary pattern. */
@@ -28,6 +31,7 @@ export function ThemeMode({
   onApply,
   onDuplicate,
   onThemeEdited,
+  onEditInClaude,
   onClose,
 }: {
   currentThemeId?: string;
@@ -41,10 +45,21 @@ export function ThemeMode({
   onDuplicate: (name: string, baseThemeId: string, replace?: boolean) => Promise<string>;
   /** A ws theme's JSON changed; regenerate previews and reload if the project uses it. */
   onThemeEdited: (wsId: string, json: string) => Promise<void>;
+  onEditInClaude?: (choice: ThemeChoice) => void;
   onClose: () => void;
 }) {
+  const [query, setQuery] = useState("");
+  const searchRef = useRef<HTMLInputElement>(null);
   const [choices, setChoices] = useState<ThemeChoice[]>(builtinThemeChoices);
   const [selected, setSelected] = useState(initialThemeId ?? currentThemeId ?? NEW_THEME_BASE_ID);
+  useEffect(
+    () =>
+      onThemeMoved(({ oldId, themeId }) => {
+        setSelected((current) => (current === oldId ? themeId : current));
+        void listThemeChoices().then(setChoices);
+      }),
+    [],
+  );
   const [view, setView] = useState<"browse" | "duplicate" | "fonts">(
     initialView === "duplicate" ? "duplicate" : "browse",
   );
@@ -86,9 +101,9 @@ export function ThemeMode({
   else if (dup.collides) duplicateLabel = confirmReplace ? "Really replace?" : "Replace theme…";
 
   // Entering the fonts pane seeds the draft from the theme document on disk; body may be authored as a bare family string (schema v2 allows it), normalise to a FontRef.
-  const openFonts = () =>
+  const openFonts = (themeId = selected) =>
     run(async () => {
-      const slug = selected.slice(WORKSPACE_THEME_PREFIX.length);
+      const slug = themeId.slice(WORKSPACE_THEME_PREFIX.length);
       const raw = JSON.parse(await invoke<string>("read_theme", { slug }));
       const norm = (v: unknown, fallbackWeight: number): FontRef =>
         typeof v === "string"
@@ -156,9 +171,28 @@ export function ThemeMode({
     await openThemeEditor(id);
   };
 
+  const themeMenu = useThemeCardMenu({
+    onApply: onApply
+      ? (id) => run(() => recordSuccessfulThemeUse(id, () => onApply(id)))
+      : undefined,
+    onManage: ({ view: nextView, themeId }) => {
+      setSelected(themeId);
+      if (nextView === "fonts") openFonts(themeId);
+      else setView("duplicate");
+    },
+    onEditInClaude,
+    onThemeEdited,
+    onChanged: refresh,
+    onError: setError,
+  });
+
+  useEffect(() => {
+    if (view === "browse") searchRef.current?.focus();
+  }, [view]);
+
   return (
     <div
-      className="modal-overlay"
+      className={`modal-overlay${view === "browse" ? " add-scene-overlay" : ""}`}
       role="dialog"
       aria-modal="true"
       aria-label={onApply ? "Project theme" : "Themes"}
@@ -174,15 +208,39 @@ export function ThemeMode({
           onSubmit={createTheme}
         />
       )}
-      <div className="modal wizard-wide wizard-theme-wide">
-        <h2>
-          {view === "browse" && (onApply ? "Project theme" : "Themes")}
-          {view === "duplicate" && "Duplicate theme"}
-          {view === "fonts" && "Theme fonts"}
-        </h2>
+      <div
+        className={
+          view === "browse"
+            ? "modal add-scene-modal theme-library-modal"
+            : "modal wizard-wide wizard-theme-wide"
+        }
+      >
+        {view === "browse" ? (
+          <LibraryModalHeader
+            title={onApply ? "Project theme" : "Themes"}
+            query={query}
+            onQueryChange={setQuery}
+            searchRef={searchRef}
+            searchLabel="Search themes"
+            placeholder="Search themes…"
+            busy={busy}
+            onClose={onClose}
+          />
+        ) : (
+          <div className="modal-header">
+            <h2>{view === "duplicate" ? "Duplicate theme" : "Theme fonts"}</h2>
+            <button
+              type="button"
+              className="modal-close"
+              aria-label="Close"
+              onClick={onClose}
+              disabled={busy}
+            />
+          </div>
+        )}
         {view === "browse" && (
           <>
-            <p className="modal-hint">
+            <p className="modal-hint theme-library-hint">
               {onApply
                 ? "Hover a card to preview its four scenes. Applying re-themes every scene that doesn't set its own theme."
                 : "Create and improve themes for your projects. Duplicate a built-in theme to make it your own."}
@@ -192,13 +250,11 @@ export function ThemeMode({
               value={selected}
               onChange={setSelected}
               onReordered={refresh}
+              headerSearch={{ query, inputRef: searchRef }}
+              onCardContextMenu={busy ? undefined : themeMenu.openMenu}
             />
             {error && <p className="modal-error">{error}</p>}
             <div className="modal-actions">
-              <button type="button" className="btn" onClick={onClose} disabled={busy}>
-                <ThemeEditorIcon name="revert" />
-                Close
-              </button>
               <button
                 type="button"
                 className="btn"
@@ -239,7 +295,7 @@ export function ThemeMode({
               <button
                 type="button"
                 className="btn"
-                onClick={openFonts}
+                onClick={() => openFonts()}
                 disabled={busy || !selectedIsWs}
                 title={
                   selectedIsWs
@@ -395,6 +451,7 @@ export function ThemeMode({
             </div>
           </>
         )}
+        {themeMenu.menuElement}
       </div>
     </div>
   );

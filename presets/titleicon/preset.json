@@ -1,10 +1,15 @@
 {
-  "version": 1,
-  "name": "Title + icon",
-  "tagline": "A title with an icon above it",
   "category": "starters",
-  "tags": ["titleicon", "starter"],
+  "name": "Title + icon",
   "order": 50,
+  "preview": {
+    "aspect": "16:9",
+    "atMs": 1500.0,
+    "scene": 0,
+    "sceneFile": "scenes/01-titleicon.tsx"
+  },
   "status": "stable",
-  "preview": 0
+  "tagline": "A title with an icon above it",
+  "tags": ["titleicon", "starter"],
+  "version": 1
 }

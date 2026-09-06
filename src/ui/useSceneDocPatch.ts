@@ -45,6 +45,14 @@ interface SceneDocPatchQueue {
 
 const sceneDocPatchQueues = new Map<string, SceneDocPatchQueue>();
 
+export async function settleSceneDocPatches(): Promise<void> {
+  let pending = [...sceneDocPatchQueues.values()].filter((queue) => queue.pending > 0);
+  while (pending.length) {
+    await Promise.all(pending.map((queue) => queue.tail));
+    pending = [...sceneDocPatchQueues.values()].filter((queue) => queue.pending > 0);
+  }
+}
+
 function sceneDocPatchQueue(identity: string, doc: SceneDoc | undefined): SceneDocPatchQueue {
   const existing = sceneDocPatchQueues.get(identity);
   if (existing) {

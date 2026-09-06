@@ -121,6 +121,39 @@ export const PRESET_CATEGORY_ICONS: Record<string, ReactElement> = {
   ),
 };
 
+export const THEME_CATEGORY_ICONS = {
+  all: GRID_ICON,
+  recent: railIcon(
+    <>
+      <circle cx="12" cy="12" r="8" />
+      <path d="M12 7v5l3 2" />
+    </>,
+  ),
+  "my-themes": TEMPLATE_CATEGORY_ICONS.mine,
+  essentials: railIcon(
+    <>
+      <path d="M12 3l9 9-9 9-9-9z" />
+      <path d="M8 12h8" />
+    </>,
+  ),
+  "quiet-technology": railIcon(
+    <>
+      <rect x="5" y="5" width="14" height="14" rx="3" />
+      <path d="M9 9h6v6H9zM9 2v3m6-3v3M9 19v3m6-3v3" />
+    </>,
+  ),
+  "human-centred-ai": railIcon(
+    <>
+      <circle cx="12" cy="8" r="3" />
+      <path d="M6 20v-2a6 6 0 0112 0v2M3 8h2m14 0h2" />
+    </>,
+  ),
+  "maker-energy": TEMPLATE_CATEGORY_ICONS["ai-developer"],
+  "sensory-and-surreal": PRESET_CATEGORY_ICONS.features,
+  "digital-assets": PRESET_CATEGORY_ICONS.devices,
+  "modern-finance": TEMPLATE_CATEGORY_ICONS["finance-crypto"],
+};
+
 /** Dev-only card badge: the item's card art is older than its authored JSON. */
 export function LibraryStaleIcon() {
   return (

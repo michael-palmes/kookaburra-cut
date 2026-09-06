@@ -1,5 +1,6 @@
 import { createUserCatalogue, type LibraryItemInfo, listUserTemplates } from "./library";
 import { watchLibraryDocuments } from "./libraryDocuments";
+import { type LibraryPreviewPoint, parseLibraryPreviewPoint } from "./libraryPreviewPoint";
 import { fsUrl } from "./media";
 import { ledgerItems, type PreviewLedger, previewContentHash } from "./presets";
 import {
@@ -88,7 +89,7 @@ export const TEMPLATE_USE_LABELS: Record<TemplateUse, string> = {
 };
 
 /** A capture point: a scene index (that scene's middle) or an explicit scene-local time. */
-export type TemplatePreviewFrame = number | { scene: number; atMs: number };
+export type TemplatePreviewFrame = LibraryPreviewPoint;
 
 /** `projects/<slug>/template.json`. The folder name is the id, never restated here, and the file is never copied into a created project (`create_project` copies `scenes/` and `assets/` only). */
 export interface TemplateManifest {
@@ -205,12 +206,9 @@ function previewFrames(value: unknown, issues: TemplateManifestIssue[]): Templat
   }
   const out: TemplatePreviewFrame[] = [];
   value.forEach((item, i) => {
-    if (isIndex(item)) {
-      out.push(item);
-      return;
-    }
-    if (isRecord(item) && isIndex(item.scene) && typeof item.atMs === "number" && item.atMs >= 0) {
-      out.push({ scene: item.scene, atMs: item.atMs });
+    const parsed = parseLibraryPreviewPoint(item);
+    if (parsed !== null) {
+      out.push(parsed);
       return;
     }
     issues.push({
@@ -343,16 +341,31 @@ const previewGlob = import.meta.glob<string>("../assets/template-previews/*.jpg"
   import: "default",
   eager: true,
 });
+const localPreviewGlob = import.meta.glob<string>("/projects/*/previews/*.{png,jpg}", {
+  query: "?url",
+  import: "default",
+  eager: true,
+});
+const posterGlob = import.meta.glob<string>("/projects/*/poster.{png,jpg}", {
+  query: "?url",
+  import: "default",
+  eager: true,
+});
 
 /** The committed preview URLs for a template, all 4 in hover order, or null. */
-export function bundledTemplatePreviews(templateId: string): string[] | null {
-  const urls: string[] = [];
+export function bundledTemplatePreviews(templateId: string): (string | null)[] | null {
+  const urls: (string | null)[] = [];
   for (let i = 1; i <= TEMPLATE_PREVIEW_COUNT; i++) {
-    const url = previewGlob[`../assets/template-previews/${templateId}-${i}.jpg`];
-    if (!url) return null;
+    const url =
+      localPreviewGlob[`/projects/${templateId}/previews/${i}.png`] ??
+      localPreviewGlob[`/projects/${templateId}/previews/${i}.jpg`] ??
+      previewGlob[`../assets/template-previews/${templateId}-${i}.jpg`] ??
+      posterGlob[`/projects/${templateId}/poster.png`] ??
+      posterGlob[`/projects/${templateId}/poster.jpg`] ??
+      null;
     urls.push(url);
   }
-  return urls;
+  return urls.some(Boolean) ? urls : null;
 }
 
 // Dev-only staleness, the preset catalogue's ledger one tree over (src/engine/presets.ts owns the hash and the contract); a release build folds both globs away.
@@ -420,7 +433,7 @@ export interface TemplateEntry {
   primaryAspect: string;
   themeId: string;
   /** The 4 committed stills in hover order, or null while the art doesn't exist yet. */
-  previews: string[] | null;
+  previews: (string | null)[] | null;
   /** Lowercased search index: name, tagline, tags, personas, category label, uses. */
   haystack: string;
 }
@@ -459,7 +472,7 @@ export function templateProjectId(id: string): string {
 export interface TemplateEntryOverrides {
   sceneCount?: number;
   durationMs?: number;
-  previews?: string[] | null;
+  previews?: (string | null)[] | null;
 }
 
 function toEntry(
@@ -583,10 +596,18 @@ function toUserEntry(info: LibraryItemInfo): TemplateEntry | null {
   return toEntry(id, manifest, project, {
     sceneCount: info.sceneCount,
     durationMs: info.durationMs,
-    // The project's snapshot, copied in at convert time: one still, so the card shows it instead of cycling four.
-    previews: info.posterPath
-      ? [`${fsUrl(info.posterPath)}?v=${info.posterModifiedAt ?? 0}`]
-      : null,
+    previews: userTemplatePreviews(info),
+  });
+}
+
+export function userTemplatePreviews(info: LibraryItemInfo): (string | null)[] | null {
+  const poster = info.posterPath
+    ? `${fsUrl(info.posterPath)}?v=${info.posterModifiedAt ?? 0}`
+    : null;
+  if (!info.previewPaths?.some(Boolean)) return poster ? [poster] : null;
+  return Array.from({ length: 4 }, (_, slot) => {
+    const path = info.previewPaths?.[slot];
+    return path ? `${fsUrl(path)}?v=${info.previewModifiedAt?.[slot] ?? 0}` : poster;
   });
 }
 
@@ -614,16 +635,57 @@ export function subscribeTemplates(listener: () => void): () => void {
 
 let merged: { version: number; entries: TemplateEntry[] } | null = null;
 const bundledListeners = new Set<() => void>();
+const editListeners = new Set<(projectId: string) => void>();
+
+export function subscribeTemplateEdits(listener: (projectId: string) => void): () => void {
+  editListeners.add(listener);
+  return () => {
+    editListeners.delete(listener);
+  };
+}
+
+function notifyTemplateChange(): void {
+  catalogue = null;
+  merged = null;
+  staleCache.clear();
+  for (const listener of bundledListeners) listener();
+}
+
+export function updateBundledTemplateManifest(projectId: string, manifest: unknown): void {
+  if (!projectId.startsWith("template:") || !templateManifestSchema.safeParse(manifest).success)
+    return;
+  templateGlob[`/projects/${projectId.slice(9)}/template.json`] = manifest;
+  notifyTemplateChange();
+}
+
+export function updateBundledTemplatePreview(
+  projectId: string,
+  slot: number,
+  path: string,
+  mtimeMs: number | null,
+): void {
+  if (!projectId.startsWith("template:")) return;
+  localPreviewGlob[`/projects/${projectId.slice(9)}/previews/${slot + 1}.png`] =
+    `${fsUrl(path)}?v=${mtimeMs ?? 0}`;
+  notifyTemplateChange();
+}
 
 watchLibraryDocuments(
   import.meta.hot,
   "projects",
-  { "template.json": templateGlob, "project.json": projectGlob, scenes: sidecarGlob },
-  () => {
-    catalogue = null;
-    merged = null;
-    staleCache.clear();
-    for (const listener of bundledListeners) listener();
+  {
+    "template.json": templateGlob,
+    "project.json": projectGlob,
+    scenes: sidecarGlob,
+    previews: localPreviewGlob,
+    "poster.png": posterGlob,
+    "poster.jpg": posterGlob,
+    assets: {},
+  },
+  (path) => {
+    if (!path.includes("/previews/") && !/\/poster\.(png|jpg)$/.test(path))
+      for (const listener of editListeners) listener(`template:${path.split("/")[2]}`);
+    notifyTemplateChange();
   },
 );
 

@@ -1,5 +1,9 @@
 import { invoke } from "@tauri-apps/api/core";
-import { BUILTIN_THEME_CATALOGUE, THEME_LINEUP } from "./catalogue";
+import {
+  BUILTIN_THEME_CATALOGUE,
+  discoverBuiltinThemeCatalogue,
+  refreshThemeLineup,
+} from "./catalogue";
 import { parseThemeDoc } from "./schema";
 import type { Theme } from "./tokens";
 
@@ -8,6 +12,23 @@ import type { Theme } from "./tokens";
 /** Bundled themes keyed by id. */
 export const builtinThemes: Record<string, Theme> = {};
 for (const { theme } of BUILTIN_THEME_CATALOGUE) builtinThemes[theme.id] = theme;
+
+export function updateBuiltinTheme(id: string, doc: unknown): void {
+  const index = BUILTIN_THEME_CATALOGUE.findIndex((entry) => entry.id === id);
+  const entries = doc === null ? [] : discoverBuiltinThemeCatalogue({ [`${id}.json`]: doc });
+  if (index >= 0) BUILTIN_THEME_CATALOGUE.splice(index, 1, ...entries);
+  else BUILTIN_THEME_CATALOGUE.push(...entries);
+  if (entries[0]) builtinThemes[id] = entries[0].theme;
+  else delete builtinThemes[id];
+  refreshThemeLineup();
+}
+
+if (import.meta.hot) {
+  import.meta.hot.on("kookaburra:theme-document", ({ id, content }) => {
+    updateBuiltinTheme(id, content);
+    window.dispatchEvent(new Event("kookaburra:themes-changed"));
+  });
+}
 
 const fallback = builtinThemes["kookaburra-default"];
 if (!fallback) {
@@ -22,7 +43,9 @@ export { BUILTIN_THEME_CATALOGUE, THEME_LINEUP } from "./catalogue";
 
 /** The lineup as resolved Theme objects, in picker order. */
 export function lineupThemes(): Theme[] {
-  return THEME_LINEUP.map((id) => builtinThemes[id]).filter((t): t is Theme => Boolean(t));
+  return BUILTIN_THEME_CATALOGUE.filter((entry) => !entry.catalogue.hidden).map(
+    (entry) => entry.theme,
+  );
 }
 
 export const WORKSPACE_THEME_PREFIX = "ws:";

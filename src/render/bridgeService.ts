@@ -1,9 +1,10 @@
 import { invoke } from "@tauri-apps/api/core";
-import { emit } from "@tauri-apps/api/event";
+import { emit, listen } from "@tauri-apps/api/event";
 import { resolveScreenshotTimeMs } from "../engine/autorun";
 import { invalidateChangedClips } from "../engine/clips";
-import { awaitSceneHostsCommitted, captureFrameRgba, captureScreenshot } from "../engine/exporter";
+import { captureFrameRgba, captureScreenshot } from "../engine/exporter";
 import { type AspectName, FORMATS, type FormatSpec, FPS } from "../engine/format";
+import { libraryPreviewFormat } from "../engine/libraryPreviewPoint";
 import {
   bumpWorkspaceReloadToken,
   isEditableProjectId,
@@ -49,7 +50,11 @@ interface ThumbTake {
 interface PresetPosterTake {
   slug: string;
   revision: string;
+  contentRevision: string;
   atMs: number | null;
+  slot: number;
+  sceneFile: string;
+  aspect: AspectName;
 }
 
 const BRIDGE_COMMANDS = { begin: "begin_bridge_screenshot", save: "save_bridge_screenshot" };
@@ -101,7 +106,6 @@ export function startBridgeService(
         : await loadProject(targetId);
       apply(loaded, format);
       await awaitProjectCommitted(loaded);
-      await awaitSceneHostsCommitted(loaded.slots.length);
       current = { project: loaded, fingerprint, formatName: format.name };
     }
     return current.project;
@@ -213,14 +217,20 @@ export function startBridgeService(
     return true;
   };
 
-  const servePresetPoster = async (context: EditorContext | null): Promise<boolean> => {
+  const servePresetPoster = async (
+    context: EditorContext | null,
+    priorityOnly = false,
+  ): Promise<boolean> => {
     if (!context || context.exportLocked || context.playing) return false;
-    const take = await invoke<PresetPosterTake | null>("render_take_preset_poster");
+    const take = await invoke<PresetPosterTake | null>("render_take_preset_poster", {
+      priorityOnly,
+    });
     if (!take) return false;
     const finish = (retry: boolean) =>
-      invoke("render_finish_preset_poster", {
+      invoke<boolean>("render_finish_preset_poster", {
         slug: take.slug,
         revision: take.revision,
+        slot: take.slot,
         retry,
       });
     const deferred = async () => {
@@ -228,20 +238,25 @@ export function startBridgeService(
       return !latest || latest.exportLocked || latest.playing;
     };
     try {
-      const format: FormatSpec = { name: "16:9", width: 640, height: 360 };
+      const format = libraryPreviewFormat(take.aspect);
       const project = await ensureLoaded(
         projectIdForNativeSlug(take.slug),
-        FORMATS["16:9"],
-        take.revision,
+        FORMATS[take.aspect],
+        take.contentRevision,
       );
-      if (project.slots.length !== 1) throw new Error("a preset poster needs exactly one scene");
+      const scene = project.sceneFiles.findIndex(
+        (file) => file.replace(/^\.\//, "") === take.sceneFile.replace(/^\.\//, ""),
+      );
+      if (scene < 0) throw new Error("The saved scene was removed. Recapture this slot.");
+      if (take.atMs !== null && (take.atMs < 0 || take.atMs > project.slots[scene].durationMs))
+        throw new Error("The saved time is outside this scene. Recapture this slot.");
       if (await deferred()) {
         await finish(true);
         return false;
       }
       const tMs = resolveScreenshotTimeMs(
         project,
-        "0",
+        String(scene),
         take.atMs == null ? undefined : take.atMs / 1000,
       );
       const { rgba, width, height } = await captureFrameRgba(exportOptions(project, format), tMs);
@@ -255,11 +270,18 @@ export function startBridgeService(
         headers: {
           "x-kookaburra-slug": take.slug,
           "x-kookaburra-revision": take.revision,
+          "x-kookaburra-slot": String(take.slot),
         },
       });
     } catch (error) {
       current = null;
-      await finish(false).catch(() => {});
+      const owned = await finish(false).catch(() => false);
+      if (owned)
+        await emit("kookaburra://library-preview-failed", {
+          projectId: take.slug,
+          slot: take.slot,
+          error: String(error),
+        });
       console.warn(`[render-bridge] preset poster ${take.slug} failed:`, error);
     }
     return true;
@@ -280,7 +302,12 @@ export function startBridgeService(
     // Drain the whole thumb queue in one tick: the claim interval is timer-clamped (~2s hidden), so a job-per-tick cadence would stack seconds of idle wait between thumbs. Context re-reads keep the playback/export parking live mid-drain, and a capture request arriving mid-drain takes over.
     for (;;) {
       const context = await invoke<EditorContext | null>("get_editor_context").catch(() => null);
-      if (!(await serveThumb(context)) && !(await servePresetPoster(context))) return;
+      if (
+        !(await servePresetPoster(context, true)) &&
+        !(await serveThumb(context)) &&
+        !(await servePresetPoster(context))
+      )
+        return;
       const next = await invoke<BridgeRequest | null>("bridge_claim_request").catch(() => null);
       if (next) {
         await serveCapture(next);
@@ -289,14 +316,22 @@ export function startBridgeService(
     }
   };
 
-  const timer = window.setInterval(() => {
-    if (busy) return;
+  let stopped = false;
+  const run = () => {
+    if (busy || stopped) return;
     busy = true;
     void tick().finally(() => {
       busy = false;
     });
-  }, 1000);
-  return () => window.clearInterval(timer);
+  };
+  const listening = listen("kookaburra://library-preview-queued", run);
+  void listening.then(run).catch(() => {});
+  const timer = window.setInterval(run, 1000);
+  return () => {
+    stopped = true;
+    window.clearInterval(timer);
+    void listening.then((unlisten) => unlisten()).catch(() => {});
+  };
 }
 
 function exportOptions(project: LoadedProject, format: FormatSpec) {

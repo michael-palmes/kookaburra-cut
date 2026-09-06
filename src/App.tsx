@@ -73,6 +73,7 @@ import { canQueuePresetPoster, queuePresetPoster } from "./engine/presetPosters"
 import {
   refreshUserPresets,
   subscribePresetEdits,
+  updateBundledPresetManifest,
   updateBundledPresetPoster,
 } from "./engine/presets";
 import {
@@ -132,6 +133,12 @@ import { ensureSceneThumbs, listCachedSceneThumbs } from "./engine/sceneThumbs";
 import { activeSceneIndex } from "./engine/sceneTimeline";
 import { canCaptureSnapshot, captureSnapshot, type SnapshotSaved } from "./engine/snapshots";
 import { frameWorldCutout } from "./engine/stageViewport";
+import {
+  refreshUserTemplates,
+  subscribeTemplateEdits,
+  updateBundledTemplateManifest,
+  updateBundledTemplatePreview,
+} from "./engine/templates";
 import { getLiveSession } from "./engine/terminal";
 import { ensureUserThemePreviews } from "./engine/themePreviews";
 import { useUpdateCheck } from "./engine/updates";
@@ -203,6 +210,7 @@ import {
 } from "./ui/textEditFocus";
 import { duplicateThemeDoc } from "./ui/theme-editor/themeDraft";
 import { onThemeSaved, readThemeSourceDoc } from "./ui/theme-editor/themeEditorIo";
+import { onThemeMoved } from "./ui/theme-editor/themeMove";
 import { UpdateAvailableDialog, UpdateConsentDialog } from "./ui/updateDialogs";
 import {
   commitSceneDuration,
@@ -1509,7 +1517,7 @@ export default function App() {
   useEffect(
     () =>
       onThemeSaved(({ themeId, json }) => {
-        if (themeId.startsWith(WORKSPACE_THEME_PREFIX)) void handleThemeEdited(themeId, json);
+        void handleThemeEdited(themeId, json);
       }),
     [handleThemeEdited],
   );
@@ -1525,6 +1533,31 @@ export default function App() {
 
   // Bumped by the error panel's Retry: workspace manifest fixes happen outside Vite's module graph, so nothing reloads automatically; the user retries once Claude fixed the file.
   const [loadNonce, setLoadNonce] = useState(0);
+
+  useEffect(
+    () =>
+      onThemeMoved(({ oldId, themeId, json }) => {
+        setPendingThemePreviews((pending) => {
+          const next = { ...pending, [themeId]: json };
+          delete next[oldId];
+          return next;
+        });
+        bindHistory(null);
+        bindHistory(useEditorStore.getState().projectId);
+        setThemesRefreshKey((key) => key + 1);
+        setLoadNonce((key) => key + 1);
+      }),
+    [],
+  );
+
+  useEffect(() => {
+    const changed = () => {
+      setThemesRefreshKey((key) => key + 1);
+      setLoadNonce((key) => key + 1);
+    };
+    window.addEventListener("kookaburra:themes-changed", changed);
+    return () => window.removeEventListener("kookaburra:themes-changed", changed);
+  }, []);
 
   useEffect(() => {
     // Retry (stage error panel) re-runs this load with otherwise-identical inputs.
@@ -1777,21 +1810,61 @@ export default function App() {
   }, [presetForPoster, projectReady, isAutoRun]);
   useEffect(() => {
     if (isAutoRun) return;
-    return subscribePresetEdits((projectId) => {
+    const changed = (projectId: string) => {
       void queuePresetPoster(projectId).catch((error) =>
         console.warn("[preset-poster] queue:", error),
       );
-    });
+    };
+    const preset = subscribePresetEdits(changed);
+    const template = subscribeTemplateEdits(changed);
+    return () => {
+      preset();
+      template();
+    };
   }, [isAutoRun]);
   useEffect(() => {
-    const stop = listen<SnapshotSaved>("kookaburra://preset-poster-saved", ({ payload }) => {
-      if (parseProjectId(payload.projectId).scope === "preset") {
-        updateBundledPresetPoster(payload.projectId, payload.mtimeMs);
-      } else {
-        void refreshUserPresets().catch((error) => console.warn("[preset-poster] refresh:", error));
-      }
-    });
+    const stop = listen<SnapshotSaved & { slot: number }>(
+      "kookaburra://library-preview-saved",
+      ({ payload }) => {
+        const scope = parseProjectId(payload.projectId).scope;
+        if (scope === "template") {
+          updateBundledTemplatePreview(
+            payload.projectId,
+            payload.slot,
+            payload.path,
+            payload.mtimeMs,
+          );
+        } else if (scope === "ws-template") {
+          void refreshUserTemplates().catch((error) =>
+            console.warn("[library-preview] refresh:", error),
+          );
+        } else if (scope === "preset") {
+          updateBundledPresetPoster(payload.projectId, payload.mtimeMs, payload.path);
+        } else {
+          void refreshUserPresets().catch((error) =>
+            console.warn("[preset-poster] refresh:", error),
+          );
+        }
+      },
+    );
     return () => void stop.then((unlisten) => unlisten());
+  }, []);
+  useEffect(() => {
+    const stop = listen<{ projectId: string; manifest: unknown }>(
+      "kookaburra://library-previews-changed",
+      ({ payload }) => {
+        updateBundledTemplateManifest(payload.projectId, payload.manifest);
+        updateBundledPresetManifest(payload.projectId, payload.manifest);
+        void queuePresetPoster(payload.projectId).catch((error) =>
+          console.warn("[library-preview] queue:", error),
+        );
+        void refreshUserTemplates();
+        void refreshUserPresets();
+      },
+    );
+    return () => {
+      void stop.then((unlisten) => unlisten());
+    };
   }, []);
   useEffect(() => {
     if (!projectIdForSnapshot || !projectReady || isAutoRun || view !== "editor") return;
@@ -2809,6 +2882,7 @@ export default function App() {
       )}
       {themeMode && (
         <ThemeMode
+          onEditInClaude={editorView && project ? handleEditThemeInClaude : undefined}
           currentThemeId={
             editorView && project && isEditableProjectId(project.id) ? project.theme.id : undefined
           }

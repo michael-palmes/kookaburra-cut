@@ -38,17 +38,24 @@ afterEach(() => {
 
 describe("snapshot destinations", () => {
   it("keeps presets on the independent render queue in every build", () => {
-    for (const id of ["ws:demo", "ws-template:demo"]) {
+    for (const id of ["ws:demo"]) {
       expect(canCaptureSnapshot(id)).toBe(true);
     }
-    for (const id of ["demo", "template:demo", "unknown:demo", "preset:demo", "ws-preset:demo"]) {
+    for (const id of [
+      "demo",
+      "template:demo",
+      "ws-template:demo",
+      "unknown:demo",
+      "preset:demo",
+      "ws-preset:demo",
+    ]) {
       expect(canCaptureSnapshot(id)).toBe(false);
     }
   });
 
   function prepareCapture(beforeEncoded?: () => void) {
     vi.useFakeTimers();
-    const project = { id: "ws-template:demo", totalMs: 2000 } as import("./project").LoadedProject;
+    const project = { id: "ws:demo", totalMs: 2000 } as import("./project").LoadedProject;
     vi.mocked(canvasCommittedProject).mockReturnValue(project);
     vi.mocked(canvasCommittedClockMs).mockImplementation(() => useClockStore.getState().currentMs);
     const bytes = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]);
@@ -74,10 +81,10 @@ describe("snapshot destinations", () => {
     return { project, bytes };
   }
 
-  it("publishes a template poster with its exact scoped identity and native metadata", async () => {
+  it("publishes a project snapshot with its native identity and metadata", async () => {
     const { project, bytes } = prepareCapture();
     vi.mocked(invoke).mockResolvedValue({
-      path: "/workspace/templates/demo/poster.png",
+      path: "/workspace/demo/.kookaburra/snapshot.png",
       mtimeMs: 42,
     });
     const saved = vi.fn();
@@ -85,11 +92,11 @@ describe("snapshot destinations", () => {
     await vi.runAllTimersAsync();
     expect(await result).toBe(true);
     expect(invoke).toHaveBeenCalledWith("write_snapshot", bytes, {
-      headers: { "x-kookaburra-slug": "ws-template:demo" },
+      headers: { "x-kookaburra-slug": "demo" },
     });
     expect(saved).toHaveBeenCalledWith({
-      projectId: "ws-template:demo",
-      path: "/workspace/templates/demo/poster.png",
+      projectId: "ws:demo",
+      path: "/workspace/demo/.kookaburra/snapshot.png",
       mtimeMs: 42,
     });
     expect(useClockStore.getState().currentMs).toBe(1500);
