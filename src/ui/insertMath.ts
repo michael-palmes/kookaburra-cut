@@ -53,6 +53,13 @@ export function gapFromPlacement(value: string, count: number): number {
   return Math.max(0, Math.min(count, after + 1));
 }
 
+/** The readout for a gap: the edges by name, an interior gap by the scene it follows (an empty strip reads as the end). */
+export function placementText(gap: number, names: readonly string[]): string {
+  if (gap >= names.length) return "At the end";
+  if (gap <= 0) return "At the start";
+  return `After ${names[gap - 1]}`;
+}
+
 /** Auto-scroll velocity (px per frame) while a drag sits within `band` px of a viewport edge, ramping linearly to `maxSpeed` at the edge; 0 elsewhere. */
 export function edgeScrollVelocity(
   pointerX: number,

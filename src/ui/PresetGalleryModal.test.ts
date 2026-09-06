@@ -5,12 +5,15 @@ import {
   type PresetCategoryId,
   type PresetEntry,
   type PresetManifest,
+  presetCategoryCounts,
   searchPresets,
 } from "../engine/presets";
 import type { ProjectManifest } from "../engine/project";
 import {
-  groupPresetsByCategory,
-  presetsForSource,
+  categoryRows,
+  effectiveChip,
+  insertButtonLabel,
+  presetsForPool,
   resolvePresetSelection,
 } from "./PresetGalleryModal";
 
@@ -35,17 +38,18 @@ const project: ProjectManifest = {
 const entry = (id: string, category?: PresetCategoryId): PresetEntry =>
   buildPresetEntry(id, { ...MANIFEST, name: id, ...(category ? { category } : {}) }, project);
 
-describe("the shared App and My preset catalogue", () => {
-  it("uses the canonical App entries with identical names and previews", () => {
+describe("the shared App and My preset pool", () => {
+  it("shows every canonical App entry beside the user's own by default", () => {
     const app = listPresets();
     const mine = entry("ws:my-title");
-    const visible = presetsForSource([...app, mine], "app");
+    const visible = presetsForPool([...app, mine], false);
 
-    expect(visible).toHaveLength(21);
-    expect(visible).toEqual(app);
-    visible.forEach((preset, index) => {
+    expect(visible).toHaveLength(22);
+    expect(visible.slice(0, 21)).toEqual(app);
+    visible.slice(0, 21).forEach((preset, index) => {
       expect(preset).toBe(app[index]);
     });
+    expect(visible[21]).toBe(mine);
     expect(visible.slice(0, 15).map((preset) => preset.id)).toEqual([
       "device",
       "deviceonly",
@@ -65,22 +69,22 @@ describe("the shared App and My preset catalogue", () => {
     ]);
   });
 
-  it("shows workspace copies only under My presets without hiding pack App entries", () => {
+  it("narrows to workspace copies under My presets only, keeping pack entries in the default pool", () => {
     const app = entry("title");
     const mine = entry("ws:title");
     const pack = { ...entry("pack-title"), source: "pack" as const };
 
-    expect(presetsForSource([app, mine, pack], "app")).toEqual([app, pack]);
-    expect(presetsForSource([app, mine, pack], "mine")).toEqual([mine]);
+    expect(presetsForPool([app, mine, pack], false)).toEqual([app, mine, pack]);
+    expect(presetsForPool([app, mine, pack], true)).toEqual([mine]);
   });
 });
 
 describe("preset selection across catalogue updates", () => {
-  it("defaults to the first preset only before an explicit selection", () => {
+  it("selects nothing before an explicit pick", () => {
     const first = entry("first");
     const selected = entry("selected");
 
-    expect(resolvePresetSelection([first, selected], null)).toBe(first);
+    expect(resolvePresetSelection([first, selected], null)).toBeNull();
     expect(resolvePresetSelection([first, selected], selected.id)).toBe(selected);
     expect(resolvePresetSelection([], null)).toBeNull();
   });
@@ -94,12 +98,12 @@ describe("preset selection across catalogue updates", () => {
     expect(resolvePresetSelection(updated, other.id)).toBe(other);
   });
 
-  it("activates the focused card after a reorder instead of the new default", () => {
+  it("follows the picked identity through a reorder", () => {
     const focused = entry("focused");
     const other = entry("other");
     const reordered = [other, focused];
 
-    expect(resolvePresetSelection(reordered, null)).toBe(other);
+    expect(resolvePresetSelection(reordered, null)).toBeNull();
     expect(resolvePresetSelection(reordered, focused.id)).toBe(focused);
     expect(resolvePresetSelection([other], focused.id)).toBeNull();
   });
@@ -117,29 +121,61 @@ describe("preset selection across catalogue updates", () => {
   });
 });
 
-describe("groupPresetsByCategory", () => {
-  it("keeps the catalogue's category order and drops empty groups", () => {
-    const groups = groupPresetsByCategory([
+describe("the category rail", () => {
+  it("lists All first, then only the categories with presets, in catalogue order", () => {
+    const counts = presetCategoryCounts([
       entry("closer", "closers"),
       entry("opener", "openers"),
       entry("chart", "stats-charts"),
+      entry("loose"),
     ]);
-    expect(groups.map((g) => g.id)).toEqual(["openers", "stats-charts", "closers"]);
-    expect(groups.map((g) => g.label)).toEqual(["Openers", "Stats & charts", "Closers"]);
+    const rows = categoryRows(counts);
+
+    expect(rows.map((row) => row.id)).toEqual(["all", "openers", "stats-charts", "closers"]);
+    expect(rows.map((row) => row.label)).toEqual(["All", "Openers", "Stats & charts", "Closers"]);
+    expect(rows.map((row) => row.count)).toEqual([4, 1, 1, 1]);
   });
 
-  it("files uncategorised presets in a trailing group", () => {
-    const groups = groupPresetsByCategory([entry("loose"), entry("opener", "openers")]);
-    expect(groups.map((g) => g.id)).toEqual(["openers", "uncategorised"]);
-    expect(groups[1].entries.map((e) => e.id)).toEqual(["loose"]);
+  it("hides the categories the search empties", () => {
+    const counts = presetCategoryCounts(
+      [entry("Launch opener", "openers"), entry("Closing line", "closers")],
+      { query: "launch" },
+    );
+
+    expect(categoryRows(counts).map((row) => row.id)).toEqual(["all", "openers"]);
+    expect(categoryRows(counts)[0].count).toBe(1);
   });
 
-  it("preserves the order entries arrive in inside a group", () => {
-    const groups = groupPresetsByCategory([entry("second", "openers"), entry("first", "openers")]);
-    expect(groups[0].entries.map((e) => e.id)).toEqual(["second", "first"]);
+  it("falls back to All when the chosen category is emptied, and returns once it fills again", () => {
+    const entries = [entry("Launch opener", "openers"), entry("Closing line", "closers")];
+    const searched = presetCategoryCounts(entries, { query: "launch" });
+    const cleared = presetCategoryCounts(entries);
+
+    expect(effectiveChip("closers", searched)).toBe("all");
+    expect(effectiveChip("openers", searched)).toBe("openers");
+    expect(effectiveChip("all", searched)).toBe("all");
+    expect(effectiveChip("closers", cleared)).toBe("closers");
   });
 
-  it("returns nothing for an empty catalogue", () => {
-    expect(groupPresetsByCategory([])).toEqual([]);
+  it("returns only All for an empty catalogue", () => {
+    expect(categoryRows(presetCategoryCounts([]))).toEqual([{ id: "all", label: "All", count: 0 }]);
+  });
+});
+
+describe("insertButtonLabel", () => {
+  const names = ["Headline", "Device 2", "Outro"];
+
+  it("stays generic until a preset is chosen", () => {
+    expect(insertButtonLabel(false, 2, names)).toBe("Insert scene");
+  });
+
+  it("names the gap once a preset is chosen", () => {
+    expect(insertButtonLabel(true, 0, names)).toBe("Insert at the start");
+    expect(insertButtonLabel(true, 2, names)).toBe("Insert after Device 2");
+    expect(insertButtonLabel(true, 3, names)).toBe("Insert at the end");
+  });
+
+  it("keeps the scene name's own casing", () => {
+    expect(insertButtonLabel(true, 1, ["ACME launch", "Outro"])).toBe("Insert after ACME launch");
   });
 });

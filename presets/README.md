@@ -69,7 +69,7 @@ ledger below.
 
 ## The bundled catalogue
 
-New scene and App presets share all 21 entries. Scene starters contains the 15
+Add a scene and App presets share all 21 entries. Scene starters contains the 15
 original pictured options, in their existing order: Device + title, Device only,
 Comparison, Title, Title + icon, App version, Layered screenshot, Chart, Video,
 Image, Video window, Cutout start, Cutout end, Overlay title and Blank. Each has

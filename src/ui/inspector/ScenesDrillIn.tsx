@@ -317,7 +317,7 @@ export function ScenesDrillIn({
               type="button"
               className="btn"
               disabled={busy}
-              title="Insert a scene from your preset library"
+              title="Choose a preset to add as a scene"
               onClick={() =>
                 onInsertPreset(
                   selection.length > 0 ? selection[selection.length - 1] + 1 : scenes.length,
@@ -325,7 +325,7 @@ export function ScenesDrillIn({
               }
             >
               <SceneMenuIcon id="insert-preset" />
-              From preset
+              Add a scene
             </button>
             <button
               type="button"

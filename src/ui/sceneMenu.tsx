@@ -252,7 +252,7 @@ export function sceneMenuItems(opts: {
       ? [
           {
             id: "insert-preset",
-            label: "Insert from preset…",
+            label: "Add a scene…",
             icon: <SceneMenuIcon id="insert-preset" />,
             onSelect: opts.onInsertPreset,
           } as ContextMenuItem,

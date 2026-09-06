@@ -36,11 +36,11 @@ function footer(html: string) {
 }
 
 describe("ScenesDrillIn", () => {
-  it("seats Copy from, From preset, Duplicate and Delete buttons in the footer", () => {
+  it("seats Copy from, Add a scene, Duplicate and Delete buttons in the footer", () => {
     const html = render();
     expect(html).toContain('class="inspector-drill-actions"');
     expect(html).toContain("Copy from…<");
-    expect(html).toContain("From preset");
+    expect(html).toContain("Add a scene");
     expect(html).toContain(">Duplicate<");
     expect(html).toContain(">Delete<");
     expect(html).toContain('class="btn btn-left"');
@@ -64,7 +64,7 @@ describe("ScenesDrillIn", () => {
   it("keeps presets editable without additive scene actions", () => {
     const html = render(false, false);
     expect(html).not.toContain("Copy from…<");
-    expect(html).not.toContain("From preset");
+    expect(html).not.toContain("Add a scene");
     expect(html).not.toContain(">Duplicate<");
     expect(html).toContain("Title");
     expect(html).toContain(">Delete<");

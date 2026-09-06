@@ -433,11 +433,11 @@ export function TerminalPanel({
           <button
             type="button"
             className="btn primary btn-small"
-            title="Choose a scene from App presets or My presets"
+            title="Choose a preset to add as a scene"
             onClick={() => openSceneWizard("new-scene")}
           >
             {railIcon(<path d="M12 5v14M5 12h14" />)}
-            New scene
+            Add a scene
           </button>
         )}
         <button
@@ -479,7 +479,7 @@ export function TerminalPanel({
                   {item.label}
                 </button>
               ))}
-              {/* New session lives in the overflow now (the quick-action row is New scene · Edit scene · ⋯). */}
+              {/* New session lives in the overflow now (the quick-action row is Add a scene · Edit scene · ⋯). */}
               <button
                 type="button"
                 role="menuitem"
