@@ -178,6 +178,7 @@ import { animationLaneMasterOpen, clearSecondaryLaneSelections } from "./ui/lane
 import { MediaLibrary } from "./ui/MediaLibrary";
 import { PlaybackBar } from "./ui/PlaybackBar";
 import { PresentModal } from "./ui/PresentModal";
+import { ALL_PROJECTS } from "./ui/projectLibrary";
 import { SceneTerminalOverlay } from "./ui/SceneTerminalOverlay";
 import { SceneWebsiteOverlay } from "./ui/SceneWebsiteOverlay";
 import { ShortcutsSheet } from "./ui/ShortcutsSheet";
@@ -343,6 +344,8 @@ export default function App() {
   );
   const [welcomeRefresh, setWelcomeRefresh] = useState(0);
   const [welcomeSearchNonce, setWelcomeSearchNonce] = useState(0);
+  const [welcomeRowId, setWelcomeRowId] = useState(ALL_PROJECTS);
+  const [welcomeQuery, setWelcomeQuery] = useState("");
 
   // False from a real project switch until the settle sequence paints the opening frame (the stage loading overlay renders while false); doc/timing/SWR reloads never reset it. Autorun never uses it.
   const [projectReady, setProjectReady] = useState(false);
@@ -1320,6 +1323,8 @@ export default function App() {
     if (isAutoRun) return;
     const unlisten = listen<string>("kookaburra://workspace-moved", (e) => {
       setSettings((prev) => ({ ...(prev ?? {}), workspaceRoot: e.payload }));
+      setWelcomeRowId(ALL_PROJECTS);
+      setWelcomeQuery("");
       backToProjects();
     });
     return () => {
@@ -1331,6 +1336,8 @@ export default function App() {
     async (parent: string | null) => {
       const root = await initWorkspace(parent);
       setSettings((prev) => ({ ...(prev ?? {}), workspaceRoot: root }));
+      setWelcomeRowId(ALL_PROJECTS);
+      setWelcomeQuery("");
       setWelcomeRefresh((n) => n + 1);
       await refreshProjects();
     },
@@ -2212,6 +2219,10 @@ export default function App() {
 
       {view === "welcome" && (
         <Welcome
+          activeRowId={welcomeRowId}
+          onActiveRowChange={setWelcomeRowId}
+          query={welcomeQuery}
+          onQueryChange={setWelcomeQuery}
           onOpenProject={openProject}
           onOpenThemes={() => setThemeMode({})}
           onNewProject={(options) => {
