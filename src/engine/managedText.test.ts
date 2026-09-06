@@ -647,6 +647,67 @@ describe("managed text ownership", () => {
   });
 });
 
+describe("embedded scene labels", () => {
+  const embeddedText = [
+    { key: "beforeLabel", text: "Before", type: "subtitle" as const },
+    { key: "afterLabel", text: "After", type: "subtitle" as const },
+    { key: "cardCaption", text: "Card caption", type: "subtitle" as const },
+  ];
+
+  it.each([undefined, "template" as const, "stack" as const])(
+    "keeps label rows outside the %s text layout",
+    (layout) => {
+      const doc: SceneDoc = {
+        version: 1,
+        text: { title: "Heading", beforeLabel: "", afterLabel: "Current design" },
+        ...(layout
+          ? {
+              managedText: {
+                ...(layout === "template" ? { layout } : {}),
+                items: [{ key: "title", type: "title" as const, text: "Heading" }],
+              },
+            }
+          : {}),
+      };
+      const model = deriveManagedTextModel(doc, [], { embeddedText });
+      const groups = resolveManagedTextGroups(
+        model.items,
+        doc.managedText?.groups,
+        model.chromeKeys,
+      );
+      expect(groups.map((group) => group.label ?? group.key)).toEqual([
+        "text",
+        "Before label",
+        "After label",
+        "Card Caption",
+      ]);
+      expect(groups.slice(1).every((group) => group.chrome)).toBe(true);
+      expect(model.items.find((item) => item.key === "beforeLabel")?.text).toBe("");
+      expect(model.items.find((item) => item.key === "afterLabel")?.text).toBe("Current design");
+      expect(materialiseManagedText(doc, model).managedText?.items.map((item) => item.key)).toEqual(
+        ["title"],
+      );
+    },
+  );
+
+  it("deduplicates labels also supplied by comparison chips or managed copy", () => {
+    const model = deriveManagedTextModel(
+      {
+        version: 1,
+        managedText: { items: [{ key: "beforeLabel", type: "title", text: "Owned" }] },
+        compare: { chrome: { chips: true } },
+      },
+      [],
+      { embeddedText },
+    );
+    expect(model.items.filter((item) => item.key === "beforeLabel")).toEqual([
+      { key: "beforeLabel", type: "title", text: "Owned" },
+    ]);
+    expect(model.items.filter((item) => item.key === "afterLabel")).toHaveLength(1);
+    expect(model.chromeKeys).toEqual(["afterLabel", "cardCaption"]);
+  });
+});
+
 describe("comparison chip rows", () => {
   const chipsOn: SceneDoc = { version: 1, compare: { chrome: { chips: true } } };
 

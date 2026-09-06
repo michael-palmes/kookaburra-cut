@@ -47,6 +47,12 @@ position. The new scene is selected for editing when insertion finishes.
 Changing a preset updates both galleries and future insertions. Scenes already
 inserted in projects remain independent copies, including their local edits.
 
+Embedded scene labels, including the Comparison preset's Before and After,
+appear as individual Text rows. Their controls edit copy, font, colour, size,
+position, rotation and line spacing. Position starts from the scene's placement;
+clearing the copy hides a label while keeping its row available to restore it.
+These rows keep their scene layout when other text is added or rearranged.
+
 A preset contains exactly one scene. Its editor cannot add, duplicate or remove
 that scene, and native mutations enforce the invariant. Inserting a preset
 writes the scene at its final position in one manifest update.

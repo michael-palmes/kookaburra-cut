@@ -129,6 +129,7 @@ import { useTextEditStore } from "../../engine/textEditStore";
 import {
   codedTextLookNames,
   codedTextMotionNames,
+  embeddedTextRegistrations,
   nonSceneTextKeys,
   textKeyColorDefaults,
   useTextKeyRegistry,
@@ -2455,6 +2456,10 @@ export function SceneTab({
     void registeredText;
     return nonSceneTextKeys(sceneIndex);
   }, [registeredText, sceneIndex]);
+  const embeddedText = useMemo(() => {
+    void registeredText;
+    return embeddedTextRegistrations(sceneIndex);
+  }, [registeredText, sceneIndex]);
   const textColourDefaults = useMemo(() => {
     void registeredText;
     return textKeyColorDefaults(sceneIndex);
@@ -2462,9 +2467,10 @@ export function SceneTab({
   const textVirtualOptionsForDoc = useCallback(
     (candidate: SceneDoc) => ({
       ...managedTextVirtualOptionsForFrame(mergeFrameSpec(project.deckFrame, candidate.frame)),
+      embeddedText,
       ...(excludedTextKeys.length > 0 ? { excludedKeys: excludedTextKeys } : {}),
     }),
-    [project.deckFrame, excludedTextKeys],
+    [project.deckFrame, excludedTextKeys, embeddedText],
   );
   const managedTextModel = useMemo(
     () =>

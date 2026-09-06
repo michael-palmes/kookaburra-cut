@@ -25,7 +25,7 @@ export function CompareChips() {
   const spec = useMemo(() => compareSpecOf(doc ?? undefined, theme), [doc, theme]);
   const side = ctx?.side === "b" ? "b" : "a";
   const textKey = compareChipTextKeyForSide(side);
-  const label = useSceneText(textKey, compareChipFallbackText(textKey), "embedded");
+  const label = useSceneText(textKey, compareChipFallbackText(textKey), "managed");
   // The colour swatch's default and the "this key takes style overrides" mark, for the text drill.
   const sceneIndex = ctx?.index;
   const mountId = useId();
@@ -34,7 +34,7 @@ export function CompareChips() {
     useTextKeyRegistry.getState().register(sceneIndex, textKey, mountId, {
       colorDefault: compareChipDefaultColour(textKey),
       styleCapable: true,
-      managedTextRole: "embedded",
+      managedTextRole: "managed",
     });
     return () => useTextKeyRegistry.getState().unregister(sceneIndex, textKey, mountId);
   }, [sceneIndex, textKey, mountId]);

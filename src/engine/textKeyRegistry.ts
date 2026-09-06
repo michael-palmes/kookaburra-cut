@@ -220,6 +220,23 @@ export function virtualManagedTextRegistrations(index: number): VirtualManagedTe
     .filter((entry): entry is VirtualManagedTextRegistration => entry !== null);
 }
 
+/** Embedded copy stays scene-rendered while exposing the standard text controls. */
+export function embeddedTextRegistrations(index: number): VirtualManagedTextRegistration[] {
+  const scene = useTextKeyRegistry.getState().keys[index] ?? {};
+  return Object.entries(scene).flatMap(([key, entry]) => {
+    if (sceneOwnedEntry(entry).count > 0) return [];
+    const embedded = mergedEntry(
+      Object.fromEntries(
+        Object.entries(entry.mounts).filter(
+          ([, registration]) => registration.managedTextRole === "embedded",
+        ),
+      ),
+    );
+    if (embedded.resolvedText === undefined || embedded.managedType === "icon") return [];
+    return [{ key, text: embedded.resolvedText, type: "subtitle" as const }];
+  });
+}
+
 function titleCaseKey(key: string): string {
   return key
     .split(/[-_]/)

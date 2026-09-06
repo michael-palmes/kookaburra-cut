@@ -1,10 +1,10 @@
 import type { TextAnimationSpec, TextLookSpec } from "../theme/tokens";
 import type { FormatInfo } from "../toolkit/types";
 import {
-  type CompareChipTextKey,
   compareChipGroupKey,
   compareChipRowLabel,
   compareChipTextItems,
+  isCompareChipGroupKey,
   isCompareChipTextKey,
 } from "./compareChipText";
 import type {
@@ -19,6 +19,7 @@ import type {
 
 export const DEFAULT_MANAGED_TEXT_GROUP_KEY = "text";
 export const MANAGED_TEXT_FRAME_ICON_KEY = "frameIcon";
+const EMBEDDED_TEXT_GROUP_PREFIX = "embedded-text:";
 
 const MANAGED_TEXT_STYLE_SUFFIXES = [
   "Color",
@@ -34,7 +35,7 @@ export interface ResolvedManagedTextGroup extends SceneManagedTextGroup {
   items: SceneManagedTextItem[];
   /** True only for the compatibility group derived from an absent `groups` field. */
   implicit: boolean;
-  /** Host chrome (the comparison's label chips): editable as its own row, never written to the document's groups. */
+  /** Scene-rendered labels are editable rows, excluded from the document's managed groups. */
   chrome?: boolean;
   /** Fixed row name for chrome groups, replacing the numbered "Text n" label. */
   label?: string;
@@ -46,15 +47,21 @@ export function isChromeManagedTextGroup(group: ResolvedManagedTextGroup): boole
 }
 
 function chromeGroup(item: SceneManagedTextItem): ResolvedManagedTextGroup {
-  const key = item.key as CompareChipTextKey;
+  const key = item.key;
+  const compare = isCompareChipTextKey(key);
+  const words = key.replace(/([a-z0-9])([A-Z])/g, "$1 $2").replace(/[-_]+/g, " ");
   return {
-    key: compareChipGroupKey(key),
+    key: compare ? compareChipGroupKey(key) : `${EMBEDDED_TEXT_GROUP_PREFIX}${key}`,
     itemKeys: [item.key],
     items: [item],
     implicit: false,
     chrome: true,
-    label: compareChipRowLabel(key),
+    label: compare ? compareChipRowLabel(key) : words.charAt(0).toUpperCase() + words.slice(1),
   };
+}
+
+export function isSceneRenderedTextGroupKey(key: string): boolean {
+  return isCompareChipGroupKey(key) || key.startsWith(EMBEDDED_TEXT_GROUP_PREFIX);
 }
 
 export function managedTextPoints(item: SceneManagedTextItem): SceneManagedTextPoint[] {
@@ -76,7 +83,7 @@ export function resolveManagedTextGroups(
   const chrome = new Set(
     items
       .map((item) => item.key)
-      .filter((key) => isCompareChipTextKey(key) && (chromeKeys?.includes(key) ?? true)),
+      .filter((key) => chromeKeys?.includes(key) ?? isCompareChipTextKey(key)),
   );
   const chromeGroups = items.filter((item) => chrome.has(item.key)).map(chromeGroup);
   const contentItems = items
@@ -173,6 +180,8 @@ export interface VirtualManagedTextRegistration {
 }
 
 export interface VirtualManagedTextOptions {
+  /** Embedded labels shown in Text without transferring their rendering to the managed stack. */
+  embeddedText?: readonly VirtualManagedTextRegistration[];
   /** Resolved header icon. Overlay callers pass the frame icon; plain scenes can omit it. */
   icon?: string;
   iconKey?: string;
@@ -185,7 +194,7 @@ export interface VirtualManagedTextOptions {
 export interface ManagedTextModel {
   ownership: "authored" | "managed";
   items: SceneManagedTextItem[];
-  /** Keys of the host chrome this model appended: the only items writers drop, whatever an item is named. */
+  /** Scene-rendered label keys excluded when writers materialise the managed stack. */
   chromeKeys: readonly string[];
   textStyle?: Record<string, string | number>;
   textAnimationOverrides?: Record<string, TextAnimationSpec>;
@@ -561,9 +570,20 @@ function capturedModelFields(capture: VirtualMetadataCapture): Partial<ManagedTe
 }
 
 /** Host chrome the document itself contributes, appended to every ownership branch so a takeover cannot lose the rows. Keys already carried by the block win. */
-function chromeItemsFor(doc: SceneDoc, used: Iterable<string>): SceneManagedTextItem[] {
+function chromeItemsFor(
+  doc: SceneDoc,
+  used: Iterable<string>,
+  embeddedText: readonly VirtualManagedTextRegistration[] = [],
+): SceneManagedTextItem[] {
   const taken = new Set(used);
-  return compareChipTextItems(doc).filter((item) => !taken.has(item.key));
+  const items = embeddedText.map((registration) =>
+    virtualItem({ ...registration, text: doc.text?.[registration.key] ?? registration.text }),
+  );
+  return [...items, ...compareChipTextItems(doc)].filter((item) => {
+    if (!item.key.trim() || taken.has(item.key)) return false;
+    taken.add(item.key);
+    return true;
+  });
 }
 
 /** Derives the pre-takeover list without writing. Existing managed blocks always win, including present-empty. */
@@ -574,7 +594,7 @@ export function deriveManagedTextModel(
 ): ManagedTextModel {
   if (doc.managedText !== undefined) {
     const blockKeys = doc.managedText.items.map((item) => item.key);
-    const chrome = chromeItemsFor(doc, blockKeys);
+    const chrome = chromeItemsFor(doc, blockKeys, options.embeddedText);
     const managedItems =
       chrome.length > 0 ? [...doc.managedText.items, ...chrome] : doc.managedText.items;
     const chromeKeys = chrome.map((item) => item.key);
@@ -638,7 +658,7 @@ export function deriveManagedTextModel(
     );
     captureVirtualMetadata(registration, capture);
   }
-  for (const item of chromeItemsFor(doc, used)) {
+  for (const item of chromeItemsFor(doc, used, options.embeddedText)) {
     used.add(item.key);
     chromeKeys.push(item.key);
     items.push(item);
