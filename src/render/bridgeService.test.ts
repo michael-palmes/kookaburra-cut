@@ -96,6 +96,11 @@ describe("hidden library preview rendering", () => {
     ["9:16", 360, 640],
     ["1:1", 640, 640],
     ["4:5", 512, 640],
+    ["5:4", 640, 512],
+    ["3:2", 640, 427],
+    ["2:3", 427, 640],
+    ["phone", 294, 640],
+    ["phone-landscape", 640, 294],
   ] as const)(
     "captures the saved %s aspect independently of the editor",
     async (aspect, width, height) => {

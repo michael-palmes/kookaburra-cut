@@ -92,11 +92,36 @@ Opening these controls does not create settings or mark the theme as changed.
 
 New themes cannot replace an existing theme accidentally. Duplication only
 replaces a collision after the existing confirmation flow. Closing or opening
-another theme includes any focused field in the unsaved-change check.
+another theme includes any focused field in the unsaved-change check. Closing
+waits for a pending save, prompts once for dirty changes and destroys a clean
+window directly. A cancelled prompt or failed save leaves the editor usable.
+Bundled saves refresh the runtime catalogue as well as the source document.
 
 Theme preview jobs use the exact saved document and a canonical JSON cache key.
 They run serially while the editor is idle, retain deferred work when the canvas
 is busy, and restore the playhead without restoring a project the user left.
+
+## Moving personal themes into the app
+
+Development builds offer Move to app themes from personal-theme context menus.
+The name and category start from the source. The resulting bundled identity must
+be unused; the action never replaces a bundled theme. Pending editor and inspector
+writes settle first, and the raw theme document retains its catalogue and unknown
+fields while receiving its new identity.
+
+The move updates matching project, scene and comparison theme references in the
+active workspace's projects, templates and presets, plus the current checkout's
+projects and presets. Other worktrees, installations, historical packs and Git
+history remain outside this operation. Other installations need a build containing
+the newly bundled theme.
+
+Each move keeps a journal, the original theme and original reference documents in
+`<workspace>/.theme-moves/`. The destination and reference changes are staged before
+publishing; the personal theme moves into recovery storage only after those writes
+succeed. Collisions and concurrent edits fail without replacing user changes.
+Failures report the recovery path and any incomplete rollback. An interrupted
+process leaves those recovery files available for manual recovery. Successful moves
+refresh theme lists, previews and affected open documents.
 
 ## Names and previews
 
@@ -106,7 +131,7 @@ editor. Its underlying project document does not need a second rename write.
 The Project inspector has a Library previews section for editable templates and
 presets. Templates have four numbered slots and a cover choice; presets have one
 preview. Capture current frame saves the playhead's scene, scene-local time and
-aspect. Cards contain the image inside their standard landscape frame, without
+aspect, including the photographic and phone formats. Cards contain the image inside their standard landscape frame, without
 cropping or changing the scene layout.
 
 Capture points accept an optional `aspect` and `sceneFile`. Legacy points retain

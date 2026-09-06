@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { emit, listen } from "@tauri-apps/api/event";
 import { devWriteBuiltinTheme, readBuiltinTheme } from "../../engine/library";
 import { BUILTIN_THEME_CATALOGUE } from "../../theme/catalogue";
+import { updateBuiltinTheme } from "../../theme/registry";
 import { isRecord, type ThemeDoc, themeScope } from "./themeDraft";
 
 /** The theme editor's IO seam: read the RAW document text for either scope, write it back, and tell the other windows a theme changed. Kept out of the components so the window's React tree never invokes directly. */
@@ -69,7 +70,12 @@ export function emitThemeSaved(payload: ThemeSavedPayload): Promise<void> {
 
 /** Subscribe to saves from the editor window; returns a disposer suitable for a `useEffect` cleanup. */
 export function onThemeSaved(handler: (payload: ThemeSavedPayload) => void): () => void {
-  const pending = listen<ThemeSavedPayload>(THEME_SAVED_EVENT, (event) => handler(event.payload));
+  const pending = listen<ThemeSavedPayload>(THEME_SAVED_EVENT, ({ payload }) => {
+    if (disposed) return;
+    if (themeScope(payload.themeId).kind === "bundled")
+      updateBuiltinTheme(payload.themeId, JSON.parse(payload.json));
+    handler(payload);
+  });
   let disposed = false;
   void pending.then((un) => {
     if (disposed) un();

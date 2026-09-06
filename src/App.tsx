@@ -1509,7 +1509,7 @@ export default function App() {
   useEffect(
     () =>
       onThemeSaved(({ themeId, json }) => {
-        if (themeId.startsWith(WORKSPACE_THEME_PREFIX)) void handleThemeEdited(themeId, json);
+        void handleThemeEdited(themeId, json);
       }),
     [handleThemeEdited],
   );

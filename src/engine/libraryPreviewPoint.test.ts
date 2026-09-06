@@ -11,6 +11,11 @@ describe("library preview capture points", () => {
     ["9:16", 360, 640],
     ["1:1", 640, 640],
     ["4:5", 512, 640],
+    ["5:4", 640, 512],
+    ["3:2", 640, 427],
+    ["2:3", 427, 640],
+    ["phone", 294, 640],
+    ["phone-landscape", 640, 294],
   ] as const)("preserves %s without cropping", (aspect, width, height) => {
     const point = { scene: 2, sceneFile: "scenes/hero.tsx", atMs: 321.5, aspect };
     expect(parseLibraryPreviewPoint(point)).toEqual(point);

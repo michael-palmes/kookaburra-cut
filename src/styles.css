@@ -2627,6 +2627,7 @@ button.beat-status {
 }
 
 .theme-library-modal .theme-browser-results {
+  max-height: none;
   padding: 14px;
 }
 

@@ -38,6 +38,11 @@ pub(crate) fn dimensions(aspect: &str) -> Result<(u32, u32), String> {
         "9:16" => Ok((360, 640)),
         "1:1" => Ok((640, 640)),
         "4:5" => Ok((512, 640)),
+        "5:4" => Ok((640, 512)),
+        "3:2" => Ok((640, 427)),
+        "2:3" => Ok((427, 640)),
+        "phone" => Ok((294, 640)),
+        "phone-landscape" => Ok((640, 294)),
         _ => Err("Choose a supported preview aspect.".into()),
     }
 }
@@ -502,6 +507,11 @@ mod tests {
             ("9:16", (360, 640)),
             ("1:1", (640, 640)),
             ("4:5", (512, 640)),
+            ("5:4", (640, 512)),
+            ("3:2", (640, 427)),
+            ("2:3", (427, 640)),
+            ("phone", (294, 640)),
+            ("phone-landscape", (640, 294)),
         ] {
             assert_eq!(dimensions(aspect).unwrap(), size);
         }
