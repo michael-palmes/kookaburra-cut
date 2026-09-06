@@ -33,6 +33,7 @@ import {
   readThemeDocText,
   writeThemeDocText,
 } from "./themeEditorIo";
+import { createThemeWindowClose } from "./themeWindowClose";
 
 /** The theme editor window shell: section nav on the left, the active form in the centre, the specimen on the right. It edits ONE raw theme document at a time, held as a JSON draft, so the catalogue block and any block without a form yet survive every save. */
 
@@ -148,22 +149,28 @@ export function ThemeEditorApp() {
     };
   }, [openTarget]);
 
-  // Unsaved-changes guard on close, the video editor's pattern.
   useEffect(() => {
-    const pending = getCurrentWindow().onCloseRequested(async (event) => {
-      await pendingSave.current;
-      flushSync(() => {
-        if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
-      });
-      if (!dirtyRef.current) return;
-      const close = await ask("This theme has unsaved changes. Close anyway?", {
-        title: "Unsaved changes",
-        kind: "warning",
-      });
-      if (!close) event.preventDefault();
+    const window = getCurrentWindow();
+    const close = createThemeWindowClose({
+      pendingSave: () => pendingSave.current,
+      flushInput: () =>
+        flushSync(() => {
+          if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+        }),
+      isDirty: () => dirtyRef.current,
+      confirmDiscard: () =>
+        ask("This theme has unsaved changes. Close anyway?", {
+          title: "Unsaved changes",
+          kind: "warning",
+        }),
+      destroy: () => window.destroy(),
+      onError: (e) => setError(`Couldn't close this theme: ${String(e)}`),
     });
+    const pending = window.onCloseRequested(close.onClose);
+    void pending.catch((e) => setError(`Couldn't register the close handler: ${String(e)}`));
     return () => {
-      void pending.then((un) => un());
+      close.dispose();
+      void pending.then((un) => un()).catch(() => {});
     };
   }, []);
 
@@ -192,7 +199,7 @@ export function ThemeEditorApp() {
     setError(null);
     const saving = writeThemeDocText(themeId, text)
       .then(async () => {
-        setSavedText(text);
+        flushSync(() => setSavedText(text));
         await emitThemeSaved({ themeId, json: text });
       })
       .catch((e) => setError(String(e)))

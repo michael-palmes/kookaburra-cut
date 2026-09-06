@@ -4,6 +4,11 @@ Templates, scene presets and themes are reusable documents that can be opened,
 edited and saved from Kookaburra Cut. Welcome exposes the library without first
 opening a project. The source documents remain authoritative.
 
+Theme-window closing owns a single pending close operation. It flushes focused
+fields, waits for a pending save, and prompts only for remaining unsaved changes.
+Cancelled prompts and native failures leave the window available for another
+attempt; disposed listeners cannot destroy a newly opened window.
+
 ## Everyday workflow
 
 | Content | Create | Edit | Reuse |
