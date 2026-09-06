@@ -35,9 +35,9 @@ export function contentHmr(): Plugin {
           }
           return [];
         }
-        if (/^(presets|projects)\/[^/]+\/poster\.png\.\d+\.\d+\.tmp$/.test(path)) return [];
+        if (/^(presets|projects)\/.+\.tmp$/.test(path)) return [];
         const match =
-          /^(presets|projects)\/([^/]+)\/(project\.json|preset\.json|template\.json|poster\.png|scenes\/[^/]+\.json|assets\/.+)$/.exec(
+          /^(presets|projects)\/([^/]+)\/(project\.json|preset\.json|template\.json|poster\.(?:png|jpg)|previews\/[^/]+\.(?:png|jpg)|scenes\/[^/]+\.json|assets\/.+)$/.exec(
             path,
           );
         if (!match) return;
@@ -63,7 +63,9 @@ export function contentHmr(): Plugin {
             const content: unknown =
               type === "delete"
                 ? null
-                : document === "poster.png" || document.startsWith("assets/")
+                : document.startsWith("poster.") ||
+                    document.startsWith("previews/") ||
+                    document.startsWith("assets/")
                   ? `/${path}?v=${timestamp}`
                   : JSON.parse(await read());
             if (revisions.get(path) !== revision) return [];

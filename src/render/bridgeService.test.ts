@@ -2,7 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { resolveScreenshotTimeMs } from "../engine/autorun";
 import { captureFrameRgba } from "../engine/exporter";
-import { FORMATS } from "../engine/format";
+import { type AspectName, FORMATS } from "../engine/format";
 import { loadProject } from "../engine/project";
 import { withProjectAssetRevision } from "../engine/projectAssetRevision";
 import { startBridgeService } from "./bridgeService";
@@ -29,7 +29,14 @@ vi.mock("../engine/project", () => ({
 
 let stop: (() => void) | undefined;
 let context: { playing: boolean; exportLocked: boolean; aspect: string };
-let jobs: { slug: string; revision: string; atMs: number | null }[];
+let jobs: {
+  slug: string;
+  revision: string;
+  atMs: number | null;
+  slot: number;
+  sceneFile: string;
+  aspect: AspectName;
+}[];
 const project = {
   id: "preset:hero",
   slots: [{ durationMs: 4000, startMs: 0 }],
@@ -42,10 +49,20 @@ beforeEach(() => {
   vi.useFakeTimers();
   vi.stubGlobal("window", globalThis);
   context = { playing: false, exportLocked: false, aspect: "9:16" };
-  jobs = [{ slug: "preset:hero", revision: "saved-a", atMs: 2400 }];
+  jobs = [
+    {
+      slug: "preset:hero",
+      revision: "saved-a",
+      atMs: 2400,
+      slot: 0,
+      sceneFile: "hero.tsx",
+      aspect: "16:9",
+    },
+  ];
   vi.mocked(invoke).mockImplementation(async (command) => {
     if (command === "get_editor_context") return { ...context };
     if (command === "render_take_preset_poster") return jobs.shift() ?? null;
+    if (command === "render_finish_preset_poster") return true;
     return null;
   });
   vi.mocked(loadProject).mockResolvedValue(project);
@@ -73,7 +90,50 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe("hidden preset poster rendering", () => {
+describe("hidden library preview rendering", () => {
+  it.each([
+    ["16:9", 640, 360],
+    ["9:16", 360, 640],
+    ["1:1", 640, 640],
+    ["4:5", 512, 640],
+  ] as const)(
+    "captures the saved %s aspect independently of the editor",
+    async (aspect, width, height) => {
+      jobs[0].aspect = aspect;
+      stop = startBridgeService(vi.fn());
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(captureFrameRgba).toHaveBeenCalledWith(
+        expect.objectContaining({ format: { name: aspect, width, height } }),
+        2400,
+      );
+      expect(context.aspect).toBe("9:16");
+    },
+  );
+
+  it("captures all template slots using their saved scene identity", async () => {
+    const fixture = {
+      ...project,
+      id: "ws-template:demo",
+      sceneFiles: ["intro.tsx", "hero.tsx"],
+      slots: [
+        { index: 0, id: "intro", startMs: 0, endMs: 1000, durationMs: 1000 },
+        { index: 1, id: "hero", startMs: 1000, endMs: 5000, durationMs: 4000 },
+      ],
+    };
+    vi.mocked(loadProject).mockResolvedValue(fixture);
+    jobs = [0, 1, 2, 3].map((slot) => ({ ...jobs[0], slug: fixture.id, slot }));
+    stop = startBridgeService(vi.fn());
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(captureFrameRgba).toHaveBeenCalledTimes(4);
+    expect(resolveScreenshotTimeMs).toHaveBeenCalledWith(fixture, "1", 2.4);
+    expect(
+      vi
+        .mocked(invoke)
+        .mock.calls.filter(([name]) => name === "write_preset_poster")
+        .map(([, , options]) => new Headers(options?.headers).get("x-kookaburra-slot")),
+    ).toEqual(["0", "1", "2", "3"]);
+  });
+
   it("uses the canonical landscape format and saved preview independently of editor aspect", async () => {
     const apply = vi.fn();
     stop = startBridgeService(apply);
@@ -92,7 +152,11 @@ describe("hidden preset poster rendering", () => {
       2400,
     );
     expect(invoke).toHaveBeenCalledWith("write_preset_poster", expect.any(Uint8Array), {
-      headers: { "x-kookaburra-slug": "preset:hero", "x-kookaburra-revision": "saved-a" },
+      headers: {
+        "x-kookaburra-slug": "preset:hero",
+        "x-kookaburra-revision": "saved-a",
+        "x-kookaburra-slot": "0",
+      },
     });
   });
 
@@ -123,6 +187,7 @@ describe("hidden preset poster rendering", () => {
       expect(invoke).toHaveBeenCalledWith("render_finish_preset_poster", {
         slug: "preset:hero",
         revision: "saved-a",
+        slot: 0,
         retry: true,
       });
       expect(vi.mocked(invoke).mock.calls.some(([name]) => name === "write_preset_poster")).toBe(
@@ -152,7 +217,7 @@ describe("hidden preset poster rendering", () => {
   });
 
   it("abandons an untrusted workspace preset and continues serving the next job", async () => {
-    jobs.unshift({ slug: "ws-preset:untrusted", revision: "unapproved", atMs: null });
+    jobs.unshift({ ...jobs[0], slug: "ws-preset:untrusted", revision: "unapproved", atMs: null });
     vi.mocked(loadProject).mockRejectedValueOnce(new Error("Project was not opened"));
     const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
     try {
@@ -165,11 +230,16 @@ describe("hidden preset poster rendering", () => {
       expect(invoke).toHaveBeenCalledWith("render_finish_preset_poster", {
         slug: "ws-preset:untrusted",
         revision: "unapproved",
+        slot: 0,
         retry: false,
       });
       expect(captureFrameRgba).toHaveBeenCalledTimes(1);
       expect(invoke).toHaveBeenCalledWith("write_preset_poster", expect.any(Uint8Array), {
-        headers: { "x-kookaburra-slug": "preset:hero", "x-kookaburra-revision": "saved-a" },
+        headers: {
+          "x-kookaburra-slug": "preset:hero",
+          "x-kookaburra-revision": "saved-a",
+          "x-kookaburra-slot": "0",
+        },
       });
     } finally {
       warning.mockRestore();

@@ -129,7 +129,7 @@ export interface SnapshotSaved {
 
 export function canCaptureSnapshot(projectId: string): boolean {
   const { scope } = parseProjectId(projectId);
-  return scope === "workspace" || scope === "ws-template";
+  return scope === "workspace";
 }
 
 /** Saves a representative frame to the project's snapshot or the library item's authoritative poster. */

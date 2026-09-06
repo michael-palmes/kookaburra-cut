@@ -73,6 +73,7 @@ import { canQueuePresetPoster, queuePresetPoster } from "./engine/presetPosters"
 import {
   refreshUserPresets,
   subscribePresetEdits,
+  updateBundledPresetManifest,
   updateBundledPresetPoster,
 } from "./engine/presets";
 import {
@@ -132,6 +133,12 @@ import { ensureSceneThumbs, listCachedSceneThumbs } from "./engine/sceneThumbs";
 import { activeSceneIndex } from "./engine/sceneTimeline";
 import { canCaptureSnapshot, captureSnapshot, type SnapshotSaved } from "./engine/snapshots";
 import { frameWorldCutout } from "./engine/stageViewport";
+import {
+  refreshUserTemplates,
+  subscribeTemplateEdits,
+  updateBundledTemplateManifest,
+  updateBundledTemplatePreview,
+} from "./engine/templates";
 import { getLiveSession } from "./engine/terminal";
 import { ensureUserThemePreviews } from "./engine/themePreviews";
 import { useUpdateCheck } from "./engine/updates";
@@ -1794,21 +1801,61 @@ export default function App() {
   }, [presetForPoster, projectReady, isAutoRun]);
   useEffect(() => {
     if (isAutoRun) return;
-    return subscribePresetEdits((projectId) => {
+    const changed = (projectId: string) => {
       void queuePresetPoster(projectId).catch((error) =>
         console.warn("[preset-poster] queue:", error),
       );
-    });
+    };
+    const preset = subscribePresetEdits(changed);
+    const template = subscribeTemplateEdits(changed);
+    return () => {
+      preset();
+      template();
+    };
   }, [isAutoRun]);
   useEffect(() => {
-    const stop = listen<SnapshotSaved>("kookaburra://preset-poster-saved", ({ payload }) => {
-      if (parseProjectId(payload.projectId).scope === "preset") {
-        updateBundledPresetPoster(payload.projectId, payload.mtimeMs);
-      } else {
-        void refreshUserPresets().catch((error) => console.warn("[preset-poster] refresh:", error));
-      }
-    });
+    const stop = listen<SnapshotSaved & { slot: number }>(
+      "kookaburra://library-preview-saved",
+      ({ payload }) => {
+        const scope = parseProjectId(payload.projectId).scope;
+        if (scope === "template") {
+          updateBundledTemplatePreview(
+            payload.projectId,
+            payload.slot,
+            payload.path,
+            payload.mtimeMs,
+          );
+        } else if (scope === "ws-template") {
+          void refreshUserTemplates().catch((error) =>
+            console.warn("[library-preview] refresh:", error),
+          );
+        } else if (scope === "preset") {
+          updateBundledPresetPoster(payload.projectId, payload.mtimeMs, payload.path);
+        } else {
+          void refreshUserPresets().catch((error) =>
+            console.warn("[preset-poster] refresh:", error),
+          );
+        }
+      },
+    );
     return () => void stop.then((unlisten) => unlisten());
+  }, []);
+  useEffect(() => {
+    const stop = listen<{ projectId: string; manifest: unknown }>(
+      "kookaburra://library-previews-changed",
+      ({ payload }) => {
+        updateBundledTemplateManifest(payload.projectId, payload.manifest);
+        updateBundledPresetManifest(payload.projectId, payload.manifest);
+        void queuePresetPoster(payload.projectId).catch((error) =>
+          console.warn("[library-preview] queue:", error),
+        );
+        void refreshUserTemplates();
+        void refreshUserPresets();
+      },
+    );
+    return () => {
+      void stop.then((unlisten) => unlisten());
+    };
   }, []);
   useEffect(() => {
     if (!projectIdForSnapshot || !projectReady || isAutoRun || view !== "editor") return;

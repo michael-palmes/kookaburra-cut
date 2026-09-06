@@ -64,6 +64,8 @@
     "resources": {
       "../projects": "projects",
       "../presets": "presets",
+      "../src/assets/template-previews": "template-previews",
+      "../src/assets/preset-previews": "preset-previews",
       "../.agents/skills": "claude-skills"
     },
     "icon": [

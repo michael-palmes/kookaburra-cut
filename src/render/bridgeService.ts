@@ -4,6 +4,7 @@ import { resolveScreenshotTimeMs } from "../engine/autorun";
 import { invalidateChangedClips } from "../engine/clips";
 import { awaitSceneHostsCommitted, captureFrameRgba, captureScreenshot } from "../engine/exporter";
 import { type AspectName, FORMATS, type FormatSpec, FPS } from "../engine/format";
+import { libraryPreviewFormat } from "../engine/libraryPreviewPoint";
 import {
   bumpWorkspaceReloadToken,
   isEditableProjectId,
@@ -50,6 +51,9 @@ interface PresetPosterTake {
   slug: string;
   revision: string;
   atMs: number | null;
+  slot: number;
+  sceneFile: string;
+  aspect: AspectName;
 }
 
 const BRIDGE_COMMANDS = { begin: "begin_bridge_screenshot", save: "save_bridge_screenshot" };
@@ -218,9 +222,10 @@ export function startBridgeService(
     const take = await invoke<PresetPosterTake | null>("render_take_preset_poster");
     if (!take) return false;
     const finish = (retry: boolean) =>
-      invoke("render_finish_preset_poster", {
+      invoke<boolean>("render_finish_preset_poster", {
         slug: take.slug,
         revision: take.revision,
+        slot: take.slot,
         retry,
       });
     const deferred = async () => {
@@ -228,20 +233,25 @@ export function startBridgeService(
       return !latest || latest.exportLocked || latest.playing;
     };
     try {
-      const format: FormatSpec = { name: "16:9", width: 640, height: 360 };
+      const format = libraryPreviewFormat(take.aspect);
       const project = await ensureLoaded(
         projectIdForNativeSlug(take.slug),
-        FORMATS["16:9"],
+        FORMATS[take.aspect],
         take.revision,
       );
-      if (project.slots.length !== 1) throw new Error("a preset poster needs exactly one scene");
+      const scene = project.sceneFiles.findIndex(
+        (file) => file.replace(/^\.\//, "") === take.sceneFile.replace(/^\.\//, ""),
+      );
+      if (scene < 0) throw new Error("The saved scene was removed. Recapture this slot.");
+      if (take.atMs !== null && (take.atMs < 0 || take.atMs > project.slots[scene].durationMs))
+        throw new Error("The saved time is outside this scene. Recapture this slot.");
       if (await deferred()) {
         await finish(true);
         return false;
       }
       const tMs = resolveScreenshotTimeMs(
         project,
-        "0",
+        String(scene),
         take.atMs == null ? undefined : take.atMs / 1000,
       );
       const { rgba, width, height } = await captureFrameRgba(exportOptions(project, format), tMs);
@@ -255,11 +265,18 @@ export function startBridgeService(
         headers: {
           "x-kookaburra-slug": take.slug,
           "x-kookaburra-revision": take.revision,
+          "x-kookaburra-slot": String(take.slot),
         },
       });
     } catch (error) {
       current = null;
-      await finish(false).catch(() => {});
+      const owned = await finish(false).catch(() => false);
+      if (owned)
+        await emit("kookaburra://library-preview-failed", {
+          projectId: take.slug,
+          slot: take.slot,
+          error: String(error),
+        });
       console.warn(`[render-bridge] preset poster ${take.slug} failed:`, error);
     }
     return true;

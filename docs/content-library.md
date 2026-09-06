@@ -103,16 +103,34 @@ is busy, and restore the playhead without restoring a project the user left.
 The library manifest supplies the item's display name in both its card and the
 editor. Its underlying project document does not need a second rename write.
 
-Preset posters refresh after opening or editing saved content. The background
-render window captures the saved preview frame at 16:9 without moving the editor's
-playhead. Playback and export defer jobs; source revisions reject obsolete results.
-Workspace template posters retain their normal idle capture. Poster URLs include
-modification times so both catalogues show updated images.
+The Project inspector has a Library previews section for editable templates and
+presets. Templates have four numbered slots and a cover choice; presets have one
+preview. Capture current frame saves the playhead's scene, scene-local time and
+aspect. Cards contain the image inside their standard landscape frame, without
+cropping or changing the scene layout.
 
-Bundled presets save their refreshed preview to `poster.png` beside `preset.json`.
-Both preset galleries use that image. Saving it updates the cards without reloading
-the editor. Bundled templates and initial preset art use the preview autoruns in
-[`presets/README.md`](../presets/README.md). Development cards flag stale art.
+Capture points accept an optional `aspect` and `sceneFile`. Legacy points retain
+16:9 and midpoint behaviour. New captures follow their scene file through
+reordering; app scene edits bind legacy template points before changing the scene
+list. Removed scenes or times beyond a shortened scene require recapture, while
+the previous image remains visible.
+
+Both content types use the background render queue after pending edits settle.
+Opening or editing saved content refreshes valid slots at their saved capture
+points. Playback and export defer jobs, and source revisions reject obsolete
+results. Rendering never moves the editor's playhead. Failed captures retain the
+previous image and report the error in the inspector.
+
+Templates store slot images in `previews/1.png` through `previews/4.png`; presets
+store `poster.png`. A template's selected slot is its gallery cover, with the
+legacy `poster.png` or `poster.jpg` retained until slot images exist. Listings
+expose all four images and refresh their URLs after capture. Duplication copies
+existing images and settings, including older bundled JPEG art, into the personal
+item. Packs carry those files with the item. Personal previews are editable in
+every build; bundled originals require development mode.
+
+The preview autoruns in [`presets/README.md`](../presets/README.md) also honour
+saved aspects and scene files. Initial bundled art remains a fallback.
 Standalone theme edits have a live specimen immediately; their cached gallery
 art is generated when an editor canvas next becomes available.
 
@@ -135,6 +153,9 @@ The branch review corrected the following failures:
 
 Tests exercise save-to-insert behaviour, scoped paths, native scene invariants,
 collision handling, raw theme preservation, release library actions and capture
-ownership. Native acceptance uses the repository's branch-specific launcher.
+ownership, four-slot captures, aspect dimensions, scene removal and portable
+preview images. Native acceptance uses `pnpm acceptance:app` and its exact bundle
+path. Add `--dev-authoring` to include development library actions; the provenance
+record identifies that mode. The default remains a production frontend.
 Determinism and pack round-trip requirements remain in
 [`docs/determinism.md`](determinism.md).

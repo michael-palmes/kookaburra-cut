@@ -36,6 +36,7 @@ import { commitFocusedInspectorEdit } from "../textEditFocus";
 import { useThemeCardMenu } from "../themeCardMenu";
 import { useEscapeClose } from "../useEscapeClose";
 import { InspectorNavigationShell } from "./InspectorNavigationShell";
+import { LibraryPreviewsSection } from "./LibraryPreviewsSection";
 import { MusicDrillIn } from "./MusicDrillIn";
 import { ProjectCopyDrill } from "./ProjectCopyDrill";
 import { ProjectCopyFromDrill } from "./ProjectCopyFromDrill";
@@ -664,6 +665,7 @@ export function InspectorPanel({
           </>
         ) : tab === "project" || !editable ? (
           <div className="inspector-rows">
+            <LibraryPreviewsSection key={project.id} project={project} aspect={aspect} />
             {rows.map((row) => (
               <div key={row.id} className="inspector-row-anchor">
                 <ActionRow

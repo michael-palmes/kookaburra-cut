@@ -11,6 +11,7 @@ mod fonts;
 mod global_screenshots;
 mod gradients;
 mod library;
+mod library_previews;
 mod loudness;
 mod media;
 mod objects;
@@ -1232,6 +1233,8 @@ macro_rules! kookaburra_handler {
             render_win::render_take_thumb_job,
             render_win::thumbs_pending_count,
             preset_posters::render_submit_preset_poster,
+            library_previews::get_library_previews,
+            library_previews::set_library_preview,
             preset_posters::render_reset_preset_posters,
             preset_posters::render_take_preset_poster,
             preset_posters::render_finish_preset_poster,

@@ -9,6 +9,10 @@ export const PRODUCTION_PRODUCT_NAME = "Kookaburra Cut";
 export const PRODUCTION_BUNDLE_IDENTIFIER = "com.mpalmes.kookaburracut";
 export const PRODUCTION_APP_PATH = "/Applications/Kookaburra Cut.app";
 
+export function acceptanceBuildEnvironment(environment, developmentAuthoring) {
+  return { ...environment, NODE_ENV: developmentAuthoring ? "development" : "production" };
+}
+
 function canonicalPath(path) {
   try {
     return realpathSync.native(path);
@@ -135,7 +139,10 @@ function run() {
     ],
     {
       cwd: before.worktree,
-      env: { ...process.env, CARGO_TARGET_DIR: targetDir },
+      env: acceptanceBuildEnvironment(
+        { ...process.env, CARGO_TARGET_DIR: targetDir },
+        process.argv.includes("--dev-authoring"),
+      ),
       stdio: "inherit",
     },
   );
@@ -154,6 +161,7 @@ function run() {
   mkdirSync(workspaceRoot, { recursive: true });
   const result = {
     ...after,
+    developmentAuthoring: process.argv.includes("--dev-authoring"),
     productName: identity.productName,
     bundleIdentifier: identity.bundleIdentifier,
     bundlePath: canonicalPath(bundlePath),

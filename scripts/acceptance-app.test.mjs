@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import {
+  acceptanceBuildEnvironment,
   assertCheckoutMatches,
   assertSafeTarget,
   createAcceptanceIdentity,
@@ -8,6 +9,14 @@ import {
   PRODUCTION_BUNDLE_IDENTIFIER,
   PRODUCTION_PRODUCT_NAME,
 } from "./acceptance-app.mjs";
+
+test("development authoring is explicit and recorded separately from normal acceptance", () => {
+  assert.equal(acceptanceBuildEnvironment({}, false).NODE_ENV, "production");
+  assert.deepEqual(acceptanceBuildEnvironment({ CARGO_TARGET_DIR: "/target" }, true), {
+    CARGO_TARGET_DIR: "/target",
+    NODE_ENV: "development",
+  });
+});
 
 describe("acceptance app identity", () => {
   test("is stable per worktree and unique between worktrees", () => {

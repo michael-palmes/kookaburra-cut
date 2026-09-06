@@ -872,6 +872,26 @@ fn templates_and_presets_round_trip_into_another_workspace() {
     let recipient = TempDir::new("lib-recipient");
     build_library_workspace(author.path());
 
+    let capture =
+        serde_json::json!({"scene":0,"sceneFile":"scenes/01-hero.tsx","atMs":600,"aspect":"9:16"});
+    let template_path = author.path().join("templates/acme-promo/template.json");
+    let mut template: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&template_path).unwrap()).unwrap();
+    template["preview"] = serde_json::json!({"poster":2,"frames":[capture.clone(),capture.clone(),capture.clone(),capture.clone()]});
+    write_file(&template_path, &serde_json::to_vec(&template).unwrap());
+    for slot in 1..=4 {
+        write_file(
+            &author
+                .path()
+                .join(format!("templates/acme-promo/previews/{slot}.png")),
+            format!("preview {slot}").as_bytes(),
+        );
+    }
+    write_file(
+        &author.path().join("presets/stat-hero/poster.png"),
+        b"preset preview",
+    );
+
     let selection = PackSelection {
         templates: vec!["acme-promo".into()],
         presets: vec!["stat-hero".into()],
@@ -965,6 +985,24 @@ fn templates_and_presets_round_trip_into_another_workspace() {
     assert_eq!(landed(ItemKind::Preset).outcome, ItemOutcome::Added);
 
     let root = recipient.path();
+    for slot in 1..=4 {
+        assert_eq!(
+            std::fs::read(root.join(format!("templates/acme-promo-2/previews/{slot}.png")))
+                .unwrap(),
+            format!("preview {slot}").as_bytes()
+        );
+    }
+    assert_eq!(
+        std::fs::read(root.join("presets/stat-hero/poster.png")).unwrap(),
+        b"preset preview"
+    );
+    let imported: serde_json::Value = serde_json::from_slice(
+        &std::fs::read(root.join("templates/acme-promo-2/template.json")).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(imported["preview"]["poster"], 2);
+    assert_eq!(imported["preview"]["frames"][2], capture);
+
     // The incumbent template is untouched, the incoming one landed beside it.
     assert_eq!(
         field(&root.join("templates/acme-promo/template.json"), "name"),

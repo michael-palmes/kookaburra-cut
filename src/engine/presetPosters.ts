@@ -4,12 +4,19 @@ import { ensureProjectTrusted } from "./projectTrust";
 
 export function canQueuePresetPoster(projectId: string, dev = import.meta.env.DEV): boolean {
   const { scope } = parseProjectId(projectId);
-  return scope === "ws-preset" || (dev && scope === "preset");
+  return (
+    scope === "ws-preset" ||
+    scope === "ws-template" ||
+    (dev && (scope === "preset" || scope === "template"))
+  );
 }
 
 export async function queuePresetPoster(projectId: string): Promise<void> {
   if (!canQueuePresetPoster(projectId)) return;
+  const { settlePendingContentEdits } = await import("../ui/settleContentEdits");
+  await settlePendingContentEdits();
   const slug = nativeProjectSlug(projectId);
-  if (parseProjectId(projectId).scope === "ws-preset") await ensureProjectTrusted(slug, slug);
+  if (["ws-preset", "ws-template"].includes(parseProjectId(projectId).scope))
+    await ensureProjectTrusted(slug, slug);
   await invoke("render_submit_preset_poster", { slug });
 }

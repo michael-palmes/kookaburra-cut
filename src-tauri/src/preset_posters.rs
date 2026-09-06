@@ -17,6 +17,9 @@ pub struct PosterJob {
     slug: String,
     revision: String,
     at_ms: Option<f64>,
+    slot: usize,
+    scene_file: String,
+    aspect: String,
     #[serde(skip)]
     claimed: bool,
 }
@@ -28,18 +31,23 @@ pub(crate) struct PosterQueue {
 }
 
 impl PosterQueue {
+    pub(crate) fn invalidate(&mut self, slug: &str, slot: usize) {
+        self.completed.remove(&job_key(slug, slot));
+    }
+
     fn submit(&mut self, job: PosterJob, poster_exists: bool) {
-        if poster_exists && self.completed.get(&job.slug) == Some(&job.revision) {
+        let key = job_key(&job.slug, job.slot);
+        if poster_exists && self.completed.get(&key) == Some(&job.revision) {
             return;
         }
         if self
             .jobs
-            .get(&job.slug)
+            .get(&key)
             .is_some_and(|j| j.revision == job.revision)
         {
             return;
         }
-        self.jobs.insert(job.slug.clone(), job);
+        self.jobs.insert(key, job);
     }
 
     fn take(&mut self) -> Option<PosterJob> {
@@ -48,22 +56,26 @@ impl PosterQueue {
         Some(job.clone())
     }
 
-    fn owns(&self, slug: &str, revision: &str) -> bool {
+    fn owns(&self, slug: &str, slot: usize, revision: &str) -> bool {
         self.jobs
-            .get(slug)
+            .get(&job_key(slug, slot))
             .is_some_and(|j| j.claimed && j.revision == revision)
     }
 
-    fn finish(&mut self, slug: &str, revision: &str, retry: bool) {
-        if !self.owns(slug, revision) {
+    fn finish(&mut self, slug: &str, slot: usize, revision: &str, retry: bool) {
+        if !self.owns(slug, slot, revision) {
             return;
         }
         if retry {
-            self.jobs.get_mut(slug).unwrap().claimed = false;
+            self.jobs.get_mut(&job_key(slug, slot)).unwrap().claimed = false;
         } else {
-            self.jobs.remove(slug);
+            self.jobs.remove(&job_key(slug, slot));
         }
     }
+}
+
+fn job_key(slug: &str, slot: usize) -> String {
+    format!("{slug}\0{slot}")
 }
 
 #[derive(Default)]
@@ -112,7 +124,8 @@ fn source_revision(
     preset_bytes: Option<&[u8]>,
     theme_paths: impl Fn(&str) -> Option<PathBuf>,
 ) -> Result<String, String> {
-    let mut files = vec![dir.join("project.json"), dir.join("preset.json")];
+    let manifest = dir.join(crate::library_previews::manifest_name(dir));
+    let mut files = vec![dir.join("project.json"), manifest.clone()];
     let mut folders = vec![dir.join("scenes"), dir.join("assets")];
     while let Some(folder) = folders.pop() {
         let Ok(entries) = std::fs::read_dir(&folder) else {
@@ -152,7 +165,7 @@ fn source_revision(
             file.extension().and_then(|e| e.to_str()),
             Some("json" | "tsx" | "ts" | "js")
         ) {
-            let bytes = match preset_bytes.filter(|_| file == dir.join("preset.json")) {
+            let bytes = match preset_bytes.filter(|_| file == manifest) {
                 Some(bytes) => bytes.to_vec(),
                 None => {
                     std::fs::read(&file).map_err(|e| format!("reading {}: {e}", file.display()))?
@@ -188,30 +201,20 @@ fn source_revision(
         .collect())
 }
 
-fn saved_job(
+fn saved_jobs(
     app: &AppHandle,
     settings: &State<'_, SettingsState>,
     slug: &str,
-) -> Result<(PosterJob, PathBuf), String> {
-    let path = workspace::preset_poster_target(app, settings, slug)?;
-    let dir = path.parent().ok_or("preset has no folder")?;
-    let preset_bytes = std::fs::read(dir.join("preset.json")).map_err(|e| e.to_string())?;
-    let manifest: Value = serde_json::from_slice(&preset_bytes).map_err(|e| e.to_string())?;
-    let preview = manifest
-        .get("preview")
-        .ok_or("preset has no preview frame")?;
-    let scene = preview
-        .as_u64()
-        .or_else(|| preview.get("scene").and_then(Value::as_u64));
-    if scene != Some(0) {
-        return Err("a preset poster must reference scene 0".into());
-    }
-    let at_ms = preview
-        .get("atMs")
-        .map(|v| v.as_f64().ok_or("preview atMs must be a number"))
-        .transpose()?;
+) -> Result<Vec<(PosterJob, PathBuf)>, String> {
+    let dir = crate::library_previews::target(app, settings, slug)?;
+    let manifest_name = crate::library_previews::manifest_name(&dir);
+    let bytes = std::fs::read(dir.join(manifest_name)).map_err(|e| e.to_string())?;
+    let manifest: Value = serde_json::from_slice(&bytes).map_err(|e| e.to_string())?;
+    let project_bytes = std::fs::read(dir.join("project.json")).map_err(|e| e.to_string())?;
+    let project: Value = serde_json::from_slice(&project_bytes).map_err(|e| e.to_string())?;
+    let (_, points) = crate::library_previews::points(&manifest, manifest_name == "template.json")?;
     let root = workspace::require_root(app, settings)?;
-    let revision = source_revision(dir, Some(&preset_bytes), |id| {
+    let revision = source_revision(&dir, Some(&bytes), |id| {
         if let Some(slug) = id.strip_prefix("ws:") {
             workspace::validate_slug(slug).ok()?;
             Some(root.join("themes").join(slug).join("theme.json"))
@@ -226,15 +229,28 @@ fn saved_job(
             None
         }
     })?;
-    Ok((
-        PosterJob {
-            slug: slug.to_owned(),
-            revision,
-            at_ms,
-            claimed: false,
-        },
-        path,
-    ))
+    if std::fs::read(dir.join("project.json")).map_err(|e| e.to_string())? != project_bytes {
+        return Err("The project changed while scheduling its previews.".into());
+    }
+    let mut jobs = Vec::new();
+    for (slot, point) in points.iter().enumerate() {
+        let Ok(capture) = crate::library_previews::capture_point(point, &project) else {
+            continue;
+        };
+        jobs.push((
+            PosterJob {
+                slug: slug.into(),
+                revision: revision.clone(),
+                slot,
+                scene_file: capture.scene_file,
+                at_ms: Some(capture.at_ms),
+                aspect: capture.aspect,
+                claimed: false,
+            },
+            crate::library_previews::preview_path(&dir, slot),
+        ));
+    }
+    Ok(jobs)
 }
 
 #[tauri::command]
@@ -249,8 +265,14 @@ pub fn render_submit_preset_poster(
     queue: State<PresetPosterQueueState>,
     slug: String,
 ) -> Result<(), String> {
-    let (job, path) = saved_job(&app, &settings, &slug)?;
-    queue.0.lock().unwrap().submit(job, path.is_file());
+    let jobs = saved_jobs(&app, &settings, &slug)?;
+    let mut queue = queue.0.lock().unwrap();
+    queue.jobs.retain(|_, job| {
+        job.slug != slug || jobs.iter().any(|(current, _)| current.slot == job.slot)
+    });
+    for (job, path) in jobs {
+        queue.submit(job, path.is_file());
+    }
     Ok(())
 }
 
@@ -271,14 +293,19 @@ pub fn render_finish_preset_poster(
     slug: String,
     revision: String,
     retry: bool,
-) {
-    queue.0.lock().unwrap().finish(&slug, &revision, retry);
+    slot: Option<usize>,
+) -> bool {
+    let mut queue = queue.0.lock().unwrap();
+    let owns = queue.owns(&slug, slot.unwrap_or(0), &revision);
+    queue.finish(&slug, slot.unwrap_or(0), &revision, retry);
+    owns
 }
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PosterSaved {
     project_id: String,
+    slot: usize,
     path: String,
     mtime_ms: Option<u64>,
 }
@@ -303,44 +330,65 @@ pub fn write_preset_poster(
     let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else {
         return Err("poster expects a raw PNG body".into());
     };
-    if bytes.len() < 24
-        || bytes.len() > 5 * 1024 * 1024
-        || bytes[..8] != [137, 80, 78, 71, 13, 10, 26, 10]
-        || bytes[12..16] != *b"IHDR"
-        || bytes[16..20] != 640u32.to_be_bytes()
-        || bytes[20..24] != 360u32.to_be_bytes()
-    {
-        return Err("preset poster must be a 640 x 360 PNG".into());
-    }
+    let slot = header("x-kookaburra-slot")?
+        .parse::<usize>()
+        .map_err(|e| e.to_string())?;
     let mut queue = queue.0.lock().unwrap();
-    if !queue.owns(slug, revision) {
+    if !queue.owns(slug, slot, revision) {
         return Ok(None);
     }
     if paused(&context) {
-        queue.finish(slug, revision, true);
+        queue.finish(slug, slot, revision, true);
         return Ok(None);
     }
-    let (saved, path) = saved_job(&app, &settings, slug)?;
+    let mut jobs = saved_jobs(&app, &settings, slug)?;
+    let Some(index) = jobs.iter().position(|(job, _)| job.slot == slot) else {
+        queue.finish(slug, slot, revision, false);
+        return Ok(None);
+    };
+    let (saved, path) = jobs.remove(index);
     if saved.revision != revision {
         queue.submit(saved, false);
         return Ok(None);
     }
-    let written = workspace::write_snapshot_file(&path, bytes, || {
-        Ok(!paused(&context) && saved_job(&app, &settings, slug)?.0.revision == revision)
-    })?;
-    let Some(written) = written else {
-        queue.finish(slug, revision, true);
+    let (width, height) = crate::library_previews::dimensions(&saved.aspect)?;
+    if bytes.len() < 24
+        || bytes.len() > 5 * 1024 * 1024
+        || bytes[..8] != [137, 80, 78, 71, 13, 10, 26, 10]
+        || bytes[12..16] != *b"IHDR"
+        || bytes[16..20] != width.to_be_bytes()
+        || bytes[20..24] != height.to_be_bytes()
+    {
+        return Err(format!("The preview must be a {width} x {height} PNG."));
+    }
+    let current = || -> Result<bool, String> {
+        Ok(!paused(&context)
+            && saved_jobs(&app, &settings, slug)?
+                .iter()
+                .any(|(job, _)| job.slot == slot && job.revision == revision))
+    };
+    let Some(written) = workspace::write_snapshot_file(&path, bytes, current)? else {
+        queue.finish(slug, slot, revision, true);
         return Ok(None);
     };
-    queue.jobs.remove(slug);
-    queue.completed.insert(slug.to_owned(), revision.to_owned());
+    let dir = crate::library_previews::target(&app, &settings, slug)?;
+    if crate::library_previews::manifest_name(&dir) == "template.json"
+        && crate::library_previews::read_previews(&dir)?.cover == slot
+    {
+        workspace::write_snapshot_file(&dir.join("poster.png"), bytes, current)?;
+    }
+    queue.jobs.remove(&job_key(slug, slot));
+    queue
+        .completed
+        .insert(job_key(slug, slot), revision.to_owned());
     let saved = PosterSaved {
         project_id: slug.to_owned(),
+        slot,
         path: written.path,
         mtime_ms: written.mtime_ms,
     };
     drop(queue);
-    app.emit("kookaburra://preset-poster-saved", &saved)
+    app.emit("kookaburra://library-preview-saved", &saved)
         .map_err(|e| e.to_string())?;
     Ok(Some(saved))
 }
@@ -355,6 +403,9 @@ mod tests {
             slug: slug.into(),
             revision: revision.into(),
             at_ms: Some(1200.0),
+            slot: 0,
+            scene_file: "scenes/hero.tsx".into(),
+            aspect: "16:9".into(),
             claimed: false,
         }
     }
@@ -396,12 +447,12 @@ mod tests {
         let first = queue.take().unwrap();
         queue.submit(job("ws-preset:two", "x"), false);
         queue.submit(job("preset:one", "b"), false);
-        assert!(!queue.owns(&first.slug, &first.revision));
-        queue.finish(&first.slug, &first.revision, false);
+        assert!(!queue.owns(&first.slug, 0, &first.revision));
+        queue.finish(&first.slug, 0, &first.revision, false);
         assert_eq!(queue.jobs.len(), 2);
         let second = queue.take().unwrap();
         assert_eq!(second.revision, "b");
-        queue.finish(&second.slug, &second.revision, true);
+        queue.finish(&second.slug, 0, &second.revision, true);
         assert_eq!(queue.take().unwrap().revision, "b");
         assert_eq!(queue.take().unwrap().slug, "ws-preset:two");
     }
@@ -413,12 +464,32 @@ mod tests {
         queue.take().unwrap();
         queue.submit(job("preset:one", "a"), false);
         assert!(queue.take().is_none());
-        queue.finish("preset:one", "a", false);
-        queue.completed.insert("preset:one".into(), "a".into());
+        queue.finish("preset:one", 0, "a", false);
+        queue.completed.insert(job_key("preset:one", 0), "a".into());
         queue.submit(job("preset:one", "a"), true);
         assert!(queue.take().is_none());
-        queue.submit(job("preset:one", "a"), false);
+        queue.invalidate("preset:one", 0);
+        queue.submit(job("preset:one", "a"), true);
         assert!(queue.take().is_some());
+    }
+
+    #[test]
+    fn four_template_slots_supersede_independently_and_share_the_preset_queue() {
+        let mut queue = PosterQueue::default();
+        for slot in 0..4 {
+            let mut next = job("ws-template:demo", "first");
+            next.slot = slot;
+            queue.submit(next, false);
+        }
+        let first = queue.take().unwrap();
+        let mut replacement = job("ws-template:demo", "second");
+        replacement.slot = first.slot;
+        queue.submit(replacement, false);
+        assert!(!queue.owns(&first.slug, first.slot, &first.revision));
+        queue.submit(job("ws-preset:demo", "preset"), false);
+        assert_eq!(queue.jobs.len(), 5);
+        queue.finish(&first.slug, first.slot, &first.revision, false);
+        assert_eq!(queue.jobs.len(), 5);
     }
 
     #[test]

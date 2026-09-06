@@ -2148,7 +2148,7 @@ button.beat-status {
 .template-card-thumb img {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
   display: block;
 }
 
@@ -2631,9 +2631,34 @@ button.beat-status {
 }
 
 .theme-library-modal .theme-grid {
+  max-height: none;
   grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
   gap: 10px;
   padding: 0;
+}
+
+.library-previews-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-5);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.library-previews-section h3,
+.library-preview-slots {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.library-preview-slots > button {
+  flex: 1;
+}
+
+.library-preview-card .template-card {
+  width: 100%;
+  cursor: default;
 }
 
 .theme-library-modal .theme-card {
@@ -4738,7 +4763,7 @@ button.beat-status {
   display: block;
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
 }
 
 .add-scene-card-tick {

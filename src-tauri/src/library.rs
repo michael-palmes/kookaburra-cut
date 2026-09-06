@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Manager, State};
 
 use crate::workspace::{
     self, manifest_summary, presets_dir, presets_root, require_root, slugify, templates_dir,
@@ -47,6 +47,8 @@ pub struct LibraryItemInfo {
     pub scene_count: usize,
     pub poster_path: Option<String>,
     pub poster_modified_at: Option<u64>,
+    pub preview_paths: Vec<Option<String>>,
+    pub preview_modified_at: Vec<Option<u64>>,
 }
 
 /// One `{ slug, order }` pair of a drag-reorder batch.
@@ -103,7 +105,7 @@ impl Kind {
 }
 
 /// Atomic JSON write (the `write_theme` contract): tmp + rename, so a crash mid-save can never leave half a manifest.
-fn atomic_write_json(path: &Path, value: &Value) -> Result<(), String> {
+pub(crate) fn atomic_write_json(path: &Path, value: &Value) -> Result<(), String> {
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
     }
@@ -131,10 +133,18 @@ fn read_item(dir: &Path, slug: &str, kind: Kind) -> Option<LibraryItemInfo> {
                 .map(|scenes| scenes.len())
         })
         .unwrap_or(0);
-    let poster = POSTER_NAMES
-        .iter()
-        .map(|name| dir.join(name))
-        .find(|path| path.is_file());
+    let selected = (kind == Kind::Template)
+        .then(|| serde_json::from_str::<Value>(&manifest_json).ok())
+        .flatten()
+        .and_then(|manifest| manifest.pointer("/preview/poster").and_then(Value::as_u64))
+        .filter(|slot| *slot < 4)
+        .and_then(|slot| crate::library_previews::preview_image_path(dir, slot as usize));
+    let poster = selected.or_else(|| {
+        POSTER_NAMES
+            .iter()
+            .map(|name| dir.join(name))
+            .find(|path| path.is_file())
+    });
     let poster_modified_at = poster.as_ref().and_then(|path| {
         std::fs::metadata(path)
             .ok()?
@@ -144,6 +154,9 @@ fn read_item(dir: &Path, slug: &str, kind: Kind) -> Option<LibraryItemInfo> {
             .ok()
             .map(|duration| duration.as_millis() as u64)
     });
+    let previews: Vec<_> = (0..if kind == Kind::Template { 4 } else { 1 })
+        .map(|slot| crate::library_previews::preview_image_path(dir, slot))
+        .collect();
     Some(LibraryItemInfo {
         slug: slug.to_owned(),
         path: dir.to_string_lossy().into_owned(),
@@ -153,6 +166,17 @@ fn read_item(dir: &Path, slug: &str, kind: Kind) -> Option<LibraryItemInfo> {
         scene_count,
         poster_path: poster.map(|path| path.to_string_lossy().into_owned()),
         poster_modified_at,
+        preview_modified_at: previews
+            .iter()
+            .map(|path| {
+                path.as_ref()
+                    .and_then(|path| crate::library_previews::modified(path))
+            })
+            .collect(),
+        preview_paths: previews
+            .into_iter()
+            .map(|path| path.map(|path| path.to_string_lossy().into_owned()))
+            .collect(),
     })
 }
 
@@ -519,8 +543,46 @@ fn duplicate_to_workspace(
             &workspace::samples_root(app),
             &Path::new(&item.path).join("assets"),
         )?;
+        let art_root = if cfg!(debug_assertions) {
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../src/assets")
+        } else {
+            app.path()
+                .resource_dir()
+                .map_err(|error| error.to_string())?
+        };
+        copy_bundled_previews(&art_root, id, kind, Path::new(&item.path))?;
     }
-    Ok(item)
+    require_item(Path::new(&item.path), &item.slug, kind)
+}
+
+fn copy_bundled_previews(
+    art_root: &Path,
+    slug: &str,
+    kind: Kind,
+    dest: &Path,
+) -> Result<(), String> {
+    let count = if kind == Kind::Template { 4 } else { 1 };
+    for slot in 0..count {
+        if crate::library_previews::preview_image_path(dest, slot).is_some() {
+            continue;
+        }
+        let file = if kind == Kind::Template {
+            format!("{slug}-{}.jpg", slot + 1)
+        } else {
+            format!("{slug}.jpg")
+        };
+        let source = art_root
+            .join(format!("{}-previews", kind.label()))
+            .join(file);
+        if !source.is_file() {
+            continue;
+        }
+        let target = crate::library_previews::preview_path(dest, slot).with_extension("jpg");
+        std::fs::create_dir_all(target.parent().ok_or("The preview has no directory.")?)
+            .map_err(|error| error.to_string())?;
+        std::fs::copy(source, target).map_err(|error| error.to_string())?;
+    }
+    Ok(())
 }
 
 fn duplicate_item(source: &Path, library: &Path, kind: Kind) -> Result<LibraryItemInfo, String> {
@@ -1290,6 +1352,45 @@ mod tests {
         assert_eq!(
             std::fs::read_to_string(dest.join("assets/shared.mp4")).unwrap(),
             "user clip"
+        );
+        let _ = std::fs::remove_dir_all(base);
+    }
+
+    #[test]
+    fn bundled_previews_become_portable_and_preserve_custom_slots() {
+        let base = scratch_dir();
+        let art = base.join("art");
+        let template = base.join("template");
+        write(
+            &template.join(TEMPLATE_MANIFEST),
+            r#"{"preview":{"poster":2}}"#,
+        );
+        write(&template.join(MANIFEST_FILENAME), r#"{"scenes":[]}"#);
+        for slot in 1..=4 {
+            write(
+                &art.join(format!("template-previews/demo-{slot}.jpg")),
+                &format!("image-{slot}"),
+            );
+        }
+        write(&template.join("previews/2.png"), "custom");
+        copy_bundled_previews(&art, "demo", Kind::Template, &template).unwrap();
+        let item = read_item(&template, "demo", Kind::Template).unwrap();
+        assert!(item.preview_paths.iter().all(Option::is_some));
+        assert!(item.poster_path.unwrap().ends_with("previews/3.jpg"));
+        assert_eq!(
+            std::fs::read_to_string(template.join("previews/2.png")).unwrap(),
+            "custom"
+        );
+        assert!(!template.join("previews/2.jpg").exists());
+        let duplicate = duplicate_item(&template, &base.join("copies"), Kind::Template).unwrap();
+        assert!(duplicate.preview_paths.iter().all(Option::is_some));
+        let preset = base.join("preset");
+        write(&preset.join(PRESET_MANIFEST), "{}");
+        write(&art.join("preset-previews/demo.jpg"), "preset");
+        copy_bundled_previews(&art, "demo", Kind::Preset, &preset).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(preset.join("poster.jpg")).unwrap(),
+            "preset"
         );
         let _ = std::fs::remove_dir_all(base);
     }
