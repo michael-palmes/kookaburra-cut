@@ -36,10 +36,21 @@ import type {
   LayeredScreenshotAttachSide,
   LayeredScreenshotItem,
   LayeredScreenshotLayer,
+  LayeredScreenshotPlacement,
   SceneDoc,
   SceneDocLayeredScreenshot,
 } from "../engine/sceneDocSchema";
-import { DrillBack, DrillHeaderAction } from "./inspector/rows";
+import {
+  resolveLayeredScreenshotPlacement,
+  SCREENSHOT_STACK_SIZE_RANGE,
+} from "../engine/sceneLayeredScreenshot";
+import {
+  DrillBack,
+  DrillGroup,
+  DrillHeaderAction,
+  GizmoModeIcon,
+  InspectorSliderRow,
+} from "./inspector/rows";
 import { useLayeredScreenshotDoc } from "./layeredScreenshotDoc";
 import { MediaBrowser } from "./MediaBrowser";
 import { mediaCardMenu } from "./mediaCardMenu";
@@ -125,8 +136,9 @@ export function LayeredScreenshotBuilder({
   // While the drill-in is mounted the edit store is open, so the stage pose tools stay armable.
   useEffect(() => {
     useLayeredScreenshotEditStore.getState().setOpen(true);
+    useLayeredScreenshotEditStore.getState().selectStack({ sceneIndex });
     return () => useLayeredScreenshotEditStore.getState().setOpen(false);
-  }, []);
+  }, [sceneIndex]);
 
   const ordered = useMemo(() => layersInOrder(block), [block]);
   // Display front-most first (the design-tool convention); `ordered` is back to front.
@@ -213,6 +225,15 @@ export function LayeredScreenshotBuilder({
 
   const setPose = (patch: Partial<SceneDocLayeredScreenshot["pose"]>) =>
     commitBlock({ ...block, pose: { ...block.pose, ...patch } });
+  const placement = resolveLayeredScreenshotPlacement(block.placement);
+  const setPlacement = (patch: Partial<LayeredScreenshotPlacement>, live = false) => {
+    const next = {
+      ...block,
+      placement: resolveLayeredScreenshotPlacement({ ...placement, ...patch }),
+    };
+    if (live) preview(next, false);
+    else commitBlock(next);
+  };
 
   const thumbSrc = (it: LayeredScreenshotItem): string | null => {
     if (it.kind !== "screen") return null;
@@ -374,6 +395,65 @@ export function LayeredScreenshotBuilder({
         }
       />
       <div className="ls-builder">
+        <DrillGroup label="Placement">
+          {(["X", "Y"] as const).map((label, axis) => (
+            <InspectorSliderRow
+              key={label}
+              icon={<GizmoModeIcon mode="translate" />}
+              label={label}
+              value={placement.position[axis]}
+              min={-1}
+              max={1}
+              step={0.01}
+              onInput={(value) =>
+                setPlacement(
+                  {
+                    position:
+                      axis === 0 ? [value, placement.position[1]] : [placement.position[0], value],
+                  },
+                  true,
+                )
+              }
+              onCommit={(value) =>
+                setPlacement({
+                  position:
+                    axis === 0 ? [value, placement.position[1]] : [placement.position[0], value],
+                })
+              }
+            />
+          ))}
+          <InspectorSliderRow
+            icon={<GizmoModeIcon mode="scale" />}
+            label="Size"
+            value={placement.size}
+            min={SCREENSHOT_STACK_SIZE_RANGE[0]}
+            max={SCREENSHOT_STACK_SIZE_RANGE[1]}
+            step={0.01}
+            onInput={(size) => setPlacement({ size }, true)}
+            onCommit={(size) => setPlacement({ size })}
+          />
+          <InspectorSliderRow
+            icon={<GizmoModeIcon mode="rotate" />}
+            label="Roll"
+            value={placement.rotationDeg}
+            min={-180}
+            max={180}
+            step={1}
+            onInput={(rotationDeg) => setPlacement({ rotationDeg }, true)}
+            onCommit={(rotationDeg) => setPlacement({ rotationDeg })}
+          />
+          <button
+            type="button"
+            className="btn ls-builder-wide"
+            onClick={() => {
+              const next = { ...block };
+              delete next.placement;
+              commitBlock(next);
+            }}
+          >
+            <GizmoModeIcon mode="rotate" /> Reset placement
+          </button>
+        </DrillGroup>
         <div className="ls-builder-section">
           <div className="inspector-tabs" role="tablist">
             <button

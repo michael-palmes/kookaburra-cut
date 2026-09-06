@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { assert, describe, expect, it, vi } from "vitest";
 import type {
   LayeredScreenshotItem,
   LayeredScreenshotPose,
@@ -7,6 +7,7 @@ import type {
 import {
   defaultLayeredScreenshotPose,
   normalizeLayeredScreenshot,
+  resolveLayeredScreenshotPlacement,
   resolveLayeredScreenshotPose,
   sampleLayeredScreenshotTrack,
 } from "./sceneLayeredScreenshot";
@@ -43,6 +44,42 @@ const doc = (over: Partial<SceneDocLayeredScreenshot> = {}): SceneDocLayeredScre
 });
 
 describe("normalizeLayeredScreenshot", () => {
+  it("keeps placement independent of the rest pose and sampled animation", () => {
+    const animation = {
+      keys: [{ id: "k1", tMs: 0, pose: pose({ pan: [1, 2], zoom: 2 }) }],
+      segments: [],
+    };
+    const original = doc({ animation });
+    const moved = doc({
+      animation,
+      placement: { position: [0.3, -0.2], size: 0.6, rotationDeg: 25 },
+    });
+    const before = normalizeLayeredScreenshot(original, "test");
+    const after = normalizeLayeredScreenshot(moved, "test");
+    assert(before && after);
+    expect(after.pose).toEqual(before.pose);
+    expect(after.track).toEqual(before.track);
+    expect(resolveLayeredScreenshotPose(after, "layeredScreenshot", 500)).toEqual(
+      resolveLayeredScreenshotPose(before, "layeredScreenshot", 500),
+    );
+    expect(after.placement).toEqual(moved.placement);
+  });
+
+  it("defaults old placements and degrades malformed fields independently", () => {
+    expect(resolveLayeredScreenshotPlacement(undefined)).toEqual({
+      position: [0, 0],
+      size: 1,
+      rotationDeg: 0,
+    });
+    expect(
+      resolveLayeredScreenshotPlacement({ position: [Infinity, -20], size: NaN, rotationDeg: 400 }),
+    ).toEqual({ position: [0, -1], size: 1, rotationDeg: 180 });
+    expect(resolveLayeredScreenshotPlacement({ position: null, size: -3 })).toEqual({
+      position: [0, 0],
+      size: 0.05,
+      rotationDeg: 0,
+    });
+  });
   it("passes a well-formed composition through", () => {
     const n = normalizeLayeredScreenshot(doc(), "test");
     expect(n?.layers).toHaveLength(1);

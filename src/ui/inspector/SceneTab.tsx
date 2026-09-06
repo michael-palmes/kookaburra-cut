@@ -8846,6 +8846,8 @@ export function SceneTab({
         return "terminal";
       case "website":
         return "website";
+      case "screenshotStack":
+        return "layeredScreenshot";
       default:
         return null;
     }
@@ -8887,6 +8889,8 @@ export function SceneTab({
         useWebsiteEditStore.getState().select({ sceneIndex });
         break;
       case "screenshotStack":
+        useLayeredScreenshotEditStore.getState().selectStack({ sceneIndex });
+        break;
       case "comparison":
         break;
     }

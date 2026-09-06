@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { isExporting } from "./exportState";
+import type { SceneDocLayeredScreenshot } from "./sceneDocSchema";
 import type { NormalizedLayeredScreenshot } from "./sceneLayeredScreenshot";
 
 /** Layered-screenshot editing UI state (the cameraEditStore pattern plus the builder's 4th spread tool): panel/selection/tool state and the live draft the stage renders while a gesture is in flight; UI-only, the export path never reads this store. */
@@ -11,6 +12,7 @@ export interface LayeredScreenshotDraft {
   sceneIndex: number;
   /** Normalized replacement for the scene's composition (null = block removed). */
   normalized: NormalizedLayeredScreenshot | null;
+  block?: SceneDocLayeredScreenshot;
   /** True once written to the sidecar; cleared by App when the reload lands. */
   committed: boolean;
 }
@@ -20,6 +22,7 @@ interface LayeredScreenshotEditState {
   open: boolean;
   /** The animation lane's open toggle (the cameraEditStore `open` analogue). */
   laneOpen: boolean;
+  selectedStack: { sceneIndex: number } | null;
   selectedLayerId: string | null;
   selectedItemId: string | null;
   /** The animation lane's selection (key id / segment doc index). */
@@ -31,6 +34,7 @@ interface LayeredScreenshotEditState {
   writeError: string | null;
   setOpen: (open: boolean) => void;
   setLaneOpen: (laneOpen: boolean) => void;
+  selectStack: (selectedStack: { sceneIndex: number } | null) => void;
   select: (layerId: string | null, itemId: string | null) => void;
   selectKey: (keyId: string | null, segment: number | null) => void;
   armTool: (tool: LayeredScreenshotTool | null) => void;
@@ -43,6 +47,7 @@ interface LayeredScreenshotEditState {
 export const useLayeredScreenshotEditStore = create<LayeredScreenshotEditState>((set) => ({
   open: false,
   laneOpen: false,
+  selectedStack: null,
   selectedLayerId: null,
   selectedItemId: null,
   selectedKeyId: null,
@@ -69,6 +74,7 @@ export const useLayeredScreenshotEditStore = create<LayeredScreenshotEditState>(
           },
     ),
   select: (selectedLayerId, selectedItemId) => set({ selectedLayerId, selectedItemId }),
+  selectStack: (selectedStack) => set({ selectedStack }),
   selectKey: (selectedKeyId, selectedSegment) => set({ selectedKeyId, selectedSegment }),
   armTool: (armedTool) => set({ armedTool }),
   setDraft: (draft) => set({ draft }),
@@ -78,6 +84,7 @@ export const useLayeredScreenshotEditStore = create<LayeredScreenshotEditState>(
     set({
       open: false,
       laneOpen: false,
+      selectedStack: null,
       selectedLayerId: null,
       selectedItemId: null,
       selectedKeyId: null,

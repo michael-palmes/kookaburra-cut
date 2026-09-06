@@ -5,7 +5,7 @@ import type { InspectorState } from "../../store/uiStore";
 /** Which surface a Delete keypress belongs to: the open content drill's own trash, the Scene overview's selected row, or nobody. `DecorationGizmo` binds Delete for the whole decorations domain, drilled in or not, so this never claims it. Pure over the inspector state so the one rule the key hangs off stays provable. */
 export type ContentDeleteRoute = "drill" | "overview" | null;
 
-/** Drill families whose header carries a trash AND whose gizmo does not bind Delete itself; the compare, video window and stack drills have no gizmo to select from. */
+/** Drill families whose header carries a trash and whose gizmo does not bind Delete itself. */
 const DELETABLE_DRILL_DOMAINS = new Set<GizmoDomain>([
   "devices",
   "media",
@@ -14,6 +14,7 @@ const DELETABLE_DRILL_DOMAINS = new Set<GizmoDomain>([
   "text",
   "terminal",
   "website",
+  "layeredScreenshot",
 ]);
 
 export function contentDeleteRoute(inspector: InspectorState): ContentDeleteRoute {

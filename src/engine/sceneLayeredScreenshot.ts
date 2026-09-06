@@ -7,6 +7,7 @@ import type {
   LayeredScreenshotItem,
   LayeredScreenshotKey,
   LayeredScreenshotLayer,
+  LayeredScreenshotPlacement,
   LayeredScreenshotPose,
   SceneDoc,
   SceneDocCameraPresentLoop,
@@ -33,10 +34,25 @@ export interface LayeredScreenshotTrack {
 export interface NormalizedLayeredScreenshot {
   layers: LayeredScreenshotLayer[];
   pose: LayeredScreenshotPose;
+  placement?: LayeredScreenshotPlacement;
   track: LayeredScreenshotTrack | null;
 }
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+
+export const SCREENSHOT_STACK_SIZE_RANGE = [0.05, 3] as const;
+
+export function resolveLayeredScreenshotPlacement(raw: unknown): LayeredScreenshotPlacement {
+  const value = raw as Partial<LayeredScreenshotPlacement> | null | undefined;
+  const finite = (n: unknown, fallback: number) =>
+    typeof n === "number" && Number.isFinite(n) ? n : fallback;
+  const position = Array.isArray(value?.position) ? value.position : [];
+  return {
+    position: [clamp(finite(position[0], 0), -1, 1), clamp(finite(position[1], 0), -1, 1)],
+    size: clamp(finite(value?.size, 1), ...SCREENSHOT_STACK_SIZE_RANGE),
+    rotationDeg: clamp(finite(value?.rotationDeg, 0), -180, 180),
+  };
+}
 
 /** The builder's seed and the schema's fallback: flat, front-on, auto-fit. */
 export function defaultLayeredScreenshotPose(): LayeredScreenshotPose {
@@ -219,7 +235,12 @@ export function normalizeLayeredScreenshot(
     zoom: clamp(raw.pose.zoom, 0.05, 20),
     pan: [raw.pose.pan[0], raw.pose.pan[1]],
   };
-  return { layers, pose, track: normalizeTrack(raw.animation, source) };
+  return {
+    layers,
+    pose,
+    ...(raw.placement ? { placement: resolveLayeredScreenshotPlacement(raw.placement) } : {}),
+    track: normalizeTrack(raw.animation, source),
+  };
 }
 
 function mixPose(

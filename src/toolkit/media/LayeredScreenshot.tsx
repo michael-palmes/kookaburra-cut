@@ -1,5 +1,5 @@
 import { useTexture } from "@react-three/drei";
-import { useCallback, useContext, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useContext, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   Color,
   type Group,
@@ -8,9 +8,11 @@ import {
   SRGBColorSpace,
   type Texture,
   Vector2,
+  Vector3,
 } from "three";
 import { useClipTexture } from "../../engine/clipTexture";
 import { useFormat } from "../../engine/format";
+import { registerGizmoTarget, unregisterGizmoTarget } from "../../engine/gizmoTargetRegistry";
 import { useLayeredScreenshotDraft } from "../../engine/layeredScreenshotEditStore";
 import {
   fitStackScale,
@@ -33,6 +35,7 @@ import type {
 import {
   type NormalizedLayeredScreenshot,
   normalizeLayeredScreenshot,
+  resolveLayeredScreenshotPlacement,
   resolveLayeredScreenshotPose,
   sampleLoopedLayeredScreenshotTrack,
 } from "../../engine/sceneLayeredScreenshot";
@@ -394,49 +397,97 @@ function StackRenderer({
       ? sampleLoopedLayeredScreenshotTrack(normalized.track, localMs, loop)
       : resolveLayeredScreenshotPose(normalized, animatedTrack, localMs);
   const zOffsets = spreadZToLocal(pose.spread, layers.length);
+  const placement = resolveLayeredScreenshotPlacement(normalized.placement);
+  const placementRoot = useRef<Group>(null);
+  const poseRoot = useRef<Group>(null);
+  const targetKey = useId();
+  const corners = useRef<Array<[number, number, number]>>([]);
+  corners.current = layouts.flatMap((layout, index) =>
+    layout.items.flatMap((item) =>
+      [-1, 1].flatMap((x) =>
+        [-1, 1].map((y): [number, number, number] => [
+          item.x + (x * item.width) / 2,
+          item.y + (y * item.height) / 2,
+          zOffsets[index],
+        ]),
+      ),
+    ),
+  );
+  const side = sceneContext?.side;
+  useLayoutEffect(() => {
+    if (sceneIndex === undefined) return;
+    registerGizmoTarget(targetKey, {
+      domain: "layeredScreenshot",
+      sceneIndex,
+      itemId: "layeredScreenshot",
+      side,
+      node: () => placementRoot.current,
+      localRect: () => null,
+      localPoints: () => {
+        const node = poseRoot.current;
+        if (!node) return [];
+        node.updateMatrix();
+        return corners.current.map((point) =>
+          new Vector3(...point).applyMatrix4(node.matrix).toArray(),
+        );
+      },
+    });
+    return () => unregisterGizmoTarget(targetKey);
+  }, [targetKey, sceneIndex, side]);
 
   if (layers.length === 0) return null;
   return (
     <group
-      position={[pose.pan[0], pose.pan[1] + centreY, 0]}
-      // The pose reads as the viewer's orbit (the scene-camera convention); the stack counter-rotates.
-      rotation={[pose.elevationDeg * DEG2RAD, -pose.azimuthDeg * DEG2RAD, 0]}
-      scale={fit * pose.zoom}
+      ref={placementRoot}
+      position={[
+        pose.pan[0] + (placement.position[0] * format.frame.width) / 2,
+        pose.pan[1] + centreY + (placement.position[1] * format.frame.height) / 2,
+        0,
+      ]}
+      rotation={[0, 0, -placement.rotationDeg * DEG2RAD]}
+      scale={placement.size}
     >
-      {layers.map((layer, li) => (
-        <group key={layer.id} position={[0, 0, zOffsets[li]]}>
-          {layer.items.map((item) => {
-            const rect = layouts[li].items.find((r) => r.id === item.id);
-            if (!rect) return null;
-            if (item.kind === "text") return <TextCard key={item.id} item={item} rect={rect} />;
-            const flat = item.flat ?? layer.flat ?? false;
-            if (item.media === "video") {
+      <group
+        ref={poseRoot}
+        // The pose reads as the viewer's orbit (the scene-camera convention); the stack counter-rotates.
+        rotation={[pose.elevationDeg * DEG2RAD, -pose.azimuthDeg * DEG2RAD, 0]}
+        scale={fit * pose.zoom}
+      >
+        {layers.map((layer, li) => (
+          <group key={layer.id} position={[0, 0, zOffsets[li]]}>
+            {layer.items.map((item) => {
+              const rect = layouts[li].items.find((r) => r.id === item.id);
+              if (!rect) return null;
+              if (item.kind === "text") return <TextCard key={item.id} item={item} rect={rect} />;
+              const flat = item.flat ?? layer.flat ?? false;
+              if (item.media === "video") {
+                return (
+                  <ScreenVideoCard
+                    key={item.id}
+                    item={item}
+                    rect={rect}
+                    flat={flat}
+                    theme={theme}
+                    onAspect={onClipAspect}
+                  />
+                );
+              }
+              const ti = images.findIndex((i) => i.id === item.id);
+              const texture = ti >= 0 ? textures[ti] : undefined;
+              if (!texture) return null;
               return (
-                <ScreenVideoCard
+                <ScreenImageCard
                   key={item.id}
-                  item={item}
                   rect={rect}
+                  texture={texture}
                   flat={flat}
                   theme={theme}
-                  onAspect={onClipAspect}
                 />
               );
-            }
-            const ti = images.findIndex((i) => i.id === item.id);
-            const texture = ti >= 0 ? textures[ti] : undefined;
-            if (!texture) return null;
-            return (
-              <ScreenImageCard
-                key={item.id}
-                rect={rect}
-                texture={texture}
-                flat={flat}
-                theme={theme}
-              />
-            );
-          })}
-        </group>
-      ))}
+            })}
+          </group>
+        ))}
+      </group>
     </group>
   );
 }

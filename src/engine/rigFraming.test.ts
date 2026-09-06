@@ -52,6 +52,14 @@ describe("frameContentDistance", () => {
 
 describe("stagedContentBounds", () => {
   const frame = { width: 10, height: 5 };
+  it("follows screenshot placement on top of the existing pose pan", () => {
+    const bounds = stagedContentBounds(
+      { layeredScreenshot: { pose: { pan: [0.5, -0.25] }, placement: { position: [0.4, 0.6] } } },
+      frame,
+    );
+    expect((bounds.min[0] + bounds.max[0]) / 2).toBeCloseTo(2.5);
+    expect((bounds.min[1] + bounds.max[1]) / 2).toBeCloseTo(1.25);
+  });
 
   const windowed = (position: [number, number]): SceneDocMediaSpec[] => [
     {

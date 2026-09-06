@@ -1,5 +1,6 @@
 /** Fitting a camera to content: the maths behind the Frame-content button and the presets' scaling. Pure, so "what distance frames this box at this lens" is a pinned number rather than a feel. */
-import type { SceneDoc, SceneDocRigPose } from "./sceneDocSchema";
+import type { LayeredScreenshotPlacement, SceneDoc, SceneDocRigPose } from "./sceneDocSchema";
+import { resolveLayeredScreenshotPlacement } from "./sceneLayeredScreenshot";
 import { resolveSceneDocMedia } from "./sceneMedia";
 
 const DEG2RAD = Math.PI / 180;
@@ -36,7 +37,10 @@ export function stagedContentBounds(
   doc:
     | (Pick<SceneDoc, "media" | "images" | "videoWindow"> & {
         devices?: { placement?: { position?: [number, number, number] } }[];
-        layeredScreenshot?: { pose: { pan: [number, number] } };
+        layeredScreenshot?: {
+          pose: { pan: [number, number] };
+          placement?: Partial<LayeredScreenshotPlacement>;
+        };
       })
     | undefined,
   frame: { width: number; height: number },
@@ -60,7 +64,12 @@ export function stagedContentBounds(
   }
   if (doc?.layeredScreenshot) {
     const pan = doc.layeredScreenshot.pose.pan;
-    points.push([pan[0], pan[1], 0]);
+    const { position } = resolveLayeredScreenshotPlacement(doc.layeredScreenshot.placement);
+    points.push([
+      pan[0] + (position[0] * frame.width) / 2,
+      pan[1] + (position[1] * frame.height) / 2,
+      0,
+    ]);
   }
   if (points.length === 0) {
     // Nothing staged: frame the content plane, which is what a scene lays out against.
