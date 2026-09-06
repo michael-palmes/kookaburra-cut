@@ -59,6 +59,11 @@ Scene-level overrides remain explicit and travel with the scene.
 
 ## Theme editing
 
+Themes uses the same header search, close control and card sizing as Add a scene.
+Category icons also appear in the inspector's compact theme browsers. Right-click
+a theme for its available actions; applying and Claude editing only appear in an
+editor context. Workspace themes can be duplicated from the menu too.
+
 The separate editor holds the raw document as a draft and previews it with a
 live specimen. Its controls cover identity, colours, gradients, fonts, motion,
 text style, backgrounds, staging, lights, fixtures, shadows and effects.

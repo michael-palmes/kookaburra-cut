@@ -2784,6 +2784,7 @@ export default function App() {
       )}
       {themeMode && (
         <ThemeMode
+          onEditInClaude={editorView && project ? handleEditThemeInClaude : undefined}
           currentThemeId={
             editorView && project && isEditableProjectId(project.id) ? project.theme.id : undefined
           }

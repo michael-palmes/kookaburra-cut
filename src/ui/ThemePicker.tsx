@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { useEffect, useRef, useState } from "react";
+import { type RefObject, useEffect, useRef, useState } from "react";
 import { reorderCatalogue } from "../engine/catalogueOrder";
 import { devSetBuiltinThemeOrders, setWorkspaceThemeOrders } from "../engine/library";
 import {
@@ -21,6 +21,7 @@ import {
 } from "../theme/catalogue";
 import { WORKSPACE_THEME_PREFIX } from "../theme/registry";
 import { parseThemeDoc } from "../theme/schema";
+import { THEME_CATEGORY_ICONS } from "./libraryIcons";
 import { canEditBundledThemes } from "./theme-editor/themeEditorIo";
 
 export type ThemeChoiceSource = "bundled" | "workspace";
@@ -315,6 +316,7 @@ function ThemeCard({
         onSelect();
       }}
       onContextMenu={onContextMenu}
+      title={choice.useLabel}
       onKeyDown={(event) => {
         if (event.key === "Enter" || event.key === " ") {
           event.preventDefault();
@@ -543,6 +545,10 @@ export interface ThemeBrowserProps extends Omit<ThemeGridProps, "onReorder"> {
   initialCollection?: ThemeCollectionId;
   recentIds?: readonly string[];
   searchPlaceholder?: string;
+  headerSearch?: {
+    query: string;
+    inputRef: RefObject<HTMLInputElement | null>;
+  };
   /** Called after a drag has rewritten the catalogue orders, so the host can re-list. */
   onReordered?: () => void;
 }
@@ -596,7 +602,10 @@ function CollectionButton({
       aria-pressed={active}
       onClick={onSelect}
     >
-      <span>{collection.label}</span>
+      <span className="theme-browser-collection-label">
+        {THEME_CATEGORY_ICONS[collection.id]}
+        <span>{collection.label}</span>
+      </span>
       <span className="theme-browser-collection-count">{count}</span>
     </button>
   );
@@ -613,9 +622,12 @@ export function ThemeBrowser({
   recentIds: suppliedRecentIds,
   searchPlaceholder = "Search themes",
   onReordered,
+  headerSearch,
 }: ThemeBrowserProps) {
-  const [query, setQuery] = useState("");
-  const searchRef = useRef<HTMLInputElement>(null);
+  const [localQuery, setQuery] = useState("");
+  const localSearchRef = useRef<HTMLInputElement>(null);
+  const query = headerSearch?.query ?? localQuery;
+  const searchRef = headerSearch?.inputRef ?? localSearchRef;
   const [activeCollection, setActiveCollection] = useState<ThemeCollectionId>(initialCollection);
   const previousValue = useRef(value);
   const [storedRecentIds, setStoredRecentIds] = useState(() => readRecentThemeIds());
@@ -670,7 +682,7 @@ export function ThemeBrowser({
     };
     window.addEventListener("keydown", focusSearch);
     return () => window.removeEventListener("keydown", focusSearch);
-  }, []);
+  }, [searchRef]);
 
   useEffect(() => {
     if (suppliedRecentIds) return;
@@ -706,20 +718,22 @@ export function ThemeBrowser({
 
   return (
     <section className={`theme-browser theme-browser-${layout}`}>
-      <div className="theme-browser-search">
-        <input
-          ref={searchRef}
-          type="search"
-          className="modal-input theme-browser-search-input"
-          value={query}
-          placeholder={searchPlaceholder}
-          aria-label="Search themes"
-          onChange={(event) => setQuery(event.target.value)}
-        />
-        <span className="theme-browser-result-count" aria-live="polite">
-          {`${visibleChoices.length} ${visibleChoices.length === 1 ? "theme" : "themes"}`}
-        </span>
-      </div>
+      {!headerSearch && (
+        <div className="theme-browser-search">
+          <input
+            ref={searchRef}
+            type="search"
+            className="modal-input theme-browser-search-input"
+            value={query}
+            placeholder={searchPlaceholder}
+            aria-label="Search themes"
+            onChange={(event) => setQuery(event.target.value)}
+          />
+          <span className="theme-browser-result-count" aria-live="polite">
+            {`${visibleChoices.length} ${visibleChoices.length === 1 ? "theme" : "themes"}`}
+          </span>
+        </div>
+      )}
       {layout === "compact" && (
         <nav className="theme-browser-chips" aria-label="Theme collections">
           {collectionButtons("theme-browser-chip")}
