@@ -130,7 +130,7 @@ describe("builtin theme documents (structure pins)", () => {
     expect(theme?.effects).toBeUndefined();
   });
 
-  it("kookaburra-studio-white parses WITH lighting + environment + floor staging (themed-scene gate)", () => {
+  it("kookaburra-studio-white parses with lighting and environment but no floor backdrop", () => {
     const theme = parseThemeDoc(kookaburraStudioWhiteDoc, "pin");
     expect(theme?.id).toBe("kookaburra-studio-white");
     expect(theme?.mode).toBe("light");
@@ -140,8 +140,7 @@ describe("builtin theme documents (structure pins)", () => {
     expect(theme?.lighting?.sun?.intensity).toBe(2.0);
     expect(theme?.lighting?.ambient).toBe(0.85);
     expect(theme?.environment?.source).toBe("kookaburra:monochrome-studio");
-    // The white cyc floor with REAL map shadows: a parse-degrade here would silently turn the gate's floor scene back into a flat background.
-    expect(theme?.backdrop).toEqual({ type: "floor", color: "#ffffff", filletRadius: 2.5 });
+    expect(theme?.backdrop).toBeUndefined();
     expect(theme?.lighting?.shadow).toEqual({
       technique: "map",
       softness: 0.6,

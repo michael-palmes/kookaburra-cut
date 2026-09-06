@@ -127,6 +127,9 @@ describe("bundled theme catalogue", () => {
       expect(catalogue.tags.length).toBeGreaterThan(0);
     }
     const byId = Object.fromEntries(BUILTIN_THEME_CATALOGUE.map((entry) => [entry.id, entry]));
+    expect(byId["kookaburra-studio-white"]?.catalogue.stage).toBe("lighting-only");
+    expect(byId["kookaburra-studio-white"]?.theme.backdrop).toBeUndefined();
+    expect(byId["kookaburra-studio-white"]?.theme.lighting).toBeDefined();
     expect(byId["kookaburra-midnight"]?.catalogue.stage).toBe("lighting-only");
     expect(byId["kookaburra-neon"]?.catalogue.stage).toBe("lighting-only");
     expect(byId["kookaburra-midnight"]?.theme.backdrop).toBeUndefined();
@@ -136,7 +139,7 @@ describe("bundled theme catalogue", () => {
     const physical = BUILTIN_THEME_CATALOGUE.filter(
       ({ catalogue }) => catalogue.stage === "physical",
     );
-    expect(physical).toHaveLength(8);
+    expect(physical).toHaveLength(7);
     expect(physical.every(({ theme }) => theme.backdrop !== undefined)).toBe(true);
   });
 
