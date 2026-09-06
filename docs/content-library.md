@@ -68,6 +68,9 @@ The separate editor holds the raw document as a draft and previews it with a
 live specimen. Its controls cover identity, colours, gradients, fonts, motion,
 text style, backgrounds, staging, lights, fixtures, shadows and effects.
 Changing one field preserves other supported and unknown document fields.
+Text style and motion show the selected preset, including None for an omitted
+block. The theme editor has no Theme default option; scene inspectors retain it.
+Opening these controls does not create settings or mark the theme as changed.
 
 New themes cannot replace an existing theme accidentally. Duplication only
 replaces a collision after the existing confirmation flow. Closing or opening

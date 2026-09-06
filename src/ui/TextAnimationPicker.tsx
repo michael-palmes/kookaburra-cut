@@ -183,7 +183,9 @@ export function TextMotionPanel({
   force,
   onLive,
   onForce,
+  mode = "scene",
 }: {
+  mode?: "scene" | "theme";
   /** The sidecar's spec at open (undefined = following the theme). */
   current: TextAnimationSpec | undefined;
   /** The scene's resolved theme; names the Theme-default chip's motion. */
@@ -197,9 +199,11 @@ export function TextMotionPanel({
   /** Patch `doc.textAnimationForce`; the coded-motion override. */
   onForce: (on: boolean) => void;
 }) {
-  const [draft, setDraft] = useState<TextAnimationDraft | null>(() =>
+  const [sceneDraft, setDraft] = useState<TextAnimationDraft | null>(() =>
     current ? specToDraft(current) : null,
   );
+  const draft =
+    mode === "theme" ? (current ? specToDraft(current) : defaultDraft("none")) : sceneDraft;
   const meta = draft ? TEXT_PRESET_CATALOG.find((m) => m.preset === draft.preset) : undefined;
   // The pick always lands (non-blocking); the override question rides after it, once per panel open unless the user said "keep the code".
   const [askOverride, setAskOverride] = useState(false);
@@ -234,23 +238,24 @@ export function TextMotionPanel({
     <div className="text-motion-panel" role="menu" aria-label="Text motion">
       <span className="wizard-label">Motion</span>
       <div className="option-grid three-up" role="listbox" aria-label="Text motion preset">
-        {(() => {
-          const themePreview = optionPreviewClip(`textanim-${themePreset}`);
-          return (
-            <OptionCard
-              label="Theme default"
-              title={describeSpec(theme?.textAnimation)}
-              image={themePreview?.poster ?? optionPreviewStill(`textanim-${themePreset}`)}
-              clip={themePreview?.clip}
-              playing={hoverCard === "theme" || draft === null}
-              selected={draft === null}
-              onSelect={() => commit(null)}
-              onHoverChange={(h) =>
-                setHoverCard((cur) => (h ? "theme" : cur === "theme" ? null : cur))
-              }
-            />
-          );
-        })()}
+        {mode === "scene" &&
+          (() => {
+            const themePreview = optionPreviewClip(`textanim-${themePreset}`);
+            return (
+              <OptionCard
+                label="Theme default"
+                title={describeSpec(theme?.textAnimation)}
+                image={themePreview?.poster ?? optionPreviewStill(`textanim-${themePreset}`)}
+                clip={themePreview?.clip}
+                playing={hoverCard === "theme" || draft === null}
+                selected={draft === null}
+                onSelect={() => commit(null)}
+                onHoverChange={(h) =>
+                  setHoverCard((cur) => (h ? "theme" : cur === "theme" ? null : cur))
+                }
+              />
+            );
+          })()}
         {TEXT_PRESET_CATALOG.map((m) => {
           const preview = optionPreviewClip(`textanim-${m.preset}`);
           return (

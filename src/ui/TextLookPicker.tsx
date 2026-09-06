@@ -106,7 +106,9 @@ export function TextLookPanel({
   force,
   onLive,
   onForce,
+  mode = "scene",
 }: {
+  mode?: "scene" | "theme";
   /** The sidecar's spec at open (undefined = following the theme). */
   current: TextLookSpec | undefined;
   /** The scene's resolved theme; names the Theme-default chip's look and the colour fallbacks. */
@@ -120,9 +122,11 @@ export function TextLookPanel({
   /** Patch `doc.textLookForce`; the coded-look override. */
   onForce: (on: boolean) => void;
 }) {
-  const [draft, setDraft] = useState<TextLookDraft | null>(() =>
+  const [sceneDraft, setDraft] = useState<TextLookDraft | null>(() =>
     current ? lookSpecToDraft(current) : null,
   );
+  const draft =
+    mode === "theme" ? (current ? lookSpecToDraft(current) : defaultLookDraft("none")) : sceneDraft;
   const meta = draft ? textLookMeta(draft.preset) : undefined;
   // The pick always lands (non-blocking); the override question rides after it, once per panel open unless the user said "keep the code".
   const [askOverride, setAskOverride] = useState(false);
@@ -176,7 +180,7 @@ export function TextLookPanel({
     <div className="text-motion-panel text-look-panel" role="menu" aria-label="Text style">
       <span className="wizard-label">Text style</span>
       <div className="option-grid three-up" role="listbox" aria-label="Text style preset">
-        {card("theme", "Theme default", describeLookSpec(theme?.textLook))}
+        {mode === "scene" && card("theme", "Theme default", describeLookSpec(theme?.textLook))}
         {TEXT_LOOK_CATALOG.map((m) => card(m.preset, m.label, m.hint))}
       </div>
 
