@@ -132,8 +132,8 @@ describe("canonical scene starters", () => {
       deviceonly: null,
       image: null,
       layeredscreenshot: {
-        layout: "template",
-        items: [{ key: "title", type: "title", text: "Screenshots in motion" }],
+        groups: [],
+        items: [],
       },
       overlayend: {
         layout: "template",

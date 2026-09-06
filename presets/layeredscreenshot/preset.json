@@ -1,10 +1,15 @@
 {
-  "version": 1,
-  "name": "Layered screenshot",
-  "tagline": "A 3D stack of app screens",
   "category": "starters",
-  "tags": ["layeredscreenshot", "starter"],
+  "name": "Layered screenshot",
   "order": 70,
+  "preview": {
+    "aspect": "16:9",
+    "atMs": 1500.0,
+    "scene": 0,
+    "sceneFile": "scenes/01-layeredscreenshot.tsx"
+  },
   "status": "stable",
-  "preview": 0
+  "tagline": "A 3D stack of app screens",
+  "tags": ["layeredscreenshot", "starter"],
+  "version": 1
 }

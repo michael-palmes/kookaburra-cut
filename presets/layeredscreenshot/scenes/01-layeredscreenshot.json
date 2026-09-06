@@ -1,66 +1,78 @@
 {
-  "version": 1,
-  "name": "Layered screenshot",
-  "text": {
-    "title": "Screenshots in motion"
+  "backdrop": {
+    "type": "none"
   },
-  "managedText": {
-    "layout": "template",
-    "items": [
+  "camera": {
+    "keys": [
       {
-        "key": "title",
-        "type": "title",
-        "text": "Screenshots in motion"
+        "id": "k1",
+        "pose": {
+          "azimuthDeg": 0,
+          "distance": 3.8390483746869544,
+          "elevationDeg": 0,
+          "target": [0, -0.501336517183137, 0]
+        },
+        "tMs": 0
       }
-    ]
+    ],
+    "segments": []
   },
   "layeredScreenshot": {
     "layers": [
       {
         "id": "l1",
-        "visible": true,
-        "z": 0,
         "items": [
           {
+            "attach": null,
             "id": "a",
             "kind": "screen",
-            "src": "assets/sample-screenshot-2.jpg",
             "media": "image",
-            "attach": null
+            "src": "assets/sample-screenshot-2.jpg"
           },
           {
+            "attach": {
+              "side": "right",
+              "to": "a"
+            },
             "id": "b",
             "kind": "screen",
-            "src": "assets/sample-screenshot-4.jpg",
             "media": "image",
-            "attach": {
-              "to": "a",
-              "side": "right"
-            }
+            "src": "assets/sample-screenshot-4.jpg"
           }
-        ]
+        ],
+        "visible": true,
+        "z": 0
       },
       {
         "id": "l2",
-        "visible": true,
-        "z": 1,
         "items": [
           {
+            "attach": null,
             "id": "c",
             "kind": "screen",
-            "src": "assets/sample-screenshot-1.jpg",
             "media": "image",
-            "attach": null
+            "src": "assets/sample-screenshot-1.jpg"
           }
-        ]
+        ],
+        "visible": true,
+        "z": 1
       }
     ],
     "pose": {
+      "azimuthDeg": 0,
+      "elevationDeg": 0,
+      "pan": [0, 0],
       "spread": 0.55,
-      "azimuthDeg": 18,
-      "elevationDeg": 12,
-      "zoom": 0.92,
-      "pan": [0, 0]
+      "zoom": 0.92
     }
-  }
+  },
+  "managedText": {
+    "groups": [],
+    "items": []
+  },
+  "name": "Layered screenshot",
+  "text": {
+    "title": "Screenshots in motion"
+  },
+  "version": 1
 }

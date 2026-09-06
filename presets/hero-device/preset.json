@@ -1,10 +1,15 @@
 {
-  "version": 1,
-  "name": "Hero device",
-  "tagline": "A handset playing your capture while the camera pushes in on it.",
   "category": "devices",
-  "tags": ["device", "phone", "hero", "camera", "orbit"],
+  "name": "Hero device",
   "order": 10,
+  "preview": {
+    "aspect": "16:9",
+    "atMs": 2100.0,
+    "scene": 0,
+    "sceneFile": "scenes/01-hero-device.tsx"
+  },
   "status": "stable",
-  "preview": { "scene": 0, "atMs": 2400 }
+  "tagline": "A handset playing your capture while the camera pushes in on it.",
+  "tags": ["device", "phone", "hero", "camera", "orbit"],
+  "version": 1
 }
