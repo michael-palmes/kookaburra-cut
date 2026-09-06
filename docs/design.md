@@ -545,6 +545,8 @@ bounds for tiny controls (timeline grips, stepper arrows).
 - **Hit targets**: §11, ≥28px.
 - **Screen reader**: label icon-only buttons (`aria-label`); announce export progress via a polite
   live region; mark the preview canvas region.
+- **Option groups**: use borderless fieldsets for accessible grouping. Any visible container border
+  must use an explicit app style, never the browser's default fieldset border.
 - **Definition of done per screen**: AA contrast holds; focus is visible; reduced-motion respected;
   no accent fill competing with content; and (borrowing the old discipline) **remove one decoration
   before shipping.** If a screen reads as generic chrome that distracts from the preview, quiet it.

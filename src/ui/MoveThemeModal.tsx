@@ -66,12 +66,12 @@ export function MoveThemeModal({
         <p className="modal-hint">App identity: {id || "Enter a name"}</p>
         <div className="wizard-field">
           <span className="wizard-label">Category</span>
-          <fieldset className="chip-row" aria-label="Theme category">
+          <fieldset className="group-chips" aria-label="Theme category">
             {THEME_CATEGORIES.map((entry) => (
               <button
                 key={entry.id}
                 type="button"
-                className={`btn btn-small chip-with-icon${category === entry.id ? " active" : ""}`}
+                className={`btn btn-small chip-with-icon${category === entry.id ? " selected" : ""}`}
                 aria-pressed={category === entry.id}
                 disabled={busy}
                 onClick={() => setCategory(entry.id)}

@@ -142,7 +142,7 @@ export function LibraryPreviewsSection({
           {state.slots.map((entry, index) => (
             <button
               type="button"
-              className={`btn btn-small chip-with-icon${slot === index ? " active" : ""}`}
+              className={`btn btn-small chip-with-icon${slot === index ? " selected" : ""}`}
               key={entry.slot}
               aria-label={`Preview ${index + 1}${state.cover === index ? ", cover" : ""}`}
               aria-pressed={slot === index}

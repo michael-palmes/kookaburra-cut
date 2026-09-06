@@ -125,6 +125,13 @@
   box-sizing: border-box;
 }
 
+fieldset {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
 html,
 body,
 #root {
