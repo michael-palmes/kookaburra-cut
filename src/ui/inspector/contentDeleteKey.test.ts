@@ -63,6 +63,7 @@ describe("contentDeleteRoute", () => {
       ["text"],
       ["terminal.edit"],
       ["website.edit"],
+      ["layeredScreenshot.edit"],
     ]) {
       expect(
         contentDeleteRoute(inspector({ drillStack, drillIn: drillStack.at(-1) ?? null })),
@@ -76,7 +77,6 @@ describe("contentDeleteRoute", () => {
       ["frame.decorations"],
       ["compare.edit"],
       ["videoWindow.edit"],
-      ["layeredScreenshot.edit"],
       ["camera"],
       ["motion.transition"],
     ]) {

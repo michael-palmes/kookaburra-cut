@@ -171,6 +171,7 @@ import { OverlayImageGizmo } from "./ui/ImageOverlayGizmo";
 import { newChartBlock } from "./ui/inspector/ChartSection";
 import { InspectorPanel } from "./ui/inspector/InspectorPanel";
 import { LayeredScreenshotAnimationLane } from "./ui/LayeredScreenshotAnimationLane";
+import { LayeredScreenshotGizmo } from "./ui/LayeredScreenshotGizmo";
 import { LayeredScreenshotPill } from "./ui/LayeredScreenshotPill";
 import { LayeredScreenshotToolOverlay } from "./ui/LayeredScreenshotToolOverlay";
 import { LightingAnimationLane } from "./ui/LightingAnimationLane";
@@ -1609,6 +1610,7 @@ export default function App() {
   const chartSectionOpen = useGizmoSectionOpen("chart");
   const terminalSectionOpen = useGizmoSectionOpen("terminal");
   const websiteSectionOpen = useGizmoSectionOpen("website");
+  const screenshotStackSectionOpen = useGizmoSectionOpen("layeredScreenshot");
   const lsLaneOpen = useLayeredScreenshotEditStore((s) => s.laneOpen);
   const lsEditOpen = useLayeredScreenshotEditStore((s) => s.laneOpen || s.open);
   // The F-001 consent request `loadProject` is currently blocked on, if any.
@@ -2377,6 +2379,18 @@ export default function App() {
                       project={project}
                       sceneIndex={camSceneIndex}
                       aspect={format.width / format.height}
+                      onDocChanged={handleDocChanged}
+                    />
+                  )}
+                {project &&
+                  isEditableProjectId(project.id) &&
+                  !exporting &&
+                  !isAutoRun &&
+                  screenshotStackSectionOpen && (
+                    <LayeredScreenshotGizmo
+                      key={`${project.id}:${project.sceneFiles[camSceneIndex]}`}
+                      project={project}
+                      sceneIndex={camSceneIndex}
                       onDocChanged={handleDocChanged}
                     />
                   )}

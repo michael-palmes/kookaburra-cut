@@ -15,6 +15,7 @@ const PREFIXES: ReadonlyArray<readonly [string, GizmoDomain]> = [
   ["frame.decorations", "decorations"],
   ["terminal", "terminal"],
   ["website", "website"],
+  ["layeredScreenshot", "layeredScreenshot"],
 ];
 
 export function gizmoDomainForDrill(id: string | null | undefined): GizmoDomain | null {

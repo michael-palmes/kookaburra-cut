@@ -21,7 +21,7 @@ Everything else (visibility, pointer routing, the write contract) is shared.
 | Guides | Yellow alignment lines, 2D only | Frame centre, safe edges and other items are meaningful in screen space, not in the world. |
 | Text rotation | A new `textStyle.<key>RotationDeg` | Move and size already had sidecar fields; tilt did not. |
 | Undo | Exactly one history entry per drag | A drag is one act, however many frames it ticks through. |
-| Out of scope | Lights and fixtures (helpers stay read only), panel charts (layout driven), cutout-hosted text, layered screenshot (its own overlay) | Nothing here has free placement to drag, or it already has a bespoke surface. |
+| Out of scope | Lights and fixtures (helpers stay read only), panel charts (layout driven), cutout-hosted text | Nothing here has free placement to drag. |
 
 ## The two families
 
@@ -35,6 +35,7 @@ Everything else (visibility, pointer routing, the write contract) is shared.
 | Scene text, per key | 2D | `TextGizmo` → `Gizmo2D` | move / size / rotate | `textStyle.<key>OffsetX,OffsetY,Size,RotationDeg` |
 | Hero chart | 2D | `ChartHeroGizmo` → `Gizmo2D` | move / scale | `chart.style.offset`, `chart.style.scale` |
 | Overlay-placed media (Overlay and Window hosts) | 2D | `OverlayImageGizmo` → `Gizmo2D` | move / resize / rotate | `media[].overlay` |
+| Screenshot stack | 2D | `LayeredScreenshotGizmo` → `Gizmo2D` | move / scale / rotate | `layeredScreenshot.placement` |
 | Panel decoration | 2D | `DecorationGizmo` → `Gizmo2D` | move / resize / rotate | `frame.decorations[].position,size,rotationDeg` |
 
 `SceneGizmo` (`src/engine/SceneGizmo.tsx`) is the only place drei's
@@ -235,6 +236,15 @@ precision as the inspector's own controls.
 | Text | `<key>OffsetX/OffsetY`, `<key>Size`, `<key>RotationDeg` | 2dp world units, whole percent (0.01..10 multiplier), 1dp degrees; a neutral value deletes the key so the scene's own layout resurfaces |
 | Hero chart | `chart.style.offset`, `chart.style.scale` | 2dp, clamped to the resolver's own ±20 and 0.2..3, so a drag can never write a value the resolver would silently clamp back |
 | Decoration | `position`, `size`, `rotationDeg` | Size clamped 0.02..1.5 of the frame width |
+| Screenshot stack | `placement.position,size,rotationDeg` | 2dp frame-relative X/Y (±1), 2dp size (0.05..3), 1dp roll (±180°) |
+
+Screenshot stacks keep whole-stack placement separate from their rest pose and
+animation keys. The inspector exposes X, Y, Size, Roll and Reset placement.
+Resize and roll use the stack centre as their pivot. The outline projects every
+visible card's corners, including layer depth, through the live camera and any
+frame cutout. The existing pose tools still edit pan, orbit, zoom and spread.
+Absent placement is neutral, preserving existing scenes. Drag previews use the
+stack's export-guarded draft store and commit one history entry on release.
 
 Differencing the device drag against the RENDERED pose (what the gizmo started
 from) rather than the authored numbers is what survives everything the render does

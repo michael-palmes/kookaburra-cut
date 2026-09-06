@@ -410,9 +410,17 @@ export interface LayeredScreenshotSegment {
   ease: string;
 }
 
+export interface LayeredScreenshotPlacement {
+  /** Frame-relative offset, with positive Y upwards. */
+  position: [number, number];
+  size: number;
+  rotationDeg: number;
+}
+
 export interface SceneDocLayeredScreenshot {
   layers: LayeredScreenshotLayer[];
   pose: LayeredScreenshotPose;
+  placement?: Partial<LayeredScreenshotPlacement>;
   animation?: {
     keys: LayeredScreenshotKey[];
     segments: LayeredScreenshotSegment[];

@@ -23,6 +23,7 @@ import type {
   SceneDocRigPose,
   SceneDocRigSegment,
 } from "./sceneDocSchema";
+import { resolveLayeredScreenshotPlacement } from "./sceneLayeredScreenshot";
 import { resolveSceneDocMedia, videoWindowMediaEntry } from "./sceneMedia";
 
 type V3 = [number, number, number];
@@ -270,7 +271,13 @@ export function resolveAimTarget(
   }
   if (id === LAYERED_SCREENSHOT_AIM_ID && doc.layeredScreenshot) {
     const pan = doc.layeredScreenshot.pose.pan;
-    return [pan[0], pan[1], 0];
+    const { position } = resolveLayeredScreenshotPlacement(doc.layeredScreenshot.placement);
+    if (!format && position.some((value) => value !== 0)) return undefined;
+    return [
+      pan[0] + (position[0] * (format?.frame.width ?? 0)) / 2,
+      pan[1] + (position[1] * (format?.frame.height ?? 0)) / 2,
+      0,
+    ];
   }
   return null;
 }

@@ -347,6 +347,14 @@ describe("normalizeSceneRig", () => {
       ).keys[0].pose.aim.at;
     expect(rig(VIDEO_WINDOW_AIM_ID)).toEqual([0, 0, 0]);
     expect(rig(LAYERED_SCREENSHOT_AIM_ID)).toEqual([0.5, -0.25, 0]);
+    Object.assign(doc.layeredScreenshot ?? {}, { placement: { position: [0.4, -0.2] } });
+    const format = computeFormat(FORMATS["16:9"]);
+    expect(resolveAimTarget(LAYERED_SCREENSHOT_AIM_ID, doc)).toBeUndefined();
+    expect(resolveAimTarget(LAYERED_SCREENSHOT_AIM_ID, doc, format)).toEqual([
+      0.5 + (0.4 * format.frame.width) / 2,
+      -0.25 - (0.2 * format.frame.height) / 2,
+      0,
+    ]);
   });
 
   it("resolves a media aim at the entry's own anchor, the legacy window id excepted", () => {

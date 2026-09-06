@@ -18,6 +18,7 @@ describe("gizmoDomainForDrill", () => {
     expect(gizmoDomainForDrill("objects.placement")).toBe("objects");
     expect(gizmoDomainForDrill("chart.edit")).toBe("chart");
     expect(gizmoDomainForDrill("chart.position")).toBe("chart");
+    expect(gizmoDomainForDrill("layeredScreenshot.edit")).toBe("layeredScreenshot");
   });
 
   it("maps the two 2D families to their domains", () => {

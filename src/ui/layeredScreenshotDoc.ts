@@ -1,6 +1,9 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback } from "react";
 import { pushHistory } from "../engine/history";
-import { useLayeredScreenshotEditStore } from "../engine/layeredScreenshotEditStore";
+import {
+  useLayeredScreenshotDraft,
+  useLayeredScreenshotEditStore,
+} from "../engine/layeredScreenshotEditStore";
 import { isEditableProjectId, type LoadedProject, nativeProjectSlug } from "../engine/project";
 import { writeSceneDoc } from "../engine/sceneDoc";
 import type {
@@ -13,6 +16,7 @@ import {
   normalizeLayeredScreenshot,
   resolveLayeredScreenshotPose,
 } from "../engine/sceneLayeredScreenshot";
+import type { DocChangedHandler } from "./useSceneDocPatch";
 
 /** Shared layered-screenshot doc plumbing (the useCameraDoc pattern) used by the builder panel, tool overlay and animation lane: the in-flight draft, live preview via the edit store, sidecar commit with history + write-error surface, and the applied-pose sampler. `onDocChanged` receives the exact doc each commit wrote so the host patches the loaded project in memory instead of reloading. */
 
@@ -24,27 +28,24 @@ export function emptyLayeredScreenshot(): SceneDocLayeredScreenshot {
 export function useLayeredScreenshotDoc(
   project: LoadedProject,
   sceneIndex: number,
-  onDocChanged: (sceneIndex: number, doc: SceneDoc) => void,
+  onDocChanged: DocChangedHandler,
 ) {
   const slug = isEditableProjectId(project.id) ? nativeProjectSlug(project.id) : null;
   const doc = project.sceneDocs[sceneIndex];
   const sceneFile = project.sceneFiles[sceneIndex];
-  // The in-flight (or just-committed, pre-reload) block; cleared when the reload lands.
-  const [localDraft, setLocalDraft] = useState<SceneDocLayeredScreenshot | null>(null);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: project identity IS the reload signal
-  useEffect(() => setLocalDraft(null), [project, sceneIndex]);
+  const draft = useLayeredScreenshotDraft(project.id, sceneIndex);
 
   const block: SceneDocLayeredScreenshot =
-    localDraft ?? doc?.layeredScreenshot ?? emptyLayeredScreenshot();
+    draft?.block ?? doc?.layeredScreenshot ?? emptyLayeredScreenshot();
 
   /** Push a live preview of `next` (the stack re-renders through the store draft). */
   const preview = useCallback(
     (next: SceneDocLayeredScreenshot, committed: boolean) => {
-      setLocalDraft(next);
       useLayeredScreenshotEditStore.getState().setDraft({
         projectId: project.id,
         sceneIndex,
         normalized: normalizeLayeredScreenshot(next, "ls-edit"),
+        block: next,
         committed,
       });
     },
@@ -61,7 +62,7 @@ export function useLayeredScreenshotDoc(
         : { version: 1, layeredScreenshot: next };
       try {
         await writeSceneDoc(slug, sceneFile, written);
-        onDocChanged(sceneIndex, written);
+        onDocChanged(sceneIndex, written, sceneFile, project.id);
         pushHistory({
           label: "layered screenshot edit",
           changes: [
@@ -82,7 +83,7 @@ export function useLayeredScreenshotDoc(
         useLayeredScreenshotEditStore.getState().setWriteError(String(e));
       }
     },
-    [slug, sceneFile, doc, preview, onDocChanged, sceneIndex],
+    [slug, sceneFile, doc, preview, onDocChanged, sceneIndex, project.id],
   );
 
   /** The pose the stack actually shows at scene-local `t` under the current block + animated track; tool gestures and preset scaffolds seed from this so an edit never visibly moves the stack until the user drags. */
