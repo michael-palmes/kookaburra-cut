@@ -33,9 +33,14 @@ pub async fn check_for_update(
     settings: State<'_, SettingsState>,
     pending: State<'_, PendingUpdate>,
 ) -> Result<UpdateCheck, String> {
-    let override_endpoint = std::env::var("KOOKABURRA_UPDATE_ENDPOINT")
-        .ok()
-        .filter(|v| !v.trim().is_empty());
+    // The local test manifest is a dev-only affordance: a release build never reads the variable, so no environment can repoint a shipped app's updater (the pinned pubkey bounds it either way).
+    let override_endpoint = if cfg!(debug_assertions) {
+        std::env::var("KOOKABURRA_UPDATE_ENDPOINT")
+            .ok()
+            .filter(|v| !v.trim().is_empty())
+    } else {
+        None
+    };
     if cfg!(debug_assertions) && override_endpoint.is_none() {
         return Ok(UpdateCheck::DevBuild);
     }
