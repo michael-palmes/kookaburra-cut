@@ -35,7 +35,7 @@ import { useDeviceEditStore } from "./deviceEditStore";
 import { preloadEffectLuts } from "./effects";
 import {
   collectEnvironmentSources,
-  collectMirrorRequests,
+  collectMirrorRequestsWithCompare,
   preloadEnvironments,
   preloadMirrorEnvironments,
 } from "./environments";
@@ -321,11 +321,15 @@ async function exportPreamble(
   useImageEditStore.getState().select(null);
   useTerminalEditStore.getState().select(null);
   useWebsiteEditStore.getState().select(null);
-  // With themes, preloads exactly the fonts the project renders (bundled and workspace-pinned system fonts, plus sidecar `<key>Font` overrides); the no-theme form preloads the bundled defaults.
+  // With themes, preloads exactly the fonts the project renders (bundled and workspace-pinned system fonts, plus sidecar `<key>Font` overrides), comparison side-B themes included: a B-only face loaded at first typeset would land outside every barrier, the per-boot atlas lottery. The no-theme form preloads the bundled defaults.
   await preloadAppFonts(
     opts.theme
       ? [
-          ...collectThemeFontRefs([opts.theme, ...(opts.sceneThemes ?? [])]),
+          ...collectThemeFontRefs([
+            opts.theme,
+            ...(opts.sceneThemes ?? []),
+            ...(opts.compareBThemes ?? []),
+          ]),
           ...collectSceneDocFontRefs(opts.sceneDocs ?? []),
         ]
       : undefined,
@@ -380,11 +384,13 @@ async function exportPreamble(
     );
     await preloadMirrorEnvironments(
       gl,
-      collectMirrorRequests(
+      collectMirrorRequestsWithCompare(
         opts.projectId,
         opts.sceneThemes ?? [],
         opts.projectLighting,
         opts.sceneDocs,
+        opts.compareBThemes,
+        opts.compareBDocs,
       ),
     );
   }
@@ -960,14 +966,16 @@ export interface FormatVerification extends DeterminismResult {
   aspect: string;
 }
 
-/** Determinism gate: runs Verify ×2 for each format (aspect) in turn. The multi-scene project, including the offscreen composite/transition path, must be byte-identical run-to-run in every aspect, not just 16:9. */
+/** Determinism gate: runs Verify ×2 for each format (aspect) in turn. The multi-scene project, including the offscreen composite/transition path, must be byte-identical run-to-run in every aspect, not just 16:9. `commitFormat` lands each leg's aspect where the canvas lays out from (the editor store behind `useFormat`) before the loop reads pixels; without it every leg after the editor's own aspect hashes the wrong layout in the right-sized buffer, twice, and reports green. */
 export async function verifyAllFormats(
   opts: Omit<ExportOptions, "format">,
   formats: FormatSpec[],
+  commitFormat: (format: FormatSpec) => Promise<void>,
   onProgress?: (p: ExportProgress) => void,
 ): Promise<FormatVerification[]> {
   const results: FormatVerification[] = [];
   for (const format of formats) {
+    await commitFormat(format);
     const r = await verifyDeterminism({ ...opts, format }, onProgress);
     results.push({ ...r, aspect: format.name });
   }

@@ -20,7 +20,7 @@ with its latest form; superseded choices are gone.
 | Text engine | troika-three-text (SDF glyphs) in the same canvas | Kerned, ligature-aware text without DOM capture |
 | Timeline | anime.js v4 global timeline, autoplay off, manual ticking, `seek(t)` | Explicitly supports disabling its main loop: what a frame-accurate exporter needs |
 | Animation licensing policy | Permissive dependencies only (GSAP and Theatre.js excluded) | Keeps the whole JS dependency tree MIT/Apache/ISC-class |
-| State | zustand store-backed hooks (`useTimeline`/`useFormat`/`useTheme`), not React context | r3f renders through a separate reconciler; context does not bridge the Canvas boundary |
+| State | zustand store-backed hooks (`useTimeline`/`useFormat`/`useTheme`), not React context | r3f renders through a separate reconciler; context does not bridge the Canvas boundary. Format is the last input the canvas still reads store-only (theme, doc, project id and lighting went context-first), so export and Verify commit each leg's aspect to the store before reading pixels (`commitFormat` in App, `verifyAllFormats`) rather than installing a provider on the export path (2026-09-07) |
 | Tooling | pnpm · Biome (lint + format) · Vitest | One fast tool per job; Vite-native tests house the determinism harness |
 | Skills & commands | In-repo `.claude/` | Version-controlled; they travel with the code |
 | Frame rate | 60fps app-wide, a single `FPS` constant | One clock constant; changing it re-baselines everything |

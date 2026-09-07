@@ -1033,7 +1033,7 @@ export async function loadProject(
 
   // System-font auto-pin: resolve every theme font (and sidecar `<key>Font` overrides) BEFORE scenes render; bundled-only projects short-circuit without touching the native side.
   const fontRefs = [
-    ...collectThemeFontRefs([theme, ...sceneThemes]),
+    ...collectThemeFontRefs([theme, ...sceneThemes, ...compareBThemes]),
     ...collectSceneDocFontRefs(sceneDocs),
   ];
   await ensureFontRefsPinned(fontRefs);

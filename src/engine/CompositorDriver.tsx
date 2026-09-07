@@ -15,7 +15,7 @@ import { useCompareEditStore } from "./compareEditStore";
 import { renderComposited } from "./compositor";
 import {
   collectEnvironmentSources,
-  collectMirrorRequests,
+  collectMirrorRequestsWithCompare,
   preloadEnvironments,
   preloadMirrorEnvironments,
 } from "./environments";
@@ -148,7 +148,14 @@ export function CompositorDriver({
       .then(() =>
         preloadMirrorEnvironments(
           gl,
-          collectMirrorRequests(projectId, sceneThemes, projectLighting, sceneDocs),
+          collectMirrorRequestsWithCompare(
+            projectId,
+            sceneThemes,
+            projectLighting,
+            sceneDocs,
+            compareBThemes,
+            compareBDocs,
+          ),
         ),
       )
       .then(() => invalidate())

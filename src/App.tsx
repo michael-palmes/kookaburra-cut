@@ -51,7 +51,14 @@ import {
   verifyAllFormats,
 } from "./engine/exporter";
 import { isExporting } from "./engine/exportState";
-import { CAMERA, FORMATS, FPS, SHADOW_MAP_TYPE, STANDING_ASPECTS } from "./engine/format";
+import {
+  CAMERA,
+  FORMATS,
+  type FormatSpec,
+  FPS,
+  SHADOW_MAP_TYPE,
+  STANDING_ASPECTS,
+} from "./engine/format";
 import { mergeFrameSpec } from "./engine/frameSchema";
 import { useGizmoSectionOpen } from "./engine/gizmoSections";
 import {
@@ -2074,7 +2081,15 @@ export default function App() {
     [project],
   );
 
-  // Run the modal's selection. The chosen aspect sets the editor format first (the canvas FormatContext must commit before the export loop reads pixels); no `encode` means the frozen legacy path (Kookaburra Standard), presets/custom carry their resolved spec + name suffix.
+  // The canvas lays out through useFormat(), which reads the editor store, so an export or verify leg must land its aspect there before the loop reads pixels. Two macrotask hops let React commit the new format into the canvas; deliberately setTimeout-based, never rAF (the autorun nextCommit rationale).
+  async function commitFormat(target: FormatSpec) {
+    if (useEditorStore.getState().format.name === target.name) return;
+    setFormat(target);
+    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
+  }
+
+  // Run the modal's selection. The chosen aspect sets the editor format first; no `encode` means the frozen legacy path (Kookaburra Standard), presets/custom carry their resolved spec + name suffix.
   async function handleExport(sel: ExportSelection) {
     if (!project || exporting || themePreviewRunning.current) return;
     setShowExport(false);
@@ -2084,12 +2099,7 @@ export default function App() {
     setToast(null);
     try {
       const targetFormat = FORMATS[sel.aspect];
-      if (format.name !== targetFormat.name) {
-        setFormat(targetFormat);
-        // Two macrotask hops let React commit the new format into the canvas; deliberately setTimeout-based, never rAF (the autorun nextCommit rationale).
-        await new Promise((r) => setTimeout(r, 0));
-        await new Promise((r) => setTimeout(r, 0));
-      }
+      await commitFormat(targetFormat);
       // App exports honour the Downloads setting (default on, the inverted flag); autorun exports never pass a destination.
       const toDownloads = await getSettings()
         .then((s) => !s.keepExportsInProject)
@@ -2149,6 +2159,7 @@ export default function App() {
     setExporting(true);
     setProgress(null);
     setToast(null);
+    const startingFormat = useEditorStore.getState().format;
     try {
       // Determinism gate: Verify ×2 for every standing aspect, pinned to libx264 (the frozen path; presets never change it, ProRes legs ride kookaburra:run --codec).
       const results = await verifyAllFormats(
@@ -2169,6 +2180,7 @@ export default function App() {
           codec: "libx264",
         },
         STANDING_ASPECTS.map((a) => FORMATS[a]),
+        commitFormat,
         setProgress,
       );
       const allOk = results.every((r) => r.identical);
@@ -2183,6 +2195,8 @@ export default function App() {
     } finally {
       setExporting(false);
       setProgress(null);
+      // The legs cycled the editor's aspect; hand back the one the user was working in.
+      void commitFormat(startingFormat);
     }
   }
 
