@@ -19,14 +19,16 @@ const sceneTabSource = readSource("./SceneTab.tsx");
 const layeredScreenshotSource = readSource("../LayeredScreenshotBuilder.tsx");
 const objectPickerSource = readSource("../ObjectPicker.tsx");
 
-/** Every file that mounts a MediaBrowser inside the inspector: the panel's own screens plus the Screenshot Stack builder. */
+/** Every file that mounts a MediaBrowser inside the inspector, by name: the panel's own screens plus the Screenshot Stack builder. A directory scan would pass over nothing once these files move, so the list is explicit and the scan below only checks it is complete. */
+const MEDIA_BROWSER_FILES = [
+  "./InspectorPanel.tsx",
+  "./SceneTab.tsx",
+  "./TextIconPickerDrill.tsx",
+  "../LayeredScreenshotBuilder.tsx",
+];
+
 function mediaBrowserSources(): string[] {
-  const inspectorSources = testFs
-    .readdirSync(new URL(".", import.meta.url))
-    .filter((file) => file.endsWith(".tsx") && !file.endsWith(".test.tsx"))
-    .map((file) => readSource(`./${file}`))
-    .filter((source) => source.includes("<MediaBrowser"));
-  return [...inspectorSources, layeredScreenshotSource];
+  return MEDIA_BROWSER_FILES.map((file) => readSource(file));
 }
 
 function sourceSection(source: string, start: string, end: string): string {
@@ -95,6 +97,18 @@ describe("inspector media routing", () => {
     expect(addPicker).toContain("Add text instead");
     expect(layeredScreenshotSource).not.toContain("modal-overlay");
     expect(layeredScreenshotSource).not.toContain("wizard-media-host");
+  });
+
+  it("lists every inspector file that mounts a MediaBrowser, and only those", () => {
+    const mounting = testFs
+      .readdirSync(new URL(".", import.meta.url))
+      .filter((file) => file.endsWith(".tsx") && !file.endsWith(".test.tsx"))
+      .filter((file) => readSource(`./${file}`).includes("<MediaBrowser"))
+      .map((file) => `./${file}`)
+      .sort();
+    const listed = MEDIA_BROWSER_FILES.filter((file) => file.startsWith("./")).sort();
+    expect(mounting).toEqual(listed);
+    for (const source of mediaBrowserSources()) expect(source).toContain("<MediaBrowser");
   });
 
   it("keeps every inspector media browser inside the inspector media host", () => {
