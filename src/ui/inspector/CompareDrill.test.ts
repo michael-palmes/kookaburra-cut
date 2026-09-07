@@ -12,14 +12,13 @@ const testProcess = (
     };
   }
 ).process;
+const drill = testProcess
+  .getBuiltinModule("fs")
+  .readFileSync(new URL("./CompareSection.tsx", import.meta.url), "utf8");
+// The divider lane's gesture release still lives in SceneTab, beside the refs the drill shares.
 const source = testProcess
   .getBuiltinModule("fs")
   .readFileSync(new URL("./SceneTab.tsx", import.meta.url), "utf8");
-
-const start = source.indexOf('if (drillIn === "compare.edit"');
-const end = source.indexOf("if (drillIn === LEGACY_MEDIA_DRILL_ROUTE", start);
-if (start < 0 || end < 0) throw new Error("compare.edit drill section not found in SceneTab");
-const drill = source.slice(start, end);
 const rows = testProcess
   .getBuiltinModule("fs")
   .readFileSync(new URL("./rows.tsx", import.meta.url), "utf8");

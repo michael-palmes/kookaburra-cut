@@ -14,9 +14,6 @@ import { refreshWorkspaceAssets } from "../../engine/assetInventory";
 import { useCameraEditStore } from "../../engine/cameraEditStore";
 import { useChartEditStore } from "../../engine/chartEditStore";
 import { useClockStore } from "../../engine/clock";
-import { COMPARE_GRIP_CATALOG, COMPARE_MASK_CATALOG } from "../../engine/compareCatalog";
-import { useCompareEditStore } from "../../engine/compareEditStore";
-import { COMPARE_PRESETS } from "../../engine/comparePresets";
 import { useDecorationEditStore } from "../../engine/decorationEditStore";
 import { useSceneIsBanded } from "../../engine/depthStageRegistry";
 import { useDeviceEditStore } from "../../engine/deviceEditStore";
@@ -70,27 +67,9 @@ import {
 import { defaultRigPose } from "../../engine/sceneRig";
 import { canRigConvertToOrbit, orbitToRig, rigToOrbit } from "../../engine/sceneRigConvert";
 import {
-  resolveSceneTerminal,
-  type SceneDocTerminal,
-  sanitizeStartCommand,
-  TERMINAL_COLS_MAX,
-  TERMINAL_COLS_MIN,
-  TERMINAL_FONT_PX_MAX,
-  TERMINAL_FONT_PX_MIN,
-  TERMINAL_ROWS_MAX,
-  TERMINAL_ROWS_MIN,
-} from "../../engine/sceneTerminal";
-import { bakeTerminalSnapshot } from "../../engine/sceneTerminalBake";
-import { type CaptureTerminal, captureTerminalSnapshot } from "../../engine/sceneTerminalCapture";
-import {
-  getSceneTerminalSession,
-  killSceneTerminalSession,
-  sceneTerminalKey,
   sceneTerminalSessionsVersion,
-  startSceneTerminalSession,
   subscribeSceneTerminalSessions,
 } from "../../engine/sceneTerminalSession";
-import { resolveTerminalColours, TERMINAL_THEME_PRESETS } from "../../engine/sceneTerminalTheme";
 import { useLargestSceneText, useSceneTextRegistry } from "../../engine/sceneTextRegistry";
 import { listCachedSceneThumbs } from "../../engine/sceneThumbs";
 import {
@@ -221,6 +200,7 @@ import { HEADER_EMOJIS } from "../SceneTextFields";
 import { detectWindowRecording } from "../windowRecordingDetect";
 import { ArrangeDevicesDrill } from "./ArrangeDevicesDrill";
 import { ChartDrillIn, ChartPlacementDrillIn, newChartBlock } from "./ChartSection";
+import { CompareSection } from "./CompareSection";
 import { clickInspectorRemoveAction, contentDeleteRoute } from "./contentDeleteKey";
 import { nextNumberedContentId } from "./contentIds";
 import {
@@ -237,7 +217,7 @@ import {
   type LightingAnimationScope,
   mutateComparisonLightingTarget,
 } from "./lightingEditorModel";
-import { ManagedTextDrill, type ManagedTextWrite, TextControlIcon } from "./ManagedTextDrill";
+import { ManagedTextDrill, type ManagedTextWrite } from "./ManagedTextDrill";
 import { MediaDrillIn, type MediaMutation, type MediaMutationOptions } from "./MediaDrillIn";
 import {
   applyManagedTextStructuralAction,
@@ -266,6 +246,7 @@ import {
   removeSceneMedia,
   replaceSceneDoc,
 } from "./mediaEditorModel";
+import { TerminalSection, TerminalTextRow } from "./TerminalSection";
 import {
   TextIconEmojiPickerDrill,
   TextIconImagePickerDrill,
@@ -387,14 +368,6 @@ import { CameraPresetRow } from "./CameraPresetRow";
 import { CameraRigFields, seedRig } from "./CameraRigFields";
 import { CompareSideSelector } from "./CompareSideSelector";
 import {
-  CompareGripIcon,
-  CompareMaskIcon,
-  CompareNoneIcon,
-  ComparePresetIcon,
-  CompareSwatchIcon,
-  CompareToggleIcon,
-} from "./compareIcons";
-import {
   activeCompareSide,
   type CompareSide,
   compareEditTarget,
@@ -403,13 +376,7 @@ import {
   hasComparison,
   setThemeForSide,
 } from "./compareSideRouting";
-import {
-  clearCompareTrack,
-  mutateCompareBackgroundTarget,
-  nearestCompareKey,
-  setCompareDividerAngle,
-  setCompareDividerValue,
-} from "./comparisonTarget";
+import { mutateCompareBackgroundTarget, nearestCompareKey } from "./comparisonTarget";
 import { changeFirstClassDeviceModel, DeviceDrillIn, DeviceModelDrillIn } from "./DeviceDrillIn";
 import { DofFields } from "./DofFields";
 import {
@@ -446,17 +413,6 @@ import {
 } from "./SceneOverview";
 
 /** The inspector's Scene tab: collapsible sections over the playhead's dominant scene, every edit riding the same `useSceneDocPatch` funnel the EditBar uses. Section/row structure comes from the pinned `sceneSections` model. The header thumb is read from `listCachedSceneThumbs` only, never a capture, to avoid the clock-borrow playhead-blip class. */
-
-/** The divider colour as the picker shows it, mirroring `compareSpecOf`: an authored `#rrggbb` passes through, a theme token resolves against the scene's theme, and anything else falls back to the accent. */
-function resolveCompareColour(colour: string | undefined, theme: Theme | undefined): string {
-  if (colour && /^#[0-9a-f]{6}$/i.test(colour)) return colour.toLowerCase();
-  const colours = theme?.colors as unknown as Record<string, string> | undefined;
-  return (colour && colours?.[colour]) || theme?.colors.accent || "#6f93a8";
-}
-
-/** The theme tokens the After tint offers, each shown as its resolved swatch. */
-const COMPARE_TINT_TOKENS = ["accent", "text", "muted"] as const;
-type CompareTint = "none" | (typeof COMPARE_TINT_TOKENS)[number];
 
 /** The Move/Rotate/Scale pills every gizmo drill shows. */
 const GIZMO_MODE_OPTIONS: SegmentedOption<GizmoMode>[] = [
@@ -496,74 +452,6 @@ function panelFillLabel(background: FrameSpec["background"]): string {
     default:
       return "Transparent";
   }
-}
-
-/** A terminal preset's swatch: its screen surface with the prompt chevron in its foreground. */
-function TerminalSwatchIcon({ screen, foreground }: { screen: string; foreground: string }) {
-  return (
-    <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">
-      <rect
-        x="1"
-        y="1"
-        width="12"
-        height="12"
-        rx="3"
-        fill={screen}
-        stroke="rgba(255, 255, 255, 0.25)"
-      />
-      <path
-        d="M4 5.2l2 1.8-2 1.8"
-        stroke={foreground}
-        strokeWidth="1.4"
-        fill="none"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function TerminalChromeStyleIcon({ mac }: { mac?: boolean }) {
-  return (
-    <svg
-      width="14"
-      height="14"
-      viewBox="0 0 20 20"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.5"
-      aria-hidden="true"
-    >
-      <rect x="2.5" y="4" width="15" height="12" rx="2.5" />
-      {mac && <path d="M2.5 8h15M5.4 6.1h.01M7.8 6.1h.01M10.2 6.1h.01" strokeLinecap="round" />}
-    </svg>
-  );
-}
-
-function TerminalActionIcon({ kind }: { kind: "folder" | "play" | "capture" }) {
-  return (
-    <svg
-      width="17"
-      height="17"
-      viewBox="0 0 20 20"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.5"
-      aria-hidden="true"
-    >
-      {kind === "folder" && (
-        <path d="M2.5 6a1.5 1.5 0 0 1 1.5-1.5h4l2 2h6A1.5 1.5 0 0 1 17.5 8v7a1.5 1.5 0 0 1-1.5 1.5H4A1.5 1.5 0 0 1 2.5 15z" />
-      )}
-      {kind === "play" && <path d="M6.5 4.5v11l9-5.5z" strokeLinejoin="round" />}
-      {kind === "capture" && (
-        <>
-          <rect x="2.5" y="6" width="15" height="10.5" rx="2" />
-          <path d="M7 6l1.2-2h3.6L13 6" />
-          <circle cx="10" cy="11" r="2.6" />
-        </>
-      )}
-    </svg>
-  );
 }
 
 function WebsiteActionIcon({ kind }: { kind: "open" | "capture" | "image" | "remove" }) {
@@ -661,57 +549,6 @@ function WebsiteShadowIcon({ strength }: { strength: "none" | "soft" | "strong" 
       )}
       <rect x="3" y="3" width="12" height="10" rx="2" stroke="currentColor" strokeWidth="1.5" />
     </svg>
-  );
-}
-
-/** A committed text row (the copy-field rule: draft while typing, commit on blur or Enter, Escape restores). */
-function TerminalTextRow({
-  label,
-  value,
-  placeholder,
-  onCommit,
-}: {
-  label: string;
-  value: string;
-  placeholder?: string;
-  onCommit: (value: string) => void;
-}) {
-  const [draft, setDraft] = useState(value);
-  const editing = useRef(false);
-  useEffect(() => {
-    if (!editing.current) setDraft(value);
-  }, [value]);
-  return (
-    <div className="popover-row">
-      <span className="popover-inline slider-row-label">{label}</span>
-      <input
-        className="modal-input"
-        aria-label={label}
-        value={draft}
-        placeholder={placeholder}
-        onChange={(event) => {
-          editing.current = true;
-          setDraft(event.target.value);
-        }}
-        onBlur={() => {
-          editing.current = false;
-          if (draft !== value) onCommit(draft);
-        }}
-        onKeyDown={(event) => {
-          if (event.key === "Enter") {
-            event.preventDefault();
-            editing.current = false;
-            onCommit(draft);
-            event.currentTarget.blur();
-          }
-          if (event.key === "Escape") {
-            editing.current = false;
-            setDraft(value);
-            event.currentTarget.blur();
-          }
-        }}
-      />
-    </div>
   );
 }
 
@@ -7011,697 +6848,35 @@ export function SceneTab({
   }
 
   if (drillIn === "terminal.edit" && doc?.terminal) {
-    const terminal = resolveSceneTerminal(doc);
-    const terminalTheme = sceneTheme ?? project.theme;
-    const sessionKey = stem ? sceneTerminalKey(slug, stem) : null;
-    const session = sessionKey ? getSceneTerminalSession(sessionKey) : undefined;
-    const running = session?.status === "running";
-    const patchTerminal = (mutate: (t: SceneDocTerminal) => void, history: string) =>
-      void patchDoc(
-        (next) => {
-          if (next.terminal) mutate(next.terminal);
-        },
-        { history },
-      );
-    const startSession = async () => {
-      if (!terminal || !sessionKey) return;
-      const cwd = terminal.startPath ?? workspaceProjectPath(slug);
-      if (!cwd) return;
-      try {
-        await startSceneTerminalSession({
-          key: sessionKey,
-          cwd,
-          terminal,
-          colours: resolveTerminalColours(terminal.theme, terminalTheme),
-        });
-      } catch (e) {
-        console.warn("[terminal] session start failed:", e);
-      }
-    };
-    const captureSnapshot = async () => {
-      const entry = sessionKey ? getSceneTerminalSession(sessionKey) : undefined;
-      if (!entry || !terminal || !stem) return;
-      const snapshot = captureTerminalSnapshot(entry.term as unknown as CaptureTerminal);
-      try {
-        const src = await bakeTerminalSnapshot(
-          project.id,
-          stem,
-          { ...terminal, snapshot },
-          terminalTheme,
-        );
-        void patchDoc(
-          (next) => {
-            if (next.terminal) next.terminal.snapshot = { ...snapshot, src };
-          },
-          { history: "capture terminal snapshot" },
-        );
-      } catch (e) {
-        console.warn("[terminal] snapshot capture failed:", e);
-      }
-    };
-    const chooseStartFolder = async () => {
-      const picked = await openFolderPicker({
-        directory: true,
-        title: "Choose the session's start folder",
-      });
-      if (typeof picked === "string" && picked.length > 0) {
-        patchTerminal((t) => {
-          t.startPath = picked;
-        }, "set terminal start path");
-      }
-    };
     return (
-      <div className="inspector-drill">
-        <DrillBack
-          label={backLabel}
-          title="Terminal"
-          onClick={closeDrill}
-          actions={
-            <DrillHeaderAction
-              kind="remove"
-              label="Remove terminal"
-              onClick={() => {
-                if (sessionKey) killSceneTerminalSession(sessionKey);
-                useTerminalEditStore.getState().select(null);
-                void patchDoc((next) => {
-                  next.terminal = undefined;
-                });
-                closeDrill();
-              }}
-            />
-          }
-        />
-        <div className="inspector-drill-body">
-          {terminal && (
-            <>
-              <DrillGroup label="Theme">
-                {TERMINAL_THEME_PRESETS.map((preset) => {
-                  const colours = resolveTerminalColours(preset.id, terminalTheme);
-                  return (
-                    <ActionRow
-                      key={preset.id}
-                      icon={
-                        <TerminalSwatchIcon
-                          screen={colours.screen}
-                          foreground={colours.foreground}
-                        />
-                      }
-                      label={preset.name}
-                      selected={terminal.theme === preset.id}
-                      chevron={false}
-                      onClick={() =>
-                        patchTerminal((t) => {
-                          if (preset.id === "match-theme") delete t.theme;
-                          else t.theme = preset.id;
-                        }, "set terminal theme")
-                      }
-                    />
-                  );
-                })}
-              </DrillGroup>
-              <DrillGroup label="Window">
-                <SegmentedRow
-                  ariaLabel="Terminal chrome"
-                  options={[
-                    { value: "mac", label: "Mac window", icon: <TerminalChromeStyleIcon mac /> },
-                    { value: "bare", label: "Bare", icon: <TerminalChromeStyleIcon /> },
-                  ]}
-                  value={terminal.chrome.style}
-                  onChange={(style) =>
-                    patchTerminal((t) => {
-                      t.chrome = { ...(t.chrome ?? {}), style };
-                    }, "set terminal chrome")
-                  }
-                />
-                {terminal.chrome.style === "mac" && (
-                  <TerminalTextRow
-                    label="Title"
-                    value={terminal.chrome.title}
-                    placeholder="zsh"
-                    onCommit={(title) =>
-                      patchTerminal((t) => {
-                        t.chrome = { ...(t.chrome ?? {}), title };
-                      }, "set terminal title")
-                    }
-                  />
-                )}
-              </DrillGroup>
-              <DrillGroup label="Grid">
-                <div className="popover-row">
-                  <span className="popover-inline slider-row-label">Columns</span>
-                  <NumberField
-                    label="Terminal columns"
-                    value={terminal.cols}
-                    decimals={0}
-                    min={TERMINAL_COLS_MIN}
-                    max={TERMINAL_COLS_MAX}
-                    step={1}
-                    onCommit={(n) =>
-                      patchTerminal((t) => {
-                        t.cols = Math.round(n);
-                      }, "set terminal columns")
-                    }
-                  />
-                </div>
-                <div className="popover-row">
-                  <span className="popover-inline slider-row-label">Rows</span>
-                  <NumberField
-                    label="Terminal rows"
-                    value={terminal.rows}
-                    decimals={0}
-                    min={TERMINAL_ROWS_MIN}
-                    max={TERMINAL_ROWS_MAX}
-                    step={1}
-                    onCommit={(n) =>
-                      patchTerminal((t) => {
-                        t.rows = Math.round(n);
-                      }, "set terminal rows")
-                    }
-                  />
-                </div>
-                <div className="popover-row">
-                  <span className="popover-inline slider-row-label">Font size</span>
-                  <NumberField
-                    label="Terminal font size"
-                    value={terminal.fontPx}
-                    decimals={0}
-                    min={TERMINAL_FONT_PX_MIN}
-                    max={TERMINAL_FONT_PX_MAX}
-                    step={1}
-                    onCommit={(n) =>
-                      patchTerminal((t) => {
-                        t.fontPx = Math.round(n);
-                      }, "set terminal font size")
-                    }
-                  />
-                </div>
-                <div className="popover-row">
-                  <span className="popover-inline slider-row-label">Width %</span>
-                  <NumberField
-                    label="Terminal width"
-                    value={Math.round(terminal.size * 100)}
-                    decimals={0}
-                    min={5}
-                    max={150}
-                    step={1}
-                    onCommit={(n) =>
-                      patchTerminal((t) => {
-                        t.size = n / 100;
-                      }, "resize terminal")
-                    }
-                  />
-                </div>
-              </DrillGroup>
-              <DrillGroup
-                label="Session"
-                hint="The start command is typed into the prompt, never run."
-              >
-                <TerminalTextRow
-                  label="Start path"
-                  value={terminal.startPath ?? ""}
-                  placeholder="Project folder"
-                  onCommit={(value) =>
-                    patchTerminal((t) => {
-                      const trimmed = value.trim();
-                      if (trimmed) t.startPath = trimmed;
-                      else delete t.startPath;
-                    }, "set terminal start path")
-                  }
-                />
-                <ActionRow
-                  icon={<TerminalActionIcon kind="folder" />}
-                  label="Choose folder…"
-                  chevron={false}
-                  onClick={() => void chooseStartFolder()}
-                />
-                <TerminalTextRow
-                  label="Command"
-                  value={terminal.startCommand ?? ""}
-                  placeholder="pnpm dev"
-                  onCommit={(value) =>
-                    patchTerminal((t) => {
-                      // Stored canonical: the same single-line rule parse and paste enforce.
-                      const command = sanitizeStartCommand(value);
-                      if (command) t.startCommand = command;
-                      else delete t.startCommand;
-                    }, "set terminal start command")
-                  }
-                />
-                <ActionRow
-                  icon={<TerminalActionIcon kind="play" />}
-                  label={running ? "Restart session" : "Start session"}
-                  chevron={false}
-                  onClick={() => void startSession()}
-                />
-              </DrillGroup>
-              <DrillGroup
-                label="Snapshot"
-                hint="Video export renders the captured snapshot. It saves whatever is on screen into the project, and travels with packs, so avoid capturing secrets."
-              >
-                <ActionRow
-                  icon={<TerminalActionIcon kind="capture" />}
-                  label="Capture snapshot"
-                  value={terminal.snapshot?.src ? "Captured" : "None"}
-                  chevron={false}
-                  disabled={!running}
-                  onClick={() => void captureSnapshot()}
-                />
-              </DrillGroup>
-            </>
-          )}
-        </div>
-      </div>
+      <TerminalSection
+        backLabel={backLabel}
+        closeDrill={closeDrill}
+        doc={doc}
+        patchDoc={patchDoc}
+        projectId={project.id}
+        slug={slug}
+        stem={stem}
+        terminalTheme={sceneTheme ?? project.theme}
+      />
     );
   }
-
   if (drillIn === "compare.edit" && doc?.compare) {
-    const cmp = doc.compare;
-    const patchCompare = (mutate: (c: NonNullable<SceneDoc["compare"]>) => void) =>
-      void patchDoc((next) => {
-        if (next.compare) mutate(next.compare);
-      });
-    const cmpLive = (mutate: (c: NonNullable<SceneDoc["compare"]>) => void) => {
-      if (!compareDragBaseline.current && doc) compareDragBaseline.current = structuredClone(doc);
-      void patchDoc(
-        (next) => {
-          if (next.compare) mutate(next.compare);
-        },
-        { history: false },
-      );
-    };
-    const cmpCommit = (mutate: (c: NonNullable<SceneDoc["compare"]>) => void) => {
-      const baseline = compareDragBaseline.current;
-      compareDragBaseline.current = null;
-      if (baseline)
-        void commitFromBaseline(baseline, (next) => {
-          if (next.compare) mutate(next.compare);
-        });
-      else patchCompare(mutate);
-    };
-    // A gesture that ends where it started commits nothing: put the baseline's comparison back and release it, so the NEXT commit can never build on a stale snapshot.
-    const cmpAbort = () => {
-      const baseline = compareDragBaseline.current;
-      compareDragBaseline.current = null;
-      compareGestureMs.current = null;
-      if (!baseline) return;
-      void patchDoc(
-        (next) => {
-          next.compare = structuredClone(baseline.compare);
-        },
-        { history: false },
-      );
-    };
-    const maskType = cmp.mask?.type ?? "linear";
-    const maskEntry = COMPARE_MASK_CATALOG.find((e) => e.id === maskType);
-    const hasKeys = (cmp.track?.keys.length ?? 0) > 0;
-    // The lane's committed draft outranks the doc in the compositor, so rewriting the keys releases it.
-    const releaseTrackDraft = () => {
-      const lane = useCompareEditStore.getState();
-      lane.setDraft(null);
-      lane.select(null, null);
-    };
-    const applyPreset = (preset: (typeof COMPARE_PRESETS)[number]) => {
-      const track = preset.build(scene.durationMs);
-      releaseTrackDraft();
-      void patchDoc((next) => {
-        if (!next.compare) return;
-        next.compare.track = track;
-      });
-    };
-    const clearKeys = () => {
-      releaseTrackDraft();
-      void patchDoc(clearCompareTrack, { history: "clear divider keys" });
-    };
-    const staticAngleDeg = cmp.mask?.angleDeg ?? 90;
-    // The Divider and Angle fields edit the key nearest the playhead (the static value and angle with none), frozen mid-gesture on the key the writes are pinned to so a running clock can't hop them, and never release the lane's draft: the patched project clears a committed one on its own.
-    const targetKey =
-      (compareGestureMs.current !== null
-        ? nearestCompareKey(cmp.track?.keys, compareGestureMs.current)
-        : cmp.track?.keys.find((k) => k.id === compareTargetKeyId)) ?? null;
-    const dividerValue = targetKey?.pose.value ?? cmp.value ?? 0.5;
-    const dividerAngleDeg = targetKey?.pose.angleDeg ?? staticAngleDeg;
-    const gestureMs = () => (compareGestureMs.current ??= compareLocalMs());
-    const releaseGestureMs = () => {
-      const ms = gestureMs();
-      compareGestureMs.current = null;
-      return ms;
-    };
-    const keyHint = hasKeys ? "Edits the divider key nearest the playhead" : undefined;
-    const grip = cmp.chrome?.grip;
-    const gripObject = typeof grip === "object" ? grip : undefined;
-    const lineColour = resolveCompareColour(cmp.chrome?.line?.colour, sceneTheme);
-    // Each token wears its resolved colour, so the choice is the swatch rather than the word.
-    const tintOptions: SegmentedOption<CompareTint>[] = [
-      { value: "none", label: "None", title: "No tint", icon: <CompareNoneIcon size={14} /> },
-      ...COMPARE_TINT_TOKENS.map((token) => ({
-        value: token,
-        label: `${token[0].toUpperCase()}${token.slice(1)}`,
-        title: `Tint the after side with the theme's ${token} colour`,
-        icon: <CompareSwatchIcon colour={resolveCompareColour(token, sceneTheme)} size={14} />,
-      })),
-    ];
     return (
-      <div className="inspector-drill">
-        <DrillBack
-          label={backLabel}
-          title="Comparison"
-          onClick={closeDrill}
-          actions={
-            <DrillHeaderAction
-              kind="remove"
-              label="Remove comparison"
-              onClick={() => {
-                void patchDoc((next) => {
-                  next.compare = undefined;
-                  if (next.animatedTrack === "compare") next.animatedTrack = undefined;
-                });
-                closeDrill();
-              }}
-            />
-          }
-        />
-        <div className="inspector-drill-body">
-          <SegmentedRow
-            ariaLabel="Comparison mask"
-            className="subtabs-compact"
-            options={COMPARE_MASK_CATALOG.map((e) => ({
-              value: e.id,
-              label: e.label,
-              title: e.hint,
-              icon: <CompareMaskIcon id={e.id} size={14} />,
-            }))}
-            value={maskType}
-            onChange={(id) =>
-              patchCompare((c) => {
-                c.mask = { ...(c.mask ?? {}), type: id };
-              })
-            }
-          />
-          {maskEntry?.needsAngle && (
-            <div className="popover-row">
-              <span className="popover-inline slider-row-label" title={keyHint}>
-                Angle
-              </span>
-              <NumberField
-                label="Divider angle"
-                value={dividerAngleDeg}
-                decimals={0}
-                min={0}
-                max={360}
-                step={1}
-                onInput={(v) => {
-                  const ms = gestureMs();
-                  cmpLive((c) => setCompareDividerAngle(c, ms, v));
-                }}
-                onCommit={(v) => {
-                  const ms = releaseGestureMs();
-                  cmpCommit((c) => setCompareDividerAngle(c, ms, v));
-                }}
-                onDragEnd={(committed) => {
-                  if (!committed) cmpAbort();
-                }}
-              />
-            </div>
-          )}
-          {maskEntry?.needsCenter && (
-            <div className="popover-row">
-              <span className="popover-inline slider-row-label">Centre</span>
-              <NumberField
-                label="Centre X"
-                value={cmp.mask?.center?.[0] ?? 0.5}
-                decimals={2}
-                min={0}
-                max={1}
-                step={0.01}
-                onCommit={(v) =>
-                  patchCompare((c) => {
-                    c.mask = {
-                      ...(c.mask ?? { type: maskType }),
-                      center: [v, c.mask?.center?.[1] ?? 0.5],
-                    };
-                  })
-                }
-              />
-              <NumberField
-                label="Centre Y"
-                value={cmp.mask?.center?.[1] ?? 0.5}
-                decimals={2}
-                min={0}
-                max={1}
-                step={0.01}
-                onCommit={(v) =>
-                  patchCompare((c) => {
-                    c.mask = {
-                      ...(c.mask ?? { type: maskType }),
-                      center: [c.mask?.center?.[0] ?? 0.5, v],
-                    };
-                  })
-                }
-              />
-            </div>
-          )}
-          {maskEntry?.hasSoftness && (
-            <div className="popover-row">
-              <span className="popover-inline slider-row-label">Edge softness</span>
-              <DebouncedRange
-                value={cmp.mask?.softness ?? 0}
-                min={0}
-                max={0.2}
-                step={0.005}
-                label="Edge softness"
-                onInput={(v) =>
-                  cmpLive((c) => {
-                    c.mask = { ...(c.mask ?? { type: maskType }), softness: v };
-                  })
-                }
-                onCommit={(v) =>
-                  cmpCommit((c) => {
-                    c.mask = { ...(c.mask ?? { type: maskType }), softness: v };
-                  })
-                }
-              />
-            </div>
-          )}
-          <div className="popover-row">
-            <span className="popover-inline slider-row-label" title={keyHint}>
-              Divider
-            </span>
-            <DebouncedRange
-              value={dividerValue}
-              min={0}
-              max={1}
-              step={0.01}
-              label="Divider position"
-              onInput={(v) => {
-                const ms = gestureMs();
-                cmpLive((c) => setCompareDividerValue(c, ms, v));
-              }}
-              onCommit={(v) => {
-                const ms = releaseGestureMs();
-                cmpCommit((c) => setCompareDividerValue(c, ms, v));
-              }}
-            />
-          </div>
-          <DrillGroup label="Motion presets" hint="Writes keys you can hand-tune in the lane.">
-            <div className="wizard-presets">
-              <button
-                type="button"
-                className="chip compare-preset-chip"
-                title="Clears the keys and brings back the static Divider slider"
-                disabled={!hasKeys}
-                onClick={clearKeys}
-              >
-                <ComparePresetIcon id="manual" size={14} />
-                Manual
-              </button>
-              {COMPARE_PRESETS.map((p) => (
-                <button
-                  type="button"
-                  key={p.id}
-                  className="chip compare-preset-chip"
-                  title={p.hint}
-                  onClick={() => applyPreset(p)}
-                >
-                  <ComparePresetIcon id={p.id} size={14} />
-                  {p.label}
-                </button>
-              ))}
-            </div>
-          </DrillGroup>
-          {(maskEntry?.hasLine || maskEntry?.hasGrip) && (
-            <DrillGroup label="Divider line">
-              {maskEntry?.hasLine && (
-                <ToggleRow
-                  icon={<CompareToggleIcon id="line" size={17} />}
-                  label="Show line"
-                  checked={!!cmp.chrome?.line}
-                  onChange={(on) =>
-                    patchCompare((c) => {
-                      c.chrome = {
-                        ...c.chrome,
-                        line: on ? { width: 4, colour: "accent" } : undefined,
-                      };
-                    })
-                  }
-                />
-              )}
-              {maskEntry?.hasLine && cmp.chrome?.line && (
-                <>
-                  <div className="popover-row">
-                    <span className="popover-inline slider-row-label">Width</span>
-                    <DebouncedRange
-                      value={cmp.chrome.line.width ?? 4}
-                      min={1}
-                      max={12}
-                      step={0.5}
-                      label="Line width"
-                      onInput={(v) =>
-                        cmpLive((c) => {
-                          if (c.chrome?.line) c.chrome.line.width = v;
-                        })
-                      }
-                      onCommit={(v) =>
-                        cmpCommit((c) => {
-                          if (c.chrome?.line) c.chrome.line.width = v;
-                        })
-                      }
-                    />
-                  </div>
-                  <div className="popover-row text-inspector-colour-row">
-                    <span className="action-row-icon">
-                      <TextControlIcon type="colour" />
-                    </span>
-                    <span className="popover-inline">Colour</span>
-                    <span className="action-row-value">{lineColour.toUpperCase()}</span>
-                    <ColourPicker
-                      value={lineColour}
-                      defaultValue={resolveCompareColour("accent", sceneTheme)}
-                      label="Divider colour"
-                      theme={sceneTheme}
-                      onCommit={(hex) =>
-                        patchCompare((c) => {
-                          if (c.chrome?.line) c.chrome.line.colour = hex;
-                        })
-                      }
-                      // Reset restores the accent TOKEN, so the divider follows the theme again.
-                      onReset={
-                        cmp.chrome.line.colour && cmp.chrome.line.colour !== "accent"
-                          ? () =>
-                              patchCompare((c) => {
-                                if (c.chrome?.line) c.chrome.line.colour = "accent";
-                              })
-                          : undefined
-                      }
-                    />
-                  </div>
-                </>
-              )}
-              {maskEntry?.hasGrip && (
-                <ToggleRow
-                  icon={<CompareToggleIcon id="grip" size={17} />}
-                  label="Grip handle"
-                  description="The slider grip riding the divider."
-                  checked={!!grip}
-                  onChange={(on) => {
-                    if (!on && gripObject) compareGripMemory.current = structuredClone(gripObject);
-                    const remembered = on ? compareGripMemory.current : null;
-                    patchCompare((c) => {
-                      c.chrome = {
-                        ...c.chrome,
-                        grip: on ? (remembered ? structuredClone(remembered) : true) : undefined,
-                      };
-                    });
-                  }}
-                />
-              )}
-              {maskEntry?.hasGrip && grip && (
-                <SegmentedRow
-                  ariaLabel="Grip style"
-                  className="subtabs-compact"
-                  options={COMPARE_GRIP_CATALOG.map((e) => ({
-                    value: e.id,
-                    label: e.label,
-                    title: e.hint,
-                    icon: <CompareGripIcon id={e.id} size={14} />,
-                  }))}
-                  value={gripObject?.style ?? "chevrons"}
-                  onChange={(style) =>
-                    patchCompare((c) => {
-                      const current =
-                        typeof c.chrome?.grip === "object" ? c.chrome.grip : undefined;
-                      c.chrome = {
-                        ...c.chrome,
-                        grip:
-                          style === "chevrons" && current?.size === undefined
-                            ? true
-                            : { ...current, style },
-                      };
-                    })
-                  }
-                />
-              )}
-            </DrillGroup>
-          )}
-          <DrillGroup label="Labels">
-            <ToggleRow
-              icon={<CompareToggleIcon id="chips" size={17} />}
-              label="Before / after chips"
-              description="Label chips pinned to each half (text keys beforeLabel and afterLabel)."
-              checked={cmp.chrome?.chips === true}
-              onChange={(on) =>
-                patchCompare((c) => {
-                  c.chrome = { ...c.chrome, chips: on ? true : undefined };
-                })
-              }
-            />
-          </DrillGroup>
-          <DrillGroup label="After tint">
-            <SegmentedRow
-              ariaLabel="After tint"
-              className="subtabs-compact"
-              options={tintOptions}
-              value={(cmp.chrome?.tint?.b ?? "none") as CompareTint}
-              onChange={(t) =>
-                patchCompare((c) => {
-                  c.chrome = {
-                    ...c.chrome,
-                    tint:
-                      t === "none"
-                        ? undefined
-                        : { ...c.chrome?.tint, b: t, amount: c.chrome?.tint?.amount ?? 0.08 },
-                  };
-                })
-              }
-            />
-            {cmp.chrome?.tint?.b && (
-              <div className="popover-row">
-                <span className="popover-inline slider-row-label">Amount</span>
-                <DebouncedRange
-                  value={cmp.chrome.tint.amount ?? 0.08}
-                  min={0}
-                  max={0.3}
-                  step={0.01}
-                  label="Tint amount"
-                  onInput={(v) =>
-                    cmpLive((c) => {
-                      if (c.chrome?.tint) c.chrome.tint.amount = v;
-                    })
-                  }
-                  onCommit={(v) =>
-                    cmpCommit((c) => {
-                      if (c.chrome?.tint) c.chrome.tint.amount = v;
-                    })
-                  }
-                />
-              </div>
-            )}
-          </DrillGroup>
-          <p className="inspector-stub-note">
-            Use the Before and After toggles in Device, Theme, Background and Lighting to edit each
-            side.
-          </p>
-        </div>
-      </div>
+      <CompareSection
+        backLabel={backLabel}
+        closeDrill={closeDrill}
+        commitFromBaseline={commitFromBaseline}
+        compareDragBaseline={compareDragBaseline}
+        compareGestureMs={compareGestureMs}
+        compareGripMemory={compareGripMemory}
+        compareLocalMs={compareLocalMs}
+        compareTargetKeyId={compareTargetKeyId}
+        doc={doc}
+        patchDoc={patchDoc}
+        scene={scene}
+        sceneTheme={sceneTheme}
+      />
     );
   }
   if (drillIn === LEGACY_MEDIA_DRILL_ROUTE && doc && sceneFrame) {

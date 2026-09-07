@@ -19,6 +19,8 @@ const mediaSource = readSource("./MediaDrillIn.tsx");
 const textSource = readSource("./ManagedTextDrill.tsx");
 const chartSource = readSource("./ChartSection.tsx");
 const sceneTabSource = readSource("./SceneTab.tsx");
+const compareSource = readSource("./CompareSection.tsx");
+const terminalSource = readSource("./TerminalSection.tsx");
 const screenshotStackSource = readSource("../LayeredScreenshotBuilder.tsx");
 
 describe("content inspector header actions", () => {
@@ -35,7 +37,7 @@ describe("content inspector header actions", () => {
 
   it("puts trash icons in singleton content headers without inventing duplication", () => {
     expect(chartSource).toContain('label="Remove chart"');
-    expect(sceneTabSource).toContain('label="Remove comparison"');
+    expect(compareSource).toContain('label="Remove comparison"');
     expect(screenshotStackSource).toContain('label="Remove screenshot stack"');
   });
 
@@ -44,9 +46,11 @@ describe("content inspector header actions", () => {
     expect(mediaSource).not.toContain('<div className="inspector-drill-actions">');
     expect(textSource).not.toContain("text-inspector-footer");
     expect(chartSource).not.toContain('label={confirmRemove ? "Really remove?" : "Remove chart"}');
-    expect(sceneTabSource).not.toContain(
-      'label={confirmRemoveCompare ? "Really remove?" : "Remove comparison"}',
-    );
+    for (const source of [sceneTabSource, compareSource]) {
+      expect(source).not.toContain(
+        'label={confirmRemoveCompare ? "Really remove?" : "Remove comparison"}',
+      );
+    }
   });
 
   it("deletes on one click, with no armed confirmation step", () => {
@@ -56,6 +60,8 @@ describe("content inspector header actions", () => {
       textSource,
       chartSource,
       sceneTabSource,
+      compareSource,
+      terminalSource,
       screenshotStackSource,
     ]) {
       expect(source).not.toContain("Confirm remove");

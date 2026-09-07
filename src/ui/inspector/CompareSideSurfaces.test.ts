@@ -15,6 +15,7 @@ const read = (path: string) =>
   testProcess.getBuiltinModule("fs").readFileSync(new URL(path, import.meta.url), "utf8");
 
 const sceneTab = read("./SceneTab.tsx");
+const compareSection = read("./CompareSection.tsx");
 const lighting = read("./LightingInspectorSection.tsx");
 const deviceDrill = read("./DeviceDrillIn.tsx");
 
@@ -58,11 +59,7 @@ describe("comparison side surfaces (source pin)", () => {
   });
 
   it("points the comparison drill at those surfaces instead of holding a side fieldset", () => {
-    const drill = section(
-      sceneTab,
-      'if (drillIn === "compare.edit"',
-      "if (drillIn === LEGACY_MEDIA_DRILL_ROUTE",
-    );
+    const drill = compareSection;
 
     expect(drill).toContain(
       "Use the Before and After toggles in Device, Theme, Background and Lighting to edit each",
