@@ -1580,11 +1580,12 @@ export default function App() {
     };
   }, [projectId, loadNonce, view, applyLoadedProject, isAutoRun, backToProjects, armPollBaseline]);
 
-  // Auto-open the Claude rail for editable projects; close it where it can't work.
+  const loadedProjectId = project?.id;
+  // Auto-open the Claude rail for editable projects; close it where it can't work. Keyed on the id: in-memory doc patches swap the project object per edit and must not reopen a rail the user closed.
   useEffect(() => {
-    if (!project || isAutoRun) return;
-    setRailOpen(isEditableProjectId(project.id));
-  }, [project, isAutoRun]);
+    if (!loadedProjectId || isAutoRun) return;
+    setRailOpen(isEditableProjectId(loadedProjectId));
+  }, [loadedProjectId, isAutoRun]);
 
   // Camera-edit hygiene: a committed drag draft holds the new pose through the async reload, released once the reloaded project lands; the editor's whole state is per-project, so a project switch resets it.
   useEffect(() => {
@@ -1593,7 +1594,6 @@ export default function App() {
     useCompareEditStore.getState().clearCommittedDraft();
     useLayeredScreenshotEditStore.getState().clearCommittedDraft();
   }, [project]);
-  const loadedProjectId = project?.id;
   useEffect(() => {
     void loadedProjectId;
     useCameraEditStore.getState().reset();
