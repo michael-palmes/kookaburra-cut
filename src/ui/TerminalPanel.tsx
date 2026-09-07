@@ -192,9 +192,9 @@ export function TerminalPanel({
     };
   }, [status, cwd]);
 
-  // Version probe on startable states (so an install/update run refreshes it on exit); the native side caches the latest-version fetch for a day and stays silent offline.
+  // Version probe once a session has been started (and again when an install/update run exits): SECURITY.md promises no network before the terminal is invoked, and the probe's latest-version fetch is one. The native side caches it for a day and stays silent offline.
   useEffect(() => {
-    if (status !== "idle" && status !== "exited" && status !== "running") return;
+    if (status !== "exited" && status !== "running") return;
     let cancelled = false;
     claudeVersionInfo()
       .then((v) => {
