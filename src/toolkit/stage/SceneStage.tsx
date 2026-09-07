@@ -1,21 +1,21 @@
 import { type ReactNode, useContext, useEffect, useId, useMemo, useRef } from "react";
 import type { DirectionalLight, Light } from "three";
-import { resolveFixturePlan } from "../../engine/fixtures";
-import { registerLightingAnimatable } from "../../engine/lightingAnimation";
-import { sunPosition } from "../../engine/orbit";
+import { sunPosition } from "../../engine/camera/orbit";
+import { resolveFixturePlan } from "../../engine/lighting/fixtures";
+import { registerLightingAnimatable } from "../../engine/lighting/lightingAnimation";
+import {
+  MAX_SCENE_LIGHTS,
+  resolveLightBudget,
+  resolveLightingColour,
+  sunShadowSoftness,
+} from "../../engine/lighting/sceneLighting";
 import {
   AnimatedFixtureLightIdsContext,
   ProjectLightingContext,
   SceneDocContext,
   useSceneContext,
 } from "../../engine/sceneContext";
-import {
-  MAX_SCENE_LIGHTS,
-  resolveLightBudget,
-  resolveLightingColour,
-  sunShadowSoftness,
-} from "../../engine/sceneLighting";
-import { useStageRegistry } from "../../engine/stageRegistry";
+import { useStageRegistry } from "../../engine/stage/stageRegistry";
 import { useTheme } from "../../theme";
 import { mergeLighting } from "../../theme/schema";
 import type { ThemeLightSpec } from "../../theme/tokens";

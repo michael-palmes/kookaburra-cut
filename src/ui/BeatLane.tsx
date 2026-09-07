@@ -6,13 +6,13 @@ import {
   useRef,
   useState,
 } from "react";
-import type { BeatAnalysis } from "../engine/beatAnalysis";
+import type { BeatAnalysis } from "../engine/media/beatAnalysis";
 import {
   effectiveKeyMoments,
   projectBeatGrid,
   retryBeatAnalysis,
   useBeatStore,
-} from "../engine/beatState";
+} from "../engine/media/beatState";
 import {
   AUDIO_MARKERS_VERSION,
   type AudioMarkersSpec,

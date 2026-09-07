@@ -1,4 +1,8 @@
-import { BUNDLED_ENVIRONMENT_IDS, NONE_SOURCE, SOFTBOX_SOURCE } from "../../engine/environments";
+import {
+  BUNDLED_ENVIRONMENT_IDS,
+  NONE_SOURCE,
+  SOFTBOX_SOURCE,
+} from "../../engine/lighting/environments";
 import type { Theme } from "../../theme/tokens";
 import { ColourPicker } from "../colour/ColourPicker";
 import { Field, IconButton, IconSelect, IconToggle, NumberField, Section } from "./fields";

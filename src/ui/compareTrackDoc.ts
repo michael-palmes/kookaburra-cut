@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
+import { compareSampleAt, compareSpecOf } from "../engine/content/sceneCompare";
 import {
   type ComparePose,
   type CompareTrackDoc,
   useCompareEditStore,
-} from "../engine/compareEditStore";
+} from "../engine/edit/compareEditStore";
 import { isEditableProjectId, type LoadedProject, nativeProjectSlug } from "../engine/project";
-import { compareSampleAt, compareSpecOf } from "../engine/sceneCompare";
 import { commitSceneDocPatch, type DocChangedHandler } from "../engine/sceneDocPatchQueue";
 import type { SceneDoc } from "../engine/sceneDocSchema";
 

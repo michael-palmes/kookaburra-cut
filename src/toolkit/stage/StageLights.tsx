@@ -1,10 +1,10 @@
 import { useEffect, useId, useLayoutEffect, useMemo, useRef } from "react";
 import { type Light, Object3D } from "three";
-import { registerLightingAnimatable } from "../../engine/lightingAnimation";
-import { registerRelativeLight } from "../../engine/lightingState";
-import { placementPosition } from "../../engine/orbit";
+import { placementPosition } from "../../engine/camera/orbit";
+import { registerLightingAnimatable } from "../../engine/lighting/lightingAnimation";
+import { registerRelativeLight } from "../../engine/lighting/lightingState";
+import { resolveLightingColour, spotHalfAngleRad } from "../../engine/lighting/sceneLighting";
 import { useSceneContext } from "../../engine/sceneContext";
-import { resolveLightingColour, spotHalfAngleRad } from "../../engine/sceneLighting";
 import type { LightSpec, Theme, ThemeShadowSpec } from "../../theme/tokens";
 import {
   SHADOW_BLUR_SAMPLES,

@@ -2,6 +2,11 @@ import { useEffect, useRef, useState } from "react";
 import { useClockStore } from "../../engine/clock";
 import { type AspectName, aspectLabel, FORMATS } from "../../engine/format";
 import {
+  EXPOSURE_MAX,
+  EXPOSURE_MIN,
+  type RenderSettings,
+} from "../../engine/lighting/renderSettings";
+import {
   isEditableProjectId,
   type LoadedProject,
   nativeProjectSlug,
@@ -10,7 +15,6 @@ import {
   projectFolderPath,
   sceneFileStem,
 } from "../../engine/project";
-import { EXPOSURE_MAX, EXPOSURE_MIN, type RenderSettings } from "../../engine/renderSettings";
 import type { EditRepointSlot } from "../../engine/sceneDoc";
 import type { SceneDoc } from "../../engine/sceneDocSchema";
 import { activeSceneIndex } from "../../engine/sceneTimeline";

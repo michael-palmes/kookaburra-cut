@@ -1,7 +1,7 @@
 import { FPS } from "../../engine/format";
 import { nextKeyId } from "../../engine/keyedTrack";
+import { chainLightingSegments } from "../../engine/lighting/sceneLighting";
 import type { SceneDoc } from "../../engine/sceneDocSchema";
-import { chainLightingSegments } from "../../engine/sceneLighting";
 import type {
   LightingKey,
   LightingPose,

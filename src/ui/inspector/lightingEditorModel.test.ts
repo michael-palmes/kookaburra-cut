@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { resolveLighting } from "../../engine/lighting/sceneLighting";
 import type { SceneDoc } from "../../engine/sceneDocSchema";
-import { resolveLighting } from "../../engine/sceneLighting";
 import type { LightingSpec } from "../../theme/tokens";
 import {
   adjacentLightingKey,

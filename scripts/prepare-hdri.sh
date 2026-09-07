@@ -29,7 +29,7 @@ fi
 
 mkdir -p "$DEST"
 
-# Bundled id (kookaburra:<name>) ← source file. Keep in sync with engine/environments.ts.
+# Bundled id (kookaburra:<name>) ← source file. Keep in sync with engine/lighting/environments.ts.
 typeset -A MAP
 MAP=(
   ferndale-studio ferndale_studio_07_1k.exr

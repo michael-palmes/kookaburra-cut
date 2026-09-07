@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef } from "react";
 import type { Group } from "three";
-import { fixtureWorldInstances } from "../../engine/fixtures";
-import { HELPER_LAYER, useLightEditStore } from "../../engine/lightEditStore";
-import { placementPosition } from "../../engine/orbit";
-import { spotHalfAngleRad } from "../../engine/sceneLighting";
+import { placementPosition } from "../../engine/camera/orbit";
+import { HELPER_LAYER, useLightEditStore } from "../../engine/edit/lightEditStore";
+import { fixtureWorldInstances } from "../../engine/lighting/fixtures";
+import { spotHalfAngleRad } from "../../engine/lighting/sceneLighting";
 import { useUiStore } from "../../store/uiStore";
 import type { FixtureSpec, LightingSpec, LightSpec } from "../../theme/tokens";
 

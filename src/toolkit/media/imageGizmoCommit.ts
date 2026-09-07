@@ -1,4 +1,4 @@
-import type { ImageEditCommit } from "../../engine/imageEditStore";
+import type { ImageEditCommit } from "../../engine/edit/imageEditStore";
 import {
   normaliseDeg,
   type SceneImageOverlayPlacement,

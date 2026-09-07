@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { MediaMeta } from "../engine/media";
+import type { MediaMeta } from "../engine/media/media";
 import { mediaCardMenu } from "./mediaCardMenu";
 
 const meta = (kind: "video" | "image"): MediaMeta => ({

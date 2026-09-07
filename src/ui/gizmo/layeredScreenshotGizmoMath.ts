@@ -1,7 +1,7 @@
 import { type Camera, type Object3D, Vector3 } from "three";
-import type { StageRect } from "../../engine/gizmoRegistry";
+import { resolveLayeredScreenshotPlacement } from "../../engine/content/sceneLayeredScreenshot";
+import type { StageRect } from "../../engine/gizmo/gizmoRegistry";
 import type { LayeredScreenshotPlacement } from "../../engine/sceneDocSchema";
-import { resolveLayeredScreenshotPlacement } from "../../engine/sceneLayeredScreenshot";
 import type { Gizmo2DFrame } from "./gizmo2dMath";
 import { projectWorldPoint } from "./gizmo2dProject";
 

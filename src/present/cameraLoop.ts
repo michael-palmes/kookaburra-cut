@@ -1,9 +1,14 @@
 /** Present-hold camera looping: once a scene's authored camera keys finish, loop the keyed span. Smooth appends a return leg easing back to the first key over blendMs, then replays; jump restarts from the first key each cycle. Present-window sampling only, never used by preview or export. */
 
+import { mixPose, type SceneCameraTrack, sampleSceneCamera } from "../engine/camera/sceneCamera";
+import {
+  mixRigPose,
+  type RigPose,
+  type SceneRigTrack,
+  sampleSceneRig,
+} from "../engine/camera/sceneRig";
 import { DEFAULT_EASE, ease } from "../engine/ease";
-import { mixPose, type SceneCameraTrack, sampleSceneCamera } from "../engine/sceneCamera";
 import type { SceneDocCameraPose, SceneDocCameraPresentLoop } from "../engine/sceneDocSchema";
-import { mixRigPose, type RigPose, type SceneRigTrack, sampleSceneRig } from "../engine/sceneRig";
 
 export const DEFAULT_LOOP_BLEND_MS = 2000;
 

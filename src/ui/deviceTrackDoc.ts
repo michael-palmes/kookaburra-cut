@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
-import { type DeviceTrackDoc, useDeviceTrackEditStore } from "../engine/deviceTrackEditStore";
+import { deviceTrackSnapshotAt, resolveDeviceTrack } from "../engine/content/sceneDeviceTrack";
+import { type DeviceTrackDoc, useDeviceTrackEditStore } from "../engine/edit/deviceTrackEditStore";
 import { isEditableProjectId, type LoadedProject, nativeProjectSlug } from "../engine/project";
-import { deviceTrackSnapshotAt, resolveDeviceTrack } from "../engine/sceneDeviceTrack";
 import { commitSceneDocPatch, type DocChangedHandler } from "../engine/sceneDocPatchQueue";
 import type { SceneDocDevicePose } from "../engine/sceneDocSchema";
 

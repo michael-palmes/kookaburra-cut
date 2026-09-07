@@ -1,10 +1,11 @@
 import { invoke } from "@tauri-apps/api/core";
 import { emit, listen } from "@tauri-apps/api/event";
-import { resolveScreenshotTimeMs } from "../engine/autorun";
-import { invalidateChangedClips } from "../engine/clips";
+import { resolveScreenshotTimeMs } from "../engine/export/autorun";
+import { awaitProjectCommitted } from "../engine/export/themePreviews";
 import { captureFrameRgba, captureScreenshot } from "../engine/exporter";
 import { type AspectName, FORMATS, type FormatSpec, FPS } from "../engine/format";
-import { libraryPreviewFormat } from "../engine/libraryPreviewPoint";
+import { invalidateChangedClips } from "../engine/media/clips";
+import { setProjectAssetRevision } from "../engine/media/projectAssetRevision";
 import {
   bumpWorkspaceReloadToken,
   isEditableProjectId,
@@ -15,8 +16,7 @@ import {
   refreshBundledProjectAssets,
   sceneFileStem,
 } from "../engine/project";
-import { setProjectAssetRevision } from "../engine/projectAssetRevision";
-import { awaitProjectCommitted } from "../engine/themePreviews";
+import { libraryPreviewFormat } from "../engine/workspace/libraryPreviewPoint";
 
 /** The render window's half of the capture bridge: claim one request per tick, load (or reload) the target project into this window's own canvas, render the frame through the deterministic export path and respond, all without touching the editor realm. Requests with an explicit --scene may target any project on disk; playhead requests (no scene) need the editor's open project, whose id/aspect/playhead arrive via the pushed editor context. Idle ticks drain the thumb queue instead (fast tier: same path, small buffer), parked while the editor is playing. */
 

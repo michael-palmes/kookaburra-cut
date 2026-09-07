@@ -1,5 +1,5 @@
 import { useCallback } from "react";
-import { type DeviceTrackDoc, useDeviceTrackEditStore } from "../engine/deviceTrackEditStore";
+import { type DeviceTrackDoc, useDeviceTrackEditStore } from "../engine/edit/deviceTrackEditStore";
 import type { LoadedProject } from "../engine/project";
 import type { SceneDoc, SceneDocDevicePose } from "../engine/sceneDocSchema";
 import { useDeviceTrackDoc } from "./deviceTrackDoc";

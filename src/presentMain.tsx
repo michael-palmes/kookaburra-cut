@@ -1,8 +1,8 @@
 // Third Tauri window (label "present"): live video/slideshow playback of a project, chromeless and never part of the export path; bootTrap first for the same readable-crash surface as the main window.
-import "./engine/bootTrap";
+import "./engine/stage/bootTrap";
 import React from "react";
 import ReactDOM from "react-dom/client";
-import { revealFailsafe } from "./engine/reveal";
+import { revealFailsafe } from "./engine/stage/reveal";
 import { PresentApp } from "./present/PresentApp";
 import "./styles.css";
 

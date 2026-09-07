@@ -18,7 +18,7 @@ import {
   renderEdit,
   resetEdit,
   saveEdit,
-} from "../engine/edit";
+} from "../engine/edit/edit";
 import {
   addTap,
   clipIndexAt,
@@ -41,12 +41,17 @@ import {
   splitAt,
   tapWindows,
   timelineDurationMs,
-} from "../engine/editMath";
-import { formatMediaDuration, importMediaBytes, type MediaMeta, mediaMeta } from "../engine/media";
-import { readProjectManifestSnapshot } from "../engine/projectEdit";
-import { revealApp } from "../engine/reveal";
+} from "../engine/edit/editMath";
+import { readProjectManifestSnapshot } from "../engine/edit/projectEdit";
+import {
+  formatMediaDuration,
+  importMediaBytes,
+  type MediaMeta,
+  mediaMeta,
+} from "../engine/media/media";
+import { resolveSceneDocMedia } from "../engine/media/sceneMedia";
 import { parseSceneDoc } from "../engine/sceneDocSchema";
-import { resolveSceneDocMedia } from "../engine/sceneMedia";
+import { revealApp } from "../engine/stage/reveal";
 import { resolveAvailableDeviceSpec } from "../toolkit/device/catalog";
 import { ContextMenu, type ContextMenuState } from "../ui/ContextMenu";
 import { MediaBrowser } from "../ui/MediaBrowser";

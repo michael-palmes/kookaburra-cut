@@ -19,8 +19,48 @@ import {
   applyCameraTrack,
   baseCameraPose,
   type CameraKeyframe,
-} from "./cameraTrack";
-import { useChartEditStore } from "./chartEditStore";
+} from "./camera/cameraTrack";
+import {
+  buildSceneCameraTracks,
+  hasSceneCameraTracks,
+  resolveFrameCameras,
+} from "./camera/sceneCamera";
+import { useClockStore } from "./clock";
+import { renderComposited } from "./compositor";
+import { compareSpecOf, resolveCompareFrame } from "./content/sceneCompare";
+import { useChartEditStore } from "./edit/chartEditStore";
+import { useDeviceEditStore } from "./edit/deviceEditStore";
+import { useImageEditStore } from "./edit/imageEditStore";
+import { HELPER_LAYER } from "./edit/lightEditStore";
+import { useObjectEditStore } from "./edit/objectEditStore";
+import { useTerminalEditStore } from "./edit/terminalEditStore";
+import { useWebsiteEditStore } from "./edit/websiteEditStore";
+import { preloadEffectLuts } from "./effects/effects";
+import { canvasCommittedClockMs, canvasHandle } from "./export/exportBridge";
+import {
+  exportFrameTimeMs,
+  normalExportFrameCount,
+  posterFrameSample,
+} from "./export/exportFrames";
+import { setExporting, withExporting } from "./export/exportState";
+import { type RenderStateFingerprint, renderStateFingerprint } from "./export/renderFingerprint";
+import { computeFormat, type FormatSpec } from "./format";
+import { preloadPanelMeasures } from "./frame/framePanelMeasure";
+import { preloadOverlayPanelImages } from "./frame/overlayPanelTexture";
+import { overlayPanelImageSources, resolveOverlays } from "./frame/overlayPlan";
+import { awaitTitleMeasuresSettled } from "./frame/titleBlockMeasure";
+import {
+  collectEnvironmentSources,
+  collectMirrorRequestsWithCompare,
+  preloadEnvironments,
+  preloadMirrorEnvironments,
+} from "./lighting/environments";
+import {
+  buildCompareBLightingTracks,
+  buildLightingTracks,
+  resolveFrameLighting,
+} from "./lighting/sceneLighting";
+import { yieldMacrotask } from "./macrotask";
 import {
   awaitVideoFramesReady,
   everydayClipLane,
@@ -28,28 +68,8 @@ import {
   preextractClips,
   registerClip,
   setClipLane,
-} from "./clips";
-import { useClockStore } from "./clock";
-import { renderComposited } from "./compositor";
-import { useDeviceEditStore } from "./deviceEditStore";
-import { preloadEffectLuts } from "./effects";
-import {
-  collectEnvironmentSources,
-  collectMirrorRequestsWithCompare,
-  preloadEnvironments,
-  preloadMirrorEnvironments,
-} from "./environments";
-import { canvasCommittedClockMs, canvasHandle } from "./exportBridge";
-import { exportFrameTimeMs, normalExportFrameCount, posterFrameSample } from "./exportFrames";
-import { setExporting, withExporting } from "./exportState";
-import { computeFormat, type FormatSpec } from "./format";
-import { preloadPanelMeasures } from "./framePanelMeasure";
-import { useImageEditStore } from "./imageEditStore";
-import { HELPER_LAYER } from "./lightEditStore";
-import { yieldMacrotask } from "./macrotask";
-import { useObjectEditStore } from "./objectEditStore";
-import { preloadOverlayPanelImages } from "./overlayPanelTexture";
-import { overlayPanelImageSources, resolveOverlays } from "./overlayPlan";
+} from "./media/clips";
+import { resolveSceneDocMedia } from "./media/sceneMedia";
 import {
   isWorkspaceBackedProjectId,
   nativeProjectSlug,
@@ -57,24 +77,12 @@ import {
   preloadProjectImages,
   resolveAssetPath,
 } from "./project";
-import { type RenderStateFingerprint, renderStateFingerprint } from "./renderFingerprint";
-import { buildSceneCameraTracks, hasSceneCameraTracks, resolveFrameCameras } from "./sceneCamera";
-import { compareSpecOf, resolveCompareFrame } from "./sceneCompare";
 import { collectSceneDocFontRefs, type SceneDoc } from "./sceneDocSchema";
-import { getSceneHosts } from "./sceneHostRegistry";
-import {
-  buildCompareBLightingTracks,
-  buildLightingTracks,
-  resolveFrameLighting,
-} from "./sceneLighting";
-import { resolveSceneDocMedia } from "./sceneMedia";
 import { buildSceneRenderStates, resolveFrameSceneStates } from "./sceneState";
 import { resolveAt, type SceneSlot } from "./sceneTimeline";
-import { snapshotSceneStageFloors } from "./stageRegistry";
-import { useTerminalEditStore } from "./terminalEditStore";
+import { getSceneHosts } from "./stage/sceneHostRegistry";
+import { snapshotSceneStageFloors } from "./stage/stageRegistry";
 import { configureDeterministicEngine } from "./timeline";
-import { awaitTitleMeasuresSettled } from "./titleBlockMeasure";
-import { useWebsiteEditStore } from "./websiteEditStore";
 
 /** Export encoder: libx264 is deterministic (the v0 default), videotoolbox is hardware-fast, prores_ks is software ProRes 422 HQ (10-bit 4:2:2, .mov container). */
 export type Codec = "libx264" | "h264_videotoolbox" | "prores_ks";

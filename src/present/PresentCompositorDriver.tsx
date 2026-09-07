@@ -1,28 +1,25 @@
 import { useFrame, useThree } from "@react-three/fiber";
 import { useEffect, useMemo, useRef } from "react";
 import type { PerspectiveCamera } from "three";
-import { applyCameraTrack, sampleCameraTrack } from "../engine/cameraTrack";
-import { useClockStore } from "../engine/clock";
-import { renderComposited } from "../engine/compositor";
-import {
-  collectEnvironmentSources,
-  collectMirrorRequestsWithCompare,
-  preloadEnvironments,
-  preloadMirrorEnvironments,
-} from "../engine/environments";
-import { useFormat } from "../engine/format";
-import { resolveOverlays } from "../engine/overlayPlan";
-import { setSceneHold } from "../engine/presentHold";
-import { snapshotPresentTimings } from "../engine/presentTimingRegistry";
-import type { LoadedProject } from "../engine/project";
+import { applyCameraTrack, sampleCameraTrack } from "../engine/camera/cameraTrack";
 import {
   buildSceneCameraTracks,
   orbitToView,
   resolveFrameCameras,
   sceneCameraEndMs,
-} from "../engine/sceneCamera";
-import { getSceneHosts } from "../engine/sceneHostRegistry";
-import { buildLightingTracks, resolveFrameLighting } from "../engine/sceneLighting";
+} from "../engine/camera/sceneCamera";
+import { useClockStore } from "../engine/clock";
+import { renderComposited } from "../engine/compositor";
+import { useFormat } from "../engine/format";
+import { resolveOverlays } from "../engine/frame/overlayPlan";
+import {
+  collectEnvironmentSources,
+  collectMirrorRequestsWithCompare,
+  preloadEnvironments,
+  preloadMirrorEnvironments,
+} from "../engine/lighting/environments";
+import { buildLightingTracks, resolveFrameLighting } from "../engine/lighting/sceneLighting";
+import type { LoadedProject } from "../engine/project";
 import { buildSceneRenderStates, resolveFrameSceneStates } from "../engine/sceneState";
 import {
   applyTransitionEase,
@@ -31,7 +28,10 @@ import {
   resolveAt,
   resolveTransitionParams,
 } from "../engine/sceneTimeline";
-import { useSceneStageFloors } from "../engine/stageRegistry";
+import { setSceneHold } from "../engine/stage/presentHold";
+import { snapshotPresentTimings } from "../engine/stage/presentTimingRegistry";
+import { getSceneHosts } from "../engine/stage/sceneHostRegistry";
+import { useSceneStageFloors } from "../engine/stage/stageRegistry";
 import { sampleLoopedSceneCamera, sampleLoopedSceneRig } from "./cameraLoop";
 import { type DerivedHold, derivePresentHold } from "./holdPoint";
 import { usePresentStore } from "./presentStore";

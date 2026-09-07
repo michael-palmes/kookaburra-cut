@@ -1,5 +1,7 @@
 import { type ReactNode, type Ref, useEffect, useRef } from "react";
-import { useImageEditStore } from "../../engine/imageEditStore";
+import { useImageEditStore } from "../../engine/edit/imageEditStore";
+import { editSceneDocMedia, resolveSceneDocMedia } from "../../engine/media/sceneMedia";
+import { resolveVideoWindowRadius } from "../../engine/media/sceneVideoWindow";
 import type {
   SceneDoc,
   SceneDocMediaSpec,
@@ -7,8 +9,6 @@ import type {
   SceneMediaKind,
   SceneMediaMotionPreset,
 } from "../../engine/sceneDocSchema";
-import { editSceneDocMedia, resolveSceneDocMedia } from "../../engine/sceneMedia";
-import { resolveVideoWindowRadius } from "../../engine/sceneVideoWindow";
 import {
   OVERLAY_MEDIA_SIZE_RANGE,
   STAGE_MEDIA_SIZE_RANGE,

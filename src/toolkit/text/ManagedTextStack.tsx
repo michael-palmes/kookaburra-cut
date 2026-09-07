@@ -1,10 +1,10 @@
-import { FrameIcon } from "../../engine/FrameIcon";
-import { useFormat } from "../../engine/format";
 import {
   isTemplateManagedText,
   type ManagedTextRegion,
   resolveManagedTextRenderPlan,
-} from "../../engine/managedText";
+} from "../../engine/content/managedText";
+import { useFormat } from "../../engine/format";
+import { FrameIcon } from "../../engine/frame/FrameIcon";
 import { useSceneDoc } from "../../engine/sceneDoc";
 import { useTheme } from "../../theme";
 import { AnimatedHeadline } from "./AnimatedHeadline";

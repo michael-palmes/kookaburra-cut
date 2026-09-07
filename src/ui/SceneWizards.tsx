@@ -1,13 +1,13 @@
 import { listen } from "@tauri-apps/api/event";
 import { useEffect, useId, useMemo, useState } from "react";
 import { useClockStore } from "../engine/clock";
-import { type HistoryChange, pushHistory } from "../engine/history";
-import { fsUrl, type MediaMeta } from "../engine/media";
 import {
   moveProjectScene,
   readProjectManifestSnapshot,
   removeProjectScene,
-} from "../engine/projectEdit";
+} from "../engine/edit/projectEdit";
+import { type HistoryChange, pushHistory } from "../engine/history";
+import { fsUrl, type MediaMeta } from "../engine/media/media";
 import { resyncFollowMediaDuration, writeSceneDoc } from "../engine/sceneDoc";
 import type { SceneDoc } from "../engine/sceneDocSchema";
 import { useEditorStore } from "../store/editorStore";

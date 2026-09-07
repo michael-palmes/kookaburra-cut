@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { type PackSelection, selectionKey } from "../../engine/packs";
+import { type PackSelection, selectionKey } from "../../engine/workspace/packs";
 import { restrictedFontNotice } from "../../ui/packs/fontCopy";
 import { formatBytes, ITEM_KINDS, type ItemKind, KIND_LABELS, type PackManifest } from "../types";
 

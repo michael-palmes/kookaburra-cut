@@ -1,8 +1,8 @@
 /** Pure option/maths logic for the export modal, the stageOptions/textAnimationOptions pattern: everything the modal computes lives here, unit-pinned, so the component is layout only. The size-estimate and Fit-to-cap maths are golden-tested (decision 18: estimate = (video + audio) kbps × duration × 1.05 mux margin; over-cap warns amber + one-click fit, never silent, never blocking). */
 
 import type { AspectName } from "../engine/format";
-import type { SceneDocTerminal } from "../engine/sceneTerminal";
-import { resolveSceneWebsite, type SceneDocWebsite } from "../engine/sceneWebsite";
+import type { SceneDocTerminal } from "../engine/panels/sceneTerminal";
+import { resolveSceneWebsite, type SceneDocWebsite } from "../engine/panels/sceneWebsite";
 import {
   type EncodeSpec,
   EXPORT_PRESET_VERSION,

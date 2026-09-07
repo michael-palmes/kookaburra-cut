@@ -13,36 +13,44 @@ import {
   useSyncExternalStore,
 } from "react";
 import {
-  type AutoRunConfig,
-  getAutoRunConfig,
-  reportAutoRunError,
-  runAutoRun,
-} from "./engine/autorun";
-import {
   addKeyAtBeat,
   appliedOrbitPoseAt,
   buildSyncTrack,
   pickSyncMoments,
   sceneTrackContext,
-} from "./engine/beatCameraSync";
-import { effectiveKeyMoments, setBeatProject, useBeatStore } from "./engine/beatState";
-import { CompositorDriver } from "./engine/CompositorDriver";
-import { useCameraEditStore } from "./engine/cameraEditStore";
-import { ensureCaptureService } from "./engine/captureBridge";
-import {
-  clipExtractionCount,
-  clipExtractionProgress,
-  evictAllClips,
-  invalidateChangedClips,
-  setHardwareVideo,
-  subscribeClipExtraction,
-} from "./engine/clips";
+} from "./engine/camera/beatCameraSync";
 import { useClockStore } from "./engine/clock";
-import { useCompareEditStore } from "./engine/compareEditStore";
-import { useDeviceTrackEditStore } from "./engine/deviceTrackEditStore";
-import { listEdits, openEdit, openEditNamed } from "./engine/edit";
-import { useEffectsStore } from "./engine/effectsStore";
-import { canvasHandle, ExportBridge } from "./engine/exportBridge";
+import { deriveCompareBDoc } from "./engine/content/sceneCompare";
+import { useCameraEditStore } from "./engine/edit/cameraEditStore";
+import { useCompareEditStore } from "./engine/edit/compareEditStore";
+import { useDeviceTrackEditStore } from "./engine/edit/deviceTrackEditStore";
+import { listEdits, openEdit, openEditNamed } from "./engine/edit/edit";
+import { useEffectsStore } from "./engine/edit/effectsStore";
+import { useImageEditStore } from "./engine/edit/imageEditStore";
+import { useImageReconciliationStore } from "./engine/edit/imageReconciliationStore";
+import { useLayeredScreenshotEditStore } from "./engine/edit/layeredScreenshotEditStore";
+import { useLightingEditStore } from "./engine/edit/lightingEditStore";
+import {
+  duplicateProjectScene,
+  moveProjectScene,
+  readProjectManifestSnapshot,
+  removeProjectScene,
+  writeProjectManifestSnapshot,
+} from "./engine/edit/projectEdit";
+import type { CameraDoc } from "./engine/edit/sceneCameraEdit";
+import {
+  type AutoRunConfig,
+  getAutoRunConfig,
+  reportAutoRunError,
+  runAutoRun,
+} from "./engine/export/autorun";
+import { ensureCaptureService } from "./engine/export/captureBridge";
+import { canvasHandle, ExportBridge } from "./engine/export/exportBridge";
+import { isExporting } from "./engine/export/exportState";
+import { SETTLE_STEPS, settleProjectOpen } from "./engine/export/previewSettle";
+import { ensureSceneThumbs, listCachedSceneThumbs } from "./engine/export/sceneThumbs";
+import { canCaptureSnapshot, captureSnapshot, type SnapshotSaved } from "./engine/export/snapshots";
+import { ensureUserThemePreviews } from "./engine/export/themePreviews";
 import {
   EXPORT_PREAMBLE_STEPS,
   type ExportProgress,
@@ -50,7 +58,6 @@ import {
   revealLastExport,
   verifyAllFormats,
 } from "./engine/exporter";
-import { isExporting } from "./engine/exportState";
 import {
   CAMERA,
   FORMATS,
@@ -59,8 +66,10 @@ import {
   SHADOW_MAP_TYPE,
   STANDING_ASPECTS,
 } from "./engine/format";
-import { mergeFrameSpec } from "./engine/frameSchema";
-import { useGizmoSectionOpen } from "./engine/gizmoSections";
+import { mergeFrameSpec } from "./engine/frame/frameSchema";
+import { useGizmoSectionOpen } from "./engine/gizmo/gizmoSections";
+import { StagePointer } from "./engine/gizmo/StagePointer";
+import { frameWorldCutout } from "./engine/gizmo/stageViewport";
 import {
   bindHistory,
   type HistoryChange,
@@ -70,27 +79,27 @@ import {
   takeRedo,
   takeUndo,
 } from "./engine/history";
-import { useImageEditStore } from "./engine/imageEditStore";
-import { useImageReconciliationStore } from "./engine/imageReconciliationStore";
-import { useLayeredScreenshotEditStore } from "./engine/layeredScreenshotEditStore";
-import { useLightingEditStore } from "./engine/lightingEditStore";
-import { ensureRectAreaLightUniforms } from "./engine/lightingState";
-import { importMedia } from "./engine/media";
-import { canQueuePresetPoster, queuePresetPoster } from "./engine/presetPosters";
+import { ensureRectAreaLightUniforms } from "./engine/lighting/lightingState";
+import { RenderSettingsApplier } from "./engine/lighting/RenderSettingsApplier";
+import type { RenderSettings } from "./engine/lighting/renderSettings";
+import { effectiveKeyMoments, setBeatProject, useBeatStore } from "./engine/media/beatState";
 import {
-  refreshUserPresets,
-  subscribePresetEdits,
-  updateBundledPresetManifest,
-  updateBundledPresetPoster,
-} from "./engine/presets";
+  clipExtractionCount,
+  clipExtractionProgress,
+  evictAllClips,
+  invalidateChangedClips,
+  setHardwareVideo,
+  subscribeClipExtraction,
+} from "./engine/media/clips";
+import { importMedia } from "./engine/media/media";
 import {
   setPreviewAudioMuted,
   setPreviewAudioProject,
   syncPreviewAudioPlaying,
   updatePreviewAudioSpec,
-} from "./engine/previewAudio";
-import { setPreviewClipStride, setPreviewPlaybackActive } from "./engine/previewMedia";
-import { SETTLE_STEPS, settleProjectOpen } from "./engine/previewSettle";
+} from "./engine/media/previewAudio";
+import { setPreviewClipStride, setPreviewPlaybackActive } from "./engine/media/previewMedia";
+import { getLiveSession } from "./engine/panels/terminal";
 import {
   type AudioMarkersSpec,
   bumpWorkspaceReloadToken,
@@ -114,21 +123,6 @@ import {
   withAudioDefaults,
 } from "./engine/project";
 import {
-  duplicateProjectScene,
-  moveProjectScene,
-  readProjectManifestSnapshot,
-  removeProjectScene,
-  writeProjectManifestSnapshot,
-} from "./engine/projectEdit";
-import { TrustDeniedError } from "./engine/projectTrust";
-import { RenderSettingsApplier } from "./engine/RenderSettingsApplier";
-import type { RenderSettings } from "./engine/renderSettings";
-import { revealApp } from "./engine/reveal";
-import { StagePointer } from "./engine/StagePointer";
-import { StageScenes } from "./engine/StageScenes";
-import type { CameraDoc } from "./engine/sceneCameraEdit";
-import { deriveCompareBDoc } from "./engine/sceneCompare";
-import {
   applyEditRepoint,
   type EditRepointSlot,
   resyncFollowMediaDuration,
@@ -138,19 +132,25 @@ import {
 import { commitSceneDocPatch, docPatchMatchesProject } from "./engine/sceneDocPatchQueue";
 import type { SceneDoc } from "./engine/sceneDocSchema";
 import { planDeletes, planDuplicates, planMoves } from "./engine/sceneOrder";
-import { ensureSceneThumbs, listCachedSceneThumbs } from "./engine/sceneThumbs";
 import { activeSceneIndex } from "./engine/sceneTimeline";
-import { canCaptureSnapshot, captureSnapshot, type SnapshotSaved } from "./engine/snapshots";
-import { frameWorldCutout } from "./engine/stageViewport";
+import { CompositorDriver } from "./engine/stage/CompositorDriver";
+import { revealApp } from "./engine/stage/reveal";
+import { StageScenes } from "./engine/stage/StageScenes";
+import { canQueuePresetPoster, queuePresetPoster } from "./engine/workspace/presetPosters";
+import {
+  refreshUserPresets,
+  subscribePresetEdits,
+  updateBundledPresetManifest,
+  updateBundledPresetPoster,
+} from "./engine/workspace/presets";
+import { TrustDeniedError } from "./engine/workspace/projectTrust";
 import {
   refreshUserTemplates,
   subscribeTemplateEdits,
   updateBundledTemplateManifest,
   updateBundledTemplatePreview,
-} from "./engine/templates";
-import { getLiveSession } from "./engine/terminal";
-import { ensureUserThemePreviews } from "./engine/themePreviews";
-import { useUpdateCheck } from "./engine/updates";
+} from "./engine/workspace/templates";
+import { useUpdateCheck } from "./engine/workspace/updates";
 import {
   type AppSettings,
   createProject,
@@ -162,7 +162,7 @@ import {
   setLastProject,
   setProjectTypography,
   slugifyName,
-} from "./engine/workspace";
+} from "./engine/workspace/workspace";
 import { useAssetVersionStore } from "./store/assetVersionStore";
 import { useEditorStore } from "./store/editorStore";
 import { useTrustStore } from "./store/trustStore";

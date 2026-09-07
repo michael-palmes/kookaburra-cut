@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useId, useMemo, useState } from "react";
-import { slugifyName } from "../engine/workspace";
+import { slugifyName } from "../engine/workspace/workspace";
 import { GRADIENT_PRESETS, type GradientPreset, gradientCss } from "../theme/gradientPresets";
 import { parseGradient } from "../theme/schema";
 import type { GradientSpec, Theme, ThemeBackground } from "../theme/tokens";

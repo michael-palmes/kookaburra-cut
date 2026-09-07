@@ -1,11 +1,11 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { resolveScreenshotTimeMs } from "../engine/autorun";
+import { resolveScreenshotTimeMs } from "../engine/export/autorun";
 import { awaitSceneHostsCommitted, captureFrameRgba } from "../engine/exporter";
 import { type AspectName, FORMATS } from "../engine/format";
+import { withProjectAssetRevision } from "../engine/media/projectAssetRevision";
 import { loadProject } from "../engine/project";
-import { withProjectAssetRevision } from "../engine/projectAssetRevision";
 import { startBridgeService } from "./bridgeService";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
@@ -13,14 +13,14 @@ vi.mock("@tauri-apps/api/event", () => ({
   emit: vi.fn(),
   listen: vi.fn(async () => vi.fn()),
 }));
-vi.mock("../engine/autorun", () => ({ resolveScreenshotTimeMs: vi.fn(() => 2400) }));
+vi.mock("../engine/export/autorun", () => ({ resolveScreenshotTimeMs: vi.fn(() => 2400) }));
 vi.mock("../engine/exporter", () => ({
   awaitSceneHostsCommitted: vi.fn(),
   captureFrameRgba: vi.fn(),
   captureScreenshot: vi.fn(),
 }));
-vi.mock("../engine/themePreviews", () => ({ awaitProjectCommitted: vi.fn() }));
-vi.mock("../engine/clips", () => ({ invalidateChangedClips: vi.fn() }));
+vi.mock("../engine/export/themePreviews", () => ({ awaitProjectCommitted: vi.fn() }));
+vi.mock("../engine/media/clips", () => ({ invalidateChangedClips: vi.fn() }));
 vi.mock("../engine/project", () => ({
   bumpWorkspaceReloadToken: vi.fn(),
   isEditableProjectId: () => true,

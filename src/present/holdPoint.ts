@@ -1,6 +1,6 @@
 /** Derives where a scene holds during a present slideshow: after its intros settle, before any authored outro. Pure; the constants shape present-mode behaviour only and are never part of the export contract. */
 
-import type { PresentTimingEntry } from "../engine/presentTimingRegistry";
+import type { PresentTimingEntry } from "../engine/stage/presentTimingRegistry";
 
 export interface DerivedHold {
   /** Scene-local ms the hold parks at. */

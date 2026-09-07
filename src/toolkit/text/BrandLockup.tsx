@@ -1,19 +1,19 @@
 import { useContext, useId, useLayoutEffect, useMemo } from "react";
-import { ASSET_ICON_SCALE, FrameIcon } from "../../engine/FrameIcon";
-import { useFormat } from "../../engine/format";
 import {
   isTemplateManagedText,
   resolveTemplateManagedTextCopy,
   resolveTemplateManagedTextIcon,
   specialisedBrandLockupMode,
   templateManagedTextOverridesCodedMotion,
-} from "../../engine/managedText";
+} from "../../engine/content/managedText";
+import { useFormat } from "../../engine/format";
+import { ASSET_ICON_SCALE, FrameIcon } from "../../engine/frame/FrameIcon";
 import {
   SceneDocContext,
   SceneTextClaimedContext,
   useSceneContext,
 } from "../../engine/sceneContext";
-import { useTextKeyRegistry } from "../../engine/textKeyRegistry";
+import { useTextKeyRegistry } from "../../engine/stage/textKeyRegistry";
 import { AnimatedGroup } from "../group/AnimatedGroup";
 import { ImageCard } from "../media/ImageCard";
 import type { V3 } from "../types";

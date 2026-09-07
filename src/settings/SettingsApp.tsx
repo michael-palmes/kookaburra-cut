@@ -3,6 +3,12 @@ import { invoke } from "@tauri-apps/api/core";
 import { ask, open as openFolderPicker } from "@tauri-apps/plugin-dialog";
 import { useCallback, useEffect, useState } from "react";
 import {
+  clearWebsiteData,
+  listWebsiteData,
+  type WebsiteDataRecord,
+} from "../engine/panels/sceneWebsiteNative";
+import { revealApp } from "../engine/stage/reveal";
+import {
   type CacheStats,
   cacheStats,
   clearClipsCache,
@@ -12,14 +18,8 @@ import {
   hardwareVideoSupport,
   type SidecarVersions,
   sidecarVersions,
-} from "../engine/appCache";
-import { revealApp } from "../engine/reveal";
-import {
-  clearWebsiteData,
-  listWebsiteData,
-  type WebsiteDataRecord,
-} from "../engine/sceneWebsiteNative";
-import { formatUpdateStatus, useUpdateCheck } from "../engine/updates";
+} from "../engine/workspace/appCache";
+import { formatUpdateStatus, useUpdateCheck } from "../engine/workspace/updates";
 import {
   defaultWorkspaceRoot,
   getSettings,
@@ -30,7 +30,7 @@ import {
   setLagWarningSetting,
   shortenPath,
   userHomeDir,
-} from "../engine/workspace";
+} from "../engine/workspace/workspace";
 import { UpdateAvailableDialog } from "../ui/updateDialogs";
 import { useNativeTextUndo } from "../ui/useNativeTextUndo";
 import { PublisherPane } from "./PublisherPane";

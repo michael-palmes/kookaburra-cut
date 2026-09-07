@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { normalizeLighting, resolveLighting } from "../../engine/sceneLighting";
+import { normalizeLighting, resolveLighting } from "../../engine/lighting/sceneLighting";
 import { LIGHTING_PRESETS } from "./presets";
 
 beforeEach(() => {

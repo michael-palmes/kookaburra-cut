@@ -1,4 +1,4 @@
-import { optionPreviewStill } from "../../engine/optionPreviews";
+import { optionPreviewStill } from "../../engine/export/optionPreviews";
 import type { Theme } from "../../theme/tokens";
 import { BUNDLED_BACKDROP_NAMES } from "../../toolkit/stage/backdrops";
 import {

@@ -1,4 +1,4 @@
-import type { WorkspaceProjectInfo } from "../engine/workspace";
+import type { WorkspaceProjectInfo } from "../engine/workspace/workspace";
 import type { LibraryKind, LibrarySource } from "./libraryDetails";
 import type { LibraryRailIconId } from "./libraryIcons";
 

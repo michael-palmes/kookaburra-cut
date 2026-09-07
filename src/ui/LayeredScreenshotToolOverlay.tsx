@@ -1,17 +1,17 @@
 import { useEffect, useRef, useState } from "react";
 import { useClockStore } from "../engine/clock";
-import { CAMERA } from "../engine/format";
 import {
   type LayeredScreenshotAnimationDoc,
   nearestKey,
   panCentreSnap,
   playheadDriftTarget,
   setKeyPose,
-} from "../engine/layeredScreenshotAnimationEdit";
+} from "../engine/edit/layeredScreenshotAnimationEdit";
 import {
   type LayeredScreenshotTool,
   useLayeredScreenshotEditStore,
-} from "../engine/layeredScreenshotEditStore";
+} from "../engine/edit/layeredScreenshotEditStore";
+import { CAMERA } from "../engine/format";
 import type { LoadedProject } from "../engine/project";
 import type { LayeredScreenshotPose, SceneDoc } from "../engine/sceneDocSchema";
 import { blockWithAnimation } from "./LayeredScreenshotAnimationLane";

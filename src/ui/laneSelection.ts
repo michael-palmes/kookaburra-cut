@@ -1,9 +1,9 @@
-import { useCameraEditStore } from "../engine/cameraEditStore";
-import { useChartTrackEditStore } from "../engine/chartTrackEditStore";
-import { useCompareEditStore } from "../engine/compareEditStore";
-import { useDeviceTrackEditStore } from "../engine/deviceTrackEditStore";
-import { useLayeredScreenshotEditStore } from "../engine/layeredScreenshotEditStore";
-import { useLightingEditStore } from "../engine/lightingEditStore";
+import { useCameraEditStore } from "../engine/edit/cameraEditStore";
+import { useChartTrackEditStore } from "../engine/edit/chartTrackEditStore";
+import { useCompareEditStore } from "../engine/edit/compareEditStore";
+import { useDeviceTrackEditStore } from "../engine/edit/deviceTrackEditStore";
+import { useLayeredScreenshotEditStore } from "../engine/edit/layeredScreenshotEditStore";
+import { useLightingEditStore } from "../engine/edit/lightingEditStore";
 
 /** Stacked lanes each bind window-level key handlers, so only ONE selection may be live: a lane taking a selection clears the others, or Delete and the arrows would edit every stacked lane at once. */
 

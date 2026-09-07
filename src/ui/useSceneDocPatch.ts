@@ -1,11 +1,13 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useState } from "react";
+import { resolveAimTarget } from "../engine/camera/sceneRig";
+import { rebakeRigBindings } from "../engine/camera/sceneRigConvert";
 import { useClockStore } from "../engine/clock";
+import { readProjectManifestSnapshot } from "../engine/edit/projectEdit";
+import type { RigDoc } from "../engine/edit/sceneCameraEdit";
 import { FPS } from "../engine/format";
 import { type HistoryChange, pushHistory } from "../engine/history";
 import { isEditableProjectId, type LoadedProject, nativeProjectSlug } from "../engine/project";
-import { readProjectManifestSnapshot } from "../engine/projectEdit";
-import type { RigDoc } from "../engine/sceneCameraEdit";
 import {
   clampDocTracksToDuration,
   resyncFollowMediaDuration,
@@ -18,8 +20,6 @@ import {
   sceneDocPatchQueueIdentity,
 } from "../engine/sceneDocPatchQueue";
 import type { SceneDoc } from "../engine/sceneDocSchema";
-import { resolveAimTarget } from "../engine/sceneRig";
-import { rebakeRigBindings } from "../engine/sceneRigConvert";
 import { resolveOverlapMs } from "../engine/sceneTimeline";
 import type { DeviceFloorY } from "../toolkit/device/worldAnchor";
 import type { FormatInfo } from "../toolkit/types";

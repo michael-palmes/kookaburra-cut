@@ -2,14 +2,14 @@
 
 import { useEffect, useId, useMemo, useRef } from "react";
 import type { Group } from "three";
-import { useChartEditStore } from "../../engine/chartEditStore";
+import { resolveSpecialisedTextCopy } from "../../engine/content/managedText";
+import type { ResolvedChart } from "../../engine/content/sceneChart";
+import { useChartEditStore } from "../../engine/edit/chartEditStore";
 import { useFormat } from "../../engine/format";
-import { useGizmoSectionOpen } from "../../engine/gizmoSections";
-import { registerGizmoTarget, unregisterGizmoTarget } from "../../engine/gizmoTargetRegistry";
-import { resolveSpecialisedTextCopy } from "../../engine/managedText";
-import { SceneGizmo } from "../../engine/SceneGizmo";
-import { SceneOutline } from "../../engine/SceneOutline";
-import type { ResolvedChart } from "../../engine/sceneChart";
+import { useGizmoSectionOpen } from "../../engine/gizmo/gizmoSections";
+import { registerGizmoTarget, unregisterGizmoTarget } from "../../engine/gizmo/gizmoTargetRegistry";
+import { SceneGizmo } from "../../engine/gizmo/SceneGizmo";
+import { SceneOutline } from "../../engine/gizmo/SceneOutline";
 import { useSceneContext } from "../../engine/sceneContext";
 import { useSceneChart, useSceneDoc } from "../../engine/sceneDoc";
 import { useTimeline } from "../../engine/timeline";

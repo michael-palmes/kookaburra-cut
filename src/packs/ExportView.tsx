@@ -8,7 +8,7 @@ import {
   type PublisherProfileView,
   planPack,
   revealPack,
-} from "../engine/packs";
+} from "../engine/workspace/packs";
 import { FONT_DISCLAIMER, fontEmbeddingNotice } from "../ui/packs/fontCopy";
 import { PackGlyph } from "./PackGlyph";
 import { packProjectItems } from "./projectItems";

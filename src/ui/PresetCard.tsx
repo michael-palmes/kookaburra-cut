@@ -1,4 +1,4 @@
-import { formatPresetDuration, type PresetEntry } from "../engine/presets";
+import { formatPresetDuration, type PresetEntry } from "../engine/workspace/presets";
 import { builtinThemes, defaultTheme } from "../theme/registry";
 import { cardRoleProps, type LibraryCardInteraction, libraryCardClass } from "./TemplateCard";
 

@@ -1,6 +1,6 @@
 /** Slideshow ambience: the project soundtrack looping as background music, deliberately decoupled from the deck (slideshow pacing is unpredictable, so there is nothing to sync to). Video mode uses previewAudio's clock-synced lane instead. */
 
-import { fsUrl } from "../engine/media";
+import { fsUrl } from "../engine/media/media";
 import type { LoadedProject } from "../engine/project";
 
 let el: HTMLAudioElement | null = null;

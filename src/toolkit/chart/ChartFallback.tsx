@@ -1,9 +1,9 @@
 /** Host-side chart for scenes whose TSX never wires `useSceneChart` (mounted by SceneHost, the ObjectsFallback pattern): resolves the doc directly and renders `MountedChart`, never `<Chart />`, so it can't register as its own consumer and cycle its render gate. */
 
 import { useContext, useMemo } from "react";
-import { useSceneConsumesChart } from "../../engine/chartRegistry";
-import { resolveChart } from "../../engine/sceneChart";
+import { resolveChart } from "../../engine/content/sceneChart";
 import { SceneDocContext, useSceneContext } from "../../engine/sceneContext";
+import { useSceneConsumesChart } from "../../engine/stage/chartRegistry";
 import { MountedChart } from "./Chart";
 
 export function ChartFallback() {

@@ -9,7 +9,9 @@ import {
   useSyncExternalStore,
 } from "react";
 import { createPortal } from "react-dom";
-import { insertPresetScene } from "../engine/presetInsert";
+import { ensureSceneThumbs, listCachedSceneThumbs } from "../engine/export/sceneThumbs";
+import { type LoadedProject, sceneFileStem } from "../engine/project";
+import { insertPresetScene } from "../engine/workspace/presetInsert";
 import {
   listAllPresets,
   PRESET_CATEGORIES,
@@ -20,9 +22,7 @@ import {
   refreshUserPresets,
   searchPresets,
   subscribePresets,
-} from "../engine/presets";
-import { type LoadedProject, sceneFileStem } from "../engine/project";
-import { ensureSceneThumbs, listCachedSceneThumbs } from "../engine/sceneThumbs";
+} from "../engine/workspace/presets";
 import { builtinThemes, defaultTheme } from "../theme/registry";
 import { gapFromPlacement, placementFromGap, placementText } from "./insertMath";
 import { LibraryModalHeader } from "./LibraryModalHeader";

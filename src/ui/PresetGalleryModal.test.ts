@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { ProjectManifest } from "../engine/project";
 import {
   buildPresetEntry,
   listPresets,
@@ -7,8 +8,7 @@ import {
   type PresetManifest,
   presetCategoryCounts,
   searchPresets,
-} from "../engine/presets";
-import type { ProjectManifest } from "../engine/project";
+} from "../engine/workspace/presets";
 import {
   categoryRows,
   effectiveChip,

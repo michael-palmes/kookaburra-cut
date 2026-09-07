@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { GizmoDomain } from "../engine/gizmoRegistry";
+import type { GizmoDomain } from "../engine/gizmo/gizmoRegistry";
 import type { ThemeBackdrop, ThemeBackground } from "../theme/tokens";
 
 /** Main-window chrome state: the command palette, preview-audio mute, the inspector panel's tab and drill-in nav stack, the timeline's background clipboard, and the rail-wizard request channel (lets the palette, and later the playback bar, ask TerminalPanel to open a scene wizard without threading callbacks through every layer). Like editorStore, the deterministic export path never reads this store, it holds chrome-only state that must never influence rendered pixels. */

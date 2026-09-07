@@ -1,10 +1,10 @@
 // FIRST import, deliberately: installs the uncaught-error surface before any module that could crash at boot evaluates (see engine/bootTrap.ts).
-import "./engine/bootTrap";
+import "./engine/stage/bootTrap";
 import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
-import { initAutoRunConfig } from "./engine/autorun";
-import { revealFailsafe } from "./engine/reveal";
+import { initAutoRunConfig } from "./engine/export/autorun";
+import { revealFailsafe } from "./engine/stage/reveal";
 import { preloadAppFonts } from "./theme/fonts";
 import "./styles.css";
 

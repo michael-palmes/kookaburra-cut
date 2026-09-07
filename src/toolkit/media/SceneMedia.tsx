@@ -13,12 +13,28 @@ import {
   type Texture,
   Vector2,
 } from "three";
-import { useClipTexture } from "../../engine/clipTexture";
-import { isExporting } from "../../engine/exportState";
+import { useImageOverlayPreview, useImageStagePreview } from "../../engine/edit/imageEditStore";
+import { isExporting } from "../../engine/export/exportState";
 import { useFormat } from "../../engine/format";
-import { frameLayerRenderOrder } from "../../engine/frameLayerOrder";
-import { useGizmoSectionOpen } from "../../engine/gizmoSections";
-import { useImageOverlayPreview, useImageStagePreview } from "../../engine/imageEditStore";
+import { frameLayerRenderOrder } from "../../engine/frame/frameLayerOrder";
+import { useGizmoSectionOpen } from "../../engine/gizmo/gizmoSections";
+import { useClipTexture } from "../../engine/media/clipTexture";
+import {
+  resolveSceneDocMedia,
+  type SceneImageMotionSample,
+  sampleSceneMediaMotion,
+  sceneMediaFamily,
+  sceneMediaInFrame,
+  sceneMediaInWorld,
+  sceneMediaUsesWindowPath,
+} from "../../engine/media/sceneMedia";
+import { useSceneConsumesMedia } from "../../engine/media/sceneMediaRegistry";
+import {
+  type NormalizedVideoWindowShadow,
+  type NormalizedWindowChrome,
+  normalizeWindowChrome,
+  recordingCrop,
+} from "../../engine/media/sceneVideoWindow";
 import { resolveAssetUrl } from "../../engine/project";
 import { ProjectIdContext, SceneDocContext, useSceneContext } from "../../engine/sceneContext";
 import { useSceneMedia } from "../../engine/sceneDoc";
@@ -28,22 +44,6 @@ import type {
   SceneImageStagePlacement,
   SceneMediaWindow,
 } from "../../engine/sceneDocSchema";
-import {
-  resolveSceneDocMedia,
-  type SceneImageMotionSample,
-  sampleSceneMediaMotion,
-  sceneMediaFamily,
-  sceneMediaInFrame,
-  sceneMediaInWorld,
-  sceneMediaUsesWindowPath,
-} from "../../engine/sceneMedia";
-import { useSceneConsumesMedia } from "../../engine/sceneMediaRegistry";
-import {
-  type NormalizedVideoWindowShadow,
-  type NormalizedWindowChrome,
-  normalizeWindowChrome,
-  recordingCrop,
-} from "../../engine/sceneVideoWindow";
 import { useTimeline } from "../../engine/timeline";
 import { assetVersionKey, useAssetVersionStore } from "../../store/assetVersionStore";
 import { useEditorStore } from "../../store/editorStore";

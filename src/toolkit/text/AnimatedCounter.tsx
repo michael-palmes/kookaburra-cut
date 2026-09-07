@@ -1,14 +1,14 @@
 import { Text } from "@react-three/drei";
 import { useContext, useEffect, useId, useLayoutEffect, useMemo, useState } from "react";
-import { shouldRenderManagedTextRole } from "../../engine/managedText";
-import { SceneDocContext, useSceneContext } from "../../engine/sceneContext";
-import { useTextKeyRegistry } from "../../engine/textKeyRegistry";
+import { shouldRenderManagedTextRole } from "../../engine/content/managedText";
 import {
   resolveTokenFill,
   textStyleOffsetPosition,
   textStyleRotationRad,
   textStyleValue,
-} from "../../engine/textStyleResolve";
+} from "../../engine/content/textStyleResolve";
+import { SceneDocContext, useSceneContext } from "../../engine/sceneContext";
+import { useTextKeyRegistry } from "../../engine/stage/textKeyRegistry";
 import { useTimeline } from "../../engine/timeline";
 import { useTheme } from "../../theme";
 import { formatFontString, parseFontString } from "../../theme/fontRef";

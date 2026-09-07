@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { PresetManifest } from "../engine/presets";
-import type { TemplateManifest } from "../engine/templates";
+import type { PresetManifest } from "../engine/workspace/presets";
+import type { TemplateManifest } from "../engine/workspace/templates";
 import {
   cleanTags,
   itemDetailsJson,

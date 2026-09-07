@@ -1,4 +1,4 @@
-import { moveInList } from "../../engine/catalogueOrder";
+import { moveInList } from "../../engine/workspace/catalogueOrder";
 import type { Theme } from "../../theme/tokens";
 import { ColourPicker } from "../colour/ColourPicker";
 import { Field, IconButton, Section } from "./fields";

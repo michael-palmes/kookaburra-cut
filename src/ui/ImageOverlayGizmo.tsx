@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useCameraEditStore } from "../engine/cameraEditStore";
+import { useCameraEditStore } from "../engine/edit/cameraEditStore";
+import { useImageEditStore } from "../engine/edit/imageEditStore";
 import { computeFormat } from "../engine/format";
-import { resolveCutoutRender } from "../engine/frameFormat";
-import type { StageRect } from "../engine/gizmoRegistry";
-import { useGizmoSectionOpen } from "../engine/gizmoSections";
-import { useImageEditStore } from "../engine/imageEditStore";
-import { mediaMeta } from "../engine/media";
+import { resolveCutoutRender } from "../engine/frame/frameFormat";
+import type { StageRect } from "../engine/gizmo/gizmoRegistry";
+import { useGizmoSectionOpen } from "../engine/gizmo/gizmoSections";
+import { cutoutStageRect, frameWorldCutout } from "../engine/gizmo/stageViewport";
+import { mediaMeta } from "../engine/media/media";
+import { resolveSceneDocMedia, sceneMediaOverlayPlaced } from "../engine/media/sceneMedia";
 import {
   isEditableProjectId,
   type LoadedProject,
@@ -17,8 +19,6 @@ import type {
   SceneImageOverlayPlacement,
   SceneMediaHost,
 } from "../engine/sceneDocSchema";
-import { resolveSceneDocMedia, sceneMediaOverlayPlaced } from "../engine/sceneMedia";
-import { cutoutStageRect, frameWorldCutout } from "../engine/stageViewport";
 import { assetVersionKey, useAssetVersionStore } from "../store/assetVersionStore";
 import { useEditorStore } from "../store/editorStore";
 import {

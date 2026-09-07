@@ -1,14 +1,14 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { Group, PerspectiveCamera } from "three";
 import { afterEach, assert, beforeEach, describe, expect, it, vi } from "vitest";
+import { defaultLayeredScreenshotPose } from "../engine/content/sceneLayeredScreenshot";
+import { useLayeredScreenshotEditStore } from "../engine/edit/layeredScreenshotEditStore";
 import { CAMERA, FORMATS } from "../engine/format";
-import { registerGizmoTarget, unregisterGizmoTarget } from "../engine/gizmoTargetRegistry";
+import { registerGizmoTarget, unregisterGizmoTarget } from "../engine/gizmo/gizmoTargetRegistry";
 import { bindHistory, peekUndo, takeUndo } from "../engine/history";
-import { useLayeredScreenshotEditStore } from "../engine/layeredScreenshotEditStore";
 import type { LoadedProject } from "../engine/project";
 import { writeSceneDoc } from "../engine/sceneDoc";
 import type { SceneDoc, SceneDocLayeredScreenshot } from "../engine/sceneDocSchema";
-import { defaultLayeredScreenshotPose } from "../engine/sceneLayeredScreenshot";
 import { useEditorStore } from "../store/editorStore";
 import type { Gizmo2DGesture, Gizmo2DProps } from "./gizmo/Gizmo2D";
 import { LayeredScreenshotGizmo } from "./LayeredScreenshotGizmo";
@@ -25,8 +25,10 @@ vi.mock("./gizmo/Gizmo2D", () => ({
     return null;
   },
 }));
-vi.mock("../engine/gizmoRegistry", async () => ({
-  ...(await vi.importActual<typeof import("../engine/gizmoRegistry")>("../engine/gizmoRegistry")),
+vi.mock("../engine/gizmo/gizmoRegistry", async () => ({
+  ...(await vi.importActual<typeof import("../engine/gizmo/gizmoRegistry")>(
+    "../engine/gizmo/gizmoRegistry",
+  )),
   stageCamera: host.camera,
 }));
 vi.mock("../engine/sceneDoc", async () => ({

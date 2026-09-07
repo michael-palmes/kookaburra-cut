@@ -3,7 +3,7 @@ import {
   type ComparePose,
   type CompareTrackDoc,
   useCompareEditStore,
-} from "../engine/compareEditStore";
+} from "../engine/edit/compareEditStore";
 import type { LoadedProject } from "../engine/project";
 import type { SceneDoc } from "../engine/sceneDocSchema";
 import { useCompareTrackDoc } from "./compareTrackDoc";

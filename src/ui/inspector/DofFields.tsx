@@ -8,7 +8,7 @@ import {
   type DofMode,
   type EffectiveDof,
   type SceneDocDof,
-} from "../../engine/dof";
+} from "../../engine/camera/dof";
 import { DrillGroup, NumberField, SegmentedRow } from "./rows";
 
 /** The Depth-of-field group, shared by the free-mode fields and the orbit grid: an Off/Depth/Tilt-shift family switch, the mode's numeric fields, presets, and the fov-style inherit affordances. Values shown are the key's EFFECTIVE dof (carry-forward along the track, the sampler's rule); edits write the sparse authored block on the current key. */

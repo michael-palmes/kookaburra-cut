@@ -1,10 +1,10 @@
 /** `@kookaburra/toolkit`, the SHIPPED authoring surface; scene files import everything from here. See .agents/skills/kookaburra-scene-authoring for the authoring rules. */
 
+// The resolved sidecar chart block: every default baked and the data track sorted.
+export type { ResolvedChart } from "../engine/content/sceneChart";
 export { useFormat } from "../engine/format";
 // Seeded RNG for generative geometry; scenes must never call Math.random.
 export { createSeededRandom, type SeededRandom } from "../engine/rng";
-// The resolved sidecar chart block: every default baked and the data track sorted.
-export type { ResolvedChart } from "../engine/sceneChart";
 // Scene-document hooks: sidecar-driven text ownership, devices, layered screenshots and charts.
 export {
   type SceneDeviceProps,
@@ -27,7 +27,7 @@ export {
   type SharedKeyframe,
   type SharedTransform,
   sampleSharedTransform,
-} from "../engine/sharedElement";
+} from "../engine/stage/sharedElement";
 // Time / format / theme hooks
 export { useTimeline } from "../engine/timeline";
 export { useTheme } from "../theme";

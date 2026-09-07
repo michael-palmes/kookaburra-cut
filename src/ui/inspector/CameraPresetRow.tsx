@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { CAMERA_PRESETS, presetContext } from "../../engine/cameraPresets";
-import type { CameraDoc, RigDoc } from "../../engine/sceneCameraEdit";
+import { CAMERA_PRESETS, presetContext } from "../../engine/camera/cameraPresets";
+import type { CameraDoc, RigDoc } from "../../engine/edit/sceneCameraEdit";
 import type { SceneDocCameraPose } from "../../engine/sceneDocSchema";
 import { ActionRow } from "./rows";
 

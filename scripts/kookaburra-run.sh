@@ -2,7 +2,7 @@
 #
 # Terminal-triggered auto-run of Kookaburra Cut's Verify ×2 / export (AFK-friendly). Sets the
 # KOOKABURRA_* env the app reads on boot via the native get_autorun_config (see
-# src/engine/autorun.ts), launches `pnpm tauri dev` — which auto-runs the SAME
+# src/engine/export/autorun.ts), launches `pnpm tauri dev` — which auto-runs the SAME
 # export/verify the buttons call — then waits for the native side to write the result
 # file, prints it, and exits with a pass/fail code.
 #
@@ -565,7 +565,7 @@ fi
 # option-previews: encode clip sets (frame sequences → small H.264 loops via the
 # sidecar) + promote stills/posters into the repo for commit (v13 · M5 live round).
 # Single-frame sets are stills (<set>.jpg); multi-frame sets become <set>.mp4 at
-# 20fps (OPTION_CLIP_FPS in engine/optionPreviews.ts) + a middle-frame poster.
+# 20fps (OPTION_CLIP_FPS in engine/export/optionPreviews.ts) + a middle-frame poster.
 if [[ "$ACTION" == "option-previews" ]]; then
   SRC="$RUN_DIR/option-previews"
   DEST="$ROOT/src/assets/option-previews"

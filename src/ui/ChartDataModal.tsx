@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from "react";
-import { fsUrl, importChartData } from "../engine/media";
+import { fsUrl, importChartData } from "../engine/media/media";
 import { type LoadedProject, resolveAssetPath } from "../engine/project";
 import type { SceneDoc, SceneDocChart, SceneDocChartSeries } from "../engine/sceneDocSchema";
 import {

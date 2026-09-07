@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { type ResolvedChart, resolveChart } from "../../engine/content/sceneChart";
 import { computeFormat, FORMATS } from "../../engine/format";
-import { type ResolvedChart, resolveChart } from "../../engine/sceneChart";
 import type { SceneDoc, SceneDocChart } from "../../engine/sceneDocSchema";
 import { builtinThemes } from "../../theme/registry";
 import { buildChartRevealSampler, CHART_ENTER_LIFT, type ChartRevealDims } from "./animation";

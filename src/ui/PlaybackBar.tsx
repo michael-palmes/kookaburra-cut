@@ -7,7 +7,8 @@ import {
   useRef,
   useState,
 } from "react";
-import { isExporting } from "../engine/exportState";
+import { isExporting } from "../engine/export/exportState";
+import { ensureSceneThumbs, listCachedSceneThumbs } from "../engine/export/sceneThumbs";
 import {
   type AudioMarkersSpec,
   type LoadedProject,
@@ -15,7 +16,6 @@ import {
   parseProjectId,
   sceneFileStem,
 } from "../engine/project";
-import { ensureSceneThumbs, listCachedSceneThumbs } from "../engine/sceneThumbs";
 import { activeSceneIndex } from "../engine/sceneTimeline";
 import { useUiStore } from "../store/uiStore";
 import { BeatLane } from "./BeatLane";

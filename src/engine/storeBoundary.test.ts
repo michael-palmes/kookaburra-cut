@@ -12,21 +12,26 @@ const STORE_READERS: Record<string, string> = {
     "useFormat falls back to the store's format; export and Verify commit each leg's aspect there first (commitFormat)",
   "project.ts":
     "assetVersionSuffix is empty on a fresh load; loadProject only reads it to bust caches for re-imported media",
-  "clips.ts": "the playback preview tier; exports pin the exact-PNG lane through isExporting()",
-  "autorun.ts":
+  "media/clips.ts":
+    "the playback preview tier; exports pin the exact-PNG lane through isExporting()",
+  "export/autorun.ts":
     "the terminal-driven runner commits the format per leg, the same store write the app's own export does",
-  "projectTrust.ts":
+  "workspace/projectTrust.ts":
     "the trust gate mirrors the native grant into a UI store; the export path never consults it",
-  "gizmoSections.ts":
+  "gizmo/gizmoSections.ts":
     "section-scoped gizmo outlines read the inspector route; exports disable the helper layer",
-  "FrameDecoration.tsx": "preview-only chrome for overlay decorations, gated on the editing state",
-  "SceneHost.tsx": "hosts read the editing state to mount gizmos, which the export preamble clears",
-  "SceneTerminalPanel.tsx":
+  "frame/FrameDecoration.tsx":
+    "preview-only chrome for overlay decorations, gated on the editing state",
+  "stage/SceneHost.tsx":
+    "hosts read the editing state to mount gizmos, which the export preamble clears",
+  "panels/SceneTerminalPanel.tsx":
     "live terminal content is preview-only; exports render the baked snapshot",
-  "SceneWebsitePanel.tsx": "live website views are preview-only; exports render the captured PNG",
-  "overlayPanelTexture.ts":
+  "panels/SceneWebsitePanel.tsx":
+    "live website views are preview-only; exports render the captured PNG",
+  "frame/overlayPanelTexture.ts":
     "asset version suffix for re-imported panel images, empty on a fresh load",
-  "sceneTerminalBake.ts": "asset version key for the baked terminal PNG, empty on a fresh load",
+  "panels/sceneTerminalBake.ts":
+    "asset version key for the baked terminal PNG, empty on a fresh load",
 };
 
 const storeImport = /from\s+["'](?:\.\.\/)+store\//;

@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { bakeRigBinding } from "../engine/camera/sceneRigConvert";
 import { computeFormat, FORMATS } from "../engine/format";
 import type { LoadedProject } from "../engine/project";
 import type { SceneDoc } from "../engine/sceneDocSchema";
-import { bakeRigBinding } from "../engine/sceneRigConvert";
 import { resolveDeviceLayout } from "../toolkit/device/layout";
 import { resolveDeviceWorldAnchor } from "../toolkit/device/worldAnchor";
 import {
@@ -41,8 +41,8 @@ vi.mock("../engine/sceneDoc", async (importOriginal) => {
   return { ...actual, writeSceneDoc: mocks.writeSceneDoc };
 });
 
-vi.mock("../engine/sceneRigConvert", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../engine/sceneRigConvert")>();
+vi.mock("../engine/camera/sceneRigConvert", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../engine/camera/sceneRigConvert")>();
   const rebakeRigBindings: typeof actual.rebakeRigBindings = (rig, doc, format, floorY) => {
     mocks.rebakeRigBindings();
     return actual.rebakeRigBindings(rig, doc, format, floorY);

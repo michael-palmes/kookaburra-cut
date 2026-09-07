@@ -5,12 +5,16 @@ import {
   compareChipFallbackText,
   compareChipTextKeyForSide,
   compareChipTextStyle,
-} from "../../engine/compareChipText";
+} from "../../engine/content/compareChipText";
+import {
+  compareCoverageAt,
+  compareSampleAt,
+  compareSpecOf,
+} from "../../engine/content/sceneCompare";
 import { useFormat } from "../../engine/format";
-import { compareCoverageAt, compareSampleAt, compareSpecOf } from "../../engine/sceneCompare";
 import { SceneDocContext, useSceneContext } from "../../engine/sceneContext";
 import { useSceneText } from "../../engine/sceneDoc";
-import { useTextKeyRegistry } from "../../engine/textKeyRegistry";
+import { useTextKeyRegistry } from "../../engine/stage/textKeyRegistry";
 import { useTimeline } from "../../engine/timeline";
 import { useTheme } from "../../theme";
 import { fontUrl } from "../../theme/fonts";

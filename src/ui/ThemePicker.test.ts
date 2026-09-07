@@ -10,7 +10,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: mocks.invoke }));
-vi.mock("../engine/themePreviews", () => ({
+vi.mock("../engine/export/themePreviews", () => ({
   bundledThemePreviews: mocks.bundledThemePreviews,
   cachedThemePreviews: mocks.cachedThemePreviews,
   themePreviewKey: mocks.themePreviewKey,

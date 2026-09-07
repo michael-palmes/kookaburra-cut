@@ -1,13 +1,13 @@
 import { invoke } from "@tauri-apps/api/core";
 import { type RefObject, useEffect, useRef, useState } from "react";
-import { reorderCatalogue } from "../engine/catalogueOrder";
-import { devSetBuiltinThemeOrders, setWorkspaceThemeOrders } from "../engine/library";
 import {
   bundledThemePreviews,
   cachedThemePreviews,
   THEME_PREVIEW_COUNT,
   themePreviewKey,
-} from "../engine/themePreviews";
+} from "../engine/export/themePreviews";
+import { reorderCatalogue } from "../engine/workspace/catalogueOrder";
+import { devSetBuiltinThemeOrders, setWorkspaceThemeOrders } from "../engine/workspace/library";
 import {
   BUILTIN_THEME_CATALOGUE,
   filterThemeCatalogue,

@@ -1,14 +1,14 @@
 import { useCallback, useMemo, useRef } from "react";
-import { useCameraEditStore } from "../engine/cameraEditStore";
-import type { StageRect } from "../engine/gizmoRegistry";
-import type { LoadedProject } from "../engine/project";
-import type { SceneDoc } from "../engine/sceneDocSchema";
+import { useCameraEditStore } from "../engine/edit/cameraEditStore";
+import { useTerminalEditStore } from "../engine/edit/terminalEditStore";
+import type { StageRect } from "../engine/gizmo/gizmoRegistry";
 import {
   resolveSceneTerminal,
   type SceneDocTerminal,
   sceneTerminalLayout,
-} from "../engine/sceneTerminal";
-import { useTerminalEditStore } from "../engine/terminalEditStore";
+} from "../engine/panels/sceneTerminal";
+import type { LoadedProject } from "../engine/project";
+import type { SceneDoc } from "../engine/sceneDocSchema";
 import { Gizmo2D, type Gizmo2DGesture, type Gizmo2DItem } from "./gizmo/Gizmo2D";
 import type { Pt } from "./gizmo/gizmo2dMath";
 import { useGizmoDocWrite } from "./gizmo/gizmoDocWrite";

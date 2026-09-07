@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
-import type { EditClip, EditSource } from "../engine/edit";
-import { clipIndexAt, timelineDurationMs, timelineToSource } from "../engine/editMath";
-import { fsUrl } from "../engine/media";
+import type { EditClip, EditSource } from "../engine/edit/edit";
+import { clipIndexAt, timelineDurationMs, timelineToSource } from "../engine/edit/editMath";
+import { fsUrl } from "../engine/media/media";
 
 /** The read-only reference pane: another scene video scrub-locked to the active edit in OUTPUT time (its own edit doc applied when one exists), so trims and speed changes on either side stay honest. Paused it seeks the mapped frame; playing it runs its own decode clock at the clip's speed with drift correction against the lockstep time; past either end it holds a dimmed first/last frame so misalignment is visible rather than blank. Preview-only, never the export path. */
 

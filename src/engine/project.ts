@@ -19,31 +19,31 @@ import type {
 import type { FrameSpec } from "../toolkit/frame/types";
 import { preloadEmojiRasters } from "../toolkit/text/emojiRaster";
 import type { SceneModule } from "../toolkit/types";
-import { refreshWorkspaceAssets, workspaceAssetMissing } from "./assetInventory";
-import type { CameraKeyframe } from "./cameraTrack";
-import { preloadEffectLuts } from "./effects";
-import { mergeFrameSpec, parseFrameSpec } from "./frameSchema";
-import { listUserPresets, listUserTemplates } from "./library";
-import { watchLibraryDocuments } from "./libraryDocuments";
-import { fsUrl } from "./media";
-import { resolveSavedPosterTheme } from "./presetPosterThemes";
-import { withProjectAssetRevision } from "./projectAssetRevision";
-import { ensureProjectTrusted } from "./projectTrust";
-import { parseRenderSettings, type RenderSettings } from "./renderSettings";
-import { ensureSampleAssets } from "./sampleAssets";
-import { deriveCompareBDoc } from "./sceneCompare";
-import { compileSceneModule } from "./sceneCompiler";
+import type { CameraKeyframe } from "./camera/cameraTrack";
+import { deriveCompareBDoc } from "./content/sceneCompare";
+import { preloadEffectLuts } from "./effects/effects";
+import { mergeFrameSpec, parseFrameSpec } from "./frame/frameSchema";
+import { parseRenderSettings, type RenderSettings } from "./lighting/renderSettings";
+import { normalizeLighting } from "./lighting/sceneLighting";
+import { refreshWorkspaceAssets, workspaceAssetMissing } from "./media/assetInventory";
+import { fsUrl } from "./media/media";
+import { withProjectAssetRevision } from "./media/projectAssetRevision";
+import { ensureSampleAssets } from "./media/sampleAssets";
 import { loadSceneDoc } from "./sceneDoc";
 import { collectSceneDocFontRefs, type SceneDoc } from "./sceneDocSchema";
-import { ensureUniqueSceneIds } from "./sceneIds";
-import { normalizeLighting } from "./sceneLighting";
 import {
   buildSceneTimeline,
   type SceneSlot,
   type TransitionSpec,
   timelineTotalMs,
 } from "./sceneTimeline";
-import { ensureFontRefsPinned } from "./systemFonts";
+import { compileSceneModule } from "./stage/sceneCompiler";
+import { listUserPresets, listUserTemplates } from "./workspace/library";
+import { watchLibraryDocuments } from "./workspace/libraryDocuments";
+import { resolveSavedPosterTheme } from "./workspace/presetPosterThemes";
+import { ensureProjectTrusted } from "./workspace/projectTrust";
+import { ensureUniqueSceneIds } from "./workspace/sceneIds";
+import { ensureFontRefsPinned } from "./workspace/systemFonts";
 
 /** On-disk project manifest (`projects/<id>/project.json`). */
 export interface ProjectManifest {

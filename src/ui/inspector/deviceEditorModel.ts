@@ -1,12 +1,12 @@
-import type { RigDoc } from "../../engine/sceneCameraEdit";
+import { bakeRigBinding } from "../../engine/camera/sceneRigConvert";
+import type { RigDoc } from "../../engine/edit/sceneCameraEdit";
+import { followsSceneMedia } from "../../engine/media/sceneMedia";
 import type {
   DeviceLayoutPreset,
   SceneDoc,
   SceneDocDeviceLayout,
   SceneDocDeviceSpec,
 } from "../../engine/sceneDocSchema";
-import { followsSceneMedia } from "../../engine/sceneMedia";
-import { bakeRigBinding } from "../../engine/sceneRigConvert";
 import {
   customColourHex,
   DEVICE_CATALOG,

@@ -1,12 +1,12 @@
 /** Post-import review of Website origins from the landed scene sidecars. Packs carry requests and poster pixels, never local grants or browser data. */
 
 import { invoke } from "@tauri-apps/api/core";
-import { readProjectManifestSnapshot } from "../engine/projectEdit";
+import { readProjectManifestSnapshot } from "../engine/edit/projectEdit";
 import {
   normaliseWebsiteOrigin,
   parseSceneWebsite,
   resolveSceneWebsite,
-} from "../engine/sceneWebsite";
+} from "../engine/panels/sceneWebsite";
 import { packProjectItems } from "./projectItems";
 import type { ImportOutcome } from "./types";
 

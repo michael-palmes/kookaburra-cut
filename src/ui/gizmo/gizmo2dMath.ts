@@ -1,4 +1,4 @@
-import type { StageRect } from "../../engine/gizmoRegistry";
+import type { StageRect } from "../../engine/gizmo/gizmoRegistry";
 import { normaliseDeg } from "../../engine/sceneDocSchema";
 
 /** The pure geometry behind the 2D gizmo layer: NDC and stage-pixel conversions, the rotated-rect frame every host draws, the corner/rotate/resize maths lifted from `DecorationGizmo`, and the alignment-guide snapping. Plain data in and out, so the one set of rules every 2D host shares stays provable in the node test environment. */

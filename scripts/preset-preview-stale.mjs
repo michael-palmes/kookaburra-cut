@@ -15,14 +15,14 @@ import { fileURLToPath, pathToFileURL } from "node:url";
  * The card-art staleness ledger for the two BUNDLED catalogues: scene presets (presets/) and
  * templates (projects/*&#47;template.json). One entry per item, holding a content hash of the
  * item's authored JSON, written by the promotion step of the preview autoruns and read back in
- * dev by src/engine/presets.ts and src/engine/templates.ts to badge cards whose art is older
+ * dev by src/engine/workspace/presets.ts and src/engine/workspace/templates.ts to badge cards whose art is older
  * than the item.
  *
  * The hash covers the manifest, project.json and every scene sidecar. It deliberately does NOT
  * cover the scene TSX: a code edit can change the pixels without touching any JSON, so a
  * TSX-only change goes unbadged and still needs a manual re-render.
  *
- * `canonicalJson` and `contentDigest` are mirrored EXACTLY in src/engine/presets.ts, which is
+ * `canonicalJson` and `contentDigest` are mirrored EXACTLY in src/engine/workspace/presets.ts, which is
  * the only way the app can compare a hash this script wrote.
  */
 

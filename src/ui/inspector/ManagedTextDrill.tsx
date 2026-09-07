@@ -5,7 +5,7 @@ import {
   resolveManagedTextGroups,
   type VirtualManagedTextOptions,
   type VirtualManagedTextRegistration,
-} from "../../engine/managedText";
+} from "../../engine/content/managedText";
 import type {
   SceneDoc,
   SceneManagedTextItem,

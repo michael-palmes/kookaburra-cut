@@ -1,8 +1,8 @@
 // Fourth Tauri window (label "packs"): export and import .kbpack files; bootTrap first for the same readable-crash surface as the others.
-import "./engine/bootTrap";
+import "./engine/stage/bootTrap";
 import React from "react";
 import ReactDOM from "react-dom/client";
-import { revealFailsafe } from "./engine/reveal";
+import { revealFailsafe } from "./engine/stage/reveal";
 import { PacksApp } from "./packs/PacksApp";
 import "./styles.css";
 

@@ -1,17 +1,22 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { checkCameraBounds } from "../engine/cameraBounds";
-import { useCameraEditStore } from "../engine/cameraEditStore";
-import { clampToStage, projectToStage, viewBasis, worldPerPixel } from "../engine/cameraProject";
-import type { CameraPose } from "../engine/cameraTrack";
+import { checkCameraBounds } from "../engine/camera/cameraBounds";
+import {
+  clampToStage,
+  projectToStage,
+  viewBasis,
+  worldPerPixel,
+} from "../engine/camera/cameraProject";
+import type { CameraPose } from "../engine/camera/cameraTrack";
+import { normalizeSceneRig, sampleSceneRig } from "../engine/camera/sceneRig";
 import { useClockStore } from "../engine/clock";
-import { useSceneIsBanded } from "../engine/depthStageRegistry";
+import { useCameraEditStore } from "../engine/edit/cameraEditStore";
+import type { RigDoc } from "../engine/edit/sceneCameraEdit";
+import { setKeyPose } from "../engine/edit/sceneCameraEdit";
+import { rigBasis } from "../engine/edit/sceneRigEdit";
 import { useFormat } from "../engine/format";
 import type { LoadedProject } from "../engine/project";
-import type { RigDoc } from "../engine/sceneCameraEdit";
-import { setKeyPose } from "../engine/sceneCameraEdit";
 import type { SceneDoc, SceneDocRigPose } from "../engine/sceneDocSchema";
-import { normalizeSceneRig, sampleSceneRig } from "../engine/sceneRig";
-import { rigBasis } from "../engine/sceneRigEdit";
+import { useSceneIsBanded } from "../engine/stage/depthStageRegistry";
 import { useCameraDoc } from "./cameraDoc";
 
 /** The ghost path: an SVG layer over the stage drawing where a free-flight rig travels, with a draggable dot per key. Projection is a pure RECOMPUTE (`engine/cameraProject.ts`) of the pose the seam would apply, never a read of the live camera, so there is no r3f bridge and the export cannot see any of this by construction. Only free mode has a path to draw; orbit keeps its existing affordances. */

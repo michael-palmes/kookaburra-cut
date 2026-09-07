@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { useCameraEditStore } from "../engine/cameraEditStore";
-import { useDecorationEditStore } from "../engine/decorationEditStore";
+import { useCameraEditStore } from "../engine/edit/cameraEditStore";
+import { useDecorationEditStore } from "../engine/edit/decorationEditStore";
 import {
   LINE_HEIGHT,
   measuredPanelTextBlock,
@@ -9,9 +9,9 @@ import {
   panelMeasureVersion,
   requestPanelTextMeasure,
   subscribePanelMeasures,
-} from "../engine/framePanelMeasure";
-import { charAdvance } from "../engine/framePanelText";
-import type { StageRect } from "../engine/gizmoRegistry";
+} from "../engine/frame/framePanelMeasure";
+import { charAdvance } from "../engine/frame/framePanelText";
+import type { StageRect } from "../engine/gizmo/gizmoRegistry";
 import { type LoadedProject, resolveAssetUrl } from "../engine/project";
 import type { SceneDoc } from "../engine/sceneDocSchema";
 import { parseFontString } from "../theme/fontRef";

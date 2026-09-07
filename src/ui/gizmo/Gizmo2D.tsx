@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { GizmoDomain, StageRect } from "../../engine/gizmoRegistry";
+import type { GizmoDomain, StageRect } from "../../engine/gizmo/gizmoRegistry";
 import {
   aabbHalfExtents,
   type Gizmo2DFrame,

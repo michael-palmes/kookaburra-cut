@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { EMPTY_SELECTION, selectionKey } from "../engine/packs";
+import { EMPTY_SELECTION, selectionKey } from "../engine/workspace/packs";
 import {
   breakageWarning,
   countByKind,

@@ -1,8 +1,8 @@
 /** Review of terminal blocks in workspace projects, for the two sharing boundaries: the import summary lists every pre-typed command and custom start path a pack just wrote, and the export picker warns that snapshots and commands travel with the pack. Reads the sidecars off disk (what is on disk is what matters, never the archive or the publisher's manifest); any read failure degrades to no rows, since neither screen may fail on a review. */
 
 import { invoke } from "@tauri-apps/api/core";
-import { readProjectManifestSnapshot } from "../engine/projectEdit";
-import { parseSceneTerminal } from "../engine/sceneTerminal";
+import { readProjectManifestSnapshot } from "../engine/edit/projectEdit";
+import { parseSceneTerminal } from "../engine/panels/sceneTerminal";
 import { packProjectItems } from "./projectItems";
 import type { ImportOutcome } from "./types";
 

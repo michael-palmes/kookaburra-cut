@@ -2,7 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useCallback, useEffect, useState } from "react";
-import { revealApp } from "../engine/reveal";
+import { revealApp } from "../engine/stage/reveal";
 import { useNativeTextUndo } from "../ui/useNativeTextUndo";
 import { ExportView } from "./ExportView";
 import { ImportFlow } from "./import/ImportFlow";

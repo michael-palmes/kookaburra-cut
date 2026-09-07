@@ -6,7 +6,6 @@ import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { type ITheme, Terminal } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { parseProjectId } from "../engine/project";
 import {
   binaryDir,
   CLAUDE_BREW_SWITCH_COMMAND,
@@ -25,7 +24,8 @@ import {
   type SessionProject,
   setLiveSession,
   spawnTerminalSession,
-} from "../engine/terminal";
+} from "../engine/panels/terminal";
+import { parseProjectId } from "../engine/project";
 import { useUiStore } from "../store/uiStore";
 import { HelperWizard, type WizardKind } from "./HelperWizards";
 import { railIcon } from "./libraryIcons";

@@ -7,7 +7,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { fsUrl } from "../engine/media";
+import { fsUrl } from "../engine/media/media";
 import {
   edgeScrollVelocity,
   elasticX,

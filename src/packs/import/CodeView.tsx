@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { readPackSceneSource } from "../../engine/packs";
+import { readPackSceneSource } from "../../engine/workspace/packs";
 import type { PackManifest } from "../types";
 
 /** Read-only source disclosure. No syntax highlighting library, no execution, no dangerouslySetInnerHTML. */

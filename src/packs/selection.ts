@@ -1,6 +1,6 @@
 /** Export-picker selection maths, kept pure so the closure behaviour is testable without a window. */
 
-import { EMPTY_SELECTION, type PackSelection, selectionKey } from "../engine/packs";
+import { EMPTY_SELECTION, type PackSelection, selectionKey } from "../engine/workspace/packs";
 import type { ItemKind, SelectableItem } from "./types";
 
 export interface SelectionState {

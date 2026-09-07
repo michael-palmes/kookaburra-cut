@@ -3,21 +3,14 @@ import { useContext, useId, useLayoutEffect, useMemo } from "react";
 import type { DeviceId } from "../toolkit/device/catalog";
 import type { DeviceProps } from "../toolkit/device/Device";
 import { resolveDeviceLayout } from "../toolkit/device/layout";
-import { useChartRegistry } from "./chartRegistry";
-import { useDeviceRegistry } from "./deviceRegistry";
-import { useFormat } from "./format";
-import { clampTrackToDuration, type KeyedTrack } from "./keyedTrack";
-import { useLayeredScreenshotRegistry } from "./layeredScreenshotRegistry";
-import { type ManagedTextRenderRole, resolveTemplateManagedTextCopy } from "./managedText";
-import { useObjectRegistry } from "./objectRegistry";
-import { isEditableProjectId, type LoadedProject, nativeProjectSlug } from "./project";
-import { type ResolvedChart, resolveChart } from "./sceneChart";
-import { SceneDocContext, useSceneContext } from "./sceneContext";
-import { parseSceneDoc, type SceneDoc, type SceneDocMediaSpec } from "./sceneDocSchema";
+import { type ManagedTextRenderRole, resolveTemplateManagedTextCopy } from "./content/managedText";
+import { type ResolvedChart, resolveChart } from "./content/sceneChart";
 import {
   type NormalizedLayeredScreenshot,
   normalizeLayeredScreenshot,
-} from "./sceneLayeredScreenshot";
+} from "./content/sceneLayeredScreenshot";
+import { useFormat } from "./format";
+import { clampTrackToDuration, type KeyedTrack } from "./keyedTrack";
 import {
   editSceneDocMedia,
   sceneMediaFamily as familyOfMedia,
@@ -25,9 +18,16 @@ import {
   resolveSceneDocMedia,
   type SceneMediaFamily,
   videoWindowMediaEntry,
-} from "./sceneMedia";
-import { useSceneMediaRegistry } from "./sceneMediaRegistry";
-import { useTextKeyRegistry } from "./textKeyRegistry";
+} from "./media/sceneMedia";
+import { useSceneMediaRegistry } from "./media/sceneMediaRegistry";
+import { isEditableProjectId, type LoadedProject, nativeProjectSlug } from "./project";
+import { SceneDocContext, useSceneContext } from "./sceneContext";
+import { parseSceneDoc, type SceneDoc, type SceneDocMediaSpec } from "./sceneDocSchema";
+import { useChartRegistry } from "./stage/chartRegistry";
+import { useDeviceRegistry } from "./stage/deviceRegistry";
+import { useLayeredScreenshotRegistry } from "./stage/layeredScreenshotRegistry";
+import { useObjectRegistry } from "./stage/objectRegistry";
+import { useTextKeyRegistry } from "./stage/textKeyRegistry";
 
 /** Scene-document IO and hooks: docs load beside their scene modules in `loadProject` into `LoadedProject.sceneDocs` and reach components via `SceneHost`'s `SceneDocContext`, but the engine (camera sampling, duration sync) reads `LoadedProject.sceneDocs` directly so export never touches React context or the editor store; schema and validation live in `sceneDocSchema.ts`. */
 

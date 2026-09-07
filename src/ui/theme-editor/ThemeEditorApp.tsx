@@ -4,7 +4,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { ask } from "@tauri-apps/plugin-dialog";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
-import { revealApp } from "../../engine/reveal";
+import { revealApp } from "../../engine/stage/reveal";
 import { defaultTheme } from "../../theme/registry";
 import type { Theme } from "../../theme/tokens";
 import { useNativeTextUndo } from "../useNativeTextUndo";

@@ -1,16 +1,16 @@
 import { useCallback } from "react";
 import {
-  useLayeredScreenshotDraft,
-  useLayeredScreenshotEditStore,
-} from "../engine/layeredScreenshotEditStore";
-import { isEditableProjectId, type LoadedProject, nativeProjectSlug } from "../engine/project";
-import { commitSceneDocPatch, type DocChangedHandler } from "../engine/sceneDocPatchQueue";
-import type { LayeredScreenshotPose, SceneDocLayeredScreenshot } from "../engine/sceneDocSchema";
-import {
   defaultLayeredScreenshotPose,
   normalizeLayeredScreenshot,
   resolveLayeredScreenshotPose,
-} from "../engine/sceneLayeredScreenshot";
+} from "../engine/content/sceneLayeredScreenshot";
+import {
+  useLayeredScreenshotDraft,
+  useLayeredScreenshotEditStore,
+} from "../engine/edit/layeredScreenshotEditStore";
+import { isEditableProjectId, type LoadedProject, nativeProjectSlug } from "../engine/project";
+import { commitSceneDocPatch, type DocChangedHandler } from "../engine/sceneDocPatchQueue";
+import type { LayeredScreenshotPose, SceneDocLayeredScreenshot } from "../engine/sceneDocSchema";
 
 /** Shared layered-screenshot doc plumbing (the useCameraDoc pattern) used by the builder panel, tool overlay and animation lane: the in-flight draft, live preview via the edit store, sidecar commit with history + write-error surface, and the applied-pose sampler. `onDocChanged` receives the exact doc each commit wrote so the host patches the loaded project in memory instead of reloading. */
 

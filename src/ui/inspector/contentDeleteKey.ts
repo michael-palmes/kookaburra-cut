@@ -1,5 +1,5 @@
-import type { GizmoDomain } from "../../engine/gizmoRegistry";
-import { gizmoDomainForDrillStack } from "../../engine/gizmoSections";
+import type { GizmoDomain } from "../../engine/gizmo/gizmoRegistry";
+import { gizmoDomainForDrillStack } from "../../engine/gizmo/gizmoSections";
 import type { InspectorState } from "../../store/uiStore";
 
 /** Which surface a Delete keypress belongs to: the open content drill's own trash, the Scene overview's selected row, or nobody. `DecorationGizmo` binds Delete for the whole decorations domain, drilled in or not, so this never claims it. Pure over the inspector state so the one rule the key hangs off stays provable. */

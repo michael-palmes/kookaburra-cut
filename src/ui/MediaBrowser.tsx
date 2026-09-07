@@ -2,7 +2,7 @@ import { listen } from "@tauri-apps/api/event";
 import { open as openFilePicker } from "@tauri-apps/plugin-dialog";
 import { type RefObject, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { listEdits } from "../engine/edit";
+import { listEdits } from "../engine/edit/edit";
 import {
   deleteGlobalScreenshot,
   formatMediaDuration,
@@ -17,7 +17,7 @@ import {
   type MediaMeta,
   mediaMeta,
   revealPath,
-} from "../engine/media";
+} from "../engine/media/media";
 import { ContextMenu, type ContextMenuItem, type ContextMenuState } from "./ContextMenu";
 import { SegmentedRow, ToggleFieldset } from "./inspector/rows";
 import { modalHost } from "./modalHost";

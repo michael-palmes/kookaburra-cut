@@ -17,16 +17,6 @@ import {
   Vector3,
   WebGLRenderer,
 } from "three";
-import { fsUrl } from "../engine/media";
-import type { LoadedProject } from "../engine/project";
-import {
-  applyTransitionEase,
-  defaultDirection,
-  resolveTransitionParams,
-  type TransitionEase,
-  type TransitionSpec,
-  type TransitionType,
-} from "../engine/sceneTimeline";
 import {
   DIRECTION_OPTIONS,
   FEEL_LABELS,
@@ -34,7 +24,7 @@ import {
   TRANSITION_CATALOG,
   type TransitionMeta,
   type TransitionParamDef,
-} from "../engine/transitionCatalog";
+} from "../engine/effects/transitionCatalog";
 import {
   EXT2_MIN_TYPE,
   EXT3_MIN_TYPE,
@@ -47,7 +37,17 @@ import {
   TYPE_ID,
   vertexShader,
   vertexShader300,
-} from "../engine/transitionShader";
+} from "../engine/effects/transitionShader";
+import { fsUrl } from "../engine/media/media";
+import type { LoadedProject } from "../engine/project";
+import {
+  applyTransitionEase,
+  defaultDirection,
+  resolveTransitionParams,
+  type TransitionEase,
+  type TransitionSpec,
+  type TransitionType,
+} from "../engine/sceneTimeline";
 import { ColourPicker } from "./colour/ColourPicker";
 import { DebouncedRange } from "./TextAnimationPicker";
 import { TransitionWriteQueue } from "./transitionWriteQueue";

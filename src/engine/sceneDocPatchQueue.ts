@@ -1,3 +1,4 @@
+import { readProjectManifestSnapshot, writeProjectManifestSnapshot } from "./edit/projectEdit";
 import { type HistoryChange, pushHistory } from "./history";
 import {
   isEditableProjectId,
@@ -5,7 +6,6 @@ import {
   nativeProjectSlug,
   type ProjectManifest,
 } from "./project";
-import { readProjectManifestSnapshot, writeProjectManifestSnapshot } from "./projectEdit";
 import { writeSceneDoc } from "./sceneDoc";
 import type { SceneDoc } from "./sceneDocSchema";
 

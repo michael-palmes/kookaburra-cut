@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import type { EditDoc } from "../engine/edit";
+import type { EditDoc } from "../engine/edit/edit";
 import {
   bindEditorHistory,
   closeEditorHistoryCoalescing,

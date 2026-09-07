@@ -1,20 +1,20 @@
 import "@xterm/xterm/css/xterm.css";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import {
-  type LoadedProject,
-  nativeProjectSlug,
-  projectFolderPath,
-  sceneFileStem,
-} from "../engine/project";
-import { resolveSceneTerminal, sceneTerminalLayout } from "../engine/sceneTerminal";
+import { resolveSceneTerminal, sceneTerminalLayout } from "../engine/panels/sceneTerminal";
 import {
   getSceneTerminalSession,
   sceneTerminalKey,
   sceneTerminalSessionsVersion,
   startSceneTerminalSession,
   subscribeSceneTerminalSessions,
-} from "../engine/sceneTerminalSession";
-import { resolveTerminalColours } from "../engine/sceneTerminalTheme";
+} from "../engine/panels/sceneTerminalSession";
+import { resolveTerminalColours } from "../engine/panels/sceneTerminalTheme";
+import {
+  type LoadedProject,
+  nativeProjectSlug,
+  projectFolderPath,
+  sceneFileStem,
+} from "../engine/project";
 import { usePresentStore } from "./presentStore";
 
 /** The slide's live terminal in Present: a fresh session per presentation run (this webview's registry starts empty; revisited slides re-adopt theirs), spawned quietly as the scene enters so the pre-typed command is on the prompt by the hold (project-folder sessions only: a custom start path waits for the first click on the terminal). Click the terminal to type (the click never advances); while focused the deck keys stand down (`terminalFocused`), plain Esc stays with the shell, and Shift+Esc or a click outside hands the keyboard back, that outside click swallowed in the capture phase so it never doubles as an advance. Rust kills this window's PTYs on destroy. */

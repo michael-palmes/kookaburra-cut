@@ -1,5 +1,5 @@
-import { formatBytes } from "../engine/appCache";
-import type { MediaDeleteFailure, UnusedAsset } from "../engine/media";
+import type { MediaDeleteFailure, UnusedAsset } from "../engine/media/media";
+import { formatBytes } from "../engine/workspace/appCache";
 
 /** The selection maths and copy behind the "Delete unused media" sheet, kept out of the component so it can be unit tested (vitest runs without a DOM). */
 

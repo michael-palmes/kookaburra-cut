@@ -1,4 +1,4 @@
-import type { EditDoc } from "../engine/edit";
+import type { EditDoc } from "../engine/edit/edit";
 
 export interface EditorHistoryEntry {
   label: string;

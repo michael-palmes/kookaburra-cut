@@ -1,6 +1,6 @@
 import { open as openFolderPicker } from "@tauri-apps/plugin-dialog";
 import { useEffect, useRef, useState } from "react";
-import { workspaceProjectPath } from "../../engine/project";
+import { useTerminalEditStore } from "../../engine/edit/terminalEditStore";
 import {
   resolveSceneTerminal,
   type SceneDocTerminal,
@@ -11,17 +11,23 @@ import {
   TERMINAL_FONT_PX_MIN,
   TERMINAL_ROWS_MAX,
   TERMINAL_ROWS_MIN,
-} from "../../engine/sceneTerminal";
-import { bakeTerminalSnapshot } from "../../engine/sceneTerminalBake";
-import { type CaptureTerminal, captureTerminalSnapshot } from "../../engine/sceneTerminalCapture";
+} from "../../engine/panels/sceneTerminal";
+import { bakeTerminalSnapshot } from "../../engine/panels/sceneTerminalBake";
+import {
+  type CaptureTerminal,
+  captureTerminalSnapshot,
+} from "../../engine/panels/sceneTerminalCapture";
 import {
   getSceneTerminalSession,
   killSceneTerminalSession,
   sceneTerminalKey,
   startSceneTerminalSession,
-} from "../../engine/sceneTerminalSession";
-import { resolveTerminalColours, TERMINAL_THEME_PRESETS } from "../../engine/sceneTerminalTheme";
-import { useTerminalEditStore } from "../../engine/terminalEditStore";
+} from "../../engine/panels/sceneTerminalSession";
+import {
+  resolveTerminalColours,
+  TERMINAL_THEME_PRESETS,
+} from "../../engine/panels/sceneTerminalTheme";
+import { workspaceProjectPath } from "../../engine/project";
 import type { Theme } from "../../theme/tokens";
 import type { useSceneDocPatch } from "../useSceneDocPatch";
 import {

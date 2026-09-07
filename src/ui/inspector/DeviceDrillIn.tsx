@@ -1,7 +1,7 @@
 import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { useDeviceEditStore } from "../../engine/deviceEditStore";
-import { useDeviceTrackEditStore } from "../../engine/deviceTrackEditStore";
-import { optionPreviewStill } from "../../engine/optionPreviews";
+import { useDeviceEditStore } from "../../engine/edit/deviceEditStore";
+import { useDeviceTrackEditStore } from "../../engine/edit/deviceTrackEditStore";
+import { optionPreviewStill } from "../../engine/export/optionPreviews";
 import type { SceneDoc, SceneDocDeviceSpec } from "../../engine/sceneDocSchema";
 import {
   AVAILABLE_DEVICE_IDS,

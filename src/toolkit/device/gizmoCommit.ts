@@ -1,4 +1,4 @@
-import type { DeviceEditCommitPayload } from "../../engine/deviceEditStore";
+import type { DeviceEditCommitPayload } from "../../engine/edit/deviceEditStore";
 import type { SceneDocDeviceLayoutDelta, SceneDocDevicePose } from "../../engine/sceneDocSchema";
 import type { V3 } from "../types";
 import type { DevicePlacement } from "./Device";

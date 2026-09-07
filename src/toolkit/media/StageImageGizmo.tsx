@@ -1,10 +1,10 @@
 import { useEffect, useRef } from "react";
 import type { Group } from "three";
-import { isExporting } from "../../engine/exportState";
-import { useGizmoSectionOpen } from "../../engine/gizmoSections";
-import { useImageEditStore } from "../../engine/imageEditStore";
-import { SceneGizmo } from "../../engine/SceneGizmo";
-import { SceneOutline } from "../../engine/SceneOutline";
+import { useImageEditStore } from "../../engine/edit/imageEditStore";
+import { isExporting } from "../../engine/export/exportState";
+import { useGizmoSectionOpen } from "../../engine/gizmo/gizmoSections";
+import { SceneGizmo } from "../../engine/gizmo/SceneGizmo";
+import { SceneOutline } from "../../engine/gizmo/SceneOutline";
 import { useSceneContext } from "../../engine/sceneContext";
 import type { SceneImageStagePlacement } from "../../engine/sceneDocSchema";
 import { STAGE_MEDIA_SIZE_RANGE, stageImageGizmoCommit } from "./imageGizmoCommit";

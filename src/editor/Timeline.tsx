@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { EditClip, EditSource, EditTap } from "../engine/edit";
+import type { EditClip, EditSource, EditTap } from "../engine/edit/edit";
 import {
   clipIndexAt,
   clipTimelineMs,
@@ -10,8 +10,8 @@ import {
   timelineDurationMs,
   trimClipIn,
   trimClipOut,
-} from "../engine/editMath";
-import { fsUrl, MEDIA_DRAG_TYPE, type MediaMeta } from "../engine/media";
+} from "../engine/edit/editMath";
+import { fsUrl, MEDIA_DRAG_TYPE, type MediaMeta } from "../engine/media/media";
 import type { TrimScrub } from "./Preview";
 
 /** The magnetic timeline: seconds ruler + playhead, filmstrip clip blocks with trim handles, drag-reorder, zoom (fit-all default), edge/playhead snapping. Clips always butt together (gapless, a locked decision); every interaction commits a relaid clips array via `onCommit`, which the editor autosaves. Here the playhead is the edit cursor (split point, snap target). */

@@ -17,7 +17,7 @@ const SCRIPT_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const comparePath = (left, right) => (left < right ? -1 : left > right ? 1 : 0);
 
 function readCaptureContract(root) {
-  const source = readFileSync(join(root, "src", "engine", "themePreviews.ts"), "utf8");
+  const source = readFileSync(join(root, "src", "engine", "export", "themePreviews.ts"), "utf8");
   const number = (name) => {
     const value = source.match(new RegExp(`export const ${name} = (\\d+)`))?.[1];
     if (!value) throw new Error(`theme-preview-stale: ${name} not found`);

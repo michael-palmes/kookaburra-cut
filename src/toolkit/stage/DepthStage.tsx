@@ -1,8 +1,8 @@
 import { createContext, type ReactNode, useContext, useEffect, useMemo } from "react";
-import { useDepthStageRegistry } from "../../engine/depthStageRegistry";
+import { normalizeSceneRig, rigOverscan, type SceneRigTrack } from "../../engine/camera/sceneRig";
 import { useFormat } from "../../engine/format";
 import { SceneDocContext, useSceneContext } from "../../engine/sceneContext";
-import { normalizeSceneRig, rigOverscan, type SceneRigTrack } from "../../engine/sceneRig";
+import { useDepthStageRegistry } from "../../engine/stage/depthStageRegistry";
 import { useStageFloorY } from "./context";
 
 /** Named depth bands for a scene a camera rig flies THROUGH: content where scenes already lay out, a foreground layer between the camera and it, and two layers behind. Every band sizes its full-bleed rect from the scene's rig envelope, so a layer that fills the frame at rest still fills it at the far end of a fly-through. A scene with no rig gets today's static sizing, which is why adding the container to an existing scene changes nothing. Band depths are EXPORT CONTRACT; see docs/determinism.md. */

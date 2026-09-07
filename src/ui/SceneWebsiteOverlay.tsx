@@ -1,9 +1,7 @@
 import { listen } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from "react";
-import { useCameraEditStore } from "../engine/cameraEditStore";
-import { type LoadedProject, projectFolderPath, sceneFileStem } from "../engine/project";
-import type { SceneDoc } from "../engine/sceneDocSchema";
-import { resolveSceneWebsite, sceneWebsiteLayout } from "../engine/sceneWebsite";
+import { useCameraEditStore } from "../engine/edit/cameraEditStore";
+import { resolveSceneWebsite, sceneWebsiteLayout } from "../engine/panels/sceneWebsite";
 import {
   grantWebsiteOrigin,
   hideWebsite,
@@ -19,7 +17,7 @@ import {
   type WebsiteOriginRequestEvent,
   type WebsiteViewStateEvent,
   websiteBoundsForFrame,
-} from "../engine/sceneWebsiteNative";
+} from "../engine/panels/sceneWebsiteNative";
 import {
   sceneWebsiteKey,
   sceneWebsiteSession,
@@ -27,7 +25,9 @@ import {
   WEBSITE_ACTIVATE_REQUEST_EVENT,
   WEBSITE_DEACTIVATE_REQUEST_EVENT,
   websiteSessionCanShow,
-} from "../engine/sceneWebsiteSession";
+} from "../engine/panels/sceneWebsiteSession";
+import { type LoadedProject, projectFolderPath, sceneFileStem } from "../engine/project";
+import type { SceneDoc } from "../engine/sceneDocSchema";
 import { useEditorStore } from "../store/editorStore";
 import { useGizmoDocWrite } from "./gizmo/gizmoDocWrite";
 import { useBlockingModalOverlay } from "./modalOverlayPresence";

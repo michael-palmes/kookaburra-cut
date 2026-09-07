@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { defaultOrbitPose } from "../engine/camera/sceneCamera";
 import type { LoadedProject } from "../engine/project";
-import { defaultOrbitPose } from "../engine/sceneCamera";
 import { settleSceneDocPatches } from "../engine/sceneDocPatchQueue";
 import type { SceneDoc } from "../engine/sceneDocSchema";
 
@@ -40,13 +40,13 @@ vi.mock("../engine/format", async (importOriginal) => {
   return { ...actual, useFormat: () => actual.computeFormat(actual.FORMATS["16:9"]) };
 });
 
-vi.mock("../engine/stageRegistry", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../engine/stageRegistry")>();
+vi.mock("../engine/stage/stageRegistry", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../engine/stage/stageRegistry")>();
   return { ...actual, useSceneStageFloorY: () => undefined };
 });
 
-vi.mock("../engine/layeredScreenshotEditStore", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../engine/layeredScreenshotEditStore")>();
+vi.mock("../engine/edit/layeredScreenshotEditStore", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../engine/edit/layeredScreenshotEditStore")>();
   return { ...actual, useLayeredScreenshotDraft: () => null };
 });
 

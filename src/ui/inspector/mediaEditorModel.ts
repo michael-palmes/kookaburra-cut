@@ -1,12 +1,7 @@
-import type { ImageReconciliationOrigin } from "../../engine/imageReconciliationStore";
-import type { RigDoc } from "../../engine/sceneCameraEdit";
-import {
-  isSceneImageSource,
-  type SceneDoc,
-  type SceneDocMediaSpec,
-  type SceneMediaHost,
-  type SceneMediaKind,
-} from "../../engine/sceneDocSchema";
+import { VIDEO_WINDOW_AIM_ID } from "../../engine/camera/sceneRig";
+import { bakeRigBinding } from "../../engine/camera/sceneRigConvert";
+import type { ImageReconciliationOrigin } from "../../engine/edit/imageReconciliationStore";
+import type { RigDoc } from "../../engine/edit/sceneCameraEdit";
 import {
   createSceneMedia,
   editSceneDocMedia,
@@ -15,9 +10,14 @@ import {
   pinnedFollowMediaEntry,
   resolveSceneDocMedia,
   videoWindowMediaEntry,
-} from "../../engine/sceneMedia";
-import { VIDEO_WINDOW_AIM_ID } from "../../engine/sceneRig";
-import { bakeRigBinding } from "../../engine/sceneRigConvert";
+} from "../../engine/media/sceneMedia";
+import {
+  isSceneImageSource,
+  type SceneDoc,
+  type SceneDocMediaSpec,
+  type SceneMediaHost,
+  type SceneMediaKind,
+} from "../../engine/sceneDocSchema";
 import type { FrameDecorationSpec } from "../../toolkit/frame/types";
 
 /** The editor model behind the one Media drill: structural writes go through `editSceneDocMedia`, so the first edit of a legacy doc promotes it to an authored `media` array, and the selection reconciler follows an entry across undo/redo of a legacy-decoration takeover or a duplicate. */

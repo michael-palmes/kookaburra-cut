@@ -3,7 +3,7 @@ import {
   type LightingTarget,
   type LightingTrackDoc,
   useLightingEditStore,
-} from "../engine/lightingEditStore";
+} from "../engine/edit/lightingEditStore";
 import type { LoadedProject } from "../engine/project";
 import type { SceneDoc } from "../engine/sceneDocSchema";
 import type { LightingPose } from "../theme/tokens";

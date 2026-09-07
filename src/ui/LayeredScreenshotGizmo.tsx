@@ -1,16 +1,20 @@
 import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import { Matrix4, Vector3 } from "three";
-import { useCameraEditStore } from "../engine/cameraEditStore";
+import { resolveLayeredScreenshotPlacement } from "../engine/content/sceneLayeredScreenshot";
+import { useCameraEditStore } from "../engine/edit/cameraEditStore";
+import { useLayeredScreenshotEditStore } from "../engine/edit/layeredScreenshotEditStore";
 import { computeFormat } from "../engine/format";
-import { resolveCutoutRender } from "../engine/frameFormat";
-import { type StageRect, stageCamera } from "../engine/gizmoRegistry";
-import { gizmoTargets, subscribeGizmoTargets } from "../engine/gizmoTargetRegistry";
-import { nodeDrawn } from "../engine/gizmoVisibility";
-import { useLayeredScreenshotEditStore } from "../engine/layeredScreenshotEditStore";
+import { resolveCutoutRender } from "../engine/frame/frameFormat";
+import { type StageRect, stageCamera } from "../engine/gizmo/gizmoRegistry";
+import { gizmoTargets, subscribeGizmoTargets } from "../engine/gizmo/gizmoTargetRegistry";
+import { nodeDrawn } from "../engine/gizmo/gizmoVisibility";
+import {
+  cutoutStageRect,
+  frameWorldCutout,
+  worldViewportRect,
+} from "../engine/gizmo/stageViewport";
 import type { LoadedProject } from "../engine/project";
 import type { SceneDoc, SceneDocLayeredScreenshot } from "../engine/sceneDocSchema";
-import { resolveLayeredScreenshotPlacement } from "../engine/sceneLayeredScreenshot";
-import { cutoutStageRect, frameWorldCutout, worldViewportRect } from "../engine/stageViewport";
 import { useEditorStore } from "../store/editorStore";
 import { Gizmo2D, type Gizmo2DGesture, type Gizmo2DItem } from "./gizmo/Gizmo2D";
 import { frameGuideLines, type Pt } from "./gizmo/gizmo2dMath";

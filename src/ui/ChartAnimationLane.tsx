@@ -1,5 +1,5 @@
 import { useCallback } from "react";
-import { type ChartTrackDoc, useChartTrackEditStore } from "../engine/chartTrackEditStore";
+import { type ChartTrackDoc, useChartTrackEditStore } from "../engine/edit/chartTrackEditStore";
 import type { LoadedProject } from "../engine/project";
 import type { SceneDoc } from "../engine/sceneDocSchema";
 import type { ChartValuesPose } from "../toolkit/chart/types";

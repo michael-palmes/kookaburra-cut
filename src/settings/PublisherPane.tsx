@@ -1,6 +1,10 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useState } from "react";
-import type { PublisherKey, PublisherProfile, PublisherProfileView } from "../engine/packs";
+import type {
+  PublisherKey,
+  PublisherProfile,
+  PublisherProfileView,
+} from "../engine/workspace/packs";
 
 /** Settings panes for packs: who this install says it is on the packs it signs, and the publishers it has already imported from. The private key is never shown and there is no reveal; see src-tauri/src/pack/publisher.rs. */
 

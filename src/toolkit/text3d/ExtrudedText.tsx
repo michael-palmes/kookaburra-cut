@@ -1,14 +1,14 @@
 import { useContext, useEffect, useId, useLayoutEffect, useMemo } from "react";
 import { TextGeometry } from "three/examples/jsm/geometries/TextGeometry.js";
-import { shouldRenderManagedTextRole } from "../../engine/managedText";
-import { SceneDocContext, useSceneContext } from "../../engine/sceneContext";
-import { useTextKeyRegistry } from "../../engine/textKeyRegistry";
+import { shouldRenderManagedTextRole } from "../../engine/content/managedText";
 import {
   resolveTokenFill,
   textStyleOffsetPosition,
   textStyleRotationRad,
   textStyleValue,
-} from "../../engine/textStyleResolve";
+} from "../../engine/content/textStyleResolve";
+import { SceneDocContext, useSceneContext } from "../../engine/sceneContext";
+import { useTextKeyRegistry } from "../../engine/stage/textKeyRegistry";
 import { useTimeline } from "../../engine/timeline";
 import { useTheme } from "../../theme";
 import { LightRig } from "../lighting/LightRig";

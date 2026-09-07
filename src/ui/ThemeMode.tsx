@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useRef, useState } from "react";
-import { nameCollision, nameCollisionWarning } from "../engine/nameCollision";
+import { nameCollision, nameCollisionWarning } from "../engine/edit/nameCollision";
 import { WORKSPACE_THEME_PREFIX } from "../theme/registry";
 import type { FontRef } from "../theme/tokens";
 import { FontPicker } from "./FontPicker";

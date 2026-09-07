@@ -41,6 +41,7 @@ vi.mock("@tauri-apps/api/core", () => ({
 }));
 
 import { bindHistory, peekUndo } from "./history";
+import { sceneMediaFamily, sceneMediaUsesWindowPath } from "./media/sceneMedia";
 import type { LoadedProject, ProjectManifest } from "./project";
 import {
   applyEditRepoint,
@@ -51,7 +52,6 @@ import {
 } from "./sceneDoc";
 import { applyBackgroundToAllScenes } from "./sceneDocPatchQueue";
 import { parseSceneDoc, type SceneDoc, type SceneDocMediaSpec } from "./sceneDocSchema";
-import { sceneMediaFamily, sceneMediaUsesWindowPath } from "./sceneMedia";
 
 const docWith = (parts: Partial<SceneDoc>): SceneDoc => ({ version: 1, ...parts }) as SceneDoc;
 

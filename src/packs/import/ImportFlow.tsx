@@ -7,7 +7,7 @@ import {
   inspectPack,
   type PackSelection,
   stageAndPlan,
-} from "../../engine/packs";
+} from "../../engine/workspace/packs";
 import { PackGlyph } from "../PackGlyph";
 import { reviewImportedTerminals, type TerminalReviewRow } from "../terminalReview";
 import type { ImportOutcome, ImportPlan, PackInspection, PackProgress, Resolution } from "../types";

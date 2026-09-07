@@ -1,5 +1,5 @@
 import { type ReactNode, type RefObject, useEffect, useRef, useState } from "react";
-import type { GizmoMode } from "../../engine/gizmoMode";
+import type { GizmoMode } from "../../engine/gizmo/gizmoMode";
 import type { ChartType } from "../../toolkit/chart/types";
 import { DebouncedRange } from "../TextAnimationPicker";
 import { isTypingIn } from "../textEditFocus";

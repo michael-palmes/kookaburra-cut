@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { SRGBColorSpace, type Texture, TextureLoader } from "three";
-import { fsUrl } from "../../engine/media";
+import { fsUrl } from "../../engine/media/media";
 import { isEditableProjectId, nativeProjectSlug, resolveAssetPath } from "../../engine/project";
 import type { SceneDoc } from "../../engine/sceneDocSchema";
 import { type EmojiCluster, prepareEmojiText } from "./emojiText";

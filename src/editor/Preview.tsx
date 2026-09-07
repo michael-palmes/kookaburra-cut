@@ -1,7 +1,7 @@
 import { type CSSProperties, useCallback, useEffect, useRef, useState } from "react";
-import type { EditClip, EditSource, EditTap } from "../engine/edit";
-import { clipIndexAt, timelineDurationMs, timelineToSource } from "../engine/editMath";
-import { fsUrl } from "../engine/media";
+import type { EditClip, EditSource, EditTap } from "../engine/edit/edit";
+import { clipIndexAt, timelineDurationMs, timelineToSource } from "../engine/edit/editMath";
+import { fsUrl } from "../engine/media/media";
 import {
   TAP_DOT_SIZE_FRACTION,
   TAP_MARKER_NEAR_MS,

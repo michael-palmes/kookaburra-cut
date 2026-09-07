@@ -1,10 +1,10 @@
-import type { ImageReconciliationOrigin } from "../../engine/imageReconciliationStore";
-import { isSceneRenderedTextGroupKey } from "../../engine/managedText";
-import type { RigDoc } from "../../engine/sceneCameraEdit";
+import { LAYERED_SCREENSHOT_AIM_ID } from "../../engine/camera/sceneRig";
+import { bakeRigBinding } from "../../engine/camera/sceneRigConvert";
+import { isSceneRenderedTextGroupKey } from "../../engine/content/managedText";
+import type { ImageReconciliationOrigin } from "../../engine/edit/imageReconciliationStore";
+import type { RigDoc } from "../../engine/edit/sceneCameraEdit";
+import { followsSceneMedia, resolveSceneDocMedia } from "../../engine/media/sceneMedia";
 import type { SceneDoc, SceneDocObjectSpec } from "../../engine/sceneDocSchema";
-import { followsSceneMedia, resolveSceneDocMedia } from "../../engine/sceneMedia";
-import { LAYERED_SCREENSHOT_AIM_ID } from "../../engine/sceneRig";
-import { bakeRigBinding } from "../../engine/sceneRigConvert";
 import type { FrameDecorationSpec } from "../../toolkit/frame/types";
 import type {
   SceneOverviewContentType,

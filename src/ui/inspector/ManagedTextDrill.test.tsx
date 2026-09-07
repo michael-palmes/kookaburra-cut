@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { VirtualManagedTextRegistration } from "../../engine/managedText";
+import type { VirtualManagedTextRegistration } from "../../engine/content/managedText";
 import type { SceneDoc } from "../../engine/sceneDocSchema";
 import type { Theme } from "../../theme/tokens";
 import {

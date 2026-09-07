@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { formatBytes } from "../engine/appCache";
 import {
   deleteUnusedMedia,
   fsUrl,
@@ -7,7 +6,8 @@ import {
   type MediaMeta,
   type UnusedAsset,
   unusedMedia,
-} from "../engine/media";
+} from "../engine/media/media";
+import { formatBytes } from "../engine/workspace/appCache";
 import {
   allUnusedRels,
   toggleUnusedRel,

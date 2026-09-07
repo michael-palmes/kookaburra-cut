@@ -1,30 +1,33 @@
 import { useContext, useEffect, useId, useMemo, useSyncExternalStore } from "react";
-import { FrameIcon } from "../../engine/FrameIcon";
-import { useFormat } from "../../engine/format";
-import {
-  headerIconScale,
-  ICON_TEXT_KEY,
-  panelMeasureVersion,
-  requestPanelTextMeasure,
-  subscribePanelMeasures,
-} from "../../engine/framePanelMeasure";
 import {
   isTemplateManagedText,
   type ManagedTextRenderRole,
   resolveTemplateManagedTextCopy,
   resolveTemplateManagedTextIcon,
   specialisedClaimedTextMode,
-} from "../../engine/managedText";
-import { SceneTextClaimedContext, useSceneContext } from "../../engine/sceneContext";
-import { useSceneDoc } from "../../engine/sceneDoc";
-import type { SceneTextAlign } from "../../engine/sceneDocSchema";
-import { useSceneConsumesAnyTextKey, useSceneOwnsAnyTextKey } from "../../engine/textKeyRegistry";
+} from "../../engine/content/managedText";
+import { useFormat } from "../../engine/format";
+import { FrameIcon } from "../../engine/frame/FrameIcon";
+import {
+  headerIconScale,
+  ICON_TEXT_KEY,
+  panelMeasureVersion,
+  requestPanelTextMeasure,
+  subscribePanelMeasures,
+} from "../../engine/frame/framePanelMeasure";
 import {
   clearTitleMeasures,
   NO_TITLE_CASCADE,
   reportTitleMeasures,
   solveTitleCascade,
-} from "../../engine/titleBlockMeasure";
+} from "../../engine/frame/titleBlockMeasure";
+import { SceneTextClaimedContext, useSceneContext } from "../../engine/sceneContext";
+import { useSceneDoc } from "../../engine/sceneDoc";
+import type { SceneTextAlign } from "../../engine/sceneDocSchema";
+import {
+  useSceneConsumesAnyTextKey,
+  useSceneOwnsAnyTextKey,
+} from "../../engine/stage/textKeyRegistry";
 import { useTheme } from "../../theme";
 import type { V3 } from "../types";
 import { AnimatedHeadline } from "./AnimatedHeadline";

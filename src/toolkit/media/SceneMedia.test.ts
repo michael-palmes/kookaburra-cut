@@ -1,7 +1,7 @@
 import { DoubleSide, Texture } from "three";
 import { describe, expect, it } from "vitest";
+import { normalizeWindowChrome, RECORDING_INSETS } from "../../engine/media/sceneVideoWindow";
 import type { SceneDocMediaSpec } from "../../engine/sceneDocSchema";
-import { normalizeWindowChrome, RECORDING_INSETS } from "../../engine/sceneVideoWindow";
 import type { FormatInfo } from "../types";
 import {
   createStageImageShadowMaterials,

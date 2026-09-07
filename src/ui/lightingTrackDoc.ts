@@ -3,11 +3,11 @@ import {
   type LightingTarget,
   type LightingTrackDoc,
   useLightingEditStore,
-} from "../engine/lightingEditStore";
+} from "../engine/edit/lightingEditStore";
+import { sampleLightingPose } from "../engine/lighting/sceneLighting";
 import { isEditableProjectId, type LoadedProject, nativeProjectSlug } from "../engine/project";
 import { commitSceneDocPatch, type DocChangedHandler } from "../engine/sceneDocPatchQueue";
 import type { SceneDoc } from "../engine/sceneDocSchema";
-import { sampleLightingPose } from "../engine/sceneLighting";
 import type { LightingPose } from "../theme/tokens";
 
 export function lightingTrackForTarget(

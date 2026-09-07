@@ -1,0 +1,165 @@
+import { invoke } from "@tauri-apps/api/core";
+import { parseThemeDoc } from "../../theme/schema";
+import { yieldMacrotask } from "../macrotask";
+import { fsUrl } from "../media/media";
+import type { LoadedProject } from "../project";
+import { canvasCommittedProject } from "./exportBridge";
+import { isExporting } from "./exportState";
+import { captureFrameAt, withBorrowedClock } from "./snapshots";
+
+/** Theme previews (locked decision 14): the middle frame of 4 representative `preview-lab-theme` scenes, 640px JPEG, captured off the live preview canvas via the borrowed clock (the scene-thumbs precedent, never the export loop). Bundled themes' previews are rendered by `kookaburra:run --action theme-previews` and committed under `src/assets/theme-previews/`; user themes cache at `$APPDATA/cache/theme-previews/<key>/` keyed by a content hash of the theme JSON. */
+
+export const THEME_PREVIEW_WIDTH = 640;
+export const THEME_PREVIEW_COUNT = 4;
+export const THEME_PREVIEW_VERSION = 1;
+
+/** The fixture every theme's previews render from (formerly `theme-starter`): a shipped project, since user themes generate their previews at runtime in the packaged app. Its scene bytes are frozen, and a content change invalidates all committed previews. */
+export const THEME_PREVIEW_PROJECT_ID = "preview-lab-theme";
+
+// Committed bundled previews as fingerprinted URLs; a glob (not explicit imports) so a not-yet-generated preview degrades to placeholder art instead of failing the build.
+const bundledGlob = import.meta.glob<string>("../../assets/theme-previews/*.jpg", {
+  query: "?url",
+  import: "default",
+  eager: true,
+});
+
+/** The committed preview URLs for a bundled theme, all 4 in scene order, or null. */
+export function bundledThemePreviews(themeId: string): string[] | null {
+  const urls: string[] = [];
+  for (let i = 1; i <= THEME_PREVIEW_COUNT; i++) {
+    const url = bundledGlob[`../../assets/theme-previews/${themeId}-${i}.jpg`];
+    if (!url) return null;
+    urls.push(url);
+  }
+  return urls;
+}
+
+/** The capture points: each scene's middle frame on the global clock (overlap-aware). */
+export function sceneMiddles(project: LoadedProject): number[] {
+  return project.slots.map((slot) => Math.round(slot.startMs + slot.durationMs / 2));
+}
+
+/** Waits until the canvas tree has committed this project (the CompositorDriver stamp); a project swap (`applyLoadedProject`) renders on React's concurrent lane while a capture's clock write is sync-lane, so without this barrier the clock stamp can land on the old tree and the capture reads the previous theme's content (the stale scene-1 preview bug, 2026-07-07: every batch theme's first capture was one theme behind). */
+export async function awaitProjectCommitted(project: LoadedProject): Promise<void> {
+  for (let spins = 0; canvasCommittedProject() !== project; spins++) {
+    if (spins > 5000) {
+      throw new Error("Canvas tree never committed the swapped project.");
+    }
+    await yieldMacrotask();
+  }
+}
+
+/** The starter scenes the previews capture: app version, title, device video, device camera. Title 2 and the closing app version repeat looks already shown. */
+export const THEME_PREVIEW_SCENES = [0, 1, 2, 4] as const;
+
+/** The 4 capture points among the starter's scenes; the first 4 middles when a project is shorter than the standard starter. */
+export function themePreviewMiddles(project: LoadedProject): number[] {
+  const middles = sceneMiddles(project);
+  if (THEME_PREVIEW_SCENES.every((i) => i < middles.length)) {
+    return THEME_PREVIEW_SCENES.map((i) => middles[i]);
+  }
+  return middles.slice(0, THEME_PREVIEW_COUNT);
+}
+
+/** Captures the representative scene middle frames as JPEGs. The caller has already swapped the target project (with its theme override) into the canvas; null when capture isn't possible right now (export in progress, canvas unmounted). */
+export function captureThemePreviewFrames(project: LoadedProject): Promise<Uint8Array[] | null> {
+  return withBorrowedClock(async () => {
+    const frames: Uint8Array[] = [];
+    for (const tMs of themePreviewMiddles(project)) {
+      const bytes = await captureFrameAt(tMs, THEME_PREVIEW_WIDTH, "jpeg");
+      if (!bytes) throw new Error(`theme-preview capture failed at ${tMs}ms`);
+      frames.push(bytes);
+    }
+    return frames;
+  });
+}
+
+/** Persist a captured preview set natively (raw-body invokes, the write_snapshot path); kinds `template` and `preset` route to their own card-art staging dirs. */
+export async function writeThemePreviews(
+  kind: "autorun" | "cache" | "template" | "preset",
+  key: string,
+  frames: Uint8Array[],
+): Promise<void> {
+  for (let i = 0; i < frames.length; i++) {
+    await invoke("write_theme_preview", frames[i], {
+      headers: {
+        "x-kookaburra-kind": kind,
+        "x-kookaburra-key": key,
+        "x-kookaburra-index": String(i + 1),
+      },
+    });
+  }
+}
+
+/** A user theme's cache key: sha-256 of its JSON text (hex, truncated, slug-safe). */
+export async function themePreviewKey(themeJson: string): Promise<string> {
+  const canonicalise = (value: unknown): unknown => {
+    if (Array.isArray(value)) return value.map(canonicalise);
+    if (value !== null && typeof value === "object") {
+      return Object.fromEntries(
+        Object.entries(value)
+          .sort(([a], [b]) => a.localeCompare(b))
+          .map(([key, entry]) => [key, canonicalise(entry)]),
+      );
+    }
+    return value;
+  };
+  const canonical = JSON.stringify(canonicalise(JSON.parse(themeJson)));
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(canonical));
+  return Array.from(new Uint8Array(digest))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("")
+    .slice(0, 32);
+}
+
+/** Cached user-theme preview URLs for a content-hash key, all 4 in scene order, or null. */
+export async function cachedThemePreviews(key: string): Promise<string[] | null> {
+  const paths = await invoke<string[] | null>("list_theme_previews", { key });
+  return paths ? paths.map(fsUrl) : null;
+}
+
+/** Generates (or reuses) a user theme's preview set by borrowing the canvas: loads the starter under the theme, captures the 4 scene middles, caches them under the theme JSON's content hash, then hands the canvas back via `restore`. UI-only, the export guards inside `withBorrowedClock`/`captureFrameAt` still apply. Returns the cached URLs, or null when capture wasn't possible (previews stay placeholders). */
+export async function ensureUserThemePreviews(
+  themeId: string,
+  themeJson: string,
+  applyProject: (loaded: LoadedProject) => void,
+  restore: () => Promise<void>,
+  isCurrent: () => boolean = () => true,
+): Promise<string[] | null> {
+  const canCapture = () => isCurrent() && !isExporting();
+  if (!canCapture()) return null;
+  const key = await themePreviewKey(themeJson);
+  const existing = await cachedThemePreviews(key).catch(() => null);
+  if (existing) return existing;
+  const { loadProject } = await import("../project");
+  const { awaitSceneHostsCommitted } = await import("../exporter");
+  const { preloadBundledBackdrops } = await import("../../toolkit/stage/backdrops");
+  const theme = parseThemeDoc(JSON.parse(themeJson), themeId);
+  if (!theme) throw new Error("Cannot render previews for an invalid theme.");
+  let swapped = false;
+  try {
+    return await withBorrowedClock(async () => {
+      if (!canCapture()) return null;
+      await preloadBundledBackdrops();
+      const starter = await loadProject(THEME_PREVIEW_PROJECT_ID, {
+        theme: { ...theme, id: themeId },
+      });
+      if (!canCapture()) return null;
+      applyProject(starter);
+      swapped = true;
+      await awaitProjectCommitted(starter);
+      await awaitSceneHostsCommitted(starter.slots.length);
+      const frames: Uint8Array[] = [];
+      for (const tMs of themePreviewMiddles(starter)) {
+        if (!canCapture()) return null;
+        const bytes = await captureFrameAt(tMs, THEME_PREVIEW_WIDTH, "jpeg", canCapture);
+        if (!bytes || !canCapture()) return null;
+        frames.push(bytes);
+      }
+      await writeThemePreviews("cache", key, frames);
+      return cachedThemePreviews(key);
+    });
+  } finally {
+    if (swapped && canCapture()) await restore();
+  }
+}

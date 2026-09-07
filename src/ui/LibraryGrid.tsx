@@ -1,5 +1,6 @@
 import { type ReactNode, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { type CatalogueOrderEntry, renumberOrders } from "../engine/catalogueOrder";
+import { isEditableProjectId } from "../engine/project";
+import { type CatalogueOrderEntry, renumberOrders } from "../engine/workspace/catalogueOrder";
 import {
   deleteUserPreset,
   deleteUserTemplate,
@@ -11,7 +12,7 @@ import {
   duplicateTemplateToWorkspace,
   setUserPresetOrders,
   setUserTemplateOrders,
-} from "../engine/library";
+} from "../engine/workspace/library";
 import {
   isPresetPreviewStale,
   listAllPresets,
@@ -20,8 +21,7 @@ import {
   refreshUserPresets,
   searchPresets,
   subscribePresets,
-} from "../engine/presets";
-import { isEditableProjectId } from "../engine/project";
+} from "../engine/workspace/presets";
 import {
   isTemplatePreviewStale,
   listAllTemplates,
@@ -30,7 +30,7 @@ import {
   subscribeTemplates,
   TEMPLATE_CATEGORIES,
   type TemplateEntry,
-} from "../engine/templates";
+} from "../engine/workspace/templates";
 import { ContextMenu, type ContextMenuState } from "./ContextMenu";
 import type { ItemDetailsTarget, LibraryKind, LibrarySource } from "./libraryDetails";
 import {

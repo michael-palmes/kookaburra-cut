@@ -1,8 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { useCameraEditStore } from "../engine/cameraEditStore";
-import { type CameraPose, sampleCameraTrack } from "../engine/cameraTrack";
-import { useFormat } from "../engine/format";
-import { isEditableProjectId, type LoadedProject, nativeProjectSlug } from "../engine/project";
+import { type CameraPose, sampleCameraTrack } from "../engine/camera/cameraTrack";
 import {
   defaultOrbitPose,
   normalizeSceneCamera,
@@ -10,13 +7,16 @@ import {
   orbitToView,
   sampleSceneCamera,
   sceneCameraTracks,
-} from "../engine/sceneCamera";
-import type { CameraDoc, RigDoc } from "../engine/sceneCameraEdit";
+} from "../engine/camera/sceneCamera";
+import { normalizeSceneRig, sampleSceneRig } from "../engine/camera/sceneRig";
+import { rebakeRigBindings } from "../engine/camera/sceneRigConvert";
+import { useCameraEditStore } from "../engine/edit/cameraEditStore";
+import type { CameraDoc, RigDoc } from "../engine/edit/sceneCameraEdit";
+import { useFormat } from "../engine/format";
+import { isEditableProjectId, type LoadedProject, nativeProjectSlug } from "../engine/project";
 import { commitSceneDocPatch, type DocChangedHandler } from "../engine/sceneDocPatchQueue";
 import type { SceneDoc, SceneDocCameraPose, SceneDocRigPose } from "../engine/sceneDocSchema";
-import { normalizeSceneRig, sampleSceneRig } from "../engine/sceneRig";
-import { rebakeRigBindings } from "../engine/sceneRigConvert";
-import { useSceneStageFloorY } from "../engine/stageRegistry";
+import { useSceneStageFloorY } from "../engine/stage/stageRegistry";
 
 /** Shared camera-doc plumbing used by the animation lane, camera pill, stage tool overlay, path overlay and inspector: the in-flight draft, live preview via the camera-edit store, sidecar commit with history + write-error surface, and the applied-pose samplers. `onDocChanged` receives the exact doc each commit wrote so the host patches the loaded project in memory instead of reloading, keeping selection and the armed tool intact. Both camera blocks funnel through ONE write, so a mode switch and a pose edit are one history entry each and never fight. */
 

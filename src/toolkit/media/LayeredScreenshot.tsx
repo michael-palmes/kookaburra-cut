@@ -10,20 +10,25 @@ import {
   Vector2,
   Vector3,
 } from "three";
-import { useClipTexture } from "../../engine/clipTexture";
-import { useFormat } from "../../engine/format";
-import { registerGizmoTarget, unregisterGizmoTarget } from "../../engine/gizmoTargetRegistry";
-import { useLayeredScreenshotDraft } from "../../engine/layeredScreenshotEditStore";
 import {
   fitStackScale,
   type MeasuredAspect,
   type SolvedItemRect,
   solveLayerLayout,
   spreadZToLocal,
-} from "../../engine/layeredScreenshotLayout";
-import { useSceneConsumesLayeredScreenshot } from "../../engine/layeredScreenshotRegistry";
-import { resolveTemplateManagedTextCopy } from "../../engine/managedText";
-import { presentSlideshowActive } from "../../engine/presentMode";
+} from "../../engine/content/layeredScreenshotLayout";
+import { resolveTemplateManagedTextCopy } from "../../engine/content/managedText";
+import {
+  type NormalizedLayeredScreenshot,
+  normalizeLayeredScreenshot,
+  resolveLayeredScreenshotPlacement,
+  resolveLayeredScreenshotPose,
+  sampleLoopedLayeredScreenshotTrack,
+} from "../../engine/content/sceneLayeredScreenshot";
+import { useLayeredScreenshotDraft } from "../../engine/edit/layeredScreenshotEditStore";
+import { useFormat } from "../../engine/format";
+import { registerGizmoTarget, unregisterGizmoTarget } from "../../engine/gizmo/gizmoTargetRegistry";
+import { useClipTexture } from "../../engine/media/clipTexture";
 import { resolveAssetUrl } from "../../engine/project";
 import { ProjectIdContext, SceneDocContext, useSceneContext } from "../../engine/sceneContext";
 import { useSceneDoc, useSceneLayeredScreenshot, useSceneText } from "../../engine/sceneDoc";
@@ -32,14 +37,9 @@ import type {
   LayeredScreenshotTextItem,
   SceneDoc,
 } from "../../engine/sceneDocSchema";
-import {
-  type NormalizedLayeredScreenshot,
-  normalizeLayeredScreenshot,
-  resolveLayeredScreenshotPlacement,
-  resolveLayeredScreenshotPose,
-  sampleLoopedLayeredScreenshotTrack,
-} from "../../engine/sceneLayeredScreenshot";
-import { useSceneHostStageBackdrop } from "../../engine/stageRegistry";
+import { useSceneConsumesLayeredScreenshot } from "../../engine/stage/layeredScreenshotRegistry";
+import { presentSlideshowActive } from "../../engine/stage/presentMode";
+import { useSceneHostStageBackdrop } from "../../engine/stage/stageRegistry";
 import { useTimeline } from "../../engine/timeline";
 import { useEditorStore } from "../../store/editorStore";
 import { type Theme, useTheme } from "../../theme";

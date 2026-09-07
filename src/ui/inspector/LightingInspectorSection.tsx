@@ -1,22 +1,22 @@
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { useClockStore } from "../../engine/clock";
+import { useLightEditStore } from "../../engine/edit/lightEditStore";
+import { useLightingEditStore } from "../../engine/edit/lightingEditStore";
 import {
   BUNDLED_ENVIRONMENT_IDS,
   NONE_SOURCE,
   resolveSceneEnvironment,
   SOFTBOX_SOURCE,
-} from "../../engine/environments";
-import { useLightEditStore } from "../../engine/lightEditStore";
-import { useLightingEditStore } from "../../engine/lightingEditStore";
-import { listProjectEnvironmentAssets } from "../../engine/project";
-import type { SceneDoc } from "../../engine/sceneDocSchema";
+} from "../../engine/lighting/environments";
 import {
   captureLightingPose,
   resolveLighting,
   resolveLightingColour,
   SUN_ANGULAR_REFERENCE,
   sunShadowSoftness,
-} from "../../engine/sceneLighting";
+} from "../../engine/lighting/sceneLighting";
+import { listProjectEnvironmentAssets } from "../../engine/project";
+import type { SceneDoc } from "../../engine/sceneDocSchema";
 import type {
   EnvironmentSpec,
   FixtureSpec,

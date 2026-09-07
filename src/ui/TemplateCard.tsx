@@ -4,7 +4,7 @@ import {
   TEMPLATE_PREVIEW_COUNT,
   TEMPLATE_USE_LABELS,
   type TemplateEntry,
-} from "../engine/templates";
+} from "../engine/workspace/templates";
 import { builtinThemes, defaultTheme } from "../theme/registry";
 
 /** The template card, shared by the new-project wizard (where it is one option in a radio grid) and the welcome screen's library (where it opens the item and drags to reorder). Mouse X across the poster cycles the committed stills; with none rendered yet the card falls back to the template theme's swatch at the same 16:9 box, so the grid never reflows when the art lands. A user template carries a single poster still, so its hover simply holds that frame. */

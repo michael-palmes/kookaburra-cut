@@ -3,7 +3,12 @@ import manifest from "../../fixtures/inspector-redesign-gate/project.json";
 import contentRaw from "../../fixtures/inspector-redesign-gate/scenes/01-content.json";
 import lightingRaw from "../../fixtures/inspector-redesign-gate/scenes/02-lighting.json";
 import type { SceneModule } from "../toolkit/types";
-import { fixtureWorldInstances } from "./fixtures";
+import { fixtureWorldInstances } from "./lighting/fixtures";
+import {
+  animatedFixtureLightIds,
+  normalizeLightingTrack,
+  sampleLightingPose,
+} from "./lighting/sceneLighting";
 import {
   listProjectIds,
   outgoingSceneTransitions,
@@ -12,11 +17,6 @@ import {
 } from "./project";
 import { loadSceneDoc } from "./sceneDoc";
 import { parseSceneDoc, type SceneDoc } from "./sceneDocSchema";
-import {
-  animatedFixtureLightIds,
-  normalizeLightingTrack,
-  sampleLightingPose,
-} from "./sceneLighting";
 import { buildSceneTimeline, resolveAt, timelineTotalMs } from "./sceneTimeline";
 
 const sceneModules = import.meta.glob<{ default: SceneModule }>(

@@ -20,21 +20,24 @@ import {
   type Object3D,
   Vector3,
 } from "three";
-import { useClipTexture } from "../../engine/clipTexture";
-import { deviceAcknowledgementMatches, useDeviceEditStore } from "../../engine/deviceEditStore";
-import { useSceneConsumesDevices } from "../../engine/deviceRegistry";
+import { deviceTrackPoseAt, resolveDeviceTrack } from "../../engine/content/sceneDeviceTrack";
 import { ease } from "../../engine/ease";
-import { isExporting } from "../../engine/exportState";
+import {
+  deviceAcknowledgementMatches,
+  useDeviceEditStore,
+} from "../../engine/edit/deviceEditStore";
+import { isExporting } from "../../engine/export/exportState";
 import { useFormat } from "../../engine/format";
-import { useGizmoSectionOpen } from "../../engine/gizmoSections";
-import { presentSlideshowActive } from "../../engine/presentMode";
-import { registerPresentTiming } from "../../engine/presentTimingRegistry";
+import { useGizmoSectionOpen } from "../../engine/gizmo/gizmoSections";
+import { SceneOutline } from "../../engine/gizmo/SceneOutline";
+import { useClipTexture } from "../../engine/media/clipTexture";
+import { coverCropRect, remapUv, type UvRect } from "../../engine/media/screenFit";
 import { resolveAssetUrl } from "../../engine/project";
-import { SceneOutline } from "../../engine/SceneOutline";
 import { ProjectIdContext, SceneDocContext, useSceneContext } from "../../engine/sceneContext";
-import { deviceTrackPoseAt, resolveDeviceTrack } from "../../engine/sceneDeviceTrack";
 import type { SceneDeviceProps } from "../../engine/sceneDoc";
-import { coverCropRect, remapUv, type UvRect } from "../../engine/screenFit";
+import { useSceneConsumesDevices } from "../../engine/stage/deviceRegistry";
+import { presentSlideshowActive } from "../../engine/stage/presentMode";
+import { registerPresentTiming } from "../../engine/stage/presentTimingRegistry";
 import { useTimeline } from "../../engine/timeline";
 import { useEditorStore } from "../../store/editorStore";
 import { AssetBoundary } from "../media/AssetBoundary";

@@ -1,7 +1,7 @@
 import { type RefObject, useContext, useEffect, useMemo } from "react";
 import { type Mesh, MeshPhysicalMaterial, MeshStandardMaterial, type Object3D } from "three";
 import { TextGeometry } from "three/examples/jsm/geometries/TextGeometry.js";
-import { useHeldLocalMs } from "../../engine/presentHold";
+import { useHeldLocalMs } from "../../engine/stage/presentHold";
 import { useTimeline } from "../../engine/timeline";
 import type { FontRef, Theme } from "../../theme/tokens";
 import { GroupAnimationContext } from "../group/context";

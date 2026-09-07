@@ -1,8 +1,8 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { buildPresetEntry } from "../engine/presets";
 import type { ProjectManifest } from "../engine/project";
-import type { TemplateEntry } from "../engine/templates";
+import { buildPresetEntry } from "../engine/workspace/presets";
+import type { TemplateEntry } from "../engine/workspace/templates";
 import { ItemDetailsModal } from "./ItemDetailsModal";
 import { PresetCard } from "./PresetCard";
 import { TemplateCard } from "./TemplateCard";

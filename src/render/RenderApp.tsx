@@ -1,13 +1,13 @@
 import { Canvas } from "@react-three/fiber";
 import { useCallback, useEffect, useState } from "react";
 import { useClockStore } from "../engine/clock";
-import { useEffectsStore } from "../engine/effectsStore";
-import { ExportBridge, ProjectCommitStamp } from "../engine/exportBridge";
+import { useEffectsStore } from "../engine/edit/effectsStore";
+import { ExportBridge, ProjectCommitStamp } from "../engine/export/exportBridge";
 import { CAMERA, type FormatSpec, SHADOW_MAP_TYPE } from "../engine/format";
-import { ensureRectAreaLightUniforms } from "../engine/lightingState";
+import { ensureRectAreaLightUniforms } from "../engine/lighting/lightingState";
+import { RenderSettingsApplier } from "../engine/lighting/RenderSettingsApplier";
 import type { LoadedProject } from "../engine/project";
-import { RenderSettingsApplier } from "../engine/RenderSettingsApplier";
-import { StageScenes } from "../engine/StageScenes";
+import { StageScenes } from "../engine/stage/StageScenes";
 import { useEditorStore } from "../store/editorStore";
 import { startBridgeService } from "./bridgeService";
 import { startHeartbeat } from "./heartbeat";

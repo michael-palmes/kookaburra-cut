@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { copySceneToProject, listProjectScenes } from "../../engine/projectEdit";
-import type { WorkspaceProjectInfo } from "../../engine/workspace";
+import { copySceneToProject, listProjectScenes } from "../../engine/edit/projectEdit";
+import type { WorkspaceProjectInfo } from "../../engine/workspace/workspace";
 import { formatSceneLengthMs } from "../durationText";
 import { SceneMenuIcon, sceneSelectionLabel } from "../sceneMenu";
 import { ProjectPickerBody, useOtherProjects } from "./ProjectCopyDrill";

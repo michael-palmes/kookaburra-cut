@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { createSceneMedia } from "../../engine/media/sceneMedia";
 import { parseSceneDoc, type SceneDoc, type SceneDocMediaSpec } from "../../engine/sceneDocSchema";
-import { createSceneMedia } from "../../engine/sceneMedia";
 import type { FrameDecorationSpec } from "../../toolkit/frame/types";
 import {
   defaultSceneMediaHost,

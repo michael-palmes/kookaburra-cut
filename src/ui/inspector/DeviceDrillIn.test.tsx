@@ -64,7 +64,7 @@ const deviceStore = vi.hoisted(() => ({
   gizmoMode: "translate" as "translate" | "rotate" | "scale",
 }));
 
-vi.mock("../../engine/deviceEditStore", () => {
+vi.mock("../../engine/edit/deviceEditStore", () => {
   const useDeviceEditStore = (
     select: (state: { gizmoMode: "translate" | "rotate" | "scale" }) => unknown,
   ) => select({ gizmoMode: deviceStore.gizmoMode });

@@ -5,7 +5,7 @@ import themeSpikeStudioDoc from "./__fixtures__/theme-spike/02-studio.json";
 import themeSpikeGradientDoc from "./__fixtures__/theme-spike/03-gradient.json";
 import themeSpikeImageDoc from "./__fixtures__/theme-spike/04-image.json";
 import themeSpikeAbyssDoc from "./__fixtures__/theme-spike/05-abyss.json";
-import { COMPARE_GRIP_CATALOG } from "./compareCatalog";
+import { COMPARE_GRIP_CATALOG } from "./content/compareCatalog";
 import {
   collectSceneDocFontRefs,
   isSceneImageSource,

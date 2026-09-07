@@ -1,5 +1,5 @@
 import { type ReactElement, useState } from "react";
-import { PRESET_CATEGORIES } from "../engine/presets";
+import { PRESET_CATEGORIES } from "../engine/workspace/presets";
 import {
   TEMPLATE_CATEGORIES,
   TEMPLATE_LEVELS,
@@ -8,7 +8,7 @@ import {
   type TemplateLevel,
   type TemplateStatus,
   type TemplateTier,
-} from "../engine/templates";
+} from "../engine/workspace/templates";
 import {
   type ItemDetailsDraft,
   type ItemDetailsTarget,

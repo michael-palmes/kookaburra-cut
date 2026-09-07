@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { optionPreviewClip, optionPreviewStill } from "../engine/optionPreviews";
+import { optionPreviewClip, optionPreviewStill } from "../engine/export/optionPreviews";
 import type { TextLookSpec, Theme } from "../theme/tokens";
 import type { TextLookName } from "../toolkit/text/looks";
 import { ColourPicker } from "./colour/ColourPicker";

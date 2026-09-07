@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import comparisonPreset from "../../../presets/comparison/scenes/01-comparison.json";
+import type { VirtualManagedTextRegistration } from "../../engine/content/managedText";
 import { bindHistory, pushHistory, takeRedo, takeUndo } from "../../engine/history";
-import type { VirtualManagedTextRegistration } from "../../engine/managedText";
 import { parseSceneDoc, type SceneDoc } from "../../engine/sceneDocSchema";
 import type { FrameSpec } from "../../toolkit/frame/types";
 import {

@@ -3,15 +3,15 @@ import {
   devWriteTemplateManifest,
   writeUserPresetManifest,
   writeUserTemplateManifest,
-} from "../engine/library";
-import type { PresetCategoryId, PresetManifest, PresetStatus } from "../engine/presets";
+} from "../engine/workspace/library";
+import type { PresetCategoryId, PresetManifest, PresetStatus } from "../engine/workspace/presets";
 import type {
   TemplateCategoryId,
   TemplateLevel,
   TemplateManifest,
   TemplateStatus,
   TemplateTier,
-} from "../engine/templates";
+} from "../engine/workspace/templates";
 
 /** The details modal's contract: what the user may edit, how it folds back into a manifest, and how that manifest reaches disk. The patch and serialise halves are pure so the field rules (a cleared category drops the field, tags trim and de-duplicate, everything else survives untouched) are unit-tested without a modal. */
 

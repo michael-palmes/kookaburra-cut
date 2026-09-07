@@ -1,9 +1,9 @@
 import { useContext, useEffect, useRef } from "react";
 import type { Group } from "three";
-import { useDeviceEditStore } from "../../engine/deviceEditStore";
-import { SceneGizmo } from "../../engine/SceneGizmo";
+import { nearestDeviceKey, resolveDeviceTrack } from "../../engine/content/sceneDeviceTrack";
+import { useDeviceEditStore } from "../../engine/edit/deviceEditStore";
+import { SceneGizmo } from "../../engine/gizmo/SceneGizmo";
 import { SceneDocContext } from "../../engine/sceneContext";
-import { nearestDeviceKey, resolveDeviceTrack } from "../../engine/sceneDeviceTrack";
 import { useTimeline } from "../../engine/timeline";
 import type { V3 } from "../types";
 import { type DevicePose, deviceGizmoCommit } from "./gizmoCommit";

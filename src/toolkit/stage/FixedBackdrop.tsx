@@ -27,10 +27,10 @@ import {
   Vector3,
   type WebGLRenderer,
 } from "three";
-import { useClipTexture } from "../../engine/clipTexture";
 import { useClockStore } from "../../engine/clock";
-import { isExporting } from "../../engine/exportState";
+import { isExporting } from "../../engine/export/exportState";
 import { useFormat } from "../../engine/format";
+import { useClipTexture } from "../../engine/media/clipTexture";
 import { resolveAssetUrl } from "../../engine/project";
 import { ProjectIdContext, SceneDocContext } from "../../engine/sceneContext";
 import { useEditorStore } from "../../store/editorStore";

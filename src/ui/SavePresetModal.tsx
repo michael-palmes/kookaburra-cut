@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { createPortal } from "react-dom";
-import { type LibraryItemInfo, saveSceneAsPreset } from "../engine/library";
-import { presetManifestSchema, refreshUserPresets } from "../engine/presets";
+import { type LibraryItemInfo, saveSceneAsPreset } from "../engine/workspace/library";
+import { presetManifestSchema, refreshUserPresets } from "../engine/workspace/presets";
 import { ItemDetailsModal } from "./ItemDetailsModal";
 import type { ItemDetailsTarget } from "./libraryDetails";
 import { modalHost } from "./modalHost";

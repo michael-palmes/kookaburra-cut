@@ -35,9 +35,9 @@ import type {
   DeviceShadowMode,
 } from "../toolkit/device/Device";
 import type { FrameOverrideSpec } from "../toolkit/frame/types";
-import type { SceneDocDof } from "./dof";
-import { parseFrameOverride } from "./frameSchema";
-import { normalizeLighting } from "./sceneLighting";
+import type { SceneDocDof } from "./camera/dof";
+import { parseFrameOverride } from "./frame/frameSchema";
+import { normalizeLighting } from "./lighting/sceneLighting";
 import {
   DEFAULT_SCENE_IMAGE_OVERLAY,
   DEFAULT_SCENE_IMAGE_STAGE,
@@ -45,11 +45,11 @@ import {
   DEFAULT_SCENE_MEDIA_VIDEO_STAGE,
   DEFAULT_SCENE_MEDIA_WINDOW_RADIUS,
   sceneMediaFromLegacy,
-} from "./sceneMedia";
-import { parseSceneTerminal, type SceneDocTerminal } from "./sceneTerminal";
-import { parseSceneWebsite, type SceneDocWebsite } from "./sceneWebsite";
+} from "./media/sceneMedia";
+import { parseSceneTerminal, type SceneDocTerminal } from "./panels/sceneTerminal";
+import { parseSceneWebsite, type SceneDocWebsite } from "./panels/sceneWebsite";
 
-export type { SceneDocDof } from "./dof";
+export type { SceneDocDof } from "./camera/dof";
 
 /** The per-scene sidecar schema (`scenes/<stem>.json` beside a scene's TSX): holds everything machine-editable (name, text, devices, camera, duration), written atomically via `write_scene_doc`; this module is pure (types + validation only) so it's unit-testable and safe to import anywhere, with IO and hooks living in `sceneDoc.ts`. Field docs: the kookaburra-scene-authoring skill; rationale: docs/decisions.md. */
 

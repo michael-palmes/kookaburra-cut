@@ -1,8 +1,8 @@
 import { type ReactNode, useContext, useEffect } from "react";
-import { useHeldLocalMs } from "../../engine/presentHold";
-import { registerPresentTiming } from "../../engine/presentTimingRegistry";
 import { SceneDocContext, useSceneContext } from "../../engine/sceneContext";
-import { useTextMotionRegistry } from "../../engine/textMotionRegistry";
+import { useHeldLocalMs } from "../../engine/stage/presentHold";
+import { registerPresentTiming } from "../../engine/stage/presentTimingRegistry";
+import { useTextMotionRegistry } from "../../engine/stage/textMotionRegistry";
 import { useTimeline } from "../../engine/timeline";
 import { useTheme } from "../../theme";
 import {

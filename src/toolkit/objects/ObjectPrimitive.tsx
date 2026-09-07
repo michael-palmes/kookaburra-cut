@@ -1,12 +1,12 @@
 import { useContext, useMemo, useRef } from "react";
 import { Box3, type Group, type Object3D, Vector3 } from "three";
-import { useGizmoSectionOpen } from "../../engine/gizmoSections";
-import { useObjectEditStore } from "../../engine/objectEditStore";
-import { useSceneConsumesObjects } from "../../engine/objectRegistry";
-import { SceneGizmo } from "../../engine/SceneGizmo";
-import { SceneOutline } from "../../engine/SceneOutline";
+import { useObjectEditStore } from "../../engine/edit/objectEditStore";
+import { useGizmoSectionOpen } from "../../engine/gizmo/gizmoSections";
+import { SceneGizmo } from "../../engine/gizmo/SceneGizmo";
+import { SceneOutline } from "../../engine/gizmo/SceneOutline";
 import { SceneDocContext, useSceneContext } from "../../engine/sceneContext";
 import type { SceneDocObjectSpec } from "../../engine/sceneDocSchema";
+import { useSceneConsumesObjects } from "../../engine/stage/objectRegistry";
 import { useStageFloorY } from "../stage/context";
 import type { V3 } from "../types";
 import { readObjectGltf } from "./preload";

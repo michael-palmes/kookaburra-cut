@@ -1,4 +1,4 @@
-import type { StageRect } from "../../engine/gizmoRegistry";
+import type { StageRect } from "../../engine/gizmo/gizmoRegistry";
 import type { ModifierState } from "./modifierKeys";
 
 /** Who owns a pointer over the stage: the armed camera tool, or a gizmo (which here just means "not the camera overlay": it does not assert a gizmo exists, only that the overlay must decline). Pure and node-testable, so the one rule the whole batch hangs off stays provable. */

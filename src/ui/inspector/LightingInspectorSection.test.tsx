@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it } from "vitest";
-import { useLightingEditStore } from "../../engine/lightingEditStore";
+import { useLightingEditStore } from "../../engine/edit/lightingEditStore";
 import type { SceneDoc } from "../../engine/sceneDocSchema";
 import type { Theme } from "../../theme/tokens";
 import { LIGHTING_PRESETS } from "../../toolkit/lighting/presets";

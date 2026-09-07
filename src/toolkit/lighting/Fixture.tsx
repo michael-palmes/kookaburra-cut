@@ -20,12 +20,12 @@ import {
   TubeGeometry,
   Vector3,
 } from "three";
-import type { FixturePlanEntry } from "../../engine/fixtures";
-import { registerLightingAnimatable } from "../../engine/lightingAnimation";
-import { registerRelativeLight } from "../../engine/lightingState";
-import { placementPosition } from "../../engine/orbit";
+import { placementPosition } from "../../engine/camera/orbit";
+import type { FixturePlanEntry } from "../../engine/lighting/fixtures";
+import { registerLightingAnimatable } from "../../engine/lighting/lightingAnimation";
+import { registerRelativeLight } from "../../engine/lighting/lightingState";
+import { resolveLightingColour } from "../../engine/lighting/sceneLighting";
 import { useSceneContext } from "../../engine/sceneContext";
-import { resolveLightingColour } from "../../engine/sceneLighting";
 import type { FixtureSpec, Theme } from "../../theme/tokens";
 import { useStageMapShadows } from "../stage/context";
 

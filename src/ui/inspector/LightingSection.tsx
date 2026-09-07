@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
-import { placementToOrbit, placementToPoint } from "../../engine/orbit";
-import { resolveLightingColour } from "../../engine/sceneLighting";
+import { placementToOrbit, placementToPoint } from "../../engine/camera/orbit";
+import { resolveLightingColour } from "../../engine/lighting/sceneLighting";
 import type { FixtureSpec, LightSpace, LightSpec, Theme } from "../../theme/tokens";
 import { ColourPicker } from "../colour/ColourPicker";
 import { namedInspectorTitle } from "../inspectorTitles";

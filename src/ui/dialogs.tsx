@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { nameCollision, nameCollisionWarning } from "../engine/nameCollision";
+import { nameCollision, nameCollisionWarning } from "../engine/edit/nameCollision";
 import {
   BLANK_TEMPLATE_ID,
   listAllTemplates,
@@ -9,8 +9,8 @@ import {
   TEMPLATE_CATEGORIES,
   type TemplateCategoryId,
   templateCategoryCounts,
-} from "../engine/templates";
-import { listProjects, slugifyName } from "../engine/workspace";
+} from "../engine/workspace/templates";
+import { listProjects, slugifyName } from "../engine/workspace/workspace";
 import { TEMPLATE_CATEGORY_ICONS } from "./libraryIcons";
 import { TemplateCard } from "./TemplateCard";
 import {

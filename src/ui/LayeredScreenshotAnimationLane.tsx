@@ -1,6 +1,6 @@
 import { useCallback } from "react";
-import type { LayeredScreenshotAnimationDoc } from "../engine/layeredScreenshotAnimationEdit";
-import { useLayeredScreenshotEditStore } from "../engine/layeredScreenshotEditStore";
+import type { LayeredScreenshotAnimationDoc } from "../engine/edit/layeredScreenshotAnimationEdit";
+import { useLayeredScreenshotEditStore } from "../engine/edit/layeredScreenshotEditStore";
 import type { LoadedProject } from "../engine/project";
 import type {
   LayeredScreenshotPose,

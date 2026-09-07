@@ -1,19 +1,23 @@
 import { useCallback, useMemo, useRef, useSyncExternalStore } from "react";
-import { useCameraEditStore } from "../engine/cameraEditStore";
-import { useChartEditStore } from "../engine/chartEditStore";
+import { resolveChart } from "../engine/content/sceneChart";
+import { useCameraEditStore } from "../engine/edit/cameraEditStore";
+import { useChartEditStore } from "../engine/edit/chartEditStore";
 import { computeFormat } from "../engine/format";
-import { resolveCutoutRender } from "../engine/frameFormat";
-import { type StageRect, stageCamera } from "../engine/gizmoRegistry";
+import { resolveCutoutRender } from "../engine/frame/frameFormat";
+import { type StageRect, stageCamera } from "../engine/gizmo/gizmoRegistry";
 import {
   type Gizmo2DTarget,
   gizmoTargets,
   subscribeGizmoTargets,
-} from "../engine/gizmoTargetRegistry";
-import { nodeDrawn } from "../engine/gizmoVisibility";
+} from "../engine/gizmo/gizmoTargetRegistry";
+import { nodeDrawn } from "../engine/gizmo/gizmoVisibility";
+import {
+  cutoutStageRect,
+  frameWorldCutout,
+  worldViewportRect,
+} from "../engine/gizmo/stageViewport";
 import type { LoadedProject } from "../engine/project";
-import { resolveChart } from "../engine/sceneChart";
 import type { SceneDoc } from "../engine/sceneDocSchema";
-import { cutoutStageRect, frameWorldCutout, worldViewportRect } from "../engine/stageViewport";
 import { useEditorStore } from "../store/editorStore";
 import { chartOffsetWrite, chartScaleWrite } from "./gizmo/chartGizmoWrite";
 import { Gizmo2D, type Gizmo2DGesture, type Gizmo2DItem } from "./gizmo/Gizmo2D";

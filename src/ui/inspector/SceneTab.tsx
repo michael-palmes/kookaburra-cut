@@ -10,37 +10,85 @@ import {
   useSyncExternalStore,
 } from "react";
 import { flushSync } from "react-dom";
-import { refreshWorkspaceAssets } from "../../engine/assetInventory";
-import { useCameraEditStore } from "../../engine/cameraEditStore";
-import { useChartEditStore } from "../../engine/chartEditStore";
+import { defaultOrbitPose } from "../../engine/camera/sceneCamera";
+import { defaultRigPose } from "../../engine/camera/sceneRig";
+import { canRigConvertToOrbit, orbitToRig, rigToOrbit } from "../../engine/camera/sceneRigConvert";
 import { useClockStore } from "../../engine/clock";
-import { useDecorationEditStore } from "../../engine/decorationEditStore";
-import { useSceneIsBanded } from "../../engine/depthStageRegistry";
-import { useDeviceEditStore } from "../../engine/deviceEditStore";
-import { isExporting, subscribeExporting } from "../../engine/exportState";
+import { deriveManagedTextModel, resolveManagedTextGroups } from "../../engine/content/managedText";
+import { useCameraEditStore } from "../../engine/edit/cameraEditStore";
+import { useChartEditStore } from "../../engine/edit/chartEditStore";
+import { useDecorationEditStore } from "../../engine/edit/decorationEditStore";
+import { useDeviceEditStore } from "../../engine/edit/deviceEditStore";
+import { imageEditCommitMatches, useImageEditStore } from "../../engine/edit/imageEditStore";
+import { useImageReconciliationStore } from "../../engine/edit/imageReconciliationStore";
+import { useLayeredScreenshotEditStore } from "../../engine/edit/layeredScreenshotEditStore";
+import { useLightingEditStore } from "../../engine/edit/lightingEditStore";
+import { useObjectEditStore } from "../../engine/edit/objectEditStore";
+import { readProjectManifestSnapshot, updateSceneTransition } from "../../engine/edit/projectEdit";
+import {
+  type CameraDoc,
+  nearestKey,
+  type RigDoc,
+  setKeyPose,
+} from "../../engine/edit/sceneCameraEdit";
+import { useTerminalEditStore } from "../../engine/edit/terminalEditStore";
+import { useTextEditStore } from "../../engine/edit/textEditStore";
+import { useWebsiteEditStore } from "../../engine/edit/websiteEditStore";
+import { TRANSITION_CATALOG } from "../../engine/effects/transitionCatalog";
+import { isExporting, subscribeExporting } from "../../engine/export/exportState";
+import { optionPreviewClip, optionPreviewStill } from "../../engine/export/optionPreviews";
+import { listCachedSceneThumbs } from "../../engine/export/sceneThumbs";
+import { captureCurrentFrame } from "../../engine/export/snapshots";
 import { useFormat } from "../../engine/format";
-import { mergeFrameSpec } from "../../engine/frameSchema";
-import type { GizmoMode } from "../../engine/gizmoMode";
-import type { GizmoDomain } from "../../engine/gizmoRegistry";
-import { gizmoDomainForDrillStack, useGizmoSectionOpen } from "../../engine/gizmoSections";
+import { mergeFrameSpec } from "../../engine/frame/frameSchema";
+import type { GizmoMode } from "../../engine/gizmo/gizmoMode";
+import type { GizmoDomain } from "../../engine/gizmo/gizmoRegistry";
+import { gizmoDomainForDrillStack, useGizmoSectionOpen } from "../../engine/gizmo/gizmoSections";
 import { pushHistory } from "../../engine/history";
-import { imageEditCommitMatches, useImageEditStore } from "../../engine/imageEditStore";
-import { useImageReconciliationStore } from "../../engine/imageReconciliationStore";
-import { useLayeredScreenshotEditStore } from "../../engine/layeredScreenshotEditStore";
-import { useLightingEditStore } from "../../engine/lightingEditStore";
-import { deriveManagedTextModel, resolveManagedTextGroups } from "../../engine/managedText";
-import { formatMediaDuration, fsUrl, type MediaMeta, mediaMeta } from "../../engine/media";
-import { useObjectEditStore } from "../../engine/objectEditStore";
-import { optionPreviewClip, optionPreviewStill } from "../../engine/optionPreviews";
+import { refreshWorkspaceAssets } from "../../engine/media/assetInventory";
+import { formatMediaDuration, fsUrl, type MediaMeta, mediaMeta } from "../../engine/media/media";
+import {
+  createSceneMedia,
+  DEFAULT_SCENE_MEDIA_WINDOW_RADIUS,
+  editSceneDocMedia,
+  nextSceneMediaId,
+  resolveSceneDocMedia,
+} from "../../engine/media/sceneMedia";
+import {
+  sceneTerminalSessionsVersion,
+  subscribeSceneTerminalSessions,
+} from "../../engine/panels/sceneTerminalSession";
+import {
+  normaliseWebsiteOrigin,
+  normaliseWebsiteUrl,
+  resolveSceneWebsite,
+  type SceneDocWebsite,
+  WEBSITE_VIEWPORT_HEIGHT_MAX,
+  WEBSITE_VIEWPORT_HEIGHT_MIN,
+  WEBSITE_VIEWPORT_WIDTH_MAX,
+  WEBSITE_VIEWPORT_WIDTH_MIN,
+} from "../../engine/panels/sceneWebsite";
+import {
+  captureWebsite,
+  closeWebsite,
+  importWebsiteImage,
+  listWebsiteGrants,
+  revokeWebsiteOrigin,
+} from "../../engine/panels/sceneWebsiteNative";
+import {
+  requestSceneWebsiteActivation,
+  requestSceneWebsiteDeactivation,
+  sceneWebsiteKey,
+  sceneWebsiteSession,
+  useSceneWebsiteSessionStore,
+} from "../../engine/panels/sceneWebsiteSession";
+import { resolveWebsiteColours } from "../../engine/panels/sceneWebsiteTheme";
 import {
   type LoadedProject,
   resolveAssetPath,
   sceneFileStem,
   workspaceProjectPath,
 } from "../../engine/project";
-import { readProjectManifestSnapshot, updateSceneTransition } from "../../engine/projectEdit";
-import { defaultOrbitPose } from "../../engine/sceneCamera";
-import { type CameraDoc, nearestKey, type RigDoc, setKeyPose } from "../../engine/sceneCameraEdit";
 import type { EditRepointSlot } from "../../engine/sceneDoc";
 import { applyBackgroundToAllScenes } from "../../engine/sceneDocPatchQueue";
 import {
@@ -57,55 +105,13 @@ import {
   TEXT_LINE_HEIGHT_MAX,
   TEXT_LINE_HEIGHT_MIN,
 } from "../../engine/sceneDocSchema";
-import {
-  createSceneMedia,
-  DEFAULT_SCENE_MEDIA_WINDOW_RADIUS,
-  editSceneDocMedia,
-  nextSceneMediaId,
-  resolveSceneDocMedia,
-} from "../../engine/sceneMedia";
-import { defaultRigPose } from "../../engine/sceneRig";
-import { canRigConvertToOrbit, orbitToRig, rigToOrbit } from "../../engine/sceneRigConvert";
-import {
-  sceneTerminalSessionsVersion,
-  subscribeSceneTerminalSessions,
-} from "../../engine/sceneTerminalSession";
-import { useLargestSceneText, useSceneTextRegistry } from "../../engine/sceneTextRegistry";
-import { listCachedSceneThumbs } from "../../engine/sceneThumbs";
-import {
-  normaliseWebsiteOrigin,
-  normaliseWebsiteUrl,
-  resolveSceneWebsite,
-  type SceneDocWebsite,
-  WEBSITE_VIEWPORT_HEIGHT_MAX,
-  WEBSITE_VIEWPORT_HEIGHT_MIN,
-  WEBSITE_VIEWPORT_WIDTH_MAX,
-  WEBSITE_VIEWPORT_WIDTH_MIN,
-} from "../../engine/sceneWebsite";
-import {
-  captureWebsite,
-  closeWebsite,
-  importWebsiteImage,
-  listWebsiteGrants,
-  revokeWebsiteOrigin,
-} from "../../engine/sceneWebsiteNative";
-import {
-  requestSceneWebsiteActivation,
-  requestSceneWebsiteDeactivation,
-  sceneWebsiteKey,
-  sceneWebsiteSession,
-  useSceneWebsiteSessionStore,
-} from "../../engine/sceneWebsiteSession";
-import { resolveWebsiteColours } from "../../engine/sceneWebsiteTheme";
-import { captureCurrentFrame } from "../../engine/snapshots";
+import { useSceneIsBanded } from "../../engine/stage/depthStageRegistry";
+import { useLargestSceneText, useSceneTextRegistry } from "../../engine/stage/sceneTextRegistry";
 import {
   useSceneHostStageBackdrop,
   useSceneStageBackdrop,
   useSceneStageFloorY,
-} from "../../engine/stageRegistry";
-import { ensureFontRefsPinned } from "../../engine/systemFonts";
-import { useTerminalEditStore } from "../../engine/terminalEditStore";
-import { useTextEditStore } from "../../engine/textEditStore";
+} from "../../engine/stage/stageRegistry";
 import {
   codedTextLookNames,
   codedTextMotionNames,
@@ -114,9 +120,8 @@ import {
   textKeyColorDefaults,
   useTextKeyRegistry,
   virtualManagedTextRegistrations,
-} from "../../engine/textKeyRegistry";
-import { TRANSITION_CATALOG } from "../../engine/transitionCatalog";
-import { useWebsiteEditStore } from "../../engine/websiteEditStore";
+} from "../../engine/stage/textKeyRegistry";
+import { ensureFontRefsPinned } from "../../engine/workspace/systemFonts";
 import { DEFAULT_LOOP_BLEND_MS } from "../../present/cameraLoop";
 import { useAssetVersionStore } from "../../store/assetVersionStore";
 import { useUiStore } from "../../store/uiStore";

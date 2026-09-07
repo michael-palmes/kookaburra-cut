@@ -1,15 +1,15 @@
+import type { ResolvedManagedTextGroup } from "../engine/content/managedText";
 import { type AspectName, aspectLabel } from "../engine/format";
-import { frameTextAlign } from "../engine/framePanelLayout";
-import type { ResolvedManagedTextGroup } from "../engine/managedText";
+import { frameTextAlign } from "../engine/frame/framePanelLayout";
+import { resolveSceneDocMedia } from "../engine/media/sceneMedia";
+import { resolveSceneTerminal } from "../engine/panels/sceneTerminal";
+import { resolveSceneWebsite } from "../engine/panels/sceneWebsite";
 import type {
   SceneDoc,
   SceneDocChart,
   SceneDocMediaSpec,
   SceneManagedTextItem,
 } from "../engine/sceneDocSchema";
-import { resolveSceneDocMedia } from "../engine/sceneMedia";
-import { resolveSceneTerminal } from "../engine/sceneTerminal";
-import { resolveSceneWebsite } from "../engine/sceneWebsite";
 import type { ChartType } from "../toolkit/chart/types";
 import { DEVICE_CATALOG, isDeviceId, resolveAvailableDeviceSpec } from "../toolkit/device/catalog";
 import type { FrameSpec } from "../toolkit/frame/types";

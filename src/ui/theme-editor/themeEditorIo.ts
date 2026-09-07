@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { emit, listen } from "@tauri-apps/api/event";
-import { devWriteBuiltinTheme, readBuiltinTheme } from "../../engine/library";
+import { devWriteBuiltinTheme, readBuiltinTheme } from "../../engine/workspace/library";
 import { BUILTIN_THEME_CATALOGUE } from "../../theme/catalogue";
 import { updateBuiltinTheme } from "../../theme/registry";
 import { isRecord, type ThemeDoc, themeScope } from "./themeDraft";

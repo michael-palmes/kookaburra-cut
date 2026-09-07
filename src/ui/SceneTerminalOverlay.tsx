@@ -1,16 +1,12 @@
 import "@xterm/xterm/css/xterm.css";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { useCameraEditStore } from "../engine/cameraEditStore";
+import { useCameraEditStore } from "../engine/edit/cameraEditStore";
+import { resolveSceneTerminal, sceneTerminalLayout } from "../engine/panels/sceneTerminal";
+import { bakeTerminalSnapshot } from "../engine/panels/sceneTerminalBake";
 import {
-  type LoadedProject,
-  nativeProjectSlug,
-  projectFolderPath,
-  sceneFileStem,
-} from "../engine/project";
-import type { SceneDoc } from "../engine/sceneDocSchema";
-import { resolveSceneTerminal, sceneTerminalLayout } from "../engine/sceneTerminal";
-import { bakeTerminalSnapshot } from "../engine/sceneTerminalBake";
-import { type CaptureTerminal, captureTerminalSnapshot } from "../engine/sceneTerminalCapture";
+  type CaptureTerminal,
+  captureTerminalSnapshot,
+} from "../engine/panels/sceneTerminalCapture";
 import {
   applySceneTerminalSettings,
   getSceneTerminalSession,
@@ -19,8 +15,15 @@ import {
   sceneTerminalSessionsVersion,
   startSceneTerminalSession,
   subscribeSceneTerminalSessions,
-} from "../engine/sceneTerminalSession";
-import { resolveTerminalColours } from "../engine/sceneTerminalTheme";
+} from "../engine/panels/sceneTerminalSession";
+import { resolveTerminalColours } from "../engine/panels/sceneTerminalTheme";
+import {
+  type LoadedProject,
+  nativeProjectSlug,
+  projectFolderPath,
+  sceneFileStem,
+} from "../engine/project";
+import type { SceneDoc } from "../engine/sceneDocSchema";
 import { useEditorStore } from "../store/editorStore";
 import { useGizmoDocWrite } from "./gizmo/gizmoDocWrite";
 

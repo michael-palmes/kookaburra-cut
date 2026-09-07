@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { MediaDeleteFailure, UnusedAsset } from "../engine/media";
+import type { MediaDeleteFailure, UnusedAsset } from "../engine/media/media";
 import {
   allUnusedRels,
   toggleUnusedRel,

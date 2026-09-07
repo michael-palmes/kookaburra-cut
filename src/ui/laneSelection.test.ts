@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { useCameraEditStore } from "../engine/cameraEditStore";
-import { useChartTrackEditStore } from "../engine/chartTrackEditStore";
-import { useCompareEditStore } from "../engine/compareEditStore";
-import { useLayeredScreenshotEditStore } from "../engine/layeredScreenshotEditStore";
-import { useLightingEditStore } from "../engine/lightingEditStore";
+import { useCameraEditStore } from "../engine/edit/cameraEditStore";
+import { useChartTrackEditStore } from "../engine/edit/chartTrackEditStore";
+import { useCompareEditStore } from "../engine/edit/compareEditStore";
+import { useLayeredScreenshotEditStore } from "../engine/edit/layeredScreenshotEditStore";
+import { useLightingEditStore } from "../engine/edit/lightingEditStore";
 import {
   animationLaneMasterOpen,
   clearOtherLaneSelections,

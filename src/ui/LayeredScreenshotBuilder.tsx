@@ -1,7 +1,25 @@
 import { listen } from "@tauri-apps/api/event";
 import { useEffect, useMemo, useState } from "react";
 import { useClockStore } from "../engine/clock";
-import { useFormat } from "../engine/format";
+import {
+  DEFAULT_ITEM_GAP,
+  fitStackScale,
+  type MeasuredAspect,
+  type SolvedLayerLayout,
+  solveLayerLayout,
+} from "../engine/content/layeredScreenshotLayout";
+import {
+  expandToIsometric,
+  flattenToFrontOn,
+  ISO_AZIMUTH_DEG,
+  ISO_ELEVATION_DEG,
+  slowDrift,
+  zoomToItem,
+} from "../engine/content/layeredScreenshotPresets";
+import {
+  resolveLayeredScreenshotPlacement,
+  SCREENSHOT_STACK_SIZE_RANGE,
+} from "../engine/content/sceneLayeredScreenshot";
 import {
   addItem,
   addLayer,
@@ -12,24 +30,10 @@ import {
   removeLayer,
   updateItem,
   updateLayer,
-} from "../engine/layeredScreenshotEdit";
-import { useLayeredScreenshotEditStore } from "../engine/layeredScreenshotEditStore";
-import {
-  DEFAULT_ITEM_GAP,
-  fitStackScale,
-  type MeasuredAspect,
-  type SolvedLayerLayout,
-  solveLayerLayout,
-} from "../engine/layeredScreenshotLayout";
-import {
-  expandToIsometric,
-  flattenToFrontOn,
-  ISO_AZIMUTH_DEG,
-  ISO_ELEVATION_DEG,
-  slowDrift,
-  zoomToItem,
-} from "../engine/layeredScreenshotPresets";
-import { fsUrl, type MediaMeta, mediaMeta } from "../engine/media";
+} from "../engine/edit/layeredScreenshotEdit";
+import { useLayeredScreenshotEditStore } from "../engine/edit/layeredScreenshotEditStore";
+import { useFormat } from "../engine/format";
+import { fsUrl, type MediaMeta, mediaMeta } from "../engine/media/media";
 import type { LoadedProject } from "../engine/project";
 import { nativeProjectSlug, projectFolderPath } from "../engine/project";
 import type {
@@ -40,10 +44,6 @@ import type {
   SceneDoc,
   SceneDocLayeredScreenshot,
 } from "../engine/sceneDocSchema";
-import {
-  resolveLayeredScreenshotPlacement,
-  SCREENSHOT_STACK_SIZE_RANGE,
-} from "../engine/sceneLayeredScreenshot";
 import {
   DrillBack,
   DrillGroup,

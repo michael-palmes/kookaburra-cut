@@ -1,0 +1,819 @@
+/** The gated postprocessing wrapper: a single module-level EffectComposer is the final output stage of the compositor whenever the loaded project declares any effect; a project with no effects never touches this file and keeps the original byte-identical render paths. Determinism rules (see docs/determinism.md): `composer.render(0)` uses a fixed delta every frame so the injected `time` uniform never advances (every effect uniform is CPU-written from resolved params + frame seed); MSAA applies only to the composer's input buffer, resolved by fixed-function blit before the effect passes, with one ACES tone-map and one sRGB encode via the final ToneMappingEffect; the effect set is the project-wide union built once so no mid-project shader recompiles, only uniforms change; and only allow-listed, time-free effects are built, never the stock time-seeded NoiseEffect/GlitchEffect. All four starter effects are wired (Bloom, Vignette, film Grain, colour-grade LUT); the LUT applies after tone-mapping in the same EffectPass, and mid-project LUT swaps write the `lut` uniform directly rather than through the public setter (which would recompile the pass), valid only because every LUT in a project shares one LUT_3D_SIZE (enforced in preloadEffectLuts). */
+import {
+  BlendFunction,
+  BloomEffect,
+  CopyPass,
+  DepthOfFieldEffect,
+  EffectComposer,
+  EffectPass,
+  LUT3DEffect,
+  RenderPass,
+  type ShaderPass,
+  TiltShiftEffect,
+  ToneMappingEffect,
+  VignetteEffect,
+} from "postprocessing";
+import {
+  BasicDepthPacking,
+  Camera,
+  ClampToEdgeWrapping,
+  Data3DTexture,
+  DepthTexture,
+  FramebufferTexture,
+  HalfFloatType,
+  LinearFilter,
+  NearestFilter,
+  NoToneMapping,
+  PerspectiveCamera,
+  RGBAFormat,
+  Scene,
+  type ShaderMaterial,
+  SRGBColorSpace,
+  Uniform,
+  UnsignedByteType,
+  Vector2,
+  type WebGLRenderer,
+  WebGLRenderTarget,
+} from "three";
+import type { EffectsConfig, EffectsOverride } from "../../theme/tokens";
+import type { DofUnion, ResolvedDof } from "../camera/dof";
+import { useEffectsStore } from "../edit/effectsStore";
+import { MSAA_SAMPLES } from "../format";
+import { type CubeLut, parseCubeLut } from "../lighting/lutCube";
+import { composerToneMapping } from "../lighting/renderSettings";
+import type { Resolved } from "../sceneTimeline";
+import { DeterministicGrainEffect } from "./DeterministicGrainEffect";
+import { ExposureEffect } from "./ExposureEffect";
+import { blendEffectParams, resolveEffectParams, sceneBaseEffects } from "./effectParams";
+import { SmearEffect } from "./SmearEffect";
+import { SoftFocusEffect } from "./SoftFocusEffect";
+
+/** Effect keys that are actually wired into the chain (all four starter effects as of cut 2). */
+const WIRED_EFFECTS = new Set(["bloom", "vignette", "grain", "lut"]);
+
+/** Which dof blur families the loaded project's camera tracks activate (`dofUnionOf`, defined in dof.ts); part of the composer rebuild key, so the chain stays project-stable like the effect-key union. */
+export type { DofUnion } from "../camera/dof";
+
+/** DoF display constants. EXPORT CONTRACT: each is a deliberate-rebase constant, like MSAA_SAMPLES (docs/determinism.md). `DOF_BOKEH_SCALE_MAX` maps the authored blur 0..1 onto the disc blur's scale; `DOF_INACTIVE_FOCUS` parks the focal plane past every staged surface so a zeroed pass leaves no visible blur; `DOF_RESOLUTION_SCALE` pins the internal half-res processing both stock effects default to. */
+export const DOF_BOKEH_SCALE_MAX = 6;
+export const DOF_INACTIVE_FOCUS = 100;
+export const DOF_RESOLUTION_SCALE = 0.5;
+/** Tilt-shift edge softness, fixed (the pose drives offset/rotation/band/blur). */
+export const TILT_FEATHER = 0.3;
+/** Split-diopter divider softness in uv units along the divider normal, fixed like TILT_FEATHER. */
+export const SPLIT_FEATHER = 0.08;
+/** Smear spans: authored blur 1 maps to this fraction of the ray to centre (radial) or of frame height (directional). */
+export const SMEAR_RADIAL_SPAN = 0.35;
+export const SMEAR_DIR_SPAN = 0.25;
+
+/** The dof-family effect handles a chain carries (main and side composers alike); applyDofUniforms drives whichever exist. */
+interface DofEffects {
+  dof: DepthOfFieldEffect | null;
+  tilt: TiltShiftEffect | null;
+  smear: SmearEffect | null;
+  soft: SoftFocusEffect | null;
+}
+
+interface ComposerState extends DofEffects {
+  composer: EffectComposer;
+  renderPass: RenderPass;
+  /** Persistent-layer overlay pass, disabled except on transition frames. */
+  overlayPass: RenderPass;
+  bloom: BloomEffect | null;
+  vignette: VignetteEffect | null;
+  grain: DeterministicGrainEffect | null;
+  exposure: ExposureEffect;
+  lut: LUT3DEffect | null;
+  size: Vector2;
+  key: string;
+}
+
+/** CopyPass's runtime `renderTarget` is assignable but untyped; this view keeps the per-side retarget honest. */
+type RetargetableCopyPass = CopyPass & { renderTarget: WebGLRenderTarget };
+
+/** The dof-only side composer: on transition/compare frames each side renders through this (scene -> dof chain -> copy into the side's HDR target) BEFORE the composite, so both sides carry their own focus; the main chain's dof is zeroed on those frames. */
+interface DofSideState extends DofEffects {
+  composer: EffectComposer;
+  renderPass: RenderPass;
+  copyPass: RetargetableCopyPass;
+  /** Parked in the copy pass before dispose: Pass.dispose disposes ANY target-valued property, and the pass must never be holding a compositor-pooled target at that moment. */
+  copyPlaceholder: WebGLRenderTarget;
+  size: Vector2;
+  key: string;
+}
+
+let composerState: ComposerState | null = null;
+let dofSideState: DofSideState | null = null;
+const _size = new Vector2();
+const _copyOrigin = new Vector2(0, 0);
+
+/** Dispose the composer chains (export frames with no fx, and the autorun between legs of a multi-project run); the LUT texture cache stays, so the next ensureComposer rebuild is still synchronous. The dof side composer and the dof-only overlay only live while the main one does. */
+export function releaseComposer(): void {
+  releaseDofOverlay();
+  if (dofSideState) {
+    dofSideState.copyPass.renderTarget = dofSideState.copyPlaceholder;
+    dofSideState.composer.dispose();
+    dofSideState = null;
+  }
+  if (!composerState) return;
+  composerState.composer.dispose();
+  composerState = null;
+}
+
+// 3D LUT assets: project-relative `.cube` files under projects/<project>/assets/, imported as raw text; project manifests reference them relatively, loadProject resolves each `lut.url` to its glob key here so this module never needs a project id, and parsing is pure with textures cached by url so two Verify runs sample the identical texture object. See docs/determinism.md.
+const cubeGlob = import.meta.glob<string>("/projects/*/assets/**/*.cube", {
+  query: "?raw",
+  import: "default",
+});
+
+/** In-flight/settled loads by resolved url, dedupes concurrent preloads (StrictMode double-fire). */
+const lutLoads = new Map<string, Promise<Data3DTexture>>();
+/** Ready textures by resolved url, for synchronous per-frame lookup in applyEffectUniforms. */
+const lutTextures = new Map<string, Data3DTexture>();
+
+/** Every LUT url the project could bind, in stable resolution order (project default first, then per-scene overrides by ascending scene index); the first entry seeds the composer's LUT3DEffect. */
+function collectLutUrls(
+  projectDefault: EffectsConfig,
+  overrides: Record<number, EffectsOverride>,
+  sceneDefaults: Record<number, EffectsConfig> = {},
+): string[] {
+  const urls: string[] = [];
+  const push = (u: string | undefined) => {
+    if (u && !urls.includes(u)) urls.push(u);
+  };
+  push(projectDefault.lut?.url);
+  for (const idx of Object.keys(sceneDefaults)
+    .map(Number)
+    .sort((a, b) => a - b)) {
+    push(sceneDefaults[idx].lut?.url);
+  }
+  for (const idx of Object.keys(overrides)
+    .map(Number)
+    .sort((a, b) => a - b)) {
+    push(overrides[idx].lut?.url);
+  }
+  return urls;
+}
+
+/** Builds the GPU-ready 3D texture for a parsed LUT: 8-bit RGBA (linear filtering is guaranteed for UNSIGNED_BYTE everywhere, unlike float, and <=1 LSB from a float LUT in 8-bit output), LinearFilter, no mipmaps, clamped, for deterministic hardware trilinear sampling. */
+function buildLutTexture(lut: CubeLut): Data3DTexture {
+  const bytes = new Uint8Array(lut.data.length);
+  for (let i = 0; i < lut.data.length; i++) {
+    bytes[i] = Math.round(Math.min(1, Math.max(0, lut.data[i])) * 255);
+  }
+  const tex = new Data3DTexture(bytes, lut.size, lut.size, lut.size);
+  tex.format = RGBAFormat;
+  tex.type = UnsignedByteType;
+  tex.minFilter = LinearFilter;
+  tex.magFilter = LinearFilter;
+  tex.wrapS = ClampToEdgeWrapping;
+  tex.wrapT = ClampToEdgeWrapping;
+  tex.wrapR = ClampToEdgeWrapping;
+  tex.generateMipmaps = false;
+  tex.needsUpdate = true;
+  return tex;
+}
+
+function loadLut(url: string): Promise<Data3DTexture> {
+  const inFlight = lutLoads.get(url);
+  if (inFlight) return inFlight;
+  const load = (async () => {
+    const tex = buildLutTexture(parseCubeLut(await loadCubeText(url)));
+    lutTextures.set(url, tex);
+    return tex;
+  })();
+  lutLoads.set(url, load);
+  return load;
+}
+
+/** Fetches a `.cube` file's text: bundled projects come through the eager raw-text glob; workspace projects (urls resolved by loadProject to asset-protocol URLs) are fetched, which the caching-by-url above makes just as deterministic (both Verify runs sample one texture). */
+async function loadCubeText(url: string): Promise<string> {
+  const importCube = cubeGlob[url];
+  if (importCube) return importCube();
+  // A scheme-qualified URL is a workspace asset (asset protocol); bare non-glob paths are authoring mistakes.
+  if (url.includes("://")) {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`LUT asset failed to load (${res.status}) from ${url}`);
+    return res.text();
+  }
+  throw new Error(
+    `LUT asset not found (looked for ${url}). Put a .cube file under ` +
+      "projects/<project>/assets/ and reference it project-relative in project.json.",
+  );
+}
+
+/** The union of effect keys the loaded project could use (project default + every per-scene override), intersected with what's wired; stable for the whole project, so the composer builds its chain once. */
+function projectEffectKeys(): Set<string> {
+  const { projectDefault, overrides, sceneDefaults } = useEffectsStore.getState();
+  const keys = new Set<string>(Object.keys(projectDefault));
+  for (const ov of Object.values(overrides)) {
+    for (const k of Object.keys(ov)) keys.add(k);
+  }
+  for (const base of Object.values(sceneDefaults)) {
+    for (const k of Object.keys(base)) keys.add(k);
+  }
+  return new Set([...keys].filter((k) => WIRED_EFFECTS.has(k)));
+}
+
+/** Resolves the effect stack for the frame, or `null` if the project declares no effects at all (the compositor keeps its byte-identical composer-free paths); a project that declares any effect returns non-null for every frame, even a scene with no params returns `{}`, so tone-mapping is uniform project-wide (three's ACES and postprocessing's ACES aren't bit-identical, so they're never mixed). */
+export function resolveFrameEffects(resolved: Resolved): EffectsConfig | null {
+  const { projectDefault, overrides, sceneDefaults } = useEffectsStore.getState();
+  const anySceneEffects = Object.values(sceneDefaults).some((b) => Object.keys(b).length > 0);
+  if (
+    Object.keys(projectDefault).length === 0 &&
+    Object.keys(overrides).length === 0 &&
+    !anySceneEffects
+  ) {
+    return null;
+  }
+  if (resolved.active.length === 0) return null;
+
+  const tr = resolved.transition;
+  if (tr) {
+    const a = resolveEffectParams(
+      sceneBaseEffects(projectDefault, sceneDefaults, tr.fromIndex),
+      overrides[tr.fromIndex],
+    );
+    const b = resolveEffectParams(
+      sceneBaseEffects(projectDefault, sceneDefaults, tr.toIndex),
+      overrides[tr.toIndex],
+    );
+    return blendEffectParams(a, b, tr.progress);
+  }
+  const idx = resolved.active[resolved.active.length - 1].index;
+  return resolveEffectParams(sceneBaseEffects(projectDefault, sceneDefaults, idx), overrides[idx]);
+}
+
+/** Lazily builds (and resizes/rebuilds, disposing the old) the composer for the project's effect set at the live drawing-buffer size; the RenderPass's scene/camera are set per-frame by the caller. `dofUnion` (the camera plan's, constant per project) adds the dof/tilt passes to the chain head. */
+export function ensureComposer(
+  gl: WebGLRenderer,
+  w: number,
+  h: number,
+  dofUnion?: DofUnion | null,
+): ComposerState {
+  const keys = projectEffectKeys();
+  const { projectDefault, overrides, sceneDefaults, renderSettings } = useEffectsStore.getState();
+  // The LUT urls are part of the cache key: the compiled shader bakes the LUT's size into defines, so a project swap to a different LUT set must rebuild the chain (mid-project swaps within one project are uniform-only, the url set is project-stable).
+  const lutUrls = keys.has("lut") ? collectLutUrls(projectDefault, overrides, sceneDefaults) : [];
+  // The tone-mapping mode is a shader define, so it belongs in the rebuild key (mode swaps are per-project, never per-frame); the dof union belongs for the same reason (which passes exist is chain shape, not a uniform).
+  const key =
+    [...keys].sort().join(",") +
+    (lutUrls.length ? `|${lutUrls.join("|")}` : "") +
+    `|tm:${renderSettings.toneMapping}` +
+    `|dof:${dofKeyOf(dofUnion)}`;
+  if (
+    composerState &&
+    composerState.size.x === w &&
+    composerState.size.y === h &&
+    composerState.key === key
+  ) {
+    return composerState;
+  }
+  if (composerState) composerState.composer.dispose();
+
+  // multisampling: MSAA on the composer's input buffer, the scene RenderPass and the persistent-layer overlay pass render into it; postprocessing resolves before the effect passes run (fullscreen quads, MSAA irrelevant to them). Half-float MSAA renderbuffers are Metal-native, clamped to capabilities.maxSamples.
+  const composer = new EffectComposer(gl, {
+    frameBufferType: HalfFloatType,
+    multisampling: MSAA_SAMPLES,
+  });
+  // Re-asserts pass/buffer sizes at the renderer's current logical size (a no-op resize, since the composer only calls renderer.setSize when given a differing size); passing the drawing-buffer size here is a trap, since EffectComposer.setSize would forward a differing size to renderer.setSize, and on a retina display (pixelRatio 2) that doubles the canvas every preview frame until the screen goes blank (the export loop is immune only because it pins pixelRatio to 1; `w`/`h` remain the rebuild-on-resize cache key).
+  const logical = gl.getSize(new Vector2());
+  composer.setSize(logical.x, logical.y, false);
+
+  // Placeholder scene/camera, overwritten every frame via composer.setMainScene/Camera.
+  const renderPass = new RenderPass(new Scene(), new Camera());
+  composer.addPass(renderPass);
+
+  // Persistent-layer overlay: on transition frames the main pass renders the composite quad, so a project's persistent (morph) objects would miss the effect chain if drawn after it; this pass layers them into the same input buffer before the effects (colour kept via depth-only clear, background ignored) so the morph is graded like everything else. Disabled here; renderThroughComposer enables it per frame as a pure function of the resolved transition, and it's always constructed (a disabled pass renders nothing) so the chain stays project-stable.
+  const overlayPass = new RenderPass(new Scene(), new Camera());
+  overlayPass.clearPass.setClearFlags(false, true, false);
+  overlayPass.ignoreBackground = true;
+  overlayPass.enabled = false;
+  composer.addPass(overlayPass);
+
+  const bloom = keys.has("bloom") ? new BloomEffect({ mipmapBlur: true }) : null;
+  const vignette = keys.has("vignette") ? new VignetteEffect() : null;
+  const grain = keys.has("grain") ? new DeterministicGrainEffect() : null;
+  // ToneMapping owns the single display tone-map (the project mode; ACES by default); the pass's one sRGB encode still happens at output. Exposure multiplies immediately BEFORE it, mirroring gl.toneMappingExposure's position in three's pipeline.
+  const tonemap = new ToneMappingEffect({ mode: composerToneMapping(renderSettings.toneMapping) });
+  const exposure = new ExposureEffect();
+  // The colour-grade LUT comes after tone-mapping (LDR `.cube` grades are authored for tone-mapped input; postprocessing feeds it sRGB via its inputColorSpace and converts back); BlendFunction.NORMAL so `intensity` drives blendMode.opacity, a uniform not a recompile; seeded with the first LUT url's texture, applyEffectUniforms binds the frame's actual LUT.
+  let lut: LUT3DEffect | null = null;
+  if (lutUrls.length > 0) {
+    const seedTex = lutTextures.get(lutUrls[0]);
+    if (!seedTex) {
+      throw new Error(
+        `LUT texture for ${lutUrls[0]} is not loaded — await preloadEffectLuts() before ` +
+          "rendering an effects project (the export preamble and the project loader both do).",
+      );
+    }
+    lut = new LUT3DEffect(seedTex, { blendFunction: BlendFunction.NORMAL });
+  }
+  // The dof family sits at the chain head: it samples linear HDR colour (+ depth for the CoC modes) pre-everything, and blurred highlights still bloom coherently. Placeholder camera, overwritten per frame via setMainCamera (which copies camera settings into the CoC material). All effects build zeroed; applyDofUniforms drives them per frame. (EffectPass itself orders by attributes, so the convolution smear runs first; modes are exclusive per scene, so only uniforms care.)
+  const { dof, tilt, smear, soft } = buildDofChain(dofUnion);
+  const chain = [dof, tilt, smear, soft, bloom, vignette, grain, exposure, tonemap, lut].filter(
+    (e): e is NonNullable<typeof e> => e !== null,
+  );
+  composer.addPass(new EffectPass(undefined, ...chain));
+
+  composerState = {
+    composer,
+    renderPass,
+    overlayPass,
+    dof,
+    tilt,
+    smear,
+    soft,
+    bloom,
+    vignette,
+    grain,
+    exposure,
+    lut,
+    size: new Vector2(w, h),
+    key,
+  };
+  return composerState;
+}
+
+/** The chain-shape key bit per blur family (composer rebuild keys, main and side alike). */
+function dofKeyOf(u: DofUnion | null | undefined): string {
+  if (!u) return "000000";
+  return [u.depth, u.tilt, u.soft, u.radial, u.directional, u.split]
+    .map((f) => (f ? 1 : 0))
+    .join("");
+}
+
+/** Build the dof-family effects a union asks for (split rides the depth effect via the patched CoC). */
+function buildDofChain(dofUnion: DofUnion | null | undefined): DofEffects {
+  return {
+    dof: dofUnion?.depth || dofUnion?.split ? buildDofEffect() : null,
+    tilt: dofUnion?.tilt ? buildTiltEffect() : null,
+    smear: dofUnion?.radial || dofUnion?.directional ? new SmearEffect() : null,
+    soft: dofUnion?.soft ? new SoftFocusEffect(DOF_RESOLUTION_SCALE) : null,
+  };
+}
+
+function buildDofEffect(): DepthOfFieldEffect {
+  const effect = new DepthOfFieldEffect(new PerspectiveCamera(), {
+    focusDistance: DOF_INACTIVE_FOCUS,
+    focusRange: 1,
+    bokehScale: 0,
+    resolutionScale: DOF_RESOLUTION_SCALE,
+  });
+  patchDofMaterials(effect);
+  return effect;
+}
+
+/** The bokeh passes exist at runtime but postprocessing's types stop at the public surface. */
+type DofInternals = DepthOfFieldEffect & {
+  bokehNearBasePass: ShaderPass;
+  bokehNearFillPass: ShaderPass;
+  bokehFarBasePass: ShaderPass;
+  bokehFarFillPass: ShaderPass;
+};
+
+function bokehMaterials(effect: DepthOfFieldEffect): ShaderMaterial[] {
+  const e = effect as DofInternals;
+  return [
+    e.bokehNearBasePass.fullscreenMaterial as ShaderMaterial,
+    e.bokehNearFillPass.fullscreenMaterial as ShaderMaterial,
+    e.bokehFarBasePass.fullscreenMaterial as ShaderMaterial,
+    e.bokehFarFillPass.fullscreenMaterial as ShaderMaterial,
+  ];
+}
+
+function mustPatch(source: string, anchor: string, patched: string): string {
+  if (!source.includes(anchor)) {
+    throw new Error(`dof shader patch anchor missing (postprocessing changed?): ${anchor}`);
+  }
+  return source.replace(anchor, patched);
+}
+
+/** Widen the stock dof materials in place: the CoC gains a second focus plane blended across a screen divider (split mode), the bokeh kernels an X squeeze (anamorphic ovals). Uniform-neutral by default, so depth scenes see the same VALUES as stock, but the forked programs make dof-active baselines a deliberate rebase (docs/decisions.md); the anchors throw on a postprocessing upgrade so the fork is re-audited. */
+function patchDofMaterials(effect: DepthOfFieldEffect): void {
+  const coc = effect.cocMaterial;
+  coc.fragmentShader = mustPatch(
+    mustPatch(
+      coc.fragmentShader,
+      "uniform float focusRange;",
+      "uniform float focusRange;uniform float focusDistanceB;uniform vec2 splitNormal;uniform float splitOffset;uniform float splitBlend;",
+    ),
+    "float signedDistance=distance-focusDistance;",
+    "float splitSide=dot(vUv-vec2(0.5),splitNormal)-splitOffset;" +
+      `float focusD=mix(focusDistance,focusDistanceB,splitBlend*smoothstep(${(-SPLIT_FEATHER).toFixed(4)},${SPLIT_FEATHER.toFixed(4)},splitSide));` +
+      "float signedDistance=distance-focusD;",
+  );
+  coc.uniforms.focusDistanceB = new Uniform(DOF_INACTIVE_FOCUS);
+  coc.uniforms.splitNormal = new Uniform(new Vector2(1, 0));
+  coc.uniforms.splitOffset = new Uniform(0);
+  coc.uniforms.splitBlend = new Uniform(0);
+  coc.needsUpdate = true;
+  for (const mat of bokehMaterials(effect)) {
+    mat.fragmentShader = mustPatch(
+      mustPatch(
+        mustPatch(
+          mat.fragmentShader,
+          "uniform float scale;",
+          "uniform float scale;uniform float squeeze;",
+        ),
+        "vec2 step=texelSize*max(cocNearFar.x,cocNearFar.y);",
+        "vec2 step=texelSize*max(cocNearFar.x,cocNearFar.y);step.x*=squeeze;",
+      ),
+      "vec2 step=texelSize*coc;",
+      "vec2 step=texelSize*coc;step.x*=squeeze;",
+    );
+    mat.uniforms.squeeze = new Uniform(1);
+    mat.needsUpdate = true;
+  }
+}
+
+function buildTiltEffect(): TiltShiftEffect {
+  return new TiltShiftEffect({ feather: TILT_FEATHER, resolutionScale: DOF_RESOLUTION_SCALE });
+}
+
+/** CPU-write every dof-family param from the frame's resolved pose dof (fresh for every rendered target, the lighting freshness rule). Null zeroes every pass: a frame with no dof (or one already dof-graded per side) must leave no residue. */
+function applyDofUniforms(effects: DofEffects, d: ResolvedDof | null | undefined): void {
+  if (effects.dof) {
+    const active = d && (d.mode === "depth" || d.mode === "split") && d.blur > 0 ? d : null;
+    effects.dof.bokehScale = active ? active.blur * DOF_BOKEH_SCALE_MAX : 0;
+    const coc = effects.dof.cocMaterial;
+    coc.focusDistance = active ? active.focus : DOF_INACTIVE_FOCUS;
+    coc.focusRange = active ? Math.max(active.range, 0.01) : 1;
+    const split = active && active.mode === "split" ? active : null;
+    const u = coc.uniforms;
+    u.splitBlend.value = split ? 1 : 0;
+    u.focusDistanceB.value = split ? split.focusB : DOF_INACTIVE_FOCUS;
+    // The divider reuses tilt's conventions: -1..1 offset maps to 0.5 = a full half-screen, angle rotates the normal.
+    u.splitOffset.value = split ? split.offset * 0.5 : 0;
+    const rad = split ? (split.angleDeg * Math.PI) / 180 : 0;
+    (u.splitNormal.value as Vector2).set(Math.cos(rad), Math.sin(rad));
+    const squeezeX = active ? 1 / active.squeeze : 1;
+    for (const mat of bokehMaterials(effects.dof)) mat.uniforms.squeeze.value = squeezeX;
+  }
+  if (effects.tilt) {
+    const active = d && d.mode === "tilt" && d.blur > 0 ? d : null;
+    effects.tilt.blendMode.opacity.value = active ? active.blur : 0;
+    // The pose's -1..1 offset maps to the shader's relative offset (0.5 = a full half-screen).
+    effects.tilt.offset = active ? active.offset * 0.5 : 0;
+    effects.tilt.rotation = active ? (active.angleDeg * Math.PI) / 180 : 0;
+    effects.tilt.focusArea = active ? active.band : 0.4;
+  }
+  if (effects.smear) {
+    if (d && d.mode === "radial" && d.blur > 0) {
+      effects.smear.setRadial(d.blur * SMEAR_RADIAL_SPAN, d.centerX, d.centerY);
+    } else if (d && d.mode === "directional" && d.blur > 0) {
+      effects.smear.setDirectional(d.blur * SMEAR_DIR_SPAN, d.angleDeg);
+    } else {
+      effects.smear.setInactive();
+    }
+  }
+  if (effects.soft) {
+    const active = d && d.mode === "soft" && d.blur > 0 ? d : null;
+    effects.soft.setParams(active ? active.blur : 0, active ? active.glow : 0);
+  }
+}
+
+/** CPU-write every effect uniform from the resolved params + frame seed. Effects off → amount 0. */
+function applyEffectUniforms(cs: ComposerState, cfg: EffectsConfig, seed: number): void {
+  cs.exposure.exposure = useEffectsStore.getState().renderSettings.exposure;
+  if (cs.bloom) {
+    cs.bloom.intensity = cfg.bloom?.intensity ?? 0;
+    if (cfg.bloom) {
+      cs.bloom.luminanceMaterial.threshold = cfg.bloom.luminanceThreshold;
+      cs.bloom.luminanceMaterial.smoothing = cfg.bloom.luminanceSmoothing;
+    }
+  }
+  if (cs.vignette) {
+    cs.vignette.offset = cfg.vignette?.offset ?? 0.5;
+    cs.vignette.darkness = cfg.vignette?.darkness ?? 0; // 0 = no vignette
+  }
+  if (cs.grain) {
+    cs.grain.seed = seed;
+    cs.grain.intensity = cfg.grain?.intensity ?? 0; // 0 = no grain
+  }
+  if (cs.lut) {
+    const url = cfg.lut?.url;
+    const tex = url ? lutTextures.get(url) : undefined;
+    // No LUT bound this frame (or its texture missing) → opacity 0 = pass-through.
+    cs.lut.blendMode.opacity.value = tex ? (cfg.lut?.intensity ?? 0) : 0;
+    const lutUniform = cs.lut.uniforms.get("lut");
+    if (tex && lutUniform && lutUniform.value !== tex) {
+      // Direct uniform write, the public `lut` setter would recompile the pass mid-project; safe because preloadEffectLuts enforces one LUT_3D_SIZE per project (the defines hold).
+      lutUniform.value = tex;
+    }
+  }
+}
+
+/** Renders `mainScene`/`mainCamera` through the effect chain to the default framebuffer (the final pass renders to screen, so `readPixels` reads the graded frame); tone-mapping is disabled on the renderer during the pass so the scene reaches the composer in linear and ACES is applied exactly once by the chain, and renderer flags touched are snapshotted and restored. `overlay` (transition frames only) is the persistent-layer scene+camera to layer into the input buffer after the main render, pre-effects; the caller owns visibility before invoking, and autoClear is forced off for the overlaid render since three would otherwise clear the input buffer's colour before drawing the overlay, wiping the composite. */
+export function renderThroughComposer(
+  gl: WebGLRenderer,
+  cs: ComposerState,
+  mainScene: Scene,
+  mainCamera: Camera,
+  cfg: EffectsConfig,
+  seed: number,
+  overlay?: { scene: Scene; camera: Camera },
+  dof?: ResolvedDof | null,
+): void {
+  const prevTone = gl.toneMapping;
+  const prevTarget = gl.getRenderTarget();
+  const prevAutoClear = gl.autoClear;
+  gl.toneMapping = NoToneMapping;
+  // setMainScene/Camera write every pass (including the overlay pass); order matters, the overlay pass is re-pointed at the real scene/camera after.
+  cs.composer.setMainScene(mainScene);
+  cs.composer.setMainCamera(mainCamera);
+  cs.overlayPass.enabled = overlay !== undefined;
+  if (overlay) {
+    cs.overlayPass.mainScene = overlay.scene;
+    cs.overlayPass.mainCamera = overlay.camera;
+    gl.autoClear = false;
+  }
+  applyEffectUniforms(cs, cfg, seed);
+  applyDofUniforms(cs, dof);
+  cs.composer.render(0); // fixed delta, the injected `time` uniform never advances
+  gl.toneMapping = prevTone;
+  gl.autoClear = prevAutoClear;
+  gl.setRenderTarget(prevTarget);
+}
+
+/** Lazily builds the dof-only side composer (same HalfFloat + MSAA input contract as the main one; `autoRenderToScreen` off so the CopyPass lands in a caller-owned target). */
+function ensureDofSide(gl: WebGLRenderer, w: number, h: number, dofUnion: DofUnion): DofSideState {
+  const key = dofKeyOf(dofUnion);
+  if (
+    dofSideState &&
+    dofSideState.size.x === w &&
+    dofSideState.size.y === h &&
+    dofSideState.key === key
+  ) {
+    return dofSideState;
+  }
+  if (dofSideState) {
+    dofSideState.copyPass.renderTarget = dofSideState.copyPlaceholder;
+    dofSideState.composer.dispose();
+  }
+
+  const composer = new EffectComposer(gl, {
+    frameBufferType: HalfFloatType,
+    multisampling: MSAA_SAMPLES,
+  });
+  composer.autoRenderToScreen = false;
+  const logical = gl.getSize(new Vector2());
+  composer.setSize(logical.x, logical.y, false);
+
+  const renderPass = new RenderPass(new Scene(), new Camera());
+  composer.addPass(renderPass);
+  const { dof, tilt, smear, soft } = buildDofChain(dofUnion);
+  const chain = [dof, tilt, smear, soft].filter((e): e is NonNullable<typeof e> => e !== null);
+  composer.addPass(new EffectPass(undefined, ...chain));
+  // Copies the dof-graded linear HDR frame into the side target the transition composite samples; autoResize off, the compositor owns that target's size.
+  const copyPlaceholder = new WebGLRenderTarget(1, 1, { depthBuffer: false });
+  const copyPass = new CopyPass(copyPlaceholder, false) as RetargetableCopyPass;
+  composer.addPass(copyPass);
+
+  dofSideState = {
+    composer,
+    renderPass,
+    dof,
+    tilt,
+    smear,
+    soft,
+    copyPass,
+    copyPlaceholder,
+    size: new Vector2(w, h),
+    key,
+  };
+  return dofSideState;
+}
+
+/** Renders one transition/compare SIDE with its own dof into `target` (linear HDR, un-tone-mapped: the caller has already forced NoToneMapping, and no tone-map pass exists in this chain), replacing that side's plain `gl.render`. The composite then blends dof-graded sides exactly as it blended plain ones. */
+export function renderSideWithDof(
+  gl: WebGLRenderer,
+  sideScene: Scene,
+  sideCamera: Camera,
+  dof: ResolvedDof | null,
+  target: WebGLRenderTarget,
+  w: number,
+  h: number,
+  dofUnion: DofUnion,
+): void {
+  const st = ensureDofSide(gl, w, h, dofUnion);
+  const prevTarget = gl.getRenderTarget();
+  st.composer.setMainScene(sideScene);
+  st.composer.setMainCamera(sideCamera);
+  applyDofUniforms(st, dof);
+  st.copyPass.renderTarget = target;
+  st.composer.render(0);
+  gl.setRenderTarget(prevTarget);
+}
+
+/** Drawing-buffer size helper for callers that need the composer size before `ensureComposer`. */
+export function drawingBufferSize(gl: WebGLRenderer): Vector2 {
+  return gl.getDrawingBufferSize(_size);
+}
+
+// ---------------------------------------------------------------------------
+// The dof-only lane: dof over the FINISHED frame. When a project declares no
+// effects, the composer-owned tone map must not exist at all, or toggling dof
+// regrades the scene (the direct path renders exact-colour surfaces raw while
+// any full-frame transform bends them, and canvas/target program variants do
+// not even tone-map identically on this stack). So dof-only projects render
+// every frame on the ORIGINAL byte-identical paths, and a frame whose pose
+// carries ACTIVE dof is then blurred in place: the finished pixels are copied,
+// the dof chain runs over them (depth from a dedicated pre-pass for the CoC
+// modes), and the result lands back where it came from. Inactive frames are
+// untouched by construction. See docs/determinism.md.
+// ---------------------------------------------------------------------------
+
+interface DofOverlayState extends DofEffects {
+  pass: EffectPass;
+  /** Wraps the canvas copy (or nothing in target mode) as the pass's input protocol. */
+  inputShim: WebGLRenderTarget;
+  /** The canvas bytes, copied via copyFramebufferToTexture (sRGB-tagged, hardware-decoded on sample). */
+  frameTexture: FramebufferTexture | null;
+  /** Target mode: the side renders here first, the pass reads it and writes the real target. */
+  scratch: WebGLRenderTarget | null;
+  /** Scene depth for the CoC modes, rendered by a dedicated pre-pass. */
+  depthTarget: WebGLRenderTarget | null;
+  size: Vector2;
+  key: string;
+}
+
+let dofOverlayState: DofOverlayState | null = null;
+
+export function releaseDofOverlay(): void {
+  if (!dofOverlayState) return;
+  dofOverlayState.pass.dispose();
+  dofOverlayState.frameTexture?.dispose();
+  dofOverlayState.scratch?.dispose();
+  dofOverlayState.depthTarget?.dispose();
+  dofOverlayState = null;
+}
+
+function ensureDofOverlay(gl: WebGLRenderer, w: number, h: number, u: DofUnion): DofOverlayState {
+  const key = dofKeyOf(u);
+  if (
+    dofOverlayState &&
+    dofOverlayState.size.x === w &&
+    dofOverlayState.size.y === h &&
+    dofOverlayState.key === key
+  ) {
+    return dofOverlayState;
+  }
+  releaseDofOverlay();
+
+  const effects = buildDofChain(u);
+  const chain = [effects.dof, effects.tilt, effects.smear, effects.soft].filter(
+    (e): e is NonNullable<typeof e> => e !== null,
+  );
+  const pass = new EffectPass(undefined, ...chain);
+  pass.initialize(gl, false, UnsignedByteType);
+  pass.setSize(w, h);
+  const needsDepth = u.depth || u.split;
+  let depthTarget: WebGLRenderTarget | null = null;
+  if (needsDepth) {
+    // A real scene draw fills this (never an override material, which would let the depth-immune fixed quads write depth); no MSAA, depth textures resolve nowhere.
+    const depthTexture = new DepthTexture(w, h);
+    depthTarget = new WebGLRenderTarget(w, h, {
+      depthBuffer: true,
+      depthTexture,
+      generateMipmaps: false,
+    });
+    pass.setDepthTexture(depthTexture, BasicDepthPacking);
+  }
+
+  dofOverlayState = {
+    ...effects,
+    pass,
+    inputShim: new WebGLRenderTarget(1, 1, { depthBuffer: false }),
+    frameTexture: null,
+    scratch: null,
+    depthTarget,
+    size: new Vector2(w, h),
+    key,
+  };
+  return dofOverlayState;
+}
+
+/** Renders the scene's true depth for the CoC modes (a plain scene draw whose colour is discarded, so depthWrite flags behave exactly as they did for the frame itself). */
+function renderDofDepth(
+  gl: WebGLRenderer,
+  st: DofOverlayState,
+  scene: Scene,
+  camera: Camera,
+): void {
+  if (!st.depthTarget) return;
+  const prevTarget = gl.getRenderTarget();
+  gl.setRenderTarget(st.depthTarget);
+  gl.render(scene, camera);
+  gl.setRenderTarget(prevTarget);
+}
+
+/** Blurs the CANVAS in place: copies the finished frame, runs the dof chain over the copy and draws the result back to the canvas. Call only for an ACTIVE dof pose; inactive frames must never come here (the untouched canvas IS the output). */
+export function renderDofOverCanvas(
+  gl: WebGLRenderer,
+  scene: Scene,
+  camera: Camera,
+  dof: ResolvedDof,
+  dofUnion: DofUnion,
+  w: number,
+  h: number,
+): void {
+  const st = ensureDofOverlay(gl, w, h, dofUnion);
+  if (!st.frameTexture || st.frameTexture.image.width !== w || st.frameTexture.image.height !== h) {
+    st.frameTexture?.dispose();
+    // Linear-tagged on purpose: copyTexSubImage2D from the RGBA8 canvas into an sRGB-tagged texture is an invalid-operation no-op, and the raw display bytes are exactly what the pass should sample (encodeOutput is off, so untouched pixels round-trip byte for byte).
+    st.frameTexture = new FramebufferTexture(w, h);
+  }
+  const prevTarget = gl.getRenderTarget();
+  gl.setRenderTarget(null);
+  gl.copyFramebufferToTexture(st.frameTexture, _copyOrigin);
+  renderDofDepth(gl, st, scene, camera);
+  st.pass.mainCamera = camera;
+  applyDofUniforms(st, dof);
+  st.inputShim.texture = st.frameTexture;
+  st.pass.renderToScreen = true;
+  st.pass.encodeOutput = false;
+  gl.setRenderTarget(null);
+  st.pass.render(gl, st.inputShim, null);
+  gl.setRenderTarget(prevTarget);
+}
+
+/** Target-mode side blur: the caller has rendered the side into `dofSideScratch()` instead of `target`; this runs the dof chain from the scratch into `target`. The scratch shares the SDR pair's semantics (hardware sRGB, MSAA), so an inactive side rendered straight to `target` and an active side routed through here carry the same pixel contract. */
+export function renderDofOverTarget(
+  gl: WebGLRenderer,
+  scene: Scene,
+  camera: Camera,
+  dof: ResolvedDof,
+  dofUnion: DofUnion,
+  target: WebGLRenderTarget,
+  w: number,
+  h: number,
+): void {
+  const st = ensureDofOverlay(gl, w, h, dofUnion);
+  const prevTarget = gl.getRenderTarget();
+  renderDofDepth(gl, st, scene, camera);
+  st.pass.mainCamera = camera;
+  applyDofUniforms(st, dof);
+  st.pass.renderToScreen = false;
+  // The scratch samples hardware-decoded (linear) and the sRGB target re-encodes on store; the shader must not encode again.
+  st.pass.encodeOutput = false;
+  st.pass.render(gl, st.scratch as WebGLRenderTarget, target);
+  gl.setRenderTarget(prevTarget);
+}
+
+/** The scratch the compositor renders an ACTIVE dof side into before renderDofOverTarget copies it, blurred, into the real side target. Same contract as the SDR pair (hardware sRGB store, MSAA). */
+export function dofSideScratch(
+  gl: WebGLRenderer,
+  w: number,
+  h: number,
+  u: DofUnion,
+): WebGLRenderTarget {
+  const st = ensureDofOverlay(gl, w, h, u);
+  if (!st.scratch) {
+    const t = new WebGLRenderTarget(w, h, {
+      minFilter: NearestFilter,
+      magFilter: NearestFilter,
+      format: RGBAFormat,
+      type: UnsignedByteType,
+      depthBuffer: true,
+      stencilBuffer: false,
+      generateMipmaps: false,
+      samples: MSAA_SAMPLES,
+    });
+    t.texture.colorSpace = SRGBColorSpace;
+    t.texture.wrapS = ClampToEdgeWrapping;
+    t.texture.wrapT = ClampToEdgeWrapping;
+    st.scratch = t;
+  }
+  return st.scratch;
+}
+
+/** Loads + parses every LUT the project could bind (project default + per-scene overrides) before frame 0, mirroring preloadDeviceModels/preloadProjectImages, since the capture loop must never race an async effect-asset decode and a mid-run swap must find its texture already cached. The project loader awaits this before publishing effects to the store so the composer chain never builds against a missing texture; the export preamble awaits it again (a cached no-op) with `gl` so every texture is uploaded before frame 0, never a lazy first-use upload mid-run. See docs/determinism.md. Enforces that all of a project's LUTs share one LUT_3D_SIZE, since mid-project swaps write the `lut` uniform directly, so the pass's compiled size defines must fit every texture. */
+export async function preloadEffectLuts(opts?: {
+  /** When given, force-uploads each LUT texture to the GPU (export preamble). */
+  gl?: WebGLRenderer;
+  /** Effect config to scan; defaults to the effects store (export path). */
+  effects?: EffectsConfig;
+  overrides?: Record<number, EffectsOverride>;
+  /** Per-scene theme-swap base stacks, see effectsStore. */
+  sceneDefaults?: Record<number, EffectsConfig>;
+}): Promise<void> {
+  const store = useEffectsStore.getState();
+  const urls = collectLutUrls(
+    opts?.effects ?? store.projectDefault,
+    opts?.overrides ?? store.overrides,
+    opts?.sceneDefaults ?? store.sceneDefaults,
+  );
+  if (urls.length === 0) return;
+  const textures = await Promise.all(urls.map(loadLut));
+  const sizes = new Set(textures.map((t) => t.image.width));
+  if (sizes.size > 1) {
+    throw new Error(
+      `A project's LUTs must all share one LUT_3D_SIZE (got ${[...sizes].join(", ")} across ` +
+        `${urls.join(", ")}) — mid-project swaps reuse one compiled shader. Re-export at one size.`,
+    );
+  }
+  if (opts?.gl) {
+    for (const tex of textures) opts.gl.initTexture(tex);
+  }
+}

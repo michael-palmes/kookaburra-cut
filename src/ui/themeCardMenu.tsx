@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { type ReactNode, useState } from "react";
-import { devDeleteBuiltinTheme } from "../engine/library";
+import { devDeleteBuiltinTheme } from "../engine/workspace/library";
 import { WORKSPACE_THEME_PREFIX } from "../theme/registry";
 import { ContextMenu, type ContextMenuItem, type ContextMenuState } from "./ContextMenu";
 import { MoveThemeModal } from "./MoveThemeModal";

@@ -1,6 +1,10 @@
 import { useEffect, useState } from "react";
-import { copySceneToProject } from "../../engine/projectEdit";
-import { listProjects, snapshotUrl, type WorkspaceProjectInfo } from "../../engine/workspace";
+import { copySceneToProject } from "../../engine/edit/projectEdit";
+import {
+  listProjects,
+  snapshotUrl,
+  type WorkspaceProjectInfo,
+} from "../../engine/workspace/workspace";
 import {
   ALL_PROJECTS,
   filterProjectLibrary,

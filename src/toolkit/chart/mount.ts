@@ -5,7 +5,7 @@ import {
   chartValuesAt,
   maxAcrossTrack,
   type ResolvedChart,
-} from "../../engine/sceneChart";
+} from "../../engine/content/sceneChart";
 import { parseFontString } from "../../theme/fontRef";
 import type { FontRef, Theme } from "../../theme/tokens";
 import type { DevicePlacement } from "../device/Device";

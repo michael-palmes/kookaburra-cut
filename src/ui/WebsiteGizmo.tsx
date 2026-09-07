@@ -1,19 +1,19 @@
 import { useCallback, useMemo, useRef } from "react";
-import { useCameraEditStore } from "../engine/cameraEditStore";
-import type { StageRect } from "../engine/gizmoRegistry";
-import { type LoadedProject, sceneFileStem } from "../engine/project";
-import type { SceneDoc } from "../engine/sceneDocSchema";
+import { useCameraEditStore } from "../engine/edit/cameraEditStore";
+import { useWebsiteEditStore } from "../engine/edit/websiteEditStore";
+import type { StageRect } from "../engine/gizmo/gizmoRegistry";
 import {
   resolveSceneWebsite,
   type SceneDocWebsite,
   sceneWebsiteLayout,
-} from "../engine/sceneWebsite";
+} from "../engine/panels/sceneWebsite";
 import {
   sceneWebsiteKey,
   useSceneWebsiteSessionStore,
   websiteSessionClaimsStage,
-} from "../engine/sceneWebsiteSession";
-import { useWebsiteEditStore } from "../engine/websiteEditStore";
+} from "../engine/panels/sceneWebsiteSession";
+import { type LoadedProject, sceneFileStem } from "../engine/project";
+import type { SceneDoc } from "../engine/sceneDocSchema";
 import { Gizmo2D, type Gizmo2DGesture, type Gizmo2DItem } from "./gizmo/Gizmo2D";
 import type { Pt } from "./gizmo/gizmo2dMath";
 import { useGizmoDocWrite } from "./gizmo/gizmoDocWrite";

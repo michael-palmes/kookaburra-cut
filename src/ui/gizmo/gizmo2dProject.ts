@@ -1,6 +1,6 @@
 import type { Camera, Object3D } from "three";
 import { Vector3 } from "three";
-import type { StageRect } from "../../engine/gizmoRegistry";
+import type { StageRect } from "../../engine/gizmo/gizmoRegistry";
 import { ndcToStagePx, type Pt, rayPlaneZ, stagePxToNdc } from "./gizmo2dMath";
 
 /** The two world-to-stage-pixel maps a 2D gizmo host can need. World-space items (scene text, hero charts) project through the LIVE camera, so a box tracks a rig pose, a keyframe and a transition; overlay-panel items are drawn from the base pose against the full frame, which is a fixed linear map. Drags invert through a ray-plane intersection, exact under any pose. */

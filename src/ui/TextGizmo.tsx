@@ -1,18 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import type { Object3D } from "three";
-import { useCameraEditStore } from "../engine/cameraEditStore";
+import { useCameraEditStore } from "../engine/edit/cameraEditStore";
+import { useTextEditStore } from "../engine/edit/textEditStore";
 import { computeFormat } from "../engine/format";
-import { getFramePanels } from "../engine/framePanelRegistry";
-import { type StageRect, stageCamera } from "../engine/gizmoRegistry";
+import { getFramePanels } from "../engine/frame/framePanelRegistry";
+import { type StageRect, stageCamera } from "../engine/gizmo/gizmoRegistry";
 import {
   type Gizmo2DTarget,
   gizmoTargets,
   subscribeGizmoTargets,
-} from "../engine/gizmoTargetRegistry";
-import { nodeDrawn } from "../engine/gizmoVisibility";
+} from "../engine/gizmo/gizmoTargetRegistry";
+import { nodeDrawn } from "../engine/gizmo/gizmoVisibility";
 import type { LoadedProject } from "../engine/project";
 import type { SceneDoc } from "../engine/sceneDocSchema";
-import { useTextEditStore } from "../engine/textEditStore";
 import { useEditorStore } from "../store/editorStore";
 import { Gizmo2D, type Gizmo2DGesture, type Gizmo2DItem } from "./gizmo/Gizmo2D";
 import { frameFromQuad, frameGuideLines, type Pt } from "./gizmo/gizmo2dMath";

@@ -6,7 +6,7 @@ import {
   hasGizmoPickers,
   stageWorldRect,
   subscribeGizmoPickers,
-} from "../../engine/gizmoRegistry";
+} from "../../engine/gizmo/gizmoRegistry";
 import { cameraOverrideHeld, pointerNdc, routeLayerPointer, routePointer } from "./gizmoRouting";
 import { modifierSnapshot, useModifierKeys } from "./modifierKeys";
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { PresentTimingEntry } from "../engine/presentTimingRegistry";
+import type { PresentTimingEntry } from "../engine/stage/presentTimingRegistry";
 import {
   DEFAULT_OUT_RUNWAY_MS,
   derivePresentHold,

@@ -5,7 +5,7 @@ import {
   NONE_SOURCE,
   resolveSceneEnvironment,
   sceneMirrorRequest,
-} from "./environments";
+} from "./lighting/environments";
 import type { SceneDoc } from "./sceneDocSchema";
 import type { Resolved } from "./sceneTimeline";
 

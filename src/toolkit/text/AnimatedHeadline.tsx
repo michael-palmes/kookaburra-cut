@@ -10,21 +10,21 @@ import {
   useState,
 } from "react";
 import { Color, type Object3D } from "three";
-import { registerGizmoTarget, unregisterGizmoTarget } from "../../engine/gizmoTargetRegistry";
 import {
   type ManagedTextRenderRole,
   shouldRenderManagedTextHeadline,
-} from "../../engine/managedText";
-import { useHeldLocalMs } from "../../engine/presentHold";
-import { registerPresentTiming } from "../../engine/presentTimingRegistry";
+} from "../../engine/content/managedText";
+import { registerGizmoTarget, unregisterGizmoTarget } from "../../engine/gizmo/gizmoTargetRegistry";
 import {
   SceneDocContext,
   SceneTextClaimedContext,
   useSceneContext,
 } from "../../engine/sceneContext";
-import { registerSceneText } from "../../engine/sceneTextRegistry";
-import { useTextKeyRegistry } from "../../engine/textKeyRegistry";
-import { useTextMotionRegistry } from "../../engine/textMotionRegistry";
+import { useHeldLocalMs } from "../../engine/stage/presentHold";
+import { registerPresentTiming } from "../../engine/stage/presentTimingRegistry";
+import { registerSceneText } from "../../engine/stage/sceneTextRegistry";
+import { useTextKeyRegistry } from "../../engine/stage/textKeyRegistry";
+import { useTextMotionRegistry } from "../../engine/stage/textMotionRegistry";
 import { useTimeline } from "../../engine/timeline";
 import { useTheme } from "../../theme";
 import { formatFontString, parseFontString } from "../../theme/fontRef";

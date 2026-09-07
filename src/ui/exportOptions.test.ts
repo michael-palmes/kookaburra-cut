@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resolveSceneWebsite } from "../engine/sceneWebsite";
+import { resolveSceneWebsite } from "../engine/panels/sceneWebsite";
 import { BUNDLED_EXPORT_PRESETS, findBundledPreset } from "../export/presetRegistry";
 import {
   audioKbpsOf,

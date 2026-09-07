@@ -1,8 +1,8 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
+import { FEEL_LABELS, FEEL_ORDER, TRANSITION_CATALOG } from "../engine/effects/transitionCatalog";
 import type { LoadedProject } from "../engine/project";
 import type { TransitionSpec } from "../engine/sceneTimeline";
-import { FEEL_LABELS, FEEL_ORDER, TRANSITION_CATALOG } from "../engine/transitionCatalog";
 import { TransitionModal } from "./TransitionPicker";
 
 const colors = { background: "#0b0f14", text: "#ffffff", accent: "#3ddbc9", muted: "#888888" };

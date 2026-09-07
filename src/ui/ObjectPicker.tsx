@@ -1,7 +1,7 @@
 import { open as openFilePicker } from "@tauri-apps/plugin-dialog";
 import { useEffect, useRef, useState } from "react";
-import { renderObjectThumbnail } from "../engine/objectThumbnail";
-import { optionPreviewStill } from "../engine/optionPreviews";
+import { optionPreviewStill } from "../engine/export/optionPreviews";
+import { renderObjectThumbnail } from "../engine/media/objectThumbnail";
 import {
   importObject,
   listObjects,

@@ -1,5 +1,5 @@
-import { openEdit, openEditNamed } from "../engine/edit";
-import { copyToGlobalScreenshots, deleteMedia, type MediaMeta } from "../engine/media";
+import { openEdit, openEditNamed } from "../engine/edit/edit";
+import { copyToGlobalScreenshots, deleteMedia, type MediaMeta } from "../engine/media/media";
 import type { ContextMenuItem } from "./ContextMenu";
 import type { MediaActionContext } from "./MediaBrowser";
 

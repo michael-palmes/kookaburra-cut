@@ -23,7 +23,7 @@ function fixtureRoot() {
   roots.push(root);
   write(
     root,
-    "src/engine/themePreviews.ts",
+    "src/engine/export/themePreviews.ts",
     'export const THEME_PREVIEW_WIDTH = 640;\nexport const THEME_PREVIEW_COUNT = 4;\nexport const THEME_PREVIEW_VERSION = 1;\nexport const THEME_PREVIEW_PROJECT_ID = "preview-lab-theme";\nexport const THEME_PREVIEW_SCENES = [0, 1, 2, 4] as const;\n',
   );
   write(
@@ -64,7 +64,7 @@ describe("theme preview staleness", () => {
     write(root, "projects/preview-lab-theme/scenes/01.tsx", "export default 1;\n");
     write(
       root,
-      "src/engine/themePreviews.ts",
+      "src/engine/export/themePreviews.ts",
       'export const THEME_PREVIEW_WIDTH = 720;\nexport const THEME_PREVIEW_COUNT = 4;\nexport const THEME_PREVIEW_VERSION = 2;\nexport const THEME_PREVIEW_PROJECT_ID = "preview-lab-theme";\nexport const THEME_PREVIEW_SCENES = [0, 1, 2, 4] as const;\n',
     );
     assert.deepEqual(staleThemePreviews(root), ["theme-a", "theme-b"]);

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { slugifyName } from "../engine/workspace";
+import { slugifyName } from "../engine/workspace/workspace";
 import { BUILTIN_THEME_CATALOGUE, THEME_CATEGORIES } from "../theme/catalogue";
 import { THEME_CATEGORY_ICONS } from "./libraryIcons";
 import type { ThemeChoice } from "./ThemePicker";

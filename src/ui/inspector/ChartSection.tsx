@@ -1,11 +1,11 @@
 import { Fragment, useEffect, useRef, useState } from "react";
-import { useChartEditStore } from "../../engine/chartEditStore";
-import { optionPreviewClip, optionPreviewStill } from "../../engine/optionPreviews";
 import {
   CHART_VALUE_BACKGROUND_DEFAULTS,
   CHART_VALUE_OFFSET_MAX,
   resolveChart,
-} from "../../engine/sceneChart";
+} from "../../engine/content/sceneChart";
+import { useChartEditStore } from "../../engine/edit/chartEditStore";
+import { optionPreviewClip, optionPreviewStill } from "../../engine/export/optionPreviews";
 import type {
   SceneDoc,
   SceneDocChart,
@@ -13,7 +13,7 @@ import type {
   SceneDocChartValueAxis,
   SceneDocChartValueLabels,
 } from "../../engine/sceneDocSchema";
-import { ensureFontRefsPinned } from "../../engine/systemFonts";
+import { ensureFontRefsPinned } from "../../engine/workspace/systemFonts";
 import { formatFontString, parseFontString } from "../../theme/fontRef";
 import { preloadAppFonts } from "../../theme/fonts";
 import type { Theme } from "../../theme/tokens";

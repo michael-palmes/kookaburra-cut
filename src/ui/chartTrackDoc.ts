@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
-import { type ChartTrackDoc, useChartTrackEditStore } from "../engine/chartTrackEditStore";
+import { chartValuesAt, resolveChart } from "../engine/content/sceneChart";
+import { type ChartTrackDoc, useChartTrackEditStore } from "../engine/edit/chartTrackEditStore";
 import { isEditableProjectId, type LoadedProject, nativeProjectSlug } from "../engine/project";
-import { chartValuesAt, resolveChart } from "../engine/sceneChart";
 import { commitSceneDocPatch, type DocChangedHandler } from "../engine/sceneDocPatchQueue";
 import type { SceneDoc } from "../engine/sceneDocSchema";
 import type { ChartValuesPose } from "../toolkit/chart/types";

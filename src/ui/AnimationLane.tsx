@@ -1,13 +1,13 @@
 import { useCallback, useMemo } from "react";
-import { effectiveKeyMoments, projectBeatGrid, useBeatStore } from "../engine/beatState";
-import { type CameraTool, useCameraEditStore } from "../engine/cameraEditStore";
-import type { LoadedProject } from "../engine/project";
-import type { CameraDoc, RigDoc } from "../engine/sceneCameraEdit";
+import { type CameraTool, useCameraEditStore } from "../engine/edit/cameraEditStore";
+import type { CameraDoc, RigDoc } from "../engine/edit/sceneCameraEdit";
 import {
   type SegmentEaseChannel,
   setSegmentChannelEase,
   setSegmentSmooth,
-} from "../engine/sceneCameraEdit";
+} from "../engine/edit/sceneCameraEdit";
+import { effectiveKeyMoments, projectBeatGrid, useBeatStore } from "../engine/media/beatState";
+import type { LoadedProject } from "../engine/project";
 import type { SceneDoc, SceneDocCameraPose, SceneDocRigPose } from "../engine/sceneDocSchema";
 import { useCameraDoc } from "./cameraDoc";
 import { clearOtherLaneSelections } from "./laneSelection";

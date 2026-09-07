@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { optionPreviewClip, optionPreviewStill } from "../engine/optionPreviews";
+import { optionPreviewClip, optionPreviewStill } from "../engine/export/optionPreviews";
 import type { TextAnimationSpec, Theme } from "../theme/tokens";
 import { OptionCard } from "./OptionCard";
 import {

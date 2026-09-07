@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { COMPARE_GRIP_CATALOG } from "../../engine/compareCatalog";
+import { COMPARE_GRIP_CATALOG } from "../../engine/content/compareCatalog";
 
 /** Source pins for the comparison drill, which has no DOM test env: the fields that must stay unconditional, the writes that must go through the pure nearest-key helpers, and the pickers that must read their catalogue rather than a hand-typed list. */
 

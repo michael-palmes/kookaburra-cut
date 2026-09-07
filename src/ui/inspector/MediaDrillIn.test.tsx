@@ -64,7 +64,7 @@ const imageStore = vi.hoisted(() => ({
   gizmoMode: "translate" as "translate" | "rotate" | "scale",
 }));
 
-vi.mock("../../engine/imageEditStore", () => {
+vi.mock("../../engine/edit/imageEditStore", () => {
   const useImageEditStore = (
     select: (state: { gizmoMode: "translate" | "rotate" | "scale" }) => unknown,
   ) => select({ gizmoMode: imageStore.gizmoMode });

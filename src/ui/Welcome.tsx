@@ -1,11 +1,15 @@
 import { getVersion } from "@tauri-apps/api/app";
 import { invoke } from "@tauri-apps/api/core";
 import { Fragment, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { convertProjectToTemplate } from "../engine/library";
-import { nameCollision, nameCollisionWarning } from "../engine/nameCollision";
-import { listAllPresets, refreshUserPresets, subscribePresets } from "../engine/presets";
+import { nameCollision, nameCollisionWarning } from "../engine/edit/nameCollision";
 import { listProjectIds } from "../engine/project";
-import { listAllTemplates, refreshUserTemplates, subscribeTemplates } from "../engine/templates";
+import { convertProjectToTemplate } from "../engine/workspace/library";
+import { listAllPresets, refreshUserPresets, subscribePresets } from "../engine/workspace/presets";
+import {
+  listAllTemplates,
+  refreshUserTemplates,
+  subscribeTemplates,
+} from "../engine/workspace/templates";
 import {
   deleteProject,
   duplicateProject,
@@ -14,7 +18,7 @@ import {
   setProjectGroup,
   snapshotUrl,
   type WorkspaceProjectInfo,
-} from "../engine/workspace";
+} from "../engine/workspace/workspace";
 import { ContextMenu, type ContextMenuState } from "./ContextMenu";
 import { ItemDetailsModal } from "./ItemDetailsModal";
 import { LibraryGrid } from "./LibraryGrid";

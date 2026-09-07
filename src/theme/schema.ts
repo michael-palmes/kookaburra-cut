@@ -1,4 +1,4 @@
-import { normalizeLighting, resolveLighting } from "../engine/sceneLighting";
+import { normalizeLighting, resolveLighting } from "../engine/lighting/sceneLighting";
 import type {
   EffectsConfig,
   FontRef,

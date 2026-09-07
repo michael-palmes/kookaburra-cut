@@ -1,7 +1,6 @@
 import { listen } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { type LoadedProject, projectFolderPath, sceneFileStem } from "../engine/project";
-import { resolveSceneWebsite, sceneWebsiteLayout } from "../engine/sceneWebsite";
+import { resolveSceneWebsite, sceneWebsiteLayout } from "../engine/panels/sceneWebsite";
 import {
   hideWebsite,
   openWebsite,
@@ -13,7 +12,8 @@ import {
   type WebsiteFocusEvent,
   type WebsiteViewStateEvent,
   websiteBoundsForFrame,
-} from "../engine/sceneWebsiteNative";
+} from "../engine/panels/sceneWebsiteNative";
+import { type LoadedProject, projectFolderPath, sceneFileStem } from "../engine/project";
 import { usePresentStore } from "./presentStore";
 
 function errorMessage(error: unknown): string {

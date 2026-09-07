@@ -2,7 +2,7 @@
 // Option-preview staleness: hashes every preview-lab fixture against the committed manifest so
 // `kookaburra:run --action option-previews` re-renders only what changed (and skips the app boot
 // entirely when nothing did). The stem→set naming here MIRRORS optionPreviewJobs in
-// src/engine/optionPreviews.ts (the pinned vocabulary); change them together.
+// src/engine/export/optionPreviews.ts (the pinned vocabulary); change them together.
 //
 //   list                 print stale set names, comma-separated (empty = all fresh)
 //   commit <set...>      merge those sets' current source hashes into the manifest
@@ -17,7 +17,7 @@ const MANIFEST = join(ASSETS, "manifest.json");
 
 // Capture constants participate in the hash so changing them re-records everything.
 const enginePin = (() => {
-  const src = readFileSync(join(ROOT, "src", "engine", "optionPreviews.ts"), "utf8");
+  const src = readFileSync(join(ROOT, "src", "engine", "export", "optionPreviews.ts"), "utf8");
   const fps = src.match(/OPTION_CLIP_FPS = (\d+)/)?.[1];
   const width = src.match(/OPTION_PREVIEW_WIDTH = (\d+)/)?.[1];
   if (!fps || !width) throw new Error("option-preview-stale: capture constants not found");

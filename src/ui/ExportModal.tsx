@@ -2,8 +2,8 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { nameCollision, nameCollisionWarning } from "../engine/edit/nameCollision";
 import { type AspectName, aspectLabel, FPS } from "../engine/format";
-import { nameCollision, nameCollisionWarning } from "../engine/nameCollision";
 import type { LoadedProject } from "../engine/project";
 import {
   deleteExportPreset,
@@ -11,7 +11,7 @@ import {
   listExportPresets,
   setOpeningPosterFrame,
   writeExportPreset,
-} from "../engine/workspace";
+} from "../engine/workspace/workspace";
 import { BUNDLED_EXPORT_PRESETS } from "../export/presetRegistry";
 import {
   type EncodeSpec,

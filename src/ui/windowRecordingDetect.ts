@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { MediaMeta } from "../engine/media";
-import { RECORDING_INSETS } from "../engine/sceneVideoWindow";
+import type { MediaMeta } from "../engine/media/media";
+import { RECORDING_INSETS } from "../engine/media/sceneVideoWindow";
 
 /** Editor-side heuristic for the media pick flow: does this source look like a raw macOS window capture (pure-black capture margins in exactly the known widths)? Runs on the cached poster (a clip's first frame, a still's own thumbnail), only ever decides the initial state of an entry's window `recording` flag, and fails to `false` so a pick can never block on it. */
 

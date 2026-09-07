@@ -26,11 +26,18 @@ import {
 import type { EffectsConfig } from "../theme/tokens";
 import { cutoutPixelRect, type FrameLayout, frameLayout } from "../toolkit/frame/frameLayout";
 import { fixedCoverCrop } from "../toolkit/stage/fixedMath";
-import { applyCameraPose, baseCameraPose } from "./cameraTrack";
+import { applyCameraPose, baseCameraPose } from "./camera/cameraTrack";
+import type { DofUnion, ResolvedDof } from "./camera/dof";
+import type { FrameCameraPlan } from "./camera/sceneCamera";
 import { useClockStore } from "./clock";
-import { compareFragmentShader, compareFragmentShaderHdr } from "./compareShader";
-import type { DofUnion, ResolvedDof } from "./dof";
-import { grainSeed } from "./effectParams";
+import { compareFragmentShader, compareFragmentShaderHdr } from "./content/compareShader";
+import {
+  COMPARE_GRIP_ID,
+  COMPARE_MASK_ID,
+  type CompareFrame,
+  hexToSrgb,
+} from "./content/sceneCompare";
+import { grainSeed } from "./effects/effectParams";
 import {
   dofSideScratch,
   drawingBufferSize,
@@ -41,36 +48,7 @@ import {
   renderSideWithDof,
   renderThroughComposer,
   resolveFrameEffects,
-} from "./effects";
-import { getLoadedEnvironment } from "./environments";
-import { isExporting } from "./exportState";
-import { FPS, MSAA_SAMPLES } from "./format";
-import { framesThroughCutout } from "./frameFormat";
-import { comparisonFramePanel, getFramePanels } from "./framePanelRegistry";
-import { applyFrameLighting } from "./lightingAnimation";
-import { applyRelativeLights } from "./lightingState";
-import { panelGradientTexture, panelImageTexture } from "./overlayPanelTexture";
-import type { ResolvedOverlay } from "./overlayPlan";
-import {
-  CUTOUT_MODE_BOX,
-  CUTOUT_MODE_NONE,
-  CUTOUT_MODE_SUPERELLIPSE,
-  overlayFragmentShader,
-  overlayVertexShader,
-} from "./overlayShader";
-import { getPersistentLayers } from "./persistentLayerRegistry";
-import { previewDofOff, previewEnvironmentOff } from "./previewMedia";
-import type { FrameCameraPlan } from "./sceneCamera";
-import { COMPARE_GRIP_ID, COMPARE_MASK_ID, type CompareFrame, hexToSrgb } from "./sceneCompare";
-import type { SceneHostHandle } from "./sceneHostRegistry";
-import { type FrameLightingPlan, lightingSampleForCompareSide } from "./sceneLighting";
-import {
-  applySceneRenderState,
-  type FrameSceneStatePlan,
-  type SceneRenderState,
-  type SharedEnvironmentSnapshot,
-} from "./sceneState";
-import type { Resolved, ResolvedTransition } from "./sceneTimeline";
+} from "./effects/effects";
 import {
   EXT2_MIN_TYPE,
   EXT3_MIN_TYPE,
@@ -87,7 +65,34 @@ import {
   TYPE_ID,
   vertexShader,
   vertexShader300,
-} from "./transitionShader";
+} from "./effects/transitionShader";
+import { isExporting } from "./export/exportState";
+import { FPS, MSAA_SAMPLES } from "./format";
+import { framesThroughCutout } from "./frame/frameFormat";
+import { comparisonFramePanel, getFramePanels } from "./frame/framePanelRegistry";
+import { panelGradientTexture, panelImageTexture } from "./frame/overlayPanelTexture";
+import type { ResolvedOverlay } from "./frame/overlayPlan";
+import {
+  CUTOUT_MODE_BOX,
+  CUTOUT_MODE_NONE,
+  CUTOUT_MODE_SUPERELLIPSE,
+  overlayFragmentShader,
+  overlayVertexShader,
+} from "./frame/overlayShader";
+import { getPersistentLayers } from "./frame/persistentLayerRegistry";
+import { getLoadedEnvironment } from "./lighting/environments";
+import { applyFrameLighting } from "./lighting/lightingAnimation";
+import { applyRelativeLights } from "./lighting/lightingState";
+import { type FrameLightingPlan, lightingSampleForCompareSide } from "./lighting/sceneLighting";
+import { previewDofOff, previewEnvironmentOff } from "./media/previewMedia";
+import {
+  applySceneRenderState,
+  type FrameSceneStatePlan,
+  type SceneRenderState,
+  type SharedEnvironmentSnapshot,
+} from "./sceneState";
+import type { Resolved, ResolvedTransition } from "./sceneTimeline";
+import type { SceneHostHandle } from "./stage/sceneHostRegistry";
 
 /** Renders the active scene(s) for one frame, applying any cross-scene transition; one function called by both preview and export so they cannot drift. Fast path (one scene, no transition): direct `gl.render` to the default framebuffer, byte-identical to v0 (never routed through render targets, which would change the bytes). Transition path (two scenes): each renders to its own `WebGLRenderTarget` (no-fx: sRGB 8-bit, tone-mapped once; fx: HalfFloat linear, un-tone-mapped for the composer), then a fullscreen pass composites them in the display domain. All touched renderer state is snapshotted and restored. See docs/determinism.md. */
 

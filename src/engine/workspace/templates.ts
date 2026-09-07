@@ -1,0 +1,754 @@
+import { fsUrl } from "../media/media";
+import {
+  outgoingSceneTransitions,
+  type ProjectManifest,
+  rememberWorkspaceLibraryPath,
+  WORKSPACE_PROJECT_PREFIX,
+} from "../project";
+import { buildSceneTimeline, timelineTotalMs } from "../sceneTimeline";
+import { createUserCatalogue, type LibraryItemInfo, listUserTemplates } from "./library";
+import { watchLibraryDocuments } from "./libraryDocuments";
+import { type LibraryPreviewPoint, parseLibraryPreviewPoint } from "./libraryPreviewPoint";
+import { ledgerItems, type PreviewLedger, previewContentHash } from "./presets";
+
+/** The template registry. A bundled project is a template iff it ships `projects/<slug>/template.json`, so spikes and preview labs self-exclude with no hand-maintained allowlist. The manifest carries only what cannot be derived: duration, scene count, aspects and the default theme come from the sibling `project.json`, which is the drift class this design exists to kill. Card art is globbed (not imported) so a template shipped before its previews degrades to a swatch instead of failing the build, the theme-preview precedent. Everything here is synchronous, so the picker has no metadata loading state. */
+
+/** Newest manifest schema this build understands (newer files are ignored with a warning). */
+export const TEMPLATE_MANIFEST_VERSION = 1;
+
+/** Committed stills per template, in hover order. */
+export const TEMPLATE_PREVIEW_COUNT = 4;
+
+/** Capture width of a committed still (16:9, so 640x360; the theme-preview size). */
+export const TEMPLATE_PREVIEW_WIDTH = 640;
+
+/** Pinned first in every view, outside the category rail, and the picker's default selection. */
+export const BLANK_TEMPLATE_ID = "blank";
+
+/** The six shipped categories, in rail order. Explainers fold into `app-updates` for v1. */
+export const TEMPLATE_CATEGORIES = [
+  { id: "app-updates", label: "App updates" },
+  { id: "product-launch", label: "Product launch" },
+  { id: "marketing-social", label: "Marketing & social" },
+  { id: "presentations", label: "Presentations" },
+  { id: "finance-crypto", label: "Finance & crypto" },
+  { id: "ai-developer", label: "AI & developer" },
+] as const;
+
+export type TemplateCategoryId = (typeof TEMPLATE_CATEGORIES)[number]["id"];
+
+export const TEMPLATE_PERSONAS = ["marketer", "co-founder", "pm", "developer", "finance"] as const;
+export type TemplatePersona = (typeof TEMPLATE_PERSONAS)[number];
+
+/** Editing effort: `showcase` means impressive, but you will be editing camera keys. */
+export const TEMPLATE_LEVELS = ["starter", "standard", "showcase"] as const;
+export type TemplateLevel = (typeof TEMPLATE_LEVELS)[number];
+
+/** Motion tier: restrained versus outside the box, and the one facet chip in v1. */
+export const TEMPLATE_TIERS = ["safe", "bold"] as const;
+export type TemplateTier = (typeof TEMPLATE_TIERS)[number];
+
+export const TEMPLATE_STATUSES = ["stable", "beta"] as const;
+export type TemplateStatus = (typeof TEMPLATE_STATUSES)[number];
+
+/** Where the folder lives: the bundled tree, an imported pack, or the user's workspace. */
+export const TEMPLATE_SOURCES = ["bundled", "pack", "user"] as const;
+export type TemplateSource = (typeof TEMPLATE_SOURCES)[number];
+
+/** Capability chips, verified against the sidecars by the validation suite so they cannot drift. */
+export const TEMPLATE_USES = [
+  "device",
+  "chart",
+  "overlay",
+  "camera-rig",
+  "layered-screenshot",
+  "video-window",
+  "compare",
+  "objects",
+  "text-motion",
+  "background",
+  "audio",
+  "multi-device",
+] as const;
+export type TemplateUse = (typeof TEMPLATE_USES)[number];
+
+/** Chip copy for the card's `uses` row. */
+export const TEMPLATE_USE_LABELS: Record<TemplateUse, string> = {
+  device: "Device",
+  chart: "Chart",
+  overlay: "Overlay",
+  "camera-rig": "Camera rig",
+  "layered-screenshot": "Layered screenshot",
+  "video-window": "Video window",
+  compare: "Compare",
+  objects: "3D objects",
+  "text-motion": "Text motion",
+  background: "Background",
+  audio: "Soundtrack",
+  "multi-device": "Multi-device",
+};
+
+/** A capture point: a scene index (that scene's middle) or an explicit scene-local time. */
+export type TemplatePreviewFrame = LibraryPreviewPoint;
+
+/** `projects/<slug>/template.json`. The folder name is the id, never restated here, and the file is never copied into a created project (`create_project` copies `scenes/` and `assets/` only). */
+export interface TemplateManifest {
+  version: number;
+  name: string;
+  /** May be empty: a project converted to a template gets its tagline in the details modal. */
+  tagline: string;
+  /** Absent only for `blank`, which pins above the rail instead of living in a category. */
+  category?: TemplateCategoryId;
+  tags: string[];
+  personas: TemplatePersona[];
+  level: TemplateLevel;
+  tier: TemplateTier;
+  storeLegal?: boolean;
+  uses: TemplateUse[];
+  /** Up to 3, shown on the selected card only. */
+  highlights?: string[];
+  preview: { poster: number; frames: TemplatePreviewFrame[] };
+  /** Within-category sort; ties break on name. */
+  order: number;
+  status: TemplateStatus;
+  /** Reserved: only meaningful once packs carry templates. */
+  minAppVersion?: string;
+  /** Absent means bundled; the app stamps `user` on everything it writes into the workspace. */
+  source?: TemplateSource;
+}
+
+/** 03's name for the same shape. */
+export type TemplateDoc = TemplateManifest;
+
+export interface TemplateManifestIssue {
+  /** Dotted field path, empty for the document itself. */
+  path: string;
+  message: string;
+}
+
+export type TemplateManifestResult =
+  | { success: true; data: TemplateManifest }
+  | { success: false; error: { message: string; issues: TemplateManifestIssue[] } };
+
+const KNOWN_FIELDS = new Set([
+  "version",
+  "name",
+  "tagline",
+  "category",
+  "tags",
+  "personas",
+  "level",
+  "tier",
+  "storeLegal",
+  "uses",
+  "highlights",
+  "preview",
+  "order",
+  "status",
+  "minAppVersion",
+  "source",
+]);
+
+const CATEGORY_IDS: readonly string[] = TEMPLATE_CATEGORIES.map((c) => c.id);
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isIndex(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0;
+}
+
+function stringArray(
+  value: unknown,
+  path: string,
+  issues: TemplateManifestIssue[],
+): string[] | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value)) {
+    issues.push({ path, message: "must be an array of strings" });
+    return undefined;
+  }
+  const out: string[] = [];
+  value.forEach((item, i) => {
+    if (typeof item === "string" && item.trim().length > 0) out.push(item);
+    else issues.push({ path: `${path}[${i}]`, message: "must be a non-empty string" });
+  });
+  return out;
+}
+
+function enumArray<T extends string>(
+  value: unknown,
+  allowed: readonly T[],
+  path: string,
+  issues: TemplateManifestIssue[],
+): T[] | undefined {
+  const raw = stringArray(value, path, issues);
+  if (raw === undefined) return undefined;
+  const out: T[] = [];
+  raw.forEach((item, i) => {
+    if ((allowed as readonly string[]).includes(item)) out.push(item as T);
+    else issues.push({ path: `${path}[${i}]`, message: `must be one of ${allowed.join(", ")}` });
+  });
+  return out;
+}
+
+function previewFrames(value: unknown, issues: TemplateManifestIssue[]): TemplatePreviewFrame[] {
+  if (!Array.isArray(value)) {
+    issues.push({ path: "preview.frames", message: "must be an array" });
+    return [];
+  }
+  if (value.length !== TEMPLATE_PREVIEW_COUNT) {
+    issues.push({
+      path: "preview.frames",
+      message: `must hold exactly ${TEMPLATE_PREVIEW_COUNT} capture points`,
+    });
+  }
+  const out: TemplatePreviewFrame[] = [];
+  value.forEach((item, i) => {
+    const parsed = parseLibraryPreviewPoint(item);
+    if (parsed !== null) {
+      out.push(parsed);
+      return;
+    }
+    issues.push({
+      path: `preview.frames[${i}]`,
+      message: "must be a scene index or { scene, atMs }",
+    });
+  });
+  return out;
+}
+
+function validateManifest(raw: unknown): TemplateManifestResult {
+  const issues: TemplateManifestIssue[] = [];
+  if (!isRecord(raw)) {
+    return {
+      success: false,
+      error: { message: "not an object", issues: [{ path: "", message: "not an object" }] },
+    };
+  }
+  for (const key of Object.keys(raw)) {
+    if (!KNOWN_FIELDS.has(key)) issues.push({ path: key, message: "unknown field" });
+  }
+
+  if (typeof raw.version !== "number" || raw.version < 1) {
+    issues.push({ path: "version", message: "must be a number >= 1" });
+  } else if (raw.version > TEMPLATE_MANIFEST_VERSION) {
+    issues.push({
+      path: "version",
+      message: `version ${raw.version} is newer than this Kookaburra Cut understands`,
+    });
+  }
+  if (typeof raw.name !== "string" || raw.name.trim().length === 0) {
+    issues.push({ path: "name", message: "must be a non-empty string" });
+  }
+  if (typeof raw.tagline !== "string") {
+    issues.push({ path: "tagline", message: "must be a string" });
+  }
+  if (raw.category !== undefined && !CATEGORY_IDS.includes(raw.category as string)) {
+    issues.push({ path: "category", message: `must be one of ${CATEGORY_IDS.join(", ")}` });
+  }
+  const tags = stringArray(raw.tags, "tags", issues) ?? [];
+  const personas = enumArray(raw.personas, TEMPLATE_PERSONAS, "personas", issues) ?? [];
+  if (!TEMPLATE_LEVELS.includes(raw.level as TemplateLevel)) {
+    issues.push({ path: "level", message: `must be one of ${TEMPLATE_LEVELS.join(", ")}` });
+  }
+  if (!TEMPLATE_TIERS.includes(raw.tier as TemplateTier)) {
+    issues.push({ path: "tier", message: `must be one of ${TEMPLATE_TIERS.join(", ")}` });
+  }
+  if (raw.storeLegal !== undefined && typeof raw.storeLegal !== "boolean") {
+    issues.push({ path: "storeLegal", message: "must be a boolean" });
+  }
+  const uses = enumArray(raw.uses, TEMPLATE_USES, "uses", issues) ?? [];
+  const highlights = stringArray(raw.highlights, "highlights", issues);
+  if (highlights && highlights.length > 3) {
+    issues.push({ path: "highlights", message: "holds at most 3 entries" });
+  }
+  let preview: TemplateManifest["preview"] = { poster: 0, frames: [] };
+  if (!isRecord(raw.preview)) {
+    issues.push({ path: "preview", message: "must be an object" });
+  } else {
+    if (!isIndex(raw.preview.poster)) {
+      issues.push({ path: "preview.poster", message: "must be a scene index" });
+    }
+    preview = {
+      poster: isIndex(raw.preview.poster) ? raw.preview.poster : 0,
+      frames: previewFrames(raw.preview.frames, issues),
+    };
+  }
+  if (typeof raw.order !== "number" || !Number.isFinite(raw.order)) {
+    issues.push({ path: "order", message: "must be a finite number" });
+  }
+  if (!TEMPLATE_STATUSES.includes(raw.status as TemplateStatus)) {
+    issues.push({ path: "status", message: `must be one of ${TEMPLATE_STATUSES.join(", ")}` });
+  }
+  if (raw.minAppVersion !== undefined && typeof raw.minAppVersion !== "string") {
+    issues.push({ path: "minAppVersion", message: "must be a string" });
+  }
+  if (raw.source !== undefined && !TEMPLATE_SOURCES.includes(raw.source as TemplateSource)) {
+    issues.push({ path: "source", message: `must be one of ${TEMPLATE_SOURCES.join(", ")}` });
+  }
+
+  if (issues.length > 0) {
+    const message = issues.map((i) => (i.path ? `${i.path}: ${i.message}` : i.message)).join("; ");
+    return { success: false, error: { message, issues } };
+  }
+  const manifest: TemplateManifest = {
+    version: raw.version as number,
+    name: raw.name as string,
+    tagline: raw.tagline as string,
+    tags,
+    personas,
+    level: raw.level as TemplateLevel,
+    tier: raw.tier as TemplateTier,
+    uses,
+    preview,
+    order: raw.order as number,
+    status: raw.status as TemplateStatus,
+  };
+  if (raw.category !== undefined) manifest.category = raw.category as TemplateCategoryId;
+  if (raw.storeLegal !== undefined) manifest.storeLegal = raw.storeLegal as boolean;
+  if (highlights) manifest.highlights = highlights;
+  if (raw.minAppVersion !== undefined) manifest.minAppVersion = raw.minAppVersion as string;
+  if (raw.source !== undefined) manifest.source = raw.source as TemplateSource;
+  return { success: true, data: manifest };
+}
+
+/** The manifest validator, shaped like a schema object so call sites read the same either way: `parse` throws with every issue named, `safeParse` returns them. Unknown fields are an issue, not stripped: hand-authoring 30-plus manifests makes a typo the main failure mode, and a silently-dropped `catagory` is exactly what the validation suite exists to catch. */
+export const templateManifestSchema = {
+  parse(raw: unknown, source = "template.json"): TemplateManifest {
+    const result = validateManifest(raw);
+    if (!result.success) throw new Error(`${source}: ${result.error.message}`);
+    return result.data;
+  },
+  safeParse(raw: unknown, _source = "template.json"): TemplateManifestResult {
+    return validateManifest(raw);
+  },
+};
+
+// Vite resolves project globs from the repo root. Manifests are a few hundred bytes each, so eager costs nothing and buys a synchronous registry.
+const templateGlob = import.meta.glob<unknown>("/projects/*/template.json", {
+  eager: true,
+  import: "default",
+});
+const projectGlob = import.meta.glob<ProjectManifest>("/projects/*/project.json", {
+  eager: true,
+  import: "default",
+});
+// Committed card art as fingerprinted URLs; a glob (not explicit imports) so a template shipped before its previews degrades to the swatch placeholder instead of failing the build.
+const previewGlob = import.meta.glob<string>("../../assets/template-previews/*.jpg", {
+  query: "?url",
+  import: "default",
+  eager: true,
+});
+const localPreviewGlob = import.meta.glob<string>("/projects/*/previews/*.{png,jpg}", {
+  query: "?url",
+  import: "default",
+  eager: true,
+});
+const posterGlob = import.meta.glob<string>("/projects/*/poster.{png,jpg}", {
+  query: "?url",
+  import: "default",
+  eager: true,
+});
+
+/** The committed preview URLs for a template, all 4 in hover order, or null. */
+export function bundledTemplatePreviews(templateId: string): (string | null)[] | null {
+  const urls: (string | null)[] = [];
+  for (let i = 1; i <= TEMPLATE_PREVIEW_COUNT; i++) {
+    const url =
+      localPreviewGlob[`/projects/${templateId}/previews/${i}.png`] ??
+      localPreviewGlob[`/projects/${templateId}/previews/${i}.jpg`] ??
+      previewGlob[`../../assets/template-previews/${templateId}-${i}.jpg`] ??
+      posterGlob[`/projects/${templateId}/poster.png`] ??
+      posterGlob[`/projects/${templateId}/poster.jpg`] ??
+      null;
+    urls.push(url);
+  }
+  return urls.some(Boolean) ? urls : null;
+}
+
+// Dev-only staleness, the preset catalogue's ledger one tree over (src/engine/presets.ts owns the hash and the contract); a release build folds both globs away.
+const sidecarGlob: Record<string, unknown> = import.meta.env.DEV
+  ? import.meta.glob<unknown>("/projects/*/scenes/*.json", { eager: true, import: "default" })
+  : {};
+const ledgerGlob: Record<string, PreviewLedger> = import.meta.env.DEV
+  ? import.meta.glob<PreviewLedger>("../../assets/template-previews/*.json", {
+      eager: true,
+      import: "default",
+    })
+  : {};
+
+const staleCache = new Map<string, boolean>();
+
+/** Dev only: this bundled template's committed stills are older than its authored JSON. False in release, for a template with no art yet and for the user's own templates. */
+export function isTemplatePreviewStale(slug: string): boolean {
+  if (!import.meta.env.DEV) return false;
+  const cached = staleCache.get(slug);
+  if (cached !== undefined) return cached;
+  const manifest = templateGlob[`/projects/${slug}/template.json`];
+  const project = projectGlob[`/projects/${slug}/project.json`];
+  if (!manifest || !project || !bundledTemplatePreviews(slug)) return false;
+  const prefix = `/projects/${slug}/`;
+  const docs: [string, unknown][] = [
+    ["template.json", manifest],
+    ["project.json", project],
+  ];
+  for (const [path, doc] of Object.entries(sidecarGlob)) {
+    if (path.startsWith(`${prefix}scenes/`)) docs.push([path.slice(prefix.length), doc]);
+  }
+  const ledger = ledgerItems(ledgerGlob["../../assets/template-previews/ledger.json"]);
+  const stale = ledger[slug] !== previewContentHash(docs);
+  staleCache.set(slug, stale);
+  return stale;
+}
+
+/** One catalogue row: the authored manifest, flattened, plus everything derived from `project.json`. */
+export interface TemplateEntry {
+  /** Catalogue id, and the id `create_project` takes: the folder slug for bundled templates, `ws:<slug>` for the user's own. */
+  id: string;
+  /** The folder name, whichever tree it lives in. */
+  slug: string;
+  /** The project id that opens this template in the editor (`template:` / `ws-template:`). */
+  projectId: string;
+  source: TemplateSource;
+  manifest: TemplateManifest;
+  name: string;
+  tagline: string;
+  category: TemplateCategoryId | null;
+  categoryLabel: string | null;
+  tags: readonly string[];
+  personas: readonly TemplatePersona[];
+  level: TemplateLevel;
+  tier: TemplateTier;
+  storeLegal: boolean;
+  uses: readonly TemplateUse[];
+  highlights: readonly string[];
+  order: number;
+  status: TemplateStatus;
+  sceneCount: number;
+  /** Timeline total, transition overlaps subtracted (the length the project actually exports). */
+  durationMs: number;
+  aspects: readonly string[];
+  primaryAspect: string;
+  themeId: string;
+  /** The 4 committed stills in hover order, or null while the art doesn't exist yet. */
+  previews: (string | null)[] | null;
+  /** Lowercased search index: name, tagline, tags, personas, category label, uses. */
+  haystack: string;
+}
+
+export function templateCategoryLabel(id: TemplateCategoryId): string {
+  return TEMPLATE_CATEGORIES.find((c) => c.id === id)?.label ?? id;
+}
+
+/** Card meta: seconds under a minute, `m:ss` above it. */
+export function formatTemplateDuration(durationMs: number): string {
+  const seconds = Math.max(0, Math.round(durationMs / 1000));
+  if (seconds < 60) return `${seconds}s`;
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+}
+
+function projectDurationMs(project: ProjectManifest): number {
+  const transitions = outgoingSceneTransitions(project);
+  const slots = buildSceneTimeline(
+    project.scenes.map((scene, i) => ({
+      id: scene.file,
+      durationMs: scene.durationMs,
+      transition: transitions[i],
+    })),
+  );
+  return timelineTotalMs(slots);
+}
+
+/** The editor project id for a catalogue id: `blank` → `template:blank`, `ws:mine` → `ws-template:mine`. */
+export function templateProjectId(id: string): string {
+  return id.startsWith(WORKSPACE_PROJECT_PREFIX)
+    ? `ws-template:${id.slice(WORKSPACE_PROJECT_PREFIX.length)}`
+    : `template:${id}`;
+}
+
+/** Everything the native listing already knows, so a user template doesn't re-derive it. */
+export interface TemplateEntryOverrides {
+  sceneCount?: number;
+  durationMs?: number;
+  previews?: (string | null)[] | null;
+}
+
+function toEntry(
+  id: string,
+  manifest: TemplateManifest,
+  project: ProjectManifest,
+  overrides: TemplateEntryOverrides = {},
+): TemplateEntry {
+  const isUser = id.startsWith(WORKSPACE_PROJECT_PREFIX);
+  const slug = isUser ? id.slice(WORKSPACE_PROJECT_PREFIX.length) : id;
+  const category = manifest.category ?? null;
+  const categoryLabel = category ? templateCategoryLabel(category) : null;
+  const aspects = project.formats ?? [];
+  return {
+    id,
+    slug,
+    projectId: templateProjectId(id),
+    source: isUser ? "user" : (manifest.source ?? "bundled"),
+    manifest,
+    name: manifest.name,
+    tagline: manifest.tagline,
+    category,
+    categoryLabel,
+    tags: manifest.tags,
+    personas: manifest.personas,
+    level: manifest.level,
+    tier: manifest.tier,
+    storeLegal: manifest.storeLegal === true,
+    uses: manifest.uses,
+    highlights: manifest.highlights ?? [],
+    order: manifest.order,
+    status: manifest.status,
+    sceneCount: overrides.sceneCount ?? (project.scenes ?? []).length,
+    durationMs: overrides.durationMs ?? projectDurationMs(project),
+    aspects,
+    primaryAspect: aspects[0] ?? "16:9",
+    themeId: project.themeId,
+    previews: overrides.previews !== undefined ? overrides.previews : bundledTemplatePreviews(slug),
+    haystack: [
+      manifest.name,
+      manifest.tagline,
+      ...manifest.tags,
+      ...manifest.personas,
+      categoryLabel ?? "",
+      ...manifest.uses.map((use) => TEMPLATE_USE_LABELS[use]),
+    ]
+      .join(" ")
+      .toLowerCase(),
+  };
+}
+
+function categoryRank(category: TemplateCategoryId | null): number {
+  if (!category) return TEMPLATE_CATEGORIES.length;
+  const i = CATEGORY_IDS.indexOf(category);
+  return i < 0 ? TEMPLATE_CATEGORIES.length : i;
+}
+
+function compareEntries(a: TemplateEntry, b: TemplateEntry): number {
+  const aBlank = a.id === BLANK_TEMPLATE_ID;
+  const bBlank = b.id === BLANK_TEMPLATE_ID;
+  if (aBlank !== bBlank) return aBlank ? -1 : 1;
+  const rank = categoryRank(a.category) - categoryRank(b.category);
+  if (rank !== 0) return rank;
+  const aBeta = a.status === "beta";
+  const bBeta = b.status === "beta";
+  if (aBeta !== bBeta) return aBeta ? 1 : -1;
+  if (a.order !== b.order) return a.order - b.order;
+  return a.name.localeCompare(b.name);
+}
+
+let catalogue: TemplateEntry[] | null = null;
+
+function buildCatalogue(): TemplateEntry[] {
+  const entries: TemplateEntry[] = [];
+  for (const [path, raw] of Object.entries(templateGlob)) {
+    const id = path.split("/")[2];
+    const parsed = templateManifestSchema.safeParse(raw, `${id}/template.json`);
+    if (!parsed.success) {
+      console.warn(`[templates] ${id}/template.json ignored: ${parsed.error.message}`);
+      continue;
+    }
+    const project = projectGlob[`/projects/${id}/project.json`];
+    if (!project) {
+      console.warn(`[templates] ${id} has a template.json but no project.json, ignored`);
+      continue;
+    }
+    entries.push(toEntry(id, parsed.data, project));
+  }
+  return entries.sort(compareEntries);
+}
+
+/** The bundled catalogue in picker order, refreshed by content updates during development. */
+export function listTemplates(): TemplateEntry[] {
+  if (!catalogue) catalogue = buildCatalogue();
+  return catalogue;
+}
+
+// ── The user's own templates ──────────────────────────────────────────────
+
+function toUserEntry(info: LibraryItemInfo): TemplateEntry | null {
+  const id = `${WORKSPACE_PROJECT_PREFIX}${info.slug}`;
+  let manifest: TemplateManifest;
+  let project: ProjectManifest;
+  try {
+    const parsed = templateManifestSchema.safeParse(
+      JSON.parse(info.manifestJson),
+      `${info.slug}/template.json`,
+    );
+    if (!parsed.success) {
+      console.warn(`[templates] ${info.slug}/template.json ignored: ${parsed.error.message}`);
+      return null;
+    }
+    manifest = { ...parsed.data, source: "user" };
+    project = JSON.parse(info.projectJson) as ProjectManifest;
+  } catch (e) {
+    console.warn(`[templates] ${info.slug} ignored:`, e);
+    return null;
+  }
+  // Cache the folder so the asset resolvers can route `ws-template:<slug>` synchronously.
+  rememberWorkspaceLibraryPath(`ws-template:${info.slug}`, info.path);
+  return toEntry(id, manifest, project, {
+    sceneCount: info.sceneCount,
+    durationMs: info.durationMs,
+    previews: userTemplatePreviews(info),
+  });
+}
+
+export function userTemplatePreviews(info: LibraryItemInfo): (string | null)[] | null {
+  const poster = info.posterPath
+    ? `${fsUrl(info.posterPath)}?v=${info.posterModifiedAt ?? 0}`
+    : null;
+  if (!info.previewPaths?.some(Boolean)) return poster ? [poster] : null;
+  return Array.from({ length: 4 }, (_, slot) => {
+    const path = info.previewPaths?.[slot];
+    return path ? `${fsUrl(path)}?v=${info.previewModifiedAt?.[slot] ?? 0}` : poster;
+  });
+}
+
+const userTemplates = createUserCatalogue(listUserTemplates, toUserEntry, "templates");
+
+/** The user's templates as the last refresh saw them; empty until `refreshUserTemplates` has run. */
+export function listUserTemplateEntries(): TemplateEntry[] {
+  return userTemplates.entries();
+}
+
+/** Re-read `~/Kookaburra Cut/templates/` and notify subscribers; call after any convert, edit or delete. */
+export function refreshUserTemplates(): Promise<TemplateEntry[]> {
+  return userTemplates.refresh();
+}
+
+/** Subscribe to workspace refreshes and bundled document updates. */
+export function subscribeTemplates(listener: () => void): () => void {
+  bundledListeners.add(listener);
+  const unsubscribe = userTemplates.subscribe(listener);
+  return () => {
+    bundledListeners.delete(listener);
+    unsubscribe();
+  };
+}
+
+let merged: { version: number; entries: TemplateEntry[] } | null = null;
+const bundledListeners = new Set<() => void>();
+const editListeners = new Set<(projectId: string) => void>();
+
+export function subscribeTemplateEdits(listener: (projectId: string) => void): () => void {
+  editListeners.add(listener);
+  return () => {
+    editListeners.delete(listener);
+  };
+}
+
+function notifyTemplateChange(): void {
+  catalogue = null;
+  merged = null;
+  staleCache.clear();
+  for (const listener of bundledListeners) listener();
+}
+
+export function updateBundledTemplateManifest(projectId: string, manifest: unknown): void {
+  if (!projectId.startsWith("template:") || !templateManifestSchema.safeParse(manifest).success)
+    return;
+  templateGlob[`/projects/${projectId.slice(9)}/template.json`] = manifest;
+  notifyTemplateChange();
+}
+
+export function updateBundledTemplatePreview(
+  projectId: string,
+  slot: number,
+  path: string,
+  mtimeMs: number | null,
+): void {
+  if (!projectId.startsWith("template:")) return;
+  localPreviewGlob[`/projects/${projectId.slice(9)}/previews/${slot + 1}.png`] =
+    `${fsUrl(path)}?v=${mtimeMs ?? 0}`;
+  notifyTemplateChange();
+}
+
+watchLibraryDocuments(
+  import.meta.hot,
+  "projects",
+  {
+    "template.json": templateGlob,
+    "project.json": projectGlob,
+    scenes: sidecarGlob,
+    previews: localPreviewGlob,
+    "poster.png": posterGlob,
+    "poster.jpg": posterGlob,
+    assets: {},
+  },
+  (path) => {
+    if (!path.includes("/previews/") && !/\/poster\.(png|jpg)$/.test(path))
+      for (const listener of editListeners) listener(`template:${path.split("/")[2]}`);
+    notifyTemplateChange();
+  },
+);
+
+/** Bundled and user templates in one picker order. Synchronous by design: the bundled half is there on the first frame, the user half appears when its listing lands. The result is memoised per refresh, so it is safe as a `useSyncExternalStore` snapshot. */
+export function listAllTemplates(): TemplateEntry[] {
+  const version = userTemplates.version();
+  if (!merged || merged.version !== version) {
+    merged = {
+      version,
+      entries: [...listTemplates(), ...userTemplates.entries()].sort(compareEntries),
+    };
+  }
+  return merged.entries;
+}
+
+export function findTemplate(id: string): TemplateEntry | undefined {
+  return listAllTemplates().find((entry) => entry.id === id);
+}
+
+export interface TemplateFilter {
+  /** Free text over the haystack; whitespace-separated terms all have to match. */
+  query?: string;
+  /** null/absent is the All row. */
+  category?: TemplateCategoryId | null;
+  /** null/absent is both tiers. */
+  tier?: TemplateTier | null;
+  /** null/absent is every source (the library's App templates / My templates split). */
+  source?: TemplateSource | null;
+}
+
+/** The picker's filter, pure so it is testable without rendering. Blank ignores the category filter: it is pinned first in every view rather than living in a category, so a rail row must never hide it. */
+export function searchTemplates(
+  entries: readonly TemplateEntry[],
+  filter: TemplateFilter = {},
+): TemplateEntry[] {
+  const terms = (filter.query ?? "").trim().toLowerCase().split(/\s+/).filter(Boolean);
+  return entries.filter((entry) => {
+    if (filter.source && entry.source !== filter.source) return false;
+    if (filter.tier && entry.tier !== filter.tier) return false;
+    if (filter.category && entry.category !== filter.category && entry.id !== BLANK_TEMPLATE_ID) {
+      return false;
+    }
+    return terms.every((term) => entry.haystack.includes(term));
+  });
+}
+
+export interface TemplateCounts {
+  all: number;
+  byCategory: Record<TemplateCategoryId, number>;
+}
+
+/** Rail counts, live against the current search and facets. Blank counts in All only, since it belongs to no category. */
+export function templateCategoryCounts(
+  entries: readonly TemplateEntry[],
+  filter: Omit<TemplateFilter, "category"> = {},
+): TemplateCounts {
+  const byCategory = Object.fromEntries(TEMPLATE_CATEGORIES.map((c) => [c.id, 0])) as Record<
+    TemplateCategoryId,
+    number
+  >;
+  const matched = searchTemplates(entries, { ...filter, category: null });
+  for (const entry of matched) {
+    if (entry.category) byCategory[entry.category] += 1;
+  }
+  return { all: matched.length, byCategory };
+}

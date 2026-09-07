@@ -1,8 +1,8 @@
 import { createElement, isValidElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { COMPARE_GRIP_CATALOG, COMPARE_MASK_CATALOG } from "../../engine/compareCatalog";
-import { COMPARE_PRESETS } from "../../engine/comparePresets";
+import { COMPARE_GRIP_CATALOG, COMPARE_MASK_CATALOG } from "../../engine/content/compareCatalog";
+import { COMPARE_PRESETS } from "../../engine/content/comparePresets";
 import {
   COMPARE_GRIP_GLYPHS,
   COMPARE_MASK_GLYPHS,

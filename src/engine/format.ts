@@ -26,7 +26,7 @@ export const MSAA_SAMPLES = 4;
 export const SHADOW_MAP_TYPE = VSMShadowMap;
 
 /** Display transform (v9 · PR 8), re-exported from its owning module: ACES at 1.0 was react-three-fiber's implicit default until v9 and is now the explicit contract. CHANGING THE DEFAULT REBASES EVERY PROJECT. */
-export { DEFAULT_EXPOSURE, DEFAULT_TONE_MAPPING } from "./renderSettings";
+export { DEFAULT_EXPOSURE, DEFAULT_TONE_MAPPING } from "./lighting/renderSettings";
 
 // Scene-lighting caps (v9), re-exported from their owning module so the export-contract constants stay discoverable beside MSAA_SAMPLES (they live in sceneLighting.ts because theme/schema.ts imports it, and format.ts's store import would cycle).
 export {
@@ -34,7 +34,7 @@ export {
   MAX_SCENE_LIGHTS,
   MAX_SHADOW_CASTERS,
   SUN_ANGULAR_REFERENCE,
-} from "./sceneLighting";
+} from "./lighting/sceneLighting";
 
 export interface FormatSpec {
   name: AspectName;

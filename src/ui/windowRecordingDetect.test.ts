@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { RECORDING_INSETS } from "../engine/sceneVideoWindow";
+import { RECORDING_INSETS } from "../engine/media/sceneVideoWindow";
 import { detectWindowRecordingPixels } from "./windowRecordingDetect";
 
 /** Synthesises a poster: black everywhere, a bright window inside the given insets (poster px). */

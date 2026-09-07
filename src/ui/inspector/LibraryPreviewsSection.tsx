@@ -2,14 +2,22 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useClockStore } from "../../engine/clock";
-import { isExporting, subscribeExporting } from "../../engine/exportState";
+import { isExporting, subscribeExporting } from "../../engine/export/exportState";
 import type { AspectName } from "../../engine/format";
-import { fsUrl } from "../../engine/media";
-import { canQueuePresetPoster, queuePresetPoster } from "../../engine/presetPosters";
-import { listAllPresets, refreshUserPresets, subscribePresets } from "../../engine/presets";
+import { fsUrl } from "../../engine/media/media";
 import { type LoadedProject, nativeProjectSlug } from "../../engine/project";
 import { activeSceneIndex } from "../../engine/sceneTimeline";
-import { listAllTemplates, refreshUserTemplates, subscribeTemplates } from "../../engine/templates";
+import { canQueuePresetPoster, queuePresetPoster } from "../../engine/workspace/presetPosters";
+import {
+  listAllPresets,
+  refreshUserPresets,
+  subscribePresets,
+} from "../../engine/workspace/presets";
+import {
+  listAllTemplates,
+  refreshUserTemplates,
+  subscribeTemplates,
+} from "../../engine/workspace/templates";
 import { useEditorStore } from "../../store/editorStore";
 import { PresetCard } from "../PresetCard";
 import { settleContentEdits } from "../settleContentEdits";

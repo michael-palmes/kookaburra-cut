@@ -3,11 +3,11 @@ import {
   type LayeredScreenshotAnimationDoc,
   nearestKey,
   setKeyPose,
-} from "../engine/layeredScreenshotAnimationEdit";
+} from "../engine/edit/layeredScreenshotAnimationEdit";
 import {
   type LayeredScreenshotTool,
   useLayeredScreenshotEditStore,
-} from "../engine/layeredScreenshotEditStore";
+} from "../engine/edit/layeredScreenshotEditStore";
 import type { LoadedProject } from "../engine/project";
 import type { LayeredScreenshotPose, SceneDoc } from "../engine/sceneDocSchema";
 import { blockWithAnimation } from "./LayeredScreenshotAnimationLane";

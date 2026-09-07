@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
-import type { ComparePreset } from "../../engine/comparePresets";
-import type { CompareGripStyle, CompareMaskType } from "../../engine/sceneCompare";
+import type { ComparePreset } from "../../engine/content/comparePresets";
+import type { CompareGripStyle, CompareMaskType } from "../../engine/content/sceneCompare";
 
 /** Comparison-drill glyphs (docs/design.md section 10): hand-authored line icons on a 16px grid, 1.5px stroke, `currentColor`, `aria-hidden`, drawn from what each choice DOES (a split rect, a window, a sweep, a ghosted overlap) so the mask row, the motion chips, the chrome toggles and the grip picker wear one face. The maps are pinned complete against the mask, preset and grip catalogues in tests; the engine keeps owning the data, this file only paints it. */
 

@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
+import type { SceneCameraTrack } from "../engine/camera/sceneCamera";
+import { normalizeSceneRig, type SceneRigTrack, sampleSceneRig } from "../engine/camera/sceneRig";
 import { DEFAULT_EASE, ease } from "../engine/ease";
-import type { SceneCameraTrack } from "../engine/sceneCamera";
 import type { SceneDocCameraKey, SceneDocCameraPose } from "../engine/sceneDocSchema";
-import { normalizeSceneRig, type SceneRigTrack, sampleSceneRig } from "../engine/sceneRig";
 import { sampleLoopedSceneCamera, sampleLoopedSceneRig } from "./cameraLoop";
 
 const pose = (azimuthDeg: number): SceneDocCameraPose => ({

@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { fsUrl } from "../../engine/media";
+import { fsUrl } from "../../engine/media/media";
 import avocadoDoc from "./builtin/avocado.json";
 import bitcoinCoinDoc from "./builtin/bitcoin-coin.json";
 import candlestickDoc from "./builtin/candlestick.json";

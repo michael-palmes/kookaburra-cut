@@ -6,7 +6,7 @@ import type { ReactElement } from "react";
 import { useEffect, useState } from "react";
 import type { AspectName } from "../engine/format";
 import { isWorkspaceProjectId, type LoadedProject, nativeProjectSlug } from "../engine/project";
-import { getSettings, type PresentOptions, setPresentOptions } from "../engine/workspace";
+import { getSettings, type PresentOptions, setPresentOptions } from "../engine/workspace/workspace";
 import {
   DISPLAY_ICON,
   FULL_QUALITY_ICON,

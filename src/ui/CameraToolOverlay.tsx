@@ -1,19 +1,19 @@
 import { useRef, useState } from "react";
-import { type CameraTool, useCameraEditStore } from "../engine/cameraEditStore";
+import { defaultOrbitPose } from "../engine/camera/sceneCamera";
+import { defaultRigPose } from "../engine/camera/sceneRig";
 import { useClockStore } from "../engine/clock";
-import { CAMERA } from "../engine/format";
-import type { LoadedProject } from "../engine/project";
-import { defaultOrbitPose } from "../engine/sceneCamera";
-import type { CameraDoc, RigDoc } from "../engine/sceneCameraEdit";
+import { type CameraTool, useCameraEditStore } from "../engine/edit/cameraEditStore";
+import type { CameraDoc, RigDoc } from "../engine/edit/sceneCameraEdit";
 import {
   nearestKey,
   panCentreSnap,
   playheadDriftTarget,
   setKeyPose,
-} from "../engine/sceneCameraEdit";
+} from "../engine/edit/sceneCameraEdit";
+import { forwardRigPose, lookRigPose, moveRigPose, tiltRigPose } from "../engine/edit/sceneRigEdit";
+import { CAMERA } from "../engine/format";
+import type { LoadedProject } from "../engine/project";
 import type { SceneDoc, SceneDocCameraPose, SceneDocRigPose } from "../engine/sceneDocSchema";
-import { defaultRigPose } from "../engine/sceneRig";
-import { forwardRigPose, lookRigPose, moveRigPose, tiltRigPose } from "../engine/sceneRigEdit";
 import { toolMatchesMode } from "./CameraPill";
 import { ContextMenu, type ContextMenuState } from "./ContextMenu";
 import { useCameraDoc } from "./cameraDoc";

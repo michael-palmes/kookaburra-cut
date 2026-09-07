@@ -1,4 +1,4 @@
-import { revealInFinder } from "../../engine/packs";
+import { revealInFinder } from "../../engine/workspace/packs";
 import type { TerminalReviewRow } from "../terminalReview";
 import { type ImportOutcome, type ItemOutcome, KIND_LABELS } from "../types";
 import type { WebsiteReviewRow } from "../websiteReview";

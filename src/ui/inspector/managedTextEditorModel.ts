@@ -1,4 +1,3 @@
-import { frameTextAlign } from "../../engine/framePanelLayout";
 import {
   clearTemplateManagedTextLayout,
   DEFAULT_MANAGED_TEXT_GROUP_KEY,
@@ -13,7 +12,8 @@ import {
   resolveTemplateManagedFrameIcon,
   type VirtualManagedTextOptions,
   type VirtualManagedTextRegistration,
-} from "../../engine/managedText";
+} from "../../engine/content/managedText";
+import { frameTextAlign } from "../../engine/frame/framePanelLayout";
 import type {
   SceneDoc,
   SceneManagedTextGroup,

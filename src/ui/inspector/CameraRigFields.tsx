@@ -1,17 +1,17 @@
-import { checkCameraBounds } from "../../engine/cameraBounds";
-import type { CameraPose } from "../../engine/cameraTrack";
-import { frameContentPose, stagedContentBounds } from "../../engine/rigFraming";
-import type { RigDoc } from "../../engine/sceneCameraEdit";
-import { setKeyPose } from "../../engine/sceneCameraEdit";
-import type { SceneDoc, SceneDocRigAim, SceneDocRigPose } from "../../engine/sceneDocSchema";
-import { resolveSceneDocMedia } from "../../engine/sceneMedia";
+import { checkCameraBounds } from "../../engine/camera/cameraBounds";
+import type { CameraPose } from "../../engine/camera/cameraTrack";
+import { frameContentPose, stagedContentBounds } from "../../engine/camera/rigFraming";
 import {
   LAYERED_SCREENSHOT_AIM_ID,
   RIG_FOV_MAX,
   RIG_FOV_MIN,
   VIDEO_WINDOW_AIM_ID,
-} from "../../engine/sceneRig";
-import { bakeRigBinding, brokenRigBindings } from "../../engine/sceneRigConvert";
+} from "../../engine/camera/sceneRig";
+import { bakeRigBinding, brokenRigBindings } from "../../engine/camera/sceneRigConvert";
+import type { RigDoc } from "../../engine/edit/sceneCameraEdit";
+import { setKeyPose } from "../../engine/edit/sceneCameraEdit";
+import { resolveSceneDocMedia } from "../../engine/media/sceneMedia";
+import type { SceneDoc, SceneDocRigAim, SceneDocRigPose } from "../../engine/sceneDocSchema";
 import { assetBasename } from "../inspectorOptions";
 import { DofFields } from "./DofFields";
 import { NumberField, SegmentedRow } from "./rows";
