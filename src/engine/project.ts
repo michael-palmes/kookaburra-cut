@@ -1011,7 +1011,7 @@ export async function loadProject(
     ),
   );
 
-  // Comparison scenes: derive side B's doc and resolve its theme; undefined everywhere else so projects without a compare block never touch the compare path. Transitions adjacent to a comparison blend side A only (the v1 interop rule, surfaced in the transition picker).
+  // Comparison scenes: derive side B's doc and resolve its theme; undefined everywhere else so projects without a compare block never touch the compare path.
   const compareBDocs = sceneDocs.map((doc) => deriveCompareBDoc(doc) ?? undefined);
   const compareBThemes = await Promise.all(
     compareBDocs.map((bDoc, i) =>

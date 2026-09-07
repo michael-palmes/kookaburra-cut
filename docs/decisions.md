@@ -216,7 +216,7 @@ The full contract and its failure catalogue are in
 | Comparison blending | Each side renders fully in its own theme/lighting/background and only finished pixels mix under the mask, in the display domain (the cross-theme transition rule); chrome colours are theme tokens | Perceptual masking, and per-side looks stay self-consistent |
 | Divider semantics | `value` is the mask line's position along the sweep axis with the before on the origin side; the divider track rides the shared KeyedTrack model (eased segments, hold outside) | The slider's spatial mapping, and one keyed-track vocabulary everywhere |
 | Comparison display transform | Both sides share the project's tone mapping/exposure (v1) | The one renderer-level knob; per-side curves are deliberate-rebase territory |
-| Comparison transitions | A transition adjacent to a comparison blends its BEFORE side only during the window, said in the picker; hard cuts show the full comparison | A nested composite costs another pooled target; measured need first |
+| Comparison transitions (superseded 2026-08-19) | v1 blended the BEFORE side only during the window. Retired: each comparing scene pre-composites both sides under its divider into a pooled target and the transition blends the finished comparison (`sceneCompare.ts` resolves both sides per frame, `compositor.ts` blends the composite) | The v1 rule saved a pooled target; a divider standing down through every transition read as a defect once comparisons shipped |
 
 ## Chrome, identity & voice
 
