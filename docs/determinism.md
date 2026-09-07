@@ -1245,7 +1245,7 @@ rolling-gate project (`showcase-tour`):
 | `showcase-tour` (rolling gate) | `13b5994d…` | stale | stale | stale | stale | stale (pre-trim) | — | — | — |
 | `transition-spike` (transition gate) | `fb727cac…` | `a6383707…` | — | — | — | — | — | — | — |
 | `transition-bg-spike` (animated-background transition gate) | `2df76336…` | — | — | — | — | — | — | — | — |
-| `compare-spike` (before/after comparison gate) | stale | stale | stale | stale | — | — | — | — | — |
+| `compare-spike` (before/after comparison gate) | `f425a9a8…` | stale | stale | stale | — | — | — | — | — |
 | `image-flip-spike` (image-orientation gate, eyeball it) | stale | — | — | — | — | — | — | — | — |
 | `ws:layered-screenshot-spike` (LS gate, machine-local) | `4ec7b223…` | — | — | — | — | — | — | — | — |
 | `ws:video-window-spike` (VideoWindow gate, machine-local) | `6dfe68a6…` | — | — | — | — | — | — | — | — |
@@ -1256,6 +1256,19 @@ rolling-gate project (`showcase-tour`):
 | `ws:chart-spike` (chart gate, machine-local) | `d58ff1f2…` | stale | stale | stale | — | — | — | — | — |
 | `ws:duplicate-spike` (scene-id heal gate, machine-local) | stale | — | — | — | — | — | — | — | — |
 | `ws:overlay-spike` (overlay gate, machine-local) | stale | — | — | — | — | — | — | — | — |
+
+> **2026-09-07 (comparison preload plan, a fresh record):** `compare-spike`
+> 16:9 records `f425a9a8…`, Verify ×2, its first leg since the analytic-shadow
+> rebase left it stale; eyeballed frames of the sweep and split scenes show
+> side B in its own theme with its own typography, splitting cleanly at the
+> divider. The change folds comparison side-B themes into the font preload and
+> side-B mirror bakes into the environment plan at all four preload sites
+> (`collectMirrorRequestsWithCompare`), commits each in-app Verify leg's aspect
+> to the store before it hashes (`commitFormat`), and opens the export cleanup
+> scope before the preamble. `showcase-tour` stayed EQUAL at `13b5994d…` and
+> `ws:launch-2026` EQUAL at `eb89826c…` through it (neither stages a
+> comparison), and the pack round trip on `ws:launch-2026` matched in 16:9,
+> 9:16 and 1:1. The other compare-spike aspects stay stale.
 
 > **2026-08-25 (analytic device shadows: a DELIBERATE rebase):** the three
 > presentation shadow modes moved off their fixed-size textures and the flat
