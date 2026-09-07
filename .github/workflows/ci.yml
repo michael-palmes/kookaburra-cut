@@ -97,3 +97,8 @@ jobs:
       - name: cargo clippy
         working-directory: src-tauri
         run: cargo clippy --locked --all-targets -- -D warnings
+
+      # Every native test is hermetic (scratch dirs under the temp root, no ffmpeg, no workspace); the wire-shape tests in pack/ are what catch a serde drift before the frontend does.
+      - name: cargo test
+        working-directory: src-tauri
+        run: cargo test --locked --no-fail-fast
