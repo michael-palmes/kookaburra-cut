@@ -4,6 +4,37 @@ All notable changes to Kookaburra Cut are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.16.0] - 2026-09-07
+
+### Added
+
+- Website scenes with interactive pages in the editor and Present, origin
+  consent, and saved captures for deterministic export.
+- Terminal scenes with live sessions in the editor and Present, styled
+  snapshots for export, and commands that stay pre-typed until run.
+- Editable templates, scene presets and themes, with a standalone theme editor.
+- Library preview capture for templates and presets, including saved scene,
+  time, aspect and cover selection, preserved through duplication and packs.
+- Copy scenes from another project, including their documents and assets.
+- A soundtrack mix drill with volume, start offset, fades and fade-out shapes.
+- Screenshot stack placement controls.
+
+### Changed
+
+- Rebuild Add a scene with search, categories, app and personal presets, and
+  insertion placement in one dialog.
+- Align theme browsing with the scene library and show effective styles and
+  motion in the theme editor.
+- Open device screen images in the media editor as freeze-frame clips.
+- Allow typed stage and overlay sizes beyond the slider range.
+- Refresh bundled preset layouts, library images and dependencies.
+- Remove Studio White's default floor and classify it as lighting-only.
+
+### Fixed
+
+- Expose embedded scene labels in the text inspector.
+- Restore the project picker tab after closing a project.
+
 ## [0.15.1] - 2026-08-26
 
 ### Fixed
