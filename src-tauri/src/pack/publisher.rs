@@ -6,7 +6,7 @@
 use super::key;
 use super::model::PackPublisher;
 use crate::workspace::{
-    load_settings, save_settings, KnownPublisher, PublisherProfile, SettingsState,
+    load_settings, update_settings, KnownPublisher, PublisherProfile, SettingsState,
 };
 use serde::Serialize;
 use std::collections::HashMap;
@@ -124,14 +124,10 @@ pub fn remember_publisher(
     publisher: &PackPublisher,
     pack_name: &str,
 ) -> Result<(), String> {
-    let mut settings = load_settings(app, state)?;
-    record_import(
-        &mut settings.known_publishers,
-        publisher,
-        pack_name,
-        &now_rfc3339(),
-    );
-    save_settings(app, state, settings)
+    let now = now_rfc3339();
+    update_settings(app, state, |settings| {
+        record_import(&mut settings.known_publishers, publisher, pack_name, &now);
+    })
 }
 
 // ── The profile ─────────────────────────────────────────────────────
@@ -256,9 +252,7 @@ pub fn set_publisher_profile(
     profile: PublisherProfile,
 ) -> Result<PublisherProfileView, String> {
     let clean = validate_profile(&profile)?;
-    let mut settings = load_settings(&app, &state)?;
-    settings.publisher = Some(clean);
-    save_settings(&app, &state, settings)?;
+    update_settings(&app, &state, |settings| settings.publisher = Some(clean))?;
     profile_view(&app, &state)
 }
 
@@ -304,11 +298,9 @@ pub fn forget_publisher(
     state: State<'_, SettingsState>,
     key_id: String,
 ) -> Result<(), String> {
-    let mut settings = load_settings(&app, &state)?;
-    if settings.known_publishers.remove(&key_id).is_none() {
-        return Ok(());
-    }
-    save_settings(&app, &state, settings)
+    update_settings(&app, &state, |settings| {
+        settings.known_publishers.remove(&key_id);
+    })
 }
 
 // ── macOS identity, best effort ─────────────────────────────────────

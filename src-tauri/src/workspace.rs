@@ -198,7 +198,15 @@ fn settings_path(app: &AppHandle) -> Result<PathBuf, String> {
         .join("settings.json"))
 }
 
-/// Load settings once into the managed cache (missing/corrupt file → defaults; a broken settings file re-offers first-run rather than wedging boot).
+/// The file's settings, or defaults when it is missing or unreadable (a broken settings file re-offers first-run rather than wedging boot; our own writer is atomic, so only an outside edit can produce one).
+fn read_settings_file(path: &Path) -> AppSettings {
+    match std::fs::read_to_string(path) {
+        Ok(text) => serde_json::from_str(&text).unwrap_or_default(),
+        Err(_) => AppSettings::default(),
+    }
+}
+
+/// Load settings once into the managed cache.
 pub(crate) fn load_settings(
     app: &AppHandle,
     state: &State<'_, SettingsState>,
@@ -207,28 +215,35 @@ pub(crate) fn load_settings(
     if let Some(settings) = guard.as_ref() {
         return Ok(settings.clone());
     }
-    let settings = match std::fs::read_to_string(settings_path(app)?) {
-        Ok(text) => serde_json::from_str(&text).unwrap_or_default(),
-        Err(_) => AppSettings::default(),
-    };
+    let settings = read_settings_file(&settings_path(app)?);
     *guard = Some(settings.clone());
     Ok(settings)
 }
 
-pub(crate) fn save_settings(
+/// Read, edit and write the settings under ONE lock: a preference another command changes meanwhile is never overwritten, and the tmp + rename write means a crash mid-save leaves the previous file whole. Every settings writer goes through here.
+pub(crate) fn update_settings<T>(
     app: &AppHandle,
     state: &State<'_, SettingsState>,
-    settings: AppSettings,
-) -> Result<(), String> {
-    let path = settings_path(app)?;
-    if let Some(dir) = path.parent() {
-        std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
-    }
+    edit: impl FnOnce(&mut AppSettings) -> T,
+) -> Result<T, String> {
+    update_settings_at(&settings_path(app)?, &state.0, edit)
+}
+
+fn update_settings_at<T>(
+    path: &Path,
+    cache: &Mutex<Option<AppSettings>>,
+    edit: impl FnOnce(&mut AppSettings) -> T,
+) -> Result<T, String> {
+    let mut guard = cache.lock().map_err(|_| "settings state poisoned")?;
+    let mut settings = match guard.as_ref() {
+        Some(settings) => settings.clone(),
+        None => read_settings_file(path),
+    };
+    let out = edit(&mut settings);
     let text = serde_json::to_string_pretty(&settings).map_err(|e| e.to_string())?;
-    std::fs::write(&path, text).map_err(|e| e.to_string())?;
-    let mut guard = state.0.lock().map_err(|_| "settings state poisoned")?;
+    crate::scene_doc::atomic_write_text(path, &text)?;
     *guard = Some(settings);
-    Ok(())
+    Ok(out)
 }
 
 /// Recreate the workspace skeleton idempotently; called by every command that touches the workspace, so a deleted subfolder heals on the next action.
@@ -862,12 +877,12 @@ pub fn move_workspace(
     perform_move(&from, &to)?;
 
     ensure_layout(&to)?;
-    // Re-read rather than reusing the clone above: a cross-volume copy runs for minutes, and saving a stale snapshot
-    // would silently revert anything the main window persisted meanwhile (last opened, a trust grant, consent).
-    let mut settings = load_settings(&app, &state)?;
-    settings.workspace_root = Some(to.to_string_lossy().into_owned());
-    retarget_trust(&mut settings, &from, &to);
-    save_settings(&app, &state, settings)?;
+    // Edited under the lock rather than from the clone above: a cross-volume copy runs for minutes, and saving a stale
+    // snapshot would silently revert anything the main window persisted meanwhile (last opened, a trust grant, consent).
+    update_settings(&app, &state, |settings| {
+        settings.workspace_root = Some(to.to_string_lossy().into_owned());
+        retarget_trust(settings, &from, &to);
+    })?;
     let _ = app.asset_protocol_scope().allow_directory(&to, true);
     let _ = app.emit("kookaburra://workspace-moved", to.to_string_lossy());
     Ok(to.to_string_lossy().into_owned())
@@ -886,9 +901,9 @@ pub fn init_workspace(
     };
     let root = root_under(parent);
     ensure_layout(&root)?;
-    let mut settings = load_settings(&app, &state)?;
-    settings.workspace_root = Some(root.to_string_lossy().into_owned());
-    save_settings(&app, &state, settings)?;
+    update_settings(&app, &state, |settings| {
+        settings.workspace_root = Some(root.to_string_lossy().into_owned());
+    })?;
     Ok(root.to_string_lossy().into_owned())
 }
 
@@ -939,13 +954,19 @@ pub fn set_last_project(
     state: State<'_, SettingsState>,
     project_id: Option<String>,
 ) -> Result<(), String> {
-    let mut settings = load_settings(&app, &state)?;
-    if let Some(slug) = project_id.as_deref().and_then(|id| id.strip_prefix("ws:")) {
+    let opened = project_id
+        .as_deref()
+        .and_then(|id| id.strip_prefix("ws:"))
+        .map(str::to_owned);
+    if let Some(slug) = &opened {
         validate_slug(slug)?;
-        settings.last_opened.insert(slug.to_owned(), now_unix_ms());
     }
-    settings.last_project = project_id;
-    save_settings(&app, &state, settings)
+    update_settings(&app, &state, |settings| {
+        if let Some(slug) = opened {
+            settings.last_opened.insert(slug, now_unix_ms());
+        }
+        settings.last_project = project_id;
+    })
 }
 
 /// Whether hardware video (VideoToolbox decode/encode on non-gated paths) is enabled; the everyday default is on.
@@ -961,9 +982,9 @@ pub fn set_hardware_video(
     state: State<'_, SettingsState>,
     enabled: bool,
 ) -> Result<(), String> {
-    let mut settings = load_settings(&app, &state)?;
-    settings.disable_hardware_video = !enabled;
-    save_settings(&app, &state, settings)?;
+    update_settings(&app, &state, |settings| {
+        settings.disable_hardware_video = !enabled
+    })?;
     let _ = app.emit("kookaburra://hardware-video-changed", enabled);
     Ok(())
 }
@@ -975,10 +996,9 @@ pub fn set_export_to_downloads(
     state: State<'_, SettingsState>,
     enabled: bool,
 ) -> Result<(), String> {
-    let mut settings = load_settings(&app, &state)?;
-    settings.keep_exports_in_project = !enabled;
-    save_settings(&app, &state, settings)?;
-    Ok(())
+    update_settings(&app, &state, |settings| {
+        settings.keep_exports_in_project = !enabled
+    })
 }
 
 /// Set the playback slowdown-badge sensitivity and tell the main window so the detector follows live.
@@ -991,9 +1011,9 @@ pub fn set_lag_warning(
     if !["off", "sustained", "strict"].contains(&mode.as_str()) {
         return Err(format!("unknown lag-warning mode: {mode}"));
     }
-    let mut settings = load_settings(&app, &state)?;
-    settings.lag_warning = Some(mode.clone());
-    save_settings(&app, &state, settings)?;
+    update_settings(&app, &state, |settings| {
+        settings.lag_warning = Some(mode.clone())
+    })?;
     let _ = app.emit("kookaburra://lag-warning-changed", mode);
     Ok(())
 }
@@ -1160,17 +1180,13 @@ pub fn delete_project(
         return Err(format!("no project named \"{slug}\""));
     }
     trash_path(&dir).map_err(|e| format!("couldn't move the project to the Trash: {e}"))?;
-    let mut settings = load_settings(&app, &state)?;
     // The trust grant dies with the project, so a later same-slug project starts untrusted.
-    let mut changed = settings.trusted_projects.remove(&slug).is_some();
-    if settings.last_project.as_deref() == Some(&format!("ws:{slug}")) {
-        settings.last_project = None;
-        changed = true;
-    }
-    if changed {
-        save_settings(&app, &state, settings)?;
-    }
-    Ok(())
+    update_settings(&app, &state, |settings| {
+        settings.trusted_projects.remove(&slug);
+        if settings.last_project.as_deref() == Some(&format!("ws:{slug}")) {
+            settings.last_project = None;
+        }
+    })
 }
 
 /// Remember the export modal's selection, written on each successful export, restored per project with the global pick as fallback.
@@ -1181,12 +1197,12 @@ pub fn set_last_export_preset(
     project_id: String,
     preset_id: String,
 ) -> Result<(), String> {
-    let mut settings = load_settings(&app, &state)?;
-    settings
-        .last_export_preset_by_project
-        .insert(project_id, preset_id.clone());
-    settings.last_export_preset = Some(preset_id);
-    save_settings(&app, &state, settings)
+    update_settings(&app, &state, |settings| {
+        settings
+            .last_export_preset_by_project
+            .insert(project_id, preset_id.clone());
+        settings.last_export_preset = Some(preset_id);
+    })
 }
 
 /// Remember the app-wide opening poster-frame choice; the inverted field keeps old and fresh settings default-on.
@@ -1196,9 +1212,9 @@ pub fn set_opening_poster_frame(
     state: State<'_, SettingsState>,
     enabled: bool,
 ) -> Result<(), String> {
-    let mut settings = load_settings(&app, &state)?;
-    settings.disable_opening_poster_frame = !enabled;
-    save_settings(&app, &state, settings)
+    update_settings(&app, &state, |settings| {
+        settings.disable_opening_poster_frame = !enabled;
+    })
 }
 
 /// Remember the Present modal's selection per project (and, on request, as the cross-project default).
@@ -1210,14 +1226,14 @@ pub fn set_present_options(
     options: PresentOptionsDoc,
     save_as_default: bool,
 ) -> Result<(), String> {
-    let mut settings = load_settings(&app, &state)?;
-    settings
-        .present_options_by_project
-        .insert(project_id, options.clone());
-    if save_as_default {
-        settings.present_options_default = Some(options);
-    }
-    save_settings(&app, &state, settings)
+    update_settings(&app, &state, |settings| {
+        settings
+            .present_options_by_project
+            .insert(project_id, options.clone());
+        if save_as_default {
+            settings.present_options_default = Some(options);
+        }
+    })
 }
 
 pub(crate) fn snapshot_target(
@@ -1885,16 +1901,14 @@ pub fn trust_project(
         .duration_since(UNIX_EPOCH)
         .map_err(|e| e.to_string())?
         .as_millis() as u64;
-    let mut settings = load_settings(&app, &state)?;
-    settings.trusted_projects.insert(
-        slug,
-        TrustRecord {
-            scenes_fingerprint: compute_project_fingerprint(&dir),
-            path: dir.to_string_lossy().into_owned(),
-            allowed_at_ms,
-        },
-    );
-    save_settings(&app, &state, settings)
+    let record = TrustRecord {
+        scenes_fingerprint: compute_project_fingerprint(&dir),
+        path: dir.to_string_lossy().into_owned(),
+        allowed_at_ms,
+    };
+    update_settings(&app, &state, |settings| {
+        settings.trusted_projects.insert(slug, record);
+    })
 }
 
 /// A project's manifest text (the frontend parses + validates it); `slug` is a workspace slug or a scoped library id (`project_dir`).
@@ -2105,6 +2119,70 @@ fn collect_files(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn settings_scratch(name: &str) -> PathBuf {
+        let dir =
+            std::env::temp_dir().join(format!("kookaburra-settings-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        dir.join("settings.json")
+    }
+
+    #[test]
+    fn settings_land_whole_and_leave_no_temp_file() {
+        let path = settings_scratch("atomic");
+        let cache = Mutex::new(None);
+        update_settings_at(&path, &cache, |s| {
+            s.workspace_root = Some("/tmp/ws".into());
+        })
+        .unwrap();
+        let dir = path.parent().unwrap();
+        assert!(!dir.join("settings.json.tmp").exists());
+        assert_eq!(
+            read_settings_file(&path).workspace_root.as_deref(),
+            Some("/tmp/ws")
+        );
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn two_edits_keep_both_changes_on_disk_and_in_the_cache() {
+        let path = settings_scratch("both");
+        let cache = Mutex::new(None);
+        update_settings_at(&path, &cache, |s| s.lag_warning = Some("strict".into())).unwrap();
+        update_settings_at(&path, &cache, |s| s.disable_hardware_video = true).unwrap();
+        let on_disk = read_settings_file(&path);
+        assert_eq!(on_disk.lag_warning.as_deref(), Some("strict"));
+        assert!(on_disk.disable_hardware_video);
+        let cached = cache.lock().unwrap();
+        let cached = cached.as_ref().unwrap();
+        assert_eq!(cached.lag_warning.as_deref(), Some("strict"));
+        assert!(cached.disable_hardware_video);
+        let _ = std::fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    #[test]
+    fn a_cold_cache_edits_what_is_on_disk() {
+        let path = settings_scratch("cold");
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let existing = AppSettings {
+            workspace_root: Some("/tmp/existing".into()),
+            ..Default::default()
+        };
+        std::fs::write(&path, serde_json::to_string(&existing).unwrap()).unwrap();
+        let cache = Mutex::new(None);
+        let seen = update_settings_at(&path, &cache, |s| s.workspace_root.clone()).unwrap();
+        assert_eq!(seen.as_deref(), Some("/tmp/existing"));
+        let _ = std::fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    #[test]
+    fn a_torn_file_still_reads_as_first_run() {
+        let path = settings_scratch("torn");
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, r#"{"workspaceRoot":"/tmp/half"#).unwrap();
+        assert!(read_settings_file(&path).workspace_root.is_none());
+        let _ = std::fs::remove_dir_all(path.parent().unwrap());
+    }
 
     #[test]
     fn opening_poster_frame_defaults_on_and_round_trips_the_opt_out() {

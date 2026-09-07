@@ -112,26 +112,35 @@ pub async fn claude_version_info(
     .await
     .map_err(|e| e.to_string())?;
 
-    let mut settings = workspace::load_settings(&app, &state)?;
+    let snapshot = workspace::load_settings(&app, &state)?;
     let now = workspace::now_unix_ms();
-    let stale = settings
+    let stale = snapshot
         .last_claude_check_ms
         .map_or(true, |t| now.saturating_sub(t) >= CHECK_THROTTLE_MS);
-    if stale {
-        // Stamp the attempt, not just success, so an offline machine retries daily rather than per mount.
-        settings.last_claude_check_ms = Some(now);
-        if let Some(latest) = tauri::async_runtime::spawn_blocking(fetch_latest)
+    let (latest, offered) = if stale {
+        // The fetch runs before the settings lock is taken, then one locked edit lands the stamp and any result, so a preference changed during the fetch survives. The attempt is stamped, not just success, so an offline machine retries daily rather than per mount.
+        let fetched = tauri::async_runtime::spawn_blocking(fetch_latest)
             .await
-            .map_err(|e| e.to_string())?
-        {
-            settings.last_claude_latest = Some(latest);
-        }
-        workspace::save_settings(&app, &state, settings.clone())?;
-    }
+            .map_err(|e| e.to_string())?;
+        workspace::update_settings(&app, &state, |settings| {
+            settings.last_claude_check_ms = Some(now);
+            if let Some(latest) = fetched {
+                settings.last_claude_latest = Some(latest);
+            }
+            (
+                settings.last_claude_latest.clone(),
+                settings.last_offered_claude_version.clone(),
+            )
+        })?
+    } else {
+        (
+            snapshot.last_claude_latest,
+            snapshot.last_offered_claude_version,
+        )
+    };
 
-    let latest = settings.last_claude_latest.clone();
     let outdated = matches!((&installed, &latest), (Some(i), Some(l)) if is_older(i, l));
-    let dismissed = latest.is_some() && settings.last_offered_claude_version == latest;
+    let dismissed = latest.is_some() && offered == latest;
     Ok(Some(ClaudeVersionInfo {
         path,
         method,
@@ -149,9 +158,9 @@ pub fn dismiss_claude_update(
     state: State<'_, SettingsState>,
     version: String,
 ) -> Result<(), String> {
-    let mut settings = workspace::load_settings(&app, &state)?;
-    settings.last_offered_claude_version = Some(version);
-    workspace::save_settings(&app, &state, settings)
+    workspace::update_settings(&app, &state, |settings| {
+        settings.last_offered_claude_version = Some(version);
+    })
 }
 
 #[cfg(test)]
