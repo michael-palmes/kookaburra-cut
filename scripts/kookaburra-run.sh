@@ -172,48 +172,17 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-# One field out of a one-line ticket JSON.
-ticket_field() {
-  sed -n 's/.*"'"$2"'": *"\{0,1\}\([^",}]*\)"\{0,1\}.*/\1/p' "$1" 2>/dev/null || true
-}
-
-# Tickets are named <epoch>-<pid>.json, so the sorted glob IS the queue order.
-front_ticket() {
-  local f
-  for f in "$QUEUE_DIR"/*.json; do
-    if [[ -e "$f" ]]; then printf '%s' "$f"; return 0; fi
-  done
-  return 0
-}
-
-# A run killed mid-flight can't clear its own ticket; its pid dying is the release signal.
-drop_dead_tickets() {
-  local f pid
-  for f in "$QUEUE_DIR"/*.json; do
-    [[ -e "$f" ]] || continue
-    pid="$(ticket_field "$f" pid)"
-    if [[ -z "$pid" ]] || ! kill -0 "$pid" 2>/dev/null; then rm -f "$f"; fi
-  done
-}
-
-queue_position() {
-  local f count=0
-  for f in "$QUEUE_DIR"/*.json; do
-    [[ -e "$f" ]] || continue
-    count=$((count + 1))
-    if [[ "$f" == "$TICKET" ]]; then break; fi
-  done
-  printf '%d' "$count"
-}
-
-write_ticket() {
-  printf '{"pid":%d,"action":"%s","project":"%s","worktree":"%s","started":"%s"}\n' \
-    "$$" "$ACTION" "$PROJECT" "$ROOT" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >"$TICKET"
-}
+# Ticket naming, ordering, reaping and JSON live in scripts/run-queue.mjs (tested); the wait loop stays here.
+QUEUE="$ROOT/scripts/run-queue.mjs"
+ticket_field() { node "$QUEUE" field "$1" "$2"; }
+front_ticket() { node "$QUEUE" front "$QUEUE_DIR"; }
+drop_dead_tickets() { node "$QUEUE" reap "$QUEUE_DIR" >/dev/null; }
+queue_position() { node "$QUEUE" position "$QUEUE_DIR" "$TICKET"; }
+write_ticket() { node "$QUEUE" write "$TICKET" "$$" "$ACTION" "$PROJECT" "$ROOT"; }
 
 # FIFO across every worktree: write a ticket, then wait until it is the oldest live one.
 mkdir -p "$QUEUE_DIR"
-TICKET="$QUEUE_DIR/$(printf '%012d' "$(date -u +%s)")-$$.json"
+TICKET="$QUEUE_DIR/$(node "$QUEUE" name "$$")"
 write_ticket
 waited=0
 next_notice=0
