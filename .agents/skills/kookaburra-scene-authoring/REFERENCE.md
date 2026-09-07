@@ -181,7 +181,7 @@ Rules for Claude:
 > The full authoring guide is `docs/camera.md`.
 
 The sidecar's `camera` field animates the camera for THIS scene only, in **scene-local
-milliseconds**, sampled by `engine/sceneCamera.ts` at both render seams. Prefer it over
+milliseconds**, sampled by `engine/camera/sceneCamera.ts` at both render seams. Prefer it over
 the project-level `camera` in `project.json` for anything scoped to one scene; the project track
 remains for project-wide moves and is the only owner of `fov`.
 
@@ -317,7 +317,7 @@ The sidecar's `layeredScreenshot` block is a 3D stack of app screens (and text l
 the scene renders as one posed group. It is app-editable via the builder; the TSX either
 mounts `<LayeredScreenshot />` explicitly or lets the host-side fallback render it (any
 scene, no TSX change). Validation, layout and sampling are pure
-(`engine/sceneLayeredScreenshot.ts`, `engine/layeredScreenshotLayout.ts`).
+(`engine/content/sceneLayeredScreenshot.ts`, `engine/content/layeredScreenshotLayout.ts`).
 
 ```jsonc
 {

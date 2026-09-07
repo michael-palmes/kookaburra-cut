@@ -43,7 +43,7 @@ media. See [Editable content library](../docs/content-library.md).
 
 Everything else a card shows (scene count, length, aspects, theme) derives from
 the sibling `project.json`, so it can never drift. The schema and the catalogue
-live in `src/engine/presets.ts`.
+live in `src/engine/workspace/presets.ts`.
 
 ## Authoring
 

@@ -38,13 +38,13 @@ Everything else (visibility, pointer routing, the write contract) is shared.
 | Screenshot stack | 2D | `LayeredScreenshotGizmo` → `Gizmo2D` | move / scale / rotate | `layeredScreenshot.placement` |
 | Panel decoration | 2D | `DecorationGizmo` → `Gizmo2D` | move / resize / rotate | `frame.decorations[].position,size,rotationDeg` |
 
-`SceneGizmo` (`src/engine/SceneGizmo.tsx`) is the only place drei's
+`SceneGizmo` (`src/engine/gizmo/SceneGizmo.tsx`) is the only place drei's
 `TransformControls` is mounted: one `size` (`GIZMO_SIZE`, 1.8), one palette, one
 registration. The palette swap runs once at mount (three-stdlib builds every
 mode's materials up front) and is keyed by each material's own colour rather than
 by handle name, because one material serves several handles. It writes
 `tempColor` as well as `color`, since the stock gizmo restores handles from
-`tempColor` every frame. The canvas-side palette is `src/engine/gizmoTokens.ts`
+`tempColor` every frame. The canvas-side palette is `src/engine/gizmo/gizmoTokens.ts`
 and mirrors the `--gizmo-*` custom properties in `styles.css` by hand: three
 cannot read CSS variables.
 
@@ -178,7 +178,7 @@ raycaster ignores `visible`, so the idle modes would hit too), against the live
 preview camera and the stage viewport, never a DOM overlay's box, so the NDC it
 uses is the NDC r3f's own event raycaster would use.
 
-**The stage viewport** (`src/engine/stageViewport.ts`) is that qualifier. An
+**The stage viewport** (`src/engine/gizmo/stageViewport.ts`) is that qualifier. An
 overlay renders the scene into a cutout-sized target and keys it into the
 cutout's rect, so in a framed scene the canvas box is NOT the rect a world
 projection lands on: `worldViewportRect` narrows it to the cutout, and
@@ -328,19 +328,19 @@ in the tree.
 
 | Concern | File |
 | --- | --- |
-| Shared mode type | `src/engine/gizmoMode.ts` |
-| Palette, size, restyle | `src/engine/gizmoTokens.ts` (+ `--gizmo-*` in `src/styles.css`) |
-| 3D control seam | `src/engine/SceneGizmo.tsx` |
-| Picker registry, stage camera and rect, capture hide | `src/engine/gizmoRegistry.ts` |
-| Stage viewport (the cutout maths, the r3f compute) | `src/engine/stageViewport.ts`, `StagePointer.tsx` |
-| Outlines and click-to-select | `src/engine/SceneOutline.tsx`, `gizmoOutline.ts`, `gizmoVisibility.ts` |
-| Section map | `src/engine/gizmoSections.ts` |
-| 2D target registry | `src/engine/gizmoTargetRegistry.ts` |
+| Shared mode type | `src/engine/gizmo/gizmoMode.ts` |
+| Palette, size, restyle | `src/engine/gizmo/gizmoTokens.ts` (+ `--gizmo-*` in `src/styles.css`) |
+| 3D control seam | `src/engine/gizmo/SceneGizmo.tsx` |
+| Picker registry, stage camera and rect, capture hide | `src/engine/gizmo/gizmoRegistry.ts` |
+| Stage viewport (the cutout maths, the r3f compute) | `src/engine/gizmo/stageViewport.ts`, `StagePointer.tsx` |
+| Outlines and click-to-select | `src/engine/gizmo/SceneOutline.tsx`, `gizmoOutline.ts`, `gizmoVisibility.ts` |
+| Section map | `src/engine/gizmo/gizmoSections.ts` |
+| 2D target registry | `src/engine/gizmo/gizmoTargetRegistry.ts` |
 | 2D layer, geometry, projection | `src/ui/gizmo/Gizmo2D.tsx`, `gizmo2dMath.ts`, `gizmo2dProject.ts` |
 | Routing, modifiers, camera yield | `src/ui/gizmo/gizmoRouting.ts`, `modifierKeys.ts`, `useGizmoYield.ts` |
 | Write helpers | `src/ui/gizmo/gizmoDocWrite.ts`, `textGizmoWrite.ts`, `chartGizmoWrite.ts`, `src/toolkit/device/gizmoCommit.ts` |
-| Media entries | `src/engine/sceneMedia.ts` (`resolveSceneDocMedia`, `editSceneDocMedia`), `src/toolkit/media/SceneMedia.tsx` |
-| Media writes | `src/toolkit/media/imageGizmoCommit.ts`, `src/engine/imageEditStore.ts` |
+| Media entries | `src/engine/media/sceneMedia.ts` (`resolveSceneDocMedia`, `editSceneDocMedia`), `src/toolkit/media/SceneMedia.tsx` |
+| Media writes | `src/toolkit/media/imageGizmoCommit.ts`, `src/engine/edit/imageEditStore.ts` |
 | Hosts | `src/ui/TextGizmo.tsx`, `src/ui/ChartHeroGizmo.tsx`, `src/ui/DecorationGizmo.tsx`, `src/ui/ImageOverlayGizmo.tsx`, `src/toolkit/device/DeviceGizmo.tsx`, `src/toolkit/media/StageImageGizmo.tsx`, `src/toolkit/objects/ObjectPrimitive.tsx`, `src/toolkit/chart/Chart.tsx` |
 
 ## Open edges
@@ -367,5 +367,5 @@ in the tree.
   would mean carrying the drawn rect through every call site purely as a bounds
   check.
 - The camera path overlay projects with its own recompute
-  (`engine/cameraProject.ts`) against the whole frame, so a free-flight ghost
+  (`engine/camera/cameraProject.ts`) against the whole frame, so a free-flight ghost
   path still draws full-frame in a framed scene.

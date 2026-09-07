@@ -18,7 +18,7 @@ const EXDEV: i32 = 18;
 /// Current on-disk project manifest filename.
 pub(crate) const MANIFEST_FILENAME: &str = "project.json";
 
-/// The template manifest a bundled project must carry to be creatable from; the frontend registry (`src/engine/templates.ts`) globs the same file. Spikes and preview labs never carry one, so they self-exclude from both.
+/// The template manifest a bundled project must carry to be creatable from; the frontend registry (`src/engine/workspace/templates.ts`) globs the same file. Spikes and preview labs never carry one, so they self-exclude from both.
 const TEMPLATE_FILENAME: &str = "template.json";
 
 /// The shared sample media pool inside the bundled tree, seeded into every new project's assets/ rather than copied into every template.
@@ -344,7 +344,7 @@ pub fn require_root(app: &AppHandle, state: &State<'_, SettingsState>) -> Result
         }
     };
     ensure_layout(&root)?;
-    // Workspace files load in the webview as asset-protocol URLs (posters, pinned fonts, editor sources, snapshots; see engine/media.ts `fsUrl`); the static config scope only covers $APPDATA/cache + ~/Kookaburra Cut, so a user-chosen root elsewhere is allowed here at runtime instead, idempotent and best-effort since the read path reports its own errors if this fails.
+    // Workspace files load in the webview as asset-protocol URLs (posters, pinned fonts, editor sources, snapshots; see engine/media/media/media.ts `fsUrl`); the static config scope only covers $APPDATA/cache + ~/Kookaburra Cut, so a user-chosen root elsewhere is allowed here at runtime instead, idempotent and best-effort since the read path reports its own errors if this fails.
     let _ = app.asset_protocol_scope().allow_directory(&root, true);
     Ok(root)
 }
@@ -1549,7 +1549,7 @@ pub fn write_emoji_raster(
     std::fs::write(&file, bytes).map_err(|e| e.to_string())
 }
 
-/// A bundled folder is a TEMPLATE only when it carries a project manifest AND declares itself with a readable `template.json`, so gate fixtures, preview labs and the sample pool can never be created from. Presence plus valid JSON is the whole native contract; the manifest's schema is validated in TS (`engine/templates.ts`).
+/// A bundled folder is a TEMPLATE only when it carries a project manifest AND declares itself with a readable `template.json`, so gate fixtures, preview labs and the sample pool can never be created from. Presence plus valid JSON is the whole native contract; the manifest's schema is validated in TS (`engine/workspace/workspace/templates.ts`).
 fn require_template(template: &Path, template_id: &str) -> Result<(), String> {
     if !template.join(MANIFEST_FILENAME).is_file() {
         return Err(format!("template \"{template_id}\" not found"));

@@ -130,7 +130,7 @@ always has a key, so unsigned means hand-assembled.
 A pack carries `scenes/*.tsx`, which compile through esbuild-wasm and run in the
 webview with IPC reach. Import writes files and never compiles. Each imported
 project still hits the existing F-001 gate the first time it is opened
-(`src/engine/projectTrust.ts`), because a trust grant is bound to a path and a
+(`src/engine/workspace/projectTrust.ts`), because a trust grant is bound to a path and a
 fingerprint and an imported project has neither. There is a test asserting an
 imported project comes out untrusted. Templates and presets carry scene code the
 same way, and the project a user creates from one is a new project at a new path,
@@ -272,6 +272,6 @@ is not the same question as redistribution, and the UI copy says so.
 5. `apply.rs`: its `flatten` arm, its `label`, its move and its keep-both rename.
 6. `commands.rs`: `enumerate_all` and `closure_to_view`.
 7. `src/packs/types.ts` (`ItemKind`, `ITEM_KINDS`, `KIND_LABELS`,
-   `PackContents`), `src/engine/packs.ts` (`PackSelection`, `selectionKey`) and
+   `PackContents`), `src/engine/workspace/packs.ts` (`PackSelection`, `selectionKey`) and
    the two views that flatten contents.
 8. A hostile fixture in `pack::tests` if it introduces a new path shape.

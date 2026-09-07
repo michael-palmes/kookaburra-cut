@@ -87,9 +87,9 @@ Rust: the native shell is in `src-tauri/` (`cargo check --manifest-path src-taur
 ## Layout
 
 - `src/toolkit/`: SHIPPED authoring primitives (the `@kookaburra/toolkit` import). Don't author scenes here.
-- `src/engine/`: the deterministic core: `timeline.ts` (anime.js global clock), `format.ts` (FormatContext, `FPS`, `MSAA_SAMPLES`), `compositor.ts` (the one render seam), `exporter.ts` (deterministic loop), `project.ts` (project loading).
+- `src/engine/`: the deterministic core at the root (`timeline.ts` the anime.js global clock, `format.ts` FormatContext with `FPS` and `MSAA_SAMPLES`, `compositor.ts` the one render seam, `exporter.ts` the deterministic loop, `project.ts` project loading, `sceneDoc.ts` and `sceneDocPatchQueue.ts` the document model and its write queue), with feature folders beside it: `camera/`, `content/` (chart, comparison, device track, screenshot stack, managed text), `edit/` (the selection stores and edit helpers), `effects/`, `export/` (bridges, autorun, previews, settle), `frame/` (overlays and panels), `gizmo/`, `lighting/`, `media/`, `panels/` (terminal and website), `stage/` (hosts, drivers, registries, compiler) and `workspace/` (workspace, packs, trust, library, templates, presets). A file stays at the root only when it orchestrates the frame contract or is a dependency-free primitive.
 - `src/theme/`: theme schema, bundled themes, fonts.
-- `src/store/`: zustand editor/preview state. The export path deliberately does NOT read it.
+- `src/store/`: zustand editor/preview state. The export path deliberately does NOT read it beyond the readers `src/engine/storeBoundary.test.ts` pins, each with the reason the exporter is unaffected. The 15 `*EditStore` selection stores live in `src/engine/edit/`, not here: render-path components read them directly, which is safe because `exportPreamble` clears every selection before frame 0.
 - `projects/<project>/`: the file-based project format: `project.json` + `scenes/*.tsx` (+ per-scene sidecar `scenes/<stem>.json`) + `assets/`.
 - `presets/<preset>/`: bundled scene presets: a single-scene project folder plus `preset.json`; user presets mirror the shape at `~/Kookaburra Cut/presets/`.
 - `src-tauri/`: Rust shell, `tauri.conf.json`, `capabilities/`, `bin/` (sidecars).
@@ -127,8 +127,8 @@ Project skills are authored only in `.agents/skills`. Keep `.claude/skills` as t
 - Skill `kookaburra-pr-descriptions`: the fixed PR title/description standard; use for every PR opened in this repo.
 - Docs `docs/content-library.md`: editable templates, the shared Add a scene/App presets catalogue and standalone theme editing, including scoped IDs, reuse and preview ownership.
 - Docs `docs/packs.md`: the `.kbpack` format (archive layout, manifest, signing and TOFU, the extraction checklist, the conflict table). Read it before touching `src-tauri/src/pack/`.
-- Docs `docs/charts.md`: the chart subsystem (the sidecar `chart` block, the three mounts, the appearance and build-in preset catalogues, palette and number-formatting rules, the keyframed data track). Read it before touching `src/toolkit/chart/` or `src/engine/sceneChart.ts`.
-- Docs `docs/gizmos.md`: the gizmo subsystem (the 3D and 2D families, section-scoped outlines and click-to-select, the pointer-routing contract, the registries and coordinate spaces, what each drag writes, the export guards). Read it before touching `src/engine/gizmo*`, `src/engine/SceneGizmo.tsx`/`SceneOutline.tsx`, `src/ui/gizmo/`, or any gizmo host (`src/ui/TextGizmo.tsx`, `ChartHeroGizmo.tsx`, `DecorationGizmo.tsx`, `src/toolkit/device/DeviceGizmo.tsx`, `src/toolkit/objects/ObjectPrimitive.tsx`, `src/toolkit/chart/Chart.tsx`).
+- Docs `docs/charts.md`: the chart subsystem (the sidecar `chart` block, the three mounts, the appearance and build-in preset catalogues, palette and number-formatting rules, the keyframed data track). Read it before touching `src/toolkit/chart/` or `src/engine/content/sceneChart.ts`.
+- Docs `docs/gizmos.md`: the gizmo subsystem (the 3D and 2D families, section-scoped outlines and click-to-select, the pointer-routing contract, the registries and coordinate spaces, what each drag writes, the export guards). Read it before touching `src/engine/gizmo*`, `src/engine/gizmo/SceneGizmo.tsx`/`SceneOutline.tsx`, `src/ui/gizmo/`, or any gizmo host (`src/ui/TextGizmo.tsx`, `ChartHeroGizmo.tsx`, `DecorationGizmo.tsx`, `src/toolkit/device/DeviceGizmo.tsx`, `src/toolkit/objects/ObjectPrimitive.tsx`, `src/toolkit/chart/Chart.tsx`).
 - Commands `/new-scene <project> <name>`, `/preview [project]`, `/export <project> <format> <aspect>`.
 
 ## Committing
@@ -199,7 +199,7 @@ intuition before the probe settled it).
   fixes: off-playhead scenes hold their last frame; playback binds a lazy 960px
   JPEG preview tier (`ensure_clip_previews`; paused, scrubbing and export
   always bind exact full PNGs); Balanced/Performance halve the bind rate.
-  Preview-only knobs live in `src/engine/previewMedia.ts` and never leak into
+  Preview-only knobs live in `src/engine/media/previewMedia.ts` and never leak into
   exports (`isExporting()` guards plus App pinning).
 - **Measured non-factors:** device GLB complexity (94k tris holds 60fps),
   transmission glass, VSM shadows, canvas pixel ratio (but see the area-light

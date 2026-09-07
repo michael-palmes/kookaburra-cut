@@ -32,7 +32,7 @@ file live in this skill's `REFERENCE.md`.
    `out vec4 fragColor;`. This three version does not alias `gl_FragColor` for GLSL3 custom
    shaders; forgetting the declaration renders black, not an error.
 2. **Patch out float-hash randomness.** Replace any `fract(sin(dot(...)))` style hash with the
-   PCG-style integer hash from `src/engine/transitionShader.ts` (`hash01`), keeping the source
+   PCG-style integer hash from `src/engine/effects/transitionShader.ts` (`hash01`), keeping the source
    function's name and signature so the rest of the fragment stays untouched. Floor `vec2`
    inputs through `ivec2` before the `uvec2` cast (float-to-uint is undefined for negatives).
 3. **Leave engine-owned uniforms out of `uniforms()`.** `u_time`, `u_resolution`, `u_scale`,

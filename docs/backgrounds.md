@@ -96,7 +96,7 @@ rigs. The contract on every look:
 
 - `src/toolkit/stage/shaders/presets.test.ts` enforces counts, ordering, the luminance bands,
   AA contrast, the fallback pin and param bounds.
-- `src/engine/optionPreviews.test.ts` pins the `bgp-*` preview-lab fixtures to the preset data;
+- `src/engine/export/optionPreviews.test.ts` pins the `bgp-*` preview-lab fixtures to the preset data;
   fixtures and presets must change together.
 - After changing preset data: regenerate the committed picker thumbnails with
   `pnpm kookaburra:run --action option-previews`, then eyeball a few stills. Verify proves

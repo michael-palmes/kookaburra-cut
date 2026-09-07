@@ -1,6 +1,6 @@
 ---
 name: kookaburra-lighting-authoring
-description: Authoring and extending Kookaburra Cut's v9 scene lighting - the three-layer LightingSpec (theme, project, scene), the sun, free lights and their World/Camera/Subject spaces, emissive light fixtures and repeat arrays, HDRI environments, lighting keyframes, presets, and the display transform (tone mapping + exposure). Use when asked to "light a scene", "add a light", "make a corridor", "add an HDRI", "change the environment", "add a lighting preset", "animate the lighting", "change tone mapping or exposure", or when touching src/engine/sceneLighting.ts, src/engine/fixtures.ts, src/engine/lightingState.ts, src/engine/renderSettings.ts, src/toolkit/lighting/, src/toolkit/stage/StageLights.tsx, or a sidecar's `lighting` block.
+description: Authoring and extending Kookaburra Cut's v9 scene lighting - the three-layer LightingSpec (theme, project, scene), the sun, free lights and their World/Camera/Subject spaces, emissive light fixtures and repeat arrays, HDRI environments, lighting keyframes, presets, and the display transform (tone mapping + exposure). Use when asked to "light a scene", "add a light", "make a corridor", "add an HDRI", "change the environment", "add a lighting preset", "animate the lighting", "change tone mapping or exposure", or when touching src/engine/lighting/sceneLighting.ts, src/engine/lighting/fixtures.ts, src/engine/lighting/lightingState.ts, src/engine/lighting/renderSettings.ts, src/toolkit/lighting/, src/toolkit/stage/StageLights.tsx, or a sidecar's `lighting` block.
 ---
 
 # kookaburra-lighting-authoring
@@ -44,14 +44,14 @@ sphere when the whole frame said the two were 0.99 similar.
   the scene sidecar's `lighting`. Each PRESENT field fully replaces the one below, and lists
   (`lights`, `fixtures`, `fills`) replace WHOLESALE. There is no merge-by-id.
 - **Caps are identical in preview and export.** `MAX_SCENE_LIGHTS` 16, `MAX_SHADOW_CASTERS` 4,
-  `FIXTURE_MAX_COUNT` 64, `SUN_ANGULAR_REFERENCE` 8. They live in `engine/sceneLighting.ts`
+  `FIXTURE_MAX_COUNT` 64, `SUN_ANGULAR_REFERENCE` 8. They live in `engine/lighting/sceneLighting.ts`
   (`format.ts` re-exports them, but cannot own them: it imports the editor store, which reaches
   the theme registry, which imports the parsers, and that cycles). A cap that differed between
   the two paths would break determinism by definition.
 - **Never `Math.random()`.** Fixture jitter draws from `createSeededRandom` (`engine/rng.ts`)
   keyed on a djb2 hash of the fixture id plus the instance index. The sequence is export
   contract: a different hash re-rolls every jittered corridor.
-- **The Kelvin fit is export contract.** `engine/kelvin.ts` is Tanner Helland's fit, vendored
+- **The Kelvin fit is export contract.** `engine/lighting/kelvin.ts` is Tanner Helland's fit, vendored
   and pinned with golden values. Swapping it for a library rebases every lit project.
 
 ## Colour: kelvin | token | hex
@@ -69,7 +69,7 @@ warns and falls through rather than dropping the light.
 | `subject` | Orbits what the camera looks at | From the subject TOWARD the camera (a front light) |
 
 **Camera and subject space resolve at the compositor seam, per render target**
-(`engine/lightingState.ts`, `applyRelativeLights`). A transition frame renders A and B with
+(`engine/lighting/lightingState.ts`, `applyRelativeLights`). A transition frame renders A and B with
 different cameras, so a shared resolve is right in preview and in solo export and wrong only on
 transition frames. Never resolve relative lights in a React effect.
 
@@ -135,7 +135,7 @@ timeline position; nothing reads the wall clock and nothing accumulates across f
 2. Add `<id> <slug>_1k.exr` to the `MAP` in `scripts/prepare-hdri.sh`.
 3. `pnpm assets:hdri`: it SKIPS anything already committed, and bakes the picker thumbnail
    into `src/assets/hdri-thumbs/<id>.jpg` via `scripts/hdri-thumb.py`.
-4. Register the id in `BUNDLED_HDRI` (`engine/environments.ts`) with a `?url` import, add the
+4. Register the id in `BUNDLED_HDRI` (`engine/lighting/environments.ts`) with a `?url` import, add the
    picker tile in `LightingSection.tsx`, and record the slug in `src/assets/hdri/README.md`.
 
 **Never re-convert a committed `.hdr`.** The Blender build is a determinism boundary, so
@@ -152,7 +152,7 @@ Light helpers and gizmos must never reach an exported frame, and the failure is 
 drawn into both verify runs is EQUAL and passes. Two independent guards, both required:
 
 1. Components mount only while the inspector's Lighting drill is open (never true in an autorun).
-2. Everything sits on `HELPER_LAYER` (`engine/lightEditStore.ts`), which the export camera
+2. Everything sits on `HELPER_LAYER` (`engine/edit/edit/lightEditStore.ts`), which the export camera
    explicitly disables and the preview driver enables per frame.
 
 Autoruns never open the inspector, so the mount gate hides the layer gate. Screenshot or export

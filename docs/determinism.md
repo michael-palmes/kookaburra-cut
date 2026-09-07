@@ -32,19 +32,19 @@ GPU/driver, not across fleets.)
 | Loading a live Website during playback or export | Website content is author-time native UI only; playback and export render the saved project PNG through deterministic WebGL chrome (`docs/scene-website.md`). |
 | **Fonts loaded lazily from a CDN** (troika default) | Bundle a local `.woff`; `preloadFont({ font, characters }, cb)` and await it before frame 0; set troika `unicodeFontsURL` to a self-hosted/offline path. |
 | troika SDF generated async in a worker | Pre-generate glyphs (preload) and await all text sync before the first captured frame. |
-| Video clips via `HTMLVideoElement` seeking | The ffmpeg sidecar pre-extracts each clip to a CFR PNG sequence (cached under `$APPDATA`, keyed by source hash); `VideoClip` samples `frameIndex = floor((localMs − startMs)/1000 × fps)` off the clock. `engine/clips.ts` + `toolkit/media/VideoClip.tsx`. |
+| Video clips via `HTMLVideoElement` seeking | The ffmpeg sidecar pre-extracts each clip to a CFR PNG sequence (cached under `$APPDATA`, keyed by source hash); `VideoClip` samples `frameIndex = floor((localMs − startMs)/1000 × fps)` off the clock. `engine/media/media/clips.ts` + `toolkit/media/VideoClip.tsx`. |
 | Reading UI state (zustand) in the export path | The exporter uses the pure clock only; it must not read the editor store. |
 | **Trusting `flushSync` to commit the canvas tree**: react-dom's `flushSync` does NOT flush the react-three-fiber reconciler; the canvas subtree commits on the r3f scheduler's own timing, so per-mesh readiness hooks can belong to the PREVIOUS frame when the exporter reads them (stale clip texture / stale text) | `ExportBridge` stamps the clock value each canvas commit rendered for; the export loop awaits `awaitCanvasClockCommit(tMs)` before trusting any readiness hook. |
 | **Awaiting troika `sync(cb)` naively**: troika has no `isTroikaText` mesh flag (matching on one awaits nothing), silently DROPS the callback when `_needsSync` is false (including mid-typeset), and only kicks changed text in `onBeforeRender` (one frame late) | `awaitTextSync` detects meshes via `material.isTroikaTextMaterial`, kicks a pending typeset itself pre-render, and awaits quiescence via the `synccomplete` event. |
 | A mid-run window resize retriggering r3f's size handling (corrupts the export's fixed drawing buffer for every remaining frame) | The frame loop re-asserts the export size/camera aspect if drifted, after the awaits and immediately before the (synchronous) render + readback. |
 | Non-preloaded textures/assets | Await all asset loads before frame 0. |
 | **A cold-mount suspense holding EVERY scene out of the canvas**: all scenes share one `<Suspense fallback={null}>` (App.tsx); a suspending primitive (`ImageCard`'s `useTexture`) keeps the whole boundary uncommitted until React's retry render lands, and that retry races the export preamble on the wall clock. Frame 0 rendered first captures a scene-less (white) frame. `awaitCanvasClockCommit` cannot catch it: the clock is already committed at its initial 0. | `awaitSceneHostsCommitted(slots.length)`: the preamble's LAST barrier spins until every scene's host has registered (registration is a `useEffect`, which only runs once the boundary's content commits). The preceding asset preloads resolve whatever the suspense was waiting on, so the wait is a few ticks. |
-| **A layout that depends on a measurement only the mounted tree can request**: `TitleBlock` cascades its header icon and subtitle off the title's MEASURED block height, but its props exist only once the scene is in the tree, so the preamble cannot pre-warm them the way `preloadPanelMeasures` does for overlay panels. A cold pass would render frame 0 pre-measure while a warm second pass renders it cascaded. | `awaitTitleMeasuresSettled()`, the barrier after `awaitSceneHostsCommitted`: mounted TitleBlocks report their outstanding typesets, and the spin exits only once they have landed AND the tree has re-rendered with them (`engine/titleBlockMeasure.ts`). Single-line text solves to a hard 0 growth, so standing layouts keep their authored constants bit-for-bit either way. |
-| **Preview frames interleaving a Verify ×2**: between the two passes the preview driver rendered a wall-clock-varying number of frames (restored clock, preview size), leaking GPU/render state into pass B's first frames | `verifyDeterminism` holds the preview stand-down across BOTH passes; `engine/exportState` is depth-counted so the whole-run hold nests over each pass's own. Pass B starts from exactly the state pass A ended in. |
+| **A layout that depends on a measurement only the mounted tree can request**: `TitleBlock` cascades its header icon and subtitle off the title's MEASURED block height, but its props exist only once the scene is in the tree, so the preamble cannot pre-warm them the way `preloadPanelMeasures` does for overlay panels. A cold pass would render frame 0 pre-measure while a warm second pass renders it cascaded. | `awaitTitleMeasuresSettled()`, the barrier after `awaitSceneHostsCommitted`: mounted TitleBlocks report their outstanding typesets, and the spin exits only once they have landed AND the tree has re-rendered with them (`engine/frame/titleBlockMeasure.ts`). Single-line text solves to a hard 0 growth, so standing layouts keep their authored constants bit-for-bit either way. |
+| **Preview frames interleaving a Verify ×2**: between the two passes the preview driver rendered a wall-clock-varying number of frames (restored clock, preview size), leaking GPU/render state into pass B's first frames | `verifyDeterminism` holds the preview stand-down across BOTH passes; `engine/export/exportState` is depth-counted so the whole-run hold nests over each pass's own. Pass B starts from exactly the state pass A ended in. |
 | **Parallel font preload**: troika claims shared-atlas cells at preload COMPLETION, i.e. fetch-race order, shifting multi-font projects' glyph cells per BOOT (a per-session hash lottery: every run internally consistent, every boot different) | `preloadAppFonts` preloads SEQUENTIALLY in canonical order (Inter Regular, then declaration/ref order), and `loadProject` pre-generates every project face's glyphs BEFORE the scenes mount. See "Fonts". |
 | Muxer writing a wall-clock `creation_time` / encoder version tag | ffmpeg `-flags:v +bitexact -fflags +bitexact -map_metadata -1` (set in `start_export`) so the container is reproducible. |
 | Hardware encoder (`h264_videotoolbox` / `hevc_videotoolbox` / `prores_videotoolbox`) bit-variance | Default to software `libx264` (deterministic); the VideoToolbox lanes are opt-in fast drafts excluded from Verify. |
-| Hardware DECODE (`-hwaccel videotoolbox`) is not pixel-identical to software decode (measured: every frame differs slightly, ~5% of pixels off by 1–3/255) | Clip extraction is dual-lane: the everyday `hw` lane and the baseline `sw` lane own separate cache dirs (`<sha>-60fps-hw` / `<sha>-60fps`), and deterministic-codec exports (all Verify runs) pin to `sw`, so hardware frames can never reach a gated export. `engine/clips.ts` lane rule. |
+| Hardware DECODE (`-hwaccel videotoolbox`) is not pixel-identical to software decode (measured: every frame differs slightly, ~5% of pixels off by 1–3/255) | Clip extraction is dual-lane: the everyday `hw` lane and the baseline `sw` lane own separate cache dirs (`<sha>-60fps-hw` / `<sha>-60fps`), and deterministic-codec exports (all Verify runs) pin to `sw`, so hardware frames can never reach a gated export. `engine/media/media/clips.ts` lane rule. |
 | **WebKit kills the WebContent process near its 4 GB footprint ceiling** (measured 2026-07-25: a 4K verify's page footprint rode at ~3.9–4.5 GB, dominated by never-freed compositor/composer MSAA render-target pools, ~285–886 MB each; when a periodic check under system memory pressure catches it over 4096 MB the process is killed ("Unable to shrink memory footprint … Killed" in the unified log) and wry auto-reloads the page; window focus does NOT lift the ceiling) | Export frames release the pools they did not touch (`releaseIdlePools` in compositor.ts, `releaseComposer` in effects.ts; the multi-project autorun also resets between legs), dropping the 4K plateau to ~3.2 GB; the SDR pair is lazy so fx projects never allocate it, and verify releases confirmed-identical retained frames early. Transient fx-transition-window spikes can still crest ~4.1 GB on heavy projects (launch-2026), so `runAutoRun`'s reload latch stays the backstop: one benign reload tolerated, then a fast, retryable failure naming this mode. Deeper shave if ever needed: a shared MSAA scratch target with plain resolve textures for the A/B pairs. Diagnose with `log stream --predicate 'process == "kookaburra-cut" AND composedMessage CONTAINS "footprint"'`. |
 
 ## The loop (as implemented in `src/engine/exporter.ts`)
@@ -147,7 +147,7 @@ Determinism rules specific to the composite path:
   `sampleDisplay` re-encodes the sample (recovering the exact stored bytes; the
   composite at progress 0/1 equals the neighbouring solo frame byte-for-byte),
   and the effects-path shader blends through three's exact ACES forward/inverse
-  pair (`engine/acesCurve.ts`, golden-pinned, self-inverting → seam-exact within
+  pair (`engine/lighting/acesCurve.ts`, golden-pinned, self-inverting → seam-exact within
   fp32; the encoded mix is clamped ≤ 0.999 before inversion so blown-out/toe
   pixels land back at white/black after the composer re-tone-maps). Slide/wipe
   select whole pixels: display-encoded on the SDR path, raw linear HDR on the
@@ -169,7 +169,7 @@ Determinism rules specific to the composite path:
   `preserveDrawingBuffer: true` still applies.
 
 The extended transition types (blur, push, zoom, whip, procedural luma/iris,
-glitch) live in **separate GLSL3 materials** (`engine/transitionShader.ts`) so
+glitch) live in **separate GLSL3 materials** (`engine/effects/effects/transitionShader.ts`) so
 the original crossfade/dip/slide/wipe programs stay source-identical, the
 v14 pack (slice, dissolve, warp) is a third generation for the same reason,
 and the v15 pack (inkbleed, flowmorph, shockwave, glasssweep, rackfocus,
@@ -197,7 +197,7 @@ endpoints preserved; absent means linear, so stored specs keep exact bytes.
   by the source-file hash; a `.done` marker means a re-run reuses them.
   PNGs are written with `-compression_level 1 -pred 0` (identical pixels,
   roughly 2x faster and 2x larger; only decoded pixels matter downstream).
-  `engine/clips.ts`.
+  `engine/media/media/clips.ts`.
 - **Two decode lanes.** VideoToolbox hardware decode is measurably NOT
   pixel-identical to software decode, so extraction is lane-split: preview and
   hardware fast-draft exports use the `hw` lane (`-hwaccel videotoolbox`, cache
@@ -205,14 +205,14 @@ endpoints preserved; absent means linear, so stored specs keep exact bytes.
   Verify run — pin to the `sw` lane (software decode, the unchanged
   `<sha256>-60fps` dir the standing baselines were recorded from). Separate dirs
   make cross-lane cache poisoning impossible. The lane follows the export
-  codec's class (`laneForCodec`, `engine/clips.ts`); the accepted consequence is
+  codec's class (`laneForCodec`, `engine/media/media/clips.ts`); the accepted consequence is
   that preview matches fast-draft exports bit-for-bit while deterministic
   exports differ imperceptibly (Δ1–3/255) on clip pixels only.
 - **Sample purely.** `VideoClip` computes
   `frameIndex = floor((localMs − startMs)/1000 × 60)`, **clamped** to
   `[0, frameCount−1]`: it holds the first frame before the clip starts and the
   last frame after its footage ends. A pure function of the clock, so preview and
-  export agree. `engine/clipFrame.ts` (unit-tested). Looping consumers (video
+  export agree. `engine/media/media/clipFrame.ts` (unit-tested). Looping consumers (video
   background fills) use the modulo branch (`((raw % n) + n) % n`, exact even for
   negative time), while the clamp path stays byte-untouched for every holding
   consumer.
@@ -268,7 +268,7 @@ the mix like every pixel. Rules:
 - **Load degrades, never crashes.** `loadProject` probes the track
   (`probe_audio`); missing/unprobeable → the project loads SILENT with a warning;
   shorter-than-project → the tail pads with silence (warned, not fatal).
-- **Preview audio is UI-lane only.** `engine/previewAudio.ts` (a
+- **Preview audio is UI-lane only.** `engine/media/media/previewAudio.ts` (a
   decoded-`AudioBuffer` player: an `HTMLAudioElement` sync means `currentTime`
   SEEKS, and WebKit seeks VBR MP3s ±100–300 ms off target; buffer sources start
   sample-exact and steady play needs no correction, the source restarting only on
@@ -280,7 +280,7 @@ the mix like every pixel. Rules:
 ## Device screens
 
 `Device` plays clip frames on a glb's `SCREEN` material via the shared
-`useClipTexture` (engine/clipTexture.ts), same registry, LRU and
+`useClipTexture` (engine/media/media/clipTexture.ts), same registry, LRU and
 `videoFrameReady` barrier as `VideoClip`. Three mechanisms exist because each
 fixed a real divergent-verify bug:
 
@@ -310,7 +310,7 @@ fixed a real divergent-verify bug:
 
 A project that declares any effect (theme `effects` or a per-scene override)
 routes **every** frame through one module-level `EffectComposer`
-(`engine/effects.ts`); a project with no effects never touches it and keeps the
+(`engine/effects/effects/effects.ts`); a project with no effects never touches it and keeps the
 byte-identical direct paths. Composer rules: `composer.render(0)` (fixed delta:
 the injected `time` uniform never advances), the effect **set** is the
 project-wide union built once (per-scene overrides only drive uniforms), and only
@@ -336,7 +336,7 @@ un-tone-mapped and the composite feeds the composer linear.
   is part of the composer's rebuild key, so a *project swap* to different LUTs
   does rebuild the chain.
 - **Assets are preloaded, parsed purely, and cached by URL.** `.cube` parsing
-  (`engine/lutCube.ts`, pure, unit-tested) → an 8-bit RGBA `Data3DTexture`
+  (`engine/lighting/lutCube.ts`, pure, unit-tested) → an 8-bit RGBA `Data3DTexture`
   (`LinearFilter`, no mipmaps, clamped: hardware trilinear, 1:1 deterministic;
   8-bit because float linear-filtering is an optional WebGL extension).
   `loadProject` awaits `preloadEffectLuts` before publishing effects to the store
@@ -440,7 +440,7 @@ Changing `MSAA_SAMPLES` (engine/format.ts) is a full baseline rebase.
 A scene's sidecar document may declare a `camera` track: **orbit poses**
 (`{ target, azimuthDeg, elevationDeg, distance }`) at scene-local times, joined
 by eased segments (`engine/ease.ts` names + `jump`). Everything samples in
-`engine/sceneCamera.ts` (pure, no three.js, unit-tested); the seams apply the
+`engine/camera/sceneCamera.ts` (pure, no three.js, unit-tested); the seams apply the
 result. The invariants:
 
 - **The null path is the old path, exactly.** `resolveFrameCameras` returns
@@ -484,7 +484,7 @@ result. The invariants:
 A scene's sidecar may instead declare a `cameraRig` block and `cameraMode: "rig"`:
 **free poses** (`{ position, aim, fov?, rollDeg? }`) at scene-local times, where
 `aim` is a fixed `point`, the path `tangent`, or a bound `object`. Everything
-samples in `engine/sceneRig.ts` (pure, no three.js, unit-tested). The invariants:
+samples in `engine/camera/sceneRig.ts` (pure, no three.js, unit-tested). The invariants:
 
 - **A separate block, not a per-key union.** The orbit sampler is untouched code,
   so null-for-legacy is structural rather than argued: an absent `cameraMode`
@@ -539,7 +539,7 @@ A rig needs something to fly through, and a full-bleed layer sized for a static
 camera stops being full-bleed once one travels. Both come from one summary:
 
 - **The envelope is a fixed-count sample, not a frame read.** `rigOverscan`
-  (`engine/sceneRig.ts`) samples the track at exactly `ENVELOPE_SAMPLES` (64)
+  (`engine/camera/sceneRig.ts`) samples the track at exactly `ENVELOPE_SAMPLES` (64)
   evenly spaced instants across its authored span. At each sample the camera's
   four frustum corner rays (aim direction and roll included, through the same
   `viewBasis` the overlay projects with) intersect the layer's plane, and the
@@ -623,7 +623,7 @@ carry the older `videoWindow` block and read forward into the same entry at pars
   original full-bleed backing stage was removed 2026-07-29, a deliberate visual
   change re-baselining `ws:video-window-spike`).
 - **Everything samples pure.** Validation, radius resolution, the recording crop
-  and motion sampling (`engine/sceneVideoWindow.ts`) are pure functions with no
+  and motion sampling (`engine/media/media/sceneVideoWindow.ts`) are pure functions with no
   clock or three.js; the window's motion presets are `f(localMs)` like
   `DeviceMotionSpec`, and the `offset` placement is a static frame-fraction
   translation composed with them.
@@ -679,7 +679,7 @@ camera exactly:
   `blendEffectParams` (one-sided stacks fade their amount; LUT urls snap at the
   midpoint).
 - **Environments are preloaded, fixed-function GPU work.** `preloadEnvironments`
-  (engine/environments.ts) resolves every referenced source before frame 0 in the
+  (engine/lighting/environments.ts) resolves every referenced source before frame 0 in the
   export preamble: RGBE decode (pure CPU) → PMREM (fixed-function, the
   MSAA-resolve precedent); textures cache by source id for the app's lifetime.
   The preview fire-and-forgets the same call (a reflection-less first paint is
@@ -830,7 +830,7 @@ camera exactly:
   the lighter). troika never sees its CDN fallback.
 - **System fonts are pinned by copy, not referenced in place.** A theme may name
   any installed family; `loadProject` auto-pins it on first reference
-  (engine/systemFonts.ts → `pin_system_font`, src-tauri/src/fonts.rs): the best
+  (engine/workspace/workspace/systemFonts.ts → `pin_system_font`, src-tauri/src/fonts.rs): the best
   weight-matching face is copied, or EXTRACTED from its `.ttc`/`.otc` collection
   (name-table PostScript match, rebuilt table directory; per-table checksums stay
   valid, `head.checkSumAdjustment` goes stale, which troika/Typr and opentype.js
@@ -998,7 +998,7 @@ stays deterministic):
   through the Tauri asset protocol in dev and packaged builds alike; workspace
   scenes compile through the same esbuild loader everywhere: every dev verify
   exercises the shipping loader.
-- **Boot failures can't be silent** (`engine/bootTrap.ts`): any pre-render crash
+- **Boot failures can't be silent** (`engine/stage/bootTrap.ts`): any pre-render crash
   renders as text in the window AND (in autorun mode) writes an error result: a
   packaged headless run always produces a verdict.
 - **Native allowed roots must match the frontend's asset roots.** The packaged
@@ -1476,7 +1476,7 @@ rolling-gate project (`showcase-tour`):
 > byte (`showcase-tour` re-verified EQUAL at `f304f1bd…`, `ws:fx-spike` frame
 > byte-identical to the pre-feature chain). Display constants
 > (`DOF_BOKEH_SCALE_MAX` 6, `DOF_INACTIVE_FOCUS` 100, `DOF_RESOLUTION_SCALE`
-> 0.5, `TILT_FEATHER` 0.3 in `engine/effects.ts`) are export-contract
+> 0.5, `TILT_FEATHER` 0.3 in `engine/effects/effects/effects.ts`) are export-contract
 > constants: changing one is a deliberate rebase. Composer depth arrives via
 > postprocessing's stable-depth target, a per-frame fixed-function
 > `blitFramebuffer` alongside the gated MSAA resolve; proven EQUAL ×2 on

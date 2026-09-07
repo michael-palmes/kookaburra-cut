@@ -40,7 +40,7 @@ Confirmed defaults: one terminal per scene, theme preset catalogue
 }
 ```
 
-Parse/resolve/layout live in `src/engine/sceneTerminal.ts` (degrade-not-throw
+Parse/resolve/layout live in `src/engine/panels/sceneTerminal.ts` (degrade-not-throw
 per field, the chart pattern). `sceneTerminalLayout` is the single geometry
 source (window, title bar, screen, grid rect, cell metrics) shared by the
 renderer, the gizmo, the DOM overlays and the raster, so they cannot drift. The
@@ -58,7 +58,7 @@ restyles live and the PNG stays pure cell pixels (transparent default
 background, the screen colour shows through). It mounts through the
 generalised `FramePanel` (frame OR terminal) and rides the compositor's panel
 pass; unframed scenes draw through three explicit no-plan panel draws (solo +
-transition A/B). Colour presets resolve in `src/engine/sceneTerminalTheme.ts`;
+transition A/B). Colour presets resolve in `src/engine/panels/sceneTerminalTheme.ts`;
 `match-theme` derives the surface + ANSI 16 from the scene theme's tokens.
 
 ## Capture and bake
@@ -77,7 +77,7 @@ preview never rasterise.
 ## Sessions: the three realms
 
 One PTY registry idiom, three hosts. Sessions are keyed `${slug}#${sceneStem}`
-(`src/engine/sceneTerminalSession.ts`), survive component unmount like the
+(`src/engine/panels/sceneTerminalSession.ts`), survive component unmount like the
 rail's, run at the LOGICAL cols x rows (no fit addon, the overlay scales
 visually), and pre-type `startCommand` onto the prompt. That command is reduced
 to a single line with control chars stripped (`sanitizeStartCommand`, at parse

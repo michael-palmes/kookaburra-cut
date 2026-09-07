@@ -103,7 +103,7 @@
   --titlebar-h: 46px; /* v13 · M2 (approved §15 amendment — was 40px) */
 
   /* ── Gizmos ────────────────────────────────────────────────── */
-  /* One palette for every gizmo, 2D and 3D. The canvas-side mirror is src/engine/gizmoTokens.ts. */
+  /* One palette for every gizmo, 2D and 3D. The canvas-side mirror is src/engine/gizmo/gizmoTokens.ts. */
   --gizmo-outline: rgba(255, 255, 255, 0.35);
   --gizmo-outline-hover: rgba(255, 255, 255, 0.6);
   --gizmo-selected: var(--accent);
@@ -10204,7 +10204,7 @@ textarea.text-inspector-copy-input {
 
 /* ── Inspector option cards (M5 live round) ───────────────────────────────────
    Stage/Shadow/Text-motion pickers reuse the theme-card look under fixed-count
-   grids; previews are the committed option-preview assets (engine/optionPreviews). */
+   grids; previews are the committed option-preview assets (engine/export/optionPreviews). */
 .option-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

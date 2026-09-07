@@ -44,7 +44,7 @@ src/toolkit/chart/
   reveal.ts        build-state clamps       -> the seam both renderers read channels through
 ```
 
-`src/engine/sceneChart.ts` sits between the sidecar and the toolkit: it resolves the
+`src/engine/content/sceneChart.ts` sits between the sidecar and the toolkit: it resolves the
 authored block into a fully defaulted `ResolvedChart` (every field present, so the
 renderers never null-check) and samples the data track. It is pure: no clock, no
 three.js.
@@ -589,6 +589,6 @@ re-render, `--all` re-records everything).
 | Build-in grid | `chartanim-<buildIn>` | clip plus poster, falling back to a still | `preview-lab-chart-anim` |
 | Add a scene and App presets | `chart` | still | `presets/chart` |
 
-The stem-to-set mapping lives in `optionPreviewJobs` (`src/engine/optionPreviews.ts`) and
+The stem-to-set mapping lives in `optionPreviewJobs` (`src/engine/export/optionPreviews.ts`) and
 is mirrored by `scripts/option-preview-stale.mjs`; the two must move together. A missing
 asset degrades to a swatch placeholder, never a broken card.

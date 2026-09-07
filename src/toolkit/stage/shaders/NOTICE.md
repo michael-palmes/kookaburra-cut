@@ -19,7 +19,7 @@ from `shader-utils.ts`.
   line both build pseudo-randomness from chained `fract()`/`fract(sin())` floating-point ops,
   whose precision is driver-defined and violates this engine's determinism contract. Both are
   replaced with the house PCG-style integer hash used by the glitch transition
-  (`src/engine/transitionShader.ts`'s `hash01`), keeping the original function name and
+  (`src/engine/effects/transitionShader.ts`'s `hash01`), keeping the original function name and
   signature so the copied fragment bodies are otherwise untouched. `hash21` floors its `vec2`
   input through `ivec2` before the `uvec2` cast (float-to-uint is undefined for negatives per
   the GLSL ES spec; float-to-int-to-uint is well-defined); the dither line hashes

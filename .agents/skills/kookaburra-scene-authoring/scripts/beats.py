@@ -54,7 +54,7 @@ def build_slots(scenes):
 
 
 def effective_key_moments(analysis, markers, start_offset, total):
-    """Mirror engine/beatState.ts: markers replace detection wholesale, in project time."""
+    """Mirror engine/media/media/beatState.ts: markers replace detection wholesale, in project time."""
     detected = [
         {"tMs": m["tMs"] - start_offset, "strength": m.get("strength", 0)}
         for m in analysis.get("keyMoments", [])

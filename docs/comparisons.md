@@ -62,7 +62,7 @@ Rules:
   line) or `arrows` (two outward arrowheads, no ring), with `size` a
   multiplier on the reference radius. `grip: true` still means chevrons at
   size 1. The catalogue is `COMPARE_GRIP_CATALOG`
-  (`engine/compareCatalog.ts`) and the shader dispatch ids are
+  (`engine/content/compareCatalog.ts`) and the shader dispatch ids are
   `COMPARE_GRIP_ID`; style 0 keeps the pre-style expressions character for
   character, so legacy grips export byte-identically.
 - **Value semantics:** the divider's position along the mask's field with
@@ -94,13 +94,13 @@ Rules:
   cross-fades whole frames, and both the shader and `compareCoverageAt`
   ignore softness there (the catalogue's `hasSoftness` is false, and the
   drill hides the row).
-- Sampling and derivation live in `engine/sceneCompare.ts`
+- Sampling and derivation live in `engine/content/sceneCompare.ts`
   (`compareSampleAt` returns the value and angle pair, `compareValueAt` is
   the value-only convenience); the mask catalogue in
-  `engine/compareCatalog.ts`, whose per-mask `needsAngle`, `needsCenter`,
+  `engine/content/compareCatalog.ts`, whose per-mask `needsAngle`, `needsCenter`,
   `hasSoftness`, `hasLine` and `hasGrip` flags gate the drill's rows (the
   same file holds the grip-style catalogue); presets in
-  `engine/comparePresets.ts`.
+  `engine/content/comparePresets.ts`.
 
 ## How it renders
 
@@ -122,7 +122,7 @@ Rules:
   `afterLabel` join the Content list as their own rows ("Before label",
   "After label") and open the standard text drill, which writes copy to
   `text` and typography to the usual `textStyle.<key>Color/Font/Size/
-  OffsetX/OffsetY/LineHeight/RotationDeg` keys. `engine/compareChipText.ts`
+  OffsetX/OffsetY/LineHeight/RotationDeg` keys. `engine/content/compareChipText.ts`
   owns the contract (keys, defaults, row labels, style resolution) and
   `CompareChips` applies it by the managed-text renderer's rules, so an
   unstyled chip draws its coded defaults byte for byte. The chips are
