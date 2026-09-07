@@ -2,7 +2,6 @@ import { useCallback, useEffect, useState } from "react";
 import { useCameraEditStore } from "../engine/cameraEditStore";
 import { type CameraPose, sampleCameraTrack } from "../engine/cameraTrack";
 import { useFormat } from "../engine/format";
-import { pushHistory } from "../engine/history";
 import { isEditableProjectId, type LoadedProject, nativeProjectSlug } from "../engine/project";
 import {
   defaultOrbitPose,
@@ -13,7 +12,7 @@ import {
   sceneCameraTracks,
 } from "../engine/sceneCamera";
 import type { CameraDoc, RigDoc } from "../engine/sceneCameraEdit";
-import { writeSceneDoc } from "../engine/sceneDoc";
+import { commitSceneDocPatch, type DocChangedHandler } from "../engine/sceneDocPatchQueue";
 import type { SceneDoc, SceneDocCameraPose, SceneDocRigPose } from "../engine/sceneDocSchema";
 import { normalizeSceneRig, sampleSceneRig } from "../engine/sceneRig";
 import { rebakeRigBindings } from "../engine/sceneRigConvert";
@@ -29,7 +28,7 @@ export type CameraMode = "orbit" | "rig";
 export function useCameraDoc(
   project: LoadedProject,
   sceneIndex: number,
-  onDocChanged: (sceneIndex: number, doc: SceneDoc) => void,
+  onDocChanged: DocChangedHandler,
 ) {
   const slug = isEditableProjectId(project.id) ? nativeProjectSlug(project.id) : null;
   const doc = project.sceneDocs[sceneIndex];
@@ -80,28 +79,16 @@ export function useCameraDoc(
         rig: rebakeRigBindings(next.rig, base, format, stageFloorY),
       };
       previewSlice(resolved, true); // hold the pose until the patched project lands
-      const written: SceneDoc = { ...base };
-      if (resolved.camera.keys.length > 0) written.camera = resolved.camera;
-      else delete written.camera;
-      if (resolved.mode === "rig") written.cameraMode = "rig";
-      else delete written.cameraMode;
-      if (resolved.rig.keys.length > 0) written.cameraRig = resolved.rig;
-      else delete written.cameraRig;
       try {
-        await writeSceneDoc(slug, sceneFile, written);
-        onDocChanged(sceneIndex, written);
-        pushHistory({
-          label,
-          changes: [
-            {
-              kind: "sceneDoc",
-              slug,
-              file: sceneFile,
-              sceneIndex,
-              before: doc ? structuredClone(doc) : null,
-              after: structuredClone(written),
-            },
-          ],
+        await commitSceneDocPatch({ project, sceneIndex, label, onDocChanged }, (written) => {
+          // Bindings re-bake against the document the write lands on, not the one this render saw.
+          const rig = rebakeRigBindings(next.rig, written, format, stageFloorY);
+          if (next.camera.keys.length > 0) written.camera = structuredClone(next.camera);
+          else delete written.camera;
+          if (next.mode === "rig") written.cameraMode = "rig";
+          else delete written.cameraMode;
+          if (rig.keys.length > 0) written.cameraRig = rig;
+          else delete written.cameraRig;
         });
         useCameraEditStore.getState().setWriteError(null);
       } catch (e) {
@@ -110,7 +97,7 @@ export function useCameraDoc(
         useCameraEditStore.getState().setWriteError(String(e));
       }
     },
-    [slug, sceneFile, doc, format, stageFloorY, previewSlice, onDocChanged, sceneIndex],
+    [slug, sceneFile, doc, format, stageFloorY, previewSlice, onDocChanged, sceneIndex, project],
   );
 
   const preview = useCallback(

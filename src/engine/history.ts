@@ -35,14 +35,17 @@ export interface HistoryEntry {
 const CAPACITY = 50;
 
 let projectId: string | null = null;
+/** The native slug every recorded change must carry; null accepts any (a caller that bound an id alone). */
+let projectSlug: string | null = null;
 let entries: HistoryEntry[] = [];
 /** Number of entries currently APPLIED (the undo cursor). */
 let applied = 0;
 
-/** Bind the history to a project; a REAL switch clears it. */
-export function bindHistory(nextProjectId: string | null): void {
+/** Bind the history to a project; a REAL switch clears it. The slug fences `pushHistory`: an edit that completes after the switch belongs to the project that started it, never to the one now open. */
+export function bindHistory(nextProjectId: string | null, nextSlug: string | null = null): void {
   if (nextProjectId === projectId) return;
   projectId = nextProjectId;
+  projectSlug = nextSlug;
   entries = [];
   applied = 0;
 }
@@ -50,6 +53,7 @@ export function bindHistory(nextProjectId: string | null): void {
 /** Record a completed edit. Redo tail (undone entries) truncates, standard branching. */
 export function pushHistory(entry: HistoryEntry): void {
   if (entry.changes.length === 0) return;
+  if (projectSlug !== null && entry.changes.some((change) => change.slug !== projectSlug)) return;
   entries.length = applied;
   entries.push(entry);
   if (entries.length > CAPACITY) entries.shift();

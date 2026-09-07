@@ -1,22 +1,16 @@
 import { useCallback } from "react";
-import { pushHistory } from "../engine/history";
 import {
   useLayeredScreenshotDraft,
   useLayeredScreenshotEditStore,
 } from "../engine/layeredScreenshotEditStore";
 import { isEditableProjectId, type LoadedProject, nativeProjectSlug } from "../engine/project";
-import { writeSceneDoc } from "../engine/sceneDoc";
-import type {
-  LayeredScreenshotPose,
-  SceneDoc,
-  SceneDocLayeredScreenshot,
-} from "../engine/sceneDocSchema";
+import { commitSceneDocPatch, type DocChangedHandler } from "../engine/sceneDocPatchQueue";
+import type { LayeredScreenshotPose, SceneDocLayeredScreenshot } from "../engine/sceneDocSchema";
 import {
   defaultLayeredScreenshotPose,
   normalizeLayeredScreenshot,
   resolveLayeredScreenshotPose,
 } from "../engine/sceneLayeredScreenshot";
-import type { DocChangedHandler } from "./useSceneDocPatch";
 
 /** Shared layered-screenshot doc plumbing (the useCameraDoc pattern) used by the builder panel, tool overlay and animation lane: the in-flight draft, live preview via the edit store, sidecar commit with history + write-error surface, and the applied-pose sampler. `onDocChanged` receives the exact doc each commit wrote so the host patches the loaded project in memory instead of reloading. */
 
@@ -57,25 +51,13 @@ export function useLayeredScreenshotDoc(
     async (next: SceneDocLayeredScreenshot) => {
       if (!slug || !sceneFile) return;
       preview(next, true); // hold the stack until the patched project lands
-      const written: SceneDoc = doc
-        ? { ...structuredClone(doc), layeredScreenshot: next }
-        : { version: 1, layeredScreenshot: next };
       try {
-        await writeSceneDoc(slug, sceneFile, written);
-        onDocChanged(sceneIndex, written, sceneFile, project.id);
-        pushHistory({
-          label: "layered screenshot edit",
-          changes: [
-            {
-              kind: "sceneDoc",
-              slug,
-              file: sceneFile,
-              sceneIndex,
-              before: doc ? structuredClone(doc) : null,
-              after: structuredClone(written),
-            },
-          ],
-        });
+        await commitSceneDocPatch(
+          { project, sceneIndex, label: "layered screenshot edit", onDocChanged },
+          (written) => {
+            written.layeredScreenshot = structuredClone(next);
+          },
+        );
         useLayeredScreenshotEditStore.getState().setWriteError(null);
       } catch (e) {
         // The draft keeps the stack on screen even though the disk write failed; without a surface this would be silent data loss.
@@ -83,7 +65,7 @@ export function useLayeredScreenshotDoc(
         useLayeredScreenshotEditStore.getState().setWriteError(String(e));
       }
     },
-    [slug, sceneFile, doc, preview, onDocChanged, sceneIndex, project.id],
+    [slug, sceneFile, preview, onDocChanged, sceneIndex, project],
   );
 
   /** The pose the stack actually shows at scene-local `t` under the current block + animated track; tool gestures and preset scaffolds seed from this so an edit never visibly moves the stack until the user drags. */

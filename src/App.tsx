@@ -100,6 +100,7 @@ import {
   type ProjectListing,
   parseProjectId,
   projectFolderPath,
+  projectIdForNativeSlug,
   resolveAssetPath,
   sceneFileStem,
   WORKSPACE_PROJECT_PREFIX,
@@ -127,6 +128,7 @@ import {
   syncFollowMediaDurations,
   writeSceneDoc,
 } from "./engine/sceneDoc";
+import { commitSceneDocPatch, docPatchMatchesProject } from "./engine/sceneDocPatchQueue";
 import type { SceneDoc } from "./engine/sceneDocSchema";
 import { planDeletes, planDuplicates, planMoves } from "./engine/sceneOrder";
 import { ensureSceneThumbs, listCachedSceneThumbs } from "./engine/sceneThumbs";
@@ -212,11 +214,7 @@ import { duplicateThemeDoc } from "./ui/theme-editor/themeDraft";
 import { onThemeSaved, readThemeSourceDoc } from "./ui/theme-editor/themeEditorIo";
 import { onThemeMoved } from "./ui/theme-editor/themeMove";
 import { UpdateAvailableDialog, UpdateConsentDialog } from "./ui/updateDialogs";
-import {
-  commitSceneDuration,
-  docPatchMatchesProject,
-  resolveDocPatchIndex,
-} from "./ui/useSceneDocPatch";
+import { commitSceneDuration, resolveDocPatchIndex } from "./ui/useSceneDocPatch";
 import { WebsiteGizmo } from "./ui/WebsiteGizmo";
 import { Welcome } from "./ui/Welcome";
 
@@ -815,33 +813,18 @@ export default function App() {
     async (sceneIndex: number, name: string) => {
       const current = loadedProjectRef.current;
       if (!current || !isEditableProjectId(current.id)) return;
-      const slug = nativeProjectSlug(current.id);
       const doc = current.sceneDocs[sceneIndex];
-      const file = current.sceneFiles[sceneIndex];
-      if (!doc || !file) return;
+      if (!doc || !current.sceneFiles[sceneIndex]) return;
       const trimmed = name.trim();
       if (trimmed === (doc.name ?? "")) return;
       try {
-        const before = structuredClone(doc);
-        const next = structuredClone(doc);
-        if (trimmed) next.name = trimmed;
-        else delete next.name;
-        await writeSceneDoc(slug, file, next);
-        handleDocChanged(sceneIndex, next, file);
-        pushHistory({
-          label: "scene name",
-          changes: [
-            {
-              kind: "sceneDoc",
-              slug,
-              file,
-              sceneIndex,
-              before,
-              after: structuredClone(next),
-              reload: false,
-            },
-          ],
-        });
+        await commitSceneDocPatch(
+          { project: current, sceneIndex, label: "scene name", onDocChanged: handleDocChanged },
+          (next) => {
+            if (trimmed) next.name = trimmed;
+            else delete next.name;
+          },
+        );
       } catch (e) {
         setToast({ kind: "error", message: `Rename failed: ${String(e)}` });
       }
@@ -969,29 +952,15 @@ export default function App() {
     async (sceneIndex: number, nextCamera: CameraDoc, label: string) => {
       const current = loadedProjectRef.current;
       if (!current || !isEditableProjectId(current.id)) return;
-      const slug = nativeProjectSlug(current.id);
-      const file = current.sceneFiles[sceneIndex];
-      if (!file) return;
-      const doc = current.sceneDocs[sceneIndex];
-      const written: SceneDoc = doc ? structuredClone(doc) : { version: 1 };
-      if (nextCamera.keys.length > 0) written.camera = nextCamera;
-      else delete written.camera;
+      if (!current.sceneFiles[sceneIndex]) return;
       try {
-        await writeSceneDoc(slug, file, written);
-        handleDocChanged(sceneIndex, written, file);
-        pushHistory({
-          label,
-          changes: [
-            {
-              kind: "sceneDoc",
-              slug,
-              file,
-              sceneIndex,
-              before: doc ? structuredClone(doc) : null,
-              after: structuredClone(written),
-            },
-          ],
-        });
+        await commitSceneDocPatch(
+          { project: current, sceneIndex, label, onDocChanged: handleDocChanged },
+          (written) => {
+            if (nextCamera.keys.length > 0) written.camera = structuredClone(nextCamera);
+            else delete written.camera;
+          },
+        );
       } catch (e) {
         setToast({ kind: "error", message: `${label} failed: ${String(e)}` });
       }
@@ -1069,23 +1038,20 @@ export default function App() {
       const current = loadedProjectRef.current;
       const clip = useUiStore.getState().backgroundClipboard;
       if (!current || !isEditableProjectId(current.id) || !clip) return;
-      const slug = nativeProjectSlug(current.id);
-      const file = current.sceneFiles[sceneIndex];
-      if (!file) return;
+      if (!current.sceneFiles[sceneIndex]) return;
       try {
-        const existing = current.sceneDocs[sceneIndex];
-        const before = existing ? structuredClone(existing) : null;
-        const next: SceneDoc = existing ? structuredClone(existing) : { version: 1 };
-        next.background = clip.background ? structuredClone(clip.background) : undefined;
-        next.backdrop = clip.backdrop ? structuredClone(clip.backdrop) : undefined;
-        await writeSceneDoc(slug, file, next);
-        handleDocChanged(sceneIndex, next, file);
-        pushHistory({
-          label: "paste background",
-          changes: [
-            { kind: "sceneDoc", slug, file, sceneIndex, before, after: structuredClone(next) },
-          ],
-        });
+        await commitSceneDocPatch(
+          {
+            project: current,
+            sceneIndex,
+            label: "paste background",
+            onDocChanged: handleDocChanged,
+          },
+          (next) => {
+            next.background = clip.background ? structuredClone(clip.background) : undefined;
+            next.backdrop = clip.backdrop ? structuredClone(clip.backdrop) : undefined;
+          },
+        );
       } catch (e) {
         setToast({ kind: "error", message: `Paste background failed: ${String(e)}` });
       }
@@ -1111,19 +1077,14 @@ export default function App() {
       return;
     }
     if (!file) return;
-    const slug = nativeProjectSlug(current.id);
     try {
-      const before = existing ? structuredClone(existing) : null;
-      const next: SceneDoc = existing ? structuredClone(existing) : { version: 1 };
-      next.chart = newChartBlock();
-      await writeSceneDoc(slug, file, next);
-      handleDocChanged(sceneIndex, next, file);
-      pushHistory({
-        label: "add chart",
-        changes: [
-          { kind: "sceneDoc", slug, file, sceneIndex, before, after: structuredClone(next) },
-        ],
-      });
+      await commitSceneDocPatch(
+        { project: current, sceneIndex, label: "add chart", onDocChanged: handleDocChanged },
+        (next) => {
+          if (next.chart) return false;
+          next.chart = newChartBlock();
+        },
+      );
       openDrill();
     } catch (e) {
       setToast({ kind: "error", message: `Add chart failed: ${String(e)}` });
@@ -1136,7 +1097,12 @@ export default function App() {
       if (change.kind === "sceneDoc") {
         const target = (dir === "undo" ? change.before : change.after) ?? { version: 1 };
         await writeSceneDoc(change.slug, change.file, target);
-        handleDocChanged(change.sceneIndex, target, change.file);
+        handleDocChanged(
+          change.sceneIndex,
+          target,
+          change.file,
+          projectIdForNativeSlug(change.slug),
+        );
         // A themeId revert resolves at load; without this the undo lands on disk invisibly until the next reload.
         if (change.reload) handleTimingChanged();
       } else {
@@ -1211,33 +1177,24 @@ export default function App() {
         nativeProjectSlug(project.id) === pending.slug
       ) {
         pendingRepointRef.current = null;
-        const doc = project.sceneDocs[pending.index];
-        const sceneFile = project.sceneFiles[pending.index];
         const rel = `assets/${pending.editName}-edited.mp4`;
-        const next = doc ? applyEditRepoint(doc, pending.slot, rel, pending.targetId) : null;
-        if (doc && next && sceneFile) {
+        if (project.sceneDocs[pending.index] && project.sceneFiles[pending.index]) {
           try {
-            await writeSceneDoc(pending.slug, sceneFile, next);
-            // Surgical (flicker fix): patch the doc in memory since the scene re-binds its clip by src without a reload; only a duration change needs the timing refresh.
-            handleDocChanged(pending.index, next, sceneFile);
-            pushHistory({
-              label: "video re-point",
-              changes: [
-                {
-                  kind: "sceneDoc",
-                  slug: pending.slug,
-                  file: sceneFile,
-                  sceneIndex: pending.index,
-                  before: structuredClone(doc),
-                  after: structuredClone(next),
-                },
-              ],
-            });
-            if (pending.slot !== "background") {
+            // Surgical (flicker fix): the queued write patches the doc in memory since the scene re-binds its clip by src without a reload; only a duration change needs the timing refresh.
+            const result = await commitSceneDocPatch(
+              {
+                project,
+                sceneIndex: pending.index,
+                label: "video re-point",
+                onDocChanged: handleDocChanged,
+              },
+              (current) => applyEditRepoint(current, pending.slot, rel, pending.targetId) ?? false,
+            );
+            if (result && pending.slot !== "background") {
               const { wrote } = await resyncFollowMediaDuration(
                 pending.slug,
                 pending.index,
-                next,
+                result.doc,
                 project.slots[pending.index].durationMs,
               );
               if (wrote) handleTimingChanged();
@@ -1542,8 +1499,12 @@ export default function App() {
           delete next[oldId];
           return next;
         });
+        const boundId = useEditorStore.getState().projectId;
         bindHistory(null);
-        bindHistory(useEditorStore.getState().projectId);
+        bindHistory(
+          boundId,
+          boundId && isEditableProjectId(boundId) ? nativeProjectSlug(boundId) : null,
+        );
         setThemesRefreshKey((key) => key + 1);
         setLoadNonce((key) => key + 1);
       }),
@@ -1947,7 +1908,13 @@ export default function App() {
   // A real project switch orphans any armed return position (never seek another project's clock); keyed on the id since in-memory doc patches swap the project object per pick.
   useEffect(() => {
     replayReturnMsRef.current = null;
-    bindHistory(projectIdLoaded ?? null); // the edit history is per-project
+    // The edit history is per-project; the slug fences late writes from the project just left.
+    bindHistory(
+      projectIdLoaded ?? null,
+      projectIdLoaded && isEditableProjectId(projectIdLoaded)
+        ? nativeProjectSlug(projectIdLoaded)
+        : null,
+    );
     // The background clipboard is per-project too: image/video fills reference project assets.
     useUiStore.getState().setBackgroundClipboard(null);
   }, [projectIdLoaded]);

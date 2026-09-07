@@ -11,6 +11,12 @@ import {
   resyncFollowMediaDuration,
   writeSceneDoc,
 } from "../engine/sceneDoc";
+import {
+  type DocChangedHandler,
+  enqueueSceneDocPatch,
+  sceneDocPatchQueue,
+  sceneDocPatchQueueIdentity,
+} from "../engine/sceneDocPatchQueue";
 import type { SceneDoc } from "../engine/sceneDocSchema";
 import { resolveAimTarget } from "../engine/sceneRig";
 import { rebakeRigBindings } from "../engine/sceneRigConvert";
@@ -18,71 +24,11 @@ import { resolveOverlapMs } from "../engine/sceneTimeline";
 import type { DeviceFloorY } from "../toolkit/device/worldAnchor";
 import type { FormatInfo } from "../toolkit/types";
 
-/** The host's in-memory doc patch. Always pass the `sceneFile` the write targeted: the index alone cannot survive the await (see `resolveDocPatchIndex`). */
-export type DocChangedHandler = (
-  sceneIndex: number,
-  doc: SceneDoc,
-  sceneFile?: string,
-  projectId?: string,
-) => void;
-
-export function docPatchMatchesProject(
-  currentProjectId: string,
-  writtenProjectId?: string,
-): boolean {
-  return writtenProjectId === undefined || currentProjectId === writtenProjectId;
-}
+export type { DocChangedHandler } from "../engine/sceneDocPatchQueue";
+export { docPatchMatchesProject, settleSceneDocPatches } from "../engine/sceneDocPatchQueue";
 
 /** Manifest module paths may carry a leading `./`; `sceneMountKey` normalises the same way. */
 const normFile = (file: string) => file.replace(/^\.?\//, "");
-
-interface SceneDocPatchQueue {
-  identity: string;
-  latestDoc: SceneDoc | undefined;
-  pending: number;
-  tail: Promise<void>;
-}
-
-const sceneDocPatchQueues = new Map<string, SceneDocPatchQueue>();
-
-export async function settleSceneDocPatches(): Promise<void> {
-  let pending = [...sceneDocPatchQueues.values()].filter((queue) => queue.pending > 0);
-  while (pending.length) {
-    await Promise.all(pending.map((queue) => queue.tail));
-    pending = [...sceneDocPatchQueues.values()].filter((queue) => queue.pending > 0);
-  }
-}
-
-function sceneDocPatchQueue(identity: string, doc: SceneDoc | undefined): SceneDocPatchQueue {
-  const existing = sceneDocPatchQueues.get(identity);
-  if (existing) {
-    if (existing.pending === 0) existing.latestDoc = doc;
-    return existing;
-  }
-  const created = { identity, latestDoc: doc, pending: 0, tail: Promise.resolve() };
-  sceneDocPatchQueues.set(identity, created);
-  return created;
-}
-
-function enqueueSceneDocPatch<T>(queue: SceneDocPatchQueue, execute: () => Promise<T>): Promise<T> {
-  queue.pending += 1;
-  const result = queue.tail.then(execute, execute);
-  const tracked = result.then(
-    (value) => {
-      queue.pending -= 1;
-      return value;
-    },
-    (error) => {
-      queue.pending -= 1;
-      throw error;
-    },
-  );
-  queue.tail = tracked.then(
-    () => {},
-    () => {},
-  );
-  return tracked;
-}
 
 export function applySceneDocPatch(
   doc: SceneDoc,
@@ -181,7 +127,7 @@ export function useSceneDocPatch(
   const doc = project.sceneDocs[sceneIndex];
   const scene = project.slots[sceneIndex];
   const sceneFile = project.sceneFiles[sceneIndex];
-  const queueIdentity = `${project.id}\u0000${sceneFile ?? sceneIndex}`;
+  const queueIdentity = sceneDocPatchQueueIdentity(project.id, sceneFile, sceneIndex);
   const patchQueue = sceneDocPatchQueue(queueIdentity, doc);
 
   /** Write a patched copy of the doc, re-sync duration when asked, and report whether the complete operation succeeded. */
@@ -467,8 +413,10 @@ export async function commitSceneDuration(
   onTimingChanged: () => void,
 ): Promise<SceneDoc | undefined> {
   const sceneFile = project.sceneFiles[sceneIndex];
-  const identity = `${project.id}\u0000${sceneFile ?? sceneIndex}`;
-  const queue = sceneDocPatchQueue(identity, project.sceneDocs[sceneIndex]);
+  const queue = sceneDocPatchQueue(
+    sceneDocPatchQueueIdentity(project.id, sceneFile, sceneIndex),
+    project.sceneDocs[sceneIndex],
+  );
   return enqueueSceneDocPatch(queue, async () => {
     const queuedProject = queue.latestDoc
       ? {

@@ -6,18 +6,11 @@ import { resolveDeviceLayout } from "../toolkit/device/layout";
 import { useChartRegistry } from "./chartRegistry";
 import { useDeviceRegistry } from "./deviceRegistry";
 import { useFormat } from "./format";
-import { type HistoryChange, pushHistory } from "./history";
 import { clampTrackToDuration, type KeyedTrack } from "./keyedTrack";
 import { useLayeredScreenshotRegistry } from "./layeredScreenshotRegistry";
 import { type ManagedTextRenderRole, resolveTemplateManagedTextCopy } from "./managedText";
 import { useObjectRegistry } from "./objectRegistry";
-import {
-  isEditableProjectId,
-  type LoadedProject,
-  nativeProjectSlug,
-  type ProjectManifest,
-} from "./project";
-import { readProjectManifestSnapshot, writeProjectManifestSnapshot } from "./projectEdit";
+import { isEditableProjectId, type LoadedProject, nativeProjectSlug } from "./project";
 import { type ResolvedChart, resolveChart } from "./sceneChart";
 import { SceneDocContext, useSceneContext } from "./sceneContext";
 import { parseSceneDoc, type SceneDoc, type SceneDocMediaSpec } from "./sceneDocSchema";
@@ -201,72 +194,6 @@ export async function writeSceneDoc(slug: string, sceneFile: string, doc: SceneD
   } finally {
     if (sceneDocWriteQueues.get(key) === write) sceneDocWriteQueues.delete(key);
   }
-}
-
-/** Stamps one scene's background + backdrop overrides onto every OTHER scene (raw fields, so "follow theme" copies as absence and named gradients still resolve per-scene) AND onto the manifest as `appliedBackground`, so new scenes scaffold with the same look: one compound undo entry covering both, doc-less targets get a minimal doc, and a single bad scene loses only itself. Returns counts so the caller can surface partial failures. */
-export async function applyBackgroundToAllScenes(
-  project: LoadedProject,
-  sourceIndex: number,
-  onDocChanged: (sceneIndex: number, doc: SceneDoc, sceneFile?: string) => void,
-): Promise<{ applied: number; failed: number }> {
-  if (!isEditableProjectId(project.id)) return { applied: 0, failed: 0 };
-  const slug = nativeProjectSlug(project.id);
-  const source = project.sceneDocs[sourceIndex];
-  const changes: HistoryChange[] = [];
-  let applied = 0;
-  let failed = 0;
-  for (let i = 0; i < project.sceneFiles.length; i++) {
-    if (i === sourceIndex) continue;
-    const file = project.sceneFiles[i];
-    if (!file) continue;
-    const existing = project.sceneDocs[i];
-    const next: SceneDoc = existing ? structuredClone(existing) : { version: 1 };
-    next.background = source?.background ? structuredClone(source.background) : undefined;
-    next.backdrop = source?.backdrop ? structuredClone(source.backdrop) : undefined;
-    try {
-      await writeSceneDoc(slug, file, next);
-      onDocChanged(i, next, file);
-      applied++;
-      changes.push({
-        kind: "sceneDoc",
-        slug,
-        file,
-        sceneIndex: i,
-        before: existing ? structuredClone(existing) : null,
-        after: structuredClone(next),
-      });
-    } catch (e) {
-      failed++;
-      console.warn(`[sceneDoc] apply-background-to-all failed for scene ${i}:`, e);
-    }
-  }
-  try {
-    const before = await readProjectManifestSnapshot(slug);
-    const manifest = JSON.parse(before) as ProjectManifest;
-    const stamp: NonNullable<ProjectManifest["appliedBackground"]> = {};
-    if (source?.background) stamp.background = structuredClone(source.background);
-    if (source?.backdrop) stamp.backdrop = structuredClone(source.backdrop);
-    const stamped = stamp.background !== undefined || stamp.backdrop !== undefined;
-    // Applying a theme-default scene CLEARS the stamp, so new scenes go back to following the theme.
-    if (stamped || manifest.appliedBackground !== undefined) {
-      if (stamped) manifest.appliedBackground = stamp;
-      else delete manifest.appliedBackground;
-      await writeProjectManifestSnapshot(slug, JSON.stringify(manifest, null, 2));
-      changes.push({
-        kind: "manifest",
-        slug,
-        before,
-        after: await readProjectManifestSnapshot(slug),
-        reload: false,
-      });
-    }
-  } catch (e) {
-    console.warn("[sceneDoc] apply-background-to-all: manifest stamp failed:", e);
-  }
-  if (changes.length > 0) {
-    pushHistory({ label: "apply background to all scenes", changes });
-  }
-  return { applied, failed };
 }
 
 /** Which surface an edit render re-points. `media` carries the entry id in `targetId`, the device slots a device id. */

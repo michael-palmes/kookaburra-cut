@@ -44,7 +44,8 @@ import {
 import { readProjectManifestSnapshot, updateSceneTransition } from "../../engine/projectEdit";
 import { defaultOrbitPose } from "../../engine/sceneCamera";
 import { type CameraDoc, nearestKey, type RigDoc, setKeyPose } from "../../engine/sceneCameraEdit";
-import { applyBackgroundToAllScenes, type EditRepointSlot } from "../../engine/sceneDoc";
+import type { EditRepointSlot } from "../../engine/sceneDoc";
+import { applyBackgroundToAllScenes } from "../../engine/sceneDocPatchQueue";
 import {
   type DeviceLayoutPreset,
   isSceneImageSource,

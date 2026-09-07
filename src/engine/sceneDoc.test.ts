@@ -43,13 +43,13 @@ vi.mock("@tauri-apps/api/core", () => ({
 import { bindHistory, peekUndo } from "./history";
 import type { LoadedProject, ProjectManifest } from "./project";
 import {
-  applyBackgroundToAllScenes,
   applyEditRepoint,
   followMediaSources,
   loadSceneDoc,
   resyncFollowMediaDuration,
   writeSceneDoc,
 } from "./sceneDoc";
+import { applyBackgroundToAllScenes } from "./sceneDocPatchQueue";
 import { parseSceneDoc, type SceneDoc, type SceneDocMediaSpec } from "./sceneDocSchema";
 import { sceneMediaFamily, sceneMediaUsesWindowPath } from "./sceneMedia";
 
@@ -511,6 +511,19 @@ describe("applyBackgroundToAllScenes records the project-wide stamp", () => {
     );
     const entry = peekUndo();
     expect(entry?.changes.map((c) => c.kind)).toEqual(["sceneDoc", "manifest"]);
+  });
+
+  it("hands the host each written file with the project id", async () => {
+    const onDocChanged = vi.fn();
+    await applyBackgroundToAllScenes(
+      projectWith([docWith({ background }), undefined, docWith({})]),
+      0,
+      onDocChanged,
+    );
+    expect(onDocChanged.mock.calls.map((call) => [call[0], call[2], call[3]])).toEqual([
+      [1, "scenes/02-scene.tsx", "ws:demo"],
+      [2, "scenes/03-scene.tsx", "ws:demo"],
+    ]);
   });
 
   it("applying a theme-default scene clears an existing stamp", async () => {
