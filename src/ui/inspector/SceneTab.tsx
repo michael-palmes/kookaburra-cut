@@ -230,7 +230,7 @@ import {
   planContentDelete,
   planContentDuplicate,
 } from "./contentMenuActions";
-import { modalOwnsKeyboard } from "./InspectorNavigationShell";
+import { inspectorRouteSignature, modalOwnsKeyboard } from "./InspectorNavigationShell";
 import { type LightingInspectorScreen, LightingInspectorSection } from "./LightingInspectorSection";
 import {
   comparisonLightingEditorDoc,
@@ -3367,20 +3367,40 @@ export function SceneTab({
       if (d) fn(d);
     });
 
+  /** The route an action started on. A completed patch may only steer selection or navigation while the inspector still sits exactly there, on the same scene of the same project: the write awaits real IPC and the user may have moved on. */
+  const captureActionContext = () => {
+    const ui = useUiStore.getState();
+    return {
+      projectId: project.id,
+      sceneIndex,
+      sceneFile: project.sceneFiles[sceneIndex] ?? null,
+      drillStack: [...ui.inspector.drillStack],
+      route: inspectorRouteSignature(ui.inspector),
+      sequence: ui.inspectorNavigation.sequence,
+    };
+  };
+  type ActionContext = ReturnType<typeof captureActionContext>;
+  const stillCurrent = (ctx: ActionContext) => {
+    const ui = useUiStore.getState();
+    return (
+      projectIdRef.current === ctx.projectId &&
+      sceneIndexRef.current === ctx.sceneIndex &&
+      sceneFileRef.current === ctx.sceneFile &&
+      ui.inspector.tab === "scene" &&
+      inspectorRouteSignature(ui.inspector) === ctx.route &&
+      ui.inspectorNavigation.sequence === ctx.sequence
+    );
+  };
+
   const addDevice = () => {
     if (contentActionPendingRef.current) return;
-    const expectedProjectId = project.id;
-    const expectedSceneIndex = sceneIndex;
-    const expectedSceneFile = project.sceneFiles[sceneIndex] ?? null;
-    const expectedUi = useUiStore.getState();
-    const expectedDrillStack = [...expectedUi.inspector.drillStack];
-    const expectedNavigationSequence = expectedUi.inspectorNavigation.sequence;
+    const ctx = captureActionContext();
     const actionToken = Symbol("add-device");
     contentActionPendingRef.current = {
       token: actionToken,
-      projectId: expectedProjectId,
-      sceneIndex: expectedSceneIndex,
-      sceneFile: expectedSceneFile,
+      projectId: ctx.projectId,
+      sceneIndex: ctx.sceneIndex,
+      sceneFile: ctx.sceneFile,
     };
     setContentActionBusy(true);
     let createdId: string | null = null;
@@ -3410,34 +3430,24 @@ export function SceneTab({
     )
       .then((succeeded) => {
         const id = createdId;
-        const inspector = useUiStore.getState().inspector;
-        if (
-          !succeeded ||
-          !id ||
-          projectIdRef.current !== expectedProjectId ||
-          sceneIndexRef.current !== expectedSceneIndex ||
-          sceneFileRef.current !== expectedSceneFile ||
-          inspector.tab !== "scene" ||
-          useUiStore.getState().inspectorNavigation.sequence !== expectedNavigationSequence ||
-          inspector.drillStack.join("\u0000") !== expectedDrillStack.join("\u0000")
-        ) {
+        if (!succeeded || !id || !stillCurrent(ctx)) {
           contentAddActivatorRef.current = null;
           return;
         }
         pickDevice(id);
         setOverviewSelection({
-          sceneIndex: expectedSceneIndex,
+          sceneIndex: ctx.sceneIndex,
           rowId: `device:${id}`,
           domain: "devices",
         });
         focusContentAddActivator();
-        if (expectedDrillStack.length === 0) {
+        if (ctx.drillStack.length === 0) {
           setPendingDeviceInspectorOpen({
-            projectId: expectedProjectId,
-            sceneIndex: expectedSceneIndex,
-            sceneFile: expectedSceneFile,
+            projectId: ctx.projectId,
+            sceneIndex: ctx.sceneIndex,
+            sceneFile: ctx.sceneFile,
             deviceId: id,
-            navigationSequence: expectedNavigationSequence,
+            navigationSequence: ctx.sequence,
           });
         }
       })
@@ -3449,10 +3459,7 @@ export function SceneTab({
       });
   };
   const duplicateSceneDevice = (sourceId: string) => {
-    const expectedProjectId = project.id;
-    const expectedSceneIndex = sceneIndex;
-    const expectedSceneFile = project.sceneFiles[sceneIndex] ?? null;
-    const expectedDrillStack = [...useUiStore.getState().inspector.drillStack];
+    const ctx = captureActionContext();
     let createdId: string | null = null;
     void patchDocResult(
       (next) => {
@@ -3462,20 +3469,11 @@ export function SceneTab({
       { history: "duplicate device" },
     ).then((succeeded) => {
       const id = createdId;
-      const inspector = useUiStore.getState().inspector;
       if (
         !succeeded ||
         !id ||
-        projectIdRef.current !== expectedProjectId ||
-        sceneIndexRef.current !== expectedSceneIndex ||
-        sceneFileRef.current !== expectedSceneFile ||
-        !deviceSelectionOwnsAction(
-          useDeviceEditStore.getState().selected,
-          expectedSceneIndex,
-          sourceId,
-        ) ||
-        inspector.tab !== "scene" ||
-        inspector.drillStack.join("\u0000") !== expectedDrillStack.join("\u0000")
+        !stillCurrent(ctx) ||
+        !deviceSelectionOwnsAction(useDeviceEditStore.getState().selected, ctx.sceneIndex, sourceId)
       ) {
         return;
       }
@@ -3486,9 +3484,7 @@ export function SceneTab({
     if (deviceId) duplicateSceneDevice(deviceId);
   };
   const removeSceneDevice = (sourceId: string) => {
-    const expectedProjectId = project.id;
-    const expectedSceneIndex = sceneIndex;
-    const expectedSceneFile = project.sceneFiles[sceneIndex] ?? null;
+    const ctx = captureActionContext();
     let nextDeviceId: string | null = null;
     void patchDocResult(
       (next) => {
@@ -3500,14 +3496,10 @@ export function SceneTab({
     ).then((succeeded) => {
       if (
         !succeeded ||
-        projectIdRef.current !== expectedProjectId ||
-        sceneIndexRef.current !== expectedSceneIndex ||
-        sceneFileRef.current !== expectedSceneFile ||
-        !deviceSelectionOwnsAction(
-          useDeviceEditStore.getState().selected,
-          expectedSceneIndex,
-          sourceId,
-        )
+        projectIdRef.current !== ctx.projectId ||
+        sceneIndexRef.current !== ctx.sceneIndex ||
+        sceneFileRef.current !== ctx.sceneFile ||
+        !deviceSelectionOwnsAction(useDeviceEditStore.getState().selected, ctx.sceneIndex, sourceId)
       ) {
         return;
       }
@@ -3520,12 +3512,7 @@ export function SceneTab({
     });
   };
   const addObjectFromPicker = (objectId: string) => {
-    const expectedProjectId = project.id;
-    const expectedSceneIndex = sceneIndex;
-    const expectedSceneFile = project.sceneFiles[sceneIndex] ?? null;
-    const expectedUi = useUiStore.getState();
-    const expectedDrillStack = [...expectedUi.inspector.drillStack];
-    const expectedNavigationSequence = expectedUi.inspectorNavigation.sequence;
+    const ctx = captureActionContext();
     const selectedDeviceId = deviceId;
     let createdId: string | null = null;
     return patchDocResult(
@@ -3546,26 +3533,16 @@ export function SceneTab({
       { history: "add object" },
     ).then((succeeded) => {
       const id = createdId;
-      const inspector = useUiStore.getState().inspector;
-      if (
-        !succeeded ||
-        !id ||
-        projectIdRef.current !== expectedProjectId ||
-        sceneIndexRef.current !== expectedSceneIndex ||
-        sceneFileRef.current !== expectedSceneFile ||
-        inspector.tab !== "scene" ||
-        useUiStore.getState().inspectorNavigation.sequence !== expectedNavigationSequence ||
-        inspector.drillStack.join("\u0000") !== expectedDrillStack.join("\u0000")
-      ) {
+      if (!succeeded || !id || !stillCurrent(ctx)) {
         return;
       }
       setPickedObjectId(id);
       setOverviewSelection({
-        sceneIndex: expectedSceneIndex,
+        sceneIndex: ctx.sceneIndex,
         rowId: `object:${id}`,
         domain: "objects",
       });
-      useObjectEditStore.getState().select({ sceneIndex: expectedSceneIndex, objectId: id });
+      useObjectEditStore.getState().select({ sceneIndex: ctx.sceneIndex, objectId: id });
       replaceDrill("objects.placement");
     });
   };
@@ -3589,9 +3566,7 @@ export function SceneTab({
     };
     const plan = planContentDuplicate(row, { doc: currentDoc });
     if (!plan) return;
-    const expectedProjectId = project.id;
-    const expectedSceneIndex = sceneIndex;
-    const expectedSceneFile = project.sceneFiles[sceneIndex] ?? null;
+    const ctx = captureActionContext();
     const expectedDrillStack = [...useUiStore.getState().inspector.drillStack];
     void patchDocResult(plan.apply, { history: plan.history }).then((succeeded) => {
       const selection = plan.nextSelection;
@@ -3601,10 +3576,10 @@ export function SceneTab({
         !succeeded ||
         selection?.kind !== "object" ||
         !plan.nextRowId ||
-        projectIdRef.current !== expectedProjectId ||
-        sceneIndexRef.current !== expectedSceneIndex ||
-        sceneFileRef.current !== expectedSceneFile ||
-        selected?.sceneIndex !== expectedSceneIndex ||
+        projectIdRef.current !== ctx.projectId ||
+        sceneIndexRef.current !== ctx.sceneIndex ||
+        sceneFileRef.current !== ctx.sceneFile ||
+        selected?.sceneIndex !== ctx.sceneIndex ||
         selected.objectId !== sourceId ||
         inspector.tab !== "scene" ||
         inspector.drillStack.join("\u0000") !== expectedDrillStack.join("\u0000")
@@ -3612,11 +3587,9 @@ export function SceneTab({
         return;
       }
       setPickedObjectId(selection.id);
-      useObjectEditStore
-        .getState()
-        .select({ sceneIndex: expectedSceneIndex, objectId: selection.id });
+      useObjectEditStore.getState().select({ sceneIndex: ctx.sceneIndex, objectId: selection.id });
       setOverviewSelection({
-        sceneIndex: expectedSceneIndex,
+        sceneIndex: ctx.sceneIndex,
         rowId: plan.nextRowId,
         domain: "objects",
       });
@@ -3636,17 +3609,15 @@ export function SceneTab({
     };
     const plan = planContentDelete(row, { doc: currentDoc });
     if (!plan) return;
-    const expectedProjectId = project.id;
-    const expectedSceneIndex = sceneIndex;
-    const expectedSceneFile = project.sceneFiles[sceneIndex] ?? null;
+    const ctx = captureActionContext();
     void patchDocResult(plan.apply, { history: plan.history }).then((succeeded) => {
       const selected = useObjectEditStore.getState().selected;
       if (
         !succeeded ||
-        projectIdRef.current !== expectedProjectId ||
-        sceneIndexRef.current !== expectedSceneIndex ||
-        sceneFileRef.current !== expectedSceneFile ||
-        selected?.sceneIndex !== expectedSceneIndex ||
+        projectIdRef.current !== ctx.projectId ||
+        sceneIndexRef.current !== ctx.sceneIndex ||
+        sceneFileRef.current !== ctx.sceneFile ||
+        selected?.sceneIndex !== ctx.sceneIndex ||
         selected.objectId !== sourceId
       ) {
         return;
@@ -3672,16 +3643,14 @@ export function SceneTab({
     };
     const plan = planContentDelete(row, { doc: currentDoc });
     if (!plan) return;
-    const expectedProjectId = project.id;
-    const expectedSceneIndex = sceneIndex;
-    const expectedSceneFile = project.sceneFiles[sceneIndex] ?? null;
+    const ctx = captureActionContext();
     void patchDocResult(plan.apply, { history: plan.history }).then((succeeded) => {
       const inspector = useUiStore.getState().inspector;
       if (
         !succeeded ||
-        projectIdRef.current !== expectedProjectId ||
-        sceneIndexRef.current !== expectedSceneIndex ||
-        sceneFileRef.current !== expectedSceneFile ||
+        projectIdRef.current !== ctx.projectId ||
+        sceneIndexRef.current !== ctx.sceneIndex ||
+        sceneFileRef.current !== ctx.sceneFile ||
         inspector.tab !== "scene" ||
         inspector.drillIn !== "layeredScreenshot.edit"
       ) {
@@ -3694,12 +3663,7 @@ export function SceneTab({
   };
 
   const addCompare = () => {
-    const expectedProjectId = project.id;
-    const expectedSceneIndex = sceneIndex;
-    const expectedSceneFile = project.sceneFiles[sceneIndex] ?? null;
-    const expectedUi = useUiStore.getState();
-    const expectedDrillStack = [...expectedUi.inspector.drillStack];
-    const expectedNavigationSequence = expectedUi.inspectorNavigation.sequence;
+    const ctx = captureActionContext();
     void patchDocResult(
       (next) => {
         if (next.compare) return false;
@@ -3712,31 +3676,17 @@ export function SceneTab({
       },
       { history: "add comparison" },
     ).then((succeeded) => {
-      const state = useUiStore.getState();
-      if (
-        !succeeded ||
-        projectIdRef.current !== expectedProjectId ||
-        sceneIndexRef.current !== expectedSceneIndex ||
-        sceneFileRef.current !== expectedSceneFile ||
-        state.inspector.tab !== "scene" ||
-        state.inspectorNavigation.sequence !== expectedNavigationSequence ||
-        state.inspector.drillStack.join("\u0000") !== expectedDrillStack.join("\u0000")
-      ) {
+      if (!succeeded || !stillCurrent(ctx)) {
         contentAddActivatorRef.current = null;
         return;
       }
-      setOverviewSelection({ sceneIndex: expectedSceneIndex, rowId: "comparison", domain: null });
+      setOverviewSelection({ sceneIndex: ctx.sceneIndex, rowId: "comparison", domain: null });
       focusContentAddActivator();
       openDrill("compare.edit");
     });
   };
   const addChart = () => {
-    const expectedProjectId = project.id;
-    const expectedSceneIndex = sceneIndex;
-    const expectedSceneFile = project.sceneFiles[sceneIndex] ?? null;
-    const expectedUi = useUiStore.getState();
-    const expectedDrillStack = [...expectedUi.inspector.drillStack];
-    const expectedNavigationSequence = expectedUi.inspectorNavigation.sequence;
+    const ctx = captureActionContext();
     void patchDocResult(
       (next) => {
         if (next.chart) return false;
@@ -3744,32 +3694,18 @@ export function SceneTab({
       },
       { history: "add chart" },
     ).then((succeeded) => {
-      const state = useUiStore.getState();
-      if (
-        !succeeded ||
-        projectIdRef.current !== expectedProjectId ||
-        sceneIndexRef.current !== expectedSceneIndex ||
-        sceneFileRef.current !== expectedSceneFile ||
-        state.inspector.tab !== "scene" ||
-        state.inspectorNavigation.sequence !== expectedNavigationSequence ||
-        state.inspector.drillStack.join("\u0000") !== expectedDrillStack.join("\u0000")
-      ) {
+      if (!succeeded || !stillCurrent(ctx)) {
         contentAddActivatorRef.current = null;
         return;
       }
-      setOverviewSelection({ sceneIndex: expectedSceneIndex, rowId: "chart", domain: "chart" });
-      useChartEditStore.getState().select({ sceneIndex: expectedSceneIndex });
+      setOverviewSelection({ sceneIndex: ctx.sceneIndex, rowId: "chart", domain: "chart" });
+      useChartEditStore.getState().select({ sceneIndex: ctx.sceneIndex });
       focusContentAddActivator();
       jumpDrill(["chart.edit"]);
     });
   };
   const addTerminal = () => {
-    const expectedProjectId = project.id;
-    const expectedSceneIndex = sceneIndex;
-    const expectedSceneFile = project.sceneFiles[sceneIndex] ?? null;
-    const expectedUi = useUiStore.getState();
-    const expectedDrillStack = [...expectedUi.inspector.drillStack];
-    const expectedNavigationSequence = expectedUi.inspectorNavigation.sequence;
+    const ctx = captureActionContext();
     void patchDocResult(
       (next) => {
         if (next.terminal) return false;
@@ -3777,36 +3713,22 @@ export function SceneTab({
       },
       { history: "add terminal" },
     ).then((succeeded) => {
-      const state = useUiStore.getState();
-      if (
-        !succeeded ||
-        projectIdRef.current !== expectedProjectId ||
-        sceneIndexRef.current !== expectedSceneIndex ||
-        sceneFileRef.current !== expectedSceneFile ||
-        state.inspector.tab !== "scene" ||
-        state.inspectorNavigation.sequence !== expectedNavigationSequence ||
-        state.inspector.drillStack.join("\u0000") !== expectedDrillStack.join("\u0000")
-      ) {
+      if (!succeeded || !stillCurrent(ctx)) {
         contentAddActivatorRef.current = null;
         return;
       }
       setOverviewSelection({
-        sceneIndex: expectedSceneIndex,
+        sceneIndex: ctx.sceneIndex,
         rowId: "terminal",
         domain: "terminal",
       });
-      useTerminalEditStore.getState().select({ sceneIndex: expectedSceneIndex });
+      useTerminalEditStore.getState().select({ sceneIndex: ctx.sceneIndex });
       focusContentAddActivator();
       jumpDrill(["terminal.edit"]);
     });
   };
   const addWebsite = () => {
-    const expectedProjectId = project.id;
-    const expectedSceneIndex = sceneIndex;
-    const expectedSceneFile = project.sceneFiles[sceneIndex] ?? null;
-    const expectedUi = useUiStore.getState();
-    const expectedDrillStack = [...expectedUi.inspector.drillStack];
-    const expectedNavigationSequence = expectedUi.inspectorNavigation.sequence;
+    const ctx = captureActionContext();
     void patchDocResult(
       (next) => {
         if (next.website) return false;
@@ -3814,36 +3736,22 @@ export function SceneTab({
       },
       { history: "add Website" },
     ).then((succeeded) => {
-      const state = useUiStore.getState();
-      if (
-        !succeeded ||
-        projectIdRef.current !== expectedProjectId ||
-        sceneIndexRef.current !== expectedSceneIndex ||
-        sceneFileRef.current !== expectedSceneFile ||
-        state.inspector.tab !== "scene" ||
-        state.inspectorNavigation.sequence !== expectedNavigationSequence ||
-        state.inspector.drillStack.join("\u0000") !== expectedDrillStack.join("\u0000")
-      ) {
+      if (!succeeded || !stillCurrent(ctx)) {
         contentAddActivatorRef.current = null;
         return;
       }
       setOverviewSelection({
-        sceneIndex: expectedSceneIndex,
+        sceneIndex: ctx.sceneIndex,
         rowId: "website",
         domain: "website",
       });
-      useWebsiteEditStore.getState().select({ sceneIndex: expectedSceneIndex });
+      useWebsiteEditStore.getState().select({ sceneIndex: ctx.sceneIndex });
       focusContentAddActivator();
       jumpDrill(["website.edit"]);
     });
   };
   const addChartSeries = () => {
-    const expectedProjectId = project.id;
-    const expectedSceneIndex = sceneIndex;
-    const expectedSceneFile = project.sceneFiles[sceneIndex] ?? null;
-    const expectedUi = useUiStore.getState();
-    const expectedDrillStack = [...expectedUi.inspector.drillStack];
-    const expectedNavigationSequence = expectedUi.inspectorNavigation.sequence;
+    const ctx = captureActionContext();
     let createdId: string | null = null;
     void patchDocResult(
       (next) => {
@@ -3868,29 +3776,14 @@ export function SceneTab({
       { history: "chart series" },
     ).then((succeeded) => {
       const id = createdId;
-      const currentUi = useUiStore.getState();
-      if (
-        !succeeded ||
-        !id ||
-        projectIdRef.current !== expectedProjectId ||
-        sceneIndexRef.current !== expectedSceneIndex ||
-        sceneFileRef.current !== expectedSceneFile ||
-        currentUi.inspectorNavigation.sequence !== expectedNavigationSequence ||
-        currentUi.inspector.tab !== "scene" ||
-        currentUi.inspector.drillStack.join("\u0000") !== expectedDrillStack.join("\u0000")
-      ) {
+      if (!succeeded || !id || !stillCurrent(ctx)) {
         return;
       }
       openDrill(chartSeriesInspectorRoute(id));
     });
   };
   const removeChartSeries = (seriesId: string) => {
-    const expectedProjectId = project.id;
-    const expectedSceneIndex = sceneIndex;
-    const expectedSceneFile = project.sceneFiles[sceneIndex] ?? null;
-    const expectedUi = useUiStore.getState();
-    const expectedDrillStack = [...expectedUi.inspector.drillStack];
-    const expectedNavigationSequence = expectedUi.inspectorNavigation.sequence;
+    const ctx = captureActionContext();
     void patchDocResult(
       (next) => {
         if (!next.chart || next.chart.data.series.length <= 1) return false;
@@ -3902,16 +3795,7 @@ export function SceneTab({
       },
       { history: "chart series" },
     ).then((succeeded) => {
-      const currentUi = useUiStore.getState();
-      if (
-        !succeeded ||
-        projectIdRef.current !== expectedProjectId ||
-        sceneIndexRef.current !== expectedSceneIndex ||
-        sceneFileRef.current !== expectedSceneFile ||
-        currentUi.inspectorNavigation.sequence !== expectedNavigationSequence ||
-        currentUi.inspector.tab !== "scene" ||
-        currentUi.inspector.drillStack.join("\u0000") !== expectedDrillStack.join("\u0000")
-      ) {
+      if (!succeeded || !stillCurrent(ctx)) {
         return;
       }
       closeDrill();
@@ -4142,19 +4026,14 @@ export function SceneTab({
 
   const addPickedMedia = (src: string, kind: SceneMediaKind, meta: MediaMeta | null) => {
     if (contentActionPendingRef.current) return;
-    const expectedProjectId = project.id;
-    const expectedSceneIndex = sceneIndex;
-    const expectedSceneFile = project.sceneFiles[sceneIndex] ?? null;
-    const expectedUi = useUiStore.getState();
-    const expectedDrillStack = [...expectedUi.inspector.drillStack];
-    const expectedNavigationSequence = expectedUi.inspectorNavigation.sequence;
+    const ctx = captureActionContext();
     const host = defaultSceneMediaHost(kind, sceneFrame !== undefined);
     const actionToken = Symbol("add-media");
     contentActionPendingRef.current = {
       token: actionToken,
-      projectId: expectedProjectId,
-      sceneIndex: expectedSceneIndex,
-      sceneFile: expectedSceneFile,
+      projectId: ctx.projectId,
+      sceneIndex: ctx.sceneIndex,
+      sceneFile: ctx.sceneFile,
     };
     setContentActionBusy(true);
     let createdId: string | null = null;
@@ -4194,25 +4073,18 @@ export function SceneTab({
       )
       .then((succeeded) => {
         const id = createdId;
-        const state = useUiStore.getState();
-        const stillOwnsAction =
-          projectIdRef.current === expectedProjectId &&
-          sceneIndexRef.current === expectedSceneIndex &&
-          sceneFileRef.current === expectedSceneFile &&
-          state.inspector.tab === "scene" &&
-          state.inspectorNavigation.sequence === expectedNavigationSequence &&
-          state.inspector.drillStack.join("\u0000") === expectedDrillStack.join("\u0000");
+        const stillOwnsAction = stillCurrent(ctx);
         if (!succeeded || !id || !stillOwnsAction) {
           if (stillOwnsAction) setImagePickError("Couldn’t add the media.");
           else contentAddActivatorRef.current = null;
           return;
         }
         setOverviewSelection({
-          sceneIndex: expectedSceneIndex,
+          sceneIndex: ctx.sceneIndex,
           rowId: mediaRowId(id),
           domain: "media",
         });
-        useImageEditStore.getState().select({ sceneIndex: expectedSceneIndex, imageId: id });
+        useImageEditStore.getState().select({ sceneIndex: ctx.sceneIndex, imageId: id });
         focusContentAddActivator();
         jumpDrill([MEDIA_DRILL_ROUTE]);
       })

@@ -108,13 +108,13 @@ describe("SceneTab Add Content inspector routing", () => {
     expectSuccessfulInspectorOpen({
       section: sourceSection("  const addCompare = () => {", "  const addChart = () => {"),
       completion: "patchDocResult(",
-      selection: 'setOverviewSelection({ sceneIndex: expectedSceneIndex, rowId: "comparison"',
+      selection: 'setOverviewSelection({ sceneIndex: ctx.sceneIndex, rowId: "comparison"',
       route: 'openDrill("compare.edit");',
     });
     expectSuccessfulInspectorOpen({
       section: sourceSection("  const addChart = () => {", "  const addChartSeries = () => {"),
       completion: "patchDocResult(",
-      selection: "useChartEditStore.getState().select({ sceneIndex: expectedSceneIndex });",
+      selection: "useChartEditStore.getState().select({ sceneIndex: ctx.sceneIndex });",
       route: 'jumpDrill(["chart.edit"]);',
     });
     expectSuccessfulInspectorOpen({
@@ -124,7 +124,7 @@ describe("SceneTab Add Content inspector routing", () => {
       ),
       completion: "patchDocResult(",
       selection:
-        "useImageEditStore.getState().select({ sceneIndex: expectedSceneIndex, imageId: id });",
+        "useImageEditStore.getState().select({ sceneIndex: ctx.sceneIndex, imageId: id });",
       route: "jumpDrill([MEDIA_DRILL_ROUTE]);",
     });
     expectSuccessfulInspectorOpen({
