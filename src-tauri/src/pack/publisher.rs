@@ -50,9 +50,13 @@ pub struct KnownPublisherRow {
     pub publisher: KnownPublisher,
 }
 
-/// What the import screen says about the publisher of the pack in hand.
+/// What the import screen says about the publisher of the pack in hand. `rename_all` alone renames the variants; the struct-variant FIELDS need `rename_all_fields` to reach the frontend as camelCase.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "camelCase", tag = "kind")]
+#[serde(
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase",
+    tag = "kind"
+)]
 pub enum PublisherVerdict {
     FirstTime,
     Known {
@@ -478,6 +482,32 @@ mod tests {
         assert_eq!(record.pack_count, 2);
         assert_eq!(record.last_pack_name, "Kit Two");
         assert_eq!(known.len(), 1);
+    }
+
+    #[test]
+    fn verdict_fields_reach_the_wire_as_camel_case() {
+        let known = serde_json::to_string(&PublisherVerdict::Known {
+            last_pack: "Acme Brand Kit".to_owned(),
+            first_seen: "2026-07-26T01:02:03Z".to_owned(),
+            pack_count: 3,
+        })
+        .unwrap();
+        assert_eq!(
+            known,
+            r#"{"kind":"known","lastPack":"Acme Brand Kit","firstSeen":"2026-07-26T01:02:03Z","packCount":3}"#
+        );
+        let renamed = serde_json::to_string(&PublisherVerdict::NameChanged {
+            previous: "Acme Studio".to_owned(),
+        })
+        .unwrap();
+        assert_eq!(
+            renamed,
+            r#"{"kind":"nameChanged","previous":"Acme Studio"}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&PublisherVerdict::FirstTime).unwrap(),
+            r#"{"kind":"firstTime"}"#
+        );
     }
 
     #[test]

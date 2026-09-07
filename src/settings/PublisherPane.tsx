@@ -1,32 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useState } from "react";
+import type { PublisherKey, PublisherProfile, PublisherProfileView } from "../engine/packs";
 
 /** Settings panes for packs: who this install says it is on the packs it signs, and the publishers it has already imported from. The private key is never shown and there is no reveal; see src-tauri/src/pack/publisher.rs. */
-
-interface PublisherProfile {
-  name: string;
-  organisation?: string | null;
-  website?: string | null;
-}
-
-interface PublisherKey {
-  keyId: string;
-  /** The same id in groups of four, for reading out loud. */
-  keyIdDisplay: string;
-  publicKey: string;
-}
-
-interface PublisherProfileView {
-  /** Absent until this pane has been saved once. */
-  profile: PublisherProfile | null;
-  /** What a pack signed right now would carry (the macOS full name when nothing is set). */
-  effectiveName: string;
-  organisation: string | null;
-  website: string | null;
-  device: string;
-  /** Absent until the first pack is signed: the key is created lazily. */
-  key: PublisherKey | null;
-}
 
 interface KnownPublisherRow {
   keyId: string;

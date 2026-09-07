@@ -5,6 +5,7 @@ import {
   chooseDestination,
   getPublisherProfile,
   listPackables,
+  type PublisherProfileView,
   planPack,
   revealPack,
 } from "../engine/packs";
@@ -34,7 +35,6 @@ import {
   KIND_LABELS,
   type PackPlan,
   type PackProgress,
-  type PublisherProfileView,
   type SelectableItem,
 } from "./types";
 
@@ -70,7 +70,7 @@ export function ExportView({ onClose }: { onClose: () => void }) {
     getPublisherProfile()
       .then((p) => {
         setProfile(p);
-        setPackName(defaultPackName(p.organisation, p.effectiveName));
+        setPackName(defaultPackName(p.organisation ?? undefined, p.effectiveName));
       })
       .catch(() => undefined);
   }, []);
@@ -489,7 +489,7 @@ function DetailsPane({
               {profile.effectiveName}
             </span>
             <span className="packs-row-detail">{profile.device}</span>
-            {!profile.configured && (
+            {!profile.profile && (
               <span className="packs-row-detail">
                 Set your publisher details in Settings so people know who sent this.
               </span>

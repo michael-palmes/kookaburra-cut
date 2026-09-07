@@ -221,18 +221,6 @@ export interface PackPlan {
   fileCount: number;
 }
 
-export interface PublisherProfileView {
-  name: string;
-  organisation?: string;
-  website?: string;
-  /** Resolved values, OS-derived when the profile is unset. */
-  effectiveName: string;
-  device: string;
-  keyId: string;
-  publicKey: string;
-  configured: boolean;
-}
-
 export interface PackProgress {
   file: number;
   total: number;

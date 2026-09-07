@@ -9,7 +9,6 @@ import type {
   PackInspection,
   PackPlan,
   PackProgress,
-  PublisherProfileView,
   Resolution,
 } from "../packs/types";
 
@@ -150,6 +149,32 @@ export function applyImport(
 
 export function discardStagedPack(): Promise<void> {
   return invoke("discard_staged_pack");
+}
+
+/** The Settings-owned publisher profile, as `set_publisher_profile` takes it. */
+export interface PublisherProfile {
+  name: string;
+  organisation?: string | null;
+  website?: string | null;
+}
+
+export interface PublisherKey {
+  keyId: string;
+  /** The same id in groups of four, for reading out loud. */
+  keyIdDisplay: string;
+  publicKey: string;
+}
+
+/** `get_publisher_profile` as Rust serialises it (`PublisherProfileView` in pack/publisher.rs): the saved profile rides nested under `profile`, absent until the pane has been saved once. */
+export interface PublisherProfileView {
+  profile: PublisherProfile | null;
+  /** What a pack signed right now would carry (the macOS full name when nothing is set). */
+  effectiveName: string;
+  organisation: string | null;
+  website: string | null;
+  device: string;
+  /** Absent until the first pack is signed: the key is created lazily. */
+  key: PublisherKey | null;
 }
 
 export function getPublisherProfile(): Promise<PublisherProfileView> {

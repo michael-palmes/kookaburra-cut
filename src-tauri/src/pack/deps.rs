@@ -154,7 +154,12 @@ pub struct ReviewedAsset {
 
 /// Every gap the closure found. None of these stop an export.
 #[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase", tag = "kind", content = "detail")]
+#[serde(
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase",
+    tag = "kind",
+    content = "detail"
+)]
 pub enum ClosureWarning {
     MissingProject {
         slug: String,
