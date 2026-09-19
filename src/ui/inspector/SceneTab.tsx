@@ -328,9 +328,9 @@ function mutatePlacement(
   fn(d.placement);
 }
 
-/** 14px phone/laptop glyph for the device pill (laptops are the catalog entries with a lid). */
+/** 14px phone/laptop glyph for the device pill. */
 function DevicePillIcon({ model }: { model: string }) {
-  const laptop = isDeviceId(model) && DEVICE_CATALOG[model].lid !== undefined;
+  const laptop = isDeviceId(model) && DEVICE_CATALOG[model].form === "laptop";
   return laptop ? (
     <svg
       width="14"

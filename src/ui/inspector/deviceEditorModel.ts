@@ -66,7 +66,7 @@ export function duplicateDevice(doc: SceneDoc, deviceId: string): string | null 
   );
   const copy = structuredClone(current);
   copy.id = id;
-  const laptop = isDeviceId(current.model) && DEVICE_CATALOG[current.model].lid !== undefined;
+  const laptop = isDeviceId(current.model) && DEVICE_CATALOG[current.model].form === "laptop";
   const step = (laptop ? LAPTOP_STEP_X : DEVICE_STEP_X) * (current.placement?.scale ?? 1);
   const [px = 0, py = -0.3, pz = 0] = current.placement?.position ?? [];
   const [rx = 0, ry = 0, rz = 0] = current.placement?.rotationDeg ?? [];
