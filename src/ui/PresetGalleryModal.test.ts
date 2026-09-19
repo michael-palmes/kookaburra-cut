@@ -44,12 +44,13 @@ describe("the shared App and My preset pool", () => {
     const mine = entry("ws:my-title");
     const visible = presetsForPool([...app, mine], false);
 
-    expect(visible).toHaveLength(22);
-    expect(visible.slice(0, 21)).toEqual(app);
-    visible.slice(0, 21).forEach((preset, index) => {
+    expect(app).toHaveLength(22);
+    expect(visible).toHaveLength(app.length + 1);
+    expect(visible.slice(0, app.length)).toEqual(app);
+    visible.slice(0, app.length).forEach((preset, index) => {
       expect(preset).toBe(app[index]);
     });
-    expect(visible[21]).toBe(mine);
+    expect(visible[app.length]).toBe(mine);
     expect(visible.slice(0, 15).map((preset) => preset.id)).toEqual([
       "device",
       "deviceonly",

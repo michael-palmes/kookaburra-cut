@@ -1,0 +1,15 @@
+{
+  "category": "devices",
+  "name": "Duo unfold",
+  "order": 20,
+  "preview": {
+    "aspect": "16:9",
+    "atMs": 1750.0,
+    "scene": 0,
+    "sceneFile": "scenes/01-duo-unfold.tsx"
+  },
+  "status": "stable",
+  "tagline": "A foldable opening from its outside screen onto your app inside.",
+  "tags": ["device", "foldable", "fold", "unfold", "hero"],
+  "version": 1
+}
