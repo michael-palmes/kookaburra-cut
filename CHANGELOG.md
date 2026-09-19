@@ -4,6 +4,27 @@ All notable changes to Kookaburra Cut are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- iPhone Duo, a foldable device in Star White and Night Sky with separate
+  media for its inside and outside screens.
+- Fold controls: Closed, Flex, Book and Open presets, a fold angle you can
+  keyframe, one-click Unfold and Fold, and Tent, Book upright and Back poses.
+- Automatic screen power that hands over from the outside screen to the inside
+  one as the device opens, with an option to keep both on.
+- Start when opened, which plays the inside screen's video from the moment the
+  device unfolds.
+- A Duo unfold scene preset.
+- Before and after comparisons can change either screen of a foldable.
+
+### Fixed
+
+- Landscape screen recordings that store a rotation flag now report their real
+  width and height.
+- Duplicating a scene keeps its device keyframes attached to the right devices.
+
 ## [0.16.0] - 2026-09-07
 
 ### Added

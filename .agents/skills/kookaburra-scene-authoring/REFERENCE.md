@@ -101,6 +101,11 @@ normally and simply shows no editing affordances.
                                              // app-store card offset). Or none. NOTE: a staged floor runs
                                              // real map shadows and the presentation shadow stands down.
       "lidDeg": 90                           // laptops only: lid opening in degrees (0 closed, default 90)
+      // Foldables (iphone-duo) only; full contract in docs/foldables.md:
+      // "coverMedia": { "src": "assets/outside.mp4", "kind": "video" },   the OUTSIDE display (`media` is the inside one)
+      // "foldDeg": 0,                           hinge angle, 0 closed to 180 open flat (default 180)
+      // "bothScreensOn": true,                  light both displays at every angle
+      // and on the inside `media`: "startOn": "open" counts startMs from the moment the fold opens
     }
   ],
   "camera": {                                // per-scene track — see "Per-scene camera tracks"
@@ -121,6 +126,7 @@ normally and simply shows no editing affordances.
     "keys": [
       { "id": "k1", "tMs": 0,   "pose": { "d1": { "offset": [0,0,0], "rotationDeg": [0,0,0], "scale": 1 } } },
       { "id": "k2", "tMs": 900, "pose": { "d1": { "offset": [0.6,0.4,0], "scale": 1.2 }, "d2": { "lidDeg": 100 } } }
+      // a foldable keys "foldDeg" the same way: { "foldDeg": 0 } to { "foldDeg": 180 } is an unfold
     ],
     "segments": [ { "from": "k1", "to": "k2", "ease": "inOutCubic" } ]
   },
@@ -1021,13 +1027,17 @@ Rules and conventions:
 
 ```ts
 <Device
-  model="android"        // catalog id: android | iphone-15-pro | iphone-17-pro | macbook-pro-16
+  model="android"        // catalog id: android | iphone-15-pro | iphone-17-pro | iphone-duo | macbook-pro-16 | ipad-pro-13
   colour?               // catalog colour id, e.g. "blue-titanium" (default: the model's)
   media?                // { src, kind: "video"|"image", startMs?, fit?: "cover" } on the SCREEN
   placement?            // { position?, rotationDeg? (DEGREES), scale? (× auto-fit) }
   motion?               // { preset: "none"|"turntable"|"float"|"tilt-reveal"|"push-in", ...params }
   shadow?               // "soft" (default) | "long" | "none" — deterministic ground shadows
   lidDeg?               // laptops only: lid opening in degrees (0 closed; default 90)
+  coverMedia?           // foldables only: the OUTSIDE display's media (`media` is the inside one)
+  foldDeg?              // foldables only: hinge angle, 0 closed to 180 open flat (the default)
+  bothScreensOn?        // foldables only: light both displays at every angle (default: power hands over as it opens)
+  foldTransition?       // foldables only: { switchDeg? } the handover angle (default 45)
   lit?                  // default true; pass false for every Device after the first in a scene
 />                                                    // Phase v7 · M1 — implemented + gated
 ```
