@@ -27,6 +27,7 @@ toolkit primitives. Three tiers share one contract:
   | `iphone-17-pro` | `licensed/e1bfddac-38f7-48a6-adf0-0d0120b7e937.glb` | `pnpm assets:iphone-17-pro` |
   | `macbook-pro-16` | `licensed/b30d3bc4-a66b-4376-95d1-30978b87212c.glb` | `pnpm assets:macbook-pro-16` |
   | `ipad-pro-13` | `licensed/1a8f4c65-0cd1-42c2-a5cd-ffb632ec372b.glb` | `pnpm assets:ipad-pro-13` |
+  | `iphone-duo` | `licensed/572f22d2-448d-4511-80ee-d0a309cf1e2f.glb` | `pnpm assets:iphone-duo` |
 
   All of them run `scripts/prepare-device-model.sh` (Blender export with a
   per-device corrective yaw, then gltf-transform optimise; needs
@@ -34,6 +35,9 @@ toolkit primitives. Three tiers share one contract:
   The iPad is portrait-authored: its export adds a corrective roll (-90, so the
   landscape camera edge is up at identity) and excludes the Apple Pencil Pro
   the vendor stages beside the device.
+  The iPhone Duo is skinned and animated, so it exports through its own step,
+  `scripts/blender-duo-prepare.py` (see "Foldables" below), and the shell script
+  asserts its material names, skin and clip survived the optimise pass.
   `pnpm assets:devices` rebuilds the lot. Sanity-check any rebuilt glb with
   `scripts/blender-render-glb-check.py` (renders the glTF +Z view, which must
   be the screen, dead-on) and `scripts/dump-glb-materials.mjs` (material names
@@ -104,3 +108,48 @@ covered by the repository licence and may not be reused outside this project
   quad just under each perforated strip (placement derived from the casing and
   keyboard-tray bounds, so it self-skips any device without them) to give the
   holes a flat, consistent dark field.
+
+## Foldables (the iPhone Duo)
+
+The vendor file is a rigged, animated foldable, which the generic export would
+flatten (it bakes modifiers). `scripts/blender-duo-prepare.py` instead:
+
+- **Keeps one armature.** The blend stages three copies side by side (lit, off,
+  wallpapered) plus static poses; only `Armature` ships.
+- **Two screens, two material names.** `SCREEN_MAIN` is the inside display
+  (the catalogue's primary `screen`), `SCREEN_COVER` the outside one
+  (`coverScreen`). Both are plain black placeholders the app replaces.
+- **Bends instead of creasing.** The vendor weights fold the inside screen
+  across a 2.7 mm strip, a hard V. The script adds four fractional bend bones
+  per side (each takes k/5 of its side's rotation and hinge slide) and
+  re-weights the screen, bezel and end caps across them with a smoothstep over
+  +/-4.62 mm, so adjacent bones never differ by more than 18 degrees. The width
+  is a hard limit: the rigid halves have a tray 0.55 mm under the screen beyond
+  ~5 mm from the hinge and a 4 mm cavity inside it.
+- **One frame per degree.** The vendor action (open, folded, open over 150
+  frames, with a 2.4 mm hinge slide that saturates early) is re-keyed to the
+  clip `Fold`: frame 0 closed, frame 180 open flat, 30 fps, so the app samples
+  it at `foldDeg / 30` seconds. The root bone is counter-keyed so the camera
+  half never moves (asserted at every frame): closed, the outside screen faces
+  glTF +Z exactly where the inside screen's right half was.
+- **Tintable parts.** The single `duo` atlas material is split per face into
+  `duo_body` (back glass), `duo_frame` (titanium frame, spine, buttons) and
+  `duo_detail` (bezels, lenses, grilles: never tinted), classified by sampling
+  base colour and metallic at each face. Only Star White textures exist, so
+  Night Sky is a multiply on the first two. Distinct `extras` keep dedup from
+  fusing them back together, since it compares properties and ignores names.
+- **No vertex colours.** The vendor's hinge mesh carries `COLOR_0`, which makes
+  every glTF loader fork a vertex-colour variant of each material (dodging
+  name-keyed tints and multiplying the body by those colours). They are
+  stripped, and the post-build check fails if any return.
+- **Optimise flags:** join, flatten and instance would break the skeleton,
+  resample would thin the per-degree clip, simplify would tear the bend loops,
+  and prune-attributes would strip the screens' UVs (their placeholder
+  materials carry no texture, so prune reads the UVs as unused; the post-build
+  check asserts they survive).
+- Blender 5 names an active-action clip `Animation`; the script exports through
+  an NLA track so the clip keeps the name the catalogue looks up.
+
+Card art comes from the built glb inside the vendor studio
+(`render_glb` in `scripts/render-device-previews.sh`), tinted with the same
+hexes as the catalogue, because a derived finish has no vendor colour blend.

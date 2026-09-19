@@ -8,13 +8,13 @@
 #
 # Usage:
 #   bash scripts/prepare-device-model.sh <device-id> [path/to/model.blend]
-#   pnpm assets:phone | assets:iphone-17-pro | assets:macbook-pro-16 | assets:devices
+#   pnpm assets:phone | assets:iphone-17-pro | assets:macbook-pro-16 | assets:iphone-duo | assets:devices
 #
 set -euo pipefail
 
 DEVICE="${1:-}"
 if [[ -z "$DEVICE" ]]; then
-  echo "usage: prepare-device-model.sh <iphone-15-pro|iphone-17-pro|macbook-pro-16|ipad-pro-13> [blend]" >&2
+  echo "usage: prepare-device-model.sh <iphone-15-pro|iphone-17-pro|macbook-pro-16|ipad-pro-13|iphone-duo> [blend]" >&2
   exit 2
 fi
 
@@ -59,6 +59,21 @@ case "$DEVICE" in
     # The roll re-rotates this material's mesh UVs so screen media stays upright.
     SCREEN_MATERIAL="SCREEN"
     ;;
+  iphone-duo)
+    DEFAULT_BLEND="${KOOKABURRA_ASSETS_DIR:-}/Licenced iPhone Duo/iphone-duo.blend"
+    OUT="src/assets/models/licensed/572f22d2-448d-4511-80ee-d0a309cf1e2f.glb"
+    YAW=0
+    # The foldable is skinned and animated, so it exports through its own Blender step.
+    EXPORTER="scripts/blender-duo-prepare.py"
+    # Join/flatten/instance would break the skeleton, resample would thin the one-key-per-degree fold clip, simplify would tear the bend loops.
+    # Prune-attributes would strip the screens' UVs: their placeholder materials carry no texture, so prune reads the UVs as unused.
+    EXTRA_FLAGS="--join false --flatten false --instance false --resample false --simplify false --prune-attributes false"
+    # Hard post-build check: dedup fuses property-identical materials whatever their names.
+    EXPECT_MATERIALS="SCREEN_MAIN,SCREEN_COVER,duo_body,duo_frame,duo_detail,glass"
+    EXPECT_UVS="SCREEN_MAIN,SCREEN_COVER"
+    EXPECT_SKINS=1
+    EXPECT_CLIP="Fold"
+    ;;
   *)
     echo "[assets:$DEVICE] unknown device id: $DEVICE" >&2
     exit 2
@@ -72,6 +87,7 @@ EXTRA_FLAGS="${EXTRA_FLAGS:-}"
 ROLL="${ROLL:-0}"
 EXCLUDE="${EXCLUDE:-}"
 SCREEN_MATERIAL="${SCREEN_MATERIAL:-}"
+EXPORTER="${EXPORTER:-}"
 TMPDIR="$(mktemp -d)"
 RAW="$TMPDIR/$DEVICE-raw.glb"
 
@@ -87,8 +103,13 @@ fi
 
 mkdir -p "$(dirname "$OUT")"
 
-echo "[assets:$DEVICE] exporting: $BLEND (yaw $YAW, roll $ROLL)"
-"$BLENDER" -b "$BLEND" --python scripts/blender-export-glb.py -- "$RAW" "$YAW" "$ROLL" "$EXCLUDE" "$SCREEN_MATERIAL"
+if [[ -n "$EXPORTER" ]]; then
+  echo "[assets:$DEVICE] exporting: $BLEND (via $EXPORTER)"
+  "$BLENDER" -b "$BLEND" --python "$EXPORTER" -- "$RAW"
+else
+  echo "[assets:$DEVICE] exporting: $BLEND (yaw $YAW, roll $ROLL)"
+  "$BLENDER" -b "$BLEND" --python scripts/blender-export-glb.py -- "$RAW" "$YAW" "$ROLL" "$EXCLUDE" "$SCREEN_MATERIAL"
+fi
 
 echo "[assets:$DEVICE] optimising -> $OUT"
 # sharp needs its native postinstall; pnpm dlx blocks build scripts unless allowed.
@@ -105,6 +126,12 @@ pnpm dlx --allow-build=sharp @gltf-transform/cli@latest optimize "$RAW" "$OUT" \
   --simplify-lock-border true \
   --simplify-error 0.00001 \
   $EXTRA_FLAGS
+
+if [[ -n "${EXPECT_MATERIALS:-}${EXPECT_SKINS:-}${EXPECT_CLIP:-}" ]]; then
+  node scripts/dump-glb-materials.mjs "$OUT" \
+    --expect-materials "${EXPECT_MATERIALS:-}" --expect-uvs "${EXPECT_UVS:-}" \
+    --expect-skins "${EXPECT_SKINS:-}" --expect-clip "${EXPECT_CLIP:-}"
+fi
 
 echo "[assets:$DEVICE] done:"
 ls -lh "$OUT"
