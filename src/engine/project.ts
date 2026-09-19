@@ -1011,7 +1011,7 @@ export async function loadProject(
     ),
   );
 
-  // Comparison scenes: derive side B's doc and resolve its theme; undefined everywhere else so projects without a compare block never touch the compare path. Transitions adjacent to a comparison blend side A only (the v1 interop rule, surfaced in the transition picker).
+  // Comparison scenes: derive side B's doc and resolve its theme; undefined everywhere else so projects without a compare block never touch the compare path.
   const compareBDocs = sceneDocs.map((doc) => deriveCompareBDoc(doc) ?? undefined);
   const compareBThemes = await Promise.all(
     compareBDocs.map((bDoc, i) =>
@@ -1033,7 +1033,7 @@ export async function loadProject(
 
   // System-font auto-pin: resolve every theme font (and sidecar `<key>Font` overrides) BEFORE scenes render; bundled-only projects short-circuit without touching the native side.
   const fontRefs = [
-    ...collectThemeFontRefs([theme, ...sceneThemes]),
+    ...collectThemeFontRefs([theme, ...sceneThemes, ...compareBThemes]),
     ...collectSceneDocFontRefs(sceneDocs),
   ];
   await ensureFontRefsPinned(fontRefs);

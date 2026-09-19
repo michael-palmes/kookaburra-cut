@@ -83,7 +83,12 @@ visually), and pre-type `startCommand` onto the prompt. That command is reduced
 to a single line with control chars stripped (`sanitizeStartCommand`, at parse
 and again at the paste boundary), so an imported pack's newline can never reach
 the shell as Enter and auto-run: the "never auto-runs" guarantee does not rest
-on bracketed-paste timing.
+on bracketed-paste timing. Every session command (`pty_write`, `pty_resize`,
+`pty_kill`, `pty_pause`, `pty_resume`) also refuses a session another window
+spawned; that is hygiene against a cross-window write, not the boundary. The
+boundary is the F-001 trust gate: scene code runs in the webview with IPC
+reach, so a hostile scene in the main window would be writing to its own
+session, and only trust decides whether it runs at all.
 
 1. **Export**: no sessions, no DOM. The panel renders the baked PNG or the
    empty frame.
@@ -124,7 +129,7 @@ keep that safe: the command is sanitised to one line at parse and at the paste
 boundary (above); no session exists until the user opens the project through
 the F-001 trust gate; the import summary lists every pre-typed command and
 custom start path read from the landed sidecars
-(`src/packs/import/terminalReview.ts`); and a custom start path never
+(`src/packs/terminalReview.ts`); and a custom start path never
 auto-spawns in Present, the first click on the terminal starts that session
 (project-folder decks keep the spawn-on-entry magic). A start path runs
 nothing of the pack's, but a login shell still runs the user's own init files

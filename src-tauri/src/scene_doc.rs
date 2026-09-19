@@ -89,8 +89,8 @@ fn atomic_write_json(path: &Path, value: &Value) -> Result<(), String> {
     std::fs::rename(&tmp, path).map_err(|e| e.to_string())
 }
 
-/// Atomic text write, the `atomic_write_json` guarantee for scene TSX: the bytes land whole or not at all.
-fn atomic_write_text(path: &Path, text: &str) -> Result<(), String> {
+/// Atomic text write, the `atomic_write_json` guarantee for scene TSX and the settings file: the bytes land whole or not at all.
+pub(crate) fn atomic_write_text(path: &Path, text: &str) -> Result<(), String> {
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
     }

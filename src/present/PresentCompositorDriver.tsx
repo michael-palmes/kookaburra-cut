@@ -6,7 +6,7 @@ import { useClockStore } from "../engine/clock";
 import { renderComposited } from "../engine/compositor";
 import {
   collectEnvironmentSources,
-  collectMirrorRequests,
+  collectMirrorRequestsWithCompare,
   preloadEnvironments,
   preloadMirrorEnvironments,
 } from "../engine/environments";
@@ -95,19 +95,21 @@ export function PresentCompositorDriver({
       gl,
       collectEnvironmentSources(
         project.id,
-        [project.theme, ...project.sceneThemes],
+        [project.theme, ...project.sceneThemes, ...project.compareBThemes],
         project.projectLighting,
-        project.sceneDocs,
+        [...project.sceneDocs, ...project.compareBDocs],
       ),
     )
       .then(() =>
         preloadMirrorEnvironments(
           gl,
-          collectMirrorRequests(
+          collectMirrorRequestsWithCompare(
             project.id,
             project.sceneThemes,
             project.projectLighting,
             project.sceneDocs,
+            project.compareBThemes,
+            project.compareBDocs,
           ),
         ),
       )

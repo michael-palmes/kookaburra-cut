@@ -139,7 +139,7 @@ so it is untrusted for the same reason.
 Terminal scene content gets its own review: after apply, the summary screen
 reads the landed sidecars (never the author's manifest, which is
 self-declared) and lists every terminal block that pre-types a command or sets
-a custom start path (`src/packs/import/terminalReview.ts`). Nothing runs on
+a custom start path (`src/packs/terminalReview.ts`). Nothing runs on
 its own either way: pre-typed commands are sanitised to a single line and only
 run on the presenter's Enter (`docs/scene-terminal.md`).
 

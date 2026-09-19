@@ -19,6 +19,13 @@ function entry(label: string): HistoryEntry {
   };
 }
 
+function entryFor(slug: string, label: string): HistoryEntry {
+  return {
+    label,
+    changes: [{ kind: "manifest", slug, before: "{}", after: "{}", reload: false }],
+  };
+}
+
 describe("history (v12 · M2.5)", () => {
   beforeEach(() => {
     bindHistory(null);
@@ -64,6 +71,35 @@ describe("history (v12 · M2.5)", () => {
     expect(peekUndo()?.label).toBe("one");
     bindHistory("ws:other");
     expect(peekUndo()).toBeNull();
+  });
+
+  it("an edit that completes after a project switch is dropped, not filed under the new project", () => {
+    bindHistory(null);
+    bindHistory("ws:a", "a");
+    pushHistory(entryFor("a", "in a"));
+    expect(peekUndo()?.label).toBe("in a");
+    bindHistory("ws:b", "b");
+    pushHistory(entryFor("a", "late from a"));
+    expect(peekUndo()).toBeNull();
+    pushHistory(entryFor("b", "in b"));
+    expect(peekUndo()?.label).toBe("in b");
+  });
+
+  it("a compound entry touching another project is dropped whole", () => {
+    bindHistory(null);
+    bindHistory("ws:b", "b");
+    pushHistory({
+      label: "mixed",
+      changes: [...entryFor("b", "").changes, ...entryFor("a", "").changes],
+    });
+    expect(peekUndo()).toBeNull();
+  });
+
+  it("a binding without a slug accepts every project's edits", () => {
+    bindHistory(null);
+    bindHistory("ws:c");
+    pushHistory(entryFor("a", "unfenced"));
+    expect(peekUndo()?.label).toBe("unfenced");
   });
 
   it("empty entries are ignored", () => {

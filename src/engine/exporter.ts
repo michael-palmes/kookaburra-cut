@@ -35,7 +35,7 @@ import { useDeviceEditStore } from "./deviceEditStore";
 import { preloadEffectLuts } from "./effects";
 import {
   collectEnvironmentSources,
-  collectMirrorRequests,
+  collectMirrorRequestsWithCompare,
   preloadEnvironments,
   preloadMirrorEnvironments,
 } from "./environments";
@@ -321,16 +321,20 @@ async function exportPreamble(
   useImageEditStore.getState().select(null);
   useTerminalEditStore.getState().select(null);
   useWebsiteEditStore.getState().select(null);
-  // With themes, preloads exactly the fonts the project renders (bundled and workspace-pinned system fonts, plus sidecar `<key>Font` overrides); the no-theme form preloads the bundled defaults.
+  // With themes, preloads exactly the fonts the project renders (bundled and workspace-pinned system fonts, plus sidecar `<key>Font` overrides), comparison side-B themes included: a B-only face loaded at first typeset would land outside every barrier, the per-boot atlas lottery. The no-theme form preloads the bundled defaults.
   await preloadAppFonts(
     opts.theme
       ? [
-          ...collectThemeFontRefs([opts.theme, ...(opts.sceneThemes ?? [])]),
+          ...collectThemeFontRefs([
+            opts.theme,
+            ...(opts.sceneThemes ?? []),
+            ...(opts.compareBThemes ?? []),
+          ]),
           ...collectSceneDocFontRefs(opts.sceneDocs ?? []),
         ]
       : undefined,
   );
-  // Deterministic codecs read the software-decoded frame lane (the one baselines were recorded from); fast-draft hardware codecs keep the everyday hw lane. Restored in the loop's finally; a preamble throw leaves it on sw, corrected by the next export or preview re-registration.
+  // Deterministic codecs read the software-decoded frame lane (the one baselines were recorded from); fast-draft hardware codecs keep the everyday hw lane. Restored in the run's finally, preamble throws included.
   setClipLane(laneForCodec(opts.encode?.codec ?? opts.codec));
   // Layered-screenshot video cards mount behind their image Suspense, so render-time registration can miss a cold run's extract barrier; every sidecar-declared screen video registers here explicitly (docs/determinism.md).
   for (const doc of opts.sceneDocs ?? []) {
@@ -380,11 +384,13 @@ async function exportPreamble(
     );
     await preloadMirrorEnvironments(
       gl,
-      collectMirrorRequests(
+      collectMirrorRequestsWithCompare(
         opts.projectId,
         opts.sceneThemes ?? [],
         opts.projectLighting,
         opts.sceneDocs,
+        opts.compareBThemes,
+        opts.compareBDocs,
       ),
     );
   }
@@ -444,134 +450,139 @@ async function exportProjectHeld(
   if (!handle) throw new Error("Export bridge not mounted: the canvas is not ready.");
   const { gl, scene, camera } = handle;
 
-  await exportPreamble(opts, gl, onPrepareStep);
-  const sceneFloorYs = snapshotSceneStageFloors(opts.slots.length);
-
-  const { width, height } = opts.format;
-  const normalTotal = normalExportFrameCount(opts.durationMs, opts.fps);
-  const poster = opts.encode?.posterFrame ? posterFrameSample(opts.slots, opts.fps) : undefined;
-  const total = normalTotal + (poster === undefined ? 0 : 1);
-  const ctx = gl.getContext();
-  const rgba = new Uint8Array(width * height * 4);
-  const sizeProbe = new Vector2();
-
-  // Snapshot preview state to restore when the run ends.
+  // Snapshot preview state first: from the preamble on, everything runs inside one try/finally, so a failed preamble or start leaves no export-sized buffer, aspect or clip lane behind.
   const prevSize = gl.getSize(new Vector2());
   const prevPixelRatio = gl.getPixelRatio();
   const prevClockMs = useClockStore.getState().currentMs;
   let clockOwnedMs: number | null = null;
   const cam = camera as PerspectiveCamera;
   const prevAspect = cam.isPerspectiveCamera ? cam.aspect : 0;
+  const prevHelperLayer = cam.layers.isEnabled(HELPER_LAYER);
+  let started = false;
+  // The exporter owns rendering for the whole run; the preview driver stands down (see engine/exportState) so no stray preview render interleaves with a capture.
+  setExporting(true);
+  try {
+    await exportPreamble(opts, gl, onPrepareStep);
+    const sceneFloorYs = snapshotSceneStageFloors(opts.slots.length);
 
-  // Size the renderer's drawing buffer to the export resolution (no CSS resize).
-  gl.setPixelRatio(1);
-  gl.setSize(width, height, false);
-  if (cam.isPerspectiveCamera) {
-    cam.aspect = width / height;
-    cam.updateProjectionMatrix();
-  }
+    const { width, height } = opts.format;
+    const normalTotal = normalExportFrameCount(opts.durationMs, opts.fps);
+    const poster = opts.encode?.posterFrame ? posterFrameSample(opts.slots, opts.fps) : undefined;
+    const total = normalTotal + (poster === undefined ? 0 : 1);
+    const ctx = gl.getContext();
+    const rgba = new Uint8Array(width * height * 4);
+    const sizeProbe = new Vector2();
 
-  const channel = new Channel<ExportProgress>();
-  if (onProgress) channel.onmessage = onProgress;
+    // Size the renderer's drawing buffer to the export resolution (no CSS resize).
+    gl.setPixelRatio(1);
+    gl.setSize(width, height, false);
+    if (cam.isPerspectiveCamera) {
+      cam.aspect = width / height;
+      cam.updateProjectionMatrix();
+    }
 
-  // Workspace-backed ids (projects and library items) pass their native slug so the output lands in that folder's own exports/; bundled ids keep the legacy ~/Kookaburra Cut/<project>/ path (projectSlug absent). The native side folds any scope prefix out of the filename stem.
-  const slug = isWorkspaceBackedProjectId(opts.projectId)
-    ? nativeProjectSlug(opts.projectId)
-    : null;
-  await invoke("start_export", {
-    options: {
-      projectId: slug ?? opts.projectId,
-      width,
-      height,
-      fps: opts.fps,
-      totalFrames: total,
-      // Sanitised aspect label for the output filename (e.g. "16:9" → "16x9").
-      aspect: opts.format.name.replace(":", "x"),
-      codec: opts.codec ?? "libx264",
-      encode: opts.encode ?? null,
-      outputSuffix: opts.outputSuffix ?? null,
-      destination: opts.destination ?? null,
-      projectSlug: slug,
-      audio: opts.audio
-        ? {
-            file: opts.audio.abs,
-            gainDb: opts.audio.gainDb ?? 0,
-            fadeInMs: opts.audio.fadeInMs ?? 0,
-            fadeOutMs: opts.audio.fadeOutMs ?? 0,
-            fadeOutCurve: opts.audio.fadeOutCurve ?? null,
-            startOffsetMs: opts.audio.startOffsetMs ?? 0,
-            trackDurationMs: Math.round(opts.audio.durationMs),
-          }
-        : null,
-    },
-    onProgress: channel,
-  });
+    const channel = new Channel<ExportProgress>();
+    if (onProgress) channel.onmessage = onProgress;
 
-  // Per-scene camera tracks, normalized once for the whole run; projects without any stay on the legacy camera path below, byte-identically.
-  const sceneTracks = buildSceneCameraTracks(
-    opts.sceneDocs ?? [],
-    computeFormat(opts.format),
-    sceneFloorYs,
-  );
-  const lightingTracks = opts.sceneThemes
-    ? buildLightingTracks(opts.sceneThemes, opts.projectLighting, opts.sceneDocs ?? [])
-    : null;
-  const compareBLightingTracks = opts.sceneThemes
-    ? buildCompareBLightingTracks(
-        opts.sceneThemes,
-        opts.compareBThemes,
-        opts.projectLighting,
-        opts.sceneDocs ?? [],
-      )
-    : null;
-
-  // Per-scene render states, built once; null unless the project opts into themed scene state (mirrored in CompositorDriver).
-  const sceneStates =
-    opts.theme && opts.sceneThemes
-      ? buildSceneRenderStates(opts.theme, opts.sceneThemes, {
-          projectId: opts.projectId,
-          projectLighting: opts.projectLighting,
-          sceneDocs: opts.sceneDocs,
-        })
+    // Workspace-backed ids (projects and library items) pass their native slug so the output lands in that folder's own exports/; bundled ids keep the legacy ~/Kookaburra Cut/<project>/ path (projectSlug absent). The native side folds any scope prefix out of the filename stem.
+    const slug = isWorkspaceBackedProjectId(opts.projectId)
+      ? nativeProjectSlug(opts.projectId)
       : null;
+    await invoke("start_export", {
+      options: {
+        projectId: slug ?? opts.projectId,
+        width,
+        height,
+        fps: opts.fps,
+        totalFrames: total,
+        // Sanitised aspect label for the output filename (e.g. "16:9" → "16x9").
+        aspect: opts.format.name.replace(":", "x"),
+        codec: opts.codec ?? "libx264",
+        encode: opts.encode ?? null,
+        outputSuffix: opts.outputSuffix ?? null,
+        destination: opts.destination ?? null,
+        projectSlug: slug,
+        audio: opts.audio
+          ? {
+              file: opts.audio.abs,
+              gainDb: opts.audio.gainDb ?? 0,
+              fadeInMs: opts.audio.fadeInMs ?? 0,
+              fadeOutMs: opts.audio.fadeOutMs ?? 0,
+              fadeOutCurve: opts.audio.fadeOutCurve ?? null,
+              startOffsetMs: opts.audio.startOffsetMs ?? 0,
+              trackDurationMs: Math.round(opts.audio.durationMs),
+            }
+          : null,
+      },
+      onProgress: channel,
+    });
+    started = true;
 
-  // Comparison plan inputs, built once (mirrored in CompositorDriver): specs per scene, plus side B's states over B-substituted themes/docs.
-  const compareSpecs = (opts.sceneDocs ?? []).map((d, i) =>
-    compareSpecOf(d, opts.sceneThemes?.[i]),
-  );
-  const sceneStatesB =
-    opts.theme && opts.sceneThemes && opts.compareBDocs?.some(Boolean)
-      ? buildSceneRenderStates(
-          opts.theme,
-          opts.sceneThemes.map((t, i) => opts.compareBThemes?.[i] ?? t),
-          {
-            projectId: opts.projectId,
-            projectLighting: opts.projectLighting,
-            sceneDocs: (opts.sceneDocs ?? []).map((d, i) => opts.compareBDocs?.[i] ?? d),
-          },
+    // Per-scene camera tracks, normalized once for the whole run; projects without any stay on the legacy camera path below, byte-identically.
+    const sceneTracks = buildSceneCameraTracks(
+      opts.sceneDocs ?? [],
+      computeFormat(opts.format),
+      sceneFloorYs,
+    );
+    const lightingTracks = opts.sceneThemes
+      ? buildLightingTracks(opts.sceneThemes, opts.projectLighting, opts.sceneDocs ?? [])
+      : null;
+    const compareBLightingTracks = opts.sceneThemes
+      ? buildCompareBLightingTracks(
+          opts.sceneThemes,
+          opts.compareBThemes,
+          opts.projectLighting,
+          opts.sceneDocs ?? [],
         )
       : null;
 
-  // Per-scene overlays, resolved once; null unless some scene declares a frame (mirrored in CompositorDriver).
-  const overlays = opts.sceneThemes
-    ? resolveOverlays(
-        opts.sceneFrames ?? [],
-        opts.sceneThemes,
-        opts.sceneDocs ?? [],
-        opts.projectId,
-      )
-    : null;
+    // Per-scene render states, built once; null unless the project opts into themed scene state (mirrored in CompositorDriver).
+    const sceneStates =
+      opts.theme && opts.sceneThemes
+        ? buildSceneRenderStates(opts.theme, opts.sceneThemes, {
+            projectId: opts.projectId,
+            projectLighting: opts.projectLighting,
+            sceneDocs: opts.sceneDocs,
+          })
+        : null;
 
-  // Stale-pose healing: a fully trackless project never writes the camera inside the loop, and the shared camera persists across project switches, so heal it once before frame 0. Pristine case writes identical floats (fov unchanged, no projection update), so the gated no-track paths stay byte-identical. Mirrored in CompositorDriver.
-  if ((!opts.cameraTrack || opts.cameraTrack.length === 0) && !hasSceneCameraTracks(sceneTracks)) {
-    applyCameraPose(cam, baseCameraPose());
-  }
+    // Comparison plan inputs, built once (mirrored in CompositorDriver): specs per scene, plus side B's states over B-substituted themes/docs.
+    const compareSpecs = (opts.sceneDocs ?? []).map((d, i) =>
+      compareSpecOf(d, opts.sceneThemes?.[i]),
+    );
+    const sceneStatesB =
+      opts.theme && opts.sceneThemes && opts.compareBDocs?.some(Boolean)
+        ? buildSceneRenderStates(
+            opts.theme,
+            opts.sceneThemes.map((t, i) => opts.compareBThemes?.[i] ?? t),
+            {
+              projectId: opts.projectId,
+              projectLighting: opts.projectLighting,
+              sceneDocs: (opts.sceneDocs ?? []).map((d, i) => opts.compareBDocs?.[i] ?? d),
+            },
+          )
+        : null;
 
-  // Preview-only light helpers can never reach a capture: their layer is disabled on the camera for the whole run (the second guard on top of their mount gating).
-  cam.layers.disable(HELPER_LAYER);
-  // The exporter owns rendering for the whole loop; the preview driver stands down (see engine/exportState) so no stray preview render interleaves with a capture.
-  setExporting(true);
-  try {
+    // Per-scene overlays, resolved once; null unless some scene declares a frame (mirrored in CompositorDriver).
+    const overlays = opts.sceneThemes
+      ? resolveOverlays(
+          opts.sceneFrames ?? [],
+          opts.sceneThemes,
+          opts.sceneDocs ?? [],
+          opts.projectId,
+        )
+      : null;
+
+    // Stale-pose healing: a fully trackless project never writes the camera inside the loop, and the shared camera persists across project switches, so heal it once before frame 0. Pristine case writes identical floats (fov unchanged, no projection update), so the gated no-track paths stay byte-identical. Mirrored in CompositorDriver.
+    if (
+      (!opts.cameraTrack || opts.cameraTrack.length === 0) &&
+      !hasSceneCameraTracks(sceneTracks)
+    ) {
+      applyCameraPose(cam, baseCameraPose());
+    }
+
+    // Preview-only light helpers can never reach a capture: their layer is disabled on the camera for the whole run (the second guard on top of their mount gating) and given back in the finally.
+    cam.layers.disable(HELPER_LAYER);
     for (let frame = 0; frame < total; frame++) {
       const tMs = exportFrameTimeMs(frame, opts.fps, poster?.tMs);
       // flushSync commits the DOM tree; the canvas tree (r3f reconciler) commits on its own schedule, so wait for it before trusting any per-mesh readiness hook for this frame.
@@ -622,7 +633,7 @@ async function exportProjectHeld(
     }
     return await invoke<string>("finish_export");
   } catch (err) {
-    await invoke("cancel_export").catch(() => {});
+    if (started) await invoke("cancel_export").catch(() => {});
     throw err;
   } finally {
     setExporting(false);
@@ -633,6 +644,7 @@ async function exportProjectHeld(
       cam.aspect = prevAspect;
       cam.updateProjectionMatrix();
     }
+    if (prevHelperLayer) cam.layers.enable(HELPER_LAYER);
     // Give the playhead back only if this run wrote it and still owns it; an untouched or since-moved clock stays put.
     if (clockOwnedMs !== null && useClockStore.getState().currentMs === clockOwnedMs) {
       flushSync(() => useClockStore.getState().setCurrentMs(prevClockMs));
@@ -669,98 +681,96 @@ async function captureFrameRgbaHeld(
     useDeviceEditStore.getState().select(prevSelection.device);
     useImageEditStore.getState().select(prevSelection.image);
   };
-  try {
-    await exportPreamble(opts, gl);
-  } catch (err) {
-    restoreSelection();
-    throw err;
-  }
-  const sceneFloorYs = snapshotSceneStageFloors(opts.slots.length);
-
-  const { width, height } = opts.format;
-  const ctx = gl.getContext();
-  const rgba = new Uint8Array(width * height * 4);
-
-  // Snapshot preview state to restore when the capture ends (the export loop's contract).
+  // Snapshot preview state first (the export loop's contract): preamble, sizing and capture all run inside one try/finally, so a failure at any step gives the preview back whole.
   const prevSize = gl.getSize(new Vector2());
   const prevPixelRatio = gl.getPixelRatio();
   const prevClockMs = useClockStore.getState().currentMs;
   const cam = camera as PerspectiveCamera;
   const prevAspect = cam.isPerspectiveCamera ? cam.aspect : 0;
-
-  gl.setPixelRatio(1);
-  gl.setSize(width, height, false);
-  if (cam.isPerspectiveCamera) {
-    cam.aspect = width / height;
-    cam.updateProjectionMatrix();
-  }
-
-  const sceneTracks = buildSceneCameraTracks(
-    opts.sceneDocs ?? [],
-    computeFormat(opts.format),
-    sceneFloorYs,
-  );
-  const lightingTracks = opts.sceneThemes
-    ? buildLightingTracks(opts.sceneThemes, opts.projectLighting, opts.sceneDocs ?? [])
-    : null;
-  const compareBLightingTracks = opts.sceneThemes
-    ? buildCompareBLightingTracks(
-        opts.sceneThemes,
-        opts.compareBThemes,
-        opts.projectLighting,
-        opts.sceneDocs ?? [],
-      )
-    : null;
-  const sceneStates =
-    opts.theme && opts.sceneThemes
-      ? buildSceneRenderStates(opts.theme, opts.sceneThemes, {
-          projectId: opts.projectId,
-          projectLighting: opts.projectLighting,
-          sceneDocs: opts.sceneDocs,
-        })
-      : null;
-  const overlays = opts.sceneThemes
-    ? resolveOverlays(
-        opts.sceneFrames ?? [],
-        opts.sceneThemes,
-        opts.sceneDocs ?? [],
-        opts.projectId,
-      )
-    : null;
-  // Comparison plan inputs, mirroring the export loop exactly (a screenshot must show the frame the export would).
-  const compareSpecs = (opts.sceneDocs ?? []).map((d, i) =>
-    compareSpecOf(d, opts.sceneThemes?.[i]),
-  );
-  const sceneStatesB =
-    opts.theme && opts.sceneThemes && opts.compareBDocs?.some(Boolean)
-      ? buildSceneRenderStates(
-          opts.theme,
-          opts.sceneThemes.map((t, i) => opts.compareBThemes?.[i] ?? t),
-          {
-            projectId: opts.projectId,
-            projectLighting: opts.projectLighting,
-            sceneDocs: (opts.sceneDocs ?? []).map((d, i) => opts.compareBDocs?.[i] ?? d),
-          },
-        )
-      : null;
-  // Trackless projects heal the shared camera to base for the frame; snapshot the live pose (a mid-orbit view stays where the user left it) and give it back afterwards.
+  const prevHelperLayer = cam.layers.isEnabled(HELPER_LAYER);
   let restoreCameraPose: (() => void) | null = null;
-  if ((!opts.cameraTrack || opts.cameraTrack.length === 0) && !hasSceneCameraTracks(sceneTracks)) {
-    const pos = cam.position.clone();
-    const quat = cam.quaternion.clone();
-    const fov = cam.fov;
-    restoreCameraPose = () => {
-      cam.position.copy(pos);
-      cam.quaternion.copy(quat);
-      cam.fov = fov;
-      cam.updateProjectionMatrix();
-    };
-    applyCameraPose(cam, baseCameraPose());
-  }
-
-  cam.layers.disable(HELPER_LAYER);
   setExporting(true);
   try {
+    await exportPreamble(opts, gl);
+    const sceneFloorYs = snapshotSceneStageFloors(opts.slots.length);
+
+    const { width, height } = opts.format;
+    const ctx = gl.getContext();
+    const rgba = new Uint8Array(width * height * 4);
+
+    gl.setPixelRatio(1);
+    gl.setSize(width, height, false);
+    if (cam.isPerspectiveCamera) {
+      cam.aspect = width / height;
+      cam.updateProjectionMatrix();
+    }
+
+    const sceneTracks = buildSceneCameraTracks(
+      opts.sceneDocs ?? [],
+      computeFormat(opts.format),
+      sceneFloorYs,
+    );
+    const lightingTracks = opts.sceneThemes
+      ? buildLightingTracks(opts.sceneThemes, opts.projectLighting, opts.sceneDocs ?? [])
+      : null;
+    const compareBLightingTracks = opts.sceneThemes
+      ? buildCompareBLightingTracks(
+          opts.sceneThemes,
+          opts.compareBThemes,
+          opts.projectLighting,
+          opts.sceneDocs ?? [],
+        )
+      : null;
+    const sceneStates =
+      opts.theme && opts.sceneThemes
+        ? buildSceneRenderStates(opts.theme, opts.sceneThemes, {
+            projectId: opts.projectId,
+            projectLighting: opts.projectLighting,
+            sceneDocs: opts.sceneDocs,
+          })
+        : null;
+    const overlays = opts.sceneThemes
+      ? resolveOverlays(
+          opts.sceneFrames ?? [],
+          opts.sceneThemes,
+          opts.sceneDocs ?? [],
+          opts.projectId,
+        )
+      : null;
+    // Comparison plan inputs, mirroring the export loop exactly (a screenshot must show the frame the export would).
+    const compareSpecs = (opts.sceneDocs ?? []).map((d, i) =>
+      compareSpecOf(d, opts.sceneThemes?.[i]),
+    );
+    const sceneStatesB =
+      opts.theme && opts.sceneThemes && opts.compareBDocs?.some(Boolean)
+        ? buildSceneRenderStates(
+            opts.theme,
+            opts.sceneThemes.map((t, i) => opts.compareBThemes?.[i] ?? t),
+            {
+              projectId: opts.projectId,
+              projectLighting: opts.projectLighting,
+              sceneDocs: (opts.sceneDocs ?? []).map((d, i) => opts.compareBDocs?.[i] ?? d),
+            },
+          )
+        : null;
+    // Trackless projects heal the shared camera to base for the frame; snapshot the live pose (a mid-orbit view stays where the user left it) and give it back afterwards.
+    if (
+      (!opts.cameraTrack || opts.cameraTrack.length === 0) &&
+      !hasSceneCameraTracks(sceneTracks)
+    ) {
+      const pos = cam.position.clone();
+      const quat = cam.quaternion.clone();
+      const fov = cam.fov;
+      restoreCameraPose = () => {
+        cam.position.copy(pos);
+        cam.quaternion.copy(quat);
+        cam.fov = fov;
+        cam.updateProjectionMatrix();
+      };
+      applyCameraPose(cam, baseCameraPose());
+    }
+
+    cam.layers.disable(HELPER_LAYER);
     // One iteration of the export loop's frame block, barrier for barrier.
     flushSync(() => useClockStore.getState().setCurrentMs(tMs));
     await awaitCanvasClockCommit(tMs);
@@ -800,6 +810,7 @@ async function captureFrameRgbaHeld(
       cam.aspect = prevAspect;
       cam.updateProjectionMatrix();
     }
+    if (prevHelperLayer) cam.layers.enable(HELPER_LAYER);
     restoreCameraPose?.();
     restoreSelection();
     // Give the playhead back only while the capture still owns it; a scrub mid-capture wins.
@@ -960,14 +971,16 @@ export interface FormatVerification extends DeterminismResult {
   aspect: string;
 }
 
-/** Determinism gate: runs Verify ×2 for each format (aspect) in turn. The multi-scene project, including the offscreen composite/transition path, must be byte-identical run-to-run in every aspect, not just 16:9. */
+/** Determinism gate: runs Verify ×2 for each format (aspect) in turn. The multi-scene project, including the offscreen composite/transition path, must be byte-identical run-to-run in every aspect, not just 16:9. `commitFormat` lands each leg's aspect where the canvas lays out from (the editor store behind `useFormat`) before the loop reads pixels; without it every leg after the editor's own aspect hashes the wrong layout in the right-sized buffer, twice, and reports green. */
 export async function verifyAllFormats(
   opts: Omit<ExportOptions, "format">,
   formats: FormatSpec[],
+  commitFormat: (format: FormatSpec) => Promise<void>,
   onProgress?: (p: ExportProgress) => void,
 ): Promise<FormatVerification[]> {
   const results: FormatVerification[] = [];
   for (const format of formats) {
+    await commitFormat(format);
     const r = await verifyDeterminism({ ...opts, format }, onProgress);
     results.push({ ...r, aspect: format.name });
   }

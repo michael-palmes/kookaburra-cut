@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
-import type { Theme } from "../theme/tokens";
+import type { FixtureSpec, Theme } from "../theme/tokens";
 import {
   BUNDLED_ENVIRONMENT_IDS,
   collectEnvironmentSources,
+  collectMirrorRequests,
+  collectMirrorRequestsWithCompare,
   environmentCacheKey,
   resolveSceneEnvironment,
 } from "./environments";
@@ -114,5 +116,72 @@ describe("bundled environment ids", () => {
       "kookaburra:dawn",
       "kookaburra:interior",
     ]);
+  });
+});
+
+describe("collectMirrorRequestsWithCompare", () => {
+  const mirrored = (id: string): FixtureSpec => ({
+    id,
+    form: "panel",
+    size: [2, 1],
+    emissive: 2,
+    lightIntensity: 0,
+    envMirror: true,
+    placement: { mode: "point", position: [0, 2, -3] },
+  });
+  const lit = (fixtures: FixtureSpec[]) =>
+    makeTheme({
+      lighting: { sun: { azimuthDeg: 0, elevationDeg: 30, intensity: 1 }, ambient: 0.4, fixtures },
+    });
+  const doc = { version: 1 } as const;
+
+  it("collects the after side's bake when only side B mirrors", () => {
+    const plain = makeTheme();
+    expect(collectMirrorRequests("ws:p", [plain], undefined, [doc])).toEqual([]);
+    const withB = collectMirrorRequestsWithCompare(
+      "ws:p",
+      [plain],
+      undefined,
+      [doc],
+      [lit([mirrored("m1")])],
+      [doc],
+    );
+    expect(withB).toHaveLength(1);
+    expect(withB[0].proxies).toHaveLength(1);
+  });
+
+  it("dedupes side B against side A by content key and skips scenes without a B side", () => {
+    const theme = lit([mirrored("m1")]);
+    const both = collectMirrorRequestsWithCompare(
+      "ws:p",
+      [theme, theme],
+      undefined,
+      [doc, doc],
+      [theme, undefined],
+      [doc, undefined],
+    );
+    expect(both).toHaveLength(1);
+    const distinct = collectMirrorRequestsWithCompare(
+      "ws:p",
+      [theme],
+      undefined,
+      [doc],
+      [lit([mirrored("m1"), mirrored("m2")])],
+      [doc],
+    );
+    expect(distinct).toHaveLength(2);
+  });
+
+  it("a B side without its own theme mirrors under side A's theme", () => {
+    const theme = lit([mirrored("m1")]);
+    const requests = collectMirrorRequestsWithCompare(
+      "ws:p",
+      [theme],
+      undefined,
+      [doc],
+      [undefined],
+      [doc],
+    );
+    expect(requests).toHaveLength(1);
   });
 });

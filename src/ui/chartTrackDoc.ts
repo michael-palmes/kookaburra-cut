@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { type ChartTrackDoc, useChartTrackEditStore } from "../engine/chartTrackEditStore";
-import { pushHistory } from "../engine/history";
 import { isEditableProjectId, type LoadedProject, nativeProjectSlug } from "../engine/project";
 import { chartValuesAt, resolveChart } from "../engine/sceneChart";
-import { writeSceneDoc } from "../engine/sceneDoc";
+import { commitSceneDocPatch, type DocChangedHandler } from "../engine/sceneDocPatchQueue";
 import type { SceneDoc } from "../engine/sceneDocSchema";
 import type { ChartValuesPose } from "../toolkit/chart/types";
 
@@ -11,7 +10,7 @@ import type { ChartValuesPose } from "../toolkit/chart/types";
 export function useChartTrackDoc(
   project: LoadedProject,
   sceneIndex: number,
-  onDocChanged: (sceneIndex: number, doc: SceneDoc) => void,
+  onDocChanged: DocChangedHandler,
 ) {
   const slug = isEditableProjectId(project.id) ? nativeProjectSlug(project.id) : null;
   const doc = project.sceneDocs[sceneIndex];
@@ -32,33 +31,21 @@ export function useChartTrackDoc(
     async (next: ChartTrackDoc) => {
       if (!slug || !sceneFile || !doc?.chart) return;
       preview(next);
-      const written: SceneDoc = {
-        ...structuredClone(doc),
-        chart: { ...structuredClone(doc.chart), track: next },
-      };
       try {
-        await writeSceneDoc(slug, sceneFile, written);
-        onDocChanged(sceneIndex, written);
-        pushHistory({
-          label: "chart animation",
-          changes: [
-            {
-              kind: "sceneDoc",
-              slug,
-              file: sceneFile,
-              sceneIndex,
-              before: structuredClone(doc),
-              after: structuredClone(written),
-            },
-          ],
-        });
+        await commitSceneDocPatch(
+          { project, sceneIndex, label: "chart animation", onDocChanged },
+          (written) => {
+            if (!written.chart) return false;
+            written.chart = { ...written.chart, track: structuredClone(next) };
+          },
+        );
         useChartTrackEditStore.getState().setWriteError(null);
       } catch (e) {
         console.warn("[chart-edit] sidecar write failed:", e);
         useChartTrackEditStore.getState().setWriteError(String(e));
       }
     },
-    [slug, sceneFile, doc, preview, onDocChanged, sceneIndex],
+    [slug, sceneFile, doc, preview, onDocChanged, sceneIndex, project],
   );
 
   /** The value matrix the chart actually shows at scene-local `t` under the current track, as a key pose. */

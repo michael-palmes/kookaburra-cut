@@ -252,6 +252,28 @@ export function collectMirrorRequests(
   return [...byKey.values()];
 }
 
+/** `collectMirrorRequests` for a project with comparison scenes: side B renders under its own theme and document (`buildSceneRenderStates` keys B's states from them), so its bakes are collected in a second pass and deduped with A's by content key. Preview, Present, settle and export all call this, so the four agree by construction. */
+export function collectMirrorRequestsWithCompare(
+  projectId: string | undefined,
+  sceneThemes: readonly Theme[],
+  projectLighting: LightingSpec | undefined,
+  sceneDocs: readonly (SceneDoc | undefined)[] | undefined,
+  compareBThemes: readonly (Theme | undefined)[] | undefined,
+  compareBDocs: readonly (SceneDoc | undefined)[] | undefined,
+): MirrorRequest[] {
+  const byKey = new Map<string, MirrorRequest>();
+  for (const request of collectMirrorRequests(projectId, sceneThemes, projectLighting, sceneDocs)) {
+    byKey.set(request.key, request);
+  }
+  compareBDocs?.forEach((bDoc, i) => {
+    const theme = compareBThemes?.[i] ?? sceneThemes[i];
+    if (!bDoc || !theme) return;
+    const request = sceneMirrorRequest(projectId, theme, projectLighting, bDoc);
+    if (request) byKey.set(request.key, request);
+  });
+  return [...byKey.values()];
+}
+
 /** Raw equirects retained for bakes only (the plain path PMREMs then disposes; the bake scene needs the source texture as a backdrop sphere map). */
 const equirects = new Map<string, Texture>();
 

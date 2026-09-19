@@ -78,18 +78,21 @@ than restating versions.) Pins live in `package.json` and `src-tauri/Cargo.toml`
 | Dependency | Version | Role | Licence |
 | --- | --- | --- | --- |
 | Tauri (core + CLI) | 2.11.x | App shell, Rust core, WKWebView via WRY | MIT / Apache-2.0 |
-| tauri-plugin-shell | 2.3.x | Spawn and pipe to the ffmpeg sidecar | MIT / Apache-2.0 |
-| tauri-plugin-fs | 2.5.x | Read/write project folders and assets | MIT / Apache-2.0 |
-| React | 19.2.x | UI and scene component model | MIT |
-| TypeScript | 5.9.x | Typed toolkit and scene files | Apache-2.0 |
-| Vite | 8.0.x | Dev server, HMR preview, prod bundle (Oxc transform/minify) | MIT |
-| @vitejs/plugin-react | 6.0.x | React fast-refresh / JSX for Vite | MIT |
-| three | 0.184.x | WebGL renderer and scene graph | MIT |
-| @react-three/fiber | 9.6.x | React renderer for Three.js | MIT |
+| tauri-plugin-shell | 2.x (Rust only) | Spawn and pipe to the ffmpeg sidecar from Rust; the webview never calls it | MIT / Apache-2.0 |
+| tauri-plugin-dialog | 2.x | Native open and save panels (`dialog:default` is the one plugin permission a window holds) | MIT / Apache-2.0 |
+| tauri-plugin-window-state | 2.x | Remember window frames between launches | MIT / Apache-2.0 |
+| tauri-plugin-updater | 2.x | Opt-in update check and signed install (`updater.rs`) | MIT / Apache-2.0 |
+| tauri-plugin-log | 2.x | Native log sink | MIT / Apache-2.0 |
+| React + react-dom | 19.2.x | UI and scene component model; react-dom renders the chrome, fiber the canvas | MIT |
+| TypeScript | 7.0.x | Typed toolkit and scene files | Apache-2.0 |
+| Vite | 8.2.x | Dev server, HMR preview, prod bundle (Oxc transform/minify) | MIT |
+| @vitejs/plugin-react | 6.1.x | React fast-refresh / JSX for Vite | MIT |
+| three | 0.185.x | WebGL renderer and scene graph | MIT |
+| @react-three/fiber | 9.7.x | React renderer for Three.js | MIT |
 | @react-three/drei | 10.7.x | Loaders, controls, `<Text>` helper | MIT |
-| @react-three/postprocessing | 3.0.x | Bloom, vignette, colour grading | MIT |
+| @react-three/postprocessing | 3.1.x | Bloom, vignette, colour grading | MIT |
 | troika-three-text | 0.52.x | SDF text in WebGL (the text engine) | MIT |
-| anime.js | 4.4.x | Global seekable timeline / sequencing | MIT |
+| anime.js | 4.5.x | Global seekable timeline / sequencing | MIT |
 | d3-ease | 3.x | Permissive easing primitives | ISC |
 | d3-interpolate | 3.x | Permissive value interpolation primitives | ISC |
 | zustand | 5.0.x | Editor / preview / timeline UI state | MIT |
@@ -98,11 +101,14 @@ than restating versions.) Pins live in `package.json` and `src-tauri/Cargo.toml`
 | Vitest | 4.x | Tests, incl. the determinism harness | MIT |
 | Biome | 2.5.x | Lint + format | MIT / Apache-2.0 |
 
-Rust crates (`src-tauri/Cargo.toml`): `tauri 2.11.x` (+ shell/fs/log plugins),
-`serde`/`serde_json`, `tokio`, `sha2` (the `hash_file` Verify command),
-`portable-pty` (embedded terminal), `allsorts` (exact-pinned; variable-font
-instancing), `trash` (recoverable deletes), `objc2` (native menu/window
-touches).
+Rust crates (`src-tauri/Cargo.toml`): `tauri 2.11.x` (exact-pinned) with the
+shell, dialog, window-state, updater and log plugins, `serde`/`serde_json`,
+`tokio`, `sha2` (the `hash_file` Verify command), `portable-pty` (embedded
+terminal), `allsorts` and `png` (both exact-pinned: instancer output and PNG
+encoding participate in export baselines), `zip` and `ed25519-dalek` (`.kbpack`
+archives and signatures), `trash` (recoverable deletes), `objc2` (native
+menu/window touches). There is no `tauri-plugin-fs`: every filesystem touch is
+a custom command behind a path-confining check.
 
 Licence note: every JS/Rust dependency is permissive (MIT/Apache/BSD/ISC-class)
 except **ffmpeg**. ffmpeg licensing depends on the enabled
@@ -370,7 +376,8 @@ Where the live Tauri-2 setup matters for working in the code:
    entry with `"sidecar": true` in `capabilities/default.json`. **Kookaburra Cut needs
    none**: it spawns the sidecars from Rust (`app.shell().sidecar("ffmpeg")`),
    which bypasses the webview shell ACL, so `capabilities/default.json` carries
-   only fs scopes. (Custom `#[tauri::command]`s like `start_export`/`push_frame`
+   no fs or shell scope at all: `core:default`, three window permissions and
+   `dialog:default`. (Custom `#[tauri::command]`s like `start_export`/`push_frame`
    are likewise un-gated by the ACL; only plugin/core commands need permissions.)
 2. **Sidecar runtime name is the basename.** Spawn with
    `app.shell().sidecar("ffmpeg")`, *not* `"bin/ffmpeg"`. Tauri copies the dev

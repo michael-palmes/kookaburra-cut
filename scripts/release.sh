@@ -27,6 +27,7 @@ for arg in "$@"; do
 done
 
 VERSION=$(node -p "require('./src-tauri/tauri.conf.json').version")
+MIN_OS=$(node -p "require('./src-tauri/tauri.conf.json').bundle.macOS.minimumSystemVersion")
 APP_NAME="Kookaburra Cut"
 TAG="v${VERSION}"
 APP_BUNDLE="$ROOT/release/$APP_NAME.app"
@@ -63,6 +64,13 @@ if [[ -n "$MISSING_MODELS" ]]; then
   echo "ERROR: licensed device models missing from src/assets/models/licensed/:$MISSING_MODELS" >&2
   echo "Those devices would be HIDDEN in the shipped app. Regenerate them first:" >&2
   echo "  KOOKABURRA_ASSETS_DIR=<private assets folder> pnpm assets:devices" >&2
+  exit 1
+fi
+
+# The README and every release body state the floor the bundle enforces; 0.15 and 0.16 advertised
+# "macOS 13+" for a binary that refuses to launch below 26.
+if ! grep -q "macOS ${MIN_OS}+" "$ROOT/README.md"; then
+  echo "ERROR: README.md does not state the macOS ${MIN_OS}+ floor set in src-tauri/tauri.conf.json." >&2
   exit 1
 fi
 
@@ -120,7 +128,7 @@ PREV_TAG=$(git describe --tags --abbrev=0 2>/dev/null || true)
 {
   echo "## Kookaburra Cut ${VERSION}"
   echo ""
-  echo "Apple Silicon (arm64), macOS 13+. Developer ID signed and notarised."
+  echo "Apple Silicon (arm64), macOS ${MIN_OS}+. Developer ID signed and notarised."
   echo ""
   if [[ -n "$PREV_TAG" ]]; then
     echo "Changes since ${PREV_TAG}:"

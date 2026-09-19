@@ -44,7 +44,8 @@ import {
 import { readProjectManifestSnapshot, updateSceneTransition } from "../../engine/projectEdit";
 import { defaultOrbitPose } from "../../engine/sceneCamera";
 import { type CameraDoc, nearestKey, type RigDoc, setKeyPose } from "../../engine/sceneCameraEdit";
-import { applyBackgroundToAllScenes, type EditRepointSlot } from "../../engine/sceneDoc";
+import type { EditRepointSlot } from "../../engine/sceneDoc";
+import { applyBackgroundToAllScenes } from "../../engine/sceneDocPatchQueue";
 import {
   type DeviceLayoutPreset,
   isSceneImageSource,
@@ -6171,10 +6172,6 @@ export function SceneTab({
     );
   }
   if (drillIn === "motion.transition") {
-    // A comparison on either side of this boundary blends its Before side only during the window (the v1 interop rule); said here where the choice is made, not as a console warning.
-    const boundaryHasCompare =
-      project.sceneDocs[boundaryIndex]?.compare !== undefined ||
-      project.sceneDocs[boundaryIndex + 1]?.compare !== undefined;
     return (
       <div className="inspector-drill">
         <DrillBack
@@ -6182,12 +6179,6 @@ export function SceneTab({
           title={`Transition out of scene ${boundaryIndex + 1}`}
           onClick={() => closeDrill()}
         />
-        {boundaryHasCompare && (
-          <p className="inspector-stub-note">
-            A comparison sits on this boundary: during the transition window it blends its Before
-            side only. Use a hard cut (None) to keep the full comparison to the edge.
-          </p>
-        )}
         <TransitionModal
           embedded
           project={project}

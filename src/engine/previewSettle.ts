@@ -7,7 +7,7 @@ import { preloadBundledBackdrops } from "../toolkit/stage/backdrops";
 import { useClockStore } from "./clock";
 import {
   collectEnvironmentSources,
-  collectMirrorRequests,
+  collectMirrorRequestsWithCompare,
   preloadEnvironments,
   preloadMirrorEnvironments,
 } from "./environments";
@@ -72,18 +72,20 @@ export async function settleProjectOpen(
               gl,
               collectEnvironmentSources(
                 loaded.id,
-                [loaded.theme, ...loaded.sceneThemes],
+                [loaded.theme, ...loaded.sceneThemes, ...loaded.compareBThemes],
                 loaded.projectLighting,
-                loaded.sceneDocs,
+                [...loaded.sceneDocs, ...loaded.compareBDocs],
               ),
             ).then(() =>
               preloadMirrorEnvironments(
                 gl,
-                collectMirrorRequests(
+                collectMirrorRequestsWithCompare(
                   loaded.id,
                   loaded.sceneThemes,
                   loaded.projectLighting,
                   loaded.sceneDocs,
+                  loaded.compareBThemes,
+                  loaded.compareBDocs,
                 ),
               ),
             ),

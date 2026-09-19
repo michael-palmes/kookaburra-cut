@@ -7,7 +7,7 @@ export async function settleContentEdits(): Promise<void> {
 }
 
 export async function settlePendingContentEdits(): Promise<void> {
-  const { settleSceneDocPatches } = await import("./useSceneDocPatch");
+  const { settleSceneDocPatches } = await import("../engine/sceneDocPatchQueue");
   const { settleSceneDocWrites } = await import("../engine/sceneDoc");
   await settleSceneDocPatches();
   await settleSceneDocWrites();

@@ -189,7 +189,8 @@ pub fn apply_import(
     }
 
     outcome.stopped_at = stopped;
-    if backed_up {
+    // `run_id()` is fresh per apply, so the directory can only exist if a backup landed; a replacement that failed after its backup still tells the user where the original went.
+    if backed_up || backup_root.exists() {
         outcome.backup_dir = Some(backup_root.to_string_lossy().into_owned());
     }
     Ok(outcome)
@@ -1238,6 +1239,60 @@ mod tests {
         assert!(!include_str!("conflicts.rs").contains(granted));
 
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A replacement whose incumbent already moved into the backup, then could not be placed: the user must still be told where the original went.
+    #[test]
+    fn a_failed_replacement_still_reports_the_backup_it_made() {
+        use std::os::unix::fs::PermissionsExt;
+        let root = scratch("backup-report-root");
+        let staging = scratch("backup-report-staging");
+        write(
+            &root.join("acme-promo/project.json"),
+            r#"{"id":"acme-promo","name":"Acme Promo (mine)"}"#,
+        );
+        let project = stage_dir_item(
+            &staging,
+            ItemKind::Project,
+            "acme-promo",
+            &[
+                ("project.json", r#"{"id":"acme-promo","name":"Acme Promo"}"#),
+                ("scenes/01-hero.tsx", "export default 1;"),
+            ],
+            FUTURE,
+        );
+        let contents = PackContents {
+            projects: vec![project_of(project, "ws:acme-dark")],
+            ..Default::default()
+        };
+        let staged = staged_pack(staging.clone(), contents);
+        // A staged folder that can neither be moved (no write bit on the directory) nor copied (an unreadable scene): the backup lands, the placement cannot.
+        let source = staging.join("payload/projects/acme-promo");
+        let scene = source.join("scenes/01-hero.tsx");
+        std::fs::set_permissions(&scene, std::fs::Permissions::from_mode(0o000)).unwrap();
+        std::fs::set_permissions(&source, std::fs::Permissions::from_mode(0o555)).unwrap();
+
+        let outcome = apply_import(
+            &root,
+            staged,
+            &resolutions(&[(ItemKind::Project, "acme-promo", Resolution::Replace)]),
+            |_, _, _| {},
+        );
+        let _ = std::fs::set_permissions(&source, std::fs::Permissions::from_mode(0o755));
+        let _ = std::fs::set_permissions(&scene, std::fs::Permissions::from_mode(0o644));
+        let outcome = outcome.unwrap();
+
+        assert_eq!(outcome.results[0].outcome, ItemOutcome::Failed);
+        assert!(outcome.stopped_at.is_some());
+        let backup_dir = outcome
+            .backup_dir
+            .expect("a backup that landed must be reported");
+        assert!(Path::new(&backup_dir)
+            .join("projects/acme-promo/project.json")
+            .is_file());
+        assert!(!root.join("acme-promo").exists());
+        let _ = std::fs::remove_dir_all(&root);
+        let _ = std::fs::remove_dir_all(&staging);
     }
 
     #[test]

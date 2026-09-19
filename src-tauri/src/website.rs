@@ -927,13 +927,13 @@ pub fn website_grant_origin(
             .insert((project_key, origin));
         return Ok(());
     }
-    let mut value = workspace::load_settings(&app, &settings)?;
-    let origins = value.website_origin_grants.entry(project_key).or_default();
-    if !origins.contains(&origin) {
-        origins.push(origin);
-        origins.sort();
-    }
-    workspace::save_settings(&app, &settings, value)
+    workspace::update_settings(&app, &settings, |value| {
+        let origins = value.website_origin_grants.entry(project_key).or_default();
+        if !origins.contains(&origin) {
+            origins.push(origin);
+            origins.sort();
+        }
+    })
 }
 
 #[tauri::command]
@@ -958,14 +958,14 @@ pub fn website_revoke_origin(
         close_views_for_revoked_origin(&state, &project_key, &origin);
         return Ok(());
     }
-    let mut value = workspace::load_settings(&app, &settings)?;
-    if let Some(origins) = value.website_origin_grants.get_mut(&project_key) {
-        origins.retain(|value| value != &origin);
-        if origins.is_empty() {
-            value.website_origin_grants.remove(&project_key);
+    workspace::update_settings(&app, &settings, |value| {
+        if let Some(origins) = value.website_origin_grants.get_mut(&project_key) {
+            origins.retain(|value| value != &origin);
+            if origins.is_empty() {
+                value.website_origin_grants.remove(&project_key);
+            }
         }
-    }
-    workspace::save_settings(&app, &settings, value)?;
+    })?;
     close_views_for_revoked_origin(&state, &project_key, &origin);
     Ok(())
 }

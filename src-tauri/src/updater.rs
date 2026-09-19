@@ -33,9 +33,14 @@ pub async fn check_for_update(
     settings: State<'_, SettingsState>,
     pending: State<'_, PendingUpdate>,
 ) -> Result<UpdateCheck, String> {
-    let override_endpoint = std::env::var("KOOKABURRA_UPDATE_ENDPOINT")
-        .ok()
-        .filter(|v| !v.trim().is_empty());
+    // The local test manifest is a dev-only affordance: a release build never reads the variable, so no environment can repoint a shipped app's updater (the pinned pubkey bounds it either way).
+    let override_endpoint = if cfg!(debug_assertions) {
+        std::env::var("KOOKABURRA_UPDATE_ENDPOINT")
+            .ok()
+            .filter(|v| !v.trim().is_empty())
+    } else {
+        None
+    };
     if cfg!(debug_assertions) && override_endpoint.is_none() {
         return Ok(UpdateCheck::DevBuild);
     }
@@ -69,10 +74,12 @@ pub async fn check_for_update(
         }
     };
 
-    let mut s = workspace::load_settings(&app, &settings)?;
-    if s.update_check_consent == Some(true) {
-        s.last_update_check_ms = Some(workspace::now_unix_ms());
-        workspace::save_settings(&app, &settings, s)?;
+    if workspace::load_settings(&app, &settings)?.update_check_consent == Some(true) {
+        workspace::update_settings(&app, &settings, |s| {
+            if s.update_check_consent == Some(true) {
+                s.last_update_check_ms = Some(workspace::now_unix_ms());
+            }
+        })?;
     }
     Ok(outcome)
 }
@@ -84,13 +91,13 @@ pub fn set_update_consent(
     settings: State<'_, SettingsState>,
     consent: bool,
 ) -> Result<(), String> {
-    let mut s = workspace::load_settings(&app, &settings)?;
-    s.update_check_consent = Some(consent);
-    if !consent {
-        s.last_update_check_ms = None;
-        s.last_offered_version = None;
-    }
-    workspace::save_settings(&app, &settings, s)
+    workspace::update_settings(&app, &settings, |s| {
+        s.update_check_consent = Some(consent);
+        if !consent {
+            s.last_update_check_ms = None;
+            s.last_offered_version = None;
+        }
+    })
 }
 
 /// Remember a declined offer so the same version is not re-offered every launch.
@@ -100,10 +107,12 @@ pub fn record_skipped_version(
     settings: State<'_, SettingsState>,
     version: String,
 ) -> Result<(), String> {
-    let mut s = workspace::load_settings(&app, &settings)?;
-    if s.update_check_consent == Some(true) {
-        s.last_offered_version = Some(version);
-        workspace::save_settings(&app, &settings, s)?;
+    if workspace::load_settings(&app, &settings)?.update_check_consent == Some(true) {
+        workspace::update_settings(&app, &settings, |s| {
+            if s.update_check_consent == Some(true) {
+                s.last_offered_version = Some(version);
+            }
+        })?;
     }
     Ok(())
 }

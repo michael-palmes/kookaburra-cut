@@ -35,7 +35,7 @@ embeds a Claude Code terminal that reads and rewrites your project's scene files
   </a>
 </p>
 
-- A signed and notarised `.dmg`; macOS 13+ on **Apple Silicon** (arm64) only, no Intel build
+- A signed and notarised `.dmg`; macOS 26+ on **Apple Silicon** (arm64) only, no Intel build
 - Free and open source; everything runs locally (no accounts, no telemetry, no cloud)
 - The optional AI authoring path uses your own Claude Code install
 

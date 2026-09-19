@@ -77,6 +77,51 @@ fn prepended_path(prepend: &str, inherited: Option<String>) -> String {
     }
 }
 
+/// Where the F-006 opt-out may never seat a prompt (defence in depth after F-001: a sidecar path must not become `shell -c` outside the workspace).
+const DENIED_ROOTS: [&str; 5] = ["/System", "/usr", "/bin", "/sbin", "/private"];
+
+/// F-006: the terminal cwd must resolve to a real directory inside the canonical workspace `root`. The opt-out (scene terminals open a user-chosen start path) may seat an interactive prompt elsewhere, never a command, and never in a system directory. `Path::starts_with` is component-wise, so a sibling named `<root>-evil` stays outside.
+fn confine_terminal_cwd(
+    root: &Path,
+    requested: &Path,
+    allow_external: bool,
+    has_command: bool,
+    denied_roots: &[&str],
+) -> Result<PathBuf, String> {
+    let cwd = requested
+        .canonicalize()
+        .map_err(|e| format!("terminal working directory not found: {e}"))?;
+    if !cwd.is_dir() {
+        return Err("the terminal working directory must be a folder".into());
+    }
+    if cwd.starts_with(root) {
+        return Ok(cwd);
+    }
+    if !allow_external {
+        return Err("the terminal can only open inside the workspace".into());
+    }
+    if has_command {
+        return Err("commands can only run inside the workspace".into());
+    }
+    if cwd == Path::new("/") || denied_roots.iter().any(|p| cwd.starts_with(p)) {
+        return Err("the terminal cannot open in a system directory".into());
+    }
+    Ok(cwd)
+}
+
+/// The session `id` names, provided the calling window spawned it: a window only ever drives its own terminals.
+fn owned_session<'a>(
+    map: &'a mut HashMap<u32, PtySession>,
+    id: u32,
+    window: &tauri::Window,
+) -> Result<&'a mut PtySession, String> {
+    let session = map.get_mut(&id).ok_or("no such terminal session")?;
+    if session.owner != window.label() {
+        return Err("that terminal belongs to another window".into());
+    }
+    Ok(session)
+}
+
 /// The user's shell: `$SHELL` (set by launchd from the user record even for GUI apps), falling back to the macOS default.
 fn user_shell() -> String {
     std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".into())
@@ -107,25 +152,13 @@ pub fn pty_spawn(
     } else {
         PathBuf::from(raw)
     };
-    let cwd = requested
-        .canonicalize()
-        .map_err(|e| format!("terminal working directory not found: {e}"))?;
-    if !cwd.is_dir() {
-        return Err("the terminal working directory must be a folder".into());
-    }
-    if !cwd.starts_with(&root) {
-        if !options.allow_external_cwd {
-            return Err("the terminal can only open inside the workspace".into());
-        }
-        // The opt-out seats an interactive prompt somewhere, never runs a command there, and never in a system directory (defence in depth after F-001: a sidecar path must not become `shell -c` outside the workspace).
-        if options.command.is_some() {
-            return Err("commands can only run inside the workspace".into());
-        }
-        const DENIED_ROOTS: [&str; 5] = ["/System", "/usr", "/bin", "/sbin", "/private"];
-        if cwd == Path::new("/") || DENIED_ROOTS.iter().any(|p| cwd.starts_with(p)) {
-            return Err("the terminal cannot open in a system directory".into());
-        }
-    }
+    let cwd = confine_terminal_cwd(
+        &root,
+        &requested,
+        options.allow_external_cwd,
+        options.command.is_some(),
+        &DENIED_ROOTS,
+    )?;
 
     let pty = native_pty_system()
         .openpty(PtySize {
@@ -238,9 +271,14 @@ pub fn pty_spawn(
 
 /// Write user input (keystrokes, pastes) to the session's stdin.
 #[tauri::command]
-pub fn pty_write(state: State<'_, PtyState>, id: u32, data: String) -> Result<(), String> {
+pub fn pty_write(
+    window: tauri::Window,
+    state: State<'_, PtyState>,
+    id: u32,
+    data: String,
+) -> Result<(), String> {
     let mut map = state.sessions.lock().map_err(|_| "pty state poisoned")?;
-    let session = map.get_mut(&id).ok_or("no such terminal session")?;
+    let session = owned_session(&mut map, id, &window)?;
     session
         .writer
         .write_all(data.as_bytes())
@@ -249,9 +287,15 @@ pub fn pty_write(state: State<'_, PtyState>, id: u32, data: String) -> Result<()
 
 /// Resize the PTY (the kernel delivers SIGWINCH to the foreground process group).
 #[tauri::command]
-pub fn pty_resize(state: State<'_, PtyState>, id: u32, cols: u16, rows: u16) -> Result<(), String> {
-    let map = state.sessions.lock().map_err(|_| "pty state poisoned")?;
-    let session = map.get(&id).ok_or("no such terminal session")?;
+pub fn pty_resize(
+    window: tauri::Window,
+    state: State<'_, PtyState>,
+    id: u32,
+    cols: u16,
+    rows: u16,
+) -> Result<(), String> {
+    let mut map = state.sessions.lock().map_err(|_| "pty state poisoned")?;
+    let session = owned_session(&mut map, id, &window)?;
     session
         .master
         .resize(PtySize {
@@ -263,14 +307,16 @@ pub fn pty_resize(state: State<'_, PtyState>, id: u32, cols: u16, rows: u16) -> 
         .map_err(|e| e.to_string())
 }
 
-/// Kill the session's child; the reader thread unblocks, reaps via `wait()`, sends the exit message, and removes the session from the registry.
+/// Kill the session's child; the reader thread unblocks, reaps via `wait()`, sends the exit message, and removes the session from the registry. A session already gone is not an error: the exit message can race the kill.
 #[tauri::command]
-pub fn pty_kill(state: State<'_, PtyState>, id: u32) -> Result<(), String> {
+pub fn pty_kill(window: tauri::Window, state: State<'_, PtyState>, id: u32) -> Result<(), String> {
     let mut map = state.sessions.lock().map_err(|_| "pty state poisoned")?;
-    if let Some(session) = map.get_mut(&id) {
-        session.gate.set(false); // never leave the reader parked while dying
-        let _ = session.killer.kill();
+    if !map.contains_key(&id) {
+        return Ok(());
     }
+    let session = owned_session(&mut map, id, &window)?;
+    session.gate.set(false); // never leave the reader parked while dying
+    let _ = session.killer.kill();
     Ok(())
 }
 
@@ -286,20 +332,30 @@ pub fn kill_sessions_owned_by(state: &PtyState, owner: &str) {
 
 /// Frontend watermark flow control: pause stops draining the PTY (the kernel buffer then backpressures the child); resume unparks the reader.
 #[tauri::command]
-pub fn pty_pause(state: State<'_, PtyState>, id: u32) -> Result<(), String> {
-    let map = state.sessions.lock().map_err(|_| "pty state poisoned")?;
-    if let Some(session) = map.get(&id) {
-        session.gate.set(true);
-    }
-    Ok(())
+pub fn pty_pause(window: tauri::Window, state: State<'_, PtyState>, id: u32) -> Result<(), String> {
+    set_session_paused(&window, &state, id, true)
 }
 
 #[tauri::command]
-pub fn pty_resume(state: State<'_, PtyState>, id: u32) -> Result<(), String> {
-    let map = state.sessions.lock().map_err(|_| "pty state poisoned")?;
-    if let Some(session) = map.get(&id) {
-        session.gate.set(false);
+pub fn pty_resume(
+    window: tauri::Window,
+    state: State<'_, PtyState>,
+    id: u32,
+) -> Result<(), String> {
+    set_session_paused(&window, &state, id, false)
+}
+
+fn set_session_paused(
+    window: &tauri::Window,
+    state: &PtyState,
+    id: u32,
+    paused: bool,
+) -> Result<(), String> {
+    let mut map = state.sessions.lock().map_err(|_| "pty state poisoned")?;
+    if !map.contains_key(&id) {
+        return Ok(());
     }
+    owned_session(&mut map, id, window)?.gate.set(paused);
     Ok(())
 }
 
@@ -353,7 +409,85 @@ pub async fn detect_claude() -> Result<Option<String>, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::prepended_path;
+    use super::{confine_terminal_cwd, prepended_path, DENIED_ROOTS};
+    use std::path::{Path, PathBuf};
+
+    /// A fresh scratch tree per test: `<tmp>/kookaburra-pty-<name>/` with a canonical `Kookaburra Cut` root inside it.
+    fn scratch(name: &str) -> (PathBuf, PathBuf) {
+        let base =
+            std::env::temp_dir().join(format!("kookaburra-pty-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let root = base.join("Kookaburra Cut");
+        std::fs::create_dir_all(root.join("acme-promo")).unwrap();
+        (base, root.canonicalize().unwrap())
+    }
+
+    #[test]
+    fn a_project_folder_inside_the_workspace_is_allowed() {
+        let (base, root) = scratch("inside");
+        let cwd = confine_terminal_cwd(&root, &root.join("acme-promo"), false, true, &DENIED_ROOTS);
+        assert_eq!(cwd.unwrap(), root.join("acme-promo"));
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn a_sibling_sharing_the_root_prefix_stays_outside() {
+        let (base, root) = scratch("sibling");
+        let evil = base.join("Kookaburra Cut-evil");
+        std::fs::create_dir_all(&evil).unwrap();
+        let err = confine_terminal_cwd(&root, &evil, false, false, &DENIED_ROOTS).unwrap_err();
+        assert_eq!(err, "the terminal can only open inside the workspace");
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn a_symlink_pointing_out_of_the_workspace_is_refused() {
+        let (base, root) = scratch("symlink");
+        let outside = base.join("elsewhere");
+        std::fs::create_dir_all(&outside).unwrap();
+        std::os::unix::fs::symlink(&outside, root.join("escape")).unwrap();
+        let err = confine_terminal_cwd(&root, &root.join("escape"), false, false, &DENIED_ROOTS)
+            .unwrap_err();
+        assert_eq!(err, "the terminal can only open inside the workspace");
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn the_opt_out_seats_a_prompt_but_never_a_command() {
+        let (base, root) = scratch("optout");
+        let outside = base.join("elsewhere");
+        std::fs::create_dir_all(&outside).unwrap();
+        let err = confine_terminal_cwd(&root, &outside, true, true, &[]).unwrap_err();
+        assert_eq!(err, "commands can only run inside the workspace");
+        let cwd = confine_terminal_cwd(&root, &outside, true, false, &[]).unwrap();
+        assert_eq!(cwd, outside.canonicalize().unwrap());
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn the_opt_out_never_opens_a_system_directory() {
+        let (base, root) = scratch("system");
+        for denied in [Path::new("/"), Path::new("/usr")] {
+            let err = confine_terminal_cwd(&root, denied, true, false, &DENIED_ROOTS).unwrap_err();
+            assert_eq!(
+                err, "the terminal cannot open in a system directory",
+                "{denied:?}"
+            );
+        }
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn a_missing_or_file_path_is_refused_before_any_policy() {
+        let (base, root) = scratch("missing");
+        assert!(confine_terminal_cwd(&root, &root.join("nope"), true, false, &[]).is_err());
+        std::fs::write(root.join("note.txt"), "x").unwrap();
+        assert_eq!(
+            confine_terminal_cwd(&root, &root.join("note.txt"), true, false, &[]).unwrap_err(),
+            "the terminal working directory must be a folder"
+        );
+        let _ = std::fs::remove_dir_all(&base);
+    }
 
     #[test]
     fn prepended_path_never_leaves_an_empty_entry() {

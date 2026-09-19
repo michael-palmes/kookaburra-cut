@@ -1,12 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
-import { pushHistory } from "../engine/history";
 import {
   type LightingTarget,
   type LightingTrackDoc,
   useLightingEditStore,
 } from "../engine/lightingEditStore";
 import { isEditableProjectId, type LoadedProject, nativeProjectSlug } from "../engine/project";
-import { writeSceneDoc } from "../engine/sceneDoc";
+import { commitSceneDocPatch, type DocChangedHandler } from "../engine/sceneDocPatchQueue";
 import type { SceneDoc } from "../engine/sceneDocSchema";
 import { sampleLightingPose } from "../engine/sceneLighting";
 import type { LightingPose } from "../theme/tokens";
@@ -45,7 +44,7 @@ export function useLightingTrackDoc(
   project: LoadedProject,
   sceneIndex: number,
   target: LightingTarget,
-  onDocChanged: (sceneIndex: number, doc: SceneDoc) => void,
+  onDocChanged: DocChangedHandler,
 ) {
   const slug = isEditableProjectId(project.id) ? nativeProjectSlug(project.id) : null;
   const doc = project.sceneDocs[sceneIndex];
@@ -75,30 +74,27 @@ export function useLightingTrackDoc(
     async (next: LightingTrackDoc) => {
       if (!slug || !sceneFile) return;
       preview(next, true);
-      const written = writeLightingTrackForTarget(doc, target, next);
       try {
-        await writeSceneDoc(slug, sceneFile, written);
-        onDocChanged(sceneIndex, written);
-        pushHistory({
-          label: target === "compareB" ? "comparison lighting animation" : "lighting animation",
-          changes: [
-            {
-              kind: "sceneDoc",
-              slug,
-              file: sceneFile,
-              sceneIndex,
-              before: doc ? structuredClone(doc) : null,
-              after: structuredClone(written),
-            },
-          ],
-        });
+        await commitSceneDocPatch(
+          {
+            project,
+            sceneIndex,
+            label: target === "compareB" ? "comparison lighting animation" : "lighting animation",
+            onDocChanged,
+          },
+          (written) => {
+            const merged = writeLightingTrackForTarget(written, target, next);
+            if (target === "scene") written.lighting = merged.lighting;
+            else written.compare = merged.compare;
+          },
+        );
         useLightingEditStore.getState().setWriteError(null);
       } catch (error) {
         console.warn("[lighting-edit] sidecar write failed:", error);
         useLightingEditStore.getState().setWriteError(String(error));
       }
     },
-    [slug, sceneFile, doc, target, preview, onDocChanged, sceneIndex],
+    [slug, sceneFile, target, preview, onDocChanged, sceneIndex, project],
   );
 
   const appliedPoseAt = useCallback(
