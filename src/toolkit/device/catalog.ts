@@ -74,6 +74,8 @@ export interface DeviceShadowSpec {
   base?: { depth: number; y: number; z: number };
   /** Laptop only: the lid slab, hinged at (0, hingeY, hingeZ) and opening by the device's lid angle. */
   lid?: { length: number; thickness: number; hingeY: number; hingeZ: number };
+  /** Foldable only: two upright panels of `thickness` each; `hingeZ` is their shared inner-face plane, where the vertical hinge runs. */
+  fold?: { hingeZ: number };
 }
 
 /** One display: the screen mesh's material name + the display's width/height. */
@@ -242,7 +244,8 @@ export const DEVICE_CATALOG: Record<DeviceId, DeviceSpec> = {
     layoutWidth: 3.65,
     fittedHeight: 2.6,
     // 5.5 mm per half (the camera plateau is a bump on the outline, not part of it) and a ~15 mm corner, at the same fit.
-    shadow: { thickness: 0.122, radius: 0.332 },
+    // The inner faces sit 5.6 mm in front of the recentred origin (the camera plateau pushes the bounds back).
+    shadow: { thickness: 0.122, radius: 0.332, fold: { hingeZ: 0.123 } },
     colours: [
       // Star White is the authored finish, the only one the vendor ships. Night Sky is derived: a multiply on the two tintable parts scripts/blender-duo-prepare.py splits out of the body atlas, body from Apple's own swatch and a darker polished frame, 2026-09-19. Keep in step with render-device-previews.sh.
       { id: "star-white", name: "Star White", overrides: {}, swatch: "#f7f6f5" },

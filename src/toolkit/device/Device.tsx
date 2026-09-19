@@ -10,10 +10,13 @@ import {
   useState,
 } from "react";
 import {
+  type AnimationClip,
   Box3,
   type BufferAttribute,
   Color,
   type Group,
+  type Interpolant,
+  type KeyframeTrack,
   type Material,
   type Mesh,
   MeshBasicMaterial,
@@ -28,6 +31,7 @@ import { deviceAcknowledgementMatches, useDeviceEditStore } from "../../engine/d
 import { useSceneConsumesDevices } from "../../engine/deviceRegistry";
 import { ease } from "../../engine/ease";
 import { isExporting } from "../../engine/exportState";
+import { type DeviceFoldTransitionSpec, foldScreenLevels } from "../../engine/foldTransition";
 import { useFormat } from "../../engine/format";
 import { useGizmoSectionOpen } from "../../engine/gizmoSections";
 import { presentSlideshowActive } from "../../engine/presentMode";
@@ -53,6 +57,7 @@ import {
 } from "./catalog";
 import { DeviceGizmo } from "./DeviceGizmo";
 import { DeviceShadow } from "./DeviceShadow";
+import { clampFoldDeg, foldCentreOffset, foldVisibleWidth } from "./foldPose";
 import { type DevicePose, deviceGizmoMovedY } from "./gizmoCommit";
 import { resolveDeviceLayout } from "./layout";
 import { HIDDEN_NODES } from "./models";
@@ -121,6 +126,35 @@ export interface DeviceProps {
   lit?: boolean;
   /** Laptop lid opening in degrees (0 closed, default the model's authored angle); ignored by devices with no hinge. */
   lidDeg?: number;
+  /** Foldable hinge angle in degrees (0 closed, 180 open flat, default open); ignored by devices that do not fold. */
+  foldDeg?: number;
+  /** Foldables only: light both displays at every angle instead of handing power over as it opens. */
+  bothScreensOn?: boolean;
+  foldTransition?: DeviceFoldTransitionSpec;
+}
+
+/** One sampled channel of a foldable's clip, bound to a node of this device's private clone. */
+interface FoldChannel {
+  node: Object3D;
+  path: "position" | "quaternion" | "scale";
+  evaluate: (time: number) => ArrayLike<number>;
+}
+
+/** Binds the glb's fold clip to a clone's nodes. Sampled directly (no mixer, which carries state between frames) so a pose is a pure function of the angle. */
+function bindFoldClip(root: Object3D, clip: AnimationClip | undefined): FoldChannel[] {
+  const channels: FoldChannel[] = [];
+  for (const track of clip?.tracks ?? []) {
+    const split = track.name.lastIndexOf(".");
+    const node = root.getObjectByName(track.name.slice(0, split));
+    const path = track.name.slice(split + 1);
+    if (!node || (path !== "position" && path !== "quaternion" && path !== "scale")) continue;
+    // `createInterpolant` is the factory the loader chose for this track's interpolation mode; three's typings omit it.
+    const interpolant = (
+      track as KeyframeTrack & { createInterpolant(): Interpolant }
+    ).createInterpolant();
+    channels.push({ node, path, evaluate: (time) => interpolant.evaluate(time) });
+  }
+  return channels;
 }
 
 /** What the single screen of a stand-in model shows: a foldable that falls back to the portrait Android leads with its portrait outside media, since its inside media is landscape. */
@@ -358,6 +392,9 @@ export function Device(props: DeviceProps) {
     shadow,
     lit,
     lidDeg,
+    foldDeg,
+    bothScreensOn = false,
+    foldTransition,
   } = props;
   // The layout stamp wins over the scalar fields (see DevicePlacement.resolvedLayout).
   const position = placement.resolvedLayout?.position ?? placement.position ?? [0, 0, 0];
@@ -460,7 +497,7 @@ export function Device(props: DeviceProps) {
     }
   }, [model, renderModel]);
 
-  const { scene } = useGLTF(activeSpec.glbUrl);
+  const { scene, animations } = useGLTF(activeSpec.glbUrl);
   // Memoised because custom tints mint a fresh spec per call, and colourSpec keys the clone below.
   const colourSpec = useMemo(() => deviceColour(activeSpec, colour), [activeSpec, colour]);
 
@@ -483,89 +520,95 @@ export function Device(props: DeviceProps) {
   const coverLevel = useRef(1);
 
   // Clone once per (model, colour) since drei's glTF cache is shared: hide helper nodes, swap the display material, and give every lit material a private clone (Object3D.clone shares materials) so colour overrides and GSAA apply without touching the shared cache that DeviceMockup/HeroObject also read; then recentre + auto-fit.
-  const { root, fit, screens, coverScreens, lidNode, lidBaseX, bodySize } = useMemo(() => {
-    // Object3D.clone leaves skinned meshes bound to the cached skeleton; only a foldable pays for the rebinding clone, so every other device keeps its exact path.
-    const clone = activeSpec.fold ? cloneSkinned(scene) : scene.clone(true);
-    const screens: Mesh[] = [];
-    const coverScreens: Mesh[] = [];
-    const hide: Object3D[] = [];
-    let lidNode: Object3D | null = null;
-    const prepared = new Map<Material, Material>();
-    clone.traverse((obj: Object3D) => {
-      if (HIDDEN_NODES.has(obj.name)) {
-        hide.push(obj);
-        return;
-      }
-      if (activeSpec.lid && obj.name === activeSpec.lid.node) lidNode = obj;
-      const mesh = obj as Mesh;
-      if (!mesh.isMesh) return;
-      // A skinned mesh culls against its rest-pose bounds, which a fold leaves far behind.
-      if ((mesh as SkinnedMesh).isSkinnedMesh) mesh.frustumCulled = false;
-      const name = materialName(mesh.material);
-      if (name === activeSpec.screen.material) {
-        mesh.material = screenMaterial;
-        screens.push(mesh);
-        return;
-      }
-      if (activeSpec.coverScreen && name === activeSpec.coverScreen.material) {
-        mesh.material = coverMaterial;
-        coverScreens.push(mesh);
-        return;
-      }
-      if (Array.isArray(mesh.material)) return;
-      let preparedMaterial = prepared.get(mesh.material);
-      if (!preparedMaterial) {
-        preparedMaterial = mesh.material.clone();
-        const override = name ? colourSpec.overrides[name] : undefined;
-        if (override?.color) {
-          (preparedMaterial as unknown as { color?: Color }).color?.set(override.color);
+  const { root, fit, screens, coverScreens, lidNode, lidBaseX, bodySize, foldChannels } =
+    useMemo(() => {
+      // Object3D.clone leaves skinned meshes bound to the cached skeleton; only a foldable pays for the rebinding clone, so every other device keeps its exact path.
+      const clone = activeSpec.fold ? cloneSkinned(scene) : scene.clone(true);
+      const screens: Mesh[] = [];
+      const coverScreens: Mesh[] = [];
+      const hide: Object3D[] = [];
+      let lidNode: Object3D | null = null;
+      const prepared = new Map<Material, Material>();
+      clone.traverse((obj: Object3D) => {
+        if (HIDDEN_NODES.has(obj.name)) {
+          hide.push(obj);
+          return;
         }
-        const std = preparedMaterial as MeshStandardMaterial;
-        if (override?.roughness !== undefined) std.roughness = override.roughness;
-        if (override?.metalness !== undefined) std.metalness = override.metalness;
-        applyDeviceGsaa(preparedMaterial);
-        prepared.set(mesh.material, preparedMaterial);
-      }
-      mesh.material = preparedMaterial;
-    });
-    for (const obj of hide) obj.removeFromParent();
+        if (activeSpec.lid && obj.name === activeSpec.lid.node) lidNode = obj;
+        const mesh = obj as Mesh;
+        if (!mesh.isMesh) return;
+        // A skinned mesh culls against its rest-pose bounds, which a fold leaves far behind.
+        if ((mesh as SkinnedMesh).isSkinnedMesh) mesh.frustumCulled = false;
+        const name = materialName(mesh.material);
+        if (name === activeSpec.screen.material) {
+          mesh.material = screenMaterial;
+          screens.push(mesh);
+          return;
+        }
+        if (activeSpec.coverScreen && name === activeSpec.coverScreen.material) {
+          mesh.material = coverMaterial;
+          coverScreens.push(mesh);
+          return;
+        }
+        if (Array.isArray(mesh.material)) return;
+        let preparedMaterial = prepared.get(mesh.material);
+        if (!preparedMaterial) {
+          preparedMaterial = mesh.material.clone();
+          const override = name ? colourSpec.overrides[name] : undefined;
+          if (override?.color) {
+            (preparedMaterial as unknown as { color?: Color }).color?.set(override.color);
+          }
+          const std = preparedMaterial as MeshStandardMaterial;
+          if (override?.roughness !== undefined) std.roughness = override.roughness;
+          if (override?.metalness !== undefined) std.metalness = override.metalness;
+          applyDeviceGsaa(preparedMaterial);
+          prepared.set(mesh.material, preparedMaterial);
+        }
+        mesh.material = preparedMaterial;
+      });
+      for (const obj of hide) obj.removeFromParent();
 
-    clone.updateMatrixWorld(true);
-    const box = new Box3().setFromObject(clone);
-    const size = box.getSize(new Vector3());
-    const center = box.getCenter(new Vector3());
-    clone.position.sub(center);
-    const fitAxis = activeSpec.fit?.axis ?? "height";
-    const fitTarget = activeSpec.fit?.target ?? TARGET_WORLD_HEIGHT;
-    const fit =
-      fitAxis === "width"
-        ? size.x > 1e-6
-          ? fitTarget / size.x
-          : 1
-        : size.y > 1e-6
-          ? fitTarget / size.y
-          : 1;
-    // The hinge's authored rotation; the lid effect scales it by lidDeg / openDeg.
-    const lidBaseX = lidNode ? (lidNode as Object3D).rotation.x : 0;
-    // Perf-probe marker: the no-devices elimination pass hides these roots.
-    clone.userData.kookaburraDevice = true;
-    return {
-      root: clone,
-      fit,
-      screens,
-      coverScreens,
-      lidNode,
-      lidBaseX,
-      bodySize: [size.x, size.y, size.z] as V3,
-    };
-  }, [scene, activeSpec, colourSpec, screenMaterial, coverMaterial]);
+      clone.updateMatrixWorld(true);
+      const box = new Box3().setFromObject(clone);
+      const size = box.getSize(new Vector3());
+      const center = box.getCenter(new Vector3());
+      clone.position.sub(center);
+      const fitAxis = activeSpec.fit?.axis ?? "height";
+      const fitTarget = activeSpec.fit?.target ?? TARGET_WORLD_HEIGHT;
+      const fit =
+        fitAxis === "width"
+          ? size.x > 1e-6
+            ? fitTarget / size.x
+            : 1
+          : size.y > 1e-6
+            ? fitTarget / size.y
+            : 1;
+      // The hinge's authored rotation; the lid effect scales it by lidDeg / openDeg.
+      const lidBaseX = lidNode ? (lidNode as Object3D).rotation.x : 0;
+      // Perf-probe marker: the no-devices elimination pass hides these roots.
+      clone.userData.kookaburraDevice = true;
+      return {
+        root: clone,
+        fit,
+        screens,
+        coverScreens,
+        lidNode,
+        lidBaseX,
+        bodySize: [size.x, size.y, size.z] as V3,
+        foldChannels: bindFoldClip(
+          clone,
+          animations.find((clip) => clip.name === activeSpec.fold?.clip),
+        ),
+      };
+    }, [scene, animations, activeSpec, colourSpec, screenMaterial, coverMaterial]);
   const fittedHeight = deviceFittedHeight(activeSpec.id);
 
   // The opt-in keyframe track: a delta on the resolved placement, sampled before the motion presets so both layer.
   const sceneDoc = useContext(SceneDocContext);
   const track = useMemo(() => resolveDeviceTrack(sceneDoc ?? undefined), [sceneDoc]);
   const authoredLidDeg = lidDeg ?? activeSpec.lid?.defaultDeg;
-  const keyed = deviceTrackPoseAt(track, id ?? "", localMs, authoredLidDeg);
+  const authoredFoldDeg = activeSpec.fold ? (foldDeg ?? activeSpec.fold.defaultDeg) : undefined;
+  const keyed = deviceTrackPoseAt(track, id ?? "", localMs, authoredLidDeg, authoredFoldDeg);
 
   // Lid angle: the doc's pose, or the track's when a key holds one; a pure function of the frame either way, applied pre-paint.
   const renderedLidDeg = keyed.lidDeg ?? authoredLidDeg;
@@ -577,6 +620,33 @@ export function Device(props: DeviceProps) {
     );
     (lidNode as Object3D).rotation.x = lidBaseX * (open / activeSpec.lid.openDeg);
   }, [lidNode, lidBaseX, renderedLidDeg, activeSpec]);
+
+  // Fold: the doc's angle, or the track's when a key holds one. The clip is keyed one frame per degree with the camera half baked static, so posing is a lookup, pure per frame and applied pre-paint like the lid.
+  const fold = activeSpec.fold;
+  const renderedFoldDeg = fold
+    ? clampFoldDeg(fold, keyed.foldDeg ?? authoredFoldDeg ?? fold.defaultDeg)
+    : undefined;
+  useLayoutEffect(() => {
+    if (!fold || renderedFoldDeg === undefined) return;
+    const time = renderedFoldDeg / fold.degPerSecond;
+    for (const channel of foldChannels) {
+      channel.node[channel.path].fromArray(channel.evaluate(time) as number[]);
+    }
+  }, [fold, foldChannels, renderedFoldDeg]);
+  // Auto power: brightness is set here each frame and read back by the async media binds, which would otherwise force a display to full white after this ran.
+  const switchDeg = foldTransition?.switchDeg;
+  useLayoutEffect(() => {
+    if (renderedFoldDeg === undefined) return;
+    const levels = foldScreenLevels(renderedFoldDeg, { switchDeg }, bothScreensOn);
+    screenLevel.current = levels.main;
+    coverLevel.current = levels.cover;
+    // A display with no media stays black, so only a bound map takes the level.
+    if (screenMaterial.map) screenMaterial.color.setScalar(levels.main);
+    if (coverMaterial.map) coverMaterial.color.setScalar(levels.cover);
+  }, [renderedFoldDeg, switchDeg, bothScreensOn, screenMaterial, coverMaterial]);
+  // Closed, the device covers only its camera half, so it glides back onto its own origin as it folds.
+  const foldCentreX =
+    fold && renderedFoldDeg !== undefined ? foldCentreOffset(fold, renderedFoldDeg) : 0;
 
   // Real shadows on map-shadowed stages flip the private clone's meshes; inert (no recompiles, no shadow passes) for unstaged scenes, where no shadow-casting light exists.
   useLayoutEffect(() => {
@@ -644,6 +714,7 @@ export function Device(props: DeviceProps) {
     offset: [keyed.offset[0], keyed.offset[1] + floatY, keyed.offset[2]],
     introScale,
     lidDeg: keyed.lidDeg ?? 0,
+    foldDeg: renderedFoldDeg ?? 0,
   };
   // Grounded placement: the pure anchor resolver is shared with object-bound camera aims.
   const grounded = (pose: DevicePose): V3 =>
@@ -691,10 +762,21 @@ export function Device(props: DeviceProps) {
           scale={introScale}
         >
           <group scale={animatedScale * fit}>
-            <primitive object={root} />
+            {fold ? (
+              // The fit scale sits outside, so a fitted-unit shift divides back into model units.
+              <group position={[foldCentreX / fit, 0, 0]}>
+                <primitive object={root} />
+              </group>
+            ) : (
+              <primitive object={root} />
+            )}
             {editTarget && (
               <SceneOutline
-                size={bodySize}
+                size={
+                  fold && renderedFoldDeg !== undefined
+                    ? [foldVisibleWidth(fold, renderedFoldDeg) / fit, bodySize[1], bodySize[2]]
+                    : bodySize
+                }
                 domain="devices"
                 selected={gizmoOn}
                 onSelect={() => useDeviceEditStore.getState().select(editTarget)}

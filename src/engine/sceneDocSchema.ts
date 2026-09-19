@@ -36,6 +36,7 @@ import type {
 } from "../toolkit/device/Device";
 import type { FrameOverrideSpec } from "../toolkit/frame/types";
 import type { SceneDocDof } from "./dof";
+import type { DeviceFoldTransitionSpec } from "./foldTransition";
 import { parseFrameOverride } from "./frameSchema";
 import { normalizeLighting } from "./sceneLighting";
 import {
@@ -87,6 +88,12 @@ export interface SceneDocDeviceSpec {
   shadow?: DeviceShadowMode;
   /** Laptop lid opening in degrees (0 closed, default the model's authored angle); ignored by devices with no hinge. */
   lidDeg?: number;
+  /** Foldables only: the hinge angle in degrees (0 closed, 180 open flat, default open). */
+  foldDeg?: number;
+  /** Foldables only: light both displays at every angle, instead of handing power from the outside one to the inside one as it opens. */
+  bothScreensOn?: boolean;
+  /** Foldables only: how the displays hand over as it folds. */
+  foldTransition?: DeviceFoldTransitionSpec;
 }
 
 export type SceneImageHost = "stage" | "overlay";
@@ -177,13 +184,15 @@ export interface SceneDocDeviceLayout {
   devices?: Record<string, SceneDocDeviceLayoutDelta>;
 }
 
-/** One device's pose at a key: a DELTA on whatever the scene already resolves for it (the layout block, or its own placement), so the motion presets keep layering on top and deleting the track reverts exactly. Offsets and rotations add, scale multiplies, and `lidDeg` is the one absolute (an angle has no meaningful delta). Every field is optional and an absent one holds the device's resting value, the lighting-pose rule. */
+/** One device's pose at a key: a DELTA on whatever the scene already resolves for it (the layout block, or its own placement), so the motion presets keep layering on top and deleting the track reverts exactly. Offsets and rotations add, scale multiplies, and the hinge angles (`lidDeg`, `foldDeg`) are the absolutes (an angle has no meaningful delta). Every field is optional and an absent one holds the device's resting value, the lighting-pose rule. */
 export interface SceneDocDevicePose {
   offset?: [number, number, number];
   rotationDeg?: [number, number, number];
   scale?: number;
   /** Laptops only: the lid opening this key holds, in degrees. */
   lidDeg?: number;
+  /** Foldables only: the hinge angle this key holds, in degrees. */
+  foldDeg?: number;
 }
 
 /** One device-track key: a time plus the poses it moves, by device id. A device absent from `pose` holds its resting pose through that key. */
@@ -1077,6 +1086,7 @@ function parseDeviceTrack(raw: unknown, source: string): SceneDoc["deviceTrack"]
       if (finiteV3(raw.rotationDeg)) out.rotationDeg = [...raw.rotationDeg];
       if (finiteNum(raw.scale)) out.scale = raw.scale;
       if (finiteNum(raw.lidDeg)) out.lidDeg = raw.lidDeg;
+      if (finiteNum(raw.foldDeg)) out.foldDeg = raw.foldDeg;
       pose[deviceId] = out;
     }
     keys.push({ id: entry.id, tMs: entry.tMs, pose });
