@@ -118,6 +118,24 @@ export function deviceTrackPoseAt(
   return fill(held.pose[deviceId], rest);
 }
 
+/** The fold animation carrying `deviceId` at `localMs`: the hinge angles at the more closed and more open ends of the segment it is inside, or null at rest (outside every segment, or inside one that leaves the fold where it was). A foldable's display handover plays against this range, so it reverses on closing and always lands clean where the fold stops. */
+export function deviceFoldRangeAt(
+  track: ResolvedDeviceTrack | null,
+  deviceId: string,
+  localMs: number,
+  baseFoldDeg: number,
+): { closedDeg: number; openDeg: number } | null {
+  if (!track) return null;
+  const rest: ResolvedDevicePose = { ...REST, foldDeg: baseFoldDeg };
+  for (const seg of track.segments) {
+    if (localMs < seg.fromTMs || localMs >= seg.toTMs) continue;
+    const from = fill(seg.fromPose[deviceId], rest).foldDeg ?? baseFoldDeg;
+    const to = fill(seg.toPose[deviceId], rest).foldDeg ?? baseFoldDeg;
+    return from === to ? null : { closedDeg: Math.min(from, to), openDeg: Math.max(from, to) };
+  }
+  return null;
+}
+
 /** True when the sampled pose leaves the device exactly where it rests, so callers can skip the delta entirely. */
 export function deviceTrackPoseIsRest(
   pose: ResolvedDevicePose,

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  deviceFoldRangeAt,
   deviceTrackPoseAt,
   deviceTrackPoseIsRest,
   deviceTrackSnapshotAt,
@@ -239,6 +240,29 @@ describe("a foldable's keyed hinge angle", () => {
     );
     expect(snapshot.duo.foldDeg).toBe(90);
     expect(snapshot.phone.foldDeg).toBeUndefined();
+  });
+
+  it("reports the fold in progress as a closed-to-open range, whichever way it runs", () => {
+    expect(deviceFoldRangeAt(unfold, "duo", 500, 180)).toEqual({ closedDeg: 0, openDeg: 180 });
+    const closing = resolveDeviceTrack(
+      doc({
+        keys: [
+          { id: "k1", tMs: 0, pose: { duo: {} } },
+          { id: "k2", tMs: 1000, pose: { duo: { foldDeg: 30 } } },
+        ],
+        segments: [{ from: "k1", to: "k2", ease: "linear" }],
+      }),
+    );
+    // The start key holds no angle, so the range opens at the device's own.
+    expect(deviceFoldRangeAt(closing, "duo", 500, 120)).toEqual({ closedDeg: 30, openDeg: 120 });
+  });
+
+  it("is at rest outside a segment, and inside one that does not move the fold", () => {
+    expect(deviceFoldRangeAt(null, "duo", 500, 180)).toBeNull();
+    expect(deviceFoldRangeAt(unfold, "duo", 1000, 180)).toBeNull();
+    expect(deviceFoldRangeAt(unfold, "duo", 4000, 180)).toBeNull();
+    // The laptop's lid moves in that segment, but its fold does not.
+    expect(deviceFoldRangeAt(unfold, "laptop", 500, 180)).toBeNull();
   });
 
   it("survives a parse, where a non-numeric angle drops alone", () => {
