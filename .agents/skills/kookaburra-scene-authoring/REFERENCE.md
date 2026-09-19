@@ -1037,7 +1037,7 @@ Rules and conventions:
   coverMedia?           // foldables only: the OUTSIDE display's media (`media` is the inside one)
   foldDeg?              // foldables only: hinge angle, 0 closed to 180 open flat (the default)
   bothScreensOn?        // foldables only: light both displays at every angle (default: power hands over as it opens)
-  foldTransition?       // foldables only: { switchDeg? } the handover angle (default 45)
+  foldTransition?       // foldables only: { switchDeg? (45), enabled? (true), intensity?, blur?, darken? (0..1) } the blur handover between displays
   lit?                  // default true; pass false for every Device after the first in a scene
 />                                                    // Phase v7 · M1 — implemented + gated
 ```

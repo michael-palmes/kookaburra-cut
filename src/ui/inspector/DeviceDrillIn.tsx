@@ -10,6 +10,11 @@ import {
   setDeviceSlotMedia,
 } from "../../engine/deviceScreens";
 import { useDeviceTrackEditStore } from "../../engine/deviceTrackEditStore";
+import {
+  FOLD_POWER_WINDOW_DEG,
+  FOLD_SWITCH_DEG,
+  resolveFoldTransition,
+} from "../../engine/foldTransition";
 import { optionPreviewStill } from "../../engine/optionPreviews";
 import { nearestDeviceKey, resolveDeviceTrack } from "../../engine/sceneDeviceTrack";
 import type { SceneDoc, SceneDocDeviceSpec } from "../../engine/sceneDocSchema";
@@ -405,7 +410,18 @@ function DeviceControlIcon({
 function FoldGlyph({
   kind,
 }: {
-  kind: FoldPresetId | "unfold" | "fold" | "tent" | "back" | "both";
+  kind:
+    | FoldPresetId
+    | "unfold"
+    | "fold"
+    | "tent"
+    | "back"
+    | "both"
+    | "transition"
+    | "intensity"
+    | "blur"
+    | "darken"
+    | "switch";
 }) {
   const glyph = {
     closed: <path d="M3.4 7h9.2M3.4 9h9.2M3.4 7v2" />,
@@ -437,6 +453,32 @@ function FoldGlyph({
         <rect x="2.4" y="4" width="4.6" height="8" rx="1.2" />
         <rect x="9" y="4" width="4.6" height="8" rx="1.2" />
         <path d="M4.7 6.2v3.6M11.3 6.2v3.6" />
+      </>
+    ),
+    transition: (
+      <>
+        <rect x="2.6" y="3.6" width="10.8" height="8.8" rx="1.6" />
+        <path d="M6 5.6v4.8M8.4 6.2v3.6M10.6 7v2" />
+      </>
+    ),
+    intensity: <path d="M2.8 11.6h10.4M2.8 11.6 13.2 5v6.6" />,
+    blur: (
+      <>
+        <circle cx="8" cy="8" r="2" />
+        <path d="M8 2.8v1.4M8 11.8v1.4M2.8 8h1.4M11.8 8h1.4M4.3 4.3l1 1M10.7 10.7l1 1M4.3 11.7l1-1M10.7 5.3l1-1" />
+      </>
+    ),
+    darken: (
+      <>
+        <circle cx="8" cy="8" r="4.8" />
+        <path d="M8 3.2a4.8 4.8 0 000 9.6z" fill="currentColor" stroke="none" />
+      </>
+    ),
+    switch: (
+      <>
+        <path d="M2.8 12.2h10.4" />
+        <path d="M8 12.2 12.4 5.4M8 12.2V4.4" />
+        <path d="M8 6.8a5.4 5.4 0 013 1" />
       </>
     ),
   }[kind];
@@ -899,6 +941,30 @@ export function DeviceDrillIn({
       { history: "device pose" },
     );
   };
+  // Defaults are never written: a field at its default is removed, and an emptied block goes with it.
+  const transition = resolveFoldTransition(device.foldTransition);
+  const setTransition = (
+    field: "enabled" | "intensity" | "blur" | "darken" | "switchDeg",
+    value: number | boolean,
+    preview = false,
+  ) =>
+    patchDevice(
+      (_next, candidate) => {
+        const block: Record<string, number | boolean> = { ...candidate.foldTransition };
+        const atDefault =
+          field === "enabled"
+            ? value === true
+            : field === "switchDeg"
+              ? value === FOLD_SWITCH_DEG
+              : value === 1;
+        if (atDefault) delete block[field];
+        else block[field] = value;
+        if (Object.keys(block).length === 0) delete candidate.foldTransition;
+        else candidate.foldTransition = block;
+      },
+      "device screen transition",
+      preview,
+    );
   const setBothScreensOn = (on: boolean) =>
     patchDevice((_next, candidate) => {
       if (on) candidate.bothScreensOn = true;
@@ -1178,6 +1244,57 @@ export function DeviceDrillIn({
               checked={device.bothScreensOn === true}
               disabled={settingsDisabled}
               onChange={setBothScreensOn}
+            />
+          </DrillGroup>
+        )}
+
+        {!after && model.fold && (
+          <DrillGroup
+            label="Screen transition"
+            hint="Follows the fold angle, so any fold animation gets it."
+          >
+            <ToggleRow
+              icon={<FoldGlyph kind="transition" />}
+              label="Blur between screens"
+              description="Blurs and dims the interface off the outside screen and clears it across the inside one as the device opens."
+              checked={transition.enabled}
+              disabled={settingsDisabled || device.bothScreensOn === true}
+              onChange={(on) => setTransition("enabled", on)}
+            />
+            {transition.enabled &&
+              device.bothScreensOn !== true &&
+              (
+                [
+                  ["intensity", "Intensity", "intensity"],
+                  ["blur", "Blur amount", "blur"],
+                  ["darken", "Darkening", "darken"],
+                ] as const
+              ).map(([field, label, glyph]) => (
+                <InspectorSliderRow
+                  key={field}
+                  icon={<FoldGlyph kind={glyph} />}
+                  label={label}
+                  value={Math.round(transition[field] * 100)}
+                  min={0}
+                  max={100}
+                  step={1}
+                  formatValue={(v) => `${Math.round(v)}%`}
+                  disabled={settingsDisabled}
+                  onInput={(value) => setTransition(field, value / 100, true)}
+                  onCommit={(value) => setTransition(field, value / 100)}
+                />
+              ))}
+            <InspectorSliderRow
+              icon={<FoldGlyph kind="switch" />}
+              label="Switch angle"
+              value={transition.switchDeg}
+              min={FOLD_POWER_WINDOW_DEG}
+              max={180 - FOLD_POWER_WINDOW_DEG}
+              step={1}
+              formatValue={(v) => `${Math.round(v)}°`}
+              disabled={settingsDisabled}
+              onInput={(value) => setTransition("switchDeg", value, true)}
+              onCommit={(value) => setTransition("switchDeg", value)}
             />
           </DrillGroup>
         )}

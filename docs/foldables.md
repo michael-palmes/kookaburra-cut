@@ -38,7 +38,7 @@ layout and object presets already lean on.
     "coverMedia": { "src": "assets/outside.mp4", "kind": "video" },
     "foldDeg": 0,                  // 0 closed, 180 open flat (the default)
     "bothScreensOn": false,        // true lights both displays at every angle
-    "foldTransition": { "switchDeg": 45 }
+    "foldTransition": { "switchDeg": 45, "enabled": true, "intensity": 1, "blur": 1, "darken": 1 }
   }],
   "deviceTrack": {
     "keys": [
@@ -118,6 +118,101 @@ asynchronously, after `Device` has set the frame's brightness, so
 `ScreenVideo.onBound` reads a level ref instead of forcing white. Never set a
 screen material's colour directly.
 
+## The blur handover
+
+Apple's signature: opening, the interface softens and dims off the outside
+display and clears across the inside one, and the whole time it looks **flat**,
+as if the app were expanding with the device rather than riding a swinging
+panel. It is on by default.
+
+Two things happen on the moving panel, both read and measured off Apple's own
+footage (`foldScreensAt` in `foldTransition.ts`, the shader in
+`src/toolkit/device/foldScreenShader.ts`):
+
+1. **Flat projection.** Each fragment's position in the device's root frame is
+   cast from a fixed eye in front of the device onto the display's **home plane**
+   (open flat for the inside display, closed for the outside one), and the media
+   is sampled where the ray lands. From the front the content stays level while
+   the panel's edges converge, a horizon runs straight across the hinge, and the
+   panel is black where the projected content runs out (the wedges above and
+   below its near edge). The eye is fixed in the device's frame, not the scene
+   camera: it is all the hardware could know, and the content never swims as a
+   shot orbits. It sits `FOLD_EYE_HEIGHTS` display heights out, level with the
+   display, and follows the auto-centre.
+2. **One ramp of blur and dimming** along the moving panel. Its far end is pinned
+   just past the panel's free edge and its near end retreats towards the hinge as
+   the panel turns from home: `EDGE - SPAN * (turn / KNEE_DEG) ^ POWER`. Measured
+   along a uniform row of the footage, the ramp's start sits at about 0.70, 0.60,
+   0.55, 0.38 and 0.25 of the panel at 5, 12, 22, 33 and 45 degrees, and brightness
+   at 45 degrees runs from about 0.87 at the hinge to 0.12 at the free edge. The
+   picture softens ahead of the dimming (`FOLD_BLUR_AHEAD`, eased in from home so a
+   panel at home is exactly untouched) and saturates in half the distance.
+
+Both displays obey the same law, each by its own turn from home, which is why the
+inside display's swinging half is the exact mirror of the outside one. The
+**static half is never touched**: the ramp fades out within `FOLD_STATIC_GUARD`
+of the hinge. The outside display switches off as it nears edge-on, past which it
+faces away.
+
+**It plays only during a fold.** As a function of the bare angle, a held Book or
+Flex pose would sit half blurred for ever. Instead `deviceFoldRangeAt` reports
+the fold animation in progress (the segment's more closed and more open angles),
+and the handover runs on the device's progress through *that* fold. It reverses on
+closing, a partial unfold still finishes clean where it stops, a fold that never
+changes which display is lit is skipped, and at rest every pose is simply lit and
+sharp. It is still a pure function of the track and the frame time. The projection
+eases in and out over `FOLD_FLAT_EASE` of the range, so a fold that starts or
+stops part way never pops.
+
+| Constant | Value | Meaning |
+| --- | --- | --- |
+| `FOLD_BLUR_TAPS` | 32 | Fixed kernel size |
+| `FOLD_BLUR_MAX_RADIUS` | 0.08 | Peak radius as a fraction of ONE panel's width, about 6 mm; the inside display is two panels wide, so it takes half |
+| `FOLD_RAMP_EDGE`, `_SPAN`, `_KNEE_DEG`, `_POWER` | 1.05, 0.8, 45, 0.45 | The measured ramp law |
+| `FOLD_BLUR_AHEAD`, `_AHEAD_BY_DEG`, `FOLD_BLUR_LEAD` | 0.35, 15, 2 | How far the softening leads the dimming |
+| `FOLD_DARKEN_MAX` | 0.9 | Dimming stops just short of black, as measured |
+| `FOLD_STATIC_GUARD` | 0.12 | Fade-out onto a static half, in panel widths |
+| `FOLD_COVER_OFF_FROM_DEG`, `FOLD_EDGE_ON_DEG` | 75, 90 | The outside display's switch-off |
+| `FOLD_FLAT_EASE`, `FOLD_EYE_HEIGHTS` | 0.06, 2.7 | The projection's ease and eye distance |
+
+All are export contract. `foldSampleAt` mirrors the shader's ramp in TypeScript,
+which is what the phase tests pin, including the measured brightness at 45 degrees.
+
+Scene options (`foldTransition`): `enabled` (default true), `intensity`, and the
+`blur` and `darken` multipliers, all 0 to 1. Off, at zero intensity, or with both
+screens held on, the result is exactly the plain brightness handover above.
+
+The shader is an `onBeforeCompile` patch on the two foldable screen materials
+only, under one stable `customProgramCacheKey`:
+
+- **The device's root frame.** The vertex shader passes the fragment's position
+  after skinning, so a bent display projects from where its surface really is. The
+  root's inverse world matrix is refreshed in `onBeforeRender`, when world
+  matrices are final. Each display's home rect is measured once per clone, off the
+  rig posed at that display's home angle, by a least-squares fit of panel UV
+  against position (`measureFoldHome`).
+- **No render target.** The frame stays on the direct path, inherits none of the
+  pool, colour-space or 4 GB ceiling rules, and legacy projects are structurally
+  untouched.
+- **No mipmaps.** Clip frames carry none, and enabling them would change how the
+  sharp path samples. A 32 tap Vogel disc with a per-pixel PCG-hashed rotation
+  (the `SmearEffect` recipe) is smooth at 4K.
+- **Soft edges for free.** A tap that lands off the display reads black, so the
+  projected content's edge is soft under blur rather than a hard line.
+- **Panel coordinates from the crop.** `remapUv` is affine, so a `uFoldCrop`
+  uniform written by `bakeScreenUvs` recovers the panel coordinate. No custom
+  attribute has to survive the geometry clone or skinning.
+- **Explicit gradients.** The taps sit in per-fragment control flow, where
+  implicit derivatives are undefined (image media is mipmapped), so they use
+  `textureGrad`. The idle path keeps the stock sample statement.
+- Uniforms are CPU-written per frame, never derived from time in GLSL.
+
+The illusion is exact from the fixed eye and degrades gracefully as the scene
+camera moves off axis, as it does on the hardware. If a future display or radius
+shows grain, the documented fallback is two or three pre-blurred
+quarter-resolution levels rendered only on active frames (the dof-only lane's idea
+in `effects.ts`), mixed by the ramp.
+
 ## Start when opened
 
 `media.startOn: "open"` (inside display only) counts the video's `startMs` from
@@ -143,6 +238,10 @@ The device drill-in shows one media group per display ("Inside screen",
 
 - four presets, Closed 0, Flex 90, Book 120 and Open 180, beside a 0 to 180
   slider;
+- a **Screen transition** group: Blur between screens, Intensity, Blur amount,
+  Darkening and Switch angle. Defaults are never written, and an emptied block
+  is removed. The handover shows while a fold animation plays, so add an Unfold
+  to see it; a held pose is always clean;
 - **Unfold** and **Fold**, which add a tuned pair of keys at the playhead
   (1.3 s, `inOutCubic`) seeded with what every device is showing, so nothing else
   moves; they refuse inside an existing animation;
@@ -167,7 +266,7 @@ because the inside media is landscape and would crop badly.
 
 - For the "app grows into the big screen" look, make the outside media match the
   right-hand portion of the inside media, as the `duo-unfold` preset's sample
-  clips do.
+  clips do. The blur handover hides the join; matching layouts sell it.
 - Landscape Simulator recordings carry a rotation flag rather than rotated
   pixels. The media probe honours it (`display_dimensions` in `media.rs`).
 - Media is fixed to its panel, so in Tent the outside media appears sideways.

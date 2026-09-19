@@ -33,8 +33,9 @@ import { ease } from "../../engine/ease";
 import { isExporting } from "../../engine/exportState";
 import {
   type DeviceFoldTransitionSpec,
+  FOLD_EYE_HEIGHTS,
   foldOpenedAtMs,
-  foldScreenLevels,
+  foldScreensAt,
   resolveFoldSwitchDeg,
 } from "../../engine/foldTransition";
 import { FPS, useFormat } from "../../engine/format";
@@ -44,7 +45,11 @@ import { registerPresentTiming } from "../../engine/presentTimingRegistry";
 import { resolveAssetUrl } from "../../engine/project";
 import { SceneOutline } from "../../engine/SceneOutline";
 import { ProjectIdContext, SceneDocContext, useSceneContext } from "../../engine/sceneContext";
-import { deviceTrackPoseAt, resolveDeviceTrack } from "../../engine/sceneDeviceTrack";
+import {
+  deviceFoldRangeAt,
+  deviceTrackPoseAt,
+  resolveDeviceTrack,
+} from "../../engine/sceneDeviceTrack";
 import type { SceneDeviceProps } from "../../engine/sceneDoc";
 import { coverCropRect, remapUv, type UvRect } from "../../engine/screenFit";
 import { useTimeline } from "../../engine/timeline";
@@ -57,12 +62,20 @@ import {
   AVAILABLE_DEVICE_IDS,
   DEVICE_CATALOG,
   type DeviceId,
+  type DeviceSpec,
   deviceColour,
   resolveAvailableDeviceId,
 } from "./catalog";
 import { DeviceGizmo } from "./DeviceGizmo";
 import { DeviceShadow } from "./DeviceShadow";
 import { clampFoldDeg, foldCentreOffset, foldVisibleWidth } from "./foldPose";
+import {
+  applyFoldScreenShader,
+  bindFoldScreenHome,
+  measureFoldHome,
+  setFoldScreenCrop,
+  setFoldScreenState,
+} from "./foldScreenShader";
 import { type DevicePose, deviceGizmoMovedY } from "./gizmoCommit";
 import { resolveDeviceLayout } from "./layout";
 import { HIDDEN_NODES } from "./models";
@@ -164,6 +177,41 @@ function bindFoldClip(root: Object3D, clip: AnimationClip | undefined): FoldChan
   return channels;
 }
 
+/** A foldable's rig, bound once per clone: its clip channels, each display's home plane measured off the rig posed at that display's home angle (inside: open flat; outside: closed), and the fixed front eye the handover projects from, in the device's root frame. Inert for every other device. */
+function bindFoldRig(
+  root: Object3D,
+  animations: AnimationClip[],
+  spec: DeviceSpec,
+  screens: Mesh[],
+  coverScreens: Mesh[],
+  materials: { main: Material; cover: Material },
+): { foldChannels: FoldChannel[]; foldEye: Vector3 | null } {
+  const fold = spec.fold;
+  if (!fold) return { foldChannels: [], foldEye: null };
+  const foldChannels = bindFoldClip(
+    root,
+    animations.find((clip) => clip.name === fold.clip),
+  );
+  const poseAt = (deg: number) => {
+    for (const channel of foldChannels) {
+      channel.node[channel.path].fromArray(channel.evaluate(deg / fold.degPerSecond) as number[]);
+    }
+  };
+  poseAt(fold.openDeg);
+  const mainHome = measureFoldHome(root, screens);
+  bindFoldScreenHome(root, screens, materials.main, mainHome);
+  poseAt(0);
+  bindFoldScreenHome(root, coverScreens, materials.cover, measureFoldHome(root, coverScreens));
+  // Level with the inside display's centre, about arm's length out; x follows the auto-centre each frame.
+  const height = Math.abs(mainHome.rect.w);
+  const foldEye = new Vector3(
+    0,
+    mainHome.rect.y + mainHome.rect.w / 2,
+    mainHome.z + FOLD_EYE_HEIGHTS * height,
+  );
+  return { foldChannels, foldEye };
+}
+
 /** What the single screen of a stand-in model shows: a foldable that falls back to the portrait Android leads with its portrait outside media, since its inside media is landscape. */
 export function fallbackScreenMedia(
   model: DeviceId,
@@ -242,6 +290,8 @@ function materialName(material: Material | Material[]): string | undefined {
 
 /** Bakes a cover-crop rect into the screen mesh's UVs; stashes the pristine UV set on first bake so a media change re-bakes from the original (re-baking the same rect is a no-op via `uvRectKey`), cloning geometry first since `Object3D.clone` shares geometry with drei's cache. */
 function bakeScreenUvs(mesh: Mesh, rect: UvRect): void {
+  // A foldable's display shader turns media UVs back into panel coordinates, so it needs the same rect.
+  if (!Array.isArray(mesh.material)) setFoldScreenCrop(mesh.material, rect);
   const key = `${rect.u0}/${rect.v0}/${rect.u1}/${rect.v1}`;
   if (mesh.userData.uvRectKey === key) return;
   if (!mesh.userData.screenBaseUv) {
@@ -513,25 +563,30 @@ export function Device(props: DeviceProps) {
   const colourSpec = useMemo(() => deviceColour(activeSpec, colour), [activeSpec, colour]);
 
   // The media material is owned here (StrictMode-safe, see VideoClip) and starts black so a device with no media, or frames not yet bound, shows a dark plausible screen.
+  // Only a foldable's displays take the blur handover patch; every other device keeps the stock material and its program.
+  const foldMainAspect = activeSpec.fold ? activeSpec.screen.aspect : undefined;
+  const foldCoverAspect = activeSpec.fold ? activeSpec.coverScreen?.aspect : undefined;
   const screenMaterial = useMemo(() => {
     const m = new MeshBasicMaterial({ color: new Color(0x000000) });
     m.toneMapped = false;
+    if (foldMainAspect !== undefined) applyFoldScreenShader(m, foldMainAspect);
     return m;
-  }, []);
+  }, [foldMainAspect]);
   useLayoutEffect(() => () => screenMaterial.dispose(), [screenMaterial]);
   // A foldable's outside display; black until it has media, like the primary.
   const coverMaterial = useMemo(() => {
     const m = new MeshBasicMaterial({ color: new Color(0x000000) });
     m.toneMapped = false;
+    if (foldCoverAspect !== undefined) applyFoldScreenShader(m, foldCoverAspect);
     return m;
-  }, []);
+  }, [foldCoverAspect]);
   useLayoutEffect(() => () => coverMaterial.dispose(), [coverMaterial]);
   // Display brightness, 0 off to 1 lit; a foldable's fold angle drives them, every other device holds 1.
   const screenLevel = useRef(1);
   const coverLevel = useRef(1);
 
   // Clone once per (model, colour) since drei's glTF cache is shared: hide helper nodes, swap the display material, and give every lit material a private clone (Object3D.clone shares materials) so colour overrides and GSAA apply without touching the shared cache that DeviceMockup/HeroObject also read; then recentre + auto-fit.
-  const { root, fit, screens, coverScreens, lidNode, lidBaseX, bodySize, foldChannels } =
+  const { root, fit, screens, coverScreens, lidNode, lidBaseX, bodySize, foldChannels, foldEye } =
     useMemo(() => {
       // Object3D.clone leaves skinned meshes bound to the cached skeleton; only a foldable pays for the rebinding clone, so every other device keeps its exact path.
       const clone = activeSpec.fold ? cloneSkinned(scene) : scene.clone(true);
@@ -606,10 +661,10 @@ export function Device(props: DeviceProps) {
         lidNode,
         lidBaseX,
         bodySize: [size.x, size.y, size.z] as V3,
-        foldChannels: bindFoldClip(
-          clone,
-          animations.find((clip) => clip.name === activeSpec.fold?.clip),
-        ),
+        ...bindFoldRig(clone, animations, activeSpec, screens, coverScreens, {
+          main: screenMaterial,
+          cover: coverMaterial,
+        }),
       };
     }, [scene, animations, activeSpec, colourSpec, screenMaterial, coverMaterial]);
   const fittedHeight = deviceFittedHeight(activeSpec.id);
@@ -644,17 +699,61 @@ export function Device(props: DeviceProps) {
       channel.node[channel.path].fromArray(channel.evaluate(time) as number[]);
     }
   }, [fold, foldChannels, renderedFoldDeg]);
-  // Auto power: brightness is set here each frame and read back by the async media binds, which would otherwise force a display to full white after this ran.
+  // The handover: brightness and the blur front are set here each frame as CPU-written uniforms, and the brightness is read back by the async media binds, which would otherwise force a display to full white after this ran.
   const switchDeg = foldTransition?.switchDeg;
+  const handoverOn = foldTransition?.enabled;
+  const handoverIntensity = foldTransition?.intensity;
+  const handoverBlur = foldTransition?.blur;
+  const handoverDarken = foldTransition?.darken;
+  // The fold animation in progress, if any: the handover plays against its range and rests otherwise, so a held Book or Flex pose is simply lit and sharp.
+  const foldRange = fold
+    ? deviceFoldRangeAt(track, id ?? "", localMs, authoredFoldDeg ?? fold.defaultDeg)
+    : null;
+  const foldClosedDeg = foldRange?.closedDeg;
+  const foldOpenDeg = foldRange?.openDeg;
   useLayoutEffect(() => {
-    if (renderedFoldDeg === undefined) return;
-    const levels = foldScreenLevels(renderedFoldDeg, { switchDeg }, bothScreensOn);
-    screenLevel.current = levels.main;
-    coverLevel.current = levels.cover;
+    if (!fold || !foldEye || renderedFoldDeg === undefined) return;
+    const state = foldScreensAt(
+      renderedFoldDeg,
+      foldClosedDeg !== undefined && foldOpenDeg !== undefined
+        ? { closedDeg: foldClosedDeg, openDeg: foldOpenDeg }
+        : null,
+      {
+        switchDeg,
+        enabled: handoverOn,
+        intensity: handoverIntensity,
+        blur: handoverBlur,
+        darken: handoverDarken,
+      },
+      bothScreensOn,
+      fold.anchorSide,
+      fold.coverHingeEdge === "left",
+    );
+    screenLevel.current = state.main.level;
+    coverLevel.current = state.cover.level;
+    // The eye faces the device's visible centre, which the auto-centre keeps on the origin: the root's shift, undone.
+    foldEye.x = -foldCentreOffset(fold, renderedFoldDeg) / fit;
+    setFoldScreenState(screenMaterial, state.main, foldEye);
+    setFoldScreenState(coverMaterial, state.cover, foldEye);
     // A display with no media stays black, so only a bound map takes the level.
-    if (screenMaterial.map) screenMaterial.color.setScalar(levels.main);
-    if (coverMaterial.map) coverMaterial.color.setScalar(levels.cover);
-  }, [renderedFoldDeg, switchDeg, bothScreensOn, screenMaterial, coverMaterial]);
+    if (screenMaterial.map) screenMaterial.color.setScalar(state.main.level);
+    if (coverMaterial.map) coverMaterial.color.setScalar(state.cover.level);
+  }, [
+    fold,
+    foldEye,
+    fit,
+    foldClosedDeg,
+    foldOpenDeg,
+    renderedFoldDeg,
+    switchDeg,
+    handoverOn,
+    handoverIntensity,
+    handoverBlur,
+    handoverDarken,
+    bothScreensOn,
+    screenMaterial,
+    coverMaterial,
+  ]);
   // "Start when opened": a pure function of the track, so preview and export agree on the inside video's first frame.
   const openedAtMs = useMemo(() => {
     if (!fold || media?.startOn !== "open") return 0;

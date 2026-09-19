@@ -363,6 +363,18 @@ describe("DeviceDrillIn", () => {
     working = structuredClone(doc);
     captures.toggles.find((toggle) => toggle.label === "Start when opened")?.onChange(true);
     expect(working.devices?.[0].media?.startOn).toBe("open");
+
+    // The transition writes only what differs from its defaults, and an emptied block goes too.
+    working = structuredClone(doc);
+    const intensity = captures.sliders.find((slider) => slider.label === "Intensity");
+    expect(intensity?.value).toBe(100);
+    intensity?.onCommit(40);
+    expect(working.devices?.[0].foldTransition).toEqual({ intensity: 0.4 });
+    captures.toggles.find((toggle) => toggle.label === "Blur between screens")?.onChange(false);
+    expect(working.devices?.[0].foldTransition).toEqual({ intensity: 0.4, enabled: false });
+    working = structuredClone(doc);
+    captures.sliders.find((slider) => slider.label === "Switch angle")?.onCommit(45);
+    expect(working.devices?.[0].foldTransition).toBeUndefined();
   });
 
   it("previews layout-slider ticks without history and commits once from the original baseline", () => {

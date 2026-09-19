@@ -16,6 +16,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   one as the device opens, with an option to keep both on.
 - Start when opened, which plays the inside screen's video from the moment the
   device unfolds.
+- A blur between screens while the device folds: the interface stays flat to
+  the viewer as it softens and dims off the outside screen and clears across the
+  inside one, with intensity, blur, darkening and switch angle controls.
 - A Duo unfold scene preset.
 - Before and after comparisons can change either screen of a foldable.
 
