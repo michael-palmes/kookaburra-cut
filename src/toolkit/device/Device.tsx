@@ -18,8 +18,10 @@ import {
   MeshBasicMaterial,
   type MeshStandardMaterial,
   type Object3D,
+  type SkinnedMesh,
   Vector3,
 } from "three";
+import { clone as cloneSkinned } from "three/examples/jsm/utils/SkeletonUtils.js";
 import { useClipTexture } from "../../engine/clipTexture";
 import { deviceAcknowledgementMatches, useDeviceEditStore } from "../../engine/deviceEditStore";
 import { useSceneConsumesDevices } from "../../engine/deviceRegistry";
@@ -424,11 +426,20 @@ export function Device(props: DeviceProps) {
     return m;
   }, []);
   useLayoutEffect(() => () => screenMaterial.dispose(), [screenMaterial]);
+  // A foldable's outside display; black until it has media, like the primary.
+  const coverMaterial = useMemo(() => {
+    const m = new MeshBasicMaterial({ color: new Color(0x000000) });
+    m.toneMapped = false;
+    return m;
+  }, []);
+  useLayoutEffect(() => () => coverMaterial.dispose(), [coverMaterial]);
 
   // Clone once per (model, colour) since drei's glTF cache is shared: hide helper nodes, swap the display material, and give every lit material a private clone (Object3D.clone shares materials) so colour overrides and GSAA apply without touching the shared cache that DeviceMockup/HeroObject also read; then recentre + auto-fit.
   const { root, fit, screens, lidNode, lidBaseX, bodySize } = useMemo(() => {
-    const clone = scene.clone(true);
+    // Object3D.clone leaves skinned meshes bound to the cached skeleton; only a foldable pays for the rebinding clone, so every other device keeps its exact path.
+    const clone = activeSpec.fold ? cloneSkinned(scene) : scene.clone(true);
     const screens: Mesh[] = [];
+    const coverScreens: Mesh[] = [];
     const hide: Object3D[] = [];
     let lidNode: Object3D | null = null;
     const prepared = new Map<Material, Material>();
@@ -440,10 +451,17 @@ export function Device(props: DeviceProps) {
       if (activeSpec.lid && obj.name === activeSpec.lid.node) lidNode = obj;
       const mesh = obj as Mesh;
       if (!mesh.isMesh) return;
+      // A skinned mesh culls against its rest-pose bounds, which a fold leaves far behind.
+      if ((mesh as SkinnedMesh).isSkinnedMesh) mesh.frustumCulled = false;
       const name = materialName(mesh.material);
       if (name === activeSpec.screen.material) {
         mesh.material = screenMaterial;
         screens.push(mesh);
+        return;
+      }
+      if (activeSpec.coverScreen && name === activeSpec.coverScreen.material) {
+        mesh.material = coverMaterial;
+        coverScreens.push(mesh);
         return;
       }
       if (Array.isArray(mesh.material)) return;
@@ -487,11 +505,12 @@ export function Device(props: DeviceProps) {
       root: clone,
       fit,
       screens,
+      coverScreens,
       lidNode,
       lidBaseX,
       bodySize: [size.x, size.y, size.z] as V3,
     };
-  }, [scene, activeSpec, colourSpec, screenMaterial]);
+  }, [scene, activeSpec, colourSpec, screenMaterial, coverMaterial]);
   const fittedHeight = deviceFittedHeight(activeSpec.id);
 
   // The opt-in keyframe track: a delta on the resolved placement, sampled before the motion presets so both layer.

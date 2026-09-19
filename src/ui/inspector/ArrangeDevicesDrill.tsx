@@ -162,6 +162,11 @@ function DeviceThumbnail({ model }: { model: string }) {
         </>
       ) : form === "tablet" ? (
         <rect x="8" y="3" width="20" height="30" rx="3" />
+      ) : form === "foldable" ? (
+        <>
+          <rect x="4" y="7" width="28" height="22" rx="3" />
+          <path d="M18 7v22" />
+        </>
       ) : (
         <>
           <rect x="11" y="2" width="14" height="32" rx="3" />

@@ -328,10 +328,26 @@ function mutatePlacement(
   fn(d.placement);
 }
 
-/** 14px phone/laptop glyph for the device pill. */
+/** 14px phone/laptop/foldable glyph for the device pill. */
 function DevicePillIcon({ model }: { model: string }) {
-  const laptop = isDeviceId(model) && DEVICE_CATALOG[model].form === "laptop";
-  return laptop ? (
+  const form = isDeviceId(model) ? DEVICE_CATALOG[model].form : "phone";
+  if (form === "foldable") {
+    return (
+      <svg
+        width="14"
+        height="14"
+        viewBox="0 0 20 20"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        aria-hidden="true"
+      >
+        <rect x="3" y="4.5" width="14" height="11" rx="1.8" />
+        <path d="M10 4.5v11" />
+      </svg>
+    );
+  }
+  return form === "laptop" ? (
     <svg
       width="14"
       height="14"
