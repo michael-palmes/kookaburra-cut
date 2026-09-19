@@ -1,3 +1,9 @@
+import {
+  type DeviceScreenSlot,
+  deviceHasFollowVideo,
+  deviceSlotMedia,
+  setDeviceSlotMedia,
+} from "../../engine/deviceScreens";
 import type { RigDoc } from "../../engine/sceneCameraEdit";
 import type {
   DeviceLayoutPreset,
@@ -126,21 +132,18 @@ export function deviceSelectionOwnsAction(
   return selected?.sceneIndex === sceneIndex && selected.deviceId === deviceId;
 }
 
-function deviceHasFollowVideo(doc: SceneDoc, deviceId: string): boolean {
-  const device = doc.devices?.find((candidate) => candidate.id === deviceId);
-  return device?.media?.kind === "video" || doc.compare?.b?.media?.[deviceId]?.kind === "video";
-}
-
-/** Replace one screen source while keeping duration ownership coherent before the caller re-syncs. */
+/** Replace one display's source while keeping duration ownership coherent before the caller re-syncs. */
 export function replaceDeviceMedia(
   doc: SceneDoc,
   deviceId: string,
   media: Pick<NonNullable<SceneDocDeviceSpec["media"]>, "src" | "kind">,
+  slot: DeviceScreenSlot = "main",
 ): boolean {
   const device = doc.devices?.find((candidate) => candidate.id === deviceId);
   if (!device) return false;
-  const replacedDrivingVideo = device.media?.kind === "video" && media.kind !== "video";
-  device.media = { ...device.media, ...media };
+  const current = deviceSlotMedia(device, slot);
+  const replacedDrivingVideo = current?.kind === "video" && media.kind !== "video";
+  setDeviceSlotMedia(device, slot, { ...current, ...media });
 
   const duration = doc.duration;
   if (media.kind === "video" && duration?.mode !== "manual") {

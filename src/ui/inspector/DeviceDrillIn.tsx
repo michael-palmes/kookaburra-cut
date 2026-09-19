@@ -1,5 +1,13 @@
 import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useDeviceEditStore } from "../../engine/deviceEditStore";
+import {
+  compareSlotMedia,
+  DEVICE_SCREEN_SLOTS,
+  type DeviceScreenSlot,
+  deviceSlotMedia,
+  setCompareSlotMedia,
+  setDeviceSlotMedia,
+} from "../../engine/deviceScreens";
 import { useDeviceTrackEditStore } from "../../engine/deviceTrackEditStore";
 import { optionPreviewStill } from "../../engine/optionPreviews";
 import type { SceneDoc, SceneDocDeviceSpec } from "../../engine/sceneDocSchema";
@@ -69,6 +77,10 @@ export interface DeviceDrillInProps {
   screenMediaPreviewUrl?: string;
   screenMediaAspectRatio?: number;
   screenMediaDetail?: string;
+  /** A foldable's outside display; unused by single-screen devices. */
+  coverMediaPreviewUrl?: string;
+  coverMediaAspectRatio?: number;
+  coverMediaDetail?: string;
   comparison?: DeviceComparisonProps;
   settingsDisabled?: boolean;
   duplicateDisabled?: boolean;
@@ -77,8 +89,8 @@ export interface DeviceDrillInProps {
   onBack: () => void;
   onSelectDevice: (deviceId: string) => void;
   onChangeDevice: (deviceId: string) => void;
-  onChangeScreenMedia: (deviceId: string) => void;
-  onEditScreenMedia?: (deviceId: string) => void;
+  onChangeScreenMedia: (deviceId: string, screen?: DeviceScreenSlot) => void;
+  onEditScreenMedia?: (deviceId: string, screen?: DeviceScreenSlot) => void;
   onOpenArrangement: (deviceId: string) => void;
   onDuplicate?: (deviceId: string) => void;
   onRemove?: (deviceId: string) => void;
@@ -500,6 +512,9 @@ export function DeviceDrillIn({
   screenMediaPreviewUrl,
   screenMediaAspectRatio,
   screenMediaDetail,
+  coverMediaPreviewUrl,
+  coverMediaAspectRatio,
+  coverMediaDetail,
   comparison,
   settingsDisabled = false,
   duplicateDisabled = false,
@@ -636,6 +651,7 @@ export function DeviceDrillIn({
   const side = comparison ? activeCompareSide(doc, comparison.side) : "a";
   const after = side === "b";
   const routing = deviceSideRouting(doc, device.id, side);
+  const coverRouting = deviceSideRouting(doc, device.id, side, "cover");
   const setAppearance = (
     field: "colour" | "shadow",
     value: string | DeviceShadowMode | undefined,
@@ -674,10 +690,10 @@ export function DeviceDrillIn({
     );
   };
 
-  // Screen video start delay: seconds in the UI, `media.startMs` in the doc (0 deletes the field). After writes its own `compare.b.media` override, materialising an inherited spec first.
-  const setScreenDelay = (seconds: number, preview = false) => {
+  // Screen video start delay: seconds in the UI, `startMs` in the doc (0 deletes the field). After writes its own `compare.b` override, materialising an inherited spec first.
+  const setScreenDelay = (seconds: number, preview = false, screen: DeviceScreenSlot = "main") => {
     if (settingsDisabled) return;
-    const base = routing.media;
+    const base = (screen === "cover" ? coverRouting : routing).media;
     if (base?.kind !== "video") return;
     const startMs = Math.max(0, Math.round(seconds * 1000));
     const apply = (spec: DeviceMediaSpec): DeviceMediaSpec => {
@@ -687,15 +703,17 @@ export function DeviceDrillIn({
       return media;
     };
     const patch = after
-      ? (next: SceneDoc) => {
-          if (!next.compare) return;
-          next.compare.b ??= {};
-          next.compare.b.media ??= {};
-          next.compare.b.media[device.id] = apply(next.compare.b.media[device.id] ?? base);
-        }
+      ? (next: SceneDoc) =>
+          setCompareSlotMedia(
+            next,
+            device.id,
+            screen,
+            apply(compareSlotMedia(next, device.id, screen) ?? base),
+          )
       : (next: SceneDoc) =>
           mutateDocDevice(next, device.id, (_next, candidate) => {
-            if (candidate.media?.kind === "video") candidate.media = apply(candidate.media);
+            const own = deviceSlotMedia(candidate, screen);
+            if (own?.kind === "video") setDeviceSlotMedia(candidate, screen, apply(own));
           });
     patchWithGesture(patch, "screen start delay", preview);
   };
@@ -710,18 +728,30 @@ export function DeviceDrillIn({
       model.colours.find((finish) => finish.id === model.defaultColour)?.name ??
       "Default");
   const previewSrc = model.previews[colour] ?? model.previews[model.defaultColour];
-  const mediaName = routing.media ? fileName(routing.media.src) : "No screen media";
-  const mediaDetail = [
-    routing.inheritsMedia && routing.media ? "Same as before" : undefined,
-    screenMediaDetail ??
-      (routing.media
-        ? routing.media.kind === "video"
-          ? "Video"
-          : "Image"
-        : "Choose an image or video"),
-  ]
-    .filter(Boolean)
-    .join(" · ");
+  // One media group per display: a foldable names its two, every other device keeps the single "Screen".
+  const screenGroups = (model.coverScreen ? DEVICE_SCREEN_SLOTS : (["main"] as const)).map(
+    (screen) => {
+      const cover = screen === "cover";
+      const sideRouting = cover ? coverRouting : routing;
+      const media = sideRouting.media;
+      const probed = cover ? coverMediaDetail : screenMediaDetail;
+      return {
+        screen,
+        routing: sideRouting,
+        label: model.coverScreen ? (cover ? "Outside screen" : "Inside screen") : "Screen",
+        previewUrl: cover ? coverMediaPreviewUrl : screenMediaPreviewUrl,
+        aspectRatio: cover ? coverMediaAspectRatio : screenMediaAspectRatio,
+        name: media ? fileName(media.src) : "No screen media",
+        detail: [
+          sideRouting.inheritsMedia && media ? "Same as before" : undefined,
+          probed ??
+            (media ? (media.kind === "video" ? "Video" : "Image") : "Choose an image or video"),
+        ]
+          .filter(Boolean)
+          .join(" · "),
+      };
+    },
+  );
   const layout = doc.deviceLayout;
   const delta = layout?.devices?.[device.id];
   const position = layout ? (delta?.offset ?? ZERO) : (device.placement?.position ?? ZERO);
@@ -847,33 +877,38 @@ export function DeviceDrillIn({
           )}
         </section>
 
-        <MediaSourceGroup
-          label="Screen"
-          previewUrl={screenMediaPreviewUrl}
-          aspectRatio={screenMediaAspectRatio}
-          name={mediaName}
-          detail={mediaDetail}
-          disabled={settingsDisabled}
-          editDisabled={!routing.editVideoTarget}
-          onChange={() => onChangeScreenMedia(device.id)}
-          onEdit={onEditScreenMedia ? () => onEditScreenMedia(device.id) : undefined}
-        >
-          {routing.media?.kind === "video" && (
-            <InspectorSliderRow
-              icon={<DeviceControlIcon type="delay" />}
-              label="Start delay"
-              value={(routing.media.startMs ?? 0) / 1000}
-              min={0}
-              max={10}
-              step={0.1}
-              overflowMax
-              formatValue={(v) => `${Number(v.toFixed(2))}s`}
-              disabled={settingsDisabled}
-              onInput={(value) => setScreenDelay(value, true)}
-              onCommit={(value) => setScreenDelay(value)}
-            />
-          )}
-        </MediaSourceGroup>
+        {screenGroups.map((group) => (
+          <MediaSourceGroup
+            key={group.screen}
+            label={group.label}
+            previewUrl={group.previewUrl}
+            aspectRatio={group.aspectRatio}
+            name={group.name}
+            detail={group.detail}
+            disabled={settingsDisabled}
+            editDisabled={!group.routing.editVideoTarget}
+            onChange={() => onChangeScreenMedia(device.id, group.screen)}
+            onEdit={
+              onEditScreenMedia ? () => onEditScreenMedia(device.id, group.screen) : undefined
+            }
+          >
+            {group.routing.media?.kind === "video" && (
+              <InspectorSliderRow
+                icon={<DeviceControlIcon type="delay" />}
+                label="Start delay"
+                value={(group.routing.media.startMs ?? 0) / 1000}
+                min={0}
+                max={10}
+                step={0.1}
+                overflowMax
+                formatValue={(v) => `${Number(v.toFixed(2))}s`}
+                disabled={settingsDisabled}
+                onInput={(value) => setScreenDelay(value, true, group.screen)}
+                onCommit={(value) => setScreenDelay(value, false, group.screen)}
+              />
+            )}
+          </MediaSourceGroup>
+        ))}
 
         {!after && (
           <DrillGroup label="Arrangement">

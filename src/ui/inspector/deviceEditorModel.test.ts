@@ -425,3 +425,33 @@ describe("device editor model", () => {
     expect(resetAllDeviceLayoutDeltas({ preset: "row" })).toEqual({ preset: "row" });
   });
 });
+
+describe("replacing one display of a foldable", () => {
+  const folded = (): SceneDoc => ({
+    version: 1,
+    devices: [
+      {
+        id: "d1",
+        model: "iphone-duo",
+        media: { src: "in.mp4", kind: "video", startMs: 400 },
+        coverMedia: { src: "out.mp4", kind: "video" },
+      },
+    ],
+    duration: { mode: "follow-media", sourceDeviceId: "d1" },
+  });
+
+  it("writes the outside display and leaves the inside one, start delay included", () => {
+    const doc = folded();
+    replaceDeviceMedia(doc, "d1", { src: "new-out.png", kind: "image" }, "cover");
+    expect(doc.devices?.[0].coverMedia).toEqual({ src: "new-out.png", kind: "image" });
+    expect(doc.devices?.[0].media).toEqual({ src: "in.mp4", kind: "video", startMs: 400 });
+  });
+
+  it("keeps following media while the other display still plays a video", () => {
+    const doc = folded();
+    replaceDeviceMedia(doc, "d1", { src: "still.png", kind: "image" });
+    expect(doc.duration).toEqual({ mode: "follow-media", sourceDeviceId: "d1" });
+    replaceDeviceMedia(doc, "d1", { src: "still-2.png", kind: "image" }, "cover");
+    expect(doc.duration).toEqual({ mode: "manual" });
+  });
+});

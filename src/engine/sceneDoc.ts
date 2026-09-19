@@ -5,6 +5,14 @@ import type { DeviceProps } from "../toolkit/device/Device";
 import { resolveDeviceLayout } from "../toolkit/device/layout";
 import { useChartRegistry } from "./chartRegistry";
 import { useDeviceRegistry } from "./deviceRegistry";
+import {
+  compareSlotMedia,
+  type DeviceScreenSlot,
+  deviceSlotMedia,
+  deviceVideoSources,
+  setCompareSlotMedia,
+  setDeviceSlotMedia,
+} from "./deviceScreens";
 import { useFormat } from "./format";
 import { clampTrackToDuration, type KeyedTrack } from "./keyedTrack";
 import { useLayeredScreenshotRegistry } from "./layeredScreenshotRegistry";
@@ -197,7 +205,14 @@ export async function writeSceneDoc(slug: string, sceneFile: string, doc: SceneD
 }
 
 /** Which surface an edit render re-points. `media` carries the entry id in `targetId`, the device slots a device id. */
-export type EditRepointSlot = "device" | "compareDevice" | "background" | "videoWindow" | "media";
+export type EditRepointSlot =
+  | "device"
+  | "compareDevice"
+  | "deviceCover"
+  | "compareDeviceCover"
+  | "background"
+  | "videoWindow"
+  | "media";
 
 /** Applies an edit-render re-point to a scene doc: the slot's media src becomes `rel` (the freshly rendered `assets/<name>-edited.mp4`), and a device or media slot's kind becomes "video" (an edited still renders out as a clip). Pure clone-and-patch so App can write, patch in memory and record undo atomically; returns null when the slot has nothing to re-point. A `targetId` names the device or media entry alone (a stale id re-points nothing, never a neighbour); without one the first device keeps the legacy behaviour. */
 export function applyEditRepoint(
@@ -229,21 +244,18 @@ export function applyEditRepoint(
   }
   const device = targetId ? next.devices?.find((d) => d.id === targetId) : next.devices?.[0];
   if (!device) return null;
-  if (slot === "compareDevice") {
+  const screen: DeviceScreenSlot =
+    slot === "deviceCover" || slot === "compareDeviceCover" ? "cover" : "main";
+  if (slot === "compareDevice" || slot === "compareDeviceCover") {
     if (!next.compare) return null;
-    const media = next.compare.b?.media?.[device.id] ?? device.media;
+    const media = compareSlotMedia(next, device.id, screen) ?? deviceSlotMedia(device, screen);
     if (!media) return null;
-    next.compare.b = {
-      ...next.compare.b,
-      media: {
-        ...next.compare.b?.media,
-        [device.id]: { ...media, src: rel, kind: "video" },
-      },
-    };
+    setCompareSlotMedia(next, device.id, screen, { ...media, src: rel, kind: "video" });
     return next;
   }
-  if (!device.media) return null;
-  device.media = { ...device.media, src: rel, kind: "video" };
+  const media = deviceSlotMedia(device, screen);
+  if (!media) return null;
+  setDeviceSlotMedia(device, screen, { ...media, src: rel, kind: "video" });
   return next;
 }
 
@@ -264,11 +276,7 @@ export function followMediaSources(doc: SceneDoc | undefined): string[] {
   }
   const devices = doc?.devices ?? [];
   const pinned = devices.find((d) => d.id === duration.sourceDeviceId);
-  const deviceVideos = (pinned ? [pinned] : devices).flatMap((d) => {
-    const own = d.media?.kind === "video" ? [d.media.src] : [];
-    const after = doc?.compare?.b?.media?.[d.id];
-    return after?.kind === "video" ? [...own, after.src] : own;
-  });
+  const deviceVideos = (pinned ? [pinned] : devices).flatMap((d) => deviceVideoSources(doc, d));
   if (deviceVideos.length > 0) return deviceVideos;
   const mediaVideos = media.filter((entry) => entry.kind === "video").map((entry) => entry.src);
   if (mediaVideos.length > 0) return mediaVideos;

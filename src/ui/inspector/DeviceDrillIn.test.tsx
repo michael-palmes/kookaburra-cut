@@ -287,6 +287,30 @@ describe("DeviceDrillIn", () => {
     if (laptop) expect(captures.sliders.at(-1)?.value).toBe(90);
   });
 
+  it("names a foldable's two displays, each with its own media and start delay", () => {
+    const doc: SceneDoc = {
+      version: 1,
+      devices: [
+        {
+          id: "d1",
+          model: "iphone-duo",
+          media: { src: "assets/in.mp4", kind: "video", startMs: 500 },
+          coverMedia: { src: "assets/out.mp4", kind: "video" },
+        },
+      ],
+    };
+    const html = renderToStaticMarkup(<DeviceDrillIn {...props(doc)} deviceId="d1" />);
+
+    // A clean clone renders the Duo as the single-screen Android, which keeps the one "Screen" group.
+    const foldable = isDeviceAvailable("iphone-duo");
+    expect(html.includes("Inside screen")).toBe(foldable);
+    expect(html.includes("Outside screen")).toBe(foldable);
+    expect(html).toContain("in.mp4");
+    expect(html.includes("out.mp4")).toBe(foldable);
+    const delays = captures.sliders.filter((slider) => slider.label === "Start delay");
+    expect(delays.map((slider) => slider.value)).toEqual(foldable ? [0.5, 0] : [0.5]);
+  });
+
   it("previews layout-slider ticks without history and commits once from the original baseline", () => {
     const doc = deviceDoc();
     let working = structuredClone(doc);

@@ -13,6 +13,7 @@ vi.mock("@react-three/drei", () => {
 import {
   deviceAcknowledgementDisposition,
   deviceMotionForRender,
+  fallbackScreenMedia,
   shouldNeutraliseDeviceMotion,
 } from "./Device";
 
@@ -47,5 +48,20 @@ describe("Device gizmo acknowledgement", () => {
     expect(deviceAcknowledgementDisposition(failed, 7, 3, "d2", true, new Set([7, 8]), 8)).toBe(
       "consume",
     );
+  });
+});
+
+describe("a foldable standing in as the Android", () => {
+  const inside = { src: "in.mp4", kind: "video" as const };
+  const outside = { src: "out.mp4", kind: "video" as const };
+
+  it("leads with the portrait outside media, since the stand-in is a portrait phone", () => {
+    expect(fallbackScreenMedia("iphone-duo", "android", inside, outside)).toBe(outside);
+    expect(fallbackScreenMedia("iphone-duo", "android", inside, undefined)).toBe(inside);
+  });
+
+  it("never reroutes a device rendering as itself, or a single-screen fallback", () => {
+    expect(fallbackScreenMedia("iphone-duo", "iphone-duo", inside, outside)).toBe(inside);
+    expect(fallbackScreenMedia("iphone-17-pro", "android", inside, outside)).toBe(inside);
   });
 });

@@ -1,5 +1,6 @@
 import { Environment, Lightformer, useGLTF, useTexture } from "@react-three/drei";
 import {
+  type MutableRefObject,
   useCallback,
   useContext,
   useEffect,
@@ -110,6 +111,8 @@ export interface DeviceProps {
   /** Colour id from the catalog (default: the model's default colour). */
   colour?: string;
   media?: DeviceMediaSpec;
+  /** Foldables only: the outside display's media (`media` is the inside one). */
+  coverMedia?: DeviceMediaSpec;
   placement?: DevicePlacement;
   motion?: DeviceMotionSpec;
   /** Presentation shadow: defaults to `"soft"` and remains independent from real `<SceneStage>` map shadows; an explicit value wins. */
@@ -118,6 +121,17 @@ export interface DeviceProps {
   lit?: boolean;
   /** Laptop lid opening in degrees (0 closed, default the model's authored angle); ignored by devices with no hinge. */
   lidDeg?: number;
+}
+
+/** What the single screen of a stand-in model shows: a foldable that falls back to the portrait Android leads with its portrait outside media, since its inside media is landscape. */
+export function fallbackScreenMedia(
+  model: DeviceId,
+  renderModel: DeviceId,
+  media: DeviceMediaSpec | undefined,
+  coverMedia: DeviceMediaSpec | undefined,
+): DeviceMediaSpec | undefined {
+  const standingIn = renderModel !== model && DEVICE_CATALOG[model]?.coverScreen !== undefined;
+  return standingIn ? (coverMedia ?? media) : media;
 }
 
 export function shouldNeutraliseDeviceMotion(sectionOpen: boolean, exporting: boolean): boolean {
@@ -218,8 +232,9 @@ function ScreenVideo(props: {
   material: MeshBasicMaterial;
   screens: Mesh[];
   screenAspect: number;
+  levelRef: MutableRefObject<number>;
 }) {
-  const { src, startMs, material, screens, screenAspect } = props;
+  const { src, startMs, material, screens, screenAspect, levelRef } = props;
 
   // The readiness node lives in this component's own subtree since own-subtree refs attach before layout effects run; a parent's ref is still null during the mount commit, which previously left the binding effect bailing on stale deps and the screen black for the whole clamp window.
   const readyRef = useRef<Group>(null);
@@ -238,7 +253,11 @@ function ScreenVideo(props: {
     material.color.set(0xffffff);
     material.needsUpdate = true;
   }, [material, screens, screenAspect]);
-  const onBound = useCallback(() => material.color.set(0xffffff), [material]);
+  // Binds land asynchronously, after Device has set this frame's brightness, so they read the level instead of forcing white.
+  const onBound = useCallback(
+    () => material.color.setScalar(levelRef.current),
+    [material, levelRef],
+  );
 
   const { info } = useClipTexture({
     src,
@@ -265,6 +284,7 @@ function ScreenImage(props: {
   material: MeshBasicMaterial;
   screens: Mesh[];
   screenAspect: number;
+  levelRef: MutableRefObject<number>;
   projectId: string;
 }) {
   const { src, projectId, ...rest } = props;
@@ -283,21 +303,45 @@ function ScreenImageLoaded(props: {
   material: MeshBasicMaterial;
   screens: Mesh[];
   screenAspect: number;
+  levelRef: MutableRefObject<number>;
 }) {
-  const { url, material, screens, screenAspect } = props;
+  const { url, material, screens, screenAspect, levelRef } = props;
   const loaded = useTexture(url);
   const tex = useScreenImageTexture(loaded);
 
   useLayoutEffect(() => {
     material.map = tex;
-    material.color.set(0xffffff);
+    material.color.setScalar(levelRef.current);
     material.needsUpdate = true;
     const image = tex.image as { width?: number; height?: number } | undefined;
     const aspect = image?.width && image?.height ? image.width / image.height : screenAspect;
     const rect = coverCropRect(aspect, screenAspect, false);
     for (const mesh of screens) bakeScreenUvs(mesh, rect);
-  }, [tex, material, screens, screenAspect]);
+  }, [tex, material, screens, screenAspect, levelRef]);
 
+  return null;
+}
+
+/** One display's media mount: video, image, or nothing (the material stays black). */
+function ScreenMedia(props: {
+  media: DeviceMediaSpec | undefined;
+  material: MeshBasicMaterial;
+  screens: Mesh[];
+  screenAspect: number;
+  levelRef: MutableRefObject<number>;
+  projectId: string;
+}) {
+  const { media, projectId, ...screen } = props;
+  if (media?.kind === "video") {
+    return <ScreenVideo src={media.src} startMs={media.startMs ?? 0} {...screen} />;
+  }
+  if (media?.kind === "image") {
+    return (
+      <AssetBoundary key={media.src} label={media.src}>
+        <ScreenImage src={media.src} projectId={projectId} {...screen} />
+      </AssetBoundary>
+    );
+  }
   return null;
 }
 
@@ -308,6 +352,7 @@ export function Device(props: DeviceProps) {
     model,
     colour,
     media,
+    coverMedia,
     placement = {},
     motion = { preset: "none" },
     shadow,
@@ -433,9 +478,12 @@ export function Device(props: DeviceProps) {
     return m;
   }, []);
   useLayoutEffect(() => () => coverMaterial.dispose(), [coverMaterial]);
+  // Display brightness, 0 off to 1 lit; a foldable's fold angle drives them, every other device holds 1.
+  const screenLevel = useRef(1);
+  const coverLevel = useRef(1);
 
   // Clone once per (model, colour) since drei's glTF cache is shared: hide helper nodes, swap the display material, and give every lit material a private clone (Object3D.clone shares materials) so colour overrides and GSAA apply without touching the shared cache that DeviceMockup/HeroObject also read; then recentre + auto-fit.
-  const { root, fit, screens, lidNode, lidBaseX, bodySize } = useMemo(() => {
+  const { root, fit, screens, coverScreens, lidNode, lidBaseX, bodySize } = useMemo(() => {
     // Object3D.clone leaves skinned meshes bound to the cached skeleton; only a foldable pays for the rebinding clone, so every other device keeps its exact path.
     const clone = activeSpec.fold ? cloneSkinned(scene) : scene.clone(true);
     const screens: Mesh[] = [];
@@ -654,25 +702,23 @@ export function Device(props: DeviceProps) {
             )}
           </group>
         </group>
-        {media?.kind === "video" && (
-          <ScreenVideo
-            src={media.src}
-            startMs={media.startMs ?? 0}
-            material={screenMaterial}
-            screens={screens}
-            screenAspect={activeSpec.screen.aspect}
+        <ScreenMedia
+          media={fallbackScreenMedia(model, renderModel, media, coverMedia)}
+          material={screenMaterial}
+          screens={screens}
+          screenAspect={activeSpec.screen.aspect}
+          levelRef={screenLevel}
+          projectId={projectId}
+        />
+        {activeSpec.coverScreen && (
+          <ScreenMedia
+            media={coverMedia}
+            material={coverMaterial}
+            screens={coverScreens}
+            screenAspect={activeSpec.coverScreen.aspect}
+            levelRef={coverLevel}
+            projectId={projectId}
           />
-        )}
-        {media?.kind === "image" && (
-          <AssetBoundary key={media.src} label={media.src}>
-            <ScreenImage
-              src={media.src}
-              material={screenMaterial}
-              screens={screens}
-              screenAspect={activeSpec.screen.aspect}
-              projectId={projectId}
-            />
-          </AssetBoundary>
         )}
       </group>
       {editTarget && gizmoOn && !exporting && (

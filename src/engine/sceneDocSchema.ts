@@ -80,6 +80,8 @@ export interface SceneDocDeviceSpec {
   model: string;
   colour?: string;
   media?: DeviceMediaSpec;
+  /** Foldables only: the outside display's media (`media` is the inside one). */
+  coverMedia?: DeviceMediaSpec;
   placement?: DevicePlacement;
   motion?: DeviceMotionSpec;
   shadow?: DeviceShadowMode;
@@ -617,6 +619,8 @@ export interface SceneDocCompareDeviceAppearance {
 /** Side B ("after") of a comparison: every field optional, absent means same as side A (the base doc). Device-keyed maps override screen media or appearance; the other fields replace the doc's own values for side B only. */
 export interface SceneDocCompareSide {
   media?: Record<string, DeviceMediaSpec>;
+  /** The same override for a foldable's outside display. */
+  coverMedia?: Record<string, DeviceMediaSpec>;
   deviceAppearance?: Record<string, SceneDocCompareDeviceAppearance>;
   themeId?: string;
   background?: ThemeBackground;
@@ -1166,9 +1170,11 @@ function parseCompare(raw: unknown, source: string): SceneDocCompare | undefined
       const lighting = normalizeLighting(b.lighting, `${source} compare.b`);
       if (lighting) side.lighting = lighting;
     }
-    if (typeof b.media === "object" && b.media !== null && !Array.isArray(b.media)) {
+    for (const field of ["media", "coverMedia"] as const) {
+      const rawMap = b[field];
+      if (typeof rawMap !== "object" || rawMap === null || Array.isArray(rawMap)) continue;
       const media: Record<string, DeviceMediaSpec> = {};
-      for (const [id, m] of Object.entries(b.media as Record<string, unknown>)) {
+      for (const [id, m] of Object.entries(rawMap as Record<string, unknown>)) {
         const spec = m as DeviceMediaSpec | null;
         if (
           spec &&
@@ -1179,10 +1185,10 @@ function parseCompare(raw: unknown, source: string): SceneDocCompare | undefined
         ) {
           media[id] = spec;
         } else {
-          console.warn(`[sceneDoc] ${source}: compare.b.media["${id}"] is malformed, dropped`);
+          console.warn(`[sceneDoc] ${source}: compare.b.${field}["${id}"] is malformed, dropped`);
         }
       }
-      if (Object.keys(media).length > 0) side.media = media;
+      if (Object.keys(media).length > 0) side[field] = media;
     }
     if (
       typeof b.deviceAppearance === "object" &&

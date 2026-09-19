@@ -1,3 +1,4 @@
+import { deviceHasFollowVideo } from "../../engine/deviceScreens";
 import type { ImageReconciliationOrigin } from "../../engine/imageReconciliationStore";
 import type { RigDoc } from "../../engine/sceneCameraEdit";
 import {
@@ -270,11 +271,6 @@ export function duplicateSceneMedia(next: SceneDoc, mediaId: string): string | n
   }
   editSceneDocMedia(next, (entries) => [...entries, copy]);
   return id;
-}
-
-function deviceHasFollowVideo(next: SceneDoc, deviceId: string): boolean {
-  const device = next.devices?.find((candidate) => candidate.id === deviceId);
-  return device?.media?.kind === "video" || next.compare?.b?.media?.[deviceId]?.kind === "video";
 }
 
 /** Does removing this entry pull the scene's length out from under it? A pinned entry always does; an unpinned scene falls back to its media only when no device video qualifies and no other video entry is left to follow. */

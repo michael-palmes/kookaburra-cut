@@ -261,3 +261,31 @@ describe("the divider and angle fields", () => {
     expect(compare.mask).toEqual({ type: "circle", softness: 0.05, angleDeg: 200 });
   });
 });
+
+describe("side B media for both displays", () => {
+  const folded = (): SceneDoc => ({
+    version: 1,
+    devices: [{ id: "d1", model: "iphone-duo" }],
+    compare: {
+      b: {
+        media: { d1: { src: "after-in.mp4", kind: "video" } },
+        coverMedia: { d1: { src: "after-out.mp4", kind: "video" } },
+      },
+    },
+  });
+
+  it("carries both overrides onto a duplicated device", () => {
+    const doc = folded();
+    duplicateCompareDeviceTargets(doc, "d1", "d2");
+    expect(doc.compare?.b?.media?.d2.src).toBe("after-in.mp4");
+    expect(doc.compare?.b?.coverMedia?.d2.src).toBe("after-out.mp4");
+    // A copy, never a shared reference.
+    expect(doc.compare?.b?.coverMedia?.d2).not.toBe(doc.compare?.b?.coverMedia?.d1);
+  });
+
+  it("prunes both overrides with their device and drops the emptied maps", () => {
+    const doc = folded();
+    pruneCompareDeviceTargets(doc, "d1");
+    expect(doc.compare?.b).toEqual({});
+  });
+});

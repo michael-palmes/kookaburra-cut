@@ -20,6 +20,12 @@ import { COMPARE_PRESETS } from "../../engine/comparePresets";
 import { useDecorationEditStore } from "../../engine/decorationEditStore";
 import { useSceneIsBanded } from "../../engine/depthStageRegistry";
 import { useDeviceEditStore } from "../../engine/deviceEditStore";
+import {
+  compareSlotMedia,
+  type DeviceScreenSlot,
+  deviceSlotMedia,
+  setCompareSlotMedia,
+} from "../../engine/deviceScreens";
 import { isExporting, subscribeExporting } from "../../engine/exportState";
 import { useFormat } from "../../engine/format";
 import { mergeFrameSpec } from "../../engine/frameSchema";
@@ -2340,7 +2346,7 @@ interface LegacyImagePromotionSession {
 }
 
 type SceneMediaTarget =
-  | { kind: "device"; deviceId?: string }
+  | { kind: "device"; deviceId?: string; screen?: DeviceScreenSlot }
   | { kind: "media"; mediaKind: SceneMediaKind; replaceId?: string; legacyId?: string }
   | { kind: "decoration"; replaceId?: string };
 
@@ -2585,6 +2591,7 @@ export function SceneTab({
   // The one comparison side the Device, Theme, Background and Lighting surfaces share (reset on scene change), plus the After media screen's target device.
   const [compareSide, setCompareSide] = useState<CompareSide>("a");
   const [compareMediaDeviceId, setCompareMediaDeviceId] = useState<string | null>(null);
+  const [compareMediaScreen, setCompareMediaScreen] = useState<DeviceScreenSlot>("main");
   // Snapshot at the start of a comparison slider drag: live ticks write history-less, release records one entry.
   const compareDragBaseline = useRef<SceneDoc | null>(null);
   // The scene-local time the running gesture edits at, so a drag stays on the key it started on even under playback.
@@ -2866,6 +2873,9 @@ export function SceneTab({
   const deviceMediaSrc = deviceRouting.media?.src;
   const assetMetaToken = mediaRefresh + mediaRefreshKey;
   const deviceMediaMeta = useAssetMeta(slug, deviceMediaSrc, assetMetaToken);
+  // A foldable's outside display: same routing, the other slot. Inert (no src) for every other device.
+  const coverRouting = deviceSideRouting(doc, deviceId ?? "", compareSide, "cover");
+  const coverMediaMeta = useAssetMeta(slug, coverRouting.media?.src, assetMetaToken);
   const objects = doc?.objects ?? [];
   const stagedObject = objects.find((o) => o.id === pickedObjectId) ?? objects[0];
   const mediaEntries = useMemo(() => resolveSceneDocMedia(doc), [doc]);
@@ -4302,7 +4312,12 @@ export function SceneTab({
       void patchDoc(
         (next) => {
           if (!targetId) return;
-          replaceDeviceMedia(next, targetId, { src: rel, kind: isVideo ? "video" : "image" });
+          replaceDeviceMedia(
+            next,
+            targetId,
+            { src: rel, kind: isVideo ? "video" : "image" },
+            mediaTarget.screen ?? "main",
+          );
         },
         { resync: true },
       );
@@ -4346,7 +4361,7 @@ export function SceneTab({
       : undefined;
     const selectedRel =
       mediaTarget.kind === "device"
-        ? (targetDevice?.media?.src ?? null)
+        ? (deviceSlotMedia(targetDevice, mediaTarget.screen ?? "main")?.src ?? null)
         : mediaTarget.kind === "media"
           ? mediaTarget.replaceId
             ? (mediaEntries.find((candidate) => candidate.id === mediaTarget.replaceId)?.src ??
@@ -6634,23 +6649,27 @@ export function SceneTab({
   }
   if (drillIn === "compare.media" && doc?.compare && compareMediaDeviceId) {
     const targetId = compareMediaDeviceId;
-    const current = doc.compare.b?.media?.[targetId];
+    const targetScreen = compareMediaScreen;
+    const current = compareSlotMedia(doc, targetId, targetScreen);
     const pickAfterMedia = (rel: string, meta: MediaMeta | null) => {
       const isVideo = meta?.kind !== "image";
       void patchDoc(
-        (next) => {
-          if (!next.compare) return;
-          if (!next.compare.b) next.compare.b = {};
-          if (!next.compare.b.media) next.compare.b.media = {};
-          next.compare.b.media[targetId] = { src: rel, kind: isVideo ? "video" : "image" };
-        },
+        (next) =>
+          setCompareSlotMedia(next, targetId, targetScreen, {
+            src: rel,
+            kind: isVideo ? "video" : "image",
+          }),
         { resync: true },
       );
       closeDrill();
     };
     return (
       <div className="inspector-drill">
-        <DrillBack label={backLabel} title="After screen" onClick={() => closeDrill()} />
+        <DrillBack
+          label={backLabel}
+          title={targetScreen === "cover" ? "After outside screen" : "After screen"}
+          onClick={() => closeDrill()}
+        />
         <div className="inspector-drill-body">
           {current && (
             <ActionRow
@@ -6659,9 +6678,7 @@ export function SceneTab({
               chevron={false}
               onClick={() => {
                 void patchDoc(
-                  (next) => {
-                    if (next.compare?.b?.media) delete next.compare.b.media[targetId];
-                  },
+                  (next) => setCompareSlotMedia(next, targetId, targetScreen, undefined),
                   { resync: true },
                 );
                 closeDrill();
@@ -8290,6 +8307,8 @@ export function SceneTab({
     // Media, meta and both media actions follow the shared side, so an After edit can never re-point Before's source.
     const sideMedia = deviceRouting.media;
     const screen = mediaSourceSummary(project.id, sideMedia?.src, sideMedia?.kind, deviceMediaMeta);
+    const coverMedia = coverRouting.media;
+    const cover = mediaSourceSummary(project.id, coverMedia?.src, coverMedia?.kind, coverMediaMeta);
     return (
       <DeviceDrillIn
         key={`${project.id}\u0000${project.sceneFiles[sceneIndex] ?? sceneIndex}\u0000device`}
@@ -8299,6 +8318,9 @@ export function SceneTab({
         screenMediaPreviewUrl={screen.previewUrl}
         screenMediaAspectRatio={screen.aspectRatio}
         screenMediaDetail={screen.detail}
+        coverMediaPreviewUrl={cover.previewUrl}
+        coverMediaAspectRatio={cover.aspectRatio}
+        coverMediaDetail={cover.detail}
         comparison={
           hasComparison(doc) ? { side: compareSideActive, onSideChange: setCompareSide } : undefined
         }
@@ -8311,24 +8333,21 @@ export function SceneTab({
           pickDevice(id);
           openDrill("device.change");
         }}
-        onChangeScreenMedia={(id) => {
+        onChangeScreenMedia={(id, slot = "main") => {
           if (deviceRouting.mediaTarget === "compareDevice") {
             setCompareMediaDeviceId(id);
+            setCompareMediaScreen(slot);
             openDrill("compare.media");
             return;
           }
-          openMediaPicker({ kind: "device", deviceId: id });
+          openMediaPicker({ kind: "device", deviceId: id, screen: slot });
         }}
-        onEditScreenMedia={
-          deviceRouting.editVideoTarget
-            ? (id) => {
-                const target = deviceSideRouting(doc, id, compareSide);
-                if (target.media && target.editVideoTarget) {
-                  onOpenEditVideo(sceneIndex, target.media.src, target.editVideoTarget, id);
-                }
-              }
-            : undefined
-        }
+        onEditScreenMedia={(id, slot = "main") => {
+          const target = deviceSideRouting(doc, id, compareSide, slot);
+          if (target.media && target.editVideoTarget) {
+            onOpenEditVideo(sceneIndex, target.media.src, target.editVideoTarget, id);
+          }
+        }}
         onOpenArrangement={(id) => {
           pickDevice(id);
           openDrill("device.position");

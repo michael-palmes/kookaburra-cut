@@ -1,3 +1,8 @@
+import {
+  compareSlotMedia,
+  DEVICE_SCREEN_SLOTS,
+  setCompareSlotMedia,
+} from "../../engine/deviceScreens";
 import type {
   SceneDoc,
   SceneDocCompare,
@@ -149,10 +154,7 @@ export function clearCompareTrack(doc: SceneDoc): void {
 export function pruneCompareDeviceTargets(doc: SceneDoc, deviceId: string): void {
   const side = doc.compare?.b;
   if (!side) return;
-  if (side.media) {
-    delete side.media[deviceId];
-    if (Object.keys(side.media).length === 0) delete side.media;
-  }
+  for (const slot of DEVICE_SCREEN_SLOTS) setCompareSlotMedia(doc, deviceId, slot, undefined);
   if (side.deviceAppearance) {
     delete side.deviceAppearance[deviceId];
     if (Object.keys(side.deviceAppearance).length === 0) delete side.deviceAppearance;
@@ -167,10 +169,9 @@ export function duplicateCompareDeviceTargets(
 ): void {
   const side = doc.compare?.b;
   if (!side) return;
-  const media = side.media?.[sourceDeviceId];
-  if (media) {
-    side.media ??= {};
-    side.media[targetDeviceId] = structuredClone(media);
+  for (const slot of DEVICE_SCREEN_SLOTS) {
+    const media = compareSlotMedia(doc, sourceDeviceId, slot);
+    if (media) setCompareSlotMedia(doc, targetDeviceId, slot, structuredClone(media));
   }
   const appearance = side.deviceAppearance?.[sourceDeviceId];
   if (appearance) {
