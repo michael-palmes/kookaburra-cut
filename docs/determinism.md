@@ -306,6 +306,43 @@ fixed a real divergent-verify bug:
   INTERLEAVED: reading `attribute.array[i * 2]` gets positions, not UVs; use
   `getX`/`getY`.
 
+### Foldables
+
+A folding device (`docs/foldables.md`) adds a posed skeleton and a second
+display to this path. What keeps it a pure function of the frame:
+
+- **The fold is a lookup, not a simulation.** The glb carries a clip keyed one
+  frame per degree. `Device` evaluates its tracks at `foldDeg / degPerSecond` in
+  a layout effect, the lid's precedent. There is no `AnimationMixer`, which
+  carries state between frames, and no `useFrame`, which does not fire under
+  `frameloop="demand"`.
+- **Display brightness goes through a level ref.** Clip binds land
+  asynchronously, after `Device` has set the frame's brightness, and used to
+  force the material white. A colour set directly on a screen material is
+  overwritten before capture; `onBound` reads the ref instead.
+- **Legacy stays literally untouched.** Only a catalogue entry with a `fold`
+  spec takes `SkeletonUtils.clone`, the auto-centre wrapper group and the
+  shadow's yaw basis branch. Every other device keeps `scene.clone(true)`, its
+  scene graph and its slab arithmetic, which a test pins deep-equal.
+- **Contract constants:** `FOLD_SWITCH_DEG` 45 and `FOLD_POWER_WINDOW_DEG` 15
+  (`foldTransition.ts`), the cos²(θ/2) auto-centre curve (`foldPose.ts`), and
+  the glb's clip itself: re-exporting the model is a rebase of every foldable
+  baseline.
+- "Start when opened" steps the frames that will render (`foldOpenedAtMs`), so
+  preview and export agree on the inside video's first frame by construction.
+- **The blur handover adds no render target.** It is an `onBeforeCompile` patch
+  on the two foldable screen materials (one stable `customProgramCacheKey`): the
+  fragment's root-frame position (taken after skinning) is projected from a fixed
+  front eye onto the display's home plane, then a fixed 32 tap kernel with a
+  per-pixel PCG-hashed rotation blurs up one measured ramp. No mipmaps,
+  `textureGrad` inside per-fragment control flow, uniforms CPU-written per frame,
+  and the root's inverse world matrix refreshed in `onBeforeRender`, when world
+  matrices are final. Idle, it runs the stock sample statement.
+- **It plays only inside a fold segment** (`deviceFoldRangeAt`), on the device's
+  progress through that fold, so it stays a pure function of the track and the
+  frame time while a held pose is exactly lit and sharp. The `FOLD_*` constants in
+  `foldTransition.ts` are all contract; the table is in `docs/foldables.md`.
+
 ## Postprocessing effects
 
 A project that declares any effect (theme `effects` or a per-scene override)
@@ -1182,7 +1219,8 @@ params, text) do not add code paths and do not need their own verifies.**
   project, Verify ×2, **16:9 only**: pick the project whose content exercises
   the changed path: `showcase-tour` for themes/staging/text/presets (the
   rolling gate project, six themes, devices, video, ImageCard, camera moves
-  and bloom in one project), `ws:device-video-spike` for device/media/camera,
+  and bloom in one project), `ws:device-video-spike` for device/media/camera, `ws:duo-spike` for
+  foldables (fold, second display, auto power),
   `ws:fx-spike` for effects, `ws:dof-spike` for depth of field, a hand-rolled
   workspace mini-project for anything narrower. `pnpm gate` runs the
   showcase-tour leg (~2 min).
@@ -1256,6 +1294,24 @@ rolling-gate project (`showcase-tour`):
 | `ws:chart-spike` (chart gate, machine-local) | `d58ff1f2…` | stale | stale | stale | — | — | — | — | — |
 | `ws:duplicate-spike` (scene-id heal gate, machine-local) | stale | — | — | — | — | — | — | — | — |
 | `ws:overlay-spike` (overlay gate, machine-local) | stale | — | — | — | — | — | — | — | — |
+| `ws:duo-spike` (foldable gate, machine-local) | `2e023390…` | `b28e7c7f…` | — | — | — | — | — | — | — |
+
+> **2026-09-19 (foldables, a fresh record):** `ws:duo-spike` records 16:9
+> `2e023390…` and 9:16 `b28e7c7f…`, Verify ×2 each: the iPhone Duo open with both
+> displays playing, four static fold poses, a keyframed unfold with "Start when
+> opened", the three foldable poses, and a dead-on linear unfold. Frames were
+> eyeballed first, the dead-on scene against Apple's own footage at matching
+> angles (content flat and level across the hinge, black wedges where the
+> projection runs out, the static half untouched, brightness at 45 degrees within
+> the measured profile). It is the first skinned, clip-sampled device and the
+> first per-material projection, so the proof that matters is A = B across a fold.
+> Before the blur handover landed the four-scene fixture recorded `e622d9ed…`;
+> dropping the two handover commits returns to that path, not that hash, since the
+> fixture has since gained a scene. Through the structural `Device.tsx` and
+> `shadowProjector.ts` changes `pnpm gate:merge` stayed EQUAL (`showcase-tour`
+> `13b5994d…`, `ws:launch-2026` `eb89826c…`), as did `ws:device-video-spike`
+> `fe0e886b…` and `compare-spike` `f425a9a8…`. Licensed glb, so the row is
+> machine-local: a build without it renders the Android stand-in and will not match.
 
 > **2026-09-07 (comparison preload plan, a fresh record):** `compare-spike`
 > 16:9 records `f425a9a8…`, Verify ×2, its first leg since the analytic-shadow

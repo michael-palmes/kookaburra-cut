@@ -2,8 +2,9 @@
 #
 # Render the device-picker preview PNGs, one card per catalog colour, from the LICENSED
 # vendor .blends (each colour ships its authored materials + studio setup; see
-# src/assets/models/README.md for provenance). Outputs are committed, so this only reruns
-# when a model or colour changes.
+# src/assets/models/README.md for provenance). The iPhone Duo cards come from its built glb
+# instead, since Night Sky is a derived finish with no vendor colour blend. Outputs are
+# committed, so this only reruns when a model or colour changes.
 #
 # Usage:
 #   pnpm assets:device-previews            # all devices
@@ -59,6 +60,32 @@ render macbook-pro-16 space-grey "$SRCMBP/APPLE_M2 MacBook Pro_2023_16 Inch_Spac
 SRCIPAD="$KOOKABURRA_ASSETS_DIR/Licensed iPad Pro/iPad+Pro+(M4+2024)+-+11&13+INCH_BLEND"
 render ipad-pro-13 silver "$SRCIPAD/iPad Pro (M4 2024) - 13 INCH - Silver.blend" -90
 render ipad-pro-13 space-black "$SRCIPAD/iPad Pro (M4 2024) - 13 INCH - Space Black.blend" -90
+
+# render_glb <device-id> <colour-id> <studio-blend> <built-glb> <clip-frame> <yaw,pitch> [tints]
+# For a finish with no vendor colour blend: the app's BUILT glb, tinted exactly as the
+# catalogue overrides tint it, inside the vendor studio. Keep the hexes in step with catalog.ts.
+render_glb() {
+  local device="$1" id="$2" blend="$3" glb="$4" frame="$5" turn="$6" tints="${7:-}"
+  local out_dir="src/assets/device-previews/$device"
+  if [[ "$DEVICE" != "all" && "$DEVICE" != "$device" ]]; then return; fi
+  for source in "$blend" "$glb"; do
+    if [[ ! -f "$source" ]]; then
+      echo "[assets:device-previews] missing source: $source" >&2
+      exit 1
+    fi
+  done
+  mkdir -p "$out_dir"
+  echo "[assets:device-previews] $device/$id"
+  "$BLENDER" -b "$blend" --python scripts/blender-render-preview.py -- \
+    "$PWD/$out_dir/$id.png" "$SIZE" 0.9 0 --glb "$PWD/$glb" --frame "$frame" --turn "$turn" \
+    ${tints:+--tint "$tints"} >/dev/null
+}
+
+# Back three-quarter, 15 degrees shy of flat so the fold reads; run pnpm assets:iphone-duo first.
+SRCDUO="$KOOKABURRA_ASSETS_DIR/Licenced iPhone Duo/iphone-duo.blend"
+GLBDUO="src/assets/models/licensed/572f22d2-448d-4511-80ee-d0a309cf1e2f.glb"
+render_glb iphone-duo star-white "$SRCDUO" "$GLBDUO" 165 "205,-8"
+render_glb iphone-duo night-sky "$SRCDUO" "$GLBDUO" 165 "205,-8" "duo_body=#394452,duo_frame=#2b3440"
 
 echo "[assets:device-previews] done:"
 ls -lh src/assets/device-previews/*/

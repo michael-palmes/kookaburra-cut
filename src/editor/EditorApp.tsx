@@ -4,6 +4,11 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { ask } from "@tauri-apps/plugin-dialog";
 import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  DEVICE_SCREEN_SLOTS,
+  type DeviceScreenSlot,
+  deviceSlotMedia,
+} from "../engine/deviceScreens";
+import {
   type EditClip,
   type EditDoc,
   type EditSource,
@@ -502,16 +507,31 @@ export function EditorApp() {
         if (!sceneDoc || cancelled) return;
         const entries: { rel: string; label: string }[] = [];
         const devices = sceneDoc.devices ?? [];
+        // A foldable's outside display lists beside its inside one; single-screen labels are unchanged.
+        const screenLabel = (slot: DeviceScreenSlot) =>
+          slot === "cover" ? " · Outside screen" : "";
         devices.forEach((d, i) => {
-          if (d.media?.kind === "video") {
+          for (const slot of DEVICE_SCREEN_SLOTS) {
+            const media = deviceSlotMedia(d, slot);
+            if (media?.kind !== "video") continue;
             const model = resolveAvailableDeviceSpec(d.model).name;
-            entries.push({ rel: d.media.src, label: `Device ${i + 1} · ${model}` });
+            entries.push({
+              rel: media.src,
+              label: `Device ${i + 1} · ${model}${screenLabel(slot)}`,
+            });
           }
         });
-        for (const [id, m] of Object.entries(sceneDoc.compare?.b?.media ?? {})) {
-          if (m.kind !== "video") continue;
-          const i = devices.findIndex((d) => d.id === id);
-          entries.push({ rel: m.src, label: `After side · Device ${i >= 0 ? i + 1 : id}` });
+        for (const slot of DEVICE_SCREEN_SLOTS) {
+          const overrides =
+            slot === "cover" ? sceneDoc.compare?.b?.coverMedia : sceneDoc.compare?.b?.media;
+          for (const [id, m] of Object.entries(overrides ?? {})) {
+            if (m.kind !== "video") continue;
+            const i = devices.findIndex((d) => d.id === id);
+            entries.push({
+              rel: m.src,
+              label: `After side · Device ${i >= 0 ? i + 1 : id}${screenLabel(slot)}`,
+            });
+          }
         }
         for (const entry of resolveSceneDocMedia(sceneDoc)) {
           if (entry.kind !== "video") continue;

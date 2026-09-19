@@ -1,3 +1,8 @@
+import {
+  compareSlotMedia,
+  type DeviceScreenSlot,
+  deviceSlotMedia,
+} from "../../engine/deviceScreens";
 import type { SceneDoc } from "../../engine/sceneDocSchema";
 import type { DeviceMediaSpec, DeviceShadowMode } from "../../toolkit/device/Device";
 
@@ -51,22 +56,33 @@ export interface DeviceSideRouting {
   /** After holds a colour or shadow override for this device. */
   overridesAppearance: boolean;
   /** Where Change screen media writes. */
-  mediaTarget: "device" | "compareDevice";
+  mediaTarget: DeviceRepointSlot;
   /** Where Edit opens (a still joins the editor as a freeze-frame); null when this side resolves to no media. */
-  editVideoTarget: "device" | "compareDevice" | null;
+  editVideoTarget: DeviceRepointSlot | null;
 }
 
+export type DeviceRepointSlot = "device" | "compareDevice" | "deviceCover" | "compareDeviceCover";
+
+/** `screen` picks the display: every device's `main`, or a foldable's outside `cover`. */
 export function deviceSideRouting(
   doc: SceneDoc | null | undefined,
   deviceId: string,
   side: CompareSide,
+  screen: DeviceScreenSlot = "main",
 ): DeviceSideRouting {
   const after = activeCompareSide(doc, side) === "b";
   const device = doc?.devices?.find((candidate) => candidate.id === deviceId);
-  const mediaOverride = after ? doc?.compare?.b?.media?.[deviceId] : undefined;
+  const mediaOverride = after ? compareSlotMedia(doc, deviceId, screen) : undefined;
   const appearance = after ? doc?.compare?.b?.deviceAppearance?.[deviceId] : undefined;
-  const media = mediaOverride ?? device?.media;
-  const target = after ? "compareDevice" : "device";
+  const media = mediaOverride ?? deviceSlotMedia(device, screen);
+  const target: DeviceRepointSlot =
+    screen === "cover"
+      ? after
+        ? "compareDeviceCover"
+        : "deviceCover"
+      : after
+        ? "compareDevice"
+        : "device";
   return {
     media,
     inheritsMedia: after && mediaOverride === undefined,

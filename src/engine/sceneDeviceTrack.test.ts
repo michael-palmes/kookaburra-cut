@@ -1,12 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
+  deviceFoldRangeAt,
   deviceTrackPoseAt,
   deviceTrackPoseIsRest,
   deviceTrackSnapshotAt,
   nearestDeviceKey,
   resolveDeviceTrack,
 } from "./sceneDeviceTrack";
-import type { SceneDoc } from "./sceneDocSchema";
+import { parseSceneDoc, type SceneDoc } from "./sceneDocSchema";
 
 const doc = (deviceTrack: SceneDoc["deviceTrack"]): SceneDoc => ({ version: 1, deviceTrack });
 
@@ -60,6 +61,7 @@ describe("deviceTrackPoseAt", () => {
       rotationDeg: [0, 0, 0],
       scale: 1,
       lidDeg: undefined,
+      foldDeg: undefined,
     });
   });
 
@@ -185,5 +187,102 @@ describe("nearestDeviceKey", () => {
 
   it("takes the earlier key on a tie", () => {
     expect(nearestDeviceKey(track, 500)?.id).toBe("k1");
+  });
+});
+
+describe("a foldable's keyed hinge angle", () => {
+  const unfold = resolveDeviceTrack(
+    doc({
+      keys: [
+        { id: "k1", tMs: 0, pose: { duo: { foldDeg: 0 } } },
+        { id: "k2", tMs: 1000, pose: { duo: { foldDeg: 180 }, laptop: { lidDeg: 40 } } },
+      ],
+      segments: [{ from: "k1", to: "k2", ease: "linear" }],
+    }),
+  );
+
+  it("eases between keyed angles and holds the last one", () => {
+    expect(deviceTrackPoseAt(unfold, "duo", 250, undefined, 180).foldDeg).toBe(45);
+    expect(deviceTrackPoseAt(unfold, "duo", 5000, undefined, 180).foldDeg).toBe(180);
+  });
+
+  it("eases from the device's own angle when only one end keys it", () => {
+    const closing = resolveDeviceTrack(
+      doc({
+        keys: [
+          { id: "k1", tMs: 0, pose: { duo: {} } },
+          { id: "k2", tMs: 1000, pose: { duo: { foldDeg: 0 } } },
+        ],
+        segments: [{ from: "k1", to: "k2", ease: "linear" }],
+      }),
+    );
+    expect(deviceTrackPoseAt(closing, "duo", 500, undefined, 120).foldDeg).toBe(60);
+  });
+
+  it("keeps the lid and the fold independent", () => {
+    const pose = deviceTrackPoseAt(unfold, "laptop", 500, 90);
+    expect(pose.lidDeg).toBe(65);
+    expect(pose.foldDeg).toBeUndefined();
+    expect(deviceTrackPoseAt(unfold, "duo", 500, undefined, 180).lidDeg).toBeUndefined();
+  });
+
+  it("rests only at the device's own angle, and seeds new keys with what is showing", () => {
+    expect(
+      deviceTrackPoseIsRest(deviceTrackPoseAt(null, "duo", 0, undefined, 180), undefined, 180),
+    ).toBe(true);
+    expect(
+      deviceTrackPoseIsRest(deviceTrackPoseAt(unfold, "duo", 0, undefined, 180), undefined, 180),
+    ).toBe(false);
+    const snapshot = deviceTrackSnapshotAt(
+      unfold,
+      [{ id: "duo", foldDeg: 180 }, { id: "phone" }],
+      500,
+    );
+    expect(snapshot.duo.foldDeg).toBe(90);
+    expect(snapshot.phone.foldDeg).toBeUndefined();
+  });
+
+  it("reports the fold in progress as a closed-to-open range, whichever way it runs", () => {
+    expect(deviceFoldRangeAt(unfold, "duo", 500, 180)).toEqual({ closedDeg: 0, openDeg: 180 });
+    const closing = resolveDeviceTrack(
+      doc({
+        keys: [
+          { id: "k1", tMs: 0, pose: { duo: {} } },
+          { id: "k2", tMs: 1000, pose: { duo: { foldDeg: 30 } } },
+        ],
+        segments: [{ from: "k1", to: "k2", ease: "linear" }],
+      }),
+    );
+    // The start key holds no angle, so the range opens at the device's own.
+    expect(deviceFoldRangeAt(closing, "duo", 500, 120)).toEqual({ closedDeg: 30, openDeg: 120 });
+  });
+
+  it("is at rest outside a segment, and inside one that does not move the fold", () => {
+    expect(deviceFoldRangeAt(null, "duo", 500, 180)).toBeNull();
+    expect(deviceFoldRangeAt(unfold, "duo", 1000, 180)).toBeNull();
+    expect(deviceFoldRangeAt(unfold, "duo", 4000, 180)).toBeNull();
+    // The laptop's lid moves in that segment, but its fold does not.
+    expect(deviceFoldRangeAt(unfold, "laptop", 500, 180)).toBeNull();
+  });
+
+  it("survives a parse, where a non-numeric angle drops alone", () => {
+    const parsed = parseSceneDoc(
+      {
+        version: 1,
+        deviceTrack: {
+          keys: [
+            {
+              id: "k1",
+              tMs: 0,
+              pose: { duo: { foldDeg: 30, scale: 2 }, bad: { foldDeg: "wide" } },
+            },
+          ],
+          segments: [],
+        },
+      },
+      "test",
+    );
+    expect(parsed?.deviceTrack?.keys[0].pose.duo).toEqual({ foldDeg: 30, scale: 2 });
+    expect(parsed?.deviceTrack?.keys[0].pose.bad).toEqual({});
   });
 });

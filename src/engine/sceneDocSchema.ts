@@ -36,6 +36,7 @@ import type {
 } from "../toolkit/device/Device";
 import type { FrameOverrideSpec } from "../toolkit/frame/types";
 import type { SceneDocDof } from "./dof";
+import type { DeviceFoldTransitionSpec } from "./foldTransition";
 import { parseFrameOverride } from "./frameSchema";
 import { normalizeLighting } from "./sceneLighting";
 import {
@@ -80,11 +81,19 @@ export interface SceneDocDeviceSpec {
   model: string;
   colour?: string;
   media?: DeviceMediaSpec;
+  /** Foldables only: the outside display's media (`media` is the inside one). */
+  coverMedia?: DeviceMediaSpec;
   placement?: DevicePlacement;
   motion?: DeviceMotionSpec;
   shadow?: DeviceShadowMode;
   /** Laptop lid opening in degrees (0 closed, default the model's authored angle); ignored by devices with no hinge. */
   lidDeg?: number;
+  /** Foldables only: the hinge angle in degrees (0 closed, 180 open flat, default open). */
+  foldDeg?: number;
+  /** Foldables only: light both displays at every angle, instead of handing power from the outside one to the inside one as it opens. */
+  bothScreensOn?: boolean;
+  /** Foldables only: how the displays hand over as it folds. */
+  foldTransition?: DeviceFoldTransitionSpec;
 }
 
 export type SceneImageHost = "stage" | "overlay";
@@ -175,13 +184,15 @@ export interface SceneDocDeviceLayout {
   devices?: Record<string, SceneDocDeviceLayoutDelta>;
 }
 
-/** One device's pose at a key: a DELTA on whatever the scene already resolves for it (the layout block, or its own placement), so the motion presets keep layering on top and deleting the track reverts exactly. Offsets and rotations add, scale multiplies, and `lidDeg` is the one absolute (an angle has no meaningful delta). Every field is optional and an absent one holds the device's resting value, the lighting-pose rule. */
+/** One device's pose at a key: a DELTA on whatever the scene already resolves for it (the layout block, or its own placement), so the motion presets keep layering on top and deleting the track reverts exactly. Offsets and rotations add, scale multiplies, and the hinge angles (`lidDeg`, `foldDeg`) are the absolutes (an angle has no meaningful delta). Every field is optional and an absent one holds the device's resting value, the lighting-pose rule. */
 export interface SceneDocDevicePose {
   offset?: [number, number, number];
   rotationDeg?: [number, number, number];
   scale?: number;
   /** Laptops only: the lid opening this key holds, in degrees. */
   lidDeg?: number;
+  /** Foldables only: the hinge angle this key holds, in degrees. */
+  foldDeg?: number;
 }
 
 /** One device-track key: a time plus the poses it moves, by device id. A device absent from `pose` holds its resting pose through that key. */
@@ -617,6 +628,8 @@ export interface SceneDocCompareDeviceAppearance {
 /** Side B ("after") of a comparison: every field optional, absent means same as side A (the base doc). Device-keyed maps override screen media or appearance; the other fields replace the doc's own values for side B only. */
 export interface SceneDocCompareSide {
   media?: Record<string, DeviceMediaSpec>;
+  /** The same override for a foldable's outside display. */
+  coverMedia?: Record<string, DeviceMediaSpec>;
   deviceAppearance?: Record<string, SceneDocCompareDeviceAppearance>;
   themeId?: string;
   background?: ThemeBackground;
@@ -1073,6 +1086,7 @@ function parseDeviceTrack(raw: unknown, source: string): SceneDoc["deviceTrack"]
       if (finiteV3(raw.rotationDeg)) out.rotationDeg = [...raw.rotationDeg];
       if (finiteNum(raw.scale)) out.scale = raw.scale;
       if (finiteNum(raw.lidDeg)) out.lidDeg = raw.lidDeg;
+      if (finiteNum(raw.foldDeg)) out.foldDeg = raw.foldDeg;
       pose[deviceId] = out;
     }
     keys.push({ id: entry.id, tMs: entry.tMs, pose });
@@ -1166,9 +1180,11 @@ function parseCompare(raw: unknown, source: string): SceneDocCompare | undefined
       const lighting = normalizeLighting(b.lighting, `${source} compare.b`);
       if (lighting) side.lighting = lighting;
     }
-    if (typeof b.media === "object" && b.media !== null && !Array.isArray(b.media)) {
+    for (const field of ["media", "coverMedia"] as const) {
+      const rawMap = b[field];
+      if (typeof rawMap !== "object" || rawMap === null || Array.isArray(rawMap)) continue;
       const media: Record<string, DeviceMediaSpec> = {};
-      for (const [id, m] of Object.entries(b.media as Record<string, unknown>)) {
+      for (const [id, m] of Object.entries(rawMap as Record<string, unknown>)) {
         const spec = m as DeviceMediaSpec | null;
         if (
           spec &&
@@ -1179,10 +1195,10 @@ function parseCompare(raw: unknown, source: string): SceneDocCompare | undefined
         ) {
           media[id] = spec;
         } else {
-          console.warn(`[sceneDoc] ${source}: compare.b.media["${id}"] is malformed, dropped`);
+          console.warn(`[sceneDoc] ${source}: compare.b.${field}["${id}"] is malformed, dropped`);
         }
       }
-      if (Object.keys(media).length > 0) side.media = media;
+      if (Object.keys(media).length > 0) side[field] = media;
     }
     if (
       typeof b.deviceAppearance === "object" &&

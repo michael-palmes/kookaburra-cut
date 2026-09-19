@@ -153,3 +153,39 @@ describe("device routing", () => {
     });
   });
 });
+
+describe("a foldable's outside display", () => {
+  const folded = (): SceneDoc => ({
+    version: 1,
+    devices: [
+      {
+        id: "d1",
+        model: "iphone-duo",
+        media: { src: "in.mp4", kind: "video" },
+        coverMedia: { src: "out.mp4", kind: "video" },
+      },
+    ],
+    compare: { b: { coverMedia: { d1: { src: "after-out.mp4", kind: "video" } } } },
+  });
+
+  it("routes Before to the device and After to side B, per display", () => {
+    expect(deviceSideRouting(folded(), "d1", "a", "cover")).toMatchObject({
+      media: { src: "out.mp4" },
+      mediaTarget: "deviceCover",
+      editVideoTarget: "deviceCover",
+    });
+    expect(deviceSideRouting(folded(), "d1", "b", "cover")).toMatchObject({
+      media: { src: "after-out.mp4" },
+      inheritsMedia: false,
+      mediaTarget: "compareDeviceCover",
+    });
+  });
+
+  it("keeps the inside display inheriting while only the outside one is overridden", () => {
+    expect(deviceSideRouting(folded(), "d1", "b")).toMatchObject({
+      media: { src: "in.mp4" },
+      inheritsMedia: true,
+      mediaTarget: "compareDevice",
+    });
+  });
+});

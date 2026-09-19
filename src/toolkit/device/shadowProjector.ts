@@ -1,5 +1,6 @@
 import type { V3 } from "../types";
 import type { DeviceSpec } from "./catalog";
+import { clampFoldDeg, foldCentreOffset } from "./foldPose";
 
 // ── Device cast shadows (export contract) ────────────────────────────
 // ONE analytic projector serves all three presentation modes. Each rigid slab of the device's
@@ -255,6 +256,24 @@ export interface ShadowPose {
   introScale: number;
   /** Lid opening in degrees; ignored by devices with no hinge. */
   lidDeg: number;
+  /** Fold angle in degrees (0 closed, 180 open flat); ignored by devices that do not fold. */
+  foldDeg?: number;
+}
+
+/** The catalogue fields a silhouette reads. */
+type ShadowDeviceSpec = Pick<
+  DeviceSpec,
+  "layoutWidth" | "fittedHeight" | "shadow" | "lid" | "fold"
+>;
+
+interface FittedSlab {
+  center: V3;
+  half: [number, number];
+  thickness: number;
+  radius: number;
+  pitch: number;
+  /** Foldables only: the panel turned about local Y instead of pitched about X. */
+  yaw?: number;
 }
 
 const cross = (a: V3, b: V3): V3 => [
@@ -286,11 +305,44 @@ function applyBasis(basis: [V3, V3, V3], p: V3): V3 {
   ];
 }
 
-/** The slabs a device casts from, in its own fitted frame (before pose): one upright rounded rect for a handset, a flat base plus its hinged lid for a laptop. `pitch` turns a slab about local X, 0 standing it upright facing +Z and +90 laying it flat facing up. */
-function fittedSlabs(
-  spec: Pick<DeviceSpec, "layoutWidth" | "fittedHeight" | "shadow" | "lid">,
-  lidDeg: number,
-): Array<{ center: V3; half: [number, number]; thickness: number; radius: number; pitch: number }> {
+/** A foldable's two upright panels: the camera half static, the cover half swinging about the vertical hinge that runs down their shared inner-face plane. Both ride the same auto-centre shift `Device` renders with, so the cast follows the device as it glides. */
+function foldSlabs(spec: ShadowDeviceSpec, foldDeg: number): FittedSlab[] | null {
+  const fold = spec.fold;
+  const hinge = spec.shadow.fold;
+  if (!fold || !hinge) return null;
+  const deg = clampFoldDeg(fold, foldDeg);
+  const theta = deg * DEG2RAD;
+  const a = fold.anchorSide;
+  const w = fold.halfWidth;
+  const t = spec.shadow.thickness;
+  const cx = foldCentreOffset(fold, deg);
+  // The cover panel's width axis from the hinge, and its body's side of the inner face, in the XZ plane.
+  const along: [number, number] = [a * Math.cos(theta), Math.sin(theta)];
+  const body: [number, number] = [-a * Math.sin(theta), Math.cos(theta)];
+  const panel = {
+    half: [w / 2, spec.fittedHeight / 2] as [number, number],
+    thickness: t,
+    radius: spec.shadow.radius,
+    pitch: 0,
+  };
+  return [
+    { ...panel, center: [cx + (a * w) / 2, 0, hinge.hingeZ - t / 2] },
+    {
+      ...panel,
+      center: [
+        cx + (along[0] * w) / 2 + (body[0] * t) / 2,
+        0,
+        hinge.hingeZ + (along[1] * w) / 2 + (body[1] * t) / 2,
+      ],
+      yaw: Math.atan2(-along[1], along[0]),
+    },
+  ];
+}
+
+/** The slabs a device casts from, in its own fitted frame (before pose): one upright rounded rect for a handset, a flat base plus its hinged lid for a laptop, two hinged panels for a foldable. `pitch` turns a slab about local X, 0 standing it upright facing +Z and +90 laying it flat facing up. */
+function fittedSlabs(spec: ShadowDeviceSpec, lidDeg: number, foldDeg: number): FittedSlab[] {
+  const folded = foldSlabs(spec, foldDeg);
+  if (folded) return folded;
   const shadow = spec.shadow;
   const halfWidth = spec.layoutWidth / 2;
   if (!shadow.base || !shadow.lid) {
@@ -332,18 +384,16 @@ function fittedSlabs(
 }
 
 /** The posed slabs in the device group's local frame: the fitted silhouette rotated, scaled and lifted exactly as the inner animated group renders it. */
-export function deviceShadowSlabs(
-  spec: Pick<DeviceSpec, "layoutWidth" | "fittedHeight" | "shadow" | "lid">,
-  pose: ShadowPose,
-): ShadowSlab[] {
+export function deviceShadowSlabs(spec: ShadowDeviceSpec, pose: ShadowPose): ShadowSlab[] {
   const basis = basisFromEuler(pose.rotation);
   const k = pose.scale * pose.introScale;
-  return fittedSlabs(spec, pose.lidDeg).map((slab) => {
+  return fittedSlabs(spec, pose.lidDeg, pose.foldDeg ?? 0).map((slab) => {
     const cp = Math.cos(slab.pitch);
     const sp = Math.sin(slab.pitch);
-    // Pitch about local X: u is untouched, v and n turn with it.
-    const localU: V3 = [1, 0, 0];
-    const localV: V3 = [0, cp, sp];
+    // Pitch about local X: u is untouched, v and n turn with it. A foldable's panel yaws about Y instead, on its own branch so every other device's arithmetic is literally unchanged.
+    const yawed = slab.yaw !== undefined;
+    const localU: V3 = yawed ? [Math.cos(slab.yaw ?? 0), 0, -Math.sin(slab.yaw ?? 0)] : [1, 0, 0];
+    const localV: V3 = yawed ? [0, 1, 0] : [0, cp, sp];
     const localN: V3 = cross(localU, localV);
     const center = applyBasis(basis, scaled(slab.center, k));
     return {

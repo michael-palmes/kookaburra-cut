@@ -6,10 +6,12 @@ vi.mock("./modelUrl", () => ({
   iphone17ProModelUrl: "/placeholder-phone.glb",
   macbookPro16ModelUrl: "/placeholder-phone.glb",
   ipadPro13ModelUrl: "/placeholder-phone.glb",
+  iphoneDuoModelUrl: "/placeholder-phone.glb",
   iphone15ProModelAvailable: false,
   iphone17ProModelAvailable: false,
   macbookPro16ModelAvailable: false,
   ipadPro13ModelAvailable: false,
+  iphoneDuoModelAvailable: false,
 }));
 
 import {
@@ -34,6 +36,7 @@ describe("device availability in a clean clone", () => {
     expect(isDeviceAvailable("iphone-17-pro")).toBe(false);
     expect(resolveAvailableDeviceId("iphone-17-pro")).toBe("android");
     expect(resolveAvailableDeviceId("ipad-pro-13")).toBe("android");
+    expect(resolveAvailableDeviceId("iphone-duo")).toBe("android");
     expect(resolveAvailableDeviceId("missing-device")).toBe("android");
     expect(resolveAvailableDeviceId("__proto__")).toBe("android");
     expect(resolveAvailableDeviceId("constructor")).toBe("android");

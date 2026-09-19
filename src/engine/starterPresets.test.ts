@@ -52,11 +52,12 @@ describe("canonical scene starters", () => {
       expect(followMediaSources(parseSceneDoc(replaced, id))).toEqual(["assets/replacement.mp4"]);
     }
   });
-  it("ships the 15 pictured starters in order alongside the existing six presets", () => {
+  it("ships the 15 pictured starters in order alongside the other seven presets", () => {
     expect(starters.map((entry) => entry.id)).toEqual(expected);
-    expect(listPresets()).toHaveLength(21);
+    expect(listPresets()).toHaveLength(22);
     for (const id of [
       "hero-device",
+      "duo-unfold",
       "title-opener",
       "feature-compare",
       "chart-reveal",

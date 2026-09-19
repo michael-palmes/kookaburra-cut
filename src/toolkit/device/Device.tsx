@@ -1,5 +1,6 @@
 import { Environment, Lightformer, useGLTF, useTexture } from "@react-three/drei";
 import {
+  type MutableRefObject,
   useCallback,
   useContext,
   useEffect,
@@ -9,30 +10,46 @@ import {
   useState,
 } from "react";
 import {
+  type AnimationClip,
   Box3,
   type BufferAttribute,
   Color,
   type Group,
+  type Interpolant,
+  type KeyframeTrack,
   type Material,
   type Mesh,
   MeshBasicMaterial,
   type MeshStandardMaterial,
   type Object3D,
+  type SkinnedMesh,
   Vector3,
 } from "three";
+import { clone as cloneSkinned } from "three/examples/jsm/utils/SkeletonUtils.js";
 import { useClipTexture } from "../../engine/clipTexture";
 import { deviceAcknowledgementMatches, useDeviceEditStore } from "../../engine/deviceEditStore";
 import { useSceneConsumesDevices } from "../../engine/deviceRegistry";
 import { ease } from "../../engine/ease";
 import { isExporting } from "../../engine/exportState";
-import { useFormat } from "../../engine/format";
+import {
+  type DeviceFoldTransitionSpec,
+  FOLD_EYE_HEIGHTS,
+  foldOpenedAtMs,
+  foldScreensAt,
+  resolveFoldSwitchDeg,
+} from "../../engine/foldTransition";
+import { FPS, useFormat } from "../../engine/format";
 import { useGizmoSectionOpen } from "../../engine/gizmoSections";
 import { presentSlideshowActive } from "../../engine/presentMode";
 import { registerPresentTiming } from "../../engine/presentTimingRegistry";
 import { resolveAssetUrl } from "../../engine/project";
 import { SceneOutline } from "../../engine/SceneOutline";
 import { ProjectIdContext, SceneDocContext, useSceneContext } from "../../engine/sceneContext";
-import { deviceTrackPoseAt, resolveDeviceTrack } from "../../engine/sceneDeviceTrack";
+import {
+  deviceFoldRangeAt,
+  deviceTrackPoseAt,
+  resolveDeviceTrack,
+} from "../../engine/sceneDeviceTrack";
 import type { SceneDeviceProps } from "../../engine/sceneDoc";
 import { coverCropRect, remapUv, type UvRect } from "../../engine/screenFit";
 import { useTimeline } from "../../engine/timeline";
@@ -45,11 +62,20 @@ import {
   AVAILABLE_DEVICE_IDS,
   DEVICE_CATALOG,
   type DeviceId,
+  type DeviceSpec,
   deviceColour,
   resolveAvailableDeviceId,
 } from "./catalog";
 import { DeviceGizmo } from "./DeviceGizmo";
 import { DeviceShadow } from "./DeviceShadow";
+import { clampFoldDeg, foldCentreOffset, foldVisibleWidth } from "./foldPose";
+import {
+  applyFoldScreenShader,
+  bindFoldScreenHome,
+  measureFoldHome,
+  setFoldScreenCrop,
+  setFoldScreenState,
+} from "./foldScreenShader";
 import { type DevicePose, deviceGizmoMovedY } from "./gizmoCommit";
 import { resolveDeviceLayout } from "./layout";
 import { HIDDEN_NODES } from "./models";
@@ -66,6 +92,8 @@ export interface DeviceMediaSpec {
   startMs?: number;
   /** Cover-fit is the rule: fill the screen, keep the media's aspect, crop the overflow. */
   fit?: "cover";
+  /** Foldable inside display only: count `startMs` from the moment the fold opens past the switch angle, so the app carries on as the device opens. Inert without a fold that opens. */
+  startOn?: "open";
 }
 
 export type DeviceMotionPreset = "none" | "turntable" | "float" | "tilt-reveal" | "push-in";
@@ -108,6 +136,8 @@ export interface DeviceProps {
   /** Colour id from the catalog (default: the model's default colour). */
   colour?: string;
   media?: DeviceMediaSpec;
+  /** Foldables only: the outside display's media (`media` is the inside one). */
+  coverMedia?: DeviceMediaSpec;
   placement?: DevicePlacement;
   motion?: DeviceMotionSpec;
   /** Presentation shadow: defaults to `"soft"` and remains independent from real `<SceneStage>` map shadows; an explicit value wins. */
@@ -116,6 +146,81 @@ export interface DeviceProps {
   lit?: boolean;
   /** Laptop lid opening in degrees (0 closed, default the model's authored angle); ignored by devices with no hinge. */
   lidDeg?: number;
+  /** Foldable hinge angle in degrees (0 closed, 180 open flat, default open); ignored by devices that do not fold. */
+  foldDeg?: number;
+  /** Foldables only: light both displays at every angle instead of handing power over as it opens. */
+  bothScreensOn?: boolean;
+  foldTransition?: DeviceFoldTransitionSpec;
+}
+
+/** One sampled channel of a foldable's clip, bound to a node of this device's private clone. */
+interface FoldChannel {
+  node: Object3D;
+  path: "position" | "quaternion" | "scale";
+  evaluate: (time: number) => ArrayLike<number>;
+}
+
+/** Binds the glb's fold clip to a clone's nodes. Sampled directly (no mixer, which carries state between frames) so a pose is a pure function of the angle. */
+function bindFoldClip(root: Object3D, clip: AnimationClip | undefined): FoldChannel[] {
+  const channels: FoldChannel[] = [];
+  for (const track of clip?.tracks ?? []) {
+    const split = track.name.lastIndexOf(".");
+    const node = root.getObjectByName(track.name.slice(0, split));
+    const path = track.name.slice(split + 1);
+    if (!node || (path !== "position" && path !== "quaternion" && path !== "scale")) continue;
+    // `createInterpolant` is the factory the loader chose for this track's interpolation mode; three's typings omit it.
+    const interpolant = (
+      track as KeyframeTrack & { createInterpolant(): Interpolant }
+    ).createInterpolant();
+    channels.push({ node, path, evaluate: (time) => interpolant.evaluate(time) });
+  }
+  return channels;
+}
+
+/** A foldable's rig, bound once per clone: its clip channels, each display's home plane measured off the rig posed at that display's home angle (inside: open flat; outside: closed), and the fixed front eye the handover projects from, in the device's root frame. Inert for every other device. */
+function bindFoldRig(
+  root: Object3D,
+  animations: AnimationClip[],
+  spec: DeviceSpec,
+  screens: Mesh[],
+  coverScreens: Mesh[],
+  materials: { main: Material; cover: Material },
+): { foldChannels: FoldChannel[]; foldEye: Vector3 | null } {
+  const fold = spec.fold;
+  if (!fold) return { foldChannels: [], foldEye: null };
+  const foldChannels = bindFoldClip(
+    root,
+    animations.find((clip) => clip.name === fold.clip),
+  );
+  const poseAt = (deg: number) => {
+    for (const channel of foldChannels) {
+      channel.node[channel.path].fromArray(channel.evaluate(deg / fold.degPerSecond) as number[]);
+    }
+  };
+  poseAt(fold.openDeg);
+  const mainHome = measureFoldHome(root, screens);
+  bindFoldScreenHome(root, screens, materials.main, mainHome);
+  poseAt(0);
+  bindFoldScreenHome(root, coverScreens, materials.cover, measureFoldHome(root, coverScreens));
+  // Level with the inside display's centre, about arm's length out; x follows the auto-centre each frame.
+  const height = Math.abs(mainHome.rect.w);
+  const foldEye = new Vector3(
+    0,
+    mainHome.rect.y + mainHome.rect.w / 2,
+    mainHome.z + FOLD_EYE_HEIGHTS * height,
+  );
+  return { foldChannels, foldEye };
+}
+
+/** What the single screen of a stand-in model shows: a foldable that falls back to the portrait Android leads with its portrait outside media, since its inside media is landscape. */
+export function fallbackScreenMedia(
+  model: DeviceId,
+  renderModel: DeviceId,
+  media: DeviceMediaSpec | undefined,
+  coverMedia: DeviceMediaSpec | undefined,
+): DeviceMediaSpec | undefined {
+  const standingIn = renderModel !== model && DEVICE_CATALOG[model]?.coverScreen !== undefined;
+  return standingIn ? (coverMedia ?? media) : media;
 }
 
 export function shouldNeutraliseDeviceMotion(sectionOpen: boolean, exporting: boolean): boolean {
@@ -185,6 +290,8 @@ function materialName(material: Material | Material[]): string | undefined {
 
 /** Bakes a cover-crop rect into the screen mesh's UVs; stashes the pristine UV set on first bake so a media change re-bakes from the original (re-baking the same rect is a no-op via `uvRectKey`), cloning geometry first since `Object3D.clone` shares geometry with drei's cache. */
 function bakeScreenUvs(mesh: Mesh, rect: UvRect): void {
+  // A foldable's display shader turns media UVs back into panel coordinates, so it needs the same rect.
+  if (!Array.isArray(mesh.material)) setFoldScreenCrop(mesh.material, rect);
   const key = `${rect.u0}/${rect.v0}/${rect.u1}/${rect.v1}`;
   if (mesh.userData.uvRectKey === key) return;
   if (!mesh.userData.screenBaseUv) {
@@ -216,8 +323,9 @@ function ScreenVideo(props: {
   material: MeshBasicMaterial;
   screens: Mesh[];
   screenAspect: number;
+  levelRef: MutableRefObject<number>;
 }) {
-  const { src, startMs, material, screens, screenAspect } = props;
+  const { src, startMs, material, screens, screenAspect, levelRef } = props;
 
   // The readiness node lives in this component's own subtree since own-subtree refs attach before layout effects run; a parent's ref is still null during the mount commit, which previously left the binding effect bailing on stale deps and the screen black for the whole clamp window.
   const readyRef = useRef<Group>(null);
@@ -236,7 +344,11 @@ function ScreenVideo(props: {
     material.color.set(0xffffff);
     material.needsUpdate = true;
   }, [material, screens, screenAspect]);
-  const onBound = useCallback(() => material.color.set(0xffffff), [material]);
+  // Binds land asynchronously, after Device has set this frame's brightness, so they read the level instead of forcing white.
+  const onBound = useCallback(
+    () => material.color.setScalar(levelRef.current),
+    [material, levelRef],
+  );
 
   const { info } = useClipTexture({
     src,
@@ -263,6 +375,7 @@ function ScreenImage(props: {
   material: MeshBasicMaterial;
   screens: Mesh[];
   screenAspect: number;
+  levelRef: MutableRefObject<number>;
   projectId: string;
 }) {
   const { src, projectId, ...rest } = props;
@@ -281,21 +394,49 @@ function ScreenImageLoaded(props: {
   material: MeshBasicMaterial;
   screens: Mesh[];
   screenAspect: number;
+  levelRef: MutableRefObject<number>;
 }) {
-  const { url, material, screens, screenAspect } = props;
+  const { url, material, screens, screenAspect, levelRef } = props;
   const loaded = useTexture(url);
   const tex = useScreenImageTexture(loaded);
 
   useLayoutEffect(() => {
     material.map = tex;
-    material.color.set(0xffffff);
+    material.color.setScalar(levelRef.current);
     material.needsUpdate = true;
     const image = tex.image as { width?: number; height?: number } | undefined;
     const aspect = image?.width && image?.height ? image.width / image.height : screenAspect;
     const rect = coverCropRect(aspect, screenAspect, false);
     for (const mesh of screens) bakeScreenUvs(mesh, rect);
-  }, [tex, material, screens, screenAspect]);
+  }, [tex, material, screens, screenAspect, levelRef]);
 
+  return null;
+}
+
+/** One display's media mount: video, image, or nothing (the material stays black). */
+function ScreenMedia(props: {
+  media: DeviceMediaSpec | undefined;
+  material: MeshBasicMaterial;
+  screens: Mesh[];
+  screenAspect: number;
+  levelRef: MutableRefObject<number>;
+  projectId: string;
+  /** Added to a video's own start delay: when a foldable opened, for `startOn: "open"`. */
+  startOffsetMs?: number;
+}) {
+  const { media, projectId, startOffsetMs = 0, ...screen } = props;
+  if (media?.kind === "video") {
+    return (
+      <ScreenVideo src={media.src} startMs={startOffsetMs + (media.startMs ?? 0)} {...screen} />
+    );
+  }
+  if (media?.kind === "image") {
+    return (
+      <AssetBoundary key={media.src} label={media.src}>
+        <ScreenImage src={media.src} projectId={projectId} {...screen} />
+      </AssetBoundary>
+    );
+  }
   return null;
 }
 
@@ -306,11 +447,15 @@ export function Device(props: DeviceProps) {
     model,
     colour,
     media,
+    coverMedia,
     placement = {},
     motion = { preset: "none" },
     shadow,
     lit,
     lidDeg,
+    foldDeg,
+    bothScreensOn = false,
+    foldTransition,
   } = props;
   // The layout stamp wins over the scalar fields (see DevicePlacement.resolvedLayout).
   const position = placement.resolvedLayout?.position ?? placement.position ?? [0, 0, 0];
@@ -413,92 +558,123 @@ export function Device(props: DeviceProps) {
     }
   }, [model, renderModel]);
 
-  const { scene } = useGLTF(activeSpec.glbUrl);
+  const { scene, animations } = useGLTF(activeSpec.glbUrl);
   // Memoised because custom tints mint a fresh spec per call, and colourSpec keys the clone below.
   const colourSpec = useMemo(() => deviceColour(activeSpec, colour), [activeSpec, colour]);
 
   // The media material is owned here (StrictMode-safe, see VideoClip) and starts black so a device with no media, or frames not yet bound, shows a dark plausible screen.
+  // Only a foldable's displays take the blur handover patch; every other device keeps the stock material and its program.
+  const foldMainAspect = activeSpec.fold ? activeSpec.screen.aspect : undefined;
+  const foldCoverAspect = activeSpec.fold ? activeSpec.coverScreen?.aspect : undefined;
   const screenMaterial = useMemo(() => {
     const m = new MeshBasicMaterial({ color: new Color(0x000000) });
     m.toneMapped = false;
+    if (foldMainAspect !== undefined) applyFoldScreenShader(m, foldMainAspect);
     return m;
-  }, []);
+  }, [foldMainAspect]);
   useLayoutEffect(() => () => screenMaterial.dispose(), [screenMaterial]);
+  // A foldable's outside display; black until it has media, like the primary.
+  const coverMaterial = useMemo(() => {
+    const m = new MeshBasicMaterial({ color: new Color(0x000000) });
+    m.toneMapped = false;
+    if (foldCoverAspect !== undefined) applyFoldScreenShader(m, foldCoverAspect);
+    return m;
+  }, [foldCoverAspect]);
+  useLayoutEffect(() => () => coverMaterial.dispose(), [coverMaterial]);
+  // Display brightness, 0 off to 1 lit; a foldable's fold angle drives them, every other device holds 1.
+  const screenLevel = useRef(1);
+  const coverLevel = useRef(1);
 
   // Clone once per (model, colour) since drei's glTF cache is shared: hide helper nodes, swap the display material, and give every lit material a private clone (Object3D.clone shares materials) so colour overrides and GSAA apply without touching the shared cache that DeviceMockup/HeroObject also read; then recentre + auto-fit.
-  const { root, fit, screens, lidNode, lidBaseX, bodySize } = useMemo(() => {
-    const clone = scene.clone(true);
-    const screens: Mesh[] = [];
-    const hide: Object3D[] = [];
-    let lidNode: Object3D | null = null;
-    const prepared = new Map<Material, Material>();
-    clone.traverse((obj: Object3D) => {
-      if (HIDDEN_NODES.has(obj.name)) {
-        hide.push(obj);
-        return;
-      }
-      if (activeSpec.lid && obj.name === activeSpec.lid.node) lidNode = obj;
-      const mesh = obj as Mesh;
-      if (!mesh.isMesh) return;
-      const name = materialName(mesh.material);
-      if (name === activeSpec.screen.material) {
-        mesh.material = screenMaterial;
-        screens.push(mesh);
-        return;
-      }
-      if (Array.isArray(mesh.material)) return;
-      let preparedMaterial = prepared.get(mesh.material);
-      if (!preparedMaterial) {
-        preparedMaterial = mesh.material.clone();
-        const override = name ? colourSpec.overrides[name] : undefined;
-        if (override?.color) {
-          (preparedMaterial as unknown as { color?: Color }).color?.set(override.color);
+  const { root, fit, screens, coverScreens, lidNode, lidBaseX, bodySize, foldChannels, foldEye } =
+    useMemo(() => {
+      // Object3D.clone leaves skinned meshes bound to the cached skeleton; only a foldable pays for the rebinding clone, so every other device keeps its exact path.
+      const clone = activeSpec.fold ? cloneSkinned(scene) : scene.clone(true);
+      const screens: Mesh[] = [];
+      const coverScreens: Mesh[] = [];
+      const hide: Object3D[] = [];
+      let lidNode: Object3D | null = null;
+      const prepared = new Map<Material, Material>();
+      clone.traverse((obj: Object3D) => {
+        if (HIDDEN_NODES.has(obj.name)) {
+          hide.push(obj);
+          return;
         }
-        const std = preparedMaterial as MeshStandardMaterial;
-        if (override?.roughness !== undefined) std.roughness = override.roughness;
-        if (override?.metalness !== undefined) std.metalness = override.metalness;
-        applyDeviceGsaa(preparedMaterial);
-        prepared.set(mesh.material, preparedMaterial);
-      }
-      mesh.material = preparedMaterial;
-    });
-    for (const obj of hide) obj.removeFromParent();
+        if (activeSpec.lid && obj.name === activeSpec.lid.node) lidNode = obj;
+        const mesh = obj as Mesh;
+        if (!mesh.isMesh) return;
+        // A skinned mesh culls against its rest-pose bounds, which a fold leaves far behind.
+        if ((mesh as SkinnedMesh).isSkinnedMesh) mesh.frustumCulled = false;
+        const name = materialName(mesh.material);
+        if (name === activeSpec.screen.material) {
+          mesh.material = screenMaterial;
+          screens.push(mesh);
+          return;
+        }
+        if (activeSpec.coverScreen && name === activeSpec.coverScreen.material) {
+          mesh.material = coverMaterial;
+          coverScreens.push(mesh);
+          return;
+        }
+        if (Array.isArray(mesh.material)) return;
+        let preparedMaterial = prepared.get(mesh.material);
+        if (!preparedMaterial) {
+          preparedMaterial = mesh.material.clone();
+          const override = name ? colourSpec.overrides[name] : undefined;
+          if (override?.color) {
+            (preparedMaterial as unknown as { color?: Color }).color?.set(override.color);
+          }
+          const std = preparedMaterial as MeshStandardMaterial;
+          if (override?.roughness !== undefined) std.roughness = override.roughness;
+          if (override?.metalness !== undefined) std.metalness = override.metalness;
+          applyDeviceGsaa(preparedMaterial);
+          prepared.set(mesh.material, preparedMaterial);
+        }
+        mesh.material = preparedMaterial;
+      });
+      for (const obj of hide) obj.removeFromParent();
 
-    clone.updateMatrixWorld(true);
-    const box = new Box3().setFromObject(clone);
-    const size = box.getSize(new Vector3());
-    const center = box.getCenter(new Vector3());
-    clone.position.sub(center);
-    const fitAxis = activeSpec.fit?.axis ?? "height";
-    const fitTarget = activeSpec.fit?.target ?? TARGET_WORLD_HEIGHT;
-    const fit =
-      fitAxis === "width"
-        ? size.x > 1e-6
-          ? fitTarget / size.x
-          : 1
-        : size.y > 1e-6
-          ? fitTarget / size.y
-          : 1;
-    // The hinge's authored rotation; the lid effect scales it by lidDeg / openDeg.
-    const lidBaseX = lidNode ? (lidNode as Object3D).rotation.x : 0;
-    // Perf-probe marker: the no-devices elimination pass hides these roots.
-    clone.userData.kookaburraDevice = true;
-    return {
-      root: clone,
-      fit,
-      screens,
-      lidNode,
-      lidBaseX,
-      bodySize: [size.x, size.y, size.z] as V3,
-    };
-  }, [scene, activeSpec, colourSpec, screenMaterial]);
+      clone.updateMatrixWorld(true);
+      const box = new Box3().setFromObject(clone);
+      const size = box.getSize(new Vector3());
+      const center = box.getCenter(new Vector3());
+      clone.position.sub(center);
+      const fitAxis = activeSpec.fit?.axis ?? "height";
+      const fitTarget = activeSpec.fit?.target ?? TARGET_WORLD_HEIGHT;
+      const fit =
+        fitAxis === "width"
+          ? size.x > 1e-6
+            ? fitTarget / size.x
+            : 1
+          : size.y > 1e-6
+            ? fitTarget / size.y
+            : 1;
+      // The hinge's authored rotation; the lid effect scales it by lidDeg / openDeg.
+      const lidBaseX = lidNode ? (lidNode as Object3D).rotation.x : 0;
+      // Perf-probe marker: the no-devices elimination pass hides these roots.
+      clone.userData.kookaburraDevice = true;
+      return {
+        root: clone,
+        fit,
+        screens,
+        coverScreens,
+        lidNode,
+        lidBaseX,
+        bodySize: [size.x, size.y, size.z] as V3,
+        ...bindFoldRig(clone, animations, activeSpec, screens, coverScreens, {
+          main: screenMaterial,
+          cover: coverMaterial,
+        }),
+      };
+    }, [scene, animations, activeSpec, colourSpec, screenMaterial, coverMaterial]);
   const fittedHeight = deviceFittedHeight(activeSpec.id);
 
   // The opt-in keyframe track: a delta on the resolved placement, sampled before the motion presets so both layer.
   const sceneDoc = useContext(SceneDocContext);
   const track = useMemo(() => resolveDeviceTrack(sceneDoc ?? undefined), [sceneDoc]);
   const authoredLidDeg = lidDeg ?? activeSpec.lid?.defaultDeg;
-  const keyed = deviceTrackPoseAt(track, id ?? "", localMs, authoredLidDeg);
+  const authoredFoldDeg = activeSpec.fold ? (foldDeg ?? activeSpec.fold.defaultDeg) : undefined;
+  const keyed = deviceTrackPoseAt(track, id ?? "", localMs, authoredLidDeg, authoredFoldDeg);
 
   // Lid angle: the doc's pose, or the track's when a key holds one; a pure function of the frame either way, applied pre-paint.
   const renderedLidDeg = keyed.lidDeg ?? authoredLidDeg;
@@ -510,6 +686,86 @@ export function Device(props: DeviceProps) {
     );
     (lidNode as Object3D).rotation.x = lidBaseX * (open / activeSpec.lid.openDeg);
   }, [lidNode, lidBaseX, renderedLidDeg, activeSpec]);
+
+  // Fold: the doc's angle, or the track's when a key holds one. The clip is keyed one frame per degree with the camera half baked static, so posing is a lookup, pure per frame and applied pre-paint like the lid.
+  const fold = activeSpec.fold;
+  const renderedFoldDeg = fold
+    ? clampFoldDeg(fold, keyed.foldDeg ?? authoredFoldDeg ?? fold.defaultDeg)
+    : undefined;
+  useLayoutEffect(() => {
+    if (!fold || renderedFoldDeg === undefined) return;
+    const time = renderedFoldDeg / fold.degPerSecond;
+    for (const channel of foldChannels) {
+      channel.node[channel.path].fromArray(channel.evaluate(time) as number[]);
+    }
+  }, [fold, foldChannels, renderedFoldDeg]);
+  // The handover: brightness and the blur front are set here each frame as CPU-written uniforms, and the brightness is read back by the async media binds, which would otherwise force a display to full white after this ran.
+  const switchDeg = foldTransition?.switchDeg;
+  const handoverOn = foldTransition?.enabled;
+  const handoverIntensity = foldTransition?.intensity;
+  const handoverBlur = foldTransition?.blur;
+  const handoverDarken = foldTransition?.darken;
+  // The fold animation in progress, if any: the handover plays against its range and rests otherwise, so a held Book or Flex pose is simply lit and sharp.
+  const foldRange = fold
+    ? deviceFoldRangeAt(track, id ?? "", localMs, authoredFoldDeg ?? fold.defaultDeg)
+    : null;
+  const foldClosedDeg = foldRange?.closedDeg;
+  const foldOpenDeg = foldRange?.openDeg;
+  useLayoutEffect(() => {
+    if (!fold || !foldEye || renderedFoldDeg === undefined) return;
+    const state = foldScreensAt(
+      renderedFoldDeg,
+      foldClosedDeg !== undefined && foldOpenDeg !== undefined
+        ? { closedDeg: foldClosedDeg, openDeg: foldOpenDeg }
+        : null,
+      {
+        switchDeg,
+        enabled: handoverOn,
+        intensity: handoverIntensity,
+        blur: handoverBlur,
+        darken: handoverDarken,
+      },
+      bothScreensOn,
+      fold.anchorSide,
+      fold.coverHingeEdge === "left",
+    );
+    screenLevel.current = state.main.level;
+    coverLevel.current = state.cover.level;
+    // The eye faces the device's visible centre, which the auto-centre keeps on the origin: the root's shift, undone.
+    foldEye.x = -foldCentreOffset(fold, renderedFoldDeg) / fit;
+    setFoldScreenState(screenMaterial, state.main, foldEye);
+    setFoldScreenState(coverMaterial, state.cover, foldEye);
+    // A display with no media stays black, so only a bound map takes the level.
+    if (screenMaterial.map) screenMaterial.color.setScalar(state.main.level);
+    if (coverMaterial.map) coverMaterial.color.setScalar(state.cover.level);
+  }, [
+    fold,
+    foldEye,
+    fit,
+    foldClosedDeg,
+    foldOpenDeg,
+    renderedFoldDeg,
+    switchDeg,
+    handoverOn,
+    handoverIntensity,
+    handoverBlur,
+    handoverDarken,
+    bothScreensOn,
+    screenMaterial,
+    coverMaterial,
+  ]);
+  // "Start when opened": a pure function of the track, so preview and export agree on the inside video's first frame.
+  const openedAtMs = useMemo(() => {
+    if (!fold || media?.startOn !== "open") return 0;
+    const own = authoredFoldDeg ?? fold.defaultDeg;
+    const untilMs = track?.keys.at(-1)?.tMs ?? 0;
+    const foldDegAt = (ms: number) =>
+      clampFoldDeg(fold, deviceTrackPoseAt(track, id ?? "", ms, undefined, own).foldDeg ?? own);
+    return foldOpenedAtMs(foldDegAt, untilMs, resolveFoldSwitchDeg({ switchDeg }), FPS) ?? 0;
+  }, [fold, media?.startOn, authoredFoldDeg, track, id, switchDeg]);
+  // Closed, the device covers only its camera half, so it glides back onto its own origin as it folds.
+  const foldCentreX =
+    fold && renderedFoldDeg !== undefined ? foldCentreOffset(fold, renderedFoldDeg) : 0;
 
   // Real shadows on map-shadowed stages flip the private clone's meshes; inert (no recompiles, no shadow passes) for unstaged scenes, where no shadow-casting light exists.
   useLayoutEffect(() => {
@@ -577,6 +833,7 @@ export function Device(props: DeviceProps) {
     offset: [keyed.offset[0], keyed.offset[1] + floatY, keyed.offset[2]],
     introScale,
     lidDeg: keyed.lidDeg ?? 0,
+    foldDeg: renderedFoldDeg ?? 0,
   };
   // Grounded placement: the pure anchor resolver is shared with object-bound camera aims.
   const grounded = (pose: DevicePose): V3 =>
@@ -624,10 +881,21 @@ export function Device(props: DeviceProps) {
           scale={introScale}
         >
           <group scale={animatedScale * fit}>
-            <primitive object={root} />
+            {fold ? (
+              // The fit scale sits outside, so a fitted-unit shift divides back into model units.
+              <group position={[foldCentreX / fit, 0, 0]}>
+                <primitive object={root} />
+              </group>
+            ) : (
+              <primitive object={root} />
+            )}
             {editTarget && (
               <SceneOutline
-                size={bodySize}
+                size={
+                  fold && renderedFoldDeg !== undefined
+                    ? [foldVisibleWidth(fold, renderedFoldDeg) / fit, bodySize[1], bodySize[2]]
+                    : bodySize
+                }
                 domain="devices"
                 selected={gizmoOn}
                 onSelect={() => useDeviceEditStore.getState().select(editTarget)}
@@ -635,25 +903,24 @@ export function Device(props: DeviceProps) {
             )}
           </group>
         </group>
-        {media?.kind === "video" && (
-          <ScreenVideo
-            src={media.src}
-            startMs={media.startMs ?? 0}
-            material={screenMaterial}
-            screens={screens}
-            screenAspect={activeSpec.screen.aspect}
+        <ScreenMedia
+          media={fallbackScreenMedia(model, renderModel, media, coverMedia)}
+          material={screenMaterial}
+          screens={screens}
+          screenAspect={activeSpec.screen.aspect}
+          levelRef={screenLevel}
+          projectId={projectId}
+          startOffsetMs={openedAtMs}
+        />
+        {activeSpec.coverScreen && (
+          <ScreenMedia
+            media={coverMedia}
+            material={coverMaterial}
+            screens={coverScreens}
+            screenAspect={activeSpec.coverScreen.aspect}
+            levelRef={coverLevel}
+            projectId={projectId}
           />
-        )}
-        {media?.kind === "image" && (
-          <AssetBoundary key={media.src} label={media.src}>
-            <ScreenImage
-              src={media.src}
-              material={screenMaterial}
-              screens={screens}
-              screenAspect={activeSpec.screen.aspect}
-              projectId={projectId}
-            />
-          </AssetBoundary>
         )}
       </group>
       {editTarget && gizmoOn && !exporting && (

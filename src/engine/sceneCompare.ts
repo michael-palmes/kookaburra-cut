@@ -231,6 +231,8 @@ export function deriveCompareBDoc(doc: SceneDoc | undefined): SceneDoc | null {
   for (const device of b.devices ?? []) {
     const media = side.media?.[device.id];
     if (media) device.media = media;
+    const coverMedia = side.coverMedia?.[device.id];
+    if (coverMedia) device.coverMedia = coverMedia;
     const appearance = side.deviceAppearance?.[device.id];
     if (appearance?.colour !== undefined) device.colour = appearance.colour;
     if (appearance?.shadow !== undefined) device.shadow = appearance.shadow;

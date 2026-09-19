@@ -3,6 +3,7 @@
 Run via Blender's CLI (see scripts/render-device-previews.sh):
 
     blender -b <colour>.blend --python scripts/blender-render-preview.py -- <out>.png [size] [fill] [roll]
+        [--glb <built>.glb] [--tint name=#hex,...] [--frame N] [--turn yaw,pitch]
 
 The vendor .blends ship a complete studio (active camera + area-light rig + packed HDRI
 world, Cycles) — this script only makes the shot card-friendly: transparent film (the
@@ -10,13 +11,18 @@ baked backdrops are hidden), the vendor camera dollied along its own view axis s
 subject fills a consistent fraction of the card regardless of the vendor's framing, a
 sane sample count for a small still, and a square card resolution. Output PNGs are
 COMMITTED under src/assets/device-previews/ so the app never needs Blender at runtime.
+
+`--glb` swaps the vendor's device for the app's BUILT glb inside the vendor studio, for a
+finish that has no vendor colour blend (the iPhone Duo's Night Sky): `--tint` multiplies
+named materials exactly as the catalogue's colour overrides do, `--frame` poses the glb's
+clip, and `--turn` rotates the device in front of the vendor camera.
 """
 
 import math
 import sys
 
 import bpy
-from mathutils import Vector
+from mathutils import Matrix, Vector
 
 argv = sys.argv
 argv = argv[argv.index("--") + 1 :] if "--" in argv else []
@@ -26,9 +32,62 @@ size = int(argv[1]) if len(argv) > 1 else 640
 fill = float(argv[2]) if len(argv) > 2 else 0.9
 # Camera roll (degrees about its view axis) so a portrait-authored vendor studio can
 # card a landscape device (the iPad); matches the export's corrective roll.
-roll = float(argv[3]) if len(argv) > 3 else 0.0
+roll = float(argv[3]) if len(argv) > 3 and not argv[3].startswith("--") else 0.0
+
+
+def option(name):
+    return argv[argv.index(name) + 1] if name in argv else ""
+
+
+glb = option("--glb")
+tints = dict(pair.split("=") for pair in option("--tint").split(",") if pair)
+pose_frame = int(option("--frame") or 0)
+turn = [float(a) for a in (option("--turn") or "0,0").split(",")]
 
 scene = bpy.context.scene
+
+
+def srgb_to_linear(hex_colour):
+    channels = [int(hex_colour.lstrip("#")[i : i + 2], 16) / 255 for i in (0, 2, 4)]
+    return [c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4 for c in channels] + [1.0]
+
+
+if glb:
+    # Keep the studio (camera, lights, their aim target, world); the device comes from the glb.
+    for obj in list(bpy.data.objects):
+        if obj.type in {"MESH", "ARMATURE"} or (obj.type == "EMPTY" and obj.children):
+            bpy.data.objects.remove(obj, do_unlink=True)
+    before = set(bpy.data.objects)
+    scene.render.fps = 30  # the fold clip is one frame per degree at 30 fps
+    bpy.ops.import_scene.gltf(filepath=glb)
+    # The importer adds an unrendered bone-shape helper that would skew the framing bounds.
+    for obj in [o for o in bpy.data.objects if o not in before and o.type == "MESH" and not o.data.materials]:
+        bpy.data.objects.remove(obj, do_unlink=True)
+    imported = [o for o in bpy.data.objects if o not in before]
+    scene.frame_set(pose_frame)
+    for name, hex_colour in tints.items():
+        material = bpy.data.materials.get(name)
+        if not material:
+            raise SystemExit(f"[blender-render-preview] tint material not in the glb: {name}")
+        tree = material.node_tree
+        base = next(n for n in tree.nodes if n.type == "BSDF_PRINCIPLED").inputs["Base Color"]
+        mix = tree.nodes.new("ShaderNodeMix")
+        mix.data_type, mix.blend_type = "RGBA", "MULTIPLY"
+        # The Mix node repeats its A/B/Result names per data type; 6, 7 and 2 are the colour sockets.
+        colour_a, colour_b, result = mix.inputs[6], mix.inputs[7], mix.outputs[2]
+        mix.inputs[0].default_value = 1.0
+        colour_b.default_value = srgb_to_linear(hex_colour)
+        if base.is_linked:
+            tree.links.new(base.links[0].from_socket, colour_a)
+        else:
+            colour_a.default_value = base.default_value
+        tree.links.new(result, base)
+    spin = Matrix.Rotation(math.radians(turn[0]), 4, "Z") @ Matrix.Rotation(math.radians(turn[1]), 4, "X")
+    for obj in imported:
+        if obj.parent is None:
+            obj.matrix_world = spin @ obj.matrix_world
+    bpy.context.view_layer.update()
+
 scene.render.engine = "CYCLES"
 scene.cycles.samples = 128
 scene.render.resolution_x = size

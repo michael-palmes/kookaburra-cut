@@ -1,5 +1,5 @@
 import { useGLTF } from "@react-three/drei";
-import type { Mesh, MeshStandardMaterial } from "three";
+import type { Mesh, MeshStandardMaterial, SkinnedMesh } from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import previewAndroidBlack from "../../assets/device-previews/android/black.png?url";
 import previewAndroidGraphite from "../../assets/device-previews/android/graphite.png?url";
@@ -13,6 +13,8 @@ import previewWhite from "../../assets/device-previews/iphone-15-pro/white-titan
 import preview17Orange from "../../assets/device-previews/iphone-17-pro/cosmic-orange.png?url";
 import preview17Blue from "../../assets/device-previews/iphone-17-pro/deep-blue.png?url";
 import preview17Silver from "../../assets/device-previews/iphone-17-pro/silver.png?url";
+import previewDuoNightSky from "../../assets/device-previews/iphone-duo/night-sky.png?url";
+import previewDuoStarWhite from "../../assets/device-previews/iphone-duo/star-white.png?url";
 import previewMbpSilver from "../../assets/device-previews/macbook-pro-16/silver.png?url";
 import previewMbpGrey from "../../assets/device-previews/macbook-pro-16/space-grey.png?url";
 import {
@@ -22,6 +24,8 @@ import {
   iphone15ProModelAvailable,
   iphone17ProModelAvailable,
   iphone17ProModelUrl,
+  iphoneDuoModelAvailable,
+  iphoneDuoModelUrl,
   macbookPro16ModelAvailable,
   macbookPro16ModelUrl,
   phoneModelUrl,
@@ -29,7 +33,7 @@ import {
 
 /** The device catalog: devices keyed by stable id + colour id, with build-time availability separate from document identity so a missing licensed model never rewrites a project. Real product names are a deliberate 2026-07-05 trade-dress-risk decision (see docs/decisions.md), and iphone-15-pro's model derives from a LICENSED vendor .blend (see src/assets/models/README.md) whose colour overrides are exact linear-to-sRGB baseColorFactor replacements, not approximate tints. */
 
-export type DeviceForm = "phone" | "laptop" | "tablet";
+export type DeviceForm = "phone" | "laptop" | "tablet" | "foldable";
 
 /** Named-material overrides a colour variant applies to the cloned model. */
 export interface DeviceMaterialOverride {
@@ -70,6 +74,29 @@ export interface DeviceShadowSpec {
   base?: { depth: number; y: number; z: number };
   /** Laptop only: the lid slab, hinged at (0, hingeY, hingeZ) and opening by the device's lid angle. */
   lid?: { length: number; thickness: number; hingeY: number; hingeZ: number };
+  /** Foldable only: two upright panels of `thickness` each; `hingeZ` is their shared inner-face plane, where the vertical hinge runs. */
+  fold?: { hingeZ: number };
+}
+
+/** One display: the screen mesh's material name + the display's width/height. */
+export interface DeviceScreenSpec {
+  material: string;
+  aspect: number;
+}
+
+/** A foldable's hinge. The glb carries a clip keyed ONE FRAME PER DEGREE (time = foldDeg / degPerSecond; 0 closed), with the camera half baked static so closed and open both face glTF +Z. Built by scripts/blender-duo-prepare.py. */
+export interface DeviceFoldSpec {
+  clip: string;
+  degPerSecond: number;
+  /** The flat-open angle, and the pose when the doc sets none. */
+  openDeg: number;
+  defaultDeg: number;
+  /** x sign of the static camera half when open, seen from +Z. */
+  anchorSide: -1 | 1;
+  /** Fitted distance from the hinge to a half's free edge. */
+  halfWidth: number;
+  /** Which edge of the cover display's own media sits on the hinge. */
+  coverHingeEdge: "left" | "right";
 }
 
 export interface DeviceSpec {
@@ -80,8 +107,10 @@ export interface DeviceSpec {
   form: DeviceForm;
   /** Bundled glb URL (`?url` import). */
   glbUrl: string;
-  /** Display metadata: the screen mesh's material name + the display's width/height. */
-  screen: { material: string; aspect: number };
+  /** The primary display; on a foldable, the inside one. */
+  screen: DeviceScreenSpec;
+  /** Foldables only: the outside display, lit when the device is closed. */
+  coverScreen?: DeviceScreenSpec;
   colours: DeviceColourSpec[];
   defaultColour: string;
   /** Colour id → bundled picker-card PNG (`pnpm assets:device-previews`). */
@@ -96,11 +125,13 @@ export interface DeviceSpec {
   shadow: DeviceShadowSpec;
   /** Hinge for lid-angle control: the glb node (three.js-sanitised name) whose local X rotation opens the lid, the authored open angle, and the default pose when the doc sets none. */
   lid?: { node: string; openDeg: number; defaultDeg: number };
+  fold?: DeviceFoldSpec;
 }
 
 export type DeviceId =
   | "iphone-15-pro"
   | "iphone-17-pro"
+  | "iphone-duo"
   | "macbook-pro-16"
   | "ipad-pro-13"
   | "android";
@@ -199,6 +230,48 @@ export const DEVICE_CATALOG: Record<DeviceId, DeviceSpec> = {
       silver: preview17Silver,
       "cosmic-orange": preview17Orange,
       "deep-blue": preview17Blue,
+    },
+  },
+  "iphone-duo": {
+    id: "iphone-duo",
+    name: "iPhone Duo",
+    form: "foldable",
+    glbUrl: iphoneDuoModelUrl,
+    // Inside: 2670 x 1878, landscape (mesh 0.1576 x 0.1102 m). Outside: 1398 x 2034, portrait (mesh 0.0772 x 0.1116 m).
+    screen: { material: "SCREEN_MAIN", aspect: 2670 / 1878 },
+    coverScreen: { material: "SCREEN_COVER", aspect: 1398 / 2034 },
+    // 164.9 x 117.5 mm open body, height-fitted to 2.6; height is fold-invariant, and layouts reserve the open width.
+    layoutWidth: 3.65,
+    fittedHeight: 2.6,
+    // 5.5 mm per half (the camera plateau is a bump on the outline, not part of it) and a ~15 mm corner, at the same fit.
+    // The inner faces sit 5.6 mm in front of the recentred origin (the camera plateau pushes the bounds back).
+    shadow: { thickness: 0.122, radius: 0.332, fold: { hingeZ: 0.123 } },
+    colours: [
+      // Star White is the authored finish, the only one the vendor ships. Night Sky is derived: a multiply on the two tintable parts scripts/blender-duo-prepare.py splits out of the body atlas, body from Apple's own swatch and a darker polished frame, 2026-09-19. Keep in step with render-device-previews.sh.
+      { id: "star-white", name: "Star White", overrides: {}, swatch: "#f7f6f5" },
+      {
+        id: "night-sky",
+        name: "Night Sky",
+        overrides: {
+          duo_body: { color: "#394452" },
+          duo_frame: { color: "#2b3440" },
+        },
+        swatch: "#394452",
+      },
+    ],
+    defaultColour: "star-white",
+    previews: {
+      "star-white": previewDuoStarWhite,
+      "night-sky": previewDuoNightSky,
+    },
+    fold: {
+      clip: "Fold",
+      degPerSecond: 30,
+      openDeg: 180,
+      defaultDeg: 180,
+      anchorSide: 1,
+      halfWidth: 1.825,
+      coverHingeEdge: "left",
     },
   },
   "macbook-pro-16": {
@@ -361,6 +434,7 @@ export const FALLBACK_DEVICE_ID: DeviceId = "android";
 
 export const DEVICE_AVAILABILITY: Readonly<Record<DeviceId, boolean>> = {
   "iphone-17-pro": iphone17ProModelAvailable,
+  "iphone-duo": iphoneDuoModelAvailable,
   "macbook-pro-16": macbookPro16ModelAvailable,
   "ipad-pro-13": ipadPro13ModelAvailable,
   "iphone-15-pro": iphone15ProModelAvailable,
@@ -485,13 +559,17 @@ export async function preloadCatalogModels(): Promise<void> {
       const gltf = await loader.loadAsync(spec.glbUrl);
       let textured = 0;
       let screens = 0;
+      let covers = 0;
+      let skinned = 0;
       gltf.scene.traverse((obj) => {
+        if ((obj as SkinnedMesh).isSkinnedMesh) skinned++;
         const material = (obj as Mesh).material as
           | MeshStandardMaterial
           | MeshStandardMaterial[]
           | undefined;
         const materials = Array.isArray(material) ? material : material ? [material] : [];
         if (materials[0]?.name === spec.screen.material) screens++;
+        if (spec.coverScreen && materials[0]?.name === spec.coverScreen.material) covers++;
         if (
           materials.some(
             (mat) => mat.isMeshStandardMaterial && (mat.map !== null || mat.normalMap !== null),
@@ -510,6 +588,19 @@ export async function preloadCatalogModels(): Promise<void> {
       if (screens === 0) {
         throw new Error(
           `Device model "${spec.name}" has no material named "${spec.screen.material}" for screen media`,
+        );
+      }
+      if (spec.coverScreen && covers === 0) {
+        throw new Error(
+          `Device model "${spec.name}" has no material named "${spec.coverScreen.material}" for cover media`,
+        );
+      }
+      if (
+        spec.fold &&
+        (skinned === 0 || !gltf.animations.some((a) => a.name === spec.fold?.clip))
+      ) {
+        throw new Error(
+          `Device model "${spec.name}" is missing its skinned meshes or its "${spec.fold.clip}" clip`,
         );
       }
     }),

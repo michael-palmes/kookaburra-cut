@@ -36,6 +36,21 @@ const LAPTOP = {
   lid: { node: "DISPLAY001", openDeg: 110, defaultDeg: 90 },
 };
 
+const FOLDABLE = {
+  layoutWidth: 3.65,
+  fittedHeight: 2.6,
+  shadow: { thickness: 0.122, radius: 0.332, fold: { hingeZ: 0.123 } },
+  fold: {
+    clip: "Fold",
+    degPerSecond: 30,
+    openDeg: 180,
+    defaultDeg: 180,
+    anchorSide: 1 as const,
+    halfWidth: 1.825,
+    coverHingeEdge: "left" as const,
+  },
+};
+
 const REST: ShadowPose = {
   scale: 1,
   rotation: [0, 0, 0],
@@ -241,14 +256,82 @@ describe("shadowQuad", () => {
   });
 });
 
+describe("a foldable's two panels", () => {
+  const at = (foldDeg: number) => deviceShadowSlabs(FOLDABLE, { ...REST, foldDeg });
+  const near = (actual: number[], expected: number[]) => {
+    for (const [i, value] of actual.entries()) expect(value).toBeCloseTo(expected[i], 9);
+  };
+
+  it("lies open as two coplanar panels either side of a centred hinge", () => {
+    const [camera, cover] = at(180);
+    near(camera.center, [1.825 / 2, 0, 0.123 - 0.061]);
+    near(cover.center, [-1.825 / 2, 0, 0.123 - 0.061]);
+    near(cover.n.map(Math.abs), [0, 0, 1]);
+    expect(camera.half).toEqual([1.825 / 2, 1.3]);
+  });
+
+  it("stacks closed, the cover one thickness in front, the pair centred on the device origin", () => {
+    const [camera, cover] = at(0);
+    near(camera.center, [0, 0, 0.123 - 0.061]);
+    near(cover.center, [0, 0, 0.123 + 0.061]);
+    near(cover.u.map(Math.abs), [1, 0, 0]);
+  });
+
+  it("stands the cover square to the camera half at ninety degrees", () => {
+    const [camera, cover] = at(90);
+    // Swinging towards the viewer, its body on the far side of the hinge from the camera half.
+    near(cover.u.map(Math.abs), [0, 0, 1]);
+    expect(cover.center[2]).toBeGreaterThan(camera.center[2]);
+    expect(cover.center[0]).toBeLessThan(camera.center[0] - 1.825 / 2);
+  });
+
+  it("clamps an overshooting fold and keeps every basis orthonormal", () => {
+    expect(at(210)).toEqual(at(180));
+    for (const deg of [0, 37, 90, 143, 180]) {
+      for (const slab of at(deg)) {
+        const dot = (a: number[], b: number[]) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+        expect(dot(slab.u, slab.v)).toBeCloseTo(0, 12);
+        expect(dot(slab.u, slab.n)).toBeCloseTo(0, 12);
+        expect(dot(slab.n, slab.n)).toBeCloseTo(1, 12);
+      }
+    }
+  });
+
+  it("leaves every other device's slabs exactly as they were", () => {
+    // `foldDeg` on the pose must be inert without a fold spec: legacy arithmetic is export contract.
+    expect(deviceShadowSlabs(PHONE, { ...REST, foldDeg: 40 })).toEqual(
+      deviceShadowSlabs(PHONE, REST),
+    );
+    expect(deviceShadowSlabs(LAPTOP, { ...REST, foldDeg: 40 })).toEqual(
+      deviceShadowSlabs(LAPTOP, REST),
+    );
+  });
+});
+
 describe("sunSweepHull", () => {
   const sweep: [number, number] = [Math.SQRT1_2, -Math.SQRT1_2];
-  const hullFor = (spec: typeof PHONE | typeof LAPTOP, pose: ShadowPose = REST) => {
+  const hullFor = (
+    spec: typeof PHONE | typeof LAPTOP | typeof FOLDABLE,
+    pose: ShadowPose = REST,
+  ) => {
     const mode = DEVICE_SHADOW_MODES.sun;
     const slabs = deviceShadowSlabs(spec, pose);
     const plane = shadowPlane(mode, -1.3, 1, pose, slabs);
     return sunSweepHull(slabs, plane, sweep, 1.4);
   };
+
+  it("stays inside the shader's vertex budget through a foldable's whole fold and turn", () => {
+    for (let foldDeg = 0; foldDeg <= 180; foldDeg += 15) {
+      for (let yaw = -80; yaw <= 80; yaw += 20) {
+        const pose = {
+          ...REST,
+          foldDeg,
+          rotation: [0.1, (yaw * Math.PI) / 180, 0] as [number, number, number],
+        };
+        expect(hullFor(FOLDABLE, pose).verts.length).toBeLessThanOrEqual(SUN_HULL_MAX);
+      }
+    }
+  });
 
   it("hulls a phone's outline with its swept copy into one hexagon", () => {
     const hull = hullFor(PHONE);

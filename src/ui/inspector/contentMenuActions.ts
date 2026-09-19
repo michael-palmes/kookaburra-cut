@@ -1,3 +1,8 @@
+import {
+  DEVICE_SCREEN_SLOTS,
+  deviceHasFollowVideo,
+  setCompareSlotMedia,
+} from "../../engine/deviceScreens";
 import type { ImageReconciliationOrigin } from "../../engine/imageReconciliationStore";
 import { isSceneRenderedTextGroupKey } from "../../engine/managedText";
 import type { RigDoc } from "../../engine/sceneCameraEdit";
@@ -207,16 +212,8 @@ function removeDeviceReferences(next: SceneDoc, id: string): void {
     delete next.deviceLayout.devices[id];
     if (Object.keys(next.deviceLayout.devices).length === 0) delete next.deviceLayout.devices;
   }
-  if (next.compare?.b?.media?.[id]) {
-    delete next.compare.b.media[id];
-    if (Object.keys(next.compare.b.media).length === 0) delete next.compare.b.media;
-  }
+  for (const slot of DEVICE_SCREEN_SLOTS) setCompareSlotMedia(next, id, slot, undefined);
   bakeBinding(next, id);
-}
-
-function deviceHasFollowVideo(next: SceneDoc, id: string): boolean {
-  const device = next.devices?.find((candidate) => candidate.id === id);
-  return device?.media?.kind === "video" || next.compare?.b?.media?.[id]?.kind === "video";
 }
 
 function preserveDurationAfterRemovingDevice(next: SceneDoc, id: string): void {

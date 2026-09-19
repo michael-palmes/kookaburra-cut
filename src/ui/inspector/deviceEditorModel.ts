@@ -1,3 +1,9 @@
+import {
+  type DeviceScreenSlot,
+  deviceHasFollowVideo,
+  deviceSlotMedia,
+  setDeviceSlotMedia,
+} from "../../engine/deviceScreens";
 import type { RigDoc } from "../../engine/sceneCameraEdit";
 import type {
   DeviceLayoutPreset,
@@ -66,7 +72,7 @@ export function duplicateDevice(doc: SceneDoc, deviceId: string): string | null 
   );
   const copy = structuredClone(current);
   copy.id = id;
-  const laptop = isDeviceId(current.model) && DEVICE_CATALOG[current.model].lid !== undefined;
+  const laptop = isDeviceId(current.model) && DEVICE_CATALOG[current.model].form === "laptop";
   const step = (laptop ? LAPTOP_STEP_X : DEVICE_STEP_X) * (current.placement?.scale ?? 1);
   const [px = 0, py = -0.3, pz = 0] = current.placement?.position ?? [];
   const [rx = 0, ry = 0, rz = 0] = current.placement?.rotationDeg ?? [];
@@ -126,21 +132,18 @@ export function deviceSelectionOwnsAction(
   return selected?.sceneIndex === sceneIndex && selected.deviceId === deviceId;
 }
 
-function deviceHasFollowVideo(doc: SceneDoc, deviceId: string): boolean {
-  const device = doc.devices?.find((candidate) => candidate.id === deviceId);
-  return device?.media?.kind === "video" || doc.compare?.b?.media?.[deviceId]?.kind === "video";
-}
-
-/** Replace one screen source while keeping duration ownership coherent before the caller re-syncs. */
+/** Replace one display's source while keeping duration ownership coherent before the caller re-syncs. */
 export function replaceDeviceMedia(
   doc: SceneDoc,
   deviceId: string,
   media: Pick<NonNullable<SceneDocDeviceSpec["media"]>, "src" | "kind">,
+  slot: DeviceScreenSlot = "main",
 ): boolean {
   const device = doc.devices?.find((candidate) => candidate.id === deviceId);
   if (!device) return false;
-  const replacedDrivingVideo = device.media?.kind === "video" && media.kind !== "video";
-  device.media = { ...device.media, ...media };
+  const current = deviceSlotMedia(device, slot);
+  const replacedDrivingVideo = current?.kind === "video" && media.kind !== "video";
+  setDeviceSlotMedia(device, slot, { ...current, ...media });
 
   const duration = doc.duration;
   if (media.kind === "video" && duration?.mode !== "manual") {

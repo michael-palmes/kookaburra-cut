@@ -1,5 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { useClockStore } from "../../engine/clock";
 import type { SceneDoc } from "../../engine/sceneDocSchema";
 import {
   AVAILABLE_DEVICE_IDS,
@@ -285,6 +286,95 @@ describe("DeviceDrillIn", () => {
       ...(laptop ? ["Lid angle"] : []),
     ]);
     if (laptop) expect(captures.sliders.at(-1)?.value).toBe(90);
+  });
+
+  it("names a foldable's two displays, each with its own media and start delay", () => {
+    const doc: SceneDoc = {
+      version: 1,
+      devices: [
+        {
+          id: "d1",
+          model: "iphone-duo",
+          media: { src: "assets/in.mp4", kind: "video", startMs: 500 },
+          coverMedia: { src: "assets/out.mp4", kind: "video" },
+        },
+      ],
+    };
+    const html = renderToStaticMarkup(<DeviceDrillIn {...props(doc)} deviceId="d1" />);
+
+    // A clean clone renders the Duo as the single-screen Android, which keeps the one "Screen" group.
+    const foldable = isDeviceAvailable("iphone-duo");
+    expect(html.includes("Inside screen")).toBe(foldable);
+    expect(html.includes("Outside screen")).toBe(foldable);
+    expect(html).toContain("in.mp4");
+    expect(html.includes("out.mp4")).toBe(foldable);
+    const delays = captures.sliders.filter((slider) => slider.label === "Start delay");
+    expect(delays.map((slider) => slider.value)).toEqual(foldable ? [0.5, 0] : [0.5]);
+  });
+
+  it("gives a foldable its Fold group, and writes the angle where the scene reads it", () => {
+    if (!isDeviceAvailable("iphone-duo")) return;
+    const doc: SceneDoc = {
+      version: 1,
+      devices: [{ id: "d1", model: "iphone-duo", media: { src: "assets/in.mp4", kind: "video" } }],
+      deviceTrack: {
+        keys: [
+          { id: "k1", tMs: 0, pose: { d1: { foldDeg: 0 } } },
+          { id: "k2", tMs: 1000, pose: { d1: { foldDeg: 180 } } },
+        ],
+        segments: [{ from: "k1", to: "k2", ease: "linear" }],
+      },
+    };
+    let working = structuredClone(doc);
+    const patchDoc: DevicePatchDoc = (patch) => {
+      patch(working);
+      return Promise.resolve();
+    };
+    // The scene starts 4 s into the project and the playhead sits 200 ms into it: nearest the first key.
+    useClockStore.getState().setCurrentMs(4200);
+    const html = renderToStaticMarkup(
+      <DeviceDrillIn
+        {...props(doc)}
+        deviceId="d1"
+        slot={{ startMs: 4000, durationMs: 2000 }}
+        patchDoc={patchDoc}
+      />,
+    );
+
+    expect(html).toContain("Unfold");
+    expect(html).toContain("Edits the keyframe nearest the playhead.");
+    expect(html).toContain("Tent");
+    expect(captures.segments.at(0)?.options.map((option) => option.label)).toEqual([
+      "Closed",
+      "Flex",
+      "Book",
+      "Open",
+    ]);
+    expect(captures.toggles.map((toggle) => toggle.label)).toEqual(
+      expect.arrayContaining(["Start when opened", "Keep both screens on"]),
+    );
+    // The slider shows and edits the key nearest the playhead, not the device.
+    const fold = captures.sliders.find((slider) => slider.label === "Fold angle");
+    expect(fold?.value).toBe(0);
+    fold?.onCommit(90);
+    expect(working.deviceTrack?.keys[0].pose.d1.foldDeg).toBe(90);
+    expect(working.devices?.[0].foldDeg).toBeUndefined();
+
+    working = structuredClone(doc);
+    captures.toggles.find((toggle) => toggle.label === "Start when opened")?.onChange(true);
+    expect(working.devices?.[0].media?.startOn).toBe("open");
+
+    // The transition writes only what differs from its defaults, and an emptied block goes too.
+    working = structuredClone(doc);
+    const intensity = captures.sliders.find((slider) => slider.label === "Intensity");
+    expect(intensity?.value).toBe(100);
+    intensity?.onCommit(40);
+    expect(working.devices?.[0].foldTransition).toEqual({ intensity: 0.4 });
+    captures.toggles.find((toggle) => toggle.label === "Blur between screens")?.onChange(false);
+    expect(working.devices?.[0].foldTransition).toEqual({ intensity: 0.4, enabled: false });
+    working = structuredClone(doc);
+    captures.sliders.find((slider) => slider.label === "Switch angle")?.onCommit(45);
+    expect(working.devices?.[0].foldTransition).toBeUndefined();
   });
 
   it("previews layout-slider ticks without history and commits once from the original baseline", () => {

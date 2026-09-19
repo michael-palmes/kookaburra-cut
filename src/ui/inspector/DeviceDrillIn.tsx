@@ -1,7 +1,22 @@
 import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useClockStore } from "../../engine/clock";
 import { useDeviceEditStore } from "../../engine/deviceEditStore";
+import {
+  compareSlotMedia,
+  DEVICE_SCREEN_SLOTS,
+  type DeviceScreenSlot,
+  deviceSlotMedia,
+  setCompareSlotMedia,
+  setDeviceSlotMedia,
+} from "../../engine/deviceScreens";
 import { useDeviceTrackEditStore } from "../../engine/deviceTrackEditStore";
+import {
+  FOLD_POWER_WINDOW_DEG,
+  FOLD_SWITCH_DEG,
+  resolveFoldTransition,
+} from "../../engine/foldTransition";
 import { optionPreviewStill } from "../../engine/optionPreviews";
+import { nearestDeviceKey, resolveDeviceTrack } from "../../engine/sceneDeviceTrack";
 import type { SceneDoc, SceneDocDeviceSpec } from "../../engine/sceneDocSchema";
 import {
   AVAILABLE_DEVICE_IDS,
@@ -34,8 +49,16 @@ import {
   resetDeviceLayoutDelta,
   setDeviceRotationPose,
 } from "./deviceEditorModel";
+import {
+  addFoldAnimation,
+  FOLD_PRESETS,
+  type FoldPresetId,
+  foldDegEditing,
+  writeFoldDeg,
+} from "./foldEditorModel";
 import { MediaSourceGroup } from "./MediaSourceGroup";
 import {
+  ActionRow,
   DrillBack,
   DrillGroup,
   DrillHeaderAction,
@@ -69,7 +92,13 @@ export interface DeviceDrillInProps {
   screenMediaPreviewUrl?: string;
   screenMediaAspectRatio?: number;
   screenMediaDetail?: string;
+  /** A foldable's outside display; unused by single-screen devices. */
+  coverMediaPreviewUrl?: string;
+  coverMediaAspectRatio?: number;
+  coverMediaDetail?: string;
   comparison?: DeviceComparisonProps;
+  /** The scene's slot on the project timeline: lets a foldable's fold edits land on the key nearest the playhead. */
+  slot?: { startMs: number; durationMs: number };
   settingsDisabled?: boolean;
   duplicateDisabled?: boolean;
   removeDisabled?: boolean;
@@ -77,8 +106,8 @@ export interface DeviceDrillInProps {
   onBack: () => void;
   onSelectDevice: (deviceId: string) => void;
   onChangeDevice: (deviceId: string) => void;
-  onChangeScreenMedia: (deviceId: string) => void;
-  onEditScreenMedia?: (deviceId: string) => void;
+  onChangeScreenMedia: (deviceId: string, screen?: DeviceScreenSlot) => void;
+  onEditScreenMedia?: (deviceId: string, screen?: DeviceScreenSlot) => void;
   onOpenArrangement: (deviceId: string) => void;
   onDuplicate?: (deviceId: string) => void;
   onRemove?: (deviceId: string) => void;
@@ -314,7 +343,7 @@ function ChevronIcon() {
 function DeviceControlIcon({
   type,
 }: {
-  type: "x" | "y" | "depth" | "tilt" | "turn" | "roll" | "size" | "lid" | "delay";
+  type: "x" | "y" | "depth" | "tilt" | "turn" | "roll" | "size" | "lid" | "delay" | "fold";
 }) {
   const glyph = {
     x: <path d="M2.6 8h10.8M4.8 5.8 2.6 8l2.2 2.2M11.2 5.8 13.4 8l-2.2 2.2" />,
@@ -346,6 +375,12 @@ function DeviceControlIcon({
         <path d="M4.5 11.5 6 4.5h6l1.5 7" />
       </>
     ),
+    fold: (
+      <>
+        <path d="M8 3.2v9.6" />
+        <path d="M8 4.2 2.8 5.8v6L8 11.8M8 4.2l5.2 1.6v6L8 11.8" />
+      </>
+    ),
     delay: (
       <>
         <circle cx="8" cy="8.8" r="4.8" />
@@ -370,6 +405,118 @@ function DeviceControlIcon({
     </svg>
   );
 }
+
+/** Top-down hinge glyphs: the two panels as seen from above, hinge at the centre dot. */
+function FoldGlyph({
+  kind,
+}: {
+  kind:
+    | FoldPresetId
+    | "unfold"
+    | "fold"
+    | "tent"
+    | "back"
+    | "both"
+    | "transition"
+    | "intensity"
+    | "blur"
+    | "darken"
+    | "switch";
+}) {
+  const glyph = {
+    closed: <path d="M3.4 7h9.2M3.4 9h9.2M3.4 7v2" />,
+    flex: <path d="M3.4 12.4V4h9.2" />,
+    book: <path d="M2.8 10.6 8 4.6l5.2 6" />,
+    open: <path d="M2.4 8h11.2M8 6.8v2.4" />,
+    unfold: (
+      <>
+        <path d="M2.4 11h11.2" />
+        <path d="M5.2 7.4 3 9.2M10.8 7.4 13 9.2M5.2 7.4V5M10.8 7.4V5" />
+      </>
+    ),
+    fold: (
+      <>
+        <path d="M6.4 3.4v9.2M9.6 3.4v9.2" />
+        <path d="M2.4 8h2.4M13.6 8h-2.4M3.8 6.6 5 8l-1.2 1.4M12.2 6.6 11 8l1.2 1.4" />
+      </>
+    ),
+    tent: <path d="M2.6 12.2 8 3.8l5.4 8.4M1.8 12.2h12.4" />,
+    back: (
+      <>
+        <rect x="2.6" y="3.6" width="10.8" height="8.8" rx="1.6" />
+        <path d="M8 3.6v8.8" />
+        <circle cx="5.3" cy="6.2" r="1" />
+      </>
+    ),
+    both: (
+      <>
+        <rect x="2.4" y="4" width="4.6" height="8" rx="1.2" />
+        <rect x="9" y="4" width="4.6" height="8" rx="1.2" />
+        <path d="M4.7 6.2v3.6M11.3 6.2v3.6" />
+      </>
+    ),
+    transition: (
+      <>
+        <rect x="2.6" y="3.6" width="10.8" height="8.8" rx="1.6" />
+        <path d="M6 5.6v4.8M8.4 6.2v3.6M10.6 7v2" />
+      </>
+    ),
+    intensity: <path d="M2.8 11.6h10.4M2.8 11.6 13.2 5v6.6" />,
+    blur: (
+      <>
+        <circle cx="8" cy="8" r="2" />
+        <path d="M8 2.8v1.4M8 11.8v1.4M2.8 8h1.4M11.8 8h1.4M4.3 4.3l1 1M10.7 10.7l1 1M4.3 11.7l1-1M10.7 5.3l1-1" />
+      </>
+    ),
+    darken: (
+      <>
+        <circle cx="8" cy="8" r="4.8" />
+        <path d="M8 3.2a4.8 4.8 0 000 9.6z" fill="currentColor" stroke="none" />
+      </>
+    ),
+    switch: (
+      <>
+        <path d="M2.8 12.2h10.4" />
+        <path d="M8 12.2 12.4 5.4M8 12.2V4.4" />
+        <path d="M8 6.8a5.4 5.4 0 013 1" />
+      </>
+    ),
+  }[kind];
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      {glyph}
+    </svg>
+  );
+}
+
+const FOLD_PRESET_OPTIONS: SegmentedOption<FoldPresetId | "custom">[] = FOLD_PRESETS.map(
+  (preset) => ({ value: preset.id, label: preset.label, icon: <FoldGlyph kind={preset.id} /> }),
+);
+
+/** Whole-device poses that only make sense with a hinge: a rotation and a fold angle together. */
+const FOLD_POSES: Array<{
+  id: "book" | "tent" | "back";
+  label: string;
+  rotationDeg: V3;
+  foldDeg: number;
+  /** A tent faces its outside display out while folded past the power switch, so it needs both lit. */
+  bothScreensOn?: true;
+}> = [
+  { id: "book", label: "Book upright", rotationDeg: [4, -20, 0], foldDeg: 120 },
+  // Solved, not eyeballed: hinge horizontal on top, the panels' bisector straight down, then a 20 degree turn.
+  { id: "tent", label: "Tent", rotationDeg: [38, -20, -75], foldDeg: 70, bothScreensOn: true },
+  { id: "back", label: "Back", rotationDeg: [4, 160, 0], foldDeg: 180 },
+];
 
 function DeviceGlyph() {
   return (
@@ -500,7 +647,11 @@ export function DeviceDrillIn({
   screenMediaPreviewUrl,
   screenMediaAspectRatio,
   screenMediaDetail,
+  coverMediaPreviewUrl,
+  coverMediaAspectRatio,
+  coverMediaDetail,
   comparison,
+  slot,
   settingsDisabled = false,
   duplicateDisabled = false,
   removeDisabled = false,
@@ -528,6 +679,14 @@ export function DeviceDrillIn({
   const devices = doc.devices ?? [];
   const deviceIndex = devices.findIndex((candidate) => candidate.id === deviceId);
   const device = devices[deviceIndex];
+  const [foldNotice, setFoldNotice] = useState<string | null>(null);
+  // Re-render only when the key a fold edit lands on changes, never per tick (the camera-section idiom); the writes snapshot the live clock.
+  const foldKeyed = (doc.deviceTrack?.keys.length ?? 0) > 0;
+  useClockStore((state) => {
+    if (!slot || !foldKeyed) return null;
+    const local = Math.min(slot.durationMs, Math.max(0, state.currentMs - slot.startMs));
+    return nearestDeviceKey(resolveDeviceTrack(doc), local)?.id ?? null;
+  });
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: device identity closes the previous gesture session
   useEffect(
@@ -636,6 +795,7 @@ export function DeviceDrillIn({
   const side = comparison ? activeCompareSide(doc, comparison.side) : "a";
   const after = side === "b";
   const routing = deviceSideRouting(doc, device.id, side);
+  const coverRouting = deviceSideRouting(doc, device.id, side, "cover");
   const setAppearance = (
     field: "colour" | "shadow",
     value: string | DeviceShadowMode | undefined,
@@ -674,34 +834,142 @@ export function DeviceDrillIn({
     );
   };
 
-  // Screen video start delay: seconds in the UI, `media.startMs` in the doc (0 deletes the field). After writes its own `compare.b.media` override, materialising an inherited spec first.
-  const setScreenDelay = (seconds: number, preview = false) => {
+  // Screen video start delay: seconds in the UI, `startMs` in the doc (0 deletes the field). After writes its own `compare.b` override, materialising an inherited spec first.
+  const patchScreenVideo = (
+    screen: DeviceScreenSlot,
+    apply: (spec: DeviceMediaSpec) => DeviceMediaSpec,
+    history: string,
+    preview: boolean,
+  ) => {
     if (settingsDisabled) return;
-    const base = routing.media;
+    const base = (screen === "cover" ? coverRouting : routing).media;
     if (base?.kind !== "video") return;
-    const startMs = Math.max(0, Math.round(seconds * 1000));
-    const apply = (spec: DeviceMediaSpec): DeviceMediaSpec => {
-      const media = { ...spec };
-      if (startMs === 0) delete media.startMs;
-      else media.startMs = startMs;
-      return media;
-    };
     const patch = after
-      ? (next: SceneDoc) => {
-          if (!next.compare) return;
-          next.compare.b ??= {};
-          next.compare.b.media ??= {};
-          next.compare.b.media[device.id] = apply(next.compare.b.media[device.id] ?? base);
-        }
+      ? (next: SceneDoc) =>
+          setCompareSlotMedia(
+            next,
+            device.id,
+            screen,
+            apply(compareSlotMedia(next, device.id, screen) ?? base),
+          )
       : (next: SceneDoc) =>
           mutateDocDevice(next, device.id, (_next, candidate) => {
-            if (candidate.media?.kind === "video") candidate.media = apply(candidate.media);
+            const own = deviceSlotMedia(candidate, screen);
+            if (own?.kind === "video") setDeviceSlotMedia(candidate, screen, apply(own));
           });
-    patchWithGesture(patch, "screen start delay", preview);
+    patchWithGesture(patch, history, preview);
   };
+  const setScreenDelay = (seconds: number, preview = false, screen: DeviceScreenSlot = "main") => {
+    const startMs = Math.max(0, Math.round(seconds * 1000));
+    patchScreenVideo(
+      screen,
+      (spec) => {
+        const media = { ...spec };
+        if (startMs === 0) delete media.startMs;
+        else media.startMs = startMs;
+        return media;
+      },
+      "screen start delay",
+      preview,
+    );
+  };
+  // The inside video begins as the fold opens; its Start delay then counts from that moment.
+  const setStartOnOpen = (on: boolean) =>
+    patchScreenVideo(
+      "main",
+      (spec) => {
+        const media = { ...spec };
+        if (on) media.startOn = "open";
+        else delete media.startOn;
+        return media;
+      },
+      "screen start",
+      false,
+    );
 
   const modelId: DeviceId = resolveAvailableDeviceId(device.model);
   const model = DEVICE_CATALOG[modelId];
+
+  // Fold edits land where the scene reads the angle: the key nearest the playhead once devices are keyframed, else the device itself.
+  const foldLocalMs = () =>
+    slot
+      ? Math.min(slot.durationMs, Math.max(0, useClockStore.getState().currentMs - slot.startMs))
+      : 0;
+  const foldDeg = model.fold
+    ? foldDegEditing(doc, device.id, foldLocalMs(), model.fold.defaultDeg)
+    : 0;
+  const setFold = (value: number, preview = false) => {
+    if (settingsDisabled) return;
+    const at = foldLocalMs();
+    setFoldNotice(null);
+    patchWithGesture(
+      (next) => writeFoldDeg(next, device.id, value, at),
+      "device fold angle",
+      preview,
+    );
+  };
+  const animateFold = (direction: "unfold" | "fold") => {
+    if (settingsDisabled || !model.fold || !slot) return;
+    const at = foldLocalMs();
+    const { openDeg } = model.fold;
+    const add = (next: SceneDoc) =>
+      addFoldAnimation(next, device.id, direction, at, slot.durationMs, openDeg);
+    // Probed on a copy first, so a refusal says why instead of silently doing nothing.
+    if (!add(structuredClone(doc))) {
+      setFoldNotice("No room here. Move the playhead clear of the existing animation.");
+      return;
+    }
+    setFoldNotice(null);
+    void patchDoc((next) => void add(next), {
+      history: direction === "unfold" ? "unfold device" : "fold device",
+    });
+    useDeviceTrackEditStore.getState().setOpen(true);
+  };
+  const applyFoldPose = (pose: (typeof FOLD_POSES)[number]) => {
+    if (settingsDisabled) return;
+    const at = foldLocalMs();
+    void patchDoc(
+      (next) => {
+        setDeviceRotationPose(next, device.id, pose.rotationDeg);
+        writeFoldDeg(next, device.id, pose.foldDeg, at);
+        if (pose.bothScreensOn) {
+          mutateDocDevice(next, device.id, (_next, candidate) => {
+            candidate.bothScreensOn = true;
+          });
+        }
+      },
+      { history: "device pose" },
+    );
+  };
+  // Defaults are never written: a field at its default is removed, and an emptied block goes with it.
+  const transition = resolveFoldTransition(device.foldTransition);
+  const setTransition = (
+    field: "enabled" | "intensity" | "blur" | "darken" | "switchDeg",
+    value: number | boolean,
+    preview = false,
+  ) =>
+    patchDevice(
+      (_next, candidate) => {
+        const block: Record<string, number | boolean> = { ...candidate.foldTransition };
+        const atDefault =
+          field === "enabled"
+            ? value === true
+            : field === "switchDeg"
+              ? value === FOLD_SWITCH_DEG
+              : value === 1;
+        if (atDefault) delete block[field];
+        else block[field] = value;
+        if (Object.keys(block).length === 0) delete candidate.foldTransition;
+        else candidate.foldTransition = block;
+      },
+      "device screen transition",
+      preview,
+    );
+  const setBothScreensOn = (on: boolean) =>
+    patchDevice((_next, candidate) => {
+      if (on) candidate.bothScreensOn = true;
+      else delete candidate.bothScreensOn;
+    }, "device screens");
   const colour = compatibleDeviceColour(modelId, routing.colour);
   const customFinish = customColourHex(colour);
   const finishName = customFinish
@@ -710,18 +978,30 @@ export function DeviceDrillIn({
       model.colours.find((finish) => finish.id === model.defaultColour)?.name ??
       "Default");
   const previewSrc = model.previews[colour] ?? model.previews[model.defaultColour];
-  const mediaName = routing.media ? fileName(routing.media.src) : "No screen media";
-  const mediaDetail = [
-    routing.inheritsMedia && routing.media ? "Same as before" : undefined,
-    screenMediaDetail ??
-      (routing.media
-        ? routing.media.kind === "video"
-          ? "Video"
-          : "Image"
-        : "Choose an image or video"),
-  ]
-    .filter(Boolean)
-    .join(" · ");
+  // One media group per display: a foldable names its two, every other device keeps the single "Screen".
+  const screenGroups = (model.coverScreen ? DEVICE_SCREEN_SLOTS : (["main"] as const)).map(
+    (screen) => {
+      const cover = screen === "cover";
+      const sideRouting = cover ? coverRouting : routing;
+      const media = sideRouting.media;
+      const probed = cover ? coverMediaDetail : screenMediaDetail;
+      return {
+        screen,
+        routing: sideRouting,
+        label: model.coverScreen ? (cover ? "Outside screen" : "Inside screen") : "Screen",
+        previewUrl: cover ? coverMediaPreviewUrl : screenMediaPreviewUrl,
+        aspectRatio: cover ? coverMediaAspectRatio : screenMediaAspectRatio,
+        name: media ? fileName(media.src) : "No screen media",
+        detail: [
+          sideRouting.inheritsMedia && media ? "Same as before" : undefined,
+          probed ??
+            (media ? (media.kind === "video" ? "Video" : "Image") : "Choose an image or video"),
+        ]
+          .filter(Boolean)
+          .join(" · "),
+      };
+    },
+  );
   const layout = doc.deviceLayout;
   const delta = layout?.devices?.[device.id];
   const position = layout ? (delta?.offset ?? ZERO) : (device.placement?.position ?? ZERO);
@@ -847,33 +1127,177 @@ export function DeviceDrillIn({
           )}
         </section>
 
-        <MediaSourceGroup
-          label="Screen"
-          previewUrl={screenMediaPreviewUrl}
-          aspectRatio={screenMediaAspectRatio}
-          name={mediaName}
-          detail={mediaDetail}
-          disabled={settingsDisabled}
-          editDisabled={!routing.editVideoTarget}
-          onChange={() => onChangeScreenMedia(device.id)}
-          onEdit={onEditScreenMedia ? () => onEditScreenMedia(device.id) : undefined}
-        >
-          {routing.media?.kind === "video" && (
-            <InspectorSliderRow
-              icon={<DeviceControlIcon type="delay" />}
-              label="Start delay"
-              value={(routing.media.startMs ?? 0) / 1000}
-              min={0}
-              max={10}
-              step={0.1}
-              overflowMax
-              formatValue={(v) => `${Number(v.toFixed(2))}s`}
+        {screenGroups.map((group) => (
+          <MediaSourceGroup
+            key={group.screen}
+            label={group.label}
+            previewUrl={group.previewUrl}
+            aspectRatio={group.aspectRatio}
+            name={group.name}
+            detail={group.detail}
+            disabled={settingsDisabled}
+            editDisabled={!group.routing.editVideoTarget}
+            onChange={() => onChangeScreenMedia(device.id, group.screen)}
+            onEdit={
+              onEditScreenMedia ? () => onEditScreenMedia(device.id, group.screen) : undefined
+            }
+          >
+            {group.routing.media?.kind === "video" && (
+              <InspectorSliderRow
+                icon={<DeviceControlIcon type="delay" />}
+                label="Start delay"
+                value={(group.routing.media.startMs ?? 0) / 1000}
+                min={0}
+                max={10}
+                step={0.1}
+                overflowMax
+                formatValue={(v) => `${Number(v.toFixed(2))}s`}
+                disabled={settingsDisabled}
+                onInput={(value) => setScreenDelay(value, true, group.screen)}
+                onCommit={(value) => setScreenDelay(value, false, group.screen)}
+              />
+            )}
+            {model.fold && group.screen === "main" && group.routing.media?.kind === "video" && (
+              <ToggleRow
+                icon={<FoldGlyph kind="unfold" />}
+                label="Start when opened"
+                description="Plays from the moment the fold opens. Start delay then counts from there."
+                checked={group.routing.media.startOn === "open"}
+                disabled={settingsDisabled}
+                onChange={setStartOnOpen}
+              />
+            )}
+          </MediaSourceGroup>
+        ))}
+
+        {!after && model.fold && (
+          <DrillGroup
+            label="Fold"
+            hint={
+              foldKeyed
+                ? "Edits the keyframe nearest the playhead."
+                : "Unfold and Fold add an animation at the playhead."
+            }
+          >
+            <SegmentedRow
+              ariaLabel="Fold pose"
+              options={FOLD_PRESET_OPTIONS}
+              value={FOLD_PRESETS.find((preset) => preset.deg === foldDeg)?.id ?? "custom"}
               disabled={settingsDisabled}
-              onInput={(value) => setScreenDelay(value, true)}
-              onCommit={(value) => setScreenDelay(value)}
+              onChange={(id) => {
+                const preset = FOLD_PRESETS.find((candidate) => candidate.id === id);
+                if (preset) setFold(preset.deg);
+              }}
             />
-          )}
-        </MediaSourceGroup>
+            <InspectorSliderRow
+              icon={<DeviceControlIcon type="fold" />}
+              label="Fold angle"
+              value={foldDeg}
+              min={0}
+              max={model.fold.openDeg}
+              step={1}
+              formatValue={(v) => `${Math.round(v)}°`}
+              disabled={settingsDisabled}
+              onInput={(value) => setFold(value, true)}
+              onCommit={(value) => setFold(value)}
+            />
+            <ActionRow
+              icon={<FoldGlyph kind="unfold" />}
+              label="Unfold"
+              value="Closed to open"
+              chevron={false}
+              disabled={settingsDisabled || !slot}
+              onClick={() => animateFold("unfold")}
+            />
+            <ActionRow
+              icon={<FoldGlyph kind="fold" />}
+              label="Fold"
+              value="Open to closed"
+              chevron={false}
+              disabled={settingsDisabled || !slot}
+              onClick={() => animateFold("fold")}
+            />
+            {foldNotice && <span className="drill-group-hint">{foldNotice}</span>}
+            <fieldset className="device-editor-pose-grid">
+              <legend className="visually-hidden">Foldable pose</legend>
+              {FOLD_POSES.map((pose) => {
+                const selected = sameVector(rotation, pose.rotationDeg) && foldDeg === pose.foldDeg;
+                return (
+                  <button
+                    key={pose.id}
+                    type="button"
+                    className={`device-editor-pose-choice${selected ? " selected" : ""}`}
+                    aria-pressed={selected}
+                    disabled={settingsDisabled}
+                    onClick={() => applyFoldPose(pose)}
+                  >
+                    <FoldGlyph kind={pose.id} />
+                    <span>{pose.label}</span>
+                  </button>
+                );
+              })}
+            </fieldset>
+            <ToggleRow
+              icon={<FoldGlyph kind="both" />}
+              label="Keep both screens on"
+              description="Lights the outside and inside displays at every angle, instead of handing over as it opens."
+              checked={device.bothScreensOn === true}
+              disabled={settingsDisabled}
+              onChange={setBothScreensOn}
+            />
+          </DrillGroup>
+        )}
+
+        {!after && model.fold && (
+          <DrillGroup
+            label="Screen transition"
+            hint="Follows the fold angle, so any fold animation gets it."
+          >
+            <ToggleRow
+              icon={<FoldGlyph kind="transition" />}
+              label="Blur between screens"
+              description="Blurs and dims the interface off the outside screen and clears it across the inside one as the device opens."
+              checked={transition.enabled}
+              disabled={settingsDisabled || device.bothScreensOn === true}
+              onChange={(on) => setTransition("enabled", on)}
+            />
+            {transition.enabled &&
+              device.bothScreensOn !== true &&
+              (
+                [
+                  ["intensity", "Intensity", "intensity"],
+                  ["blur", "Blur amount", "blur"],
+                  ["darken", "Darkening", "darken"],
+                ] as const
+              ).map(([field, label, glyph]) => (
+                <InspectorSliderRow
+                  key={field}
+                  icon={<FoldGlyph kind={glyph} />}
+                  label={label}
+                  value={Math.round(transition[field] * 100)}
+                  min={0}
+                  max={100}
+                  step={1}
+                  formatValue={(v) => `${Math.round(v)}%`}
+                  disabled={settingsDisabled}
+                  onInput={(value) => setTransition(field, value / 100, true)}
+                  onCommit={(value) => setTransition(field, value / 100)}
+                />
+              ))}
+            <InspectorSliderRow
+              icon={<FoldGlyph kind="switch" />}
+              label="Switch angle"
+              value={transition.switchDeg}
+              min={FOLD_POWER_WINDOW_DEG}
+              max={180 - FOLD_POWER_WINDOW_DEG}
+              step={1}
+              formatValue={(v) => `${Math.round(v)}°`}
+              disabled={settingsDisabled}
+              onInput={(value) => setTransition("switchDeg", value, true)}
+              onCommit={(value) => setTransition("switchDeg", value)}
+            />
+          </DrillGroup>
+        )}
 
         {!after && (
           <DrillGroup label="Arrangement">

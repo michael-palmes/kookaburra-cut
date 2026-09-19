@@ -16,6 +16,8 @@ const POSTER_WIDTH: u32 = 640;
 const SCRUB_WIDTH: u32 = 320;
 /// Bumped whenever the IMAGE poster pipeline changes in a way that invalidates cached posters; entries stamped below it regenerate on next sight. 1: the JPG to PNG switch. 2: the alpha-preserving rgba encode.
 const POSTER_VERSION: u32 = 2;
+/// Bumped when `probe_media` changes what it reports; stale VIDEO entries re-probe in place and keep their poster and scrub frames. 1: display dimensions honour rotation metadata.
+const PROBE_VERSION: u32 = 1;
 /// Chart data files, the modal's picker accept list; deliberately absent from `MEDIA_EXTENSIONS`.
 const CHART_DATA_EXTENSIONS: &[&str] = &["csv", "tsv", "txt"];
 
@@ -48,6 +50,9 @@ struct CachedMeta {
     /// Absent in entries written before the marker existed, which read as 0 and so count as stale.
     #[serde(default)]
     poster_version: u32,
+    /// Absent before rotation-aware probing, which reads as 0 and so re-probes.
+    #[serde(default)]
+    probe_version: u32,
 }
 
 /// App-global media-preview cache root (`$APPDATA/cache/media`).
@@ -402,8 +407,7 @@ pub(crate) async fn probe_media(app: &AppHandle, abs: &Path) -> Result<ProbeInfo
                 .find(|s| s["codec_type"].as_str() == Some("video"))
         })
         .ok_or("no video/image stream found")?;
-    let width = stream["width"].as_u64().unwrap_or(0) as u32;
-    let height = stream["height"].as_u64().unwrap_or(0) as u32;
+    let (width, height) = display_dimensions(stream);
     let video = is_video(&extension_of(abs));
     let duration_s: f64 = if video {
         probe["format"]["duration"]
@@ -429,6 +433,29 @@ pub(crate) async fn probe_media(app: &AppHandle, abs: &Path) -> Result<ProbeInfo
         fps,
         duration_ms: (duration_s * 1000.0).round().max(0.0) as u64,
     })
+}
+
+/// A stream's DISPLAY size: ffmpeg autorotates every frame it extracts, so a quarter-turn display matrix (or the legacy `rotate` tag) swaps the coded width and height.
+fn display_dimensions(stream: &serde_json::Value) -> (u32, u32) {
+    let width = stream["width"].as_u64().unwrap_or(0) as u32;
+    let height = stream["height"].as_u64().unwrap_or(0) as u32;
+    let side_data = stream["side_data_list"].as_array().and_then(|list| {
+        list.iter().find_map(|entry| {
+            let rotation = &entry["rotation"];
+            rotation
+                .as_f64()
+                .or_else(|| rotation.as_str().and_then(|r| r.parse().ok()))
+        })
+    });
+    let tagged = stream["tags"]["rotate"]
+        .as_str()
+        .and_then(|r| r.parse::<f64>().ok());
+    let turns = (side_data.or(tagged).unwrap_or(0.0) / 90.0).round() as i64;
+    if turns.rem_euclid(2) == 1 {
+        (height, width)
+    } else {
+        (width, height)
+    }
 }
 
 /// One project file read once: the display name the in-use guard reports, and the text it searches.
@@ -835,8 +862,20 @@ pub(crate) async fn ensure_media_cache(
 
     if done.exists() {
         if let Ok(text) = std::fs::read_to_string(&meta_path) {
-            if let Ok(cached) = serde_json::from_str::<CachedMeta>(&text) {
+            if let Ok(mut cached) = serde_json::from_str::<CachedMeta>(&text) {
                 if !poster_is_stale(&cached) && cache.join(poster_name(&cached.kind)).is_file() {
+                    if probe_is_stale(&cached) {
+                        let probe = probe_media(app, abs).await?;
+                        cached.width = probe.width;
+                        cached.height = probe.height;
+                        cached.probe_version = PROBE_VERSION;
+                        crate::write_atomic(
+                            &meta_path,
+                            serde_json::to_string_pretty(&cached)
+                                .map_err(|e| e.to_string())?
+                                .as_bytes(),
+                        )?;
+                    }
                     return Ok(hydrate(cached, &cache, rel, &sha));
                 }
             }
@@ -927,6 +966,7 @@ pub(crate) async fn ensure_media_cache(
         duration_ms: (duration_s * 1000.0).round().max(0.0) as u64,
         scrub_count,
         poster_version: POSTER_VERSION,
+        probe_version: PROBE_VERSION,
     };
     std::fs::write(
         staging.join("meta.json"),
@@ -986,6 +1026,11 @@ fn poster_is_stale(cached: &CachedMeta) -> bool {
     cached.kind == "image" && cached.poster_version < POSTER_VERSION
 }
 
+/// Whether a warm VIDEO entry predates the current probe; images carry no rotation metadata this probe reads, so they never re-probe.
+fn probe_is_stale(cached: &CachedMeta) -> bool {
+    cached.kind == "video" && cached.probe_version < PROBE_VERSION
+}
+
 /// Rebuild the absolute-path view of a cache entry (ffmpeg's %02d numbering is 1-based).
 fn hydrate(cached: CachedMeta, cache: &Path, rel: &str, sha: &str) -> MediaMeta {
     MediaMeta {
@@ -1035,7 +1080,49 @@ mod tests {
             duration_ms: 0,
             scrub_count: 0,
             poster_version,
+            probe_version: PROBE_VERSION,
         }
+    }
+
+    #[test]
+    fn display_dimensions_swap_on_a_quarter_turn_only() {
+        let stream = |extra: serde_json::Value| {
+            let mut s = serde_json::json!({ "width": 2006, "height": 2852 });
+            for (k, v) in extra.as_object().unwrap() {
+                s[k] = v.clone();
+            }
+            s
+        };
+        assert_eq!(
+            display_dimensions(&stream(serde_json::json!({}))),
+            (2006, 2852)
+        );
+        for rotation in [-90, 90, 270, -270] {
+            let s = stream(serde_json::json!({ "side_data_list": [{ "rotation": rotation }] }));
+            assert_eq!(display_dimensions(&s), (2852, 2006), "rotation {rotation}");
+        }
+        for rotation in [0, 180, -180] {
+            let s = stream(serde_json::json!({ "side_data_list": [{ "rotation": rotation }] }));
+            assert_eq!(display_dimensions(&s), (2006, 2852), "rotation {rotation}");
+        }
+        // Older ffprobe builds report the legacy tag instead of the display matrix.
+        let tagged = stream(serde_json::json!({ "tags": { "rotate": "90" } }));
+        assert_eq!(display_dimensions(&tagged), (2852, 2006));
+        // Side data without a rotation entry (e.g. content light level) is ignored.
+        let other = stream(serde_json::json!({ "side_data_list": [{ "side_data_type": "x" }] }));
+        assert_eq!(display_dimensions(&other), (2006, 2852));
+    }
+
+    #[test]
+    fn only_video_entries_from_before_rotation_aware_probing_re_probe() {
+        let legacy = r#"{"kind":"video","width":2006,"height":2852,"fps":30.0,"durationMs":6000,"scrubCount":10,"posterVersion":2}"#;
+        let parsed: CachedMeta = serde_json::from_str(legacy).unwrap();
+        assert_eq!(parsed.probe_version, 0);
+        assert!(probe_is_stale(&parsed));
+        assert!(!probe_is_stale(&cached("video", POSTER_VERSION)));
+        let mut image = cached("image", POSTER_VERSION);
+        image.probe_version = 0;
+        assert!(!probe_is_stale(&image));
     }
 
     #[test]

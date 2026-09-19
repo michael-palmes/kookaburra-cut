@@ -277,7 +277,8 @@ function deviceOverviewValue(
   doc: SceneDoc,
   device: NonNullable<SceneDoc["devices"]>[number],
 ): string | undefined {
-  if (device.media?.src) return assetBasename(device.media.src);
+  const shown = device.media ?? device.coverMedia;
+  if (shown?.src) return assetBasename(shown.src);
   if (doc.deviceLayout) return DEVICE_LAYOUT_LABELS[doc.deviceLayout.preset];
   if (!isDeviceId(device.model)) return undefined;
   const spec = DEVICE_CATALOG[device.model];
@@ -475,9 +476,9 @@ export function deriveSceneOverview(input: SceneOverviewInput): SceneOverviewMod
 
     for (const [index, device] of (doc.devices ?? []).entries()) {
       const id = device.id || `device-${index + 1}`;
-      const mediaHint = device.media?.src
-        ? { kind: device.media.kind, src: device.media.src }
-        : undefined;
+      // A foldable with only its outside display filled still reads as holding media.
+      const shown = device.media ?? device.coverMedia;
+      const mediaHint = shown?.src ? { kind: shown.kind, src: shown.src } : undefined;
       groupedRows.devices.push({
         id: `device:${id}`,
         type: "device",
@@ -720,6 +721,9 @@ export function sceneSections(input: {
     );
     if (resolveAvailableDeviceSpec(device.model).lid) {
       rows.push({ id: "device.lid", label: "Lid angle", chevron: false });
+    }
+    if (resolveAvailableDeviceSpec(device.model).fold) {
+      rows.push({ id: "device.fold", label: "Fold angle", chevron: false });
     }
     rows.push({ id: "style.shadow", label: "Shadow", chevron: true });
     rows.push({ id: "device.duplicate", label: "Duplicate device", chevron: false });

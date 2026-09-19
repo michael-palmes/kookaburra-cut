@@ -1,0 +1,104 @@
+{
+  "backdrop": {
+    "type": "none"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "pose": {
+          "azimuthDeg": 0,
+          "distance": 5,
+          "elevationDeg": 0,
+          "target": [0, 0, 0]
+        },
+        "tMs": 0
+      }
+    ],
+    "segments": []
+  },
+  "deviceTrack": {
+    "keys": [
+      {
+        "id": "k1",
+        "pose": {
+          "hero": {
+            "foldDeg": 0
+          }
+        },
+        "tMs": 900
+      },
+      {
+        "id": "k2",
+        "pose": {
+          "hero": {
+            "foldDeg": 180
+          }
+        },
+        "tMs": 2200
+      }
+    ],
+    "segments": [
+      {
+        "ease": "inOutCubic",
+        "from": "k1",
+        "to": "k2"
+      }
+    ]
+  },
+  "devices": [
+    {
+      "colour": "star-white",
+      "coverMedia": {
+        "kind": "video",
+        "src": "assets/kooka-duo-outside-sample.mp4",
+        "startMs": 0
+      },
+      "foldDeg": 0,
+      "id": "hero",
+      "media": {
+        "kind": "video",
+        "src": "assets/kooka-duo-inside-sample.mp4",
+        "startMs": 0,
+        "startOn": "open"
+      },
+      "model": "iphone-duo",
+      "motion": {
+        "preset": "none"
+      },
+      "placement": {
+        "position": [0, -0.378, 0],
+        "rotationDeg": [4, -12, 0],
+        "scale": 1
+      },
+      "shadow": "soft"
+    }
+  ],
+  "managedText": {
+    "items": [
+      {
+        "key": "title",
+        "text": "Start typing",
+        "type": "title"
+      }
+    ]
+  },
+  "name": "Duo unfold",
+  "text": {
+    "title": "Start typing"
+  },
+  "textAnimation": {
+    "in": "fade-up",
+    "out": "fade",
+    "stagger": "word",
+    "staggerMs": 90
+  },
+  "textStyle": {
+    "titleColor": "text",
+    "titleFont": "Inter@600",
+    "titleOffsetY": 1.52,
+    "titleRotationDeg": 0,
+    "titleSize": 1
+  },
+  "version": 1
+}

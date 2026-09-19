@@ -451,7 +451,7 @@ fn remap_keys(value: Option<&mut Value>, map: &HashMap<String, String>) {
     }
 }
 
-/// Renumber a keyed track's `keys` from `k1` and point its `segments` at them (the shared KeyedTrack model: camera, rig, lighting, compare, chart, screenshot animation).
+/// Renumber a keyed track's `keys` from `k1` and point its `segments` at them (the shared KeyedTrack model: camera, rig, device, lighting, compare, chart, screenshot animation).
 fn renumber_track(track: Option<&mut Value>) {
     let Some(track) = track else {
         return;
@@ -524,12 +524,14 @@ fn remint_scene_doc_ids(doc: &mut Value) {
             .and_then(|l| l.get_mut("devices")),
         &devices,
     );
-    remap_keys(
-        doc.get_mut("compare")
-            .and_then(|c| c.get_mut("b"))
-            .and_then(|b| b.get_mut("media")),
-        &devices,
-    );
+    for field in ["media", "coverMedia"] {
+        remap_keys(
+            doc.get_mut("compare")
+                .and_then(|c| c.get_mut("b"))
+                .and_then(|b| b.get_mut(field)),
+            &devices,
+        );
+    }
     remap_keys(
         doc.get_mut("compare")
             .and_then(|c| c.get_mut("b"))
@@ -562,8 +564,20 @@ fn remint_scene_doc_ids(doc: &mut Value) {
         }
     }
 
+    // A device key's pose is keyed by device id, so it follows the renumbered devices or the animation orphans.
+    if let Some(keys) = doc
+        .get_mut("deviceTrack")
+        .and_then(|track| track.get_mut("keys"))
+        .and_then(Value::as_array_mut)
+    {
+        for key in keys {
+            remap_keys(key.get_mut("pose"), &devices);
+        }
+    }
+
     renumber_track(doc.get_mut("camera"));
     renumber_track(doc.get_mut("cameraRig"));
+    renumber_track(doc.get_mut("deviceTrack"));
     renumber_track(doc.get_mut("lighting"));
     renumber_track(doc.get_mut("compare").and_then(|c| c.get_mut("track")));
     renumber_track(doc.get_mut("chart").and_then(|c| c.get_mut("track")));
@@ -2635,6 +2649,42 @@ mod remint_tests {
             doc["compare"]["b"]["deviceAppearance"]["d2"]["colour"],
             json!("silver")
         );
+    }
+
+    #[test]
+    fn device_keyframes_and_both_screens_follow_their_renumbered_device() {
+        let mut doc = json!({
+            "version": 1,
+            "devices": [{ "id": "d7", "model": "iphone-duo" }, { "id": "d3", "model": "a" }],
+            "compare": { "b": {
+                "media": { "d7": { "src": "assets/in.mp4", "kind": "video" } },
+                "coverMedia": { "d7": { "src": "assets/out.mp4", "kind": "video" } },
+            } },
+            "deviceTrack": {
+                "keys": [
+                    { "id": "k9", "tMs": 0, "pose": { "d7": { "foldDeg": 0 }, "d3": { "scale": 2.0 } } },
+                    { "id": "k4", "tMs": 900, "pose": { "d7": { "foldDeg": 180 } } },
+                ],
+                "segments": [{ "from": "k9", "to": "k4", "ease": "outCubic" }],
+            },
+        });
+        remint_scene_doc_ids(&mut doc);
+        assert_eq!(ids(&doc["devices"]), ["d1", "d2"]);
+        assert_eq!(
+            doc["compare"]["b"]["media"]["d1"]["src"],
+            json!("assets/in.mp4")
+        );
+        assert_eq!(
+            doc["compare"]["b"]["coverMedia"]["d1"]["src"],
+            json!("assets/out.mp4")
+        );
+        let keys = &doc["deviceTrack"]["keys"];
+        assert_eq!(ids(keys), ["k1", "k2"]);
+        assert_eq!(keys[0]["pose"]["d1"]["foldDeg"], json!(0));
+        assert_eq!(keys[0]["pose"]["d2"]["scale"], json!(2.0));
+        assert_eq!(keys[1]["pose"]["d1"]["foldDeg"], json!(180));
+        assert_eq!(doc["deviceTrack"]["segments"][0]["from"], json!("k1"));
+        assert_eq!(doc["deviceTrack"]["segments"][0]["to"], json!("k2"));
     }
 
     #[test]

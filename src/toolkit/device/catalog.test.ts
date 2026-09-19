@@ -43,3 +43,30 @@ describe("deviceColour custom tints", () => {
     expect(deviceColour(spec, "custom:notahex").id).toBe(spec.defaultColour);
   });
 });
+
+describe("the foldable entry", () => {
+  const duo = DEVICE_CATALOG["iphone-duo"];
+
+  it("pairs a landscape inside display with a portrait cover display", () => {
+    expect(duo.form).toBe("foldable");
+    expect(duo.screen.aspect).toBeGreaterThan(1);
+    expect(duo.coverScreen?.aspect).toBeLessThan(1);
+    expect(duo.coverScreen?.material).not.toBe(duo.screen.material);
+  });
+
+  it("opens flat by default, samples its clip one frame per degree, and is no laptop", () => {
+    expect(duo.fold).toMatchObject({ openDeg: 180, defaultDeg: 180, degPerSecond: 30 });
+    expect(duo.lid).toBeUndefined();
+    // Layouts reserve the open footprint: two halves, hinge to free edge.
+    expect(duo.layoutWidth).toBeCloseTo(2 * (duo.fold?.halfWidth ?? 0), 1);
+  });
+
+  it("tints only the body and frame, so a custom colour leaves lenses and bezels alone", () => {
+    const custom = deviceColour(duo, "custom:#7a3b2e");
+    expect(Object.keys(custom.overrides).sort()).toEqual(["duo_body", "duo_frame"]);
+    const lum = (hex: string) => Number.parseInt(hex.slice(1, 3), 16);
+    expect(lum(custom.overrides.duo_frame?.color ?? "#ffffff")).toBeLessThan(
+      lum(custom.overrides.duo_body?.color ?? "#000000"),
+    );
+  });
+});

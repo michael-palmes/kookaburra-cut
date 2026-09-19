@@ -49,6 +49,8 @@ itself; deleting the block leaves a valid plain scene):
 Rules:
 
 - `media` is keyed by device id and remaps that device's screen on side B.
+  `coverMedia` does the same for a foldable's outside display; the two override
+  independently, so side B can change one display and inherit the other.
 - `deviceAppearance` is keyed by device id and may override only `colour` and
   `shadow`. Model, placement, motion and lid remain shared with side A.
 - Chrome colours are THEME TOKEN names (`background | text | accent |
