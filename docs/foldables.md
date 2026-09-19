@@ -248,8 +248,10 @@ The device drill-in shows one media group per display ("Inside screen",
 - foldable poses, a rotation and an angle together: Book upright, Tent, Back.
   Tent is solved, not eyeballed (hinge horizontal on top, the panels' bisector
   straight down) and switches both screens on, since it faces the outside display
-  out while folded past the power switch;
-- Keep both screens on, and on the inside display, Start when opened.
+  out while folded past the power switch; Book upright and Back switch that back
+  off, so Tent's flag never outlives it;
+- Keep both screens on, and on the inside display, Start when opened. With both
+  held on there is no handover, so Blur between screens shows off and says why.
 
 Once a scene keyframes its devices the keys own the fold, so a plain write to
 the device would show nothing. `foldEditorModel.ts` routes every edit to the key

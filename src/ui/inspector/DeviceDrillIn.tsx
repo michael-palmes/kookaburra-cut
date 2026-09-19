@@ -54,6 +54,7 @@ import {
   FOLD_PRESETS,
   type FoldPresetId,
   foldDegEditing,
+  setFoldPoseScreens,
   writeFoldDeg,
 } from "./foldEditorModel";
 import { MediaSourceGroup } from "./MediaSourceGroup";
@@ -932,17 +933,16 @@ export function DeviceDrillIn({
       (next) => {
         setDeviceRotationPose(next, device.id, pose.rotationDeg);
         writeFoldDeg(next, device.id, pose.foldDeg, at);
-        if (pose.bothScreensOn) {
-          mutateDocDevice(next, device.id, (_next, candidate) => {
-            candidate.bothScreensOn = true;
-          });
-        }
+        mutateDocDevice(next, device.id, (_next, candidate) =>
+          setFoldPoseScreens(candidate, pose.bothScreensOn === true),
+        );
       },
       { history: "device pose" },
     );
   };
   // Defaults are never written: a field at its default is removed, and an emptied block goes with it.
   const transition = resolveFoldTransition(device.foldTransition);
+  const bothScreensOn = device.bothScreensOn === true;
   const setTransition = (
     field: "enabled" | "intensity" | "blur" | "darken" | "switchDeg",
     value: number | boolean,
@@ -966,10 +966,7 @@ export function DeviceDrillIn({
       preview,
     );
   const setBothScreensOn = (on: boolean) =>
-    patchDevice((_next, candidate) => {
-      if (on) candidate.bothScreensOn = true;
-      else delete candidate.bothScreensOn;
-    }, "device screens");
+    patchDevice((_next, candidate) => setFoldPoseScreens(candidate, on), "device screens");
   const colour = compatibleDeviceColour(modelId, routing.colour);
   const customFinish = customColourHex(colour);
   const finishName = customFinish
@@ -1240,8 +1237,8 @@ export function DeviceDrillIn({
             <ToggleRow
               icon={<FoldGlyph kind="both" />}
               label="Keep both screens on"
-              description="Lights the outside and inside displays at every angle, instead of handing over as it opens."
-              checked={device.bothScreensOn === true}
+              description="Lights the outside and inside displays at every angle, instead of handing over as it opens. Turns off the blur between screens."
+              checked={bothScreensOn}
               disabled={settingsDisabled}
               onChange={setBothScreensOn}
             />
@@ -1256,13 +1253,17 @@ export function DeviceDrillIn({
             <ToggleRow
               icon={<FoldGlyph kind="transition" />}
               label="Blur between screens"
-              description="Blurs and dims the interface off the outside screen and clears it across the inside one as the device opens."
-              checked={transition.enabled}
-              disabled={settingsDisabled || device.bothScreensOn === true}
+              description={
+                bothScreensOn
+                  ? "Off while Keep both screens on is set: with both displays lit there is no handover to blur."
+                  : "Blurs and dims the interface off the outside screen and clears it across the inside one as the device opens."
+              }
+              checked={transition.enabled && !bothScreensOn}
+              disabled={settingsDisabled || bothScreensOn}
               onChange={(on) => setTransition("enabled", on)}
             />
             {transition.enabled &&
-              device.bothScreensOn !== true &&
+              !bothScreensOn &&
               (
                 [
                   ["intensity", "Intensity", "intensity"],
