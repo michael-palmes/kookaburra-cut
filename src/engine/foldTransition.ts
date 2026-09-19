@@ -40,3 +40,18 @@ export function foldScreenLevels(
   const main = smoothstep(at - FOLD_POWER_WINDOW_DEG, at + FOLD_POWER_WINDOW_DEG, foldDeg);
   return { main, cover: 1 - main };
 }
+
+/** When a fold first carries the device to the switch angle, in scene-local ms: where an inside video marked `startOn: "open"` begins, so the app appears to carry on as the device opens. Steps the frames that will actually render instead of solving the ease, so it is exact and survives eases that overshoot. 0 when it starts open; null when it never opens that far (the caller falls back to the plain start delay). `untilMs` is the last key's time: the angle holds after it. */
+export function foldOpenedAtMs(
+  foldDegAt: (localMs: number) => number,
+  untilMs: number,
+  switchDeg: number,
+  fps: number,
+): number | null {
+  const lastFrame = Math.ceil((Math.max(0, untilMs) / 1000) * fps);
+  for (let frame = 0; frame <= lastFrame; frame++) {
+    const localMs = (frame * 1000) / fps;
+    if (foldDegAt(localMs) >= switchDeg) return localMs;
+  }
+  return null;
+}

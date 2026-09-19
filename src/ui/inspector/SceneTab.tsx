@@ -441,6 +441,7 @@ import {
   removeDevice as removeDeviceFromDoc,
   replaceDeviceMedia,
 } from "./deviceEditorModel";
+import { foldDegEditing, writeFoldDeg } from "./foldEditorModel";
 import {
   ActionRow,
   DrillBack,
@@ -1067,6 +1068,22 @@ function SceneRowIcon({ id }: { id: string }) {
           <path d="M15.5 7l1.5 2-2.4.3" />
         </svg>
       );
+    case "device.fold":
+      return (
+        <svg
+          width="17"
+          height="17"
+          viewBox="0 0 20 20"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
+          <path d="M10 4.5v11" />
+          <path d="M10 5.5 3.5 7.5v7.5l6.5-1.5M10 5.5l6.5 2v7.5L10 13.5" />
+        </svg>
+      );
     case "device.lid":
       return (
         <svg
@@ -1409,33 +1426,40 @@ function DurationRow({
 }
 
 /** Inline lid-angle slider row (laptops only): live-drags locally, commits once on release. */
-function LidRow({
-  lidDeg,
+/** One hinge's angle as an inline slider: a laptop's lid or a foldable's fold. */
+function HingeRow({
+  rowId,
+  label,
+  title,
+  deg,
   openDeg,
   onCommit,
 }: {
-  lidDeg: number;
+  rowId: "device.lid" | "device.fold";
+  label: string;
+  title: string;
+  deg: number;
   openDeg: number;
   onCommit: (deg: number) => void;
 }) {
-  const [v, setV] = useState(lidDeg);
-  useEffect(() => setV(lidDeg), [lidDeg]);
+  const [v, setV] = useState(deg);
+  useEffect(() => setV(deg), [deg]);
   const commit = () => {
-    if (v !== lidDeg) onCommit(v);
+    if (v !== deg) onCommit(v);
   };
   return (
-    <div className="inspector-duration-row" title="Lid opening in degrees (0 closes the laptop)">
+    <div className="inspector-duration-row" title={title}>
       <span className="action-row-icon">
-        <SceneRowIcon id="device.lid" />
+        <SceneRowIcon id={rowId} />
       </span>
-      <span className="action-row-label">Lid angle</span>
+      <span className="action-row-label">{label}</span>
       <input
         type="range"
         min={0}
         max={openDeg}
         step={1}
         value={v}
-        aria-label="Lid angle in degrees"
+        aria-label={`${label} in degrees`}
         onChange={(e) => setV(Number(e.target.value))}
         onPointerUp={commit}
         onKeyUp={commit}
@@ -8321,6 +8345,7 @@ export function SceneTab({
         coverMediaPreviewUrl={cover.previewUrl}
         coverMediaAspectRatio={cover.aspectRatio}
         coverMediaDetail={cover.detail}
+        slot={project.slots[sceneIndex]}
         comparison={
           hasComparison(doc) ? { side: compareSideActive, onSideChange: setCompareSide } : undefined
         }
@@ -8613,15 +8638,39 @@ export function SceneTab({
       if (row.id === "device.lid" && device) {
         const lid = isDeviceId(device.model) ? DEVICE_CATALOG[device.model].lid : undefined;
         return (
-          <LidRow
+          <HingeRow
             key={row.id}
-            lidDeg={device.lidDeg ?? lid?.defaultDeg ?? 90}
+            rowId="device.lid"
+            label="Lid angle"
+            title="Lid opening in degrees (0 closes the laptop)"
+            deg={device.lidDeg ?? lid?.defaultDeg ?? 90}
             openDeg={lid?.openDeg ?? 110}
             onCommit={(deg) =>
               patchDevice((d) => {
                 d.lidDeg = deg;
               })
             }
+          />
+        );
+      }
+      if (row.id === "device.fold" && device && doc) {
+        const fold = resolveAvailableDeviceSpec(device.model).fold;
+        if (!fold) return null;
+        return (
+          <HingeRow
+            key={row.id}
+            rowId="device.fold"
+            label="Fold angle"
+            title="Hinge angle in degrees (0 closed, 180 open flat)"
+            deg={foldDegEditing(doc, device.id, compareLocalMs(), fold.defaultDeg)}
+            openDeg={fold.openDeg}
+            onCommit={(deg) => {
+              // Lands on the key nearest the playhead once the scene keyframes its devices.
+              const at = compareLocalMs();
+              void patchDoc((next) => writeFoldDeg(next, device.id, deg, at), {
+                history: "device fold angle",
+              });
+            }}
           />
         );
       }

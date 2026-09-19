@@ -722,6 +722,9 @@ export function sceneSections(input: {
     if (resolveAvailableDeviceSpec(device.model).lid) {
       rows.push({ id: "device.lid", label: "Lid angle", chevron: false });
     }
+    if (resolveAvailableDeviceSpec(device.model).fold) {
+      rows.push({ id: "device.fold", label: "Fold angle", chevron: false });
+    }
     rows.push({ id: "style.shadow", label: "Shadow", chevron: true });
     rows.push({ id: "device.duplicate", label: "Duplicate device", chevron: false });
     rows.push({ id: "device.add", label: "Add another device", chevron: false });

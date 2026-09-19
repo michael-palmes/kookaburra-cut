@@ -1,4 +1,5 @@
 import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useClockStore } from "../../engine/clock";
 import { useDeviceEditStore } from "../../engine/deviceEditStore";
 import {
   compareSlotMedia,
@@ -10,6 +11,7 @@ import {
 } from "../../engine/deviceScreens";
 import { useDeviceTrackEditStore } from "../../engine/deviceTrackEditStore";
 import { optionPreviewStill } from "../../engine/optionPreviews";
+import { nearestDeviceKey, resolveDeviceTrack } from "../../engine/sceneDeviceTrack";
 import type { SceneDoc, SceneDocDeviceSpec } from "../../engine/sceneDocSchema";
 import {
   AVAILABLE_DEVICE_IDS,
@@ -42,8 +44,16 @@ import {
   resetDeviceLayoutDelta,
   setDeviceRotationPose,
 } from "./deviceEditorModel";
+import {
+  addFoldAnimation,
+  FOLD_PRESETS,
+  type FoldPresetId,
+  foldDegEditing,
+  writeFoldDeg,
+} from "./foldEditorModel";
 import { MediaSourceGroup } from "./MediaSourceGroup";
 import {
+  ActionRow,
   DrillBack,
   DrillGroup,
   DrillHeaderAction,
@@ -82,6 +92,8 @@ export interface DeviceDrillInProps {
   coverMediaAspectRatio?: number;
   coverMediaDetail?: string;
   comparison?: DeviceComparisonProps;
+  /** The scene's slot on the project timeline: lets a foldable's fold edits land on the key nearest the playhead. */
+  slot?: { startMs: number; durationMs: number };
   settingsDisabled?: boolean;
   duplicateDisabled?: boolean;
   removeDisabled?: boolean;
@@ -326,7 +338,7 @@ function ChevronIcon() {
 function DeviceControlIcon({
   type,
 }: {
-  type: "x" | "y" | "depth" | "tilt" | "turn" | "roll" | "size" | "lid" | "delay";
+  type: "x" | "y" | "depth" | "tilt" | "turn" | "roll" | "size" | "lid" | "delay" | "fold";
 }) {
   const glyph = {
     x: <path d="M2.6 8h10.8M4.8 5.8 2.6 8l2.2 2.2M11.2 5.8 13.4 8l-2.2 2.2" />,
@@ -358,6 +370,12 @@ function DeviceControlIcon({
         <path d="M4.5 11.5 6 4.5h6l1.5 7" />
       </>
     ),
+    fold: (
+      <>
+        <path d="M8 3.2v9.6" />
+        <path d="M8 4.2 2.8 5.8v6L8 11.8M8 4.2l5.2 1.6v6L8 11.8" />
+      </>
+    ),
     delay: (
       <>
         <circle cx="8" cy="8.8" r="4.8" />
@@ -382,6 +400,81 @@ function DeviceControlIcon({
     </svg>
   );
 }
+
+/** Top-down hinge glyphs: the two panels as seen from above, hinge at the centre dot. */
+function FoldGlyph({
+  kind,
+}: {
+  kind: FoldPresetId | "unfold" | "fold" | "tent" | "back" | "both";
+}) {
+  const glyph = {
+    closed: <path d="M3.4 7h9.2M3.4 9h9.2M3.4 7v2" />,
+    flex: <path d="M3.4 12.4V4h9.2" />,
+    book: <path d="M2.8 10.6 8 4.6l5.2 6" />,
+    open: <path d="M2.4 8h11.2M8 6.8v2.4" />,
+    unfold: (
+      <>
+        <path d="M2.4 11h11.2" />
+        <path d="M5.2 7.4 3 9.2M10.8 7.4 13 9.2M5.2 7.4V5M10.8 7.4V5" />
+      </>
+    ),
+    fold: (
+      <>
+        <path d="M6.4 3.4v9.2M9.6 3.4v9.2" />
+        <path d="M2.4 8h2.4M13.6 8h-2.4M3.8 6.6 5 8l-1.2 1.4M12.2 6.6 11 8l1.2 1.4" />
+      </>
+    ),
+    tent: <path d="M2.6 12.2 8 3.8l5.4 8.4M1.8 12.2h12.4" />,
+    back: (
+      <>
+        <rect x="2.6" y="3.6" width="10.8" height="8.8" rx="1.6" />
+        <path d="M8 3.6v8.8" />
+        <circle cx="5.3" cy="6.2" r="1" />
+      </>
+    ),
+    both: (
+      <>
+        <rect x="2.4" y="4" width="4.6" height="8" rx="1.2" />
+        <rect x="9" y="4" width="4.6" height="8" rx="1.2" />
+        <path d="M4.7 6.2v3.6M11.3 6.2v3.6" />
+      </>
+    ),
+  }[kind];
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      {glyph}
+    </svg>
+  );
+}
+
+const FOLD_PRESET_OPTIONS: SegmentedOption<FoldPresetId | "custom">[] = FOLD_PRESETS.map(
+  (preset) => ({ value: preset.id, label: preset.label, icon: <FoldGlyph kind={preset.id} /> }),
+);
+
+/** Whole-device poses that only make sense with a hinge: a rotation and a fold angle together. */
+const FOLD_POSES: Array<{
+  id: "book" | "tent" | "back";
+  label: string;
+  rotationDeg: V3;
+  foldDeg: number;
+  /** A tent faces its outside display out while folded past the power switch, so it needs both lit. */
+  bothScreensOn?: true;
+}> = [
+  { id: "book", label: "Book upright", rotationDeg: [4, -20, 0], foldDeg: 120 },
+  // Solved, not eyeballed: hinge horizontal on top, the panels' bisector straight down, then a 20 degree turn.
+  { id: "tent", label: "Tent", rotationDeg: [38, -20, -75], foldDeg: 70, bothScreensOn: true },
+  { id: "back", label: "Back", rotationDeg: [4, 160, 0], foldDeg: 180 },
+];
 
 function DeviceGlyph() {
   return (
@@ -516,6 +609,7 @@ export function DeviceDrillIn({
   coverMediaAspectRatio,
   coverMediaDetail,
   comparison,
+  slot,
   settingsDisabled = false,
   duplicateDisabled = false,
   removeDisabled = false,
@@ -543,6 +637,14 @@ export function DeviceDrillIn({
   const devices = doc.devices ?? [];
   const deviceIndex = devices.findIndex((candidate) => candidate.id === deviceId);
   const device = devices[deviceIndex];
+  const [foldNotice, setFoldNotice] = useState<string | null>(null);
+  // Re-render only when the key a fold edit lands on changes, never per tick (the camera-section idiom); the writes snapshot the live clock.
+  const foldKeyed = (doc.deviceTrack?.keys.length ?? 0) > 0;
+  useClockStore((state) => {
+    if (!slot || !foldKeyed) return null;
+    const local = Math.min(slot.durationMs, Math.max(0, state.currentMs - slot.startMs));
+    return nearestDeviceKey(resolveDeviceTrack(doc), local)?.id ?? null;
+  });
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: device identity closes the previous gesture session
   useEffect(
@@ -691,17 +793,15 @@ export function DeviceDrillIn({
   };
 
   // Screen video start delay: seconds in the UI, `startMs` in the doc (0 deletes the field). After writes its own `compare.b` override, materialising an inherited spec first.
-  const setScreenDelay = (seconds: number, preview = false, screen: DeviceScreenSlot = "main") => {
+  const patchScreenVideo = (
+    screen: DeviceScreenSlot,
+    apply: (spec: DeviceMediaSpec) => DeviceMediaSpec,
+    history: string,
+    preview: boolean,
+  ) => {
     if (settingsDisabled) return;
     const base = (screen === "cover" ? coverRouting : routing).media;
     if (base?.kind !== "video") return;
-    const startMs = Math.max(0, Math.round(seconds * 1000));
-    const apply = (spec: DeviceMediaSpec): DeviceMediaSpec => {
-      const media = { ...spec };
-      if (startMs === 0) delete media.startMs;
-      else media.startMs = startMs;
-      return media;
-    };
     const patch = after
       ? (next: SceneDoc) =>
           setCompareSlotMedia(
@@ -715,11 +815,95 @@ export function DeviceDrillIn({
             const own = deviceSlotMedia(candidate, screen);
             if (own?.kind === "video") setDeviceSlotMedia(candidate, screen, apply(own));
           });
-    patchWithGesture(patch, "screen start delay", preview);
+    patchWithGesture(patch, history, preview);
   };
+  const setScreenDelay = (seconds: number, preview = false, screen: DeviceScreenSlot = "main") => {
+    const startMs = Math.max(0, Math.round(seconds * 1000));
+    patchScreenVideo(
+      screen,
+      (spec) => {
+        const media = { ...spec };
+        if (startMs === 0) delete media.startMs;
+        else media.startMs = startMs;
+        return media;
+      },
+      "screen start delay",
+      preview,
+    );
+  };
+  // The inside video begins as the fold opens; its Start delay then counts from that moment.
+  const setStartOnOpen = (on: boolean) =>
+    patchScreenVideo(
+      "main",
+      (spec) => {
+        const media = { ...spec };
+        if (on) media.startOn = "open";
+        else delete media.startOn;
+        return media;
+      },
+      "screen start",
+      false,
+    );
 
   const modelId: DeviceId = resolveAvailableDeviceId(device.model);
   const model = DEVICE_CATALOG[modelId];
+
+  // Fold edits land where the scene reads the angle: the key nearest the playhead once devices are keyframed, else the device itself.
+  const foldLocalMs = () =>
+    slot
+      ? Math.min(slot.durationMs, Math.max(0, useClockStore.getState().currentMs - slot.startMs))
+      : 0;
+  const foldDeg = model.fold
+    ? foldDegEditing(doc, device.id, foldLocalMs(), model.fold.defaultDeg)
+    : 0;
+  const setFold = (value: number, preview = false) => {
+    if (settingsDisabled) return;
+    const at = foldLocalMs();
+    setFoldNotice(null);
+    patchWithGesture(
+      (next) => writeFoldDeg(next, device.id, value, at),
+      "device fold angle",
+      preview,
+    );
+  };
+  const animateFold = (direction: "unfold" | "fold") => {
+    if (settingsDisabled || !model.fold || !slot) return;
+    const at = foldLocalMs();
+    const { openDeg } = model.fold;
+    const add = (next: SceneDoc) =>
+      addFoldAnimation(next, device.id, direction, at, slot.durationMs, openDeg);
+    // Probed on a copy first, so a refusal says why instead of silently doing nothing.
+    if (!add(structuredClone(doc))) {
+      setFoldNotice("No room here. Move the playhead clear of the existing animation.");
+      return;
+    }
+    setFoldNotice(null);
+    void patchDoc((next) => void add(next), {
+      history: direction === "unfold" ? "unfold device" : "fold device",
+    });
+    useDeviceTrackEditStore.getState().setOpen(true);
+  };
+  const applyFoldPose = (pose: (typeof FOLD_POSES)[number]) => {
+    if (settingsDisabled) return;
+    const at = foldLocalMs();
+    void patchDoc(
+      (next) => {
+        setDeviceRotationPose(next, device.id, pose.rotationDeg);
+        writeFoldDeg(next, device.id, pose.foldDeg, at);
+        if (pose.bothScreensOn) {
+          mutateDocDevice(next, device.id, (_next, candidate) => {
+            candidate.bothScreensOn = true;
+          });
+        }
+      },
+      { history: "device pose" },
+    );
+  };
+  const setBothScreensOn = (on: boolean) =>
+    patchDevice((_next, candidate) => {
+      if (on) candidate.bothScreensOn = true;
+      else delete candidate.bothScreensOn;
+    }, "device screens");
   const colour = compatibleDeviceColour(modelId, routing.colour);
   const customFinish = customColourHex(colour);
   const finishName = customFinish
@@ -907,8 +1091,96 @@ export function DeviceDrillIn({
                 onCommit={(value) => setScreenDelay(value, false, group.screen)}
               />
             )}
+            {model.fold && group.screen === "main" && group.routing.media?.kind === "video" && (
+              <ToggleRow
+                icon={<FoldGlyph kind="unfold" />}
+                label="Start when opened"
+                description="Plays from the moment the fold opens. Start delay then counts from there."
+                checked={group.routing.media.startOn === "open"}
+                disabled={settingsDisabled}
+                onChange={setStartOnOpen}
+              />
+            )}
           </MediaSourceGroup>
         ))}
+
+        {!after && model.fold && (
+          <DrillGroup
+            label="Fold"
+            hint={
+              foldKeyed
+                ? "Edits the keyframe nearest the playhead."
+                : "Unfold and Fold add an animation at the playhead."
+            }
+          >
+            <SegmentedRow
+              ariaLabel="Fold pose"
+              options={FOLD_PRESET_OPTIONS}
+              value={FOLD_PRESETS.find((preset) => preset.deg === foldDeg)?.id ?? "custom"}
+              disabled={settingsDisabled}
+              onChange={(id) => {
+                const preset = FOLD_PRESETS.find((candidate) => candidate.id === id);
+                if (preset) setFold(preset.deg);
+              }}
+            />
+            <InspectorSliderRow
+              icon={<DeviceControlIcon type="fold" />}
+              label="Fold angle"
+              value={foldDeg}
+              min={0}
+              max={model.fold.openDeg}
+              step={1}
+              formatValue={(v) => `${Math.round(v)}°`}
+              disabled={settingsDisabled}
+              onInput={(value) => setFold(value, true)}
+              onCommit={(value) => setFold(value)}
+            />
+            <ActionRow
+              icon={<FoldGlyph kind="unfold" />}
+              label="Unfold"
+              value="Closed to open"
+              chevron={false}
+              disabled={settingsDisabled || !slot}
+              onClick={() => animateFold("unfold")}
+            />
+            <ActionRow
+              icon={<FoldGlyph kind="fold" />}
+              label="Fold"
+              value="Open to closed"
+              chevron={false}
+              disabled={settingsDisabled || !slot}
+              onClick={() => animateFold("fold")}
+            />
+            {foldNotice && <span className="drill-group-hint">{foldNotice}</span>}
+            <fieldset className="device-editor-pose-grid">
+              <legend className="visually-hidden">Foldable pose</legend>
+              {FOLD_POSES.map((pose) => {
+                const selected = sameVector(rotation, pose.rotationDeg) && foldDeg === pose.foldDeg;
+                return (
+                  <button
+                    key={pose.id}
+                    type="button"
+                    className={`device-editor-pose-choice${selected ? " selected" : ""}`}
+                    aria-pressed={selected}
+                    disabled={settingsDisabled}
+                    onClick={() => applyFoldPose(pose)}
+                  >
+                    <FoldGlyph kind={pose.id} />
+                    <span>{pose.label}</span>
+                  </button>
+                );
+              })}
+            </fieldset>
+            <ToggleRow
+              icon={<FoldGlyph kind="both" />}
+              label="Keep both screens on"
+              description="Lights the outside and inside displays at every angle, instead of handing over as it opens."
+              checked={device.bothScreensOn === true}
+              disabled={settingsDisabled}
+              onChange={setBothScreensOn}
+            />
+          </DrillGroup>
+        )}
 
         {!after && (
           <DrillGroup label="Arrangement">

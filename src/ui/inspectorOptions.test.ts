@@ -614,6 +614,17 @@ describe("sceneSections (the EditBar capability gating, verbatim)", () => {
     expect(danger[0].chevron).toBe(false);
   });
 
+  it("a foldable adds the Fold angle row, never the laptop's Lid angle", () => {
+    const doc = docWith({
+      devices: [{ id: "d1", model: "iphone-duo" }] as SceneDoc["devices"],
+    });
+    const rows = sceneSections({ doc, slotsCount: 1 })
+      .find((s) => s.id === "device")
+      ?.rows.map((r) => r.id);
+    expect(rows?.includes("device.fold")).toBe(isDeviceAvailable("iphone-duo"));
+    expect(rows).not.toContain("device.lid");
+  });
+
   it("selectedDeviceId scopes the device rows to that device", () => {
     const doc = docWith({
       devices: [

@@ -31,8 +31,13 @@ import { deviceAcknowledgementMatches, useDeviceEditStore } from "../../engine/d
 import { useSceneConsumesDevices } from "../../engine/deviceRegistry";
 import { ease } from "../../engine/ease";
 import { isExporting } from "../../engine/exportState";
-import { type DeviceFoldTransitionSpec, foldScreenLevels } from "../../engine/foldTransition";
-import { useFormat } from "../../engine/format";
+import {
+  type DeviceFoldTransitionSpec,
+  foldOpenedAtMs,
+  foldScreenLevels,
+  resolveFoldSwitchDeg,
+} from "../../engine/foldTransition";
+import { FPS, useFormat } from "../../engine/format";
 import { useGizmoSectionOpen } from "../../engine/gizmoSections";
 import { presentSlideshowActive } from "../../engine/presentMode";
 import { registerPresentTiming } from "../../engine/presentTimingRegistry";
@@ -74,6 +79,8 @@ export interface DeviceMediaSpec {
   startMs?: number;
   /** Cover-fit is the rule: fill the screen, keep the media's aspect, crop the overflow. */
   fit?: "cover";
+  /** Foldable inside display only: count `startMs` from the moment the fold opens past the switch angle, so the app carries on as the device opens. Inert without a fold that opens. */
+  startOn?: "open";
 }
 
 export type DeviceMotionPreset = "none" | "turntable" | "float" | "tilt-reveal" | "push-in";
@@ -364,10 +371,14 @@ function ScreenMedia(props: {
   screenAspect: number;
   levelRef: MutableRefObject<number>;
   projectId: string;
+  /** Added to a video's own start delay: when a foldable opened, for `startOn: "open"`. */
+  startOffsetMs?: number;
 }) {
-  const { media, projectId, ...screen } = props;
+  const { media, projectId, startOffsetMs = 0, ...screen } = props;
   if (media?.kind === "video") {
-    return <ScreenVideo src={media.src} startMs={media.startMs ?? 0} {...screen} />;
+    return (
+      <ScreenVideo src={media.src} startMs={startOffsetMs + (media.startMs ?? 0)} {...screen} />
+    );
   }
   if (media?.kind === "image") {
     return (
@@ -644,6 +655,15 @@ export function Device(props: DeviceProps) {
     if (screenMaterial.map) screenMaterial.color.setScalar(levels.main);
     if (coverMaterial.map) coverMaterial.color.setScalar(levels.cover);
   }, [renderedFoldDeg, switchDeg, bothScreensOn, screenMaterial, coverMaterial]);
+  // "Start when opened": a pure function of the track, so preview and export agree on the inside video's first frame.
+  const openedAtMs = useMemo(() => {
+    if (!fold || media?.startOn !== "open") return 0;
+    const own = authoredFoldDeg ?? fold.defaultDeg;
+    const untilMs = track?.keys.at(-1)?.tMs ?? 0;
+    const foldDegAt = (ms: number) =>
+      clampFoldDeg(fold, deviceTrackPoseAt(track, id ?? "", ms, undefined, own).foldDeg ?? own);
+    return foldOpenedAtMs(foldDegAt, untilMs, resolveFoldSwitchDeg({ switchDeg }), FPS) ?? 0;
+  }, [fold, media?.startOn, authoredFoldDeg, track, id, switchDeg]);
   // Closed, the device covers only its camera half, so it glides back onto its own origin as it folds.
   const foldCentreX =
     fold && renderedFoldDeg !== undefined ? foldCentreOffset(fold, renderedFoldDeg) : 0;
@@ -791,6 +811,7 @@ export function Device(props: DeviceProps) {
           screenAspect={activeSpec.screen.aspect}
           levelRef={screenLevel}
           projectId={projectId}
+          startOffsetMs={openedAtMs}
         />
         {activeSpec.coverScreen && (
           <ScreenMedia

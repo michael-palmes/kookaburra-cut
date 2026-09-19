@@ -1,5 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { useClockStore } from "../../engine/clock";
 import type { SceneDoc } from "../../engine/sceneDocSchema";
 import {
   AVAILABLE_DEVICE_IDS,
@@ -309,6 +310,59 @@ describe("DeviceDrillIn", () => {
     expect(html.includes("out.mp4")).toBe(foldable);
     const delays = captures.sliders.filter((slider) => slider.label === "Start delay");
     expect(delays.map((slider) => slider.value)).toEqual(foldable ? [0.5, 0] : [0.5]);
+  });
+
+  it("gives a foldable its Fold group, and writes the angle where the scene reads it", () => {
+    if (!isDeviceAvailable("iphone-duo")) return;
+    const doc: SceneDoc = {
+      version: 1,
+      devices: [{ id: "d1", model: "iphone-duo", media: { src: "assets/in.mp4", kind: "video" } }],
+      deviceTrack: {
+        keys: [
+          { id: "k1", tMs: 0, pose: { d1: { foldDeg: 0 } } },
+          { id: "k2", tMs: 1000, pose: { d1: { foldDeg: 180 } } },
+        ],
+        segments: [{ from: "k1", to: "k2", ease: "linear" }],
+      },
+    };
+    let working = structuredClone(doc);
+    const patchDoc: DevicePatchDoc = (patch) => {
+      patch(working);
+      return Promise.resolve();
+    };
+    // The scene starts 4 s into the project and the playhead sits 200 ms into it: nearest the first key.
+    useClockStore.getState().setCurrentMs(4200);
+    const html = renderToStaticMarkup(
+      <DeviceDrillIn
+        {...props(doc)}
+        deviceId="d1"
+        slot={{ startMs: 4000, durationMs: 2000 }}
+        patchDoc={patchDoc}
+      />,
+    );
+
+    expect(html).toContain("Unfold");
+    expect(html).toContain("Edits the keyframe nearest the playhead.");
+    expect(html).toContain("Tent");
+    expect(captures.segments.at(0)?.options.map((option) => option.label)).toEqual([
+      "Closed",
+      "Flex",
+      "Book",
+      "Open",
+    ]);
+    expect(captures.toggles.map((toggle) => toggle.label)).toEqual(
+      expect.arrayContaining(["Start when opened", "Keep both screens on"]),
+    );
+    // The slider shows and edits the key nearest the playhead, not the device.
+    const fold = captures.sliders.find((slider) => slider.label === "Fold angle");
+    expect(fold?.value).toBe(0);
+    fold?.onCommit(90);
+    expect(working.deviceTrack?.keys[0].pose.d1.foldDeg).toBe(90);
+    expect(working.devices?.[0].foldDeg).toBeUndefined();
+
+    working = structuredClone(doc);
+    captures.toggles.find((toggle) => toggle.label === "Start when opened")?.onChange(true);
+    expect(working.devices?.[0].media?.startOn).toBe("open");
   });
 
   it("previews layout-slider ticks without history and commits once from the original baseline", () => {
