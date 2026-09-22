@@ -237,6 +237,13 @@ pub(crate) struct ProbeInfo {
     pub height: u32,
     pub fps: f64,         // 0 for images
     pub duration_ms: u64, // 0 for images
+    /// Frames timestamped as they came rather than on a fixed cadence; false for images.
+    pub vfr: bool,
+}
+
+/// Variable frame rate: ffprobe's `r_frame_rate` (the finest cadence that indexes every timestamp) and `avg_frame_rate` agree on a constant-rate file and diverge when frames were stamped as they came (a Simulator recording reports 600 against ~15).
+fn is_vfr(r_rate: f64, avg_rate: f64) -> bool {
+    r_rate > 0.0 && avg_rate > 0.0 && (r_rate - avg_rate).abs() > 0.5
 }
 
 /// Copy an audio file into the project's `assets/` for use as the project soundtrack; deliberately NOT the media-import pipeline, audio has no poster/scrub cache to build. Returns the assets-relative path for `project.json.audio.file`.
@@ -422,6 +429,11 @@ pub(crate) async fn probe_media(app: &AppHandle, abs: &Path) -> Result<ProbeInfo
     } else {
         0.0
     };
+    let vfr = video
+        && is_vfr(
+            parse_rate(stream["r_frame_rate"].as_str().unwrap_or("0")),
+            fps,
+        );
     Ok(ProbeInfo {
         kind: if video {
             "video".into()
@@ -432,6 +444,7 @@ pub(crate) async fn probe_media(app: &AppHandle, abs: &Path) -> Result<ProbeInfo
         height,
         fps,
         duration_ms: (duration_s * 1000.0).round().max(0.0) as u64,
+        vfr,
     })
 }
 
@@ -1082,6 +1095,14 @@ mod tests {
             poster_version,
             probe_version: PROBE_VERSION,
         }
+    }
+
+    #[test]
+    fn a_source_is_variable_frame_rate_when_the_probe_rates_disagree() {
+        assert!(is_vfr(600.0, 15.196));
+        assert!(!is_vfr(60.0, 60.0));
+        assert!(!is_vfr(30.0, 29.99));
+        assert!(!is_vfr(0.0, 30.0));
     }
 
     #[test]

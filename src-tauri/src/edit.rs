@@ -297,6 +297,15 @@ pub async fn open_edit(
 /// Default hold for a still image clip, mirroring editMath.ts `DEFAULT_HOLD_MS`.
 const DEFAULT_IMAGE_HOLD_MS: u64 = 2000;
 
+/// The output rate a fresh edit adopts: the probed rate, except a variable-frame-rate source (a Simulator recording writes a frame per screen change and averages ~15 fps against 60 fps bursts) renders at 60.
+fn edit_fps(probe: &media::ProbeInfo) -> f64 {
+    if probe.vfr || probe.fps <= 0.0 {
+        60.0
+    } else {
+        probe.fps
+    }
+}
+
 /// yuv420p needs even output dimensions; a screenshot can be odd, a recording never is.
 fn even(w: u32, h: u32) -> (u32, u32) {
     (w - w % 2, h - h % 2)
@@ -325,7 +334,7 @@ async fn create_default_doc(
     } else {
         (probe.width, probe.height)
     };
-    let fps = if probe.fps > 0.0 { probe.fps } else { 60.0 };
+    let fps = edit_fps(&probe);
     let prefs = read_tap_prefs(project);
     Ok(EditDoc {
         version: EDIT_VERSION,
@@ -478,20 +487,23 @@ fn image_hold_ms(clip: &EditClip) -> u64 {
     clip.hold_ms.unwrap_or(DEFAULT_IMAGE_HOLD_MS)
 }
 
-/// Frames an output clip contributes: its retimed duration at the output fps (a freeze, and every image clip, contributes its hold).
-fn clip_output_frames(clip: &EditClip, fps: f64, image: bool) -> u32 {
-    let span_ms = if image {
-        image_hold_ms(clip) as f64
-    } else {
-        match clip.hold_ms {
-            Some(hold) => hold as f64,
-            None => {
-                let speed = if clip.speed > 0.0 { clip.speed } else { 1.0 };
-                clip.out_ms.saturating_sub(clip.in_ms) as f64 / speed
-            }
+/// A clip's span on the timeline in ms, mirroring editMath.ts `clipTimelineMs`: the retimed source span, or the hold of a freeze or image clip.
+fn clip_timeline_ms(clip: &EditClip, image: bool) -> f64 {
+    if image {
+        return image_hold_ms(clip) as f64;
+    }
+    match clip.hold_ms {
+        Some(hold) => hold as f64,
+        None => {
+            let speed = if clip.speed > 0.0 { clip.speed } else { 1.0 };
+            clip.out_ms.saturating_sub(clip.in_ms) as f64 / speed
         }
-    };
-    ((span_ms / 1000.0) * fps).round().max(0.0) as u32
+    }
+}
+
+/// The output frame at timeline `ms`: the ms timeline snapped to the frame grid.
+fn frame_at(ms: f64, fps: f64) -> u32 {
+    ((ms / 1000.0) * fps).round().max(0.0) as u32
 }
 
 /// Tap-highlight constants, hand-mirrored from src/editor/tapAnimation.ts and scripts/generate-tap-dot.mjs.
@@ -573,7 +585,7 @@ fn tap_windows<'a>(
     windows
 }
 
-/// Build the ffmpeg args that flatten an edit into a single file: one filter chain per clip (trim → retime → normalise fps → scale+pad to the output size; an image input loops for its hold instead of trimming) then `concat`, rendered in timeline (`startMs`) order; gaps are not yet materialised as black. Tap highlights overlay the concat output (one baked-frame input per visible window). The hardware lane decodes and encodes on the media engine; the output is an intermediate re-encoded at final export, so 0.25 bits/pixel is generous headroom (the old crf-18 lane measures ~0.09).
+/// Build the ffmpeg args that flatten an edit into a single file: each source video is normalised to the output rate once and split per use, then one filter chain per clip (trim → retime → pad and cut to the clip's exact frame count → scale+pad to the output size; an image input loops for its hold instead of trimming) then `concat`, rendered in timeline (`startMs`) order; gaps are not yet materialised as black. Tap highlights overlay the concat output (one baked-frame input per visible window). The hardware lane decodes and encodes on the media engine; the output is an intermediate re-encoded at final export, so 0.25 bits/pixel is generous headroom (the old crf-18 lane measures ~0.09).
 fn build_render_args(
     doc: &EditDoc,
     output: &str,
@@ -590,7 +602,7 @@ fn build_render_args(
         60.0
     };
 
-    // Each source VIDEO used by a clip becomes ONE `-i` in stable order; ffmpeg auto-splits a reused *input stream specifier* like `[idx:v]` so we decode each source once, but reusing a *filter output* label (e.g. `[v0]`) would error, don't "fix" this into one `-i` per clip. A still is the exception: it takes one looped input PER clip, each with its own `-t`, so a reused image never leaves a split queueing thousands of duplicated frames.
+    // Each source VIDEO used by a clip becomes ONE `-i` in stable order, decoded once and split per use below. A still is the exception: it takes one looped input PER clip, each with its own `-t`, so a reused image never leaves a split queueing thousands of duplicated frames.
     let mut input_order: Vec<&EditSource> = Vec::new();
     let mut input_hold_ms: Vec<u64> = Vec::new();
     let mut video_index = std::collections::HashMap::new();
@@ -621,42 +633,65 @@ fn build_render_args(
         clip_input.push(idx);
     }
 
+    // Trimming a variable-frame-rate recording directly (the Simulator writes a frame per screen change, with holds of many seconds) drops the frame on screen at the in-point and passes the last kept frame with its whole hold; on a stream normalised to the output rate every slot carries the held frame for one slot.
+    let mut uses = vec![0usize; input_order.len()];
+    let clip_label: Vec<String> = clip_input
+        .iter()
+        .map(|&idx| {
+            let label = format!("src{idx}_{}", uses[idx]);
+            uses[idx] += 1;
+            label
+        })
+        .collect();
     let mut filter = String::new();
+    for (idx, source) in input_order.iter().enumerate() {
+        if source.kind == EditSourceKind::Image {
+            continue;
+        }
+        let outs: String = (0..uses[idx]).map(|j| format!("[src{idx}_{j}]")).collect();
+        let split = if uses[idx] > 1 {
+            format!(",split={}", uses[idx])
+        } else {
+            String::new()
+        };
+        filter.push_str(&format!("[{idx}:v]fps={fps}:start_time=0{split}{outs};"));
+    }
     let mut labels = Vec::new();
     let mut total_frames = 0u32;
+    let mut cursor_ms = 0.0;
     for (i, clip) in clips_sorted.iter().enumerate() {
         let idx = clip_input[i];
         let image = input_order[idx].kind == EditSourceKind::Image;
+        // Every clip is cut to its frame count on the cumulative timeline grid, so no boundary sits more than half a frame from the editor's `startMs` and rounding cannot accumulate across cuts.
+        let start_frame = frame_at(cursor_ms, fps);
+        cursor_ms += clip_timeline_ms(clip, image);
+        let frames = frame_at(cursor_ms, fps).saturating_sub(start_frame).max(1);
         let in_s = clip.in_ms as f64 / 1000.0;
         let out_s = clip.out_ms as f64 / 1000.0;
         let speed = if clip.speed > 0.0 { clip.speed } else { 1.0 };
         let label = format!("v{i}");
-        if image {
-            // A still is already one frame: normalise to the output rate and cut the hold out of the loop, no trim/select frame pick.
-            let hold_s = image_hold_ms(clip) as f64 / 1000.0;
-            filter.push_str(&format!(
-                "[{idx}:v]fps={fps},trim=duration={hold_s:.6},setpts=PTS-STARTPTS,\
-                 scale={w}:{h}:force_original_aspect_ratio=decrease,\
-                 pad={w}:{h}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1[{label}];"
-            ));
-        } else if let Some(hold_ms) = clip.hold_ms {
-            // Freeze frame: select exactly the frame at inMs, clone it for the hold, then trim to the exact length after fps normalisation.
-            let hold_s = hold_ms as f64 / 1000.0;
-            filter.push_str(&format!(
-                "[{idx}:v]trim=start={in_s:.6}:duration=0.5,select=eq(n\\,0),setpts=PTS-STARTPTS,\
-                 tpad=stop_mode=clone:stop_duration={hold_s:.6},fps={fps},trim=duration={hold_s:.6},\
-                 setpts=PTS-STARTPTS,scale={w}:{h}:force_original_aspect_ratio=decrease,\
-                 pad={w}:{h}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1[{label}];"
-            ));
+        let head = if image {
+            format!("[{idx}:v]")
+        } else if clip.hold_ms.is_some() {
+            // Freeze frame: the one slot at inMs, cloned for the hold.
+            format!(
+                "[{}]trim=start={in_s:.6}:duration=0.5,select=eq(n\\,0),setpts=PTS-STARTPTS,",
+                clip_label[i]
+            )
         } else {
-            filter.push_str(&format!(
-                "[{idx}:v]trim=start={in_s:.6}:end={out_s:.6},setpts=(PTS-STARTPTS)/{speed},\
-                 fps={fps},scale={w}:{h}:force_original_aspect_ratio=decrease,\
-                 pad={w}:{h}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1[{label}];"
-            ));
-        }
+            format!(
+                "[{}]trim=start={in_s:.6}:end={out_s:.6},setpts=(PTS-STARTPTS)/{speed},",
+                clip_label[i]
+            )
+        };
+        // `tpad` clones the last frame past a short cut, `fps` regrids the clones onto contiguous slots and `trim` drops any overrun, so the count is exact either way.
+        filter.push_str(&format!(
+            "{head}tpad=stop_mode=clone:stop={frames},fps={fps},trim=end_frame={frames},\
+             setpts=PTS-STARTPTS,scale={w}:{h}:force_original_aspect_ratio=decrease,\
+             pad={w}:{h}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1[{label}];"
+        ));
         labels.push(label);
-        total_frames += clip_output_frames(clip, fps, image);
+        total_frames += frames;
     }
     for label in &labels {
         filter.push_str(&format!("[{label}]"));
@@ -960,7 +995,7 @@ mod tests {
     }
 
     #[test]
-    fn software_lane_is_the_original_argv() {
+    fn software_lane_normalises_the_source_and_cuts_exact_frames() {
         let (args, total) = build_render_args(&doc(), "/out/x.mp4", false, None).unwrap();
         assert_eq!(total, 60);
         let expected: Vec<String> = [
@@ -972,7 +1007,7 @@ mod tests {
             "-i",
             "/abs/a.mp4",
             "-filter_complex",
-            "[0:v]trim=start=0.000000:end=1.000000,setpts=(PTS-STARTPTS)/1,fps=60,scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1[v0];[v0]concat=n=1:v=1:a=0[outv]",
+            "[0:v]fps=60:start_time=0[src0_0];[src0_0]trim=start=0.000000:end=1.000000,setpts=(PTS-STARTPTS)/1,tpad=stop_mode=clone:stop=60,fps=60,trim=end_frame=60,setpts=PTS-STARTPTS,scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1[v0];[v0]concat=n=1:v=1:a=0[outv]",
             "-map",
             "[outv]",
             "-c:v",
@@ -1009,10 +1044,56 @@ mod tests {
         let (args, total) = build_render_args(&d, "/out/x.mp4", false, None).unwrap();
         assert_eq!(total, 60 + 120); // 1s of source + 2s hold at 60fps
         let filter = &args[args.iter().position(|a| a == "-filter_complex").unwrap() + 1];
-        assert!(filter.contains("select=eq(n\\,0)"));
-        assert!(filter.contains("tpad=stop_mode=clone:stop_duration=2.000000"));
-        assert!(filter.contains("trim=duration=2.000000"));
+        assert!(filter.contains("[0:v]fps=60:start_time=0,split=2[src0_0][src0_1];"));
+        assert!(filter.contains(
+            "[src0_1]trim=start=0.500000:duration=0.5,select=eq(n\\,0),setpts=PTS-STARTPTS,\
+             tpad=stop_mode=clone:stop=120,fps=60,trim=end_frame=120,setpts=PTS-STARTPTS,"
+        ));
         assert!(filter.contains("concat=n=2"));
+    }
+
+    #[test]
+    fn clips_are_cut_on_the_cumulative_frame_grid() {
+        // Two 508.5 ms halves round to 31 frames each on their own but to 61 together: the grid hands out 31 + 30, so the cut lands on the timeline instead of half a frame past it.
+        let mut d = doc();
+        d.clips[0].out_ms = 1017;
+        d.clips[0].speed = 2.0;
+        d.clips.push(EditClip {
+            id: "c2".into(),
+            source_id: "s1".into(),
+            in_ms: 2000,
+            out_ms: 3017,
+            speed: 2.0,
+            start_ms: 509,
+            hold_ms: None,
+        });
+        let (args, total) = build_render_args(&d, "/out/x.mp4", false, None).unwrap();
+        assert_eq!(total, 61);
+        let filter = &args[args.iter().position(|a| a == "-filter_complex").unwrap() + 1];
+        assert!(filter.contains("[0:v]fps=60:start_time=0,split=2[src0_0][src0_1];"));
+        assert!(filter.contains(
+            "[src0_0]trim=start=0.000000:end=1.017000,setpts=(PTS-STARTPTS)/2,\
+             tpad=stop_mode=clone:stop=31,fps=60,trim=end_frame=31,"
+        ));
+        assert!(filter.contains(
+            "[src0_1]trim=start=2.000000:end=3.017000,setpts=(PTS-STARTPTS)/2,\
+             tpad=stop_mode=clone:stop=30,fps=60,trim=end_frame=30,"
+        ));
+    }
+
+    #[test]
+    fn a_variable_frame_rate_source_seeds_a_sixty_fps_edit() {
+        let probe = |fps: f64, vfr: bool| media::ProbeInfo {
+            kind: "video".into(),
+            width: 1206,
+            height: 2622,
+            fps,
+            duration_ms: 264_472,
+            vfr,
+        };
+        assert_eq!(edit_fps(&probe(15.196, true)), 60.0);
+        assert_eq!(edit_fps(&probe(30.0, false)), 30.0);
+        assert_eq!(edit_fps(&probe(0.0, false)), 60.0);
     }
 
     /// An image source added to `doc()`, plus a clip holding it for `hold_ms`.
@@ -1061,7 +1142,9 @@ mod tests {
             .map(String::from)
         );
         let filter = &args[args.iter().position(|a| a == "-filter_complex").unwrap() + 1];
-        assert!(filter.contains("[1:v]fps=60,trim=duration=2.000000,setpts=PTS-STARTPTS,"));
+        assert!(filter.contains(
+            "[1:v]tpad=stop_mode=clone:stop=120,fps=60,trim=end_frame=120,setpts=PTS-STARTPTS,"
+        ));
         // A still has no span, so nothing picks a frame out of it.
         assert!(!filter.contains("select=eq(n\\,0)"));
         assert!(filter.contains("concat=n=2"));
@@ -1092,8 +1175,8 @@ mod tests {
         // Hardware decode rides the video input only.
         assert_eq!(args.iter().filter(|a| *a == "-hwaccel").count(), 1);
         let filter = &args[args.iter().position(|a| a == "-filter_complex").unwrap() + 1];
-        assert!(filter.contains("[1:v]fps=60,trim=duration=2.000000"));
-        assert!(filter.contains("[2:v]fps=60,trim=duration=5.000000"));
+        assert!(filter.contains("[1:v]tpad=stop_mode=clone:stop=120,fps=60,trim=end_frame=120"));
+        assert!(filter.contains("[2:v]tpad=stop_mode=clone:stop=300,fps=60,trim=end_frame=300"));
         assert!(filter.contains("concat=n=3"));
     }
 
