@@ -6,6 +6,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-09-22
+
 ### Added
 
 - iPhone Duo, a foldable device in Star White and Night Sky with separate
@@ -22,11 +24,24 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - A Duo unfold scene preset.
 - Before and after comparisons can change either screen of a foldable.
 
+### Changed
+
+- New video edits of variable frame rate recordings, such as Simulator screen
+  recordings, start at 60 fps. Existing edits keep their saved rate.
+
 ### Fixed
 
 - Landscape screen recordings that store a rotation flag now report their real
   width and height.
 - Duplicating a scene keeps its device keyframes attached to the right devices.
+- Video editor renders of variable frame rate recordings match the timeline
+  length, with every cut and tap highlight on its own frame.
+- An edit can no longer land in another project's scene, and two quick edits
+  to one scene both keep.
+- Settings survive a crash part way through saving.
+- Pack publisher details display correctly, and a failed pack replacement
+  names its backup folder.
+- The in-app Verify check lays out each leg in the aspect it hashes.
 
 ## [0.16.0] - 2026-09-07
 
