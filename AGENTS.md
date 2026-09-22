@@ -136,6 +136,8 @@ Project skills are authored only in `.agents/skills`. Keep `.claude/skills` as t
 
 **ALWAYS use the `kookaburra-commit` skill to review and create commits.** It groups changes into clean conventional commits after a light review; never hand-roll `git commit` for substantive changes. Do not push unless asked.
 
+**Branch names are `type/short-kebab-description`** with a conventional type (`feat/`, `fix/`, `chore/`, `docs/`, `refactor/`, `perf/`, `test/`, `ci/`, `build/`), for example `fix/editor-tap-alignment`. NEVER a `claude/` prefix (or any other agent or tool prefix) and NEVER a generated suffix such as `-94cd0f`. If the tooling created a branch named that way, rename it before the first commit.
+
 ## Writing rules
 
 - **Keep `AGENTS.md` and `CLAUDE.md` byte-identical.** Update both in the same change and verify with `cmp -s AGENTS.md CLAUDE.md`.
