@@ -6,6 +6,7 @@ import {
   FOLD_ANIMATION_MS,
   FOLD_PRESETS,
   foldDegEditing,
+  setFoldPoseScreens,
   writeFoldDeg,
 } from "./foldEditorModel";
 
@@ -94,5 +95,16 @@ describe("one-click unfold and fold", () => {
     const before = structuredClone(doc);
     expect(addFoldAnimation(doc, "duo", "unfold", 500, 5000, 180)).toBe(false);
     expect(doc).toEqual(before);
+  });
+});
+
+describe("a pose's screens", () => {
+  it("lights both for Tent and hands power back for every other pose", () => {
+    const device = still().devices?.[0];
+    if (!device) throw new Error("fixture lost its foldable");
+    setFoldPoseScreens(device, true);
+    expect(device.bothScreensOn).toBe(true);
+    setFoldPoseScreens(device, false);
+    expect("bothScreensOn" in device).toBe(false);
   });
 });

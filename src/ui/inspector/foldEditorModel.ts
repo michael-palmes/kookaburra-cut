@@ -6,7 +6,7 @@ import {
   nearestDeviceKey,
   resolveDeviceTrack,
 } from "../../engine/sceneDeviceTrack";
-import type { SceneDoc } from "../../engine/sceneDocSchema";
+import type { SceneDoc, SceneDocDeviceSpec } from "../../engine/sceneDocSchema";
 
 /** Pure edits behind the foldable inspector. A scene that animates its devices reads the fold from its keys, so a plain write to the device would show nothing: every edit here lands where the scene is actually reading. */
 
@@ -51,6 +51,12 @@ export function writeFoldDeg(doc: SceneDoc, deviceId: string, foldDeg: number, l
   }
   const device = doc.devices?.find((candidate) => candidate.id === deviceId);
   if (device) device.foldDeg = foldDeg;
+}
+
+/** A foldable pose owns the screens too (mutating `device`): Tent lights both, every other pose hands power back to the fold angle, so Tent's flag never outlives it. */
+export function setFoldPoseScreens(device: SceneDocDeviceSpec, bothOn: boolean) {
+  if (bothOn) device.bothScreensOn = true;
+  else delete device.bothScreensOn;
 }
 
 /** Adds an unfold (closed to open) or fold (open to closed) at the playhead (mutating `doc`). Both keys are seeded with what every device is showing, so nothing else moves. False when there is no room: the playhead sits inside an existing animation, or too near the scene's end. */

@@ -36,7 +36,9 @@ interface CapturedSegmentProps {
 
 interface CapturedToggleProps {
   label: string;
+  description?: string;
   checked: boolean;
+  disabled?: boolean;
   onChange: (checked: boolean) => void;
 }
 
@@ -375,6 +377,22 @@ describe("DeviceDrillIn", () => {
     working = structuredClone(doc);
     captures.sliders.find((slider) => slider.label === "Switch angle")?.onCommit(45);
     expect(working.devices?.[0].foldTransition).toBeUndefined();
+  });
+
+  it("says why the blur is off while both screens are held on, and hides its sliders", () => {
+    if (!isDeviceAvailable("iphone-duo")) return;
+    const doc: SceneDoc = {
+      version: 1,
+      devices: [
+        { id: "d1", model: "iphone-duo", bothScreensOn: true, foldTransition: { blur: 0.6 } },
+      ],
+    };
+    renderToStaticMarkup(<DeviceDrillIn {...props(doc)} deviceId="d1" />);
+
+    const blur = captures.toggles.find((toggle) => toggle.label === "Blur between screens");
+    expect(blur).toMatchObject({ checked: false, disabled: true });
+    expect(blur?.description).toContain("Keep both screens on");
+    expect(captures.sliders.map((slider) => slider.label)).not.toContain("Blur amount");
   });
 
   it("previews layout-slider ticks without history and commits once from the original baseline", () => {
