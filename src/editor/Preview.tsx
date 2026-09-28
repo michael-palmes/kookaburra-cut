@@ -3,9 +3,9 @@ import type { EditClip, EditSource, EditTap } from "../engine/edit";
 import { clipIndexAt, timelineDurationMs, timelineToSource } from "../engine/editMath";
 import { fsUrl } from "../engine/media";
 import {
-  TAP_DOT_SIZE_FRACTION,
   TAP_MARKER_NEAR_MS,
   tapDotFrame,
+  tapDotWidthFraction,
   tapGradient,
   tapProgress,
 } from "./tapAnimation";
@@ -43,9 +43,16 @@ export interface PreviewProps {
   tapStyle: string; // style (shape) id (tapStyles.generated.ts)
   tapColor: string; // colour id (tapStyles.generated.ts)
   tapSize: number; // multiplier on the default dot size
+  output: { width: number; height: number }; // the render size taps are sized against
 }
 
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
+
+/** The contain-fit box's aspect, so its rect is exactly the displayed source frame (styles.css `.editor-video-box`). */
+export function sourceBoxStyle(source: EditSource): CSSProperties | undefined {
+  if (source.width <= 0 || source.height <= 0) return undefined;
+  return { "--source-aspect": source.width / source.height } as CSSProperties;
+}
 
 /** Pointer position normalised 0..1 against the video box rect. */
 function posFromRect(e: { clientX: number; clientY: number }, rect: DOMRect): [number, number] {
@@ -85,6 +92,7 @@ export function Preview({
   tapStyle,
   tapColor,
   tapSize,
+  output,
 }: PreviewProps) {
   const videos = useRef(new Map<string, HTMLVideoElement>());
   // Latest-value mirrors so the playback loop never restarts on scrub/edit.
@@ -253,10 +261,15 @@ export function Preview({
   const color = TAP_COLORS.find((c) => c.id === tapColor) ?? TAP_COLORS[0];
   const gradient = tapGradient(style, color);
 
-  const dotStyle = (pos: [number, number], opacity: number, scale: number): CSSProperties => ({
+  const dotStyle = (
+    source: EditSource,
+    pos: [number, number],
+    opacity: number,
+    scale: number,
+  ): CSSProperties => ({
     left: `${pos[0] * 100}%`,
     top: `${pos[1] * 100}%`,
-    width: `${TAP_DOT_SIZE_FRACTION * 100 * tapSize}cqmin`,
+    width: `${tapDotWidthFraction(source, output, tapSize) * 100}cqw`,
     opacity,
     transform: `translate(-50%, -50%) scale(${scale})`,
     backgroundImage: gradient,
@@ -280,15 +293,7 @@ export function Preview({
           key={source.id}
           className={`editor-video${source.id === activeSourceId ? "" : " hidden"}`}
         >
-          <div
-            className="editor-video-box"
-            style={{
-              aspectRatio:
-                source.width > 0 && source.height > 0
-                  ? `${source.width} / ${source.height}`
-                  : undefined,
-            }}
-          >
+          <div className="editor-video-box" style={sourceBoxStyle(source)}>
             {source.kind === "image" ? (
               // A still has no decode clock, so it never joins the video map: the transport loop's freeze branch just advances past it.
               <img className="editor-still" src={fsUrl(`${basePath}/${source.rel}`)} alt="" />
@@ -327,14 +332,14 @@ export function Preview({
                     <div
                       key={`${tap.id}:${startMs}`}
                       className="tap-glow"
-                      style={dotStyle(tap.pos, opacity, scale)}
+                      style={dotStyle(source, tap.pos, opacity, scale)}
                     />
                   );
                 })}
                 {pulseFrame && (
                   <div
                     className="tap-glow"
-                    style={dotStyle(pulseFrame.pos, pulseFrame.opacity, pulseFrame.scale)}
+                    style={dotStyle(source, pulseFrame.pos, pulseFrame.opacity, pulseFrame.scale)}
                   />
                 )}
                 {taps.map((tap) => {

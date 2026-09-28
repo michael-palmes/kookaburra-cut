@@ -1230,6 +1230,7 @@ export function EditorApp() {
                     tapStyle={doc.tapStyle ?? DEFAULT_TAP_STYLE_ID}
                     tapColor={doc.tapColor ?? DEFAULT_TAP_COLOR_ID}
                     tapSize={doc.tapSize ?? 1.25}
+                    output={doc.settings}
                   />
                   {refView && (
                     <ReferencePane
