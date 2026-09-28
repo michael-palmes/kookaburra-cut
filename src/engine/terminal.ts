@@ -198,7 +198,7 @@ export function claudeSessionCommand(
   project: SessionProject,
 ): string {
   const grounding = shellQuote(claudeGroundingPrompt(project));
-  return `exec ${shellQuote(claudePath)}${continueLast ? " --continue" : ""} --permission-mode auto --model claude-opus-5 --effort high --append-system-prompt ${grounding}`;
+  return `exec ${shellQuote(claudePath)}${continueLast ? " --continue" : ""} --permission-mode auto --model claude-opus-5-5 --effort high --append-system-prompt ${grounding}`;
 }
 
 /** The official installer, run VISIBLY inside the terminal for transparency. */
