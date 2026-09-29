@@ -4,7 +4,7 @@ import type { TapColor, TapStyle } from "./tapStyles.generated";
 
 export const TAP_ANIMATION_DURATION_MS = 550;
 
-/** Dot diameter as a fraction of min(width, height); mirrored in edit.rs. */
+/** Dot diameter as a fraction of the output's min(width, height); mirrored in edit.rs. */
 export const TAP_DOT_SIZE_FRACTION = 0.07;
 
 /** Baked overlay frames at 60fps (600ms, comfortably past the duration). */
@@ -12,6 +12,23 @@ export const TAP_DOT_FRAME_COUNT = 36;
 
 /** Edit-marker visibility margin around a tap's window in "near playhead" scope. */
 export const TAP_MARKER_NEAR_MS = 200;
+
+interface Size {
+  width: number;
+  height: number;
+}
+
+/** The dot diameter as a fraction of the source's displayed width. The render sizes the dot against the OUTPUT frame and contain-fits each source into it with ffmpeg's rounding (mirrored in edit.rs), so a source whose aspect differs from the output still previews at its rendered size. */
+export function tapDotWidthFraction(source: Size, output: Size, size: number): number {
+  if (source.width <= 0 || source.height <= 0 || output.width <= 0 || output.height <= 0) {
+    return TAP_DOT_SIZE_FRACTION * size;
+  }
+  const scaledW = Math.min(
+    output.width,
+    Math.round((output.height * source.width) / source.height),
+  );
+  return (Math.min(output.width, output.height) * TAP_DOT_SIZE_FRACTION * size) / scaledW;
+}
 
 /** The preview gradient for a style in a colour, matching the baked white frames plus the render-time tint. */
 export function tapGradient(style: TapStyle, color: TapColor): string {

@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import type { EditClip, EditSource } from "../engine/edit";
 import { clipIndexAt, timelineDurationMs, timelineToSource } from "../engine/editMath";
 import { fsUrl } from "../engine/media";
+import { sourceBoxStyle } from "./Preview";
 
 /** The read-only reference pane: another scene video scrub-locked to the active edit in OUTPUT time (its own edit doc applied when one exists), so trims and speed changes on either side stay honest. Paused it seeks the mapped frame; playing it runs its own decode clock at the clip's speed with drift correction against the lockstep time; past either end it holds a dimmed first/last frame so misalignment is visible rather than blank. Preview-only, never the export path. */
 
@@ -66,15 +67,7 @@ export function ReferencePane({
           key={source.id}
           className={`editor-video${source.id === activeSourceId ? "" : " hidden"}`}
         >
-          <div
-            className="editor-video-box"
-            style={{
-              aspectRatio:
-                source.width > 0 && source.height > 0
-                  ? `${source.width} / ${source.height}`
-                  : undefined,
-            }}
-          >
+          <div className="editor-video-box" style={sourceBoxStyle(source)}>
             {source.kind === "image" ? (
               <img className="editor-still" src={fsUrl(`${basePath}/${source.rel}`)} alt="" />
             ) : (

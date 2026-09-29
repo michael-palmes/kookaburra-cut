@@ -3365,18 +3365,18 @@ button.beat-status {
   display: flex;
   align-items: center;
   justify-content: center;
+  container-type: size;
 }
 
 .editor-video.hidden {
   visibility: hidden;
 }
 
-/* Contain-fit wrapper sized by the source's aspect ratio (inline style), so its rect IS the displayed video rect: tap placement math and marker/glow positioning hang off it. container-type feeds the cqmin dot sizing. */
+/* Contain-fit to the source's aspect (`--source-aspect`, inline) with cq units, so its rect IS the displayed video rect at any window size: tap placement math and marker/glow positioning hang off it. container-type feeds the cqw dot sizing. */
 .editor-video-box {
   position: relative;
-  width: 100%;
-  max-width: 100%;
-  max-height: 100%;
+  width: min(100cqw, calc(100cqh * var(--source-aspect, 1.7777)));
+  height: min(100cqh, calc(100cqw / var(--source-aspect, 1.7777)));
   container-type: size;
 }
 
