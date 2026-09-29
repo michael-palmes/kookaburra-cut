@@ -53,13 +53,13 @@ describe("binaryDir", () => {
 describe("claudeSessionCommand", () => {
   it("execs the detected path quoted, with the pinned permission mode and the grounding", () => {
     expect(claudeSessionCommand(false, "/Users/m/.local/bin/claude", PROJECT)).toBe(
-      `exec '/Users/m/.local/bin/claude' --permission-mode auto --model claude-opus-5 --effort high ${FLAG}${shellQuote(claudeGroundingPrompt(PROJECT))}`,
+      `exec '/Users/m/.local/bin/claude' --permission-mode auto --model claude-opus-5-5 --effort high ${FLAG}${shellQuote(claudeGroundingPrompt(PROJECT))}`,
     );
   });
 
   it("adds --continue when resuming, and grounds the resumed session too", () => {
     expect(claudeSessionCommand(true, "/opt/homebrew/bin/claude", PROJECT)).toBe(
-      `exec '/opt/homebrew/bin/claude' --continue --permission-mode auto --model claude-opus-5 --effort high ${FLAG}${shellQuote(claudeGroundingPrompt(PROJECT))}`,
+      `exec '/opt/homebrew/bin/claude' --continue --permission-mode auto --model claude-opus-5-5 --effort high ${FLAG}${shellQuote(claudeGroundingPrompt(PROJECT))}`,
     );
   });
 });
