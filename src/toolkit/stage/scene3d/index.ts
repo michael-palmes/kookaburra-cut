@@ -1,19 +1,22 @@
 import { ContourField } from "./ContourField";
 import { DriftSlabs } from "./DriftSlabs";
 import { DustDrift } from "./DustDrift";
+import { groupScene3dFamilies, type Scene3dFamilyGroup } from "./families";
 import { GridHall } from "./GridHall";
 import { GridPlain } from "./GridPlain";
 import { GridShell } from "./GridShell";
 import { HaloRings } from "./HaloRings";
+import { DISCOVERED_SCENE3D_LOOKS } from "./looks";
 import { OrbField } from "./OrbField";
 import { PointSwell } from "./PointSwell";
 import { SkylinePrisms } from "./SkylinePrisms";
 import type { Scene3dBackgroundDef } from "./types";
 
-export const SCENE3D_BACKGROUNDS: Record<string, Scene3dBackgroundDef> = {
+const LEGACY_SCENE3D_BACKGROUNDS: Record<string, Scene3dBackgroundDef> = {
   "grid-plain": {
     id: "grid-plain",
     name: "Grid plain",
+    family: "grids",
     colorSlots: [{ label: "Lines", fallback: "#3b5c7d" }],
     params: {
       spacing: { label: "Spacing", default: 1.2, min: 0.6, max: 4, step: 0.1 },
@@ -28,6 +31,7 @@ export const SCENE3D_BACKGROUNDS: Record<string, Scene3dBackgroundDef> = {
   "grid-shell": {
     id: "grid-shell",
     name: "Grid shell",
+    family: "grids",
     colorSlots: [{ label: "Lines", fallback: "#815a3d" }],
     params: {
       radius: { label: "Radius", default: 18, min: 12, max: 45, step: 1 },
@@ -42,6 +46,7 @@ export const SCENE3D_BACKGROUNDS: Record<string, Scene3dBackgroundDef> = {
   "grid-hall": {
     id: "grid-hall",
     name: "Grid hall",
+    family: "grids",
     colorSlots: [{ label: "Lines", fallback: "#45648f" }],
     params: {
       width: { label: "Width", default: 19, min: 10, max: 30, step: 1 },
@@ -57,6 +62,7 @@ export const SCENE3D_BACKGROUNDS: Record<string, Scene3dBackgroundDef> = {
   "contour-field": {
     id: "contour-field",
     name: "Contour field",
+    family: "grids",
     colorSlots: [{ label: "Lines", fallback: "#3e6783" }],
     params: {
       levels: { label: "Levels", default: 11, min: 4, max: 16, step: 1 },
@@ -73,6 +79,7 @@ export const SCENE3D_BACKGROUNDS: Record<string, Scene3dBackgroundDef> = {
   "drift-slabs": {
     id: "drift-slabs",
     name: "Drift slabs",
+    family: "abstract",
     lit: true,
     colorSlots: [
       { label: "Shapes", fallback: "#2b3139" },
@@ -90,6 +97,7 @@ export const SCENE3D_BACKGROUNDS: Record<string, Scene3dBackgroundDef> = {
   "orb-field": {
     id: "orb-field",
     name: "Orb field",
+    family: "abstract",
     lit: true,
     colorSlots: [
       { label: "Orbs", fallback: "#2b3138" },
@@ -107,6 +115,7 @@ export const SCENE3D_BACKGROUNDS: Record<string, Scene3dBackgroundDef> = {
   "halo-rings": {
     id: "halo-rings",
     name: "Halo rings",
+    family: "abstract",
     lit: true,
     colorSlots: [
       { label: "Rings", fallback: "#2b3139" },
@@ -125,6 +134,7 @@ export const SCENE3D_BACKGROUNDS: Record<string, Scene3dBackgroundDef> = {
   "skyline-prisms": {
     id: "skyline-prisms",
     name: "Skyline prisms",
+    family: "abstract",
     lit: true,
     colorSlots: [
       { label: "Prisms", fallback: "#2b3139" },
@@ -141,6 +151,7 @@ export const SCENE3D_BACKGROUNDS: Record<string, Scene3dBackgroundDef> = {
   "point-swell": {
     id: "point-swell",
     name: "Point swell",
+    family: "grids",
     colorSlots: [
       { label: "Points", fallback: "#42607e" },
       { label: "Crest", fallback: "#855838" },
@@ -160,6 +171,7 @@ export const SCENE3D_BACKGROUNDS: Record<string, Scene3dBackgroundDef> = {
   "dust-drift": {
     id: "dust-drift",
     name: "Dust drift",
+    family: "grids",
     colorSlots: [
       { label: "Dust", fallback: "#496489" },
       { label: "Sparkle", fallback: "#72612f" },
@@ -177,7 +189,7 @@ export const SCENE3D_BACKGROUNDS: Record<string, Scene3dBackgroundDef> = {
   },
 };
 
-export const SCENE3D_BACKGROUND_IDS: string[] = [
+const LEGACY_SCENE3D_BACKGROUND_IDS: string[] = [
   "grid-plain",
   "grid-shell",
   "grid-hall",
@@ -190,9 +202,48 @@ export const SCENE3D_BACKGROUND_IDS: string[] = [
   "dust-drift",
 ];
 
+const discoveredLooks = DISCOVERED_SCENE3D_LOOKS.filter(({ folder, look }) => {
+  if (!(look.id in LEGACY_SCENE3D_BACKGROUNDS)) return true;
+  console.warn(`[stage] 3D look folder "${folder}" reuses the built-in id "${look.id}", skipped`);
+  return false;
+});
+
+/** Every look: the built-in ten, then each `looks/<id>/` folder (discovered, no registration). */
+export const SCENE3D_BACKGROUNDS: Record<string, Scene3dBackgroundDef> = {
+  ...LEGACY_SCENE3D_BACKGROUNDS,
+  ...Object.fromEntries(discoveredLooks.map(({ look }) => [look.id, look])),
+};
+
+/** Picker display order: the built-in ten as shipped, then discovered looks by family, name and id. */
+export const SCENE3D_BACKGROUND_IDS: string[] = [
+  ...LEGACY_SCENE3D_BACKGROUND_IDS,
+  ...discoveredLooks.map(({ look }) => look.id),
+];
+
+/** Non-empty picker groups in family order, each keeping SCENE3D_BACKGROUND_IDS order. */
+export const SCENE3D_FAMILY_GROUPS: Scene3dFamilyGroup[] = groupScene3dFamilies(
+  SCENE3D_BACKGROUND_IDS,
+  (id) => SCENE3D_BACKGROUNDS[id].family,
+);
+
+export {
+  groupScene3dFamilies,
+  SCENE3D_FAMILIES,
+  SCENE3D_FAMILY_NAMES,
+  type Scene3dFamily,
+  type Scene3dFamilyGroup,
+} from "./families";
+export { resolveScene3dParams } from "./params";
 export {
   SCENE3D_BACKGROUND_PRESETS,
   type Scene3dBackgroundPreset,
   scene3dThemeAnchor,
 } from "./presets";
-export type { Scene3dBackgroundDef, Scene3dLookProps, Scene3dParamDef } from "./types";
+export type {
+  Scene3dBackgroundDef,
+  Scene3dColorSlot,
+  Scene3dCompanionLighting,
+  Scene3dLookModule,
+  Scene3dLookProps,
+  Scene3dParamDef,
+} from "./types";

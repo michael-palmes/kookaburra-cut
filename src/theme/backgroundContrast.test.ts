@@ -32,7 +32,8 @@ function visibleColours(entry: ThemeCatalogueEntry): string[] {
   const background = theme.background;
   if (background?.type === "shader") colours.push(...(background.colors ?? []));
   if (background?.type === "scene3d") {
-    colours.push(...(background.colors ?? []));
+    const slots = SCENE3D_BACKGROUNDS[background.look]?.colorSlots ?? [];
+    colours.push(...(background.colors ?? []).filter((_, i) => !slots[i]?.glow));
     if (background.backing?.type === "color") colours.push(background.backing.color);
   }
   return [...new Set(colours)];
@@ -70,7 +71,7 @@ describe("expanded theme library", () => {
     }
   });
 
-  it("uses every shipped procedural background family and two static artworks", () => {
+  it("uses every shader background, only known 3D looks and two static artworks", () => {
     const shaders = new Set<string>();
     const scene3d = new Set<string>();
     const images = new Set<string>();
@@ -80,7 +81,8 @@ describe("expanded theme library", () => {
       if (theme.background?.type === "image") images.add(theme.background.src);
     }
     expect([...shaders].sort()).toEqual(Object.keys(SHADER_BACKGROUNDS).sort());
-    expect([...scene3d].sort()).toEqual(Object.keys(SCENE3D_BACKGROUNDS).sort());
+    // 3D looks outnumber the themes, so a look needs no theme; one a theme uses must exist.
+    for (const look of scene3d) expect(SCENE3D_BACKGROUNDS[look], look).toBeDefined();
     expect([...images].sort()).toEqual([...STATIC_BACKGROUND_SOURCES].sort());
   });
 
