@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useClockStore } from "./clock";
+import { downscaleRgba } from "./downscale";
 import {
   canvasCommittedClockMs,
   canvasCommittedProject,
@@ -82,7 +83,7 @@ export async function captureFrameAt(
   return paintAndReadCanvas(width, format);
 }
 
-/** Force one synchronous render and downscale the preserved GL buffer to PNG/JPEG. */
+/** Force one synchronous render and box-filter the preserved GL buffer down to a PNG/JPEG. */
 async function paintAndReadCanvas(
   width: number,
   format: "png" | "jpeg",
@@ -98,14 +99,20 @@ async function paintAndReadCanvas(
     restoreGizmos();
   }
 
-  const source = canvasHandle.current.gl.domElement;
-  const scale = Math.min(1, width / Math.max(1, source.width));
+  const gl = canvasHandle.current.gl.getContext();
+  const srcWidth = gl.drawingBufferWidth;
+  const srcHeight = gl.drawingBufferHeight;
+  const scale = Math.min(1, width / Math.max(1, srcWidth));
   const target = document.createElement("canvas");
-  target.width = Math.max(1, Math.round(source.width * scale));
-  target.height = Math.max(1, Math.round(source.height * scale));
+  target.width = Math.max(1, Math.round(srcWidth * scale));
+  target.height = Math.max(1, Math.round(srcHeight * scale));
   const ctx = target.getContext("2d");
   if (!ctx) return null;
-  ctx.drawImage(source, 0, 0, target.width, target.height);
+  // Read the preserved buffer back like the export does and box-filter it in JS: a one-step drawImage shrink aliased thin lines into dashes.
+  const rgba = new Uint8Array(srcWidth * srcHeight * 4);
+  gl.readPixels(0, 0, srcWidth, srcHeight, gl.RGBA, gl.UNSIGNED_BYTE, rgba);
+  const pixels = downscaleRgba(rgba, srcWidth, srcHeight, target.width, target.height, true);
+  ctx.putImageData(new ImageData(pixels, target.width, target.height), 0, 0);
   const blob = await new Promise<Blob | null>((resolve) =>
     format === "jpeg"
       ? target.toBlob(resolve, "image/jpeg", 0.85)

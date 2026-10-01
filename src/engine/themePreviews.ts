@@ -11,7 +11,7 @@ import { captureFrameAt, withBorrowedClock } from "./snapshots";
 
 export const THEME_PREVIEW_WIDTH = 640;
 export const THEME_PREVIEW_COUNT = 4;
-export const THEME_PREVIEW_VERSION = 1;
+export const THEME_PREVIEW_VERSION = 2;
 
 /** The fixture every theme's previews render from (formerly `theme-starter`): a shipped project, since user themes generate their previews at runtime in the packaged app. Its scene bytes are frozen, and a content change invalidates all committed previews. */
 export const THEME_PREVIEW_PROJECT_ID = "preview-lab-theme";

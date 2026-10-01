@@ -62,13 +62,20 @@ describe("snapshot destinations", () => {
     canvasHandle.current = {
       advance: vi.fn(),
       scene: {},
-      gl: { domElement: { width: 1280, height: 720 } },
+      gl: {
+        getContext: () => ({
+          drawingBufferWidth: 64,
+          drawingBufferHeight: 36,
+          readPixels: vi.fn(),
+        }),
+      },
     } as unknown as NonNullable<typeof canvasHandle.current>;
+    vi.stubGlobal("ImageData", class {});
     vi.stubGlobal("document", {
       createElement: () => ({
         width: 0,
         height: 0,
-        getContext: () => ({ drawImage: vi.fn() }),
+        getContext: () => ({ putImageData: vi.fn() }),
         toBlob: (ready: (blob: { arrayBuffer: () => Promise<ArrayBufferLike> }) => void) =>
           ready({
             arrayBuffer: async () => {
