@@ -5,6 +5,7 @@ import {
   SCENE3D_BACKGROUND_IDS,
   SCENE3D_BACKGROUND_PRESETS,
   SCENE3D_BACKGROUNDS,
+  SCENE3D_FAMILY_GROUPS,
   type Scene3dBackgroundPreset,
   scene3dThemeAnchor,
 } from "../../toolkit/stage/scene3d";
@@ -468,9 +469,9 @@ export function StageSection({
               label="3D background look"
               value={lookId ?? ""}
               onChange={applyScene3d}
-              options={SCENE3D_BACKGROUND_IDS.map((id) => ({
-                id,
-                label: SCENE3D_BACKGROUNDS[id].name,
+              groups={SCENE3D_FAMILY_GROUPS.map((group) => ({
+                label: group.name,
+                options: group.ids.map((id) => ({ id, label: SCENE3D_BACKGROUNDS[id].name })),
               }))}
             />
           </Field>

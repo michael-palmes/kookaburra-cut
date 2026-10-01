@@ -182,19 +182,30 @@ export function IconOptions<T extends string>({
 }
 
 /** A select carrying a leading icon, for lists too long to chip out (category, easing). */
+type SelectOption = { id: string; label: string };
+
 export function IconSelect({
   icon,
   value,
   onChange,
-  options,
+  options = [],
+  groups,
   label,
 }: {
   icon: ThemeEditorIconName;
   value: string;
   onChange: (next: string) => void;
-  options: readonly { id: string; label: string }[];
+  options?: readonly SelectOption[];
+  /** Headed option groups, listed after any ungrouped `options`. */
+  groups?: readonly { label: string; options: readonly SelectOption[] }[];
   label: string;
 }) {
+  const optionEls = (list: readonly SelectOption[]) =>
+    list.map((option) => (
+      <option key={option.id} value={option.id}>
+        {option.label}
+      </option>
+    ));
   return (
     <span className="theme-editor-select">
       <ThemeEditorIcon name={icon} size={14} />
@@ -204,10 +215,11 @@ export function IconSelect({
         aria-label={label}
         onChange={(event) => onChange(event.target.value)}
       >
-        {options.map((option) => (
-          <option key={option.id} value={option.id}>
-            {option.label}
-          </option>
+        {optionEls(options)}
+        {groups?.map((group) => (
+          <optgroup key={group.label} label={group.label}>
+            {optionEls(group.options)}
+          </optgroup>
         ))}
       </select>
     </span>

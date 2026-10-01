@@ -1,6 +1,8 @@
 import type {
   FixtureRepeat,
   FixtureSpec,
+  LightingCompanion,
+  LightingCompanionFields,
   LightingKey,
   LightingPose,
   LightingSegment,
@@ -381,12 +383,55 @@ export function normalizeLighting(
     out.keys = raw.keys as LightingKey[];
     if (Array.isArray(raw.segments)) out.segments = raw.segments as LightingSegment[];
   }
+  if (raw.companion !== undefined && !opts.themeLayer) {
+    const companion = parseCompanion(raw.companion, source);
+    if (companion) out.companion = companion;
+    else console.warn(`[lighting] ${source}: invalid "companion" record — dropped`);
+  }
 
   if (opts.themeLayer && !hasV8Rig(out) && !hasV9Content(out)) {
     console.warn(`[theme] ${source}: "lighting" needs a valid key light + ambient — dropped`);
     return null;
   }
   return Object.keys(out).length > 0 ? out : null;
+}
+
+const COMPANION_FIELDS = [
+  "environment",
+  "sun",
+  "ambient",
+  "ambientColor",
+  "lights",
+  "fixtures",
+  "shadow",
+] as const;
+
+/** Rig fields through the same validation as the block itself, so written and live values compare like for like after a reload. */
+function parseCompanionFields(v: unknown, source: string): LightingCompanionFields {
+  if (!isRecord(v)) return {};
+  const raw = Object.fromEntries(COMPANION_FIELDS.map((field) => [field, v[field]]));
+  const spec = normalizeLighting(raw, source);
+  const out: LightingCompanionFields = {};
+  for (const field of COMPANION_FIELDS) {
+    // biome-ignore lint/suspicious/noExplicitAny: keyed copy over a closed field list
+    if (spec?.[field] !== undefined) (out as any)[field] = spec[field];
+  }
+  return out;
+}
+
+function parseCompanion(v: unknown, source: string): LightingCompanion | undefined {
+  if (!isRecord(v) || !isStr(v.look) || !isStr(v.preset)) return undefined;
+  const {
+    lights: _lights,
+    fixtures: _fixtures,
+    ...prior
+  } = parseCompanionFields(v.prior, `${source} companion.prior`);
+  return {
+    look: v.look,
+    preset: v.preset,
+    wrote: parseCompanionFields(v.wrote, `${source} companion.wrote`),
+    prior,
+  };
 }
 
 const hasV8Rig = (spec: LightingSpec): boolean =>

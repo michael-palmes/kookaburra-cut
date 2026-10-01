@@ -153,6 +153,8 @@ export async function applyBackgroundToAllScenes(
   project: LoadedProject,
   sourceIndex: number,
   onDocChanged: DocChangedHandler,
+  /** Runs inside each target's write, after the stamp (the inspector reconciles Matching lighting here). */
+  afterStamp?: (next: SceneDoc, sceneIndex: number) => void,
 ): Promise<{ applied: number; failed: number }> {
   if (!isEditableProjectId(project.id)) return { applied: 0, failed: 0 };
   const slug = nativeProjectSlug(project.id);
@@ -169,6 +171,7 @@ export async function applyBackgroundToAllScenes(
         (next) => {
           next.background = source?.background ? structuredClone(source.background) : undefined;
           next.backdrop = source?.backdrop ? structuredClone(source.backdrop) : undefined;
+          afterStamp?.(next, i);
         },
       );
       if (!result) continue;

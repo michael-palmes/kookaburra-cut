@@ -242,6 +242,25 @@ export interface LightingSpec {
   /** The scene's lighting keyframe track (SCENE-DOC layer only; themes and project defaults never animate). Raw here like the camera's sidecar block; deep validation lives in `normalizeLightingTrack`. */
   keys?: LightingKey[];
   segments?: LightingSegment[];
+  /** SCENE-DOC layer only: what the 3D background's Matching lighting toggle wrote here. The renderer never reads it. */
+  companion?: LightingCompanion;
+}
+
+/** The static rig fields a 3D background preset can carry as its matching lighting. */
+export type LightingCompanionFields = Pick<
+  LightingSpec,
+  "environment" | "sun" | "ambient" | "ambientColor" | "lights" | "fixtures" | "shadow"
+>;
+
+/** Provenance for the Matching lighting toggle, so turning it off removes only its own unedited writes. */
+export interface LightingCompanion {
+  /** The scene3d look and preset whose block was written. */
+  look: string;
+  preset: string;
+  /** Each field as written; `lights` and `fixtures` hold only the entries the toggle added. */
+  wrote: LightingCompanionFields;
+  /** The scene layer's own values the write replaced; an absent field was inherited. */
+  prior: Omit<LightingCompanionFields, "lights" | "fixtures">;
 }
 
 /** Environment reflections (IBL), the v8 theme block: `source` is a bundled HDRI id (`kookaburra:<name>`) or the Lightformer preset id (`kookaburra:softbox`). Project-relative `.hdr`/`.exr` sources and the explicit `"none"` live on the v9 `LightingSpec.environment` (same shape, wider vocabulary). Preloaded before frame 0 via `preloadEnvironments`. */

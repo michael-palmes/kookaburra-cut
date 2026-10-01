@@ -66,6 +66,7 @@ import {
   TEXT_LINE_HEIGHT_MAX,
   TEXT_LINE_HEIGHT_MIN,
 } from "../../engine/sceneDocSchema";
+import { MAX_SCENE_LIGHTS } from "../../engine/sceneLighting";
 import {
   createSceneMedia,
   DEFAULT_SCENE_MEDIA_WINDOW_RADIUS,
@@ -177,9 +178,9 @@ import {
   frontOfDevicePlacement,
 } from "../../toolkit/objects/presets";
 import {
-  SCENE3D_BACKGROUND_IDS,
   SCENE3D_BACKGROUND_PRESETS,
   SCENE3D_BACKGROUNDS,
+  SCENE3D_FAMILY_GROUPS,
   type Scene3dBackgroundPreset,
   scene3dThemeAnchor,
 } from "../../toolkit/stage/scene3d";
@@ -227,6 +228,15 @@ import { HEADER_EMOJIS } from "../SceneTextFields";
 import { detectWindowRecording } from "../windowRecordingDetect";
 import { ArrangeDevicesDrill } from "./ArrangeDevicesDrill";
 import { ChartDrillIn, ChartPlacementDrillIn, newChartBlock } from "./ChartSection";
+import {
+  applyCompanionLighting,
+  companionMatches,
+  companionSkippedLights,
+  companionTargetFor,
+  reconcileCompanionLighting,
+  removeCompanionLighting,
+  writeSideLighting,
+} from "./companionLightingModel";
 import { clickInspectorRemoveAction, contentDeleteRoute } from "./contentDeleteKey";
 import { nextNumberedContentId } from "./contentIds";
 import {
@@ -237,6 +247,7 @@ import {
   planContentDuplicate,
 } from "./contentMenuActions";
 import { modalOwnsKeyboard } from "./InspectorNavigationShell";
+import { LightingIcon } from "./LightingIcon";
 import { type LightingInspectorScreen, LightingInspectorSection } from "./LightingInspectorSection";
 import {
   comparisonLightingEditorDoc,
@@ -4003,10 +4014,35 @@ export function SceneTab({
     );
   };
 
+  const bgSide = bgTarget === "compareB" ? "b" : "a";
+  const bgLightingBelow = {
+    theme: (bgSide === "b"
+      ? (project.compareBThemes[sceneIndex] ?? sceneTheme ?? project.theme)
+      : (sceneTheme ?? project.theme)
+    ).lighting,
+    project: project.projectLighting,
+  };
+  /** An active Matching lighting toggle follows every background edit on its side. */
+  const reconcileBgCompanion = (next: SceneDoc) => {
+    const background =
+      bgSide === "b" ? (next.compare?.b?.background ?? next.background) : next.background;
+    const target = companionTargetFor(background, SCENE3D_BACKGROUND_PRESETS);
+    writeSideLighting(next, bgSide, (lighting) =>
+      reconcileCompanionLighting(lighting, bgLightingBelow, target),
+    );
+  };
   /** Route a background-drill mutation at its target: the scene's own background, or the comparison's after side. For the after side, side B's values swap in before the mutation and transplant out after, so the drill's reads and writes work unchanged and every OTHER field still mutates the real doc. Staging rides along, because the drill's colour and gradient picks write the backdrop too. */
   const patchBgDoc = (mutate: (next: SceneDoc) => void, opts?: Parameters<typeof patchDoc>[1]) => {
-    if (bgTarget !== "compareB") return patchDoc(mutate, opts);
-    return patchDoc((next) => mutateCompareBackgroundTarget(next, mutate), opts);
+    if (bgTarget !== "compareB") {
+      return patchDoc((next) => {
+        mutate(next);
+        reconcileBgCompanion(next);
+      }, opts);
+    }
+    return patchDoc((next) => {
+      mutateCompareBackgroundTarget(next, mutate);
+      reconcileBgCompanion(next);
+    }, opts);
   };
   /** The lighting drill's target routing, same transplant rule over `lighting`. */
   const patchLightingDoc = (
@@ -5487,6 +5523,22 @@ export function SceneTab({
       ...scene3dPresetList.filter((p) => (p.mode === "light") === lightTheme),
       ...scene3dPresetList.filter((p) => (p.mode === "light") !== lightTheme),
     ];
+    // Matching lighting reads and writes the edited side's scene lighting layer (After inherits Before's until it owns one).
+    const scene3dCompanion = companionTargetFor(
+      scene3dSpec ?? undefined,
+      SCENE3D_BACKGROUND_PRESETS,
+    );
+    const sideLighting = bgSide === "b" ? (doc.compare?.b?.lighting ?? doc.lighting) : doc.lighting;
+    const scene3dCompanionOn = companionMatches(sideLighting, scene3dCompanion);
+    const scene3dCompanionSkipped = companionSkippedLights(sideLighting, scene3dCompanion);
+    const setScene3dCompanion = (on: boolean) =>
+      void patchDoc((next) =>
+        writeSideLighting(next, bgSide, (lighting) =>
+          on && scene3dCompanion
+            ? applyCompanionLighting(lighting, bgLightingBelow, scene3dCompanion)
+            : removeCompanionLighting(lighting, bgLightingBelow),
+        ),
+      );
     const shaderPresets = shaderSpec ? (SHADER_BACKGROUND_PRESETS[shaderSpec.shader] ?? []) : [];
     // Presets matching the theme's mode lead the grid; the other mode follows.
     const orderedShaderPresets = [
@@ -5768,47 +5820,55 @@ export function SceneTab({
                 Real geometry behind the scene: it parallaxes with camera moves and keeps a clear
                 area around your content. Runs on the project clock, continuous across cuts.
               </p>
-              <div className="option-grid">
-                {SCENE3D_BACKGROUND_IDS.map((id) => {
-                  const def = SCENE3D_BACKGROUNDS[id];
-                  // The card previews and applies the mode's anchor preset wholesale, so the card shows what the click writes.
-                  const cardAnchor = SCENE3D_BACKGROUND_PRESETS[id]?.find(
-                    (p) => p.id === (lightTheme ? "p1" : "p6"),
-                  );
-                  const preview =
-                    (lightTheme ? optionPreviewClip(`bg-${id}-light`) : null) ??
-                    optionPreviewClip(`bg-${id}`);
-                  return (
-                    <OptionCard
-                      key={id}
-                      label={def.name}
-                      image={preview?.poster ?? optionPreviewStill(`bg-${id}`)}
-                      clip={preview?.clip}
-                      playing={bgHover === id || scene3dSpec?.look === id}
-                      selected={scene3dSpec?.look === id}
-                      onSelect={() => {
-                        setBgTabOverride(null);
-                        void patchBgDoc((next) => {
-                          next.background = cardAnchor
-                            ? {
-                                type: "scene3d",
-                                look: id,
-                                colors: [...cardAnchor.colors],
-                                speed: cardAnchor.speed ?? 1,
-                                ...(cardAnchor.params ? { params: { ...cardAnchor.params } } : {}),
-                                backing: { type: "color", color: cardAnchor.backing },
-                                preset: cardAnchor.id,
-                              }
-                            : { type: "scene3d", look: id };
-                          // A staged backdrop would hide the geometry: clear it in the same undoable entry.
-                          if (stagingOn) next.backdrop = { type: "none" };
-                        });
-                      }}
-                      onHoverChange={(h) => setBgHover((cur) => (h ? id : cur === id ? null : cur))}
-                    />
-                  );
-                })}
-              </div>
+              {SCENE3D_FAMILY_GROUPS.map((group) => (
+                <DrillGroup key={group.family} label={group.name}>
+                  <div className="option-grid">
+                    {group.ids.map((id) => {
+                      const def = SCENE3D_BACKGROUNDS[id];
+                      // The card previews and applies the mode's anchor preset wholesale, so the card shows what the click writes.
+                      const cardAnchor = SCENE3D_BACKGROUND_PRESETS[id]?.find(
+                        (p) => p.id === (lightTheme ? "p1" : "p6"),
+                      );
+                      const preview =
+                        (lightTheme ? optionPreviewClip(`bg-${id}-light`) : null) ??
+                        optionPreviewClip(`bg-${id}`);
+                      return (
+                        <OptionCard
+                          key={id}
+                          label={def.name}
+                          image={preview?.poster ?? optionPreviewStill(`bg-${id}`)}
+                          clip={preview?.clip}
+                          playing={bgHover === id || scene3dSpec?.look === id}
+                          selected={scene3dSpec?.look === id}
+                          onSelect={() => {
+                            setBgTabOverride(null);
+                            void patchBgDoc((next) => {
+                              next.background = cardAnchor
+                                ? {
+                                    type: "scene3d",
+                                    look: id,
+                                    colors: [...cardAnchor.colors],
+                                    speed: cardAnchor.speed ?? 1,
+                                    ...(cardAnchor.params
+                                      ? { params: { ...cardAnchor.params } }
+                                      : {}),
+                                    backing: { type: "color", color: cardAnchor.backing },
+                                    preset: cardAnchor.id,
+                                  }
+                                : { type: "scene3d", look: id };
+                              // A staged backdrop would hide the geometry: clear it in the same undoable entry.
+                              if (stagingOn) next.backdrop = { type: "none" };
+                            });
+                          }}
+                          onHoverChange={(h) =>
+                            setBgHover((cur) => (h ? id : cur === id ? null : cur))
+                          }
+                        />
+                      );
+                    })}
+                  </div>
+                </DrillGroup>
+              ))}
               {scene3dSpec && scene3dDef && (
                 <>
                   {orderedScene3dPresets.length > 0 && (
@@ -5831,6 +5891,19 @@ export function SceneTab({
                           />
                         ))}
                       </div>
+                      {scene3dCompanion && (
+                        <ToggleRow
+                          icon={<LightingIcon name="lights" />}
+                          label="Matching lighting"
+                          description={
+                            scene3dCompanionSkipped > 0
+                              ? `Adds lights that suit this preset; ${scene3dCompanionSkipped} left out at the ${MAX_SCENE_LIGHTS}-light budget.`
+                              : "Adds lights that suit this preset to the scene's Lighting; off removes them."
+                          }
+                          checked={scene3dCompanionOn}
+                          onChange={setScene3dCompanion}
+                        />
+                      )}
                     </DrillGroup>
                   )}
                   <DrillGroup label="Backing">
@@ -6208,7 +6281,18 @@ export function SceneTab({
                       return;
                     }
                     setConfirmApplyAll(false);
-                    applyBackgroundToAllScenes(project, sceneIndex, onDocChanged)
+                    applyBackgroundToAllScenes(project, sceneIndex, onDocChanged, (next, i) =>
+                      writeSideLighting(next, "a", (lighting) =>
+                        reconcileCompanionLighting(
+                          lighting,
+                          {
+                            theme: (project.sceneThemes[i] ?? project.theme).lighting,
+                            project: project.projectLighting,
+                          },
+                          companionTargetFor(next.background, SCENE3D_BACKGROUND_PRESETS),
+                        ),
+                      ),
+                    )
                       .then(({ failed }) => {
                         if (failed > 0) setError(`${failed} scene(s) failed to update.`);
                       })

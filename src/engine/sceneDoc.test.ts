@@ -537,6 +537,23 @@ describe("applyBackgroundToAllScenes records the project-wide stamp", () => {
     expect(peekUndo()?.changes.map((c) => c.kind)).toEqual(["sceneDoc", "manifest"]);
   });
 
+  it("runs the host's follow-up inside each target's write, after the stamp", async () => {
+    const afterStamp = vi.fn((next: SceneDoc, _sceneIndex: number) => {
+      next.lighting = { ambient: next.background?.type === "color" ? 0.5 : 0 };
+    });
+    await applyBackgroundToAllScenes(
+      projectWith([docWith({ background }), undefined, docWith({})]),
+      0,
+      () => {},
+      afterStamp,
+    );
+    expect(afterStamp.mock.calls.map((call) => call[1])).toEqual([1, 2]);
+    expect(JSON.parse(sidecars.get("scenes/03-scene.json") as string).lighting).toEqual({
+      ambient: 0.5,
+    });
+    expect(peekUndo()?.changes.map((c) => c.kind)).toEqual(["sceneDoc", "sceneDoc", "manifest"]);
+  });
+
   it("a theme-default source with no stamp leaves the manifest untouched", async () => {
     const before = manifestText;
     await applyBackgroundToAllScenes(projectWith([docWith({}), undefined]), 0, () => {});
