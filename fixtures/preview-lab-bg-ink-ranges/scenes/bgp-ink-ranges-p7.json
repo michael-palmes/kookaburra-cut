@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "name": "preset still for the \"ink-ranges\" 3D background (\"Kanangra\")",
+  "background": {
+    "type": "scene3d",
+    "look": "ink-ranges",
+    "colors": ["#0a111c", "#1f2c40", "#45566d", "#8a96a4"],
+    "speed": 0.9,
+    "params": {
+      "horizon": 1.25,
+      "hardness": 0.25,
+      "mist": 0.45,
+      "layers": 5,
+      "drift": 0.8,
+      "discSize": 1.2,
+      "eyeHaze": 0.3,
+      "textCalm": 0.5
+    },
+    "backing": {
+      "type": "color",
+      "color": "#0e1522"
+    },
+    "preset": "p7"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

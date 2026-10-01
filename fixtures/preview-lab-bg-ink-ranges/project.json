@@ -1,0 +1,53 @@
+{
+  "id": "preview-lab-bg-ink-ranges",
+  "name": "Preview Lab — bg-ink-ranges (dev-only)",
+  "version": 2,
+  "themeId": "kookaburra-studio-white",
+  "formats": ["16:9"],
+  "scenes": [
+    {
+      "file": "scenes/bg-ink-ranges.tsx",
+      "durationMs": 2000
+    },
+    {
+      "file": "scenes/bg-ink-ranges-light.tsx",
+      "durationMs": 2000
+    },
+    {
+      "file": "scenes/bgp-ink-ranges-p1.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-ink-ranges-p2.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-ink-ranges-p3.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-ink-ranges-p4.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-ink-ranges-p5.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-ink-ranges-p6.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-ink-ranges-p7.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-ink-ranges-p8.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-ink-ranges-p9.tsx",
+      "durationMs": 1000
+    }
+  ]
+}
