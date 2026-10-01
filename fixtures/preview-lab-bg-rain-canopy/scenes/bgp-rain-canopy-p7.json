@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "name": "preset still for the \"rain-canopy\" 3D background (\"Huon Pine\")",
+  "background": {
+    "type": "scene3d",
+    "look": "rain-canopy",
+    "colors": ["#5e5230", "#2a2718", "#6c5f36"],
+    "speed": 0.9,
+    "params": {
+      "amplitude": 0.7,
+      "height": 6.8,
+      "spacing": 1,
+      "droop": 4.2,
+      "period": 110,
+      "threads": 0.3,
+      "textCalm": 0.6
+    },
+    "backing": {
+      "type": "color",
+      "color": "#13120b"
+    },
+    "preset": "p7"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

@@ -1,0 +1,55 @@
+{
+  "version": 1,
+  "name": "light-mode 3D background sample for \"rain-canopy\" (\"Boronia\")",
+  "background": {
+    "type": "scene3d",
+    "look": "rain-canopy",
+    "colors": ["#b39379", "#d4cbbf", "#e6cdb0"],
+    "speed": 1,
+    "params": {
+      "amplitude": 0.9,
+      "height": 5.8,
+      "spacing": 1.2,
+      "droop": 3.6,
+      "period": 90,
+      "threads": 0.25,
+      "textCalm": 0.6
+    },
+    "backing": {
+      "type": "color",
+      "color": "#f6f1ea"
+    },
+    "preset": "p1"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": -35,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      },
+      {
+        "id": "k2",
+        "tMs": 1900,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 35,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": [
+      {
+        "from": "k1",
+        "to": "k2",
+        "ease": "inOutCubic"
+      }
+    ]
+  }
+}

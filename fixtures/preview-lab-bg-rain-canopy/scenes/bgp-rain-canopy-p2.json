@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "name": "preset still for the \"rain-canopy\" 3D background (\"Flannel Flower\")",
+  "background": {
+    "type": "scene3d",
+    "look": "rain-canopy",
+    "colors": ["#959c89", "#cbd0c1", "#e0e4d3"],
+    "speed": 0.9,
+    "params": {
+      "amplitude": 0.6,
+      "height": 6.6,
+      "spacing": 1.5,
+      "droop": 3,
+      "period": 120,
+      "threads": 0.2,
+      "textCalm": 0.7
+    },
+    "backing": {
+      "type": "color",
+      "color": "#f5f6ef"
+    },
+    "preset": "p2"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

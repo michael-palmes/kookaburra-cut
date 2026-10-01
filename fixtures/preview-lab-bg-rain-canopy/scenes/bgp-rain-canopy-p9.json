@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "name": "preset still for the \"rain-canopy\" 3D background (\"Myrtle Beech\")",
+  "background": {
+    "type": "scene3d",
+    "look": "rain-canopy",
+    "colors": ["#3b5448", "#1f2a25", "#4a6656"],
+    "speed": 0.8,
+    "params": {
+      "amplitude": 0.8,
+      "height": 6.4,
+      "spacing": 1.8,
+      "droop": 2.6,
+      "period": 180,
+      "threads": 0.4,
+      "textCalm": 0.7
+    },
+    "backing": {
+      "type": "color",
+      "color": "#0c1210"
+    },
+    "preset": "p9"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

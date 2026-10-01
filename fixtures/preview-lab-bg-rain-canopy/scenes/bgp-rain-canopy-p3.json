@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "name": "preset still for the \"rain-canopy\" 3D background (\"Waxflower\")",
+  "background": {
+    "type": "scene3d",
+    "look": "rain-canopy",
+    "colors": ["#b1919d", "#d6c8ce", "#e9d4da"],
+    "speed": 1,
+    "params": {
+      "amplitude": 1.1,
+      "height": 5.4,
+      "spacing": 1,
+      "droop": 4,
+      "period": 75,
+      "threads": 0.3,
+      "textCalm": 0.6
+    },
+    "backing": {
+      "type": "color",
+      "color": "#f8f2f4"
+    },
+    "preset": "p3"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}
