@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "name": "preset still for the \"iris-screen\" 3D background (\"Nornalup\")",
+  "background": {
+    "type": "scene3d",
+    "look": "iris-screen",
+    "colors": ["#1a2620", "#8c7a3e", "#4f5a3e"],
+    "speed": 0.9,
+    "params": {
+      "radius": 16,
+      "panels": 48,
+      "cycle": 28,
+      "sunElevation": 26,
+      "pool": 0.55,
+      "clearRadius": 6.5,
+      "textCalm": 0.6
+    },
+    "backing": {
+      "type": "color",
+      "color": "#08100c"
+    },
+    "preset": "p7"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

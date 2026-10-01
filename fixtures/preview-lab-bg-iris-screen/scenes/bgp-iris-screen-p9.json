@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "name": "preset still for the \"iris-screen\" 3D background (\"Torndirrup\")",
+  "background": {
+    "type": "scene3d",
+    "look": "iris-screen",
+    "colors": ["#23282b", "#9a8660", "#545755"],
+    "speed": 0.8,
+    "params": {
+      "radius": 12,
+      "panels": 38,
+      "cycle": 22,
+      "sunElevation": 34,
+      "pool": 0.5,
+      "clearRadius": 5,
+      "textCalm": 0.55
+    },
+    "backing": {
+      "type": "color",
+      "color": "#0c0e10"
+    },
+    "preset": "p9"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

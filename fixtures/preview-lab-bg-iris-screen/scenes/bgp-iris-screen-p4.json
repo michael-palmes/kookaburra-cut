@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "name": "preset still for the \"iris-screen\" 3D background (\"Hamelin Bay\")",
+  "background": {
+    "type": "scene3d",
+    "look": "iris-screen",
+    "colors": ["#b2958f", "#f7e2d4", "#ecd3cb"],
+    "speed": 0.85,
+    "params": {
+      "radius": 19,
+      "panels": 56,
+      "cycle": 24,
+      "sunElevation": 30,
+      "pool": 0.45,
+      "clearRadius": 7,
+      "textCalm": 0.5
+    },
+    "backing": {
+      "type": "color",
+      "color": "#faf2ee"
+    },
+    "preset": "p4"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}
