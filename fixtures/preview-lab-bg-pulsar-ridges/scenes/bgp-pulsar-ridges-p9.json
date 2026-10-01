@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "name": "preset still for the \"pulsar-ridges\" 3D background (\"Murray Sunset\")",
+  "background": {
+    "type": "scene3d",
+    "look": "pulsar-ridges",
+    "colors": ["#463c58", "#5f5377", "#191522"],
+    "speed": 1,
+    "params": {
+      "rings": 46,
+      "valley": 9.5,
+      "height": 1.25,
+      "massifs": 5,
+      "lineWidth": 1.8,
+      "drift": 1.3,
+      "textCalm": 0.55
+    },
+    "backing": {
+      "type": "color",
+      "color": "#100d16"
+    },
+    "preset": "p9"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

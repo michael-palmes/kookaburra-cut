@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "name": "preset still for the \"pulsar-ridges\" 3D background (\"Wyperfeld\")",
+  "background": {
+    "type": "scene3d",
+    "look": "pulsar-ridges",
+    "colors": ["#34463f", "#4a6057", "#111a17"],
+    "speed": 1,
+    "params": {
+      "rings": 40,
+      "valley": 12,
+      "height": 0.8,
+      "massifs": 6,
+      "lineWidth": 2,
+      "drift": 0.9,
+      "textCalm": 0.5
+    },
+    "backing": {
+      "type": "color",
+      "color": "#0b1210"
+    },
+    "preset": "p7"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

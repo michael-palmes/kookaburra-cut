@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "name": "preset still for the \"pulsar-ridges\" 3D background (\"Little Desert\")",
+  "background": {
+    "type": "scene3d",
+    "look": "pulsar-ridges",
+    "colors": ["#aebaa6", "#929e89", "#e4eadf"],
+    "speed": 1,
+    "params": {
+      "rings": 22,
+      "valley": 14,
+      "height": 1.2,
+      "massifs": 2,
+      "lineWidth": 3,
+      "drift": 0.9,
+      "textCalm": 0.5
+    },
+    "backing": {
+      "type": "color",
+      "color": "#f4f6f0"
+    },
+    "preset": "p4"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}
