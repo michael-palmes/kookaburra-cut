@@ -1,0 +1,55 @@
+{
+  "version": 1,
+  "name": "3D background sample for \"plexus-loom\" (\"Hanging Rock\")",
+  "background": {
+    "type": "scene3d",
+    "look": "plexus-loom",
+    "colors": ["#5b4d6d", "#45616f", "#6b5c3b", "#ad8d58"],
+    "speed": 1,
+    "params": {
+      "bundles": 36,
+      "hoopRadius": 16,
+      "twist": 80,
+      "breath": 12,
+      "spin": 1,
+      "opacity": 0.55,
+      "textCalm": 0.6
+    },
+    "backing": {
+      "type": "color",
+      "color": "#0f0d13"
+    },
+    "preset": "p6"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": -35,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      },
+      {
+        "id": "k2",
+        "tMs": 1900,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 35,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": [
+      {
+        "from": "k1",
+        "to": "k2",
+        "ease": "inOutCubic"
+      }
+    ]
+  }
+}

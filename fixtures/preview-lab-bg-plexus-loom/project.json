@@ -1,0 +1,53 @@
+{
+  "id": "preview-lab-bg-plexus-loom",
+  "name": "Preview Lab — bg-plexus-loom (dev-only)",
+  "version": 2,
+  "themeId": "kookaburra-studio-white",
+  "formats": ["16:9"],
+  "scenes": [
+    {
+      "file": "scenes/bg-plexus-loom.tsx",
+      "durationMs": 2000
+    },
+    {
+      "file": "scenes/bg-plexus-loom-light.tsx",
+      "durationMs": 2000
+    },
+    {
+      "file": "scenes/bgp-plexus-loom-p1.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-plexus-loom-p2.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-plexus-loom-p3.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-plexus-loom-p4.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-plexus-loom-p5.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-plexus-loom-p6.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-plexus-loom-p7.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-plexus-loom-p8.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-plexus-loom-p9.tsx",
+      "durationMs": 1000
+    }
+  ]
+}

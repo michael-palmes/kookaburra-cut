@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "name": "preset still for the \"plexus-loom\" 3D background (\"Loch Ard\")",
+  "background": {
+    "type": "scene3d",
+    "look": "plexus-loom",
+    "colors": ["#3c5a73", "#2f6068", "#5a5670", "#9f9271"],
+    "speed": 1,
+    "params": {
+      "bundles": 42,
+      "hoopRadius": 17,
+      "twist": 76,
+      "breath": 12,
+      "spin": 0.8,
+      "opacity": 0.6,
+      "textCalm": 0.6
+    },
+    "backing": {
+      "type": "color",
+      "color": "#0a0e14"
+    },
+    "preset": "p7"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

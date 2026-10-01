@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "name": "preset still for the \"plexus-loom\" 3D background (\"Queenscliff\")",
+  "background": {
+    "type": "scene3d",
+    "look": "plexus-loom",
+    "colors": ["#a794b8", "#94abbe", "#cdbd9b", "#c2a36c"],
+    "speed": 1,
+    "params": {
+      "bundles": 36,
+      "hoopRadius": 16,
+      "twist": 80,
+      "breath": 12,
+      "spin": 1,
+      "opacity": 0.55,
+      "textCalm": 0.6
+    },
+    "backing": {
+      "type": "color",
+      "color": "#f7f5f9"
+    },
+    "preset": "p1"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

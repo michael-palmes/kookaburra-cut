@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "name": "preset still for the \"plexus-loom\" 3D background (\"Cape Schanck\")",
+  "background": {
+    "type": "scene3d",
+    "look": "plexus-loom",
+    "colors": ["#a8b08f", "#b3a4bd", "#9fb0b3", "#bb9473"],
+    "speed": 1.1,
+    "params": {
+      "bundles": 40,
+      "hoopRadius": 16.5,
+      "twist": 86,
+      "breath": 10,
+      "spin": 0.6,
+      "opacity": 0.45,
+      "textCalm": 0.55
+    },
+    "backing": {
+      "type": "color",
+      "color": "#f4f5ef"
+    },
+    "preset": "p5"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}
