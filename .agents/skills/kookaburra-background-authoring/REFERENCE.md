@@ -212,6 +212,31 @@ alpha for coverage (line AA, sub-pixel and text-calm fades) and for haze over th
 translucent parts (Blue and gold's glow shell). Details: `scene3d/kit/README.md` ("Backing
 tone").
 
+## Look lab (iterate here, confirm in the app)
+
+The autorun screenshot boots the whole app per frame and queues behind every other agent's run.
+Iterate in the look lab instead: it mounts the real look (`FixedBackdrop` with the preset's
+scene3d spec) under the scene providers and the app's renderer settings in headless Chrome, and
+writes a contact sheet in about ten seconds. Details and flags: `tools/look-lab/README.md`.
+
+```bash
+node tools/look-lab/sheet.mjs --look <id>                  # p1 + p6, five cameras + 9:16, t 8 s
+node tools/look-lab/sheet.mjs --look <id> --grid           # nine presets as picker stills: variety, legibility
+node tools/look-lab/sheet.mjs --look <id> --compare 4,8    # motion row: |t8 - t4| with mean and % moved
+node tools/look-lab/sheet.mjs --look <id> --presets p6 --params lineWidth=3 --out <scratch>/a.png
+```
+
+1. Read the PNG after every change. Exit 1 means the page logged errors (shader compile errors,
+   a throwing material, React errors), printed under the sheet with the failing GLSL line; fix
+   them before judging the look. Warnings print too: clear them, the app logs the same ones.
+2. Judge text readability on the `front` and 9:16 columns (the stand-in headline sits where the
+   atlas puts it), stage clearance on `wide` and `far`, the cutaway on `behind`.
+3. Check thin lines at export scale with `--width 1920 --ss 2 --cams lab --tall none`: tiles
+   keep the export format, so pixel-sized effects shrink with the tile like the picker previews.
+4. Confirm at the end with one or two `pnpm kookaburra:run --action screenshot` frames (an
+   atlas or spike scene). The lab matched the engine within one code value on the pilot looks,
+   but it skips transitions, effects, real devices, companion lighting and WKWebView itself.
+
 ## NOTICE entry (vendored ports only)
 
 Add the upstream file to the source list in `src/toolkit/stage/shaders/NOTICE.md` and one

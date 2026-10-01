@@ -1,6 +1,6 @@
 ---
 name: kookaburra-background-authoring
-description: Ships a new animated background for Kookaburra Cut end to end, shader (2D) or scene3d (world-space 3D look), whether ported from paper-design/shaders or written from scratch. Covers the ShaderBackgroundDef anatomy, GLSL3 + determinism patches (PCG hash, engine-owned uniforms, noise texture), the scene3d look contract, the 9 AA colour presets, preview-lab fixtures and incremental thumbnail regeneration. Use when asked to "add a background", "new animated background", "new shader background", "new 3D background", "port a paper-design shader", "add or change background presets", or when touching src/toolkit/stage/shaders/ or src/toolkit/stage/scene3d/.
+description: Ships a new animated background for Kookaburra Cut end to end, shader (2D) or scene3d (world-space 3D look), whether ported from paper-design/shaders or written from scratch. Covers the ShaderBackgroundDef anatomy, GLSL3 + determinism patches (PCG hash, engine-owned uniforms, noise texture), the scene3d look contract, the 9 AA colour presets, the look lab contact sheets (tools/look-lab), preview-lab fixtures and incremental thumbnail regeneration. Use when asked to "add a background", "new animated background", "new shader background", "new 3D background", "port a paper-design shader", "add or change background presets", "look lab", "contact sheet of a 3D look", or when touching src/toolkit/stage/shaders/, src/toolkit/stage/scene3d/ or tools/look-lab/.
 ---
 
 # kookaburra-background-authoring
@@ -108,3 +108,5 @@ shipping flow applies, with these differences:
 5. Thin 1px lines vanish at tile size and can whisper at 4K: densify geometry and push dark
    lines toward the 0.125 cap before reaching for preview tricks; eyeball at BOTH scales via
    an `ws:` spike screenshot.
+6. Iterate in the look lab (`node tools/look-lab/sheet.mjs --look <id>`, a sheet in about 10 s,
+   REFERENCE.md "Look lab"), then confirm with one or two autorun screenshots at the end.

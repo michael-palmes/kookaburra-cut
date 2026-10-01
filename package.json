@@ -42,6 +42,7 @@
     "kookaburra:run": "bash scripts/kookaburra-run.sh",
     "gate": "bash scripts/gate.sh",
     "gate:merge": "bash scripts/kookaburra-run.sh --action verify --project showcase-tour,ws:launch-2026 --aspect 16:9",
+    "look-lab": "node tools/look-lab/sheet.mjs",
     "package:dmg": "bash scripts/make-dmg.sh",
     "package:signed": "bash scripts/sign-and-notarize.sh",
     "release": "bash scripts/release.sh",
