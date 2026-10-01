@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "name": "preset still for the \"wash-dome\" 3D background (\"Gerringong\")",
+  "background": {
+    "type": "scene3d",
+    "look": "wash-dome",
+    "colors": ["#a8bcb3", "#889c95", "#e4d3b3"],
+    "speed": 0.9,
+    "params": {
+      "coverage": 0.45,
+      "calmHeight": 9,
+      "edge": 0.9,
+      "granulation": 0.6,
+      "streak": 0.2,
+      "wind": 0.8,
+      "blooms": 6,
+      "textCalm": 0.65
+    },
+    "backing": {
+      "type": "color",
+      "color": "#f1f0e6"
+    },
+    "preset": "p3"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

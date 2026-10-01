@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "name": "preset still for the \"wash-dome\" 3D background (\"Mollymook\")",
+  "background": {
+    "type": "scene3d",
+    "look": "wash-dome",
+    "colors": ["#d2b8a9", "#a8948c", "#f0d6c6"],
+    "speed": 1,
+    "params": {
+      "coverage": 0.3,
+      "calmHeight": 10,
+      "edge": 0.7,
+      "granulation": 0.35,
+      "streak": 0.5,
+      "wind": 1.2,
+      "blooms": 4,
+      "textCalm": 0.55
+    },
+    "backing": {
+      "type": "color",
+      "color": "#f7f0e8"
+    },
+    "preset": "p4"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

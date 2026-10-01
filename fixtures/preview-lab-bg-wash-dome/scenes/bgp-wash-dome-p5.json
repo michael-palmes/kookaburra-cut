@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "name": "preset still for the \"wash-dome\" 3D background (\"Jervis Bay\")",
+  "background": {
+    "type": "scene3d",
+    "look": "wash-dome",
+    "colors": ["#a1cacb", "#78a0a5", "#eae3c9"],
+    "speed": 0.8,
+    "params": {
+      "coverage": 0.22,
+      "calmHeight": 12,
+      "edge": 1,
+      "granulation": 0.5,
+      "streak": 0.15,
+      "wind": 0.7,
+      "blooms": 7,
+      "textCalm": 0.6
+    },
+    "backing": {
+      "type": "color",
+      "color": "#f3f6f1"
+    },
+    "preset": "p5"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

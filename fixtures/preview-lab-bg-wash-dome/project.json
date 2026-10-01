@@ -1,0 +1,53 @@
+{
+  "id": "preview-lab-bg-wash-dome",
+  "name": "Preview Lab — bg-wash-dome (dev-only)",
+  "version": 2,
+  "themeId": "kookaburra-studio-white",
+  "formats": ["16:9"],
+  "scenes": [
+    {
+      "file": "scenes/bg-wash-dome.tsx",
+      "durationMs": 2000
+    },
+    {
+      "file": "scenes/bg-wash-dome-light.tsx",
+      "durationMs": 2000
+    },
+    {
+      "file": "scenes/bgp-wash-dome-p1.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-wash-dome-p2.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-wash-dome-p3.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-wash-dome-p4.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-wash-dome-p5.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-wash-dome-p6.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-wash-dome-p7.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-wash-dome-p8.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-wash-dome-p9.tsx",
+      "durationMs": 1000
+    }
+  ]
+}

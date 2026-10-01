@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "name": "preset still for the \"wash-dome\" 3D background (\"Stanwell Park\")",
+  "background": {
+    "type": "scene3d",
+    "look": "wash-dome",
+    "colors": ["#a3c0d6", "#819bb5", "#eed8b4"],
+    "speed": 1.1,
+    "params": {
+      "coverage": 0.28,
+      "calmHeight": 11,
+      "edge": 0.6,
+      "granulation": 0.25,
+      "streak": 0.75,
+      "wind": 1.6,
+      "blooms": 3,
+      "textCalm": 0.6
+    },
+    "backing": {
+      "type": "color",
+      "color": "#f2f4f3"
+    },
+    "preset": "p2"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}
