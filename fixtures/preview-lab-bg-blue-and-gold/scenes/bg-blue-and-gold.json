@@ -1,0 +1,56 @@
+{
+  "version": 1,
+  "name": "3D background sample for \"blue-and-gold\" (\"Hill End\")",
+  "background": {
+    "type": "scene3d",
+    "look": "blue-and-gold",
+    "colors": ["#544421", "#685c3d", "#2a2a31", "#1c2638"],
+    "speed": 1,
+    "params": {
+      "density": 1,
+      "daubSize": 1,
+      "clearRadius": 6.5,
+      "wind": 1,
+      "cloudShadow": 0.6,
+      "boilFps": 0,
+      "ridgeHeight": 1,
+      "textCalm": 0.6
+    },
+    "backing": {
+      "type": "color",
+      "color": "#121826"
+    },
+    "preset": "p6"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": -35,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      },
+      {
+        "id": "k2",
+        "tMs": 1900,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 35,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": [
+      {
+        "from": "k1",
+        "to": "k2",
+        "ease": "inOutCubic"
+      }
+    ]
+  }
+}

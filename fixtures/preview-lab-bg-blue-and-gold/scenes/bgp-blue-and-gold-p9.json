@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "name": "preset still for the \"blue-and-gold\" 3D background (\"Sofala\")",
+  "background": {
+    "type": "scene3d",
+    "look": "blue-and-gold",
+    "colors": ["#4a4726", "#5d5a3b", "#22282b", "#172333"],
+    "speed": 0.9,
+    "params": {
+      "density": 1.1,
+      "daubSize": 1.15,
+      "clearRadius": 7.5,
+      "wind": 1.3,
+      "cloudShadow": 0.9,
+      "boilFps": 0,
+      "ridgeHeight": 1.45,
+      "textCalm": 0.6
+    },
+    "backing": {
+      "type": "color",
+      "color": "#0e1317"
+    },
+    "preset": "p9"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

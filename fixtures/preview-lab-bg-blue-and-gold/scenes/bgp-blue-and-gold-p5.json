@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "name": "preset still for the \"blue-and-gold\" 3D background (\"Bathurst\")",
+  "background": {
+    "type": "scene3d",
+    "look": "blue-and-gold",
+    "colors": ["#d2c49f", "#eeece0", "#a8a7b4", "#9699b8"],
+    "speed": 0.8,
+    "params": {
+      "density": 0.9,
+      "daubSize": 1.2,
+      "clearRadius": 9.5,
+      "wind": 0.5,
+      "cloudShadow": 1,
+      "boilFps": 0,
+      "ridgeHeight": 1.5,
+      "textCalm": 0.6
+    },
+    "backing": {
+      "type": "color",
+      "color": "#f5f6f3"
+    },
+    "preset": "p5"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

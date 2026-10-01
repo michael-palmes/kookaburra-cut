@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "name": "preset still for the \"blue-and-gold\" 3D background (\"Mudgee\")",
+  "background": {
+    "type": "scene3d",
+    "look": "blue-and-gold",
+    "colors": ["#dab48c", "#f1e2cc", "#afa2ae", "#9596bb"],
+    "speed": 0.9,
+    "params": {
+      "density": 1.3,
+      "daubSize": 0.8,
+      "clearRadius": 6,
+      "wind": 0.7,
+      "cloudShadow": 0.45,
+      "boilFps": 0,
+      "ridgeHeight": 0.8,
+      "textCalm": 0.6
+    },
+    "backing": {
+      "type": "color",
+      "color": "#f9f4ee"
+    },
+    "preset": "p2"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}
