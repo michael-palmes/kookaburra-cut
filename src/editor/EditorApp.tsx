@@ -11,6 +11,7 @@ import {
 import {
   type EditClip,
   type EditDoc,
+  type EditMask,
   type EditSource,
   type EditTap,
   type EditTarget,
@@ -24,6 +25,21 @@ import {
   resetEdit,
   saveEdit,
 } from "../engine/edit";
+import {
+  addHoldKey,
+  defaultMaskRange,
+  keyIndexAt,
+  keyToleranceMs,
+  type MaskRect,
+  nextMaskId,
+  offsetMaskKeys,
+  pruneOrphanMasks,
+  removeMaskKey,
+  replaceMask,
+  type SourceMoment,
+  sourceMomentAt,
+  upsertMaskKey,
+} from "../engine/editMasks";
 import {
   addTap,
   clipIndexAt,
@@ -68,6 +84,7 @@ import {
 import { Preview, type TrimScrub } from "./Preview";
 import { ReferencePane } from "./ReferencePane";
 import { Timeline } from "./Timeline";
+import { ToolIcon } from "./ToolIcon";
 import { TAP_ANIMATION_DURATION_MS, tapGradient } from "./tapAnimation";
 import {
   DEFAULT_TAP_COLOR_ID,
@@ -85,47 +102,6 @@ type RenderState =
 
 const SPEED_OPTIONS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 4, 6];
 
-/** Toolbar glyphs: hand-authored 13px stroke SVGs (the MediaBrowser icon precedent; no icon package). */
-function ToolIcon({ id }: { id: "split" | "freeze" | "tap" | "delete" }) {
-  const glyph = {
-    split: (
-      <>
-        <path d="M8 1.5v13" strokeDasharray="2.2 1.8" />
-        <rect x="1.5" y="4.5" width="4" height="7" rx="1" />
-        <rect x="10.5" y="4.5" width="4" height="7" rx="1" />
-      </>
-    ),
-    freeze: <path d="M8 2v12M2.8 5l10.4 6M13.2 5L2.8 11" />,
-    tap: (
-      <>
-        <circle cx="8" cy="8" r="1.6" fill="currentColor" stroke="none" />
-        <circle cx="8" cy="8" r="5.4" />
-      </>
-    ),
-    delete: (
-      <>
-        <path d="M2.5 4.5h11" />
-        <path d="M6 4.5V3h4v1.5" />
-        <path d="M4 4.5l.8 9h6.4l.8-9" />
-      </>
-    ),
-  }[id];
-  return (
-    <svg
-      width="13"
-      height="13"
-      viewBox="0 0 16 16"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.4"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      {glyph}
-    </svg>
-  );
-}
 const AUTOSAVE_DEBOUNCE_MS = 400;
 /** A document from a newer app (edit.rs `parse_doc`): discarding it would throw away work that app can still open. */
 const VERSION_ERROR = /needs a newer Kookaburra Cut/;
@@ -286,6 +262,9 @@ export function EditorApp() {
   const [trimScrub, setTrimScrub] = useState<TrimScrub | null>(null);
   const [mediaRefresh, setMediaRefresh] = useState(0);
   const [armedTap, setArmedTap] = useState(false);
+  const [selectedMaskId, setSelectedMaskId] = useState<string | null>(null);
+  const [armedMask, setArmedMask] = useState(false);
+  const [maskMenu, setMaskMenu] = useState<ContextMenuState | null>(null);
   const [tapMenu, setTapMenu] = useState<ContextMenuState | null>(null);
   const [clipMenu, setClipMenu] = useState<ContextMenuState | null>(null);
   const [tapMarkerScope, setTapMarkerScope] = useState<"near" | "all">("near");
@@ -336,6 +315,8 @@ export function EditorApp() {
     setSaveError(null);
     setRender({ phase: "idle" });
     setSelectedId(null);
+    setSelectedMaskId(null);
+    setArmedMask(false);
     setPlayheadMs(0);
     setPlaying(false);
     const isCurrentTarget = () =>
@@ -437,7 +418,10 @@ export function EditorApp() {
 
   /** Commit a document mutation through the editor's state, stale-render and autosave funnel. */
   const commitDoc = useCallback(
-    (next: EditDoc, label: string, options: { record?: boolean; coalesceKey?: string } = {}) => {
+    (draft: EditDoc, label: string, options: { record?: boolean; coalesceKey?: string } = {}) => {
+      // A mask no clip shows any more goes with the edit that orphaned it (undo restores both).
+      const masks = draft.masks && pruneOrphanMasks(draft.clips, draft.masks, draft.sources);
+      const next = masks === draft.masks ? draft : { ...draft, masks };
       const before = docRef.current;
       if (options.record !== false && before) {
         pushEditorHistory({ label, before, after: next, coalesceKey: options.coalesceKey });
@@ -731,9 +715,22 @@ export function EditorApp() {
   useEffect(() => {
     if (!doc) return;
     if (selectedId && !doc.clips.some((c) => c.id === selectedId)) setSelectedId(null);
+    if (selectedMaskId && !doc.masks?.some((m) => m.id === selectedMaskId)) {
+      setSelectedMaskId(null);
+    }
     const durationMs = timelineDurationMs(doc.clips);
     setPlayheadMs((p) => Math.min(p, durationMs));
-  }, [doc, selectedId]);
+  }, [doc, selectedId, selectedMaskId]);
+
+  /** One selection at a time: picking a clip clears the mask and the reverse; clearing either (an empty-track click) clears both. */
+  const selectClip = useCallback((id: string | null) => {
+    setSelectedId(id);
+    setSelectedMaskId(null);
+  }, []);
+  const selectMask = useCallback((id: string | null) => {
+    setSelectedMaskId(id);
+    if (id) setSelectedId(null);
+  }, []);
 
   /** Spacebar transport: toggle playback (restarts from 0 when parked at the end, or anywhere off a clip; `clipIndexAt` is the same check the rAF loop uses to stop). */
   const togglePlay = useCallback(() => {
@@ -969,6 +966,166 @@ export function EditorApp() {
     [doc, target, commitDoc],
   );
 
+  /** Commit one mask's edit (every mask gesture funnels through here). */
+  const commitMask = useCallback(
+    (mask: EditMask, label: string, options: { coalesceKey?: string } = {}) => {
+      const current = docRef.current;
+      if (!current) return;
+      commitDoc({ ...current, masks: replaceMask(current.masks ?? [], mask) }, label, options);
+    },
+    [commitDoc],
+  );
+
+  /** The frame on screen for mask edits, with the key tolerance at its clip's speed. */
+  const maskMomentAt = useCallback(
+    (ms: number): { moment: SourceMoment; tolMs: number; image: boolean } | null => {
+      const current = docRef.current;
+      if (!current) return null;
+      const moment = sourceMomentAt(current.clips, ms);
+      if (!moment) return null;
+      const source = current.sources.find((s) => s.id === moment.sourceId);
+      const fps = current.settings.fps > 0 ? current.settings.fps : 60;
+      return {
+        moment,
+        tolMs: keyToleranceMs(fps, moment.hold ? 1 : moment.clip.speed),
+        image: source?.kind === "image",
+      };
+    },
+    [],
+  );
+
+  /** A new box: solid black (Michael's default) over the next 3 s of what's on screen, keyed at this frame, then selected. */
+  const handleDrawMask = useCallback(
+    (rect: MaskRect) => {
+      const current = docRef.current;
+      const at = maskMomentAt(playheadRef.current);
+      if (!current || !at) return;
+      const source = current.sources.find((s) => s.id === at.moment.sourceId);
+      if (!source) return;
+      const masks = current.masks ?? [];
+      const range = at.image ? { startMs: 0, endMs: 0 } : defaultMaskRange(at.moment, source);
+      const mask: EditMask = {
+        id: nextMaskId(masks),
+        sourceId: source.id,
+        style: "solid",
+        ...range,
+        keys: [{ sourceMs: at.image ? 0 : at.moment.sourceMs, rect }],
+      };
+      commitDoc({ ...current, masks: [...masks, mask] }, "add mask");
+      setArmedMask(false);
+      selectMask(mask.id);
+    },
+    [commitDoc, maskMomentAt, selectMask],
+  );
+
+  /** Auto-key: a move or resize records the box at the frame on screen. */
+  const handleCommitMaskRect = useCallback(
+    (id: string, rect: MaskRect, kind: "move" | "resize") => {
+      const mask = docRef.current?.masks?.find((m) => m.id === id);
+      const at = maskMomentAt(playheadRef.current);
+      if (!mask || !at || at.moment.sourceId !== mask.sourceId) return;
+      commitMask(
+        upsertMaskKey(mask, at.moment.sourceMs, rect, at.tolMs, at.image),
+        kind === "move" ? "move mask" : "resize mask",
+      );
+    },
+    [commitMask, maskMomentAt],
+  );
+
+  const handleCommitMaskPath = useCallback(
+    (id: string, dx: number, dy: number) => {
+      const mask = docRef.current?.masks?.find((m) => m.id === id);
+      if (mask) commitMask(offsetMaskKeys(mask, dx, dy), "move mask path");
+    },
+    [commitMask],
+  );
+
+  /** Pin the current glide at the playhead so later drags only reshape what follows. */
+  const handleAddMaskKey = useCallback(
+    (id: string) => {
+      const mask = docRef.current?.masks?.find((m) => m.id === id);
+      const at = maskMomentAt(playheadRef.current);
+      if (!mask || !at || at.image || at.moment.sourceId !== mask.sourceId) return;
+      const next = addHoldKey(mask, at.moment.sourceMs, at.tolMs);
+      if (next !== mask) commitMask(next, "add mask key");
+    },
+    [commitMask, maskMomentAt],
+  );
+
+  const handleRemoveMaskKey = useCallback(
+    (id: string) => {
+      const mask = docRef.current?.masks?.find((m) => m.id === id);
+      const at = maskMomentAt(playheadRef.current);
+      if (!mask || !at || at.moment.sourceId !== mask.sourceId) return;
+      const next = removeMaskKey(mask, at.moment.sourceMs, at.tolMs);
+      if (next !== mask) commitMask(next, "delete mask key");
+    },
+    [commitMask, maskMomentAt],
+  );
+
+  const handleDeleteMask = useCallback(
+    (id: string) => {
+      const current = docRef.current;
+      if (!current) return;
+      commitDoc(
+        { ...current, masks: (current.masks ?? []).filter((m) => m.id !== id) },
+        "delete mask",
+      );
+    },
+    [commitDoc],
+  );
+
+  /** Where a mask's key sits relative to the playhead: on one, or none here (and why not). */
+  const maskKeyState = useCallback(
+    (mask: EditMask): { onKey: boolean; editable: boolean } => {
+      const at = maskMomentAt(playheadRef.current);
+      if (!at || at.moment.sourceId !== mask.sourceId) return { onKey: false, editable: false };
+      if (at.image) return { onKey: true, editable: false };
+      const inSpan = at.moment.sourceMs >= mask.startMs && at.moment.sourceMs < mask.endMs;
+      return { onKey: keyIndexAt(mask.keys, at.moment.sourceMs, at.tolMs) >= 0, editable: inSpan };
+    },
+    [maskMomentAt],
+  );
+
+  const handleMaskContextMenu = useCallback(
+    (id: string, x: number, y: number) => {
+      const mask = docRef.current?.masks?.find((m) => m.id === id);
+      if (!mask) return;
+      const { onKey, editable } = maskKeyState(mask);
+      setMaskMenu({
+        x,
+        y,
+        items: [
+          {
+            id: "add-key",
+            label: "Add key here",
+            disabled: !editable || onKey,
+            title: onKey ? "A key already sits at this frame" : undefined,
+            onSelect: () => handleAddMaskKey(id),
+          },
+          {
+            id: "delete-key",
+            label: "Delete key here",
+            disabled: !editable || !onKey || mask.keys.length <= 1,
+            title: mask.keys.length <= 1 ? "A mask keeps at least one key" : undefined,
+            onSelect: () => handleRemoveMaskKey(id),
+          },
+          {
+            id: "delete",
+            label: "Delete mask",
+            confirmLabel: "Really delete?",
+            danger: true,
+            onSelect: () => handleDeleteMask(id),
+          },
+        ],
+      });
+    },
+    [maskKeyState, handleAddMaskKey, handleRemoveMaskKey, handleDeleteMask],
+  );
+
+  /** A mask drag pauses playback, so the key lands on the frame you grabbed. */
+  const handleMaskGesture = useCallback(() => setPlaying(false), []);
+
   const firstSource = doc?.sources[0] ?? null;
   const selectedClip = doc?.clips.find((c) => c.id === selectedId) ?? null;
   const totalMs = doc ? timelineDurationMs(doc.clips) : 0;
@@ -981,6 +1138,7 @@ export function EditorApp() {
       : freezeAt(doc.clips, playheadMs, DEFAULT_HOLD_MS) !== null
     : false;
   const canTap = doc ? outputToSource(doc.clips, playheadMs) !== null : false;
+  const canMask = doc ? sourceMomentAt(doc.clips, playheadMs) !== null : false;
 
   /** Every tap's visible output windows, flattened for the preview glow and the ruler markers. */
   const tapWindowList = useMemo(
@@ -1094,12 +1252,22 @@ export function EditorApp() {
       } else if (plain && e.key.toLowerCase() === "t" && (armedTap || canTap)) {
         e.preventDefault();
         setArmedTap((a) => !a);
+        setArmedMask(false);
+      } else if (plain && e.key.toLowerCase() === "m" && (armedMask || canMask)) {
+        e.preventDefault();
+        setArmedMask((a) => !a);
+        setArmedTap(false);
+      } else if ((e.key === "Delete" || e.key === "Backspace") && doc && selectedMaskId) {
+        e.preventDefault();
+        handleDeleteMask(selectedMaskId);
       } else if ((e.key === "Delete" || e.key === "Backspace") && doc && selectedId) {
         e.preventDefault();
         commit(removeClip(doc.clips, selectedId), "remove clip");
       } else if (e.key === "Escape") {
-        // Disarm the tap tool first, deselect only when it wasn't armed (the AnimationLane pattern).
-        if (armedTap) setArmedTap(false);
+        // Disarm a tool first, deselect only when none was armed (the AnimationLane pattern).
+        if (armedMask) setArmedMask(false);
+        else if (armedTap) setArmedTap(false);
+        else if (selectedMaskId) setSelectedMaskId(null);
         else setSelectedId(null);
       }
     };
@@ -1117,6 +1285,10 @@ export function EditorApp() {
     canFreeze,
     armedTap,
     canTap,
+    armedMask,
+    canMask,
+    selectedMaskId,
+    handleDeleteMask,
   ]);
 
   return (
@@ -1233,6 +1405,15 @@ export function EditorApp() {
                     tapColor={doc.tapColor ?? DEFAULT_TAP_COLOR_ID}
                     tapSize={doc.tapSize ?? 1.25}
                     output={doc.settings}
+                    masks={doc.masks ?? []}
+                    selectedMaskId={selectedMaskId}
+                    armedMask={armedMask}
+                    onSelectMask={selectMask}
+                    onMaskGesture={handleMaskGesture}
+                    onDrawMask={handleDrawMask}
+                    onCommitMaskRect={handleCommitMaskRect}
+                    onCommitMaskPath={handleCommitMaskPath}
+                    onMaskContextMenu={handleMaskContextMenu}
                   />
                   {refView && (
                     <ReferencePane
@@ -1273,7 +1454,10 @@ export function EditorApp() {
                 type="button"
                 className={`btn${armedTap ? " selected" : ""}`}
                 aria-pressed={armedTap}
-                onClick={() => setArmedTap((a) => !a)}
+                onClick={() => {
+                  setArmedTap((a) => !a);
+                  setArmedMask(false);
+                }}
                 disabled={!armedTap && !canTap}
                 title="Tap highlight: click the preview to place a glow at the playhead (T)"
               >
@@ -1282,12 +1466,29 @@ export function EditorApp() {
               </button>
               <button
                 type="button"
+                className={`btn${armedMask ? " selected" : ""}`}
+                aria-pressed={armedMask}
+                onClick={() => {
+                  setArmedMask((a) => !a);
+                  setArmedTap(false);
+                }}
+                disabled={!armedMask && !canMask}
+                title="Mask: drag over the preview to hide an area from the playhead on (M)"
+              >
+                <ToolIcon id="mask" />
+                Mask
+              </button>
+              <button
+                type="button"
                 className="btn"
-                onClick={() =>
-                  selectedId && commit(removeClip(doc.clips, selectedId), "remove clip")
+                onClick={() => {
+                  if (selectedMaskId) handleDeleteMask(selectedMaskId);
+                  else if (selectedId) commit(removeClip(doc.clips, selectedId), "remove clip");
+                }}
+                disabled={!selectedId && !selectedMaskId}
+                title={
+                  selectedMaskId ? "Delete the selected mask (⌫)" : "Delete the selected clip (⌫)"
                 }
-                disabled={!selectedId}
-                title="Delete the selected clip (⌫)"
               >
                 <ToolIcon id="delete" />
                 Delete
@@ -1481,7 +1682,7 @@ export function EditorApp() {
           metas={metas}
           selectedId={selectedId}
           playheadMs={playheadMs}
-          onSelect={setSelectedId}
+          onSelect={selectClip}
           onPlayhead={handleSeek}
           onCommit={commit}
           onTrimScrub={handleTrimScrub}
@@ -1495,6 +1696,7 @@ export function EditorApp() {
       )}
 
       {tapMenu && <ContextMenu menu={tapMenu} onClose={() => setTapMenu(null)} />}
+      {maskMenu && <ContextMenu menu={maskMenu} onClose={() => setMaskMenu(null)} />}
       {clipMenu && <ContextMenu menu={clipMenu} onClose={() => setClipMenu(null)} />}
 
       {render.phase === "rendering" && (

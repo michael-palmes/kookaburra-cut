@@ -3576,6 +3576,146 @@ button.beat-status {
   cursor: grabbing;
 }
 
+/* Privacy masks over the editor video (MaskLayer.tsx): DOM preview only, the render bakes them in ffmpeg. Its own stacking context, so frames and handles stack inside it and the tap layer still paints above. */
+.mask-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.mask-effect {
+  position: absolute;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.mask-canvas {
+  position: absolute;
+  display: block;
+}
+
+.mask-canvas.pixelated {
+  image-rendering: pixelated;
+}
+
+.mask-frame {
+  position: absolute;
+  z-index: 1;
+  box-sizing: border-box;
+  border: 1px solid transparent;
+  pointer-events: auto;
+  cursor: pointer;
+  touch-action: none;
+}
+
+.mask-frame:hover {
+  border-color: var(--gizmo-outline-hover);
+}
+
+.mask-frame.selected {
+  z-index: 2;
+  border: 1.5px solid var(--gizmo-selected);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
+  cursor: move;
+}
+
+.mask-frame.inactive {
+  border: 1.5px dashed var(--gizmo-outline-hover);
+  pointer-events: none;
+}
+
+.mask-handle {
+  position: absolute;
+  width: 9px;
+  height: 9px;
+  transform: translate(-50%, -50%);
+  background: var(--gizmo-handle);
+  border: 1px solid var(--gizmo-handle-edge);
+  border-radius: 2px;
+}
+
+.mask-handle.nw {
+  left: 0;
+  top: 0;
+  cursor: nwse-resize;
+}
+
+.mask-handle.n {
+  left: 50%;
+  top: 0;
+  cursor: ns-resize;
+}
+
+.mask-handle.ne {
+  left: 100%;
+  top: 0;
+  cursor: nesw-resize;
+}
+
+.mask-handle.e {
+  left: 100%;
+  top: 50%;
+  cursor: ew-resize;
+}
+
+.mask-handle.se {
+  left: 100%;
+  top: 100%;
+  cursor: nwse-resize;
+}
+
+.mask-handle.s {
+  left: 50%;
+  top: 100%;
+  cursor: ns-resize;
+}
+
+.mask-handle.sw {
+  left: 0;
+  top: 100%;
+  cursor: nesw-resize;
+}
+
+.mask-handle.w {
+  left: 0;
+  top: 50%;
+  cursor: ew-resize;
+}
+
+/* The selected box's key cue: filled when a key sits at this frame (a drag edits it), hollow when a drag adds one. */
+.mask-key-badge {
+  position: absolute;
+  left: 6px;
+  top: 6px;
+  width: 8px;
+  height: 8px;
+  transform: rotate(45deg);
+  border: 1.5px solid var(--gizmo-selected);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.4);
+}
+
+.mask-key-badge.on {
+  background: var(--gizmo-selected);
+}
+
+.mask-draw-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: auto;
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.mask-draft {
+  position: absolute;
+  z-index: 4;
+  border: 1.5px dashed var(--gizmo-selected);
+  background: rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+}
+
 .editor-clips {
   flex: 0 0 auto;
   max-height: 32vh;
