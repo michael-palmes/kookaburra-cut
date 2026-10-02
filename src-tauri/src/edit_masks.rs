@@ -291,10 +291,11 @@ pub fn video_chain(
     tag: &str,
 ) -> Result<String, String> {
     let pad = 1.0 / fps;
+    // Generated planes outlast the source (they are only pulled while it runs); `shortest=1` then ends each overlay with the source.
     let duration_s = if source.duration_ms > 0 {
-        source.duration_ms as f64 / 1000.0 + 1.0
+        source.duration_ms as f64 / 1000.0 + 10.0
     } else {
-        masks.iter().map(|m| m.end_ms).max().unwrap_or(0) as f64 / 1000.0 + 1.0
+        masks.iter().map(|m| m.end_ms).max().unwrap_or(0) as f64 / 1000.0 + 10.0
     };
     let planes = format!("r={fps}:d={duration_s:.3}");
     chain(masks, input, output, tag, |mask, from, to, tag| {
@@ -476,9 +477,8 @@ mod tests {
         );
         m.color = Some("#ff0000".into());
         let out = video_chain(&[&m], &source(), 60.0, "n0", "src0_0", "k0").unwrap();
-        assert!(out.starts_with("color=c=0xFF0000:s=2x2:r=60:d=11.000,scale=w='2*ceil(("));
+        assert!(out.starts_with("color=c=0xFF0000:s=2x2:r=60:d=20.000,scale=w='2*ceil(("));
         assert!(out.contains(":eval=frame[k0k0box];[n0][k0k0box]overlay=x='2*floor(("));
-        // The generated box outlives the source by a second; the source's end ends the stream.
         assert!(out.ends_with(
             ":eval=frame:shortest=1:enable='gte(t\\,0.983333)*lt(t\\,3.016667)'[src0_0];"
         ));
@@ -496,7 +496,7 @@ mod tests {
             out.contains(",gblur=sigma=28.30:enable='gte(t\\,0.983333)*lt(t\\,3.016667)'[k0k0fx];")
         );
         assert!(out.contains("color=c=black:s="));
-        assert!(out.contains("color=c=white:s=2x2:r=60:d=11.000,format=gray,scale=w='"));
+        assert!(out.contains("color=c=white:s=2x2:r=60:d=20.000,format=gray,scale=w='"));
         assert!(out.contains("[k0k0fx][k0k0alpha]alphamerge[k0k0fxa];"));
         assert!(out.ends_with(":shortest=1:enable='gte(t\\,0.983333)*lt(t\\,3.016667)'[src0_0];"));
     }
