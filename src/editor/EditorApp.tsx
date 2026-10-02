@@ -12,6 +12,7 @@ import {
   type EditClip,
   type EditDoc,
   type EditMask,
+  type EditMaskStyle,
   type EditSource,
   type EditTap,
   type EditTarget,
@@ -81,6 +82,7 @@ import {
   takeEditorRedo,
   takeEditorUndo,
 } from "./editorHistory";
+import { MaskSettingsBar } from "./MaskSettingsBar";
 import { Preview, type TrimScrub } from "./Preview";
 import { ReferencePane } from "./ReferencePane";
 import { Timeline } from "./Timeline";
@@ -1123,6 +1125,34 @@ export function EditorApp() {
     [maskKeyState, handleAddMaskKey, handleRemoveMaskKey, handleDeleteMask],
   );
 
+  const handleMaskStyle = useCallback(
+    (id: string, style: EditMaskStyle) => {
+      const mask = docRef.current?.masks?.find((m) => m.id === id);
+      if (mask && mask.style !== style) commitMask({ ...mask, style }, "change mask style");
+    },
+    [commitMask],
+  );
+
+  const handleMaskStrength = useCallback(
+    (id: string, strength: number) => {
+      const mask = docRef.current?.masks?.find((m) => m.id === id);
+      if (mask) {
+        commitMask({ ...mask, strength }, "change mask strength", {
+          coalesceKey: `mask-strength:${id}`,
+        });
+      }
+    },
+    [commitMask],
+  );
+
+  const handleMaskColor = useCallback(
+    (id: string, color: string | undefined) => {
+      const mask = docRef.current?.masks?.find((m) => m.id === id);
+      if (mask) commitMask({ ...mask, color }, "change mask colour");
+    },
+    [commitMask],
+  );
+
   /** A mask drag pauses playback, so the key lands on the frame you grabbed. */
   const handleMaskGesture = useCallback(() => setPlaying(false), []);
 
@@ -1139,6 +1169,15 @@ export function EditorApp() {
     : false;
   const canTap = doc ? outputToSource(doc.clips, playheadMs) !== null : false;
   const canMask = doc ? sourceMomentAt(doc.clips, playheadMs) !== null : false;
+  const selectedMask = doc?.masks?.find((m) => m.id === selectedMaskId) ?? null;
+  const selectedMaskImage =
+    !!selectedMask && doc?.sources.find((s) => s.id === selectedMask.sourceId)?.kind === "image";
+  // The strip's owner: an armed tap tool, then the mask tool or a selected mask, then taps. With masks but no taps the mask strip stays mounted, so drawing never shifts the preview mid-gesture.
+  const maskStrip =
+    !armedTap &&
+    (armedMask ||
+      !!selectedMask ||
+      ((doc?.masks?.length ?? 0) > 0 && (doc?.taps?.length ?? 0) === 0));
 
   /** Every tap's visible output windows, flattened for the preview glow and the ruler markers. */
   const tapWindowList = useMemo(
@@ -1345,20 +1384,40 @@ export function EditorApp() {
         </aside>
         <div className="editor-stage-col">
           <main className="editor-stage" ref={stageRef}>
-            {doc && ((doc.taps?.length ?? 0) > 0 || armedTap) && (
+            {doc && maskStrip ? (
               <div className="editor-tap-bar">
-                <TapSettingsBar
-                  scope={tapMarkerScope}
-                  onScope={setTapMarkerScope}
-                  styleId={doc.tapStyle ?? DEFAULT_TAP_STYLE_ID}
-                  onStyle={handleTapStyle}
-                  colorId={doc.tapColor ?? DEFAULT_TAP_COLOR_ID}
-                  onColor={handleTapColor}
-                  size={doc.tapSize ?? 1.25}
-                  onSize={handleTapSize}
-                  onSizeCommit={closeEditorHistoryCoalescing}
+                <MaskSettingsBar
+                  mask={selectedMask}
+                  image={selectedMaskImage}
+                  keyState={
+                    selectedMask ? maskKeyState(selectedMask) : { onKey: false, editable: false }
+                  }
+                  onStyle={(style) => selectedMask && handleMaskStyle(selectedMask.id, style)}
+                  onStrength={(v) => selectedMask && handleMaskStrength(selectedMask.id, v)}
+                  onStrengthCommit={closeEditorHistoryCoalescing}
+                  onColor={(hex) => selectedMask && handleMaskColor(selectedMask.id, hex)}
+                  onAddKey={() => selectedMask && handleAddMaskKey(selectedMask.id)}
+                  onRemoveKey={() => selectedMask && handleRemoveMaskKey(selectedMask.id)}
+                  onDelete={() => selectedMask && handleDeleteMask(selectedMask.id)}
                 />
               </div>
+            ) : (
+              doc &&
+              ((doc.taps?.length ?? 0) > 0 || armedTap || (doc.masks?.length ?? 0) > 0) && (
+                <div className="editor-tap-bar">
+                  <TapSettingsBar
+                    scope={tapMarkerScope}
+                    onScope={setTapMarkerScope}
+                    styleId={doc.tapStyle ?? DEFAULT_TAP_STYLE_ID}
+                    onStyle={handleTapStyle}
+                    colorId={doc.tapColor ?? DEFAULT_TAP_COLOR_ID}
+                    onColor={handleTapColor}
+                    size={doc.tapSize ?? 1.25}
+                    onSize={handleTapSize}
+                    onSizeCommit={closeEditorHistoryCoalescing}
+                  />
+                </div>
+              )
             )}
             <div className="editor-preview-area">
               {error ? (
