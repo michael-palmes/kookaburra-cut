@@ -3984,6 +3984,74 @@ button.beat-status {
   border: 1px solid var(--accent-border);
 }
 
+/* Privacy masks: one bar per clip a mask's source span lands in; the selected mask shows its keys and draggable ends. */
+.timeline-mask-lane {
+  position: relative;
+  margin-top: 2px;
+}
+
+.timeline-mask-bar {
+  position: absolute;
+  height: 9px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.22);
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  cursor: pointer;
+  touch-action: none;
+  transition:
+    left var(--dur-fast) var(--ease-standard),
+    width var(--dur-fast) var(--ease-standard);
+}
+
+.timeline-mask-bar.blur {
+  background: rgba(150, 190, 255, 0.28);
+}
+
+.timeline-mask-bar.pixelate {
+  background: rgba(200, 160, 255, 0.28);
+}
+
+.timeline-mask-bar.hold {
+  border-style: dashed;
+}
+
+.timeline-mask-bar.selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+  z-index: 1;
+}
+
+.timeline-mask-key {
+  position: absolute;
+  top: 50%;
+  width: 7px;
+  height: 7px;
+  transform: translate(-50%, -50%) rotate(45deg);
+  background: var(--accent);
+  border: 1px solid rgba(0, 0, 0, 0.45);
+  cursor: pointer;
+}
+
+.timeline-mask-edge {
+  position: absolute;
+  top: -1px;
+  bottom: -1px;
+  width: 6px;
+  background: var(--accent);
+  cursor: ew-resize;
+  touch-action: none;
+}
+
+.timeline-mask-edge.left {
+  left: -1px;
+  border-radius: 3px 0 0 3px;
+}
+
+.timeline-mask-edge.right {
+  right: -1px;
+  border-radius: 0 3px 3px 0;
+}
+
 .timeline {
   position: relative;
   flex: 0 0 auto;

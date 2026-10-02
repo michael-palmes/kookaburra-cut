@@ -1153,6 +1153,33 @@ export function EditorApp() {
     [commitMask],
   );
 
+  const handleRetimeMask = useCallback(
+    (mask: EditMask) => commitMask(mask, "retime mask"),
+    [commitMask],
+  );
+
+  /** Right-click on a lane key diamond: delete exactly that key (a mask keeps its last one). */
+  const handleMaskKeyMenu = useCallback(
+    (id: string, sourceMs: number, x: number, y: number) => {
+      const mask = docRef.current?.masks?.find((m) => m.id === id);
+      if (!mask) return;
+      setMaskMenu({
+        x,
+        y,
+        items: [
+          {
+            id: "delete-key",
+            label: "Delete key",
+            disabled: mask.keys.length <= 1,
+            title: mask.keys.length <= 1 ? "A mask keeps at least one key" : undefined,
+            onSelect: () => commitMask(removeMaskKey(mask, sourceMs, 0.5), "delete mask key"),
+          },
+        ],
+      });
+    },
+    [commitMask],
+  );
+
   /** A mask drag pauses playback, so the key lands on the frame you grabbed. */
   const handleMaskGesture = useCallback(() => setPlaying(false), []);
 
@@ -1751,6 +1778,12 @@ export function EditorApp() {
           referenceClips={refView?.clips}
           referenceOffsetMs={doc.reference?.offsetMs ?? 0}
           tapWindowList={tapWindowList}
+          masks={doc.masks ?? []}
+          showMaskLane={armedMask}
+          selectedMaskId={selectedMaskId}
+          onSelectMask={selectMask}
+          onRetimeMask={handleRetimeMask}
+          onMaskKeyMenu={handleMaskKeyMenu}
         />
       )}
 
