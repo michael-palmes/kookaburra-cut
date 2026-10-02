@@ -25,6 +25,22 @@ export function isCapturingPreview(): boolean {
   return capturingPreview;
 }
 
+/** WebGL context losses per canvas. WebKit relaunches a stalled GPU process and the restored context renders with every render target emptied (PMREM environments and mirror bakes, cached by content key and never rebuilt), so once a canvas has lost its context nothing it renders can be trusted. */
+const contextLosses = new WeakMap<HTMLCanvasElement, number>();
+
+/** Context losses on the live canvas since it opened; a fresh canvas starts at zero. */
+export function canvasContextLosses(): number {
+  const canvas = canvasHandle.current?.gl.domElement;
+  return canvas ? (contextLosses.get(canvas) ?? 0) : 0;
+}
+
+/** Counts `canvas`'s context losses until the returned cleanup runs. */
+export function trackContextLosses(canvas: HTMLCanvasElement): () => void {
+  const onLost = () => contextLosses.set(canvas, (contextLosses.get(canvas) ?? 0) + 1);
+  canvas.addEventListener("webglcontextlost", onLost);
+  return () => canvas.removeEventListener("webglcontextlost", onLost);
+}
+
 /** The clock value the canvas tree last committed. The canvas subtree renders in the react-three-fiber reconciler, which react-dom's `flushSync` does not flush, its commits land on the r3f scheduler's own timing; the export loop must therefore not trust per-mesh readiness hooks until the canvas tree has provably committed the frame's clock value, polling this stamp to know. Without this the capture races the r3f commit and can grab the previous frame's texture/text (the back-to-back Verify ×2 divergence). See docs/determinism.md. */
 let committedClockMs = Number.NaN;
 
@@ -64,6 +80,7 @@ export function ExportBridge() {
       canvasHandle.current = null;
     };
   }, [gl, scene, camera, advance]);
+  useEffect(() => trackContextLosses(gl.domElement), [gl]);
   // Stamps the committed clock synchronously with this canvas-tree commit: every clock subscriber in the canvas tree re-renders in the same reconciler flush, so once this stamp equals a clock value, every scene primitive has committed for it too.
   useLayoutEffect(() => {
     committedClockMs = currentMs;
