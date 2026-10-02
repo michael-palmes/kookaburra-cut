@@ -9,6 +9,7 @@ use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder
 use tauri_plugin_shell::process::CommandEvent;
 use tauri_plugin_shell::ShellExt;
 
+use crate::edit_masks;
 use crate::media;
 use crate::workspace::{self, SettingsState};
 
@@ -646,7 +647,7 @@ fn tap_windows<'a>(
     windows
 }
 
-/// Build the ffmpeg args that flatten an edit into a single file: each source video is normalised to the output rate once and split per use, then one filter chain per clip (trim → retime → pad and cut to the clip's exact frame count → scale+pad to the output size; an image input loops for its hold instead of trimming) then `concat`, rendered in timeline (`startMs`) order; gaps are not yet materialised as black. Tap highlights overlay the concat output (one baked-frame input per visible window). The hardware lane decodes and encodes on the media engine; the output is an intermediate re-encoded at final export, so 0.25 bits/pixel is generous headroom (the old crf-18 lane measures ~0.09).
+/// Build the ffmpeg args that flatten an edit into a single file: each source video is normalised to the output rate once and split per use, then one filter chain per clip (trim → retime → pad and cut to the clip's exact frame count → scale+pad to the output size; an image input loops for its hold instead of trimming) then `concat`, rendered in timeline (`startMs`) order; gaps are not yet materialised as black. Privacy masks bake into each normalised source before its split (edit_masks.rs); tap highlights overlay the concat output (one baked-frame input per visible window). The hardware lane decodes and encodes on the media engine; the output is an intermediate re-encoded at final export, so 0.25 bits/pixel is generous headroom (the old crf-18 lane measures ~0.09).
 fn build_render_args(
     doc: &EditDoc,
     output: &str,
@@ -656,6 +657,7 @@ fn build_render_args(
     if doc.clips.is_empty() {
         return Err("this edit has no clips to render".into());
     }
+    edit_masks::validate_masks(doc)?;
     let (w, h) = (doc.settings.width, doc.settings.height);
     let fps = if doc.settings.fps > 0.0 {
         doc.settings.fps
@@ -715,7 +717,29 @@ fn build_render_args(
         } else {
             String::new()
         };
-        filter.push_str(&format!("[{idx}:v]fps={fps}:start_time=0{split}{outs};"));
+        let masks = edit_masks::masks_for(doc, source);
+        if masks.is_empty() {
+            filter.push_str(&format!("[{idx}:v]fps={fps}:start_time=0{split}{outs};"));
+            continue;
+        }
+        // Masks bake into the normalised source before the split, so every clip cut from it is covered.
+        let masked = if uses[idx] > 1 {
+            format!("m{idx}")
+        } else {
+            format!("src{idx}_0")
+        };
+        filter.push_str(&format!("[{idx}:v]fps={fps}:start_time=0[n{idx}];"));
+        filter.push_str(&edit_masks::video_chain(
+            &masks,
+            source,
+            fps,
+            &format!("n{idx}"),
+            &masked,
+            &format!("k{idx}"),
+        )?);
+        if uses[idx] > 1 {
+            filter.push_str(&format!("[{masked}]split={}{outs};", uses[idx]));
+        }
     }
     let mut labels = Vec::new();
     let mut total_frames = 0u32;
@@ -731,7 +755,21 @@ fn build_render_args(
         let out_s = clip.out_ms as f64 / 1000.0;
         let speed = if clip.speed > 0.0 { clip.speed } else { 1.0 };
         let label = format!("v{i}");
-        let head = if image {
+        let still_masks = if image {
+            edit_masks::masks_for(doc, input_order[idx])
+        } else {
+            Vec::new()
+        };
+        let head = if image && !still_masks.is_empty() {
+            filter.push_str(&edit_masks::image_chain(
+                &still_masks,
+                input_order[idx],
+                &format!("{idx}:v"),
+                &format!("im{i}"),
+                &format!("i{i}"),
+            )?);
+            format!("[im{i}]")
+        } else if image {
             format!("[{idx}:v]")
         } else if clip.hold_ms.is_some() {
             // Freeze frame: the one slot at inMs, cloned for the hold.
@@ -1434,5 +1472,262 @@ mod tests {
         d.version = 3;
         let err = parse_doc(&serde_json::to_string(&d).unwrap()).unwrap_err();
         assert!(err.contains("needs a newer Kookaburra Cut"));
+    }
+
+    fn filter_of(args: &[String]) -> &str {
+        &args[args.iter().position(|a| a == "-filter_complex").unwrap() + 1]
+    }
+
+    #[test]
+    fn a_masked_source_is_covered_before_the_split_so_freezes_inherit_it() {
+        let mut d = doc();
+        d.clips.push(EditClip {
+            id: "c2".into(),
+            source_id: "s1".into(),
+            in_ms: 500,
+            out_ms: 500,
+            speed: 1.0,
+            start_ms: 1000,
+            hold_ms: Some(2000),
+        });
+        d.masks.push(solid_mask());
+        let (args, _) = build_render_args(&d, "/out/x.mp4", false, None).unwrap();
+        let filter = filter_of(&args);
+        assert!(filter.starts_with("[0:v]fps=60:start_time=0[n0];[n0]drawbox="));
+        assert!(filter.contains("[m0];[m0]split=2[src0_0][src0_1];"));
+        assert!(filter.contains("[src0_1]trim=start=0.500000:duration=0.5,select=eq(n\\,0)"));
+    }
+
+    #[test]
+    fn a_single_use_masked_source_ends_its_chain_on_the_clip_label() {
+        let mut d = doc();
+        d.masks.push(solid_mask());
+        let (args, _) = build_render_args(&d, "/out/x.mp4", false, None).unwrap();
+        let filter = filter_of(&args);
+        assert!(filter.contains(":t=fill:enable='gte(t\\,-0.016667)*lt(t\\,1.016667)'[src0_0];"));
+        assert!(!filter.contains("split"));
+    }
+
+    #[test]
+    fn every_clip_of_a_masked_still_is_chained() {
+        let mut d = with_image(2000);
+        d.clips.push(EditClip {
+            id: "c3".into(),
+            source_id: "s2".into(),
+            in_ms: 0,
+            out_ms: 0,
+            speed: 1.0,
+            start_ms: 3000,
+            hold_ms: Some(1000),
+        });
+        let mut m = solid_mask();
+        m.source_id = "s2".into();
+        d.masks.push(m);
+        let (args, _) = build_render_args(&d, "/out/x.mp4", false, None).unwrap();
+        let filter = filter_of(&args);
+        assert!(filter.contains("[1:v]format=yuv444p[i1444];[i1444]drawbox="));
+        assert!(filter.contains("[im1]tpad=stop_mode=clone:stop=120,"));
+        assert!(filter.contains("[2:v]format=yuv444p[i2444];[i2444]drawbox="));
+        assert!(filter.contains("[im2]tpad=stop_mode=clone:stop=60,"));
+        // The video source carries no mask and keeps its plain normalisation.
+        assert!(filter.starts_with("[0:v]fps=60:start_time=0[src0_0];"));
+    }
+
+    #[test]
+    fn a_mask_on_a_source_no_clip_uses_changes_nothing() {
+        let mut d = doc();
+        d.sources.push(EditSource {
+            id: "s2".into(),
+            rel: "assets/b.mp4".into(),
+            kind: EditSourceKind::Video,
+            width: 1920,
+            height: 1080,
+            fps: 60.0,
+            duration_ms: 10_000,
+            abs: "/abs/b.mp4".into(),
+        });
+        let mut m = solid_mask();
+        m.source_id = "s2".into();
+        d.masks.push(m);
+        let (masked, _) = build_render_args(&d, "/out/x.mp4", false, None).unwrap();
+        let (baseline, _) = build_render_args(&doc(), "/out/x.mp4", false, None).unwrap();
+        assert_eq!(masked, baseline);
+    }
+
+    #[test]
+    fn both_encode_lanes_bake_the_same_masks() {
+        let mut d = doc();
+        d.masks.push(solid_mask());
+        let (hw, _) = build_render_args(&d, "/out/x.mp4", true, None).unwrap();
+        let (sw, _) = build_render_args(&d, "/out/x.mp4", false, None).unwrap();
+        assert_eq!(filter_of(&hw), filter_of(&sw));
+    }
+
+    #[test]
+    fn a_mask_that_cannot_render_exactly_fails_the_render() {
+        let mut d = doc();
+        let mut m = solid_mask();
+        m.color = Some("#00000g".into());
+        d.masks.push(m);
+        assert!(build_render_args(&d, "/out/x.mp4", false, None).is_err());
+        d.masks[0].color = None;
+        d.masks[0].keys.clear();
+        assert!(build_render_args(&d, "/out/x.mp4", false, None).is_err());
+    }
+
+    #[test]
+    #[ignore = "runs the dev ffmpeg sidecar (pnpm setup:ffmpeg)"]
+    fn a_masked_edit_renders_end_to_end_through_the_sidecar() {
+        let ffmpeg = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/bin/ffmpeg-aarch64-apple-darwin"
+        );
+        let dir = std::env::temp_dir().join(format!("kc-edit-masks-e2e-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let clip = dir.join("a.mp4");
+        let still = dir.join("b.png");
+        let make = |args: &[&str]| {
+            let out = std::process::Command::new(ffmpeg)
+                .args(args)
+                .output()
+                .unwrap();
+            assert!(
+                out.status.success(),
+                "{}",
+                String::from_utf8_lossy(&out.stderr)
+            );
+        };
+        make(
+            &[
+                "-y",
+                "-loglevel",
+                "error",
+                "-f",
+                "lavfi",
+                "-i",
+                "testsrc2=s=320x240:r=30:d=3",
+            ]
+            .iter()
+            .copied()
+            .chain(["-pix_fmt", "yuv420p", clip.to_str().unwrap()])
+            .collect::<Vec<_>>(),
+        );
+        make(
+            &[
+                "-y",
+                "-loglevel",
+                "error",
+                "-f",
+                "lavfi",
+                "-i",
+                "testsrc2=s=200x300:r=1:d=1",
+            ]
+            .iter()
+            .copied()
+            .chain(["-frames:v", "1", still.to_str().unwrap()])
+            .collect::<Vec<_>>(),
+        );
+        let mut d = doc();
+        d.sources[0].width = 320;
+        d.sources[0].height = 240;
+        d.sources[0].duration_ms = 3000;
+        d.sources[0].abs = clip.to_string_lossy().into_owned();
+        d.sources.push(EditSource {
+            id: "s2".into(),
+            rel: "assets/b.png".into(),
+            kind: EditSourceKind::Image,
+            width: 200,
+            height: 300,
+            fps: 0.0,
+            duration_ms: 0,
+            abs: still.to_string_lossy().into_owned(),
+        });
+        d.settings = EditSettings {
+            width: 320,
+            height: 240,
+            fps: 30.0,
+        };
+        let clip_at = |id: &str, source: &str, in_ms, out_ms, start_ms, hold_ms| EditClip {
+            id: id.into(),
+            source_id: source.into(),
+            in_ms,
+            out_ms,
+            speed: 1.0,
+            start_ms,
+            hold_ms,
+        };
+        d.clips = vec![
+            clip_at("c1", "s1", 0, 1500, 0, None),
+            clip_at("c2", "s1", 800, 800, 1500, Some(500)),
+            clip_at("c3", "s2", 0, 0, 2000, Some(500)),
+            clip_at("c4", "s1", 1500, 3000, 2500, None),
+        ];
+        let key = |source_ms, rect| EditMaskKey { source_ms, rect };
+        let mask = |id: &str, source: &str, style, keys| EditMask {
+            id: id.into(),
+            source_id: source.into(),
+            style,
+            strength: None,
+            color: Some("#ff8800".into()),
+            start_ms: 200,
+            end_ms: 2600,
+            keys,
+        };
+        d.masks = vec![
+            mask(
+                "m1",
+                "s1",
+                EditMaskStyle::Blur,
+                vec![
+                    key(300, [0.1, 0.1, 0.3, 0.2]),
+                    key(2400, [0.5, 0.6, 0.2, 0.3]),
+                ],
+            ),
+            mask(
+                "m2",
+                "s1",
+                EditMaskStyle::Solid,
+                vec![key(0, [0.6, 0.05, 0.3, 0.1])],
+            ),
+            mask(
+                "m3",
+                "s2",
+                EditMaskStyle::Pixelate,
+                vec![key(0, [0.2, 0.2, 0.5, 0.3])],
+            ),
+        ];
+        let out = dir.join("out.mp4");
+        let (args, total) = build_render_args(&d, out.to_str().unwrap(), false, None).unwrap();
+        let run = std::process::Command::new(ffmpeg)
+            .args(&args)
+            .output()
+            .unwrap();
+        assert!(
+            run.status.success(),
+            "{}",
+            String::from_utf8_lossy(&run.stderr)
+        );
+        let probe = std::process::Command::new(ffmpeg)
+            .args([
+                "-v",
+                "error",
+                "-i",
+                out.to_str().unwrap(),
+                "-map",
+                "0:v",
+                "-f",
+                "null",
+                "-",
+            ])
+            .args(["-progress", "pipe:1"])
+            .output()
+            .unwrap();
+        let frames = String::from_utf8_lossy(&probe.stdout)
+            .lines()
+            .filter_map(|l| l.strip_prefix("frame="))
+            .next_back()
+            .and_then(|v| v.trim().parse::<u32>().ok());
+        assert_eq!(frames, Some(total));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
