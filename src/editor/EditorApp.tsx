@@ -127,6 +127,8 @@ function ToolIcon({ id }: { id: "split" | "freeze" | "tap" | "delete" }) {
   );
 }
 const AUTOSAVE_DEBOUNCE_MS = 400;
+/** A document from a newer app (edit.rs `parse_doc`): discarding it would throw away work that app can still open. */
+const VERSION_ERROR = /needs a newer Kookaburra Cut/;
 const WHEEL_PX_PER_FRAME = 4; // horizontal-scroll scrub sensitivity
 
 /** The tap-settings strip under the topbar: marker scope, style dropdown with live swatches, colour dots and size, centred full-width. */
@@ -1191,7 +1193,7 @@ export function EditorApp() {
                 <div className="stage-error" role="alert">
                   <h2>This edit can’t open right now</h2>
                   <pre>{error}</pre>
-                  {target?.sourceRel ? (
+                  {target?.sourceRel && !VERSION_ERROR.test(error) ? (
                     <button
                       type="button"
                       className="btn"

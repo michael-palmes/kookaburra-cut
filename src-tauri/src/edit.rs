@@ -72,6 +72,46 @@ pub struct EditTap {
     pub pos: [f64; 2],
 }
 
+/// How a mask covers its box: an opaque fill, a gaussian blur or a mosaic.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum EditMaskStyle {
+    #[default]
+    Solid,
+    Blur,
+    Pixelate,
+}
+
+/// One mask keyframe: the box at a source moment.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EditMaskKey {
+    pub source_ms: u64,
+    /// `[x, y, w, h]` normalised 0..1 across the SOURCE frame.
+    pub rect: [f64; 4],
+}
+
+/// A privacy mask: a box that hides part of a source over a source span `[startMs, endMs)`, gliding linearly between keys (held before the first and after the last). Applied to the source before it is cut into clips, so every clip, speed and freeze of that span inherits it. A still image's mask ignores the span and uses its first key.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EditMask {
+    pub id: String,
+    pub source_id: String,
+    #[serde(default)]
+    pub style: EditMaskStyle,
+    /// 0..1 across the blur/pixelate range above its safe floor; absent = the default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub strength: Option<f64>,
+    /// Solid fill as `#rrggbb`; absent = black.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub color: Option<String>,
+    #[serde(default)]
+    pub start_ms: u64,
+    #[serde(default)]
+    pub end_ms: u64,
+    pub keys: Vec<EditMaskKey>,
+}
+
 /// The full edit document (`<project>/edits/<name>.json`).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -92,6 +132,8 @@ pub struct EditDoc {
     /// Tap size multiplier on the default dot size; absent = 1.25.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tap_size: Option<f64>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub masks: Vec<EditMask>,
     /// The side-by-side reference pairing (scene matching); editor convenience, never read by renders.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reference: Option<EditReference>,
@@ -134,6 +176,18 @@ pub struct RenderProgress {
 }
 
 const EDIT_VERSION: u32 = 1;
+/// A masked edit saves as this version, so an older app (which drops unknown fields on autosave) refuses it instead of silently unmasking the next render.
+const EDIT_VERSION_MASKS: u32 = 2;
+const EDIT_VERSION_READ_MAX: u32 = 2;
+
+/// The version a document is written as: the lowest one that still carries everything in it.
+fn doc_version(doc: &EditDoc) -> u32 {
+    if doc.masks.is_empty() {
+        EDIT_VERSION
+    } else {
+        EDIT_VERSION_MASKS
+    }
+}
 
 fn edits_dir(project: &Path) -> std::path::PathBuf {
     project.join("edits")
@@ -148,7 +202,9 @@ fn write_doc(path: &Path, doc: &EditDoc) -> Result<(), String> {
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
     }
-    let text = serde_json::to_string_pretty(doc).map_err(|e| e.to_string())?;
+    let mut stamped = doc.clone();
+    stamped.version = doc_version(doc);
+    let text = serde_json::to_string_pretty(&stamped).map_err(|e| e.to_string())?;
     let tmp = path.with_extension("json.tmp");
     std::fs::write(&tmp, text + "\n").map_err(|e| e.to_string())?;
     std::fs::rename(&tmp, path).map_err(|e| e.to_string())
@@ -210,10 +266,14 @@ fn write_tap_prefs(project: &Path, doc: &EditDoc) {
 fn read_doc(path: &Path) -> Result<EditDoc, String> {
     let text = std::fs::read_to_string(path)
         .map_err(|e| format!("reading edit at {}: {e}", path.display()))?;
-    let doc: EditDoc = serde_json::from_str(&text).map_err(|e| format!("edit is corrupt: {e}"))?;
-    if doc.version > EDIT_VERSION {
+    parse_doc(&text)
+}
+
+fn parse_doc(text: &str) -> Result<EditDoc, String> {
+    let doc: EditDoc = serde_json::from_str(text).map_err(|e| format!("edit is corrupt: {e}"))?;
+    if doc.version > EDIT_VERSION_READ_MAX {
         return Err(format!(
-            "this edit uses document version {} — it needs a newer Kookaburra Cut",
+            "this edit uses document version {} and needs a newer Kookaburra Cut",
             doc.version
         ));
     }
@@ -363,6 +423,7 @@ async fn create_default_doc(
         tap_style: prefs.tap_style,
         tap_color: prefs.tap_color,
         tap_size: prefs.tap_size,
+        masks: Vec::new(),
         reference: None,
     })
 }
@@ -975,6 +1036,7 @@ mod tests {
             tap_style: None,
             tap_color: None,
             tap_size: None,
+            masks: Vec::new(),
             reference: None,
         }
     }
@@ -1320,5 +1382,57 @@ mod tests {
             build_render_args(&d, "/out/x.mp4", false, Some(Path::new("/cache/tapdot"))).unwrap();
         let (baseline, _) = build_render_args(&doc(), "/out/x.mp4", false, None).unwrap();
         assert_eq!(with_dir, baseline);
+    }
+
+    fn solid_mask() -> EditMask {
+        EditMask {
+            id: "m1".into(),
+            source_id: "s1".into(),
+            style: EditMaskStyle::Solid,
+            strength: None,
+            color: None,
+            start_ms: 0,
+            end_ms: 1000,
+            keys: vec![EditMaskKey {
+                source_ms: 0,
+                rect: [0.1, 0.2, 0.3, 0.4],
+            }],
+        }
+    }
+
+    #[test]
+    fn an_unmasked_doc_stays_version_one_and_writes_no_masks_key() {
+        let text = serde_json::to_string(&doc()).unwrap();
+        assert!(!text.contains("masks"));
+        assert_eq!(doc_version(&doc()), 1);
+        assert_eq!(parse_doc(&text).unwrap().version, 1);
+    }
+
+    #[test]
+    fn a_masked_doc_is_written_as_version_two_and_drops_back_without_masks() {
+        let dir = std::env::temp_dir().join(format!("kc-edit-version-{}", std::process::id()));
+        let path = dir.join("cut.json");
+        let mut d = doc();
+        d.masks.push(solid_mask());
+        write_doc(&path, &d).unwrap();
+        let read = read_doc(&path).unwrap();
+        assert_eq!(read.version, 2);
+        assert_eq!(read.masks.len(), 1);
+        assert_eq!(read.masks[0].style, EditMaskStyle::Solid);
+        d.masks.clear();
+        write_doc(&path, &d).unwrap();
+        assert_eq!(read_doc(&path).unwrap().version, 1);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn parse_doc_accepts_version_two_and_refuses_three() {
+        let mut d = doc();
+        d.masks.push(solid_mask());
+        d.version = 2;
+        assert!(parse_doc(&serde_json::to_string(&d).unwrap()).is_ok());
+        d.version = 3;
+        let err = parse_doc(&serde_json::to_string(&d).unwrap()).unwrap_err();
+        assert!(err.contains("needs a newer Kookaburra Cut"));
     }
 }
