@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "name": "preset still for the \"sunset-proscenium\" 3D background (\"Hellfire Bay\")",
+  "background": {
+    "type": "scene3d",
+    "look": "sunset-proscenium",
+    "colors": ["#ecd8c4", "#dcbca0", "#c08a66", "#bf8f8f"],
+    "speed": 1.1,
+    "params": {
+      "ribs": 6,
+      "setBack": 8,
+      "innerWidth": 16.5,
+      "crown": 6.7,
+      "riseSeconds": 20,
+      "glow": 0.85,
+      "steps": 4
+    },
+    "backing": {
+      "type": "color",
+      "color": "#faf1e8"
+    },
+    "preset": "p3"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

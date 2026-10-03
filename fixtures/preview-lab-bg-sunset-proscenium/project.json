@@ -1,0 +1,53 @@
+{
+  "id": "preview-lab-bg-sunset-proscenium",
+  "name": "Preview Lab — bg-sunset-proscenium (dev-only)",
+  "version": 2,
+  "themeId": "kookaburra-studio-white",
+  "formats": ["16:9"],
+  "scenes": [
+    {
+      "file": "scenes/bg-sunset-proscenium.tsx",
+      "durationMs": 2000
+    },
+    {
+      "file": "scenes/bg-sunset-proscenium-light.tsx",
+      "durationMs": 2000
+    },
+    {
+      "file": "scenes/bgp-sunset-proscenium-p1.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-sunset-proscenium-p2.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-sunset-proscenium-p3.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-sunset-proscenium-p4.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-sunset-proscenium-p5.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-sunset-proscenium-p6.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-sunset-proscenium-p7.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-sunset-proscenium-p8.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-sunset-proscenium-p9.tsx",
+      "durationMs": 1000
+    }
+  ]
+}

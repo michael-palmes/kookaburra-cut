@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "name": "preset still for the \"sunset-proscenium\" 3D background (\"Waychinicup\")",
+  "background": {
+    "type": "scene3d",
+    "look": "sunset-proscenium",
+    "colors": ["#17282b", "#3f5856", "#9c7650", "#7f6a6e"],
+    "speed": 0.9,
+    "params": {
+      "ribs": 8,
+      "setBack": 10,
+      "innerWidth": 17,
+      "crown": 6.8,
+      "riseSeconds": 30,
+      "glow": 0.85,
+      "steps": 2
+    },
+    "backing": {
+      "type": "color",
+      "color": "#070c0d"
+    },
+    "preset": "p7"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

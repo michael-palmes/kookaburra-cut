@@ -1,0 +1,55 @@
+{
+  "version": 1,
+  "name": "3D background sample for \"sunset-proscenium\" (\"Windjana\")",
+  "background": {
+    "type": "scene3d",
+    "look": "sunset-proscenium",
+    "colors": ["#1f2a3d", "#654e62", "#a57a58", "#8a6670"],
+    "speed": 1,
+    "params": {
+      "ribs": 7,
+      "setBack": 9,
+      "innerWidth": 16.5,
+      "crown": 6.6,
+      "riseSeconds": 24,
+      "glow": 0.8,
+      "steps": 3
+    },
+    "backing": {
+      "type": "color",
+      "color": "#090b11"
+    },
+    "preset": "p6"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": -35,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      },
+      {
+        "id": "k2",
+        "tMs": 1900,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 35,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": [
+      {
+        "from": "k1",
+        "to": "k2",
+        "ease": "inOutCubic"
+      }
+    ]
+  }
+}

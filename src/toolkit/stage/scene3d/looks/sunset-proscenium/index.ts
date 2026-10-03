@@ -1,0 +1,181 @@
+import type { Scene3dBackgroundDef, Scene3dBackgroundPreset } from "../../types";
+import { SunsetProscenium } from "./SunsetProscenium";
+
+/** Sunset proscenium (deco): Radio City's "setting sun" proscenium as a nest of stepped, squared arches behind the stage, a cove glow rising outward through the ribs. */
+export const look: Scene3dBackgroundDef = {
+  id: "sunset-proscenium",
+  name: "Sunset proscenium",
+  family: "deco",
+  colorSlots: [
+    { label: "Band", fallback: "#1f2a3d" },
+    { label: "Band alt", fallback: "#654e62" },
+    { label: "Cove warm", fallback: "#a57a58", glow: true },
+    { label: "Cove rose", fallback: "#8a6670", glow: true },
+  ],
+  params: {
+    ribs: { label: "Ribs", default: 7, min: 4, max: 10, step: 1 },
+    setBack: { label: "Set back", default: 9, min: 7, max: 14, step: 0.5 },
+    innerWidth: { label: "Inner width", default: 16.5, min: 12, max: 20, step: 0.5 },
+    crown: { label: "Crown height", default: 6.6, min: 5, max: 9, step: 0.1 },
+    riseSeconds: { label: "Rise (s)", default: 24, min: 12, max: 40, step: 1 },
+    glow: { label: "Cove glow", default: 0.8, min: 0, max: 1, step: 0.01 },
+    steps: { label: "Band steps", default: 3, min: 1, max: 4, step: 1 },
+  },
+  Component: SunsetProscenium,
+};
+
+type Tune = Omit<Scene3dBackgroundPreset, "mode" | "textColor">;
+
+const preset = (mode: "light" | "dark", p: Tune): Scene3dBackgroundPreset => ({
+  ...p,
+  mode,
+  textColor: mode === "light" ? "#000000" : "#ffffff",
+});
+
+/** WA south coast names (Windjana kept from the sketch). p1 and p6 are the sketch palettes; p1's warm cove meets the Theme tile floor and the opening is widened a touch to clear the atlas headline. */
+export const presets: Scene3dBackgroundPreset[] = [
+  preset("light", {
+    id: "p1",
+    name: "Twilight Cove",
+    colors: ["#e9dcc6", "#d7c2a4", "#ba916e", "#b8969c"],
+    backing: "#f8f2e8",
+    speed: 1,
+    params: {
+      ribs: 7,
+      setBack: 9,
+      innerWidth: 16.5,
+      crown: 6.6,
+      riseSeconds: 24,
+      glow: 0.8,
+      steps: 3,
+    },
+  }),
+  preset("light", {
+    id: "p2",
+    name: "Thistle Cove",
+    colors: ["#d3dccf", "#b5c4b8", "#c19676", "#ae94a2"],
+    backing: "#f3f5f0",
+    speed: 0.9,
+    params: {
+      ribs: 8,
+      setBack: 10,
+      innerWidth: 17,
+      crown: 6.8,
+      riseSeconds: 28,
+      glow: 0.7,
+      steps: 2,
+    },
+  }),
+  preset("light", {
+    id: "p3",
+    name: "Hellfire Bay",
+    colors: ["#ecd8c4", "#dcbca0", "#c08a66", "#bf8f8f"],
+    backing: "#faf1e8",
+    speed: 1.1,
+    params: {
+      ribs: 6,
+      setBack: 8,
+      innerWidth: 16.5,
+      crown: 6.7,
+      riseSeconds: 20,
+      glow: 0.85,
+      steps: 4,
+    },
+  }),
+  preset("light", {
+    id: "p4",
+    name: "Cheyne Beach",
+    colors: ["#d9cedc", "#bcadc4", "#bd9879", "#ad93ad"],
+    backing: "#f6f3f7",
+    speed: 0.85,
+    params: {
+      ribs: 9,
+      setBack: 9.5,
+      innerWidth: 17.5,
+      crown: 7,
+      riseSeconds: 32,
+      glow: 0.65,
+      steps: 3,
+    },
+  }),
+  preset("light", {
+    id: "p5",
+    name: "Bremer Bay",
+    colors: ["#d2d9df", "#b3bfcb", "#b99a6a", "#a49cb0"],
+    backing: "#f2f4f6",
+    speed: 1.2,
+    params: {
+      ribs: 5,
+      setBack: 11,
+      innerWidth: 16.5,
+      crown: 6.7,
+      riseSeconds: 18,
+      glow: 0.75,
+      steps: 1,
+    },
+  }),
+  preset("dark", {
+    id: "p6",
+    name: "Windjana",
+    colors: ["#1f2a3d", "#654e62", "#a57a58", "#8a6670"],
+    backing: "#090b11",
+    speed: 1,
+    params: {
+      ribs: 7,
+      setBack: 9,
+      innerWidth: 16.5,
+      crown: 6.6,
+      riseSeconds: 24,
+      glow: 0.8,
+      steps: 3,
+    },
+  }),
+  preset("dark", {
+    id: "p7",
+    name: "Waychinicup",
+    colors: ["#17282b", "#3f5856", "#9c7650", "#7f6a6e"],
+    backing: "#070c0d",
+    speed: 0.9,
+    params: {
+      ribs: 8,
+      setBack: 10,
+      innerWidth: 17,
+      crown: 6.8,
+      riseSeconds: 30,
+      glow: 0.85,
+      steps: 2,
+    },
+  }),
+  preset("dark", {
+    id: "p8",
+    name: "Cape Arid",
+    colors: ["#261d30", "#5a4562", "#a8784c", "#946474"],
+    backing: "#0b080e",
+    speed: 1.1,
+    params: {
+      ribs: 6,
+      setBack: 8.5,
+      innerWidth: 16.5,
+      crown: 6.7,
+      riseSeconds: 20,
+      glow: 0.75,
+      steps: 4,
+    },
+  }),
+  preset("dark", {
+    id: "p9",
+    name: "Two Peoples Bay",
+    colors: ["#1e2530", "#4d5566", "#a3846a", "#9a7480"],
+    backing: "#080a0e",
+    speed: 0.8,
+    params: {
+      ribs: 9,
+      setBack: 9,
+      innerWidth: 17.5,
+      crown: 7,
+      riseSeconds: 36,
+      glow: 0.7,
+      steps: 3,
+    },
+  }),
+];

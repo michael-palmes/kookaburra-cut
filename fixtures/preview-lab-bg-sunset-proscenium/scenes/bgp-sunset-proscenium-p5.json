@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "name": "preset still for the \"sunset-proscenium\" 3D background (\"Bremer Bay\")",
+  "background": {
+    "type": "scene3d",
+    "look": "sunset-proscenium",
+    "colors": ["#d2d9df", "#b3bfcb", "#b99a6a", "#a49cb0"],
+    "speed": 1.2,
+    "params": {
+      "ribs": 5,
+      "setBack": 11,
+      "innerWidth": 16.5,
+      "crown": 6.7,
+      "riseSeconds": 18,
+      "glow": 0.75,
+      "steps": 1
+    },
+    "backing": {
+      "type": "color",
+      "color": "#f2f4f6"
+    },
+    "preset": "p5"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}
