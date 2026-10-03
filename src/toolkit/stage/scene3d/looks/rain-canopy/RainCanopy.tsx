@@ -61,24 +61,15 @@ float rcTop(vec2 p, float wave) {
 }
 `;
 
-// A taller halo than the kit default: portrait headlines sit near y 1.9, just under the canopy.
-// language=GLSL
-const CALM = /* glsl */ `
-uniform float uCalm;
-float rcCalm(vec3 wp) { return clamp(uCalm, 0.0, 1.0) * stageHalo(wp, vec2(4.0, 2.4), 0.35); }
-`;
-
 // language=GLSL
 const DROP_VERTEX = /* glsl */ `
 ${LOOK_GLSL_INSTANCE_ANCHOR}
 ${WAVE}
-${CALM}
 varying vec3 vWorld;
 varying vec3 vNormalW;
 varying float vCrest;
 varying float vAlpha;
 varying float vFog;
-varying float vCalm;
 varying float vGlint;
 void main() {
   vec3 anchor = lookInstanceAnchor();
@@ -88,11 +79,10 @@ void main() {
   vNormalW = normalize(mat3(modelMatrix) * normal);
   vec4 mv = viewMatrix * w;
   float px = uLen * exportPxPerUnit(-mv.z);
-  vCalm = rcCalm(w.xyz);
-  vCrest = smoothstep(0.25, 0.9, wave) * (1.0 - vCalm);
-  vGlint = smoothstep(6.0, 24.0, px) * (1.0 - vCalm);
+  vCrest = smoothstep(0.25, 0.9, wave);
+  vGlint = smoothstep(6.0, 24.0, px);
   vFog = smoothstep(8.0, 27.0, length(anchor.xz)) * 0.9;
-  vAlpha = mix(0.45, 1.0, smoothstep(1.5, 4.0, px)) * (1.0 - 0.75 * vCalm);
+  vAlpha = mix(0.45, 1.0, smoothstep(1.5, 4.0, px));
   gl_Position = projectionMatrix * mv;
 }
 `;
@@ -109,14 +99,13 @@ varying vec3 vNormalW;
 varying float vCrest;
 varying float vAlpha;
 varying float vFog;
-varying float vCalm;
 varying float vGlint;
 void main() {
   vec3 n = normalize(vNormalW);
   vec3 v = normalize(cameraPosition - vWorld);
   vec3 l = normalize(uSun);
   float lambert = clamp(dot(n, l) * 0.5 + 0.5, 0.0, 1.0);
-  float fresnel = pow(1.0 - clamp(abs(dot(n, v)), 0.0, 1.0), 2.5) * (1.0 - 0.6 * vCalm);
+  float fresnel = pow(1.0 - clamp(abs(dot(n, v)), 0.0, 1.0), 2.5);
   float glint = pow(max(dot(n, normalize(l + v)), 0.0), 36.0) * vGlint;
   vec3 body = mix(uDrop, mix(uDrop, uCrest, 0.6), lambert);
   body = mix(body, uCrest, clamp(vCrest * 0.55 + fresnel * 0.45 + glint * 0.9, 0.0, 1.0));
@@ -180,7 +169,6 @@ void main() {
 
 // language=GLSL
 const THREAD_FRAGMENT = /* glsl */ `
-${CALM}
 uniform vec3 uThread;
 uniform float uOpacity;
 varying float vCover;
@@ -192,7 +180,7 @@ varying vec3 vWorld;
 void main() {
   float edge = clamp(vHalf + 0.5 - abs(vAcross), 0.0, 1.0);
   float fade = (1.0 - smoothstep(0.35, 1.0, vAlong)) * (1.0 - 0.8 * smoothstep(14.0, 30.0, vRadius));
-  float a = uOpacity * edge * vCover * fade * stageFade(vWorld) * (1.0 - 0.75 * rcCalm(vWorld));
+  float a = uOpacity * edge * vCover * fade * stageFade(vWorld);
   if (a < 0.003) discard;
   gl_FragColor = vec4(uThread, a);
   #include <colorspace_fragment>
@@ -256,7 +244,6 @@ export function RainCanopy({ colors, params, speed, backing }: Scene3dLookProps)
       uBase: { value: 5.8 },
       uDroop: { value: 3.6 },
       uLen: { value: DROP_LEN },
-      uCalm: { value: 0.6 },
     };
     return {
       drop: {
@@ -300,7 +287,6 @@ export function RainCanopy({ colors, params, speed, backing }: Scene3dLookProps)
     u.uAmp.value = params.amplitude;
     u.uBase.value = params.height;
     u.uDroop.value = params.droop;
-    u.uCalm.value = params.textCalm;
     const az = (TAU * time) / period + 0.6;
     u.uSun.value.set(
       Math.cos(SUN_ELEVATION) * Math.sin(az),

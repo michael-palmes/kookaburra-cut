@@ -31,6 +31,8 @@ export interface LookMaterialSpec {
   vertexColors?: boolean;
   /** F11 cutaway shell: inward faces only, so the near half culls away once the camera is outside. */
   cutaway?: boolean;
+  /** Opaque cut-outs: alpha becomes MSAA coverage, so procedural silhouettes antialias with depth writes on and no sort. Keep alpha fractional only on the edge ramp (a broad alpha fade dithers). */
+  alphaToCoverage?: boolean;
 }
 
 const FRAGMENT_ONLY = /\b(fwidth|dFdx|dFdy)\s*\(/;
@@ -56,6 +58,8 @@ export function lookMaterialProblem(spec: LookMaterialSpec): string | null {
     return "uResolution and uPx are declared by the kit";
   if (spec.uniforms && ("uResolution" in spec.uniforms || "uPx" in spec.uniforms))
     return "uResolution and uPx are engine-owned, the kit adds and syncs them";
+  if (spec.transparent && spec.depthTest === false)
+    return "transparent parts draw after opaque content, so depthTest false paints over devices";
   return null;
 }
 
@@ -80,6 +84,7 @@ export function createLookMaterial(spec: LookMaterialSpec): ShaderMaterial {
     side: spec.cutaway ? BackSide : (spec.side ?? FrontSide),
     blending: spec.blending ?? NormalBlending,
     vertexColors: spec.vertexColors ?? false,
+    alphaToCoverage: spec.alphaToCoverage ?? false,
     toneMapped: false,
     fog: false,
     lights: false,
@@ -104,4 +109,12 @@ export function lookColor(hex: string): Color {
 /** A `{ value: Color }` uniform from a preset hex; update it in place with `uniform.value.set(hex)`. */
 export function lookColorUniform(hex: string): IUniform<Color> {
   return { value: new Color(hex) };
+}
+
+const luminanceScratch = new Color();
+
+/** A preset hex's relative luminance (WCAG, 0 to 1): compare the backing with the palette to tell light presets from dark. */
+export function lookLuminance(hex: string): number {
+  const c = luminanceScratch.set(hex);
+  return 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
 }

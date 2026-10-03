@@ -12,8 +12,7 @@
       "cycle": 26,
       "sunElevation": 28,
       "pool": 0.5,
-      "clearRadius": 6.5,
-      "textCalm": 0.55
+      "clearRadius": 6.5
     },
     "backing": {
       "type": "color",

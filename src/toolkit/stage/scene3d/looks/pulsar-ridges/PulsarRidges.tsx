@@ -90,7 +90,6 @@ export function PulsarRidges({ colors, params, speed, backing }: Scene3dLookProp
           ...shared,
           uRidge: lookColorUniform("#3b4759"),
           uCrest: lookColorUniform("#525f77"),
-          uCalm: { value: 0.5 },
         },
         lineWidth: { px: 2.2 },
         fade: [45, 90],
@@ -117,7 +116,6 @@ export function PulsarRidges({ colors, params, speed, backing }: Scene3dLookProp
     mats.skirt.uniforms.uBacking.value.set(backing);
     mats.crest.uniforms.uRidge.value.set(colors[0]);
     mats.crest.uniforms.uCrest.value.set(colors[1]);
-    mats.crest.uniforms.uCalm.value = params.textCalm;
     (mats.crest.uniforms.uInkWidth.value as Vector3).y = params.lineWidth;
     skirts.setDrawRange(0, rings * SEG * 6);
     showInkStrands(crests, rings);

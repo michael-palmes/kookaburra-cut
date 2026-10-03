@@ -1,4 +1,3 @@
-import { TEXT_CALM_PARAM } from "../../kit";
 import type { Scene3dBackgroundDef, Scene3dBackgroundPreset } from "../../types";
 import { WashDome } from "./WashDome";
 
@@ -19,7 +18,6 @@ export const look: Scene3dBackgroundDef = {
     streak: { label: "Turner streak", default: 0.35, min: 0, max: 1, step: 0.01 },
     wind: { label: "Wind", default: 1, min: 0, max: 3, step: 0.05 },
     blooms: { label: "Blooms", default: 5, min: 0, max: 8, step: 1 },
-    textCalm: TEXT_CALM_PARAM,
   },
   previewCamera: "sweep",
   Component: WashDome,
@@ -49,7 +47,6 @@ export const presets: Scene3dBackgroundPreset[] = [
       streak: 0.35,
       wind: 1,
       blooms: 5,
-      textCalm: 0.6,
     },
   }),
   preset("light", {
@@ -66,7 +63,6 @@ export const presets: Scene3dBackgroundPreset[] = [
       streak: 0.75,
       wind: 1.6,
       blooms: 3,
-      textCalm: 0.6,
     },
   }),
   preset("light", {
@@ -83,7 +79,6 @@ export const presets: Scene3dBackgroundPreset[] = [
       streak: 0.2,
       wind: 0.8,
       blooms: 6,
-      textCalm: 0.65,
     },
   }),
   preset("light", {
@@ -100,7 +95,6 @@ export const presets: Scene3dBackgroundPreset[] = [
       streak: 0.5,
       wind: 1.2,
       blooms: 4,
-      textCalm: 0.55,
     },
   }),
   preset("light", {
@@ -117,7 +111,6 @@ export const presets: Scene3dBackgroundPreset[] = [
       streak: 0.15,
       wind: 0.7,
       blooms: 7,
-      textCalm: 0.6,
     },
   }),
   preset("dark", {
@@ -134,7 +127,6 @@ export const presets: Scene3dBackgroundPreset[] = [
       streak: 0.35,
       wind: 1,
       blooms: 5,
-      textCalm: 0.6,
     },
   }),
   preset("dark", {
@@ -151,7 +143,6 @@ export const presets: Scene3dBackgroundPreset[] = [
       streak: 0.6,
       wind: 0.7,
       blooms: 3,
-      textCalm: 0.6,
     },
   }),
   preset("dark", {
@@ -168,7 +159,6 @@ export const presets: Scene3dBackgroundPreset[] = [
       streak: 0.2,
       wind: 1.3,
       blooms: 6,
-      textCalm: 0.65,
     },
   }),
   preset("dark", {
@@ -185,7 +175,6 @@ export const presets: Scene3dBackgroundPreset[] = [
       streak: 0.8,
       wind: 1.8,
       blooms: 2,
-      textCalm: 0.55,
     },
   }),
 ];

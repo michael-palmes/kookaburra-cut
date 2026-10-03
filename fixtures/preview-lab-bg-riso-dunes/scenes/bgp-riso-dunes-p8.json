@@ -14,8 +14,7 @@
       "misregister": 0.07,
       "grain": 0.45,
       "drift": 0.04,
-      "sunSwing": 14,
-      "textCalm": 0.65
+      "sunSwing": 14
     },
     "backing": {
       "type": "color",

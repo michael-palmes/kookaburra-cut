@@ -31,7 +31,6 @@ export function RisoDunes({ colors, params, speed, backing }: Scene3dLookProps) 
   const mats = useLookMaterials(() => {
     const uniforms = {
       uPaper: lookColorUniform("#000000"),
-      uCalm: { value: 0.6 },
       uSmallPhase: { value: 0 },
       uBigPhase: { value: 0 },
       uClear: { value: 8 },
@@ -89,7 +88,6 @@ export function RisoDunes({ colors, params, speed, backing }: Scene3dLookProps) 
     u.uHeight.value = params.duneHeight;
     u.uSpacing.value = params.duneSpacing;
     u.uGrain.value = params.grain;
-    u.uCalm.value = params.textCalm;
     u.uSlip.value.set(...printPlateSlip(params.misregister));
     u.uBigPhase.value = phases.big;
     u.uSmallPhase.value = phases.small;

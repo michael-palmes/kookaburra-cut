@@ -3,8 +3,6 @@ import { glslFloat, LOOK_GLSL_BACKING, LOOK_GLSL_PRINT } from "../../kit";
 /** Big-dune spacing over small-dune spacing, and the small dunes' share of the dune height (the approved sketch's 17/6 and 0.42 of 1.3). */
 export const SMALL_SPACING = 6 / 17;
 export const SMALL_HEIGHT = 0.42 / 1.3;
-/** Text calm ring at the stage depth: the outer halo minus the inner one, so calm lands behind a headline above the stage, not on the ink band behind the device. */
-export const CALM_RING = { halfWidth: 4.5, inner: 1, outer: 2.6, feather: 0.3 } as const;
 /** Ripple wavelength in world units. */
 export const RIPPLE_WAVELENGTH = 0.3;
 
@@ -90,21 +88,14 @@ DuneSample duneAt(DuneField f, vec2 p, vec2 off) {
 }
 `;
 
-// Paper, its tooth and the text calm ring: all the clearing prints, since no dune or ink reaches it.
+// Paper and its tooth: all the clearing prints, since no dune or ink reaches it.
 // language=GLSL
 const PAPER = /* glsl */ `
 ${LOOK_GLSL_PRINT}
 uniform vec3 uPaper;
-uniform float uCalm;
 varying vec3 vWorld;
-const vec2 CALM_OUTER = vec2(${glslFloat(CALM_RING.halfWidth)}, ${glslFloat(CALM_RING.outer)});
-const vec2 CALM_INNER = vec2(${glslFloat(CALM_RING.halfWidth)}, ${glslFloat(CALM_RING.inner)});
-const float CALM_FEATHER = ${glslFloat(CALM_RING.feather)};
-float paperCalm() {
-  return clamp(uCalm, 0.0, 1.0) * clamp(stageHalo(vWorld, CALM_OUTER, CALM_FEATHER) - stageHalo(vWorld, CALM_INNER, CALM_FEATHER), 0.0, 1.0);
-}
-vec3 paper(float calm) {
-  return uPaper * (1.0 + printGrain(vWorld.xz, 1.0 / 9.0) * 0.05 * (1.0 - calm));
+vec3 paper() {
+  return uPaper * (1.0 + printGrain(vWorld.xz, 1.0 / 9.0) * 0.05);
 }
 `;
 
@@ -148,7 +139,6 @@ float plateTone(DuneSample d) {
 void main() {
   vec2 p = vWorld.xz;
   float r = length(p);
-  float calm = paperCalm();
   vec2 offA = printSlip(p, uSlip);
   DuneField field = duneField(p);
   DuneSample plateA = duneAt(field, p, offA);
@@ -157,8 +147,8 @@ void main() {
   float toneB = plateTone(plateB);
   float ripPhase = dot(p, WIND) / ${glslFloat(RIPPLE_WAVELENGTH)} - uRipPhase;
   float ripGuard = 1.0 - smoothstep(0.08, 0.2, fwidth(ripPhase));
-  float rip = sin(6.2831853 * fract(ripPhase)) * 0.03 * ripGuard * (1.0 - calm) * smoothstep(0.04, 0.14, abs(toneA));
-  float screen = printScreen(p, 1.0 / 22.0, 2.0 * uGrain * (1.0 - calm));
+  float rip = sin(6.2831853 * fract(ripPhase)) * 0.03 * ripGuard * smoothstep(0.04, 0.14, abs(toneA));
+  float screen = printScreen(p, 1.0 / 22.0, 2.0 * uGrain);
   float polarity = uDark > 0.5 ? 1.0 : -1.0;
   float sinkInk = smoothstep(0.55, 1.0, vSink);
   float nearInk = 1.0 - smoothstep(uReach - 4.5, uReach, r);
@@ -167,10 +157,9 @@ void main() {
   float trough = (1.0 - smoothstep(0.1, 0.55, plateB.crest)) * smoothstep(uReach - 1.0, uReach + 9.0, r);
   float dTint = max(smoothstep(0.03, 0.15, polarity * (toneB + rip)), 0.9 * trough) * tintFade;
   float dKey = smoothstep(0.15, 0.3, polarity * (toneA + rip)) * keyFade;
-  vec3 col = paper(calm);
-  float inkStrength = 1.0 - calm;
-  col = mix(col, mix(mix(uPaper, uTint, 0.3), uTint, nearInk), printInk(dTint, screen) * inkStrength);
-  col = mix(col, uKey, printInk(dKey, screen) * inkStrength);
+  vec3 col = paper();
+  col = mix(col, mix(mix(uPaper, uTint, 0.3), uTint, nearInk), printInk(dTint, screen));
+  col = mix(col, uKey, printInk(dKey, screen));
   float rim = smoothstep(75.0, 108.0, r);
   gl_FragColor = vec4(rim > 0.0 ? backingMix(col, uBacking, rim) : col, 1.0);
   #include <colorspace_fragment>
@@ -182,7 +171,7 @@ void main() {
 export const RISO_CLEARING_FRAGMENT: string = /* glsl */ `
 ${PAPER}
 void main() {
-  gl_FragColor = vec4(paper(paperCalm()), 1.0);
+  gl_FragColor = vec4(paper(), 1.0);
   #include <colorspace_fragment>
 }
 `;

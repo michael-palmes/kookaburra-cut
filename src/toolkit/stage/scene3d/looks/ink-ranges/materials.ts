@@ -30,11 +30,10 @@ const WASH_ORBIT = (0.01 * INK_PERIOD) / TAU;
 const DISC_RADIUS = 0.0326;
 const scratch = { near: new Color(), far: new Color(), mist: new Color(), disc: [0, 0, 0] };
 
-/** The three parts of the stack. Every part shares the ring, mist and calm uniform objects, so one write drives them all. */
+/** The three parts of the stack. Every part shares the ring and mist uniform objects, so one write drives them all. */
 export function inkMaterialSpecs(): Record<InkPart, LookMaterialSpec> {
   const ring = createRingBandUniforms();
   const mist = lookColorUniform("#000000");
-  const calm = { value: 0 };
   const freq = new Float32Array(RING_BANDS_MAX).fill(1);
   const seed = new Float32Array(RING_BANDS_MAX);
   for (const [k, r] of INK_RIDGES.entries()) {
@@ -68,7 +67,6 @@ export function inkMaterialSpecs(): Record<InkPart, LookMaterialSpec> {
         uLumpDrift: { value: new Vector2() },
         uWashDrift: { value: new Vector2() },
         uPools: { value: 0.3 },
-        uCalm: calm,
       },
     },
     ridge: {
@@ -90,7 +88,6 @@ export function inkMaterialSpecs(): Record<InkPart, LookMaterialSpec> {
         uFloorY: { value: INK_FLOOR_Y },
         uBreathe: { value: 0 },
         uHaze: { value: 0.38 },
-        uCalm: calm,
       },
     },
   };
@@ -141,7 +138,6 @@ export function writeInkFrame(mats: InkMaterials, params: Record<string, number>
   ridge.uFogH.value = 0.3 + 1.2 * params.mist;
   ridge.uBreathe.value = (loopSeconds(t, BREATHE_SECONDS) / BREATHE_SECONDS) * TAU;
   ridge.uHaze.value = params.eyeHaze;
-  ridge.uCalm.value = params.textCalm;
 
   const sky = mats.sky.uniforms;
   (sky.uDiscDir.value as Vector3).fromArray(inkDiscDirection(params.horizon, scratch.disc));

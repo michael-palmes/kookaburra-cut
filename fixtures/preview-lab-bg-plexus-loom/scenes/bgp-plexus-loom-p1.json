@@ -12,8 +12,7 @@
       "twist": 80,
       "breath": 12,
       "spin": 1,
-      "opacity": 0.55,
-      "textCalm": 0.6
+      "opacity": 0.55
     },
     "backing": {
       "type": "color",

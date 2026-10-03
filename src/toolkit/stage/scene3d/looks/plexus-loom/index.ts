@@ -1,4 +1,4 @@
-import { stageSpot, TEXT_CALM_PARAM } from "../../kit";
+import { stageSpot } from "../../kit";
 import type {
   Scene3dBackgroundDef,
   Scene3dBackgroundPreset,
@@ -23,7 +23,6 @@ export const look: Scene3dBackgroundDef = {
     breath: { label: "Breathing", default: 12, min: 0, max: 18, step: 0.5 },
     spin: { label: "Spin speed", default: 1, min: 0, max: 3, step: 0.05 },
     opacity: { label: "Thread opacity", default: 0.55, min: 0.3, max: 0.9, step: 0.01 },
-    textCalm: { ...TEXT_CALM_PARAM, default: 0.6 },
   },
   Component: PlexusLoom,
 };
@@ -75,7 +74,6 @@ export const presets: Scene3dBackgroundPreset[] = [
       breath: 12,
       spin: 1,
       opacity: 0.55,
-      textCalm: 0.6,
     },
   }),
   preset("light", {
@@ -91,7 +89,6 @@ export const presets: Scene3dBackgroundPreset[] = [
       breath: 9,
       spin: 0.8,
       opacity: 0.5,
-      textCalm: 0.6,
     },
   }),
   preset("light", {
@@ -107,7 +104,6 @@ export const presets: Scene3dBackgroundPreset[] = [
       breath: 14,
       spin: 1.2,
       opacity: 0.6,
-      textCalm: 0.65,
     },
   }),
   preset("light", {
@@ -123,7 +119,6 @@ export const presets: Scene3dBackgroundPreset[] = [
       breath: 16,
       spin: 1.4,
       opacity: 0.7,
-      textCalm: 0.65,
     },
   }),
   preset("light", {
@@ -139,7 +134,6 @@ export const presets: Scene3dBackgroundPreset[] = [
       breath: 10,
       spin: 0.6,
       opacity: 0.45,
-      textCalm: 0.55,
     },
   }),
   preset("dark", {
@@ -155,7 +149,6 @@ export const presets: Scene3dBackgroundPreset[] = [
       breath: 12,
       spin: 1,
       opacity: 0.55,
-      textCalm: 0.6,
     },
   }),
   preset("dark", {
@@ -171,7 +164,6 @@ export const presets: Scene3dBackgroundPreset[] = [
       breath: 12,
       spin: 0.8,
       opacity: 0.6,
-      textCalm: 0.6,
     },
   }),
   preset("dark", {
@@ -187,7 +179,6 @@ export const presets: Scene3dBackgroundPreset[] = [
       breath: 15,
       spin: 1.3,
       opacity: 0.65,
-      textCalm: 0.65,
     },
   }),
   preset("dark", {
@@ -203,7 +194,6 @@ export const presets: Scene3dBackgroundPreset[] = [
       breath: 8,
       spin: 0.7,
       opacity: 0.5,
-      textCalm: 0.55,
     },
   }),
 ];

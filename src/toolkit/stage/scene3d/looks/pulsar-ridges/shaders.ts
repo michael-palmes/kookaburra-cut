@@ -105,28 +105,15 @@ void inkVertex(vec4 p, vec3 world) {
 }
 `;
 
-/** Headline band the ink quiets behind: an ellipse around the headline slot above the stage, at its depth, so the ridge body below stays at full strength. */
-export const TEXT_BAND = { y: 1.8, halfWidth: 3.2, halfHeight: 0.5 } as const;
-
-/** Ink from Ridge (low) to Crest (peaks), quieted in the headline band and sunk near the camera. */
+/** Ink from Ridge (low) to Crest (peaks), sunk near the camera. */
 // language=GLSL
 export const CREST_FRAGMENT = /* glsl */ `
 uniform vec3 uRidge;
 uniform vec3 uCrest;
-uniform float uCalm;
 varying float vTone;
-float prTextBand(vec3 wp) {
-  vec3 h = (viewMatrix * vec4(0.0, ${glslFloat(TEXT_BAND.y)}, 0.0, 1.0)).xyz;
-  vec3 v = (viewMatrix * vec4(wp, 1.0)).xyz;
-  if (h.z > -1e-3 || v.z > -1e-3) return 0.0;
-  vec2 q = v.xy * (h.z / v.z) - h.xy;
-  float e = length(q / vec2(${glslFloat(TEXT_BAND.halfWidth)}, ${glslFloat(TEXT_BAND.halfHeight)}));
-  return 1.0 - smoothstep(0.7, 1.3, e);
-}
 void main() {
   vec3 ink = mix(uRidge, uCrest, smoothstep(0.1, 0.9, vTone));
-  float quiet = 1.0 - 0.8 * clamp(uCalm, 0.0, 1.0) * prTextBand(vWorld);
-  float a = inkCoverage() * quiet * stageFade(vWorld, 0.3, 0.6);
+  float a = inkCoverage() * stageFade(vWorld, 0.3, 0.6);
   if (a < 0.002) discard;
   gl_FragColor = vec4(ink, a);
   #include <colorspace_fragment>

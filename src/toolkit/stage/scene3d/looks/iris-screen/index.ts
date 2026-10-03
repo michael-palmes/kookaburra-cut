@@ -1,4 +1,3 @@
-import { TEXT_CALM_PARAM } from "../../kit/stage";
 import type { Scene3dBackgroundDef, Scene3dBackgroundPreset } from "../../types";
 import { IrisScreen } from "./IrisScreen";
 import { IRIS_SCREEN_PRESETS } from "./presets";
@@ -20,7 +19,6 @@ export const look: Scene3dBackgroundDef = {
     sunElevation: { label: "Sun elevation", default: 22, min: 12, max: 40, step: 1 },
     pool: { label: "Floor pools", default: 0.6, min: 0, max: 1, step: 0.01 },
     clearRadius: { label: "Clearing", default: 6, min: 4, max: 10, step: 0.5 },
-    textCalm: TEXT_CALM_PARAM,
   },
   Component: IrisScreen,
 };

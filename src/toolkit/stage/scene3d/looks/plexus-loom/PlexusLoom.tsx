@@ -65,14 +65,13 @@ export function PlexusLoom({ colors, params, speed }: Scene3dLookProps) {
           uBundles: { value: 36 },
           uHueTurn: { value: 0 },
           uOpacity: { value: 0.55 },
-          uCalm: { value: 0 },
         },
       }),
       hoops: {
         key: "plexus-loom/hoops",
         fragmentShader: HOOP_FRAGMENT,
         transparent: true,
-        uniforms: { uGlow: lookColorUniform("#000000"), uCalm: { value: 0 } },
+        uniforms: { uGlow: lookColorUniform("#000000") },
       },
     }),
     [],
@@ -98,8 +97,6 @@ export function PlexusLoom({ colors, params, speed }: Scene3dLookProps) {
     u.uRadius.value = params.hoopRadius;
     u.uBundles.value = bundles;
     u.uOpacity.value = params.opacity;
-    u.uCalm.value = params.textCalm;
-    mats.hoops.uniforms.uCalm.value = params.textCalm;
   });
 
   return (

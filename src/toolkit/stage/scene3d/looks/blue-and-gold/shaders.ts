@@ -44,7 +44,6 @@ void main() {
 export const RIDGE_FRAGMENT = /* glsl */ `
 uniform vec3 uRidge;
 uniform float uRidgeHeight;
-uniform float uCalm;
 varying vec3 vLocal;
 varying vec3 vWorld;
 void main() {
@@ -54,7 +53,7 @@ void main() {
   float d = crest - vLocal.y;
   float a = smoothstep(-0.35, 0.35, d + (vnoise(c * 40.0) - 0.5) * 0.3);
   a *= 1.0 - 0.55 * (0.4 + 0.5 * smoothstep(0.0, 4.5, d));
-  a *= (1.0 - 0.45 * calmWeight(vWorld, uCalm)) * stageFade(vWorld);
+  a *= stageFade(vWorld);
   if (a < 0.003) discard;
   gl_FragColor = vec4(uRidge, a);
   #include <colorspace_fragment>
@@ -66,13 +65,11 @@ export const GROUND_FRAGMENT = /* glsl */ `
 uniform float uTime;
 uniform float uCloud;
 uniform float uClear;
-uniform float uCalm;
 uniform vec3 uGold;
 uniform vec3 uStraw;
 uniform vec3 uShade;
 uniform vec3 uRidge;
 varying vec3 vLocal;
-varying vec3 vWorld;
 ${CLOUD}
 float brushFbm(vec2 p) {
   float w = max(length(fwidth(p)), 1e-5);
@@ -89,14 +86,13 @@ float brushFbm(vec2 p) {
 void main() {
   vec2 xz = vLocal.xz;
   float r = length(xz);
-  float calm = calmWeight(vWorld, uCalm);
   vec3 col = mix(uGold, uShade, 0.45);
   float brush = brushFbm(vec2(xz.x * 0.5 + xz.y * 0.2, xz.y * 1.6) + 3.0);
-  col = mix(col, uGold, 0.5 * smoothstep(0.35, 0.7, brush) * (1.0 - 0.6 * calm));
+  col = mix(col, uGold, 0.5 * smoothstep(0.35, 0.7, brush));
   float k = uClear / ${glslFloat(DAUB_FIELD.inner)};
   col = mix(col, mix(uGold, uStraw, 0.6), 0.75 * (1.0 - smoothstep(3.0 * k, 7.5 * k, r)));
   float cs = cloudShadow(xz, uTime) * uCloud / 0.6;
-  col = mix(col, mix(uShade, uRidge, 0.25), cs * mix(0.5, 0.25, smoothstep(12.0, 24.0, r)) * (1.0 - 0.5 * calm));
+  col = mix(col, mix(uShade, uRidge, 0.25), cs * mix(0.5, 0.25, smoothstep(12.0, 24.0, r)));
   float haze = smoothstep(34.0, 58.0, r);
   float a = 1.0 - 0.55 * haze;
   col = ((1.0 - haze) * col + 0.45 * haze * uRidge) / a;
@@ -112,7 +108,6 @@ uniform float uTime;
 uniform float uWind;
 uniform float uCloud;
 uniform float uClear;
-uniform float uCalm;
 uniform float uKeep;
 uniform float uSize;
 uniform float uBoil;
@@ -168,7 +163,6 @@ void main() {
   float cs = cloudShadow(root, uTime);
   vec3 col = mix(lit3, shade3, smoothstep(0.3, 0.7, cs) * clamp(uCloud / 0.6, 0.0, 1.0));
   col = mix(col, uRidge, 0.2 * cs * uCloud);
-  col = mix(col, c1, 0.45 * calmWeight(world.xyz, uCalm));
   float px = len * exportPxPerUnit(-view.z);
   float far = max(1.0 - smoothstep(5.0, 14.0, px), smoothstep(18.0, FIELD_OUT, r));
   vec3 groundHere = mix(mix(uGold, uShade, 0.45), uGold, 0.25);

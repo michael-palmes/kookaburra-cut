@@ -1,5 +1,5 @@
 import type { Vector4 } from "three";
-import { loopSeconds, tinyHash } from "../../kit";
+import { loopSeconds, smoothstep, tinyHash } from "../../kit";
 
 /** Closed-form motion for Wash dome, all from the absolute look clock. */
 
@@ -16,11 +16,6 @@ export const WASH_DRY = { amp: 0.025, period: 30 } as const;
 
 const TAU = Math.PI * 2;
 const DEG = Math.PI / 180;
-
-const smooth = (a: number, b: number, x: number) => {
-  const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
-  return t * t * (3 - 2 * t);
-};
 
 /** Field threshold inside the cloud band: more coverage, lower threshold. */
 export function washThreshold(coverage: number): number {
@@ -61,6 +56,6 @@ export function writeWashBlooms(
       Math.sin(az) * Math.cos(el),
       0.015 + 0.055 * Math.sqrt(u),
     );
-    amps[k] = smooth(0, 0.12, u) * (1 - smooth(0.55, 1, u));
+    amps[k] = smoothstep(0, 0.12, u) * (1 - smoothstep(0.55, 1, u));
   }
 }

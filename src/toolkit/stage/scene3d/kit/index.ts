@@ -6,6 +6,14 @@ export {
   stageSpot,
 } from "./companion";
 export {
+  createDishDiscGeometry,
+  DISH_FLOOR_VERTEX_SHADER,
+  type DishShape,
+  dishHeight,
+  dishSlope,
+  LOOK_GLSL_DISH,
+} from "./dish";
+export {
   glslFloat,
   LOOK_GLSL_AA,
   LOOK_GLSL_BACKING,
@@ -76,9 +84,17 @@ export {
   type LookMaterialSpec,
   lookColor,
   lookColorUniform,
+  lookLuminance,
   lookMaterialProblem,
   syncLookFrame,
 } from "./material";
+export { fract, smoothstep } from "./math";
+export {
+  LOOK_GLSL_MEDALLION,
+  MEDALLION_MIN_HALF_PX,
+  medallionLine,
+  medallionTurn,
+} from "./medallion";
 export {
   LOOK_GLSL_PRINT,
   PRINT_SLIP_ANGLE_DEG,
@@ -111,7 +127,10 @@ export {
   skyDomeRadius,
   useSkyDomeGeometry,
 } from "./skyDome";
-export { LOOK_REFERENCE_HEIGHT, STAGE_FADE_WINDOW, STAGE_HALO, TEXT_CALM_PARAM } from "./stage";
+export {
+  LOOK_REFERENCE_HEIGHT,
+  STAGE_FADE_WINDOW,
+} from "./stage";
 export {
   BRUSH_ATLAS,
   BRUSH_SHAPES,

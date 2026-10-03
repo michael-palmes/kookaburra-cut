@@ -12,8 +12,7 @@
       "height": 1.2,
       "massifs": 2,
       "lineWidth": 3,
-      "drift": 0.9,
-      "textCalm": 0.5
+      "drift": 0.9
     },
     "backing": {
       "type": "color",

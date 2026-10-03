@@ -13,8 +13,7 @@
       "wind": 0.7,
       "cloudShadow": 0.45,
       "boilFps": 0,
-      "ridgeHeight": 0.8,
-      "textCalm": 0.6
+      "ridgeHeight": 0.8
     },
     "backing": {
       "type": "color",

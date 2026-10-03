@@ -1,4 +1,3 @@
-import { TEXT_CALM_PARAM } from "../../kit/stage";
 import type { Scene3dBackgroundDef, Scene3dBackgroundPreset } from "../../types";
 import { RainCanopy, SPACING_MIN } from "./RainCanopy";
 
@@ -18,8 +17,8 @@ export const look: Scene3dBackgroundDef = {
     droop: { label: "Bell droop", default: 3.6, min: 0, max: 4.6, step: 0.1 },
     period: { label: "Loop length (s)", default: 90, min: 45, max: 240, step: 5 },
     threads: { label: "Thread opacity", default: 0.25, min: 0, max: 0.5, step: 0.01 },
-    textCalm: TEXT_CALM_PARAM,
   },
+  previewCamera: "ceiling",
   Component: RainCanopy,
 };
 
@@ -41,7 +40,6 @@ export const presets: Scene3dBackgroundPreset[] = [
       droop: 3.6,
       period: 90,
       threads: 0.25,
-      textCalm: 0.6,
     },
   },
   {
@@ -58,7 +56,6 @@ export const presets: Scene3dBackgroundPreset[] = [
       droop: 3,
       period: 120,
       threads: 0.2,
-      textCalm: 0.7,
     },
   },
   {
@@ -75,7 +72,6 @@ export const presets: Scene3dBackgroundPreset[] = [
       droop: 4,
       period: 75,
       threads: 0.3,
-      textCalm: 0.6,
     },
   },
   {
@@ -92,7 +88,6 @@ export const presets: Scene3dBackgroundPreset[] = [
       droop: 2.2,
       period: 150,
       threads: 0.15,
-      textCalm: 0.8,
     },
   },
   {
@@ -109,7 +104,6 @@ export const presets: Scene3dBackgroundPreset[] = [
       droop: 3.2,
       period: 60,
       threads: 0.35,
-      textCalm: 0.5,
     },
   },
   {
@@ -126,7 +120,6 @@ export const presets: Scene3dBackgroundPreset[] = [
       droop: 3.6,
       period: 90,
       threads: 0.25,
-      textCalm: 0.6,
     },
   },
   {
@@ -143,7 +136,6 @@ export const presets: Scene3dBackgroundPreset[] = [
       droop: 4.2,
       period: 110,
       threads: 0.3,
-      textCalm: 0.6,
     },
   },
   {
@@ -160,7 +152,6 @@ export const presets: Scene3dBackgroundPreset[] = [
       droop: 3,
       period: 70,
       threads: 0.2,
-      textCalm: 0.5,
     },
   },
   {
@@ -177,7 +168,6 @@ export const presets: Scene3dBackgroundPreset[] = [
       droop: 2.6,
       period: 180,
       threads: 0.4,
-      textCalm: 0.7,
     },
   },
 ];

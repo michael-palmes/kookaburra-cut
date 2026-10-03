@@ -1,4 +1,3 @@
-import { TEXT_CALM_PARAM } from "../../kit";
 import type { Scene3dBackgroundDef, Scene3dBackgroundPreset } from "../../types";
 import { InkRanges } from "./InkRanges";
 import { inkLighting } from "./ranges";
@@ -21,7 +20,6 @@ export const look: Scene3dBackgroundDef = {
     drift: { label: "Drift speed", default: 1, min: 0, max: 3, step: 0.05 },
     discSize: { label: "Disc size", default: 1, min: 0, max: 2, step: 0.05 },
     eyeHaze: { label: "Eye-level haze", default: 0.38, min: 0, max: 0.7, step: 0.01 },
-    textCalm: { ...TEXT_CALM_PARAM, default: 0.5 },
   },
   Component: InkRanges,
 };
@@ -53,7 +51,6 @@ export const presets: Scene3dBackgroundPreset[] = [
       drift: 1,
       discSize: 1,
       eyeHaze: 0.38,
-      textCalm: 0.5,
     },
   }),
   preset("light", {
@@ -70,7 +67,6 @@ export const presets: Scene3dBackgroundPreset[] = [
       drift: 0.8,
       discSize: 0.75,
       eyeHaze: 0.3,
-      textCalm: 0.5,
     },
   }),
   preset("light", {
@@ -87,7 +83,6 @@ export const presets: Scene3dBackgroundPreset[] = [
       drift: 1.2,
       discSize: 0,
       eyeHaze: 0.45,
-      textCalm: 0.55,
     },
   }),
   preset("light", {
@@ -104,7 +99,6 @@ export const presets: Scene3dBackgroundPreset[] = [
       drift: 1.3,
       discSize: 1.3,
       eyeHaze: 0.35,
-      textCalm: 0.5,
     },
   }),
   preset("light", {
@@ -121,7 +115,6 @@ export const presets: Scene3dBackgroundPreset[] = [
       drift: 0.7,
       discSize: 0.6,
       eyeHaze: 0.4,
-      textCalm: 0.55,
     },
   }),
   preset("dark", {
@@ -138,7 +131,6 @@ export const presets: Scene3dBackgroundPreset[] = [
       drift: 1,
       discSize: 1,
       eyeHaze: 0.38,
-      textCalm: 0.5,
     },
   }),
   preset("dark", {
@@ -155,7 +147,6 @@ export const presets: Scene3dBackgroundPreset[] = [
       drift: 0.8,
       discSize: 1.2,
       eyeHaze: 0.3,
-      textCalm: 0.5,
     },
   }),
   preset("dark", {
@@ -172,7 +163,6 @@ export const presets: Scene3dBackgroundPreset[] = [
       drift: 1.2,
       discSize: 0,
       eyeHaze: 0.45,
-      textCalm: 0.55,
     },
   }),
   preset("dark", {
@@ -189,7 +179,6 @@ export const presets: Scene3dBackgroundPreset[] = [
       drift: 1.5,
       discSize: 1.6,
       eyeHaze: 0.3,
-      textCalm: 0.5,
     },
   }),
 ];

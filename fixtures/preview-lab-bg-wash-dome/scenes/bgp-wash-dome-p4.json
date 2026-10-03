@@ -13,8 +13,7 @@
       "granulation": 0.35,
       "streak": 0.5,
       "wind": 1.2,
-      "blooms": 4,
-      "textCalm": 0.55
+      "blooms": 4
     },
     "backing": {
       "type": "color",

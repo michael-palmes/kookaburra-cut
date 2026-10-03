@@ -59,7 +59,6 @@ uniform vec3 uThreadA;
 uniform vec3 uThreadB;
 uniform vec3 uThreadC;
 uniform float uOpacity;
-uniform float uCalm;
 varying float vHue;
 varying float vWeight;
 void main() {
@@ -71,7 +70,6 @@ void main() {
       : mix(uThreadC, uThreadA, smoothstep(2.0, 3.0, h));
   float ends = smoothstep(0.0, 0.06, vInkAlong) * (1.0 - smoothstep(0.94, 1.0, vInkAlong));
   float a = inkCoverage() * uOpacity * vWeight * ends * stageFade(vWorld, ${FADE});
-  a *= 1.0 - calmWeight(vWorld, uCalm);
   if (a < 0.003) discard;
   gl_FragColor = vec4(col, a);
   #include <colorspace_fragment>
@@ -80,12 +78,11 @@ void main() {
 
 export const HOOP_FRAGMENT = /* glsl */ `
 uniform vec3 uGlow;
-uniform float uCalm;
 varying vec3 vWorld;
 varying vec3 vNormalW;
 void main() {
   float facing = abs(dot(normalize(vNormalW), normalize(cameraPosition - vWorld)));
-  float a = stageFade(vWorld, ${FADE}) * (1.0 - calmWeight(vWorld, uCalm));
+  float a = stageFade(vWorld, ${FADE});
   if (a < 0.003) discard;
   gl_FragColor = vec4(uGlow * mix(0.72, 1.0, facing), a);
   #include <colorspace_fragment>

@@ -41,7 +41,6 @@ export function WashDome({ colors, params, speed, backing }: Scene3dLookProps) {
       uEdge: { value: 0.8 },
       uGrain: { value: 0.4 },
       uStreak: { value: 0.35 },
-      uCalm: { value: 0 },
     };
     return {
       dome: skyDomeMaterial({
@@ -82,7 +81,6 @@ export function WashDome({ colors, params, speed, backing }: Scene3dLookProps) {
     u.uEdge.value = params.edge;
     u.uGrain.value = params.granulation;
     u.uStreak.value = params.streak;
-    u.uCalm.value = params.textCalm;
     writeWashBlooms(t, Math.round(params.blooms), u.uBloomC.value, u.uBloomAmp.value);
   });
 

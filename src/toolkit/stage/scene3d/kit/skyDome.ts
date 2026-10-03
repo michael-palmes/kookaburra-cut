@@ -61,7 +61,7 @@ float skyZenithFade(vec3 dir) {
 #endif
 `;
 
-/** Dome vertex shader: `vSkyDir` (unnormalised direction from the dome centre in world orientation; normalise it per fragment) and `vWorld` (for the calm halo). */
+/** Dome vertex shader: `vSkyDir` (unnormalised direction from the dome centre in world orientation; normalise it per fragment) and `vWorld` (for near fades). */
 // language=GLSL
 export const SKY_DOME_VERTEX_SHADER: string = /* glsl */ `
 varying vec3 vSkyDir;

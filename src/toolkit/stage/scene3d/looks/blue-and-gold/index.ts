@@ -1,4 +1,3 @@
-import { TEXT_CALM_PARAM } from "../../kit";
 import type {
   Scene3dBackgroundDef,
   Scene3dBackgroundPreset,
@@ -25,7 +24,6 @@ export const look: Scene3dBackgroundDef = {
     cloudShadow: { label: "Cloud shadow", default: 0.6, min: 0, max: 1, step: 0.01 },
     boilFps: { label: "Boil rate", default: 0, min: 0, max: 6, step: 1 },
     ridgeHeight: { label: "Ridge height", default: 1, min: 0.3, max: 1.6, step: 0.05 },
-    textCalm: TEXT_CALM_PARAM,
   },
   Component: BlueAndGold,
 };
@@ -61,7 +59,6 @@ const preset = (
     cloudShadow: t.cloudShadow,
     boilFps: 0,
     ridgeHeight: t.ridgeHeight,
-    textCalm: 0.6,
   },
   lighting: painterSun(base.mode),
 });

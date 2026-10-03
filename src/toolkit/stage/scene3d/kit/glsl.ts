@@ -1,4 +1,4 @@
-import { STAGE_FADE_WINDOW, STAGE_HALO } from "./stage";
+import { STAGE_FADE_WINDOW } from "./stage";
 
 /** GLSL chunk library for scene3d look materials. `createLookMaterial` prepends `LOOK_GLSL_VERTEX` and `LOOK_GLSL_FRAGMENT` itself; every chunk is include-guarded, so pasting one again is harmless. Chunks named VERTEX-SAFE compile in both stages; `LOOK_GLSL_AA` uses `fwidth` and is fragment-only. */
 
@@ -94,7 +94,7 @@ float fbm3(vec3 p) {
 #endif
 `;
 
-/** VERTEX-SAFE. Stage helpers (the stage centre is the world origin). `stageFade` (F11) is 0 for fragments between the camera and the stage, 1 elsewhere, over a window of the camera-to-stage distance. `stageHalo` (F13) is 1 where the fragment's view ray crosses the stage depth inside the content ellipse, following any camera. `calmWeight` scales the halo by a look's `textCalm` param. */
+/** VERTEX-SAFE. Stage helpers (the stage centre is the world origin). `stageFade` (F11) is 0 for fragments between the camera and the stage, 1 elsewhere, over a window of the camera-to-stage distance; `stageFadeInLine` applies it only where the view ray passes near the stage centre, so walls beside the camera stay. */
 // language=GLSL
 export const LOOK_GLSL_STAGE: string = /* glsl */ `
 #ifndef KK_LOOK_STAGE
@@ -106,26 +106,18 @@ float stageFade(vec3 wp, float nearFrac, float farFrac) {
 float stageFade(vec3 wp) {
   return stageFade(wp, ${glslFloat(STAGE_FADE_WINDOW.near)}, ${glslFloat(STAGE_FADE_WINDOW.far)});
 }
-float stageHalo(vec3 wp, vec2 halfSize, float feather) {
-  vec3 c = viewMatrix[3].xyz;
-  vec3 v = (viewMatrix * vec4(wp, 1.0)).xyz;
-  if (c.z > -1e-3 || v.z > -1e-3) return 0.0;
-  vec2 q = v.xy * (c.z / v.z) - c.xy;
-  float e = length(q / halfSize);
-  return 1.0 - smoothstep(1.0 - feather, 1.0 + feather, e);
+float stageFadeInLine(vec3 wp, float nearFrac, float farFrac, float missFrom, float missTo) {
+  vec3 v = normalize(wp - cameraPosition);
+  float miss = length(cameraPosition + max(dot(-cameraPosition, v), 0.0) * v);
+  return 1.0 - (1.0 - stageFade(wp, nearFrac, farFrac)) * (1.0 - smoothstep(missFrom, missTo, miss));
 }
-float stageHalo(vec3 wp) {
-  return stageHalo(
-    wp,
-    vec2(${glslFloat(STAGE_HALO.halfWidth)}, ${glslFloat(STAGE_HALO.halfHeight)}),
-    ${glslFloat(STAGE_HALO.feather)}
-  );
+float stageFadeInLine(vec3 wp, float missFrom, float missTo) {
+  return stageFadeInLine(wp, ${glslFloat(STAGE_FADE_WINDOW.near)}, ${glslFloat(STAGE_FADE_WINDOW.far)}, missFrom, missTo);
 }
-float calmWeight(vec3 wp, float amount) { return clamp(amount, 0.0, 1.0) * stageHalo(wp); }
 #endif
 `;
 
-/** FRAGMENT-ONLY (fwidth). `aaStep`/`aaBand` antialias procedural edges and bands (MSAA does not smooth shader interiors); `pitchGuard` is 1 while a world-space pattern cell is large on screen, falling to 0 as it nears pixel size: mix toward the pattern's MEAN tone with it. */
+/** FRAGMENT-ONLY (fwidth). `aaStep`/`aaBand` antialias procedural edges and bands (MSAA does not smooth shader interiors); `pitchGuard` is 1 while a world-space pattern cell is large on screen, falling to 0 as it nears pixel size: mix toward the pattern's MEAN tone with it. `aaLine(d, halfWidth)` is a line of half width `halfWidth` (d units) that holds 1.5 px and fades instead of thinning (seams, creases). `stageCut` (needs LOOK_GLSL_STAGE) is the `stageFade` near cut as one hard antialiased edge, for alpha-to-coverage parts. */
 // language=GLSL
 export const LOOK_GLSL_AA: string = /* glsl */ `
 #ifndef KK_LOOK_AA
@@ -145,6 +137,19 @@ float pitchGuard(vec2 cellUv) {
 float pitchGuard(float cell) {
   float px = max(fwidth(cell), 1e-5);
   return 1.0 - smoothstep(0.35, 0.7, px);
+}
+float aaLine(float d, float halfWidth) {
+  float px = max(fwidth(d), 1e-5);
+  float w = max(halfWidth, px * 0.75);
+  return (1.0 - smoothstep(w - px, w + px, abs(d))) * (halfWidth / w);
+}
+float stageCut(vec3 wp, float nearFrac, float farFrac) {
+  float f = stageFade(wp, nearFrac, farFrac);
+  float w = max(fwidth(f), 1e-4);
+  return smoothstep(0.5 - w, 0.5 + w, f);
+}
+float stageCut(vec3 wp) {
+  return stageCut(wp, ${glslFloat(STAGE_FADE_WINDOW.near)}, ${glslFloat(STAGE_FADE_WINDOW.far)});
 }
 #endif
 `;

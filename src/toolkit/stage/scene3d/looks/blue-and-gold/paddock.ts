@@ -1,4 +1,5 @@
 import { createSeededRandom } from "../../../../../engine/rng";
+import { smoothstep } from "../../kit/math";
 import { orderSplatsFarToNear, type StrokeSplat } from "../../kit/strokeSplats";
 
 /** Blue and gold layout: the daub field, the ridge and the painter's sun. Placements are EXPORT CONTRACT (one seeded stream, fixed draw order). */
@@ -29,11 +30,6 @@ export const PAINTER_SUN: readonly [number, number, number] = [
   round4(Math.cos(el) * Math.cos(az)),
 ];
 
-const smooth = (a: number, b: number, x: number) => {
-  const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
-  return t * t * (3 - 2 * t);
-};
-
 /** The daub pool in draw order: area-uniform radii thinned toward the clearing edge and the far field, low tilts (8 to 18 degrees) leaning either way, mostly across the view, 30% straw. */
 export function placeDaubs(): StrokeSplat[] {
   const { inner, outer, count, maxDensity, y, seed } = DAUB_FIELD;
@@ -43,8 +39,8 @@ export function placeDaubs(): StrokeSplat[] {
   for (let guard = 0; out.length < pool && guard < pool * 8; guard++) {
     const r = Math.sqrt(inner * inner + rand() * (outer * outer - inner * inner));
     const keep =
-      (0.3 + 0.7 * (1 - smooth(12, outer, r))) * smooth(inner, inner + 3, r) * 0.85 +
-      0.15 * smooth(inner, inner + 1.5, r);
+      (0.3 + 0.7 * (1 - smoothstep(12, outer, r))) * smoothstep(inner, inner + 3, r) * 0.85 +
+      0.15 * smoothstep(inner, inner + 1.5, r);
     if (rand() > keep) continue;
     const a = rand() * Math.PI * 2;
     const length = (0.8 + rand() * 0.5) * (1 + r / 30);

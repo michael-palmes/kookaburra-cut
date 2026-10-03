@@ -21,12 +21,10 @@ uniform vec3 uSun;
 uniform float uRadius;
 uniform float uCols;
 uniform float uPanel;
-uniform float uCalm;
 varying vec3 vWorld;
 const float IRIS_TAU = 6.283185307179586;
 const float IRIS_FLOOR = ${glslFloat(IRIS_FLOOR_Y)};
 const float IRIS_TOP = ${glslFloat(IRIS_FLOOR_Y + IRIS_HEIGHT)};
-const vec2 IRIS_HALO = vec2(4.2, 2.4);
 int irisCol(int x) {
   int n = int(uCols + 0.5);
   return x >= n ? x - n : (x < 0 ? x + n : x);
@@ -94,31 +92,22 @@ float irisBlades(vec2 g, float live) {
   float inside = aaStep(0.0, irisOcto(q, rc)) * (1.0 - smoothstep(0.33, 0.35, r));
   return max(irisInk(d, 0.008) * inside, irisInk(r - 0.345, 0.012));
 }
-float irisCalm(vec3 p) {
-  return clamp(uCalm, 0.0, 1.0) * stageHalo(p, IRIS_HALO, 0.4);
-}
 `;
 
 // language=GLSL
 export const SCREEN_FRAGMENT: string = /* glsl */ `
 ${IRIS_GLSL}
-float irisNearFade(vec3 p) {
-  vec3 v = normalize(p - cameraPosition);
-  float miss = length(cameraPosition + max(dot(-cameraPosition, v), 0.0) * v);
-  return 1.0 - (1.0 - stageFade(p)) * (1.0 - smoothstep(6.0, 10.0, miss));
-}
 void main() {
   vec3 P = vWorld;
   vec2 g = irisCoords(P);
   float px = length(irisCoordsWidth(P));
   float coarse = irisGuard(px, 2.5);
   float guard = irisGuard(px, 10.0);
-  float calm = irisCalm(P);
-  float live = irisRowLive(P.y) * (1.0 - calm);
-  float open = mix(irisMean(live), irisOpen(g, 0.0, live, guard), coarse * (1.0 - 0.6 * calm));
+  float live = irisRowLive(P.y);
+  float open = mix(irisMean(live), irisOpen(g, 0.0, live, guard), coarse);
   vec2 sunXz = uSun.xz / max(length(uSun.xz), 1e-4);
   float backlit = mix(0.45, 1.0, smoothstep(-0.2, 0.9, dot(normalize(P.xz), sunXz)));
-  float band = mix(0.3, 1.0, smoothstep(2.5, 9.0, P.y) * (1.0 - calm));
+  float band = mix(0.3, 1.0, smoothstep(2.5, 9.0, P.y));
   vec3 lit = mix(uScreen, uGlow, backlit * band);
   vec2 q = fract(g) - 0.5;
   vec2 a = abs(q);
@@ -132,7 +121,7 @@ void main() {
   solid = mix(solid, mix(uScreen, uBacking, 0.18), smoothstep(8.0, 12.0, P.y) * 0.5);
   vec3 col = mix(solid, lit, open);
   col = mix(col, mix(uScreen, uGlow, 0.15), irisInk(P.y - IRIS_TOP + 0.08, 0.08));
-  if (irisNearFade(P) < 0.5) discard;
+  if (stageFadeInLine(P, 6.0, 10.0) < 0.5) discard;
   gl_FragColor = vec4(col, 1.0);
   #include <colorspace_fragment>
 }
@@ -158,7 +147,7 @@ void main() {
   float edge = 1.0 - smoothstep(uRadius - 1.5, uRadius, r) * 0.5;
   vec3 shade = mix(uBacking, uScreen, mix(0.45, 0.5, uDark));
   vec3 pool = mix(uPool, uGlow, 0.4 * (1.0 - uDark));
-  float amount = clamp(light * clear * edge * uPools * (1.0 - 0.5 * irisCalm(P)), 0.0, 1.0);
+  float amount = clamp(light * clear * edge * uPools, 0.0, 1.0);
   vec3 col = mix(shade, pool, amount);
   col = mix(col, mix(shade, uPool, 0.12), (1.0 - clear) * 0.6);
   if (r > uRadius) discard;

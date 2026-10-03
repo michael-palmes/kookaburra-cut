@@ -57,8 +57,6 @@ uniform float uPoolR[RING_BANDS_MAX];
 uniform vec2 uLumpDrift;
 uniform vec2 uWashDrift;
 uniform float uPools;
-uniform float uCalm;
-varying vec3 vWorld;
 varying vec3 vRing;
 void main() {
   vec2 xz = vRing.xz;
@@ -72,20 +70,19 @@ void main() {
     pools = max(pools, smoothstep(R - 7.0, R - 0.4, r) * (1.0 - smoothstep(R + 0.4, R + 3.0, r)));
   }
   float valley = smoothstep(nearR - 6.0, nearR, r);
-  float calm = calmWeight(vWorld, uCalm);
   float lump = fbm(xz * 0.09 + uLumpDrift);
   float w0 = 0.22 + 0.28 * smoothstep(5.0, 15.0, r) + uPools * pools * smoothstep(0.35, 0.7, lump);
   w0 = mix(w0, 1.0, valley * valley);
   float wash = fbm(xz * 0.12 + uWashDrift);
   float k = 0.12 * smoothstep(0.45, 0.75, wash) * smoothstep(5.0, 12.0, r)
-    * (1.0 - smoothstep(36.0, 44.0, r)) * (1.0 - calm);
+    * (1.0 - smoothstep(36.0, 44.0, r));
   float w = 1.0 - (1.0 - k) * (1.0 - w0);
   vec3 col = ((1.0 - k) * w0 * uMist + k * uNear) / max(w, 1e-4);
   float s = smoothstep(40.0, 70.0, r);
   float w2 = 1.0 - (1.0 - s) * (1.0 - w);
   col = ((1.0 - s) * w * col + s * uMist) / max(w2, 1e-4);
   float fxz = length(fwidth(xz));
-  float g = inkGrain(vec3(xz * 6.0, 0.0), inkGuard(fxz * 6.0)) * (1.0 - calm);
+  float g = inkGrain(vec3(xz * 6.0, 0.0), inkGuard(fxz * 6.0));
   w2 = clamp(w2 + g * 0.12 * (1.0 - w2), 0.0, 1.0);
   col = inkDither(col, inkGrain(vec3(xz * 2.5, 3.0), inkGuard(fxz * 2.5)));
   gl_FragColor = vec4(col, w2);
@@ -93,7 +90,7 @@ void main() {
 }
 `;
 
-/** Ridge bands: a circle-sampled crest cut wet or hard, pigment pooled at the crest, mist rising from the foot with drifting wisps, eye-level haze and the text calm pulling toward mist. */
+/** Ridge bands: a circle-sampled crest cut wet or hard, pigment pooled at the crest, mist rising from the foot with drifting wisps, and eye-level haze. */
 // language=GLSL
 export const RIDGE_FRAGMENT = /* glsl */ `
 ${LOOK_GLSL_RING_BANDS}
@@ -112,7 +109,6 @@ uniform float uFogH;
 uniform float uFloorY;
 uniform float uBreathe;
 uniform float uHaze;
-uniform float uCalm;
 varying vec3 vWorld;
 varying vec3 vRing;
 varying float vRingBand;
@@ -142,17 +138,15 @@ void main() {
   float fog = 1.0 - smoothstep(0.0, uFogH, vRing.y - uFloorY + (wisp - 0.5) * uFogH);
   mist = max(mist, fog);
 
-  float calm = calmWeight(vWorld, uCalm);
   float pool = exp(-max(d, 0.0) / 0.3) * (1.0 - uHard);
-  float gran = inkGrain(vRing * 4.0, inkGuard(fr * 4.0)) * (1.0 - uHard) * (1.0 - calm);
+  float gran = inkGrain(vRing * 4.0, inkGuard(fr * 4.0)) * (1.0 - uHard);
   float body = 0.18 * (1.0 - pool) + gran * 0.16;
   vec3 col = mix(uBandCol[b], uMist, clamp(body + mist * (1.0 - 0.35 * uHard), 0.0, 1.0));
   float edgeW = max(0.03, fw);
   float cut = 1.0 - smoothstep(edgeW - fw, edgeW + fw, abs(d - edgeW * 1.4));
-  col = mix(col, uMist, 0.3 * uHard * cut * (1.0 - mist) * (1.0 - calm));
+  col = mix(col, uMist, 0.3 * uHard * cut * (1.0 - mist));
   float elev = vWorld.y / max(length(vWorld.xz), 1e-3);
   col = mix(col, uMist, uHaze * (1.0 - smoothstep(0.08, 0.17, elev)));
-  col = mix(col, uMist, 0.35 * calm);
   col = inkDither(col, inkGrain(vRing * 7.0, inkGuard(fr * 7.0)) * mist);
   gl_FragColor = vec4(col, a * stageFade(vWorld) * vRingFade);
   #include <colorspace_fragment>

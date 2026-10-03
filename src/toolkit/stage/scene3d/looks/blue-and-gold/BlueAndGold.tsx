@@ -96,7 +96,6 @@ export function BlueAndGold({ colors, params, speed }: Scene3dLookProps) {
           uTime: { value: 0 },
           uCloud: { value: 0 },
           uClear: { value: DAUB_FIELD.inner },
-          uCalm: { value: 0 },
         },
       },
       ridge: {
@@ -105,7 +104,7 @@ export function BlueAndGold({ colors, params, speed }: Scene3dLookProps) {
         fragmentShader: RIDGE_FRAGMENT,
         transparent: true,
         side: BackSide,
-        uniforms: { ...palette(), uRidgeHeight: { value: 1 }, uCalm: { value: 0 } },
+        uniforms: { ...palette(), uRidgeHeight: { value: 1 } },
       },
       daubs: {
         key: "blue-and-gold/daubs",
@@ -119,7 +118,6 @@ export function BlueAndGold({ colors, params, speed }: Scene3dLookProps) {
           uWind: { value: 1 },
           uCloud: { value: 0 },
           uClear: { value: DAUB_FIELD.inner },
-          uCalm: { value: 0 },
           uKeep: { value: 1 },
           uSize: { value: 1 },
           uBoil: { value: 0 },
@@ -134,15 +132,12 @@ export function BlueAndGold({ colors, params, speed }: Scene3dLookProps) {
     ground.uniforms.uTime.value = t;
     ground.uniforms.uCloud.value = params.cloudShadow;
     ground.uniforms.uClear.value = params.clearRadius;
-    ground.uniforms.uCalm.value = params.textCalm;
     ridgeMat.uniforms.uRidgeHeight.value = params.ridgeHeight;
-    ridgeMat.uniforms.uCalm.value = params.textCalm;
     const u = daubMat.uniforms;
     u.uTime.value = t;
     u.uWind.value = params.wind;
     u.uCloud.value = params.cloudShadow;
     u.uClear.value = params.clearRadius;
-    u.uCalm.value = params.textCalm;
     u.uKeep.value = params.density / DAUB_FIELD.maxDensity;
     u.uSize.value = params.daubSize;
     u.uBoil.value = Math.round(params.boilFps) > 0 ? 1 : 0;

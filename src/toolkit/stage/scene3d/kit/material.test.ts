@@ -6,6 +6,7 @@ import {
   type LookMaterialSpec,
   lookColor,
   lookColorUniform,
+  lookLuminance,
   lookMaterialProblem,
   syncLookFrame,
 } from "./material";
@@ -48,6 +49,14 @@ describe("createLookMaterial", () => {
     expect(m.side).toBe(BackSide);
   });
 
+  it("antialiases opaque cut-outs through MSAA coverage only when asked", () => {
+    expect(createLookMaterial(spec()).alphaToCoverage).toBe(false);
+    const m = createLookMaterial(spec({ alphaToCoverage: true }));
+    expect(m.alphaToCoverage).toBe(true);
+    expect(m.transparent).toBe(false);
+    expect(m.depthWrite).toBe(true);
+  });
+
   it("throws with the key when a rule is broken", () => {
     expect(() => createLookMaterial(spec({ fragmentShader: "void main() {}" }))).toThrow(
       /test-look\/floor.*colorspace_fragment/,
@@ -80,6 +89,11 @@ describe("lookMaterialProblem", () => {
       /declared by the kit/,
     ],
     ["uPx uniform passed", { uniforms: { uPx: { value: 2 } } }, /engine-owned/],
+    [
+      "transparent part without depth test",
+      { transparent: true, depthTest: false },
+      /paints over devices/,
+    ],
   ];
   it.each(broken)("rejects a %s", (_name, over, message) => {
     expect(lookMaterialProblem(spec(over))).toMatch(message);
@@ -109,5 +123,12 @@ describe("look colours", () => {
     const u = lookColorUniform("#3b5c7d");
     u.value.set("#0d1218");
     expect(u.value.getHexString()).toBe("0d1218");
+  });
+
+  it("measure relative luminance from the hex", () => {
+    expect(lookLuminance("#ffffff")).toBeCloseTo(1, 6);
+    expect(lookLuminance("#000000")).toBe(0);
+    expect(lookLuminance("#808080")).toBeCloseTo(0.2158605, 6);
+    expect(lookLuminance("#0e1011")).toBeLessThan(lookLuminance("#2a2f2d"));
   });
 });

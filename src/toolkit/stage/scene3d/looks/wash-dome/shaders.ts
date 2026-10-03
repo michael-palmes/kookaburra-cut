@@ -15,8 +15,6 @@ uniform float uCover;
 uniform float uEdge;
 uniform float uGrain;
 uniform float uStreak;
-uniform float uCalm;
-varying vec3 vWorld;
 float washField(vec2 p, float fw) {
   p.x *= mix(1.0, 0.45, uStreak);
   p += uDrift;
@@ -49,8 +47,6 @@ float domeTooth(vec3 dir) {
 void main() {
   vec3 dir = normalize(vSkyDir);
   float e = dir.y;
-  float quiet = calmWeight(vWorld, uCalm);
-  float hush = 1.0 - 0.35 * quiet;
   float tooth = domeTooth(dir) - 0.5;
   vec2 p = skyPlane(dir, 0.14) * 0.45;
   float fwp = length(fwidth(p));
@@ -72,17 +68,17 @@ void main() {
     halo = exp(-max(th - f, 0.0) / 0.025) * (1.0 - D) * 0.25 * calm;
   }
   vec3 col = mix(uPaper, uWash, 0.08 + 0.14 * smoothstep(0.3, 0.0, e));
-  col = mix(col, uWash, halo * hush);
-  float strokeW = 0.14 * calm * (1.0 - smoothstep(0.35, 0.8, e)) * hush;
+  col = mix(col, uWash, halo);
+  float strokeW = 0.14 * calm * (1.0 - smoothstep(0.35, 0.8, e));
   if (strokeW > 0.0) {
     vec2 sp = vec2(p.x * 0.35 + p.y * 0.9, p.y * 0.25 - p.x * 0.1) * 1.3 + vec2(uStrokeDrift, 0.0);
     col = mix(col, uWash, strokeW * smoothstep(0.45, 0.72, skyFbm(sp, fwp * 1.3)));
   }
   float body = 0.62 + 0.25 * smoothstep(0.05, 0.25, inside);
-  col = mix(col, uWash, D * body * hush);
-  col = mix(col, uPool, pool * uEdge * hush);
-  col = mix(col, uBloom, D * 0.45 * (1.0 - smoothstep(0.14, 0.3, e)) * smoothstep(0.02, 0.12, inside) * (1.0 - quiet));
-  col = mix(col, uPool, clamp(D * (tooth * 0.6 + 0.15) * uGrain * (1.0 - 0.5 * quiet), 0.0, 1.0));
+  col = mix(col, uWash, D * body);
+  col = mix(col, uPool, pool * uEdge);
+  col = mix(col, uBloom, D * 0.45 * (1.0 - smoothstep(0.14, 0.3, e)) * smoothstep(0.02, 0.12, inside));
+  col = mix(col, uPool, clamp(D * (tooth * 0.6 + 0.15) * uGrain, 0.0, 1.0));
   for (int k = 0; k < ${WASH_BLOOM_SLOTS}; k++) {
     float amp = uBloomAmp[k];
     vec3 c = uBloomC[k].xyz;
@@ -97,7 +93,7 @@ void main() {
     float fk = float(k);
     float lobes = 0.6 * vnoise(ring * 2.5 + fk * 7.0) + 0.4 * vnoise(ring * 6.0 + fk * 3.0);
     float rr = length(lp) - (lobes - 0.5) * 0.5 * R;
-    float a = amp * (0.3 + 0.7 * D) * (1.0 - 0.7 * quiet) * 0.4;
+    float a = amp * (0.3 + 0.7 * D) * 0.4;
     float inner = 1.0 - smoothstep(R - 0.006 - fwd, R, rr);
     float core = 1.0 - smoothstep(0.0, R * 0.8, rr);
     float rimW = 0.004 + 0.5 * fwd;
@@ -117,10 +113,10 @@ void main() {
 export const FLOOR_FRAGMENT: string = /* glsl */ `
 ${LOOK_GLSL_SKY}
 ${WASH_COMMON}
+varying vec3 vWorld;
 
 void main() {
   float r = length(vWorld.xz);
-  float quiet = calmWeight(vWorld, uCalm);
   vec3 col = mix(uPaper, uWash, 0.1 + 0.1 * smoothstep(6.0, 30.0, r));
   vec2 lp = vWorld.xz * 0.05 + 7.0;
   float lay = skyFbm(lp, length(fwidth(lp)), 3);
@@ -129,7 +125,7 @@ void main() {
   float fp = length(fwidth(p));
   float sg = texture2D(uPaperTex, vWorld.xz / 38.0).a - 0.5;
   vec3 V = normalize(cameraPosition - vWorld);
-  float shAmt = smoothstep(0.06, 0.22, V.y) * (1.0 - 0.5 * smoothstep(18.0, 40.0, r)) * (1.0 - 0.5 * quiet) * smoothstep(3.5, 7.0, r);
+  float shAmt = smoothstep(0.06, 0.22, V.y) * (1.0 - 0.5 * smoothstep(18.0, 40.0, r)) * smoothstep(3.5, 7.0, r);
   if (shAmt > 0.0) {
     float f = washField(p, fp);
     float fwf = 0.5 * fp;
@@ -141,7 +137,7 @@ void main() {
   }
   vec2 sp = vec2(vWorld.x * 0.04, vWorld.z * 0.35) + 2.0;
   float strokes = skyFbm(sp, length(fwidth(sp)), 3);
-  col = mix(col, uWash, 0.14 * smoothstep(0.45, 0.7, strokes) * smoothstep(3.0, 7.0, r) * (1.0 - 0.6 * quiet));
+  col = mix(col, uWash, 0.14 * smoothstep(0.45, 0.7, strokes) * smoothstep(3.0, 7.0, r));
   float tooth = texture2D(uPaperTex, vWorld.xz / 12.0).r - 0.5;
   col = mix(col, uPool, tooth * 0.08);
   col = mix(col, mix(uPaper, uWash, 0.22), smoothstep(38.0, 64.0, r));

@@ -1,6 +1,12 @@
 import { useLayoutEffect, useMemo } from "react";
-import { type Color, type IUniform, type ShaderMaterial, Vector3 } from "three";
-import { lookColorUniform, loopSeconds, useLookMaterials, useLookTime } from "../../kit";
+import { type IUniform, type ShaderMaterial, Vector3 } from "three";
+import {
+  lookColorUniform,
+  lookLuminance,
+  loopSeconds,
+  useLookMaterials,
+  useLookTime,
+} from "../../kit";
 import { type GoboSunPath, writeGoboSun } from "../../kit/gobo";
 import type { Scene3dLookProps } from "../../types";
 import { FLOOR_FRAGMENT, IRIS_FLOOR_Y, IRIS_HEIGHT, IRIS_SUN, SCREEN_FRAGMENT } from "./iris";
@@ -25,7 +31,6 @@ function uniforms(): Record<string, IUniform> {
     uRadius: { value: 15 },
     uCols: { value: 40 },
     uPanel: { value: 1 },
-    uCalm: { value: 0 },
   };
 }
 
@@ -63,9 +68,7 @@ export function IrisScreen({ colors, params, speed, backing }: Scene3dLookProps)
       u.uScreen.value.set(colors[0]);
       u.uGlow.value.set(colors[1]);
       u.uPool.value.set(colors[2]);
-      const screen = u.uScreen.value as Color;
-      const dark = 0.2126 * screen.r + 0.7152 * screen.g + 0.0722 * screen.b < DARK_LUMINANCE;
-      u.uDark.value = dark ? 1 : 0;
+      u.uDark.value = lookLuminance(colors[0]) < DARK_LUMINANCE ? 1 : 0;
       u.uBacking.value.set(backing);
     }
   }, [both, colors[0], colors[1], colors[2], backing]);
@@ -79,22 +82,10 @@ export function IrisScreen({ colors, params, speed, backing }: Scene3dLookProps)
       u.uRadius.value = radius;
       u.uCols.value = cols;
       u.uPanel.value = (2 * Math.PI * radius) / cols;
-      u.uCalm.value = params.textCalm;
     }
     mats.floor.uniforms.uPools.value = params.pool * POOL_GAIN;
     mats.floor.uniforms.uClear.value = params.clearRadius;
-  }, [
-    both,
-    mats,
-    t,
-    sun,
-    radius,
-    cols,
-    params.cycle,
-    params.textCalm,
-    params.pool,
-    params.clearRadius,
-  ]);
+  }, [both, mats, t, sun, radius, cols, params.cycle, params.pool, params.clearRadius]);
 
   return (
     <group userData={ROOT_DATA}>

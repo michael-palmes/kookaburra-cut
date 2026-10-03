@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { pcgHash01 } from "../../shaders/utils";
 import * as glsl from "./glsl";
-import { STAGE_FADE_WINDOW, STAGE_HALO } from "./stage";
+import { STAGE_FADE_WINDOW } from "./stage";
 
 const chunks = Object.entries(glsl).filter(
   (entry): entry is [string, string] => typeof entry[1] === "string",
@@ -50,14 +50,13 @@ describe("look GLSL chunks", () => {
       "fbm",
       "fbm3",
       "stageFade",
-      "stageHalo",
-      "calmWeight",
+      "stageFadeInLine",
     ];
     for (const fn of vertexSafe) {
       expect(declares(glsl.LOOK_GLSL_VERTEX, fn), fn).toBe(true);
       expect(declares(glsl.LOOK_GLSL_FRAGMENT, fn), fn).toBe(true);
     }
-    for (const fn of ["aaStep", "aaBand", "pitchGuard"]) {
+    for (const fn of ["aaStep", "aaBand", "pitchGuard", "aaLine", "stageCut"]) {
       expect(declares(glsl.LOOK_GLSL_FRAGMENT, fn), fn).toBe(true);
     }
     for (const fn of [
@@ -83,9 +82,7 @@ describe("look GLSL chunks", () => {
   it("bake the stage defaults into the one-argument overloads", () => {
     const fade = `stageFade(wp, ${glsl.glslFloat(STAGE_FADE_WINDOW.near)}, ${glsl.glslFloat(STAGE_FADE_WINDOW.far)})`;
     expect(glsl.LOOK_GLSL_STAGE).toContain(fade);
-    expect(glsl.LOOK_GLSL_STAGE).toContain(
-      `vec2(${glsl.glslFloat(STAGE_HALO.halfWidth)}, ${glsl.glslFloat(STAGE_HALO.halfHeight)})`,
-    );
+    expect(glsl.LOOK_GLSL_AA).toContain(fade.replace("stageFade", "stageCut"));
     expect(STAGE_FADE_WINDOW.near).toBeLessThan(STAGE_FADE_WINDOW.far);
   });
 

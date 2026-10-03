@@ -1,5 +1,6 @@
-import { BufferAttribute, BufferGeometry, Color, type Vector3 } from "three";
+import { BufferAttribute, BufferGeometry, type Vector3 } from "three";
 import { loopSeconds } from "../../kit/clock";
+import { lookLuminance } from "../../kit/material";
 import { RIPPLE_WAVELENGTH, SMALL_SPACING } from "./shaders";
 
 /** The sun's swing period, seconds of look time. */
@@ -51,14 +52,9 @@ export function risoClearingRings(clearRadius: number, misregister: number): num
   return Math.min(rings, Math.floor(rings * (bare / radius) ** (1 / power)));
 }
 
-const luminance = (hex: string) => {
-  const c = new Color(hex);
-  return 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
-};
-
 /** Dark stock (paper darker than the key ink) prints the lit slopes; light stock prints the shade. Read from the colours, so Theme-derived palettes keep their polarity. */
 export function isDarkStock(keyHex: string, paperHex: string): boolean {
-  return luminance(paperHex) < luminance(keyHex);
+  return lookLuminance(paperHex) < lookLuminance(keyHex);
 }
 
 /** The dune, small-dune and ripple phases in [0, 1) at look time `t`: each band slides downwind at its own speed and wraps exactly on the CPU, so shader floats stay small on long projects. */

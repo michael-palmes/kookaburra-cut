@@ -13,8 +13,7 @@
       "layers": 5,
       "drift": 0.7,
       "discSize": 0.6,
-      "eyeHaze": 0.4,
-      "textCalm": 0.55
+      "eyeHaze": 0.4
     },
     "backing": {
       "type": "color",

@@ -12,7 +12,7 @@ Shared building blocks for world-space 3D looks (`looks/<id>/`). Import from `..
   (linear out, hardware sRGB store) and effects projects (linear out, the composer's one ACES,
   like every backdrop). No `wrap.ts` reroute is needed; that exists only for the 2D fills,
   which write display-domain colour raw.
-- **No post-processing.** Every effect (grain, halftone, calm, fades) lives in the look's own
+- **No post-processing.** Every effect (grain, halftone, fades) lives in the look's own
   materials in world, object or uv space, so text and devices are never restyled. Never
   `gl_FragCoord`: it scales with the preview DPR.
 - **Unlit.** `toneMapped: false`, no lights, no fog; shading comes from a virtual light in the
@@ -48,7 +48,7 @@ uniforms: { uSkirt: lookColorUniform("#141a24"), uBacking: lookColorUniform("#0d
 `backingMix` (fragment only, paste `LOOK_GLSL_BACKING`) blends in display space, so an alpha
 fade converted to it keeps its approved canvas curve over the backing (Rain canopy's far drops); a plain
 linear `mix` lifts dark fades by up to 18 code values. Keep alpha for coverage (line AA,
-sub-pixel fades, the text calm) and for any haze over the look's OWN translucent parts: Blue
+sub-pixel fades) and for any haze over the look's OWN translucent parts: Blue
 and gold's far ground hazes over its glow shell, so an opaque mix there cut a dark seam.
 
 ## Materials
@@ -61,15 +61,14 @@ const mats = useLookMaterials(
       key: "my-look/floor",
       fragmentShader: FLOOR,
       transparent: true,
-      uniforms: { uInk: lookColorUniform(colors[0]), uTime: { value: 0 }, uCalm: { value: 0 } },
+      uniforms: { uInk: lookColorUniform(colors[0]), uTime: { value: 0 } },
     },
   }),
   [colors[0]],
 );
 useLayoutEffect(() => {
   mats.floor.uniforms.uTime.value = loopSeconds(t * PACE, PERIOD);
-  mats.floor.uniforms.uCalm.value = params.textCalm;
-}, [mats, t, params.textCalm]);
+}, [mats, t]);
 ```
 
 - `key` is `<look-id>/<part>`: the fixed program cache key and material name.
@@ -82,6 +81,16 @@ useLayoutEffect(() => {
 - Update uniform values in a layout effect; list only rebuild triggers in `deps`.
 - `cutaway: true` sets `side: BackSide` for shells (F11): the near half culls away once the camera
   is outside, so the far wall stays behind the stage.
+- `alphaToCoverage: true` turns alpha into MSAA coverage for opaque cut-outs (card flats,
+  silhouettes): edges antialias with depth writes on and no sort. Keep alpha fractional only on
+  the edge ramp: a broad alpha fade dithers, so cut near parts with `stageCut` (below) and
+  fade tone with `backingMix` (`looks/paper-theatre/`, `looks/pop-up-terrace/`).
+- Keep `depthTest` on for transparent parts: they draw after opaque meshes, so one with it off
+  paints over devices (rejected). Pull a glow clear of its own petals in view space instead.
+- `lookLuminance(hex)` is a preset hex's relative luminance: compare the backing with the
+  palette to shade light and dark presets the right way round (`looks/calder-mobiles/`).
+- `smoothstep` and `fract` (`./math`) are exact CPU mirrors of the GLSL builtins, for poses and
+  uniforms that must agree with a shader.
 
 ## GLSL chunks
 
@@ -92,21 +101,26 @@ Prepended automatically and include-guarded.
 | `LOOK_GLSL_FRAME` | both | `uResolution`, `uPx` |
 | `LOOK_GLSL_HASH` | both | `hash11(int)`, `hash21(ivec2)`, `hash31(ivec3)`, `hash22(ivec2)` |
 | `LOOK_GLSL_NOISE` | both | `vnoise`, `fbm` (2D, 5 octaves), `vnoise3`, `fbm3` (3D, 4 octaves) |
-| `LOOK_GLSL_STAGE` | both | `stageFade`, `stageHalo`, `calmWeight` |
-| `LOOK_GLSL_AA` | fragment only | `aaStep`, `aaBand`, `pitchGuard` (fwidth) |
+| `LOOK_GLSL_STAGE` | both | `stageFade`, `stageFadeInLine` |
+| `LOOK_GLSL_AA` | fragment only | `aaStep`, `aaBand`, `pitchGuard`, `aaLine`, `stageCut` (fwidth) |
 | `LOOK_GLSL_VERTEX_HELPERS` | vertex only | `lookWorldPosition`, `lookWorldNormal`, `lookInstanceColor`, `exportPxPerUnit` |
 
 - `aaStep`/`aaBand` antialias every procedural edge: MSAA does not smooth shader interiors.
 - `pitchGuard(cellUv)` is 1 while a world-space cell is large on screen, 0 near pixel size: mix
   the pattern toward its MEAN tone with it, or fine patterns shimmer and moire.
+- `aaLine(d, halfWidth)` draws a line (seam, crease) `halfWidth` either side of `d = 0`; below
+  0.75 px each side it holds that width and fades coverage instead of thinning.
 - `stageFade(wp)` (F11) is 0 between the camera and the stage, 1 elsewhere, over 0.75 to 0.97 of
   the camera-to-stage distance (the orbit reaches 50). `stageFade(wp, near, far)` sets the
   window; the sketches' one-argument form was 0.55 to 0.95.
-- `stageHalo(wp)` (F13) is 1 where the fragment's view ray crosses the stage depth inside the
-  content ellipse (x +-4, y +-2 at half weight, feather 0.35), following any camera. At the
-  default camera it covers most of the frame; pass `stageHalo(wp, halfSize, feather)` for a
-  tighter band. `calmWeight(wp, uCalm)` scales it by the look's `textCalm` param
-  (`TEXT_CALM_PARAM`): flatten tone, grain and highlights by that weight.
+- `stageCut(wp, near, far)` is that fade as one hard antialiased edge at its midpoint, for
+  alpha-to-coverage and discard cuts. `stageFadeInLine(wp, near, far, missFrom, missTo)` fades
+  only fragments whose view ray passes within `missFrom` to `missTo` of the stage centre, so
+  walls beside the camera stay (`looks/colour-court/`, `looks/iris-screen/`). Both drop
+  `near, far` for the default window.
+- No text band calm. A camera-projected fade behind the headline made parts fade in and out
+  and cut cables mid-span as the camera moved, so the owner removed it from every look: keep
+  the headline readable through composition (layout, contrast, quiet tones) instead.
 
 ## Clock
 
@@ -298,12 +312,61 @@ float light = open * goboReach(h.dist, 14.0) * h.hit * goboClearing(vWorld, uCle
 - `traceGoboCylinder`, `traceGoboPlane` and `goboPenumbra` are CPU mirrors for tests and
   placement. Worked example: `looks/iris-screen/`.
 
+## Polar medallions
+
+Dials and inlaid floors drawn in polar coordinates on a disc (floor at y -2, optionally a
+mirrored ceiling that faces down and culls once the camera rises above it). Paste
+`${LOOK_GLSL_MEDALLION}` above a fragment's `main()`.
+
+```glsl
+float px = max(length(fwidth(q)) * 0.75, 1e-4);          // world units per pixel, from the plane
+float strand = medLine(sdf / gradLen, halfWidth, px);    // normalised SDFs: pass the pixel size
+float sheen = medLobe(atan(q.y, q.x), uSheenAngle, 0.32); // wrapped angular lobe
+```
+
+- `medLine(d, halfWidth, px)` holds 0.6 px each side and fades coverage below it, so the mean
+  tone holds (`medallionLine` is the CPU mirror). For plain distances with derivatives, use the
+  kit's `aaLine`.
+- `medAngle` wraps to [-PI, PI); `medLobe(angle, centre, width)` is a wrapped Gaussian for
+  sheens, glints and drifting arcs. Integer harmonics (`sin(n * theta)`) and even ray counts
+  stay seamless across the `atan` seam; take pitch from `length(fwidth(xz)) / r`, never
+  `fwidth(theta)`.
+- `medCeilingLeave(wp)` is how far a mirrored ceiling gives way to the backing: near the camera
+  (stage fade 0.5 to 0.9) and on a dolly out (16 to 28 units). The chunk is vertex-safe, so
+  per-instance fades can run in the vertex stage (`looks/flip-disc-floor/`).
+- `medallionTurn(t, period)` (TS) is a wrapped dial angle on the look clock; pass angles, not
+  time, so shader floats stay small. Worked examples: `looks/guilloche-medallion/`,
+  `looks/sunburst-terrazzo/`.
+
+## Dish floors
+
+A floor pattern seen from the default front camera collapses into a few lines at the horizon.
+A dish keeps the stage flat and rises in a convex curve past `start`, so far bands face a level
+camera. Convexity is the safety rule: no chord between two points above the surface dips under
+it, so a camera inside never loses the stage behind it, and from outside the near side shows
+only back faces, which cull (an F11 cutaway for free).
+
+```ts
+const disc = useMemo(() => createDishDiscGeometry(48, 192, 60), []); // unit polar grid, faces up
+// uniforms: { uDish: { value: new Vector3(9, 31, rise) }, uDiscRadius, uFloorY }
+// floor: vertexShader DISH_FLOOR_VERTEX_SHADER; anything on it: `${LOOK_GLSL_DISH}` and
+// y = floorY + dishHeight(length(xz), uDish), normal = dishShear(n, xz, uDish)
+```
+
+- `dishHeight`/`dishSlope` (TS and GLSL) take the shape `(start, span, rise)`: `rise` higher
+  one `span` past `start`, squared. `dishNormal(xz, dish)` is the surface normal; shade grazing
+  guards against it, not world up, so the risen bands keep their contrast.
+- End the disc where the floor has faded to the backing (`uDiscRadius`), which keeps the rim
+  low: from outside the cut rim reads as a dish edge, so mix `dishEdgeOn(wp, up)` into the fade
+  to soften its silhouette.
+- Lift ribbons and props on the dish by the same height (plus 0.01 or so against the facets)
+  and keep them single-sided like the floor. Worked example: `looks/sand-table/`.
+
 ## Glow slots, companion lighting and near fade (F9, F10, F11)
 
 - **Glow slots (F9).** Flag at most two slots `glow: true` for small emissive parts (hoops,
-  lamps, slots); dark presets may take them to luminance 0.30. Keep them out of the text band:
-  multiply their alpha by `1.0 - calmWeight(vWorld, uCalm)` like the rest of the look, and
-  leave a little headroom under 0.30 (the Theme tile retints the anchor and can land a hair
+  lamps, slots); dark presets may take them to luminance 0.30. Place them out of the headline's
+  way, and leave a little headroom under 0.30 (the Theme tile retints the anchor and can land a hair
   over).
 - **Companion lighting (F10).** A preset's optional `lighting` block is a whole cheap rig
   (environment, sun, ambient, a light or two) so a device reads under it even when no lower
@@ -342,7 +405,7 @@ return <mesh geometry={dome} material={mats.sky} />;
 - `skyPlane(dir, lift)` maps a direction onto a virtual ceiling (`dir.xz` over elevation) for
   clouds and weather. It compresses toward the horizon, so sample it through `skyFbm(p,
   length(fwidth(p)))`, whose octaves fade to their mean before a cell nears two pixels, and keep
-  a calm band under the headline (Wash dome fades clouds in from 9 to 13 degrees).
+  the horizon clear of cloud (Wash dome fades clouds in from 9 to 13 degrees).
 - The dome is the whole backdrop, so the backing never shows: shade it from the `backing` prop
   (Backing tone, above) so the inspector's Backing control still drives it, not from a paper
   or sky colour slot that duplicates the backing.
