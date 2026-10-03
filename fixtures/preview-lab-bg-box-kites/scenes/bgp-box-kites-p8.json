@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "name": "preset still for the \"box-kites\" 3D background (\"Ooraminna\")",
+  "background": {
+    "type": "scene3d",
+    "look": "box-kites",
+    "colors": ["#66503f", "#47424f", "#2d2526", "#bc8260"],
+    "speed": 1,
+    "params": {
+      "lines": 10,
+      "train": 2,
+      "height": 0.95,
+      "size": 2.8,
+      "veer": 20,
+      "figure": 1.4,
+      "reflect": 0.3
+    },
+    "backing": {
+      "type": "color",
+      "color": "#0e0b0c"
+    },
+    "preset": "p8"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 2, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": -8,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

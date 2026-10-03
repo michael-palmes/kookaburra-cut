@@ -1,0 +1,55 @@
+{
+  "version": 1,
+  "name": "3D background sample for \"box-kites\" (\"Chambers Pillar\")",
+  "background": {
+    "type": "scene3d",
+    "look": "box-kites",
+    "colors": ["#62563f", "#3a4a52", "#2a2624", "#b8864a"],
+    "speed": 1,
+    "params": {
+      "lines": 8,
+      "train": 3,
+      "height": 1,
+      "size": 3,
+      "veer": 13,
+      "figure": 1,
+      "reflect": 0.28
+    },
+    "backing": {
+      "type": "color",
+      "color": "#0b0c0e"
+    },
+    "preset": "p6"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 2, 0],
+          "azimuthDeg": -35,
+          "elevationDeg": -8,
+          "distance": 7
+        }
+      },
+      {
+        "id": "k2",
+        "tMs": 1900,
+        "pose": {
+          "target": [0, 2, 0],
+          "azimuthDeg": 35,
+          "elevationDeg": -8,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": [
+      {
+        "from": "k1",
+        "to": "k2",
+        "ease": "inOutCubic"
+      }
+    ]
+  }
+}

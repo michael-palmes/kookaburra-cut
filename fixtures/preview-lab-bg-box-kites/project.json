@@ -1,0 +1,53 @@
+{
+  "id": "preview-lab-bg-box-kites",
+  "name": "Preview Lab — bg-box-kites (dev-only)",
+  "version": 2,
+  "themeId": "kookaburra-studio-white",
+  "formats": ["16:9"],
+  "scenes": [
+    {
+      "file": "scenes/bg-box-kites.tsx",
+      "durationMs": 2000
+    },
+    {
+      "file": "scenes/bg-box-kites-light.tsx",
+      "durationMs": 2000
+    },
+    {
+      "file": "scenes/bgp-box-kites-p1.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-box-kites-p2.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-box-kites-p3.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-box-kites-p4.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-box-kites-p5.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-box-kites-p6.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-box-kites-p7.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-box-kites-p8.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-box-kites-p9.tsx",
+      "durationMs": 1000
+    }
+  ]
+}
