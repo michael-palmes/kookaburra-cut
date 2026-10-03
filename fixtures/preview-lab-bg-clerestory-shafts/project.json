@@ -1,0 +1,53 @@
+{
+  "id": "preview-lab-bg-clerestory-shafts",
+  "name": "Preview Lab — bg-clerestory-shafts (dev-only)",
+  "version": 2,
+  "themeId": "kookaburra-studio-white",
+  "formats": ["16:9"],
+  "scenes": [
+    {
+      "file": "scenes/bg-clerestory-shafts.tsx",
+      "durationMs": 2000
+    },
+    {
+      "file": "scenes/bg-clerestory-shafts-light.tsx",
+      "durationMs": 2000
+    },
+    {
+      "file": "scenes/bgp-clerestory-shafts-p1.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-clerestory-shafts-p2.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-clerestory-shafts-p3.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-clerestory-shafts-p4.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-clerestory-shafts-p5.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-clerestory-shafts-p6.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-clerestory-shafts-p7.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-clerestory-shafts-p8.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-clerestory-shafts-p9.tsx",
+      "durationMs": 1000
+    }
+  ]
+}

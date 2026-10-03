@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "name": "preset still for the \"clerestory-shafts\" 3D background (\"Eungella\")",
+  "background": {
+    "type": "scene3d",
+    "look": "clerestory-shafts",
+    "colors": ["#f7eff0", "#d8c7ca", "#a8939a", "#fbf5f6"],
+    "speed": 1,
+    "params": {
+      "shaftCount": 7,
+      "tilt": 30,
+      "sweep": 12,
+      "haze": 0.65,
+      "dust": 0.55,
+      "poolSoftness": 0.9
+    },
+    "backing": {
+      "type": "color",
+      "color": "#c0afb3"
+    },
+    "preset": "p5"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "name": "preset still for the \"clerestory-shafts\" 3D background (\"Capricorn Caves\")",
+  "background": {
+    "type": "scene3d",
+    "look": "clerestory-shafts",
+    "colors": ["#5a6649", "#2c3326", "#121611", "#8e9463"],
+    "speed": 1.1,
+    "params": {
+      "shaftCount": 10,
+      "tilt": 32,
+      "sweep": 10,
+      "haze": 0.5,
+      "dust": 0.65,
+      "poolSoftness": 0.6
+    },
+    "backing": {
+      "type": "color",
+      "color": "#1a1f17"
+    },
+    "preset": "p8"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

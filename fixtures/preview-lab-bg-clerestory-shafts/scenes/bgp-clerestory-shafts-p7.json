@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "name": "preset still for the \"clerestory-shafts\" 3D background (\"Royal Arch\")",
+  "background": {
+    "type": "scene3d",
+    "look": "clerestory-shafts",
+    "colors": ["#52647a", "#283340", "#11161c", "#7e93a6"],
+    "speed": 0.9,
+    "params": {
+      "shaftCount": 5,
+      "tilt": 24,
+      "sweep": 6,
+      "haze": 0.8,
+      "dust": 0.3,
+      "poolSoftness": 0.35
+    },
+    "backing": {
+      "type": "color",
+      "color": "#1a2129"
+    },
+    "preset": "p7"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}
