@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "name": "preset still for the \"pop-up-terrace\" 3D background (\"Arthur Circus\")",
+  "background": {
+    "type": "scene3d",
+    "look": "pop-up-terrace",
+    "colors": ["#f7eedd", "#b8a891", "#a9937c"],
+    "speed": 0.9,
+    "params": {
+      "radius": 14,
+      "units": 14,
+      "height": 0.9,
+      "wavePeriod": 100,
+      "crests": 2,
+      "openHold": 0.35,
+      "sunAzimuth": 315,
+      "shadow": 0.8
+    },
+    "backing": {
+      "type": "color",
+      "color": "#d9cfbf"
+    },
+    "preset": "p2"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

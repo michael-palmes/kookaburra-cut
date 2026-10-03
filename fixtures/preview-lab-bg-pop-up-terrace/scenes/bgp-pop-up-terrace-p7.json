@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "name": "preset still for the \"pop-up-terrace\" 3D background (\"Kelly Steps\")",
+  "background": {
+    "type": "scene3d",
+    "look": "pop-up-terrace",
+    "colors": ["#6e5f4a", "#34302b", "#171513"],
+    "speed": 0.9,
+    "params": {
+      "radius": 13.5,
+      "units": 14,
+      "height": 1.15,
+      "wavePeriod": 90,
+      "crests": 2,
+      "openHold": 0.3,
+      "sunAzimuth": 310,
+      "shadow": 0.8
+    },
+    "backing": {
+      "type": "color",
+      "color": "#1d1a17"
+    },
+    "preset": "p7"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}
