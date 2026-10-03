@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "name": "preset still for the \"paper-theatre\" 3D background (\"Painted Cliffs\")",
+  "background": {
+    "type": "scene3d",
+    "look": "paper-theatre",
+    "colors": ["#ab9179", "#c9b8a4", "#ddd3c8", "#e9b98a"],
+    "speed": 0.9,
+    "params": {
+      "rings": 5,
+      "flatHeight": 0.85,
+      "treeDensity": 0.4,
+      "rock": 1.2,
+      "shadow": 0.7,
+      "cloudSpeed": 0.7,
+      "stopMotion": 0
+    },
+    "backing": {
+      "type": "color",
+      "color": "#f6efe6"
+    },
+    "preset": "p2"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

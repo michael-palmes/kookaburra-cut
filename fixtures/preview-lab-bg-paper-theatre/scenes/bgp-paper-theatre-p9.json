@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "name": "preset still for the \"paper-theatre\" 3D background (\"Moulting Lagoon\")",
+  "background": {
+    "type": "scene3d",
+    "look": "paper-theatre",
+    "colors": ["#5a4d63", "#342b3c", "#1d1824", "#a68a8a"],
+    "speed": 1.1,
+    "params": {
+      "rings": 4,
+      "flatHeight": 0.8,
+      "treeDensity": 0.9,
+      "rock": 2,
+      "shadow": 0.5,
+      "cloudSpeed": 2.2,
+      "stopMotion": 0
+    },
+    "backing": {
+      "type": "color",
+      "color": "#0d0a12"
+    },
+    "preset": "p9"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}
