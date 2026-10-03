@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "name": "preset still for the \"flip-disc-floor\" 3D background (\"Nymboida\")",
+  "background": {
+    "type": "scene3d",
+    "look": "flip-disc-floor",
+    "colors": ["#a7c3dc", "#999a8e", "#cccbc2"],
+    "speed": 0.8,
+    "params": {
+      "pitch": 0.6,
+      "reach": 30,
+      "cover": 0.42,
+      "scale": 1.6,
+      "clear": 5,
+      "snap": 0.16,
+      "axle": 45,
+      "period": 360,
+      "ceiling": 0.7
+    },
+    "backing": {
+      "type": "color",
+      "color": "#f3f2ec"
+    },
+    "preset": "p4"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

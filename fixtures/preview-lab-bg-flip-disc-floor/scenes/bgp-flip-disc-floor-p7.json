@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "name": "preset still for the \"flip-disc-floor\" 3D background (\"Kowmung\")",
+  "background": {
+    "type": "scene3d",
+    "look": "flip-disc-floor",
+    "colors": ["#2f5c5a", "#22292b", "#151a1b"],
+    "speed": 0.9,
+    "params": {
+      "pitch": 0.52,
+      "reach": 30,
+      "cover": 0.3,
+      "scale": 1.4,
+      "clear": 5,
+      "snap": 0.12,
+      "axle": 20,
+      "period": 320,
+      "ceiling": 0.85
+    },
+    "backing": {
+      "type": "color",
+      "color": "#0a0d0e"
+    },
+    "preset": "p7"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

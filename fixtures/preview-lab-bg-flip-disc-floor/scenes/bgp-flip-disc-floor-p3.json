@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "name": "preset still for the \"flip-disc-floor\" 3D background (\"Tully\")",
+  "background": {
+    "type": "scene3d",
+    "look": "flip-disc-floor",
+    "colors": ["#dba58f", "#93999c", "#cac8c4"],
+    "speed": 1.1,
+    "params": {
+      "pitch": 0.38,
+      "reach": 24,
+      "cover": 0.45,
+      "scale": 0.8,
+      "clear": 3.5,
+      "snap": 0.04,
+      "axle": 0,
+      "period": 200,
+      "ceiling": 1
+    },
+    "backing": {
+      "type": "color",
+      "color": "#f4f1ed"
+    },
+    "preset": "p3"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

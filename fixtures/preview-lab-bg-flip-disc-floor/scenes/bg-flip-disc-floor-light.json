@@ -1,0 +1,57 @@
+{
+  "version": 1,
+  "name": "light-mode 3D background sample for \"flip-disc-floor\" (\"Wallaman\")",
+  "background": {
+    "type": "scene3d",
+    "look": "flip-disc-floor",
+    "colors": ["#e2cd8a", "#8f9ba3", "#c5cbcc"],
+    "speed": 1,
+    "params": {
+      "pitch": 0.44,
+      "reach": 26,
+      "cover": 0.4,
+      "scale": 1,
+      "clear": 4,
+      "snap": 0.06,
+      "axle": 0,
+      "period": 240,
+      "ceiling": 1
+    },
+    "backing": {
+      "type": "color",
+      "color": "#f1f2ef"
+    },
+    "preset": "p1"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": -35,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      },
+      {
+        "id": "k2",
+        "tMs": 1900,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 35,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": [
+      {
+        "from": "k1",
+        "to": "k2",
+        "ease": "inOutCubic"
+      }
+    ]
+  }
+}
