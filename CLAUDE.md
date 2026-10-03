@@ -222,3 +222,12 @@ intuition before the probe settled it).
   No preview knob was added, because the existing preview-quality DPR lever
   already covers the one measured case. Probe passes: `no-extra-lights`,
   `no-fixtures`, `no-fixture-lights`, `no-area-lights`, `env-off`.
+- **Third measured impactor (2026-10-02): the lit set's environment.** Every
+  built-in-lit `Device`, `DeviceMockup` and `HeroObject` mounted drei's
+  `<Environment frames={1}>`, which re-renders its cube and PMREM whenever its
+  JSX children change, i.e. every clock tick: 0.35 to 0.6 s per export frame
+  with devices against 0.19 without, plus ~4 MB of GPU memory each. They now
+  share one studio environment per renderer
+  (`src/toolkit/lighting/studioEnvironment.ts`; a 40-device project exports at
+  ~0.21 s/frame). Never mount a drei `<Environment>` with JSX children inside
+  a component that re-renders per tick.

@@ -1,10 +1,11 @@
-import { Environment, Lightformer, useGLTF, useTexture } from "@react-three/drei";
+import { useGLTF, useTexture } from "@react-three/drei";
 import { useContext, useMemo } from "react";
 import { Box3, type Material, type Mesh, MeshBasicMaterial, type Object3D, Vector3 } from "three";
 import { resolveAssetUrl } from "../../engine/project";
 import { ProjectIdContext } from "../../engine/sceneContext";
 import { useTimeline } from "../../engine/timeline";
 import { useEditorStore } from "../../store/editorStore";
+import { useStudioEnvironment } from "../lighting/studioEnvironment";
 import { AssetBoundary } from "../media/AssetBoundary";
 import { useSceneStaged } from "../stage/context";
 import type { V3 } from "../types";
@@ -101,6 +102,7 @@ function DeviceMockupLoaded(props: DeviceMockupProps & { screenUrl: string }) {
 
   // Staged scenes light themselves; the bundled lit set stands down (matching Device, HeroObject, Ribbon and ExtrudedText), else an authorable rig would double-light every staged mockup.
   const staged = useSceneStaged();
+  useStudioEnvironment(!staged);
 
   return (
     <group position={position} rotation={[rotation[0], rotation[1] + spinY, rotation[2]]}>
@@ -109,12 +111,6 @@ function DeviceMockupLoaded(props: DeviceMockupProps & { screenUrl: string }) {
           <ambientLight intensity={0.7} />
           <directionalLight position={[4, 6, 5]} intensity={2.4} />
           <directionalLight position={[-5, 2, -3]} intensity={0.9} />
-          {/* Procedural, offline environment (rendered once) so the titanium reads as metal. */}
-          <Environment resolution={256} frames={1}>
-            <Lightformer form="rect" intensity={2} position={[0, 3, 4]} scale={8} />
-            <Lightformer form="rect" intensity={1.2} position={[-4, 1, 2]} scale={5} />
-            <Lightformer form="rect" intensity={1} position={[4, -1, 3]} scale={5} />
-          </Environment>
         </>
       )}
       <group scale={scale * fit}>
