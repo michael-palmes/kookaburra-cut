@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "name": "preset still for the \"oculus-rotunda\" 3D background (\"Python Pool\")",
+  "background": {
+    "type": "scene3d",
+    "look": "oculus-rotunda",
+    "colors": ["#4a4756", "#121019", "#8c7458"],
+    "speed": 1.2,
+    "params": {
+      "radius": 17,
+      "coffers": 20,
+      "discSize": 4,
+      "traverse": 50,
+      "maxElevation": 46,
+      "studs": 0.6
+    },
+    "backing": {
+      "type": "color",
+      "color": "#08070c"
+    },
+    "preset": "p9"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

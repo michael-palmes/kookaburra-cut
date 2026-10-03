@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "name": "preset still for the \"oculus-rotunda\" 3D background (\"Hamersley Gorge\")",
+  "background": {
+    "type": "scene3d",
+    "look": "oculus-rotunda",
+    "colors": ["#dcd8dc", "#9c96a0", "#fbefd8"],
+    "speed": 0.9,
+    "params": {
+      "radius": 25,
+      "coffers": 32,
+      "discSize": 2.6,
+      "traverse": 120,
+      "maxElevation": 54,
+      "studs": 0
+    },
+    "backing": {
+      "type": "color",
+      "color": "#f3f1f3"
+    },
+    "preset": "p3"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}
