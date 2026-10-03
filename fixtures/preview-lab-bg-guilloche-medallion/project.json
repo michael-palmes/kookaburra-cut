@@ -1,0 +1,53 @@
+{
+  "id": "preview-lab-bg-guilloche-medallion",
+  "name": "Preview Lab — bg-guilloche-medallion (dev-only)",
+  "version": 2,
+  "themeId": "kookaburra-studio-white",
+  "formats": ["16:9"],
+  "scenes": [
+    {
+      "file": "scenes/bg-guilloche-medallion.tsx",
+      "durationMs": 2000
+    },
+    {
+      "file": "scenes/bg-guilloche-medallion-light.tsx",
+      "durationMs": 2000
+    },
+    {
+      "file": "scenes/bgp-guilloche-medallion-p1.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-guilloche-medallion-p2.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-guilloche-medallion-p3.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-guilloche-medallion-p4.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-guilloche-medallion-p5.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-guilloche-medallion-p6.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-guilloche-medallion-p7.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-guilloche-medallion-p8.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-guilloche-medallion-p9.tsx",
+      "durationMs": 1000
+    }
+  ]
+}

@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "name": "preset still for the \"guilloche-medallion\" 3D background (\"Castlemaine\")",
+  "background": {
+    "type": "scene3d",
+    "look": "guilloche-medallion",
+    "colors": ["#a294b0", "#8ea4a6", "#d9d0de"],
+    "speed": 0.9,
+    "params": {
+      "outerRadius": 28,
+      "ceilingHeight": 4.5,
+      "strands": 12,
+      "lineWidth": 0.06,
+      "weave": 2,
+      "sheen": 0.6,
+      "underprint": 0.85
+    },
+    "backing": {
+      "type": "color",
+      "color": "#f3eff4"
+    },
+    "preset": "p5"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}
