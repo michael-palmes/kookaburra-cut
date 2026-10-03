@@ -136,6 +136,113 @@ Naming contract (pinned by `optionPreviews.test.ts`): `bg-<shader>` renders a CL
 `bgp-<shader>-<pid>` renders a STILL set, both keyed by their stem in
 `src/assets/option-previews/`.
 
+### 3D looks: generate, never hand-write
+
+Scene3d labs are written from preset data, so never edit them by hand (a hand edit drifts from
+the presets and the next run overwrites it):
+
+```bash
+node scripts/gen-bg3d-preview-labs.ts <look-id> [...]   # or --all; Node 24+ type stripping
+git diff --stat fixtures/                                # untouched looks must show no diff
+```
+
+It writes `fixtures/preview-lab-bg-<look>/`: `project.json` plus 11 pairs, `bg-<look>` (p6,
+2000ms clip), `bg-<look>-light` (p1 clip) and `bgp-<look>-p1..p9` (1000ms stills), then runs
+Biome over the JSON. The camera follows `def.previewCamera` (poses in
+`scene3d/previewCamera.ts`): `static` holds one elevated pose (the grids default), `sweep`
+orbits the clip from -35 to 35 degrees at eye level (every other family), and `ceiling` orbits
+the same arc from below (target y 2, elevation -8) for looks hung or staged overhead (mobiles,
+canopies, domes, auroras, skies), which `sweep` crops to a sliver at the top of the card. Pick
+it from the evidence: compare `--grid` against `--grid --cams ceiling` in the look lab and keep
+it only where the card is clearly fuller. Rerun the generator after any preset or
+`previewCamera` change (`scene3d/previewCamera.test.ts` fails on a stale fixture camera), then
+`--action option-previews`.
+
+### Capture version pins
+
+`OPTION_PREVIEW_VERSION` (`src/engine/optionPreviews.ts`) is hashed into every set's staleness
+key, so bumping it re-records all ~400 sets (about 2 hours on a loaded machine; set
+`KOOKABURRA_RUN_TIMEOUT=7200` or the default 2400 s kills the run). Bump it only for capture or
+renderer changes that alter every tile, never for a single look: a look's own fixture edits
+already mark just its sets stale. `THEME_PREVIEW_VERSION` (`src/engine/themePreviews.ts`) does
+the same for the theme previews (`--action theme-previews`).
+
+## 3D look folder
+
+A new look lives in `src/toolkit/stage/scene3d/looks/<id>/` and is discovered with no
+registration (it sorts after the built-in ten by family, then name):
+
+```ts
+// looks/<id>/index.ts
+import type { Scene3dBackgroundDef, Scene3dBackgroundPreset } from "../../types";
+import { MyLook } from "./MyLook";
+
+export const look: Scene3dBackgroundDef = {
+  id: "<id>",                 // must equal the folder name
+  name: "My look",
+  family: "lines",            // SCENE3D_FAMILIES: lines, painted, history, deco, atmosphere, kinetic
+  colorSlots: [
+    { label: "Lines", fallback: "#3b5c7d" },          // fallbacks = p6 colours
+    { label: "Lamps", fallback: "#8a7a50", glow: true }, // at most 2 glow slots
+  ],
+  params: { drift: { label: "Drift", default: 1, min: 0, max: 3, step: 0.05 } },
+  Component: MyLook,
+};
+
+export const presets: Scene3dBackgroundPreset[] = [/* p1..p5 light, p6..p9 dark */];
+```
+
+Keep module evaluation free of DOM and canvas work (the generator imports the registry in
+Node), and never import `../../index` or `../../presets` at runtime (a cycle). An optional
+preset `lighting` block (static v9 fields: `sun`, `ambient`, `lights`, `fixtures`,
+`environment`, `shadow`) must survive `normalizeLighting` unchanged.
+
+The component receives `{ colors, params, speed, backing }`. `backing` is the scene's backing
+as one sRGB hex (`scene3d/backing.ts`): a flat colour as is, a gradient's middle (horizon) row,
+a shader's `Back` slot or its colours' mean, else the frame clear colour. Fade distance and
+haze toward it with the kit's `backingMix` instead of fading alpha (alpha fades blend
+differently on the canvas and on compositor targets) or guessing a tone, and never add a colour
+slot that duplicates the backing (the inspector's Backing control then does nothing visible):
+
+```ts
+export function MyLook({ colors, params, speed, backing }: Scene3dLookProps) {
+  // uniforms: { uBacking: lookColorUniform("#0d1219") }, then in a layout effect:
+  // mats.floor.uniforms.uBacking.value.set(backing);
+  // GLSL: ${LOOK_GLSL_BACKING} above main(), then
+  // col = backingMix(col, uBacking, haze); gl_FragColor = vec4(col, 1.0);
+}
+```
+
+`backingMix` blends in display space, so a converted alpha fade keeps its canvas curve. Keep
+alpha for coverage (line AA, sub-pixel and text-calm fades) and for haze over the look's own
+translucent parts (Blue and gold's glow shell). Details: `scene3d/kit/README.md` ("Backing
+tone").
+
+## Look lab (iterate here, confirm in the app)
+
+The autorun screenshot boots the whole app per frame and queues behind every other agent's run.
+Iterate in the look lab instead: it mounts the real look (`FixedBackdrop` with the preset's
+scene3d spec) under the scene providers and the app's renderer settings in headless Chrome, and
+writes a contact sheet in about ten seconds. Details and flags: `tools/look-lab/README.md`.
+
+```bash
+node tools/look-lab/sheet.mjs --look <id>                  # p1 + p6, five cameras + 9:16, t 8 s
+node tools/look-lab/sheet.mjs --look <id> --grid           # nine presets as picker stills: variety, legibility
+node tools/look-lab/sheet.mjs --look <id> --compare 4,8    # motion row: |t8 - t4| with mean and % moved
+node tools/look-lab/sheet.mjs --look <id> --presets p6 --params lineWidth=3 --out <scratch>/a.png
+```
+
+1. Read the PNG after every change. Exit 1 means the page logged errors (shader compile errors,
+   a throwing material, React errors), printed under the sheet with the failing GLSL line; fix
+   them before judging the look. Warnings print too: clear them, the app logs the same ones.
+2. Judge text readability on the `front` and 9:16 columns (the stand-in headline sits where the
+   atlas puts it), stage clearance on `wide` and `far`, the cutaway on `behind`.
+3. Check thin lines at export scale with `--width 1920 --ss 2 --cams lab --tall none`: tiles
+   keep the export format, so pixel-sized effects shrink with the tile like the picker previews.
+4. Confirm at the end with one or two `pnpm kookaburra:run --action screenshot` frames (an
+   atlas or spike scene). The lab matched the engine within one code value on the pilot looks,
+   but it skips transitions, effects, real devices, companion lighting and WKWebView itself.
+
 ## NOTICE entry (vendored ports only)
 
 Add the upstream file to the source list in `src/toolkit/stage/shaders/NOTICE.md` and one

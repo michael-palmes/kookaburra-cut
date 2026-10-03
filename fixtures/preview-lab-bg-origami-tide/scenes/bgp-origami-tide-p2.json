@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "name": "preset still for the \"origami-tide\" 3D background (\"Lake Callabonna\")",
+  "background": {
+    "type": "scene3d",
+    "look": "origami-tide",
+    "colors": ["#dfe2e2", "#909ca0"],
+    "speed": 0.9,
+    "params": {
+      "radius": 14,
+      "top": 6,
+      "fold": 0.65,
+      "pleat": 1,
+      "period": 150,
+      "sway": 20
+    },
+    "backing": {
+      "type": "color",
+      "color": "#f3f5f5"
+    },
+    "preset": "p2"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

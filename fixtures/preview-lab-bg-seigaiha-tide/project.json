@@ -1,0 +1,53 @@
+{
+  "id": "preview-lab-bg-seigaiha-tide",
+  "name": "Preview Lab — bg-seigaiha-tide (dev-only)",
+  "version": 2,
+  "themeId": "kookaburra-studio-white",
+  "formats": ["16:9"],
+  "scenes": [
+    {
+      "file": "scenes/bg-seigaiha-tide.tsx",
+      "durationMs": 2000
+    },
+    {
+      "file": "scenes/bg-seigaiha-tide-light.tsx",
+      "durationMs": 2000
+    },
+    {
+      "file": "scenes/bgp-seigaiha-tide-p1.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-seigaiha-tide-p2.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-seigaiha-tide-p3.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-seigaiha-tide-p4.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-seigaiha-tide-p5.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-seigaiha-tide-p6.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-seigaiha-tide-p7.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-seigaiha-tide-p8.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-seigaiha-tide-p9.tsx",
+      "durationMs": 1000
+    }
+  ]
+}

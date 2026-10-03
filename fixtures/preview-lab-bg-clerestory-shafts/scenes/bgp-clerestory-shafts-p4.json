@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "name": "preset still for the \"clerestory-shafts\" 3D background (\"Kondalilla\")",
+  "background": {
+    "type": "scene3d",
+    "look": "clerestory-shafts",
+    "colors": ["#eef2f6", "#c6cfd8", "#8f9caa", "#f6f8fb"],
+    "speed": 0.85,
+    "params": {
+      "shaftCount": 9,
+      "tilt": 18,
+      "sweep": 5,
+      "haze": 0.55,
+      "dust": 0.4,
+      "poolSoftness": 0.6
+    },
+    "backing": {
+      "type": "color",
+      "color": "#aeb9c4"
+    },
+    "preset": "p4"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

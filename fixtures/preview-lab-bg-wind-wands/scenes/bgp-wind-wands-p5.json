@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "name": "preset still for the \"wind-wands\" 3D background (\"Owen Springs\")",
+  "background": {
+    "type": "scene3d",
+    "look": "wind-wands",
+    "colors": ["#a99a6f", "#d9c27f", "#e7e1cb"],
+    "speed": 0.8,
+    "params": {
+      "count": 130,
+      "inner": 22,
+      "height": 0.9,
+      "lean": 0.08,
+      "sway": 0.08,
+      "gust": 8,
+      "haze": 10
+    },
+    "backing": {
+      "type": "color",
+      "color": "#f8f5e9"
+    },
+    "preset": "p5"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

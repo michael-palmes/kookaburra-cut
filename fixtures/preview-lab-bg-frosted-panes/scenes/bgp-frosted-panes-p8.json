@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "name": "preset still for the \"frosted-panes\" 3D background (\"Boulia\")",
+  "background": {
+    "type": "scene3d",
+    "look": "frosted-panes",
+    "colors": ["#211714", "#3d2c26", "#86503a", "#b98566"],
+    "speed": 1.1,
+    "params": {
+      "paneCount": 28,
+      "ringRadius": 12,
+      "lampCount": 6,
+      "bloom": 0.7,
+      "frost": 0.4,
+      "rain": 0
+    },
+    "backing": {
+      "type": "color",
+      "color": "#24191a"
+    },
+    "preset": "p8"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

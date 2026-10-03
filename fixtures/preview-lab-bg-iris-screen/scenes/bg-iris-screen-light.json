@@ -1,0 +1,54 @@
+{
+  "version": 1,
+  "name": "light-mode 3D background sample for \"iris-screen\" (\"Yallingup\")",
+  "background": {
+    "type": "scene3d",
+    "look": "iris-screen",
+    "colors": ["#a79880", "#f5e3bd", "#e8d9b8"],
+    "speed": 1,
+    "params": {
+      "radius": 15,
+      "panels": 40,
+      "cycle": 30,
+      "sunElevation": 22,
+      "pool": 0.6,
+      "clearRadius": 6
+    },
+    "backing": {
+      "type": "color",
+      "color": "#f8f4ec"
+    },
+    "preset": "p1"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": -35,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      },
+      {
+        "id": "k2",
+        "tMs": 1900,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 35,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": [
+      {
+        "from": "k1",
+        "to": "k2",
+        "ease": "inOutCubic"
+      }
+    ]
+  }
+}

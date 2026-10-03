@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "name": "preset still for the \"engraved-hills\" 3D background (\"Dinner Plain\")",
+  "background": {
+    "type": "scene3d",
+    "look": "engraved-hills",
+    "colors": ["#8e98a6", "#a8b1bd", "#a3adba"],
+    "speed": 1,
+    "params": {
+      "rangeHeight": 1.15,
+      "pitch": 7,
+      "swell": 1.1,
+      "crossHatch": 1,
+      "sunSwing": 60,
+      "clouds": 0.8
+    },
+    "backing": {
+      "type": "color",
+      "color": "#f2f3f5"
+    },
+    "preset": "p2"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

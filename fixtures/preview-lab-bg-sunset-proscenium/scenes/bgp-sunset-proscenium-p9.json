@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "name": "preset still for the \"sunset-proscenium\" 3D background (\"Two Peoples Bay\")",
+  "background": {
+    "type": "scene3d",
+    "look": "sunset-proscenium",
+    "colors": ["#1e2530", "#4d5566", "#a3846a", "#9a7480"],
+    "speed": 0.8,
+    "params": {
+      "ribs": 9,
+      "setBack": 9,
+      "innerWidth": 17.5,
+      "crown": 7,
+      "riseSeconds": 36,
+      "glow": 0.7,
+      "steps": 3
+    },
+    "backing": {
+      "type": "color",
+      "color": "#080a0e"
+    },
+    "preset": "p9"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

@@ -1,0 +1,53 @@
+{
+  "id": "preview-lab-bg-origami-tide",
+  "name": "Preview Lab — bg-origami-tide (dev-only)",
+  "version": 2,
+  "themeId": "kookaburra-studio-white",
+  "formats": ["16:9"],
+  "scenes": [
+    {
+      "file": "scenes/bg-origami-tide.tsx",
+      "durationMs": 2000
+    },
+    {
+      "file": "scenes/bg-origami-tide-light.tsx",
+      "durationMs": 2000
+    },
+    {
+      "file": "scenes/bgp-origami-tide-p1.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-origami-tide-p2.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-origami-tide-p3.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-origami-tide-p4.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-origami-tide-p5.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-origami-tide-p6.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-origami-tide-p7.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-origami-tide-p8.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-origami-tide-p9.tsx",
+      "durationMs": 1000
+    }
+  ]
+}

@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "name": "preset still for the \"flip-disc-floor\" 3D background (\"Deua\")",
+  "background": {
+    "type": "scene3d",
+    "look": "flip-disc-floor",
+    "colors": ["#d9adb6", "#949aa0", "#ccc9c8"],
+    "speed": 1.2,
+    "params": {
+      "pitch": 0.42,
+      "reach": 22,
+      "cover": 0.5,
+      "scale": 0.7,
+      "clear": 4,
+      "snap": 0.03,
+      "axle": 90,
+      "period": 180,
+      "ceiling": 0.9
+    },
+    "backing": {
+      "type": "color",
+      "color": "#f5f1f1"
+    },
+    "preset": "p5"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

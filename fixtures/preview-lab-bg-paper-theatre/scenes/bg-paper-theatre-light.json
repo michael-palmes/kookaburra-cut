@@ -1,0 +1,55 @@
+{
+  "version": 1,
+  "name": "light-mode 3D background sample for \"paper-theatre\" (\"Bruny\")",
+  "background": {
+    "type": "scene3d",
+    "look": "paper-theatre",
+    "colors": ["#909d86", "#abb8ae", "#cad4d6", "#ebc88f"],
+    "speed": 1,
+    "params": {
+      "rings": 4,
+      "flatHeight": 1,
+      "treeDensity": 0.78,
+      "rock": 1.8,
+      "shadow": 0.55,
+      "cloudSpeed": 1,
+      "stopMotion": 0
+    },
+    "backing": {
+      "type": "color",
+      "color": "#f4f0e8"
+    },
+    "preset": "p1"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": -35,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      },
+      {
+        "id": "k2",
+        "tMs": 1900,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 35,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": [
+      {
+        "from": "k1",
+        "to": "k2",
+        "ease": "inOutCubic"
+      }
+    ]
+  }
+}

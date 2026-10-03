@@ -54,6 +54,10 @@ pnpm kookaburra:run --action template-previews          # --project <id,...> sel
 # manifest's one preview frame (16:9, 640px JPEG), promote into src/assets/preset-previews/.
 pnpm kookaburra:run --action preset-previews            # --project <slug,...> selects
 
+# Look lab: headless contact sheets of a scene3d look in seconds (no Tauri). Iterate here,
+# then confirm with one or two autorun screenshots (tools/look-lab/README.md).
+pnpm look-lab --look <id> --gpu                          # --compare 4,8 for motion, --grid for all 9 presets
+
 # Release. Needs KOOKABURRA_SIGNING_IDENTITY + KOOKABURRA_NOTARY_PROFILE, the pinned
 # static sidecar (pnpm setup:ffmpeg:release), and a GUI session (Finder styles the DMG).
 pnpm package:signed    # build + Developer ID sign + notarise + staple: app and DMG

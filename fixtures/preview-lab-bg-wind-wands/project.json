@@ -1,0 +1,53 @@
+{
+  "id": "preview-lab-bg-wind-wands",
+  "name": "Preview Lab — bg-wind-wands (dev-only)",
+  "version": 2,
+  "themeId": "kookaburra-studio-white",
+  "formats": ["16:9"],
+  "scenes": [
+    {
+      "file": "scenes/bg-wind-wands.tsx",
+      "durationMs": 2000
+    },
+    {
+      "file": "scenes/bg-wind-wands-light.tsx",
+      "durationMs": 2000
+    },
+    {
+      "file": "scenes/bgp-wind-wands-p1.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-wind-wands-p2.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-wind-wands-p3.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-wind-wands-p4.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-wind-wands-p5.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-wind-wands-p6.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-wind-wands-p7.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-wind-wands-p8.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-wind-wands-p9.tsx",
+      "durationMs": 1000
+    }
+  ]
+}

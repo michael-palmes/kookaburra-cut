@@ -1,0 +1,53 @@
+{
+  "id": "preview-lab-bg-louvre-ring",
+  "name": "Preview Lab — bg-louvre-ring (dev-only)",
+  "version": 2,
+  "themeId": "kookaburra-studio-white",
+  "formats": ["16:9"],
+  "scenes": [
+    {
+      "file": "scenes/bg-louvre-ring.tsx",
+      "durationMs": 2000
+    },
+    {
+      "file": "scenes/bg-louvre-ring-light.tsx",
+      "durationMs": 2000
+    },
+    {
+      "file": "scenes/bgp-louvre-ring-p1.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-louvre-ring-p2.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-louvre-ring-p3.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-louvre-ring-p4.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-louvre-ring-p5.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-louvre-ring-p6.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-louvre-ring-p7.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-louvre-ring-p8.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-louvre-ring-p9.tsx",
+      "durationMs": 1000
+    }
+  ]
+}

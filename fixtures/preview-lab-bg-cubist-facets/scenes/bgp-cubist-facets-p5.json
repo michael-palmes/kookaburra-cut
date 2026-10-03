@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "name": "preset still for the \"cubist-facets\" 3D background (\"Arkaba\")",
+  "background": {
+    "type": "scene3d",
+    "look": "cubist-facets",
+    "colors": ["#cdbb9a", "#9b9890", "#a0a6a6", "#e6e2d6"],
+    "speed": 0.85,
+    "params": {
+      "radius": 26,
+      "planes": 9,
+      "fold": 26,
+      "relief": 0.8,
+      "passage": 0.45,
+      "lightPeriod": 100,
+      "haze": 0.6
+    },
+    "backing": {
+      "type": "color",
+      "color": "#f3f2ee"
+    },
+    "preset": "p5"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

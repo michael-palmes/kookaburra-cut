@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "name": "preset still for the \"clerestory-shafts\" 3D background (\"Binna Burra\")",
+  "background": {
+    "type": "scene3d",
+    "look": "clerestory-shafts",
+    "colors": ["#f8f1e2", "#dccdb0", "#a79574", "#fcf6e8"],
+    "speed": 1.1,
+    "params": {
+      "shaftCount": 6,
+      "tilt": 34,
+      "sweep": 10,
+      "haze": 0.5,
+      "dust": 0.7,
+      "poolSoftness": 0.3
+    },
+    "backing": {
+      "type": "color",
+      "color": "#c4b79c"
+    },
+    "preset": "p3"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

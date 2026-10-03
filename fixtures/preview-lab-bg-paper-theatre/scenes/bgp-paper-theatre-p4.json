@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "name": "preset still for the \"paper-theatre\" 3D background (\"Friendly Beaches\")",
+  "background": {
+    "type": "scene3d",
+    "look": "paper-theatre",
+    "colors": ["#9399ad", "#c0c6cf", "#dde0e4", "#efd3a1"],
+    "speed": 1.1,
+    "params": {
+      "rings": 4,
+      "flatHeight": 0.7,
+      "treeDensity": 0.6,
+      "rock": 1.6,
+      "shadow": 0.6,
+      "cloudSpeed": 1.8,
+      "stopMotion": 0
+    },
+    "backing": {
+      "type": "color",
+      "color": "#f7f5f0"
+    },
+    "preset": "p4"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "name": "preset still for the \"clerestory-shafts\" 3D background (\"Springbrook\")",
+  "background": {
+    "type": "scene3d",
+    "look": "clerestory-shafts",
+    "colors": ["#f2f5ee", "#cdd3c6", "#949f8f", "#f8faf4"],
+    "speed": 0.9,
+    "params": {
+      "shaftCount": 10,
+      "tilt": 22,
+      "sweep": 6,
+      "haze": 0.75,
+      "dust": 0.35,
+      "poolSoftness": 0.7
+    },
+    "backing": {
+      "type": "color",
+      "color": "#b5bdaf"
+    },
+    "preset": "p2"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

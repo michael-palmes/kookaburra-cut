@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "name": "preset still for the \"hiroshige-rain\" 3D background (\"Errinundra\")",
+  "background": {
+    "type": "scene3d",
+    "look": "hiroshige-rain",
+    "colors": ["#536258", "#3b4840", "#4a5a4f"],
+    "speed": 1,
+    "params": {
+      "density": 1.3,
+      "fall": 0.8,
+      "nearSlant": -9,
+      "farSlant": 14,
+      "puddles": 0.8,
+      "horizon": 0.6
+    },
+    "backing": {
+      "type": "color",
+      "color": "#0d120f"
+    },
+    "preset": "p7"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

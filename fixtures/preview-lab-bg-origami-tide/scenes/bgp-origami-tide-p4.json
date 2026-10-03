@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "name": "preset still for the \"origami-tide\" 3D background (\"Lake Menindee\")",
+  "background": {
+    "type": "scene3d",
+    "look": "origami-tide",
+    "colors": ["#dde0d0", "#959b85"],
+    "speed": 0.8,
+    "params": {
+      "radius": 15,
+      "top": 8.5,
+      "fold": 0.7,
+      "pleat": 1.15,
+      "period": 180,
+      "sway": 25
+    },
+    "backing": {
+      "type": "color",
+      "color": "#f4f5ee"
+    },
+    "preset": "p4"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

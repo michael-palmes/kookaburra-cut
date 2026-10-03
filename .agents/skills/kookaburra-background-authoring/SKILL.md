@@ -1,6 +1,6 @@
 ---
 name: kookaburra-background-authoring
-description: Ships a new animated background for Kookaburra Cut end to end, shader (2D) or scene3d (world-space 3D look), whether ported from paper-design/shaders or written from scratch. Covers the ShaderBackgroundDef anatomy, GLSL3 + determinism patches (PCG hash, engine-owned uniforms, noise texture), the scene3d look contract, the 9 AA colour presets, preview-lab fixtures and incremental thumbnail regeneration. Use when asked to "add a background", "new animated background", "new shader background", "new 3D background", "port a paper-design shader", "add or change background presets", or when touching src/toolkit/stage/shaders/ or src/toolkit/stage/scene3d/.
+description: Ships a new animated background for Kookaburra Cut end to end, shader (2D) or scene3d (world-space 3D look), whether ported from paper-design/shaders or written from scratch. Covers the ShaderBackgroundDef anatomy, GLSL3 + determinism patches (PCG hash, engine-owned uniforms, noise texture), the scene3d look contract, the 9 AA colour presets, the look lab contact sheets (tools/look-lab), preview-lab fixtures and incremental thumbnail regeneration. Use when asked to "add a background", "new animated background", "new shader background", "new 3D background", "port a paper-design shader", "add or change background presets", "look lab", "contact sheet of a 3D look", or when touching src/toolkit/stage/shaders/, src/toolkit/stage/scene3d/ or tools/look-lab/.
 ---
 
 # kookaburra-background-authoring
@@ -70,7 +70,8 @@ file live in this skill's `REFERENCE.md`.
 
    The run hashes fixtures against `src/assets/option-previews/manifest.json` and captures
    only stale sets, so a new shader renders its own eleven sets in its own small lab project;
-   `--all` forces a full re-record (engine-change refreshes).
+   `--all` forces a full re-record (engine-change refreshes). Never bump
+   `OPTION_PREVIEW_VERSION` for one look: it marks every set stale (see REFERENCE.md).
 
    Then eyeball the new stills in `src/assets/option-previews/`. Verify proves determinism,
    not correctness; a black tile means a missing `out vec4 fragColor;` or a bad uniform.
@@ -84,9 +85,13 @@ World-space animated backgrounds live in `src/toolkit/stage/scene3d/` (registry 
 presets `presets.ts`); the contract is in `docs/backgrounds.md` ("3D backgrounds"). The same
 shipping flow applies, with these differences:
 
-1. A look is a React component receiving `{ colors, params, speed }`, mounted inside the
+1. A look is a React component receiving `{ colors, params, speed, backing }` (`backing` is
+   the resolved backing as one hex: mix fades toward it, REFERENCE.md), mounted inside the
    scene's identity group. Motion comes from `useTimeline()` only (commit-phase CPU updates or
-   whole-group transforms); seeded randomness via `createSeededRandom` with a fixed seed.
+   whole-group transforms); seeded randomness via `createSeededRandom` with a fixed seed. New
+   looks live one per folder (`looks/<id>/index.ts` exporting `look` and `presets`) and are
+   discovered, so never edit `index.ts` or `presets.ts` to add one (REFERENCE.md,
+   "3D look folder"). Glow slots (`glow: true`, at most 2) may reach 0.30 in dark presets.
 2. Stay OUT of the content volume (x/y roughly +-4/+-2, z -6..9): keep-out clearances and
    distance fades, tag the root `userData.kookaburraBg3d` (the perf probe's `no-bg3d` pass).
    Floors want a small stage-courtesy clearing (~4u), not a content-radius ring. Never set
@@ -95,8 +100,13 @@ shipping flow applies, with these differences:
 3. Unlit looks hold exact colours (`toneMapped: false`); `lit: true` looks use standard
    materials with an `ABSTRACT_EMISSIVE` floor so they read on unlit scenes.
 4. Presets carry geometry `colors` plus a flat `backing` hex; bands and AA apply to ALL of
-   them (`scene3d/presets.test.ts`). Fixtures include a static elevated camera pose
-   (`segments: []` is REQUIRED beside `keys` or the block drops whole).
+   them (`scene3d/presets.test.ts`). Keep `p1` stops at or above 0.315: the Theme tile
+   retints p1 for light themes and Sunrise's text token needs that floor for AA
+   (`scene3d/themePreset.test.ts`). Generate the fixtures with
+   `node scripts/gen-bg3d-preview-labs.ts <look-id>` instead of writing them by hand; its
+   static poses carry the REQUIRED `segments: []` beside `keys` (without it the block drops).
 5. Thin 1px lines vanish at tile size and can whisper at 4K: densify geometry and push dark
    lines toward the 0.125 cap before reaching for preview tricks; eyeball at BOTH scales via
    an `ws:` spike screenshot.
+6. Iterate in the look lab (`node tools/look-lab/sheet.mjs --look <id>`, a sheet in about 10 s,
+   REFERENCE.md "Look lab"), then confirm with one or two autorun screenshots at the end.

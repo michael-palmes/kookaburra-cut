@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "name": "preset still for the \"cubist-facets\" 3D background (\"Moralana\")",
+  "background": {
+    "type": "scene3d",
+    "look": "cubist-facets",
+    "colors": ["#d8b6a4", "#a6979a", "#aaa6b0", "#efe1da"],
+    "speed": 1,
+    "params": {
+      "radius": 20,
+      "planes": 17,
+      "fold": 22,
+      "relief": 0.55,
+      "passage": 0.3,
+      "lightPeriod": 40,
+      "haze": 0.7
+    },
+    "backing": {
+      "type": "color",
+      "color": "#faf4f1"
+    },
+    "preset": "p4"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

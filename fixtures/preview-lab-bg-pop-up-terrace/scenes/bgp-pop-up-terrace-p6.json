@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "name": "preset still for the \"pop-up-terrace\" 3D background (\"Salamanca\")",
+  "background": {
+    "type": "scene3d",
+    "look": "pop-up-terrace",
+    "colors": ["#686054", "#2d3042", "#131420"],
+    "speed": 1,
+    "params": {
+      "radius": 12.5,
+      "units": 12,
+      "height": 1,
+      "wavePeriod": 80,
+      "crests": 3,
+      "openHold": 0.25,
+      "sunAzimuth": 303,
+      "shadow": 0.7
+    },
+    "backing": {
+      "type": "color",
+      "color": "#1a1c28"
+    },
+    "preset": "p6"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

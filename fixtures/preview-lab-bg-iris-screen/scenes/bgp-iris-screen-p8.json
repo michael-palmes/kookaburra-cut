@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "name": "preset still for the \"iris-screen\" 3D background (\"Stirling Range\")",
+  "background": {
+    "type": "scene3d",
+    "look": "iris-screen",
+    "colors": ["#1f2233", "#9a6c5c", "#5f4d68"],
+    "speed": 1.1,
+    "params": {
+      "radius": 20,
+      "panels": 60,
+      "cycle": 36,
+      "sunElevation": 16,
+      "pool": 0.7,
+      "clearRadius": 7.5
+    },
+    "backing": {
+      "type": "color",
+      "color": "#0a0b14"
+    },
+    "preset": "p8"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

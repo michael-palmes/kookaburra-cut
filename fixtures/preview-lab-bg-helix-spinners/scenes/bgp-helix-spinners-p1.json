@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "name": "preset still for the \"helix-spinners\" 3D background (\"Corkwood\")",
+  "background": {
+    "type": "scene3d",
+    "look": "helix-spinners",
+    "colors": ["#c9b395", "#9fb0b4", "#a2988c"],
+    "speed": 1,
+    "params": {
+      "count": 26,
+      "length": 1,
+      "twist": 14,
+      "turn": 24,
+      "clearance": 12,
+      "rods": 0.35
+    },
+    "backing": {
+      "type": "color",
+      "color": "#f4f1eb"
+    },
+    "preset": "p1"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 2, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": -8,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

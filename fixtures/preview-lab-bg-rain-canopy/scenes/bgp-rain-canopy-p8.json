@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "name": "preset still for the \"rain-canopy\" 3D background (\"Marri\")",
+  "background": {
+    "type": "scene3d",
+    "look": "rain-canopy",
+    "colors": ["#633d36", "#2e2220", "#7a4c41"],
+    "speed": 1.1,
+    "params": {
+      "amplitude": 1.2,
+      "height": 5.5,
+      "spacing": 1.4,
+      "droop": 3,
+      "period": 70,
+      "threads": 0.2
+    },
+    "backing": {
+      "type": "color",
+      "color": "#140d0c"
+    },
+    "preset": "p8"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 2, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": -8,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

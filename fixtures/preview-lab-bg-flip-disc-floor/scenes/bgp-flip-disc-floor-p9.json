@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "name": "preset still for the \"flip-disc-floor\" 3D background (\"Tuross\")",
+  "background": {
+    "type": "scene3d",
+    "look": "flip-disc-floor",
+    "colors": ["#44567f", "#24282f", "#16191e"],
+    "speed": 0.8,
+    "params": {
+      "pitch": 0.48,
+      "reach": 28,
+      "cover": 0.36,
+      "scale": 1.2,
+      "clear": 4.5,
+      "snap": 0.2,
+      "axle": 90,
+      "period": 400,
+      "ceiling": 0.75
+    },
+    "backing": {
+      "type": "color",
+      "color": "#0a0c0f"
+    },
+    "preset": "p9"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

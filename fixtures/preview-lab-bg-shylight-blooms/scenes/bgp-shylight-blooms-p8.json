@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "name": "preset still for the \"shylight-blooms\" 3D background (\"Holmes Reef\")",
+  "background": {
+    "type": "scene3d",
+    "look": "shylight-blooms",
+    "colors": ["#5d5875", "#1e1c2e", "#b5876d", "#45425a"],
+    "speed": 1.1,
+    "params": {
+      "count": 14,
+      "radius": 11,
+      "openHeight": 4.6,
+      "drop": 2.8,
+      "size": 1.2,
+      "cycle": 65,
+      "cables": 0.9,
+      "pools": 0.24
+    },
+    "backing": {
+      "type": "color",
+      "color": "#0d0c16"
+    },
+    "preset": "p8"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 2, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": -8,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "name": "preset still for the \"louvre-ring\" 3D background (\"Casuarina\")",
+  "background": {
+    "type": "scene3d",
+    "look": "louvre-ring",
+    "colors": ["#222b30", "#61564a", "#30373a"],
+    "speed": 1,
+    "params": {
+      "count": 160,
+      "radius": 13.5,
+      "height": 8,
+      "period": 48,
+      "front": 0.3,
+      "rows": 1
+    },
+    "backing": {
+      "type": "color",
+      "color": "#0e1214"
+    },
+    "preset": "p6"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

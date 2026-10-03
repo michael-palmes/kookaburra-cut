@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "name": "preset still for the \"guilloche-medallion\" 3D background (\"Clunes\")",
+  "background": {
+    "type": "scene3d",
+    "look": "guilloche-medallion",
+    "colors": ["#8b98ae", "#b39b97", "#d5d6dc"],
+    "speed": 0.9,
+    "params": {
+      "outerRadius": 40,
+      "ceilingHeight": 6,
+      "strands": 10,
+      "lineWidth": 0.07,
+      "weave": 0.8,
+      "sheen": 0.8,
+      "underprint": 0.75
+    },
+    "backing": {
+      "type": "color",
+      "color": "#f1f0f3"
+    },
+    "preset": "p2"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

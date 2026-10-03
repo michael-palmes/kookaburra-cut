@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "name": "preset still for the \"iris-screen\" 3D background (\"Boranup\")",
+  "background": {
+    "type": "scene3d",
+    "look": "iris-screen",
+    "colors": ["#979d85", "#eeecd2", "#d9dcc2"],
+    "speed": 1.1,
+    "params": {
+      "radius": 13,
+      "panels": 36,
+      "cycle": 34,
+      "sunElevation": 16,
+      "pool": 0.72,
+      "clearRadius": 5.5
+    },
+    "backing": {
+      "type": "color",
+      "color": "#f5f5ea"
+    },
+    "preset": "p3"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "name": "preset still for the \"oculus-rotunda\" 3D background (\"Kalamina\")",
+  "background": {
+    "type": "scene3d",
+    "look": "oculus-rotunda",
+    "colors": ["#e8dcc6", "#a89878", "#fff3d6"],
+    "speed": 0.8,
+    "params": {
+      "radius": 28,
+      "coffers": 36,
+      "discSize": 4,
+      "traverse": 150,
+      "maxElevation": 56,
+      "studs": 0
+    },
+    "backing": {
+      "type": "color",
+      "color": "#f7f1e6"
+    },
+    "preset": "p5"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

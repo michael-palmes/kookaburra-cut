@@ -1,0 +1,55 @@
+{
+  "version": 1,
+  "name": "light-mode 3D background sample for \"colour-court\" (\"Aldinga\")",
+  "background": {
+    "type": "scene3d",
+    "look": "colour-court",
+    "colors": ["#e3a0ae", "#e6c48f", "#a391c6", "#f4d6a0"],
+    "speed": 1,
+    "params": {
+      "layoutSeed": 1,
+      "walls": 8,
+      "sunElevation": 34,
+      "sunSwing": 25,
+      "dayLength": 120,
+      "fields": 0.35,
+      "blade": 0.34
+    },
+    "backing": {
+      "type": "color",
+      "color": "#faf4ee"
+    },
+    "preset": "p1"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": -35,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      },
+      {
+        "id": "k2",
+        "tMs": 1900,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 35,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": [
+      {
+        "from": "k1",
+        "to": "k2",
+        "ease": "inOutCubic"
+      }
+    ]
+  }
+}

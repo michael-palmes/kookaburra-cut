@@ -1,24 +1,11 @@
 import type { Theme } from "../../../theme/tokens";
+import { DISCOVERED_SCENE3D_LOOKS } from "./looks";
+import type { Scene3dBackgroundPreset } from "./types";
+
+export type { Scene3dBackgroundPreset } from "./types";
 
 /** Bundled looks for each 3D background: 9 per look (p1-p5 light, p6-p9 dark), applied wholesale by the inspector's preset tiles like the shader packs (docs/backgrounds.md; the same luminance bands and AA rules apply to every geometry colour AND the backing). `backing` is the camera-locked fill stamped behind the geometry on apply; the schema accepts any 2D background there, presets keep it a flat colour. */
-
-export interface Scene3dBackgroundPreset {
-  /** Look-scoped id (p1..p9); pair with the look id, never unique alone. */
-  id: string;
-  name: string;
-  /** Light presets carry black text at AA; dark presets carry white. */
-  mode: "light" | "dark";
-  /** AA-checked text colour over every stop (card metadata / contrast hints). */
-  textColor: string;
-  /** One hex per geometry colour slot, in slot order. */
-  colors: string[];
-  /** Flat backing colour stamped as `backing: { type: "color" }` on apply. */
-  backing: string;
-  speed?: number;
-  params?: Record<string, number>;
-}
-
-export const SCENE3D_BACKGROUND_PRESETS: Record<string, Scene3dBackgroundPreset[]> = {
+const LEGACY_SCENE3D_BACKGROUND_PRESETS: Record<string, Scene3dBackgroundPreset[]> = {
   "grid-plain": [
     {
       id: "p1",
@@ -1350,6 +1337,16 @@ export const SCENE3D_BACKGROUND_PRESETS: Record<string, Scene3dBackgroundPreset[
       },
     },
   ],
+};
+
+/** The built-in ten's presets, then each discovered look folder's own. */
+export const SCENE3D_BACKGROUND_PRESETS: Record<string, Scene3dBackgroundPreset[]> = {
+  ...LEGACY_SCENE3D_BACKGROUND_PRESETS,
+  ...Object.fromEntries(
+    DISCOVERED_SCENE3D_LOOKS.filter(
+      ({ look }) => !(look.id in LEGACY_SCENE3D_BACKGROUND_PRESETS),
+    ).map(({ look, presets }) => [look.id, presets]),
+  ),
 };
 
 /** The anchor preset backing a 3D look's Theme tile and live-derived colours: `p1` for light themes, `p6` for dark (the shader-pack convention). */

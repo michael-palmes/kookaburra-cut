@@ -1,0 +1,53 @@
+{
+  "id": "preview-lab-bg-blue-and-gold",
+  "name": "Preview Lab — bg-blue-and-gold (dev-only)",
+  "version": 2,
+  "themeId": "kookaburra-studio-white",
+  "formats": ["16:9"],
+  "scenes": [
+    {
+      "file": "scenes/bg-blue-and-gold.tsx",
+      "durationMs": 2000
+    },
+    {
+      "file": "scenes/bg-blue-and-gold-light.tsx",
+      "durationMs": 2000
+    },
+    {
+      "file": "scenes/bgp-blue-and-gold-p1.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-blue-and-gold-p2.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-blue-and-gold-p3.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-blue-and-gold-p4.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-blue-and-gold-p5.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-blue-and-gold-p6.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-blue-and-gold-p7.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-blue-and-gold-p8.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-blue-and-gold-p9.tsx",
+      "durationMs": 1000
+    }
+  ]
+}

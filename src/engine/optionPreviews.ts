@@ -9,6 +9,8 @@ import { captureFrameAt, withBorrowedClock } from "./snapshots";
 export const OPTION_CLIP_FPS = 20;
 /** Downscale width for every option-preview capture. */
 export const OPTION_PREVIEW_WIDTH = 320;
+/** Capture pin hashed by scripts/option-preview-stale.mjs: bump it when an engine change deliberately changes preview pixels, so every set re-records (2: box-filtered downscale). */
+export const OPTION_PREVIEW_VERSION = 2;
 
 // A glob (not explicit imports) so not-yet-generated previews degrade to placeholders.
 const assetGlob = import.meta.glob<string>("../assets/option-previews/*", {

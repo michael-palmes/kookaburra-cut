@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "name": "preset still for the \"sunset-proscenium\" 3D background (\"Cape Arid\")",
+  "background": {
+    "type": "scene3d",
+    "look": "sunset-proscenium",
+    "colors": ["#261d30", "#5a4562", "#a8784c", "#946474"],
+    "speed": 1.1,
+    "params": {
+      "ribs": 6,
+      "setBack": 8.5,
+      "innerWidth": 16.5,
+      "crown": 6.7,
+      "riseSeconds": 20,
+      "glow": 0.75,
+      "steps": 4
+    },
+    "backing": {
+      "type": "color",
+      "color": "#0b080e"
+    },
+    "preset": "p8"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

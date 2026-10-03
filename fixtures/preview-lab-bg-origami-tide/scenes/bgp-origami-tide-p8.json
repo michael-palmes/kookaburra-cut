@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "name": "preset still for the \"origami-tide\" 3D background (\"Lake Lefroy\")",
+  "background": {
+    "type": "scene3d",
+    "look": "origami-tide",
+    "colors": ["#4a5552", "#1c2321"],
+    "speed": 1.1,
+    "params": {
+      "radius": 12.5,
+      "top": 6.2,
+      "fold": 0.9,
+      "pleat": 0.75,
+      "period": 100,
+      "sway": 20
+    },
+    "backing": {
+      "type": "color",
+      "color": "#0b0e0d"
+    },
+    "preset": "p8"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

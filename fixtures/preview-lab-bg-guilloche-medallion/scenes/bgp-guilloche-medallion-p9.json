@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "name": "preset still for the \"guilloche-medallion\" 3D background (\"Tarnagulla\")",
+  "background": {
+    "type": "scene3d",
+    "look": "guilloche-medallion",
+    "colors": ["#6b4c53", "#4b5a64", "#1a1417"],
+    "speed": 1.1,
+    "params": {
+      "outerRadius": 30,
+      "ceilingHeight": 4.5,
+      "strands": 12,
+      "lineWidth": 0.05,
+      "weave": 1.8,
+      "sheen": 0.8,
+      "underprint": 0.8
+    },
+    "backing": {
+      "type": "color",
+      "color": "#110d0f"
+    },
+    "preset": "p9"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

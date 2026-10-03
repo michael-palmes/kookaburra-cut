@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "name": "preset still for the \"engraved-hills\" 3D background (\"Grand Ridge\")",
+  "background": {
+    "type": "scene3d",
+    "look": "engraved-hills",
+    "colors": ["#a39390", "#bbaeab", "#b3a9ab"],
+    "speed": 1,
+    "params": {
+      "rangeHeight": 1.3,
+      "pitch": 11,
+      "swell": 1,
+      "crossHatch": 1,
+      "sunSwing": 30,
+      "clouds": 0.6
+    },
+    "backing": {
+      "type": "color",
+      "color": "#f6f1ef"
+    },
+    "preset": "p5"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

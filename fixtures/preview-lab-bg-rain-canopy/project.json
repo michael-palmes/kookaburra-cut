@@ -1,0 +1,53 @@
+{
+  "id": "preview-lab-bg-rain-canopy",
+  "name": "Preview Lab — bg-rain-canopy (dev-only)",
+  "version": 2,
+  "themeId": "kookaburra-studio-white",
+  "formats": ["16:9"],
+  "scenes": [
+    {
+      "file": "scenes/bg-rain-canopy.tsx",
+      "durationMs": 2000
+    },
+    {
+      "file": "scenes/bg-rain-canopy-light.tsx",
+      "durationMs": 2000
+    },
+    {
+      "file": "scenes/bgp-rain-canopy-p1.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-rain-canopy-p2.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-rain-canopy-p3.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-rain-canopy-p4.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-rain-canopy-p5.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-rain-canopy-p6.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-rain-canopy-p7.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-rain-canopy-p8.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-rain-canopy-p9.tsx",
+      "durationMs": 1000
+    }
+  ]
+}

@@ -1,0 +1,56 @@
+{
+  "version": 1,
+  "name": "light-mode 3D background sample for \"pop-up-terrace\" (\"Battery Point\")",
+  "background": {
+    "type": "scene3d",
+    "look": "pop-up-terrace",
+    "colors": ["#f6f2eb", "#a6aeb6", "#a6988c"],
+    "speed": 1,
+    "params": {
+      "radius": 12.5,
+      "units": 12,
+      "height": 1,
+      "wavePeriod": 80,
+      "crests": 3,
+      "openHold": 0.25,
+      "sunAzimuth": 303,
+      "shadow": 0.7
+    },
+    "backing": {
+      "type": "color",
+      "color": "#d6d0c6"
+    },
+    "preset": "p1"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": -35,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      },
+      {
+        "id": "k2",
+        "tMs": 1900,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 35,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": [
+      {
+        "from": "k1",
+        "to": "k2",
+        "ease": "inOutCubic"
+      }
+    ]
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "name": "preset still for the \"lily-pond\" 3D background (\"Lake Ainsworth\")",
+  "background": {
+    "type": "scene3d",
+    "look": "lily-pond",
+    "colors": ["#9f9883", "#d6d4c4", "#a9b394", "#ecd9c6"],
+    "speed": 0.9,
+    "params": {
+      "clearRadius": 6,
+      "padCount": 260,
+      "blossoms": 0.08,
+      "strokeScale": 0.8,
+      "ripples": 4,
+      "drift": 0.8
+    },
+    "backing": {
+      "type": "color",
+      "color": "#f5f2ea"
+    },
+    "preset": "p2"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

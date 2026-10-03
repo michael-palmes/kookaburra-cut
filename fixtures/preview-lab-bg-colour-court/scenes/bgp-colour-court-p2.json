@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "name": "preset still for the \"colour-court\" 3D background (\"Willunga\")",
+  "background": {
+    "type": "scene3d",
+    "look": "colour-court",
+    "colors": ["#e6a59b", "#d9c58e", "#8fa2c0", "#f6dcae"],
+    "speed": 1.1,
+    "params": {
+      "layoutSeed": 4,
+      "walls": 7,
+      "sunElevation": 28,
+      "sunSwing": 30,
+      "dayLength": 100,
+      "fields": 0.25,
+      "blade": 0.3
+    },
+    "backing": {
+      "type": "color",
+      "color": "#fbf5ef"
+    },
+    "preset": "p2"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

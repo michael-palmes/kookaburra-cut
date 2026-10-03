@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "name": "preset still for the \"sunburst-terrazzo\" 3D background (\"Kellerberrin\")",
+  "background": {
+    "type": "scene3d",
+    "look": "sunburst-terrazzo",
+    "colors": ["#e6d3a1", "#c4d2dc", "#ad955f"],
+    "speed": 1.1,
+    "params": {
+      "rays": 32,
+      "clearRadius": 5.5,
+      "turnMinutes": 6,
+      "glint": 0.4,
+      "chips": 0.6,
+      "fadeRadius": 55,
+      "ceiling": 1
+    },
+    "backing": {
+      "type": "color",
+      "color": "#f6f2e6"
+    },
+    "preset": "p4"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

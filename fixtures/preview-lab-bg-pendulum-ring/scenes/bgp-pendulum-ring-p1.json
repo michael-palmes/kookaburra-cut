@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "name": "preset still for the \"pendulum-ring\" 3D background (\"Ellenborough\")",
+  "background": {
+    "type": "scene3d",
+    "look": "pendulum-ring",
+    "colors": ["#ae9676", "#dccbaa", "#a09a90", "#a9b0b5"],
+    "speed": 1,
+    "params": {
+      "count": 48,
+      "rows": 3,
+      "swing": 0.5,
+      "period": 480,
+      "radius": 11,
+      "epoch": 40
+    },
+    "backing": {
+      "type": "color",
+      "color": "#f5f3ee"
+    },
+    "preset": "p1"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 2, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": -8,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

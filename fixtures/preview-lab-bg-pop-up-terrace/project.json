@@ -1,0 +1,53 @@
+{
+  "id": "preview-lab-bg-pop-up-terrace",
+  "name": "Preview Lab — bg-pop-up-terrace (dev-only)",
+  "version": 2,
+  "themeId": "kookaburra-studio-white",
+  "formats": ["16:9"],
+  "scenes": [
+    {
+      "file": "scenes/bg-pop-up-terrace.tsx",
+      "durationMs": 2000
+    },
+    {
+      "file": "scenes/bg-pop-up-terrace-light.tsx",
+      "durationMs": 2000
+    },
+    {
+      "file": "scenes/bgp-pop-up-terrace-p1.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-pop-up-terrace-p2.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-pop-up-terrace-p3.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-pop-up-terrace-p4.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-pop-up-terrace-p5.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-pop-up-terrace-p6.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-pop-up-terrace-p7.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-pop-up-terrace-p8.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-pop-up-terrace-p9.tsx",
+      "durationMs": 1000
+    }
+  ]
+}

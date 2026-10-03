@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "name": "preset still for the \"riso-dunes\" 3D background (\"Teewah\")",
+  "background": {
+    "type": "scene3d",
+    "look": "riso-dunes",
+    "colors": ["#c9867a", "#e0bf78", "#f8f1e4"],
+    "speed": 0.9,
+    "params": {
+      "clearRadius": 7.5,
+      "inkReach": 14,
+      "duneHeight": 0.9,
+      "duneSpacing": 11,
+      "misregister": 0.2,
+      "grain": 0.75,
+      "drift": 0.06,
+      "sunSwing": 28
+    },
+    "backing": {
+      "type": "color",
+      "color": "#efe3cf"
+    },
+    "preset": "p3"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

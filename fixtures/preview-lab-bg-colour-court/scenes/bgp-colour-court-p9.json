@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "name": "preset still for the \"colour-court\" 3D background (\"Wrattonbully\")",
+  "background": {
+    "type": "scene3d",
+    "look": "colour-court",
+    "colors": ["#73404a", "#5e5a3e", "#3f5560", "#988e66"],
+    "speed": 1,
+    "params": {
+      "layoutSeed": 11,
+      "walls": 6,
+      "sunElevation": 30,
+      "sunSwing": 28,
+      "dayLength": 140,
+      "fields": 0.25,
+      "blade": 0.34
+    },
+    "backing": {
+      "type": "color",
+      "color": "#0f1212"
+    },
+    "preset": "p9"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

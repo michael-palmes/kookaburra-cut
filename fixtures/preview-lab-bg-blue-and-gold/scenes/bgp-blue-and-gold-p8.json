@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "name": "preset still for the \"blue-and-gold\" 3D background (\"Hay Plain\")",
+  "background": {
+    "type": "scene3d",
+    "look": "blue-and-gold",
+    "colors": ["#5e3d27", "#6f5140", "#2d2326", "#2a2436"],
+    "speed": 1.1,
+    "params": {
+      "density": 0.65,
+      "daubSize": 1.45,
+      "clearRadius": 8.5,
+      "wind": 2,
+      "cloudShadow": 0.8,
+      "boilFps": 0,
+      "ridgeHeight": 0.4
+    },
+    "backing": {
+      "type": "color",
+      "color": "#161218"
+    },
+    "preset": "p8"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "name": "preset still for the \"iris-screen\" 3D background (\"Porongurup\")",
+  "background": {
+    "type": "scene3d",
+    "look": "iris-screen",
+    "colors": ["#9d98a8", "#f3ead0", "#ddd6e2"],
+    "speed": 1.2,
+    "params": {
+      "radius": 14,
+      "panels": 44,
+      "cycle": 38,
+      "sunElevation": 14,
+      "pool": 0.8,
+      "clearRadius": 6
+    },
+    "backing": {
+      "type": "color",
+      "color": "#f5f3f7"
+    },
+    "preset": "p5"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

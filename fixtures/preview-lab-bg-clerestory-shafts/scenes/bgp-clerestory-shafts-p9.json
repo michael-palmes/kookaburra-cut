@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "name": "preset still for the \"clerestory-shafts\" 3D background (\"Natural Bridge\")",
+  "background": {
+    "type": "scene3d",
+    "look": "clerestory-shafts",
+    "colors": ["#4b6670", "#24323a", "#0e1418", "#74959b"],
+    "speed": 0.8,
+    "params": {
+      "shaftCount": 6,
+      "tilt": 14,
+      "sweep": 4,
+      "haze": 0.6,
+      "dust": 0.8,
+      "poolSoftness": 0.8
+    },
+    "backing": {
+      "type": "color",
+      "color": "#141c21"
+    },
+    "preset": "p9"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

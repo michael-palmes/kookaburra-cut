@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "name": "preset still for the \"skeleton-clockwork\" 3D background (\"Goolwa\")",
+  "background": {
+    "type": "scene3d",
+    "look": "skeleton-clockwork",
+    "colors": ["#98a9b1", "#ae9572", "#d2d9da", "#e5eae9"],
+    "speed": 1,
+    "params": {
+      "module": 0.36,
+      "rate": 0.6,
+      "planes": 2,
+      "ceiling": 4.4,
+      "frieze": 18,
+      "tick": 0,
+      "seed": 12
+    },
+    "backing": {
+      "type": "color",
+      "color": "#f3f6f6"
+    },
+    "preset": "p3"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 2, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": -8,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

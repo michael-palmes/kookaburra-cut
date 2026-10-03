@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "name": "preset still for the \"riso-dunes\" 3D background (\"Cape Flattery\")",
+  "background": {
+    "type": "scene3d",
+    "look": "riso-dunes",
+    "colors": ["#4f6275", "#2f5a5c", "#0f1a22"],
+    "speed": 1,
+    "params": {
+      "clearRadius": 8,
+      "inkReach": 16,
+      "duneHeight": 1.3,
+      "duneSpacing": 18,
+      "misregister": 0.14,
+      "grain": 0.7,
+      "drift": 0.055,
+      "sunSwing": 30
+    },
+    "backing": {
+      "type": "color",
+      "color": "#0c141b"
+    },
+    "preset": "p7"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "name": "preset still for the \"oculus-rotunda\" 3D background (\"Dales Gorge\")",
+  "background": {
+    "type": "scene3d",
+    "look": "oculus-rotunda",
+    "colors": ["#e6d6cc", "#aa9387", "#fff0dc"],
+    "speed": 1.1,
+    "params": {
+      "radius": 20,
+      "coffers": 24,
+      "discSize": 3.5,
+      "traverse": 75,
+      "maxElevation": 50,
+      "studs": 0
+    },
+    "backing": {
+      "type": "color",
+      "color": "#f6eee8"
+    },
+    "preset": "p2"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

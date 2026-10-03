@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "name": "preset still for the \"pop-up-terrace\" 3D background (\"Wapping\")",
+  "background": {
+    "type": "scene3d",
+    "look": "pop-up-terrace",
+    "colors": ["#4f6366", "#243236", "#0e1517"],
+    "speed": 1.1,
+    "params": {
+      "radius": 15,
+      "units": 16,
+      "height": 0.9,
+      "wavePeriod": 70,
+      "crests": 4,
+      "openHold": 0.2,
+      "sunAzimuth": 295,
+      "shadow": 0.7
+    },
+    "backing": {
+      "type": "color",
+      "color": "#141c1f"
+    },
+    "preset": "p8"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

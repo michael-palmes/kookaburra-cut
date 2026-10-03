@@ -1,0 +1,55 @@
+{
+  "version": 1,
+  "name": "3D background sample for \"colour-court\" (\"Parachilna\")",
+  "background": {
+    "type": "scene3d",
+    "look": "colour-court",
+    "colors": ["#7a3a4d", "#6e5429", "#4d4270", "#b08c5a"],
+    "speed": 1,
+    "params": {
+      "layoutSeed": 1,
+      "walls": 8,
+      "sunElevation": 34,
+      "sunSwing": 25,
+      "dayLength": 120,
+      "fields": 0.35,
+      "blade": 0.34
+    },
+    "backing": {
+      "type": "color",
+      "color": "#150f15"
+    },
+    "preset": "p6"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": -35,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      },
+      {
+        "id": "k2",
+        "tMs": 1900,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 35,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": [
+      {
+        "from": "k1",
+        "to": "k2",
+        "ease": "inOutCubic"
+      }
+    ]
+  }
+}

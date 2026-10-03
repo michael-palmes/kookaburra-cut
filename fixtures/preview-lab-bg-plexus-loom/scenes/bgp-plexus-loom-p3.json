@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "name": "preset still for the \"plexus-loom\" 3D background (\"Aireys Inlet\")",
+  "background": {
+    "type": "scene3d",
+    "look": "plexus-loom",
+    "colors": ["#c99a8f", "#d0ab86", "#a9a0b8", "#c48e7a"],
+    "speed": 1,
+    "params": {
+      "bundles": 30,
+      "hoopRadius": 15,
+      "twist": 90,
+      "breath": 14,
+      "spin": 1.2,
+      "opacity": 0.6
+    },
+    "backing": {
+      "type": "color",
+      "color": "#f8f3ef"
+    },
+    "preset": "p3"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "name": "preset still for the \"lily-pond\" 3D background (\"Fivebough\")",
+  "background": {
+    "type": "scene3d",
+    "look": "lily-pond",
+    "colors": ["#141220", "#463f63", "#33402f", "#775473"],
+    "speed": 1.1,
+    "params": {
+      "clearRadius": 6,
+      "padCount": 150,
+      "blossoms": 0.25,
+      "strokeScale": 0.8,
+      "ripples": 8,
+      "drift": 1.3
+    },
+    "backing": {
+      "type": "color",
+      "color": "#16141f"
+    },
+    "preset": "p8"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

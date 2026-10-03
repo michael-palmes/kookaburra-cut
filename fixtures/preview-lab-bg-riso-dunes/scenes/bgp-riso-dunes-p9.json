@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "name": "preset still for the \"riso-dunes\" 3D background (\"Shoalwater\")",
+  "background": {
+    "type": "scene3d",
+    "look": "riso-dunes",
+    "colors": ["#4c6189", "#6d4536", "#10151f"],
+    "speed": 1.1,
+    "params": {
+      "clearRadius": 7,
+      "inkReach": 13,
+      "duneHeight": 1,
+      "duneSpacing": 12,
+      "misregister": 0.18,
+      "grain": 0.6,
+      "drift": 0.08,
+      "sunSwing": 22
+    },
+    "backing": {
+      "type": "color",
+      "color": "#0e131c"
+    },
+    "preset": "p9"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "name": "preset still for the \"caustic-pool\" 3D background (\"Buley Rockhole\")",
+  "background": {
+    "type": "scene3d",
+    "look": "caustic-pool",
+    "colors": ["#aa9373", "#d9ccb4", "#f8f2e4"],
+    "speed": 1.1,
+    "params": {
+      "tile": 1,
+      "grout": 0.5,
+      "scale": 5,
+      "strength": 0.6,
+      "clearRadius": 5,
+      "loop": 180,
+      "surface": 0.6
+    },
+    "backing": {
+      "type": "color",
+      "color": "#e2d8c6"
+    },
+    "preset": "p3"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

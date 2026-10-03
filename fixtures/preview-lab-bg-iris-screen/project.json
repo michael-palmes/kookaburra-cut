@@ -1,0 +1,53 @@
+{
+  "id": "preview-lab-bg-iris-screen",
+  "name": "Preview Lab — bg-iris-screen (dev-only)",
+  "version": 2,
+  "themeId": "kookaburra-studio-white",
+  "formats": ["16:9"],
+  "scenes": [
+    {
+      "file": "scenes/bg-iris-screen.tsx",
+      "durationMs": 2000
+    },
+    {
+      "file": "scenes/bg-iris-screen-light.tsx",
+      "durationMs": 2000
+    },
+    {
+      "file": "scenes/bgp-iris-screen-p1.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-iris-screen-p2.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-iris-screen-p3.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-iris-screen-p4.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-iris-screen-p5.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-iris-screen-p6.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-iris-screen-p7.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-iris-screen-p8.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-iris-screen-p9.tsx",
+      "durationMs": 1000
+    }
+  ]
+}

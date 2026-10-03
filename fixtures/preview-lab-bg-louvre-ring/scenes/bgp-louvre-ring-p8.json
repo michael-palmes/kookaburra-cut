@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "name": "preset still for the \"louvre-ring\" 3D background (\"Bloodwood\")",
+  "background": {
+    "type": "scene3d",
+    "look": "louvre-ring",
+    "colors": ["#2f2224", "#744d44", "#3b2e2e"],
+    "speed": 1.1,
+    "params": {
+      "count": 140,
+      "radius": 13,
+      "height": 8.5,
+      "period": 42,
+      "front": 0.25,
+      "rows": 1
+    },
+    "backing": {
+      "type": "color",
+      "color": "#130d0e"
+    },
+    "preset": "p8"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

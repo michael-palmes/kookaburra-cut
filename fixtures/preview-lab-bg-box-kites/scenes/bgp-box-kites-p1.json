@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "name": "preset still for the \"box-kites\" 3D background (\"Coolibah\")",
+  "background": {
+    "type": "scene3d",
+    "look": "box-kites",
+    "colors": ["#d8c6a6", "#a4b3b9", "#a5988e", "#d4a870"],
+    "speed": 1,
+    "params": {
+      "lines": 8,
+      "train": 3,
+      "height": 1,
+      "size": 3,
+      "veer": 13,
+      "figure": 1,
+      "reflect": 0.24
+    },
+    "backing": {
+      "type": "color",
+      "color": "#f4f1ec"
+    },
+    "preset": "p1"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 2, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": -8,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

@@ -1,15 +1,26 @@
 import { invoke } from "@tauri-apps/api/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useClockStore } from "./clock";
-import { canvasCommittedClockMs, canvasCommittedProject, canvasHandle } from "./exportBridge";
+import {
+  canvasCommittedClockMs,
+  canvasCommittedProject,
+  canvasContextLosses,
+  canvasHandle,
+} from "./exportBridge";
 import { setExporting } from "./exportState";
-import { canCaptureSnapshot, captureSnapshot } from "./snapshots";
+import {
+  canCaptureSnapshot,
+  captureFrameAt,
+  captureSnapshot,
+  withBorrowedClock,
+} from "./snapshots";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("./exportBridge", () => ({
   canvasHandle: { current: {} },
   canvasCommittedClockMs: vi.fn(() => 0),
   canvasCommittedProject: vi.fn(() => null),
+  canvasContextLosses: vi.fn(() => 0),
   setCapturingPreview: vi.fn(),
 }));
 vi.mock("./exporter", () => ({ awaitTextSync: vi.fn(async () => {}) }));
@@ -28,6 +39,7 @@ beforeEach(() => {
   setExporting(false);
   useClockStore.getState().setCurrentMs(1500);
   vi.mocked(canvasCommittedProject).mockReturnValue(null);
+  vi.mocked(canvasContextLosses).mockReturnValue(0);
 });
 
 afterEach(() => {
@@ -53,7 +65,15 @@ describe("snapshot destinations", () => {
     }
   });
 
-  function prepareCapture(beforeEncoded?: () => void) {
+  /** A drawn frame: every pixel opaque, as a scene's background clear leaves it. */
+  const drawn = (buffer: Uint8Array) => {
+    for (let i = 3; i < buffer.length; i += 4) buffer[i] = 255;
+  };
+
+  function prepareCapture(
+    beforeEncoded?: () => void,
+    gpu: { read?: (buffer: Uint8Array) => void; lost?: boolean } = {},
+  ) {
     vi.useFakeTimers();
     const project = { id: "ws:demo", totalMs: 2000 } as import("./project").LoadedProject;
     vi.mocked(canvasCommittedProject).mockReturnValue(project);
@@ -62,13 +82,21 @@ describe("snapshot destinations", () => {
     canvasHandle.current = {
       advance: vi.fn(),
       scene: {},
-      gl: { domElement: { width: 1280, height: 720 } },
+      gl: {
+        getContext: () => ({
+          drawingBufferWidth: 64,
+          drawingBufferHeight: 36,
+          isContextLost: () => gpu.lost ?? false,
+          readPixels: (...args: unknown[]) => (gpu.read ?? drawn)(args[6] as Uint8Array),
+        }),
+      },
     } as unknown as NonNullable<typeof canvasHandle.current>;
+    vi.stubGlobal("ImageData", class {});
     vi.stubGlobal("document", {
       createElement: () => ({
         width: 0,
         height: 0,
-        getContext: () => ({ drawImage: vi.fn() }),
+        getContext: () => ({ putImageData: vi.fn() }),
         toBlob: (ready: (blob: { arrayBuffer: () => Promise<ArrayBufferLike> }) => void) =>
           ready({
             arrayBuffer: async () => {
@@ -119,6 +147,40 @@ describe("snapshot destinations", () => {
     await vi.runAllTimersAsync();
     expect(await result).toBe(false);
     expect(invoke).not.toHaveBeenCalled();
+  });
+
+  it("never encodes the all-zero buffer a timed-out readPixels leaves (the black chart cards)", async () => {
+    const { project } = prepareCapture(undefined, { read: () => {} });
+    const result = captureSnapshot(project);
+    await vi.runAllTimersAsync();
+    expect(await result).toBe(false);
+    expect(invoke).not.toHaveBeenCalled();
+  });
+
+  it("fails a batch capture loudly instead of returning a blank frame", async () => {
+    prepareCapture(undefined, { read: () => {} });
+    const result = withBorrowedClock(() => captureFrameAt(500, 32, "jpeg")).catch(String);
+    await vi.runAllTimersAsync();
+    expect(await result).toMatch(/preview capture 64x36\): readPixels returned an all-zero frame/);
+  });
+
+  it("refuses a frame read from a lost context", async () => {
+    prepareCapture(undefined, { lost: true });
+    const result = withBorrowedClock(() => captureFrameAt(500, 32, "jpeg")).catch(String);
+    await vi.runAllTimersAsync();
+    expect(await result).toMatch(/WebGL context was lost/);
+  });
+
+  it("refuses a frame rendered after a context loss and restore inside the borrow", async () => {
+    prepareCapture(undefined, {
+      read: (buffer) => {
+        drawn(buffer);
+        vi.mocked(canvasContextLosses).mockReturnValue(1);
+      },
+    });
+    const result = withBorrowedClock(() => captureFrameAt(500, 32, "jpeg")).catch(String);
+    await vi.runAllTimersAsync();
+    expect(await result).toMatch(/WebGL context was lost/);
   });
 
   it("does not publish another project's poster after navigation during encoding", async () => {

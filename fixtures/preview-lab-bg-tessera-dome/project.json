@@ -1,0 +1,53 @@
+{
+  "id": "preview-lab-bg-tessera-dome",
+  "name": "Preview Lab — bg-tessera-dome (dev-only)",
+  "version": 2,
+  "themeId": "kookaburra-studio-white",
+  "formats": ["16:9"],
+  "scenes": [
+    {
+      "file": "scenes/bg-tessera-dome.tsx",
+      "durationMs": 2000
+    },
+    {
+      "file": "scenes/bg-tessera-dome-light.tsx",
+      "durationMs": 2000
+    },
+    {
+      "file": "scenes/bgp-tessera-dome-p1.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-tessera-dome-p2.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-tessera-dome-p3.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-tessera-dome-p4.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-tessera-dome-p5.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-tessera-dome-p6.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-tessera-dome-p7.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-tessera-dome-p8.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-tessera-dome-p9.tsx",
+      "durationMs": 1000
+    }
+  ]
+}

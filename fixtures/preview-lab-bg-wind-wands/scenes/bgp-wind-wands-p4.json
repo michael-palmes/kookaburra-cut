@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "name": "preset still for the \"wind-wands\" 3D background (\"Horseshoe Bend\")",
+  "background": {
+    "type": "scene3d",
+    "look": "wind-wands",
+    "colors": ["#bd8f7d", "#dcae86", "#ead9cd"],
+    "speed": 1.1,
+    "params": {
+      "count": 96,
+      "inner": 18,
+      "height": 1,
+      "lean": 0.14,
+      "sway": 0.06,
+      "gust": 14,
+      "haze": 9
+    },
+    "backing": {
+      "type": "color",
+      "color": "#f9f1ec"
+    },
+    "preset": "p4"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

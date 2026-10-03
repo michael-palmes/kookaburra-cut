@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "name": "preset still for the \"paper-theatre\" 3D background (\"Schouten Island\")",
+  "background": {
+    "type": "scene3d",
+    "look": "paper-theatre",
+    "colors": ["#a3929e", "#c2b4bc", "#ddd2d6", "#ecc29b"],
+    "speed": 0.85,
+    "params": {
+      "rings": 5,
+      "flatHeight": 1.4,
+      "treeDensity": 1,
+      "rock": 2.4,
+      "shadow": 0.5,
+      "cloudSpeed": 0.9,
+      "stopMotion": 6
+    },
+    "backing": {
+      "type": "color",
+      "color": "#f7f1f0"
+    },
+    "preset": "p5"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

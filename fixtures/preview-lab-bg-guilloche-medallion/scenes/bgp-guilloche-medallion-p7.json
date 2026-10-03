@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "name": "preset still for the \"guilloche-medallion\" 3D background (\"Steiglitz\")",
+  "background": {
+    "type": "scene3d",
+    "look": "guilloche-medallion",
+    "colors": ["#3f605c", "#5d5a43", "#121a19"],
+    "speed": 1,
+    "params": {
+      "outerRadius": 34,
+      "ceilingHeight": 5.5,
+      "strands": 10,
+      "lineWidth": 0.06,
+      "weave": 1.2,
+      "sheen": 1.2,
+      "underprint": 0.5
+    },
+    "backing": {
+      "type": "color",
+      "color": "#0b1211"
+    },
+    "preset": "p7"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

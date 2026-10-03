@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "name": "preset still for the \"seigaiha-tide\" 3D background (\"Hanson Bay\")",
+  "background": {
+    "type": "scene3d",
+    "look": "seigaiha-tide",
+    "colors": ["#1a2b2a", "#2e4140", "#473d2d", "#51655f"],
+    "speed": 1.1,
+    "params": {
+      "fans": 11,
+      "rings": 4,
+      "clearRadius": 3.5,
+      "swell": 0.5,
+      "swellSpeed": 1.4,
+      "ripple": 0.5,
+      "mist": 8
+    },
+    "backing": {
+      "type": "color",
+      "color": "#0f1a19"
+    },
+    "preset": "p9"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

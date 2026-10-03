@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "name": "preset still for the \"mezzotint-sky\" 3D background (\"Emily Gap\")",
+  "background": {
+    "type": "scene3d",
+    "look": "mezzotint-sky",
+    "colors": ["#b39089", "#f7ede6"],
+    "speed": 1.1,
+    "params": {
+      "grain": 6,
+      "cloud": 0.55,
+      "glow": 0.75,
+      "cap": 0.85,
+      "drift": 240,
+      "relief": 1.15,
+      "mist": 0.45
+    },
+    "backing": {
+      "type": "color",
+      "color": "#dcc9c2"
+    },
+    "preset": "p4"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 2, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": -8,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "name": "preset still for the \"sand-table\" 3D background (\"Wilson Island\")",
+  "background": {
+    "type": "scene3d",
+    "look": "sand-table",
+    "colors": ["#e6d3a8", "#ab9564", "#f3e6c6", "#9ea2a6"],
+    "speed": 0.8,
+    "params": {
+      "clearRadius": 8.5,
+      "reach": 34,
+      "petals": 37,
+      "grooves": 8,
+      "memory": 1800,
+      "sunSwing": 30,
+      "sunHeight": 30,
+      "rise": 6
+    },
+    "backing": {
+      "type": "color",
+      "color": "#f8f2e2"
+    },
+    "preset": "p5"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0, 0],
+          "azimuthDeg": 14,
+          "elevationDeg": 16,
+          "distance": 6.5
+        }
+      }
+    ],
+    "segments": []
+  }
+}

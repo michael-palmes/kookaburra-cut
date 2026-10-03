@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "name": "preset still for the \"sand-table\" 3D background (\"Three Hummock\")",
+  "background": {
+    "type": "scene3d",
+    "look": "sand-table",
+    "colors": ["#232820", "#121510", "#56614e", "#5a5650"],
+    "speed": 0.9,
+    "params": {
+      "clearRadius": 7,
+      "reach": 27,
+      "petals": 17,
+      "grooves": 7,
+      "memory": 1700,
+      "sunSwing": 35,
+      "sunHeight": 28,
+      "rise": 4.4
+    },
+    "backing": {
+      "type": "color",
+      "color": "#0e110d"
+    },
+    "preset": "p8"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0, 0],
+          "azimuthDeg": 14,
+          "elevationDeg": 16,
+          "distance": 6.5
+        }
+      }
+    ],
+    "segments": []
+  }
+}

@@ -1,0 +1,53 @@
+{
+  "id": "preview-lab-bg-long-exposure",
+  "name": "Preview Lab — bg-long-exposure (dev-only)",
+  "version": 2,
+  "themeId": "kookaburra-studio-white",
+  "formats": ["16:9"],
+  "scenes": [
+    {
+      "file": "scenes/bg-long-exposure.tsx",
+      "durationMs": 2000
+    },
+    {
+      "file": "scenes/bg-long-exposure-light.tsx",
+      "durationMs": 2000
+    },
+    {
+      "file": "scenes/bgp-long-exposure-p1.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-long-exposure-p2.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-long-exposure-p3.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-long-exposure-p4.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-long-exposure-p5.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-long-exposure-p6.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-long-exposure-p7.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-long-exposure-p8.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-long-exposure-p9.tsx",
+      "durationMs": 1000
+    }
+  ]
+}

@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "name": "preset still for the \"blue-and-gold\" 3D background (\"Canowindra\")",
+  "background": {
+    "type": "scene3d",
+    "look": "blue-and-gold",
+    "colors": ["#c8c98e", "#eaeccb", "#a4aab5", "#899dbc"],
+    "speed": 1,
+    "params": {
+      "density": 1.1,
+      "daubSize": 1.05,
+      "clearRadius": 7,
+      "wind": 1.2,
+      "cloudShadow": 0.65,
+      "boilFps": 0,
+      "ridgeHeight": 1.2
+    },
+    "backing": {
+      "type": "color",
+      "color": "#f4f6ee"
+    },
+    "preset": "p4"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

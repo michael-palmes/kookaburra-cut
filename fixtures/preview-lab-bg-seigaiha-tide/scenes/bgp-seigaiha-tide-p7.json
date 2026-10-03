@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "name": "preset still for the \"seigaiha-tide\" 3D background (\"Rapid Bay\")",
+  "background": {
+    "type": "scene3d",
+    "look": "seigaiha-tide",
+    "colors": ["#11292f", "#234249", "#4b3b2c", "#4a6669"],
+    "speed": 1,
+    "params": {
+      "fans": 13,
+      "rings": 5,
+      "clearRadius": 2.5,
+      "swell": 0.6,
+      "swellSpeed": 1.2,
+      "ripple": 0.42,
+      "mist": 6.5
+    },
+    "backing": {
+      "type": "color",
+      "color": "#0a1618"
+    },
+    "preset": "p7"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

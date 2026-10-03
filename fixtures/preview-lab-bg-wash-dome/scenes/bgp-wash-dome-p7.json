@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "name": "preset still for the \"wash-dome\" 3D background (\"Montague\")",
+  "background": {
+    "type": "scene3d",
+    "look": "wash-dome",
+    "colors": ["#28434a", "#0f1c20", "#6a5f43"],
+    "speed": 0.9,
+    "params": {
+      "coverage": 0.25,
+      "calmHeight": 10,
+      "edge": 0.9,
+      "granulation": 0.3,
+      "streak": 0.6,
+      "wind": 0.7,
+      "blooms": 3
+    },
+    "backing": {
+      "type": "color",
+      "color": "#16262b"
+    },
+    "preset": "p7"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

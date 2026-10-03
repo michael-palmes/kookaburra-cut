@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "name": "preset still for the \"wash-dome\" 3D background (\"Southerly Buster\")",
+  "background": {
+    "type": "scene3d",
+    "look": "wash-dome",
+    "colors": ["#30355a", "#141527", "#785a50"],
+    "speed": 1,
+    "params": {
+      "coverage": 0.35,
+      "calmHeight": 9,
+      "edge": 0.8,
+      "granulation": 0.4,
+      "streak": 0.35,
+      "wind": 1,
+      "blooms": 5
+    },
+    "backing": {
+      "type": "color",
+      "color": "#1d2238"
+    },
+    "preset": "p6"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

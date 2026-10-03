@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "name": "preset still for the \"pop-up-terrace\" 3D background (\"Trevallyn\")",
+  "background": {
+    "type": "scene3d",
+    "look": "pop-up-terrace",
+    "colors": ["#eff0e6", "#aab09a", "#969a84"],
+    "speed": 1,
+    "params": {
+      "radius": 16,
+      "units": 18,
+      "height": 0.8,
+      "wavePeriod": 120,
+      "crests": 4,
+      "openHold": 0.3,
+      "sunAzimuth": 300,
+      "shadow": 0.75
+    },
+    "backing": {
+      "type": "color",
+      "color": "#d3d6c8"
+    },
+    "preset": "p4"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

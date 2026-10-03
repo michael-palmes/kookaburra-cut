@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "name": "preset still for the \"shylight-blooms\" 3D background (\"Lady Musgrave\")",
+  "background": {
+    "type": "scene3d",
+    "look": "shylight-blooms",
+    "colors": ["#ebe8f2", "#aeaabd", "#e4c3a6", "#9c9cad"],
+    "speed": 1.1,
+    "params": {
+      "count": 24,
+      "radius": 14.5,
+      "openHeight": 5.1,
+      "drop": 4.2,
+      "size": 0.85,
+      "cycle": 60,
+      "cables": 0.6,
+      "pools": 0.2
+    },
+    "backing": {
+      "type": "color",
+      "color": "#f5f4f9"
+    },
+    "preset": "p4"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 2, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": -8,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

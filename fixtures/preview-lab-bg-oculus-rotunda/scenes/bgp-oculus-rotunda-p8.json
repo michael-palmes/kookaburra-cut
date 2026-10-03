@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "name": "preset still for the \"oculus-rotunda\" 3D background (\"Geikie Gorge\")",
+  "background": {
+    "type": "scene3d",
+    "look": "oculus-rotunda",
+    "colors": ["#4f463f", "#17120f", "#937048"],
+    "speed": 0.9,
+    "params": {
+      "radius": 26,
+      "coffers": 32,
+      "discSize": 2.8,
+      "traverse": 120,
+      "maxElevation": 55,
+      "studs": 1
+    },
+    "backing": {
+      "type": "color",
+      "color": "#0a0807"
+    },
+    "preset": "p8"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "name": "preset still for the \"iris-screen\" 3D background (\"Greens Pool\")",
+  "background": {
+    "type": "scene3d",
+    "look": "iris-screen",
+    "colors": ["#8a9d9a", "#e4f0e8", "#cfe3dc"],
+    "speed": 0.9,
+    "params": {
+      "radius": 17,
+      "panels": 48,
+      "cycle": 26,
+      "sunElevation": 28,
+      "pool": 0.5,
+      "clearRadius": 6.5
+    },
+    "backing": {
+      "type": "color",
+      "color": "#f1f7f4"
+    },
+    "preset": "p2"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

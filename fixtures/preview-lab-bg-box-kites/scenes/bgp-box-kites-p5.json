@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "name": "preset still for the \"box-kites\" 3D background (\"Undoolya\")",
+  "background": {
+    "type": "scene3d",
+    "look": "box-kites",
+    "colors": ["#dcc4b8", "#b4a5b8", "#a59392", "#d6a07e"],
+    "speed": 1,
+    "params": {
+      "lines": 12,
+      "train": 2,
+      "height": 1.1,
+      "size": 2.4,
+      "veer": 15,
+      "figure": 1.5,
+      "reflect": 0.22
+    },
+    "backing": {
+      "type": "color",
+      "color": "#f7f0ee"
+    },
+    "preset": "p5"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 2, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": -8,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

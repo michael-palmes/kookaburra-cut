@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "name": "preset still for the \"engraved-hills\" 3D background (\"Cobungra\")",
+  "background": {
+    "type": "scene3d",
+    "look": "engraved-hills",
+    "colors": ["#655a62", "#4a424a", "#46404c"],
+    "speed": 1,
+    "params": {
+      "rangeHeight": 1.4,
+      "pitch": 12,
+      "swell": 1.2,
+      "crossHatch": 1,
+      "sunSwing": 75,
+      "clouds": 0.6
+    },
+    "backing": {
+      "type": "color",
+      "color": "#110e11"
+    },
+    "preset": "p9"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

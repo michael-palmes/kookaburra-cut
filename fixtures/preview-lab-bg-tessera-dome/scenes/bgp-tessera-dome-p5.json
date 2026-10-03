@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "name": "preset still for the \"tessera-dome\" 3D background (\"Beltana\")",
+  "background": {
+    "type": "scene3d",
+    "look": "tessera-dome",
+    "colors": ["#c6c59a", "#98987e", "#f1f0d8"],
+    "speed": 1.1,
+    "params": {
+      "rimRadius": 30,
+      "rise": 26,
+      "tileSize": 0.9,
+      "tilt": 4,
+      "glint": 0.9,
+      "glintPeriod": 45,
+      "rimFade": 4
+    },
+    "backing": {
+      "type": "color",
+      "color": "#eff0e2"
+    },
+    "preset": "p5"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 2, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": -8,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

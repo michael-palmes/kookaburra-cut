@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "name": "preset still for the \"wind-wands\" 3D background (\"Ellery Creek\")",
+  "background": {
+    "type": "scene3d",
+    "look": "wind-wands",
+    "colors": ["#9c9a86", "#d6c08f", "#e2e0d2"],
+    "speed": 0.9,
+    "params": {
+      "count": 110,
+      "inner": 16,
+      "height": 0.85,
+      "lean": 0.06,
+      "sway": 0.05,
+      "gust": 18,
+      "haze": 9
+    },
+    "backing": {
+      "type": "color",
+      "color": "#f4f4ee"
+    },
+    "preset": "p2"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "name": "preset still for the \"shadow-lace\" 3D background (\"Weld Valley\")",
+  "background": {
+    "type": "scene3d",
+    "look": "shadow-lace",
+    "colors": ["#0a0e16", "#3d4f63", "#8d8e9c"],
+    "speed": 1,
+    "params": {
+      "density": 1.1,
+      "plantHeight": 1,
+      "sway": 2,
+      "stepFps": 10,
+      "farTint": 0.45,
+      "lampAzimuth": -40,
+      "grain": 0.4
+    },
+    "backing": {
+      "type": "color",
+      "color": "#1b2233"
+    },
+    "preset": "p9"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

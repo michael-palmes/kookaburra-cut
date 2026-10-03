@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "name": "preset still for the \"lily-pond\" 3D background (\"Gwydir Wetlands\")",
+  "background": {
+    "type": "scene3d",
+    "look": "lily-pond",
+    "colors": ["#11160f", "#3d4e43", "#2f4329", "#765c3d"],
+    "speed": 0.9,
+    "params": {
+      "clearRadius": 8,
+      "padCount": 300,
+      "blossoms": 0.08,
+      "strokeScale": 1.3,
+      "ripples": 4,
+      "drift": 0.7
+    },
+    "backing": {
+      "type": "color",
+      "color": "#121812"
+    },
+    "preset": "p7"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

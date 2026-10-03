@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "name": "preset still for the \"seigaiha-tide\" 3D background (\"Waitpinga\")",
+  "background": {
+    "type": "scene3d",
+    "look": "seigaiha-tide",
+    "colors": ["#799da7", "#a7c3c6", "#e7d3b2", "#f2f3ec"],
+    "speed": 1,
+    "params": {
+      "fans": 14,
+      "rings": 5,
+      "clearRadius": 2.5,
+      "swell": 0.65,
+      "swellSpeed": 1.3,
+      "ripple": 0.45,
+      "mist": 6
+    },
+    "backing": {
+      "type": "color",
+      "color": "#eef0e8"
+    },
+    "preset": "p2"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

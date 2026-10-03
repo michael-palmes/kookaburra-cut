@@ -78,10 +78,30 @@ rigs. The contract on every look:
   `userData.kookaburraBg3d`.
 - **`backing` nests any 2D background** (colour, gradient, image, video in scene docs, or an
   animated shader) drawn camera-locked behind the geometry; another `scene3d` is rejected.
+  Looks receive it as one hex (the `backing` prop, `scene3d/backing.ts`) and mix their
+  distance fades toward it.
   Presets stamp a flat backing colour and follow the same 9-preset structure, bands and AA
   rules as the shader packs, applied to every geometry colour AND the backing
   (`scene3d/presets.test.ts`). Preview fixtures live in the look's own
-  `fixtures/preview-lab-bg-<look>/` project like every background.
+  `fixtures/preview-lab-bg-<look>/` project like every background, written from preset data
+  by `node scripts/gen-bg3d-preview-labs.ts <look-id>`.
+- **Glow slots.** A colour slot flagged `glow: true` marks small emissive areas (lamps, neon,
+  lit windows) and may reach relative luminance **0.30** in dark presets, about 3:1 against
+  white text. Keep glow areas small and out of the text band (the headline zone above and
+  around the stage) so no glyph sits on them; at most 2 glow slots per look, light presets
+  keep the normal band, and the backing is never a glow slot. Glow slots skip the AA check in
+  dark presets and dark themes, and nothing else changes.
+- **One folder per new look.** `looks/<id>/index.ts` exports `look` (the def, `id` equal to the
+  folder name, with a `family`) and `presets` (p1 to p9); discovery merges it after the
+  built-in ten with no registration. Params clamp to each def's min and max at resolve time.
+  A preset may carry a companion `lighting` block (static v9 scene-layer fields only) that
+  must parse through `normalizeLighting` unchanged. The 3D panel's Matching lighting toggle
+  (off by default) writes it into the scene's `lighting` with a `companion` record of what it
+  wrote and replaced: off restores only unedited writes, and it follows preset and look changes
+  (`src/ui/inspector/companionLightingModel.ts`).
+- **Theme tile floor.** Light Theme-tile anchors (`p1`) need stops at or above 0.315 to hold
+  AA against Sunrise's text token (`#3a2e35`); `scene3d/themePreset.test.ts` checks every
+  bundled theme.
 
 ## Themes
 
@@ -96,6 +116,12 @@ rigs. The contract on every look:
 
 - `src/toolkit/stage/shaders/presets.test.ts` enforces counts, ordering, the luminance bands,
   AA contrast, the fallback pin and param bounds.
+- `src/toolkit/stage/scene3d/` tests do the same for 3D looks (`presets.test.ts`: bands with
+  the glow exemption, the glow cap, colour count and hex format, companion lighting;
+  `registry.test.ts`: discovery, families, param bounds; `themePreset.test.ts`: the Theme tile
+  against every bundled theme).
+- `src/theme/backgroundContrast.test.ts`: a bundled theme that uses a procedural background
+  copies one of its presets exactly. Every shader appears in a theme; 3D looks need not.
 - `src/engine/optionPreviews.test.ts` pins the `bgp-*` preview-lab fixtures to the preset data;
   fixtures and presets must change together.
 - After changing preset data: regenerate the committed picker thumbnails with

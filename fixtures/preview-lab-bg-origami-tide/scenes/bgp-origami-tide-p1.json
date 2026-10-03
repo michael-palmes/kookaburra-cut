@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "name": "preset still for the \"origami-tide\" 3D background (\"Lake Gairdner\")",
+  "background": {
+    "type": "scene3d",
+    "look": "origami-tide",
+    "colors": ["#e9e4da", "#a0988a"],
+    "speed": 1,
+    "params": {
+      "radius": 13,
+      "top": 6.8,
+      "fold": 0.8,
+      "pleat": 0.85,
+      "period": 120,
+      "sway": 30
+    },
+    "backing": {
+      "type": "color",
+      "color": "#f5f3ee"
+    },
+    "preset": "p1"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

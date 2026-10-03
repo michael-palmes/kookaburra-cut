@@ -1,0 +1,55 @@
+{
+  "version": 1,
+  "name": "3D background sample for \"seigaiha-tide\" (\"Coorong\")",
+  "background": {
+    "type": "scene3d",
+    "look": "seigaiha-tide",
+    "colors": ["#16263d", "#2c3f55", "#4a3530", "#4f6377"],
+    "speed": 1,
+    "params": {
+      "fans": 10,
+      "rings": 4,
+      "clearRadius": 3,
+      "swell": 0.45,
+      "swellSpeed": 1,
+      "ripple": 0.34,
+      "mist": 7.5
+    },
+    "backing": {
+      "type": "color",
+      "color": "#0d1522"
+    },
+    "preset": "p6"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": -35,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      },
+      {
+        "id": "k2",
+        "tMs": 1900,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 35,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": [
+      {
+        "from": "k1",
+        "to": "k2",
+        "ease": "inOutCubic"
+      }
+    ]
+  }
+}

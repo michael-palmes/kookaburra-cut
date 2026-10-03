@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "name": "preset still for the \"plexus-loom\" 3D background (\"Tidal River\")",
+  "background": {
+    "type": "scene3d",
+    "look": "plexus-loom",
+    "colors": ["#6a4c3a", "#5c4b62", "#4f5a5e", "#bd885c"],
+    "speed": 0.9,
+    "params": {
+      "bundles": 28,
+      "hoopRadius": 15,
+      "twist": 92,
+      "breath": 15,
+      "spin": 1.3,
+      "opacity": 0.65
+    },
+    "backing": {
+      "type": "color",
+      "color": "#110d0b"
+    },
+    "preset": "p8"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

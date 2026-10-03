@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "name": "preset still for the \"oculus-rotunda\" 3D background (\"Fern Pool\")",
+  "background": {
+    "type": "scene3d",
+    "look": "oculus-rotunda",
+    "colors": ["#dde0d6", "#96a092", "#f8f2d6"],
+    "speed": 1.2,
+    "params": {
+      "radius": 18,
+      "coffers": 20,
+      "discSize": 3.2,
+      "traverse": 60,
+      "maxElevation": 48,
+      "studs": 0
+    },
+    "backing": {
+      "type": "color",
+      "color": "#f2f4ee"
+    },
+    "preset": "p4"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "name": "preset still for the \"engraved-hills\" 3D background (\"Wonnangatta\")",
+  "background": {
+    "type": "scene3d",
+    "look": "engraved-hills",
+    "colors": ["#575f6a", "#40464f", "#3f4552"],
+    "speed": 1,
+    "params": {
+      "rangeHeight": 1.2,
+      "pitch": 8,
+      "swell": 1.1,
+      "crossHatch": 0.8,
+      "sunSwing": 60,
+      "clouds": 0.8
+    },
+    "backing": {
+      "type": "color",
+      "color": "#0e1014"
+    },
+    "preset": "p7"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

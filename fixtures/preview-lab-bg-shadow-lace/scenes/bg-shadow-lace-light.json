@@ -1,0 +1,55 @@
+{
+  "version": 1,
+  "name": "light-mode 3D background sample for \"shadow-lace\" (\"Leatherwood\")",
+  "background": {
+    "type": "scene3d",
+    "look": "shadow-lace",
+    "colors": ["#a395a8", "#f7f0e4", "#f1d49f"],
+    "speed": 1,
+    "params": {
+      "density": 1,
+      "plantHeight": 1,
+      "sway": 2,
+      "stepFps": 10,
+      "farTint": 0.4,
+      "lampAzimuth": 36,
+      "grain": 0.35
+    },
+    "backing": {
+      "type": "color",
+      "color": "#e6d0d2"
+    },
+    "preset": "p1"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": -35,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      },
+      {
+        "id": "k2",
+        "tMs": 1900,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 35,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": [
+      {
+        "from": "k1",
+        "to": "k2",
+        "ease": "inOutCubic"
+      }
+    ]
+  }
+}

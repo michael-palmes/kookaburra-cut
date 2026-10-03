@@ -4,10 +4,12 @@ import { useTheme } from "../../../theme";
 import type { ThemeBackground } from "../../../theme/tokens";
 import { SCENE3D_RENDER_ORDER } from "../fixedMath";
 import { deriveThemeColorsFromAnchor } from "../shaders/themePreset";
+import { resolveScene3dBackingTone } from "./backing";
 import { SCENE3D_BACKGROUNDS } from "./index";
+import { resolveScene3dParams } from "./params";
 import { scene3dThemeAnchor } from "./presets";
 
-/** World-space 3D background mount: resolves geometry colours (theme-derived, explicit, or slot fallbacks) and params, then renders the look inside the scene's identity group so it parallaxes with camera rigs. The nested `backing` 2D fill is mounted by FixedBackdrop's scene3d case, not here. Unknown look ids degrade to nothing (the parser is schema-light by design). */
+/** World-space 3D background mount: resolves geometry colours (theme-derived, explicit, or slot fallbacks), params clamped to the def's bounds and the backing's one-hex tone, then renders the look inside the scene's identity group so it parallaxes with camera rigs. The nested `backing` 2D fill is mounted by FixedBackdrop's scene3d case, not here. Unknown look ids degrade to nothing (the parser is schema-light by design). */
 export function Scene3dBackdrop({ spec }: { spec: Extract<ThemeBackground, { type: "scene3d" }> }) {
   const theme = useTheme();
   const rootRef = useRef<Group>(null);
@@ -29,13 +31,11 @@ export function Scene3dBackdrop({ spec }: { spec: Extract<ThemeBackground, { typ
   const colors = def.colorSlots.map(
     (slot, i) => (themeDerived ?? spec.colors)?.[i] ?? slot.fallback,
   );
-  const params: Record<string, number> = {};
-  for (const [key, p] of Object.entries(def.params)) {
-    params[key] = spec.params?.[key] ?? p.default;
-  }
+  const params = resolveScene3dParams(def.params, spec.params);
+  const backing = resolveScene3dBackingTone(spec.backing, theme);
   return (
     <group ref={rootRef}>
-      <def.Component colors={colors} params={params} speed={spec.speed ?? 1} />
+      <def.Component colors={colors} params={params} speed={spec.speed ?? 1} backing={backing} />
     </group>
   );
 }

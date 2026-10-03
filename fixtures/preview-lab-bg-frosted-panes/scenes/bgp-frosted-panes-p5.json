@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "name": "preset still for the \"frosted-panes\" 3D background (\"Eumundi\")",
+  "background": {
+    "type": "scene3d",
+    "look": "frosted-panes",
+    "colors": ["#e0d4cc", "#ac9388", "#f8e1c6", "#fff7ea"],
+    "speed": 1,
+    "params": {
+      "paneCount": 30,
+      "ringRadius": 11.5,
+      "lampCount": 7,
+      "bloom": 0.6,
+      "frost": 0.45,
+      "rain": 0
+    },
+    "backing": {
+      "type": "color",
+      "color": "#c9b8ae"
+    },
+    "preset": "p5"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

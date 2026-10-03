@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "name": "preset still for the \"hiroshige-rain\" 3D background (\"Walhalla\")",
+  "background": {
+    "type": "scene3d",
+    "look": "hiroshige-rain",
+    "colors": ["#5a5a72", "#3f3f55", "#4e4e66"],
+    "speed": 1,
+    "params": {
+      "density": 1.1,
+      "fall": 0.7,
+      "nearSlant": -4,
+      "farSlant": 16,
+      "puddles": 0.6,
+      "horizon": 0.8
+    },
+    "backing": {
+      "type": "color",
+      "color": "#0f0f16"
+    },
+    "preset": "p9"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

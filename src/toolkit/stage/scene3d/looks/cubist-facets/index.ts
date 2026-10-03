@@ -1,0 +1,182 @@
+import type { Scene3dBackgroundDef, Scene3dBackgroundPreset } from "../../types";
+import { CubistFacets } from "./CubistFacets";
+
+/** Cubist facets (art history): Analytic Cubism's scaffold of folded planes as a relief wall round the stage, its tones stepped by a turning light. */
+export const look: Scene3dBackgroundDef = {
+  id: "cubist-facets",
+  name: "Cubist facets",
+  family: "history",
+  colorSlots: [
+    { label: "Ochre", fallback: "#4d3f2b" },
+    { label: "Umber", fallback: "#2a2219" },
+    { label: "Grey", fallback: "#3c3f3f" },
+    { label: "Pale", fallback: "#5f5646" },
+  ],
+  params: {
+    radius: { label: "Radius", default: 22, min: 16, max: 32, step: 0.5 },
+    planes: { label: "Planes per course", default: 13, min: 8, max: 20, step: 1 },
+    fold: { label: "Fold angle", default: 16, min: 0, max: 30, step: 1 },
+    relief: { label: "Relief depth", default: 0.45, min: 0, max: 1.2, step: 0.05 },
+    passage: { label: "Passage", default: 0.35, min: 0, max: 1, step: 0.01 },
+    lightPeriod: { label: "Light period (s)", default: 60, min: 30, max: 240, step: 5 },
+    haze: { label: "Eye-level haze", default: 0.7, min: 0, max: 1, step: 0.01 },
+  },
+  previewCamera: "sweep",
+  Component: CubistFacets,
+};
+
+type Tune = Omit<Scene3dBackgroundPreset, "mode" | "textColor">;
+
+const preset = (mode: "light" | "dark", p: Tune): Scene3dBackgroundPreset => ({
+  ...p,
+  mode,
+  textColor: mode === "light" ? "#000000" : "#ffffff",
+});
+
+/** Flinders Ranges names (p1 keeps the sketch's Kangaroo Island name). p1 and p6 are the approved sketch palettes. */
+export const presets: Scene3dBackgroundPreset[] = [
+  preset("light", {
+    id: "p1",
+    name: "Remarkable Rocks",
+    colors: ["#d7c29e", "#a39a8a", "#a7a8a3", "#ece4d3"],
+    backing: "#f7f4ee",
+    speed: 1,
+    params: {
+      radius: 22,
+      planes: 13,
+      fold: 16,
+      relief: 0.45,
+      passage: 0.35,
+      lightPeriod: 60,
+      haze: 0.7,
+    },
+  }),
+  preset("light", {
+    id: "p2",
+    name: "Bunyeroo",
+    colors: ["#d9b48f", "#a8958a", "#a3aaa0", "#efe2d2"],
+    backing: "#f8f2ec",
+    speed: 1.1,
+    params: {
+      radius: 21,
+      planes: 15,
+      fold: 20,
+      relief: 0.6,
+      passage: 0.25,
+      lightPeriod: 50,
+      haze: 0.65,
+    },
+  }),
+  preset("light", {
+    id: "p3",
+    name: "Aroona",
+    colors: ["#d6c79a", "#9e9a8e", "#a2a8b0", "#ece8d8"],
+    backing: "#f6f5ef",
+    speed: 0.9,
+    params: {
+      radius: 24,
+      planes: 11,
+      fold: 12,
+      relief: 0.35,
+      passage: 0.5,
+      lightPeriod: 80,
+      haze: 0.75,
+    },
+  }),
+  preset("light", {
+    id: "p4",
+    name: "Moralana",
+    colors: ["#d8b6a4", "#a6979a", "#aaa6b0", "#efe1da"],
+    backing: "#faf4f1",
+    speed: 1,
+    params: {
+      radius: 20,
+      planes: 17,
+      fold: 22,
+      relief: 0.55,
+      passage: 0.3,
+      lightPeriod: 40,
+      haze: 0.7,
+    },
+  }),
+  preset("light", {
+    id: "p5",
+    name: "Arkaba",
+    colors: ["#cdbb9a", "#9b9890", "#a0a6a6", "#e6e2d6"],
+    backing: "#f3f2ee",
+    speed: 0.85,
+    params: {
+      radius: 26,
+      planes: 9,
+      fold: 26,
+      relief: 0.8,
+      passage: 0.45,
+      lightPeriod: 100,
+      haze: 0.6,
+    },
+  }),
+  preset("dark", {
+    id: "p6",
+    name: "Brachina",
+    colors: ["#4d3f2b", "#2a2219", "#3c3f3f", "#5f5646"],
+    backing: "#151310",
+    speed: 1,
+    params: {
+      radius: 22,
+      planes: 13,
+      fold: 16,
+      relief: 0.45,
+      passage: 0.35,
+      lightPeriod: 60,
+      haze: 0.7,
+    },
+  }),
+  preset("dark", {
+    id: "p7",
+    name: "Chambers Gorge",
+    colors: ["#5a3b2c", "#2b1d18", "#433b3a", "#6a5546"],
+    backing: "#161010",
+    speed: 1.1,
+    params: {
+      radius: 20,
+      planes: 15,
+      fold: 21,
+      relief: 0.6,
+      passage: 0.25,
+      lightPeriod: 45,
+      haze: 0.65,
+    },
+  }),
+  preset("dark", {
+    id: "p8",
+    name: "Wilkawillina",
+    colors: ["#4f4a3a", "#22252a", "#3a4250", "#5b5e60"],
+    backing: "#101216",
+    speed: 0.9,
+    params: {
+      radius: 25,
+      planes: 11,
+      fold: 12,
+      relief: 0.4,
+      passage: 0.5,
+      lightPeriod: 90,
+      haze: 0.75,
+    },
+  }),
+  preset("dark", {
+    id: "p9",
+    name: "Rawnsley Bluff",
+    colors: ["#5e4a35", "#2a2026", "#463c48", "#665a58"],
+    backing: "#141015",
+    speed: 1,
+    params: {
+      radius: 22,
+      planes: 18,
+      fold: 26,
+      relief: 0.75,
+      passage: 0.35,
+      lightPeriod: 60,
+      haze: 0.6,
+    },
+  }),
+];

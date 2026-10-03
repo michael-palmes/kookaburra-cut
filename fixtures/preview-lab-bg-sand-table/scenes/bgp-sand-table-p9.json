@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "name": "preset still for the \"sand-table\" 3D background (\"Groote Eylandt\")",
+  "background": {
+    "type": "scene3d",
+    "look": "sand-table",
+    "colors": ["#2c211c", "#17100d", "#6b4c3e", "#50555a"],
+    "speed": 1,
+    "params": {
+      "clearRadius": 8.5,
+      "reach": 35,
+      "petals": 33,
+      "grooves": 6,
+      "memory": 1100,
+      "sunSwing": 45,
+      "sunHeight": 20,
+      "rise": 6
+    },
+    "backing": {
+      "type": "color",
+      "color": "#120c0a"
+    },
+    "preset": "p9"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0, 0],
+          "azimuthDeg": 14,
+          "elevationDeg": 16,
+          "distance": 6.5
+        }
+      }
+    ],
+    "segments": []
+  }
+}

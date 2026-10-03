@@ -1,0 +1,53 @@
+{
+  "id": "preview-lab-bg-helix-spinners",
+  "name": "Preview Lab — bg-helix-spinners (dev-only)",
+  "version": 2,
+  "themeId": "kookaburra-studio-white",
+  "formats": ["16:9"],
+  "scenes": [
+    {
+      "file": "scenes/bg-helix-spinners.tsx",
+      "durationMs": 2000
+    },
+    {
+      "file": "scenes/bg-helix-spinners-light.tsx",
+      "durationMs": 2000
+    },
+    {
+      "file": "scenes/bgp-helix-spinners-p1.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-helix-spinners-p2.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-helix-spinners-p3.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-helix-spinners-p4.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-helix-spinners-p5.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-helix-spinners-p6.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-helix-spinners-p7.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-helix-spinners-p8.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-helix-spinners-p9.tsx",
+      "durationMs": 1000
+    }
+  ]
+}

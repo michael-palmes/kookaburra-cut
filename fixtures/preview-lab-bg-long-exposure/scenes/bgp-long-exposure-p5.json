@@ -1,0 +1,44 @@
+{
+  "version": 1,
+  "name": "preset still for the \"long-exposure\" 3D background (\"Green Cape\")",
+  "background": {
+    "type": "scene3d",
+    "look": "long-exposure",
+    "colors": ["#97a5a0", "#c0a274", "#e6dccb"],
+    "speed": 1,
+    "params": {
+      "poleAzimuth": -35,
+      "poleHeight": 40,
+      "trailLength": 60,
+      "density": 0.3,
+      "turn": 0.8,
+      "horizon": 0.55,
+      "skyHour": 20,
+      "coast": 2,
+      "headlands": 0.6,
+      "mist": 0.6,
+      "swell": 0.85,
+      "lamp": 0.6
+    },
+    "backing": {
+      "type": "color",
+      "color": "#f4f4ef"
+    },
+    "preset": "p5"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 2, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": -8,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

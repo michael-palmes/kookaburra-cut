@@ -1,0 +1,54 @@
+{
+  "version": 1,
+  "name": "light-mode 3D background sample for \"oculus-rotunda\" (\"Leeuwin\")",
+  "background": {
+    "type": "scene3d",
+    "look": "oculus-rotunda",
+    "colors": ["#e4ddd0", "#a1988b", "#fff1d2"],
+    "speed": 1,
+    "params": {
+      "radius": 22,
+      "coffers": 28,
+      "discSize": 3,
+      "traverse": 90,
+      "maxElevation": 52,
+      "studs": 0
+    },
+    "backing": {
+      "type": "color",
+      "color": "#f4efe6"
+    },
+    "preset": "p1"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": -35,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      },
+      {
+        "id": "k2",
+        "tMs": 1900,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 35,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": [
+      {
+        "from": "k1",
+        "to": "k2",
+        "ease": "inOutCubic"
+      }
+    ]
+  }
+}

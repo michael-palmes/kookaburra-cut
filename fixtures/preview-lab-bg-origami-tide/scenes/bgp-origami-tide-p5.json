@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "name": "preset still for the \"origami-tide\" 3D background (\"Lake Amadeus\")",
+  "background": {
+    "type": "scene3d",
+    "look": "origami-tide",
+    "colors": ["#ecdcc4", "#b49674"],
+    "speed": 1.1,
+    "params": {
+      "radius": 13.5,
+      "top": 5.5,
+      "fold": 0.85,
+      "pleat": 0.95,
+      "period": 90,
+      "sway": 45
+    },
+    "backing": {
+      "type": "color",
+      "color": "#f8f2e8"
+    },
+    "preset": "p5"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

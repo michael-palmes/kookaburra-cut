@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "name": "preset still for the \"shylight-blooms\" 3D background (\"Bougainville Reef\")",
+  "background": {
+    "type": "scene3d",
+    "look": "shylight-blooms",
+    "colors": ["#55604f", "#1b2119", "#9c9160", "#414a3e"],
+    "speed": 0.8,
+    "params": {
+      "count": 22,
+      "radius": 12.5,
+      "openHeight": 5,
+      "drop": 4.8,
+      "size": 1,
+      "cycle": 140,
+      "cables": 0.7,
+      "pools": 0.14
+    },
+    "backing": {
+      "type": "color",
+      "color": "#0c0f0b"
+    },
+    "preset": "p9"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 2, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": -8,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

@@ -1,0 +1,53 @@
+{
+  "id": "preview-lab-bg-paper-theatre",
+  "name": "Preview Lab — bg-paper-theatre (dev-only)",
+  "version": 2,
+  "themeId": "kookaburra-studio-white",
+  "formats": ["16:9"],
+  "scenes": [
+    {
+      "file": "scenes/bg-paper-theatre.tsx",
+      "durationMs": 2000
+    },
+    {
+      "file": "scenes/bg-paper-theatre-light.tsx",
+      "durationMs": 2000
+    },
+    {
+      "file": "scenes/bgp-paper-theatre-p1.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-paper-theatre-p2.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-paper-theatre-p3.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-paper-theatre-p4.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-paper-theatre-p5.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-paper-theatre-p6.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-paper-theatre-p7.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-paper-theatre-p8.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-paper-theatre-p9.tsx",
+      "durationMs": 1000
+    }
+  ]
+}

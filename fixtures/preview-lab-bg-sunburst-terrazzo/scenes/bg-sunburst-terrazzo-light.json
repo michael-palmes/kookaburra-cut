@@ -1,0 +1,55 @@
+{
+  "version": 1,
+  "name": "light-mode 3D background sample for \"sunburst-terrazzo\" (\"Lucky Bay\")",
+  "background": {
+    "type": "scene3d",
+    "look": "sunburst-terrazzo",
+    "colors": ["#e2cfae", "#cbd9cc", "#ae9867"],
+    "speed": 1,
+    "params": {
+      "rays": 28,
+      "clearRadius": 5,
+      "turnMinutes": 4,
+      "glint": 0.6,
+      "chips": 0.5,
+      "fadeRadius": 45,
+      "ceiling": 1
+    },
+    "backing": {
+      "type": "color",
+      "color": "#f7f2e7"
+    },
+    "preset": "p1"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": -35,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      },
+      {
+        "id": "k2",
+        "tMs": 1900,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 35,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": [
+      {
+        "from": "k1",
+        "to": "k2",
+        "ease": "inOutCubic"
+      }
+    ]
+  }
+}

@@ -1,0 +1,55 @@
+{
+  "version": 1,
+  "name": "3D background sample for \"guilloche-medallion\" (\"Bendigo\")",
+  "background": {
+    "type": "scene3d",
+    "look": "guilloche-medallion",
+    "colors": ["#66593c", "#4a5b47", "#1a1812"],
+    "speed": 1,
+    "params": {
+      "outerRadius": 37,
+      "ceilingHeight": 5,
+      "strands": 8,
+      "lineWidth": 0.07,
+      "weave": 1,
+      "sheen": 1,
+      "underprint": 0.6
+    },
+    "backing": {
+      "type": "color",
+      "color": "#110f0b"
+    },
+    "preset": "p6"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": -35,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      },
+      {
+        "id": "k2",
+        "tMs": 1900,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 35,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": [
+      {
+        "from": "k1",
+        "to": "k2",
+        "ease": "inOutCubic"
+      }
+    ]
+  }
+}

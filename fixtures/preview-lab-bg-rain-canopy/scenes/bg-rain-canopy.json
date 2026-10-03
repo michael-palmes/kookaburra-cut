@@ -1,0 +1,54 @@
+{
+  "version": 1,
+  "name": "3D background sample for \"rain-canopy\" (\"Blackwood\")",
+  "background": {
+    "type": "scene3d",
+    "look": "rain-canopy",
+    "colors": ["#5c4838", "#2c2825", "#6d5843"],
+    "speed": 1,
+    "params": {
+      "amplitude": 0.9,
+      "height": 5.8,
+      "spacing": 1.2,
+      "droop": 3.6,
+      "period": 90,
+      "threads": 0.25
+    },
+    "backing": {
+      "type": "color",
+      "color": "#120f0d"
+    },
+    "preset": "p6"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 2, 0],
+          "azimuthDeg": -35,
+          "elevationDeg": -8,
+          "distance": 7
+        }
+      },
+      {
+        "id": "k2",
+        "tMs": 1900,
+        "pose": {
+          "target": [0, 2, 0],
+          "azimuthDeg": 35,
+          "elevationDeg": -8,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": [
+      {
+        "from": "k1",
+        "to": "k2",
+        "ease": "inOutCubic"
+      }
+    ]
+  }
+}

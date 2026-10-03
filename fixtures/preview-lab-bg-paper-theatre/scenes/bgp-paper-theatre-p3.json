@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "name": "preset still for the \"paper-theatre\" 3D background (\"Binalong Bay\")",
+  "background": {
+    "type": "scene3d",
+    "look": "paper-theatre",
+    "colors": ["#869a9d", "#b5c4c2", "#d6dfdc", "#e8b07e"],
+    "speed": 1,
+    "params": {
+      "rings": 3,
+      "flatHeight": 1.2,
+      "treeDensity": 0,
+      "rock": 2.2,
+      "shadow": 0.45,
+      "cloudSpeed": 1.4,
+      "stopMotion": 8
+    },
+    "backing": {
+      "type": "color",
+      "color": "#f2f4f0"
+    },
+    "preset": "p3"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

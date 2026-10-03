@@ -1,0 +1,44 @@
+{
+  "version": 1,
+  "name": "preset still for the \"long-exposure\" 3D background (\"Sugarloaf Point\")",
+  "background": {
+    "type": "scene3d",
+    "look": "long-exposure",
+    "colors": ["#a59683", "#ba916a", "#ecd5bf"],
+    "speed": 1,
+    "params": {
+      "poleAzimuth": 70,
+      "poleHeight": 26,
+      "trailLength": 28,
+      "density": 0.6,
+      "turn": 1.2,
+      "horizon": 0.75,
+      "skyHour": 14,
+      "coast": 1,
+      "headlands": 0.8,
+      "mist": 0.35,
+      "swell": 0.7,
+      "lamp": 0.9
+    },
+    "backing": {
+      "type": "color",
+      "color": "#f7f2eb"
+    },
+    "preset": "p3"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 2, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": -8,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

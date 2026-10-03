@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "name": "preset still for the \"shylight-blooms\" 3D background (\"Flinders Reef\")",
+  "background": {
+    "type": "scene3d",
+    "look": "shylight-blooms",
+    "colors": ["#4b6266", "#172427", "#a98f58", "#3a4a4d"],
+    "speed": 0.9,
+    "params": {
+      "count": 20,
+      "radius": 13.5,
+      "openHeight": 4.9,
+      "drop": 3.8,
+      "size": 0.95,
+      "cycle": 90,
+      "cables": 0.75,
+      "pools": 0.18
+    },
+    "backing": {
+      "type": "color",
+      "color": "#0b1112"
+    },
+    "preset": "p7"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 2, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": -8,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

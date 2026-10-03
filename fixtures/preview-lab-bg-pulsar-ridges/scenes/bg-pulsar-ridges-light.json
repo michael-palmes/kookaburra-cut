@@ -1,0 +1,54 @@
+{
+  "version": 1,
+  "name": "light-mode 3D background sample for \"pulsar-ridges\" (\"Hattah Lakes\")",
+  "background": {
+    "type": "scene3d",
+    "look": "pulsar-ridges",
+    "colors": ["#a7b3c2", "#8e9bae", "#e3e8ee"],
+    "speed": 1,
+    "params": {
+      "rings": 34,
+      "valley": 12,
+      "height": 1,
+      "massifs": 4,
+      "lineWidth": 2.2,
+      "drift": 1
+    },
+    "backing": {
+      "type": "color",
+      "color": "#f3f5f8"
+    },
+    "preset": "p1"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": -35,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      },
+      {
+        "id": "k2",
+        "tMs": 1900,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 35,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": [
+      {
+        "from": "k1",
+        "to": "k2",
+        "ease": "inOutCubic"
+      }
+    ]
+  }
+}

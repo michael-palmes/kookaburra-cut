@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "name": "preset still for the \"aurora-veil\" 3D background (\"Port Essington\")",
+  "background": {
+    "type": "scene3d",
+    "look": "aurora-veil",
+    "colors": ["#286660", "#6a4a3a", "#111c22"],
+    "speed": 1,
+    "params": {
+      "curtains": 3,
+      "radius": 40,
+      "hemHeight": 2.6,
+      "fold": 7.5,
+      "rays": 1.6,
+      "brightness": 0.7
+    },
+    "backing": {
+      "type": "color",
+      "color": "#0c1316"
+    },
+    "preset": "p9"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 2, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": -8,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

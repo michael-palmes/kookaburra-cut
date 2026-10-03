@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "name": "preset still for the \"shadow-lace\" 3D background (\"Liffey Falls\")",
+  "background": {
+    "type": "scene3d",
+    "look": "shadow-lace",
+    "colors": ["#9e9587", "#f6ecdf", "#f3cf9e"],
+    "speed": 1,
+    "params": {
+      "density": 1.1,
+      "plantHeight": 1,
+      "sway": 3,
+      "stepFps": 6,
+      "farTint": 0.55,
+      "lampAzimuth": 20,
+      "grain": 0.3
+    },
+    "backing": {
+      "type": "color",
+      "color": "#e8dccd"
+    },
+    "preset": "p4"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

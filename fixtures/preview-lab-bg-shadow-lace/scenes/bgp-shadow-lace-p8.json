@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "name": "preset still for the \"shadow-lace\" 3D background (\"Florentine\")",
+  "background": {
+    "type": "scene3d",
+    "look": "shadow-lace",
+    "colors": ["#100c10", "#5e3f3a", "#c08566"],
+    "speed": 1.1,
+    "params": {
+      "density": 0.8,
+      "plantHeight": 0.9,
+      "sway": 2.6,
+      "stepFps": 12,
+      "farTint": 0.3,
+      "lampAzimuth": 55,
+      "grain": 0.45
+    },
+    "backing": {
+      "type": "color",
+      "color": "#2e1f28"
+    },
+    "preset": "p8"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

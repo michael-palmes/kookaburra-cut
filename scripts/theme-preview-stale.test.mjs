@@ -70,6 +70,18 @@ describe("theme preview staleness", () => {
     assert.deepEqual(staleThemePreviews(root), ["theme-a", "theme-b"]);
   });
 
+  test("invalidates every theme when only the capture version bumps", () => {
+    const root = fixtureRoot();
+    commitThemePreviews(root, ["theme-a", "theme-b"]);
+    const source = readFileSync(join(root, "src/engine/themePreviews.ts"), "utf8");
+    write(
+      root,
+      "src/engine/themePreviews.ts",
+      source.replace("THEME_PREVIEW_VERSION = 1", "THEME_PREVIEW_VERSION = 2"),
+    );
+    assert.deepEqual(staleThemePreviews(root), ["theme-a", "theme-b"]);
+  });
+
   test("records the capture contract and removes orphan JPEGs on promotion", () => {
     const root = fixtureRoot();
     write(root, "src/assets/theme-previews/removed-theme-1.jpg", "orphan");

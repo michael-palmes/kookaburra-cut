@@ -1,0 +1,53 @@
+{
+  "id": "preview-lab-bg-calder-mobiles",
+  "name": "Preview Lab — bg-calder-mobiles (dev-only)",
+  "version": 2,
+  "themeId": "kookaburra-studio-white",
+  "formats": ["16:9"],
+  "scenes": [
+    {
+      "file": "scenes/bg-calder-mobiles.tsx",
+      "durationMs": 2000
+    },
+    {
+      "file": "scenes/bg-calder-mobiles-light.tsx",
+      "durationMs": 2000
+    },
+    {
+      "file": "scenes/bgp-calder-mobiles-p1.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-calder-mobiles-p2.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-calder-mobiles-p3.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-calder-mobiles-p4.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-calder-mobiles-p5.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-calder-mobiles-p6.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-calder-mobiles-p7.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-calder-mobiles-p8.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-calder-mobiles-p9.tsx",
+      "durationMs": 1000
+    }
+  ]
+}

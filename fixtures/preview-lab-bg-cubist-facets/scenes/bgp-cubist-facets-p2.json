@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "name": "preset still for the \"cubist-facets\" 3D background (\"Bunyeroo\")",
+  "background": {
+    "type": "scene3d",
+    "look": "cubist-facets",
+    "colors": ["#d9b48f", "#a8958a", "#a3aaa0", "#efe2d2"],
+    "speed": 1.1,
+    "params": {
+      "radius": 21,
+      "planes": 15,
+      "fold": 20,
+      "relief": 0.6,
+      "passage": 0.25,
+      "lightPeriod": 50,
+      "haze": 0.65
+    },
+    "backing": {
+      "type": "color",
+      "color": "#f8f2ec"
+    },
+    "preset": "p2"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

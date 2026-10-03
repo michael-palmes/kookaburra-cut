@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "name": "preset still for the \"tessera-dome\" 3D background (\"Quorn\")",
+  "background": {
+    "type": "scene3d",
+    "look": "tessera-dome",
+    "colors": ["#cfc8b0", "#9d9786", "#f4f2e6"],
+    "speed": 1,
+    "params": {
+      "rimRadius": 32,
+      "rise": 28,
+      "tileSize": 0.7,
+      "tilt": 5,
+      "glint": 0.85,
+      "glintPeriod": 50,
+      "rimFade": 4.2
+    },
+    "backing": {
+      "type": "color",
+      "color": "#f2f0e7"
+    },
+    "preset": "p3"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 2, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": -8,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

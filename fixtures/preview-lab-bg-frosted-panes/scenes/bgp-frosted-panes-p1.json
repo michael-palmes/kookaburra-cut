@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "name": "preset still for the \"frosted-panes\" 3D background (\"Maleny\")",
+  "background": {
+    "type": "scene3d",
+    "look": "frosted-panes",
+    "colors": ["#c9d3d9", "#8a9da9", "#f8e3cb", "#fff8ef"],
+    "speed": 1,
+    "params": {
+      "paneCount": 22,
+      "ringRadius": 12.5,
+      "lampCount": 5,
+      "bloom": 0.8,
+      "frost": 0.5,
+      "rain": 0
+    },
+    "backing": {
+      "type": "color",
+      "color": "#afbcc4"
+    },
+    "preset": "p1"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

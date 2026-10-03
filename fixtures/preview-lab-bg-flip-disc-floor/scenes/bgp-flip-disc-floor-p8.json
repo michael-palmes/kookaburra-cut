@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "name": "preset still for the \"flip-disc-floor\" 3D background (\"Mitta Mitta\")",
+  "background": {
+    "type": "scene3d",
+    "look": "flip-disc-floor",
+    "colors": ["#764a35", "#2a2624", "#1a1716"],
+    "speed": 1.1,
+    "params": {
+      "pitch": 0.36,
+      "reach": 24,
+      "cover": 0.45,
+      "scale": 0.85,
+      "clear": 3.5,
+      "snap": 0.05,
+      "axle": 60,
+      "period": 220,
+      "ceiling": 1
+    },
+    "backing": {
+      "type": "color",
+      "color": "#0d0b0a"
+    },
+    "preset": "p8"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

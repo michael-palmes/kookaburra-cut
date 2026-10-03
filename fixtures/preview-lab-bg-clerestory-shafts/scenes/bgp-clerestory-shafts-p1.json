@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "name": "preset still for the \"clerestory-shafts\" 3D background (\"Lamington\")",
+  "background": {
+    "type": "scene3d",
+    "look": "clerestory-shafts",
+    "colors": ["#f7f4ef", "#d3c8bb", "#a89688", "#fbf8f2"],
+    "speed": 1,
+    "params": {
+      "shaftCount": 8,
+      "tilt": 28,
+      "sweep": 8,
+      "haze": 0.6,
+      "dust": 0.5,
+      "poolSoftness": 0.45
+    },
+    "backing": {
+      "type": "color",
+      "color": "#bcb0a3"
+    },
+    "preset": "p1"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

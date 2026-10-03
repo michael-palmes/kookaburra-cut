@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "name": "preset still for the \"caustic-pool\" 3D background (\"Trephina Gorge\")",
+  "background": {
+    "type": "scene3d",
+    "look": "caustic-pool",
+    "colors": ["#21140f", "#37241b", "#76523f"],
+    "speed": 1.1,
+    "params": {
+      "tile": 1.2,
+      "grout": 0.3,
+      "scale": 5,
+      "strength": 0.5,
+      "clearRadius": 5,
+      "loop": 200,
+      "surface": 0.7
+    },
+    "backing": {
+      "type": "color",
+      "color": "#170e0b"
+    },
+    "preset": "p8"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

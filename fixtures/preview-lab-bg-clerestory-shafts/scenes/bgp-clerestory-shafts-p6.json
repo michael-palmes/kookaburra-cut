@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "name": "preset still for the \"clerestory-shafts\" 3D background (\"Chillagoe\")",
+  "background": {
+    "type": "scene3d",
+    "look": "clerestory-shafts",
+    "colors": ["#715f3d", "#3a2f23", "#1b1512", "#a88b58"],
+    "speed": 1,
+    "params": {
+      "shaftCount": 8,
+      "tilt": 28,
+      "sweep": 8,
+      "haze": 0.6,
+      "dust": 0.5,
+      "poolSoftness": 0.45
+    },
+    "backing": {
+      "type": "color",
+      "color": "#251f18"
+    },
+    "preset": "p6"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

@@ -1,0 +1,53 @@
+{
+  "id": "preview-lab-bg-sunburst-terrazzo",
+  "name": "Preview Lab — bg-sunburst-terrazzo (dev-only)",
+  "version": 2,
+  "themeId": "kookaburra-studio-white",
+  "formats": ["16:9"],
+  "scenes": [
+    {
+      "file": "scenes/bg-sunburst-terrazzo.tsx",
+      "durationMs": 2000
+    },
+    {
+      "file": "scenes/bg-sunburst-terrazzo-light.tsx",
+      "durationMs": 2000
+    },
+    {
+      "file": "scenes/bgp-sunburst-terrazzo-p1.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-sunburst-terrazzo-p2.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-sunburst-terrazzo-p3.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-sunburst-terrazzo-p4.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-sunburst-terrazzo-p5.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-sunburst-terrazzo-p6.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-sunburst-terrazzo-p7.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-sunburst-terrazzo-p8.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-sunburst-terrazzo-p9.tsx",
+      "durationMs": 1000
+    }
+  ]
+}

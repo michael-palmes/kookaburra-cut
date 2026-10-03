@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "name": "preset still for the \"skeleton-clockwork\" 3D background (\"Blanchetown\")",
+  "background": {
+    "type": "scene3d",
+    "look": "skeleton-clockwork",
+    "colors": ["#4f5a40", "#3e3b33", "#22261f", "#5a6547"],
+    "speed": 1.1,
+    "params": {
+      "module": 0.34,
+      "rate": 0.6,
+      "planes": 2,
+      "ceiling": 4.4,
+      "frieze": 19,
+      "tick": 0,
+      "seed": 14
+    },
+    "backing": {
+      "type": "color",
+      "color": "#11130f"
+    },
+    "preset": "p8"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 2, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": -8,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

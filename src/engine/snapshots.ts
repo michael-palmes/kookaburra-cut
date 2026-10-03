@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useClockStore } from "./clock";
+import { downscaleRgba } from "./downscale";
 import {
   canvasCommittedClockMs,
   canvasCommittedProject,
@@ -10,6 +11,7 @@ import { awaitTextSync } from "./exporter";
 import { isExporting } from "./exportState";
 import { hideGizmoHandles } from "./gizmoRegistry";
 import { type LoadedProject, nativeProjectSlug, parseProjectId } from "./project";
+import { assertContextHeld, readFrameOrThrow } from "./readback";
 
 /** Preview-frame capture off the live canvas, used by welcome snapshots and scene thumbs. UI niceties, not part of the export path: nothing here runs during an export/autorun, every failure is silent (cards keep their placeholders), and the determinism contract is untouched (the preview clock is borrowed and restored). */
 
@@ -82,7 +84,7 @@ export async function captureFrameAt(
   return paintAndReadCanvas(width, format);
 }
 
-/** Force one synchronous render and downscale the preserved GL buffer to PNG/JPEG. */
+/** Force one synchronous render and box-filter the preserved GL buffer down to a PNG/JPEG. Throws rather than encode a frame the GPU never delivered (`readFrameOrThrow`: a lost context, or an all-zero readback from a GPU process stalled past WebKit's sync-IPC timeout, which left the black chart and aurora cards). */
 async function paintAndReadCanvas(
   width: number,
   format: "png" | "jpeg",
@@ -98,27 +100,39 @@ async function paintAndReadCanvas(
     restoreGizmos();
   }
 
-  const source = canvasHandle.current.gl.domElement;
-  const scale = Math.min(1, width / Math.max(1, source.width));
+  const gl = canvasHandle.current.gl.getContext();
+  const srcWidth = gl.drawingBufferWidth;
+  const srcHeight = gl.drawingBufferHeight;
+  const scale = Math.min(1, width / Math.max(1, srcWidth));
   const target = document.createElement("canvas");
-  target.width = Math.max(1, Math.round(source.width * scale));
-  target.height = Math.max(1, Math.round(source.height * scale));
+  target.width = Math.max(1, Math.round(srcWidth * scale));
+  target.height = Math.max(1, Math.round(srcHeight * scale));
   const ctx = target.getContext("2d");
   if (!ctx) return null;
-  ctx.drawImage(source, 0, 0, target.width, target.height);
+  // Read the preserved buffer back like the export does and box-filter it in JS: a one-step drawImage shrink aliased thin lines into dashes.
+  const rgba = new Uint8Array(srcWidth * srcHeight * 4);
+  const where = `preview capture ${srcWidth}x${srcHeight}`;
+  readFrameOrThrow(gl, srcWidth, srcHeight, rgba, where);
+  const pixels = downscaleRgba(rgba, srcWidth, srcHeight, target.width, target.height, true);
+  ctx.putImageData(new ImageData(pixels, target.width, target.height), 0, 0);
   const blob = await new Promise<Blob | null>((resolve) =>
     format === "jpeg"
       ? target.toBlob(resolve, "image/jpeg", 0.85)
       : target.toBlob(resolve, "image/png"),
   );
   if (!blob) return null;
+  // The encode is GPU-process work too, so a relaunch during it voids the tile.
+  assertContextHeld(gl, where);
   return new Uint8Array(await blob.arrayBuffer());
 }
 
 /** Captures the canvas as it is right now, no clock write, no seek, no borrow (the Scene-tab header preview's fallback when no cached thumb exists). Because nothing touches the playhead, the clock-borrow blip class can't occur; the export guards still apply. Null when capture isn't possible right now. */
 export async function captureCurrentFrame(width: number): Promise<Uint8Array | null> {
   if (capturing || isExporting() || !canvasHandle.current) return null;
-  return paintAndReadCanvas(width, "jpeg");
+  return paintAndReadCanvas(width, "jpeg").catch((e) => {
+    console.warn("[snapshot] capture failed:", e);
+    return null;
+  });
 }
 
 export interface SnapshotSaved {

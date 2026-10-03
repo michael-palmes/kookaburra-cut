@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "name": "preset still for the \"sunburst-terrazzo\" 3D background (\"Lake Ballard\")",
+  "background": {
+    "type": "scene3d",
+    "look": "sunburst-terrazzo",
+    "colors": ["#3b3a4c", "#2f3f45", "#5f5a48"],
+    "speed": 0.9,
+    "params": {
+      "rays": 36,
+      "clearRadius": 4,
+      "turnMinutes": 3,
+      "glint": 0.5,
+      "chips": 0.3,
+      "fadeRadius": 42,
+      "ceiling": 0.8
+    },
+    "backing": {
+      "type": "color",
+      "color": "#0c1012"
+    },
+    "preset": "p8"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

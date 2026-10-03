@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "name": "preset still for the \"plexus-loom\" 3D background (\"Mallacoota\")",
+  "background": {
+    "type": "scene3d",
+    "look": "plexus-loom",
+    "colors": ["#4c6152", "#454e72", "#634d66", "#8c92a8"],
+    "speed": 1.1,
+    "params": {
+      "bundles": 48,
+      "hoopRadius": 19,
+      "twist": 68,
+      "breath": 8,
+      "spin": 0.7,
+      "opacity": 0.5
+    },
+    "backing": {
+      "type": "color",
+      "color": "#0b0e0d"
+    },
+    "preset": "p9"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

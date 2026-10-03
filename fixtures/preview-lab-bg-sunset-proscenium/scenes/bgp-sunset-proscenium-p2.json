@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "name": "preset still for the \"sunset-proscenium\" 3D background (\"Thistle Cove\")",
+  "background": {
+    "type": "scene3d",
+    "look": "sunset-proscenium",
+    "colors": ["#d3dccf", "#b5c4b8", "#c19676", "#ae94a2"],
+    "speed": 0.9,
+    "params": {
+      "ribs": 8,
+      "setBack": 10,
+      "innerWidth": 17,
+      "crown": 6.8,
+      "riseSeconds": 28,
+      "glow": 0.7,
+      "steps": 2
+    },
+    "backing": {
+      "type": "color",
+      "color": "#f3f5f0"
+    },
+    "preset": "p2"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

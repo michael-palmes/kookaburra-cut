@@ -1,0 +1,53 @@
+{
+  "id": "preview-lab-bg-riso-dunes",
+  "name": "Preview Lab — bg-riso-dunes (dev-only)",
+  "version": 2,
+  "themeId": "kookaburra-studio-white",
+  "formats": ["16:9"],
+  "scenes": [
+    {
+      "file": "scenes/bg-riso-dunes.tsx",
+      "durationMs": 2000
+    },
+    {
+      "file": "scenes/bg-riso-dunes-light.tsx",
+      "durationMs": 2000
+    },
+    {
+      "file": "scenes/bgp-riso-dunes-p1.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-riso-dunes-p2.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-riso-dunes-p3.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-riso-dunes-p4.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-riso-dunes-p5.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-riso-dunes-p6.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-riso-dunes-p7.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-riso-dunes-p8.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-riso-dunes-p9.tsx",
+      "durationMs": 1000
+    }
+  ]
+}

@@ -1,0 +1,53 @@
+{
+  "id": "preview-lab-bg-oculus-rotunda",
+  "name": "Preview Lab — bg-oculus-rotunda (dev-only)",
+  "version": 2,
+  "themeId": "kookaburra-studio-white",
+  "formats": ["16:9"],
+  "scenes": [
+    {
+      "file": "scenes/bg-oculus-rotunda.tsx",
+      "durationMs": 2000
+    },
+    {
+      "file": "scenes/bg-oculus-rotunda-light.tsx",
+      "durationMs": 2000
+    },
+    {
+      "file": "scenes/bgp-oculus-rotunda-p1.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-oculus-rotunda-p2.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-oculus-rotunda-p3.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-oculus-rotunda-p4.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-oculus-rotunda-p5.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-oculus-rotunda-p6.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-oculus-rotunda-p7.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-oculus-rotunda-p8.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-oculus-rotunda-p9.tsx",
+      "durationMs": 1000
+    }
+  ]
+}

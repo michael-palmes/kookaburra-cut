@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "name": "preset still for the \"calder-mobiles\" 3D background (\"Blue Leschenaultia\")",
+  "background": {
+    "type": "scene3d",
+    "look": "calder-mobiles",
+    "colors": ["#8fa7c4", "#a9b9a0", "#d8c9a6", "#949ca4"],
+    "speed": 0.9,
+    "params": {
+      "count": 5,
+      "swing": 28,
+      "period": 150,
+      "paddle": 1.15,
+      "clearance": 0.5,
+      "depth": 38,
+      "seed": 7
+    },
+    "backing": {
+      "type": "color",
+      "color": "#f4f5f2"
+    },
+    "preset": "p2"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 2, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": -8,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

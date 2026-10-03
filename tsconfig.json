@@ -29,5 +29,5 @@
 
     "types": ["vite/client"]
   },
-  "include": ["src", "projects", "fixtures"]
+  "include": ["src", "projects", "fixtures", "tools/look-lab/src"]
 }

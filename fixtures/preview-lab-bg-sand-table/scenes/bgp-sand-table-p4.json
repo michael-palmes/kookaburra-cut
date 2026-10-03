@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "name": "preset still for the \"sand-table\" 3D background (\"Rodd Island\")",
+  "background": {
+    "type": "scene3d",
+    "look": "sand-table",
+    "colors": ["#d6d8c8", "#959b87", "#e9ebdd", "#a59a8c"],
+    "speed": 1.2,
+    "params": {
+      "clearRadius": 9,
+      "reach": 24,
+      "petals": 13,
+      "grooves": 4,
+      "memory": 900,
+      "sunSwing": 60,
+      "sunHeight": 20,
+      "rise": 4
+    },
+    "backing": {
+      "type": "color",
+      "color": "#f2f3eb"
+    },
+    "preset": "p4"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0, 0],
+          "azimuthDeg": 14,
+          "elevationDeg": 16,
+          "distance": 6.5
+        }
+      }
+    ],
+    "segments": []
+  }
+}

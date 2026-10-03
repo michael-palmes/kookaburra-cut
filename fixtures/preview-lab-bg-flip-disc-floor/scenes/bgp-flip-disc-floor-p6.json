@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "name": "preset still for the \"flip-disc-floor\" 3D background (\"Franklin\")",
+  "background": {
+    "type": "scene3d",
+    "look": "flip-disc-floor",
+    "colors": ["#5e5631", "#252b30", "#181c1f"],
+    "speed": 1,
+    "params": {
+      "pitch": 0.44,
+      "reach": 26,
+      "cover": 0.4,
+      "scale": 1,
+      "clear": 4,
+      "snap": 0.06,
+      "axle": 0,
+      "period": 240,
+      "ceiling": 1
+    },
+    "backing": {
+      "type": "color",
+      "color": "#0b0e10"
+    },
+    "preset": "p6"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

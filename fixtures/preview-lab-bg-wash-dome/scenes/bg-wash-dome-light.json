@@ -1,0 +1,55 @@
+{
+  "version": 1,
+  "name": "light-mode 3D background sample for \"wash-dome\" (\"Wattamolla\")",
+  "background": {
+    "type": "scene3d",
+    "look": "wash-dome",
+    "colors": ["#9ab3c6", "#879bb1", "#e1cdc3"],
+    "speed": 1,
+    "params": {
+      "coverage": 0.35,
+      "calmHeight": 9,
+      "edge": 0.8,
+      "granulation": 0.4,
+      "streak": 0.35,
+      "wind": 1,
+      "blooms": 5
+    },
+    "backing": {
+      "type": "color",
+      "color": "#f5f2eb"
+    },
+    "preset": "p1"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": -35,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      },
+      {
+        "id": "k2",
+        "tMs": 1900,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 35,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": [
+      {
+        "from": "k1",
+        "to": "k2",
+        "ease": "inOutCubic"
+      }
+    ]
+  }
+}

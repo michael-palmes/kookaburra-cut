@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "name": "preset still for the \"pop-up-terrace\" 3D background (\"Hampden Road\")",
+  "background": {
+    "type": "scene3d",
+    "look": "pop-up-terrace",
+    "colors": ["#eef1f2", "#a3aeb6", "#8f9aa3"],
+    "speed": 1.1,
+    "params": {
+      "radius": 11.5,
+      "units": 10,
+      "height": 1.2,
+      "wavePeriod": 70,
+      "crests": 3,
+      "openHold": 0.2,
+      "sunAzimuth": 290,
+      "shadow": 0.65
+    },
+    "backing": {
+      "type": "color",
+      "color": "#cfd5d8"
+    },
+    "preset": "p3"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

@@ -1,0 +1,53 @@
+{
+  "id": "preview-lab-bg-cubist-facets",
+  "name": "Preview Lab — bg-cubist-facets (dev-only)",
+  "version": 2,
+  "themeId": "kookaburra-studio-white",
+  "formats": ["16:9"],
+  "scenes": [
+    {
+      "file": "scenes/bg-cubist-facets.tsx",
+      "durationMs": 2000
+    },
+    {
+      "file": "scenes/bg-cubist-facets-light.tsx",
+      "durationMs": 2000
+    },
+    {
+      "file": "scenes/bgp-cubist-facets-p1.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-cubist-facets-p2.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-cubist-facets-p3.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-cubist-facets-p4.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-cubist-facets-p5.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-cubist-facets-p6.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-cubist-facets-p7.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-cubist-facets-p8.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-cubist-facets-p9.tsx",
+      "durationMs": 1000
+    }
+  ]
+}
