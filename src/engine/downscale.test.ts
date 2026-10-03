@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { downscaleRgba } from "./downscale";
+import { downscaleRgba, isBlankReadback } from "./downscale";
 
 /** Opaque greyscale RGBA from rows of grey levels. */
 function grey(rows: number[][]): Uint8Array {
@@ -50,9 +50,24 @@ describe("downscaleRgba", () => {
     for (const row of out) expect(row).toEqual([0, 64, 0]);
   });
 
-  it("treats the readback as premultiplied, so transparent pixels never darken colour", () => {
+  it("composites over black and ignores alpha, as the export encode does", () => {
     const src = Uint8Array.from([255, 0, 0, 255, 0, 0, 0, 0]);
-    expect(Array.from(downscaleRgba(src, 2, 1, 1, 1))).toEqual([255, 0, 0, 128]);
-    expect(Array.from(downscaleRgba(new Uint8Array(8), 2, 1, 1, 1))).toEqual([0, 0, 0, 0]);
+    expect(Array.from(downscaleRgba(src, 2, 1, 1, 1))).toEqual([128, 0, 0, 255]);
+    // Additive glow over a zero-alpha clear: un-premultiplying by that alpha zeroed the whole tile.
+    const glow = Uint8Array.from([90, 160, 200, 0, 30, 60, 90, 0]);
+    expect(Array.from(downscaleRgba(glow, 2, 1, 1, 1))).toEqual([60, 110, 145, 255]);
+  });
+});
+
+describe("isBlankReadback", () => {
+  it("flags the untouched zero buffer a lost or timed-out readPixels leaves behind", () => {
+    expect(isBlankReadback(new Uint8Array(64 * 36 * 4))).toBe(true);
+  });
+
+  it("passes any written frame, even a pure black one", () => {
+    const black = new Uint8Array(64 * 36 * 4);
+    black[black.length - 1] = 255;
+    expect(isBlankReadback(black)).toBe(false);
+    expect(isBlankReadback(grey([[0, 0]]))).toBe(false);
   });
 });

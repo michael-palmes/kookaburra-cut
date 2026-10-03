@@ -25,6 +25,13 @@ export function isCapturingPreview(): boolean {
   return capturingPreview;
 }
 
+/** WebGL context losses on the live canvas since load. WebKit relaunches a stalled GPU process and the restored context comes back with emptied render targets (PMREM environments among them), so a preview capture must never straddle one. */
+let contextLosses = 0;
+
+export function canvasContextLosses(): number {
+  return contextLosses;
+}
+
 /** The clock value the canvas tree last committed. The canvas subtree renders in the react-three-fiber reconciler, which react-dom's `flushSync` does not flush, its commits land on the r3f scheduler's own timing; the export loop must therefore not trust per-mesh readiness hooks until the canvas tree has provably committed the frame's clock value, polling this stamp to know. Without this the capture races the r3f commit and can grab the previous frame's texture/text (the back-to-back Verify ×2 divergence). See docs/determinism.md. */
 let committedClockMs = Number.NaN;
 
@@ -60,7 +67,13 @@ export function ExportBridge() {
   const currentMs = useClockStore((s) => s.currentMs);
   useEffect(() => {
     canvasHandle.current = { gl, scene, camera, advance };
+    const canvas = gl.domElement;
+    const onLost = () => {
+      contextLosses += 1;
+    };
+    canvas.addEventListener("webglcontextlost", onLost);
     return () => {
+      canvas.removeEventListener("webglcontextlost", onLost);
       canvasHandle.current = null;
     };
   }, [gl, scene, camera, advance]);

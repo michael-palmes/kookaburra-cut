@@ -31,7 +31,7 @@ function boxTaps(srcSize: number, dstSize: number): BoxTaps {
   return { first, count, offset, weights: Float64Array.from(weights) };
 }
 
-/** Downscales premultiplied RGBA (a WebGL readback; `flipY` reads GL's bottom-up rows) to straight-alpha RGBA for `ImageData`. Separable: rows first, then columns. */
+/** Downscales a WebGL readback (premultiplied RGBA; `flipY` reads GL's bottom-up rows) to opaque RGBA for `ImageData`. Alpha is ignored exactly as the export's rgba to yuv420p encode ignores it: premultiplied colour is the frame over black, so a tile shows what an export shows and a zero-alpha pixel can never divide its colour away. Separable: rows first, then columns. */
 export function downscaleRgba(
   src: Uint8Array,
   srcWidth: number,
@@ -42,27 +42,24 @@ export function downscaleRgba(
 ): Uint8ClampedArray<ArrayBuffer> {
   const xs = boxTaps(srcWidth, dstWidth);
   const ys = boxTaps(srcHeight, dstHeight);
-  const rows = new Float64Array(dstWidth * srcHeight * 4);
+  const rows = new Float64Array(dstWidth * srcHeight * 3);
   for (let y = 0; y < srcHeight; y++) {
     const srcRow = (flipY ? srcHeight - 1 - y : y) * srcWidth;
     for (let x = 0; x < dstWidth; x++) {
       let r = 0;
       let g = 0;
       let b = 0;
-      let a = 0;
       for (let k = 0; k < xs.count[x]; k++) {
         const w = xs.weights[xs.offset[x] + k];
         const p = (srcRow + xs.first[x] + k) * 4;
         r += src[p] * w;
         g += src[p + 1] * w;
         b += src[p + 2] * w;
-        a += src[p + 3] * w;
       }
-      const q = (y * dstWidth + x) * 4;
+      const q = (y * dstWidth + x) * 3;
       rows[q] = r;
       rows[q + 1] = g;
       rows[q + 2] = b;
-      rows[q + 3] = a;
     }
   }
   const out = new Uint8ClampedArray(dstWidth * dstHeight * 4);
@@ -71,23 +68,26 @@ export function downscaleRgba(
       let r = 0;
       let g = 0;
       let b = 0;
-      let a = 0;
       for (let k = 0; k < ys.count[y]; k++) {
         const w = ys.weights[ys.offset[y] + k];
-        const p = ((ys.first[y] + k) * dstWidth + x) * 4;
+        const p = ((ys.first[y] + k) * dstWidth + x) * 3;
         r += rows[p] * w;
         g += rows[p + 1] * w;
         b += rows[p + 2] * w;
-        a += rows[p + 3] * w;
       }
       // Uint8ClampedArray stores round-half-even and clamps, so the conversion is exact too.
-      const unpremultiply = a > 0 ? 255 / a : 0;
       const q = (y * dstWidth + x) * 4;
-      out[q] = r * unpremultiply;
-      out[q + 1] = g * unpremultiply;
-      out[q + 2] = b * unpremultiply;
-      out[q + 3] = a;
+      out[q] = r;
+      out[q + 1] = g;
+      out[q + 2] = b;
+      out[q + 3] = 255;
     }
   }
   return out;
+}
+
+/** True when not one byte of a readback was written. A lost context, or a read that outlives WebKit's GPU-process sync timeout, leaves the zero-filled buffer untouched; a real frame never is, since every scene clears to an opaque background. */
+export function isBlankReadback(rgba: Uint8Array): boolean {
+  for (let i = 0; i < rgba.length; i++) if (rgba[i] !== 0) return false;
+  return true;
 }

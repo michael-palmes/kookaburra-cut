@@ -1,9 +1,10 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useClockStore } from "./clock";
-import { downscaleRgba } from "./downscale";
+import { downscaleRgba, isBlankReadback } from "./downscale";
 import {
   canvasCommittedClockMs,
   canvasCommittedProject,
+  canvasContextLosses,
   canvasHandle,
   setCapturingPreview,
 } from "./exportBridge";
@@ -20,6 +21,7 @@ const SNAPSHOT_WIDTH = 640;
 
 let capturing = false;
 let lastSeekMs: number | null = null;
+let borrowedLosses = 0;
 
 /** Records a clock write made under the borrowed clock, so the restore can tell this capture's own seeks from someone else's write. Called by `captureFrameAt`; exported for tests. */
 export function noteBorrowedSeek(tMs: number): void {
@@ -49,6 +51,7 @@ export async function withBorrowedClock<T>(fn: () => Promise<T>): Promise<T | nu
   const prevMs = useClockStore.getState().currentMs;
   capturing = true;
   lastSeekMs = null;
+  borrowedLosses = canvasContextLosses();
   try {
     return await fn();
   } finally {
@@ -80,13 +83,14 @@ export async function captureFrameAt(
   await delay(50);
   if (isExporting() || !canvasHandle.current || !isCurrent()) return null;
   // Then force one synchronous preview render; the on-demand GL render is normally rAF-driven and WKWebView suspends rAF for occluded windows (the AFK lesson), so a headless `kookaburra:run --action theme-previews` would otherwise capture a stale buffer.
-  return paintAndReadCanvas(width, format);
+  return paintAndReadCanvas(width, format, borrowedLosses);
 }
 
-/** Force one synchronous render and box-filter the preserved GL buffer down to a PNG/JPEG. */
+/** Force one synchronous render and box-filter the preserved GL buffer down to a PNG/JPEG. Throws rather than encode a frame the GPU never delivered: a lost context, a loss and restore since `sinceLosses` (render targets come back empty), or an all-zero readback (a GPU process stalled past WebKit's sync-IPC timeout, which left the black chart and aurora cards). */
 async function paintAndReadCanvas(
   width: number,
   format: "png" | "jpeg",
+  sinceLosses: number,
 ): Promise<Uint8Array | null> {
   if (!canvasHandle.current) return null;
   // Editor chrome must not bake into a cached thumb or welcome card: the outlines and light helpers ride HELPER_LAYER (dropped from the camera for this frame), the gizmo handles draw on layer 0 and are hidden outright.
@@ -111,6 +115,13 @@ async function paintAndReadCanvas(
   // Read the preserved buffer back like the export does and box-filter it in JS: a one-step drawImage shrink aliased thin lines into dashes.
   const rgba = new Uint8Array(srcWidth * srcHeight * 4);
   gl.readPixels(0, 0, srcWidth, srcHeight, gl.RGBA, gl.UNSIGNED_BYTE, rgba);
+  const size = `${srcWidth}x${srcHeight}`;
+  assertContextHeld(gl, sinceLosses, size);
+  if (isBlankReadback(rgba)) {
+    throw new Error(
+      `preview capture: readPixels returned an all-zero frame (${size}), a stalled GPU process; rerun`,
+    );
+  }
   const pixels = downscaleRgba(rgba, srcWidth, srcHeight, target.width, target.height, true);
   ctx.putImageData(new ImageData(pixels, target.width, target.height), 0, 0);
   const blob = await new Promise<Blob | null>((resolve) =>
@@ -119,13 +130,29 @@ async function paintAndReadCanvas(
       : target.toBlob(resolve, "image/png"),
   );
   if (!blob) return null;
+  // The encode is GPU-process work too, so a relaunch during it voids the tile.
+  assertContextHeld(gl, sinceLosses, size);
   return new Uint8Array(await blob.arrayBuffer());
+}
+
+/** A capture that straddles a context loss is not the scene: the lost read returns nothing, and a restored context renders with emptied render targets (PMREM environments among them). */
+function assertContextHeld(
+  gl: { isContextLost(): boolean },
+  sinceLosses: number,
+  size: string,
+): void {
+  if (gl.isContextLost() || canvasContextLosses() !== sinceLosses) {
+    throw new Error(`preview capture: WebGL context lost mid-capture (${size}); rerun`);
+  }
 }
 
 /** Captures the canvas as it is right now, no clock write, no seek, no borrow (the Scene-tab header preview's fallback when no cached thumb exists). Because nothing touches the playhead, the clock-borrow blip class can't occur; the export guards still apply. Null when capture isn't possible right now. */
 export async function captureCurrentFrame(width: number): Promise<Uint8Array | null> {
   if (capturing || isExporting() || !canvasHandle.current) return null;
-  return paintAndReadCanvas(width, "jpeg");
+  return paintAndReadCanvas(width, "jpeg", canvasContextLosses()).catch((e) => {
+    console.warn("[snapshot] capture failed:", e);
+    return null;
+  });
 }
 
 export interface SnapshotSaved {
