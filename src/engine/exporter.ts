@@ -296,7 +296,7 @@ export function awaitTextSync(scene: Scene): Promise<void> {
 }
 
 /**
- * Deterministic export loop: reuses the live preview canvas, sizing its drawing buffer to the export resolution, then for each frame seeks the clock, awaits typesetting, renders exactly one frame, reads the pixels, and streams them to the ffmpeg sidecar. Frame N is a pure function of the frame index, no wall clock, no UI state. See docs/determinism.md.
+ * Deterministic export loop: reuses the live preview canvas, sizing its drawing buffer to the export resolution, then for each frame seeks the clock, awaits typesetting, renders the frame, reads the pixels, and streams them to the ffmpeg sidecar. Frame N is a pure function of the frame index, no wall clock, no UI state. See docs/determinism.md.
  *
  * @returns the output file path reported by the native side.
  */
@@ -614,19 +614,21 @@ async function exportProjectHeld(
       const statePlan = resolveFrameSceneStates(sceneStates, resolved);
       const lightingPlan = resolveFrameLighting(lightingTracks, resolved, compareBLightingTracks);
       const compareFrame = resolveCompareFrame(compareSpecs, sceneStates, sceneStatesB, resolved);
-      // Same render path as the preview (engine/compositor): single-scene frames render directly (v0-identical), transition frames go through the composite.
-      renderComposited(
-        gl,
-        scene,
-        camera,
-        getSceneHosts(),
-        resolved,
-        plan ?? undefined,
-        statePlan,
-        overlays ?? undefined,
-        lightingPlan ?? undefined,
-        compareFrame,
-      );
+      // Same render path as the preview (engine/compositor): single-scene frames render directly (v0-identical), transition frames go through the composite. Frame 0 draws twice and keeps the second, so it is never the run's first draw: a cold boot (hidden window, no preview frames) must capture what a warm one does.
+      for (let draw = frame === 0 ? 2 : 1; draw > 0; draw--) {
+        renderComposited(
+          gl,
+          scene,
+          camera,
+          getSceneHosts(),
+          resolved,
+          plan ?? undefined,
+          statePlan,
+          overlays ?? undefined,
+          lightingPlan ?? undefined,
+          compareFrame,
+        );
+      }
       if (frame === total - 1) onFingerprint?.(renderStateFingerprint(gl, scene));
       readFrameOrThrow(ctx, width, height, rgba, `export frame ${frame + 1}/${total}`);
       onBoundClipFrame?.(frame, sampleBoundClipFrame(scene));
