@@ -1,0 +1,53 @@
+{
+  "id": "preview-lab-bg-shadow-lace",
+  "name": "Preview Lab — bg-shadow-lace (dev-only)",
+  "version": 2,
+  "themeId": "kookaburra-studio-white",
+  "formats": ["16:9"],
+  "scenes": [
+    {
+      "file": "scenes/bg-shadow-lace.tsx",
+      "durationMs": 2000
+    },
+    {
+      "file": "scenes/bg-shadow-lace-light.tsx",
+      "durationMs": 2000
+    },
+    {
+      "file": "scenes/bgp-shadow-lace-p1.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-shadow-lace-p2.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-shadow-lace-p3.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-shadow-lace-p4.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-shadow-lace-p5.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-shadow-lace-p6.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-shadow-lace-p7.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-shadow-lace-p8.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-shadow-lace-p9.tsx",
+      "durationMs": 1000
+    }
+  ]
+}
