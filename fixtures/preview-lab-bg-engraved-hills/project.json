@@ -1,0 +1,53 @@
+{
+  "id": "preview-lab-bg-engraved-hills",
+  "name": "Preview Lab — bg-engraved-hills (dev-only)",
+  "version": 2,
+  "themeId": "kookaburra-studio-white",
+  "formats": ["16:9"],
+  "scenes": [
+    {
+      "file": "scenes/bg-engraved-hills.tsx",
+      "durationMs": 2000
+    },
+    {
+      "file": "scenes/bg-engraved-hills-light.tsx",
+      "durationMs": 2000
+    },
+    {
+      "file": "scenes/bgp-engraved-hills-p1.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-engraved-hills-p2.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-engraved-hills-p3.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-engraved-hills-p4.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-engraved-hills-p5.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-engraved-hills-p6.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-engraved-hills-p7.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-engraved-hills-p8.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-engraved-hills-p9.tsx",
+      "durationMs": 1000
+    }
+  ]
+}

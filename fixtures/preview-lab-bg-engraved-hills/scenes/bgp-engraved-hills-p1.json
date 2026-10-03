@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "name": "preset still for the \"engraved-hills\" 3D background (\"Dandenong\")",
+  "background": {
+    "type": "scene3d",
+    "look": "engraved-hills",
+    "colors": ["#949c8e", "#aab2a8", "#a5b0ba"],
+    "speed": 1,
+    "params": {
+      "rangeHeight": 1,
+      "pitch": 9,
+      "swell": 1,
+      "crossHatch": 1,
+      "sunSwing": 50,
+      "clouds": 1
+    },
+    "backing": {
+      "type": "color",
+      "color": "#f4f2ea"
+    },
+    "preset": "p1"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "name": "preset still for the \"engraved-hills\" 3D background (\"Kiewa Valley\")",
+  "background": {
+    "type": "scene3d",
+    "look": "engraved-hills",
+    "colors": ["#a39581", "#b8ad9c", "#b2a99b"],
+    "speed": 1,
+    "params": {
+      "rangeHeight": 0.85,
+      "pitch": 10,
+      "swell": 1.2,
+      "crossHatch": 0.6,
+      "sunSwing": 40,
+      "clouds": 1.2
+    },
+    "backing": {
+      "type": "color",
+      "color": "#f6f1e7"
+    },
+    "preset": "p3"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}
