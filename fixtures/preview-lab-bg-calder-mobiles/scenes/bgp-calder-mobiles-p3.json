@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "name": "preset still for the \"calder-mobiles\" 3D background (\"Pink Everlasting\")",
+  "background": {
+    "type": "scene3d",
+    "look": "calder-mobiles",
+    "colors": ["#d3a2a8", "#c9bd8e", "#a3b0a0", "#9a9894"],
+    "speed": 1.1,
+    "params": {
+      "count": 7,
+      "swing": 40,
+      "period": 100,
+      "paddle": 0.85,
+      "clearance": 0.42,
+      "depth": 32,
+      "seed": 23
+    },
+    "backing": {
+      "type": "color",
+      "color": "#f7f1ef"
+    },
+    "preset": "p3"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 2, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": -8,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

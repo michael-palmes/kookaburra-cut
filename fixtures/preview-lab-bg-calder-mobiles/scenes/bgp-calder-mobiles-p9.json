@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "name": "preset still for the \"calder-mobiles\" 3D background (\"Native Fuchsia\")",
+  "background": {
+    "type": "scene3d",
+    "look": "calder-mobiles",
+    "colors": ["#5d3446", "#35473a", "#6b5a46", "#262a2a"],
+    "speed": 1,
+    "params": {
+      "count": 6,
+      "swing": 25,
+      "period": 110,
+      "paddle": 1.05,
+      "clearance": 0.4,
+      "depth": 44,
+      "seed": 89
+    },
+    "backing": {
+      "type": "color",
+      "color": "#0c0e0f"
+    },
+    "preset": "p9"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 2, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": -8,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}
