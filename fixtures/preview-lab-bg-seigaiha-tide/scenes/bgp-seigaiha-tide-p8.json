@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "name": "preset still for the \"seigaiha-tide\" 3D background (\"Cape Jervis\")",
+  "background": {
+    "type": "scene3d",
+    "look": "seigaiha-tide",
+    "colors": ["#1b1f3e", "#303558", "#523b46", "#5a5e7e"],
+    "speed": 0.9,
+    "params": {
+      "fans": 8,
+      "rings": 3,
+      "clearRadius": 4.5,
+      "swell": 0.35,
+      "swellSpeed": 0.8,
+      "ripple": 0.28,
+      "mist": 9
+    },
+    "backing": {
+      "type": "color",
+      "color": "#0f1125"
+    },
+    "preset": "p8"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

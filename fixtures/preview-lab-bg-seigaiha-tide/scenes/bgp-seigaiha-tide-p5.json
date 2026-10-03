@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "name": "preset still for the \"seigaiha-tide\" 3D background (\"Middleton\")",
+  "background": {
+    "type": "scene3d",
+    "look": "seigaiha-tide",
+    "colors": ["#8399b2", "#adc1cf", "#efd2a8", "#f6f3e9"],
+    "speed": 0.9,
+    "params": {
+      "fans": 16,
+      "rings": 5,
+      "clearRadius": 2,
+      "swell": 0.3,
+      "swellSpeed": 0.9,
+      "ripple": 0.2,
+      "mist": 10
+    },
+    "backing": {
+      "type": "color",
+      "color": "#f3eee1"
+    },
+    "preset": "p5"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

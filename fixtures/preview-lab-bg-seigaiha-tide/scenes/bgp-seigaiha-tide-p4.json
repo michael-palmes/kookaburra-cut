@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "name": "preset still for the \"seigaiha-tide\" 3D background (\"Petrel Cove\")",
+  "background": {
+    "type": "scene3d",
+    "look": "seigaiha-tide",
+    "colors": ["#869f96", "#b4c5bb", "#e9d9b8", "#f3f2e8"],
+    "speed": 1.1,
+    "params": {
+      "fans": 12,
+      "rings": 4,
+      "clearRadius": 3.5,
+      "swell": 0.55,
+      "swellSpeed": 1.1,
+      "ripple": 0.5,
+      "mist": 7
+    },
+    "backing": {
+      "type": "color",
+      "color": "#efeee2"
+    },
+    "preset": "p4"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}
