@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "name": "preset still for the \"pendulum-ring\" 3D background (\"Wollomombi\")",
+  "background": {
+    "type": "scene3d",
+    "look": "pendulum-ring",
+    "colors": ["#63473a", "#74553f", "#46403d", "#3d3a3c"],
+    "speed": 0.9,
+    "params": {
+      "count": 56,
+      "rows": 2,
+      "swing": 0.45,
+      "period": 540,
+      "radius": 12,
+      "epoch": 120
+    },
+    "backing": {
+      "type": "color",
+      "color": "#110d0c"
+    },
+    "preset": "p7"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 2, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": -8,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

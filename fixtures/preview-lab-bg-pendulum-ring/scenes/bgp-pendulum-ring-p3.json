@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "name": "preset still for the \"pendulum-ring\" 3D background (\"Purling Brook\")",
+  "background": {
+    "type": "scene3d",
+    "look": "pendulum-ring",
+    "colors": ["#959f94", "#cfd6c8", "#9a9d95", "#a7b0aa"],
+    "speed": 0.9,
+    "params": {
+      "count": 36,
+      "rows": 4,
+      "swing": 0.55,
+      "period": 600,
+      "radius": 10.5,
+      "epoch": 150
+    },
+    "backing": {
+      "type": "color",
+      "color": "#f2f5f1"
+    },
+    "preset": "p3"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 2, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": -8,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

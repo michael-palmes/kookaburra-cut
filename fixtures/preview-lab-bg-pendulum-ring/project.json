@@ -1,0 +1,53 @@
+{
+  "id": "preview-lab-bg-pendulum-ring",
+  "name": "Preview Lab — bg-pendulum-ring (dev-only)",
+  "version": 2,
+  "themeId": "kookaburra-studio-white",
+  "formats": ["16:9"],
+  "scenes": [
+    {
+      "file": "scenes/bg-pendulum-ring.tsx",
+      "durationMs": 2000
+    },
+    {
+      "file": "scenes/bg-pendulum-ring-light.tsx",
+      "durationMs": 2000
+    },
+    {
+      "file": "scenes/bgp-pendulum-ring-p1.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-pendulum-ring-p2.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-pendulum-ring-p3.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-pendulum-ring-p4.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-pendulum-ring-p5.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-pendulum-ring-p6.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-pendulum-ring-p7.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-pendulum-ring-p8.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-pendulum-ring-p9.tsx",
+      "durationMs": 1000
+    }
+  ]
+}

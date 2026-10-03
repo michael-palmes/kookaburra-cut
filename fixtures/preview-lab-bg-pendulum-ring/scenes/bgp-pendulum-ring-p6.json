@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "name": "preset still for the \"pendulum-ring\" 3D background (\"Jim Jim\")",
+  "background": {
+    "type": "scene3d",
+    "look": "pendulum-ring",
+    "colors": ["#5f4f37", "#6c5a3b", "#44423d", "#383d42"],
+    "speed": 1,
+    "params": {
+      "count": 48,
+      "rows": 3,
+      "swing": 0.5,
+      "period": 480,
+      "radius": 11,
+      "epoch": 40
+    },
+    "backing": {
+      "type": "color",
+      "color": "#0e0f11"
+    },
+    "preset": "p6"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 2, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": -8,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}
