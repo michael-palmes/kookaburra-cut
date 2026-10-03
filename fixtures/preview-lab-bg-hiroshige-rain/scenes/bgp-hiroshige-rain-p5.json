@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "name": "preset still for the \"hiroshige-rain\" 3D background (\"Venus Bay\")",
+  "background": {
+    "type": "scene3d",
+    "look": "hiroshige-rain",
+    "colors": ["#8a9ea4", "#afc2c6", "#9cb2b6"],
+    "speed": 1,
+    "params": {
+      "density": 1.4,
+      "fall": 0.6,
+      "nearSlant": -3,
+      "farSlant": 6,
+      "puddles": 1.6,
+      "horizon": 1
+    },
+    "backing": {
+      "type": "color",
+      "color": "#eff5f5"
+    },
+    "preset": "p5"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

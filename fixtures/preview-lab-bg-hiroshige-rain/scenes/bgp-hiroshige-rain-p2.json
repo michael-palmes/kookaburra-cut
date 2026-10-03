@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "name": "preset still for the \"hiroshige-rain\" 3D background (\"Lake Tyers\")",
+  "background": {
+    "type": "scene3d",
+    "look": "hiroshige-rain",
+    "colors": ["#8e9a8f", "#b3bdb2", "#a2ae9f"],
+    "speed": 1,
+    "params": {
+      "density": 0.8,
+      "fall": 0.8,
+      "nearSlant": -5,
+      "farSlant": 9,
+      "puddles": 0.7,
+      "horizon": 1
+    },
+    "backing": {
+      "type": "color",
+      "color": "#f3f4ef"
+    },
+    "preset": "p2"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

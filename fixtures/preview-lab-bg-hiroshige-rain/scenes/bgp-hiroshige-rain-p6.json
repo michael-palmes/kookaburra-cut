@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "name": "preset still for the \"hiroshige-rain\" 3D background (\"Tarra Bulga\")",
+  "background": {
+    "type": "scene3d",
+    "look": "hiroshige-rain",
+    "colors": ["#56616c", "#3c464f", "#4b5963"],
+    "speed": 1,
+    "params": {
+      "density": 1,
+      "fall": 1,
+      "nearSlant": -7,
+      "farSlant": 12,
+      "puddles": 1,
+      "horizon": 1
+    },
+    "backing": {
+      "type": "color",
+      "color": "#0e1216"
+    },
+    "preset": "p6"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}
