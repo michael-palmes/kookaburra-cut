@@ -161,14 +161,14 @@ describe("snapshot destinations", () => {
     prepareCapture(undefined, { read: () => {} });
     const result = withBorrowedClock(() => captureFrameAt(500, 32, "jpeg")).catch(String);
     await vi.runAllTimersAsync();
-    expect(await result).toMatch(/all-zero frame \(64x36\)/);
+    expect(await result).toMatch(/preview capture 64x36\): readPixels returned an all-zero frame/);
   });
 
   it("refuses a frame read from a lost context", async () => {
     prepareCapture(undefined, { lost: true });
     const result = withBorrowedClock(() => captureFrameAt(500, 32, "jpeg")).catch(String);
     await vi.runAllTimersAsync();
-    expect(await result).toMatch(/context lost/);
+    expect(await result).toMatch(/WebGL context was lost/);
   });
 
   it("refuses a frame rendered after a context loss and restore inside the borrow", async () => {
@@ -180,7 +180,7 @@ describe("snapshot destinations", () => {
     });
     const result = withBorrowedClock(() => captureFrameAt(500, 32, "jpeg")).catch(String);
     await vi.runAllTimersAsync();
-    expect(await result).toMatch(/context lost/);
+    expect(await result).toMatch(/WebGL context was lost/);
   });
 
   it("does not publish another project's poster after navigation during encoding", async () => {

@@ -85,9 +85,3 @@ export function downscaleRgba(
   }
   return out;
 }
-
-/** True when not one byte of a readback was written. A lost context, or a read that outlives WebKit's GPU-process sync timeout, leaves the zero-filled buffer untouched; a real frame never is, since every scene clears to an opaque background. */
-export function isBlankReadback(rgba: Uint8Array): boolean {
-  for (let i = 0; i < rgba.length; i++) if (rgba[i] !== 0) return false;
-  return true;
-}

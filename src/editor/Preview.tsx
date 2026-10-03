@@ -1,7 +1,9 @@
 import { type CSSProperties, useCallback, useEffect, useRef, useState } from "react";
-import type { EditClip, EditSource, EditTap } from "../engine/edit";
+import type { EditClip, EditMask, EditSource, EditTap } from "../engine/edit";
+import { keyToleranceMs, type MaskRect, sourceMomentAt } from "../engine/editMasks";
 import { clipIndexAt, timelineDurationMs, timelineToSource } from "../engine/editMath";
 import { fsUrl } from "../engine/media";
+import { MaskLayer } from "./MaskLayer";
 import {
   TAP_MARKER_NEAR_MS,
   tapDotFrame,
@@ -43,7 +45,16 @@ export interface PreviewProps {
   tapStyle: string; // style (shape) id (tapStyles.generated.ts)
   tapColor: string; // colour id (tapStyles.generated.ts)
   tapSize: number; // multiplier on the default dot size
-  output: { width: number; height: number }; // the render size taps are sized against
+  output: { width: number; height: number; fps: number }; // the render size taps are sized against
+  masks: EditMask[];
+  selectedMaskId: string | null;
+  armedMask: boolean; // the mask tool: drag (or click) the frame to cover an area
+  onSelectMask: (id: string | null) => void;
+  onMaskGesture: () => void; // a mask drag started: pause playback
+  onDrawMask: (rect: MaskRect) => void;
+  onCommitMaskRect: (id: string, rect: MaskRect, kind: "move" | "resize") => void;
+  onCommitMaskPath: (id: string, dx: number, dy: number) => void;
+  onMaskContextMenu: (id: string, clientX: number, clientY: number) => void;
 }
 
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
@@ -93,8 +104,18 @@ export function Preview({
   tapColor,
   tapSize,
   output,
+  masks,
+  selectedMaskId,
+  armedMask,
+  onSelectMask,
+  onMaskGesture,
+  onDrawMask,
+  onCommitMaskRect,
+  onCommitMaskPath,
+  onMaskContextMenu,
 }: PreviewProps) {
   const videos = useRef(new Map<string, HTMLVideoElement>());
+  const imgs = useRef(new Map<string, HTMLImageElement>());
   // Latest-value mirrors so the playback loop never restarts on scrub/edit.
   const clipsRef = useRef(clips);
   clipsRef.current = clips;
@@ -275,6 +296,22 @@ export function Preview({
     backgroundImage: gradient,
   });
 
+  // Masks read the frame on screen: a trim drag's edge frame, else the playhead's (a freeze or still reads its pinned frame).
+  let maskSourceMs: number | null = null;
+  let maskSpeed = 1;
+  if (trimScrub) {
+    const source = sources.find((s) => s.id === trimScrub.sourceId);
+    const fps = source && source.fps > 0 ? source.fps : 60;
+    maskSourceMs =
+      trimScrub.edge === "out" ? Math.max(0, trimScrub.sourceMs - 500 / fps) : trimScrub.sourceMs;
+  } else {
+    const moment = sourceMomentAt(clips, playheadMs);
+    if (moment && moment.sourceId === activeSourceId) {
+      maskSourceMs = moment.sourceMs;
+      maskSpeed = moment.hold ? 1 : moment.clip.speed;
+    }
+  }
+
   /** "Near" scope: an edit marker shows only while the playhead is within the margin of one of its windows; "all" also surfaces taps whose spans were trimmed out. */
   const markerVisible = (tap: EditTap): boolean => {
     if (tapMarkerScope === "all") return true;
@@ -293,10 +330,25 @@ export function Preview({
           key={source.id}
           className={`editor-video${source.id === activeSourceId ? "" : " hidden"}`}
         >
-          <div className="editor-video-box" style={sourceBoxStyle(source)}>
+          <div
+            className="editor-video-box"
+            style={sourceBoxStyle(source)}
+            onPointerDown={(e) => {
+              const tag = (e.target as HTMLElement).tagName;
+              if (tag === "VIDEO" || tag === "IMG") onSelectMask(null);
+            }}
+          >
             {source.kind === "image" ? (
               // A still has no decode clock, so it never joins the video map: the transport loop's freeze branch just advances past it.
-              <img className="editor-still" src={fsUrl(`${basePath}/${source.rel}`)} alt="" />
+              <img
+                className="editor-still"
+                src={fsUrl(`${basePath}/${source.rel}`)}
+                alt=""
+                ref={(el) => {
+                  if (el) imgs.current.set(source.id, el);
+                  else imgs.current.delete(source.id);
+                }}
+              />
             ) : (
               <video
                 src={fsUrl(`${basePath}/${source.rel}`)}
@@ -311,6 +363,22 @@ export function Preview({
             )}
             {source.id === activeSourceId && (
               <>
+                <MaskLayer
+                  source={source}
+                  masks={masks.filter((m) => m.sourceId === source.id)}
+                  sourceMs={maskSourceMs}
+                  keyTolMs={keyToleranceMs(output.fps, maskSpeed)}
+                  selectedId={selectedMaskId}
+                  armed={armedMask && maskSourceMs !== null && !trimScrub}
+                  editable={!playing && !trimScrub}
+                  media={videos.current.get(source.id) ?? imgs.current.get(source.id) ?? null}
+                  onSelect={onSelectMask}
+                  onGesture={onMaskGesture}
+                  onDraw={onDrawMask}
+                  onCommitRect={onCommitMaskRect}
+                  onCommitPath={onCommitMaskPath}
+                  onContextMenu={onMaskContextMenu}
+                />
                 {armedTap && canPlaceTap && (
                   <div
                     className="tap-layer"

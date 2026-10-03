@@ -38,9 +38,11 @@ const GROUPS: { title: string; rows: [string, string][] }[] = [
       ["S", "Split the clip under the playhead"],
       ["F", "Freeze the frame under the playhead"],
       ["T", "Tap tool: click the preview to place a tap highlight"],
-      ["⌫", "Delete the selected clip"],
+      ["M", "Mask tool: drag over the preview to hide an area"],
+      ["⌥ while dragging", "Mask: move its whole path instead of keying this frame"],
+      ["⌫", "Delete the selected mask or clip"],
       ["Trackpad scroll", "Scrub the playhead"],
-      ["Right-click", "Tap marker: context menu"],
+      ["Right-click", "Tap marker · mask: context menu"],
     ],
   },
   {

@@ -57,6 +57,7 @@ import {
   preloadProjectImages,
   resolveAssetPath,
 } from "./project";
+import { assertContextHeld, readFrameOrThrow } from "./readback";
 import { type RenderStateFingerprint, renderStateFingerprint } from "./renderFingerprint";
 import { buildSceneCameraTracks, hasSceneCameraTracks, resolveFrameCameras } from "./sceneCamera";
 import { compareSpecOf, resolveCompareFrame } from "./sceneCompare";
@@ -449,6 +450,7 @@ async function exportProjectHeld(
   const handle = canvasHandle.current;
   if (!handle) throw new Error("Export bridge not mounted: the canvas is not ready.");
   const { gl, scene, camera } = handle;
+  assertContextHeld(gl.getContext(), "before the export");
 
   // Snapshot preview state first: from the preamble on, everything runs inside one try/finally, so a failed preamble or start leaves no export-sized buffer, aspect or clip lane behind.
   const prevSize = gl.getSize(new Vector2());
@@ -626,7 +628,7 @@ async function exportProjectHeld(
         compareFrame,
       );
       if (frame === total - 1) onFingerprint?.(renderStateFingerprint(gl, scene));
-      ctx.readPixels(0, 0, width, height, ctx.RGBA, ctx.UNSIGNED_BYTE, rgba);
+      readFrameOrThrow(ctx, width, height, rgba, `export frame ${frame + 1}/${total}`);
       onBoundClipFrame?.(frame, sampleBoundClipFrame(scene));
       onFrame?.(frame, rgba);
       await invoke("push_frame", rgba);
@@ -667,6 +669,7 @@ async function captureFrameRgbaHeld(
   const handle = canvasHandle.current;
   if (!handle) throw new Error("Export bridge not mounted: the canvas is not ready.");
   const { gl, scene, camera } = handle;
+  assertContextHeld(gl.getContext(), `capture at ${tMs}ms`);
 
   // Bridge captures run mid-edit: the preamble's selection clear (a gizmo must never reach a frame) is given back once the capture ends, unlike a user-initiated export.
   const prevSelection = {
@@ -799,7 +802,7 @@ async function captureFrameRgbaHeld(
       lightingPlan ?? undefined,
       compareFrame,
     );
-    ctx.readPixels(0, 0, width, height, ctx.RGBA, ctx.UNSIGNED_BYTE, rgba);
+    readFrameOrThrow(ctx, width, height, rgba, `capture at ${tMs}ms`);
     return { rgba, width, height };
   } finally {
     setExporting(false);

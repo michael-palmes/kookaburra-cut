@@ -3552,6 +3552,28 @@ button.beat-status {
   background: var(--accent-subtle);
 }
 
+/* The mask strip reuses the tap strip's segments and pills, with a leading icon on each. */
+.mask-settings .tap-settings-seg {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.mask-settings .tap-settings-style-btn {
+  padding: 2px 8px;
+}
+
+.mask-settings .tap-settings-style-btn:disabled {
+  color: var(--text-tertiary);
+  background: transparent;
+  cursor: default;
+}
+
+.mask-settings-hint {
+  font-size: var(--text-2xs);
+  color: var(--text-secondary);
+}
+
 /* A placed tap's edit affordance: subtle ring, stronger while the tool is armed. */
 .tap-marker {
   position: absolute;
@@ -3574,6 +3596,146 @@ button.beat-status {
 
 .tap-marker:active {
   cursor: grabbing;
+}
+
+/* Privacy masks over the editor video (MaskLayer.tsx): DOM preview only, the render bakes them in ffmpeg. Its own stacking context, so frames and handles stack inside it and the tap layer still paints above. */
+.mask-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.mask-effect {
+  position: absolute;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.mask-canvas {
+  position: absolute;
+  display: block;
+}
+
+.mask-canvas.pixelated {
+  image-rendering: pixelated;
+}
+
+.mask-frame {
+  position: absolute;
+  z-index: 1;
+  box-sizing: border-box;
+  border: 1px solid transparent;
+  pointer-events: auto;
+  cursor: pointer;
+  touch-action: none;
+}
+
+.mask-frame:hover {
+  border-color: var(--gizmo-outline-hover);
+}
+
+.mask-frame.selected {
+  z-index: 2;
+  border: 1.5px solid var(--gizmo-selected);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
+  cursor: move;
+}
+
+.mask-frame.inactive {
+  border: 1.5px dashed var(--gizmo-outline-hover);
+  pointer-events: none;
+}
+
+.mask-handle {
+  position: absolute;
+  width: 9px;
+  height: 9px;
+  transform: translate(-50%, -50%);
+  background: var(--gizmo-handle);
+  border: 1px solid var(--gizmo-handle-edge);
+  border-radius: 2px;
+}
+
+.mask-handle.nw {
+  left: 0;
+  top: 0;
+  cursor: nwse-resize;
+}
+
+.mask-handle.n {
+  left: 50%;
+  top: 0;
+  cursor: ns-resize;
+}
+
+.mask-handle.ne {
+  left: 100%;
+  top: 0;
+  cursor: nesw-resize;
+}
+
+.mask-handle.e {
+  left: 100%;
+  top: 50%;
+  cursor: ew-resize;
+}
+
+.mask-handle.se {
+  left: 100%;
+  top: 100%;
+  cursor: nwse-resize;
+}
+
+.mask-handle.s {
+  left: 50%;
+  top: 100%;
+  cursor: ns-resize;
+}
+
+.mask-handle.sw {
+  left: 0;
+  top: 100%;
+  cursor: nesw-resize;
+}
+
+.mask-handle.w {
+  left: 0;
+  top: 50%;
+  cursor: ew-resize;
+}
+
+/* The selected box's key cue: filled when a key sits at this frame (a drag edits it), hollow when a drag adds one. */
+.mask-key-badge {
+  position: absolute;
+  left: 6px;
+  top: 6px;
+  width: 8px;
+  height: 8px;
+  transform: rotate(45deg);
+  border: 1.5px solid var(--gizmo-selected);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.4);
+}
+
+.mask-key-badge.on {
+  background: var(--gizmo-selected);
+}
+
+.mask-draw-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: auto;
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.mask-draft {
+  position: absolute;
+  z-index: 4;
+  border: 1.5px dashed var(--gizmo-selected);
+  background: rgba(0, 0, 0, 0.35);
+  pointer-events: none;
 }
 
 .editor-clips {
@@ -3820,6 +3982,74 @@ button.beat-status {
   border-radius: 3px;
   background: var(--accent-subtle);
   border: 1px solid var(--accent-border);
+}
+
+/* Privacy masks: one bar per clip a mask's source span lands in; the selected mask shows its keys and draggable ends. */
+.timeline-mask-lane {
+  position: relative;
+  margin-top: 2px;
+}
+
+.timeline-mask-bar {
+  position: absolute;
+  height: 9px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.22);
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  cursor: pointer;
+  touch-action: none;
+  transition:
+    left var(--dur-fast) var(--ease-standard),
+    width var(--dur-fast) var(--ease-standard);
+}
+
+.timeline-mask-bar.blur {
+  background: rgba(150, 190, 255, 0.28);
+}
+
+.timeline-mask-bar.pixelate {
+  background: rgba(200, 160, 255, 0.28);
+}
+
+.timeline-mask-bar.hold {
+  border-style: dashed;
+}
+
+.timeline-mask-bar.selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+  z-index: 1;
+}
+
+.timeline-mask-key {
+  position: absolute;
+  top: 50%;
+  width: 7px;
+  height: 7px;
+  transform: translate(-50%, -50%) rotate(45deg);
+  background: var(--accent);
+  border: 1px solid rgba(0, 0, 0, 0.45);
+  cursor: pointer;
+}
+
+.timeline-mask-edge {
+  position: absolute;
+  top: -1px;
+  bottom: -1px;
+  width: 6px;
+  background: var(--accent);
+  cursor: ew-resize;
+  touch-action: none;
+}
+
+.timeline-mask-edge.left {
+  left: -1px;
+  border-radius: 3px 0 0 3px;
+}
+
+.timeline-mask-edge.right {
+  right: -1px;
+  border-radius: 0 3px 3px 0;
 }
 
 .timeline {

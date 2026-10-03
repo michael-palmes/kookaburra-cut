@@ -5,6 +5,7 @@ mod bridge;
 mod claude_update;
 mod concurrency;
 mod edit;
+mod edit_masks;
 mod encode;
 mod export_presets;
 mod fonts;

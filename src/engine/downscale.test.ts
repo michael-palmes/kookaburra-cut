@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { downscaleRgba, isBlankReadback } from "./downscale";
+import { downscaleRgba } from "./downscale";
 
 /** Opaque greyscale RGBA from rows of grey levels. */
 function grey(rows: number[][]): Uint8Array {
@@ -56,18 +56,5 @@ describe("downscaleRgba", () => {
     // Additive glow over a zero-alpha clear: un-premultiplying by that alpha zeroed the whole tile.
     const glow = Uint8Array.from([90, 160, 200, 0, 30, 60, 90, 0]);
     expect(Array.from(downscaleRgba(glow, 2, 1, 1, 1))).toEqual([60, 110, 145, 255]);
-  });
-});
-
-describe("isBlankReadback", () => {
-  it("flags the untouched zero buffer a lost or timed-out readPixels leaves behind", () => {
-    expect(isBlankReadback(new Uint8Array(64 * 36 * 4))).toBe(true);
-  });
-
-  it("passes any written frame, even a pure black one", () => {
-    const black = new Uint8Array(64 * 36 * 4);
-    black[black.length - 1] = 255;
-    expect(isBlankReadback(black)).toBe(false);
-    expect(isBlankReadback(grey([[0, 0]]))).toBe(false);
   });
 });

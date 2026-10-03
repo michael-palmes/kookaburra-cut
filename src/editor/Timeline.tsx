@@ -1,5 +1,11 @@
 import { useEffect, useRef, useState } from "react";
-import type { EditClip, EditSource, EditTap } from "../engine/edit";
+import type { EditClip, EditMask, EditSource, EditTap } from "../engine/edit";
+import {
+  maskWindows,
+  packMaskRows,
+  retimeMaskEdge,
+  timelineToSourceUnclamped,
+} from "../engine/editMasks";
 import {
   clipIndexAt,
   clipTimelineMs,
@@ -39,12 +45,22 @@ export interface TimelineProps {
   referenceClips?: EditClip[];
   /** The reference pane's provisional offset in output ms; shifts the lane with the nudge. */
   referenceOffsetMs?: number;
+  /** Privacy masks: a lane of bars wherever each mask's source span lands, shown while any exist or the mask tool is armed. */
+  masks?: EditMask[];
+  showMaskLane?: boolean;
+  selectedMaskId?: string | null;
+  onSelectMask?: (id: string) => void;
+  /** A bar end was dragged: the mask with its new span. */
+  onRetimeMask?: (mask: EditMask) => void;
+  /** Right-click on a key diamond of the selected mask. */
+  onMaskKeyMenu?: (id: string, sourceMs: number, x: number, y: number) => void;
 }
 
 const PAD_L = 16; // content inset before t=0
 const TAIL_PX = 96; // breathing room after the last clip
 const SNAP_PX = 8; // snap radius, in screen px (converted to ms at the current zoom)
 const MOVE_THRESHOLD_PX = 4; // pointer travel before a click becomes a reorder-drag
+const MASK_ROW_PX = 12;
 const MIN_PX_PER_MS = 0.005;
 const MAX_PX_PER_MS = 4;
 
@@ -112,6 +128,12 @@ export function Timeline({
   tapWindowList,
   referenceClips,
   referenceOffsetMs = 0,
+  masks = [],
+  showMaskLane = false,
+  selectedMaskId = null,
+  onSelectMask,
+  onRetimeMask,
+  onMaskKeyMenu,
 }: TimelineProps) {
   const scrollerRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -342,6 +364,52 @@ export function Timeline({
       onCommit(moveClip(drag.orig, drag.fromIndex, drag.toIndex), "reorder clip");
     }
     setDrag(null);
+  }
+
+  // ── Mask lane ─────────────────────────────────────────────────────────────
+  const imageSources = new Set(sources.filter((s) => s.kind === "image").map((s) => s.id));
+  const [maskDrag, setMaskDrag] = useState<{
+    orig: EditMask;
+    draft: EditMask;
+    edge: "start" | "end";
+    clip: EditClip;
+  } | null>(null);
+  // Rows come from the committed layout, so bars never jump between rows mid-drag.
+  const maskRows = packMaskRows(
+    new Map(masks.map((m) => [m.id, maskWindows(clips, m, imageSources.has(m.sourceId))])),
+  );
+  const maskRowCount = Math.max(1, ...[...maskRows.values()].map((r) => r + 1));
+
+  function onMaskEdgeDown(
+    e: React.PointerEvent,
+    mask: EditMask,
+    edge: "start" | "end",
+    clip: EditClip,
+  ) {
+    if (e.button !== 0) return;
+    e.stopPropagation();
+    e.currentTarget.setPointerCapture(e.pointerId);
+    setMaskDrag({ orig: mask, draft: mask, edge, clip });
+  }
+
+  function onMaskEdgeMove(e: React.PointerEvent) {
+    if (!maskDrag) return;
+    const t = snapMs(pointerMs(e.clientX), [playheadMs, ...edgeTargetsMs(clips)], snapThresholdMs);
+    const source = sourceById.get(maskDrag.orig.sourceId);
+    const draft = retimeMaskEdge(
+      maskDrag.orig,
+      maskDrag.edge,
+      timelineToSourceUnclamped(maskDrag.clip, t),
+      source?.durationMs ?? 0,
+    );
+    setMaskDrag({ ...maskDrag, draft });
+  }
+
+  function onMaskEdgeUp() {
+    if (!maskDrag) return;
+    const { orig, draft } = maskDrag;
+    setMaskDrag(null);
+    if (draft.startMs !== orig.startMs || draft.endMs !== orig.endMs) onRetimeMask?.(draft);
   }
 
   /** Abandon any drag (pointercancel): discard the draft and clear the viewer override. */
@@ -577,6 +645,103 @@ export function Timeline({
               );
             })}
           </div>
+          {(showMaskLane || masks.length > 0) && (
+            <div
+              className="timeline-mask-lane"
+              style={{ height: maskRowCount * MASK_ROW_PX + 4 }}
+              title="Masks: click a bar to select it, drag its ends to retime"
+            >
+              {masks.map((committed) => {
+                const mask = maskDrag?.orig.id === committed.id ? maskDrag.draft : committed;
+                const image = imageSources.has(mask.sourceId);
+                const row = maskRows.get(committed.id) ?? 0;
+                const selected = mask.id === selectedMaskId;
+                return renderClips.map((stable) => {
+                  const block = blockById.get(stable.id);
+                  if (!block) return null;
+                  const [w] = maskWindows([block.clip], mask, image);
+                  if (!w) return null;
+                  const clip = block.clip;
+                  const speed = effectiveSpeed(clip.speed);
+                  const x = PAD_L + block.x + (w.startMs - clip.startMs) * pxPerMs;
+                  const width = Math.max(3, (w.endMs - w.startMs) * pxPerMs);
+                  const keys =
+                    selected && !w.hold
+                      ? mask.keys.filter(
+                          (k) =>
+                            k.sourceMs >= Math.max(clip.inMs, mask.startMs) &&
+                            k.sourceMs < Math.min(clip.outMs, mask.endMs),
+                        )
+                      : [];
+                  return (
+                    // biome-ignore lint/a11y/useSemanticElements: a real <button> can't host the edge handles' pointer capture cleanly
+                    <div
+                      key={`${mask.id}:${clip.id}`}
+                      role="button"
+                      tabIndex={-1}
+                      className={`timeline-mask-bar ${mask.style}${selected ? " selected" : ""}${w.hold ? " hold" : ""}`}
+                      style={{ left: x, width, top: 2 + row * MASK_ROW_PX }}
+                      onPointerDown={(e) => {
+                        if (e.button !== 0) return;
+                        e.stopPropagation();
+                        onSelectMask?.(mask.id);
+                        if (playheadMs < w.startMs || playheadMs >= w.endMs) {
+                          onPlayhead(Math.round(w.startMs));
+                        }
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") onSelectMask?.(mask.id);
+                      }}
+                    >
+                      {keys.map((k) => (
+                        // biome-ignore lint/a11y/noStaticElementInteractions: a key marker; the strip's key buttons cover keyboard use
+                        <span
+                          key={k.sourceMs}
+                          className="timeline-mask-key"
+                          style={{
+                            left:
+                              ((k.sourceMs - clip.inMs) / speed - (w.startMs - clip.startMs)) *
+                              pxPerMs,
+                          }}
+                          title="Mask key: click to jump here, right-click to delete"
+                          onPointerDown={(e) => {
+                            if (e.button !== 0) return;
+                            e.stopPropagation();
+                            onPlayhead(Math.round(clip.startMs + (k.sourceMs - clip.inMs) / speed));
+                          }}
+                          onContextMenu={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            onMaskKeyMenu?.(mask.id, k.sourceMs, e.clientX, e.clientY);
+                          }}
+                        />
+                      ))}
+                      {selected && w.startEdge && (
+                        <span
+                          className="timeline-mask-edge left"
+                          title="Drag to change where the mask starts"
+                          onPointerDown={(e) => onMaskEdgeDown(e, committed, "start", clip)}
+                          onPointerMove={onMaskEdgeMove}
+                          onPointerUp={onMaskEdgeUp}
+                          onPointerCancel={() => setMaskDrag(null)}
+                        />
+                      )}
+                      {selected && w.endEdge && (
+                        <span
+                          className="timeline-mask-edge right"
+                          title="Drag to change where the mask ends"
+                          onPointerDown={(e) => onMaskEdgeDown(e, committed, "end", clip)}
+                          onPointerMove={onMaskEdgeMove}
+                          onPointerUp={onMaskEdgeUp}
+                          onPointerCancel={() => setMaskDrag(null)}
+                        />
+                      )}
+                    </div>
+                  );
+                });
+              })}
+            </div>
+          )}
           {referenceClips && referenceClips.length > 0 && (
             <div className="timeline-ref-lane" title="Reference clips, read-only">
               {referenceClips.map((clip) => (
