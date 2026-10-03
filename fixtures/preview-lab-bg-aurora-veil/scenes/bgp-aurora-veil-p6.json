@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "name": "preset still for the \"aurora-veil\" 3D background (\"Barkly Night\")",
+  "background": {
+    "type": "scene3d",
+    "look": "aurora-veil",
+    "colors": ["#2d6a55", "#633c6f", "#121a29"],
+    "speed": 1,
+    "params": {
+      "curtains": 5,
+      "radius": 46,
+      "hemHeight": 3.6,
+      "fold": 5.5,
+      "rays": 1,
+      "brightness": 0.8
+    },
+    "backing": {
+      "type": "color",
+      "color": "#0f1422"
+    },
+    "preset": "p6"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 2, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": -8,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

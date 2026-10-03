@@ -1,0 +1,53 @@
+{
+  "id": "preview-lab-bg-aurora-veil",
+  "name": "Preview Lab — bg-aurora-veil (dev-only)",
+  "version": 2,
+  "themeId": "kookaburra-studio-white",
+  "formats": ["16:9"],
+  "scenes": [
+    {
+      "file": "scenes/bg-aurora-veil.tsx",
+      "durationMs": 2000
+    },
+    {
+      "file": "scenes/bg-aurora-veil-light.tsx",
+      "durationMs": 2000
+    },
+    {
+      "file": "scenes/bgp-aurora-veil-p1.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-aurora-veil-p2.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-aurora-veil-p3.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-aurora-veil-p4.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-aurora-veil-p5.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-aurora-veil-p6.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-aurora-veil-p7.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-aurora-veil-p8.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-aurora-veil-p9.tsx",
+      "durationMs": 1000
+    }
+  ]
+}

@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "name": "preset still for the \"aurora-veil\" 3D background (\"Nightcliff\")",
+  "background": {
+    "type": "scene3d",
+    "look": "aurora-veil",
+    "colors": ["#2d6a48", "#3f5a6e", "#101a24"],
+    "speed": 1.1,
+    "params": {
+      "curtains": 5,
+      "radius": 44,
+      "hemHeight": 3.2,
+      "fold": 6.5,
+      "rays": 1.3,
+      "brightness": 0.85
+    },
+    "backing": {
+      "type": "color",
+      "color": "#0d1219"
+    },
+    "preset": "p7"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 2, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": -8,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}
