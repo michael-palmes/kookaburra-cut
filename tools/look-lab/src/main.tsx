@@ -13,7 +13,8 @@ import {
   SCENE3D_BACKGROUND_PRESETS,
   SCENE3D_BACKGROUNDS,
 } from "../../../src/toolkit/stage/scene3d";
-import { type LabJob, type LabPose, parseJob, resolveCam } from "./job";
+import { scene3dPreviewCamera } from "../../../src/toolkit/stage/scene3d/previewCamera";
+import { type LabJob, type LabPose, parseJob, previewAlias, resolveCam } from "./job";
 import { type LabFrame, LabScene, type Scene3dSpec } from "./LabScene";
 import { boxDownsample, composeSheet, type Diagnostic, motionTile, SheetBody } from "./sheet";
 
@@ -158,12 +159,13 @@ async function run(): Promise<void> {
   const rows = buildRows(job);
   if (rows.length === 0) throw new Error("No rows to render (check --presets)");
   // The picker still's pose, as scripts/gen-bg3d-preview-labs.ts picks it.
-  const preview = (def.previewCamera ?? (def.family === "grids" ? "static" : "sweep")) === "static";
+  const kind = scene3dPreviewCamera(def);
   const cams = job.cams
-    .map((name) => (name === "preview" ? (preview ? "static" : "lab") : name))
+    .map((name) => previewAlias(name, kind))
     .map((name) => ({ name, pose: resolveCam(name) }));
-  const tallPose = job.tall ? resolveCam(job.tall) : null;
-  for (const c of [...cams, ...(job.tall ? [{ name: job.tall, pose: tallPose }] : [])]) {
+  const tallName = job.tall ? previewAlias(job.tall, kind) : null;
+  const tallPose = tallName ? resolveCam(tallName) : null;
+  for (const c of [...cams, ...(tallName ? [{ name: tallName, pose: tallPose }] : [])]) {
     if (!c.pose) throw new Error(`Unknown camera "${c.name}" (named or orbit:az:el:dist[:y])`);
   }
   const theme = builtinThemes[job.theme] ?? defaultTheme;
@@ -228,7 +230,7 @@ async function run(): Promise<void> {
           ),
           [
             ...cams.map((c) => ({ title: c.name, width: wide.width })),
-            ...(tallPose ? [{ title: `9:16 ${job.tall}`, width: tall.width }] : []),
+            ...(tallPose ? [{ title: `9:16 ${tallName}`, width: tall.width }] : []),
           ],
           wide.height,
         );
@@ -364,7 +366,7 @@ async function run(): Promise<void> {
     timing: { totalMs, firstTileMs: tileMs[0] ?? 0, tiles: tileMs.length, avgTileMs: avg },
     motion: motion.map((m) => ({
       ...m,
-      cam: m.col < cams.length ? cams[m.col].name : `9:16 ${job.tall}`,
+      cam: m.col < cams.length ? cams[m.col].name : `9:16 ${tallName}`,
     })),
     diagnostics: list,
   };

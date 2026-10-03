@@ -10,6 +10,10 @@ import type {
   Scene3dBackgroundDef,
   Scene3dBackgroundPreset,
 } from "../src/toolkit/stage/scene3d/index.ts";
+import {
+  scene3dPreviewCamera,
+  scene3dPreviewCameraTrack,
+} from "../src/toolkit/stage/scene3d/previewCamera.ts";
 
 type Registry = {
   SCENE3D_BACKGROUNDS: Record<string, Scene3dBackgroundDef>;
@@ -17,36 +21,9 @@ type Registry = {
   SCENE3D_BACKGROUND_PRESETS: Record<string, Scene3dBackgroundPreset[]>;
 };
 
-type Pose = {
-  target: [number, number, number];
-  azimuthDeg: number;
-  elevationDeg: number;
-  distance: number;
-};
-
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const DASH = "—";
 const PRESET_IDS = ["p1", "p2", "p3", "p4", "p5", "p6", "p7", "p8", "p9"];
-
-const staticPose: Pose = { target: [0, 0, 0], azimuthDeg: 14, elevationDeg: 16, distance: 6.5 };
-const sweepPose = (azimuthDeg: number): Pose => ({
-  target: [0, 0.6, 0],
-  azimuthDeg,
-  elevationDeg: 6,
-  distance: 7,
-});
-
-function camera(kind: "static" | "sweep", clip: boolean) {
-  if (kind === "static") return { keys: [{ id: "k1", tMs: 0, pose: staticPose }], segments: [] };
-  if (!clip) return { keys: [{ id: "k1", tMs: 0, pose: sweepPose(20) }], segments: [] };
-  return {
-    keys: [
-      { id: "k1", tMs: 0, pose: sweepPose(-35) },
-      { id: "k2", tMs: 1900, pose: sweepPose(35) },
-    ],
-    segments: [{ from: "k1", to: "k2", ease: "inOutCubic" }],
-  };
-}
 
 function background(look: string, preset: Scene3dBackgroundPreset) {
   return {
@@ -88,7 +65,7 @@ function writeLab(look: string, def: Scene3dBackgroundDef, presets: Scene3dBackg
   const missing = PRESET_IDS.filter((id) => !byId.has(id));
   if (missing.length > 0) throw new Error(`${look}: missing presets ${missing.join(", ")}`);
   const preset = (id: string) => byId.get(id) as Scene3dBackgroundPreset;
-  const kind = def.previewCamera ?? (def.family === "grids" ? "static" : "sweep");
+  const kind = scene3dPreviewCamera(def);
   const scenes = [
     {
       stem: `bg-${look}`,
@@ -139,7 +116,7 @@ function writeLab(look: string, def: Scene3dBackgroundDef, presets: Scene3dBackg
         version: 1,
         name: s.label,
         background: background(look, s.preset),
-        camera: camera(kind, s.clip),
+        camera: scene3dPreviewCameraTrack(kind, s.clip),
       }),
     );
     jsonPaths.push(sidecar);

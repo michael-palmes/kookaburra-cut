@@ -148,9 +148,15 @@ git diff --stat fixtures/                                # untouched looks must 
 
 It writes `fixtures/preview-lab-bg-<look>/`: `project.json` plus 11 pairs, `bg-<look>` (p6,
 2000ms clip), `bg-<look>-light` (p1 clip) and `bgp-<look>-p1..p9` (1000ms stills), then runs
-Biome over the JSON. The camera follows `def.previewCamera`: `static` holds one elevated pose
-(the grids default), `sweep` orbits the clip from -35 to 35 degrees (every other family).
-Rerun it after any preset change, then `--action option-previews`.
+Biome over the JSON. The camera follows `def.previewCamera` (poses in
+`scene3d/previewCamera.ts`): `static` holds one elevated pose (the grids default), `sweep`
+orbits the clip from -35 to 35 degrees at eye level (every other family), and `ceiling` orbits
+the same arc from below (target y 2, elevation -8) for looks hung or staged overhead (mobiles,
+canopies, domes, auroras, skies), which `sweep` crops to a sliver at the top of the card. Pick
+it from the evidence: compare `--grid` against `--grid --cams ceiling` in the look lab and keep
+it only where the card is clearly fuller. Rerun the generator after any preset or
+`previewCamera` change (`scene3d/previewCamera.test.ts` fails on a stale fixture camera), then
+`--action option-previews`.
 
 ### Capture version pins
 

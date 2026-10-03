@@ -36,9 +36,11 @@ node tools/look-lab/sheet.mjs --look wash-dome --serve         # live page in a 
 | `--timeout 180`, `--retries 1`, `--verbose` | | Per-attempt limit, fresh-Chrome retries, progress lines |
 
 Cameras: `front` is the app default (0, 0, 5) at fov 45; `lab` the generated preview-lab pose (az
-20, el 6, dist 7, target y 0.6); `static` the grids' preview pose; `wide` (32, 20, 22); `behind`
-(180, 10, 9); `far` (20, 14, 45); `low` and `top` for floors and domes; `preview` the look's
-picker-still pose (`static` for `previewCamera: "static"` and grids, else `lab`).
+20, el 6, dist 7, target y 0.6), or `ceiling` for a `previewCamera: "ceiling"` look; `static` the
+grids' preview pose; `ceiling` the raised looks' pose (az 20, el -8, dist 7, target y 2); `wide`
+(32, 20, 22); `behind` (180, 10, 9); `far` (20, 14, 45); `low` and `top` for floors and domes;
+`preview` the look's picker-still pose (its `previewCamera` kind, `static` for grids, else `lab`).
+Poses live in `src/toolkit/stage/scene3d/previewCamera.ts`, shared with the fixture generator.
 
 Exit codes: 0 clean, 1 rendered but the page logged errors (printed under the sheet and in the
 terminal), 2 setup failure or timeout. Warnings print too; fix them rather than ignore them.

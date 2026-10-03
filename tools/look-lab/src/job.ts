@@ -1,5 +1,10 @@
 import { CAMERA } from "../../../src/engine/format";
 import { orbitToView } from "../../../src/engine/orbit";
+import {
+  SCENE3D_PREVIEW_POSES,
+  type Scene3dPreviewPose,
+} from "../../../src/toolkit/stage/scene3d/previewCamera";
+import type { Scene3dPreviewCamera } from "../../../src/toolkit/stage/scene3d/types";
 
 /** A camera pose in world space; `fov` is vertical, like the app camera. */
 export interface LabPose {
@@ -8,24 +13,23 @@ export interface LabPose {
   fov: number;
 }
 
-const orbit = (
-  azimuthDeg: number,
-  elevationDeg: number,
-  distance: number,
-  ty = 0,
-): Omit<LabPose, "fov"> => {
-  const view = orbitToView({ target: [0, ty, 0], azimuthDeg, elevationDeg, distance });
-  return { position: view.position, target: view.lookAt };
+const view = (pose: Scene3dPreviewPose): Omit<LabPose, "fov"> => {
+  const v = orbitToView(pose);
+  return { position: v.position, target: v.lookAt };
 };
 
-/** Named poses. `front` is the app default camera, `lab` the generated preview-lab sweep pose, `static` the grid looks' preview pose. */
+const orbit = (azimuthDeg: number, elevationDeg: number, distance: number, ty = 0) =>
+  view({ target: [0, ty, 0], azimuthDeg, elevationDeg, distance });
+
+/** Named poses. `front` is the app default camera; `lab`, `static` and `ceiling` the generated preview-lab stills (`lab` is the eye-level sweep). */
 export const LAB_CAMS: Record<string, Omit<LabPose, "fov">> = {
   front: {
     position: [CAMERA.position[0], CAMERA.position[1], CAMERA.position[2]],
     target: [0, 0, CAMERA.contentZ],
   },
-  lab: orbit(20, 6, 7, 0.6),
-  static: orbit(14, 16, 6.5),
+  lab: view(SCENE3D_PREVIEW_POSES.sweep),
+  static: view(SCENE3D_PREVIEW_POSES.static),
+  ceiling: view(SCENE3D_PREVIEW_POSES.ceiling),
   wide: orbit(32, 20, 22),
   behind: orbit(180, 10, 9),
   far: orbit(20, 14, 45),
@@ -33,7 +37,7 @@ export const LAB_CAMS: Record<string, Omit<LabPose, "fov">> = {
   top: orbit(0, 70, 14),
 };
 
-/** A named pose, or `orbit:az:el:dist[:targetY]` in degrees and world units (`preview` is resolved per look by the caller). */
+/** A named pose, or `orbit:az:el:dist[:targetY]` in degrees and world units (`preview`, and `lab` for ceiling looks, are resolved per look by `previewAlias`). */
 export function resolveCam(name: string): LabPose | null {
   const named = LAB_CAMS[name];
   if (named) return { ...named, fov: CAMERA.fov };
@@ -41,6 +45,13 @@ export function resolveCam(name: string): LabPose | null {
   if (!m) return null;
   const [az, el, dist, ty] = m.slice(1).map((v) => (v === undefined ? 0 : Number(v)));
   return { ...orbit(az, el, dist, ty), fov: CAMERA.fov };
+}
+
+/** Per-look camera names: `preview` is the picker still's pose, and a ceiling look's `lab` is its ceiling pose (the pose its clip sweeps). */
+export function previewAlias(name: string, kind: Scene3dPreviewCamera): string {
+  const still = kind === "sweep" ? "lab" : kind;
+  if (name === "preview") return still;
+  return name === "lab" && kind === "ceiling" ? "ceiling" : name;
 }
 
 export interface LabJob {
