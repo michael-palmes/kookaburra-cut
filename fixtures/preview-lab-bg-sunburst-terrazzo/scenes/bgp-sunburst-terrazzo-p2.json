@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "name": "preset still for the \"sunburst-terrazzo\" 3D background (\"New Norcia\")",
+  "background": {
+    "type": "scene3d",
+    "look": "sunburst-terrazzo",
+    "colors": ["#e2bba3", "#ddd5c3", "#ab9561"],
+    "speed": 0.9,
+    "params": {
+      "rays": 24,
+      "clearRadius": 6,
+      "turnMinutes": 5,
+      "glint": 0.5,
+      "chips": 0.7,
+      "fadeRadius": 50,
+      "ceiling": 1
+    },
+    "backing": {
+      "type": "color",
+      "color": "#f6efe6"
+    },
+    "preset": "p2"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

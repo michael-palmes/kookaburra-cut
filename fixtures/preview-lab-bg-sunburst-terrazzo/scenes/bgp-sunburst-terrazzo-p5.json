@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "name": "preset still for the \"sunburst-terrazzo\" 3D background (\"Hyden\")",
+  "background": {
+    "type": "scene3d",
+    "look": "sunburst-terrazzo",
+    "colors": ["#e0c4c4", "#cfcfd2", "#a79466"],
+    "speed": 0.9,
+    "params": {
+      "rays": 20,
+      "clearRadius": 7,
+      "turnMinutes": 8,
+      "glint": 0.8,
+      "chips": 0.4,
+      "fadeRadius": 38,
+      "ceiling": 0.75
+    },
+    "backing": {
+      "type": "color",
+      "color": "#f5f0ee"
+    },
+    "preset": "p5"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}
