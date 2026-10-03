@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "name": "preset still for the \"lily-pond\" 3D background (\"Smiths Lake\")",
+  "background": {
+    "type": "scene3d",
+    "look": "lily-pond",
+    "colors": ["#7f9d9c", "#c8dbd6", "#a7bd9c", "#f0dce6"],
+    "speed": 1.1,
+    "params": {
+      "clearRadius": 8,
+      "padCount": 140,
+      "blossoms": 0.15,
+      "strokeScale": 1.3,
+      "ripples": 9,
+      "drift": 1.2
+    },
+    "backing": {
+      "type": "color",
+      "color": "#f1f4f1"
+    },
+    "preset": "p3"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

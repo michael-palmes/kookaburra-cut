@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "name": "preset still for the \"lily-pond\" 3D background (\"Narran Lakes\")",
+  "background": {
+    "type": "scene3d",
+    "look": "lily-pond",
+    "colors": ["#0c1a1c", "#2f5059", "#27463d", "#72595d"],
+    "speed": 0.9,
+    "params": {
+      "clearRadius": 10,
+      "padCount": 380,
+      "blossoms": 0.05,
+      "strokeScale": 1.6,
+      "ripples": 2,
+      "drift": 0.5
+    },
+    "backing": {
+      "type": "color",
+      "color": "#0f1a1d"
+    },
+    "preset": "p9"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

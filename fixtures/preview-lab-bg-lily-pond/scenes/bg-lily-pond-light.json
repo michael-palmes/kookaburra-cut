@@ -1,0 +1,54 @@
+{
+  "version": 1,
+  "name": "light-mode 3D background sample for \"lily-pond\" (\"Centennial\")",
+  "background": {
+    "type": "scene3d",
+    "look": "lily-pond",
+    "colors": ["#7c9faa", "#c1d1da", "#a2b9a5", "#eedde3"],
+    "speed": 1,
+    "params": {
+      "clearRadius": 7,
+      "padCount": 200,
+      "blossoms": 0.12,
+      "strokeScale": 1,
+      "ripples": 6,
+      "drift": 1
+    },
+    "backing": {
+      "type": "color",
+      "color": "#f2f2eb"
+    },
+    "preset": "p1"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": -35,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      },
+      {
+        "id": "k2",
+        "tMs": 1900,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 35,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": [
+      {
+        "from": "k1",
+        "to": "k2",
+        "ease": "inOutCubic"
+      }
+    ]
+  }
+}

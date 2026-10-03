@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "name": "preset still for the \"lily-pond\" 3D background (\"Wallis Lake\")",
+  "background": {
+    "type": "scene3d",
+    "look": "lily-pond",
+    "colors": ["#9496ac", "#d3d3e0", "#a9b5a4", "#ecd2dc"],
+    "speed": 0.9,
+    "params": {
+      "clearRadius": 9,
+      "padCount": 320,
+      "blossoms": 0.2,
+      "strokeScale": 1.15,
+      "ripples": 5,
+      "drift": 0.6
+    },
+    "backing": {
+      "type": "color",
+      "color": "#f4f2f5"
+    },
+    "preset": "p4"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}
