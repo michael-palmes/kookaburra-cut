@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "name": "preset still for the \"mezzotint-sky\" 3D background (\"Tylers Pass\")",
+  "background": {
+    "type": "scene3d",
+    "look": "mezzotint-sky",
+    "colors": ["#899aac", "#f2f1ea"],
+    "speed": 1,
+    "params": {
+      "grain": 3,
+      "cloud": 0.4,
+      "glow": 0.85,
+      "cap": 0.88,
+      "drift": 300,
+      "relief": 1.3,
+      "mist": 0.65
+    },
+    "backing": {
+      "type": "color",
+      "color": "#c9cfd3"
+    },
+    "preset": "p3"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 2, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": -8,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

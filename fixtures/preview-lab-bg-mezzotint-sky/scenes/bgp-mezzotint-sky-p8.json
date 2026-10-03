@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "name": "preset still for the \"mezzotint-sky\" 3D background (\"Haasts Bluff\")",
+  "background": {
+    "type": "scene3d",
+    "look": "mezzotint-sky",
+    "colors": ["#1c1312", "#74503e"],
+    "speed": 1.1,
+    "params": {
+      "grain": 5,
+      "cloud": 0.45,
+      "glow": 0.9,
+      "cap": 0.8,
+      "drift": 200,
+      "relief": 1.2,
+      "mist": 0.25
+    },
+    "backing": {
+      "type": "color",
+      "color": "#2a1e1b"
+    },
+    "preset": "p8"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 2, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": -8,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

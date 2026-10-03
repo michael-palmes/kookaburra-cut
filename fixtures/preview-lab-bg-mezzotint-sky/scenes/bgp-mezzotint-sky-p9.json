@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "name": "preset still for the \"mezzotint-sky\" 3D background (\"Arltunga\")",
+  "background": {
+    "type": "scene3d",
+    "look": "mezzotint-sky",
+    "colors": ["#141712", "#626448"],
+    "speed": 0.9,
+    "params": {
+      "grain": 6,
+      "cloud": 0.7,
+      "glow": 0.5,
+      "cap": 0.9,
+      "drift": 300,
+      "relief": 0.7,
+      "mist": 0.8
+    },
+    "backing": {
+      "type": "color",
+      "color": "#262b22"
+    },
+    "preset": "p9"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 2, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": -8,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

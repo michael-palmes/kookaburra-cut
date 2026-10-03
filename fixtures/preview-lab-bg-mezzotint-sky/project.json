@@ -1,0 +1,53 @@
+{
+  "id": "preview-lab-bg-mezzotint-sky",
+  "name": "Preview Lab — bg-mezzotint-sky (dev-only)",
+  "version": 2,
+  "themeId": "kookaburra-studio-white",
+  "formats": ["16:9"],
+  "scenes": [
+    {
+      "file": "scenes/bg-mezzotint-sky.tsx",
+      "durationMs": 2000
+    },
+    {
+      "file": "scenes/bg-mezzotint-sky-light.tsx",
+      "durationMs": 2000
+    },
+    {
+      "file": "scenes/bgp-mezzotint-sky-p1.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-mezzotint-sky-p2.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-mezzotint-sky-p3.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-mezzotint-sky-p4.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-mezzotint-sky-p5.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-mezzotint-sky-p6.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-mezzotint-sky-p7.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-mezzotint-sky-p8.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-mezzotint-sky-p9.tsx",
+      "durationMs": 1000
+    }
+  ]
+}
