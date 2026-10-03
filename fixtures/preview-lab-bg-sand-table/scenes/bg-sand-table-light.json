@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "name": "light-mode 3D background sample for \"sand-table\" (\"Lady Elliot\")",
+  "background": {
+    "type": "scene3d",
+    "look": "sand-table",
+    "colors": ["#e2d6bd", "#a89877", "#f1e9d8", "#9da3a8"],
+    "speed": 1,
+    "params": {
+      "clearRadius": 7.5,
+      "reach": 29,
+      "petals": 25,
+      "grooves": 6,
+      "memory": 1500,
+      "sunSwing": 40,
+      "sunHeight": 22,
+      "rise": 5
+    },
+    "backing": {
+      "type": "color",
+      "color": "#f6f1e7"
+    },
+    "preset": "p1"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0, 0],
+          "azimuthDeg": 14,
+          "elevationDeg": 16,
+          "distance": 6.5
+        }
+      }
+    ],
+    "segments": []
+  }
+}

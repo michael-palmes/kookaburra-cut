@@ -1,0 +1,53 @@
+{
+  "id": "preview-lab-bg-sand-table",
+  "name": "Preview Lab — bg-sand-table (dev-only)",
+  "version": 2,
+  "themeId": "kookaburra-studio-white",
+  "formats": ["16:9"],
+  "scenes": [
+    {
+      "file": "scenes/bg-sand-table.tsx",
+      "durationMs": 2000
+    },
+    {
+      "file": "scenes/bg-sand-table-light.tsx",
+      "durationMs": 2000
+    },
+    {
+      "file": "scenes/bgp-sand-table-p1.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-sand-table-p2.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-sand-table-p3.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-sand-table-p4.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-sand-table-p5.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-sand-table-p6.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-sand-table-p7.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-sand-table-p8.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-sand-table-p9.tsx",
+      "durationMs": 1000
+    }
+  ]
+}

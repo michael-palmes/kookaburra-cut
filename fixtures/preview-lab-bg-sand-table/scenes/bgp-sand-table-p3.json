@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "name": "preset still for the \"sand-table\" 3D background (\"Penguin Island\")",
+  "background": {
+    "type": "scene3d",
+    "look": "sand-table",
+    "colors": ["#e3d2c8", "#a8938a", "#f2e6df", "#9aa0a8"],
+    "speed": 0.9,
+    "params": {
+      "clearRadius": 7,
+      "reach": 26,
+      "petals": 19,
+      "grooves": 7,
+      "memory": 1650,
+      "sunSwing": 35,
+      "sunHeight": 26,
+      "rise": 4.4
+    },
+    "backing": {
+      "type": "color",
+      "color": "#f7f1ec"
+    },
+    "preset": "p3"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0, 0],
+          "azimuthDeg": 14,
+          "elevationDeg": 16,
+          "distance": 6.5
+        }
+      }
+    ],
+    "segments": []
+  }
+}

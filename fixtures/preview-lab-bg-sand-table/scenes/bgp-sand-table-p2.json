@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "name": "preset still for the \"sand-table\" 3D background (\"Masthead Island\")",
+  "background": {
+    "type": "scene3d",
+    "look": "sand-table",
+    "colors": ["#dcdcd2", "#989a90", "#eeeee6", "#a39c94"],
+    "speed": 1.1,
+    "params": {
+      "clearRadius": 8,
+      "reach": 32,
+      "petals": 31,
+      "grooves": 5,
+      "memory": 1200,
+      "sunSwing": 50,
+      "sunHeight": 18,
+      "rise": 5.6
+    },
+    "backing": {
+      "type": "color",
+      "color": "#f4f4ef"
+    },
+    "preset": "p2"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0, 0],
+          "azimuthDeg": 14,
+          "elevationDeg": 16,
+          "distance": 6.5
+        }
+      }
+    ],
+    "segments": []
+  }
+}
