@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "name": "preset still for the \"frosted-panes\" 3D background (\"Barcaldine\")",
+  "background": {
+    "type": "scene3d",
+    "look": "frosted-panes",
+    "colors": ["#14201d", "#2a3a35", "#785c33", "#ad8d55"],
+    "speed": 0.9,
+    "params": {
+      "paneCount": 16,
+      "ringRadius": 13,
+      "lampCount": 4,
+      "bloom": 0.85,
+      "frost": 0.65,
+      "rain": 0
+    },
+    "backing": {
+      "type": "color",
+      "color": "#17231f"
+    },
+    "preset": "p7"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "name": "preset still for the \"frosted-panes\" 3D background (\"Mapleton\")",
+  "background": {
+    "type": "scene3d",
+    "look": "frosted-panes",
+    "colors": ["#d3d0dc", "#9993aa", "#f5e3d8", "#fdf7f3"],
+    "speed": 0.85,
+    "params": {
+      "paneCount": 14,
+      "ringRadius": 14.5,
+      "lampCount": 3,
+      "bloom": 0.9,
+      "frost": 0.6,
+      "rain": 0
+    },
+    "backing": {
+      "type": "color",
+      "color": "#bab6c6"
+    },
+    "preset": "p4"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

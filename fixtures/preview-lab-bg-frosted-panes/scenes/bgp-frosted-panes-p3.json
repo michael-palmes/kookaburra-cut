@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "name": "preset still for the \"frosted-panes\" 3D background (\"Kenilworth\")",
+  "background": {
+    "type": "scene3d",
+    "look": "frosted-panes",
+    "colors": ["#cdd6cc", "#8e9e8e", "#f1ead0", "#fbf9ee"],
+    "speed": 1.1,
+    "params": {
+      "paneCount": 26,
+      "ringRadius": 12,
+      "lampCount": 6,
+      "bloom": 0.65,
+      "frost": 0.35,
+      "rain": 0
+    },
+    "backing": {
+      "type": "color",
+      "color": "#b3bfb2"
+    },
+    "preset": "p3"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

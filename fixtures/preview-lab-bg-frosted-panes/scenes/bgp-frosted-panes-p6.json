@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "name": "preset still for the \"frosted-panes\" 3D background (\"Winton\")",
+  "background": {
+    "type": "scene3d",
+    "look": "frosted-panes",
+    "colors": ["#161e25", "#2b3740", "#835838", "#b58a5e"],
+    "speed": 1,
+    "params": {
+      "paneCount": 22,
+      "ringRadius": 12.5,
+      "lampCount": 5,
+      "bloom": 0.8,
+      "frost": 0.5,
+      "rain": 0
+    },
+    "backing": {
+      "type": "color",
+      "color": "#1a232c"
+    },
+    "preset": "p6"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

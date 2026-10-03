@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "name": "preset still for the \"frosted-panes\" 3D background (\"Montville\")",
+  "background": {
+    "type": "scene3d",
+    "look": "frosted-panes",
+    "colors": ["#ddd5c8", "#a59785", "#f6e6cf", "#fff9ef"],
+    "speed": 0.9,
+    "params": {
+      "paneCount": 18,
+      "ringRadius": 13.5,
+      "lampCount": 4,
+      "bloom": 0.7,
+      "frost": 0.7,
+      "rain": 0
+    },
+    "backing": {
+      "type": "color",
+      "color": "#c3b9ab"
+    },
+    "preset": "p2"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

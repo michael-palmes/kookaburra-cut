@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "name": "preset still for the \"frosted-panes\" 3D background (\"Quilpie\")",
+  "background": {
+    "type": "scene3d",
+    "look": "frosted-panes",
+    "colors": ["#171a29", "#2d3247", "#5f5a7e", "#938dba"],
+    "speed": 0.8,
+    "params": {
+      "paneCount": 20,
+      "ringRadius": 15,
+      "lampCount": 3,
+      "bloom": 0.95,
+      "frost": 0.8,
+      "rain": 0
+    },
+    "backing": {
+      "type": "color",
+      "color": "#1a1d2e"
+    },
+    "preset": "p9"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}
