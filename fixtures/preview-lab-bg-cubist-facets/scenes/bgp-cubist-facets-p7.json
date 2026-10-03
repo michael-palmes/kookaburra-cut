@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "name": "preset still for the \"cubist-facets\" 3D background (\"Chambers Gorge\")",
+  "background": {
+    "type": "scene3d",
+    "look": "cubist-facets",
+    "colors": ["#5a3b2c", "#2b1d18", "#433b3a", "#6a5546"],
+    "speed": 1.1,
+    "params": {
+      "radius": 20,
+      "planes": 15,
+      "fold": 21,
+      "relief": 0.6,
+      "passage": 0.25,
+      "lightPeriod": 45,
+      "haze": 0.65
+    },
+    "backing": {
+      "type": "color",
+      "color": "#161010"
+    },
+    "preset": "p7"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

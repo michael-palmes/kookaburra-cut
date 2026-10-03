@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "name": "preset still for the \"cubist-facets\" 3D background (\"Aroona\")",
+  "background": {
+    "type": "scene3d",
+    "look": "cubist-facets",
+    "colors": ["#d6c79a", "#9e9a8e", "#a2a8b0", "#ece8d8"],
+    "speed": 0.9,
+    "params": {
+      "radius": 24,
+      "planes": 11,
+      "fold": 12,
+      "relief": 0.35,
+      "passage": 0.5,
+      "lightPeriod": 80,
+      "haze": 0.75
+    },
+    "backing": {
+      "type": "color",
+      "color": "#f6f5ef"
+    },
+    "preset": "p3"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

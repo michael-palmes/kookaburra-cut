@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "name": "preset still for the \"cubist-facets\" 3D background (\"Brachina\")",
+  "background": {
+    "type": "scene3d",
+    "look": "cubist-facets",
+    "colors": ["#4d3f2b", "#2a2219", "#3c3f3f", "#5f5646"],
+    "speed": 1,
+    "params": {
+      "radius": 22,
+      "planes": 13,
+      "fold": 16,
+      "relief": 0.45,
+      "passage": 0.35,
+      "lightPeriod": 60,
+      "haze": 0.7
+    },
+    "backing": {
+      "type": "color",
+      "color": "#151310"
+    },
+    "preset": "p6"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

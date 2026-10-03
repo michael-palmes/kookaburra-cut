@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "name": "preset still for the \"cubist-facets\" 3D background (\"Wilkawillina\")",
+  "background": {
+    "type": "scene3d",
+    "look": "cubist-facets",
+    "colors": ["#4f4a3a", "#22252a", "#3a4250", "#5b5e60"],
+    "speed": 0.9,
+    "params": {
+      "radius": 25,
+      "planes": 11,
+      "fold": 12,
+      "relief": 0.4,
+      "passage": 0.5,
+      "lightPeriod": 90,
+      "haze": 0.75
+    },
+    "backing": {
+      "type": "color",
+      "color": "#101216"
+    },
+    "preset": "p8"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}
