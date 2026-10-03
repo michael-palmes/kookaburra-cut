@@ -1,0 +1,53 @@
+{
+  "id": "preview-lab-bg-caustic-pool",
+  "name": "Preview Lab — bg-caustic-pool (dev-only)",
+  "version": 2,
+  "themeId": "kookaburra-studio-white",
+  "formats": ["16:9"],
+  "scenes": [
+    {
+      "file": "scenes/bg-caustic-pool.tsx",
+      "durationMs": 2000
+    },
+    {
+      "file": "scenes/bg-caustic-pool-light.tsx",
+      "durationMs": 2000
+    },
+    {
+      "file": "scenes/bgp-caustic-pool-p1.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-caustic-pool-p2.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-caustic-pool-p3.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-caustic-pool-p4.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-caustic-pool-p5.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-caustic-pool-p6.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-caustic-pool-p7.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-caustic-pool-p8.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-caustic-pool-p9.tsx",
+      "durationMs": 1000
+    }
+  ]
+}

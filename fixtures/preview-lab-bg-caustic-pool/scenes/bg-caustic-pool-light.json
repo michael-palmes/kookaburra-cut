@@ -1,0 +1,55 @@
+{
+  "version": 1,
+  "name": "light-mode 3D background sample for \"caustic-pool\" (\"Wangi Falls\")",
+  "background": {
+    "type": "scene3d",
+    "look": "caustic-pool",
+    "colors": ["#56a5ad", "#a9d3d6", "#ebf7f5"],
+    "speed": 1,
+    "params": {
+      "tile": 1.5,
+      "grout": 0.35,
+      "scale": 6,
+      "strength": 0.55,
+      "clearRadius": 6,
+      "loop": 240,
+      "surface": 1
+    },
+    "backing": {
+      "type": "color",
+      "color": "#b8d4d9"
+    },
+    "preset": "p1"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": -35,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      },
+      {
+        "id": "k2",
+        "tMs": 1900,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 35,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": [
+      {
+        "from": "k1",
+        "to": "k2",
+        "ease": "inOutCubic"
+      }
+    ]
+  }
+}

@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "name": "preset still for the \"caustic-pool\" 3D background (\"Gunlom\")",
+  "background": {
+    "type": "scene3d",
+    "look": "caustic-pool",
+    "colors": ["#b69386", "#dfccc4", "#fbf3ee"],
+    "speed": 1.2,
+    "params": {
+      "tile": 1.2,
+      "grout": 0.4,
+      "scale": 10,
+      "strength": 0.7,
+      "clearRadius": 6,
+      "loop": 200,
+      "surface": 0.7
+    },
+    "backing": {
+      "type": "color",
+      "color": "#e6d6cf"
+    },
+    "preset": "p5"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

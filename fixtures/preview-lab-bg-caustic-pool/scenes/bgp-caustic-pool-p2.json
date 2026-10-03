@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "name": "preset still for the \"caustic-pool\" 3D background (\"Florence Falls\")",
+  "background": {
+    "type": "scene3d",
+    "look": "caustic-pool",
+    "colors": ["#6aa596", "#b8d8cc", "#eef7ef"],
+    "speed": 0.9,
+    "params": {
+      "tile": 2.2,
+      "grout": 0.25,
+      "scale": 8,
+      "strength": 0.5,
+      "clearRadius": 7,
+      "loop": 300,
+      "surface": 0.8
+    },
+    "backing": {
+      "type": "color",
+      "color": "#c4dbd2"
+    },
+    "preset": "p2"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "name": "preset still for the \"caustic-pool\" 3D background (\"Bitter Springs\")",
+  "background": {
+    "type": "scene3d",
+    "look": "caustic-pool",
+    "colors": ["#0d1c23", "#18313a", "#336b61"],
+    "speed": 1,
+    "params": {
+      "tile": 1.5,
+      "grout": 0.35,
+      "scale": 6,
+      "strength": 0.55,
+      "clearRadius": 6,
+      "loop": 240,
+      "surface": 1
+    },
+    "backing": {
+      "type": "color",
+      "color": "#11252e"
+    },
+    "preset": "p6"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}
