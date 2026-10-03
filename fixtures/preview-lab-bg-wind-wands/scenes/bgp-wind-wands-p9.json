@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "name": "preset still for the \"wind-wands\" 3D background (\"Ilparpa\")",
+  "background": {
+    "type": "scene3d",
+    "look": "wind-wands",
+    "colors": ["#55604f", "#a08a58", "#161a14"],
+    "speed": 1,
+    "params": {
+      "count": 96,
+      "inner": 24,
+      "height": 1.1,
+      "lean": 0.07,
+      "sway": 0.09,
+      "gust": 20,
+      "haze": 10
+    },
+    "backing": {
+      "type": "color",
+      "color": "#0b0d0a"
+    },
+    "preset": "p9"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

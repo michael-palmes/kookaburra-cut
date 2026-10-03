@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "name": "preset still for the \"wind-wands\" 3D background (\"Idracowra\")",
+  "background": {
+    "type": "scene3d",
+    "look": "wind-wands",
+    "colors": ["#6b4a3e", "#b47c53", "#1f1512"],
+    "speed": 1.1,
+    "params": {
+      "count": 120,
+      "inner": 20,
+      "height": 0.9,
+      "lean": 0.13,
+      "sway": 0.055,
+      "gust": 10,
+      "haze": 11
+    },
+    "backing": {
+      "type": "color",
+      "color": "#0e0907"
+    },
+    "preset": "p8"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

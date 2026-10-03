@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "name": "preset still for the \"wind-wands\" 3D background (\"Dalhousie Springs\")",
+  "background": {
+    "type": "scene3d",
+    "look": "wind-wands",
+    "colors": ["#879b98", "#d8b48c", "#dfe5e1"],
+    "speed": 1,
+    "params": {
+      "count": 70,
+      "inner": 17,
+      "height": 1,
+      "lean": 0.12,
+      "sway": 0.075,
+      "gust": 10,
+      "haze": 9
+    },
+    "backing": {
+      "type": "color",
+      "color": "#f2f6f4"
+    },
+    "preset": "p3"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}
