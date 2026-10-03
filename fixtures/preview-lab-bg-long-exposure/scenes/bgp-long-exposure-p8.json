@@ -1,0 +1,44 @@
+{
+  "version": 1,
+  "name": "preset still for the \"long-exposure\" 3D background (\"Cape Wickham\")",
+  "background": {
+    "type": "scene3d",
+    "look": "long-exposure",
+    "colors": ["#5d5873", "#9a87a1", "#48322a"],
+    "speed": 1,
+    "params": {
+      "poleAzimuth": -55,
+      "poleHeight": 28,
+      "trailLength": 30,
+      "density": 0.6,
+      "turn": 1.3,
+      "horizon": 0.8,
+      "skyHour": 16,
+      "coast": 2,
+      "headlands": 0.7,
+      "mist": 0.65,
+      "swell": 0.6,
+      "lamp": 1
+    },
+    "backing": {
+      "type": "color",
+      "color": "#100d16"
+    },
+    "preset": "p8"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 2, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": -8,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

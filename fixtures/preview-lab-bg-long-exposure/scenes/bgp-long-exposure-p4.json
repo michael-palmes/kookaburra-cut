@@ -1,0 +1,44 @@
+{
+  "version": 1,
+  "name": "preset still for the \"long-exposure\" 3D background (\"Point Perpendicular\")",
+  "background": {
+    "type": "scene3d",
+    "look": "long-exposure",
+    "colors": ["#8f9fb6", "#bf9a6b", "#dce2ea"],
+    "speed": 1,
+    "params": {
+      "poleAzimuth": -50,
+      "poleHeight": 32,
+      "trailLength": 44,
+      "density": 0.5,
+      "turn": 1,
+      "horizon": 0.5,
+      "skyHour": 3,
+      "coast": 3,
+      "headlands": 1.3,
+      "mist": 0.3,
+      "swell": 0.55,
+      "lamp": 0.75
+    },
+    "backing": {
+      "type": "color",
+      "color": "#f1f4f9"
+    },
+    "preset": "p4"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 2, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": -8,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

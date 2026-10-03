@@ -1,0 +1,44 @@
+{
+  "version": 1,
+  "name": "preset still for the \"long-exposure\" 3D background (\"Smoky Cape\")",
+  "background": {
+    "type": "scene3d",
+    "look": "long-exposure",
+    "colors": ["#93a39b", "#b8976a", "#e2dccd"],
+    "speed": 1,
+    "params": {
+      "poleAzimuth": 30,
+      "poleHeight": 36,
+      "trailLength": 50,
+      "density": 0.38,
+      "turn": 0.9,
+      "horizon": 0.4,
+      "skyHour": 6,
+      "coast": 4,
+      "headlands": 1.1,
+      "mist": 0.85,
+      "swell": 0.3,
+      "lamp": 0.7
+    },
+    "backing": {
+      "type": "color",
+      "color": "#f2f4ef"
+    },
+    "preset": "p2"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 2, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": -8,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

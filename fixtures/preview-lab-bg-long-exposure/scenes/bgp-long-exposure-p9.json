@@ -1,0 +1,44 @@
+{
+  "version": 1,
+  "name": "preset still for the \"long-exposure\" 3D background (\"Cape du Couedic\")",
+  "background": {
+    "type": "scene3d",
+    "look": "long-exposure",
+    "colors": ["#67604f", "#a28c68", "#3a2b22"],
+    "speed": 1,
+    "params": {
+      "poleAzimuth": -72,
+      "poleHeight": 42,
+      "trailLength": 58,
+      "density": 0.35,
+      "turn": 0.7,
+      "horizon": 0.4,
+      "skyHour": 21,
+      "coast": 3,
+      "headlands": 1.2,
+      "mist": 0.25,
+      "swell": 0.75,
+      "lamp": 0.7
+    },
+    "backing": {
+      "type": "color",
+      "color": "#0f0e0b"
+    },
+    "preset": "p9"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 2, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": -8,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}
