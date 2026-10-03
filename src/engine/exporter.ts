@@ -295,6 +295,13 @@ export function awaitTextSync(scene: Scene): Promise<void> {
   return Promise.all(pending).then(() => undefined);
 }
 
+/** Dev React (react-dom and r3f's reconciler) records a `performance.measure` with a props diff for every re-render whose props changed, and WebKit keeps them all: every mounted scene re-renders per tick, about 1 MB a frame on a 40-scene project, enough to reach the 4 GB WebContent ceiling mid-Verify. Production React records none. */
+function dropDevPerformanceEntries(): void {
+  if (!import.meta.env.DEV) return;
+  performance.clearMeasures();
+  performance.clearMarks();
+}
+
 /**
  * Deterministic export loop: reuses the live preview canvas, sizing its drawing buffer to the export resolution, then for each frame seeks the clock, awaits typesetting, renders the frame, reads the pixels, and streams them to the ffmpeg sidecar. Frame N is a pure function of the frame index, no wall clock, no UI state. See docs/determinism.md.
  *
@@ -586,6 +593,7 @@ async function exportProjectHeld(
     // Preview-only light helpers can never reach a capture: their layer is disabled on the camera for the whole run (the second guard on top of their mount gating) and given back in the finally.
     cam.layers.disable(HELPER_LAYER);
     for (let frame = 0; frame < total; frame++) {
+      dropDevPerformanceEntries();
       const tMs = exportFrameTimeMs(frame, opts.fps, poster?.tMs);
       // flushSync commits the DOM tree; the canvas tree (r3f reconciler) commits on its own schedule, so wait for it before trusting any per-mesh readiness hook for this frame.
       flushSync(() => useClockStore.getState().setCurrentMs(tMs));
