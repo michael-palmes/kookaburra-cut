@@ -1,0 +1,53 @@
+{
+  "id": "preview-lab-bg-shylight-blooms",
+  "name": "Preview Lab — bg-shylight-blooms (dev-only)",
+  "version": 2,
+  "themeId": "kookaburra-studio-white",
+  "formats": ["16:9"],
+  "scenes": [
+    {
+      "file": "scenes/bg-shylight-blooms.tsx",
+      "durationMs": 2000
+    },
+    {
+      "file": "scenes/bg-shylight-blooms-light.tsx",
+      "durationMs": 2000
+    },
+    {
+      "file": "scenes/bgp-shylight-blooms-p1.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-shylight-blooms-p2.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-shylight-blooms-p3.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-shylight-blooms-p4.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-shylight-blooms-p5.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-shylight-blooms-p6.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-shylight-blooms-p7.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-shylight-blooms-p8.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-shylight-blooms-p9.tsx",
+      "durationMs": 1000
+    }
+  ]
+}

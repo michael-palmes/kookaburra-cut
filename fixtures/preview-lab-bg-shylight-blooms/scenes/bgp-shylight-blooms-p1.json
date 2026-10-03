@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "name": "preset still for the \"shylight-blooms\" 3D background (\"Lizard Island\")",
+  "background": {
+    "type": "scene3d",
+    "look": "shylight-blooms",
+    "colors": ["#f3ebe4", "#b3a9a6", "#eecb92", "#979ca0"],
+    "speed": 1,
+    "params": {
+      "count": 18,
+      "radius": 12,
+      "openHeight": 4.8,
+      "drop": 3.4,
+      "size": 1.1,
+      "cycle": 80,
+      "cables": 0.85,
+      "pools": 0.24
+    },
+    "backing": {
+      "type": "color",
+      "color": "#f7f4f1"
+    },
+    "preset": "p1"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 2, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": -8,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

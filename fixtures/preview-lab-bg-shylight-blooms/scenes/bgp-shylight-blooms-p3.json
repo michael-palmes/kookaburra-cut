@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "name": "preset still for the \"shylight-blooms\" 3D background (\"Low Isles\")",
+  "background": {
+    "type": "scene3d",
+    "look": "shylight-blooms",
+    "colors": ["#e6efea", "#a4b3ac", "#d9d3a0", "#929e9b"],
+    "speed": 0.9,
+    "params": {
+      "count": 12,
+      "radius": 11,
+      "openHeight": 4.6,
+      "drop": 2.6,
+      "size": 1.25,
+      "cycle": 100,
+      "cables": 0.9,
+      "pools": 0.18
+    },
+    "backing": {
+      "type": "color",
+      "color": "#f3f7f5"
+    },
+    "preset": "p3"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 2, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": -8,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}
