@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "name": "preset still for the \"colour-court\" 3D background (\"Mintaro\")",
+  "background": {
+    "type": "scene3d",
+    "look": "colour-court",
+    "colors": ["#df9f8f", "#e2bd84", "#a49bb4", "#f6d8a6"],
+    "speed": 1,
+    "params": {
+      "layoutSeed": 2,
+      "walls": 6,
+      "sunElevation": 24,
+      "sunSwing": 35,
+      "dayLength": 90,
+      "fields": 0.3,
+      "blade": 0.38
+    },
+    "backing": {
+      "type": "color",
+      "color": "#f9f3ee"
+    },
+    "preset": "p4"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

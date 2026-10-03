@@ -1,0 +1,53 @@
+{
+  "id": "preview-lab-bg-colour-court",
+  "name": "Preview Lab — bg-colour-court (dev-only)",
+  "version": 2,
+  "themeId": "kookaburra-studio-white",
+  "formats": ["16:9"],
+  "scenes": [
+    {
+      "file": "scenes/bg-colour-court.tsx",
+      "durationMs": 2000
+    },
+    {
+      "file": "scenes/bg-colour-court-light.tsx",
+      "durationMs": 2000
+    },
+    {
+      "file": "scenes/bgp-colour-court-p1.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-colour-court-p2.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-colour-court-p3.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-colour-court-p4.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-colour-court-p5.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-colour-court-p6.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-colour-court-p7.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-colour-court-p8.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-colour-court-p9.tsx",
+      "durationMs": 1000
+    }
+  ]
+}

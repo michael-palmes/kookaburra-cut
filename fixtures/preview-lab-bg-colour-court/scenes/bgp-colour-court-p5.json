@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "name": "preset still for the \"colour-court\" 3D background (\"Penwortham\")",
+  "background": {
+    "type": "scene3d",
+    "look": "colour-court",
+    "colors": ["#e2a6c4", "#efc196", "#9c9dd0", "#f8deb2"],
+    "speed": 0.85,
+    "params": {
+      "layoutSeed": 10,
+      "walls": 10,
+      "sunElevation": 38,
+      "sunSwing": 22,
+      "dayLength": 180,
+      "fields": 0.5,
+      "blade": 0.3
+    },
+    "backing": {
+      "type": "color",
+      "color": "#faf5f3"
+    },
+    "preset": "p5"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

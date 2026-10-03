@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "name": "preset still for the \"colour-court\" 3D background (\"Coonawarra\")",
+  "background": {
+    "type": "scene3d",
+    "look": "colour-court",
+    "colors": ["#7d3238", "#6a4a2a", "#45405e", "#b4875b"],
+    "speed": 1.1,
+    "params": {
+      "layoutSeed": 5,
+      "walls": 7,
+      "sunElevation": 26,
+      "sunSwing": 32,
+      "dayLength": 96,
+      "fields": 0.3,
+      "blade": 0.32
+    },
+    "backing": {
+      "type": "color",
+      "color": "#140c0d"
+    },
+    "preset": "p7"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}
