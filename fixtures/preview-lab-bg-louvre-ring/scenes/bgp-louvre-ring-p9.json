@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "name": "preset still for the \"louvre-ring\" 3D background (\"Kurrajong\")",
+  "background": {
+    "type": "scene3d",
+    "look": "louvre-ring",
+    "colors": ["#22302c", "#4f6655", "#2d3a36"],
+    "speed": 0.8,
+    "params": {
+      "count": 240,
+      "radius": 15.5,
+      "height": 9,
+      "period": 80,
+      "front": 0.5,
+      "rows": 4
+    },
+    "backing": {
+      "type": "color",
+      "color": "#0c1311"
+    },
+    "preset": "p9"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

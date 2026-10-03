@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "name": "preset still for the \"louvre-ring\" 3D background (\"Snow Gum\")",
+  "background": {
+    "type": "scene3d",
+    "look": "louvre-ring",
+    "colors": ["#c2c0b4", "#8d9a82", "#b4b6a9"],
+    "speed": 0.9,
+    "params": {
+      "count": 220,
+      "radius": 14.5,
+      "height": 7,
+      "period": 60,
+      "front": 0.4,
+      "rows": 2
+    },
+    "backing": {
+      "type": "color",
+      "color": "#f5f5f1"
+    },
+    "preset": "p2"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}
