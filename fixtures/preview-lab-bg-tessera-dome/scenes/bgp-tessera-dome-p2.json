@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "name": "preset still for the \"tessera-dome\" 3D background (\"Hawker\")",
+  "background": {
+    "type": "scene3d",
+    "look": "tessera-dome",
+    "colors": ["#dcbd8c", "#aa9277", "#f8eed8"],
+    "speed": 1,
+    "params": {
+      "rimRadius": 38,
+      "rise": 20,
+      "tileSize": 1,
+      "tilt": 8,
+      "glint": 0.7,
+      "glintPeriod": 75,
+      "rimFade": 3
+    },
+    "backing": {
+      "type": "color",
+      "color": "#f3eadb"
+    },
+    "preset": "p2"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 2, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": -8,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}
