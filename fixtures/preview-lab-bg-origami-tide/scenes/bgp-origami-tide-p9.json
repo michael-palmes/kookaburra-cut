@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "name": "preset still for the \"origami-tide\" 3D background (\"Lake Mackay\")",
+  "background": {
+    "type": "scene3d",
+    "look": "origami-tide",
+    "colors": ["#575068", "#221f2b"],
+    "speed": 0.8,
+    "params": {
+      "radius": 16,
+      "top": 9,
+      "fold": 0.7,
+      "pleat": 1.2,
+      "period": 200,
+      "sway": 50
+    },
+    "backing": {
+      "type": "color",
+      "color": "#0e0d13"
+    },
+    "preset": "p9"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

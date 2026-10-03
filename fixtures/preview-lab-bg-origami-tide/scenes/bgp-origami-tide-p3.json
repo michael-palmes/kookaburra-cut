@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "name": "preset still for the \"origami-tide\" 3D background (\"Lake Bumbunga\")",
+  "background": {
+    "type": "scene3d",
+    "look": "origami-tide",
+    "colors": ["#ecdcd8", "#b0928d"],
+    "speed": 1,
+    "params": {
+      "radius": 12.5,
+      "top": 7.5,
+      "fold": 0.9,
+      "pleat": 0.7,
+      "period": 100,
+      "sway": 40
+    },
+    "backing": {
+      "type": "color",
+      "color": "#f8f1ef"
+    },
+    "preset": "p3"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}
