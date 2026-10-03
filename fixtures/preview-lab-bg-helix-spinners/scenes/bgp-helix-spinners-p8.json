@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "name": "preset still for the \"helix-spinners\" 3D background (\"Heavitree Gap\")",
+  "background": {
+    "type": "scene3d",
+    "look": "helix-spinners",
+    "colors": ["#5a5248", "#6a4030", "#1f1c1a"],
+    "speed": 1,
+    "params": {
+      "count": 22,
+      "length": 1.4,
+      "twist": 16,
+      "turn": 22,
+      "clearance": 15,
+      "rods": 0.3
+    },
+    "backing": {
+      "type": "color",
+      "color": "#0d0b0a"
+    },
+    "preset": "p8"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 2, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": -8,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

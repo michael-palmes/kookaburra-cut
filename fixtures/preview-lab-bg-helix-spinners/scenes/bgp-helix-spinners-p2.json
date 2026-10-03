@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "name": "preset still for the \"helix-spinners\" 3D background (\"Serpentine Gorge\")",
+  "background": {
+    "type": "scene3d",
+    "look": "helix-spinners",
+    "colors": ["#c8a08c", "#a3ae9c", "#9c988f"],
+    "speed": 0.9,
+    "params": {
+      "count": 20,
+      "length": 1.2,
+      "twist": 10,
+      "turn": 30,
+      "clearance": 13,
+      "rods": 0.3
+    },
+    "backing": {
+      "type": "color",
+      "color": "#f4f2ed"
+    },
+    "preset": "p2"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 2, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": -8,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

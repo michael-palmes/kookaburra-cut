@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "name": "preset still for the \"helix-spinners\" 3D background (\"Ruby Gap\")",
+  "background": {
+    "type": "scene3d",
+    "look": "helix-spinners",
+    "colors": ["#c2948f", "#cbbf94", "#9c968c"],
+    "speed": 1.1,
+    "params": {
+      "count": 16,
+      "length": 1.35,
+      "twist": 8,
+      "turn": 36,
+      "clearance": 14,
+      "rods": 0.25
+    },
+    "backing": {
+      "type": "color",
+      "color": "#f5f2ea"
+    },
+    "preset": "p4"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 2, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": -8,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

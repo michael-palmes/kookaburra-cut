@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "name": "preset still for the \"helix-spinners\" 3D background (\"Glen Helen\")",
+  "background": {
+    "type": "scene3d",
+    "look": "helix-spinners",
+    "colors": ["#cdb07e", "#a9b6ad", "#9d9a90"],
+    "speed": 0.85,
+    "params": {
+      "count": 40,
+      "length": 0.75,
+      "twist": 20,
+      "turn": 16,
+      "clearance": 11,
+      "rods": 0.45
+    },
+    "backing": {
+      "type": "color",
+      "color": "#f4f3ec"
+    },
+    "preset": "p5"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 2, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": -8,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}
