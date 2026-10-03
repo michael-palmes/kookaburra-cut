@@ -41,6 +41,31 @@ export interface EditTap {
   pos: [number, number];
 }
 
+export type EditMaskStyle = "solid" | "blur" | "pixelate";
+
+/** One mask keyframe: the box at a source moment. */
+export interface EditMaskKey {
+  /** Integer source ms. */
+  sourceMs: number;
+  /** `[x, y, w, h]` normalised 0..1 across the SOURCE frame. */
+  rect: [number, number, number, number];
+}
+
+/** A privacy mask: a box hiding part of a source over the source span `[startMs, endMs)`, gliding linearly between keys (held before the first and after the last). Rendered onto the source before it is cut into clips, so every clip, speed and freeze of that span inherits it. A still's mask ignores the span and uses its first key. */
+export interface EditMask {
+  id: string;
+  sourceId: string;
+  style: EditMaskStyle;
+  /** 0..1 across the blur/pixelate range above its safe floor; absent = the default. */
+  strength?: number;
+  /** Solid fill, `#rrggbb`; absent = black. */
+  color?: string;
+  startMs: number;
+  endMs: number;
+  /** Sorted by `sourceMs`, unique times. */
+  keys: EditMaskKey[];
+}
+
 export interface EditDoc {
   version: number;
   name: string;
@@ -54,6 +79,8 @@ export interface EditDoc {
   tapColor?: string;
   /** Tap size multiplier on the default dot size; absent = 1.25. */
   tapSize?: number;
+  /** Privacy masks. A masked document saves as version 2, which older app versions refuse to open. */
+  masks?: EditMask[];
   /** The side-by-side reference pairing (scene matching); editor convenience, never read by renders. Older app versions strip it on their next autosave, which only forgets the pairing. */
   reference?: { rel: string; offsetMs: number };
 }

@@ -252,7 +252,7 @@ export function snapMs(tMs: number, targets: number[], thresholdMs: number): num
   return best;
 }
 
-function nextPrefixedId(prefix: string, ids: string[]): string {
+export function nextPrefixedId(prefix: string, ids: string[]): string {
   let max = 0;
   const pattern = new RegExp(`^${prefix}(\\d+)$`);
   for (const id of ids) {
