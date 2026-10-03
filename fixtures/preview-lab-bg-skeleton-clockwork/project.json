@@ -1,0 +1,53 @@
+{
+  "id": "preview-lab-bg-skeleton-clockwork",
+  "name": "Preview Lab — bg-skeleton-clockwork (dev-only)",
+  "version": 2,
+  "themeId": "kookaburra-studio-white",
+  "formats": ["16:9"],
+  "scenes": [
+    {
+      "file": "scenes/bg-skeleton-clockwork.tsx",
+      "durationMs": 2000
+    },
+    {
+      "file": "scenes/bg-skeleton-clockwork-light.tsx",
+      "durationMs": 2000
+    },
+    {
+      "file": "scenes/bgp-skeleton-clockwork-p1.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-skeleton-clockwork-p2.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-skeleton-clockwork-p3.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-skeleton-clockwork-p4.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-skeleton-clockwork-p5.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-skeleton-clockwork-p6.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-skeleton-clockwork-p7.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-skeleton-clockwork-p8.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-skeleton-clockwork-p9.tsx",
+      "durationMs": 1000
+    }
+  ]
+}

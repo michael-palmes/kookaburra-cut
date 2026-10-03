@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "name": "preset still for the \"skeleton-clockwork\" 3D background (\"Wilcannia\")",
+  "background": {
+    "type": "scene3d",
+    "look": "skeleton-clockwork",
+    "colors": ["#4b5967", "#5e4e33", "#1f242b", "#566473"],
+    "speed": 1,
+    "params": {
+      "module": 0.3,
+      "rate": 0.5,
+      "planes": 3,
+      "ceiling": 5.6,
+      "frieze": 26,
+      "tick": 0,
+      "seed": 17
+    },
+    "backing": {
+      "type": "color",
+      "color": "#111318"
+    },
+    "preset": "p9"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 2, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": -8,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

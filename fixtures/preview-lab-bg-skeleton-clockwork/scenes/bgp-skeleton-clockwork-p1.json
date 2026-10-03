@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "name": "preset still for the \"skeleton-clockwork\" 3D background (\"Murrumbidgee\")",
+  "background": {
+    "type": "scene3d",
+    "look": "skeleton-clockwork",
+    "colors": ["#c9ad7f", "#8e9ca1", "#d8cfbf", "#e8dcc2"],
+    "speed": 1,
+    "params": {
+      "module": 0.3,
+      "rate": 0.5,
+      "planes": 3,
+      "ceiling": 4.8,
+      "frieze": 20,
+      "tick": 0,
+      "seed": 1
+    },
+    "backing": {
+      "type": "color",
+      "color": "#f7f3ea"
+    },
+    "preset": "p1"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 2, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": -8,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}
