@@ -98,6 +98,7 @@ describe("wind", () => {
 
   it("never bends a rod into the content volume", () => {
     for (const inner of [look.params.inner.min, 18]) {
+      let closest = Number.POSITIVE_INFINITY;
       for (const w of groveWands(look.params.count.max, inner)) {
         for (const t of TIMES) {
           const s = {
@@ -109,10 +110,11 @@ describe("wind", () => {
           const tip = wandTip(w, s);
           for (let k = 0; k <= GROVE.segments; k++) {
             const [x, , z] = wandPoint(w, tip, k / GROVE.segments, s.heightScale);
-            expect(Math.hypot(x, z)).toBeGreaterThan(inner * 0.6);
+            closest = Math.min(closest, Math.hypot(x, z));
           }
         }
       }
+      expect(closest, `inner ${inner}`).toBeGreaterThan(inner * 0.6);
     }
   });
 

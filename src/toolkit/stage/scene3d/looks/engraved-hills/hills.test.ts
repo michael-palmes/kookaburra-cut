@@ -39,10 +39,14 @@ describe("engraved hills terrain", () => {
   });
 
   it("keeps the hill attributes in 0..1", () => {
+    let lo = Number.POSITIVE_INFINITY;
+    let hi = Number.NEGATIVE_INFINITY;
     for (const a of data.hill) {
-      expect(a).toBeGreaterThanOrEqual(0);
-      expect(a).toBeLessThanOrEqual(1);
+      lo = Math.min(lo, a);
+      hi = Math.max(hi, a);
     }
+    expect(lo).toBeGreaterThanOrEqual(0);
+    expect(hi).toBeLessThanOrEqual(1);
   });
 
   it("closes every crest loop seamlessly and stacks the ranges higher outward", () => {
