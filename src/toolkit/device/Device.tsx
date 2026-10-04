@@ -1,4 +1,4 @@
-import { Environment, Lightformer, useGLTF, useTexture } from "@react-three/drei";
+import { useGLTF, useTexture } from "@react-three/drei";
 import {
   type MutableRefObject,
   useCallback,
@@ -54,6 +54,7 @@ import type { SceneDeviceProps } from "../../engine/sceneDoc";
 import { coverCropRect, remapUv, type UvRect } from "../../engine/screenFit";
 import { useTimeline } from "../../engine/timeline";
 import { useEditorStore } from "../../store/editorStore";
+import { useStudioEnvironment } from "../lighting/studioEnvironment";
 import { AssetBoundary } from "../media/AssetBoundary";
 import { preparingVideoTexture } from "../media/preparingTexture";
 import { useSceneStaged, useStageFloorY, useStageMapShadows } from "../stage/context";
@@ -545,6 +546,8 @@ export function Device(props: DeviceProps) {
   // Staged scenes light themselves; the bundled lit set stands down by default.
   const staged = useSceneStaged();
   const isLit = lit ?? !staged;
+  // The shared studio environment so the titanium reads as metal (built once, never per frame).
+  useStudioEnvironment(isLit);
   // Map-shadowed stages add real cast/receive shadows; the independent presentation shadow remains governed only by shadow.
   const mapShadows = useStageMapShadows();
   const stageFloorY = useStageFloorY();
@@ -859,12 +862,6 @@ export function Device(props: DeviceProps) {
             <ambientLight intensity={0.7} />
             <directionalLight position={[4, 6, 5]} intensity={2.4} />
             <directionalLight position={[-5, 2, -3]} intensity={0.9} />
-            {/* Procedural, offline environment (rendered once) so the titanium reads as metal; the DeviceMockup set. */}
-            <Environment resolution={256} frames={1}>
-              <Lightformer form="rect" intensity={2} position={[0, 3, 4]} scale={8} />
-              <Lightformer form="rect" intensity={1.2} position={[-4, 1, 2]} scale={5} />
-              <Lightformer form="rect" intensity={1} position={[4, -1, 3]} scale={5} />
-            </Environment>
           </>
         )}
         {shadowMode !== "none" && (

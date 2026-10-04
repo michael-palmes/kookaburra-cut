@@ -9,7 +9,7 @@ import {
 import type { SceneDoc } from "./sceneDocSchema";
 import type { Resolved } from "./sceneTimeline";
 
-/** Per-scene render state at the compositor seam: values that live on the root three `Scene` (background, environment) and therefore cannot vary per scene by mounting things inside scene groups. Mirrors the per-scene camera plan: projects using no v8/v9 theme feature build a null state list and the compositor never touches `scene.background`/`scene.environment` (the byte-identical legacy path, where the background is the Canvas-root colour and environments are drei's last-mount-wins), while an opted-in project gets an explicit state every frame, per offscreen target on transition frames (the stale-state lesson: no inheritance across scenes). See docs/determinism.md. */
+/** Per-scene render state at the compositor seam: values that live on the root three `Scene` (background, environment) and therefore cannot vary per scene by mounting things inside scene groups. Mirrors the per-scene camera plan: projects using no v8/v9 theme feature build a null state list and the compositor never touches `scene.background`/`scene.environment` (the byte-identical legacy path, where the background is the Canvas-root colour and the environment is the lit primitives' studio environment, if any), while an opted-in project gets an explicit state every frame, per offscreen target on transition frames (the stale-state lesson: no inheritance across scenes). See docs/determinism.md. */
 
 export interface SceneRenderState {
   /** The scene's theme background (`Color.set` reads the hex as sRGB → linear working space). */
@@ -29,7 +29,7 @@ export interface FrameSceneStatePlan {
   overlay?: SceneRenderState;
 }
 
-/** The root scene's environment values before the plan touched anything this frame, captured once per `renderComposited` call; scenes whose theme declares no environment (or sources still loading in preview) apply this explicitly every frame since they must never inherit the previous render target's themed environment (the stale-state lesson), and legacy drei `<Environment>` mounts keep working through it. */
+/** The root scene's environment values before the plan touched anything this frame, captured once per `renderComposited` call; scenes whose theme declares no environment (or sources still loading in preview) apply this explicitly every frame since they must never inherit the previous render target's themed environment (the stale-state lesson), and the lit primitives' studio environment keeps working through it. */
 export interface SharedEnvironmentSnapshot {
   environment: Texture | null;
   intensity: number;

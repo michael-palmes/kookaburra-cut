@@ -46,6 +46,8 @@ GPU/driver, not across fleets.)
 | Hardware encoder (`h264_videotoolbox` / `hevc_videotoolbox` / `prores_videotoolbox`) bit-variance | Default to software `libx264` (deterministic); the VideoToolbox lanes are opt-in fast drafts excluded from Verify. |
 | Hardware DECODE (`-hwaccel videotoolbox`) is not pixel-identical to software decode (measured: every frame differs slightly, ~5% of pixels off by 1–3/255) | Clip extraction is dual-lane: the everyday `hw` lane and the baseline `sw` lane own separate cache dirs (`<sha>-60fps-hw` / `<sha>-60fps`), and deterministic-codec exports (all Verify runs) pin to `sw`, so hardware frames can never reach a gated export. `engine/clips.ts` lane rule. |
 | **A GPU-process stall mid-readback** (2026-10-01: the unified log shows `WebContent Connection::waitForSyncReply: Timed-out while waiting for reply for RemoteGraphicsContextGL_ReadPixelsSharedMemory`, then a GPU process restart). The timed-out `readPixels` delivers no pixels: a fresh buffer comes back all zero (the black preview cards), and the export reuses one buffer, so there a stall could silently repeat the previous frame instead. The restored context renders with every render target emptied (PMREM environments, mirror bakes, cached by content key and never rebuilt), so later frames look plausible and are wrong. Verify cannot be trusted with it: stalls show only as a mismatch, and a restart before both passes is EQUAL and wrong. | `readFrameOrThrow` (`engine/readback.ts`) zeroes the reused buffer before every export and `captureFrameRgba` readback, then fails the run, before the frame reaches `push_frame`, on an all-zero result, a lost context, or any context loss on the live canvas since it opened (`ExportBridge` counts `webglcontextlost` per canvas). Exports and captures also refuse to start on such a canvas. The error reads "GPU stalled (…): … quit and reopen Kookaburra Cut, then rerun"; autoruns are a fresh boot, so rerunning `kookaburra:run` is the reopen. A delivered read overwrites every byte, so good frames are untouched (gate:merge EQUAL 2026-10-03). |
+| **A lit primitive's environment rebuilt every frame** (measured 2026-10-02): `Device`, `DeviceMockup` and `HeroObject` each mounted drei's `<Environment frames={1}>`, whose layout effect re-runs whenever its children change, and the parent re-renders every clock tick, so every mounted lit primitive re-rendered its cube (six renders) and rebuilt its PMREM every frame: a 2 to 3x export slowdown and about 4 MB of GPU memory each. On a cold boot (hidden window, no preview frames) frame 0 used the mount-time build and every later frame a mid-run rebuild, and the two differed on a few highlight pixels (2 px, 131 vs 187), so cold pass A diverged from pass B at frame 0: a gate that passed or failed on window visibility. | One studio environment per renderer (`toolkit/lighting/studioEnvironment.ts`): the same three Lightformer rects, one cube render and one PMREM, built at the first lit mount and held on the root scene while any lit primitive is mounted (restored when the last unmounts). Nothing rebuilds it per frame, so cold and warm runs light devices identically. Frame 0 also draws twice and captures the second, so no frame is ever a run's first draw. |
+| **Dev React's performance entries** (React 19.2 development builds, which every autorun and gate runs): react-dom and r3f's reconciler record a `performance.measure` with a props diff for every re-render whose props changed, and WebKit never evicts them. Every mounted scene re-renders per tick, about 1 MB a frame on a 40-scene project, so a Verify reached the 4 GB WebContent ceiling near frame 1250. The packaged app runs production React and records none. | The export loop clears measures and marks every frame in dev builds (`dropDevPerformanceEntries`). |
 | **WebKit kills the WebContent process near its 4 GB footprint ceiling** (measured 2026-07-25: a 4K verify's page footprint rode at ~3.9–4.5 GB, dominated by never-freed compositor/composer MSAA render-target pools, ~285–886 MB each; when a periodic check under system memory pressure catches it over 4096 MB the process is killed ("Unable to shrink memory footprint … Killed" in the unified log) and wry auto-reloads the page; window focus does NOT lift the ceiling) | Export frames release the pools they did not touch (`releaseIdlePools` in compositor.ts, `releaseComposer` in effects.ts; the multi-project autorun also resets between legs), dropping the 4K plateau to ~3.2 GB; the SDR pair is lazy so fx projects never allocate it, and verify releases confirmed-identical retained frames early. Transient fx-transition-window spikes can still crest ~4.1 GB on heavy projects (launch-2026), so `runAutoRun`'s reload latch stays the backstop: one benign reload tolerated, then a fast, retryable failure naming this mode. Deeper shave if ever needed: a shared MSAA scratch target with plain resolve textures for the A/B pairs. Diagnose with `log stream --predicate 'process == "kookaburra-cut" AND composedMessage CONTAINS "footprint"'`. |
 
 ## The loop (as implemented in `src/engine/exporter.ts`)
@@ -61,6 +63,7 @@ const total = Math.max(1, Math.round(durationMs / 1000 * fps));
 const rgba  = new Uint8Array(width * height * 4);   // one reused buffer
 gl.setSize(width, height, false);             // size the preview canvas to 4K for the run
 for (let frame = 0; frame < total; frame++) {
+  dropDevPerformanceEntries();                // dev React's per-render measures, never evicted by WebKit
   const tMs = frame * (1000 / fps);
   flushSync(() => clock.setCurrentMs(tMs));   // commits the DOM tree only —
   await awaitCanvasClockCommit(tMs);          // …the CANVAS tree (r3f reconciler) commits on its
@@ -69,7 +72,8 @@ for (let frame = 0; frame < total; frame++) {
   await awaitTextSync(scene);                 // troika typesetting quiescent (kicked pre-render)
   reassertExportSizeIfDrifted();              // guard: a window resize mid-run can't corrupt capture
   renderComposited(gl, scene, camera, hosts,  // active scene(s); composite on transitions
-                   resolveAt(slots, tMs));    // (single-scene frames take the direct-render path)
+                   resolveAt(slots, tMs));    // (single-scene frames take the direct-render path;
+                                              // frame 0 draws twice: never the run's first draw)
   readFrameOrThrow(ctx, width, height, rgba); // zero, readPixels, then fail on a blank frame or
                                               // any context loss: a GPU stall never reaches ffmpeg
   await invoke("push_frame", rgba);           // → Rust → ffmpeg stdin (vflip there)
@@ -696,7 +700,8 @@ camera exactly:
   `null` whenever no scene swaps the theme AND the project theme carries no
   staging block: `renderComposited` then never touches
   `scene.background`/`scene.environment` (the background stays the Canvas-root
-  colour; environments stay drei's last-mount-wins). The legacy themes are
+  colour; the environment is the lit primitives' shared studio environment
+  while one is mounted, else none). The legacy themes are
   bundled JSON with NO staging blocks: that absence is structure-pinned in
   `schema.test.ts`, and it is what keeps legacy baselines EQUAL. Same rule for
   effects: a scene's theme swap replaces the project's effect BASE wholesale
@@ -1297,6 +1302,28 @@ rolling-gate project (`showcase-tour`):
 | `ws:duplicate-spike` (scene-id heal gate, machine-local) | stale | — | — | — | — | — | — | — | — |
 | `ws:overlay-spike` (overlay gate, machine-local) | stale | — | — | — | — | — | — | — | — |
 | `ws:duo-spike` (foldable gate, machine-local) | `2e023390…` | `b28e7c7f…` | — | — | — | — | — | — | — |
+| `ws:device-video-spike` (device/media/camera gate, built-in-lit devices, machine-local) | `386c8419…` | — | — | — | — | — | — | — | — |
+| `ws:device-env-spike` (cold frame-0 repro: a built-in-lit handset's top edge, machine-local) | `9f3418a2…` | — | — | — | — | — | — | — | — |
+
+> **2026-10-03 (the lit set's shared environment: a DELIBERATE rebase, confirmed
+> by Michael):** `Device`, `DeviceMockup` and `HeroObject` stopped mounting
+> drei's `<Environment>` and share one studio environment built once per
+> renderer (see the failure table). Built-in-lit devices therefore render every
+> frame exactly as a cold run's frame 0 always did: a cold single-frame capture
+> of `ws:device-env-spike` is byte-identical before and after the change, while
+> the old per-frame rebuild had shifted a few highlight pixels from frame 1 on.
+> `ws:device-video-spike` 16:9 re-records at `386c8419…` (was `fe0e886b…`),
+> Verify ×2 with an eyeballed frame. `ws:duo-spike` held EQUAL at `2e023390…`
+> (16:9) and `b28e7c7f…` (9:16): its lit poses never reach the shifted pixels.
+> The anchors never stage a built-in-lit device, so `pnpm gate:merge` stayed
+> EQUAL (`showcase-tour` `13b5994d…`, `ws:launch-2026` `eb89826c…`).
+> `ws:device-env-spike` (the frame-0 repro: the atlas-2 opening shot, three
+> scenes) records `9f3418a2…` and now passes cold, where it failed at frame 0
+> before (2 px, 131 vs 187). `ws:device-env-40` (40 device scenes, 4,800
+> frames per Verify) records `8ae231ca…` with the WebContent footprint flat at
+> 2.2 to 2.3 GB throughout, where a dev-build Verify of a 40-scene device project
+> had reached the 4 GB ceiling near frame 1250. Baselines over other
+> built-in-lit device projects are stale until their own legs rerun.
 
 > **2026-09-19 (foldables, a fresh record):** `ws:duo-spike` records 16:9
 > `2e023390…` and 9:16 `b28e7c7f…`, Verify ×2 each: the iPhone Duo open with both
