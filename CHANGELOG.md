@@ -6,6 +6,30 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.18.0] - 2026-10-04
+
+### Added
+
+- Privacy masks in the video editor: keyframed boxes that hide part of a
+  recording with a solid fill, blur or pixelate, baked into the edit render.
+- 39 world-space 3D backgrounds in six families (lines, painted, art history,
+  deco, atmosphere and kinetic), each with nine colour presets and an optional
+  Matching lighting toggle.
+
+### Changed
+
+- The embedded Claude Code terminal starts on Opus 5.5, which needs Claude
+  Code 2.1.280 or later.
+- Exports of scenes with built-in-lit devices run 2 to 3 times faster and use
+  less memory, and light those devices the same on every frame.
+
+### Fixed
+
+- Editor tap highlights stay pinned to the video at any window size and render
+  where the preview shows them. Taps placed earlier may need a drag.
+- Exports and captures stop with a clear error when the GPU stalls, instead of
+  encoding blank or stale frames.
+
 ## [0.17.0] - 2026-09-22
 
 ### Added
