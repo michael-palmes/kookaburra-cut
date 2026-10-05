@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { LoadedProject } from "./project";
 
 /** The native thumb cache, scripted per test; `submitted`/`cancelled` record the queue traffic to the render window. */
@@ -34,6 +34,11 @@ function project(stems: string[]): LoadedProject {
     slots: stems.map((_, i) => ({ startMs: i * 1000, durationMs: 1000 })),
   } as unknown as LoadedProject;
 }
+
+// Transform the module graph once outside the 5 s test timeout, which a cold transform under load can exceed.
+beforeAll(async () => {
+  await import("./sceneThumbs");
+}, 30_000);
 
 beforeEach(() => {
   submitted.length = 0;
