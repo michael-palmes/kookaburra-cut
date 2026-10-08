@@ -1,6 +1,7 @@
 import { Text } from "@react-three/drei";
 import { useContext, useEffect, useId, useLayoutEffect, useMemo, useState } from "react";
 import { shouldRenderManagedTextRole } from "../../engine/managedText";
+import { registerPresentTiming } from "../../engine/presentTimingRegistry";
 import { SceneDocContext, useSceneContext } from "../../engine/sceneContext";
 import { useTextKeyRegistry } from "../../engine/textKeyRegistry";
 import {
@@ -74,8 +75,14 @@ function AnimatedCounterRenderer(props: AnimatedCounterProps) {
   const pos = textStyleOffsetPosition(doc, textKey, position);
   const rotZ = textStyleRotationRad(doc, textKey);
 
-  // Report the editable field to the registry so the Edit-text drill-in offers it (the AnimatedHeadline registration, minus copy editing: the digits stay computed).
   const sceneIndex = useSceneContext()?.index;
+  const counts = durationMs > 0 && from !== to;
+  useEffect(() => {
+    if (sceneIndex === undefined || !counts) return;
+    return registerPresentTiming(sceneIndex, { kind: "counter", toMs: durationMs });
+  }, [sceneIndex, counts, durationMs]);
+
+  // Report the editable field to the registry so the Edit-text drill-in offers it (the AnimatedHeadline registration, minus copy editing: the digits stay computed).
   const mountId = useId();
   const finalText = format(to);
   const registeredFont = formatFontString(fontRefValue);

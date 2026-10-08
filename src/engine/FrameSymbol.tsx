@@ -4,6 +4,8 @@ import { MeshBasicMaterial, SRGBColorSpace, type Texture } from "three";
 import { CHIP_ICON_TEXTURES, type ChipIconId } from "../toolkit/frame/chipIcons";
 import type { V3 } from "../toolkit/types";
 import { useHeldLocalMs } from "./presentHold";
+import { registerPresentTiming } from "./presentTimingRegistry";
+import { useSceneContext } from "./sceneContext";
 import { useTimeline } from "./timeline";
 
 /** A chip's mark from the bundled Lucide-derived icon set: the white icon PNG rendered as a tinted quad (`MeshBasicMaterial` map x colour, the ImageCard/decoration precedent, `toneMapped:false` so the tint lands exactly). Centre-anchored; deterministic because the texture is a fixed bundled asset. */
@@ -24,6 +26,12 @@ export function FrameSymbol({
 }) {
   const { localMs: rawLocalMs } = useTimeline();
   const localMs = useHeldLocalMs(rawLocalMs);
+  const sceneIndex = useSceneContext()?.index;
+  const fades = to > from;
+  useEffect(() => {
+    if (sceneIndex === undefined || !fades) return;
+    return registerPresentTiming(sceneIndex, { kind: "decoration", toMs: to });
+  }, [sceneIndex, fades, to]);
   const texture = useTexture(CHIP_ICON_TEXTURES[id]) as Texture;
   useLayoutEffect(() => {
     texture.colorSpace = SRGBColorSpace;
