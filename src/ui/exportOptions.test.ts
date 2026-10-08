@@ -16,6 +16,10 @@ import {
   resolveDraft,
   slugifyPresetName,
   specChips,
+  stillsExportLabel,
+  stillsRowMatches,
+  stillsSummaryText,
+  stillsWarnings,
   terminalSnapshotWarning,
   websiteCaptureWarning,
   withPosterFrame,
@@ -313,5 +317,68 @@ describe("Website capture pre-flight", () => {
     expect(warning).toContain('"Intro" has no Website capture');
     expect(warning).toContain('"02-demo" has a stale Website capture');
     expect(warning).toContain("empty browser frame");
+  });
+});
+
+describe("the Stills row", () => {
+  const summary = {
+    scenes: 10,
+    pages: 9,
+    auto: 7,
+    marked: 2,
+    excluded: 1,
+    dormantKeyMarks: 0,
+    clampedMarks: 0,
+  };
+
+  it("stays pinned unless the search names something else", () => {
+    for (const q of [
+      "",
+      "pdf",
+      "PNG",
+      "image",
+      "images",
+      "hand",
+      "zip",
+      "slides",
+      "print",
+      "still",
+    ]) {
+      expect(stillsRowMatches(q), q).toBe(true);
+    }
+    for (const q of ["linkedin", "tiktok", "hevc"]) expect(stillsRowMatches(q), q).toBe(false);
+  });
+
+  it("counts pages for a PDF and images for PNGs", () => {
+    expect(stillsSummaryText(summary, "pdf")).toBe(
+      "9 pages: 7 automatic, 2 marked · 1 scene left out",
+    );
+    expect(stillsSummaryText(summary, "png-zip")).toBe(
+      "9 images: 7 automatic, 2 marked · 1 scene left out",
+    );
+    expect(
+      stillsSummaryText({ ...summary, pages: 1, auto: 1, marked: 0, excluded: 0 }, "pdf"),
+    ).toBe("1 page: 1 automatic");
+    expect(
+      stillsSummaryText({ ...summary, pages: 3, auto: 0, marked: 3, excluded: 2 }, "png-zip"),
+    ).toBe("3 images: 3 marked · 2 scenes left out");
+    expect(
+      stillsSummaryText({ ...summary, pages: 0, auto: 0, marked: 0, excluded: 3 }, "pdf"),
+    ).toBe("No pages · 3 scenes left out");
+  });
+
+  it("blocks only when every scene is left out and notes ignored or clamped marks", () => {
+    expect(stillsWarnings(summary)).toEqual({ blocking: false, notes: [] });
+    expect(stillsWarnings({ ...summary, pages: 0, auto: 0, marked: 0 }).blocking).toBe(true);
+    const notes = stillsWarnings({ ...summary, dormantKeyMarks: 2, clampedMarks: 1 }).notes;
+    expect(notes).toEqual([
+      "Heads up: 2 stills marked on a camera that isn't driving its scene are ignored.",
+      "Heads up: 1 marked still sits in a transition, so it exports the nearest clean frame.",
+    ]);
+  });
+
+  it("names the footer button by format", () => {
+    expect(stillsExportLabel("pdf")).toBe("Export PDF");
+    expect(stillsExportLabel("png-zip")).toBe("Export images");
   });
 });

@@ -100,6 +100,7 @@ import {
 import { resolveTerminalColours, TERMINAL_THEME_PRESETS } from "../../engine/sceneTerminalTheme";
 import { useLargestSceneText, useSceneTextRegistry } from "../../engine/sceneTextRegistry";
 import { listCachedSceneThumbs } from "../../engine/sceneThumbs";
+import { sceneTitle as resolveSceneTitle } from "../../engine/sceneTitle";
 import {
   normaliseWebsiteOrigin,
   normaliseWebsiteUrl,
@@ -131,6 +132,7 @@ import {
   useSceneStageBackdrop,
   useSceneStageFloorY,
 } from "../../engine/stageRegistry";
+import { sceneStillsPlan } from "../../engine/stills";
 import { ensureFontRefsPinned } from "../../engine/systemFonts";
 import { useTerminalEditStore } from "../../engine/terminalEditStore";
 import { useTextEditStore } from "../../engine/textEditStore";
@@ -402,6 +404,8 @@ import { OptionCard } from "../OptionCard";
 import { TextFieldRow } from "../SceneTextFields";
 import { SHADOW_OPTIONS } from "../SceneWizards";
 import { backgroundOptions, toggleDrift } from "../stageOptions";
+import { StillsIcon } from "../stillsIcons";
+import { stillsOverviewValue } from "../stillsModel";
 import { DebouncedRange } from "../TextAnimationPicker";
 import {
   builtinThemeChoices,
@@ -478,6 +482,7 @@ import {
   SceneOverviewSettingRow,
   shouldCloseSceneOverviewPickerOnBlur,
 } from "./SceneOverview";
+import { StillsDrill } from "./StillsDrill";
 
 /** The inspector's Scene tab: collapsible sections over the playhead's dominant scene, every edit riding the same `useSceneDocPatch` funnel the EditBar uses. Section/row structure comes from the pinned `sceneSections` model. The header thumb is read from `listCachedSceneThumbs` only, never a capture, to avoid the clock-borrow playhead-blip class. */
 
@@ -3203,7 +3208,7 @@ export function SceneTab({
   const stem = sceneFile ? sceneFileStem(sceneFile) : null;
   // Default scene name: the sidecar name, else the scene's largest mounted text (the live registry), else the file stem.
   const derivedName = useLargestSceneText(sceneIndex);
-  const sceneTitle = doc?.name ?? derivedName ?? stem ?? `Scene ${sceneIndex + 1}`;
+  const sceneTitle = resolveSceneTitle(doc, derivedName, stem, sceneIndex);
 
   // Unrenderable characters in this scene's mounted text: coverage misses against the theme faces + symbols fallback, plus emoji the system font could not raster. Editor-only; the export path never reads this.
   const sceneTexts = useSceneTextRegistry((s) => s.texts[sceneIndex]);
@@ -8898,6 +8903,16 @@ export function SceneTab({
       />
     );
   }
+  if (drillIn === "stills") {
+    return (
+      <StillsDrill
+        project={project}
+        sceneIndex={sceneIndex}
+        onDocChanged={onDocChanged}
+        onBack={closeDrill}
+      />
+    );
+  }
   const lightingScreen = drillIn ? LIGHTING_ROUTES[drillIn] : undefined;
   if (lightingScreen && doc) {
     // The after target hands the section a doc view whose lighting is side B's, with write wrappers transplanting the field back.
@@ -8985,6 +9000,7 @@ export function SceneTab({
     slotsCount: project.slots.length,
     themeName: sceneTheme?.name ?? project.theme.name,
     transitionValue,
+    stillsValue: stillsOverviewValue(sceneStillsPlan(doc, project.slots, sceneIndex)),
     fallbackText: derivedName ?? undefined,
     textGroups:
       managedTextModel?.ownership === "managed" || (managedTextModel?.items.length ?? 0) > 0
@@ -9710,6 +9726,8 @@ export function SceneTab({
         return <SceneRowIcon id="lighting" />;
       case "transition":
         return <SceneRowIcon id="motion.transition" />;
+      case "stills":
+        return <StillsIcon id="stills" />;
       default:
         return <SceneRowIcon id="motion.duration" />;
     }

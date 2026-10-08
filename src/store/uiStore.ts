@@ -1,5 +1,13 @@
 import { create } from "zustand";
 import type { GizmoDomain } from "../engine/gizmoRegistry";
+import {
+  DEFAULT_STILLS_FORMAT,
+  DEFAULT_STILLS_SIZE,
+  STILLS_FORMATS,
+  STILLS_SIZES,
+  type StillsFormat,
+  type StillsSize,
+} from "../engine/stills";
 import type { ThemeBackdrop, ThemeBackground } from "../theme/tokens";
 
 /** Main-window chrome state: the command palette, preview-audio mute, the inspector panel's tab and drill-in nav stack, the timeline's background clipboard, and the rail-wizard request channel (lets the palette, and later the playback bar, ask TerminalPanel to open a scene wizard without threading callbacks through every layer). Like editorStore, the deterministic export path never reads this store, it holds chrome-only state that must never influence rendered pixels. */
@@ -25,6 +33,8 @@ const QUALITY_KEY = "kookaburra:preview-quality";
 const DETAILED_LANE_KEY = "kookaburra:detailed-animation-view";
 const BEAT_LANE_KEY = "kookaburra:beat-lane-hidden";
 const FREE_CAMERA_WARNING_KEY = "kookaburra:free-camera-warning-dismissed";
+const STILLS_FORMAT_KEY = "kookaburra:stills-format";
+const STILLS_SIZE_KEY = "kookaburra:stills-size";
 
 function loadPreviewQuality(): PreviewQuality {
   try {
@@ -59,6 +69,23 @@ function loadFreeCameraWarningDismissed(): boolean {
   }
 }
 
+function loadPref<T extends string>(key: string, allowed: readonly T[], fallback: T): T {
+  try {
+    const v = localStorage.getItem(key);
+    return allowed.find((a) => a === v) ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function savePref(key: string, value: string): void {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // Storage unavailable: the choice still applies for this session.
+  }
+}
+
 /** A copied scene look (Copy background): raw override fields, so absent = "follow theme" pastes as absence. Cleared on project switch since image/video fills reference project assets. */
 export interface BackgroundClipboard {
   background?: ThemeBackground;
@@ -88,6 +115,9 @@ interface UiState {
   beatLaneHidden: boolean;
   /** The Free-camera warning stays hidden once the user ticks "Don't show this again". */
   freeCameraWarningDismissed: boolean;
+  /** The export modal's last Stills format and size. */
+  stillsFormat: StillsFormat;
+  stillsSize: StillsSize;
   inspector: InspectorState;
   inspectorNavigation: InspectorNavigationEvent;
   /** A pending "open this wizard" request for the Claude rail (consumed by TerminalPanel). */
@@ -107,6 +137,8 @@ interface UiState {
   setDetailedAnimationView: (detailed: boolean) => void;
   setBeatLaneHidden: (hidden: boolean) => void;
   setFreeCameraWarningDismissed: (dismissed: boolean) => void;
+  setStillsFormat: (format: StillsFormat) => void;
+  setStillsSize: (size: StillsSize) => void;
   setInspectorTab: (tab: InspectorTab) => void;
   setInspectorOverviewSelection: (selection: InspectorOverviewSelection | null) => void;
   /** Push a screen (forward navigation): row list to a group, or a group to a detail. */
@@ -133,6 +165,8 @@ export const useUiStore = create<UiState>((set) => ({
   detailedAnimationView: loadDetailedAnimationView(),
   beatLaneHidden: loadBeatLaneHidden(),
   freeCameraWarningDismissed: loadFreeCameraWarningDismissed(),
+  stillsFormat: loadPref(STILLS_FORMAT_KEY, STILLS_FORMATS, DEFAULT_STILLS_FORMAT),
+  stillsSize: loadPref(STILLS_SIZE_KEY, STILLS_SIZES, DEFAULT_STILLS_SIZE),
   // Scene is the default tab: it's where editing happens; bundled projects heal back to Project.
   inspector: { tab: "scene", drillStack: [], drillIn: null, overviewSelection: null },
   inspectorNavigation: { sequence: 0, kind: "reset" },
@@ -175,6 +209,14 @@ export const useUiStore = create<UiState>((set) => ({
       // Storage unavailable: the choice still applies for this session.
     }
     set({ freeCameraWarningDismissed });
+  },
+  setStillsFormat: (stillsFormat) => {
+    savePref(STILLS_FORMAT_KEY, stillsFormat);
+    set({ stillsFormat });
+  },
+  setStillsSize: (stillsSize) => {
+    savePref(STILLS_SIZE_KEY, stillsSize);
+    set({ stillsSize });
   },
   setInspectorTab: (tab) =>
     set((s) => ({

@@ -4,6 +4,7 @@ import {
   type PointerEvent as ReactPointerEvent,
   type RefObject,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -27,6 +28,7 @@ import { SceneInsertTimeline } from "./SceneInsertTimeline";
 import type { WizardSceneInfo } from "./SceneWizards";
 import { sceneMenuItems } from "./sceneMenu";
 import { msFromTrackX, playheadFraction, sceneCellSpans } from "./scrubMath";
+import { stillsMenuIncludes, stillTickTimes } from "./stillsModel";
 import { useEscapeClose } from "./useEscapeClose";
 
 /** Segmented per-scene playback bar: cells tile the track on ATTRIBUTION boundaries (`sceneCellSpans`, mid-transition to mid-transition) so the drawn scene change sits halfway through each overlap and the bold name agrees with its cell; the play button is deliberately not accent-coloured; right-click renames, duplicates, re-times or deletes a scene; disabled while exporting. */
@@ -50,6 +52,7 @@ export function PlaybackBar({
   onDuplicateScene,
   onSceneDuration,
   onPasteBackground,
+  onSceneStills,
   onUpdateAudioMarkers,
   onAddCameraKeyAtBeat,
   onSyncCameraToBeats,
@@ -82,6 +85,8 @@ export function PlaybackBar({
   onSceneDuration: (index: number, ms: number) => void;
   /** Write the copied background + staging onto a scene (the host owns the write + history). */
   onPasteBackground: (index: number) => void;
+  /** Include or leave out scenes from stills exports (the host owns the writes + one history entry). */
+  onSceneStills: (indices: number[], include: boolean) => void;
   /** Write (or null to clear) the manifest's `audio.markers` (the host owns the write + history). */
   onUpdateAudioMarkers: (markers: AudioMarkersSpec | null) => void;
   /** Add one camera keyframe landing on the beat at project-time ms (the host resolves the scene). */
@@ -106,6 +111,10 @@ export function PlaybackBar({
   const spans = project ? sceneCellSpans(project.slots, durationMs) : [];
   const active = project ? activeSceneIndex(project.slots, currentMs) : 0;
   const fraction = playheadFraction(currentMs, durationMs, spans);
+  const stillTicks = useMemo(
+    () => (project ? stillTickTimes(project.sceneDocs, project.slots) : []),
+    [project],
+  );
 
   const sceneName = (i: number): string => {
     if (!project) return `Scene ${i + 1}`;
@@ -137,6 +146,8 @@ export function PlaybackBar({
           });
         },
         onPasteBackground: () => onPasteBackground(index),
+        stillsInclude: stillsMenuIncludes(project.sceneDocs, [index]),
+        onStills: (include) => onSceneStills([index], include),
         onDelete: () => onDeleteScene(index),
         onCopyToProject: () => useUiStore.getState().requestSceneCopy([index]),
         onInsertPreset: () => setInsertingPreset(index + 1),
@@ -346,6 +357,14 @@ export function PlaybackBar({
               style={{ flexGrow: span.weight }}
             />
           ))}
+          {!exporting &&
+            stillTicks.map((tick) => (
+              <span
+                key={tick.id}
+                className="pb-still-tick"
+                style={{ left: `${playheadFraction(tick.ms, durationMs, spans) * 100}%` }}
+              />
+            ))}
           <div className="pb-playhead" style={{ left: `${fraction * 100}%` }} />
         </div>
         <div className="pb-labels">

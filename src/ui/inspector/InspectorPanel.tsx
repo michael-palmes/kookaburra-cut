@@ -137,6 +137,7 @@ export function InspectorPanel({
   onRenameScene,
   onSceneDuration,
   onPasteBackground,
+  onSceneStills,
   onDuplicateSceneAt,
   onSetRenderSettings,
   onSetTypography,
@@ -193,6 +194,8 @@ export function InspectorPanel({
   onSceneDuration: (index: number, ms: number) => void;
   /** Write the copied background + staging onto a scene (the host owns the write + history). */
   onPasteBackground: (index: number) => void;
+  /** Include or leave out scenes from stills exports (the host owns the writes + one history entry). */
+  onSceneStills: (indices: number[], include: boolean) => void;
   /** Copy one scene to a chosen position (the Duplicate… placement dialog). */
   onDuplicateSceneAt: (index: number, position?: number) => Promise<void>;
   /** Write the project display transform (manifest `render`); App owns the write + history. */
@@ -593,6 +596,7 @@ export function InspectorPanel({
                 name: project.sceneDocs[i]?.name ?? sceneFileStem(project.sceneFiles[i]),
                 durationMs: slot.durationMs,
                 hasDoc: !!project.sceneDocs[i],
+                stillsExcluded: project.sceneDocs[i]?.stills?.exclude === true,
               }))}
               busy={scenesBusy}
               canAddScenes={canAddScenes}
@@ -624,6 +628,7 @@ export function InspectorPanel({
               onCopyFromProject={() => setDrillIn("project.scenes.copyFrom")}
               onInsertPreset={setInsertingPreset}
               onSaveAsPreset={setSavingPreset}
+              onStills={onSceneStills}
             />
             {duplicating !== null && (
               <DuplicateSceneDialog

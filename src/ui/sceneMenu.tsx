@@ -1,8 +1,15 @@
 import type { ContextMenuItem } from "./ContextMenu";
+import { StillsIcon } from "./stillsIcons";
 
 /** The action label for a scene selection: one scene keeps the bare verb, more take the count ("Delete 3 scenes"). */
 export function sceneSelectionLabel(verb: string, count: number): string {
   return count > 1 ? `${verb} ${count} scenes` : verb;
+}
+
+/** "Leave out of stills" / "Include in stills", bulk "Leave 3 scenes out of stills". */
+export function stillsMenuLabel(include: boolean, count: number): string {
+  if (include) return count > 1 ? `Include ${count} scenes in stills` : "Include in stills";
+  return count > 1 ? `Leave ${count} scenes out of stills` : "Leave out of stills";
 }
 
 export type SceneMenuIconId =
@@ -13,6 +20,8 @@ export type SceneMenuIconId =
   | "insert-preset"
   | "save-preset"
   | "duration"
+  | "stills"
+  | "stills-off"
   | "manage"
   | "copy-background"
   | "paste-background"
@@ -22,6 +31,9 @@ export type SceneMenuIconId =
 /** Leading glyphs shared by the scene, media and project card menus: the Project tab's 20-viewBox stroke style. */
 export function SceneMenuIcon({ id }: { id: SceneMenuIconId }) {
   switch (id) {
+    case "stills":
+    case "stills-off":
+      return <StillsIcon id={id} />;
     case "rename":
       return (
         <svg
@@ -226,6 +238,10 @@ export function sceneMenuItems(opts: {
   onInsertPreset?: () => void;
   /** Workspace projects only: saves this scene into the preset library (single selection). */
   onSaveAsPreset?: () => void;
+  /** The stills toggle's direction: true offers Include (every chosen scene is left out). */
+  stillsInclude?: boolean;
+  /** Present to show the stills toggle; called with `stillsInclude`. */
+  onStills?: (include: boolean) => void;
 }): (ContextMenuItem | "separator")[] {
   const count = opts.selectionCount ?? 0;
   const bulk = count > 1;
@@ -287,6 +303,16 @@ export function sceneMenuItems(opts: {
       icon: <SceneMenuIcon id="duration" />,
       onSelect: opts.onDuration,
     },
+    ...(opts.onStills
+      ? [
+          {
+            id: "stills",
+            label: stillsMenuLabel(opts.stillsInclude === true, count),
+            icon: <SceneMenuIcon id={opts.stillsInclude ? "stills" : "stills-off"} />,
+            onSelect: () => opts.onStills?.(opts.stillsInclude === true),
+          } as ContextMenuItem,
+        ]
+      : []),
     ...(opts.onManage
       ? [
           {

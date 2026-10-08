@@ -2,6 +2,7 @@ import type { AspectName } from "../engine/format";
 import { aspectLabel, FORMATS } from "../engine/format";
 import type { ProjectListing } from "../engine/project";
 import { WORKSPACE_PROJECT_PREFIX } from "../engine/project";
+import type { StillsFormat } from "../engine/stills";
 
 /** Pure command registry for the ⌘K palette: everything it can do is enumerated here as data, built from a snapshot of app state (`CommandContext`), with the vocabulary and enablement rules structure-pinned in unit tests. The palette component renders whatever this module returns and never invents commands of its own; removing the titlebar's center button strip required every action it fronted to exist here first. */
 
@@ -45,6 +46,10 @@ export interface CommandContext {
     togglePlay: () => void;
     toggleMute: () => void;
     openExport: () => void;
+    /** The export modal opened on the Stills row in this format. */
+    openStillsExport: (format: StillsFormat) => void;
+    /** A fixed still on the frame under the playhead, in the playhead's scene. */
+    addStillAtPlayhead: () => void;
     verify: () => void;
     showShortcuts: () => void;
     checkForUpdates: () => void;
@@ -141,6 +146,14 @@ export function buildCommands(ctx: CommandContext): Command[] {
       run: a.editChartData,
     },
     {
+      id: "scene.still.add",
+      title: "Add still at playhead",
+      group: "Project",
+      keywords: ["stills", "mark", "pdf", "png", "handout", "frame", "page"],
+      enabled: editor && ctx.projectLoaded && ctx.editable && !ctx.exporting,
+      run: a.addStillAtPlayhead,
+    },
+    {
       id: "project.soundtrack.set",
       title: ctx.hasAudio ? "Replace soundtrack…" : "Choose soundtrack…",
       group: "Project",
@@ -198,6 +211,22 @@ export function buildCommands(ctx: CommandContext): Command[] {
       keywords: ["render", "video", "preset", "save", "mp4", "mov"],
       enabled: editor && ctx.projectLoaded && !ctx.exporting,
       run: a.openExport,
+    },
+    {
+      id: "export.pdf",
+      title: "Export PDF…",
+      group: "Export",
+      keywords: ["stills", "handout", "document", "print", "slides", "pages"],
+      enabled: editor && ctx.projectLoaded && !ctx.exporting,
+      run: () => a.openStillsExport("pdf"),
+    },
+    {
+      id: "export.images",
+      title: "Export PNG images…",
+      group: "Export",
+      keywords: ["stills", "png", "zip", "pictures", "frames", "screenshots"],
+      enabled: editor && ctx.projectLoaded && !ctx.exporting,
+      run: () => a.openStillsExport("png-zip"),
     },
     {
       id: "export.verify",

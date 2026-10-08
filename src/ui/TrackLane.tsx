@@ -35,6 +35,8 @@ import { formatSceneLengthMs, parseSceneLengthMs } from "./durationText";
 import { ToggleRow } from "./inspector/rows";
 import { seekSceneLocal } from "./laneSeek";
 import { ResizeAnimationModal } from "./ResizeAnimationModal";
+import { SceneMenuIcon } from "./sceneMenu";
+import { StillsIcon } from "./stillsIcons";
 import { commitFocusedInspectorEdit } from "./textEditFocus";
 
 /** The generic keyed-track timeline lane, extracted verbatim from the camera AnimationLane so the layered-screenshot lane can reuse it: hard walls and gaps stay the model (the opposite of the video editor's magnetic reflow); the 4% minimum segment length is visual only (decision 16). Animations are CONNECTED: one diamond per key, so a shared junction is ONE handle, keys attached to no segment draw nothing, and the pixel-derived `minLenMs` (24px, 10px in the Detailed view) rather than MIN_KEY_GAP_MS is what drags and the connected engine ops clamp against. Track-specific state (edit store, doc funnel, tool keys, copy) arrives through props from a thin wrapper. */
@@ -127,8 +129,16 @@ export interface TrackLaneProps<P, T extends KeyedTrack<P>> {
   onKeyActivate?: (keyId: string) => void;
   /** Segment extras the camera rig opts into. Absent (the layered-screenshot lane) drops the popover's Advanced group; the lane NEVER branches on track type to decide this. */
   segmentExtras?: SegmentExtras;
+  /** Key extras the camera lane opts into (stills marks); absent keeps the key menu and diamonds unchanged. */
+  keyExtras?: KeyExtras;
   /** Soundtrack guidance (scene-local ms): faint beat ticks and stronger key-moment lines behind the keys, both joining the snap candidates. Absent keeps the lane byte for byte. */
   beatMarkers?: { beats: number[]; keyMoments: number[] };
+}
+
+/** Per-key stills marking: whether a key is a still, and the toggle that writes it. */
+export interface KeyExtras {
+  isStill: (keyId: string) => boolean;
+  onStill: (keyId: string, on: boolean) => void;
 }
 
 /** The rig's per-segment controls, passed in rather than detected: smoothing and the three optional channel eases. */
@@ -168,6 +178,7 @@ export function TrackLane<P, T extends KeyedTrack<P>>({
   laneClassName,
   onKeyActivate,
   segmentExtras,
+  keyExtras,
   beatMarkers,
 }: TrackLaneProps<P, T>) {
   const currentMs = useClockStore((s) => s.currentMs);
@@ -467,6 +478,7 @@ export function TrackLane<P, T extends KeyedTrack<P>>({
     select(keyId, null);
     const after = duplicateKey(track, ctx, keyId, minLenMs);
     const before = duplicateKeyBefore(track, ctx, keyId, minLenMs);
+    const still = keyExtras?.isStill(keyId) ?? false;
     setMenu({
       x: e.clientX,
       y: e.clientY,
@@ -474,6 +486,7 @@ export function TrackLane<P, T extends KeyedTrack<P>>({
         {
           id: "duplicate",
           label: "Duplicate",
+          icon: <SceneMenuIcon id="duplicate" />,
           disabled: !after,
           title: after
             ? "Hold this pose, then run the animation after it from halfway"
@@ -485,6 +498,7 @@ export function TrackLane<P, T extends KeyedTrack<P>>({
         {
           id: "duplicate-before",
           label: "Duplicate before",
+          icon: <SceneMenuIcon id="duplicate" />,
           disabled: !before,
           title: before
             ? "Hold this pose, arriving halfway through the animation before it"
@@ -496,8 +510,11 @@ export function TrackLane<P, T extends KeyedTrack<P>>({
         {
           id: "delete",
           label: "Delete",
+          icon: <SceneMenuIcon id="delete" />,
           danger: true,
-          title: "Joins the animations either side; the last one leaves the pose frozen",
+          title: still
+            ? "Joins the animations either side; the last one leaves the pose frozen. Its still goes too"
+            : "Joins the animations either side; the last one leaves the pose frozen",
           onSelect: () => {
             const result = deleteKeyMerged(track, keyId);
             if (result) {
@@ -506,6 +523,20 @@ export function TrackLane<P, T extends KeyedTrack<P>>({
             }
           },
         },
+        ...(keyExtras
+          ? [
+              "separator" as const,
+              {
+                id: "still",
+                label: still ? "Remove still" : "Use as still",
+                icon: <StillsIcon id={still ? "still-remove" : "still-add"} />,
+                title: still
+                  ? "Stop exporting this keyframe as a still"
+                  : "Export this keyframe's frame as a page in PDF and PNG stills",
+                onSelect: () => keyExtras.onStill(keyId, !still),
+              },
+            ]
+          : []),
       ],
     });
   }
@@ -659,6 +690,17 @@ export function TrackLane<P, T extends KeyedTrack<P>>({
               />
             );
           })}
+          {keyExtras &&
+            shown.keys.map((key) =>
+              keyExtras.isStill(key.id) ? (
+                <span
+                  key={`still-${key.id}`}
+                  className="anim-key-still"
+                  style={{ left: xOf(key.tMs) }}
+                  aria-hidden="true"
+                />
+              ) : null,
+            )}
           {shown.keys.map((key) => (
             // biome-ignore lint/a11y/noStaticElementInteractions: pointer-driven editing surface, keyboard editing rides the window-level Delete/arrow handlers
             <div
@@ -669,13 +711,13 @@ export function TrackLane<P, T extends KeyedTrack<P>>({
                 mergeTarget === key.id ? " merge-target" : ""
               }${key.tMs < windowStartMs || key.tMs > windowEndMs ? " overhang" : ""}`}
               style={{ left: xOf(key.tMs) }}
-              title={
+              title={`${
                 key.tMs > durationMs
                   ? `Keyframe at ${(key.tMs / 1000).toFixed(2)}s, past the scene end (holds clamp)`
                   : key.tMs < windowStartMs || key.tMs > windowEndMs
                     ? `Keyframe at ${(key.tMs / 1000).toFixed(2)}s, inside the transition (shown at the lane edge)`
                     : `Keyframe at ${(key.tMs / 1000).toFixed(2)}s, drag to retime, right-click to duplicate or delete`
-              }
+              }${keyExtras?.isStill(key.id) ? " · Still" : ""}`}
               onPointerDown={(e) => onKeyPointerDown(e, key.id)}
               onPointerMove={onPointerMove}
               onPointerUp={onPointerUp}

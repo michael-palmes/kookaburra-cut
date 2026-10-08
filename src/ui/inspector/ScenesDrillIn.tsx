@@ -15,6 +15,8 @@ export interface SceneManagerRow {
   durationMs: number;
   /** The scene has a sidecar document (rename writes `doc.name`). */
   hasDoc: boolean;
+  /** Left out of stills exports (`stills.exclude`). */
+  stillsExcluded?: boolean;
 }
 
 interface DragState {
@@ -43,6 +45,7 @@ export function ScenesDrillIn({
   onCopyFromProject,
   onInsertPreset,
   onSaveAsPreset,
+  onStills,
 }: {
   scenes: SceneManagerRow[];
   /** An op is in flight; interactions disable rather than queue. */
@@ -70,6 +73,8 @@ export function ScenesDrillIn({
   onInsertPreset: (position: number) => void;
   /** Save one scene into the preset library (the host mounts SavePresetModal, which owns the write). */
   onSaveAsPreset: (index: number) => void;
+  /** Include or leave out the selection from stills (the host writes each scene, one history entry). */
+  onStills?: (indices: number[], include: boolean) => void;
 }) {
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [anchor, setAnchor] = useState<number | null>(null);
@@ -206,6 +211,10 @@ export function ScenesDrillIn({
         onCopyToProject: () => onCopyToProject(bulk ?? [scene.index]),
         onInsertPreset: () => onInsertPreset(scene.index + 1),
         onSaveAsPreset: () => onSaveAsPreset(scene.index),
+        stillsInclude: (bulk ?? [scene.index]).every(
+          (i) => scenes.find((row) => row.index === i)?.stillsExcluded === true,
+        ),
+        onStills: onStills ? (include) => onStills(bulk ?? [scene.index], include) : undefined,
       }),
     });
   };

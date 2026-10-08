@@ -204,10 +204,11 @@ describe("deriveSceneOverview", () => {
       "Soft studio",
       "Crossfade · 0.4 s",
       "4.00 s",
+      "Automatic",
     ]);
   });
 
-  it("omits every empty content group and keeps the seven scene settings", () => {
+  it("omits every empty content group and keeps the eight scene settings", () => {
     const model = overview(docWith({}), { durationMs: 3_000, slotsCount: 1 });
     expect(model.groups).toEqual([]);
     expect(model.standalone).toEqual([]);
@@ -219,6 +220,7 @@ describe("deriveSceneOverview", () => {
       "lighting",
       "transition",
       "duration",
+      "stills",
     ]);
     expect(model.settings.find((row) => row.id === "transition")?.openRoute).toBeNull();
     expect(model.settings.find((row) => row.id === "duration")?.value).toBe("3.00 s");
@@ -422,7 +424,32 @@ describe("deriveSceneOverview", () => {
       "lighting",
       "transition",
       "duration",
+      "stills",
     ]);
+  });
+
+  it("appends the Stills row last, valued from the plan or the exclude flag", () => {
+    const stillsRow = (model: ReturnType<typeof overview>) =>
+      model.settings.find((row) => row.id === "stills");
+    expect(stillsRow(overview(docWith({}), { durationMs: 3_000, slotsCount: 1 }))).toMatchObject({
+      type: "stills",
+      label: "Stills",
+      value: "Automatic",
+      openRoute: "stills",
+    });
+    expect(
+      stillsRow(
+        overview(docWith({ stills: { exclude: true } }), { durationMs: 3_000, slotsCount: 1 }),
+      )?.value,
+    ).toBe("Left out");
+    expect(
+      stillsRow(
+        overview(docWith({}), { durationMs: 3_000, slotsCount: 1, stillsValue: "2 marked" }),
+      )?.value,
+    ).toBe("2 marked");
+    expect(
+      deriveSceneOverview({ doc: undefined, durationMs: 3_000, slotsCount: 1 }).settings.at(-1),
+    ).toMatchObject({ id: "stills", value: "Automatic", openRoute: "stills" });
   });
 
   it("disables only present singleton add options", () => {
@@ -801,6 +828,12 @@ describe("drillStackForScene (what the inspector keeps open across a scene chang
   it("Camera survives even a doc-less scene", () => {
     expect(drillStackForScene(["camera"], { ...full, hasDoc: false, textKeys: [] })).toEqual([
       "camera",
+    ]);
+  });
+
+  it("Stills follows the playhead into any scene", () => {
+    expect(drillStackForScene(["stills"], { ...full, hasDoc: false, textKeys: [] })).toEqual([
+      "stills",
     ]);
   });
 

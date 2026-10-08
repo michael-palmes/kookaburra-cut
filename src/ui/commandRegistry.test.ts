@@ -45,6 +45,8 @@ function ctx(overrides: Partial<CommandContext> = {}): CommandContext {
       togglePlay: noop,
       toggleMute: noop,
       openExport: noop,
+      openStillsExport: noop,
+      addStillAtPlayhead: noop,
       verify: noop,
       showShortcuts: noop,
       checkForUpdates: noop,
@@ -72,6 +74,9 @@ describe("buildCommands (the vocabulary pin)", () => {
       "view.aspect:5:4",
       "export.verify",
       "export.open",
+      "export.pdf",
+      "export.images",
+      "scene.still.add",
       // Relocated rail Music menu: the inspector and the palette both own it now.
       "project.soundtrack.set",
       "project.soundtrack.remove",
@@ -98,6 +103,28 @@ describe("buildCommands (the vocabulary pin)", () => {
       buildCommands(ctx({ editable: false })).map((c) => [c.id, c.enabled] as const),
     );
     expect(bundled["scene.addChart"]).toBe(false);
+  });
+
+  it("opens the export modal on Stills and marks stills only where it can write", () => {
+    const opened: string[] = [];
+    const cmds = buildCommands(
+      ctx({
+        actions: { ...ctx().actions, openStillsExport: (format) => opened.push(format) },
+      }),
+    );
+    const byId = Object.fromEntries(cmds.map((c) => [c.id, c] as const));
+    expect(byId["export.pdf"].title).toBe("Export PDF…");
+    expect(byId["export.images"].title).toBe("Export PNG images…");
+    expect(byId["scene.still.add"].title).toBe("Add still at playhead");
+    byId["export.pdf"].run();
+    byId["export.images"].run();
+    expect(opened).toEqual(["pdf", "png-zip"]);
+    const bundled = Object.fromEntries(
+      buildCommands(ctx({ editable: false })).map((c) => [c.id, c.enabled] as const),
+    );
+    expect(bundled["scene.still.add"]).toBe(false);
+    expect(bundled["export.pdf"]).toBe(true);
+    expect(bundled["export.images"]).toBe(true);
   });
 
   it("never lists the CURRENT project as an open target", () => {

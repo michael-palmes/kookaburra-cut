@@ -9,9 +9,11 @@ import {
   setSegmentSmooth,
 } from "../engine/sceneCameraEdit";
 import type { SceneDoc, SceneDocCameraPose, SceneDocRigPose } from "../engine/sceneDocSchema";
+import { setKeyStill } from "../engine/stills";
 import { useCameraDoc } from "./cameraDoc";
 import { clearOtherLaneSelections } from "./laneSelection";
-import { type SegmentExtras, TrackLane } from "./TrackLane";
+import { isStillKey } from "./stillsModel";
+import { type KeyExtras, type SegmentExtras, TrackLane } from "./TrackLane";
 
 /** The per-scene camera timeline lane: a thin wrapper binding the generic `TrackLane` to the camera edit store, doc funnel and the mode's tool keys, O/P/Z in Orbit and M/F/L/T in Free (the lane body itself was extracted verbatim to TrackLane.tsx for the layered-screenshot lane). Neither set collides: the studio window binds no other bare letters, and the video editor's S/F/T live in a separate window. Free mode drives the RIG track and opts the popover into the rig's smoothing and channel-ease rows; the layered-screenshot lane passes neither, so it is unchanged. */
 
@@ -100,6 +102,27 @@ export function AnimationLane({
     [rig, commitRig],
   );
 
+  // Stills marks ride the visible block's keys, written through the same funnel so the camera draft never drops them.
+  const keyExtras: KeyExtras = useMemo(
+    () => ({
+      isStill: (id) =>
+        (mode === "rig" ? rig.keys : camera.keys).some(
+          (k) => k.id === id && isStillKey(k as { still?: true }),
+        ),
+      onStill: (id, on) => {
+        const label = on ? "use key as still" : "remove still";
+        if (mode === "rig") {
+          const next = setKeyStill(rig, id, on);
+          if (next) void commitRig(next, label);
+        } else {
+          const next = setKeyStill(camera, id, on);
+          if (next) void commit(next, label);
+        }
+      },
+    }),
+    [mode, rig, camera, commit, commitRig],
+  );
+
   // The lane's visible window: mid incoming transition to mid outgoing transition (project ends excepted), matching the chrome's attribution boundaries. The transition bounds inside it are where auto-placed animations start and stop.
   const nextSlot = project.slots[sceneIndex + 1];
   const windowStartMs = (slot.transitionIn?.durationMs ?? 0) / 2;
@@ -154,6 +177,7 @@ export function AnimationLane({
         commit={commitRig}
         poseAt={appliedRigAt}
         segmentExtras={segmentExtras}
+        keyExtras={keyExtras}
         addTitle="Add a camera flight after the last one, or ending at the playhead when it is past it"
       />
     );
@@ -165,6 +189,7 @@ export function AnimationLane({
       preview={preview}
       commit={commit}
       poseAt={appliedPoseAt}
+      keyExtras={keyExtras}
       addTitle="Add a camera animation after the last one, or ending at the playhead when it is past it"
     />
   );
