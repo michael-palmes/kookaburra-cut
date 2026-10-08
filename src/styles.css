@@ -6980,14 +6980,20 @@ button.beat-status {
   inline-size: 100%;
 }
 
-/* Chip groups are fieldsets (the group-chips precedent) — strip the UA chrome. */
+/* Chip groups are fieldsets (the group-chips precedent): strip the UA chrome, including the min-content floor that stops them shrinking. */
 .export-filter-row,
 .export-aspect-row {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.35rem;
+  min-inline-size: 0;
   margin: 0;
   padding: 0;
   border: 0;
+}
+.export-filter-row .chip,
+.export-aspect-row .chip {
+  white-space: nowrap;
 }
 /* Aspect chips carry a proportioned rect glyph before the label. */
 .export-aspect-row .chip,
@@ -7005,6 +7011,13 @@ button.beat-status {
   flex-direction: column;
   gap: 0.25rem;
   padding-inline-end: 0.25rem;
+  scroll-padding-block-end: 0.5rem;
+}
+/* A spacer, not end padding: WebKit drops end padding from flex scroll containers. */
+.export-list::after {
+  content: "";
+  flex: none;
+  block-size: 0.25rem;
 }
 
 .export-group-title {
