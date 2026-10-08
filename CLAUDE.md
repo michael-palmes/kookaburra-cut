@@ -42,6 +42,10 @@ pnpm kookaburra:run --action packroundtrip --project ws:launch-2026
 # (path printed + in last-run.json; --scene takes an index or file stem, --at seconds).
 pnpm kookaburra:run --action screenshot --project ws:test-4 --scene 2
 
+# Stills (PDF handout or PNG zip, one page per still) through the export path (docs/stills.md).
+pnpm kookaburra:run --action stills --project showcase-tour --stills pdf --size 1080p
+pnpm kookaburra:run --action stillsverify --project showcase-tour --stills png
+
 # Create-from-template smoke: create_project + a full load in a throwaway workspace root.
 # Required per template batch; with --app it proves the packaged resource layout.
 pnpm kookaburra:run --action create --project blank
@@ -115,7 +119,7 @@ When creating or editing anything under `projects/*/scenes/`, **use the `kookabu
 4. Colours/type/motion only via `useTheme()` tokens, never hard-coded.
 5. Lay out against `useFormat()` (`aspect`, `safe`) so one scene serves all aspect ratios.
 6. Assets live in the project's `assets/` folder, referenced by relative path. No absolute paths or remote URLs.
-7. User-visible strings come from the scene's sidecar. Code-owned scene copy uses `useSceneText`; inspector-owned scene copy uses `managedText`, while embedded labels remain in `text`. Sidecar `background`/`textAnimation`/`camera` blocks are the app-editable surface.
+7. User-visible strings come from the scene's sidecar. Code-owned scene copy uses `useSceneText`; inspector-owned scene copy uses `managedText`, while embedded labels remain in `text`. Sidecar `background`/`textAnimation`/`camera`/`stills` blocks are the app-editable surface.
 
 ## Skills & commands in this repo
 
@@ -134,6 +138,7 @@ Project skills are authored only in `.agents/skills`. Keep `.claude/skills` as t
 - Docs `docs/charts.md`: the chart subsystem (the sidecar `chart` block, the three mounts, the appearance and build-in preset catalogues, palette and number-formatting rules, the keyframed data track). Read it before touching `src/toolkit/chart/` or `src/engine/sceneChart.ts`.
 - Docs `docs/foldables.md`: folding devices (the inside and outside displays and the one screen-slot helper, the `foldDeg` track, the per-degree glb clip and its static camera half, auto-centre, auto screen power, Start when opened, the two-panel shadow, the Fold inspector group). Read it before touching `src/toolkit/device/foldPose.ts`, `src/engine/foldTransition.ts`, `src/engine/deviceScreens.ts`, `src/ui/inspector/foldEditorModel.ts` or `scripts/blender-duo-prepare.py`.
 - Docs `docs/gizmos.md`: the gizmo subsystem (the 3D and 2D families, section-scoped outlines and click-to-select, the pointer-routing contract, the registries and coordinate spaces, what each drag writes, the export guards). Read it before touching `src/engine/gizmo*`, `src/engine/SceneGizmo.tsx`/`SceneOutline.tsx`, `src/ui/gizmo/`, or any gizmo host (`src/ui/TextGizmo.tsx`, `ChartHeroGizmo.tsx`, `DecorationGizmo.tsx`, `src/toolkit/device/DeviceGizmo.tsx`, `src/toolkit/objects/ObjectPrimitive.tsx`, `src/toolkit/chart/Chart.tsx`).
+- Docs `docs/stills.md`: the stills export (the sidecar `stills` block and `still: true` camera keys, the automatic still's settled moment and Present holds, the page plan, the PDF and PNG zip writers, the IPC, the autorun gate). Read it before touching `src/engine/still*.ts`, `src/engine/exportFrame.ts`, `src/engine/presentHold*.ts`, `src/engine/presentTimingRegistry.ts` or `src-tauri/src/stills/`.
 - Commands `/new-scene <project> <name>`, `/preview [project]`, `/export <project> <format> <aspect>`.
 
 ## Committing
@@ -158,7 +163,8 @@ effects, bundled and workspace user themes, devices with on-screen
 media, camera rigging (orbit plus free-flight poses, depth bands),
 fixed/video backgrounds, a text-motion pack, terminal scene content (live in
 preview and Present, captured snapshot in export: `docs/scene-terminal.md`), one
-soundtrack per project, platform export presets, the studio workspace
+soundtrack per project, platform export presets, stills export (a PDF handout
+or PNG images, one page per still: `docs/stills.md`), the studio workspace
 (`~/Kookaburra Cut`: welcome screen, media library, video editor, embedded
 Claude Code terminal), a packaged signed/notarised `.app`, the night-studio
 chrome (⌘K palette, right inspector, camera lane, playback bar), the

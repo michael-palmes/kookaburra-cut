@@ -2,9 +2,17 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { type AspectName, aspectLabel, FPS } from "../engine/format";
+import { type AspectName, aspectLabel, FORMATS, FPS } from "../engine/format";
 import { nameCollision, nameCollisionWarning } from "../engine/nameCollision";
 import type { LoadedProject } from "../engine/project";
+import {
+  STILLS_FORMATS,
+  STILLS_SIZES,
+  type StillsFormat,
+  type StillsSize,
+  stillsPixelSize,
+  stillsSummary,
+} from "../engine/stills";
 import {
   deleteExportPreset,
   getSettings,
@@ -19,7 +27,16 @@ import {
   parseExportPreset,
   resolvePresetToEncodeSpec,
 } from "../export/presetSchema";
-import { AspectIcon, EXPORT_BUTTON_ICON, presetIcon } from "./exportIcons";
+import { useUiStore } from "../store/uiStore";
+import {
+  AspectIcon,
+  EXPORT_BUTTON_ICON,
+  PDF_ICON,
+  PNG_ICON,
+  presetIcon,
+  STILLS_ICON,
+  StillsSizeIcon,
+} from "./exportIcons";
 import {
   ALL_ASPECTS,
   audioKbpsOf,
@@ -42,16 +59,26 @@ import {
   presetAspects,
   railPresets,
   resolveDraft,
+  STILLS_FORMAT_COPY,
+  STILLS_FORMAT_LABELS,
+  STILLS_ID,
+  STILLS_SIZE_LABELS,
   slugifyPresetName,
   specChips,
+  stillsExportLabel,
+  stillsRowMatches,
+  stillsSummaryText,
+  stillsWarnings,
   terminalSnapshotWarning,
   websiteCaptureWarning,
   withPosterFrame,
 } from "./exportOptions";
+import { SegmentedRow } from "./inspector/rows";
 import { useEscapeClose } from "./useEscapeClose";
 
-/** What the modal hands back on Export; App owns the run (format set + exportProject). */
-export interface ExportSelection {
+/** A video run: App sets the format then runs exportProject. */
+export interface VideoExportSelection {
+  kind: "video";
   presetId: string;
   /** Absent = the frozen legacy path (Kookaburra Standard). */
   encode?: EncodeSpec;
@@ -60,13 +87,35 @@ export interface ExportSelection {
   aspect: AspectName;
 }
 
+/** A stills run: one aspect, one size, PDF or PNG zip. */
+export interface StillsExportSelection {
+  kind: "stills";
+  format: StillsFormat;
+  aspect: AspectName;
+  size: StillsSize;
+}
+
+/** What the modal hands back on Export; App owns the run. */
+export type ExportSelection = VideoExportSelection | StillsExportSelection;
+
+/** Opens the modal on the Stills row in this format (File menu and ⌘K), skipping the last-used restore. */
+export interface ExportModalInitial {
+  stills: StillsFormat;
+}
+
 interface ExportModalProps {
   project: LoadedProject;
   currentAspect: AspectName;
   busy: boolean;
+  initial?: ExportModalInitial;
   onExport: (sel: ExportSelection) => void;
   onClose: () => void;
 }
+
+const STILLS_FORMAT_ICONS: Record<StillsFormat, React.ReactElement> = {
+  pdf: PDF_ICON,
+  "png-zip": PNG_ICON,
+};
 
 interface LoudnessMeasure {
   integratedLufs: number;
@@ -84,9 +133,26 @@ const RATE_IS_BITRATE = (
 ): r is { targetKbps: number; maxKbps: number; bufsizeKbps: number; twoPass?: boolean } =>
   "targetKbps" in r;
 
-export function ExportModal({ project, currentAspect, busy, onExport, onClose }: ExportModalProps) {
+export function ExportModal({
+  project,
+  currentAspect,
+  busy,
+  initial,
+  onExport,
+  onClose,
+}: ExportModalProps) {
   const [userRows, setUserRows] = useState<PresetRow[]>([]);
-  const [selectedId, setSelectedId] = useState<string>(KOOKABURRA_STANDARD_ID);
+  const [selectedId, setSelectedId] = useState<string>(
+    initial ? STILLS_ID : KOOKABURRA_STANDARD_ID,
+  );
+  const [stillsFormat, setStillsFormatState] = useState<StillsFormat>(
+    () => initial?.stills ?? useUiStore.getState().stillsFormat,
+  );
+  const [stillsSize, setStillsSizeState] = useState<StillsSize>(
+    () => useUiStore.getState().stillsSize,
+  );
+  const preselected = useRef(!!initial);
+  const stillsRowRef = useRef<HTMLButtonElement>(null);
   const [search, setSearch] = useState("");
   const [aspectFilter, setAspectFilter] = useState<AspectName | null>(null);
   const [aspect, setAspect] = useState<AspectName>(currentAspect);
@@ -143,7 +209,7 @@ export function ExportModal({ project, currentAspect, busy, onExport, onClose }:
           settings.lastExportPresetByProject?.[project.id] ??
           settings.lastExportPreset ??
           undefined;
-        if (last) setSelectedId(last);
+        if (last && !preselected.current) setSelectedId(last);
       } catch {
         // settings unavailable, stay on the standard row
       }
@@ -171,6 +237,27 @@ export function ExportModal({ project, currentAspect, busy, onExport, onClose }:
   // Joined the shared Escape stack: layered surfaces close top-first.
   useEscapeClose(onClose);
 
+  const setStillsFormat = useCallback((format: StillsFormat) => {
+    setStillsFormatState(format);
+    useUiStore.getState().setStillsFormat(format);
+  }, []);
+  const setStillsSize = useCallback((size: StillsSize) => {
+    setStillsSizeState(size);
+    useUiStore.getState().setStillsSize(size);
+  }, []);
+  const stills = selectedId === STILLS_ID;
+  // Opened on Stills: the pinned row sits below the fold, and drops again when user presets land above it.
+  useEffect(() => {
+    if (preselected.current && stills && userRows) {
+      stillsRowRef.current?.scrollIntoView({ block: "nearest" });
+    }
+  }, [stills, userRows]);
+  const stillsInfo = useMemo(() => {
+    if (!stills) return null;
+    const summary = stillsSummary(project.sceneDocs, project.slots);
+    return { summary, ...stillsWarnings(summary) };
+  }, [stills, project]);
+
   const groups = useMemo(
     () => groupPresets(railPresets(BUNDLED_EXPORT_PRESETS), userRows, search, aspectFilter),
     [userRows, search, aspectFilter],
@@ -179,7 +266,13 @@ export function ExportModal({ project, currentAspect, busy, onExport, onClose }:
   const userSlugs = useMemo(() => userRows.map((r) => r.id.slice(3)), [userRows]);
 
   const selectedRow: PresetRow | null = useMemo(() => {
-    if (selectedId === KOOKABURRA_STANDARD_ID || selectedId === CUSTOM_ID) return null;
+    if (
+      selectedId === KOOKABURRA_STANDARD_ID ||
+      selectedId === CUSTOM_ID ||
+      selectedId === STILLS_ID
+    ) {
+      return null;
+    }
     const bundled = BUNDLED_EXPORT_PRESETS.find((p) => p.id === selectedId);
     if (bundled) return { id: selectedId, doc: bundled, isUser: false };
     return userRows.find((r) => r.id === selectedId) ?? null;
@@ -190,6 +283,7 @@ export function ExportModal({ project, currentAspect, busy, onExport, onClose }:
     if (
       selectedId !== KOOKABURRA_STANDARD_ID &&
       selectedId !== CUSTOM_ID &&
+      selectedId !== STILLS_ID &&
       !selectedRow &&
       userRows.length >= 0
     ) {
@@ -306,9 +400,21 @@ export function ExportModal({ project, currentAspect, busy, onExport, onClose }:
   const doExport = useCallback(async () => {
     setError(null);
     try {
+      if (selectedId === STILLS_ID) {
+        const ui = useUiStore.getState();
+        ui.setStillsFormat(stillsFormat);
+        ui.setStillsSize(stillsSize);
+        onExport({ kind: "stills", format: stillsFormat, aspect, size: stillsSize });
+        return;
+      }
       if (selectedId === KOOKABURRA_STANDARD_ID) {
         const encode = highQualityEncode(posterFrame);
-        onExport({ presetId: KOOKABURRA_STANDARD_ID, ...(encode ? { encode } : {}), aspect });
+        onExport({
+          kind: "video",
+          presetId: KOOKABURRA_STANDARD_ID,
+          ...(encode ? { encode } : {}),
+          aspect,
+        });
         return;
       }
       if (selectedId === CUSTOM_ID) {
@@ -320,7 +426,13 @@ export function ExportModal({ project, currentAspect, busy, onExport, onClose }:
         const spec = withPosterFrame({ ...resolved.spec }, posterFrame);
         const gain = await loudnessGainFor(draft.loudnessTarget, draft.fps, posterFrame);
         if (gain !== undefined && spec.audio) spec.audio = { ...spec.audio, loudnessGainDb: gain };
-        onExport({ presetId: CUSTOM_ID, encode: spec, outputSuffix: "custom", aspect });
+        onExport({
+          kind: "video",
+          presetId: CUSTOM_ID,
+          encode: spec,
+          outputSuffix: "custom",
+          aspect,
+        });
         return;
       }
       const row = selectedRow;
@@ -333,6 +445,7 @@ export function ExportModal({ project, currentAspect, busy, onExport, onClose }:
       );
       const spec = withPosterFrame(resolvePresetToEncodeSpec(doc, gain), posterFrame);
       onExport({
+        kind: "video",
         presetId: row.id,
         encode: spec,
         outputSuffix: row.id.startsWith("ws:") ? row.id.slice(3) : row.id,
@@ -341,7 +454,18 @@ export function ExportModal({ project, currentAspect, busy, onExport, onClose }:
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
-  }, [selectedId, selectedRow, draft, fitted, aspect, posterFrame, onExport, loudnessGainFor]);
+  }, [
+    selectedId,
+    selectedRow,
+    draft,
+    fitted,
+    aspect,
+    posterFrame,
+    onExport,
+    loudnessGainFor,
+    stillsFormat,
+    stillsSize,
+  ]);
 
   // ── Save-as / duplicate / delete ───────────────────────────────────────────
   const duplicate = useCallback((doc: ExportPresetDoc) => {
@@ -446,7 +570,9 @@ export function ExportModal({ project, currentAspect, busy, onExport, onClose }:
     );
   }
 
-  const exportLabel = busy ? "Exporting…" : "Export";
+  const exportLabel = busy ? "Exporting…" : stills ? stillsExportLabel(stillsFormat) : "Export";
+  const exportBlocked = busy || !!stillsInfo?.blocking;
+  const stillsPixels = stills ? stillsPixelSize(FORMATS[aspect], stillsSize) : null;
 
   return (
     <div className="modal-overlay" role="dialog" aria-modal="true" aria-label="Export">
@@ -526,6 +652,58 @@ export function ExportModal({ project, currentAspect, busy, onExport, onClose }:
               </>
             )}
 
+            {stills && stillsInfo && stillsPixels && (
+              <>
+                <h3 className="export-detail-title">{STILLS_ICON} Stills</h3>
+                <p className="export-desc">
+                  One full-bleed page per scene at its settled moment, or the stills you marked.
+                </p>
+                <h4 className="export-section-title">Format</h4>
+                <SegmentedRow
+                  className="export-segments"
+                  ariaLabel="Stills format"
+                  value={stillsFormat}
+                  onChange={setStillsFormat}
+                  options={STILLS_FORMATS.map((f) => ({
+                    value: f,
+                    label: STILLS_FORMAT_LABELS[f],
+                    icon: STILLS_FORMAT_ICONS[f],
+                  }))}
+                />
+                <p className="export-notes">{STILLS_FORMAT_COPY[stillsFormat]}</p>
+                <h4 className="export-section-title">Aspect ratio</h4>
+                {aspectRowFor(ALL_ASPECTS)}
+                <h4 className="export-section-title">Size</h4>
+                <div className="export-size-line">
+                  <fieldset className="export-aspect-row" aria-label="Size">
+                    {STILLS_SIZES.map((s) => (
+                      <button
+                        key={s}
+                        type="button"
+                        className={`chip ${stillsSize === s ? "selected" : ""}`}
+                        aria-pressed={stillsSize === s}
+                        onClick={() => setStillsSize(s)}
+                      >
+                        <StillsSizeIcon size={s} />
+                        {STILLS_SIZE_LABELS[s]}
+                      </button>
+                    ))}
+                  </fieldset>
+                  <span className="export-chip">
+                    {stillsPixels.width} × {stillsPixels.height} px
+                  </span>
+                </div>
+                <p className="export-estimate">
+                  {stillsSummaryText(stillsInfo.summary, stillsFormat)}
+                </p>
+                {stillsInfo.notes.map((note) => (
+                  <p key={note} className="export-loudness export-warn">
+                    {note}
+                  </p>
+                ))}
+              </>
+            )}
+
             {selectedId === CUSTOM_ID && (
               <CustomPanel
                 draft={draft}
@@ -542,21 +720,25 @@ export function ExportModal({ project, currentAspect, busy, onExport, onClose }:
                 loudnessWarning={loudnessWarning}
               />
             )}
-            <h4 className="export-section-title">Link previews</h4>
-            <div className="export-knobs export-link-previews">
-              <label className="export-check">
-                <input
-                  type="checkbox"
-                  checked={posterFrame}
-                  onChange={(e) => changePosterFrame(e.target.checked)}
-                />
-                Opening poster frame
-              </label>
-              <span className="export-notes">
-                Adds a middle frame from scene 1 at the start. This improves link-preview
-                thumbnails, but each host still chooses its own.
-              </span>
-            </div>
+            {!stills && (
+              <>
+                <h4 className="export-section-title">Link previews</h4>
+                <div className="export-knobs export-link-previews">
+                  <label className="export-check">
+                    <input
+                      type="checkbox"
+                      checked={posterFrame}
+                      onChange={(e) => changePosterFrame(e.target.checked)}
+                    />
+                    Opening poster frame
+                  </label>
+                  <span className="export-notes">
+                    Adds a middle frame from scene 1 at the start. This improves link-preview
+                    thumbnails, but each host still chooses its own.
+                  </span>
+                </div>
+              </>
+            )}
             {terminalWarning && <p className="export-loudness export-warn">{terminalWarning}</p>}
             {websiteWarning && <p className="export-loudness export-warn">{websiteWarning}</p>}
             {error && <p className="modal-error">{error}</p>}
@@ -623,11 +805,31 @@ export function ExportModal({ project, currentAspect, busy, onExport, onClose }:
                   <span className="export-row-desc">Every knob the pipeline offers.</span>
                 </span>
               </button>
+              {stillsRowMatches(search) && (
+                <button
+                  ref={stillsRowRef}
+                  type="button"
+                  className={`export-row ${stills ? "export-row-active" : ""}`}
+                  onClick={() => select(STILLS_ID)}
+                >
+                  <span className="export-row-icon">{STILLS_ICON}</span>
+                  <span className="export-row-body">
+                    <span className="export-row-name">Stills</span>
+                    <span className="export-row-desc">
+                      A PDF handout or PNG images, one page per scene.
+                    </span>
+                    <span className="export-row-chips">
+                      <span className="export-chip">PDF</span>
+                      <span className="export-chip">PNG</span>
+                    </span>
+                  </span>
+                </button>
+              )}
             </div>
           </aside>
         </div>
         <div className="export-footer">
-          <button type="button" className="btn primary" onClick={doExport} disabled={busy}>
+          <button type="button" className="btn primary" onClick={doExport} disabled={exportBlocked}>
             {EXPORT_BUTTON_ICON}
             {exportLabel}
           </button>

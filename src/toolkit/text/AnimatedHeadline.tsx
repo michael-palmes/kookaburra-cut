@@ -16,7 +16,10 @@ import {
   shouldRenderManagedTextHeadline,
 } from "../../engine/managedText";
 import { useHeldLocalMs } from "../../engine/presentHold";
-import { registerPresentTiming } from "../../engine/presentTimingRegistry";
+import {
+  registerPresentTiming,
+  reportPresentTimingPending,
+} from "../../engine/presentTimingRegistry";
 import {
   SceneDocContext,
   SceneTextClaimedContext,
@@ -985,6 +988,12 @@ function StaggeredHeadline(
       staggerSpreadMs: spreadMs,
     });
   }, [sceneIndex, spreadMs, settleToMs]);
+  // Pending until the first typeset can spread the units; clears in the commit that registers the spread above.
+  const spreadPending = units === null && !blockUnit && anim.staggerMs > 0 && text.length > 0;
+  useEffect(() => {
+    if (sceneIndex === undefined || !spreadPending) return;
+    return reportPresentTimingPending(sceneIndex);
+  }, [sceneIndex, spreadPending]);
 
   const timing: TextAnimTiming = { anim, from, to, outAt };
   const { font, fill } = textStyle(theme, props);

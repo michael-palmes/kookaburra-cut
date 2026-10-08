@@ -49,6 +49,11 @@ GPU/driver, not across fleets.)
 | **A lit primitive's environment rebuilt every frame** (measured 2026-10-02): `Device`, `DeviceMockup` and `HeroObject` each mounted drei's `<Environment frames={1}>`, whose layout effect re-runs whenever its children change, and the parent re-renders every clock tick, so every mounted lit primitive re-rendered its cube (six renders) and rebuilt its PMREM every frame: a 2 to 3x export slowdown and about 4 MB of GPU memory each. On a cold boot (hidden window, no preview frames) frame 0 used the mount-time build and every later frame a mid-run rebuild, and the two differed on a few highlight pixels (2 px, 131 vs 187), so cold pass A diverged from pass B at frame 0: a gate that passed or failed on window visibility. | One studio environment per renderer (`toolkit/lighting/studioEnvironment.ts`): the same three Lightformer rects, one cube render and one PMREM, built at the first lit mount and held on the root scene while any lit primitive is mounted (restored when the last unmounts). Nothing rebuilds it per frame, so cold and warm runs light devices identically. Frame 0 also draws twice and captures the second, so no frame is ever a run's first draw. |
 | **Dev React's performance entries** (React 19.2 development builds, which every autorun and gate runs): react-dom and r3f's reconciler record a `performance.measure` with a props diff for every re-render whose props changed, and WebKit never evicts them. Every mounted scene re-renders per tick, about 1 MB a frame on a 40-scene project, so a Verify reached the 4 GB WebContent ceiling near frame 1250. The packaged app runs production React and records none. | The export loop clears measures and marks every frame in dev builds (`dropDevPerformanceEntries`). |
 | **WebKit kills the WebContent process near its 4 GB footprint ceiling** (measured 2026-07-25: a 4K verify's page footprint rode at ~3.9–4.5 GB, dominated by never-freed compositor/composer MSAA render-target pools, ~285–886 MB each; when a periodic check under system memory pressure catches it over 4096 MB the process is killed ("Unable to shrink memory footprint … Killed" in the unified log) and wry auto-reloads the page; window focus does NOT lift the ceiling) | Export frames release the pools they did not touch (`releaseIdlePools` in compositor.ts, `releaseComposer` in effects.ts; the multi-project autorun also resets between legs), dropping the 4K plateau to ~3.2 GB; the SDR pair is lazy so fx projects never allocate it, and verify releases confirmed-identical retained frames early. Transient fx-transition-window spikes can still crest ~4.1 GB on heavy projects (launch-2026), so `runAutoRun`'s reload latch stays the backstop: one benign reload tolerated, then a fast, retryable failure naming this mode. Deeper shave if ever needed: a shared MSAA scratch target with plain resolve textures for the A/B pairs. Diagnose with `log stream --predicate 'process == "kookaburra-cut" AND composedMessage CONTAINS "footprint"'`. |
+| **Stills: Present holds leaking into a video export or capture.** A held scene's text, groups and decorations freeze at the hold, so a frame rendered while the stills export holds scenes is not a pure function of `t`. | Guarded: `exportProjectHeld` and `captureFrameRgbaHeld` refuse to start while `hasSceneHolds()` (`assertNoSceneHolds`). The stills run writes its holds once (`replaceSceneHolds`) and clears them in `finally` before `setExporting(false)`, so the preview never draws a held scene either. |
+| **Stills: a hold change the clock barrier cannot see.** When the playhead already sits on page 1's time, the clock flush is a no-op, so page 1 could render before the canvas tree commits the new holds. | `ExportBridge` stamps the hold version (`sceneHoldsVersion`) in a layout effect, in the same reconciler commit as every `useHeldLocalMs` reader, and `awaitHoldsCommitted(version)` waits for it before the first page. |
+| **Stills: staggered headline timings landing late.** An `AnimatedHeadline`'s stagger spread is only known after its first typeset, so a timing snapshot taken too early misses it and a cold run's automatic still lands earlier than a warm run's. | A pending barrier: the headline reports pending (`reportPresentTimingPending`) until its units exist, and `awaitPresentTimingsSettled` spins text sync and a macrotask until no scene reports pending (failing after 5000 spins) before the snapshot. |
+| **Stills: a late-mounted media registration.** A settle input that only a mounted primitive can report would move an automatic still whenever it lands after the page plan. | Media motion ends come from the sidecar (`sceneMediaMotionEndMs`, pure), never a mount-time registry; registered timings are read only after the preamble's asset preloads and `awaitSceneHostsCommitted`, and after the pending barrier above. |
+| **Stills: capturing from `resolveAt(tMs)` instead of the page's plan.** An automatic still that settles in its outgoing transition is planned as the scene alone; resolving the clock time again composites the transition instead, and the text layer then describes a different frame. | `renderFrameInto` takes `resolved` as an argument, and the stills loop always passes `page.resolved` (the compare frame and text roots read the same value). |
 
 ## The loop (as implemented in `src/engine/exporter.ts`)
 
@@ -1162,6 +1167,39 @@ The Export button opens the modal (`ui/ExportModal.tsx`; all maths in unit-pinne
 - **Last-used** (per-project, in AppSettings) only selects a row on modal open;
   it never changes what an export produces.
 
+## Stills export
+
+The PDF handout and PNG images export ([stills.md](./stills.md)) capture through
+the same preamble, barriers and `renderComposited` as video: the per-frame body
+is `renderFrameInto` in `engine/exportFrame.ts`, moved verbatim out of
+`exporter.ts`, so the video loop's GL call sequence is unchanged. What a stills
+run promises:
+
+- **Page RGBA is the contract.** Each page's hash is SHA-256 over its 64 tile
+  hashes (`tileHashFrame` on the page-stage RGBA, after the downscale), its
+  metadata JSON and its text-layer JSON; `pagesHash` is SHA-256 over the page
+  hashes joined by newlines. It is per format and size: PNG pages carry an empty
+  text layer (`[]`), so a PDF and a PNG run of one project hash differently even
+  when every pixel matches.
+- **The PNG zip file is byte-reproducible** in reproducible mode (autoruns: fixed
+  zip timestamps): the PNGs come from the pinned Rust encoder, stored. App
+  exports stamp local time, so only their page bytes repeat.
+- **The PDF file hash is advisory.** The writer is deterministic (reproducible
+  mode drops the dates, author and app version, and `/ID` derives from the page
+  payloads), but the JPEG pages come from WebKit's `toBlob` encoder, which is not
+  pinned and may change with macOS. PDFs are not byte-reproducible by design
+  outside reproducible mode.
+- **Holds are scoped to the run.** Automatic stills hold their scenes where
+  Present would; the hold map is written once per run and cleared before the
+  preview resumes, and nothing else on the export path may see it.
+
+The gate is `stillsverify`: two passes in one boot under one export hold. `ok`
+means every page's tiles, text layer and metadata match (and, for a PNG zip, the
+file SHA-256); a PDF's file and JPEG hashes are reported, never failed on. A
+mismatch reports the first divergent page at the RGBA (tile), text, metadata and
+payload level. Failure modes are the "Stills:" rows in "What breaks it"; the
+tier is under "Gate tiers" and the baselines under "Current baselines".
+
 ## How to test it
 
 - **In-app (the gate):** the **Verify ×2** button runs `verifyAllFormats()`: for
@@ -1271,6 +1309,18 @@ params, text) do not add code paths and do not need their own verifies.**
   project's slug and absolute path.** Nothing else in the suite proves that, so
   a red round trip means checking path-independence first (duplicate a gate
   project to a new slug and verify both) before suspecting the pack code.
+- **Stills (any change under `src-tauri/src/stills/**`, `src/engine/still*.ts`,
+  `src/engine/exportFrame.ts`, `pageFromReadback` in `downscale.ts`, or the hold
+  and timing registries: `presentHold.ts`, `presentHoldPoint.ts`,
+  `presentTimingRegistry.ts`):** `pnpm kookaburra:run --action stillsverify
+  --project showcase-tour --stills pdf`, then `--stills png` (16:9, 1080p), plus
+  the `ws:stills-spike` legs (machine-local: key and time marks, a dormant mark,
+  holds, transition overlaps, an excluded scene) for planning changes. Compare
+  `pagesHash` (and the PNG zip's file SHA-256) against "Current baselines", not
+  just A = B. `exportFrame.ts` is also the video loop's per-frame body, so a
+  change there takes the video gates too (`pnpm gate`, then `pnpm gate:merge`
+  pre-merge). A new Present timing registration moves Present and automatic
+  stills, never video bytes: re-record the stills baselines deliberately.
 - **Recording rebases:** once the changed code path is PROVEN deterministic by
   the Tier-1 verify, record the other affected projects' new hashes from a
   single export batch: do not Verify ×2 each one.
@@ -1324,6 +1374,25 @@ rolling-gate project (`showcase-tour`):
 > `87bb6b3a…`, eyeballed. The unfixed exporter renders the same hash: with
 > `useWorker: false`, drei's layout-effect `sync()` typesets preloaded glyphs
 > before the render, so the hole was latent, not live.
+
+Stills baselines are full SHA-256 values from a passed `stillsverify` in
+reproducible mode, 16:9 at 1080p (see "Stills export"). `pagesHash` is the gate;
+the PNG zip's file hash must match too; a PDF's file hash is advisory only.
+
+| Project | Format | Pages | `pagesHash` | File SHA-256 |
+| --- | --- | --- | --- | --- |
+| `showcase-tour` | PDF | 7 | `f6da6cf4637416499984e0439c04b2973e79e4fcb489e66df5d41882e40be2c2` | `70af2d9934a5fb131a518f40a7cadcfab1b5660dbbae42ccd9047fff5016d2b8` (advisory) |
+| `showcase-tour` | PNG zip | 7 | `171c5a1c501aef6b2890c67a50fd0750716ece97c05574dd0e7c1b69aab2b98c` | `17d30425d2f0ce7569350db987b84b64054929560903e1ca10465e52e020b4db` |
+| `ws:stills-spike` (stills gate, machine-local) | PDF | 9 | `a0cdf7c7da8b06e50ada72f7deb460fb33c8bb13ddb518f06e9c1a55a2d410e4` | `191bb8507a659c26d4e63d57ab0d001f1803dd3ca8764eb2250ed2aa563b6708` (advisory) |
+| `ws:stills-spike` (stills gate, machine-local) | PNG zip | 9 | `ee9a08b4e2fbb4aa10b22dbbd454176ea2ee06d81ba667383354c87fe5fc0f4c` | `09de73a1cff3e68f9d37ceb5d75d88f321be5955fd8348243aac6e95191dddaf` |
+
+> **2026-10-08 (stills export, a fresh record):** `showcase-tour` records its
+> first stills baselines (above), `stillsverify` EQUAL for both formats, every
+> file identical between passes. Its seven scenes give seven automatic pages at
+> global 1500, 2500, 3500, 4133.333, 7000, 8100 and 10200 ms (no marks). Stills
+> add no video baseline: the `exportFrame.ts` extraction keeps the video loop's
+> GL call sequence and Present timing registrations have no render effect, so
+> the video legs must stay EQUAL (`pnpm gate:merge`).
 
 > **2026-10-03 (the lit set's shared environment: a DELIBERATE rebase, confirmed
 > by Michael):** `Device`, `DeviceMockup` and `HeroObject` stopped mounting

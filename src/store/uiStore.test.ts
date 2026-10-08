@@ -146,6 +146,27 @@ describe("inspector drill navigation", () => {
   });
 });
 
+describe("stills export preferences", () => {
+  it("defaults to a 1080p PDF and remembers the last pick", async () => {
+    const store = await freshStore();
+    expect(store.getState().stillsFormat).toBe("pdf");
+    expect(store.getState().stillsSize).toBe("1080p");
+    store.getState().setStillsFormat("png-zip");
+    store.getState().setStillsSize("4k");
+    const relaunched = await freshStore();
+    expect(relaunched.getState().stillsFormat).toBe("png-zip");
+    expect(relaunched.getState().stillsSize).toBe("4k");
+  });
+
+  it("ignores unknown stored values", async () => {
+    localStorage.setItem("kookaburra:stills-format", "tiff");
+    localStorage.setItem("kookaburra:stills-size", "8k");
+    const store = await freshStore();
+    expect(store.getState().stillsFormat).toBe("pdf");
+    expect(store.getState().stillsSize).toBe("1080p");
+  });
+});
+
 describe("background options sheet", () => {
   it("starts closed", async () => {
     const store = await freshStore();

@@ -109,11 +109,11 @@ export function useCameraDoc(
     [previewSlice, mode, camera],
   );
   const commit = useCallback(
-    (cam: CameraDoc) => commitSlice({ mode, camera: cam, rig }, "camera edit"),
+    (cam: CameraDoc, label = "camera edit") => commitSlice({ mode, camera: cam, rig }, label),
     [commitSlice, mode, rig],
   );
   const commitRig = useCallback(
-    (next: RigDoc) => commitSlice({ mode, camera, rig: next }, "camera edit"),
+    (next: RigDoc, label = "camera edit") => commitSlice({ mode, camera, rig: next }, label),
     [commitSlice, mode, camera],
   );
 

@@ -15,6 +15,8 @@ Export the Kookaburra Cut project `$1` as `$2` at aspect `$3` (`16:9` | `9:16` |
   EncodeSpec family (v11: scaling, bt709 tags, bitrate/two-pass, loudness; since
   v12 · M3 a 30fps lane RENDERS at 30 — half the frames, half the render time).
   See the `kookaburra-export-presets` skill for the schema and full lineup.
+- `pdf` / `png` → stills, not video: a PDF handout or a PNG zip, one page per still
+  (`docs/stills.md`; size via `--size 4k|1080p|720p`, default 1080p).
 
 Steps:
 
@@ -27,6 +29,7 @@ Steps:
    pnpm kookaburra:run --action export --project $1 --aspect $3 --codec libx264   # h264 legacy
    pnpm kookaburra:run --action export --project $1 --aspect $3 --codec prores_ks # prores legacy
    pnpm kookaburra:run --action export --project $1 --preset $2                   # preset lane
+   pnpm kookaburra:run --action stills --project $1 --aspect $3 --stills $2        # pdf / png stills
    ```
 
    `--preset` without `--aspect` uses the preset's favoured aspect. `--aspect all` =

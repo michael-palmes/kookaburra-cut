@@ -3,6 +3,7 @@
 import type { AspectName } from "../engine/format";
 import type { SceneDocTerminal } from "../engine/sceneTerminal";
 import { resolveSceneWebsite, type SceneDocWebsite } from "../engine/sceneWebsite";
+import type { StillsFormat, StillsSize, StillsSummary } from "../engine/stills";
 import {
   type EncodeSpec,
   EXPORT_PRESET_VERSION,
@@ -13,6 +14,8 @@ import {
 /** The frozen legacy path's row id: exports with no EncodeSpec (Michael's call: a first-class row, so the frozen path stays one honest click). */
 export const KOOKABURRA_STANDARD_ID = "kookaburra-standard";
 export const CUSTOM_ID = "custom";
+/** The pinned Stills row (PDF or PNG images); remembered as the last choice like a preset id. */
+export const STILLS_ID = "stills";
 
 /** The frozen legacy path's rail doc (High quality in the Studio group). It resolves only when the runtime poster-frame toggle needs an explicit spec; option-off still omits the spec. */
 export const HIGH_QUALITY_DISPLAY_DOC: ExportPresetDoc = {
@@ -385,6 +388,84 @@ export function websiteCaptureWarning(
     );
   }
   return `Heads up: ${parts.join("; ")}. Capture the current view from each scene's Website panel to refresh its export poster.`;
+}
+
+// ── Stills (PDF handout / PNG images) ────────────────────────────────────────
+
+const STILLS_SEARCH_TERMS = [
+  "stills",
+  "pdf",
+  "png",
+  "image",
+  "images",
+  "zip",
+  "handout",
+  "slides",
+  "print",
+];
+
+/** The pinned Stills row hides only for a search it cannot answer; the aspect filter never hides it. */
+export function stillsRowMatches(search: string): boolean {
+  const q = search.trim().toLowerCase();
+  if (!q) return true;
+  return STILLS_SEARCH_TERMS.some((term) => term.includes(q) || q.includes(term));
+}
+
+export const STILLS_FORMAT_LABELS: Record<StillsFormat, string> = {
+  pdf: "PDF document",
+  "png-zip": "PNG images",
+};
+
+export const STILLS_FORMAT_COPY: Record<StillsFormat, string> = {
+  pdf: "Bookmarks per scene, searchable text, your name as author (from your Mac account).",
+  "png-zip": "A .zip of numbered PNG files, one per page.",
+};
+
+export const STILLS_SIZE_LABELS: Record<StillsSize, string> = {
+  "4k": "4K",
+  "1080p": "1080p",
+  "720p": "720p",
+};
+
+export function stillsExportLabel(format: StillsFormat): string {
+  return format === "pdf" ? "Export PDF" : "Export images";
+}
+
+const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+
+/** "9 pages: 7 automatic, 2 marked · 1 scene left out" (PNG counts images). */
+export function stillsSummaryText(summary: StillsSummary, format: StillsFormat): string {
+  const noun = format === "pdf" ? "page" : "image";
+  const kinds: string[] = [];
+  if (summary.auto > 0) kinds.push(`${summary.auto} automatic`);
+  if (summary.marked > 0) kinds.push(`${summary.marked} marked`);
+  const head =
+    summary.pages === 0 ? `No ${noun}s` : `${plural(summary.pages, noun)}: ${kinds.join(", ")}`;
+  return summary.excluded > 0 ? `${head} · ${plural(summary.excluded, "scene")} left out` : head;
+}
+
+/** Pre-flight notes for the Stills panel; `blocking` disables Export (every scene left out). */
+export function stillsWarnings(summary: StillsSummary): { blocking: boolean; notes: string[] } {
+  if (summary.pages === 0) {
+    return {
+      blocking: true,
+      notes: [
+        "Every scene is left out of stills. Turn on Include in stills for at least one scene.",
+      ],
+    };
+  }
+  const notes: string[] = [];
+  if (summary.dormantKeyMarks > 0) {
+    notes.push(
+      `Heads up: ${plural(summary.dormantKeyMarks, "still")} marked on a camera that isn't driving its scene ${summary.dormantKeyMarks === 1 ? "is" : "are"} ignored.`,
+    );
+  }
+  if (summary.clampedMarks > 0) {
+    notes.push(
+      `Heads up: ${plural(summary.clampedMarks, "marked still")} ${summary.clampedMarks === 1 ? "sits" : "sit"} in a transition, so ${summary.clampedMarks === 1 ? "it exports" : "they export"} the nearest clean frame.`,
+    );
+  }
+  return { blocking: false, notes };
 }
 
 /** Slug for Save-as-preset: the workspace slug rules (lowercase, hyphenated). */

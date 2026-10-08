@@ -14,6 +14,9 @@ const DEG2RAD = Math.PI / 180;
 const TWO_PI = Math.PI * 2;
 /** tilt-reveal starts the window this far toward the camera and eases it back to 0, so the tilt never swings an edge behind staged scenery. */
 const TILT_FORWARD = 1.4;
+/** Default intro lengths for the window's one-shot presets. */
+const TILT_REVEAL_MS = 900;
+const PUSH_IN_MS = 1000;
 
 /** Corner radius per preset, as a fraction of the window's SHORT edge (the ThemeCard convention); `macos` is tuned to a real window shown large in frame. */
 const RADIUS_PRESETS: Record<Exclude<VideoWindowRadius, { custom: number }>, number> = {
@@ -222,7 +225,7 @@ export function sampleVideoWindowMotion(
       break;
     }
     case "tilt-reveal": {
-      const p = ease("outCubic", Math.min(1, localMs / (motion.durationMs ?? 900)));
+      const p = ease("outCubic", Math.min(1, localMs / (motion.durationMs ?? TILT_REVEAL_MS)));
       s.rotX = (1 - p) * -12 * DEG2RAD;
       s.rotY = (1 - p) * -28 * DEG2RAD;
       // Ride forward at the tilted start so a swung edge stays in front of the stage, easing back to flush.
@@ -230,7 +233,7 @@ export function sampleVideoWindowMotion(
       break;
     }
     case "push-in": {
-      const p = ease("outCubic", Math.min(1, localMs / (motion.durationMs ?? 1000)));
+      const p = ease("outCubic", Math.min(1, localMs / (motion.durationMs ?? PUSH_IN_MS)));
       s.scale = 0.9 + 0.1 * p;
       s.rotY = (1 - p) * -6 * DEG2RAD;
       break;
@@ -239,4 +242,21 @@ export function sampleVideoWindowMotion(
       break;
   }
   return s;
+}
+
+/** Scene-local ms when the window's motion comes to rest: 0 for none, the intro length for the one-shot presets, null for the looping ones. */
+export function videoWindowMotionEndMs(motion: VideoWindowMotion | undefined): number | null {
+  switch (motion?.preset) {
+    case "float":
+    case "drift":
+      return null;
+    case "tilt-reveal":
+    case "push-in": {
+      const durationMs =
+        motion.durationMs ?? (motion.preset === "tilt-reveal" ? TILT_REVEAL_MS : PUSH_IN_MS);
+      return Number.isFinite(durationMs) && durationMs > 0 ? durationMs : 0;
+    }
+    default:
+      return 0;
+  }
 }

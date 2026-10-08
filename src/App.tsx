@@ -143,6 +143,13 @@ import { activeSceneIndex } from "./engine/sceneTimeline";
 import { canCaptureSnapshot, captureSnapshot, type SnapshotSaved } from "./engine/snapshots";
 import { frameWorldCutout } from "./engine/stageViewport";
 import {
+  addStillMark,
+  type StillsFormat,
+  sceneStillsPlan,
+  setStillsExcluded,
+} from "./engine/stills";
+import { exportStills } from "./engine/stillsExport";
+import {
   refreshUserTemplates,
   subscribeTemplateEdits,
   updateBundledTemplateManifest,
@@ -182,7 +189,13 @@ import { setProjectPaletteSource } from "./ui/colour/projectPalette";
 import { DecorationGizmo } from "./ui/DecorationGizmo";
 import { DeviceAnimationLane } from "./ui/DeviceAnimationLane";
 import { NewProjectDialog, SetupFailedDialog, TrustGateModal } from "./ui/dialogs";
-import { ExportModal, type ExportSelection } from "./ui/ExportModal";
+import {
+  ExportModal,
+  type ExportModalInitial,
+  type ExportSelection,
+  type StillsExportSelection,
+} from "./ui/ExportModal";
+import { STILLS_ID } from "./ui/exportOptions";
 import { OverlayImageGizmo } from "./ui/ImageOverlayGizmo";
 import { newChartBlock } from "./ui/inspector/ChartSection";
 import { InspectorPanel } from "./ui/inspector/InspectorPanel";
@@ -199,6 +212,7 @@ import { ALL_PROJECTS } from "./ui/projectLibrary";
 import { SceneTerminalOverlay } from "./ui/SceneTerminalOverlay";
 import { SceneWebsiteOverlay } from "./ui/SceneWebsiteOverlay";
 import { ShortcutsSheet } from "./ui/ShortcutsSheet";
+import { playheadStillMs, stillAtFrame } from "./ui/stillsModel";
 import { TerminalGizmo } from "./ui/TerminalGizmo";
 import { TerminalPanel } from "./ui/TerminalPanel";
 import { TextGizmo } from "./ui/TextGizmo";
@@ -273,6 +287,9 @@ type Toast = { kind: "success" | "info" | "error"; message: string; path?: strin
 
 const TOAST_AUTO_CLOSE_MS = 4000;
 
+/** Once per page load: StrictMode mounts App twice. */
+let stillsJobCleared = false;
+
 /** Re-renders one frame per scrub change; the export path (exporter.ts) has its own frameloop controller reading the same clock store. */
 function PreviewClock() {
   const invalidate = useThree((s) => s.invalidate);
@@ -311,6 +328,8 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
   const [progress, setProgress] = useState<ExportProgress | null>(null);
+  // What the running export writes; the titlebar pill and the preparing overlay name it.
+  const [exportKind, setExportKind] = useState<"video" | "pdf" | "png-zip">("video");
   // The running export's or verify's abort switch; the titlebar Cancel trips it.
   const exportAbortRef = useRef<AbortController | null>(null);
   const [cancelling, setCancelling] = useState(false);
@@ -323,6 +342,11 @@ export default function App() {
   }, [toast]);
   // The export modal resolves preset/custom to an EncodeSpec; the Titlebar codec select is subsumed, and Kookaburra Standard is the frozen path.
   const [showExport, setShowExport] = useState(false);
+  const [exportInitial, setExportInitial] = useState<ExportModalInitial | null>(null);
+  const openExport = useCallback((initial: ExportModalInitial | null = null) => {
+    setExportInitial(initial);
+    setShowExport(true);
+  }, []);
   const [showPresent, setShowPresent] = useState(false);
   const [playing, setPlaying] = useState(false);
   const playBtnRef = useRef<HTMLButtonElement>(null);
@@ -346,6 +370,13 @@ export default function App() {
       return true; // malformed config is reported elsewhere; don't also block on first-run
     }
   }, []);
+
+  // A WebContent reload mid-export leaves a stills job busy natively; the first interactive mount clears it (autoruns clear it in runAutoRun).
+  useEffect(() => {
+    if (isAutoRun || stillsJobCleared) return;
+    stillsJobCleared = true;
+    void invoke("cancel_stills_export").catch(() => {});
+  }, [isAutoRun]);
 
   // The opt-in update lane: launch check in this window only, manual results land as toasts.
   const onUpdateManualResult = useCallback(
@@ -1070,6 +1101,69 @@ export default function App() {
     [handleDocChanged],
   );
 
+  /** Include or leave out a scene selection from stills: one write per scene, one undo entry for the lot. */
+  const handleSceneStills = useCallback(
+    async (indices: number[], include: boolean) => {
+      const current = loadedProjectRef.current;
+      if (!current || !isEditableProjectId(current.id)) return;
+      const changes: HistoryChange[] = [];
+      let failed = 0;
+      for (const sceneIndex of indices) {
+        if (!current.sceneFiles[sceneIndex]) continue;
+        try {
+          const result = await commitSceneDocPatch(
+            { project: current, sceneIndex, label: false, onDocChanged: handleDocChanged },
+            (next) => setStillsExcluded(next, !include),
+          );
+          if (result) changes.push(result.change);
+        } catch (e) {
+          failed++;
+          console.warn(`[stills] include toggle failed for scene ${sceneIndex}:`, e);
+        }
+      }
+      if (changes.length > 0) {
+        pushHistory({ label: include ? "include in stills" : "leave out of stills", changes });
+      }
+      if (failed > 0) {
+        setToast({
+          kind: "error",
+          message: `Couldn't update stills for ${failed} scene${failed === 1 ? "" : "s"}.`,
+        });
+      }
+    },
+    [handleDocChanged],
+  );
+
+  /** Palette Add still at playhead: a fixed still on the frame under the playhead, in the scene the chrome shows. */
+  const handleAddStillAtPlayhead = useCallback(async () => {
+    const current = loadedProjectRef.current;
+    if (!current || !isEditableProjectId(current.id)) return;
+    const currentMs = useClockStore.getState().currentMs;
+    const sceneIndex = activeSceneIndex(current.slots, currentMs);
+    const slot = current.slots[sceneIndex];
+    if (!slot || !current.sceneFiles[sceneIndex]) return;
+    const localMs = Math.min(slot.durationMs, playheadStillMs(currentMs, slot.startMs));
+    const plan = sceneStillsPlan(current.sceneDocs[sceneIndex], current.slots, sceneIndex);
+    if (stillAtFrame(plan, current.slots, sceneIndex, localMs)) {
+      setToast({ kind: "info", message: "A still already sits on this frame." });
+      return;
+    }
+    try {
+      const result = await commitSceneDocPatch(
+        { project: current, sceneIndex, label: "add still", onDocChanged: handleDocChanged },
+        (next) => addStillMark(next, localMs),
+      );
+      if (result && !plan.included) {
+        setToast({
+          kind: "info",
+          message: "Still added. This scene is left out of stills, so include it to export it.",
+        });
+      }
+    } catch (e) {
+      setToast({ kind: "error", message: `Add still failed: ${String(e)}` });
+    }
+  }, [handleDocChanged]);
+
   /** Palette Add chart: seed the starter block on the playhead's scene when it has none (the inspector's add entry seeds the same one), then land on the chart drill. */
   const handleAddChart = useCallback(async () => {
     const current = loadedProjectRef.current;
@@ -1239,8 +1333,13 @@ export default function App() {
     const unlisten = [
       listen("kookaburra://new-project", () => setShowNewProject(true)),
       listen("kookaburra://export-video", () => {
-        if (view === "editor") setShowExport(true);
+        if (view === "editor") openExport();
         else setToast({ kind: "error", message: "Open a project to export a video." });
+      }),
+      listen<string>("kookaburra://export-stills", (e) => {
+        const format: StillsFormat = e.payload === "png-zip" ? "png-zip" : "pdf";
+        if (view === "editor") openExport({ stills: format });
+        else setToast({ kind: "error", message: "Open a project to export stills." });
       }),
       // An import landed: rescan rather than restart, so new projects and themes appear straight away.
       listen("kookaburra://workspace-changed", () => {
@@ -1253,7 +1352,7 @@ export default function App() {
     return () => {
       for (const un of unlisten) void un.then((fn) => fn());
     };
-  }, [isAutoRun, view, refreshProjects, openProject]);
+  }, [isAutoRun, view, refreshProjects, openProject, openExport]);
 
   const backToProjects = useCallback(() => {
     setView("welcome");
@@ -2093,9 +2192,85 @@ export default function App() {
     await new Promise((r) => setTimeout(r, 0));
   }
 
+  // Stills: the video export's destination rules, cancel switch and toasts; the chosen aspect lands in the editor first, as a Verify leg's does.
+  async function handleStillsExport(sel: StillsExportSelection) {
+    if (!project) return;
+    setShowExport(false);
+    setExporting(true);
+    setExportKind(sel.format);
+    setProgress(null);
+    setExportPrepStep(0);
+    setToast(null);
+    const abort = new AbortController();
+    exportAbortRef.current = abort;
+    try {
+      const targetFormat = FORMATS[sel.aspect];
+      await commitFormat(targetFormat);
+      const toDownloads = await getSettings()
+        .then((s) => !s.keepExportsInProject)
+        .catch(() => true);
+      const result = await exportStills(
+        {
+          projectId: project.id,
+          fps: FPS,
+          durationMs: project.totalMs,
+          format: targetFormat,
+          slots: project.slots,
+          cameraTrack: project.cameraTrack,
+          sceneDocs: project.sceneDocs,
+          theme: project.theme,
+          sceneThemes: project.sceneThemes,
+          projectLighting: project.projectLighting,
+          sceneFrames: project.sceneFrames,
+          compareBDocs: project.compareBDocs,
+          compareBThemes: project.compareBThemes,
+          audio: project.audio,
+          codec: "libx264",
+          destination: toDownloads ? "downloads" : undefined,
+          signal: abort.signal,
+        },
+        {
+          format: sel.format,
+          size: sel.size,
+          title: project.name,
+          sceneFiles: project.sceneFiles,
+        },
+        (p) => {
+          setExportPrepStep(null);
+          setProgress(p);
+        },
+        setExportPrepStep,
+      );
+      setToast({
+        kind: "success",
+        message: sel.format === "pdf" ? "PDF exported" : "Images exported",
+        path: result.path,
+      });
+      void invoke("notify_export_done");
+      void setLastExportPreset(project.id, STILLS_ID).catch(() => {});
+    } catch (e) {
+      setToast(
+        abort.signal.aborted
+          ? { kind: "info", message: "Export cancelled. Nothing was saved." }
+          : { kind: "error", message: `Export failed: ${String(e)}` },
+      );
+    } finally {
+      exportAbortRef.current = null;
+      setCancelling(false);
+      setExporting(false);
+      setExportKind("video");
+      setProgress(null);
+      setExportPrepStep(null);
+    }
+  }
+
   // Run the modal's selection. The chosen aspect sets the editor format first; no `encode` means the frozen legacy path (Kookaburra Standard), presets/custom carry their resolved spec + name suffix.
   async function handleExport(sel: ExportSelection) {
     if (!project || exporting || themePreviewRunning.current) return;
+    if (sel.kind === "stills") {
+      await handleStillsExport(sel);
+      return;
+    }
     setShowExport(false);
     setExporting(true);
     setProgress(null);
@@ -2229,13 +2404,19 @@ export default function App() {
   }
 
   const pct = progress ? Math.round((progress.frame / progress.total) * 100) : 0;
+  const exportVerb =
+    exportKind === "pdf"
+      ? "Exporting PDF…"
+      : exportKind === "png-zip"
+        ? "Exporting images…"
+        : "Exporting…";
   // Figure-space padding (U+2007 = one tabular-digit width) keeps the label the same width from "  1%" to "100%", no mid-export jitter.
   const exportLabel =
     progress?.stage === "pass1"
       ? "Encoding 1/2…"
       : progress?.stage === "pass2"
         ? "Encoding 2/2…"
-        : `Exporting… ${String(pct).padStart(3, " ")}%`;
+        : `${exportVerb} ${String(pct).padStart(3, " ")}%`;
 
   // Fixed-width seconds readout: pad to the duration's width so digit count never changes, paired with tabular-nums (CSS) so the scrubber track never jitters.
   const durationSec = (durationMs / 1000).toFixed(2);
@@ -2300,7 +2481,7 @@ export default function App() {
             <button
               type="button"
               className="btn primary titlebar-export"
-              onClick={() => setShowExport(true)}
+              onClick={() => openExport()}
               disabled={!project || exporting}
             >
               <ExportIcon />
@@ -2576,7 +2757,13 @@ export default function App() {
                   name={project?.name ?? "your cut"}
                   step={exportPrepStep ?? 0}
                   steps={EXPORT_PREAMBLE_STEPS}
-                  verb="Exporting"
+                  verb={
+                    exportKind === "pdf"
+                      ? "Exporting a PDF of"
+                      : exportKind === "png-zip"
+                        ? "Exporting images of"
+                        : "Exporting"
+                  }
                 />
               )}
 
@@ -2722,6 +2909,7 @@ export default function App() {
               onRenameScene={(i, name) => void handleRenameScene(i, name)}
               onSceneDuration={(i, ms) => void handleSceneDuration(i, ms)}
               onPasteBackground={(i) => void handlePasteBackground(i)}
+              onSceneStills={(indices, include) => void handleSceneStills(indices, include)}
               onDuplicateSceneAt={handleDuplicateScene}
               onSetRenderSettings={(settings) => void handleSetRenderSettings(settings)}
               onSetTypography={(headline, body, chart) =>
@@ -2843,6 +3031,7 @@ export default function App() {
             onDuplicateScene={handleDuplicateScene}
             onSceneDuration={(i, ms) => void handleSceneDuration(i, ms)}
             onPasteBackground={(i) => void handlePasteBackground(i)}
+            onSceneStills={(indices, include) => void handleSceneStills(indices, include)}
             onUpdateAudioMarkers={(m) => void handleUpdateAudioMarkers(m)}
             onAddCameraKeyAtBeat={(ms) => void handleAddCameraKeyAtBeat(ms)}
             onSyncCameraToBeats={(ms) => void handleSyncCameraToBeats(ms)}
@@ -2971,7 +3160,9 @@ export default function App() {
               setAspect: (name) => setFormat(FORMATS[name]),
               togglePlay,
               toggleMute: () => useUiStore.getState().setAudioMuted(!audioMuted),
-              openExport: () => setShowExport(true),
+              openExport: () => openExport(),
+              openStillsExport: (format) => openExport({ stills: format }),
+              addStillAtPlayhead: () => void handleAddStillAtPlayhead(),
               verify: () => void handleVerify(),
               showShortcuts: () => setShowShortcuts(true),
               checkForUpdates: () => void updates.runCheck(),
@@ -2982,9 +3173,11 @@ export default function App() {
       )}
       {showExport && project && (
         <ExportModal
+          key={exportInitial?.stills ?? "export"}
           project={project}
           currentAspect={format.name}
           busy={exporting}
+          initial={exportInitial ?? undefined}
           onExport={handleExport}
           onClose={() => setShowExport(false)}
         />

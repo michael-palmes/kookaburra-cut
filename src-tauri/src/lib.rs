@@ -24,6 +24,7 @@ mod pty;
 mod render_win;
 mod scene_doc;
 mod settings_win;
+mod stills;
 #[path = "tap_dot_frames.generated.rs"]
 mod tap_dot_frames;
 mod theme;
@@ -213,12 +214,14 @@ pub(crate) struct ExportState {
     /// The streaming phase: ffmpeg's stdin, fed by `push_frame`.
     active: Mutex<Option<ActiveExport>>,
     run: Mutex<Option<ExportRun>>,
+    /// A stills export (PDF or PNG zip); exclusive with the video run, and untouched by its push, finish and cancel.
+    stills: stills::StillsSlot,
 }
 
 impl ExportState {
-    /// True while an export runs, finalising included; settings_win refuses to clear the clip cache mid-export since the export loop reads extracted frames from it.
+    /// True while a video or stills export runs, finalising included; settings_win refuses to clear the clip cache mid-export since the export loop reads extracted frames from it.
     pub(crate) fn busy(&self) -> bool {
-        self.run.lock().map(|guard| guard.is_some()).unwrap_or(true)
+        self.run.lock().map(|guard| guard.is_some()).unwrap_or(true) || self.stills.busy()
     }
 
     /// Stops the run in whichever phase it is in; a no-op when idle (the autorun boot latch relies on that).
@@ -313,66 +316,29 @@ fn start_export(
         .lock()
         .map_err(|_| "export state poisoned")?
         .is_some()
+        || state.stills.busy()
     {
         return Err("an export is already in progress".into());
     }
 
-    // F-002: project_id and aspect build the output dir (bundled branch) and filename, so reject anything path-shaped BEFORE either is used. A scoped library id folds its colon to a dash (`project_cache_key`, at least as strict as `validate_slug`); every unscoped id passes through unchanged, so existing outputs and baselines keep their exact names.
-    let project_key = workspace::project_cache_key(&options.project_id)?;
-    workspace::validate_slug(&options.aspect)?;
-
-    // Workspace projects render into their own exports/ folder (self-contained projects); bundled/gate projects keep the legacy ~/Kookaburra Cut/<project>/ path so baseline tooling and hashes stay put (moved out of ~/Documents since macOS TCC guards Documents and kept breaking headless gates); both paths are built HERE, the frontend never supplies a path. "downloads" (app-triggered exports honouring the setting) routes only the FINAL file to ~/Downloads; terminal autoruns never send it.
-    let to_downloads = match options.destination.as_deref() {
-        Some("downloads") => true,
-        Some(other) => return Err(format!("unknown export destination: {other}")),
-        None => false,
-    };
-    let dir = if to_downloads {
-        app.path().download_dir().map_err(|e| e.to_string())?
-    } else {
-        match &options.project_slug {
-            Some(slug) => workspace::project_dir(&app, &settings, slug)?.join("exports"),
-            None => app
-                .path()
-                .home_dir()
-                .map_err(|e| e.to_string())?
-                .join(workspace::WORKSPACE_DIR_NAME)
-                .join(&project_key),
-        }
-    };
-    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    // Preset/custom exports suffix the filename so they never overwrite the legacy `<project>-<aspect>` output; absent suffix means the exact legacy name, so the frozen path and Verify stay untouched.
-    let suffix = match &options.output_suffix {
-        Some(s) => {
-            workspace::validate_slug(s)?;
-            format!("-{s}")
-        }
-        None => String::new(),
-    };
     let ext = match &options.encode {
         Some(spec) => spec.codec.container_ext(),
         None => options.codec.container_ext(),
     };
-    let base = format!("{}-{}{}", project_key, options.aspect, suffix);
-    let mut output = dir.join(format!("{base}.{ext}"));
-    // Downloads is shared space: never overwrite, suffix Finder-style. The canonical paths keep overwrite semantics (baselines re-record in place).
-    if to_downloads {
-        let mut n = 2;
-        while output.exists() {
-            output = dir.join(format!("{base} {n}.{ext}"));
-            n += 1;
-        }
-    }
-
-    // Defence in depth: confirm the output still resolves inside dir (the two-pass mezzanine/passlog paths reuse this same validated project_id+aspect, so they're covered too).
-    let canon_dir = dir.canonicalize().map_err(|e| e.to_string())?;
-    let out_parent = output
-        .parent()
-        .ok_or("export output has no parent directory")?;
-    let canon_parent = out_parent.canonicalize().map_err(|e| e.to_string())?;
-    if !canon_parent.starts_with(&canon_dir) {
-        return Err("export path escaped the output directory".into());
-    }
+    let output = resolve_export_output(
+        &app,
+        &settings,
+        &ExportTarget {
+            project_id: &options.project_id,
+            project_slug: options.project_slug.as_deref(),
+            aspect: &options.aspect,
+            output_suffix: options.output_suffix.as_deref(),
+            destination: options.destination.as_deref(),
+        },
+        ext,
+        false,
+    )?
+    .path;
 
     // Validate the soundtrack up front so a bad path fails the export loudly, not as a cryptic ffmpeg exit late in the run.
     if let Some(audio) = &options.audio {
@@ -483,6 +449,96 @@ fn start_export(
     });
 
     Ok(output.to_string_lossy().into_owned())
+}
+
+/// What names an export's output file; shared by video and stills so both follow one set of destination rules.
+pub(crate) struct ExportTarget<'a> {
+    pub(crate) project_id: &'a str,
+    pub(crate) project_slug: Option<&'a str>,
+    pub(crate) aspect: &'a str,
+    pub(crate) output_suffix: Option<&'a str>,
+    pub(crate) destination: Option<&'a str>,
+}
+
+pub(crate) struct ExportOutput {
+    pub(crate) path: PathBuf,
+    /// The file stem before any Downloads de-dupe suffix.
+    pub(crate) base: String,
+}
+
+enum ExportDir {
+    Project,
+    Downloads,
+    Autorun,
+}
+
+/// Validates the name parts, picks the folder and de-dupes in Downloads; `allow_autorun` admits the stills-only "autorun" destination (the run's result dir).
+fn resolve_export_output(
+    app: &AppHandle,
+    settings: &State<'_, workspace::SettingsState>,
+    target: &ExportTarget<'_>,
+    ext: &str,
+    allow_autorun: bool,
+) -> Result<ExportOutput, String> {
+    // F-002: project_id and aspect build the output dir (bundled branch) and filename, so reject anything path-shaped BEFORE either is used. A scoped library id folds its colon to a dash (`project_cache_key`, at least as strict as `validate_slug`); every unscoped id passes through unchanged, so existing outputs and baselines keep their exact names.
+    let project_key = workspace::project_cache_key(target.project_id)?;
+    workspace::validate_slug(target.aspect)?;
+
+    // Workspace projects render into their own exports/ folder (self-contained projects); bundled/gate projects keep the legacy ~/Kookaburra Cut/<project>/ path so baseline tooling and hashes stay put (moved out of ~/Documents since macOS TCC guards Documents and kept breaking headless gates); both paths are built HERE, the frontend never supplies a path. "downloads" (app-triggered exports honouring the setting) routes only the FINAL file to ~/Downloads; terminal autoruns never send it.
+    let destination = match target.destination {
+        Some("downloads") => ExportDir::Downloads,
+        Some("autorun") if allow_autorun => ExportDir::Autorun,
+        Some(other) => return Err(format!("unknown export destination: {other}")),
+        None => ExportDir::Project,
+    };
+    let dir = match destination {
+        ExportDir::Downloads => app.path().download_dir().map_err(|e| e.to_string())?,
+        ExportDir::Autorun => {
+            if !is_autorun() {
+                return Err("the autorun destination is only valid during an auto-run".into());
+            }
+            autorun_result_dir(app)?
+        }
+        ExportDir::Project => match target.project_slug {
+            Some(slug) => workspace::project_dir(app, settings, slug)?.join("exports"),
+            None => app
+                .path()
+                .home_dir()
+                .map_err(|e| e.to_string())?
+                .join(workspace::WORKSPACE_DIR_NAME)
+                .join(&project_key),
+        },
+    };
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    // Preset/custom exports suffix the filename so they never overwrite the legacy `<project>-<aspect>` output; absent suffix means the exact legacy name, so the frozen path and Verify stay untouched.
+    let suffix = match target.output_suffix {
+        Some(s) => {
+            workspace::validate_slug(s)?;
+            format!("-{s}")
+        }
+        None => String::new(),
+    };
+    let base = format!("{}-{}{}", project_key, target.aspect, suffix);
+    let mut output = dir.join(format!("{base}.{ext}"));
+    // Downloads is shared space: never overwrite, suffix Finder-style. The canonical paths keep overwrite semantics (baselines re-record in place).
+    if matches!(destination, ExportDir::Downloads) {
+        let mut n = 2;
+        while output.exists() {
+            output = dir.join(format!("{base} {n}.{ext}"));
+            n += 1;
+        }
+    }
+
+    // Defence in depth: confirm the output still resolves inside dir (the two-pass mezzanine/passlog paths reuse this same validated project_id+aspect, so they're covered too).
+    let canon_dir = dir.canonicalize().map_err(|e| e.to_string())?;
+    let out_parent = output
+        .parent()
+        .ok_or("export output has no parent directory")?;
+    let canon_parent = out_parent.canonicalize().map_err(|e| e.to_string())?;
+    if !canon_parent.starts_with(&canon_dir) {
+        return Err("export path escaped the output directory".into());
+    }
+    Ok(ExportOutput { path: output, base })
 }
 
 /// Expected raw-RGBA frame byte length for a `w`x`h` frame (F-015 push_frame guard).
@@ -745,6 +801,10 @@ struct AutorunEnv {
     sets: Option<String>,
     /// theme-previews: comma list of stale bundled theme ids to capture (unset = all).
     themes: Option<String>,
+    /// stills/stillsverify: "pdf" or "png".
+    stills: Option<String>,
+    /// stills/stillsverify: "4k", "1080p" or "720p".
+    stills_size: Option<String>,
 }
 
 /// One `KOOKABURRA_*` env read under the single auto-run rule: trimmed, and empty/whitespace reads as unset.
@@ -802,6 +862,8 @@ fn get_autorun_config() -> AutorunEnv {
         at: autorun_var("KOOKABURRA_AT"),
         sets: autorun_var("KOOKABURRA_SETS"),
         themes: autorun_var("KOOKABURRA_THEMES"),
+        stills: autorun_var("KOOKABURRA_STILLS"),
+        stills_size: autorun_var("KOOKABURRA_STILLS_SIZE"),
     }
 }
 
@@ -1276,6 +1338,10 @@ macro_rules! kookaburra_handler {
             show_character_palette,
             sample_screen_colour,
             start_export,
+            stills::commands::start_stills_export,
+            stills::commands::push_still,
+            stills::commands::finish_stills_export,
+            stills::commands::cancel_stills_export,
             notify_export_done,
             media::probe_audio,
             media::delete_media,
@@ -1591,6 +1657,10 @@ pub fn run() {
                 let export_video = MenuItemBuilder::with_id("export-video", "Export Video…")
                     .accelerator("CmdOrCtrl+E")
                     .build(app)?;
+                let export_pdf =
+                    MenuItemBuilder::with_id("export-pdf", "Export PDF…").build(app)?;
+                let export_images =
+                    MenuItemBuilder::with_id("export-images", "Export Images…").build(app)?;
                 let file = SubmenuBuilder::new(app, "File")
                     .item(&new_project)
                     .separator()
@@ -1598,6 +1668,8 @@ pub fn run() {
                     .item(&export_pack)
                     .separator()
                     .item(&export_video)
+                    .item(&export_pdf)
+                    .item(&export_images)
                     .build()?;
                 let menu = Menu::default(app.handle())?;
                 // Index 1: straight after the application submenu, before Edit.
@@ -1716,6 +1788,10 @@ pub fn run() {
                         let _ = app.emit_to("main", "kookaburra://new-project", ());
                     } else if event.id() == "export-video" {
                         let _ = app.emit_to("main", "kookaburra://export-video", ());
+                    } else if event.id() == "export-pdf" {
+                        let _ = app.emit_to("main", "kookaburra://export-stills", "pdf");
+                    } else if event.id() == "export-images" {
+                        let _ = app.emit_to("main", "kookaburra://export-stills", "png-zip");
                     } else if event.id() == "import-pack" {
                         if let Err(e) = packs_win::open_packs_window(
                             app,

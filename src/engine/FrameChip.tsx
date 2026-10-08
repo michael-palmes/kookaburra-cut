@@ -10,6 +10,7 @@ import type { V3 } from "../toolkit/types";
 import { FrameIcon } from "./FrameIcon";
 import { FrameSymbol } from "./FrameSymbol";
 import { useHeldLocalMs } from "./presentHold";
+import { registerPresentTiming } from "./presentTimingRegistry";
 import { SceneDocContext, useSceneContext } from "./sceneContext";
 import { useTextKeyRegistry } from "./textKeyRegistry";
 import { textStyleValue } from "./textStyleResolve";
@@ -105,6 +106,11 @@ export function FrameChip({
   const fill = resolveChipColour(theme, chip.colour);
   const labelColour = contrastToken(theme, fill);
   const fade = to <= from ? 1 : Math.min(1, Math.max(0, (localMs - from) / (to - from)));
+  const fades = to > from;
+  useEffect(() => {
+    if (sceneIndex === undefined || !fades) return;
+    return registerPresentTiming(sceneIndex, { kind: "decoration", toMs: to });
+  }, [sceneIndex, fades, to]);
 
   // Report the label to the registry so the drill offers Size % (copy stays chip-owned); the FrameIcon guard keeps managed scenes untouched.
   const sizeMul = textStyleValue(doc, textKey, "Size");

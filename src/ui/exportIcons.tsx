@@ -2,6 +2,7 @@
 
 import type { ReactElement } from "react";
 import { type AspectName, FORMATS } from "../engine/format";
+import type { StillsSize } from "../engine/stills";
 
 function brand(path: string, fill: string): ReactElement {
   return (
@@ -132,6 +133,53 @@ const SHARE = stroked(
     <path d="M12 2v13" />
   </>,
 );
+
+/** Stills: two offset pages. */
+export const STILLS_ICON = stroked(
+  <>
+    <rect x="3.5" y="7" width="13.5" height="13.5" rx="2" />
+    <path d="M7.5 3.5h11a2 2 0 0 1 2 2v11" />
+  </>,
+);
+
+export const PDF_ICON = stroked(
+  <>
+    <path d="M6 3h8l5 5v12a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z" />
+    <path d="M14 3v5h5M8.5 13h7M8.5 16.5h5" />
+  </>,
+);
+
+export const PNG_ICON = stroked(
+  <>
+    <rect x="3" y="4.5" width="18" height="15" rx="2" />
+    <circle cx="8.5" cy="9.5" r="1.6" />
+    <path d="M3.5 17l5-5 3.5 3.5 2.5-2.5 6 5" />
+  </>,
+);
+
+const SIZE_SCALE: Record<StillsSize, number> = { "4k": 1, "1080p": 0.7, "720p": 0.45 };
+
+/** A frame drawn at the chip's share of 4K inside a faint 4K outline, so the three sizes read at a glance. */
+export function StillsSizeIcon({ size }: { size: StillsSize }): ReactElement {
+  const s = SIZE_SCALE[size];
+  const w = 16 * s;
+  const h = 10 * s;
+  return (
+    <svg
+      className="aspect-icon"
+      width="16"
+      height="16"
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      aria-hidden="true"
+    >
+      {s < 1 && <rect x="2" y="5" width="16" height="10" rx="1.5" opacity="0.35" />}
+      <rect x={(20 - w) / 2} y={(20 - h) / 2} width={w} height={h} rx="1.5" />
+    </svg>
+  );
+}
 
 const BY_ID: Record<string, ReactElement> = {
   "kookaburra-standard": SEAL,

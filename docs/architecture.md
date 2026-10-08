@@ -418,6 +418,18 @@ Where the live Tauri-2 setup matters for working in the code:
    the Dock still shows the old icon after that, it's macOS's own icon cache:
    `killall Dock`. The icon master is the Icon Composer 1024px export, used
    verbatim: never re-mask it (see `scripts/make-icons.sh`).
+10. **The stills seam.** The stills export (`src/engine/stillsExport.ts`) shares
+    the video loop's per-frame body, `renderFrameInto` in
+    `src/engine/exportFrame.ts` (moved verbatim out of `exporter.ts`), but
+    renders each page from its planned `page.resolved`. A page stage
+    (`pageFromReadback` in `downscale.ts`) is the one flip and a deterministic
+    box downscale; pages then stream one at a time through `push_still` (raw
+    body, `x-kookaburra-*` headers) to the Rust `stills` module, which owns the
+    PDF writer, the PNG encode and the zip. The job sits in `ExportState` beside
+    the video run, mutually exclusive with it, and writes a hidden
+    `.<stem>.part.<ext>` temp file beside the destination
+    (`resolve_export_output`, shared with video); `finish_stills_export` fsyncs
+    it and renames it into place. Contract: [stills.md](./stills.md).
 
 `src-tauri/tauri.conf.json` sidecar wiring (Tauri 2, no `plugins.shell.sidecar`
 block; the permission is handled Rust-side per note 1):

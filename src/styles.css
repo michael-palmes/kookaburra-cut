@@ -1621,6 +1621,19 @@ body {
   pointer-events: none;
 }
 
+/* A marked still: a short accent notch hanging from the track's top edge, under the playhead. */
+.pb-still-tick {
+  position: absolute;
+  top: 1px;
+  width: 6px;
+  height: 6px;
+  margin-left: -3px;
+  background: var(--accent);
+  border-radius: 1px;
+  clip-path: polygon(0 0, 100% 0, 50% 100%);
+  pointer-events: none;
+}
+
 /* ── Beat lane (batch 13): waveform, beat grid + key-beat diamonds above the
    scene strip. Same grid column as .pb-track, so x positions align by
    construction; times map through the shared span maths. Amber is the lane's
@@ -5716,6 +5729,20 @@ button.beat-status {
   outline-offset: 1px;
 }
 
+/* A key marked as a still: a small frame badge riding the diamond's upper-right shoulder. */
+.anim-key-still {
+  position: absolute;
+  top: 2px;
+  box-sizing: border-box;
+  width: 10px;
+  height: 8px;
+  border: 1.5px solid var(--lane-accent, var(--accent));
+  border-radius: 2px;
+  transform: translateX(3px);
+  pointer-events: none;
+  z-index: 3;
+}
+
 /* The gap key a drag would merge into on release (legacy gaps only). */
 .anim-key.merge-target {
   outline: 2px dashed var(--accent);
@@ -6958,14 +6985,20 @@ button.beat-status {
   inline-size: 100%;
 }
 
-/* Chip groups are fieldsets (the group-chips precedent) — strip the UA chrome. */
+/* Chip groups are fieldsets (the group-chips precedent): strip the UA chrome, including the min-content floor that stops them shrinking. */
 .export-filter-row,
 .export-aspect-row {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.35rem;
+  min-inline-size: 0;
   margin: 0;
   padding: 0;
   border: 0;
+}
+.export-filter-row .chip,
+.export-aspect-row .chip {
+  white-space: nowrap;
 }
 /* Aspect chips carry a proportioned rect glyph before the label. */
 .export-aspect-row .chip,
@@ -6983,6 +7016,13 @@ button.beat-status {
   flex-direction: column;
   gap: 0.25rem;
   padding-inline-end: 0.25rem;
+  scroll-padding-block-end: 0.5rem;
+}
+/* A spacer, not end padding: WebKit drops end padding from flex scroll containers. */
+.export-list::after {
+  content: "";
+  flex: none;
+  block-size: 0.25rem;
 }
 
 .export-group-title {
@@ -7077,6 +7117,18 @@ button.beat-status {
   border-block-start: 1px solid var(--border-subtle);
   border-start-start-radius: 0;
   border-start-end-radius: 0;
+}
+
+/* The Stills format switch sits flush with the pane's other controls, not at the inspector inset. */
+.inspector-subtabs.export-segments {
+  margin: 0;
+}
+
+.export-size-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
 }
 
 .export-detail {
@@ -9212,6 +9264,80 @@ button.inspector-scene-overview-group-main:hover .inspector-scene-overview-group
   padding: 8px 16px;
   font-size: var(--text-sm);
   color: var(--danger);
+}
+
+/* Stills drill: one row per planned still (kind icon · label · time · jump · remove), the action-row rhythm without the button. */
+.stills-row-wrap {
+  display: flex;
+  flex-direction: column;
+}
+
+.stills-row {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  min-height: 38px;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+}
+
+.stills-row:hover {
+  background: var(--surface-hover);
+}
+
+.stills-row-icon {
+  display: inline-flex;
+  flex: none;
+}
+
+.stills-row-label {
+  flex: none;
+  font-size: var(--text-base);
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+.stills-row-value {
+  margin-left: auto;
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+}
+
+.stills-row-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  color: var(--text-secondary);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.stills-row-action:hover,
+.stills-row-action:focus-visible {
+  color: var(--text-primary);
+  border-color: var(--border-strong);
+}
+
+.stills-row-action.danger:hover,
+.stills-row-action.danger:focus-visible {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+.stills-row-note {
+  padding: 0 8px 4px 36px;
+  font-size: var(--text-xs);
+  line-height: 1.35;
+  color: var(--warning);
 }
 
 /* Device editor: preview-led live controls inside the fixed inspector rail. */

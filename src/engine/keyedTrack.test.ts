@@ -17,6 +17,7 @@ import {
   moveSegment,
   resizeBounds,
   resizeSegment,
+  setKeyPose,
   setSegmentChannelEase,
   setSegmentSmooth,
   splitSegmentAt,
@@ -652,5 +653,30 @@ describe("minimum-length walls", () => {
     };
     expect(moveKey(over, "b", 5200, 4000, 300)?.keys[1].tMs).toBe(4800);
     expect(moveKey(over, "b", 4200, 4000, 300)?.keys[1].tMs).toBe(4200);
+  });
+});
+
+describe("still marks ride their key, never its copies", () => {
+  type MarkedKey = { id: string; tMs: number; pose: Pose; still?: true };
+  const marked = (): KeyedTrack<Pose> & { keys: MarkedKey[] } => {
+    const base = chain();
+    return { ...base, keys: base.keys.map((k) => (k.id === "k2" ? { ...k, still: true } : k)) };
+  };
+  const stillIds = (track: { keys: MarkedKey[] } | null) =>
+    track?.keys.filter((k) => k.still).map((k) => k.id);
+
+  it("duplicateKey, duplicateKeyBefore and splitSegmentAt build bare keys", () => {
+    expect(stillIds(duplicateKey(marked(), ctx(), "k2", 200))).toEqual(["k2"]);
+    expect(stillIds(duplicateKeyBefore(marked(), ctx(), "k2", 200))).toEqual(["k2"]);
+    expect(stillIds(splitSegmentAt(marked(), 1, 2000, { d: 9 }))).toEqual(["k2"]);
+  });
+
+  it("moveKey, moveSegment and setKeyPose keep the mark", () => {
+    const moved = moveKey(marked(), "k2", 1400, 4000);
+    expect(moved?.keys.find((k) => k.id === "k2")).toMatchObject({ tMs: 1400, still: true });
+    const shifted = moveSegment(marked(), "k1", "k2", 200, 4000);
+    expect(shifted?.keys.find((k) => k.id === "k2")).toMatchObject({ tMs: 1200, still: true });
+    const posed = setKeyPose(marked(), "k2", { d: 7 });
+    expect(posed?.keys.find((k) => k.id === "k2")).toMatchObject({ pose: { d: 7 }, still: true });
   });
 });

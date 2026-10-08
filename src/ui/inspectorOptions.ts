@@ -136,7 +136,8 @@ export type SceneOverviewSettingType =
   | "camera"
   | "lighting"
   | "transition"
-  | "duration";
+  | "duration"
+  | "stills";
 
 export type SceneOverviewSelectionTarget =
   | { kind: "text"; id: string }
@@ -193,6 +194,8 @@ export interface SceneOverviewInput {
   cameraValue?: string;
   lightingValue?: string;
   transitionValue?: string;
+  /** The Stills row's value from the scene's stills plan (`stillsOverviewValue`); absent reads the doc's exclude flag only. */
+  stillsValue?: string;
   fallbackText?: string;
   /** Resolved managed or mounted virtual items. Present-empty intentionally suppresses fallback rows. */
   textItems?: readonly SceneManagedTextItem[];
@@ -651,6 +654,13 @@ export function deriveSceneOverview(input: SceneOverviewInput): SceneOverviewMod
       value: durationOverviewValue(input.durationMs),
       openRoute: null,
     },
+    {
+      id: "stills",
+      type: "stills",
+      label: "Stills",
+      value: input.stillsValue ?? (doc?.stills?.exclude ? "Left out" : "Automatic"),
+      openRoute: "stills",
+    },
   ];
 
   return { groups, standalone, settings, addOptions: addOptions(doc) };
@@ -828,6 +838,7 @@ export function drillFollowsScene(id: string, scene: SceneDrillCapability): bool
   if (id.startsWith("lighting.")) return scene.hasDoc;
   switch (id) {
     case "camera":
+    case "stills":
       return true;
     case "text":
     case "lighting":

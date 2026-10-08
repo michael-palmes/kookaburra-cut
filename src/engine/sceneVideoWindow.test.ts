@@ -8,6 +8,7 @@ import {
   recordingCrop,
   resolveVideoWindowRadius,
   sampleVideoWindowMotion,
+  videoWindowMotionEndMs,
 } from "./sceneVideoWindow";
 
 const DEG2RAD = Math.PI / 180;
@@ -235,5 +236,30 @@ describe("normalizeWindowChrome", () => {
       opacity: 0.12,
     });
     expect(chrome.shadow).toEqual({ opacity: 0.32, blur: 0.14, offset: [0, -0.05] });
+  });
+});
+
+describe("videoWindowMotionEndMs", () => {
+  it("ends the one-shot presets where the sampler rests", () => {
+    for (const motion of [
+      { preset: "tilt-reveal" as const },
+      { preset: "push-in" as const },
+      { preset: "push-in" as const, durationMs: 2000 },
+    ]) {
+      const end = videoWindowMotionEndMs(motion);
+      if (end === null) throw new Error("expected an end");
+      const rest = sampleVideoWindowMotion(motion, end + 60000);
+      expect(sampleVideoWindowMotion(motion, end)).toEqual(rest);
+      expect(sampleVideoWindowMotion(motion, end - 1)).not.toEqual(rest);
+    }
+    expect(videoWindowMotionEndMs({ preset: "tilt-reveal" })).toBe(900);
+    expect(videoWindowMotionEndMs({ preset: "push-in" })).toBe(1000);
+  });
+
+  it("is null for looping presets and 0 for none", () => {
+    expect(videoWindowMotionEndMs({ preset: "float" })).toBeNull();
+    expect(videoWindowMotionEndMs({ preset: "drift" })).toBeNull();
+    expect(videoWindowMotionEndMs({ preset: "none" })).toBe(0);
+    expect(videoWindowMotionEndMs(undefined)).toBe(0);
   });
 });

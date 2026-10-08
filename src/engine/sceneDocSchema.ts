@@ -284,6 +284,8 @@ export interface SceneDocCameraKey {
   /** Scene-local time, ms. */
   tMs: number;
   pose: SceneDocCameraPose;
+  /** Marks this key as a stills export page (see engine/stills.ts). */
+  still?: true;
 }
 
 export interface SceneDocCameraSegment {
@@ -327,6 +329,8 @@ export interface SceneDocRigKey {
   pose: SceneDocRigPose;
   /** First key only: start from the previous scene's final pose (resolved at load). */
   continueFromPrevious?: boolean;
+  /** Marks this key as a stills export page (see engine/stills.ts). */
+  still?: true;
 }
 
 export interface SceneDocRigSegment {
@@ -617,6 +621,16 @@ export interface SceneDoc {
   website?: SceneDocWebsite;
   /** Which animated track drives this scene; absent = "camera" (null-for-legacy). Switching never deletes the other tracks' keys. */
   animatedTrack?: "camera" | "layeredScreenshot" | "compare" | "chart" | "lighting";
+  /** Stills export settings (see engine/stills.ts); absent = included with one automatic still. */
+  stills?: SceneDocStills;
+}
+
+/** Sidecar `stills` block; absent means included with one automatic still. */
+export interface SceneDocStills {
+  /** true leaves the scene out of every stills export (no pages, no bookmark). */
+  exclude?: true;
+  /** Fixed scene-local still times: integer ms, ascending, unique. */
+  marksMs?: number[];
 }
 
 /** The narrow device appearance surface side B may override. Device identity, pose and motion remain shared. */
@@ -1776,6 +1790,35 @@ function validPresentLoop(raw: unknown): raw is SceneDocCameraPresentLoop {
   return true;
 }
 
+/** Keeps only `exclude: true` and finite, non-negative marks (rounded, unique, ascending); an empty block drops, so absent stays the default. */
+function parseStills(raw: unknown, source: string): SceneDocStills | undefined {
+  if (!isRecord(raw)) {
+    console.warn(`[sceneDoc] ${source}: stills isn't an object, dropped`);
+    return undefined;
+  }
+  const out: SceneDocStills = {};
+  if (raw.exclude === true) out.exclude = true;
+  else if (raw.exclude !== undefined && raw.exclude !== false) {
+    console.warn(`[sceneDoc] ${source}: stills.exclude isn't a boolean, dropped`);
+  }
+  if (Array.isArray(raw.marksMs)) {
+    const marks = new Set<number>();
+    for (const value of raw.marksMs as unknown[]) {
+      if (typeof value === "number" && Number.isFinite(value) && value >= 0) {
+        marks.add(Math.round(value));
+      } else {
+        console.warn(
+          `[sceneDoc] ${source}: stills.marksMs entry isn't a non-negative number, dropped`,
+        );
+      }
+    }
+    if (marks.size > 0) out.marksMs = [...marks].sort((a, b) => a - b);
+  } else if (raw.marksMs !== undefined) {
+    console.warn(`[sceneDoc] ${source}: stills.marksMs isn't an array, dropped`);
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
 function parseManagedText(raw: unknown, source: string): SceneManagedTextBlock | undefined {
   if (!isRecord(raw) || !Array.isArray(raw.items)) {
     console.warn(`[sceneDoc] ${source}: managedText needs an items array, dropped`);
@@ -2172,6 +2215,10 @@ export function parseSceneDoc(raw: unknown, source: string): SceneDoc | undefine
   if (doc.website !== undefined) {
     const website = parseSceneWebsite(doc.website, source);
     if (website) out.website = website;
+  }
+  if (doc.stills !== undefined) {
+    const stills = parseStills(doc.stills, source);
+    if (stills) out.stills = stills;
   }
   if (
     doc.animatedTrack === "camera" ||

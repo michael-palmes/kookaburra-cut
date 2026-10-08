@@ -3,6 +3,7 @@ import { Mesh, MeshBasicMaterial, PerspectiveCamera, Scene } from "three";
 import { Text } from "troika-three-text";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useClockStore } from "./clock";
+import { renderComposited } from "./compositor";
 import { canvasHandle, trackContextLosses } from "./exportBridge";
 import {
   awaitTextSync,
@@ -159,6 +160,16 @@ describe("export readback guard", () => {
     mountCanvas();
     await expect(exportProject(opts)).resolves.toBe("/out.mp4");
     expect(pushed).toEqual([0, 1, 2].map((f) => Array.from(drawn(f))));
+  });
+
+  it("draws frame 0 twice and every later frame once, at its own clock time", async () => {
+    mountCanvas();
+    const drawsAt: number[] = [];
+    vi.mocked(renderComposited).mockImplementation(() => {
+      drawsAt.push(useClockStore.getState().currentMs);
+    });
+    await exportProject(opts);
+    expect(drawsAt).toEqual([0, 0, 1000 / 60, 2000 / 60]);
   });
 
   it("stops at a stalled readback rather than encode it, and cancels the encoder", async () => {

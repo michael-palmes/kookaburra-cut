@@ -44,6 +44,7 @@ import { bindHistory, peekUndo } from "./history";
 import type { LoadedProject, ProjectManifest } from "./project";
 import {
   applyEditRepoint,
+  clampDocTracksToDuration,
   followMediaSources,
   loadSceneDoc,
   resyncFollowMediaDuration,
@@ -559,5 +560,19 @@ describe("applyBackgroundToAllScenes records the project-wide stamp", () => {
     await applyBackgroundToAllScenes(projectWith([docWith({}), undefined]), 0, () => {});
     expect(manifestText).toBe(before);
     expect(peekUndo()?.changes.map((c) => c.kind)).toEqual(["sceneDoc"]);
+  });
+});
+
+describe("clampDocTracksToDuration still marks", () => {
+  it("pulls overhanging marks to the new end with the tracks, leaving the input untouched", () => {
+    const doc = docWith({ stills: { exclude: true, marksMs: [500, 2500, 3000] } });
+    const next = clampDocTracksToDuration(doc, 2000);
+    expect(next?.stills).toEqual({ exclude: true, marksMs: [500, 2000] });
+    expect(doc.stills?.marksMs).toEqual([500, 2500, 3000]);
+  });
+
+  it("is null when no mark or track overhangs", () => {
+    expect(clampDocTracksToDuration(docWith({ stills: { marksMs: [500] } }), 2000)).toBeNull();
+    expect(clampDocTracksToDuration(docWith({ stills: { exclude: true } }), 10)).toBeNull();
   });
 });

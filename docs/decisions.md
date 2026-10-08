@@ -225,6 +225,20 @@ The full contract and its failure catalogue are in
 | Comparison display transform | Both sides share the project's tone mapping/exposure (v1) | The one renderer-level knob; per-side curves are deliberate-rebase territory |
 | Comparison transitions (superseded 2026-08-19) | v1 blended the BEFORE side only during the window. Retired: each comparing scene pre-composites both sides under its divider into a pooled target and the transition blends the finished comparison (`sceneCompare.ts` resolves both sides per frame, `compositor.ts` blends the composite) | The v1 rule saved a pooled target; a divider standing down through every transition read as a defect once comparisons shipped |
 
+## Stills export
+
+The stills contract (PDF handout and PNG images) is in [stills.md](./stills.md).
+
+| Decision | Choice | Why |
+| --- | --- | --- |
+| Still marks | A marked key carries `"still": true` on the camera or rig key itself; fixed times live in the sidecar's `stills.marksMs`. No list of key ids | Key ids are short and reused (every block has a `k1`) and are renumbered when a scene is duplicated, so a reference list would point at the wrong key or nothing; a flag follows drags, goes with its key (⌘Z restores both) and is never copied by Duplicate key |
+| Settled moment | Automatic stills reuse Present's hold derivation, moved to `engine/presentHoldPoint.ts` and shared with `src/present`; the stills exporter is the one writer of the hold map besides Present (once per run, cleared in `finally`), and video exports and captures refuse to start while holds are active | One definition of "settled" for the slideshow and the handout, without the hold ever reaching the video contract |
+| Auto stills in a transition | When a scene settles past its clean window, its automatic still renders the scene alone at the settled moment (capped at its end), as Present holds it; marked stills still clamp into the clean window (a deviation from the plan, approved by Michael 2026-10-08) | Clamping back to the last clean frame caught intros and camera moves mid-flight |
+| PDF writer | A hand-rolled streaming PDF 1.7 writer in `src-tauri/src/stills/` (uncompressed, classic xref, a glyphless CID font generated in code for the text layer); no new crates | `pdf-writer` builds the whole document in memory, which 4K JPEG pages would swell; streaming keeps one page in flight and every byte under our control |
+| PDF page size | Short edge 540 pt (16:9 is 960 × 540 pt), whatever the pixel size chip | A widescreen slide's own size (13.33 × 7.5 in), so a handout prints and reads the same at 720p or 4K |
+| PNG encoder | The pinned Rust `png` crate (`=0.18.1`) encodes the page RGBA with every setting explicit; zip entries are stored | WebKit's encoders are not pinned; Rust bytes make the PNG zip byte-identical run to run |
+| Decoration and counter timings | Frame decorations (`FrameDecoration`, `FrameChip`, `FrameSymbol`) and `AnimatedCounter` register their intro ends as Present timings, so Present holds later on those slides (intended) | Without them a hold froze a chip mid-fade or a counter mid-count; registration has no render effect, so video bytes stay put |
+
 ## Chrome, identity & voice
 
 | Decision | Choice | Why |

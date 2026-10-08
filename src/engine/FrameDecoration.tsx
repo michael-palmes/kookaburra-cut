@@ -1,5 +1,5 @@
 import { useTexture } from "@react-three/drei";
-import { useContext, useLayoutEffect, useMemo } from "react";
+import { useContext, useEffect, useLayoutEffect, useMemo } from "react";
 import { MeshBasicMaterial, SRGBColorSpace, type Texture } from "three";
 import { useEditorStore } from "../store/editorStore";
 import { parseFontString } from "../theme/fontRef";
@@ -10,8 +10,9 @@ import { AnimatedHeadline } from "../toolkit/text/AnimatedHeadline";
 import type { FormatInfo } from "../toolkit/types";
 import { frameLayerRenderOrder } from "./frameLayerOrder";
 import { useHeldLocalMs } from "./presentHold";
+import { registerPresentTiming } from "./presentTimingRegistry";
 import { resolveAssetUrl } from "./project";
-import { ProjectIdContext } from "./sceneContext";
+import { ProjectIdContext, useSceneContext } from "./sceneContext";
 import { useTimeline } from "./timeline";
 
 /** Crops a square plane to a disc via an SDF alpha on the raw plane uv (not the map uv), the `ImageCard` shine precedent; a pure function of uv, so AA is compile-stable. A circle decoration expects a roughly square source. */
@@ -108,6 +109,12 @@ function LoadedDecoration({
 }) {
   const { localMs: rawLocalMs } = useTimeline();
   const localMs = useHeldLocalMs(rawLocalMs);
+  const sceneIndex = useSceneContext()?.index;
+  const fadeToMs = from !== undefined && to !== undefined && to > from ? to : null;
+  useEffect(() => {
+    if (sceneIndex === undefined || fadeToMs === null) return;
+    return registerPresentTiming(sceneIndex, { kind: "decoration", toMs: fadeToMs });
+  }, [sceneIndex, fadeToMs]);
   const texture = useTexture(url) as Texture;
   useLayoutEffect(() => {
     texture.colorSpace = SRGBColorSpace;

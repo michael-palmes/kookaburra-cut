@@ -7,6 +7,7 @@ import {
   type SceneMenuIconId,
   sceneMenuItems,
   sceneSelectionLabel,
+  stillsMenuLabel,
 } from "./sceneMenu";
 
 type SceneMenuOptions = Parameters<typeof sceneMenuItems>[0];
@@ -25,6 +26,7 @@ function items(overrides: Partial<SceneMenuOptions> = {}) {
     onCopyToProject: vi.fn(),
     onInsertPreset: vi.fn(),
     onSaveAsPreset: vi.fn(),
+    onStills: vi.fn(),
     ...overrides,
   });
 }
@@ -96,6 +98,7 @@ describe("sceneMenuItems", () => {
       "copy-to-project",
       "save-preset",
       "duration",
+      "stills",
       "manage",
       "separator",
       "copy-background",
@@ -105,7 +108,12 @@ describe("sceneMenuItems", () => {
     ]);
     expect(
       ids(
-        items({ onCopyToProject: undefined, onInsertPreset: undefined, onSaveAsPreset: undefined }),
+        items({
+          onCopyToProject: undefined,
+          onInsertPreset: undefined,
+          onSaveAsPreset: undefined,
+          onStills: undefined,
+        }),
       ),
     ).toEqual([
       "rename",
@@ -124,6 +132,23 @@ describe("sceneMenuItems", () => {
     expect(bulk.disabled).toBe(true);
     expect(bulk.title).toBe("Presets hold a single scene");
     expect(item(items(), "save-preset").disabled).toBe(false);
+  });
+
+  it("labels the stills toggle by direction and selection size", () => {
+    expect(item(items(), "stills").label).toBe("Leave out of stills");
+    expect(item(items({ stillsInclude: true }), "stills").label).toBe("Include in stills");
+    expect(item(items({ selectionCount: 3 }), "stills").label).toBe("Leave 3 scenes out of stills");
+    expect(item(items({ selectionCount: 2, stillsInclude: true }), "stills").label).toBe(
+      "Include 2 scenes in stills",
+    );
+    expect(stillsMenuLabel(false, 1)).toBe("Leave out of stills");
+  });
+
+  it("routes the stills toggle with its direction", () => {
+    const onStills = vi.fn();
+    item(items({ onStills, stillsInclude: true }), "stills").onSelect();
+    item(items({ onStills }), "stills").onSelect();
+    expect(onStills.mock.calls).toEqual([[true], [false]]);
   });
 
   it("routes Delete to its handler", () => {
@@ -150,6 +175,8 @@ describe("SceneMenuIcon", () => {
       "insert-preset",
       "save-preset",
       "duration",
+      "stills",
+      "stills-off",
       "manage",
       "copy-background",
       "paste-background",
