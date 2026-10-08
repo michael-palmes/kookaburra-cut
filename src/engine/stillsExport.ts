@@ -47,6 +47,8 @@ export interface StillsSettings {
   destination?: "downloads" | "autorun";
   /** Leaves out the PDF dates, author and app version, and pins the zip timestamps. */
   reproducible?: boolean;
+  /** The folder inside a PNG zip; the native default is the output stem. */
+  zipFolder?: string;
 }
 
 /** One page's verify digest: 64 tile hashes of the page-stage RGBA, plus its text layer and metadata JSON. */
@@ -65,6 +67,8 @@ export interface StillsExportResult {
   sha256: string;
   /** Per page payload SHA-256 from the native writer (JPEG or PNG bytes). */
   pageSha256: string[];
+  /** The PNG zip's folder. */
+  zipFolder?: string;
   /** SHA-256 over every page hash: the stills baseline. */
   pagesHash: string;
   /** Per page SHA-256 of its page-stage tile hashes, metadata and text layer. */
@@ -82,6 +86,7 @@ interface NativeStillsResult {
   bytes: number;
   sha256: string;
   pageSha256: string[];
+  zipFolder?: string;
 }
 
 /** Waits until no staged primitive still owes its Present timing (a staggered headline reports pending until its first typeset spreads the units), kicking text sync each spin. Deterministic: the spin count varies, the snapshot it releases never does. */
@@ -270,6 +275,7 @@ async function exportStillsHeld(
         pageHeight: page.height,
         totalPages: total,
         reproducible: settings.reproducible === true,
+        zipFolder: settings.zipFolder ?? null,
       },
       onProgress: new Channel<ExportProgress>(),
     });
@@ -455,7 +461,12 @@ export function compareStillsRuns(
   };
 }
 
-/** Stills Verify ×2: two runs in one boot under one export hold (the `verifyDeterminism` rationale: no preview frame lands between the passes). Both passes write the same output path, so pass B replaces pass A's file. */
+/** Pass B's output suffix: its own file beside pass A's. */
+export function verifyPassBSuffix(suffix: string | undefined): string {
+  return suffix ? `${suffix}-b` : "b";
+}
+
+/** Stills Verify ×2: two runs in one boot under one export hold (the `verifyDeterminism` rationale: no preview frame lands between the passes). Pass B writes its own `-b` file inside pass A's zip folder, so both files stay for diffing and a PNG zip's bytes still compare. */
 export async function verifyStills(
   opts: ExportOptions,
   settings: StillsSettings,
@@ -464,7 +475,11 @@ export async function verifyStills(
   setExporting(true);
   try {
     const a = await exportStills(opts, settings, onProgress);
-    const b = await exportStills(opts, settings, onProgress);
+    const b = await exportStills(
+      { ...opts, outputSuffix: verifyPassBSuffix(opts.outputSuffix) },
+      { ...settings, zipFolder: a.zipFolder ?? settings.zipFolder },
+      onProgress,
+    );
     return compareStillsRuns(a, b, settings.format);
   } finally {
     setExporting(false);

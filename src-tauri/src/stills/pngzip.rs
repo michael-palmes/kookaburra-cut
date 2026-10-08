@@ -130,7 +130,7 @@ struct PagesJson<'a> {
 }
 
 pub(crate) struct ZipMeta {
-    /// The output's stem before any Downloads de-dupe suffix, used as the folder inside the zip.
+    /// The folder inside the zip: the output's stem before any Downloads de-dupe suffix, unless the caller names one.
     pub(crate) base: String,
     pub(crate) total: u32,
     pub(crate) timestamp: zip::DateTime,
@@ -157,6 +157,10 @@ impl<W: Write + Seek> PngZipWriter<W> {
             per_scene: BTreeMap::new(),
             pages: Vec::new(),
         }
+    }
+
+    pub(crate) fn folder(&self) -> &str {
+        &self.meta.base
     }
 
     fn options(&self, method: CompressionMethod) -> SimpleFileOptions {

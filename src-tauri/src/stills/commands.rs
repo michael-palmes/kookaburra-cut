@@ -24,6 +24,7 @@ const MAX_PAGES: u32 = 2000;
 const MAX_PAGE_EDGE: u32 = 8192;
 const MAX_FORMAT_EDGE: u32 = 16384;
 const MAX_TITLE_BYTES: usize = 4096;
+const MAX_ZIP_FOLDER_BYTES: usize = 255;
 const MAX_META_BYTES: usize = 8 * 1024;
 const MAX_JPEG_BYTES: usize = 64 * 1024 * 1024;
 const MAX_TEXT_BYTES: usize = 8 * 1024 * 1024;
@@ -62,6 +63,9 @@ pub(crate) struct StillsOptions {
     /// Leaves out the PDF dates, author and app version, and stamps zip entries 1980-01-01.
     #[serde(default)]
     reproducible: bool,
+    /// The folder inside a PNG zip; defaults to the output stem. Verify hands pass A's to pass B so both zips match byte for byte.
+    #[serde(default)]
+    zip_folder: Option<String>,
 }
 
 impl StillsOptions {
@@ -89,7 +93,25 @@ impl StillsOptions {
         if self.title.len() > MAX_TITLE_BYTES {
             return Err("the project title is too long".into());
         }
+        if let Some(folder) = &self.zip_folder {
+            validate_zip_folder(folder)?;
+        }
         Ok(())
+    }
+}
+
+/// The output stem's alphabet (a slug, `@` from a scoped project id): ASCII, no separators, no leading dot.
+pub(crate) fn validate_zip_folder(folder: &str) -> Result<(), String> {
+    let ok = !folder.is_empty()
+        && folder.len() <= MAX_ZIP_FOLDER_BYTES
+        && !folder.starts_with('.')
+        && folder
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '@'));
+    if ok {
+        Ok(())
+    } else {
+        Err(format!("invalid zip folder name: {folder:?}"))
     }
 }
 
@@ -102,6 +124,9 @@ pub(crate) struct StillsResult {
     bytes: u64,
     sha256: String,
     page_sha256: Vec<String>,
+    /// The PNG zip's folder.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    zip_folder: Option<String>,
 }
 
 /// The PDF's Info entries; `now` is `None` in reproducible mode, which leaves out the author, the dates and the app version.
@@ -163,7 +188,7 @@ pub(crate) fn start_stills_export(
         StillsKind::PngZip => Sink::PngZip(Box::new(PngZipWriter::new(
             writer,
             ZipMeta {
-                base: output.base.clone(),
+                base: options.zip_folder.clone().unwrap_or(output.base),
                 total: options.total_pages,
                 timestamp: zip_timestamp(now),
                 project: options.title.clone(),
@@ -392,11 +417,17 @@ pub(super) fn finalise(plan: FinishPlan) -> Result<StillsResult, String> {
         cancelled,
         ..
     } = plan;
-    let writer = match sink {
-        Sink::Pdf(pdf) => (*pdf)
-            .finish()
-            .map_err(|e| format!("could not finish the PDF: {e}"))?,
-        Sink::PngZip(zip) => (*zip).finish()?,
+    let (writer, zip_folder) = match sink {
+        Sink::Pdf(pdf) => (
+            (*pdf)
+                .finish()
+                .map_err(|e| format!("could not finish the PDF: {e}"))?,
+            None,
+        ),
+        Sink::PngZip(zip) => {
+            let folder = zip.folder().to_string();
+            ((*zip).finish()?, Some(folder))
+        }
     };
     let file = writer
         .into_inner()
@@ -421,6 +452,7 @@ pub(super) fn finalise(plan: FinishPlan) -> Result<StillsResult, String> {
         bytes,
         sha256,
         page_sha256,
+        zip_folder,
     })
 }
 

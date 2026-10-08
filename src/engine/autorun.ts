@@ -132,7 +132,7 @@ interface AutoRunResult {
   pagesHash?: string;
   pageTimesMs?: number[];
   warnings?: StillsWarning[];
-  /** stillsverify rows: pass B's file (the same path, rewritten) and hashes, plus where the passes split. */
+  /** stillsverify rows: pass B's file (`<stem>-b` beside pass A's) and hashes, plus where the passes split. */
   pathB?: string;
   sha256B?: string;
   pagesHashB?: string;

@@ -1,7 +1,9 @@
 use std::io::{Cursor, Read};
 use std::path::{Path, PathBuf};
 
-use super::commands::{decode_meta, doc_info, finalise, parse_text_layer, prepare_body, Prepared};
+use super::commands::{
+    decode_meta, doc_info, finalise, parse_text_layer, prepare_body, validate_zip_folder, Prepared,
+};
 use super::jpeg::{parse_jpeg, JpegInfo};
 use super::pdf::{
     num, outline_time, page_size_pt, pdf_date, pdf_string, text_op, DocInfo, PdfWriter, Stretch,
@@ -872,7 +874,32 @@ fn a_full_png_export_publishes_and_reports_hashes() {
     assert_eq!(result["bytes"], std::fs::metadata(&output).unwrap().len());
     assert_eq!(result["pageSha256"].as_array().unwrap().len(), 2);
     assert_eq!(result["path"], output.to_string_lossy().as_ref());
+    assert_eq!(result["zipFolder"], "launch-16x9");
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn zip_folders_are_ascii_stems() {
+    for ok in [
+        "launch-16x9",
+        "template@intro-9x16-b",
+        "a_b",
+        &"x".repeat(255),
+    ] {
+        assert!(validate_zip_folder(ok).is_ok(), "{ok}");
+    }
+    for bad in [
+        "",
+        ".hidden",
+        "a/b",
+        "a b",
+        "café",
+        "..",
+        "a\\b",
+        &"x".repeat(256),
+    ] {
+        assert!(validate_zip_folder(bad).is_err(), "{bad}");
+    }
 }
 
 #[test]

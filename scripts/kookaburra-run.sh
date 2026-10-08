@@ -47,8 +47,9 @@
 #                  (v9 · M2 — the packaged determinism gate; no dev server, no port)
 #         --stills pdf|png  (stills/stillsverify only, default pdf) PDF handout or PNG zip, one
 #                  page per still, written reproducibly into the run dir; stillsverify renders
-#                  twice in one boot and compares page RGBA, text layers and metadata (a PNG
-#                  zip must also match byte for byte; a PDF's file hash is advisory)
+#                  twice in one boot (pass B beside pass A as <stem>-b) and compares page RGBA,
+#                  text layers and metadata (a PNG zip must also match byte for byte; a PDF's
+#                  file hash is advisory)
 #         --size   4k|1080p|720p  (stills/stillsverify only, default 1080p) page short edge
 #         --foreground  launch the app normally instead of in the background (no-focus-steal)
 #                  mode; always on for --action perf, which needs an honest visible window
@@ -498,8 +499,12 @@ echo
 
 # stills: surface each output (pass or fail), plus a quick look inside when the tools exist.
 if [[ "$ACTION" == "stills" || "$ACTION" == "stillsverify" ]]; then
-  { grep -oE '"path(B)?": "[^"]*\.(pdf|zip)"' "$RESULT_FILE" || true; } | sed -E 's/^"path(B)?": "(.*)"$/\2/' | sort -u |
-    while IFS= read -r OUT; do
+  { grep -oE '"path(B)?": "[^"]*\.(pdf|zip)"' "$RESULT_FILE" || true; } | sed -E $'s/^"path(B?)": "(.*)"$/A\\1\t\\2/' | sort -u |
+    while IFS=$'\t' read -r PASS OUT; do
+      if [[ "$PASS" == "AB" ]]; then
+        echo "kookaburra:run: stills (pass B) → $OUT"
+        continue
+      fi
       echo "kookaburra:run: stills → $OUT"
       [[ -f "$OUT" ]] || continue
       case "$OUT" in

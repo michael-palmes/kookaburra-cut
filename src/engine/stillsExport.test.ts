@@ -22,6 +22,7 @@ import {
   exportStills,
   type StillsExportResult,
   type StillsSettings,
+  verifyPassBSuffix,
   verifyStills,
 } from "./stillsExport";
 
@@ -173,6 +174,7 @@ const nativeResult = (pages: number, sha = "file") => ({
   bytes: 1234,
   sha256: sha,
   pageSha256: Array.from({ length: pages }, (_, i) => `page${i}`),
+  zipFolder: "demo-16x9",
 });
 
 let unsubscribe: (() => void)[] = [];
@@ -369,9 +371,18 @@ describe("verifyStills", () => {
     const v = await verifyStills(opts, png);
     expect(v.identical).toBe(true);
     expect(v.a.pagesHash).toBe(v.b.pagesHash);
-    expect(vi.mocked(invoke).mock.calls.filter(([c]) => c === "start_stills_export")).toHaveLength(
-      2,
-    );
+    const starts = vi
+      .mocked(invoke)
+      .mock.calls.filter(([c]) => c === "start_stills_export")
+      .map((call) => (call[1] as { options: Record<string, unknown> }).options);
+    expect(starts).toHaveLength(2);
+    expect(starts[0]).toMatchObject({ outputSuffix: null, zipFolder: null });
+    expect(starts[1]).toMatchObject({ outputSuffix: "b", zipFolder: "demo-16x9" });
+  });
+
+  it("suffixes pass B after any suffix the run already carries", () => {
+    expect(verifyPassBSuffix(undefined)).toBe("b");
+    expect(verifyPassBSuffix("custom")).toBe("custom-b");
   });
 });
 
