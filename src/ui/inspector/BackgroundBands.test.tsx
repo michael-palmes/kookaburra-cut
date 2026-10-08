@@ -1,7 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import {
-  BandedDrillBody,
   BgTypeStrip,
   LookBrowser,
   LookGroup,
@@ -13,6 +12,7 @@ import {
   SheetDivider,
   SheetRow,
   SheetSlider,
+  sheetOpenHeight,
   sheetPeek,
   stepDecimals,
 } from "./BackgroundBands";
@@ -63,15 +63,27 @@ describe("BgTypeStrip", () => {
     expect(none.match(/tabindex="0"/g)).toHaveLength(1);
     expect(none).toMatch(/aria-label="None" title="None" tabindex="0"/);
   });
+
+  it("points every tab at the panel it controls, only when given one", () => {
+    const linked = renderToStaticMarkup(
+      <BgTypeStrip
+        ariaLabel="Fill"
+        options={TYPES}
+        value="color"
+        onSelect={noop}
+        controls="bg-drill-panel"
+      />,
+    );
+    expect(linked.match(/aria-controls="bg-drill-panel"/g)).toHaveLength(3);
+
+    const bare = renderToStaticMarkup(
+      <BgTypeStrip ariaLabel="Fill" options={TYPES} value="color" onSelect={noop} />,
+    );
+    expect(bare).not.toContain("aria-controls");
+  });
 });
 
 describe("banded layout", () => {
-  it("marks the drill body as banded so each band owns its overflow", () => {
-    expect(renderToStaticMarkup(<BandedDrillBody>x</BandedDrillBody>)).toBe(
-      '<div class="inspector-drill-body banded">x</div>',
-    );
-  });
-
   it("renders the look browser as a labelled region of family groups", () => {
     const html = renderToStaticMarkup(
       <LookBrowser selectedId="b" ariaLabel="3D looks">
@@ -156,7 +168,7 @@ describe("OptionsSheet", () => {
     const html = sheet(false);
     const controls = html.match(/aria-controls="([^"]+)"/)?.[1];
 
-    expect(html).toMatch(/^<div class="bg-options-sheet">/);
+    expect(html).toMatch(/^<div class="bg-options-sheet"><button type="button"/);
     expect(html).toContain('class="bg-options-sheet-bar" aria-expanded="false"');
     expect(controls).toBeTruthy();
     expect(html).toContain(`<div id="${controls}" class="bg-options-sheet-body" inert="">`);
@@ -176,9 +188,27 @@ describe("OptionsSheet", () => {
 
   it("opens with the body reachable", () => {
     const html = sheet(true);
-    expect(html).toMatch(/^<div class="bg-options-sheet open">/);
+    expect(html).toMatch(/^<div class="bg-options-sheet open"><button type="button"/);
     expect(html).toContain('aria-expanded="true"');
+    expect(html).toMatch(
+      /<div id="[^"]+" class="bg-options-sheet-body"><span>body<\/span><\/div><\/div>$/,
+    );
     expect(html).not.toContain("inert");
+  });
+});
+
+describe("sheetOpenHeight", () => {
+  it("fills the room left after the fixed bands and the look browser's 120px", () => {
+    expect(sheetOpenHeight(400, 66)).toBe(214);
+    expect(sheetOpenHeight(400, 0)).toBe(280);
+  });
+
+  it("never drops below the 43px bar or grows past 480px", () => {
+    expect(sheetOpenHeight(100, 66)).toBe(43);
+    expect(sheetOpenHeight(229, 66)).toBe(43);
+    expect(sheetOpenHeight(230, 66)).toBe(44);
+    expect(sheetOpenHeight(666, 66)).toBe(480);
+    expect(sheetOpenHeight(1200, 66)).toBe(480);
   });
 });
 

@@ -2542,6 +2542,11 @@ button.beat-status {
   overflow: hidden;
 }
 
+/* Hover swaps an option card's still for its clip; a click whose press target was swapped out never fires in WebKit. */
+.theme-card-thumb > * {
+  pointer-events: none;
+}
+
 .theme-card-thumb img {
   width: 100%;
   height: 100%;
@@ -8556,7 +8561,8 @@ button.inspector-scene-overview-group-main:hover .inspector-scene-overview-group
   display: none;
 }
 
-.inspector-drill-header:has(.inspector-drill-header-action.confirming) .inspector-drill-destination {
+.inspector-drill-header:has(.inspector-drill-header-action.confirming)
+  .inspector-drill-destination {
   max-width: none;
 }
 
@@ -8574,7 +8580,6 @@ button.inspector-scene-overview-group-main:hover .inspector-scene-overview-group
 
 /* Banded drills (Background 3D and Animated): each band owns its overflow, the body none. */
 .inspector-drill-body.banded {
-  flex-direction: column;
   gap: 0;
   padding: 0;
   overflow: hidden;
@@ -10623,11 +10628,6 @@ textarea.text-inspector-copy-input {
   aspect-ratio: auto;
 }
 
-/* Hover swaps the still for its clip; a click whose press target was swapped out never fires in WebKit. */
-.theme-card.compact .theme-card-thumb > * {
-  pointer-events: none;
-}
-
 .theme-card.compact .theme-card-meta {
   display: block;
   padding: 0 2px 1px;
@@ -11024,7 +11024,25 @@ textarea.text-inspector-copy-input {
   border: none;
 }
 
+/* Before a look is applied: the stored fill's hint and toggles, pinned under the look browser. */
+.bg-browse-footer {
+  display: flex;
+  flex-direction: column;
+  flex: none;
+  gap: 2px;
+  padding: 8px 12px 10px;
+  background: var(--surface-panel-alt);
+}
+
+.bg-browse-footer-hint {
+  margin: 0 0 4px;
+  font-size: var(--text-xs);
+  line-height: 1.35;
+  color: var(--text-tertiary);
+}
+
 /* Compact toggles: the hover wash bleeds into the gutter so the icon lines up with the labels above. */
+.bg-browse-footer .toggle-row,
 .bg-options-sheet .toggle-row {
   flex: none;
   gap: 8px;
@@ -11034,15 +11052,18 @@ textarea.text-inspector-copy-input {
   padding: 0 6px;
 }
 
+.bg-browse-footer .toggle-row-icon,
 .bg-options-sheet .toggle-row-icon {
   align-self: center;
 }
 
+.bg-browse-footer .toggle-row-icon svg,
 .bg-options-sheet .toggle-row-icon svg {
   width: 16px;
   height: 16px;
 }
 
+.bg-browse-footer .toggle-row-label,
 .bg-options-sheet .toggle-row-label {
   font-size: var(--text-sm);
 }
@@ -11055,8 +11076,15 @@ textarea.text-inspector-copy-input {
   color: var(--text-tertiary);
 }
 
+.bg-browse-footer .wizard-presets,
 .bg-options-sheet .wizard-presets {
   padding-left: 24px;
+}
+
+.bg-staging-chip svg {
+  flex: none;
+  width: 13px;
+  height: 13px;
 }
 
 /* The body's 12px gap separates sections; rows inside one section sit 2px apart. */

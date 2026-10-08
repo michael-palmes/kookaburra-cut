@@ -1,8 +1,10 @@
 import { ask, open as openFolderPicker } from "@tauri-apps/plugin-dialog";
 import {
+  type ComponentProps,
   type ReactNode,
   useCallback,
   useEffect,
+  useId,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -418,7 +420,6 @@ import { useThemeCardMenu } from "../themeCardMenu";
 import { useEscapeClose } from "../useEscapeClose";
 import { useSceneDocPatch } from "../useSceneDocPatch";
 import {
-  BandedDrillBody,
   BgTypeStrip,
   LookBrowser,
   LookGroup,
@@ -432,6 +433,7 @@ import {
   SheetSlider,
   sheetPeek,
 } from "./BackgroundBands";
+import { presetStillApplied } from "./backgroundPresetMatch";
 import { CameraPresetRow } from "./CameraPresetRow";
 import { CameraRigFields, seedRig } from "./CameraRigFields";
 import { CompareSideSelector } from "./CompareSideSelector";
@@ -2290,23 +2292,10 @@ function BgTypeIcon({ id }: { id: string }) {
   }
 }
 
-/** Background drill option glyphs (staging forms, video Loop and Fit); same 20-viewBox stroke style as BgTypeIcon. */
-function BgOptionIcon({
-  id,
-  size = 17,
-}: {
-  id: "theme" | "floor" | "gradient" | "loop" | "fit";
-  size?: number;
-}) {
+/** Background drill glyphs with no counterpart in the fill-type or scene-row sets (staging floor, video Loop and Fit); same 20-viewBox stroke style. */
+function BgOptionIcon({ id }: { id: "floor" | "loop" | "fit" }) {
   const glyph = {
-    theme: <path d="M10 3s5 5.5 5 8.5a5 5 0 01-10 0C5 8.5 10 3 10 3z" />,
     floor: <path d="M4 3.5v7a5 5 0 0 0 5 5h7.5" />,
-    gradient: (
-      <>
-        <rect x="3.5" y="3.5" width="13" height="13" rx="2" />
-        <path d="M3.5 13L13 3.5M7 16.5L16.5 7" />
-      </>
-    ),
     loop: (
       <>
         <path d="M15.5 9A5.5 5.5 0 0 0 5.6 6.4" />
@@ -2324,8 +2313,8 @@ function BgOptionIcon({
   }[id];
   return (
     <svg
-      width={size}
-      height={size}
+      width="17"
+      height="17"
       viewBox="0 0 20 20"
       fill="none"
       stroke="currentColor"
@@ -2337,6 +2326,15 @@ function BgOptionIcon({
       {glyph}
     </svg>
   );
+}
+
+/** The Options sheet wired to its session state, so a toggle re-renders the sheet alone rather than all of SceneTab. */
+function BackgroundOptionsSheet(
+  props: Omit<ComponentProps<typeof OptionsSheet>, "open" | "onToggle">,
+) {
+  const open = useUiStore((s) => s.bgOptionsSheetOpen);
+  const setOpen = useUiStore((s) => s.setBgOptionsSheetOpen);
+  return <OptionsSheet {...props} open={open} onToggle={() => setOpen(!open)} />;
 }
 
 /** The Options sheet's backing chip: a flat backing, a gradient's first stop or an animated fill's first colour. */
@@ -2986,8 +2984,7 @@ export function SceneTab({
   const [bgHover, setBgHover] = useState<string | null>(null);
   /** Which 3D-backing editor is open when it doesn't match the stored backing type. */
   const [backingTabOverride, setBackingTabOverride] = useState<"gradient" | "shader" | null>(null);
-  const bgOptionsSheetOpen = useUiStore((s) => s.bgOptionsSheetOpen);
-  const setBgOptionsSheetOpen = useUiStore((s) => s.setBgOptionsSheetOpen);
+  const bgPanelId = useId();
   /** The mounted stage's resolved backdrop type; null when the scene mounts no SceneStage. */
   const stagedBackdrop = useSceneStageBackdrop(sceneIndex);
   /** The same per comparison host, so the Background drill reads the side it edits instead of Before's stage. */
@@ -5684,6 +5681,25 @@ export function SceneTab({
           ? [<PresetDivider key="divider" />, swatch(preset)]
           : [swatch(preset)],
       );
+    // A preset stays selected only while the scene still carries every value it stamped.
+    const appliedScene3dPreset =
+      scene3dSpec && scene3dDef && !scene3dSpec.themeColors
+        ? scene3dPresetList.find(
+            (p) =>
+              p.id === scene3dSpec.preset && presetStillApplied(scene3dSpec, p, scene3dDef.params),
+          )
+        : undefined;
+    const appliedShaderPreset =
+      shaderSpec &&
+      shaderDef &&
+      !shaderSpec.themeColors &&
+      selectedShaderPreset &&
+      presetStillApplied(shaderSpec, selectedShaderPreset, shaderDef.params)
+        ? selectedShaderPreset
+        : undefined;
+    const defaultHint = editingAfter
+      ? "Following the before side. Pick a fill type to give the after side its own."
+      : "Following the theme's background. Pick a fill type to override it for this scene.";
     const driftToggle = (compact: boolean) => (
       <ToggleRow
         icon={<SceneRowIcon id="camera.animate" />}
@@ -5755,13 +5771,15 @@ export function SceneTab({
                 const chips: {
                   id: "theme" | "floor" | "gradient";
                   label: string;
+                  icon: ReactNode;
                   disabled?: boolean;
                 }[] = [
-                  { id: "theme", label: "Theme default" },
-                  { id: "floor", label: "Floor" },
+                  { id: "theme", label: "Theme default", icon: <SceneRowIcon id="style.theme" /> },
+                  { id: "floor", label: "Floor", icon: <BgOptionIcon id="floor" /> },
                   {
                     id: "gradient",
                     label: "Gradient",
+                    icon: <BgTypeIcon id="gradient" />,
                     disabled: !gradientSource && !themeGradient,
                   },
                 ];
@@ -5769,7 +5787,7 @@ export function SceneTab({
                   <button
                     type="button"
                     key={chip.id}
-                    className={`chip chip-with-icon${form === chip.id ? " selected" : ""}`}
+                    className={`chip chip-with-icon bg-staging-chip${form === chip.id ? " selected" : ""}`}
                     disabled={chip.disabled}
                     onClick={() => {
                       void patchBgDoc((next) => {
@@ -5786,7 +5804,7 @@ export function SceneTab({
                       });
                     }}
                   >
-                    <BgOptionIcon id={chip.id} size={13} />
+                    {chip.icon}
                     {chip.label}
                   </button>
                 ));
@@ -5795,6 +5813,14 @@ export function SceneTab({
           )}
         </>
       );
+    // Before a look is applied the sheet has nothing to edit; the stored fill's own toggles stay reachable here.
+    const browseFooter = (
+      <div className="bg-browse-footer">
+        {docTab === "default" && <p className="bg-browse-footer-hint">{defaultHint}</p>}
+        {driftToggle(true)}
+        {stagingToggle(true)}
+      </div>
+    );
     return (
       <div className="inspector-drill">
         <DrillBack
@@ -5860,12 +5886,19 @@ export function SceneTab({
         )}
         <BgTypeStrip
           ariaLabel="Background fill type"
+          controls={bgPanelId}
           value={bgTab === "default" ? null : bgTab}
           options={types.map((t) => ({ ...t, icon: <BgTypeIcon id={t.id} /> }))}
           onSelect={selectType}
         />
         {bgTab === "scene3d" ? (
-          <BandedDrillBody key="scene3d">
+          <div
+            key="scene3d"
+            id={bgPanelId}
+            role="tabpanel"
+            aria-label="Fill options"
+            className="inspector-drill-body banded"
+          >
             <LookBrowser selectedId={scene3dSpec?.look} ariaLabel="3D looks">
               {SCENE3D_FAMILY_GROUPS.map((group) => (
                 <LookGroup key={group.family} name={group.name}>
@@ -5916,15 +5949,13 @@ export function SceneTab({
                 </LookGroup>
               ))}
             </LookBrowser>
+            {!(scene3dSpec && scene3dDef) && browseFooter}
             {scene3dSpec && scene3dDef && (
               <>
                 {orderedScene3dPresets.length > 0 && (
                   <PresetStrip
                     selectedName={
-                      scene3dSpec.themeColors
-                        ? "Theme"
-                        : (scene3dPresetList.find((p) => p.id === scene3dSpec.preset)?.name ??
-                          "Custom")
+                      scene3dSpec.themeColors ? "Theme" : (appliedScene3dPreset?.name ?? "Custom")
                     }
                   >
                     <PresetSwatch
@@ -5939,15 +5970,13 @@ export function SceneTab({
                         name={preset.name}
                         image={optionPreviewStill(`bgp-${scene3dSpec.look}-${preset.id}`)}
                         fallback={preset.backing}
-                        selected={scene3dSpec.preset === preset.id}
+                        selected={appliedScene3dPreset?.id === preset.id}
                         onSelect={() => applyScene3dPreset(preset)}
                       />
                     ))}
                   </PresetStrip>
                 )}
-                <OptionsSheet
-                  open={bgOptionsSheetOpen}
-                  onToggle={() => setBgOptionsSheetOpen(!bgOptionsSheetOpen)}
+                <BackgroundOptionsSheet
                   peek={sheetPeek({
                     backing: backingOptions.find((o) => o.value === storedBackingTab)?.label,
                     speed: scene3dSpec.speed ?? 1,
@@ -6151,12 +6180,18 @@ export function SceneTab({
                     </>
                   )}
                   {stagingToggle(true)}
-                </OptionsSheet>
+                </BackgroundOptionsSheet>
               </>
             )}
-          </BandedDrillBody>
+          </div>
         ) : bgTab === "shader" ? (
-          <BandedDrillBody key="shader">
+          <div
+            key="shader"
+            id={bgPanelId}
+            role="tabpanel"
+            aria-label="Fill options"
+            className="inspector-drill-body banded"
+          >
             <LookBrowser selectedId={shaderSpec?.shader} ariaLabel="Animated fills">
               <LookGroup>
                 {SHADER_BACKGROUND_IDS.map((id) => {
@@ -6206,12 +6241,13 @@ export function SceneTab({
                 })}
               </LookGroup>
             </LookBrowser>
+            {!(shaderSpec && shaderDef) && browseFooter}
             {shaderSpec && shaderDef && (
               <>
                 {orderedShaderPresets.length > 0 && (
                   <PresetStrip
                     selectedName={
-                      shaderSpec.themeColors ? "Theme" : (selectedShaderPreset?.name ?? "Custom")
+                      shaderSpec.themeColors ? "Theme" : (appliedShaderPreset?.name ?? "Custom")
                     }
                   >
                     <PresetSwatch
@@ -6226,15 +6262,13 @@ export function SceneTab({
                         name={preset.name}
                         image={optionPreviewStill(`bgp-${shaderSpec.shader}-${preset.id}`)}
                         fallback={preset.colors[0]}
-                        selected={shaderSpec.preset === preset.id}
+                        selected={appliedShaderPreset?.id === preset.id}
                         onSelect={() => applyShaderPreset(preset)}
                       />
                     ))}
                   </PresetStrip>
                 )}
-                <OptionsSheet
-                  open={bgOptionsSheetOpen}
-                  onToggle={() => setBgOptionsSheetOpen(!bgOptionsSheetOpen)}
+                <BackgroundOptionsSheet
                   peek={sheetPeek({
                     speed: shaderSpec.speed ?? 1,
                     zoom: shaderSpec.scale ?? 1,
@@ -6327,19 +6361,18 @@ export function SceneTab({
                   <SheetDivider />
                   {driftToggle(true)}
                   {stagingToggle(true)}
-                </OptionsSheet>
+                </BackgroundOptionsSheet>
               </>
             )}
-          </BandedDrillBody>
+          </div>
         ) : (
-          <div className="inspector-drill-body">
-            {docTab === "default" && (
-              <p className="modal-hint">
-                {editingAfter
-                  ? "Following the before side. Pick a fill type to give the after side its own."
-                  : "Following the theme's background. Pick a fill type to override it for this scene."}
-              </p>
-            )}
+          <div
+            id={bgPanelId}
+            role="tabpanel"
+            aria-label="Fill options"
+            className="inspector-drill-body"
+          >
+            {docTab === "default" && <p className="modal-hint">{defaultHint}</p>}
             {bgTab === "color" && bgActive?.type === "color" && (
               <div className="popover-row">
                 <span className="popover-inline slider-row-label">Colour</span>

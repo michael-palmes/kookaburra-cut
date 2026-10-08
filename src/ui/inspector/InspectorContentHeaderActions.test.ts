@@ -91,8 +91,9 @@ describe("background drill header actions and bands", () => {
   });
 
   it("keeps the Options sheet in session-only ui state, shared by 3D and Animated", () => {
-    expect(sceneTabSource).toContain("useUiStore((s) => s.bgOptionsSheetOpen)");
-    expect(background.match(/open=\{bgOptionsSheetOpen\}/g)).toHaveLength(2);
+    expect(sceneTabSource).toContain("const open = useUiStore((s) => s.bgOptionsSheetOpen);");
+    expect(background.match(/<BackgroundOptionsSheet\b/g)).toHaveLength(2);
+    expect(background).not.toContain("bgOptionsSheetOpen");
     expect(background).not.toContain("localStorage");
   });
 
@@ -101,13 +102,24 @@ describe("background drill header actions and bands", () => {
     expect(scene3dBand).not.toContain("driftToggle(");
   });
 
+  it("keeps the stored fill's toggles reachable before a look is applied", () => {
+    expect(background).toContain("{!(scene3dSpec && scene3dDef) && browseFooter}");
+    expect(background).toContain("{!(shaderSpec && shaderDef) && browseFooter}");
+  });
+
+  it("selects a preset only while the scene still carries its values", () => {
+    expect(background).toContain("selected={appliedScene3dPreset?.id === preset.id}");
+    expect(background).toContain("selected={appliedShaderPreset?.id === preset.id}");
+  });
+
   it("never writes the backing from arrow keys alone", () => {
     expect(scene3dBand).toMatch(/ariaLabel="Backing type"\s+focusOnlyKeys/);
   });
 
   it("gives each banded body its own scroll state and disarms Apply-all on leaving the drill", () => {
-    expect(background).toContain('<BandedDrillBody key="scene3d">');
-    expect(background).toContain('<BandedDrillBody key="shader">');
+    expect(background).toMatch(/key="scene3d"\s+id=\{bgPanelId\}\s+role="tabpanel"/);
+    expect(background).toMatch(/key="shader"\s+id=\{bgPanelId\}\s+role="tabpanel"/);
+    expect(background).toContain("controls={bgPanelId}");
     expect(sceneTabSource).toContain(
       "useEffect(() => setConfirmApplyAll(false), [sceneIndex, drillIn]);",
     );

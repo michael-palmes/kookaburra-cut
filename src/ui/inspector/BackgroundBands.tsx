@@ -22,12 +22,14 @@ export function BgTypeStrip<T extends string>({
   value,
   onSelect,
   ariaLabel,
+  controls,
 }: {
   options: readonly BgTypeStripOption<T>[];
   /** null: nothing selected (the side follows its theme or Before). */
   value: T | null;
   onSelect: (id: T) => void;
   ariaLabel: string;
+  controls?: string;
 }) {
   const [focused, setFocused] = useState<T | null>(null);
   const keyOptions = options.map((o) => ({ value: o.id, label: o.label }));
@@ -42,6 +44,7 @@ export function BgTypeStrip<T extends string>({
           role="tab"
           className={`bg-type-strip-tab${value === o.id ? " selected" : ""}`}
           aria-selected={value === o.id}
+          aria-controls={controls}
           aria-label={o.label}
           title={o.label}
           tabIndex={o.id === tabStop ? 0 : -1}
@@ -69,12 +72,34 @@ export function BgTypeStrip<T extends string>({
   );
 }
 
-/** The banded drill body: owns no scroll itself, each band below scrolls on its own. */
-export function BandedDrillBody({ children }: { children: ReactNode }) {
-  return <div className="inspector-drill-body banded">{children}</div>;
+interface SelectedTile {
+  tile: HTMLElement;
+  headerHeight: number;
 }
 
-/** The look browser band: takes the remaining height and scrolls; keeps the selected tile (`[aria-pressed="true"]`) in view when `selectedId` changes, without scrollIntoView. */
+function selectedTile(region: HTMLElement): SelectedTile | null {
+  const tile = region.querySelector<HTMLElement>('[aria-pressed="true"]');
+  if (!tile || tile.offsetParent !== region) return null;
+  const header = tile
+    .closest(".bg-look-group")
+    ?.querySelector<HTMLElement>(".bg-look-group-header");
+  return { tile, headerHeight: header?.offsetHeight ?? 0 };
+}
+
+function tileVisible(region: HTMLElement, selected: SelectedTile | null): boolean {
+  if (!selected) return false;
+  const top = selected.tile.offsetTop;
+  return (
+    top >= region.scrollTop + selected.headerHeight &&
+    top + selected.tile.offsetHeight <= region.scrollTop + region.clientHeight
+  );
+}
+
+function revealTile(region: HTMLElement, selected: SelectedTile) {
+  region.scrollTop = Math.max(0, selected.tile.offsetTop - selected.headerHeight);
+}
+
+/** Keeps the selected tile in view on selection and when the band shrinks under it (never after the user scrolled it away), by scrollTop alone, never scrollIntoView. */
 export function LookBrowser({
   selectedId,
   ariaLabel,
@@ -85,31 +110,43 @@ export function LookBrowser({
   children: ReactNode;
 }) {
   const ref = useRef<HTMLElement>(null);
+  const wasVisible = useRef(false);
   useLayoutEffect(() => {
     const region = ref.current;
-    if (!region || selectedId === undefined) return;
-    const tile = region.querySelector<HTMLElement>('[aria-pressed="true"]');
-    if (!tile || tile.offsetParent !== region) return;
-    const header = tile
-      .closest(".bg-look-group")
-      ?.querySelector<HTMLElement>(".bg-look-group-header");
-    const inset = header?.offsetHeight ?? 0;
-    const top = tile.offsetTop;
-    if (
-      top < region.scrollTop + inset ||
-      top + tile.offsetHeight > region.scrollTop + region.clientHeight
-    ) {
-      region.scrollTop = Math.max(0, top - inset);
-    }
+    if (!region) return;
+    const selected = selectedId === undefined ? null : selectedTile(region);
+    if (selected && !tileVisible(region, selected)) revealTile(region, selected);
+    wasVisible.current = tileVisible(region, selected);
   }, [selectedId]);
+  useLayoutEffect(() => {
+    const region = ref.current;
+    if (!region || typeof ResizeObserver === "undefined") return;
+    let lastHeight = region.clientHeight;
+    const observer = new ResizeObserver(() => {
+      const shrank = region.clientHeight < lastHeight;
+      lastHeight = region.clientHeight;
+      const selected = selectedTile(region);
+      if (shrank && wasVisible.current && selected && !tileVisible(region, selected))
+        revealTile(region, selected);
+      wasVisible.current = tileVisible(region, selected);
+    });
+    observer.observe(region);
+    return () => observer.disconnect();
+  }, []);
   return (
-    <section ref={ref} className="bg-look-browser" aria-label={ariaLabel}>
+    <section
+      ref={ref}
+      className="bg-look-browser"
+      aria-label={ariaLabel}
+      onScroll={(event) => {
+        wasVisible.current = tileVisible(event.currentTarget, selectedTile(event.currentTarget));
+      }}
+    >
       {children}
     </section>
   );
 }
 
-/** One family in the look browser: a sticky header (omitted when `name` is) over a three-across grid of compact OptionCards. */
 export function LookGroup({ name, children }: { name?: string; children: ReactNode }) {
   return (
     <div className="bg-look-group">
@@ -119,7 +156,6 @@ export function LookGroup({ name, children }: { name?: string; children: ReactNo
   );
 }
 
-/** The always-visible presets band: header row (PRESETS left, the selected name right) over one row of swatches. */
 export function PresetStrip({
   selectedName,
   children,
@@ -142,7 +178,7 @@ export function PresetStrip({
   );
 }
 
-/** One 22px preset swatch: the still cover-cropped (a CSS background, never an <img> in a <button>), `fallback` fills when there is no still. */
+/** The still is a cover-cropped CSS background, never an <img> in the <button>. */
 export function PresetSwatch({
   name,
   image,
@@ -169,12 +205,31 @@ export function PresetSwatch({
   );
 }
 
-/** The 1x18px rule between the theme-mode presets and the other mode's. */
 export function PresetDivider() {
   return <span className="bg-preset-divider" aria-hidden="true" />;
 }
 
-/** The Options sheet pinned under the presets: a summary bar (chevron, Options, live peek text, up to three colour chips) that expands the body upward. The body is inert while collapsed. */
+const SHEET_BAR_HEIGHT = 43;
+const SHEET_FULL_HEIGHT = 480;
+const LOOK_BROWSER_MIN_HEIGHT = 120;
+
+export function sheetOpenHeight(parentHeight: number, fixedHeight: number): number {
+  const room = parentHeight - fixedHeight - LOOK_BROWSER_MIN_HEIGHT;
+  return Math.max(SHEET_BAR_HEIGHT, Math.min(SHEET_FULL_HEIGHT, room));
+}
+
+function measureSheetOpenHeight(sheet: HTMLElement): number | null {
+  const parent = sheet.parentElement;
+  if (!parent) return null;
+  let fixed = 0;
+  for (const child of parent.children) {
+    if (child !== sheet && !child.classList.contains("bg-look-browser"))
+      fixed += (child as HTMLElement).offsetHeight;
+  }
+  return sheetOpenHeight(parent.clientHeight, fixed);
+}
+
+/** Animates to the measured room rather than a max-height-clamped 480px, so closing on a short panel never stalls. */
 export function OptionsSheet({
   open,
   onToggle,
@@ -185,14 +240,35 @@ export function OptionsSheet({
   open: boolean;
   onToggle: () => void;
   peek: string;
-  /** Up to three hex colours shown as 14px chips on the bar. */
   chips: readonly string[];
   children: ReactNode;
 }) {
   const bodyId = useId();
+  const ref = useRef<HTMLDivElement>(null);
+  const [openHeight, setOpenHeight] = useState<number | null>(null);
+  // Every commit, since the fixed bands beside the sheet come and go with the selection.
+  useLayoutEffect(() => {
+    if (ref.current) setOpenHeight(measureSheetOpenHeight(ref.current));
+  });
+  useLayoutEffect(() => {
+    const sheet = ref.current;
+    const parent = sheet?.parentElement;
+    if (!sheet || !parent || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => setOpenHeight(measureSheetOpenHeight(sheet)));
+    observer.observe(parent);
+    return () => observer.disconnect();
+  }, []);
   const shown = chips.slice(0, 3);
   return (
-    <div className={`bg-options-sheet${open ? " open" : ""}`}>
+    <div
+      ref={ref}
+      className={`bg-options-sheet${open ? " open" : ""}`}
+      style={
+        openHeight === null
+          ? undefined
+          : { height: open ? openHeight : undefined, maxHeight: openHeight }
+      }
+    >
       <button
         type="button"
         className="bg-options-sheet-bar"
@@ -232,7 +308,6 @@ export function OptionsSheet({
   );
 }
 
-/** A labelled sheet row: grid `76px 1fr` (plus a 22px trailing column when `trailing` is given, e.g. the backing swatch). */
 export function SheetRow({
   label,
   trailing,
@@ -251,7 +326,6 @@ export function SheetRow({
   );
 }
 
-/** The Colours block: label left, then each slot (a ColourPicker plus its name) two per row in the same columns. */
 export function SheetColours({
   slots,
 }: {
@@ -270,7 +344,6 @@ export function SheetColours({
   );
 }
 
-/** One motion slider row: label, DebouncedRange track and a mono value spelled at the step's precision. */
 export function SheetSlider({
   label,
   ariaLabel,
@@ -281,7 +354,6 @@ export function SheetSlider({
   onCommit,
 }: {
   label: string;
-  /** The range's accessible name; defaults to `label`. */
   ariaLabel?: string;
   value: number;
   min: number;
@@ -320,7 +392,6 @@ export function SheetSlider({
   );
 }
 
-/** The 1px rule between sheet sections. */
 export function SheetDivider() {
   return <hr className="bg-sheet-divider" />;
 }
@@ -338,13 +409,12 @@ export function stepDecimals(step: number): number {
   return MAX_STEP_DECIMALS;
 }
 
-/** The bar's peek text: `{backing} · Speed 1.00 · {param label} {value} · Staging on|off`, each part omitted when absent (`staging: null` = no stage to stage). */
 export function sheetPeek(parts: {
   backing?: string;
   speed: number;
-  /** A second leading figure (Animated's Zoom) placed before the first param. */
   zoom?: number;
   param?: { label: string; value: number; step: number };
+  /** null: the fill has no stage, so the part is dropped. */
   staging: boolean | null;
 }): string {
   const out: string[] = [];
