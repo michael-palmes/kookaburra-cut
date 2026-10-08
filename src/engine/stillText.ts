@@ -184,28 +184,36 @@ export function projectLineBox(
 
 const near = (a: number, b: number) => Math.abs(a - b) < DEDUPE_EPS;
 
-/** Drops repeats of the same text over the same box (chromatic echo meshes), then orders top to bottom, left to right. */
-export function finishTextItems(items: readonly StillTextItem[]): StillTextItem[] {
+const byPosition = (a: StillTextItem, b: StillTextItem) =>
+  Math.round(a.y * 1000) - Math.round(b.y * 1000) || a.x - b.x;
+
+/** Drops repeats of the same text over the same box (chromatic echo meshes), then keeps each root's lines together in root order, top to bottom and left to right within a root, so a stream-order reader meets a cutout's content before the panel beside it. */
+export function finishTextItems(groups: readonly (readonly StillTextItem[])[]): StillTextItem[] {
   const out: StillTextItem[] = [];
-  for (const item of items) {
-    const echo = out.some(
-      (o) =>
-        o.text === item.text &&
-        near(o.x, item.x) &&
-        near(o.y, item.y) &&
-        near(o.w, item.w) &&
-        near(o.h, item.h),
-    );
-    if (!echo) out.push(item);
+  for (const group of groups) {
+    const start = out.length;
+    for (const item of group) {
+      const echo = out.some(
+        (o) =>
+          o.text === item.text &&
+          near(o.x, item.x) &&
+          near(o.y, item.y) &&
+          near(o.w, item.w) &&
+          near(o.h, item.h),
+      );
+      if (!echo) out.push(item);
+    }
+    for (const item of out.splice(start).sort(byPosition)) out.push(item);
   }
-  out.sort((a, b) => Math.round(a.y * 1000) - Math.round(b.y * 1000) || a.x - b.x);
   return out.slice(0, MAX_ITEMS);
 }
 
-/** Every visible troika line under `roots`, projected and finished. */
+/** Every visible troika line under `roots`, projected and finished, in root order. */
 export function collectPageText(roots: readonly TextRoot[], layers: Layers): StillTextItem[] {
-  const items: StillTextItem[] = [];
+  const groups: StillTextItem[][] = [];
   for (const { root, rootVisibility, camera, viewport } of roots) {
+    const items: StillTextItem[] = [];
+    groups.push(items);
     root.traverse((obj) => {
       if (!isTroikaText(obj)) return;
       if (!visibleUpTo(obj, root, rootVisibility) || !obj.layers.test(layers)) return;
@@ -225,7 +233,7 @@ export function collectPageText(roots: readonly TextRoot[], layers: Layers): Sti
       }
     });
   }
-  return finishTextItems(items);
+  return finishTextItems(groups);
 }
 
 /** The scene's registered strings when no line could be placed: searchable, unpositioned. */

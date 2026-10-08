@@ -195,12 +195,33 @@ describe("collectPageText", () => {
     );
     expect(items.map((i) => i.text)).toEqual(["Title", "Body", "Body right"]);
   });
+
+  it("reads the host's lines before the panel's, whatever their height", () => {
+    const host = root([textMesh("Caption", carets("Caption", -6, -3, -2))]);
+    const panel = root([
+      textMesh("Bullet", carets("Bullet", 1, -2.5, -1.5)),
+      textMesh("Heading", carets("Heading", 1, 2, 3)),
+    ]);
+    const items = collectPageText([...roots(host), ...roots(panel)], new Layers());
+    expect(items.map((i) => i.text)).toEqual(["Caption", "Heading", "Bullet"]);
+  });
 });
 
 describe("finishTextItems and fallbackPageText", () => {
   it("keeps the same text at different places", () => {
     const a = { text: "Same", x: 0.1, y: 0.1, w: 0.1, h: 0.05 };
-    expect(finishTextItems([a, { ...a, y: 0.5 }])).toHaveLength(2);
+    expect(finishTextItems([[a, { ...a, y: 0.5 }]])).toHaveLength(2);
+  });
+
+  it("keeps each root's lines together in root order and drops echoes across roots", () => {
+    const caption = { text: "Caption", x: 0.1, y: 0.8, w: 0.2, h: 0.05 };
+    const bullet = { text: "Bullet", x: 0.6, y: 0.75, w: 0.2, h: 0.05 };
+    const title = { text: "Title", x: 0.6, y: 0.1, w: 0.3, h: 0.1 };
+    expect(finishTextItems([[caption], [bullet, title, { ...caption }]])).toEqual([
+      caption,
+      title,
+      bullet,
+    ]);
   });
 
   it("lists registered strings unpositioned, line by line, once each", () => {
