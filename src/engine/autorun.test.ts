@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn(), Channel: class {} }));
 
@@ -27,6 +27,11 @@ async function configFor(overrides: Record<string, string | null>) {
   await autorun.initAutoRunConfig();
   return () => autorun.getAutoRunConfig();
 }
+
+// Transform the module graph once outside the 5 s test timeout, which a cold transform under load can exceed.
+beforeAll(async () => {
+  await import("./autorun");
+}, 30_000);
 
 beforeEach(() => {
   vi.mocked(invoke).mockReset();
