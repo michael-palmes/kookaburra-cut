@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 // The pipeline's two native commands, scripted per test: hash_file serves the current sha per path (throws when absent, a deleted file), extract_clip_frames stubs a sequence keyed by that sha.
 const shas = new Map<string, string>();
@@ -28,6 +28,11 @@ async function freshClips() {
   vi.resetModules();
   return await import("./clips");
 }
+
+// Transform the module graph once outside the 5 s test timeout, which a cold transform under load can exceed.
+beforeAll(async () => {
+  await import("./clips");
+}, 30_000);
 
 beforeEach(() => {
   shas.clear();
