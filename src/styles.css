@@ -8556,6 +8556,10 @@ button.inspector-scene-overview-group-main:hover .inspector-scene-overview-group
   display: none;
 }
 
+.inspector-drill-header:has(.inspector-drill-header-action.confirming) .inspector-drill-destination {
+  max-width: none;
+}
+
 .inspector-drill-body {
   display: flex;
   flex-direction: column;
