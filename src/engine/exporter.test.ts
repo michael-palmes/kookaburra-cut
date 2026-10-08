@@ -3,7 +3,8 @@ import { PerspectiveCamera, Scene } from "three";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useClockStore } from "./clock";
 import { canvasHandle, trackContextLosses } from "./exportBridge";
-import { captureFrameRgba, type ExportOptions, exportProject } from "./exporter";
+import { captureFrameRgba, type ExportOptions, exportProject, verifyAllFormats } from "./exporter";
+import { isExporting } from "./exportState";
 import { FORMATS } from "./format";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn(), Channel: class {} }));
@@ -192,5 +193,64 @@ describe("export readback guard", () => {
     mountCanvas();
     const shot = await captureFrameRgba(opts, 0);
     expect(Array.from(shot.rgba)).toEqual(Array.from(drawn(0)));
+  });
+});
+
+describe("export cancel", () => {
+  it("stops between frames, cancels the encoder and releases the export hold", async () => {
+    mountCanvas();
+    const abort = new AbortController();
+    onPush = () => {
+      if (pushed.length === 1) abort.abort();
+    };
+    await expect(exportProject({ ...opts, signal: abort.signal })).rejects.toMatchObject({
+      name: "AbortError",
+    });
+    expect(pushed).toHaveLength(1);
+    expect(called("cancel_export")).toBe(true);
+    expect(called("finish_export")).toBe(false);
+    expect(isExporting()).toBe(false);
+  });
+
+  it("never starts the encoder once already cancelled", async () => {
+    mountCanvas();
+    const abort = new AbortController();
+    abort.abort();
+    await expect(exportProject({ ...opts, signal: abort.signal })).rejects.toMatchObject({
+      name: "AbortError",
+    });
+    expect(called("start_export")).toBe(false);
+  });
+
+  it("kills the native encode when the cancel lands while it finalises", async () => {
+    mountCanvas();
+    const abort = new AbortController();
+    let rejectFinish: (e: Error) => void = () => {};
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      if (cmd === "finish_export") {
+        return new Promise((_, reject) => {
+          rejectFinish = reject;
+          abort.abort();
+        });
+      }
+      if (cmd === "cancel_export") rejectFinish(new Error("Export cancelled."));
+      return undefined;
+    });
+    await expect(exportProject({ ...opts, signal: abort.signal })).rejects.toThrow(
+      "Export cancelled.",
+    );
+    expect(called("cancel_export")).toBe(true);
+  });
+
+  it("runs no further verify legs after a cancel", async () => {
+    mountCanvas();
+    const abort = new AbortController();
+    onPush = () => abort.abort();
+    const commitFormat = vi.fn(async () => {});
+    const { format: _, ...base } = opts;
+    await expect(
+      verifyAllFormats({ ...base, signal: abort.signal }, [format, format], commitFormat),
+    ).rejects.toMatchObject({ name: "AbortError" });
+    expect(commitFormat).toHaveBeenCalledTimes(1);
   });
 });

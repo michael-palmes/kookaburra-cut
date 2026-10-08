@@ -208,6 +208,7 @@ import {
   ExportIcon,
   PaletteTrigger,
   PresentIcon,
+  StopIcon,
   Titlebar,
   TitlebarIdentity,
   TitlebarProjects,
@@ -268,7 +269,7 @@ function StageLoadingOverlay({
 }
 
 /** A transient export/verify notification. `path` (success exports) enables Show in Finder. */
-type Toast = { kind: "success" | "error"; message: string; path?: string };
+type Toast = { kind: "success" | "info" | "error"; message: string; path?: string };
 
 const TOAST_AUTO_CLOSE_MS = 4000;
 
@@ -310,10 +311,13 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
   const [progress, setProgress] = useState<ExportProgress | null>(null);
+  // The running export's or verify's abort switch; the titlebar Cancel trips it.
+  const exportAbortRef = useRef<AbortController | null>(null);
+  const [cancelling, setCancelling] = useState(false);
   const [toast, setToast] = useState<Toast | null>(null);
   // Plain confirmations self-dismiss (the corner-toast design); errors and toasts carrying a Show-in-Finder action wait for the user, and a new toast restarts the clock.
   useEffect(() => {
-    if (toast?.kind !== "success" || toast.path) return;
+    if (!toast || toast.kind === "error" || toast.path) return;
     const t = window.setTimeout(() => setToast(null), TOAST_AUTO_CLOSE_MS);
     return () => window.clearTimeout(t);
   }, [toast]);
@@ -2097,6 +2101,8 @@ export default function App() {
     setProgress(null);
     setExportPrepStep(0);
     setToast(null);
+    const abort = new AbortController();
+    exportAbortRef.current = abort;
     try {
       const targetFormat = FORMATS[sel.aspect];
       await commitFormat(targetFormat);
@@ -2125,6 +2131,7 @@ export default function App() {
           encode: sel.encode,
           outputSuffix: sel.outputSuffix,
           destination: toDownloads ? "downloads" : undefined,
+          signal: abort.signal,
         },
         (p) => {
           setExportPrepStep(null); // first frame progress: the preamble is done, hand off to the % counter
@@ -2146,8 +2153,14 @@ export default function App() {
       // Refresh the welcome-card snapshot with the just-exported look.
       if (isWorkspaceBackedProjectId(project.id)) void captureSnapshot(project);
     } catch (e) {
-      setToast({ kind: "error", message: `Export failed: ${String(e)}` });
+      setToast(
+        abort.signal.aborted
+          ? { kind: "info", message: "Export cancelled. Nothing was saved." }
+          : { kind: "error", message: `Export failed: ${String(e)}` },
+      );
     } finally {
+      exportAbortRef.current = null;
+      setCancelling(false);
       setExporting(false);
       setProgress(null);
       setExportPrepStep(null);
@@ -2160,6 +2173,8 @@ export default function App() {
     setProgress(null);
     setToast(null);
     const startingFormat = useEditorStore.getState().format;
+    const abort = new AbortController();
+    exportAbortRef.current = abort;
     try {
       // Determinism gate: Verify ×2 for every standing aspect, pinned to libx264 (the frozen path; presets never change it, ProRes legs ride kookaburra:run --codec).
       const results = await verifyAllFormats(
@@ -2178,6 +2193,7 @@ export default function App() {
           compareBThemes: project.compareBThemes,
           audio: project.audio,
           codec: "libx264",
+          signal: abort.signal,
         },
         STANDING_ASPECTS.map((a) => FORMATS[a]),
         commitFormat,
@@ -2191,8 +2207,14 @@ export default function App() {
       });
       void invoke("notify_export_done"); // long run either way, bounce if unfocused
     } catch (e) {
-      setToast({ kind: "error", message: `Verify failed: ${String(e)}` });
+      setToast(
+        abort.signal.aborted
+          ? { kind: "info", message: "Verify cancelled." }
+          : { kind: "error", message: `Verify failed: ${String(e)}` },
+      );
     } finally {
+      exportAbortRef.current = null;
+      setCancelling(false);
       setExporting(false);
       setProgress(null);
       // The legs cycled the editor's aspect; hand back the one the user was working in.
@@ -2200,7 +2222,20 @@ export default function App() {
     }
   }
 
+  function cancelExport() {
+    if (!exportAbortRef.current || cancelling) return;
+    setCancelling(true);
+    exportAbortRef.current.abort();
+  }
+
   const pct = progress ? Math.round((progress.frame / progress.total) * 100) : 0;
+  // Figure-space padding (U+2007 = one tabular-digit width) keeps the label the same width from "  1%" to "100%", no mid-export jitter.
+  const exportLabel =
+    progress?.stage === "pass1"
+      ? "Encoding 1/2…"
+      : progress?.stage === "pass2"
+        ? "Encoding 2/2…"
+        : `Exporting… ${String(pct).padStart(3, " ")}%`;
 
   // Fixed-width seconds readout: pad to the duration's width so digit count never changes, paired with tabular-nums (CSS) so the scrubber track never jitters.
   const durationSec = (durationMs / 1000).toFixed(2);
@@ -2238,16 +2273,30 @@ export default function App() {
           <>
             <PaletteTrigger onOpen={() => useUiStore.getState().togglePalette()} />
             <span className="titlebar-divider" aria-hidden />
-            <button
-              type="button"
-              className="btn titlebar-present"
-              title="Play this project live: click-through slideshow or video, windowed or fullscreen"
-              onClick={() => setShowPresent(true)}
-              disabled={!project || exporting}
-            >
-              <PresentIcon />
-              Present
-            </button>
+            {exporting ? (
+              <button
+                type="button"
+                className="btn titlebar-cancel"
+                title="Stop this run; nothing is saved"
+                onClick={cancelExport}
+                disabled={cancelling}
+                aria-busy={cancelling}
+              >
+                {cancelling ? <span className="button-spinner" aria-hidden="true" /> : <StopIcon />}
+                {cancelling ? "Cancelling…" : "Cancel"}
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="btn titlebar-present"
+                title="Play this project live: click-through slideshow or video, windowed or fullscreen"
+                onClick={() => setShowPresent(true)}
+                disabled={!project}
+              >
+                <PresentIcon />
+                Present
+              </button>
+            )}
             <button
               type="button"
               className="btn primary titlebar-export"
@@ -2255,8 +2304,7 @@ export default function App() {
               disabled={!project || exporting}
             >
               <ExportIcon />
-              {/* Figure-space padding (U+2007 = one tabular-digit width) keeps the label the same width from "  1%" to "100%", no mid-export jitter. */}
-              {exporting ? `Exporting… ${String(pct).padStart(3, " ")}%` : "Export"}
+              {exporting ? exportLabel : "Export"}
             </button>
           </>
         )}

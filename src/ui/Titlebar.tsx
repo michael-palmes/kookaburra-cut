@@ -100,6 +100,25 @@ export function ExportIcon() {
   );
 }
 
+/** A rounded stop square, the Cancel control that takes Present's slot while an export runs. */
+export function StopIcon() {
+  return (
+    <svg
+      width="15"
+      height="15"
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <rect x="5" y="5" width="10" height="10" rx="2" />
+    </svg>
+  );
+}
+
 /** A projection screen with a play mark, the Present CTA's glyph. */
 export function PresentIcon() {
   return (

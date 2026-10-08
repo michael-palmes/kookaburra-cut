@@ -1106,10 +1106,16 @@ the candidate frame without guaranteeing selection.
 **Two-pass = the FFV1 mezzanine.** Pass 1 consumes its input, so two-pass presets
 render ONCE to a lossless FFV1 `.mkv` at OUTPUT res/fps/pix_fmt in
 `$APPDATA/cache/export-mezz/` (statvfs disk guard blocks pre-flight: raw-frame
-ceiling + 2 GB; swept on the next export, cleaned on success), then transcode
-file-to-file (x264 `-pass N -passlogfile`; x265 `-x265-params pass=N:stats=`).
-Audio joins at pass 2. FFV1 is bit-exact and both passes are deterministic given
-the same mezzanine.
+ceiling + 2 GB; removed when the run ends, swept by the next export after a
+crash), then transcode file-to-file (x264 `-pass N -passlogfile`; x265
+`-x265-params pass=N:stats=`). Audio joins at pass 2. FFV1 is bit-exact and both
+passes are deterministic given the same mezzanine.
+
+**Partial file, then rename.** ffmpeg writes a hidden `.<name>.part.<ext>` beside
+the output and `finish_export` renames it into place, so a cancelled or failed
+run (deleted with its mezzanine) never leaves a broken file or clobbers the
+previous export. The filename never reaches the bytes (`bitexact`,
+`-map_metadata -1`).
 
 **Loudness is gain-only.** `measure_loudness` runs sidecar ebur128 through the
 EXACT export audio graph (`audio_filter_graph`, trim/pad/fades/author gain
