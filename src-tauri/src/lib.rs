@@ -145,13 +145,14 @@ struct TwoPassPlan {
     spec: EncodeSpec,
     mezz: PathBuf,
     passlog: PathBuf,
+    /// Pass 2's target: the run's partial file, not the final output.
+    output: PathBuf,
 }
 
 struct ActiveExport {
     child: CommandChild,
     total: u32,
     written: u32,
-    output: PathBuf,
     progress: Channel<Progress>,
     /// Resolves when the ffmpeg process terminates: `Ok` on exit code 0, else `Err`.
     done: oneshot::Receiver<Result<(), String>>,
@@ -184,14 +185,108 @@ pub(crate) fn deflash_webview(window: &tauri::WebviewWindow) {
     });
 }
 
+/// One export from `start_export` to its finish or cancel; it outlives the stdin handle so the render tail and the two-pass passes stay cancellable.
+struct ExportRun {
+    cancelled: bool,
+    /// The ffmpeg currently working for this run, killed by pid once `finish_export` has dropped the stdin handle.
+    pid: Option<u32>,
+    output: PathBuf,
+    /// Where ffmpeg writes until `finish_export` renames it onto `output`, so a cancelled or failed run never leaves a broken file or clobbers the previous export.
+    partial: PathBuf,
+    mezz_dir: Option<PathBuf>,
+}
+
+impl ExportRun {
+    /// Removes the partial file (if still there) and the two-pass mezzanine.
+    fn clean_up(&self) {
+        let _ = std::fs::remove_file(&self.partial);
+        if let Some(dir) = &self.mezz_dir {
+            let _ = std::fs::remove_dir_all(dir);
+        }
+    }
+}
+
+const EXPORT_CANCELLED: &str = "Export cancelled.";
+
 #[derive(Default)]
-pub(crate) struct ExportState(Mutex<Option<ActiveExport>>);
+pub(crate) struct ExportState {
+    /// The streaming phase: ffmpeg's stdin, fed by `push_frame`.
+    active: Mutex<Option<ActiveExport>>,
+    run: Mutex<Option<ExportRun>>,
+}
 
 impl ExportState {
-    /// True while an encode is in flight; settings_win refuses to clear the clip cache mid-export since the export loop reads extracted frames from it.
+    /// True while an export runs, finalising included; settings_win refuses to clear the clip cache mid-export since the export loop reads extracted frames from it.
     pub(crate) fn busy(&self) -> bool {
-        self.0.lock().map(|guard| guard.is_some()).unwrap_or(true)
+        self.run.lock().map(|guard| guard.is_some()).unwrap_or(true)
     }
+
+    /// Stops the run in whichever phase it is in; a no-op when idle (the autorun boot latch relies on that).
+    fn cancel(&self) -> Result<(), String> {
+        let streaming = self
+            .active
+            .lock()
+            .map_err(|_| "export state poisoned")?
+            .take();
+        let mut run = self.run.lock().map_err(|_| "export state poisoned")?;
+        match streaming {
+            // No finish_export follows a streaming cancel, so the cleanup is ours.
+            Some(active) => {
+                let _ = active.child.kill();
+                if let Some(run) = run.take() {
+                    run.clean_up();
+                }
+            }
+            // finish_export owns the run: kill its current ffmpeg and let it unwind.
+            None => {
+                if let Some(run) = run.as_mut() {
+                    run.cancelled = true;
+                    if let Some(pid) = run.pid.take() {
+                        kill_pid(pid);
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn cancelled(&self) -> bool {
+        self.run
+            .lock()
+            .map(|guard| guard.as_ref().is_some_and(|run| run.cancelled))
+            .unwrap_or(true)
+    }
+
+    /// Records the ffmpeg now working for the run, killing it at once if a cancel already landed.
+    fn track_pid(&self, pid: u32) {
+        if let Ok(mut guard) = self.run.lock() {
+            match guard.as_mut() {
+                Some(run) if !run.cancelled => run.pid = Some(pid),
+                _ => kill_pid(pid),
+            }
+        }
+    }
+
+    fn clear_pid(&self) {
+        if let Ok(mut guard) = self.run.lock() {
+            if let Some(run) = guard.as_mut() {
+                run.pid = None;
+            }
+        }
+    }
+}
+
+fn kill_pid(pid: u32) {
+    unsafe {
+        libc::kill(pid as libc::pid_t, libc::SIGKILL);
+    }
+}
+
+/// The hidden sibling ffmpeg writes to until `finish_export` renames it onto `output`; the extension stays last since ffmpeg picks the muxer from it.
+fn partial_output_path(output: &std::path::Path) -> PathBuf {
+    let stem = output.file_stem().unwrap_or_default().to_string_lossy();
+    let ext = output.extension().unwrap_or_default().to_string_lossy();
+    output.with_file_name(format!(".{stem}.part.{ext}"))
 }
 
 /// The output path of the most recent finished export, for `reveal_last_export`; exports default to ~/Downloads, which `reveal_in_finder`'s confinement rightly refuses, so the only safe reveal is the destination this app computed and wrote itself (the `reveal_pack` pattern).
@@ -213,11 +308,13 @@ fn start_export(
     options: ExportOptions,
     on_progress: Channel<Progress>,
 ) -> Result<String, String> {
+    if state
+        .run
+        .lock()
+        .map_err(|_| "export state poisoned")?
+        .is_some()
     {
-        let guard = state.0.lock().map_err(|_| "export state poisoned")?;
-        if guard.is_some() {
-            return Err("an export is already in progress".into());
-        }
+        return Err("an export is already in progress".into());
     }
 
     // F-002: project_id and aspect build the output dir (bundled branch) and filename, so reject anything path-shaped BEFORE either is used. A scoped library id folds its colon to a dash (`project_cache_key`, at least as strict as `validate_slug`); every unscoped id passes through unchanged, so existing outputs and baselines keep their exact names.
@@ -285,12 +382,16 @@ fn start_export(
         }
     }
 
+    let partial = partial_output_path(&output);
+    let _ = std::fs::remove_file(&partial);
+
     // The FROZEN PATH: no EncodeSpec means the extracted legacy argv, byte-pinned by encode.rs's goldens, so standing baselines never see presets; a single-pass spec pipes straight to its lane, while a two-pass spec renders ONCE to a lossless FFV1 mezzanine (pass 1 would consume the stdin stream) and `finish_export` runs the file-to-file passes.
     let mut two_pass: Option<TwoPassPlan> = None;
+    let mut run_mezz_dir: Option<PathBuf> = None;
     let args = match &options.encode {
-        None => legacy_export_args(&options, &output.to_string_lossy())?,
+        None => legacy_export_args(&options, &partial.to_string_lossy())?,
         Some(spec) if !spec.two_pass() => {
-            spec_export_args(&options, spec, &output.to_string_lossy())?
+            spec_export_args(&options, spec, &partial.to_string_lossy())?
         }
         Some(spec) => {
             let mezz_dir = app
@@ -322,7 +423,9 @@ fn start_export(
                 spec: spec.clone(),
                 mezz,
                 passlog,
+                output: partial.clone(),
             });
+            run_mezz_dir = Some(mezz_dir);
             args
         }
     };
@@ -335,6 +438,7 @@ fn start_export(
         .args(args)
         .spawn()
         .map_err(|e| format!("failed to start ffmpeg sidecar: {e}"))?;
+    let pid = child.pid();
 
     // The spawn channel has a buffer of 1: stderr/stdout MUST be drained or ffmpeg blocks once its stderr pipe fills; drain here and signal termination.
     let (done_tx, done_rx) = oneshot::channel::<Result<(), String>>();
@@ -360,12 +464,17 @@ fn start_export(
         let _ = done_tx.send(result);
     });
 
-    let mut guard = state.0.lock().map_err(|_| "export state poisoned")?;
-    *guard = Some(ActiveExport {
+    *state.run.lock().map_err(|_| "export state poisoned")? = Some(ExportRun {
+        cancelled: false,
+        pid: Some(pid),
+        output: output.clone(),
+        partial,
+        mezz_dir: run_mezz_dir,
+    });
+    *state.active.lock().map_err(|_| "export state poisoned")? = Some(ActiveExport {
         child,
         total: options.total_frames,
         written: 0,
-        output: output.clone(),
         progress: on_progress,
         done: done_rx,
         two_pass,
@@ -387,7 +496,7 @@ fn push_frame(state: State<'_, ExportState>, request: tauri::ipc::Request) -> Re
     let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else {
         return Err("push_frame expects a raw binary body".into());
     };
-    let mut guard = state.0.lock().map_err(|_| "export state poisoned")?;
+    let mut guard = state.active.lock().map_err(|_| "export state poisoned")?;
     let active = guard.as_mut().ok_or("no active export in progress")?;
     // F-015: a mis-sized body would desync the raw-RGBA stream ffmpeg expects on stdin.
     let expected = expected_frame_len(active.width, active.height);
@@ -409,22 +518,50 @@ fn push_frame(state: State<'_, ExportState>, request: tauri::ipc::Request) -> Re
     Ok(())
 }
 
-/// Closes ffmpeg's stdin (EOF → finalise the file), awaits the process exit, and returns the output path.
+/// Finalises the export and renames the partial file onto the output, returning its path; a cancel or failure deletes the partial instead.
 #[tauri::command]
 async fn finish_export(
     app: AppHandle,
     state: State<'_, ExportState>,
     last: State<'_, LastExport>,
 ) -> Result<String, String> {
-    let active = {
-        let mut guard = state.0.lock().map_err(|_| "export state poisoned")?;
-        guard.take()
+    let active = state
+        .active
+        .lock()
+        .map_err(|_| "export state poisoned")?
+        .take()
+        .ok_or("no active export in progress")?;
+    let encoded = finish_encode(&app, &state, active).await;
+    let run = state
+        .run
+        .lock()
+        .map_err(|_| "export state poisoned")?
+        .take()
+        .ok_or("no active export in progress")?;
+    let result = if run.cancelled {
+        Err(EXPORT_CANCELLED.to_string())
+    } else {
+        encoded.and_then(|()| {
+            std::fs::rename(&run.partial, &run.output)
+                .map_err(|e| format!("could not move the export into place: {e}"))
+        })
+    };
+    run.clean_up();
+    result?;
+    if let Ok(mut guard) = last.0.lock() {
+        *guard = Some(run.output.clone());
     }
-    .ok_or("no active export in progress")?;
+    Ok(run.output.to_string_lossy().into_owned())
+}
 
+/// Closes ffmpeg's stdin (EOF → finalise the file) and awaits the exit, then runs any two-pass passes.
+async fn finish_encode(
+    app: &AppHandle,
+    state: &ExportState,
+    active: ActiveExport,
+) -> Result<(), String> {
     let ActiveExport {
         child,
-        output,
         done,
         total,
         progress,
@@ -433,62 +570,54 @@ async fn finish_export(
     } = active;
     drop(child); // closes stdin -> ffmpeg sees EOF and finalises the container
 
-    done.await
-        .map_err(|_| "ffmpeg task ended unexpectedly".to_string())??;
+    let rendered = done
+        .await
+        .map_err(|_| "ffmpeg task ended unexpectedly".to_string());
+    state.clear_pid();
+    rendered??;
 
-    // Two-pass: the render above wrote the FFV1 mezzanine, now the file-to-file passes; pass 1 only produces the stats log, pass 2 writes the real output (and carries the audio); the mezzanine dir is cleaned on success and swept by the NEXT export either way.
-    if let Some(plan) = two_pass {
-        let _ = progress.send(Progress {
-            frame: total,
-            total,
-            stage: "pass1",
-        });
-        let args = transcode_pass_args(
-            &plan.options,
-            &plan.spec,
-            &plan.mezz.to_string_lossy(),
-            &output.to_string_lossy(),
-            1,
-            &plan.passlog.to_string_lossy(),
-        )?;
-        run_ffmpeg_to_completion(&app, args)
-            .await
-            .map_err(|e| format!("pass 1: {e}"))?;
-        let _ = progress.send(Progress {
-            frame: total,
-            total,
-            stage: "pass2",
-        });
-        let args = transcode_pass_args(
-            &plan.options,
-            &plan.spec,
-            &plan.mezz.to_string_lossy(),
-            &output.to_string_lossy(),
-            2,
-            &plan.passlog.to_string_lossy(),
-        )?;
-        run_ffmpeg_to_completion(&app, args)
-            .await
-            .map_err(|e| format!("pass 2: {e}"))?;
-        if let Some(dir) = plan.mezz.parent() {
-            let _ = std::fs::remove_dir_all(dir);
+    // Two-pass: the render above wrote the FFV1 mezzanine, now the file-to-file passes; pass 1 only produces the stats log, pass 2 writes the real output (and carries the audio).
+    let Some(plan) = two_pass else {
+        return Ok(());
+    };
+    for (pass, stage) in [(1, "pass1"), (2, "pass2")] {
+        if state.cancelled() {
+            return Err(EXPORT_CANCELLED.into());
         }
+        let _ = progress.send(Progress {
+            frame: total,
+            total,
+            stage,
+        });
+        let args = transcode_pass_args(
+            &plan.options,
+            &plan.spec,
+            &plan.mezz.to_string_lossy(),
+            &plan.output.to_string_lossy(),
+            pass,
+            &plan.passlog.to_string_lossy(),
+        )?;
+        let result = run_ffmpeg_to_completion(app, args, |pid| state.track_pid(pid)).await;
+        state.clear_pid();
+        result.map_err(|e| format!("pass {pass}: {e}"))?;
     }
-    if let Ok(mut guard) = last.0.lock() {
-        *guard = Some(output.clone());
-    }
-    Ok(output.to_string_lossy().into_owned())
+    Ok(())
 }
 
-/// Spawns the ffmpeg sidecar with no stdin work and awaits its termination (the two-pass transcode stages: file in, file out).
-async fn run_ffmpeg_to_completion(app: &AppHandle, args: Vec<String>) -> Result<(), String> {
-    let (mut rx, _child) = app
+/// Spawns the ffmpeg sidecar with no stdin work and awaits its termination (the two-pass transcode stages: file in, file out); `on_spawn` gets the pid so a cancel can kill it.
+async fn run_ffmpeg_to_completion(
+    app: &AppHandle,
+    args: Vec<String>,
+    on_spawn: impl FnOnce(u32),
+) -> Result<(), String> {
+    let (mut rx, child) = app
         .shell()
         .sidecar("ffmpeg")
         .map_err(|e| format!("ffmpeg sidecar not found: {e}"))?
         .args(args)
         .spawn()
         .map_err(|e| format!("failed to start ffmpeg sidecar: {e}"))?;
+    on_spawn(child.pid());
     let mut last_error: Option<String> = None;
     let mut code: Option<i32> = None;
     while let Some(event) = rx.recv().await {
@@ -518,13 +647,10 @@ fn free_disk_bytes(path: &std::path::Path) -> Result<u64, String> {
     Ok(vfs.f_bavail as u64 * vfs.f_frsize as u64)
 }
 
-/// Abort an in-progress export (kills ffmpeg, discards the partial file handle).
+/// Stops an export in any phase (streaming, finalising or a two-pass pass): kills its ffmpeg and deletes the partial file, so the previous export at that path survives.
 #[tauri::command]
 fn cancel_export(state: State<'_, ExportState>) -> Result<(), String> {
-    if let Some(active) = state.0.lock().map_err(|_| "export state poisoned")?.take() {
-        let _ = active.child.kill();
-    }
-    Ok(())
+    state.cancel()
 }
 
 /// Lowercase hex of a digest; sha2 0.11 outputs no longer implement LowerHex.
@@ -1726,5 +1852,86 @@ mod tests {
     fn autorun_result_cap_is_eight_mebibytes() {
         assert_eq!(AUTORUN_RESULT_MAX_BYTES, 8 * 1024 * 1024);
         assert!("x".repeat(AUTORUN_RESULT_MAX_BYTES + 1).len() > AUTORUN_RESULT_MAX_BYTES);
+    }
+
+    #[test]
+    fn partial_output_is_a_hidden_sibling_keeping_the_extension() {
+        assert_eq!(
+            partial_output_path(&PathBuf::from("/d/Downloads/launch-2026-16x9 2.mp4")),
+            PathBuf::from("/d/Downloads/.launch-2026-16x9 2.part.mp4")
+        );
+        assert_eq!(
+            partial_output_path(&PathBuf::from("/d/exports/demo-9x16-prores.mov")),
+            PathBuf::from("/d/exports/.demo-9x16-prores.part.mov")
+        );
+    }
+
+    fn finalising_run(pid: Option<u32>) -> ExportRun {
+        ExportRun {
+            cancelled: false,
+            pid,
+            output: PathBuf::from("/d/out.mp4"),
+            partial: PathBuf::from("/d/.out.part.mp4"),
+            mezz_dir: None,
+        }
+    }
+
+    fn assert_sigkilled(child: &mut std::process::Child) {
+        use std::os::unix::process::ExitStatusExt;
+        assert_eq!(child.wait().unwrap().signal(), Some(libc::SIGKILL));
+    }
+
+    #[test]
+    fn cancel_is_a_no_op_when_idle() {
+        let state = ExportState::default();
+        assert!(state.cancel().is_ok());
+        assert!(!state.busy());
+    }
+
+    #[test]
+    fn cancel_while_finalising_kills_the_tracked_ffmpeg_and_flags_the_run() {
+        let mut child = std::process::Command::new("sleep")
+            .arg("30")
+            .spawn()
+            .unwrap();
+        let state = ExportState::default();
+        *state.run.lock().unwrap() = Some(finalising_run(Some(child.id())));
+        state.cancel().unwrap();
+        assert_sigkilled(&mut child);
+        assert!(state.cancelled());
+        assert!(state.busy(), "finish_export still owns the run");
+    }
+
+    #[test]
+    fn a_pass_spawned_after_a_cancel_is_killed_at_once() {
+        let state = ExportState::default();
+        *state.run.lock().unwrap() = Some(finalising_run(None));
+        state.cancel().unwrap();
+        let mut child = std::process::Command::new("sleep")
+            .arg("30")
+            .spawn()
+            .unwrap();
+        state.track_pid(child.id());
+        assert_sigkilled(&mut child);
+        assert_eq!(state.run.lock().unwrap().as_ref().unwrap().pid, None);
+    }
+
+    #[test]
+    fn run_clean_up_removes_the_partial_and_the_mezzanine() {
+        let dir = std::env::temp_dir().join(format!("kc-export-cancel-{}", std::process::id()));
+        let mezz = dir.join("export-mezz");
+        std::fs::create_dir_all(&mezz).unwrap();
+        std::fs::write(mezz.join("p-16x9.mkv"), b"mezz").unwrap();
+        let partial = dir.join(".p-16x9.part.mp4");
+        std::fs::write(&partial, b"partial").unwrap();
+        let run = ExportRun {
+            partial: partial.clone(),
+            mezz_dir: Some(mezz.clone()),
+            ..finalising_run(None)
+        };
+        run.clean_up();
+        assert!(!partial.exists());
+        assert!(!mezz.exists());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

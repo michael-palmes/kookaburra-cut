@@ -113,11 +113,15 @@ export interface ExportOptions {
   outputSuffix?: string;
   /** "downloads" routes the final file to ~/Downloads (the app's Settings toggle). Absent means the canonical project paths; autorun/terminal exports never set it. */
   destination?: "downloads";
+  /** Cancels the run at its next frame or encode stage; the run then rejects with `signal.reason`. */
+  signal?: AbortSignal;
 }
 
 export interface ExportProgress {
   frame: number;
   total: number;
+  /** "render" while frames stream, then "pass1" / "pass2" through a two-pass transcode. */
+  stage: "render" | "pass1" | "pass2";
 }
 
 export interface DeterminismResult {
@@ -457,6 +461,8 @@ async function exportProjectHeld(
   const handle = canvasHandle.current;
   if (!handle) throw new Error("Export bridge not mounted: the canvas is not ready.");
   const { gl, scene, camera } = handle;
+  const { signal } = opts;
+  signal?.throwIfAborted();
   assertContextHeld(gl.getContext(), "before the export");
 
   // Snapshot preview state first: from the preamble on, everything runs inside one try/finally, so a failed preamble or start leaves no export-sized buffer, aspect or clip lane behind.
@@ -468,10 +474,16 @@ async function exportProjectHeld(
   const prevAspect = cam.isPerspectiveCamera ? cam.aspect : 0;
   const prevHelperLayer = cam.layers.isEnabled(HELPER_LAYER);
   let started = false;
+  // A cancel that lands while Rust finalises or runs a two-pass pass has no frame boundary to stop at, so it kills the native encode directly.
+  const stopNativeEncode = () => void invoke("cancel_export").catch(() => {});
   // The exporter owns rendering for the whole run; the preview driver stands down (see engine/exportState) so no stray preview render interleaves with a capture.
   setExporting(true);
   try {
-    await exportPreamble(opts, gl, onPrepareStep);
+    await exportPreamble(opts, gl, (step) => {
+      onPrepareStep?.(step);
+      signal?.throwIfAborted();
+    });
+    signal?.throwIfAborted();
     const sceneFloorYs = snapshotSceneStageFloors(opts.slots.length);
 
     const { width, height } = opts.format;
@@ -526,6 +538,7 @@ async function exportProjectHeld(
       onProgress: channel,
     });
     started = true;
+    signal?.addEventListener("abort", stopNativeEncode, { once: true });
 
     // Per-scene camera tracks, normalized once for the whole run; projects without any stay on the legacy camera path below, byte-identically.
     const sceneTracks = buildSceneCameraTracks(
@@ -593,6 +606,7 @@ async function exportProjectHeld(
     // Preview-only light helpers can never reach a capture: their layer is disabled on the camera for the whole run (the second guard on top of their mount gating) and given back in the finally.
     cam.layers.disable(HELPER_LAYER);
     for (let frame = 0; frame < total; frame++) {
+      signal?.throwIfAborted();
       dropDevPerformanceEntries();
       const tMs = exportFrameTimeMs(frame, opts.fps, poster?.tMs);
       // flushSync commits the DOM tree; the canvas tree (r3f reconciler) commits on its own schedule, so wait for it before trusting any per-mesh readiness hook for this frame.
@@ -643,11 +657,13 @@ async function exportProjectHeld(
       onFrame?.(frame, rgba);
       await invoke("push_frame", rgba);
     }
+    signal?.throwIfAborted();
     return await invoke<string>("finish_export");
   } catch (err) {
     if (started) await invoke("cancel_export").catch(() => {});
     throw err;
   } finally {
+    signal?.removeEventListener("abort", stopNativeEncode);
     setExporting(false);
     setClipLane(everydayClipLane());
     gl.setPixelRatio(prevPixelRatio);
@@ -993,6 +1009,7 @@ export async function verifyAllFormats(
 ): Promise<FormatVerification[]> {
   const results: FormatVerification[] = [];
   for (const format of formats) {
+    opts.signal?.throwIfAborted();
     await commitFormat(format);
     const r = await verifyDeterminism({ ...opts, format }, onProgress);
     results.push({ ...r, aspect: format.name });

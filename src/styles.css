@@ -307,7 +307,8 @@ body {
 
 /* The Export CTA — the ONLY accent-filled control in the titlebar (§4.4). */
 .titlebar-export,
-.titlebar-present {
+.titlebar-present,
+.titlebar-cancel {
   height: 32px;
   gap: 7px;
 }
@@ -1781,6 +1782,10 @@ button.beat-status {
 
 .toast-error {
   border-left-color: var(--danger);
+}
+
+.toast-info {
+  border-left-color: var(--text-tertiary);
 }
 
 .toast-msg {
