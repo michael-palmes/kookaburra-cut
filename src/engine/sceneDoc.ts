@@ -35,6 +35,7 @@ import {
   videoWindowMediaEntry,
 } from "./sceneMedia";
 import { useSceneMediaRegistry } from "./sceneMediaRegistry";
+import { clampStillMarks } from "./stills";
 import { useTextKeyRegistry } from "./textKeyRegistry";
 
 /** Scene-document IO and hooks: docs load beside their scene modules in `loadProject` into `LoadedProject.sceneDocs` and reach components via `SceneHost`'s `SceneDocContext`, but the engine (camera sampling, duration sync) reads `LoadedProject.sceneDocs` directly so export never touches React context or the editor store; schema and validation live in `sceneDocSchema.ts`. */
@@ -311,7 +312,7 @@ export async function resyncFollowMediaDuration(
   return { wrote: false, clampedDoc: null };
 }
 
-/** Shrink-fit every keyed track (camera, the layered-screenshot animation, the compare divider and the chart data) to a new duration; null when nothing overhangs, so callers can skip the write. */
+/** Shrink-fit every keyed track (camera, the layered-screenshot animation, the compare divider and the chart data) and the still marks to a new duration; null when nothing overhangs, so callers can skip the write. */
 export function clampDocTracksToDuration(doc: SceneDoc, durationMs: number): SceneDoc | null {
   const cam = doc.camera
     ? clampTrackToDuration(doc.camera as KeyedTrack<unknown>, durationMs)
@@ -330,7 +331,9 @@ export function clampDocTracksToDuration(doc: SceneDoc, durationMs: number): Sce
     anim !== null && anim !== (doc.layeredScreenshot?.animation as KeyedTrack<unknown>);
   const cmpChanged = cmp !== null && cmp !== (doc.compare?.track as KeyedTrack<unknown>);
   const chartChanged = chart !== null && chart !== (doc.chart?.track as KeyedTrack<unknown>);
-  if (!camChanged && !animChanged && !cmpChanged && !chartChanged) return null;
+  const stills = clampStillMarks(doc.stills, durationMs);
+  const stillsChanged = stills !== doc.stills;
+  if (!camChanged && !animChanged && !cmpChanged && !chartChanged && !stillsChanged) return null;
   const next = structuredClone(doc);
   if (camChanged) next.camera = structuredClone(cam) as SceneDoc["camera"];
   if (animChanged && next.layeredScreenshot) {
@@ -344,6 +347,7 @@ export function clampDocTracksToDuration(doc: SceneDoc, durationMs: number): Sce
   if (chartChanged && next.chart) {
     next.chart.track = structuredClone(chart) as NonNullable<SceneDoc["chart"]>["track"];
   }
+  if (stillsChanged && stills) next.stills = structuredClone(stills);
   return next;
 }
 

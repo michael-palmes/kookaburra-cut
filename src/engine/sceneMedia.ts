@@ -18,7 +18,11 @@ import type {
   SceneMediaWindow,
   VideoWindowRadius,
 } from "./sceneDocSchema";
-import { DEFAULT_VIDEO_WINDOW_SCALE, sampleVideoWindowMotion } from "./sceneVideoWindow";
+import {
+  DEFAULT_VIDEO_WINDOW_SCALE,
+  sampleVideoWindowMotion,
+  videoWindowMotionEndMs,
+} from "./sceneVideoWindow";
 
 export const DEFAULT_SCENE_IMAGE_STAGE: SceneImageStagePlacement = {
   position: [0, 0, 0],
@@ -330,6 +334,10 @@ const identityMotion = (): SceneImageMotionSample => ({
 const finiteOr = (value: number | undefined, fallback: number): number =>
   typeof value === "number" && Number.isFinite(value) ? value : fallback;
 
+/** Default intro lengths for the image family's one-shot presets. */
+const IMAGE_TILT_REVEAL_MS = 1000;
+const IMAGE_PUSH_IN_MS = 1200;
+
 /** Pure host-aware preset sampling over scene-local time. */
 export function sampleSceneImageMotion(
   motion: SceneImageMotionSpec | undefined,
@@ -356,7 +364,7 @@ export function sampleSceneImageMotion(
       break;
     }
     case "tilt-reveal": {
-      const durationMs = Math.max(1, finiteOr(motion.durationMs, 1000));
+      const durationMs = Math.max(1, finiteOr(motion.durationMs, IMAGE_TILT_REVEAL_MS));
       const progress = ease("outCubic", safeMs / durationMs);
       const remaining = 1 - progress;
       if (host === "stage") {
@@ -372,7 +380,7 @@ export function sampleSceneImageMotion(
       break;
     }
     case "push-in": {
-      const durationMs = Math.max(1, finiteOr(motion.durationMs, 1200));
+      const durationMs = Math.max(1, finiteOr(motion.durationMs, IMAGE_PUSH_IN_MS));
       const progress = ease("outCubic", safeMs / durationMs);
       if (host === "stage") {
         sample.scale = 0.86 + 0.14 * progress;
@@ -410,4 +418,27 @@ export function sampleSceneMediaMotion(
     scale: sample.scale,
     opacity: 1,
   };
+}
+
+/** Scene-local ms when an entry's motion comes to rest, mirroring `sampleSceneMediaMotion`: 0 for none or a preset the kind never had, the intro length for the one-shot presets, null for the looping ones (turntable, float, drift). */
+export function sceneMediaMotionEndMs(
+  kind: SceneMediaKind,
+  motion: SceneMediaMotionSpec | undefined,
+): number | null {
+  const preset = motion?.preset;
+  if (!motion || preset === undefined || preset === "none") return 0;
+  if (kind === "video") {
+    return preset === "turntable" ? 0 : videoWindowMotionEndMs({ ...motion, preset });
+  }
+  switch (preset) {
+    case "turntable":
+    case "float":
+      return null;
+    case "tilt-reveal":
+      return Math.max(1, finiteOr(motion.durationMs, IMAGE_TILT_REVEAL_MS));
+    case "push-in":
+      return Math.max(1, finiteOr(motion.durationMs, IMAGE_PUSH_IN_MS));
+    default:
+      return 0;
+  }
 }

@@ -4,10 +4,10 @@ import type { DeviceFloorY } from "../toolkit/device/worldAnchor";
 import type { FormatInfo } from "../toolkit/types";
 import { orbitFromView, orbitToView } from "./orbit";
 import type { CameraDoc, RigDoc } from "./sceneCameraEdit";
-import type { SceneDoc, SceneDocRigKey } from "./sceneDocSchema";
+import type { SceneDoc, SceneDocCameraKey, SceneDocRigKey } from "./sceneDocSchema";
 import { resolveAimTarget } from "./sceneRig";
 
-/** Orbit -> free: every key becomes a position with a point aim at the old target, so the applied pose is identical. Segments carry over untouched, but every one is pinned STRAIGHT: orbit paths never curved, and the rig's default is smooth, so silently curving them would move the shot. */
+/** Orbit -> free: every key becomes a position with a point aim at the old target, so the applied pose is identical (a still mark rides along). Segments carry over untouched, but every one is pinned STRAIGHT: orbit paths never curved, and the rig's default is smooth, so silently curving them would move the shot. */
 export function orbitToRig(camera: CameraDoc): RigDoc {
   return {
     ...camera,
@@ -17,6 +17,7 @@ export function orbitToRig(camera: CameraDoc): RigDoc {
         id: key.id,
         tMs: key.tMs,
         pose: { position: view.position, aim: { mode: "point" as const, at: view.lookAt } },
+        ...((key as SceneDocCameraKey).still ? { still: true as const } : {}),
       };
     }),
     segments: camera.segments.map((seg) => ({ ...seg, smooth: false })),
@@ -37,6 +38,7 @@ export function rigToOrbit(rig: RigDoc): CameraDoc | null {
       id: key.id,
       tMs: key.tMs,
       pose: orbitFromView(key.pose.position, key.pose.aim.at),
+      ...(key.still ? { still: true as const } : {}),
     })),
     segments: rig.segments.map((seg) => ({ from: seg.from, to: seg.to, ease: seg.ease })),
   };

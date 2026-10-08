@@ -1,7 +1,7 @@
-/** Present-mode timing registry: staged primitives report their intro/outro windows per scene so a present window can derive hold points (src/present/holdPoint.ts). Registration is unconditional and costs one Set entry; nothing reads the registry outside a present session, so the editor and export realms carry it as dead weight by design. */
+/** Present timing registry: staged primitives report their intro/outro windows per scene so a present window (src/present) and the stills exporter can derive hold points (engine/presentHoldPoint.ts). Registration is unconditional, costs one Set entry and never changes rendering; nothing else reads it, so the editor and video export carry it as dead weight by design. */
 
 export interface PresentTimingEntry {
-  kind: "text" | "group" | "device-motion";
+  kind: "text" | "group" | "device-motion" | "decoration" | "counter";
   /** Scene-local ms when this element's intro settles. */
   toMs: number;
   /** Scene-local ms when an authored outro starts, if any. */
@@ -11,6 +11,7 @@ export interface PresentTimingEntry {
 }
 
 const entries = new Map<number, Set<PresentTimingEntry>>();
+const pending = new Map<number, number>();
 const listeners = new Set<() => void>();
 
 function notify(): void {
@@ -30,6 +31,27 @@ export function registerPresentTiming(sceneIndex: number, entry: PresentTimingEn
     set.delete(entry);
     notify();
   };
+}
+
+/** Marks a timing the scene cannot report yet (e.g. a stagger spread awaiting its first typeset); returns the idempotent clear, called in the same commit that registers the real entry. */
+export function reportPresentTimingPending(sceneIndex: number): () => void {
+  pending.set(sceneIndex, (pending.get(sceneIndex) ?? 0) + 1);
+  let cleared = false;
+  return () => {
+    if (cleared) return;
+    cleared = true;
+    const left = (pending.get(sceneIndex) ?? 1) - 1;
+    if (left > 0) pending.set(sceneIndex, left);
+    else pending.delete(sceneIndex);
+  };
+}
+
+/** Outstanding pending reports: one scene's, or every scene's when no index is given. */
+export function presentTimingsPendingCount(sceneIndex?: number): number {
+  if (sceneIndex !== undefined) return pending.get(sceneIndex) ?? 0;
+  let total = 0;
+  for (const count of pending.values()) total += count;
+  return total;
 }
 
 /** The current entries for a scene (a fresh array each call). */

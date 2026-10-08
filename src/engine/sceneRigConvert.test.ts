@@ -47,6 +47,21 @@ describe("orbitToRig", () => {
   });
 });
 
+describe("still marks across a mode conversion", () => {
+  it("ride their keys both ways, and stay absent on unmarked keys", () => {
+    const marked: CameraDoc = {
+      ...orbit,
+      keys: orbit.keys.map((key) => (key.id === "k2" ? { ...key, still: true } : key)),
+    };
+    const rig = orbitToRig(marked);
+    expect(rig.keys.map((key) => key.still)).toEqual([undefined, true]);
+    expect(Object.keys(rig.keys[0])).not.toContain("still");
+    const back = rigToOrbit(rig);
+    expect(back?.keys.map((key) => (key as { still?: true }).still)).toEqual([undefined, true]);
+    expect(Object.keys(back?.keys[0] ?? {})).not.toContain("still");
+  });
+});
+
 describe("rigToOrbit", () => {
   it("round-trips: orbit -> rig -> orbit lands on the same pose", () => {
     const back = rigToOrbit(orbitToRig(orbit));

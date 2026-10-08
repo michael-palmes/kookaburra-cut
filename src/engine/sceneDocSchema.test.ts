@@ -1549,3 +1549,60 @@ describe("parseSceneDoc", () => {
     warn.mockRestore();
   });
 });
+
+describe("parseSceneDoc stills", () => {
+  it("keeps exclude and normalises marks: finite, non-negative, rounded, unique, ascending", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const doc = parseSceneDoc(
+      {
+        version: 1,
+        stills: { exclude: true, marksMs: [1200.4, 300, -5, "x", 1200, Number.NaN, 0] },
+      },
+      "test",
+    );
+    expect(doc?.stills).toEqual({ exclude: true, marksMs: [0, 300, 1200] });
+    expect(warn).toHaveBeenCalledTimes(3);
+    warn.mockRestore();
+  });
+
+  it("drops a non-object block, a false exclude and an empty block", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    expect(parseSceneDoc({ version: 1, stills: [1, 2] }, "test")?.stills).toBeUndefined();
+    expect(parseSceneDoc({ version: 1, stills: "yes" }, "test")?.stills).toBeUndefined();
+    expect(parseSceneDoc({ version: 1, stills: { exclude: false } }, "test")).toEqual({
+      version: 1,
+    });
+    expect(
+      parseSceneDoc({ version: 1, stills: { exclude: "yes", marksMs: 4 } }, "test")?.stills,
+    ).toBeUndefined();
+    expect(parseSceneDoc({ version: 1, stills: { marksMs: [] } }, "test")?.stills).toBeUndefined();
+    expect(warn).toHaveBeenCalledTimes(4);
+    warn.mockRestore();
+  });
+
+  it("passes key still flags through on both camera blocks", () => {
+    const orbitKey = {
+      id: "k1",
+      tMs: 400,
+      still: true,
+      pose: { target: [0, 0, 0], azimuthDeg: 0, elevationDeg: 0, distance: 5 },
+    };
+    const rigKey = {
+      id: "r1",
+      tMs: 600,
+      still: true,
+      pose: { position: [0, 0, 5], aim: { mode: "point", at: [0, 0, 0] } },
+    };
+    const doc = parseSceneDoc(
+      {
+        version: 1,
+        camera: { keys: [orbitKey], segments: [] },
+        cameraMode: "rig",
+        cameraRig: { keys: [rigKey], segments: [] },
+      },
+      "test",
+    );
+    expect(doc?.camera?.keys[0]).toEqual(orbitKey);
+    expect(doc?.cameraRig?.keys[0]).toEqual(rigKey);
+  });
+});

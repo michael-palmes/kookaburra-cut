@@ -16,6 +16,7 @@ import {
   sceneMediaFromVideoWindow,
   sceneMediaInFrame,
   sceneMediaInWorld,
+  sceneMediaMotionEndMs,
   sceneMediaOverlayPlaced,
   sceneMediaUsesWindowPath,
   VIDEO_WINDOW_MEDIA_ID,
@@ -502,5 +503,43 @@ describe("pinnedFollowMediaEntry", () => {
       pinnedFollowMediaEntry({ mode: "follow-media", source: "media" }, media),
     ).toBeUndefined();
     expect(pinnedFollowMediaEntry({ mode: "manual" }, media)).toBeUndefined();
+  });
+});
+
+describe("sceneMediaMotionEndMs", () => {
+  const cases = [
+    { kind: "image" as const, motion: { preset: "tilt-reveal" as const }, end: 1000 },
+    { kind: "image" as const, motion: { preset: "push-in" as const }, end: 1200 },
+    { kind: "image" as const, motion: { preset: "push-in" as const, durationMs: 2500 }, end: 2500 },
+    { kind: "video" as const, motion: { preset: "tilt-reveal" as const }, end: 900 },
+    { kind: "video" as const, motion: { preset: "push-in" as const }, end: 1000 },
+    {
+      kind: "video" as const,
+      motion: { preset: "tilt-reveal" as const, durationMs: 1800 },
+      end: 1800,
+    },
+  ];
+
+  for (const { kind, motion, end } of cases) {
+    it(`settles ${kind} ${motion.preset} at ${end} ms`, () => {
+      expect(sceneMediaMotionEndMs(kind, motion)).toBe(end);
+      for (const host of ["stage", "overlay", "window"] as const) {
+        if (kind === "image" && host === "window") continue;
+        const rest = sampleSceneMediaMotion(kind, motion, host, end + 60000);
+        expect(sampleSceneMediaMotion(kind, motion, host, end)).toEqual(rest);
+        expect(sampleSceneMediaMotion(kind, motion, host, end - 1)).not.toEqual(rest);
+      }
+    });
+  }
+
+  it("is null for looping motion and 0 for none or a preset the kind never had", () => {
+    expect(sceneMediaMotionEndMs("image", { preset: "turntable" })).toBeNull();
+    expect(sceneMediaMotionEndMs("image", { preset: "float" })).toBeNull();
+    expect(sceneMediaMotionEndMs("video", { preset: "float" })).toBeNull();
+    expect(sceneMediaMotionEndMs("video", { preset: "drift" })).toBeNull();
+    expect(sceneMediaMotionEndMs("video", { preset: "turntable" })).toBe(0);
+    expect(sceneMediaMotionEndMs("image", { preset: "drift" })).toBe(0);
+    expect(sceneMediaMotionEndMs("image", { preset: "none" })).toBe(0);
+    expect(sceneMediaMotionEndMs("image", undefined)).toBe(0);
   });
 });
