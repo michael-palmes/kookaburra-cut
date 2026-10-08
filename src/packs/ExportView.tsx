@@ -9,9 +9,9 @@ import {
   planPack,
   revealPack,
 } from "../engine/packs";
-import { listProjects } from "../engine/workspace";
 import { LibraryRailIcon } from "../ui/libraryIcons";
 import { FONT_DISCLAIMER, fontEmbeddingNotice } from "../ui/packs/fontCopy";
+import { type ProjectGroupRow, UNGROUPED_PROJECTS } from "../ui/projectLibrary";
 import { PackGlyph } from "./PackGlyph";
 import { groupProjectItems, matchesPackSearch } from "./projectGroups";
 import { packProjectItems } from "./projectItems";
@@ -41,6 +41,7 @@ import {
   type PackPlan,
   type PackProgress,
   type SelectableItem,
+  type UnreferencedGroup,
 } from "./types";
 
 /** The rail is the nine stores plus a details pane; only the stores are real item kinds. */
@@ -65,8 +66,6 @@ export function ExportView({ onClose }: { onClose: () => void }) {
   const [error, setError] = useState<string | null>(null);
   const [planning, setPlanning] = useState(false);
   const [query, setQuery] = useState("");
-  // Slug to welcome-screen group, so the Projects list can offer each group as one tick.
-  const [groups, setGroups] = useState<ReadonlyMap<string, string>>(new Map());
   // The first scan walks the whole workspace, so the window must say so rather than showing an empty picker.
   const [loading, setLoading] = useState(true);
 
@@ -80,11 +79,6 @@ export function ExportView({ onClose }: { onClose: () => void }) {
         setProfile(p);
         setPackName(defaultPackName(p.organisation ?? undefined, p.effectiveName));
       })
-      .catch(() => undefined);
-    listProjects()
-      .then((projects) =>
-        setGroups(new Map(projects.flatMap((p) => (p.group ? [[p.slug, p.group] as const] : [])))),
-      )
       .catch(() => undefined);
   }, []);
 
@@ -131,17 +125,21 @@ export function ExportView({ onClose }: { onClose: () => void }) {
     };
   }, [includedProjects]);
 
-  const groupOf = (item: SelectableItem) =>
-    item.kind === "project" ? (groups.get(item.slug) ?? null) : null;
-  const visible =
-    tab === "details"
-      ? []
-      : items.filter((i) => i.kind === tab && matchesPackSearch(i, query, groupOf(i)));
+  const ofTab = tab === "details" ? [] : items.filter((i) => i.kind === tab);
+  const visible = ofTab.filter((i) => matchesPackSearch(i, query));
   const direct = visible.filter((i) => !isAuto(i));
   const auto = visible.filter(isAuto);
-  const sections = tab === "project" ? groupProjectItems(direct, groups) : [];
-  const showGroups = sections.some((s) => s.group !== null);
+  // Sections hold the whole group so its tick and count ignore the search; only the rows filter.
+  const sections = tab === "project" ? groupProjectItems(ofTab.filter((i) => !isAuto(i))) : [];
+  const showGroups = sections.some((s) => s.row.id !== UNGROUPED_PROJECTS);
+  const shownSections = sections
+    .map((s) => ({ ...s, shown: s.items.filter((i) => matchesPackSearch(i, query)) }))
+    .filter((s) => s.shown.length > 0);
   const trimmedQuery = query.trim();
+  const visibleSlugs = new Set(visible.map((i) => i.slug));
+  const unreferenced = (plan?.unreferenced ?? []).filter(
+    (g) => !trimmedQuery || visibleSlugs.has(g.projectSlug),
+  );
 
   const onToggle = useCallback((item: SelectableItem, next: boolean) => {
     setState((s) => toggle(s, item, next));
@@ -326,46 +324,33 @@ export function ExportView({ onClose }: { onClose: () => void }) {
               {!trimmedQuery && direct.length === 0 && (
                 <div className="packs-empty">Nothing in your workspace to add here yet.</div>
               )}
-              {showGroups
-                ? sections.map((section) => (
-                    <GroupSection
-                      key={section.group ?? ""}
-                      group={section.group}
-                      items={section.items}
-                      state={state}
-                      onToggle={onToggle}
-                      onToggleGroup={onToggleGroup}
-                      warnedKey={warnedKey}
-                    />
-                  ))
-                : direct.map((item) => (
-                    <Row
-                      key={item.slug}
-                      item={item}
-                      checked={isIncluded(state, item)}
-                      onToggle={onToggle}
-                      warning={warnedKey === itemKey(item.kind, item.slug)}
-                    />
-                  ))}
+              {showGroups ? (
+                shownSections.map((section) => (
+                  <GroupSection
+                    key={section.row.id}
+                    row={section.row}
+                    members={section.items}
+                    shown={section.shown}
+                    state={state}
+                    onToggle={onToggle}
+                    onToggleGroup={onToggleGroup}
+                    warnedKey={warnedKey}
+                  />
+                ))
+              ) : (
+                <RowList items={direct} state={state} onToggle={onToggle} warnedKey={warnedKey} />
+              )}
 
               {auto.length > 0 && (
                 <>
                   <div className="packs-heading">Pulled in automatically</div>
-                  {auto.map((item) => (
-                    <Row
-                      key={item.slug}
-                      item={item}
-                      checked={isIncluded(state, item)}
-                      onToggle={onToggle}
-                      warning={warnedKey === itemKey(item.kind, item.slug)}
-                    />
-                  ))}
+                  <RowList items={auto} state={state} onToggle={onToggle} warnedKey={warnedKey} />
                 </>
               )}
 
-              {tab === "project" && plan && plan.unreferenced.length > 0 && (
+              {tab === "project" && unreferenced.length > 0 && (
                 <UnreferencedGroups
-                  plan={plan}
+                  unreferenced={unreferenced}
                   dropped={droppedAssets}
                   setDropped={setDroppedAssets}
                 />
@@ -474,24 +459,52 @@ function Row({
   );
 }
 
-/** One project group: its checkbox ticks every project listed under it (only the matches while searching). */
-function GroupSection({
-  group,
+function RowList({
   items,
+  state,
+  onToggle,
+  warnedKey,
+}: {
+  items: SelectableItem[];
+  state: SelectionState;
+  onToggle: (item: SelectableItem, next: boolean) => void;
+  warnedKey: string | null;
+}) {
+  return (
+    <>
+      {items.map((item) => (
+        <Row
+          key={item.slug}
+          item={item}
+          checked={isIncluded(state, item)}
+          onToggle={onToggle}
+          warning={warnedKey === itemKey(item.kind, item.slug)}
+        />
+      ))}
+    </>
+  );
+}
+
+/** One project group: its checkbox and count cover every member, including any a search is hiding. */
+function GroupSection({
+  row,
+  members,
+  shown,
   state,
   onToggle,
   onToggleGroup,
   warnedKey,
 }: {
-  group: string | null;
-  items: SelectableItem[];
+  row: ProjectGroupRow;
+  members: SelectableItem[];
+  shown: SelectableItem[];
   state: SelectionState;
   onToggle: (item: SelectableItem, next: boolean) => void;
   onToggleGroup: (items: SelectableItem[], next: boolean) => void;
   warnedKey: string | null;
 }) {
-  const picked = includedItems(state, items).length;
-  const all = picked === items.length;
+  const picked = includedItems(state, members).length;
+  const all = picked === members.length;
   return (
     <div className="packs-group">
       <label className="packs-row packs-group-row">
@@ -501,46 +514,38 @@ function GroupSection({
           ref={(el) => {
             if (el) el.indeterminate = picked > 0 && !all;
           }}
-          onChange={() => onToggleGroup(items, !all)}
+          onChange={() => onToggleGroup(members, !all)}
         />
-        <LibraryRailIcon id={group ? "group" : "ungrouped"} />
+        <LibraryRailIcon id={row.iconId} />
         <span className="packs-row-main">
-          <span className="packs-row-title">{group ?? "Ungrouped"}</span>
+          <span className="packs-row-title">{row.label}</span>
         </span>
         <span className="packs-row-size">
           {picked > 0
-            ? `${picked} of ${items.length} selected`
-            : `${items.length} project${items.length === 1 ? "" : "s"}`}
+            ? `${picked} of ${members.length} selected`
+            : `${members.length} project${members.length === 1 ? "" : "s"}`}
         </span>
       </label>
       <div className="packs-group-items">
-        {items.map((item) => (
-          <Row
-            key={item.slug}
-            item={item}
-            checked={isIncluded(state, item)}
-            onToggle={onToggle}
-            warning={warnedKey === itemKey(item.kind, item.slug)}
-          />
-        ))}
+        <RowList items={shown} state={state} onToggle={onToggle} warnedKey={warnedKey} />
       </div>
     </div>
   );
 }
 
 function UnreferencedGroups({
-  plan,
+  unreferenced,
   dropped,
   setDropped,
 }: {
-  plan: PackPlan;
+  unreferenced: UnreferencedGroup[];
   dropped: Record<string, string[]>;
   setDropped: (next: Record<string, string[]>) => void;
 }) {
   return (
     <>
       <div className="packs-heading">Unused files</div>
-      {plan.unreferenced.map((group) => {
+      {unreferenced.map((group) => {
         const isDropped = (dropped[group.projectSlug] ?? []).length > 0;
         const bytes = group.files.reduce((s, f) => s + f.bytes, 0);
         return (

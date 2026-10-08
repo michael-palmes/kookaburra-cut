@@ -3,44 +3,40 @@ import { groupProjectItems, matchesPackSearch } from "./projectGroups";
 import { EMPTY_STATE, isIncluded, toggle, toggleAll } from "./selection";
 import type { SelectableItem } from "./types";
 
-const project = (slug: string, name = slug): SelectableItem => ({
+const project = (slug: string, group?: string, name = slug): SelectableItem => ({
   kind: "project",
   slug,
   name,
   bytes: 100,
   requiredBy: [],
+  group,
 });
 
 describe("groupProjectItems", () => {
-  it("orders named groups A to Z, then the ungrouped projects, keeping catalogue order inside each", () => {
-    const items = [project("a"), project("b"), project("c"), project("d")];
-    const groups = new Map([
-      ["b", "Zebra"],
-      ["d", "Alpha"],
-      ["a", "Alpha"],
-    ]);
+  it("follows the welcome rail: Ungrouped, then groups A to Z, keeping catalogue order inside each", () => {
+    const items = [
+      project("a", "Alpha"),
+      project("b", "Zebra"),
+      project("c"),
+      project("d", "Alpha"),
+    ];
     expect(
-      groupProjectItems(items, groups).map((s) => [s.group, s.items.map((i) => i.slug)]),
+      groupProjectItems(items).map((s) => [s.row.label, s.row.iconId, s.items.map((i) => i.slug)]),
     ).toEqual([
-      ["Alpha", ["a", "d"]],
-      ["Zebra", ["b"]],
-      [null, ["c"]],
+      ["Ungrouped", "ungrouped", ["c"]],
+      ["Alpha", "group", ["a", "d"]],
+      ["Zebra", "group", ["b"]],
     ]);
   });
 
-  it("returns one ungrouped section when nothing is grouped", () => {
-    expect(groupProjectItems([project("a")], new Map())).toEqual([
-      { group: null, items: [project("a")] },
-    ]);
-  });
-
-  it("drops empty sections", () => {
-    expect(groupProjectItems([], new Map([["a", "Alpha"]]))).toEqual([]);
+  it("drops empty groups", () => {
+    expect(groupProjectItems([project("a", "Alpha")]).map((s) => s.row.label)).toEqual(["Alpha"]);
+    expect(groupProjectItems([])).toEqual([]);
   });
 });
 
 describe("matchesPackSearch", () => {
-  const item = project("launch-2026", "Launch Film");
+  const item = project("launch-2026", "Client work", "Launch Film");
 
   it("keeps everything for an empty or blank query", () => {
     expect(matchesPackSearch(item, "")).toBe(true);
@@ -50,8 +46,8 @@ describe("matchesPackSearch", () => {
   it("matches the name, slug or group, ignoring case", () => {
     expect(matchesPackSearch(item, "FILM")).toBe(true);
     expect(matchesPackSearch(item, "2026")).toBe(true);
-    expect(matchesPackSearch(item, "client", "Client work")).toBe(true);
-    expect(matchesPackSearch(item, "client")).toBe(false);
+    expect(matchesPackSearch(item, "client")).toBe(true);
+    expect(matchesPackSearch(project("scratch"), "client")).toBe(false);
   });
 });
 

@@ -205,6 +205,8 @@ export interface SelectableItem {
   /** Fonts only. */
   embedding?: FontEmbedding;
   referenceOnly?: boolean;
+  /** Projects only: the welcome-screen group. */
+  group?: string | null;
 }
 
 export interface UnreferencedGroup {

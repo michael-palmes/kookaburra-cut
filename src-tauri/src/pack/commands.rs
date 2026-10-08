@@ -62,6 +62,9 @@ pub struct SelectableItem {
     embedding: Option<FontEmbedding>,
     #[serde(skip_serializing_if = "Option::is_none")]
     reference_only: Option<bool>,
+    /// Projects only: the welcome-screen group, so the picker can tick a group at once.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    group: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -134,7 +137,7 @@ pub enum CompatibilityView {
 
 // ------------------------------------------------------------------- export
 
-fn closure_to_view(closure: &deps::Closure) -> PackPlanView {
+fn closure_to_view(closure: &deps::Closure, root: &Path) -> PackPlanView {
     let mut items = Vec::new();
     let required = |kind: ItemKind, key: &str| -> Vec<String> {
         closure
@@ -164,6 +167,10 @@ fn closure_to_view(closure: &deps::Closure) -> PackPlanView {
                 required_by: required(kind, &p.base.slug),
                 embedding: None,
                 reference_only: None,
+                group: (kind == ItemKind::Project)
+                    .then(|| workspace::manifest_summary(&root.join(&p.base.slug)))
+                    .flatten()
+                    .and_then(|(_, _, group)| group),
             });
         }
     }
@@ -177,6 +184,7 @@ fn closure_to_view(closure: &deps::Closure) -> PackPlanView {
             required_by: required(ItemKind::Theme, &t.base.slug),
             embedding: None,
             reference_only: None,
+            group: None,
         });
     }
     for f in &closure.contents.fonts {
@@ -190,6 +198,7 @@ fn closure_to_view(closure: &deps::Closure) -> PackPlanView {
             required_by: required(ItemKind::Font, &key),
             embedding: Some(f.embedding),
             reference_only: f.reference_only,
+            group: None,
         });
     }
     for o in &closure.contents.objects {
@@ -202,6 +211,7 @@ fn closure_to_view(closure: &deps::Closure) -> PackPlanView {
             required_by: required(ItemKind::Object, &o.base.slug),
             embedding: None,
             reference_only: None,
+            group: None,
         });
     }
     for (kind, list) in [
@@ -218,6 +228,7 @@ fn closure_to_view(closure: &deps::Closure) -> PackPlanView {
                 required_by: required(kind, &g.base.slug),
                 embedding: None,
                 reference_only: None,
+                group: None,
             });
         }
     }
@@ -234,6 +245,7 @@ fn closure_to_view(closure: &deps::Closure) -> PackPlanView {
             required_by: required(ItemKind::Screenshot, &s.base.slug),
             embedding: None,
             reference_only: None,
+            group: None,
         });
     }
 
@@ -349,7 +361,7 @@ pub async fn list_packables(
 ) -> Result<PackPlanView, String> {
     let root = workspace::require_root(&app, &settings)?;
     let closure = deps::resolve_closure_with(&root, &enumerate_all(&root), HashMode::Names)?;
-    let view = closure_to_view(&closure);
+    let view = closure_to_view(&closure, &root);
     if let Ok(mut cache) = state.catalogue.lock() {
         *cache = Some(view.items.clone());
     }
@@ -366,7 +378,7 @@ pub async fn plan_pack(
 ) -> Result<PackPlanView, String> {
     let root = workspace::require_root(&app, &settings)?;
     let closure = deps::resolve_closure_with(&root, &selection, HashMode::Names)?;
-    let mut view = closure_to_view(&closure);
+    let mut view = closure_to_view(&closure, &root);
 
     let cached = state.catalogue.lock().ok().and_then(|c| c.clone());
     if let Some(catalogue) = cached {
