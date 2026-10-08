@@ -1,4 +1,4 @@
-//! The invisible text layer's font: a two-glyph TrueType built in code (glyph 1 is empty, so nothing ever paints) plus the per-document CID allocation and its ToUnicode map, which is what makes the handout searchable and copyable.
+//! The invisible text layer's font: a three-glyph TrueType built in code (glyphs 1 and 2 have no area, so nothing ever paints) plus the per-document CID allocation and its ToUnicode map, which is what makes the handout searchable and copyable.
 
 use std::collections::HashMap;
 use std::fmt::Write as _;
@@ -13,18 +13,21 @@ pub(crate) const MAX_CID: usize = 65534;
 const BFCHAR_BLOCK: usize = 100;
 /// Glyph 0's tiny box, in font units.
 const BOX: i16 = 100;
+const NUM_GLYPHS: u16 = 3;
+const EMPTY_GLYPH: u8 = 1;
+const INKED_GLYPH: u8 = 2;
 
-/// Sequential CIDs in first-appearance order across the whole document.
+/// Sequential CIDs in first-appearance order across the whole document. A character drawn inked (a one-glyph run, which PDFKit otherwise folds into the glyph before it) gets its own CID on glyph 2.
 #[derive(Default)]
 pub(crate) struct CidMap {
-    by_char: HashMap<char, u16>,
-    chars: Vec<char>,
+    by_char: HashMap<(char, bool), u16>,
+    chars: Vec<(char, bool)>,
     overflowed: bool,
 }
 
 impl CidMap {
-    pub(crate) fn cid(&mut self, c: char) -> Option<u16> {
-        if let Some(&cid) = self.by_char.get(&c) {
+    pub(crate) fn cid(&mut self, c: char, inked: bool) -> Option<u16> {
+        if let Some(&cid) = self.by_char.get(&(c, inked)) {
             return Some(cid);
         }
         if self.chars.len() >= MAX_CID {
@@ -36,9 +39,9 @@ impl CidMap {
             }
             return None;
         }
-        self.chars.push(c);
+        self.chars.push((c, inked));
         let cid = self.chars.len() as u16;
-        self.by_char.insert(c, cid);
+        self.by_char.insert((c, inked), cid);
         Some(cid)
     }
 
@@ -47,12 +50,12 @@ impl CidMap {
         self.chars.len()
     }
 
-    /// Two bytes per CID from 0: notdef stays on glyph 0, every used CID lands on the empty glyph 1.
+    /// Two bytes per CID from 0: notdef stays on glyph 0, every used CID lands on the empty glyph 1 or, inked, on glyph 2.
     pub(crate) fn cid_to_gid_map(&self) -> Vec<u8> {
         let mut map = Vec::with_capacity((self.chars.len() + 1) * 2);
         map.extend_from_slice(&[0, 0]);
-        for _ in &self.chars {
-            map.extend_from_slice(&[0, 1]);
+        for &(_, inked) in &self.chars {
+            map.extend_from_slice(&[0, if inked { INKED_GLYPH } else { EMPTY_GLYPH }]);
         }
         map
     }
@@ -63,7 +66,7 @@ impl CidMap {
         );
         for (block, chunk) in self.chars.chunks(BFCHAR_BLOCK).enumerate() {
             let _ = writeln!(cmap, "{} beginbfchar", chunk.len());
-            for (i, c) in chunk.iter().enumerate() {
+            for (i, (c, _)) in chunk.iter().enumerate() {
                 let cid = block * BFCHAR_BLOCK + i + 1;
                 let mut units = [0u16; 2];
                 let _ = write!(cmap, "<{cid:04X}> <");
@@ -133,52 +136,58 @@ fn hhea() -> Vec<u8> {
     i16be(&mut t, 1);
     t.extend_from_slice(&[0; 12]);
     i16be(&mut t, 0);
-    u16be(&mut t, 2);
+    u16be(&mut t, NUM_GLYPHS);
     t
 }
 
 fn maxp() -> Vec<u8> {
     let mut t = Vec::with_capacity(32);
     u32be(&mut t, 0x0001_0000);
-    for v in [2, 4, 1, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0] {
+    for v in [NUM_GLYPHS, 4, 1, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0] {
         u16be(&mut t, v);
     }
     t
 }
 
 fn hmtx() -> Vec<u8> {
-    let mut t = Vec::with_capacity(8);
-    for _ in 0..2 {
+    let mut t = Vec::with_capacity(4 * usize::from(NUM_GLYPHS));
+    for _ in 0..NUM_GLYPHS {
         u16be(&mut t, ADVANCE);
         i16be(&mut t, 0);
     }
     t
 }
 
-/// Glyph 0 is a one-contour square; glyph 1 has no outline at all.
-fn glyf() -> Vec<u8> {
-    let mut t = Vec::with_capacity(34);
-    i16be(&mut t, 1);
+/// One simple glyph over `[0, 0, BOX, BOX]`: on-curve points given as x and y deltas.
+fn simple_glyph(t: &mut Vec<u8>, dx: &[i16], dy: &[i16]) {
+    i16be(t, 1);
     for v in [0, 0, BOX, BOX] {
-        i16be(&mut t, v);
+        i16be(t, v);
     }
-    u16be(&mut t, 3);
-    u16be(&mut t, 0);
-    t.extend_from_slice(&[0x01; 4]);
-    for dx in [0, 0, BOX, 0] {
-        i16be(&mut t, dx);
+    u16be(t, dx.len() as u16 - 1);
+    u16be(t, 0);
+    t.resize(t.len() + dx.len(), 0x01);
+    for &v in dx.iter().chain(dy) {
+        i16be(t, v);
     }
-    for dy in [0, BOX, 0, -BOX] {
-        i16be(&mut t, dy);
-    }
-    t
 }
 
-fn loca(glyf_len: usize) -> Vec<u8> {
-    let half = (glyf_len / 2) as u16;
-    let mut t = Vec::with_capacity(6);
-    for v in [0, half, half] {
-        u16be(&mut t, v);
+/// Glyph 0 is a one-contour square; glyph 1 has no outline; glyph 2 is a zero-area diagonal, so it has ink bounds but nothing to fill. Returns the table and each glyph's end offset.
+fn glyf() -> (Vec<u8>, [usize; 3]) {
+    let mut t = Vec::with_capacity(58);
+    simple_glyph(&mut t, &[0, 0, BOX, 0], &[0, BOX, 0, -BOX]);
+    let square = t.len();
+    simple_glyph(&mut t, &[0, BOX], &[0, BOX]);
+    let end = t.len();
+    (t, [square, square, end])
+}
+
+/// Short offsets (halved): 0, then each glyph's end.
+fn loca(ends: [usize; 3]) -> Vec<u8> {
+    let mut t = Vec::with_capacity(2 * (ends.len() + 1));
+    u16be(&mut t, 0);
+    for end in ends {
+        u16be(&mut t, (end / 2) as u16);
     }
     t
 }
@@ -276,14 +285,14 @@ fn post() -> Vec<u8> {
 
 /// The embedded TrueType: tables in tag order, valid checksums and checkSumAdjustment, no timestamps.
 pub(crate) fn glyphless_ttf() -> Vec<u8> {
-    let glyf = glyf();
+    let (glyf, ends) = glyf();
     let tables: [(&[u8; 4], Vec<u8>); 10] = [
         (b"OS/2", os2()),
         (b"cmap", cmap()),
         (b"head", head()),
         (b"hhea", hhea()),
         (b"hmtx", hmtx()),
-        (b"loca", loca(glyf.len())),
+        (b"loca", loca(ends)),
         (b"maxp", maxp()),
         (b"name", name()),
         (b"post", post()),

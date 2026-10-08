@@ -270,11 +270,11 @@ impl<W: Write> PdfWriter<W> {
             if !drawable(item, self.height) {
                 continue;
             }
-            let cids: Vec<u16> = item
-                .text
-                .chars()
-                .filter(|c| !c.is_control())
-                .filter_map(|c| self.cids.cid(c))
+            let chars: Vec<char> = item.text.chars().filter(|c| !c.is_control()).collect();
+            let inked = chars.len() == 1;
+            let cids: Vec<u16> = chars
+                .into_iter()
+                .filter_map(|c| self.cids.cid(c, inked))
                 .collect();
             if let Some(op) = text_op(&cids, item, self.width, self.height, STRETCH) {
                 ops.push_str(&op);

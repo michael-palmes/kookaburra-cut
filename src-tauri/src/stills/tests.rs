@@ -359,12 +359,12 @@ fn text_operators_fill_the_line_box() {
 #[test]
 fn cids_follow_first_appearance_and_tounicode_chunks_by_100() {
     let mut cids = CidMap::default();
-    assert_eq!(cids.cid('b'), Some(1));
-    assert_eq!(cids.cid('a'), Some(2));
-    assert_eq!(cids.cid('b'), Some(1));
-    assert_eq!(cids.cid('😀'), Some(3));
+    assert_eq!(cids.cid('b', false), Some(1));
+    assert_eq!(cids.cid('a', false), Some(2));
+    assert_eq!(cids.cid('b', false), Some(1));
+    assert_eq!(cids.cid('😀', false), Some(3));
     for c in (0x4E00u32..0x4E00 + 147).filter_map(char::from_u32) {
-        cids.cid(c);
+        cids.cid(c, false);
     }
     assert_eq!(cids.len(), 150);
     let cmap = cids.to_unicode_cmap();
@@ -380,16 +380,49 @@ fn cids_follow_first_appearance_and_tounicode_chunks_by_100() {
 }
 
 #[test]
+fn inked_cids_map_the_same_text_onto_glyph_2() {
+    let mut cids = CidMap::default();
+    assert_eq!(cids.cid('4', false), Some(1));
+    assert_eq!(cids.cid('4', true), Some(2));
+    assert_eq!(cids.cid('4', true), Some(2));
+    assert_eq!(cids.cid('4', false), Some(1));
+    assert_eq!(cids.cid_to_gid_map(), [0, 0, 0, 1, 0, 2]);
+    assert!(cids
+        .to_unicode_cmap()
+        .contains("2 beginbfchar\n<0001> <0034>\n<0002> <0034>\nendbfchar\n"));
+}
+
+#[test]
+fn one_glyph_lines_draw_inked_and_longer_lines_do_not() {
+    let pages = vec![(
+        meta(0, "Chart", 0.0),
+        vec![
+            item("40", 0.1, 0.1, 0.04, 0.03),
+            item("4", 0.1, 0.2, 0.02, 0.03),
+        ],
+    )];
+    let bytes = write_pdf(&pages, plain_info("Inked"));
+    let text = String::from_utf8_lossy(&bytes);
+    assert!(text.contains("<00010002> Tj"));
+    assert!(text.contains("<0003> Tj"));
+    assert!(text.contains("<0003> <0034>"));
+    assert!(contains(
+        &bytes,
+        "<< /Length 8 >>\nstream\n\0\0\0\x01\0\x01\0\x02\n"
+    ));
+}
+
+#[test]
 fn cids_stop_at_the_identity_limit() {
     let mut cids = CidMap::default();
     let mut assigned = 0;
     for c in (0x20u32..0x30000).filter_map(char::from_u32) {
-        if cids.cid(c).is_some() {
+        if cids.cid(c, false).is_some() {
             assigned += 1;
         }
     }
     assert_eq!(assigned, 65534);
-    assert_eq!(cids.cid(' '), Some(1));
+    assert_eq!(cids.cid(' ', false), Some(1));
 }
 
 #[test]
@@ -440,10 +473,16 @@ fn the_glyphless_font_parses_and_its_checksums_hold() {
     let hhea_data = provider.read_table_data(tag::HHEA).unwrap();
     let hhea = ReadScope::new(&hhea_data).read::<HheaTable>().unwrap();
     assert_eq!((hhea.ascender, hhea.descender), (800, -200));
-    assert_eq!(hhea.num_h_metrics, 2);
+    assert_eq!(hhea.num_h_metrics, 3);
     let maxp_data = provider.read_table_data(tag::MAXP).unwrap();
     let maxp = ReadScope::new(&maxp_data).read::<MaxpTable>().unwrap();
-    assert_eq!(maxp.num_glyphs, 2);
+    assert_eq!(maxp.num_glyphs, 3);
+    let loca = provider.read_table_data(tag::LOCA).unwrap();
+    assert_eq!(
+        &*loca,
+        &[0, 0, 0, 17, 0, 17, 0, 29],
+        "square, empty, diagonal"
+    );
     let cmap_data = provider.read_table_data(tag::CMAP).unwrap();
     let cmap = ReadScope::new(&cmap_data).read::<Cmap<'_>>().unwrap();
     let record = cmap
@@ -1000,7 +1039,10 @@ fn external_readers_find_the_text_layer() {
         .write_page(
             &jpeg,
             info,
-            &[item("Second 😀 page", 0.1, 0.5, 0.23, 0.05)],
+            &[
+                item("Second 😀 page", 0.1, 0.5, 0.23, 0.05),
+                item("•", 0.8, 0.8, 0.02, 0.05),
+            ],
             &meta(1, "Outro", 0.0),
             &[2; 32],
         )
@@ -1032,6 +1074,20 @@ fn external_readers_find_the_text_layer() {
         assert!(text.contains("Hello Wörld 你好"), "PDFKit: {text:?}");
     } else {
         eprintln!("skipping PDFKit: osascript unavailable");
+    }
+    // A lone glyph must not stretch the selection of the line before it (17 x 27 pt per glyph here).
+    let script = format!(
+        "ObjC.import('PDFKit'); var d = $.PDFDocument.alloc.initWithURL($.NSURL.fileURLWithPath('{path}')); var r = d.findStringWithOptions('page', 0).objectAtIndex(0).boundsForPage(d.pageAtIndex(1)); [r.size.width, r.size.height].join(' ')"
+    );
+    if let Some(size) = tool_output("osascript", &["-l", "JavaScript", "-e", &script]) {
+        let size: Vec<f64> = size
+            .split_whitespace()
+            .map(|v| v.parse().unwrap())
+            .collect();
+        assert!(
+            size[0] < 75.0 && size[1] < 30.0,
+            "PDFKit 'page' bounds: {size:?}"
+        );
     }
     let _ = std::fs::remove_dir_all(&dir);
 }
