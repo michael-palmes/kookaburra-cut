@@ -148,6 +148,7 @@ import {
   sceneStillsPlan,
   setStillsExcluded,
 } from "./engine/stills";
+import { exportStills } from "./engine/stillsExport";
 import {
   refreshUserTemplates,
   subscribeTemplateEdits,
@@ -194,6 +195,7 @@ import {
   type ExportSelection,
   type StillsExportSelection,
 } from "./ui/ExportModal";
+import { STILLS_ID } from "./ui/exportOptions";
 import { OverlayImageGizmo } from "./ui/ImageOverlayGizmo";
 import { newChartBlock } from "./ui/inspector/ChartSection";
 import { InspectorPanel } from "./ui/inspector/InspectorPanel";
@@ -285,6 +287,9 @@ type Toast = { kind: "success" | "info" | "error"; message: string; path?: strin
 
 const TOAST_AUTO_CLOSE_MS = 4000;
 
+/** Once per page load: StrictMode mounts App twice. */
+let stillsJobCleared = false;
+
 /** Re-renders one frame per scrub change; the export path (exporter.ts) has its own frameloop controller reading the same clock store. */
 function PreviewClock() {
   const invalidate = useThree((s) => s.invalidate);
@@ -323,6 +328,8 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
   const [progress, setProgress] = useState<ExportProgress | null>(null);
+  // What the running export writes; the titlebar pill and the preparing overlay name it.
+  const [exportKind, setExportKind] = useState<"video" | "pdf" | "png-zip">("video");
   // The running export's or verify's abort switch; the titlebar Cancel trips it.
   const exportAbortRef = useRef<AbortController | null>(null);
   const [cancelling, setCancelling] = useState(false);
@@ -363,6 +370,13 @@ export default function App() {
       return true; // malformed config is reported elsewhere; don't also block on first-run
     }
   }, []);
+
+  // A WebContent reload mid-export leaves a stills job busy natively; the first interactive mount clears it (autoruns clear it in runAutoRun).
+  useEffect(() => {
+    if (isAutoRun || stillsJobCleared) return;
+    stillsJobCleared = true;
+    void invoke("cancel_stills_export").catch(() => {});
+  }, [isAutoRun]);
 
   // The opt-in update lane: launch check in this window only, manual results land as toasts.
   const onUpdateManualResult = useCallback(
@@ -2178,7 +2192,77 @@ export default function App() {
     await new Promise((r) => setTimeout(r, 0));
   }
 
-  const handleStillsExport = useCallback(async (_sel: StillsExportSelection) => {}, []);
+  // Stills: the video export's destination rules, cancel switch and toasts; the chosen aspect lands in the editor first, as a Verify leg's does.
+  async function handleStillsExport(sel: StillsExportSelection) {
+    if (!project) return;
+    setShowExport(false);
+    setExporting(true);
+    setExportKind(sel.format);
+    setProgress(null);
+    setExportPrepStep(0);
+    setToast(null);
+    const abort = new AbortController();
+    exportAbortRef.current = abort;
+    try {
+      const targetFormat = FORMATS[sel.aspect];
+      await commitFormat(targetFormat);
+      const toDownloads = await getSettings()
+        .then((s) => !s.keepExportsInProject)
+        .catch(() => true);
+      const result = await exportStills(
+        {
+          projectId: project.id,
+          fps: FPS,
+          durationMs: project.totalMs,
+          format: targetFormat,
+          slots: project.slots,
+          cameraTrack: project.cameraTrack,
+          sceneDocs: project.sceneDocs,
+          theme: project.theme,
+          sceneThemes: project.sceneThemes,
+          projectLighting: project.projectLighting,
+          sceneFrames: project.sceneFrames,
+          compareBDocs: project.compareBDocs,
+          compareBThemes: project.compareBThemes,
+          audio: project.audio,
+          codec: "libx264",
+          destination: toDownloads ? "downloads" : undefined,
+          signal: abort.signal,
+        },
+        {
+          format: sel.format,
+          size: sel.size,
+          title: project.name,
+          sceneFiles: project.sceneFiles,
+        },
+        (p) => {
+          setExportPrepStep(null);
+          setProgress(p);
+        },
+        setExportPrepStep,
+      );
+      setToast({
+        kind: "success",
+        message: sel.format === "pdf" ? "PDF exported" : "Images exported",
+        path: result.path,
+      });
+      void invoke("notify_export_done");
+      void setLastExportPreset(project.id, STILLS_ID).catch(() => {});
+    } catch (e) {
+      setToast(
+        abort.signal.aborted
+          ? { kind: "info", message: "Export cancelled. Nothing was saved." }
+          : { kind: "error", message: `Export failed: ${String(e)}` },
+      );
+    } finally {
+      exportAbortRef.current = null;
+      setCancelling(false);
+      setExporting(false);
+      setExportKind("video");
+      setProgress(null);
+      setExportPrepStep(null);
+    }
+  }
 
   // Run the modal's selection. The chosen aspect sets the editor format first; no `encode` means the frozen legacy path (Kookaburra Standard), presets/custom carry their resolved spec + name suffix.
   async function handleExport(sel: ExportSelection) {
@@ -2320,13 +2404,19 @@ export default function App() {
   }
 
   const pct = progress ? Math.round((progress.frame / progress.total) * 100) : 0;
+  const exportVerb =
+    exportKind === "pdf"
+      ? "Exporting PDF…"
+      : exportKind === "png-zip"
+        ? "Exporting images…"
+        : "Exporting…";
   // Figure-space padding (U+2007 = one tabular-digit width) keeps the label the same width from "  1%" to "100%", no mid-export jitter.
   const exportLabel =
     progress?.stage === "pass1"
       ? "Encoding 1/2…"
       : progress?.stage === "pass2"
         ? "Encoding 2/2…"
-        : `Exporting… ${String(pct).padStart(3, " ")}%`;
+        : `${exportVerb} ${String(pct).padStart(3, " ")}%`;
 
   // Fixed-width seconds readout: pad to the duration's width so digit count never changes, paired with tabular-nums (CSS) so the scrubber track never jitters.
   const durationSec = (durationMs / 1000).toFixed(2);
@@ -2667,7 +2757,13 @@ export default function App() {
                   name={project?.name ?? "your cut"}
                   step={exportPrepStep ?? 0}
                   steps={EXPORT_PREAMBLE_STEPS}
-                  verb="Exporting"
+                  verb={
+                    exportKind === "pdf"
+                      ? "Exporting a PDF of"
+                      : exportKind === "png-zip"
+                        ? "Exporting images of"
+                        : "Exporting"
+                  }
                 />
               )}
 
