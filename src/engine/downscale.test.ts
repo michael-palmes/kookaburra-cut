@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { downscaleRgba } from "./downscale";
+import { downscaleRgba, downscaleScratchLength, pageFromReadback } from "./downscale";
 
 /** Opaque greyscale RGBA from rows of grey levels. */
 function grey(rows: number[][]): Uint8Array {
@@ -56,5 +56,39 @@ describe("downscaleRgba", () => {
     // Additive glow over a zero-alpha clear: un-premultiplying by that alpha zeroed the whole tile.
     const glow = Uint8Array.from([90, 160, 200, 0, 30, 60, 90, 0]);
     expect(Array.from(downscaleRgba(glow, 2, 1, 1, 1))).toEqual([60, 110, 145, 255]);
+  });
+});
+
+/** A deterministic premultiplied readback with varied alpha. */
+function noise(width: number, height: number, seed: number): Uint8Array {
+  return Uint8Array.from({ length: width * height * 4 }, (_, i) => (i * 37 + seed * 101) % 256);
+}
+
+describe("pageFromReadback", () => {
+  it("flip-copies a native-size page byte for byte as the box filter would", () => {
+    const src = noise(7, 5, 1);
+    const fast = pageFromReadback(src, 7, 5, 7, 5);
+    expect(Array.from(fast)).toEqual(Array.from(downscaleRgba(src, 7, 5, 7, 5, true)));
+  });
+
+  it("downscales smaller pages through the box filter, flipped", () => {
+    const src = noise(12, 8, 2);
+    expect(Array.from(pageFromReadback(src, 12, 8, 5, 3))).toEqual(
+      Array.from(downscaleRgba(src, 12, 8, 5, 3, true)),
+    );
+  });
+
+  it("reuses its buffers across pages without carrying anything over", () => {
+    const out = new Uint8ClampedArray(5 * 3 * 4);
+    const scratch = new Float64Array(downscaleScratchLength(8, 5));
+    const first = pageFromReadback(noise(12, 8, 3), 12, 8, 5, 3, out, scratch);
+    expect(first).toBe(out);
+    const second = Array.from(pageFromReadback(noise(12, 8, 4), 12, 8, 5, 3, out, scratch));
+    expect(second).toEqual(Array.from(downscaleRgba(noise(12, 8, 4), 12, 8, 5, 3, true)));
+    const native = new Uint8ClampedArray(12 * 8 * 4);
+    pageFromReadback(noise(12, 8, 5), 12, 8, 12, 8, native);
+    expect(Array.from(pageFromReadback(noise(12, 8, 6), 12, 8, 12, 8, native))).toEqual(
+      Array.from(downscaleRgba(noise(12, 8, 6), 12, 8, 12, 8, true)),
+    );
   });
 });

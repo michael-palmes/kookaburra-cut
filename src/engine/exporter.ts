@@ -39,7 +39,14 @@ import {
   preloadEnvironments,
   preloadMirrorEnvironments,
 } from "./environments";
-import { canvasCommittedClockMs, canvasHandle } from "./exportBridge";
+import { canvasHandle } from "./exportBridge";
+import {
+  awaitCanvasClockCommit,
+  awaitTextSync,
+  buildFramePlans,
+  type FrameRig,
+  renderFrameInto,
+} from "./exportFrame";
 import { exportFrameTimeMs, normalExportFrameCount, posterFrameSample } from "./exportFrames";
 import { setExporting, withExporting } from "./exportState";
 import { computeFormat, type FormatSpec } from "./format";
@@ -49,7 +56,8 @@ import { HELPER_LAYER } from "./lightEditStore";
 import { yieldMacrotask } from "./macrotask";
 import { useObjectEditStore } from "./objectEditStore";
 import { preloadOverlayPanelImages } from "./overlayPanelTexture";
-import { overlayPanelImageSources, resolveOverlays } from "./overlayPlan";
+import { overlayPanelImageSources } from "./overlayPlan";
+import { hasSceneHolds } from "./presentHold";
 import {
   isWorkspaceBackedProjectId,
   nativeProjectSlug,
@@ -59,23 +67,21 @@ import {
 } from "./project";
 import { assertContextHeld, readFrameOrThrow } from "./readback";
 import { type RenderStateFingerprint, renderStateFingerprint } from "./renderFingerprint";
-import { buildSceneCameraTracks, hasSceneCameraTracks, resolveFrameCameras } from "./sceneCamera";
-import { compareSpecOf, resolveCompareFrame } from "./sceneCompare";
+import { hasSceneCameraTracks, resolveFrameCameras } from "./sceneCamera";
+import { resolveCompareFrame } from "./sceneCompare";
 import { collectSceneDocFontRefs, type SceneDoc } from "./sceneDocSchema";
 import { getSceneHosts } from "./sceneHostRegistry";
-import {
-  buildCompareBLightingTracks,
-  buildLightingTracks,
-  resolveFrameLighting,
-} from "./sceneLighting";
+import { resolveFrameLighting } from "./sceneLighting";
 import { resolveSceneDocMedia } from "./sceneMedia";
-import { buildSceneRenderStates, resolveFrameSceneStates } from "./sceneState";
+import { resolveFrameSceneStates } from "./sceneState";
 import { resolveAt, type SceneSlot } from "./sceneTimeline";
 import { snapshotSceneStageFloors } from "./stageRegistry";
 import { useTerminalEditStore } from "./terminalEditStore";
 import { configureDeterministicEngine } from "./timeline";
 import { awaitTitleMeasuresSettled } from "./titleBlockMeasure";
 import { useWebsiteEditStore } from "./websiteEditStore";
+
+export { awaitTextSync } from "./exportFrame";
 
 /** Export encoder: libx264 is deterministic (the v0 default), videotoolbox is hardware-fast, prores_ks is software ProRes 422 HQ (10-bit 4:2:2, .mov container). */
 export type Codec = "libx264" | "h264_videotoolbox" | "prores_ks";
@@ -253,59 +259,6 @@ export async function awaitSceneHostsCommitted(expected: number): Promise<void> 
   }
 }
 
-/** Waits until the canvas tree has committed `tMs`. The canvas subtree renders in the r3f reconciler, which react-dom's `flushSync` does not flush, so its commit usually lands within a macrotask or two; per-mesh readiness hooks are only trustworthy for this frame after that commit, since awaiting them earlier can capture the previous frame's texture/glyphs (the back-to-back Verify ×2 race). Deterministic by construction: the loop's duration varies, its outcome never does. */
-async function awaitCanvasClockCommit(tMs: number): Promise<void> {
-  for (let spins = 0; canvasCommittedClockMs() !== tMs; spins++) {
-    if (spins > 5000) {
-      throw new Error(
-        `Canvas tree never committed clock ${tMs}ms (stuck at ${canvasCommittedClockMs()}ms).`,
-      );
-    }
-    await yieldMacrotask();
-  }
-}
-
-/** The subset of troika-three-text's Text we drive. `_needsSync`/`_isSyncing` are private but stable in the pinned 0.52.4, and are the only way to detect quiescence, since troika's `sync(cb)` silently drops the callback when `_needsSync` is false (including while a typeset is in flight). */
-interface TroikaTextLike {
-  sync: (cb?: () => void) => void;
-  _needsSync?: boolean;
-  _isSyncing?: boolean;
-  addEventListener: (type: string, cb: () => void) => void;
-  removeEventListener: (type: string, cb: () => void) => void;
-}
-
-/** Awaits typesetting for every troika text mesh in the scene: per-frame layout can be async (e.g. a counter whose text changes each frame), so we must wait for it before capturing or read stale glyphs. Two hard-won subtleties (the text half of the back-to-back Verify ×2 race): troika meshes are detected via `material.isTroikaTextMaterial`, since the mesh itself carries no `isTroikaText` flag in troika 0.52.4; and a pending typeset is kicked here (pre-render) rather than left to troika's own `onBeforeRender` kick (which would start it a frame late), with quiescence awaited via the `synccomplete` event since `sync(cb)` drops callbacks when no new sync is needed. Exported for the borrowed-clock capture paths (snapshots.ts), whose single forced paint otherwise reads glyphs one capture late (the invisible-Playfair-title theme-preview bug). */
-export function awaitTextSync(scene: Scene): Promise<void> {
-  const pending: Promise<void>[] = [];
-  scene.traverse((obj: Object3D) => {
-    const material = (obj as { material?: { isTroikaTextMaterial?: boolean } }).material;
-    const mesh = obj as unknown as TroikaTextLike;
-    if (!material?.isTroikaTextMaterial || typeof mesh.sync !== "function") return;
-    pending.push(
-      new Promise<void>((resolve) => {
-        const settle = () => {
-          // Kicks a queued typeset now so this frame's text lays out before the render (troika would otherwise only kick it during onBeforeRender, one frame late).
-          if (mesh._needsSync) mesh.sync();
-          if (!mesh._needsSync && !mesh._isSyncing) {
-            mesh.removeEventListener("synccomplete", settle);
-            resolve();
-          }
-        };
-        mesh.addEventListener("synccomplete", settle);
-        settle();
-      }),
-    );
-  });
-  return Promise.all(pending).then(() => undefined);
-}
-
-/** Dev React (react-dom and r3f's reconciler) records a `performance.measure` with a props diff for every re-render whose props changed, and WebKit keeps them all: every mounted scene re-renders per tick, about 1 MB a frame on a 40-scene project, enough to reach the 4 GB WebContent ceiling mid-Verify. Production React records none. */
-function dropDevPerformanceEntries(): void {
-  if (!import.meta.env.DEV) return;
-  performance.clearMeasures();
-  performance.clearMarks();
-}
-
 /**
  * Deterministic export loop: reuses the live preview canvas, sizing its drawing buffer to the export resolution, then for each frame seeks the clock, awaits typesetting, renders the frame, reads the pixels, and streams them to the ffmpeg sidecar. Frame N is a pure function of the frame index, no wall clock, no UI state. See docs/determinism.md.
  *
@@ -319,8 +272,8 @@ export const EXPORT_PREAMBLE_STEPS = [
   "Placing the scenes",
 ] as const;
 
-/** The deterministic preamble shared by exportProject and captureScreenshot; barrier order is pinned (docs/determinism.md). `onStep` reports coarse-phase completion for the UI overlay only. */
-async function exportPreamble(
+/** The deterministic preamble shared by exportProject, captureScreenshot and the stills export; barrier order is pinned (docs/determinism.md). `onStep` reports coarse-phase completion for the UI overlay only. */
+export async function exportPreamble(
   opts: ExportOptions,
   gl: WebGLRenderer,
   onStep?: (step: number) => void,
@@ -433,6 +386,15 @@ async function exportPreamble(
   await awaitTitleMeasuresSettled();
 }
 
+/** Present holds freeze staged text mid-timeline, so a video frame or capture rendered while the stills export holds scenes would not be the pure function of `t` the contract promises. */
+function assertNoSceneHolds(run: "export" | "capture"): void {
+  if (hasSceneHolds()) {
+    throw new Error(
+      `Scene holds are active (a stills export is running), so the ${run} cannot start.`,
+    );
+  }
+}
+
 export async function exportProject(
   opts: ExportOptions,
   onProgress?: (p: ExportProgress) => void,
@@ -458,6 +420,7 @@ async function exportProjectHeld(
   onFingerprint?: (fp: RenderStateFingerprint) => void,
   onPrepareStep?: (step: number) => void,
 ): Promise<string> {
+  assertNoSceneHolds("export");
   const handle = canvasHandle.current;
   if (!handle) throw new Error("Export bridge not mounted: the canvas is not ready.");
   const { gl, scene, camera } = handle;
@@ -469,7 +432,7 @@ async function exportProjectHeld(
   const prevSize = gl.getSize(new Vector2());
   const prevPixelRatio = gl.getPixelRatio();
   const prevClockMs = useClockStore.getState().currentMs;
-  let clockOwnedMs: number | null = null;
+  let rig: FrameRig | null = null;
   const cam = camera as PerspectiveCamera;
   const prevAspect = cam.isPerspectiveCamera ? cam.aspect : 0;
   const prevHelperLayer = cam.layers.isEnabled(HELPER_LAYER);
@@ -540,65 +503,25 @@ async function exportProjectHeld(
     started = true;
     signal?.addEventListener("abort", stopNativeEncode, { once: true });
 
-    // Per-scene camera tracks, normalized once for the whole run; projects without any stay on the legacy camera path below, byte-identically.
-    const sceneTracks = buildSceneCameraTracks(
-      opts.sceneDocs ?? [],
-      computeFormat(opts.format),
-      sceneFloorYs,
-    );
-    const lightingTracks = opts.sceneThemes
-      ? buildLightingTracks(opts.sceneThemes, opts.projectLighting, opts.sceneDocs ?? [])
-      : null;
-    const compareBLightingTracks = opts.sceneThemes
-      ? buildCompareBLightingTracks(
-          opts.sceneThemes,
-          opts.compareBThemes,
-          opts.projectLighting,
-          opts.sceneDocs ?? [],
-        )
-      : null;
-
-    // Per-scene render states, built once; null unless the project opts into themed scene state (mirrored in CompositorDriver).
-    const sceneStates =
-      opts.theme && opts.sceneThemes
-        ? buildSceneRenderStates(opts.theme, opts.sceneThemes, {
-            projectId: opts.projectId,
-            projectLighting: opts.projectLighting,
-            sceneDocs: opts.sceneDocs,
-          })
-        : null;
-
-    // Comparison plan inputs, built once (mirrored in CompositorDriver): specs per scene, plus side B's states over B-substituted themes/docs.
-    const compareSpecs = (opts.sceneDocs ?? []).map((d, i) =>
-      compareSpecOf(d, opts.sceneThemes?.[i]),
-    );
-    const sceneStatesB =
-      opts.theme && opts.sceneThemes && opts.compareBDocs?.some(Boolean)
-        ? buildSceneRenderStates(
-            opts.theme,
-            opts.sceneThemes.map((t, i) => opts.compareBThemes?.[i] ?? t),
-            {
-              projectId: opts.projectId,
-              projectLighting: opts.projectLighting,
-              sceneDocs: (opts.sceneDocs ?? []).map((d, i) => opts.compareBDocs?.[i] ?? d),
-            },
-          )
-        : null;
-
-    // Per-scene overlays, resolved once; null unless some scene declares a frame (mirrored in CompositorDriver).
-    const overlays = opts.sceneThemes
-      ? resolveOverlays(
-          opts.sceneFrames ?? [],
-          opts.sceneThemes,
-          opts.sceneDocs ?? [],
-          opts.projectId,
-        )
-      : null;
+    const plans = buildFramePlans(opts, sceneFloorYs);
+    rig = {
+      gl,
+      scene,
+      camera,
+      ctx,
+      width,
+      height,
+      rgba,
+      sizeProbe,
+      plans,
+      cameraTrack: opts.cameraTrack,
+      clockOwnedMs: null,
+    };
 
     // Stale-pose healing: a fully trackless project never writes the camera inside the loop, and the shared camera persists across project switches, so heal it once before frame 0. Pristine case writes identical floats (fov unchanged, no projection update), so the gated no-track paths stay byte-identical. Mirrored in CompositorDriver.
     if (
       (!opts.cameraTrack || opts.cameraTrack.length === 0) &&
-      !hasSceneCameraTracks(sceneTracks)
+      !hasSceneCameraTracks(plans.sceneTracks)
     ) {
       applyCameraPose(cam, baseCameraPose());
     }
@@ -607,52 +530,18 @@ async function exportProjectHeld(
     cam.layers.disable(HELPER_LAYER);
     for (let frame = 0; frame < total; frame++) {
       signal?.throwIfAborted();
-      dropDevPerformanceEntries();
       const tMs = exportFrameTimeMs(frame, opts.fps, poster?.tMs);
-      // flushSync commits the DOM tree; the canvas tree (r3f reconciler) commits on its own schedule, so wait for it before trusting any per-mesh readiness hook for this frame.
-      flushSync(() => useClockStore.getState().setCurrentMs(tMs));
-      clockOwnedMs = tMs;
-      await awaitCanvasClockCommit(tMs);
-      // Ensure each VideoClip's current frame texture is uploaded first (this may yield)...
-      await awaitVideoFramesReady(scene);
-      // ...then syncs troika text last, immediately before the render, with no async gap after it where a stray render or worker message could leave a text mesh stale at capture.
-      await awaitTextSync(scene);
-      // Emoji rasters requested this frame (e.g. a counter format emitting an unseen cluster) settle before capture, so a texture can never pop in at a run-dependent frame.
-      await awaitEmojiRastersIdle();
-      // Guards against mid-run interference (e.g. a window resize retriggering r3f's size handling, which would corrupt every remaining captured frame); re-asserts the export size only if drifted, since an unconditional setSize would clear the canvas every frame. Resize events land during the awaits above; from here to readPixels is synchronous, so a corrected size cannot drift again before capture.
-      gl.getSize(sizeProbe);
-      if (sizeProbe.x !== width || sizeProbe.y !== height || gl.getPixelRatio() !== 1) {
-        gl.setPixelRatio(1);
-        gl.setSize(width, height, false);
-      }
-      if (cam.isPerspectiveCamera && cam.aspect !== width / height) {
-        cam.aspect = width / height;
-        cam.updateProjectionMatrix();
-      }
-      // The camera applies at this shared seam (mirrored in CompositorDriver), a pure function of tMs. Scene-doc tracks get a per-frame plan applied inside renderComposited (per-target on transition frames); otherwise the legacy project-track path runs, a hard no-op when the project declares no track. Neither touches `cam.aspect`, so the resize guard above stays the sole owner of aspect.
       const resolved = frame === 0 && poster ? poster.resolved : resolveAt(opts.slots, tMs);
-      const plan = resolveFrameCameras(sceneTracks, opts.cameraTrack, resolved, tMs);
-      if (!plan) applyCameraTrack(cam, opts.cameraTrack, tMs);
-      const statePlan = resolveFrameSceneStates(sceneStates, resolved);
-      const lightingPlan = resolveFrameLighting(lightingTracks, resolved, compareBLightingTracks);
-      const compareFrame = resolveCompareFrame(compareSpecs, sceneStates, sceneStatesB, resolved);
-      // Same render path as the preview (engine/compositor): single-scene frames render directly (v0-identical), transition frames go through the composite. Frame 0 draws twice and keeps the second, so it is never the run's first draw: a cold boot (hidden window, no preview frames) must capture what a warm one does.
-      for (let draw = frame === 0 ? 2 : 1; draw > 0; draw--) {
-        renderComposited(
-          gl,
-          scene,
-          camera,
-          getSceneHosts(),
-          resolved,
-          plan ?? undefined,
-          statePlan,
-          overlays ?? undefined,
-          lightingPlan ?? undefined,
-          compareFrame,
-        );
-      }
-      if (frame === total - 1) onFingerprint?.(renderStateFingerprint(gl, scene));
-      readFrameOrThrow(ctx, width, height, rgba, `export frame ${frame + 1}/${total}`);
+      await renderFrameInto(
+        rig,
+        tMs,
+        resolved,
+        frame === 0 ? 2 : 1,
+        `export frame ${frame + 1}/${total}`,
+        frame === total - 1 && onFingerprint
+          ? () => onFingerprint(renderStateFingerprint(gl, scene))
+          : undefined,
+      );
       onBoundClipFrame?.(frame, sampleBoundClipFrame(scene));
       onFrame?.(frame, rgba);
       await invoke("push_frame", rgba);
@@ -674,6 +563,7 @@ async function exportProjectHeld(
     }
     if (prevHelperLayer) cam.layers.enable(HELPER_LAYER);
     // Give the playhead back only if this run wrote it and still owns it; an untouched or since-moved clock stays put.
+    const clockOwnedMs = rig?.clockOwnedMs ?? null;
     if (clockOwnedMs !== null && useClockStore.getState().currentMs === clockOwnedMs) {
       flushSync(() => useClockStore.getState().setCurrentMs(prevClockMs));
     }
@@ -692,6 +582,7 @@ async function captureFrameRgbaHeld(
   opts: ExportOptions,
   tMs: number,
 ): Promise<{ rgba: Uint8Array; width: number; height: number }> {
+  assertNoSceneHolds("capture");
   const handle = canvasHandle.current;
   if (!handle) throw new Error("Export bridge not mounted: the canvas is not ready.");
   const { gl, scene, camera } = handle;
@@ -734,54 +625,15 @@ async function captureFrameRgbaHeld(
       cam.updateProjectionMatrix();
     }
 
-    const sceneTracks = buildSceneCameraTracks(
-      opts.sceneDocs ?? [],
-      computeFormat(opts.format),
-      sceneFloorYs,
-    );
-    const lightingTracks = opts.sceneThemes
-      ? buildLightingTracks(opts.sceneThemes, opts.projectLighting, opts.sceneDocs ?? [])
-      : null;
-    const compareBLightingTracks = opts.sceneThemes
-      ? buildCompareBLightingTracks(
-          opts.sceneThemes,
-          opts.compareBThemes,
-          opts.projectLighting,
-          opts.sceneDocs ?? [],
-        )
-      : null;
-    const sceneStates =
-      opts.theme && opts.sceneThemes
-        ? buildSceneRenderStates(opts.theme, opts.sceneThemes, {
-            projectId: opts.projectId,
-            projectLighting: opts.projectLighting,
-            sceneDocs: opts.sceneDocs,
-          })
-        : null;
-    const overlays = opts.sceneThemes
-      ? resolveOverlays(
-          opts.sceneFrames ?? [],
-          opts.sceneThemes,
-          opts.sceneDocs ?? [],
-          opts.projectId,
-        )
-      : null;
-    // Comparison plan inputs, mirroring the export loop exactly (a screenshot must show the frame the export would).
-    const compareSpecs = (opts.sceneDocs ?? []).map((d, i) =>
-      compareSpecOf(d, opts.sceneThemes?.[i]),
-    );
-    const sceneStatesB =
-      opts.theme && opts.sceneThemes && opts.compareBDocs?.some(Boolean)
-        ? buildSceneRenderStates(
-            opts.theme,
-            opts.sceneThemes.map((t, i) => opts.compareBThemes?.[i] ?? t),
-            {
-              projectId: opts.projectId,
-              projectLighting: opts.projectLighting,
-              sceneDocs: (opts.sceneDocs ?? []).map((d, i) => opts.compareBDocs?.[i] ?? d),
-            },
-          )
-        : null;
+    const {
+      sceneTracks,
+      lightingTracks,
+      compareBLightingTracks,
+      sceneStates,
+      compareSpecs,
+      sceneStatesB,
+      overlays,
+    } = buildFramePlans(opts, sceneFloorYs);
     // Trackless projects heal the shared camera to base for the frame; snapshot the live pose (a mid-orbit view stays where the user left it) and give it back afterwards.
     if (
       (!opts.cameraTrack || opts.cameraTrack.length === 0) &&
@@ -975,7 +827,7 @@ export async function verifyDeterminism(
 }
 
 /** Verify diagnostic: FNV-1a per cell of an 8×8 grid over the frame, so two runs' frames can be compared tile-by-tile to localize a divergence spatially; any pixel difference flips its cell's hash. */
-function tileHashFrame(rgba: Uint8Array, width: number, height: number): Uint32Array {
+export function tileHashFrame(rgba: Uint8Array, width: number, height: number): Uint32Array {
   const words = new Uint32Array(rgba.buffer, rgba.byteOffset, rgba.byteLength >> 2);
   const tiles = new Uint32Array(64).fill(0x811c9dc5);
   for (let y = 0; y < height; y++) {

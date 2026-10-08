@@ -1,7 +1,8 @@
 import { useThree } from "@react-three/fiber";
-import { useEffect, useLayoutEffect } from "react";
+import { useEffect, useLayoutEffect, useSyncExternalStore } from "react";
 import type { Camera, Scene, WebGLRenderer } from "three";
 import { useClockStore } from "./clock";
+import { sceneHoldsVersion, subscribeSceneHolds } from "./presentHold";
 
 /** Imperative handle onto the live r3f canvas, captured for the export loop. */
 export interface CanvasHandle {
@@ -48,6 +49,13 @@ export function canvasCommittedClockMs(): number {
   return committedClockMs;
 }
 
+/** The scene-hold version the canvas tree last committed, stamped in the same reconciler flush as every `useHeldLocalMs` reader (the clock stamp's guarantee), so the stills export can wait for its holds to reach the scenes. */
+let committedHoldsVersion = Number.NaN;
+
+export function canvasCommittedHoldsVersion(): number {
+  return committedHoldsVersion;
+}
+
 /** The loaded project identity the canvas tree last committed (stamped by CompositorDriver's layout effect). A project/theme swap is a concurrent-lane update while the capture paths' clock writes are sync-lane, so the clock stamp can land on the old tree before the swap commits and a capture right after `applyLoadedProject` reads the previous theme's content (the stale scene-1 theme-preview bug); batch/preview capture paths wait for this stamp before seeking. */
 let committedProject: unknown = null;
 
@@ -74,6 +82,7 @@ export function ExportBridge() {
   const camera = useThree((s) => s.camera);
   const advance = useThree((s) => s.advance);
   const currentMs = useClockStore((s) => s.currentMs);
+  const holdsVersion = useSyncExternalStore(subscribeSceneHolds, sceneHoldsVersion);
   useEffect(() => {
     canvasHandle.current = { gl, scene, camera, advance };
     return () => {
@@ -85,5 +94,8 @@ export function ExportBridge() {
   useLayoutEffect(() => {
     committedClockMs = currentMs;
   }, [currentMs]);
+  useLayoutEffect(() => {
+    committedHoldsVersion = holdsVersion;
+  }, [holdsVersion]);
   return null;
 }
