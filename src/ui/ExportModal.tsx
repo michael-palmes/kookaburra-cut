@@ -152,6 +152,7 @@ export function ExportModal({
     () => useUiStore.getState().stillsSize,
   );
   const preselected = useRef(!!initial);
+  const stillsRowRef = useRef<HTMLButtonElement>(null);
   const [search, setSearch] = useState("");
   const [aspectFilter, setAspectFilter] = useState<AspectName | null>(null);
   const [aspect, setAspect] = useState<AspectName>(currentAspect);
@@ -245,6 +246,12 @@ export function ExportModal({
     useUiStore.getState().setStillsSize(size);
   }, []);
   const stills = selectedId === STILLS_ID;
+  // Opened on Stills: the pinned row sits below the fold, and drops again when user presets land above it.
+  useEffect(() => {
+    if (preselected.current && stills && userRows) {
+      stillsRowRef.current?.scrollIntoView({ block: "nearest" });
+    }
+  }, [stills, userRows]);
   const stillsInfo = useMemo(() => {
     if (!stills) return null;
     const summary = stillsSummary(project.sceneDocs, project.slots);
@@ -800,6 +807,7 @@ export function ExportModal({
               </button>
               {stillsRowMatches(search) && (
                 <button
+                  ref={stillsRowRef}
                   type="button"
                   className={`export-row ${stills ? "export-row-active" : ""}`}
                   onClick={() => select(STILLS_ID)}
