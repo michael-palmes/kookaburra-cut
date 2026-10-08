@@ -7,6 +7,7 @@ Full catalogue of `@kookaburra/toolkit` primitives, hooks and design tokens. Loa
 - [Scene registration](#scene-registration)
 - [Scene documents (sidecars)](#scene-documents-sidecars)
 - [Per-scene camera tracks](#per-scene-camera-tracks-v7--m5)
+- [Stills (PDF handout and PNG images)](#stills-pdf-handout-and-png-images)
 - [Layered screenshot](#layered-screenshot)
 - [Scene overlays (the frame block)](#scene-overlays-the-frame-block)
 - [Themes & staging](#themes--staging-v8)
@@ -113,6 +114,7 @@ normally and simply shows no editing affordances.
       { "id": "k1", "tMs": 0, "pose": { "target": [0,0,0], "azimuthDeg": 0, "elevationDeg": 0, "distance": 5 } }
     ],
     "segments": [ { "from": "k1", "to": "k2", "ease": "inOutQuad" } ]  // ease: engine/ease.ts name or "jump"
+    // a key may carry "still": true: its frame becomes a stills page (see "Stills")
   },
   "layeredScreenshot": { /* the 3D screen stack — see "Layered screenshot" */ },
   "frame": { /* the scene overlay (panel + cutout) — see "Scene overlays (the frame block)" */ },
@@ -130,6 +132,8 @@ normally and simply shows no editing affordances.
     ],
     "segments": [ { "from": "k1", "to": "k2", "ease": "inOutCubic" } ]
   },
+  "stills": { "marksMs": [2400] },          // stills export: fixed stills (scene-local ms) and/or
+                                             // "exclude": true; absent = one automatic still (see "Stills")
   "animatedTrack": "camera"                  // which keyed track animates this scene:
                                              // "camera" (the absent default) or "layeredScreenshot";
                                              // comparison scenes always stack the divider lane, no flag needed
@@ -316,6 +320,56 @@ Full guide, including the tool and shortcut map: `docs/camera.md`.
 **`<DepthStage>`** gives a rig something to fly through: four named slots at pinned
 depths (`foreground` 1.8, `content` 0, `midground` -2.4, `backdrop` -5.5), each sizing
 itself from the scene's camera travel so full-bleed layers stay full-bleed.
+
+## Stills (PDF handout and PNG images)
+
+The app exports a project as stills: a **PDF handout** (one full-bleed page per still,
+bookmarked per scene, with searchable text) or **PNG images** (a zip of numbered PNGs
+plus `pages.json`). The user starts it from Export (the Stills row), File > Export PDF…
+/ Export Images…, or ⌘K. Every page is a deterministic export frame. Which frames
+become pages is sidecar data:
+
+```jsonc
+"stills": {
+  "exclude": true,              // leave this scene out (marks are kept)
+  "marksMs": [2400, 5200]       // fixed stills, scene-local ms (whole, unique, ascending)
+},
+"camera": {
+  "keys": [
+    { "id": "k3", "tMs": 3000, "pose": { /* … */ }, "still": true }   // this key's frame is a page
+  ]
+}
+```
+
+- **Absent `stills` = one automatic still.** The app picks the scene's settled moment:
+  where Present holds (after every headline, group, decoration and counter intro), then
+  on until the camera, device, chart, comparison, lighting and media motion land, capped
+  by an authored outro. Held text stays frozen while the camera finishes, exactly as
+  Present shows it. A scene with no intros and no keys gets the middle of its clean span.
+- **Any mark replaces the automatic still.** Marks are raw frames, as the playhead
+  shows them, snapped to the nearest 60 fps frame. A mark inside a transition exports the
+  nearest clean frame instead, with a warning, so keep marks clear of transitions.
+- **`"still": true` works on `camera.keys` and `cameraRig.keys`**, but only on the block
+  that drives the scene: `cameraRig` when `cameraMode` is `"rig"`, else `camera`, and
+  neither when `animatedTrack` is `"layeredScreenshot"`. Marks on the other block are
+  ignored (the app warns). Never write `"still": false`: delete the field to unmark.
+- **Prefer a key mark when the still is a camera pose**: it follows the key when the
+  user drags it and goes with the key when it is deleted. Use `marksMs` for any other
+  moment.
+- **A custom TSX animation the app cannot see** (a hand-rolled `useTimeline()` tween
+  rather than a toolkit primitive's `from`/`to`) can be caught mid-move by the automatic
+  still. Add a mark at the frame you want instead.
+- Text in the PDF is searchable only when it is troika text from the toolkit's text
+  primitives; 3D extruded text and anything baked into images is not.
+
+Edit from the terminal with the sidecar helper, then check the frame with
+`capture.py --scene <stem> --at <seconds>` (a mark's time divided by 1000):
+
+```bash
+python3 .claude/skills/kookaburra-scene-authoring/scripts/sidecar.py 03-tour set stills '{"marksMs":[2400]}'
+python3 .claude/skills/kookaburra-scene-authoring/scripts/sidecar.py 05-outro set stills.exclude true
+python3 .claude/skills/kookaburra-scene-authoring/scripts/sidecar.py 03-tour unset stills
+```
 
 ## Layered screenshot
 
@@ -1430,3 +1484,4 @@ Add new tokens here; never hard-code values in scenes.
 | Scene media (`media[]`: stills + videos, optional window chrome; superseded `images[]` and `videoWindow`) | v0.13 | implemented + gated — `ws:video-window-spike` fixture |
 | Scene lighting v9 (sun, free lights, fixtures, HDRIs, keyframes) | v0.7.0 | implemented + gated — sidecar `lighting`, see the lighting skill |
 | Camera rigs (free flight, depth bands, presets) | v0.7.0 | implemented + gated — sidecar `cameraRig`, see "Camera rigs" |
+| Stills export (PDF handout, PNG images; sidecar `stills`, `"still": true` camera keys) | post-0.18 | implemented + gated: `stillsverify`, see "Stills" |

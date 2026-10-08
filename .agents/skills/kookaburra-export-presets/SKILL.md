@@ -1,6 +1,6 @@
 ---
 name: kookaburra-export-presets
-description: Kookaburra Cut export presets — the preset JSON schema, exporting through a preset or a custom EncodeSpec from the terminal, and creating/editing user presets at ~/Kookaburra Cut/export-presets/. Use when asked to "export for <platform>", "make an export preset", "change export quality/bitrate", "export smaller/for the web", "two-pass export", "H.265/HEVC export", "loudness target", or anything touching src/export/presets/, ~/Kookaburra Cut/export-presets/, or kookaburra:run --preset/--encode-json.
+description: Kookaburra Cut export presets: the preset JSON schema, exporting through a preset or a custom EncodeSpec from the terminal, and creating/editing user presets at ~/Kookaburra Cut/export-presets/. Use when asked to "export for <platform>", "make an export preset", "change export quality/bitrate", "export smaller/for the web", "two-pass export", "H.265/HEVC export", "loudness target", or anything touching src/export/presets/, ~/Kookaburra Cut/export-presets/, or kookaburra:run --preset/--encode-json. Also covers exporting stills ("export a PDF", "PDF handout", "PNG images", "kookaburra:run --action stills"), which are not presets.
 ---
 
 # kookaburra-export-presets
@@ -118,6 +118,29 @@ Worked example (`~/Kookaburra Cut/export-presets/client-review.json`):
    (no restart needed — the list reloads per open). Bundled lineup changes are code
    changes: add the JSON to `src/export/presets/`, import it in `presetRegistry.ts`,
    and extend the `LINEUP` pin in `presetSchema.test.ts`.
+
+## Stills (PDF and PNG zip)
+
+Stills are **not** export presets and carry no `EncodeSpec`: codec, bitrate, fps and
+loudness do not apply, and `--preset`, `--encode-json` and `--codec` are ignored. A
+stills export is a PDF handout or a zip of numbered PNGs, one page per still, captured
+through the deterministic export path at the native format and downscaled to a size
+chip. The modal's pinned **Stills** row (after Custom…) is not a preset row either,
+though it is remembered as the last choice like one.
+
+```bash
+pnpm kookaburra:run --action stills --project <p> --stills pdf|png --size 4k|1080p|720p
+pnpm kookaburra:run --action stillsverify --project <p> --stills png   # two passes, compares page RGBA
+```
+
+- `--stills` defaults to `pdf` and `--size` to `1080p` (short edge 2160 / 1080 / 720,
+  never upscaled); both exit 2 with any other action. The aspect defaults to 16:9.
+- Autoruns write reproducibly into the run dir; the result's `pagesHash` is the
+  baseline (a PDF's file hash is advisory). App exports follow the video's destination
+  rules as `<project>-<aspect>.pdf` or `.zip`, so they never collide with video names.
+- Which frames become pages is scene data (the sidecar `stills` block and `"still":
+  true` camera keys), owned by `kookaburra-scene-authoring`; the contract is
+  `docs/stills.md`.
 
 ## Gotchas
 
