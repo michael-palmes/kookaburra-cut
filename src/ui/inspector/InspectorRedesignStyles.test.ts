@@ -168,6 +168,9 @@ describe("inspector redesign styles", () => {
       /\.inspector-drill-header:has\(\.inspector-drill-header-action\.confirming\) \.inspector-drill-current\s*\{[^}]*display: none;/s,
     );
     expect(styles).toMatch(/\.theme-card\.compact:focus-visible\s*\{[^}]*outline-offset: -2px;/s);
+    expect(styles).toMatch(
+      /\.theme-card\.compact \.theme-card-thumb > \*\s*\{[^}]*pointer-events: none;/s,
+    );
   });
 
   it("removes native fieldset chrome and overflow from Lighting controls", () => {

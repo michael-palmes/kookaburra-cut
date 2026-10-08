@@ -10619,6 +10619,11 @@ textarea.text-inspector-copy-input {
   aspect-ratio: auto;
 }
 
+/* Hover swaps the still for its clip; a click whose press target was swapped out never fires in WebKit. */
+.theme-card.compact .theme-card-thumb > * {
+  pointer-events: none;
+}
+
 .theme-card.compact .theme-card-meta {
   display: block;
   padding: 0 2px 1px;
