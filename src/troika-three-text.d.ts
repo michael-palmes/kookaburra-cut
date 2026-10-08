@@ -1,6 +1,6 @@
 // troika-three-text ships no type declarations; declare only what we import directly (drei's <Text> consumes it internally with its own typings).
 declare module "troika-three-text" {
-  import type { Material } from "three";
+  import type { BufferGeometry, Material, Mesh, Object3DEventMap } from "three";
 
   export function preloadFont(
     options: { font?: string; characters?: string | string[]; sdfGlyphSize?: number },
@@ -15,8 +15,12 @@ declare module "troika-three-text" {
     /** Base URL for the unicode-font-resolver data; we pin it to a dead same-origin path. */
     unicodeFontsURL?: string;
   }): void;
-  /** The renderable text node; we drive it off-screen for panel-height measurement (framePanelMeasure.ts). Only the members we touch. */
-  export class Text {
+  /** Fired when a typeset lands. */
+  export interface TextEventMap extends Object3DEventMap {
+    synccomplete: object;
+  }
+  /** The renderable text mesh: driven off-screen for panel-height measurement (framePanelMeasure.ts) and awaited per frame by the export text barrier. Only the members we touch. */
+  export class Text extends Mesh<BufferGeometry, Material | Material[], TextEventMap> {
     text: string;
     font: string;
     fontSize: number;
@@ -25,6 +29,11 @@ declare module "troika-three-text" {
     /** Multiplier of the font's own line height, or "normal" (the default). */
     lineHeight: number | "normal";
     textRenderInfo?: { blockBounds: [number, number, number, number] };
+    /** Any non-zero outline makes the `material` getter return `[outline, main]`. */
+    outlineBlur: number | string;
+    /** Private but stable in the pinned 0.52.4: the only quiescence signal, since `sync(cb)` drops the callback when no sync is needed (including mid-typeset). */
+    _needsSync?: boolean;
+    _isSyncing?: boolean;
     sync(callback?: () => void): void;
     dispose(): void;
   }
