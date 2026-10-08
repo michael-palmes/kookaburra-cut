@@ -12,6 +12,8 @@
 #   pnpm kookaburra:run --action preset-previews         # regenerate src/assets/preset-previews/
 #   pnpm kookaburra:run --action option-previews         # regenerate src/assets/option-previews/
 #   pnpm kookaburra:run --action render-spike --at 300   # hidden render window throttling spike
+#   pnpm kookaburra:run --action stills --project showcase-tour --stills pdf   # PDF handout
+#   pnpm kookaburra:run --action stillsverify --project showcase-tour --stills png --size 720p
 #
 # Multi-worktree safe (v13): runs never need port 1420, so an interactive `pnpm tauri dev`
 # keeps running untouched.
@@ -23,16 +25,17 @@
 #            so queued runs never clobber each other. last-run.json is copied back to the
 #            legacy ~/Kookaburra Cut/_autorun/last-run.json and dev.log is symlinked there.
 #
-# Flags:  --action verify|export|theme-previews|template-previews|preset-previews|option-previews|perf|screenshot|packroundtrip|create|render-spike (required)
+# Flags:  --action verify|export|theme-previews|template-previews|preset-previews|option-previews|perf|screenshot|packroundtrip|create|render-spike|stills|stillsverify (required)
 #         --project <id[,id...]>   (default: the app's default project; theme-previews →
 #                  preview-lab-theme (incremental via the theme-preview manifest; --all re-records
 #                  every theme), option-previews → the preview-lab-* fixtures (incremental
 #                  via the src/assets/option-previews/manifest.json diff; --all re-records
 #                  everything); preset-previews → every bundled preset slug (comma list);
-#                  verify/export accept a
+#                  verify/export/stills/stillsverify accept a
 #                  comma list and run every project in ONE app boot, e.g. the gate pair)
 #         --aspect 16:9|9:16|1:1|4:5|5:4|3:2|2:3|phone|phone-landscape|all
-#                  (default: all = the standing three; perf and screenshot default to 16:9)
+#                  (default: all = the standing three; perf, screenshot, stills and
+#                  stillsverify default to 16:9)
 #         --scene  <index|stem>    (screenshot: which scene; defaults to its midpoint)
 #         --at     <seconds>       (screenshot: seconds into the scene, or the project without --scene;
 #                  render-spike: sample duration, default 300)
@@ -42,6 +45,11 @@
 #         --encode-json <path>  a fully-resolved EncodeSpec JSON (custom encodes)
 #         --app    <path/to/Kookaburra Cut.app>  run the PACKAGED app instead of `pnpm tauri dev`
 #                  (v9 · M2 — the packaged determinism gate; no dev server, no port)
+#         --stills pdf|png  (stills/stillsverify only, default pdf) PDF handout or PNG zip, one
+#                  page per still, written reproducibly into the run dir; stillsverify renders
+#                  twice in one boot and compares page RGBA, text layers and metadata (a PNG
+#                  zip must also match byte for byte; a PDF's file hash is advisory)
+#         --size   4k|1080p|720p  (stills/stillsverify only, default 1080p) page short edge
 #         --foreground  launch the app normally instead of in the background (no-focus-steal)
 #                  mode; always on for --action perf, which needs an honest visible window
 #         --no-wait  don't queue: exit 2 straight away when another run holds the queue
@@ -76,7 +84,7 @@ KEEP_RUNS=20
 TICKET=""
 
 ACTION="" PROJECT="" ASPECT="all" CODEC="libx264" APP="" ASPECT_EXPLICIT=0 ALL_PREVIEWS=0
-FOREGROUND=0 NO_WAIT=0
+FOREGROUND=0 NO_WAIT=0 STILLS="" STILLS_SIZE=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --action)  ACTION="${2:-}";  shift 2 ;;
@@ -89,14 +97,31 @@ while [[ $# -gt 0 ]]; do
     --scene)  SCENE="${2:-}";  shift 2 ;;
     --at)     AT="${2:-}";     shift 2 ;;
     --app)    APP="${2:-}";    shift 2 ;;
+    --stills) STILLS="${2:-}"; shift 2 ;;
+    --size)   STILLS_SIZE="${2:-}"; shift 2 ;;
     --foreground) FOREGROUND=1; shift ;;
     --no-wait)    NO_WAIT=1;    shift ;;
     *) echo "kookaburra:run: unknown argument '$1'" >&2; exit 2 ;;
   esac
 done
 
-if [[ "$ACTION" != "verify" && "$ACTION" != "export" && "$ACTION" != "theme-previews" && "$ACTION" != "template-previews" && "$ACTION" != "preset-previews" && "$ACTION" != "option-previews" && "$ACTION" != "perf" && "$ACTION" != "screenshot" && "$ACTION" != "packroundtrip" && "$ACTION" != "create" && "$ACTION" != "render-spike" ]]; then
-  echo "kookaburra:run: --action must be 'verify', 'export', 'theme-previews', 'template-previews', 'preset-previews', 'option-previews', 'perf', 'screenshot', 'packroundtrip', 'create' or 'render-spike'" >&2
+if [[ "$ACTION" != "verify" && "$ACTION" != "export" && "$ACTION" != "theme-previews" && "$ACTION" != "template-previews" && "$ACTION" != "preset-previews" && "$ACTION" != "option-previews" && "$ACTION" != "perf" && "$ACTION" != "screenshot" && "$ACTION" != "packroundtrip" && "$ACTION" != "create" && "$ACTION" != "render-spike" && "$ACTION" != "stills" && "$ACTION" != "stillsverify" ]]; then
+  echo "kookaburra:run: --action must be 'verify', 'export', 'theme-previews', 'template-previews', 'preset-previews', 'option-previews', 'perf', 'screenshot', 'packroundtrip', 'create', 'render-spike', 'stills' or 'stillsverify'" >&2
+  exit 2
+fi
+if [[ "$ACTION" == "stills" || "$ACTION" == "stillsverify" ]]; then
+  case "${STILLS:-pdf}" in
+    pdf) STILLS="pdf" ;;
+    png | png-zip) STILLS="png-zip" ;;
+    *) echo "kookaburra:run: --stills must be 'pdf' or 'png'" >&2; exit 2 ;;
+  esac
+  case "${STILLS_SIZE:-1080p}" in
+    4k | 1080p | 720p) STILLS_SIZE="${STILLS_SIZE:-1080p}" ;;
+    *) echo "kookaburra:run: --size must be '4k', '1080p' or '720p'" >&2; exit 2 ;;
+  esac
+  if [[ "$ASPECT_EXPLICIT" != "1" ]]; then ASPECT="16:9"; fi
+elif [[ -n "$STILLS" || -n "$STILLS_SIZE" ]]; then
+  echo "kookaburra:run: --stills and --size only apply to --action stills or stillsverify" >&2
   exit 2
 fi
 if [[ -n "$APP" ]]; then
@@ -154,7 +179,7 @@ if [[ "$ACTION" == "perf" ]]; then
   fi
 fi
 
-echo "kookaburra:run: $ACTION  project='${PROJECT:-<default>}'  aspect='$ASPECT'  codec='$CODEC'  ${APP:+app='$APP'  }(timeout ${TIMEOUT}s)"
+echo "kookaburra:run: $ACTION  project='${PROJECT:-<default>}'  aspect='$ASPECT'  codec='$CODEC'  ${STILLS:+stills='$STILLS'  size='$STILLS_SIZE'  }${APP:+app='$APP'  }(timeout ${TIMEOUT}s)"
 echo "kookaburra:run: run dir → $RUN_DIR"
 
 # Recursively kill the dev process tree (pnpm → cargo → app → vite). On the happy path the
@@ -391,6 +416,10 @@ export KOOKABURRA_CODEC="$CODEC"
 [ -n "${ENCODE_JSON:-}" ] && export KOOKABURRA_ENCODE_JSON="$(cat "$ENCODE_JSON")"
 [ -n "${SCENE:-}" ] && export KOOKABURRA_SCENE="$SCENE"
 [ -n "${AT:-}" ] && export KOOKABURRA_AT="$AT"
+if [[ -n "$STILLS" ]]; then
+  export KOOKABURRA_STILLS="$STILLS"
+  export KOOKABURRA_STILLS_SIZE="$STILLS_SIZE"
+fi
 
 # Dev runs never touch 1420: pick a free port and hand tauri the matching devUrl + dev CSP.
 pick_port() {
@@ -466,6 +495,25 @@ cp -f "$RESULT_FILE" "$LEGACY_RESULT"
 echo "----- kookaburra:run result -----"
 cat "$RESULT_FILE"
 echo
+
+# stills: surface each output (pass or fail), plus a quick look inside when the tools exist.
+if [[ "$ACTION" == "stills" || "$ACTION" == "stillsverify" ]]; then
+  { grep -oE '"path(B)?": "[^"]*\.(pdf|zip)"' "$RESULT_FILE" || true; } | sed -E 's/^"path(B)?": "(.*)"$/\2/' | sort -u |
+    while IFS= read -r OUT; do
+      echo "kookaburra:run: stills → $OUT"
+      [[ -f "$OUT" ]] || continue
+      case "$OUT" in
+        *.pdf)
+          if command -v pdfinfo >/dev/null 2>&1; then pdfinfo "$OUT" || true; fi
+          if command -v pdftotext >/dev/null 2>&1; then
+            echo "kookaburra:run: page 1 text:"
+            pdftotext -l 1 "$OUT" - 2>/dev/null | head -n 20 || true
+          fi
+          ;;
+        *.zip) unzip -l "$OUT" | head -n 20 || true ;;
+      esac
+    done
+fi
 # `"ok": true` (2-space-indented JSON) ⇒ pass; anything else ⇒ fail.
 if ! grep -q '"ok": true' "$RESULT_FILE"; then
   exit 1

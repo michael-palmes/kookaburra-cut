@@ -31,6 +31,15 @@ import { runPerfProbe } from "./perfProbe";
 import { listPresets, presetPreviewFrame } from "./presets";
 import { type LoadedProject, loadProject, previewLabProjectIds, sceneFileStem } from "./project";
 import type { RenderStateFingerprint } from "./renderFingerprint";
+import type { StillsWarning } from "./stillPages";
+import {
+  DEFAULT_STILLS_FORMAT,
+  DEFAULT_STILLS_SIZE,
+  STILLS_SIZES,
+  type StillsFormat,
+  type StillsSize,
+} from "./stills";
+import { exportStills, type StillsDivergence, verifyStills } from "./stillsExport";
 import { findTemplate, listTemplates } from "./templates";
 import {
   awaitProjectCommitted,
@@ -53,7 +62,9 @@ export type AutoRunAction =
   | "screenshot"
   | "packroundtrip"
   | "create"
-  | "render-spike";
+  | "render-spike"
+  | "stills"
+  | "stillsverify";
 
 export interface AutoRunConfig {
   action: AutoRunAction;
@@ -76,6 +87,9 @@ export interface AutoRunConfig {
   sets?: string[];
   /** theme-previews: stale bundled theme ids to capture; absent = the full lineup (`--all`). */
   themes?: string[];
+  /** stills/stillsverify: PDF handout or PNG zip, and the page size. */
+  stills: StillsFormat;
+  stillsSize: StillsSize;
 }
 
 /** A single aspect's outcome: determinism digests (verify) or the output path (export). */
@@ -110,6 +124,21 @@ interface AutoRunResult {
   drawCalls?: number;
   triangles?: number;
   texturesInMemory?: number;
+  /** stills rows: the output kind, page count, file size and SHA-256, the page-stage baseline hash and each page's global ms. */
+  kind?: StillsFormat;
+  pages?: number;
+  bytes?: number;
+  sha256?: string;
+  pagesHash?: string;
+  pageTimesMs?: number[];
+  warnings?: StillsWarning[];
+  /** stillsverify rows: pass B's file (the same path, rewritten) and hashes, plus where the passes split. */
+  pathB?: string;
+  sha256B?: string;
+  pagesHashB?: string;
+  fileIdentical?: boolean;
+  divergentPages?: number[];
+  firstDivergence?: StillsDivergence;
 }
 
 /** The full run payload serialised to `<run result dir>/last-run.json` (`KOOKABURRA_RESULT_DIR`, falling back to `~/Kookaburra Cut/_autorun`). */
@@ -156,6 +185,22 @@ function parseCodec(raw: string | undefined): Codec {
   return value;
 }
 
+/** `pdf` (default) or `png` (the wrapper's spelling of the PNG zip). */
+function parseStillsFormat(raw: string | undefined): StillsFormat {
+  const value = (raw ?? DEFAULT_STILLS_FORMAT).trim();
+  if (value === "pdf") return "pdf";
+  if (value === "png" || value === "png-zip") return "png-zip";
+  throw new Error(`unknown KOOKABURRA_STILLS "${value}" (expected pdf | png)`);
+}
+
+function parseStillsSize(raw: string | undefined): StillsSize {
+  const value = (raw ?? DEFAULT_STILLS_SIZE).trim();
+  if (!STILLS_SIZES.includes(value as StillsSize)) {
+    throw new Error(`unknown KOOKABURRA_STILLS_SIZE "${value}" (expected 4k | 1080p | 720p)`);
+  }
+  return value as StillsSize;
+}
+
 /** The native env read, as `get_autorun_config` returns it (unset values are null). */
 interface AutoRunEnv {
   action: string | null;
@@ -168,6 +213,8 @@ interface AutoRunEnv {
   at: string | null;
   sets: string | null;
   themes: string | null;
+  stills: string | null;
+  stillsSize: string | null;
 }
 
 let autoRunEnv: AutoRunEnv | null = null;
@@ -200,6 +247,8 @@ export async function initAutoRunConfig(): Promise<void> {
       at: null,
       sets: null,
       themes: null,
+      stills: null,
+      stillsSize: null,
     };
   }
 }
@@ -220,12 +269,16 @@ export function getAutoRunConfig(): AutoRunConfig | null {
     action !== "screenshot" &&
     action !== "packroundtrip" &&
     action !== "create" &&
-    action !== "render-spike"
+    action !== "render-spike" &&
+    action !== "stills" &&
+    action !== "stillsverify"
   ) {
     throw new Error(
-      `unknown KOOKABURRA_ACTION "${action}" (expected verify | export | theme-previews | template-previews | preset-previews | option-previews | perf | screenshot | packroundtrip | create | render-spike)`,
+      `unknown KOOKABURRA_ACTION "${action}" (expected verify | export | theme-previews | template-previews | preset-previews | option-previews | perf | screenshot | packroundtrip | create | render-spike | stills | stillsverify)`,
     );
   }
+  const stills = parseStillsFormat(env.stills ?? undefined);
+  const stillsSize = parseStillsSize(env.stillsSize ?? undefined);
   const at = env.at?.trim();
   const atSeconds = at ? Number(at) : undefined;
   if (at && !Number.isFinite(atSeconds)) {
@@ -272,22 +325,28 @@ export function getAutoRunConfig(): AutoRunConfig | null {
     projects.length > 1 &&
     action !== "verify" &&
     action !== "export" &&
+    action !== "stills" &&
+    action !== "stillsverify" &&
     action !== "template-previews" &&
     action !== "preset-previews"
   ) {
     throw new Error(
-      `KOOKABURRA_PROJECT lists ${projects.length} projects; only verify, export, template-previews and preset-previews accept a list`,
+      `KOOKABURRA_PROJECT lists ${projects.length} projects; only verify, export, stills, stillsverify, template-previews and preset-previews accept a list`,
     );
   }
   return {
     action,
     project: projects[0],
     projects,
-    // --preset without --aspect exports the preset's favoured aspect; perf and screenshot default to one 16:9 pass.
+    // --preset without --aspect exports the preset's favoured aspect; perf, screenshot and stills default to one 16:9 pass.
     aspects:
       preset && !env.aspect?.trim()
         ? [FORMATS[preset.favouredAspect]]
-        : (action === "perf" || action === "screenshot") && !env.aspect?.trim()
+        : (action === "perf" ||
+              action === "screenshot" ||
+              action === "stills" ||
+              action === "stillsverify") &&
+            !env.aspect?.trim()
           ? [FORMATS["16:9"]]
           : parseAspects(env.aspect ?? undefined),
     codec: parseCodec(env.codec ?? undefined),
@@ -308,6 +367,8 @@ export function getAutoRunConfig(): AutoRunConfig | null {
           .map((theme) => theme.trim())
           .filter(Boolean)
       : undefined,
+    stills,
+    stillsSize,
   };
 }
 
@@ -435,6 +496,7 @@ export async function runAutoRun(
 
   // Boot latch: a Vite dep re-optimization can hard-reload the page mid-run, orphaning the ffmpeg child and leaving native export state busy, so clear any stale export before starting or a re-fired autorun dies as "already in progress".
   await invoke("cancel_export").catch(() => {});
+  await invoke("cancel_stills_export").catch(() => {});
 
   const onProgress = (p: ExportProgress) => {
     // console.warn not log: only warn/error forward into the wrapper's dev.log, and these breadcrumbs are how a stalled AFK run (or a WebContent footprint kill) gets localized post-hoc.
@@ -968,7 +1030,57 @@ export async function runAutoRun(
             `[autorun] gl memory before ${current.id} ${format.name}: geometries ${glInfo.memory.geometries} textures ${glInfo.memory.textures} programs ${glInfo.programs?.length ?? 0}`,
           );
         }
-        if (config.action === "verify" || config.action === "packroundtrip") {
+        if (config.action === "stills" || config.action === "stillsverify") {
+          // Reproducible stills land in the run dir; the page-stage hash is the baseline, a PDF's file hash only advisory.
+          const settings = {
+            format: config.stills,
+            size: config.stillsSize,
+            title: current.name,
+            sceneFiles: current.sceneFiles,
+            destination: "autorun" as const,
+            reproducible: true,
+          };
+          if (config.action === "stills") {
+            const r = await exportStills(base, settings, onProgress);
+            results.push({
+              aspect: format.name,
+              project: current.id,
+              kind: r.kind,
+              path: r.path,
+              pages: r.pages,
+              bytes: r.bytes,
+              sha256: r.sha256,
+              pagesHash: r.pagesHash,
+              pageTimesMs: r.pageTimesMs,
+              ...(r.warnings.length > 0 ? { warnings: r.warnings } : {}),
+            });
+          } else {
+            const v = await verifyStills(base, settings, onProgress);
+            results.push({
+              aspect: format.name,
+              project: current.id,
+              kind: v.a.kind,
+              identical: v.identical,
+              hashA: v.a.pagesHash,
+              hashB: v.b.pagesHash,
+              path: v.a.path,
+              pathB: v.b.path,
+              pages: v.a.pages,
+              bytes: v.a.bytes,
+              sha256: v.a.sha256,
+              sha256B: v.b.sha256,
+              pagesHash: v.a.pagesHash,
+              pagesHashB: v.b.pagesHash,
+              fileIdentical: v.fileIdentical,
+              pageTimesMs: v.a.pageTimesMs,
+              ...(v.a.warnings.length > 0 ? { warnings: v.a.warnings } : {}),
+              ...(v.identical
+                ? {}
+                : { divergentPages: v.divergentPages, firstDivergence: v.firstDivergence }),
+            });
+            if (!v.identical) ok = false;
+          }
+        } else if (config.action === "verify" || config.action === "packroundtrip") {
           const r = await verifyDeterminism(base, onProgress);
           results.push({
             aspect: format.name,
