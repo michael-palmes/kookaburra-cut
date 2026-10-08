@@ -9,14 +9,18 @@ import {
   planPack,
   revealPack,
 } from "../engine/packs";
+import { listProjects } from "../engine/workspace";
+import { LibraryRailIcon } from "../ui/libraryIcons";
 import { FONT_DISCLAIMER, fontEmbeddingNotice } from "../ui/packs/fontCopy";
 import { PackGlyph } from "./PackGlyph";
+import { groupProjectItems, matchesPackSearch } from "./projectGroups";
 import { packProjectItems } from "./projectItems";
 import {
   breakageWarning,
   countByKind,
   defaultPackName,
   EMPTY_STATE,
+  includedItems,
   isAuto,
   isIncluded,
   itemKey,
@@ -24,6 +28,7 @@ import {
   slugifyFileName,
   toBuildSelection,
   toggle,
+  toggleAll,
   toPlanSelection,
   totalBytes,
 } from "./selection";
@@ -59,6 +64,9 @@ export function ExportView({ onClose }: { onClose: () => void }) {
   const [droppedAssets, setDroppedAssets] = useState<Record<string, string[]>>({});
   const [error, setError] = useState<string | null>(null);
   const [planning, setPlanning] = useState(false);
+  const [query, setQuery] = useState("");
+  // Slug to welcome-screen group, so the Projects list can offer each group as one tick.
+  const [groups, setGroups] = useState<ReadonlyMap<string, string>>(new Map());
   // The first scan walks the whole workspace, so the window must say so rather than showing an empty picker.
   const [loading, setLoading] = useState(true);
 
@@ -72,6 +80,11 @@ export function ExportView({ onClose }: { onClose: () => void }) {
         setProfile(p);
         setPackName(defaultPackName(p.organisation ?? undefined, p.effectiveName));
       })
+      .catch(() => undefined);
+    listProjects()
+      .then((projects) =>
+        setGroups(new Map(projects.flatMap((p) => (p.group ? [[p.slug, p.group] as const] : [])))),
+      )
       .catch(() => undefined);
   }, []);
 
@@ -118,14 +131,32 @@ export function ExportView({ onClose }: { onClose: () => void }) {
     };
   }, [includedProjects]);
 
-  const visible = tab === "details" ? [] : items.filter((i) => i.kind === tab);
+  const groupOf = (item: SelectableItem) =>
+    item.kind === "project" ? (groups.get(item.slug) ?? null) : null;
+  const visible =
+    tab === "details"
+      ? []
+      : items.filter((i) => i.kind === tab && matchesPackSearch(i, query, groupOf(i)));
   const direct = visible.filter((i) => !isAuto(i));
   const auto = visible.filter(isAuto);
+  const sections = tab === "project" ? groupProjectItems(direct, groups) : [];
+  const showGroups = sections.some((s) => s.group !== null);
+  const trimmedQuery = query.trim();
 
   const onToggle = useCallback((item: SelectableItem, next: boolean) => {
     setState((s) => toggle(s, item, next));
     setWarnedKey(!next && isAuto(item) ? itemKey(item.kind, item.slug) : null);
   }, []);
+
+  const onToggleGroup = useCallback((members: SelectableItem[], next: boolean) => {
+    setState((s) => toggleAll(s, members, next));
+    setWarnedKey(null);
+  }, []);
+
+  const pickTab = (next: Tab) => {
+    setTab(next);
+    setQuery("");
+  };
 
   const onExport = useCallback(async () => {
     setError(null);
@@ -236,7 +267,7 @@ export function ExportView({ onClose }: { onClose: () => void }) {
             className="packs-rail-item"
             role="tab"
             aria-selected={k === tab}
-            onClick={() => setTab(k)}
+            onClick={() => pickTab(k)}
           >
             <span>{KIND_LABELS[k].many}</span>
             <span className="packs-rail-count">{counts[k] ?? 0}</span>
@@ -247,7 +278,7 @@ export function ExportView({ onClose }: { onClose: () => void }) {
           className="packs-rail-item"
           role="tab"
           aria-selected={tab === "details"}
-          onClick={() => setTab("details")}
+          onClick={() => pickTab("details")}
           style={{ marginTop: 10 }}
         >
           <span>Details</span>
@@ -255,6 +286,24 @@ export function ExportView({ onClose }: { onClose: () => void }) {
       </div>
 
       <div className="packs-main">
+        {tab !== "details" && (
+          <div className="packs-search">
+            <input
+              className="modal-input packs-search-input"
+              type="search"
+              placeholder={`Search ${KIND_LABELS[tab].many.toLowerCase()}…`}
+              aria-label={`Search ${KIND_LABELS[tab].many.toLowerCase()}`}
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") {
+                  setQuery("");
+                  e.currentTarget.blur();
+                }
+              }}
+            />
+          </div>
+        )}
         <div className="packs-scroll">
           {error && <div className="packs-drop-error">{error}</div>}
 
@@ -269,18 +318,35 @@ export function ExportView({ onClose }: { onClose: () => void }) {
           ) : (
             <>
               <div className="packs-heading">{KIND_LABELS[tab].many}</div>
-              {direct.length === 0 && (
+              {trimmedQuery && visible.length === 0 && (
+                <div className="packs-empty">
+                  No {KIND_LABELS[tab].many.toLowerCase()} match “{trimmedQuery}”.
+                </div>
+              )}
+              {!trimmedQuery && direct.length === 0 && (
                 <div className="packs-empty">Nothing in your workspace to add here yet.</div>
               )}
-              {direct.map((item) => (
-                <Row
-                  key={item.slug}
-                  item={item}
-                  checked={isIncluded(state, item)}
-                  onToggle={onToggle}
-                  warning={warnedKey === itemKey(item.kind, item.slug)}
-                />
-              ))}
+              {showGroups
+                ? sections.map((section) => (
+                    <GroupSection
+                      key={section.group ?? ""}
+                      group={section.group}
+                      items={section.items}
+                      state={state}
+                      onToggle={onToggle}
+                      onToggleGroup={onToggleGroup}
+                      warnedKey={warnedKey}
+                    />
+                  ))
+                : direct.map((item) => (
+                    <Row
+                      key={item.slug}
+                      item={item}
+                      checked={isIncluded(state, item)}
+                      onToggle={onToggle}
+                      warning={warnedKey === itemKey(item.kind, item.slug)}
+                    />
+                  ))}
 
               {auto.length > 0 && (
                 <>
@@ -405,6 +471,60 @@ function Row({
         <div className="packs-warning">{breakageWarning(item)}</div>
       )}
     </>
+  );
+}
+
+/** One project group: its checkbox ticks every project listed under it (only the matches while searching). */
+function GroupSection({
+  group,
+  items,
+  state,
+  onToggle,
+  onToggleGroup,
+  warnedKey,
+}: {
+  group: string | null;
+  items: SelectableItem[];
+  state: SelectionState;
+  onToggle: (item: SelectableItem, next: boolean) => void;
+  onToggleGroup: (items: SelectableItem[], next: boolean) => void;
+  warnedKey: string | null;
+}) {
+  const picked = includedItems(state, items).length;
+  const all = picked === items.length;
+  return (
+    <div className="packs-group">
+      <label className="packs-row packs-group-row">
+        <input
+          type="checkbox"
+          checked={all}
+          ref={(el) => {
+            if (el) el.indeterminate = picked > 0 && !all;
+          }}
+          onChange={() => onToggleGroup(items, !all)}
+        />
+        <LibraryRailIcon id={group ? "group" : "ungrouped"} />
+        <span className="packs-row-main">
+          <span className="packs-row-title">{group ?? "Ungrouped"}</span>
+        </span>
+        <span className="packs-row-size">
+          {picked > 0
+            ? `${picked} of ${items.length} selected`
+            : `${items.length} project${items.length === 1 ? "" : "s"}`}
+        </span>
+      </label>
+      <div className="packs-group-items">
+        {items.map((item) => (
+          <Row
+            key={item.slug}
+            item={item}
+            checked={isIncluded(state, item)}
+            onToggle={onToggle}
+            warning={warnedKey === itemKey(item.kind, item.slug)}
+          />
+        ))}
+      </div>
+    </div>
   );
 }
 
