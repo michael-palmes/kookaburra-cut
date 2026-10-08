@@ -63,3 +63,53 @@ describe("content inspector header actions", () => {
     }
   });
 });
+
+describe("background drill header actions and bands", () => {
+  const from = sceneTabSource.indexOf('if (drillIn === "style.background" && doc) {');
+  const background = sceneTabSource.slice(
+    from,
+    sceneTabSource.indexOf('if (drillIn === "motion.transition"', from),
+  );
+  const scene3dBand = background.slice(
+    background.indexOf('bgTab === "scene3d" ? ('),
+    background.indexOf(') : bgTab === "shader" ? ('),
+  );
+
+  it("moves Reset and Apply to all slides into the header", () => {
+    expect(background).toContain('kind="reset"');
+    expect(background).toContain('kind="apply-all"');
+    expect(background).toContain("onDisarm={() => setConfirmApplyAll(false)}");
+    expect(sceneTabSource).toContain("window.setTimeout(() => setConfirmApplyAll(false), 4000)");
+    expect(background).not.toContain('label="Apply everywhere"');
+    expect(background).not.toContain("Reset {selectedShaderPreset.name}");
+  });
+
+  it("swaps the fill-type tiles for the icon strip", () => {
+    expect(background).toContain("<BgTypeStrip");
+    expect(background).toContain('ariaLabel="Background fill type"');
+    expect(background).not.toContain("bg-type-grid");
+  });
+
+  it("keeps the Options sheet in session-only ui state, shared by 3D and Animated", () => {
+    expect(sceneTabSource).toContain("useUiStore((s) => s.bgOptionsSheetOpen)");
+    expect(background.match(/open=\{bgOptionsSheetOpen\}/g)).toHaveLength(2);
+    expect(background).not.toContain("localStorage");
+  });
+
+  it("omits Drift from the 3D sheet", () => {
+    expect(scene3dBand).toContain("stagingToggle(true)");
+    expect(scene3dBand).not.toContain("driftToggle(");
+  });
+
+  it("never writes the backing from arrow keys alone", () => {
+    expect(scene3dBand).toMatch(/ariaLabel="Backing type"\s+focusOnlyKeys/);
+  });
+
+  it("gives each banded body its own scroll state and disarms Apply-all on leaving the drill", () => {
+    expect(background).toContain('<BandedDrillBody key="scene3d">');
+    expect(background).toContain('<BandedDrillBody key="shader">');
+    expect(sceneTabSource).toContain(
+      "useEffect(() => setConfirmApplyAll(false), [sceneIndex, drillIn]);",
+    );
+  });
+});

@@ -413,9 +413,25 @@ import {
 import { TransitionModal } from "../TransitionPicker";
 import { describeSpec } from "../textAnimationOptions";
 import { isEditableTextTarget, isTypingIn } from "../textEditFocus";
+import { ThemeEditorIcon } from "../theme-editor/icons";
 import { useThemeCardMenu } from "../themeCardMenu";
 import { useEscapeClose } from "../useEscapeClose";
 import { useSceneDocPatch } from "../useSceneDocPatch";
+import {
+  BandedDrillBody,
+  BgTypeStrip,
+  LookBrowser,
+  LookGroup,
+  OptionsSheet,
+  PresetDivider,
+  PresetStrip,
+  PresetSwatch,
+  SheetColours,
+  SheetDivider,
+  SheetRow,
+  SheetSlider,
+  sheetPeek,
+} from "./BackgroundBands";
 import { CameraPresetRow } from "./CameraPresetRow";
 import { CameraRigFields, seedRig } from "./CameraRigFields";
 import { CompareSideSelector } from "./CompareSideSelector";
@@ -2274,6 +2290,87 @@ function BgTypeIcon({ id }: { id: string }) {
   }
 }
 
+/** Background drill option glyphs (staging forms, video Loop and Fit); same 20-viewBox stroke style as BgTypeIcon. */
+function BgOptionIcon({
+  id,
+  size = 17,
+}: {
+  id: "theme" | "floor" | "gradient" | "loop" | "fit";
+  size?: number;
+}) {
+  const glyph = {
+    theme: <path d="M10 3s5 5.5 5 8.5a5 5 0 01-10 0C5 8.5 10 3 10 3z" />,
+    floor: <path d="M4 3.5v7a5 5 0 0 0 5 5h7.5" />,
+    gradient: (
+      <>
+        <rect x="3.5" y="3.5" width="13" height="13" rx="2" />
+        <path d="M3.5 13L13 3.5M7 16.5L16.5 7" />
+      </>
+    ),
+    loop: (
+      <>
+        <path d="M15.5 9A5.5 5.5 0 0 0 5.6 6.4" />
+        <path d="M5 3.8v2.9h2.9" />
+        <path d="M4.5 11a5.5 5.5 0 0 0 9.9 2.6" />
+        <path d="M15 16.2v-2.9h-2.9" />
+      </>
+    ),
+    fit: (
+      <>
+        <rect x="3" y="4" width="14" height="12" rx="1.5" />
+        <path d="M3 7.5h14M3 12.5h14" />
+      </>
+    ),
+  }[id];
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      {glyph}
+    </svg>
+  );
+}
+
+/** The Options sheet's backing chip: a flat backing, a gradient's first stop or an animated fill's first colour. */
+function backingChipColour(
+  backing: ThemeBackground | undefined,
+  theme: Theme | undefined,
+): string | undefined {
+  switch (backing?.type) {
+    case "color":
+      return backing.color;
+    case "gradient":
+      return (backing.spec ?? (backing.gradient ? theme?.gradients?.[backing.gradient] : undefined))
+        ?.stops[0]?.[0];
+    case "shader":
+      return (
+        ((backing.themeColors && theme ? deriveThemeShaderColors(backing.shader, theme) : null) ??
+          backing.colors)?.[0] ?? SHADER_BACKGROUNDS[backing.shader]?.colorSlots[0]?.fallback
+      );
+    default:
+      return undefined;
+  }
+}
+
+/** A look's first param as the Options sheet bar's peek figure. */
+function firstParamPeek(
+  params: Record<string, { label: string; default: number; step: number }>,
+  values: Record<string, number> | undefined,
+): { label: string; value: number; step: number } | undefined {
+  const first = Object.entries(params)[0];
+  if (!first) return undefined;
+  const [key, p] = first;
+  return { label: p.label, value: values?.[key] ?? p.default, step: p.step };
+}
+
 /** Applies a picked source to one media entry and defaults the scene length to follow a clip (a manual length stays put, the device-picker rule); `meta` seeds the stored aspect so a video keeps its size before frames arrive, and `recording` (when detection ran) sets the window-recording crop to match the new source. */
 function applyPickedMediaSource(
   next: SceneDoc,
@@ -2889,6 +2986,8 @@ export function SceneTab({
   const [bgHover, setBgHover] = useState<string | null>(null);
   /** Which 3D-backing editor is open when it doesn't match the stored backing type. */
   const [backingTabOverride, setBackingTabOverride] = useState<"gradient" | "shader" | null>(null);
+  const bgOptionsSheetOpen = useUiStore((s) => s.bgOptionsSheetOpen);
+  const setBgOptionsSheetOpen = useUiStore((s) => s.setBgOptionsSheetOpen);
   /** The mounted stage's resolved backdrop type; null when the scene mounts no SceneStage. */
   const stagedBackdrop = useSceneStageBackdrop(sceneIndex);
   /** The same per comparison host, so the Background drill reads the side it edits instead of Before's stage. */
@@ -3349,11 +3448,11 @@ export function SceneTab({
   useEffect(() => setConfirmDeleteScene(false), [sceneIndex]);
   useEffect(() => {
     if (!confirmApplyAll) return;
-    const t = window.setTimeout(() => setConfirmApplyAll(false), 3000);
+    const t = window.setTimeout(() => setConfirmApplyAll(false), 4000);
     return () => window.clearTimeout(t);
   }, [confirmApplyAll]);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: deliberate disarm on scene change
-  useEffect(() => setConfirmApplyAll(false), [sceneIndex]);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: deliberate disarm on scene or drill change
+  useEffect(() => setConfirmApplyAll(false), [sceneIndex, drillIn]);
 
   useEscapeClose(() => closeContentPicker(true), drillIn === null && contentPickerOpen);
   useEffect(() => {
@@ -5449,7 +5548,7 @@ export function SceneTab({
         mutate(spec);
         next.background = spec;
       });
-    // Shared by the preset tiles and the header Reset: the whole look lands explicitly.
+    // The preset swatches apply the whole look explicitly.
     const applyShaderPreset = (preset: ShaderBackgroundPreset) =>
       patchShader((spec) => {
         spec.colors = [...preset.colors];
@@ -5554,9 +5653,201 @@ export function SceneTab({
       { id: "image", label: "Image" },
       { id: "video", label: "Video" },
     ];
+    const selectType = (id: Exclude<typeof bgTab, "default">) => {
+      if (id === "none") commitBackground({ type: "none" });
+      else if (id === "color") {
+        if (docTab !== "color") commitBackground(colourOpt);
+        else setBgTabOverride(null);
+      } else setBgTabOverride(id);
+    };
+    const backingDefault = lightTheme ? "#e8ecf2" : "#0d1218";
+    const backingOptions: SegmentedOption<"color" | "gradient" | "shader">[] = [
+      { value: "color", label: "Colour", icon: <BgTypeIcon id="color" /> },
+      { value: "gradient", label: "Gradient", icon: <BgTypeIcon id="gradient" /> },
+      { value: "shader", label: "Animated", icon: <BgTypeIcon id="shader" /> },
+    ];
+    const storedBackingTab =
+      scene3dSpec?.backing?.type === "gradient" || scene3dSpec?.backing?.type === "shader"
+        ? scene3dSpec.backing.type
+        : "color";
+    const backingTab = backingTabOverride ?? storedBackingTab;
+    const stagingPeek = bgStagedBackdrop === null ? null : stagingOn;
+    const toggleCopy = (text: string, compact: boolean) =>
+      compact ? { title: text } : { description: text };
+    /** Preset swatches in theme-mode-first order, with a rule where the mode changes. */
+    const presetSwatches = <P extends { id: string; mode: "light" | "dark" }>(
+      ordered: readonly P[],
+      swatch: (preset: P) => ReactNode,
+    ) =>
+      ordered.flatMap((preset, i) =>
+        i > 0 && preset.mode !== ordered[i - 1].mode
+          ? [<PresetDivider key="divider" />, swatch(preset)]
+          : [swatch(preset)],
+      );
+    const driftToggle = (compact: boolean) => (
+      <ToggleRow
+        icon={<SceneRowIcon id="camera.animate" />}
+        label="Drift"
+        {...toggleCopy(
+          "Camera motion shifts the fill slightly for depth; pan the camera to see it.",
+          compact,
+        )}
+        disabled={!bgActive || bgActive.type === "none" || bgActive.type === "scene3d"}
+        checked={
+          !!bgActive &&
+          bgActive.type !== "none" &&
+          bgActive.type !== "scene3d" &&
+          (bgActive.parallax ?? 0) > 0
+        }
+        onChange={(on) =>
+          void patchBgDoc((next) => {
+            if (next.background && next.background.type !== "none") {
+              next.background = toggleDrift(next.background, on);
+            }
+          })
+        }
+      />
+    );
+    const stagingToggle = (compact: boolean) =>
+      bgStagedBackdrop !== null && (
+        <>
+          <ToggleRow
+            icon={<ThemeEditorIcon name="stage" />}
+            label="Staging"
+            {...toggleCopy(
+              "A floor and backdrop that catch light and real shadows; colour and gradient picks write through to it.",
+              compact,
+            )}
+            checked={stagingOn}
+            onChange={(on) =>
+              void patchBgDoc((next) => {
+                if (!on) {
+                  next.backdrop = { type: "none" };
+                  return;
+                }
+                // Back on: the theme's own staging when it has one, else a floor in the current colour.
+                if (sceneTheme?.backdrop && sceneTheme.backdrop.type !== "none") {
+                  next.backdrop = undefined;
+                } else {
+                  next.backdrop = floorFor(
+                    bgActive?.type === "color"
+                      ? bgActive.color
+                      : (sceneTheme?.colors.background ?? "#ffffff"),
+                  );
+                }
+              })
+            }
+          />
+          {stagingOn && (
+            <div className="wizard-presets">
+              {(() => {
+                const themeGradients = Object.keys(sceneTheme?.gradients ?? {});
+                const themeGradient = themeGradients.includes("backdrop")
+                  ? "backdrop"
+                  : themeGradients[0];
+                const gradientSource = bgActive?.type === "gradient" ? bgActive : undefined;
+                const currentColour =
+                  bgActive?.type === "color"
+                    ? bgActive.color
+                    : (sceneTheme?.colors.background ?? "#ffffff");
+                const form =
+                  bgBackdrop === undefined ? "theme" : (resolvedBackdrop?.type ?? "none");
+                const chips: {
+                  id: "theme" | "floor" | "gradient";
+                  label: string;
+                  disabled?: boolean;
+                }[] = [
+                  { id: "theme", label: "Theme default" },
+                  { id: "floor", label: "Floor" },
+                  {
+                    id: "gradient",
+                    label: "Gradient",
+                    disabled: !gradientSource && !themeGradient,
+                  },
+                ];
+                return chips.map((chip) => (
+                  <button
+                    type="button"
+                    key={chip.id}
+                    className={`chip chip-with-icon${form === chip.id ? " selected" : ""}`}
+                    disabled={chip.disabled}
+                    onClick={() => {
+                      void patchBgDoc((next) => {
+                        if (chip.id === "theme") next.backdrop = undefined;
+                        else if (chip.id === "floor") next.backdrop = floorFor(currentColour);
+                        else if (gradientSource) {
+                          const backdrop: ThemeBackdrop = { type: "gradient" };
+                          if (gradientSource.gradient) backdrop.gradient = gradientSource.gradient;
+                          if (gradientSource.spec) backdrop.spec = gradientSource.spec;
+                          next.backdrop = backdrop;
+                        } else if (themeGradient) {
+                          next.backdrop = { type: "gradient", gradient: themeGradient };
+                        }
+                      });
+                    }}
+                  >
+                    <BgOptionIcon id={chip.id} size={13} />
+                    {chip.label}
+                  </button>
+                ));
+              })()}
+            </div>
+          )}
+        </>
+      );
     return (
       <div className="inspector-drill">
-        <DrillBack label={backLabel} title="Background" onClick={() => closeDrill()} />
+        <DrillBack
+          label={backLabel}
+          title="Background"
+          onClick={() => closeDrill()}
+          actions={
+            <>
+              <DrillHeaderAction
+                kind="reset"
+                label={editingAfter ? "Match the before side" : "Reset to theme default"}
+                disabled={docTab === "default"}
+                onClick={() => commitBackground(undefined)}
+              />
+              {slug && project.slots.length > 1 && (
+                <DrillHeaderAction
+                  kind="apply-all"
+                  label="Apply to all slides"
+                  title={`Copies this background${stagedBackdrop !== null ? " and staging" : ""} onto every other scene, matching each slide.`}
+                  confirmLabel={
+                    confirmApplyAll
+                      ? `Apply to ${project.slots.length - 1} other scene${project.slots.length > 2 ? "s" : ""}?`
+                      : undefined
+                  }
+                  onDisarm={() => setConfirmApplyAll(false)}
+                  onClick={() => {
+                    if (!confirmApplyAll) {
+                      setConfirmApplyAll(true);
+                      return;
+                    }
+                    setConfirmApplyAll(false);
+                    applyBackgroundToAllScenes(project, sceneIndex, onDocChanged, (next, i) =>
+                      writeSideLighting(next, "a", (lighting) =>
+                        reconcileCompanionLighting(
+                          lighting,
+                          {
+                            theme: (project.sceneThemes[i] ?? project.theme).lighting,
+                            project: project.projectLighting,
+                          },
+                          companionTargetFor(next.background, SCENE3D_BACKGROUND_PRESETS),
+                        ),
+                      ),
+                    )
+                      .then(({ failed }) => {
+                        if (failed > 0) setError(`${failed} scene(s) failed to update.`);
+                      })
+                      .catch((e) => setError(String(e)));
+                  }}
+                />
+              )}
+            </>
+          }
+        />
         {hasComparison(doc) && (
           <CompareSideSelector
             value={compareSideActive}
@@ -5567,100 +5858,307 @@ export function SceneTab({
             }}
           />
         )}
-        <div className="inspector-drill-body">
-          {bgTab === "shader" && selectedShaderPreset && (
-            <div className="popover-row">
-              <button
-                type="button"
-                className="btn"
-                title={`Back to the ${selectedShaderPreset.name} preset's colours and motion`}
-                onClick={() => applyShaderPreset(selectedShaderPreset)}
-              >
-                Reset {selectedShaderPreset.name}
-              </button>
-            </div>
-          )}
-          {docTab === "default" ? (
-            <p className="modal-hint">
-              {editingAfter
-                ? "Following the before side. Pick a fill type to give the after side its own."
-                : "Following the theme's background. Pick a fill type to override it for this scene."}
-            </p>
-          ) : (
-            <div className="popover-row">
-              <button type="button" className="btn" onClick={() => commitBackground(undefined)}>
-                {editingAfter && <ComparisonSideIcon side="before" size={14} />}
-                {editingAfter ? "Match the before side" : "Reset to theme default"}
-              </button>
-            </div>
-          )}
-          <div className="bg-type-grid" role="tablist" aria-label="Background fill type">
-            {types.map((t) => (
-              <button
-                key={t.id}
-                type="button"
-                role="tab"
-                aria-selected={bgTab === t.id}
-                className={`bg-type-tile${bgTab === t.id ? " selected" : ""}`}
-                onClick={() => {
-                  if (t.id === "none") commitBackground({ type: "none" });
-                  else if (t.id === "color") {
-                    if (docTab !== "color") commitBackground(colourOpt);
-                    else setBgTabOverride(null);
-                  } else setBgTabOverride(t.id);
-                }}
-              >
-                <BgTypeIcon id={t.id} />
-                {t.label}
-              </button>
-            ))}
-          </div>
-          {bgTab === "color" && bgActive?.type === "color" && (
-            <div className="popover-row">
-              <span className="popover-inline slider-row-label">Colour</span>
-              <ColourPicker
-                value={bgActive.color}
-                label="Background colour"
-                onCommit={(hex) => {
-                  void patchBgDoc((next) => {
-                    if (next.background?.type === "color") {
-                      next.background = { ...next.background, color: hex };
+        <BgTypeStrip
+          ariaLabel="Background fill type"
+          value={bgTab === "default" ? null : bgTab}
+          options={types.map((t) => ({ ...t, icon: <BgTypeIcon id={t.id} /> }))}
+          onSelect={selectType}
+        />
+        {bgTab === "scene3d" ? (
+          <BandedDrillBody key="scene3d">
+            <LookBrowser selectedId={scene3dSpec?.look} ariaLabel="3D looks">
+              {SCENE3D_FAMILY_GROUPS.map((group) => (
+                <LookGroup key={group.family} name={group.name}>
+                  {group.ids.map((id) => {
+                    const def = SCENE3D_BACKGROUNDS[id];
+                    // The card previews and applies the mode's anchor preset wholesale, so the card shows what the click writes.
+                    const cardAnchor = SCENE3D_BACKGROUND_PRESETS[id]?.find(
+                      (p) => p.id === (lightTheme ? "p1" : "p6"),
+                    );
+                    const preview =
+                      (lightTheme ? optionPreviewClip(`bg-${id}-light`) : null) ??
+                      optionPreviewClip(`bg-${id}`);
+                    return (
+                      <OptionCard
+                        key={id}
+                        size="compact"
+                        label={def.name}
+                        image={preview?.poster ?? optionPreviewStill(`bg-${id}`)}
+                        clip={preview?.clip}
+                        playing={bgHover === id || scene3dSpec?.look === id}
+                        selected={scene3dSpec?.look === id}
+                        onSelect={() => {
+                          setBgTabOverride(null);
+                          void patchBgDoc((next) => {
+                            next.background = cardAnchor
+                              ? {
+                                  type: "scene3d",
+                                  look: id,
+                                  colors: [...cardAnchor.colors],
+                                  speed: cardAnchor.speed ?? 1,
+                                  ...(cardAnchor.params
+                                    ? { params: { ...cardAnchor.params } }
+                                    : {}),
+                                  backing: { type: "color", color: cardAnchor.backing },
+                                  preset: cardAnchor.id,
+                                }
+                              : { type: "scene3d", look: id };
+                            // A staged backdrop would hide the geometry: clear it in the same undoable entry.
+                            if (stagingOn) next.backdrop = { type: "none" };
+                          });
+                        }}
+                        onHoverChange={(h) =>
+                          setBgHover((cur) => (h ? id : cur === id ? null : cur))
+                        }
+                      />
+                    );
+                  })}
+                </LookGroup>
+              ))}
+            </LookBrowser>
+            {scene3dSpec && scene3dDef && (
+              <>
+                {orderedScene3dPresets.length > 0 && (
+                  <PresetStrip
+                    selectedName={
+                      scene3dSpec.themeColors
+                        ? "Theme"
+                        : (scene3dPresetList.find((p) => p.id === scene3dSpec.preset)?.name ??
+                          "Custom")
                     }
-                    if (stagingOn) next.backdrop = floorFor(hex);
-                  });
-                }}
-              />
-            </div>
-          )}
-          {bgTab === "gradient" && (
-            <GradientPickerModal
-              embedded
-              current={bgActive}
-              theme={sceneTheme}
-              onCancel={() => setBgTabOverride(null)}
-              onApply={(value) => {
-                setBgTabOverride(null);
-                void patchBgDoc((next) => {
-                  const parallax =
-                    next.background &&
-                    next.background.type !== "none" &&
-                    next.background.type !== "scene3d"
-                      ? next.background.parallax
-                      : undefined;
-                  next.background = parallax !== undefined ? { ...value, parallax } : value;
-                  // A staged backdrop would hide the gradient: clear it in the same undoable entry.
-                  if (stagingOn) next.backdrop = { type: "none" };
-                });
-              }}
-            />
-          )}
-          {bgTab === "shader" && (
-            <>
-              <p className="modal-hint">
-                Animated fills run on the project clock, so the motion is continuous across scene
-                cuts when neighbouring scenes share the same pick.
-              </p>
-              <div className="option-grid">
+                  >
+                    <PresetSwatch
+                      name="Theme"
+                      image={scene3dThemeSwatch}
+                      selected={!!scene3dSpec.themeColors}
+                      onSelect={applyScene3dThemePreset}
+                    />
+                    {presetSwatches(orderedScene3dPresets, (preset) => (
+                      <PresetSwatch
+                        key={preset.id}
+                        name={preset.name}
+                        image={optionPreviewStill(`bgp-${scene3dSpec.look}-${preset.id}`)}
+                        fallback={preset.backing}
+                        selected={scene3dSpec.preset === preset.id}
+                        onSelect={() => applyScene3dPreset(preset)}
+                      />
+                    ))}
+                  </PresetStrip>
+                )}
+                <OptionsSheet
+                  open={bgOptionsSheetOpen}
+                  onToggle={() => setBgOptionsSheetOpen(!bgOptionsSheetOpen)}
+                  peek={sheetPeek({
+                    backing: backingOptions.find((o) => o.value === storedBackingTab)?.label,
+                    speed: scene3dSpec.speed ?? 1,
+                    param: firstParamPeek(scene3dDef.params, scene3dSpec.params),
+                    staging: stagingPeek,
+                  })}
+                  chips={[
+                    backingChipColour(scene3dSpec.backing, sceneTheme) ?? backingDefault,
+                    ...scene3dDef.colorSlots
+                      .slice(0, 2)
+                      .map(
+                        (slot, i) =>
+                          scene3dDerivedColors?.[i] ?? scene3dSpec.colors?.[i] ?? slot.fallback,
+                      ),
+                  ]}
+                >
+                  <SheetRow
+                    label="Backing"
+                    trailing={
+                      (backingTabOverride ?? scene3dSpec.backing?.type ?? "color") === "color" ? (
+                        <ColourPicker
+                          value={
+                            scene3dSpec.backing?.type === "color"
+                              ? scene3dSpec.backing.color
+                              : backingDefault
+                          }
+                          label="Backing colour"
+                          onCommit={(hex) =>
+                            patchScene3d((spec) => {
+                              spec.backing = { type: "color", color: hex };
+                            })
+                          }
+                        />
+                      ) : undefined
+                    }
+                  >
+                    <SegmentedRow
+                      className="bg-sheet-segmented"
+                      ariaLabel="Backing type"
+                      focusOnlyKeys
+                      options={backingOptions}
+                      value={backingTab}
+                      onChange={(id) => {
+                        if (id === "color") {
+                          setBackingTabOverride(null);
+                          patchScene3d((spec) => {
+                            if (spec.backing?.type !== "color")
+                              spec.backing = { type: "color", color: backingDefault };
+                          });
+                        } else setBackingTabOverride(id);
+                      }}
+                    />
+                  </SheetRow>
+                  {(backingTabOverride ??
+                    (scene3dSpec.backing?.type === "gradient" ? "gradient" : null)) ===
+                    "gradient" && (
+                    <GradientPickerModal
+                      embedded
+                      current={
+                        scene3dSpec.backing?.type === "gradient" ? scene3dSpec.backing : undefined
+                      }
+                      theme={sceneTheme}
+                      onCancel={() => setBackingTabOverride(null)}
+                      onApply={(value) => {
+                        setBackingTabOverride(null);
+                        patchScene3d((spec) => {
+                          spec.backing = value;
+                        });
+                      }}
+                    />
+                  )}
+                  {(backingTabOverride ??
+                    (scene3dSpec.backing?.type === "shader" ? "shader" : null)) === "shader" && (
+                    <div className="option-grid">
+                      {SHADER_BACKGROUND_IDS.map((id) => {
+                        const def = SHADER_BACKGROUNDS[id];
+                        const lightP1 = lightTheme
+                          ? SHADER_BACKGROUND_PRESETS[id]?.find((p) => p.id === "p1")
+                          : undefined;
+                        const preview =
+                          (lightP1 ? optionPreviewClip(`bg-${id}-light`) : null) ??
+                          optionPreviewClip(`bg-${id}`);
+                        const selected =
+                          scene3dSpec.backing?.type === "shader" &&
+                          scene3dSpec.backing.shader === id;
+                        return (
+                          <OptionCard
+                            key={id}
+                            label={def.name}
+                            image={preview?.poster ?? optionPreviewStill(`bg-${id}`)}
+                            clip={preview?.clip}
+                            playing={selected}
+                            selected={selected}
+                            onSelect={() => {
+                              setBackingTabOverride(null);
+                              patchScene3d((spec) => {
+                                spec.backing = lightP1
+                                  ? {
+                                      type: "shader",
+                                      shader: id,
+                                      colors: [...lightP1.colors],
+                                      speed: lightP1.speed ?? 1,
+                                      ...(lightP1.scale !== undefined
+                                        ? { scale: lightP1.scale }
+                                        : {}),
+                                      ...(lightP1.params ? { params: { ...lightP1.params } } : {}),
+                                      preset: "p1",
+                                    }
+                                  : {
+                                      type: "shader",
+                                      shader: id,
+                                      colors: def.colorSlots.map((slot) => slot.fallback),
+                                      speed: 1,
+                                    };
+                              });
+                            }}
+                          />
+                        );
+                      })}
+                    </div>
+                  )}
+                  <SheetColours
+                    slots={scene3dDef.colorSlots.map((slot, i) => ({
+                      key: slot.label,
+                      label: slot.label,
+                      picker: (
+                        <ColourPicker
+                          value={
+                            scene3dDerivedColors?.[i] ?? scene3dSpec.colors?.[i] ?? slot.fallback
+                          }
+                          label={slot.label}
+                          defaultValue={slot.fallback}
+                          onReset={() =>
+                            patchScene3d((spec) => {
+                              const colors = scene3dDef.colorSlots.map(
+                                (s, j) => (scene3dDerivedColors ?? spec.colors)?.[j] ?? s.fallback,
+                              );
+                              colors[i] = slot.fallback;
+                              spec.colors = colors;
+                              spec.themeColors = undefined;
+                            })
+                          }
+                          onCommit={(hex) =>
+                            patchScene3d((spec) => {
+                              const colors = scene3dDef.colorSlots.map(
+                                (s, j) => (scene3dDerivedColors ?? spec.colors)?.[j] ?? s.fallback,
+                              );
+                              colors[i] = hex;
+                              spec.colors = colors;
+                              spec.themeColors = undefined;
+                            })
+                          }
+                        />
+                      ),
+                    }))}
+                  />
+                  <SheetDivider />
+                  <SheetSlider
+                    label="Speed"
+                    ariaLabel="Animation speed"
+                    value={scene3dSpec.speed ?? 1}
+                    min={0}
+                    max={3}
+                    step={0.05}
+                    onCommit={(v) =>
+                      patchScene3d((spec) => {
+                        spec.speed = v;
+                      })
+                    }
+                  />
+                  {Object.entries(scene3dDef.params).map(([key, p]) => (
+                    <SheetSlider
+                      key={key}
+                      label={p.label}
+                      value={scene3dSpec.params?.[key] ?? p.default}
+                      min={p.min}
+                      max={p.max}
+                      step={p.step}
+                      onCommit={(v) =>
+                        patchScene3d((spec) => {
+                          spec.params = { ...(spec.params ?? {}), [key]: v };
+                        })
+                      }
+                    />
+                  ))}
+                  {(scene3dCompanion || bgStagedBackdrop !== null) && <SheetDivider />}
+                  {scene3dCompanion && (
+                    <>
+                      <ToggleRow
+                        icon={<LightingIcon name="lights" />}
+                        label="Matching lighting"
+                        title="Adds lights that suit this preset to the scene's Lighting; off removes them."
+                        checked={scene3dCompanionOn}
+                        onChange={setScene3dCompanion}
+                      />
+                      {scene3dCompanionSkipped > 0 && (
+                        <span className="drill-group-hint bg-sheet-hint">
+                          {`Adds lights that suit this preset; ${scene3dCompanionSkipped} left out at the ${MAX_SCENE_LIGHTS}-light budget.`}
+                        </span>
+                      )}
+                    </>
+                  )}
+                  {stagingToggle(true)}
+                </OptionsSheet>
+              </>
+            )}
+          </BandedDrillBody>
+        ) : bgTab === "shader" ? (
+          <BandedDrillBody key="shader">
+            <LookBrowser selectedId={shaderSpec?.shader} ariaLabel="Animated fills">
+              <LookGroup>
                 {SHADER_BACKGROUND_IDS.map((id) => {
                   const def = SHADER_BACKGROUNDS[id];
                   // Light themes preview and apply the shader's p1 preset so the card shows what the click writes.
@@ -5673,6 +6171,7 @@ export function SceneTab({
                   return (
                     <OptionCard
                       key={id}
+                      size="compact"
                       label={def.name}
                       image={preview?.poster ?? optionPreviewStill(`bg-${id}`)}
                       clip={preview?.clip}
@@ -5705,35 +6204,55 @@ export function SceneTab({
                     />
                   );
                 })}
-              </div>
-              {shaderSpec && shaderDef && (
-                <>
-                  {orderedShaderPresets.length > 0 && (
-                    <DrillGroup label="Presets">
-                      <div className="option-grid three-up">
-                        <OptionCard
-                          key="theme"
-                          label="Theme"
-                          image={themeSwatchImage}
-                          selected={!!shaderSpec.themeColors}
-                          onSelect={applyThemePreset}
-                        />
-                        {orderedShaderPresets.map((preset) => (
-                          <OptionCard
-                            key={preset.id}
-                            label={preset.name}
-                            image={optionPreviewStill(`bgp-${shaderSpec.shader}-${preset.id}`)}
-                            selected={shaderSpec.preset === preset.id}
-                            onSelect={() => applyShaderPreset(preset)}
-                          />
-                        ))}
-                      </div>
-                    </DrillGroup>
-                  )}
-                  <DrillGroup label="Colours and motion">
-                    {shaderDef.colorSlots.map((slot, i) => (
-                      <div key={slot.label} className="popover-row">
-                        <span className="popover-inline slider-row-label">{slot.label}</span>
+              </LookGroup>
+            </LookBrowser>
+            {shaderSpec && shaderDef && (
+              <>
+                {orderedShaderPresets.length > 0 && (
+                  <PresetStrip
+                    selectedName={
+                      shaderSpec.themeColors ? "Theme" : (selectedShaderPreset?.name ?? "Custom")
+                    }
+                  >
+                    <PresetSwatch
+                      name="Theme"
+                      image={themeSwatchImage}
+                      selected={!!shaderSpec.themeColors}
+                      onSelect={applyThemePreset}
+                    />
+                    {presetSwatches(orderedShaderPresets, (preset) => (
+                      <PresetSwatch
+                        key={preset.id}
+                        name={preset.name}
+                        image={optionPreviewStill(`bgp-${shaderSpec.shader}-${preset.id}`)}
+                        fallback={preset.colors[0]}
+                        selected={shaderSpec.preset === preset.id}
+                        onSelect={() => applyShaderPreset(preset)}
+                      />
+                    ))}
+                  </PresetStrip>
+                )}
+                <OptionsSheet
+                  open={bgOptionsSheetOpen}
+                  onToggle={() => setBgOptionsSheetOpen(!bgOptionsSheetOpen)}
+                  peek={sheetPeek({
+                    speed: shaderSpec.speed ?? 1,
+                    zoom: shaderSpec.scale ?? 1,
+                    param: firstParamPeek(shaderDef.params, shaderSpec.params),
+                    staging: stagingPeek,
+                  })}
+                  chips={shaderDef.colorSlots
+                    .slice(0, 3)
+                    .map(
+                      (slot, i) =>
+                        themeDerivedColors?.[i] ?? shaderSpec.colors?.[i] ?? slot.fallback,
+                    )}
+                >
+                  <SheetColours
+                    slots={shaderDef.colorSlots.map((slot, i) => ({
+                      key: slot.label,
+                      label: slot.label,
+                      picker: (
                         <ColourPicker
                           value={themeDerivedColors?.[i] ?? shaderSpec.colors?.[i] ?? slot.fallback}
                           label={slot.label}
@@ -5760,553 +6279,175 @@ export function SceneTab({
                             })
                           }
                         />
-                      </div>
-                    ))}
-                    <div className="popover-row">
-                      <span className="popover-inline slider-row-label">Speed</span>
-                      <DebouncedRange
-                        value={shaderSpec.speed ?? 1}
-                        min={0}
-                        max={3}
-                        step={0.05}
-                        label="Animation speed"
-                        onCommit={(v) =>
-                          patchShader((spec) => {
-                            spec.speed = v;
-                          })
-                        }
-                      />
-                    </div>
-                    <div className="popover-row">
-                      <span className="popover-inline slider-row-label">Zoom</span>
-                      <DebouncedRange
-                        value={shaderSpec.scale ?? 1}
-                        min={0.25}
-                        max={3}
-                        step={0.05}
-                        label="Pattern zoom"
-                        onCommit={(v) =>
-                          patchShader((spec) => {
-                            spec.scale = v;
-                          })
-                        }
-                      />
-                    </div>
-                    {Object.entries(shaderDef.params).map(([key, p]) => (
-                      <div key={key} className="popover-row">
-                        <span className="popover-inline slider-row-label">{p.label}</span>
-                        <DebouncedRange
-                          value={shaderSpec.params?.[key] ?? p.default}
-                          min={p.min}
-                          max={p.max}
-                          step={p.step}
-                          label={p.label}
-                          onCommit={(v) =>
-                            patchShader((spec) => {
-                              spec.params = { ...(spec.params ?? {}), [key]: v };
-                            })
-                          }
-                        />
-                      </div>
-                    ))}
-                  </DrillGroup>
-                </>
-              )}
-            </>
-          )}
-          {bgTab === "scene3d" && (
-            <>
-              <p className="modal-hint">
-                Real geometry behind the scene: it parallaxes with camera moves and keeps a clear
-                area around your content. Runs on the project clock, continuous across cuts.
-              </p>
-              {SCENE3D_FAMILY_GROUPS.map((group) => (
-                <DrillGroup key={group.family} label={group.name}>
-                  <div className="option-grid">
-                    {group.ids.map((id) => {
-                      const def = SCENE3D_BACKGROUNDS[id];
-                      // The card previews and applies the mode's anchor preset wholesale, so the card shows what the click writes.
-                      const cardAnchor = SCENE3D_BACKGROUND_PRESETS[id]?.find(
-                        (p) => p.id === (lightTheme ? "p1" : "p6"),
-                      );
-                      const preview =
-                        (lightTheme ? optionPreviewClip(`bg-${id}-light`) : null) ??
-                        optionPreviewClip(`bg-${id}`);
-                      return (
-                        <OptionCard
-                          key={id}
-                          label={def.name}
-                          image={preview?.poster ?? optionPreviewStill(`bg-${id}`)}
-                          clip={preview?.clip}
-                          playing={bgHover === id || scene3dSpec?.look === id}
-                          selected={scene3dSpec?.look === id}
-                          onSelect={() => {
-                            setBgTabOverride(null);
-                            void patchBgDoc((next) => {
-                              next.background = cardAnchor
-                                ? {
-                                    type: "scene3d",
-                                    look: id,
-                                    colors: [...cardAnchor.colors],
-                                    speed: cardAnchor.speed ?? 1,
-                                    ...(cardAnchor.params
-                                      ? { params: { ...cardAnchor.params } }
-                                      : {}),
-                                    backing: { type: "color", color: cardAnchor.backing },
-                                    preset: cardAnchor.id,
-                                  }
-                                : { type: "scene3d", look: id };
-                              // A staged backdrop would hide the geometry: clear it in the same undoable entry.
-                              if (stagingOn) next.backdrop = { type: "none" };
-                            });
-                          }}
-                          onHoverChange={(h) =>
-                            setBgHover((cur) => (h ? id : cur === id ? null : cur))
-                          }
-                        />
-                      );
-                    })}
-                  </div>
-                </DrillGroup>
-              ))}
-              {scene3dSpec && scene3dDef && (
-                <>
-                  {orderedScene3dPresets.length > 0 && (
-                    <DrillGroup label="Presets">
-                      <div className="option-grid three-up">
-                        <OptionCard
-                          key="theme"
-                          label="Theme"
-                          image={scene3dThemeSwatch}
-                          selected={!!scene3dSpec.themeColors}
-                          onSelect={applyScene3dThemePreset}
-                        />
-                        {orderedScene3dPresets.map((preset) => (
-                          <OptionCard
-                            key={preset.id}
-                            label={preset.name}
-                            image={optionPreviewStill(`bgp-${scene3dSpec.look}-${preset.id}`)}
-                            selected={scene3dSpec.preset === preset.id}
-                            onSelect={() => applyScene3dPreset(preset)}
-                          />
-                        ))}
-                      </div>
-                      {scene3dCompanion && (
-                        <ToggleRow
-                          icon={<LightingIcon name="lights" />}
-                          label="Matching lighting"
-                          description={
-                            scene3dCompanionSkipped > 0
-                              ? `Adds lights that suit this preset; ${scene3dCompanionSkipped} left out at the ${MAX_SCENE_LIGHTS}-light budget.`
-                              : "Adds lights that suit this preset to the scene's Lighting; off removes them."
-                          }
-                          checked={scene3dCompanionOn}
-                          onChange={setScene3dCompanion}
-                        />
-                      )}
-                    </DrillGroup>
-                  )}
-                  <DrillGroup label="Backing">
-                    <p className="modal-hint">The camera-locked fill behind the geometry.</p>
-                    <div className="bg-type-grid">
-                      {(
-                        [
-                          { id: "color", label: "Colour" },
-                          { id: "gradient", label: "Gradient" },
-                          { id: "shader", label: "Animated" },
-                        ] as const
-                      ).map((t) => {
-                        const backingTab =
-                          backingTabOverride ??
-                          (scene3dSpec.backing?.type === "gradient" ||
-                          scene3dSpec.backing?.type === "shader"
-                            ? scene3dSpec.backing.type
-                            : "color");
-                        return (
-                          <button
-                            key={t.id}
-                            type="button"
-                            className={`bg-type-tile${backingTab === t.id ? " selected" : ""}`}
-                            onClick={() => {
-                              if (t.id === "color") {
-                                setBackingTabOverride(null);
-                                patchScene3d((spec) => {
-                                  if (spec.backing?.type !== "color")
-                                    spec.backing = {
-                                      type: "color",
-                                      color: lightTheme ? "#e8ecf2" : "#0d1218",
-                                    };
-                                });
-                              } else setBackingTabOverride(t.id);
-                            }}
-                          >
-                            <BgTypeIcon id={t.id} />
-                            {t.label}
-                          </button>
-                        );
-                      })}
-                    </div>
-                    {(backingTabOverride ?? scene3dSpec.backing?.type ?? "color") === "color" && (
-                      <div className="popover-row">
-                        <span className="popover-inline slider-row-label">Colour</span>
-                        <ColourPicker
-                          value={
-                            scene3dSpec.backing?.type === "color"
-                              ? scene3dSpec.backing.color
-                              : lightTheme
-                                ? "#e8ecf2"
-                                : "#0d1218"
-                          }
-                          label="Backing colour"
-                          onCommit={(hex) =>
-                            patchScene3d((spec) => {
-                              spec.backing = { type: "color", color: hex };
-                            })
-                          }
-                        />
-                      </div>
-                    )}
-                    {(backingTabOverride ??
-                      (scene3dSpec.backing?.type === "gradient" ? "gradient" : null)) ===
-                      "gradient" && (
-                      <GradientPickerModal
-                        embedded
-                        current={
-                          scene3dSpec.backing?.type === "gradient" ? scene3dSpec.backing : undefined
-                        }
-                        theme={sceneTheme}
-                        onCancel={() => setBackingTabOverride(null)}
-                        onApply={(value) => {
-                          setBackingTabOverride(null);
-                          patchScene3d((spec) => {
-                            spec.backing = value;
-                          });
-                        }}
-                      />
-                    )}
-                    {(backingTabOverride ??
-                      (scene3dSpec.backing?.type === "shader" ? "shader" : null)) === "shader" && (
-                      <div className="option-grid">
-                        {SHADER_BACKGROUND_IDS.map((id) => {
-                          const def = SHADER_BACKGROUNDS[id];
-                          const lightP1 = lightTheme
-                            ? SHADER_BACKGROUND_PRESETS[id]?.find((p) => p.id === "p1")
-                            : undefined;
-                          const preview =
-                            (lightP1 ? optionPreviewClip(`bg-${id}-light`) : null) ??
-                            optionPreviewClip(`bg-${id}`);
-                          const selected =
-                            scene3dSpec.backing?.type === "shader" &&
-                            scene3dSpec.backing.shader === id;
-                          return (
-                            <OptionCard
-                              key={id}
-                              label={def.name}
-                              image={preview?.poster ?? optionPreviewStill(`bg-${id}`)}
-                              clip={preview?.clip}
-                              playing={selected}
-                              selected={selected}
-                              onSelect={() => {
-                                setBackingTabOverride(null);
-                                patchScene3d((spec) => {
-                                  spec.backing = lightP1
-                                    ? {
-                                        type: "shader",
-                                        shader: id,
-                                        colors: [...lightP1.colors],
-                                        speed: lightP1.speed ?? 1,
-                                        ...(lightP1.scale !== undefined
-                                          ? { scale: lightP1.scale }
-                                          : {}),
-                                        ...(lightP1.params
-                                          ? { params: { ...lightP1.params } }
-                                          : {}),
-                                        preset: "p1",
-                                      }
-                                    : {
-                                        type: "shader",
-                                        shader: id,
-                                        colors: def.colorSlots.map((slot) => slot.fallback),
-                                        speed: 1,
-                                      };
-                                });
-                              }}
-                            />
-                          );
-                        })}
-                      </div>
-                    )}
-                  </DrillGroup>
-                  <DrillGroup label="Colours and motion">
-                    {scene3dDef.colorSlots.map((slot, i) => (
-                      <div key={slot.label} className="popover-row">
-                        <span className="popover-inline slider-row-label">{slot.label}</span>
-                        <ColourPicker
-                          value={
-                            scene3dDerivedColors?.[i] ?? scene3dSpec.colors?.[i] ?? slot.fallback
-                          }
-                          label={slot.label}
-                          defaultValue={slot.fallback}
-                          onReset={() =>
-                            patchScene3d((spec) => {
-                              const colors = scene3dDef.colorSlots.map(
-                                (s, j) => (scene3dDerivedColors ?? spec.colors)?.[j] ?? s.fallback,
-                              );
-                              colors[i] = slot.fallback;
-                              spec.colors = colors;
-                              spec.themeColors = undefined;
-                            })
-                          }
-                          onCommit={(hex) =>
-                            patchScene3d((spec) => {
-                              const colors = scene3dDef.colorSlots.map(
-                                (s, j) => (scene3dDerivedColors ?? spec.colors)?.[j] ?? s.fallback,
-                              );
-                              colors[i] = hex;
-                              spec.colors = colors;
-                              spec.themeColors = undefined;
-                            })
-                          }
-                        />
-                      </div>
-                    ))}
-                    <div className="popover-row">
-                      <span className="popover-inline slider-row-label">Speed</span>
-                      <DebouncedRange
-                        value={scene3dSpec.speed ?? 1}
-                        min={0}
-                        max={3}
-                        step={0.05}
-                        label="Animation speed"
-                        onCommit={(v) =>
-                          patchScene3d((spec) => {
-                            spec.speed = v;
-                          })
-                        }
-                      />
-                    </div>
-                    {Object.entries(scene3dDef.params).map(([key, p]) => (
-                      <div key={key} className="popover-row">
-                        <span className="popover-inline slider-row-label">{p.label}</span>
-                        <DebouncedRange
-                          value={scene3dSpec.params?.[key] ?? p.default}
-                          min={p.min}
-                          max={p.max}
-                          step={p.step}
-                          label={p.label}
-                          onCommit={(v) =>
-                            patchScene3d((spec) => {
-                              spec.params = { ...(spec.params ?? {}), [key]: v };
-                            })
-                          }
-                        />
-                      </div>
-                    ))}
-                  </DrillGroup>
-                </>
-              )}
-            </>
-          )}
-          {bgTab === "image" && (
-            <>
-              <span className="modal-hint">
-                Fills the frame behind everything and stays locked to the camera; pick an image with
-                a safe centre (it cover-crops per aspect).
-              </span>
-              <ActionRow
-                icon={<SceneRowIcon id="style.background" />}
-                label={bgActive?.type === "image" ? "Change image" : "Choose an image"}
-                value={
-                  bgActive?.type === "image"
-                    ? middleTruncate(bgActive.src.split("/").pop() ?? "")
-                    : undefined
-                }
-                onClick={() => openDrill("style.background.media")}
-              />
-            </>
-          )}
-          {bgTab === "video" && (
-            <>
-              <span className="modal-hint">Video that fills the frame behind everything.</span>
-              <ActionRow
-                icon={<SceneRowIcon id="style.background" />}
-                label={bgActive?.type === "video" ? "Change video" : "Choose a video"}
-                value={
-                  bgActive?.type === "video"
-                    ? middleTruncate(bgActive.src.split("/").pop() ?? "")
-                    : undefined
-                }
-                onClick={() => openDrill("style.background.media")}
-              />
-              {bgActive?.type === "video" && (
-                <ToggleRow
-                  label="Loop"
-                  description="Plays again from the start when it ends; off holds the last frame."
-                  checked={bgActive.loop !== false}
-                  onChange={(on) =>
-                    void patchBgDoc((next) => {
-                      if (next.background?.type === "video") {
-                        const { loop: _drop, ...rest } = next.background;
-                        next.background = on ? rest : { ...rest, loop: false };
-                      }
-                    })
-                  }
-                />
-              )}
-              {bgActive?.type === "video" && (
-                <ToggleRow
-                  label="Fit inside frame"
-                  description="Shows the whole video with letterbox bars; off crops it to fill the frame."
-                  checked={bgActive.fit === "fit"}
-                  onChange={(on) =>
-                    void patchBgDoc((next) => {
-                      if (next.background?.type === "video") {
-                        const { fit: _drop, ...rest } = next.background;
-                        next.background = on ? { ...rest, fit: "fit" } : rest;
-                      }
-                    })
-                  }
-                />
-              )}
-            </>
-          )}
-          <ToggleRow
-            label="Drift"
-            description="Camera motion shifts the fill slightly for depth; pan the camera to see it."
-            disabled={!bgActive || bgActive.type === "none" || bgActive.type === "scene3d"}
-            checked={
-              !!bgActive &&
-              bgActive.type !== "none" &&
-              bgActive.type !== "scene3d" &&
-              (bgActive.parallax ?? 0) > 0
-            }
-            onChange={(on) =>
-              void patchBgDoc((next) => {
-                if (next.background && next.background.type !== "none") {
-                  next.background = toggleDrift(next.background, on);
-                }
-              })
-            }
-          />
-          {bgStagedBackdrop !== null && (
-            <>
-              <ToggleRow
-                label="Staging"
-                description="A floor and backdrop that catch light and real shadows; colour and gradient picks write through to it."
-                checked={stagingOn}
-                onChange={(on) =>
-                  void patchBgDoc((next) => {
-                    if (!on) {
-                      next.backdrop = { type: "none" };
-                      return;
-                    }
-                    // Back on: the theme's own staging when it has one, else a floor in the current colour.
-                    if (sceneTheme?.backdrop && sceneTheme.backdrop.type !== "none") {
-                      next.backdrop = undefined;
-                    } else {
-                      next.backdrop = floorFor(
-                        bgActive?.type === "color"
-                          ? bgActive.color
-                          : (sceneTheme?.colors.background ?? "#ffffff"),
-                      );
-                    }
-                  })
-                }
-              />
-              {stagingOn && (
-                <div className="wizard-presets">
-                  {(() => {
-                    const themeGradients = Object.keys(sceneTheme?.gradients ?? {});
-                    const themeGradient = themeGradients.includes("backdrop")
-                      ? "backdrop"
-                      : themeGradients[0];
-                    const gradientSource = bgActive?.type === "gradient" ? bgActive : undefined;
-                    const currentColour =
-                      bgActive?.type === "color"
-                        ? bgActive.color
-                        : (sceneTheme?.colors.background ?? "#ffffff");
-                    const form =
-                      bgBackdrop === undefined ? "theme" : (resolvedBackdrop?.type ?? "none");
-                    const chips: { id: string; label: string; disabled?: boolean }[] = [
-                      { id: "theme", label: "Theme default" },
-                      { id: "floor", label: "Floor" },
-                      {
-                        id: "gradient",
-                        label: "Gradient",
-                        disabled: !gradientSource && !themeGradient,
-                      },
-                    ];
-                    return chips.map((chip) => (
-                      <button
-                        type="button"
-                        key={chip.id}
-                        className={`chip${form === chip.id ? " selected" : ""}`}
-                        disabled={chip.disabled}
-                        onClick={() => {
-                          void patchBgDoc((next) => {
-                            if (chip.id === "theme") next.backdrop = undefined;
-                            else if (chip.id === "floor") next.backdrop = floorFor(currentColour);
-                            else if (gradientSource) {
-                              const backdrop: ThemeBackdrop = { type: "gradient" };
-                              if (gradientSource.gradient)
-                                backdrop.gradient = gradientSource.gradient;
-                              if (gradientSource.spec) backdrop.spec = gradientSource.spec;
-                              next.backdrop = backdrop;
-                            } else if (themeGradient) {
-                              next.backdrop = { type: "gradient", gradient: themeGradient };
-                            }
-                          });
-                        }}
-                      >
-                        {chip.label}
-                      </button>
-                    ));
-                  })()}
-                </div>
-              )}
-            </>
-          )}
-          {slug && project.slots.length > 1 && (
-            <DrillGroup
-              label="Apply everywhere"
-              hint={`Copies this background${stagedBackdrop !== null ? " and staging" : ""} onto every other scene, matching each slide.`}
-            >
-              <div className="popover-row">
-                <button
-                  type="button"
-                  className="btn"
-                  onClick={() => {
-                    if (!confirmApplyAll) {
-                      setConfirmApplyAll(true);
-                      return;
-                    }
-                    setConfirmApplyAll(false);
-                    applyBackgroundToAllScenes(project, sceneIndex, onDocChanged, (next, i) =>
-                      writeSideLighting(next, "a", (lighting) =>
-                        reconcileCompanionLighting(
-                          lighting,
-                          {
-                            theme: (project.sceneThemes[i] ?? project.theme).lighting,
-                            project: project.projectLighting,
-                          },
-                          companionTargetFor(next.background, SCENE3D_BACKGROUND_PRESETS),
-                        ),
                       ),
-                    )
-                      .then(({ failed }) => {
-                        if (failed > 0) setError(`${failed} scene(s) failed to update.`);
+                    }))}
+                  />
+                  <SheetDivider />
+                  <SheetSlider
+                    label="Speed"
+                    ariaLabel="Animation speed"
+                    value={shaderSpec.speed ?? 1}
+                    min={0}
+                    max={3}
+                    step={0.05}
+                    onCommit={(v) =>
+                      patchShader((spec) => {
+                        spec.speed = v;
                       })
-                      .catch((e) => setError(String(e)));
+                    }
+                  />
+                  <SheetSlider
+                    label="Zoom"
+                    ariaLabel="Pattern zoom"
+                    value={shaderSpec.scale ?? 1}
+                    min={0.25}
+                    max={3}
+                    step={0.05}
+                    onCommit={(v) =>
+                      patchShader((spec) => {
+                        spec.scale = v;
+                      })
+                    }
+                  />
+                  {Object.entries(shaderDef.params).map(([key, p]) => (
+                    <SheetSlider
+                      key={key}
+                      label={p.label}
+                      value={shaderSpec.params?.[key] ?? p.default}
+                      min={p.min}
+                      max={p.max}
+                      step={p.step}
+                      onCommit={(v) =>
+                        patchShader((spec) => {
+                          spec.params = { ...(spec.params ?? {}), [key]: v };
+                        })
+                      }
+                    />
+                  ))}
+                  <SheetDivider />
+                  {driftToggle(true)}
+                  {stagingToggle(true)}
+                </OptionsSheet>
+              </>
+            )}
+          </BandedDrillBody>
+        ) : (
+          <div className="inspector-drill-body">
+            {docTab === "default" && (
+              <p className="modal-hint">
+                {editingAfter
+                  ? "Following the before side. Pick a fill type to give the after side its own."
+                  : "Following the theme's background. Pick a fill type to override it for this scene."}
+              </p>
+            )}
+            {bgTab === "color" && bgActive?.type === "color" && (
+              <div className="popover-row">
+                <span className="popover-inline slider-row-label">Colour</span>
+                <ColourPicker
+                  value={bgActive.color}
+                  label="Background colour"
+                  onCommit={(hex) => {
+                    void patchBgDoc((next) => {
+                      if (next.background?.type === "color") {
+                        next.background = { ...next.background, color: hex };
+                      }
+                      if (stagingOn) next.backdrop = floorFor(hex);
+                    });
                   }}
-                >
-                  {confirmApplyAll
-                    ? `Apply to ${project.slots.length - 1} other scene${project.slots.length > 2 ? "s" : ""}?`
-                    : "Apply to all slides"}
-                </button>
+                />
               </div>
-            </DrillGroup>
-          )}
-        </div>
+            )}
+            {bgTab === "gradient" && (
+              <GradientPickerModal
+                embedded
+                current={bgActive}
+                theme={sceneTheme}
+                onCancel={() => setBgTabOverride(null)}
+                onApply={(value) => {
+                  setBgTabOverride(null);
+                  void patchBgDoc((next) => {
+                    const parallax =
+                      next.background &&
+                      next.background.type !== "none" &&
+                      next.background.type !== "scene3d"
+                        ? next.background.parallax
+                        : undefined;
+                    next.background = parallax !== undefined ? { ...value, parallax } : value;
+                    // A staged backdrop would hide the gradient: clear it in the same undoable entry.
+                    if (stagingOn) next.backdrop = { type: "none" };
+                  });
+                }}
+              />
+            )}
+            {bgTab === "image" && (
+              <>
+                <span className="modal-hint">
+                  Fills the frame behind everything and stays locked to the camera; pick an image
+                  with a safe centre (it cover-crops per aspect).
+                </span>
+                <ActionRow
+                  icon={<SceneRowIcon id="style.background" />}
+                  label={bgActive?.type === "image" ? "Change image" : "Choose an image"}
+                  value={
+                    bgActive?.type === "image"
+                      ? middleTruncate(bgActive.src.split("/").pop() ?? "")
+                      : undefined
+                  }
+                  onClick={() => openDrill("style.background.media")}
+                />
+              </>
+            )}
+            {bgTab === "video" && (
+              <>
+                <span className="modal-hint">Video that fills the frame behind everything.</span>
+                <ActionRow
+                  icon={<SceneRowIcon id="style.background" />}
+                  label={bgActive?.type === "video" ? "Change video" : "Choose a video"}
+                  value={
+                    bgActive?.type === "video"
+                      ? middleTruncate(bgActive.src.split("/").pop() ?? "")
+                      : undefined
+                  }
+                  onClick={() => openDrill("style.background.media")}
+                />
+                {bgActive?.type === "video" && (
+                  <ToggleRow
+                    icon={<BgOptionIcon id="loop" />}
+                    label="Loop"
+                    description="Plays again from the start when it ends; off holds the last frame."
+                    checked={bgActive.loop !== false}
+                    onChange={(on) =>
+                      void patchBgDoc((next) => {
+                        if (next.background?.type === "video") {
+                          const { loop: _drop, ...rest } = next.background;
+                          next.background = on ? rest : { ...rest, loop: false };
+                        }
+                      })
+                    }
+                  />
+                )}
+                {bgActive?.type === "video" && (
+                  <ToggleRow
+                    icon={<BgOptionIcon id="fit" />}
+                    label="Fit inside frame"
+                    description="Shows the whole video with letterbox bars; off crops it to fill the frame."
+                    checked={bgActive.fit === "fit"}
+                    onChange={(on) =>
+                      void patchBgDoc((next) => {
+                        if (next.background?.type === "video") {
+                          const { fit: _drop, ...rest } = next.background;
+                          next.background = on ? { ...rest, fit: "fit" } : rest;
+                        }
+                      })
+                    }
+                  />
+                )}
+              </>
+            )}
+            {driftToggle(false)}
+            {stagingToggle(false)}
+          </div>
+        )}
       </div>
     );
   }

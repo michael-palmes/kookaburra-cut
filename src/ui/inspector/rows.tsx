@@ -3,6 +3,7 @@ import type { GizmoMode } from "../../engine/gizmoMode";
 import type { ChartType } from "../../toolkit/chart/types";
 import { DebouncedRange } from "../TextAnimationPicker";
 import { isTypingIn } from "../textEditFocus";
+import { useEscapeClose } from "../useEscapeClose";
 import { useInspectorNavigation } from "./InspectorNavigationShell";
 
 /** Inspector building blocks: the action row (17px icon · 13px label · right value · ›; selected = accent-subtle wash + a 2px inset accent edge, never a full accent fill), the toggle row (label and description left, switch right) and the drill group (uppercase label over tight rows, wider gaps between groups); rendered from the pure models in ui/inspectorOptions.ts. */
@@ -509,6 +510,7 @@ export function ToggleRow({
   icon,
   label,
   description,
+  title,
   checked,
   disabled = false,
   onChange,
@@ -516,12 +518,14 @@ export function ToggleRow({
   icon?: ReactNode;
   label: string;
   description?: string;
+  /** Tooltip; compact surfaces put the description here instead of under the label. */
+  title?: string;
   checked: boolean;
   disabled?: boolean;
   onChange: (on: boolean) => void;
 }) {
   return (
-    <label className={`toggle-row${disabled ? " toggle-row-disabled" : ""}`}>
+    <label className={`toggle-row${disabled ? " toggle-row-disabled" : ""}`} title={title}>
       {icon && <span className="toggle-row-icon">{icon}</span>}
       <span className="toggle-row-text">
         <span className="toggle-row-label">{label}</span>
@@ -603,6 +607,7 @@ export function SegmentedRow<T extends string>({
   className,
   ariaLabel,
   disabled = false,
+  focusOnlyKeys = false,
 }: {
   options: SegmentedOption<T>[];
   value: T;
@@ -610,6 +615,8 @@ export function SegmentedRow<T extends string>({
   className?: string;
   ariaLabel: string;
   disabled?: boolean;
+  /** Arrow keys move focus without selecting (Enter/Space selects); for options whose pick writes the document. */
+  focusOnlyKeys?: boolean;
 }) {
   const selectedEnabled = options.some((option) => option.value === value && !option.disabled);
   const fallbackValue = options.find((option) => !option.disabled)?.value;
@@ -644,7 +651,7 @@ export function SegmentedRow<T extends string>({
             const next = segmentedKeyTarget(options, o.value, event.key);
             if (!next) return;
             event.preventDefault();
-            if (next !== o.value) onChange(next);
+            if (!focusOnlyKeys && next !== o.value) onChange(next);
             const index = options.findIndex((option) => option.value === next);
             event.currentTarget.parentElement
               ?.querySelectorAll<HTMLButtonElement>('[role="radio"]')
@@ -714,49 +721,83 @@ export function DrillBack({
   );
 }
 
+const DRILL_HEADER_GLYPHS: Record<"duplicate" | "remove" | "reset" | "apply-all", ReactNode> = {
+  duplicate: (
+    <>
+      <rect x="5" y="5" width="8" height="8" rx="1.5" />
+      <path d="M3 10H2.5A1.5 1.5 0 0 1 1 8.5v-6A1.5 1.5 0 0 1 2.5 1h6A1.5 1.5 0 0 1 10 2.5V3" />
+    </>
+  ),
+  remove: (
+    <>
+      <path d="M3 4h10M6 4V2.5h4V4M5 6.5v5M8 6.5v5M11 6.5v5" />
+      <path d="M4 4l.6 9h6.8l.6-9" />
+    </>
+  ),
+  reset: (
+    <>
+      <path d="M13.2 8.4a5.2 5.2 0 1 1-1.7-3.9" />
+      <path d="M13.4 2.2v3h-3" />
+    </>
+  ),
+  "apply-all": (
+    <>
+      <rect x="2.4" y="2.4" width="8.2" height="8.2" rx="1.4" />
+      <rect x="5.4" y="5.4" width="8.2" height="8.2" rx="1.4" />
+    </>
+  ),
+};
+
+/** An icon action in a drill header. `confirmLabel` swaps the glyph for that text in place (the self-disarming two-step confirm); `onDisarm` fires on blur or Escape while armed. */
 export function DrillHeaderAction({
   kind,
   label,
+  title,
   onClick,
   disabled = false,
+  confirmLabel,
+  onDisarm,
 }: {
-  kind: "duplicate" | "remove";
+  kind: "duplicate" | "remove" | "reset" | "apply-all";
   label: string;
+  /** Tooltip; defaults to `label`. */
+  title?: string;
   onClick: () => void;
   disabled?: boolean;
+  confirmLabel?: string;
+  onDisarm?: () => void;
 }) {
+  const armed = confirmLabel !== undefined;
+  // Armed, this layer outranks the drill's own Escape-to-go-back.
+  useEscapeClose(() => onDisarm?.(), armed);
   return (
     <button
       type="button"
-      className={`inspector-drill-header-action${kind === "remove" ? " danger" : ""}`}
-      aria-label={label}
-      title={label}
+      className={`inspector-drill-header-action${kind === "remove" ? " danger" : ""}${armed ? " confirming" : ""}`}
+      aria-label={armed ? confirmLabel : label}
+      title={armed ? confirmLabel : (title ?? label)}
       disabled={disabled}
       onClick={onClick}
+      onBlur={armed ? onDisarm : undefined}
+      onMouseDown={armed ? (e) => e.preventDefault() : undefined}
     >
-      <svg
-        width="15"
-        height="15"
-        viewBox="0 0 16 16"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.4"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        aria-hidden="true"
-      >
-        {kind === "duplicate" ? (
-          <>
-            <rect x="5" y="5" width="8" height="8" rx="1.5" />
-            <path d="M3 10H2.5A1.5 1.5 0 0 1 1 8.5v-6A1.5 1.5 0 0 1 2.5 1h6A1.5 1.5 0 0 1 10 2.5V3" />
-          </>
-        ) : (
-          <>
-            <path d="M3 4h10M6 4V2.5h4V4M5 6.5v5M8 6.5v5M11 6.5v5" />
-            <path d="M4 4l.6 9h6.8l.6-9" />
-          </>
-        )}
-      </svg>
+      {armed ? (
+        confirmLabel
+      ) : (
+        <svg
+          width="15"
+          height="15"
+          viewBox="0 0 16 16"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.4"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
+          {DRILL_HEADER_GLYPHS[kind]}
+        </svg>
+      )}
     </button>
   );
 }

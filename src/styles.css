@@ -8542,6 +8542,20 @@ button.inspector-scene-overview-group-main:hover .inspector-scene-overview-group
   cursor: default;
 }
 
+/* The armed two-step confirm: the glyph gives way to its question in place. */
+.inspector-drill-header-action.confirming {
+  width: auto;
+  padding: 0 8px;
+  font-family: inherit;
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}
+
+/* The question needs the room while armed: the current-screen title steps aside. */
+.inspector-drill-header:has(.inspector-drill-header-action.confirming) .inspector-drill-current {
+  display: none;
+}
+
 .inspector-drill-body {
   display: flex;
   flex-direction: column;
@@ -8552,6 +8566,14 @@ button.inspector-scene-overview-group-main:hover .inspector-scene-overview-group
   /* A vertical rail: overflow-y alone computes overflow-x to auto, which turns any 1px overshoot into a scrollbar. */
   overflow-x: hidden;
   overflow-y: auto;
+}
+
+/* Banded drills (Background 3D and Animated): each band owns its overflow, the body none. */
+.inspector-drill-body.banded {
+  flex-direction: column;
+  gap: 0;
+  padding: 0;
+  overflow: hidden;
 }
 
 /* Shared full-height scroll region for drill screens that compose their own sections. */
@@ -10476,6 +10498,586 @@ textarea.text-inspector-copy-input {
   border-color: var(--accent);
 }
 
+/* ── Banded Background drill (3D and Animated fill types) ─────────────────── */
+
+.bg-type-strip {
+  display: flex;
+  flex: none;
+  gap: 2px;
+  height: 30px;
+  margin: 10px 12px;
+  padding: 2px;
+  background: var(--surface-recessed);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+}
+
+.bg-type-strip-tab {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  padding: 0;
+  color: var(--text-tertiary);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-xs);
+  cursor: pointer;
+}
+
+.bg-type-strip-tab:hover {
+  color: var(--text-primary);
+}
+
+.bg-type-strip-tab.selected {
+  color: var(--text-primary);
+  background: var(--surface-raised);
+  border-color: var(--border-strong);
+}
+
+.bg-type-strip-tab:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 0;
+}
+
+.bg-type-strip-tab svg {
+  flex: none;
+  width: 16px;
+  height: 16px;
+}
+
+/* Look browser: the band that takes the remaining height; the region is the tiles' offsetParent. */
+.bg-look-browser {
+  position: relative;
+  flex: 1;
+  min-height: 120px;
+  padding: 0 12px 10px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  border-top: 1px solid var(--border-subtle);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.bg-look-browser::-webkit-scrollbar {
+  width: 6px;
+}
+
+/* Sticky within its own group, so the next family's header pushes it off. */
+.bg-look-group-header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  height: 28px;
+  font-size: 10.5px;
+  font-weight: 590;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  background: var(--surface-panel);
+}
+
+.bg-look-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  padding-bottom: 6px;
+}
+
+.bg-look-group:first-child:not(:has(.bg-look-group-header)) .bg-look-grid {
+  padding-top: 10px;
+}
+
+.theme-card.compact {
+  gap: 3px;
+  padding: 3px;
+  background: transparent;
+  border-color: var(--border-subtle);
+}
+
+.theme-card.compact:hover {
+  border-color: var(--border-strong);
+}
+
+.theme-card.compact.selected {
+  background: var(--accent-subtle);
+  border-color: var(--accent-border);
+}
+
+/* Inset, so a family's sticky header never paints over a first-row tile's ring. */
+.theme-card.compact:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
+}
+
+.theme-card.compact .theme-card-thumb {
+  height: 44px;
+  aspect-ratio: auto;
+}
+
+.theme-card.compact .theme-card-meta {
+  display: block;
+  padding: 0 2px 1px;
+  overflow: hidden;
+  font-size: 10.5px;
+  line-height: 13px;
+  color: var(--text-secondary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.theme-card.compact.selected .theme-card-meta {
+  font-weight: 590;
+  color: var(--text-primary);
+}
+
+.bg-preset-strip {
+  flex: none;
+  padding: 10px 12px 12px;
+}
+
+.bg-preset-strip-header {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  height: 13px;
+  margin-bottom: 9px;
+  line-height: 13px;
+}
+
+.bg-preset-strip-title {
+  flex: 1;
+  font-size: 10.5px;
+  font-weight: 590;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+.bg-preset-strip-name {
+  min-width: 0;
+  overflow: hidden;
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The negative margin hands the selected outline room inside the scroll box without growing the band. */
+.bg-preset-strip-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 7px;
+  margin: -4px;
+  padding: 4px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+
+.bg-preset-strip-row::-webkit-scrollbar {
+  display: none;
+}
+
+.bg-preset-swatch {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  background-position: center;
+  background-size: cover;
+  border: 1px solid var(--border-default);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.bg-preset-swatch:hover {
+  border-color: var(--border-strong);
+}
+
+.bg-preset-swatch.selected {
+  outline: 1.5px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.bg-preset-swatch:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.bg-preset-divider {
+  flex: none;
+  width: 1px;
+  height: 18px;
+  background: var(--border-default);
+}
+
+/* Grows upward from the 43px bar to 480px, clamped so the look browser keeps 120px above the 66px presets strip. */
+.bg-options-sheet {
+  display: flex;
+  flex-direction: column;
+  flex: none;
+  height: 43px;
+  min-height: 43px;
+  max-height: calc(100% - 66px - 120px);
+  overflow: hidden;
+  background: var(--surface-panel-alt);
+  border-top: 1px solid var(--border-default);
+  transition: height var(--dur-base) var(--ease-standard);
+}
+
+.bg-options-sheet.open {
+  height: 480px;
+}
+
+.bg-options-sheet-bar {
+  display: flex;
+  align-items: center;
+  flex: none;
+  gap: 8px;
+  width: 100%;
+  height: 42px;
+  padding: 0 10px 0 8px;
+  font: inherit;
+  text-align: left;
+  color: var(--text-primary);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+
+.bg-options-sheet-bar:hover {
+  background: var(--surface-hover);
+}
+
+.bg-options-sheet-bar:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
+}
+
+.bg-options-sheet-chevron {
+  flex: none;
+  color: var(--text-secondary);
+  transform: rotate(-90deg);
+  transition: transform var(--dur-base) var(--ease-standard);
+}
+
+.bg-options-sheet.open .bg-options-sheet-chevron {
+  transform: rotate(90deg);
+}
+
+.bg-options-sheet-title {
+  flex: none;
+  font-size: var(--text-sm);
+  font-weight: 590;
+}
+
+.bg-options-sheet-peek {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-tertiary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bg-options-sheet-chips {
+  display: flex;
+  flex: none;
+  gap: 3px;
+}
+
+.bg-options-sheet-chip {
+  width: 14px;
+  height: 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-xs);
+}
+
+.bg-options-sheet-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  gap: 12px;
+  min-height: 0;
+  padding: 6px 12px 14px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.bg-options-sheet-body::-webkit-scrollbar {
+  width: 6px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bg-options-sheet,
+  .bg-options-sheet-chevron {
+    transition: none;
+  }
+}
+
+.bg-sheet-label {
+  min-width: 0;
+  overflow: hidden;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bg-sheet-row {
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+}
+
+.bg-sheet-row.has-trailing {
+  grid-template-columns: 76px minmax(0, 1fr) 22px;
+}
+
+/* Backing: segments size to their content so all three fit beside the label and swatch. */
+.inspector-subtabs.bg-sheet-segmented {
+  display: flex;
+  align-self: stretch;
+  gap: 2px;
+  min-width: 0;
+  height: 24px;
+  margin: 0;
+  padding: 2px;
+  background: var(--surface-recessed);
+  border: 1px solid var(--border-default);
+  border-radius: 4px;
+}
+
+.bg-sheet-segmented .inspector-subtab {
+  flex: 1 1 auto;
+  justify-content: center;
+  gap: 3px;
+  min-width: 0;
+  height: 18px;
+  padding: 0 2px;
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  border: 1px solid transparent;
+  border-radius: var(--radius-xs);
+}
+
+.bg-sheet-segmented .inspector-subtab:hover:not(:disabled) {
+  color: var(--text-primary);
+}
+
+.bg-sheet-segmented .inspector-subtab.active {
+  font-weight: 500;
+  color: var(--text-primary);
+  background: var(--surface-raised);
+  border-color: var(--border-strong);
+}
+
+.bg-sheet-segmented .inspector-subtab svg {
+  width: 13px;
+  height: 13px;
+}
+
+/* Colours: slots two per row in the same columns, the odd ones (even children) starting each row. */
+.bg-sheet-colours {
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr) minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+}
+
+.bg-sheet-colours > .bg-sheet-colour:nth-child(2n) {
+  grid-column: 2;
+}
+
+.bg-sheet-colour {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  font-size: var(--text-sm);
+}
+
+.bg-sheet-colour-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Motion sliders: DebouncedRange restyled in place, its span dissolved into the row's grid. */
+.bg-sheet-slider {
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr) 44px;
+  align-items: center;
+  column-gap: 8px;
+  height: 24px;
+}
+
+.bg-sheet-slider > .bg-sheet-label {
+  grid-column: 1;
+}
+
+.bg-sheet-slider .popover-inline {
+  display: contents;
+}
+
+.bg-sheet-slider-rail {
+  position: relative;
+  grid-row: 1;
+  grid-column: 2;
+  height: 4px;
+  background: var(--surface-recessed);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-full);
+}
+
+/* Ends under the thumb's centre: the 12px thumb travels 6px in from each end of the input. */
+.bg-sheet-slider-fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: calc(5px + var(--bg-sheet-fill, 0) * (100% - 10px));
+  background: var(--accent);
+  border-radius: inherit;
+}
+
+.bg-sheet-slider input[type="range"] {
+  position: relative;
+  grid-row: 1;
+  grid-column: 2;
+  width: 100%;
+  min-width: 0;
+  height: 12px;
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.bg-sheet-slider input[type="range"]:focus-visible {
+  outline: none;
+}
+
+.bg-sheet-slider input[type="range"]::-webkit-slider-runnable-track {
+  height: 12px;
+  background: transparent;
+  border: none;
+}
+
+.bg-sheet-slider input[type="range"]::-webkit-slider-thumb {
+  width: 12px;
+  height: 12px;
+  background: var(--surface-raised);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-full);
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.bg-sheet-slider input[type="range"]:focus-visible::-webkit-slider-thumb {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+}
+
+.bg-sheet-slider .range-value {
+  grid-row: 1;
+  grid-column: 3;
+  width: 44px;
+  padding: 2px 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-primary);
+}
+
+.bg-sheet-slider .range-value-edit {
+  padding: 2px 3px;
+}
+
+.bg-sheet-divider {
+  flex: none;
+  height: 1px;
+  margin: 0;
+  background: var(--border-subtle);
+  border: none;
+}
+
+/* Compact toggles: the hover wash bleeds into the gutter so the icon lines up with the labels above. */
+.bg-options-sheet .toggle-row {
+  flex: none;
+  gap: 8px;
+  width: auto;
+  height: 28px;
+  margin-inline: -6px;
+  padding: 0 6px;
+}
+
+.bg-options-sheet .toggle-row-icon {
+  align-self: center;
+}
+
+.bg-options-sheet .toggle-row-icon svg {
+  width: 16px;
+  height: 16px;
+}
+
+.bg-options-sheet .toggle-row-label {
+  font-size: var(--text-sm);
+}
+
+.bg-sheet-hint {
+  margin: 0;
+  padding-left: 24px;
+  font-size: var(--text-xs);
+  line-height: 1.35;
+  color: var(--text-tertiary);
+}
+
+.bg-options-sheet .wizard-presets {
+  padding-left: 24px;
+}
+
+/* The body's 12px gap separates sections; rows inside one section sit 2px apart. */
+.bg-options-sheet-body > .bg-sheet-slider + .bg-sheet-slider,
+.bg-options-sheet-body > .toggle-row + .toggle-row,
+.bg-options-sheet-body > .toggle-row + .bg-sheet-hint,
+.bg-options-sheet-body > .toggle-row + .wizard-presets {
+  margin-top: -10px;
+}
+
+/* Embedded pickers (gradient and shader backings) fit the sheet body, which is their only scroller. */
+.bg-options-sheet .gradient-embedded .gradient-grid {
+  max-height: none;
+  overflow-y: visible;
+}
+
+.bg-options-sheet .gradient-builder-row {
+  flex-wrap: wrap;
+}
+
+.bg-options-sheet .gradient-builder-row .modal-input:not(.gradient-angle) {
+  flex: 1;
+  min-width: 0;
+}
+
+.bg-options-sheet .option-grid,
+.bg-options-sheet .gradient-embedded {
+  min-width: 0;
+}
+
 .arrange-devices-summary {
   min-height: 42px;
   padding-top: var(--space-2);
@@ -10836,6 +11438,14 @@ textarea.text-inspector-copy-input {
   height: 18px;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-full);
+}
+
+/* The Background Options sheet seats its swatches at 22px. */
+.bg-options-sheet .colour-swatch-trigger {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  border-color: var(--border-strong);
 }
 
 .device-editor-custom-finish.selected .colour-swatch-trigger {

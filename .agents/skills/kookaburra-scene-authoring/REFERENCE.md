@@ -1349,7 +1349,7 @@ Every row of the app's Project tab maps to files you can edit directly:
   `file` is assets-relative (copy the track in first); the soundtrack auto-fades over the
   timeline's last second unless `fadeOutMs` says otherwise (`0` disables). One soundtrack
   per project; remove the block to remove the music.
-- **Background → Apply everywhere** → `project.json.appliedBackground`
+- **Background → Apply to all slides** (drill header) → `project.json.appliedBackground`
   `{ "background"?, "backdrop"? }`: the last background applied across the project,
   recorded so NEW scenes scaffold with it (nothing on the render path reads it). Absent
   means new scenes follow the theme, and clearing one scene's background in the inspector
