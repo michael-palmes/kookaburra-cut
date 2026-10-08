@@ -37,13 +37,6 @@ impl StillsKind {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
-#[serde(rename_all = "lowercase")]
-pub(crate) enum StillKind {
-    Auto,
-    Marked,
-}
-
 /// The per-page `x-kookaburra-meta` header, decoded.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -51,7 +44,6 @@ pub(crate) struct PageMeta {
     pub(crate) scene_index: u32,
     #[serde(default)]
     pub(crate) scene_name: String,
-    pub(crate) kind: StillKind,
     pub(crate) scene_ms: f64,
     pub(crate) global_ms: f64,
 }

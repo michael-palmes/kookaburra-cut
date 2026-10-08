@@ -418,7 +418,7 @@ export const STILLS_FORMAT_LABELS: Record<StillsFormat, string> = {
 
 export const STILLS_FORMAT_COPY: Record<StillsFormat, string> = {
   pdf: "Bookmarks per scene, searchable text, your name as author (from your Mac account).",
-  "png-zip": "A .zip of numbered PNG files plus pages.json.",
+  "png-zip": "A .zip of numbered PNG files, one per page.",
 };
 
 export const STILLS_SIZE_LABELS: Record<StillsSize, string> = {

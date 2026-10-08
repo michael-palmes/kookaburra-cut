@@ -1368,9 +1368,9 @@ the PNG zip's file hash must match too; a PDF's file hash is advisory only.
 | Project | Format | Pages | `pagesHash` | File SHA-256 |
 | --- | --- | --- | --- | --- |
 | `showcase-tour` | PDF | 7 | `f6da6cf4637416499984e0439c04b2973e79e4fcb489e66df5d41882e40be2c2` | `70af2d9934a5fb131a518f40a7cadcfab1b5660dbbae42ccd9047fff5016d2b8` (advisory) |
-| `showcase-tour` | PNG zip | 7 | `171c5a1c501aef6b2890c67a50fd0750716ece97c05574dd0e7c1b69aab2b98c` | `6465ea6ad3487463967306ffdd94df7597377a3f858790c24b79a0d4c8de1846` |
+| `showcase-tour` | PNG zip | 7 | `171c5a1c501aef6b2890c67a50fd0750716ece97c05574dd0e7c1b69aab2b98c` | `17d30425d2f0ce7569350db987b84b64054929560903e1ca10465e52e020b4db` |
 | `ws:stills-spike` (stills gate, machine-local) | PDF | 9 | `a0cdf7c7da8b06e50ada72f7deb460fb33c8bb13ddb518f06e9c1a55a2d410e4` | `191bb8507a659c26d4e63d57ab0d001f1803dd3ca8764eb2250ed2aa563b6708` (advisory) |
-| `ws:stills-spike` (stills gate, machine-local) | PNG zip | 9 | `ee9a08b4e2fbb4aa10b22dbbd454176ea2ee06d81ba667383354c87fe5fc0f4c` | `80b8c497560b2d04d158531d02f1268b7af78f3ae6854df57206671574bcc57e` |
+| `ws:stills-spike` (stills gate, machine-local) | PNG zip | 9 | `ee9a08b4e2fbb4aa10b22dbbd454176ea2ee06d81ba667383354c87fe5fc0f4c` | `09de73a1cff3e68f9d37ceb5d75d88f321be5955fd8348243aac6e95191dddaf` |
 
 > **2026-10-08 (stills export, a fresh record):** `showcase-tour` records its
 > first stills baselines (above), `stillsverify` EQUAL for both formats, every

@@ -324,8 +324,8 @@ itself from the scene's camera travel so full-bleed layers stay full-bleed.
 ## Stills (PDF handout and PNG images)
 
 The app exports a project as stills: a **PDF handout** (one full-bleed page per still,
-bookmarked per scene, with searchable text) or **PNG images** (a zip of numbered PNGs
-plus `pages.json`). The user starts it from Export (the Stills row), File > Export PDF…
+bookmarked per scene, with searchable text) or **PNG images** (a zip of numbered PNGs).
+The user starts it from Export (the Stills row), File > Export PDF…
 / Export Images…, or ⌘K. Every page is a deterministic export frame. Which frames
 become pages is sidecar data:
 

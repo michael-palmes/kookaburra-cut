@@ -39,7 +39,7 @@ import { collectPageText, fallbackPageText, pageTextRoots, type StillTextItem } 
 export interface StillsSettings {
   format: StillsFormat;
   size: StillsSize;
-  /** The project's display name: the PDF title and `pages.json` project. */
+  /** The project's display name: the PDF title. */
   title: string;
   /** Manifest scene files, index-parallel to the slots; a scene name falls back to its stem. */
   sceneFiles?: readonly string[];

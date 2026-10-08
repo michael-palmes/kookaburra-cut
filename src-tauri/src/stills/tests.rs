@@ -1,4 +1,4 @@
-use std::io::{Cursor, Read};
+use std::io::Cursor;
 use std::path::{Path, PathBuf};
 
 use super::commands::{
@@ -27,7 +27,6 @@ fn meta(scene_index: u32, scene_name: &str, scene_ms: f64) -> PageMeta {
     PageMeta {
         scene_index,
         scene_name: scene_name.into(),
-        kind: StillKind::Auto,
         scene_ms,
         global_ms: scene_ms + 10_000.0 * f64::from(scene_index),
     }
@@ -314,7 +313,6 @@ fn page_meta_decodes_from_base64_json() {
     let meta = decode_meta(&raw).unwrap();
     assert_eq!(meta.scene_index, 2);
     assert_eq!(meta.scene_title(), "Café");
-    assert_eq!(meta.kind, StillKind::Marked);
     assert_eq!(meta.global_ms, 9500.5);
     let negative = base64::engine::general_purpose::STANDARD
         .encode(r#"{"sceneIndex":0,"kind":"auto","sceneMs":-1,"globalMs":0}"#);
@@ -707,10 +705,6 @@ fn zip_meta(total: u32) -> ZipMeta {
         base: "launch-16x9".into(),
         total,
         timestamp: zip_timestamp(None),
-        project: "Launch".into(),
-        aspect: "16x9".into(),
-        width: 2,
-        height: 1,
     }
 }
 
@@ -724,7 +718,7 @@ fn write_zip(metas: &[PageMeta]) -> Vec<u8> {
 }
 
 #[test]
-fn the_zip_lays_out_pages_and_their_index() {
+fn the_zip_holds_only_the_numbered_pages() {
     let metas = [
         meta(0, "Intro", 0.0),
         meta(0, "Intro", 1500.5),
@@ -743,40 +737,19 @@ fn the_zip_lays_out_pages_and_their_index() {
             "launch-16x9/02-intro-2.png",
             "launch-16x9/03-scene-2.png",
             "launch-16x9/04-scene-3.png",
-            "launch-16x9/pages.json",
         ]
     );
     for index in 0..archive.len() {
         let entry = archive.by_index(index).unwrap();
-        let expected = if entry.name().ends_with(".png") {
-            zip::CompressionMethod::Stored
-        } else {
-            zip::CompressionMethod::Deflated
-        };
-        assert_eq!(entry.compression(), expected, "{}", entry.name());
+        assert_eq!(
+            entry.compression(),
+            zip::CompressionMethod::Stored,
+            "{}",
+            entry.name()
+        );
         assert_eq!(entry.unix_mode().map(|m| m & 0o777), Some(0o644));
         assert_eq!(entry.last_modified(), Some(zip::DateTime::default()));
     }
-    let mut json = String::new();
-    archive
-        .by_name("launch-16x9/pages.json")
-        .unwrap()
-        .read_to_string(&mut json)
-        .unwrap();
-    assert!(json.starts_with(
-        "{\n  \"version\": 1,\n  \"project\": \"Launch\",\n  \"aspect\": \"16x9\",\n  \"width\": 2,\n  \"height\": 1,\n  \"pages\": ["
-    ));
-    let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
-    let second = &parsed["pages"][1];
-    assert_eq!(second["file"], "02-intro-2.png");
-    assert_eq!(second["scene"], "Intro");
-    assert_eq!(second["sceneIndex"], 0);
-    assert_eq!(second["kind"], "auto");
-    assert_eq!(second["sceneMs"], 1500.5);
-    assert!(json.contains("\"sceneMs\": 0,"));
-    assert_eq!(parsed["pages"][2]["scene"], "Scene 2");
-    assert_eq!(parsed["pages"][3]["scene"], "你好");
-    assert_eq!(parsed["pages"][3]["globalMs"], 20250);
 }
 
 #[test]

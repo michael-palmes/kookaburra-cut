@@ -1,8 +1,8 @@
 # Stills
 
 How Kookaburra Cut turns a project into stills: a **PDF handout** (one
-full-bleed page per still) or **PNG images** (a zip of numbered PNGs plus
-`pages.json`), built from the same page list. Every page is captured through the
+full-bleed page per still) or **PNG images** (a zip of numbered PNGs), built
+from the same page list. Every page is captured through the
 deterministic export path, so a still shows exactly what the video shows at that
 frame (or, for an automatic still, what Present holds on).
 
@@ -195,7 +195,7 @@ page tree and xref wait for the finish.
 | --- | --- |
 | Entries | `<base>/NN-<scene-slug>[-k].png`, stored. `NN` pads to `max(2, digits)`; the slug is ASCII lowercase, digits and single hyphens, at most 40 characters, falling back to `scene-N`; `-k` from a scene's second page. `<base>` is the output stem before any Downloads suffix, unless the start options name a `zipFolder` |
 | Encode | The pinned Rust `png` crate (`=0.18.1`): RGB8 (the capture is opaque), an sRGB chunk, `Balanced`, `Adaptive`, on a blocking worker outside the lock |
-| `pages.json` | Last, deflated: `{ version: 1, project, aspect, width, height, pages: [{ file, scene, sceneIndex, kind, sceneMs, globalMs }] }` |
+| No index | The zip holds only the PNGs: no `pages.json`, so a shared zip never carries scene names that have since changed (Michael, 2026-10-08) |
 
 ## IPC
 

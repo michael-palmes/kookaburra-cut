@@ -51,7 +51,7 @@ pub(crate) struct StillsOptions {
     /// None, "downloads", or "autorun" (the run's result dir, auto-runs only).
     #[serde(default)]
     destination: Option<String>,
-    /// The project's display name: the PDF `/Title` and `pages.json` project.
+    /// The project's display name: the PDF `/Title`.
     title: String,
     /// Native format size; sets the PDF page's aspect.
     format_width: u32,
@@ -191,10 +191,6 @@ pub(crate) fn start_stills_export(
                 base: options.zip_folder.clone().unwrap_or(output.base),
                 total: options.total_pages,
                 timestamp: zip_timestamp(now),
-                project: options.title.clone(),
-                aspect: options.aspect.clone(),
-                width: options.page_width,
-                height: options.page_height,
             },
         ))),
     };

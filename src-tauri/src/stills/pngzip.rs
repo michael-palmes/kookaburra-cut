@@ -1,13 +1,12 @@
-//! The PNG images export: one stored entry per page under `<base>/`, named `NN-<scene-slug>[-k].png`, then a deflated `pages.json` index. Follows the `.kbpack` writer's zip settings so a reproducible run writes identical bytes.
+//! The PNG images export: one stored entry per page under `<base>/`, named `NN-<scene-slug>[-k].png`. Follows the `.kbpack` writer's zip settings so a reproducible run writes identical bytes.
 
 use std::collections::BTreeMap;
 use std::io::{Seek, Write};
 
-use serde::{Serialize, Serializer};
 use zip::write::SimpleFileOptions;
 use zip::{CompressionMethod, ZipWriter};
 
-use super::{Civil, PageMeta, StillKind};
+use super::{Civil, PageMeta};
 
 const SLUG_MAX: usize = 40;
 
@@ -96,48 +95,11 @@ pub(crate) fn zip_timestamp(civil: Option<Civil>) -> zip::DateTime {
         .unwrap_or_default()
 }
 
-/// Whole milliseconds as integers, anything else to three decimals.
-fn ms<S: Serializer>(value: &f64, serializer: S) -> Result<S::Ok, S::Error> {
-    let rounded = (value * 1000.0).round() / 1000.0;
-    if rounded.fract() == 0.0 && rounded.abs() < 9.0e15 {
-        serializer.serialize_i64(rounded as i64)
-    } else {
-        serializer.serialize_f64(rounded)
-    }
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct PageEntry {
-    file: String,
-    scene: String,
-    scene_index: u32,
-    kind: StillKind,
-    #[serde(serialize_with = "ms")]
-    scene_ms: f64,
-    #[serde(serialize_with = "ms")]
-    global_ms: f64,
-}
-
-#[derive(Serialize)]
-struct PagesJson<'a> {
-    version: u32,
-    project: &'a str,
-    aspect: &'a str,
-    width: u32,
-    height: u32,
-    pages: &'a [PageEntry],
-}
-
 pub(crate) struct ZipMeta {
     /// The folder inside the zip: the output's stem before any Downloads de-dupe suffix, unless the caller names one.
     pub(crate) base: String,
     pub(crate) total: u32,
     pub(crate) timestamp: zip::DateTime,
-    pub(crate) project: String,
-    pub(crate) aspect: String,
-    pub(crate) width: u32,
-    pub(crate) height: u32,
 }
 
 pub(crate) struct PngZipWriter<W: Write + Seek> {
@@ -145,7 +107,7 @@ pub(crate) struct PngZipWriter<W: Write + Seek> {
     meta: ZipMeta,
     digits: usize,
     per_scene: BTreeMap<u32, u32>,
-    pages: Vec<PageEntry>,
+    written: u32,
 }
 
 impl<W: Write + Seek> PngZipWriter<W> {
@@ -155,7 +117,7 @@ impl<W: Write + Seek> PngZipWriter<W> {
             digits: number_width(meta.total),
             meta,
             per_scene: BTreeMap::new(),
-            pages: Vec::new(),
+            written: 0,
         }
     }
 
@@ -163,9 +125,9 @@ impl<W: Write + Seek> PngZipWriter<W> {
         &self.meta.base
     }
 
-    fn options(&self, method: CompressionMethod) -> SimpleFileOptions {
+    fn options(&self) -> SimpleFileOptions {
         SimpleFileOptions::default()
-            .compression_method(method)
+            .compression_method(CompressionMethod::Stored)
             .unix_permissions(0o644)
             .last_modified_time(self.meta.timestamp)
     }
@@ -173,45 +135,22 @@ impl<W: Write + Seek> PngZipWriter<W> {
     pub(crate) fn write_page(&mut self, png: &[u8], meta: &PageMeta) -> Result<(), String> {
         let ordinal = self.per_scene.entry(meta.scene_index).or_insert(0);
         *ordinal += 1;
+        self.written += 1;
         let file = entry_file(
-            self.pages.len() as u32 + 1,
+            self.written,
             self.digits,
             &scene_slug(&meta.scene_name, meta.scene_index),
             *ordinal,
         );
-        let options = self.options(CompressionMethod::Stored);
+        let options = self.options();
         self.zip
             .start_file(format!("{}/{file}", self.meta.base), options)
             .map_err(|e| e.to_string())?;
-        self.zip.write_all(png).map_err(|e| e.to_string())?;
-        self.pages.push(PageEntry {
-            file,
-            scene: meta.scene_title(),
-            scene_index: meta.scene_index,
-            kind: meta.kind,
-            scene_ms: meta.scene_ms,
-            global_ms: meta.global_ms,
-        });
-        Ok(())
+        self.zip.write_all(png).map_err(|e| e.to_string())
     }
 
-    /// Writes `pages.json` and the central directory, and hands back the inner writer.
-    pub(crate) fn finish(mut self) -> Result<W, String> {
-        let mut json = serde_json::to_vec_pretty(&PagesJson {
-            version: 1,
-            project: &self.meta.project,
-            aspect: &self.meta.aspect,
-            width: self.meta.width,
-            height: self.meta.height,
-            pages: &self.pages,
-        })
-        .map_err(|e| e.to_string())?;
-        json.push(b'\n');
-        let options = self.options(CompressionMethod::Deflated);
-        self.zip
-            .start_file(format!("{}/pages.json", self.meta.base), options)
-            .map_err(|e| e.to_string())?;
-        self.zip.write_all(&json).map_err(|e| e.to_string())?;
+    /// Writes the central directory and hands back the inner writer.
+    pub(crate) fn finish(self) -> Result<W, String> {
         self.zip
             .finish()
             .map_err(|e| format!("could not finish the zip: {e}"))
