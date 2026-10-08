@@ -14,6 +14,7 @@ import { type Resolved, resolveAt, type SceneSlot } from "./sceneTimeline";
 import { sceneTitle } from "./sceneTitle";
 import {
   STILLS_FPS,
+  type StillFrame,
   type StillSource,
   sceneStillsPlan,
   snapStillFrame,
@@ -175,6 +176,31 @@ export function autoStillLocalMs(inputs: AutoStillInputs): AutoStill {
   return { settledMs, holdMs, basis: "settled" };
 }
 
+/** An automatic still's frame: inside the solo window when the scene settles there, else the scene alone at its settled moment (capped at its end), as Present shows it, rather than clamped back to a frame where its intro or camera is still moving. */
+export function settledStillFrame(
+  slots: readonly SceneSlot[],
+  index: number,
+  settledMs: number,
+  fps: number = STILLS_FPS,
+): StillFrame {
+  const snapped = snapStillFrame(slots, index, settledMs, fps, "ceil");
+  const slot = slots[index];
+  const perMs = fps / 1000;
+  const wanted = Math.ceil((slot.startMs + Math.min(settledMs, slot.durationMs)) * perMs - 1e-6);
+  if (!snapped.solo || wanted <= snapped.frame) return snapped;
+  const last = slots[index + 1]
+    ? Math.ceil(slot.endMs * perMs - 1e-6) - 1
+    : Math.floor(slot.endMs * perMs + 1e-6);
+  const frame = Math.max(snapped.frame, Math.min(wanted, last));
+  const t = exportFrameTimeMs(frame, fps);
+  const r = resolveAt(slots as SceneSlot[], t);
+  return {
+    frame,
+    localMs: Math.min(slot.durationMs, Math.max(0, t - slot.startMs)),
+    solo: r.active.length === 1 && r.active[0].index === index,
+  };
+}
+
 function rawLightingTrack(lighting: SceneDoc["lighting"]): LightingTrack | null {
   if (!lighting?.keys?.length || lighting.animationEnabled === false) return null;
   return { keys: lighting.keys, segments: lighting.segments ?? [] } as LightingTrack;
@@ -226,8 +252,7 @@ export function planStillPages(input: StillPagesInput): StillPagesPlan {
 
     const scenePages: Omit<StillPage, "ordinal" | "sceneCount">[] = [];
     const seen = new Set<number>();
-    const push = (localMs: number, mode: "ceil" | "round", source?: StillPage["source"]) => {
-      const snapped = snapStillFrame(slots, i, localMs, fps, mode);
+    const push = (snapped: StillFrame, source?: StillPage["source"]) => {
       if (seen.has(snapped.frame)) return;
       seen.add(snapped.frame);
       const tMs = exportFrameTimeMs(snapped.frame, fps);
@@ -265,9 +290,13 @@ export function planStillPages(input: StillPagesInput): StillPagesPlan {
         projectCameraTrack: input.projectCameraTrack,
       });
       holds.set(i, auto.holdMs);
-      push(auto.settledMs, "ceil");
+      push(
+        auto.basis === "settled"
+          ? settledStillFrame(slots, i, auto.settledMs, fps)
+          : snapStillFrame(slots, i, auto.settledMs, fps, "ceil"),
+      );
     } else {
-      for (const mark of marks) push(mark.tMs, "round", mark);
+      for (const mark of marks) push(snapStillFrame(slots, i, mark.tMs, fps, "round"), mark);
     }
 
     scenePages.sort((a, b) => a.frame - b.frame);

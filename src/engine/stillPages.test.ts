@@ -10,7 +10,7 @@ import type { SceneDoc, SceneDocCameraKey } from "./sceneDocSchema";
 import type { LightingTrack } from "./sceneLighting";
 import { buildSceneTimeline, resolveAt, type TimelineSceneInput } from "./sceneTimeline";
 import { autoStillLocalMs, planStillPages, type StillPagesInput } from "./stillPages";
-import { soloFrameRange, soloWindow } from "./stills";
+import { soloWindow } from "./stills";
 
 const orbitPose = {
   target: [0, 0, 0] as [number, number, number],
@@ -247,11 +247,13 @@ describe("planStillPages", () => {
     expect(result.pages.length).toBe(5);
     for (const page of result.pages) {
       expect(page.tMs).toBe(exportFrameTimeMs(page.frame, FPS));
-      expect(page.resolved).toEqual(resolveAt(slots, page.tMs));
       expect(page.resolved.active).toEqual([{ index: page.sceneIndex, localMs: page.sceneMs }]);
+      if (page.sceneIndex > 0) expect(page.resolved).toEqual(resolveAt(slots, page.tMs));
     }
-    // Scene 0's camera ends inside the outgoing transition: the still clamps to the last solo frame.
-    expect(result.pages[0].frame).toBe(soloFrameRange(slots, 0)?.last);
+    // Scene 0's camera lands inside the outgoing transition: the still renders the scene alone there, never the crossfade.
+    expect(result.pages[0].sceneMs).toBeCloseTo(2900, 6);
+    expect(result.pages[0].resolved.transition).toBeUndefined();
+    expect(resolveAt(slots, result.pages[0].tMs).active).toHaveLength(2);
     expect(result.pages.map((p) => [p.sceneIndex, p.kind, p.ordinal, p.sceneCount])).toEqual([
       [0, "auto", 1, 1],
       [1, "marked", 1, 3],
@@ -374,6 +376,29 @@ describe("planStillPages", () => {
     const result = plan(slots, [doc({ name: "Intro" }), undefined], {}, { sceneNames: ["Hello"] });
     expect(result.pages.map((p) => p.sceneName)).toEqual(["Hello", "Scene 2"]);
     expect(plan(slots, [doc({ name: "Intro" }), undefined]).pages[0].sceneName).toBe("Intro");
+  });
+
+  it("keeps a settled still inside the solo window when it fits, and caps it at the scene's end", () => {
+    const slots = timeline(
+      { id: "a", durationMs: 2000, transition: fade(500) },
+      { id: "b", durationMs: 2000 },
+    );
+    const early = plan(slots, [undefined, undefined], { 0: [text(600)] }).pages[0];
+    expect(early.resolved).toEqual(resolveAt(slots, early.tMs));
+    expect(early.sceneMs).toBeCloseTo(600 + HOLD_MARGIN_MS, 6);
+    const late = plan(slots, [
+      doc({ camera: { keys: [key("a", 0), key("b", 9000)], segments: [] } }),
+    ]);
+    expect(late.pages[0].frame).toBe(Math.ceil(2000 * (FPS / 1000)) - 1);
+    expect(late.pages[0].resolved).toEqual({
+      active: [{ index: 0, localMs: late.pages[0].sceneMs }],
+    });
+    const last = plan(slots, [
+      undefined,
+      doc({ camera: { keys: [key("a", 0), key("b", 9000)], segments: [] } }),
+    ]);
+    expect(last.pages[1].sceneMs).toBeCloseTo(2000, 6);
+    expect(last.pages[1].resolved).toEqual(resolveAt(slots, last.pages[1].tMs));
   });
 
   it("keeps the centre fallback inside the solo window", () => {
