@@ -2,6 +2,7 @@ import { Channel, invoke } from "@tauri-apps/api/core";
 import { flushSync } from "react-dom";
 import type { Object3D, PerspectiveCamera, Scene, WebGLRenderer } from "three";
 import { Vector2 } from "three";
+import { Text as TroikaText } from "troika-three-text";
 import type { EncodeSpec } from "../export/presetSchema";
 import { collectThemeFontRefs, preloadAppFonts } from "../theme/fonts";
 import type { LightingSpec, Theme } from "../theme/tokens";
@@ -265,30 +266,14 @@ async function awaitCanvasClockCommit(tMs: number): Promise<void> {
   }
 }
 
-/** The subset of troika-three-text's Text we drive. `_needsSync`/`_isSyncing` are private but stable in the pinned 0.52.4, and are the only way to detect quiescence, since troika's `sync(cb)` silently drops the callback when `_needsSync` is false (including while a typeset is in flight). */
-interface TroikaTextLike {
-  sync: (cb?: () => void) => void;
-  _needsSync?: boolean;
-  _isSyncing?: boolean;
-  addEventListener: (type: string, cb: () => void) => void;
-  removeEventListener: (type: string, cb: () => void) => void;
-}
-
-/** Whether `obj` is a troika text mesh. The mesh carries no `isTroikaText` flag in troika 0.52.4, so this reads its material, which troika returns as `[outline, main]` whenever the text has an outline (neon's halo, blur-in's `outlineBlur`). */
-function isTroikaTextMesh(obj: Object3D): boolean {
-  const material = (obj as { material?: unknown }).material;
-  const materials = Array.isArray(material) ? material : [material];
-  return materials.some(
-    (m) => (m as { isTroikaTextMaterial?: boolean } | undefined)?.isTroikaTextMaterial === true,
-  );
-}
-
-/** Awaits typesetting for every troika text mesh in the scene: per-frame layout can be async (e.g. a counter whose text changes each frame), so we must wait for it before capturing or read stale glyphs. Two hard-won subtleties (the text half of the back-to-back Verify ×2 race): troika meshes are detected via `isTroikaTextMesh`, which handles outlined text's array material; and a pending typeset is kicked here (pre-render) rather than left to troika's own `onBeforeRender` kick (which would start it a frame late), with quiescence awaited via the `synccomplete` event since `sync(cb)` drops callbacks when no new sync is needed. Exported for the borrowed-clock capture paths (snapshots.ts), whose single forced paint otherwise reads glyphs one capture late (the invisible-Playfair-title theme-preview bug). */
-export function awaitTextSync(scene: Scene): Promise<void> {
+/** Awaits typesetting for every troika text mesh in the scene: per-frame layout can be async (e.g. a counter whose text changes each frame), so we must wait for it before capturing or read stale glyphs. Hard-won subtleties (the text half of the back-to-back Verify ×2 race): meshes are matched by class, since troika's mesh carries no `isTroikaText` flag and its `material` getter returns `[outline, main]` for outlined text (neon, whole-block blur-in), so material sniffing misses them; a pending typeset is kicked here (pre-render) rather than left to troika's own `onBeforeRender` kick (which would start it a frame late), with quiescence awaited via the `synccomplete` event since `sync(cb)` drops callbacks when no new sync is needed; and the wait is spin-bounded, failing the run rather than hanging on a typeset that never lands. Exported for the borrowed-clock capture paths (snapshots.ts), whose single forced paint otherwise reads glyphs one capture late (the invisible-Playfair-title theme-preview bug). */
+export async function awaitTextSync(scene: Scene): Promise<void> {
+  const unsettled = new Set<TroikaText>();
   const pending: Promise<void>[] = [];
   scene.traverse((obj: Object3D) => {
-    const mesh = obj as unknown as TroikaTextLike;
-    if (!isTroikaTextMesh(obj) || typeof mesh.sync !== "function") return;
+    if (!(obj instanceof TroikaText)) return;
+    const mesh = obj;
+    unsettled.add(mesh);
     pending.push(
       new Promise<void>((resolve) => {
         const settle = () => {
@@ -296,6 +281,7 @@ export function awaitTextSync(scene: Scene): Promise<void> {
           if (mesh._needsSync) mesh.sync();
           if (!mesh._needsSync && !mesh._isSyncing) {
             mesh.removeEventListener("synccomplete", settle);
+            unsettled.delete(mesh);
             resolve();
           }
         };
@@ -304,7 +290,17 @@ export function awaitTextSync(scene: Scene): Promise<void> {
       }),
     );
   });
-  return Promise.all(pending).then(() => undefined);
+  if (unsettled.size === 0) return;
+  const stalled = async (): Promise<void> => {
+    for (let spins = 0; unsettled.size > 0; spins++) {
+      if (spins > 5000) {
+        const texts = [...unsettled].map((mesh) => JSON.stringify(mesh.text)).join(", ");
+        throw new Error(`Text typesetting never settled: ${unsettled.size} pending (${texts}).`);
+      }
+      await yieldMacrotask();
+    }
+  };
+  await Promise.race([Promise.all(pending), stalled()]);
 }
 
 /** Dev React (react-dom and r3f's reconciler) records a `performance.measure` with a props diff for every re-render whose props changed, and WebKit keeps them all: every mounted scene re-renders per tick, about 1 MB a frame on a 40-scene project, enough to reach the 4 GB WebContent ceiling mid-Verify. Production React records none. */

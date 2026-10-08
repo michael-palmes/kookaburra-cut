@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
-import { Object3D, PerspectiveCamera, Scene } from "three";
+import { Mesh, MeshBasicMaterial, PerspectiveCamera, Scene } from "three";
+import { Text } from "troika-three-text";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useClockStore } from "./clock";
 import { canvasHandle, trackContextLosses } from "./exportBridge";
@@ -261,53 +262,93 @@ describe("export cancel", () => {
   });
 });
 
-/** A troika Text stand-in: `sync` starts a typeset that only lands when `land` fires `synccomplete`. */
-class FakeTroikaText extends Object3D {
-  material: unknown;
-  _needsSync = true;
-  _isSyncing = false;
-  sync = vi.fn(() => {
+/** Real troika Text whose `sync` starts a typeset that only lands when `land` fires `synccomplete`. */
+class FakeTroikaText extends Text {
+  syncs = 0;
+  override sync() {
+    this.syncs++;
     this._needsSync = false;
     this._isSyncing = true;
-  });
-  constructor(material: unknown) {
-    super();
-    this.material = material;
   }
   land() {
     this._isSyncing = false;
-    this.dispatchEvent({ type: "synccomplete" } as never);
+    this.dispatchEvent({ type: "synccomplete" });
   }
 }
 
+/** Mounts one pending text mesh, outlined (troika's `[outline, main]` material) or plain. */
+function mountText(outlined: boolean) {
+  const scene = new Scene();
+  const text = new FakeTroikaText();
+  text.outlineBlur = outlined ? 0.05 : 0;
+  text._needsSync = true;
+  scene.add(text);
+  return { scene, text };
+}
+
 describe("awaitTextSync", () => {
-  const textMaterial = { isTroikaTextMaterial: true };
   const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 
-  it.each([
-    ["plain", textMaterial],
-    ["outlined ([outline, main])", [Object.create(textMaterial), textMaterial]],
-  ])("kicks and awaits %s text", async (_, material) => {
-    const scene = new Scene();
-    const text = new FakeTroikaText(material);
-    scene.add(text);
+  /** Starts the barrier and reports whether it has resolved yet. */
+  function track(scene: Scene) {
     let settled = false;
     const done = awaitTextSync(scene).then(() => {
       settled = true;
     });
+    return { done, settled: () => settled };
+  }
+
+  it.each([
+    ["plain", false],
+    ["outlined", true],
+  ])("kicks and awaits %s text", async (_, outlined) => {
+    const { scene, text } = mountText(outlined);
+    expect(Array.isArray(text.material)).toBe(outlined);
+    const barrier = track(scene);
     await flush();
-    expect(text.sync).toHaveBeenCalledTimes(1);
-    expect(settled).toBe(false);
+    expect(text.syncs).toBe(1);
+    expect(barrier.settled()).toBe(false);
     text.land();
-    await done;
-    expect(settled).toBe(true);
+    await barrier.done;
+    expect(barrier.settled()).toBe(true);
   });
 
-  it("skips meshes whose array material has no troika text material", async () => {
+  it("keeps awaiting text whose outline appears mid-scene", async () => {
+    const { scene, text } = mountText(false);
+    const first = track(scene);
+    text.land();
+    await first.done;
+    text.outlineBlur = 0.05;
+    text._needsSync = true;
+    expect(Array.isArray(text.material)).toBe(true);
+    const second = track(scene);
+    await flush();
+    expect(text.syncs).toBe(2);
+    expect(second.settled()).toBe(false);
+    text.land();
+    await second.done;
+  });
+
+  it("skips non-text meshes, whatever their material", async () => {
     const scene = new Scene();
-    const mesh = new FakeTroikaText([{}, { isMeshBasicMaterial: true }]);
-    scene.add(mesh);
+    const sync = vi.fn();
+    scene.add(Object.assign(new Mesh(undefined, [new MeshBasicMaterial()]), { sync }));
     await awaitTextSync(scene);
-    expect(mesh.sync).not.toHaveBeenCalled();
+    expect(sync).not.toHaveBeenCalled();
+  });
+
+  it("fails, naming the text, when a typeset never lands", async () => {
+    vi.useFakeTimers();
+    try {
+      const { scene, text } = mountText(true);
+      text.text = "HALO";
+      const failed = expect(awaitTextSync(scene)).rejects.toThrow(
+        'never settled: 1 pending ("HALO")',
+      );
+      await vi.runAllTimersAsync();
+      await failed;
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

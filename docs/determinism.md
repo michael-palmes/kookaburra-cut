@@ -35,7 +35,7 @@ GPU/driver, not across fleets.)
 | Video clips via `HTMLVideoElement` seeking | The ffmpeg sidecar pre-extracts each clip to a CFR PNG sequence (cached under `$APPDATA`, keyed by source hash); `VideoClip` samples `frameIndex = floor((localMs − startMs)/1000 × fps)` off the clock. `engine/clips.ts` + `toolkit/media/VideoClip.tsx`. |
 | Reading UI state (zustand) in the export path | The exporter uses the pure clock only; it must not read the editor store. |
 | **Trusting `flushSync` to commit the canvas tree**: react-dom's `flushSync` does NOT flush the react-three-fiber reconciler; the canvas subtree commits on the r3f scheduler's own timing, so per-mesh readiness hooks can belong to the PREVIOUS frame when the exporter reads them (stale clip texture / stale text) | `ExportBridge` stamps the clock value each canvas commit rendered for; the export loop awaits `awaitCanvasClockCommit(tMs)` before trusting any readiness hook. |
-| **Awaiting troika `sync(cb)` naively**: troika has no `isTroikaText` mesh flag (matching on one awaits nothing), silently DROPS the callback when `_needsSync` is false (including mid-typeset), and only kicks changed text in `onBeforeRender` (one frame late) | `awaitTextSync` detects meshes via `material.isTroikaTextMaterial` (on any element of the `[outline, main]` array troika returns for outlined text: neon, blur-in), kicks a pending typeset itself pre-render, and awaits quiescence via the `synccomplete` event. |
+| **Awaiting troika `sync(cb)` naively**: troika has no `isTroikaText` mesh flag (matching on one awaits nothing), silently DROPS the callback when `_needsSync` is false (including mid-typeset), and only kicks changed text in `onBeforeRender` (one frame late) | `awaitTextSync` matches troika's `Text` by class (its `material` is an `[outline, main]` array for outlined text: neon, whole-block blur-in), kicks a pending typeset itself pre-render, awaits quiescence via the `synccomplete` event, and fails the run, naming the text, if a typeset never lands. |
 | A mid-run window resize retriggering r3f's size handling (corrupts the export's fixed drawing buffer for every remaining frame) | The frame loop re-asserts the export size/camera aspect if drifted, after the awaits and immediately before the (synchronous) render + readback. |
 | Non-preloaded textures/assets | Await all asset loads before frame 0. |
 | **A cold-mount suspense holding EVERY scene out of the canvas**: all scenes share one `<Suspense fallback={null}>` (App.tsx); a suspending primitive (`ImageCard`'s `useTexture`) keeps the whole boundary uncommitted until React's retry render lands, and that retry races the export preamble on the wall clock. Frame 0 rendered first captures a scene-less (white) frame. `awaitCanvasClockCommit` cannot catch it: the clock is already committed at its initial 0. | `awaitSceneHostsCommitted(slots.length)`: the preamble's LAST barrier spins until every scene's host has registered (registration is a `useEffect`, which only runs once the boundary's content commits). The preceding asset preloads resolve whatever the suspense was waiting on, so the wait is a few ticks. |
@@ -96,8 +96,8 @@ duration varies, its outcome never does.
 **Why `awaitTextSync` (and its sharp edges).** A primitive whose text changes
 each frame (e.g. `AnimatedCounter`) triggers async troika typesetting. Three
 traps, all hit in practice: troika's mesh carries **no `isTroikaText` flag**
-(detect via `material.isTroikaTextMaterial` on any element of the
-`[outline, main]` array outlined text uses, or you await nothing); `sync(cb)`
+(match troika's `Text` by class: material sniffing misses outlined text, whose
+`material` is an `[outline, main]` array); `sync(cb)`
 **silently drops the callback** when `_needsSync` is false (including while a
 typeset is in flight), so quiescence must be awaited via the `synccomplete`
 event; and changed text is only kicked by troika in `onBeforeRender` (one frame
@@ -1316,7 +1316,8 @@ rolling-gate project (`showcase-tour`):
 > **2026-10-08 (outlined text joins the text barrier, hash-neutral):** troika
 > returns `[outline, main]` from `Text.material` whenever an outline is set
 > (neon's halo, whole-block blur-in's `outlineBlur`), so `awaitTextSync` never
-> kicked or awaited those meshes; it now checks every element. `pnpm gate:merge`
+> kicked or awaited those meshes. It now matches troika's `Text` by class, and
+> its wait is spin-bounded like the other barriers. `pnpm gate:merge`
 > stayed EQUAL (`showcase-tour` `13b5994d…`, `ws:launch-2026` `eb89826c…`):
 > neither anchor stages outlined text. `ws:text-outline-spike` (a neon block, a
 > blur-in/out block and a neon ticker re-typesetting every 50 ms) records
