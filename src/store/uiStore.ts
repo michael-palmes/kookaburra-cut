@@ -130,6 +130,8 @@ interface UiState {
   sceneCopyNonce: number;
   /** null = nothing copied yet (Paste disabled). */
   backgroundClipboard: BackgroundClipboard | null;
+  /** The Background drill's Options sheet (3D and Animated share it); session-only, so it survives look, scene and drill changes but not a relaunch. */
+  bgOptionsSheetOpen: boolean;
   setPaletteOpen: (open: boolean) => void;
   togglePalette: () => void;
   setAudioMuted: (muted: boolean) => void;
@@ -156,6 +158,7 @@ interface UiState {
   /** Open the Copy-to-project drill on this selection. */
   requestSceneCopy: (indices: number[]) => void;
   setBackgroundClipboard: (clip: BackgroundClipboard | null) => void;
+  setBgOptionsSheetOpen: (open: boolean) => void;
 }
 
 export const useUiStore = create<UiState>((set) => ({
@@ -175,6 +178,7 @@ export const useUiStore = create<UiState>((set) => ({
   sceneCopyIndices: [],
   sceneCopyNonce: 0,
   backgroundClipboard: null,
+  bgOptionsSheetOpen: false,
   setPaletteOpen: (paletteOpen) => set({ paletteOpen }),
   togglePalette: () => set((s) => ({ paletteOpen: !s.paletteOpen })),
   setAudioMuted: (audioMuted) => set({ audioMuted }),
@@ -306,4 +310,5 @@ export const useUiStore = create<UiState>((set) => ({
   requestSceneCopy: (sceneCopyIndices) =>
     set((s) => ({ sceneCopyIndices, sceneCopyNonce: s.sceneCopyNonce + 1 })),
   setBackgroundClipboard: (backgroundClipboard) => set({ backgroundClipboard }),
+  setBgOptionsSheetOpen: (bgOptionsSheetOpen) => set({ bgOptionsSheetOpen }),
 }));

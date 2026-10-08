@@ -50,6 +50,58 @@ describe("DrillBack", () => {
   });
 });
 
+describe("DrillHeaderAction", () => {
+  it("draws the reset and apply-all glyphs, with an optional tooltip beside the label", () => {
+    const reset = renderToStaticMarkup(
+      <DrillHeaderAction
+        kind="reset"
+        label="Reset to theme default"
+        onClick={() => undefined}
+        disabled
+      />,
+    );
+    expect(reset).toContain('class="inspector-drill-header-action"');
+    expect(reset).toContain('aria-label="Reset to theme default" title="Reset to theme default"');
+    expect(reset).toContain('disabled=""');
+    expect(reset).toContain('d="M13.2 8.4a5.2 5.2 0 1 1-1.7-3.9"');
+    expect(reset).toContain('d="M13.4 2.2v3h-3"');
+
+    const applyAll = renderToStaticMarkup(
+      <DrillHeaderAction
+        kind="apply-all"
+        label="Apply to all slides"
+        title="Copy this background to every scene"
+        onClick={() => undefined}
+      />,
+    );
+    expect(applyAll).toContain(
+      'aria-label="Apply to all slides" title="Copy this background to every scene"',
+    );
+    expect(applyAll.match(/<rect /g)).toHaveLength(2);
+    expect(applyAll).toContain('x="5.4" y="5.4" width="8.2" height="8.2" rx="1.4"');
+    expect(applyAll).not.toContain("confirming");
+  });
+
+  it("swaps the glyph for its confirm question in place while armed", () => {
+    const html = renderToStaticMarkup(
+      <DrillHeaderAction
+        kind="apply-all"
+        label="Apply to all slides"
+        confirmLabel="Apply to 5 other scenes?"
+        onClick={() => undefined}
+        onDisarm={() => undefined}
+      />,
+    );
+
+    expect(html).toContain('class="inspector-drill-header-action confirming"');
+    expect(html).toContain(
+      'aria-label="Apply to 5 other scenes?" title="Apply to 5 other scenes?"',
+    );
+    expect(html).toMatch(/>Apply to 5 other scenes\?<\/button>$/);
+    expect(html).not.toContain("<svg");
+  });
+});
+
 describe("InspectorSliderRow", () => {
   it("adds a semantic leading icon without changing the range and value controls", () => {
     const html = renderToStaticMarkup(

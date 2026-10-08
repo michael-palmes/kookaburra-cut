@@ -166,3 +166,39 @@ describe("stills export preferences", () => {
     expect(store.getState().stillsSize).toBe("1080p");
   });
 });
+
+describe("background options sheet", () => {
+  it("starts closed", async () => {
+    const store = await freshStore();
+    expect(store.getState().bgOptionsSheetOpen).toBe(false);
+  });
+
+  it("opens and closes through its setter without touching storage", async () => {
+    const store = await freshStore();
+    store.getState().setBgOptionsSheetOpen(true);
+    expect(store.getState().bgOptionsSheetOpen).toBe(true);
+    store.getState().setBgOptionsSheetOpen(false);
+    expect(store.getState().bgOptionsSheetOpen).toBe(false);
+    expect(localStorage.length).toBe(0);
+  });
+
+  it("stays open through drill navigation, tab switches and resets", async () => {
+    const store = await freshStore();
+    store.getState().openInspectorDrill("style.background");
+    store.getState().setBgOptionsSheetOpen(true);
+    store.getState().closeInspectorDrill();
+    expect(store.getState().bgOptionsSheetOpen).toBe(true);
+
+    store.getState().openInspectorDrill("style.background");
+    store.getState().resetInspectorDrill();
+    store.getState().setInspectorTab("project");
+    expect(store.getState().bgOptionsSheetOpen).toBe(true);
+  });
+
+  it("does not survive a relaunch", async () => {
+    const store = await freshStore();
+    store.getState().setBgOptionsSheetOpen(true);
+    const relaunched = await freshStore();
+    expect(relaunched.getState().bgOptionsSheetOpen).toBe(false);
+  });
+});

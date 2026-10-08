@@ -8,13 +8,16 @@ export function OptionCard({
   icon,
   clip,
   playing = false,
+  size = "default",
   selected,
   onSelect,
   onHoverChange,
 }: {
   label: string;
-  /** Tooltip text. */
+  /** Tooltip text; compact cards fall back to the label, which they ellipsise. */
   title?: string;
+  /** `compact`: the dense look-browser tile (short thumb, one-line label). */
+  size?: "default" | "compact";
   /** Poster/still URL (null = the text swatch placeholder). */
   image: string | null;
   /** A small inline glyph shown instead of a still (an explicit "none" state); takes priority over `image`. */
@@ -32,8 +35,8 @@ export function OptionCard({
       role="button"
       tabIndex={0}
       aria-pressed={selected}
-      title={title}
-      className={`theme-card${selected ? " selected" : ""}`}
+      title={title ?? (size === "compact" ? label : undefined)}
+      className={`theme-card${size === "compact" ? " compact" : ""}${selected ? " selected" : ""}`}
       onClick={onSelect}
       onMouseEnter={onHoverChange ? () => onHoverChange(true) : undefined}
       onMouseLeave={onHoverChange ? () => onHoverChange(false) : undefined}
