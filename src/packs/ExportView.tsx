@@ -9,14 +9,18 @@ import {
   planPack,
   revealPack,
 } from "../engine/packs";
+import { LibraryRailIcon } from "../ui/libraryIcons";
 import { FONT_DISCLAIMER, fontEmbeddingNotice } from "../ui/packs/fontCopy";
+import { type ProjectGroupRow, UNGROUPED_PROJECTS } from "../ui/projectLibrary";
 import { PackGlyph } from "./PackGlyph";
+import { groupProjectItems, matchesPackSearch } from "./projectGroups";
 import { packProjectItems } from "./projectItems";
 import {
   breakageWarning,
   countByKind,
   defaultPackName,
   EMPTY_STATE,
+  includedItems,
   isAuto,
   isIncluded,
   itemKey,
@@ -24,6 +28,7 @@ import {
   slugifyFileName,
   toBuildSelection,
   toggle,
+  toggleAll,
   toPlanSelection,
   totalBytes,
 } from "./selection";
@@ -36,6 +41,7 @@ import {
   type PackPlan,
   type PackProgress,
   type SelectableItem,
+  type UnreferencedGroup,
 } from "./types";
 
 /** The rail is the nine stores plus a details pane; only the stores are real item kinds. */
@@ -59,6 +65,7 @@ export function ExportView({ onClose }: { onClose: () => void }) {
   const [droppedAssets, setDroppedAssets] = useState<Record<string, string[]>>({});
   const [error, setError] = useState<string | null>(null);
   const [planning, setPlanning] = useState(false);
+  const [query, setQuery] = useState("");
   // The first scan walks the whole workspace, so the window must say so rather than showing an empty picker.
   const [loading, setLoading] = useState(true);
 
@@ -118,14 +125,36 @@ export function ExportView({ onClose }: { onClose: () => void }) {
     };
   }, [includedProjects]);
 
-  const visible = tab === "details" ? [] : items.filter((i) => i.kind === tab);
+  const ofTab = tab === "details" ? [] : items.filter((i) => i.kind === tab);
+  const visible = ofTab.filter((i) => matchesPackSearch(i, query));
   const direct = visible.filter((i) => !isAuto(i));
   const auto = visible.filter(isAuto);
+  // Sections hold the whole group so its tick and count ignore the search; only the rows filter.
+  const sections = tab === "project" ? groupProjectItems(ofTab.filter((i) => !isAuto(i))) : [];
+  const showGroups = sections.some((s) => s.row.id !== UNGROUPED_PROJECTS);
+  const shownSections = sections
+    .map((s) => ({ ...s, shown: s.items.filter((i) => matchesPackSearch(i, query)) }))
+    .filter((s) => s.shown.length > 0);
+  const trimmedQuery = query.trim();
+  const visibleSlugs = new Set(visible.map((i) => i.slug));
+  const unreferenced = (plan?.unreferenced ?? []).filter(
+    (g) => !trimmedQuery || visibleSlugs.has(g.projectSlug),
+  );
 
   const onToggle = useCallback((item: SelectableItem, next: boolean) => {
     setState((s) => toggle(s, item, next));
     setWarnedKey(!next && isAuto(item) ? itemKey(item.kind, item.slug) : null);
   }, []);
+
+  const onToggleGroup = useCallback((members: SelectableItem[], next: boolean) => {
+    setState((s) => toggleAll(s, members, next));
+    setWarnedKey(null);
+  }, []);
+
+  const pickTab = (next: Tab) => {
+    setTab(next);
+    setQuery("");
+  };
 
   const onExport = useCallback(async () => {
     setError(null);
@@ -236,7 +265,7 @@ export function ExportView({ onClose }: { onClose: () => void }) {
             className="packs-rail-item"
             role="tab"
             aria-selected={k === tab}
-            onClick={() => setTab(k)}
+            onClick={() => pickTab(k)}
           >
             <span>{KIND_LABELS[k].many}</span>
             <span className="packs-rail-count">{counts[k] ?? 0}</span>
@@ -247,7 +276,7 @@ export function ExportView({ onClose }: { onClose: () => void }) {
           className="packs-rail-item"
           role="tab"
           aria-selected={tab === "details"}
-          onClick={() => setTab("details")}
+          onClick={() => pickTab("details")}
           style={{ marginTop: 10 }}
         >
           <span>Details</span>
@@ -255,6 +284,24 @@ export function ExportView({ onClose }: { onClose: () => void }) {
       </div>
 
       <div className="packs-main">
+        {tab !== "details" && (
+          <div className="packs-search">
+            <input
+              className="modal-input packs-search-input"
+              type="search"
+              placeholder={`Search ${KIND_LABELS[tab].many.toLowerCase()}…`}
+              aria-label={`Search ${KIND_LABELS[tab].many.toLowerCase()}`}
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") {
+                  setQuery("");
+                  e.currentTarget.blur();
+                }
+              }}
+            />
+          </div>
+        )}
         <div className="packs-scroll">
           {error && <div className="packs-drop-error">{error}</div>}
 
@@ -269,37 +316,41 @@ export function ExportView({ onClose }: { onClose: () => void }) {
           ) : (
             <>
               <div className="packs-heading">{KIND_LABELS[tab].many}</div>
-              {direct.length === 0 && (
+              {trimmedQuery && visible.length === 0 && (
+                <div className="packs-empty">
+                  No {KIND_LABELS[tab].many.toLowerCase()} match “{trimmedQuery}”.
+                </div>
+              )}
+              {!trimmedQuery && direct.length === 0 && (
                 <div className="packs-empty">Nothing in your workspace to add here yet.</div>
               )}
-              {direct.map((item) => (
-                <Row
-                  key={item.slug}
-                  item={item}
-                  checked={isIncluded(state, item)}
-                  onToggle={onToggle}
-                  warning={warnedKey === itemKey(item.kind, item.slug)}
-                />
-              ))}
+              {showGroups ? (
+                shownSections.map((section) => (
+                  <GroupSection
+                    key={section.row.id}
+                    row={section.row}
+                    members={section.items}
+                    shown={section.shown}
+                    state={state}
+                    onToggle={onToggle}
+                    onToggleGroup={onToggleGroup}
+                    warnedKey={warnedKey}
+                  />
+                ))
+              ) : (
+                <RowList items={direct} state={state} onToggle={onToggle} warnedKey={warnedKey} />
+              )}
 
               {auto.length > 0 && (
                 <>
                   <div className="packs-heading">Pulled in automatically</div>
-                  {auto.map((item) => (
-                    <Row
-                      key={item.slug}
-                      item={item}
-                      checked={isIncluded(state, item)}
-                      onToggle={onToggle}
-                      warning={warnedKey === itemKey(item.kind, item.slug)}
-                    />
-                  ))}
+                  <RowList items={auto} state={state} onToggle={onToggle} warnedKey={warnedKey} />
                 </>
               )}
 
-              {tab === "project" && plan && plan.unreferenced.length > 0 && (
+              {tab === "project" && unreferenced.length > 0 && (
                 <UnreferencedGroups
-                  plan={plan}
+                  unreferenced={unreferenced}
                   dropped={droppedAssets}
                   setDropped={setDroppedAssets}
                 />
@@ -408,19 +459,93 @@ function Row({
   );
 }
 
+function RowList({
+  items,
+  state,
+  onToggle,
+  warnedKey,
+}: {
+  items: SelectableItem[];
+  state: SelectionState;
+  onToggle: (item: SelectableItem, next: boolean) => void;
+  warnedKey: string | null;
+}) {
+  return (
+    <>
+      {items.map((item) => (
+        <Row
+          key={item.slug}
+          item={item}
+          checked={isIncluded(state, item)}
+          onToggle={onToggle}
+          warning={warnedKey === itemKey(item.kind, item.slug)}
+        />
+      ))}
+    </>
+  );
+}
+
+/** One project group: its checkbox and count cover every member, including any a search is hiding. */
+function GroupSection({
+  row,
+  members,
+  shown,
+  state,
+  onToggle,
+  onToggleGroup,
+  warnedKey,
+}: {
+  row: ProjectGroupRow;
+  members: SelectableItem[];
+  shown: SelectableItem[];
+  state: SelectionState;
+  onToggle: (item: SelectableItem, next: boolean) => void;
+  onToggleGroup: (items: SelectableItem[], next: boolean) => void;
+  warnedKey: string | null;
+}) {
+  const picked = includedItems(state, members).length;
+  const all = picked === members.length;
+  return (
+    <div className="packs-group">
+      <label className="packs-row packs-group-row">
+        <input
+          type="checkbox"
+          checked={all}
+          ref={(el) => {
+            if (el) el.indeterminate = picked > 0 && !all;
+          }}
+          onChange={() => onToggleGroup(members, !all)}
+        />
+        <LibraryRailIcon id={row.iconId} />
+        <span className="packs-row-main">
+          <span className="packs-row-title">{row.label}</span>
+        </span>
+        <span className="packs-row-size">
+          {picked > 0
+            ? `${picked} of ${members.length} selected`
+            : `${members.length} project${members.length === 1 ? "" : "s"}`}
+        </span>
+      </label>
+      <div className="packs-group-items">
+        <RowList items={shown} state={state} onToggle={onToggle} warnedKey={warnedKey} />
+      </div>
+    </div>
+  );
+}
+
 function UnreferencedGroups({
-  plan,
+  unreferenced,
   dropped,
   setDropped,
 }: {
-  plan: PackPlan;
+  unreferenced: UnreferencedGroup[];
   dropped: Record<string, string[]>;
   setDropped: (next: Record<string, string[]>) => void;
 }) {
   return (
     <>
       <div className="packs-heading">Unused files</div>
-      {plan.unreferenced.map((group) => {
+      {unreferenced.map((group) => {
         const isDropped = (dropped[group.projectSlug] ?? []).length > 0;
         const bytes = group.files.reduce((s, f) => s + f.bytes, 0);
         return (

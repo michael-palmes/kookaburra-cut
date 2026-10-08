@@ -124,6 +124,40 @@
   font-size: 13px;
 }
 
+.packs-search {
+  flex: 0 0 auto;
+  padding: 14px 24px 2px;
+}
+
+.packs-search-input {
+  inline-size: 100%;
+}
+
+/* Project groups: a heading row whose checkbox ticks the group, its projects indented beneath. */
+.packs-group + .packs-group {
+  margin-top: 6px;
+}
+
+.packs-group-row {
+  align-items: center;
+}
+
+.packs-group-row input[type="checkbox"] {
+  margin-top: 0;
+}
+
+.packs-group-row .packs-row-title {
+  font-weight: 600;
+}
+
+.packs-group-row .template-rail-icon {
+  color: var(--text-dim, #a7b0bb);
+}
+
+.packs-group-items {
+  padding-left: 24px;
+}
+
 .packs-row-detail {
   margin-top: 2px;
   font-size: 12px;

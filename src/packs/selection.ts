@@ -43,6 +43,15 @@ export function toggle(state: SelectionState, item: SelectableItem, next: boolea
   return { chosen, excluded };
 }
 
+/** Ticks or unticks a whole set at once: a project group's checkbox. */
+export function toggleAll(
+  state: SelectionState,
+  items: SelectableItem[],
+  next: boolean,
+): SelectionState {
+  return items.reduce((s, item) => toggle(s, item, next), state);
+}
+
 /** What `plan_pack` is asked to resolve: the user's direct ticks only. The closure is Rust's job. */
 export function toPlanSelection(state: SelectionState): PackSelection {
   const selection: PackSelection = {
