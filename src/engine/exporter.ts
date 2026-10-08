@@ -274,13 +274,21 @@ interface TroikaTextLike {
   removeEventListener: (type: string, cb: () => void) => void;
 }
 
-/** Awaits typesetting for every troika text mesh in the scene: per-frame layout can be async (e.g. a counter whose text changes each frame), so we must wait for it before capturing or read stale glyphs. Two hard-won subtleties (the text half of the back-to-back Verify ×2 race): troika meshes are detected via `material.isTroikaTextMaterial`, since the mesh itself carries no `isTroikaText` flag in troika 0.52.4; and a pending typeset is kicked here (pre-render) rather than left to troika's own `onBeforeRender` kick (which would start it a frame late), with quiescence awaited via the `synccomplete` event since `sync(cb)` drops callbacks when no new sync is needed. Exported for the borrowed-clock capture paths (snapshots.ts), whose single forced paint otherwise reads glyphs one capture late (the invisible-Playfair-title theme-preview bug). */
+/** Whether `obj` is a troika text mesh. The mesh carries no `isTroikaText` flag in troika 0.52.4, so this reads its material, which troika returns as `[outline, main]` whenever the text has an outline (neon's halo, blur-in's `outlineBlur`). */
+function isTroikaTextMesh(obj: Object3D): boolean {
+  const material = (obj as { material?: unknown }).material;
+  const materials = Array.isArray(material) ? material : [material];
+  return materials.some(
+    (m) => (m as { isTroikaTextMaterial?: boolean } | undefined)?.isTroikaTextMaterial === true,
+  );
+}
+
+/** Awaits typesetting for every troika text mesh in the scene: per-frame layout can be async (e.g. a counter whose text changes each frame), so we must wait for it before capturing or read stale glyphs. Two hard-won subtleties (the text half of the back-to-back Verify ×2 race): troika meshes are detected via `isTroikaTextMesh`, which handles outlined text's array material; and a pending typeset is kicked here (pre-render) rather than left to troika's own `onBeforeRender` kick (which would start it a frame late), with quiescence awaited via the `synccomplete` event since `sync(cb)` drops callbacks when no new sync is needed. Exported for the borrowed-clock capture paths (snapshots.ts), whose single forced paint otherwise reads glyphs one capture late (the invisible-Playfair-title theme-preview bug). */
 export function awaitTextSync(scene: Scene): Promise<void> {
   const pending: Promise<void>[] = [];
   scene.traverse((obj: Object3D) => {
-    const material = (obj as { material?: { isTroikaTextMaterial?: boolean } }).material;
     const mesh = obj as unknown as TroikaTextLike;
-    if (!material?.isTroikaTextMaterial || typeof mesh.sync !== "function") return;
+    if (!isTroikaTextMesh(obj) || typeof mesh.sync !== "function") return;
     pending.push(
       new Promise<void>((resolve) => {
         const settle = () => {

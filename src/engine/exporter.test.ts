@@ -1,9 +1,15 @@
 import { invoke } from "@tauri-apps/api/core";
-import { PerspectiveCamera, Scene } from "three";
+import { Object3D, PerspectiveCamera, Scene } from "three";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useClockStore } from "./clock";
 import { canvasHandle, trackContextLosses } from "./exportBridge";
-import { captureFrameRgba, type ExportOptions, exportProject, verifyAllFormats } from "./exporter";
+import {
+  awaitTextSync,
+  captureFrameRgba,
+  type ExportOptions,
+  exportProject,
+  verifyAllFormats,
+} from "./exporter";
 import { isExporting } from "./exportState";
 import { FORMATS } from "./format";
 
@@ -252,5 +258,56 @@ describe("export cancel", () => {
       verifyAllFormats({ ...base, signal: abort.signal }, [format, format], commitFormat),
     ).rejects.toMatchObject({ name: "AbortError" });
     expect(commitFormat).toHaveBeenCalledTimes(1);
+  });
+});
+
+/** A troika Text stand-in: `sync` starts a typeset that only lands when `land` fires `synccomplete`. */
+class FakeTroikaText extends Object3D {
+  material: unknown;
+  _needsSync = true;
+  _isSyncing = false;
+  sync = vi.fn(() => {
+    this._needsSync = false;
+    this._isSyncing = true;
+  });
+  constructor(material: unknown) {
+    super();
+    this.material = material;
+  }
+  land() {
+    this._isSyncing = false;
+    this.dispatchEvent({ type: "synccomplete" } as never);
+  }
+}
+
+describe("awaitTextSync", () => {
+  const textMaterial = { isTroikaTextMaterial: true };
+  const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+  it.each([
+    ["plain", textMaterial],
+    ["outlined ([outline, main])", [Object.create(textMaterial), textMaterial]],
+  ])("kicks and awaits %s text", async (_, material) => {
+    const scene = new Scene();
+    const text = new FakeTroikaText(material);
+    scene.add(text);
+    let settled = false;
+    const done = awaitTextSync(scene).then(() => {
+      settled = true;
+    });
+    await flush();
+    expect(text.sync).toHaveBeenCalledTimes(1);
+    expect(settled).toBe(false);
+    text.land();
+    await done;
+    expect(settled).toBe(true);
+  });
+
+  it("skips meshes whose array material has no troika text material", async () => {
+    const scene = new Scene();
+    const mesh = new FakeTroikaText([{}, { isMeshBasicMaterial: true }]);
+    scene.add(mesh);
+    await awaitTextSync(scene);
+    expect(mesh.sync).not.toHaveBeenCalled();
   });
 });
