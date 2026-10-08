@@ -83,10 +83,19 @@ describe("comparison side surfaces (source pin)", () => {
   });
 
   it("leads every match-before action with the before-side glyph", () => {
-    // Theme, Background and Lighting here; Device carries its own, and the After-screen row leads with the media glyph.
-    expect(sceneTab.match(/<ComparisonSideIcon side="before" size=\{14\} \/>/g)).toHaveLength(3);
+    // Theme and Lighting here; Background's is the header Reset glyph, Device carries its own, and the After-screen row leads with the media glyph.
+    expect(sceneTab.match(/<ComparisonSideIcon side="before" size=\{14\} \/>/g)).toHaveLength(2);
     expect(deviceDrill).toContain('<ComparisonSideIcon side="before" size={16} />');
     expect(sceneTab.match(/Match the before side/g)).toHaveLength(4);
+    const background = section(
+      sceneTab,
+      'if (drillIn === "style.background" && doc) {',
+      'if (drillIn === "motion.transition"',
+    );
+    expect(background).toContain('kind="reset"');
+    expect(background).toContain(
+      'label={editingAfter ? "Match the before side" : "Reset to theme default"}',
+    );
   });
 
   it("reads staging off the host for the side the Background drill edits", () => {
