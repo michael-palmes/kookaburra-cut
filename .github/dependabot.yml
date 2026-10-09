@@ -15,6 +15,12 @@ updates:
         update-types: ["minor", "patch"]
     open-pull-requests-limit: 10
     labels: ["dependencies"]
+    # Cargo.toml's wry pin holds Rust tauri at 2.11, and `tauri build` needs npm on the same minor.
+    ignore:
+      - dependency-name: "@tauri-apps/api"
+        update-types: ["version-update:semver-minor"]
+      - dependency-name: "@tauri-apps/plugin-*"
+        update-types: ["version-update:semver-minor"]
 
   - package-ecosystem: "cargo"
     directory: "/src-tauri"
