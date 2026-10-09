@@ -216,6 +216,8 @@ export interface LoadedProject {
   compareBThemes: (Theme | undefined)[];
   /** Scene files whose TSX id the load rewrote to break a duplicate (`ensureUniqueSceneIds`); absent or empty when nothing was healed. */
   healedSceneIds?: string[];
+  /** The manifest's declared aspects in its order; the first is where the editor opens the project until one is remembered. */
+  formats: string[];
 }
 
 /** A scene file's stem; the sidecar/thumb cache key (`scenes/01-hero.tsx` → `01-hero`). */
@@ -1137,5 +1139,6 @@ export async function loadProject(
     compareBDocs,
     compareBThemes,
     healedSceneIds,
+    formats: manifest.formats ?? [],
   };
 }

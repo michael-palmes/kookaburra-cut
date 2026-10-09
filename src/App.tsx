@@ -172,6 +172,11 @@ import {
 } from "./engine/workspace";
 import { useAssetVersionStore } from "./store/assetVersionStore";
 import { useEditorStore } from "./store/editorStore";
+import {
+  projectOpenAspect,
+  rememberedProjectAspect,
+  rememberProjectAspect,
+} from "./store/projectAspects";
 import { useTrustStore } from "./store/trustStore";
 import { useUiStore } from "./store/uiStore";
 import { WORKSPACE_THEME_PREFIX } from "./theme/registry";
@@ -1643,11 +1648,20 @@ export default function App() {
       setPlaying(false);
       setProjectReady(false);
       setSettleStep(0);
+      // A remembered aspect is known before the load, so the blank stage takes it straight away.
+      const remembered = isAutoRun ? null : rememberedProjectAspect(projectId);
+      if (remembered) useEditorStore.getState().setFormat(FORMATS[remembered]);
     }
     setError(null);
     loadProject(projectId)
       .then((loaded) => {
         if (cancelled) return;
+        // The preview aspect is per project, so a switch must not carry the last project's over (a first open takes its declared format); autoruns set their own per leg.
+        if (isSwitch && !isAutoRun) {
+          useEditorStore
+            .getState()
+            .setFormat(FORMATS[projectOpenAspect(loaded.id, loaded.formats)]);
+        }
         applyLoadedProject(loaded);
         // The scene-id heal rewrote TSX on disk: adopt those bytes as the poll's baseline so it doesn't fire a redundant reload.
         if (loaded.healedSceneIds?.length && isWorkspaceBackedProjectId(loaded.id)) {
@@ -1691,6 +1705,12 @@ export default function App() {
   }, [projectId, loadNonce, view, applyLoadedProject, isAutoRun, backToProjects, armPollBaseline]);
 
   const loadedProjectId = project?.id;
+  // Mid-switch the outgoing project is still loaded under the incoming aspect, and export legs cycle it, so neither is recorded.
+  useEffect(() => {
+    if (loadedProjectId === projectId && !isAutoRun && !exporting) {
+      rememberProjectAspect(loadedProjectId, format.name);
+    }
+  }, [loadedProjectId, projectId, format.name, isAutoRun, exporting]);
   // Auto-open the Claude rail for editable projects; close it where it can't work. Keyed on the id: in-memory doc patches swap the project object per edit and must not reopen a rail the user closed.
   useEffect(() => {
     if (!loadedProjectId || isAutoRun) return;
