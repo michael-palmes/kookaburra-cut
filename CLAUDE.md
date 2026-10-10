@@ -33,6 +33,11 @@ pnpm kookaburra:run --action export --project ws:device-video-spike --aspect 16:
 pnpm gate               # the default per-change gate: showcase-tour Verify ×2, 16:9 (~2 min)
 pnpm gate:merge         # pre-merge pair (showcase-tour + ws:launch-2026, 16:9) in ONE app boot
 
+# Cold run: the preview stands down from boot, so no preview frame draws before the run
+# whatever the window does ("gl memory before" in dev.log shows programs 0 or 1). Warm runs
+# hide cold-only flakes. Export-path actions only; works with --app.
+pnpm kookaburra:run --action verify --project ws:device-env-spike --aspect 16:9 --cold
+
 # Pack round trip: export a project to .kbpack, import it into a throwaway workspace
 # root, verify there, demand the SAME hash. Required for any change under
 # src-tauri/src/pack/** or fonts.rs (docs/determinism.md, "Pack round trip").
