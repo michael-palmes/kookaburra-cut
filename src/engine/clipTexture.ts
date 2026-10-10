@@ -79,6 +79,7 @@ export function useClipTexture(binding: ClipTextureBinding): ClipTextureState {
   useLayoutEffect(() => {
     const target = readyObjectRef.current;
     if (!target) return;
+    target.userData.clipMaterial = material;
     if (!frames) {
       onPending?.();
       firstBindRef.current ??= createFirstBind();

@@ -885,15 +885,16 @@ export async function revealLastExport(): Promise<void> {
   await invoke("reveal_last_export");
 }
 
-/** Verify diagnostic: the clip-frame index stamped on the texture that is actually bound on the scene's VideoClip material right now (-1 when no clip/map); read immediately after render so it reflects what the capture saw. */
+/** Verify diagnostic: the clip-frame index stamped on the texture that is actually bound on the scene's clip material right now (-1 when no clip/map); read immediately after render so it reflects what the capture saw. A consumer's readiness node publishes its material (`clipMaterial`), since a Device's node is a bare group. */
 function sampleBoundClipFrame(scene: Scene): number {
+  type ClipMaterial = { map?: { userData?: { clipFrame?: number } } | null };
   let bound = -1;
   scene.traverse((obj: Object3D) => {
     if (bound !== -1) return;
-    const ud = obj.userData as { videoFrameReady?: unknown };
+    const ud = obj.userData as { videoFrameReady?: unknown; clipMaterial?: ClipMaterial };
     if (!ud.videoFrameReady) return;
-    const mesh = obj as unknown as { material?: { map?: { userData?: { clipFrame?: number } } } };
-    bound = mesh.material?.map?.userData?.clipFrame ?? -1;
+    const material = ud.clipMaterial ?? (obj as unknown as { material?: ClipMaterial }).material;
+    bound = material?.map?.userData?.clipFrame ?? -1;
   });
   return bound;
 }
