@@ -23,6 +23,7 @@ import {
   type FrameDelta,
   verifyDeterminism,
 } from "./exporter";
+import { setExporting } from "./exportState";
 import { type AspectName, FORMATS, type FormatSpec, FPS, STANDING_ASPECTS } from "./format";
 import { libraryPreviewFormat, resolveLibraryPreviewPoint } from "./libraryPreviewPoint";
 import { captureOptionPreviews, optionPreviewSetsOf } from "./optionPreviews";
@@ -215,9 +216,12 @@ interface AutoRunEnv {
   themes: string | null;
   stills: string | null;
   stillsSize: string | null;
+  cold: boolean;
 }
 
 let autoRunEnv: AutoRunEnv | null = null;
+/** Whether `--cold` took its boot hold; the result reports it so the wrapper can fail a build that ignores the flag. */
+let coldHeld = false;
 /** A `ws:` preset doc prefetched by `initAutoRunConfig` (the listing command is async; every consumer reads `getAutoRunConfig()` synchronously). */
 let wsPresetDoc: ExportPresetDoc | null = null;
 
@@ -226,6 +230,12 @@ export async function initAutoRunConfig(): Promise<void> {
   if (autoRunEnv) return;
   try {
     autoRunEnv = await invoke<AutoRunEnv>("get_autorun_config");
+    // React renders only after this resolves, so a hold taken here means no preview frame ever draws before the run.
+    if (autoRunEnv.cold) {
+      setExporting(true);
+      coldHeld = true;
+      console.warn("[autorun] cold: preview stand-down held from boot");
+    }
     // User presets: `--preset ws:<slug>` resolves through the workspace registry; prefetch the doc here so getAutoRunConfig stays synchronous.
     const presetId = autoRunEnv.preset?.trim();
     if (presetId?.startsWith("ws:")) {
@@ -249,6 +259,7 @@ export async function initAutoRunConfig(): Promise<void> {
       themes: null,
       stills: null,
       stillsSize: null,
+      cold: false,
     };
   }
 }
@@ -418,7 +429,7 @@ async function finish(payload: FinishPayload): Promise<void> {
   if (finished) return;
   finished = true;
   await invoke("finish_autorun", {
-    resultJson: JSON.stringify(payload, null, 2),
+    resultJson: JSON.stringify(coldHeld ? { ...payload, cold: true } : payload, null, 2),
     ok: payload.ok,
   });
 }

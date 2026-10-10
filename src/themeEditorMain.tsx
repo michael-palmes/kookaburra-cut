@@ -2,10 +2,12 @@
 import "./engine/bootTrap";
 import React from "react";
 import ReactDOM from "react-dom/client";
+import { installDevPerformanceDrain } from "./engine/devPerformance";
 import { revealFailsafe } from "./engine/reveal";
 import { ThemeEditorApp } from "./ui/theme-editor/ThemeEditorApp";
 import "./styles.css";
 
+installDevPerformanceDrain();
 revealFailsafe();
 
 const root = document.getElementById("root");

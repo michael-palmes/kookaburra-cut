@@ -2,9 +2,11 @@
 import "./engine/bootTrap";
 import React from "react";
 import ReactDOM from "react-dom/client";
+import { installDevPerformanceDrain } from "./engine/devPerformance";
 import { setPreferUnthrottledYields } from "./engine/macrotask";
 import { RenderApp } from "./render/RenderApp";
 
+installDevPerformanceDrain();
 // Hidden pages clamp nested timers to 1s alignment (R1 spike); barrier polls in this realm yield via MessageChannel instead.
 setPreferUnthrottledYields();
 

@@ -33,6 +33,11 @@ pnpm kookaburra:run --action export --project ws:device-video-spike --aspect 16:
 pnpm gate               # the default per-change gate: showcase-tour Verify ×2, 16:9 (~2 min)
 pnpm gate:merge         # pre-merge pair (showcase-tour + ws:launch-2026, 16:9) in ONE app boot
 
+# Cold run: the preview stands down from boot, so no preview frame draws before the run
+# whatever the window does ("gl memory before" in dev.log shows programs 0 or 1). Warm runs
+# hide cold-only flakes. Export-path actions only; works with --app.
+pnpm kookaburra:run --action verify --project ws:device-env-spike --aspect 16:9 --cold
+
 # Pack round trip: export a project to .kbpack, import it into a throwaway workspace
 # root, verify there, demand the SAME hash. Required for any change under
 # src-tauri/src/pack/** or fonts.rs (docs/determinism.md, "Pack round trip").
@@ -201,8 +206,9 @@ intuition before the probe settled it).
   fps and frame-time stats to the run's `last-run.json`. It always runs
   foreground on its own dev port, so the window is visible (an occluded
   WKWebView suspends rAF), and it warns when another dev app is listening on
-  1420, since a busy machine skews the fps. New suspect: add a pass, don't
-  theorise.
+  1420, since a busy machine skews the fps. Each window warms up until
+  frames come steadily before sampling, since a first draw can outlast the
+  3 s stall guard. New suspect: add a pass, don't theorise.
 - **Method:** one lever per change, re-run the probe, keep only what the data
   keeps. Clip prefetching was reverted this way: decode work is main-thread, so
   reading ahead made heavy scenes worse. Any clip or render-path change then

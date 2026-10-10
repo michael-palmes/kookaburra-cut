@@ -805,6 +805,8 @@ struct AutorunEnv {
     stills: Option<String>,
     /// stills/stillsverify: "4k", "1080p" or "720p".
     stills_size: Option<String>,
+    /// `--cold`: the preview stands down from boot, so no preview frame draws before the run.
+    cold: bool,
 }
 
 /// One `KOOKABURRA_*` env read under the single auto-run rule: trimmed, and empty/whitespace reads as unset.
@@ -813,6 +815,11 @@ fn autorun_var(key: &str) -> Option<String> {
         .ok()
         .map(|v| v.trim().to_string())
         .filter(|v| !v.is_empty())
+}
+
+/// `--cold` only counts for a wrapper-launched run, so a stray env var never stands an interactive launch's preview down.
+fn cold_requested(action: Option<String>, cold: Option<String>) -> bool {
+    action.is_some() && cold.is_some()
 }
 
 /// Whether this process was launched by the terminal wrapper rather than by a person.
@@ -864,6 +871,10 @@ fn get_autorun_config() -> AutorunEnv {
         themes: autorun_var("KOOKABURRA_THEMES"),
         stills: autorun_var("KOOKABURRA_STILLS"),
         stills_size: autorun_var("KOOKABURRA_STILLS_SIZE"),
+        cold: cold_requested(
+            autorun_var("KOOKABURRA_ACTION"),
+            autorun_var("KOOKABURRA_COLD"),
+        ),
     }
 }
 
@@ -1921,6 +1932,13 @@ mod tests {
         let name = staging.file_name().unwrap().to_string_lossy().into_owned();
         assert!(name.starts_with(".staging-abc-30fps-"));
         assert!(name.ends_with(&std::process::id().to_string()));
+    }
+
+    #[test]
+    fn cold_needs_an_autorun_action() {
+        assert!(cold_requested(Some("verify".into()), Some("1".into())));
+        assert!(!cold_requested(None, Some("1".into())));
+        assert!(!cold_requested(Some("verify".into()), None));
     }
 
     // F-009: finish_autorun's env gate mirrors get_autorun_config's trim/empty rule.
