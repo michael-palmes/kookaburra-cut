@@ -4,10 +4,12 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
 import { initAutoRunConfig } from "./engine/autorun";
+import { installDevPerformanceDrain } from "./engine/devPerformance";
 import { revealFailsafe } from "./engine/reveal";
 import { preloadAppFonts } from "./theme/fonts";
 import "./styles.css";
 
+installDevPerformanceDrain();
 revealFailsafe();
 
 const root = document.getElementById("root");

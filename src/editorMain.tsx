@@ -3,9 +3,11 @@ import "./engine/bootTrap";
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { EditorApp } from "./editor/EditorApp";
+import { installDevPerformanceDrain } from "./engine/devPerformance";
 import { revealFailsafe } from "./engine/reveal";
 import "./styles.css";
 
+installDevPerformanceDrain();
 revealFailsafe();
 
 const root = document.getElementById("root");

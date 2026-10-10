@@ -6,6 +6,7 @@ import { applyCameraTrack, type CameraKeyframe } from "./cameraTrack";
 import { awaitVideoFramesReady } from "./clips";
 import { useClockStore } from "./clock";
 import { renderComposited } from "./compositor";
+import { dropDevPerformanceEntries } from "./devPerformance";
 import { canvasCommittedClockMs, canvasCommittedHoldsVersion } from "./exportBridge";
 import type { ExportOptions } from "./exporter";
 import { computeFormat } from "./format";
@@ -85,13 +86,6 @@ export async function awaitTextSync(scene: Scene): Promise<void> {
     }
   };
   await Promise.race([Promise.all(pending), stalled()]);
-}
-
-/** Dev React (react-dom and r3f's reconciler) records a `performance.measure` with a props diff for every re-render whose props changed, and WebKit keeps them all: every mounted scene re-renders per tick, about 1 MB a frame on a 40-scene project, enough to reach the 4 GB WebContent ceiling mid-Verify. Production React records none. */
-export function dropDevPerformanceEntries(): void {
-  if (!import.meta.env.DEV) return;
-  performance.clearMeasures();
-  performance.clearMarks();
 }
 
 /** Everything a run resolves once and every frame samples. */
