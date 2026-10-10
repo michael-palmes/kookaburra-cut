@@ -3,6 +3,7 @@ import { useContext, useEffect, useState, useSyncExternalStore } from "react";
 import { LinearFilter, type Object3D, type Scene, SRGBColorSpace, Texture } from "three";
 import { useEditorStore } from "../store/editorStore";
 import { isExporting } from "./exportState";
+import { yieldMacrotask } from "./macrotask";
 import { resolveAssetPath } from "./project";
 import { ProjectIdContext } from "./sceneContext";
 
@@ -243,6 +244,47 @@ export function awaitVideoFramesReady(scene: Scene): Promise<void> {
   return Promise.all(pending).then(() => undefined);
 }
 
+/** A pending consumer's wait for its first bind: settled with that bind's readiness, or empty when the consumer unmounts first. */
+export interface FirstBind {
+  promise: Promise<void>;
+  settled: boolean;
+  settle: (bound?: Promise<void>) => void;
+}
+
+export function createFirstBind(): FirstBind {
+  let resolve!: (bound?: Promise<void>) => void;
+  const promise = new Promise<void>((r) => {
+    resolve = r;
+  });
+  const firstBind: FirstBind = {
+    promise,
+    settled: false,
+    settle: (bound) => {
+      firstBind.settled = true;
+      resolve(bound);
+    },
+  };
+  return firstBind;
+}
+
+/** A still-pending consumer's readiness: its extraction, then its first bind, so a clip registered after the preamble's extract barrier (a screen behind its model's suspense) can never pass a capture in its pending state. A failed extraction resolves at once (the consumer stays black), and a bind that never starts fails the run instead of hanging it. */
+export async function pendingFrameReady(
+  extraction: Promise<unknown>,
+  firstBind: FirstBind,
+  src: string,
+): Promise<void> {
+  try {
+    await extraction;
+  } catch {
+    return;
+  }
+  for (let spins = 0; !firstBind.settled; spins++) {
+    if (spins > 5000) throw new Error(`Video "${src}" extracted but never bound its first frame.`);
+    await yieldMacrotask();
+  }
+  await firstBind.promise;
+}
+
 /** Streams a clip's frames from disk as three.js textures with an LRU cache (via the fs plugin + `createImageBitmap`, decoding deterministically); consumers pin their requested frame synchronously and their bound frame until replaced, since evicting and closing a bitmap that's still in flight or bound throws WebGL INVALID_VALUE and renders white. */
 export class ClipFrames {
   private readonly cache = new Map<string, Texture>();
@@ -405,8 +447,10 @@ export function useClipEntry(src: string): ClipEntry {
   useSyncExternalStore(subscribeClipRegistry, clipRegistryVersion);
   const entry = registerClip(srcAbs);
   const [, force] = useState(0);
+  // Keyed on what this render saw: an extraction settling between render and effect must still re-render, or the consumer (and a capture awaiting its first bind) stays pending.
+  const settled = Boolean(entry.info || entry.error);
   useEffect(() => {
-    if (entry.info || entry.error) return;
+    if (settled) return;
     let alive = true;
     entry.promise
       .finally(() => {
@@ -417,6 +461,6 @@ export function useClipEntry(src: string): ClipEntry {
     return () => {
       alive = false;
     };
-  }, [entry]);
+  }, [entry, settled]);
   return entry;
 }

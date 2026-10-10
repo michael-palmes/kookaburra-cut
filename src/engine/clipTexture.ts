@@ -2,7 +2,14 @@ import { useThree } from "@react-three/fiber";
 import { type RefObject, useEffect, useLayoutEffect, useRef, useSyncExternalStore } from "react";
 import type { MeshBasicMaterial, Object3D, Texture } from "three";
 import { clipFrameIndex } from "./clipFrame";
-import { type ClipInfo, type ClipTier, useClipEntry } from "./clips";
+import {
+  type ClipInfo,
+  type ClipTier,
+  createFirstBind,
+  type FirstBind,
+  pendingFrameReady,
+  useClipEntry,
+} from "./clips";
 import { isExporting } from "./exportState";
 import { perfClipsFrozen } from "./perfProbe";
 import { previewClipStride, previewPlaybackActive, subscribePreviewPlayback } from "./previewMedia";
@@ -50,7 +57,8 @@ export function useClipTexture(binding: ClipTextureBinding): ClipTextureState {
   const sceneCtx = useSceneContext();
   const invalidate = useThree((s) => s.invalidate);
   const gl = useThree((s) => s.gl);
-  const { info, frames, error } = useClipEntry(src);
+  const { info, frames, error, promise } = useClipEntry(src);
+  const firstBindRef = useRef<FirstBind | null>(null);
 
   // Scenes away from the playhead hold their last frame instead of decoding: off-screen decode was the measured playback bottleneck (perf probe 2026-07-18). Export-safe by construction: the exporter only captures scenes whose window contains the clock, and those always advance. The perf probe's frozen-media pass holds every consumer the same way. No scene context (persistent layer) = always advance.
   const near =
@@ -73,7 +81,9 @@ export function useClipTexture(binding: ClipTextureBinding): ClipTextureState {
     if (!target) return;
     if (!frames) {
       onPending?.();
-      target.userData.videoFrameReady = () => Promise.resolve();
+      firstBindRef.current ??= createFirstBind();
+      const firstBind = firstBindRef.current;
+      target.userData.videoFrameReady = () => pendingFrameReady(promise, firstBind, src);
       return;
     }
     let cancelled = false;
@@ -107,10 +117,33 @@ export function useClipTexture(binding: ClipTextureBinding): ClipTextureState {
         if (!cancelled) console.error(`useClipTexture: frame ${frameIndex} failed to load`, err);
       });
     target.userData.videoFrameReady = () => ready;
+    firstBindRef.current?.settle(ready);
+    firstBindRef.current = null;
     return () => {
       cancelled = true;
     };
-  }, [frames, frameIndex, tier, material, invalidate, gl, readyObjectRef, onPending, onBound]);
+  }, [
+    frames,
+    frameIndex,
+    tier,
+    material,
+    invalidate,
+    gl,
+    readyObjectRef,
+    onPending,
+    onBound,
+    promise,
+    src,
+  ]);
+
+  // A consumer unmounting before its first bind releases any capture waiting on it.
+  useLayoutEffect(
+    () => () => {
+      firstBindRef.current?.settle();
+      firstBindRef.current = null;
+    },
+    [],
+  );
 
   // Release this consumer's pin when it unmounts (or the source's ClipFrames changes).
   useEffect(() => {

@@ -133,3 +133,72 @@ describe("evictAllClips", () => {
     expect(clips.clipRegistryVersion()).toBe(version);
   });
 });
+
+describe("pendingFrameReady", () => {
+  function track(promise: Promise<void>) {
+    const state = { done: false };
+    void promise.then(() => {
+      state.done = true;
+    });
+    return state;
+  }
+
+  it("waits past the extraction for the first bind's own readiness", async () => {
+    const clips = await import("./clips");
+    let extracted!: () => void;
+    const extraction = new Promise<void>((r) => {
+      extracted = r;
+    });
+    let bound!: () => void;
+    const bind = new Promise<void>((r) => {
+      bound = r;
+    });
+    const firstBind = clips.createFirstBind();
+    const ready = track(clips.pendingFrameReady(extraction, firstBind, "assets/a.mp4"));
+
+    extracted();
+    await new Promise((r) => setTimeout(r, 5));
+    expect(ready.done).toBe(false);
+
+    firstBind.settle(bind);
+    await new Promise((r) => setTimeout(r, 5));
+    expect(ready.done).toBe(false);
+
+    bound();
+    await new Promise((r) => setTimeout(r, 5));
+    expect(ready.done).toBe(true);
+  });
+
+  it("resolves at once when the extraction fails", async () => {
+    const clips = await import("./clips");
+    const firstBind = clips.createFirstBind();
+    await expect(
+      clips.pendingFrameReady(Promise.reject(new Error("no")), firstBind, "assets/a.mp4"),
+    ).resolves.toBeUndefined();
+  });
+
+  it("resolves when the consumer unmounts before binding", async () => {
+    const clips = await import("./clips");
+    const firstBind = clips.createFirstBind();
+    const ready = clips.pendingFrameReady(Promise.resolve(), firstBind, "assets/a.mp4");
+    firstBind.settle();
+    await expect(ready).resolves.toBeUndefined();
+  });
+
+  it("fails the run when the first bind never starts", async () => {
+    const clips = await import("./clips");
+    vi.useFakeTimers();
+    try {
+      const ready = clips.pendingFrameReady(
+        Promise.resolve(),
+        clips.createFirstBind(),
+        "assets/a.mp4",
+      );
+      const failed = expect(ready).rejects.toThrow(/assets\/a\.mp4.*never bound/);
+      await vi.runAllTimersAsync();
+      await failed;
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
