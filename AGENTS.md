@@ -206,8 +206,9 @@ intuition before the probe settled it).
   fps and frame-time stats to the run's `last-run.json`. It always runs
   foreground on its own dev port, so the window is visible (an occluded
   WKWebView suspends rAF), and it warns when another dev app is listening on
-  1420, since a busy machine skews the fps. New suspect: add a pass, don't
-  theorise.
+  1420, since a busy machine skews the fps. Each window warms up until
+  frames come steadily before sampling, since a first draw can outlast the
+  3 s stall guard. New suspect: add a pass, don't theorise.
 - **Method:** one lever per change, re-run the probe, keep only what the data
   keeps. Clip prefetching was reverted this way: decode work is main-thread, so
   reading ahead made heavy scenes worse. Any clip or render-path change then
