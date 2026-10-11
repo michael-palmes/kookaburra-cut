@@ -48,6 +48,12 @@ function isDetached(tex: Texture): boolean {
   return !!img && img.width === 0;
 }
 
+/** Settles a consumer's first-bind wait and drops it, unless a newer wait has replaced it. */
+function releaseFirstBind(ref: RefObject<FirstBind | null>, firstBind: FirstBind): void {
+  firstBind.settle();
+  if (ref.current === firstBind) ref.current = null;
+}
+
 /** How far outside its own window a scene still advances frames; covers transition overlaps and gives the next scene's first frame a head start. */
 const ACTIVE_LEAD_MS = 500;
 
@@ -82,12 +88,17 @@ export function useClipTexture(binding: ClipTextureBinding): ClipTextureState {
     target.userData.clipMaterial = material;
     if (!frames) {
       onPending?.();
-      firstBindRef.current ??= createFirstBind();
+      firstBindRef.current ??= createFirstBind(promise);
       const firstBind = firstBindRef.current;
-      target.userData.videoFrameReady = () => pendingFrameReady(promise, firstBind, src);
+      firstBind.extraction = promise;
+      target.userData.videoFrameReady = () => pendingFrameReady(firstBind, src);
+      // A failed extraction never binds, so the screen degrades to its pending black.
+      if (error !== undefined) releaseFirstBind(firstBindRef, firstBind);
       return;
     }
     let cancelled = false;
+    const firstBind = firstBindRef.current;
+    firstBind?.start();
     // Pins the requested index synchronously before the async load: a post-resolve pin would leave a microtask gap where another consumer's load could evict+close this frame, a silently-stale capture (the divergent-verify bug).
     frames.request(material, frameIndex, tier);
     const ready = frames
@@ -118,8 +129,12 @@ export function useClipTexture(binding: ClipTextureBinding): ClipTextureState {
         if (!cancelled) console.error(`useClipTexture: frame ${frameIndex} failed to load`, err);
       });
     target.userData.videoFrameReady = () => ready;
-    firstBindRef.current?.settle(ready);
-    firstBindRef.current = null;
+    // Only a run that finished releases a waiting capture: a cancelled one resolves `ready` without binding.
+    if (firstBind) {
+      void ready.then(() => {
+        if (!cancelled) releaseFirstBind(firstBindRef, firstBind);
+      });
+    }
     return () => {
       cancelled = true;
     };
@@ -134,14 +149,14 @@ export function useClipTexture(binding: ClipTextureBinding): ClipTextureState {
     onPending,
     onBound,
     promise,
+    error,
     src,
   ]);
 
   // A consumer unmounting before its first bind releases any capture waiting on it.
   useLayoutEffect(
     () => () => {
-      firstBindRef.current?.settle();
-      firstBindRef.current = null;
+      if (firstBindRef.current) releaseFirstBind(firstBindRef, firstBindRef.current);
     },
     [],
   );

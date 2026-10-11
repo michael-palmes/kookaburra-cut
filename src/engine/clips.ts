@@ -3,7 +3,6 @@ import { useContext, useEffect, useState, useSyncExternalStore } from "react";
 import { LinearFilter, type Object3D, type Scene, SRGBColorSpace, Texture } from "three";
 import { useEditorStore } from "../store/editorStore";
 import { isExporting } from "./exportState";
-import { yieldMacrotask } from "./macrotask";
 import { resolveAssetPath } from "./project";
 import { ProjectIdContext } from "./sceneContext";
 
@@ -244,45 +243,61 @@ export function awaitVideoFramesReady(scene: Scene): Promise<void> {
   return Promise.all(pending).then(() => undefined);
 }
 
-/** A pending consumer's wait for its first bind: settled with that bind's readiness, or empty when the consumer unmounts first. */
+/** A pending consumer's wait for its first bind, driven by the consumer: `extraction` follows the entry it now waits on, `start` marks a bind run beginning, and `settle` marks one completing uncancelled, its extraction failing, or the consumer unmounting. */
 export interface FirstBind {
-  promise: Promise<void>;
-  settled: boolean;
-  settle: (bound?: Promise<void>) => void;
+  extraction: Promise<unknown>;
+  started: Promise<void>;
+  done: Promise<void>;
+  start: () => void;
+  settle: () => void;
 }
 
-export function createFirstBind(): FirstBind {
-  let resolve!: (bound?: Promise<void>) => void;
-  const promise = new Promise<void>((r) => {
-    resolve = r;
+export function createFirstBind(extraction: Promise<unknown>): FirstBind {
+  let start!: () => void;
+  let settle!: () => void;
+  const started = new Promise<void>((r) => {
+    start = r;
   });
-  const firstBind: FirstBind = {
-    promise,
-    settled: false,
-    settle: (bound) => {
-      firstBind.settled = true;
-      resolve(bound);
+  const done = new Promise<void>((r) => {
+    settle = r;
+  });
+  return {
+    extraction,
+    started,
+    done,
+    start,
+    settle: () => {
+      start();
+      settle();
     },
   };
-  return firstBind;
 }
 
-/** A still-pending consumer's readiness: its extraction, then its first bind, so a clip registered after the preamble's extract barrier (a screen behind its model's suspense) can never pass a capture in its pending state. A failed extraction resolves at once (the consumer stays black), and a bind that never starts fails the run instead of hanging it. */
+/** How long a consumer may take to start its first bind once its extraction settles: a re-render, never a decode, so only a stalled tree reaches it. */
+export const FIRST_BIND_STALL_MS = 30_000;
+
+/** A still-pending consumer's readiness: its extraction, then its first completed bind, so a clip registered after the preamble's extract barrier (a screen behind its model's suspense) can never pass a capture in its pending state. Extraction may take minutes, so only the gap after it is bounded, by one timer (hidden pages throttle spin chains); a bind that never starts fails the run instead of hanging it. */
 export async function pendingFrameReady(
-  extraction: Promise<unknown>,
   firstBind: FirstBind,
   src: string,
+  stallMs = FIRST_BIND_STALL_MS,
 ): Promise<void> {
-  try {
-    await extraction;
-  } catch {
-    return;
+  for (;;) {
+    const extraction = firstBind.extraction;
+    await Promise.race([extraction.catch(() => {}), firstBind.done]);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const stalled = new Promise<"stalled">((r) => {
+      timer = setTimeout(() => r("stalled"), stallMs);
+    });
+    const outcome = await Promise.race([firstBind.started.then(() => "started" as const), stalled]);
+    clearTimeout(timer);
+    if (outcome === "started") break;
+    // A consumer that moved on to a newer extraction (a lane switch) waits on that one instead.
+    if (firstBind.extraction === extraction) {
+      throw new Error(`Video "${src}" extracted but never bound its first frame.`);
+    }
   }
-  for (let spins = 0; !firstBind.settled; spins++) {
-    if (spins > 5000) throw new Error(`Video "${src}" extracted but never bound its first frame.`);
-    await yieldMacrotask();
-  }
-  await firstBind.promise;
+  await firstBind.done;
 }
 
 /** Streams a clip's frames from disk as three.js textures with an LRU cache (via the fs plugin + `createImageBitmap`, decoding deterministically); consumers pin their requested frame synchronously and their bound frame until replaced, since evicting and closing a bitmap that's still in flight or bound throws WebGL INVALID_VALUE and renders white. */
