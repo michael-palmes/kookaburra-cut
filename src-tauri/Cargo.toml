@@ -78,6 +78,7 @@ objc2-web-kit = { version = "=0.3.2", default-features = false, features = [
   "block2",
   "WKWebView",
   "WKWebViewConfiguration",
+  "WKPreferences",
   "WKSnapshotConfiguration",
   "WKWebsiteDataRecord",
   "WKWebsiteDataStore",

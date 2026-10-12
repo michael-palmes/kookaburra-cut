@@ -1711,6 +1711,8 @@ mod macos {
                 configuration
                     .setMediaTypesRequiringUserActionForPlayback(WKAudiovisualMediaTypes::All);
                 configuration.setAllowsAirPlayForMediaPlayback(false);
+                // Wry enables element fullscreen on every webview; a page must never cover the origin bar.
+                configuration.preferences().setElementFullscreenEnabled(false);
                 native.setPageZoom(zoom);
 
                 let mtm = MainThreadMarker::new().expect("WKWebView runs on the main thread");
