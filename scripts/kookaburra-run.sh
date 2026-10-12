@@ -53,6 +53,10 @@
 #         --size   4k|1080p|720p  (stills/stillsverify only, default 1080p) page short edge
 #         --foreground  launch the app normally instead of in the background (no-focus-steal)
 #                  mode; always on for --action perf, which needs an honest visible window
+#         --cold   hold the preview stand-down from boot, so no preview frame draws before the
+#                  run whether or not the window is visible (programs 0 or 1 in the dev.log
+#                  "gl memory before" breadcrumb); export-path actions only, works with --app;
+#                  exits 2 when the result lacks "cold": true (a build that predates the flag)
 #         --no-wait  don't queue: exit 2 straight away when another run holds the queue
 #
 #   pnpm kookaburra:run --action create --project blank   # create-from-template smoke in a
@@ -85,7 +89,7 @@ KEEP_RUNS=20
 TICKET=""
 
 ACTION="" PROJECT="" ASPECT="all" CODEC="libx264" APP="" ASPECT_EXPLICIT=0 ALL_PREVIEWS=0
-FOREGROUND=0 NO_WAIT=0 STILLS="" STILLS_SIZE=""
+FOREGROUND=0 NO_WAIT=0 COLD=0 STILLS="" STILLS_SIZE=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --action)  ACTION="${2:-}";  shift 2 ;;
@@ -101,6 +105,7 @@ while [[ $# -gt 0 ]]; do
     --stills) STILLS="${2:-}"; shift 2 ;;
     --size)   STILLS_SIZE="${2:-}"; shift 2 ;;
     --foreground) FOREGROUND=1; shift ;;
+    --cold)       COLD=1;       shift ;;
     --no-wait)    NO_WAIT=1;    shift ;;
     *) echo "kookaburra:run: unknown argument '$1'" >&2; exit 2 ;;
   esac
@@ -124,6 +129,12 @@ if [[ "$ACTION" == "stills" || "$ACTION" == "stillsverify" ]]; then
 elif [[ -n "$STILLS" || -n "$STILLS_SIZE" ]]; then
   echo "kookaburra:run: --stills and --size only apply to --action stills or stillsverify" >&2
   exit 2
+fi
+if [[ "$COLD" == "1" ]]; then
+  case "$ACTION" in
+    verify | export | screenshot | packroundtrip | stills | stillsverify) ;;
+    *) echo "kookaburra:run: --cold only applies to verify, export, screenshot, packroundtrip, stills or stillsverify" >&2; exit 2 ;;
+  esac
 fi
 if [[ -n "$APP" ]]; then
   # Packaged mode: the sidecars sit beside the main binary, so resolve it from
@@ -180,7 +191,7 @@ if [[ "$ACTION" == "perf" ]]; then
   fi
 fi
 
-echo "kookaburra:run: $ACTION  project='${PROJECT:-<default>}'  aspect='$ASPECT'  codec='$CODEC'  ${STILLS:+stills='$STILLS'  size='$STILLS_SIZE'  }${APP:+app='$APP'  }(timeout ${TIMEOUT}s)"
+echo "kookaburra:run: $ACTION  project='${PROJECT:-<default>}'  aspect='$ASPECT'  codec='$CODEC'  ${STILLS:+stills='$STILLS'  size='$STILLS_SIZE'  }$([[ "$COLD" == "1" ]] && echo "cold  ")${APP:+app='$APP'  }(timeout ${TIMEOUT}s)"
 echo "kookaburra:run: run dir → $RUN_DIR"
 
 # Recursively kill the dev process tree (pnpm → cargo → app → vite). On the happy path the
@@ -405,6 +416,7 @@ export KOOKABURRA_ACTION="$ACTION"
 export KOOKABURRA_PROJECT="$PROJECT"
 export KOOKABURRA_RESULT_DIR="$RUN_DIR"
 [ "$FOREGROUND" = "1" ] && export KOOKABURRA_FOREGROUND=1
+if [ "$COLD" = "1" ]; then export KOOKABURRA_COLD=1; else unset KOOKABURRA_COLD; fi
 # --preset without an explicit --aspect: leave KOOKABURRA_ASPECT unset so the app uses
 # the preset's favoured aspect (the wrapper's "all" default would override it).
 if [ -n "${PRESET:-}" ] && [ "$ASPECT_EXPLICIT" != "1" ]; then
@@ -518,6 +530,11 @@ if [[ "$ACTION" == "stills" || "$ACTION" == "stillsverify" ]]; then
         *.zip) unzip -l "$OUT" | head -n 20 || true ;;
       esac
     done
+fi
+# The app reports its boot hold; a build that predates --cold ignores the env and runs warm.
+if [[ "$COLD" == "1" ]] && ! grep -q '"cold": true' "$RESULT_FILE"; then
+  echo "kookaburra:run: --cold was not honoured (no \"cold\": true in the result): this build predates it" >&2
+  exit 2
 fi
 # `"ok": true` (2-space-indented JSON) ⇒ pass; anything else ⇒ fail.
 if ! grep -q '"ok": true' "$RESULT_FILE"; then

@@ -30,12 +30,16 @@ export function perfClipsFrozen(): boolean {
   return clipsFrozen;
 }
 
-/** Frames skipped before sampling starts; absorbs shader recompiles and first-frame loads. */
+/** Consecutive steady frames (each under WARMUP_STEADY_MS) that end a window's unsampled warm-up; absorbs shader recompiles and first-frame loads. */
 const WARMUP_FRAMES = 20;
+const WARMUP_STEADY_MS = 1000;
 /** Sampled playback per scene per pass, ms. */
 const WINDOW_MS = 2000;
 /** No rAF for this long = the window is occluded; fail loudly instead of hanging. */
 const RAF_STALL_MS = 3000;
+/** The warm-up's stall limit: a window's first draw can compile programs for seconds (3.2 s on 40 lit devices). */
+const WARMUP_STALL_MS = 20_000;
+const WARMUP_CAP_MS = 120_000;
 
 interface PerfPass {
   id: string;
@@ -185,7 +189,7 @@ function hidePass(scene: Scene, match: (obj: Object3D) => boolean): () => void {
   };
 }
 
-/** Real-playback measurement: advances the shared clock by wall-clock delta each rAF (the preview's own pipeline: clock write, React commit, demand render) and samples the tick gaps. */
+/** Real-playback measurement: advances the shared clock by wall-clock delta each rAF (the preview's own pipeline: clock write, React commit, demand render) and samples the tick gaps once the warm-up has steadied. */
 function measureWindow(
   slot: { startMs: number; durationMs: number },
   gl: WebGLRenderer,
@@ -193,32 +197,51 @@ function measureWindow(
   return new Promise((resolve, reject) => {
     const windowMs = Math.min(WINDOW_MS, Math.max(300, slot.durationMs - 100));
     const samples: number[] = [];
-    let frame = 0;
+    let warming = true;
+    let steady = 0;
+    let longest = 0;
     let sceneLocal = 0;
     let sampledMs = 0;
-    let last = performance.now();
+    const started = performance.now();
+    let last = started;
     let raf = 0;
     let stall = 0;
+    const fail = (message: string) => {
+      window.clearTimeout(stall);
+      cancelAnimationFrame(raf);
+      reject(new Error(message));
+    };
     const bump = () => {
       window.clearTimeout(stall);
-      stall = window.setTimeout(() => {
-        cancelAnimationFrame(raf);
-        reject(
-          new Error(
-            "perf: rAF stalled — keep the app window visible and unoccluded for a perf run",
-          ),
-        );
-      }, RAF_STALL_MS);
+      stall = window.setTimeout(
+        () => fail("perf: rAF stalled, keep the app window visible and unoccluded for a perf run"),
+        warming ? WARMUP_STALL_MS : RAF_STALL_MS,
+      );
     };
     const tick = (now: number) => {
-      bump();
       const dt = now - last;
       last = now;
-      frame += 1;
-      if (frame > WARMUP_FRAMES) {
+      if (warming) {
+        longest = Math.max(longest, dt);
+        steady = dt < WARMUP_STEADY_MS ? steady + 1 : 0;
+        if (steady >= WARMUP_FRAMES) {
+          warming = false;
+          if (longest >= WARMUP_STEADY_MS) {
+            console.warn(
+              `[autorun] perf warm-up took ${Math.round(now - started)} ms (longest frame gap ${Math.round(longest)} ms)`,
+            );
+          }
+        } else if (now - started > WARMUP_CAP_MS) {
+          fail(
+            `perf: playback never steadied within ${WARMUP_CAP_MS / 1000} s (longest frame gap ${Math.round(longest)} ms)`,
+          );
+          return;
+        }
+      } else {
         samples.push(dt);
         sampledMs += dt;
       }
+      bump();
       // Advance within the scene; wrapping keeps clip playback essentially linear.
       sceneLocal = (sceneLocal + dt) % Math.max(1, slot.durationMs - 50);
       const clock = useClockStore.getState();

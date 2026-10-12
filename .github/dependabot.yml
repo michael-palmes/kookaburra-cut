@@ -9,6 +9,11 @@ updates:
     cooldown:
       default-days: 7
     groups:
+      # three is 0.x, so each release shifts lit pixels (a baseline rebase); postprocessing caps its range.
+      three-family:
+        applies-to: version-updates
+        patterns: ["three", "@types/three", "postprocessing"]
+        update-types: ["minor", "patch"]
       npm-minor-patch:
         applies-to: version-updates
         patterns: ["*"]

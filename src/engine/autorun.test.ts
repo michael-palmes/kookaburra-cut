@@ -3,7 +3,7 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn(), Channel: class {} }));
 
-const env = (overrides: Record<string, string | null>) => ({
+const env = (overrides: Record<string, string | boolean | null>) => ({
   action: null,
   project: "showcase-tour",
   aspect: null,
@@ -16,11 +16,12 @@ const env = (overrides: Record<string, string | null>) => ({
   themes: null,
   stills: null,
   stillsSize: null,
+  cold: false,
   ...overrides,
 });
 
 /** A fresh module per case: the env is prefetched once per page load. */
-async function configFor(overrides: Record<string, string | null>) {
+async function configFor(overrides: Record<string, string | boolean | null>) {
   vi.resetModules();
   vi.mocked(invoke).mockResolvedValue(env(overrides));
   const autorun = await import("./autorun");
@@ -64,5 +65,29 @@ describe("stills autorun config", () => {
     expect(await configFor({ action: "stills", stillsSize: "8k" })).toThrow(
       'unknown KOOKABURRA_STILLS_SIZE "8k"',
     );
+  });
+});
+
+describe("cold autorun", () => {
+  it("holds the preview stand-down from boot only when asked", async () => {
+    await configFor({ action: "verify", cold: true });
+    expect((await import("./exportState")).isExporting()).toBe(true);
+    await configFor({ action: "verify" });
+    expect((await import("./exportState")).isExporting()).toBe(false);
+  });
+
+  it("reports the hold in the result only when it was taken", async () => {
+    const resultOf = async (cold: boolean) => {
+      await configFor({ action: "verify", cold });
+      vi.mocked(invoke).mockClear();
+      (await import("./autorun")).reportAutoRunError("boom");
+      await vi.waitFor(() =>
+        expect(invoke).toHaveBeenCalledWith("finish_autorun", expect.anything()),
+      );
+      const [, args] = vi.mocked(invoke).mock.calls[0] as [string, { resultJson: string }];
+      return JSON.parse(args.resultJson);
+    };
+    expect(await resultOf(true)).toMatchObject({ ok: false, cold: true });
+    expect(await resultOf(false)).not.toHaveProperty("cold");
   });
 });
