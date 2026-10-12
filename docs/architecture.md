@@ -77,7 +77,7 @@ than restating versions.) Pins live in `package.json` and `src-tauri/Cargo.toml`
 
 | Dependency | Version | Role | Licence |
 | --- | --- | --- | --- |
-| Tauri (core + CLI) | 2.11.x | App shell, Rust core, WKWebView via WRY | MIT / Apache-2.0 |
+| Tauri (core + CLI) | 2.12.x | App shell, Rust core, WKWebView via WRY | MIT / Apache-2.0 |
 | tauri-plugin-shell | 2.x (Rust only) | Spawn and pipe to the ffmpeg sidecar from Rust; the webview never calls it | MIT / Apache-2.0 |
 | tauri-plugin-dialog | 2.x | Native open and save panels (`dialog:default` is the one plugin permission a window holds) | MIT / Apache-2.0 |
 | tauri-plugin-window-state | 2.x | Remember window frames between launches | MIT / Apache-2.0 |
@@ -101,7 +101,7 @@ than restating versions.) Pins live in `package.json` and `src-tauri/Cargo.toml`
 | Vitest | 4.x | Tests, incl. the determinism harness | MIT |
 | Biome | 2.5.x | Lint + format | MIT / Apache-2.0 |
 
-Rust crates (`src-tauri/Cargo.toml`): `tauri 2.11.x` (exact-pinned) with the
+Rust crates (`src-tauri/Cargo.toml`): `tauri 2.12.x` (exact-pinned, `wry` pinned to its runtime's version) with the
 shell, dialog, window-state, updater and log plugins, `serde`/`serde_json`,
 `tokio`, `sha2` (the `hash_file` Verify command), `portable-pty` (embedded
 terminal), `allsorts` and `png` (both exact-pinned: instancer output and PNG
