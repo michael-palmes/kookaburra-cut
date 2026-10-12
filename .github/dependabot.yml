@@ -20,11 +20,9 @@ updates:
         update-types: ["minor", "patch"]
     open-pull-requests-limit: 10
     labels: ["dependencies"]
-    # Cargo.toml's wry pin holds Rust tauri at 2.11, and `tauri build` needs npm on the same minor.
+    # Tauri minors move by hand in one PR with the cargo side: `tauri build` refuses mismatched minors.
     ignore:
-      - dependency-name: "@tauri-apps/api"
-        update-types: ["version-update:semver-minor"]
-      - dependency-name: "@tauri-apps/plugin-*"
+      - dependency-name: "@tauri-apps/*"
         update-types: ["version-update:semver-minor"]
 
   - package-ecosystem: "cargo"
@@ -41,6 +39,14 @@ updates:
         update-types: ["minor", "patch"]
     open-pull-requests-limit: 10
     labels: ["dependencies", "rust"]
+    # Tauri minors move by hand in one PR with the npm side; wry is 0.x and follows tauri-runtime-wry.
+    ignore:
+      - dependency-name: "tauri"
+        update-types: ["version-update:semver-minor"]
+      - dependency-name: "tauri-*"
+        update-types: ["version-update:semver-minor"]
+      - dependency-name: "wry"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
 
   - package-ecosystem: "github-actions"
     directory: "/"
