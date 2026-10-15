@@ -9,8 +9,10 @@ import { ObjectsFallback } from "../toolkit/objects/ObjectPrimitive";
 import { SceneBackground } from "../toolkit/stage/FixedBackdrop";
 import { TextFallback } from "../toolkit/text/TitleBlock";
 import { FramePanel } from "./FramePanel";
+import { reportRenderError } from "./loadDiagnostics";
 import { PersistentLayer } from "./PersistentLayer";
 import { type LoadedProject, sceneMountKey } from "./project";
+import { isSceneErrorCard } from "./SceneErrorCard";
 import { SceneHost } from "./SceneHost";
 import { ProjectIdContext, ProjectLightingContext } from "./sceneContext";
 import {
@@ -18,6 +20,19 @@ import {
   buildCompareBLightingTracks,
   buildLightingTracks,
 } from "./sceneLighting";
+
+/** Records a render error a scene's backstop boundary caught, for the load diagnostics. */
+export function sceneRenderErrorReporter(
+  project: LoadedProject,
+  index: number,
+): (error: unknown) => void {
+  return (error) =>
+    reportRenderError(project.id, {
+      index,
+      file: project.sceneFiles[index],
+      message: error instanceof Error ? error.message : String(error),
+    });
+}
 
 /** The canvas scene tree both windows mount: scene hosts (plus comparison side-B twins), the persistent layer and the overlay frame panels, moved verbatim from App so the editor and the hidden render window cannot drift. Window-specific companions (PreviewClock, CompositorDriver, the commit stamps) mount beside it, never inside. */
 export function StageScenes({ project }: { project: LoadedProject | null }) {
@@ -64,19 +79,29 @@ export function StageScenes({ project }: { project: LoadedProject | null }) {
                 frame={project.sceneFrames[i]}
                 animatedFixtureLightIds={animatedFixtureLightSets?.a[i]}
               >
-                {/* The backstop boundary: an uncontained scene render error degrades to an empty scene, never a torn-down canvas tree; the host's group/registry stay mounted. */}
-                <AssetBoundary label={`scene ${i + 1}`}>
-                  {/* The fixed background mounts host-side for every scene, staged or not, so Background picks never depend on the scene authoring a <SceneStage> (staging/lighting stays opt-in). */}
-                  <SceneBackground />
-                  <SceneComponent />
-                  <SceneMediaFallback />
-                  {/* Host-side fallbacks so Add device / Add text work on scenes whose TSX never wires the sidecar hooks; the registries suppress them when it does. */}
-                  <DevicesFallback />
-                  <ObjectsFallback />
-                  <LayeredScreenshotFallback />
-                  <ChartFallback />
-                  <TextFallback />
-                  <CompareChips />
+                {/* The backstop boundary: an uncontained scene render error degrades to an empty scene, never a torn-down canvas tree; the host's group/registry stay mounted. Each load retries it and reports what it catches. */}
+                <AssetBoundary
+                  label={`scene ${i + 1}`}
+                  resetKey={project}
+                  onError={sceneRenderErrorReporter(project, i)}
+                >
+                  {isSceneErrorCard(scene) ? (
+                    <SceneComponent />
+                  ) : (
+                    <>
+                      {/* The fixed background mounts host-side for every scene, staged or not, so Background picks never depend on the scene authoring a <SceneStage> (staging/lighting stays opt-in). */}
+                      <SceneBackground />
+                      <SceneComponent />
+                      <SceneMediaFallback />
+                      {/* Host-side fallbacks so Add device / Add text work on scenes whose TSX never wires the sidecar hooks; the registries suppress them when it does. */}
+                      <DevicesFallback />
+                      <ObjectsFallback />
+                      <LayeredScreenshotFallback />
+                      <ChartFallback />
+                      <TextFallback />
+                      <CompareChips />
+                    </>
+                  )}
                 </AssetBoundary>
               </SceneHost>
             );
@@ -100,16 +125,26 @@ export function StageScenes({ project }: { project: LoadedProject | null }) {
                 frame={project.sceneFrames[i]}
                 animatedFixtureLightIds={animatedFixtureLightSets?.b[i]}
               >
-                <AssetBoundary label={`scene ${i + 1} after`}>
-                  <SceneBackground />
-                  <SceneComponent />
-                  <SceneMediaFallback />
-                  <DevicesFallback />
-                  <ObjectsFallback />
-                  <LayeredScreenshotFallback />
-                  <ChartFallback />
-                  <TextFallback />
-                  <CompareChips />
+                <AssetBoundary
+                  label={`scene ${i + 1} after`}
+                  resetKey={project}
+                  onError={sceneRenderErrorReporter(project, i)}
+                >
+                  {isSceneErrorCard(scene) ? (
+                    <SceneComponent />
+                  ) : (
+                    <>
+                      <SceneBackground />
+                      <SceneComponent />
+                      <SceneMediaFallback />
+                      <DevicesFallback />
+                      <ObjectsFallback />
+                      <LayeredScreenshotFallback />
+                      <ChartFallback />
+                      <TextFallback />
+                      <CompareChips />
+                    </>
+                  )}
                 </AssetBoundary>
               </SceneHost>
             );
