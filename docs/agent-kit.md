@@ -144,9 +144,10 @@ As built (`scripts/kblib/`):
 - `scene add --preset` goes through the app's `insertPreset` when it runs (the app picks
   the stem and id from the name), else copies from the bundle; an existing unregistered
   `scenes/<stem>.tsx` is registered rather than overwritten.
-- Bridge waits default to 240 s for captures and 300 s for `check` (600 s with
-  `--render`): a cold first load of a large project mounts every scene and can take
-  minutes; warm captures take seconds.
+- Bridge waits default to 120 s for captures and 300 s for `check` (600 s with
+  `--render`). On a large media-heavy project in a dev build a cold capture answers in
+  about 10 s, a warm one or an aspect switch in about 2 s, and a cold 48-frame sheet in
+  about a minute.
 - `kb.py` never writes bytecode, and fails open for hooks when its modules are missing.
 
 Static checks: `project.json` (valid JSON, version, required fields, files exist, no

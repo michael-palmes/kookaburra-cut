@@ -919,7 +919,7 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--aspect", help="render at this aspect for this request only (e.g. 9:16)")
     s.add_argument("--frames", help="several frames: S@SEC,S@SEC,...")
     s.add_argument("--sheet", action="store_true", help="also write one contact-sheet PNG")
-    s.add_argument("--timeout", type=float, default=240, help="seconds to wait (default 240; a first capture of a large project loads every scene)")
+    s.add_argument("--timeout", type=float, default=120, help="seconds to wait (default 120; a many-frame sheet of a large project takes the longest)")
     s.add_argument("--project", help=argparse.SUPPRESS)
     s.set_defaults(fn=cmd_capture)
 
