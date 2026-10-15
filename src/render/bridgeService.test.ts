@@ -430,6 +430,8 @@ describe("bridge v2 requests", () => {
           return assetChecks;
         case "is_project_trusted":
           return trusted;
+        case "project_fingerprint":
+          return "sources-1";
         default:
           return null;
       }
@@ -538,6 +540,20 @@ describe("bridge v2 requests", () => {
       { kind: "capture", scene: "0", aspect: "16:9" },
     ]);
     expect(served.map((r) => r.ok)).toEqual([true, false, true]);
+    expect(loadProject).toHaveBeenCalledTimes(2);
+  });
+
+  it("reloads when the source fingerprint can't be read", async () => {
+    const original = vi.mocked(invoke).getMockImplementation();
+    vi.mocked(invoke).mockImplementation(async (command, args, options) =>
+      command === "project_fingerprint"
+        ? Promise.reject(new Error("unreadable"))
+        : original?.(command, args, options),
+    );
+    await serveAll([
+      { kind: "capture", scene: "0" },
+      { kind: "capture", scene: "0" },
+    ]);
     expect(loadProject).toHaveBeenCalledTimes(2);
   });
 
