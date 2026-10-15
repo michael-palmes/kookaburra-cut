@@ -1260,7 +1260,8 @@ tier is under "Gate tiers" and the baselines under "Current baselines".
 
 ### The capture bridge surface (the hidden render window)
 
-Live captures (`capture.py`, scene thumbs) are served by the hidden `render`
+Live captures (`kb capture` and `kb check --render` over bridge v2, the legacy
+`capture.py`, scene thumbs; docs/agent-kit.md) are served by the hidden `render`
 window: its own realm and WebContent process, the same `renderComposited` seam
 and export barriers, driven rAF-free so it renders while hidden. Three measured
 facts (2026-08-07) define its contract:
@@ -1278,6 +1279,9 @@ facts (2026-08-07) define its contract:
   1 s, so the render realm opts into MessageChannel yields for the settle
   barriers (`engine/macrotask.ts`); visible windows keep the proven setTimeout
   path. Neither yield primitive affects pixels, only wall time.
+
+A capture's contact sheet (`sheet`) scales its frames into a labelled 2D canvas
+grid: diagnostic output, never hashed or compared.
 
 The autorun surface (env-gated, cold-boot, one run at a time via the FIFO run
 queue) is unchanged; neither surface may regress the other.

@@ -24,10 +24,6 @@ const TEMPLATE_FILENAME: &str = "template.json";
 /// The shared sample media pool inside the bundled tree, seeded into every new project's assets/ rather than copied into every template.
 const SAMPLES_DIR_NAME: &str = "_samples";
 
-/// Per-project provisioning, embedded so a packaged app needs no extra resources.
-const PROJECT_CLAUDE_MD: &str = include_str!("../templates/project-CLAUDE.md");
-const PROJECT_CLAUDE_SETTINGS: &str = include_str!("../templates/project-claude-settings.json");
-
 /// Sample screenshots seeded into every new project's assets (screen pickers never start empty).
 const SAMPLE_SCREENSHOTS: [(&str, &[u8]); 4] = [
     (
@@ -1677,35 +1673,24 @@ pub fn create_project(
     })
 }
 
-/// Claude Code provisioning for a project folder: the skill copy is MANAGED, re-stamped wholesale so app updates propagate, while `CLAUDE.md` and `.claude/settings.json` are only written when missing since the user (or Claude itself) may legitimately customise them, so a re-stamp heals deletion without clobbering edits; skill source is best-effort since it may be absent in packaged builds.
+/// Claude Code provisioning for a project folder (docs/agent-kit.md, "Stamping"; see `kit.rs`). `false` = the shipped skill is missing (a packaging defect the terminal warns about); the rest of the kit is still stamped.
 pub(crate) fn stamp_claude_provisioning(app: &AppHandle, dir: &Path) -> Result<bool, String> {
-    let claude_md = dir.join("CLAUDE.md");
-    if !claude_md.is_file() {
-        std::fs::write(&claude_md, PROJECT_CLAUDE_MD).map_err(|e| e.to_string())?;
-    }
-    let claude_dir = dir.join(".claude");
-    std::fs::create_dir_all(&claude_dir).map_err(|e| e.to_string())?;
-    let settings = claude_dir.join("settings.json");
-    if !settings.is_file() {
-        std::fs::write(&settings, PROJECT_CLAUDE_SETTINGS).map_err(|e| e.to_string())?;
-    }
-    let skill_src = skills_root(app).join("kookaburra-scene-authoring");
-    if skill_src.is_dir() {
-        copy_dir_recursive(
-            &skill_src,
-            &claude_dir.join("skills/kookaburra-scene-authoring"),
-        )?;
-        Ok(true)
-    } else {
-        // A packaging defect, reported honestly: the terminal warns before Claude starts (a silent no-op left projects with no skill at all).
+    let skill_src = skills_root(app).join(crate::kit::SKILL_NAME);
+    let present = skill_src.is_dir();
+    if !present {
         log::warn!("scene-authoring skill not found at {}", skill_src.display());
-        Ok(false)
     }
+    crate::kit::stamp_project(
+        present.then_some(skill_src.as_path()),
+        dir,
+        &crate::kit::StampOptions::for_app(app),
+    )?;
+    Ok(present)
 }
 
-/// Re-stamp a project's Claude Code provisioning (called when a session opens, so a project created by an older app version, or a user deletion, heals in place).
+/// Re-stamp a project's kit: on every workspace project load and when the terminal starts Claude, off the main thread so it never blocks either.
 #[tauri::command]
-pub fn provision_project(
+pub async fn provision_project(
     app: AppHandle,
     state: State<'_, SettingsState>,
     slug: String,
@@ -1714,7 +1699,9 @@ pub fn provision_project(
     if !dir.join(MANIFEST_FILENAME).is_file() {
         return Err(format!("\"{slug}\" is not a project folder"));
     }
-    stamp_claude_provisioning(&app, &dir)
+    tauri::async_runtime::spawn_blocking(move || stamp_claude_provisioning(&app, &dir))
+        .await
+        .map_err(|e| e.to_string())?
 }
 
 /// Media the pool seeds; anything else in `_samples` (README, dotfiles) stays put.

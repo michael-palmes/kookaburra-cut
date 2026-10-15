@@ -25,7 +25,11 @@ describe("insertPresetScene", () => {
         position: 20,
       }),
     ).resolves.toEqual(copied);
-    expect(ensureProjectTrusted).toHaveBeenCalledExactlyOnceWith("ws-preset:title", "title");
+    expect(ensureProjectTrusted).toHaveBeenCalledExactlyOnceWith(
+      "ws-preset:title",
+      "title",
+      undefined,
+    );
     expect(copySceneToProject).toHaveBeenCalledExactlyOnceWith("ws-preset:title", 0, "launch", 20);
   });
 
@@ -42,7 +46,11 @@ describe("insertPresetScene", () => {
       position: 0,
     });
 
-    expect(ensureProjectTrusted).toHaveBeenCalledExactlyOnceWith("ws-preset:title", "title");
+    expect(ensureProjectTrusted).toHaveBeenCalledExactlyOnceWith(
+      "ws-preset:title",
+      "title",
+      undefined,
+    );
     expect(copySceneToProject).not.toHaveBeenCalled();
     allow();
     await pending;
@@ -73,6 +81,27 @@ describe("insertPresetScene", () => {
 
     expect(ensureProjectTrusted).not.toHaveBeenCalled();
     expect(copySceneToProject).toHaveBeenCalledExactlyOnceWith("preset:title", 0, "launch", 0);
+  });
+
+  it("appends, renames and never asks when the bridge inserts", async () => {
+    await insertPresetScene({
+      destSlug: "launch",
+      presetProjectId: "ws-preset:title",
+      name: "Highlights",
+      trustMode: "stored-only",
+    });
+    expect(ensureProjectTrusted).toHaveBeenCalledExactlyOnceWith(
+      "ws-preset:title",
+      "title",
+      "stored-only",
+    );
+    expect(copySceneToProject).toHaveBeenCalledExactlyOnceWith(
+      "ws-preset:title",
+      0,
+      "launch",
+      undefined,
+      "Highlights",
+    );
   });
 
   it("surfaces a native failure without another mutation", async () => {

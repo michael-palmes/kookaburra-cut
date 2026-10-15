@@ -12,6 +12,7 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
+import { lastLoadReport, reportLastLoad, stampProjectKit } from "./engine/appHeartbeat";
 import {
   type AutoRunConfig,
   getAutoRunConfig,
@@ -1665,6 +1666,10 @@ export default function App() {
       .then((loaded) => {
         if (cancelled) return;
         setError(null);
+        if (!isAutoRun) {
+          reportLastLoad(lastLoadReport(projectId, { loaded }, Date.now()));
+          stampProjectKit(projectId);
+        }
         // The preview aspect is per project, so a switch must not carry the last project's over (a first open takes its declared format); autoruns set their own per leg.
         if (isSwitch && !isAutoRun) {
           useEditorStore
@@ -1689,6 +1694,11 @@ export default function App() {
       })
       .catch((e) => {
         if (cancelled) return;
+        if (!isAutoRun) {
+          reportLastLoad(lastLoadReport(projectId, { error: e }, Date.now()));
+          // Declining trust means zero writes, the kit included.
+          if (!(e instanceof TrustDeniedError)) stampProjectKit(projectId);
+        }
         // Declining the trust gate is a choice, not a failure: back to the welcome screen, and don't reopen the project next boot.
         if (e instanceof TrustDeniedError) {
           setTrustDeclined(e.projectName);
@@ -1787,7 +1797,7 @@ export default function App() {
     clearSecondaryLaneSelections();
   }, [camSceneIndex]);
 
-  // The capture bridge: captures are served by the hidden render window (src/render/bridgeService.ts), never on this canvas; the editor only watches for pending requests, pushes its context (open project, aspect, playhead, export lockout) and ensures the window exists. Runs on the welcome screen too, so a request with nothing open gets a prompt rejection instead of a timeout.
+  // The capture bridge: requests are served by the hidden render window (src/render/bridgeService.ts), never on this canvas; the editor only watches for pending requests, pushes its context (open project, aspect, playhead, export lockout; Rust writes the `_bridge/app.json` heartbeat from it) and ensures the window exists. Runs on the welcome screen too, reporting no open project there, so a request with nothing open gets a prompt rejection instead of a timeout.
   const bridgeBusyRef = useRef(false);
   useEffect(() => {
     if (isAutoRun) return;
@@ -1795,7 +1805,7 @@ export default function App() {
       if (bridgeBusyRef.current) return;
       bridgeBusyRef.current = true;
       void ensureCaptureService({
-        project: loadedProjectRef.current,
+        project: view === "editor" ? loadedProjectRef.current : null,
         format,
         exporting,
         playing,
@@ -1804,7 +1814,7 @@ export default function App() {
       });
     }, 1000);
     return () => window.clearInterval(timer);
-  }, [isAutoRun, exporting, format, playing]);
+  }, [isAutoRun, exporting, format, playing, view]);
 
   // Live-reload when project sources change on disk (writes happen outside Vite's watch scope): poll a fingerprint every ~1s, debounce one tick so multi-file edits land as one reload, then re-run the load path; kept independent of `project` so it keeps polling through transient load errors.
   useEffect(() => {

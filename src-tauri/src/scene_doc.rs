@@ -933,9 +933,11 @@ pub struct CopiedSceneResult {
     #[serde(flatten)]
     pub scene: SceneCopyResult,
     pub index: usize,
+    /// The copy's sidecar display name, when it has one.
+    pub name: Option<String>,
 }
 
-/// Copy scene content and assets, preserving effects and committing its final position in one manifest write.
+/// Copy scene content and assets, preserving effects and committing its final position in one manifest write. `name` renames the copy (sidecar name, stem and scene id follow it).
 #[tauri::command]
 pub fn copy_scene_to_project(
     app: AppHandle,
@@ -944,6 +946,7 @@ pub fn copy_scene_to_project(
     index: usize,
     dest_slug: String,
     position: Option<usize>,
+    name: Option<String>,
 ) -> Result<CopiedSceneResult, String> {
     workspace::require_multiple_scenes(&dest_slug)?;
     if slug == dest_slug {
@@ -956,7 +959,7 @@ pub fn copy_scene_to_project(
         workspace::ProjectScope::BundledTemplate | workspace::ProjectScope::BundledPreset
     )
     .then(|| workspace::samples_root(&app));
-    copy_scene_between(
+    copy_named_scene_between(
         &project,
         &dest,
         index,
@@ -964,9 +967,11 @@ pub fn copy_scene_to_project(
         &dest_slug,
         position,
         sample_pool.as_deref(),
+        name.as_deref().map(str::trim).filter(|n| !n.is_empty()),
     )
 }
 
+#[cfg(test)]
 pub(crate) fn copy_scene_between(
     project: &Path,
     dest: &Path,
@@ -975,6 +980,29 @@ pub(crate) fn copy_scene_between(
     dest_slug: &str,
     position: Option<usize>,
     sample_pool: Option<&Path>,
+) -> Result<CopiedSceneResult, String> {
+    copy_named_scene_between(
+        project,
+        dest,
+        index,
+        slug,
+        dest_slug,
+        position,
+        sample_pool,
+        None,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn copy_named_scene_between(
+    project: &Path,
+    dest: &Path,
+    index: usize,
+    slug: &str,
+    dest_slug: &str,
+    position: Option<usize>,
+    sample_pool: Option<&Path>,
+    name: Option<&str>,
 ) -> Result<CopiedSceneResult, String> {
     workspace::require_multiple_scenes(dest_slug)?;
     let is_preset = workspace::is_preset_id(slug)?;
@@ -1033,6 +1061,12 @@ pub(crate) fn copy_scene_between(
     let default_transition = is_preset
         .then(|| project_default_transition(&dest_manifest))
         .flatten();
+    if let Some(name) = name {
+        let doc = doc.get_or_insert_with(|| json!({ "version": SCENE_DOC_VERSION }));
+        if let Some(fields) = doc.as_object_mut() {
+            fields.insert("name".into(), Value::String(name.to_owned()));
+        }
+    }
 
     // Fresh stem in the destination, keeping the source's display name.
     let scenes_dir = dest.join("scenes");
@@ -1083,6 +1117,11 @@ pub(crate) fn copy_scene_between(
     seed_inserted_scene_transitions(scenes, at, default_transition.as_ref());
     atomic_write_json(&dest_manifest_path, &dest_manifest)?;
 
+    let name = doc
+        .as_ref()
+        .and_then(|d| d.get("name"))
+        .and_then(Value::as_str)
+        .map(str::to_owned);
     Ok(CopiedSceneResult {
         scene: SceneCopyResult {
             file: new_file,
@@ -1091,6 +1130,7 @@ pub(crate) fn copy_scene_between(
             duration_ms,
         },
         index: at,
+        name,
     })
 }
 
@@ -1655,8 +1695,9 @@ fn resolved_claimed_frame_icon(doc: &Value, deck_frame: Option<&Value>) -> Optio
 #[cfg(test)]
 mod preset_insertion_tests {
     use super::{
-        atomic_write_json, collect_json_asset_refs, copy_scene_between, remint_scene_doc_ids,
-        rewrite_define_scene_id, scan_asset_refs, CopiedSceneResult,
+        atomic_write_json, collect_json_asset_refs, copy_named_scene_between, copy_scene_between,
+        remint_scene_doc_ids, rewrite_define_scene_id, scan_asset_refs, CopiedSceneResult,
+        SCENE_DOC_VERSION,
     };
     use serde_json::{json, Value};
     use std::path::{Path, PathBuf};
@@ -1718,6 +1759,29 @@ mod preset_insertion_tests {
         fn drop(&mut self) {
             let _ = std::fs::remove_dir_all(&self.root);
         }
+    }
+
+    #[test]
+    fn a_named_copy_takes_the_name_for_its_sidecar_stem_and_id() {
+        let fixture = Fixture::new(None, &destination());
+        let copied = copy_named_scene_between(
+            &fixture.source,
+            &fixture.dest,
+            0,
+            "preset:hero",
+            "dest",
+            Some(1),
+            None,
+            Some("Feature Checks"),
+        )
+        .unwrap();
+        assert!(copied.scene.file.ends_with("-feature-checks.tsx"));
+        assert_eq!(copied.scene.scene_id, "feature-checks");
+        assert_eq!(copied.index, 1);
+        assert_eq!(copied.name.as_deref(), Some("Feature Checks"));
+        let doc = read_json(&fixture.dest.join(&copied.scene.doc_file));
+        assert_eq!(doc["name"], "Feature Checks");
+        assert_eq!(doc["version"], SCENE_DOC_VERSION);
     }
 
     fn read_json(path: &Path) -> Value {

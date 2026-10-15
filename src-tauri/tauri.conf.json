@@ -66,7 +66,7 @@
       "../presets": "presets",
       "../src/assets/template-previews": "template-previews",
       "../src/assets/preset-previews": "preset-previews",
-      "../.agents/skills": "claude-skills"
+      "../.agents/skills/kookaburra-scene-authoring": "claude-skills/kookaburra-scene-authoring"
     },
     "icon": [
       "icons/32x32.png",
