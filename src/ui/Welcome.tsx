@@ -1,6 +1,14 @@
 import { getVersion } from "@tauri-apps/api/app";
 import { invoke } from "@tauri-apps/api/core";
-import { Fragment, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import {
+  Fragment,
+  type ReactNode,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { convertProjectToTemplate } from "../engine/library";
 import { nameCollision, nameCollisionWarning } from "../engine/nameCollision";
 import { listAllPresets, refreshUserPresets, subscribePresets } from "../engine/presets";
@@ -301,6 +309,7 @@ export function Welcome({
   onOpenThemes,
   refreshKey,
   focusSearchNonce,
+  notice,
 }: {
   activeRowId: string;
   onActiveRowChange: (rowId: string) => void;
@@ -313,6 +322,8 @@ export function Welcome({
   refreshKey: number;
   /** Bump to focus and select the search field (⌘F). */
   focusSearchNonce: number;
+  /** Why the screen is showing instead of a project (a declined trust prompt), above the library. */
+  notice?: ReactNode;
 }) {
   const [projects, setProjects] = useState<WorkspaceProjectInfo[] | null>(null);
   const [scrolled, setScrolled] = useState(false);
@@ -495,6 +506,8 @@ export function Welcome({
           </p>
         )}
       </header>
+
+      {notice}
 
       {loadError && (
         <div className="welcome-error" role="alert">

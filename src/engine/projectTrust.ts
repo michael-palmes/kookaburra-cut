@@ -3,9 +3,12 @@ import { useTrustStore } from "../store/trustStore";
 
 /** Thrown when the user declines the trust gate; App routes it back to the welcome screen rather than the stage-error panel. */
 export class TrustDeniedError extends Error {
-  constructor(slug: string) {
+  /** The manifest display name, for the Welcome screen's explanation. */
+  readonly projectName: string;
+  constructor(slug: string, name?: string) {
     super(`Project "${slug}" was not opened.`);
     this.name = "TrustDeniedError";
+    this.projectName = name || slug;
   }
 }
 
@@ -28,7 +31,8 @@ export async function ensureProjectTrusted(
   mode?: "stored-only",
 ): Promise<void> {
   if (mode === "stored-only") {
-    if (!(await invoke<boolean>("is_project_trusted", { slug }))) throw new TrustDeniedError(slug);
+    if (!(await invoke<boolean>("is_project_trusted", { slug })))
+      throw new TrustDeniedError(slug, name);
     return;
   }
   if (sessionTrusted.has(slug)) {
@@ -48,7 +52,7 @@ export async function ensureProjectTrusted(
     return;
   }
   const allowed = await useTrustStore.getState().request(slug, name);
-  if (!allowed) throw new TrustDeniedError(slug);
+  if (!allowed) throw new TrustDeniedError(slug, name);
   await invoke("trust_project", { slug });
   sessionTrusted.add(slug);
 }
