@@ -17,6 +17,8 @@ export interface FontIssue {
   message: string;
   /** The face rendered instead, or null when nothing could stand in. */
   fallback: string | null;
+  /** The file couldn't be read this time; deliverables refuse until a reload reads it. */
+  transient?: boolean;
 }
 
 export interface LoadDiagnostics {

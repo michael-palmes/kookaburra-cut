@@ -230,6 +230,8 @@ export interface LoadedProject {
   fontIssues?: FontIssue[];
   /** Non-fatal load problems the project degraded around (a LUT that failed to load), one sentence each. */
   loadWarnings?: string[];
+  /** Degradations a deliverable must not ship with (a dropped LUT, an unreadable font file), each a clause that reads after "Can't export while". */
+  exportBlockers?: string[];
   /** The manifest's declared aspects in its order; the first is where the editor opens the project until one is remembered. */
   formats: string[];
 }
@@ -1157,6 +1159,9 @@ export async function loadProject(
 
   // LUT textures must be cached before the effects store publishes them; the composer chain builds synchronously on the next rendered frame. (The export preamble re-awaits; no-op.) A LUT that fails to load degrades to no LUT rather than failing the project.
   const loadWarnings: string[] = [];
+  const exportBlockers: string[] = fontIssues
+    .filter((issue) => issue.transient)
+    .map((issue) => `the font file for ${issue.ref} couldn't be read (${issue.message})`);
   try {
     await preloadEffectLuts({
       effects,
@@ -1168,6 +1173,7 @@ export async function loadProject(
     loadWarnings.push(
       `The colour LUT couldn't load, so the project renders without it: ${errorText(e)}`,
     );
+    exportBlockers.push(`the colour LUT couldn't load (${errorText(e)})`);
     effects = withoutLut(effects);
     for (const key of Object.keys(effectOverrides)) {
       effectOverrides[Number(key)] = withoutLut(effectOverrides[Number(key)]);
@@ -1259,6 +1265,7 @@ export async function loadProject(
     sceneErrors,
     fontIssues,
     loadWarnings,
+    exportBlockers,
     formats: manifest.formats ?? [],
   };
 }

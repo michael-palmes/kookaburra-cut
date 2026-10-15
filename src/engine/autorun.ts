@@ -890,7 +890,7 @@ export async function runAutoRun(
       );
       results.push({ aspect: format.name, path });
       // The frame still lands (an error card is worth seeing), but the run fails so a gate never passes on one.
-      const refusal = sceneErrorRefusal(project.sceneErrors, "pass a screenshot run");
+      const refusal = sceneErrorRefusal(project, "pass a screenshot run");
       if (refusal) {
         ok = false;
         error = refusal;

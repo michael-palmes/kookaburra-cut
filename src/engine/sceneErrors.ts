@@ -12,23 +12,28 @@ export function errorHeadline(message: string): string {
   return line.length > HEADLINE_MAX_CHARS ? `${line.slice(0, HEADLINE_MAX_CHARS - 1)}…` : line;
 }
 
-/** Null when every scene loaded, else why `action` can't run, naming each file and its error. Export, stills and autorun gates refuse on it so an error card never reaches a deliverable. */
-export function sceneErrorRefusal(
-  sceneErrors: readonly SceneLoadError[] | undefined,
-  action: string,
-): string | null {
-  if (!sceneErrors?.length) return null;
-  const count = sceneErrors.length === 1 ? "a file" : `${sceneErrors.length} files`;
-  const list = sceneErrors
-    .map((error) => `${error.file} (${error.phase}): ${errorHeadline(error.message)}`)
-    .join("; ");
-  return `Can't ${action} while ${count} can't load: ${list}`;
+/** What a load degraded around that a deliverable must not ship with: error cards, plus `exportBlockers` (a dropped LUT, an unreadable font file), each a clause that reads after "while". */
+export interface LoadProblems {
+  sceneErrors?: readonly SceneLoadError[];
+  exportBlockers?: readonly string[];
 }
 
-export function assertScenesLoaded(
-  project: { sceneErrors?: readonly SceneLoadError[] },
-  action: string,
-): void {
-  const refusal = sceneErrorRefusal(project.sceneErrors, action);
+/** Null when the project loaded whole, else why `action` can't run, naming each broken file and blocker. Export, stills and autorun gates refuse on it so a degraded load never reaches a deliverable. */
+export function sceneErrorRefusal(project: LoadProblems, action: string): string | null {
+  const reasons: string[] = [];
+  const sceneErrors = project.sceneErrors ?? [];
+  if (sceneErrors.length) {
+    const count = sceneErrors.length === 1 ? "a file" : `${sceneErrors.length} files`;
+    const list = sceneErrors
+      .map((error) => `${error.file} (${error.phase}): ${errorHeadline(error.message)}`)
+      .join("; ");
+    reasons.push(`${count} can't load: ${list}`);
+  }
+  reasons.push(...(project.exportBlockers ?? []));
+  return reasons.length ? `Can't ${action} while ${reasons.join("; ")}` : null;
+}
+
+export function assertScenesLoaded(project: LoadProblems, action: string): void {
+  const refusal = sceneErrorRefusal(project, action);
   if (refusal) throw new Error(refusal);
 }

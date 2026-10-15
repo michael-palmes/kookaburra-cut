@@ -2351,10 +2351,7 @@ export default function App() {
   // Run the modal's selection. The chosen aspect sets the editor format first; no `encode` means the frozen legacy path (Kookaburra Standard), presets/custom carry their resolved spec + name suffix.
   async function handleExport(sel: ExportSelection) {
     if (!project || exporting || themePreviewRunning.current) return;
-    const refusal = sceneErrorRefusal(
-      project.sceneErrors,
-      sel.kind === "stills" ? "export stills" : "export",
-    );
+    const refusal = sceneErrorRefusal(project, sel.kind === "stills" ? "export stills" : "export");
     if (refusal) {
       setShowExport(false);
       setToast({ kind: "error", message: refusal });
@@ -2437,7 +2434,7 @@ export default function App() {
 
   async function handleVerify() {
     if (!project || exporting || themePreviewRunning.current) return;
-    const refusal = sceneErrorRefusal(project.sceneErrors, "verify");
+    const refusal = sceneErrorRefusal(project, "verify");
     if (refusal) {
       setToast({ kind: "error", message: refusal });
       return;

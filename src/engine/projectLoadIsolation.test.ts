@@ -61,6 +61,8 @@ const { bumpWorkspaceReloadToken, loadProject } = await import("./project");
 const { isSceneErrorCard } = await import("./SceneErrorCard");
 const { reportRenderError, projectRenderErrors } = await import("./loadDiagnostics");
 const { sceneErrorRefusal } = await import("./sceneErrors");
+const { preloadEffectLuts } = await import("./effects");
+const { vetProjectFonts } = await import("../theme/fontSafety");
 
 const healthy = (id: string) =>
   `export default { id: "${id}", durationMs: 1000, Scene: function Scene() { return null; } };`;
@@ -173,15 +175,39 @@ describe("loadProject scene isolation", () => {
   });
 });
 
+describe("export blockers", () => {
+  it("records a dropped LUT and an unreadable font so deliverables refuse", async () => {
+    setProject({ "scenes/01-a.tsx": healthy("a") });
+    vi.mocked(preloadEffectLuts).mockRejectedValueOnce(new Error("HTTP 404"));
+    vi.mocked(vetProjectFonts).mockResolvedValueOnce([
+      { ref: "Locked@400", message: "couldn't read", fallback: "Inter@400", transient: true },
+    ]);
+    const loaded = await loadProject("ws:demo");
+    expect(loaded.exportBlockers).toEqual([
+      "the font file for Locked@400 couldn't be read (couldn't read)",
+      "the colour LUT couldn't load (HTTP 404)",
+    ]);
+    expect(sceneErrorRefusal(loaded, "export")).toMatch(/^Can't export while the font file/);
+  });
+});
+
 describe("sceneErrorRefusal", () => {
+  it("refuses on export blockers after any broken files", () => {
+    expect(
+      sceneErrorRefusal({ exportBlockers: ["the colour LUT couldn't load (404)"] }, "export"),
+    ).toBe("Can't export while the colour LUT couldn't load (404)");
+  });
+
   it("names every broken file and its first error line", () => {
-    expect(sceneErrorRefusal([], "export")).toBeNull();
+    expect(sceneErrorRefusal({ sceneErrors: [] }, "export")).toBeNull();
     expect(
       sceneErrorRefusal(
-        [
-          { index: 1, file: "scenes/02-x.tsx", phase: "compile", message: "line 4: bad\nmore" },
-          { index: 2, file: "scenes/03-y.tsx", phase: "evaluate", message: "boom" },
-        ],
+        {
+          sceneErrors: [
+            { index: 1, file: "scenes/02-x.tsx", phase: "compile", message: "line 4: bad\nmore" },
+            { index: 2, file: "scenes/03-y.tsx", phase: "evaluate", message: "boom" },
+          ],
+        },
         "export",
       ),
     ).toBe(

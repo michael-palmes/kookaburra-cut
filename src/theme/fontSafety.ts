@@ -81,6 +81,7 @@ export async function vetProjectFonts(
       ref: refString(ref),
       message: verdict.error ?? "troika can't typeset this face",
       fallback: refString(fallback),
+      ...(verdict.transient ? { transient: true } : {}),
     });
   }
   return issues;

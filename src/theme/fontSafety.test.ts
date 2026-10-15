@@ -13,10 +13,14 @@ const BAD = new Map<string, string>([
   ["asset://menlo.ttf", "unknown cmap table format 6"],
   ["asset://sfmono.otf", "error: unknown encoding format: 1"],
 ]);
+const UNREADABLE = "asset://locked.ttf";
 vi.mock("./fontVet", () => ({
-  vetFontUrl: vi.fn(async (url: string) =>
-    BAD.has(url) ? { ok: false, error: BAD.get(url) } : { ok: true },
-  ),
+  vetFontUrl: vi.fn(async (url: string) => {
+    if (url === UNREADABLE) {
+      return { ok: false, transient: true, error: "couldn't read the font file (HTTP 500)" };
+    }
+    return BAD.has(url) ? { ok: false, error: BAD.get(url) } : { ok: true };
+  }),
 }));
 
 const pinned: { family: string; weight: number }[][] = [];
@@ -35,6 +39,7 @@ registerWorkspaceFont("Menlo", 400, "asset://menlo.ttf");
 registerWorkspaceFont("SF Mono", 400, "asset://sfmono.otf");
 registerWorkspaceFont("Futura", 700, "asset://futura.ttf");
 registerWorkspaceFont("Georgia", 400, "asset://georgia.ttf");
+registerWorkspaceFont("Locked", 400, UNREADABLE);
 
 const futura = { family: "Futura", weight: 700 };
 const georgia = { family: "Georgia", weight: 400 };
@@ -42,12 +47,31 @@ const menlo = { family: "Menlo", weight: 400 };
 const sfMono = { family: "SF Mono", weight: 400 };
 
 beforeEach(() => {
-  for (const url of BAD.keys()) setFontSubstitute(url, null);
+  for (const url of [...BAD.keys(), UNREADABLE]) setFontSubstitute(url, null);
   preloaded.length = 0;
   pinned.length = 0;
 });
 
 describe("vetProjectFonts", () => {
+  it("marks an unreadable font file transient so deliverables refuse", async () => {
+    const issues = await vetProjectFonts([{ family: "Locked", weight: 400 }], [futura]);
+    expect(issues).toEqual([
+      {
+        ref: "Locked@400",
+        message: "couldn't read the font file (HTTP 500)",
+        fallback: "Futura@700",
+        transient: true,
+      },
+    ]);
+  });
+
+  it("refuses to preload past an unreadable face instead of standing one in", async () => {
+    await expect(preloadAppFonts([{ family: "Locked", weight: 400 }])).rejects.toThrow(
+      /couldn't read the font file/,
+    );
+    expect(fontUrl({ family: "Locked", weight: 400 })).toBe(UNREADABLE);
+  });
+
   it("swaps a failing sidecar face for the theme's nearest-weight face and names it", async () => {
     const issues = await vetProjectFonts([futura, georgia, menlo], [futura, georgia]);
     expect(issues).toEqual([

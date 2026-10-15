@@ -3,6 +3,8 @@ import fontParser, { type TroikaParsedFont } from "troika-three-text/src/FontPar
 export interface FontVerdict {
   ok: boolean;
   error?: string;
+  /** The file couldn't be read this time (never cached); the face itself was not judged. */
+  transient?: boolean;
 }
 
 /** What troika exercises on every typeset: basic Latin lookups plus a glyph walk that builds paths and advances. */
@@ -53,7 +55,11 @@ export function vetFontUrl(url: string): Promise<FontVerdict> {
       buffer = await response.arrayBuffer();
     } catch (e) {
       fetched = false;
-      return { ok: false, error: `couldn't read the font file (${describeFontError(e)})` };
+      return {
+        ok: false,
+        transient: true,
+        error: `couldn't read the font file (${describeFontError(e)})`,
+      };
     }
     return vetFontBuffer(buffer);
   })();

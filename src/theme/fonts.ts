@@ -191,6 +191,10 @@ async function substituteUnsafeFaces(refs: readonly (FontRef | string)[]): Promi
   for (const { ref, url } of pending) {
     const verdict = await vetFontUrl(url);
     if (verdict.ok || fontSubstitutes.has(url)) continue;
+    // A read failure says nothing about the face, so fail loudly (retryable) rather than render a stand-in.
+    if (verdict.transient) {
+      throw new Error(`The font "${ref.family}" (${ref.weight}) ${verdict.error}; try again`);
+    }
     console.warn(
       `[fonts] "${ref.family}" (${ref.weight}) can't be typeset (${verdict.error}); using Inter`,
     );
