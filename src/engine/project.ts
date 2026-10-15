@@ -25,6 +25,7 @@ import { preloadEffectLuts } from "./effects";
 import { mergeFrameSpec, parseFrameSpec } from "./frameSchema";
 import { listUserPresets, listUserTemplates } from "./library";
 import { watchLibraryDocuments } from "./libraryDocuments";
+import type { FontIssue, SceneLoadError } from "./loadDiagnostics";
 import { fsUrl } from "./media";
 import { resolveSavedPosterTheme } from "./presetPosterThemes";
 import { withProjectAssetRevision } from "./projectAssetRevision";
@@ -216,6 +217,10 @@ export interface LoadedProject {
   compareBThemes: (Theme | undefined)[];
   /** Scene files whose TSX id the load rewrote to break a duplicate (`ensureUniqueSceneIds`); absent or empty when nothing was healed. */
   healedSceneIds?: string[];
+  /** Scenes that loaded as error cards; export and stills refuse while any exist. */
+  sceneErrors?: SceneLoadError[];
+  /** Fonts that failed validation and the face rendered instead. */
+  fontIssues?: FontIssue[];
   /** The manifest's declared aspects in its order; the first is where the editor opens the project until one is remembered. */
   formats: string[];
 }
