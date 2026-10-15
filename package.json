@@ -21,6 +21,7 @@
     "test": "vitest run && node --test scripts/*.test.mjs && pnpm test:kit",
     "test:kit": "python3 -B -m unittest discover -s .agents/skills/kookaburra-scene-authoring/scripts/tests -t .agents/skills/kookaburra-scene-authoring/scripts",
     "test:watch": "vitest",
+    "agent:catalog": "KB_WRITE_CATALOG=1 vitest run src/agentKit/catalog.test.ts && biome format --write .agents/skills/kookaburra-scene-authoring/catalog.json",
     "lint": "biome check .",
     "format": "biome format --write .",
     "setup:ffmpeg": "bash scripts/setup-ffmpeg.sh",
