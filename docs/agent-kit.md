@@ -258,6 +258,10 @@ plus its kind's payload. `busy` applies to every kind except `fonts` while expor
   ids re-minted). `position` is a 0-based manifest index (absent appends); `name` also
   drives the minted stem and scene id.
 
+Loads: the render window keeps one loaded project and reuses it for captures, checks
+and scene thumbnails while its id and source fingerprint are unchanged (so `check` then
+`capture` loads once); an aspect change switches the mounted tree's format in place.
+
 Trust: a request for the project open in the editor runs under the editor's session
 trust (the same re-stamp the editor already does on every load). Any other project
 loads stored-only; when its sources changed since the user allowed it, the response is

@@ -109,7 +109,7 @@ export function startBridgeService(
     return loadProject(targetId, { trustMode: "stored-only" });
   };
 
-  /** Load (or reload) `targetId` at `format` unless the mounted tree is already exactly that. */
+  /** Load (or reload) `targetId` unless the mounted tree already holds these sources. A load never depends on the aspect, so a format change re-applies the same load under a fresh identity: errored scene boundaries retry and the project stamp is the commit barrier. */
   const ensureLoaded = async (
     targetId: string,
     format: FormatSpec,
@@ -122,12 +122,15 @@ export function startBridgeService(
             () => null,
           )
         : null);
-    if (
-      !current ||
-      current.project.id !== targetId ||
-      current.fingerprint !== fingerprint ||
-      current.formatName !== format.name
-    ) {
+    if (current?.project.id === targetId && current.fingerprint === fingerprint) {
+      if (current.formatName !== format.name) {
+        const project = { ...current.project };
+        current = null;
+        apply(project, format);
+        await awaitProjectCommitted(project);
+        current = { project, fingerprint, formatName: format.name };
+      }
+    } else {
       if (sourceRevision) {
         setProjectAssetRevision(targetId, sourceRevision);
         await refreshBundledProjectAssets(targetId);
