@@ -1,120 +1,134 @@
 ---
 name: kookaburra-scene-authoring
-description: Authoring rules for Kookaburra Cut video scenes. Use when creating or editing a scene (.tsx in projects/<project>/scenes/), editing a scene document (scenes/*.json sidecar), adding a project, editing a theme (theme.json), or using toolkit primitives (Device, AnimatedHeadline, AnimatedCounter, VideoClip, ImageCard, LayeredScreenshot, SceneStage, DeviceMockup). Also use whenever the user refers to what is ON SCREEN or IN A SCENE ("what's in this scene", "what does it look like", "can you see", "check the video", "why does it look wrong"), or you need to see a rendered frame: the capture script under "Seeing your work" is how you look. Also use when animation should follow the project's soundtrack: beat data access and beat-matched authoring live in BEATS.md beside this file. Triggers on "chart", "graph", "bar chart", "column chart", "pie chart", "donut", "line chart", "area chart", "chart data", "chart style", "animate the chart", "keyframe the data", "new scene", "add a scene", "edit scene", "animate text", "text motion", "text style", "text look", "gradient text", "neon text", "build a project", "Kookaburra Cut scene", "device scene", "change the text", "scene document", "theme", "backdrop", "staging", "font", "screenshot stack", "layered screenshot", "stack of screens", "add media", "app screenshots", "overlay", "cutout", "panel", "chip", "slide", "slide deck", "slides", "screenshot", "capture", "what's on screen", "look at the scene", "beat", "beats", "sync to music", "cut on the beat", "match the music", "soundtrack", "bpm", "beat markers", "stills", "still", "use as still", "pdf", "handout", "png images", "export pdf".
+description: Edit Kookaburra Cut video projects safely and see the result. Use for ANY change in this project folder (project.json, scenes/*.tsx, scenes/*.json sidecars, assets/) and for any question about what is on screen. Triggers on new scene, edit scene, text, title, font, theme, colour, brand, background, shader, 3D background, device, phone, laptop, mockup, screen recording, screenshot stack, image, video, chart, graph, camera move, depth of field, lighting, transition, timing, duration, music, beats, overlay, slide, panel, before/after, comparison, stills, PDF handout, presentation, product demo, launch video, release notes, "what's in this scene", "how does it look", "check the video".
+when_to_use: Load before editing any project file, before answering what a scene shows (capture a frame and look), and when planning a video, deck or demo (then read DESIGN.md).
+allowed-tools: Bash(python3 ${CLAUDE_SKILL_DIR}/scripts/kb.py *)
 ---
 
-# kookaburra-scene-authoring
-
-How to author scenes for Kookaburra Cut so they render identically in preview and in deterministic export.
-
-## When to use
-
-- Creating a scene file under `projects/<project>/scenes/*.tsx`
-- Editing an existing scene or its animations
-- Adding or wiring a project (`project.json`)
-- Reaching for any `@kookaburra/toolkit` primitive
+# Kookaburra Cut projects
 
 ## Where you are
 
-You are normally running inside ONE workspace project folder (`~/Kookaburra Cut/<project>`),
-opened from the app's embedded terminal. The app the user runs is PACKAGED: Kookaburra Cut's
-source tree is not on their machine, and `src/`, `docs/` or repo paths mentioned here are
-background for you, not places to read. Stay inside the current project folder; do not
-search the workspace, home folder or wider disk unless the user gives you a specific path.
+You are in ONE project folder (`~/Kookaburra Cut/<slug>`). There is no app source here and
+nothing to build or run: the Kookaburra Cut app is the compiler, preview and exporter. It
+watches this folder and reloads within about 2 s of a save. You edit files; the app renders.
 
-## The determinism contract (why these rules exist)
+- `project.json`: scene order, durations, transitions, theme, aspects, music.
+- `scenes/<stem>.tsx`: composition (what is mounted where). `scenes/<stem>.json`: the
+  sidecar, everything the app's inspector edits (copy, devices, camera, background...).
+- `assets/`: media, referenced as `assets/<file>`.
+- Never touch `exports/`, `edits/`, `.kookaburra*` or `.claude/skills/` (app-owned).
 
-Export steps a manual clock frame-by-frame and reads pixels off ONE WebGL canvas. Frame N must be a pure function of the timeline value `t`. Anything that reads wall-clock time, animates the DOM, or renders asynchronously breaks byte-identical re-export. Every rule below traces to that.
+Run every kb command from the project folder:
+`python3 .claude/skills/kookaburra-scene-authoring/scripts/kb.py <command>`.
+Below, `kb X` means exactly that. Exit 0 ok, 1 problems found, 2 usage or app missing.
 
-## Instructions
+## The loop (every change)
 
-1. **Default-export `defineScene`.** Every scene file is exactly one `export default defineScene({ id, durationMs, Scene })`. Never export a bare component — the engine discovers scenes by this contract and `/new-scene` registers them in `project.json`. *One exception:* the module named by `project.json`'s `persistent` field (the v3 hoisted-morph layer) default-exports a plain component — see "Persistent (morph) modules" in `REFERENCE.md`. **Scene entries are 1:1 with files:** never register the same scene file (or sidecar) in `project.json`'s `scenes` twice unless the user explicitly asks; two entries sharing a file load one sidecar into both scenes (titles and subtitles collide) and the loader refuses the manifest. To repeat a scene, copy the TSX and sidecar to a fresh stem first. **Ids are unique within a project:** the app mints fresh `defineScene` ids and heals duplicates on load, so a hand-authored scene must never reuse another's id (a copied scene needs its own).
-2. **Drive animation from the timeline, never the wall clock.** Read time with `useTimeline()` and compute values from `localMs` / `progress`. Never call `requestAnimationFrame`, `setTimeout`, `setInterval`, `Date.now()`, `performance.now()`, or `new Date()`. Instead: derive every animated value from `useTimeline()`, or register tweens on the global anime.js timeline.
-3. **Render text only through toolkit primitives.** Use `AnimatedHeadline` / `AnimatedCounter` (troika SDF in WebGL). Never use HTML/DOM text, drei `<Html>`, or CSS for exported pixels — WebKit cannot deterministically capture the DOM. The available primitives are fixed by this app version: work within `AnimatedHeadline`/`AnimatedCounter` rather than inventing a new text path.
-4. **Read colours, type and motion from tokens.** Get them via `useTheme()` (e.g. `theme.colors.accent`, `theme.motion.durations.base`). Never hard-code a hex colour or pixel duration in a scene. Themes are JSON documents (v8 · schema v2): bundled `kookaburra-*` ship inside the app, user themes at `~/Kookaburra Cut/themes/<slug>/theme.json` (`ws:<slug>` ids). Text faces are theme typography (`FontRef {family, weight}`); pick them on `AnimatedHeadline` via `face="headline"|"body"` and fills via `color="text"|"muted"|"accent"`, never raw hexes or font URLs. ANY Font Book family works as a `FontRef` (theme level) or via the sidecar's `<textKey>Font` (per element); the app pins the font file into the workspace on first use, so exports stay deterministic (see "Fonts" in `REFERENCE.md`). Always pass `textKey` (the `useSceneText` key) so the app's Edit-text panel can restyle the field; a non-default design fill belongs in `defaultColor` (not `color`, which pins the fill against app edits).
-5. **Stage themed scenes with `<SceneStage>`.** Wrap the scene's content in `<SceneStage>` — it mounts the theme's lighting rig, backdrop (cyclorama floor / gradient / image, all exact-colour) and real key-light shadows when staged, and tells device/hero primitives to stand their bundled lit sets down (`useSceneStaged()`). Never hand-roll lights in a themed scene; a stage under a legacy theme (no `lighting` block) degrades to the primitives' own lighting. Per-scene looks come from the SIDECAR: `themeId` (full theme swap), `backdrop`, partial `lighting` — not from TSX edits.
-6. **Lay out against `useFormat()`, not fixed numbers.** Read `aspect`, `frame` and `safe` from `useFormat()` so one scene serves 16:9 / 9:16 / 1:1. Branch on `format.aspect < 1` for portrait rather than writing per-format files. **`frame`/`safe` are measured at the content plane `z=0`** — content offset toward the camera projects LARGER (a caption at `z=1` sits 25% further from centre than its `y` suggests and can silently clip at frame edges). Keep laid-out content at `z=0`, and visually check exports in BOTH orientations: `Verify ×2` proves byte-stability, never framing.
-7. **Reference assets by relative path inside the project.** Put media in `projects/<project>/assets/` and reference it relatively (e.g. `assets/feature.mp4`). Never use absolute paths or remote URLs — they are not portable or deterministic. To ADD media the user points at elsewhere, COPY the file into `assets/` first (the app's own pickers do the same, including its Global-screenshots tab). Before referencing any asset, CHECK it: the file exists at the exact path (case-sensitive), its extension is supported (images png/jpg/jpeg/webp/gif; videos mp4/mov/m4v/webm), and for videos `ffprobe` it (duration for `follow-media`, width/height sanity). New projects ship starter media: `assets/sample-screenshot-1..4.jpg` and `assets/app-icon.png` — use them for placeholders instead of generating anything. Before deleting or renaming an asset, grep every `scenes/*.json` and `scenes/*.tsx` for its path; a dangling reference degrades to a missing card/screen with only a console note.
-8. **Route machine-editable values through the scene document** (`scenes/<stem>.json` beside the TSX, see "Scene documents" in `REFERENCE.md`). Text has two explicit ownership modes. A code-owned scene has no `managedText`; its user-visible scene copy lives in `text` and is read with `useSceneText(key, fallback)`. A new inspector-owned scene carries authoritative flat `managedText.items`; optional `managedText.groups` references those leaf keys to make each Content Text row atomic and independently aligned. A group may contain repeated Icon, Title, Subtitle and Bullets leaves in its declared order. A block without groups resolves as one implicit group without a load-time rewrite. `text` remains only a compatibility mirror or a home for embedded labels. Scaffolded templates set `managedText.layout: "template"` so the existing composition renders the managed items. A structural inspector edit removes that layout flag and moves the scene to the generic responsive stack. Mark positioned composition copy such as comparison labels with `useSceneText(key, fallback, "embedded")` and `managedTextRole="embedded"` so it never becomes a managed line. Scaffolded device scenes read their devices from `useSceneDevices()`; edit the sidecar (managed text, device model/colour/media, motion, shadow, **camera track** (orbit keys/segments, see "Per-scene camera tracks" in `REFERENCE.md`), the v8 staging fields **`themeId`/`backdrop`/`lighting`**, the scene's display **`name`**, and the v11 fields **`background`** (camera-locked fill: colour/gradient/image, or a looping VIDEO since v12 · M4, scene-doc only) and **`textAnimation`** (whole-spec text motion, what the app's Text-motion panel writes; explicit TSX preset props override it unless `textAnimationForce: true`, the panel's Override, so prefer sidecar-driven motion on scaffolded scenes) and **`textLook`** (whole-spec text style, what the Text-style panel writes; the same force pattern via `textLookForce`, per-element via `textLookOverrides`, see "Text looks (Text style)" in `REFERENCE.md`), and the **`layeredScreenshot`** block + **`animatedTrack`** (the 3D screenshot stack and which ONE keyed track animates the scene, see "Layered screenshot" in `REFERENCE.md` for the schema, terminal recipes and inspector parity), and the **`frame`** block (the scene overlay: a camera-locked panel with a shaped cutout the scene renders through, see "Scene overlays (the frame block)" in `REFERENCE.md`), and the v14 **`chart`** block (one data visual per scene: eight types, 2D/3D, appearance + build-in presets, keyed data; the TSX is one `<Chart />` line and every knob lives in the sidecar. **Load `CHARTS.md` beside this skill before authoring or editing any chart**; `scripts/chart.py` handles data import, keyframes and a summary), and the **`stills`** block plus `"still": true` on camera keys (which frames the PDF handout and PNG images export, see "Stills (PDF handout and PNG images)" in `REFERENCE.md`)), not the TSX, for those changes. The TSX stays the composition. When you change a `follow-media` scene's video source in the sidecar, also update the scene's `durationMs` in `project.json` to the new video's length (ffprobe). A scene without a sidecar is legal; it simply shows no editing affordances.
-9. **Preview, then look.** The app the user has open IS the preview: it live-reloads within about a second of any `.tsx` or sidecar save. Before declaring done, run the validation loop below, then capture a frame (see "Seeing your work") and look at it. The same applies in reverse: when the user asks what a scene shows, how it looks, or whether something is visible, CAPTURE A FRAME AND LOOK rather than inferring from the files.
+1. `kb status`: is the app running, which project and aspect it shows, last load
+   result. Fix any listed load error before anything else.
+2. `kb checkpoint "before <what>"` (git of project.json and scenes/, not assets;
+   `kb undo` rolls back).
+3. Edit, in this order of preference:
+   - Sidecar first: `kb doc <scene> set <path> <value>` (validated, atomic).
+   - New scene: `kb scene add <stem> --preset <slug>` (`kb presets` lists them). Presets
+     carry tuned sidecars; never start from blank TSX when a preset fits.
+   - TSX only for composition the sidecar cannot express.
+4. `kb check --app` (the app's real compile, load, fonts and assets; `--render` also
+   renders each scene once).
+5. `kb capture --scene <s> --at <seconds>` and Read the PNG. When layout changed, capture
+   a landscape AND a portrait aspect (`--aspect 16:9`, `--aspect 9:16`).
+   `--frames 1@0.5,2@1.2 --sheet` captures up to 48 frames plus one contact sheet.
+6. Look hard (legibility, safe areas, overlap, colour), fix, repeat.
+7. Never end a turn with the project failing to load. `kb status` must be clean, or
+   `kb undo` back to the checkpoint and say so.
 
-## Helper scripts
+When the user asks what a scene shows or how it looks: capture and look. Never infer
+visuals from code.
 
-Bundled beside this skill (`.claude/skills/kookaburra-scene-authoring/scripts/`, python3),
-run from the project folder; prefer these over opening files one by one:
+## Hard rules
 
-```bash
-python3 .claude/skills/kookaburra-scene-authoring/scripts/inspect.py
-    # project summary: scenes, durations, sidecar text and overrides in one shot
-python3 .claude/skills/kookaburra-scene-authoring/scripts/sidecar.py 01-hero get managedText
-    # get / set / unset any sidecar value by dotted path (values parsed as JSON, else string)
-python3 .claude/skills/kookaburra-scene-authoring/scripts/theme.py show
-    # resolved theme + tokens; `set colors.accent "#ff5a36"` edits workspace themes
-python3 .claude/skills/kookaburra-scene-authoring/scripts/capture.py --scene 2 --at 1.5
-    # a rendered frame from the RUNNING app (see "Seeing your work")
-python3 .claude/skills/kookaburra-scene-authoring/scripts/chart.py 03-results show
-    # chart block at a glance; also `seed`, `set-data <csv>`, `add-key <tMs>` (see CHARTS.md)
-python3 .claude/skills/kookaburra-scene-authoring/scripts/beats.py --scene 2
-    # soundtrack beat times in scene-local ms (see "Matching the soundtrack")
-```
+- Scenes import ONLY from `@kookaburra/toolkit`. No `react`, `three`, drei, anime.js,
+  relative files or other scenes. React hooks (`useMemo`, `useState`, `useEffect`,
+  `useRef`) are unavailable; r3f intrinsics (`<group>`, `<mesh>`, geometries,
+  materials, lights) work.
+- One `export default defineScene({ id, durationMs, Scene })` per file, with a literal
+  `id` unique in the project.
+- Motion is a pure function of `useTimeline().localMs` (scene-local ms). `progress` is
+  PROJECT-wide; never use it for scene motion. No `Date`, `performance.now`,
+  `requestAnimationFrame`, timers or `Math.random` (use `createSeededRandom`).
+- Text only through toolkit primitives (AnimatedHeadline, TitleBlock, BrandLockup,
+  AnimatedCounter, ExtrudedText). Never DOM, HTML or drei `Html`.
+- Colours, type and motion from `useTheme()` tokens; per-element exceptions go in the
+  sidecar `textStyle`, never hard-coded in TSX.
+- Lay out with `useFormat()`: `frame` and `safe` are world units at z = 0; branch on
+  `aspect < 1` for portrait.
+- Assets live in `assets/` (copy in with `kb assets add`); exact case; images png, jpg,
+  jpeg, webp; videos mp4, mov, m4v, webm.
+- Fonts: bundled families are always safe (`kb fonts safe`). Any other Font Book family
+  needs `kb fonts check "Family@weight"` first; a face that fails silently falls back.
+- `kb doc` paths walk objects and array indexes (`devices.0.colour`); a write that
+  would add errors is refused, so read the message instead of forcing it.
 
-## Seeing your work
+## Live edits
 
-The app cannot show you pixels directly; capture a frame and Read the PNG:
+The app being open is fine and expected. Every save reloads within about 2 s. A scene
+that fails to compile or load becomes an error card ("This scene can't load", the file
+and the first error line) while the rest of the project opens; `kb status` names it.
+Export, stills and verify refuse while any card exists. If a reload fails outright the
+app keeps the last good project under a danger banner. Fix the file and the next save
+recovers. Never tell the user to close or reopen the app as a fix. If kb reports the
+project needs trust (a project not open in the app, edited since the user last allowed
+it), ask the user to open it once in the app.
 
-```bash
-python3 .claude/skills/kookaburra-scene-authoring/scripts/capture.py
-    # current playhead of this project, at the app's current aspect
-python3 .claude/skills/kookaburra-scene-authoring/scripts/capture.py --scene 01-hero --at 1.5
-```
+## Capability map
 
-This asks the RUNNING Kookaburra Cut app for a deterministic frame (the export
-path, so what you see is what exports) and prints the PNG path. The frame renders
-in a hidden background window, so capturing never disturbs the user's editing.
-Playhead captures (no `--scene`) need the requested project open in the app;
-`--scene` captures serve any project on disk. If the app is exporting, the script
-retries briefly on its own. Captures are visually exact but carry
-`surface: "render-window"`: for byte-level hash disputes use
-`--action screenshot` (docs/determinism.md, "The capture bridge surface").
+| To change | Edit | Read | Ids |
+| --- | --- | --- | --- |
+| Words, titles, bullets | `text` or `managedText` | reference/text.md | |
+| One line's font, size, colour, nudge | `textStyle.<key>Font/Size/Color/OffsetY` | reference/text.md | `kb fonts safe` |
+| How text arrives, text style | `textAnimation`, `textLook` | reference/text.md | `textMotion`, `textLooks` |
+| Whole look | `themeId` (project or scene) | reference/project.md | `themes` |
+| Background, floor | `background`, `backdrop` | reference/backgrounds.md | `backgrounds.shaders`, `backgrounds.scene3d` |
+| Lighting, exposure | `lighting`; project `render` | reference/lighting.md | `lighting.presets` |
+| Phones, laptops, tablets | `devices`, `deviceLayout`, `deviceTrack` | reference/devices.md | `devices`, `deviceShadows` |
+| Before/after wipe | `compare` | reference/devices.md | `compare.presets` |
+| Camera moves, depth of field | `camera`, `cameraRig`, key `dof` | reference/camera.md | `camera.presets`, `eases` |
+| Images, videos, screenshot stacks | `media`, `layeredScreenshot`, video `background` | reference/media.md | `mediaMotion` |
+| Charts and numbers | `chart` | reference/charts.md | `charts.styles`, `charts.animations` |
+| Slide panel, overlay, stills, PDF | `frame`, `stills` | reference/sidecar.md | `chipIcons` |
+| Order, duration, transitions, music | `kb scene`, `project.json` | reference/project.md | `transitions` |
+| Sync to the soundtrack | camera keys, text timing | reference/beats.md | |
+| New scene, custom 3D composition | `kb scene add`, TSX | reference/scenes.md | `presets`, `toolkit.exports` |
 
-## Matching the soundtrack
+Ids: `kb catalog <family>` (nested families are dotted, such as `backgrounds.shaders`
+or `lighting.presets`; `--json` prints full entries; `--search <word>` finds ids).
 
-When a project has a soundtrack and the ask involves beats, rhythm or "sync to
-the music", read `BEATS.md` beside this file BEFORE authoring: it covers getting
-beat times via `scripts/beats.py` (bpm, key moments and the beat grid in
-scene-local ms), hard cuts on beats (`"jump"` camera segments) versus smooth
-moves that land on beats, spacing rules, and the `audio.markers` override block.
+## Routing
 
-## Validation loop
+DESIGN.md before planning a video, deck, demo or launch. Topic files in reference/:
+project (project.json, themes, transitions, music, effects), sidecar (every key,
+overlays, stills, keyed tracks), scenes (TSX), text (copy, fonts, motion, looks),
+devices (devices, layouts, objects, before/after), camera, backgrounds, lighting, media,
+charts, beats. Worked examples: `kb presets show <slug>`, and template scenes under the
+app's Resources folder (`kb status` prints it): `projects/<template>/scenes/`.
 
-There is no build tool in this folder; the app compiles workspace scenes itself.
+## kb cheat sheet
 
-1. Save the file. The app reloads within about a second.
-2. If the stage shows the red error panel ("This project can't load right now"),
-   that text is the exact compile error with file and line; fix it and the panel
-   clears on the next save.
-3. Once clean, capture a frame (see "Seeing your work") and look at it before
-   declaring the change done.
-
-If a scene looks right in preview but differs on re-export, the cause is almost always a wall-clock read or an unpreloaded font/asset.
-
-## Example
-
-```tsx
-import { defineScene, AnimatedHeadline, SceneStage, useSceneText } from "@kookaburra/toolkit";
-
-export default defineScene({
-  id: "hello",
-  durationMs: 3000,
-  Scene() {
-    const title = useSceneText("title", "Hello");
-    return (
-      <SceneStage>
-        <AnimatedHeadline text={title} textKey="title" from={0} to={600} position={[0, 0, 0]} />
-      </SceneStage>
-    );
-  },
-});
-```
-
-See `REFERENCE.md` for the full primitive + token catalogue; this project's own `scenes/` folder has real worked examples.
+| Command | Does |
+| --- | --- |
+| `kb status`, `kb context` | App, open project, aspect, last load errors; session summary |
+| `kb scenes` | Roster: index, stem, name, duration, transition, text |
+| `kb check [--app] [--render] [files]` | Static checks; `--app` real compile and load |
+| `kb capture [--scene S] [--at T] [--aspect A] [--frames S@T,...] [--sheet]` | Rendered PNGs to Read |
+| `kb scene add <name> --preset P [--after S \| --at N] [--duration MS] [--name N]` | Insert a preset scene, numbered stem (or `--copy S`); default position is the end |
+| `kb scene duplicate S`, `move S --to N`, `remove S`, `set S --duration MS --transition TYPE:MS\|none --ease E` | Manifest-safe scene operations (indexes 0-based) |
+| `kb doc S get [path]`, `set path value [--string]`, `unset path`, `merge JSON` | Sidecar edits; values parse as JSON, else string; merge is a JSON merge patch |
+| `kb project get [path]`, `kb project set path value` | project.json fields other than scenes |
+| `kb theme list`, `show [id]`, `set path value` | Themes and tokens |
+| `kb fonts safe`, `check REF...`, `list` | Font safety |
+| `kb presets [list \| show SLUG]` | Scene presets with preview images |
+| `kb catalog [FAMILY] [--search Q]` | Ids and enums from the app's registries |
+| `kb assets list`, `add PATH [--name N]`, `probe ASSET` | Media in, never overwriting; ffprobe |
+| `kb checkpoint [MSG]`, `history`, `undo [REV]`, `diff` | Git safety net |
+| `kb beats ...`, `kb chart ...` | Soundtrack beats; chart data and keys |

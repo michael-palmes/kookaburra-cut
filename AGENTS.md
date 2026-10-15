@@ -19,7 +19,8 @@ pnpm install            # install JS deps
 pnpm setup:ffmpeg       # provision the ffmpeg sidecar (dev copy of system ffmpeg)
 pnpm tauri dev          # run the app (Vite HMR + WKWebView shell)
 pnpm build              # tsc --noEmit + vite build
-pnpm test               # vitest
+pnpm test               # vitest + node tests + the kb suite (pnpm test:kit)
+pnpm agent:catalog      # regenerate the project kit's catalog.json after any registry change
 pnpm lint               # biome check .
 pnpm format             # biome format --write .
 
@@ -130,7 +131,7 @@ When creating or editing anything under `projects/*/scenes/`, **use the `kookabu
 
 Project skills are authored only in `.agents/skills`. Keep `.claude/skills` as the relative symlink `../.agents/skills`, and use `kookaburra-skill-creator` for every skill change.
 
-- Skill `kookaburra-scene-authoring`: scene rules + toolkit `REFERENCE.md`.
+- Skill `kookaburra-scene-authoring`: the kit stamped into every user project (SKILL.md loop and rules, RULES.md, DESIGN.md, `reference/` topic files, the generated `catalog.json`, the `kb` tool in `scripts/`). Users have no app source, so keep it accurate for a bare project folder.
 - Skill `kookaburra-background-authoring`: new animated backgrounds + the preset colour contract (`docs/backgrounds.md`).
 - Skill `kookaburra-lighting-authoring`: v9 scene lighting (layers, light spaces, fixtures, HDRIs, keyframes, tone mapping).
 - Skill `kookaburra-export-presets`: export preset schema + terminal flows.
@@ -138,6 +139,7 @@ Project skills are authored only in `.agents/skills`. Keep `.claude/skills` as t
 - Skill `kookaburra-skill-creator`: create new project skills/commands/primitives.
 - Skill `kookaburra-commit`: plan and create every commit (review, logical grouping, conventional messages).
 - Skill `kookaburra-pr-descriptions`: the fixed PR title/description standard; use for every PR opened in this repo.
+- Docs `docs/agent-kit.md`: how Claude Code edits user projects (kit layout and stamping, `kb`, hooks, the bridge v2 heartbeat and requests, load safety, conflict-aware live edits, the catalogue). Read it before touching `.agents/skills/kookaburra-scene-authoring/`, `src-tauri/src/kit.rs`, `bridge.rs`, `live_edits.rs`, `src/render/bridge*.ts`, `src/engine/sceneDoc*.ts`, `src/theme/fontSafety.ts`/`fontVet.ts` or `src/agentKit/`.
 - Docs `docs/content-library.md`: editable templates, the shared Add a scene/App presets catalogue and standalone theme editing, including scoped IDs, reuse and preview ownership.
 - Docs `docs/packs.md`: the `.kbpack` format (archive layout, manifest, signing and TOFU, the extraction checklist, the conflict table). Read it before touching `src-tauri/src/pack/`.
 - Docs `docs/charts.md`: the chart subsystem (the sidecar `chart` block, the three mounts, the appearance and build-in preset catalogues, palette and number-formatting rules, the keyframed data track). Read it before touching `src/toolkit/chart/` or `src/engine/sceneChart.ts`.
