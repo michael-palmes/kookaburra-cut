@@ -913,6 +913,17 @@ camera exactly:
   + pinned URLs) in the export preamble; `ensureThemeFontsPinned` is awaited by
   `loadProject` BEFORE scenes render, so `fontUrl` stays a synchronous lookup at
   render time.
+- **Unsafe faces never reach troika.** One throw inside troika's font XHR
+  callback leaves every pending `preloadFont` unsettled, so a single bad face
+  hung the whole load. `loadProject` and `preloadAppFonts` first run every
+  non-bundled face through troika's own parser (theme/fontVet.ts: parse,
+  basic-Latin lookups, a glyph walk; verdicts cached per URL). A face that throws
+  is swapped by URL for the theme's nearest-weight safe face (else Inter) and
+  named in `LoadedProject.fontIssues`; healthy faces are untouched. The troika
+  patch also lets `Typr.U.codeToGlyph` fall through an unreadable cmap subtable
+  to the next readable one (format 6 read last): every face that rendered before
+  keeps its exact subtable (901 installed faces compared glyph for glyph, zero
+  differences), so no baseline moves.
 - **3D text stays bundled.** `ExtrudedText` typefaces (converted outlines, one
   per family at the default weight, `pnpm assets:text3d-font`) cover the bundled
   set only; system-font refs fall back to Inter there. The converter is
@@ -1261,7 +1272,8 @@ tier is under "Gate tiers" and the baselines under "Current baselines".
 
 ### The capture bridge surface (the hidden render window)
 
-Live captures (`capture.py`, scene thumbs) are served by the hidden `render`
+Live captures (`kb capture` and `kb check --render` over bridge v2, the legacy
+`capture.py`, scene thumbs; docs/agent-kit.md) are served by the hidden `render`
 window: its own realm and WebContent process, the same `renderComposited` seam
 and export barriers, driven rAF-free so it renders while hidden. Three measured
 facts (2026-08-07) define its contract:
@@ -1279,6 +1291,9 @@ facts (2026-08-07) define its contract:
   1 s, so the render realm opts into MessageChannel yields for the settle
   barriers (`engine/macrotask.ts`); visible windows keep the proven setTimeout
   path. Neither yield primitive affects pixels, only wall time.
+
+A capture's contact sheet (`sheet`) scales its frames into a labelled 2D canvas
+grid: diagnostic output, never hashed or compared.
 
 The autorun surface (env-gated, cold-boot, one run at a time via the FIFO run
 queue) is unchanged; neither surface may regress the other.

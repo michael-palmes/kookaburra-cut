@@ -1,0 +1,146 @@
+{
+  "version": 1,
+  "appVersion": "0.19.0-test",
+  "aspects": [
+    { "id": "16:9", "label": "16:9", "summary": "3840x2160 landscape" },
+    { "id": "9:16", "label": "9:16", "summary": "2160x3840 portrait" },
+    { "id": "1:1", "label": "1:1", "summary": "2160x2160 square" },
+    { "id": "4:5", "label": "4:5", "summary": "2160x2700 portrait social" }
+  ],
+  "transitions": [
+    { "id": "crossfade", "label": "Crossfade", "summary": "Dissolve between scenes" },
+    { "id": "dip", "label": "Dip", "summary": "Fade through a colour" },
+    { "id": "glasssweep", "label": "Glass sweep", "summary": "A glass band sweeps across" },
+    { "id": "wipe", "label": "Wipe", "summary": "Hard edge wipe" }
+  ],
+  "eases": [{ "id": "linear" }, { "id": "inOutQuad" }, { "id": "outQuad" }, { "id": "inOutCubic" }],
+  "textMotion": [
+    { "id": "none", "label": "None" },
+    { "id": "fade-up", "label": "Fade up", "summary": "Rises while fading in" },
+    { "id": "fade", "label": "Fade" }
+  ],
+  "textLooks": [
+    { "id": "gradient", "label": "Gradient" },
+    { "id": "neon", "label": "Neon", "summary": "Glowing tube" }
+  ],
+  "themes": [
+    { "id": "kookaburra-default", "label": "Default", "summary": "Dark studio" },
+    { "id": "kookaburra-midnight", "label": "Midnight", "summary": "Deep blue night" },
+    { "id": "kookaburra-studio-white", "label": "Studio white", "summary": "Bright studio" }
+  ],
+  "backgrounds": {
+    "types": ["none", "color", "gradient", "image", "video", "scene3d", "shader"],
+    "shaders": [{ "id": "mesh-gradient", "label": "Mesh gradient" }],
+    "scene3d": [{ "id": "aurora-ribbons", "label": "Aurora ribbons" }],
+    "gradients": [{ "id": "dusk", "label": "Dusk" }],
+    "images": [{ "id": "studio-floor", "label": "Studio floor" }]
+  },
+  "lighting": [{ "id": "studio", "label": "Studio" }],
+  "effects": [{ "id": "bloom", "label": "Bloom" }],
+  "devices": [
+    { "id": "iphone-17-pro", "label": "iPhone 17 Pro" },
+    { "id": "android", "label": "Android phone" },
+    { "id": "macbook-pro-16", "label": "MacBook Pro 16" }
+  ],
+  "deviceShadows": [{ "id": "soft" }, { "id": "long" }, { "id": "none" }],
+  "deviceMotion": [{ "id": "none" }, { "id": "turntable" }, { "id": "float" }],
+  "deviceLayouts": [{ "id": "row" }, { "id": "toe-in" }],
+  "camera": { "presets": [{ "id": "push-in", "label": "Push in" }], "dof": [{ "id": "soft" }] },
+  "compare": [{ "id": "wipe", "label": "Wipe" }],
+  "charts": { "types": [{ "id": "column" }, { "id": "bar" }, { "id": "line" }] },
+  "chipIcons": [{ "id": "check" }],
+  "bulletMarkers": [
+    { "id": "dot" },
+    { "id": "dash" },
+    { "id": "tick" },
+    { "id": "number" },
+    { "id": "none" }
+  ],
+  "fonts": {
+    "bundled": [
+      { "id": "Inter", "family": "Inter", "weights": [400, 600] },
+      { "id": "JetBrains Mono", "family": "JetBrains Mono", "weights": [400] },
+      { "id": "Lora", "family": "Lora", "weights": [400] },
+      { "id": "Space Grotesk", "family": "Space Grotesk", "weights": [400, 600] }
+    ]
+  },
+  "sceneDoc": {
+    "version": 1,
+    "keys": [
+      "version",
+      "name",
+      "duration",
+      "text",
+      "textLayout",
+      "textStyle",
+      "headerIcon",
+      "managedText",
+      "devices",
+      "media",
+      "images",
+      "deviceLayout",
+      "deviceTrack",
+      "objects",
+      "camera",
+      "cameraMode",
+      "cameraRig",
+      "themeId",
+      "backdrop",
+      "background",
+      "textAnimation",
+      "textAnimationForce",
+      "textAnimationOverrides",
+      "textLook",
+      "textLookForce",
+      "textLookOverrides",
+      "lighting",
+      "frame",
+      "layeredScreenshot",
+      "videoWindow",
+      "compare",
+      "chart",
+      "terminal",
+      "website",
+      "animatedTrack",
+      "stills"
+    ]
+  },
+  "projectManifest": {
+    "version": 2,
+    "keys": [
+      "id",
+      "name",
+      "group",
+      "audio",
+      "themeId",
+      "typography",
+      "formats",
+      "version",
+      "scenes",
+      "camera",
+      "persistent",
+      "frame",
+      "render",
+      "lighting",
+      "appliedBackground",
+      "defaultTransition"
+    ]
+  },
+  "toolkit": {
+    "imports": ["@kookaburra/toolkit"],
+    "exports": [
+      { "id": "defineScene" },
+      { "id": "SceneStage" },
+      { "id": "TitleBlock" },
+      { "id": "useFormat" },
+      { "id": "useSceneText" },
+      { "id": "useTheme" },
+      { "id": "useTimeline" },
+      { "id": "Device" },
+      { "id": "AnimatedHeadline" },
+      { "id": "createSeededRandom" }
+    ]
+  },
+  "presets": [{ "id": "title", "label": "Title", "summary": "A title on the theme background" }],
+  "templates": [{ "id": "blank", "label": "Blank" }]
+}

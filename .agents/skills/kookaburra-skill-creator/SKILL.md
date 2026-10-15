@@ -27,7 +27,7 @@ Builds new in-repo skills, commands and primitives for Kookaburra Cut that actua
 4. **Place it correctly.**
    - Skill → `.agents/skills/<name>/SKILL.md` (+ `REFERENCE.md` if it would exceed ~250 lines).
    - Command → `.claude/commands/<name>.md`.
-   - Primitive → `src/toolkit/<area>/<Name>.tsx`, exported from `src/toolkit/index.ts`, documented in `kookaburra-scene-authoring/REFERENCE.md`.
+   - Primitive → `src/toolkit/<area>/<Name>.tsx`, exported from `src/toolkit/index.ts`, documented in `kookaburra-scene-authoring/reference/scenes.md` (or its topic file), then `pnpm agent:catalog`.
 5. **Write to the quality bar** (below). No vague rules.
 6. **Verify immediately.** Run `test -L .claude/skills`, `test "$(readlink .claude/skills)" = "../.agents/skills"`, `test .agents/skills -ef .claude/skills`, then the relevant project checks. Fix and rerun until clean before responding.
 
@@ -52,7 +52,7 @@ Builds new in-repo skills, commands and primitives for Kookaburra Cut that actua
 - [ ] SKILL.md under ~250 lines (split to REFERENCE.md if not)
 - [ ] One capability only
 - [ ] Skill authored under `.agents/skills`, with `.claude/skills` linked to it
-- [ ] New primitive exported from `src/toolkit/index.ts` and added to REFERENCE.md
+- [ ] New primitive exported from `src/toolkit/index.ts`, added to the scene-authoring `reference/` and the catalogue regenerated
 
 ## Example: SKILL.md skeleton
 

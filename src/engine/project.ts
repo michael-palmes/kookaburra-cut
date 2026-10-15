@@ -5,6 +5,7 @@ import type { ComponentType } from "react";
 import { TextureLoader } from "three";
 import { assetVersionSuffix, useAssetVersionStore } from "../store/assetVersionStore";
 import { parseFontString } from "../theme/fontRef";
+import { vetProjectFonts } from "../theme/fontSafety";
 import { collectThemeFontRefs, preloadAppFonts } from "../theme/fonts";
 import { resolveTheme } from "../theme/registry";
 import type {
@@ -25,11 +26,18 @@ import { preloadEffectLuts } from "./effects";
 import { mergeFrameSpec, parseFrameSpec } from "./frameSchema";
 import { listUserPresets, listUserTemplates } from "./library";
 import { watchLibraryDocuments } from "./libraryDocuments";
+import {
+  clearRenderErrors,
+  type FontIssue,
+  type SceneLoadError,
+  type SceneLoadPhase,
+} from "./loadDiagnostics";
 import { fsUrl } from "./media";
 import { resolveSavedPosterTheme } from "./presetPosterThemes";
 import { withProjectAssetRevision } from "./projectAssetRevision";
 import { ensureProjectTrusted } from "./projectTrust";
 import { parseRenderSettings, type RenderSettings } from "./renderSettings";
+import { sceneErrorCard } from "./SceneErrorCard";
 import { ensureSampleAssets } from "./sampleAssets";
 import { deriveCompareBDoc } from "./sceneCompare";
 import { compileSceneModule } from "./sceneCompiler";
@@ -216,6 +224,14 @@ export interface LoadedProject {
   compareBThemes: (Theme | undefined)[];
   /** Scene files whose TSX id the load rewrote to break a duplicate (`ensureUniqueSceneIds`); absent or empty when nothing was healed. */
   healedSceneIds?: string[];
+  /** Scenes that loaded as error cards; export and stills refuse while any exist. */
+  sceneErrors?: SceneLoadError[];
+  /** Fonts that failed validation and the face rendered instead. */
+  fontIssues?: FontIssue[];
+  /** Non-fatal load problems the project degraded around (a LUT that failed to load), one sentence each. */
+  loadWarnings?: string[];
+  /** Degradations a deliverable must not ship with (a dropped LUT, an unreadable font file), each a clause that reads after "Can't export while". */
+  exportBlockers?: string[];
   /** The manifest's declared aspects in its order; the first is where the editor opens the project until one is remembered. */
   formats: string[];
 }
@@ -808,15 +824,52 @@ export async function preloadProjectImages(projectId: string): Promise<void> {
 /** Compiled workspace modules, keyed `slug/file@token`: a module is reused until the reload token bumps (UI writes never bump it). Rejections evict themselves so a fixed scene recompiles on the next load. */
 const wsCompiledModules = new Map<string, Promise<unknown>>();
 
+/** A scene module that failed to load, tagged with where: reading or compiling ("compile"), running its top level ("evaluate"), or its default export ("export"). */
+export class SceneModuleError extends Error {
+  readonly phase: SceneLoadPhase;
+  constructor(phase: SceneLoadPhase, message: string) {
+    super(message);
+    this.name = "SceneModuleError";
+    this.phase = phase;
+  }
+}
+
+function errorText(e: unknown): string {
+  if (!(e instanceof Error)) return String(e);
+  return e.name && e.name !== "Error" ? `${e.name}: ${e.message}` : e.message;
+}
+
+/** esbuild's diagnostics without the "Scene … failed to compile:" lead line, so the first line names the problem. */
+export function compileErrorDetail(message: string): string {
+  const lines = message
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (lines.length > 1 && /failed to compile:$/.test(lines[0])) lines.shift();
+  return lines.join("\n");
+}
+
 async function importCompiledWorkspaceModule<T>(slug: string, file: string): Promise<T> {
   const key = `${slug}/${file}@${workspaceReloadToken}`;
   let pending = wsCompiledModules.get(key);
   if (!pending) {
     pending = (async () => {
-      const source = await invoke<string>("read_scene_source", { slug, file });
-      const url = await compileSceneModule(source, file);
+      let source: string;
+      try {
+        source = await invoke<string>("read_scene_source", { slug, file });
+      } catch (e) {
+        throw new SceneModuleError("compile", `couldn't read the file: ${errorText(e)}`);
+      }
+      let url: string;
+      try {
+        url = await compileSceneModule(source, file);
+      } catch (e) {
+        throw new SceneModuleError("compile", compileErrorDetail(errorText(e)));
+      }
       try {
         return await import(/* @vite-ignore */ url);
+      } catch (e) {
+        throw new SceneModuleError("evaluate", errorText(e));
       } finally {
         // The module is fully instantiated once the import resolves; the URL is done.
         URL.revokeObjectURL(url);
@@ -848,9 +901,40 @@ async function importProjectModule<T>(
   const path = `${bundledProjectDir(projectId)}/${file}`;
   const load = glob[path];
   if (!load) {
-    throw new Error(`${what} "${path}" not found (referenced by ${projectId}/project.json).`);
+    throw new SceneModuleError(
+      "compile",
+      `${what} "${path}" not found (referenced by ${projectId}/project.json).`,
+    );
   }
-  return load();
+  try {
+    return await load();
+  } catch (e) {
+    throw new SceneModuleError("evaluate", errorText(e));
+  }
+}
+
+/** One scene module, or the reason it can't render; never throws, so one bad file can't sink the project. */
+async function loadSceneModule(
+  projectId: string,
+  entry: ProjectManifest["scenes"][number],
+): Promise<SceneModule | { phase: SceneLoadPhase; message: string }> {
+  try {
+    const scene = (
+      await importProjectModule<{ default: SceneModule }>(sceneGlob, projectId, entry.file, "Scene")
+    ).default;
+    if (!scene || typeof scene.Scene !== "function") {
+      return {
+        phase: "export",
+        message: "it must default-export defineScene({ id, durationMs, Scene })",
+      };
+    }
+    // The manifest's durationMs is authoritative for sequencing.
+    return { ...scene, durationMs: entry.durationMs ?? scene.durationMs };
+  } catch (e) {
+    return e instanceof SceneModuleError
+      ? { phase: e.phase, message: e.message }
+      : { phase: "evaluate", message: errorText(e) };
+  }
 }
 
 /** A project must reference each scene file once: shared files load one sidecar into two scenes and every text key collides. */
@@ -964,18 +1048,20 @@ export async function loadProject(
     await refreshWorkspaceEnvironments(id);
   }
 
+  // A scene that fails to read, compile, evaluate or export loads as an error card with its manifest duration; only a broken manifest fails the whole project.
   const scenes: SceneModule[] = [];
-  for (const entry of manifest.scenes) {
-    const scene = (
-      await importProjectModule<{ default: SceneModule }>(sceneGlob, id, entry.file, "Scene")
-    ).default;
-    if (!scene || typeof scene.Scene !== "function") {
-      throw new Error(
-        `Scene "${entry.file}" must default-export defineScene({ id, durationMs, Scene }).`,
-      );
+  const sceneErrors: SceneLoadError[] = [];
+  for (const [index, entry] of manifest.scenes.entries()) {
+    const loaded = await loadSceneModule(id, entry);
+    if ("Scene" in loaded) {
+      scenes.push(loaded);
+      continue;
     }
-    // The manifest's durationMs is authoritative for sequencing.
-    scenes.push({ ...scene, durationMs: entry.durationMs ?? scene.durationMs });
+    console.warn(`[project] scene "${entry.file}" can't load (${loaded.phase}): ${loaded.message}`);
+    sceneErrors.push({ index, file: entry.file, ...loaded });
+    const durationMs =
+      typeof entry.durationMs === "number" && entry.durationMs > 0 ? entry.durationMs : 3000;
+    scenes.push(sceneErrorCard({ file: entry.file, message: loaded.message, durationMs }));
   }
 
   // Sidecar scene documents, keyed off each entry's file stem; missing → undefined.
@@ -1039,6 +1125,11 @@ export async function loadProject(
     ...collectSceneDocFontRefs(sceneDocs),
   ];
   await ensureFontRefsPinned(fontRefs);
+  // Every non-bundled face goes through troika's own parser first: one that would throw is swapped for a theme face before troika ever loads it.
+  const fontIssues = await vetProjectFonts(fontRefs, [
+    theme.typography.headline,
+    theme.typography.body,
+  ]);
 
   // Pre-generate every project's glyphs BEFORE the scenes mount: troika's shared SDF atlas assigns cells in typeset order, so mount-time typesets racing font loads would claim cells in per-boot order (the showcase-tour ±LSB hash lottery); the sequential preload pins the atlas layout so scenes' own typesets find every glyph already generated. See theme/fonts.ts and docs/determinism.md ("Fonts").
   await preloadAppFonts(fontRefs);
@@ -1051,7 +1142,7 @@ export async function loadProject(
   manifest.scenes.forEach((entry, i) => {
     if (entry.effects) effectOverrides[i] = resolveLutUrls(id, entry.effects);
   });
-  const effects = resolveLutUrls(id, theme.effects ?? {});
+  let effects = resolveLutUrls(id, theme.effects ?? {});
 
   // The project-default lighting layer: validated with the usual degrade guard, so a malformed block loads the project unlit rather than failing the load.
   const projectLighting =
@@ -1066,28 +1157,58 @@ export async function loadProject(
     if (doc?.themeId) sceneEffectDefaults[i] = resolveLutUrls(id, sceneThemes[i].effects ?? {});
   });
 
-  // LUT textures must be cached before the effects store publishes them; the composer chain builds synchronously on the next rendered frame. (The export preamble re-awaits; no-op.)
-  await preloadEffectLuts({
-    effects,
-    overrides: effectOverrides,
-    sceneDefaults: sceneEffectDefaults,
-  });
+  // LUT textures must be cached before the effects store publishes them; the composer chain builds synchronously on the next rendered frame. (The export preamble re-awaits; no-op.) A LUT that fails to load degrades to no LUT rather than failing the project.
+  const loadWarnings: string[] = [];
+  const exportBlockers: string[] = fontIssues
+    .filter((issue) => issue.transient)
+    .map((issue) => `the font file for ${issue.ref} couldn't be read (${issue.message})`);
+  try {
+    await preloadEffectLuts({
+      effects,
+      overrides: effectOverrides,
+      sceneDefaults: sceneEffectDefaults,
+    });
+  } catch (e) {
+    console.warn("[project] LUT unavailable, loading without it:", e);
+    loadWarnings.push(
+      `The colour LUT couldn't load, so the project renders without it: ${errorText(e)}`,
+    );
+    exportBlockers.push(`the colour LUT couldn't load (${errorText(e)})`);
+    effects = withoutLut(effects);
+    for (const key of Object.keys(effectOverrides)) {
+      effectOverrides[Number(key)] = withoutLut(effectOverrides[Number(key)]);
+    }
+    for (const key of Object.keys(sceneEffectDefaults)) {
+      sceneEffectDefaults[Number(key)] = withoutLut(sceneEffectDefaults[Number(key)]);
+    }
+  }
 
-  // Resolve the persistent (hoisted morph) module, if the project declares one.
+  // Resolve the persistent (hoisted morph) module, if the project declares one; a broken one is recorded (index -1, so export refuses) and the project opens without the layer.
   let persistent: ComponentType | undefined;
   if (manifest.persistent) {
-    persistent = (
-      await importProjectModule<{ default: ComponentType }>(
-        persistentGlob,
-        id,
-        manifest.persistent,
-        "Persistent module",
-      )
-    ).default;
-    if (typeof persistent !== "function") {
-      throw new Error(
-        `Persistent module "${manifest.persistent}" must default-export a component.`,
-      );
+    try {
+      persistent = (
+        await importProjectModule<{ default: ComponentType }>(
+          persistentGlob,
+          id,
+          manifest.persistent,
+          "Persistent module",
+        )
+      ).default;
+      if (typeof persistent !== "function") {
+        persistent = undefined;
+        throw new SceneModuleError("export", "it must default-export a component");
+      }
+    } catch (e) {
+      const failure =
+        e instanceof SceneModuleError ? e : new SceneModuleError("evaluate", errorText(e));
+      console.warn(`[project] persistent module "${manifest.persistent}" can't load:`, e);
+      sceneErrors.push({
+        index: -1,
+        file: manifest.persistent,
+        phase: failure.phase,
+        message: failure.message,
+      });
     }
   }
 
@@ -1114,9 +1235,11 @@ export async function loadProject(
     }
   }
 
+  // Every scoped id (workspace projects, templates, presets) survives the load: the asset resolvers route on it, and only a plain bundled project falls back to its manifest id.
+  const loadedId = parseProjectId(id).scope === "bundled" ? manifest.id : id;
+  clearRenderErrors(loadedId);
   return {
-    // Every scoped id (workspace projects, templates, presets) survives the load: the asset resolvers route on it, and only a plain bundled project falls back to its manifest id.
-    id: parseProjectId(id).scope === "bundled" ? manifest.id : id,
+    id: loadedId,
     name: manifest.name,
     theme,
     scenes,
@@ -1139,6 +1262,16 @@ export async function loadProject(
     compareBDocs,
     compareBThemes,
     healedSceneIds,
+    sceneErrors,
+    fontIssues,
+    loadWarnings,
+    exportBlockers,
     formats: manifest.formats ?? [],
   };
+}
+
+function withoutLut<T extends EffectsConfig | EffectsOverride>(cfg: T): T {
+  if (!cfg.lut) return cfg;
+  const { lut: _lut, ...rest } = cfg;
+  return rest as T;
 }

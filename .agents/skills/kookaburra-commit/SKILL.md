@@ -24,6 +24,11 @@ Reviews all uncommitted changes, groups them into logical conventional commits a
    - Leftover debug output (`console.log`, `debugger`), secrets, dead code, TODO without an owner
    - Accidental files: `.DS_Store`, `dist/`, `node_modules/`, export output
    - House writing rules broken: em dashes, multi-line comments, comments that restate the code
+   - Private workspace names (this leaked once and forced a history rewrite of a pushed PR): nothing from the user's own `~/Kookaburra Cut` projects may land in code, tests, fixtures, docs, skills or messages, so no project, folder or scene names, slugs, on-screen copy, product, client or people's names, or local paths. Run both checks below; every hit except the documented gate fixtures (`launch-2026`, the `*-spike` projects) is a finding, fixed by swapping in a neutral placeholder (`product-tour`, "Highlights", `/Users/x`). The folder grep can't see scene copy or product names, so also grep for the names of any workspace project opened this session.
+     ```bash
+     git diff HEAD | grep '^+' | grep -iwFf <(ls ~/Kookaburra\ Cut | grep -v '^_' | grep -E '[0-9-]')
+     git ls-files --others --exclude-standard -z | xargs -0 grep -niwFf <(ls ~/Kookaburra\ Cut | grep -v '^_' | grep -E '[0-9-]')
+     ```
 4. **Group into commits.** One logical change per commit; split unrelated work, never split one cohesive change. Tests stage with the source they cover. Messages: `type: subject`, lowercase imperative, under 72 characters, no scope, no body. Types: feat, fix, docs, refactor, perf, test, chore, ci, build, revert.
 5. **Approve or auto-commit.** A single commit with no review findings commits straight away; report what was committed. Multiple commits or any finding: present the findings and the plan (message plus files per commit) and wait for approval.
 6. **Execute.** `git reset HEAD` first, then per commit: `git add -- <files>` (hunk-split with `git add -p` when one file spans commits), verify with `git diff --cached --stat`, then `git commit -m "..."`. If a hook rejects the commit, stop and show its output; never retry with `--no-verify`.

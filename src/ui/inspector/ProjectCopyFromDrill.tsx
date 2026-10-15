@@ -8,6 +8,7 @@ import { DrillBack } from "./rows";
 
 interface SceneRow {
   index: number;
+  file?: string;
   name: string;
   durationMs: number;
 }
@@ -62,7 +63,9 @@ export function ProjectCopyFromDrill({
     setSceneError(null);
     try {
       for (const index of selection) {
-        await copySceneToProject(source.slug, index, slug);
+        await copySceneToProject(source.slug, index, slug, undefined, {
+          file: scenes?.find((row) => row.index === index)?.file,
+        });
       }
       onDone(source.name, selection.length);
     } catch (e) {

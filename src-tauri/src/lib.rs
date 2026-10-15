@@ -11,8 +11,10 @@ mod export_presets;
 mod fonts;
 mod global_screenshots;
 mod gradients;
+mod kit;
 mod library;
 mod library_previews;
+mod live_edits;
 mod loudness;
 mod media;
 mod objects;
@@ -1386,6 +1388,8 @@ macro_rules! kookaburra_handler {
             workspace::read_project_manifest,
             workspace::read_scene_source,
             workspace::project_fingerprint,
+            live_edits::project_file_stamps,
+            live_edits::project_file_hashes,
             workspace::is_project_trusted,
             workspace::trust_project,
             workspace::list_project_assets,
@@ -1407,6 +1411,7 @@ macro_rules! kookaburra_handler {
             workspace::write_scene_thumb,
             workspace::write_emoji_raster,
             scene_doc::read_scene_doc,
+            scene_doc::read_scene_doc_entry,
             scene_doc::write_scene_doc,
             scene_doc::update_project_scene,
             scene_doc::read_project_manifest_snapshot,
@@ -1428,6 +1433,9 @@ macro_rules! kookaburra_handler {
             bridge::bridge_pending_count,
             bridge::set_editor_context,
             bridge::get_editor_context,
+            bridge::set_last_load,
+            bridge::bridge_write_sheet,
+            bridge::bridge_check_assets,
             render_win::ensure_render_window,
             render_win::close_render_window,
             render_win::render_heartbeat,
@@ -1598,6 +1606,7 @@ pub fn run() {
         .manage(render_win::ThumbQueueState::default())
         .manage(preset_posters::PresetPosterQueueState::default())
         .manage(bridge::EditorContextState::default())
+        .manage(bridge::HeartbeatState::default())
         .manage(packs_win::PacksState::default())
         .manage(theme_editor_win::ThemeEditorState::default())
         .manage(pack::commands::PackState::default())
@@ -1616,6 +1625,7 @@ pub fn run() {
                     park_background_window(&main);
                 }
             }
+            bridge::spawn_heartbeat(app.handle().clone());
             // Staging and backup trees from a crashed or killed import; harmless but they accumulate.
             if let Ok(root) = workspace::require_root(&app.handle().clone(), &app.state()) {
                 pack::read::sweep_stale(&root);
@@ -1848,6 +1858,10 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while running Kookaburra Cut")
         .run(|app, event| {
+            if let tauri::RunEvent::Exit = event {
+                bridge::remove_heartbeat(app);
+                return;
+            }
             // Open With / double-click. Cold start fires this before any webview exists, so the path is stashed in managed state and the window reads it on mount.
             if let tauri::RunEvent::Opened { urls } = event {
                 let mut paths = packs_win::paths_from_urls(&urls);

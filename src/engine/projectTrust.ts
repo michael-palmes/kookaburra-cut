@@ -3,9 +3,12 @@ import { useTrustStore } from "../store/trustStore";
 
 /** Thrown when the user declines the trust gate; App routes it back to the welcome screen rather than the stage-error panel. */
 export class TrustDeniedError extends Error {
-  constructor(slug: string) {
+  /** The manifest display name, for the Welcome screen's explanation. */
+  readonly projectName: string;
+  constructor(slug: string, name?: string) {
     super(`Project "${slug}" was not opened.`);
     this.name = "TrustDeniedError";
+    this.projectName = name || slug;
   }
 }
 
@@ -28,7 +31,8 @@ export async function ensureProjectTrusted(
   mode?: "stored-only",
 ): Promise<void> {
   if (mode === "stored-only") {
-    if (!(await invoke<boolean>("is_project_trusted", { slug }))) throw new TrustDeniedError(slug);
+    if (!(await invoke<boolean>("is_project_trusted", { slug })))
+      throw new TrustDeniedError(slug, name);
     return;
   }
   if (sessionTrusted.has(slug)) {
@@ -48,7 +52,23 @@ export async function ensureProjectTrusted(
     return;
   }
   const allowed = await useTrustStore.getState().request(slug, name);
-  if (!allowed) throw new TrustDeniedError(slug);
+  if (!allowed) throw new TrustDeniedError(slug, name);
   await invoke("trust_project", { slug });
   sessionTrusted.add(slug);
+}
+
+const RESTAMP_DELAY_MS = 2000;
+const restampTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+/** The app's own write in a project trusted this session: re-stamp the stored grant once the writes settle, so a restart doesn't ask about edits made in the app. */
+export function scheduleTrustRestamp(slug: string): void {
+  if (!sessionTrusted.has(slug)) return;
+  clearTimeout(restampTimers.get(slug));
+  restampTimers.set(
+    slug,
+    setTimeout(() => {
+      restampTimers.delete(slug);
+      invoke("trust_project", { slug }).catch((e) => console.warn("[trust] re-stamp failed:", e));
+    }, RESTAMP_DELAY_MS),
+  );
 }

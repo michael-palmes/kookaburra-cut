@@ -13,6 +13,7 @@ import openSansSemiBoldUrl from "../assets/fonts/OpenSans-SemiBold.woff?url";
 import playfairSemiBoldUrl from "../assets/fonts/PlayfairDisplay-SemiBold.woff?url";
 import spaceGroteskRegularUrl from "../assets/fonts/SpaceGrotesk-Regular.woff?url";
 import spaceGroteskSemiBoldUrl from "../assets/fonts/SpaceGrotesk-SemiBold.woff?url";
+import { vetFontUrl } from "./fontVet";
 import { FALLBACK_PRELOAD_CHARACTERS } from "./symbolsCodepoints.generated";
 import type { FontRef, Theme } from "./tokens";
 
@@ -82,7 +83,8 @@ export function hasPinnedWeight(family: string, weight: number): boolean {
   return workspaceFonts.get(family)?.has(weight) ?? false;
 }
 
-export function fontUrl(ref: FontRef | string): string {
+/** The face a ref names before any substitution: bundled, else the nearest pinned weight, else null. */
+export function resolvedFontUrl(ref: FontRef | string): string | null {
   const { family, weight } = asRef(ref);
   const bundled = BUNDLED_FONTS[family];
   if (bundled) {
@@ -94,6 +96,44 @@ export function fontUrl(ref: FontRef | string): string {
     const url = pinned.get(w);
     if (url) return url;
   }
+  return null;
+}
+
+/** Faces that failed vetting (theme/fontVet.ts), by URL, mapped to the face rendered instead; troika never sees a key. */
+const fontSubstitutes = new Map<string, { ref: FontRef; url: string }>();
+
+/** Stand `substitute` in for the face at `url` (null restores it); the stand-in must itself be safe. */
+export function setFontSubstitute(url: string, substitute: FontRef | null): void {
+  const target = substitute ? fontUrl(substitute) : null;
+  if (!substitute || !target || target === url) fontSubstitutes.delete(url);
+  else fontSubstitutes.set(url, { ref: substitute, url: target });
+}
+
+export function fontSubstituteRef(url: string): FontRef | undefined {
+  return fontSubstitutes.get(url)?.ref;
+}
+
+const BUNDLED_FONT_URLS = new Set<string>([
+  ...Object.values(BUNDLED_FONTS).flatMap((weights) => Object.values(weights)),
+  kookaburraFallbackUrl,
+]);
+
+export function isBundledFontUrl(url: string): boolean {
+  return BUNDLED_FONT_URLS.has(url);
+}
+
+/** Inter at its nearest bundled weight: the face that stands in when nothing better can. */
+export function interFallbackRef(weight: number): FontRef {
+  return {
+    family: "Inter",
+    weight: nearestWeight(Object.keys(BUNDLED_FONTS.Inter).map(Number), weight),
+  };
+}
+
+export function fontUrl(ref: FontRef | string): string {
+  const { family } = asRef(ref);
+  const url = resolvedFontUrl(ref);
+  if (url) return fontSubstitutes.get(url)?.url ?? url;
   if (!warnedFamilies.has(family)) {
     warnedFamilies.add(family);
     console.warn(`[fonts] "${family}" is neither bundled nor pinned — using Inter`);
@@ -121,6 +161,7 @@ const PRELOAD_CHARACTERS =
 export async function preloadAppFonts(refs?: readonly (FontRef | string)[]): Promise<void> {
   const urls = new Set<string>([interRegularUrl]);
   if (refs) {
+    await substituteUnsafeFaces(refs);
     for (const ref of refs) urls.add(fontUrl(ref));
   } else {
     for (const weights of Object.values(BUNDLED_FONTS)) {
@@ -136,4 +177,27 @@ export async function preloadAppFonts(refs?: readonly (FontRef | string)[]): Pro
   await new Promise<void>((resolve) => {
     preloadFont({ font: kookaburraFallbackUrl, characters: FALLBACK_PRELOAD_CHARACTERS }, resolve);
   });
+}
+
+/** Vets every non-bundled face before troika sees it: a face troika's parser throws on would wedge every pending preload (and with it the load or export), so it is swapped for Inter unless a load already chose a better stand-in. */
+async function substituteUnsafeFaces(refs: readonly (FontRef | string)[]): Promise<void> {
+  const pending = refs
+    .map((ref) => ({ ref: asRef(ref), url: resolvedFontUrl(ref) }))
+    .filter(
+      (face): face is { ref: FontRef; url: string } =>
+        face.url !== null && !isBundledFontUrl(face.url) && !fontSubstitutes.has(face.url),
+    );
+  if (pending.length === 0) return;
+  for (const { ref, url } of pending) {
+    const verdict = await vetFontUrl(url);
+    if (verdict.ok || fontSubstitutes.has(url)) continue;
+    // A read failure says nothing about the face, so fail loudly (retryable) rather than render a stand-in.
+    if (verdict.transient) {
+      throw new Error(`The font "${ref.family}" (${ref.weight}) ${verdict.error}; try again`);
+    }
+    console.warn(
+      `[fonts] "${ref.family}" (${ref.weight}) can't be typeset (${verdict.error}); using Inter`,
+    );
+    setFontSubstitute(url, interFallbackRef(ref.weight));
+  }
 }

@@ -119,6 +119,7 @@ export function ProjectPickerBody({
 export function ProjectCopyDrill({
   slug,
   indices,
+  files,
   sceneLabel,
   onBack,
   onDone,
@@ -126,6 +127,8 @@ export function ProjectCopyDrill({
   slug: string;
   /** Manifest indices to copy, in order. */
   indices: number[];
+  /** This project's scene files by index: each copy is refused if its index now holds another scene. */
+  files?: readonly string[];
   /** Menu-facing description, e.g. a scene name or "3 scenes". */
   sceneLabel: string;
   onBack: () => void;
@@ -142,7 +145,7 @@ export function ProjectCopyDrill({
     setError(null);
     try {
       for (const index of indices) {
-        await copySceneToProject(slug, index, dest.slug);
+        await copySceneToProject(slug, index, dest.slug, undefined, { file: files?.[index] });
       }
       onDone(dest.name, indices.length);
     } catch (e) {

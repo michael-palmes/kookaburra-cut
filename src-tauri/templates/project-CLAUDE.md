@@ -1,35 +1,8 @@
-# CLAUDE.md — Kookaburra Cut video project
+# {{name}}
 
-This folder is a **Kookaburra Cut** video project. The Kookaburra Cut app renders, previews and
-exports it — you edit the files here, and the app shows the result live. The
-person you're helping is likely non-technical: explain what you changed in
-plain language, not code terms.
+This folder is a Kookaburra Cut video project. The app previews and exports it and reloads whenever these files change: `project.json` lists the scenes, `scenes/` holds each scene's code and settings, and `assets/` holds the media. Use the `kookaburra-scene-authoring` skill for every change, and tell the person what you changed in plain language.
 
-## Layout
+@.claude/skills/kookaburra-scene-authoring/RULES.md
 
-- `project.json` — the ordered scene list (durations, transitions). Keep it valid JSON.
-- `scenes/*.tsx` — one animated scene per file.
-- `assets/` — the user's media (videos, images), referenced by relative path
-  (e.g. `assets/recording.mp4`).
-- `exports/`, `edits/`, `.kookaburra*` — owned by the Kookaburra Cut app. Never edit these.
+## Notes for this project
 
-## Rules
-
-1. Edit only `project.json`, `scenes/`, and `assets/`.
-2. Never run dev servers, package installs, or build commands — the Kookaburra Cut app
-   owns preview and export. There is nothing to "run" here.
-3. Scene authoring follows the `kookaburra-scene-authoring` skill (auto-loaded from
-   `.claude/skills/`): every scene is one `defineScene` default export; all
-   motion derives from `useTimeline()` (never the wall clock or the DOM); text
-   only via toolkit primitives; colours/type/motion via `useTheme()` tokens;
-   layout against `useFormat()` so one scene serves 16:9, 9:16 and 1:1.
-4. Reference assets by relative path from this folder. No absolute paths, no
-   remote URLs.
-5. Preview updates automatically when you save — tell the user to look at the
-   Kookaburra Cut window after a change.
-6. **You can SEE frames.** Whenever the user asks what's on screen, what's in a
-   scene, or how something looks (or you want to check your own change), run:
-   `python3 .claude/skills/kookaburra-scene-authoring/scripts/capture.py`
-   (optionally `--scene <stem-or-index> --at <seconds>`). It asks the running
-   app for a rendered frame and prints a PNG path; Read that file. Never guess
-   at visuals from the code when you can look.

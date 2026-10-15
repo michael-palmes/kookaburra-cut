@@ -9,6 +9,7 @@ import {
   removeProjectScene,
 } from "../engine/projectEdit";
 import { resyncFollowMediaDuration, writeSceneDoc } from "../engine/sceneDoc";
+import { isWriteConflict, reportOutsideChange, sceneDocBase } from "../engine/sceneDocBase";
 import type { SceneDoc } from "../engine/sceneDocSchema";
 import { useEditorStore } from "../store/editorStore";
 import {
@@ -436,7 +437,16 @@ export function EditSceneWizard({
         d.shadow = shadow as DeviceShadowMode;
       }
       const historyChanges: HistoryChange[] = [];
-      await writeSceneDoc(slug, scene.file, next);
+      try {
+        await writeSceneDoc(slug, scene.file, next, sceneDocBase(doc));
+      } catch (e) {
+        // The form edits a whole document, so it can't land on top of an outside change.
+        if (isWriteConflict(e)) {
+          const file = scene.file.replace(/\.tsx$/, ".json");
+          reportOutsideChange({ slug, files: [file], action: "dropped" });
+        }
+        throw e;
+      }
       historyChanges.push({
         kind: "sceneDoc",
         slug,
@@ -444,6 +454,7 @@ export function EditSceneWizard({
         sceneIndex: scene.index,
         before: structuredClone(doc),
         after: structuredClone(next),
+        hash: sceneDocBase(next),
       });
       // Duration-follow: a swapped video re-syncs the scene's project.json length.
       if (mediaChanged) {
@@ -479,6 +490,7 @@ export function EditSceneWizard({
               sceneIndex: scene.index,
               before: structuredClone(next),
               after: structuredClone(resynced.clampedDoc),
+              hash: sceneDocBase(resynced.clampedDoc),
             });
           }
         }
@@ -528,7 +540,10 @@ export function EditSceneWizard({
                   className="btn btn-small"
                   disabled={busy || index === 0}
                   onClick={() =>
-                    void arrange(() => moveProjectScene(slug, index, index - 1), "scene move")
+                    void arrange(
+                      () => moveProjectScene(slug, index, index - 1, scenes[index]?.file),
+                      "scene move",
+                    )
                   }
                 >
                   ← Move earlier
@@ -538,7 +553,10 @@ export function EditSceneWizard({
                   className="btn btn-small"
                   disabled={busy || index >= scenes.length - 1}
                   onClick={() =>
-                    void arrange(() => moveProjectScene(slug, index, index + 1), "scene move")
+                    void arrange(
+                      () => moveProjectScene(slug, index, index + 1, scenes[index]?.file),
+                      "scene move",
+                    )
                   }
                 >
                   Move later →
@@ -554,7 +572,7 @@ export function EditSceneWizard({
                       return;
                     }
                     setConfirmDeleteScene(false);
-                    void arrange(() => removeProjectScene(slug, index));
+                    void arrange(() => removeProjectScene(slug, index, scenes[index]?.file));
                   }}
                 >
                   {confirmDeleteScene ? "Really delete?" : "Delete scene…"}

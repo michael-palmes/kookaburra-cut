@@ -12,6 +12,7 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
+import { lastLoadReport, reportLastLoad, stampProjectKit } from "./engine/appHeartbeat";
 import {
   type AutoRunConfig,
   getAutoRunConfig,
@@ -63,6 +64,7 @@ import { mergeFrameSpec } from "./engine/frameSchema";
 import { useGizmoSectionOpen } from "./engine/gizmoSections";
 import {
   bindHistory,
+  discardHistoryWhere,
   type HistoryChange,
   pushHistory,
   restoreCursorAfterFailedRedo,
@@ -70,6 +72,7 @@ import {
   takeRedo,
   takeUndo,
 } from "./engine/history";
+import { historyEntryTouches, replayHistoryEntry } from "./engine/historyReplay";
 import { useImageEditStore } from "./engine/imageEditStore";
 import { useImageReconciliationStore } from "./engine/imageReconciliationStore";
 import { useLayeredScreenshotEditStore } from "./engine/layeredScreenshotEditStore";
@@ -135,12 +138,26 @@ import {
   syncFollowMediaDurations,
   writeSceneDoc,
 } from "./engine/sceneDoc";
+import {
+  contentHash,
+  onOutsideChange,
+  outsideChangeLabel,
+  outsideChangeMessage,
+  reportOutsideChange,
+} from "./engine/sceneDocBase";
 import { commitSceneDocPatch, docPatchMatchesProject } from "./engine/sceneDocPatchQueue";
 import type { SceneDoc } from "./engine/sceneDocSchema";
+import { sceneErrorRefusal } from "./engine/sceneErrors";
 import { planDeletes, planDuplicates, planMoves } from "./engine/sceneOrder";
 import { ensureSceneThumbs, listCachedSceneThumbs } from "./engine/sceneThumbs";
 import { activeSceneIndex } from "./engine/sceneTimeline";
 import { canCaptureSnapshot, captureSnapshot, type SnapshotSaved } from "./engine/snapshots";
+import {
+  armSourceFiles,
+  bindSourceBaseline,
+  observeSourceStamps,
+  projectFileStamps,
+} from "./engine/sourceBaseline";
 import { frameWorldCutout } from "./engine/stageViewport";
 import {
   addStillMark,
@@ -164,7 +181,6 @@ import {
   getSettings,
   initWorkspace,
   type LagWarningMode,
-  projectFingerprint,
   setLastExportPreset,
   setLastProject,
   setProjectTypography,
@@ -209,6 +225,7 @@ import { LayeredScreenshotGizmo } from "./ui/LayeredScreenshotGizmo";
 import { LayeredScreenshotPill } from "./ui/LayeredScreenshotPill";
 import { LayeredScreenshotToolOverlay } from "./ui/LayeredScreenshotToolOverlay";
 import { LightingAnimationLane } from "./ui/LightingAnimationLane";
+import { degradedLoadNotice, LoadNotice } from "./ui/LoadNotices";
 import { animationLaneMasterOpen, clearSecondaryLaneSelections } from "./ui/laneSelection";
 import { MediaLibrary } from "./ui/MediaLibrary";
 import { PlaybackBar } from "./ui/PlaybackBar";
@@ -306,6 +323,9 @@ function PreviewClock() {
   return null;
 }
 
+/** The manifest's project-relative path, as the source poll names it. */
+const MANIFEST_FILE = "project.json";
+
 export default function App() {
   // Fade the UI in on first commit (anti-flash reveal).
   useEffect(() => {
@@ -331,6 +351,10 @@ export default function App() {
   // Scene file to land the playhead on after the next reload (set by create/duplicate).
   const focusSceneFileRef = useRef<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // The project the user declined at the trust prompt, explained on the Welcome screen.
+  const [trustDeclined, setTrustDeclined] = useState<string | null>(null);
+  // A dismissed degraded-load notice, by content, so the same problems don't re-raise it on every reload.
+  const [dismissedLoadNotice, setDismissedLoadNotice] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
   const [progress, setProgress] = useState<ExportProgress | null>(null);
   // What the running export writes; the titlebar pill and the preparing overlay name it.
@@ -611,14 +635,9 @@ export default function App() {
     targetId?: string;
   } | null>(null);
 
-  // The fingerprint poll's baseline lives in a ref so UI-initiated writes can re-arm it (flicker fix): otherwise an app-made sidecar/project.json write would trigger a redundant reload ~2s later.
-  const fpBaselineRef = useRef<string | null>(null);
-  const armPollBaseline = useCallback((slug: string) => {
-    projectFingerprint(slug)
-      .then((fp) => {
-        fpBaselineRef.current = fp;
-      })
-      .catch(() => {});
+  // App writes move the source poll's per-file baseline themselves (sourceBaseline.ts); writers that report no stamp and reload anyway adopt their files here so the poll doesn't reload a second time.
+  const armPollFiles = useCallback((slug: string, files: readonly string[]) => {
+    armSourceFiles(slug, files).catch(() => {});
   }, []);
 
   // Surgical edit plumbing (flicker fix): UI writes never bump the workspace reload token since app writes only touch sidecars/project.json, never TSX; handleDocChanged patches the doc in memory, handleTimingChanged does a nonce-only refresh.
@@ -652,10 +671,8 @@ export default function App() {
           compareBThemes: prev.compareBThemes.map((t, i) => (i === at ? bTheme : t)),
         };
       });
-      const id = loadedProjectRef.current?.id;
-      if (id && isEditableProjectId(id)) armPollBaseline(nativeProjectSlug(id));
     },
-    [armPollBaseline],
+    [],
   );
   /** Audio types the soundtrack picker accepts; keep in sync with Rust AUDIO_EXTENSIONS. */
   const AUDIO_EXTENSIONS = ["mp3", "wav", "m4a", "aac", "flac", "ogg"];
@@ -767,7 +784,11 @@ export default function App() {
       // ACES at 1.0 is the byte-identical default: stored as ABSENCE so untouched projects never carry the block.
       if (settings.toneMapping === "aces" && settings.exposure === 1) delete manifest.render;
       else manifest.render = settings;
-      await writeProjectManifestSnapshot(slug, JSON.stringify(manifest, null, 2));
+      await writeProjectManifestSnapshot(
+        slug,
+        JSON.stringify(manifest, null, 2),
+        await contentHash(manifestBefore),
+      );
       pushHistory({
         label: "render settings",
         changes: [
@@ -843,8 +864,8 @@ export default function App() {
   const handleTimingChanged = useCallback(() => {
     setLoadNonce((n) => n + 1);
     const id = loadedProjectRef.current?.id;
-    if (id && isEditableProjectId(id)) armPollBaseline(nativeProjectSlug(id));
-  }, [armPollBaseline]);
+    if (id && isEditableProjectId(id)) armPollFiles(nativeProjectSlug(id), [MANIFEST_FILE]);
+  }, [armPollFiles]);
 
   // A preset insert landed a new scene file: reload and put the selection on it.
   const handleSceneInserted = useCallback(
@@ -890,7 +911,7 @@ export default function App() {
     try {
       // Descending (planDeletes), so each removal only shifts indices past the one already gone; no history entry, the wizard's delete semantics: recoverable from the Trash, not ⌘Z (a manifest revert can't restore trashed files).
       for (const index of plan) {
-        await removeProjectScene(nativeProjectSlug(current.id), index);
+        await removeProjectScene(nativeProjectSlug(current.id), index, current.sceneFiles[index]);
       }
       bumpWorkspaceReloadToken();
       setLoadNonce((n) => n + 1);
@@ -909,6 +930,10 @@ export default function App() {
         nativeProjectSlug(current.id),
         sceneIndex,
         position,
+        {
+          file: current.sceneFiles[sceneIndex],
+          positionFile: position === undefined ? undefined : current.sceneFiles[position],
+        },
       );
       focusSceneFileRef.current = result.file;
       bumpWorkspaceReloadToken();
@@ -923,8 +948,10 @@ export default function App() {
     const current = loadedProjectRef.current;
     if (!current || !isEditableProjectId(current.id)) return;
     try {
+      const files = [...current.sceneFiles];
       for (const { from, to } of planMoves(desired)) {
-        await moveProjectScene(nativeProjectSlug(current.id), from, to);
+        await moveProjectScene(nativeProjectSlug(current.id), from, to, files[from]);
+        files.splice(to, 0, ...files.splice(from, 1));
       }
       bumpWorkspaceReloadToken();
       setLoadNonce((n) => n + 1);
@@ -938,9 +965,14 @@ export default function App() {
     if (!current || !isEditableProjectId(current.id)) return;
     if (["preset", "ws-preset"].includes(parseProjectId(current.id).scope)) return;
     try {
-      // One block after the last selected scene, in the sources' order (planDuplicates walks the cursor as the array grows).
-      for (const { from, at } of planDuplicates(indices)) {
-        await duplicateProjectScene(nativeProjectSlug(current.id), from, at);
+      // One block after the last selected scene, in the sources' order (planDuplicates walks the cursor as the array grows); sources keep their index, so each copy is guarded by its source and the scene after the block.
+      const plan = planDuplicates(indices);
+      const after = current.sceneFiles[plan[0]?.at ?? 0];
+      for (const { from, at } of plan) {
+        await duplicateProjectScene(nativeProjectSlug(current.id), from, at, {
+          file: current.sceneFiles[from],
+          positionFile: after,
+        });
       }
       bumpWorkspaceReloadToken();
       setLoadNonce((n) => n + 1);
@@ -973,7 +1005,11 @@ export default function App() {
       if (!manifest.audio) return;
       if (markers) manifest.audio.markers = markers;
       else delete manifest.audio.markers;
-      await writeProjectManifestSnapshot(slug, JSON.stringify(manifest, null, 2));
+      await writeProjectManifestSnapshot(
+        slug,
+        JSON.stringify(manifest, null, 2),
+        await contentHash(manifestBefore),
+      );
       setProject((prev) =>
         prev?.audio ? { ...prev, audio: { ...prev.audio, markers: markers ?? undefined } } : prev,
       );
@@ -1203,10 +1239,10 @@ export default function App() {
 
   // Custom Edit-menu items emit here since native items would swallow ⌘Z before the DOM saw it; a focused text field routes back to WebKit's own undo manager. Replays go through the same writers as fresh edits.
   const applyHistoryChange = useCallback(
-    async (change: HistoryChange, dir: "undo" | "redo") => {
+    async (change: HistoryChange, dir: "undo" | "redo", baseHash: string | undefined) => {
       if (change.kind === "sceneDoc") {
         const target = (dir === "undo" ? change.before : change.after) ?? { version: 1 };
-        await writeSceneDoc(change.slug, change.file, target);
+        const written = await writeSceneDoc(change.slug, change.file, target, baseHash);
         handleDocChanged(
           change.sceneIndex,
           target,
@@ -1215,18 +1251,36 @@ export default function App() {
         );
         // A themeId revert resolves at load; without this the undo lands on disk invisibly until the next reload.
         if (change.reload) handleTimingChanged();
-      } else {
-        await writeProjectManifestSnapshot(
-          change.slug,
-          dir === "undo" ? change.before : change.after,
-        );
-        if (change.reload) bumpWorkspaceReloadToken();
-        handleTimingChanged();
+        return written?.hash;
       }
+      const written = await writeProjectManifestSnapshot(
+        change.slug,
+        dir === "undo" ? change.before : change.after,
+        baseHash,
+      );
+      if (change.reload) bumpWorkspaceReloadToken();
+      handleTimingChanged();
+      return written?.hash;
     },
     [handleDocChanged, handleTimingChanged],
   );
   const historyBusyRef = useRef(false);
+  // An app write met a file changed outside the app (rebased, dropped or refused): reload so memory matches disk, and name the scene.
+  useEffect(() => {
+    if (isAutoRun) return;
+    return onOutsideChange((change) => {
+      const current = loadedProjectRef.current;
+      if (!current || !isEditableProjectId(current.id)) return;
+      if (nativeProjectSlug(current.id) !== change.slug) return;
+      setToast({
+        kind: change.action === "dropped" ? "error" : "info",
+        message: outsideChangeMessage(change, outsideChangeLabel(change.files, current)),
+      });
+      armPollFiles(change.slug, change.files);
+      bumpWorkspaceReloadToken();
+      setLoadNonce((n) => n + 1);
+    });
+  }, [isAutoRun, armPollFiles]);
   useEffect(() => {
     if (isAutoRun) return;
     const run = async (dir: "undo" | "redo") => {
@@ -1240,10 +1294,18 @@ export default function App() {
       if (!entry) return; // nothing to do, silent like an empty native undo
       historyBusyRef.current = true;
       try {
-        // Undo reverts a compound entry BACKWARDS; redo replays it forwards.
-        const ordered = dir === "undo" ? [...entry.changes].reverse() : entry.changes;
-        for (const change of ordered) {
-          await applyHistoryChange(change, dir);
+        // Undo reverts a compound entry BACKWARDS; redo replays it forwards. A file changed outside the app refuses the entry, and every entry on that file goes with it.
+        const outcome = await replayHistoryEntry(entry, dir, applyHistoryChange);
+        if (outcome.status === "conflict") {
+          const slug = entry.changes[0]?.slug ?? "";
+          discardHistoryWhere((e) => e === entry || historyEntryTouches(e, slug, outcome.files));
+          reportOutsideChange({
+            slug,
+            files: outcome.files,
+            action: "dropped",
+            what: dir === "undo" ? "Undo" : "Redo",
+          });
+          return;
         }
         setToast({
           kind: "success",
@@ -1306,6 +1368,8 @@ export default function App() {
                 pending.index,
                 result.doc,
                 project.slots[pending.index].durationMs,
+                undefined,
+                project.sceneFiles[pending.index],
               );
               if (wrote) handleTimingChanged();
             }
@@ -1327,6 +1391,7 @@ export default function App() {
   }, []);
 
   const openProject = useCallback((id: string) => {
+    setTrustDeclined(null);
     useEditorStore.getState().setProjectId(id);
     setView("editor");
     setLastProject(id).catch(() => {});
@@ -1493,11 +1558,11 @@ export default function App() {
           },
         ],
       });
-      armPollBaseline(slug);
+      armPollFiles(slug, [MANIFEST_FILE]);
       setLoadNonce((n) => n + 1);
       setThemeMode(null);
     },
-    [project, armPollBaseline],
+    [project, armPollFiles],
   );
 
   const [pendingThemePreviews, setPendingThemePreviews] = useState<Record<string, string>>({});
@@ -1651,11 +1716,17 @@ export default function App() {
       // A remembered aspect is known before the load, so the blank stage takes it straight away.
       const remembered = isAutoRun ? null : rememberedProjectAspect(projectId);
       if (remembered) useEditorStore.getState().setFormat(FORMATS[remembered]);
+      setError(null);
     }
-    setError(null);
+    // A failed live reload keeps its banner through the next attempt; only a successful load clears it.
     loadProject(projectId)
       .then((loaded) => {
         if (cancelled) return;
+        setError(null);
+        if (!isAutoRun) {
+          reportLastLoad(lastLoadReport(projectId, { loaded }, Date.now()));
+          stampProjectKit(projectId);
+        }
         // The preview aspect is per project, so a switch must not carry the last project's over (a first open takes its declared format); autoruns set their own per leg.
         if (isSwitch && !isAutoRun) {
           useEditorStore
@@ -1665,7 +1736,7 @@ export default function App() {
         applyLoadedProject(loaded);
         // The scene-id heal rewrote TSX on disk: adopt those bytes as the poll's baseline so it doesn't fire a redundant reload.
         if (loaded.healedSceneIds?.length && isWorkspaceBackedProjectId(loaded.id)) {
-          armPollBaseline(nativeProjectSlug(loaded.id));
+          armPollFiles(nativeProjectSlug(loaded.id), loaded.healedSceneIds);
         }
         if (!isSwitch || isAutoRun) {
           // SWR reload (same project): nothing remounted, the stage never blanked.
@@ -1680,16 +1751,19 @@ export default function App() {
       })
       .catch((e) => {
         if (cancelled) return;
+        if (!isAutoRun) {
+          reportLastLoad(lastLoadReport(projectId, { error: e }, Date.now()));
+          // Declining trust means zero writes, the kit included.
+          if (!(e instanceof TrustDeniedError)) stampProjectKit(projectId);
+        }
         // Declining the trust gate is a choice, not a failure: back to the welcome screen, and don't reopen the project next boot.
         if (e instanceof TrustDeniedError) {
+          setTrustDeclined(e.projectName);
           backToProjects();
           return;
         }
+        // An SWR reload failure keeps the previous project on stage, so the stage-error panel never renders; the persistent reload banner says so until a load succeeds.
         setError(String(e));
-        // An SWR reload failure keeps the previous project on stage so the stage-error panel never renders; say it loudly instead of only in the scrubber readout.
-        if (!isSwitch && !isAutoRun) {
-          setToast({ kind: "error", message: `Live reload failed: ${String(e)}` });
-        }
         // In auto-run mode, a failed load of the target project must self-report (result + non-zero exit) rather than hang until the wrapper's timeout; guarded to the requested project only.
         let cfg: AutoRunConfig | null = null;
         try {
@@ -1702,9 +1776,13 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [projectId, loadNonce, view, applyLoadedProject, isAutoRun, backToProjects, armPollBaseline]);
+  }, [projectId, loadNonce, view, applyLoadedProject, isAutoRun, backToProjects, armPollFiles]);
 
   const loadedProjectId = project?.id;
+  // Broken scenes, unusable fonts and LUT fallbacks from a load that otherwise succeeded.
+  const degradedNotice = useMemo(() => (project ? degradedLoadNotice(project) : null), [project]);
+  const loadNotice =
+    degradedNotice && degradedNotice.key !== dismissedLoadNotice ? degradedNotice : null;
   // Mid-switch the outgoing project is still loaded under the incoming aspect, and export legs cycle it, so neither is recorded.
   useEffect(() => {
     if (loadedProjectId === projectId && !isAutoRun && !exporting) {
@@ -1776,7 +1854,7 @@ export default function App() {
     clearSecondaryLaneSelections();
   }, [camSceneIndex]);
 
-  // The capture bridge: captures are served by the hidden render window (src/render/bridgeService.ts), never on this canvas; the editor only watches for pending requests, pushes its context (open project, aspect, playhead, export lockout) and ensures the window exists. Runs on the welcome screen too, so a request with nothing open gets a prompt rejection instead of a timeout.
+  // The capture bridge: requests are served by the hidden render window (src/render/bridgeService.ts), never on this canvas; the editor only watches for pending requests, pushes its context (open project, aspect, playhead, export lockout; Rust writes the `_bridge/app.json` heartbeat from it) and ensures the window exists. Runs on the welcome screen too, reporting no open project there, so a request with nothing open gets a prompt rejection instead of a timeout.
   const bridgeBusyRef = useRef(false);
   useEffect(() => {
     if (isAutoRun) return;
@@ -1784,7 +1862,7 @@ export default function App() {
       if (bridgeBusyRef.current) return;
       bridgeBusyRef.current = true;
       void ensureCaptureService({
-        project: loadedProjectRef.current,
+        project: view === "editor" ? loadedProjectRef.current : null,
         format,
         exporting,
         playing,
@@ -1793,35 +1871,21 @@ export default function App() {
       });
     }, 1000);
     return () => window.clearInterval(timer);
-  }, [isAutoRun, exporting, format, playing]);
+  }, [isAutoRun, exporting, format, playing, view]);
 
-  // Live-reload when project sources change on disk (writes happen outside Vite's watch scope): poll a fingerprint every ~1s, debounce one tick so multi-file edits land as one reload, then re-run the load path; kept independent of `project` so it keeps polling through transient load errors.
+  // Live-reload when project sources change on disk (writes happen outside Vite's watch scope): poll per-file stamps every ~1s against a baseline the app's own writes keep current, debounce one tick so multi-file edits land as one reload, then re-run the load path; kept independent of `project` so it keeps polling through transient load errors.
   useEffect(() => {
     if (view !== "editor" || !isEditableProjectId(projectId) || exporting || isAutoRun) return;
     const slug = nativeProjectSlug(projectId);
-    fpBaselineRef.current = null;
-    let pending: string | null = null;
+    bindSourceBaseline(slug);
     let cancelled = false;
     const timer = window.setInterval(() => {
       if (cancelled || isExporting()) return;
-      projectFingerprint(slug)
-        .then((fp) => {
-          if (cancelled) return;
-          if (fpBaselineRef.current === null) {
-            fpBaselineRef.current = fp; // baseline, never reload on the first observation
-          } else if (fp !== fpBaselineRef.current) {
-            if (pending === fp) {
-              // Unchanged since the previous tick; the write burst has settled.
-              fpBaselineRef.current = fp;
-              pending = null;
-              bumpWorkspaceReloadToken();
-              setLoadNonce((n) => n + 1);
-            } else {
-              pending = fp;
-            }
-          } else {
-            pending = null;
-          }
+      projectFileStamps(slug)
+        .then((stamps) => {
+          if (cancelled || !observeSourceStamps(slug, stamps)) return;
+          bumpWorkspaceReloadToken();
+          setLoadNonce((n) => n + 1);
         })
         .catch(() => {}); // missing project etc, the load path owns error surfacing
     }, 1000);
@@ -2287,6 +2351,12 @@ export default function App() {
   // Run the modal's selection. The chosen aspect sets the editor format first; no `encode` means the frozen legacy path (Kookaburra Standard), presets/custom carry their resolved spec + name suffix.
   async function handleExport(sel: ExportSelection) {
     if (!project || exporting || themePreviewRunning.current) return;
+    const refusal = sceneErrorRefusal(project, sel.kind === "stills" ? "export stills" : "export");
+    if (refusal) {
+      setShowExport(false);
+      setToast({ kind: "error", message: refusal });
+      return;
+    }
     if (sel.kind === "stills") {
       await handleStillsExport(sel);
       return;
@@ -2364,6 +2434,11 @@ export default function App() {
 
   async function handleVerify() {
     if (!project || exporting || themePreviewRunning.current) return;
+    const refusal = sceneErrorRefusal(project, "verify");
+    if (refusal) {
+      setToast({ kind: "error", message: refusal });
+      return;
+    }
     setExporting(true);
     setProgress(null);
     setToast(null);
@@ -2537,6 +2612,17 @@ export default function App() {
           }}
           refreshKey={welcomeRefresh}
           focusSearchNonce={welcomeSearchNonce}
+          notice={
+            trustDeclined ? (
+              <LoadNotice
+                className="load-notice-inline"
+                tone="warning"
+                title={`“${trustDeclined}” wasn’t opened`}
+                hint="Its scenes are code that only runs once you allow the project. Open it again and choose Allow project if you trust it."
+                onDismiss={() => setTrustDeclined(null)}
+              />
+            ) : null
+          }
         />
       )}
 
@@ -2859,6 +2945,33 @@ export default function App() {
                   >
                     Retry
                   </button>
+                </div>
+              )}
+
+              {project && !exporting && !isAutoRun && (error || loadNotice) && (
+                <div className="load-notices">
+                  {error && (
+                    <LoadNotice
+                      tone="danger"
+                      title="Live reload failed. The stage shows the last version that loaded."
+                      lines={error
+                        .replace(/^Error: /, "")
+                        .split("\n")
+                        .map((line) => line.trim())
+                        .filter(Boolean)
+                        .slice(0, 4)}
+                      hint="Fix the file, or ask Claude Code to. The stage updates once it loads."
+                    />
+                  )}
+                  {loadNotice && (
+                    <LoadNotice
+                      tone="warning"
+                      title={loadNotice.title}
+                      lines={loadNotice.lines}
+                      hint={loadNotice.hint}
+                      onDismiss={() => setDismissedLoadNotice(loadNotice.key)}
+                    />
+                  )}
                 </div>
               )}
 

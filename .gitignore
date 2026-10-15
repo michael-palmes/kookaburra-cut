@@ -48,3 +48,6 @@ ds-bundle/
 .idea/
 .vscode/*
 !.vscode/extensions.json
+
+# Python bytecode (kb runs from the project kit)
+__pycache__/

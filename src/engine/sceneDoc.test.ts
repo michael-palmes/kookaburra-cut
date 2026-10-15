@@ -31,7 +31,10 @@ vi.mock("@tauri-apps/api/core", () => ({
       return null;
     }
     if (cmd === "read_project_manifest_snapshot") return manifestText;
-    if (cmd === "read_scene_doc") return sidecars.get(args?.file as string) ?? null;
+    if (cmd === "read_scene_doc_entry") {
+      const text = sidecars.get(args?.file as string);
+      return text == null ? null : { text, hash: `hash:${text}` };
+    }
     if (cmd === "write_project_manifest_snapshot") {
       manifestText = args?.text as string;
       return null;
@@ -89,9 +92,19 @@ describe("writeSceneDoc", () => {
     maxActiveSceneDocWrites = 0;
     releaseSceneDocWrites.length = 0;
     try {
-      const first = writeSceneDoc("project", "scenes/one.tsx", docWith({ name: "First" }));
+      const first = writeSceneDoc(
+        "project",
+        "scenes/one.tsx",
+        docWith({ name: "First" }),
+        undefined,
+      );
       await vi.waitFor(() => expect(activeSceneDocWrites).toBe(1));
-      const second = writeSceneDoc("project", "scenes/one.tsx", docWith({ name: "Second" }));
+      const second = writeSceneDoc(
+        "project",
+        "scenes/one.tsx",
+        docWith({ name: "Second" }),
+        undefined,
+      );
       await Promise.resolve();
       expect(activeSceneDocWrites).toBe(1);
       expect(maxActiveSceneDocWrites).toBe(1);

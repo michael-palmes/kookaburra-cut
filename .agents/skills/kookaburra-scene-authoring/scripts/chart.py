@@ -25,6 +25,8 @@ Examples:
     chart.py 03-results add-key 2500 --ease outQuad
 """
 
+from __future__ import annotations
+
 import csv
 import json
 import sys

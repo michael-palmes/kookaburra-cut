@@ -1,22 +1,20 @@
-import { invoke } from "@tauri-apps/api/core";
 import { useState } from "react";
 import { useClockStore } from "../engine/clock";
 import { FPS } from "../engine/format";
 import { type HistoryChange, pushHistory } from "../engine/history";
 import { isEditableProjectId, type LoadedProject, nativeProjectSlug } from "../engine/project";
-import { readProjectManifestSnapshot } from "../engine/projectEdit";
+import { readProjectManifestSnapshot, updateSceneDuration } from "../engine/projectEdit";
 import type { RigDoc } from "../engine/sceneCameraEdit";
-import {
-  clampDocTracksToDuration,
-  resyncFollowMediaDuration,
-  writeSceneDoc,
-} from "../engine/sceneDoc";
+import { clampDocTracksToDuration, resyncFollowMediaDuration } from "../engine/sceneDoc";
+import { sceneDocBase } from "../engine/sceneDocBase";
 import {
   type DocChangedHandler,
   enqueueSceneDocPatch,
+  noteRebasedWrite,
   sceneDocPatchQueue,
   sceneDocPatchQueueIdentity,
 } from "../engine/sceneDocPatchQueue";
+import { writeSceneDocRebased } from "../engine/sceneDocRebase";
 import type { SceneDoc } from "../engine/sceneDocSchema";
 import { resolveAimTarget } from "../engine/sceneRig";
 import { rebakeRigBindings } from "../engine/sceneRigConvert";
@@ -141,15 +139,21 @@ export function useSceneDocPatch(
       if (!current) return false;
       setError(null);
       try {
-        const before = structuredClone(current);
-        const next = applyAbortableSceneDocPatch(current, patch, format, floorY);
-        if (!next) return false;
         // Object-bound camera aims refresh in the SAME write, so moving a device and the keys
         // following it are one undo. The engine only ever READS bindings; this is the editor's half.
+        const written = await writeSceneDocRebased(slug, sceneFile, current, (from) =>
+          from ? applyAbortableSceneDocPatch(from, patch, format, floorY) : null,
+        );
+        if (!written) return false;
+        const next = written.doc;
+        const before = structuredClone(
+          (written.rebased ? written.from : (patchQueue.outsideBase ?? current)) ?? current,
+        );
         const changes: HistoryChange[] = [];
         let resyncFailed = false;
-        await writeSceneDoc(slug, sceneFile, next);
         patchQueue.latestDoc = next;
+        if (opts.history === false) noteRebasedWrite(patchQueue, written);
+        else patchQueue.outsideBase = null;
         onDocChanged(sceneIndex, next, sceneFile, project.id);
         changes.push({
           kind: "sceneDoc",
@@ -160,6 +164,7 @@ export function useSceneDocPatch(
           after: structuredClone(next),
           // themeId resolution bakes at load; replay must nonce-reload.
           reload: before.themeId !== next.themeId,
+          hash: sceneDocBase(next),
         });
         if (opts.resync) {
           const manifestBefore = await readProjectManifestSnapshot(slug);
@@ -195,6 +200,7 @@ export function useSceneDocPatch(
               sceneIndex,
               before: structuredClone(next),
               after: structuredClone(clampedDoc),
+              hash: sceneDocBase(clampedDoc),
             });
           }
         }
@@ -228,10 +234,18 @@ export function useSceneDocPatch(
     const execute = async (): Promise<boolean> => {
       setError(null);
       try {
-        const after = applyAbortableSceneDocPatch(baseline, patch, format, floorY);
-        if (!after) return false;
-        await writeSceneDoc(slug, sceneFile, after);
+        const latest = patchQueue.latestDoc;
+        // After an outside change the baseline predates it: build on the latest document instead.
+        const outside = patchQueue.outsideBase;
+        const written = await writeSceneDocRebased(slug, sceneFile, latest, (from) => {
+          const start = from === latest && !outside ? baseline : from;
+          return start ? applyAbortableSceneDocPatch(start, patch, format, floorY) : null;
+        });
+        if (!written) return false;
+        const after = written.doc;
+        const before = written.rebased ? written.from : (outside ?? baseline);
         patchQueue.latestDoc = after;
+        patchQueue.outsideBase = null;
         onDocChanged(sceneIndex, after, sceneFile, project.id);
         pushHistory({
           label: "scene edit",
@@ -241,9 +255,10 @@ export function useSceneDocPatch(
               slug,
               file: sceneFile,
               sceneIndex,
-              before: baseline,
+              before: before ? structuredClone(before) : null,
               after: structuredClone(after),
-              reload: baseline.themeId !== after.themeId,
+              reload: before?.themeId !== after.themeId,
+              hash: sceneDocBase(after),
             },
           ],
         });
@@ -275,10 +290,14 @@ export function useSceneDocPatch(
       if (!current) return false;
       setError(null);
       try {
-        const after = applyAbortableSceneDocPatch(current, patch, format, floorY);
-        if (!after) return false;
-        await writeSceneDoc(slug, sceneFile, after);
+        const written = await writeSceneDocRebased(slug, sceneFile, current, (from) =>
+          from ? applyAbortableSceneDocPatch(from, patch, format, floorY) : null,
+        );
+        if (!written) return false;
+        const after = written.doc;
+        const before = written.rebased ? written.from : (patchQueue.outsideBase ?? baseline);
         patchQueue.latestDoc = after;
+        patchQueue.outsideBase = null;
         onDocChanged(sceneIndex, after, sceneFile, project.id);
         pushHistory({
           label: history,
@@ -288,9 +307,10 @@ export function useSceneDocPatch(
               slug,
               file: sceneFile,
               sceneIndex,
-              before: structuredClone(baseline),
+              before: before ? structuredClone(before) : null,
               after: structuredClone(after),
-              reload: baseline.themeId !== after.themeId,
+              reload: before?.themeId !== after.themeId,
+              hash: sceneDocBase(after),
             },
           ],
         });
@@ -346,7 +366,7 @@ async function commitSceneDurationNow(
   const changes: HistoryChange[] = [];
   let writtenDoc: SceneDoc | undefined;
   const manifestBefore = slug ? await readProjectManifestSnapshot(slug) : null;
-  await invoke("update_project_scene", { slug, index: sceneIndex, durationMs: ms });
+  if (slug) await updateSceneDuration(slug, sceneIndex, ms, sceneFile);
   if (slug && manifestBefore !== null) {
     changes.push({
       kind: "manifest",
@@ -358,22 +378,25 @@ async function commitSceneDurationNow(
   }
   // Typing an explicit length flips the scene to manual mode permanently (the locked duration decision); a shrink also clamps overhanging keyframe tracks in the SAME write; doc-less scenes just get the project.json write.
   if (doc && slug && sceneFile) {
-    let next = structuredClone(doc);
-    let dirty = false;
-    if (doc.duration?.mode !== "manual") {
-      next.duration = { mode: "manual" };
-      dirty = true;
-    }
-    if (shrinking) {
-      const clamped = clampDocTracksToDuration(next, ms);
-      if (clamped) {
-        next = clamped;
+    const written = await writeSceneDocRebased(slug, sceneFile, doc, (from) => {
+      if (!from) return null;
+      let next = structuredClone(from);
+      let dirty = false;
+      if (from.duration?.mode !== "manual") {
+        next.duration = { mode: "manual" };
         dirty = true;
       }
-    }
-    if (dirty) {
-      const before = structuredClone(doc);
-      await writeSceneDoc(slug, sceneFile, next);
+      if (shrinking) {
+        const clamped = clampDocTracksToDuration(next, ms);
+        if (clamped) {
+          next = clamped;
+          dirty = true;
+        }
+      }
+      return dirty ? next : null;
+    });
+    if (written) {
+      const next = written.doc;
       writtenDoc = next;
       onDocChanged(sceneIndex, next, sceneFile, project.id);
       changes.push({
@@ -381,8 +404,9 @@ async function commitSceneDurationNow(
         slug,
         file: sceneFile,
         sceneIndex,
-        before,
+        before: written.from ? structuredClone(written.from) : null,
         after: structuredClone(next),
+        hash: sceneDocBase(next),
       });
     }
   }
