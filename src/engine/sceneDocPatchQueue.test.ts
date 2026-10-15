@@ -71,10 +71,12 @@ describe("commitSceneDocPatch", () => {
       },
     );
     expect(result?.doc).toEqual({ version: 1, name: "after" });
-    expect(mocks.writeSceneDoc).toHaveBeenCalledWith("demo", project.sceneFiles[0], {
-      version: 1,
-      name: "after",
-    });
+    expect(mocks.writeSceneDoc).toHaveBeenCalledWith(
+      "demo",
+      project.sceneFiles[0],
+      { version: 1, name: "after" },
+      undefined,
+    );
     expect(onDocChanged).toHaveBeenCalledWith(
       0,
       { version: 1, name: "after" },

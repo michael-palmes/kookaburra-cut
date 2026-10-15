@@ -15,6 +15,8 @@ export type HistoryChange =
       after: SceneDoc | null;
       /** The change touched load-time-resolved state (themeId; sceneThemes/effect bases bake at load), so replaying needs the nonce reload, not just the in-memory patch. */
       reload?: boolean;
+      /** The sidecar's content hash as this change last left it; a replay refuses when the file no longer matches. */
+      hash?: string;
     }
   | {
       kind: "manifest";
@@ -24,6 +26,8 @@ export type HistoryChange =
       after: string;
       /** The scene SET/order changed (move); the executor must full-reload. */
       reload: boolean;
+      /** project.json's content hash as this change last left it; absent means the hash of `after`. */
+      hash?: string;
     };
 
 export interface HistoryEntry {
@@ -90,4 +94,18 @@ export function restoreCursorAfterFailedUndo(): void {
 
 export function restoreCursorAfterFailedRedo(): void {
   if (applied > 0) applied -= 1;
+}
+
+/** Drop every entry `match` picks (their files changed outside the app, so replaying them would write over that change), keeping the cursor on the same applied entries. */
+export function discardHistoryWhere(match: (entry: HistoryEntry) => boolean): number {
+  let removed = 0;
+  let removedApplied = 0;
+  entries = entries.filter((entry, i) => {
+    if (!match(entry)) return true;
+    removed += 1;
+    if (i < applied) removedApplied += 1;
+    return false;
+  });
+  applied -= removedApplied;
+  return removed;
 }

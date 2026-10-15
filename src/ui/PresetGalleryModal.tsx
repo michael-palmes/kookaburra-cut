@@ -302,10 +302,12 @@ export function PresetGalleryModal({
     setBusy(true);
     setError(null);
     try {
+      const at = project || suppliedScenes ? gapFromPlacement(placement, scenes.length) : position;
       const inserted = await insertPresetScene({
         destSlug: slug,
         presetProjectId: preset.projectId,
-        position: project || suppliedScenes ? gapFromPlacement(placement, scenes.length) : position,
+        position: at,
+        positionFile: scenes[at]?.file,
       });
       onDone({ file: inserted.file, index: inserted.index, name: preset.name });
     } catch (e) {

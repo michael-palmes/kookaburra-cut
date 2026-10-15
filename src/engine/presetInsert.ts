@@ -20,6 +20,8 @@ export async function insertPresetScene(opts: {
   destSlug: string;
   presetProjectId: string;
   position: number;
+  /** The scene the caller saw at `position`; the insert is refused if another scene sits there now. */
+  positionFile?: string;
 }): Promise<InsertedPresetScene> {
   if (isWorkspaceBackedProjectId(opts.presetProjectId)) {
     await ensureProjectTrusted(
@@ -32,6 +34,7 @@ export async function insertPresetScene(opts: {
     0,
     opts.destSlug,
     Math.max(0, Math.trunc(opts.position)),
+    { positionFile: opts.positionFile },
   );
   return copied;
 }

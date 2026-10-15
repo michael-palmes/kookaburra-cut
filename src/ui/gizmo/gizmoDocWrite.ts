@@ -1,5 +1,6 @@
 import { useCallback } from "react";
 import type { LoadedProject } from "../../engine/project";
+import { inheritSceneDocBase } from "../../engine/sceneDocBase";
 import { commitSceneDocPatch, type DocChangedHandler } from "../../engine/sceneDocPatchQueue";
 import type { SceneDoc } from "../../engine/sceneDocSchema";
 
@@ -14,6 +15,7 @@ export function useGizmoDocWrite(
   const build = useCallback((base: SceneDoc | null, mutate: (next: SceneDoc) => void): SceneDoc => {
     const next = base ? structuredClone(base) : ({ version: 1 } as SceneDoc);
     mutate(next);
+    inheritSceneDocBase(next, base);
     return next;
   }, []);
 

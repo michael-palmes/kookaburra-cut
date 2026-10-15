@@ -26,7 +26,9 @@ describe("insertPresetScene", () => {
       }),
     ).resolves.toEqual(copied);
     expect(ensureProjectTrusted).toHaveBeenCalledExactlyOnceWith("ws-preset:title", "title");
-    expect(copySceneToProject).toHaveBeenCalledExactlyOnceWith("ws-preset:title", 0, "launch", 20);
+    expect(copySceneToProject).toHaveBeenCalledExactlyOnceWith("ws-preset:title", 0, "launch", 20, {
+      positionFile: undefined,
+    });
   });
 
   it("waits for workspace source consent before copying anything", async () => {
@@ -46,7 +48,9 @@ describe("insertPresetScene", () => {
     expect(copySceneToProject).not.toHaveBeenCalled();
     allow();
     await pending;
-    expect(copySceneToProject).toHaveBeenCalledExactlyOnceWith("ws-preset:title", 0, "launch", 0);
+    expect(copySceneToProject).toHaveBeenCalledExactlyOnceWith("ws-preset:title", 0, "launch", 0, {
+      positionFile: undefined,
+    });
   });
 
   it("leaves the destination untouched when workspace source consent is declined", async () => {
@@ -72,7 +76,9 @@ describe("insertPresetScene", () => {
     });
 
     expect(ensureProjectTrusted).not.toHaveBeenCalled();
-    expect(copySceneToProject).toHaveBeenCalledExactlyOnceWith("preset:title", 0, "launch", 0);
+    expect(copySceneToProject).toHaveBeenCalledExactlyOnceWith("preset:title", 0, "launch", 0, {
+      positionFile: undefined,
+    });
   });
 
   it("surfaces a native failure without another mutation", async () => {

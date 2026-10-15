@@ -6505,7 +6505,12 @@ export function SceneTab({
           onCancel={() => closeDrill()}
           onApply={async (spec) => {
             const manifestBefore = await readProjectManifestSnapshot(slug);
-            await updateSceneTransition(slug, boundaryIndex, spec);
+            await updateSceneTransition(
+              slug,
+              boundaryIndex,
+              spec,
+              project.sceneFiles[boundaryIndex],
+            );
             pushHistory({
               label: "transition",
               changes: [
@@ -6525,7 +6530,7 @@ export function SceneTab({
               ? async (spec) => {
                   const manifestBefore = await readProjectManifestSnapshot(slug);
                   for (let i = 0; i < project.slots.length - 1; i++) {
-                    await updateSceneTransition(slug, i, spec);
+                    await updateSceneTransition(slug, i, spec, project.sceneFiles[i]);
                   }
                   pushHistory({
                     label: "transition (all)",
