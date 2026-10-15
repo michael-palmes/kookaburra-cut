@@ -32,6 +32,7 @@ import {
 import { useClockStore } from "./clock";
 import { renderComposited } from "./compositor";
 import { useDeviceEditStore } from "./deviceEditStore";
+import { deviceVideoSources } from "./deviceScreens";
 import { preloadEffectLuts } from "./effects";
 import {
   collectEnvironmentSources,
@@ -311,10 +312,15 @@ export async function exportPreamble(
       }
     }
   }
-  // Every video media entry, on both comparison sides: a scene can now carry several, and a fallback-mounted one is only in the tree after the last barrier, so the extract barrier below must already know about it.
+  // Every video media entry and device screen video, on both comparison sides: a fallback-mounted entry, or a screen behind its model's suspense, is only in the tree after the last barrier, so the extract barrier below must already know about it.
   for (const doc of [...(opts.sceneDocs ?? []), ...(opts.compareBDocs ?? [])]) {
     for (const entry of resolveSceneDocMedia(doc)) {
       if (entry.kind === "video") registerClip(resolveAssetPath(opts.projectId, entry.src));
+    }
+    for (const device of doc?.devices ?? []) {
+      for (const src of deviceVideoSources(doc, device)) {
+        registerClip(resolveAssetPath(opts.projectId, src));
+      }
     }
   }
   // Pre-extracts every VideoClip's frame sequence before frame 0, mirroring font preload so no frame races an async decode; extraction is cached, so this is a no-op after the first.
@@ -382,6 +388,8 @@ export async function exportPreamble(
   onStep?.(3);
   // Last barrier: the scenes must actually be in the canvas tree. A cold-load suspense (shared boundary) can still be holding every scene out of the graph at this point, but the preloads above have resolved its assets so the retry commit is imminent; wait for it or frame 0 captures a scene-less frame. See awaitSceneHostsCommitted.
   await awaitSceneHostsCommitted(opts.slots.length);
+  // A second extract pass for clips registered by primitives that only mounted at the barrier above (a video background or code-authored VideoClip behind the shared suspense); a no-op when the first pass already knew them all.
+  await preextractClips();
   // In-world TitleBlocks measure their own title/subtitle blocks, and their props only exist once the scenes are in the tree, so this barrier runs last: settle those typesets and let the tree re-render with them, or frame 0 captures the pre-measure layout (engine/titleBlockMeasure).
   await awaitTitleMeasuresSettled();
 }
@@ -879,15 +887,16 @@ export async function revealLastExport(): Promise<void> {
   await invoke("reveal_last_export");
 }
 
-/** Verify diagnostic: the clip-frame index stamped on the texture that is actually bound on the scene's VideoClip material right now (-1 when no clip/map); read immediately after render so it reflects what the capture saw. */
+/** Verify diagnostic: the clip-frame index stamped on the texture that is actually bound on the scene's clip material right now (-1 when no clip/map); read immediately after render so it reflects what the capture saw. A consumer's readiness node publishes its material (`clipMaterial`), since a Device's node is a bare group. */
 function sampleBoundClipFrame(scene: Scene): number {
+  type ClipMaterial = { map?: { userData?: { clipFrame?: number } } | null };
   let bound = -1;
   scene.traverse((obj: Object3D) => {
     if (bound !== -1) return;
-    const ud = obj.userData as { videoFrameReady?: unknown };
+    const ud = obj.userData as { videoFrameReady?: unknown; clipMaterial?: ClipMaterial };
     if (!ud.videoFrameReady) return;
-    const mesh = obj as unknown as { material?: { map?: { userData?: { clipFrame?: number } } } };
-    bound = mesh.material?.map?.userData?.clipFrame ?? -1;
+    const material = ud.clipMaterial ?? (obj as unknown as { material?: ClipMaterial }).material;
+    bound = material?.map?.userData?.clipFrame ?? -1;
   });
   return bound;
 }

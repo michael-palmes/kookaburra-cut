@@ -133,3 +133,90 @@ describe("evictAllClips", () => {
     expect(clips.clipRegistryVersion()).toBe(version);
   });
 });
+
+describe("pendingFrameReady", () => {
+  function track(promise: Promise<void>) {
+    const state = { done: false };
+    void promise.then(() => {
+      state.done = true;
+    });
+    return state;
+  }
+
+  function deferred() {
+    let resolve!: () => void;
+    let reject!: (e: Error) => void;
+    const promise = new Promise<void>((res, rej) => {
+      resolve = res;
+      reject = rej;
+    });
+    return { promise, resolve, reject };
+  }
+
+  const tick = () => new Promise((r) => setTimeout(r, 5));
+
+  it("waits for the extraction, then the first bind to complete", async () => {
+    const clips = await import("./clips");
+    const extraction = deferred();
+    const firstBind = clips.createFirstBind(extraction.promise);
+    const ready = track(clips.pendingFrameReady(firstBind, "assets/a.mp4"));
+
+    extraction.resolve();
+    await tick();
+    expect(ready.done).toBe(false);
+
+    firstBind.start();
+    await tick();
+    expect(ready.done).toBe(false);
+
+    firstBind.settle();
+    await tick();
+    expect(ready.done).toBe(true);
+  });
+
+  it("is released by the consumer when the extraction fails", async () => {
+    const clips = await import("./clips");
+    const extraction = deferred();
+    const firstBind = clips.createFirstBind(extraction.promise);
+    const ready = track(clips.pendingFrameReady(firstBind, "assets/a.mp4"));
+    extraction.reject(new Error("no"));
+    await tick();
+    firstBind.settle();
+    await tick();
+    expect(ready.done).toBe(true);
+  });
+
+  it("is released at once when the consumer unmounts mid-extraction", async () => {
+    const clips = await import("./clips");
+    const firstBind = clips.createFirstBind(deferred().promise);
+    const ready = track(clips.pendingFrameReady(firstBind, "assets/a.mp4"));
+    firstBind.settle();
+    await tick();
+    expect(ready.done).toBe(true);
+  });
+
+  it("follows a consumer that moved on to a newer extraction", async () => {
+    const clips = await import("./clips");
+    const first = deferred();
+    const firstBind = clips.createFirstBind(first.promise);
+    const waiting = clips.pendingFrameReady(firstBind, "assets/a.mp4", 20);
+    const ready = track(waiting);
+    first.resolve();
+    await Promise.resolve();
+    const next = deferred();
+    firstBind.extraction = next.promise;
+    await new Promise((r) => setTimeout(r, 40));
+    expect(ready.done).toBe(false);
+    next.resolve();
+    firstBind.settle();
+    await expect(waiting).resolves.toBeUndefined();
+  });
+
+  it("fails the run when the first bind never starts", async () => {
+    const clips = await import("./clips");
+    const firstBind = clips.createFirstBind(Promise.resolve());
+    await expect(clips.pendingFrameReady(firstBind, "assets/a.mp4", 10)).rejects.toThrow(
+      /assets\/a\.mp4.*never bound/,
+    );
+  });
+});

@@ -243,6 +243,63 @@ export function awaitVideoFramesReady(scene: Scene): Promise<void> {
   return Promise.all(pending).then(() => undefined);
 }
 
+/** A pending consumer's wait for its first bind, driven by the consumer: `extraction` follows the entry it now waits on, `start` marks a bind run beginning, and `settle` marks one completing uncancelled, its extraction failing, or the consumer unmounting. */
+export interface FirstBind {
+  extraction: Promise<unknown>;
+  started: Promise<void>;
+  done: Promise<void>;
+  start: () => void;
+  settle: () => void;
+}
+
+export function createFirstBind(extraction: Promise<unknown>): FirstBind {
+  let start!: () => void;
+  let settle!: () => void;
+  const started = new Promise<void>((r) => {
+    start = r;
+  });
+  const done = new Promise<void>((r) => {
+    settle = r;
+  });
+  return {
+    extraction,
+    started,
+    done,
+    start,
+    settle: () => {
+      start();
+      settle();
+    },
+  };
+}
+
+/** How long a consumer may take to start its first bind once its extraction settles: a re-render, never a decode, so only a stalled tree reaches it. */
+export const FIRST_BIND_STALL_MS = 30_000;
+
+/** A still-pending consumer's readiness: its extraction, then its first completed bind, so a clip registered after the preamble's extract barrier (a screen behind its model's suspense) can never pass a capture in its pending state. Extraction may take minutes, so only the gap after it is bounded, by one timer (hidden pages throttle spin chains); a bind that never starts fails the run instead of hanging it. */
+export async function pendingFrameReady(
+  firstBind: FirstBind,
+  src: string,
+  stallMs = FIRST_BIND_STALL_MS,
+): Promise<void> {
+  for (;;) {
+    const extraction = firstBind.extraction;
+    await Promise.race([extraction.catch(() => {}), firstBind.done]);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const stalled = new Promise<"stalled">((r) => {
+      timer = setTimeout(() => r("stalled"), stallMs);
+    });
+    const outcome = await Promise.race([firstBind.started.then(() => "started" as const), stalled]);
+    clearTimeout(timer);
+    if (outcome === "started") break;
+    // A consumer that moved on to a newer extraction (a lane switch) waits on that one instead.
+    if (firstBind.extraction === extraction) {
+      throw new Error(`Video "${src}" extracted but never bound its first frame.`);
+    }
+  }
+  await firstBind.done;
+}
+
 /** Streams a clip's frames from disk as three.js textures with an LRU cache (via the fs plugin + `createImageBitmap`, decoding deterministically); consumers pin their requested frame synchronously and their bound frame until replaced, since evicting and closing a bitmap that's still in flight or bound throws WebGL INVALID_VALUE and renders white. */
 export class ClipFrames {
   private readonly cache = new Map<string, Texture>();
@@ -405,8 +462,10 @@ export function useClipEntry(src: string): ClipEntry {
   useSyncExternalStore(subscribeClipRegistry, clipRegistryVersion);
   const entry = registerClip(srcAbs);
   const [, force] = useState(0);
+  // Keyed on what this render saw: an extraction settling between render and effect must still re-render, or the consumer (and a capture awaiting its first bind) stays pending.
+  const settled = Boolean(entry.info || entry.error);
   useEffect(() => {
-    if (entry.info || entry.error) return;
+    if (settled) return;
     let alive = true;
     entry.promise
       .finally(() => {
@@ -417,6 +476,6 @@ export function useClipEntry(src: string): ClipEntry {
     return () => {
       alive = false;
     };
-  }, [entry]);
+  }, [entry, settled]);
   return entry;
 }

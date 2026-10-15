@@ -2,7 +2,14 @@ import { useThree } from "@react-three/fiber";
 import { type RefObject, useEffect, useLayoutEffect, useRef, useSyncExternalStore } from "react";
 import type { MeshBasicMaterial, Object3D, Texture } from "three";
 import { clipFrameIndex } from "./clipFrame";
-import { type ClipInfo, type ClipTier, useClipEntry } from "./clips";
+import {
+  type ClipInfo,
+  type ClipTier,
+  createFirstBind,
+  type FirstBind,
+  pendingFrameReady,
+  useClipEntry,
+} from "./clips";
 import { isExporting } from "./exportState";
 import { perfClipsFrozen } from "./perfProbe";
 import { previewClipStride, previewPlaybackActive, subscribePreviewPlayback } from "./previewMedia";
@@ -41,6 +48,12 @@ function isDetached(tex: Texture): boolean {
   return !!img && img.width === 0;
 }
 
+/** Settles a consumer's first-bind wait and drops it, unless a newer wait has replaced it. */
+function releaseFirstBind(ref: RefObject<FirstBind | null>, firstBind: FirstBind): void {
+  firstBind.settle();
+  if (ref.current === firstBind) ref.current = null;
+}
+
 /** How far outside its own window a scene still advances frames; covers transition overlaps and gives the next scene's first frame a head start. */
 const ACTIVE_LEAD_MS = 500;
 
@@ -50,7 +63,8 @@ export function useClipTexture(binding: ClipTextureBinding): ClipTextureState {
   const sceneCtx = useSceneContext();
   const invalidate = useThree((s) => s.invalidate);
   const gl = useThree((s) => s.gl);
-  const { info, frames, error } = useClipEntry(src);
+  const { info, frames, error, promise } = useClipEntry(src);
+  const firstBindRef = useRef<FirstBind | null>(null);
 
   // Scenes away from the playhead hold their last frame instead of decoding: off-screen decode was the measured playback bottleneck (perf probe 2026-07-18). Export-safe by construction: the exporter only captures scenes whose window contains the clock, and those always advance. The perf probe's frozen-media pass holds every consumer the same way. No scene context (persistent layer) = always advance.
   const near =
@@ -71,12 +85,20 @@ export function useClipTexture(binding: ClipTextureBinding): ClipTextureState {
   useLayoutEffect(() => {
     const target = readyObjectRef.current;
     if (!target) return;
+    target.userData.clipMaterial = material;
     if (!frames) {
       onPending?.();
-      target.userData.videoFrameReady = () => Promise.resolve();
+      firstBindRef.current ??= createFirstBind(promise);
+      const firstBind = firstBindRef.current;
+      firstBind.extraction = promise;
+      target.userData.videoFrameReady = () => pendingFrameReady(firstBind, src);
+      // A failed extraction never binds, so the screen degrades to its pending black.
+      if (error !== undefined) releaseFirstBind(firstBindRef, firstBind);
       return;
     }
     let cancelled = false;
+    const firstBind = firstBindRef.current;
+    firstBind?.start();
     // Pins the requested index synchronously before the async load: a post-resolve pin would leave a microtask gap where another consumer's load could evict+close this frame, a silently-stale capture (the divergent-verify bug).
     frames.request(material, frameIndex, tier);
     const ready = frames
@@ -107,10 +129,37 @@ export function useClipTexture(binding: ClipTextureBinding): ClipTextureState {
         if (!cancelled) console.error(`useClipTexture: frame ${frameIndex} failed to load`, err);
       });
     target.userData.videoFrameReady = () => ready;
+    // Only a run that finished releases a waiting capture: a cancelled one resolves `ready` without binding.
+    if (firstBind) {
+      void ready.then(() => {
+        if (!cancelled) releaseFirstBind(firstBindRef, firstBind);
+      });
+    }
     return () => {
       cancelled = true;
     };
-  }, [frames, frameIndex, tier, material, invalidate, gl, readyObjectRef, onPending, onBound]);
+  }, [
+    frames,
+    frameIndex,
+    tier,
+    material,
+    invalidate,
+    gl,
+    readyObjectRef,
+    onPending,
+    onBound,
+    promise,
+    error,
+    src,
+  ]);
+
+  // A consumer unmounting before its first bind releases any capture waiting on it.
+  useLayoutEffect(
+    () => () => {
+      if (firstBindRef.current) releaseFirstBind(firstBindRef, firstBindRef.current);
+    },
+    [],
+  );
 
   // Release this consumer's pin when it unmounts (or the source's ClipFrames changes).
   useEffect(() => {
