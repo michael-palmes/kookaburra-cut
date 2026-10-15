@@ -5,9 +5,10 @@ import { resolveScreenshotTimeMs } from "../engine/autorun";
 import { awaitSceneHostsCommitted, captureFrameRgba } from "../engine/exporter";
 import { type AspectName, FORMATS } from "../engine/format";
 import { insertPresetScene } from "../engine/presetInsert";
-import { loadProject } from "../engine/project";
+import { bumpWorkspaceReloadToken, loadProject } from "../engine/project";
 import { withProjectAssetRevision } from "../engine/projectAssetRevision";
 import { TrustDeniedError } from "../engine/projectTrust";
+import { awaitProjectCommitted } from "../engine/themePreviews";
 import { startBridgeService } from "./bridgeService";
 
 const sheets = vi.hoisted(() => [] as { size: number[]; labels: string[] }[]);
@@ -384,6 +385,16 @@ describe("bridge v2 requests", () => {
     return responses.at(-1) as Record<string, unknown>;
   };
 
+  /** Serves `requests` in order on one running service (one per claim tick). */
+  const serveAll = async (requests: Record<string, unknown>[], apply = vi.fn()) => {
+    for (const [n, request] of requests.entries()) {
+      queue.push({ version: 2, requestedAtMs: 1, id: `0001-1-${n}`, ...request });
+    }
+    stop = startBridgeService(apply);
+    await vi.advanceTimersByTimeAsync(1000 * requests.length);
+    return responses;
+  };
+
   beforeEach(() => {
     responses = [];
     queue = [];
@@ -419,6 +430,8 @@ describe("bridge v2 requests", () => {
           return assetChecks;
         case "is_project_trusted":
           return trusted;
+        case "project_fingerprint":
+          return "sources-1";
         default:
           return null;
       }
@@ -480,6 +493,83 @@ describe("bridge v2 requests", () => {
       { size: [2, 2160, 2160], labels: ["0  01-hero  @ 1.00s", "1  02-stats  @ 1.50s"] },
     ]);
     expect(editor.aspect).toBe("9:16");
+  });
+
+  it("switches only the format when the loaded project is captured at another aspect", async () => {
+    const apply = vi.fn();
+    const served = await serveAll(
+      [
+        { kind: "capture", scene: "0", aspect: "1:1" },
+        { kind: "capture", scene: "1", aspect: "16:9" },
+      ],
+      apply,
+    );
+    expect(served.map((r) => [r.ok, r.format])).toEqual([
+      [true, "1:1"],
+      [true, "16:9"],
+    ]);
+    expect(loadProject).toHaveBeenCalledTimes(1);
+    expect(bumpWorkspaceReloadToken).toHaveBeenCalledTimes(1);
+    expect(apply.mock.calls).toEqual([
+      [demo, FORMATS["1:1"]],
+      [demo, FORMATS["16:9"]],
+    ]);
+    // A fresh identity retries errored scene boundaries and is what the commit barrier waits on.
+    const switched = apply.mock.calls[1][0];
+    expect(switched).not.toBe(demo);
+    expect(awaitProjectCommitted).toHaveBeenLastCalledWith(switched);
+    expect(captureFrameRgba).toHaveBeenLastCalledWith(
+      expect.objectContaining({ format: FORMATS["16:9"] }),
+      2400,
+    );
+  });
+
+  it("captures from the load a check of the same project made", async () => {
+    const served = await serveAll([{ kind: "check" }, { kind: "capture", scene: "1" }]);
+    expect(served.map((r) => r.ok)).toEqual([true, true]);
+    expect(loadProject).toHaveBeenCalledTimes(1);
+  });
+
+  it("reloads after a format switch that never committed", async () => {
+    vi.mocked(awaitProjectCommitted)
+      .mockResolvedValueOnce()
+      .mockRejectedValueOnce(new Error("Canvas tree never committed the swapped project."));
+    const served = await serveAll([
+      { kind: "capture", scene: "0", aspect: "1:1" },
+      { kind: "capture", scene: "0", aspect: "16:9" },
+      { kind: "capture", scene: "0", aspect: "16:9" },
+    ]);
+    expect(served.map((r) => r.ok)).toEqual([true, false, true]);
+    expect(loadProject).toHaveBeenCalledTimes(2);
+  });
+
+  it("reloads when the source fingerprint can't be read", async () => {
+    const original = vi.mocked(invoke).getMockImplementation();
+    vi.mocked(invoke).mockImplementation(async (command, args, options) =>
+      command === "project_fingerprint"
+        ? Promise.reject(new Error("unreadable"))
+        : original?.(command, args, options),
+    );
+    await serveAll([
+      { kind: "capture", scene: "0" },
+      { kind: "capture", scene: "0" },
+    ]);
+    expect(loadProject).toHaveBeenCalledTimes(2);
+  });
+
+  it("reloads when the project's sources changed since the last request", async () => {
+    const original = vi.mocked(invoke).getMockImplementation();
+    vi.mocked(invoke).mockImplementation(async (command, args, options) =>
+      command === "project_fingerprint"
+        ? `sources-${responses.length}`
+        : original?.(command, args, options),
+    );
+    await serveAll([
+      { kind: "capture", scene: "0" },
+      { kind: "capture", scene: "0" },
+    ]);
+    expect(loadProject).toHaveBeenCalledTimes(2);
+    expect(bumpWorkspaceReloadToken).toHaveBeenCalledTimes(2);
   });
 
   it("refuses an unknown aspect without rendering", async () => {

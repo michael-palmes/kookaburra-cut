@@ -186,7 +186,7 @@ def request(kind: str, body: Dict[str, Any], timeout: float, action: str) -> Dic
     if live_heartbeat() is None:
         raise KbError(not_running_message(action), EXIT_ENV)
     if claimed:
-        raise KbError(f"the app is still working on the {kind} request after {int(timeout)} s (the first capture or check of a large project loads every scene and can take minutes); rerun with --timeout 600", EXIT_ENV)
+        raise KbError(f"the app is still working on the {kind} request after {int(timeout)} s (a many-frame sheet or a render check of a large project takes the longest); rerun with --timeout 600", EXIT_ENV)
     raise KbError(f"the app did not pick up the {kind} request within {int(min(timeout, CLAIM_WINDOW_S))} s; it may still be busy with an earlier request (rerun shortly) or its window is stuck (ask the user to check Kookaburra Cut)", EXIT_ENV)
 
 
