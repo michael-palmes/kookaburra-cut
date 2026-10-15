@@ -11,6 +11,7 @@ mod export_presets;
 mod fonts;
 mod global_screenshots;
 mod gradients;
+mod kit;
 mod library;
 mod library_previews;
 mod loudness;
