@@ -1,5 +1,6 @@
 import { useGLTF } from "@react-three/drei";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { modelBarrierOnce } from "./modelBarrier";
 import { phoneModelUrl } from "./modelUrl";
 
 /** Toolkit-shipped device models: `DeviceMockup`'s `model` prop is a NAME (not a path), so geometry ships with the toolkit and is bundled via Vite's `?url` (fingerprinted, survives the packaged build); regenerate the glb with `pnpm assets:phone`. */
@@ -18,11 +19,12 @@ export const DEVICE_MODELS: Record<DeviceModelName, string> = {
 
 /** Barrier: awaits every bundled device model fetched + parsed before frame 0 and warms drei's `useGLTF` cache, since the export loop does not await Suspense. See docs/determinism.md. */
 export async function preloadDeviceModels(): Promise<void> {
-  const loader = new GLTFLoader();
   await Promise.all(
-    Object.values(DEVICE_MODELS).map(async (url) => {
+    Object.values(DEVICE_MODELS).map((url) => {
       useGLTF.preload(url); // warm drei's suspense cache (no Draco decoder needed, see script)
-      await loader.loadAsync(url); // awaitable barrier: guarantees fetched + parsed
+      return modelBarrierOnce(`gltf:${url}`, async () => {
+        await new GLTFLoader().loadAsync(url); // awaitable barrier: guarantees fetched + parsed
+      });
     }),
   );
 }

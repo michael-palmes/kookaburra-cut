@@ -17,6 +17,7 @@ import previewDuoNightSky from "../../assets/device-previews/iphone-duo/night-sk
 import previewDuoStarWhite from "../../assets/device-previews/iphone-duo/star-white.png?url";
 import previewMbpSilver from "../../assets/device-previews/macbook-pro-16/silver.png?url";
 import previewMbpGrey from "../../assets/device-previews/macbook-pro-16/space-grey.png?url";
+import { modelBarrierOnce } from "./modelBarrier";
 import {
   androidModelUrl,
   ipadPro13ModelAvailable,
@@ -551,58 +552,59 @@ export function deviceColour(spec: DeviceSpec, colourId: string | undefined): De
 
 /** Barrier: awaits every catalog model fetched + parsed before frame 0 and warms drei's `useGLTF` cache (see docs/determinism.md); throws on zero textured materials since GLTFLoader silently drops textures when embedded-image decode fails (the CSP-blocked blob: fetch regression that once shipped bald devices). */
 export async function preloadCatalogModels(): Promise<void> {
-  const loader = new GLTFLoader();
   await Promise.all(
-    AVAILABLE_DEVICE_IDS.map(async (id) => {
+    AVAILABLE_DEVICE_IDS.map((id) => {
       const spec = DEVICE_CATALOG[id];
       useGLTF.preload(spec.glbUrl);
-      const gltf = await loader.loadAsync(spec.glbUrl);
-      let textured = 0;
-      let screens = 0;
-      let covers = 0;
-      let skinned = 0;
-      gltf.scene.traverse((obj) => {
-        if ((obj as SkinnedMesh).isSkinnedMesh) skinned++;
-        const material = (obj as Mesh).material as
-          | MeshStandardMaterial
-          | MeshStandardMaterial[]
-          | undefined;
-        const materials = Array.isArray(material) ? material : material ? [material] : [];
-        if (materials[0]?.name === spec.screen.material) screens++;
-        if (spec.coverScreen && materials[0]?.name === spec.coverScreen.material) covers++;
+      return modelBarrierOnce(`catalog:${id}`, async () => {
+        const gltf = await new GLTFLoader().loadAsync(spec.glbUrl);
+        let textured = 0;
+        let screens = 0;
+        let covers = 0;
+        let skinned = 0;
+        gltf.scene.traverse((obj) => {
+          if ((obj as SkinnedMesh).isSkinnedMesh) skinned++;
+          const material = (obj as Mesh).material as
+            | MeshStandardMaterial
+            | MeshStandardMaterial[]
+            | undefined;
+          const materials = Array.isArray(material) ? material : material ? [material] : [];
+          if (materials[0]?.name === spec.screen.material) screens++;
+          if (spec.coverScreen && materials[0]?.name === spec.coverScreen.material) covers++;
+          if (
+            materials.some(
+              (mat) => mat.isMeshStandardMaterial && (mat.map !== null || mat.normalMap !== null),
+            )
+          ) {
+            textured++;
+          }
+        });
+        if (textured === 0) {
+          throw new Error(
+            `Device model "${spec.glbUrl}" parsed with NO textured materials, embedded texture ` +
+              "decode failed (is `connect-src blob:` missing from the CSP?). " +
+              "See docs/determinism.md (Packaged-app parity: the CSP is render contract).",
+          );
+        }
+        if (screens === 0) {
+          throw new Error(
+            `Device model "${spec.name}" has no material named "${spec.screen.material}" for screen media`,
+          );
+        }
+        if (spec.coverScreen && covers === 0) {
+          throw new Error(
+            `Device model "${spec.name}" has no material named "${spec.coverScreen.material}" for cover media`,
+          );
+        }
         if (
-          materials.some(
-            (mat) => mat.isMeshStandardMaterial && (mat.map !== null || mat.normalMap !== null),
-          )
+          spec.fold &&
+          (skinned === 0 || !gltf.animations.some((a) => a.name === spec.fold?.clip))
         ) {
-          textured++;
+          throw new Error(
+            `Device model "${spec.name}" is missing its skinned meshes or its "${spec.fold.clip}" clip`,
+          );
         }
       });
-      if (textured === 0) {
-        throw new Error(
-          `Device model "${spec.glbUrl}" parsed with NO textured materials, embedded texture ` +
-            "decode failed (is `connect-src blob:` missing from the CSP?). " +
-            "See docs/determinism.md (Packaged-app parity: the CSP is render contract).",
-        );
-      }
-      if (screens === 0) {
-        throw new Error(
-          `Device model "${spec.name}" has no material named "${spec.screen.material}" for screen media`,
-        );
-      }
-      if (spec.coverScreen && covers === 0) {
-        throw new Error(
-          `Device model "${spec.name}" has no material named "${spec.coverScreen.material}" for cover media`,
-        );
-      }
-      if (
-        spec.fold &&
-        (skinned === 0 || !gltf.animations.some((a) => a.name === spec.fold?.clip))
-      ) {
-        throw new Error(
-          `Device model "${spec.name}" is missing its skinned meshes or its "${spec.fold.clip}" clip`,
-        );
-      }
     }),
   );
 }
