@@ -49,13 +49,15 @@ scripts/
 
 ## Stamping
 
-- Runs on every workspace project load (best effort, never blocks the load) and when
-  the embedded terminal starts Claude.
+- Runs on the first load of each workspace project per app session (best effort, never
+  blocks the load; live reloads skip it) and when the embedded terminal starts Claude.
 - The skill directory is copied to a temporary sibling and swapped in (`RENAME_SWAP`,
   with a two-rename fallback), so files the kit no longer ships are removed;
   `__pycache__` and `.DS_Store` are skipped. Dev builds restamp when the shipped tree
   differs byte for byte (never mid-session for nothing, since a hook may be running
-  `kb.py`); release builds restamp when `kit.json`'s `appVersion` differs. Declining
+  `kb.py`); release builds restamp when `kit.json`'s `appVersion` differs or the stamped
+  tree no longer has the shipped files at their shipped sizes (a deleted or truncated
+  file heals without reading the kit's contents). Declining
   the trust prompt stamps nothing. Code: `src-tauri/src/kit.rs`.
 - `CLAUDE.md`: written when missing. When it still matches a previous default
   template (whitespace-normalised; every past default lives in
@@ -162,8 +164,10 @@ Hooks:
   kit. Before the first write of a session into `project.json` or `scenes/` it makes a
   checkpoint when the tree has changes since the last one.
 - `post-edit` runs the static check scoped to the edited file (plus the manifest
-  cross-checks). Errors exit 2 so Claude sees them and fixes them; warnings go back as
-  `additionalContext`. It must finish in about a second; it never calls the app.
+  cross-checks). Errors the edit introduced exit 2 so Claude sees them and fixes them;
+  errors the file already had (snapshotted by `pre-edit`, keyed by the tool call) and
+  warnings go back as `additionalContext`. It must finish in about a second; it never
+  calls the app.
 
 ## The bridge (v2)
 
@@ -172,7 +176,8 @@ File-drop queue under the FIXED `~/Kookaburra Cut/_bridge/` (never a relocated r
 ### Heartbeat: `_bridge/app.json`
 
 Written atomically by the interactive app at most every 2 s while it runs (any view),
-removed on exit; autorun instances never write it.
+from the editor's tick and from a native thread every 5 s (the webview's timers are
+throttled while the app is hidden), removed on exit; autorun instances never write it.
 
 ```json
 {
@@ -207,7 +212,7 @@ Two more fields locate the presets: `presetsDir` (holds `<slug>/`) and
 reports `lastLoad` after every load attempt (`set_last_load`); `warnings` includes
 healed scene ids and dropped LUTs.
 
-`kb` treats the app as running when `updatedAtMs` is under 15 s old and the pid is
+`kb` treats the app as running when `updatedAtMs` is under 30 s old and the pid is
 alive. It never uses `pgrep` (it matches unrelated processes and misses others).
 
 ### Requests and responses
@@ -264,7 +269,10 @@ loads stored-only; when its sources changed since the user allowed it, the respo
   (`src/theme/fontVet.ts`: parse, basic Latin lookups, a glyph walk, metrics) before
   troika sees it, including in the export preamble. A face that fails is swapped for
   the theme face of the nearest weight (else Inter) and a `fontIssue` names it
-  (`src/theme/fontSafety.ts`). The troika patch makes `codeToGlyph` take the first
+  (`src/theme/fontSafety.ts`). A file that can't be read this time is not judged: the
+  load records a `transient` font issue that blocks deliverables until a reload reads
+  it, and the export preamble fails loudly rather than standing a face in. The troika
+  patch makes `codeToGlyph` take the first
   present subtable of a readable format (0, 4, 12; format 6 only as a last resort)
   instead of throwing; across 969 installed faces every face that worked keeps
   identical glyph ids and 67 more now work (Menlo, Helvetica Neue, Lucida Grande).
@@ -274,20 +282,28 @@ loads stored-only; when its sources changed since the user allowed it, the respo
   with `index: -1`. Export, stills and verify refuse while any scene is an error card,
   naming the files; an autorun screenshot still writes its PNG but exits 1. Render-time
   errors caught by the asset boundary are recorded too.
-- **LUTs.** A LUT that fails to load is dropped with a warning (`loadWarnings`).
+- **LUTs.** A LUT that fails to load is dropped with a warning (`loadWarnings`) so the
+  project opens, and deliverables refuse until it loads.
+- **Export blockers.** Error cards, a dropped LUT and an unreadable font file all
+  refuse export, stills and verify with one message naming each (`sceneErrorRefusal`
+  over `sceneErrors` and `exportBlockers`).
 - **Failed reloads.** A live reload that fails keeps the last good project on stage
   with a persistent banner, not a toast, and the app makes no writes from that stale
   state.
 - **Trust.** Declining the trust prompt explains what happened instead of silently
   returning to Welcome.
 
-Types: `src/engine/loadDiagnostics.ts`; `LoadedProject.sceneErrors` and
-`LoadedProject.fontIssues`.
+Types: `src/engine/loadDiagnostics.ts`; `LoadedProject.sceneErrors`,
+`LoadedProject.fontIssues`, `LoadedProject.loadWarnings` and
+`LoadedProject.exportBlockers`.
 
 ## Live edits (conflict-aware app)
 
 - Every app write to a sidecar or `project.json` carries the content hash it was based
-  on. Rust refuses the write when the file on disk no longer matches. The app then
+  on. Rust refuses the write when the file on disk no longer matches, checked right
+  before the rename under a process-wide write lock, through a temp file unique to the
+  write (an outside writer can still land in that last instant: POSIX has no content
+  compare-and-swap). The app then
   reloads, re-applies the user's pending patch to the fresh document when it can, and
   otherwise drops it with a toast that names the scene.
 - The reload poll keeps a per-file baseline. An app write updates only its own file's
