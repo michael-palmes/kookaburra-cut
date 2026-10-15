@@ -124,26 +124,13 @@ export function binaryDir(path: string): string | null {
   return cut > 0 ? path.slice(0, cut) : null;
 }
 
-/** One scene of the open project, as the app already has it loaded. */
-export interface SessionScene {
-  /** Manifest module path, e.g. `scenes/02-hero.tsx`: the CLI's edit target. */
-  file: string;
-  /** Sidecar display name, or null for a scene without one. */
-  name: string | null;
-}
-
-/** What the app knows about the project a session drives, for the grounding the CLI can't discover: which project is open in the app right now. */
+/** The project a session is launched for. */
 export interface SessionProject {
   /** The workspace folder name (also the session registry key). */
   slug: string;
   /** The project's display name, or null when the app can't resolve one. */
   name: string | null;
-  /** The project's scenes in timeline order, as loaded at launch. */
-  scenes: readonly SessionScene[];
 }
-
-/** Past this many scenes the list is summarised, so a long deck can't crowd out the lines under it. */
-const GROUNDING_SCENE_MAX = 20;
 
 /** Project text is user-supplied and lands inside an app-owned system prompt AND the terminal: strip controls, flatten whitespace and cap the length, so a crafted name can't forge grounding lines or move the cursor. */
 function projectText(value: string): string {
@@ -158,31 +145,15 @@ function projectLabel(project: SessionProject): string {
   return name ? `"${name}" (folder ${slug})` : `the project in folder ${slug}`;
 }
 
-/** The scene roster the CLI would otherwise have to read project.json and every sidecar to learn. */
-function sceneList(scenes: readonly SessionScene[]): string {
-  const parts = scenes.slice(0, GROUNDING_SCENE_MAX).map((scene) => {
-    const name = scene.name ? projectText(scene.name) : "";
-    return name ? `${projectText(scene.file)} "${name}"` : projectText(scene.file);
-  });
-  const rest = scenes.length - parts.length;
-  if (rest > 0) parts.push(`and ${rest} more`);
-  return parts.join(", ");
-}
-
-/** The hidden grounding appended to the session's system prompt: which project the app has open, what is in it, that the user is watching it, and the skill to reach for. The durable rules stay in the project's own CLAUDE.md (user-editable, written once), which this points at rather than restates. */
+/** The hidden grounding appended to the session's system prompt. It holds only what stays true for the whole session (sessions outlive project switches and edits), so live state comes from the kit: the SessionStart hook and `kb status`. The durable rules stay in the project's CLAUDE.md and skill. */
 export function claudeGroundingPrompt(project: SessionProject): string {
-  const count = project.scenes.length;
-  const scenes = count === 1 ? "1 scene" : `${count} scenes`;
   return [
     "You are the editing assistant inside Kookaburra Cut, a deterministic animated-video studio for macOS.",
-    `This session drives ONE video project, ${projectLabel(project)}, which is open in the app right now: the working directory is that project's folder, and it currently has ${scenes} under scenes/.`,
-    count > 0 ? `Those scenes, in timeline order: ${sceneList(project.scenes)}.` : "",
-    "The user is looking at the app while they type, so treat requests as being about what is on screen now.",
+    `This session works on ONE video project, ${projectLabel(project)}: the working directory is that project's folder.`,
     "Use the kookaburra-scene-authoring skill for any scene, sidecar, theme or toolkit work, from the first message, without waiting to be asked.",
+    "Live status (whether the app is running, which project it has open, the scene roster and the last load result) arrives at session start from the SessionStart hook; the user may switch projects or edit in the app while you work, so run `python3 .claude/skills/kookaburra-scene-authoring/scripts/kb.py status` when you need it fresh rather than assuming.",
     "CLAUDE.md in this folder is the authority on what you may edit and how; follow it instead of assuming.",
-  ]
-    .filter(Boolean)
-    .join("\n");
+  ].join("\n");
 }
 
 /** The short visible line the panel prints before the CLI starts, so the user knows what this assistant is for. */

@@ -113,7 +113,7 @@ export function TerminalPanel({
 
   // Stable notifier the registry can call when a (possibly detached) session exits.
   const notifyRef = useRef((next: "idle" | "exited") => setStatus(next));
-  // The grounding wants the scene roster as it stands at launch; via a ref so a rebuilt scenes array can't churn startSession's identity.
+  // Via a ref so a rebuilt scenes array can't churn the wizard callbacks' identity.
   const scenesRef = useRef(scenes);
   scenesRef.current = scenes;
 
@@ -227,11 +227,7 @@ export function TerminalPanel({
             "\r\n⚠ Kookaburra Cut's scene-authoring skill is missing from this install, so Claude may not know this app's conventions. Try reinstalling Kookaburra Cut.\r\n",
           );
         }
-        const project: SessionProject = {
-          slug,
-          name: projectName ?? null,
-          scenes: scenesRef.current.map((s) => ({ file: s.file, name: s.name })),
-        };
+        const project: SessionProject = { slug, name: projectName ?? null };
         term.writeln(`\r\n${claudeSessionBanner(project)}\r\n`);
         // Writes are queued, so this lands after the banner and before any PTY output: the row the shell's own output starts on.
         let noteFloor = 0;
