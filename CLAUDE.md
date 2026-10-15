@@ -156,6 +156,7 @@ Project skills are authored only in `.agents/skills`. Keep `.claude/skills` as t
 
 ## Writing rules
 
+- **Never commit anything from the user's own workspace.** Projects under `~/Kookaburra Cut` are private: no project, folder or scene names, slugs, on-screen copy, product, client or people's names, or local paths in committed code, tests, fixtures, docs, skills, commit messages or PR text. Use neutral placeholders instead (`product-tour`, "Highlights", `/Users/x`). This leaked once (a debugging session's project and product names reached test data and a design doc, and a pushed PR's history had to be rewritten), so before every commit run the workspace-name check in `kookaburra-commit` and grep for the names of any project opened that session. The gate fixtures this file already names (`ws:launch-2026`, the `ws:*-spike` projects) are test infrastructure; never add a new one without the user's say-so.
 - **Keep `AGENTS.md` and `CLAUDE.md` byte-identical.** Update both in the same change and verify with `cmp -s AGENTS.md CLAUDE.md`.
 - **All text you write** (docs, comments, commit messages, PR descriptions, UI copy) is Australian English, short and concise, with no em dashes: use commas, colons, parentheses or full stops.
 - **IMPORTANT: comments are a last resort.** Keep them to a minimum, one line max, and only where they add context the code cannot show; remove any that do not.

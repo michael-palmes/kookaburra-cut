@@ -41,6 +41,7 @@ Each of these has leaked into a real PR description before; the alternative is a
 4. **No baseline hashes.** They live in `docs/determinism.md`; the Verification line says the outcome ("Verify x2 identical", "gate EQUAL"), not the bytes.
 5. **No screenshots or media attachments.** A visual change gets a What-changed bullet describing it; reviewers see the pixels in the app and the gate fixtures.
 6. **Never name the developer.** No "Michael", no "the author". The PR describes the change, not the people.
+7. **No private workspace names.** The user's own `~/Kookaburra Cut` projects are private: no project, scene, product, client or people's names from them. Describe the case generically instead ("a large media-heavy project"). The pre-flight below greps for workspace folder names; also check for any project opened during the work.
 
 ## Instructions
 
@@ -48,6 +49,7 @@ Each of these has leaked into a real PR description before; the alternative is a
 2. **Pre-flight the draft** and fix until clean:
    ```bash
    wc -w <body-file>                                   # aim under ~120
+   grep -iwFf <(ls ~/Kookaburra\ Cut | grep -v '^_' | grep -E '[0-9-]') <body-file>   # must return nothing
    grep -nE "—|/Users/|worktree|batch [0-9]|PR [0-9] of|Michael" <body-file>   # must return nothing
    ```
 3. **Open the PR**: `gh pr create --title "type: subject" --body-file <body-file>`.
