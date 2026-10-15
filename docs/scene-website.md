@@ -116,6 +116,7 @@ may create, show, move, capture or destroy one.
   policy.
 - Normal WebKit copy and paste works while the website owns focus. There is no
   app clipboard bridge. Credential, contact and payment autofill is disabled.
+- Element fullscreen is off, so a page can never cover the app-owned origin bar.
 - Context menus are editor-only. Web Inspector is debug-editor-only and never
   present in a packaged release or Present.
 - Logs never include a full URL, query, fragment, page content, cookie or

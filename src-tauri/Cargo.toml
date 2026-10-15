@@ -16,14 +16,14 @@ name = "kookaburra_cut_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
-tauri-build = { version = "=2.7.1", features = [] }
+tauri-build = { version = "=2.7.2", features = [] }
 
 [dependencies]
 serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 log = "0.4"
 # protocol-asset: workspace/caches load in the webview as asset: URLs (v9 · M2).
-tauri = { version = "=2.11.6", features = ["protocol-asset", "unstable"] }
+tauri = { version = "=2.12.3", features = ["protocol-asset", "unstable"] }
 tauri-plugin-log = "2"
 tauri-plugin-shell = "2"
 tauri-plugin-dialog = "2"
@@ -78,13 +78,14 @@ objc2-web-kit = { version = "=0.3.2", default-features = false, features = [
   "block2",
   "WKWebView",
   "WKWebViewConfiguration",
+  "WKPreferences",
   "WKSnapshotConfiguration",
   "WKWebsiteDataRecord",
   "WKWebsiteDataStore",
 ] }
 block2 = "0.6"
-# Holds tauri at 2.11 (2.12 needs wry 0.57); lift the npm @tauri-apps hold in dependabot.yml with it.
-wry = "=0.55.1"
+# Never imported: pins the webview layer to tauri-runtime-wry's wry, so move it with tauri (one wry in the lock).
+wry = "=0.57.0"
 
 # macOS 27 dyld rejects optimised proc-macro dylibs (mis-aligned LINKEDIT string pool); opt-level 0 here covers only build scripts and proc macros, the shipped binary is unaffected.
 [profile.release.build-override]
