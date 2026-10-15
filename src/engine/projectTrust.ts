@@ -56,3 +56,19 @@ export async function ensureProjectTrusted(
   await invoke("trust_project", { slug });
   sessionTrusted.add(slug);
 }
+
+const RESTAMP_DELAY_MS = 2000;
+const restampTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+/** The app's own write in a project trusted this session: re-stamp the stored grant once the writes settle, so a restart doesn't ask about edits made in the app. */
+export function scheduleTrustRestamp(slug: string): void {
+  if (!sessionTrusted.has(slug)) return;
+  clearTimeout(restampTimers.get(slug));
+  restampTimers.set(
+    slug,
+    setTimeout(() => {
+      restampTimers.delete(slug);
+      invoke("trust_project", { slug }).catch((e) => console.warn("[trust] re-stamp failed:", e));
+    }, RESTAMP_DELAY_MS),
+  );
+}

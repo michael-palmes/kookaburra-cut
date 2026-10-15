@@ -30,7 +30,14 @@ describe("insertPresetScene", () => {
       "title",
       undefined,
     );
-    expect(copySceneToProject).toHaveBeenCalledExactlyOnceWith("ws-preset:title", 0, "launch", 20);
+    expect(copySceneToProject).toHaveBeenCalledExactlyOnceWith(
+      "ws-preset:title",
+      0,
+      "launch",
+      20,
+      { positionFile: undefined },
+      undefined,
+    );
   });
 
   it("waits for workspace source consent before copying anything", async () => {
@@ -54,7 +61,9 @@ describe("insertPresetScene", () => {
     expect(copySceneToProject).not.toHaveBeenCalled();
     allow();
     await pending;
-    expect(copySceneToProject).toHaveBeenCalledExactlyOnceWith("ws-preset:title", 0, "launch", 0);
+    expect(copySceneToProject).toHaveBeenCalledExactlyOnceWith("ws-preset:title", 0, "launch", 0, {
+      positionFile: undefined,
+    });
   });
 
   it("leaves the destination untouched when workspace source consent is declined", async () => {
@@ -80,7 +89,14 @@ describe("insertPresetScene", () => {
     });
 
     expect(ensureProjectTrusted).not.toHaveBeenCalled();
-    expect(copySceneToProject).toHaveBeenCalledExactlyOnceWith("preset:title", 0, "launch", 0);
+    expect(copySceneToProject).toHaveBeenCalledExactlyOnceWith(
+      "preset:title",
+      0,
+      "launch",
+      0,
+      { positionFile: undefined },
+      undefined,
+    );
   });
 
   it("appends, renames and never asks when the bridge inserts", async () => {
@@ -100,6 +116,7 @@ describe("insertPresetScene", () => {
       0,
       "launch",
       undefined,
+      { positionFile: undefined },
       "Highlights",
     );
   });

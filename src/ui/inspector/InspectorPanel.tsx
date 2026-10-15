@@ -553,6 +553,7 @@ export function InspectorPanel({
           <ProjectCopyDrill
             slug={nativeProjectSlug(project.id)}
             indices={sceneCopyIndices}
+            files={project.sceneFiles}
             sceneLabel={
               sceneCopyIndices.length > 1
                 ? `${sceneCopyIndices.length} scenes`

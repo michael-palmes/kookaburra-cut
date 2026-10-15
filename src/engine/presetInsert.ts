@@ -23,6 +23,8 @@ export async function insertPresetScene(opts: {
   presetProjectId: string;
   /** Absent appends. */
   position?: number;
+  /** The scene the caller saw at `position`; the insert is refused if another scene sits there now. */
+  positionFile?: string;
   /** Renames the copy (the bridge's `insertPreset`). */
   name?: string;
   /** The hidden render window never asks: an unapproved user preset fails instead. */
@@ -36,7 +38,12 @@ export async function insertPresetScene(opts: {
     );
   }
   const position = opts.position === undefined ? undefined : Math.max(0, Math.trunc(opts.position));
-  return opts.name === undefined
-    ? copySceneToProject(opts.presetProjectId, 0, opts.destSlug, position)
-    : copySceneToProject(opts.presetProjectId, 0, opts.destSlug, position, opts.name);
+  return copySceneToProject(
+    opts.presetProjectId,
+    0,
+    opts.destSlug,
+    position,
+    { positionFile: opts.positionFile },
+    opts.name,
+  );
 }

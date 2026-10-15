@@ -19,8 +19,17 @@ import { useLayeredScreenshotRegistry } from "./layeredScreenshotRegistry";
 import { type ManagedTextRenderRole, resolveTemplateManagedTextCopy } from "./managedText";
 import { useObjectRegistry } from "./objectRegistry";
 import { isEditableProjectId, type LoadedProject, nativeProjectSlug } from "./project";
+import { updateSceneDuration } from "./projectEdit";
 import { type ResolvedChart, resolveChart } from "./sceneChart";
 import { SceneDocContext, useSceneContext } from "./sceneContext";
+import {
+  ABSENT_BASE,
+  asWriteConflict,
+  type FileWrite,
+  noteAppHash,
+  rememberSceneDocHash,
+  sceneDocBase,
+} from "./sceneDocBase";
 import { parseSceneDoc, type SceneDoc, type SceneDocMediaSpec } from "./sceneDocSchema";
 import {
   type NormalizedLayeredScreenshot,
@@ -35,6 +44,7 @@ import {
   videoWindowMediaEntry,
 } from "./sceneMedia";
 import { useSceneMediaRegistry } from "./sceneMediaRegistry";
+import { noteSourceWrite } from "./sourceBaseline";
 import { clampStillMarks } from "./stills";
 import { useTextKeyRegistry } from "./textKeyRegistry";
 
@@ -52,9 +62,7 @@ export async function loadSceneDoc(
   if (isEditableProjectId(projectId)) {
     const slug = nativeProjectSlug(projectId);
     try {
-      const text = await invoke<string | null>("read_scene_doc", { slug, file: docFile });
-      if (text == null) return undefined;
-      return parseSceneDoc(JSON.parse(text), `${slug}/${docFile}`);
+      return (await readSceneDocEntry(slug, docFile)).doc;
     } catch (e) {
       console.warn(`[sceneDoc] reading ${slug}/${docFile} failed:`, e);
       return undefined;
@@ -64,6 +72,22 @@ export async function loadSceneDoc(
   const load = bundledDocs[key];
   if (!load) return undefined;
   return parseSceneDoc((await load()).default, key);
+}
+
+/** A sidecar read with its content hash remembered as the document's write base; throws when the file exists but can't be read or parsed. */
+export async function readSceneDocEntry(
+  slug: string,
+  docFile: string,
+): Promise<{ doc: SceneDoc | undefined; hash: string }> {
+  const entry = await invoke<{ text: string; hash: string } | null>("read_scene_doc_entry", {
+    slug,
+    file: docFile,
+  });
+  if (entry == null) return { doc: undefined, hash: ABSENT_BASE };
+  const doc = parseSceneDoc(JSON.parse(entry.text), `${slug}/${docFile}`);
+  if (!doc) throw new Error(`${docFile} isn't a scene document this version can read`);
+  rememberSceneDocHash(doc, entry.hash);
+  return { doc, hash: entry.hash };
 }
 
 // ── Hooks (inside the canvas subtree, via SceneHost's SceneDocContext) ──────────
@@ -177,29 +201,45 @@ export function useSceneChart(): ResolvedChart | null {
 
 // ── Sidecar writes (shared by the wizards and the edit bar) ────────────────────
 
-const sceneDocWriteQueues = new Map<string, Promise<void>>();
+const sceneDocWriteQueues = new Map<string, Promise<unknown>>();
 
 export async function settleSceneDocWrites(): Promise<void> {
   while (sceneDocWriteQueues.size) await Promise.all([...sceneDocWriteQueues.values()]);
 }
 
-/** Atomic, version-guarded sidecar write via the native command. */
-export async function writeSceneDoc(slug: string, sceneFile: string, doc: SceneDoc): Promise<void> {
+/** Atomic, version-guarded sidecar write via the native command. `base` is the hash the document was derived from (`sceneDocBase`); the write throws `WriteConflictError` when the file changed since, and on success `doc` carries the new hash. */
+export async function writeSceneDoc(
+  slug: string,
+  sceneFile: string,
+  doc: SceneDoc,
+  base: string | undefined,
+): Promise<FileWrite | null> {
   const file = sceneFile.replace(/\.tsx$/, ".json");
   const key = `${slug}\u0000${file}`;
   const previous = sceneDocWriteQueues.get(key) ?? Promise.resolve();
   const write = previous
     .catch(() => {})
     .then(async () => {
-      await invoke("write_scene_doc", {
-        slug,
-        file,
-        text: JSON.stringify(doc, null, 2),
-      });
+      try {
+        return await invoke<FileWrite | null>("write_scene_doc", {
+          slug,
+          file,
+          text: JSON.stringify(doc, null, 2),
+          baseHash: base ?? null,
+        });
+      } catch (e) {
+        throw asWriteConflict(e) ?? e;
+      }
     });
   sceneDocWriteQueues.set(key, write);
   try {
-    await write;
+    const written = await write;
+    if (written) {
+      rememberSceneDocHash(doc, written.hash);
+      noteAppHash(written.hash);
+      noteSourceWrite(slug, written);
+    }
+    return written;
   } finally {
     if (sceneDocWriteQueues.get(key) === write) sceneDocWriteQueues.delete(key);
   }
@@ -292,6 +332,8 @@ export async function resyncFollowMediaDuration(
   doc: SceneDoc | undefined,
   currentDurationMs: number,
   sceneFile?: string,
+  /** The module at `index`, guarding the manifest write when `sceneFile` is omitted. */
+  manifestFile?: string,
 ): Promise<{ wrote: boolean; clampedDoc: SceneDoc | null }> {
   const srcs = followMediaSources(doc);
   if (srcs.length === 0) return { wrote: false, clampedDoc: null };
@@ -301,11 +343,11 @@ export async function resyncFollowMediaDuration(
     if (probed.durationMs > meta.durationMs) meta.durationMs = probed.durationMs;
   }
   if (meta.durationMs > 0 && meta.durationMs !== currentDurationMs) {
-    await invoke("update_project_scene", { slug, index, durationMs: meta.durationMs });
+    await updateSceneDuration(slug, index, meta.durationMs, sceneFile ?? manifestFile);
     let clampedDoc: SceneDoc | null = null;
     if (doc && sceneFile && meta.durationMs < currentDurationMs) {
       clampedDoc = clampDocTracksToDuration(doc, meta.durationMs);
-      if (clampedDoc) await writeSceneDoc(slug, sceneFile, clampedDoc);
+      if (clampedDoc) await writeSceneDoc(slug, sceneFile, clampedDoc, sceneDocBase(doc));
     }
     return { wrote: true, clampedDoc };
   }
@@ -363,6 +405,8 @@ export async function syncFollowMediaDurations(project: LoadedProject): Promise<
         i,
         project.sceneDocs[i],
         project.slots[i].durationMs,
+        undefined,
+        project.sceneFiles[i],
       );
       if (result.wrote) wrote = true;
     } catch (e) {

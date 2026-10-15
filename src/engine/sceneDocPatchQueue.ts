@@ -6,7 +6,8 @@ import {
   type ProjectManifest,
 } from "./project";
 import { readProjectManifestSnapshot, writeProjectManifestSnapshot } from "./projectEdit";
-import { writeSceneDoc } from "./sceneDoc";
+import { contentHash, isAppHash, sceneDocBase } from "./sceneDocBase";
+import { type RebasedSceneDocWrite, writeSceneDocRebased } from "./sceneDocRebase";
 import type { SceneDoc } from "./sceneDocSchema";
 
 /** The host's in-memory doc patch. Always pass the `sceneFile` the write targeted and the project id it belongs to: the index alone cannot survive the await (see `resolveDocPatchIndex`), and a write landing after a project switch must never patch the project now open. */
@@ -29,6 +30,8 @@ export interface SceneDocPatchQueue {
   latestDoc: SceneDoc | undefined;
   pending: number;
   tail: Promise<void>;
+  /** The disk document that brought an outside change in since the last history entry, or null: a gesture commit then builds on the latest document (never its pre-change baseline) and undoes to this. */
+  outsideBase: SceneDoc | null;
 }
 
 const sceneDocPatchQueues = new Map<string, SceneDocPatchQueue>();
@@ -58,12 +61,32 @@ export function sceneDocPatchQueue(
 ): SceneDocPatchQueue {
   const existing = sceneDocPatchQueues.get(identity);
   if (existing) {
-    if (existing.pending === 0) existing.latestDoc = doc;
+    if (existing.pending === 0 && existing.latestDoc !== doc) {
+      if (adoptsOutsideChange(existing.latestDoc, doc)) existing.outsideBase = doc ?? null;
+      existing.latestDoc = doc;
+    }
     return existing;
   }
-  const created = { identity, latestDoc: doc, pending: 0, tail: Promise.resolve() };
+  const created: SceneDocPatchQueue = {
+    identity,
+    latestDoc: doc,
+    pending: 0,
+    tail: Promise.resolve(),
+    outsideBase: null,
+  };
   sceneDocPatchQueues.set(identity, created);
   return created;
+}
+
+/** A reloaded document whose bytes the app never wrote: someone else changed the file. */
+function adoptsOutsideChange(latest: SceneDoc | undefined, next: SceneDoc | undefined): boolean {
+  const nextHash = sceneDocBase(next);
+  return nextHash !== undefined && nextHash !== sceneDocBase(latest) && !isAppHash(nextHash);
+}
+
+/** A rebased write brought an outside change in: later gesture commits build on it. */
+export function noteRebasedWrite(queue: SceneDocPatchQueue, written: RebasedSceneDocWrite): void {
+  if (written.outside && !queue.outsideBase) queue.outsideBase = written.from ?? null;
 }
 
 export function enqueueSceneDocPatch<T>(
@@ -126,14 +149,20 @@ export function commitSceneDocPatch(
   );
   return enqueueSceneDocPatch(queue, async () => {
     const current = queue.latestDoc;
-    const draft: SceneDoc = structuredClone(current ?? { version: 1 });
-    const result = patch(draft);
-    if (result === false) return null;
-    const next = isSceneDoc(result) ? result : draft;
-    await writeSceneDoc(slug, sceneFile, next);
+    const written = await writeSceneDocRebased(slug, sceneFile, current, (from) => {
+      const draft: SceneDoc = structuredClone(from ?? { version: 1 });
+      const result = patch(draft);
+      if (result === false) return null;
+      return isSceneDoc(result) ? result : draft;
+    });
+    if (!written) return null;
+    const next = written.doc;
     queue.latestDoc = next;
     onDocChanged(sceneIndex, next, sceneFile, project.id);
-    const before = commit.baseline === undefined ? current : commit.baseline;
+    const before = written.rebased
+      ? written.from
+      : (queue.outsideBase ?? (commit.baseline === undefined ? current : commit.baseline));
+    queue.outsideBase = null;
     const change: HistoryChange = {
       kind: "sceneDoc",
       slug,
@@ -141,6 +170,7 @@ export function commitSceneDocPatch(
       sceneIndex,
       before: before ? structuredClone(before) : null,
       after: structuredClone(next),
+      hash: sceneDocBase(next),
     };
     if (before?.themeId !== next.themeId) change.reload = true;
     if (commit.label !== false) pushHistory({ label: commit.label, changes: [change] });
@@ -193,7 +223,11 @@ export async function applyBackgroundToAllScenes(
     if (stamped || manifest.appliedBackground !== undefined) {
       if (stamped) manifest.appliedBackground = stamp;
       else delete manifest.appliedBackground;
-      await writeProjectManifestSnapshot(slug, JSON.stringify(manifest, null, 2));
+      await writeProjectManifestSnapshot(
+        slug,
+        JSON.stringify(manifest, null, 2),
+        await contentHash(before),
+      );
       changes.push({
         kind: "manifest",
         slug,

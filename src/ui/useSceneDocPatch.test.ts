@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { computeFormat, FORMATS } from "../engine/format";
 import type { LoadedProject } from "../engine/project";
+import { rememberSceneDocHash, WriteConflictError } from "../engine/sceneDocBase";
 import type { SceneDoc } from "../engine/sceneDocSchema";
 import { bakeRigBinding } from "../engine/sceneRigConvert";
 import { resolveDeviceLayout } from "../toolkit/device/layout";
@@ -18,7 +19,8 @@ const mocks = vi.hoisted(() => ({
   pushHistory: vi.fn(),
   rebakeRigBindings: vi.fn(),
   setError: vi.fn(),
-  writeSceneDoc: vi.fn(async (_slug: string, _file: string, _doc: SceneDoc) => {}),
+  writeSceneDoc: vi.fn(async (_slug: string, _file: string, _doc: SceneDoc, _base?: string) => {}),
+  readSceneDocEntry: vi.fn(),
 }));
 
 vi.mock("react", async (importOriginal) => {
@@ -38,7 +40,11 @@ vi.mock("../engine/history", async (importOriginal) => {
 
 vi.mock("../engine/sceneDoc", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../engine/sceneDoc")>();
-  return { ...actual, writeSceneDoc: mocks.writeSceneDoc };
+  return {
+    ...actual,
+    writeSceneDoc: mocks.writeSceneDoc,
+    readSceneDocEntry: mocks.readSceneDocEntry,
+  };
 });
 
 vi.mock("../engine/sceneRigConvert", async (importOriginal) => {
@@ -330,5 +336,72 @@ describe("rebased scene-doc baseline commits", () => {
     expect(mocks.writeSceneDoc).not.toHaveBeenCalled();
     expect(mocks.onDocChanged).not.toHaveBeenCalled();
     expect(mocks.pushHistory).not.toHaveBeenCalled();
+  });
+});
+
+describe("live edits from outside the app", () => {
+  it("re-applies a patch to the file Claude changed when the write is refused", async () => {
+    const stale: SceneDoc = { version: 1, name: "Hero", text: { title: "Old" } };
+    rememberSceneDocHash(stale, "h-stale");
+    const claude: SceneDoc = { version: 1, name: "Hero", text: { title: "Claude's title" } };
+    mocks.writeSceneDoc.mockRejectedValueOnce(
+      new WriteConflictError("scenes/01-abort.json changed outside the app"),
+    );
+    mocks.readSceneDocEntry.mockResolvedValueOnce({ doc: claude, hash: "h-claude" });
+    const { patchDocResult } = useSceneDocPatch(
+      abortableProject("outside-rebase", stale),
+      0,
+      mocks.onDocChanged,
+      mocks.onTimingChanged,
+    );
+
+    expect(
+      await patchDocResult((next) => {
+        next.name = "Renamed";
+      }),
+    ).toBe(true);
+
+    expect(mocks.writeSceneDoc.mock.calls.map((call) => call[3])).toEqual(["h-stale", "h-claude"]);
+    const rebased = { version: 1, name: "Renamed", text: { title: "Claude's title" } };
+    expect(mocks.writeSceneDoc.mock.calls[1]?.[2]).toEqual(rebased);
+    expect(mocks.onDocChanged).toHaveBeenCalledWith(
+      0,
+      rebased,
+      "scenes/01-abort.tsx",
+      "ws:outside-rebase",
+    );
+    expect(mocks.pushHistory.mock.calls[0]?.[0].changes[0]).toMatchObject({
+      before: claude,
+      after: rebased,
+    });
+  });
+
+  it("builds a gesture commit on a reloaded outside change, never its stale baseline", async () => {
+    const baseline: SceneDoc = { version: 1, name: "Hero", text: { title: "Old" } };
+    rememberSceneDocHash(baseline, "h-app");
+    const project = abortableProject("outside-gesture", baseline);
+    useSceneDocPatch(project, 0, mocks.onDocChanged, mocks.onTimingChanged);
+
+    // The poll reloaded Claude's version of the file mid-gesture.
+    const reloaded: SceneDoc = { version: 1, name: "Hero", text: { title: "Claude's title" } };
+    rememberSceneDocHash(reloaded, "h-claude");
+    const { commitFromBaselineResult } = useSceneDocPatch(
+      { ...project, sceneDocs: [reloaded] } as LoadedProject,
+      0,
+      mocks.onDocChanged,
+      mocks.onTimingChanged,
+    );
+
+    expect(
+      await commitFromBaselineResult(baseline, (next) => {
+        next.name = "Dragged";
+      }),
+    ).toBe(true);
+    const written = { version: 1, name: "Dragged", text: { title: "Claude's title" } };
+    expect(mocks.writeSceneDoc.mock.calls[0]?.slice(2)).toEqual([written, "h-claude"]);
+    expect(mocks.pushHistory.mock.calls[0]?.[0].changes[0]).toMatchObject({
+      before: reloaded,
+      after: written,
+    });
   });
 });

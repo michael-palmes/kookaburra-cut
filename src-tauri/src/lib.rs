@@ -14,6 +14,7 @@ mod gradients;
 mod kit;
 mod library;
 mod library_previews;
+mod live_edits;
 mod loudness;
 mod media;
 mod objects;
@@ -1387,6 +1388,8 @@ macro_rules! kookaburra_handler {
             workspace::read_project_manifest,
             workspace::read_scene_source,
             workspace::project_fingerprint,
+            live_edits::project_file_stamps,
+            live_edits::project_file_hashes,
             workspace::is_project_trusted,
             workspace::trust_project,
             workspace::list_project_assets,
@@ -1408,6 +1411,7 @@ macro_rules! kookaburra_handler {
             workspace::write_scene_thumb,
             workspace::write_emoji_raster,
             scene_doc::read_scene_doc,
+            scene_doc::read_scene_doc_entry,
             scene_doc::write_scene_doc,
             scene_doc::update_project_scene,
             scene_doc::read_project_manifest_snapshot,
