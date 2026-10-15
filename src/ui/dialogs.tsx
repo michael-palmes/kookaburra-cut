@@ -94,8 +94,8 @@ export function TrustGateModal({
           access as the app itself. Only allow projects you trust.
         </p>
         <p className="muted">
-          Your own edits stay trusted. If the project changes outside the app, you will be asked
-          again. Allowing is consent, not a sandbox.
+          Changes made while it is open here, in the app or by Claude Code, stay trusted. If it
+          changes while closed, you will be asked again. Allowing is consent, not a sandbox.
         </p>
         <div className="modal-actions">
           <button type="button" className="btn" onClick={() => onAnswer(false)}>
