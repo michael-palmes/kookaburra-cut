@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import sys
+import tempfile
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -91,6 +93,45 @@ def prune_sessions(folder: Path) -> None:
         pass
 
 
+def checked_source(rel: str) -> bool:
+    return rel == MANIFEST or (rel.startswith("scenes/") and rel.endswith((".tsx", ".json")))
+
+
+def baseline_path(project: Project, rel: str, payload: Dict[str, Any]) -> Path:
+    """Where pre-edit leaves the edited file's existing errors for post-edit; keyed by the tool call both hooks share."""
+    call = payload.get("tool_use_id") or payload.get("session_id") or ""
+    key = hashlib.sha1(f"{os.path.realpath(str(project.root))}\0{rel}\0{call}".encode("utf-8")).hexdigest()
+    return Path(tempfile.gettempdir()) / "kb-hooks" / f"{key}.json"
+
+
+def error_signatures(report: Report) -> List[str]:
+    return sorted({f"{i.file}\0{i.path}\0{i.message}" for i in report.errors})
+
+
+def save_baseline(project: Project, rel: str, payload: Dict[str, Any]) -> None:
+    try:
+        path = baseline_path(project, rel, payload)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        prune_sessions(path.parent)
+        signatures = error_signatures(checkmod.check_project(project, files=[rel]))
+        path.write_text(json.dumps(signatures), encoding="utf-8")
+    except Exception:
+        pass
+
+
+def take_baseline(project: Project, rel: str, payload: Dict[str, Any]) -> Optional[set]:
+    path = baseline_path(project, rel, payload)
+    try:
+        signatures = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    try:
+        path.unlink()
+    except OSError:
+        pass
+    return set(signatures) if isinstance(signatures, list) else None
+
+
 def pre_edit(payload: Dict[str, Any]) -> Tuple[int, str, str]:
     root = hook_root(payload)
     if root is None:
@@ -102,6 +143,8 @@ def pre_edit(payload: Dict[str, Any]) -> Tuple[int, str, str]:
     reason = blocked_reason(rel)
     if reason:
         return BLOCK, "", f"kb: blocked: {reason}"
+    if checked_source(rel):
+        save_baseline(project, rel, payload)
     if rel != MANIFEST and not rel.startswith("scenes/"):
         return EXIT_OK, "", ""
     session = payload.get("session_id")
@@ -135,21 +178,38 @@ def post_edit(payload: Dict[str, Any]) -> Tuple[int, str, str]:
     rel = edited_rel(project, payload)
     if rel is None:
         return EXIT_OK, "", ""
-    if rel != MANIFEST and not (rel.startswith("scenes/") and rel.endswith((".tsx", ".json"))):
+    if not checked_source(rel):
         return EXIT_OK, "", ""
     report = checkmod.check_project(project, files=[rel])
-    return render_hook_report(report, rel)
+    return render_hook_report(report, rel, take_baseline(project, rel, payload))
 
 
-def render_hook_report(report: Report, rel: str) -> Tuple[int, str, str]:
-    if report.errors:
+def render_hook_report(report: Report, rel: str, before: Optional[set] = None) -> Tuple[int, str, str]:
+    """Blocks only on errors this edit introduced; errors the file already had (seen by pre-edit) come back as context."""
+    known = before or set()
+    fresh = Report()
+    older = Report()
+    for issue in report.issues:
+        signature = f"{issue.file}\0{issue.path}\0{issue.message}"
+        target = older if issue.severity == "error" and signature in known else fresh
+        target.issues.append(issue)
+    if fresh.errors:
         lines = [f"kb check found problems after editing {rel}. Fix every error before moving on:"]
-        lines.append(report.render())
+        lines.append(fresh.render())
+        if older.errors:
+            lines.append(f"({len(older.errors)} more error(s) were already there before this edit; kb check lists them.)")
         lines.append("Rerun: python3 .claude/skills/kookaburra-scene-authoring/scripts/kb.py check")
         return BLOCK, "", "\n".join(lines)
-    if report.warnings:
-        context = f"kb check after editing {rel}: {report.summary()}\n{report.render()}"
-        out = {"hookSpecificOutput": {"hookEventName": "PostToolUse", "additionalContext": context}}
+    notes: List[str] = []
+    if older.errors:
+        notes.append(
+            f"{len(older.errors)} error(s) were already in {rel} before this edit (not caused by it); "
+            f"fix them if they touch the task:\n{older.render()}"
+        )
+    if fresh.warnings:
+        notes.append(f"kb check after editing {rel}: {fresh.summary()}\n{fresh.render()}")
+    if notes:
+        out = {"hookSpecificOutput": {"hookEventName": "PostToolUse", "additionalContext": "\n".join(notes)}}
         return EXIT_OK, json.dumps(out, ensure_ascii=False), ""
     return EXIT_OK, "", ""
 

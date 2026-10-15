@@ -124,3 +124,32 @@ class HookTests(KbTestCase):
         proc = self.kb(["scenes"], cwd=self.root, script=lonely / "kb.py")
         self.assertExit(proc, 2)
         self.assertIn("mid-update", proc.stderr)
+
+
+class PostEditBaselineTests(KbTestCase):
+    def setUp(self) -> None:
+        super().setUp()
+        self.root = make_project(self.tmp, git=False)
+        self.env["CLAUDE_PROJECT_DIR"] = str(self.root)
+        self.target = self.root / "scenes" / "02-hero.json"
+
+    def hook(self, event: str, stdin: str):
+        return self.kb(["hook", event], cwd=self.root, stdin=stdin)
+
+    def test_errors_already_in_the_file_are_context_not_a_block(self) -> None:
+        broken = {"version": 1, "background": {"type": "image", "src": "assets/missing.png"}}
+        write_json(self.target, broken)
+        self.assertExit(self.hook("pre-edit", payload(self.target)), 0)
+        write_json(self.target, dict(broken, name="Renamed"))
+        proc = self.hook("post-edit", payload(self.target, "PostToolUse"))
+        self.assertExit(proc, 0)
+        context = json.loads(proc.stdout)["hookSpecificOutput"]["additionalContext"]
+        self.assertIn("already in scenes/02-hero.json before this edit", context)
+
+    def test_an_error_the_edit_introduced_still_blocks(self) -> None:
+        write_json(self.target, {"version": 1, "name": "Fine"})
+        self.assertExit(self.hook("pre-edit", payload(self.target)), 0)
+        write(self.target, '{ "version": 1, "name": ')
+        proc = self.hook("post-edit", payload(self.target, "PostToolUse"))
+        self.assertExit(proc, 2)
+        self.assertIn("Fix every error", proc.stderr)
