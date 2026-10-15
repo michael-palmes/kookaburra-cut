@@ -4,9 +4,41 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { resolveScreenshotTimeMs } from "../engine/autorun";
 import { awaitSceneHostsCommitted, captureFrameRgba } from "../engine/exporter";
 import { type AspectName, FORMATS } from "../engine/format";
+import { insertPresetScene } from "../engine/presetInsert";
 import { loadProject } from "../engine/project";
 import { withProjectAssetRevision } from "../engine/projectAssetRevision";
+import { TrustDeniedError } from "../engine/projectTrust";
 import { startBridgeService } from "./bridgeService";
+
+const sheets = vi.hoisted(() => [] as { size: number[]; labels: string[] }[]);
+vi.mock("./contactSheet", () => ({
+  ContactSheet: class {
+    labels: string[] = [];
+    constructor(count: number, width: number, height: number) {
+      sheets.push({ size: [count, width, height], labels: this.labels });
+    }
+    draw(_n: number, _rgba: Uint8Array, _w: number, _h: number, label: string) {
+      this.labels.push(label);
+    }
+    async png() {
+      return new Uint8Array([137, 80, 78, 71]);
+    }
+  },
+}));
+vi.mock("../engine/presetInsert", () => ({ insertPresetScene: vi.fn() }));
+vi.mock("../engine/presets", () => ({
+  refreshUserPresets: vi.fn(async () => []),
+  listAllPresets: () => [
+    {
+      id: "title",
+      slug: "title",
+      projectId: "preset:title",
+      name: "Title",
+      source: "bundled",
+      sceneCount: 1,
+    },
+  ],
+}));
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/api/event", () => ({
@@ -24,6 +56,8 @@ vi.mock("../engine/clips", () => ({ invalidateChangedClips: vi.fn() }));
 vi.mock("../engine/project", () => ({
   bumpWorkspaceReloadToken: vi.fn(),
   isEditableProjectId: () => true,
+  isWorkspaceBackedProjectId: (id: string) => id.startsWith("ws"),
+  isWorkspaceProjectId: (id: string) => id.startsWith("ws:"),
   loadProject: vi.fn(),
   nativeProjectSlug: (id: string) => id,
   projectIdForNativeSlug: (id: string) => id,
@@ -317,5 +351,251 @@ describe("hidden library preview rendering", () => {
     } finally {
       warning.mockRestore();
     }
+  });
+});
+
+describe("bridge v2 requests", () => {
+  let responses: Record<string, unknown>[];
+  let queue: Record<string, unknown>[];
+  let editor: Record<string, unknown>;
+  let trusted: boolean;
+  let assetChecks: unknown[];
+
+  const demo = {
+    id: "ws:demo",
+    slots: [
+      { index: 0, id: "hero", startMs: 0, endMs: 4000, durationMs: 4000 },
+      { index: 1, id: "stats", startMs: 4000, endMs: 10000, durationMs: 6000 },
+    ],
+    totalMs: 10000,
+    // The project mock's sceneFileStem is the identity, so files are written as stems here.
+    sceneFiles: ["01-hero", "02-stats"],
+    sceneDocs: [{ version: 1, media: { src: "assets/clip.mov" } }, undefined],
+    compareBDocs: [undefined, undefined],
+  } as unknown as Awaited<ReturnType<typeof loadProject>>;
+
+  const serve = async (request: Record<string, unknown>) => {
+    queue.push({ version: 2, requestedAtMs: 1, id: "0001-1-abc", ...request });
+    stop = startBridgeService(vi.fn());
+    await vi.advanceTimersByTimeAsync(1000);
+    return responses.at(-1) as Record<string, unknown>;
+  };
+
+  beforeEach(() => {
+    responses = [];
+    queue = [];
+    sheets.length = 0;
+    trusted = true;
+    assetChecks = [{ path: "assets/clip.mov", ok: true }];
+    editor = {
+      projectId: "ws:demo",
+      aspect: "9:16",
+      currentMs: 5000,
+      exportLocked: false,
+      playing: false,
+    };
+    let named = "";
+    vi.mocked(invoke).mockImplementation(async (command, args) => {
+      const a = args as Record<string, unknown>;
+      switch (command) {
+        case "bridge_claim_request":
+          return queue.shift() ?? null;
+        case "get_editor_context":
+          return { ...editor };
+        case "bridge_write_response":
+          responses.push(JSON.parse(a.jsonText as string));
+          return null;
+        case "begin_bridge_screenshot":
+          named = a.name as string;
+          return null;
+        case "save_bridge_screenshot":
+          return `/bridge/responses/${named}.png`;
+        case "bridge_write_sheet":
+          return "/bridge/responses/0001-1-abc-sheet.png";
+        case "bridge_check_assets":
+          return assetChecks;
+        case "is_project_trusted":
+          return trusted;
+        default:
+          return null;
+      }
+    });
+    vi.mocked(loadProject).mockResolvedValue(demo);
+  });
+
+  it("keeps v1 captures working: playhead of the open project at the editor's aspect", async () => {
+    const response = await serve({ version: 1, kind: undefined, project: "ws:demo" });
+    expect(response).toMatchObject({
+      version: 1,
+      id: "0001-1-abc",
+      ok: true,
+      path: "/bridge/responses/0001-1-abc.png",
+      project: "ws:demo",
+      tMs: 2400,
+      format: "9:16",
+      surface: "render-window",
+    });
+    expect(resolveScreenshotTimeMs).toHaveBeenCalledWith(demo, undefined, undefined, 5000);
+    expect(loadProject).toHaveBeenCalledWith("ws:demo", { trustMode: "stored-only" });
+    expect(invoke).toHaveBeenCalledWith("trust_project", { slug: "ws:demo" });
+  });
+
+  it("captures several frames at an overridden aspect with a contact sheet", async () => {
+    vi.mocked(resolveScreenshotTimeMs).mockReturnValueOnce(1000).mockReturnValueOnce(5500);
+    const response = await serve({
+      kind: "capture",
+      aspect: "1:1",
+      frames: [
+        { scene: "0", at: 1 },
+        { scene: "02-stats", at: 1.5 },
+      ],
+      sheet: true,
+    });
+    expect(response).toMatchObject({
+      version: 2,
+      ok: true,
+      path: "/bridge/responses/0001-1-abc.png",
+      paths: ["/bridge/responses/0001-1-abc.png", "/bridge/responses/0001-1-abc-1.png"],
+      frames: [
+        { scene: "01-hero", at: 1, tMs: 1000, index: 0, path: "/bridge/responses/0001-1-abc.png" },
+        {
+          scene: "02-stats",
+          at: 1.5,
+          tMs: 5500,
+          index: 1,
+          path: "/bridge/responses/0001-1-abc-1.png",
+        },
+      ],
+      sheetPath: "/bridge/responses/0001-1-abc-sheet.png",
+      format: "1:1",
+    });
+    expect(captureFrameRgba).toHaveBeenCalledWith(
+      expect.objectContaining({ format: FORMATS["1:1"] }),
+      1000,
+    );
+    expect(sheets).toEqual([
+      { size: [2, 2160, 2160], labels: ["0  01-hero  @ 1.00s", "1  02-stats  @ 1.50s"] },
+    ]);
+    expect(editor.aspect).toBe("9:16");
+  });
+
+  it("refuses an unknown aspect without rendering", async () => {
+    const response = await serve({ kind: "capture", scene: "0", aspect: "21:9" });
+    expect(response).toMatchObject({ ok: false });
+    expect(String(response.error)).toContain('unknown aspect "21:9"');
+    expect(captureFrameRgba).not.toHaveBeenCalled();
+  });
+
+  it("answers needsTrust for a project whose stored grant no longer matches, never prompting", async () => {
+    vi.mocked(loadProject).mockRejectedValueOnce(new TrustDeniedError("other"));
+    const response = await serve({ kind: "capture", project: "ws:other", scene: "0" });
+    expect(response).toMatchObject({ version: 2, ok: false, needsTrust: true });
+    expect(String(response.error)).toMatch(/^"other" changed since you last allowed it/);
+    expect(loadProject).toHaveBeenCalledWith("ws:other", { trustMode: "stored-only" });
+    expect(invoke).not.toHaveBeenCalledWith("trust_project", expect.anything());
+  });
+
+  it("checks a project from a real load, including assets and a render pass", async () => {
+    vi.mocked(loadProject).mockResolvedValue({
+      ...demo,
+      fontIssues: [{ ref: "Menlo@400", message: "unknown cmap table format 6", fallback: null }],
+    });
+    vi.mocked(captureFrameRgba).mockRejectedValueOnce(new Error("context lost"));
+    assetChecks = [{ path: "assets/clip.mov", ok: false, error: "no such file" }];
+    const response = await serve({ kind: "check", render: true });
+    expect(invoke).toHaveBeenCalledWith("bridge_check_assets", {
+      slug: "ws:demo",
+      paths: ["assets/clip.mov"],
+    });
+    expect(captureFrameRgba).toHaveBeenCalledTimes(2);
+    expect(response).toMatchObject({
+      version: 2,
+      ok: false,
+      project: "ws:demo",
+      rendered: true,
+      scenes: [
+        {
+          index: 0,
+          file: "01-hero",
+          id: "hero",
+          ok: false,
+          phase: "render",
+          error: "Error: context lost",
+          warnings: ["assets/clip.mov: no such file"],
+        },
+        { index: 1, file: "02-stats", id: "stats", ok: true, warnings: [] },
+      ],
+      fonts: [{ ref: "Menlo@400", ok: false, error: "unknown cmap table format 6" }],
+      assets: [{ path: "assets/clip.mov", ok: false, error: "no such file" }],
+      warnings: [],
+    });
+  });
+
+  it("reports a project that fails to load as a check result, not a crash", async () => {
+    vi.mocked(loadProject).mockRejectedValueOnce(new Error("project.json isn't valid JSON"));
+    const response = await serve({ kind: "check", project: "ws:demo" });
+    expect(response).toMatchObject({
+      ok: false,
+      error: "Error: project.json isn't valid JSON",
+      scenes: [],
+      rendered: false,
+    });
+  });
+
+  it("inserts a preset through the app's copy path and keeps a closed project trusted", async () => {
+    vi.mocked(insertPresetScene).mockResolvedValue({
+      file: "scenes/03-highlights.tsx",
+      docFile: "scenes/03-highlights.json",
+      sceneId: "highlights",
+      durationMs: 4000,
+      index: 2,
+      name: "Highlights",
+    });
+    const response = await serve({
+      kind: "insertPreset",
+      project: "ws:closed",
+      preset: "title",
+      position: 2,
+      name: "Highlights",
+    });
+    expect(insertPresetScene).toHaveBeenCalledWith({
+      destSlug: "ws:closed",
+      presetProjectId: "preset:title",
+      position: 2,
+      name: "Highlights",
+      trustMode: "stored-only",
+    });
+    expect(invoke).toHaveBeenCalledWith("trust_project", { slug: "ws:closed" });
+    expect(response).toMatchObject({
+      version: 2,
+      ok: true,
+      file: "scenes/03-highlights.tsx",
+      index: 2,
+      id: "highlights",
+      name: "Highlights",
+    });
+  });
+
+  it("names an unknown preset and never touches the project", async () => {
+    const response = await serve({ kind: "insertPreset", preset: "nope" });
+    expect(response).toMatchObject({ ok: false });
+    expect(String(response.error)).toContain('no scene preset "nope"');
+    expect(insertPresetScene).not.toHaveBeenCalled();
+  });
+
+  it("is busy while the editor exports, except for font checks", async () => {
+    editor.exportLocked = true;
+    expect(await serve({ kind: "check" })).toMatchObject({ ok: false, busy: true });
+    stop?.();
+    expect(await serve({ kind: "fonts", refs: ["Menlo@400"] })).toMatchObject({
+      ok: false,
+      error: "font checks are not available in this build",
+    });
+  });
+
+  it("rejects a kind this build does not serve", async () => {
+    const response = await serve({ kind: "teleport" });
+    expect(response).toMatchObject({ version: 2, ok: false });
+    expect(String(response.error)).toContain("capture, check, fonts, insertPreset");
   });
 });

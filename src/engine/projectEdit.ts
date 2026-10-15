@@ -45,8 +45,22 @@ export function copySceneToProject(
   index: number,
   destSlug: string,
   position?: number,
-): Promise<{ file: string; docFile: string; sceneId: string; durationMs: number; index: number }> {
-  return invoke("copy_scene_to_project", { slug, index, destSlug, position: position ?? null });
+  name?: string,
+): Promise<{
+  file: string;
+  docFile: string;
+  sceneId: string;
+  durationMs: number;
+  index: number;
+  name?: string | null;
+}> {
+  return invoke("copy_scene_to_project", {
+    slug,
+    index,
+    destSlug,
+    position: position ?? null,
+    name: name ?? null,
+  });
 }
 
 /** Another project's scenes for the copy-from picker: manifest order, sidecar display names with the file-stem fallback. */
