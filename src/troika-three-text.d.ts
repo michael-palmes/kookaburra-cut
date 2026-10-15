@@ -73,3 +73,42 @@ declare module "troika-three-utils" {
     uniforms: Record<string, { value: any }>;
   };
 }
+
+/** Troika's font parser worker module, run on the main thread to vet a face before troika loads it (theme/fontVet.ts). */
+declare module "troika-three-text/src/FontParser.js" {
+  export interface TroikaParsedGlyph {
+    index: number;
+    advanceWidth: number;
+    path: string;
+  }
+  export interface TroikaParsedFont {
+    unitsPerEm: number;
+    ascender: number;
+    descender: number;
+    lineGap: number;
+    capHeight: number;
+    xHeight: number;
+    supportsCodePoint(code: number): boolean;
+    forEachGlyph(
+      text: string,
+      fontSize: number,
+      letterSpacing: number,
+      callback: (glyph: TroikaParsedGlyph, x: number, y: number, charIndex: number) => void,
+    ): number;
+  }
+  const fontParser: { onMainThread(buffer: ArrayBuffer): Promise<TroikaParsedFont> };
+  export default fontParser;
+}
+
+/** The Typr build troika bundles; the cmap selection test drives `U.codeToGlyph` directly. */
+declare module "troika-three-text/libs/typr.factory.js" {
+  export interface TyprFont {
+    cmap: Record<string, unknown> & { tables: unknown[] };
+  }
+  export interface Typr {
+    parse(buffer: ArrayBuffer): TyprFont[];
+    U: { codeToGlyph(font: TyprFont, code: number): number };
+  }
+  const typrFactory: () => Typr;
+  export default typrFactory;
+}
