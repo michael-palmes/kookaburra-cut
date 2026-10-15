@@ -26,6 +26,9 @@ vi.mock("./contactSheet", () => ({
   },
 }));
 vi.mock("../engine/presetInsert", () => ({ insertPresetScene: vi.fn() }));
+vi.mock("./bridgeFonts", () => ({
+  serveFontsRequest: vi.fn(async () => ({ ok: true, results: [{ ref: "Menlo@400", ok: true }] })),
+}));
 vi.mock("../engine/presets", () => ({
   refreshUserPresets: vi.fn(async () => []),
   listAllPresets: () => [
@@ -588,8 +591,8 @@ describe("bridge v2 requests", () => {
     expect(await serve({ kind: "check" })).toMatchObject({ ok: false, busy: true });
     stop?.();
     expect(await serve({ kind: "fonts", refs: ["Menlo@400"] })).toMatchObject({
-      ok: false,
-      error: "font checks are not available in this build",
+      ok: true,
+      results: [{ ref: "Menlo@400", ok: true }],
     });
   });
 

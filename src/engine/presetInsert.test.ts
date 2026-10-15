@@ -61,9 +61,14 @@ describe("insertPresetScene", () => {
     expect(copySceneToProject).not.toHaveBeenCalled();
     allow();
     await pending;
-    expect(copySceneToProject).toHaveBeenCalledExactlyOnceWith("ws-preset:title", 0, "launch", 0, {
-      positionFile: undefined,
-    });
+    expect(copySceneToProject).toHaveBeenCalledExactlyOnceWith(
+      "ws-preset:title",
+      0,
+      "launch",
+      0,
+      { positionFile: undefined },
+      undefined,
+    );
   });
 
   it("leaves the destination untouched when workspace source consent is declined", async () => {
