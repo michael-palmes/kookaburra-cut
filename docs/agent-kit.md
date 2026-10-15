@@ -51,17 +51,23 @@ scripts/
 
 - Runs on every workspace project load (best effort, never blocks the load) and when
   the embedded terminal starts Claude.
-- The skill directory is copied to a temporary sibling and swapped in, so files the
-  kit no longer ships are removed. Dev builds always restamp; release builds restamp
-  when `kit.json`'s `appVersion` differs.
+- The skill directory is copied to a temporary sibling and swapped in (`RENAME_SWAP`,
+  with a two-rename fallback), so files the kit no longer ships are removed;
+  `__pycache__` and `.DS_Store` are skipped. Dev builds restamp when the shipped tree
+  differs byte for byte (never mid-session for nothing, since a hook may be running
+  `kb.py`); release builds restamp when `kit.json`'s `appVersion` differs. Declining
+  the trust prompt stamps nothing. Code: `src-tauri/src/kit.rs`.
 - `CLAUDE.md`: written when missing. When it still matches a previous default
-  template (whitespace-normalised) it is replaced with the current one. Otherwise,
-  when it lacks the RULES import, the import line is inserted after its first heading.
-  Nothing else in a user-edited `CLAUDE.md` is touched.
+  template (whitespace-normalised; every past default lives in
+  `src-tauri/templates/claude-md-history/`) it is replaced with the current one.
+  Otherwise, when it lacks the RULES import, the import line is inserted after its
+  first heading. Nothing else in a user-edited `CLAUDE.md` is touched. Changing the
+  template means archiving the old one first (a test pins its digest).
 - `.claude/settings.json`: created when missing. Managed hooks are identified by a
   command containing `kookaburra-scene-authoring/scripts/kb.py hook`; the stamp removes
   them and re-adds the current set. Managed `permissions.allow` entries are added when
-  missing. An unparseable file is left alone.
+  missing. An unparseable file is left alone. The file is only rewritten when its
+  content changes, and then with sorted keys.
 
 Managed settings:
 
@@ -177,6 +183,12 @@ removed on exit; autorun instances never write it.
 }
 ```
 
+Two more fields locate the presets: `presetsDir` (holds `<slug>/`) and
+`presetPreviewsDir` (holds `<slug>.jpg`); in dev the posters live under `src/assets`.
+`playheadMs` is an integer and `openProject` is null on the Welcome screen. The editor
+reports `lastLoad` after every load attempt (`set_last_load`); `warnings` includes
+healed scene ids and dropped LUTs.
+
 `kb` treats the app as running when `updatedAtMs` is under 15 s old and the pid is
 alive. It never uses `pgrep` (it matches unrelated processes and misses others).
 
@@ -195,21 +207,33 @@ lands in `responses/<id>.json`. A request without `kind` is a v1 capture.
   "preset": "title", "position": 4, "name": "Highlights" }
 ```
 
-Every response carries `{ "version": 2, "id", "ok", "error"?, "busy"?, "needsTrust"? }`
-plus its kind's payload:
+`requestedAtMs` is optional (the file's age stands in), `scene` is an index or a file
+stem, and an unparseable request gets an immediate error response. A request without
+`kind` and with `version` below 2 is answered as `version: 1`, so old kits keep working.
 
-- `capture`: `path` (first frame), `paths`, `frames: [{ scene, at, tMs, path }]`,
-  `sheetPath` when asked, `project`, `format`, `surface: "render-window"`. `aspect`
-  overrides the editor's aspect for this request only.
+Every response carries `{ "version": 2, "id", "ok", "error"?, "busy"?, "needsTrust"? }`
+plus its kind's payload. `busy` applies to every kind except `fonts` while exporting.
+
+- `capture`: `path` (first frame), `paths`, `frames: [{ scene, at, tMs, path, index }]`
+  (`scene` is the resolved stem, `at` seconds into it), a top-level `tMs`, `sheetPath`
+  when asked, `project`, `format`, `surface: "render-window"`. Files are `<id>.png`,
+  `<id>-N.png` and `<id>-sheet.png`; at most 48 frames. `aspect` overrides the editor's
+  aspect for this request only; an unknown aspect is an error.
 - `check`: `project`, `scenes: [{ index, file, id, ok, phase?, error?, warnings }]`,
-  `fonts: [{ ref, ok, error?, fallback? }]`, `assets: [{ path, ok, error? }]`,
-  `warnings`, `rendered`. Built from a real load in the render window (compile,
-  evaluate, fonts through the real parser, asset resolution); `render: true` also
-  renders each scene's midpoint and reports errors the asset boundary caught.
-- `fonts`: `results: [{ ref, ok, error?, face?: { postscript, weight, file } }]`, and
-  `families: [{ family, weights, bundled }]` when `listFamilies` is set.
-- `insertPreset`: `file`, `index`, `id`, `name`. Uses the app's own preset copy
-  (assets copied and renamed on collision, stem and ids minted, sidecar ids re-minted).
+  `fonts: [{ ref, ok, error?, fallback? }]` (passing refs included),
+  `assets: [{ path, ok, error? }]`, `warnings`, `rendered`. Built from a real load in
+  the render window. `ok` is false when any scene, font or asset fails; `error` is set
+  only when the load itself failed (the arrays are then empty). `scenes[].warnings`
+  lists that scene's missing asset paths (workspace projects only). `render: true`
+  also renders each scene's midpoint at 640 px wide and reports errors the asset
+  boundary caught.
+- `fonts`: served by `src/render/bridgeFonts.ts`: `results: [{ ref, ok, error?,
+  fallback? }]` from `validateFontRefs` (which pins system faces into the workspace
+  fonts folder), and `families: [{ family, weights, bundled }]` when `listFamilies`.
+- `insertPreset`: `file`, `index`, `id`, `name`, `project`, `preset`. Uses the app's
+  own preset copy (assets copied and renamed on collision, stem and ids minted, sidecar
+  ids re-minted). `position` is a 0-based manifest index (absent appends); `name` also
+  drives the minted stem and scene id.
 
 Trust: a request for the project open in the editor runs under the editor's session
 trust (the same re-stamp the editor already does on every load). Any other project
@@ -218,16 +242,21 @@ loads stored-only; when its sources changed since the user allowed it, the respo
 
 ## Load safety
 
-- **Fonts.** Every non-bundled face is validated with troika's own parser (parse, then
-  glyph lookup for basic Latin) before troika ever sees it. A face that fails is
-  excluded, its refs fall back to the theme face, and a `fontIssue` names it. The
-  troika patch also makes `codeToGlyph` fall through to the next readable cmap subtable
-  instead of throwing (format 6 is read too); faces that work today keep the exact
-  same subtable, so existing exports are unchanged.
-- **Scenes.** A scene that fails to compile, evaluate or default-export loads as an
-  error card (WebGL text, deterministic) and is recorded in `sceneErrors`; the rest of
-  the project opens. Export, stills and verify refuse while any scene is an error card,
-  naming the files. Render-time errors caught by the asset boundary are recorded too.
+- **Fonts.** Every non-bundled face is vetted with troika's own parser
+  (`src/theme/fontVet.ts`: parse, basic Latin lookups, a glyph walk, metrics) before
+  troika sees it, including in the export preamble. A face that fails is swapped for
+  the theme face of the nearest weight (else Inter) and a `fontIssue` names it
+  (`src/theme/fontSafety.ts`). The troika patch makes `codeToGlyph` take the first
+  present subtable of a readable format (0, 4, 12; format 6 only as a last resort)
+  instead of throwing; across 969 installed faces every face that worked keeps
+  identical glyph ids and 67 more now work (Menlo, Helvetica Neue, Lucida Grande).
+- **Scenes.** A scene that fails to read, compile, evaluate or default-export loads as
+  an error card (camera-locked WebGL, bundled Inter, deterministic) and is recorded in
+  `sceneErrors`; the rest of the project opens. A broken persistent module is recorded
+  with `index: -1`. Export, stills and verify refuse while any scene is an error card,
+  naming the files; an autorun screenshot still writes its PNG but exits 1. Render-time
+  errors caught by the asset boundary are recorded too.
+- **LUTs.** A LUT that fails to load is dropped with a warning (`loadWarnings`).
 - **Failed reloads.** A live reload that fails keeps the last good project on stage
   with a persistent banner, not a toast, and the app makes no writes from that stale
   state.
