@@ -371,6 +371,8 @@ fn stamp_settings(path: &Path) -> Result<(), String> {
 enum Node {
     Dir,
     File(Vec<u8>),
+    /// A file by size only: the release check, which must not read the whole kit on every load.
+    Sized(u64),
     Link(PathBuf),
 }
 
@@ -378,8 +380,13 @@ fn skipped(name: &std::ffi::OsStr) -> bool {
     SKIPPED_NAMES.iter().any(|s| name == *s)
 }
 
-fn snapshot(root: &Path) -> Option<BTreeMap<PathBuf, Node>> {
-    fn walk(root: &Path, dir: &Path, out: &mut BTreeMap<PathBuf, Node>) -> Option<()> {
+fn snapshot(root: &Path, contents: bool) -> Option<BTreeMap<PathBuf, Node>> {
+    fn walk(
+        root: &Path,
+        dir: &Path,
+        contents: bool,
+        out: &mut BTreeMap<PathBuf, Node>,
+    ) -> Option<()> {
         for entry in std::fs::read_dir(dir).ok()? {
             let entry = entry.ok()?;
             if skipped(&entry.file_name()) {
@@ -392,20 +399,24 @@ fn snapshot(root: &Path) -> Option<BTreeMap<PathBuf, Node>> {
                 out.insert(rel, Node::Link(std::fs::read_link(&path).ok()?));
             } else if meta.is_dir() {
                 out.insert(rel, Node::Dir);
-                walk(root, &path, out)?;
-            } else {
+                walk(root, &path, contents, out)?;
+            } else if contents {
                 out.insert(rel, Node::File(std::fs::read(&path).ok()?));
+            } else {
+                out.insert(rel, Node::Sized(meta.len()));
             }
         }
         Some(())
     }
     let mut out = BTreeMap::new();
-    walk(root, root, &mut out)?;
+    walk(root, root, contents, &mut out)?;
     Some(out)
 }
 
-fn trees_match(src: &Path, dst: &Path) -> bool {
-    let (Some(shipped), Some(mut stamped)) = (snapshot(src), snapshot(dst)) else {
+/// Same files and links, compared byte for byte (`contents`) or by size.
+fn trees_match(src: &Path, dst: &Path, contents: bool) -> bool {
+    let (Some(shipped), Some(mut stamped)) = (snapshot(src, contents), snapshot(dst, contents))
+    else {
         return false;
     };
     stamped.remove(Path::new(KIT_FILE));
@@ -425,10 +436,12 @@ fn needs_restamp(src: &Path, dst: &Path, opts: &StampOptions) -> bool {
         return true;
     };
     if opts.dev {
-        return !trees_match(src, dst);
+        return !trees_match(src, dst, true);
     }
+    // The shape check heals a file deleted or truncated inside the kit without reading it all.
     kit.get("appVersion").and_then(Value::as_str) != Some(opts.app_version.as_str())
         || kit.get("kitVersion").and_then(Value::as_u64) != Some(KIT_VERSION)
+        || !trees_match(src, dst, false)
 }
 
 /// Symlinks are recreated, never followed.
@@ -796,6 +809,19 @@ mod tests {
             "newer"
         );
         assert_eq!(read_json(&dst.join(KIT_FILE))["stampedAtMs"], 3);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn release_builds_heal_a_file_removed_from_the_kit() {
+        let dir = scratch("release-heal");
+        let src = skill_source(&dir);
+        let dst = dir.join("project/.claude/skills").join(SKILL_NAME);
+        stamp_skill(&src, &dst, &opts("0.19.0", false, 1)).unwrap();
+        std::fs::remove_file(dst.join("scripts/kb.py")).unwrap();
+        stamp_skill(&src, &dst, &opts("0.19.0", false, 2)).unwrap();
+        assert!(dst.join("scripts/kb.py").is_file());
+        assert_eq!(read_json(&dst.join(KIT_FILE))["stampedAtMs"], 2);
         let _ = std::fs::remove_dir_all(&dir);
     }
 
