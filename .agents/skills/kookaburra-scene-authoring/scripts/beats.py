@@ -11,6 +11,8 @@ Reads the analysis cache the app writes when a project with a soundtrack opens.
 If it is missing, ask the user to open this project in Kookaburra Cut once, then rerun.
 """
 
+from __future__ import annotations
+
 import argparse
 import hashlib
 import json
