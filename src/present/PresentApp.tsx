@@ -13,7 +13,9 @@ import { setPreviewAudioProject, syncPreviewAudioPlaying } from "../engine/previ
 import { setPreviewClipStride, setPreviewPlaybackActive } from "../engine/previewMedia";
 import { type LoadedProject, loadProject, sceneMountKey } from "../engine/project";
 import { revealApp } from "../engine/reveal";
+import { isSceneErrorCard } from "../engine/SceneErrorCard";
 import { SceneHost } from "../engine/SceneHost";
+import { sceneRenderErrorReporter } from "../engine/StageScenes";
 import { ProjectIdContext, ProjectLightingContext } from "../engine/sceneContext";
 import { animatedFixtureLightIds, buildLightingTracks } from "../engine/sceneLighting";
 import { useEditorStore } from "../store/editorStore";
@@ -380,15 +382,25 @@ export function PresentApp() {
                         frame={project.sceneFrames[i]}
                         animatedFixtureLightIds={animatedFixtureLightSets[i]}
                       >
-                        <AssetBoundary label={`scene ${i + 1}`}>
-                          <SceneBackground />
-                          <SceneComponent />
-                          <SceneMediaFallback />
-                          <DevicesFallback />
-                          <ObjectsFallback />
-                          <LayeredScreenshotFallback />
-                          <ChartFallback />
-                          <TextFallback />
+                        <AssetBoundary
+                          label={`scene ${i + 1}`}
+                          resetKey={project}
+                          onError={sceneRenderErrorReporter(project, i)}
+                        >
+                          {isSceneErrorCard(scene) ? (
+                            <SceneComponent />
+                          ) : (
+                            <>
+                              <SceneBackground />
+                              <SceneComponent />
+                              <SceneMediaFallback />
+                              <DevicesFallback />
+                              <ObjectsFallback />
+                              <LayeredScreenshotFallback />
+                              <ChartFallback />
+                              <TextFallback />
+                            </>
+                          )}
                         </AssetBoundary>
                       </SceneHost>
                     );

@@ -32,6 +32,7 @@ import { runPerfProbe } from "./perfProbe";
 import { listPresets, presetPreviewFrame } from "./presets";
 import { type LoadedProject, loadProject, previewLabProjectIds, sceneFileStem } from "./project";
 import type { RenderStateFingerprint } from "./renderFingerprint";
+import { assertScenesLoaded, sceneErrorRefusal } from "./sceneErrors";
 import type { StillsWarning } from "./stillPages";
 import {
   DEFAULT_STILLS_FORMAT,
@@ -568,6 +569,7 @@ export async function runAutoRun(
       for (const themeId of themes) {
         console.warn(`[autorun] theme-previews ${themeId} starting`);
         const loaded = await loadProject(config.project, { themeId });
+        assertScenesLoaded(loaded, "capture theme previews");
         // The theme's PMREM environment resolves BEFORE the swap (the preloadBundledBackdrops rationale): headless windows never fire rAF, so a texture landing after the swap would otherwise stay unpainted into the first capture.
         const gl = canvasHandle.current?.gl;
         if (gl) {
@@ -622,6 +624,7 @@ export async function runAutoRun(
         releaseCompositorPools();
         releaseComposer();
         const created = await loadProject(`ws:${info.slug}`);
+        assertScenesLoaded(created, "capture template previews");
         applyProject(created);
         await nextCommit();
         await awaitProjectCommitted(created);
@@ -705,6 +708,7 @@ export async function runAutoRun(
         releaseCompositorPools();
         releaseComposer();
         const loaded = await loadProject(entry.projectId);
+        assertScenesLoaded(loaded, "capture preset previews");
         applyProject(loaded);
         await nextCommit();
         await awaitProjectCommitted(loaded);
@@ -885,6 +889,12 @@ export async function runAutoRun(
         name,
       );
       results.push({ aspect: format.name, path });
+      // The frame still lands (an error card is worth seeing), but the run fails so a gate never passes on one.
+      const refusal = sceneErrorRefusal(project.sceneErrors, "pass a screenshot run");
+      if (refusal) {
+        ok = false;
+        error = refusal;
+      }
     } catch (e) {
       ok = false;
       error = String(e);
@@ -910,6 +920,7 @@ export async function runAutoRun(
       releaseCompositorPools();
       releaseComposer();
       const created = await loadProject(`ws:${info.slug}`);
+      assertScenesLoaded(created, "pass the create smoke");
       applyProject(created);
       await nextCommit();
       await awaitProjectCommitted(created);
@@ -976,6 +987,16 @@ export async function runAutoRun(
         await awaitProjectCommitted(current);
         await awaitSceneHostsCommitted(current.slots.length);
       }
+      assertScenesLoaded(
+        current,
+        config.action === "stills"
+          ? "export stills"
+          : config.action === "stillsverify"
+            ? "verify stills"
+            : config.action === "packroundtrip"
+              ? "run the pack round trip"
+              : config.action,
+      );
       for (const format of config.aspects) {
         console.warn(`[autorun] ${config.action} ${current.id} ${format.name} starting`);
         useEditorStore.getState().setFormat(format);

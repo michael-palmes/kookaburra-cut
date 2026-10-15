@@ -137,6 +137,7 @@ import {
 } from "./engine/sceneDoc";
 import { commitSceneDocPatch, docPatchMatchesProject } from "./engine/sceneDocPatchQueue";
 import type { SceneDoc } from "./engine/sceneDocSchema";
+import { sceneErrorRefusal } from "./engine/sceneErrors";
 import { planDeletes, planDuplicates, planMoves } from "./engine/sceneOrder";
 import { ensureSceneThumbs, listCachedSceneThumbs } from "./engine/sceneThumbs";
 import { activeSceneIndex } from "./engine/sceneTimeline";
@@ -209,6 +210,7 @@ import { LayeredScreenshotGizmo } from "./ui/LayeredScreenshotGizmo";
 import { LayeredScreenshotPill } from "./ui/LayeredScreenshotPill";
 import { LayeredScreenshotToolOverlay } from "./ui/LayeredScreenshotToolOverlay";
 import { LightingAnimationLane } from "./ui/LightingAnimationLane";
+import { degradedLoadNotice, LoadNotice } from "./ui/LoadNotices";
 import { animationLaneMasterOpen, clearSecondaryLaneSelections } from "./ui/laneSelection";
 import { MediaLibrary } from "./ui/MediaLibrary";
 import { PlaybackBar } from "./ui/PlaybackBar";
@@ -331,6 +333,10 @@ export default function App() {
   // Scene file to land the playhead on after the next reload (set by create/duplicate).
   const focusSceneFileRef = useRef<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // The project the user declined at the trust prompt, explained on the Welcome screen.
+  const [trustDeclined, setTrustDeclined] = useState<string | null>(null);
+  // A dismissed degraded-load notice, by content, so the same problems don't re-raise it on every reload.
+  const [dismissedLoadNotice, setDismissedLoadNotice] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
   const [progress, setProgress] = useState<ExportProgress | null>(null);
   // What the running export writes; the titlebar pill and the preparing overlay name it.
@@ -1327,6 +1333,7 @@ export default function App() {
   }, []);
 
   const openProject = useCallback((id: string) => {
+    setTrustDeclined(null);
     useEditorStore.getState().setProjectId(id);
     setView("editor");
     setLastProject(id).catch(() => {});
@@ -1651,11 +1658,13 @@ export default function App() {
       // A remembered aspect is known before the load, so the blank stage takes it straight away.
       const remembered = isAutoRun ? null : rememberedProjectAspect(projectId);
       if (remembered) useEditorStore.getState().setFormat(FORMATS[remembered]);
+      setError(null);
     }
-    setError(null);
+    // A failed live reload keeps its banner through the next attempt; only a successful load clears it.
     loadProject(projectId)
       .then((loaded) => {
         if (cancelled) return;
+        setError(null);
         // The preview aspect is per project, so a switch must not carry the last project's over (a first open takes its declared format); autoruns set their own per leg.
         if (isSwitch && !isAutoRun) {
           useEditorStore
@@ -1682,14 +1691,12 @@ export default function App() {
         if (cancelled) return;
         // Declining the trust gate is a choice, not a failure: back to the welcome screen, and don't reopen the project next boot.
         if (e instanceof TrustDeniedError) {
+          setTrustDeclined(e.projectName);
           backToProjects();
           return;
         }
+        // An SWR reload failure keeps the previous project on stage, so the stage-error panel never renders; the persistent reload banner says so until a load succeeds.
         setError(String(e));
-        // An SWR reload failure keeps the previous project on stage so the stage-error panel never renders; say it loudly instead of only in the scrubber readout.
-        if (!isSwitch && !isAutoRun) {
-          setToast({ kind: "error", message: `Live reload failed: ${String(e)}` });
-        }
         // In auto-run mode, a failed load of the target project must self-report (result + non-zero exit) rather than hang until the wrapper's timeout; guarded to the requested project only.
         let cfg: AutoRunConfig | null = null;
         try {
@@ -1705,6 +1712,10 @@ export default function App() {
   }, [projectId, loadNonce, view, applyLoadedProject, isAutoRun, backToProjects, armPollBaseline]);
 
   const loadedProjectId = project?.id;
+  // Broken scenes, unusable fonts and LUT fallbacks from a load that otherwise succeeded.
+  const degradedNotice = useMemo(() => (project ? degradedLoadNotice(project) : null), [project]);
+  const loadNotice =
+    degradedNotice && degradedNotice.key !== dismissedLoadNotice ? degradedNotice : null;
   // Mid-switch the outgoing project is still loaded under the incoming aspect, and export legs cycle it, so neither is recorded.
   useEffect(() => {
     if (loadedProjectId === projectId && !isAutoRun && !exporting) {
@@ -2287,6 +2298,15 @@ export default function App() {
   // Run the modal's selection. The chosen aspect sets the editor format first; no `encode` means the frozen legacy path (Kookaburra Standard), presets/custom carry their resolved spec + name suffix.
   async function handleExport(sel: ExportSelection) {
     if (!project || exporting || themePreviewRunning.current) return;
+    const refusal = sceneErrorRefusal(
+      project.sceneErrors,
+      sel.kind === "stills" ? "export stills" : "export",
+    );
+    if (refusal) {
+      setShowExport(false);
+      setToast({ kind: "error", message: refusal });
+      return;
+    }
     if (sel.kind === "stills") {
       await handleStillsExport(sel);
       return;
@@ -2364,6 +2384,11 @@ export default function App() {
 
   async function handleVerify() {
     if (!project || exporting || themePreviewRunning.current) return;
+    const refusal = sceneErrorRefusal(project.sceneErrors, "verify");
+    if (refusal) {
+      setToast({ kind: "error", message: refusal });
+      return;
+    }
     setExporting(true);
     setProgress(null);
     setToast(null);
@@ -2537,6 +2562,17 @@ export default function App() {
           }}
           refreshKey={welcomeRefresh}
           focusSearchNonce={welcomeSearchNonce}
+          notice={
+            trustDeclined ? (
+              <LoadNotice
+                className="load-notice-inline"
+                tone="warning"
+                title={`“${trustDeclined}” wasn’t opened`}
+                hint="Its scenes are code that only runs once you allow the project. Open it again and choose Allow project if you trust it."
+                onDismiss={() => setTrustDeclined(null)}
+              />
+            ) : null
+          }
         />
       )}
 
@@ -2859,6 +2895,33 @@ export default function App() {
                   >
                     Retry
                   </button>
+                </div>
+              )}
+
+              {project && !exporting && !isAutoRun && (error || loadNotice) && (
+                <div className="load-notices">
+                  {error && (
+                    <LoadNotice
+                      tone="danger"
+                      title="Live reload failed. The stage shows the last version that loaded."
+                      lines={error
+                        .replace(/^Error: /, "")
+                        .split("\n")
+                        .map((line) => line.trim())
+                        .filter(Boolean)
+                        .slice(0, 4)}
+                      hint="Fix the file, or ask Claude Code to. The stage updates once it loads."
+                    />
+                  )}
+                  {loadNotice && (
+                    <LoadNotice
+                      tone="warning"
+                      title={loadNotice.title}
+                      lines={loadNotice.lines}
+                      hint={loadNotice.hint}
+                      onDismiss={() => setDismissedLoadNotice(loadNotice.key)}
+                    />
+                  )}
                 </div>
               )}
 

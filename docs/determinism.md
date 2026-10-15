@@ -908,6 +908,17 @@ camera exactly:
   + pinned URLs) in the export preamble; `ensureThemeFontsPinned` is awaited by
   `loadProject` BEFORE scenes render, so `fontUrl` stays a synchronous lookup at
   render time.
+- **Unsafe faces never reach troika.** One throw inside troika's font XHR
+  callback leaves every pending `preloadFont` unsettled, so a single bad face
+  hung the whole load. `loadProject` and `preloadAppFonts` first run every
+  non-bundled face through troika's own parser (theme/fontVet.ts: parse,
+  basic-Latin lookups, a glyph walk; verdicts cached per URL). A face that throws
+  is swapped by URL for the theme's nearest-weight safe face (else Inter) and
+  named in `LoadedProject.fontIssues`; healthy faces are untouched. The troika
+  patch also lets `Typr.U.codeToGlyph` fall through an unreadable cmap subtable
+  to the next readable one (format 6 read last): every face that rendered before
+  keeps its exact subtable (901 installed faces compared glyph for glyph, zero
+  differences), so no baseline moves.
 - **3D text stays bundled.** `ExtrudedText` typefaces (converted outlines, one
   per family at the default weight, `pnpm assets:text3d-font`) cover the bundled
   set only; system-font refs fall back to Inter there. The converter is
