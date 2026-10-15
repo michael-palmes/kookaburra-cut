@@ -1,8 +1,9 @@
 //! The capture bridge: a file-drop queue at `~/Kookaburra Cut/_bridge/` that lets Claude Code ask the RUNNING app (dev or packaged) to capture, check, vet fonts or insert presets (docs/agent-kit.md, "The bridge (v2)"; v1 `capture.py` requests carry no `kind` and still work). Clients write `requests/<id>.json`; the hidden render window claims one per tick via `bridge_claim_request`, serves it through the export path and answers via `bridge_write_response` + the bridge screenshot pair. The editor's one-second tick also writes the `app.json` heartbeat. Deliberately separate from the autorun screenshot commands (env-gated, cold-boot, single-instance): neither surface may regress the other.
 
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use serde::de::Error as _;
 use serde::{Deserialize, Deserializer, Serialize};
@@ -279,6 +280,34 @@ fn write_atomic(path: &Path, text: &str) -> Result<(), String> {
     })
 }
 
+/// The native refresh cadence; the webview tick usually writes first, this covers it while macOS throttles a hidden window's timers.
+const HEARTBEAT_REFRESH: Duration = Duration::from_secs(5);
+
+/// Set once the app is exiting, so the refresh thread can't rewrite a heartbeat `remove_heartbeat` just removed.
+static HEARTBEAT_STOPPED: AtomicBool = AtomicBool::new(false);
+
+/// Keep the heartbeat fresh from a native thread: the editor's one-second tick runs in the webview, whose timers macOS throttles while the app is hidden (App Nap, an occluded window), and a stale heartbeat reads as "not running" to kb.
+pub fn spawn_heartbeat(app: AppHandle) {
+    if crate::is_autorun() {
+        return;
+    }
+    std::thread::spawn(move || loop {
+        std::thread::sleep(HEARTBEAT_REFRESH);
+        if HEARTBEAT_STOPPED.load(Ordering::Relaxed) {
+            return;
+        }
+        let context = app
+            .state::<EditorContextState>()
+            .0
+            .lock()
+            .ok()
+            .and_then(|c| c.clone());
+        let heartbeat = app.state::<HeartbeatState>();
+        let settings = app.state::<workspace::SettingsState>();
+        write_heartbeat(&app, &heartbeat, &settings, context.as_ref());
+    });
+}
+
 /// Rewrite `_bridge/app.json` unless it was written under two seconds ago; interactive app only.
 fn write_heartbeat(
     app: &AppHandle,
@@ -286,7 +315,7 @@ fn write_heartbeat(
     settings: &State<'_, workspace::SettingsState>,
     context: Option<&EditorContext>,
 ) {
-    if crate::is_autorun() {
+    if crate::is_autorun() || HEARTBEAT_STOPPED.load(Ordering::Relaxed) {
         return;
     }
     let now = now_ms();
@@ -329,6 +358,7 @@ pub fn remove_heartbeat(app: &AppHandle) {
     if crate::is_autorun() {
         return;
     }
+    HEARTBEAT_STOPPED.store(true, Ordering::Relaxed);
     let Ok(path) = bridge_root(app).map(|root| root.join(HEARTBEAT_FILE)) else {
         return;
     };

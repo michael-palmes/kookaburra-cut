@@ -11,7 +11,7 @@ from typing import Any, Dict, List, Optional
 
 from .util import EXIT_ENV, EXIT_PROBLEMS, KbError, bridge_dir, now_ms
 
-HEARTBEAT_FRESH_MS = 15_000
+HEARTBEAT_FRESH_MS = 30_000
 POLL_S = 0.25
 BUSY_RETRY_S = 2.0
 CLAIM_WINDOW_S = 110.0

@@ -22,7 +22,7 @@ class HeartbeatTests(KbTestCase):
         self.assertIsNotNone(bridge.live_heartbeat())
 
     def test_stale_or_dead_heartbeat(self) -> None:
-        self.write_hb(updatedAtMs=int(time.time() * 1000) - 20_000)
+        self.write_hb(updatedAtMs=int(time.time() * 1000) - 40_000)
         self.assertIsNone(bridge.live_heartbeat())
         self.assertIn("stale", bridge.not_running_message("x"))
         self.write_hb(pid=999_999_9)

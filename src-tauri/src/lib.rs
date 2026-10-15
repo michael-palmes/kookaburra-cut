@@ -1625,6 +1625,7 @@ pub fn run() {
                     park_background_window(&main);
                 }
             }
+            bridge::spawn_heartbeat(app.handle().clone());
             // Staging and backup trees from a crashed or killed import; harmless but they accumulate.
             if let Ok(root) = workspace::require_root(&app.handle().clone(), &app.state()) {
                 pack::read::sweep_stale(&root);
