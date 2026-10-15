@@ -233,8 +233,9 @@ pub(crate) fn managed_settings() -> Value {
         json!({
             "type": "command",
             "timeout": timeout,
+            // A missing kb.py must never block an edit, so the guard exits 0 before python3 can exit 2.
             "command": format!(
-                "python3 -I \"$CLAUDE_PROJECT_DIR\"/.claude/skills/kookaburra-scene-authoring/scripts/kb.py hook {name}"
+                "[ ! -f \"$CLAUDE_PROJECT_DIR\"/.claude/skills/kookaburra-scene-authoring/scripts/kb.py ] || python3 -I \"$CLAUDE_PROJECT_DIR\"/.claude/skills/kookaburra-scene-authoring/scripts/kb.py hook {name}"
             ),
         })
     };
