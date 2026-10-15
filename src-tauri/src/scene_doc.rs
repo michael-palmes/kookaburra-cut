@@ -74,6 +74,17 @@ fn atomic_write_json(path: &Path, value: &Value) -> Result<(), String> {
 
 /// `atomic_write_json`, returning the landed content hash and stamp.
 fn atomic_write_json_stamped(path: &Path, value: &Value) -> Result<(String, String), String> {
+    let rel = path.display().to_string();
+    atomic_write_json_checked(path, &rel, value, None).map(|w| (w.hash, w.stamp))
+}
+
+/// `atomic_write_json`, refused when `base` no longer matches the disk (checked right before the rename).
+fn atomic_write_json_checked(
+    path: &Path,
+    rel: &str,
+    value: &Value,
+    base: Option<&str>,
+) -> Result<live_edits::LandedWrite, String> {
     if path
         .file_name()
         .is_some_and(|name| name == MANIFEST_FILENAME)
@@ -87,7 +98,7 @@ fn atomic_write_json_stamped(path: &Path, value: &Value) -> Result<(String, Stri
         }
     }
     let text = serde_json::to_string_pretty(value).map_err(|e| e.to_string())?;
-    live_edits::write_bytes_stamped(path, (text + "\n").as_bytes())
+    live_edits::write_bytes_checked(path, rel, (text + "\n").as_bytes(), base)
 }
 
 /// One project file's tracked write: refused when `base` no longer matches the disk, and reported with its hash and stamps.
@@ -98,14 +109,12 @@ fn tracked_write_json(
     base: Option<&str>,
 ) -> Result<FileWrite, String> {
     let path = project.join(rel);
-    live_edits::check_base(&path, rel, base)?;
-    let before = live_edits::file_stamp(&path);
-    let (hash, stamp) = atomic_write_json_stamped(&path, value)?;
+    let landed = atomic_write_json_checked(&path, rel, value, base)?;
     Ok(FileWrite {
         file: rel.to_string(),
-        hash,
-        before,
-        stamp,
+        hash: landed.hash,
+        before: landed.before,
+        stamp: landed.stamp,
     })
 }
 

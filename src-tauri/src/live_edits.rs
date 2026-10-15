@@ -1,6 +1,8 @@
 //! Conflict-aware app writes (docs/agent-kit.md, "Live edits"): files are the source of truth, so every app write to a sidecar or `project.json` can carry the content hash it was based on and is refused when the file changed outside the app; per-file stamps let the editor's reload poll tell its own writes from anyone else's.
 
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Mutex;
 use std::time::UNIX_EPOCH;
 
 use serde::Serialize;
@@ -90,18 +92,60 @@ pub struct FileWrite {
     pub stamp: String,
 }
 
-/// Bytes land through a temp file stamped before the rename (a rename keeps the file's mtime), so the stamp can never describe someone else's later write.
-pub(crate) fn write_bytes_stamped(path: &Path, bytes: &[u8]) -> Result<(String, String), String> {
+/// Serialises app writes, so two of them can never interleave between a base check and its rename.
+static WRITE_LOCK: Mutex<()> = Mutex::new(());
+static TEMP_SEQ: AtomicU64 = AtomicU64::new(0);
+
+/// A temp sibling unique to this write (dot-prefixed and `.tmp`, so the reload poll and trust fingerprint skip it).
+fn temp_sibling(path: &Path) -> PathBuf {
+    let name = path
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let seq = TEMP_SEQ.fetch_add(1, Ordering::Relaxed);
+    path.with_file_name(format!(".{name}.{}-{seq}.tmp", std::process::id()))
+}
+
+/// One landed write: the content hash, the stamp it landed with, and the stamp it replaced.
+pub(crate) struct LandedWrite {
+    pub hash: String,
+    pub stamp: String,
+    pub before: Option<String>,
+}
+
+/// Bytes land through a unique temp file stamped before the rename (a rename keeps the file's mtime), so the stamp can never describe someone else's later write. `base` is checked as late as possible, right before the rename and under the write lock; an outside writer can still land in that last instant, since POSIX has no content compare-and-swap.
+pub(crate) fn write_bytes_checked(
+    path: &Path,
+    rel: &str,
+    bytes: &[u8],
+    base: Option<&str>,
+) -> Result<LandedWrite, String> {
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
     }
-    let mut tmp = path.as_os_str().to_owned();
-    tmp.push(".tmp");
-    let tmp = PathBuf::from(tmp);
+    let tmp = temp_sibling(path);
     std::fs::write(&tmp, bytes).map_err(|e| e.to_string())?;
     let stamp = file_stamp(&tmp).unwrap_or_default();
-    std::fs::rename(&tmp, path).map_err(|e| e.to_string())?;
-    Ok((content_hash(bytes), stamp))
+    let landed = {
+        let _guard = WRITE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        check_base(path, rel, base).and_then(|()| {
+            let before = file_stamp(path);
+            std::fs::rename(&tmp, path)
+                .map(|()| before)
+                .map_err(|e| e.to_string())
+        })
+    };
+    match landed {
+        Ok(before) => Ok(LandedWrite {
+            hash: content_hash(bytes),
+            stamp,
+            before,
+        }),
+        Err(e) => {
+            let _ = std::fs::remove_file(&tmp);
+            Err(e)
+        }
+    }
 }
 
 /// One source file's stamp for the reload poll.
@@ -244,14 +288,69 @@ mod tests {
         assert!(expect_scene_file(&scenes, 2, Some("scenes/03-c.tsx")).is_err());
     }
 
+    fn leftovers(dir: &Path) -> Vec<String> {
+        std::fs::read_dir(dir)
+            .unwrap()
+            .flatten()
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .filter(|n| n.ends_with(".tmp"))
+            .collect()
+    }
+
     #[test]
-    fn stamped_writes_report_the_landed_stamp_and_hash() {
+    fn checked_writes_report_the_landed_stamp_hash_and_replaced_stamp() {
         let dir = temp_project();
         let path = dir.join("project.json");
-        let (hash, stamp) = write_bytes_stamped(&path, b"{}\n").unwrap();
-        assert_eq!(hash, content_hash(b"{}\n"));
-        assert_eq!(Some(stamp), file_stamp(&path));
-        assert!(!dir.join("project.json.tmp").exists());
+        let first = write_bytes_checked(&path, "project.json", b"{}\n", Some(ABSENT_BASE)).unwrap();
+        assert_eq!(first.hash, content_hash(b"{}\n"));
+        assert_eq!(Some(first.stamp.clone()), file_stamp(&path));
+        assert_eq!(first.before, None);
+        let second =
+            write_bytes_checked(&path, "project.json", b"{\"a\":1}\n", Some(&first.hash)).unwrap();
+        assert_eq!(second.before, Some(first.stamp));
+        assert!(leftovers(&dir).is_empty());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_refused_write_leaves_the_file_and_no_temp_behind() {
+        let dir = temp_project();
+        let path = dir.join("scenes/01-a.json");
+        std::fs::write(&path, b"{\"name\":\"Claude\"}").unwrap();
+        let stale = content_hash(b"{}");
+        let err = write_bytes_checked(
+            &path,
+            "scenes/01-a.json",
+            b"{\"name\":\"App\"}",
+            Some(&stale),
+        )
+        .err()
+        .unwrap();
+        assert!(err.starts_with(CONFLICT_PREFIX), "{err}");
+        assert_eq!(std::fs::read(&path).unwrap(), b"{\"name\":\"Claude\"}");
+        assert!(leftovers(&dir.join("scenes")).is_empty());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn concurrent_writes_to_one_file_never_share_a_temp() {
+        let dir = temp_project();
+        let path = dir.join("scenes/01-a.json");
+        let handles: Vec<_> = (0..8)
+            .map(|i| {
+                let path = path.clone();
+                std::thread::spawn(move || {
+                    let body = format!("{{\"n\":{i}}}");
+                    write_bytes_checked(&path, "scenes/01-a.json", body.as_bytes(), None)
+                })
+            })
+            .collect();
+        for handle in handles {
+            handle.join().unwrap().unwrap();
+        }
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(serde_json::from_str::<Value>(&text).is_ok(), "{text}");
+        assert!(leftovers(&dir.join("scenes")).is_empty());
         let _ = std::fs::remove_dir_all(dir);
     }
 
