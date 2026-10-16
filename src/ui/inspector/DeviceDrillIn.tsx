@@ -58,6 +58,7 @@ import {
   writeFoldDeg,
 } from "./foldEditorModel";
 import { MediaSourceGroup } from "./MediaSourceGroup";
+import { MotionBlurOverrideRow } from "./MotionBlurFields";
 import {
   ActionRow,
   DrillBack,
@@ -1533,6 +1534,20 @@ export function DeviceDrillIn({
                 description="Opens the Devices lane, where keys move every device in the scene. The preset above still plays on top."
                 checked={keyframesOn}
                 onChange={setKeyframesOn}
+              />
+            </DrillGroup>
+          )}
+
+          {!after && (
+            <DrillGroup label="Motion blur">
+              <MotionBlurOverrideRow
+                value={device.motionBlur}
+                onChange={(next) =>
+                  patchDevice((_next, candidate) => {
+                    if (next) candidate.motionBlur = next;
+                    else delete candidate.motionBlur;
+                  }, "device motion blur")
+                }
               />
             </DrillGroup>
           )}

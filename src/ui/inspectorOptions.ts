@@ -33,6 +33,7 @@ export interface ProjectRowModel {
     | "aspect"
     | "music"
     | "render"
+    | "motionBlur"
     | "playback";
   label: string;
   /** Right-aligned value text (11px tertiary). */
@@ -51,6 +52,7 @@ export function projectRows(input: {
   soundtrackName: string | null;
   playbackLabel: string;
   renderLabel: string;
+  motionBlurLabel: string;
   scenesCount: number;
 }): ProjectRowModel[] {
   if (!input.editable) {
@@ -73,6 +75,7 @@ export function projectRows(input: {
     { id: "appIcon", label: "App icon", chevron: true },
     { id: "playback", label: "Playback options", value: input.playbackLabel, chevron: true },
     { id: "render", label: "Render", value: input.renderLabel, chevron: true },
+    { id: "motionBlur", label: "Motion blur", value: input.motionBlurLabel, chevron: true },
     { id: "aspect", label: "Aspect ratio", value: aspectLabel(input.aspect), chevron: true },
     { id: "music", label: "Music", value: input.soundtrackName ?? "None", chevron: true },
   ];

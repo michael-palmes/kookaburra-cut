@@ -79,6 +79,7 @@ import { useLayeredScreenshotEditStore } from "./engine/layeredScreenshotEditSto
 import { useLightingEditStore } from "./engine/lightingEditStore";
 import { ensureRectAreaLightUniforms } from "./engine/lightingState";
 import { importMedia } from "./engine/media";
+import { isDefaultMotionBlur } from "./engine/motionBlur";
 import { canQueuePresetPoster, queuePresetPoster } from "./engine/presetPosters";
 import {
   refreshUserPresets,
@@ -786,9 +787,11 @@ export default function App() {
       const slug = nativeProjectSlug(current.id);
       const manifestBefore = await readProjectManifestSnapshot(slug);
       const manifest = JSON.parse(manifestBefore);
-      // ACES at 1.0 is the byte-identical default: stored as ABSENCE so untouched projects never carry the block.
-      if (settings.toneMapping === "aces" && settings.exposure === 1) delete manifest.render;
-      else manifest.render = settings;
+      // ACES at 1.0 with no motion blur is the byte-identical default: stored as ABSENCE so untouched projects never carry the block.
+      const { motionBlur, ...display } = settings;
+      const blur = isDefaultMotionBlur(motionBlur) ? undefined : motionBlur;
+      if (display.toneMapping === "aces" && display.exposure === 1 && !blur) delete manifest.render;
+      else manifest.render = blur ? { ...display, motionBlur: blur } : display;
       await writeProjectManifestSnapshot(
         slug,
         JSON.stringify(manifest, null, 2),

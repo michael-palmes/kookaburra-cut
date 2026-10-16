@@ -23,6 +23,7 @@ describe("projectRows (the Project-tab pin)", () => {
       soundtrackName: null,
       playbackLabel: "Full quality",
       renderLabel: "ACES",
+      motionBlurLabel: "Off",
       scenesCount: 3,
     });
     expect(rows.map((r) => r.id)).toEqual([
@@ -33,6 +34,7 @@ describe("projectRows (the Project-tab pin)", () => {
       "appIcon",
       "playback",
       "render",
+      "motionBlur",
       "aspect",
       "music",
     ]);
@@ -54,6 +56,7 @@ describe("projectRows (the Project-tab pin)", () => {
       soundtrackName: "sunrise.mp3",
       playbackLabel: "Performance",
       renderLabel: "ACES",
+      motionBlurLabel: "Off",
       scenesCount: 1,
     });
     expect(rows.find((r) => r.id === "music")?.value).toBe("sunrise.mp3");
@@ -69,6 +72,7 @@ describe("projectRows (the Project-tab pin)", () => {
       soundtrackName: null,
       playbackLabel: "Full quality",
       renderLabel: "ACES",
+      motionBlurLabel: "Off",
       scenesCount: 2,
     });
     expect(rows.map((r) => r.id)).toEqual(["theme", "playback", "aspect"]);

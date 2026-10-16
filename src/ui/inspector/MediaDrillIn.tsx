@@ -16,6 +16,7 @@ import {
 import { ColourPicker } from "../colour/ColourPicker";
 import { DebouncedRange } from "../TextAnimationPicker";
 import { MediaSourceGroup } from "./MediaSourceGroup";
+import { MotionBlurOverrideRow } from "./MotionBlurFields";
 import { duplicateSceneMedia, removeSceneMedia } from "./mediaEditorModel";
 import {
   DrillBack,
@@ -1169,6 +1170,17 @@ export function MediaDrillIn({
                 patchMedia((candidate) => {
                   candidate.motion = { preset };
                 }, "media motion")
+              }
+            />
+          </DrillGroup>
+          <DrillGroup label="Motion blur">
+            <MotionBlurOverrideRow
+              value={entry.motionBlur}
+              onChange={(next) =>
+                patchMedia((candidate) => {
+                  if (next) candidate.motionBlur = next;
+                  else delete candidate.motionBlur;
+                }, "media motion blur")
               }
             />
           </DrillGroup>

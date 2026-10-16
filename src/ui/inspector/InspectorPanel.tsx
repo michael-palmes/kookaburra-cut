@@ -37,10 +37,12 @@ import { useThemeCardMenu } from "../themeCardMenu";
 import { useEscapeClose } from "../useEscapeClose";
 import { InspectorNavigationShell } from "./InspectorNavigationShell";
 import { LibraryPreviewsSection } from "./LibraryPreviewsSection";
+import { MotionBlurProjectFields, motionBlurRowValue } from "./MotionBlurFields";
+import { MotionBlurIcon } from "./MotionBlurIcon";
 import { MusicDrillIn } from "./MusicDrillIn";
 import { ProjectCopyDrill } from "./ProjectCopyDrill";
 import { ProjectCopyFromDrill } from "./ProjectCopyFromDrill";
-import { ActionRow, DrillBack, PopoverChoice, RowIcon } from "./rows";
+import { ActionRow, DrillBack, PopoverChoice, RowIcon, ToggleRow } from "./rows";
 import { ScenesDrillIn } from "./ScenesDrillIn";
 import { SceneTab } from "./SceneTab";
 
@@ -216,8 +218,11 @@ export function InspectorPanel({
   const setTab = useUiStore((s) => s.setInspectorTab);
 
   // Which row's popover/menu is open; doubles as the row-selected state ("exactly one row selected at a time").
-  const [openRow, setOpenRow] = useState<"aspect" | "playback" | "render" | null>(null);
+  const [openRow, setOpenRow] = useState<"aspect" | "playback" | "render" | "motionBlur" | null>(
+    null,
+  );
   const previewQuality = useUiStore((s) => s.previewQuality);
+  const motionBlurWhilePlaying = useUiStore((s) => s.motionBlurWhilePlaying);
   useEscapeClose(() => setOpenRow(null), openRow !== null);
 
   // The Scene tab follows the playhead's dominant scene (decision 2); same derive-don't-subscribe selector the EditBar uses.
@@ -303,6 +308,7 @@ export function InspectorPanel({
       { aces: "ACES", agx: "AgX", neutral: "Neutral", linear: "Linear" }[
         project.renderSettings.toneMapping
       ] + (project.renderSettings.exposure !== 1 ? ` · ` : ""),
+    motionBlurLabel: motionBlurRowValue(project.renderSettings.motionBlur),
     scenesCount: project.slots.length,
   });
 
@@ -384,6 +390,7 @@ export function InspectorPanel({
     music: editable ? () => setDrillIn("project.music") : undefined,
     playback: () => setOpenRow(openRow === "playback" ? null : "playback"),
     render: () => setOpenRow(openRow === "render" ? null : "render"),
+    motionBlur: () => setOpenRow(openRow === "motionBlur" ? null : "motionBlur"),
   };
 
   return (
@@ -735,6 +742,14 @@ export function InspectorPanel({
                         setOpenRow(null);
                       }}
                     />
+                    <ToggleRow
+                      icon={<MotionBlurIcon id="playing" />}
+                      label="Motion blur while playing"
+                      description="Paused frames always show it. Playback blurs the camera only, and never under Performance."
+                      checked={motionBlurWhilePlaying}
+                      disabled={previewQuality === "performance"}
+                      onChange={(on) => useUiStore.getState().setMotionBlurWhilePlaying(on)}
+                    />
                   </div>
                 )}
                 {row.id === "render" && openRow === "render" && (
@@ -792,6 +807,20 @@ export function InspectorPanel({
                         }
                       />
                     </div>
+                  </div>
+                )}
+                {row.id === "motionBlur" && openRow === "motionBlur" && (
+                  <div
+                    className="inspector-popover inspector-popover-wide"
+                    role="dialog"
+                    aria-label="Motion blur"
+                  >
+                    <MotionBlurProjectFields
+                      settings={project.renderSettings.motionBlur}
+                      onChange={(motionBlur) =>
+                        onSetRenderSettings({ ...project.renderSettings, motionBlur })
+                      }
+                    />
                   </div>
                 )}
               </div>
