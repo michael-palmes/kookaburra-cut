@@ -656,6 +656,8 @@ own shutter window, never earlier frames, so it stays a pure function of t.
   (read from `currentMs`, which stays on the frame instant), lighting and
   compare plans, dof (the centre pose's), clip frames, counters, backgrounds and
   overlay chrome.
+- **Cost.** Only moving frames pay. `ws:motion-blur-spike` (8 scenes, nearly
+  all moving, 8 samples, 4K) Verify ×2 took 199 s against 123 s with blur off.
 - **Memory.** The lane holds about 370 MB at 4K (two RGBA32F targets plus two
   copies); export frees it on any frame that does not blur and with the
   compositor pools between legs.
@@ -1436,7 +1438,7 @@ rolling-gate project (`showcase-tour`):
 | `ws:camera-rig-spike-opus` (camera rig gate, machine-local) | stale | — | — | — | — | — | — | — | — |
 | `ws:multi-device-spike` (deviceLayout gate, machine-local) | stale | stale | stale | — | — | — | — | — | — |
 | `ws:dof-spike` (depth-of-field gate, machine-local) | stale | stale | — | — | — | — | — | — | — |
-| `ws:motion-blur-spike` (motion blur gate, machine-local) | `9e9b0034…` | — | — | — | — | — | — | — | — |
+| `ws:motion-blur-spike` (motion blur gate, machine-local) | `9e9b0034…` | `19e948be…` | — | — | — | — | — | — | — |
 | `ws:chart-spike` (chart gate, machine-local) | `d58ff1f2…` | stale | stale | stale | — | — | — | — | — |
 | `ws:duplicate-spike` (scene-id heal gate, machine-local) | stale | — | — | — | — | — | — | — | — |
 | `ws:overlay-spike` (overlay gate, machine-local) | stale | — | — | — | — | — | — | — | — |
