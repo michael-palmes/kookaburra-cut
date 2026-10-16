@@ -3,6 +3,7 @@
 mod beats;
 mod bridge;
 mod claude_update;
+pub mod cli;
 mod concurrency;
 mod edit;
 mod edit_masks;
@@ -33,6 +34,7 @@ mod theme;
 mod theme_editor_win;
 #[cfg(debug_assertions)]
 mod theme_move;
+mod tools;
 mod updater;
 mod website;
 mod workspace;
@@ -1525,6 +1527,8 @@ macro_rules! kookaburra_handler {
             edit::save_edit,
             edit::list_edits,
             edit::render_edit,
+            edit::load_edit_entry,
+            edit::edit_stamps,
             present::open_present,
             present::get_present_target,
             workspace::set_present_options,
@@ -1601,6 +1605,7 @@ pub fn run() {
         .manage(updater::PendingUpdate::default())
         .manage(pty::PtyState::default())
         .manage(edit::EditorState::default())
+        .manage(edit::EditRenderState::default())
         .manage(present::PresentState::default())
         .manage(render_win::RenderWindowState::default())
         .manage(render_win::ThumbQueueState::default())
@@ -1626,6 +1631,17 @@ pub fn run() {
                 }
             }
             bridge::spawn_heartbeat(app.handle().clone());
+            // The headless CLI resolves app data without Tauri; a mismatch would split the tap frame cache and settings.
+            #[cfg(debug_assertions)]
+            if let (Ok(ours), Ok(tauri_dir)) = (tools::app_data_dir(), app.path().app_data_dir()) {
+                if ours != tauri_dir {
+                    eprintln!(
+                        "[tools] app data mismatch: CLI uses {} but Tauri uses {}",
+                        ours.display(),
+                        tauri_dir.display()
+                    );
+                }
+            }
             // Staging and backup trees from a crashed or killed import; harmless but they accumulate.
             if let Ok(root) = workspace::require_root(&app.handle().clone(), &app.state()) {
                 pack::read::sweep_stale(&root);

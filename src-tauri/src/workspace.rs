@@ -195,7 +195,7 @@ fn settings_path(app: &AppHandle) -> Result<PathBuf, String> {
 }
 
 /// The file's settings, or defaults when it is missing or unreadable (a broken settings file re-offers first-run rather than wedging boot; our own writer is atomic, so only an outside edit can produce one).
-fn read_settings_file(path: &Path) -> AppSettings {
+pub(crate) fn read_settings_file(path: &Path) -> AppSettings {
     match std::fs::read_to_string(path) {
         Ok(text) => serde_json::from_str(&text).unwrap_or_default(),
         Err(_) => AppSettings::default(),

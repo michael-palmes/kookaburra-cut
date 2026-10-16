@@ -231,6 +231,8 @@ fn parse_rate(s: &str) -> f64 {
 }
 
 /// The geometry the media library and the video editor both need from a source file.
+#[derive(Debug, Clone, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct ProbeInfo {
     pub kind: String, // "video" | "image"
     pub width: u32,
@@ -239,6 +241,13 @@ pub(crate) struct ProbeInfo {
     pub duration_ms: u64, // 0 for images
     /// Frames timestamped as they came rather than on a fixed cadence; false for images.
     pub vfr: bool,
+    /// ffprobe's `r_frame_rate` and `avg_frame_rate`; 0 for images.
+    pub r_fps: f64,
+    pub avg_fps: f64,
+    /// Display rotation in degrees (display matrix, else the legacy `rotate` tag); 0 when none.
+    pub rotation: i64,
+    /// The frame count the container declares (mp4/mov headers); None when it declares none.
+    pub nb_frames: Option<u64>,
 }
 
 /// Variable frame rate: ffprobe's `r_frame_rate` (the finest cadence that indexes every timestamp) and `avg_frame_rate` agree on a constant-rate file and diverge when frames were stamped as they came (a Simulator recording reports 600 against ~15).
@@ -386,26 +395,23 @@ pub async fn probe_audio(
     })
 }
 
-/// Probe one media file with the ffprobe sidecar; images flow through it too (one code path, image2 reports a single video stream), and `kind` is decided by extension so a still is never given a bogus fps/duration.
-pub(crate) async fn probe_media(app: &AppHandle, abs: &Path) -> Result<ProbeInfo, String> {
-    let abs_str = abs.to_string_lossy().into_owned();
-    let probe = run_sidecar(
-        app,
-        "ffprobe",
-        vec![
-            "-v".into(),
-            "error".into(),
-            "-print_format".into(),
-            "json".into(),
-            "-show_streams".into(),
-            "-show_format".into(),
-            abs_str,
-        ],
-        SidecarPriority::Foreground,
-    )
-    .await?;
+/// The ffprobe arguments every media probe runs.
+pub(crate) fn probe_args(abs: &Path) -> Vec<String> {
+    vec![
+        "-v".into(),
+        "error".into(),
+        "-print_format".into(),
+        "json".into(),
+        "-show_streams".into(),
+        "-show_format".into(),
+        abs.to_string_lossy().into_owned(),
+    ]
+}
+
+/// Read a probe's JSON; images flow through it too (one code path, image2 reports a single video stream), and `kind` is decided by extension so a still is never given a bogus fps/duration.
+pub(crate) fn parse_probe(stdout: &str, abs: &Path) -> Result<ProbeInfo, String> {
     let probe: serde_json::Value =
-        serde_json::from_str(&probe).map_err(|e| format!("ffprobe json: {e}"))?;
+        serde_json::from_str(stdout).map_err(|e| format!("ffprobe json: {e}"))?;
     let stream = probe["streams"]
         .as_array()
         .and_then(|streams| {
@@ -424,16 +430,23 @@ pub(crate) async fn probe_media(app: &AppHandle, abs: &Path) -> Result<ProbeInfo
     } else {
         0.0
     };
-    let fps = if video {
-        parse_rate(stream["avg_frame_rate"].as_str().unwrap_or("0"))
-    } else {
-        0.0
+    let rate = |key: &str| {
+        if video {
+            parse_rate(stream[key].as_str().unwrap_or("0"))
+        } else {
+            0.0
+        }
     };
-    let vfr = video
-        && is_vfr(
-            parse_rate(stream["r_frame_rate"].as_str().unwrap_or("0")),
-            fps,
-        );
+    let (r_fps, fps) = (rate("r_frame_rate"), rate("avg_frame_rate"));
+    let vfr = video && is_vfr(r_fps, fps);
+    let nb_frames = if video {
+        stream["nb_frames"]
+            .as_str()
+            .and_then(|n| n.parse::<u64>().ok())
+            .filter(|n| *n > 0)
+    } else {
+        None
+    };
     Ok(ProbeInfo {
         kind: if video {
             "video".into()
@@ -445,13 +458,43 @@ pub(crate) async fn probe_media(app: &AppHandle, abs: &Path) -> Result<ProbeInfo
         fps,
         duration_ms: (duration_s * 1000.0).round().max(0.0) as u64,
         vfr,
+        r_fps,
+        avg_fps: fps,
+        rotation: stream_rotation(stream).round() as i64,
+        nb_frames,
     })
 }
 
-/// A stream's DISPLAY size: ffmpeg autorotates every frame it extracts, so a quarter-turn display matrix (or the legacy `rotate` tag) swaps the coded width and height.
-fn display_dimensions(stream: &serde_json::Value) -> (u32, u32) {
-    let width = stream["width"].as_u64().unwrap_or(0) as u32;
-    let height = stream["height"].as_u64().unwrap_or(0) as u32;
+/// Probe one media file with the given ffprobe, blocking; stdin is closed so the tool can never wait on a terminal.
+pub(crate) fn probe_media_at(ffprobe: &Path, abs: &Path) -> Result<ProbeInfo, String> {
+    let out = std::process::Command::new(ffprobe)
+        .args(probe_args(abs))
+        .stdin(std::process::Stdio::null())
+        .output()
+        .map_err(|e| format!("failed to start ffprobe: {e}"))?;
+    if !out.status.success() {
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        let tail = stderr.trim();
+        return Err(if tail.is_empty() {
+            format!("ffprobe exited with {:?}", out.status.code())
+        } else {
+            format!("ffprobe could not read {}: {tail}", abs.display())
+        });
+    }
+    parse_probe(&String::from_utf8_lossy(&out.stdout), abs)
+}
+
+/// Probe one media file with the bundled ffprobe sidecar, off the async runtime.
+pub(crate) async fn probe_media(_app: &AppHandle, abs: &Path) -> Result<ProbeInfo, String> {
+    let ffprobe = crate::tools::sidecar_path("ffprobe")?;
+    let abs = abs.to_path_buf();
+    tauri::async_runtime::spawn_blocking(move || probe_media_at(&ffprobe, &abs))
+        .await
+        .map_err(|e| format!("probe task failed: {e}"))?
+}
+
+/// The display rotation in degrees: the display matrix side data, else the legacy `rotate` tag.
+fn stream_rotation(stream: &serde_json::Value) -> f64 {
     let side_data = stream["side_data_list"].as_array().and_then(|list| {
         list.iter().find_map(|entry| {
             let rotation = &entry["rotation"];
@@ -463,7 +506,14 @@ fn display_dimensions(stream: &serde_json::Value) -> (u32, u32) {
     let tagged = stream["tags"]["rotate"]
         .as_str()
         .and_then(|r| r.parse::<f64>().ok());
-    let turns = (side_data.or(tagged).unwrap_or(0.0) / 90.0).round() as i64;
+    side_data.or(tagged).unwrap_or(0.0)
+}
+
+/// A stream's DISPLAY size: ffmpeg autorotates every frame it extracts, so a quarter-turn display matrix (or the legacy `rotate` tag) swaps the coded width and height.
+fn display_dimensions(stream: &serde_json::Value) -> (u32, u32) {
+    let width = stream["width"].as_u64().unwrap_or(0) as u32;
+    let height = stream["height"].as_u64().unwrap_or(0) as u32;
+    let turns = (stream_rotation(stream) / 90.0).round() as i64;
     if turns.rem_euclid(2) == 1 {
         (height, width)
     } else {
@@ -1132,6 +1182,41 @@ mod tests {
         // Side data without a rotation entry (e.g. content light level) is ignored.
         let other = stream(serde_json::json!({ "side_data_list": [{ "side_data_type": "x" }] }));
         assert_eq!(display_dimensions(&other), (2006, 2852));
+    }
+
+    #[test]
+    fn parse_probe_reports_vfr_rates_rotation_and_the_declared_frame_count() {
+        let out = r#"{"streams":[{"codec_type":"audio"},{"codec_type":"video","width":2622,
+            "height":1206,"r_frame_rate":"600/1","avg_frame_rate":"15196/1000","nb_frames":"4019",
+            "side_data_list":[{"rotation":-90}]}],"format":{"duration":"264.472000"}}"#;
+        let info = parse_probe(out, Path::new("/x/rec.mov")).unwrap();
+        assert_eq!(info.kind, "video");
+        assert_eq!((info.width, info.height), (1206, 2622));
+        assert_eq!(info.rotation, -90);
+        assert!(info.vfr);
+        assert_eq!(
+            (info.r_fps, info.avg_fps, info.fps),
+            (600.0, 15.196, 15.196)
+        );
+        assert_eq!(info.duration_ms, 264_472);
+        assert_eq!(info.nb_frames, Some(4019));
+        let json = serde_json::to_value(&info).unwrap();
+        assert_eq!(json["rFps"], 600.0);
+        assert_eq!(json["nbFrames"], 4019);
+    }
+
+    #[test]
+    fn parse_probe_gives_a_still_no_rate_duration_or_frame_count() {
+        let out = r#"{"streams":[{"codec_type":"video","width":1081,"height":1921,
+            "r_frame_rate":"25/1","avg_frame_rate":"25/1","nb_frames":"1"}],
+            "format":{"duration":"0.040000"}}"#;
+        let info = parse_probe(out, Path::new("/x/shot.PNG")).unwrap();
+        assert_eq!(info.kind, "image");
+        assert_eq!((info.fps, info.r_fps, info.duration_ms), (0.0, 0.0, 0));
+        assert!(!info.vfr);
+        assert_eq!(info.nb_frames, None);
+        assert!(parse_probe(r#"{"streams":[]}"#, Path::new("/x/a.mp4")).is_err());
+        assert!(parse_probe("ffprobe said no", Path::new("/x/a.mp4")).is_err());
     }
 
     #[test]
