@@ -19,6 +19,13 @@ watches this folder and reloads within about 2 s of a save. You edit files; the 
 - `assets/`: media, referenced as `assets/<file>`.
 - Never touch `exports/`, `edits/`, `.kookaburra*` or `.claude/skills/` (app-owned).
 
+Never work from a git worktree (a path containing `.claude/worktrees/`, or `kb status`
+opening with STOP). The app cannot see one, so previews, captures and exports all miss
+your edits, and copying files across or switching the project's branch only spreads the
+mess. Edit nothing; ask the user to start a new session directly in the project folder
+with worktrees turned off. Projects need no git workflow of their own: `kb checkpoint`
+and `kb undo` replace branches, commits and stashes.
+
 Run every kb command from the project folder:
 `python3 .claude/skills/kookaburra-scene-authoring/scripts/kb.py <command>`.
 Below, `kb X` means exactly that. Exit 0 ok, 1 problems found, 2 usage or app missing.
@@ -26,7 +33,8 @@ Below, `kb X` means exactly that. Exit 0 ok, 1 problems found, 2 usage or app mi
 ## The loop (every change)
 
 1. `kb status`: is the app running, which project and aspect it shows, last load
-   result. Fix any listed load error before anything else.
+   result. Fix any listed load error before anything else; if it opens with STOP (a git
+   worktree), stop there and do what it says.
 2. `kb checkpoint "before <what>"` (git of project.json and scenes/, not assets;
    `kb undo` rolls back).
 3. Edit, in this order of preference:

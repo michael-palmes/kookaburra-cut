@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import json
 
+from kblib import git
 from kblib.cli import build_parser
 
-from .helpers import SCRIPTS, FakeApp, KbTestCase, make_project, write_json
+from .helpers import SCRIPTS, FakeApp, KbTestCase, fake_worktree, make_project, run_git, write_json
 
 
 class HelpTests(KbTestCase):
@@ -57,6 +58,28 @@ class ReportCommandTests(KbTestCase):
         self.assertExit(proc, 0)
         self.assertIn("ws:demo", proc.stdout)
         self.assertExit(self.kb(["-C", str(self.root), "scenes"], cwd=self.tmp), 0)
+
+    def test_status_stops_in_a_git_worktree(self) -> None:
+        tree = fake_worktree(self.root, self.tmp / "wt")
+        proc = self.kb(["status"], cwd=tree)
+        self.assertExit(proc, 0)
+        self.assertTrue(proc.stdout.startswith("STOP: this session runs in a git worktree"), proc.stdout)
+        self.assertIn(f"exports {self.root}", proc.stdout)
+        data = json.loads(self.kb(["status", "--json"], cwd=tree).stdout)
+        self.assertEqual(data["worktree"], {"path": str(tree), "main": str(self.root)})
+        self.assertNotIn("STOP", self.kb(["status"], cwd=self.root).stdout)
+        self.assertIsNone(json.loads(self.kb(["status", "--json"], cwd=self.root).stdout)["worktree"])
+
+    def test_status_stops_in_a_real_git_worktree(self) -> None:
+        if not git.git_available():
+            self.skipTest("git is not available")
+        root = make_project(self.tmp / "real", git=True)
+        tree = self.tmp / "real-wt"
+        run_git(root, ["worktree", "add", "-q", "-b", "feat/elsewhere", str(tree)])
+        proc = self.kb(["status"], cwd=tree)
+        self.assertExit(proc, 0)
+        self.assertTrue(proc.stdout.startswith("STOP:"), proc.stdout)
+        self.assertIn(f"directly in {root}", proc.stdout)
 
     def test_status_reports_the_app_and_last_load(self) -> None:
         last = {

@@ -6,7 +6,7 @@ from typing import Any, Dict
 
 from kblib import git
 
-from .helpers import KbTestCase, make_project, run_git, write, write_json
+from .helpers import KbTestCase, fake_worktree, make_project, run_git, write, write_json
 
 
 def payload(path: Path, event: str = "PreToolUse", session: str = "sess-1234567890", tool: str = "Write") -> str:
@@ -92,6 +92,30 @@ class HookTests(KbTestCase):
         self.assertIn("Kookaburra Cut project", proc.stdout)
         self.assertIn("01-intro", proc.stdout)
         self.assertLess(len(proc.stdout.encode("utf-8")), 4096)
+
+    def test_session_start_stops_when_the_cwd_is_a_worktree(self) -> None:
+        # A desktop worktree session can carry the main folder as CLAUDE_PROJECT_DIR; the cwd gives it away.
+        tree = fake_worktree(self.root, self.tmp / "wt")
+
+        def start(cwd: Path):
+            return self.hook("session-start", json.dumps({"session_id": "s", "cwd": str(cwd), "hook_event_name": "SessionStart", "source": "startup"}))
+
+        proc = start(tree)
+        self.assertExit(proc, 0)
+        self.assertTrue(proc.stdout.startswith("STOP: this session runs in a git worktree"), proc.stdout)
+        self.assertIn(f"directly in {self.root}", proc.stdout)
+        self.assertIn("01-intro", proc.stdout)
+        self.assertLess(len(proc.stdout.encode("utf-8")), 4096)
+        self.assertNotIn("STOP", start(self.root).stdout)
+
+    def test_pre_edit_blocks_writes_into_a_worktree(self) -> None:
+        tree = fake_worktree(self.root, self.tmp / "wt")
+        for target in (tree / "scenes" / "01-intro.tsx", tree / "assets" / "new" / "a.png", tree / "CLAUDE.md"):
+            proc = self.hook("pre-edit", payload(target))
+            self.assertExit(proc, 2)
+            self.assertIn("kb: blocked: STOP: this session runs in a git worktree", proc.stderr)
+            self.assertIn(f"directly in {self.root}", proc.stderr)
+        self.assertExit(self.hook("pre-edit", payload(self.root / "assets" / "new.png")), 0)
 
     def test_session_start_never_fails(self) -> None:
         write(self.root / "project.json", "not json")
