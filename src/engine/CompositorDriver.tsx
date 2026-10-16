@@ -1,6 +1,6 @@
 import { useFrame, useThree } from "@react-three/fiber";
-import { useEffect, useLayoutEffect, useMemo } from "react";
-import type { PerspectiveCamera } from "three";
+import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
+import { type PerspectiveCamera, Vector2 } from "three";
 import type { LightingSpec, Theme } from "../theme/tokens";
 import type { FrameSpec } from "../toolkit/frame/types";
 import { useCameraEditStore } from "./cameraEditStore";
@@ -21,12 +21,19 @@ import {
 } from "./environments";
 import { isCapturingPreview, stampCommittedProject } from "./exportBridge";
 import { isExporting } from "./exportState";
-import { useFormat } from "./format";
+import { FPS, useFormat } from "./format";
 import { HELPER_LAYER } from "./lightEditStore";
 import { useLightingEditStore } from "./lightingEditStore";
+import type { MotionBlurSettings } from "./motionBlur";
 import { resolveOverlays } from "./overlayPlan";
 import {
+  previewMotionBlurOff,
+  previewMotionBlurPlaybackSamples,
+  previewPlaybackActive,
+} from "./previewMedia";
+import {
   buildSceneCameraTracks,
+  type FrameCameraPlan,
   hasSceneCameraTracks,
   resolveFrameCameras,
   type SceneCameraTracks,
@@ -41,7 +48,12 @@ import {
 } from "./sceneLighting";
 import { buildSceneRenderStates, resolveFrameSceneStates } from "./sceneState";
 import { resolveAt, type SceneSlot } from "./sceneTimeline";
+import { accumulateFrame } from "./shutterLane";
+import { buildShutterPlan, type FrameShutter, frameCameraShutter } from "./shutterPlan";
 import { useSceneStageFloors } from "./stageRegistry";
+
+const SETTLE_MS = 150;
+const bufferSize = new Vector2();
 
 /** Routes the preview through the same `renderComposited` the exporter calls: a `useFrame` with priority > 0 takes over r3f's automatic render (the documented postprocessing takeover) so every previewed frame goes through the compositor; the clock is read imperatively, `PreviewClock` invalidates on scrub which runs this callback. */
 export function CompositorDriver({
@@ -55,6 +67,7 @@ export function CompositorDriver({
   sceneFrames,
   compareBDocs,
   compareBThemes,
+  motionBlur,
   commitStamp,
 }: {
   /** The loaded project's id, guards the camera-edit draft against a mid-switch mismatch. */
@@ -73,6 +86,8 @@ export function CompositorDriver({
   /** Comparison side-B docs/themes (`LoadedProject.compareBDocs`/`compareBThemes`); drive the compare plan. */
   compareBDocs?: (SceneDoc | undefined)[];
   compareBThemes?: (Theme | undefined)[];
+  /** The manifest's `render.motionBlur`; paused frames show the export's blur, playback only on request. */
+  motionBlur?: MotionBlurSettings;
   /** The LoadedProject identity, stamped on canvas commit (see exportBridge). */
   commitStamp?: unknown;
 }) {
@@ -90,6 +105,14 @@ export function CompositorDriver({
     () => buildSceneCameraTracks(sceneDocs ?? [], format, sceneFloorYs),
     [sceneDocs, format, sceneFloorYs],
   );
+
+  const shutterPlan = useMemo(
+    () => buildShutterPlan({ fps: FPS, slots, sceneDocs, motionBlur }),
+    [slots, sceneDocs, motionBlur],
+  );
+  // Paused blur waits for the playhead to rest, so a scrub stays one render per move.
+  const settle = useRef({ ms: Number.NaN, at: 0, timer: 0 });
+  useEffect(() => () => window.clearTimeout(settle.current.timer), []);
 
   // Lighting keyframe tracks (scene-doc layer only); null-for-legacy when nothing keys.
   const lightingTracks = useMemo(
@@ -297,19 +320,68 @@ export function CompositorDriver({
       }
     }
     const compareFrame = resolveCompareFrame(frameSpecs, sceneStates, sceneStatesB, resolved);
-    renderComposited(
-      s.gl,
-      s.scene,
-      s.camera,
-      getSceneHosts(),
-      resolved,
-      plan ?? undefined,
-      statePlan,
-      overlays ?? undefined,
-      lightingPlan ?? undefined,
-      compareFrame,
+    const renderWith = (p: FrameCameraPlan | null) =>
+      renderComposited(
+        s.gl,
+        s.scene,
+        s.camera,
+        getSceneHosts(),
+        resolved,
+        p ?? undefined,
+        statePlan,
+        overlays ?? undefined,
+        lightingPlan ?? undefined,
+        compareFrame,
+      );
+    const shutter = previewShutter(currentMs, !!(draft || lightingDraft || compareDraft), (n) =>
+      frameCameraShutter(
+        shutterPlan as NonNullable<typeof shutterPlan>,
+        resolved,
+        currentMs,
+        tracks,
+        cameraTrack,
+        plan,
+        n,
+      ),
     );
+    if (!shutter) {
+      renderWith(plan);
+      return;
+    }
+    s.gl.getDrawingBufferSize(bufferSize);
+    accumulateFrame(s.gl, bufferSize.x, bufferSize.y, shutter.plans.length, (k) => {
+      const sample = shutter.plans[k];
+      if (!sample)
+        applyCameraTrack(s.camera as PerspectiveCamera, cameraTrack, shutter.globalMs[k]);
+      renderWith(sample);
+    });
   }, 1);
+
+  /** The frame's camera blur in preview: playback blurs only at the toggle's sample count; paused frames use the project's count once the playhead has rested, and never mid-edit. */
+  function previewShutter(
+    currentMs: number,
+    editing: boolean,
+    sample: (samples: number | undefined) => FrameShutter | null,
+  ): FrameShutter | null {
+    if (!shutterPlan || previewMotionBlurOff() || isCapturingPreview()) return null;
+    if (previewPlaybackActive()) {
+      const samples = previewMotionBlurPlaybackSamples();
+      return samples > 0 ? sample(samples) : null;
+    }
+    const st = settle.current;
+    const now = performance.now();
+    if (currentMs !== st.ms) {
+      st.ms = currentMs;
+      st.at = now;
+    }
+    const restMs = SETTLE_MS - (now - st.at);
+    if (restMs > 0 || editing) {
+      window.clearTimeout(st.timer);
+      if (!editing) st.timer = window.setTimeout(() => invalidate(), restMs);
+      return null;
+    }
+    return sample(undefined);
+  }
 
   return null;
 }

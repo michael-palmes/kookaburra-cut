@@ -56,16 +56,13 @@ describe("sampleShutterDeg", () => {
 describe("buildShutterPlan", () => {
   it("is null when no scene blurs", () => {
     const slots = [slot(0, 0, 1000)];
-    expect(
-      buildShutterPlan({ fps: 60, slots, sceneDocs: [], motionBlur: undefined, sceneTracks: [] }),
-    ).toBeNull();
+    expect(buildShutterPlan({ fps: 60, slots, sceneDocs: [], motionBlur: undefined })).toBeNull();
     expect(
       buildShutterPlan({
         fps: 60,
         slots,
         sceneDocs: [{ version: 1, motionBlur: { enabled: false } } as SceneDoc],
         motionBlur: on,
-        sceneTracks: [],
       }),
     ).toBeNull();
   });
@@ -76,7 +73,6 @@ describe("buildShutterPlan", () => {
       slots: [slot(0, 0, 1000), slot(1, 1000, 1000)],
       sceneDocs: [undefined, { version: 1, motionBlur: { enabled: true } } as SceneDoc],
       motionBlur: { ...DEFAULT_MOTION_BLUR, samples: 4 },
-      sceneTracks: [],
     });
     expect(plan?.units).toHaveLength(4);
     expect(plan?.scenes[0]).toBeNull();
@@ -95,7 +91,6 @@ describe("frameCameraShutter", () => {
     slots,
     sceneDocs: [],
     motionBlur: on,
-    sceneTracks: [moving],
   });
   if (!plan) throw new Error("plan expected");
   const at = (tMs: number) => {
@@ -111,6 +106,14 @@ describe("frameCameraShutter", () => {
     expect(new Set(xs).size).toBe(8);
   });
 
+  it("takes a sample count override", () => {
+    const resolved = resolveAt(slots, 500);
+    const centre = resolveFrameCameras([moving], undefined, resolved, 500);
+    expect(
+      frameCameraShutter(plan, resolved, 500, [moving], undefined, centre, 4)?.plans,
+    ).toHaveLength(4);
+  });
+
   it("is null while the camera holds", () => {
     expect(at(1500)).toBeNull();
   });
@@ -121,7 +124,6 @@ describe("frameCameraShutter", () => {
       slots,
       sceneDocs: [{ version: 1, motionBlur: { camera: false } } as SceneDoc],
       motionBlur: on,
-      sceneTracks: [moving],
     });
     if (!off) throw new Error("plan expected");
     const resolved = resolveAt(slots, 500);
@@ -142,7 +144,6 @@ describe("frameCameraShutter", () => {
       slots,
       sceneDocs: [],
       motionBlur: { ...on, shutterDeg: 360 },
-      sceneTracks: [cut],
     });
     if (!cutPlan) throw new Error("plan expected");
     // Just before the cut: every sample stays on the pre-cut pose, so the camera holds.

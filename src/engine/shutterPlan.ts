@@ -10,6 +10,7 @@ import type { Resolved, SceneSlot } from "./sceneTimeline";
 import {
   cameraBreaks,
   clampSampleMs,
+  SHUTTER_SAMPLES_DEFAULT,
   sampleShutterDeg,
   shutterUnitOffsets,
   shutterWindowMs,
@@ -19,8 +20,6 @@ import {
 
 interface SceneShutter {
   blur: SceneMotionBlur;
-  tracks: SceneCameraTracks | null;
-  breaks: number[];
   durationMs: number;
 }
 
@@ -42,19 +41,17 @@ export function buildShutterPlan(opts: {
   slots: SceneSlot[];
   sceneDocs: readonly (SceneDoc | undefined)[] | undefined;
   motionBlur: MotionBlurSettings | undefined;
-  sceneTracks: readonly (SceneCameraTracks | null)[] | null | undefined;
 }): ShutterPlan | null {
-  const samples = opts.motionBlur?.samples;
   let any = false;
   const scenes = opts.slots.map((slot, i) => {
     const blur = resolveSceneMotionBlur(opts.motionBlur, opts.sceneDocs?.[i]?.motionBlur);
     if (!blur) return null;
     any = true;
-    const tracks = opts.sceneTracks?.[i] ?? null;
-    return { blur, tracks, breaks: cameraBreaks(tracks), durationMs: slot.durationMs };
+    return { blur, durationMs: slot.durationMs };
   });
   if (!any) return null;
-  return { fps: opts.fps, units: shutterUnitOffsets(samples ?? 8), scenes };
+  const samples = opts.motionBlur?.samples ?? SHUTTER_SAMPLES_DEFAULT;
+  return { fps: opts.fps, units: shutterUnitOffsets(samples), scenes };
 }
 
 function samePose(a: CameraPose | undefined, b: CameraPose | undefined): boolean {
@@ -86,7 +83,7 @@ function withCentreDof(plan: FrameCameraPlan | null, centre: FrameCameraPlan | n
   };
 }
 
-/** The frame's camera samples, or null when the camera holds still across the shutter (or nothing on screen blurs it), so the frame renders once on the plain path. */
+/** The frame's camera samples, or null when the camera holds still across the shutter (or nothing on screen blurs it), so the frame renders once on the plain path. `samples` overrides the project's count (the preview's playback lane). */
 export function frameCameraShutter(
   plan: ShutterPlan,
   resolved: Resolved,
@@ -94,25 +91,27 @@ export function frameCameraShutter(
   sceneTracks: readonly (SceneCameraTracks | null)[] | null | undefined,
   projectTrack: CameraKeyframe[] | undefined,
   centre: FrameCameraPlan | null,
+  samples?: number,
 ): FrameShutter | null {
-  const n = plan.units.length;
+  const units = samples === undefined ? plan.units : shutterUnitOffsets(samples);
+  const n = units.length;
   const shifted: Resolved[] = Array.from({ length: n }, () => ({ ...resolved, active: [] }));
   const globalMs = new Array<number>(n).fill(tMs);
   let blurs = false;
   for (const scene of resolved.active) {
     const st = plan.scenes[scene.index];
-    const deg = st?.blur.camera
-      ? sampleShutterDeg(st.tracks, scene.localMs, st.blur.shutterDeg)
-      : 0;
+    const tracks = sceneTracks?.[scene.index] ?? null;
+    const deg = st?.blur.camera ? sampleShutterDeg(tracks, scene.localMs, st.blur.shutterDeg) : 0;
     const windowMs = st ? shutterWindowMs(deg, plan.fps) : 0;
+    const breaks = windowMs > 0 ? cameraBreaks(tracks) : [];
     for (let k = 0; k < n; k++) {
       let localMs = scene.localMs;
       if (st && windowMs > 0) {
         localMs = clampSampleMs(
           scene.localMs,
-          scene.localMs + plan.units[k] * windowMs,
+          scene.localMs + units[k] * windowMs,
           st.durationMs,
-          st.breaks,
+          breaks,
         );
         blurs = true;
       }

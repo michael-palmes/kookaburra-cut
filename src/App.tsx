@@ -92,7 +92,11 @@ import {
   syncPreviewAudioPlaying,
   updatePreviewAudioSpec,
 } from "./engine/previewAudio";
-import { setPreviewClipStride, setPreviewPlaybackActive } from "./engine/previewMedia";
+import {
+  setPreviewClipStride,
+  setPreviewMotionBlurPlayback,
+  setPreviewPlaybackActive,
+} from "./engine/previewMedia";
 import { SETTLE_STEPS, settleProjectOpen } from "./engine/previewSettle";
 import {
   type AudioMarkersSpec,
@@ -151,6 +155,7 @@ import { sceneErrorRefusal } from "./engine/sceneErrors";
 import { planDeletes, planDuplicates, planMoves } from "./engine/sceneOrder";
 import { ensureSceneThumbs, listCachedSceneThumbs } from "./engine/sceneThumbs";
 import { activeSceneIndex } from "./engine/sceneTimeline";
+import { SHUTTER_SAMPLES_DEFAULT } from "./engine/shutter";
 import { canCaptureSnapshot, captureSnapshot, type SnapshotSaved } from "./engine/snapshots";
 import {
   armSourceFiles,
@@ -2130,6 +2135,14 @@ export default function App() {
   useEffect(() => {
     setPreviewClipStride(!exporting && previewQuality !== "full" ? 2 : 1);
   }, [exporting, previewQuality]);
+  const motionBlurWhilePlaying = useUiStore((s) => s.motionBlurWhilePlaying);
+  const projectBlurSamples = project?.renderSettings.motionBlur?.samples ?? SHUTTER_SAMPLES_DEFAULT;
+  useEffect(() => {
+    const samples = previewQuality === "full" ? projectBlurSamples : 4;
+    setPreviewMotionBlurPlayback(
+      motionBlurWhilePlaying && previewQuality !== "performance" ? samples : 0,
+    );
+  }, [motionBlurWhilePlaying, previewQuality, projectBlurSamples]);
 
   // Playback binds the small preview JPEGs; pausing flips every consumer back to exact full frames.
   useEffect(() => {
@@ -2720,6 +2733,7 @@ export default function App() {
                       sceneFrames={project.sceneFrames}
                       compareBDocs={project.compareBDocs}
                       compareBThemes={project.compareBThemes}
+                      motionBlur={project.renderSettings.motionBlur}
                       commitStamp={project}
                     />
                   )}

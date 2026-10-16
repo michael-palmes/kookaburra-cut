@@ -168,7 +168,6 @@ export function buildFramePlans(
     slots: opts.slots,
     sceneDocs: opts.sceneDocs,
     motionBlur: opts.motionBlur,
-    sceneTracks,
   });
 
   return {
