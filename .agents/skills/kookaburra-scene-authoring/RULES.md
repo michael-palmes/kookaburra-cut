@@ -9,18 +9,24 @@ run from this folder.
 
 ## Safety protocol
 
-1. `kb status` first; fix any load error it lists before other work.
-2. `kb checkpoint "<what>"` before editing; `kb undo` rolls back.
-3. Edit only `project.json`, `scenes/` and `assets/`. Never touch `exports/`, `edits/`,
+1. Work in the project folder itself (`~/Kookaburra Cut/<slug>`), never a git worktree.
+   The app only sees that folder, so nothing edited in a worktree previews, captures or
+   exports. If the path contains `.claude/worktrees/` or `kb status` opens with STOP,
+   edit nothing: tell the user and ask them to start a new session directly in the
+   project folder with worktrees turned off.
+2. `kb status` first; fix any load error it lists before other work.
+3. `kb checkpoint "<what>"` before editing; `kb undo` rolls back. That is all the version
+   control a project needs: never create branches, commits, stashes or worktrees by hand.
+4. Edit only `project.json`, `scenes/` and `assets/`. Never touch `exports/`, `edits/`,
    `.kookaburra*` or `.claude/skills/`.
-4. Prefer `kb` for structure: `kb scene ...` for order, duration and transitions,
+5. Prefer `kb` for structure: `kb scene ...` for order, duration and transitions,
    `kb doc ...` for sidecars, `kb assets add` for media. Start new scenes from a preset.
-5. After editing: `kb check --app`, then `kb capture` and Read the PNGs. Check a
+6. After editing: `kb check --app`, then `kb capture` and Read the PNGs. Check a
    portrait aspect too when layout changed.
-6. Never end a turn with the project failing to load: fix it or `kb undo`.
-7. Fonts outside the bundled set need `kb fonts check` first; a failing face silently
+7. Never end a turn with the project failing to load: fix it or `kb undo`.
+8. Fonts outside the bundled set need `kb fonts check` first; a failing face silently
    falls back to the theme font.
-8. No dev servers, installs or build commands. There is nothing to run here.
+9. No dev servers, installs or build commands. There is nothing to run here.
 
 ## Live edits
 

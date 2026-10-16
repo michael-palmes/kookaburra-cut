@@ -35,6 +35,29 @@ def find_root(start: Optional[Path] = None, explicit: Optional[str] = None) -> P
     raise KbError("no project.json in this folder or its parents; run kb from a Kookaburra Cut project folder", EXIT_ENV)
 
 
+def worktree_of(start: Path) -> Optional[Tuple[Path, Optional[Path]]]:
+    """(worktree, main checkout or None) when start sits in a linked git worktree, else None; reads files only."""
+    here = start.resolve()
+    for candidate in [here] + list(here.parents):
+        marker = candidate / ".git"
+        if marker.is_dir():
+            return None
+        if not marker.is_file():
+            continue
+        try:
+            head = read_text(marker).strip()
+        except OSError:
+            return None
+        if not head.startswith("gitdir:"):
+            return None
+        gitdir = (candidate / head[len("gitdir:"):].strip()).resolve()
+        if gitdir.parent.name != "worktrees":
+            return None
+        main = gitdir.parent.parent.parent if gitdir.parent.parent.name == ".git" else None
+        return candidate, main
+    return None
+
+
 def stem_of(file: str) -> str:
     name = file[len("scenes/"):] if file.startswith("scenes/") else file
     return name[:-4] if name.endswith(".tsx") else name

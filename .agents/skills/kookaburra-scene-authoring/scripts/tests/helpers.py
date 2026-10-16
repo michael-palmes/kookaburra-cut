@@ -90,6 +90,15 @@ def make_project(root: Path, scenes: Optional[List[str]] = None, git: bool = Fal
     return project
 
 
+def fake_worktree(main: Path, tree: Path) -> Path:
+    """A linked-worktree lookalike of main at tree: a copy whose .git file points into main/.git/worktrees/."""
+    shutil.copytree(main, tree, ignore=shutil.ignore_patterns(".git"))
+    gitdir = main / ".git" / "worktrees" / tree.name
+    gitdir.mkdir(parents=True, exist_ok=True)
+    write(tree / ".git", f"gitdir: {gitdir}\n")
+    return tree
+
+
 def git_init(project: Path) -> None:
     run_git(project, ["init", "-q"])
     run_git(project, ["add", "-A"])

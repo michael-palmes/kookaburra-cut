@@ -114,7 +114,7 @@ atomic (temp file in the same folder, then rename) and re-validated after writin
 
 | Command | Does |
 | --- | --- |
-| `status` | App alive (heartbeat), version, open project, aspect, exporting; this project's last load result; kit version; checkpoint state |
+| `status` | App alive (heartbeat), version, open project, aspect, exporting; this project's last load result; kit version; checkpoint state; a leading STOP banner when the project is a linked git worktree (`--json`: `worktree` is `{ path, main }` or null) |
 | `context` | The SessionStart text: status, scene roster, last load errors, the five rules that matter most (under 4 KB) |
 | `scenes` | Roster: index, stem, name, duration, transition, text, overrides (replaces `inspect.py`) |
 | `check [--app] [--render] [files...]` | Static checks (below); `--app` adds the running app's real compile, load and font checks; `--render` also renders each scene once |
@@ -160,9 +160,15 @@ export). Errors exit 1; warnings print but pass.
 
 Hooks:
 
-- `session-start` prints `context`. Never fails the session.
-- `pre-edit` blocks (exit 2 with a reason) writes to app-owned paths and to the managed
-  kit. Before the first write of a session into `project.json` or `scenes/` it makes a
+- `session-start` prints `context`. Never fails the session. When the project or the
+  hook's `cwd` is a linked git worktree (its `.git` is a file pointing into
+  `.git/worktrees/`), a STOP banner leads: the app never sees a worktree, so the agent
+  must edit nothing and ask for a session in the project folder itself. The `cwd` check
+  matters because a desktop worktree session can carry the main folder as
+  `CLAUDE_PROJECT_DIR`. Detection reads files only (`worktree_of` in `project.py`).
+- `pre-edit` blocks (exit 2 with a reason) writes to app-owned paths, to the managed
+  kit and to anything inside a linked git worktree of a project (the same STOP text).
+  Before the first write of a session into `project.json` or `scenes/` it makes a
   checkpoint when the tree has changes since the last one.
 - `post-edit` runs the static check scoped to the edited file (plus the manifest
   cross-checks). Errors the edit introduced exit 2 so Claude sees them and fixes them;

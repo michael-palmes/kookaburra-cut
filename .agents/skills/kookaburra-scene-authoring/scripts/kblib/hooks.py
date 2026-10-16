@@ -13,7 +13,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from . import check as checkmod
 from . import git as gitmod
-from .project import KIT_REL, MANIFEST, Project, SAFE_SESSION, find_root
+from .project import KIT_REL, MANIFEST, Project, SAFE_SESSION, find_root, worktree_of
 from .util import EXIT_OK, KbError, Report
 
 BLOCK = 2
@@ -46,8 +46,7 @@ def hook_root(payload: Dict[str, Any]) -> Optional[Path]:
         return None
 
 
-def edited_rel(project: Project, payload: Dict[str, Any]) -> Optional[str]:
-    """The edited file relative to the project, or None when it lies outside it."""
+def edited_path(project: Project, payload: Dict[str, Any]) -> Optional[Path]:
     tool_input = payload.get("tool_input") if isinstance(payload.get("tool_input"), dict) else {}
     raw = tool_input.get("file_path") or tool_input.get("path")
     if not isinstance(raw, str) or not raw:
@@ -56,7 +55,14 @@ def edited_rel(project: Project, payload: Dict[str, Any]) -> Optional[str]:
     if not path.is_absolute():
         base = payload.get("cwd") if isinstance(payload.get("cwd"), str) else str(project.root)
         path = Path(base) / path
-    real = Path(os.path.realpath(str(path)))
+    return Path(os.path.realpath(str(path)))
+
+
+def edited_rel(project: Project, payload: Dict[str, Any]) -> Optional[str]:
+    """The edited file relative to the project, or None when it lies outside it."""
+    real = edited_path(project, payload)
+    if real is None:
+        return None
     root = Path(os.path.realpath(str(project.root)))
     try:
         return real.relative_to(root).as_posix()
@@ -73,6 +79,17 @@ def blocked_reason(rel: str) -> Optional[str]:
     if rel == KIT_REL or rel.startswith(KIT_REL + "/"):
         return f"{rel} is the managed kit; the app replaces it on every launch, so edits are lost. Put project notes in CLAUDE.md instead."
     return None
+
+
+def worktree_reason(project: Project, payload: Dict[str, Any]) -> Optional[str]:
+    """Any write into a project's linked git worktree: the app never sees it, so the edit would be lost."""
+    from . import overview
+
+    path = edited_path(project, payload)
+    found = worktree_of(path.parent) if path else None
+    if not found or not (found[0] / MANIFEST).is_file():
+        return None
+    return " ".join(overview.worktree_banner(found))
 
 
 def session_marker(project: Project, session_id: str) -> Path:
@@ -137,6 +154,9 @@ def pre_edit(payload: Dict[str, Any]) -> Tuple[int, str, str]:
     if root is None:
         return EXIT_OK, "", ""
     project = Project(root)
+    reason = worktree_reason(project, payload)
+    if reason:
+        return BLOCK, "", f"kb: blocked: {reason}"
     rel = edited_rel(project, payload)
     if rel is None:
         return EXIT_OK, "", ""
@@ -232,7 +252,8 @@ def session_start(payload: Dict[str, Any], project: Optional[Project] = None) ->
     except Exception:
         summary = []
     try:
-        text = overview.context_text(project, summary)
+        cwd = payload.get("cwd")
+        text = overview.context_text(project, summary, cwd if isinstance(cwd, str) else None)
     except Exception as e:
         text = f"Kookaburra Cut project {project.project_id} (kb context failed: {e}). Run python3 .claude/skills/kookaburra-scene-authoring/scripts/kb.py status"
     return EXIT_OK, text, ""

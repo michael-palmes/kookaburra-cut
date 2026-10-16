@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import json
-from typing import Any, Dict, List, Optional
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
 
 from . import bridge
 from . import git as gitmod
-from .project import Project, scene_name, stem_of
+from .project import MANIFEST, Project, find_root, scene_name, stem_of, worktree_of
 from .util import KbError, ago, fmt_secs, is_int, read_text
 
 CONTEXT_BUDGET = 4000
@@ -19,6 +20,39 @@ RULES = [
     "After every change: kb check (errors must be zero), then look at it with kb capture --scene <stem> and Read the PNG.",
     "Start new scenes from presets (kb presets, kb scene add <name> --preset <slug>); kb checkpoint before risky work, kb undo to roll back.",
 ]
+
+
+def session_worktree(project: Project, cwd: Optional[str] = None) -> Optional[Tuple[Path, Optional[Path]]]:
+    """The linked git worktree this session works in (the project's, or the hook cwd's project), else None."""
+    starts = [project.root]
+    if isinstance(cwd, str) and cwd:
+        try:
+            starts.append(find_root(Path(cwd)))
+        except (KbError, OSError):
+            pass
+    for start in starts:
+        found = worktree_of(start)
+        if found:
+            return found
+    return None
+
+
+def worktree_lines(project: Project, cwd: Optional[str] = None) -> List[str]:
+    """A STOP banner when the session works in a git worktree: the app never sees one, so nothing edited there previews."""
+    found = session_worktree(project, cwd)
+    return worktree_banner(found) if found else []
+
+
+def worktree_banner(found: Tuple[Path, Optional[Path]]) -> List[str]:
+    tree, main = found
+    folder = str(main) if main and (main / MANIFEST).is_file() else "the project folder in ~/Kookaburra Cut"
+    return [
+        f"STOP: this session runs in a git worktree ({tree}), not the project folder.",
+        f"The Kookaburra Cut app only previews, captures and exports {folder}, so edits here never show up and app commands fail. "
+        "Edit nothing, and do not copy files across or switch branches to work around it.",
+        f"Tell the user, and ask them to start a new session directly in {folder} with worktrees turned off. "
+        "Projects need no git workflow: kb checkpoint and kb undo are the whole history.",
+    ]
 
 
 def kit_info(project: Project) -> str:
@@ -194,9 +228,11 @@ def status_data(project: Project) -> Dict[str, Any]:
     hb = bridge.live_heartbeat()
     manifest = project.manifest()
     entries = project.scene_entries()
+    worktree = session_worktree(project)
     return {
         "project": project.project_id,
         "root": str(project.root),
+        "worktree": {"path": str(worktree[0]), "main": str(worktree[1]) if worktree[1] else None} if worktree else None,
         "name": manifest.get("name"),
         "themeId": manifest.get("themeId"),
         "formats": manifest.get("formats"),
@@ -220,7 +256,7 @@ def status_text(project: Project) -> str:
     hb = bridge.live_heartbeat()
     manifest = project.manifest()
     fmts = manifest.get("formats") if isinstance(manifest.get("formats"), list) else []
-    lines = [
+    lines = worktree_lines(project) + [
         f"Project: {manifest.get('name', '?')} ({project.project_id}) at {project.root}",
         f"Theme {manifest.get('themeId', '?')} · formats {' '.join(str(f) for f in fmts)} · {len(project.scene_entries())} scenes · {fmt_secs(project.total_ms())}",
         app_line(project, hb),
@@ -231,10 +267,10 @@ def status_text(project: Project) -> str:
     return "\n".join(lines)
 
 
-def context_text(project: Project, check_summary: Optional[List[str]] = None) -> str:
-    """The SessionStart text: under 4 KB, most useful first."""
+def context_text(project: Project, check_summary: Optional[List[str]] = None, cwd: Optional[str] = None) -> str:
+    """The SessionStart text: under 4 KB, most useful first (a worktree STOP banner leads)."""
     hb = bridge.live_heartbeat()
-    head: List[str] = []
+    head: List[str] = worktree_lines(project, cwd)
     try:
         manifest = project.manifest()
         fmts = manifest.get("formats") if isinstance(manifest.get("formats"), list) else []
