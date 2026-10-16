@@ -25,9 +25,11 @@ contract for the kit, the bridge it talks to and the app behaviour it relies on.
 | `CLAUDE.md` | user | Created from `src-tauri/templates/project-CLAUDE.md`; imports `@.claude/skills/kookaburra-scene-authoring/RULES.md` |
 | `.claude/settings.json` | user, with managed keys | The app merges its managed hooks and permission rules in; user entries are never removed |
 | `.claude/skills/kookaburra-scene-authoring/` | app (managed) | Replaced wholesale on stamp; stale files disappear |
-| `.claude/skills/kookaburra-scene-authoring/kit.json` | app | `{ "kitVersion", "appVersion", "stampedAtMs" }` |
-| `project.json`, `scenes/`, `assets/` | user (Claude edits) | The only folders Claude writes |
-| `exports/`, `edits/`, `.kookaburra*` | app | Never edited by Claude |
+| `.claude/skills/kookaburra-video-editing/` | app (managed) | Sibling skill (SKILL.md + `reference/`, no scripts; it drives `kb video`) |
+| `.claude/skills/<skill>/kit.json` | app | `{ "kitVersion", "appVersion", "stampedAtMs" }`, one per shipped skill |
+| `project.json`, `scenes/`, `assets/` | user (Claude edits) | The only folders Claude writes by hand |
+| `edits/` | app, and `kb video` | Video edit documents; Rust is the only writer (the editor window and `kb video` through the app's CLI); never hand-edited |
+| `exports/`, `.kookaburra*` | app | Never edited by Claude |
 
 Skill tree (the source lives at `.agents/skills/kookaburra-scene-authoring/`):
 
@@ -51,9 +53,14 @@ scripts/
 
 - Runs on the first load of each workspace project per app session (best effort, never
   blocks the load; live reloads skip it) and when the embedded terminal starts Claude.
+- Every shipped skill (`SHIPPED_SKILLS` in `kit.rs`: `kookaburra-scene-authoring`, then
+  `kookaburra-video-editing`) is stamped into `.claude/skills/<name>/` with its own
+  `kit.json` and stale-sibling prefixes; a failing skill never stops the others, and
+  provisioning reports `present` only when all are there. Kit version 3.
 - The skill directory is copied to a temporary sibling and swapped in (`RENAME_SWAP`,
   with a two-rename fallback), so files the kit no longer ships are removed;
-  `__pycache__` and `.DS_Store` are skipped. Dev builds restamp when the shipped tree
+  `__pycache__`, `.DS_Store` and `scripts/tests` are skipped (test fixtures stay out of
+  projects; a stale stamped copy forces a restamp). Dev builds restamp when the shipped tree
   differs byte for byte (never mid-session for nothing, since a hook may be running
   `kb.py`); release builds restamp when `kit.json`'s `appVersion` differs or the stamped
   tree no longer has the shipped files at their shipped sizes (a deleted or truncated
@@ -128,7 +135,8 @@ atomic (temp file in the same folder, then rename) and re-validated after writin
 | `presets [list \| show SLUG]` | Scene presets with what they show and a preview image path to Read |
 | `catalog [FAMILY] [--search Q]` | Query `catalog.json` |
 | `assets list`, `assets add PATH [--name N]`, `assets probe ASSET` | Copy media in (never overwrites, renames on collision), probe with the app's bundled ffprobe |
-| `checkpoint [MESSAGE]`, `history`, `undo [REV]`, `diff` | Git checkpoints of `project.json` and `scenes/`; `undo` checkpoints first, so it is itself undoable |
+| `checkpoint [MESSAGE]`, `history`, `undo [REV]`, `diff` | Git checkpoints of `project.json`, `scenes/` and `edits/`; `undo` checkpoints first, so it is itself undoable, never trashes `edits/`, and names any render it leaves stale |
+| `video ...` | Video editing (below): edit documents, renders, re-points, cleanup, fit, review |
 | `hook session-start \| pre-edit \| post-edit` | Hook entry points (stdin JSON from Claude Code) |
 | `beats ...`, `chart ...` | Delegate to the existing scripts |
 
@@ -176,6 +184,44 @@ Hooks:
   warnings go back as `additionalContext`. It must finish in about a second; it never
   calls the app.
 
+## kb video
+
+`kb video` edits the app's own video-editor documents (`edits/<name>.json`) so the user
+can open every change in the editor (`kb video open`). The `kookaburra-video-editing`
+skill is its playbook. Code: `scripts/kblib/video/`.
+
+- Engine: `editmath`/`editops` mirror `src/engine/editMath.ts`, `editMasks.ts` and
+  `editOps.ts` exactly (`js_round` half up, the same check order and error codes);
+  `editdoc.mutate` takes a per-edit lock, applies ops, validates and saves through the
+  CLI's `edit save --base`, rebasing up to three times on a conflict; `repoint` mirrors
+  `applyEditRepoint` and the follow-media duration sync on the raw sidecar with
+  hash-checked, guarded writes; `appcli` finds the CLI (`KB_APP_BIN`, heartbeat
+  `cliPath`, `_bridge/cli.json`, then the bundle after its `Info.plist` gate).
+- Commands: `list`, `show`, `map`, `usages`, `validate`, `caps`; `new`, `reset`;
+  `split`, `cut`, `keep`, `trim`, `speed`, `freeze`, `hold`, `remove`, `move`, `insert`,
+  `append`; `tap ...`, `mask ...`; `apply PLAN` (all or nothing); `analyse`, `cleanup`,
+  `taps suggest`, `fit`, `align`; `frames`, `sheet`; `render`, `use`, `durations`,
+  `open`. Bare times are seconds; `--at` is timeline time, `--src` source time.
+- `render`: lock, validate, refuse (or `--wait`) while the app exports a project that
+  uses the output, CLI render with `--expect-hash`, check the frame count, `mediaChanged`
+  to a running app, then the optional re-point and the follow-media duration sync.
+  `--draft` renders a half-size review copy outside `assets/`.
+- Smart passes run the bundled ffmpeg directly: `analyse` (packet gaps on VFR sources,
+  then one scaled decode for black, freeze, scene changes and change boxes) caches by
+  content hash; `cleanup` applies source-range ops at normal strength by default and
+  writes nothing unless kb's plan lands exactly on its simulation; `fit`/`align` land on
+  the render's exact frame grid; tap candidates are only listed (`taps suggest`).
+- Scratch: `~/Kookaburra Cut/_bridge/video/<slug>/` (`analysis/`, `drafts/`, `frames/`,
+  `sheets/`, `locks/`), readable under the managed `Read(~/Kookaburra Cut/_bridge/**)`
+  rule; every `kb video` call prunes it (last three drafts per edit, 24 h, 1 GB).
+- Conformance: `pnpm agent:vectors` regenerates `edit-vectors.json` (editOps, editMath,
+  editMasks) and `repoint-vectors.json` (re-points, follow-media sources) from the real
+  TypeScript; `pnpm test:kit` replays them through the Python mirror, and a stale file
+  fails vitest. The Rust barcode fixtures (`fixtures/video-conformance/`, an `#[ignore]`
+  test) pin which source frame the render shows at every output frame.
+- Hooks keep Edit and Write out of `edits/` and both managed skill folders; `kb video`
+  is the only way an agent changes an edit.
+
 ## The bridge (v2)
 
 File-drop queue under the FIXED `~/Kookaburra Cut/_bridge/` (never a relocated root).
@@ -200,7 +246,9 @@ throttled while the app is hidden), removed on exit; autorun instances never wri
   "playheadMs": 61000,
   "exporting": false,
   "playing": false,
-  "kinds": ["capture", "check", "fonts", "insertPreset"],
+  "kinds": ["capture", "check", "fonts", "insertPreset", "mediaChanged", "openEdit"],
+  "cliPath": "/Applications/Kookaburra Cut.app/Contents/MacOS/kookaburra-cut",
+  "cliVersion": 1,
   "lastLoad": {
     "project": "ws:product-tour",
     "ok": true,
@@ -221,6 +269,11 @@ healed scene ids and dropped LUTs.
 
 `kb` treats the app as running when `updatedAtMs` is under 30 s old and the pid is
 alive. It never uses `pgrep` (it matches unrelated processes and misses others).
+
+`cliPath` is the app's own executable (the headless edit CLI, below) and `cliVersion`
+its CLI version. Interactive builds also write `_bridge/cli.json`
+(`{ path, appVersion, build, cli, writtenAtMs }`) once at setup and never delete it, so
+`kb` finds a dev build's CLI while the app is closed.
 
 ### Requests and responses
 
@@ -264,6 +317,59 @@ plus its kind's payload. `busy` applies to every kind except `fonts` while expor
   own preset copy (assets copied and renamed on collision, stem and ids minted, sidecar
   ids re-minted). `position` is a 0-based manifest index (absent appends); `name` also
   drives the minted stem and scene id.
+
+Native kinds. `mediaChanged` and `openEdit` are claimed by a Rust loop
+(`spawn_native_bridge`, 300 ms poll) rather than the render window, which never claims
+them and never spawns for them. Both take `project: "ws:<slug>"` and the optional
+`projectPath` (checked against the workspace project when sent).
+
+- `mediaChanged` (`paths: ["assets/x-edited.mp4"]`, optional `edit`): validates every
+  path (outside `assets/` or `..` fails the request; missing files are listed), warms
+  the media cache and emits `kookaburra://media-changed { slug, paths, edit, origin:
+  "agent" }`. Response `{ project, paths, warmed, missing, deferred }`; never busy, and
+  while exporting it skips the warm-up and answers `deferred: true`. The main window
+  refreshes the project's assets and stale clip frames but runs no follow-media sync
+  and no re-point for agent broadcasts (`kb` owns both); the render window marks itself
+  dirty and invalidates before its next claim, so a capture after an in-place re-render
+  shows the new frames.
+- `openEdit` (`name`, optional `scene` index or stem): opens the video editor on that
+  edit for any workspace project. Response `{ project, name, opened: "created" |
+  "retargeted" | "focused", projectOpen }`; `focused` only raises the window (the
+  editor keeps its state). Busy while exporting or while the editor renders another
+  edit; an unresolvable `scene` or an unreadable doc is an error.
+
+## Headless edit CLI
+
+The app binary doubles as a headless CLI: `<exe> edit <command>` returns before Tauri or
+AppKit start (no Dock icon, no window), so `kb video` renders with the app closed using
+the same Rust code as the editor window. `<exe>` is
+`Kookaburra Cut.app/Contents/MacOS/kookaburra-cut`; the bundle's `Info.plist` carries
+`KookaburraEditCli = 1`, and `kb` never executes a bundle binary without it (an older GUI
+binary given `edit caps` would launch the whole app). Code: `src-tauri/src/cli.rs`
+over the app-free cores in `edit.rs`, `media.rs` and `tools.rs`.
+
+- stdout carries exactly one JSON object (`render`: JSON lines); stderr is diagnostics
+  only; keys are alphabetical. Errors are `{ ok: false, code, error }`. Exit 0 ok, 1
+  operation failed (`invalid`, `exists`, `conflict`, `missing`, `ffmpeg`, `version`,
+  `corrupt`), 2 usage or environment (`usage`, `env`), 130 interrupted.
+- `--project D` is always an absolute project folder; the CLI never reads the workspace
+  root. ffmpeg and ffprobe resolve beside the executable, app data from the bundle
+  identifier, the hardware toggle from settings.
+
+| Command | Does |
+| --- | --- |
+| `caps` | CLI version, app version, build, commands, doc versions, ffmpeg/ffprobe paths and filters, hardware video, tap styles/colours/sizes, mask styles, limits |
+| `probe --project D --source R` (or `--file ABS`) | The app's probe (rotation-aware size, `vfr`, `editFps`, `nbFrames`) |
+| `create --project D --source R [--name N] [--reuse \| --force]` | The editor's default document for that source; an existing doc is `exists` unless `--reuse` or `--force` (backs up to `.json.bak`) |
+| `validate --project D (--name N \| --doc -)` | Parse, mask rules and a render dry run: `{ ok, hash, version, totalFrames, durationMs, fps, width, height, clips, taps, errors, warnings }` |
+| `save --project D --name N --doc - --base H\|absent` | The only doc writer outside the editor: serde strictness, version stamping, base-hash check (`conflict` when stale) |
+| `render --project D (--name N \| --doc -) [--out ABS] [--software] [--draft \| --scale F] [--expect-hash H]` | `--name` alone renders `assets/<name>-edited.mp4`; `--out` is a review render outside `assets/` (`--draft` = half size, ultrafast) |
+
+Renders (editor and CLI alike) stage in the hidden folder `<dir>/.kc-render/` and rename
+on success, so a failed render keeps the previous good file. A canonical render writes
+`edits/.renders/<name>.json` (`{ docHash, output, lane, frames, durationMs, width,
+height, fps, atMs }`), which the editor and `kb` use to tell a fresh render from a stale
+one.
 
 Loads: the render window keeps one loaded project and reuses it for captures, checks
 and scene thumbnails while its id and source fingerprint are unchanged (so `check` then
@@ -324,6 +430,14 @@ Types: `src/engine/loadDiagnostics.ts`; `LoadedProject.sceneErrors`,
   mismatch, so a delete can never bin the wrong scene.
 - After its own writes in a trusted session the app re-stamps trust, so a restart does
   not re-prompt for the user's own edits.
+- Edit documents work the same way. `save_edit` carries the base hash and refuses a
+  stale one; the editor window polls its doc's stamp (1 s and on focus, applied once two
+  polls agree) and takes an outside change as ONE "Claude edit" undo step, merging any
+  unsaved local edits three ways (remote wins a clash, and a toast names what it
+  replaced). It defers while a pointer is down, a field is mid-edit or a render runs. A
+  removed or unreadable doc shows the error panel and stops autosave until it reads
+  again. Code: `src/editor/editLiveSync.ts`; the editor's operations are the pure
+  `src/engine/editOps.ts`, which `kb video` mirrors.
 
 Code: `src-tauri/src/live_edits.rs` (hashes, stamps, guards; `project_file_stamps`,
 `project_file_hashes`), `read_scene_doc_entry` and the `base_hash`/`file` arguments in
@@ -345,7 +459,10 @@ level keys: `version`, `aspects`, `transitions`, `eases`, `textMotion`,
 
 ## Verification
 
-- Python: `pnpm test:kit` (unittest; part of `pnpm test`).
+- Python: `pnpm test:kit` (unittest; part of `pnpm test`); `pnpm test:kit:e2e` with
+  `KB_E2E_APP_BIN=<kookaburra-cut binary>` runs `kb video` against the real CLI.
+- Rust: `cargo test -- --ignored edit_` renders through the real sidecar (CLI end to
+  end, core vs CLI byte-identical, barcode conformance, masks).
 - Load safety and live edits touch the load and render paths: gate with
   `pnpm gate:merge` (both EQUAL), plus a workspace fixture holding an unsafe font and a
   broken scene to prove the project opens, `check` names both and export refuses.
