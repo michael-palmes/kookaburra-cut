@@ -121,6 +121,49 @@ chip row, presets (Subtle, Cinematic, Macro; depth mode) and the Auto/Manual
 focus switch. Gate fixture: `ws:dof-spike`; probe pass: `no-dof` (it covers
 every mode, since all of them ride the same union).
 
+## Motion blur
+
+Shutter accumulation: a blurred frame averages renders at fixed sub-frame
+instants inside its shutter window, so frame N stays a pure function of t (no
+history; the escalation path `docs/determinism.md` already sanctioned). It is
+exact for everything that moves, per-glyph text and shaders included, which a
+velocity buffer is not.
+
+- Settings layer like lighting: the manifest's `render.motionBlur`
+  (`enabled`, `shutterDeg` 0..360, `samples` 4 / 8 / 16, `camera`, `objects`),
+  then the sidecar `motionBlur` (each present field replaces the project's, so a
+  scene can switch blur on while the project is off), then a key's
+  `pose.shutterDeg` (the fov pattern, mixed under the Lens ease), then per-item
+  `motionBlur: { enabled, amount }` on devices, media, the text animation spec,
+  `chart.animation` and `layeredScreenshot`. Absent everywhere is off.
+- The window is `shutterDeg / 360` of the frame interval at the run's own fps,
+  centred on the frame, sampled at `(k + 0.5) / N - 0.5`. Samples clamp to the
+  scene and never cross a camera break (a `jump` segment end, a held key), so a
+  cut never ghosts. Transition progress stays on the frame instant, so whip and
+  spin transitions are not blurred twice.
+- The project's sample count is a floor: a fast camera sweep raises a frame's
+  count (up to 32) until neighbouring copies sit within 0.002 frame heights, so
+  a whip pan smears instead of strobing. Pure in t: the travel comes from the
+  window-edge poses, never the rendered pixels.
+- Camera blur re-samples the camera plan per sample inside one committed frame
+  (no React work); the camera test is exact pose equality at the window edges.
+  Focus (dof) keeps the frame instant's value.
+- Object blur moves time per scene through the clock store's shutter sample:
+  `useTimeline()` returns the frame instant plus the scene's offset times its
+  scale (`MotionBlurContext`, an item's `motionBlur`, or `<MotionBlur amount>`).
+  Scale 0 never re-renders. Backgrounds, overlay chrome, device screen clips,
+  counters and comparison chips stay on the frame instant. The edge samples render
+  first; when they match byte for byte (and the camera holds), the frame stops at two.
+- The lane copies each finished canvas into a float pair as exact byte sums and
+  writes the rounded mean back, so a still pixel averages to its own byte: the
+  forced lane with a zero window hashed `showcase-tour` unchanged.
+- Preview: paused frames show the export's blur once the playhead rests (camera
+  blur in one render pass, object blur building up one committed sample per
+  frame); playback blurs the camera only, behind the Playback options toggle,
+  never under Performance. Stills exports and Present never blur.
+
+Gate fixture: `ws:motion-blur-spike`; probe pass: `no-motion-blur`.
+
 ## Tools and shortcuts
 
 Open animation mode from the camera pill. The mode switch decides which tools

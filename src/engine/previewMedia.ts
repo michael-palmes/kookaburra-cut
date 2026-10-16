@@ -48,3 +48,21 @@ export function setPreviewDofOff(value: boolean): void {
 export function previewDofOff(): boolean {
   return dofOff;
 }
+
+/** Camera motion blur samples while preview playback runs; 0 keeps playback sharp. App owns it (the "Motion blur while playing" toggle and preview quality); paused frames always use the project's count. */
+let motionBlurPlaybackSamples = 0;
+export function setPreviewMotionBlurPlayback(samples: number): void {
+  motionBlurPlaybackSamples = Math.max(0, Math.floor(samples));
+}
+export function previewMotionBlurPlaybackSamples(): number {
+  return motionBlurPlaybackSamples;
+}
+
+/** Perf-probe no-motion-blur pass (same contract as env-off): the preview renders every frame plain while this is on. */
+let motionBlurOff = false;
+export function setPreviewMotionBlurOff(value: boolean): void {
+  motionBlurOff = value;
+}
+export function previewMotionBlurOff(): boolean {
+  return motionBlurOff;
+}

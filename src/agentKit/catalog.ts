@@ -9,6 +9,7 @@ import { BUNDLED_ENVIRONMENT_IDS, NONE_SOURCE, SOFTBOX_SOURCE } from "../engine/
 import { type AspectName, aspectLabel, CAMERA, computeFormat, FORMATS } from "../engine/format";
 import { KELVIN_MAX, KELVIN_MIN } from "../engine/kelvin";
 import { allowedSpecifiers } from "../engine/moduleRegistry";
+import { MOTION_BLUR_AMOUNT_MAX, SAMPLE_PRESETS, SHUTTER_PRESETS } from "../engine/motionBlur";
 import { listPresets } from "../engine/presets";
 import type { ProjectManifest } from "../engine/project";
 import { EXPOSURE_MAX, EXPOSURE_MIN, type ToneMappingId } from "../engine/renderSettings";
@@ -25,6 +26,12 @@ import {
 import { FIXTURE_MAX_COUNT, MAX_SCENE_LIGHTS, MAX_SHADOW_CASTERS } from "../engine/sceneLighting";
 import { TERMINAL_THEME_PRESETS } from "../engine/sceneTerminalTheme";
 import type { TransitionEase } from "../engine/sceneTimeline";
+import {
+  SHUTTER_DEG_DEFAULT,
+  SHUTTER_DEG_MAX,
+  SHUTTER_SAMPLE_COUNTS,
+  SHUTTER_SAMPLES_DEFAULT,
+} from "../engine/shutter";
 import { listTemplates } from "../engine/templates";
 import { FEEL_LABELS, TRANSITION_CATALOG } from "../engine/transitionCatalog";
 import { BUILTIN_THEME_CATALOGUE, THEME_CATEGORIES } from "../theme/catalogue";
@@ -263,6 +270,12 @@ export const SCENE_DOC_KEYS: Record<
     type: "object",
     ref: "sidecar",
   },
+  motionBlur: {
+    summary:
+      "Motion blur override { enabled, shutterDeg, camera, objects }; each field replaces the project's render.motionBlur.",
+    type: "object",
+    ref: "camera",
+  },
 };
 
 /** One line per project.json key; exhaustive over `ProjectManifest`. */
@@ -307,7 +320,8 @@ export const PROJECT_MANIFEST_KEYS: Record<
     type: "object|null",
   },
   render: {
-    summary: "Display transform { toneMapping, exposure }; absent is aces at 1.",
+    summary:
+      "Display transform { toneMapping, exposure } plus motionBlur { enabled, shutterDeg, samples, camera, objects }; absent is aces at 1, no blur.",
     type: "object",
   },
   lighting: { summary: "Project lighting layer between theme and scene.", type: "object" },
@@ -592,6 +606,10 @@ export const TOOLKIT_SUMMARIES: Record<
   LayeredScreenshot: { summary: "Renders the sidecar layeredScreenshot stack." },
   LightRig: { summary: "Shared three-light rig; mount once, pass lit={false} to lit primitives." },
   ManagedTextStack: { summary: "Responsive stack for inspector-owned managedText." },
+  MotionBlur: {
+    summary:
+      "Scales motion blur for a subtree's own motion: amount 0 sharp, 1 the shutter, 2 double.",
+  },
   ObjectsFallback: {
     summary: "Host-mounted 3D objects for scenes without StagedObject.",
     internal: true,
@@ -1254,6 +1272,23 @@ export function buildAgentCatalog(): Record<string, Json> {
     camera: {
       presets: cameraPresets(),
       dof: (Object.keys(DOF_MODES) as DofMode[]).map((id) => ({ id, ...DOF_MODES[id] })),
+      motionBlur: {
+        shutterPresets: SHUTTER_PRESETS.map((p) => ({
+          id: p.id,
+          label: p.label,
+          shutterDeg: p.deg,
+        })),
+        samplePresets: SAMPLE_PRESETS.map((p) => ({
+          id: p.id,
+          label: p.label,
+          samples: p.samples,
+        })),
+        limits: [
+          { id: "shutterDeg", min: 0, max: SHUTTER_DEG_MAX, default: SHUTTER_DEG_DEFAULT },
+          { id: "samples", values: [...SHUTTER_SAMPLE_COUNTS], default: SHUTTER_SAMPLES_DEFAULT },
+          { id: "amount", min: 0, max: MOTION_BLUR_AMOUNT_MAX, default: 1 },
+        ],
+      },
     },
     compare: {
       presets: COMPARE_PRESETS.map((p) => ({

@@ -1,5 +1,6 @@
 /** The chart vocabulary: the authored config (mirroring the sidecar `chart` block) and the RESOLVED layout the renderers consume. Layout is normalised to a 0..1 plot rect with x right and y UP, and is already orientation-resolved (bar charts swap axes here), so the 2D and 3D renderers share one contract and never re-derive orientation from the chart type. */
 
+import type { MotionBlurOverride } from "../../engine/motionBlur";
 import type { DevicePlacement } from "../device/Device";
 import type { Chart2DAppearance } from "./chart2dMath";
 
@@ -145,6 +146,8 @@ export interface ChartAnimationConfig {
   staggerMs: number;
   durationMs: number;
   from: ChartAnimationFrom;
+  /** Motion blur override; absent inherits the scene's Objects switch (see engine/motionBlur.ts). */
+  motionBlur?: MotionBlurOverride;
 }
 
 /** A full data snapshot for keyframed data (the Magic Chart model): same series and category counts as the block's own data, values only. */

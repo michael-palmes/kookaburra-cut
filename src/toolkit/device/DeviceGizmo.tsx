@@ -36,7 +36,7 @@ export function DeviceGizmo({
 }) {
   const proxyRef = useRef<Group>(null);
   const doc = useContext(SceneDocContext);
-  const { localMs } = useTimeline();
+  const { localMs } = useTimeline(0);
   const mode = useDeviceEditStore((s) => s.gizmoMode);
   const dragging = useRef(false);
   const synced = useRef<string | null>(null);

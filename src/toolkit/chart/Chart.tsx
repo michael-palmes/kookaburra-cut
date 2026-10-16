@@ -7,6 +7,7 @@ import { useFormat } from "../../engine/format";
 import { useGizmoSectionOpen } from "../../engine/gizmoSections";
 import { registerGizmoTarget, unregisterGizmoTarget } from "../../engine/gizmoTargetRegistry";
 import { resolveSpecialisedTextCopy } from "../../engine/managedText";
+import { motionBlurScale } from "../../engine/motionBlur";
 import { SceneGizmo } from "../../engine/SceneGizmo";
 import { SceneOutline } from "../../engine/SceneOutline";
 import type { ResolvedChart } from "../../engine/sceneChart";
@@ -102,9 +103,9 @@ export function MountedChart(props: MountedChartProps) {
     panel,
   } = props;
   const theme = useTheme();
-  const { localMs } = useTimeline();
-  const staged = useSceneStaged();
   const doc = useSceneDoc();
+  const { localMs } = useTimeline(motionBlurScale(doc?.chart?.animation?.motionBlur));
+  const staged = useSceneStaged();
   const chart = useMemo(
     () => mergeChart(base, { type, dimension, mount, placement }),
     [base, type, dimension, mount, placement],

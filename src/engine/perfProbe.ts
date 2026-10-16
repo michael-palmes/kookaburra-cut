@@ -5,6 +5,7 @@ import {
   setPreviewClipStride,
   setPreviewDofOff,
   setPreviewEnvironmentOff,
+  setPreviewMotionBlurOff,
   setPreviewPlaybackActive,
 } from "./previewMedia";
 import { type LoadedProject, sceneFileStem } from "./project";
@@ -158,6 +159,14 @@ const PASSES: PerfPass[] = [
     apply: () => {
       setPreviewDofOff(true);
       return () => setPreviewDofOff(false);
+    },
+  },
+  {
+    // Motion blur cost: the preview renders every frame plain while the flag is on (blur-free projects measure identical to baseline).
+    id: "no-motion-blur",
+    apply: () => {
+      setPreviewMotionBlurOff(true);
+      return () => setPreviewMotionBlurOff(false);
     },
   },
   {

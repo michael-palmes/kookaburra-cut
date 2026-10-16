@@ -100,6 +100,36 @@ the scene's; blur animates, the mode does not.
   legible on the focus plane. `blur: 0` frames are unchanged. Inspector depth presets:
   Subtle (blur 0.25, range 2), Cinematic (0.6, 1.2), Macro (0.9, 0.5).
 
+## Motion blur
+
+Real motion blur: each blurred frame averages renders across its shutter, so it is
+exact for everything that moves (glyphs, devices, shaders), and exports take longer
+on moving frames only. Three layers, absent everywhere is off:
+
+```json
+"render": { "motionBlur": { "enabled": true, "shutterDeg": 180, "samples": 8, "camera": true, "objects": true } }
+```
+
+- `project.json` `render.motionBlur`: `shutterDeg` 0..360 (Crisp 90, Film 180,
+  Smooth 270, Smear 360), `samples` 4 / 8 / 16 (Quick, Standard, Fine; a floor:
+  fast camera sweeps take up to 32 automatically), `camera`
+  (blur from camera moves), `objects` (blur from things moving on their own).
+- Sidecar `motionBlur` `{ enabled, shutterDeg, camera, objects }`: each present field
+  replaces the project's, so a scene can switch blur on while the project is off, or
+  `{ "enabled": false }` keep one scene sharp. Samples stay project-wide.
+- A key's `pose.shutterDeg` overrides the shutter from that key on, eased with the
+  Lens channel (`easeLens`), the `fov` pattern: crank one whip-pan key to 360.
+- Per item, `motionBlur: { "enabled": false }` keeps it sharp and
+  `{ "enabled": true, "amount": 1.5 }` scales its trail (0..2): on `devices[]`,
+  `media[]`, `textAnimation` (and per-key overrides), `chart.animation` and
+  `layeredScreenshot`. In code, wrap motion in `<MotionBlur amount={0}>`.
+
+Always sharp: backgrounds' own animation (world-space 3D looks still take camera
+blur), overlay chrome, device screen video frames and counters. Jump cuts and
+scene cuts never smear. Stills exports and Present never blur. Streaky text
+presets (blur-in, converge, vapor) already fake a smear: lower their `amount`.
+Check a blurred frame with `kb capture`, which renders the export's blur.
+
 ## Present loops
 
 `camera.presentLoop` or `cameraRig.presentLoop`: `{ "mode": "jump" }` or

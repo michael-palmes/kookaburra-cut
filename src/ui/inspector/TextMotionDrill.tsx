@@ -17,6 +17,7 @@ import {
 } from "../textAnimationOptions";
 import type { ManagedTextWrite } from "./ManagedTextDrill";
 import { TextScopeIcon } from "./ManagedTextDrill";
+import { MotionBlurOverrideRow } from "./MotionBlurFields";
 import {
   rebaseTextMotionSpec,
   setTextMotionSpec,
@@ -583,6 +584,18 @@ export function TextMotionDrill({
                 ))}
               </select>
             </label>
+          </DrillGroup>
+
+          <DrillGroup label="Motion blur">
+            <MotionBlurOverrideRow
+              value={current.motionBlur}
+              onChange={(blur) => {
+                const next = structuredClone(current);
+                if (blur) next.motionBlur = blur;
+                else delete next.motionBlur;
+                writeSpec(next, "change text motion blur");
+              }}
+            />
           </DrillGroup>
         </div>
       )}

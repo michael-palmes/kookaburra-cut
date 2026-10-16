@@ -238,7 +238,8 @@ async function exportStillsHeld(
       cam.aspect = width / height;
       cam.updateProjectionMatrix();
     }
-    const plans = buildFramePlans(opts, sceneFloorYs);
+    // Stills are settled handouts: never motion blurred.
+    const plans = { ...buildFramePlans(opts, sceneFloorYs), shutter: null };
 
     await awaitPresentTimingsSettled(scene);
     const plan = planStillPages({

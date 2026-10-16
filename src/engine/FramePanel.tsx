@@ -60,6 +60,7 @@ import { SceneContext, SceneDocContext, SceneThemeContext } from "./sceneContext
 import { useSceneDoc } from "./sceneDoc";
 import type { SceneDoc } from "./sceneDocSchema";
 import { resolveSceneDocMedia, sceneMediaInFrame } from "./sceneMedia";
+import { MotionBlurContext } from "./timeline";
 
 /** Nudges the whole editorial column (title/subtitle/bullets/chip, not the decorations) left, as a fraction of the column width. */
 const CONTENT_LEFT_SHIFT = 0.06;
@@ -388,21 +389,28 @@ export function FramePanel({
     return () => unregisterFramePanel(key);
   }, [key, index, hasSceneImages]);
 
+  // Overlay chrome is screen-locked, so it never takes motion blur.
   return (
     <SceneContext.Provider value={{ index, startMs, durationMs }}>
-      <SceneDocContext.Provider value={doc ?? null}>
-        <SceneThemeContext.Provider value={theme ?? null}>
-          <group ref={groupRef} visible={false}>
-            {frame && <PanelContent frame={frame} />}
-            {hasTerminal && (
-              <SceneTerminalPanel orderBase={nextFrameStackOrder(frame?.decorations ?? []) + 64} />
-            )}
-            {hasWebsite && (
-              <SceneWebsitePanel orderBase={nextFrameStackOrder(frame?.decorations ?? []) + 128} />
-            )}
-          </group>
-        </SceneThemeContext.Provider>
-      </SceneDocContext.Provider>
+      <MotionBlurContext.Provider value={0}>
+        <SceneDocContext.Provider value={doc ?? null}>
+          <SceneThemeContext.Provider value={theme ?? null}>
+            <group ref={groupRef} visible={false}>
+              {frame && <PanelContent frame={frame} />}
+              {hasTerminal && (
+                <SceneTerminalPanel
+                  orderBase={nextFrameStackOrder(frame?.decorations ?? []) + 64}
+                />
+              )}
+              {hasWebsite && (
+                <SceneWebsitePanel
+                  orderBase={nextFrameStackOrder(frame?.decorations ?? []) + 128}
+                />
+              )}
+            </group>
+          </SceneThemeContext.Provider>
+        </SceneDocContext.Provider>
+      </MotionBlurContext.Provider>
     </SceneContext.Provider>
   );
 }

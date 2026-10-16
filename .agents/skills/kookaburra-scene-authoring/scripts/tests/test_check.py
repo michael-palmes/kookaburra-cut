@@ -108,6 +108,14 @@ class CheckTests(KbTestCase):
         self.assertTrue(any("extraThing" in w for w in warnings))
         self.assertTrue(any("not a #rgb" in w for w in warnings))
 
+    def test_sidecar_motion_blur(self) -> None:
+        doc = {"version": 1, "motionBlur": {"enabled": "yes", "shutterDeg": 720, "samples": 16}}
+        write_json(self.root / "scenes" / "02-hero.json", doc)
+        report = self.run_check(["scenes/02-hero.json"])
+        self.assertHasError(report, "motionBlur.enabled", "must be 0..360")
+        self.assertTrue(any("samples is project-wide" in w for w in messages(report, "warning")))
+        self.assertFalse(any("unknown key" in w and "motionBlur" in w for w in messages(report, "warning")))
+
     def test_sidecar_version_and_json(self) -> None:
         write_json(self.root / "scenes" / "02-hero.json", {"name": "x"})
         self.assertHasError(self.run_check(["scenes/02-hero.json"]), "ignores the whole sidecar")

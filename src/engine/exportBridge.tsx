@@ -49,6 +49,13 @@ export function canvasCommittedClockMs(): number {
   return committedClockMs;
 }
 
+/** The shutter sample sequence the canvas tree last committed, stamped in the same flush as every `useTimeline` reader of the sample (the clock stamp's guarantee). */
+let committedShutterSeq = Number.NaN;
+
+export function canvasCommittedShutterSeq(): number {
+  return committedShutterSeq;
+}
+
 /** The scene-hold version the canvas tree last committed, stamped in the same reconciler flush as every `useHeldLocalMs` reader (the clock stamp's guarantee), so the stills export can wait for its holds to reach the scenes. */
 let committedHoldsVersion = Number.NaN;
 
@@ -82,6 +89,7 @@ export function ExportBridge() {
   const camera = useThree((s) => s.camera);
   const advance = useThree((s) => s.advance);
   const currentMs = useClockStore((s) => s.currentMs);
+  const shutterSeq = useClockStore((s) => s.shutterSeq);
   const holdsVersion = useSyncExternalStore(subscribeSceneHolds, sceneHoldsVersion);
   useEffect(() => {
     canvasHandle.current = { gl, scene, camera, advance };
@@ -94,6 +102,9 @@ export function ExportBridge() {
   useLayoutEffect(() => {
     committedClockMs = currentMs;
   }, [currentMs]);
+  useLayoutEffect(() => {
+    committedShutterSeq = shutterSeq;
+  }, [shutterSeq]);
   useLayoutEffect(() => {
     committedHoldsVersion = holdsVersion;
   }, [holdsVersion]);

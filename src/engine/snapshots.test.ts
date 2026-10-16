@@ -20,6 +20,7 @@ vi.mock("./exportBridge", () => ({
   canvasHandle: { current: {} },
   canvasCommittedClockMs: vi.fn(() => 0),
   canvasCommittedProject: vi.fn(() => null),
+  canvasCommittedShutterSeq: vi.fn(() => useClockStore.getState().shutterSeq),
   canvasContextLosses: vi.fn(() => 0),
   setCapturingPreview: vi.fn(),
 }));

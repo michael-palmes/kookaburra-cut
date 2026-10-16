@@ -1,4 +1,5 @@
 import { ease } from "../../engine/ease";
+import type { MotionBlurOverride } from "../../engine/motionBlur";
 import type { TextAnimationSpec, Theme } from "../../theme/tokens";
 
 /** Text-animation presets, the library behind `theme.textAnimation` and `AnimatedHeadline`'s `preset`/`ease`/`stagger` props: everything here is PURE math over the local scene clock so preview and the deterministic export loop agree byte-for-byte, and easing goes through the golden-tested `engine/ease` table, never an animation runtime. IMPORTANT (the null-for-legacy contract): when nothing is configured, `resolveTextAnimation` returns null and AnimatedHeadline runs its original v0 linear-ramp code verbatim, so committed projects on legacy themes must not change by a byte. */
@@ -461,6 +462,16 @@ export function resolveTextAnimationWithDoc(
   const force = doc?.textAnimationForce === true;
   const spec = (textKey ? doc?.textAnimationOverrides?.[textKey] : undefined) ?? doc?.textAnimation;
   return resolveTextAnimation(force ? {} : props, theme, spec);
+}
+
+/** The text's motion blur override, from the same spec cascade as its motion (the item's override, the scene's, then the theme's); motion props never carry one. */
+export function resolveTextMotionBlur(
+  theme: Theme,
+  doc: TextAnimationDocFields | null | undefined,
+  textKey?: string,
+): MotionBlurOverride | undefined {
+  const spec = (textKey ? doc?.textAnimationOverrides?.[textKey] : undefined) ?? doc?.textAnimation;
+  return (spec ?? theme.textAnimation)?.motionBlur;
 }
 
 /** The in window's duration reference (what `TextAnimTiming.to` carries): the authored end unless durationMs overrides it. A resolved delayMs is NOT included, `sampleTextUnit` shifts the start itself. */

@@ -21745,7 +21745,67 @@
         "summary": "Two focus distances across a divider.",
         "fields": ["blur", "range", "focus", "focusB", "offset", "angleDeg", "squeeze"]
       }
-    ]
+    ],
+    "motionBlur": {
+      "shutterPresets": [
+        {
+          "id": "crisp",
+          "label": "Crisp",
+          "shutterDeg": 90
+        },
+        {
+          "id": "film",
+          "label": "Film",
+          "shutterDeg": 180
+        },
+        {
+          "id": "smooth",
+          "label": "Smooth",
+          "shutterDeg": 270
+        },
+        {
+          "id": "smear",
+          "label": "Smear",
+          "shutterDeg": 360
+        }
+      ],
+      "samplePresets": [
+        {
+          "id": "quick",
+          "label": "Quick",
+          "samples": 4
+        },
+        {
+          "id": "standard",
+          "label": "Standard",
+          "samples": 8
+        },
+        {
+          "id": "fine",
+          "label": "Fine",
+          "samples": 16
+        }
+      ],
+      "limits": [
+        {
+          "id": "shutterDeg",
+          "min": 0,
+          "max": 360,
+          "default": 180
+        },
+        {
+          "id": "samples",
+          "values": [4, 8, 16],
+          "default": 8
+        },
+        {
+          "id": "amount",
+          "min": 0,
+          "max": 2,
+          "default": 1
+        }
+      ]
+    }
   },
   "compare": {
     "presets": [
@@ -22647,6 +22707,12 @@
         "summary": "Stills export: { exclude, marksMs }; absent is one automatic still.",
         "type": "object",
         "ref": "sidecar"
+      },
+      {
+        "id": "motionBlur",
+        "summary": "Motion blur override { enabled, shutterDeg, camera, objects }; each field replaces the project's render.motionBlur.",
+        "type": "object",
+        "ref": "camera"
       }
     ]
   },
@@ -22711,7 +22777,7 @@
       },
       {
         "id": "render",
-        "summary": "Display transform { toneMapping, exposure }; absent is aces at 1.",
+        "summary": "Display transform { toneMapping, exposure } plus motionBlur { enabled, shutterDeg, samples, camera, objects }; absent is aces at 1, no blur.",
         "type": "object"
       },
       {
@@ -22874,6 +22940,11 @@
         "id": "ManagedTextStack",
         "kind": "component",
         "summary": "Responsive stack for inspector-owned managedText."
+      },
+      {
+        "id": "MotionBlur",
+        "kind": "component",
+        "summary": "Scales motion blur for a subtree's own motion: amount 0 sharp, 1 the shutter, 2 double."
       },
       {
         "id": "ObjectsFallback",

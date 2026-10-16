@@ -29,6 +29,7 @@ scenes built from device presets read them with `useSceneDevices()` and
 | `media` | `{ src, kind: "video" \| "image", startMs?, fit?: "cover", startOn?: "open" }`; cover-cropped to the screen |
 | `placement` | `position` (world units), `rotationDeg` (DEGREES), `scale` (times the auto-fit), `ground` (stand on a staged floor) |
 | `motion` | `{ preset, ...params }` (table) |
+| `motionBlur` | `{ enabled, amount? }`: keep this device sharp or scale its trail under motion blur (reference/camera.md) |
 | `shadow` | Presentation shadow (table); default `soft` |
 | `lidDeg` | Laptops: lid angle, 0 closed (default 90, authored open 110) |
 | `foldDeg`, `coverMedia`, `bothScreensOn`, `foldTransition` | Foldables (below) |

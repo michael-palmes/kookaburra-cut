@@ -15,6 +15,7 @@ import {
   type ManagedTextRenderRole,
   shouldRenderManagedTextHeadline,
 } from "../../engine/managedText";
+import { motionBlurScale } from "../../engine/motionBlur";
 import { useHeldLocalMs } from "../../engine/presentHold";
 import {
   registerPresentTiming,
@@ -28,7 +29,7 @@ import {
 import { registerSceneText } from "../../engine/sceneTextRegistry";
 import { useTextKeyRegistry } from "../../engine/textKeyRegistry";
 import { useTextMotionRegistry } from "../../engine/textMotionRegistry";
-import { useTimeline } from "../../engine/timeline";
+import { MotionBlurContext, useTimeline } from "../../engine/timeline";
 import { useTheme } from "../../theme";
 import { formatFontString, parseFontString } from "../../theme/fontRef";
 import { fontUrl } from "../../theme/fonts";
@@ -75,6 +76,7 @@ import {
   presetNeedsShaderPath,
   type ResolvedTextAnimation,
   resolveTextAnimationWithDoc,
+  resolveTextMotionBlur,
   type ScatterSampleContext,
   type StaggerUnits,
   sampleTextUnit,
@@ -220,9 +222,16 @@ function blockStaggerUnits(b: readonly [number, number, number, number]): Stagge
 export function AnimatedHeadline(props: AnimatedHeadlineProps) {
   const doc = useContext(SceneDocContext);
   const claimed = useContext(SceneTextClaimedContext);
+  const theme = useTheme();
   const role = props.managedTextRole ?? "scene";
   if (!shouldRenderManagedTextHeadline(doc, role, claimed)) return null;
-  return <AnimatedHeadlineRenderer {...props} />;
+  const blur = motionBlurScale(resolveTextMotionBlur(theme, doc, props.motionKey ?? props.textKey));
+  if (blur === undefined) return <AnimatedHeadlineRenderer {...props} />;
+  return (
+    <MotionBlurContext.Provider value={blur}>
+      <AnimatedHeadlineRenderer {...props} />
+    </MotionBlurContext.Provider>
+  );
 }
 
 function AnimatedHeadlineRenderer(props: AnimatedHeadlineProps) {

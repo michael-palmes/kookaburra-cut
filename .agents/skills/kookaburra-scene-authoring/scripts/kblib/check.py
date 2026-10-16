@@ -396,12 +396,30 @@ class Checker:
                     self.font(file, f"frame.decorations[{i}].font", deco["font"])
         for keys in KEYED_TRACKS:
             self.keyed_track(file, ".".join(keys), dig(doc, *keys), allow_jump=keys[0] in ("camera", "cameraRig"))
+        self.motion_blur(file, "motionBlur", doc.get("motionBlur"))
         stills = doc.get("stills")
         if isinstance(stills, dict) and "marksMs" in stills:
             marks = stills["marksMs"]
             if not isinstance(marks, list) or not all(is_int(t) and t >= 0 for t in marks) or marks != sorted(set(marks)):
                 rep.error(file, "stills.marksMs", "must be ascending, unique, whole milliseconds >= 0")
         self.assets_in(file, "", doc)
+
+    def motion_blur(self, file: str, path: str, block: Any) -> None:
+        """The scene override; a bad field is dropped by the app, so the scene follows the project instead."""
+        if block is None:
+            return
+        rep = self.report
+        if not isinstance(block, dict):
+            rep.error(file, path, "must be an object { enabled, shutterDeg, camera, objects }")
+            return
+        for key in ("enabled", "camera", "objects"):
+            if key in block and not isinstance(block[key], bool):
+                rep.error(file, f"{path}.{key}", "must be true or false (the app drops it)")
+        deg = block.get("shutterDeg")
+        if deg is not None and (not is_number(deg) or not 0 <= deg <= 360):
+            rep.error(file, f"{path}.shutterDeg", "must be 0..360 (Crisp 90, Film 180, Smooth 270, Smear 360)")
+        if "samples" in block:
+            rep.warn(file, f"{path}.samples", "samples is project-wide: set it in project.json render.motionBlur")
 
     def text_style(self, file: str, style: Any) -> None:
         if style is None:

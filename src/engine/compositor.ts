@@ -71,6 +71,7 @@ import {
   type SharedEnvironmentSnapshot,
 } from "./sceneState";
 import type { Resolved, ResolvedTransition } from "./sceneTimeline";
+import { releaseShutterLane } from "./shutterLane";
 import {
   EXT2_MIN_TYPE,
   EXT3_MIN_TYPE,
@@ -409,6 +410,7 @@ function releaseIdlePools(used: {
 
 /** Release every pooled render target (the multi-project autorun calls this between legs so one project's pools never inflate the next leg's footprint); pools re-allocate lazily on next use. */
 export function releaseCompositorPools(): void {
+  releaseShutterLane();
   if (!state) return;
   state.targetA?.dispose();
   state.targetB?.dispose();
