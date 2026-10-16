@@ -1631,6 +1631,7 @@ pub fn run() {
                 }
             }
             bridge::spawn_heartbeat(app.handle().clone());
+            bridge::spawn_native_bridge(app.handle().clone());
             // The headless CLI resolves app data without Tauri; a mismatch would split the tap frame cache and settings.
             #[cfg(debug_assertions)]
             if let (Ok(ours), Ok(tauri_dir)) = (tools::app_data_dir(), app.path().app_data_dir()) {
