@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import secrets
+import sys
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -188,6 +189,28 @@ def request(kind: str, body: Dict[str, Any], timeout: float, action: str) -> Dic
     if claimed:
         raise KbError(f"the app is still working on the {kind} request after {int(timeout)} s (a many-frame sheet or a render check of a large project takes the longest); rerun with --timeout 600", EXIT_ENV)
     raise KbError(f"the app did not pick up the {kind} request within {int(min(timeout, CLAIM_WINDOW_S))} s; it may still be busy with an earlier request (rerun shortly) or its window is stuck (ask the user to check Kookaburra Cut)", EXIT_ENV)
+
+
+def notify(kind: str, body: Dict[str, Any], timeout: float = 30, warn: Any = None) -> Optional[Dict[str, Any]]:
+    """A soft request: the app's answer, or None (after warn(reason)) when it is closed, lacks the kind or fails."""
+    say = warn or (lambda text: sys.stderr.write(f"kb: note: {text}\n"))
+    hb = live_heartbeat()
+    if hb is None:
+        say("Kookaburra Cut is not running; it picks the change up when it next opens the project")
+        return None
+    kinds = hb.get("kinds")
+    if isinstance(kinds, list) and kind not in kinds:
+        say(f"the running app (v{hb.get('appVersion', '?')}) does not take {kind} requests; it refreshes on its next reload (ask the user to update Kookaburra Cut)")
+        return None
+    try:
+        resp = request(kind, body, timeout, f"kb {kind}")
+    except KbError as e:
+        say(f"the app did not take the {kind} request: {e.message}")
+        return None
+    if not resp.get("ok"):
+        say(f"the app rejected the {kind} request: {resp.get('error') or 'no reason given'}")
+        return None
+    return resp
 
 
 def require_ok(resp: Dict[str, Any], kind: str) -> Dict[str, Any]:

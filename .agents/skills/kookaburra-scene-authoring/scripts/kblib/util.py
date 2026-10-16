@@ -140,6 +140,40 @@ def atomic_write_json(path: Path, value: Any) -> None:
         raise KbError(f"wrote {path} but it does not read back as JSON ({e}); restore it with kb undo") from None
 
 
+def file_sha256(path: Path) -> Optional[str]:
+    """Lowercase hex SHA-256 of the file's bytes (the app's content hash), or None when it cannot be read."""
+    import hashlib
+
+    try:
+        with open(path, "rb") as f:
+            return hashlib.sha256(f.read()).hexdigest()
+    except OSError:
+        return None
+
+
+def atomic_write_json_if(path: Path, value: Any, expected_sha: Optional[str]) -> bool:
+    """Write only when the file still hashes to expected_sha (None: it must not exist); False means it changed, so re-read and retry."""
+    if file_sha256(path) != expected_sha:
+        return False
+    atomic_write_json(path, value)
+    return True
+
+
+def js_json(value: Any) -> Any:
+    """Numbers as JSON.stringify writes them: integral floats as ints, -0 as 0."""
+    if isinstance(value, bool) or value is None:
+        return value
+    if isinstance(value, float):
+        if value.is_integer() and abs(value) < 2 ** 53:
+            return int(value)
+        return value
+    if isinstance(value, dict):
+        return {k: js_json(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [js_json(v) for v in value]
+    return value
+
+
 def exact_case_exists(root: Path, rel: str) -> Optional[str]:
     """None when `rel` exists under root with exactly this case; else a reason ("missing" or the on-disk spelling)."""
     current = root

@@ -73,6 +73,21 @@ def usage(project: Project) -> Dict[str, List[str]]:
             for rel in refs:
                 if path.stem not in used.setdefault(rel, []):
                     used[rel].append(path.stem)
+    edits = project.root / "edits"
+    if edits.is_dir():
+        for path in sorted(edits.glob("*.json")):
+            if path.name.startswith(("_", ".")):
+                continue
+            try:
+                doc = json.loads(read_text(path))
+            except (OSError, ValueError, UnicodeDecodeError):
+                continue
+            sources = doc.get("sources") if isinstance(doc, dict) else None
+            for s in sources if isinstance(sources, list) else []:
+                rel = s.get("rel") if isinstance(s, dict) else None
+                label = f"edits/{path.name}"
+                if isinstance(rel, str) and label not in used.setdefault(rel, []):
+                    used[rel].append(label)
     return used
 
 

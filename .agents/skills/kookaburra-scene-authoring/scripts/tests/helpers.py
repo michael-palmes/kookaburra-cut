@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import os
+import plistlib
+import shlex
 import shutil
 import struct
 import subprocess
@@ -18,7 +20,10 @@ from typing import Any, Callable, Dict, List, Optional
 
 SCRIPTS = Path(__file__).resolve().parent.parent
 KB = SCRIPTS / "kb.py"
-FIXTURE_CATALOG = Path(__file__).resolve().parent / "fixtures" / "catalog.json"
+FIXTURES = Path(__file__).resolve().parent / "fixtures"
+FIXTURE_CATALOG = FIXTURES / "catalog.json"
+FAKE_CLI = Path(__file__).resolve().parent / "fake_app_cli.py"
+ENV_KEYS = ("KB_BRIDGE_DIR", "KB_TRASH_DIR", "KB_CATALOG", "KB_RESOURCES_DIR", "KB_APP_BIN", "CLAUDE_PROJECT_DIR")
 
 def png_bytes(width: int = 2, height: int = 3) -> bytes:
     def chunk(kind: bytes, data: bytes) -> bytes:
@@ -152,14 +157,17 @@ class KbTestCase(unittest.TestCase):
         self.env = dict(os.environ)
         for key in ("CLAUDE_PROJECT_DIR", "GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE"):
             self.env.pop(key, None)
+        for key in [k for k in self.env if k.startswith("FAKE_CLI_")]:
+            self.env.pop(key)
         self.env.update({
             "KB_BRIDGE_DIR": str(self.bridge),
             "KB_TRASH_DIR": str(self.trash),
             "KB_CATALOG": str(FIXTURE_CATALOG),
             "KB_RESOURCES_DIR": str(self.res),
+            "KB_APP_BIN": str(self.tmp / "NoApp" / "kookaburra-cut"),
         })
-        self._saved_env = {k: os.environ.get(k) for k in ("KB_BRIDGE_DIR", "KB_TRASH_DIR", "KB_CATALOG", "KB_RESOURCES_DIR", "CLAUDE_PROJECT_DIR")}
-        for k in ("KB_BRIDGE_DIR", "KB_TRASH_DIR", "KB_CATALOG", "KB_RESOURCES_DIR"):
+        self._saved_env = {k: os.environ.get(k) for k in ENV_KEYS}
+        for k in ("KB_BRIDGE_DIR", "KB_TRASH_DIR", "KB_CATALOG", "KB_RESOURCES_DIR", "KB_APP_BIN"):
             os.environ[k] = self.env[k]
         os.environ.pop("CLAUDE_PROJECT_DIR", None)
         from kblib import catalog
@@ -187,6 +195,50 @@ class KbTestCase(unittest.TestCase):
         if proc.returncode != code:
             self.fail(f"exit {proc.returncode} != {code}\nstdout:\n{proc.stdout}\nstderr:\n{proc.stderr}")
 
+    def fake_cli(self, path: Optional[Path] = None, **behaviour: Any) -> Path:
+        """An executable shim running fake_app_cli.py; behaviour keys become FAKE_CLI_<KEY> env vars. Sets KB_APP_BIN to it."""
+        target = path or (self.tmp / "bin" / "kookaburra-cut")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        exports = "".join(f"export FAKE_CLI_{k.upper()}={shlex.quote(str(v))}\n" for k, v in behaviour.items())
+        target.write_text(f"#!/bin/sh\n{exports}exec {shlex.quote(sys.executable)} -I -B {shlex.quote(str(FAKE_CLI))} \"$@\"\n", encoding="utf-8")
+        target.chmod(0o755)
+        if path is None:
+            self.env["KB_APP_BIN"] = str(target)
+            os.environ["KB_APP_BIN"] = str(target)
+        return target
+
+    def fake_bundle(self, plist: Dict[str, Any], **behaviour: Any) -> Path:
+        """A fake Kookaburra Cut.app whose binary runs the fake CLI; returns the .app folder."""
+        app = self.tmp / "Apps" / "Kookaburra Cut.app"
+        (app / "Contents" / "Resources").mkdir(parents=True, exist_ok=True)
+        with open(app / "Contents" / "Info.plist", "wb") as f:
+            plistlib.dump(plist, f)
+        self.fake_cli(app / "Contents" / "MacOS" / "kookaburra-cut", **behaviour)
+        return app
+
+    def no_app_bin(self) -> None:
+        self.env.pop("KB_APP_BIN", None)
+        os.environ.pop("KB_APP_BIN", None)
+
+
+def write_probe(path: Path, **info: Any) -> None:
+    """A media file the fake CLI can probe: some bytes plus <file>.probe.json."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if not path.exists():
+        path.write_bytes(b"\x00\x00\x00\x18ftypmp42 fake video " + path.name.encode("utf-8"))
+    body = {"kind": "video", "width": 1920, "height": 1080, "fps": 60, "durationMs": 10000, "vfr": False}
+    body.update(info)
+    write_json(Path(str(path) + ".probe.json"), body)
+
+
+def video_project(root: Path, git: bool = False, **probe: Any) -> Path:
+    """make_project plus assets/rec.mp4 (10 s, 1920x1080, 60 fps unless probe says otherwise)."""
+    project = make_project(root, git=False)
+    write_probe(project / "assets" / "rec.mp4", **probe)
+    if git:
+        git_init(project)
+    return project
+
 
 class FakeApp:
     """Writes a live heartbeat and answers bridge requests from a thread, like the app's render window."""
@@ -194,7 +246,7 @@ class FakeApp:
     def __init__(self, bridge: Path, handler: Callable[[Dict[str, Any]], Optional[Dict[str, Any]]], kinds: Optional[List[str]] = None, **heartbeat: Any) -> None:
         self.bridge = bridge
         self.handler = handler
-        self.kinds = kinds if kinds is not None else ["capture", "check", "fonts", "insertPreset"]
+        self.kinds = kinds if kinds is not None else ["capture", "check", "fonts", "insertPreset", "mediaChanged", "openEdit"]
         self.heartbeat = heartbeat
         self.requests: List[Dict[str, Any]] = []
         self._stop = threading.Event()

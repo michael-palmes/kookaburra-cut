@@ -81,6 +81,7 @@ class Checker:
         self.report = report or Report()
         self._mwarn: Any = self.report.warn
         self._fonts: Dict[Tuple[str, str, str], Any] = {}
+        self.outputs: List[Tuple[str, str, str, str]] = []
 
     # ── shared ────────────────────────────────────────────────────────────
 
@@ -118,8 +119,11 @@ class Checker:
             self.report.error(file, path, f'"{rel}" is not a clean assets/ path (no "..", "." or empty segments)')
             return
         problem = exact_case_exists(self.project.root, rel)
+        edit = edit_of_output(self.project, rel)
         if problem == "missing":
             msg = f'"{rel}" does not exist; copy the file in with kb assets add <file> and use the path it prints'
+            if edit:
+                msg = f'"{rel}" is not rendered yet (edits/{edit}.json exists): kb video render {edit}'
             if missing_is_error:
                 self.report.error(file, path, msg)
             else:
@@ -131,6 +135,8 @@ class Checker:
         if not (self.project.root / rel).is_file():
             self.report.error(file, path, f'"{rel}" is a folder, not a file')
             return
+        if edit:
+            self.outputs.append((file, path, rel, edit))
         ext = rel.rsplit(".", 1)[-1].lower() if "." in rel.rsplit("/", 1)[-1] else ""
         if ext not in SUPPORTED_ASSET_EXTS:
             self.report.warn(file, path, f'"{rel}" has an unsupported extension ".{ext}"; use png/jpg/webp images, mp4/mov/webm video, mp3/wav/m4a audio')
@@ -734,6 +740,43 @@ class Checker:
                 self.font(f"../themes/{theme_id[3:]}/theme.json", f"typography.{slot}", f'{ref["family"]}@{weight}')
 
 
+    # ── video edits (full check only) ─────────────────────────────────────
+
+    def edits(self) -> None:
+        """Edit docs the app's video editor and kb video read, and scenes that play a stale render."""
+        from .video import editdoc
+
+        for file, path, rel, name in self.outputs:
+            if editdoc.render_state(self.project, name) == "stale":
+                self.report.warn(file, path, f'"{rel}" is older than edits/{name}.json, so the scene still shows the previous cut: kb video render {name}')
+        for name in editdoc.list_names(self.project):
+            label = f"edits/{name}.json"
+            try:
+                doc, _sha = editdoc.load(self.project, name)
+            except editdoc.DocError as e:
+                message = e.message[len(label) + 2:] if e.message.startswith(label + ": ") else e.message
+                self.report.error(label, "", message)
+                continue
+            for issue in editdoc.static_issues(doc, name, self.project):
+                where = ".".join(f"{k} {issue[k]}" for k in ("clip", "tap", "mask") if k in issue)
+                severity = issue["severity"]
+                if issue["code"] in ("no-clips", "past-source"):
+                    severity = "warning"
+                if issue["code"] in ("not-laid-out", "short-clip", "short-hold"):
+                    continue
+                (self.report.error if severity == "error" else self.report.warn)(label, where, issue["message"])
+
+
+def edit_of_output(project: Project, rel: str) -> Optional[str]:
+    """The edit whose render rel is (assets/<name>-edited.mp4 with edits/<name>.json present), else None."""
+    if not rel.startswith("assets/") or not rel.endswith("-edited.mp4"):
+        return None
+    from .video import editdoc
+
+    name = editdoc.name_of_output(rel)
+    return name if name and editdoc.edit_path(project, name).is_file() else None
+
+
 def free_id(base: str, taken: Set[Any]) -> str:
     if base not in taken:
         return base
@@ -765,6 +808,7 @@ def check_project(project: Project, files: Optional[List[str]] = None, heartbeat
             checker.tsx(persistent)
         checker.strays()
         checker.theme_fonts()
+        checker.edits()
         return checker.report
     for f in files or []:
         if f == MANIFEST:

@@ -1,4 +1,4 @@
-"""Git checkpoints of project.json and scenes/: checkpoint, history, undo, diff."""
+"""Git checkpoints of project.json, scenes/ and edits/: checkpoint, history, undo, diff."""
 
 from __future__ import annotations
 
@@ -11,7 +11,8 @@ from typing import Dict, List, Optional, Tuple
 from .project import Project
 from .util import EXIT_ENV, KbError, trash_dir
 
-TRACKED = ["project.json", "scenes"]
+TRACKED = ["project.json", "scenes", "edits"]
+EXCLUDES = ["edits/*.json.tmp", "edits/.*.tmp", "edits/.renders/", "assets/.kc-render/"]
 FALLBACK_IDENTITY = ["-c", "user.name=Kookaburra Cut", "-c", "user.email=kookaburra@localhost"]
 _available: Optional[bool] = None
 
@@ -75,6 +76,64 @@ def ensure_repo(project: Project) -> None:
         raise KbError(f"{project.root} sits inside another git repository; kb only checkpoints a repository rooted at the project folder", EXIT_ENV)
     if state == "none":
         run(project.root, ["init", "-q"])
+    ensure_excludes(project)
+
+
+def ensure_excludes(project: Project) -> None:
+    """Edit temp files, render records and render staging never enter a checkpoint (renders are not versioned)."""
+    path = project.root / ".git" / "info" / "exclude"
+    if not (project.root / ".git").is_dir():
+        return
+    try:
+        current = path.read_text(encoding="utf-8") if path.is_file() else ""
+    except OSError:
+        return
+    missing = [line for line in EXCLUDES if line not in current.splitlines()]
+    if not missing:
+        return
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with open(path, "a", encoding="utf-8") as f:
+            if current and not current.endswith("\n"):
+                f.write("\n")
+            f.write("".join(f"{line}\n" for line in missing))
+    except OSError:
+        pass
+
+
+def checkpoint_before(project: Project, what: str) -> Optional[str]:
+    """A checkpoint before a destructive change, when there is anything unsaved; never fails the caller."""
+    if not git_available():
+        return None
+    try:
+        state = repo_state(project)
+        if state == "foreign":
+            return None
+        ensure_repo(project)
+        if not has_head(project) or dirty_files(project):
+            return checkpoint(project, f"before {what}")
+    except KbError:
+        return None
+    return None
+
+
+def edit_hashes(project: Project) -> Dict[str, str]:
+    """edits/<name>.json content hashes, to tell which edit docs an undo changed."""
+    import hashlib
+
+    out: Dict[str, str] = {}
+    folder = project.root / "edits"
+    try:
+        names = sorted(os.listdir(folder))
+    except OSError:
+        return out
+    for n in names:
+        if n.endswith(".json") and not n.startswith(("_", ".")):
+            try:
+                out[n[:-5]] = hashlib.sha256((folder / n).read_bytes()).hexdigest()
+            except OSError:
+                continue
+    return out
 
 
 def identity(project: Project) -> List[str]:
@@ -107,7 +166,7 @@ def dirty_files(project: Project) -> List[str]:
 
 
 def checkpoint(project: Project, message: str) -> Optional[str]:
-    """Commit project.json and scenes/ only. Returns the new short hash, or None when nothing changed."""
+    """Commit project.json, scenes/ and edits/ only. Returns the new short hash, or None when nothing changed."""
     ensure_repo(project)
     paths = tracked_paths(project)
     if not paths:
@@ -170,7 +229,7 @@ def trash(path: Path) -> Path:
 
 
 def undo(project: Project, rev: Optional[str]) -> Tuple[str, Optional[str], List[str]]:
-    """Restore project.json and scenes/ from rev (default: the last checkpoint). Returns (target, saved, trashed)."""
+    """Restore project.json, scenes/ and edits/ from rev (default: the last checkpoint); only scene files are ever trashed. Returns (target, saved, trashed)."""
     ensure_repo(project)
     if not has_head(project):
         raise KbError("no checkpoints yet; make one with kb checkpoint first")
@@ -216,4 +275,4 @@ def diff(project: Project, rev: Optional[str], stat: bool) -> str:
     new = [u for u in untracked if u]
     if new:
         out += "".join(f"new (untracked): {u}\n" for u in new)
-    return out or f"no changes to project.json or scenes/ since {base if rev else 'the last checkpoint'}"
+    return out or f"no changes to project.json, scenes/ or edits/ since {base if rev else 'the last checkpoint'}"

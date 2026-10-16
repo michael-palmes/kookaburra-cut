@@ -224,6 +224,51 @@ def transition_label(spec: Optional[Dict[str, Any]]) -> str:
     return f"-> {spec.get('type', '?')}" + (f" {ms}ms" if ms is not None else "")
 
 
+def edits_summary(project: Project) -> List[Dict[str, Any]]:
+    """Each edit doc: its length, render state and the scenes that play its render (files only, never the CLI)."""
+    from .scenes import collect_json_asset_refs
+    from .video import editdoc, editmath
+
+    names = editdoc.list_names(project)
+    if not names:
+        return []
+    users: Dict[str, List[str]] = {}
+    if project.scenes_dir.is_dir():
+        for path in sorted(project.scenes_dir.glob("*.json")):
+            try:
+                refs = collect_json_asset_refs(json.loads(read_text(path)))
+            except (OSError, ValueError, UnicodeDecodeError):
+                continue
+            for rel in refs:
+                users.setdefault(rel, []).append(path.stem)
+    out: List[Dict[str, Any]] = []
+    for name in names:
+        row: Dict[str, Any] = {"name": name, "durationMs": None, "render": {"state": editdoc.render_state(project, name)}, "usedBy": users.get(editdoc.output_rel(name), [])}
+        try:
+            doc, _sha = editdoc.load(project, name)
+            row["durationMs"] = editmath.timeline_duration_ms(editmath.relayout(doc["clips"]))
+        except KbError as e:
+            row["error"] = e.message
+        out.append(row)
+    return out
+
+
+def edits_line(rows: List[Dict[str, Any]], limit: int = 6) -> Optional[str]:
+    if not rows:
+        return None
+    bits = []
+    for r in rows[:limit]:
+        if r.get("error"):
+            bits.append(f"{r['name']} (unreadable: kb video show {r['name']})")
+            continue
+        state = r["render"]["state"]
+        where = f", in {', '.join(r['usedBy'][:3])}" if r["usedBy"] else ""
+        hint = f": kb video render {r['name']}" if state == "stale" else ""
+        bits.append(f"{r['name']} {fmt_secs(r['durationMs'])} (render {state}{where}{hint})")
+    more = f" and {len(rows) - limit} more" if len(rows) > limit else ""
+    return f"Edits: {'; '.join(bits)}{more}"
+
+
 def status_data(project: Project) -> Dict[str, Any]:
     hb = bridge.live_heartbeat()
     manifest = project.manifest()
@@ -249,7 +294,15 @@ def status_data(project: Project) -> Dict[str, Any]:
         "lastLoad": last_load_for(project, hb),
         "kit": kit_info(project),
         "checkpoint": checkpoint_line(project),
+        "edits": edits_summary(project),
+        "videoCli": video_cli(),
     }
+
+
+def video_cli() -> Dict[str, Any]:
+    from .video import appcli
+
+    return appcli.locate_status()
 
 
 def status_text(project: Project) -> str:
@@ -262,6 +315,9 @@ def status_text(project: Project) -> str:
         app_line(project, hb),
     ]
     lines += load_lines(last_load_for(project, hb))
+    edits = edits_line(edits_summary(project))
+    if edits:
+        lines.append(edits)
     lines.append(checkpoint_line(project))
     lines.append(kit_info(project))
     return "\n".join(lines)
@@ -281,6 +337,12 @@ def context_text(project: Project, check_summary: Optional[List[str]] = None, cw
     head += load_lines(last_load_for(project, hb), limit=4)
     if check_summary:
         head += check_summary
+    try:
+        edits = edits_line(edits_summary(project), limit=3)
+        if edits:
+            head.append(f"{edits}. Change them only with kb video (the kookaburra-video-editing skill)")
+    except Exception:
+        pass
     try:
         head.append(checkpoint_line(project))
     except KbError:
