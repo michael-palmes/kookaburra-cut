@@ -1,3 +1,4 @@
+import { parseMotionBlurOverride } from "../engine/motionBlur";
 import { normalizeLighting, resolveLighting } from "../engine/sceneLighting";
 import type {
   EffectsConfig,
@@ -295,6 +296,8 @@ export function parseTextAnimationSpec(v: unknown, source: string): TextAnimatio
   else if (v.ease !== undefined) {
     console.warn(`[theme] ${source}: invalid "textAnimation.ease", dropped`);
   }
+  const motionBlur = parseMotionBlurOverride(v.motionBlur, `${source} textAnimation`);
+  if (motionBlur) spec.motionBlur = motionBlur;
   return spec;
 }
 

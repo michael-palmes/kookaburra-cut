@@ -52,7 +52,8 @@ function AnimatedCounterRenderer(props: AnimatedCounterProps) {
     fontSize = 0.5,
     textKey,
   } = props;
-  const { localMs } = useTimeline();
+  // A counter retypesets when its value changes, so it holds the frame instant across a motion blur shutter.
+  const { localMs } = useTimeline(0);
   const theme = useTheme();
   const doc = useContext(SceneDocContext);
   const group = useContext(GroupAnimationContext);

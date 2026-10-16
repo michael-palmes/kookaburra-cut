@@ -33,6 +33,7 @@ import { isExporting } from "../../engine/exportState";
 import { useFormat } from "../../engine/format";
 import { resolveAssetUrl } from "../../engine/project";
 import { ProjectIdContext, SceneDocContext } from "../../engine/sceneContext";
+import { MotionBlurContext } from "../../engine/timeline";
 import { useEditorStore } from "../../store/editorStore";
 import { useTheme } from "../../theme";
 import type { ThemeBackground } from "../../theme/tokens";
@@ -476,5 +477,10 @@ export function SceneBackground() {
   const doc = useContext(SceneDocContext);
   const background = doc?.background ?? theme.background;
   if (!background || background.type === "none") return null;
-  return <FixedBackdrop spec={background} />;
+  // A background's own animation stays sharp; world-space looks still take camera blur.
+  return (
+    <MotionBlurContext.Provider value={0}>
+      <FixedBackdrop spec={background} />
+    </MotionBlurContext.Provider>
+  );
 }

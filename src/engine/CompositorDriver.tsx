@@ -1,6 +1,6 @@
 import { useFrame, useThree } from "@react-three/fiber";
 import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
-import { type PerspectiveCamera, Vector2 } from "three";
+import { type PerspectiveCamera, Vector2, type WebGLRenderer } from "three";
 import type { LightingSpec, Theme } from "../theme/tokens";
 import type { FrameSpec } from "../toolkit/frame/types";
 import { useCameraEditStore } from "./cameraEditStore";
@@ -10,7 +10,7 @@ import {
   baseCameraPose,
   type CameraKeyframe,
 } from "./cameraTrack";
-import { useClockStore } from "./clock";
+import { NO_SHUTTER, type ShutterSample, useClockStore } from "./clock";
 import { useCompareEditStore } from "./compareEditStore";
 import { renderComposited } from "./compositor";
 import {
@@ -19,7 +19,11 @@ import {
   preloadEnvironments,
   preloadMirrorEnvironments,
 } from "./environments";
-import { isCapturingPreview, stampCommittedProject } from "./exportBridge";
+import {
+  canvasCommittedShutterSeq,
+  isCapturingPreview,
+  stampCommittedProject,
+} from "./exportBridge";
 import { isExporting } from "./exportState";
 import { FPS, useFormat } from "./format";
 import { HELPER_LAYER } from "./lightEditStore";
@@ -48,12 +52,40 @@ import {
 } from "./sceneLighting";
 import { buildSceneRenderStates, resolveFrameSceneStates } from "./sceneState";
 import { resolveAt, type SceneSlot } from "./sceneTimeline";
-import { accumulateFrame } from "./shutterLane";
-import { buildShutterPlan, type FrameShutter, frameCameraShutter } from "./shutterPlan";
+import {
+  accumulateFrame,
+  type ShutterAccumulator,
+  shutterLaneGeneration,
+  startAccumulation,
+} from "./shutterLane";
+import {
+  buildShutterPlan,
+  type FrameShutter,
+  frameCameraShutter,
+  frameObjectShutter,
+  type ShutterPlan,
+} from "./shutterPlan";
 import { useSceneStageFloors } from "./stageRegistry";
 
 const SETTLE_MS = 150;
 const bufferSize = new Vector2();
+
+/** A paused object-blur pass in flight: which frame it serves, its samples, and the running sum. */
+interface PreviewProgress {
+  ms: number;
+  plan: ShutterPlan;
+  tracks: readonly (SceneCameraTracks | null)[];
+  samples: ShutterSample[];
+  cameras: FrameShutter | null;
+  order: number[];
+  step: number;
+  acc: ShutterAccumulator | null;
+  done: boolean;
+  expectSeq: number;
+  generation: number;
+  width: number;
+  height: number;
+}
 
 /** Routes the preview through the same `renderComposited` the exporter calls: a `useFrame` with priority > 0 takes over r3f's automatic render (the documented postprocessing takeover) so every previewed frame goes through the compositor; the clock is read imperatively, `PreviewClock` invalidates on scrub which runs this callback. */
 export function CompositorDriver({
@@ -107,12 +139,21 @@ export function CompositorDriver({
   );
 
   const shutterPlan = useMemo(
-    () => buildShutterPlan({ fps: FPS, slots, sceneDocs, motionBlur }),
-    [slots, sceneDocs, motionBlur],
+    () => buildShutterPlan({ fps: FPS, slots, sceneDocs, sceneThemes, motionBlur }),
+    [slots, sceneDocs, sceneThemes, motionBlur],
   );
   // Paused blur waits for the playhead to rest, so a scrub stays one render per move.
   const settle = useRef({ ms: Number.NaN, at: 0, timer: 0 });
-  useEffect(() => () => window.clearTimeout(settle.current.timer), []);
+  const progress = useRef<PreviewProgress | null>(null);
+  useEffect(
+    () => () => {
+      window.clearTimeout(settle.current.timer);
+      if (useClockStore.getState().shutter !== NO_SHUTTER) {
+        useClockStore.getState().setShutter(NO_SHUTTER);
+      }
+    },
+    [],
+  );
 
   // Lighting keyframe tracks (scene-doc layer only); null-for-legacy when nothing keys.
   const lightingTracks = useMemo(
@@ -333,41 +374,83 @@ export function CompositorDriver({
         lightingPlan ?? undefined,
         compareFrame,
       );
-    const shutter = previewShutter(currentMs, !!(draft || lightingDraft || compareDraft), (n) =>
-      frameCameraShutter(
-        shutterPlan as NonNullable<typeof shutterPlan>,
-        resolved,
-        currentMs,
-        tracks,
-        cameraTrack,
-        plan,
-        n,
-      ),
-    );
-    if (!shutter) {
+    s.gl.getDrawingBufferSize(bufferSize);
+    const editing = !!(draft || lightingDraft || compareDraft);
+    const sampleCamera = (cameras: FrameShutter | null, k: number) => {
+      const sample = cameras ? cameras.plans[k] : plan;
+      if (!sample) {
+        applyCameraTrack(
+          s.camera as PerspectiveCamera,
+          cameraTrack,
+          cameras ? cameras.globalMs[k] : currentMs,
+        );
+      }
+      renderWith(sample);
+    };
+    const blur = previewBlur(currentMs, editing, tracks);
+    if (blur === "plain") {
       renderWith(plan);
       return;
     }
-    s.gl.getDrawingBufferSize(bufferSize);
-    accumulateFrame(s.gl, bufferSize.x, bufferSize.y, shutter.plans.length, (k) => {
-      const sample = shutter.plans[k];
-      if (!sample)
-        applyCameraTrack(s.camera as PerspectiveCamera, cameraTrack, shutter.globalMs[k]);
-      renderWith(sample);
-    });
+    if (blur === "progress") {
+      stepProgress(s.gl, sampleCamera);
+      return;
+    }
+    // Paused frames sample the project's count; playback the toggle's.
+    const cameras = frameCameraShutter(
+      blur.plan,
+      resolved,
+      currentMs,
+      tracks,
+      cameraTrack,
+      plan,
+      blur.samples,
+    );
+    const objects =
+      blur.samples === undefined ? frameObjectShutter(blur.plan, resolved, tracks) : null;
+    if (objects) {
+      renderWith(plan);
+      startProgress(currentMs, blur.plan, tracks, objects, cameras);
+      return;
+    }
+    if (!cameras) {
+      renderWith(plan);
+      return;
+    }
+    accumulateFrame(s.gl, bufferSize.x, bufferSize.y, cameras.plans.length, (k) =>
+      sampleCamera(cameras, k),
+    );
   }, 1);
 
-  /** The frame's camera blur in preview: playback blurs only at the toggle's sample count; paused frames use the project's count once the playhead has rested, and never mid-edit. */
-  function previewShutter(
+  /** What this preview frame shows: plain, the next step of a paused object pass, or a camera pass (`samples` undefined means the project's count). Playback blurs the camera only, at the toggle's count; paused frames wait for the playhead to rest and never blur mid-edit. */
+  function previewBlur(
     currentMs: number,
     editing: boolean,
-    sample: (samples: number | undefined) => FrameShutter | null,
-  ): FrameShutter | null {
-    if (!shutterPlan || previewMotionBlurOff() || isCapturingPreview()) return null;
-    if (previewPlaybackActive()) {
-      const samples = previewMotionBlurPlaybackSamples();
-      return samples > 0 ? sample(samples) : null;
+    tracks: readonly (SceneCameraTracks | null)[],
+  ): "plain" | "progress" | { plan: ShutterPlan; samples: number | undefined } {
+    const playing = previewPlaybackActive();
+    const eligible = !!shutterPlan && !previewMotionBlurOff() && !isCapturingPreview();
+    const p = progress.current;
+    if (
+      p &&
+      (!eligible ||
+        playing ||
+        editing ||
+        p.ms !== currentMs ||
+        p.plan !== shutterPlan ||
+        p.tracks !== tracks ||
+        p.generation !== shutterLaneGeneration() ||
+        p.width !== bufferSize.x ||
+        p.height !== bufferSize.y)
+    ) {
+      abortProgress();
     }
+    if (!shutterPlan || !eligible) return "plain";
+    if (playing) {
+      const samples = previewMotionBlurPlaybackSamples();
+      return samples > 0 ? { plan: shutterPlan, samples } : "plain";
+    }
+    if (progress.current) return "progress";
     const st = settle.current;
     const now = performance.now();
     if (currentMs !== st.ms) {
@@ -378,9 +461,80 @@ export function CompositorDriver({
     if (restMs > 0 || editing) {
       window.clearTimeout(st.timer);
       if (!editing) st.timer = window.setTimeout(() => invalidate(), restMs);
-      return null;
+      return "plain";
     }
-    return sample(undefined);
+    return { plan: shutterPlan, samples: undefined };
+  }
+
+  /** Paused object blur builds up one committed sample per preview frame (each needs a canvas commit), showing the running mean, edges first so a still frame stops at two. */
+  function startProgress(
+    ms: number,
+    plan: ShutterPlan,
+    tracks: readonly (SceneCameraTracks | null)[],
+    samples: ShutterSample[],
+    cameras: FrameShutter | null,
+  ) {
+    const last = samples.length - 1;
+    const order = [0, last, ...samples.slice(1, last).map((_, i) => i + 1)];
+    progress.current = {
+      ms,
+      plan,
+      tracks,
+      samples,
+      cameras,
+      order,
+      step: 0,
+      acc: null,
+      done: false,
+      expectSeq: 0,
+      generation: shutterLaneGeneration(),
+      width: bufferSize.x,
+      height: bufferSize.y,
+    };
+    commitSample(samples[order[0]]);
+  }
+
+  function commitSample(sample: ShutterSample) {
+    const p = progress.current;
+    const clock = useClockStore.getState();
+    clock.setShutter(sample);
+    if (p) p.expectSeq = useClockStore.getState().shutterSeq;
+    invalidate();
+  }
+
+  function abortProgress() {
+    progress.current = null;
+    if (useClockStore.getState().shutter !== NO_SHUTTER) {
+      useClockStore.getState().setShutter(NO_SHUTTER);
+      invalidate();
+    }
+  }
+
+  function stepProgress(
+    gl: WebGLRenderer,
+    sampleCamera: (cameras: FrameShutter | null, k: number) => void,
+  ) {
+    const p = progress.current;
+    if (!p) return;
+    if (p.done || canvasCommittedShutterSeq() !== p.expectSeq) {
+      // Hold the running mean (or the plain frame already on the canvas) until the sample commits.
+      p.acc?.resolve();
+      if (!p.done) invalidate();
+      return;
+    }
+    sampleCamera(p.cameras, p.order[p.step]);
+    p.acc ??= startAccumulation(gl, p.width, p.height);
+    p.acc.add(p.step === 0);
+    const finished =
+      p.step === p.order.length - 1 || (p.step === 1 && !p.cameras && p.acc.lastMatchesKept());
+    p.acc.resolve();
+    if (finished) {
+      p.done = true;
+      commitSample(NO_SHUTTER);
+      return;
+    }
+    p.step++;
+    commitSample(p.samples[p.order[p.step]]);
   }
 
   return null;

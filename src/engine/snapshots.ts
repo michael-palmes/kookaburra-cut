@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { useClockStore } from "./clock";
+import { NO_SHUTTER, useClockStore } from "./clock";
 import { downscaleRgba } from "./downscale";
 import {
   canvasCommittedClockMs,
@@ -71,6 +71,7 @@ export async function captureFrameAt(
   if (!isCurrent()) return null;
   const clock = useClockStore.getState();
   clock.setCurrentMs(tMs);
+  if (clock.shutter !== NO_SHUTTER) clock.setShutter(NO_SHUTTER);
   noteBorrowedSeek(tMs);
   if (!(await waitFor(() => canvasCommittedClockMs() === tMs, 1000))) return null;
   // The commit stamp is the React commit; clip textures stream in asynchronously, so give them a settle beat.

@@ -1,3 +1,4 @@
+import type { SceneDoc } from "./sceneDocSchema";
 import {
   SHUTTER_DEG_DEFAULT,
   SHUTTER_DEG_MAX,
@@ -40,6 +41,8 @@ export interface SceneMotionBlur {
   shutterDeg: number;
   camera: boolean;
   objects: boolean;
+  /** Objects is on, or an item opts in while it is off: the frame then samples object time. */
+  objectsActive: boolean;
 }
 
 export const MOTION_BLUR_AMOUNT_MAX = 2;
@@ -182,26 +185,42 @@ export function parseMotionBlurOverride(
   return out;
 }
 
+/** True when an item in the scene switches its own blur on (what still blurs under Objects off). */
+export function sceneHasMotionBlurOptIn(
+  doc: SceneDoc | undefined,
+  themeText?: { motionBlur?: MotionBlurOverride },
+): boolean {
+  const on = (o: { motionBlur?: MotionBlurOverride } | undefined) =>
+    o?.motionBlur?.enabled === true;
+  return (
+    !!doc?.devices?.some(on) ||
+    !!doc?.media?.some(on) ||
+    on(doc?.textAnimation ?? themeText) ||
+    Object.values(doc?.textAnimationOverrides ?? {}).some(on) ||
+    on(doc?.chart?.animation) ||
+    on(doc?.layeredScreenshot)
+  );
+}
+
 /** The scene's shutter, or null when motion blur is off for it. */
 export function resolveSceneMotionBlur(
   project: MotionBlurSettings | undefined,
   scene: SceneDocMotionBlur | undefined,
+  optIn = false,
 ): SceneMotionBlur | null {
   const enabled = scene?.enabled ?? project?.enabled ?? false;
   if (!enabled) return null;
+  const objects = scene?.objects ?? project?.objects ?? DEFAULT_MOTION_BLUR.objects;
   return {
     shutterDeg: scene?.shutterDeg ?? project?.shutterDeg ?? DEFAULT_MOTION_BLUR.shutterDeg,
     camera: scene?.camera ?? project?.camera ?? DEFAULT_MOTION_BLUR.camera,
-    objects: scene?.objects ?? project?.objects ?? DEFAULT_MOTION_BLUR.objects,
+    objects,
+    objectsActive: objects || optIn,
   };
 }
 
-/** How far an item's own time travels inside the shutter: its override wins, otherwise the inherited amount. */
-export function motionBlurAmount(
-  override: MotionBlurOverride | undefined,
-  inherited: number,
-): number {
-  if (!override) return inherited;
-  if (!override.enabled) return 0;
-  return override.amount ?? 1;
+/** An item's `useTimeline` scale: undefined inherits the scene's Objects switch, 0 pins it at the frame instant. */
+export function motionBlurScale(override: MotionBlurOverride | undefined): number | undefined {
+  if (!override) return undefined;
+  return override.enabled ? (override.amount ?? 1) : 0;
 }

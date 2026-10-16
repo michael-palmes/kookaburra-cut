@@ -4,7 +4,8 @@ import { normalizeSceneCamera, resolveFrameCameras, sceneCameraTracks } from "./
 import type { SceneDoc, SceneDocCameraPose } from "./sceneDocSchema";
 import { resolveAt, type SceneSlot } from "./sceneTimeline";
 import { sampleShutterDeg } from "./shutter";
-import { buildShutterPlan, frameCameraShutter } from "./shutterPlan";
+import { buildShutterPlan, frameCameraShutter, frameObjectShutter } from "./shutterPlan";
+import { shutterOffsetMs } from "./timeline";
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -154,5 +155,56 @@ describe("frameCameraShutter", () => {
     const after = resolveAt(slots, 1003);
     const afterCentre = resolveFrameCameras([cut], undefined, after, 1003);
     expect(frameCameraShutter(cutPlan, after, 1003, [cut], undefined, afterCentre)).toBeNull();
+  });
+});
+
+describe("frameObjectShutter", () => {
+  const slots = [slot(0, 0, 1000), slot(1, 1000, 1000)];
+  const plan = (docs: (SceneDoc | undefined)[]) => {
+    const p = buildShutterPlan({ fps: 60, slots, sceneDocs: docs, motionBlur: on });
+    if (!p) throw new Error("plan expected");
+    return p;
+  };
+
+  it("offsets each blurring scene's time across the shutter", () => {
+    const samples = frameObjectShutter(plan([]), resolveAt(slots, 500), []);
+    expect(samples).toHaveLength(8);
+    const dts = samples?.map((s) => s[0].dtMs) ?? [];
+    expect(dts[0]).toBeCloseTo(-0.4375 * (1000 / 120));
+    expect(dts[7]).toBeCloseTo(0.4375 * (1000 / 120));
+    expect(samples?.[0][0].objects).toBe(1);
+  });
+
+  it("clamps at the scene's start", () => {
+    const samples = frameObjectShutter(plan([]), resolveAt(slots, 1000), []);
+    expect(samples?.[0][1].dtMs).toBe(0);
+    expect(samples?.[7][1].dtMs).toBeGreaterThan(0);
+  });
+
+  it("skips scenes with Objects off and no opt-in", () => {
+    const off = { version: 1, motionBlur: { objects: false } } as SceneDoc;
+    expect(frameObjectShutter(plan([off, off]), resolveAt(slots, 500), [])).toBeNull();
+    const optIn = {
+      ...off,
+      devices: [{ id: "d", model: "m", motionBlur: { enabled: true } }],
+    } as SceneDoc;
+    const samples = frameObjectShutter(plan([optIn, off]), resolveAt(slots, 500), []);
+    expect(samples?.[0][0]).toMatchObject({ objects: 0 });
+  });
+});
+
+describe("shutterOffsetMs", () => {
+  const sample = { 2: { dtMs: 4, objects: 1 }, 3: { dtMs: 4, objects: 0 } };
+
+  it("scales the scene offset, inheriting the Objects amount", () => {
+    expect(shutterOffsetMs(sample, 2, undefined)).toBe(4);
+    expect(shutterOffsetMs(sample, 3, undefined)).toBe(0);
+    expect(shutterOffsetMs(sample, 3, 1.5)).toBe(6);
+  });
+
+  it("is zero outside a scene, a sample, or at scale 0", () => {
+    expect(shutterOffsetMs(sample, undefined, 1)).toBe(0);
+    expect(shutterOffsetMs(sample, 9, 1)).toBe(0);
+    expect(shutterOffsetMs(sample, 2, 0)).toBe(0);
   });
 });

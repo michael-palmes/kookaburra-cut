@@ -38,7 +38,12 @@ import type { FrameOverrideSpec } from "../toolkit/frame/types";
 import type { SceneDocDof } from "./dof";
 import type { DeviceFoldTransitionSpec } from "./foldTransition";
 import { parseFrameOverride } from "./frameSchema";
-import { parseSceneMotionBlur, type SceneDocMotionBlur } from "./motionBlur";
+import {
+  type MotionBlurOverride,
+  parseMotionBlurOverride,
+  parseSceneMotionBlur,
+  type SceneDocMotionBlur,
+} from "./motionBlur";
 import { normalizeLighting } from "./sceneLighting";
 import {
   DEFAULT_SCENE_IMAGE_OVERLAY,
@@ -95,6 +100,8 @@ export interface SceneDocDeviceSpec {
   bothScreensOn?: boolean;
   /** Foldables only: how the displays hand over as it folds. */
   foldTransition?: DeviceFoldTransitionSpec;
+  /** Motion blur override; absent inherits the scene's Objects switch (see engine/motionBlur.ts). */
+  motionBlur?: MotionBlurOverride;
 }
 
 export type SceneImageHost = "stage" | "overlay";
@@ -447,6 +454,8 @@ export interface SceneDocLayeredScreenshot {
     /** Slideshow holds only, the camera's presentLoop semantics; preview and export never loop. */
     presentLoop?: SceneDocCameraPresentLoop;
   };
+  /** Motion blur override; absent inherits the scene's Objects switch (see engine/motionBlur.ts). */
+  motionBlur?: MotionBlurOverride;
 }
 
 /** Corner radius for the video window: a named preset, or a custom short-edge fraction (clamped 0..0.5 at resolve). `macos` emulates a real macOS window's rounding, and under `recording: true` it resolves to the capture's true pixel radius. */
@@ -549,6 +558,8 @@ export interface SceneDocMediaSpec {
   window?: SceneMediaWindow;
   /** `video` kind only. */
   video?: SceneMediaVideoSpec;
+  /** Motion blur override; absent inherits the scene's Objects switch (see engine/motionBlur.ts). */
+  motionBlur?: MotionBlurOverride;
 }
 
 export interface SceneDoc {
@@ -1075,6 +1086,8 @@ function parseSceneMedia(raw: unknown, source: string): SceneDocMediaSpec[] | un
       if (window) item.window = window;
     }
     if (video) item.video = parseSceneMediaVideo(entry.video, source, label);
+    const motionBlur = parseMotionBlurOverride(entry.motionBlur, `${source} ${label}`);
+    if (motionBlur) item.motionBlur = motionBlur;
     media.push(item);
   }
   return media;
@@ -1665,6 +1678,8 @@ function parseChartAnimation(
     out.delivery = delivery;
   if (finiteNum(raw.staggerMs) && raw.staggerMs >= 0) out.staggerMs = raw.staggerMs;
   if (finiteNum(raw.durationMs) && raw.durationMs >= 0) out.durationMs = raw.durationMs;
+  const motionBlur = parseMotionBlurOverride(raw.motionBlur, `${source} chart.animation`);
+  if (motionBlur) out.motionBlur = motionBlur;
   if (
     from === "start" ||
     from === "end" ||
@@ -2079,7 +2094,12 @@ export function parseSceneDoc(raw: unknown, source: string): SceneDoc | undefine
         typeof device.id === "string" &&
         typeof device.model === "string"
       ) {
-        devices.push(device);
+        if (device.motionBlur === undefined) devices.push(device);
+        else {
+          const motionBlur = parseMotionBlurOverride(device.motionBlur, source);
+          const { motionBlur: _dropped, ...rest } = device;
+          devices.push(motionBlur ? { ...rest, motionBlur } : rest);
+        }
       } else {
         console.warn(`[sceneDoc] ${source}: device entry needs string "id" + "model" — dropped`);
       }
@@ -2195,7 +2215,9 @@ export function parseSceneDoc(raw: unknown, source: string): SceneDoc | undefine
   }
   if (doc.layeredScreenshot !== undefined) {
     if (validLayeredScreenshot(doc.layeredScreenshot)) {
-      out.layeredScreenshot = doc.layeredScreenshot;
+      const { motionBlur: rawBlur, ...stack } = doc.layeredScreenshot;
+      const motionBlur = parseMotionBlurOverride(rawBlur, `${source} layeredScreenshot`);
+      out.layeredScreenshot = motionBlur ? { ...stack, motionBlur } : stack;
     } else {
       console.warn(`[sceneDoc] ${source}: layeredScreenshot is malformed, dropped`);
     }

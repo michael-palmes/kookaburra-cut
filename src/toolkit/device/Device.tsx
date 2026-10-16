@@ -40,6 +40,7 @@ import {
 } from "../../engine/foldTransition";
 import { FPS, useFormat } from "../../engine/format";
 import { useGizmoSectionOpen } from "../../engine/gizmoSections";
+import { type MotionBlurOverride, motionBlurScale } from "../../engine/motionBlur";
 import { presentSlideshowActive } from "../../engine/presentMode";
 import { registerPresentTiming } from "../../engine/presentTimingRegistry";
 import { resolveAssetUrl } from "../../engine/project";
@@ -152,6 +153,8 @@ export interface DeviceProps {
   /** Foldables only: light both displays at every angle instead of handing power over as it opens. */
   bothScreensOn?: boolean;
   foldTransition?: DeviceFoldTransitionSpec;
+  /** Motion blur override; absent inherits the scene's Objects switch. */
+  motionBlur?: MotionBlurOverride;
 }
 
 /** One sampled channel of a foldable's clip, bound to a node of this device's private clone. */
@@ -457,6 +460,7 @@ export function Device(props: DeviceProps) {
     foldDeg,
     bothScreensOn = false,
     foldTransition,
+    motionBlur,
   } = props;
   // The layout stamp wins over the scalar fields (see DevicePlacement.resolvedLayout).
   const position = placement.resolvedLayout?.position ?? placement.position ?? [0, 0, 0];
@@ -464,7 +468,7 @@ export function Device(props: DeviceProps) {
   const scale = placement.resolvedLayout?.scale ?? placement.scale ?? 1;
   const ground = placement.ground ?? false;
 
-  const { localMs } = useTimeline();
+  const { localMs } = useTimeline(motionBlurScale(motionBlur));
   const contextProjectId = useContext(ProjectIdContext);
   const storeProjectId = useEditorStore((s) => s.projectId);
   const projectId = contextProjectId ?? storeProjectId;

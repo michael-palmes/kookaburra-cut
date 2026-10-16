@@ -2,11 +2,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   DEFAULT_MOTION_BLUR,
   isDefaultMotionBlur,
-  motionBlurAmount,
+  motionBlurScale,
   parseMotionBlurOverride,
   parseMotionBlurSettings,
   parseSceneMotionBlur,
   resolveSceneMotionBlur,
+  sceneHasMotionBlurOptIn,
   snapSamples,
 } from "./motionBlur";
 import { parseRenderSettings } from "./renderSettings";
@@ -108,12 +109,15 @@ describe("resolveSceneMotionBlur", () => {
       shutterDeg: 90,
       camera: true,
       objects: true,
+      objectsActive: true,
     });
     expect(resolveSceneMotionBlur(project, { shutterDeg: 360, objects: false })).toEqual({
       shutterDeg: 360,
       camera: true,
       objects: false,
+      objectsActive: false,
     });
+    expect(resolveSceneMotionBlur(project, { objects: false }, true)?.objectsActive).toBe(true);
     expect(resolveSceneMotionBlur(project, { enabled: false })).toBeNull();
   });
 
@@ -122,16 +126,61 @@ describe("resolveSceneMotionBlur", () => {
       shutterDeg: 180,
       camera: true,
       objects: true,
+      objectsActive: true,
     });
   });
 });
 
-describe("motionBlurAmount", () => {
+describe("sceneHasMotionBlurOptIn", () => {
+  it("finds an item that switches its own blur on", () => {
+    const on = { enabled: true };
+    expect(sceneHasMotionBlurOptIn(undefined)).toBe(false);
+    expect(
+      sceneHasMotionBlurOptIn({ version: 1, devices: [{ id: "d", model: "m", motionBlur: on }] }),
+    ).toBe(true);
+    expect(
+      sceneHasMotionBlurOptIn({
+        version: 1,
+        devices: [{ id: "d", model: "m", motionBlur: { enabled: false } }],
+      }),
+    ).toBe(false);
+    expect(sceneHasMotionBlurOptIn({ version: 1 }, { motionBlur: on })).toBe(true);
+    expect(
+      sceneHasMotionBlurOptIn(
+        { version: 1, textAnimation: { in: "fade", out: "none", staggerMs: 0 } },
+        { motionBlur: on },
+      ),
+    ).toBe(false);
+  });
+
+  it("survives the sidecar parser on each item kind", () => {
+    quiet();
+    const doc = parseSceneDoc(
+      {
+        version: 1,
+        devices: [{ id: "d", model: "m", motionBlur: { enabled: true, amount: 5 } }],
+        media: [{ id: "m", src: "assets/a.png", motionBlur: { enabled: false } }],
+        textAnimation: { in: "fade", out: "none", motionBlur: { enabled: true } },
+        chart: {
+          type: "column",
+          data: { categories: ["a"], series: [{ name: "s", values: [1] }] },
+          animation: { preset: "rise", motionBlur: { enabled: true, amount: 0.5 } },
+        },
+      },
+      "t",
+    );
+    expect(doc?.devices?.[0].motionBlur).toEqual({ enabled: true, amount: 2 });
+    expect(doc?.media?.[0].motionBlur).toEqual({ enabled: false });
+    expect(doc?.textAnimation?.motionBlur).toEqual({ enabled: true });
+    expect(doc?.chart?.animation?.motionBlur).toEqual({ enabled: true, amount: 0.5 });
+  });
+});
+
+describe("motionBlurScale", () => {
   it("inherits, pins or scales", () => {
-    expect(motionBlurAmount(undefined, 1)).toBe(1);
-    expect(motionBlurAmount(undefined, 0)).toBe(0);
-    expect(motionBlurAmount({ enabled: false }, 1)).toBe(0);
-    expect(motionBlurAmount({ enabled: true }, 0)).toBe(1);
-    expect(motionBlurAmount({ enabled: true, amount: 1.5 }, 1)).toBe(1.5);
+    expect(motionBlurScale(undefined)).toBeUndefined();
+    expect(motionBlurScale({ enabled: false })).toBe(0);
+    expect(motionBlurScale({ enabled: true })).toBe(1);
+    expect(motionBlurScale({ enabled: true, amount: 1.5 })).toBe(1.5);
   });
 });

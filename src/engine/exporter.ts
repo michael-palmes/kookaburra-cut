@@ -39,6 +39,7 @@ import {
   awaitCanvasClockCommit,
   awaitTextSync,
   buildFramePlans,
+  clearShutterSample,
   drawPlannedFrame,
   type FrameRig,
   renderFrameInto,
@@ -650,6 +651,7 @@ async function captureFrameRgbaHeld(
     // One iteration of the export loop's frame block, barrier for barrier.
     flushSync(() => useClockStore.getState().setCurrentMs(tMs));
     await awaitCanvasClockCommit(tMs);
+    await clearShutterSample(scene);
     await awaitVideoFramesReady(scene);
     await awaitTextSync(scene);
     await awaitEmojiRastersIdle();
@@ -658,7 +660,18 @@ async function captureFrameRgbaHeld(
       cam.updateProjectionMatrix();
     }
     const resolved = resolveAt(opts.slots, tMs);
-    drawPlannedFrame(gl, scene, camera, width, height, plans, opts.cameraTrack, resolved, tMs, 1);
+    await drawPlannedFrame(
+      gl,
+      scene,
+      camera,
+      width,
+      height,
+      plans,
+      opts.cameraTrack,
+      resolved,
+      tMs,
+      1,
+    );
     readFrameOrThrow(ctx, width, height, rgba, `capture at ${tMs}ms`);
     return { rgba, width, height };
   } finally {

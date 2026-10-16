@@ -23,6 +23,7 @@ import {
 } from "../../engine/layeredScreenshotLayout";
 import { useSceneConsumesLayeredScreenshot } from "../../engine/layeredScreenshotRegistry";
 import { resolveTemplateManagedTextCopy } from "../../engine/managedText";
+import { motionBlurScale } from "../../engine/motionBlur";
 import { presentSlideshowActive } from "../../engine/presentMode";
 import { resolveAssetUrl } from "../../engine/project";
 import { ProjectIdContext, SceneDocContext, useSceneContext } from "../../engine/sceneContext";
@@ -320,7 +321,8 @@ function StackRenderer({
   animatedTrack: SceneDoc["animatedTrack"];
   topInset?: number;
 }) {
-  const { localMs } = useTimeline();
+  const doc = useContext(SceneDocContext);
+  const { localMs } = useTimeline(motionBlurScale(doc?.layeredScreenshot?.motionBlur));
   const format = useFormat();
   const theme = useTheme();
   const projectId = useResolvedProjectId();

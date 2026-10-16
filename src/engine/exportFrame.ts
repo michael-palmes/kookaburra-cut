@@ -4,10 +4,14 @@ import { Text as TroikaText } from "troika-three-text";
 import { awaitEmojiRastersIdle } from "../toolkit/text/emojiRaster";
 import { applyCameraTrack, type CameraKeyframe } from "./cameraTrack";
 import { awaitVideoFramesReady } from "./clips";
-import { useClockStore } from "./clock";
+import { NO_SHUTTER, type ShutterSample, useClockStore } from "./clock";
 import { renderComposited } from "./compositor";
 import { dropDevPerformanceEntries } from "./devPerformance";
-import { canvasCommittedClockMs, canvasCommittedHoldsVersion } from "./exportBridge";
+import {
+  canvasCommittedClockMs,
+  canvasCommittedHoldsVersion,
+  canvasCommittedShutterSeq,
+} from "./exportBridge";
 import type { ExportOptions } from "./exporter";
 import { isExporting } from "./exportState";
 import { computeFormat } from "./format";
@@ -24,8 +28,13 @@ import {
 } from "./sceneLighting";
 import { buildSceneRenderStates, resolveFrameSceneStates } from "./sceneState";
 import type { Resolved } from "./sceneTimeline";
-import { accumulateFrame, releaseShutterLane } from "./shutterLane";
-import { buildShutterPlan, frameCameraShutter, type ShutterPlan } from "./shutterPlan";
+import { accumulateFrame, releaseShutterLane, startAccumulation } from "./shutterLane";
+import {
+  buildShutterPlan,
+  frameCameraShutter,
+  frameObjectShutter,
+  type ShutterPlan,
+} from "./shutterPlan";
 import type { snapshotSceneStageFloors } from "./stageRegistry";
 
 /** The per-frame body the deterministic loops share (video export and stills): barriers, camera/state/lighting/compare plans, `renderComposited`, readback. Moved verbatim out of exporter.ts, so the video loop's GL call sequence is unchanged. See docs/determinism.md. */
@@ -167,6 +176,7 @@ export function buildFramePlans(
     fps: opts.fps,
     slots: opts.slots,
     sceneDocs: opts.sceneDocs,
+    sceneThemes: opts.sceneThemes,
     motionBlur: opts.motionBlur,
   });
 
@@ -214,6 +224,7 @@ export async function renderFrameInto(
   flushSync(() => useClockStore.getState().setCurrentMs(tMs));
   rig.clockOwnedMs = tMs;
   await awaitCanvasClockCommit(tMs);
+  await clearShutterSample(scene);
   // Ensure each VideoClip's current frame texture is uploaded first (this may yield)...
   await awaitVideoFramesReady(scene);
   // ...then syncs troika text last, immediately before the render, with no async gap after it where a stray render or worker message could leave a text mesh stale at capture.
@@ -230,13 +241,24 @@ export async function renderFrameInto(
     cam.aspect = width / height;
     cam.updateProjectionMatrix();
   }
-  drawPlannedFrame(gl, scene, camera, width, height, plans, rig.cameraTrack, resolved, tMs, draws);
+  await drawPlannedFrame(
+    gl,
+    scene,
+    camera,
+    width,
+    height,
+    plans,
+    rig.cameraTrack,
+    resolved,
+    tMs,
+    draws,
+  );
   beforeRead?.();
   readFrameOrThrow(rig.ctx, width, height, rig.rgba, label);
 }
 
 /** Resolves one frame's camera, state, lighting and compare plans and draws it into the canvas `draws` times, the last one kept (the export loop's frame 0 draws twice so it is never a run's first draw: a cold boot must capture what a warm one does). Each draw is one plain render, or, while the camera moves across an open shutter, the averaged samples of the motion blur lane. Shared by the export loop and single-frame captures. */
-export function drawPlannedFrame(
+export async function drawPlannedFrame(
   gl: WebGLRenderer,
   scene: Scene,
   camera: Camera,
@@ -247,7 +269,7 @@ export function drawPlannedFrame(
   resolved: Resolved,
   tMs: number,
   draws: number,
-): void {
+): Promise<void> {
   const cam = camera as PerspectiveCamera;
   // The camera applies at this shared seam (mirrored in CompositorDriver), a pure function of tMs. Scene-doc tracks get a per-frame plan applied inside renderComposited (per-target on transition frames); otherwise the legacy project-track path runs, a hard no-op when the project declares no track. Neither touches `cam.aspect`, so the caller's resize guard stays the sole owner of aspect.
   const plan = resolveFrameCameras(plans.sceneTracks, cameraTrack, resolved, tMs);
@@ -278,19 +300,71 @@ export function drawPlannedFrame(
       lightingPlan ?? undefined,
       compareFrame,
     );
-  const shutter = plans.shutter
+  const cameras = plans.shutter
     ? frameCameraShutter(plans.shutter, resolved, tMs, plans.sceneTracks, cameraTrack, plan)
     : null;
-  if (!shutter && isExporting()) releaseShutterLane();
+  const objects = plans.shutter
+    ? frameObjectShutter(plans.shutter, resolved, plans.sceneTracks)
+    : null;
+  if (!cameras && !objects && isExporting()) releaseShutterLane();
+  const renderSample = (k: number) => {
+    const sample = cameras ? cameras.plans[k] : plan;
+    if (!sample) applyCameraTrack(cam, cameraTrack, cameras ? cameras.globalMs[k] : tMs);
+    renderWith(sample);
+  };
   for (let draw = draws; draw > 0; draw--) {
-    if (!shutter) {
-      renderWith(plan);
-      continue;
-    }
-    accumulateFrame(gl, width, height, shutter.plans.length, (k) => {
-      const sample = shutter.plans[k];
-      if (!sample) applyCameraTrack(cam, cameraTrack, shutter.globalMs[k]);
-      renderWith(sample);
-    });
+    if (objects)
+      await drawObjectSamples(gl, scene, width, height, objects, !!cameras, renderSample);
+    else if (cameras) accumulateFrame(gl, width, height, cameras.plans.length, renderSample);
+    else renderWith(plan);
   }
+}
+
+/** Puts every scene back on the frame instant when a preview sample was left committed (a run can start mid paused blur); a no-op otherwise, so unblurred runs never touch the shutter. */
+export async function clearShutterSample(scene: Scene): Promise<void> {
+  if (useClockStore.getState().shutter !== NO_SHUTTER) await commitShutterSample(scene, NO_SHUTTER);
+}
+
+/** Commits one shutter sample's object times and waits until the canvas tree has rendered them. */
+async function commitShutterSample(scene: Scene, sample: ShutterSample): Promise<void> {
+  dropDevPerformanceEntries();
+  flushSync(() => useClockStore.getState().setShutter(sample));
+  const seq = useClockStore.getState().shutterSeq;
+  for (let spins = 0; canvasCommittedShutterSeq() !== seq; spins++) {
+    if (spins > 5000) throw new Error(`Canvas tree never committed shutter sample ${seq}.`);
+    await yieldMacrotask();
+  }
+  await awaitTextSync(scene);
+}
+
+/** The object lane: the shutter's two edge samples first, and the rest only when the camera moves or the edges differ, so a still frame costs two samples and averages back to its exact bytes. The clock always ends back on the frame instant. */
+async function drawObjectSamples(
+  gl: WebGLRenderer,
+  scene: Scene,
+  width: number,
+  height: number,
+  samples: ShutterSample[],
+  cameraMoves: boolean,
+  renderSample: (k: number) => void,
+): Promise<void> {
+  const last = samples.length - 1;
+  const acc = startAccumulation(gl, width, height);
+  try {
+    await commitShutterSample(scene, samples[0]);
+    renderSample(0);
+    acc.add(true);
+    await commitShutterSample(scene, samples[last]);
+    renderSample(last);
+    acc.add();
+    if (cameraMoves || !acc.lastMatchesKept()) {
+      for (let k = 1; k < last; k++) {
+        await commitShutterSample(scene, samples[k]);
+        renderSample(k);
+        acc.add();
+      }
+    }
+  } finally {
+    await commitShutterSample(scene, NO_SHUTTER);
+  }
+  acc.resolve();
 }

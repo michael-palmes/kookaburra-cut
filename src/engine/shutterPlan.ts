@@ -1,8 +1,11 @@
+import type { Theme } from "../theme/tokens";
 import { type CameraKeyframe, type CameraPose, sampleCameraTrack } from "./cameraTrack";
+import type { ShutterSample } from "./clock";
 import {
   type MotionBlurSettings,
   resolveSceneMotionBlur,
   type SceneMotionBlur,
+  sceneHasMotionBlurOptIn,
 } from "./motionBlur";
 import { type FrameCameraPlan, resolveFrameCameras, type SceneCameraTracks } from "./sceneCamera";
 import type { SceneDoc } from "./sceneDocSchema";
@@ -40,11 +43,14 @@ export function buildShutterPlan(opts: {
   fps: number;
   slots: SceneSlot[];
   sceneDocs: readonly (SceneDoc | undefined)[] | undefined;
+  sceneThemes?: readonly (Theme | undefined)[];
   motionBlur: MotionBlurSettings | undefined;
 }): ShutterPlan | null {
   let any = false;
   const scenes = opts.slots.map((slot, i) => {
-    const blur = resolveSceneMotionBlur(opts.motionBlur, opts.sceneDocs?.[i]?.motionBlur);
+    const doc = opts.sceneDocs?.[i];
+    const optIn = sceneHasMotionBlurOptIn(doc, opts.sceneThemes?.[i]?.textAnimation);
+    const blur = resolveSceneMotionBlur(opts.motionBlur, doc?.motionBlur, optIn);
     if (!blur) return null;
     any = true;
     return { blur, durationMs: slot.durationMs };
@@ -138,4 +144,30 @@ export function frameCameraShutter(
           sampleCameraTrack(projectTrack ?? [], globalMs[n - 1]),
         );
   return still ? null : { plans, globalMs };
+}
+
+/** The frame's object samples: per sample, each blurring scene's time offset and inherited amount. Null when no scene on screen blurs, so no sample ever touches the clock. Offsets clamp to the scene, never to camera breaks (an object's own jump is its motion). */
+export function frameObjectShutter(
+  plan: ShutterPlan,
+  resolved: Resolved,
+  sceneTracks: readonly (SceneCameraTracks | null)[] | null | undefined,
+): ShutterSample[] | null {
+  const samples: Record<number, { dtMs: number; objects: number }>[] = plan.units.map(() => ({}));
+  let any = false;
+  for (const scene of resolved.active) {
+    const st = plan.scenes[scene.index];
+    if (!st?.blur.objectsActive) continue;
+    const tracks = sceneTracks?.[scene.index] ?? null;
+    const windowMs = shutterWindowMs(
+      sampleShutterDeg(tracks, scene.localMs, st.blur.shutterDeg),
+      plan.fps,
+    );
+    if (windowMs <= 0) continue;
+    any = true;
+    plan.units.forEach((u, k) => {
+      const t = Math.min(Math.max(scene.localMs + u * windowMs, 0), st.durationMs);
+      samples[k][scene.index] = { dtMs: t - scene.localMs, objects: st.blur.objects ? 1 : 0 };
+    });
+  }
+  return any ? samples : null;
 }

@@ -1,5 +1,7 @@
 /** Design-token TYPES: the single themeable layer; scenes read a resolved `Theme` via `useTheme()` and must never hard-code colours, type or motion values. Theme VALUES live in JSON documents (schema v2 - `src/theme/builtin/*.json` bundled, `~/Kookaburra Cut/themes/<slug>/theme.json` user-created), parsed by `theme/schema.ts` and resolved by `theme/registry.ts`. This module stays pure types so it's unit-testable and importable anywhere. */
 
+import type { MotionBlurOverride } from "../engine/motionBlur";
+
 /** Bloom / glow params (see engine/effects.ts). `intensity` 0 = no bloom. */
 export interface BloomParams {
   intensity: number;
@@ -347,6 +349,8 @@ export interface TextAnimationSpec {
   distance?: number;
   /** An engine/ease.ts name. Absent keeps the theme's standard easing. */
   ease?: string;
+  /** Motion blur override; absent inherits the scene's Objects switch (see engine/motionBlur.ts). */
+  motionBlur?: MotionBlurOverride;
 }
 
 /** Named text style presets (the "text look" catalogue), overridable per primitive and per scene via the sidecar's `textLook` (whole-spec, the textAnimation pattern). Params are per-look optionals, clamped and defaulted at resolve (toolkit/text/looks.ts). */
