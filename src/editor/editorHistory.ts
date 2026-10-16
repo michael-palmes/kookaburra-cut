@@ -56,6 +56,15 @@ export function closeEditorHistoryCoalescing(): void {
   openCoalesceKey = null;
 }
 
+export const EXTERNAL_EDIT_LABEL = "Claude edit";
+
+/** An outside change to the doc (kb video, another app): always exactly one undo step, never merged into an open gesture or a later one. */
+export function pushExternalEditorHistory(before: EditDoc, after: EditDoc): void {
+  closeEditorHistoryCoalescing();
+  pushEditorHistory({ label: EXTERNAL_EDIT_LABEL, before, after });
+  closeEditorHistoryCoalescing();
+}
+
 export function takeEditorUndo(): EditorHistoryEntry | null {
   closeEditorHistoryCoalescing();
   if (applied === 0) return null;

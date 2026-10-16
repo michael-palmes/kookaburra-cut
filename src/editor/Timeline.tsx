@@ -10,17 +10,17 @@ import {
   clipIndexAt,
   clipTimelineMs,
   edgeTargetsMs,
-  moveClip,
   setClipHold,
   snapMs,
   timelineDurationMs,
   trimClipIn,
   trimClipOut,
 } from "../engine/editMath";
+import type { EditOp } from "../engine/editOps";
 import { fsUrl, MEDIA_DRAG_TYPE, type MediaMeta } from "../engine/media";
 import type { TrimScrub } from "./Preview";
 
-/** The magnetic timeline: seconds ruler + playhead, filmstrip clip blocks with trim handles, drag-reorder, zoom (fit-all default), edge/playhead snapping. Clips always butt together (gapless, a locked decision); every interaction commits a relaid clips array via `onCommit`, which the editor autosaves. Here the playhead is the edit cursor (split point, snap target). */
+/** The magnetic timeline: seconds ruler + playhead, filmstrip clip blocks with trim handles, drag-reorder, zoom (fit-all default), edge/playhead snapping. Clips always butt together (gapless, a locked decision); every committed gesture is one edit op (editOps.ts) via `onEditOp`, which the editor applies and autosaves; drags preview with the same editMath functions the ops call. Here the playhead is the edit cursor (split point, snap target). */
 
 export interface TimelineProps {
   clips: EditClip[]; // relaid (magnetic), array order is timeline order
@@ -30,7 +30,8 @@ export interface TimelineProps {
   playheadMs: number;
   onSelect: (id: string | null) => void;
   onPlayhead: (ms: number) => void;
-  onCommit: (clips: EditClip[], label: string) => void;
+  /** A finished trim, hold, reorder or mask-edge drag. */
+  onEditOp: (op: EditOp) => void;
   /** Live trim feedback: the dragged edge's source frame, null when the drag ends. */
   onTrimScrub?: (scrub: TrimScrub | null) => void;
   /** Horizontal wheel/trackpad delta scrubs the playhead (scroll scrubs in both the preview and the timeline; the timeline pans via auto-follow). */
@@ -50,8 +51,6 @@ export interface TimelineProps {
   showMaskLane?: boolean;
   selectedMaskId?: string | null;
   onSelectMask?: (id: string) => void;
-  /** A bar end was dragged: the mask with its new span. */
-  onRetimeMask?: (mask: EditMask) => void;
   /** Right-click on a key diamond of the selected mask. */
   onMaskKeyMenu?: (id: string, sourceMs: number, x: number, y: number) => void;
 }
@@ -120,7 +119,7 @@ export function Timeline({
   playheadMs,
   onSelect,
   onPlayhead,
-  onCommit,
+  onEditOp,
   onTrimScrub,
   onScrubWheel,
   onDropClipAt,
@@ -132,7 +131,6 @@ export function Timeline({
   showMaskLane = false,
   selectedMaskId = null,
   onSelectMask,
-  onRetimeMask,
   onMaskKeyMenu,
 }: TimelineProps) {
   const scrollerRef = useRef<HTMLDivElement>(null);
@@ -308,13 +306,14 @@ export function Timeline({
       draft &&
       (orig.inMs !== draft.inMs || orig.outMs !== draft.outMs || orig.holdMs !== draft.holdMs)
     ) {
-      const label =
+      // The draft already holds the clamped edge, which the op re-applies unchanged.
+      onEditOp(
         drag.kind === "hold"
-          ? "retime freeze"
+          ? { op: "setHold", clipId: drag.id, holdMs: draft.holdMs ?? 0 }
           : drag.kind === "trim-in"
-            ? "trim clip start"
-            : "trim clip end";
-      onCommit(drag.draft, label);
+            ? { op: "trimIn", clipId: drag.id, inMs: draft.inMs }
+            : { op: "trimOut", clipId: drag.id, outMs: draft.outMs },
+      );
     }
     setDrag(null);
     onTrimScrub?.(null);
@@ -361,7 +360,7 @@ export function Timeline({
   function onClipPointerUp() {
     if (drag?.kind !== "move") return;
     if (drag.active && drag.toIndex !== drag.fromIndex) {
-      onCommit(moveClip(drag.orig, drag.fromIndex, drag.toIndex), "reorder clip");
+      onEditOp({ op: "moveClip", from: drag.fromIndex, to: drag.toIndex });
     }
     setDrag(null);
   }
@@ -409,7 +408,15 @@ export function Timeline({
     if (!maskDrag) return;
     const { orig, draft } = maskDrag;
     setMaskDrag(null);
-    if (draft.startMs !== orig.startMs || draft.endMs !== orig.endMs) onRetimeMask?.(draft);
+    if (draft.startMs !== orig.startMs || draft.endMs !== orig.endMs) {
+      const edge = maskDrag.edge;
+      onEditOp({
+        op: "retimeMaskEdge",
+        maskId: orig.id,
+        edge,
+        sourceMs: edge === "start" ? draft.startMs : draft.endMs,
+      });
+    }
   }
 
   /** Abandon any drag (pointercancel): discard the draft and clear the viewer override. */

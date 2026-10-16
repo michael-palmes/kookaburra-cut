@@ -3,7 +3,9 @@ import type { EditDoc } from "../engine/edit";
 import {
   bindEditorHistory,
   closeEditorHistoryCoalescing,
+  EXTERNAL_EDIT_LABEL,
   pushEditorHistory,
+  pushExternalEditorHistory,
   takeEditorRedo,
   takeEditorUndo,
 } from "./editorHistory";
@@ -93,5 +95,39 @@ describe("editorHistory", () => {
     });
     expect(takeEditorUndo()?.before.clips[0].speed).toBe(2);
     expect(takeEditorUndo()?.before.clips[0].speed).toBe(1);
+  });
+
+  it("records an outside change as exactly one step that never coalesces", () => {
+    const sized = (size: number) => ({ ...doc("hero"), tapSize: size });
+    pushEditorHistory({
+      label: "resize tap",
+      before: sized(1),
+      after: sized(2),
+      coalesceKey: "tap-size",
+    });
+    // The outside change lands mid-gesture (keyboard nudges on the slider never close it).
+    pushExternalEditorHistory(sized(2), { ...sized(2), clips: doc("hero", 4).clips });
+    pushEditorHistory({
+      label: "resize tap",
+      before: { ...sized(2), clips: doc("hero", 4).clips },
+      after: { ...sized(3), clips: doc("hero", 4).clips },
+      coalesceKey: "tap-size",
+    });
+    expect(takeEditorUndo()).toMatchObject({ label: "resize tap", after: { tapSize: 3 } });
+    const outside = takeEditorUndo();
+    expect(outside?.label).toBe(EXTERNAL_EDIT_LABEL);
+    expect(outside?.before.clips[0].speed).toBe(1);
+    expect(outside?.after.clips[0].speed).toBe(4);
+    expect(takeEditorUndo()).toMatchObject({ label: "resize tap", before: { tapSize: 1 } });
+    expect(takeEditorUndo()).toBeNull();
+  });
+
+  it("keeps two outside changes in a row as two steps, and skips one that changed nothing", () => {
+    pushExternalEditorHistory(doc("hero", 1), doc("hero", 2));
+    pushExternalEditorHistory(doc("hero", 2), doc("hero", 3));
+    pushExternalEditorHistory(doc("hero", 3), doc("hero", 3));
+    expect(takeEditorUndo()?.before.clips[0].speed).toBe(2);
+    expect(takeEditorUndo()?.before.clips[0].speed).toBe(1);
+    expect(takeEditorUndo()).toBeNull();
   });
 });
