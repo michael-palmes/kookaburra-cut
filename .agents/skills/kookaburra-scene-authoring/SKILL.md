@@ -17,7 +17,8 @@ watches this folder and reloads within about 2 s of a save. You edit files; the 
 - `scenes/<stem>.tsx`: composition (what is mounted where). `scenes/<stem>.json`: the
   sidecar, everything the app's inspector edits (copy, devices, camera, background...).
 - `assets/`: media, referenced as `assets/<file>`.
-- Never touch `exports/`, `edits/`, `.kookaburra*` or `.claude/skills/` (app-owned).
+- `edits/`: video edits, changed only through `kb video` (load the kookaburra-video-editing skill).
+- Never touch `exports/`, `.kookaburra*` or `.claude/skills/` (app-owned).
 
 Never work from a git worktree (a path containing `.claude/worktrees/`, or `kb status`
 opening with STOP). The app cannot see one, so previews, captures and exports all miss
@@ -35,7 +36,7 @@ Below, `kb X` means exactly that. Exit 0 ok, 1 problems found, 2 usage or app mi
 1. `kb status`: is the app running, which project and aspect it shows, last load
    result. Fix any listed load error before anything else; if it opens with STOP (a git
    worktree), stop there and do what it says.
-2. `kb checkpoint "before <what>"` (git of project.json and scenes/, not assets;
+2. `kb checkpoint "before <what>"` (git of project.json, scenes/ and edits/, not assets;
    `kb undo` rolls back).
 3. Edit, in this order of preference:
    - Sidecar first: `kb doc <scene> set <path> <value>` (validated, atomic).
@@ -77,6 +78,8 @@ visuals from code.
   needs `kb fonts check "Family@weight"` first; a face that fails silently falls back.
 - `kb doc` paths walk objects and array indexes (`devices.0.colour`); a write that
   would add errors is refused, so read the message instead of forcing it.
+- Never re-encode, trim or overwrite media with ffmpeg: scenes and edits point at the
+  file. Edited versions come from `kb video render` (`assets/<name>-edited.mp4`).
 
 ## Live edits
 
@@ -103,6 +106,7 @@ it), ask the user to open it once in the app.
 | Before/after wipe | `compare` | reference/devices.md | `compare.presets` |
 | Camera moves, depth of field | `camera`, `cameraRig`, key `dof` | reference/camera.md | `camera.presets`, `eases` |
 | Images, videos, screenshot stacks | `media`, `layeredScreenshot`, video `background` | reference/media.md | `mediaMotion` |
+| Trim, speed, freeze, taps, blur inside a video | `kb video` | kookaburra-video-editing skill | |
 | Charts and numbers | `chart` | reference/charts.md | `charts.styles`, `charts.animations` |
 | Slide panel, overlay, stills, PDF | `frame`, `stills` | reference/sidecar.md | `chipIcons` |
 | Order, duration, transitions, music | `kb scene`, `project.json` | reference/project.md | `transitions` |
@@ -114,7 +118,9 @@ or `lighting.presets`; `--json` prints full entries; `--search <word>` finds ids
 
 ## Routing
 
-DESIGN.md before planning a video, deck, demo or launch. Topic files in reference/:
+DESIGN.md before planning a video, deck, demo or launch. What happens inside a recording
+(cuts, speed, freezes, taps, privacy masks, fitting it to a scene or a beat): load the
+kookaburra-video-editing skill. Topic files in reference/:
 project (project.json, themes, transitions, music, effects), sidecar (every key,
 overlays, stills, keyed tracks), scenes (TSX), text (copy, fonts, motion, looks),
 devices (devices, layouts, objects, before/after), camera, backgrounds, lighting, media,
@@ -140,3 +146,4 @@ app's Resources folder (`kb status` prints it): `projects/<template>/scenes/`.
 | `kb assets list`, `add PATH [--name N]`, `probe ASSET` | Media in, never overwriting; ffprobe |
 | `kb checkpoint [MSG]`, `history`, `undo [REV]`, `diff` | Git safety net |
 | `kb beats ...`, `kb chart ...` | Soundtrack beats; chart data and keys |
+| `kb video ...` | Edit recordings: cuts, speed, taps, masks, fit (kookaburra-video-editing skill) |

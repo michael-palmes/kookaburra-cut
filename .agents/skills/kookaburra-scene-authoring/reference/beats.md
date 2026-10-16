@@ -68,6 +68,9 @@ Placement rules:
 
 - Text: time `from`/`to` (or the sidecar `textAnimation.delayMs`) so reveals COMPLETE on
   scene-local beats.
+- A moment inside a recording (a tap, a screen change): `kb video align <edit> --tap tN
+  --beat N --scene S` lands it on the scene's Nth beat, shifting the video's start when that is
+  enough, else retiming the edit (the kookaburra-video-editing skill).
 - Scene cuts: adjust `durationMs` (`kb scene set S --duration MS`) so a boundary lands
   on a strong key moment. Overlaps shift every later start, so rerun `kb beats` after
   each change instead of doing the arithmetic.
