@@ -133,7 +133,8 @@ animates. `animatedTrack: "lighting"` puts the track on the app's lane.
 `project.json` `render`: `{ "toneMapping": "aces" | "agx" | "neutral" | "linear", "exposure": 1 }`
 (exposure 0.25..4). `aces` (default) is filmic contrast; `agx` rolls highlights off
 more softly with truer saturated colour; `neutral` keeps product colours closest;
-`linear` is flat and clips. Applies to the whole project.
+`linear` is flat and clips. Applies to the whole project. The same block's `motionBlur`
+is in reference/camera.md.
 
 ## Recipes
 

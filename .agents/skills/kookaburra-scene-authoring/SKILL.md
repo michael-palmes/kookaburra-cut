@@ -1,6 +1,6 @@
 ---
 name: kookaburra-scene-authoring
-description: Edit Kookaburra Cut video projects safely and see the result. Use for ANY change in this project folder (project.json, scenes/*.tsx, scenes/*.json sidecars, assets/) and for any question about what is on screen. Triggers on new scene, edit scene, text, title, font, theme, colour, brand, background, shader, 3D background, device, phone, laptop, mockup, screen recording, screenshot stack, image, video, chart, graph, camera move, depth of field, lighting, transition, timing, duration, music, beats, overlay, slide, panel, before/after, comparison, stills, PDF handout, presentation, product demo, launch video, release notes, "what's in this scene", "how does it look", "check the video".
+description: Edit Kookaburra Cut video projects safely and see the result. Use for ANY change in this project folder (project.json, scenes/*.tsx, scenes/*.json sidecars, assets/) and for any question about what is on screen. Triggers on new scene, edit scene, text, title, font, theme, colour, brand, background, shader, 3D background, device, phone, laptop, mockup, screen recording, screenshot stack, image, video, chart, graph, camera move, depth of field, motion blur, lighting, transition, timing, duration, music, beats, overlay, slide, panel, before/after, comparison, stills, PDF handout, presentation, product demo, launch video, release notes, "what's in this scene", "how does it look", "check the video".
 when_to_use: Load before editing any project file, before answering what a scene shows (capture a frame and look), and when planning a video, deck or demo (then read DESIGN.md).
 allowed-tools: Bash(python3 ${CLAUDE_SKILL_DIR}/scripts/kb.py *)
 ---
@@ -93,7 +93,7 @@ it), ask the user to open it once in the app.
 | Lighting, exposure | `lighting`; project `render` | reference/lighting.md | `lighting.presets` |
 | Phones, laptops, tablets | `devices`, `deviceLayout`, `deviceTrack` | reference/devices.md | `devices`, `deviceShadows` |
 | Before/after wipe | `compare` | reference/devices.md | `compare.presets` |
-| Camera moves, depth of field | `camera`, `cameraRig`, key `dof` | reference/camera.md | `camera.presets`, `eases` |
+| Camera moves, depth of field, motion blur | `camera`, `cameraRig`, key `dof`, `motionBlur` | reference/camera.md | `camera.presets`, `camera.motionBlur`, `eases` |
 | Images, videos, screenshot stacks | `media`, `layeredScreenshot`, video `background` | reference/media.md | `mediaMotion` |
 | Charts and numbers | `chart` | reference/charts.md | `charts.styles`, `charts.animations` |
 | Slide panel, overlay, stills, PDF | `frame`, `stills` | reference/sidecar.md | `chipIcons` |

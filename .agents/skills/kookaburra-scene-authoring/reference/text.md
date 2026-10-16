@@ -114,6 +114,7 @@ Write the spec in the sidecar so the app's Text motion panel stays live:
 | `direction` | `from-left`, `from-right` (`twist-scale`, `orbit`) |
 | `distance` | Travel in em (`fade-up`, `slide`, `scatter-scale`) |
 | `ease` | An ease name (reference/sidecar.md) |
+| `motionBlur` | `{ enabled, amount? }`: keep text sharp or scale its trail under motion blur (reference/camera.md); lower `amount` on presets that already smear |
 
 Resolution: TSX props > sidecar `textAnimationOverrides.<key>` or `textAnimation` >
 theme `textAnimation` > the plain linear reveal. `textAnimationForce: true` makes the

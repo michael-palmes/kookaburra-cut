@@ -47,6 +47,7 @@ kb doc 02-demo unset textLook
 | `objects` | Staged 3D objects | devices.md |
 | `compare` | Before/after comparison | devices.md |
 | `camera`, `cameraMode`, `cameraRig` | Orbit track, mode switch, free-flight rig | camera.md |
+| `motionBlur` | Scene override of the project's motion blur | camera.md |
 | `media` | Images and videos (stage, overlay, window hosts) | media.md |
 | `layeredScreenshot` | 3D stack of app screens | media.md |
 | `terminal`, `website` | Terminal and website panels | media.md |

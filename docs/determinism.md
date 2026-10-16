@@ -623,6 +623,43 @@ camera stops being full-bleed once one travels. Both come from one summary:
   banded scene from a staged one; it is UI-only and the render path never reads
   it.
 
+## Motion blur
+
+Shutter accumulation (`engine/shutter.ts`, `shutterPlan.ts`, `shutterLane.ts`;
+docs/camera.md has the model). Frame N averages renders at instants INSIDE its
+own shutter window, never earlier frames, so it stays a pure function of t.
+
+- **Null for legacy.** No `render.motionBlur` and no sidecar `motionBlur` means
+  `buildShutterPlan` returns null and every frame takes the plain path. A frame
+  whose camera holds and whose scenes have no object blur also renders plain.
+  `useTimeline()` adds exactly 0 outside a sample, and the shutter store is only
+  written by the lane, so blur-free runs never touch it.
+- **Exact sums.** Each sample is the ORIGINAL path's finished canvas (fast,
+  transition, compare, effects composer, dof-only lane), copied into a
+  linear-tagged `FramebufferTexture` and summed as integer bytes
+  (`floor(x * 255 + 0.5)`) in an RGBA32F ping-pong pair; the write-back is
+  `floor(sum / N + 0.5) / 255`. A pixel that holds still averages to its own byte
+  at any N. Proven: the lane forced on every frame with a zero window hashed
+  `showcase-tour` `13b5994d…` unchanged.
+- **Contract constants.** Sample counts 4 / 8 / 16; offsets `(k + 0.5) / N - 0.5`
+  of the window; box weights; window `shutterDeg / 360 * 1000 / fps` at the RUN's
+  fps (30 on preset lanes); clamps to the scene and to camera breaks (jump
+  segment ends, held keys) at 1e-6 ms; `DIFF_BLOCK` 32 for the edge test.
+  Changing any of them re-records the blurred fixtures.
+- **Object samples are commits.** Each object sample writes the clock store's
+  `shutter` and waits for the canvas tree to stamp `shutterSeq`
+  (`ExportBridge`), then text sync, the clock barrier's pattern. The edge samples
+  render first; when their bytes match across every 32 px block (and the camera
+  holds) the frame resolves from those two. The clock ends every frame on
+  `NO_SHUTTER`, and runs and captures clear a sample a paused preview left behind.
+- **What never moves inside a shutter.** Transition progress, grain's seed
+  (read from `currentMs`, which stays on the frame instant), lighting and
+  compare plans, dof (the centre pose's), clip frames, counters, backgrounds and
+  overlay chrome.
+- **Memory.** The lane holds about 370 MB at 4K (two RGBA32F targets plus two
+  copies); export frees it on any frame that does not blur and with the
+  compositor pools between legs.
+
 ## Layered screenshot
 
 A scene's sidecar may declare a `layeredScreenshot` block (a 3D stack of
@@ -1316,7 +1353,8 @@ params, text) do not add code paths and do not need their own verifies.**
   rolling gate project, six themes, devices, video, ImageCard, camera moves
   and bloom in one project), `ws:device-video-spike` for device/media/camera, `ws:duo-spike` for
   foldables (fold, second display, auto power),
-  `ws:fx-spike` for effects, `ws:dof-spike` for depth of field, a hand-rolled
+  `ws:fx-spike` for effects, `ws:dof-spike` for depth of field,
+  `ws:motion-blur-spike` for motion blur, a hand-rolled
   workspace mini-project for anything narrower. `pnpm gate` runs the
   showcase-tour leg (~2 min).
 - **Pre-merge: the sentinel pair (2026-07-25 tier change):** before a PR
@@ -1398,6 +1436,7 @@ rolling-gate project (`showcase-tour`):
 | `ws:camera-rig-spike-opus` (camera rig gate, machine-local) | stale | — | — | — | — | — | — | — | — |
 | `ws:multi-device-spike` (deviceLayout gate, machine-local) | stale | stale | stale | — | — | — | — | — | — |
 | `ws:dof-spike` (depth-of-field gate, machine-local) | stale | stale | — | — | — | — | — | — | — |
+| `ws:motion-blur-spike` (motion blur gate, machine-local) | `9e9b0034…` | — | — | — | — | — | — | — | — |
 | `ws:chart-spike` (chart gate, machine-local) | `d58ff1f2…` | stale | stale | stale | — | — | — | — | — |
 | `ws:duplicate-spike` (scene-id heal gate, machine-local) | stale | — | — | — | — | — | — | — | — |
 | `ws:overlay-spike` (overlay gate, machine-local) | stale | — | — | — | — | — | — | — | — |
