@@ -368,8 +368,11 @@ async function drawObjectSamples(
         acc.add();
       }
     }
-  } finally {
-    await commitShutterSample(scene, NO_SHUTTER);
+  } catch (error) {
+    // The run is failing: put the clock back without waiting on a canvas that may have stopped committing, so the original error surfaces.
+    flushSync(() => useClockStore.getState().setShutter(NO_SHUTTER));
+    throw error;
   }
+  await commitShutterSample(scene, NO_SHUTTER);
   acc.resolve();
 }

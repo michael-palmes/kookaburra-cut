@@ -133,7 +133,8 @@ export function MotionBlurCameraFields({
   onKeyCommit: (deg: number | undefined) => void;
 }) {
   const resolved = resolveSceneMotionBlur(project, scene);
-  const mode: SceneMode = !scene ? "project" : scene.enabled === false ? "off" : "custom";
+  // A scene block that leaves blur off (enabled false, or no enabled while the project is off) reads as Off.
+  const mode: SceneMode = !scene ? "project" : resolved ? "custom" : "off";
   const inherited = resolveSceneMotionBlur(project, undefined);
   const setMode = (next: SceneMode) => {
     if (next === "project") onSceneChange(undefined);
@@ -141,9 +142,9 @@ export function MotionBlurCameraFields({
     else
       onSceneChange({
         enabled: true,
-        shutterDeg: inherited?.shutterDeg ?? DEFAULT_MOTION_BLUR.shutterDeg,
-        camera: inherited?.camera ?? true,
-        objects: inherited?.objects ?? true,
+        shutterDeg: scene?.shutterDeg ?? inherited?.shutterDeg ?? DEFAULT_MOTION_BLUR.shutterDeg,
+        camera: scene?.camera ?? inherited?.camera ?? true,
+        objects: scene?.objects ?? inherited?.objects ?? true,
       });
   };
   const patch = (fields: Partial<SceneDocMotionBlur>) =>

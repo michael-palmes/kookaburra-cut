@@ -4,6 +4,7 @@ import { downscaleRgba } from "./downscale";
 import {
   canvasCommittedClockMs,
   canvasCommittedProject,
+  canvasCommittedShutterSeq,
   canvasHandle,
   setCapturingPreview,
 } from "./exportBridge";
@@ -72,8 +73,12 @@ export async function captureFrameAt(
   const clock = useClockStore.getState();
   clock.setCurrentMs(tMs);
   if (clock.shutter !== NO_SHUTTER) clock.setShutter(NO_SHUTTER);
+  const shutterSeq = useClockStore.getState().shutterSeq;
   noteBorrowedSeek(tMs);
-  if (!(await waitFor(() => canvasCommittedClockMs() === tMs, 1000))) return null;
+  // A paused blur pass can leave objects mid-shutter at this same instant, where the clock stamp alone is already current.
+  const committed = () =>
+    canvasCommittedClockMs() === tMs && canvasCommittedShutterSeq() === shutterSeq;
+  if (!(await waitFor(committed, 1000))) return null;
   // The commit stamp is the React commit; clip textures stream in asynchronously, so give them a settle beat.
   await delay(200);
   if (isExporting() || !canvasHandle.current || !isCurrent()) return null;

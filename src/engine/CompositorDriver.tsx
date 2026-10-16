@@ -82,6 +82,8 @@ interface PreviewProgress {
   step: number;
   acc: ShutterAccumulator | null;
   done: boolean;
+  /** The finished mean has been drawn with every scene back on the frame instant. */
+  shown: boolean;
   expectSeq: number;
   generation: number;
   width: number;
@@ -151,8 +153,8 @@ export function CompositorDriver({
       }),
     [slots, sceneDocs, sceneThemes, motionBlur, format],
   );
-  // Paused blur waits for the playhead to rest, so a scrub stays one render per move.
-  const settle = useRef({ ms: Number.NaN, at: 0, timer: 0 });
+  // Paused blur draws only on the frame its settle timer fires; any other paused frame renders plain and re-arms it, so scrubs, hovers and edits stay one render each and never show a stale blur.
+  const settle = useRef({ timer: 0, fired: false });
   const progress = useRef<PreviewProgress | null>(null);
   useEffect(
     () => () => {
@@ -461,20 +463,24 @@ export function CompositorDriver({
       const samples = previewMotionBlurPlaybackSamples();
       return samples > 0 ? { plan: shutterPlan, samples } : "plain";
     }
-    if (progress.current) return "progress";
+    const run = progress.current;
+    if (run && !run.shown) return "progress";
+    // A finished pass is already on screen, so any later frame means something else changed.
+    if (run) abortProgress();
     const st = settle.current;
-    const now = performance.now();
-    if (currentMs !== st.ms) {
-      st.ms = currentMs;
-      st.at = now;
+    if (st.fired && !editing) {
+      st.fired = false;
+      return { plan: shutterPlan, samples: undefined };
     }
-    const restMs = SETTLE_MS - (now - st.at);
-    if (restMs > 0 || editing) {
-      window.clearTimeout(st.timer);
-      if (!editing) st.timer = window.setTimeout(() => invalidate(), restMs);
-      return "plain";
+    st.fired = false;
+    window.clearTimeout(st.timer);
+    if (!editing) {
+      st.timer = window.setTimeout(() => {
+        st.fired = true;
+        invalidate();
+      }, SETTLE_MS);
     }
-    return { plan: shutterPlan, samples: undefined };
+    return "plain";
   }
 
   /** Paused object blur builds up one committed sample per preview frame (each needs a canvas commit), showing the running mean, edges first so a still frame stops at two. */
@@ -497,6 +503,7 @@ export function CompositorDriver({
       step: 0,
       acc: null,
       done: false,
+      shown: false,
       expectSeq: 0,
       generation: shutterLaneGeneration(),
       width: bufferSize.x,
@@ -527,10 +534,12 @@ export function CompositorDriver({
   ) {
     const p = progress.current;
     if (!p) return;
-    if (p.done || canvasCommittedShutterSeq() !== p.expectSeq) {
+    const landed = canvasCommittedShutterSeq() === p.expectSeq;
+    if (p.done || !landed) {
       // Hold the running mean (or the plain frame already on the canvas) until the sample commits.
       p.acc?.resolve();
-      if (!p.done) invalidate();
+      if (p.done && landed) p.shown = true;
+      else invalidate();
       return;
     }
     sampleCamera(p.cameras, p.order[p.step]);
