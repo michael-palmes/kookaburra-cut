@@ -641,10 +641,17 @@ own shutter window, never earlier frames, so it stays a pure function of t.
   `floor(sum / N + 0.5) / 255`. A pixel that holds still averages to its own byte
   at any N. Proven: the lane forced on every frame with a zero window hashed
   `showcase-tour` `13b5994d…` unchanged.
-- **Contract constants.** Sample counts 4 / 8 / 16; offsets `(k + 0.5) / N - 0.5`
+- **Adaptive count.** The project's count is a floor. A frame whose camera sweeps
+  far across the shutter takes more samples: a probe grid (3 by 3 at plus or
+  minus 0.8 of the centre pose's view, at the aim distance and half of it) is
+  projected through the window-edge poses, and N rises until neighbouring copies
+  sit at most `SHUTTER_MAX_GAP` (0.002 frame heights) apart, capped at
+  `SHUTTER_SAMPLES_MAX` (32). Object samples use the frame's same N.
+- **Contract constants.** Sample counts 4 / 8 / 16 (floors); offsets `(k + 0.5) / N - 0.5`
   of the window; box weights; window `shutterDeg / 360 * 1000 / fps` at the RUN's
   fps (30 on preset lanes); clamps to the scene and to camera breaks (jump
-  segment ends, held keys) at 1e-6 ms; `DIFF_BLOCK` 32 for the edge test.
+  segment ends, held keys) at 1e-6 ms; `DIFF_BLOCK` 32 for the edge test; the
+  adaptive probe grid, gap and cap above.
   Changing any of them re-records the blurred fixtures.
 - **Object samples are commits.** Each object sample writes the clock store's
   `shutter` and waits for the canvas tree to stamp `shutterSeq`
@@ -657,7 +664,7 @@ own shutter window, never earlier frames, so it stays a pure function of t.
   compare plans, dof (the centre pose's), clip frames, counters, backgrounds and
   overlay chrome.
 - **Cost.** Only moving frames pay. `ws:motion-blur-spike` (8 scenes, nearly
-  all moving, 8 samples, 4K) Verify ×2 took 199 s against 123 s with blur off.
+  all moving, 8 samples, 4K) Verify ×2 took 210 s against 123 s with blur off.
 - **Memory.** The lane holds about 370 MB at 4K (two RGBA32F targets plus two
   copies); export frees it on any frame that does not blur and with the
   compositor pools between legs.
@@ -1438,7 +1445,7 @@ rolling-gate project (`showcase-tour`):
 | `ws:camera-rig-spike-opus` (camera rig gate, machine-local) | stale | — | — | — | — | — | — | — | — |
 | `ws:multi-device-spike` (deviceLayout gate, machine-local) | stale | stale | stale | — | — | — | — | — | — |
 | `ws:dof-spike` (depth-of-field gate, machine-local) | stale | stale | — | — | — | — | — | — | — |
-| `ws:motion-blur-spike` (motion blur gate, machine-local) | `9e9b0034…` | `19e948be…` | — | — | — | — | — | — | — |
+| `ws:motion-blur-spike` (motion blur gate, machine-local) | `bb5b4682…` | `504c9591…` | — | — | — | — | — | — | — |
 | `ws:chart-spike` (chart gate, machine-local) | `d58ff1f2…` | stale | stale | stale | — | — | — | — | — |
 | `ws:duplicate-spike` (scene-id heal gate, machine-local) | stale | — | — | — | — | — | — | — | — |
 | `ws:overlay-spike` (overlay gate, machine-local) | stale | — | — | — | — | — | — | — | — |

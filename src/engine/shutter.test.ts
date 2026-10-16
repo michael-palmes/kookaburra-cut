@@ -1,7 +1,16 @@
 import { describe, expect, it, vi } from "vitest";
+import type { CameraPose } from "./cameraTrack";
 import { normalizeSceneCamera, sceneCameraTracks } from "./sceneCamera";
 import { normalizeSceneRig } from "./sceneRig";
-import { cameraBreaks, clampSampleMs, shutterUnitOffsets, shutterWindowMs } from "./shutter";
+import {
+  adaptiveSampleCount,
+  cameraBreaks,
+  cameraTravel,
+  clampSampleMs,
+  SHUTTER_SAMPLES_MAX,
+  shutterUnitOffsets,
+  shutterWindowMs,
+} from "./shutter";
 
 const pose = (azimuthDeg: number) => ({
   target: [0, 0, 0] as [number, number, number],
@@ -119,5 +128,42 @@ describe("clampSampleMs", () => {
     expect(clampSampleMs(1003, 997, 5000, [1000])).toBe(1000);
     // A break outside the window changes nothing.
     expect(clampSampleMs(500, 504, 5000, [1000])).toBe(504);
+  });
+});
+
+describe("cameraTravel", () => {
+  const at = (lookAt: [number, number, number], position: [number, number, number] = [0, 0, 6]) =>
+    ({ position, lookAt, fov: 45 }) as CameraPose;
+  const centre = at([0, 0, 0]);
+
+  it("is zero for a camera that holds", () => {
+    expect(cameraTravel(centre, centre, centre, 16 / 9)).toBe(0);
+  });
+
+  it("measures a pan in frame heights", () => {
+    // A 1 degree pan moves the frame centre about 0.021 frame heights at fov 45; the probe grid's edges move a little more.
+    const pan = (deg: number) => {
+      const r = (deg * Math.PI) / 180;
+      return at([6 * Math.sin(r), 0, 6 - 6 * Math.cos(r)]);
+    };
+    const travel = cameraTravel(pan(-0.5), pan(0.5), centre, 16 / 9);
+    expect(travel).toBeGreaterThan(0.021);
+    expect(travel).toBeLessThan(0.03);
+  });
+
+  it("sees a push-in through the off-centre probes", () => {
+    const travel = cameraTravel(at([0, 0, 0], [0, 0, 6.1]), at([0, 0, 0], [0, 0, 5.9]), centre, 1);
+    expect(travel).toBeGreaterThan(0);
+  });
+});
+
+describe("adaptiveSampleCount", () => {
+  it("keeps the floor until copies would separate, then caps", () => {
+    expect(adaptiveSampleCount(0, 8)).toBe(8);
+    expect(adaptiveSampleCount(0.01, 8)).toBe(8);
+    expect(adaptiveSampleCount(0.05, 8)).toBe(25);
+    expect(adaptiveSampleCount(0.01, 16)).toBe(16);
+    expect(adaptiveSampleCount(1, 4)).toBe(SHUTTER_SAMPLES_MAX);
+    expect(adaptiveSampleCount(Number.NaN, 4)).toBe(4);
   });
 });

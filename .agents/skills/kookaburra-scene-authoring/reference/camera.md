@@ -111,7 +111,8 @@ on moving frames only. Three layers, absent everywhere is off:
 ```
 
 - `project.json` `render.motionBlur`: `shutterDeg` 0..360 (Crisp 90, Film 180,
-  Smooth 270, Smear 360), `samples` 4 / 8 / 16 (Quick, Standard, Fine), `camera`
+  Smooth 270, Smear 360), `samples` 4 / 8 / 16 (Quick, Standard, Fine; a floor:
+  fast camera sweeps take up to 32 automatically), `camera`
   (blur from camera moves), `objects` (blur from things moving on their own).
 - Sidecar `motionBlur` `{ enabled, shutterDeg, camera, objects }`: each present field
   replaces the project's, so a scene can switch blur on while the project is off, or

@@ -33,6 +33,7 @@ import {
   buildShutterPlan,
   frameCameraShutter,
   frameObjectShutter,
+  frameSampleCount,
   type ShutterPlan,
 } from "./shutterPlan";
 import type { snapshotSceneStageFloors } from "./stageRegistry";
@@ -178,6 +179,7 @@ export function buildFramePlans(
     sceneDocs: opts.sceneDocs,
     sceneThemes: opts.sceneThemes,
     motionBlur: opts.motionBlur,
+    aspect: opts.format.width / opts.format.height,
   });
 
   return {
@@ -300,11 +302,14 @@ export async function drawPlannedFrame(
       lightingPlan ?? undefined,
       compareFrame,
     );
+  const count = plans.shutter
+    ? frameSampleCount(plans.shutter, resolved, tMs, plans.sceneTracks, cameraTrack, plan)
+    : undefined;
   const cameras = plans.shutter
-    ? frameCameraShutter(plans.shutter, resolved, tMs, plans.sceneTracks, cameraTrack, plan)
+    ? frameCameraShutter(plans.shutter, resolved, tMs, plans.sceneTracks, cameraTrack, plan, count)
     : null;
   const objects = plans.shutter
-    ? frameObjectShutter(plans.shutter, resolved, plans.sceneTracks)
+    ? frameObjectShutter(plans.shutter, resolved, plans.sceneTracks, count)
     : null;
   if (!cameras && !objects && isExporting()) releaseShutterLane();
   const renderSample = (k: number) => {

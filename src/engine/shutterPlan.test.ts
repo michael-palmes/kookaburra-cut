@@ -4,7 +4,12 @@ import { normalizeSceneCamera, resolveFrameCameras, sceneCameraTracks } from "./
 import type { SceneDoc, SceneDocCameraPose } from "./sceneDocSchema";
 import { resolveAt, type SceneSlot } from "./sceneTimeline";
 import { sampleShutterDeg } from "./shutter";
-import { buildShutterPlan, frameCameraShutter, frameObjectShutter } from "./shutterPlan";
+import {
+  buildShutterPlan,
+  frameCameraShutter,
+  frameObjectShutter,
+  frameSampleCount,
+} from "./shutterPlan";
 import { shutterOffsetMs } from "./timeline";
 
 afterEach(() => vi.restoreAllMocks());
@@ -57,9 +62,12 @@ describe("sampleShutterDeg", () => {
 describe("buildShutterPlan", () => {
   it("is null when no scene blurs", () => {
     const slots = [slot(0, 0, 1000)];
-    expect(buildShutterPlan({ fps: 60, slots, sceneDocs: [], motionBlur: undefined })).toBeNull();
+    expect(
+      buildShutterPlan({ fps: 60, aspect: 16 / 9, slots, sceneDocs: [], motionBlur: undefined }),
+    ).toBeNull();
     expect(
       buildShutterPlan({
+        aspect: 16 / 9,
         fps: 60,
         slots,
         sceneDocs: [{ version: 1, motionBlur: { enabled: false } } as SceneDoc],
@@ -70,6 +78,7 @@ describe("buildShutterPlan", () => {
 
   it("resolves per scene and takes the project's sample count", () => {
     const plan = buildShutterPlan({
+      aspect: 16 / 9,
       fps: 60,
       slots: [slot(0, 0, 1000), slot(1, 1000, 1000)],
       sceneDocs: [undefined, { version: 1, motionBlur: { enabled: true } } as SceneDoc],
@@ -88,6 +97,7 @@ describe("frameCameraShutter", () => {
     { tMs: 1000, pose: pose(60) },
   ]);
   const plan = buildShutterPlan({
+    aspect: 16 / 9,
     fps: 60,
     slots,
     sceneDocs: [],
@@ -121,6 +131,7 @@ describe("frameCameraShutter", () => {
 
   it("is null when the scene's camera blur is off", () => {
     const off = buildShutterPlan({
+      aspect: 16 / 9,
       fps: 60,
       slots,
       sceneDocs: [{ version: 1, motionBlur: { camera: false } } as SceneDoc],
@@ -141,6 +152,7 @@ describe("frameCameraShutter", () => {
       "jump",
     );
     const cutPlan = buildShutterPlan({
+      aspect: 16 / 9,
       fps: 60,
       slots,
       sceneDocs: [],
@@ -161,7 +173,7 @@ describe("frameCameraShutter", () => {
 describe("frameObjectShutter", () => {
   const slots = [slot(0, 0, 1000), slot(1, 1000, 1000)];
   const plan = (docs: (SceneDoc | undefined)[]) => {
-    const p = buildShutterPlan({ fps: 60, slots, sceneDocs: docs, motionBlur: on });
+    const p = buildShutterPlan({ fps: 60, aspect: 16 / 9, slots, sceneDocs: docs, motionBlur: on });
     if (!p) throw new Error("plan expected");
     return p;
   };
@@ -206,5 +218,63 @@ describe("shutterOffsetMs", () => {
     expect(shutterOffsetMs(sample, undefined, 1)).toBe(0);
     expect(shutterOffsetMs(sample, 9, 1)).toBe(0);
     expect(shutterOffsetMs(sample, 2, 0)).toBe(0);
+  });
+});
+
+describe("frameSampleCount", () => {
+  const slots = [slot(0, 0, 2000)];
+  const countAt = (tracks: ReturnType<typeof orbit>, tMs: number, shutterDeg = 180) => {
+    const plan = buildShutterPlan({
+      fps: 60,
+      aspect: 16 / 9,
+      slots,
+      sceneDocs: [],
+      motionBlur: { ...on, shutterDeg },
+    });
+    if (!plan) throw new Error("plan expected");
+    const resolved = resolveAt(slots, tMs);
+    const centre = resolveFrameCameras([tracks], undefined, resolved, tMs);
+    return frameSampleCount(plan, resolved, tMs, [tracks], undefined, centre);
+  };
+
+  it("keeps the project's count for a gentle move or a held camera", () => {
+    const gentle = orbit([
+      { tMs: 0, pose: pose(0) },
+      { tMs: 2000, pose: pose(20) },
+    ]);
+    expect(countAt(gentle, 1000)).toBe(8);
+    expect(countAt(gentle, 1999)).toBe(8);
+  });
+
+  it("raises the count for a whip and never past the cap", () => {
+    const whip = orbit([
+      { tMs: 0, pose: pose(0) },
+      { tMs: 300, pose: pose(90) },
+    ]);
+    const n = countAt(whip, 150, 360);
+    expect(n).toBeGreaterThan(8);
+    expect(n).toBeLessThanOrEqual(32);
+  });
+
+  it("feeds both sample sets the same count", () => {
+    const whip = orbit([
+      { tMs: 0, pose: pose(0) },
+      { tMs: 300, pose: pose(90) },
+    ]);
+    const plan = buildShutterPlan({
+      fps: 60,
+      aspect: 16 / 9,
+      slots,
+      sceneDocs: [],
+      motionBlur: on,
+    });
+    if (!plan) throw new Error("plan expected");
+    const resolved = resolveAt(slots, 150);
+    const centre = resolveFrameCameras([whip], undefined, resolved, 150);
+    const n = frameSampleCount(plan, resolved, 150, [whip], undefined, centre);
+    expect(
+      frameCameraShutter(plan, resolved, 150, [whip], undefined, centre, n)?.plans,
+    ).toHaveLength(n);
+    expect(frameObjectShutter(plan, resolved, [whip], n)).toHaveLength(n);
   });
 });

@@ -141,6 +141,10 @@ velocity buffer is not.
   scene and never cross a camera break (a `jump` segment end, a held key), so a
   cut never ghosts. Transition progress stays on the frame instant, so whip and
   spin transitions are not blurred twice.
+- The project's sample count is a floor: a fast camera sweep raises a frame's
+  count (up to 32) until neighbouring copies sit within 0.002 frame heights, so
+  a whip pan smears instead of strobing. Pure in t: the travel comes from the
+  window-edge poses, never the rendered pixels.
 - Camera blur re-samples the camera plan per sample inside one committed frame
   (no React work); the camera test is exact pose equality at the window edges.
   Focus (dof) keeps the frame instant's value.

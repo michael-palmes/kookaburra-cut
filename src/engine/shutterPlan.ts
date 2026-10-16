@@ -11,7 +11,9 @@ import { type FrameCameraPlan, resolveFrameCameras, type SceneCameraTracks } fro
 import type { SceneDoc } from "./sceneDocSchema";
 import type { Resolved, SceneSlot } from "./sceneTimeline";
 import {
+  adaptiveSampleCount,
   cameraBreaks,
+  cameraTravel,
   clampSampleMs,
   SHUTTER_SAMPLES_DEFAULT,
   sampleShutterDeg,
@@ -28,6 +30,8 @@ interface SceneShutter {
 
 export interface ShutterPlan {
   fps: number;
+  /** The frame aspect the camera's on-screen travel is measured in. */
+  aspect: number;
   units: number[];
   scenes: (SceneShutter | null)[];
 }
@@ -45,6 +49,7 @@ export function buildShutterPlan(opts: {
   sceneDocs: readonly (SceneDoc | undefined)[] | undefined;
   sceneThemes?: readonly (Theme | undefined)[];
   motionBlur: MotionBlurSettings | undefined;
+  aspect: number;
 }): ShutterPlan | null {
   let any = false;
   const scenes = opts.slots.map((slot, i) => {
@@ -57,7 +62,7 @@ export function buildShutterPlan(opts: {
   });
   if (!any) return null;
   const samples = opts.motionBlur?.samples ?? SHUTTER_SAMPLES_DEFAULT;
-  return { fps: opts.fps, units: shutterUnitOffsets(samples), scenes };
+  return { fps: opts.fps, aspect: opts.aspect, units: shutterUnitOffsets(samples), scenes };
 }
 
 function samePose(a: CameraPose | undefined, b: CameraPose | undefined): boolean {
@@ -89,17 +94,16 @@ function withCentreDof(plan: FrameCameraPlan | null, centre: FrameCameraPlan | n
   };
 }
 
-/** The frame's camera samples, or null when the camera holds still across the shutter (or nothing on screen blurs it), so the frame renders once on the plain path. `samples` overrides the project's count (the preview's playback lane). */
-export function frameCameraShutter(
+/** The camera plan at each of `units` (window fractions), clamped to each scene and its camera breaks; null when no scene on screen blurs the camera. */
+function cameraSamplePlans(
   plan: ShutterPlan,
   resolved: Resolved,
   tMs: number,
   sceneTracks: readonly (SceneCameraTracks | null)[] | null | undefined,
   projectTrack: CameraKeyframe[] | undefined,
   centre: FrameCameraPlan | null,
-  samples?: number,
+  units: readonly number[],
 ): FrameShutter | null {
-  const units = samples === undefined ? plan.units : shutterUnitOffsets(samples);
   const n = units.length;
   const shifted: Resolved[] = Array.from({ length: n }, () => ({ ...resolved, active: [] }));
   const globalMs = new Array<number>(n).fill(tMs);
@@ -134,6 +138,64 @@ export function frameCameraShutter(
   const plans = shifted.map((r, k) =>
     withCentreDof(resolveFrameCameras(sceneTracks, projectTrack, r, globalMs[k]), centre),
   );
+  return { plans, globalMs };
+}
+
+/** The camera pose each side renders with: the plan's solo/a/b, or the project track on the legacy path. */
+function sidePoses(
+  plan: FrameCameraPlan | null,
+  projectTrack: CameraKeyframe[] | undefined,
+  globalMs: number,
+): CameraPose[] {
+  if (!plan) return [sampleCameraTrack(projectTrack ?? [], globalMs)];
+  return [plan.solo, plan.a, plan.b].filter((p): p is CameraPose => !!p);
+}
+
+/** The frame's sample count: the project's, raised while the camera sweeps far enough across the shutter that its copies would separate (pure in t; object samples use the same count). */
+export function frameSampleCount(
+  plan: ShutterPlan,
+  resolved: Resolved,
+  tMs: number,
+  sceneTracks: readonly (SceneCameraTracks | null)[] | null | undefined,
+  projectTrack: CameraKeyframe[] | undefined,
+  centre: FrameCameraPlan | null,
+): number {
+  const floor = plan.units.length;
+  const edges = cameraSamplePlans(
+    plan,
+    resolved,
+    tMs,
+    sceneTracks,
+    projectTrack,
+    centre,
+    [-0.5, 0.5],
+  );
+  if (!edges) return floor;
+  const from = sidePoses(edges.plans[0], projectTrack, edges.globalMs[0]);
+  const to = sidePoses(edges.plans[1], projectTrack, edges.globalMs[1]);
+  const mid = sidePoses(centre, projectTrack, tMs);
+  let travel = 0;
+  for (let i = 0; i < Math.min(from.length, to.length, mid.length); i++) {
+    travel = Math.max(travel, cameraTravel(from[i], to[i], mid[i], plan.aspect));
+  }
+  return adaptiveSampleCount(travel, floor);
+}
+
+/** The frame's camera samples, or null when the camera holds still across the shutter (or nothing on screen blurs it), so the frame renders once on the plain path. `samples` is the frame's count (`frameSampleCount`, or the preview's playback count); absent takes the project's. */
+export function frameCameraShutter(
+  plan: ShutterPlan,
+  resolved: Resolved,
+  tMs: number,
+  sceneTracks: readonly (SceneCameraTracks | null)[] | null | undefined,
+  projectTrack: CameraKeyframe[] | undefined,
+  centre: FrameCameraPlan | null,
+  samples?: number,
+): FrameShutter | null {
+  const units = samples === undefined ? plan.units : shutterUnitOffsets(samples);
+  const n = units.length;
+  const shutter = cameraSamplePlans(plan, resolved, tMs, sceneTracks, projectTrack, centre, units);
+  if (!shutter) return null;
+  const { plans, globalMs } = shutter;
   const first = plans[0];
   const last = plans[n - 1];
   const still =
@@ -143,7 +205,7 @@ export function frameCameraShutter(
           sampleCameraTrack(projectTrack ?? [], globalMs[0]),
           sampleCameraTrack(projectTrack ?? [], globalMs[n - 1]),
         );
-  return still ? null : { plans, globalMs };
+  return still ? null : shutter;
 }
 
 /** The frame's object samples: per sample, each blurring scene's time offset and inherited amount. Null when no scene on screen blurs, so no sample ever touches the clock. Offsets clamp to the scene, never to camera breaks (an object's own jump is its motion). */
@@ -151,8 +213,10 @@ export function frameObjectShutter(
   plan: ShutterPlan,
   resolved: Resolved,
   sceneTracks: readonly (SceneCameraTracks | null)[] | null | undefined,
+  count?: number,
 ): ShutterSample[] | null {
-  const samples: Record<number, { dtMs: number; objects: number }>[] = plan.units.map(() => ({}));
+  const units = count === undefined ? plan.units : shutterUnitOffsets(count);
+  const samples: Record<number, { dtMs: number; objects: number }>[] = units.map(() => ({}));
   let any = false;
   for (const scene of resolved.active) {
     const st = plan.scenes[scene.index];
@@ -164,7 +228,7 @@ export function frameObjectShutter(
     );
     if (windowMs <= 0) continue;
     any = true;
-    plan.units.forEach((u, k) => {
+    units.forEach((u, k) => {
       const t = Math.min(Math.max(scene.localMs + u * windowMs, 0), st.durationMs);
       samples[k][scene.index] = { dtMs: t - scene.localMs, objects: st.blur.objects ? 1 : 0 };
     });

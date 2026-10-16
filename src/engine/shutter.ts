@@ -1,3 +1,5 @@
+import { projectToStage, viewBasis } from "./cameraProject";
+import type { CameraPose } from "./cameraTrack";
 import { ease } from "./ease";
 import type { SceneCameraTracks } from "./sceneCamera";
 
@@ -10,6 +12,14 @@ export type ShutterSamples = (typeof SHUTTER_SAMPLE_COUNTS)[number];
 export const SHUTTER_DEG_MAX = 360;
 export const SHUTTER_DEG_DEFAULT = 180;
 export const SHUTTER_SAMPLES_DEFAULT: ShutterSamples = 8;
+
+/** The widest gap allowed between neighbouring copies of a camera sweep, as a fraction of the frame height; faster sweeps take more samples. */
+export const SHUTTER_MAX_GAP = 0.002;
+/** The ceiling on a frame's adaptive sample count. */
+export const SHUTTER_SAMPLES_MAX = 32;
+/** Probe grid (in the centre pose's normalised view) and depths (fractions of the aim distance) the camera's travel is measured on. */
+const PROBE_NDC = [-0.8, 0, 0.8];
+const PROBE_DEPTHS = [1, 0.5];
 
 /** Sample times nudged off a break land this far before it, inside the half-open segment that precedes it. */
 const BEFORE_BREAK_MS = 1e-6;
@@ -97,4 +107,46 @@ export function sampleShutterDeg(
     else break;
   }
   return keyShutter(held.pose.shutterDeg, sceneDeg);
+}
+
+/** How far the camera's sweep across the shutter moves the scene on screen, in frame heights: the largest move of a probe grid laid out in the centre pose's view at its aim distance and half of it (near layers parallax harder). Probes that leave the front of either edge pose are skipped. */
+export function cameraTravel(
+  from: CameraPose,
+  to: CameraPose,
+  centre: CameraPose,
+  aspect: number,
+): number {
+  const basis = viewBasis(centre);
+  const offset = [
+    centre.lookAt[0] - centre.position[0],
+    centre.lookAt[1] - centre.position[1],
+    centre.lookAt[2] - centre.position[2],
+  ];
+  const aim = Math.hypot(offset[0], offset[1], offset[2]);
+  const tanHalf = Math.tan((centre.fov * Math.PI) / 360);
+  const stage = { width: aspect, height: 1 };
+  let travel = 0;
+  for (const depthScale of PROBE_DEPTHS) {
+    const depth = aim * depthScale;
+    for (const nx of PROBE_NDC) {
+      for (const ny of PROBE_NDC) {
+        const sx = nx * depth * tanHalf * aspect;
+        const sy = ny * depth * tanHalf;
+        const world: [number, number, number] = [0, 1, 2].map(
+          (i) => centre.position[i] - basis.z[i] * depth + basis.x[i] * sx + basis.y[i] * sy,
+        ) as [number, number, number];
+        const a = projectToStage(world, from, stage, aspect);
+        const b = projectToStage(world, to, stage, aspect);
+        if (a.clipped || b.clipped) continue;
+        travel = Math.max(travel, Math.hypot(a.x - b.x, a.y - b.y));
+      }
+    }
+  }
+  return travel;
+}
+
+/** A frame's sample count: the project's `floor`, raised until neighbouring copies of a `travel` sweep sit at most `SHUTTER_MAX_GAP` apart, capped at `SHUTTER_SAMPLES_MAX`. */
+export function adaptiveSampleCount(travel: number, floor: number): number {
+  if (!(travel > 0)) return floor;
+  return Math.max(floor, Math.min(SHUTTER_SAMPLES_MAX, Math.ceil(travel / SHUTTER_MAX_GAP)));
 }

@@ -63,6 +63,7 @@ import {
   type FrameShutter,
   frameCameraShutter,
   frameObjectShutter,
+  frameSampleCount,
   type ShutterPlan,
 } from "./shutterPlan";
 import { useSceneStageFloors } from "./stageRegistry";
@@ -139,8 +140,16 @@ export function CompositorDriver({
   );
 
   const shutterPlan = useMemo(
-    () => buildShutterPlan({ fps: FPS, slots, sceneDocs, sceneThemes, motionBlur }),
-    [slots, sceneDocs, sceneThemes, motionBlur],
+    () =>
+      buildShutterPlan({
+        fps: FPS,
+        slots,
+        sceneDocs,
+        sceneThemes,
+        motionBlur,
+        aspect: format.width / format.height,
+      }),
+    [slots, sceneDocs, sceneThemes, motionBlur, format],
   );
   // Paused blur waits for the playhead to rest, so a scrub stays one render per move.
   const settle = useRef({ ms: Number.NaN, at: 0, timer: 0 });
@@ -396,7 +405,9 @@ export function CompositorDriver({
       stepProgress(s.gl, sampleCamera);
       return;
     }
-    // Paused frames sample the project's count; playback the toggle's.
+    // Paused frames sample the export's count; playback the toggle's.
+    const count =
+      blur.samples ?? frameSampleCount(blur.plan, resolved, currentMs, tracks, cameraTrack, plan);
     const cameras = frameCameraShutter(
       blur.plan,
       resolved,
@@ -404,10 +415,10 @@ export function CompositorDriver({
       tracks,
       cameraTrack,
       plan,
-      blur.samples,
+      count,
     );
     const objects =
-      blur.samples === undefined ? frameObjectShutter(blur.plan, resolved, tracks) : null;
+      blur.samples === undefined ? frameObjectShutter(blur.plan, resolved, tracks, count) : null;
     if (objects) {
       renderWith(plan);
       startProgress(currentMs, blur.plan, tracks, objects, cameras);
