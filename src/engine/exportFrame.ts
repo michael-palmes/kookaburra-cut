@@ -9,11 +9,12 @@ import { renderComposited } from "./compositor";
 import { dropDevPerformanceEntries } from "./devPerformance";
 import { canvasCommittedClockMs, canvasCommittedHoldsVersion } from "./exportBridge";
 import type { ExportOptions } from "./exporter";
+import { isExporting } from "./exportState";
 import { computeFormat } from "./format";
 import { yieldMacrotask } from "./macrotask";
 import { resolveOverlays } from "./overlayPlan";
 import { type ReadbackContext, readFrameOrThrow } from "./readback";
-import { buildSceneCameraTracks, resolveFrameCameras } from "./sceneCamera";
+import { buildSceneCameraTracks, type FrameCameraPlan, resolveFrameCameras } from "./sceneCamera";
 import { compareSpecOf, resolveCompareFrame } from "./sceneCompare";
 import { getSceneHosts } from "./sceneHostRegistry";
 import {
@@ -23,6 +24,8 @@ import {
 } from "./sceneLighting";
 import { buildSceneRenderStates, resolveFrameSceneStates } from "./sceneState";
 import type { Resolved } from "./sceneTimeline";
+import { accumulateFrame, releaseShutterLane } from "./shutterLane";
+import { buildShutterPlan, frameCameraShutter, type ShutterPlan } from "./shutterPlan";
 import type { snapshotSceneStageFloors } from "./stageRegistry";
 
 /** The per-frame body the deterministic loops share (video export and stills): barriers, camera/state/lighting/compare plans, `renderComposited`, readback. Moved verbatim out of exporter.ts, so the video loop's GL call sequence is unchanged. See docs/determinism.md. */
@@ -97,6 +100,8 @@ export interface FramePlans {
   compareSpecs: ReturnType<typeof compareSpecOf>[];
   sceneStatesB: ReturnType<typeof buildSceneRenderStates>;
   overlays: ReturnType<typeof resolveOverlays>;
+  /** Null unless some scene's motion blur is on, which keeps the run on the byte-identical path. */
+  shutter: ShutterPlan | null;
 }
 
 export function buildFramePlans(
@@ -158,6 +163,14 @@ export function buildFramePlans(
       )
     : null;
 
+  const shutter = buildShutterPlan({
+    fps: opts.fps,
+    slots: opts.slots,
+    sceneDocs: opts.sceneDocs,
+    motionBlur: opts.motionBlur,
+    sceneTracks,
+  });
+
   return {
     sceneTracks,
     lightingTracks,
@@ -166,6 +179,7 @@ export function buildFramePlans(
     compareSpecs,
     sceneStatesB,
     overlays,
+    shutter,
   };
 }
 
@@ -217,9 +231,28 @@ export async function renderFrameInto(
     cam.aspect = width / height;
     cam.updateProjectionMatrix();
   }
-  // The camera applies at this shared seam (mirrored in CompositorDriver), a pure function of tMs. Scene-doc tracks get a per-frame plan applied inside renderComposited (per-target on transition frames); otherwise the legacy project-track path runs, a hard no-op when the project declares no track. Neither touches `cam.aspect`, so the resize guard above stays the sole owner of aspect.
-  const plan = resolveFrameCameras(plans.sceneTracks, rig.cameraTrack, resolved, tMs);
-  if (!plan) applyCameraTrack(cam, rig.cameraTrack, tMs);
+  drawPlannedFrame(gl, scene, camera, width, height, plans, rig.cameraTrack, resolved, tMs, draws);
+  beforeRead?.();
+  readFrameOrThrow(rig.ctx, width, height, rig.rgba, label);
+}
+
+/** Resolves one frame's camera, state, lighting and compare plans and draws it into the canvas `draws` times, the last one kept (the export loop's frame 0 draws twice so it is never a run's first draw: a cold boot must capture what a warm one does). Each draw is one plain render, or, while the camera moves across an open shutter, the averaged samples of the motion blur lane. Shared by the export loop and single-frame captures. */
+export function drawPlannedFrame(
+  gl: WebGLRenderer,
+  scene: Scene,
+  camera: Camera,
+  width: number,
+  height: number,
+  plans: FramePlans,
+  cameraTrack: CameraKeyframe[] | undefined,
+  resolved: Resolved,
+  tMs: number,
+  draws: number,
+): void {
+  const cam = camera as PerspectiveCamera;
+  // The camera applies at this shared seam (mirrored in CompositorDriver), a pure function of tMs. Scene-doc tracks get a per-frame plan applied inside renderComposited (per-target on transition frames); otherwise the legacy project-track path runs, a hard no-op when the project declares no track. Neither touches `cam.aspect`, so the caller's resize guard stays the sole owner of aspect.
+  const plan = resolveFrameCameras(plans.sceneTracks, cameraTrack, resolved, tMs);
+  if (!plan) applyCameraTrack(cam, cameraTrack, tMs);
   const statePlan = resolveFrameSceneStates(plans.sceneStates, resolved);
   const lightingPlan = resolveFrameLighting(
     plans.lightingTracks,
@@ -232,21 +265,33 @@ export async function renderFrameInto(
     plans.sceneStatesB,
     resolved,
   );
-  // Same render path as the preview (engine/compositor): single-scene frames render directly (v0-identical), transition frames go through the composite. The first frame draws twice and keeps the second, so it is never the run's first draw: a cold boot (hidden window, no preview frames) must capture what a warm one does.
-  for (let draw = draws; draw > 0; draw--) {
+  // Same render path as the preview (engine/compositor): single-scene frames render directly (v0-identical), transition frames go through the composite.
+  const renderWith = (p: FrameCameraPlan | null) =>
     renderComposited(
       gl,
       scene,
       camera,
       getSceneHosts(),
       resolved,
-      plan ?? undefined,
+      p ?? undefined,
       statePlan,
       plans.overlays ?? undefined,
       lightingPlan ?? undefined,
       compareFrame,
     );
+  const shutter = plans.shutter
+    ? frameCameraShutter(plans.shutter, resolved, tMs, plans.sceneTracks, cameraTrack, plan)
+    : null;
+  if (!shutter && isExporting()) releaseShutterLane();
+  for (let draw = draws; draw > 0; draw--) {
+    if (!shutter) {
+      renderWith(plan);
+      continue;
+    }
+    accumulateFrame(gl, width, height, shutter.plans.length, (k) => {
+      const sample = shutter.plans[k];
+      if (!sample) applyCameraTrack(cam, cameraTrack, shutter.globalMs[k]);
+      renderWith(sample);
+    });
   }
-  beforeRead?.();
-  readFrameOrThrow(rig.ctx, width, height, rig.rgba, label);
 }

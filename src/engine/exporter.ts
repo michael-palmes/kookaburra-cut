@@ -14,12 +14,7 @@ import { preloadSceneObjects } from "../toolkit/objects/preload";
 import { preloadBundledBackdrops } from "../toolkit/stage/backdrops";
 import { awaitEmojiRastersIdle, preloadEmojiRasters } from "../toolkit/text/emojiRaster";
 import { preloadText3dFonts } from "../toolkit/text3d/fonts";
-import {
-  applyCameraPose,
-  applyCameraTrack,
-  baseCameraPose,
-  type CameraKeyframe,
-} from "./cameraTrack";
+import { applyCameraPose, baseCameraPose, type CameraKeyframe } from "./cameraTrack";
 import { useChartEditStore } from "./chartEditStore";
 import {
   awaitVideoFramesReady,
@@ -30,7 +25,6 @@ import {
   setClipLane,
 } from "./clips";
 import { useClockStore } from "./clock";
-import { renderComposited } from "./compositor";
 import { useDeviceEditStore } from "./deviceEditStore";
 import { deviceVideoSources } from "./deviceScreens";
 import { preloadEffectLuts } from "./effects";
@@ -45,6 +39,7 @@ import {
   awaitCanvasClockCommit,
   awaitTextSync,
   buildFramePlans,
+  drawPlannedFrame,
   type FrameRig,
   renderFrameInto,
 } from "./exportFrame";
@@ -55,6 +50,7 @@ import { preloadPanelMeasures } from "./framePanelMeasure";
 import { useImageEditStore } from "./imageEditStore";
 import { HELPER_LAYER } from "./lightEditStore";
 import { yieldMacrotask } from "./macrotask";
+import type { MotionBlurSettings } from "./motionBlur";
 import { useObjectEditStore } from "./objectEditStore";
 import { preloadOverlayPanelImages } from "./overlayPanelTexture";
 import { overlayPanelImageSources } from "./overlayPlan";
@@ -68,13 +64,10 @@ import {
 } from "./project";
 import { assertContextHeld, readFrameOrThrow } from "./readback";
 import { type RenderStateFingerprint, renderStateFingerprint } from "./renderFingerprint";
-import { hasSceneCameraTracks, resolveFrameCameras } from "./sceneCamera";
-import { resolveCompareFrame } from "./sceneCompare";
+import { hasSceneCameraTracks } from "./sceneCamera";
 import { collectSceneDocFontRefs, type SceneDoc } from "./sceneDocSchema";
 import { getSceneHosts } from "./sceneHostRegistry";
-import { resolveFrameLighting } from "./sceneLighting";
 import { resolveSceneDocMedia } from "./sceneMedia";
-import { resolveFrameSceneStates } from "./sceneState";
 import { resolveAt, type SceneSlot } from "./sceneTimeline";
 import { snapshotSceneStageFloors } from "./stageRegistry";
 import { useTerminalEditStore } from "./terminalEditStore";
@@ -122,6 +115,8 @@ export interface ExportOptions {
   destination?: "downloads";
   /** Cancels the run at its next frame or encode stage; the run then rejects with `signal.reason`. */
   signal?: AbortSignal;
+  /** The manifest's `render.motionBlur`; absent (and no scene switching it on) means the byte-identical unblurred path. */
+  motionBlur?: MotionBlurSettings;
 }
 
 export interface ExportProgress {
@@ -633,19 +628,11 @@ async function captureFrameRgbaHeld(
       cam.updateProjectionMatrix();
     }
 
-    const {
-      sceneTracks,
-      lightingTracks,
-      compareBLightingTracks,
-      sceneStates,
-      compareSpecs,
-      sceneStatesB,
-      overlays,
-    } = buildFramePlans(opts, sceneFloorYs);
+    const plans = buildFramePlans(opts, sceneFloorYs);
     // Trackless projects heal the shared camera to base for the frame; snapshot the live pose (a mid-orbit view stays where the user left it) and give it back afterwards.
     if (
       (!opts.cameraTrack || opts.cameraTrack.length === 0) &&
-      !hasSceneCameraTracks(sceneTracks)
+      !hasSceneCameraTracks(plans.sceneTracks)
     ) {
       const pos = cam.position.clone();
       const quat = cam.quaternion.clone();
@@ -671,23 +658,7 @@ async function captureFrameRgbaHeld(
       cam.updateProjectionMatrix();
     }
     const resolved = resolveAt(opts.slots, tMs);
-    const plan = resolveFrameCameras(sceneTracks, opts.cameraTrack, resolved, tMs);
-    if (!plan) applyCameraTrack(cam, opts.cameraTrack, tMs);
-    const statePlan = resolveFrameSceneStates(sceneStates, resolved);
-    const lightingPlan = resolveFrameLighting(lightingTracks, resolved, compareBLightingTracks);
-    const compareFrame = resolveCompareFrame(compareSpecs, sceneStates, sceneStatesB, resolved);
-    renderComposited(
-      gl,
-      scene,
-      camera,
-      getSceneHosts(),
-      resolved,
-      plan ?? undefined,
-      statePlan,
-      overlays ?? undefined,
-      lightingPlan ?? undefined,
-      compareFrame,
-    );
+    drawPlannedFrame(gl, scene, camera, width, height, plans, opts.cameraTrack, resolved, tMs, 1);
     readFrameOrThrow(ctx, width, height, rgba, `capture at ${tMs}ms`);
     return { rgba, width, height };
   } finally {

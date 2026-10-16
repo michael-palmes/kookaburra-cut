@@ -38,6 +38,7 @@ import type { FrameOverrideSpec } from "../toolkit/frame/types";
 import type { SceneDocDof } from "./dof";
 import type { DeviceFoldTransitionSpec } from "./foldTransition";
 import { parseFrameOverride } from "./frameSchema";
+import { parseSceneMotionBlur, type SceneDocMotionBlur } from "./motionBlur";
 import { normalizeLighting } from "./sceneLighting";
 import {
   DEFAULT_SCENE_IMAGE_OVERLAY,
@@ -277,6 +278,8 @@ export interface SceneDocCameraPose {
   distance: number;
   /** Depth of field; absent inherits the last keyed value along the track (see engine/dof.ts). */
   dof?: SceneDocDof;
+  /** Motion blur shutter angle from this key on; absent inherits the scene's (see engine/shutter.ts). */
+  shutterDeg?: number;
 }
 
 export interface SceneDocCameraKey {
@@ -320,6 +323,8 @@ export interface SceneDocRigPose {
   rollDeg?: number;
   /** Depth of field; absent inherits the last keyed value along the track (see engine/dof.ts). */
   dof?: SceneDocDof;
+  /** Motion blur shutter angle, eased under the Lens channel; absent inherits the scene's (see engine/shutter.ts). */
+  shutterDeg?: number;
 }
 
 export interface SceneDocRigKey {
@@ -623,6 +628,8 @@ export interface SceneDoc {
   animatedTrack?: "camera" | "layeredScreenshot" | "compare" | "chart" | "lighting";
   /** Stills export settings (see engine/stills.ts); absent = included with one automatic still. */
   stills?: SceneDocStills;
+  /** Motion blur override: each present field replaces the project's `render.motionBlur` (see engine/motionBlur.ts); absent inherits. */
+  motionBlur?: SceneDocMotionBlur;
 }
 
 /** Sidecar `stills` block; absent means included with one automatic still. */
@@ -2219,6 +2226,10 @@ export function parseSceneDoc(raw: unknown, source: string): SceneDoc | undefine
   if (doc.stills !== undefined) {
     const stills = parseStills(doc.stills, source);
     if (stills) out.stills = stills;
+  }
+  if (doc.motionBlur !== undefined) {
+    const motionBlur = parseSceneMotionBlur(doc.motionBlur, source);
+    if (motionBlur) out.motionBlur = motionBlur;
   }
   if (
     doc.animatedTrack === "camera" ||

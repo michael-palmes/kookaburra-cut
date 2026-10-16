@@ -263,6 +263,12 @@ export const SCENE_DOC_KEYS: Record<
     type: "object",
     ref: "sidecar",
   },
+  motionBlur: {
+    summary:
+      "Motion blur override { enabled, shutterDeg, camera, objects }; each field replaces the project's render.motionBlur.",
+    type: "object",
+    ref: "camera",
+  },
 };
 
 /** One line per project.json key; exhaustive over `ProjectManifest`. */
@@ -307,7 +313,8 @@ export const PROJECT_MANIFEST_KEYS: Record<
     type: "object|null",
   },
   render: {
-    summary: "Display transform { toneMapping, exposure }; absent is aces at 1.",
+    summary:
+      "Display transform { toneMapping, exposure } plus motionBlur { enabled, shutterDeg, samples, camera, objects }; absent is aces at 1, no blur.",
     type: "object",
   },
   lighting: { summary: "Project lighting layer between theme and scene.", type: "object" },

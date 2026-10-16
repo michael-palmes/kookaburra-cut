@@ -5,6 +5,7 @@ import {
   LinearToneMapping,
   NeutralToneMapping,
 } from "three";
+import { type MotionBlurSettings, parseMotionBlurSettings } from "./motionBlur";
 
 /** The display transform (v9 · PR 8): an explicit, chosen contract instead of react-three-fiber's inherited default. TWO render paths apply tone mapping (the r3f pipeline for effect-free frames, the composer's ToneMappingEffect for effect frames) and they MUST switch together or they drift. ACES at exposure 1 is the default and matches the previous implicit behaviour exactly: CHANGING THE DEFAULT REBASES EVERY PROJECT. The transition composite's ACES blend pair (acesCurve.ts) deliberately does NOT switch: its seam-exactness rests on the pair being self-inverting, not on matching the display curve (see transitionShader.ts's rationale comment), so a non-ACES display curve only shifts a cross-fade's perceptual midpoint, not its endpoints. */
 
@@ -13,6 +14,8 @@ export type ToneMappingId = "aces" | "agx" | "neutral" | "linear";
 export interface RenderSettings {
   toneMapping: ToneMappingId;
   exposure: number;
+  /** Absent means motion blur is off unless a scene switches it on (see engine/motionBlur.ts). */
+  motionBlur?: MotionBlurSettings;
 }
 
 export const DEFAULT_TONE_MAPPING: ToneMappingId = "aces";
@@ -53,7 +56,8 @@ export function parseRenderSettings(raw: unknown, source: string): RenderSetting
       console.warn(`[render] ${source}: invalid exposure — using 1`);
     }
   }
-  return { toneMapping, exposure };
+  const motionBlur = parseMotionBlurSettings(block.motionBlur, source);
+  return motionBlur ? { toneMapping, exposure, motionBlur } : { toneMapping, exposure };
 }
 
 /** The r3f-pipeline constant for a mode (three 0.185 ships all four). */

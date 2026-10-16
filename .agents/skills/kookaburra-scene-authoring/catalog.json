@@ -22647,6 +22647,12 @@
         "summary": "Stills export: { exclude, marksMs }; absent is one automatic still.",
         "type": "object",
         "ref": "sidecar"
+      },
+      {
+        "id": "motionBlur",
+        "summary": "Motion blur override { enabled, shutterDeg, camera, objects }; each field replaces the project's render.motionBlur.",
+        "type": "object",
+        "ref": "camera"
       }
     ]
   },
@@ -22711,7 +22717,7 @@
       },
       {
         "id": "render",
-        "summary": "Display transform { toneMapping, exposure }; absent is aces at 1.",
+        "summary": "Display transform { toneMapping, exposure } plus motionBlur { enabled, shutterDeg, samples, camera, objects }; absent is aces at 1, no blur.",
         "type": "object"
       },
       {
