@@ -12,7 +12,11 @@
     "lineWidth": 100
   },
   "files": {
-    "includes": ["**", "!src/assets/fonts/*.typeface.json"]
+    "includes": [
+      "**",
+      "!src/assets/fonts/*.typeface.json",
+      "!.agents/skills/kookaburra-scene-authoring/scripts/tests/fixtures/*-vectors.json"
+    ]
   },
   "linter": {
     "enabled": true,

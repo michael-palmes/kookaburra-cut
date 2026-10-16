@@ -1,0 +1,1936 @@
+{
+  "version": 1,
+  "repoint": [
+    {
+      "id": "background-video",
+      "raw": {
+        "version": 1,
+        "name": "Scene",
+        "background": {
+          "type": "video",
+          "src": "assets/bg.mp4"
+        }
+      },
+      "slot": "background",
+      "rel": "assets/clip-edited.mp4",
+      "targetId": null,
+      "expect": {
+        "background": {
+          "type": "video",
+          "src": "assets/clip-edited.mp4"
+        }
+      }
+    },
+    {
+      "id": "background-video-normalised",
+      "raw": {
+        "version": 1,
+        "name": "Scene",
+        "background": {
+          "type": "video",
+          "src": "assets/bg.mp4",
+          "loop": false,
+          "fit": "fit",
+          "parallax": 0.8,
+          "colour": "#fff"
+        }
+      },
+      "slot": "background",
+      "rel": "assets/clip-edited.mp4",
+      "targetId": null,
+      "expect": {
+        "background": {
+          "type": "video",
+          "src": "assets/clip-edited.mp4",
+          "loop": false,
+          "fit": "fit",
+          "parallax": 0.5
+        }
+      }
+    },
+    {
+      "id": "background-video-loop-true-fill",
+      "raw": {
+        "version": 1,
+        "name": "Scene",
+        "background": {
+          "type": "video",
+          "src": "assets/bg.mp4",
+          "loop": true,
+          "fit": "fill",
+          "parallax": 0.2
+        }
+      },
+      "slot": "background",
+      "rel": "assets/clip-edited.mp4",
+      "targetId": null,
+      "expect": {
+        "background": {
+          "type": "video",
+          "src": "assets/clip-edited.mp4",
+          "parallax": 0.2
+        }
+      }
+    },
+    {
+      "id": "background-image-is-null",
+      "raw": {
+        "version": 1,
+        "name": "Scene",
+        "background": {
+          "type": "image",
+          "src": "assets/bg.png"
+        }
+      },
+      "slot": "background",
+      "rel": "assets/clip-edited.mp4",
+      "targetId": null,
+      "expect": null
+    },
+    {
+      "id": "background-absent-is-null",
+      "raw": {
+        "version": 1,
+        "name": "Scene"
+      },
+      "slot": "background",
+      "rel": "assets/clip-edited.mp4",
+      "targetId": null,
+      "expect": null
+    },
+    {
+      "id": "device-first-without-target",
+      "raw": {
+        "version": 1,
+        "name": "Scene",
+        "devices": [
+          {
+            "id": "d1",
+            "model": "iphone-17-pro",
+            "media": {
+              "src": "assets/a.mp4",
+              "kind": "video",
+              "startMs": 400
+            }
+          },
+          {
+            "id": "d2",
+            "model": "iphone-17-pro",
+            "media": {
+              "src": "assets/b.mp4",
+              "kind": "video"
+            }
+          }
+        ]
+      },
+      "slot": "device",
+      "rel": "assets/clip-edited.mp4",
+      "targetId": null,
+      "expect": {
+        "devices.0.media": {
+          "src": "assets/clip-edited.mp4",
+          "kind": "video",
+          "startMs": 400
+        },
+        "devices.1.media": {
+          "src": "assets/b.mp4",
+          "kind": "video"
+        }
+      }
+    },
+    {
+      "id": "device-by-target",
+      "raw": {
+        "version": 1,
+        "name": "Scene",
+        "devices": [
+          {
+            "id": "d1",
+            "model": "iphone-17-pro",
+            "media": {
+              "src": "assets/a.mp4",
+              "kind": "video"
+            }
+          },
+          {
+            "id": "d2",
+            "model": "pixel-9",
+            "media": {
+              "src": "assets/b.mp4",
+              "kind": "video",
+              "fit": "cover"
+            }
+          }
+        ]
+      },
+      "slot": "device",
+      "rel": "assets/clip-edited.mp4",
+      "targetId": "d2",
+      "expect": {
+        "devices.0.media": {
+          "src": "assets/a.mp4",
+          "kind": "video"
+        },
+        "devices.1.media": {
+          "src": "assets/clip-edited.mp4",
+          "kind": "video",
+          "fit": "cover"
+        }
+      }
+    },
+    {
+      "id": "device-stale-target-is-null",
+      "raw": {
+        "version": 1,
+        "name": "Scene",
+        "devices": [
+          {
+            "id": "d1",
+            "model": "iphone-17-pro",
+            "media": {
+              "src": "assets/a.mp4",
+              "kind": "video"
+            }
+          }
+        ]
+      },
+      "slot": "device",
+      "rel": "assets/clip-edited.mp4",
+      "targetId": "gone",
+      "expect": null
+    },
+    {
+      "id": "device-image-becomes-video",
+      "raw": {
+        "version": 1,
+        "name": "Scene",
+        "devices": [
+          {
+            "id": "d1",
+            "model": "iphone-17-pro",
+            "media": {
+              "src": "assets/shot.png",
+              "kind": "image"
+            }
+          }
+        ]
+      },
+      "slot": "device",
+      "rel": "assets/clip-edited.mp4",
+      "targetId": "d1",
+      "expect": {
+        "devices.0.media": {
+          "src": "assets/clip-edited.mp4",
+          "kind": "video"
+        }
+      }
+    },
+    {
+      "id": "device-without-media-is-null",
+      "raw": {
+        "version": 1,
+        "name": "Scene",
+        "devices": [
+          {
+            "id": "d1",
+            "model": "iphone-17-pro"
+          }
+        ]
+      },
+      "slot": "device",
+      "rel": "assets/clip-edited.mp4",
+      "targetId": "d1",
+      "expect": null
+    },
+    {
+      "id": "device-less-doc-is-null",
+      "raw": {
+        "version": 1,
+        "name": "Scene"
+      },
+      "slot": "device",
+      "rel": "assets/clip-edited.mp4",
+      "targetId": null,
+      "expect": null
+    },
+    {
+      "id": "device-cover",
+      "raw": {
+        "version": 1,
+        "name": "Scene",
+        "devices": [
+          {
+            "id": "d1",
+            "model": "iphone-duo",
+            "media": {
+              "src": "assets/in.mp4",
+              "kind": "video"
+            },
+            "coverMedia": {
+              "src": "assets/out.mp4",
+              "kind": "video",
+              "startOn": "open",
+              "startMs": 120
+            }
+          }
+        ]
+      },
+      "slot": "deviceCover",
+      "rel": "assets/clip-edited.mp4",
+      "targetId": "d1",
+      "expect": {
+        "devices.0.media": {
+          "src": "assets/in.mp4",
+          "kind": "video"
+        },
+        "devices.0.coverMedia": {
+          "src": "assets/clip-edited.mp4",
+          "kind": "video",
+          "startOn": "open",
+          "startMs": 120
+        }
+      }
+    },
+    {
+      "id": "device-cover-missing-is-null",
+      "raw": {
+        "version": 1,
+        "name": "Scene",
+        "devices": [
+          {
+            "id": "d1",
+            "model": "iphone-duo",
+            "media": {
+              "src": "assets/in.mp4",
+              "kind": "video"
+            }
+          }
+        ]
+      },
+      "slot": "deviceCover",
+      "rel": "assets/clip-edited.mp4",
+      "targetId": "d1",
+      "expect": null
+    },
+    {
+      "id": "compare-device-creates-override",
+      "raw": {
+        "version": 1,
+        "name": "Scene",
+        "devices": [
+          {
+            "id": "d1",
+            "model": "iphone-17-pro",
+            "media": {
+              "src": "assets/before.mp4",
+              "kind": "video"
+            }
+          }
+        ],
+        "compare": {
+          "b": {}
+        }
+      },
+      "slot": "compareDevice",
+      "rel": "assets/clip-edited.mp4",
+      "targetId": "d1",
+      "expect": {
+        "devices.0.media": {
+          "src": "assets/before.mp4",
+          "kind": "video"
+        },
+        "compare.b.media": {
+          "d1": {
+            "src": "assets/clip-edited.mp4",
+            "kind": "video"
+          }
+        },
+        "compare.b.coverMedia": null
+      }
+    },
+    {
+      "id": "compare-device-without-b",
+      "raw": {
+        "version": 1,
+        "name": "Scene",
+        "devices": [
+          {
+            "id": "d1",
+            "model": "iphone-17-pro",
+            "media": {
+              "src": "assets/before.png",
+              "kind": "image"
+            }
+          }
+        ],
+        "compare": {
+          "value": 0.5
+        }
+      },
+      "slot": "compareDevice",
+      "rel": "assets/clip-edited.mp4",
+      "targetId": "d1",
+      "expect": {
+        "devices.0.media": {
+          "src": "assets/before.png",
+          "kind": "image"
+        },
+        "compare.b.media": {
+          "d1": {
+            "src": "assets/clip-edited.mp4",
+            "kind": "video"
+          }
+        }
+      }
+    },
+    {
+      "id": "compare-device-updates-override",
+      "raw": {
+        "version": 1,
+        "name": "Scene",
+        "devices": [
+          {
+            "id": "d1",
+            "model": "iphone-17-pro",
+            "media": {
+              "src": "assets/before.png",
+              "kind": "image"
+            }
+          }
+        ],
+        "compare": {
+          "b": {
+            "media": {
+              "d1": {
+                "src": "assets/after.mp4",
+                "kind": "video",
+                "startMs": 250
+              }
+            }
+          }
+        }
+      },
+      "slot": "compareDevice",
+      "rel": "assets/clip-edited.mp4",
+      "targetId": "d1",
+      "expect": {
+        "devices.0.media": {
+          "src": "assets/before.png",
+          "kind": "image"
+        },
+        "compare.b.media": {
+          "d1": {
+            "src": "assets/clip-edited.mp4",
+            "kind": "video",
+            "startMs": 250
+          }
+        }
+      }
+    },
+    {
+      "id": "compare-device-drops-malformed-overrides",
+      "raw": {
+        "version": 1,
+        "name": "Scene",
+        "devices": [
+          {
+            "id": "d1",
+            "model": "iphone-17-pro",
+            "media": {
+              "src": "assets/before.mp4",
+              "kind": "video"
+            }
+          },
+          {
+            "id": "d2",
+            "model": "iphone-17-pro",
+            "media": {
+              "src": "assets/other.mp4",
+              "kind": "video"
+            }
+          }
+        ],
+        "compare": {
+          "b": {
+            "media": {
+              "d2": {
+                "src": "assets/other-after.mp4",
+                "kind": "video"
+              },
+              "d9": {
+                "src": "",
+                "kind": "video"
+              },
+              "d8": {
+                "src": "assets/x.mp4",
+                "kind": "gif"
+              }
+            }
+          }
+        }
+      },
+      "slot": "compareDevice",
+      "rel": "assets/clip-edited.mp4",
+      "targetId": "d1",
+      "expect": {
+        "compare.b.media": {
+          "d2": {
+            "src": "assets/other-after.mp4",
+            "kind": "video"
+          },
+          "d1": {
+            "src": "assets/clip-edited.mp4",
+            "kind": "video"
+          }
+        }
+      }
+    },
+    {
+      "id": "compare-device-no-compare-is-null",
+      "raw": {
+        "version": 1,
+        "name": "Scene",
+        "devices": [
+          {
+            "id": "d1",
+            "model": "iphone-17-pro",
+            "media": {
+              "src": "assets/before.mp4",
+              "kind": "video"
+            }
+          }
+        ]
+      },
+      "slot": "compareDevice",
+      "rel": "assets/clip-edited.mp4",
+      "targetId": "d1",
+      "expect": null
+    },
+    {
+      "id": "compare-device-cover",
+      "raw": {
+        "version": 1,
+        "name": "Scene",
+        "devices": [
+          {
+            "id": "d1",
+            "model": "iphone-duo",
+            "media": {
+              "src": "assets/in.mp4",
+              "kind": "video"
+            },
+            "coverMedia": {
+              "src": "assets/out.mp4",
+              "kind": "video"
+            }
+          }
+        ],
+        "compare": {
+          "b": {
+            "coverMedia": {
+              "d1": {
+                "src": "assets/after-out.mp4",
+                "kind": "video"
+              }
+            }
+          }
+        }
+      },
+      "slot": "compareDeviceCover",
+      "rel": "assets/clip-edited.mp4",
+      "targetId": "d1",
+      "expect": {
+        "devices.0.coverMedia": {
+          "src": "assets/out.mp4",
+          "kind": "video"
+        },
+        "compare.b.coverMedia": {
+          "d1": {
+            "src": "assets/clip-edited.mp4",
+            "kind": "video"
+          }
+        },
+        "compare.b.media": null
+      }
+    },
+    {
+      "id": "compare-device-cover-inherits",
+      "raw": {
+        "version": 1,
+        "name": "Scene",
+        "devices": [
+          {
+            "id": "d1",
+            "model": "iphone-duo",
+            "media": {
+              "src": "assets/in.mp4",
+              "kind": "video"
+            },
+            "coverMedia": {
+              "src": "assets/out.mp4",
+              "kind": "video",
+              "fit": "cover"
+            }
+          }
+        ],
+        "compare": {
+          "b": {
+            "themeId": "kookaburra-default"
+          }
+        }
+      },
+      "slot": "compareDeviceCover",
+      "rel": "assets/clip-edited.mp4",
+      "targetId": "d1",
+      "expect": {
+        "devices.0.coverMedia": {
+          "src": "assets/out.mp4",
+          "kind": "video",
+          "fit": "cover"
+        },
+        "compare.b.coverMedia": {
+          "d1": {
+            "src": "assets/clip-edited.mp4",
+            "kind": "video",
+            "fit": "cover"
+          }
+        }
+      }
+    },
+    {
+      "id": "media-by-id-drops-start",
+      "raw": {
+        "version": 1,
+        "name": "Scene",
+        "media": [
+          {
+            "id": "vid1",
+            "kind": "video",
+            "src": "assets/screencast.mp4",
+            "host": "window",
+            "stage": {
+              "position": [
+                0,
+                0,
+                0
+              ],
+              "size": 5.3,
+              "rotationDeg": [
+                0,
+                0,
+                0
+              ]
+            },
+            "overlay": {
+              "position": [
+                0,
+                0
+              ],
+              "size": 0.72,
+              "rotationDeg": 0,
+              "shape": "none",
+              "layer": "below"
+            },
+            "window": {
+              "radius": "macos",
+              "recording": true
+            },
+            "video": {
+              "startMs": 600,
+              "loop": false,
+              "aspect": 1.5
+            }
+          }
+        ]
+      },
+      "slot": "media",
+      "rel": "assets/clip-edited.mp4",
+      "targetId": "vid1",
+      "expect": {
+        "media": [
+          {
+            "id": "vid1",
+            "kind": "video",
+            "src": "assets/clip-edited.mp4",
+            "host": "window",
+            "stage": {
+              "position": [
+                0,
+                0,
+                0
+              ],
+              "size": 5.3,
+              "rotationDeg": [
+                0,
+                0,
+                0
+              ]
+            },
+            "overlay": {
+              "position": [
+                0,
+                0
+              ],
+              "size": 0.72,
+              "rotationDeg": 0,
+              "shape": "none",
+              "layer": "below"
+            },
+            "window": {
+              "radius": "macos",
+              "recording": true
+            },
+            "video": {
+              "loop": false,
+              "aspect": 1.5
+            }
+          }
+        ],
+        "images": null,
+        "videoWindow": null
+      }
+    },
+    {
+      "id": "media-image-becomes-video",
+      "raw": {
+        "version": 1,
+        "name": "Scene",
+        "media": [
+          {
+            "id": "img1",
+            "kind": "image",
+            "src": "assets/shot.png",
+            "host": "overlay"
+          },
+          {
+            "id": "vid1",
+            "kind": "video",
+            "src": "assets/a.mp4"
+          }
+        ]
+      },
+      "slot": "media",
+      "rel": "assets/clip-edited.mp4",
+      "targetId": "img1",
+      "expect": {
+        "media": [
+          {
+            "id": "img1",
+            "kind": "video",
+            "src": "assets/clip-edited.mp4",
+            "host": "overlay",
+            "stage": {
+              "position": [
+                0,
+                0,
+                0
+              ],
+              "size": 1,
+              "rotationDeg": [
+                0,
+                0,
+                0
+              ]
+            },
+            "overlay": {
+              "position": [
+                0,
+                0
+              ],
+              "size": 0.25,
+              "rotationDeg": 0,
+              "shape": "none",
+              "layer": "above"
+            },
+            "video": {}
+          },
+          {
+            "id": "vid1",
+            "kind": "video",
+            "src": "assets/a.mp4",
+            "host": "window",
+            "stage": {
+              "position": [
+                0,
+                0,
+                0
+              ],
+              "size": 5.3,
+              "rotationDeg": [
+                0,
+                0,
+                0
+              ]
+            },
+            "overlay": {
+              "position": [
+                0,
+                0
+              ],
+              "size": 0.72,
+              "rotationDeg": 0,
+              "shape": "none",
+              "layer": "below"
+            },
+            "video": {}
+          }
+        ]
+      }
+    },
+    {
+      "id": "media-entries-normalised",
+      "raw": {
+        "version": 1,
+        "name": "Scene",
+        "media": [
+          {
+            "id": "vid1",
+            "kind": "video",
+            "src": "assets/a.mp4",
+            "host": "nowhere",
+            "stage": {
+              "position": [
+                1,
+                2
+              ],
+              "size": -1,
+              "rotationDeg": [
+                400,
+                -190,
+                180
+              ]
+            },
+            "overlay": {
+              "position": [
+                0.25,
+                -0.5
+              ],
+              "size": 0.4,
+              "rotationDeg": 270,
+              "shape": "circle",
+              "stackOrder": 3
+            },
+            "motion": {
+              "preset": "spin",
+              "amplitude": -1,
+              "hz": 0.5,
+              "durationMs": 0,
+              "degPerSec": -20
+            },
+            "castShadow": true,
+            "window": {
+              "radius": {
+                "custom": 0.2
+              },
+              "border": {
+                "enabled": true
+              },
+              "shadow": "soft"
+            },
+            "video": {
+              "startMs": "soon",
+              "loop": true,
+              "aspect": 0
+            },
+            "extra": "dropped"
+          },
+          {
+            "id": "vid1",
+            "kind": "video",
+            "src": "assets/dup.mp4"
+          },
+          {
+            "id": "img2",
+            "kind": "image",
+            "src": "assets/notes.gif"
+          },
+          {
+            "id": "img3",
+            "src": "assets/still.jpg",
+            "host": "window",
+            "motion": {
+              "preset": "drift"
+            }
+          }
+        ]
+      },
+      "slot": "media",
+      "rel": "assets/clip-edited.mp4",
+      "targetId": "vid1",
+      "expect": {
+        "media": [
+          {
+            "id": "vid1",
+            "kind": "video",
+            "src": "assets/clip-edited.mp4",
+            "host": "window",
+            "stage": {
+              "position": [
+                0,
+                0,
+                0
+              ],
+              "size": 5.3,
+              "rotationDeg": [
+                40,
+                170,
+                180
+              ]
+            },
+            "overlay": {
+              "position": [
+                0.25,
+                -0.5
+              ],
+              "size": 0.4,
+              "rotationDeg": -90,
+              "shape": "circle",
+              "layer": "above",
+              "stackOrder": 3
+            },
+            "motion": {
+              "preset": "none",
+              "degPerSec": -20,
+              "hz": 0.5
+            },
+            "castShadow": true,
+            "window": {
+              "radius": {
+                "custom": 0.2
+              },
+              "border": {
+                "enabled": true
+              }
+            },
+            "video": {
+              "loop": true
+            }
+          },
+          {
+            "id": "img3",
+            "kind": "image",
+            "src": "assets/still.jpg",
+            "host": "overlay",
+            "stage": {
+              "position": [
+                0,
+                0,
+                0
+              ],
+              "size": 1,
+              "rotationDeg": [
+                0,
+                0,
+                0
+              ]
+            },
+            "overlay": {
+              "position": [
+                0,
+                0
+              ],
+              "size": 0.25,
+              "rotationDeg": 0,
+              "shape": "none",
+              "layer": "above"
+            },
+            "motion": {
+              "preset": "drift"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "media-stale-target-is-null",
+      "raw": {
+        "version": 1,
+        "name": "Scene",
+        "media": [
+          {
+            "id": "vid1",
+            "kind": "video",
+            "src": "assets/a.mp4"
+          }
+        ]
+      },
+      "slot": "media",
+      "rel": "assets/clip-edited.mp4",
+      "targetId": "gone",
+      "expect": null
+    },
+    {
+      "id": "media-without-target-takes-the-window",
+      "raw": {
+        "version": 1,
+        "name": "Scene",
+        "media": [
+          {
+            "id": "img1",
+            "kind": "image",
+            "src": "assets/shot.png"
+          },
+          {
+            "id": "vid1",
+            "kind": "video",
+            "src": "assets/plain.mp4"
+          },
+          {
+            "id": "vid2",
+            "kind": "video",
+            "src": "assets/win.mp4",
+            "window": {
+              "radius": "subtle"
+            }
+          }
+        ]
+      },
+      "slot": "media",
+      "rel": "assets/clip-edited.mp4",
+      "targetId": null,
+      "expect": {
+        "media": [
+          {
+            "id": "img1",
+            "kind": "image",
+            "src": "assets/shot.png",
+            "host": "stage",
+            "stage": {
+              "position": [
+                0,
+                0,
+                0
+              ],
+              "size": 1,
+              "rotationDeg": [
+                0,
+                0,
+                0
+              ]
+            },
+            "overlay": {
+              "position": [
+                0,
+                0
+              ],
+              "size": 0.25,
+              "rotationDeg": 0,
+              "shape": "none",
+              "layer": "above"
+            }
+          },
+          {
+            "id": "vid1",
+            "kind": "video",
+            "src": "assets/plain.mp4",
+            "host": "window",
+            "stage": {
+              "position": [
+                0,
+                0,
+                0
+              ],
+              "size": 5.3,
+              "rotationDeg": [
+                0,
+                0,
+                0
+              ]
+            },
+            "overlay": {
+              "position": [
+                0,
+                0
+              ],
+              "size": 0.72,
+              "rotationDeg": 0,
+              "shape": "none",
+              "layer": "below"
+            },
+            "video": {}
+          },
+          {
+            "id": "vid2",
+            "kind": "video",
+            "src": "assets/clip-edited.mp4",
+            "host": "window",
+            "stage": {
+              "position": [
+                0,
+                0,
+                0
+              ],
+              "size": 5.3,
+              "rotationDeg": [
+                0,
+                0,
+                0
+              ]
+            },
+            "overlay": {
+              "position": [
+                0,
+                0
+              ],
+              "size": 0.72,
+              "rotationDeg": 0,
+              "shape": "none",
+              "layer": "below"
+            },
+            "window": {
+              "radius": "subtle"
+            },
+            "video": {}
+          }
+        ]
+      }
+    },
+    {
+      "id": "video-window-slot-authored",
+      "raw": {
+        "version": 1,
+        "name": "Scene",
+        "media": [
+          {
+            "id": "vid2",
+            "kind": "video",
+            "src": "assets/win.mp4",
+            "window": {
+              "radius": "sharp"
+            }
+          }
+        ]
+      },
+      "slot": "videoWindow",
+      "rel": "assets/clip-edited.mp4",
+      "targetId": null,
+      "expect": {
+        "media": [
+          {
+            "id": "vid2",
+            "kind": "video",
+            "src": "assets/clip-edited.mp4",
+            "host": "window",
+            "stage": {
+              "position": [
+                0,
+                0,
+                0
+              ],
+              "size": 5.3,
+              "rotationDeg": [
+                0,
+                0,
+                0
+              ]
+            },
+            "overlay": {
+              "position": [
+                0,
+                0
+              ],
+              "size": 0.72,
+              "rotationDeg": 0,
+              "shape": "none",
+              "layer": "below"
+            },
+            "window": {
+              "radius": "sharp"
+            },
+            "video": {}
+          }
+        ]
+      }
+    },
+    {
+      "id": "video-window-slot-without-window-is-null",
+      "raw": {
+        "version": 1,
+        "name": "Scene",
+        "media": [
+          {
+            "id": "vid1",
+            "kind": "image",
+            "src": "assets/a.png"
+          }
+        ]
+      },
+      "slot": "videoWindow",
+      "rel": "assets/clip-edited.mp4",
+      "targetId": null,
+      "expect": null
+    },
+    {
+      "id": "legacy-video-window-promotes",
+      "raw": {
+        "version": 1,
+        "name": "Scene",
+        "images": [
+          {
+            "id": "img1",
+            "src": "assets/a.png",
+            "host": "overlay",
+            "overlay": {
+              "position": [
+                0.1,
+                0.2
+              ],
+              "size": 0.3,
+              "rotationDeg": -540,
+              "layer": "below"
+            },
+            "motion": {
+              "preset": "float",
+              "amplitude": 0.1
+            },
+            "castShadow": false
+          },
+          {
+            "id": "bad",
+            "src": "assets/movie.mp4"
+          }
+        ],
+        "videoWindow": {
+          "media": {
+            "src": "assets/rec.mp4",
+            "startMs": 800,
+            "loop": true,
+            "aspect": 1.6
+          },
+          "offset": [
+            0.7,
+            -2
+          ],
+          "scale": 1.4,
+          "radius": "rounded",
+          "recording": false,
+          "border": {
+            "enabled": true,
+            "width": 0.01
+          },
+          "shadow": {
+            "opacity": 0.3,
+            "blur": 0.1,
+            "offset": [
+              0,
+              -0.04
+            ]
+          },
+          "motion": {
+            "preset": "float"
+          }
+        }
+      },
+      "slot": "videoWindow",
+      "rel": "assets/clip-edited.mp4",
+      "targetId": null,
+      "expect": {
+        "media": [
+          {
+            "id": "img1",
+            "kind": "image",
+            "src": "assets/a.png",
+            "host": "overlay",
+            "stage": {
+              "position": [
+                0,
+                0,
+                0
+              ],
+              "size": 1,
+              "rotationDeg": [
+                0,
+                0,
+                0
+              ]
+            },
+            "overlay": {
+              "position": [
+                0.1,
+                0.2
+              ],
+              "size": 0.3,
+              "rotationDeg": 180,
+              "shape": "none",
+              "layer": "below"
+            },
+            "motion": {
+              "preset": "float",
+              "amplitude": 0.1
+            },
+            "castShadow": false
+          },
+          {
+            "id": "videoWindow",
+            "kind": "video",
+            "src": "assets/clip-edited.mp4",
+            "host": "window",
+            "stage": {
+              "position": [
+                0,
+                0,
+                0
+              ],
+              "size": 5.3,
+              "rotationDeg": [
+                0,
+                0,
+                0
+              ]
+            },
+            "overlay": {
+              "position": [
+                1.4,
+                -2
+              ],
+              "size": 1,
+              "rotationDeg": 0,
+              "shape": "none",
+              "layer": "below"
+            },
+            "window": {
+              "radius": "rounded",
+              "recording": false,
+              "border": {
+                "enabled": true,
+                "width": 0.01
+              },
+              "shadow": {
+                "opacity": 0.3,
+                "blur": 0.1,
+                "offset": [
+                  0,
+                  -0.04
+                ]
+              }
+            },
+            "video": {
+              "loop": true,
+              "aspect": 1.6
+            },
+            "motion": {
+              "preset": "float"
+            }
+          }
+        ],
+        "images": null,
+        "videoWindow": null
+      }
+    },
+    {
+      "id": "legacy-video-window-defaults",
+      "raw": {
+        "version": 1,
+        "name": "Scene",
+        "videoWindow": {
+          "media": {
+            "src": "assets/rec.mp4"
+          }
+        }
+      },
+      "slot": "media",
+      "rel": "assets/clip-edited.mp4",
+      "targetId": "videoWindow",
+      "expect": {
+        "media": [
+          {
+            "id": "videoWindow",
+            "kind": "video",
+            "src": "assets/clip-edited.mp4",
+            "host": "window",
+            "stage": {
+              "position": [
+                0,
+                0,
+                0
+              ],
+              "size": 5.3,
+              "rotationDeg": [
+                0,
+                0,
+                0
+              ]
+            },
+            "overlay": {
+              "position": [
+                0,
+                0
+              ],
+              "size": 0.72,
+              "rotationDeg": 0,
+              "shape": "none",
+              "layer": "below"
+            },
+            "window": {
+              "radius": "macos"
+            },
+            "video": {}
+          }
+        ],
+        "videoWindow": null
+      }
+    },
+    {
+      "id": "legacy-image-by-id",
+      "raw": {
+        "version": 1,
+        "name": "Scene",
+        "images": [
+          {
+            "id": "img1",
+            "src": "assets/a.png"
+          },
+          {
+            "id": "img2",
+            "src": "assets/b.webp",
+            "stage": {
+              "position": [
+                1,
+                0,
+                0
+              ],
+              "size": 2
+            }
+          }
+        ]
+      },
+      "slot": "media",
+      "rel": "assets/clip-edited.mp4",
+      "targetId": "img2",
+      "expect": {
+        "media": [
+          {
+            "id": "img1",
+            "kind": "image",
+            "src": "assets/a.png",
+            "host": "stage",
+            "stage": {
+              "position": [
+                0,
+                0,
+                0
+              ],
+              "size": 1,
+              "rotationDeg": [
+                0,
+                0,
+                0
+              ]
+            },
+            "overlay": {
+              "position": [
+                0,
+                0
+              ],
+              "size": 0.25,
+              "rotationDeg": 0,
+              "shape": "none",
+              "layer": "above"
+            }
+          },
+          {
+            "id": "img2",
+            "kind": "video",
+            "src": "assets/clip-edited.mp4",
+            "host": "stage",
+            "stage": {
+              "position": [
+                1,
+                0,
+                0
+              ],
+              "size": 2,
+              "rotationDeg": [
+                0,
+                0,
+                0
+              ]
+            },
+            "overlay": {
+              "position": [
+                0,
+                0
+              ],
+              "size": 0.25,
+              "rotationDeg": 0,
+              "shape": "none",
+              "layer": "above"
+            },
+            "video": {}
+          }
+        ],
+        "images": null
+      }
+    },
+    {
+      "id": "media-not-an-array-uses-legacy",
+      "raw": {
+        "version": 1,
+        "name": "Scene",
+        "media": "nope",
+        "images": [
+          {
+            "id": "img1",
+            "src": "assets/a.png"
+          }
+        ]
+      },
+      "slot": "media",
+      "rel": "assets/clip-edited.mp4",
+      "targetId": "img1",
+      "expect": {
+        "media": [
+          {
+            "id": "img1",
+            "kind": "video",
+            "src": "assets/clip-edited.mp4",
+            "host": "stage",
+            "stage": {
+              "position": [
+                0,
+                0,
+                0
+              ],
+              "size": 1,
+              "rotationDeg": [
+                0,
+                0,
+                0
+              ]
+            },
+            "overlay": {
+              "position": [
+                0,
+                0
+              ],
+              "size": 0.25,
+              "rotationDeg": 0,
+              "shape": "none",
+              "layer": "above"
+            },
+            "video": {}
+          }
+        ],
+        "images": null
+      }
+    },
+    {
+      "id": "authored-media-wins-over-legacy",
+      "raw": {
+        "version": 1,
+        "name": "Scene",
+        "media": [
+          {
+            "id": "vid1",
+            "kind": "video",
+            "src": "assets/a.mp4"
+          }
+        ],
+        "images": [
+          {
+            "id": "img1",
+            "src": "assets/a.png"
+          }
+        ],
+        "videoWindow": {
+          "media": {
+            "src": "assets/rec.mp4"
+          }
+        }
+      },
+      "slot": "media",
+      "rel": "assets/clip-edited.mp4",
+      "targetId": "vid1",
+      "expect": {
+        "media": [
+          {
+            "id": "vid1",
+            "kind": "video",
+            "src": "assets/clip-edited.mp4",
+            "host": "window",
+            "stage": {
+              "position": [
+                0,
+                0,
+                0
+              ],
+              "size": 5.3,
+              "rotationDeg": [
+                0,
+                0,
+                0
+              ]
+            },
+            "overlay": {
+              "position": [
+                0,
+                0
+              ],
+              "size": 0.72,
+              "rotationDeg": 0,
+              "shape": "none",
+              "layer": "below"
+            },
+            "video": {}
+          }
+        ],
+        "images": null,
+        "videoWindow": null
+      }
+    }
+  ],
+  "follow": [
+    {
+      "id": "manual",
+      "raw": {
+        "version": 1,
+        "name": "Scene",
+        "duration": {
+          "mode": "manual"
+        },
+        "devices": [
+          {
+            "id": "d1",
+            "model": "x",
+            "media": {
+              "src": "assets/a.mp4",
+              "kind": "video"
+            }
+          }
+        ]
+      },
+      "expect": []
+    },
+    {
+      "id": "no-duration",
+      "raw": {
+        "version": 1,
+        "name": "Scene",
+        "devices": [
+          {
+            "id": "d1",
+            "model": "x",
+            "media": {
+              "src": "assets/a.mp4",
+              "kind": "video"
+            }
+          }
+        ]
+      },
+      "expect": []
+    },
+    {
+      "id": "every-device-video",
+      "raw": {
+        "version": 1,
+        "name": "Scene",
+        "duration": {
+          "mode": "follow-media"
+        },
+        "devices": [
+          {
+            "id": "d1",
+            "model": "iphone-duo",
+            "media": {
+              "src": "assets/in.mp4",
+              "kind": "video"
+            },
+            "coverMedia": {
+              "src": "assets/out.mp4",
+              "kind": "video"
+            }
+          },
+          {
+            "id": "d2",
+            "model": "x",
+            "media": {
+              "src": "assets/shot.png",
+              "kind": "image"
+            }
+          },
+          {
+            "id": "d3",
+            "model": "x",
+            "media": {
+              "src": "assets/third.mp4",
+              "kind": "video"
+            }
+          }
+        ],
+        "compare": {
+          "b": {
+            "media": {
+              "d2": {
+                "src": "assets/after.mp4",
+                "kind": "video"
+              },
+              "d1": {
+                "src": "assets/after.png",
+                "kind": "image"
+              }
+            },
+            "coverMedia": {
+              "d1": {
+                "src": "assets/after-out.mp4",
+                "kind": "video"
+              }
+            }
+          }
+        }
+      },
+      "expect": [
+        "assets/in.mp4",
+        "assets/out.mp4",
+        "assets/after-out.mp4",
+        "assets/after.mp4",
+        "assets/third.mp4"
+      ]
+    },
+    {
+      "id": "pinned-device",
+      "raw": {
+        "version": 1,
+        "name": "Scene",
+        "duration": {
+          "mode": "follow-media",
+          "sourceDeviceId": "d2"
+        },
+        "devices": [
+          {
+            "id": "d1",
+            "model": "x",
+            "media": {
+              "src": "assets/a.mp4",
+              "kind": "video"
+            }
+          },
+          {
+            "id": "d2",
+            "model": "x",
+            "media": {
+              "src": "assets/b.mp4",
+              "kind": "video"
+            }
+          }
+        ]
+      },
+      "expect": [
+        "assets/b.mp4"
+      ]
+    },
+    {
+      "id": "stale-pin-falls-back",
+      "raw": {
+        "version": 1,
+        "name": "Scene",
+        "duration": {
+          "mode": "follow-media",
+          "sourceDeviceId": "gone"
+        },
+        "devices": [
+          {
+            "id": "d1",
+            "model": "x",
+            "media": {
+              "src": "assets/a.mp4",
+              "kind": "video"
+            }
+          },
+          {
+            "id": "d2",
+            "model": "x",
+            "media": {
+              "src": "assets/b.mp4",
+              "kind": "video"
+            }
+          }
+        ]
+      },
+      "expect": [
+        "assets/a.mp4",
+        "assets/b.mp4"
+      ]
+    },
+    {
+      "id": "media-pin",
+      "raw": {
+        "version": 1,
+        "name": "Scene",
+        "duration": {
+          "mode": "follow-media",
+          "source": "media",
+          "sourceMediaId": "vid2"
+        },
+        "devices": [
+          {
+            "id": "d1",
+            "model": "x",
+            "media": {
+              "src": "assets/a.mp4",
+              "kind": "video"
+            }
+          }
+        ],
+        "media": [
+          {
+            "id": "vid1",
+            "kind": "video",
+            "src": "assets/v1.mp4"
+          },
+          {
+            "id": "vid2",
+            "kind": "video",
+            "src": "assets/v2.mp4"
+          }
+        ]
+      },
+      "expect": [
+        "assets/v2.mp4"
+      ]
+    },
+    {
+      "id": "media-pin-without-id",
+      "raw": {
+        "version": 1,
+        "name": "Scene",
+        "duration": {
+          "mode": "follow-media",
+          "source": "media"
+        },
+        "media": [
+          {
+            "id": "vid1",
+            "kind": "video",
+            "src": "assets/v1.mp4"
+          }
+        ]
+      },
+      "expect": []
+    },
+    {
+      "id": "media-pin-to-a-still",
+      "raw": {
+        "version": 1,
+        "name": "Scene",
+        "duration": {
+          "mode": "follow-media",
+          "source": "media",
+          "sourceMediaId": "img1"
+        },
+        "media": [
+          {
+            "id": "img1",
+            "kind": "image",
+            "src": "assets/a.png"
+          }
+        ]
+      },
+      "expect": []
+    },
+    {
+      "id": "legacy-video-window-source",
+      "raw": {
+        "version": 1,
+        "name": "Scene",
+        "duration": {
+          "mode": "follow-media",
+          "source": "videoWindow"
+        },
+        "videoWindow": {
+          "media": {
+            "src": "assets/rec.mp4"
+          }
+        }
+      },
+      "expect": [
+        "assets/rec.mp4"
+      ]
+    },
+    {
+      "id": "media-videos-without-devices",
+      "raw": {
+        "version": 1,
+        "name": "Scene",
+        "duration": {
+          "mode": "follow-media"
+        },
+        "media": [
+          {
+            "id": "img1",
+            "kind": "image",
+            "src": "assets/a.png"
+          },
+          {
+            "id": "vid1",
+            "kind": "video",
+            "src": "assets/v1.mp4"
+          },
+          {
+            "id": "vid2",
+            "kind": "video",
+            "src": "assets/v2.mp4"
+          }
+        ],
+        "background": {
+          "type": "video",
+          "src": "assets/bg.mp4"
+        }
+      },
+      "expect": [
+        "assets/v1.mp4",
+        "assets/v2.mp4"
+      ]
+    },
+    {
+      "id": "background-last",
+      "raw": {
+        "version": 1,
+        "name": "Scene",
+        "duration": {
+          "mode": "follow-media"
+        },
+        "devices": [
+          {
+            "id": "d1",
+            "model": "x",
+            "media": {
+              "src": "assets/shot.png",
+              "kind": "image"
+            }
+          }
+        ],
+        "background": {
+          "type": "video",
+          "src": "assets/bg.mp4"
+        }
+      },
+      "expect": [
+        "assets/bg.mp4"
+      ]
+    },
+    {
+      "id": "nothing-to-follow",
+      "raw": {
+        "version": 1,
+        "name": "Scene",
+        "duration": {
+          "mode": "follow-media"
+        },
+        "background": {
+          "type": "image",
+          "src": "assets/bg.png"
+        }
+      },
+      "expect": []
+    },
+    {
+      "id": "duration-not-an-object",
+      "raw": {
+        "version": 1,
+        "name": "Scene",
+        "duration": "follow-media"
+      },
+      "expect": []
+    }
+  ]
+}
