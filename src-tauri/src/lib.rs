@@ -2,6 +2,7 @@
 
 mod beats;
 mod bridge;
+mod bridge_health;
 mod claude_update;
 pub mod cli;
 mod concurrency;
@@ -1438,6 +1439,7 @@ macro_rules! kookaburra_handler {
             bridge::set_last_load,
             bridge::bridge_write_sheet,
             bridge::bridge_check_assets,
+            bridge::bridge_instance,
             render_win::ensure_render_window,
             render_win::close_render_window,
             render_win::render_heartbeat,
@@ -1630,6 +1632,7 @@ pub fn run() {
                     park_background_window(&main);
                 }
             }
+            bridge::init(app.handle());
             bridge::spawn_heartbeat(app.handle().clone());
             bridge::spawn_native_bridge(app.handle().clone());
             // The headless CLI resolves app data without Tauri; a mismatch would split the tap frame cache and settings.
