@@ -425,9 +425,11 @@ class KbTestCase(unittest.TestCase):
             if k in self.env:
                 os.environ[k] = self.env[k]
         os.environ.pop("CLAUDE_PROJECT_DIR", None)
-        from kblib import catalog
+        from kblib import bridge, catalog, identity
 
         catalog.reset_cache()
+        bridge.bind(None)
+        identity.bind(None)
 
     def tearDown(self) -> None:
         for k, v in self._saved_env.items():
