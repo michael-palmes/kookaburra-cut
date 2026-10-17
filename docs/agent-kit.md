@@ -128,7 +128,8 @@ under the project lock (`kblib.lock`) and re-validated after writing.
 | `context` | The SessionStart text: status, scene roster, last load errors, the five rules that matter most (under 4 KB) |
 | `scenes` | Roster: index, stem, name, duration, transition, text, overrides (replaces `inspect.py`) |
 | `check [--app] [--render] [files...]` | Static checks (below); `--app` adds the running app's real compile, load and font checks; `--render` also renders each scene once; `check film ...` hands its arguments to `kblib/film` (`run(ctx, rest)`) |
-| `capture [--scene S] [--at T] [--aspect A] [--frames S@T,...] [--sheet]` | Frames from the running app; prints PNG paths; `--sheet` adds one contact-sheet PNG |
+| `capture [--scene S] [--at T] [--aspect A] [--frames S@T,...] [--sheet] [--width N \| --scale F] [--probe X,Y[,X,Y...]] [--out DIR \| --no-copy]` | Frames from the running app (one frame native, several or a sheet at a 1280 px long edge); prints the paths of copies in `.kb/captures/`; `--sheet` adds one contact-sheet PNG; `--probe` returns exact pixel values ("The capture service") |
+| `debug contexts`, `debug lose-context [--window render\|editor]` | Every window's WebGL contexts; force a context loss to exercise the stall recovery (the editor only in dev builds) |
 | `scene add <stem> [--preset P \| --copy S] [--after S \| --at N] [--duration MS] [--name N]` | New scene, unique stem and `defineScene` id, registered once; presets insert through the app when it runs, else copy from the app bundle |
 | `scene duplicate S`, `scene move S --to N`, `scene remove S`, `scene set S [--duration MS] [--transition TYPE[:MS]]` | Manifest-safe scene operations; remove moves files to the macOS Trash |
 | `doc S get [path]`, `doc S set path value`, `doc S unset path`, `doc S merge JSON` | Sidecar edits by dotted path; values parsed as JSON else string; enums validated against the catalogue; `get` prints the raw value (`--json`: `{ file, path, value }`) |
@@ -156,9 +157,15 @@ As built (`scripts/kblib/`):
   the stem and id from the name), else copies from the bundle; an existing unregistered
   `scenes/<stem>.tsx` is registered rather than overwritten.
 - Bridge waits default to 120 s for captures and 300 s for `check` (600 s with
-  `--render`). On a large media-heavy project in a dev build a cold capture answers in
-  about 10 s, a warm one or an aspect switch in about 2 s, and a cold 48-frame sheet in
-  about a minute.
+  `--render`), queue included: kb sends the end of that wait as `deadlineAtMs`, and the
+  app drops or stops a request whose client gave up. On a large media-heavy project in a
+  dev build a cold capture answers in about 10 s, a warm one or an aspect switch in about
+  2 s; a 48-frame sheet at the default 1280 px costs a ninth of the old 4K one.
+- `kb capture` copies its PNGs into `.kb/captures/<YYYYmmdd-HHMMSS>-<agent>/` with
+  readable names (`05-feature@1.5s.png`, `sheet.png`); `path`, `paths`, each frame's `path`
+  and `sheetPath` name the copies and `bridgePath`, `bridgePaths`, `bridgeSheetPath` keep
+  the app's originals (pruned after an hour). `--out DIR` copies there instead, `--no-copy`
+  skips it; the newest 40 folders and at most 1 GB are kept.
 - `kb.py` never writes bytecode, and fails open for hooks when its modules are missing.
 - `--json` is one envelope everywhere (`ok_envelope`, or `emit_ok` in modules not handed a
   context). The old bare arrays moved under keys: `history` to `checkpoints`, `fonts safe` to
@@ -510,8 +517,9 @@ identity, role, effective root and `rootSource` (the app's "not found" errors na
   matches, the rule the native loop already used. One predicate (`claimable`) serves the
   render-window claim, the native loop and the pending count the editor uses to spawn the
   render window, so no instance keeps a window alive for another's requests. Stale
-  (120 s) requests are deleted by any serving instance whoever they were for, and an
-  instance that does not serve never touches `requests/`.
+  requests (past `deadlineAtMs`, at most 15 min after sending; 120 s without one) are
+  deleted by any serving instance whoever they were for, and an instance that does not
+  serve never touches `requests/`.
 - **Responses** carry `servedBy: { pid, bundleId, build, appVersion, workspaceRoot }`
   (stamped by Rust on render-window answers, native answers and parse errors; a body that
   already has one keeps it). kb discards an answer whose root is not the project's
@@ -521,7 +529,8 @@ identity, role, effective root and `rootSource` (the app's "not found" errors na
 - **Health.** The serving instance's heartbeat carries `health`: queue depth and order,
   the in-flight request, render-window liveness and beat age, recycles, the GPU state
   (`stalled`, `stalledUntilMs`, `wedged`), live WebGL contexts per window, and per-client
-  usage. kb prints the queue position and an estimate while it waits.
+  usage. kb prints the queue position and an estimate while it waits (shape and rules in
+  "The capture service").
 
 ### Heartbeat: `_bridge/apps/<pid>.json` and `app.json`
 
@@ -551,7 +560,7 @@ throttled while the app is hidden), removed on exit; autorun instances never wri
   "playheadMs": 61000,
   "exporting": false,
   "playing": false,
-  "kinds": ["capture", "check", "fonts", "insertPreset", "mediaChanged", "openEdit"],
+  "kinds": ["capture", "check", "fonts", "insertPreset", "mediaChanged", "openEdit", "debug"],
   "cliPath": "/Applications/Kookaburra Cut.app/Contents/MacOS/kookaburra-cut",
   "cliVersion": 1,
   "lastLoad": {
@@ -574,8 +583,9 @@ Two more fields locate the presets: `presetsDir` (holds `<slug>/`) and
 reports `lastLoad` after every load attempt (`set_last_load`); `warnings` includes
 healed scene ids and dropped LUTs. `rootSource` is `settings`, `env`
 (`KOOKABURRA_WORKSPACE_ROOT`) or `none`; `checkout` is `{ path, worktree }` for a debug
-build, else null. `health` (serving instances only, `src-tauri/src/bridge_health.rs`)
-and `exportJob` are null until their features fill them.
+build, else null. `health` (serving instances only, `src-tauri/src/bridge_health.rs`, shape
+in "The capture service") is null on a passive instance; `exportJob` is null until the
+bridge export fills it.
 
 `kb` treats an instance as running when `updatedAtMs` is under 30 s old and the pid is
 alive. It never uses `pgrep` (it matches unrelated processes and misses others). Its
@@ -598,8 +608,11 @@ lands in `responses/<id>.json`. A request without `kind` is a v1 capture.
   "project": "ws:<slug>", "requestedAtMs": 1792020000000,
   "workspaceRoot": "/Users/x/Kookaburra Cut", "projectPath": "/Users/x/Kookaburra Cut/<slug>",
   "instancePid": 87186, "client": "session-1a2b3c4d",
+  "deadlineAtMs": 1792020120000, "retryOf": null,
   "scene": "03-feature-checks", "at": 1.5, "aspect": "9:16",
   "frames": [{ "scene": "3", "at": 2.0 }], "sheet": true,
+  "width": 1280, "scale": null, "probe": [[100, 200], [640, 360]],
+  "op": "lose-context", "window": "render",
   "render": false,
   "refs": ["Menlo@400"], "listFamilies": false,
   "preset": "title", "position": 4, "name": "Highlights" }
@@ -610,21 +623,26 @@ stem, and an unparseable request gets an immediate error response from a serving
 instance. A request without `kind` and with `version` below 2 is answered as
 `version: 1`, so old kits keep working. The address fields are optional (old kits send
 none); kb adds `workspaceRoot` to every request, `projectPath` when the request is about
-its own project, `instancePid` unless the elected app is an older one, and `client` when
-the caller names one. Unknown fields are ignored.
+its own project, `instancePid` unless the elected app is an older one, and `client` (the
+caller's name) and `deadlineAtMs` (when it stops waiting) always. Unknown fields are
+ignored.
 
 Every response carries `{ "version": 2, "id", "ok", "error"?, "busy"?, "needsTrust"?,
 "servedBy" }` plus its kind's payload. `busy` applies to every kind except `fonts` while
 exporting. kb retries a busy answer until its timeout, then exits 3 (`app-busy`); an
 unclaimed or unanswered request exits 3 (`bridge-timeout`); `needsTrust` exits 2
-(`needs-trust`). `kb capture` and `kb check` print `served by Kookaburra Cut ... (build,
-pid, bundle id)` on stderr.
+(`needs-trust`). The capture service's answers (`gpuStalled`, `throttled`, `tooLarge`,
+`cancelled`, `transient`) are in "The capture service". `kb capture` and `kb check` print
+`served by Kookaburra Cut ... (build, pid, bundle id)` on stderr.
 
-- `capture`: `path` (first frame), `paths`, `frames: [{ scene, at, tMs, path, index }]`
-  (`scene` is the resolved stem, `at` seconds into it), a top-level `tMs`, `sheetPath`
-  when asked, `project`, `format`, `surface: "render-window"`. Files are `<id>.png`,
-  `<id>-N.png` and `<id>-sheet.png`; at most 48 frames. `aspect` overrides the editor's
-  aspect for this request only; an unknown aspect is an error.
+- `capture`: `path` (first frame), `paths`, `frames: [{ scene, at, tMs, path, index,
+  probes? }]` (`scene` is the resolved stem, `at` seconds into it), a top-level `tMs`,
+  `sheetPath` when asked, `project`, `format` (the aspect's name), `size` and `nativeSize`
+  (`{ width, height }`), `timing: { queuedMs, renderMs, perFrameMs }`,
+  `surface: "render-window"`. Files are `<id>.png`, `<id>-N.png` and `<id>-sheet.png`; at
+  most 48 frames. `aspect` overrides the editor's aspect for this request only; an
+  unknown aspect, a `scale` outside (0, 1] or a `width` that is not a whole number of
+  pixels is an error.
 - `check`: `project`, `scenes: [{ index, file, id, ok, phase?, error?, warnings }]`,
   `fonts: [{ ref, ok, error?, fallback? }]` (passing refs included),
   `assets: [{ path, ok, error? }]`, `warnings`, `rendered`. Built from a real load in
@@ -665,6 +683,119 @@ waits until it times out.
   "retargeted" | "focused", projectOpen }`; `focused` only raises the window (the
   editor keeps its state). Busy while exporting or while the editor renders another
   edit; an unresolvable `scene` or an unreadable doc is an error.
+- `debug` routes by `op`: `contexts` and a `lose-context` with `window: "editor"` are
+  served here, from the reported censuses and an event to the main window;
+  `lose-context` on the render window (the default) and the dev-only `spawn-contexts`
+  (`n`, at most 32) go to the render window. Details in "The capture service".
+
+### The capture service
+
+The render window's queue, sizing, stall recovery and retention. Code:
+`src-tauri/src/capture_service.rs` (pure parts tested there), `render_win.rs`,
+`src/render/bridgeService.ts`, `bridgeRequests.ts`, `src/engine/glContexts.ts`; kb's side
+is `kblib/queue.py` and `kblib/capture.py`. Bridge captures are never baselines.
+
+- **Sizing.** One frame renders at the aspect's native size; several frames or a sheet at
+  a 1280 px long edge. `width` (literal pixels) or `scale` (in (0, 1]) overrides; never
+  upscaled, even dimensions, at least 64 on the short edge, the aspect's name kept. A
+  probe without a size renders native. The store keeps the native format, so layout and
+  safe areas are the export's; effects defined in pixels (bloom spread, blurs, hairlines)
+  rasterise at the capture size. Thumbs use the same rule at 640 wide.
+- **Probes.** `probe: [[x, y], ...]`, at most 64 points in the returned image (origin top
+  left; out of bounds is an error), sampled from the readback before the PNG is saved:
+  `{ x, y, rgba: [r, g, b, a], hex }` per point per frame. Exact against the PNG and what
+  the exporter hands ffmpeg at the same time and size (sRGB, after tone mapping); not
+  exact against a decoded MP4 or across sizes near edges.
+- **Cost.** A capture costs frames x ceil(width x height / 921 600) units (a 4K frame is
+  9, 1280x720 is 1); other kinds cost 1. A capture over 144 units is answered
+  `{ ok: false, tooLarge: true, units, maxUnits, hint }` (kb exit 1, `too-large`).
+- **Fair queue.** Among this instance's claimable render requests the window serves the
+  client with the fewest units in the last minute first, then its oldest (`retryOf` keeps
+  the original's place), ties by the oldest id. A client's fifth waiting capture or check,
+  or one that would take it past 240 units in a minute (counting what it already queued),
+  is answered at once `{ ok: false, throttled: true, retryAfterMs }`; kb waits that long
+  within its deadline and resends, else exits 3 (`throttled`).
+- **Deadlines and cancellation.** Freshness is `deadlineAtMs` capped at 15 min after
+  sending, else the 120 s rule; with the `deadline` feature kb's claim window is its whole
+  timeout (110 s for an older app). Before each frame the window calls
+  `bridge_request_live(id, frame)`: when `.claimed/<id>.json` is gone (kb timed out) or
+  the deadline passed it stops with `{ cancelled: true }`, and with `{ busy: true }` when
+  an export started.
+- **Stalls.** A `GpuStallError` (`readback.ts`: `contextLost` or `blankReadback`, the same
+  message as before), "Export bridge not mounted" or a stage canvas that failed to start is
+  a stall on every path: a capture or check answers `{ ok: false, gpuStalled: true,
+  reason }` once (a render check stops at the first), and thumbs and posters report it
+  (posters go back in their queue). Rust fills in `recycled`, `retryAfterMs`, `wedged`
+  and `hint`, then destroys the window 200 ms later (`destroy`, so a hung page goes too)
+  and answers any request still in flight. An unexpected WebGL loss the window sees
+  outside a request (`render_report_gpu_event`) recycles it as well; each window's stall
+  counts once. Backoff by recycles in the last 10 min: the 1st waits 0 s, the 2nd 15 s,
+  the 3rd 60 s, and no window is created meanwhile (requests stay queued). A stall after
+  three is **wedged**: no window, and the native loop answers this instance's render
+  requests at once with `{ gpuStalled: true, wedged: true }` until 10 quiet minutes pass
+  or the editor's Retry captures calls `capture_service_reset`. A debug lose-context
+  recycles without counting. kb prints `kb: GPU stalled, render window recycled; retrying
+  once`, waits `max(retryAfterMs, 2 s)` and resends with `retryOf`; a second stall exits 3
+  (`gpu-stalled`), wedged exits 2 (`gpu-wedged`).
+- **Watchdog.** A request in flight with no render beat for 45 s is answered
+  `{ gpuStalled: true, reason: "hung" }` and the window destroyed. A beat whose `seq`
+  dropped with no window created in between (wry reloaded the page after a WebContent
+  kill) answers the request in flight `{ ok: false, transient: true, reason:
+  "contentReload" }` (kb exit 3).
+- **Retention.** Responses live 60 min under a 2 GiB cap, pruned oldest first per
+  response (its JSON and PNGs), never one under 2 min old, at most once a minute, and only
+  by their owner: `servedBy.pid` is this instance or dead, or there is none.
+- **WebGL census.** `src/engine/glContexts.ts`, imported right after `bootTrap` in every
+  window entry, wraps `getContext` as a pure pass-through and records each context.
+  `WEBGL_lose_context.loseContext` marks our own losses deliberate; one unexpected loss
+  while 16 or more are live is an eviction (WebKit's "too many active WebGL contexts" line
+  never reaches a page), two within a second or any below 16 is a GPU loss. The editor
+  reports its census on its tick, the render window with its beat.
+- **The editor.** A loss on the editor's stage canvas shows a persistent banner ("The GPU
+  reset. The preview may be missing reflections, and exports stay paused until the
+  preview reloads.") with Reload preview: pending edits settle, then the main webview
+  reloads (the only fresh realm); live terminal sessions are named in a confirm, since they
+  keep running but detach from the panel. Exports still refuse on a canvas that lost its
+  context. A wedged GPU shows Retry captures. Rust emits `kookaburra://bridge-activity {
+  active, id, kind, client, frames, queued }` on each claim and answer, and the playback
+  bar shows "Claude capturing · N queued"; the preview is never throttled or paused.
+- **Debug.** `kb debug contexts` answers natively from the reported censuses (it never
+  opens a window): `{ op, cap, windows: { editor, render: { alive, ... } },
+  webContentPids }`, each census with its `contexts: [{ owner, api, width, height, lost,
+  lossClass, ageMs }]`. `kb debug lose-context` forces a loss on the render window (every
+  build; it recycles at once); `--window editor` works in dev builds only and shows the
+  banner. `scripts/gpu-stall-probe.sh` is the dev-only harness (lose-context, GPU process
+  killed, stopped and resumed, 17 contexts) against a test instance.
+
+`health` (the heartbeat's block; `queue.order` and `etaMs` are the picker's simulated
+order and the estimate to each answer, from the last 32 capture durations):
+
+```json
+{
+  "version": 1,
+  "captureFeatures": ["scale", "width", "probe", "client", "deadline", "recycle", "debug"],
+  "queue": { "depth": 2, "oldestAgeMs": 4200,
+    "order": ["0001792020004000-311-c0ffee", "0001792020003000-207-beef01"],
+    "etaMs": [3800, 6000],
+    "inFlight": { "id": "0001792020000000-123-abc123", "kind": "capture", "client": "alpha",
+      "frames": 12, "framesDone": 4, "units": 12, "startedAtMs": 1792019998000 },
+    "unitMs": 400, "overheadMs": 1000, "samples": 20 },
+  "renderWindow": { "alive": true, "beatAgeMs": 1900, "glMs": 3.1, "webContentPid": 2345,
+    "createdAtMs": 1792019000000, "loadedProject": "ws:product-tour", "contentReloads": 0,
+    "recycles": 1, "lastRecycle": { "atMs": 1792019500000, "reason": "contextLost" } },
+  "gpu": { "stalled": false, "stalledUntilMs": null, "wedged": false, "stallsLast10Min": 1,
+    "editorLostAtMs": null },
+  "webgl": { "cap": 16,
+    "editor": { "live": 3, "lost": 0, "deliberate": 1, "evictions": 0, "gpuLosses": 0,
+      "reportedAtMs": 1792019999000, "stageLostAtMs": null },
+    "render": { "live": 2, "lost": 0, "deliberate": 0, "evictions": 0, "gpuLosses": 0,
+      "reportedAtMs": 1792019999000 } },
+  "clients": [{ "client": "alpha", "unitsLastMin": 60, "capPerMin": 240, "pending": 1 }]
+}
+```
+
+`kb status` prints a GPU WEDGED or stalled line, the queue, the render window and the
+context counts from it; `--json` passes `health` through.
 
 ## Headless edit CLI
 
