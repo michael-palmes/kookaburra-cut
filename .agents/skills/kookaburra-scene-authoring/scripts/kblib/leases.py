@@ -151,7 +151,7 @@ def resolve(root: str, caller: Any) -> Any:
 
 
 def is_holder(root: str, lease: Dict[str, Any], caller: Any) -> bool:
-    """The ruling: the bound holder's session and agent id, or the binding of the holder's name, or (unnamed) the holder's session with no or the main agent."""
+    """The ruling: the bound holder's session and agent id, or the binding of the holder's name, or (unnamed) the main agent of the holder's session, never its subagents."""
     holder = lease.get("holder") or {}
     name, session, agent = who(caller)
     h_name, h_session, h_agent = holder.get("name"), holder.get("session"), holder.get("agentId")
@@ -160,7 +160,7 @@ def is_holder(root: str, lease: Dict[str, Any], caller: Any) -> bool:
     b = binding(root, h_name)
     if b is not None and session is not None and b.get("session") == session and b.get("agentId") == agent:
         return True
-    return not named(name) and session is not None and h_session == session and h_agent in (None, MAIN)
+    return not named(name) and session is not None and h_session == session and h_agent in (None, MAIN) and agent in (None, MAIN)
 
 
 def same_caller(root: str, by: Any, caller: Any) -> bool:

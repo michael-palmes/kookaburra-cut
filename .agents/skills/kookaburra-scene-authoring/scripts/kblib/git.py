@@ -562,6 +562,13 @@ def undo_scene(project: Project, stem: str, rev: Optional[str], caller: Any = No
     paths = scene_paths(stem)
     file = paths[0]
     at_target = set(files_at(project, target, paths))
+    if file not in at_target:
+        raise KbError(
+            f"{stem} did not exist at checkpoint {target[:7]}, so there is nothing to undo it to",
+            EXIT_PROBLEMS,
+            kind="invalid",
+            hint=f"remove the scene with ./kb scene remove {stem}",
+        )
     target_manifest = show_json(project, target, MANIFEST)
     changed = changed_since(project, target, paths)
     writes: List[Dict[str, Any]] = []

@@ -148,15 +148,15 @@ class ScopedHistoryTests(KbTestCase):
         self.assertIn("checkpoint(02-hero): before kb undo --scene 02-hero [alpha]", run_git(self.root, ["log", "--format=%s"]))
         self.assertEqual(run_git(self.root, ["show", "--name-only", "--format=", "HEAD"]).split(), ["scenes/02-hero.json"])
 
-    def test_undo_scene_of_a_scene_added_since_trashes_its_files_and_leaves_the_manifest(self) -> None:
+    def test_undo_scene_of_a_scene_added_since_refuses_and_points_at_scene_remove(self) -> None:
         self.assertExit(self.kb(["checkpoint", "base"], cwd=self.root), 0)
         self.assertExit(self.as_agent("a1", "alpha", ["scene", "add", "extra"]), 0)
         proc = self.as_agent("a1", "alpha", ["undo", "--scene", "04-extra", "--json"])
-        self.assertExit(proc, 0)
+        self.assertExit(proc, 1)
         out = json.loads(proc.stdout)
-        self.assertEqual(sorted(out["trashed"]), ["scenes/04-extra.json", "scenes/04-extra.tsx"])
-        self.assertIn("added to project.json since then", out["notes"][0])
-        self.assertTrue((self.trash / "04-extra.tsx").exists())
+        self.assertIn("did not exist at checkpoint", out["error"])
+        self.assertIn("./kb scene remove 04-extra", out["hint"])
+        self.assertTrue((self.root / "scenes" / "04-extra.tsx").exists())
         self.assertEqual(len(read_json(self.root / "project.json")["scenes"]), 4)
 
     def test_plain_undo_refuses_another_agents_work_then_all_reverts_it(self) -> None:

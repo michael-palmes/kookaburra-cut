@@ -341,8 +341,8 @@ packs and duplicates.
 - **Holder rule** (`leases.is_holder`). A caller holds a lease when its session and agent id
   equal the holder's (an unbound holder, agent id null, must also have the caller's name),
   or the binding of the holder's name equals the caller, or the caller has no name, its
-  session is the holder's and the holder's agent id is null or `main` (a lease the main
-  agent took covers its own subagents' edits; a subagent's lease excludes the rest).
+  session is the holder's and both the holder's and the caller's agent id are null or `main`
+  (a lease the main agent took covers the main agent only, never its subagents).
 - **Leases.** Opt-in, one file per scene: `.kb/leases/<stem>.json` holds `{ version: 1, scene,
   files: ["scenes/<stem>.tsx", "scenes/<stem>.json"], holder: { name, session, agentId },
   assignedBy, takenAtMs, renewedAtMs, untilMs, note }`. `./kb lease S --agent A [--ttl 2h]
@@ -365,8 +365,9 @@ packs and duplicates.
   checkpoint holds the project lock. `./kb undo --scene S [REV]` targets HEAD when S's files
   are dirty, else the parent of the last commit that touched them; it makes a scoped
   checkpoint first, checks out only S's files, trashes only S's own files, and splices S's
-  own `project.json` entry (everything but `file`) from the target by compare-and-swap. When
-  S was added or removed since, or the manifest version changed, it says so and leaves
+  own `project.json` entry (everything but `file`) from the target by compare-and-swap. A
+  scene that did not exist at the target is refused (exit 1, hint `./kb scene remove S`);
+  when S's entry was removed since, or the manifest version changed, it says so and leaves
   `project.json` alone. A plain `undo` refuses (exit 1, `others-changed`, `files: [{ path, by
   }]`) only when the journal's last `files.changed` writer of a file since the target is
   someone else, or another agent leases it; otherwise it behaves as before, and `--all`

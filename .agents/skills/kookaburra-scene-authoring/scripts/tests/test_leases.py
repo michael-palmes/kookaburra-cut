@@ -132,10 +132,10 @@ class LeaseTests(LeaseCase):
         self.assertIsNotNone(self.denial(self.pre_edit("scenes/03-outro.tsx", "b2")))
         self.assertIsNotNone(self.denial(self.pre_edit("scenes/03-outro.tsx", None)))
 
-    def test_a_main_agent_lease_covers_its_own_session_unnamed(self) -> None:
+    def test_a_main_agent_lease_covers_the_main_agent_but_not_its_subagents(self) -> None:
         self.assertExit(self.as_agent("main", "lead", ["lease", "02-hero"]), 0)
         self.assertIsNone(self.denial(self.pre_edit("scenes/02-hero.tsx", None)))
-        self.assertIsNone(self.denial(self.pre_edit("scenes/02-hero.tsx", "b2")))
+        self.assertIsNotNone(self.denial(self.pre_edit("scenes/02-hero.tsx", "b2")))
         other = hook_payload("PreToolUse", session="sess-other", cwd=str(self.root), tool_name="Edit", tool_input={"file_path": str(self.root / "scenes/02-hero.tsx")})
         self.assertIsNotNone(self.denial(self.kb(["hook", "pre-edit"], cwd=self.root, stdin=other)))
 
@@ -196,7 +196,8 @@ class IdentityRuleTests(LeaseCase):
         self.assertTrue(leases.is_holder(root, unbound, {"name": "alpha", "session": SESSION, "agentId": None}))
         self.assertFalse(leases.is_holder(root, unbound, {"name": "beta", "session": SESSION, "agentId": None}))
         self.assertTrue(leases.is_holder(root, unbound, {"name": "session-01234567", "session": SESSION, "agentId": None}))
-        self.assertTrue(leases.is_holder(root, main, hook("b2")))
+        self.assertFalse(leases.is_holder(root, main, hook("b2")))
+        self.assertTrue(leases.is_holder(root, main, hook("main")))
         self.assertFalse(leases.is_holder(root, main, {"name": None, "session": "other", "agentId": "main"}))
         self.assertFalse(leases.is_holder(root, {"holder": {"name": "alpha", "session": None, "agentId": None}}, {"name": "user", "session": None, "agentId": None}))
         self.assertTrue(leases.same_caller(root, {"name": "alpha", "session": "x"}, {"name": "alpha", "session": "y"}))
