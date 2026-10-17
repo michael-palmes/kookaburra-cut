@@ -1,5 +1,6 @@
 //! The capture bridge: a file-drop queue at `~/Kookaburra Cut/_bridge/` that lets Claude Code ask the RUNNING app (dev or packaged) to capture, check, vet fonts, insert presets, refresh changed media or open the video editor (docs/agent-kit.md, "The bridge (v2)"; v1 `capture.py` requests carry no `kind` and still work). Clients write `requests/<id>.json`; the hidden render window claims one per tick via `bridge_claim_request`, serves it through the export path and answers via `bridge_write_response` + the bridge screenshot pair. The native kinds (`NATIVE_KINDS`) never reach the render window: `spawn_native_bridge` claims and serves them from Rust. The editor's one-second tick also writes the `app.json` heartbeat. Deliberately separate from the autorun screenshot commands (env-gated, cold-boot, single-instance): neither surface may regress the other.
 
+use std::cell::OnceCell;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
@@ -587,10 +588,19 @@ fn prune_dir(dir: &Path, ttl_ms: u64) {
     }
 }
 
-/// Claim the oldest fresh request whose kind `wanted` accepts: renamed into `.claimed/` before anything serves it, so two pollers (ticks, windows or app instances) never serve one file and the loser skips it. Stale requests are deleted and unparseable ones answered.
+/// Claim the oldest fresh request whose kind `wanted` accepts.
 pub(crate) fn claim_next(
     root: &Path,
     wanted: impl Fn(Option<&str>) -> bool,
+) -> Result<Option<BridgeRequest>, String> {
+    claim_next_served(root, wanted, |_| true)
+}
+
+/// Claim the oldest fresh request whose kind `wanted` accepts and that `serves` accepts once parsed (a declined one stays for another app instance): renamed into `.claimed/` before anything serves it, so two pollers (ticks, windows or app instances) never serve one file and the loser skips it. Stale requests are deleted and unparseable ones answered.
+pub(crate) fn claim_next_served(
+    root: &Path,
+    wanted: impl Fn(Option<&str>) -> bool,
+    serves: impl Fn(&BridgeRequest) -> bool,
 ) -> Result<Option<BridgeRequest>, String> {
     let requests = root.join("requests");
     let now = now_ms();
@@ -620,6 +630,9 @@ pub(crate) fn claim_next(
         };
         if !fresh {
             let _ = std::fs::remove_file(&path);
+            continue;
+        }
+        if !serves(&request) {
             continue;
         }
         let claimed = requests.join(".claimed");
@@ -825,7 +838,7 @@ pub fn bridge_check_assets(
 
 // ── Native kinds ───────────────────────────────────────────────────────────
 
-/// Claim and serve the native kinds from Rust, never the render window: poll `requests/` every 300 ms, oldest first, each served on the async runtime. Writes `_bridge/cli.json` first; interactive app only, and it stops with the heartbeat.
+/// Claim and serve the native kinds from Rust, never the render window: poll `requests/` every 300 ms, oldest first, claiming only this instance's projects (`native_claimable`), each served on the async runtime. Writes `_bridge/cli.json` first; interactive app only, and it stops with the heartbeat.
 pub fn spawn_native_bridge(app: AppHandle) {
     if crate::is_autorun() {
         return;
@@ -841,8 +854,17 @@ pub fn spawn_native_bridge(app: AppHandle) {
             if HEARTBEAT_STOPPED.load(Ordering::Relaxed) {
                 return;
             }
+            // Resolved at most once a tick, and only when a fresh native request needs it.
+            let own_root = OnceCell::new();
+            let serves = |request: &BridgeRequest| {
+                let ours = own_root.get_or_init(|| {
+                    workspace_root_text(&app, &app.state::<workspace::SettingsState>())
+                        .map(PathBuf::from)
+                });
+                native_claimable(ours.as_deref(), request)
+            };
             loop {
-                match claim_next(&root, is_native_kind) {
+                match claim_next_served(&root, is_native_kind, serves) {
                     Ok(Some(request)) => {
                         let app = app.clone();
                         let root = root.clone();
@@ -916,6 +938,26 @@ pub(crate) fn check_project_dir(dir: &Path, client: Option<&str>) -> Result<(), 
             "the app's workspace has this project at {}, not {client}; open the project the app knows, or point the app at this workspace",
             ours.display()
         ))
+    }
+}
+
+/// Whether this instance claims a native request: only one naming a project under its own workspace root, so two running apps (a dev build on a throwaway root beside the installed app) never answer each other's. A request no instance could serve (no `ws:<slug>`, or a `projectPath` that doesn't exist) is claimed to answer its error.
+pub(crate) fn native_claimable(workspace: Option<&Path>, request: &BridgeRequest) -> bool {
+    let Some(slug) = workspace_slug(request.project.as_deref()) else {
+        return true;
+    };
+    let client = match request.project_path.as_deref().map(std::fs::canonicalize) {
+        Some(Ok(client)) => Some(client),
+        Some(Err(_)) => return true,
+        None => None,
+    };
+    let Some(workspace) = workspace else {
+        return false;
+    };
+    let dir = workspace.join(slug);
+    match client {
+        Some(client) => std::fs::canonicalize(&dir).is_ok_and(|ours| ours == client),
+        None => dir.is_dir(),
     }
 }
 
@@ -1490,6 +1532,97 @@ mod tests {
         .unwrap();
         assert_eq!(answer["ok"], false);
         assert!(answer["error"].as_str().unwrap().contains("scene must be"));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    fn native_request(id: &str, project: &str, project_path: Option<&Path>) -> String {
+        let mut body = json!({
+            "version": 2, "id": id, "kind": "mediaChanged", "project": project,
+            "requestedAtMs": now_ms(), "paths": ["assets/a.mp4"],
+        });
+        if let Some(path) = project_path {
+            body["projectPath"] = json!(path.to_str().unwrap());
+        }
+        body.to_string()
+    }
+
+    #[test]
+    fn each_instance_claims_only_requests_for_its_own_workspace() {
+        let root = scratch("native-instances");
+        let (ours, theirs) = (root.join("ours"), root.join("theirs"));
+        std::fs::create_dir_all(ours.join("demo")).unwrap();
+        std::fs::create_dir_all(theirs.join("demo")).unwrap();
+        std::fs::create_dir_all(theirs.join("only-theirs")).unwrap();
+        let bridge = root.join("bridge");
+        let foreign = queue(
+            &bridge,
+            "0001-1-a",
+            &native_request("0001-1-a", "ws:demo", Some(&theirs.join("demo"))),
+        );
+        let unknown = queue(
+            &bridge,
+            "0002-1-b",
+            &native_request("0002-1-b", "ws:only-theirs", None),
+        );
+        queue(
+            &bridge,
+            "0003-1-c",
+            &native_request("0003-1-c", "ws:demo", Some(&ours.join("../ours/demo"))),
+        );
+        queue(
+            &bridge,
+            "0004-1-d",
+            &native_request("0004-1-d", "ws:demo", None),
+        );
+        let claim = |workspace: &Path| {
+            claim_next_served(&bridge, is_native_kind, |r| {
+                native_claimable(Some(workspace), r)
+            })
+            .unwrap()
+            .map(|r| r.id)
+        };
+        assert_eq!(claim(&ours).as_deref(), Some("0003-1-c"));
+        assert_eq!(claim(&ours).as_deref(), Some("0004-1-d"));
+        assert_eq!(claim(&ours), None);
+        assert!(foreign.is_file() && unknown.is_file());
+        assert!(!bridge.join("responses").exists());
+        assert_eq!(claim(&theirs).as_deref(), Some("0001-1-a"));
+        assert_eq!(claim(&theirs).as_deref(), Some("0002-1-b"));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn requests_no_instance_can_serve_are_claimed_and_stale_ones_still_dropped() {
+        let root = scratch("native-unservable");
+        let ours = root.join("ours");
+        std::fs::create_dir_all(ours.join("demo")).unwrap();
+        let claimable = |project: &str, path: Option<&Path>, workspace: Option<&Path>| {
+            native_claimable(
+                workspace,
+                &parse_request(&native_request("0001-1-a", project, path)).unwrap(),
+            )
+        };
+        for bad in ["demo", "ws:../x", "template:demo"] {
+            assert!(claimable(bad, None, Some(ours.as_path())), "{bad}");
+        }
+        assert!(claimable(
+            "ws:demo",
+            Some(&root.join("gone")),
+            Some(ours.as_path())
+        ));
+        assert!(!claimable("ws:demo", None, None));
+        assert!(!claimable("ws:missing", None, Some(ours.as_path())));
+        let stale = queue(
+            &root,
+            "0001-1-a",
+            &json!({ "id": "0001-1-a", "kind": "openEdit", "project": "ws:missing", "requestedAtMs": 1 })
+                .to_string(),
+        );
+        let none = claim_next_served(&root, is_native_kind, |r| {
+            native_claimable(Some(ours.as_path()), r)
+        });
+        assert_eq!(none.unwrap(), None);
+        assert!(!stale.exists());
         let _ = std::fs::remove_dir_all(&root);
     }
 
