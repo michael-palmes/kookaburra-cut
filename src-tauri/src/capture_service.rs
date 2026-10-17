@@ -34,8 +34,12 @@ const RECYCLE_WINDOW_MS: u64 = 600_000;
 const BACKOFF_MS: [u64; 3] = [0, 15_000, 60_000];
 /// A request in flight with no render beat for this long is hung; a beaten window this quiet while requests wait is silent.
 pub(crate) const HUNG_AFTER_MS: u64 = 45_000;
-/// A new render window that has not beaten this long after its create is silent.
-pub(crate) const FIRST_BEAT_WITHIN_MS: u64 = 30_000;
+/// A new render window that has not beaten this long after its create is silent (dev allows a cold Vite load).
+pub(crate) const FIRST_BEAT_WITHIN_MS: u64 = if cfg!(debug_assertions) {
+    90_000
+} else {
+    30_000
+};
 /// A watchdog tick this long after the last one (the Mac slept, or the process was suspended) restarts the silence clocks.
 const WATCH_GAP_MS: u64 = 20_000;
 /// The page gets this long to write its own stall answer before the window goes.
@@ -2105,9 +2109,10 @@ mod tests {
         assert_eq!(backoffs, [Some(0), Some(15_000), Some(60_000), None]);
         let (at, last) = outcomes[3];
         assert!(last.wedged && !last.recycled);
+        let bound = 4 * FIRST_BEAT_WITHIN_MS + 90_000;
         assert!(
-            at - t < 240_000,
-            "wedged within 4 minutes, not {} ms",
+            at - t < bound,
+            "wedged within {bound} ms, not {} ms",
             at - t
         );
         assert_eq!(

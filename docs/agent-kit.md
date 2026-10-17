@@ -1000,7 +1000,7 @@ is `kblib/queue.py` and `kblib/capture.py`. Bridge captures are never baselines.
   dropped with no window created in between (wry reloaded the page after a WebContent
   kill) answers the request in flight `{ ok: false, transient: true, reason:
   "contentReload" }` (kb exit 3).
-- **Silent windows.** A live render window that sent no first beat 30 s after its create,
+- **Silent windows.** A live render window that sent no first beat 30 s after its create (90 s in dev builds, for a cold Vite load),
   or that beat before but sent none for 45 s while render requests wait (counted from the
   later of its last beat and the wait's start), is destroyed and counted as a stall with
   reason `silent`, so the backoff and the wedged state apply as above; the native loop
