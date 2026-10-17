@@ -106,11 +106,13 @@ def kind_at(analysis: Optional[Dict[str, Any]], a: float, b: float) -> str:
 
 
 def guards(doc: Dict[str, Any], source_id: str, speed: float) -> List[Tuple[float, float]]:
-    return [(t["sourceMs"] - 300.0, t["sourceMs"] + cl.TAP_DURATION_MS * max(1.0, speed)) for t in doc.get("taps") or [] if t.get("sourceId") == source_id]
+    # Sized for the fastest a guard may run, so the next piece never cuts the highlight short.
+    after = cl.TAP_DURATION_MS * max(1.0, speed, GUARD_CAP)
+    return [(t["sourceMs"] - 300.0, t["sourceMs"] + after) for t in doc.get("taps") or [] if t.get("sourceId") == source_id]
 
 
 class Segment:
-    __slots__ = ("clip", "a", "b", "kind", "guard", "speed", "base")
+    __slots__ = ("clip", "a", "b", "kind", "guard", "speed", "base", "room")
 
     def __init__(self, clip: Dict[str, Any], a: float, b: float, kind: str, guard: bool) -> None:
         self.clip = clip
@@ -119,6 +121,7 @@ class Segment:
         self.guard = guard
         self.base = cl.eff_speed(clip.get("speed"))
         self.speed = self.base
+        self.room: Optional[float] = None
 
     @property
     def span(self) -> float:
@@ -128,7 +131,8 @@ class Segment:
 def segments_for(clip: Dict[str, Any], doc: Dict[str, Any], analysis: Optional[Dict[str, Any]]) -> List[Segment]:
     ranges = label_ranges((clip["inMs"], clip["outMs"]), analysis)
     g = guards(doc, clip["sourceId"], cl.eff_speed(clip.get("speed")))
-    edges = sorted({x for a, b, _ in ranges for x in (a, b)} | {x for a, b in g for x in (a, b) if clip["inMs"] < x < clip["outMs"]})
+    inside = lambda x: any(a < x < b for a, b in g)  # noqa: E731
+    edges = sorted({x for a, b, _ in ranges for x in (a, b) if not inside(x)} | {x for a, b in g for x in (a, b) if clip["inMs"] < x < clip["outMs"]})
     segs: List[Segment] = []
     for a, b in zip(edges, edges[1:]):
         mid = (a + b) / 2
@@ -150,6 +154,10 @@ def segments_for(clip: Dict[str, Any], doc: Dict[str, Any], analysis: Optional[D
             segs[lo:lo + 2] = [merged]
             changed = True
             break
+    taps = [t["sourceMs"] for t in doc.get("taps") or [] if t.get("sourceId") == clip["sourceId"]]
+    for s in segs:
+        rooms = [s.b - t for t in taps if s.a <= t < s.b]
+        s.room = min(rooms) if rooms else None
     return segs
 
 
@@ -201,7 +209,10 @@ def _ramp(doc: Dict[str, Any], clips: List[Dict[str, Any]], analyses: Dict[str, 
         movable.extend(segs)
 
     def caps(s: Segment) -> float:
-        return max(s.base, min(cap, GUARD_CAP) if s.guard else cap)
+        top = min(cap, GUARD_CAP) if s.guard else cap
+        if s.room is not None:
+            top = min(top, s.room / cl.TAP_DURATION_MS)
+        return max(s.base, top)
 
     def length(lam: float) -> float:
         total = fixed
@@ -224,7 +235,10 @@ def _ramp(doc: Dict[str, Any], clips: List[Dict[str, Any]], analyses: Dict[str, 
             hi = mid
     for s in movable:
         w = 1.0 if uniform else WEIGHTS[s.kind]
-        s.speed = snap_speed(min(caps(s), s.base * (1 + hi * w)))
+        top = caps(s)
+        s.speed = snap_speed(min(top, s.base * (1 + hi * w)))
+        if s.speed > top:
+            s.speed = max(s.base, math.floor(top * 20) / 20.0)
     return plan, floor
 
 
