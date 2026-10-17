@@ -198,13 +198,16 @@ pub fn project_file_stamps(
     Ok(source_stamps(&workspace::project_dir(&app, &state, &slug)?))
 }
 
-/// A project-relative source path the hash check may read: `project.json` or one flat file under `scenes/`.
+/// A project-relative source path the hash check may read: `project.json` or a file under `scenes/` (the set `source_stamps` walks).
 fn source_path(project: &Path, file: &str) -> Result<PathBuf, String> {
     if file == MANIFEST_FILENAME {
         return Ok(project.join(file));
     }
     let ok = file.strip_prefix("scenes/").is_some_and(|rest| {
-        !rest.is_empty() && !rest.contains('/') && !rest.contains("..") && !rest.starts_with('.')
+        !rest.is_empty()
+            && rest
+                .split('/')
+                .all(|part| !part.is_empty() && !part.starts_with('.') && part != "..")
     });
     if !ok {
         return Err(format!("not a project source file: {file:?}"));
@@ -386,6 +389,11 @@ mod tests {
         assert_eq!(hashes[1], ABSENT_BASE);
         assert!(source_hashes(&dir, &["../secret".to_string()]).is_err());
         assert!(source_hashes(&dir, &["scenes/../project.json".to_string()]).is_err());
+        assert!(source_hashes(&dir, &["scenes/.hidden/x.tsx".to_string()]).is_err());
+        assert_eq!(
+            source_hashes(&dir, &["scenes/shared/util.tsx".to_string()]).unwrap(),
+            vec![ABSENT_BASE.to_string()]
+        );
         let _ = std::fs::remove_dir_all(dir);
     }
 }

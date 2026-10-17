@@ -98,14 +98,13 @@ editor shows another project or the Welcome screen, 3 while the user is mid-edit
 
 
 def source_hashes(project: Project) -> Dict[str, str]:
-    """kb's view of the project: SHA-256 of project.json and every scenes/ file (the app's source set, flat)."""
+    """kb's view of the project: SHA-256 of project.json and every file under scenes/, the set the app's source stamps walk."""
     out: Dict[str, str] = {}
     files = [MANIFEST]
-    try:
-        files += sorted(f"scenes/{p.name}" for p in project.scenes_dir.iterdir()
-                        if p.is_file() and not p.name.startswith(".") and not p.name.endswith(".tmp"))
-    except OSError:
-        pass
+    for dirpath, dirnames, filenames in os.walk(project.scenes_dir):
+        dirnames[:] = sorted(d for d in dirnames if not d.startswith("."))
+        rel_dir = Path(dirpath).relative_to(project.root).as_posix()
+        files += [f"{rel_dir}/{name}" for name in sorted(filenames) if not name.startswith(".") and not name.endswith(".tmp")]
     for rel in files:
         try:
             out[rel] = hashlib.sha256((project.root / rel).read_bytes()).hexdigest()

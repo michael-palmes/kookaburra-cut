@@ -111,6 +111,15 @@ class ExportViaBridgeTests(KbTestCase):
         sent = app.requests[0]
         self.assertEqual((sent["aspect"], sent["fps"], sent["shortEdge"], sent["posterFrame"], sent["verify"]), ("9:16", 30, 1080, True, True))
 
+    def test_sources_cover_nested_scene_files_like_the_apps_stamps(self) -> None:
+        write(self.root / "scenes" / "shared" / "util.tsx", "export const x = 1;\n")
+        write(self.root / "scenes" / ".hidden" / "skip.tsx", "x\n")
+        write(self.root / "scenes" / "01-intro.json.tmp", "x\n")
+        sources = ex.source_hashes(Project(self.root))
+        self.assertIn("scenes/shared/util.tsx", sources)
+        self.assertIn("project.json", sources)
+        self.assertFalse(any(".hidden" in f or f.endswith(".tmp") for f in sources))
+
     def test_flash_failures_exit_one_and_keep_the_file(self) -> None:
         with self.app(lambda r: self.success(r, flashes=report(FAIL_ISSUE))):
             proc = self.kb(["export", "--json"], cwd=self.root)
