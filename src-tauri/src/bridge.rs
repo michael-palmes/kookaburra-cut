@@ -18,7 +18,7 @@ const BRIDGE_DIR: &str = "_bridge";
 /// Requests without a `deadlineAtMs` older than this are deleted unanswered: their client gave up long ago.
 const STALE_REQUEST_MS: u64 = 120_000;
 /// A request's `deadlineAtMs` counts for at most this long after it was sent.
-const MAX_DEADLINE_MS: u64 = 900_000;
+const MAX_DEADLINE_MS: u64 = 3_600_000;
 /// Responses (and claimed-request forensics) older than this are pruned by their owner.
 pub(crate) const RESPONSE_TTL_MS: u64 = 3_600_000;
 /// Responses past this total are pruned oldest first.
@@ -125,7 +125,7 @@ pub struct BridgeRequest {
     /// The agent that sent the request.
     #[serde(default)]
     pub client: Option<String>,
-    /// When the client stops waiting; freshness follows it (capped at 15 min).
+    /// When the client stops waiting; freshness follows it (capped at 1 h).
     #[serde(default)]
     pub deadline_at_ms: Option<u64>,
     /// The request this one retries after a GPU stall; it keeps the original's queue place.
@@ -181,7 +181,7 @@ pub(crate) fn response_version(request: &BridgeRequest) -> u32 {
     }
 }
 
-/// When the client stops waiting: `deadlineAtMs` capped at 15 min after sending, else the 120 s rule; the file's age stands in for a missing `requestedAtMs`.
+/// When the client stops waiting: `deadlineAtMs` capped at 1 h after sending, else the 120 s rule; the file's age stands in for a missing `requestedAtMs`.
 pub(crate) fn request_deadline(request: &BridgeRequest, age_ms: u64, now: u64) -> u64 {
     let sent = if request.requested_at_ms == 0 {
         now.saturating_sub(age_ms)
@@ -1608,7 +1608,8 @@ pub fn spawn_native_bridge(app: AppHandle) {
                 }
             }
             let waiting = crate::capture_service::triage(&app, &root, pid);
-            crate::capture_service::watchdog(&app, waiting);
+            let thumbs = crate::render_win::thumbs_pending_count(app.state(), app.state());
+            crate::capture_service::watchdog(&app, waiting + thumbs);
             // The render window prunes on every claim, but it may never open in a session that only edits videos.
             if pruned.map_or(true, |at| at.elapsed() >= Duration::from_secs(60)) {
                 prune_bridge(&root, pid);
