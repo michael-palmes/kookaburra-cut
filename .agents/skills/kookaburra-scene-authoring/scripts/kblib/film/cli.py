@@ -28,9 +28,9 @@ VERIFY_EPILOG = """\
 Checks the file against what the project asked for: the saved export record when kb exported
 it, else the project (aspect from the file name, size from the catalogue, 60 fps for High
 quality, frames = project length x fps, plus one when a poster frame leads). Then audio and
-loudness (--loudness-target, or the preset's), the flash gate (the app's detector plus
-ffmpeg's photosensitivity pre-check), corner swatches on flat backgrounds and one contact
-sheet of each scene's first, settled, named and last frames to Read.
+loudness (--loudness-target, or the preset's; more than 1 LU off warns), the flash gate (the
+app's detector plus ffmpeg's photosensitivity pre-check), corner swatches on flat backgrounds
+and one contact sheet of each scene's first, settled, named and last frames to Read.
 
 Exit 1 when anything mismatches, or on a flash failure (kind flashes) unless --allow-flashes;
 exit 2 without the app's ffmpeg.
@@ -145,8 +145,9 @@ def loudness_checks(film: Path, tools: Tools, ctx: Dict[str, Any], target: Optio
     integrated, peak = measured.get("integratedLufs"), measured.get("truePeakDbtp")
     if target is not None and integrated is not None:
         ok = abs(integrated - target) <= LOUDNESS_TOLERANCE_LU
+        # A warning, never a failure: gain-only matching lands near the target, and platforms renormalise anyway.
         _check(rows, "loudness", ok, f"{integrated:g} LUFS against a {target:g} LUFS target" + ("" if ok else f" (more than {LOUDNESS_TOLERANCE_LU:g} LU off)"),
-               expected=target, actual=integrated)
+               "warn", expected=target, actual=integrated)
     if peak is not None and peak > PEAK_WARN_DBTP:
         _check(rows, "truePeak", False, f"true peak {peak:g} dBTP is over {PEAK_WARN_DBTP:g} dBTP and may clip after upload", "warn")
     return {"measured": measured, "target": target, "checks": rows}
@@ -363,6 +364,6 @@ def register(sub: Any, common: argparse.ArgumentParser, Formatter: Any) -> None:
     p.add_argument("--no-sheet", action="store_true", help="skip the contact sheet")
     p.add_argument("--no-flashes", action="store_true", help="skip the flash check")
     p.add_argument("--allow-flashes", action="store_true", help="report flash failures without failing")
-    p.add_argument("--loudness-target", type=float, metavar="LUFS", help="expected integrated loudness, within 1 LU")
+    p.add_argument("--loudness-target", type=float, metavar="LUFS", help="expected integrated loudness; more than 1 LU off warns")
     p.add_argument("--standard", choices=fl.STANDARDS, default="both", help="flash standard (default both)")
     p.set_defaults(fn=cmd_verify_export)

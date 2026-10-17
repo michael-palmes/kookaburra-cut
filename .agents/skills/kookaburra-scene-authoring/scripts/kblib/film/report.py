@@ -105,7 +105,7 @@ def out_dims(width: int, height: int, short_edge: Optional[int]) -> Tuple[int, i
 
 
 def preset_entry(catalog: Any, preset_id: Optional[str]) -> Optional[Dict[str, Any]]:
-    """The catalogue's export preset (once the catalogue lists `exportPresets`)."""
+    """The catalogue's export preset (`exportPresets`: `fps`, `shortEdge`, `loudnessTarget` per row)."""
     if catalog is None or not preset_id:
         return None
     for entry in catalog.entries("exportPresets") or []:
@@ -124,9 +124,7 @@ def static_expectations(project: Project, file: Path, catalog: Any, slots: List[
     if parsed["suffix"] is None:
         exp.update({"fps": FRAME_FPS, "shortEdge": None})
     elif preset:
-        video = preset.get("video") if isinstance(preset.get("video"), dict) else preset
-        exp.update({"fps": video.get("fps"), "shortEdge": video.get("scaleShortEdgeTo"),
-                    "loudnessTarget": (preset.get("audio") or {}).get("loudnessTarget") if isinstance(preset.get("audio"), dict) else None})
+        exp.update({"fps": preset.get("fps"), "shortEdge": preset.get("shortEdge"), "loudnessTarget": preset.get("loudnessTarget")})
     else:
         exp.update({"fps": None, "shortEdge": None, "note": f"preset {parsed['suffix']!r} is not in this kit's catalogue; size and rate unchecked"})
     if aspect and is_number(aspect.get("width")) and is_number(aspect.get("height")):
