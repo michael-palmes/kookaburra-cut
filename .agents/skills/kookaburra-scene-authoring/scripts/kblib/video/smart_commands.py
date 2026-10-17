@@ -11,7 +11,7 @@ from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 from .. import bridge
 from ..project import Project, find_root, worktree_of
-from ..util import EXIT_ENV, EXIT_OK, EXIT_PROBLEMS, KbError, atomic_write_json, bridge_dir, emit, emit_err, emit_json
+from ..util import EXIT_ENV, EXIT_OK, EXIT_PROBLEMS, KbError, atomic_write_json, bridge_dir, emit, emit_err, emit_json, emit_ok, set_command
 from . import cleanup as cl
 from . import detect, passes, review
 from . import fit as fitmod
@@ -291,7 +291,7 @@ def cmd_analyse(ctx: Any) -> int:
     rng = prange(a.range, fps=cl.doc_fps(target.doc), total_ms=total) if a.range else None
     projected = detect.project(cl.relayout(target.doc["clips"]), analyses) if target.is_edit else []
     if wants_json(ctx):
-        emit_json({"target": target.name, "kind": target.kind, "sources": {sid: dict(an, rel=next(s["rel"] for s in target.doc["sources"] if s["id"] == sid))
+        emit_ok({"target": target.name, "kind": target.kind, "sources": {sid: dict(an, rel=next(s["rel"] for s in target.doc["sources"] if s["id"] == sid))
                                                                           for sid, an in analyses.items()},
                    "timeline": projected if target.is_edit else None})
         return EXIT_OK
@@ -396,7 +396,7 @@ def cmd_cleanup(ctx: Any) -> int:
     if plan.capped:
         report = plan.as_json()
         if wants_json(ctx):
-            emit_json(dict(report, ok=False, error=plan.capped))
+            emit_ok(dict(report, ok=False, error=plan.capped))
         else:
             emit_err(f"kb: {plan.capped}")
         return EXIT_PROBLEMS
@@ -413,7 +413,7 @@ def cmd_cleanup(ctx: Any) -> int:
         except KbError as e:
             notes.append(f"no changes sheet ({e.message})")
     if wants_json(ctx):
-        emit_json(dict(plan.as_json(), name=target.name, applied=applied, dryRun=bool(a.dry_run), notes=notes,
+        emit_ok(dict(plan.as_json(), name=target.name, applied=applied, dryRun=bool(a.dry_run), notes=notes,
                        sheet=sheet["paths"] if sheet else None))
         return EXIT_OK
     verb = "would change" if a.dry_run else "changed"
@@ -457,7 +457,7 @@ def cmd_taps(ctx: Any) -> int:
     analyses = analyses_for(project, target.doc, tools)
     rows = cl.tap_suggestions(target.doc, analyses, a.min_confidence)
     if wants_json(ctx):
-        emit_json({"name": target.name, "candidates": rows})
+        emit_ok({"name": target.name, "candidates": rows})
         return EXIT_OK
     if not rows:
         emit(f"{target.name}: no tap candidates (a tap shows as a small change after a still moment, then a new screen).")
@@ -493,7 +493,7 @@ def scene_slot(project: Project, scene: str, slot: Optional[str], doc: Dict[str,
 
 def fit_report(ctx: Any, name: str, res: fitmod.FitResult, applied: bool, dry: bool, extra: Optional[Dict[str, Any]] = None) -> None:
     if wants_json(ctx):
-        emit_json(dict(res.as_json(), name=name, applied=applied, dryRun=dry, **(extra or {})))
+        emit_ok(dict(res.as_json(), name=name, applied=applied, dryRun=dry, **(extra or {})))
         return
     verb = "would be" if dry else "is now"
     emit(f"{name}: {fmt(res.before_ms)} -> {fmt(res.ms)}, {verb} exactly {res.frames} frames at {res.fps:g} fps (target {res.target_frames})")
@@ -626,7 +626,7 @@ def cmd_align(ctx: Any) -> int:
             where = write_start_ms(project, a.scene, info or {}, int(plan.start_ms or 0))
             applied = True
         if wants_json(ctx):
-            emit_json(dict(plan.as_json(), name=target.name, applied=applied, wrote=where))
+            emit_ok(dict(plan.as_json(), name=target.name, applied=applied, wrote=where))
             return EXIT_OK
         emit(f"{target.name}: {'would move' if a.dry_run else 'moved'} the video's start in scene {a.scene} from {plan.old_start_ms} to {plan.start_ms} ms"
              f" so source {sid}@{ms / 1000:.3f}s lands at {fmt(target_local)} in the scene (lead {lead:.0f} ms); no re-render needed")
@@ -810,7 +810,7 @@ def cmd_frames(ctx: Any) -> int:
                         "how": "draft render" if it.get("crop") is not None or (render and it["mode"] == "output") else "source frame",
                         "overlays": [b["id"] for b in boxes]})
     if wants_json(ctx):
-        emit_json({"name": target.name, "frames": results})
+        emit_ok({"name": target.name, "frames": results})
         return EXIT_OK
     for r in results:
         bits = [r["label"]]
@@ -959,7 +959,7 @@ def cmd_sheet(ctx: Any) -> int:
     render = target.is_edit and not a.predict
     meta = build_sheet(project, target, tools, mode=mode, render=render, grid=a.grid, args=a, cols=a.cols)
     if wants_json(ctx):
-        emit_json(meta)
+        emit_ok(meta)
         return EXIT_OK
     for p in meta["paths"]:
         emit(p)
@@ -1116,6 +1116,7 @@ class _Ctx:
 
 def run_standalone(argv: Sequence[str], out: Optional[Callable[[str], None]] = None) -> int:
     args = standalone_parser().parse_args(list(argv))
+    set_command(f"video {args.video_command}")
     try:
         return int(args.fn(_Ctx(args)) or 0)
     except KbError as e:

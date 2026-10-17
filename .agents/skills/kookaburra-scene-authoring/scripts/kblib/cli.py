@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from . import KB_VERSION
 from . import assets as assetmod
@@ -18,22 +19,27 @@ from . import docs as docmod
 from . import fonts as fontmod
 from . import git as gitmod
 from . import hooks as hookmod
+from . import identity
+from . import lock as lockmod
 from . import overview
 from . import presets as presetmod
 from . import scenes as scenemod
-from .project import Project, find_root, stem_of
+from .project import MANIFEST, Project, find_root, stem_of
 from .util import (
+    DEFAULT_HINTS,
     EXIT_ENV,
     EXIT_OK,
     EXIT_PROBLEMS,
     KbError,
     Report,
-    atomic_write_json,
+    command_name,
     emit,
     emit_err,
     emit_json,
     fmt_secs,
     load_json,
+    ok_envelope,
+    set_command,
 )
 
 SCRIPTS_DIR = Path(__file__).resolve().parent.parent
@@ -62,10 +68,16 @@ project folder (it also walks up from the cwd, or uses $CLAUDE_PROJECT_DIR).
 S is a scene index (0-based) or file stem (03-pricing). PATH is dotted
 (textStyle.titleFont, devices.0.model, devices.+ appends). VALUE is parsed as
 JSON when it parses, else kept as a string (--string forces a string).
---json gives machine-readable output wherever a command reports.
 
-Exit codes: 0 ok; 1 problems found or the operation failed; 2 usage or
-environment (for example the app is needed but not running).
+Every command takes --json (one object on stdout: { "ok", "command", ... }, failures
+too) and --agent NAME (who is asking, when several agents share the project).
+Writes take --dry-run (list what would change, write nothing) and --wait SECONDS
+(wait for another kb write to finish; default 10 s).
+
+Exit codes: 0 ok; 1 problems found or the operation failed (rerunning unchanged
+gives the same answer); 2 usage or environment (a person must act, for example
+the app is needed but not running); 3 transient (a lock held, the app busy, a
+write that kept conflicting): rerun unchanged in a moment.
 
 Examples:
   kb scenes
@@ -81,7 +93,9 @@ class Ctx:
     def __init__(self, args: argparse.Namespace) -> None:
         self.args = args
         self.json = bool(getattr(args, "json", False))
+        self.command = command_name(args)
         self._project: Optional[Project] = None
+        self._caller: Optional[identity.Caller] = None
 
     @property
     def project(self) -> Project:
@@ -90,13 +104,40 @@ class Ctx:
             bridge.bind(self._project)
         return self._project
 
+    @property
+    def caller(self) -> identity.Caller:
+        if self._caller is None:
+            self._caller = identity.caller_from(self.args)
+        return self._caller
+
+    @property
+    def dry_run(self) -> bool:
+        return bool(getattr(self.args, "dry_run", False))
+
+    @property
+    def wait(self) -> Optional[float]:
+        return getattr(self.args, "wait", None)
+
+    @property
+    def opts(self) -> lockmod.WriteOpts:
+        return lockmod.WriteOpts(self.dry_run, self.wait, self.caller)
+
+    def out(self, payload: Optional[Dict[str, Any]] = None, **kwargs: Any) -> None:
+        """The --json envelope for this command (kwargs: ok, code, error; see util.ok_envelope)."""
+        emit_json(ok_envelope(self.command, payload, **kwargs))
+
+
+def emit_writes(writes: List[Dict[str, Any]]) -> None:
+    for w in writes:
+        emit(f"  {w['action']:<6} {w['path']}")
+
 
 # ── look ──────────────────────────────────────────────────────────────────────
 
 
 def cmd_status(ctx: Ctx) -> int:
     if ctx.json:
-        emit_json(overview.status_data(ctx.project))
+        ctx.out(overview.status_data(ctx.project))
     else:
         emit(overview.status_text(ctx.project))
     return EXIT_OK
@@ -104,7 +145,10 @@ def cmd_status(ctx: Ctx) -> int:
 
 def cmd_context(ctx: Ctx) -> int:
     code, out, _err = hookmod.session_start({}, ctx.project)
-    emit(out)
+    if ctx.json:
+        ctx.out({"text": out}, ok=code == EXIT_OK)
+    else:
+        emit(out)
     return code
 
 
@@ -112,7 +156,7 @@ def cmd_scenes(ctx: Ctx) -> int:
     project = ctx.project
     rows = overview.roster(project)
     if ctx.json:
-        emit_json({"project": project.project_id, "totalMs": project.total_ms(), "scenes": rows})
+        ctx.out({"project": project.project_id, "totalMs": project.total_ms(), "scenes": rows})
         return EXIT_OK
     manifest = project.manifest()
     fmts = manifest.get("formats") if isinstance(manifest.get("formats"), list) else []
@@ -165,8 +209,25 @@ def app_check_issues(resp: Dict[str, Any], report: Report) -> List[str]:
     return notes
 
 
+def check_film(ctx: Ctx, rest: List[str]) -> int:
+    """kb check film ...: the film checks module (kblib/film) parses rest itself; ctx carries --json, -C and --agent."""
+    import importlib
+
+    ctx.command = "check film"
+    set_command(ctx.command)
+    try:
+        film = importlib.import_module(f"{__package__}.film.cli")
+    except ModuleNotFoundError as e:
+        if not (e.name or "").startswith(f"{__package__}.film"):
+            raise
+        raise KbError("kb check film is not in this kit", EXIT_ENV, kind="env", hint="reopen the project in Kookaburra Cut to update the kit") from None
+    return int(film.run(ctx, rest) or 0)
+
+
 def cmd_check(ctx: Ctx) -> int:
     args = ctx.args
+    if args.files and args.files[0] == "film":
+        return check_film(ctx, list(args.files[1:]))
     project = ctx.project
     files = None
     if args.files:
@@ -177,7 +238,7 @@ def cmd_check(ctx: Ctx) -> int:
                 try:
                     f = p.resolve().relative_to(project.root.resolve()).as_posix()
                 except ValueError:
-                    raise KbError(f"{f} is outside this project", 2) from None
+                    raise KbError(f"{f} is outside this project", 2, kind="usage") from None
             files.append(f[2:] if f.startswith("./") else f)
     resp: Optional[Dict[str, Any]] = None
     if args.app or args.render:
@@ -203,7 +264,7 @@ def cmd_check(ctx: Ctx) -> int:
     if ctx.json:
         out = report.as_json()
         out["app"] = bool(args.app or args.render)
-        emit_json(out)
+        ctx.out(out, code="invalid", error=f"{report.summary()} ({'static + app' if args.app or args.render else 'static'})")
     else:
         served = bridge.served_line(resp)
         if served:
@@ -231,7 +292,7 @@ def cmd_capture(ctx: Ctx) -> int:
     if args.aspect:
         aspects = catmod.load_catalog().ids("aspects", catmod.FALLBACK_ASPECTS) or []
         if aspects and args.aspect not in aspects:
-            raise KbError(f'unknown aspect "{args.aspect}"; one of {", ".join(aspects)}', 2)
+            raise KbError(f'unknown aspect "{args.aspect}"; one of {", ".join(aspects)}', 2, kind="usage")
         body["aspect"] = args.aspect
     if args.frames:
         frames = bridge.frames_arg(args.frames)
@@ -248,7 +309,7 @@ def cmd_capture(ctx: Ctx) -> int:
         )
     resp = bridge.require_ok(bridge.request("capture", body, args.timeout, "kb capture"), "capture")
     if ctx.json:
-        emit_json(resp)
+        ctx.out(resp, ok=True)
         return EXIT_OK
     frames_out = resp.get("frames") if isinstance(resp.get("frames"), list) else None
     if frames_out:
@@ -280,12 +341,21 @@ def after_write(project: Project, files: List[str]) -> Report:
 def report_result(ctx: Ctx, verb: str, result: scenemod.Result) -> int:
     project = ctx.project
     stem = stem_of(result.file)
+    if result.dry_run:
+        if ctx.json:
+            ctx.out(result.as_dict())
+            return EXIT_OK
+        emit(f"dry run, nothing written: {result.file} at index {result.index} (id \"{result.scene_id}\", name \"{result.name}\")")
+        for n in result.notes:
+            emit(f"  {n}")
+        emit_writes(result.writes)
+        return EXIT_OK
     files: List[str] = []
     if (project.root / result.file).is_file():
         files += [result.file, f"scenes/{stem}.json"]
     report = after_write(project, files)
     if ctx.json:
-        emit_json(dict(result.as_dict(), check=report.as_json()))
+        ctx.out(dict(result.as_dict(), check=report.as_json()), ok=not report.errors, code="invalid", error=f"the new scene has problems: {report.summary()}")
     else:
         emit(f"{verb} {result.file} at index {result.index} (id \"{result.scene_id}\", name \"{result.name}\")")
         for n in result.notes:
@@ -300,34 +370,37 @@ def cmd_scene_add(ctx: Ctx) -> int:
     a = ctx.args
     project = ctx.project
     if a.preset and a.copy:
-        raise KbError("pass --preset or --copy, not both", 2)
-    count = len(project.scene_entries())
-    position = scenemod.position_from(project, a.after, a.at, count)
+        raise KbError("pass --preset or --copy, not both", 2, kind="usage")
+    place = scenemod.Place(a.after, a.at)
     if a.duration is not None and a.duration <= 0:
-        raise KbError("--duration must be a positive number of milliseconds", 2)
+        raise KbError("--duration must be a positive number of milliseconds", 2, kind="usage")
     if a.preset:
         preset = presetmod.find(a.preset, project)
         hb = bridge.live_heartbeat()
         kinds = hb.get("kinds") if hb else None
-        via_app = hb is not None and not a.offline and (not isinstance(kinds, list) or "insertPreset" in kinds)
+        via_app = hb is not None and not a.offline and not ctx.dry_run and (not isinstance(kinds, list) or "insertPreset" in kinds)
         name = a.name or (overview_name(a.stem) if a.stem else None)
         if via_app:
+            position = scenemod.position_from(project, a.after, a.at, len(project.scene_entries()))
             result = presetmod.insert_via_app(project, preset, name, position, a.timeout)
+            if a.duration is not None:
+                scenemod.set_scene(project, stem_of(result.file), a.duration, None, None, None, ctx.opts)
+                result.notes.append(f"durationMs set to {a.duration}")
+            return report_result(ctx, "added", result)
+        result = presetmod.insert_offline(project, preset, a.stem, name, place, ctx.opts, a.duration)
+        if ctx.dry_run:
+            result.notes.append("planned as a copy from the app bundle" + ("; with the app running it inserts the preset itself and picks the stem" if hb is not None and not a.offline else ""))
         else:
-            result = presetmod.insert_offline(project, preset, a.stem, name, position)
             result.notes.append("copied from the app bundle (the app was not running)" if hb is None else "copied offline (--offline)")
         if a.duration is not None:
-            scenemod.set_scene(project, stem_of(result.file), a.duration, None, None, None)
             result.notes.append(f"durationMs set to {a.duration}")
         return report_result(ctx, "added", result)
     if not a.stem:
-        raise KbError("scene add needs a NAME (or --preset P); e.g. kb scene add pricing --preset title", 2)
+        raise KbError("scene add needs a NAME (or --preset P); e.g. kb scene add pricing --preset title", 2, kind="usage")
     if a.copy:
-        result = scenemod.copy_scene(project, a.copy, a.stem, a.name, position)
-        if a.duration is not None:
-            scenemod.set_scene(project, stem_of(result.file), a.duration, None, None, None)
+        result = scenemod.copy_scene(project, a.copy, a.stem, a.name, place, ctx.opts, a.duration)
         return report_result(ctx, "copied to", result)
-    result = scenemod.add_blank(project, a.stem, a.name, a.duration, position)
+    result = scenemod.add_blank(project, a.stem, a.name, a.duration, place, ctx.opts)
     result.notes.append("blank scene: a title on the theme background; presets look better (kb presets)")
     return report_result(ctx, "added", result)
 
@@ -340,23 +413,22 @@ def overview_name(stem: str) -> str:
 
 def cmd_scene_duplicate(ctx: Ctx) -> int:
     a = ctx.args
-    project = ctx.project
-    position = scenemod.position_from(project, a.after, a.at, len(project.scene_entries()))
-    return report_result(ctx, "duplicated as", scenemod.duplicate(project, a.scene, position))
+    place = scenemod.Place(a.after, a.at)
+    return report_result(ctx, "duplicated as", scenemod.duplicate(ctx.project, a.scene, place, ctx.opts))
 
 
 def cmd_scene_move(ctx: Ctx) -> int:
     a = ctx.args
-    project = ctx.project
     if (a.to is None) == (a.after is None):
-        raise KbError("scene move needs --to N or --after S", 2)
-    if a.after is not None:
-        src, _ = project.resolve(a.scene)
-        dst, _ = project.resolve(a.after)
-        to = dst if src < dst else dst + 1
-    else:
-        to = a.to
-    frm, to = scenemod.move(project, a.scene, to)
+        raise KbError("scene move needs --to N or --after S", 2, kind="usage")
+    frm, to, writes = scenemod.move(ctx.project, a.scene, a.to, a.after, ctx.opts)
+    if ctx.json:
+        ctx.out({"from": frm, "to": to, "writes": writes, "dryRun": ctx.dry_run})
+        return EXIT_OK
+    if ctx.dry_run:
+        emit(f"dry run, nothing written: would move scene {frm} to index {to}; its outgoing transition would move with it")
+        emit_writes(writes)
+        return EXIT_OK
     emit(f"moved scene {frm} to index {to}; its outgoing transition moved with it")
     return EXIT_OK
 
@@ -364,9 +436,16 @@ def cmd_scene_move(ctx: Ctx) -> int:
 def cmd_scene_remove(ctx: Ctx) -> int:
     project = ctx.project
     saved = None
-    if gitmod.git_available() and gitmod.repo_state(project) != "foreign" and gitmod.dirty_files(project):
+    if not ctx.dry_run and gitmod.git_available() and gitmod.repo_state(project) != "foreign" and gitmod.dirty_files(project):
         saved = gitmod.checkpoint(project, "before kb scene remove")
-    idx, trashed = scenemod.remove(project, ctx.args.scene, gitmod.trash)
+    idx, trashed, writes = scenemod.remove(project, ctx.args.scene, gitmod.trash, ctx.opts)
+    if ctx.json:
+        ctx.out({"index": idx, "trashed": trashed, "checkpoint": saved, "writes": writes, "dryRun": ctx.dry_run})
+        return EXIT_OK
+    if ctx.dry_run:
+        emit(f"dry run, nothing written: would remove scene {idx} from project.json" + (f"; would move {', '.join(trashed)} to the Trash" if trashed else ""))
+        emit_writes(writes)
+        return EXIT_OK
     emit(f"removed scene {idx} from project.json" + (f"; moved {', '.join(trashed)} to the Trash" if trashed else ""))
     if saved:
         emit(f"checkpoint {saved} holds the state before the removal (kb undo {saved})")
@@ -376,19 +455,31 @@ def cmd_scene_remove(ctx: Ctx) -> int:
 def cmd_scene_set(ctx: Ctx) -> int:
     a = ctx.args
     if a.duration is None and a.transition is None and a.ease is None and a.name is None:
-        raise KbError("scene set needs at least one of --duration, --transition, --ease, --name", 2)
+        raise KbError("scene set needs at least one of --duration, --transition, --ease, --name", 2, kind="usage")
     if a.ease is not None and a.ease not in catmod.TRANSITION_EASES:
-        raise KbError(f'--ease must be one of {", ".join(catmod.TRANSITION_EASES)}', 2)
+        raise KbError(f'--ease must be one of {", ".join(catmod.TRANSITION_EASES)}', 2, kind="usage")
     if a.transition and a.transition not in ("none", "cut"):
         kind = a.transition.split(":", 1)[0]
         known = catmod.load_catalog().ids("transitions", catmod.FALLBACK_TRANSITIONS) or []
         if kind not in known:
-            raise KbError(f'unknown transition "{kind}".{checkmod.did_you_mean(kind, known)} See kb catalog transitions', 2)
-    changes = scenemod.set_scene(ctx.project, a.scene, a.duration, a.transition, a.ease, a.name)
-    idx, stem = ctx.project.resolve(a.scene)
-    for c in changes:
-        emit(f"scene {idx} {stem}: {c}")
+            raise KbError(f'unknown transition "{kind}".{checkmod.did_you_mean(kind, known)} See kb catalog transitions', 2, kind="usage")
+    res = scenemod.set_scene(ctx.project, a.scene, a.duration, a.transition, a.ease, a.name, ctx.opts)
+    idx, stem = res["index"], res["stem"]
+    if ctx.dry_run:
+        if ctx.json:
+            ctx.out(res)
+            return EXIT_OK
+        emit("dry run, nothing written:")
+        for c in res["changes"]:
+            emit(f"scene {idx} {stem}: {c}")
+        emit_writes(res["writes"])
+        return EXIT_OK
     report = after_write(ctx.project, ["project.json", f"scenes/{stem}.json"])
+    if ctx.json:
+        ctx.out(dict(res, check=report.as_json()), ok=not report.errors, code="invalid", error=f"scene {stem} has problems: {report.summary()}")
+        return EXIT_PROBLEMS if report.errors else EXIT_OK
+    for c in res["changes"]:
+        emit(f"scene {idx} {stem}: {c}")
     if report.issues:
         emit(report.render())
     return EXIT_PROBLEMS if report.errors else EXIT_OK
@@ -403,7 +494,7 @@ def parse_json_arg(raw: str) -> Any:
     try:
         return json.loads(raw)
     except ValueError as e:
-        raise KbError(f"not valid JSON ({e}); quote it for the shell, or pass @file.json", 2) from None
+        raise KbError(f"not valid JSON ({e}); quote it for the shell, or pass @file.json", 2, kind="usage") from None
 
 
 def new_errors(before: Report, after: Report) -> List[Any]:
@@ -411,24 +502,59 @@ def new_errors(before: Report, after: Report) -> List[Any]:
     return [i for i in after.errors if (i.path, i.message) not in old]
 
 
-def guarded_write(ctx: Ctx, file_label: str, path: Path, old: Any, new: Any, validate: Any, summary: str) -> int:
-    """Validate the would-be document; refuse new errors unless --force; then write atomically."""
-    before = validate(old) if old is not None else Report()
-    after = validate(new)
-    fresh = new_errors(before, after)
-    if fresh and not getattr(ctx.args, "force", False):
-        emit_err(f"kb: nothing written; this change would add {len(fresh)} error(s) to {file_label}:")
-        for i in fresh:
-            emit_err(f"  {i.path}: {i.message}" if i.path else f"  {i.message}")
-        emit_err("fix the value, or pass --force to write it anyway")
-        return EXIT_PROBLEMS
-    atomic_write_json(path, new)
-    emit(f"wrote {file_label}: {summary}")
-    shown = [i for i in after.issues if (i.path, i.message) not in {(b.path, b.message) for b in before.issues}]
+def guarded_write(
+    ctx: Ctx,
+    file_label: str,
+    target: Any,
+    edit: Callable[[Any], Tuple[Any, str]],
+    validate: Callable[[Any], Report],
+    *,
+    lock: bool = True,
+) -> int:
+    """edit(fresh doc) -> (new doc, summary); refuse new errors unless --force; written by compare-and-swap (kblib.lock),
+    so a save in between re-applies the edit to the newer file. lock=False for files outside the project (themes)."""
+    force = bool(getattr(ctx.args, "force", False))
+    seen: Dict[str, Any] = {}
+
+    def fn(doc: Any) -> Any:
+        new, summary = edit(doc)
+        before = validate(doc) if doc is not None else Report()
+        after = validate(new)
+        fresh = new_errors(before, after)
+        if fresh and not force:
+            lines = "; ".join(f"{i.path}: {i.message}" if i.path else i.message for i in fresh)
+            raise KbError(
+                f"nothing written; this change would add {len(fresh)} error(s) to {file_label}: {lines}",
+                EXIT_PROBLEMS,
+                kind="invalid",
+                hint="fix the value, or pass --force to write it anyway",
+                data={"file": file_label, "issues": [i.as_dict() for i in fresh]},
+            )
+        seen.update(summary=summary, before=before, after=after, fresh=fresh)
+        return new
+
+    mut = lockmod.mutate_json(ctx.project, target, fn, op=f"kb {ctx.command}", caller=ctx.caller, wait=ctx.wait, dry_run=ctx.dry_run, lock=lock, label=file_label)
+    before, after, fresh, summary = seen["before"], seen["after"], seen["fresh"], seen["summary"]
+    old_keys = {(b.path, b.message) for b in before.issues}
+    shown = [i for i in after.issues if (i.path, i.message) not in old_keys]
+    code = EXIT_PROBLEMS if after.errors and fresh else EXIT_OK
+    if ctx.json:
+        payload = {
+            "file": file_label, "summary": summary, "written": mut.written, "hash": mut.after_hash, "rebased": mut.rebased,
+            "issues": [i.as_dict() for i in shown], "writes": mut.writes, "dryRun": mut.dry_run,
+        }
+        ctx.out(payload, ok=code == EXIT_OK, code="invalid", error=f"wrote {file_label} with {len(fresh)} new error(s) (--force)")
+        return code
+    if mut.dry_run:
+        emit(f"dry run, nothing written: would write {file_label}: {summary}")
+    elif mut.written:
+        emit(f"wrote {file_label}: {summary}")
+    else:
+        emit(f"{file_label} already has that: {summary}")
     for i in shown:
         tag = "error" if i.severity == "error" else "warn "
         emit(f"  {tag}  {i.path}: {i.message}" if i.path else f"  {tag}  {i.message}")
-    return EXIT_PROBLEMS if after.errors and fresh else EXIT_OK
+    return code
 
 
 def sidecar_validator(ctx: Ctx, label: str) -> Any:
@@ -451,66 +577,74 @@ def cmd_doc(ctx: Ctx) -> int:
             raise
         emit_err(f"kb: note: scenes/{stem}.tsx is not in project.json, so the app does not show it")
     label = f"scenes/{stem}.json"
-    path = project.sidecar_path(stem)
-    doc = project.load_sidecar(stem)
     if a.op == "get":
+        doc = project.load_sidecar(stem)
         if doc is None:
             raise KbError(f"{label} does not exist yet; create it with kb doc {stem} set name \"...\"")
+        value: Any = doc
         if a.path:
             found, value = docmod.get_path(doc, a.path)
             if not found:
                 raise KbError(f"{a.path} is not set in {label}")
-            emit_json(value)
+        if ctx.json:
+            ctx.out({"file": label, "path": a.path, "value": value})
         else:
-            emit_json(doc)
+            emit_json(value)
         return EXIT_OK
-    base = doc if doc is not None else {"version": catmod.scene_doc_version(catmod.load_catalog())}
+    version = catmod.scene_doc_version(catmod.load_catalog())
     if a.op == "set":
-        new = docmod.set_path(base, a.path, docmod.parse_value(a.value, a.string))
-        summary = f"{a.path} = {json.dumps(docmod.get_path(new, a.path)[1], ensure_ascii=False)[:120]}"
-    elif a.op == "unset":
-        if doc is None:
-            raise KbError(f"{label} does not exist")
-        new = docmod.unset_path(doc, a.path)
-        summary = f"removed {a.path}"
+        arg: Any = docmod.parse_value(a.value, a.string)
+    elif a.op == "merge":
+        arg = parse_json_arg(a.json_patch)
+        if not isinstance(arg, dict):
+            raise KbError("merge needs a JSON object (RFC 7386 merge patch: null deletes a key)", 2, kind="usage")
     else:
-        patch = parse_json_arg(a.json_patch)
-        if not isinstance(patch, dict):
-            raise KbError("merge needs a JSON object (RFC 7386 merge patch: null deletes a key)", 2)
-        new = docmod.merge_patch(base, patch)
-        summary = f"merged {', '.join(patch.keys())}"
-    return guarded_write(ctx, label, path, doc, new, sidecar_validator(ctx, label), summary)
+        arg = None
+
+    def edit(doc: Any) -> Tuple[Any, str]:
+        if doc is not None and not isinstance(doc, dict):
+            raise KbError(f"{label} must be a JSON object")
+        if a.op == "unset" and doc is None:
+            raise KbError(f"{label} does not exist")
+        return docmod.edit(doc if doc is not None else {"version": version}, a.op, getattr(a, "path", "") or "", arg)
+
+    return guarded_write(ctx, label, label, edit, sidecar_validator(ctx, label))
 
 
 def cmd_project(ctx: Ctx) -> int:
     a = ctx.args
     project = ctx.project
-    manifest = project.manifest()
     if a.op == "get":
+        manifest = project.manifest()
         if a.path:
             found, value = docmod.get_path(manifest, a.path)
             if not found:
                 raise KbError(f"{a.path} is not set in project.json")
-            emit_json(value)
         else:
-            emit_json({k: v for k, v in manifest.items() if k != "scenes"} if not a.all else manifest)
+            value = {k: v for k, v in manifest.items() if k != "scenes"} if not a.all else manifest
+        if ctx.json:
+            ctx.out({"path": a.path, "value": value})
+        else:
+            emit_json(value)
         return EXIT_OK
     first = docmod.split_path(a.path)[0]
     if first == "scenes":
-        raise KbError("the scenes array is managed by kb scene (add, duplicate, move, remove, set); edit sidecars with kb doc", 2)
-    if a.op == "set":
-        new = docmod.set_path(manifest, a.path, docmod.parse_value(a.value, a.string))
-        summary = f"{a.path} = {json.dumps(docmod.get_path(new, a.path)[1], ensure_ascii=False)[:120]}"
-    else:
-        new = docmod.unset_path(manifest, a.path)
-        summary = f"removed {a.path}"
+        raise KbError("the scenes array is managed by kb scene (add, duplicate, move, remove, set); edit sidecars with kb doc", 2, kind="usage")
+    arg = docmod.parse_value(a.value, a.string) if a.op == "set" else None
+
+    def edit(manifest: Any) -> Tuple[Any, str]:
+        if manifest is None:
+            raise KbError("project.json does not exist")
+        if not isinstance(manifest, dict):
+            raise KbError("project.json must be a JSON object; restore it with kb undo")
+        return docmod.edit(manifest, a.op, a.path, arg)
 
     def validate(m: Any) -> Report:
         checker = checkmod.Checker(checkmod.Context(project, heartbeat=bridge.read_heartbeat()))
         checker.manifest(data=m)
         return checker.report
 
-    code = guarded_write(ctx, "project.json", project.manifest_path, manifest, new, validate, summary)
+    code = guarded_write(ctx, "project.json", MANIFEST, edit, validate)
     project.manifest(reload=True)
     return code
 
@@ -533,7 +667,7 @@ def cmd_theme(ctx: Ctx) -> int:
                 if (folder / "theme.json").is_file():
                     workspace.append(f"ws:{folder.name}")
         if ctx.json:
-            emit_json({"current": current, "bundled": bundled, "workspace": workspace})
+            ctx.out({"current": current, "bundled": bundled, "workspace": workspace})
             return EXIT_OK
         emit(f"current: {current}")
         emit(f"bundled ({len(bundled)}):" if bundled else "bundled: (catalog.json has no themes list)")
@@ -553,7 +687,7 @@ def cmd_theme(ctx: Ctx) -> int:
                 raise KbError(f"workspace theme {theme_id} not found at {path}; see kb theme list")
             data = load_json(path, str(path))
             if ctx.json:
-                emit_json(data)
+                ctx.out({"id": theme_id, "bundled": False, "path": str(path), "theme": data})
             else:
                 emit(f"{theme_id} ({path})")
                 emit(json.dumps(data, indent=2, ensure_ascii=False))
@@ -563,7 +697,7 @@ def cmd_theme(ctx: Ctx) -> int:
             known = [str(e.get("id")) for e in theme_entries()]
             raise KbError(f'no theme "{theme_id}" in the catalogue.{checkmod.did_you_mean(theme_id, known)} See kb theme list')
         if ctx.json:
-            emit_json(entry)
+            ctx.out({"id": theme_id, "bundled": True, "path": None, "theme": entry})
         else:
             emit(f"{theme_id} (bundled, read-only)")
             emit(json.dumps(entry, indent=2, ensure_ascii=False))
@@ -574,8 +708,12 @@ def cmd_theme(ctx: Ctx) -> int:
         raise KbError(f"{theme_id} is bundled and read-only; duplicate it into a workspace theme in the app first (Theme > Manage), then kb theme set --theme ws:<slug>")
     if not path.is_file():
         raise KbError(f"workspace theme {theme_id} not found at {path}")
-    data = load_json(path, str(path))
-    new = docmod.set_path(data, a.path, docmod.parse_value(a.value, a.string))
+    value = docmod.parse_value(a.value, a.string)
+
+    def edit(data: Any) -> Tuple[Any, str]:
+        if data is None:
+            raise KbError(f"workspace theme {theme_id} not found at {path}")
+        return docmod.edit(data, "set", a.path, value)
 
     def validate(doc: Any) -> Report:
         report = Report()
@@ -588,7 +726,7 @@ def cmd_theme(ctx: Ctx) -> int:
         return report
 
     emit_err(f"kb: note: {theme_id} is shared by every project that uses it")
-    return guarded_write(ctx, f"{theme_id} theme.json", path, data, new, validate, f"{a.path} = {json.dumps(docmod.get_path(new, a.path)[1], ensure_ascii=False)[:120]}")
+    return guarded_write(ctx, f"{theme_id} theme.json", path, edit, validate, lock=False)
 
 
 # ── library ───────────────────────────────────────────────────────────────────
@@ -600,7 +738,7 @@ def cmd_fonts(ctx: Ctx) -> int:
     bundled = fontmod.bundled_fonts(cat)
     if a.op == "safe":
         if ctx.json:
-            emit_json([{"family": f, "weights": w} for f, w in bundled.items()])
+            ctx.out({"faces": [{"family": f, "weights": w} for f, w in bundled.items()]})
             return EXIT_OK
         emit("Bundled faces (always safe, every machine, every export):")
         for family, weights in bundled.items():
@@ -618,7 +756,8 @@ def cmd_fonts(ctx: Ctx) -> int:
             results = [r for r in resp.get("results") or [] if isinstance(r, dict)]
             fontmod.record_verdicts(results, hb.get("appVersion") if hb else None)
             if ctx.json:
-                emit_json(resp)
+                failed = sum(1 for r in results if not r.get("ok"))
+                ctx.out(dict(resp, results=results, static=False), ok=not failed, code="invalid", error=f"{failed} face(s) failed the app's parser")
             bad = 0
             for r in results:
                 if r.get("ok"):
@@ -634,7 +773,9 @@ def cmd_fonts(ctx: Ctx) -> int:
             return EXIT_PROBLEMS if bad else EXIT_OK
         verdicts = [(ref, fontmod.static_verdict(ref, cat)) for ref in refs]
         if ctx.json:
-            emit_json([{"ref": r, "severity": v.severity or "ok", "message": v.message} for r, v in verdicts])
+            errors = sum(1 for _, v in verdicts if v.severity == "error")
+            rows = [{"ref": r, "severity": v.severity or "ok", "message": v.message} for r, v in verdicts]
+            ctx.out({"results": rows, "static": True}, ok=not errors, code="invalid", error=f"{errors} face(s) cannot work")
         else:
             for ref, v in verdicts:
                 tag = {"error": "BAD  ", "warning": "?    "}.get(v.severity or "", "ok   ")
@@ -645,7 +786,7 @@ def cmd_fonts(ctx: Ctx) -> int:
         resp = bridge.require_ok(bridge.request("fonts", {"refs": [], "listFamilies": True}, a.timeout, "kb fonts list"), "fonts")
         families = [f for f in resp.get("families") or [] if isinstance(f, dict)]
         if ctx.json:
-            emit_json(families)
+            ctx.out({"families": families, "static": False})
             return EXIT_OK
         for f in families:
             tag = "bundled" if f.get("bundled") else "system "
@@ -660,7 +801,7 @@ def cmd_fonts(ctx: Ctx) -> int:
     except (OSError, ValueError, AttributeError):
         pinned = []
     if ctx.json:
-        emit_json({"bundled": bundled, "pinned": pinned})
+        ctx.out({"bundled": bundled, "pinned": pinned, "static": True})
         return EXIT_OK
     emit("bundled (safe):")
     for family, weights in bundled.items():
@@ -685,10 +826,10 @@ def cmd_presets(ctx: Ctx) -> int:
         project = None
     if a.action == "show":
         if not a.slug:
-            raise KbError("presets show needs a SLUG; list them with kb presets", 2)
+            raise KbError("presets show needs a SLUG; list them with kb presets", 2, kind="usage")
         p = presetmod.find(a.slug, project)
         if ctx.json:
-            emit_json(p.as_dict())
+            ctx.out(p.as_dict())
         else:
             for line in presetmod.describe(p):
                 emit(line)
@@ -696,7 +837,7 @@ def cmd_presets(ctx: Ctx) -> int:
         return EXIT_OK
     found = presetmod.discover(project)
     if ctx.json:
-        emit_json([p.as_dict() for p in found])
+        ctx.out({"presets": [p.as_dict() for p in found]})
         return EXIT_OK
     if not found:
         raise KbError(f"no presets found under {bridge.presets_dir()}; is Kookaburra Cut installed in /Applications?", EXIT_ENV)
@@ -723,14 +864,14 @@ def cmd_catalog(ctx: Ctx) -> int:
                 if q in blob and (not a.family or family == a.family or family.startswith(a.family + ".")):
                     hits.append(f"{family}: {catmod.entry_line(e)}")
         if ctx.json:
-            emit_json(hits)
+            ctx.out({"query": a.search, "items": hits}, ok=bool(hits), error=f'nothing matches "{a.search}"')
         else:
             emit("\n".join(hits) if hits else f'nothing matches "{a.search}"')
         return EXIT_OK if hits else EXIT_PROBLEMS
     if not a.family:
         fams = cat.families()
         if ctx.json:
-            emit_json({f: n for f, n in fams})
+            ctx.out({"families": {f: n for f, n in fams}})
             return EXIT_OK
         emit(f"catalog.json (app {cat.get('appVersion') or '?'}): kb catalog FAMILY lists one family")
         for f, n in fams:
@@ -739,9 +880,12 @@ def cmd_catalog(ctx: Ctx) -> int:
     value = cat.get(a.family)
     if value is None:
         names = [f for f, _ in cat.families()] + list(cat.data.keys())
-        raise KbError(f'no catalogue family "{a.family}".{checkmod.did_you_mean(a.family, names)} kb catalog lists them', 2)
+        raise KbError(f'no catalogue family "{a.family}".{checkmod.did_you_mean(a.family, names)} kb catalog lists them', 2, kind="usage")
+    if ctx.json:
+        ctx.out({"family": a.family, "items": value} if isinstance(value, list) else {"family": a.family, "value": value})
+        return EXIT_OK
     entries = catmod.as_entries(value)
-    if ctx.json or entries is None:
+    if entries is None:
         emit_json(value)
         return EXIT_OK
     for e in entries:
@@ -755,7 +899,7 @@ def cmd_assets(ctx: Ctx) -> int:
     if a.op == "list":
         items = assetmod.list_assets(project)
         if ctx.json:
-            emit_json(items)
+            ctx.out({"assets": items})
             return EXIT_OK
         if not items:
             emit("assets/ is empty; copy media in with kb assets add <file>")
@@ -765,9 +909,13 @@ def cmd_assets(ctx: Ctx) -> int:
             emit(f"{item['path']}  {item['kind']}  {assetmod.human_size(item['bytes'])}  ({used})")
         return EXIT_OK
     if a.op == "add":
-        res = assetmod.add(project, a.file, a.name, a.dir)
+        res = assetmod.add(project, a.file, a.name, a.dir, dry_run=ctx.dry_run)
         if ctx.json:
-            emit_json(res)
+            ctx.out(res)
+        elif ctx.dry_run:
+            emit(f"dry run, nothing written: would copy {a.file} to {res['path']}" if res["writes"] else f"{res['path']} (identical file already in assets/)")
+            if res.get("note"):
+                emit_err(f"kb: {res['note']}")
         else:
             emit(res["path"])
             if res.get("note"):
@@ -777,7 +925,7 @@ def cmd_assets(ctx: Ctx) -> int:
         return EXIT_OK
     info = assetmod.probe(project, a.asset)
     if ctx.json:
-        emit_json(info)
+        ctx.out(info)
     else:
         for key, value in info.items():
             emit(f"{key}: {value}")
@@ -789,8 +937,26 @@ def cmd_assets(ctx: Ctx) -> int:
 
 def cmd_checkpoint(ctx: Ctx) -> int:
     message = " ".join(ctx.args.message) if ctx.args.message else "manual"
-    rev = gitmod.checkpoint(ctx.project, message)
-    if rev is None:
+    project = ctx.project
+    if ctx.dry_run:
+        gitmod.require_git()
+        state = gitmod.repo_state(project)
+        if state == "foreign":
+            raise KbError(f"{project.root} sits inside another git repository; kb only checkpoints a repository rooted at the project folder", EXIT_ENV)
+        files = gitmod.dirty_files(project) if state == "own" else [p for p in gitmod.TRACKED if (project.root / p).exists()]
+        if ctx.json:
+            ctx.out({"rev": None, "saved": False, "files": files, "newRepo": state == "none", "writes": [], "dryRun": True})
+        elif files:
+            emit(f"dry run, nothing committed: a checkpoint would save {len(files)} path(s)" + (" in a new git repository" if state == "none" else "") + ":")
+            for f in files:
+                emit(f"  {f}")
+        else:
+            emit("dry run: nothing changed since the last checkpoint")
+        return EXIT_OK
+    rev = gitmod.checkpoint(project, message)
+    if ctx.json:
+        ctx.out({"rev": rev, "saved": rev is not None, "dryRun": False})
+    elif rev is None:
         emit("nothing changed since the last checkpoint")
     else:
         emit(f"checkpoint {rev}: project.json, scenes/ and edits/ saved (kb undo {rev} returns here)")
@@ -800,7 +966,8 @@ def cmd_checkpoint(ctx: Ctx) -> int:
 def cmd_history(ctx: Ctx) -> int:
     rows = gitmod.history(ctx.project, ctx.args.n)
     if ctx.json:
-        emit_json(rows)
+        checkpoints = [dict(r, atMs=int(r["time"]) * 1000 if r["time"].isdigit() else None) for r in rows]
+        ctx.out({"checkpoints": checkpoints, "uncommitted": len(gitmod.dirty_files(ctx.project)) if rows else None})
         return EXIT_OK
     if not rows:
         emit("no checkpoints yet (kb checkpoint saves one)")
@@ -819,21 +986,70 @@ def cmd_history(ctx: Ctx) -> int:
     return EXIT_OK
 
 
+def undo_plan(project: Project, rev: Optional[str]) -> Dict[str, Any]:
+    """What kb undo would do, touching nothing: the target git.undo picks, then each file it restores or trashes."""
+    gitmod.require_git()
+    if gitmod.repo_state(project) != "own" or not gitmod.has_head(project):
+        raise KbError("no checkpoints yet; make one with kb checkpoint first")
+    dirty = gitmod.dirty_files(project)
+    if rev:
+        target = gitmod.resolve_rev(project, rev)
+    elif dirty:
+        target = gitmod.resolve_rev(project, "HEAD")
+    else:
+        prev = gitmod.previous_rev(project)
+        if not prev:
+            raise KbError("nothing to undo: there is only one checkpoint and no changes since it")
+        target = prev
+    target_files = set(gitmod.files_at(project, target))
+    if "project.json" not in target_files:
+        raise KbError(f"checkpoint {target[:7]} has no project.json; pick another from kb history")
+    paths = gitmod.tracked_paths(project) or gitmod.TRACKED
+    changed = gitmod.run(project.root, ["diff", "--name-only", target, "--"] + paths, check=False).stdout.splitlines()
+    untracked = gitmod.run(project.root, ["ls-files", "--others", "--exclude-standard", "--"] + paths, check=False).stdout.splitlines()
+    writes: List[Dict[str, Any]] = []
+    for rel in sorted({r for r in changed + untracked if r}):
+        path = project.root / rel
+        if rel in target_files:
+            writes.append({"path": rel, "action": "modify" if path.is_file() else "create", "base": lockmod.current_hash(path)})
+        elif rel.startswith("scenes/") and path.is_file():
+            writes.append({"path": rel, "action": "trash", "base": lockmod.current_hash(path)})
+    return {"target": target, "checkpointFirst": bool(dirty), "writes": writes}
+
+
 def cmd_undo(ctx: Ctx) -> int:
-    edits_before = gitmod.edit_hashes(ctx.project)
-    target, saved, trashed = gitmod.undo(ctx.project, ctx.args.rev)
-    emit(f"restored project.json, scenes/ and edits/ to {target[:7]}")
-    edits_after = gitmod.edit_hashes(ctx.project)
+    project = ctx.project
+    if ctx.dry_run:
+        plan = undo_plan(project, ctx.args.rev)
+        if ctx.json:
+            ctx.out(dict(plan, dryRun=True))
+            return EXIT_OK
+        emit(f"dry run, nothing written: would restore project.json, scenes/ and edits/ to {plan['target'][:7]}" + (" (after a checkpoint of the changes since)" if plan["checkpointFirst"] else ""))
+        emit_writes(plan["writes"])
+        if not plan["writes"]:
+            emit("  (no file differs)")
+        return EXIT_OK
+    edits_before = gitmod.edit_hashes(project)
+    with lockmod.project_lock(project, "kb undo", ctx.wait, ctx.caller):
+        target, saved, trashed = gitmod.undo(project, ctx.args.rev)
+    edits_after = gitmod.edit_hashes(project)
+    stale: List[str] = []
     for name in sorted(n for n in edits_after if edits_before.get(n) != edits_after[n]):
-        if (ctx.project.root / "assets" / f"{name}-edited.mp4").is_file():
-            emit(f"edits/{name}.json changed; assets/{name}-edited.mp4 is stale (renders are not versioned): kb video render {name}")
+        if (project.root / "assets" / f"{name}-edited.mp4").is_file():
+            stale.append(f"edits/{name}.json changed; assets/{name}-edited.mp4 is stale (renders are not versioned): kb video render {name}")
         else:
-            emit(f"edits/{name}.json changed (not rendered yet: kb video render {name})")
+            stale.append(f"edits/{name}.json changed (not rendered yet: kb video render {name})")
+    report = checkmod.check_project(project)
+    if ctx.json:
+        ctx.out({"target": target, "checkpoint": saved, "trashed": trashed, "edits": stale, "check": report.as_json(), "dryRun": False})
+        return EXIT_OK
+    emit(f"restored project.json, scenes/ and edits/ to {target[:7]}")
+    for line in stale:
+        emit(line)
     if saved:
         emit(f"the state before this undo is checkpoint {saved} (kb undo {saved} reverts the undo)")
     if trashed:
         emit(f"moved to the Trash (not in {target[:7]}): {', '.join(trashed)}")
-    report = checkmod.check_project(ctx.project)
     if report.errors:
         emit(report.render("error"))
     emit(f"check: {report.summary()}")
@@ -841,7 +1057,11 @@ def cmd_undo(ctx: Ctx) -> int:
 
 
 def cmd_diff(ctx: Ctx) -> int:
-    emit(gitmod.diff(ctx.project, ctx.args.rev, ctx.args.stat).rstrip("\n"))
+    text = gitmod.diff(ctx.project, ctx.args.rev, ctx.args.stat).rstrip("\n")
+    if ctx.json:
+        ctx.out({"rev": ctx.args.rev, "stat": bool(ctx.args.stat), "diff": text})
+    else:
+        emit(text)
     return EXIT_OK
 
 
@@ -885,18 +1105,41 @@ class Formatter(argparse.RawDescriptionHelpFormatter):
         super().__init__(prog, max_help_position=30, width=100)
 
 
+class UsageError(Exception):
+    def __init__(self, parser: argparse.ArgumentParser, message: str) -> None:
+        super().__init__(message)
+        self.parser = parser
+        self.message = message
+
+
+class KbParser(argparse.ArgumentParser):
+    """In --json mode a usage error becomes the error envelope (kind "usage", exit 2) instead of argparse's exit."""
+
+    json_errors = False
+
+    def error(self, message: str) -> Any:  # type: ignore[override]
+        if KbParser.json_errors:
+            raise UsageError(self, message)
+        return super().error(message)
+
+
 def build_parser(video_extensions: bool = True) -> argparse.ArgumentParser:
     common = argparse.ArgumentParser(add_help=False)
-    common.add_argument("--json", action="store_true", default=argparse.SUPPRESS, help="machine-readable output")
+    common.add_argument("--json", action="store_true", default=argparse.SUPPRESS, help="one JSON object on stdout ({ ok, command, ... }), failures too")
     common.add_argument("-C", "--project-dir", default=argparse.SUPPRESS, metavar="DIR", help="the project folder (default: found from the cwd)")
+    common.add_argument("--agent", default=argparse.SUPPRESS, metavar="NAME", help="who is asking, when several agents share the project (default session-<id>, or user)")
+    structural = argparse.ArgumentParser(add_help=False)
+    structural.add_argument("--dry-run", action="store_true", help="list the files this would change; write nothing")
+    structural.add_argument("--wait", type=float, nargs="?", const=600.0, default=None, metavar="SECONDS", help="wait for another kb write to finish (default 10 s)")
+    writes = [common, structural]
 
-    p = argparse.ArgumentParser(prog="kb", description=MAIN_HELP, formatter_class=Formatter, parents=[common])
+    p = KbParser(prog="kb", description=MAIN_HELP, formatter_class=Formatter, parents=[common])
     p.add_argument("--version", action="version", version=f"kb {KB_VERSION}")
     sub = p.add_subparsers(dest="command", metavar="COMMAND")
     sub.required = True
 
-    def add(name: str, help_: str, desc: Optional[str] = None, epilog: Optional[str] = None) -> argparse.ArgumentParser:
-        return sub.add_parser(name, help=help_, description=desc or help_, epilog=epilog, formatter_class=Formatter, parents=[common])
+    def add(name: str, help_: str, desc: Optional[str] = None, epilog: Optional[str] = None, write: bool = False) -> argparse.ArgumentParser:
+        return sub.add_parser(name, help=help_, description=desc or help_, epilog=epilog, formatter_class=Formatter, parents=writes if write else [common])
 
     s = add("status", "app state, this project's last load, kit and checkpoint state")
     s.set_defaults(fn=cmd_status)
@@ -945,7 +1188,7 @@ def build_parser(video_extensions: bool = True) -> argparse.ArgumentParser:
     ss.required = True
 
     def scene_op(name: str, help_: str, epilog: Optional[str] = None) -> argparse.ArgumentParser:
-        return ss.add_parser(name, help=help_, description=help_, epilog=epilog, formatter_class=Formatter, parents=[common])
+        return ss.add_parser(name, help=help_, description=help_, epilog=epilog, formatter_class=Formatter, parents=writes)
 
     x = scene_op(
         "add",
@@ -1010,15 +1253,15 @@ def build_parser(video_extensions: bool = True) -> argparse.ArgumentParser:
     dsub.required = True
     y = dsub.add_parser("get", help="print the sidecar or one path", parents=[common], formatter_class=Formatter)
     y.add_argument("path", nargs="?")
-    y = dsub.add_parser("set", help="set PATH to VALUE (JSON, else string)", parents=[common], formatter_class=Formatter)
+    y = dsub.add_parser("set", help="set PATH to VALUE (JSON, else string)", parents=writes, formatter_class=Formatter)
     y.add_argument("path")
     y.add_argument("value")
     y.add_argument("--string", action="store_true", help="keep VALUE as a string even if it parses as JSON")
     y.add_argument("--force", action="store_true", help="write even if the result has new errors")
-    y = dsub.add_parser("unset", help="remove PATH", parents=[common], formatter_class=Formatter)
+    y = dsub.add_parser("unset", help="remove PATH", parents=writes, formatter_class=Formatter)
     y.add_argument("path")
     y.add_argument("--force", action="store_true")
-    y = dsub.add_parser("merge", help="RFC 7386 merge patch (objects merge, null deletes); @file.json reads a file", parents=[common], formatter_class=Formatter)
+    y = dsub.add_parser("merge", help="RFC 7386 merge patch (objects merge, null deletes); @file.json reads a file", parents=writes, formatter_class=Formatter)
     y.add_argument("json_patch", metavar="JSON")
     y.add_argument("--force", action="store_true")
     d.set_defaults(fn=cmd_doc)
@@ -1034,12 +1277,12 @@ def build_parser(video_extensions: bool = True) -> argparse.ArgumentParser:
     y = psub.add_parser("get", help="print project.json (without scenes) or one path", parents=[common], formatter_class=Formatter)
     y.add_argument("path", nargs="?")
     y.add_argument("--all", action="store_true", help="include the scenes array")
-    y = psub.add_parser("set", help="set PATH to VALUE", parents=[common], formatter_class=Formatter)
+    y = psub.add_parser("set", help="set PATH to VALUE", parents=writes, formatter_class=Formatter)
     y.add_argument("path")
     y.add_argument("value")
     y.add_argument("--string", action="store_true")
     y.add_argument("--force", action="store_true")
-    y = psub.add_parser("unset", help="remove PATH", parents=[common], formatter_class=Formatter)
+    y = psub.add_parser("unset", help="remove PATH", parents=writes, formatter_class=Formatter)
     y.add_argument("path")
     y.add_argument("--force", action="store_true")
     pr.set_defaults(fn=cmd_project)
@@ -1050,7 +1293,7 @@ def build_parser(video_extensions: bool = True) -> argparse.ArgumentParser:
     tsub.add_parser("list", help="bundled (catalogue) and workspace themes", parents=[common], formatter_class=Formatter)
     y = tsub.add_parser("show", help="a theme's tokens (default: the project's)", parents=[common], formatter_class=Formatter)
     y.add_argument("id", nargs="?")
-    y = tsub.add_parser("set", help="edit a workspace (ws:) theme by dotted path", parents=[common], formatter_class=Formatter,
+    y = tsub.add_parser("set", help="edit a workspace (ws:) theme by dotted path", parents=writes, formatter_class=Formatter,
                         epilog='  kb theme set colors.accent "#ff5a36"\n  kb theme set typography.headline \'{"family": "Inter", "weight": 600}\'')
     y.add_argument("path")
     y.add_argument("value")
@@ -1098,7 +1341,7 @@ def build_parser(video_extensions: bool = True) -> argparse.ArgumentParser:
     asub = s.add_subparsers(dest="op", metavar="OP")
     asub.required = True
     asub.add_parser("list", help="every file under assets/ and who uses it", parents=[common], formatter_class=Formatter)
-    y = asub.add_parser("add", help="copy a file into assets/ (never overwrites; prints the path to use)", parents=[common], formatter_class=Formatter)
+    y = asub.add_parser("add", help="copy a file into assets/ (never overwrites; prints the path to use)", parents=writes, formatter_class=Formatter)
     y.add_argument("file", metavar="FILE")
     y.add_argument("--name", help="file name inside assets/")
     y.add_argument("--dir", help="subfolder of assets/")
@@ -1106,7 +1349,7 @@ def build_parser(video_extensions: bool = True) -> argparse.ArgumentParser:
     y.add_argument("asset", metavar="ASSET")
     s.set_defaults(fn=cmd_assets)
 
-    s = add("checkpoint", "git-commit project.json, scenes/ and edits/ (nothing else)")
+    s = add("checkpoint", "git-commit project.json, scenes/ and edits/ (nothing else)", write=True)
     s.add_argument("message", nargs="*", metavar="MESSAGE")
     s.set_defaults(fn=cmd_checkpoint)
     s = add("history", "recent checkpoints of project.json, scenes/ and edits/")
@@ -1118,6 +1361,7 @@ def build_parser(video_extensions: bool = True) -> argparse.ArgumentParser:
         epilog="No REV: back to the last checkpoint (or the one before it when nothing changed since).\n"
         "Scene files that the checkpoint lacks go to the Trash; edit docs never do. Renders\n"
         "(assets/*-edited.mp4) are not versioned: re-render an edit that undo changed.",
+        write=True,
     )
     s.add_argument("rev", nargs="?", metavar="REV")
     s.set_defaults(fn=cmd_undo)
@@ -1130,6 +1374,7 @@ def build_parser(video_extensions: bool = True) -> argparse.ArgumentParser:
     s.add_argument("event", choices=["session-start", "pre-edit", "post-edit"])
     s.set_defaults(fn=cmd_hook)
 
+    # A new command module: one import here and mod.register(sub, common, Formatter), as kb video does.
     from .video import commands as videomod
 
     videomod.register(sub, common, Formatter, extensions=video_extensions)
@@ -1139,13 +1384,53 @@ def build_parser(video_extensions: bool = True) -> argparse.ArgumentParser:
     return p
 
 
-def command_name(args: argparse.Namespace) -> str:
-    """The envelope's `command`: the subcommand and its op, for example "scene add"."""
-    parts = [str(getattr(args, "command", "") or "")]
-    op = getattr(args, "op", None)
-    if isinstance(op, str) and op:
-        parts.append(op)
-    return " ".join(p for p in parts if p)
+def usage_failure(e: UsageError) -> int:
+    """argparse's usage error in --json mode: the error envelope on stdout, the usual text on stderr, exit 2."""
+    words = [t for t in e.parser.prog.split()[1:] if re.match(r"^[a-z][a-z0-9-]*$", t)]
+    command = " ".join(words)
+    hint = f"run ./kb {command} --help" if command else DEFAULT_HINTS["usage"]
+    emit_json(KbError(e.message, EXIT_ENV, kind="usage", hint=hint).envelope(command))
+    sys.stderr.write(e.parser.format_usage())
+    emit_err(f"{e.parser.prog}: error: {e.message}")
+    return EXIT_ENV
+
+
+def film_argv(argv: List[str]) -> Optional[Tuple[argparse.Namespace, List[str]]]:
+    """kb check film ...: its own options pass through untouched, so it is split off before kb's parser sees them."""
+    if "check" not in argv or "film" not in argv:
+        return None
+    pre = argparse.ArgumentParser(add_help=False, allow_abbrev=False)
+    pre.add_argument("--json", action="store_true")
+    pre.add_argument("-C", "--project-dir")
+    pre.add_argument("--agent")
+    try:
+        ns, rest = pre.parse_known_args(argv)
+    except SystemExit:
+        return None
+    if rest[:2] != ["check", "film"]:
+        return None
+    ns.command, ns.op = "check", "film"
+    return ns, rest[2:]
+
+
+def run(ctx: Ctx, fn: Callable[[Ctx], Any]) -> int:
+    set_command(ctx.command)
+    try:
+        if ctx.command != "hook":
+            identity.bind(ctx.caller)
+        return int(fn(ctx) or 0)
+    except KbError as e:
+        if ctx.json:
+            emit_json(e.envelope(ctx.command))
+        emit_err(e.text())
+        return e.code
+    except KeyboardInterrupt:
+        if ctx.json:
+            emit_json(KbError("interrupted", EXIT_ENV, kind="env", hint="rerun the command").envelope(ctx.command))
+        emit_err("kb: interrupted")
+        return EXIT_ENV
+    except BrokenPipeError:
+        return EXIT_OK
 
 
 def main(argv: Optional[List[str]] = None) -> int:
@@ -1156,6 +1441,10 @@ def main(argv: Optional[List[str]] = None) -> int:
         except KbError as e:
             emit_err(f"kb: {e.message}")
             return e.code
+    film = film_argv(argv)
+    if film is not None:
+        ns, rest = film
+        return run(Ctx(ns), lambda ctx: check_film(ctx, rest))
     parser = build_parser(video_extensions=argv[:1] == ["video"])
     if argv[:1] == ["hook"]:
         try:
@@ -1163,17 +1452,11 @@ def main(argv: Optional[List[str]] = None) -> int:
         except SystemExit:
             return EXIT_OK
     else:
-        args = parser.parse_args(argv)
-    ctx = Ctx(args)
-    try:
-        return int(args.fn(ctx) or 0)
-    except KbError as e:
-        if ctx.json:
-            emit_json(e.envelope(command_name(args)))
-        emit_err(e.text())
-        return e.code
-    except KeyboardInterrupt:
-        emit_err("kb: interrupted")
-        return EXIT_ENV
-    except BrokenPipeError:
-        return EXIT_OK
+        KbParser.json_errors = "--json" in argv
+        try:
+            args = parser.parse_args(argv)
+        except UsageError as e:
+            return usage_failure(e)
+        finally:
+            KbParser.json_errors = False
+    return run(Ctx(args), args.fn)

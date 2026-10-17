@@ -119,27 +119,27 @@ project folder (it also finds the project by walking up from the cwd, or from
 `$CLAUDE_PROJECT_DIR`). Python 3.9, standard library only, `from __future__ import
 annotations` in every module, and `kb.py` inserts its own directory into `sys.path`
 (isolated mode drops it). Output, exit codes, errors and writes follow "kb conventions"
-below. Every write is atomic (temp file in the same folder, then rename) and
-re-validated after writing.
+below. Every write is atomic (temp file in the same folder, then rename), compare-and-swap
+under the project lock (`kblib.lock`) and re-validated after writing.
 
 | Command | Does |
 | --- | --- |
 | `status` | App alive (heartbeat), version, open project, aspect, exporting; this project's last load result; kit version; checkpoint state; a leading STOP banner when the project is a linked git worktree (`--json`: `worktree` is `{ path, main }` or null) |
 | `context` | The SessionStart text: status, scene roster, last load errors, the five rules that matter most (under 4 KB) |
 | `scenes` | Roster: index, stem, name, duration, transition, text, overrides (replaces `inspect.py`) |
-| `check [--app] [--render] [files...]` | Static checks (below); `--app` adds the running app's real compile, load and font checks; `--render` also renders each scene once |
+| `check [--app] [--render] [files...]` | Static checks (below); `--app` adds the running app's real compile, load and font checks; `--render` also renders each scene once; `check film ...` hands its arguments to `kblib/film` (`run(ctx, rest)`) |
 | `capture [--scene S] [--at T] [--aspect A] [--frames S@T,...] [--sheet]` | Frames from the running app; prints PNG paths; `--sheet` adds one contact-sheet PNG |
 | `scene add <stem> [--preset P \| --copy S] [--after S \| --at N] [--duration MS] [--name N]` | New scene, unique stem and `defineScene` id, registered once; presets insert through the app when it runs, else copy from the app bundle |
 | `scene duplicate S`, `scene move S --to N`, `scene remove S`, `scene set S [--duration MS] [--transition TYPE[:MS]]` | Manifest-safe scene operations; remove moves files to the macOS Trash |
-| `doc S get [path]`, `doc S set path value`, `doc S unset path`, `doc S merge JSON` | Sidecar edits by dotted path; values parsed as JSON else string; enums validated against the catalogue |
-| `project get [path]`, `project set path value` | `project.json` fields other than `scenes` |
-| `theme list`, `theme show [id]`, `theme set path value` | Bundled tokens from the catalogue; workspace themes editable |
-| `fonts safe`, `fonts check REF...`, `fonts list` | Bundled faces are always safe; `check` and `list` use the app's real parser when it runs, else a static verdict |
-| `presets [list \| show SLUG]` | Scene presets with what they show and a preview image path to Read |
-| `catalog [FAMILY] [--search Q]` | Query `catalog.json` |
-| `assets list`, `assets add PATH [--name N]`, `assets probe ASSET` | Copy media in (never overwrites, renames on collision), probe with the app's bundled ffprobe |
-| `checkpoint [MESSAGE]`, `history`, `undo [REV]`, `diff` | Git checkpoints of `project.json`, `scenes/` and `edits/`; `undo` checkpoints first, so it is itself undoable, never trashes `edits/`, and names any render it leaves stale |
-| `video ...` | Video editing (below): edit documents, renders, re-points, cleanup, fit, review |
+| `doc S get [path]`, `doc S set path value`, `doc S unset path`, `doc S merge JSON` | Sidecar edits by dotted path; values parsed as JSON else string; enums validated against the catalogue; `get` prints the raw value (`--json`: `{ file, path, value }`) |
+| `project get [path]`, `project set path value`, `project unset path` | `project.json` fields other than `scenes` (`get --json`: `{ path, value }`) |
+| `theme list`, `theme show [id]`, `theme set path value` | Bundled tokens from the catalogue; workspace themes editable (`show --json`: `{ id, bundled, path, theme }`) |
+| `fonts safe`, `fonts check REF...`, `fonts list` | Bundled faces are always safe; `check` and `list` use the app's real parser when it runs, else a static verdict (`--json`: `faces`, `results`, `families` or the static `bundled` and `pinned`) |
+| `presets [list \| show SLUG]` | Scene presets with what they show and a preview image path to Read (`--json`: `presets`) |
+| `catalog [FAMILY] [--search Q]` | Query `catalog.json` (`--json`: `families`; a family's raw entries as `{ family, items }`, or `{ family, value }` when it is not a list; a search's `items`) |
+| `assets list`, `assets add PATH [--name N]`, `assets probe ASSET` | Copy media in (never overwrites, renames on collision), probe with the app's bundled ffprobe (`list --json`: `assets`) |
+| `checkpoint [MESSAGE]`, `history`, `undo [REV]`, `diff` | Git checkpoints of `project.json`, `scenes/` and `edits/`; `undo` checkpoints first, so it is itself undoable, never trashes `edits/`, and names any render it leaves stale (`history --json`: `checkpoints`, each with `atMs`) |
+| `video ...` | Video editing (below): edit documents, renders, re-points, cleanup, fit, review (`list --json`: `edits`) |
 | `hook session-start \| pre-edit \| post-edit` | Hook entry points (stdin JSON from Claude Code) |
 | `beats ...`, `chart ...` | Delegate to the existing scripts |
 
@@ -160,6 +160,20 @@ As built (`scripts/kblib/`):
   about 10 s, a warm one or an aspect switch in about 2 s, and a cold 48-frame sheet in
   about a minute.
 - `kb.py` never writes bytecode, and fails open for hooks when its modules are missing.
+- `--json` is one envelope everywhere (`ok_envelope`, or `emit_ok` in modules not handed a
+  context). The old bare arrays moved under keys: `history` to `checkpoints`, `fonts safe` to
+  `faces`, the static `fonts check` to `results`, `presets` to `presets`, `catalog --search`
+  to `items`, `assets list` to `assets`, `video list` to `edits`. A report that exits 1
+  (`check`, a scene write whose check fails, a failing `fonts check`, a search with no hits)
+  is `ok: false` with `code` and `error`; argparse's usage errors print the error envelope too.
+- `doc`, `project` and `theme set` re-apply their op to the fresh document through
+  `mutate_json` (workspace themes skip the project lock); scene operations and offline preset
+  inserts plan on a transaction from a fresh `project.json` (asset copies included); kb
+  video's re-points, start and follow writes and duration syncs use `mutate_json`; `undo`
+  holds the project lock around its checkout. Structural `--json` results list `writes` and
+  `dryRun`; `checkpoint --dry-run` and `undo --dry-run` only read git.
+- Exit 3 so far: the project lock or an edit lock held (`locked`, with `holder`), a write
+  that kept conflicting (`conflict`), a git timeout (`transient`).
 
 Static checks: `project.json` (valid JSON, version, required fields, files exist, no
 duplicate entries, transitions and options, formats, theme id, audio file); sidecars
@@ -195,14 +209,18 @@ Every kb command, including new ones, follows these rules. Code: `scripts/kblib/
 - **Invocation.** `./kb <command>` from the project folder. Never store kb in a shell
   variable (zsh does not split it). Hook paths never import `kblib.cli`.
 - **Global flags.** `--json` on every command. `--agent NAME` names the caller (`KB_AGENT`
-  only in a plain terminal: an allow rule does not match past a `VAR=` prefix).
-  `--dry-run` on every structural command; `./kb plan <command ...>` is the same dry run.
+  only in a plain terminal: an allow rule does not match past a `VAR=` prefix, and kb ignores
+  it while `CLAUDECODE` is set, so an inherited value never names every agent alike).
+  `--dry-run` and `--wait [SECONDS]` on every structural command (scene add, duplicate, move,
+  remove and set; doc set, unset and merge; project set and unset; theme set; assets add;
+  checkpoint; undo); `./kb plan <command ...>` is the same dry run.
 - **Output.** Plain text for people. `--json` prints exactly one object on stdout:
   `{ "ok": true, "command": "scene add", ...payload }`. A streaming command
   (`events --follow`, `export`) prints one compact object per line, the final object
   last. Lists go under a plural key (`scenes`, `checkpoints`, `items`), never as a bare
   array. Keys are camelCase, times integer ms (`atMs`, `durationMs`), paths
-  project-relative with `/`. Diagnostics go to stderr.
+  project-relative with `/`. Diagnostics go to stderr. A report that exits 1 (problems found)
+  is `ok: false` and carries `code` and `error` like a failure.
 - **Failures.** In `--json` mode a failure prints
   `{ "ok": false, "command", "code", "error", "hint", "retryAfterMs"?, ...data }` on
   stdout, and the text (`kb: <error>` then `  hint: <hint>`) on stderr either way.
@@ -223,17 +241,25 @@ Every kb command, including new ones, follows these rules. Code: `scripts/kblib/
   `gpu-stalled`, `gpu-wedged`, `throttled`, `too-large`, `flashes`. Each kind has a
   default hint (`DEFAULT_HINTS`). Never print a traceback.
 - **Writes.** Every write to `project.json`, `scenes/**` or `.kb/**` goes through
-  `kblib.lock`. A read-modify-write uses `mutate_json(project, rel, fn)`; a multi-file
-  change uses `with project_txn(project, op, dry_run=..., caller=...) as tx:` with
-  `tx.read(rel)` (bytes plus base hash, `absent` when missing), `tx.write_json`,
-  `tx.write_text(create_only=)` and `tx.trash`. The transaction takes `.kb/lock`
-  (`flock`, 10 s, `--wait SECONDS`), checks leases, verifies each base hash (lowercase
-  hex SHA-256 of the bytes, the app's rule) right before each rename, writes new files
-  first and `project.json` last, and journals one `files.changed` event. When someone
-  saved in between, `fn` is re-applied to the fresh document up to 3 times, then exit 3;
-  a pinned `--base`, or a scene addressed by an index that moved, refuses at once. Never
-  hold the lock while waiting on the app or ffmpeg; take an edit lock before the
-  project lock. Workspace themes are shared across projects: compare-and-swap only.
+  `kblib.lock`. A read-modify-write uses `mutate_json(project, rel, fn)`: `fn` gets a fresh
+  copy (None when the file is absent) and returns the new document, or None to leave it. A
+  multi-file change uses `transact(project, op, fn)`, which runs `fn(tx)` under the lock
+  and re-runs it on a conflict; `with project_txn(project, op, dry_run=..., caller=...) as
+  tx:` is its single attempt (a conflict raises `Conflict`, exit 3). `tx.read(rel)` gives
+  bytes plus the base hash (`absent` when missing); `tx.write_json`, `tx.write_text`
+  (`create_only=` needs the name still free), `tx.copy_in` and `tx.trash` plan. The commit
+  takes `.kb/lock` (`flock`, 10 s, `--wait SECONDS`), calls `leases.guard(project, caller,
+  rels)`, verifies every base, writes new files first and `project.json` last (trashing
+  after), takes back its own new files when a later write loses its race, and calls
+  `events.journal(project, "files.changed", caller, rels, via="kb")`; both hooks are
+  skipped while those modules do not exist. A hash is the lowercase hex SHA-256 of the
+  bytes (the app's rule), re-checked right before each rename. When someone saved in
+  between, `fn` is re-applied to the fresh document up to 3 times, then exit 3; a pinned
+  `--base`, or a scene addressed by an index that moved, refuses at once (exit 1, kind
+  `conflict`). A dry run takes no lock, writes nothing and returns `writes: [{ path, action:
+  create | modify | trash, base }]`. Never hold the lock while waiting on the app or
+  ffmpeg; take an edit lock before the project lock. Workspace themes are shared across
+  projects: compare-and-swap only.
 - **New commands** live in their own module with `register(sub, common, Formatter)`;
   `cli.py` gains one import and one call. Commands never re-implement lease checks;
   the transaction does them.
@@ -254,9 +280,9 @@ packs and duplicates.
 .kb/captures/<stamp>[-<agent>]/ capture copies, newest 40 folders, 1 GB at most
 ```
 
-- **Identity.** A caller is `{ name, session, agentId }`. kb run from Bash knows `name`
-  (`--agent`, default `session-<first 8 of CLAUDE_CODE_SESSION_ID>`, or `user` outside
-  Claude Code) and `session`. Hooks know `session` and `agentId` (`main` outside a
+- **Identity.** A caller is `{ name, session, agentId }` (`kblib/identity.py`). kb run from
+  Bash knows `name` (`--agent`, default `session-<first 8 of CLAUDE_CODE_SESSION_ID>`, or
+  `user` outside Claude Code) and `session`. Hooks know `session` and `agentId` (`main` outside a
   subagent). The Bash pre-hook sees both a `--agent NAME` command and the subagent id,
   and binds them in `.kb/agents/<name>/identity.json`, so Edit and Write checks can tell
   subagents of one session apart.
@@ -292,10 +318,10 @@ skill is its playbook. Code: `scripts/kblib/video/`.
 
 - Engine: `editmath`/`editops` mirror `src/engine/editMath.ts`, `editMasks.ts` and
   `editOps.ts` exactly (`js_round` half up, the same check order and error codes);
-  `editdoc.mutate` takes a per-edit lock, applies ops, validates and saves through the
-  CLI's `edit save --base`, rebasing up to three times on a conflict; `repoint` mirrors
-  `applyEditRepoint` and the follow-media duration sync on the raw sidecar with
-  hash-checked, guarded writes; `appcli` finds the CLI (`KB_APP_BIN`, the live
+  `editdoc.mutate` takes a per-edit lock (`kblib.lock.FileLock`), applies ops, validates and
+  saves through the CLI's `edit save --base`, rebasing up to three times on a conflict, then
+  exit 3; `repoint` mirrors `applyEditRepoint` and the follow-media duration sync on the raw
+  sidecar with guarded `mutate_json` writes; `appcli` finds the CLI (`KB_APP_BIN`, the live
   heartbeat's `cliPath`, the installed bundle after its `Info.plist` gate, then
   `_bridge/cli.json` last, so a leftover dev build never shadows the installed app).
 - Commands: `list`, `show`, `map`, `usages`, `validate`, `caps`; `new`, `reset`;

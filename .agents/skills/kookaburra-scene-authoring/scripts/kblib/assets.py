@@ -108,7 +108,7 @@ def list_assets(project: Project) -> List[Dict[str, Any]]:
     return out
 
 
-def add(project: Project, source: str, name: Optional[str], subdir: Optional[str]) -> Dict[str, Any]:
+def add(project: Project, source: str, name: Optional[str], subdir: Optional[str], dry_run: bool = False) -> Dict[str, Any]:
     src = Path(source).expanduser()
     if not src.is_file():
         raise KbError(f"{source} is not a file")
@@ -121,22 +121,27 @@ def add(project: Project, source: str, name: Optional[str], subdir: Optional[str
     dest_dir = project.assets_dir / subdir if subdir else project.assets_dir
     if subdir and not tsxmod.is_project_asset_ref(f"assets/{subdir}/x"):
         raise KbError("--dir must be a plain relative folder under assets/", 2)
-    dest_dir.mkdir(parents=True, exist_ok=True)
+    if not dry_run:
+        dest_dir.mkdir(parents=True, exist_ok=True)
     dest = dest_dir / final_name
     note = None
     if dest.exists():
         try:
             if src.resolve() == dest.resolve() or filecmp.cmp(str(src), str(dest), shallow=False):
-                return {"path": dest.relative_to(project.root).as_posix(), "copied": False, "note": "identical file already in assets/"}
+                return {"path": dest.relative_to(project.root).as_posix(), "copied": False, "note": "identical file already in assets/", "writes": [], "dryRun": dry_run}
         except OSError:
             pass
         free = free_sibling_name(dest_dir, final_name)
         note = f"{final_name} already exists with different content, so this copy is {free}"
         dest = dest_dir / free
+    rel = dest.relative_to(project.root).as_posix()
+    writes = [{"path": rel, "action": "create", "base": "absent"}]
+    if dry_run:
+        return {"path": rel, "copied": False, "note": note, "kind": kind_of(dest.name), "bytes": src.stat().st_size, "writes": writes, "dryRun": True}
     tmp = dest_dir / f".{dest.name}.kbtmp"
     shutil.copyfile(str(src), str(tmp))
     os.replace(str(tmp), str(dest))
-    return {"path": dest.relative_to(project.root).as_posix(), "copied": True, "note": note, "kind": kind_of(dest.name), "bytes": dest.stat().st_size}
+    return {"path": rel, "copied": True, "note": note, "kind": kind_of(dest.name), "bytes": dest.stat().st_size, "writes": writes, "dryRun": False}
 
 
 def ffprobe_path() -> Optional[str]:
