@@ -39,7 +39,8 @@ scenes built from device presets read them with `useSceneDevices()` and
   (portrait) of their placement scale.
 - Screen videos play from `startMs` (scene-local) and HOLD their first frame before
   and their last frame after; they do not loop. Make the scene no longer than the
-  clip, or use `duration.mode: "follow-media"` (reference/media.md).
+  clip, use `duration.mode: "follow-media"` (reference/media.md), or fit the clip to the
+  scene with `kb video fit <edit> --scene S --slot device:<id>` (kookaburra-video-editing).
 - Rotation reads best small: front on `[0, 0, 0]`, editorial `[-6, 14, 0]`, mirrored
   `[-6, -14, 0]`.
 - Lighting: under `<SceneStage>` the theme lights devices. Without a stage each Device

@@ -66,6 +66,14 @@ describe("claudeGroundingPrompt", () => {
     expect(prompt).toContain("CLAUDE.md");
   });
 
+  it("routes video editing to its own skill on the same grounding line", () => {
+    const prompt = claudeGroundingPrompt(PROJECT);
+    const line = prompt.split("\n").find((l) => l.includes("kookaburra-video-editing"));
+    expect(line).toContain("kookaburra-scene-authoring");
+    expect(line).toMatch(/trim.*mask a recording.*edits\//);
+    expect(prompt).not.toContain(String.fromCharCode(0x2014));
+  });
+
   it("asserts nothing that goes stale once the session outlives a project switch", () => {
     const prompt = claudeGroundingPrompt(PROJECT);
     expect(prompt).not.toMatch(/open in the app right now/i);

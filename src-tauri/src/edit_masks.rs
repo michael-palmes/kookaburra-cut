@@ -2,7 +2,7 @@
 
 use crate::edit::{EditDoc, EditMask, EditMaskStyle, EditSource, EditSourceKind};
 
-const DEFAULT_STRENGTH: f64 = 0.5;
+pub(crate) const DEFAULT_STRENGTH: f64 = 0.5;
 const BLUR_MIN: f64 = 0.008;
 const BLUR_MAX: f64 = 0.04;
 const BLOCK_MIN: f64 = 0.025;
@@ -42,22 +42,27 @@ pub fn parse_hex_colour(colour: Option<&str>) -> Result<String, String> {
 
 /// Fail closed: a mask that can't be rendered exactly as drawn errors the render instead of being skipped.
 pub fn validate_masks(doc: &EditDoc) -> Result<(), String> {
-    for mask in &doc.masks {
-        let Some(source) = doc.sources.iter().find(|s| s.id == mask.source_id) else {
-            continue;
-        };
-        parse_hex_colour(mask.color.as_deref())?;
-        if mask.keys.is_empty() {
-            return Err(format!("mask {} has no keyframes", mask.id));
-        }
-        if source.kind == EditSourceKind::Video && mask.end_ms <= mask.start_ms {
-            return Err(format!("mask {} has an empty time span", mask.id));
-        }
-        for key in &mask.keys {
-            let [x, y, w, h] = key.rect;
-            if ![x, y, w, h].iter().all(|v| v.is_finite()) || w <= 0.0 || h <= 0.0 {
-                return Err(format!("mask {} has an invalid box", mask.id));
-            }
+    doc.masks
+        .iter()
+        .try_for_each(|mask| validate_mask(doc, mask))
+}
+
+/// One mask's render check; a mask on a source the doc lacks is never rendered, so it passes.
+pub(crate) fn validate_mask(doc: &EditDoc, mask: &EditMask) -> Result<(), String> {
+    let Some(source) = doc.sources.iter().find(|s| s.id == mask.source_id) else {
+        return Ok(());
+    };
+    parse_hex_colour(mask.color.as_deref())?;
+    if mask.keys.is_empty() {
+        return Err(format!("mask {} has no keyframes", mask.id));
+    }
+    if source.kind == EditSourceKind::Video && mask.end_ms <= mask.start_ms {
+        return Err(format!("mask {} has an empty time span", mask.id));
+    }
+    for key in &mask.keys {
+        let [x, y, w, h] = key.rect;
+        if ![x, y, w, h].iter().all(|v| v.is_finite()) || w <= 0.0 || h <= 0.0 {
+            return Err(format!("mask {} has an invalid box", mask.id));
         }
     }
     Ok(())

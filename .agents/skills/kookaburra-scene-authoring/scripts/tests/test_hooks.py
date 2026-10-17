@@ -38,6 +38,7 @@ class HookTests(KbTestCase):
             self.assertExit(self.hook("pre-edit", payload(self.root / rel)), 0)
 
     def test_hooks_ignore_files_outside_the_project(self) -> None:
+        self.real_process = True
         outside = self.tmp / "elsewhere" / "exports" / "x.json"
         self.assertExit(self.hook("pre-edit", payload(outside)), 0)
         proc = self.hook("post-edit", payload(outside, "PostToolUse"))

@@ -11,14 +11,17 @@ import {
 import {
   type EditClip,
   type EditDoc,
+  type EditEntry,
   type EditMask,
   type EditMaskStyle,
   type EditSource,
-  type EditTap,
   type EditTarget,
+  type EditWrite,
+  editStamps,
   getEditorTarget,
   listEdits,
   loadEdit,
+  loadEditEntry,
   openEdit,
   openEditNamed,
   type RenderProgress,
@@ -27,43 +30,27 @@ import {
   saveEdit,
 } from "../engine/edit";
 import {
-  addHoldKey,
-  defaultMaskRange,
   keyIndexAt,
   keyToleranceMs,
   type MaskRect,
-  nextMaskId,
-  offsetMaskKeys,
   pruneOrphanMasks,
   removeMaskKey,
   replaceMask,
   type SourceMoment,
   sourceMomentAt,
-  upsertMaskKey,
 } from "../engine/editMasks";
 import {
-  addTap,
   clipIndexAt,
   DEFAULT_HOLD_MS,
   freezeAt,
   freezeAtEnd,
-  imageClip,
-  insertClipAt,
-  moveTap,
-  nextClipId,
-  nextSourceId,
-  nextTapId,
   outputToSource,
   relayout,
-  removeClip,
-  removeTap,
-  retimeTap,
-  setClipHold,
-  setClipSpeed,
   splitAt,
   tapWindows,
   timelineDurationMs,
 } from "../engine/editMath";
+import { applyEditOp, type EditOp, type EditOpResult, type SourceMeta } from "../engine/editOps";
 import { formatMediaDuration, importMediaBytes, type MediaMeta, mediaMeta } from "../engine/media";
 import { readProjectManifestSnapshot } from "../engine/projectEdit";
 import { revealApp } from "../engine/reveal";
@@ -76,15 +63,29 @@ import { mediaCardMenu } from "../ui/mediaCardMenu";
 import { hasPendingTextEdit, spaceMeansPlayback } from "../ui/textEditFocus";
 import { useEscapeClose } from "../ui/useEscapeClose";
 import {
+  adoptOwnWrite,
+  createEditStampState,
+  describeDropped,
+  type EditSyncIO,
+  type EditWatch,
+  mergeEditDocs,
+  pollEdit,
+  resetEditStamp,
+  sameValue,
+  saveWithRebase,
+} from "./editLiveSync";
+import {
   bindEditorHistory,
   closeEditorHistoryCoalescing,
   pushEditorHistory,
+  pushExternalEditorHistory,
   takeEditorRedo,
   takeEditorUndo,
 } from "./editorHistory";
 import { MaskSettingsBar } from "./MaskSettingsBar";
 import { Preview, type TrimScrub } from "./Preview";
 import { ReferencePane } from "./ReferencePane";
+import { speedChoices } from "./speedOptions";
 import { Timeline } from "./Timeline";
 import { ToolIcon } from "./ToolIcon";
 import { TAP_ANIMATION_DURATION_MS, tapGradient } from "./tapAnimation";
@@ -100,11 +101,23 @@ import {
 type RenderState =
   | { phase: "idle" }
   | { phase: "rendering"; frame: number; total: number }
-  | { phase: "error"; message: string };
-
-const SPEED_OPTIONS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 4, 6];
+  | { phase: "error"; message: string }
+  | { phase: "changed" };
 
 const AUTOSAVE_DEBOUNCE_MS = 400;
+/** Live sync polls the doc's stamp this often (and on window focus); a change applies once two polls agree. */
+const LIVE_POLL_MS = 1000;
+const EDIT_IO: EditSyncIO = { stamps: editStamps, load: loadEditEntry, save: saveEdit };
+
+/** The doc as the editor last read or wrote it: the three-way merge base and the save's base hash. */
+interface EditBase {
+  slug: string;
+  name: string;
+  hash: string;
+  doc: EditDoc;
+}
+
+const laidOut = (doc: EditDoc): EditDoc => ({ ...doc, clips: relayout(doc.clips) });
 /** A document from a newer app (edit.rs `parse_doc`): discarding it would throw away work that app can still open. */
 const VERSION_ERROR = /needs a newer Kookaburra Cut/;
 const WHEEL_PX_PER_FRAME = 4; // horizontal-scroll scrub sensitivity
@@ -285,80 +298,342 @@ export function EditorApp() {
   const pendingDoc = useRef<EditDoc | null>(null);
   const renderStaleRef = useRef(false);
 
-  const flushSave = useCallback(async () => {
+  // Live sync (editLiveSync.ts): the base the next save is checked against, the doc and render-record stamps, and the reasons an outside change waits.
+  /** Per edit, so a queued flush for a retargeted edit still saves on the base its previous write left. */
+  const basesRef = useRef(new Map<string, EditBase>());
+  const baseFor = useCallback(
+    (t: { slug: string; name: string }) => basesRef.current.get(`${t.slug}\u0000${t.name}`) ?? null,
+    [],
+  );
+  const setBase = useCallback((t: { slug: string; name: string }, hash: string, doc: EditDoc) => {
+    basesRef.current.set(`${t.slug}\u0000${t.name}`, { slug: t.slug, name: t.name, hash, doc });
+  }, []);
+  /** Saves run one at a time: each checks the base hash the previous one left. */
+  const flushChainRef = useRef<Promise<void>>(Promise.resolve());
+  const watchRef = useRef<EditWatch>({
+    doc: createEditStampState(),
+    render: createEditStampState(),
+  });
+  /** The last render record's doc hash; null = none known. */
+  const renderHashRef = useRef<string | null>(null);
+  /** The doc vanished or became unreadable: saves wait, the last local doc waits here to merge back. */
+  const suspendedRef = useRef(false);
+  const detachedRef = useRef<EditDoc | null>(null);
+  const resyncWantedRef = useRef(false);
+  const savingRef = useRef(false);
+  const loadingRef = useRef(false);
+  const renderingRef = useRef(false);
+  const pointerDownRef = useRef(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const metasRef = useRef(metas);
+  metasRef.current = metas;
+
+  const isCurrent = useCallback(
+    (t: { slug: string; name: string }) =>
+      targetRef.current?.slug === t.slug && targetRef.current?.name === t.name,
+    [],
+  );
+
+  /** An outside change waits while a gesture, a typed value or a render is in flight. */
+  const liveSyncBusy = useCallback(
+    (ignoreSaving = false) =>
+      pointerDownRef.current ||
+      hasPendingTextEdit() ||
+      renderingRef.current ||
+      loadingRef.current ||
+      (!ignoreSaving && savingRef.current),
+    [],
+  );
+
+  /** Filmstrip metas for sources an outside change added. */
+  const ensureMetas = useCallback(
+    (t: EditTarget, sources: EditSource[]) => {
+      for (const s of sources) {
+        if (s.id in metasRef.current) continue;
+        mediaMeta(t.slug, s.rel)
+          .catch(() => null)
+          .then((m) => {
+            if (isCurrent(t)) setMetas((prev) => (s.id in prev ? prev : { ...prev, [s.id]: m }));
+          });
+      }
+    },
+    [isCurrent],
+  );
+
+  /** Take the doc on disk as the new base, merging any unsaved local edits; an outside change becomes ONE "Claude edit" undo step. Returns the doc that still needs saving (it kept local changes), else null. */
+  const adoptEntry = useCallback(
+    (entry: EditEntry, options: { schedule: boolean }): EditDoc | null => {
+      const t = targetRef.current;
+      if (!t) return null;
+      const base = baseFor(t);
+      const local = docRef.current ?? detachedRef.current;
+      let next: EditDoc;
+      let dropped: string[] = [];
+      let keptLocal = false;
+      if (base && local) {
+        const merged = mergeEditDocs(base.doc, local, entry.doc);
+        dropped = merged.dropped;
+        keptLocal = merged.keptLocal;
+        next = sameValue(merged.doc, local) ? local : merged.doc;
+        if (next !== local) pushExternalEditorHistory(local, next);
+      } else {
+        next = laidOut(entry.doc);
+      }
+      setBase(t, entry.hash, laidOut(entry.doc));
+      resetEditStamp(watchRef.current.doc, entry.stamp);
+      detachedRef.current = null;
+      suspendedRef.current = false;
+      setError(null);
+      docRef.current = next;
+      setDoc(next);
+      if (saveTimer.current !== null) clearTimeout(saveTimer.current);
+      saveTimer.current = null;
+      pendingDoc.current = keptLocal ? next : null;
+      if (keptLocal && options.schedule) {
+        saveTimer.current = window.setTimeout(
+          () => void flushSaveRef.current(),
+          AUTOSAVE_DEBOUNCE_MS,
+        );
+      }
+      renderHashRef.current = entry.render?.docHash ?? null;
+      renderStaleRef.current = keptLocal || renderHashRef.current !== entry.hash;
+      const message = describeDropped(dropped);
+      if (message) setNotice(message);
+      ensureMetas(t, next.sources);
+      return keptLocal ? next : null;
+    },
+    [baseFor, setBase, ensureMetas],
+  );
+
+  /** The doc on disk is gone or unreadable: show the error panel and hold saves; the local doc merges back if it returns. */
+  const detach = useCallback((message: string, removed: boolean) => {
+    if (docRef.current) detachedRef.current = docRef.current;
+    suspendedRef.current = true;
+    if (saveTimer.current !== null) clearTimeout(saveTimer.current);
+    saveTimer.current = null;
+    docRef.current = null;
+    setDoc(null);
+    setError(message);
+    if (removed) renderStaleRef.current = false;
+  }, []);
+
+  /** Our own write landed: it is the new base, and its stamp never reads as an outside change. */
+  const noteSaved = useCallback(
+    (t: EditTarget, saved: EditDoc, write: EditWrite) => {
+      setBase(t, write.hash, saved);
+      if (!isCurrent(t)) return;
+      adoptOwnWrite(watchRef.current.doc, write);
+      if (pendingDoc.current === null) {
+        renderStaleRef.current = renderHashRef.current !== write.hash;
+      }
+    },
+    [isCurrent, setBase],
+  );
+
+  /** One save against the edit's base hash; a conflict re-reads, merges and saves once more. A retargeted (old) edit merges without touching the UI. */
+  const saveNow = useCallback(
+    async (t: EditTarget, pending: EditDoc) => {
+      const own = baseFor(t);
+      savingRef.current = true;
+      let latest = pending;
+      try {
+        const outcome = await saveWithRebase(EDIT_IO, t, pending, own?.hash ?? null, (entry) => {
+          // A retargeted (or reloading) edit merges on its own base and never touches the UI.
+          if (!isCurrent(t) || loadingRef.current) {
+            if (!own) return null;
+            const merged = mergeEditDocs(own.doc, pending, entry.doc);
+            return merged.keptLocal ? merged.doc : null;
+          }
+          if (liveSyncBusy(true)) return "defer";
+          const merged = adoptEntryRef.current(entry, { schedule: false });
+          pendingDoc.current = null;
+          if (merged) latest = merged;
+          return merged;
+        });
+        if (outcome.kind === "deferred") {
+          if (isCurrent(t)) {
+            pendingDoc.current ??= outcome.doc;
+            resyncWantedRef.current = true;
+          }
+        } else if (outcome.kind === "saved") {
+          noteSaved(t, outcome.doc, outcome.write);
+        }
+      } catch (e) {
+        if (isCurrent(t) && pendingDoc.current === null) pendingDoc.current = latest;
+        setSaveError(`Autosave failed: ${String(e)}`);
+      } finally {
+        savingRef.current = false;
+      }
+    },
+    [baseFor, isCurrent, liveSyncBusy, noteSaved],
+  );
+
+  /** Takes the pending doc now (so a retarget can't swap it), saves it after any save in flight; resolves once everything queued has landed. */
+  const flushSave = useCallback((): Promise<void> => {
     if (saveTimer.current !== null) {
       clearTimeout(saveTimer.current);
       saveTimer.current = null;
     }
     const pending = pendingDoc.current;
-    if (!pending || !target) return;
+    const t = targetRef.current;
+    if (!pending || !t || suspendedRef.current) return flushChainRef.current;
     pendingDoc.current = null;
-    try {
-      await saveEdit(target.slug, target.name, pending);
-    } catch (e) {
-      pendingDoc.current = pending; // kept for the next flush attempt
-      setSaveError(`Autosave failed: ${String(e)}`);
-    }
-  }, [target]);
+    const run = flushChainRef.current.then(() => saveNow(t, pending));
+    flushChainRef.current = run;
+    return run;
+  }, [saveNow]);
   const flushSaveRef = useRef(flushSave);
   flushSaveRef.current = flushSave;
+  const adoptEntryRef = useRef(adoptEntry);
+  adoptEntryRef.current = adoptEntry;
 
   // Load the edit for a target (boot + when the main window points us at a different one).
-  const load = useCallback((t: EditTarget) => {
-    void flushSaveRef.current(); // never lose a pending save from the previous target
-    bindEditorHistory(t.slug, t.name);
-    renderStaleRef.current = false;
-    targetRef.current = t;
-    docRef.current = null;
-    setTarget(t);
-    setDoc(null);
-    setMetas({});
-    setError(null);
-    setSaveError(null);
-    setRender({ phase: "idle" });
-    setSelectedId(null);
-    setSelectedMaskId(null);
-    setArmedMask(false);
-    setPlayheadMs(0);
-    setPlaying(false);
-    const isCurrentTarget = () =>
-      targetRef.current?.slug === t.slug && targetRef.current?.name === t.name;
-    loadEdit(t.slug, t.name)
-      .then((d) => {
-        if (!isCurrentTarget()) return;
-        // Normalise on load: the timeline is magnetic, startMs is derived state.
-        const loaded = { ...d, clips: relayout(d.clips) };
-        const next = { ...loaded };
-        // A completed swap: the previous active becomes this doc's reference, offset negated, saved on the normal debounce.
-        const swap = pendingSwapRef.current;
-        if (swap && swap.forName === t.name) {
-          pendingSwapRef.current = null;
-          next.reference = { rel: swap.rel, offsetMs: swap.offsetMs };
-          pushEditorHistory({ label: "swap reference", before: loaded, after: next });
-          renderStaleRef.current = true;
-          pendingDoc.current = next;
-          if (saveTimer.current !== null) clearTimeout(saveTimer.current);
-          saveTimer.current = window.setTimeout(
-            () => void flushSaveRef.current(),
-            AUTOSAVE_DEBOUNCE_MS,
-          );
-        }
-        docRef.current = next;
-        setDoc(next);
-        // Filmstrips ride the scrub cache (warm for anything the library has shown).
-        Promise.all(
-          d.sources.map((s) =>
-            mediaMeta(t.slug, s.rel)
-              .then((m) => [s.id, m] as const)
-              .catch(() => [s.id, null] as const),
-          ),
-        ).then((entries) => {
-          if (isCurrentTarget()) setMetas(Object.fromEntries(entries));
+  const load = useCallback(
+    (t: EditTarget) => {
+      // Never lose a pending save from the previous target: it reads its own base before anything resets, and the read below waits for it.
+      const flushed = flushSaveRef.current();
+      bindEditorHistory(t.slug, t.name);
+      renderStaleRef.current = false;
+      targetRef.current = t;
+      docRef.current = null;
+      pendingDoc.current = null;
+      detachedRef.current = null;
+      suspendedRef.current = false;
+      resyncWantedRef.current = false;
+      renderHashRef.current = null;
+      watchRef.current = { doc: createEditStampState(), render: createEditStampState() };
+      loadingRef.current = true;
+      setTarget(t);
+      setDoc(null);
+      setMetas({});
+      setError(null);
+      setSaveError(null);
+      setNotice(null);
+      setRender({ phase: "idle" });
+      setSelectedId(null);
+      setSelectedMaskId(null);
+      setArmedMask(false);
+      setPlayheadMs(0);
+      setPlaying(false);
+      const isCurrentTarget = () =>
+        targetRef.current?.slug === t.slug && targetRef.current?.name === t.name;
+      flushed
+        .then(() => loadEditEntry(t.slug, t.name))
+        .then((entry) => {
+          if (!isCurrentTarget()) return;
+          loadingRef.current = false;
+          const d = entry.doc;
+          // Normalise on load: the timeline is magnetic, startMs is derived state.
+          const loaded = laidOut(d);
+          setBase(t, entry.hash, loaded);
+          resetEditStamp(watchRef.current.doc, entry.stamp);
+          renderHashRef.current = entry.render?.docHash ?? null;
+          renderStaleRef.current = entry.render !== null && entry.render.docHash !== entry.hash;
+          const next = { ...loaded };
+          // A completed swap: the previous active becomes this doc's reference, offset negated, saved on the normal debounce.
+          const swap = pendingSwapRef.current;
+          if (swap && swap.forName === t.name) {
+            pendingSwapRef.current = null;
+            next.reference = { rel: swap.rel, offsetMs: swap.offsetMs };
+            pushEditorHistory({ label: "swap reference", before: loaded, after: next });
+            renderStaleRef.current = true;
+            pendingDoc.current = next;
+            if (saveTimer.current !== null) clearTimeout(saveTimer.current);
+            saveTimer.current = window.setTimeout(
+              () => void flushSaveRef.current(),
+              AUTOSAVE_DEBOUNCE_MS,
+            );
+          }
+          docRef.current = next;
+          setDoc(next);
+          // Filmstrips ride the scrub cache (warm for anything the library has shown).
+          Promise.all(
+            d.sources.map((s) =>
+              mediaMeta(t.slug, s.rel)
+                .then((m) => [s.id, m] as const)
+                .catch(() => [s.id, null] as const),
+            ),
+          ).then((entries) => {
+            if (isCurrentTarget())
+              setMetas((prev) => ({ ...prev, ...Object.fromEntries(entries) }));
+          });
+        })
+        .catch((e) => {
+          if (!isCurrentTarget()) return;
+          loadingRef.current = false;
+          setError(String(e));
         });
-      })
-      .catch((e) => {
-        if (isCurrentTarget()) setError(String(e));
-      });
+    },
+    [setBase],
+  );
+
+  // Live sync: poll the doc and render-record stamps; a settled outside change merges in as one undo step, a removed or unreadable doc shows the error panel until a later poll reads it fine.
+  useEffect(() => {
+    const t = target;
+    if (!t) return;
+    let cancelled = false;
+    let inFlight = false;
+    const tick = async () => {
+      if (cancelled || inFlight || liveSyncBusy()) return;
+      inFlight = true;
+      try {
+        const outcome = await pollEdit(EDIT_IO, t, watchRef.current, resyncWantedRef.current);
+        if (cancelled || !isCurrent(t)) return;
+        if (outcome.kind === "removed") {
+          resyncWantedRef.current = false;
+          detach(`edits/${t.name}.json was removed outside the editor.`, true);
+        } else if (outcome.kind === "unreadable") {
+          resyncWantedRef.current = false;
+          detach(outcome.error, false);
+        } else if (outcome.kind === "changed") {
+          if (liveSyncBusy()) {
+            resyncWantedRef.current = true;
+            return;
+          }
+          resyncWantedRef.current = false;
+          adoptEntry(outcome.entry, { schedule: true });
+        } else if (outcome.kind === "render") {
+          renderHashRef.current = outcome.render?.docHash ?? null;
+          const base = baseFor(t);
+          if (base) {
+            renderStaleRef.current =
+              pendingDoc.current !== null || renderHashRef.current !== base.hash;
+          }
+        }
+      } catch (e) {
+        console.warn("[editor] live sync poll failed:", e);
+      } finally {
+        inFlight = false;
+      }
+    };
+    const timer = window.setInterval(() => void tick(), LIVE_POLL_MS);
+    const onFocus = () => void tick();
+    window.addEventListener("focus", onFocus);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [target, isCurrent, liveSyncBusy, detach, adoptEntry, baseFor]);
+
+  // A pointer held down is a gesture in progress: outside changes wait for it to end.
+  useEffect(() => {
+    const down = () => {
+      pointerDownRef.current = true;
+    };
+    const up = () => {
+      pointerDownRef.current = false;
+    };
+    window.addEventListener("pointerdown", down, true);
+    window.addEventListener("pointerup", up, true);
+    window.addEventListener("pointercancel", up, true);
+    window.addEventListener("blur", up);
+    return () => {
+      window.removeEventListener("pointerdown", down, true);
+      window.removeEventListener("pointerup", up, true);
+      window.removeEventListener("pointercancel", up, true);
+      window.removeEventListener("blur", up);
+    };
   }, []);
 
   // Boot: read the pending target the main window stashed before opening us.
@@ -441,13 +716,18 @@ export function EditorApp() {
     [],
   );
 
-  /** Commit a clips-only mutation (what the timeline emits). */
-  const commit = useCallback(
-    (clips: EditClip[], label: string) => {
-      if (!doc || !target) return;
-      commitDoc({ ...doc, clips }, label);
+  /** Apply one shared edit op (editOps.ts, the spec kb video mirrors) to the current doc and commit it; a refused op changes nothing. */
+  const runOp = useCallback(
+    (op: EditOp, options: { label?: string; coalesceKey?: string } = {}): EditOpResult | null => {
+      const current = docRef.current;
+      if (!current || !targetRef.current) return null;
+      const result = applyEditOp(current, op);
+      if (result.ok) {
+        commitDoc(result.doc, options.label ?? result.label, { coalesceKey: options.coalesceKey });
+      }
+      return result;
     },
-    [doc, target, commitDoc],
+    [commitDoc],
   );
 
   // Focused native Edit-menu events land in this window only. Replays use commitDoc without recording.
@@ -457,7 +737,7 @@ export function EditorApp() {
         document.execCommand(direction);
         return;
       }
-      if (render.phase === "rendering") return;
+      if (render.phase === "rendering" || !docRef.current) return;
       const entry = direction === "undo" ? takeEditorUndo() : takeEditorRedo();
       if (!entry) return;
       const snapshot = direction === "undo" ? entry.before : entry.after;
@@ -807,173 +1087,139 @@ export function EditorApp() {
   }, []);
 
   const handleRender = useCallback(async () => {
-    if (!target || !doc) return;
+    const t = targetRef.current;
+    if (!t || !docRef.current) return;
     setRender({ phase: "rendering", frame: 0, total: 1 });
     try {
       await flushSave(); // render_edit reads edit.json from disk, so persist the latest doc first
-      await renderEdit(target.slug, target.name, (p: RenderProgress) =>
+      renderingRef.current = true;
+      const result = await renderEdit(t.slug, t.name, (p: RenderProgress) =>
         setRender({ phase: "rendering", frame: p.frame, total: p.total }),
       );
+      renderingRef.current = false;
+      renderHashRef.current = result.docHash;
+      const stamps = await editStamps(t.slug, t.name).catch(() => null);
+      const base = baseFor(t);
+      const changed =
+        !base ||
+        result.docHash !== base.hash ||
+        pendingDoc.current !== null ||
+        (stamps !== null && stamps.doc !== watchRef.current.doc.baseline);
+      // The output changed either way: tell the main window (media library refresh, re-point).
+      await emit("kookaburra://media-changed", { slug: t.slug, name: t.name });
+      if (changed) {
+        renderStaleRef.current = true;
+        setRender({ phase: "changed" });
+        return;
+      }
       renderStaleRef.current = false;
-      // Success: tell the main window (media library refresh) and close this one.
-      await emit("kookaburra://media-changed", { slug: target.slug, name: target.name });
       await getCurrentWindow().close();
     } catch (e) {
       setRender({ phase: "error", message: String(e) });
+    } finally {
+      renderingRef.current = false;
     }
-  }, [target, doc, flushSave]);
+  }, [flushSave, baseFor]);
 
-  /** Shared add/insert flow: probe `rel`, reuse-or-create its EditSource, build its clip (a video's full span, an image's default hold) and commit `place`'s arrangement; mediaMeta also warms the filmstrip cache. */
+  /** Shared add/insert flow: probe `rel` (which also warms the filmstrip cache), then the addClip or insertClip op reuses or creates its source and builds the clip. */
   const spliceClip = useCallback(
-    (rel: string, place: (clips: EditClip[], clip: EditClip) => EditClip[], label: string) => {
-      if (!doc || !target) return;
-      const requestedTarget = target;
-      mediaMeta(target.slug, rel)
+    (rel: string, opFor: (source: SourceMeta) => EditOp) => {
+      const requestedTarget = targetRef.current;
+      if (!docRef.current || !requestedTarget) return;
+      mediaMeta(requestedTarget.slug, rel)
         .then((meta) => {
-          const current = docRef.current;
-          if (
-            !current ||
-            targetRef.current?.slug !== requestedTarget.slug ||
-            targetRef.current.name !== requestedTarget.name
-          ) {
-            return;
-          }
-          const existing = current.sources.find((s) => s.rel === rel);
-          const sourceId = existing?.id ?? nextSourceId(current.sources);
-          const sources = existing
-            ? current.sources
-            : [
-                ...current.sources,
-                {
-                  id: sourceId,
-                  rel,
-                  kind: meta.kind,
-                  width: meta.width,
-                  height: meta.height,
-                  fps: meta.fps,
-                  durationMs: meta.durationMs,
-                },
-              ];
-          const clip: EditClip =
-            meta.kind === "image"
-              ? imageClip(current.clips, sourceId, DEFAULT_HOLD_MS)
-              : {
-                  id: nextClipId(current.clips),
-                  sourceId,
-                  inMs: 0,
-                  outMs: meta.durationMs,
-                  speed: 1,
-                  startMs: 0,
-                };
-          setMetas((prev) => ({ ...prev, [sourceId]: meta }));
-          commitDoc({ ...current, sources, clips: place(current.clips, clip) }, label);
+          if (!isCurrent(requestedTarget)) return;
+          const result = runOp(
+            opFor({
+              rel,
+              kind: meta.kind,
+              width: meta.width,
+              height: meta.height,
+              fps: meta.fps,
+              durationMs: meta.durationMs,
+            }),
+          );
+          const sourceId = result?.ok
+            ? result.doc.sources.find((s) => s.rel === rel)?.id
+            : undefined;
+          if (sourceId) setMetas((prev) => ({ ...prev, [sourceId]: meta }));
         })
         .catch((e) => setSaveError(`Couldn't add the clip: ${String(e)}`));
     },
-    [doc, target, commitDoc],
+    [isCurrent, runOp],
   );
 
   /** Insert a full-length clip of `rel` at clip position `index` (end when omitted). */
   const handleAddClip = useCallback(
     (rel: string, index?: number) =>
-      spliceClip(
-        rel,
-        (clips, clip) => {
-          const next = [...clips];
-          next.splice(Math.max(0, Math.min(next.length, index ?? next.length)), 0, clip);
-          return relayout(next);
-        },
-        "add clip",
-      ),
+      spliceClip(rel, (source) => ({ op: "addClip", source, index })),
     [spliceClip],
   );
 
   /** Splice a full-length clip of `rel` in at output time `tMs`; mid-clip splits the clip under it (the freeze-frame pattern). */
   const handleInsertClipAt = useCallback(
     (rel: string, tMs: number) =>
-      spliceClip(rel, (clips, clip) => insertClipAt(clips, tMs, clip), "insert clip"),
+      spliceClip(rel, (source) => ({ op: "insertClip", source, atMs: tMs })),
     [spliceClip],
   );
 
   const handleSplit = useCallback(() => {
-    if (!doc) return;
-    const next = splitAt(doc.clips, playheadMs, nextClipId(doc.clips));
-    if (next) commit(next, "split clip");
-  }, [doc, playheadMs, commit]);
+    runOp({ op: "split", atMs: playheadRef.current });
+  }, [runOp]);
 
   /** Freeze the frame under the playhead for a default beat; the Hold field retimes it. */
   const handleFreeze = useCallback(() => {
-    if (!doc) return;
-    const total = timelineDurationMs(doc.clips);
-    const outputFps = doc.settings.fps > 0 ? doc.settings.fps : 60;
-    const atEnd = Math.abs(playheadMs - total) <= 500 / outputFps;
-    const next = atEnd
-      ? freezeAtEnd(doc.clips, outputFps, DEFAULT_HOLD_MS)
-      : freezeAt(doc.clips, playheadMs, DEFAULT_HOLD_MS);
-    if (next) commit(next, "freeze frame");
-  }, [doc, playheadMs, commit]);
+    runOp({ op: "freeze", atMs: playheadRef.current });
+  }, [runOp]);
 
-  /** Commit a taps-only mutation (placement, drag, context-menu edits). */
-  const commitTaps = useCallback(
-    (taps: EditTap[], label: string) => {
-      if (!doc || !target) return;
-      commitDoc({ ...doc, taps }, label);
+  const handleRemoveClip = useCallback(
+    (clipId: string) => {
+      runOp({ op: "removeClip", clipId });
     },
-    [doc, target, commitDoc],
+    [runOp],
   );
 
   const handlePlaceTap = useCallback(
     (pos: [number, number]) => {
-      if (!doc) return;
-      const at = outputToSource(doc.clips, playheadMs);
-      if (!at) return;
-      const taps = doc.taps ?? [];
-      commitTaps(
-        addTap(taps, { id: nextTapId(taps), sourceId: at.sourceId, sourceMs: at.sourceMs, pos }),
-        "add tap",
-      );
+      runOp({ op: "addTap", atMs: playheadRef.current, pos });
     },
-    [doc, playheadMs, commitTaps],
+    [runOp],
   );
 
   const handleCommitTap = useCallback(
-    (id: string, pos: [number, number]) => {
-      if (!doc) return;
-      commitTaps(moveTap(doc.taps ?? [], id, pos), "move tap");
+    (tapId: string, pos: [number, number]) => {
+      runOp({ op: "moveTap", tapId, pos });
     },
-    [doc, commitTaps],
+    [runOp],
   );
 
   const handleTapStyle = useCallback(
-    (id: string) => {
-      if (!doc || !target) return;
-      commitDoc({ ...doc, tapStyle: id }, "change tap style");
+    (style: string) => {
+      runOp({ op: "setTapLook", style });
     },
-    [doc, target, commitDoc],
+    [runOp],
   );
 
   const handleTapColor = useCallback(
-    (id: string) => {
-      if (!doc || !target) return;
-      commitDoc({ ...doc, tapColor: id }, "change tap colour");
+    (color: string) => {
+      runOp({ op: "setTapLook", color });
     },
-    [doc, target, commitDoc],
+    [runOp],
   );
 
   const handleTapSize = useCallback(
     (size: number) => {
-      if (!doc || !target) return;
-      commitDoc({ ...doc, tapSize: size }, "resize tap", { coalesceKey: "tap-size" });
+      runOp({ op: "setTapLook", size }, { coalesceKey: "tap-size" });
     },
-    [doc, target, commitDoc],
+    [runOp],
   );
 
-  /** Commit one mask's edit (every mask gesture funnels through here). */
+  /** Commit one mask's edit directly (the lane diamond's delete, which names a key by source time). */
   const commitMask = useCallback(
-    (mask: EditMask, label: string, options: { coalesceKey?: string } = {}) => {
+    (mask: EditMask, label: string) => {
       const current = docRef.current;
       if (!current) return;
-      commitDoc({ ...current, masks: replaceMask(current.masks ?? [], mask) }, label, options);
+      commitDoc({ ...current, masks: replaceMask(current.masks ?? [], mask) }, label);
     },
     [commitDoc],
   );
@@ -999,82 +1245,52 @@ export function EditorApp() {
   /** A new box: solid black (Michael's default) over the next 3 s of what's on screen, keyed at this frame, then selected. */
   const handleDrawMask = useCallback(
     (rect: MaskRect) => {
-      const current = docRef.current;
-      const at = maskMomentAt(playheadRef.current);
-      if (!current || !at) return;
-      const source = current.sources.find((s) => s.id === at.moment.sourceId);
-      if (!source) return;
-      const masks = current.masks ?? [];
-      const range = at.image ? { startMs: 0, endMs: 0 } : defaultMaskRange(at.moment, source);
-      const mask: EditMask = {
-        id: nextMaskId(masks),
-        sourceId: source.id,
-        style: "solid",
-        ...range,
-        keys: [{ sourceMs: at.image ? 0 : at.moment.sourceMs, rect }],
-      };
-      commitDoc({ ...current, masks: [...masks, mask] }, "add mask");
+      const result = runOp({ op: "addMask", atMs: playheadRef.current, rect });
+      if (!result?.ok || !result.created) return;
       setArmedMask(false);
-      selectMask(mask.id);
+      selectMask(result.created);
     },
-    [commitDoc, maskMomentAt, selectMask],
+    [runOp, selectMask],
   );
 
   /** Auto-key: a move or resize records the box at the frame on screen. */
   const handleCommitMaskRect = useCallback(
-    (id: string, rect: MaskRect, kind: "move" | "resize") => {
-      const mask = docRef.current?.masks?.find((m) => m.id === id);
-      const at = maskMomentAt(playheadRef.current);
-      if (!mask || !at || at.moment.sourceId !== mask.sourceId) return;
-      commitMask(
-        upsertMaskKey(mask, at.moment.sourceMs, rect, at.tolMs, at.image),
-        kind === "move" ? "move mask" : "resize mask",
+    (maskId: string, rect: MaskRect, kind: "move" | "resize") => {
+      runOp(
+        { op: "setMaskRect", maskId, atMs: playheadRef.current, rect },
+        { label: kind === "move" ? "move mask" : "resize mask" },
       );
     },
-    [commitMask, maskMomentAt],
+    [runOp],
   );
 
   const handleCommitMaskPath = useCallback(
-    (id: string, dx: number, dy: number) => {
-      const mask = docRef.current?.masks?.find((m) => m.id === id);
-      if (mask) commitMask(offsetMaskKeys(mask, dx, dy), "move mask path");
+    (maskId: string, dx: number, dy: number) => {
+      runOp({ op: "offsetMask", maskId, dx, dy });
     },
-    [commitMask],
+    [runOp],
   );
 
   /** Pin the current glide at the playhead so later drags only reshape what follows. */
   const handleAddMaskKey = useCallback(
-    (id: string) => {
-      const mask = docRef.current?.masks?.find((m) => m.id === id);
-      const at = maskMomentAt(playheadRef.current);
-      if (!mask || !at || at.image || at.moment.sourceId !== mask.sourceId) return;
-      const next = addHoldKey(mask, at.moment.sourceMs, at.tolMs);
-      if (next !== mask) commitMask(next, "add mask key");
+    (maskId: string) => {
+      runOp({ op: "addMaskKey", maskId, atMs: playheadRef.current });
     },
-    [commitMask, maskMomentAt],
+    [runOp],
   );
 
   const handleRemoveMaskKey = useCallback(
-    (id: string) => {
-      const mask = docRef.current?.masks?.find((m) => m.id === id);
-      const at = maskMomentAt(playheadRef.current);
-      if (!mask || !at || at.moment.sourceId !== mask.sourceId) return;
-      const next = removeMaskKey(mask, at.moment.sourceMs, at.tolMs);
-      if (next !== mask) commitMask(next, "delete mask key");
+    (maskId: string) => {
+      runOp({ op: "removeMaskKey", maskId, atMs: playheadRef.current });
     },
-    [commitMask, maskMomentAt],
+    [runOp],
   );
 
   const handleDeleteMask = useCallback(
-    (id: string) => {
-      const current = docRef.current;
-      if (!current) return;
-      commitDoc(
-        { ...current, masks: (current.masks ?? []).filter((m) => m.id !== id) },
-        "delete mask",
-      );
+    (maskId: string) => {
+      runOp({ op: "removeMask", maskId });
     },
-    [commitDoc],
+    [runOp],
   );
 
   /** Where a mask's key sits relative to the playhead: on one, or none here (and why not). */
@@ -1126,36 +1342,24 @@ export function EditorApp() {
   );
 
   const handleMaskStyle = useCallback(
-    (id: string, style: EditMaskStyle) => {
-      const mask = docRef.current?.masks?.find((m) => m.id === id);
-      if (mask && mask.style !== style) commitMask({ ...mask, style }, "change mask style");
+    (maskId: string, style: EditMaskStyle) => {
+      runOp({ op: "setMaskLook", maskId, style });
     },
-    [commitMask],
+    [runOp],
   );
 
   const handleMaskStrength = useCallback(
-    (id: string, strength: number) => {
-      const mask = docRef.current?.masks?.find((m) => m.id === id);
-      if (mask) {
-        commitMask({ ...mask, strength }, "change mask strength", {
-          coalesceKey: `mask-strength:${id}`,
-        });
-      }
+    (maskId: string, strength: number) => {
+      runOp({ op: "setMaskLook", maskId, strength }, { coalesceKey: `mask-strength:${maskId}` });
     },
-    [commitMask],
+    [runOp],
   );
 
   const handleMaskColor = useCallback(
-    (id: string, color: string | undefined) => {
-      const mask = docRef.current?.masks?.find((m) => m.id === id);
-      if (mask) commitMask({ ...mask, color }, "change mask colour");
+    (maskId: string, color: string | undefined) => {
+      runOp({ op: "setMaskLook", maskId, color: color ?? null });
     },
-    [commitMask],
-  );
-
-  const handleRetimeMask = useCallback(
-    (mask: EditMask) => commitMask(mask, "retime mask"),
-    [commitMask],
+    [runOp],
   );
 
   /** Right-click on a lane key diamond: delete exactly that key (a mask keeps its last one). */
@@ -1216,7 +1420,9 @@ export function EditorApp() {
   );
 
   const handleTapContextMenu = useCallback(
-    (id: string, x: number, y: number) => {
+    (tapId: string, x: number, y: number) => {
+      // The playhead when the menu opened, as before: playback may move it while the menu is up.
+      const atMs = playheadRef.current;
       setTapMenu({
         x,
         y,
@@ -1227,11 +1433,7 @@ export function EditorApp() {
             disabled: !canTap,
             title: canTap ? undefined : "The playhead isn't on a placeable moment",
             onSelect: () => {
-              if (!doc) return;
-              const at = outputToSource(doc.clips, playheadMs);
-              if (at) {
-                commitTaps(retimeTap(doc.taps ?? [], id, at.sourceId, at.sourceMs), "retime tap");
-              }
+              runOp({ op: "retimeTap", tapId, atMs });
             },
           },
           {
@@ -1240,13 +1442,13 @@ export function EditorApp() {
             confirmLabel: "Really delete?",
             danger: true,
             onSelect: () => {
-              if (doc) commitTaps(removeTap(doc.taps ?? [], id), "delete tap");
+              runOp({ op: "removeTap", tapId });
             },
           },
         ],
       });
     },
-    [doc, playheadMs, canTap, commitTaps],
+    [canTap, runOp],
   );
 
   /** Right-click menu on a timeline clip (the tap-marker menu's pattern). */
@@ -1282,13 +1484,13 @@ export function EditorApp() {
             confirmLabel: "Really remove?",
             danger: true,
             onSelect: () => {
-              if (doc) commit(removeClip(doc.clips, id), "remove clip");
+              handleRemoveClip(id);
             },
           },
         ],
       });
     },
-    [doc, handleInsertClipAt, handleAddClip, commit],
+    [doc, handleInsertClipAt, handleAddClip, handleRemoveClip],
   );
 
   // Space plays/pauses (committing the value first when it comes from the tap-size slider or the hold field, where a literal space means nothing); S/F split/freeze at the playhead; Delete/Backspace removes the selected clip; Escape deselects. Lives below canSplit/canFreeze so the dependency array can read them.
@@ -1328,7 +1530,7 @@ export function EditorApp() {
         handleDeleteMask(selectedMaskId);
       } else if ((e.key === "Delete" || e.key === "Backspace") && doc && selectedId) {
         e.preventDefault();
-        commit(removeClip(doc.clips, selectedId), "remove clip");
+        handleRemoveClip(selectedId);
       } else if (e.key === "Escape") {
         // Disarm a tool first, deselect only when none was armed (the AnimationLane pattern).
         if (armedMask) setArmedMask(false);
@@ -1342,7 +1544,7 @@ export function EditorApp() {
   }, [
     doc,
     selectedId,
-    commit,
+    handleRemoveClip,
     togglePlay,
     stepFrames,
     handleSplit,
@@ -1569,7 +1771,7 @@ export function EditorApp() {
                 className="btn"
                 onClick={() => {
                   if (selectedMaskId) handleDeleteMask(selectedMaskId);
-                  else if (selectedId) commit(removeClip(doc.clips, selectedId), "remove clip");
+                  else if (selectedId) handleRemoveClip(selectedId);
                 }}
                 disabled={!selectedId && !selectedMaskId}
                 title={
@@ -1592,10 +1794,11 @@ export function EditorApp() {
                     onBlur={(e) => {
                       const s = Number(e.currentTarget.value);
                       if (Number.isFinite(s) && s > 0 && selectedId) {
-                        commit(
-                          setClipHold(doc.clips, selectedId, Math.round(s * 1000)),
-                          "retime freeze",
-                        );
+                        runOp({
+                          op: "setHold",
+                          clipId: selectedId,
+                          holdMs: Math.round(s * 1000),
+                        });
                       }
                     }}
                     onKeyDown={(e) => {
@@ -1607,23 +1810,22 @@ export function EditorApp() {
               ) : (
                 <select
                   className="select editor-speed"
-                  value={selectedClip?.speed ?? 1}
+                  value={String(selectedClip?.speed ?? 1)}
                   disabled={!selectedClip}
                   title="Playback speed of the selected clip"
                   onChange={(e) => {
-                    if (selectedId) {
-                      commit(
-                        setClipSpeed(doc.clips, selectedId, Number(e.currentTarget.value)),
-                        "change clip speed",
-                      );
+                    const speed = Number(e.currentTarget.value);
+                    // An off-menu speed (a fit or kb edit) is listed so the select never blanks; picking it changes nothing.
+                    if (selectedId && speed !== selectedClip?.speed) {
+                      runOp({ op: "setSpeed", clipId: selectedId, speed });
                     }
                     // The popup closes but the select keeps focus, and it eats the next click.
                     e.currentTarget.blur();
                   }}
                 >
-                  {SPEED_OPTIONS.map((s) => (
-                    <option key={s} value={s}>
-                      {s}×
+                  {speedChoices(selectedClip?.speed).map((s) => (
+                    <option key={s.value} value={s.value}>
+                      {s.label}
                     </option>
                   ))}
                 </select>
@@ -1770,7 +1972,7 @@ export function EditorApp() {
           playheadMs={playheadMs}
           onSelect={selectClip}
           onPlayhead={handleSeek}
-          onCommit={commit}
+          onEditOp={runOp}
           onTrimScrub={handleTrimScrub}
           onScrubWheel={scrubWheel}
           onDropClipAt={handleInsertClipAt}
@@ -1782,7 +1984,6 @@ export function EditorApp() {
           showMaskLane={armedMask}
           selectedMaskId={selectedMaskId}
           onSelectMask={selectMask}
-          onRetimeMask={handleRetimeMask}
           onMaskKeyMenu={handleMaskKeyMenu}
         />
       )}
@@ -1809,6 +2010,36 @@ export function EditorApp() {
             className="toast-close"
             aria-label="Dismiss"
             onClick={() => setRender({ phase: "idle" })}
+          >
+            ×
+          </button>
+        </footer>
+      )}
+      {render.phase === "changed" && (
+        <footer className="toast toast-info" role="status">
+          <span className="toast-msg">
+            This edit changed during the render. Render again to include the change.
+          </span>
+          <button
+            type="button"
+            className="toast-close"
+            aria-label="Dismiss"
+            onClick={() => setRender({ phase: "idle" })}
+          >
+            ×
+          </button>
+        </footer>
+      )}
+      {notice && (
+        <footer className="toast toast-info" role="status">
+          <span className="toast-msg" title={notice}>
+            {notice}
+          </span>
+          <button
+            type="button"
+            className="toast-close"
+            aria-label="Dismiss"
+            onClick={() => setNotice(null)}
           >
             ×
           </button>

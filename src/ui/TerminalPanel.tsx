@@ -224,7 +224,7 @@ export function TerminalPanel({
         term.clear();
         if (provisioned === false) {
           term.writeln(
-            "\r\n⚠ Kookaburra Cut's scene-authoring skill is missing from this install, so Claude may not know this app's conventions. Try reinstalling Kookaburra Cut.\r\n",
+            "\r\n⚠ A Kookaburra Cut skill is missing from this install, so Claude may not know this app's conventions. Try reinstalling Kookaburra Cut.\r\n",
           );
         }
         const project: SessionProject = { slug, name: projectName ?? null };

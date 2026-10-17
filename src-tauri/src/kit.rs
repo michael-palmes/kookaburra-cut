@@ -1,4 +1,4 @@
-//! The Claude Code kit a workspace project carries (docs/agent-kit.md, "Stamping"): the managed skill directory and its `kit.json`, the user's `CLAUDE.md`, and the managed keys of `.claude/settings.json`. Every step is idempotent and writes only when something changed.
+//! The Claude Code kit a workspace project carries (docs/agent-kit.md, "Stamping"): the managed skill directories (`SHIPPED_SKILLS`, each with its own `kit.json`), the user's `CLAUDE.md`, and the managed keys of `.claude/settings.json`. Every step is idempotent and writes only when something changed.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -7,9 +7,13 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde_json::{json, Value};
 
+/// The primary skill: CLAUDE.md imports its RULES and the managed hooks run its kb.
 pub(crate) const SKILL_NAME: &str = "kookaburra-scene-authoring";
-/// The kit contract version written to `kit.json` (bridge v2, heartbeat, managed settings).
-pub(crate) const KIT_VERSION: u64 = 2;
+pub(crate) const VIDEO_SKILL_NAME: &str = "kookaburra-video-editing";
+/// Every skill stamped into a project, primary first; each lands at `.claude/skills/<name>`.
+pub(crate) const SHIPPED_SKILLS: [&str; 2] = [SKILL_NAME, VIDEO_SKILL_NAME];
+/// The kit contract version written to `kit.json` (bridge v2, heartbeat, managed settings, sibling skills, no kb tests).
+pub(crate) const KIT_VERSION: u64 = 3;
 const KIT_FILE: &str = "kit.json";
 const CLAUDE_MD_TEMPLATE: &str = include_str!("../templates/project-CLAUDE.md");
 const SETTINGS_TEMPLATE: &str = include_str!("../templates/project-claude-settings.json");
@@ -24,6 +28,8 @@ const MANAGED_HOOK_MARKER: &str = "kookaburra-scene-authoring/scripts/kb.py hook
 const NAME_PLACEHOLDER: &str = "{{name}}";
 /// Never copied or compared: bytecode and Finder litter would make every dev comparison differ.
 const SKIPPED_NAMES: [&str; 2] = ["__pycache__", ".DS_Store"];
+/// Shipped in the source tree but never stamped: kb's test suite and its fixtures stay out of user projects.
+const SKIPPED_PATHS: [&str; 1] = ["scripts/tests"];
 /// Staged or retired skill copies older than this belong to a stamp that crashed.
 const STALE_SIBLING_MS: u128 = 600_000;
 
@@ -53,24 +59,36 @@ fn now_ms() -> u64 {
         .unwrap_or(0)
 }
 
-/// Stamp every part of the kit into a project folder, carrying on past a failed part and reporting the first error.
+/// The shipped skills found under `root`, and the names of any that are missing.
+pub(crate) fn shipped_skills_in(root: &Path) -> (Vec<(&'static str, PathBuf)>, Vec<&'static str>) {
+    let mut found = Vec::new();
+    let mut missing = Vec::new();
+    for name in SHIPPED_SKILLS {
+        let src = root.join(name);
+        if src.is_dir() {
+            found.push((name, src));
+        } else {
+            missing.push(name);
+        }
+    }
+    (found, missing)
+}
+
+/// Stamp every part of the kit into a project folder (each `(name, source)` skill to `.claude/skills/<name>`), carrying on past a failed part and reporting the first error.
 pub(crate) fn stamp_project(
-    skill_src: Option<&Path>,
+    skills: &[(&str, &Path)],
     dir: &Path,
     opts: &StampOptions,
 ) -> Result<(), String> {
     let _guard = STAMP_LOCK.lock().unwrap_or_else(|p| p.into_inner());
-    let results = [
+    let skills_dir = dir.join(".claude").join("skills");
+    let mut results = vec![
         stamp_claude_md(dir),
         stamp_settings(&dir.join(".claude").join("settings.json")),
-        skill_src.map_or(Ok(()), |src| {
-            stamp_skill(
-                src,
-                &dir.join(".claude").join("skills").join(SKILL_NAME),
-                opts,
-            )
-        }),
     ];
+    results.extend(skills.iter().map(|(name, src)| {
+        stamp_skill(src, &skills_dir.join(name), opts).map_err(|e| format!("{name}: {e}"))
+    }));
     results
         .into_iter()
         .collect::<Result<Vec<()>, String>>()
@@ -380,11 +398,18 @@ fn skipped(name: &std::ffi::OsStr) -> bool {
     SKIPPED_NAMES.iter().any(|s| name == *s)
 }
 
-fn snapshot(root: &Path, contents: bool) -> Option<BTreeMap<PathBuf, Node>> {
+/// A source path (relative to the skill root) that is never stamped.
+fn unshipped(rel: &Path) -> bool {
+    SKIPPED_PATHS.iter().any(|p| rel == Path::new(p))
+}
+
+/// `source` applies the unshipped paths: a stamped copy that still has them must differ, so the restamp drops them.
+fn snapshot(root: &Path, contents: bool, source: bool) -> Option<BTreeMap<PathBuf, Node>> {
     fn walk(
         root: &Path,
         dir: &Path,
         contents: bool,
+        source: bool,
         out: &mut BTreeMap<PathBuf, Node>,
     ) -> Option<()> {
         for entry in std::fs::read_dir(dir).ok()? {
@@ -394,12 +419,15 @@ fn snapshot(root: &Path, contents: bool) -> Option<BTreeMap<PathBuf, Node>> {
             }
             let path = entry.path();
             let rel = path.strip_prefix(root).ok()?.to_path_buf();
+            if source && unshipped(&rel) {
+                continue;
+            }
             let meta = std::fs::symlink_metadata(&path).ok()?;
             if meta.file_type().is_symlink() {
                 out.insert(rel, Node::Link(std::fs::read_link(&path).ok()?));
             } else if meta.is_dir() {
                 out.insert(rel, Node::Dir);
-                walk(root, &path, contents, out)?;
+                walk(root, &path, contents, source, out)?;
             } else if contents {
                 out.insert(rel, Node::File(std::fs::read(&path).ok()?));
             } else {
@@ -409,14 +437,16 @@ fn snapshot(root: &Path, contents: bool) -> Option<BTreeMap<PathBuf, Node>> {
         Some(())
     }
     let mut out = BTreeMap::new();
-    walk(root, root, contents, &mut out)?;
+    walk(root, root, contents, source, &mut out)?;
     Some(out)
 }
 
 /// Same files and links, compared byte for byte (`contents`) or by size.
 fn trees_match(src: &Path, dst: &Path, contents: bool) -> bool {
-    let (Some(shipped), Some(mut stamped)) = (snapshot(src, contents), snapshot(dst, contents))
-    else {
+    let (Some(shipped), Some(mut stamped)) = (
+        snapshot(src, contents, true),
+        snapshot(dst, contents, false),
+    ) else {
         return false;
     };
     stamped.remove(Path::new(KIT_FILE));
@@ -444,12 +474,13 @@ fn needs_restamp(src: &Path, dst: &Path, opts: &StampOptions) -> bool {
         || !trees_match(src, dst, false)
 }
 
-/// Symlinks are recreated, never followed.
-fn copy_kit_tree(from: &Path, to: &Path) -> Result<(), String> {
+/// Symlinks are recreated, never followed; `rel` is `from` relative to the skill root.
+fn copy_kit_tree(from: &Path, to: &Path, rel: &Path) -> Result<(), String> {
     std::fs::create_dir_all(to).map_err(|e| e.to_string())?;
     for entry in std::fs::read_dir(from).map_err(|e| e.to_string())? {
         let entry = entry.map_err(|e| e.to_string())?;
-        if skipped(&entry.file_name()) {
+        let entry_rel = rel.join(entry.file_name());
+        if skipped(&entry.file_name()) || unshipped(&entry_rel) {
             continue;
         }
         let src = entry.path();
@@ -460,7 +491,7 @@ fn copy_kit_tree(from: &Path, to: &Path) -> Result<(), String> {
             std::os::unix::fs::symlink(&target, &dst)
                 .map_err(|e| format!("linking {}: {e}", src.display()))?;
         } else if meta.is_dir() {
-            copy_kit_tree(&src, &dst)?;
+            copy_kit_tree(&src, &dst, &entry_rel)?;
         } else {
             std::fs::copy(&src, &dst).map_err(|e| format!("copying {}: {e}", src.display()))?;
         }
@@ -513,12 +544,12 @@ fn swap_in(staged: &Path, dst: &Path, retired: &Path) -> Result<(), String> {
     Ok(())
 }
 
-fn remove_stale_siblings(parent: &Path) {
+fn remove_stale_siblings(parent: &Path, name: &str) {
     let Ok(entries) = std::fs::read_dir(parent) else {
         return;
     };
-    let staged = format!(".{SKILL_NAME}.tmp-");
-    let retired = format!(".{SKILL_NAME}.old-");
+    let staged = format!(".{name}.tmp-");
+    let retired = format!(".{name}.old-");
     for entry in entries.flatten() {
         let name = entry.file_name().to_string_lossy().into_owned();
         if !name.starts_with(&staged) && !name.starts_with(&retired) {
@@ -539,16 +570,20 @@ fn remove_stale_siblings(parent: &Path) {
 /// Replace the managed skill wholesale (staged copy, then swap) so files the kit no longer ships disappear.
 pub(crate) fn stamp_skill(src: &Path, dst: &Path, opts: &StampOptions) -> Result<(), String> {
     let parent = dst.parent().ok_or("the skill path has no parent")?;
+    let name = dst
+        .file_name()
+        .and_then(|n| n.to_str())
+        .ok_or("the skill path has no name")?;
     std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
-    remove_stale_siblings(parent);
+    remove_stale_siblings(parent, name);
     if !needs_restamp(src, dst, opts) {
         return Ok(());
     }
     let tag = format!("{}-{}", std::process::id(), opts.now_ms);
-    let staged = parent.join(format!(".{SKILL_NAME}.tmp-{tag}"));
-    let retired = parent.join(format!(".{SKILL_NAME}.old-{tag}"));
+    let staged = parent.join(format!(".{name}.tmp-{tag}"));
+    let retired = parent.join(format!(".{name}.old-{tag}"));
     remove_tree(&staged);
-    let result = copy_kit_tree(src, &staged)
+    let result = copy_kit_tree(src, &staged, Path::new(""))
         .and_then(|()| {
             let kit = json!({
                 "kitVersion": KIT_VERSION,
@@ -760,7 +795,34 @@ mod tests {
         write(&src.join("SKILL.md"), "skill");
         write(&src.join("scripts/kb.py"), "print('kb')");
         write(&src.join("scripts/kblib/__pycache__/x.pyc"), "bytecode");
+        write(&src.join("scripts/tests/test_kb.py"), "import unittest");
+        write(&src.join("scripts/tests/fixtures/vectors.json"), "{}");
         src
+    }
+
+    fn video_source(dir: &Path) -> PathBuf {
+        let src = dir.join("video-source");
+        write(&src.join("SKILL.md"), "video");
+        write(&src.join("reference/recipes.md"), "recipes");
+        src
+    }
+
+    fn names_in(dir: &Path) -> Vec<String> {
+        let mut names: Vec<String> = std::fs::read_dir(dir)
+            .unwrap()
+            .flatten()
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .collect();
+        names.sort();
+        names
+    }
+
+    fn age(path: &Path) {
+        let old = SystemTime::now() - std::time::Duration::from_secs(3_600);
+        std::fs::File::open(path)
+            .unwrap()
+            .set_modified(old)
+            .unwrap();
     }
 
     #[test]
@@ -778,6 +840,7 @@ mod tests {
         );
         assert!(dst.join("scripts/kb.py").is_file());
         assert!(!dst.join("scripts/kblib/__pycache__").exists());
+        assert!(!dst.join("scripts/tests").exists());
         assert_eq!(
             read_json(&dst.join(KIT_FILE)),
             json!({ "kitVersion": KIT_VERSION, "appVersion": "0.19.0", "stampedAtMs": 1 })
@@ -848,17 +911,227 @@ mod tests {
     }
 
     #[test]
+    fn the_kb_tests_never_reach_a_project_and_dev_builds_settle() {
+        let dir = scratch("no-tests");
+        let src = skill_source(&dir);
+        let dst = dir.join("project/.claude/skills").join(SKILL_NAME);
+        write(
+            &dst.join("scripts/tests/test_old.py"),
+            "stale tests from an older kit",
+        );
+        write(&dst.join(KIT_FILE), "{}");
+        stamp_skill(&src, &dst, &opts("0.19.0", true, 1)).unwrap();
+        assert!(!dst.join("scripts/tests").exists());
+        assert_eq!(read_json(&dst.join(KIT_FILE))["stampedAtMs"], 1);
+        stamp_skill(&src, &dst, &opts("0.19.0", true, 2)).unwrap();
+        assert_eq!(read_json(&dst.join(KIT_FILE))["stampedAtMs"], 1);
+        stamp_skill(&src, &dst, &opts("0.19.0", false, 3)).unwrap();
+        assert_eq!(read_json(&dst.join(KIT_FILE))["stampedAtMs"], 1);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn release_builds_restamp_a_kit_from_an_older_contract() {
+        let dir = scratch("kit-version");
+        let src = skill_source(&dir);
+        let dst = dir.join("project/.claude/skills").join(SKILL_NAME);
+        stamp_skill(&src, &dst, &opts("0.19.0", false, 1)).unwrap();
+        assert_eq!(KIT_VERSION, 3);
+        let mut kit = read_json(&dst.join(KIT_FILE));
+        kit["kitVersion"] = json!(2);
+        write(&dst.join(KIT_FILE), &kit.to_string());
+        stamp_skill(&src, &dst, &opts("0.19.0", false, 2)).unwrap();
+        assert_eq!(
+            read_json(&dst.join(KIT_FILE)),
+            json!({ "kitVersion": 3, "appVersion": "0.19.0", "stampedAtMs": 2 })
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn every_shipped_skill_is_stamped_with_its_own_kit_file() {
+        let dir = scratch("multi");
+        let (scene, video) = (skill_source(&dir), video_source(&dir));
+        let project = dir.join("project");
+        write(&project.join("project.json"), r#"{"name":"Demo"}"#);
+        stamp_project(
+            &[(SKILL_NAME, &scene), (VIDEO_SKILL_NAME, &video)],
+            &project,
+            &opts("0.19.0", false, 5),
+        )
+        .unwrap();
+        let skills = project.join(".claude/skills");
+        assert_eq!(names_in(&skills), [SKILL_NAME, VIDEO_SKILL_NAME]);
+        assert_eq!(
+            std::fs::read_to_string(skills.join(VIDEO_SKILL_NAME).join("SKILL.md")).unwrap(),
+            "video"
+        );
+        assert!(skills
+            .join(VIDEO_SKILL_NAME)
+            .join("reference/recipes.md")
+            .is_file());
+        for name in SHIPPED_SKILLS {
+            assert_eq!(
+                read_json(&skills.join(name).join(KIT_FILE)),
+                json!({ "kitVersion": KIT_VERSION, "appVersion": "0.19.0", "stampedAtMs": 5 })
+            );
+        }
+        let settings = read_json(&project.join(".claude/settings.json"));
+        assert_eq!(settings["hooks"], managed_settings()["hooks"]);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_failing_skill_does_not_stop_the_others() {
+        let dir = scratch("one-missing");
+        let video = video_source(&dir);
+        let project = dir.join("project");
+        write(&project.join("project.json"), r#"{"name":"Demo"}"#);
+        let error = stamp_project(
+            &[
+                (SKILL_NAME, &dir.join("absent")),
+                (VIDEO_SKILL_NAME, &video),
+            ],
+            &project,
+            &opts("0.19.0", false, 1),
+        )
+        .unwrap_err();
+        assert!(error.starts_with(SKILL_NAME), "{error}");
+        let skills = project.join(".claude/skills");
+        assert_eq!(names_in(&skills), [VIDEO_SKILL_NAME]);
+        assert!(project.join("CLAUDE.md").is_file());
+        assert!(project.join(".claude/settings.json").is_file());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn each_skill_clears_only_its_own_crashed_copies() {
+        let dir = scratch("siblings");
+        let (scene, video) = (skill_source(&dir), video_source(&dir));
+        let skills = dir.join("project/.claude/skills");
+        let stale = [
+            format!(".{SKILL_NAME}.tmp-1-1"),
+            format!(".{SKILL_NAME}.old-1-1"),
+            format!(".{VIDEO_SKILL_NAME}.tmp-1-1"),
+            format!(".{VIDEO_SKILL_NAME}.old-1-1"),
+        ];
+        for name in &stale {
+            write(&skills.join(name).join("SKILL.md"), "crashed");
+            age(&skills.join(name));
+        }
+        let young = format!(".{VIDEO_SKILL_NAME}.tmp-2-2");
+        write(&skills.join(&young).join("SKILL.md"), "in flight");
+        write(&skills.join(".other-skill.tmp-1-1/SKILL.md"), "not ours");
+        age(&skills.join(".other-skill.tmp-1-1"));
+        stamp_skill(
+            &video,
+            &skills.join(VIDEO_SKILL_NAME),
+            &opts("0.19.0", false, 3),
+        )
+        .unwrap();
+        assert!(skills.join(&stale[0]).exists() && skills.join(&stale[1]).exists());
+        assert!(!skills.join(&stale[2]).exists() && !skills.join(&stale[3]).exists());
+        stamp_skill(&scene, &skills.join(SKILL_NAME), &opts("0.19.0", false, 4)).unwrap();
+        assert_eq!(
+            names_in(&skills),
+            [
+                young.as_str(),
+                ".other-skill.tmp-1-1",
+                SKILL_NAME,
+                VIDEO_SKILL_NAME
+            ]
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn shipped_skills_are_found_by_name() {
+        let dir = scratch("shipped");
+        write(&dir.join(SKILL_NAME).join("SKILL.md"), "skill");
+        let (found, missing) = shipped_skills_in(&dir);
+        assert_eq!(found, vec![(SKILL_NAME, dir.join(SKILL_NAME))]);
+        assert_eq!(missing, vec![VIDEO_SKILL_NAME]);
+        write(&dir.join(VIDEO_SKILL_NAME).join("SKILL.md"), "video");
+        assert_eq!(shipped_skills_in(&dir).0.len(), 2);
+        assert!(shipped_skills_in(&dir).1.is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Where a `tauri.conf.json` resource entry puts `rel` (a path inside `.agents/skills`), mirroring tauri-utils: a directory keeps its structure, a `dir/*.ext` glob lands by file name, a file lands at its target.
+    fn bundled_at(resources: &serde_json::Map<String, Value>, rel: &Path) -> Option<PathBuf> {
+        let src = Path::new("../.agents/skills").join(rel);
+        resources.iter().find_map(|(key, dest)| {
+            let dest = PathBuf::from(dest.as_str()?);
+            if let Some((dir, ext)) = key.split_once("/*.") {
+                let in_dir = src.parent() == Some(Path::new(dir));
+                return (in_dir && src.extension().is_some_and(|e| e == ext))
+                    .then(|| dest.join(src.file_name().unwrap()));
+            }
+            let key = Path::new(key);
+            if src == key {
+                Some(dest)
+            } else {
+                src.strip_prefix(key).ok().map(|rest| dest.join(rest))
+            }
+        })
+    }
+
+    fn shipped_files(root: &Path, dir: &Path, out: &mut Vec<PathBuf>) {
+        for entry in std::fs::read_dir(dir).unwrap().flatten() {
+            let path = entry.path();
+            let rel = path.strip_prefix(root).unwrap().to_path_buf();
+            let in_skill: PathBuf = rel.components().skip(1).collect();
+            if skipped(&entry.file_name()) || unshipped(&in_skill) {
+                continue;
+            }
+            if path.is_dir() {
+                shipped_files(root, &path, out);
+            } else {
+                out.push(rel);
+            }
+        }
+    }
+
+    #[test]
+    fn the_repo_bundles_every_skill_file_and_no_kit_tests() {
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../.agents/skills");
+        assert!(shipped_skills_in(&root).1.is_empty());
+        let conf: Value =
+            serde_json::from_str(include_str!("../tauri.conf.json")).expect("tauri.conf.json");
+        let resources = conf["bundle"]["resources"].as_object().unwrap();
+        for name in SHIPPED_SKILLS {
+            let mut files = Vec::new();
+            shipped_files(&root, &root.join(name), &mut files);
+            assert!(!files.is_empty());
+            for rel in files {
+                assert_eq!(
+                    bundled_at(resources, &rel),
+                    Some(Path::new("claude-skills").join(&rel)),
+                    "{} must be bundled at claude-skills/{0}",
+                    rel.display()
+                );
+            }
+            let test = Path::new(name).join("scripts/tests/test_kb.py");
+            assert_eq!(
+                bundled_at(resources, &test),
+                None,
+                "kit tests stay out of the app"
+            );
+        }
+    }
+
+    #[test]
     fn stamping_a_project_is_idempotent() {
         let dir = scratch("project");
         let src = skill_source(&dir);
         let project = dir.join("project");
         write(&project.join("project.json"), r#"{"name":"Demo"}"#);
         write(&project.join("CLAUDE.md"), PREVIOUS_CLAUDE_MD[2]);
-        stamp_project(Some(&src), &project, &opts("0.19.0", false, 1)).unwrap();
+        stamp_project(&[(SKILL_NAME, &src)], &project, &opts("0.19.0", false, 1)).unwrap();
         let claude = std::fs::read_to_string(project.join("CLAUDE.md")).unwrap();
         assert_eq!(claude, render_claude_md("Demo"));
         let settings = std::fs::read_to_string(project.join(".claude/settings.json")).unwrap();
-        stamp_project(Some(&src), &project, &opts("0.19.0", false, 2)).unwrap();
+        stamp_project(&[(SKILL_NAME, &src)], &project, &opts("0.19.0", false, 2)).unwrap();
         assert_eq!(
             std::fs::read_to_string(project.join("CLAUDE.md")).unwrap(),
             claude

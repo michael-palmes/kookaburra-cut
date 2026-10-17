@@ -125,21 +125,70 @@ export function loadEdit(slug: string, name: string): Promise<EditDoc> {
   return invoke<EditDoc>("load_edit", { slug, name });
 }
 
-export function saveEdit(slug: string, name: string, doc: EditDoc): Promise<void> {
-  return invoke("save_edit", { slug, name, doc });
+/** A document write: its new content hash and stamp, and the stamp it replaced (null when the file was new). */
+export interface EditWrite {
+  hash: string;
+  stamp: string;
+  before: string | null;
+}
+
+/** The render record Rust writes beside the doc after every canonical render (`edits/.renders/<name>.json`). */
+export interface EditRenderRecord {
+  /** sha256 hex of the doc bytes that were rendered. */
+  docHash: string;
+  atMs: number;
+  frames: number;
+}
+
+/** A loaded document with the hash and stamp of the bytes read, and its last render. */
+export interface EditEntry {
+  doc: EditDoc;
+  hash: string;
+  stamp: string;
+  render: EditRenderRecord | null;
+}
+
+/** File stamps (`<mtime nanos>:<size>`) of the doc and its render record; null = missing. */
+export interface EditStamps {
+  doc: string | null;
+  render: string | null;
+}
+
+/** Save against `baseHash` (the hash the editor last read or wrote); a stale base is refused with a `conflict:` error. A null base writes unconditionally (legacy). */
+export function saveEdit(
+  slug: string,
+  name: string,
+  doc: EditDoc,
+  baseHash?: string | null,
+): Promise<EditWrite> {
+  return invoke<EditWrite>("save_edit", { slug, name, doc, baseHash: baseHash ?? null });
+}
+
+export function loadEditEntry(slug: string, name: string): Promise<EditEntry> {
+  return invoke<EditEntry>("load_edit_entry", { slug, name });
+}
+
+export function editStamps(slug: string, name: string): Promise<EditStamps> {
+  return invoke<EditStamps>("edit_stamps", { slug, name });
 }
 
 export function listEdits(slug: string): Promise<string[]> {
   return invoke<string[]>("list_edits", { slug });
 }
 
-/** Flatten an edit to `assets/<name>-edited.mp4`; resolves to the project-relative path. */
+/** A finished render: the project-relative output and the hash of the doc bytes it rendered. */
+export interface EditRenderResult {
+  rel: string;
+  docHash: string;
+}
+
+/** Flatten an edit to `assets/<name>-edited.mp4`. */
 export function renderEdit(
   slug: string,
   name: string,
   onProgress?: (p: RenderProgress) => void,
-): Promise<string> {
+): Promise<EditRenderResult> {
   const channel = new Channel<RenderProgress>();
   if (onProgress) channel.onmessage = onProgress;
-  return invoke<string>("render_edit", { slug, name, onProgress: channel });
+  return invoke<EditRenderResult>("render_edit", { slug, name, onProgress: channel });
 }

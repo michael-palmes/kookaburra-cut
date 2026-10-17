@@ -1,7 +1,9 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { refreshWorkspaceAssets } from "../engine/assetInventory";
 import { resolveScreenshotTimeMs } from "../engine/autorun";
+import { invalidateChangedClips } from "../engine/clips";
 import { awaitSceneHostsCommitted, captureFrameRgba } from "../engine/exporter";
 import { type AspectName, FORMATS } from "../engine/format";
 import { insertPresetScene } from "../engine/presetInsert";
@@ -57,7 +59,8 @@ vi.mock("../engine/exporter", () => ({
   captureScreenshot: vi.fn(),
 }));
 vi.mock("../engine/themePreviews", () => ({ awaitProjectCommitted: vi.fn() }));
-vi.mock("../engine/clips", () => ({ invalidateChangedClips: vi.fn() }));
+vi.mock("../engine/clips", () => ({ invalidateChangedClips: vi.fn(async () => {}) }));
+vi.mock("../engine/assetInventory", () => ({ refreshWorkspaceAssets: vi.fn(async () => {}) }));
 vi.mock("../engine/project", () => ({
   bumpWorkspaceReloadToken: vi.fn(),
   isEditableProjectId: () => true,
@@ -693,5 +696,65 @@ describe("bridge v2 requests", () => {
     const response = await serve({ kind: "teleport" });
     expect(response).toMatchObject({ version: 2, ok: false });
     expect(String(response.error)).toContain("capture, check, fonts, insertPreset");
+  });
+
+  it.each(["mediaChanged", "openEdit"])("never serves the native %s kind", async (kind) => {
+    editor.exportLocked = true;
+    const response = await serve({ kind, project: "ws:demo", name: "clip" });
+    expect(response).toMatchObject({ version: 2, ok: false });
+    expect(response.busy).toBeUndefined();
+    expect(String(response.error)).toContain(`${kind} is served natively by the app`);
+    expect(loadProject).not.toHaveBeenCalled();
+  });
+});
+
+describe("media changed in the render window", () => {
+  let claims: number;
+
+  const mediaChanged = (payload: unknown) => {
+    const call = vi
+      .mocked(listen)
+      .mock.calls.find(([name]) => name === "kookaburra://media-changed");
+    if (!call) throw new Error("no media-changed listener");
+    call[1]({ event: "kookaburra://media-changed", id: 1, payload });
+  };
+
+  beforeEach(() => {
+    claims = 0;
+    vi.mocked(invoke).mockImplementation(async (command) => {
+      if (command === "bridge_claim_request") claims++;
+      return null;
+    });
+  });
+
+  it("sweeps changed clips and the project's assets before the next claim", async () => {
+    stop = startBridgeService(vi.fn());
+    await vi.advanceTimersByTimeAsync(0);
+    expect(invalidateChangedClips).not.toHaveBeenCalled();
+    const before = claims;
+    mediaChanged({ slug: "demo", paths: ["assets/clip-edited.mp4"], origin: "agent" });
+    expect(invalidateChangedClips).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(refreshWorkspaceAssets).toHaveBeenCalledWith("ws:demo");
+    expect(invalidateChangedClips).toHaveBeenCalledTimes(1);
+    const sweptAt = vi.mocked(invalidateChangedClips).mock.invocationCallOrder[0];
+    const claimedAt = vi
+      .mocked(invoke)
+      .mock.calls.map(
+        (call, n) => [call[0], vi.mocked(invoke).mock.invocationCallOrder[n]] as const,
+      )
+      .filter(([name, order]) => name === "bridge_claim_request" && order > sweptAt);
+    expect(claimedAt.length).toBeGreaterThan(0);
+    expect(claims).toBeGreaterThan(before);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(invalidateChangedClips).toHaveBeenCalledTimes(1);
+  });
+
+  it("sweeps clips for a broadcast that names no project", async () => {
+    stop = startBridgeService(vi.fn());
+    mediaChanged(null);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(invalidateChangedClips).toHaveBeenCalledTimes(1);
+    expect(refreshWorkspaceAssets).not.toHaveBeenCalled();
   });
 });

@@ -7,8 +7,23 @@ import { parseFontString } from "../theme/fontRef";
 
 /** Pure halves of the bridge v2 service (docs/agent-kit.md, "The bridge (v2)"): request shaping, preset lookup and the `check` report. */
 
-export const BRIDGE_KINDS = ["capture", "check", "fonts", "insertPreset"] as const;
+/** Mirror of bridge.rs's BRIDGE_KINDS (a test pins the two together). */
+export const BRIDGE_KINDS = [
+  "capture",
+  "check",
+  "fonts",
+  "insertPreset",
+  "mediaChanged",
+  "openEdit",
+] as const;
 export type BridgeKind = (typeof BRIDGE_KINDS)[number];
+
+/** Mirror of bridge.rs's NATIVE_KINDS: served by the app's Rust loop, never claimed by the render window. */
+export const NATIVE_BRIDGE_KINDS = ["mediaChanged", "openEdit"] as const;
+
+export function isNativeBridgeKind(kind: string | null | undefined): boolean {
+  return (NATIVE_BRIDGE_KINDS as readonly string[]).includes(kind ?? "");
+}
 
 /** Frames per capture request; past this a contact sheet stops being readable. */
 export const MAX_CAPTURE_FRAMES = 48;
@@ -36,6 +51,9 @@ export interface BridgeRequest {
   preset?: string | null;
   position?: number | null;
   name?: string | null;
+  paths?: string[] | null;
+  edit?: string | null;
+  projectPath?: string | null;
 }
 
 /** v1 clients get v1 responses (same fields, extra ones ignored); everything else answers as v2. */

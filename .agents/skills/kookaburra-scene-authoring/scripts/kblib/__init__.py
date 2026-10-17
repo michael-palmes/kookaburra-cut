@@ -2,4 +2,4 @@
 
 from __future__ import annotations
 
-KB_VERSION = "2.0.0"
+KB_VERSION = "2.1.0"

@@ -53,6 +53,9 @@ project folder (it also walks up from the cwd, or uses $CLAUDE_PROJECT_DIR).
   Library    presets [list | show SLUG] | catalog [FAMILY] [--search Q]
              fonts safe | fonts check REF... | fonts list
   Media      assets list | assets add FILE [--name N] | assets probe ASSET
+  Video      video list | video show NAME | video new SRC [--for SCENE:SLOT]
+             video cut|keep|split|trim|speed|freeze|tap|mask|apply NAME ... (kb video --help)
+             video render NAME [--use --scene S] | video use NAME --scene S | video open NAME
   History    checkpoint [MESSAGE] | history | undo [REV] | diff [REV] [--stat]
   Helpers    beats ... | chart ... (soundtrack beats and chart data) | hook EVENT (Claude Code)
 
@@ -783,7 +786,7 @@ def cmd_checkpoint(ctx: Ctx) -> int:
     if rev is None:
         emit("nothing changed since the last checkpoint")
     else:
-        emit(f"checkpoint {rev}: project.json and scenes/ saved (kb undo {rev} returns here)")
+        emit(f"checkpoint {rev}: project.json, scenes/ and edits/ saved (kb undo {rev} returns here)")
     return EXIT_OK
 
 
@@ -810,8 +813,15 @@ def cmd_history(ctx: Ctx) -> int:
 
 
 def cmd_undo(ctx: Ctx) -> int:
+    edits_before = gitmod.edit_hashes(ctx.project)
     target, saved, trashed = gitmod.undo(ctx.project, ctx.args.rev)
-    emit(f"restored project.json and scenes/ to {target[:7]}")
+    emit(f"restored project.json, scenes/ and edits/ to {target[:7]}")
+    edits_after = gitmod.edit_hashes(ctx.project)
+    for name in sorted(n for n in edits_after if edits_before.get(n) != edits_after[n]):
+        if (ctx.project.root / "assets" / f"{name}-edited.mp4").is_file():
+            emit(f"edits/{name}.json changed; assets/{name}-edited.mp4 is stale (renders are not versioned): kb video render {name}")
+        else:
+            emit(f"edits/{name}.json changed (not rendered yet: kb video render {name})")
     if saved:
         emit(f"the state before this undo is checkpoint {saved} (kb undo {saved} reverts the undo)")
     if trashed:
@@ -868,7 +878,7 @@ class Formatter(argparse.RawDescriptionHelpFormatter):
         super().__init__(prog, max_help_position=30, width=100)
 
 
-def build_parser() -> argparse.ArgumentParser:
+def build_parser(video_extensions: bool = True) -> argparse.ArgumentParser:
     common = argparse.ArgumentParser(add_help=False)
     common.add_argument("--json", action="store_true", default=argparse.SUPPRESS, help="machine-readable output")
     common.add_argument("-C", "--project-dir", default=argparse.SUPPRESS, metavar="DIR", help="the project folder (default: found from the cwd)")
@@ -1089,21 +1099,22 @@ def build_parser() -> argparse.ArgumentParser:
     y.add_argument("asset", metavar="ASSET")
     s.set_defaults(fn=cmd_assets)
 
-    s = add("checkpoint", "git-commit project.json and scenes/ (nothing else)")
+    s = add("checkpoint", "git-commit project.json, scenes/ and edits/ (nothing else)")
     s.add_argument("message", nargs="*", metavar="MESSAGE")
     s.set_defaults(fn=cmd_checkpoint)
-    s = add("history", "recent checkpoints of project.json and scenes/")
+    s = add("history", "recent checkpoints of project.json, scenes/ and edits/")
     s.add_argument("-n", type=int, default=15, help="how many (default 15)")
     s.set_defaults(fn=cmd_history)
     s = add(
         "undo",
-        "restore project.json and scenes/ from a checkpoint (checkpoints first, so it is undoable)",
+        "restore project.json, scenes/ and edits/ from a checkpoint (checkpoints first, so it is undoable)",
         epilog="No REV: back to the last checkpoint (or the one before it when nothing changed since).\n"
-        "Scene files that the checkpoint lacks go to the Trash.",
+        "Scene files that the checkpoint lacks go to the Trash; edit docs never do. Renders\n"
+        "(assets/*-edited.mp4) are not versioned: re-render an edit that undo changed.",
     )
     s.add_argument("rev", nargs="?", metavar="REV")
     s.set_defaults(fn=cmd_undo)
-    s = add("diff", "changes to project.json and scenes/ since the last checkpoint (or REV)")
+    s = add("diff", "changes to project.json, scenes/ and edits/ since the last checkpoint (or REV)")
     s.add_argument("rev", nargs="?", metavar="REV")
     s.add_argument("--stat", action="store_true", help="file summary only")
     s.set_defaults(fn=cmd_diff)
@@ -1111,6 +1122,10 @@ def build_parser() -> argparse.ArgumentParser:
     s = add("hook", "Claude Code hook entry points (stdin JSON); wired by the app in .claude/settings.json")
     s.add_argument("event", choices=["session-start", "pre-edit", "post-edit"])
     s.set_defaults(fn=cmd_hook)
+
+    from .video import commands as videomod
+
+    videomod.register(sub, common, Formatter, extensions=video_extensions)
 
     add("beats", "soundtrack beat grid and key moments per scene (every argument goes to beats.py)")
     add("chart", "chart data and keyframes for a scene (every argument goes to chart.py)")
@@ -1125,7 +1140,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         except KbError as e:
             emit_err(f"kb: {e.message}")
             return e.code
-    parser = build_parser()
+    parser = build_parser(video_extensions=argv[:1] == ["video"])
     if argv[:1] == ["hook"]:
         try:
             args = parser.parse_args(argv)

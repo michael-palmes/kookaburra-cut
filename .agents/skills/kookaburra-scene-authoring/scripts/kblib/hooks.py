@@ -18,6 +18,7 @@ from .util import EXIT_OK, KbError, Report
 
 BLOCK = 2
 SESSION_TTL_S = 14 * 86400
+MANAGED_SKILLS = (KIT_REL, ".claude/skills/kookaburra-video-editing")
 
 
 def read_stdin() -> Dict[str, Any]:
@@ -72,12 +73,16 @@ def edited_rel(project: Project, payload: Dict[str, Any]) -> Optional[str]:
 
 def blocked_reason(rel: str) -> Optional[str]:
     first = rel.split("/", 1)[0]
-    if first in ("exports", "edits"):
-        return f"{rel} is owned by the Kookaburra Cut app ({first}/ holds its renders and edits). Do not change it; edit project.json, scenes/ or assets/ instead."
+    if first == "exports":
+        return f"{rel} is owned by the Kookaburra Cut app (exports/ holds its renders). Do not change it; edit project.json, scenes/ or assets/ instead."
+    if first == "edits":
+        name = rel.split("/")[-1].rsplit(".json", 1)[0] if rel.endswith(".json") else "NAME"
+        return f"{rel}: edits/ holds video edit documents; change them only with kb video (kb video show {name or 'NAME'})."
     if first.startswith(".kookaburra"):
         return f"{rel} is the app's private state. Do not change it; edit project.json, scenes/ or assets/ instead."
-    if rel == KIT_REL or rel.startswith(KIT_REL + "/"):
-        return f"{rel} is the managed kit; the app replaces it on every launch, so edits are lost. Put project notes in CLAUDE.md instead."
+    for kit in MANAGED_SKILLS:
+        if rel == kit or rel.startswith(kit + "/"):
+            return f"{rel} is the managed kit; the app replaces it on every launch, so edits are lost. Put project notes in CLAUDE.md instead."
     return None
 
 

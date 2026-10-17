@@ -11,7 +11,11 @@
 - Formats: images png, jpg, jpeg, webp; video mp4, mov, m4v, webm; audio mp3, wav, m4a,
   aac, flac, ogg; environments hdr, exr; grades `.cube`.
 - Before deleting or renaming an asset, search `scenes/*.json` and `scenes/*.tsx` for
-  its path. A dangling reference renders a missing card or screen.
+  its path, and run `kb video usages <asset>`: an edit may cut it. A dangling reference
+  renders a missing card or screen.
+- Never overwrite or re-encode an asset (no ffmpeg into `assets/`). To trim, speed up, freeze,
+  add taps or blur part of a video, use `kb video` (the kookaburra-video-editing skill): its
+  render is `assets/<name>-edited.mp4` and the source stays untouched.
 - Adding a file to `assets/` does not reload the project; the sidecar edit that uses it
   does.
 - Bundled placeholders (`*-sample.*`, `sample-phone-recording.mp4`,
@@ -70,11 +74,14 @@ Presets: `image` (full-frame still), `video` (full-frame clip), `videowindow`
 "duration": { "mode": "follow-media", "source": "media", "sourceMediaId": "vid1" }
 ```
 
-The app keeps the scene's `project.json` `durationMs` equal to the video. Variants:
+The app keeps the scene's `project.json` `durationMs` equal to the video, and ignores the
+video's `startMs` when it does: a nonzero `startMs` then hides the video's last `startMs` ms.
+To make the video itself a set length, `kb video fit <edit> --to T` (or `--scene S` for a
+fixed-length scene) and `kb video render <edit> --use --scene S`. Variants:
 `{ "mode": "follow-media", "sourceDeviceId": "hero" }` follows a device's screen
 video; with no pin the longest device video wins, else a video background.
-`{ "mode": "manual" }` turns it off. When you change the source, update `durationMs`
-yourself too (`kb assets probe`).
+`{ "mode": "manual" }` turns it off. When you change the source by hand, update `durationMs`
+yourself too (`kb assets probe`); `kb video render <edit> --use` does it for edited videos.
 
 ## Full-frame video or image
 

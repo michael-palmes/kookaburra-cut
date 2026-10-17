@@ -13,6 +13,7 @@ import {
   useSyncExternalStore,
 } from "react";
 import { lastLoadReport, reportLastLoad, stampProjectKit } from "./engine/appHeartbeat";
+import { refreshWorkspaceAssets } from "./engine/assetInventory";
 import {
   type AutoRunConfig,
   getAutoRunConfig,
@@ -79,6 +80,11 @@ import { useLayeredScreenshotEditStore } from "./engine/layeredScreenshotEditSto
 import { useLightingEditStore } from "./engine/lightingEditStore";
 import { ensureRectAreaLightUniforms } from "./engine/lightingState";
 import { importMedia } from "./engine/media";
+import {
+  editRenderMatchesPending,
+  emptyMediaChangeBatch,
+  noteMediaChange,
+} from "./engine/mediaChangedEvent";
 import { isDefaultMotionBlur } from "./engine/motionBlur";
 import { canQueuePresetPoster, queuePresetPoster } from "./engine/presetPosters";
 import {
@@ -580,17 +586,14 @@ export default function App() {
     if (isAutoRun) void getCurrentWindow().setTitle("Kookaburra Cut — automated run");
   }, [isAutoRun]);
 
-  // The editor window announces a finished render; re-scan Media if it's open. The payload identifies the rendered edit so a pending re-point only ever consumes its own render, never an unrelated broadcast (e.g. Settings' cache clear, which carries none).
-  const lastEditRenderRef = useRef<{ slug: string; name: string } | null>(null);
+  // Media changed (an import, an editor render, or an agent's render through the bridge): re-scan Media. Broadcasts coalesce into one batch per sweep; an editor render's payload names its edit so a pending re-point only ever consumes its own render, never an unrelated or agent broadcast (mediaChangedEvent.ts).
+  const mediaBatchRef = useRef(emptyMediaChangeBatch());
   useEffect(() => {
     if (isAutoRun) return;
-    const unlisten = listen<{ slug: string; name: string } | null>(
-      "kookaburra://media-changed",
-      (e) => {
-        lastEditRenderRef.current = e.payload ?? null;
-        setMediaRefresh((n) => n + 1);
-      },
-    );
+    const unlisten = listen<unknown>("kookaburra://media-changed", (e) => {
+      noteMediaChange(mediaBatchRef.current, e.payload);
+      setMediaRefresh((n) => n + 1);
+    });
     return () => {
       void unlisten.then((fn) => fn());
     };
@@ -1337,22 +1340,23 @@ export default function App() {
     };
   }, [isAutoRun, exporting, applyHistoryChange]);
 
-  // A changed media library may change a follow-media scene's source length; re-probe and rewrite project.json. Keyed on the refresh counter alone since `project` here is just the snapshot the sync reads, and keying on it would loop.
+  // A changed media library may change a follow-media scene's source length; re-probe and rewrite project.json. Keyed on the refresh counter alone since `project` here is just the snapshot the sync reads, and keying on it would loop. An agent's render (origin "agent") only refreshes: kb owns its re-point and durations, and this in-memory doc may be stale.
   const mediaRefreshRef = useRef(0);
   useEffect(() => {
     if (isAutoRun || exporting || !project || mediaRefresh === mediaRefreshRef.current) return;
     mediaRefreshRef.current = mediaRefresh;
+    const batch = mediaBatchRef.current;
+    mediaBatchRef.current = emptyMediaChangeBatch();
     void (async () => {
+      await Promise.all([...batch.slugs].map((slug) => refreshWorkspaceAssets(`ws:${slug}`)));
       // Stale-extraction sweep first, so scenes re-bind against fresh frames (an edit render can overwrite an -edited.mp4 in place).
       await invalidateChangedClips().catch((e) =>
         console.warn("[clips] invalidation sweep failed:", e),
       );
       const pending = pendingRepointRef.current;
-      const rendered = lastEditRenderRef.current;
       if (
         pending &&
-        rendered?.slug === pending.slug &&
-        rendered?.name === pending.editName &&
+        editRenderMatchesPending(batch.rendered, pending) &&
         isWorkspaceProjectId(project.id) &&
         nativeProjectSlug(project.id) === pending.slug
       ) {
@@ -1390,7 +1394,7 @@ export default function App() {
           }
         }
       }
-      if (await syncFollowMediaDurations(project)) handleTimingChanged();
+      if (batch.syncDurations && (await syncFollowMediaDurations(project))) handleTimingChanged();
     })();
   }, [mediaRefresh, project, isAutoRun, exporting, handleDocChanged, handleTimingChanged]);
 

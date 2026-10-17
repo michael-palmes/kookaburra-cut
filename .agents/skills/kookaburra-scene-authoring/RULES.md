@@ -17,8 +17,9 @@ run from this folder.
 2. `kb status` first; fix any load error it lists before other work.
 3. `kb checkpoint "<what>"` before editing; `kb undo` rolls back. That is all the version
    control a project needs: never create branches, commits, stashes or worktrees by hand.
-4. Edit only `project.json`, `scenes/` and `assets/`. Never touch `exports/`, `edits/`,
-   `.kookaburra*` or `.claude/skills/`.
+4. Edit only `project.json`, `scenes/` and `assets/`. `edits/` changes only through `kb video`
+   (load kookaburra-video-editing). Never touch `exports/`, `.kookaburra*` or `.claude/skills/`.
+   Videos are never re-encoded by hand; `kb video render` makes `assets/<name>-edited.mp4`.
 5. Prefer `kb` for structure: `kb scene ...` for order, duration and transitions,
    `kb doc ...` for sidecars, `kb assets add` for media. Start new scenes from a preset.
 6. After editing: `kb check --app`, then `kb capture` and Read the PNGs. Check a

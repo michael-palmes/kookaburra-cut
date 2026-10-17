@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { lastLoadReport } from "../engine/appHeartbeat";
 import { FORMATS } from "../engine/format";
@@ -5,11 +7,14 @@ import type { LoadedProject } from "../engine/project";
 import { TrustDeniedError } from "../engine/projectTrust";
 import type { SceneDoc } from "../engine/sceneDocSchema";
 import {
+  BRIDGE_KINDS,
   type BridgeRequest,
   buildCheckReport,
   collectAssetRefs,
   frameScene,
+  isNativeBridgeKind,
   MAX_CAPTURE_FRAMES,
+  NATIVE_BRIDGE_KINDS,
   requestFormat,
   requestFrames,
   resolvePresetRef,
@@ -31,6 +36,31 @@ const slots = [
   { index: 1, id: "stats", startMs: 4000, endMs: 10000, durationMs: 6000 },
 ];
 const sceneFiles = ["scenes/01-hero.tsx", "scenes/02-stats.tsx"];
+
+/** A `pub const NAME: &[&str] = &[...]` list from bridge.rs, so the TS mirror can't drift from what Rust serves. */
+function rustKinds(name: string): string[] {
+  const source = readFileSync(
+    fileURLToPath(new URL("../../src-tauri/src/bridge.rs", import.meta.url)),
+    "utf8",
+  );
+  const list = new RegExp(`pub const ${name}: &\\[&str\\] = &\\[([^\\]]*)\\]`).exec(source);
+  if (!list) throw new Error(`${name} not found in bridge.rs`);
+  return [...list[1].matchAll(/"([^"]+)"/g)].map((m) => m[1]);
+}
+
+describe("bridge kinds", () => {
+  it("mirror bridge.rs exactly", () => {
+    expect([...BRIDGE_KINDS]).toEqual(rustKinds("BRIDGE_KINDS"));
+    expect([...NATIVE_BRIDGE_KINDS]).toEqual(rustKinds("NATIVE_KINDS"));
+  });
+
+  it("knows which kinds the native loop serves", () => {
+    expect(isNativeBridgeKind("mediaChanged")).toBe(true);
+    expect(isNativeBridgeKind("openEdit")).toBe(true);
+    expect(isNativeBridgeKind("capture")).toBe(false);
+    expect(isNativeBridgeKind(null)).toBe(false);
+  });
+});
 
 describe("request shaping", () => {
   it("answers v1 captures as v1 and everything else as v2", () => {

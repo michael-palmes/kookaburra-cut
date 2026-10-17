@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { emit, listen } from "@tauri-apps/api/event";
+import { refreshWorkspaceAssets } from "../engine/assetInventory";
 import { resolveScreenshotTimeMs } from "../engine/autorun";
 import { invalidateChangedClips } from "../engine/clips";
 import { captureFrameRgba } from "../engine/exporter";
@@ -10,6 +11,7 @@ import {
   projectRenderErrors,
   type SceneLoadError,
 } from "../engine/loadDiagnostics";
+import { mediaChangedSlug } from "../engine/mediaChangedEvent";
 import { insertPresetScene } from "../engine/presetInsert";
 import { listAllPresets, refreshUserPresets } from "../engine/presets";
 import {
@@ -34,6 +36,7 @@ import {
   type CheckAsset,
   collectAssetRefs,
   frameScene,
+  isNativeBridgeKind,
   requestFormat,
   requestFrames,
   resolvePresetRef,
@@ -43,7 +46,7 @@ import {
 } from "./bridgeRequests";
 import { ContactSheet } from "./contactSheet";
 
-/** The render window's half of the bridge (docs/agent-kit.md, "The bridge (v2)"): claim one request per tick, load (or reload) the target project into this window's own canvas and serve it (capture, check, fonts, insertPreset) through the deterministic export path, all without touching the editor realm. The editor's open project loads under the editor's session trust; any other loads stored-only and never prompts here. Playhead captures (no scene) need the editor's open project, whose id/aspect/playhead arrive via the pushed editor context. Idle ticks drain the thumb queue instead (fast tier: same path, small buffer), parked while the editor is playing. */
+/** The render window's half of the bridge (docs/agent-kit.md, "The bridge (v2)"): claim one request per tick, load (or reload) the target project into this window's own canvas and serve it (capture, check, fonts, insertPreset) through the deterministic export path, all without touching the editor realm. A media-changed broadcast marks the clip cache dirty; the next tick sweeps it before claiming, so a capture after an in-place re-render shows the new frames. The editor's open project loads under the editor's session trust; any other loads stored-only and never prompts here. Playhead captures (no scene) need the editor's open project, whose id/aspect/playhead arrive via the pushed editor context. Idle ticks drain the thumb queue instead (fast tier: same path, small buffer), parked while the editor is playing. */
 
 /** Mirror of bridge.rs's EditorContext. */
 interface EditorContext {
@@ -96,6 +99,8 @@ export function startBridgeService(
 ): () => void {
   let busy = false;
   let current: LoadedState | null = null;
+  let mediaDirty = false;
+  const dirtySlugs = new Set<string>();
   const ready = invoke("render_reset_preset_posters");
 
   /** The editor's open project runs under its session trust (the re-stamp the editor's own reload makes); anything else loads stored-only, so this window never shows a trust prompt. */
@@ -358,6 +363,13 @@ export function startBridgeService(
     const context = await invoke<EditorContext | null>("get_editor_context").catch(() => null);
     const kind = request.kind ?? "capture";
     try {
+      if (isNativeBridgeKind(kind)) {
+        await respond(request, {
+          ok: false,
+          error: `${kind} is served natively by the app, never by the render window`,
+        });
+        return;
+      }
       if (kind !== "fonts" && context?.exportLocked) {
         await respond(request, {
           ok: false,
@@ -503,8 +515,23 @@ export function startBridgeService(
     return true;
   };
 
+  /** Inside the busy guard, so a sweep never runs under a capture that is reading frames. */
+  const sweepChangedMedia = async () => {
+    if (!mediaDirty) return;
+    mediaDirty = false;
+    const slugs = [...dirtySlugs];
+    dirtySlugs.clear();
+    try {
+      await Promise.all(slugs.map((slug) => refreshWorkspaceAssets(`ws:${slug}`)));
+      await invalidateChangedClips();
+    } catch (e) {
+      console.warn("[render-bridge] media sweep failed:", e);
+    }
+  };
+
   const tick = async (): Promise<void> => {
     await ready;
+    await sweepChangedMedia();
     let request: BridgeRequest | null = null;
     try {
       request = await invoke<BridgeRequest | null>("bridge_claim_request");
@@ -524,6 +551,7 @@ export function startBridgeService(
         !(await servePresetPoster(context))
       )
         return;
+      await sweepChangedMedia();
       const next = await invoke<BridgeRequest | null>("bridge_claim_request").catch(() => null);
       if (next) {
         await serveRequest(next);
@@ -542,11 +570,17 @@ export function startBridgeService(
   };
   const listening = listen("kookaburra://library-preview-queued", run);
   void listening.then(run).catch(() => {});
+  const mediaListening = listen<unknown>("kookaburra://media-changed", (event) => {
+    mediaDirty = true;
+    const slug = mediaChangedSlug(event.payload);
+    if (slug) dirtySlugs.add(slug);
+  });
   const timer = window.setInterval(run, 1000);
   return () => {
     stopped = true;
     window.clearInterval(timer);
     void listening.then((unlisten) => unlisten()).catch(() => {});
+    void mediaListening.then((unlisten) => unlisten()).catch(() => {});
   };
 }
 

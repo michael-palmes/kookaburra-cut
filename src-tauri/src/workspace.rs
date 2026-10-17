@@ -195,7 +195,7 @@ fn settings_path(app: &AppHandle) -> Result<PathBuf, String> {
 }
 
 /// The file's settings, or defaults when it is missing or unreadable (a broken settings file re-offers first-run rather than wedging boot; our own writer is atomic, so only an outside edit can produce one).
-fn read_settings_file(path: &Path) -> AppSettings {
+pub(crate) fn read_settings_file(path: &Path) -> AppSettings {
     match std::fs::read_to_string(path) {
         Ok(text) => serde_json::from_str(&text).unwrap_or_default(),
         Err(_) => AppSettings::default(),
@@ -1673,19 +1673,19 @@ pub fn create_project(
     })
 }
 
-/// Claude Code provisioning for a project folder (docs/agent-kit.md, "Stamping"; see `kit.rs`). `false` = the shipped skill is missing (a packaging defect the terminal warns about); the rest of the kit is still stamped.
+/// Claude Code provisioning for a project folder (docs/agent-kit.md, "Stamping"; see `kit.rs`). `false` = a shipped skill is missing (a packaging defect the terminal warns about); the skills that are there and the rest of the kit are still stamped.
 pub(crate) fn stamp_claude_provisioning(app: &AppHandle, dir: &Path) -> Result<bool, String> {
-    let skill_src = skills_root(app).join(crate::kit::SKILL_NAME);
-    let present = skill_src.is_dir();
-    if !present {
-        log::warn!("scene-authoring skill not found at {}", skill_src.display());
+    let root = skills_root(app);
+    let (found, missing) = crate::kit::shipped_skills_in(&root);
+    for name in &missing {
+        log::warn!("{name} skill not found at {}", root.join(name).display());
     }
-    crate::kit::stamp_project(
-        present.then_some(skill_src.as_path()),
-        dir,
-        &crate::kit::StampOptions::for_app(app),
-    )?;
-    Ok(present)
+    let skills: Vec<(&str, &Path)> = found
+        .iter()
+        .map(|(name, src)| (*name, src.as_path()))
+        .collect();
+    crate::kit::stamp_project(&skills, dir, &crate::kit::StampOptions::for_app(app))?;
+    Ok(missing.is_empty())
 }
 
 /// Re-stamp a project's kit: on every workspace project load and when the terminal starts Claude, off the main thread so it never blocks either.
