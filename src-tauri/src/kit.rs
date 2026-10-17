@@ -12,11 +12,16 @@ pub(crate) const SKILL_NAME: &str = "kookaburra-scene-authoring";
 pub(crate) const VIDEO_SKILL_NAME: &str = "kookaburra-video-editing";
 /// Every skill stamped into a project, primary first; each lands at `.claude/skills/<name>`.
 pub(crate) const SHIPPED_SKILLS: [&str; 2] = [SKILL_NAME, VIDEO_SKILL_NAME];
-/// The kit contract version written to `kit.json` (bridge v2, heartbeat, managed settings, sibling skills, no kb tests).
-pub(crate) const KIT_VERSION: u64 = 3;
+/// The kit contract version written to `kit.json` (bridge v3, Bash hooks, the `./kb` shim and `.kb/` state).
+pub(crate) const KIT_VERSION: u64 = 4;
 const KIT_FILE: &str = "kit.json";
 const CLAUDE_MD_TEMPLATE: &str = include_str!("../templates/project-CLAUDE.md");
 const SETTINGS_TEMPLATE: &str = include_str!("../templates/project-claude-settings.json");
+const SHIM_TEMPLATE: &str = include_str!("../templates/project-kb.sh");
+/// A root `kb` file is the app's to replace only while one of its first lines starts with this.
+const SHIM_MARKER: &str = "# kookaburra-cut kb shim";
+pub(crate) const SHIM_NAME: &str = "kb";
+const SHIM_MODE: u32 = 0o755;
 /// Every default `CLAUDE.md` shipped before the current one: a file still matching one is the app's to replace.
 const PREVIOUS_CLAUDE_MD: [&str; 3] = [
     include_str!("../templates/claude-md-history/gannet.md"),
@@ -85,6 +90,7 @@ pub(crate) fn stamp_project(
     let mut results = vec![
         stamp_claude_md(dir),
         stamp_settings(&dir.join(".claude").join("settings.json")),
+        stamp_shim(dir),
     ];
     results.extend(skills.iter().map(|(name, src)| {
         stamp_skill(src, &skills_dir.join(name), opts).map_err(|e| format!("{name}: {e}"))
@@ -260,6 +266,7 @@ pub(crate) fn managed_settings() -> Value {
     json!({
         "permissions": {
             "allow": [
+                "Bash(./kb *)",
                 "Bash(python3 .claude/skills/kookaburra-scene-authoring/scripts/kb.py *)",
                 "Bash(python3 -I .claude/skills/kookaburra-scene-authoring/scripts/kb.py *)",
                 "Read(~/Kookaburra Cut/_bridge/**)",
@@ -389,6 +396,44 @@ fn stamp_settings(path: &Path) -> Result<(), String> {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
     atomic_write(path, &next)
+}
+
+// ── The ./kb shim ──────────────────────────────────────────────────────────
+
+fn is_managed_shim(text: &str) -> bool {
+    text.lines().take(3).any(|line| line.starts_with(SHIM_MARKER))
+}
+
+/// Write the root `kb` shim (mode 0755) when it is missing or still carries the marker; a user's own `kb`, folder or link is left alone.
+fn stamp_shim(dir: &Path) -> Result<(), String> {
+    use std::os::unix::fs::PermissionsExt;
+    let path = dir.join(SHIM_NAME);
+    match std::fs::symlink_metadata(&path) {
+        Ok(meta) if !meta.is_file() => return Ok(()),
+        Ok(meta) => {
+            let Ok(text) = std::fs::read_to_string(&path) else {
+                return Ok(());
+            };
+            if !is_managed_shim(&text) {
+                return Ok(());
+            }
+            if text == SHIM_TEMPLATE && meta.permissions().mode() & 0o777 == SHIM_MODE {
+                return Ok(());
+            }
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(_) => return Ok(()),
+    }
+    let tmp = dir.join(format!(".{SHIM_NAME}.kit-tmp"));
+    let result = std::fs::write(&tmp, SHIM_TEMPLATE)
+        .and_then(|()| {
+            std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(SHIM_MODE))
+        })
+        .and_then(|()| std::fs::rename(&tmp, &path));
+    result.map_err(|e| {
+        let _ = std::fs::remove_file(&tmp);
+        format!("writing the kb shim: {e}")
+    })
 }
 
 // ── The managed skill directory ────────────────────────────────────────────
@@ -767,7 +812,7 @@ mod tests {
         assert_eq!(merged["model"], "opus");
         assert_eq!(merged["permissions"]["deny"], json!(["Read(.env)"]));
         assert_eq!(merged["permissions"]["allow"][0], "Bash(ls)");
-        assert_eq!(merged["permissions"]["allow"].as_array().unwrap().len(), 6);
+        assert_eq!(merged["permissions"]["allow"].as_array().unwrap().len(), 7);
         let pre = merged["hooks"]["PreToolUse"].as_array().unwrap();
         assert_eq!(pre.len(), 4);
         assert_eq!(pre[0]["hooks"][0]["command"], "echo mine");
@@ -983,14 +1028,14 @@ mod tests {
         let src = skill_source(&dir);
         let dst = dir.join("project/.claude/skills").join(SKILL_NAME);
         stamp_skill(&src, &dst, &opts("0.19.0", false, 1)).unwrap();
-        assert_eq!(KIT_VERSION, 3);
+        assert_eq!(KIT_VERSION, 4);
         let mut kit = read_json(&dst.join(KIT_FILE));
-        kit["kitVersion"] = json!(2);
+        kit["kitVersion"] = json!(3);
         write(&dst.join(KIT_FILE), &kit.to_string());
         stamp_skill(&src, &dst, &opts("0.19.0", false, 2)).unwrap();
         assert_eq!(
             read_json(&dst.join(KIT_FILE)),
-            json!({ "kitVersion": 3, "appVersion": "0.19.0", "stampedAtMs": 2 })
+            json!({ "kitVersion": 4, "appVersion": "0.19.0", "stampedAtMs": 2 })
         );
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -1168,6 +1213,93 @@ mod tests {
     }
 
     #[test]
+    fn the_managed_settings_allow_the_kb_shim() {
+        let allow = managed_settings()["permissions"]["allow"].clone();
+        assert!(allow.as_array().unwrap().contains(&json!("Bash(./kb *)")));
+    }
+
+    fn mode(path: &Path) -> u32 {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::metadata(path).unwrap().permissions().mode() & 0o777
+    }
+
+    #[test]
+    fn the_shim_is_created_executable_and_runs_kb() {
+        let dir = scratch("shim-new");
+        stamp_shim(&dir).unwrap();
+        let shim = dir.join(SHIM_NAME);
+        assert_eq!(std::fs::read_to_string(&shim).unwrap(), SHIM_TEMPLATE);
+        assert_eq!(mode(&shim), 0o755);
+        assert!(SHIM_TEMPLATE.starts_with("#!/bin/sh\n"));
+        assert!(is_managed_shim(SHIM_TEMPLATE));
+        assert!(SHIM_TEMPLATE.contains("exec python3 -I \"$kb\" \"$@\""));
+        assert!(!dir.join(".kb.kit-tmp").exists());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_marked_shim_is_upgraded_and_its_mode_restored() {
+        let dir = scratch("shim-upgrade");
+        let shim = dir.join(SHIM_NAME);
+        write(
+            &shim,
+            "#!/bin/sh\n# kookaburra-cut kb shim v0 (managed by Kookaburra Cut; replaced on update)\nexec python3 old\n",
+        );
+        stamp_shim(&dir).unwrap();
+        assert_eq!(std::fs::read_to_string(&shim).unwrap(), SHIM_TEMPLATE);
+        assert_eq!(mode(&shim), 0o755);
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&shim, std::fs::Permissions::from_mode(0o644)).unwrap();
+        stamp_shim(&dir).unwrap();
+        assert_eq!(mode(&shim), 0o755);
+        let before = std::fs::metadata(&shim).unwrap().modified().unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        stamp_shim(&dir).unwrap();
+        assert_eq!(std::fs::metadata(&shim).unwrap().modified().unwrap(), before);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_users_own_kb_is_left_alone() {
+        let dir = scratch("shim-user");
+        let mine = "#!/bin/sh\necho my own kb\n";
+        write(&dir.join(SHIM_NAME), mine);
+        stamp_shim(&dir).unwrap();
+        assert_eq!(std::fs::read_to_string(dir.join(SHIM_NAME)).unwrap(), mine);
+        let folder = scratch("shim-folder");
+        std::fs::create_dir_all(folder.join(SHIM_NAME)).unwrap();
+        stamp_shim(&folder).unwrap();
+        assert!(folder.join(SHIM_NAME).is_dir());
+        let _ = std::fs::remove_dir_all(&dir);
+        let _ = std::fs::remove_dir_all(&folder);
+    }
+
+    #[test]
+    fn the_shim_exits_2_when_the_kit_is_missing_and_runs_kb_when_present() {
+        let dir = scratch("shim-run");
+        stamp_shim(&dir).unwrap();
+        let missing = std::process::Command::new(dir.join(SHIM_NAME))
+            .arg("status")
+            .current_dir(&dir)
+            .output()
+            .unwrap();
+        assert_eq!(missing.status.code(), Some(2));
+        assert!(String::from_utf8_lossy(&missing.stderr).contains("the kit is missing"));
+        write(
+            &dir.join(".claude/skills/kookaburra-scene-authoring/scripts/kb.py"),
+            "import sys\nprint('kb', ' '.join(sys.argv[1:]))\n",
+        );
+        let ran = std::process::Command::new(dir.join(SHIM_NAME))
+            .args(["status", "--json", "two words"])
+            .current_dir(std::env::temp_dir())
+            .output()
+            .unwrap();
+        assert_eq!(ran.status.code(), Some(0));
+        assert_eq!(String::from_utf8_lossy(&ran.stdout), "kb status --json two words\n");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn stamping_a_project_is_idempotent() {
         let dir = scratch("project");
         let src = skill_source(&dir);
@@ -1178,6 +1310,10 @@ mod tests {
         let claude = std::fs::read_to_string(project.join("CLAUDE.md")).unwrap();
         assert_eq!(claude, render_claude_md("Demo"));
         let settings = std::fs::read_to_string(project.join(".claude/settings.json")).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(project.join(SHIM_NAME)).unwrap(),
+            SHIM_TEMPLATE
+        );
         stamp_project(&[(SKILL_NAME, &src)], &project, &opts("0.19.0", false, 2)).unwrap();
         assert_eq!(
             std::fs::read_to_string(project.join("CLAUDE.md")).unwrap(),
