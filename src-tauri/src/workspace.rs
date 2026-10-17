@@ -325,12 +325,20 @@ pub fn trash_path(path: &Path) -> Result<(), trash::Error> {
     ctx.delete(path)
 }
 
+/// `KOOKABURRA_WORKSPACE_ROOT`: a gate can point one boot at a throwaway root without mutating the user's settings (the pack round trip does exactly this).
+pub(crate) fn root_override() -> Option<PathBuf> {
+    std::env::var("KOOKABURRA_WORKSPACE_ROOT")
+        .ok()
+        .map(|over| over.trim().to_owned())
+        .filter(|over| !over.is_empty())
+        .map(PathBuf::from)
+}
+
 /// The configured workspace root, layout re-asserted. Errors if first-run hasn't completed.
 pub fn require_root(app: &AppHandle, state: &State<'_, SettingsState>) -> Result<PathBuf, String> {
-    // A gate can point one boot at a throwaway root without mutating the user's settings (the pack round trip does exactly this).
-    let root = match std::env::var("KOOKABURRA_WORKSPACE_ROOT") {
-        Ok(over) if !over.trim().is_empty() => PathBuf::from(over.trim()),
-        _ => {
+    let root = match root_override() {
+        Some(over) => over,
+        None => {
             let settings = load_settings(app, state)?;
             PathBuf::from(
                 settings
@@ -855,7 +863,7 @@ pub fn move_workspace(
         );
     }
     // A gate boot runs against a throwaway root the settings file knows nothing about; moving would repoint the real one.
-    if std::env::var("KOOKABURRA_WORKSPACE_ROOT").is_ok_and(|v| !v.trim().is_empty()) {
+    if root_override().is_some() {
         return Err("this run is pinned to a workspace by KOOKABURRA_WORKSPACE_ROOT".into());
     }
     let settings = load_settings(&app, &state)?;
