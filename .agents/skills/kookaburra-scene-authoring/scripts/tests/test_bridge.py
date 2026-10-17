@@ -151,6 +151,13 @@ class BridgeCommandTests(KbTestCase):
         self.assertExit(proc, 2)
         self.assertIn("update Kookaburra Cut", proc.stderr)
 
+    def test_check_app_json_names_the_serving_instance(self) -> None:
+        ok = {"ok": True, "scenes": [], "fonts": [], "assets": [], "warnings": [], "rendered": False}
+        with FakeApp(self.bridge, lambda r: dict(ok, project=r["project"])) as app:
+            proc = self.kb(["check", "--app", "--json"], cwd=self.root)
+        self.assertExit(proc, 0)
+        self.assertEqual(json.loads(proc.stdout)["servedBy"]["pid"], app.served_by()["pid"])
+
     def test_check_app_merges_results_and_records_fonts(self) -> None:
         def handler(req: Dict[str, Any]) -> Dict[str, Any]:
             return {

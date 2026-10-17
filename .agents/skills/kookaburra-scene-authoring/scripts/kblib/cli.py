@@ -265,6 +265,8 @@ def cmd_check(ctx: Ctx) -> int:
     if ctx.json:
         out = report.as_json()
         out["app"] = bool(args.app or args.render)
+        if resp is not None and isinstance(resp.get("servedBy"), dict):
+            out["servedBy"] = resp["servedBy"]
         ctx.out(out, code="invalid", error=f"{report.summary()} ({'static + app' if args.app or args.render else 'static'})")
     else:
         served = bridge.served_line(resp)
