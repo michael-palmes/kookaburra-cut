@@ -345,8 +345,12 @@ def health_lines(data: Optional[Dict[str, Any]], now: Optional[int] = None) -> L
         window = "Render window: alive"
         if isinstance(rw.get("beatAgeMs"), (int, float)):
             window += f", beat {rw['beatAgeMs'] / 1000:.1f} s ago"
+        else:
+            window += ", no beat yet"
     else:
         window = "Render window: closed (opens on the next capture)"
+    if rw.get("restarting") is True and not gpu.get("wedged"):
+        window += ", restarting after a GPU stall"
     if rw.get("recycles"):
         last = rw.get("lastRecycle") if isinstance(rw.get("lastRecycle"), dict) else {}
         window += f"; {rw['recycles']} recycle{'s' if rw['recycles'] != 1 else ''}"
