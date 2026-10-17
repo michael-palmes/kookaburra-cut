@@ -1,0 +1,21 @@
+{
+  "id": "flash-spike",
+  "name": "Flash Spike (dev fixture)",
+  "version": 2,
+  "themeId": "kookaburra-default",
+  "formats": ["16:9", "9:16"],
+  "scenes": [
+    {
+      "file": "scenes/01-title.tsx",
+      "durationMs": 2000,
+      "transition": {
+        "type": "crossfade",
+        "durationMs": 500
+      }
+    },
+    {
+      "file": "scenes/02-strobe.tsx",
+      "durationMs": 2500
+    }
+  ]
+}
