@@ -61,7 +61,7 @@ Set `"cameraMode": "rig"`. A pose is a position plus an aim:
 
 ## Presets
 
-The app's camera presets write ordinary keys you can tune. `kb catalog camera.presets --json` prints
+The app's camera presets write ordinary keys you can tune. `./kb catalog camera.presets --json` prints
 each one's exact track for a 4 s scene from the default pose; scale the times to the
 scene and offset from the current framing.
 
@@ -128,7 +128,7 @@ Always sharp: backgrounds' own animation (world-space 3D looks still take camera
 blur), overlay chrome, device screen video frames and counters. Jump cuts and
 scene cuts never smear. Stills exports and Present never blur. Streaky text
 presets (blur-in, converge, vapor) already fake a smear: lower their `amount`.
-Check a blurred frame with `kb capture`, which renders the export's blur.
+Check a blurred frame with `./kb capture`, which renders the export's blur.
 
 ## Present loops
 
@@ -143,5 +143,5 @@ move the camera across the whole project and own `fov`. Prefer per-scene tracks.
 
 ## Beats
 
-Land keys on the soundtrack: `kb beats --scene <s>` prints beat times in scene-local
+Land keys on the soundtrack: `./kb beats --scene <s>` prints beat times in scene-local
 ms (reference/beats.md).

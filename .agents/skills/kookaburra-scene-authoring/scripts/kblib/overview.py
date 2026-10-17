@@ -14,11 +14,11 @@ from .util import KbError, ago, fmt_secs, is_int, read_text
 CONTEXT_BUDGET = 4000
 
 RULES = [
-    "Structural edits go through kb (scene add/duplicate/move/remove/set, doc set, project set); never hand-edit the scenes array in project.json.",
-    "Scenes import only from @kookaburra/toolkit: no React hooks (useMemo/useState/useRef...), no Date.now, timers, Math.random, document/window or <Html>. Drive motion from useTimeline().",
-    "Fonts: bundled families are always safe (kb fonts safe). Any other face must pass kb fonts check \"Family@weight\" first; a face that fails falls back to the theme face.",
-    "After every change: kb check (errors must be zero), then look at it with kb capture --scene <stem> and Read the PNG.",
-    "Start new scenes from presets (kb presets, kb scene add <name> --preset <slug>); kb checkpoint before risky work, kb undo to roll back.",
+    "Run kb as ./kb <command> from this folder, never through a variable or alias. Exit 3: wait retryAfterMs and rerun; 1: fix what it names; 2: tell the user.",
+    "Structure goes through kb (./kb scene add/duplicate/move/remove/set, ./kb doc, ./kb project set), new scenes from presets (./kb presets). Change scene files with Edit, Write or ./kb doc, never sed, Python or heredocs.",
+    "Scenes import only from @kookaburra/toolkit: no React hooks, Date.now, timers, Math.random, document/window or <Html>; drive motion from useTimeline(). Fonts outside the bundled set need ./kb fonts check first.",
+    "After a change: ./kb check --app, then ./kb capture --scene <stem> and Read the PNG; ./kb verify before calling the work done. With no app running, checks are static only: ask the user to open it.",
+    "./kb checkpoint before risky work, ./kb undo to roll back. With other agents: --agent <name> on every kb command, ./kb lease <scene> before editing it, --scene on checkpoint and undo, and a ./kb note instead of editing someone else's leased scene.",
 ]
 
 
@@ -429,7 +429,7 @@ def context_text(project: Project, check_summary: Optional[List[str]] = None, cw
         pass
     head += coordination_context(project, caller)
     tail = ["Rules:"] + [f"{i + 1}. {r}" for i, r in enumerate(RULES)]
-    tail.append("Tool: python3 .claude/skills/kookaburra-scene-authoring/scripts/kb.py <command> (kb --help lists them; the skill explains the workflow)")
+    tail.append("Tool: ./kb <command> from the project folder (./kb --help lists them; the skill explains the workflow and its reference/gotchas.md the known traps)")
     budget = CONTEXT_BUDGET - len("\n".join(head + tail).encode("utf-8")) - 80
     scene_lines: List[str] = []
     try:

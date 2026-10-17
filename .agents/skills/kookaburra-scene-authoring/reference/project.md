@@ -1,8 +1,8 @@
 # project.json, themes, transitions, music
 
 `project.json` is the sequencing source of truth. Change scene order, durations and
-transitions with `kb scene ...` (manifest-safe, atomic); other fields with
-`kb project set <path> <value>`. Hand edits are legal but must stay valid JSON.
+transitions with `./kb scene ...` (manifest-safe, atomic); other fields with
+`./kb project set <path> <value>`. Hand edits are legal but must stay valid JSON.
 
 ## Shape
 
@@ -49,12 +49,12 @@ transitions with `kb scene ...` (manifest-safe, atomic); other fields with
 Rules:
 
 - Each scene file appears once. Two entries sharing a file fail the load. To repeat a
-  scene, `kb scene duplicate S` (fresh stem, fresh `defineScene` id).
+  scene, `./kb scene duplicate S` (fresh stem, fresh `defineScene` id).
 - The manifest `durationMs` wins over the TSX `durationMs`.
 - A scene whose sidecar says `duration.mode: "follow-media"` has its `durationMs`
   kept equal to its video by the app. If you swap that video, update `durationMs`
-  too (`kb assets probe` gives the length).
-- Deleting a scene: `kb scene remove S` (moves the TSX and sidecar to the Trash and
+  too (`./kb assets probe` gives the length).
+- Deleting a scene: `./kb scene remove S` (moves the TSX and sidecar to the Trash and
   drops the entry). Never leave an entry pointing at a missing file.
 
 ## Aspects
@@ -74,7 +74,7 @@ units at z = 0; width follows the aspect. Safe inset is 6% of the shorter side.
 | `phone` | 1206 x 2622 | 1.905 x 4.142 | 0.114 |
 | `phone-landscape` | 2622 x 1206 | 9.006 x 4.142 | 0.249 |
 
-Which aspect the editor previews is app state, not a file. `kb capture --aspect A`
+Which aspect the editor previews is app state, not a file. `./kb capture --aspect A`
 renders any aspect for one request without changing the editor.
 
 ## Transitions
@@ -84,14 +84,14 @@ start back by its overlap: `overlap = min(durationMs, outgoing duration, incomin
 duration)`, project length = sum of durations minus overlaps. The last scene never
 carries one. No transition is a hard cut. Unknown types render as `crossfade`.
 
-`kb scene set S --transition push:500 --ease smooth` writes the type, duration and ease;
+`./kb scene set S --transition push:500 --ease smooth` writes the type, duration and ease;
 `--transition none` makes a hard cut. The other fields are hand edits of that scene's
 `transition` object in `project.json`:
 `direction` (one of `[1,0]` incoming travels left, `[-1,0]` right, `[0,1]` up,
 `[0,-1]` down), `color` (dip, halftone, lightsweep), `ease` (`linear` default,
 `smooth`, `snappy`), and the per-type numbers below (`intensity`, `softness`,
 `center`, `blocks: [x, y]`, `steps`, `parallax`, `shape`). Exact ranges:
-`kb catalog transitions --json`.
+`./kb catalog transitions --json`.
 
 | Type | Feel | Reads as | Default ms | Tunable |
 | --- | --- | --- | --- | --- |
@@ -127,10 +127,10 @@ Choosing one: DESIGN.md "Transitions by feel".
 ## Themes
 
 A theme sets colours, type, motion defaults, text motion, staging, lighting, background
-and effects. `kb theme list` and `kb catalog themes` show the bundled set with a mood
-line (`--json` adds palette and faces); `kb theme show <id>` prints tokens. Set the project theme with
-`kb project set themeId kookaburra-paper`, or one scene's with
-`kb doc S set themeId kookaburra-neon`.
+and effects. `./kb theme list` and `./kb catalog themes` show the bundled set with a mood
+line (`--json` adds palette and faces); `./kb theme show <id>` prints tokens. Set the project theme with
+`./kb project set themeId kookaburra-paper`, or one scene's with
+`./kb doc S set themeId kookaburra-neon`.
 
 | Theme | Mode | Mood | Faces |
 | --- | --- | --- | --- |
@@ -147,12 +147,12 @@ line (`--json` adds palette and faces); `kb theme show <id>` prints tokens. Set 
 
 Plus 24 more in six collections (quiet technology, human-centred AI, maker energy,
 sensory and surreal, digital assets, modern finance), most with an animated shader or
-3D background built in: `kb catalog themes --search finance`.
+3D background built in: `./kb catalog themes --search finance`.
 
 ### Workspace themes (brand themes)
 
 User themes live at `~/Kookaburra Cut/themes/<slug>/theme.json`, id `ws:<slug>`,
-shared by every project. Edit one with `kb theme set <path> <value>` (the project's
+shared by every project. Edit one with `./kb theme set <path> <value>` (the project's
 theme, or `--theme ws:<slug>`). Bundled themes
 are read-only: to brand, duplicate one in the app's Theme editor, or (with the user's
 OK, since it is outside this project) write a new file:
@@ -181,12 +181,12 @@ Required: `version`, `id`, `colors` (all four), `typography` (`headline`, `body`
 `chartColors`, `textAnimation`, `textLook`, `card.radius` (0..0.5, screenshot card
 corners), `lighting`, `environment`, `backdrop`, `background` (no video), `effects`.
 An absent optional block keeps the simplest render path. A theme edit shows on the
-next project reload; `kb check --app` and captures always load it fresh.
+next project reload; `./kb check --app` and captures always load it fresh.
 
 ## Typography overrides
 
 `project.json` `typography` replaces the theme faces project-wide; `chart` sets one
-face for all chart text. Use bundled families unless `kb fonts check` passes
+face for all chart text. Use bundled families unless `./kb fonts check` passes
 (reference/text.md "Fonts").
 
 ## Music
@@ -203,7 +203,7 @@ face for all chart text. Use bundled families unless `kb fonts check` passes
 ```
 
 - One soundtrack per project; remove the block to remove music. Copy the file in with
-  `kb assets add` (mp3, wav, m4a, aac, flac, ogg).
+  `./kb assets add` (mp3, wav, m4a, aac, flac, ogg).
 - It fades out over the last 1000 ms of its audible end unless `fadeOutMs` says
   otherwise (`0` disables). `fadeOutCurve`: `smooth` (default), `linear`, `scurve`,
   `exponential`, `logarithmic`.
