@@ -16,6 +16,7 @@ import {
 import { normalExportFrameCount } from "./exportFrames";
 import { type AspectName, FORMATS } from "./format";
 import { type LoadedProject, sceneFileStem } from "./project";
+import { GpuStallError } from "./readback";
 import { changedSourceFiles, type SourceStamp } from "./sourceBaseline";
 
 /** How App's `runVideoExport` runs a selection: the Export button and the bridge differ only here, and none of it reaches the bytes. */
@@ -482,10 +483,11 @@ export function bridgeFailureFor(error: unknown, aborted: boolean, by: string): 
       by,
     });
   }
-  const name = error instanceof Error ? error.name : "";
-  if (name === "GpuStallError" || message.startsWith("GPU stalled")) {
+  if (error instanceof GpuStallError || message.startsWith("GPU stalled")) {
     const wedged =
-      (error as { wedged?: unknown })?.wedged === true || /context was lost/.test(message);
+      error instanceof GpuStallError
+        ? error.reason === "contextLost"
+        : /context was lost/.test(message);
     return wedged
       ? failure("gpuWedged", message, { hint: "ask the user to quit and reopen Kookaburra Cut" })
       : failure("gpuStalled", message, { hint: "rerun kb export", retryAfterMs: 10_000 });

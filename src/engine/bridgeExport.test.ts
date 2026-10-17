@@ -26,6 +26,7 @@ import {
 } from "./bridgeExport";
 import { FORMATS, FPS } from "./format";
 import type { LoadedProject, ProjectAudio } from "./project";
+import { GpuStallError } from "./readback";
 
 const REQ = parseBridgeExportRequest({ id: "0001-1-a", project: "ws:demo" });
 if (!REQ) throw new Error("fixture request");
@@ -474,6 +475,12 @@ describe("bridgeFailureFor", () => {
       bridgeFailureFor(new Error("GPU stalled (x): the WebGL context was lost"), false, "user")
         .code,
     ).toBe("gpuWedged");
+    expect(bridgeFailureFor(new GpuStallError("contextLost", "lost"), false, "user").code).toBe(
+      "gpuWedged",
+    );
+    expect(bridgeFailureFor(new GpuStallError("blankReadback", "blank"), false, "user").code).toBe(
+      "gpuStalled",
+    );
     expect(bridgeFailureFor("an export is already in progress", false, "user")).toMatchObject({
       code: "busy",
       busy: true,
