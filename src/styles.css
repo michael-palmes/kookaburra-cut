@@ -13469,3 +13469,78 @@ textarea.text-inspector-copy-input {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* ── Claude's bridge export and the flash warning ─────────────────────────── */
+
+.bridge-export {
+  position: absolute;
+  bottom: var(--space-6);
+  left: 50%;
+  z-index: 8;
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  inline-size: min(26rem, calc(100% - 2rem));
+  padding: var(--space-4) var(--space-4) var(--space-4) var(--space-5);
+  transform: translateX(-50%);
+  background: var(--surface-elevated);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  box-shadow: var(--elev-popover);
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+}
+
+.bridge-export-icon {
+  flex: none;
+  color: var(--accent);
+}
+
+.bridge-export-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.bridge-export-title {
+  font-weight: 590;
+  font-variant-numeric: tabular-nums;
+}
+
+.bridge-export-detail {
+  overflow: hidden;
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.bridge-export-bar {
+  block-size: 3px;
+  border-radius: 2px;
+  background: var(--border-subtle);
+  overflow: hidden;
+}
+
+.bridge-export-fill {
+  display: block;
+  block-size: 100%;
+  background: var(--accent);
+  transition: width var(--dur-fast) var(--ease-standard);
+}
+
+.bridge-export-cancel {
+  flex: none;
+}
+
+.flash-warning {
+  position: absolute;
+  top: var(--space-6);
+  left: 50%;
+  z-index: 9;
+  inline-size: min(30rem, calc(100% - 2rem));
+  transform: translateX(-50%);
+}
