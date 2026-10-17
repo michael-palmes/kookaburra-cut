@@ -2,14 +2,17 @@
 
 mod beats;
 mod bridge;
+mod bridge_export;
 mod bridge_health;
 mod claude_update;
 pub mod cli;
+pub mod cli_check;
 mod concurrency;
 mod edit;
 mod edit_masks;
 mod encode;
 mod export_presets;
+mod flashes;
 mod fonts;
 mod global_screenshots;
 mod gradients;
@@ -167,6 +170,94 @@ struct ActiveExport {
     /// Raw input frame geometry (RGBA), used by `push_frame` to reject mis-sized bodies (F-015).
     width: u32,
     height: u32,
+    /// The read-only flash tap; None once it failed, which makes the report "unavailable", never the export.
+    flashes: Option<flashes::FlashDetector>,
+}
+
+/// The flash tap's verdict on the last finished export, for the button's warning and the bridge answer.
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct FlashOutcome {
+    pub(crate) path: String,
+    pub(crate) report: Option<flashes::FlashReport>,
+    /// Why there is no report ("flash check unavailable").
+    pub(crate) unavailable: Option<String>,
+}
+
+#[derive(Default)]
+pub(crate) struct FlashState(Mutex<Option<FlashOutcome>>);
+
+impl FlashState {
+    pub(crate) fn latest(&self) -> Option<FlashOutcome> {
+        self.0.lock().ok().and_then(|slot| slot.clone())
+    }
+
+    fn set(&self, outcome: Option<FlashOutcome>) {
+        if let Ok(mut slot) = self.0.lock() {
+            *slot = outcome;
+        }
+    }
+}
+
+const FLASH_UNAVAILABLE: &str = "flash check unavailable";
+
+/// Feeds one pushed frame to the tap after it reached ffmpeg; a panic drops the tap, never the frame.
+fn tap_flash_frame(detector: &mut Option<flashes::FlashDetector>, bytes: &[u8]) {
+    let Some(d) = detector.as_mut() else {
+        return;
+    };
+    let fed = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| d.push_rgba(bytes, true)));
+    if fed.is_err() {
+        log::warn!("[export] the flash tap failed; this export's flash check is unavailable");
+        *detector = None;
+    }
+}
+
+/// The tap's report, or why there is none.
+fn finish_flash_tap(
+    detector: Option<flashes::FlashDetector>,
+) -> (Option<flashes::FlashReport>, Option<String>) {
+    let Some(d) = detector else {
+        return (None, Some(FLASH_UNAVAILABLE.into()));
+    };
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| d.finish())) {
+        Ok(report) => (Some(report), None),
+        Err(_) => (None, Some(FLASH_UNAVAILABLE.into())),
+    }
+}
+
+/// `<export>.flashes.json` beside the film while it has flagged moments; a clean re-export removes a stale one.
+fn flash_report_path(output: &std::path::Path) -> PathBuf {
+    let mut name = output.file_name().unwrap_or_default().to_os_string();
+    name.push(".flashes.json");
+    output.with_file_name(name)
+}
+
+fn write_flash_report(output: &std::path::Path, report: Option<&flashes::FlashReport>) {
+    let path = flash_report_path(output);
+    match report.filter(|r| !r.issues.is_empty()) {
+        Some(report) => {
+            let written = serde_json::to_string_pretty(report)
+                .map_err(|e| e.to_string())
+                .and_then(|text| {
+                    let tmp = path.with_extension("json.tmp");
+                    std::fs::write(&tmp, text + "\n").map_err(|e| e.to_string())?;
+                    std::fs::rename(&tmp, &path).map_err(|e| e.to_string())
+                });
+            if let Err(e) = written {
+                log::warn!("[export] could not save {}: {e}", path.display());
+            }
+        }
+        None => {
+            let _ = std::fs::remove_file(&path);
+        }
+    }
+}
+
+/// The flash tap's outcome for the last finished export (the button's warning reads it).
+#[tauri::command]
+fn export_flash_report(state: State<'_, FlashState>) -> Option<FlashOutcome> {
+    state.latest()
 }
 
 /// Kills the WKWebView's own white pre-paint layer: Tauri's `backgroundColor` covers only the NSWindow on macOS, so the flash on window open is the webview painting white before first content; sets `underPageBackgroundColor` (public API) plus the `drawsBackground` KVC flag (private-API-adjacent, fine for direct distribution, revisit only if App Store ever matters), async on the main thread.
@@ -244,6 +335,7 @@ impl ExportState {
                 if let Some(run) = run.take() {
                     run.clean_up();
                 }
+                bridge_export::native_job(None);
             }
             // finish_export owns the run: kill its current ffmpeg and let it unwind.
             None => {
@@ -451,7 +543,14 @@ fn start_export(
         two_pass,
         width: options.width,
         height: options.height,
+        flashes: Some(flashes::FlashDetector::new(
+            options.width,
+            options.height,
+            f64::from(options.fps),
+            flashes::Standards::BOTH,
+        )),
     });
+    bridge_export::native_job(Some(("render", 0, options.total_frames)));
 
     Ok(output.to_string_lossy().into_owned())
 }
@@ -570,12 +669,15 @@ fn push_frame(state: State<'_, ExportState>, request: tauri::ipc::Request) -> Re
         ));
     }
     active.child.write(bytes).map_err(|e| e.to_string())?;
+    // Read-only, after the bytes reached ffmpeg: the tap never changes or delays what is encoded.
+    tap_flash_frame(&mut active.flashes, bytes);
     active.written += 1;
     let _ = active.progress.send(Progress {
         frame: active.written,
         total: active.total,
         stage: "render",
     });
+    bridge_export::native_job(Some(("render", active.written, active.total)));
     Ok(())
 }
 
@@ -585,13 +687,16 @@ async fn finish_export(
     app: AppHandle,
     state: State<'_, ExportState>,
     last: State<'_, LastExport>,
+    flash: State<'_, FlashState>,
 ) -> Result<String, String> {
-    let active = state
+    let mut active = state
         .active
         .lock()
         .map_err(|_| "export state poisoned")?
         .take()
         .ok_or("no active export in progress")?;
+    let detector = active.flashes.take();
+    bridge_export::native_job(Some(("finalising", active.written, active.total)));
     let encoded = finish_encode(&app, &state, active).await;
     let run = state
         .run
@@ -608,10 +713,22 @@ async fn finish_export(
         })
     };
     run.clean_up();
+    bridge_export::native_job(None);
+    if result.is_err() {
+        flash.set(None);
+    }
     result?;
     if let Ok(mut guard) = last.0.lock() {
         *guard = Some(run.output.clone());
     }
+    let (report, unavailable) = finish_flash_tap(detector);
+    write_flash_report(&run.output, report.as_ref());
+    flash.set(Some(FlashOutcome {
+        path: run.output.to_string_lossy().into_owned(),
+        report,
+        unavailable,
+    }));
+    bridge_export::note_output(&run.output);
     Ok(run.output.to_string_lossy().into_owned())
 }
 
@@ -812,6 +929,12 @@ struct AutorunEnv {
     stills_size: Option<String>,
     /// `--cold`: the preview stands down from boot, so no preview frame draws before the run.
     cold: bool,
+    /// `stored-only`: load only a project the user already allowed with these exact sources (kb's headless export never auto-trusts).
+    trust: Option<String>,
+    /// `on`, `off` or `app` (the Export modal's setting); unset keeps the run's own encode.
+    poster: Option<String>,
+    /// `KOOKABURRA_PROGRESS=1`: the run reports progress through `autorun_progress`.
+    progress: bool,
 }
 
 /// One `KOOKABURRA_*` env read under the single auto-run rule: trimmed, and empty/whitespace reads as unset.
@@ -880,7 +1003,39 @@ fn get_autorun_config() -> AutorunEnv {
             autorun_var("KOOKABURRA_ACTION"),
             autorun_var("KOOKABURRA_COLD"),
         ),
+        trust: autorun_var("KOOKABURRA_TRUST"),
+        poster: autorun_var("KOOKABURRA_POSTER"),
+        progress: autorun_progress_enabled(),
     }
+}
+
+fn autorun_progress_enabled() -> bool {
+    is_autorun() && autorun_var("KOOKABURRA_PROGRESS").as_deref() == Some("1")
+}
+
+/// Cap on one progress write; a progress line is a small summary.
+const AUTORUN_PROGRESS_MAX_BYTES: usize = 64 * 1024;
+
+/// `<run result dir>/progress.json` (atomic): what a headless `kb export` polls while it waits.
+#[tauri::command]
+fn autorun_progress(app: AppHandle, progress_json: String) -> Result<(), String> {
+    if !autorun_progress_enabled() {
+        return Err(
+            "autorun_progress is only valid during an auto-run with KOOKABURRA_PROGRESS=1".into(),
+        );
+    }
+    if progress_json.len() > AUTORUN_PROGRESS_MAX_BYTES {
+        return Err(format!(
+            "autorun progress too large: {} bytes (max {AUTORUN_PROGRESS_MAX_BYTES})",
+            progress_json.len()
+        ));
+    }
+    serde_json::from_str::<serde_json::Value>(&progress_json)
+        .map_err(|e| format!("autorun progress isn't JSON: {e}"))?;
+    let dir = autorun_result_dir(&app)?;
+    let tmp = dir.join(".progress.json.tmp");
+    std::fs::write(&tmp, &progress_json).map_err(|e| e.to_string())?;
+    std::fs::rename(&tmp, dir.join("progress.json")).map_err(|e| e.to_string())
 }
 
 /// Auto-run sink (terminal-triggered Verify ×2 / export via `pnpm kookaburra:run`): persists the run's JSON result so the wrapper script can read it independently of the dev log, echoes a stdout sentinel for live tailing, then exits the process with a pass/fail code; only reached in auto-run mode (`get_autorun_config` env), the interactive app never invokes it.
@@ -1379,6 +1534,8 @@ macro_rules! kookaburra_handler {
             reveal_last_export,
             get_autorun_config,
             finish_autorun,
+            autorun_progress,
+            export_flash_report,
             begin_screenshot,
             save_screenshot,
             workspace::get_settings,
@@ -1440,6 +1597,10 @@ macro_rules! kookaburra_handler {
             bridge::bridge_write_sheet,
             bridge::bridge_check_assets,
             bridge::bridge_instance,
+            bridge_export::bridge_export_accept,
+            bridge_export::bridge_export_progress,
+            bridge_export::bridge_export_finish,
+            bridge_export::bridge_export_reset,
             render_win::ensure_render_window,
             render_win::close_render_window,
             render_win::render_heartbeat,
@@ -1600,6 +1761,7 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(ExportState::default())
         .manage(LastExport::default())
+        .manage(FlashState::default())
         .manage(ScreenshotState(Mutex::new(None)))
         .manage(bridge::BridgeScreenshotState::default())
         .manage(concurrency::BackgroundLimiter::default())
@@ -2060,6 +2222,91 @@ mod tests {
         run.clean_up();
         assert!(!partial.exists());
         assert!(!mezz.exists());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    fn rgba(width: usize, height: usize, level: u8) -> Vec<u8> {
+        [level, level, level, 255].repeat(width * height)
+    }
+
+    #[test]
+    fn the_flash_tap_reads_frames_without_touching_them_and_reports_a_strobe() {
+        let (w, h) = (64, 36);
+        let mut tap = Some(flashes::FlashDetector::new(
+            w as u32,
+            h as u32,
+            60.0,
+            flashes::Standards::BOTH,
+        ));
+        let (dark, light) = (rgba(w, h, 10), rgba(w, h, 240));
+        for frame in 0..120 {
+            let bytes = if frame % 12 < 6 { &dark } else { &light };
+            let before = bytes.clone();
+            tap_flash_frame(&mut tap, bytes);
+            assert_eq!(bytes, &before);
+        }
+        let (report, unavailable) = finish_flash_tap(tap);
+        let report = report.expect("a report");
+        assert!(unavailable.is_none());
+        assert_eq!(report.frames, 120);
+        assert!(!report.ok, "five flashes a second fail");
+        assert_eq!(report.source, "export");
+    }
+
+    #[test]
+    fn the_flash_tap_never_fails_an_export() {
+        let mut tap = Some(flashes::FlashDetector::new(
+            64,
+            36,
+            60.0,
+            flashes::Standards::BOTH,
+        ));
+        tap_flash_frame(&mut tap, &[1, 2, 3]);
+        tap_flash_frame(&mut tap, &[]);
+        let (report, _) = finish_flash_tap(tap);
+        assert_eq!(report.unwrap().skipped_frames, 2);
+        let mut gone: Option<flashes::FlashDetector> = None;
+        tap_flash_frame(&mut gone, &rgba(64, 36, 0));
+        assert_eq!(finish_flash_tap(gone), (None, Some(FLASH_UNAVAILABLE.to_owned())));
+        let mut empty = Some(flashes::FlashDetector::new(0, 0, f64::NAN, flashes::Standards::BOTH));
+        tap_flash_frame(&mut empty, &rgba(4, 4, 9));
+        assert!(finish_flash_tap(empty).0.is_some());
+    }
+
+    #[test]
+    fn the_flash_report_sits_beside_a_flagged_export_and_goes_with_a_clean_one() {
+        let dir = std::env::temp_dir().join(format!("kc-flash-report-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let output = dir.join("demo-16x9.mp4");
+        assert_eq!(flash_report_path(&output), dir.join("demo-16x9.mp4.flashes.json"));
+        let (w, h) = (64, 36);
+        let mut tap = Some(flashes::FlashDetector::new(
+            w as u32,
+            h as u32,
+            60.0,
+            flashes::Standards::BOTH,
+        ));
+        let (dark, light) = (rgba(w, h, 10), rgba(w, h, 240));
+        for frame in 0..90 {
+            tap_flash_frame(&mut tap, if frame % 12 < 6 { &dark } else { &light });
+        }
+        let flagged = finish_flash_tap(tap).0.unwrap();
+        write_flash_report(&output, Some(&flagged));
+        let saved: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(flash_report_path(&output)).unwrap())
+                .unwrap();
+        assert_eq!(saved["ok"], false);
+        assert!(!saved["issues"].as_array().unwrap().is_empty());
+        let clean = finish_flash_tap(Some(flashes::FlashDetector::new(
+            8,
+            8,
+            60.0,
+            flashes::Standards::BOTH,
+        )))
+        .0
+        .unwrap();
+        write_flash_report(&output, Some(&clean));
+        assert!(!flash_report_path(&output).exists());
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

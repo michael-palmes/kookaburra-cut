@@ -8,8 +8,8 @@ use std::sync::atomic::Ordering;
 
 use serde_json::{json, Value};
 
-use super::flashes::{FlashDetector, Standards};
-use super::{finish, install_signal_handlers, require_tool, tools, Fail, Flags, CANCEL};
+use crate::cli::{finish, install_signal_handlers, require_tool, tools, Fail, Flags, CANCEL};
+use crate::flashes::{FlashDetector, Standards};
 use crate::media;
 
 /// What `edit caps` lists under `checks`; kb runs `check X` only when X is listed (an older binary would start the GUI).
