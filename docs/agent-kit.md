@@ -30,19 +30,21 @@ contract for the kit, the bridge it talks to and the app behaviour it relies on.
 | `project.json`, `scenes/`, `assets/` | user (Claude edits) | The only folders Claude writes by hand |
 | `edits/` | app, and `kb video` | Video edit documents; Rust is the only writer (the editor window and `kb video` through the app's CLI); never hand-edited |
 | `exports/`, `.kookaburra*` | app | Never edited by Claude |
-| `./kb` | app (managed) | The zsh-safe shim: `exec python3 -I .claude/skills/kookaburra-scene-authoring/scripts/kb.py "$@"`; replaced only while it still carries its marker line |
-| `.kb/` | kb | Multi-agent state (lock, leases, notes, events, per-agent scratch, capture copies); ignores itself; never packed or duplicated |
+| `./kb` | app (managed) | The zsh-safe shim from `src-tauri/templates/project-kb.sh` (mode 0755): `exec python3 -I .claude/skills/kookaburra-scene-authoring/scripts/kb.py "$@"`, exit 2 "the kit is missing" without the kit; replaced only while one of its first three lines starts `# kookaburra-cut kb shim` (a user's own `kb`, folder or link is left alone); `/kb` is in `.git/info/exclude`; never packed |
+| `.kb/` | kb | Multi-agent state (lock, leases, notes, events, per-agent scratch, capture copies); ignores itself; never packed (`pack/scan.rs` `is_excluded`) or duplicated (`duplicate_project`) |
 
 Skill tree (the source lives at `.agents/skills/kookaburra-scene-authoring/`):
 
 ```
-SKILL.md            the loop, hard rules, capability map, routing table (about 7 KB)
-RULES.md            always-on rules imported by CLAUDE.md (safety + live-edit contract)
+SKILL.md            the loop, capture etiquette, multi-agent habits, hard rules, capability map, routing (about 14 KB)
+RULES.md            always-on rules imported by CLAUDE.md, the only rules subagents get (keep it under about 3.3 KB)
 DESIGN.md           playbook: presentations, product demos, launch videos
 catalog.json        GENERATED (pnpm agent:catalog); never hand-edited
 reference/          topic files loaded on demand
   project.md  sidecar.md  scenes.md  text.md  devices.md  camera.md
   backgrounds.md  lighting.md  media.md  charts.md  beats.md
+  export.md         exports, film checks, the flash gate
+  gotchas.md        symptom | cause | fix, linked from SKILL.md and scenes.md
 scripts/
   kb.py             the one entry point
   kblib/            kb modules
@@ -58,7 +60,8 @@ scripts/
 - Every shipped skill (`SHIPPED_SKILLS` in `kit.rs`: `kookaburra-scene-authoring`, then
   `kookaburra-video-editing`) is stamped into `.claude/skills/<name>/` with its own
   `kit.json` and stale-sibling prefixes; a failing skill never stops the others, and
-  provisioning reports `present` only when all are there. Kit version 3.
+  provisioning reports `present` only when all are there. Kit version 4 (Bash hooks, the
+  `./kb` shim and `.kb/`).
 - The skill directory is copied to a temporary sibling and swapped in (`RENAME_SWAP`,
   with a two-rename fallback), so files the kit no longer ships are removed;
   `__pycache__`, `.DS_Store` and `scripts/tests` are skipped (test fixtures stay out of
@@ -76,6 +79,10 @@ scripts/
   Otherwise, when it lacks the RULES import, the import line is inserted after its
   first heading. Nothing else in a user-edited `CLAUDE.md` is touched. Changing the
   template means archiving the old one first (a test pins its digest).
+- `./kb`: the shim (`stamp_shim`), written from `src-tauri/templates/project-kb.sh` with mode
+  0755 when missing, and rewritten (content or mode) while it carries the marker; any other
+  `kb` at the project root is the user's and is never touched. kb adds `/kb` to
+  `.git/info/exclude` with its other entries, so the shim never lands in a user's commit.
 - `.claude/settings.json`: created when missing. Managed hooks are identified by a
   command containing `kookaburra-scene-authoring/scripts/kb.py hook`; the stamp removes
   them and re-adds the current set. Managed `permissions.allow` entries are added when
@@ -88,6 +95,7 @@ Managed settings:
 {
   "permissions": {
     "allow": [
+      "Bash(./kb *)",
       "Bash(python3 .claude/skills/kookaburra-scene-authoring/scripts/kb.py *)",
       "Bash(python3 -I .claude/skills/kookaburra-scene-authoring/scripts/kb.py *)",
       "Read(~/Kookaburra Cut/_bridge/**)",
@@ -120,8 +128,8 @@ itself fails open (exit 0) when its modules are missing mid-swap. Hooks only run
 
 ## kb
 
-`python3 .claude/skills/kookaburra-scene-authoring/scripts/kb.py <command>`, run from the
-project folder (it also finds the project by walking up from the cwd, or from
+`./kb <command>` (the shim; `python3 -I .claude/skills/kookaburra-scene-authoring/scripts/kb.py`
+underneath), run from the project folder (it also finds the project by walking up from the cwd, or from
 `$CLAUDE_PROJECT_DIR`). Python 3.9, standard library only, `from __future__ import
 annotations` in every module, and `kb.py` inserts its own directory into `sys.path`
 (isolated mode drops it). Output, exit codes, errors and writes follow "kb conventions"
@@ -135,6 +143,7 @@ under the project lock (`kblib.lock`) and re-validated after writing.
 | `scenes` | Roster: index, stem, name, duration, transition, text, overrides (replaces `inspect.py`) |
 | `check [--app] [--render] [files...]` | Static checks (below); `--app` adds the running app's real compile, load and font checks; `--render` also renders each scene once; `check film ...` hands its arguments to `kblib/film` (`run(ctx, rest)`) |
 | `capture [--scene S] [--at T] [--aspect A] [--frames S@T,...] [--sheet] [--width N \| --scale F] [--probe X,Y[,X,Y...]] [--out DIR \| --no-copy]` | Frames from the running app (one frame native, several or a sheet at a 1280 px long edge); prints the paths of copies in `.kb/captures/`; `--sheet` adds one contact-sheet PNG; `--probe` returns exact pixel values ("The capture service") |
+| `verify [--scene S]... [--aspect A] [--no-render] [--film]` | Every check before calling the work done, one step at a time (below) |
 | `debug contexts`, `debug lose-context [--window render\|editor]` | Every window's WebGL contexts; force a context loss to exercise the stall recovery (the editor only in dev builds) |
 | `scene add <stem> [--preset P \| --copy S] [--after S \| --at N] [--duration MS] [--name N]` | New scene, unique stem and `defineScene` id, registered once; presets insert through the app when it runs, else copy from the app bundle |
 | `scene duplicate S`, `scene move S --to N`, `scene remove S`, `scene set S [--duration MS] [--transition TYPE[:MS]]` | Manifest-safe scene operations; remove moves files to the macOS Trash |
@@ -150,7 +159,9 @@ under the project lock (`kblib.lock`) and re-validated after writing.
 | `note "TEXT" [--scene S]`, `notes [--all]` | Shared notes in `.kb/notes.md` (`notes --json`: `notes`, `total`) |
 | `events [--follow] [--since 10m\|CURSOR\|all] [--kinds ...] [--all-agents] [--exit-after S]` | The coordination feed (`--json` without `--follow`: `events`, `cursor`) |
 | `video ...` | Video editing (below): edit documents, renders, re-points, cleanup, fit, review (`list --json`: `edits`) |
-| `export [--aspect A] [--preset ID] [--verify] [--headless] ...` | The finished film, exactly as the app's Export button makes it (below) |
+| `plan COMMAND ...` | A structural command's dry run: `writes`, `refusals`, `notes`; writes nothing (below) |
+| `export [--aspect A] [--preset ID] [--fps 30\|60] [--short-edge N] [--poster-frame on\|off\|app] [--verify] [--headless] [--allow-flashes] [--timeout S] [--progress-every S]` | The finished film, exactly as the app's Export button makes it ("kb export") |
+| `verify-export FILE [--no-sheet] [--no-flashes] [--allow-flashes] [--loudness-target LUFS] [--standard wcag\|itu\|both]` | Check an exported film against what the project asked for ("Film checks and verify-export") |
 | `hook session-start \| pre-edit \| post-edit \| bash-pre \| bash-post` | Hook entry points (stdin JSON from Claude Code); any other event exits 0, so an older kit is safe with newer settings |
 | `beats ...`, `chart ...` | Delegate to the existing scripts |
 
@@ -195,6 +206,42 @@ As built (`scripts/kblib/`):
 - Exit 3 so far: the project lock or an edit lock held (`locked`, with `holder`), a write
   that kept conflicting (`conflict`), a git timeout (`transient`), `.git/index.lock` held past
   the backoff (`index-locked`, with `lockAgeMs`).
+
+`kb verify` (`kblib/verify.py`) runs, in order, each as `{ name, ok, ms, errors, warnings,
+skipped?, paths?, transient?, retryAfterMs?, code? }` under `steps`:
+
+1. `static`: the static check, scoped to `--scene` files when given.
+2. `app`: `check --app --render` (`--no-render`: load only); skipped with a note when no
+   instance serves this project, and then `captures` and `handoffs` skip too.
+3. `captures`: each scene's first and last solo frames (after its incoming transition,
+   one frame before its outgoing one), at most 16 frames a request, one request at a time,
+   at the 1280 px long edge (`width` sent explicitly) with a 64-point probe grid and a
+   contact sheet per request (`sheet-N.png` when there are several), copied into one
+   `.kb/captures/` folder. Skipped after a transient app step.
+4. `handoffs`: the mean probed luminance step across each seam between neighbouring
+   captured scenes, through `film/handoffs.flag_seams`: a cut of ΔL 0.10 or more next to
+   a scene under 1 s warns, and four such cuts inside one second warn as a strobe. Warnings
+   only, like `check film handoffs`.
+5. `flashes`: the flash check of the newest `exports/` film only when its mtime is newer
+   than `project.json`, `scenes/**` and `assets/**`; else skipped, naming the newer file.
+   `--film` replaces it with `export` (`./kb export --fps 30 --short-edge 720
+   --allow-flashes --json` as a child process, progress on stderr) and `film` (`check film
+   --file` on that export, in process).
+
+Exit 1 when any step has errors, else 3 when a step was transient (`retryAfterMs` at the
+top level), else 0; skipped steps pass, and the text summary says when only the static
+check ran.
+
+`kb plan COMMAND ...` (`kblib/plan.py`) parses the command with kb's own parser, refuses
+anything outside scene add, duplicate, move, remove and set, doc set, unset and merge,
+project set and unset, theme set, assets add, checkpoint, undo and lease (exit 2), runs it
+in process with `dry_run` and `json` set and its stdout captured, and reports `{ plan,
+argv, writes: [{ path, action: create | modify | trash | delete, base, refusal? }],
+refusals, notes, dryRun: true }`. A dry run that raises an exit-1 `leased`,
+`others-changed`, `invalid` or `conflict` error becomes a refusal on its file's write;
+lease plans synthesise the `.kb/leases/<stem>.json` write (`delete` for a release). Exit
+1 when anything would be refused, else 0. Text: one line per write, then refusals and
+notes.
 
 Static checks: `project.json` (valid JSON, version, required fields, files exist, no
 duplicate entries, transitions and options, formats, theme id, audio file); sidecars
@@ -269,7 +316,9 @@ Every kb command, including new ones, follows these rules. Code: `scripts/kblib/
   (`events --follow`, `export`) prints one compact object per line, the final object
   last. Lists go under a plural key (`scenes`, `checkpoints`, `items`), never as a bare
   array. Keys are camelCase, times integer ms (`atMs`, `durationMs`), paths
-  project-relative with `/`. Diagnostics go to stderr. A report that exits 1 (problems found)
+  project-relative with `/`, except files an agent should Read (capture copies, contact
+  sheets, verify's sheets and frames, an export's `path`), which stay absolute so Read takes
+  them as printed. Diagnostics go to stderr. A report that exits 1 (problems found)
   is `ok: false` and carries `code` and `error` like a failure.
 - **Failures.** In `--json` mode a failure prints
   `{ "ok": false, "command", "code", "error", "hint", "retryAfterMs"?, ...data }` on
