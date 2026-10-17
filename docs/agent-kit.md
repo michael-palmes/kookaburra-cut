@@ -505,8 +505,8 @@ export's own `buildSceneTimeline` (`transitionIn` as `{ type, durationMs, ... }`
 
 Flash detection is one Rust core fed frame by frame: `FlashDetector::new(width, height,
 fps, standards)`, `push_rgba(&[u8], bottom_up)` (or `push_rgb`), `finish() -> FlashReport`.
-It never panics (a short buffer is counted and skipped) and costs about 4.3 ms per 4K RGBA
-frame with both standards. Two feeders: `<exe> check flashes`, and a read-only tap in every
+It never panics (a short buffer is counted and skipped) and costs about 4.4 ms per 4K RGBA
+frame with both standards (5.3 ms at worst on a camera fly-through). Two feeders: `<exe> check flashes`, and a read-only tap in every
 export's `push_frame` (after the bytes reach ffmpeg; a failure makes the report "flash check
 unavailable", never a failed export). `finish_export` keeps the tap's verdict for
 `export_flash_report`, and writes `<export file>.flashes.json` beside a film with flagged
@@ -517,16 +517,27 @@ with the timecodes, and `kb export` gets the report in its answer.
   stride of about 16 per cell edge, linearised (sRGB for WCAG, 2.4 power for ITU, whose
   20 and 160 cd/m² of a 200 cd/m² display are the same 0.10 and 0.80), averaged per cell;
   relative luminance 0.2126R + 0.7152G + 0.0722B.
-- **Transitions.** A per-cell swing tracker with a 0.02 hysteresis. A general transition
-  changes ΔL by 0.10 or more with the darker side below 0.80; a red one has a saturated
-  red end (R / (R + G + B) of 0.8 or more, linear), Δu'v' over 0.2 and, as an
-  implementation choice that keeps near-black noise out, WCAG 2.0's (R - G - B) x 320
-  changing by more than 20. Same-sign transitions within 66 ms group into one.
-- **Area.** WCAG: the best 21 x 16 cell window (341 x 256 px at 1024 x 768, upright in
-  portrait) at 25%; ITU: 25% of the frame. A compact flash over 12.5% of the frame
-  therefore fails WCAG but passes ITU.
-- **Verdict.** More than six opposing transitions in any 1 s (more than three flashes)
-  fails; five or six, or more than six at 15 to 25% area, warns. Patterns come later.
+- **Regions.** Flashes are counted per region, never across the frame: every position of
+  the WCAG window (21 x 16 cells, 341 x 256 px at 1024 x 768, upright in portrait), and for
+  ITU the whole frame plus three-quarter windows and full-width and full-height halves (a
+  quarter of the screen flashing anywhere fits inside one).
+- **Transitions.** A region's mean signal (relative luminance, or (R - G - B) for red) is
+  tracked as swings with a small hysteresis. A swing is a transition when enough of the
+  region's cells changed by the threshold in its direction between its two ends: ΔL 0.10
+  or more with the darker side below 0.80; for red, a saturated red end (R / (R + G + B)
+  of 0.8 or more, linear), Δu'v' over 0.2 and, as an implementation choice that keeps
+  near-black noise out, WCAG 2.0's (R - G - B) x 320 changing by more than 20. "Enough"
+  is 25% (15% warns) of the window for WCAG and of the whole frame for ITU, and the mean
+  must move as far as that share would move it.
+- **Motion.** A moving object's leading edge darkens cells while its trailing edge lightens
+  others, so a region's mean holds still and textures inside it cancel; an object entering
+  and leaving a region is one flash per pass. A camera fly-through past dark tiles passes;
+  a dark block crossing the same place four times a second over a quarter of the window
+  fails. A pattern reversing in place (a checkerboard swapping) also cancels: patterns
+  come later.
+- **Verdict.** More than six opposing transitions of one region in any 1 s (more than
+  three flashes) fails; five or six, or more than six at 15 to 25%, warns. A compact flash
+  over 12.5% of the frame fails WCAG but passes ITU.
 
 ```json
 { "version": 1, "approximate": true, "standards": ["wcag-2.3.1", "itu-bt1702"], "source": "file",

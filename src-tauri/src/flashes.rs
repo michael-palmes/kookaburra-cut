@@ -1,4 +1,6 @@
-//! Photosensitive flash detection over a finished film (WCAG 2.3.1 general and red flash, ITU-R BT.1702), streamed one frame at a time so the export loop and `check flashes` share it. Approximate by design: frames fold into a 64-cell grid of linear-light means, each cell tracks its luminance and red swings, same-sign transitions within 66 ms group into one flash, and any 1 s with more than six opposing transitions over the area threshold fails. Contract: docs/agent-kit.md (Film checks and verify-export).
+//! Photosensitive flash detection over a finished film (WCAG 2.3.1 general and red flash, ITU-R BT.1702), streamed one frame at a time so the export loop and `check flashes` share it. Approximate by design: frames fold into a 64-cell grid of linear-light means, and flashes are counted per region, not across the frame. A region (every WCAG window position, or ITU's large windows and the whole frame) makes a transition when its mean swings and enough of its cells change by the threshold that way between the swing's two ends; more than six opposing transitions in any 1 s of one region fails. A moving object's leading and trailing edges cancel in a region's mean, so motion reads as at most one flash per pass. Contract: docs/agent-kit.md (Film checks and verify-export).
+
+use std::collections::VecDeque;
 
 use serde::Serialize;
 use serde_json::Value;
@@ -9,19 +11,20 @@ pub const GRID_LONG_EDGE: usize = 64;
 /// WCAG's 341 x 256 px window at 1024 x 768, in cells; transposed in portrait.
 const WINDOW_LONG: usize = 21;
 const WINDOW_SHORT: usize = 16;
-const GROUP_MS: f64 = 66.0;
 const DELTA_L: f32 = 0.10;
 const DARKER_MAX: f32 = 0.80;
-/// A swing reverses only once the signal backs off this far from its extreme, so encoder noise never splits one.
-const HYSTERESIS: f32 = 0.02;
 const RED_RATIO: f32 = 0.8;
 const RED_DUV: f32 = 0.2;
 /// WCAG 2.0's red floor, (R - G - B) x 320 changing by more than 20, keeps near-black chroma noise out.
 const RED_DELTA: f32 = 20.0 / 320.0;
-const AREA_FAIL: f64 = 0.25;
-const AREA_WARN: f64 = 0.15;
+const AREA_FAIL: f32 = 0.25;
+const AREA_WARN: f32 = 0.15;
+/// A region's mean reverses once it backs off this share of the smallest swing that could count.
+const MEAN_HYSTERESIS: f32 = 0.2;
 const FAIL_OVER: usize = 6;
 const WARN_FROM: usize = 5;
+const LEVEL_WARN: u8 = 1;
+const LEVEL_FAIL: u8 = 2;
 /// Samples per cell edge before stride sampling starts (a 4K cell samples every third pixel).
 const SAMPLES_PER_CELL_EDGE: usize = 16;
 const D65_UV: (f32, f32) = (0.1978, 0.4683);
@@ -102,6 +105,21 @@ impl Kind {
             Kind::Red => "red",
         }
     }
+
+    /// The per-cell change that counts: relative luminance for general flashes, (R - G - B) for red.
+    fn delta(self) -> f32 {
+        match self {
+            Kind::General => DELTA_L,
+            Kind::Red => RED_DELTA,
+        }
+    }
+
+    fn signal(self, rgb: [f32; 3]) -> f32 {
+        match self {
+            Kind::General => luminance(rgb),
+            Kind::Red => (rgb[0] - rgb[1] - rgb[2]).max(0.0),
+        }
+    }
 }
 
 const KINDS: [Kind; 2] = [Kind::General, Kind::Red];
@@ -148,85 +166,8 @@ fn is_zero(n: &u64) -> bool {
     *n == 0
 }
 
-/// Per-cell swing tracker: an undirected start (lo/hi until the signal moves by the hysteresis), then a directed swing from `anchor` to the running extreme `peak`; a back-off past the hysteresis reverses it.
-#[derive(Clone, Copy, Debug, Default)]
-struct Tracker {
-    started: bool,
-    dir: i8,
-    anchor: f32,
-    anchor_rgb: [f32; 3],
-    peak: f32,
-    peak_rgb: [f32; 3],
-    lo: f32,
-    lo_rgb: [f32; 3],
-    hi: f32,
-    hi_rgb: [f32; 3],
-    emitted: bool,
-}
-
-impl Tracker {
-    /// Feeds one value; returns the swing's sign and amplitude the first frame it qualifies.
-    fn update(&mut self, v: f32, rgb: [f32; 3], kind: Kind) -> Option<(i8, f32)> {
-        if !self.started {
-            *self = Tracker {
-                started: true,
-                lo: v,
-                lo_rgb: rgb,
-                hi: v,
-                hi_rgb: rgb,
-                ..Tracker::default()
-            };
-            return None;
-        }
-        if self.dir == 0 {
-            if v < self.lo {
-                self.lo = v;
-                self.lo_rgb = rgb;
-            }
-            if v > self.hi {
-                self.hi = v;
-                self.hi_rgb = rgb;
-            }
-            if self.hi - self.lo < HYSTERESIS {
-                return None;
-            }
-            if v >= self.hi {
-                (self.dir, self.anchor, self.anchor_rgb) = (1, self.lo, self.lo_rgb);
-            } else {
-                (self.dir, self.anchor, self.anchor_rgb) = (-1, self.hi, self.hi_rgb);
-            }
-            (self.peak, self.peak_rgb) = (v, rgb);
-        } else if (self.dir > 0 && v > self.peak) || (self.dir < 0 && v < self.peak) {
-            (self.peak, self.peak_rgb) = (v, rgb);
-        } else if (self.peak - v).abs() >= HYSTERESIS {
-            (self.anchor, self.anchor_rgb) = (self.peak, self.peak_rgb);
-            (self.peak, self.peak_rgb) = (v, rgb);
-            self.dir = -self.dir;
-            self.emitted = false;
-        }
-        if self.emitted || !self.qualifies(kind) {
-            return None;
-        }
-        self.emitted = true;
-        Some((self.dir, (self.peak - self.anchor).abs()))
-    }
-
-    fn qualifies(&self, kind: Kind) -> bool {
-        let (a, b) = (self.anchor, self.peak);
-        match kind {
-            Kind::General => (b - a).abs() >= DELTA_L && a.min(b) < DARKER_MAX,
-            Kind::Red => {
-                let red_end = if b > a {
-                    self.peak_rgb
-                } else {
-                    self.anchor_rgb
-                };
-                (b - a).abs() >= RED_DELTA
-                    && red_ratio(red_end) >= RED_RATIO
-                    && uv_distance(self.anchor_rgb, self.peak_rgb) > RED_DUV
-            }
-        }
-    }
+fn luminance(rgb: [f32; 3]) -> f32 {
+    0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2]
 }
 
 fn red_ratio(rgb: [f32; 3]) -> f32 {
@@ -258,23 +199,133 @@ fn uv_distance(a: [f32; 3], b: [f32; 3]) -> f32 {
     ((ua - ub).powi(2) + (va - vb).powi(2)).sqrt()
 }
 
-/// Same-sign transitions of one standard and kind, unioned while they stay within 66 ms of the first.
-#[derive(Clone, Debug)]
-struct Group {
-    first: u64,
-    mask: Vec<bool>,
-    delta: f32,
-    open: bool,
+/// Whether one cell changed enough between two moments, in the swing's direction, to count as flashing.
+fn cell_qualifies(kind: Kind, before: [f32; 3], after: [f32; 3], dir: i8) -> bool {
+    let change = (kind.signal(after) - kind.signal(before)) * f32::from(dir);
+    if change < kind.delta() {
+        return false;
+    }
+    match kind {
+        Kind::General => luminance(before).min(luminance(after)) < DARKER_MAX,
+        Kind::Red => {
+            let red_end = if dir > 0 { after } else { before };
+            red_ratio(red_end) >= RED_RATIO && uv_distance(before, after) > RED_DUV
+        }
+    }
 }
 
-/// A grouped flash transition that cleared the warning area.
-#[derive(Clone, Debug)]
-struct Event {
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Step {
+    Still,
+    Started,
+    Extended,
+}
+
+/// A region's mean signal: an undirected start until it moves by the hysteresis, then a swing from `anchor` to the running extreme `peak`; backing off past the hysteresis starts the opposite swing.
+#[derive(Clone, Copy, Debug, Default)]
+struct Swing {
+    started: bool,
+    dir: i8,
+    anchor: f32,
+    anchor_frame: u64,
+    peak: f32,
+    lo: f32,
+    lo_frame: u64,
+    hi: f32,
+    hi_frame: u64,
+    peak_frame: u64,
+}
+
+impl Swing {
+    fn update(&mut self, v: f32, frame: u64, hysteresis: f32) -> Step {
+        if !self.started {
+            *self = Swing {
+                started: true,
+                lo: v,
+                hi: v,
+                lo_frame: frame,
+                hi_frame: frame,
+                ..Swing::default()
+            };
+            return Step::Still;
+        }
+        if self.dir == 0 {
+            if v < self.lo {
+                (self.lo, self.lo_frame) = (v, frame);
+            }
+            if v > self.hi {
+                (self.hi, self.hi_frame) = (v, frame);
+            }
+            if self.hi - self.lo < hysteresis {
+                return Step::Still;
+            }
+            if v >= self.hi {
+                (self.dir, self.anchor, self.anchor_frame) = (1, self.lo, self.lo_frame);
+            } else {
+                (self.dir, self.anchor, self.anchor_frame) = (-1, self.hi, self.hi_frame);
+            }
+            (self.peak, self.peak_frame) = (v, frame);
+            return Step::Started;
+        }
+        if (self.dir > 0 && v > self.peak) || (self.dir < 0 && v < self.peak) {
+            (self.peak, self.peak_frame) = (v, frame);
+            return Step::Extended;
+        }
+        if (self.peak - v).abs() >= hysteresis {
+            (self.anchor, self.anchor_frame) = (self.peak, self.peak_frame);
+            (self.peak, self.peak_frame) = (v, frame);
+            self.dir = -self.dir;
+            return Step::Started;
+        }
+        Step::Still
+    }
+}
+
+/// One counted transition of a region: its sign, how strongly it counted and what changed.
+#[derive(Clone, Copy, Debug)]
+struct Mark {
     frame: u64,
     sign: i8,
-    area: f64,
+    level: u8,
+    area: f32,
+    delta: f32,
+    bbox: [usize; 4],
+}
+
+/// A judged region: the WCAG window at one position, or one of ITU's large windows.
+#[derive(Clone, Debug)]
+struct Region {
+    x0: usize,
+    y0: usize,
+    w: usize,
+    h: usize,
+    /// The cells an area share is measured against: the window itself for WCAG, the whole frame for ITU.
+    reference: f64,
+    swing: Swing,
+    /// The frame of the current swing's mark, so a stronger reading upgrades it instead of adding another.
+    open: Option<u64>,
+    marks: VecDeque<Mark>,
+}
+
+#[derive(Clone, Debug)]
+struct Span {
+    fail: bool,
+    count: usize,
+    from: u64,
+    to: u64,
+    area: f32,
     bbox: [usize; 4],
     delta: f32,
+}
+
+/// One standard and kind: its regions and the stretches they flagged.
+#[derive(Clone, Debug)]
+struct Lane {
+    std: Std,
+    std_index: usize,
+    kind: Kind,
+    regions: Vec<Region>,
+    spans: Vec<Span>,
 }
 
 #[derive(Clone, Copy)]
@@ -288,6 +339,7 @@ pub struct FlashDetector {
     width: usize,
     height: usize,
     fps: f64,
+    window: u64,
     standards: Vec<Std>,
     gw: usize,
     gh: usize,
@@ -296,9 +348,10 @@ pub struct FlashDetector {
     counts: Vec<f32>,
     luts: Vec<[f32; 256]>,
     sums: Vec<f32>,
-    trackers: Vec<Tracker>,
-    groups: Vec<Group>,
-    events: Vec<Vec<Event>>,
+    /// The last second of per-cell linear RGB per standard, so a swing compares each cell at its two ends.
+    history: Vec<Vec<[f32; 3]>>,
+    depth: u64,
+    lanes: Vec<Lane>,
     frames: u64,
     skipped: u64,
     pub source: String,
@@ -363,6 +416,112 @@ fn axis_samples(pixels: usize, cells: usize, step: usize) -> (Vec<Sample>, Vec<u
     (samples, per_cell)
 }
 
+/// ITU windows step this far, in cells.
+const ITU_STRIDE: usize = 4;
+
+/// The regions a standard judges: every position of the WCAG window (upright in portrait); for ITU, the whole frame plus windows of three quarters, full-width halves and full-height halves, so a quarter of the screen flashing anywhere fits inside one.
+fn regions_for(std: Std, gw: usize, gh: usize) -> Vec<Region> {
+    let cells = (gw * gh) as f64;
+    let region = |x0, y0, w, h, reference| Region {
+        x0,
+        y0,
+        w,
+        h,
+        reference,
+        swing: Swing::default(),
+        open: None,
+        marks: VecDeque::new(),
+    };
+    if gw == 0 || gh == 0 {
+        return Vec::new();
+    }
+    let slide = |out: &mut Vec<Region>, ww: usize, wh: usize, step: usize, reference: f64| {
+        let (ww, wh) = (ww.clamp(1, gw), wh.clamp(1, gh));
+        let mut y0 = 0;
+        loop {
+            let mut x0 = 0;
+            loop {
+                out.push(region(x0, y0, ww, wh, reference));
+                if x0 + ww >= gw {
+                    break;
+                }
+                x0 = (x0 + step).min(gw - ww);
+            }
+            if y0 + wh >= gh {
+                break;
+            }
+            y0 = (y0 + step).min(gh - wh);
+        }
+    };
+    let mut out = Vec::new();
+    match std {
+        Std::Wcag => {
+            let (ww, wh) = if gw >= gh {
+                (WINDOW_LONG, WINDOW_SHORT)
+            } else {
+                (WINDOW_SHORT, WINDOW_LONG)
+            };
+            let (ww, wh) = (ww.min(gw), wh.min(gh));
+            slide(&mut out, ww, wh, 1, (ww * wh) as f64);
+        }
+        Std::Itu => {
+            out.push(region(0, 0, gw, gh, cells));
+            slide(
+                &mut out,
+                (gw * 3).div_ceil(4),
+                (gh * 3).div_ceil(4),
+                ITU_STRIDE,
+                cells,
+            );
+            slide(&mut out, gw, gh.div_ceil(2), ITU_STRIDE, cells);
+            slide(&mut out, gw.div_ceil(2), gh, ITU_STRIDE, cells);
+        }
+    }
+    out
+}
+
+/// A summed-area table over a grid of values, one row and column of zeros in front.
+fn summed<T: Copy + Into<f64>>(values: &[T], gw: usize, gh: usize, out: &mut Vec<f64>) {
+    out.clear();
+    out.resize((gw + 1) * (gh + 1), 0.0);
+    for y in 0..gh {
+        let mut row = 0.0;
+        for x in 0..gw {
+            row += values[y * gw + x].into();
+            out[(y + 1) * (gw + 1) + x + 1] = out[y * (gw + 1) + x + 1] + row;
+        }
+    }
+}
+
+fn rect_sum(sat: &[f64], gw: usize, r: &Region) -> f64 {
+    let at = |y: usize, x: usize| sat[y * (gw + 1) + x];
+    at(r.y0 + r.h, r.x0 + r.w) + at(r.y0, r.x0) - at(r.y0, r.x0 + r.w) - at(r.y0 + r.h, r.x0)
+}
+
+/// Opposing transitions among a region's marks at or over a level: a sign change counts, a repeat of the same sign does not.
+fn alternations(marks: &VecDeque<Mark>, level: u8) -> usize {
+    let mut count = 0;
+    let mut last = 0i8;
+    for m in marks.iter().filter(|m| m.level >= level) {
+        if m.sign != last {
+            count += 1;
+            last = m.sign;
+        }
+    }
+    count
+}
+
+fn union(a: [usize; 4], b: [usize; 4]) -> [usize; 4] {
+    [
+        a[0].min(b[0]),
+        a[1].min(b[1]),
+        a[2].max(b[2]),
+        a[3].max(b[3]),
+    ]
+}
+
+const EMPTY_BOX: [usize; 4] = [usize::MAX, usize::MAX, 0, 0];
+
 impl FlashDetector {
     pub fn new(width: u32, height: u32, fps: f64, standards: Standards) -> Self {
         let fps = if fps.is_finite() && fps > 0.0 {
@@ -389,27 +548,34 @@ impl FlashDetector {
             })
             .collect::<Vec<_>>();
         let cells = gw * gh;
-        let keys = standards.len() * KINDS.len();
+        let window = fps.round().max(1.0) as u64;
+        let depth = window + 1;
+        let mut lanes = Vec::new();
+        for (std_index, std) in standards.iter().enumerate() {
+            for kind in KINDS {
+                lanes.push(Lane {
+                    std: *std,
+                    std_index,
+                    kind,
+                    regions: regions_for(*std, gw, gh),
+                    spans: Vec::new(),
+                });
+            }
+        }
         FlashDetector {
             width: w,
             height: h,
             fps,
+            window,
             gw,
             gh,
             xs,
             ys,
             counts,
             sums: vec![0.0; cells * standards.len() * 3],
-            trackers: vec![Tracker::default(); cells * keys],
-            groups: (0..keys * 2)
-                .map(|_| Group {
-                    first: 0,
-                    mask: vec![false; cells],
-                    delta: 0.0,
-                    open: false,
-                })
-                .collect(),
-            events: vec![Vec::new(); keys],
+            history: vec![vec![[0.0; 3]; cells * depth as usize]; standards.len()],
+            depth,
+            lanes,
             luts,
             standards,
             frames: 0,
@@ -464,137 +630,245 @@ impl FlashDetector {
         }
         let frame = self.frames;
         let cells = self.gw * self.gh;
-        let mut hits: Vec<(usize, usize, i8, f32)> = Vec::new();
+        let slot = (frame % self.depth) as usize * cells;
         for cell in 0..cells {
             let n = self.counts[cell];
-            for s in 0..nstd {
+            for (s, history) in self.history.iter_mut().enumerate() {
                 let at = cell * stride + s * 3;
-                let rgb = [
+                history[slot + cell] = [
                     self.sums[at] / n,
                     self.sums[at + 1] / n,
                     self.sums[at + 2] / n,
                 ];
-                let l = 0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2];
-                let red = (rgb[0] - rgb[1] - rgb[2]).max(0.0);
-                for (k, kind) in KINDS.iter().enumerate() {
-                    let key = s * KINDS.len() + k;
-                    let v = if *kind == Kind::General { l } else { red };
-                    if let Some((sign, delta)) =
-                        self.trackers[key * cells + cell].update(v, rgb, *kind)
-                    {
-                        hits.push((key, cell, sign, delta));
-                    }
-                }
             }
         }
-        self.close_groups(frame, false);
-        for (key, cell, sign, delta) in hits {
-            let g = &mut self.groups[key * 2 + usize::from(sign > 0)];
-            if !g.open {
-                g.open = true;
-                g.first = frame;
-                g.delta = 0.0;
-            }
-            g.mask[cell] = true;
-            g.delta = g.delta.max(delta);
+        let mut lanes = std::mem::take(&mut self.lanes);
+        for lane in &mut lanes {
+            self.judge_frame(lane, frame);
         }
+        self.lanes = lanes;
         self.frames += 1;
     }
 
-    fn group_frames(&self) -> f64 {
-        GROUP_MS * self.fps / 1000.0
+    /// The history slot holding `frame`, clamped to the oldest frame still held.
+    fn slot_of(&self, frame: u64, now: u64) -> usize {
+        let oldest = now.saturating_sub(self.depth - 1);
+        (frame.max(oldest) % self.depth) as usize * self.gw * self.gh
     }
 
-    /// Closes groups whose window has passed (or all of them at the end), turning each into an event.
-    fn close_groups(&mut self, frame: u64, all: bool) {
-        let span = self.group_frames();
-        for gi in 0..self.groups.len() {
-            let g = &self.groups[gi];
-            if !g.open || (!all && ((frame - g.first) as f64) <= span) {
+    fn judge_frame(&self, lane: &mut Lane, frame: u64) {
+        let (gw, gh) = (self.gw, self.gh);
+        let cells = gw * gh;
+        let history = &self.history[lane.std_index];
+        let now = self.slot_of(frame, frame);
+        let kind = lane.kind;
+        let signal: Vec<f32> = (0..cells).map(|c| kind.signal(history[now + c])).collect();
+        let mut sat = Vec::new();
+        summed(&signal, gw, gh, &mut sat);
+        let warn_mean = kind.delta() * AREA_WARN;
+        let fail_mean = kind.delta() * AREA_FAIL;
+        // Per-cell qualification masks between an anchor frame and now, shared by every region anchored there.
+        let mut masks: Vec<(u64, i8, Vec<f32>, Vec<f64>)> = Vec::new();
+        for region in &mut lane.regions {
+            let area = (region.w * region.h) as f64;
+            // A swing's size and its cells are both judged per reference cell, so a large ITU window needs a quarter of the screen.
+            let scale = (area / region.reference) as f32;
+            let mean = (rect_sum(&sat, gw, region) / area) as f32;
+            let step = region
+                .swing
+                .update(mean, frame, warn_mean * MEAN_HYSTERESIS / scale);
+            if step == Step::Started {
+                region.open = None;
+            }
+            let swing = region.swing;
+            let open_level = region
+                .open
+                .and_then(|f| region.marks.back().filter(|m| m.frame == f))
+                .map_or(0, |m| m.level);
+            let moved = (swing.peak - swing.anchor).abs() * scale;
+            if step != Step::Still && open_level < LEVEL_FAIL && moved >= warn_mean {
+                let anchor = swing.anchor_frame.max(frame.saturating_sub(self.depth - 1));
+                let key = masks
+                    .iter()
+                    .position(|(a, d, _, _)| *a == anchor && *d == swing.dir);
+                let index = match key {
+                    Some(i) => i,
+                    None => {
+                        let then = self.slot_of(anchor, frame);
+                        let mask: Vec<f32> = (0..cells)
+                            .map(|c| {
+                                f32::from(u8::from(cell_qualifies(
+                                    kind,
+                                    history[then + c],
+                                    history[now + c],
+                                    swing.dir,
+                                )))
+                            })
+                            .collect();
+                        let mut msat = Vec::new();
+                        summed(&mask, gw, gh, &mut msat);
+                        masks.push((anchor, swing.dir, mask, msat));
+                        masks.len() - 1
+                    }
+                };
+                let (_, _, mask, msat) = &masks[index];
+                let covered = (rect_sum(msat, gw, region) / region.reference) as f32;
+                let level = if covered >= AREA_FAIL && moved >= fail_mean {
+                    LEVEL_FAIL
+                } else if covered >= AREA_WARN {
+                    LEVEL_WARN
+                } else {
+                    0
+                };
+                if level > open_level {
+                    let then = self.slot_of(anchor, frame);
+                    let (mut bbox, mut delta) = (EMPTY_BOX, 0.0f32);
+                    for y in region.y0..region.y0 + region.h {
+                        for x in region.x0..region.x0 + region.w {
+                            let c = y * gw + x;
+                            if mask[c] > 0.5 {
+                                bbox = union(bbox, [x, y, x + 1, y + 1]);
+                                let change = (kind.signal(history[now + c])
+                                    - kind.signal(history[then + c]))
+                                .abs();
+                                delta = delta.max(change);
+                            }
+                        }
+                    }
+                    let mark = Mark {
+                        frame,
+                        sign: swing.dir,
+                        level,
+                        area: covered,
+                        delta,
+                        bbox,
+                    };
+                    match region
+                        .marks
+                        .back_mut()
+                        .filter(|m| Some(m.frame) == region.open)
+                    {
+                        Some(open) => {
+                            *open = Mark {
+                                frame: open.frame,
+                                ..mark
+                            }
+                        }
+                        None => {
+                            region.marks.push_back(mark);
+                            region.open = Some(frame);
+                        }
+                    }
+                }
+            }
+            while region
+                .marks
+                .front()
+                .is_some_and(|m| m.frame + self.window <= frame)
+            {
+                region.marks.pop_front();
+            }
+        }
+        self.flag(lane, frame);
+    }
+
+    /// The frame's verdict from its regions' last second, folded into the lane's flagged stretches.
+    fn flag(&self, lane: &mut Lane, frame: u64) {
+        let mut worst: Option<Span> = None;
+        for region in lane.regions.iter().filter(|r| r.marks.len() >= WARN_FROM) {
+            let fail_count = alternations(&region.marks, LEVEL_FAIL);
+            let warn_count = alternations(&region.marks, LEVEL_WARN);
+            let fail = fail_count > FAIL_OVER;
+            if !fail && fail_count < WARN_FROM && warn_count <= FAIL_OVER {
                 continue;
             }
-            let key = gi / 2;
-            let std = self.standards[key / KINDS.len()];
-            let area = match std {
-                Std::Wcag => self.window_area(&g.mask),
-                Std::Itu => {
-                    g.mask.iter().filter(|m| **m).count() as f64 / g.mask.len().max(1) as f64
-                }
+            let (level, count) = if fail || fail_count >= WARN_FROM {
+                (LEVEL_FAIL, fail_count)
+            } else {
+                (LEVEL_WARN, warn_count)
             };
-            let bbox = self.bbox(&g.mask);
-            let event = Event {
-                frame: g.first,
-                sign: if gi % 2 == 1 { 1 } else { -1 },
-                area,
-                bbox,
-                delta: g.delta,
+            let mut span = Span {
+                fail,
+                count,
+                from: frame,
+                to: 0,
+                area: 0.0,
+                bbox: EMPTY_BOX,
+                delta: 0.0,
             };
-            if area >= AREA_WARN {
-                self.events[key].push(event);
+            for m in region.marks.iter().filter(|m| m.level >= level) {
+                span.from = span.from.min(m.frame);
+                span.to = span.to.max(m.frame);
+                span.area = span.area.max(m.area);
+                span.delta = span.delta.max(m.delta);
+                span.bbox = union(span.bbox, m.bbox);
             }
-            let g = &mut self.groups[gi];
-            g.open = false;
-            g.mask.iter_mut().for_each(|m| *m = false);
+            worst = Some(match worst {
+                None => span,
+                Some(w) if w.fail && !span.fail => w,
+                Some(w) if span.fail && !w.fail => span,
+                Some(w) => Span {
+                    fail: w.fail,
+                    count: w.count.max(span.count),
+                    from: w.from.min(span.from),
+                    to: w.to.max(span.to),
+                    area: w.area.max(span.area),
+                    bbox: union(w.bbox, span.bbox),
+                    delta: w.delta.max(span.delta),
+                },
+            });
         }
-    }
-
-    /// WCAG area: the best 21 x 16 cell window's coverage (16 x 21 in portrait), clamped to the grid.
-    fn window_area(&self, mask: &[bool]) -> f64 {
-        let (gw, gh) = (self.gw, self.gh);
-        let (ww, wh) = if gw >= gh {
-            (WINDOW_LONG.min(gw), WINDOW_SHORT.min(gh))
-        } else {
-            (WINDOW_SHORT.min(gw), WINDOW_LONG.min(gh))
+        let Some(span) = worst else {
+            return;
         };
-        let mut sat = vec![0u32; (gw + 1) * (gh + 1)];
-        for y in 0..gh {
-            for x in 0..gw {
-                let v = u32::from(mask[y * gw + x]);
-                sat[(y + 1) * (gw + 1) + x + 1] =
-                    v + sat[y * (gw + 1) + x + 1] + sat[(y + 1) * (gw + 1) + x]
-                        - sat[y * (gw + 1) + x];
+        match lane.spans.last_mut() {
+            // The tail of a failing stretch reads as a warning while its last second runs out: not a new moment.
+            Some(last) if last.fail && !span.fail && span.from <= last.to + self.window => {}
+            Some(last) if span.from <= last.to + self.window => {
+                last.fail |= span.fail;
+                last.count = last.count.max(span.count);
+                last.to = last.to.max(span.to);
+                last.area = last.area.max(span.area);
+                last.delta = last.delta.max(span.delta);
+                last.bbox = union(last.bbox, span.bbox);
             }
-        }
-        let mut best = 0u32;
-        for y in 0..=gh - wh {
-            for x in 0..=gw - ww {
-                let at = |yy: usize, xx: usize| sat[yy * (gw + 1) + xx];
-                let n = at(y + wh, x + ww) + at(y, x) - at(y, x + ww) - at(y + wh, x);
-                best = best.max(n);
-            }
-        }
-        f64::from(best) / (ww * wh).max(1) as f64
-    }
-
-    fn bbox(&self, mask: &[bool]) -> [usize; 4] {
-        let (mut x0, mut y0, mut x1, mut y1) = (usize::MAX, usize::MAX, 0, 0);
-        for (i, _) in mask.iter().enumerate().filter(|(_, m)| **m) {
-            let (x, y) = (i % self.gw, i / self.gw);
-            x0 = x0.min(x);
-            y0 = y0.min(y);
-            x1 = x1.max(x + 1);
-            y1 = y1.max(y + 1);
-        }
-        if x0 == usize::MAX {
-            [0, 0, 0, 0]
-        } else {
-            [x0, y0, x1, y1]
+            _ => lane.spans.push(span),
         }
     }
 
-    /// The report: every 1 s window judged, flagged windows merged into issues.
-    pub fn finish(mut self) -> FlashReport {
-        self.close_groups(self.frames, true);
-        // The final flush closes groups in key order, not start order.
-        for events in &mut self.events {
-            events.sort_by_key(|e| e.frame);
-        }
-        let window = self.fps.round().max(1.0) as u64;
+    /// The report: the lanes' flagged stretches as issues.
+    pub fn finish(self) -> FlashReport {
+        let ms = |frame: u64| (frame as f64 * 1000.0 / self.fps).round() as u64;
         let mut issues = Vec::new();
-        for (key, events) in self.events.iter().enumerate() {
-            let std = self.standards[key / KINDS.len()];
-            let kind = KINDS[key % KINDS.len()];
-            issues.extend(self.judge(events, window, std, kind));
+        for lane in &self.lanes {
+            for s in &lane.spans {
+                let start_ms = ms(s.from);
+                let [x0, y0, x1, y1] = s.bbox;
+                let region = if x0 == usize::MAX {
+                    [0.0; 4]
+                } else {
+                    [
+                        round3(x0 as f64 / self.gw as f64),
+                        round3(y0 as f64 / self.gh as f64),
+                        round3((x1 - x0) as f64 / self.gw as f64),
+                        round3((y1 - y0) as f64 / self.gh as f64),
+                    ]
+                };
+                issues.push(FlashIssue {
+                    kind: lane.kind.id().to_owned(),
+                    standard: lane.std.id().to_owned(),
+                    severity: if s.fail { "fail" } else { "warn" }.to_owned(),
+                    start_ms,
+                    end_ms: ms(s.to + 1),
+                    tc: timecode(start_ms),
+                    scene: None,
+                    flashes_per_second: s.count as f64 / 2.0,
+                    area_pct: (f64::from(s.area) * 1000.0).round() / 10.0,
+                    region,
+                    delta_l: round3(f64::from(s.delta)),
+                    hint: hint(lane.kind, s.fail, s.count).to_owned(),
+                });
+            }
         }
         issues.sort_by(|a, b| {
             a.start_ms
@@ -615,120 +889,6 @@ impl FlashDetector {
             skipped_frames: self.skipped,
         }
     }
-
-    fn judge(&self, events: &[Event], window: u64, std: Std, kind: Kind) -> Vec<FlashIssue> {
-        struct Span {
-            fail: bool,
-            count: usize,
-            from: u64,
-            to: u64,
-            area: f64,
-            bbox: [usize; 4],
-            delta: f32,
-        }
-        let mut spans: Vec<Span> = Vec::new();
-        for (i, start) in events.iter().enumerate() {
-            let inside: Vec<&Event> = events[i..]
-                .iter()
-                .take_while(|e| e.frame < start.frame + window)
-                .collect();
-            let fail_count = alternations(&inside, AREA_FAIL);
-            let warn_count = alternations(&inside, AREA_WARN);
-            let fail = fail_count > FAIL_OVER;
-            let warn = !fail && (fail_count >= WARN_FROM || warn_count > FAIL_OVER);
-            if !fail && !warn {
-                continue;
-            }
-            let by_count = fail || fail_count >= WARN_FROM;
-            let (floor, count) = if by_count {
-                (AREA_FAIL, fail_count)
-            } else {
-                (AREA_WARN, warn_count)
-            };
-            let counted: Vec<&&Event> = inside.iter().filter(|e| e.area >= floor).collect();
-            let from = counted.first().map_or(start.frame, |e| e.frame);
-            let to = counted.last().map_or(start.frame, |e| e.frame);
-            let area = counted.iter().map(|e| e.area).fold(0.0, f64::max);
-            let delta = counted.iter().map(|e| e.delta).fold(0.0, f32::max);
-            let bbox = counted.iter().fold([usize::MAX, usize::MAX, 0, 0], |b, e| {
-                [
-                    b[0].min(e.bbox[0]),
-                    b[1].min(e.bbox[1]),
-                    b[2].max(e.bbox[2]),
-                    b[3].max(e.bbox[3]),
-                ]
-            });
-            match spans.last_mut() {
-                Some(last) if from <= last.to + window => {
-                    last.fail |= fail;
-                    last.count = last.count.max(count);
-                    last.to = last.to.max(to);
-                    last.area = last.area.max(area);
-                    last.delta = last.delta.max(delta);
-                    last.bbox = [
-                        last.bbox[0].min(bbox[0]),
-                        last.bbox[1].min(bbox[1]),
-                        last.bbox[2].max(bbox[2]),
-                        last.bbox[3].max(bbox[3]),
-                    ];
-                }
-                _ => spans.push(Span {
-                    fail,
-                    count,
-                    from,
-                    to,
-                    area,
-                    bbox,
-                    delta,
-                }),
-            }
-        }
-        let ms = |frame: u64| (frame as f64 * 1000.0 / self.fps).round() as u64;
-        spans
-            .into_iter()
-            .map(|s| {
-                let start_ms = ms(s.from);
-                let [x0, y0, x1, y1] = s.bbox;
-                let region = if x0 == usize::MAX {
-                    [0.0; 4]
-                } else {
-                    [
-                        round3(x0 as f64 / self.gw as f64),
-                        round3(y0 as f64 / self.gh as f64),
-                        round3((x1 - x0) as f64 / self.gw as f64),
-                        round3((y1 - y0) as f64 / self.gh as f64),
-                    ]
-                };
-                FlashIssue {
-                    kind: kind.id().to_owned(),
-                    standard: std.id().to_owned(),
-                    severity: if s.fail { "fail" } else { "warn" }.to_owned(),
-                    start_ms,
-                    end_ms: ms(s.to + 1),
-                    tc: timecode(start_ms),
-                    scene: None,
-                    flashes_per_second: s.count as f64 / 2.0,
-                    area_pct: (s.area * 1000.0).round() / 10.0,
-                    region,
-                    delta_l: round3(f64::from(s.delta)),
-                    hint: hint(kind, s.fail, s.count).to_owned(),
-                }
-            })
-            .collect()
-    }
-}
-
-/// Opposing transitions among events at or over an area: a sign change counts, a repeat of the same sign does not.
-fn alternations(events: &[&Event], floor: f64) -> usize {
-    let mut count = 0;
-    let mut last = 0i8;
-    for e in events.iter().filter(|e| e.area >= floor) {
-        if e.sign != last {
-            count += 1;
-            last = e.sign;
-        }
-    }
-    count
 }
 
 fn round3(v: f64) -> f64 {
@@ -1137,6 +1297,120 @@ mod tests {
         );
         assert!(issue["scene"].is_null());
         assert_eq!(timecode(3_723_456), "62:03.456");
+    }
+
+    // Motion cases run on a 256 x 144 frame: the same 64 x 36 grid with 4 px cells.
+    const MW: u32 = 256;
+    const MH: u32 = 144;
+
+    fn film(frames: usize, paint: impl Fn(usize, usize, usize) -> [u8; 3]) -> FlashReport {
+        let mut d = FlashDetector::new(MW, MH, 60.0, Standards::BOTH);
+        for f in 0..frames {
+            d.push_rgba(&frame(MW, MH, |x, y| paint(f, x / 4, y / 4)), false);
+        }
+        d.finish()
+    }
+
+    #[test]
+    fn textured_tiles_flying_past_fast_are_motion_not_flashes() {
+        let (light, dark) = (grey_for(0.6), grey_for(0.02));
+        // Striped 12 x 16 cell tiles crossing the frame at two cells a frame (two screen widths a second).
+        let tiles = |bands: usize| {
+            film(180, move |f, cx, cy| {
+                let band = (cy / 18).min(bands - 1);
+                let x = (cx + 128 - (2 * f) % 64 - 32 * band) % 64;
+                let row = if bands == 1 { cy + 8 } else { cy % 18 + 16 };
+                let on_tile = x < 12 && (18..34).contains(&row);
+                if on_tile && x % 4 != 1 {
+                    [dark, dark, dark]
+                } else {
+                    [light, light, light]
+                }
+            })
+        };
+        let one = tiles(1);
+        assert!(one.issues.is_empty(), "{:?}", one.issues);
+        // Two rows of tiles half a period apart darken a window between them nearly four times a second: a warning at most.
+        let two = tiles(2);
+        assert!(two.ok, "{:?}", two.issues);
+    }
+
+    #[test]
+    fn a_smooth_global_ramp_is_not_a_flash() {
+        let levels: Vec<u8> = (0..180)
+            .map(|f| {
+                let t = (f % 60) as f64 / 60.0;
+                let up = (f / 60) % 2 == 0;
+                grey_for(0.02 + 0.88 * if up { t } else { 1.0 - t })
+            })
+            .collect();
+        let r = film(180, |f, _, _| [levels[f], levels[f], levels[f]]);
+        assert!(r.issues.is_empty(), "{:?}", r.issues);
+    }
+
+    #[test]
+    fn a_dark_block_crossing_back_and_forth_flashes_only_past_three_a_second() {
+        let (light, dark) = (grey_for(0.6), grey_for(0.02));
+        let crossing = |per_second: f64| {
+            film(180, move |f, cx, cy| {
+                let phase = (f as f64 / 60.0 * per_second) % 2.0;
+                let left = 48.0 * if phase < 1.0 { phase } else { 2.0 - phase };
+                let x = cx as f64;
+                if x >= left && x < left + 16.0 && (8..28).contains(&cy) {
+                    [dark, dark, dark]
+                } else {
+                    [light, light, light]
+                }
+            })
+        };
+        let calm = crossing(2.0);
+        assert!(calm.ok, "{:?}", calm.issues);
+        assert!(
+            calm.issues.iter().all(|i| i.severity == "warn"),
+            "{:?}",
+            calm.issues
+        );
+        let busy = crossing(4.0);
+        assert!(
+            !busy.ok,
+            "four crossings a second over more than a quarter of the window"
+        );
+        assert!(busy
+            .issues
+            .iter()
+            .any(|i| i.standard == "wcag" && i.severity == "fail" && i.area_pct > 25.0));
+    }
+
+    #[test]
+    fn a_full_frame_four_hertz_swap_fails_both_standards() {
+        let (light, dark) = (255u8, 0u8);
+        let swap = film(120, |f, cx, _| {
+            let state = (f * 8 / 60) % 2 == 1;
+            let left = cx < 32;
+            if left == state {
+                [dark, dark, dark]
+            } else {
+                [light, light, light]
+            }
+        });
+        let fails: Vec<(String, String)> = swap
+            .issues
+            .iter()
+            .filter(|i| i.severity == "fail")
+            .map(|i| (i.standard.clone(), i.kind.clone()))
+            .collect();
+        assert_eq!(
+            fails,
+            [
+                ("itu".to_owned(), "general".to_owned()),
+                ("wcag".to_owned(), "general".to_owned())
+            ]
+        );
+        let whole = film(120, |f, _, _| {
+            let v = if (f * 8 / 60) % 2 == 1 { light } else { dark };
+            [v, v, v]
+        });
+        assert!(!whole.ok);
     }
 
     /// `cargo test --release -- --ignored flashes_4k_cost` prints the per-frame cost.
