@@ -91,3 +91,58 @@ describe("cold autorun", () => {
     expect(await resultOf(false)).not.toHaveProperty("cold");
   });
 });
+
+describe("headless kb export knobs", () => {
+  /** The env for get_autorun_config, and the modal's poster setting for get_settings. */
+  async function configWith(
+    overrides: Record<string, string | boolean | null>,
+    disableOpeningPosterFrame?: boolean,
+  ) {
+    vi.resetModules();
+    vi.mocked(invoke).mockImplementation(async (cmd: string) =>
+      cmd === "get_settings" ? { disableOpeningPosterFrame } : env(overrides),
+    );
+    const autorun = await import("./autorun");
+    await autorun.initAutoRunConfig();
+    return autorun.getAutoRunConfig();
+  }
+
+  it("keeps the frozen path unless a poster frame is asked for", async () => {
+    expect((await configWith({ action: "export" }))?.encode).toBeUndefined();
+    expect((await configWith({ action: "export", poster: "off" }))?.encode).toBeUndefined();
+    const on = await configWith({ action: "export", poster: "on" });
+    expect(on?.encode?.posterFrame).toBe(true);
+    expect(on?.outputSuffix).toBeUndefined();
+  });
+
+  it("reads the modal's setting for app, and adds the poster frame to a preset", async () => {
+    expect((await configWith({ action: "verify", poster: "app" }))?.encode?.posterFrame).toBe(true);
+    expect((await configWith({ action: "verify", poster: "app" }, true))?.encode).toBeUndefined();
+    const preset = await configWith({ action: "export", poster: "on", preset: "share-h264" });
+    expect(preset?.encode).toMatchObject({ codec: "libx264", posterFrame: true });
+    expect(preset?.outputSuffix).toBe("share-h264");
+    expect((await configWith({ action: "screenshot", poster: "on" }))?.encode).toBeUndefined();
+  });
+
+  it("refuses an unknown poster value and passes the progress flag through", async () => {
+    await expect(configWith({ action: "export", poster: "maybe" })).rejects.toThrow(
+      'unknown KOOKABURRA_POSTER "maybe"',
+    );
+    expect((await configWith({ action: "export", progress: true }))?.progress).toBe(true);
+    expect((await configWith({ action: "export" }))?.progress).toBe(false);
+  });
+
+  it("tells kb a stored-only run needs the user's trust", async () => {
+    await configWith({ action: "export", trust: "stored-only" });
+    vi.mocked(invoke).mockClear();
+    const { NeedsTrustError } = await import("./projectTrust");
+    (await import("./autorun")).reportAutoRunError(new NeedsTrustError("demo"));
+    await vi.waitFor(() =>
+      expect(invoke).toHaveBeenCalledWith("finish_autorun", expect.anything()),
+    );
+    const call = vi.mocked(invoke).mock.calls.find(([cmd]) => cmd === "finish_autorun");
+    const args = call?.[1] as { resultJson: string } | undefined;
+    const result = JSON.parse(args?.resultJson ?? "null");
+    expect(result).toMatchObject({ ok: false, needsTrust: true });
+  });
+});
