@@ -361,24 +361,7 @@ fn count_packets(ffprobe: &Path, abs: &Path) -> Option<u64> {
     if size > COUNT_PACKETS_MAX_BYTES {
         return None;
     }
-    let path = abs.to_string_lossy();
-    let out = run_tool(
-        ffprobe,
-        &[
-            "-v",
-            "error",
-            "-select_streams",
-            "v:0",
-            "-count_packets",
-            "-show_entries",
-            "stream=nb_read_packets",
-            "-of",
-            "csv=p=0",
-            &path,
-        ],
-    )
-    .ok()?;
-    out.trim().trim_end_matches(',').parse().ok()
+    edit::count_video_packets(ffprobe, abs).ok()
 }
 
 fn probe(args: &[String]) -> Result<Value, Fail> {
@@ -771,6 +754,7 @@ fn render_inner(args: &[String]) -> Result<Value, Fail> {
     };
     let tools = tools()?;
     require_tool(&tools.ffmpeg, "ffmpeg")?;
+    require_tool(&tools.ffprobe, "ffprobe")?;
     let app_data = tools::app_data_dir().map_err(|e| Fail::new("env", e))?;
     let hardware = !flags.has("software") && !draft && tools::hardware_enabled(&app_data);
     let job = RenderJob {
@@ -779,6 +763,7 @@ fn render_inner(args: &[String]) -> Result<Value, Fail> {
         doc_hash,
         target,
         ffmpeg: tools.ffmpeg,
+        ffprobe: Some(tools.ffprobe),
         app_data,
         hardware,
         scale: if draft { Some(0.5) } else { scale },

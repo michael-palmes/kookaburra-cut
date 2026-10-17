@@ -1350,16 +1350,10 @@ def cmd_render(ctx: Any) -> int:
             raise _kb_error(f"nothing rendered: the app's check of edits/{name}.json failed: {msgs}")
         expected = report.get("totalFrames")
         done = m.appcli.render(project, name=name, software=a.software, expect_hash=sha, on_event=progress, timeout=a.timeout)
+    # The app counts the encoded frames before it replaces the old render, so a mismatch here means the plan changed.
     frames = done.get("frames")
     if isinstance(expected, int) and isinstance(frames, int) and frames != expected:
-        raise _kb_error(f"{output} has {frames} frames but the timeline needs {expected}; the render is in place but wrong. Rerun kb video render {name} --software")
-    try:
-        probed = m.appcli.probe(project, output)
-        nb = probed.get("nbFrames")
-        if isinstance(nb, int) and isinstance(expected, int) and nb != expected:
-            raise _kb_error(f"{output} decodes to {nb} frames but the timeline needs {expected}; rerun kb video render {name} --software")
-    except m.appcli.CliError:
-        pass
+        raise _kb_error(f"{output} has {frames} frames but the checked timeline had {expected}; rerun kb video render {name}")
     notified = notify_media(project, [output], name, warn)
     used = None
     if a.use or a.scene is not None:

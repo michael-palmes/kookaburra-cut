@@ -1292,6 +1292,8 @@ pub(crate) struct RenderJob {
     pub doc_hash: String,
     pub target: RenderTarget,
     pub ffmpeg: PathBuf,
+    /// Counts the staged render's frames before it replaces anything; None skips the check.
+    pub ffprobe: Option<PathBuf>,
     /// Holds the materialised tap frames (`cache/tapdot`).
     pub app_data: PathBuf,
     /// Try the VideoToolbox lane first; drafts always run software.
@@ -1520,6 +1522,43 @@ fn run_lane(
     }
 }
 
+/// The first video stream's packet count (one per frame), demuxed without decoding.
+pub(crate) fn count_video_packets(ffprobe: &Path, file: &Path) -> Result<u64, String> {
+    let out = std::process::Command::new(ffprobe)
+        .args(["-v", "error", "-select_streams", "v:0", "-count_packets"])
+        .args(["-show_entries", "stream=nb_read_packets", "-of", "csv=p=0"])
+        .arg(file)
+        .stdin(std::process::Stdio::null())
+        .output()
+        .map_err(|e| format!("failed to start ffprobe: {e}"))?;
+    if !out.status.success() {
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        return Err(format!(
+            "ffprobe could not count the frames of {}: {}",
+            file.display(),
+            stderr.trim()
+        ));
+    }
+    let text = String::from_utf8_lossy(&out.stdout);
+    let count = text.trim().trim_end_matches(',');
+    count
+        .parse()
+        .map_err(|_| format!("ffprobe reported no frame count for {}", file.display()))
+}
+
+/// A staged render must hold exactly the planned frames before it is published.
+fn check_frame_count(ffprobe: &Path, staged: &Path, lane: Lane, total: u32) -> Result<(), String> {
+    let frames = count_video_packets(ffprobe, staged)?;
+    if frames == u64::from(total) {
+        Ok(())
+    } else {
+        Err(format!(
+            "the {} render wrote {frames} frames but the edit plans {total}",
+            lane.as_str()
+        ))
+    }
+}
+
 /// The last few lines of ffmpeg's error output (`-loglevel error` keeps it to genuine failure text).
 fn stderr_tail(text: &str) -> String {
     let lines: Vec<&str> = text.trim().lines().collect();
@@ -1533,7 +1572,7 @@ fn unix_ms() -> u64 {
         .unwrap_or(0)
 }
 
-/// Flatten an edit: the one render path behind the editor's Render button and `edit render`. Sources resolve inside the project (a missing one fails up front); the hardware lane retries once in software; output is staged and renamed over the target only on success, so the previous good render survives any failure; a canonical render then writes its render record.
+/// Flatten an edit: the one render path behind the editor's Render button and `edit render`. Sources resolve inside the project (a missing one fails up front); the hardware lane retries once in software; output is staged and renamed over the target only once ffmpeg succeeds and the staged file holds the planned frame count, so the previous good render survives any failure; a canonical render then writes its render record.
 pub(crate) fn render_doc(
     job: RenderJob,
     on: &mut dyn FnMut(RenderEvent),
@@ -1546,6 +1585,7 @@ pub(crate) fn render_doc(
         doc_hash,
         target,
         ffmpeg,
+        ffprobe,
         app_data,
         hardware,
         scale,
@@ -1630,7 +1670,13 @@ pub(crate) fn render_doc(
                 out: final_path.clone(),
             });
         }
-        match run_lane(&ffmpeg, &args, total, on, cancel) {
+        let landed = run_lane(&ffmpeg, &args, total, on, cancel).and_then(|()| match &ffprobe {
+            Some(ffprobe) => {
+                check_frame_count(ffprobe, &staging.file, lane, total).map_err(LaneFailure::Failed)
+            }
+            None => Ok(()),
+        });
+        match landed {
             Ok(()) => {
                 on(RenderEvent::Progress {
                     frame: total,
@@ -1758,6 +1804,7 @@ pub async fn render_edit(
         doc_hash,
         target: RenderTarget::Canonical(name.clone()),
         ffmpeg: tools::sidecar_path("ffmpeg")?,
+        ffprobe: Some(tools::sidecar_path("ffprobe")?),
         app_data: app.path().app_data_dir().map_err(|e| e.to_string())?,
         // The Settings toggle drops the hardware attempt entirely.
         hardware: workspace::hardware_video_enabled(&app),
@@ -2899,12 +2946,17 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    fn fake_ffmpeg(dir: &Path, body: &str) -> PathBuf {
+    /// A shell script standing in for a tool; `$out` is its last argument.
+    fn fake_tool(dir: &Path, name: &str, body: &str) -> PathBuf {
         use std::os::unix::fs::PermissionsExt;
-        let path = dir.join("fake-ffmpeg");
+        let path = dir.join(name);
         std::fs::write(&path, format!("#!/bin/sh\nfor out; do :; done\n{body}\n")).unwrap();
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
         path
+    }
+
+    fn fake_ffmpeg(dir: &Path, body: &str) -> PathBuf {
+        fake_tool(dir, "fake-ffmpeg", body)
     }
 
     /// A project holding `edits/cut.json` (the 60-frame `doc()`), a placeholder source and an old good render.
@@ -2924,6 +2976,7 @@ mod tests {
             doc_hash,
             target: RenderTarget::Canonical("cut".into()),
             ffmpeg,
+            ffprobe: None,
             app_data: dir.join("appdata"),
             hardware,
             scale: None,
@@ -3016,6 +3069,53 @@ mod tests {
         );
         assert!(!dir.join("assets/.kc-render").exists());
         assert!(read_render_record(&dir, "cut").is_none());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_render_with_the_wrong_frame_count_is_a_lane_failure_and_never_published() {
+        let dir = render_project("count");
+        let ffmpeg = fake_ffmpeg(
+            &dir,
+            "case \"$*\" in *h264_videotoolbox*) printf HW > \"$out\";; *) printf SW > \"$out\";; esac",
+        );
+        let demux = "case \"$*\" in *-count_packets*stream=nb_read_packets*) ;; *) exit 1;; esac";
+        let short = fake_tool(&dir, "fake-ffprobe", &format!("{demux}\necho 59"));
+        let mut job = canonical_job(&dir, ffmpeg.clone(), true);
+        job.ffprobe = Some(short);
+        let mut events = Vec::new();
+        let err = render_doc(job, &mut |e| events.push(e), &AtomicBool::new(false)).unwrap_err();
+        assert_eq!(err.code, "ffmpeg");
+        assert_eq!(
+            err.message,
+            "the software render wrote 59 frames but the edit plans 60"
+        );
+        assert!(events.iter().any(|e| matches!(
+            e,
+            RenderEvent::Retry { lane: Lane::Software, error } if error.contains("hardware render wrote 59")
+        )));
+        assert!(!events.contains(&RenderEvent::Progress {
+            frame: 60,
+            total: 60
+        }));
+        assert_eq!(
+            std::fs::read(dir.join("assets/cut-edited.mp4")).unwrap(),
+            b"OLD"
+        );
+        assert!(!dir.join("assets/.kc-render").exists());
+        assert!(read_render_record(&dir, "cut").is_none());
+
+        let hardware_short = fake_tool(
+            &dir,
+            "fake-ffprobe-hw",
+            &format!("{demux}\ncase \"$(cat \"$out\")\" in HW) echo 59;; *) echo 60,;; esac"),
+        );
+        let mut job = canonical_job(&dir, ffmpeg, true);
+        job.ffprobe = Some(hardware_short);
+        let outcome = render_doc(job, &mut |_| {}, &AtomicBool::new(false)).unwrap();
+        assert_eq!((outcome.lane, outcome.frames), (Lane::Software, 60));
+        assert_eq!(std::fs::read(&outcome.path).unwrap(), b"SW");
+        assert!(!dir.join("assets/.kc-render").exists());
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -3326,6 +3426,7 @@ mod tests {
             doc_hash,
             target: RenderTarget::Canonical("rec".into()),
             ffmpeg: tools::sidecar_path("ffmpeg").unwrap(),
+            ffprobe: Some(tools::sidecar_path("ffprobe").unwrap()),
             app_data: dir.join("appdata"),
             hardware: false,
             scale: None,
