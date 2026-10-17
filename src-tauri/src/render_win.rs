@@ -1,4 +1,4 @@
-//! Hidden render window (label `render`): the background renderer's shell. Never shown; it will serve capture and thumbnail jobs without touching the editor's canvas or clock. Today it carries the liveness heartbeat: the window reports one beat a second and `render_window_status` exposes the gaps, which is both the R1 throttling spike (`--action render-spike`) and the future job loop's watchdog.
+//! Hidden render window (label `render`): the background renderer's shell. Never shown; it serves capture and thumbnail jobs without touching the editor's canvas or clock. Its beat (one a second, with a 1 px GL readback) feeds the capture service's watchdog and content-reload check; a GPU stall destroys it (`recycle_render_window`) and the backoff in `capture_service` decides when `ensure_render_window` may make the next one.
 
 use std::collections::VecDeque;
 use std::sync::Mutex;
@@ -67,6 +67,8 @@ pub struct RenderWindowStatus {
     pub alive: bool,
     pub last_beat_ago_ms: Option<u64>,
     pub beats: Vec<RenderBeat>,
+    /// The capture service's view: backoff, wedged state and recycles.
+    pub service: serde_json::Value,
 }
 
 fn now_ms() -> u64 {
@@ -87,7 +89,7 @@ pub fn ensure_render_window(
     state: State<RenderWindowState>,
 ) -> Result<bool, String> {
     touch_work(&state);
-    if app.get_webview_window("render").is_some() {
+    if app.get_webview_window("render").is_some() || crate::capture_service::window_blocked() {
         return Ok(false);
     }
     crate::preset_posters::restart_claimed(
@@ -102,7 +104,35 @@ pub fn ensure_render_window(
         .theme(Some(tauri::Theme::Dark))
         .build()
         .map_err(|e| e.to_string())?;
+    crate::capture_service::on_window_created(&app);
     Ok(true)
+}
+
+/// A stalled render window goes: `destroy`, not `close`, so a hung page cannot hold it open; the next `ensure_render_window` (once any backoff ends) makes a fresh realm.
+pub(crate) fn recycle_render_window(app: &AppHandle) {
+    if let Some(win) = app.get_webview_window("render") {
+        if let Err(e) = win.destroy() {
+            log::warn!("[render] destroying the render window failed: {e}");
+        }
+    }
+    app.state::<RenderWindowState>()
+        .beats
+        .lock()
+        .unwrap()
+        .clear();
+}
+
+/// The render window saw a WebGL context loss outside a request; `deliberate` when its census marked the loss ours (teardown or debug).
+#[tauri::command]
+pub fn render_report_gpu_event(app: AppHandle, reason: String, deliberate: Option<bool>) {
+    crate::capture_service::report_gpu_event(&app, &reason, deliberate.unwrap_or(false));
+}
+
+/// The editor's Retry captures: clears the wedged state and any backoff.
+#[tauri::command]
+pub fn capture_service_reset(app: AppHandle) -> serde_json::Value {
+    crate::capture_service::reset(&app);
+    crate::capture_service::status(&app)
 }
 
 /// Queue (or replace) a wizard's thumb batch and make sure the window is up to drain it.
@@ -173,8 +203,9 @@ pub fn close_render_window(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-/// Heartbeat sink, invoked once a second by the render window. Doubles as the idle-teardown check: a long-idle window with no queued work closes itself here.
+/// Heartbeat sink, invoked once a second by the render window with its WebGL census and loaded project. Doubles as the idle-teardown check: a long-idle window with no queued work closes itself here.
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub fn render_heartbeat(
     app: AppHandle,
     state: State<RenderWindowState>,
@@ -182,7 +213,10 @@ pub fn render_heartbeat(
     seq: u64,
     delta_ms: f64,
     gl_ms: f64,
+    census: Option<serde_json::Value>,
+    loaded_project: Option<String>,
 ) {
+    crate::capture_service::on_beat(&app, seq, gl_ms, census, loaded_project);
     {
         let mut beats = state.beats.lock().unwrap();
         if beats.len() >= BEAT_CAP {
@@ -204,7 +238,9 @@ pub fn render_heartbeat(
     {
         return;
     }
-    if crate::bridge::bridge_pending_count(app.clone()).unwrap_or(0) > 0 {
+    if crate::capture_service::serving_request()
+        || crate::bridge::bridge_pending_count(app.clone()).unwrap_or(0) > 0
+    {
         return;
     }
     if let Some(win) = app.get_webview_window("render") {
@@ -221,5 +257,6 @@ pub fn render_window_status(app: AppHandle, state: State<RenderWindowState>) -> 
         alive: app.get_webview_window("render").is_some(),
         last_beat_ago_ms,
         beats,
+        service: crate::capture_service::status(&app),
     }
 }

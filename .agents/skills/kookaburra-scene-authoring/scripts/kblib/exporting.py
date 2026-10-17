@@ -44,6 +44,8 @@ DEFAULT_PROGRESS_EVERY_S = 10.0
 BUSY_WAIT_S = 30.0
 CANCEL_WAIT_S = 15.0
 POLL_S = 0.25
+# The native loop claims within a poll (300 ms); this long unclaimed means its bridge is stuck.
+CLAIM_WINDOW_S = 110.0
 PID_CHECK_S = 1.0
 KEEP_RECORDS = 50
 EXIT_INTERRUPTED = 130
@@ -356,7 +358,7 @@ def wait_for_export(inst: bridge.Instance, project: Project, payload: Dict[str, 
                     raise bridge._quit_error(inst, "export")
             if not claimed and not (bridge_dir() / "requests" / f"{rid}.json").exists():
                 claimed = True
-            if not claimed and now - sent > bridge.CLAIM_WINDOW_S:
+            if not claimed and now - sent > CLAIM_WINDOW_S:
                 bridge._cleanup(rid)
                 raise KbError("the app did not pick up the export request; its bridge may be stuck", EXIT_TRANSIENT, kind="bridge-timeout",
                               hint="rerun shortly; if it keeps happening, ask the user to check Kookaburra Cut", retry_after_ms=5_000)

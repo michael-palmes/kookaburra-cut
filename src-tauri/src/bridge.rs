@@ -15,10 +15,14 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use crate::{media, workspace};
 
 const BRIDGE_DIR: &str = "_bridge";
-/// Requests older than this are deleted unanswered: their client gave up long ago.
+/// Requests without a `deadlineAtMs` older than this are deleted unanswered: their client gave up long ago.
 const STALE_REQUEST_MS: u64 = 120_000;
-/// Responses (and claimed-request forensics) older than this are pruned opportunistically.
-const RESPONSE_TTL_MS: u64 = 600_000;
+/// A request's `deadlineAtMs` counts for at most this long after it was sent.
+const MAX_DEADLINE_MS: u64 = 900_000;
+/// Responses (and claimed-request forensics) older than this are pruned by their owner.
+pub(crate) const RESPONSE_TTL_MS: u64 = 3_600_000;
+/// Responses past this total are pruned oldest first.
+pub(crate) const RESPONSE_CAP_BYTES: u64 = 2 * 1024 * 1024 * 1024;
 /// The primary heartbeat older kits read (docs/agent-kit.md, "Heartbeat"); written only by the elected primary.
 const HEARTBEAT_FILE: &str = "app.json";
 /// Per-process heartbeats: `apps/<pid>.json`, written by every interactive instance, serving or not.
@@ -38,10 +42,11 @@ pub const BRIDGE_KINDS: &[&str] = &[
     "insertPreset",
     "mediaChanged",
     "openEdit",
+    "debug",
     "export",
     "cancelExport",
 ];
-/// The kinds `spawn_native_bridge` serves from Rust; the render window never claims them.
+/// The kinds `spawn_native_bridge` serves from Rust; the render window never claims them (a `debug` request routes by its op, `RoutePeek::native`).
 pub const NATIVE_KINDS: &[&str] = &["mediaChanged", "openEdit", "export", "cancelExport"];
 /// The headless edit CLI contract this binary answers (`<exe> edit caps` reports the same `cli`).
 pub const CLI_VERSION: u32 = 1;
@@ -120,6 +125,28 @@ pub struct BridgeRequest {
     /// The agent that sent the request.
     #[serde(default)]
     pub client: Option<String>,
+    /// When the client stops waiting; freshness follows it (capped at 15 min).
+    #[serde(default)]
+    pub deadline_at_ms: Option<u64>,
+    /// The request this one retries after a GPU stall; it keeps the original's queue place.
+    #[serde(default)]
+    pub retry_of: Option<String>,
+    /// Capture width in pixels (literal), else `scale` in (0, 1] of the native size.
+    #[serde(default)]
+    pub width: Option<f64>,
+    #[serde(default)]
+    pub scale: Option<f64>,
+    /// Pixels to sample from each frame, `[[x, y], ...]` in the returned image.
+    #[serde(default)]
+    pub probe: Option<Value>,
+    /// The `debug` kind's operation and target window.
+    #[serde(default)]
+    pub op: Option<String>,
+    #[serde(default)]
+    pub window: Option<String>,
+    /// The dev-only `spawn-contexts` debug op's count.
+    #[serde(default)]
+    pub n: Option<u32>,
 }
 
 fn first_version() -> u32 {
@@ -143,6 +170,32 @@ fn scene_selector<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<S
 /// Parse one request file; the error is the sentence the client gets back.
 pub(crate) fn parse_request(text: &str) -> Result<BridgeRequest, String> {
     serde_json::from_str::<BridgeRequest>(text).map_err(|e| format!("the request isn't valid: {e}"))
+}
+
+/// v1 clients get v1 answers (mirror of `responseVersion` in src/render/bridgeRequests.ts).
+pub(crate) fn response_version(request: &BridgeRequest) -> u32 {
+    if request.kind.is_some() || request.version >= 2 {
+        2
+    } else {
+        1
+    }
+}
+
+/// When the client stops waiting: `deadlineAtMs` capped at 15 min after sending, else the 120 s rule; the file's age stands in for a missing `requestedAtMs`.
+pub(crate) fn request_deadline(request: &BridgeRequest, age_ms: u64, now: u64) -> u64 {
+    let sent = if request.requested_at_ms == 0 {
+        now.saturating_sub(age_ms)
+    } else {
+        request.requested_at_ms
+    };
+    match request.deadline_at_ms {
+        Some(deadline) => deadline.min(sent + MAX_DEADLINE_MS),
+        None => sent + STALE_REQUEST_MS,
+    }
+}
+
+pub(crate) fn request_fresh(request: &BridgeRequest, age_ms: u64, now: u64) -> bool {
+    now <= request_deadline(request, age_ms, now)
 }
 
 struct PendingBridgeShot {
@@ -432,7 +485,7 @@ pub(crate) fn stamp_served_by(body: &mut Value, served_by: Option<&Value>) {
     }
 }
 
-fn own_served_by(app: &AppHandle) -> Option<Value> {
+pub(crate) fn own_served_by(app: &AppHandle) -> Option<Value> {
     let instance = instance()?;
     let (root, _) = effective_root(app, &app.state::<workspace::SettingsState>());
     Some(served_by_value(&instance.identity, root.as_deref()))
@@ -915,12 +968,40 @@ pub(crate) fn render_pending_count(
     if !serving {
         return 0;
     }
-    pending_requests(root)
+    pending_routes(root)
         .iter()
-        .filter(|(_, path, kind)| {
-            !is_native_kind(kind.as_deref()) && pending_claimable(path, own_root, pid)
-        })
+        .filter(|(_, path, route)| !route.native() && pending_claimable(path, own_root, pid))
         .count()
+}
+
+/// The render-window requests this instance would claim, parsed and fresh, oldest first, each with its file age; empty when it does not serve.
+pub(crate) fn served_pending(app: &AppHandle) -> Vec<(BridgeRequest, u64)> {
+    if !serving() {
+        return Vec::new();
+    }
+    let Ok(root) = bridge_root(app) else {
+        return Vec::new();
+    };
+    let own = own_workspace_root(app);
+    pending_claimable_requests(&root, own.as_deref(), std::process::id(), now_ms())
+}
+
+pub(crate) fn pending_claimable_requests(
+    root: &Path,
+    own_root: Option<&Path>,
+    pid: u32,
+    now: u64,
+) -> Vec<(BridgeRequest, u64)> {
+    pending_routes(root)
+        .into_iter()
+        .filter(|(_, _, route)| !route.native())
+        .filter_map(|(_, path, _)| {
+            let request = parse_request(&std::fs::read_to_string(&path).ok()?).ok()?;
+            let age = file_age_ms(&path);
+            (request_fresh(&request, age, now) && claimable(own_root, &request, pid))
+                .then_some((request, age))
+        })
+        .collect()
 }
 
 /// An unreadable or unparseable request counts: the claim answers its error.
@@ -931,24 +1012,47 @@ fn pending_claimable(path: &Path, own_root: Option<&Path>, pid: u32) -> bool {
     }
 }
 
-fn own_workspace_root(app: &AppHandle) -> Option<PathBuf> {
+pub(crate) fn own_workspace_root(app: &AppHandle) -> Option<PathBuf> {
     effective_root(app, &app.state::<workspace::SettingsState>())
         .0
         .map(PathBuf::from)
 }
 
-#[derive(Deserialize)]
-struct KindPeek {
+/// What routes a request without parsing it whole: its kind, and a `debug` request's op and window.
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+pub(crate) struct RoutePeek {
     #[serde(default)]
-    kind: Option<String>,
+    pub kind: Option<String>,
+    #[serde(default)]
+    pub op: Option<String>,
+    #[serde(default)]
+    pub window: Option<String>,
+}
+
+impl RoutePeek {
+    /// Served by the native loop: the native kinds, plus the `debug` ops that never need the render window (`contexts`, and a lose-context aimed at the editor).
+    pub(crate) fn native(&self) -> bool {
+        is_native_kind(self.kind.as_deref())
+            || (self.kind.as_deref() == Some("debug")
+                && (self.op.as_deref() == Some("contexts")
+                    || self.window.as_deref() == Some("editor")))
+    }
 }
 
 /// Request files with a valid id, oldest first, each with its `kind`; an unreadable or unparseable file reads as None, so the render window claims it and answers the error.
 pub(crate) fn pending_requests(root: &Path) -> Vec<(String, PathBuf, Option<String>)> {
+    pending_routes(root)
+        .into_iter()
+        .map(|(id, path, route)| (id, path, route.kind))
+        .collect()
+}
+
+/// `pending_requests` with each file's routing fields.
+pub(crate) fn pending_routes(root: &Path) -> Vec<(String, PathBuf, RoutePeek)> {
     let Ok(entries) = std::fs::read_dir(root.join("requests")) else {
         return Vec::new();
     };
-    let mut pending: Vec<(String, PathBuf, Option<String>)> = entries
+    let mut pending: Vec<(String, PathBuf, RoutePeek)> = entries
         .flatten()
         .filter_map(|entry| {
             let path = entry.path();
@@ -959,11 +1063,11 @@ pub(crate) fn pending_requests(root: &Path) -> Vec<(String, PathBuf, Option<Stri
             if !valid_id(&id) {
                 return None;
             }
-            let kind = std::fs::read_to_string(&path)
+            let route = std::fs::read_to_string(&path)
                 .ok()
-                .and_then(|text| serde_json::from_str::<KindPeek>(&text).ok())
-                .and_then(|peek| peek.kind);
-            Some((id, path, kind))
+                .and_then(|text| serde_json::from_str::<RoutePeek>(&text).ok())
+                .unwrap_or_default();
+            Some((id, path, route))
         })
         .collect();
     // Lexicographic id order = oldest first (ids lead with a zero-padded timestamp).
@@ -1011,7 +1115,7 @@ fn bridge_dir_env() -> Option<&'static PathBuf> {
 }
 
 /// Always beside `_autorun` under the fixed home location, unaffected by a relocated workspace root; `KOOKABURRA_BRIDGE_DIR` redirects it for tests.
-fn bridge_root(app: &AppHandle) -> Result<PathBuf, String> {
+pub(crate) fn bridge_root(app: &AppHandle) -> Result<PathBuf, String> {
     if let Some(dir) = bridge_dir_env() {
         return Ok(dir.clone());
     }
@@ -1035,7 +1139,7 @@ fn valid_name(name: &str, max: usize) -> bool {
         && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
 }
 
-fn write_response_value(root: &Path, id: &str, body: &Value) -> Result<(), String> {
+pub(crate) fn write_response_value(root: &Path, id: &str, body: &Value) -> Result<(), String> {
     let dir = root.join("responses");
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     write_atomic(&dir.join(format!("{id}.json")), &body.to_string())
@@ -1073,20 +1177,44 @@ pub(crate) fn claim_next(
     root: &Path,
     wanted: impl Fn(Option<&str>) -> bool,
 ) -> Result<Option<BridgeRequest>, String> {
-    claim_next_served(root, wanted, |_| true, || None)
+    claim_next_served(
+        root,
+        |route| wanted(route.kind.as_deref()),
+        |_| true,
+        || None,
+    )
 }
 
-/// Claim the oldest fresh request whose kind `wanted` accepts and that `serves` accepts once parsed (a declined one stays for another app instance): renamed into `.claimed/` before anything serves it, so two pollers (ticks, windows or app instances) never serve one file and the loser skips it. Stale requests are deleted and unparseable ones answered (with `served_by`). Serving instances only.
+/// A fresh request this instance could claim, before the claim.
+pub(crate) struct PendingClaim {
+    pub id: String,
+    pub path: PathBuf,
+    pub request: BridgeRequest,
+}
+
+/// Claim the oldest fresh request whose route `wanted` accepts and that `serves` accepts once parsed (a declined one stays for another app instance): renamed into `.claimed/` before anything serves it, so two pollers (ticks, windows or app instances) never serve one file and the loser skips it. Stale requests are deleted and unparseable ones answered (with `served_by`). Serving instances only.
 pub(crate) fn claim_next_served(
     root: &Path,
-    wanted: impl Fn(Option<&str>) -> bool,
+    wanted: impl Fn(&RoutePeek) -> bool,
     serves: impl Fn(&BridgeRequest) -> bool,
     served_by: impl Fn() -> Option<Value>,
 ) -> Result<Option<BridgeRequest>, String> {
+    claim_next_ordered(root, wanted, serves, served_by, |_| {})
+}
+
+/// `claim_next_served` with the candidates (oldest first) reordered or filtered by `order` before the first claim attempt.
+pub(crate) fn claim_next_ordered(
+    root: &Path,
+    wanted: impl Fn(&RoutePeek) -> bool,
+    serves: impl Fn(&BridgeRequest) -> bool,
+    served_by: impl Fn() -> Option<Value>,
+    order: impl FnOnce(&mut Vec<PendingClaim>),
+) -> Result<Option<BridgeRequest>, String> {
     let requests = root.join("requests");
     let now = now_ms();
-    for (id, path, kind) in pending_requests(root) {
-        if !wanted(kind.as_deref()) {
+    let mut candidates: Vec<PendingClaim> = Vec::new();
+    for (id, path, route) in pending_routes(root) {
+        if !wanted(&route) {
             continue;
         }
         let Ok(text) = std::fs::read_to_string(&path) else {
@@ -1105,18 +1233,17 @@ pub(crate) fn claim_next_served(
                 continue;
             }
         };
-        let fresh = if request.requested_at_ms == 0 {
-            age_ms <= STALE_REQUEST_MS
-        } else {
-            request.requested_at_ms + STALE_REQUEST_MS >= now
-        };
-        if !fresh {
+        if !request_fresh(&request, age_ms, now) {
             let _ = std::fs::remove_file(&path);
             continue;
         }
         if !serves(&request) {
             continue;
         }
+        candidates.push(PendingClaim { id, path, request });
+    }
+    order(&mut candidates);
+    for PendingClaim { id, path, request } in candidates {
         let claimed = requests.join(".claimed");
         std::fs::create_dir_all(&claimed).map_err(|e| e.to_string())?;
         match std::fs::rename(&path, claimed.join(format!("{id}.json"))) {
@@ -1128,19 +1255,30 @@ pub(crate) fn claim_next_served(
     Ok(None)
 }
 
-/// Old responses and claimed requests, other instances' dead or old heartbeats, and stale requests whichever instance they were for (their client gave up); serving instances only.
+/// Whether a pending request file is still worth serving; an unparseable one keeps the 120 s rule.
+fn request_file_fresh(path: &Path, now: u64) -> bool {
+    let age = file_age_ms(path);
+    match std::fs::read_to_string(path).map(|text| parse_request(&text)) {
+        Ok(Ok(request)) => request_fresh(&request, age, now),
+        _ => age <= STALE_REQUEST_MS,
+    }
+}
+
+/// Old responses (owner only, `capture_service`) and claimed requests, other instances' dead or old heartbeats, and stale requests whichever instance they were for (their client gave up); serving instances only.
 fn prune_bridge(root: &Path, own_pid: u32) {
-    prune_dir(&root.join("responses"), RESPONSE_TTL_MS);
+    crate::capture_service::maybe_prune_responses(root, own_pid);
     prune_dir(&root.join("requests").join(".claimed"), RESPONSE_TTL_MS);
     prune_instances(&root.join(APPS_DIR), own_pid, now_ms(), pid_alive);
+    let now = now_ms();
     for (_, path, _) in pending_requests(root) {
-        if file_age_ms(&path) > STALE_REQUEST_MS {
+        if !request_file_fresh(&path, now) {
             let _ = std::fs::remove_file(&path);
         }
     }
 }
 
 /// The render window's claim for this instance: nothing unless it serves; native kinds stay for the native loop, other instances' requests stay for them.
+#[cfg(test)]
 pub(crate) fn claim_render_request(
     root: &Path,
     serving: bool,
@@ -1148,19 +1286,32 @@ pub(crate) fn claim_render_request(
     pid: u32,
     served_by: impl Fn() -> Option<Value>,
 ) -> Result<Option<BridgeRequest>, String> {
+    claim_render_request_ordered(root, serving, own_root, pid, served_by, |_| {})
+}
+
+/// `claim_render_request` in `order` (the capture service's fair queue).
+pub(crate) fn claim_render_request_ordered(
+    root: &Path,
+    serving: bool,
+    own_root: Option<&Path>,
+    pid: u32,
+    served_by: impl Fn() -> Option<Value>,
+    order: impl FnOnce(&mut Vec<PendingClaim>),
+) -> Result<Option<BridgeRequest>, String> {
     if !serving {
         return Ok(None);
     }
     prune_bridge(root, pid);
-    claim_next_served(
+    claim_next_ordered(
         root,
-        |kind| !is_native_kind(kind),
+        |route| !route.native(),
         |request| claimable(own_root, request, pid),
         served_by,
+        order,
     )
 }
 
-/// The render window's claim: the oldest pending request this instance serves; old responses are pruned. `None` = nothing to serve.
+/// The render window's claim: the next pending request this instance serves, in the capture service's fair order; old responses are pruned. `None` = nothing to serve.
 #[tauri::command]
 pub fn bridge_claim_request(app: AppHandle) -> Result<Option<BridgeRequest>, String> {
     if !serving() {
@@ -1168,20 +1319,72 @@ pub fn bridge_claim_request(app: AppHandle) -> Result<Option<BridgeRequest>, Str
     }
     let root = bridge_root(&app)?;
     let own = own_workspace_root(&app);
-    claim_render_request(&root, true, own.as_deref(), std::process::id(), || {
-        own_served_by(&app)
-    })
+    let claimed = claim_render_request_ordered(
+        &root,
+        true,
+        own.as_deref(),
+        std::process::id(),
+        || own_served_by(&app),
+        |pending| crate::capture_service::order_claims(&app, pending),
+    )?;
+    if let Some(request) = &claimed {
+        crate::capture_service::on_claim(&app, request);
+    }
+    Ok(claimed)
+}
+
+/// The render window's check before each frame: the client still waits (`.claimed/<id>.json` exists and its deadline has not passed) and no export started. `frame` reports progress for the queue's estimate.
+#[tauri::command]
+pub fn bridge_request_live(
+    app: AppHandle,
+    id: String,
+    frame: Option<u32>,
+) -> Result<Value, String> {
+    if !valid_id(&id) {
+        return Err(format!("invalid bridge id {id:?}"));
+    }
+    if let Some(frame) = frame {
+        crate::capture_service::note_progress(&id, frame);
+    }
+    let claimed = bridge_root(&app)?
+        .join("requests")
+        .join(".claimed")
+        .join(format!("{id}.json"));
+    let export_locked = editor_context(&app).is_some_and(|c| c.export_locked);
+    Ok(request_liveness(&claimed, export_locked, now_ms()))
+}
+
+pub(crate) fn request_liveness(claimed: &Path, export_locked: bool, now: u64) -> Value {
+    let Ok(text) = std::fs::read_to_string(claimed) else {
+        return json!({ "live": false, "reason": "cancelled" });
+    };
+    if let Ok(request) = parse_request(&text) {
+        let gone = request.deadline_at_ms.is_some()
+            && now > request_deadline(&request, file_age_ms(claimed), now);
+        if gone {
+            return json!({ "live": false, "reason": "cancelled" });
+        }
+    }
+    if export_locked {
+        return json!({ "live": false, "reason": "busy" });
+    }
+    json!({ "live": true })
 }
 
 /// A render-window answer with `servedBy` added (the window never sets it).
+pub(crate) fn stamped_body(json_text: &str, served_by: Option<&Value>) -> Result<Value, String> {
+    let mut body = serde_json::from_str::<Value>(json_text)
+        .map_err(|e| format!("bridge response isn't valid JSON: {e}"))?;
+    stamp_served_by(&mut body, served_by);
+    Ok(body)
+}
+
+#[cfg(test)]
 pub(crate) fn stamped_response(
     json_text: &str,
     served_by: Option<&Value>,
 ) -> Result<String, String> {
-    let mut body = serde_json::from_str::<Value>(json_text)
-        .map_err(|e| format!("bridge response isn't valid JSON: {e}"))?;
-    stamp_served_by(&mut body, served_by);
-    Ok(body.to_string())
+    stamped_body(json_text, served_by).map(|body| body.to_string())
 }
 
 /// Answer one claimed request (atomic tmp + rename; the client polls for this file).
@@ -1190,10 +1393,13 @@ pub fn bridge_write_response(app: AppHandle, id: String, json_text: String) -> R
     if !valid_id(&id) {
         return Err(format!("invalid bridge id {id:?}"));
     }
-    let text = stamped_response(&json_text, own_served_by(&app).as_ref())?;
+    let mut body = stamped_body(&json_text, own_served_by(&app).as_ref())?;
+    if !crate::capture_service::on_response(&app, &id, &mut body) {
+        return Ok(());
+    }
     let dir = bridge_root(&app)?.join("responses");
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    write_atomic(&dir.join(format!("{id}.json")), &text)
+    write_atomic(&dir.join(format!("{id}.json")), &body.to_string())
 }
 
 /// Arm a bridge capture (the begin_screenshot shape, gated on a configured workspace instead of the autorun env; the PNG lands beside the response JSON).
@@ -1386,7 +1592,7 @@ pub fn spawn_native_bridge(app: AppHandle) {
                 claimable(ours.as_deref(), request, pid)
             };
             loop {
-                match claim_next_served(&root, is_native_kind, serves, || own_served_by(&app)) {
+                match claim_next_served(&root, RoutePeek::native, serves, || own_served_by(&app)) {
                     Ok(Some(request)) => {
                         let app = app.clone();
                         let root = root.clone();
@@ -1401,6 +1607,8 @@ pub fn spawn_native_bridge(app: AppHandle) {
                     }
                 }
             }
+            crate::capture_service::triage(&app, &root, pid);
+            crate::capture_service::watchdog(&app);
             // The render window prunes on every claim, but it may never open in a session that only edits videos.
             if pruned.map_or(true, |at| at.elapsed() >= Duration::from_secs(60)) {
                 prune_bridge(&root, pid);
@@ -1427,6 +1635,7 @@ async fn serve_native(app: &AppHandle, root: &Path, request: BridgeRequest) {
     let served = match request.kind.as_deref() {
         Some("mediaChanged") => serve_media_changed(app, &request).await,
         Some("openEdit") => serve_open_edit(app, &request).await,
+        Some("debug") => serve_debug(app, &request),
         Some("export" | "cancelExport") => crate::bridge_export::serve(app, root, &request).await,
         other => Err(format!("{other:?} isn't a native bridge kind")),
     };
@@ -1688,6 +1897,24 @@ async fn serve_open_edit(app: &AppHandle, request: &BridgeRequest) -> Result<Val
     }))
 }
 
+/// The native `debug` ops: every window's WebGL census, and (dev builds) a forced loss of the editor's stage canvas. The render window serves `lose-context` on itself.
+fn serve_debug(app: &AppHandle, request: &BridgeRequest) -> Result<Value, String> {
+    match (request.op.as_deref(), request.window.as_deref()) {
+        (Some("contexts"), _) => Ok(crate::capture_service::contexts_report(app)),
+        (Some("lose-context"), Some("editor")) => {
+            if !cfg!(debug_assertions) {
+                return Err("lose-context on the editor works only in dev builds; use --window render".into());
+            }
+            app.emit_to("main", "kookaburra://debug-lose-context", json!({ "window": "editor" }))
+                .map_err(|e| e.to_string())?;
+            Ok(json!({ "ok": true, "op": "lose-context", "window": "editor", "lost": true }))
+        }
+        (op, window) => Err(format!(
+            "unknown debug op {op:?} for window {window:?}; this app serves contexts and lose-context"
+        )),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1912,6 +2139,7 @@ mod tests {
                 "insertPreset",
                 "mediaChanged",
                 "openEdit",
+                "debug",
                 "export",
                 "cancelExport"
             ])
@@ -2159,7 +2387,7 @@ mod tests {
         let claim = |workspace: &Path| {
             claim_next_served(
                 &bridge,
-                is_native_kind,
+                RoutePeek::native,
                 |r| claimable(Some(workspace), r, 1),
                 || None,
             )
@@ -2205,7 +2433,7 @@ mod tests {
         );
         let none = claim_next_served(
             &root,
-            is_native_kind,
+            RoutePeek::native,
             |r| native_claimable(Some(ours.as_path()), r),
             || None,
         );
@@ -2811,6 +3039,193 @@ mod tests {
         let pid = child.id();
         child.wait().unwrap();
         assert!(!pid_alive(pid));
+    }
+
+    #[test]
+    fn freshness_follows_the_deadline_capped_at_15_minutes() {
+        let now = 1_792_020_000_000u64;
+        let req = |fields: Value| parse_request(&addressed("0001-1-a", "capture", fields)).unwrap();
+        let legacy = req(json!({ "requestedAtMs": now - 100_000 }));
+        assert!(request_fresh(&legacy, 0, now));
+        assert!(!request_fresh(
+            &req(json!({ "requestedAtMs": now - 120_001 })),
+            0,
+            now
+        ));
+        let by_age = req(json!({ "requestedAtMs": 0 }));
+        assert!(request_fresh(&by_age, 120_000, now) && !request_fresh(&by_age, 120_001, now));
+        let long = req(json!({ "requestedAtMs": now - 500_000, "deadlineAtMs": now + 100_000 }));
+        assert!(request_fresh(&long, 0, now));
+        let short = req(json!({ "requestedAtMs": now - 20_000, "deadlineAtMs": now - 1 }));
+        assert!(!request_fresh(&short, 0, now));
+        let capped = req(
+            json!({ "requestedAtMs": now - MAX_DEADLINE_MS - 1, "deadlineAtMs": now + 3_600_000 }),
+        );
+        assert!(!request_fresh(&capped, 0, now));
+        assert_eq!(
+            request_deadline(
+                &req(json!({ "requestedAtMs": 0, "deadlineAtMs": now + 10 })),
+                5_000,
+                now
+            ),
+            now + 10
+        );
+        let root = scratch("deadline-claim");
+        queue(
+            &root,
+            "0001-1-a",
+            &json!({ "id": "0001-1-a", "kind": "capture", "requestedAtMs": now_ms() - 300_000, "deadlineAtMs": now_ms() + 60_000 }).to_string(),
+        );
+        let stale = queue(
+            &root,
+            "0002-1-b",
+            &json!({ "id": "0002-1-b", "kind": "capture", "requestedAtMs": now_ms() - 300_000 })
+                .to_string(),
+        );
+        prune_bridge(&root, 1);
+        assert!(!stale.exists() && root.join("requests/0001-1-a.json").is_file());
+        assert_eq!(claim_next(&root, |_| true).unwrap().unwrap().id, "0001-1-a");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn debug_requests_route_by_op_and_window() {
+        let route = |body: &str| serde_json::from_str::<RoutePeek>(body).unwrap();
+        assert!(route(r#"{"kind":"debug","op":"contexts"}"#).native());
+        assert!(route(r#"{"kind":"debug","op":"lose-context","window":"editor"}"#).native());
+        assert!(!route(r#"{"kind":"debug","op":"lose-context","window":"render"}"#).native());
+        assert!(!route(r#"{"kind":"debug","op":"lose-context"}"#).native());
+        assert!(!route(r#"{"kind":"debug","op":"spawn-contexts","n":17}"#).native());
+        assert!(
+            route(r#"{"kind":"openEdit"}"#).native() && !route(r#"{"kind":"capture"}"#).native()
+        );
+        let root = scratch("debug-route");
+        queue(
+            &root,
+            "0001-1-a",
+            &addressed(
+                "0001-1-a",
+                "debug",
+                json!({ "op": "contexts", "instancePid": 1 }),
+            ),
+        );
+        queue(
+            &root,
+            "0002-1-b",
+            &addressed(
+                "0002-1-b",
+                "debug",
+                json!({ "op": "lose-context", "window": "render", "instancePid": 1 }),
+            ),
+        );
+        queue(
+            &root,
+            "0003-1-c",
+            &addressed(
+                "0003-1-c",
+                "debug",
+                json!({ "op": "lose-context", "window": "editor", "instancePid": 1 }),
+            ),
+        );
+        assert_eq!(render_pending_count(&root, true, None, 1), 1);
+        let render = claim_render_request(&root, true, None, 1, || None)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            (
+                render.id.as_str(),
+                render.op.as_deref(),
+                render.window.as_deref()
+            ),
+            ("0002-1-b", Some("lose-context"), Some("render"))
+        );
+        let native = |root: &Path| {
+            claim_next_served(root, RoutePeek::native, |_| true, || None)
+                .unwrap()
+                .map(|r| r.id)
+        };
+        assert_eq!(native(&root).as_deref(), Some("0001-1-a"));
+        assert_eq!(native(&root).as_deref(), Some("0003-1-c"));
+        assert_eq!(native(&root), None);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn capture_fields_parse_and_claims_follow_the_order() {
+        let request = parse_request(&addressed(
+            "0001-1-a",
+            "capture",
+            json!({ "deadlineAtMs": 5, "retryOf": "0000-1-z", "width": 1280, "scale": 0.5, "probe": [[1, 2]], "n": 17 }),
+        ))
+        .unwrap();
+        assert_eq!(
+            (request.deadline_at_ms, request.retry_of.as_deref()),
+            (Some(5), Some("0000-1-z"))
+        );
+        assert_eq!(
+            (request.width, request.scale, request.n),
+            (Some(1280.0), Some(0.5), Some(17))
+        );
+        assert_eq!(request.probe, Some(json!([[1, 2]])));
+        assert_eq!(response_version(&request), 2);
+        assert_eq!(
+            response_version(&parse_request(r#"{"id":"a"}"#).unwrap()),
+            1
+        );
+        let root = scratch("ordered");
+        for id in ["0001-1-a", "0002-1-b", "0003-1-c"] {
+            queue(&root, id, &request_body(id, Some("capture")));
+        }
+        let claim = || {
+            claim_render_request_ordered(
+                &root,
+                true,
+                None,
+                1,
+                || None,
+                |c| {
+                    c.reverse();
+                    c.retain(|p| p.id != "0002-1-b");
+                },
+            )
+            .unwrap()
+            .map(|r| r.id)
+        };
+        assert_eq!(claim().as_deref(), Some("0003-1-c"));
+        assert_eq!(claim().as_deref(), Some("0001-1-a"));
+        assert_eq!(claim(), None);
+        assert!(root.join("requests/0002-1-b.json").is_file());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_request_is_live_while_its_client_waits() {
+        let root = scratch("liveness");
+        let claimed = root.join("0001-1-a.json");
+        assert_eq!(
+            request_liveness(&claimed, false, now_ms()),
+            json!({ "live": false, "reason": "cancelled" })
+        );
+        std::fs::write(&claimed, request_body("0001-1-a", Some("capture"))).unwrap();
+        assert_eq!(
+            request_liveness(&claimed, false, now_ms()),
+            json!({ "live": true })
+        );
+        assert_eq!(
+            request_liveness(&claimed, true, now_ms()),
+            json!({ "live": false, "reason": "busy" })
+        );
+        std::fs::write(
+            &claimed,
+            json!({ "id": "0001-1-a", "requestedAtMs": now_ms(), "deadlineAtMs": now_ms() - 1 })
+                .to_string(),
+        )
+        .unwrap();
+        assert_eq!(
+            request_liveness(&claimed, false, now_ms()),
+            json!({ "live": false, "reason": "cancelled" })
+        );
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]

@@ -1,5 +1,6 @@
 // Fourth Tauri window (label "packs"): export and import .kbpack files; bootTrap first for the same readable-crash surface as the others.
 import "./engine/bootTrap";
+import "./engine/glContexts";
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { installDevPerformanceDrain } from "./engine/devPerformance";

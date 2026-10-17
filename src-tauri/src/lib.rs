@@ -4,6 +4,7 @@ mod beats;
 mod bridge;
 mod bridge_export;
 mod bridge_health;
+mod capture_service;
 mod claude_update;
 pub mod cli;
 pub mod cli_check;
@@ -1597,6 +1598,11 @@ macro_rules! kookaburra_handler {
             bridge::bridge_write_sheet,
             bridge::bridge_check_assets,
             bridge::bridge_instance,
+            bridge::bridge_request_live,
+            capture_service::capture_report_census,
+            capture_service::capture_service_status,
+            render_win::render_report_gpu_event,
+            render_win::capture_service_reset,
             bridge_export::bridge_export_accept,
             bridge_export::bridge_export_progress,
             bridge_export::bridge_export_finish,

@@ -236,3 +236,8 @@ export function setLiveSession(slug: string, entry: LiveTerminal): void {
 export function removeLiveSession(slug: string): void {
   liveSessions.delete(slug);
 }
+
+/** Panel sessions still running (a reload of the main window would detach them). */
+export function liveSessionCount(): number {
+  return liveSessions.size;
+}

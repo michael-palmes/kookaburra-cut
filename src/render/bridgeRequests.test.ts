@@ -10,19 +10,152 @@ import {
   BRIDGE_KINDS,
   type BridgeRequest,
   buildCheckReport,
+  captureFormat,
   collectAssetRefs,
   frameScene,
   isNativeBridgeKind,
   MAX_CAPTURE_FRAMES,
+  MAX_PROBES,
   NATIVE_BRIDGE_KINDS,
+  parseProbes,
+  requestCaptureFormat,
   requestFormat,
   requestFrames,
   resolvePresetRef,
   responseVersion,
+  samplePixels,
   trustDeniedSlug,
   trustSentence,
+  unitsFor,
 } from "./bridgeRequests";
 import { contactSheetLayout, tileOrigin } from "./contactSheet";
+
+describe("capture sizing", () => {
+  const formats = Object.values(FORMATS);
+
+  it("mirrors capture_service.rs's table of native sizes", () => {
+    const source = readFileSync(
+      fileURLToPath(new URL("../../src-tauri/src/capture_service.rs", import.meta.url)),
+      "utf8",
+    );
+    const table = /CAPTURE_FORMATS: &\[\(&str, u32, u32\)\] = &\[([^;]*)\];/.exec(source);
+    if (!table) throw new Error("CAPTURE_FORMATS not found in capture_service.rs");
+    const rust = [...table[1].matchAll(/\("([^"]+)", (\d+), (\d+)\)/g)].map((m) => ({
+      name: m[1],
+      width: Number(m[2]),
+      height: Number(m[3]),
+    }));
+    expect(rust).toEqual(formats);
+  });
+
+  it.each(formats)("sizes $name: native alone, 1280 long edge for sheets, never upscaled", (f) => {
+    expect(captureFormat(f)).toBe(f);
+    expect(captureFormat(f, { frames: 1 })).toBe(f);
+    const sheet = captureFormat(f, { sheet: true });
+    const multi = captureFormat(f, { frames: 3 });
+    expect(multi).toEqual(sheet);
+    expect(Math.max(sheet.width, sheet.height)).toBe(1280);
+    expect(sheet.name).toBe(f.name);
+    for (const size of [
+      sheet,
+      captureFormat(f, { scale: 0.5 }),
+      captureFormat(f, { scale: 0.01 }),
+      captureFormat(f, { width: 1 }),
+      captureFormat(f, { width: 641 }),
+    ]) {
+      expect(size.width % 2).toBe(0);
+      expect(size.height % 2).toBe(0);
+      expect(Math.min(size.width, size.height)).toBeGreaterThanOrEqual(64);
+      expect(size.width).toBeLessThanOrEqual(f.width);
+      expect(size.height).toBeLessThanOrEqual(f.height);
+      expect(Math.abs(size.width / size.height - f.width / f.height)).toBeLessThan(0.08);
+    }
+    expect(captureFormat(f, { scale: 1 })).toBe(f);
+    expect(captureFormat(f, { width: f.width + 10 })).toBe(f);
+    expect(captureFormat(f, { sheet: true, probe: true })).toBe(f);
+    // The thumb rule this replaced, exactly.
+    expect(captureFormat(f, { width: 640 })).toEqual({
+      name: f.name,
+      width: 640,
+      height: Math.round((640 * f.height) / f.width / 2) * 2,
+    });
+  });
+
+  it("matches the Rust mirror on the shared cases", () => {
+    expect(captureFormat(FORMATS["16:9"], { width: 641 })).toMatchObject({
+      width: 642,
+      height: 362,
+    });
+    expect(captureFormat(FORMATS["16:9"], { width: 10 })).toMatchObject({ width: 114, height: 64 });
+    expect(captureFormat(FORMATS.phone, { sheet: true })).toMatchObject({
+      width: 588,
+      height: 1280,
+    });
+    expect(captureFormat(FORMATS["4:5"], { frames: 2 })).toMatchObject({
+      width: 1024,
+      height: 1280,
+    });
+    expect(captureFormat(FORMATS["phone-landscape"], { width: 64 })).toMatchObject({
+      width: 140,
+      height: 64,
+    });
+  });
+
+  it("validates a request's size and counts its units", () => {
+    const k4 = FORMATS["16:9"];
+    expect(requestCaptureFormat(request({ frames: [{}, {}], probe: [[1, 1]] }), k4)).toBe(k4);
+    expect(requestCaptureFormat(request({ frames: [{}, {}], scale: 0.25 }), k4)).toMatchObject({
+      width: 960,
+      height: 540,
+    });
+    expect(() => requestCaptureFormat(request({ scale: 0 }), k4)).toThrow(
+      "scale must be in (0, 1]",
+    );
+    expect(() => requestCaptureFormat(request({ width: -4 }), k4)).toThrow("whole number");
+    expect(unitsFor(1, k4)).toBe(9);
+    expect(unitsFor(1, { width: 1280, height: 720 })).toBe(1);
+    expect(unitsFor(48, captureFormat(k4, { sheet: true }))).toBe(48);
+    expect(unitsFor(1, captureFormat(FORMATS["4:5"], { sheet: true }))).toBe(2);
+    expect(unitsFor(16, k4)).toBe(144);
+  });
+});
+
+describe("probes", () => {
+  const size = { width: 4, height: 2 };
+
+  it("takes pairs, a flat list or a string, in bounds of the returned image", () => {
+    expect(parseProbes(undefined, size)).toEqual([]);
+    expect(parseProbes([[3, 1]], size)).toEqual([{ x: 3, y: 1 }]);
+    expect(parseProbes([0, 0, 3, 1], size)).toEqual([
+      { x: 0, y: 0 },
+      { x: 3, y: 1 },
+    ]);
+    expect(parseProbes("1, 1", size)).toEqual([{ x: 1, y: 1 }]);
+    expect(() => parseProbes([[4, 0]], size)).toThrow("outside the 4x2 capture");
+    expect(() => parseProbes([[0, -1]], size)).toThrow("outside");
+    expect(() => parseProbes([[0.5, 1]], size)).toThrow("whole pixels");
+    expect(() => parseProbes([1, 2, 3], size)).toThrow("x,y pairs");
+    expect(() => parseProbes("a,b", size)).toThrow("whole pixels");
+    const many = Array.from({ length: MAX_PROBES + 1 }, () => [0, 0]);
+    expect(() => parseProbes(many, size)).toThrow(`at most ${MAX_PROBES}`);
+    expect(parseProbes(many.slice(1), size)).toHaveLength(MAX_PROBES);
+  });
+
+  it("flips GL's bottom-up rows to a top-left origin", () => {
+    const rgba = new Uint8Array(4 * 2 * 4);
+    rgba.set([1, 2, 3, 255], 0);
+    rgba.set([255, 128, 0, 200], (1 * 4 + 2) * 4);
+    expect(
+      samplePixels(rgba, 4, 2, [
+        { x: 0, y: 1 },
+        { x: 2, y: 0 },
+      ]),
+    ).toEqual([
+      { x: 0, y: 1, rgba: [1, 2, 3, 255], hex: "#010203" },
+      { x: 2, y: 0, rgba: [255, 128, 0, 200], hex: "#ff8000" },
+    ]);
+  });
+});
 
 const request = (fields: Partial<BridgeRequest>): BridgeRequest => ({
   version: 2,

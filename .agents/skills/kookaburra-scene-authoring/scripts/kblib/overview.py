@@ -305,12 +305,26 @@ def dev_build_lines(hb: Optional[Dict[str, Any]]) -> List[str]:
     ]
 
 
+def coordination(project: Project, caller: Any = None, mark: bool = True) -> Tuple[Optional[str], List[str], List[Dict[str, Any]], List[Dict[str, Any]]]:
+    """(leases line, notes lines, lease rows, unseen notes) for kb status; mark=True records the notes as seen."""
+    from . import events, identity, leases
+
+    who = caller if caller is not None else identity.current()
+    try:
+        rows = leases.rows(project, who)
+        unseen = events.unseen_notes(project, who, mark=mark)
+        return leases.line(project, who), events.notes_lines(unseen), rows, unseen
+    except Exception:  # coordination state is advisory; status must still print
+        return None, [], [], []
+
+
 def status_data(project: Project) -> Dict[str, Any]:
     hb = bridge.live_heartbeat(project)
     rows = bridge.instance_rows(project)
     manifest = project.manifest()
     entries = project.scene_entries()
     worktree = session_worktree(project)
+    coord = coordination(project)
     return {
         "project": project.project_id,
         "root": str(project.root),
@@ -334,11 +348,14 @@ def status_data(project: Project) -> Dict[str, Any]:
             "exporting": hb.get("exporting") if hb else None,
         },
         "instances": rows,
+        "health": hb.get("health") if hb else None,
         "lastLoad": last_load_for(project, hb),
         "kit": kit_info(project),
         "checkpoint": checkpoint_line(project),
         "edits": edits_summary(project),
         "videoCli": video_cli(),
+        "leases": coord[2],
+        "notes": coord[3],
     }
 
 
@@ -359,16 +376,34 @@ def status_text(project: Project) -> str:
         app_line(project, hb, rows),
     ]
     lines += instance_lines(rows)
+    from .capture import health_lines
+
+    lines += health_lines(hb)
     lines += load_lines(last_load_for(project, hb))
     edits = edits_line(edits_summary(project))
     if edits:
         lines.append(edits)
     lines.append(checkpoint_line(project))
+    lease_line, note_lines, _rows, _unseen = coordination(project)
+    if lease_line:
+        lines.append(lease_line)
+    lines += note_lines
     lines.append(kit_info(project))
     return "\n".join(lines)
 
 
-def context_text(project: Project, check_summary: Optional[List[str]] = None, cwd: Optional[str] = None) -> str:
+def coordination_context(project: Project, caller: Any = None) -> List[str]:
+    """The leases line and the newest two notes, for the session-start briefing (nothing is marked seen)."""
+    from . import events, leases
+
+    try:
+        lease_line = leases.line(project, caller)
+        return ([lease_line] if lease_line else []) + events.newest_lines(str(project.root), 2)
+    except Exception:
+        return []
+
+
+def context_text(project: Project, check_summary: Optional[List[str]] = None, cwd: Optional[str] = None, caller: Any = None) -> str:
     """The SessionStart text: under 4 KB, most useful first (a worktree STOP banner leads)."""
     hb = bridge.live_heartbeat(project)
     head: List[str] = worktree_lines(project, cwd)
@@ -392,6 +427,7 @@ def context_text(project: Project, check_summary: Optional[List[str]] = None, cw
         head.append(checkpoint_line(project))
     except KbError:
         pass
+    head += coordination_context(project, caller)
     tail = ["Rules:"] + [f"{i + 1}. {r}" for i, r in enumerate(RULES)]
     tail.append("Tool: python3 .claude/skills/kookaburra-scene-authoring/scripts/kb.py <command> (kb --help lists them; the skill explains the workflow)")
     budget = CONTEXT_BUDGET - len("\n".join(head + tail).encode("utf-8")) - 80

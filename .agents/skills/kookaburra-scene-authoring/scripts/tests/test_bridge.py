@@ -151,6 +151,13 @@ class BridgeCommandTests(KbTestCase):
         self.assertExit(proc, 2)
         self.assertIn("update Kookaburra Cut", proc.stderr)
 
+    def test_check_app_json_names_the_serving_instance(self) -> None:
+        ok = {"ok": True, "scenes": [], "fonts": [], "assets": [], "warnings": [], "rendered": False}
+        with FakeApp(self.bridge, lambda r: dict(ok, project=r["project"])) as app:
+            proc = self.kb(["check", "--app", "--json"], cwd=self.root)
+        self.assertExit(proc, 0)
+        self.assertEqual(json.loads(proc.stdout)["servedBy"]["pid"], app.served_by()["pid"])
+
     def test_check_app_merges_results_and_records_fonts(self) -> None:
         def handler(req: Dict[str, Any]) -> Dict[str, Any]:
             return {
@@ -243,14 +250,15 @@ class AddressingTests(KbTestCase):
 
     def test_every_kind_carries_the_address(self) -> None:
         with FakeApp(self.bridge, lambda r: {"ok": True}) as app:
-            proc = self.kb(["capture", "--scene", "0"], cwd=self.root)
+            proc = self.kb(["capture", "--scene", "0", "--agent", "alpha"], cwd=self.root)
             for kind in ("capture", "check", "fonts", "insertPreset", "mediaChanged", "openEdit"):
                 bridge.request(kind, {"project": "ws:demo", "projectPath": str(self.root)}, 10, "test", client="agent-a")
         self.assertExit(proc, 0)
         self.assertIn("served by Kookaburra Cut 0.19.0-test (dev, pid", proc.stderr)
         first = app.requests[0]
         self.assertEqual((first["workspaceRoot"], first["projectPath"], first["instancePid"]), (str(self.tmp), str(self.root), os.getpid()))
-        self.assertNotIn("client", first)
+        self.assertEqual(first["client"], "alpha")
+        self.assertAlmostEqual(first["deadlineAtMs"] - first["requestedAtMs"], 120_000, delta=1_000)
         sent = {r["kind"]: r for r in app.requests[1:]}
         self.assertEqual(sorted(sent), ["capture", "check", "fonts", "insertPreset", "mediaChanged", "openEdit"])
         for req in sent.values():

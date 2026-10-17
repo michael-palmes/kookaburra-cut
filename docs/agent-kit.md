@@ -99,15 +99,21 @@ Managed settings:
     "SessionStart": [{ "matcher": "startup|resume|clear|compact", "hooks": [
       { "type": "command", "timeout": 20,
         "command": "[ ! -f \"$CLAUDE_PROJECT_DIR\"/.claude/skills/kookaburra-scene-authoring/scripts/kb.py ] || python3 -I \"$CLAUDE_PROJECT_DIR\"/.claude/skills/kookaburra-scene-authoring/scripts/kb.py hook session-start" }] }],
-    "PreToolUse": [{ "matcher": "Edit|Write", "hooks": [
-      { "type": "command", "timeout": 20,
-        "command": "[ ! -f \"$CLAUDE_PROJECT_DIR\"/.claude/skills/kookaburra-scene-authoring/scripts/kb.py ] || python3 -I \"$CLAUDE_PROJECT_DIR\"/.claude/skills/kookaburra-scene-authoring/scripts/kb.py hook pre-edit" }] }],
-    "PostToolUse": [{ "matcher": "Edit|Write", "hooks": [
-      { "type": "command", "timeout": 30,
-        "command": "[ ! -f \"$CLAUDE_PROJECT_DIR\"/.claude/skills/kookaburra-scene-authoring/scripts/kb.py ] || python3 -I \"$CLAUDE_PROJECT_DIR\"/.claude/skills/kookaburra-scene-authoring/scripts/kb.py hook post-edit" }] }]
+    "PreToolUse": [
+      { "matcher": "Edit|Write", "hooks": [{ "type": "command", "timeout": 20, "command": "<guard> || python3 -I <kb.py> hook pre-edit" }] },
+      { "matcher": "Bash", "hooks": [{ "type": "command", "timeout": 10, "command": "<guard> || python3 -I <kb.py> hook bash-pre" }] }],
+    "PostToolUse": [
+      { "matcher": "Edit|Write", "hooks": [{ "type": "command", "timeout": 30, "command": "<guard> || python3 -I <kb.py> hook post-edit" }] },
+      { "matcher": "Bash", "hooks": [{ "type": "command", "timeout": 30, "command": "<guard> || python3 -I <kb.py> hook bash-post" }] }],
+    "PostToolUseFailure": [
+      { "matcher": "Bash", "hooks": [{ "type": "command", "timeout": 30, "command": "<guard> || python3 -I <kb.py> hook bash-post" }] }]
   }
 }
 ```
+
+`<kb.py>` is `"$CLAUDE_PROJECT_DIR"/.claude/skills/kookaburra-scene-authoring/scripts/kb.py` and `<guard>` is
+`[ ! -f <kb.py> ]`, written out in full in every command as SessionStart shows. A Bash command that exits
+non-zero fires PostToolUseFailure, not PostToolUse, so `bash-post` is wired to both.
 
 Each command is guarded so a missing `kb.py` exits 0 and never blocks an edit; `kb.py`
 itself fails open (exit 0) when its modules are missing mid-swap. Hooks only run once the user has accepted Claude Code's workspace trust for the folder.
@@ -128,7 +134,8 @@ under the project lock (`kblib.lock`) and re-validated after writing.
 | `context` | The SessionStart text: status, scene roster, last load errors, the five rules that matter most (under 4 KB) |
 | `scenes` | Roster: index, stem, name, duration, transition, text, overrides (replaces `inspect.py`) |
 | `check [--app] [--render] [files...]` | Static checks (below); `--app` adds the running app's real compile, load and font checks; `--render` also renders each scene once; `check film ...` hands its arguments to `kblib/film` (`run(ctx, rest)`) |
-| `capture [--scene S] [--at T] [--aspect A] [--frames S@T,...] [--sheet]` | Frames from the running app; prints PNG paths; `--sheet` adds one contact-sheet PNG |
+| `capture [--scene S] [--at T] [--aspect A] [--frames S@T,...] [--sheet] [--width N \| --scale F] [--probe X,Y[,X,Y...]] [--out DIR \| --no-copy]` | Frames from the running app (one frame native, several or a sheet at a 1280 px long edge); prints the paths of copies in `.kb/captures/`; `--sheet` adds one contact-sheet PNG; `--probe` returns exact pixel values ("The capture service") |
+| `debug contexts`, `debug lose-context [--window render\|editor]` | Every window's WebGL contexts; force a context loss to exercise the stall recovery (the editor only in dev builds) |
 | `scene add <stem> [--preset P \| --copy S] [--after S \| --at N] [--duration MS] [--name N]` | New scene, unique stem and `defineScene` id, registered once; presets insert through the app when it runs, else copy from the app bundle |
 | `scene duplicate S`, `scene move S --to N`, `scene remove S`, `scene set S [--duration MS] [--transition TYPE[:MS]]` | Manifest-safe scene operations; remove moves files to the macOS Trash |
 | `doc S get [path]`, `doc S set path value`, `doc S unset path`, `doc S merge JSON` | Sidecar edits by dotted path; values parsed as JSON else string; enums validated against the catalogue; `get` prints the raw value (`--json`: `{ file, path, value }`) |
@@ -138,10 +145,13 @@ under the project lock (`kblib.lock`) and re-validated after writing.
 | `presets [list \| show SLUG]` | Scene presets with what they show and a preview image path to Read (`--json`: `presets`) |
 | `catalog [FAMILY] [--search Q]` | Query `catalog.json` (`--json`: `families`; a family's raw entries as `{ family, items }`, or `{ family, value }` when it is not a list; a search's `items`) |
 | `assets list`, `assets add PATH [--name N]`, `assets probe ASSET` | Copy media in (never overwrites, renames on collision), probe with the app's bundled ffprobe (`list --json`: `assets`) |
-| `checkpoint [MESSAGE]`, `history`, `undo [REV]`, `diff` | Git checkpoints of `project.json`, `scenes/` and `edits/`; `undo` checkpoints first, so it is itself undoable, never trashes `edits/`, and names any render it leaves stale (`history --json`: `checkpoints`, each with `atMs`) |
+| `checkpoint [MESSAGE] [--scene S]... [--files P]...`, `history [--scene S]`, `undo [REV] [--scene S \| --all]`, `diff [REV] [--scene S]` | Git checkpoints of `project.json`, `scenes/` and `edits/`, or only some scenes' files; `undo` checkpoints first, so it is itself undoable, never trashes `edits/`, and names any render it leaves stale (`history --json`: `checkpoints`, each with `atMs`). See Coordination |
+| `lease S [--ttl 2h] [--note T] [--for NAME]`, `lease S --release [--force]`, `leases [--all]` | Opt-in scene leases (`lease --json`: `scene`, `action`, `lease`; `leases --json`: `leases`) |
+| `note "TEXT" [--scene S]`, `notes [--all]` | Shared notes in `.kb/notes.md` (`notes --json`: `notes`, `total`) |
+| `events [--follow] [--since 10m\|CURSOR\|all] [--kinds ...] [--all-agents] [--exit-after S]` | The coordination feed (`--json` without `--follow`: `events`, `cursor`) |
 | `video ...` | Video editing (below): edit documents, renders, re-points, cleanup, fit, review (`list --json`: `edits`) |
 | `export [--aspect A] [--preset ID] [--verify] [--headless] ...` | The finished film, exactly as the app's Export button makes it (below) |
-| `hook session-start \| pre-edit \| post-edit` | Hook entry points (stdin JSON from Claude Code) |
+| `hook session-start \| pre-edit \| post-edit \| bash-pre \| bash-post` | Hook entry points (stdin JSON from Claude Code); any other event exits 0, so an older kit is safe with newer settings |
 | `beats ...`, `chart ...` | Delegate to the existing scripts |
 
 As built (`scripts/kblib/`):
@@ -157,10 +167,19 @@ As built (`scripts/kblib/`):
   the stem and id from the name), else copies from the bundle; an existing unregistered
   `scenes/<stem>.tsx` is registered rather than overwritten.
 - Bridge waits default to 120 s for captures and 300 s for `check` (600 s with
-  `--render`). On a large media-heavy project in a dev build a cold capture answers in
-  about 10 s, a warm one or an aspect switch in about 2 s, and a cold 48-frame sheet in
-  about a minute.
-- `kb.py` never writes bytecode, and fails open for hooks when its modules are missing.
+  `--render`), queue included: kb sends the end of that wait as `deadlineAtMs`, and the
+  app drops or stops a request whose client gave up. On a large media-heavy project in a
+  dev build a cold capture answers in about 10 s, a warm one or an aspect switch in about
+  2 s; a 48-frame sheet at the default 1280 px costs a ninth of the old 4K one.
+- `kb capture` copies its PNGs into `.kb/captures/<YYYYmmdd-HHMMSS>-<agent>/` with
+  readable names (`05-feature@1.5s.png`, `sheet.png`); `path`, `paths`, each frame's `path`
+  and `sheetPath` name the copies and `bridgePath`, `bridgePaths`, `bridgeSheetPath` keep
+  the app's originals (pruned after an hour). `--out DIR` copies there instead, `--no-copy`
+  skips it; the newest 40 folders and at most 1 GB are kept.
+- `kb.py` never writes bytecode into the kit: it points `sys.pycache_prefix` at
+  `$TMPDIR/kb-pyc/<sha1 of kit.json>[:12]` (a folder it owns, mode 0700; otherwise no bytecode at
+  all), so the stdlib and `kblib` compile once per stamp. It fails open for hooks when its modules
+  are missing.
 - `--json` is one envelope everywhere (`ok_envelope`, or `emit_ok` in modules not handed a
   context). The old bare arrays moved under keys: `history` to `checkpoints`, `fonts safe` to
   `faces`, the static `fonts check` to `results`, `presets` to `presets`, `catalog --search`
@@ -174,7 +193,8 @@ As built (`scripts/kblib/`):
   holds the project lock around its checkout. Structural `--json` results list `writes` and
   `dryRun`; `checkpoint --dry-run` and `undo --dry-run` only read git.
 - Exit 3 so far: the project lock or an edit lock held (`locked`, with `holder`), a write
-  that kept conflicting (`conflict`), a git timeout (`transient`).
+  that kept conflicting (`conflict`), a git timeout (`transient`), `.git/index.lock` held past
+  the backoff (`index-locked`, with `lockAgeMs`).
 
 Static checks: `project.json` (valid JSON, version, required fields, files exist, no
 duplicate entries, transitions and options, formats, theme id, audio file); sidecars
@@ -193,14 +213,43 @@ Hooks:
   matters because a desktop worktree session can carry the main folder as
   `CLAUDE_PROJECT_DIR`. Detection reads files only (`worktree_of` in `project.py`).
 - `pre-edit` blocks (exit 2 with a reason) writes to app-owned paths, to the managed
-  kit and to anything inside a linked git worktree of a project (the same STOP text).
-  Before the first write of a session into `project.json` or `scenes/` it makes a
-  checkpoint when the tree has changes since the last one.
-- `post-edit` runs the static check scoped to the edited file (plus the manifest
-  cross-checks). Errors the edit introduced exit 2 so Claude sees them and fixes them;
-  errors the file already had (snapshotted by `pre-edit`, keyed by the tool call) and
-  warnings go back as `additionalContext`. It must finish in about a second; it never
-  calls the app.
+  kit, to anything inside a linked git worktree of a project (the same STOP text) and to
+  kb's state files (`.kb/lock`, `.kb/.gitignore`, `.kb/leases/**`, `.kb/events*.jsonl`,
+  `.kb/notes*.md`, `.kb/agents/*/identity.json` and `seen.json`; scratch under
+  `.kb/agents/<name>/` and `.kb/captures/` is allowed). An edit to a scene leased to
+  someone else is denied with `permissionDecision: "deny"`, naming the holder, the expiry
+  and how to bind or leave a note; the holder's own edit renews the lease. Before the first
+  write of a session into `project.json` or `scenes/` it makes a checkpoint when the tree
+  has changes since the last one. When `.git/index.lock` stops that checkpoint, the edit
+  goes ahead with plain `additionalContext` saying so and naming the last checkpoint, no
+  session marker is written (the next write tries again), and `checkpoint.skipped` is
+  journalled.
+- `post-edit` journals `files.changed` (`via: "edit"`) and runs the static check scoped to
+  the edited file (plus the manifest cross-checks). Errors the edit introduced exit 2 so
+  Claude sees them and fixes them; errors the file already had (snapshotted by `pre-edit`,
+  keyed by the tool call) and warnings go back as `additionalContext`. It must finish in
+  about a second; it never calls the app.
+- `bash-pre` and `bash-post` run from `kblib/hookfast.py`, which `kb.py` dispatches to
+  before importing `kblib.cli` (standard library only; `check` loads only once a command
+  changed something). On `/usr/bin/python3` 3.9 with the bytecode cache warm a Bash hook
+  costs about 58 ms when nothing changed (the bare interpreter is about 48 ms) and about
+  80 ms when a sidecar changed; the first run after a stamp compiles (about 105 ms).
+  - `bash-pre` stamps `project.json`, `scenes/**` and `edits/*.json` (`<st_mtime_ns>:<size>`;
+    dotfiles, `*.tmp` and `*.kbtmp` skipped) into `$TMPDIR/kb-hooks/bash-<sha1(root, tool_use_id)>.json`.
+    It binds every `--agent NAME` a kb call passes to the hook's session and agent id, before
+    kb runs. It denies a command that names `scenes/<stem>` of a scene leased to someone else
+    (globs included) and visibly writes it: a redirection, `tee`, `mv`, `rm`, `touch`, a `cp`
+    or `install` destination, `sed -i`, `perl -i`, a heredoc, `write_text` or `open(..., 'w')`.
+    It makes the session checkpoint before a command that visibly writes `scenes/` or
+    `project.json` or runs a kb write. kb-only commands and `run_in_background` calls take no
+    snapshot.
+  - `bash-post` diffs the stamps, drops files other callers journalled meanwhile, journals
+    `files.changed` (`via: "bash"`) and runs the scoped check on the changed sources (the
+    full check past 20 files). Errors in the changed files, a change to `edits/` without
+    `kb video`, and a change to a scene leased to someone else (journalled `lease.violated`)
+    exit 2 with stderr; warnings come back as `additionalContext`. After PostToolUseFailure
+    it replies only through `additionalContext`. The Bash check has no baseline, which is why
+    Edit, Write and `kb doc` stay the preferred way to change scene files.
 
 ## kb conventions
 
@@ -258,7 +307,8 @@ Every kb command, including new ones, follows these rules. Code: `scripts/kblib/
   between, `fn` is re-applied to the fresh document up to 3 times, then exit 3; a pinned
   `--base`, or a scene addressed by an index that moved, refuses at once (exit 1, kind
   `conflict`). A dry run takes no lock, writes nothing and returns `writes: [{ path, action:
-  create | modify | trash, base }]`. Never hold the lock while waiting on the app or
+  create | modify | trash, base }]`, where a write a lease would refuse carries `refusal: { code:
+  "leased", error, holder, untilMs }` (`leases.check`, which touches nothing). Never hold the lock while waiting on the app or
   ffmpeg; take an edit lock before the project lock. Workspace themes are shared across
   projects: compare-and-swap only.
 - **New commands** live in their own module with `register(sub, common, Formatter)`;
@@ -284,32 +334,74 @@ packs and duplicates.
 - **Identity.** A caller is `{ name, session, agentId }` (`kblib/identity.py`). kb run from
   Bash knows `name` (`--agent`, default `session-<first 8 of CLAUDE_CODE_SESSION_ID>`, or
   `user` outside Claude Code) and `session`. Hooks know `session` and `agentId` (`main` outside a
-  subagent). The Bash pre-hook sees both a `--agent NAME` command and the subagent id,
-  and binds them in `.kb/agents/<name>/identity.json`, so Edit and Write checks can tell
-  subagents of one session apart.
-- **Leases.** Opt-in. `./kb lease S --agent A [--ttl 2h] [--note T]` takes or renews;
-  `--for NAME` assigns one to another agent; `--release`, and `--release --force` breaks
-  someone else's (journalled). TTL 2 h by default, 12 h at most, renewed by the holder's
-  writes once under half is left; expired leases are ignored. Edit and Write to a scene
-  leased to someone else are denied (`permissionDecision: "deny"` with the holder and
-  expiry); a Bash command that visibly writes one (`sed -i`, `>`, `tee`, `cp`, `mv`, a
-  heredoc, `write_text`, `open(..., 'w')`) is denied too, and any other change to it is
-  reported after the fact. kb's own writes check leases in the transaction.
-- **Scoped history.** `./kb checkpoint [MSG] --scene S` commits only S's files;
-  `./kb undo --scene S [REV]` restores only `scenes/S.tsx`, `scenes/S.json` and S's own
-  `project.json` entry (by compare-and-swap). A plain `undo` refuses, naming the files,
-  when the journal or a lease shows another agent changed files since its target;
-  `--all` overrides. `index.lock` is retried with backoff (50 ms doubling to 1.6 s), then
-  exit 3; a hook that skips its checkpoint says so in `additionalContext`.
-- **Events.** `./kb events [--follow] [--since 10m|CURSOR|all] [--kinds ...] [--all-agents]
-  [--exit-after SECONDS]` prints one compact object per line:
-  `{ "v": 1, "id", "atMs", "kind", "by": { name, session, agentId }, ...}`. kb journals
-  `checkpoint`, `checkpoint.skipped`, `undo`, `lease.*`, `note`, `files.changed`; the
-  follower adds app events read from heartbeat and progress-file changes (`load`,
-  `export.*`, `render.stalled`, `render.recovered`, `app.opened`, `app.closed`). A follow
-  ends with `{ "kind": "follow.end", "cursor" }` so a re-armed Claude Code Monitor resumes.
-- **Notes.** `./kb note "TEXT" [--scene S]` appends to `.kb/notes.md`; every agent's next
-  `./kb status` shows up to three unseen notes.
+  subagent) but no name. The Bash pre-hook sees both a `--agent NAME` command and the
+  agent id, and writes `.kb/agents/<name>/identity.json` (`{ session, agentId, atMs }`)
+  before kb runs; kb then takes the bound agent id for its own caller when the session
+  matches (`leases.resolve`), so Edit and Write checks can tell subagents of one session
+  apart. The defaults (`session-<id>`, `user`, `claude`) count as no name.
+- **Holder rule** (`leases.is_holder`). A caller holds a lease when its session and agent id
+  equal the holder's (an unbound holder, agent id null, must also have the caller's name),
+  or the binding of the holder's name equals the caller, or the caller has no name, its
+  session is the holder's and the holder's agent id is null or `main` (a lease the main
+  agent took covers its own subagents' edits; a subagent's lease excludes the rest).
+- **Leases.** Opt-in, one file per scene: `.kb/leases/<stem>.json` holds `{ version: 1, scene,
+  files: ["scenes/<stem>.tsx", "scenes/<stem>.json"], holder: { name, session, agentId },
+  assignedBy, takenAtMs, renewedAtMs, untilMs, note }`. `./kb lease S --agent A [--ttl 2h]
+  [--note T]` takes or renews; `--for NAME` assigns it to NAME (holder session and agent id
+  null) without binding anyone, and NAME claims it with its own `./kb lease S --agent NAME`;
+  `--release` (the holder or the assigner), and `--release --force` breaks someone else's
+  (journalled `lease.broken`). TTL 2 h by default, 12 h at most (a longer `--ttl` is capped
+  with a note); the holder's kb writes and Edit or Write calls renew it by its own TTL once
+  under half is left. Expired leases are ignored everywhere and pruned when kb next takes a
+  lease; `scene remove` releases the removed scene's. Someone else's lease is exit 1, `code:
+  "leased"`, with `holder` and `untilMs` in the envelope; a dry run reports it in the write's
+  `refusal` (and in `tx.refusals` / `Mutation.refusals`) instead of failing. Edit and Write
+  to a scene leased to someone else are denied (`permissionDecision: "deny"`); a Bash
+  command that visibly writes one is denied too, and any other Bash change to it is reported
+  after the fact (exit 2, `lease.violated`). A scene's `project.json` entry is not leased.
+- **Scoped history.** `./kb checkpoint [MSG] --scene S [--files P]` stages `git add -A --
+  <paths>` and commits `git commit --only` with `checkpoint(S): MSG [agent]`, so other
+  agents' staged and unstaged work stays out (paths are `scenes/S.tsx` and `.json`, kept when
+  on disk, in the index or in HEAD; `--files` takes paths under the tracked set). Every kb
+  checkpoint holds the project lock. `./kb undo --scene S [REV]` targets HEAD when S's files
+  are dirty, else the parent of the last commit that touched them; it makes a scoped
+  checkpoint first, checks out only S's files, trashes only S's own files, and splices S's
+  own `project.json` entry (everything but `file`) from the target by compare-and-swap. When
+  S was added or removed since, or the manifest version changed, it says so and leaves
+  `project.json` alone. A plain `undo` refuses (exit 1, `others-changed`, `files: [{ path, by
+  }]`) only when the journal's last `files.changed` writer of a file since the target is
+  someone else, or another agent leases it; otherwise it behaves as before, and `--all`
+  overrides. A dry run lists the same refusals.
+- **index.lock.** `git.run` retries a failure naming `index.lock` after 50, 100, 200, 400,
+  800 and 1600 ms, then exits 3 (`index-locked`) with a hint naming the lock's age (past
+  60 s it may be stale; kb never deletes it). A hook that skips its session checkpoint says
+  so in `additionalContext` and journals `checkpoint.skipped`.
+- **Events.** `.kb/events.jsonl` holds one compact object per line, under 4 KB (long lists
+  keep their first 8 plus `<key>More`): `{ "v": 1, "id": "<atMs>-<pid>-<rand>", "atMs",
+  "kind", "by": { name, session, agentId }, ...}`. Appends are one `O_APPEND` `write()` with
+  no lock; past 1 MiB kb rotates it to `events.1.jsonl` under the lock. kb journals
+  `checkpoint`, `checkpoint.skipped`, `undo`, `lease.taken`, `lease.released`, `lease.broken`,
+  `lease.violated`, `note` and `files.changed` (`via: "kb" | "edit" | "bash"`).
+  `./kb events [--follow] [--since 10m|CURSOR|all] [--kinds ...] [--all-agents] [--exit-after
+  SECONDS]` starts from the caller's saved cursor (`seen.json`), else the last 10 minutes
+  (or now, when following); drops the caller's own events and `files.changed` unless asked;
+  and, with `--follow`, waits on a kqueue (a 0.5 s poll elsewhere), flushes every line,
+  follows rotation by inode, and stops after `--exit-after` (1740 s, under the Monitor's 30
+  minutes) with `{ "kind": "follow.end", "cursor": "<inode>:<offset>" }`. The follower also
+  synthesises app events from the serving instance's heartbeat once a second (the app never
+  writes into a project): `load` (this project's `lastLoad` changed), `export.started`,
+  `export.progress` (every 10 %), `export.done` (from `exporting` and `exportJob`),
+  `render.stalled` and `render.recovered` (`health.gpu.stalled`), `app.opened` and
+  `app.closed`, each `by: { name: "app" }`.
+- **Notes.** `./kb note "TEXT" [--scene S]` appends `- YYYY-MM-DD HH:MM · <agent> · <scene>: text`
+  (one line) to `.kb/notes.md`, rotated past 256 KB to `notes.1.md`, and journals `note`.
+  `./kb notes` lists the newest 30 (`--all`: both files). Each agent's
+  `.kb/agents/<name>/seen.json` (`{ notesOffset, notesInode, eventsCursor }`) records what it
+  has read: `./kb status` prints the count of unseen notes from other agents and the newest
+  three, each capped at 160 characters, then marks them seen, plus the leases line
+  (`Leases: 06-feature alpha (yours, 1h52m) · 04-proof beta (40m)`); `--json` adds `leases`
+  and `notes`. The session-start context carries the leases line and the newest two notes.
+  `.kb/agents/<name>/` is the agent's scratch (created on binding).
 
 ## kb video
 
@@ -592,8 +684,9 @@ identity, role, effective root and `rootSource` (the app's "not found" errors na
   matches, the rule the native loop already used. One predicate (`claimable`) serves the
   render-window claim, the native loop and the pending count the editor uses to spawn the
   render window, so no instance keeps a window alive for another's requests. Stale
-  (120 s) requests are deleted by any serving instance whoever they were for, and an
-  instance that does not serve never touches `requests/`.
+  requests (past `deadlineAtMs`, at most 15 min after sending; 120 s without one) are
+  deleted by any serving instance whoever they were for, and an instance that does not
+  serve never touches `requests/`.
 - **Responses** carry `servedBy: { pid, bundleId, build, appVersion, workspaceRoot }`
   (stamped by Rust on render-window answers, native answers and parse errors; a body that
   already has one keeps it). kb discards an answer whose root is not the project's
@@ -603,7 +696,8 @@ identity, role, effective root and `rootSource` (the app's "not found" errors na
 - **Health.** The serving instance's heartbeat carries `health`: queue depth and order,
   the in-flight request, render-window liveness and beat age, recycles, the GPU state
   (`stalled`, `stalledUntilMs`, `wedged`), live WebGL contexts per window, and per-client
-  usage. kb prints the queue position and an estimate while it waits.
+  usage. kb prints the queue position and an estimate while it waits (shape and rules in
+  "The capture service").
 
 ### Heartbeat: `_bridge/apps/<pid>.json` and `app.json`
 
@@ -633,7 +727,7 @@ throttled while the app is hidden), removed on exit; autorun instances never wri
   "playheadMs": 61000,
   "exporting": false,
   "playing": false,
-  "kinds": ["capture", "check", "fonts", "insertPreset", "mediaChanged", "openEdit"],
+  "kinds": ["capture", "check", "fonts", "insertPreset", "mediaChanged", "openEdit", "debug"],
   "cliPath": "/Applications/Kookaburra Cut.app/Contents/MacOS/kookaburra-cut",
   "cliVersion": 1,
   "lastLoad": {
@@ -656,8 +750,9 @@ Two more fields locate the presets: `presetsDir` (holds `<slug>/`) and
 reports `lastLoad` after every load attempt (`set_last_load`); `warnings` includes
 healed scene ids and dropped LUTs. `rootSource` is `settings`, `env`
 (`KOOKABURRA_WORKSPACE_ROOT`) or `none`; `checkout` is `{ path, worktree }` for a debug
-build, else null. `health` (serving instances only, `src-tauri/src/bridge_health.rs`)
-and `exportJob` are null until their features fill them.
+build, else null. `health` (serving instances only, `src-tauri/src/bridge_health.rs`, shape
+in "The capture service") is null on a passive instance; `exportJob` is null until the
+bridge export fills it.
 
 `kb` treats an instance as running when `updatedAtMs` is under 30 s old and the pid is
 alive. It never uses `pgrep` (it matches unrelated processes and misses others). Its
@@ -680,8 +775,11 @@ lands in `responses/<id>.json`. A request without `kind` is a v1 capture.
   "project": "ws:<slug>", "requestedAtMs": 1792020000000,
   "workspaceRoot": "/Users/x/Kookaburra Cut", "projectPath": "/Users/x/Kookaburra Cut/<slug>",
   "instancePid": 87186, "client": "session-1a2b3c4d",
+  "deadlineAtMs": 1792020120000, "retryOf": null,
   "scene": "03-feature-checks", "at": 1.5, "aspect": "9:16",
   "frames": [{ "scene": "3", "at": 2.0 }], "sheet": true,
+  "width": 1280, "scale": null, "probe": [[100, 200], [640, 360]],
+  "op": "lose-context", "window": "render",
   "render": false,
   "refs": ["Menlo@400"], "listFamilies": false,
   "preset": "title", "position": 4, "name": "Highlights" }
@@ -692,21 +790,26 @@ stem, and an unparseable request gets an immediate error response from a serving
 instance. A request without `kind` and with `version` below 2 is answered as
 `version: 1`, so old kits keep working. The address fields are optional (old kits send
 none); kb adds `workspaceRoot` to every request, `projectPath` when the request is about
-its own project, `instancePid` unless the elected app is an older one, and `client` when
-the caller names one. Unknown fields are ignored.
+its own project, `instancePid` unless the elected app is an older one, and `client` (the
+caller's name) and `deadlineAtMs` (when it stops waiting) always. Unknown fields are
+ignored.
 
 Every response carries `{ "version": 2, "id", "ok", "error"?, "busy"?, "needsTrust"?,
 "servedBy" }` plus its kind's payload. `busy` applies to every kind except `fonts` while
 exporting. kb retries a busy answer until its timeout, then exits 3 (`app-busy`); an
 unclaimed or unanswered request exits 3 (`bridge-timeout`); `needsTrust` exits 2
-(`needs-trust`). `kb capture` and `kb check` print `served by Kookaburra Cut ... (build,
-pid, bundle id)` on stderr.
+(`needs-trust`). The capture service's answers (`gpuStalled`, `throttled`, `tooLarge`,
+`cancelled`, `transient`) are in "The capture service". `kb capture` and `kb check` print
+`served by Kookaburra Cut ... (build, pid, bundle id)` on stderr.
 
-- `capture`: `path` (first frame), `paths`, `frames: [{ scene, at, tMs, path, index }]`
-  (`scene` is the resolved stem, `at` seconds into it), a top-level `tMs`, `sheetPath`
-  when asked, `project`, `format`, `surface: "render-window"`. Files are `<id>.png`,
-  `<id>-N.png` and `<id>-sheet.png`; at most 48 frames. `aspect` overrides the editor's
-  aspect for this request only; an unknown aspect is an error.
+- `capture`: `path` (first frame), `paths`, `frames: [{ scene, at, tMs, path, index,
+  probes? }]` (`scene` is the resolved stem, `at` seconds into it), a top-level `tMs`,
+  `sheetPath` when asked, `project`, `format` (the aspect's name), `size` and `nativeSize`
+  (`{ width, height }`), `timing: { queuedMs, renderMs, perFrameMs }`,
+  `surface: "render-window"`. Files are `<id>.png`, `<id>-N.png` and `<id>-sheet.png`; at
+  most 48 frames. `aspect` overrides the editor's aspect for this request only; an
+  unknown aspect, a `scale` outside (0, 1] or a `width` that is not a whole number of
+  pixels is an error.
 - `check`: `project`, `scenes: [{ index, file, id, ok, phase?, error?, warnings }]`,
   `fonts: [{ ref, ok, error?, fallback? }]` (passing refs included),
   `assets: [{ path, ok, error? }]`, `warnings`, `rendered`. Built from a real load in
@@ -774,6 +877,119 @@ waits until it times out.
   and Rust answers `cancelled` for it 15 s after that.
 - The heartbeat's `exportJob` is `{ id, origin: "bridge" | "button", stage, frame, total }`
   while an export runs (`id` is null for the app's own buttons), else null.
+- `debug` routes by `op`: `contexts` and a `lose-context` with `window: "editor"` are
+  served here, from the reported censuses and an event to the main window;
+  `lose-context` on the render window (the default) and the dev-only `spawn-contexts`
+  (`n`, at most 32) go to the render window. Details in "The capture service".
+
+### The capture service
+
+The render window's queue, sizing, stall recovery and retention. Code:
+`src-tauri/src/capture_service.rs` (pure parts tested there), `render_win.rs`,
+`src/render/bridgeService.ts`, `bridgeRequests.ts`, `src/engine/glContexts.ts`; kb's side
+is `kblib/queue.py` and `kblib/capture.py`. Bridge captures are never baselines.
+
+- **Sizing.** One frame renders at the aspect's native size; several frames or a sheet at
+  a 1280 px long edge. `width` (literal pixels) or `scale` (in (0, 1]) overrides; never
+  upscaled, even dimensions, at least 64 on the short edge, the aspect's name kept. A
+  probe without a size renders native. The store keeps the native format, so layout and
+  safe areas are the export's; effects defined in pixels (bloom spread, blurs, hairlines)
+  rasterise at the capture size. Thumbs use the same rule at 640 wide.
+- **Probes.** `probe: [[x, y], ...]`, at most 64 points in the returned image (origin top
+  left; out of bounds is an error), sampled from the readback before the PNG is saved:
+  `{ x, y, rgba: [r, g, b, a], hex }` per point per frame. Exact against the PNG and what
+  the exporter hands ffmpeg at the same time and size (sRGB, after tone mapping); not
+  exact against a decoded MP4 or across sizes near edges.
+- **Cost.** A capture costs frames x ceil(width x height / 921 600) units (a 4K frame is
+  9, 1280x720 is 1); other kinds cost 1. A capture over 144 units is answered
+  `{ ok: false, tooLarge: true, units, maxUnits, hint }` (kb exit 1, `too-large`).
+- **Fair queue.** Among this instance's claimable render requests the window serves the
+  client with the fewest units in the last minute first, then its oldest (`retryOf` keeps
+  the original's place), ties by the oldest id. A client's fifth waiting capture or check,
+  or one that would take it past 240 units in a minute (counting what it already queued),
+  is answered at once `{ ok: false, throttled: true, retryAfterMs }`; kb waits that long
+  within its deadline and resends, else exits 3 (`throttled`).
+- **Deadlines and cancellation.** Freshness is `deadlineAtMs` capped at 15 min after
+  sending, else the 120 s rule; with the `deadline` feature kb's claim window is its whole
+  timeout (110 s for an older app). Before each frame the window calls
+  `bridge_request_live(id, frame)`: when `.claimed/<id>.json` is gone (kb timed out) or
+  the deadline passed it stops with `{ cancelled: true }`, and with `{ busy: true }` when
+  an export started.
+- **Stalls.** A `GpuStallError` (`readback.ts`: `contextLost` or `blankReadback`, the same
+  message as before), "Export bridge not mounted" or a stage canvas that failed to start is
+  a stall on every path: a capture or check answers `{ ok: false, gpuStalled: true,
+  reason }` once (a render check stops at the first), and thumbs and posters report it
+  (posters go back in their queue). Rust fills in `recycled`, `retryAfterMs`, `wedged`
+  and `hint`, then destroys the window 200 ms later (`destroy`, so a hung page goes too)
+  and answers any request still in flight. An unexpected WebGL loss the window sees
+  outside a request (`render_report_gpu_event`) recycles it as well; each window's stall
+  counts once. Backoff by recycles in the last 10 min: the 1st waits 0 s, the 2nd 15 s,
+  the 3rd 60 s, and no window is created meanwhile (requests stay queued). A stall after
+  three is **wedged**: no window, and the native loop answers this instance's render
+  requests at once with `{ gpuStalled: true, wedged: true }` until 10 quiet minutes pass
+  or the editor's Retry captures calls `capture_service_reset`. A debug lose-context
+  recycles without counting. kb prints `kb: GPU stalled, render window recycled; retrying
+  once`, waits `max(retryAfterMs, 2 s)` and resends with `retryOf`; a second stall exits 3
+  (`gpu-stalled`), wedged exits 2 (`gpu-wedged`).
+- **Watchdog.** A request in flight with no render beat for 45 s is answered
+  `{ gpuStalled: true, reason: "hung" }` and the window destroyed. A beat whose `seq`
+  dropped with no window created in between (wry reloaded the page after a WebContent
+  kill) answers the request in flight `{ ok: false, transient: true, reason:
+  "contentReload" }` (kb exit 3).
+- **Retention.** Responses live 60 min under a 2 GiB cap, pruned oldest first per
+  response (its JSON and PNGs), never one under 2 min old, at most once a minute, and only
+  by their owner: `servedBy.pid` is this instance or dead, or there is none.
+- **WebGL census.** `src/engine/glContexts.ts`, imported right after `bootTrap` in every
+  window entry, wraps `getContext` as a pure pass-through and records each context.
+  `WEBGL_lose_context.loseContext` marks our own losses deliberate; one unexpected loss
+  while 16 or more are live is an eviction (WebKit's "too many active WebGL contexts" line
+  never reaches a page), two within a second or any below 16 is a GPU loss. The editor
+  reports its census on its tick, the render window with its beat.
+- **The editor.** A loss on the editor's stage canvas shows a persistent banner ("The GPU
+  reset. The preview may be missing reflections, and exports stay paused until the
+  preview reloads.") with Reload preview: pending edits settle, then the main webview
+  reloads (the only fresh realm); live terminal sessions are named in a confirm, since they
+  keep running but detach from the panel. Exports still refuse on a canvas that lost its
+  context. A wedged GPU shows Retry captures. Rust emits `kookaburra://bridge-activity {
+  active, id, kind, client, frames, queued }` on each claim and answer, and the playback
+  bar shows "Claude capturing · N queued"; the preview is never throttled or paused.
+- **Debug.** `kb debug contexts` answers natively from the reported censuses (it never
+  opens a window): `{ op, cap, windows: { editor, render: { alive, ... } },
+  webContentPids }`, each census with its `contexts: [{ owner, api, width, height, lost,
+  lossClass, ageMs }]`. `kb debug lose-context` forces a loss on the render window (every
+  build; it recycles at once); `--window editor` works in dev builds only and shows the
+  banner. `scripts/gpu-stall-probe.sh` is the dev-only harness (lose-context, GPU process
+  killed, stopped and resumed, 17 contexts) against a test instance.
+
+`health` (the heartbeat's block; `queue.order` and `etaMs` are the picker's simulated
+order and the estimate to each answer, from the last 32 capture durations):
+
+```json
+{
+  "version": 1,
+  "captureFeatures": ["scale", "width", "probe", "client", "deadline", "recycle", "debug"],
+  "queue": { "depth": 2, "oldestAgeMs": 4200,
+    "order": ["0001792020004000-311-c0ffee", "0001792020003000-207-beef01"],
+    "etaMs": [3800, 6000],
+    "inFlight": { "id": "0001792020000000-123-abc123", "kind": "capture", "client": "alpha",
+      "frames": 12, "framesDone": 4, "units": 12, "startedAtMs": 1792019998000 },
+    "unitMs": 400, "overheadMs": 1000, "samples": 20 },
+  "renderWindow": { "alive": true, "beatAgeMs": 1900, "glMs": 3.1, "webContentPid": 2345,
+    "createdAtMs": 1792019000000, "loadedProject": "ws:product-tour", "contentReloads": 0,
+    "recycles": 1, "lastRecycle": { "atMs": 1792019500000, "reason": "contextLost" } },
+  "gpu": { "stalled": false, "stalledUntilMs": null, "wedged": false, "stallsLast10Min": 1,
+    "editorLostAtMs": null },
+  "webgl": { "cap": 16,
+    "editor": { "live": 3, "lost": 0, "deliberate": 1, "evictions": 0, "gpuLosses": 0,
+      "reportedAtMs": 1792019999000, "stageLostAtMs": null },
+    "render": { "live": 2, "lost": 0, "deliberate": 0, "evictions": 0, "gpuLosses": 0,
+      "reportedAtMs": 1792019999000 } },
+  "clients": [{ "client": "alpha", "unitsLastMin": 60, "capPerMin": 240, "pending": 1 }]
+}
+```
+
+`kb status` prints a GPU WEDGED or stalled line, the queue, the render window and the
+context counts from it; `--json` passes `health` through.
 
 ## Headless edit CLI
 
