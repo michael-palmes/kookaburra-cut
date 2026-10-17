@@ -674,7 +674,12 @@ def cmd_validate(ctx: Any) -> int:
     for line in _issue_lines(issues):
         _emit(line)
     _emit(f"{len(errors)} error(s), {len(issues) - len(errors)} warning(s)" + ("" if errors else "; ok"))
-    _emit(f"next: kb video render {name}" if not errors else f"next: fix the errors (kb video show {name})")
+    if errors:
+        _emit(f"next: fix the errors (kb video show {name})")
+    elif m.editdoc.render_state(project, name) == "fresh":
+        _emit(f"next: the render is up to date; kb video map {name} --at T, or kb capture to see it in a scene")
+    else:
+        _emit(f"next: kb video render {name}")
     return EXIT_PROBLEMS if errors else EXIT_OK
 
 
