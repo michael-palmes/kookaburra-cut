@@ -14,9 +14,9 @@ cuts moved onto key moments.
 ## Getting the data
 
 ```bash
-kb beats              # per-scene summary
-kb beats --scene 2    # one scene: every beat and key moment in scene-local ms
-kb beats --json       # the full dump
+./kb beats              # per-scene summary
+./kb beats --scene 2    # one scene: every beat and key moment in scene-local ms
+./kb beats --json       # the full dump
 ```
 
 Times account for `audio.startOffsetMs` and transition overlaps: use them directly as
@@ -59,7 +59,7 @@ Placement rules:
   reads as jitter. Keys at least 17 ms apart.
 - Cut on the strongest key moments first; use grid beats for lesser accents.
 - Stay inside the scene's window and out of transitions (between the end of the
-  incoming transition and the start of the outgoing one; `kb beats --scene` prints both).
+  incoming transition and the start of the outgoing one; `./kb beats --scene` prints both).
 - Open composed: first key at the window start with the base framing.
 - Free-flight (`cameraMode: "rig"`) scenes: retime existing rig keys onto nearby beats;
   never regenerate a designed flight.
@@ -71,7 +71,7 @@ Placement rules:
 - A moment inside a recording (a tap, a screen change): `kb video align <edit> --tap tN
   --beat N --scene S` lands it on the scene's Nth beat, shifting the video's start when that is
   enough, else retiming the edit (the kookaburra-video-editing skill).
-- Scene cuts: adjust `durationMs` (`kb scene set S --duration MS`) so a boundary lands
-  on a strong key moment. Overlaps shift every later start, so rerun `kb beats` after
+- Scene cuts: adjust `durationMs` (`./kb scene set S --duration MS`) so a boundary lands
+  on a strong key moment. Overlaps shift every later start, so rerun `./kb beats` after
   each change instead of doing the arithmetic.
 - After any beat edit, capture frames at the beat times and check the pose reads.

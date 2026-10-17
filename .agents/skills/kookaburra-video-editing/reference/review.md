@@ -5,11 +5,11 @@ Never judge an edit by its numbers. Every change gets a sheet or frames, Read be
 ## Frames
 
 ```
-kb video frames NAME --at 1,2.5,end-0.1 --grid          timeline times of the edit
-kb video frames NAME --src s1@24.967 --grid             the raw source frame (where to put a tap)
-kb video frames NAME --tap t1                           -100, 0, +83, +275 and +550 ms around tap t1
-kb video frames NAME --mask m1                          span start, every key, both ends, and a zoom
-kb video frames assets/rec.mov --at 3 --zoom 0.1,0.6,0.5,0.2
+./kb video frames NAME --at 1,2.5,end-0.1 --grid          timeline times of the edit
+./kb video frames NAME --src s1@24.967 --grid             the raw source frame (where to put a tap)
+./kb video frames NAME --tap t1                           -100, 0, +83, +275 and +550 ms around tap t1
+./kb video frames NAME --mask m1                          span start, every key, both ends, and a zoom
+./kb video frames assets/rec.mov --at 3 --zoom 0.1,0.6,0.5,0.2
 ```
 
 - Edit frames come from a draft render of the edit (half size, software, cached in the scratch
@@ -31,13 +31,13 @@ kb video frames assets/rec.mov --at 3 --zoom 0.1,0.6,0.5,0.2
 ## Sheets
 
 ```
-kb video sheet NAME                  12 frames spread over the edit
-kb video sheet NAME --every 2        every 2 s (at most 48 cells)
-kb video sheet NAME --at 1,4,9       chosen times
-kb video sheet NAME --seams          the last frame before and first after every jump, with a seam diff
-kb video sheet NAME --changes        jumps and speed changes (what cleanup or fit just did)
-kb video sheet NAME --compare        raw source beside the edit at the same moments
-kb video sheet assets/rec.mov        a source before any edit
+./kb video sheet NAME                  12 frames spread over the edit
+./kb video sheet NAME --every 2        every 2 s (at most 48 cells)
+./kb video sheet NAME --at 1,4,9       chosen times
+./kb video sheet NAME --seams          the last frame before and first after every jump, with a seam diff
+./kb video sheet NAME --changes        jumps and speed changes (what cleanup or fit just did)
+./kb video sheet NAME --compare        raw source beside the edit at the same moments
+./kb video sheet assets/rec.mov        a source before any edit
 ```
 
 - Each cell has a 6 px bar on top: light grey 1x, orange faster, blue slower, purple a hold or still,
@@ -58,5 +58,5 @@ review makes ever goes into `assets/`.
 
 ## After rendering
 
-The render (`assets/<name>-edited.mp4`) is what scenes show. After `kb video render NAME --use ...`
-check it in place: `kb check --app`, then `kb capture --scene S --frames S@1,S@3 --sheet` and Read.
+The render (`assets/<name>-edited.mp4`) is what scenes show. After `./kb video render NAME --use ...`
+check it in place: `./kb check --app`, then `./kb capture --scene S --frames S@1,S@3 --sheet` and Read.
