@@ -9,10 +9,10 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from .project import Project
-from .util import EXIT_ENV, KbError, trash_dir
+from .util import EXIT_ENV, EXIT_TRANSIENT, KbError, trash_dir
 
 TRACKED = ["project.json", "scenes", "edits"]
-EXCLUDES = ["edits/*.json.tmp", "edits/.*.tmp", "edits/.renders/", "assets/.kc-render/"]
+EXCLUDES = ["edits/*.json.tmp", "edits/.*.tmp", "edits/.renders/", "assets/.kc-render/", ".kb/"]
 FALLBACK_IDENTITY = ["-c", "user.name=Kookaburra Cut", "-c", "user.email=kookaburra@localhost"]
 _available: Optional[bool] = None
 
@@ -45,7 +45,7 @@ def run(root: Path, args: List[str], check: bool = True, timeout: float = 30) ->
     try:
         proc = subprocess.run(["git", "-c", "core.quotepath=off", "-C", str(root)] + args, capture_output=True, text=True, timeout=timeout, env=env)
     except subprocess.TimeoutExpired:
-        raise KbError(f"git {args[0]} timed out after {int(timeout)} s", EXIT_ENV) from None
+        raise KbError(f"git {args[0]} timed out after {int(timeout)} s", EXIT_TRANSIENT, kind="transient", retry_after_ms=5000) from None
     except OSError as e:
         raise KbError(f"git could not run ({e.strerror})", EXIT_ENV) from None
     if check and proc.returncode != 0:
