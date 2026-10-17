@@ -335,49 +335,78 @@ Several app instances can run on one machine (the packaged app, a dev build, acc
 bundles, autoruns). Each decides once at start whether it serves the bridge, in order:
 
 1. An autorun never serves.
-2. `KOOKABURRA_BRIDGE=0` turns serving off; `KOOKABURRA_BRIDGE=1` turns it on.
-3. An overridden workspace root (`KOOKABURRA_WORKSPACE_ROOT`), a non-production bundle id,
-   or a debug build from a linked git worktree does not serve.
+2. `KOOKABURRA_BRIDGE=0` turns serving off; `KOOKABURRA_BRIDGE=1` turns it on (any other
+   value is ignored with a warning).
+3. An overridden workspace root (`KOOKABURRA_WORKSPACE_ROOT`), a non-production bundle id
+   (production is `com.mpalmes.kookaburracut`), or a debug build from a linked git worktree
+   (its checkout's `.git` is a file) does not serve.
 4. Everything else serves: the packaged app and a dev build from the main checkout.
+
+The role is decided once in `bridge::init` (pure `bridge_role`) and reported as
+`bridge: { serving, reason }`; `reason` names why a passive instance does not serve, and an
+opted-in one says so. Code: `src-tauri/src/bridge.rs`; `bridge_instance` returns the
+identity, role, effective root and `rootSource` (the app's "not found" errors name it).
 
 - **Heartbeats are per process:** `_bridge/apps/<pid>.json` (the `app.json` body below plus
   `startedAtMs`, `bundleId`, `exePath`, `checkout`, `rootSource`, `bridge: { serving,
   reason }`, `primary`, `exportJob`, `health`), written by every interactive instance,
-  serving or not, removed on exit, and pruned by others when its pid is dead or it is
-  10 min old. `app.json` stays for older kits, written only by the elected primary.
+  serving or not, removed on exit, and pruned by serving instances when its pid is dead or
+  it is 10 min old. A passive instance writes only that file: never `app.json` or
+  `cli.json`, and it never claims, prunes or runs the native loop.
+- **`app.json`** stays for older kits and resource lookups, with the same body, written
+  only by the primary: a serving instance takes it over when it is missing, unreadable,
+  older than 30 s, from a dead or passive process, or from a writer that ranks below it
+  (release over dev, then the earliest start, then the lowest pid; an older app without
+  `startedAtMs` keeps it, so the two never fight).
 - **Election.** Among live serving instances on the project's workspace root, kb picks the
   one with the project open, then a release build over a dev build, then the earliest
   start, then the lowest pid, and addresses it by pid. Not an error; `kb status` warns
   when two instances share a root and lists every live instance with the reason a passive
-  one does not serve.
+  one does not serve. kb reads live `apps/*.json` files, plus a live `app.json` whose pid
+  has none (an older app: it serves everything it sees, so kb sends it no `instancePid`
+  and only uses it when its `workspaceRoot` is the project's).
 - **Requests** carry `workspaceRoot`, `projectPath`, `instancePid` and `client` (the
   agent name). An instance claims only a request addressed to its pid; else one whose
-  `workspaceRoot` is its own root (compared by device and inode); else (old kits) one
-  whose `projectPath` or `<root>/<slug>` matches, the rule the native loop already used.
-  The pending count the editor uses to spawn the render window applies the same rule,
-  and an instance that does not serve never touches `requests/`.
-- **Responses** carry `servedBy: { pid, bundleId, build, appVersion, workspaceRoot }`. kb
-  discards an answer whose root is not the project's (exit 2), and fails fast (exit 2)
-  when no live instance serves the project's root, naming the live ones.
+  `workspaceRoot` is its own root (compared by device and inode; a root that does not
+  exist matches no instance); else (old kits) one whose `projectPath` or `<root>/<slug>`
+  matches, the rule the native loop already used. One predicate (`claimable`) serves the
+  render-window claim, the native loop and the pending count the editor uses to spawn the
+  render window, so no instance keeps a window alive for another's requests. Stale
+  (120 s) requests are deleted by any serving instance whoever they were for, and an
+  instance that does not serve never touches `requests/`.
+- **Responses** carry `servedBy: { pid, bundleId, build, appVersion, workspaceRoot }`
+  (stamped by Rust on render-window answers, native answers and parse errors; a body that
+  already has one keeps it). kb discards an answer whose root is not the project's
+  (exit 2, `no-app`), fails fast (exit 2, `no-app`) when no live instance serves the
+  project's root, naming the live ones, their roots and why each does not serve, and
+  fails fast when the addressed pid exits while it waits.
 - **Health.** The serving instance's heartbeat carries `health`: queue depth and order,
   the in-flight request, render-window liveness and beat age, recycles, the GPU state
   (`stalled`, `stalledUntilMs`, `wedged`), live WebGL contexts per window, and per-client
   usage. kb prints the queue position and an estimate while it waits.
 
-### Heartbeat: `_bridge/app.json`
+### Heartbeat: `_bridge/apps/<pid>.json` and `app.json`
 
-Written atomically by the interactive app at most every 2 s while it runs (any view),
-from the editor's tick and from a native thread every 5 s (the webview's timers are
-throttled while the app is hidden), removed on exit; autorun instances never write it.
+Written atomically by every interactive instance at most every 2 s while it runs (any
+view), from the editor's tick and from a native thread every 5 s (the webview's timers are
+throttled while the app is hidden), removed on exit; autorun instances never write either.
+`app.json` is a copy of the primary's file.
 
 ```json
 {
-  "version": 2,
+  "version": 3,
   "pid": 87186,
+  "startedAtMs": 1792019000000,
+  "updatedAtMs": 1792020000000,
   "appVersion": "0.19.0",
   "build": "release",
-  "updatedAtMs": 1792020000000,
+  "bundleId": "com.mpalmes.kookaburracut",
+  "exePath": "/Applications/Kookaburra Cut.app/Contents/MacOS/kookaburra-cut",
+  "checkout": null,
   "workspaceRoot": "/Users/x/Kookaburra Cut",
+  "rootSource": "settings",
+  "bridge": { "serving": true, "reason": null },
+  "primary": true,
   "resourcesDir": "/Applications/Kookaburra Cut.app/Contents/Resources",
   "openProject": "ws:product-tour",
   "aspect": "16:9",
@@ -395,7 +424,9 @@ throttled while the app is hidden), removed on exit; autorun instances never wri
     "sceneErrors": [{ "index": 12, "file": "scenes/224-x.tsx", "phase": "compile", "message": "line 4: ..." }],
     "fontIssues": [{ "ref": "Menlo@400", "message": "unknown cmap table format 6", "fallback": "Inter@400" }],
     "warnings": []
-  }
+  },
+  "exportJob": null,
+  "health": null
 }
 ```
 
@@ -403,13 +434,18 @@ Two more fields locate the presets: `presetsDir` (holds `<slug>/`) and
 `presetPreviewsDir` (holds `<slug>.jpg`); in dev the posters live under `src/assets`.
 `playheadMs` is an integer and `openProject` is null on the Welcome screen. The editor
 reports `lastLoad` after every load attempt (`set_last_load`); `warnings` includes
-healed scene ids and dropped LUTs.
+healed scene ids and dropped LUTs. `rootSource` is `settings`, `env`
+(`KOOKABURRA_WORKSPACE_ROOT`) or `none`; `checkout` is `{ path, worktree }` for a debug
+build, else null. `health` (serving instances only, `src-tauri/src/bridge_health.rs`)
+and `exportJob` are null until their features fill them.
 
-`kb` treats the app as running when `updatedAtMs` is under 30 s old and the pid is
-alive. It never uses `pgrep` (it matches unrelated processes and misses others).
+`kb` treats an instance as running when `updatedAtMs` is under 30 s old and the pid is
+alive. It never uses `pgrep` (it matches unrelated processes and misses others). Its
+`live_heartbeat()` is the elected instance's body, so the video CLI lookup, presets and
+`kb status` all follow the instance that serves the project.
 
 `cliPath` is the app's own executable (the headless edit CLI, below) and `cliVersion`
-its CLI version. Interactive builds also write `_bridge/cli.json`
+its CLI version. Serving instances also write `_bridge/cli.json`
 (`{ path, appVersion, build, cli, writtenAtMs }`) once at setup and never delete it, so
 `kb` can still find a dev build's CLI while the app is closed (it only uses it when no
 installed app qualifies).
@@ -422,6 +458,8 @@ lands in `responses/<id>.json`. A request without `kind` is a v1 capture.
 ```json
 { "version": 2, "id": "0001792020000000-123-abc", "kind": "capture",
   "project": "ws:<slug>", "requestedAtMs": 1792020000000,
+  "workspaceRoot": "/Users/x/Kookaburra Cut", "projectPath": "/Users/x/Kookaburra Cut/<slug>",
+  "instancePid": 87186, "client": "session-1a2b3c4d",
   "scene": "03-feature-checks", "at": 1.5, "aspect": "9:16",
   "frames": [{ "scene": "3", "at": 2.0 }], "sheet": true,
   "render": false,
@@ -430,11 +468,19 @@ lands in `responses/<id>.json`. A request without `kind` is a v1 capture.
 ```
 
 `requestedAtMs` is optional (the file's age stands in), `scene` is an index or a file
-stem, and an unparseable request gets an immediate error response. A request without
-`kind` and with `version` below 2 is answered as `version: 1`, so old kits keep working.
+stem, and an unparseable request gets an immediate error response from a serving
+instance. A request without `kind` and with `version` below 2 is answered as
+`version: 1`, so old kits keep working. The address fields are optional (old kits send
+none); kb adds `workspaceRoot` to every request, `projectPath` when the request is about
+its own project, `instancePid` unless the elected app is an older one, and `client` when
+the caller names one. Unknown fields are ignored.
 
-Every response carries `{ "version": 2, "id", "ok", "error"?, "busy"?, "needsTrust"? }`
-plus its kind's payload. `busy` applies to every kind except `fonts` while exporting.
+Every response carries `{ "version": 2, "id", "ok", "error"?, "busy"?, "needsTrust"?,
+"servedBy" }` plus its kind's payload. `busy` applies to every kind except `fonts` while
+exporting. kb retries a busy answer until its timeout, then exits 3 (`app-busy`); an
+unclaimed or unanswered request exits 3 (`bridge-timeout`); `needsTrust` exits 2
+(`needs-trust`). `kb capture` and `kb check` print `served by Kookaburra Cut ... (build,
+pid, bundle id)` on stderr.
 
 - `capture`: `path` (first frame), `paths`, `frames: [{ scene, at, tMs, path, index }]`
   (`scene` is the resolved stem, `at` seconds into it), a top-level `tMs`, `sheetPath`
@@ -458,12 +504,14 @@ plus its kind's payload. `busy` applies to every kind except `fonts` while expor
   drives the minted stem and scene id.
 
 Native kinds. `mediaChanged` and `openEdit` are claimed by a Rust loop
-(`spawn_native_bridge`, 300 ms poll) rather than the render window, which never claims
-them and never spawns for them. Both take `project: "ws:<slug>"` and the optional
-`projectPath`. An instance only claims a request for a project in its own workspace
-(`projectPath` must resolve to `<root>/<slug>`, else the slug folder must exist), so with
-two apps open the right one answers; a request no running app can serve waits until
-`kb` times out.
+(`spawn_native_bridge`, 300 ms poll, serving instances only) rather than the render
+window, which never claims them and never spawns for them. Both take
+`project: "ws:<slug>"` and the optional `projectPath`. The loop claims through the same
+`claimable` rule (the elected pid, else the same workspace root; for an old kit,
+`projectPath` must be the same folder as `<root>/<slug>`, else the slug folder must
+exist), so with two apps open the right one answers. kb refuses before sending when no
+live instance serves the project's root; an old kit's request that no instance can serve
+waits until it times out.
 
 - `mediaChanged` (`paths: ["assets/x-edited.mp4"]`, optional `edit`): validates every
   path (outside `assets/` or `..` fails the request; missing files are listed), warms
