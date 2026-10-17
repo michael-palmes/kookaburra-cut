@@ -536,8 +536,8 @@ if [[ "$COLD" == "1" ]] && ! grep -q '"cold": true' "$RESULT_FILE"; then
   echo "kookaburra:run: --cold was not honoured (no \"cold\": true in the result): this build predates it" >&2
   exit 2
 fi
-# `"ok": true` (2-space-indented JSON) ⇒ pass; anything else ⇒ fail.
-if ! grep -q '"ok": true' "$RESULT_FILE"; then
+# A top-level `"ok": true` (2-space-indented JSON) ⇒ pass; anything else ⇒ fail. Anchored, since result rows nest flash reports with their own `ok`.
+if ! grep -qE '^  "ok": true,?$' "$RESULT_FILE"; then
   exit 1
 fi
 

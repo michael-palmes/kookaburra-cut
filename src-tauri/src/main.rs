@@ -9,7 +9,7 @@ fn main() {
             std::process::exit(kookaburra_cut_lib::cli::main(args.collect()))
         }
         Some(first) if first == "check" => {
-            std::process::exit(kookaburra_cut_lib::cli::check::main(args.collect()))
+            std::process::exit(kookaburra_cut_lib::cli_check::main(args.collect()))
         }
         _ => {}
     }

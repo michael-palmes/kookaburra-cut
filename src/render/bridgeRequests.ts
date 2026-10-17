@@ -16,11 +16,13 @@ export const BRIDGE_KINDS = [
   "mediaChanged",
   "openEdit",
   "debug",
+  "export",
+  "cancelExport",
 ] as const;
 export type BridgeKind = (typeof BRIDGE_KINDS)[number];
 
 /** Mirror of bridge.rs's NATIVE_KINDS: served by the app's Rust loop, never claimed by the render window. */
-export const NATIVE_BRIDGE_KINDS = ["mediaChanged", "openEdit"] as const;
+export const NATIVE_BRIDGE_KINDS = ["mediaChanged", "openEdit", "export", "cancelExport"] as const;
 
 export function isNativeBridgeKind(kind: string | null | undefined): boolean {
   return (NATIVE_BRIDGE_KINDS as readonly string[]).includes(kind ?? "");

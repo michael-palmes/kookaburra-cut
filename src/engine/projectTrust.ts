@@ -12,19 +12,32 @@ export class TrustDeniedError extends Error {
   }
 }
 
+/** An autorun under `KOOKABURRA_TRUST=stored-only` met a project whose sources changed since the user allowed it (or never allowed); the run reports `needsTrust` rather than prompting or auto-trusting. */
+export class NeedsTrustError extends Error {
+  constructor(slug: string) {
+    super(
+      `Project "${slug}" changed since it was last opened in Kookaburra Cut; open it once in the app to allow its code, then rerun.`,
+    );
+    this.name = "NeedsTrustError";
+  }
+}
+
 /** Slugs consented this app session (session-sticky trust): their disk edits reload silently and re-stamp the stored grant, so your own work never re-asks. */
 const sessionTrusted = new Set<string>();
 
-/** Cached headless-launch check (KOOKABURRA_ACTION set); read directly rather than via autorun.ts to keep engine imports acyclic. The env cannot change mid-process. */
-let autoRunLaunch: Promise<boolean> | null = null;
-function isAutoRunLaunch(): Promise<boolean> {
-  autoRunLaunch ??= invoke<{ action: string | null }>("get_autorun_config")
-    .then((env) => Boolean(env.action?.trim()))
-    .catch(() => false);
+/** Cached headless-launch check (KOOKABURRA_ACTION set, and whether KOOKABURRA_TRUST pins it to stored grants); read directly rather than via autorun.ts to keep engine imports acyclic. The env cannot change mid-process. */
+let autoRunLaunch: Promise<{ autoRun: boolean; storedOnly: boolean }> | null = null;
+function autoRunTrust(): Promise<{ autoRun: boolean; storedOnly: boolean }> {
+  autoRunLaunch ??= invoke<{ action: string | null; trust?: string | null }>("get_autorun_config")
+    .then((env) => ({
+      autoRun: Boolean(env.action?.trim()),
+      storedOnly: env.trust?.trim() === "stored-only",
+    }))
+    .catch(() => ({ autoRun: false, storedOnly: false }));
   return autoRunLaunch;
 }
 
-/** The F-001 consent gate: no workspace scene code compiles until the user has allowed the project. Autorun launches auto-trust (the run itself is the user's consent, and a modal would hang the AFK Verify); a stored grant whose fingerprint still matches passes silently; otherwise the TrustGateModal asks, and a decline throws `TrustDeniedError`. */
+/** The F-001 consent gate: no workspace scene code compiles until the user has allowed the project. Autorun launches auto-trust (the run itself is the user's consent, and a modal would hang the AFK Verify) unless `KOOKABURRA_TRUST=stored-only` (kb's headless export, which must not launder consent), which needs a matching stored grant; a stored grant whose fingerprint still matches passes silently; otherwise the TrustGateModal asks, and a decline throws `TrustDeniedError`. */
 export async function ensureProjectTrusted(
   slug: string,
   name: string,
@@ -42,7 +55,12 @@ export async function ensureProjectTrusted(
     );
     return;
   }
-  if (await isAutoRunLaunch()) {
+  const launch = await autoRunTrust();
+  if (launch.autoRun) {
+    if (launch.storedOnly) {
+      if (!(await invoke<boolean>("is_project_trusted", { slug }))) throw new NeedsTrustError(slug);
+      return;
+    }
     await invoke("trust_project", { slug });
     sessionTrusted.add(slug);
     return;

@@ -150,6 +150,7 @@ under the project lock (`kblib.lock`) and re-validated after writing.
 | `note "TEXT" [--scene S]`, `notes [--all]` | Shared notes in `.kb/notes.md` (`notes --json`: `notes`, `total`) |
 | `events [--follow] [--since 10m\|CURSOR\|all] [--kinds ...] [--all-agents] [--exit-after S]` | The coordination feed (`--json` without `--follow`: `events`, `cursor`) |
 | `video ...` | Video editing (below): edit documents, renders, re-points, cleanup, fit, review (`list --json`: `edits`) |
+| `export [--aspect A] [--preset ID] [--verify] [--headless] ...` | The finished film, exactly as the app's Export button makes it (below) |
 | `hook session-start \| pre-edit \| post-edit \| bash-pre \| bash-post` | Hook entry points (stdin JSON from Claude Code); any other event exits 0, so an older kit is safe with newer settings |
 | `beats ...`, `chart ...` | Delegate to the existing scripts |
 
@@ -457,8 +458,8 @@ Code: `scripts/kblib/film/` (stdlib Python over the bundled ffmpeg and ffprobe, 
   60 fps for High quality (a preset's rate once the catalogue lists `exportPresets`), frames
   = round(total ms x fps / 1000) plus one when the file has exactly one more (a poster
   frame), audio exactly when `project.json` has `audio`.
-- **Audio.** `ebur128=peak=true`: integrated loudness within 1 LU of `--loudness-target` (or
-  the record's or preset's target), a warning over -1 dBTP true peak.
+- **Audio.** `ebur128=peak=true`: integrated loudness more than 1 LU off `--loudness-target` (or
+  the record's or the catalogue preset's target) warns, as does a true peak over -1 dBTP.
 - **Frames.** Each scene's first, settled-in (after its incoming transition), named
   (`stills.marksMs`, `still: true` camera keys, else the midpoint) and last frame, extracted
   by index into contact sheets sized for Read, with a legend.
@@ -504,9 +505,13 @@ export's own `buildSceneTimeline` (`transitionIn` as `{ type, durationMs, ... }`
 
 Flash detection is one Rust core fed frame by frame: `FlashDetector::new(width, height,
 fps, standards)`, `push_rgba(&[u8], bottom_up)` (or `push_rgb`), `finish() -> FlashReport`.
-It never panics (a short buffer is counted and skipped) and costs about 4 ms per 4K RGBA
-frame with both standards. Today `<exe> check flashes` feeds it; the export loop's read-only
-`push_frame` tap is next.
+It never panics (a short buffer is counted and skipped) and costs about 4.3 ms per 4K RGBA
+frame with both standards. Two feeders: `<exe> check flashes`, and a read-only tap in every
+export's `push_frame` (after the bytes reach ffmpeg; a failure makes the report "flash check
+unavailable", never a failed export). `finish_export` keeps the tap's verdict for
+`export_flash_report`, and writes `<export file>.flashes.json` beside a film with flagged
+moments (a clean re-export removes it); the Export button then shows a persistent warning
+with the timecodes, and `kb export` gets the report in its answer.
 
 - **Cells.** 64 along the long edge, the short edge in proportion; pixels sampled at a
   stride of about 16 per cell edge, linearised (sRGB for WCAG, 2.4 power for ITU, whose
@@ -553,6 +558,83 @@ never gates.
 - `fixtures/flash-spike` (dev-only: a title, a crossfade, one second of 100 ms full-frame
   cuts, a 2 Hz control) is the parity and flash fixture, copied into a throwaway root;
   it joins no gate.
+
+## kb export
+
+`./kb export` makes the finished film exactly as the app's Export button does, so Claude can
+finish and check its own work. Code: `scripts/kblib/exporting.py`, `src-tauri/src/bridge_export.rs`,
+`src/ui/useBridgeExport.ts`, `src/engine/bridgeExport.ts`.
+
+`kb export [--aspect A] [--preset ID] [--fps 30|60] [--short-edge N] [--poster-frame on|off|app]
+[--verify] [--headless] [--allow-flashes] [--timeout 3600] [--progress-every 10] [--json]`
+
+- **Only the open project.** The editor must show this project; on the Welcome screen or another
+  project the app answers `notOpen` or `wrongProject` (exit 2, kinds `not-open`, `wrong-project`).
+  While the person is mid-edit (a pointer down, a text field focused outside the embedded
+  terminal), the Export window is open, or an export, Verify, stills export or theme preview
+  runs, it answers busy; kb retries for 30 s (never past `--timeout`), then exits 3 (`app-busy`).
+- **Sync first.** Once accepted the editor stops playback, settles its own sidecar writes, and
+  waits up to 20 s until the reload poll's baseline matches the disk and the reload it asked for
+  is on stage. A failed last reload refuses (`stale` with `reloadFailed`, exit 1); so does a source
+  whose hash no longer matches kb's `sources` (exit 3, rerun).
+- **The button's run.** The request maps through `choiceForRequest` (no flags = High quality, a
+  preset row, or `--fps`/`--short-edge` as the Custom panel seeds them), `resolveVideoSelection`
+  (loudness measured as the modal measures it, the poster frame from the app's setting unless
+  `--poster-frame`), then App's `runVideoExport(sel)`, the function the Export button calls
+  (`commitFormat`, `buildVideoExportOptions`, `exportProject`). Only the destination (always the
+  project's `exports/`, canonical names), the abort signal and the callbacks differ, and none of
+  them reach the bytes. The aspect defaults to the editor's, kept when the preset allows it, and
+  the person's aspect comes back afterwards.
+- **Verify.** `--verify` runs `verifyDeterminism` on the same options (two renders, same path) and
+  refuses VideoToolbox lanes (exit 2). With `--poster-frame off` and no preset it is one 16:9 leg
+  of the app's Verify x2 on the frozen libx264 path.
+- **While it runs** an overlay over the stage reads "Claude is exporting, 42%" with the stage,
+  frame, rate and ETA and the person's own Cancel; the titlebar's Cancel works too. Exit 1
+  (`cancelled`) when the person cancels.
+- **Progress.** One stdout line per stage change, else at most one per `--progress-every`
+  seconds (`kb export: render 1234/3901 32% 4.1 fps eta 10m45s`), ending `kb export: done
+  exports/<name>.mp4 sha256 1a2b3c4d... 3901 frames 65.02 s`. `--json` prints one compact object per
+  line (`{ "event": "progress", ... }`, `{ "event": "note", ... }`) and the envelope last.
+- **Cancel.** Ctrl-C, SIGTERM or `--timeout` sends `cancelExport`, waits up to 15 s for the
+  export's answer, then exits 130 (interrupted) or 1 (`timeout`). If kb itself dies, the app
+  cancels the export when `clientPid` exits.
+- **Flash gate.** The answer carries the export tap's flash report. A failure exits 1 (`flashes`;
+  the file and its record are kept) unless `--allow-flashes`; warnings print and exit 0.
+- **The record.** Every finished export saves `_bridge/exports/<slug>/<sha16>.json` (schema under
+  "Film checks and verify-export"; the newest 50 per project stay), so `kb verify-export` checks
+  the file against what was asked for.
+- Other answers: `invalid` (bad aspect, preset or rate; exit 2), `refused` (error-card scenes or a
+  dropped LUT; exit 1), `gpuStalled` (exit 3), `gpuWedged` (exit 2, quit and reopen),
+  `verifyMismatch` (exit 1), `acceptTimeout` and `interrupted` (exit 3). The envelope's `code` is
+  the kb kind; `appCode` keeps the app's.
+
+### `--headless`
+
+With the app closed, a packaged release bundle renders the film in the background:
+
+1. Refused when any live instance serves this workspace (drop `--headless`) or a packaged app runs
+   at all (its caches are shared), and for `--fps`/`--short-edge` (the Custom panel needs the editor).
+2. The binary (found as `kb video` finds it) must answer `edit caps` with `build: "release"` and
+   `autorun: { actions: ["export", "verify"], trust: ["stored-only"], poster: true, progress:
+   true }`; an older one would auto-trust and ignore the new variables, so it is refused (exit 2).
+3. A FIFO ticket in `~/Kookaburra Cut/_autorun/queue/`, exactly as `scripts/kookaburra-run.sh`
+   takes one (`<12-digit epoch>-<pid>.json`, sorted names are the order, dead pids swept, another
+   run never touched), then a run dir `_autorun/runs/kb-<utc>-<pid>/`.
+4. `/usr/bin/caffeinate -dimsu <exe>` in its own process group (never `open`, which drops the
+   environment) with `KOOKABURRA_ACTION=export|verify`, `KOOKABURRA_PROJECT=ws:<slug>`,
+   `KOOKABURRA_ASPECT` (the project's first format, kept when the preset allows it),
+   `KOOKABURRA_PRESET`, `KOOKABURRA_CODEC=libx264`, `KOOKABURRA_RESULT_DIR`,
+   `KOOKABURRA_WORKSPACE_ROOT=<project parent>`, `KOOKABURRA_TRUST=stored-only`,
+   `KOOKABURRA_POSTER=on|off|app` and `KOOKABURRA_PROGRESS=1`.
+5. kb polls `progress.json` (written through `autorun_progress`), `last-run.json` and the pid. A
+   cancel sends SIGTERM then SIGKILL to the group, removes stray `exports/.*.part.*` files and the
+   ticket. kb hashes the file itself.
+6. Stored-only trust never auto-trusts (kb is auto-allowed, so it must not launder consent): a
+   project whose sources changed since the user allowed it answers `needsTrust`, exit 2 "open the
+   project once in Kookaburra Cut".
+
+Headless and editor exports of one project may differ at glyph edges (a cold boot against a warm
+editor); never record baselines from `kb export`.
 
 ## The bridge (v2)
 
@@ -745,7 +827,7 @@ unclaimed or unanswered request exits 3 (`bridge-timeout`); `needsTrust` exits 2
   ids re-minted). `position` is a 0-based manifest index (absent appends); `name` also
   drives the minted stem and scene id.
 
-Native kinds. `mediaChanged` and `openEdit` are claimed by a Rust loop
+Native kinds. `mediaChanged`, `openEdit`, `export` and `cancelExport` are claimed by a Rust loop
 (`spawn_native_bridge`, 300 ms poll, serving instances only) rather than the render
 window, which never claims them and never spawns for them. Both take
 `project: "ws:<slug>"` and the optional `projectPath`. The loop claims through the same
@@ -769,6 +851,33 @@ waits until it times out.
   "retargeted" | "focused", projectOpen }`; `focused` only raises the window (the
   editor keeps its state). Busy while exporting or while the editor renders another
   edit; an unresolvable `scene` or an unreadable doc is an error.
+- `export` (`kb export`; the shared request type ignores its own fields, so Rust reads them
+  back from the claimed file): `aspect`, `preset`, `fps`, `shortEdge`, `posterFrame` (null =
+  the app's setting), `verify`, `clientPid`, `detach`, `sources` (`{ "project.json": "<sha256>",
+  "scenes/<file>": ... }`). Rust validates the syntax, answers busy while an export runs or the
+  slot is taken, refuses unless the editor context shows this project, emits
+  `kookaburra://bridge-export` to `main` only and waits 10 s for `bridge_export_accept` (else
+  `acceptTimeout`, exit 3), then for `bridge_export_finish`. The editor reports through
+  `bridge_export_progress`; Rust writes `responses/<id>.progress.json` atomically, at most once
+  a second plus each stage change:
+  `{ version: 2, id, project, stage: waiting | syncing | preparing | render | pass1 | pass2 |
+  finalising | hashing, run, runs, prepareStep, prepareSteps, prepareLabel, frame, total,
+  percent, renderFps, elapsedMs, etaMs, updatedAtMs }` (rate and ETA come from the export's
+  callbacks in the UI, never the render). The answer joins the editor's facts to Rust's own,
+  which win: `{ ok, surface: "editor", project, aspect, preset, lane: frozen | spec, codec, fps,
+  width, height, posterFrame, frames, durationMs, totalMs, timeline, verify: { identical, hashA,
+  hashB } | null, path, bytes, sha256, flashes, warnings, elapsedMs }`, where `path` is the file
+  `finish_export` recorded and `sha256` Rust's hash of it. Failures are `{ ok: false, code,
+  error, hint?, busy?, retryAfterMs?, cancelled?, by?, reloadFailed? }`. The client's death
+  (`clientPid`, unless `detach`) cancels the export; `bridge_export_reset`, which the main window
+  calls on mount, fails an export left in the slot by a reload (`interrupted`) and stops its encode.
+- `cancelExport` (`target`: the export's id, absent = the running one): `{ ok, cancelled, state:
+  idle | cancelled | cancelling, target? }`. An export the editor has not taken yet is answered
+  `cancelled` at once; a running one is told through `kookaburra://bridge-export-cancel` (the
+  editor aborts), `ExportState::cancel()` stops the encode 15 s later if it is still running,
+  and Rust answers `cancelled` for it 15 s after that.
+- The heartbeat's `exportJob` is `{ id, origin: "bridge" | "button", stage, frame, total }`
+  while an export runs (`id` is null for the app's own buttons), else null.
 - `debug` routes by `op`: `contexts` and a `lose-context` with `window: "editor"` are
   served here, from the reported censuses and an event to the main window;
   `lose-context` on the render window (the default) and the dev-only `spawn-contexts`
@@ -903,7 +1012,7 @@ over the app-free cores in `edit.rs`, `media.rs` and `tools.rs`.
 
 | Command | Does |
 | --- | --- |
-| `caps` | CLI version, app version, build, commands, `checks` (the `<exe> check` commands it serves), doc versions, ffmpeg/ffprobe paths and filters, hardware video, tap styles/colours/sizes, mask styles, limits |
+| `caps` | CLI version, app version, build, commands, `checks` (the `<exe> check` commands it serves), `autorun` (what a headless `kb export` may ask: actions, trust modes, poster, progress), doc versions, ffmpeg/ffprobe paths and filters, hardware video, tap styles/colours/sizes, mask styles, limits |
 | `probe --project D --source R` (or `--file ABS`) | The app's probe (rotation-aware size, `vfr`, `editFps`, `nbFrames`) |
 | `create --project D --source R [--name N] [--reuse \| --force]` | The editor's default document for that source; an existing doc is `exists` unless `--reuse` or `--force` (backs up to `.json.bak`) |
 | `validate --project D (--name N \| --doc -)` | Parse, mask rules and a render dry run: `{ ok, hash, version, totalFrames, durationMs, fps, width, height, clips, taps, errors, warnings }` |
@@ -1001,7 +1110,9 @@ level keys: `version`, `aspects`, `transitions`, `eases`, `textMotion`,
 `deviceLayouts`, `camera` (`presets`, `dof`, `motionBlur`), `compare`, `charts`, `chipIcons`,
 `bulletMarkers`, `fonts` (`bundled`), `sceneDoc` (`version`, `keys`),
 `projectManifest` (`version`, `keys`), `toolkit` (`imports`, `exports`), `presets`,
-`templates`. Every entry has an `id`; most have `label` and a one-line `summary`.
+`templates`, `exportPresets` (the Export modal's video rows: `aspects`, `favouredAspect`, `fps`,
+`shortEdge`, `codec`, `container`, `loudnessTarget`, `lane`, `hardware`). Every entry has an
+`id`; most have `label` and a one-line `summary`.
 
 ## Verification
 

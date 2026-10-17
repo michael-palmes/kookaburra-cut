@@ -43,9 +43,11 @@ pub const BRIDGE_KINDS: &[&str] = &[
     "mediaChanged",
     "openEdit",
     "debug",
+    "export",
+    "cancelExport",
 ];
 /// The kinds `spawn_native_bridge` serves from Rust; the render window never claims them (a `debug` request routes by its op, `RoutePeek::native`).
-pub const NATIVE_KINDS: &[&str] = &["mediaChanged", "openEdit"];
+pub const NATIVE_KINDS: &[&str] = &["mediaChanged", "openEdit", "export", "cancelExport"];
 /// The headless edit CLI contract this binary answers (`<exe> edit caps` reports the same `cli`).
 pub const CLI_VERSION: u32 = 1;
 /// Where kb finds this binary's CLI while the app is closed (docs/agent-kit.md, "Heartbeat").
@@ -690,7 +692,7 @@ fn heartbeat_body(
         cli_path: places.cli_path.clone(),
         cli_version: CLI_VERSION,
         last_load: last_load.cloned(),
-        export_job: None,
+        export_job: crate::bridge_export::job_value(),
         health,
     }
 }
@@ -1634,6 +1636,7 @@ async fn serve_native(app: &AppHandle, root: &Path, request: BridgeRequest) {
         Some("mediaChanged") => serve_media_changed(app, &request).await,
         Some("openEdit") => serve_open_edit(app, &request).await,
         Some("debug") => serve_debug(app, &request),
+        Some("export" | "cancelExport") => crate::bridge_export::serve(app, root, &request).await,
         other => Err(format!("{other:?} isn't a native bridge kind")),
     };
     let body = native_response_body(&request.id, served, own_served_by(app).as_ref());
@@ -2136,7 +2139,9 @@ mod tests {
                 "insertPreset",
                 "mediaChanged",
                 "openEdit",
-                "debug"
+                "debug",
+                "export",
+                "cancelExport"
             ])
         );
         assert_eq!(

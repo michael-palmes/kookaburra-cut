@@ -28,6 +28,11 @@ export function bindSourceBaseline(slug: string): void {
   else state = { slug, stamps: null, pending: null };
 }
 
+/** The poll's baseline for this project (null before its first tick); the bridge export waits until it matches the disk. */
+export function sourceBaselineStamps(slug: string): ReadonlyMap<string, string> | null {
+  return state?.slug === slug ? state.stamps : null;
+}
+
 /** Files whose stamp changed, appeared or disappeared, sorted. */
 export function changedSourceFiles(
   baseline: ReadonlyMap<string, string>,

@@ -137,12 +137,14 @@ class ExpectationTests(KbTestCase):
         self.assertEqual(rp.out_dims(2160, 3840, 2160), (2160, 3840))
         self.assertEqual(rp.out_dims(2160, 2160, None), (2160, 2160))
 
-    def test_static_expectations_for_high_quality_and_unknown_presets(self) -> None:
+    def test_static_expectations_for_high_quality_presets_and_unknown_ones(self) -> None:
         project = Project(film_project(self.tmp))
         slots = tl.project_slots(project)
         exp = rp.static_expectations(project, Path("demo-16x9.mp4"), self.catalog, slots)
         self.assertEqual((exp["aspect"], exp["width"], exp["height"], exp["fps"], exp["frames"], exp["audio"]), ("16:9", 3840, 2160, 60, 240, False))
-        other = rp.static_expectations(project, Path("demo-9x16-tiktok.mp4"), self.catalog, slots)
+        tiktok = rp.static_expectations(project, Path("demo-9x16-tiktok.mp4"), self.catalog, slots)
+        self.assertEqual((tiktok["width"], tiktok["height"], tiktok["fps"], tiktok["frames"], tiktok["loudnessTarget"]), (1080, 1920, 30, 120, -14))
+        other = rp.static_expectations(project, Path("demo-9x16-client-cut.mp4"), self.catalog, slots)
         self.assertIsNone(other["fps"])
         self.assertIn("not in this kit's catalogue", other["note"])
         self.assertNotIn("width", other)
@@ -404,10 +406,12 @@ class VerifyExportTests(KbTestCase):
         shutil.copy(strobe_film("film-tone", audio=True), self.film)
         self.record(audio=True)
         loud = self.verify("--no-flashes", "--no-sheet", "--loudness-target", "-14")
-        self.assertExit(loud, 1)
+        self.assertExit(loud, 0)
         out = json.loads(loud.stdout)
         check = next(c for c in out["checks"] if c["id"] == "loudness")
-        self.assertFalse(check["ok"])
+        self.assertEqual((check["ok"], check["severity"]), (False, "warn"))
+        self.assertIn(check["message"], out["warnings"])
+        self.assertEqual(out["problems"], [])
 
     def test_a_missing_film_is_a_usage_error(self) -> None:
         proc = self.kb(["verify-export", "exports/nope.mp4", "--json"], cwd=self.project)
