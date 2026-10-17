@@ -38,6 +38,7 @@ import {
   terminalSnapshotWarning,
   websiteCaptureWarning,
 } from "./exportOptions";
+import { noteExportFlashes } from "./FlashWarning";
 
 /** What App lends the bridge export: its state, its reload signals and the Export button's own run. */
 export interface BridgeExportHost {
@@ -212,6 +213,8 @@ async function runRequest(
       report();
     },
   });
+  // The same persistent flash warning as the button's export, naming Claude.
+  void noteExportFlashes(run.path, "claude");
   const warnings = [
     terminalSnapshotWarning(project.sceneDocs, project.sceneFiles),
     websiteCaptureWarning(project.sceneDocs, project.sceneFiles),

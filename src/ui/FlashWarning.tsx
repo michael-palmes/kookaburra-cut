@@ -22,10 +22,16 @@ export interface FlashOutcome {
   unavailable: string | null;
 }
 
+/** Who ran the export a notice is about: the Export button, or Claude through `kb export`. */
+export type FlashOrigin = "button" | "claude";
+
 const MAX_LINES = 5;
 
 /** The notice for an export with flagged moments, or null when it is clean (or the tap had nothing). */
-export function flashNotice(outcome: FlashOutcome | null): {
+export function flashNotice(
+  outcome: FlashOutcome | null,
+  origin: FlashOrigin = "button",
+): {
   tone: "danger" | "warning";
   title: string;
   lines: string[];
@@ -43,35 +49,47 @@ export function flashNotice(outcome: FlashOutcome | null): {
   if (issues.length > MAX_LINES) lines.push(`and ${issues.length - MAX_LINES} more`);
   const count = fails.length || issues.length;
   const advice = (fails[0] ?? issues[0]).hint;
+  const subject = origin === "claude" ? "Claude's export" : "This export";
   return {
     tone: fails.length ? "danger" : "warning",
     title: fails.length
-      ? `This export flashes enough to risk seizures (${count} moment${count === 1 ? "" : "s"})`
-      : "This export comes close to the flash limits",
+      ? `${subject} flashes enough to risk seizures (${count} moment${count === 1 ? "" : "s"})`
+      : `${subject} comes close to the flash limits`,
     lines,
     hint: `${advice.charAt(0).toUpperCase()}${advice.slice(1)}. The report is saved beside the export as ${name}.flashes.json.`,
   };
 }
 
-const listeners = new Set<(outcome: FlashOutcome) => void>();
+export interface FlaggedExport {
+  outcome: FlashOutcome;
+  origin: FlashOrigin;
+}
 
-/** After the Export button's export: fetch the tap's report for that file and raise the notice when it flagged anything. */
-export async function noteExportFlashes(path: string): Promise<void> {
+const listeners = new Set<(flagged: FlaggedExport) => void>();
+
+/** Hears every flagged export; returns the unsubscribe. */
+export function onFlaggedExport(listener: (flagged: FlaggedExport) => void): () => void {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+}
+
+/** After an export (the Export button's or Claude's): fetch the tap's report for that file and raise the notice when it flagged anything. A null path (a verify, whose second render Rust recorded) takes the latest report. */
+export async function noteExportFlashes(
+  path: string | null,
+  origin: FlashOrigin = "button",
+): Promise<void> {
   const outcome = await invoke<FlashOutcome | null>("export_flash_report").catch(() => null);
-  if (!outcome || outcome.path !== path || !flashNotice(outcome)) return;
-  for (const listener of listeners) listener(outcome);
+  if (!outcome || (path !== null && outcome.path !== path) || !flashNotice(outcome)) return;
+  for (const listener of listeners) listener({ outcome, origin });
 }
 
 /** The persistent flash warning over the stage: stays until dismissed or the next flagged export replaces it. */
 export function FlashWarning({ hidden }: { hidden: boolean }) {
-  const [outcome, setOutcome] = useState<FlashOutcome | null>(null);
-  useEffect(() => {
-    listeners.add(setOutcome);
-    return () => {
-      listeners.delete(setOutcome);
-    };
-  }, []);
-  const notice = flashNotice(outcome);
+  const [flagged, setFlagged] = useState<FlaggedExport | null>(null);
+  useEffect(() => onFlaggedExport(setFlagged), []);
+  const notice = flagged ? flashNotice(flagged.outcome, flagged.origin) : null;
   if (hidden || !notice) return null;
   return (
     <div className="flash-warning">
@@ -80,7 +98,7 @@ export function FlashWarning({ hidden }: { hidden: boolean }) {
         title={notice.title}
         lines={notice.lines}
         hint={notice.hint}
-        onDismiss={() => setOutcome(null)}
+        onDismiss={() => setFlagged(null)}
       />
     </div>
   );

@@ -1,9 +1,18 @@
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { BridgeProgress } from "../engine/bridgeExport";
 import { BridgeExportOverlay, bridgeStageText, etaText } from "./BridgeExportOverlay";
-import { type FlashOutcome, flashNotice } from "./FlashWarning";
+import {
+  type FlaggedExport,
+  type FlashOutcome,
+  flashNotice,
+  noteExportFlashes,
+  onFlaggedExport,
+} from "./FlashWarning";
 import { FIELD_EDIT_IDLE_MS, FieldActivity, isEditingFocus } from "./useBridgeExport";
+
+const mocks = vi.hoisted(() => ({ invoke: vi.fn() }));
+vi.mock("@tauri-apps/api/core", () => ({ invoke: mocks.invoke }));
 
 const el = (tagName: string, extra: Record<string, unknown> = {}, inTerminal = false) => ({
   tagName,
@@ -143,11 +152,72 @@ describe("flashNotice", () => {
     expect(flashNotice(outcome([issue("warn", 2000)]))?.tone).toBe("warning");
   });
 
+  it("names Claude when Claude ran the export", () => {
+    const flagged = outcome([issue("fail", 41_000)]);
+    expect(flashNotice(flagged, "claude")?.title).toBe(
+      "Claude's export flashes enough to risk seizures (1 moment)",
+    );
+    expect(flashNotice(outcome([issue("warn", 2000)]), "claude")?.title).toBe(
+      "Claude's export comes close to the flash limits",
+    );
+    expect(flashNotice(flagged)?.title).toMatch(/^This export/);
+  });
+
   it("stays quiet for a clean film or no report", () => {
     expect(flashNotice(outcome([]))).toBeNull();
     expect(
       flashNotice({ path: "/x.mp4", report: null, unavailable: "flash check unavailable" }),
     ).toBeNull();
     expect(flashNotice(null)).toBeNull();
+  });
+});
+
+describe("noteExportFlashes", () => {
+  const flagged: FlashOutcome = {
+    path: "/Users/x/Kookaburra Cut/demo/exports/demo-16x9.mp4",
+    report: {
+      ok: false,
+      issues: [
+        {
+          type: "general",
+          standard: "wcag",
+          severity: "fail",
+          startMs: 1000,
+          endMs: 2000,
+          tc: "00:01.000",
+          flashesPerSecond: 5,
+          areaPct: 40,
+          hint: "slow the strobe",
+        },
+      ],
+    },
+    unavailable: null,
+  };
+  const heard: FlaggedExport[] = [];
+  beforeEach(() => {
+    heard.length = 0;
+    mocks.invoke.mockReset();
+    mocks.invoke.mockResolvedValue(flagged);
+  });
+
+  it("raises the warning for Claude's export, and a verify's latest report", async () => {
+    const off = onFlaggedExport((f) => heard.push(f));
+    await noteExportFlashes(flagged.path, "claude");
+    await noteExportFlashes(null, "claude");
+    await noteExportFlashes("/Users/x/Downloads/other.mp4", "claude");
+    await noteExportFlashes(flagged.path);
+    off();
+    await noteExportFlashes(flagged.path, "claude");
+    expect(mocks.invoke).toHaveBeenCalledWith("export_flash_report");
+    expect(heard.map((f) => f.origin)).toEqual(["claude", "claude", "button"]);
+    expect(heard[0].outcome).toBe(flagged);
+  });
+
+  it("stays quiet for a clean film", async () => {
+    mocks.invoke.mockResolvedValue({ ...flagged, report: { ok: true, issues: [] } });
+    const off = onFlaggedExport((f) => heard.push(f));
+    await noteExportFlashes(null, "claude");
+    off();
+    expect(heard).toEqual([]);
   });
 });
