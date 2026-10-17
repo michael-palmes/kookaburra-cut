@@ -9,11 +9,11 @@ subtrees stays as authored. Pinned by fixtures/repoint-vectors.json.
 from __future__ import annotations
 
 import copy
-import json
 import math
 from typing import Any, Dict, List, Optional, Tuple
 
-from ..util import EXIT_PROBLEMS, KbError, atomic_write_json_if, is_int, js_json, load_json_text
+from ..lock import mutate_json
+from ..util import EXIT_PROBLEMS, KbError, is_int, js_json, load_json_text
 
 SCENE_DOC_VERSION = 1
 # kb slot name -> the app's EditRepointSlot
@@ -698,16 +698,23 @@ def _new_errors(before: Any, after: Any) -> List[Any]:
     return [i for i in after.errors if (i.path, i.message) not in old]
 
 
+def _sidecar_doc(raw: Any, stem: str) -> Any:
+    if raw is not None and not isinstance(raw, dict):
+        raise KbError(f"scenes/{stem}.json is not a JSON object")
+    return raw
+
+
 def apply(project: Any, scene: str, slot: str, rel: str, target_id: Optional[str] = None, *, force: bool = False, dry_run: bool = False) -> Dict[str, Any]:
-    """Re-point one slot of a scene at rel through a hash-checked write; refuses a write that adds errors unless force."""
+    """Re-point one slot of a scene at rel by compare-and-swap under the project lock; refuses a write that adds errors unless force."""
     base, ident = parse_slot(slot)
     if target_id is not None:
         ident = str(target_id)
     idx, stem = project.resolve(scene)
     label = f"scenes/{stem}.json"
-    path = project.sidecar_path(stem)
-    for _attempt in range(4):
-        raw, sha = _read_sidecar(project, stem)
+    out: Dict[str, Any] = {}
+
+    def fn(raw: Any) -> Any:
+        raw = _sidecar_doc(raw, stem)
         if raw is None:
             raise KbError(f"scene {stem} has no sidecar ({label}), so it shows no media to re-point")
         if not readable(raw):
@@ -725,16 +732,16 @@ def apply(project: Any, scene: str, slot: str, rel: str, target_id: Optional[str
             lines = "; ".join(f"{i.path}: {i.message}" if i.path else i.message for i in fresh)
             raise KbError(f"nothing written: re-pointing would add {len(fresh)} error(s) to {label}: {lines}. Fix them, or pass --force")
         shown = target if target is not None else (hit["targetId"] if hit else None)
-        result = {
+        out.clear()
+        out.update({
             "scene": stem, "index": idx, "file": label, "slot": base, "targetId": shown, "ref": slot_ref(base, shown),
             "from": before_src, "to": rel, "changed": nxt != raw, "written": False,
-        }
-        if dry_run or nxt == raw:
-            return result
-        if atomic_write_json_if(path, nxt, sha):
-            result["written"] = True
-            return result
-    raise KbError(f"{label} kept changing while kb wrote it (the app may be saving it); rerun in a moment")
+        })
+        return None if nxt == raw else nxt
+
+    mut = mutate_json(project, label, fn, op="kb video re-point", dry_run=dry_run)
+    out["written"] = mut.written
+    return out
 
 
 def overhanging_keys(raw: Dict[str, Any], duration_ms: int) -> List[str]:
@@ -796,24 +803,19 @@ def resync_durations(project: Any, rels: Optional[List[str]] = None, *, write: b
 
 
 def _write_durations(project: Any, changes: List[Dict[str, Any]]) -> None:
-    import hashlib
-
-    for _attempt in range(4):
-        data = project.manifest_path.read_bytes()
-        sha = hashlib.sha256(data).hexdigest()
-        manifest = json.loads(data.decode("utf-8"))
-        scenes = manifest.get("scenes")
+    def fn(manifest: Any) -> Any:
+        scenes = manifest.get("scenes") if isinstance(manifest, dict) else None
         if not isinstance(scenes, list):
             raise KbError('project.json has no "scenes" array; restore it with kb undo')
         for c in changes:
             entry = scenes[c["index"]] if c["index"] < len(scenes) else None
             if not isinstance(entry, dict) or entry.get("file") != f"scenes/{c['scene']}.tsx":
-                raise KbError(f"project.json changed under kb (scene {c['index']} is no longer {c['scene']}); rerun kb video durations")
+                raise KbError(f"project.json changed under kb (scene {c['index']} is no longer {c['scene']}); rerun kb video durations", kind="conflict")
             entry["durationMs"] = int(c["toMs"])
-        if atomic_write_json_if(project.manifest_path, manifest, sha):
-            project.manifest(reload=True)
-            return
-    raise KbError("project.json kept changing while kb wrote it; rerun kb video durations --write")
+        return manifest
+
+    mutate_json(project, "project.json", fn, op="kb video durations")
+    project.manifest(reload=True)
 
 
 
@@ -835,11 +837,13 @@ def follow_spec(ref: str) -> Dict[str, Any]:
 
 
 def set_follow(project: Any, scene: str, ref: str, *, force: bool = False) -> Dict[str, Any]:
-    """Make a scene's length follow the media in one slot (hash-checked, validated like any sidecar write)."""
+    """Make a scene's length follow the media in one slot (compare-and-swap, validated like any sidecar write)."""
     idx, stem = project.resolve(scene)
     label = f"scenes/{stem}.json"
-    for _attempt in range(4):
-        raw, sha = _read_sidecar(project, stem)
+    out: Dict[str, Any] = {}
+
+    def fn(raw: Any) -> Any:
+        raw = _sidecar_doc(raw, stem)
         if raw is None or not readable(raw):
             raise KbError(f"{label} is missing or unreadable, so its length cannot follow media")
         base, ident = parse_slot(ref)
@@ -850,9 +854,11 @@ def set_follow(project: Any, scene: str, ref: str, *, force: bool = False) -> Di
         fresh = _new_errors(validate(raw), validate(nxt))
         if fresh and not force:
             raise KbError(f"nothing written: following that media would add errors to {label}: " + "; ".join(i.message for i in fresh))
-        if nxt == raw or atomic_write_json_if(project.sidecar_path(stem), nxt, sha):
-            return spec
-    raise KbError(f"{label} kept changing while kb wrote it; rerun in a moment")
+        out["spec"] = spec
+        return None if nxt == raw else nxt
+
+    mutate_json(project, label, fn, op="kb video follow")
+    return out["spec"]
 
 
 def set_start(project: Any, scene: str, slot: str, start_ms: int, *, force: bool = False) -> Dict[str, Any]:
@@ -864,8 +870,10 @@ def set_start(project: Any, scene: str, slot: str, start_ms: int, *, force: bool
         raise KbError("a video background always starts with the scene; pick a device or media slot", 2)
     idx, stem = project.resolve(scene)
     label = f"scenes/{stem}.json"
-    for _attempt in range(4):
-        raw, sha = _read_sidecar(project, stem)
+    out: Dict[str, Any] = {}
+
+    def fn(raw: Any) -> Any:
+        raw = _sidecar_doc(raw, stem)
         if raw is None or not readable(raw):
             raise KbError(f"{label} is missing or unreadable")
         target = _resolve_target(raw, base, ident)
@@ -910,7 +918,9 @@ def set_start(project: Any, scene: str, slot: str, start_ms: int, *, force: bool
         fresh = _new_errors(validate(raw), validate(nxt))
         if fresh and not force:
             raise KbError(f"nothing written: that start would add errors to {label}: " + "; ".join(i.message for i in fresh))
-        result = {"scene": stem, "index": idx, "slot": slot_ref(base, target), "fromMs": before, "toMs": start_ms}
-        if nxt == raw or atomic_write_json_if(project.sidecar_path(stem), nxt, sha):
-            return result
-    raise KbError(f"{label} kept changing while kb wrote it; rerun in a moment")
+        out.clear()
+        out.update({"scene": stem, "index": idx, "slot": slot_ref(base, target), "fromMs": before, "toMs": start_ms})
+        return None if nxt == raw else nxt
+
+    mutate_json(project, label, fn, op="kb video start")
+    return out

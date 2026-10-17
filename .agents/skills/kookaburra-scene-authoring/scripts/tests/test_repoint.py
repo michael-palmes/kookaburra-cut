@@ -5,8 +5,9 @@ import unittest
 from typing import Any, Dict
 from unittest import mock
 
+from kblib import lock
 from kblib.project import Project
-from kblib.util import KbError, atomic_write_json_if
+from kblib.util import KbError
 from kblib.video import repoint
 
 from .helpers import FIXTURES, KbTestCase, read_json, video_project, write_json, write_probe
@@ -142,15 +143,17 @@ class RepointProjectTests(KbTestCase):
         path = self.root / "scenes" / "02-hero.json"
         calls = {"n": 0}
 
-        def racing(target: Any, value: Any, sha: Any) -> bool:
+        real = lock.write_if_unchanged
+
+        def racing(target: Any, base: Any, data: Any) -> bool:
             calls["n"] += 1
             if calls["n"] == 1:
                 other = read_json(path)
                 other["name"] = "Edited by the app"
                 write_json(path, other)
-            return atomic_write_json_if(target, value, sha)
+            return real(target, base, data)
 
-        with mock.patch.object(repoint, "atomic_write_json_if", side_effect=racing):
+        with mock.patch.object(lock, "write_if_unchanged", side_effect=racing):
             repoint.apply(self.project, "02-hero", "device:phone", "assets/rec-edited.mp4")
         doc = self.sidecar()
         self.assertEqual(calls["n"], 2)

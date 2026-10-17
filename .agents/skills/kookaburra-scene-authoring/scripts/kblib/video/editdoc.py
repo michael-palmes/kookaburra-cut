@@ -6,18 +6,16 @@ the content hash it read, retrying on a conflict.
 
 from __future__ import annotations
 
-import errno
-import fcntl
 import hashlib
 import json
 import math
 import os
 import re
-import time
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from ..util import EXIT_ENV, EXIT_PROBLEMS, KbError, exact_case_exists, now_ms
+from ..lock import RETRY_AFTER_MS, FileLock
+from ..util import EXIT_PROBLEMS, EXIT_TRANSIENT, KbError, exact_case_exists
 from . import editmath as em
 
 EDITS_DIR = "edits"
@@ -586,73 +584,27 @@ def render_state(project: Any, name: str) -> str:
 
 # ── per-edit lock ─────────────────────────────────────────────────────────────
 
-_held: Dict[str, Tuple[int, int]] = {}
+class EditLock(FileLock):
+    """flock on bridge/video/<slug>/locks/<name>.lock, reentrant within this process (kblib.lock.FileLock)."""
 
-
-class EditLock:
-    """flock on bridge/video/<slug>/locks/<name>.lock, reentrant within this process."""
+    default_op = "a kb video command"
 
     def __init__(self, project: Any, name: str, op: str, wait: Optional[float] = None) -> None:
+        from .. import identity
         from . import cache
 
-        self.path = cache.subdir(project, "locks") / f"{name}.lock"
+        super().__init__(cache.subdir(project, "locks") / f"{name}.lock", op, LOCK_WAIT_S if wait is None else wait, identity.current().name)
         self.name = name
-        self.op = op
-        self.wait = LOCK_WAIT_S if wait is None else max(0.0, float(wait))
 
-    def __enter__(self) -> "EditLock":
-        key = str(self.path)
-        if key in _held:
-            fd, depth = _held[key]
-            _held[key] = (fd, depth + 1)
-            return self
-        fd = os.open(key, os.O_RDWR | os.O_CREAT, 0o644)
-        deadline = time.monotonic() + self.wait
-        while True:
-            try:
-                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                break
-            except OSError as e:
-                if e.errno not in (errno.EAGAIN, errno.EACCES, errno.EWOULDBLOCK):
-                    os.close(fd)
-                    raise
-                if time.monotonic() >= deadline:
-                    holder = self.holder(fd)
-                    os.close(fd)
-                    raise KbError(
-                        f"edits/{self.name}.json is busy: {holder}. Wait for it to finish, or rerun with --wait SECONDS",
-                        EXIT_ENV,
-                    ) from None
-                time.sleep(0.1)
-        try:
-            os.ftruncate(fd, 0)
-            os.write(fd, json.dumps({"pid": os.getpid(), "op": self.op, "atMs": now_ms()}).encode("utf-8"))
-        except OSError:
-            pass
-        _held[key] = (fd, 1)
-        return self
-
-    def holder(self, fd: Optional[int] = None) -> str:
-        try:
-            info = json.loads(self.path.read_text(encoding="utf-8") or "{}")
-        except (OSError, ValueError):
-            info = {}
-        if not isinstance(info, dict) or not info.get("pid"):
-            return "another kb command holds its lock"
-        since = f", for {max(0, (now_ms() - int(info.get('atMs') or now_ms())) // 1000)} s" if info.get("atMs") else ""
-        return f"pid {info.get('pid')} is running {info.get('op') or 'a kb video command'}{since}"
-
-    def __exit__(self, *exc: Any) -> None:
-        key = str(self.path)
-        fd, depth = _held[key]
-        if depth > 1:
-            _held[key] = (fd, depth - 1)
-            return
-        del _held[key]
-        try:
-            fcntl.flock(fd, fcntl.LOCK_UN)
-        finally:
-            os.close(fd)
+    def busy(self, holder: str) -> KbError:
+        return KbError(
+            f"edits/{self.name}.json is busy: {holder}. Wait for it to finish, or rerun with --wait SECONDS",
+            EXIT_TRANSIENT,
+            kind="locked",
+            hint="another kb video command holds this edit; rerun in a moment",
+            retry_after_ms=RETRY_AFTER_MS,
+            data={"holder": self.holder_info()},
+        )
 
 
 def edit_lock(project: Any, name: str, op: str, wait: Optional[float] = None) -> EditLock:
@@ -721,7 +673,7 @@ def mutate(
         data = read_bytes(project, name)
         sha = sha256_hex(data)
         if base is not None and base != sha:
-            raise KbError(conflict_message(name, base, sha), EXIT_PROBLEMS)
+            raise KbError(conflict_message(name, base, sha), EXIT_PROBLEMS, kind="conflict")
         try:
             before = parse(data)
         except DocError as e:
@@ -749,7 +701,7 @@ def mutate(
         except appcli.CliError as e:
             if e.cli_code == "conflict":
                 if base is not None:
-                    raise KbError(conflict_message(name, base, str(e.data.get("hash") or "?")), EXIT_PROBLEMS) from None
+                    raise KbError(conflict_message(name, base, str(e.data.get("hash") or "?")), EXIT_PROBLEMS, kind="conflict") from None
                 return None
             raise
         return Mutation(after, before, sha, str(saved.get("hash") or ""), rebased, pruned, True, issues)
@@ -759,7 +711,12 @@ def mutate(
             outcome = attempt(n > 0)
             if outcome is not None:
                 return outcome
-        raise KbError(f"edits/{name}.json kept changing while kb saved it ({SAVE_RETRIES + 1} tries); the editor may be autosaving. Rerun in a moment", EXIT_PROBLEMS)
+        raise KbError(
+            f"edits/{name}.json kept changing while kb saved it ({SAVE_RETRIES + 1} tries); the editor may be autosaving. Rerun in a moment",
+            EXIT_TRANSIENT,
+            kind="conflict",
+            retry_after_ms=RETRY_AFTER_MS,
+        )
 
     if dry_run:
         return run()

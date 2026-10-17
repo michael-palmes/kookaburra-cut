@@ -82,12 +82,53 @@ class KbError(Exception):
         return "\n".join(lines)
 
 
-def ok_envelope(command: str, payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-    """The --json success shape: { ok, command, ...payload } (lists live under plural keys, never bare)."""
-    out: Dict[str, Any] = {"ok": True, "command": command}
-    for key, value in (payload or {}).items():
+def ok_envelope(
+    command: str,
+    payload: Optional[Dict[str, Any]] = None,
+    *,
+    ok: Optional[bool] = None,
+    code: Optional[str] = None,
+    error: Optional[str] = None,
+) -> Dict[str, Any]:
+    """The --json shape: { ok, command, ...payload } (lists live under plural keys, never bare).
+
+    ok defaults to the payload's own boolean "ok" (a check's verdict), else True. A report that exits 1 (problems
+    found) is ok false and carries `code` (default "failed") and `error`, like a failure envelope.
+    """
+    body = dict(payload or {})
+    own = body.pop("ok", None)
+    flag = ok if ok is not None else (own if isinstance(own, bool) else True)
+    out: Dict[str, Any] = {"ok": flag, "command": command}
+    if not flag:
+        out["code"] = code or body.pop("code", None) or "failed"
+        out["error"] = error or body.pop("error", None) or "problems found (see the rest of this object)"
+    for key, value in body.items():
         out.setdefault(key, value)
     return out
+
+
+COMMAND_DESTS = ("command", "op", "action", "vop", "tap_op", "mask_op", "taps_op")
+_command = ""
+
+
+def command_name(args: Any) -> str:
+    """The envelope's `command`: the subcommand and its ops, for example "scene add" or "video tap add"."""
+    parts = []
+    for dest in COMMAND_DESTS:
+        value = getattr(args, dest, None)
+        if isinstance(value, str) and value:
+            parts.append(value)
+    return " ".join(parts)
+
+
+def set_command(name: str) -> None:
+    """The command this kb process runs, for emit_ok() in modules that are not handed it."""
+    global _command
+    _command = name
+
+
+def emit_ok(payload: Optional[Dict[str, Any]] = None, **kwargs: Any) -> None:
+    emit_json(ok_envelope(_command, payload, **kwargs))
 
 
 def home() -> Path:
@@ -213,14 +254,6 @@ def file_sha256(path: Path) -> Optional[str]:
             return hashlib.sha256(f.read()).hexdigest()
     except OSError:
         return None
-
-
-def atomic_write_json_if(path: Path, value: Any, expected_sha: Optional[str]) -> bool:
-    """Write only when the file still hashes to expected_sha (None: it must not exist); False means it changed, so re-read and retry."""
-    if file_sha256(path) != expected_sha:
-        return False
-    atomic_write_json(path, value)
-    return True
 
 
 def js_json(value: Any) -> Any:

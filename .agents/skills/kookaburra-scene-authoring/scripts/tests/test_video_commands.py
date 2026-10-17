@@ -70,7 +70,9 @@ class HelpAndInspectTests(VideoCase):
         out = self.v("new", "assets/rec.mp4").stdout
         self.assertIn("created edits/rec.json", out)
         self.assertIn("next:", out)
-        rows = self.j("list")
+        listed = self.j("list")
+        self.assertEqual((listed["ok"], listed["command"]), (True, "video list"))
+        rows = listed["edits"]
         self.assertEqual(rows[0]["name"], "rec")
         self.assertEqual(rows[0]["render"]["state"], "none")
         shown = self.j("show", "rec", "--at", "2.5")
@@ -211,12 +213,16 @@ class ClipTests(VideoCase):
         self.assertEqual(out["changes"][0]["created"], "c2")
         self.assertIn(sha, self.calls("save")[-1])
 
-    def test_lock_busy_is_exit_2(self) -> None:
+    def test_lock_busy_is_exit_3(self) -> None:
         self.real_process = True
         with editdoc.edit_lock(self.project, "rec", "kb video render", wait=0):
-            proc = self.v("split", "rec", "--at", "2", "--wait", "0.3", code=2)
+            proc = self.v("split", "rec", "--at", "2", "--wait", "0.3", code=3)
+            out = self.j("split", "rec", "--at", "2", "--wait", "0.3", code=3)
         self.assertIn("busy", proc.stderr)
         self.assertIn(str(os.getpid()), proc.stderr)
+        self.assertEqual((out["ok"], out["code"], out["command"]), (False, "locked", "video split"))
+        self.assertEqual(out["holder"]["pid"], os.getpid())
+        self.assertGreater(out["retryAfterMs"], 0)
 
 
 class TapMaskTests(VideoCase):
