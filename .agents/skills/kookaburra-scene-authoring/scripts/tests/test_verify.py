@@ -172,12 +172,39 @@ class VerifyTests(KbTestCase):
 
     def test_film_runs_kb_export_and_skips_the_film_check_when_it_fails(self) -> None:
         root = make_project(self.tmp)
+        mine = root / "exports" / "demo-16x9-custom.mp4"
+        mine.parent.mkdir(parents=True, exist_ok=True)
+        mine.write_bytes(b"the user's film")
         out = self.verify(root, "--film", code=1)
+        self.assertEqual(mine.read_bytes(), b"the user's film")
         steps = self.steps(out)
         self.assertEqual(list(steps)[-2:], ["export", "film"])
         self.assertFalse(steps["export"]["ok"])
         self.assertIn("skipped", steps["film"])
         self.assertNotIn("flashes", steps)
+
+    def test_a_film_draft_never_replaces_the_users_custom_export(self) -> None:
+        root = make_project(self.tmp)
+        project = self._project(root)
+        exports = root / "exports"
+        exports.mkdir()
+        mine, report, other = exports / "demo-16x9-custom.mp4", exports / "demo-16x9-custom.mp4.flashes.json", exports / "demo-16x9.mp4"
+        mine.write_bytes(b"user")
+        report.write_text("{}")
+        other.write_bytes(b"keep")
+        hold = verify.drafts_root(project) / "held-1"
+        held = verify.hold_custom_exports(project, hold)
+        self.assertFalse(mine.exists() or report.exists())
+        self.assertTrue(other.exists())
+        mine.write_bytes(b"draft")
+        report.write_text('{"draft": true}')
+        kept = Path(verify.keep_draft(project, str(mine), hold) or "")
+        self.assertEqual(kept.read_bytes(), b"draft")
+        self.assertEqual(kept.parent.parent, verify.drafts_root(project))
+        self.assertTrue((kept.parent / report.name).is_file())
+        self.assertEqual(verify.restore_custom_exports(held, hold), [])
+        self.assertEqual((mine.read_bytes(), report.read_text(), other.read_bytes()), (b"user", "{}", b"keep"))
+        self.assertFalse(hold.exists())
 
     def _project(self, root: Path) -> Any:
         from kblib.project import Project

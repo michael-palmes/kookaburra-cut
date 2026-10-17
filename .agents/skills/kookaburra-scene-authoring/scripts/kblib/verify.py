@@ -7,6 +7,7 @@ import contextlib
 import io
 import json
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -32,6 +33,8 @@ CHECK_TIMEOUT_S = 300.0
 RENDER_TIMEOUT_S = 600.0
 CAPTURE_TIMEOUT_S = 300.0
 FILM_EXPORT_ARGS = ["--fps", "30", "--short-edge", "720", "--allow-flashes"]
+CUSTOM_EXPORT_SUFFIXES = ("-custom.mp4", "-custom.mp4.flashes.json")
+KEEP_DRAFTS = 5
 
 EPILOG = """\
 Runs, in order, and reports each step (ok, time, errors, warnings, files to Read):
@@ -46,7 +49,8 @@ Runs, in order, and reports each step (ok, time, errors, warnings, files to Read
   flashes    the flash check of the newest exports/ film, only when it is newer than every
              source file (else skipped)
   --film     instead of flashes: ./kb export --fps 30 --short-edge 720 --allow-flashes, then
-             ./kb check film --file <it> (flashes, colour, handoffs and pacing on the real film)
+             ./kb check film --file <it> (flashes, colour, handoffs and pacing on the real film);
+             the draft is kept in .kb/verify/, never in exports/
 
 Exit 1 when any step fails, 3 when a step hit something transient (rerun after retryAfterMs),
 else 0. With no app serving this project only the static check runs: say so, and ask the user
@@ -390,7 +394,79 @@ def kb_script() -> Path:
     return Path(__file__).resolve().parent.parent / "kb.py"
 
 
+def drafts_root(project: Any) -> Path:
+    from . import lock
+
+    return lock.kb_dir(project) / "verify"
+
+
+def hold_custom_exports(project: Any, hold: Path) -> List[Tuple[Path, Path]]:
+    """Move the user's Custom exports aside: the draft export takes the same canonical name."""
+    exports = project.root / "exports"
+    held: List[Tuple[Path, Path]] = []
+    try:
+        names = sorted(p for p in exports.iterdir() if p.is_file() and p.name.endswith(CUSTOM_EXPORT_SUFFIXES))
+    except OSError:
+        return held
+    for original in names:
+        hold.mkdir(parents=True, exist_ok=True)
+        aside = hold / original.name
+        os.replace(original, aside)
+        held.append((original, aside))
+    return held
+
+
+def keep_draft(project: Any, film: Optional[str], hold: Path) -> Optional[str]:
+    """Move the draft and its flash report out of exports/ into .kb/verify/, so exports/ keeps only the user's films."""
+    if not film or not Path(film).is_file():
+        return film
+    folder = hold.parent / time.strftime("%Y%m%d-%H%M%S")
+    n = 2
+    while folder.exists():
+        folder, n = hold.parent / f"{time.strftime('%Y%m%d-%H%M%S')}-{n}", n + 1
+    folder.mkdir(parents=True)
+    dest = folder / Path(film).name
+    os.replace(film, dest)
+    report = Path(film + ".flashes.json")
+    if report.is_file():
+        os.replace(report, folder / report.name)
+    drafts = sorted(p for p in hold.parent.iterdir() if p.is_dir() and not p.name.startswith("held-"))
+    for old in drafts[:-KEEP_DRAFTS]:
+        shutil.rmtree(old, ignore_errors=True)
+    return str(dest)
+
+
+def restore_custom_exports(held: List[Tuple[Path, Path]], hold: Path) -> List[str]:
+    """Put the user's Custom exports back; a name the draft still holds keeps the original aside and says where."""
+    notes: List[str] = []
+    for original, aside in held:
+        if original.exists():
+            notes.append(f"{original.name} is kept at {aside} (its name was taken)")
+            continue
+        os.replace(aside, original)
+    with contextlib.suppress(OSError):
+        hold.rmdir()
+    return notes
+
+
 def step_export(ctx: Any, aspect: Optional[str]) -> Tuple[Step, Optional[str]]:
+    """./kb export at draft size, kept in .kb/verify/ with the user's Custom exports held aside meanwhile; the draft's absolute path."""
+    hold = drafts_root(ctx.project) / f"held-{os.getpid()}-{int(time.time() * 1000)}"
+    held = hold_custom_exports(ctx.project, hold)
+    film: Optional[str] = None
+    try:
+        st, film = run_export(ctx, aspect)
+        film = keep_draft(ctx.project, film, hold)
+        if film:
+            st.paths = [film]
+            st.extra["file"] = film
+    finally:
+        notes = restore_custom_exports(held, hold)
+    st.warnings += notes
+    return st, film
+
+
+def run_export(ctx: Any, aspect: Optional[str]) -> Tuple[Step, Optional[str]]:
     """./kb export at draft size, its JSON lines read as they come (progress goes to stderr); the film's absolute path."""
     from . import exporting
 

@@ -38,7 +38,7 @@ the user's own Cancel.
 ./kb verify-export exports/<name>.mp4 --loudness-target -14
 ./kb check film --file exports/<name>.mp4           flashes, colour, handoffs and pacing on the real film
 ./kb check film pacing                              static: words per second, long still stretches, very short scenes
-./kb verify --film                                  a 720p 30 fps draft export, then every film check on it
+./kb verify --film                                  a 720p 30 fps draft (kept in .kb/verify/, never exports/), then every film check on it
 ```
 
 - `verify-export` compares the file with what the project asked for (the export record,
