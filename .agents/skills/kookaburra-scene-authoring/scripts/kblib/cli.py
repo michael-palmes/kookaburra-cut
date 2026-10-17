@@ -1203,6 +1203,9 @@ def build_parser(video_extensions: bool = True) -> argparse.ArgumentParser:
     from .video import commands as videomod
 
     videomod.register(sub, common, Formatter, extensions=video_extensions)
+    from .film import cli as filmcli
+
+    filmcli.register(sub, common, Formatter)
 
     add("beats", "soundtrack beat grid and key moments per scene (every argument goes to beats.py)")
     add("chart", "chart data and keyframes for a scene (every argument goes to chart.py)")
