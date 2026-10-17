@@ -1057,17 +1057,65 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// Where a `tauri.conf.json` resource entry puts `rel` (a path inside `.agents/skills`), mirroring tauri-utils: a directory keeps its structure, a `dir/*.ext` glob lands by file name, a file lands at its target.
+    fn bundled_at(resources: &serde_json::Map<String, Value>, rel: &Path) -> Option<PathBuf> {
+        let src = Path::new("../.agents/skills").join(rel);
+        resources.iter().find_map(|(key, dest)| {
+            let dest = PathBuf::from(dest.as_str()?);
+            if let Some((dir, ext)) = key.split_once("/*.") {
+                let in_dir = src.parent() == Some(Path::new(dir));
+                return (in_dir && src.extension().is_some_and(|e| e == ext))
+                    .then(|| dest.join(src.file_name().unwrap()));
+            }
+            let key = Path::new(key);
+            if src == key {
+                Some(dest)
+            } else {
+                src.strip_prefix(key).ok().map(|rest| dest.join(rest))
+            }
+        })
+    }
+
+    fn shipped_files(root: &Path, dir: &Path, out: &mut Vec<PathBuf>) {
+        for entry in std::fs::read_dir(dir).unwrap().flatten() {
+            let path = entry.path();
+            let rel = path.strip_prefix(root).unwrap().to_path_buf();
+            let in_skill: PathBuf = rel.components().skip(1).collect();
+            if skipped(&entry.file_name()) || unshipped(&in_skill) {
+                continue;
+            }
+            if path.is_dir() {
+                shipped_files(root, &path, out);
+            } else {
+                out.push(rel);
+            }
+        }
+    }
+
     #[test]
-    fn the_repo_ships_every_skill() {
+    fn the_repo_bundles_every_skill_file_and_no_kit_tests() {
         let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../.agents/skills");
         assert!(shipped_skills_in(&root).1.is_empty());
         let conf: Value =
             serde_json::from_str(include_str!("../tauri.conf.json")).expect("tauri.conf.json");
+        let resources = conf["bundle"]["resources"].as_object().unwrap();
         for name in SHIPPED_SKILLS {
+            let mut files = Vec::new();
+            shipped_files(&root, &root.join(name), &mut files);
+            assert!(!files.is_empty());
+            for rel in files {
+                assert_eq!(
+                    bundled_at(resources, &rel),
+                    Some(Path::new("claude-skills").join(&rel)),
+                    "{} must be bundled at claude-skills/{0}",
+                    rel.display()
+                );
+            }
+            let test = Path::new(name).join("scripts/tests/test_kb.py");
             assert_eq!(
-                conf["bundle"]["resources"][format!("../.agents/skills/{name}")],
-                json!(format!("claude-skills/{name}")),
-                "{name} must be bundled as a claude-skills resource"
+                bundled_at(resources, &test),
+                None,
+                "kit tests stay out of the app"
             );
         }
     }

@@ -66,8 +66,13 @@
       "../presets": "presets",
       "../src/assets/template-previews": "template-previews",
       "../src/assets/preset-previews": "preset-previews",
-      "../.agents/skills/kookaburra-scene-authoring": "claude-skills/kookaburra-scene-authoring",
-      "../.agents/skills/kookaburra-video-editing": "claude-skills/kookaburra-video-editing"
+      "../.agents/skills/kookaburra-scene-authoring/*.md": "claude-skills/kookaburra-scene-authoring/",
+      "../.agents/skills/kookaburra-scene-authoring/catalog.json": "claude-skills/kookaburra-scene-authoring/catalog.json",
+      "../.agents/skills/kookaburra-scene-authoring/reference": "claude-skills/kookaburra-scene-authoring/reference",
+      "../.agents/skills/kookaburra-scene-authoring/scripts/*.py": "claude-skills/kookaburra-scene-authoring/scripts/",
+      "../.agents/skills/kookaburra-scene-authoring/scripts/kblib": "claude-skills/kookaburra-scene-authoring/scripts/kblib",
+      "../.agents/skills/kookaburra-video-editing/*.md": "claude-skills/kookaburra-video-editing/",
+      "../.agents/skills/kookaburra-video-editing/reference": "claude-skills/kookaburra-video-editing/reference"
     },
     "icon": [
       "icons/32x32.png",
