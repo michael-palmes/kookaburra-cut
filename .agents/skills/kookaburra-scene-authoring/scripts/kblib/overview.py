@@ -94,7 +94,9 @@ def load_lines(last: Optional[Dict[str, Any]], limit: int = 6) -> List[str]:
     return out
 
 
-def app_line(project: Project, hb: Optional[Dict[str, Any]]) -> str:
+def app_line(project: Project, hb: Optional[Dict[str, Any]], rows: Optional[List[Dict[str, Any]]] = None) -> str:
+    if not hb and rows:
+        return "App: running, but no instance serves this project's workspace (see Instances; kb check is static only until one does)"
     if not hb:
         return "App: not running (kb check is static only; capture, check --app and fonts check need the app)"
     open_ = hb.get("openProject")
@@ -269,8 +271,43 @@ def edits_line(rows: List[Dict[str, Any]], limit: int = 6) -> Optional[str]:
     return f"Edits: {'; '.join(bits)}{more}"
 
 
+def instance_line(row: Dict[str, Any]) -> str:
+    if row["servesThisProject"]:
+        why = "serves this project" + (f"; open: {row['openProject']}" if row.get("openProject") else "")
+    elif not row["serving"]:
+        why = f"bridge off: {row.get('reason') or 'not serving'}"
+    else:
+        why = "serves another workspace" if row.get("workspaceRoot") else "no workspace configured"
+    who = " ".join(str(b) for b in (row.get("build") or "?", row.get("appVersion") or "?", row.get("bundleId") or "") if b)
+    star = "*" if row["chosen"] else " "
+    return f"  {star} pid {row['pid']} {who}, workspace {row.get('workspaceRoot') or 'none'} ({why})"
+
+
+def instance_lines(rows: List[Dict[str, Any]]) -> List[str]:
+    """Shown when more than one instance is live or none serves this project."""
+    serving_here = [r for r in rows if r["servesThisProject"]]
+    if not rows or (len(rows) == 1 and serving_here):
+        return []
+    out = ["Instances:"] + [instance_line(r) for r in rows]
+    if len(serving_here) > 1:
+        out.append("  several instances serve this workspace; kb addresses the starred one (project open, then release, then the earliest start)")
+    return out
+
+
+def dev_build_lines(hb: Optional[Dict[str, Any]]) -> List[str]:
+    if not hb or hb.get("build") != "dev":
+        return []
+    checkout = hb.get("checkout") if isinstance(hb.get("checkout"), dict) else {}
+    where = f" from {checkout['path']}" if checkout.get("path") else ""
+    return [
+        f"DEV BUILD: a development build serves this project (pid {hb.get('pid')}{where}). React dev builds use far more WebContent memory; "
+        "for long or multi-agent sessions ask the user to use the packaged app instead."
+    ]
+
+
 def status_data(project: Project) -> Dict[str, Any]:
-    hb = bridge.live_heartbeat()
+    hb = bridge.live_heartbeat(project)
+    rows = bridge.instance_rows(project)
     manifest = project.manifest()
     entries = project.scene_entries()
     worktree = session_worktree(project)
@@ -284,13 +321,19 @@ def status_data(project: Project) -> Dict[str, Any]:
         "scenes": len(entries),
         "totalMs": project.total_ms(),
         "app": {
-            "running": hb is not None,
+            "running": hb is not None or bool(rows),
+            "servesThisProject": hb is not None,
+            "pid": hb.get("pid") if hb else None,
+            "bundleId": hb.get("bundleId") if hb else None,
+            "build": hb.get("build") if hb else None,
+            "workspaceRoot": hb.get("workspaceRoot") if hb else None,
             "version": hb.get("appVersion") if hb else None,
             "openProject": hb.get("openProject") if hb else None,
             "aspect": hb.get("aspect") if hb else None,
             "playheadMs": hb.get("playheadMs") if hb else None,
             "exporting": hb.get("exporting") if hb else None,
         },
+        "instances": rows,
         "lastLoad": last_load_for(project, hb),
         "kit": kit_info(project),
         "checkpoint": checkpoint_line(project),
@@ -306,14 +349,16 @@ def video_cli() -> Dict[str, Any]:
 
 
 def status_text(project: Project) -> str:
-    hb = bridge.live_heartbeat()
+    hb = bridge.live_heartbeat(project)
+    rows = bridge.instance_rows(project)
     manifest = project.manifest()
     fmts = manifest.get("formats") if isinstance(manifest.get("formats"), list) else []
-    lines = worktree_lines(project) + [
+    lines = worktree_lines(project) + dev_build_lines(hb) + [
         f"Project: {manifest.get('name', '?')} ({project.project_id}) at {project.root}",
         f"Theme {manifest.get('themeId', '?')} · formats {' '.join(str(f) for f in fmts)} · {len(project.scene_entries())} scenes · {fmt_secs(project.total_ms())}",
-        app_line(project, hb),
+        app_line(project, hb, rows),
     ]
+    lines += instance_lines(rows)
     lines += load_lines(last_load_for(project, hb))
     edits = edits_line(edits_summary(project))
     if edits:
@@ -325,7 +370,7 @@ def status_text(project: Project) -> str:
 
 def context_text(project: Project, check_summary: Optional[List[str]] = None, cwd: Optional[str] = None) -> str:
     """The SessionStart text: under 4 KB, most useful first (a worktree STOP banner leads)."""
-    hb = bridge.live_heartbeat()
+    hb = bridge.live_heartbeat(project)
     head: List[str] = worktree_lines(project, cwd)
     try:
         manifest = project.manifest()
@@ -333,7 +378,7 @@ def context_text(project: Project, check_summary: Optional[List[str]] = None, cw
         head.append(f"Kookaburra Cut project \"{manifest.get('name', '?')}\" ({project.project_id}) · theme {manifest.get('themeId', '?')} · {' '.join(str(f) for f in fmts)} · {len(project.scene_entries())} scenes · {fmt_secs(project.total_ms())}")
     except KbError as e:
         head.append(f"Kookaburra Cut project {project.project_id}: project.json problem: {e.message}")
-    head.append(app_line(project, hb))
+    head.append(app_line(project, hb, None if hb else bridge.instance_rows(project)))
     head += load_lines(last_load_for(project, hb), limit=4)
     if check_summary:
         head += check_summary
