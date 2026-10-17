@@ -505,30 +505,95 @@ def video_project(root: Path, git: bool = False, **probe: Any) -> Path:
     return project
 
 
-class FakeApp:
-    """Writes a live heartbeat and answers bridge requests from a thread, like the app's render window."""
+def sleeper(test: unittest.TestCase) -> subprocess.Popen:
+    """A live process of our own whose pid stands in for another app instance (reaped at cleanup; kill() and wait() to make it quit)."""
+    proc = subprocess.Popen(["sleep", "300"])
 
-    def __init__(self, bridge: Path, handler: Callable[[Dict[str, Any]], Optional[Dict[str, Any]]], kinds: Optional[List[str]] = None, **heartbeat: Any) -> None:
+    def stop() -> None:
+        proc.kill()
+        proc.wait()
+
+    test.addCleanup(stop)
+    return proc
+
+
+def _same_dir(a: Any, b: Any) -> bool:
+    try:
+        sa, sb = os.stat(str(a)), os.stat(str(b))
+    except OSError:
+        return False
+    return (sa.st_dev, sa.st_ino) == (sb.st_dev, sb.st_ino)
+
+
+class FakeApp:
+    """Writes a live heartbeat and answers bridge requests from a thread, like a serving app instance.
+
+    By default a current app: `apps/<pid>.json` plus `app.json`, claiming requests addressed to its pid (else its
+    workspace root) and stamping `servedBy`. legacy=True is an older app (only `app.json`, claims everything, no
+    `servedBy`); serving=False is a passive instance that writes its heartbeat and claims nothing; serve_filter
+    replaces the claim rule.
+    """
+
+    def __init__(self, bridge: Path, handler: Callable[[Dict[str, Any]], Optional[Dict[str, Any]]], kinds: Optional[List[str]] = None, *,
+                 pid: Optional[int] = None, root: Optional[Path] = None, serving: bool = True, legacy: bool = False,
+                 serve_filter: Optional[Callable[[Dict[str, Any]], bool]] = None, **heartbeat: Any) -> None:
         self.bridge = bridge
         self.handler = handler
         self.kinds = kinds if kinds is not None else ["capture", "check", "fonts", "insertPreset", "mediaChanged", "openEdit"]
         self.heartbeat = heartbeat
+        self.pid = pid if pid is not None else os.getpid()
+        self.root = Path(root) if root is not None else bridge.parent
+        self.serving = serving
+        self.legacy = legacy
+        self.serve_filter = serve_filter
+        self.started_at_ms = int(time.time() * 1000)
         self.requests: List[Dict[str, Any]] = []
         self._stop = threading.Event()
         self._thread = threading.Thread(target=self._run, daemon=True)
 
-    def write_heartbeat(self) -> None:
-        body = {
-            "version": 2, "pid": os.getpid(), "appVersion": "0.19.0-test", "build": "dev",
-            "updatedAtMs": int(time.time() * 1000), "workspaceRoot": str(self.bridge.parent),
+    def body(self) -> Dict[str, Any]:
+        body: Dict[str, Any] = {
+            "version": 2, "pid": self.pid, "appVersion": "0.19.0-test", "build": "dev",
+            "updatedAtMs": int(time.time() * 1000), "workspaceRoot": str(self.root),
             "resourcesDir": None, "openProject": None, "aspect": "16:9", "playheadMs": 1000,
             "exporting": False, "playing": False, "kinds": self.kinds, "lastLoad": None,
         }
+        if not self.legacy:
+            body.update({
+                "version": 3, "startedAtMs": self.started_at_ms, "bundleId": "com.mpalmes.kookaburracut", "exePath": None,
+                "checkout": None, "rootSource": "settings", "primary": self.serving, "exportJob": None, "health": None,
+                "bridge": {"serving": self.serving, "reason": None if self.serving else "workspace root overridden by KOOKABURRA_WORKSPACE_ROOT"},
+            })
         body.update(self.heartbeat)
-        self.bridge.mkdir(parents=True, exist_ok=True)
-        tmp = self.bridge / ".app.json.tmp"
-        tmp.write_text(json.dumps(body), encoding="utf-8")
-        os.replace(tmp, self.bridge / "app.json")
+        return body
+
+    def served_by(self) -> Dict[str, Any]:
+        body = self.body()
+        return {k: body.get(k) for k in ("pid", "bundleId", "build", "appVersion", "workspaceRoot")}
+
+    def write_heartbeat(self) -> None:
+        text = json.dumps(self.body())
+        targets = [] if self.legacy else [self.bridge / "apps" / f"{self.pid}.json"]
+        if self.legacy or self.serving:
+            targets.append(self.bridge / "app.json")
+        for target in targets:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            tmp = target.parent / f".{target.name}.{self.pid}.tmp"
+            tmp.write_text(text, encoding="utf-8")
+            os.replace(tmp, target)
+
+    def claims(self, body: Dict[str, Any]) -> bool:
+        if self.serve_filter is not None:
+            return self.serve_filter(body)
+        if not self.serving:
+            return False
+        if self.legacy:
+            return True
+        if body.get("instancePid") is not None:
+            return body["instancePid"] == self.pid
+        if body.get("workspaceRoot") is not None:
+            return _same_dir(body["workspaceRoot"], self.root)
+        return True
 
     def __enter__(self) -> "FakeApp":
         self.write_heartbeat()
@@ -547,21 +612,27 @@ class FakeApp:
             if time.monotonic() - last_beat > 2:
                 self.write_heartbeat()
                 last_beat = time.monotonic()
-            if requests.is_dir():
+            if requests.is_dir() and (self.serving or self.serve_filter is not None):
                 for path in sorted(requests.glob("*.json")):
+                    try:
+                        body = json.loads(path.read_text(encoding="utf-8"))
+                    except (OSError, ValueError):
+                        continue
+                    if not isinstance(body, dict) or not self.claims(body):
+                        continue
                     claimed = requests / ".claimed"
                     claimed.mkdir(exist_ok=True)
-                    target = claimed / path.name
                     try:
-                        os.replace(path, target)
-                        body = json.loads(target.read_text(encoding="utf-8"))
-                    except (OSError, ValueError):
+                        os.replace(path, claimed / path.name)
+                    except OSError:
                         continue
                     self.requests.append(body)
                     answer = self.handler(body)
                     if answer is None:
                         continue
                     answer = dict({"version": 2, "id": body["id"]}, **answer)
+                    if not self.legacy:
+                        answer.setdefault("servedBy", self.served_by())
                     responses.mkdir(parents=True, exist_ok=True)
                     tmp = responses / f"{body['id']}.json.tmp"
                     tmp.write_text(json.dumps(answer), encoding="utf-8")

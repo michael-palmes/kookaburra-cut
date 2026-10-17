@@ -87,6 +87,7 @@ class Ctx:
     def project(self) -> Project:
         if self._project is None:
             self._project = Project(find_root(explicit=getattr(self.args, "project_dir", None)))
+            bridge.bind(self._project)
         return self._project
 
 
@@ -204,6 +205,9 @@ def cmd_check(ctx: Ctx) -> int:
         out["app"] = bool(args.app or args.render)
         emit_json(out)
     else:
+        served = bridge.served_line(resp)
+        if served:
+            emit_err(f"kb: {served}")
         if report.issues:
             emit(report.render())
         for n in notes:
@@ -260,6 +264,9 @@ def cmd_capture(ctx: Ctx) -> int:
         emit(f"sheet: {resp['sheetPath']}")
     if resp.get("format"):
         emit_err(f"kb: {resp.get('format')} frame from {resp.get('project')}; Read the PNG to see it")
+    served = bridge.served_line(resp)
+    if served:
+        emit_err(f"kb: {served}")
     return EXIT_OK
 
 

@@ -118,6 +118,10 @@ class Project:
     def kit_dir(self) -> Path:
         return self.root / KIT_REL
 
+    def address(self) -> Dict[str, str]:
+        """Where a bridge request says this project lives: only an app on the same workspace root claims it."""
+        return {"workspaceRoot": str(self.workspace_root), "projectPath": str(self.root)}
+
     def manifest(self, reload: bool = False) -> Dict[str, Any]:
         if self._manifest is None or reload:
             data = load_json(self.manifest_path, "project.json")

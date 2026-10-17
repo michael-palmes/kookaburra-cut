@@ -95,9 +95,13 @@ def home() -> Path:
 
 
 def bridge_dir() -> Path:
+    """KB_BRIDGE_DIR, else the app's KOOKABURRA_BRIDGE_DIR (absolute only, as the app reads it), else ~/Kookaburra Cut/_bridge."""
     override = os.environ.get("KB_BRIDGE_DIR")
     if override:
         return Path(override)
+    app_dir = os.environ.get("KOOKABURRA_BRIDGE_DIR", "").strip()
+    if app_dir and os.path.isabs(app_dir):
+        return Path(app_dir)
     return home() / WORKSPACE_DIR_NAME / "_bridge"
 
 
