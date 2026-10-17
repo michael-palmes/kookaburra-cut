@@ -60,7 +60,9 @@ scripts/
 - The skill directory is copied to a temporary sibling and swapped in (`RENAME_SWAP`,
   with a two-rename fallback), so files the kit no longer ships are removed;
   `__pycache__`, `.DS_Store` and `scripts/tests` are skipped (test fixtures stay out of
-  projects; a stale stamped copy forces a restamp). Dev builds restamp when the shipped tree
+  projects; a stale stamped copy forces a restamp). The app bundle leaves `scripts/tests`
+  out too: `tauri.conf.json` lists each skill's files and folders, and a `kit.rs` test
+  fails when a shipped file is not bundled. Dev builds restamp when the shipped tree
   differs byte for byte (never mid-session for nothing, since a hook may be running
   `kb.py`); release builds restamp when `kit.json`'s `appVersion` differs or the stamped
   tree no longer has the shipped files at their shipped sizes (a deleted or truncated
@@ -195,8 +197,9 @@ skill is its playbook. Code: `scripts/kblib/video/`.
   `editdoc.mutate` takes a per-edit lock, applies ops, validates and saves through the
   CLI's `edit save --base`, rebasing up to three times on a conflict; `repoint` mirrors
   `applyEditRepoint` and the follow-media duration sync on the raw sidecar with
-  hash-checked, guarded writes; `appcli` finds the CLI (`KB_APP_BIN`, heartbeat
-  `cliPath`, `_bridge/cli.json`, then the bundle after its `Info.plist` gate).
+  hash-checked, guarded writes; `appcli` finds the CLI (`KB_APP_BIN`, the live
+  heartbeat's `cliPath`, the installed bundle after its `Info.plist` gate, then
+  `_bridge/cli.json` last, so a leftover dev build never shadows the installed app).
 - Commands: `list`, `show`, `map`, `usages`, `validate`, `caps`; `new`, `reset`;
   `split`, `cut`, `keep`, `trim`, `speed`, `freeze`, `hold`, `remove`, `move`, `insert`,
   `append`; `tap ...`, `mask ...`; `apply PLAN` (all or nothing); `analyse`, `cleanup`,
@@ -273,7 +276,8 @@ alive. It never uses `pgrep` (it matches unrelated processes and misses others).
 `cliPath` is the app's own executable (the headless edit CLI, below) and `cliVersion`
 its CLI version. Interactive builds also write `_bridge/cli.json`
 (`{ path, appVersion, build, cli, writtenAtMs }`) once at setup and never delete it, so
-`kb` finds a dev build's CLI while the app is closed.
+`kb` can still find a dev build's CLI while the app is closed (it only uses it when no
+installed app qualifies).
 
 ### Requests and responses
 
@@ -321,7 +325,10 @@ plus its kind's payload. `busy` applies to every kind except `fonts` while expor
 Native kinds. `mediaChanged` and `openEdit` are claimed by a Rust loop
 (`spawn_native_bridge`, 300 ms poll) rather than the render window, which never claims
 them and never spawns for them. Both take `project: "ws:<slug>"` and the optional
-`projectPath` (checked against the workspace project when sent).
+`projectPath`. An instance only claims a request for a project in its own workspace
+(`projectPath` must resolve to `<root>/<slug>`, else the slug folder must exist), so with
+two apps open the right one answers; a request no running app can serve waits until
+`kb` times out.
 
 - `mediaChanged` (`paths: ["assets/x-edited.mp4"]`, optional `edit`): validates every
   path (outside `assets/` or `..` fails the request; missing files are listed), warms
