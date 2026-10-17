@@ -473,12 +473,51 @@ export function bumpWorkspaceReloadToken(): void {
 function requireWorkspaceProject(slug: string): WorkspaceProject {
   const project = workspaceProjects.get(slug);
   if (!project) {
+    const listed = [...workspaceProjects.values()][0]?.path;
+    const where = listed ? ` in ${listed.replace(/\/[^/]+\/?$/, "")}` : "";
     throw new Error(
-      `Workspace project "${slug}" not found — it may have been renamed or deleted. ` +
+      `Workspace project "${slug}" not found${where}: it may have been renamed or deleted. ` +
         `Known projects: ${[...workspaceProjects.keys()].join(", ") || "none"}.`,
     );
   }
   return project;
+}
+
+/** This instance as `kb status` names it (the bridge_instance command); fetched only to explain a failure. */
+interface BridgeInstance {
+  pid: number;
+  bundleId: string;
+  build: string;
+  workspaceRoot: string | null;
+}
+
+async function bridgeInstance(): Promise<BridgeInstance | null> {
+  try {
+    return await invoke<BridgeInstance>("bridge_instance");
+  } catch {
+    return null;
+  }
+}
+
+function instanceLabel(instance: BridgeInstance | null): string {
+  return instance
+    ? `Kookaburra Cut pid ${instance.pid}, ${instance.bundleId}, ${instance.build}`
+    : "Kookaburra Cut";
+}
+
+const MISS_NAMES = 8;
+
+/** The load error for a slug the workspace listing lacks: which root this instance read, who it is and what it found. */
+async function workspaceMissError(slug: string): Promise<Error> {
+  const instance = await bridgeInstance();
+  const names = [...workspaceProjects.keys()];
+  const shown = names.slice(0, MISS_NAMES).join(", ");
+  const more = names.length > MISS_NAMES ? `, +${names.length - MISS_NAMES} more` : "";
+  const listed = `${names.length} project${names.length === 1 ? "" : "s"} listed${names.length ? `: ${shown}${more}` : ""}`;
+  const root = instance?.workspaceRoot ?? "an unconfigured workspace";
+  return new Error(
+    `Workspace project "${slug}" not found in ${root} (${instanceLabel(instance)}; ${listed})`,
+  );
 }
 
 /** Absolute folders of workspace templates and presets, keyed by their scoped id; filled by the catalogue hydration (engine/templates.ts, engine/presets.ts) so the asset resolvers stay synchronous, exactly like `workspaceProjects`. */
@@ -512,23 +551,29 @@ async function refreshWorkspaceLibrary(scope: "ws-template" | "ws-preset"): Prom
   }
 }
 
-/** Re-scan the workspace (no workspace configured / native errors read as "no projects"). */
+/** Re-scan the workspace through `list_projects`, which reads the effective root (`KOOKABURRA_WORKSPACE_ROOT` included, unlike `get_settings`); a failure names this instance. */
 async function refreshWorkspaceProjects(): Promise<WorkspaceProject[]> {
+  let projects: WorkspaceProject[];
   try {
-    const settings = await invoke<{ workspaceRoot: string | null }>("get_settings");
-    if (!settings.workspaceRoot) return [];
-    const projects = await invoke<WorkspaceProject[]>("list_projects");
-    workspaceProjects = new Map(projects.map((p) => [p.slug, p]));
-    return projects;
+    projects = await invoke<WorkspaceProject[]>("list_projects");
   } catch (e) {
-    console.warn("[workspace] listing projects failed:", e);
-    return [];
+    throw new Error(
+      `Couldn't list workspace projects (${instanceLabel(await bridgeInstance())}): ${errorText(e)}`,
+    );
   }
+  workspaceProjects = new Map(projects.map((p) => [p.slug, p]));
+  return projects;
 }
 
-/** Everything the project picker shows: workspace projects first, then bundled projects. */
+/** Everything the project picker shows: workspace projects first, then bundled projects (a failed listing shows only the bundled ones). */
 export async function listAllProjects(): Promise<ProjectListing[]> {
-  const workspace = (await refreshWorkspaceProjects()).map<ProjectListing>((p) => ({
+  let listed: WorkspaceProject[] = [];
+  try {
+    listed = await refreshWorkspaceProjects();
+  } catch (e) {
+    console.warn("[workspace]", errorText(e));
+  }
+  const workspace = listed.map<ProjectListing>((p) => ({
     id: `${WORKSPACE_PROJECT_PREFIX}${p.slug}`,
     name: p.name,
     source: "workspace",
@@ -959,7 +1004,7 @@ async function loadManifest(id: string): Promise<ProjectManifest> {
     const slug = nativeProjectSlug(id);
     if (scope === "workspace") {
       if (!workspaceProjects.has(slug)) await refreshWorkspaceProjects();
-      requireWorkspaceProject(slug);
+      if (!workspaceProjects.has(slug)) throw await workspaceMissError(slug);
     } else if ((scope === "ws-template" || scope === "ws-preset") && !workspaceLibraryPath(id)) {
       await refreshWorkspaceLibrary(scope as "ws-template" | "ws-preset");
       requireWorkspaceLibraryPath(id);
