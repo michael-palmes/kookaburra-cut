@@ -288,15 +288,17 @@ Hooks:
     (globs included) and visibly writes it: a redirection, `tee`, `mv`, `rm`, `touch`, a `cp`
     or `install` destination, `sed -i`, `perl -i`, a heredoc, `write_text` or `open(..., 'w')`.
     It makes the session checkpoint before a command that visibly writes `scenes/` or
-    `project.json` or runs a kb write. kb-only commands and `run_in_background` calls take no
-    snapshot.
-  - `bash-post` diffs the stamps, drops files other callers journalled meanwhile, journals
+    `project.json` or runs a kb write, and records the errors the scene files and `project.json`
+    it names already have. kb-only commands and `run_in_background` calls take no snapshot.
+  - `bash-post` diffs the stamps, drops files other callers journalled meanwhile and the
+    caller's own kb writes (kb checked those), journals
     `files.changed` (`via: "bash"`) and runs the scoped check on the changed sources (the
     full check past 20 files). Errors in the changed files, a change to `edits/` without
     `kb video`, and a change to a scene leased to someone else (journalled `lease.violated`)
-    exit 2 with stderr; warnings come back as `additionalContext`. After PostToolUseFailure
-    it replies only through `additionalContext`. The Bash check has no baseline, which is why
-    Edit, Write and `kb doc` stay the preferred way to change scene files.
+    exit 2 with stderr; errors a named file already had, and warnings, come back as
+    `additionalContext`. After PostToolUseFailure it replies only through `additionalContext`.
+    Only files the command names get that baseline (a script or glob writes others), which is
+    why Edit, Write and `kb doc` stay the preferred way to change scene files.
 
 ## kb conventions
 
@@ -748,7 +750,7 @@ identity, role, effective root and `rootSource` (the app's "not found" errors na
   matches, the rule the native loop already used. One predicate (`claimable`) serves the
   render-window claim, the native loop and the pending count the editor uses to spawn the
   render window, so no instance keeps a window alive for another's requests. Stale
-  requests (past `deadlineAtMs`, at most 15 min after sending; 120 s without one) are
+  requests (past `deadlineAtMs`, at most 1 h after sending; 120 s without one) are
   deleted by any serving instance whoever they were for, and an instance that does not
   serve never touches `requests/`.
 - **Responses** carry `servedBy: { pid, bundleId, build, appVersion, workspaceRoot }`
@@ -973,7 +975,7 @@ is `kblib/queue.py` and `kblib/capture.py`. Bridge captures are never baselines.
   or one that would take it past 240 units in a minute (counting what it already queued),
   is answered at once `{ ok: false, throttled: true, retryAfterMs }`; kb waits that long
   within its deadline and resends, else exits 3 (`throttled`).
-- **Deadlines and cancellation.** Freshness is `deadlineAtMs` capped at 15 min after
+- **Deadlines and cancellation.** Freshness is `deadlineAtMs` capped at 1 h after
   sending, else the 120 s rule; with the `deadline` feature kb's claim window is its whole
   timeout (110 s for an older app). Before each frame the window calls
   `bridge_request_live(id, frame)`: when `.claimed/<id>.json` is gone (kb timed out) or
