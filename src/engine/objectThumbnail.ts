@@ -53,5 +53,7 @@ export async function renderObjectThumbnail(glbUrl: string, size = 512): Promise
     return null;
   } finally {
     renderer?.dispose();
+    // Without this the context stays live until GC and counts against WebKit's 16.
+    renderer?.forceContextLoss();
   }
 }

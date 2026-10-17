@@ -210,6 +210,7 @@ import { useTrustStore } from "./store/trustStore";
 import { useUiStore } from "./store/uiStore";
 import { WORKSPACE_THEME_PREFIX } from "./theme/registry";
 import { AnimationLane } from "./ui/AnimationLane";
+import { BridgeActivityPill } from "./ui/BridgeActivityPill";
 import { CameraPathOverlay } from "./ui/CameraPathOverlay";
 import { CameraPill } from "./ui/CameraPill";
 import { CameraToolOverlay } from "./ui/CameraToolOverlay";
@@ -230,6 +231,7 @@ import {
   type StillsExportSelection,
 } from "./ui/ExportModal";
 import { STILLS_ID } from "./ui/exportOptions";
+import { GpuNotices } from "./ui/GpuNotices";
 import { OverlayImageGizmo } from "./ui/ImageOverlayGizmo";
 import { newChartBlock } from "./ui/inspector/ChartSection";
 import { InspectorPanel } from "./ui/inspector/InspectorPanel";
@@ -2954,8 +2956,9 @@ export default function App() {
                 </div>
               )}
 
-              {project && !exporting && !isAutoRun && (error || loadNotice) && (
+              {project && !exporting && !isAutoRun && (
                 <div className="load-notices">
+                  <GpuNotices />
                   {error && (
                     <LoadNotice
                       tone="danger"
@@ -3174,6 +3177,7 @@ export default function App() {
             onUpdateAudioMarkers={(m) => void handleUpdateAudioMarkers(m)}
             onAddCameraKeyAtBeat={(ms) => void handleAddCameraKeyAtBeat(ms)}
             onSyncCameraToBeats={(ms) => void handleSyncCameraToBeats(ms)}
+            status={isAutoRun ? null : <BridgeActivityPill />}
           />
         </TimelineDock>
       )}
