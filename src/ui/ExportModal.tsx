@@ -21,12 +21,15 @@ import {
   writeExportPreset,
 } from "../engine/workspace";
 import { BUNDLED_EXPORT_PRESETS } from "../export/presetRegistry";
+import { type ExportPresetDoc, parseExportPreset } from "../export/presetSchema";
 import {
-  type EncodeSpec,
-  type ExportPresetDoc,
-  parseExportPreset,
-  resolvePresetToEncodeSpec,
-} from "../export/presetSchema";
+  aspectForPreset,
+  type LoudnessMeasure,
+  measureLoudnessArgs,
+  resolveVideoSelection,
+  type VideoChoice,
+  type VideoExportSelection,
+} from "../export/selection";
 import { useUiStore } from "../store/uiStore";
 import {
   AspectIcon,
@@ -49,7 +52,6 @@ import {
   fitToCap,
   groupPresets,
   HIGH_QUALITY_DISPLAY_DOC,
-  highQualityEncode,
   isHardwareEncode,
   isProRes,
   isVideotoolbox,
@@ -71,21 +73,11 @@ import {
   stillsWarnings,
   terminalSnapshotWarning,
   websiteCaptureWarning,
-  withPosterFrame,
 } from "./exportOptions";
 import { SegmentedRow } from "./inspector/rows";
 import { useEscapeClose } from "./useEscapeClose";
 
-/** A video run: App sets the format then runs exportProject. */
-export interface VideoExportSelection {
-  kind: "video";
-  presetId: string;
-  /** Absent = the frozen legacy path (Kookaburra Standard). */
-  encode?: EncodeSpec;
-  /** Absent = the legacy filename (only the standard row omits it). */
-  outputSuffix?: string;
-  aspect: AspectName;
-}
+export type { VideoExportSelection } from "../export/selection";
 
 /** A stills run: one aspect, one size, PDF or PNG zip. */
 export interface StillsExportSelection {
@@ -116,11 +108,6 @@ const STILLS_FORMAT_ICONS: Record<StillsFormat, React.ReactElement> = {
   pdf: PDF_ICON,
   "png-zip": PNG_ICON,
 };
-
-interface LoudnessMeasure {
-  integratedLufs: number;
-  truePeakDbtp: number;
-}
 
 /** Loudness graphs depend on output fps and whether one leading silent frame is present. */
 type LoudnessCache = Partial<Record<string, LoudnessMeasure | "pending">>;
@@ -299,17 +286,7 @@ export function ExportModal({
     setSaveAs(null);
     setError(null);
     setConfirmDelete(false);
-    if (doc) {
-      // The working aspect survives preset hops whenever the preset allows it; only then the favoured fallback.
-      const allowed = presetAspects(doc);
-      setAspect((cur) =>
-        allowed.includes(cur)
-          ? cur
-          : allowed.includes(doc.favouredAspect)
-            ? doc.favouredAspect
-            : allowed[0],
-      );
-    }
+    if (doc) setAspect((cur) => aspectForPreset(doc, cur));
   }, []);
 
   // ── Loudness (gain-only; warn, never limit) ────────────────────────────────
@@ -328,21 +305,10 @@ export function ExportModal({
       const key = loudnessKey(outFps, posterFrame);
       const cached = loudnessRef.current[key];
       if (cached && cached !== "pending") return cached;
-      // The export graph's frame count at the output rate: the render steps at outFps directly, so the measured graph must match it exactly.
-      const outFrames =
-        Math.max(1, Math.round((project.totalMs / 1000) * outFps)) + (posterFrame ? 1 : 0);
-      const m = await invoke<LoudnessMeasure>("measure_loudness", {
-        file: project.audio.abs,
-        gainDb: project.audio.gainDb ?? 0,
-        fadeInMs: project.audio.fadeInMs ?? 0,
-        fadeOutMs: project.audio.fadeOutMs ?? 0,
-        fadeOutCurve: project.audio.fadeOutCurve ?? null,
-        startOffsetMs: project.audio.startOffsetMs ?? 0,
-        trackDurationMs: Math.round(project.audio.durationMs),
-        totalFrames: outFrames,
-        fps: outFps,
-        posterFrame,
-      });
+      const m = await invoke<LoudnessMeasure>(
+        "measure_loudness",
+        measureLoudnessArgs(project.audio, project.totalMs, outFps, posterFrame),
+      );
       loudnessRef.current = { ...loudnessRef.current, [key]: m };
       setLoudness(loudnessRef.current);
       return m;
@@ -382,20 +348,6 @@ export function ExportModal({
   const terminalWarning = terminalSnapshotWarning(project.sceneDocs, project.sceneFiles);
   const websiteWarning = websiteCaptureWarning(project.sceneDocs, project.sceneFiles);
 
-  const loudnessGainFor = useCallback(
-    async (
-      target: number | null,
-      outFps: number,
-      posterFrame: boolean,
-    ): Promise<number | undefined> => {
-      if (target == null || !project.audio) return undefined;
-      const m = await measure(outFps, posterFrame);
-      if (!m) return undefined;
-      return Math.round((target - m.integratedLufs) * 100) / 100;
-    },
-    [measure, project.audio],
-  );
-
   // ── Export ─────────────────────────────────────────────────────────────────
   const doExport = useCallback(async () => {
     setError(null);
@@ -407,50 +359,18 @@ export function ExportModal({
         onExport({ kind: "stills", format: stillsFormat, aspect, size: stillsSize });
         return;
       }
-      if (selectedId === KOOKABURRA_STANDARD_ID) {
-        const encode = highQualityEncode(posterFrame);
-        onExport({
-          kind: "video",
-          presetId: KOOKABURRA_STANDARD_ID,
-          ...(encode ? { encode } : {}),
-          aspect,
-        });
+      let choice: VideoChoice;
+      if (selectedId === KOOKABURRA_STANDARD_ID) choice = { kind: "standard" };
+      else if (selectedId === CUSTOM_ID) choice = { kind: "custom", draft };
+      else if (selectedRow) {
+        choice = { kind: "preset", id: selectedRow.id, doc: selectedRow.doc, fitted };
+      } else return;
+      const resolved = await resolveVideoSelection(choice, aspect, posterFrame, measure);
+      if (resolved.error !== undefined) {
+        setError(resolved.error);
         return;
       }
-      if (selectedId === CUSTOM_ID) {
-        const resolved = resolveDraft(draft);
-        if (!resolved.spec) {
-          setError(resolved.error);
-          return;
-        }
-        const spec = withPosterFrame({ ...resolved.spec }, posterFrame);
-        const gain = await loudnessGainFor(draft.loudnessTarget, draft.fps, posterFrame);
-        if (gain !== undefined && spec.audio) spec.audio = { ...spec.audio, loudnessGainDb: gain };
-        onExport({
-          kind: "video",
-          presetId: CUSTOM_ID,
-          encode: spec,
-          outputSuffix: "custom",
-          aspect,
-        });
-        return;
-      }
-      const row = selectedRow;
-      if (!row) return;
-      const doc = fitted ? { ...row.doc, video: { ...row.doc.video, rate: fitted } } : row.doc;
-      const gain = await loudnessGainFor(
-        doc.audio.loudnessTarget ?? null,
-        doc.video.fps,
-        posterFrame,
-      );
-      const spec = withPosterFrame(resolvePresetToEncodeSpec(doc, gain), posterFrame);
-      onExport({
-        kind: "video",
-        presetId: row.id,
-        encode: spec,
-        outputSuffix: row.id.startsWith("ws:") ? row.id.slice(3) : row.id,
-        aspect,
-      });
+      onExport(resolved.sel);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
@@ -462,7 +382,7 @@ export function ExportModal({
     aspect,
     posterFrame,
     onExport,
-    loudnessGainFor,
+    measure,
     stillsFormat,
     stillsSize,
   ]);

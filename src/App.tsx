@@ -198,6 +198,7 @@ import {
   setProjectTypography,
   slugifyName,
 } from "./engine/workspace";
+import { buildVideoExportOptions } from "./export/selection";
 import { useAssetVersionStore } from "./store/assetVersionStore";
 import { useEditorStore } from "./store/editorStore";
 import {
@@ -2397,28 +2398,10 @@ export default function App() {
         .catch(() => true);
       // Render at the output rate: a 30fps spec steps the clock at 30 directly since i·(1000/30) is bit-identical to 2i·(1000/60) in float64, giving the same bytes the old fps=30 decimation kept, at half the render.
       const output = await exportProject(
-        {
-          projectId: project.id,
-          fps: sel.encode?.fps ?? FPS,
-          durationMs: project.totalMs,
-          format: targetFormat,
-          slots: project.slots,
-          cameraTrack: project.cameraTrack,
-          sceneDocs: project.sceneDocs,
-          theme: project.theme,
-          sceneThemes: project.sceneThemes,
-          projectLighting: project.projectLighting,
-          sceneFrames: project.sceneFrames,
-          compareBDocs: project.compareBDocs,
-          compareBThemes: project.compareBThemes,
-          motionBlur: project.renderSettings.motionBlur,
-          audio: project.audio,
-          codec: "libx264",
-          encode: sel.encode,
-          outputSuffix: sel.outputSuffix,
+        buildVideoExportOptions(project, sel, {
           destination: toDownloads ? "downloads" : undefined,
           signal: abort.signal,
-        },
+        }),
         (p) => {
           setExportPrepStep(null); // first frame progress: the preamble is done, hand off to the % counter
           setProgress(p);

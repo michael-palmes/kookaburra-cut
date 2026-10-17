@@ -349,6 +349,118 @@ skill is its playbook. Code: `scripts/kblib/video/`.
 - Hooks keep Edit and Write out of `edits/` and both managed skill folders; `kb video`
   is the only way an agent changes an edit.
 
+## Film checks and verify-export
+
+`kb verify-export FILE` and `kb check film` judge a finished export, never the editor.
+Code: `scripts/kblib/film/` (stdlib Python over the bundled ffmpeg and ffprobe, found as
+`kb video` finds them) and the flash detector, `src-tauri/src/flashes.rs`.
+
+`kb verify-export FILE [--no-sheet] [--no-flashes] [--allow-flashes] [--loudness-target LUFS]
+[--standard wcag|itu|both] [--json]`:
+
+- **Expectations.** The export record for these exact bytes when `kb export` saved one,
+  else static: the aspect from the button's name (`<slug>-<aspect>[-<preset>|-custom][ N].<ext>`),
+  the size from the catalogue's `aspects` and the short-edge rule (`out_dims` in `encode.rs`),
+  60 fps for High quality (a preset's rate once the catalogue lists `exportPresets`), frames
+  = round(total ms x fps / 1000) plus one when the file has exactly one more (a poster
+  frame), audio exactly when `project.json` has `audio`.
+- **Audio.** `ebur128=peak=true`: integrated loudness within 1 LU of `--loudness-target` (or
+  the record's or preset's target), a warning over -1 dBTP true peak.
+- **Frames.** Each scene's first, settled-in (after its incoming transition), named
+  (`stills.marksMs`, `still: true` camera keys, else the midpoint) and last frame, extracted
+  by index into contact sheets sized for Read, with a legend.
+- **Colour.** Four 24 px corner patches at a 3% inset on each scene's settled frame
+  (`crop,scale=1:1:flags=area` piped as rgb24). Flat backgrounds (a sidecar `color`
+  background, or a theme with none, no staged backdrop, no effects) are compared with
+  CIEDE2000, warning over 2; elsewhere the colours are only reported. Never fails.
+- **Exit.** 1 for any mismatch (kind `failed`), 1 with kind `flashes` on a flash failure
+  unless `--allow-flashes`, 2 without the app's ffmpeg or a readable file.
+
+The export record (`_bridge/exports/<slug>/<sha16>.json`, written by `kb export`, matched
+by the full hash):
+
+```json
+{ "version": 1, "sha256": "<64 hex>", "path": "/Users/x/Kookaburra Cut/<slug>/exports/<slug>-16x9.mp4",
+  "project": "ws:<slug>", "aspect": "16:9", "preset": "kookaburra-standard", "lane": "frozen",
+  "codec": "libx264", "fps": 60, "width": 3840, "height": 2160, "posterFrame": true,
+  "frames": 3901, "totalMs": 65000, "audio": true, "loudnessTarget": null,
+  "timeline": [{ "index": 0, "stem": "01-a", "startMs": 0, "endMs": 4000, "durationMs": 4000,
+                 "transitionIn": null }],
+  "flashes": null, "exportedAtMs": 1792020000000, "appVersion": "0.19.0" }
+```
+
+`frames` includes the poster frame; `lane` is `frozen` or `spec`; `timeline` is the
+export's own `buildSceneTimeline` (`transitionIn` as `{ type, durationMs, ... }` or null);
+`flashes` is the export tap's report when it ran.
+
+`kb check film [flashes colour handoffs pacing] [--file F] [--standard wcag|itu|both]
+[--allow-flashes] [--no-sheet] [--json]` (all four by default; `flashes` and `handoffs` need
+`--file`, and a named one without it is exit 2):
+
+- `flashes`: the flash report below, exit 1 kind `flashes` on a failure unless allowed.
+- `colour`: the tone-mapping warning (effects with tone mapping other than neutral or
+  linear shift flat colours), plus the swatches with `--file`.
+- `handoffs`: per seam, the outgoing scene's last solo frame and the incoming one's first
+  (a cut's two sides, or either side of a transition, labelled with its type), the seam
+  diff and the luminance step; a hard cut of ΔL 0.10 or more next to a scene under 1 s
+  warns, and four such cuts inside a second warn as a strobe.
+- `pacing` (static): words per scene from `text` and `managedText` against 3 a second, the
+  longest stretch with no camera, rig, device, chart or lighting key (warning over 6 s),
+  scenes under 334 ms.
+- `safe-areas` is not in this version (it needs the app's text measurement).
+
+Flash detection is one Rust core fed frame by frame: `FlashDetector::new(width, height,
+fps, standards)`, `push_rgba(&[u8], bottom_up)` (or `push_rgb`), `finish() -> FlashReport`.
+It never panics (a short buffer is counted and skipped) and costs about 4 ms per 4K RGBA
+frame with both standards. Today `<exe> check flashes` feeds it; the export loop's read-only
+`push_frame` tap is next.
+
+- **Cells.** 64 along the long edge, the short edge in proportion; pixels sampled at a
+  stride of about 16 per cell edge, linearised (sRGB for WCAG, 2.4 power for ITU, whose
+  20 and 160 cd/m² of a 200 cd/m² display are the same 0.10 and 0.80), averaged per cell;
+  relative luminance 0.2126R + 0.7152G + 0.0722B.
+- **Transitions.** A per-cell swing tracker with a 0.02 hysteresis. A general transition
+  changes ΔL by 0.10 or more with the darker side below 0.80; a red one has a saturated
+  red end (R / (R + G + B) of 0.8 or more, linear), Δu'v' over 0.2 and, as an
+  implementation choice that keeps near-black noise out, WCAG 2.0's (R - G - B) x 320
+  changing by more than 20. Same-sign transitions within 66 ms group into one.
+- **Area.** WCAG: the best 21 x 16 cell window (341 x 256 px at 1024 x 768, upright in
+  portrait) at 25%; ITU: 25% of the frame. A compact flash over 12.5% of the frame
+  therefore fails WCAG but passes ITU.
+- **Verdict.** More than six opposing transitions in any 1 s (more than three flashes)
+  fails; five or six, or more than six at 15 to 25% area, warns. Patterns come later.
+
+```json
+{ "version": 1, "approximate": true, "standards": ["wcag-2.3.1", "itu-bt1702"], "source": "file",
+  "fps": 60, "frames": 3901, "grid": [64, 36], "ok": false,
+  "issues": [{ "type": "general", "standard": "wcag", "severity": "fail", "startMs": 41250,
+               "endMs": 42250, "tc": "00:41.250", "scene": { "index": 7, "stem": "07-a", "localMs": 1250 },
+               "flashesPerSecond": 4.5, "areaPct": 38.2, "region": [0.1, 0.2, 0.33, 0.33], "deltaL": 0.62,
+               "hint": "hold each state at least 334 ms, or keep the change under 10% luminance" }],
+  "gate": "app", "precheck": { "maxBadness": 9.56, "threshold": 6.4, "frames": 3901,
+                               "candidates": [{ "startMs": 41000, "endMs": 42000, "badness": 9.56 }] } }
+```
+
+Times are file times; kb adds `scene` (after any poster frame), `gate` and `precheck`. kb
+runs `check flashes` only when `edit caps` lists `checks: ["flashes"]` (an older binary
+given `check` would start the whole app); otherwise the report is ffmpeg's pre-check alone,
+`gate: "unavailable"`, and nothing fails. The pre-check is `photosensitivity=frames=<fps>:
+bypass=1` read through `metadata=mode=print`; seconds with badness 6.4 or more are "look
+here" (measured on full-frame strobes with a one-second window: 5.5 at three flashes a
+second, 6.75 at 3.75, 8.7 at five). It works on a global grid and flags single cuts, so it
+never gates.
+
+- Outputs land in `_bridge/film/<slug>/<stamp>-<pid>-<kind>/` (frames and sheets); the
+  newest 12 runs stay.
+- Conformance: `pnpm agent:vectors` also writes `timeline-vectors.json` from the real
+  `buildSceneTimeline`, `resolveOverlapMs`, `resolveAt` and `outgoingSceneTransitions`; a
+  stale file fails vitest and `pnpm test:kit` replays it through `film/timeline.py`.
+- Tests: `cargo test -- --ignored check_flashes_` runs the CLI through the real sidecar;
+  `KB_E2E_APP_BIN=<binary> pnpm test:kit` runs kb against the real detector.
+- `fixtures/flash-spike` (dev-only: a title, a crossfade, one second of 100 ms full-frame
+  cuts, a 2 Hz control) is the parity and flash fixture, copied into a throwaway root;
+  it joins no gate.
+
 ## The bridge (v2)
 
 File-drop queue under the FIXED `~/Kookaburra Cut/_bridge/` (never a relocated root;
@@ -574,12 +686,13 @@ over the app-free cores in `edit.rs`, `media.rs` and `tools.rs`.
 
 | Command | Does |
 | --- | --- |
-| `caps` | CLI version, app version, build, commands, doc versions, ffmpeg/ffprobe paths and filters, hardware video, tap styles/colours/sizes, mask styles, limits |
+| `caps` | CLI version, app version, build, commands, `checks` (the `<exe> check` commands it serves), doc versions, ffmpeg/ffprobe paths and filters, hardware video, tap styles/colours/sizes, mask styles, limits |
 | `probe --project D --source R` (or `--file ABS`) | The app's probe (rotation-aware size, `vfr`, `editFps`, `nbFrames`) |
 | `create --project D --source R [--name N] [--reuse \| --force]` | The editor's default document for that source; an existing doc is `exists` unless `--reuse` or `--force` (backs up to `.json.bak`) |
 | `validate --project D (--name N \| --doc -)` | Parse, mask rules and a render dry run: `{ ok, hash, version, totalFrames, durationMs, fps, width, height, clips, taps, errors, warnings }` |
 | `save --project D --name N --doc - --base H\|absent` | The only doc writer outside the editor: serde strictness, version stamping, base-hash check (`conflict` when stale) |
 | `render --project D (--name N \| --doc -) [--out ABS] [--software] [--draft \| --scale F] [--expect-hash H]` | `--name` alone renders `assets/<name>-edited.mp4`; `--out` is a review render outside `assets/` (`--draft` = half size, ultrafast) |
+| `check flashes --file ABS [--standard wcag\|itu\|both] [--fps N]` | `<exe> check`, same conventions: the flash detector over the film decoded at 1024 wide as rgb24 (`--fps` resamples; VFR files resample at their average rate): `{ ok, file, width, height, decode, report }`; exit 0 whenever the film was read, the verdict is `report.ok` |
 
 Renders (editor and CLI alike) stage in the hidden folder `<dir>/.kc-render/` and rename
 on success, so a failed render keeps the previous good file. A canonical render writes

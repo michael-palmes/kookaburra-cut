@@ -12,6 +12,12 @@ use serde_json::{json, Map, Value};
 use crate::edit::{self, CoreError, EditDoc, RenderEvent, RenderJob, RenderTarget};
 use crate::{live_edits, media, tools, workspace};
 
+// Declared here so lib.rs stays untouched until the export loop's flash tap lands; hoist both then.
+#[path = "cli_check.rs"]
+pub mod check;
+#[path = "flashes.rs"]
+pub mod flashes;
+
 /// Bumped when a command or a JSON shape changes incompatibly; kb gates on it.
 const CLI_VERSION: u32 = 1;
 const COMMANDS: &[&str] = &["caps", "probe", "create", "validate", "save", "render"];
@@ -313,6 +319,7 @@ fn caps_in(args: &[String], app_data: Option<PathBuf>) -> Result<Value, Fail> {
         "build": if cfg!(debug_assertions) { "dev" } else { "release" },
         "exe": exe,
         "commands": COMMANDS,
+        "checks": check::CHECKS,
         "docVersion": { "read": edit::EDIT_VERSION_READ_MAX, "write": [1, edit::EDIT_VERSION_MASKS] },
         "ffmpeg": { "path": tools.ffmpeg.to_string_lossy(), "ok": filters.is_ok() },
         "ffprobe": { "path": tools.ffprobe.to_string_lossy(), "ok": ffprobe_ok },
@@ -872,6 +879,7 @@ mod tests {
             "build",
             "exe",
             "commands",
+            "checks",
             "docVersion",
             "ffmpeg",
             "ffprobe",
@@ -887,6 +895,7 @@ mod tests {
         assert_eq!(got, expected);
         assert_eq!(caps["cli"], 1);
         assert_eq!(caps["commands"], json!(COMMANDS));
+        assert_eq!(caps["checks"], json!(["flashes"]));
         assert_eq!(caps["docVersion"], json!({"read": 2, "write": [1, 2]}));
         assert_eq!(
             caps["tap"]["styles"][0],
