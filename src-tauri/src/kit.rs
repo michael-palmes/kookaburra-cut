@@ -269,8 +269,16 @@ pub(crate) fn managed_settings() -> Value {
         },
         "hooks": {
             "SessionStart": [{ "matcher": "startup|resume|clear|compact", "hooks": [hook("session-start", 20)] }],
-            "PreToolUse": [{ "matcher": "Edit|Write", "hooks": [hook("pre-edit", 20)] }],
-            "PostToolUse": [{ "matcher": "Edit|Write", "hooks": [hook("post-edit", 30)] }]
+            "PreToolUse": [
+                { "matcher": "Edit|Write", "hooks": [hook("pre-edit", 20)] },
+                { "matcher": "Bash", "hooks": [hook("bash-pre", 10)] }
+            ],
+            "PostToolUse": [
+                { "matcher": "Edit|Write", "hooks": [hook("post-edit", 30)] },
+                { "matcher": "Bash", "hooks": [hook("bash-post", 30)] }
+            ],
+            // A Bash command that exits non-zero fires PostToolUseFailure, not PostToolUse.
+            "PostToolUseFailure": [{ "matcher": "Bash", "hooks": [hook("bash-post", 30)] }]
         }
     })
 }
@@ -740,8 +748,14 @@ mod tests {
                     { "matcher": "Edit", "hooks": [
                         { "type": "command", "command": "./lint.sh" },
                         { "type": "command", "timeout": 5, "command": "python3 x/.claude/skills/kookaburra-scene-authoring/scripts/kb.py hook pre-edit-old" }
+                    ] },
+                    { "matcher": "Bash", "hooks": [
+                        { "type": "command", "command": "python3 .claude/skills/kookaburra-scene-authoring/scripts/kb.py hook bash-pre" }
                     ] }
                 ],
+                "PostToolUseFailure": [{ "matcher": "Bash", "hooks": [
+                    { "type": "command", "command": "python3 .claude/skills/kookaburra-scene-authoring/scripts/kb.py hook bash-post-old" }
+                ] }],
                 "SessionStart": [{ "matcher": "startup", "hooks": [
                     { "type": "command", "command": "python3 .claude/skills/kookaburra-scene-authoring/scripts/kb.py hook session-start" }
                 ] }],
@@ -755,13 +769,23 @@ mod tests {
         assert_eq!(merged["permissions"]["allow"][0], "Bash(ls)");
         assert_eq!(merged["permissions"]["allow"].as_array().unwrap().len(), 6);
         let pre = merged["hooks"]["PreToolUse"].as_array().unwrap();
-        assert_eq!(pre.len(), 3);
+        assert_eq!(pre.len(), 4);
         assert_eq!(pre[0]["hooks"][0]["command"], "echo mine");
         assert_eq!(
             pre[1]["hooks"],
             json!([{ "type": "command", "command": "./lint.sh" }])
         );
-        assert_eq!(pre[2], managed_settings()["hooks"]["PreToolUse"][0]);
+        assert_eq!(
+            &pre[2..],
+            managed_settings()["hooks"]["PreToolUse"]
+                .as_array()
+                .unwrap()
+                .as_slice()
+        );
+        assert_eq!(
+            merged["hooks"]["PostToolUseFailure"],
+            managed_settings()["hooks"]["PostToolUseFailure"]
+        );
         assert_eq!(
             merged["hooks"]["SessionStart"],
             managed_settings()["hooks"]["SessionStart"]
@@ -769,6 +793,29 @@ mod tests {
         assert_eq!(merged["hooks"]["Stop"], existing["hooks"]["Stop"]);
         let again = serde_json::to_string_pretty(&merged).unwrap();
         assert_eq!(next_settings(Some(&again)), None);
+    }
+
+    #[test]
+    fn the_managed_hooks_cover_bash_before_after_and_on_failure() {
+        let hooks = &managed_settings()["hooks"];
+        for (event, matcher, name, timeout) in [
+            ("PreToolUse", "Bash", "bash-pre", 10),
+            ("PostToolUse", "Bash", "bash-post", 30),
+            ("PostToolUseFailure", "Bash", "bash-post", 30),
+            ("PreToolUse", "Edit|Write", "pre-edit", 20),
+            ("PostToolUse", "Edit|Write", "post-edit", 30),
+        ] {
+            let group = hooks[event]
+                .as_array()
+                .and_then(|groups| groups.iter().find(|g| g["matcher"] == matcher))
+                .unwrap_or_else(|| panic!("{event} {matcher} missing"));
+            let hook = &group["hooks"][0];
+            let cmd = hook["command"].as_str().unwrap();
+            assert!(cmd.ends_with(&format!("kb.py hook {name}")), "{cmd}");
+            assert!(cmd.starts_with("[ ! -f \"$CLAUDE_PROJECT_DIR\"/.claude/skills/kookaburra-scene-authoring/scripts/kb.py ] || python3 -I "));
+            assert!(is_managed_hook(hook));
+            assert_eq!(hook["timeout"], timeout);
+        }
     }
 
     #[test]
