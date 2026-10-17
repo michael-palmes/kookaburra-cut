@@ -17,6 +17,7 @@ from .util import EXIT_ENV, EXIT_OK, KbError, emit, emit_err, now_ms
 CAPTURES = "captures"
 KEEP_FOLDERS = 40
 MAX_CAPTURE_BYTES = 1024 ** 3
+MIN_AGE_S = 3600
 MAX_PROBES = 64
 STAMP_RE = re.compile(r"^\d{8}-\d{6}")
 UNSAFE_RE = re.compile(r"[^A-Za-z0-9._@-]+")
@@ -28,7 +29,7 @@ CAPTURE_EPILOG = """\
   kb capture --frames 0@1,3@2.5 --sheet   several frames (1280 px long edge) plus one contact sheet
   kb capture --scene 2 --scale 0.5    half size; --width 960 sets the width in pixels
   kb capture --scene 2 --probe 100,200,640,360   exact pixel values (x,y in the returned image, top left)
-Copies land in .kb/captures/<time>-<agent>/ (newest 40 kept); --out DIR copies there, --no-copy
+Copies land in .kb/captures/<time>-<agent>/ (each agent's newest 40 kept); --out DIR copies there, --no-copy
 skips it. A request costs frames x ceil(pixels / 921600) units: at most 144 per request and 240 a
 minute per agent (a 4K frame is 9 units, a 1280x720 frame 1)."""
 
@@ -131,32 +132,44 @@ def _size(path: Path) -> int:
     return sum(f.stat().st_size for f in path.rglob("*") if f.is_file())
 
 
-def prune_captures(root: Path, keep: Optional[Path] = None, keep_folders: int = KEEP_FOLDERS, max_bytes: int = MAX_CAPTURE_BYTES) -> List[Path]:
-    """Keep the newest 40 capture folders and at most 1 GB; never the one just written. Returns what went."""
+def capture_owner(folder: Path) -> str:
+    """The agent tag after a capture folder's stamp ('' for untagged ones), so each agent's folders are counted apart."""
+    return folder.name[16:]
+
+
+def prune_captures(root: Path, keep: Optional[Path] = None, keep_folders: int = KEEP_FOLDERS, max_bytes: int = MAX_CAPTURE_BYTES,
+                   min_age_s: float = MIN_AGE_S) -> List[Path]:
+    """Keep each agent's newest 40 capture folders, then trim the oldest past 1 GB, never one under an hour old or the one just written. Returns what went."""
     try:
         folders = sorted((p for p in root.iterdir() if p.is_dir() and STAMP_RE.match(p.name)), key=lambda p: p.name)
     except OSError:
         return []
     removed: List[Path] = []
-    excess = len(folders) - keep_folders
-    for p in list(folders):
-        if excess <= 0:
-            break
-        if p == keep:
-            continue
+
+    def drop(p: Path) -> None:
         shutil.rmtree(p, ignore_errors=True)
         removed.append(p)
         folders.remove(p)
-        excess -= 1
+
+    by_owner: Dict[str, List[Path]] = {}
+    for p in folders:
+        by_owner.setdefault(capture_owner(p), []).append(p)
+    for owned in by_owner.values():
+        for p in [p for p in owned if p != keep][: max(0, len(owned) - keep_folders)]:
+            drop(p)
     sizes = {p: _size(p) for p in folders}
     total = sum(sizes.values())
-    for p in folders:
+    now = time.time()
+    for p in list(folders):
         if total <= max_bytes:
             break
-        if p == keep:
+        try:
+            young = now - p.stat().st_mtime < min_age_s
+        except OSError:
+            young = False
+        if p == keep or young:
             continue
-        shutil.rmtree(p, ignore_errors=True)
-        removed.append(p)
+        drop(p)
         total -= sizes[p]
     return removed
 

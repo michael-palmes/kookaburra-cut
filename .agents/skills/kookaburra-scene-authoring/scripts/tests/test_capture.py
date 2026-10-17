@@ -321,10 +321,21 @@ class CopyTests(KbTestCase):
         self.assertEqual(len(removed), 3)
         self.assertTrue(made[0].is_dir() and not made[1].exists() and made[4].is_dir())
         self.assertTrue((root / "not-a-capture").is_dir())
-        removed = capture.prune_captures(root, keep=made[-1], max_bytes=25)
+        self.assertEqual(capture.prune_captures(root, keep=made[-1], max_bytes=25), [], "folders under an hour old survive the size cap")
+        removed = capture.prune_captures(root, keep=made[-1], max_bytes=25, min_age_s=0)
         left = sorted(p.name for p in root.iterdir() if p.name != "not-a-capture")
         self.assertEqual(left, [made[-2].name, made[-1].name])
         self.assertEqual(len(removed), 38)
+
+    def test_each_agent_keeps_its_own_newest_capture_folders(self) -> None:
+        root = self.tmp / "captures"
+        for n in range(41):
+            (root / f"20261017-{n:06d}-alpha").mkdir(parents=True)
+        for n in range(5):
+            (root / f"20261017-{100 + n:06d}-beta").mkdir(parents=True)
+        removed = capture.prune_captures(root, keep_folders=40)
+        self.assertEqual([p.name for p in removed], ["20261017-000000-alpha"])
+        self.assertEqual(len([p for p in root.iterdir() if p.name.endswith("-beta")]), 5)
 
 
 class StatusAndDebugTests(KbTestCase):
