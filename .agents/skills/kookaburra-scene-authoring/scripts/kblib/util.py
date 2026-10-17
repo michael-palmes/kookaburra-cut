@@ -13,17 +13,81 @@ from typing import Any, Dict, Iterable, List, Optional
 EXIT_OK = 0
 EXIT_PROBLEMS = 1
 EXIT_ENV = 2
+EXIT_TRANSIENT = 3
 
 WORKSPACE_DIR_NAME = "Kookaburra Cut"
 
+DEFAULT_KIND = {EXIT_PROBLEMS: "failed", EXIT_ENV: "env", EXIT_TRANSIENT: "transient"}
+
+DEFAULT_HINTS: Dict[str, str] = {
+    "usage": "run ./kb <command> --help",
+    "no-app": "ask the user to open Kookaburra Cut, or run the static ./kb check",
+    "needs-trust": "ask the user to open this project once in Kookaburra Cut",
+    "invalid": "fix the file named above, then rerun",
+    "leased": "leave the holder a ./kb note, or wait for the lease to end (./kb leases)",
+    "others-changed": "undo only your own scene with ./kb undo --scene S, or pass --all",
+    "conflict": "re-read the file and rerun the command",
+    "locked": "another kb command holds the project lock; rerun in a moment",
+    "index-locked": "another git process holds .git/index.lock; rerun in a moment",
+    "app-busy": "the app is busy (exporting or rendering); rerun in a moment",
+    "bridge-timeout": "the app did not answer in time; check ./kb status, then rerun",
+    "gpu-stalled": "the render window was recycled; rerun once, with fewer or smaller frames",
+    "gpu-wedged": "ask the user to quit and reopen Kookaburra Cut",
+    "throttled": "capture fewer or smaller frames (--scale 0.5), then rerun after retryAfterMs",
+    "too-large": "use the default sheet size or --scale, and fewer frames",
+    "flashes": "fix the flagged moments, or pass --allow-flashes after checking them",
+    "transient": "rerun in a moment",
+}
+
 
 class KbError(Exception):
-    """A failure with a message that says what to do next, and the exit code to use."""
+    """A failure with a message that says what to do next.
 
-    def __init__(self, message: str, code: int = EXIT_PROBLEMS) -> None:
+    `code` is the exit code (0 ok, 1 problems, 2 usage or environment, 3 transient); `kind` is the
+    stable kebab-case id printed as the envelope's `code`; `hint` is the single next step.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        code: int = EXIT_PROBLEMS,
+        *,
+        kind: Optional[str] = None,
+        hint: Optional[str] = None,
+        retry_after_ms: Optional[int] = None,
+        data: Optional[Dict[str, Any]] = None,
+    ) -> None:
         super().__init__(message)
         self.message = message
         self.code = code
+        self.kind = kind or DEFAULT_KIND.get(code, "failed")
+        self.hint = hint if hint is not None else DEFAULT_HINTS.get(self.kind)
+        self.retry_after_ms = retry_after_ms
+        self.data = data or {}
+
+    def envelope(self, command: str) -> Dict[str, Any]:
+        out: Dict[str, Any] = {"ok": False, "command": command, "code": self.kind, "error": self.message}
+        if self.hint:
+            out["hint"] = self.hint
+        if self.retry_after_ms is not None:
+            out["retryAfterMs"] = int(self.retry_after_ms)
+        for key, value in self.data.items():
+            out.setdefault(key, value)
+        return out
+
+    def text(self) -> str:
+        lines = [f"kb: {self.message}"]
+        if self.hint:
+            lines.append(f"  hint: {self.hint}")
+        return "\n".join(lines)
+
+
+def ok_envelope(command: str, payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """The --json success shape: { ok, command, ...payload } (lists live under plural keys, never bare)."""
+    out: Dict[str, Any] = {"ok": True, "command": command}
+    for key, value in (payload or {}).items():
+        out.setdefault(key, value)
+    return out
 
 
 def home() -> Path:

@@ -30,6 +30,8 @@ contract for the kit, the bridge it talks to and the app behaviour it relies on.
 | `project.json`, `scenes/`, `assets/` | user (Claude edits) | The only folders Claude writes by hand |
 | `edits/` | app, and `kb video` | Video edit documents; Rust is the only writer (the editor window and `kb video` through the app's CLI); never hand-edited |
 | `exports/`, `.kookaburra*` | app | Never edited by Claude |
+| `./kb` | app (managed) | The zsh-safe shim: `exec python3 -I .claude/skills/kookaburra-scene-authoring/scripts/kb.py "$@"`; replaced only while it still carries its marker line |
+| `.kb/` | kb | Multi-agent state (lock, leases, notes, events, per-agent scratch, capture copies); ignores itself; never packed or duplicated |
 
 Skill tree (the source lives at `.agents/skills/kookaburra-scene-authoring/`):
 
@@ -116,10 +118,9 @@ itself fails open (exit 0) when its modules are missing mid-swap. Hooks only run
 project folder (it also finds the project by walking up from the cwd, or from
 `$CLAUDE_PROJECT_DIR`). Python 3.9, standard library only, `from __future__ import
 annotations` in every module, and `kb.py` inserts its own directory into `sys.path`
-(isolated mode drops it). Exit codes: 0 ok, 1 problems found or the operation failed,
-2 usage or environment (for example the app is needed but not running). Every write is
-atomic (temp file in the same folder, then rename) and re-validated after writing.
-`--json` gives machine output wherever a command reports.
+(isolated mode drops it). Output, exit codes, errors and writes follow "kb conventions"
+below. Every write is atomic (temp file in the same folder, then rename) and
+re-validated after writing.
 
 | Command | Does |
 | --- | --- |
@@ -186,6 +187,103 @@ Hooks:
   warnings go back as `additionalContext`. It must finish in about a second; it never
   calls the app.
 
+## kb conventions
+
+Every kb command, including new ones, follows these rules. Code: `scripts/kblib/util.py`
+(`KbError`, `ok_envelope`, exit constants), `scripts/kblib/lock.py` (writes).
+
+- **Invocation.** `./kb <command>` from the project folder. Never store kb in a shell
+  variable (zsh does not split it). Hook paths never import `kblib.cli`.
+- **Global flags.** `--json` on every command. `--agent NAME` names the caller (`KB_AGENT`
+  only in a plain terminal: an allow rule does not match past a `VAR=` prefix).
+  `--dry-run` on every structural command; `./kb plan <command ...>` is the same dry run.
+- **Output.** Plain text for people. `--json` prints exactly one object on stdout:
+  `{ "ok": true, "command": "scene add", ...payload }`. A streaming command
+  (`events --follow`, `export`) prints one compact object per line, the final object
+  last. Lists go under a plural key (`scenes`, `checkpoints`, `items`), never as a bare
+  array. Keys are camelCase, times integer ms (`atMs`, `durationMs`), paths
+  project-relative with `/`. Diagnostics go to stderr.
+- **Failures.** In `--json` mode a failure prints
+  `{ "ok": false, "command", "code", "error", "hint", "retryAfterMs"?, ...data }` on
+  stdout, and the text (`kb: <error>` then `  hint: <hint>`) on stderr either way.
+- **Exit codes.**
+  - 0 ok.
+  - 1 problems: errors found, a write that would add errors, a lease or scope refusal,
+    a flash failure. Rerunning unchanged gives the same answer.
+  - 2 usage or environment: bad arguments, no app, no git, trust or an update needed,
+    GPU wedged. A person must act.
+  - 3 transient, safe to rerun unchanged after `retryAfterMs`: app busy, request not
+    yet claimed, throttled, GPU stalled (the render window was recycled), project lock,
+    edit lock or `index.lock` held, a write that kept conflicting.
+- **Errors.** `raise KbError(message, exit_code, kind=, hint=, retry_after_ms=, data=)`.
+  `message` is one sentence naming the file or scene; `hint` is the single next step,
+  as a command where one exists; `kind` is a stable kebab-case id printed as the
+  envelope's `code`: `usage`, `env`, `no-app`, `needs-trust`, `invalid`, `leased`,
+  `others-changed`, `conflict`, `locked`, `index-locked`, `app-busy`, `bridge-timeout`,
+  `gpu-stalled`, `gpu-wedged`, `throttled`, `too-large`, `flashes`. Each kind has a
+  default hint (`DEFAULT_HINTS`). Never print a traceback.
+- **Writes.** Every write to `project.json`, `scenes/**` or `.kb/**` goes through
+  `kblib.lock`. A read-modify-write uses `mutate_json(project, rel, fn)`; a multi-file
+  change uses `with project_txn(project, op, dry_run=..., caller=...) as tx:` with
+  `tx.read(rel)` (bytes plus base hash, `absent` when missing), `tx.write_json`,
+  `tx.write_text(create_only=)` and `tx.trash`. The transaction takes `.kb/lock`
+  (`flock`, 10 s, `--wait SECONDS`), checks leases, verifies each base hash (lowercase
+  hex SHA-256 of the bytes, the app's rule) right before each rename, writes new files
+  first and `project.json` last, and journals one `files.changed` event. When someone
+  saved in between, `fn` is re-applied to the fresh document up to 3 times, then exit 3;
+  a pinned `--base`, or a scene addressed by an index that moved, refuses at once. Never
+  hold the lock while waiting on the app or ffmpeg; take an edit lock before the
+  project lock. Workspace themes are shared across projects: compare-and-swap only.
+- **New commands** live in their own module with `register(sub, common, Formatter)`;
+  `cli.py` gains one import and one call. Commands never re-implement lease checks;
+  the transaction does them.
+
+## Coordination (several agents)
+
+Several Claude agents may edit one project at once. kb makes that safe; the app needs no
+part in it. State lives in the project's `.kb/` folder, which ignores itself (`.kb/.gitignore`
+holds `*`, and kb adds `.kb/` to `.git/info/exclude`), works without git, and is left out of
+packs and duplicates.
+
+```
+.kb/lock                        flock for every kb write
+.kb/leases/<stem>.json          one file per leased scene
+.kb/events.jsonl                newline JSON, rotated at 1 MiB (events.1.jsonl kept)
+.kb/notes.md                    shared notes, rotated at 256 KB
+.kb/agents/<name>/              identity.json, seen.json, the agent's scratch
+.kb/captures/<stamp>[-<agent>]/ capture copies, newest 40 folders, 1 GB at most
+```
+
+- **Identity.** A caller is `{ name, session, agentId }`. kb run from Bash knows `name`
+  (`--agent`, default `session-<first 8 of CLAUDE_CODE_SESSION_ID>`, or `user` outside
+  Claude Code) and `session`. Hooks know `session` and `agentId` (`main` outside a
+  subagent). The Bash pre-hook sees both a `--agent NAME` command and the subagent id,
+  and binds them in `.kb/agents/<name>/identity.json`, so Edit and Write checks can tell
+  subagents of one session apart.
+- **Leases.** Opt-in. `./kb lease S --agent A [--ttl 2h] [--note T]` takes or renews;
+  `--for NAME` assigns one to another agent; `--release`, and `--release --force` breaks
+  someone else's (journalled). TTL 2 h by default, 12 h at most, renewed by the holder's
+  writes once under half is left; expired leases are ignored. Edit and Write to a scene
+  leased to someone else are denied (`permissionDecision: "deny"` with the holder and
+  expiry); a Bash command that visibly writes one (`sed -i`, `>`, `tee`, `cp`, `mv`, a
+  heredoc, `write_text`, `open(..., 'w')`) is denied too, and any other change to it is
+  reported after the fact. kb's own writes check leases in the transaction.
+- **Scoped history.** `./kb checkpoint [MSG] --scene S` commits only S's files;
+  `./kb undo --scene S [REV]` restores only `scenes/S.tsx`, `scenes/S.json` and S's own
+  `project.json` entry (by compare-and-swap). A plain `undo` refuses, naming the files,
+  when the journal or a lease shows another agent changed files since its target;
+  `--all` overrides. `index.lock` is retried with backoff (50 ms doubling to 1.6 s), then
+  exit 3; a hook that skips its checkpoint says so in `additionalContext`.
+- **Events.** `./kb events [--follow] [--since 10m|CURSOR|all] [--kinds ...] [--all-agents]
+  [--exit-after SECONDS]` prints one compact object per line:
+  `{ "v": 1, "id", "atMs", "kind", "by": { name, session, agentId }, ...}`. kb journals
+  `checkpoint`, `checkpoint.skipped`, `undo`, `lease.*`, `note`, `files.changed`; the
+  follower adds app events read from heartbeat and progress-file changes (`load`,
+  `export.*`, `render.stalled`, `render.recovered`, `app.opened`, `app.closed`). A follow
+  ends with `{ "kind": "follow.end", "cursor" }` so a re-armed Claude Code Monitor resumes.
+- **Notes.** `./kb note "TEXT" [--scene S]` appends to `.kb/notes.md`; every agent's next
+  `./kb status` shows up to three unseen notes.
+
 ## kb video
 
 `kb video` edits the app's own video-editor documents (`edits/<name>.json`) so the user
@@ -227,7 +325,44 @@ skill is its playbook. Code: `scripts/kblib/video/`.
 
 ## The bridge (v2)
 
-File-drop queue under the FIXED `~/Kookaburra Cut/_bridge/` (never a relocated root).
+File-drop queue under the FIXED `~/Kookaburra Cut/_bridge/` (never a relocated root;
+`KOOKABURRA_BRIDGE_DIR`, an absolute path, redirects it for tests only, and kb reads
+`KB_BRIDGE_DIR`, then `KOOKABURRA_BRIDGE_DIR`).
+
+### Instances and addressing
+
+Several app instances can run on one machine (the packaged app, a dev build, acceptance
+bundles, autoruns). Each decides once at start whether it serves the bridge, in order:
+
+1. An autorun never serves.
+2. `KOOKABURRA_BRIDGE=0` turns serving off; `KOOKABURRA_BRIDGE=1` turns it on.
+3. An overridden workspace root (`KOOKABURRA_WORKSPACE_ROOT`), a non-production bundle id,
+   or a debug build from a linked git worktree does not serve.
+4. Everything else serves: the packaged app and a dev build from the main checkout.
+
+- **Heartbeats are per process:** `_bridge/apps/<pid>.json` (the `app.json` body below plus
+  `startedAtMs`, `bundleId`, `exePath`, `checkout`, `rootSource`, `bridge: { serving,
+  reason }`, `primary`, `exportJob`, `health`), written by every interactive instance,
+  serving or not, removed on exit, and pruned by others when its pid is dead or it is
+  10 min old. `app.json` stays for older kits, written only by the elected primary.
+- **Election.** Among live serving instances on the project's workspace root, kb picks the
+  one with the project open, then a release build over a dev build, then the earliest
+  start, then the lowest pid, and addresses it by pid. Not an error; `kb status` warns
+  when two instances share a root and lists every live instance with the reason a passive
+  one does not serve.
+- **Requests** carry `workspaceRoot`, `projectPath`, `instancePid` and `client` (the
+  agent name). An instance claims only a request addressed to its pid; else one whose
+  `workspaceRoot` is its own root (compared by device and inode); else (old kits) one
+  whose `projectPath` or `<root>/<slug>` matches, the rule the native loop already used.
+  The pending count the editor uses to spawn the render window applies the same rule,
+  and an instance that does not serve never touches `requests/`.
+- **Responses** carry `servedBy: { pid, bundleId, build, appVersion, workspaceRoot }`. kb
+  discards an answer whose root is not the project's (exit 2), and fails fast (exit 2)
+  when no live instance serves the project's root, naming the live ones.
+- **Health.** The serving instance's heartbeat carries `health`: queue depth and order,
+  the in-flight request, render-window liveness and beat age, recycles, the GPU state
+  (`stalled`, `stalledUntilMs`, `wedged`), live WebGL contexts per window, and per-client
+  usage. kb prints the queue position and an estimate while it waits.
 
 ### Heartbeat: `_bridge/app.json`
 

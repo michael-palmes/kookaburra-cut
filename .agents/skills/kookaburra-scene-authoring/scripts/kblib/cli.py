@@ -1132,6 +1132,15 @@ def build_parser(video_extensions: bool = True) -> argparse.ArgumentParser:
     return p
 
 
+def command_name(args: argparse.Namespace) -> str:
+    """The envelope's `command`: the subcommand and its op, for example "scene add"."""
+    parts = [str(getattr(args, "command", "") or "")]
+    op = getattr(args, "op", None)
+    if isinstance(op, str) and op:
+        parts.append(op)
+    return " ".join(p for p in parts if p)
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
     if argv and argv[0] in ("beats", "chart"):
@@ -1152,7 +1161,9 @@ def main(argv: Optional[List[str]] = None) -> int:
     try:
         return int(args.fn(ctx) or 0)
     except KbError as e:
-        emit_err(f"kb: {e.message}")
+        if ctx.json:
+            emit_json(e.envelope(command_name(args)))
+        emit_err(e.text())
         return e.code
     except KeyboardInterrupt:
         emit_err("kb: interrupted")
