@@ -47,11 +47,15 @@ from .util import (
 SCRIPTS_DIR = Path(__file__).resolve().parent.parent
 
 MAIN_HELP = """\
-kb: the one tool for editing a Kookaburra Cut project safely. Run it from the
-project folder (it also walks up from the cwd, or uses $CLAUDE_PROJECT_DIR).
+kb: the one tool for editing a Kookaburra Cut project safely. Run it from the project
+folder as ./kb <command> (never through a shell variable or alias); it also walks up from
+the cwd, or uses $CLAUDE_PROJECT_DIR.
 
   Look       status | context | scenes | check [--app] [--render] [FILE...]
              capture [--scene S] [--at SEC] [--aspect A] [--frames S@SEC,...] [--sheet]
+                     [--width N | --scale F] [--probe X,Y[,X,Y...]] [--out DIR | --no-copy]
+             verify [--scene S]... [--aspect A] [--no-render] [--film]
+             debug contexts | debug lose-context [--window render|editor]
   Scenes     scene add NAME [--preset P | --copy S] [--after S | --at N] [--duration MS] [--name N]
              scene duplicate S | scene move S --to N | scene remove S
              scene set S [--duration MS] [--transition TYPE[:MS]|none] [--ease E] [--name N]
@@ -64,9 +68,15 @@ project folder (it also walks up from the cwd, or uses $CLAUDE_PROJECT_DIR).
   Video      video list | video show NAME | video new SRC [--for SCENE:SLOT]
              video cut|keep|split|trim|speed|freeze|tap|mask|apply NAME ... (kb video --help)
              video render NAME [--use --scene S] | video use NAME --scene S | video open NAME
-  History    checkpoint [MESSAGE] [--scene S]... | history | undo [REV] [--scene S | --all] | diff [REV]
-  Agents     lease S [--ttl 2h] [--for NAME] [--release [--force]] | leases | note TEXT [--scene S] | notes
-             events [--follow] [--since 10m|CURSOR|all] [--kinds ...] [--all-agents]
+  Film       export [--aspect A] [--preset ID] [--fps 30|60] [--short-edge N] [--poster-frame on|off|app]
+                    [--verify] [--headless] [--allow-flashes] [--timeout S] [--progress-every S]
+             verify-export FILE [--no-sheet] [--no-flashes] [--allow-flashes] [--loudness-target LUFS]
+             check film [flashes colour handoffs pacing] [--file F] [--standard wcag|itu|both]
+  History    checkpoint [MESSAGE] [--scene S]... [--files P]... | history [--scene S]
+             undo [REV] [--scene S | --all] | diff [REV] [--scene S] | plan COMMAND ...
+  Agents     lease S [--ttl 2h] [--note T] [--for NAME] | lease S --release [--force] | leases [--all]
+             note TEXT [--scene S] | notes [--all]
+             events [--follow] [--since 10m|CURSOR|all] [--kinds ...] [--all-agents] [--exit-after S]
   Helpers    beats ... | chart ... (soundtrack beats and chart data) | hook EVENT (Claude Code)
 
 S is a scene index (0-based) or file stem (03-pricing). PATH is dotted
@@ -74,22 +84,23 @@ S is a scene index (0-based) or file stem (03-pricing). PATH is dotted
 JSON when it parses, else kept as a string (--string forces a string).
 
 Every command takes --json (one object on stdout: { "ok", "command", ... }, failures
-too) and --agent NAME (who is asking, when several agents share the project).
-Writes take --dry-run (list what would change, write nothing) and --wait SECONDS
-(wait for another kb write to finish; default 10 s).
+too) and --agent NAME (who is asking; pass it on every command when several agents
+share the project). Writes take --dry-run (list what would change, write nothing; plan
+COMMAND does the same) and --wait SECONDS (wait for another kb write; default 10 s).
 
-Exit codes: 0 ok; 1 problems found or the operation failed (rerunning unchanged
-gives the same answer); 2 usage or environment (a person must act, for example
-the app is needed but not running); 3 transient (a lock held, the app busy, a
-write that kept conflicting): rerun unchanged in a moment.
+Exit codes: 0 ok; 1 problems found or a refusal (fix what it names; rerunning unchanged
+gives the same answer); 2 usage or environment (a person must act: the app is not
+running, needs trust or an update, the GPU is wedged); 3 transient (a lock held, the app
+busy, the GPU stalled and recycled): wait retryAfterMs, then rerun unchanged.
 
 Examples:
-  kb scenes
-  kb presets
-  kb scene add pricing --preset title --after 02-hero
-  kb doc 03-pricing set managedText.items.0.text "Simple pricing"
-  kb doc 03-pricing set textStyle.titleFont "JetBrains Mono@400"
-  kb check && kb capture --scene 03-pricing --at 1.5
+  ./kb status
+  ./kb presets
+  ./kb scene add pricing --preset title --after 02-hero
+  ./kb doc 03-pricing set managedText.items.0.text "Simple pricing"
+  ./kb doc 03-pricing set textStyle.titleFont "JetBrains Mono@400"
+  ./kb check --app && ./kb capture --scene 03-pricing --at 1.5
+  ./kb verify
 """
 
 
@@ -1144,6 +1155,10 @@ def build_parser(video_extensions: bool = True) -> argparse.ArgumentParser:
     from . import exporting
 
     exporting.register(sub, common, Formatter)
+    from . import plan, verify
+
+    verify.register(sub, common, Formatter)
+    plan.register(sub, common, Formatter)
 
     add("beats", "soundtrack beat grid and key moments per scene (every argument goes to beats.py)")
     add("chart", "chart data and keyframes for a scene (every argument goes to chart.py)")
