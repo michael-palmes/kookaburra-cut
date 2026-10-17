@@ -334,6 +334,7 @@ def status_data(project: Project) -> Dict[str, Any]:
             "exporting": hb.get("exporting") if hb else None,
         },
         "instances": rows,
+        "health": hb.get("health") if hb else None,
         "lastLoad": last_load_for(project, hb),
         "kit": kit_info(project),
         "checkpoint": checkpoint_line(project),
@@ -359,6 +360,9 @@ def status_text(project: Project) -> str:
         app_line(project, hb, rows),
     ]
     lines += instance_lines(rows)
+    from .capture import health_lines
+
+    lines += health_lines(hb)
     lines += load_lines(last_load_for(project, hb))
     edits = edits_line(edits_summary(project))
     if edits:

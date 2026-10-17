@@ -13,6 +13,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 from . import KB_VERSION
 from . import assets as assetmod
 from . import bridge
+from . import capture as capturemod
 from . import catalog as catmod
 from . import check as checkmod
 from . import docs as docmod
@@ -276,59 +277,6 @@ def cmd_check(ctx: Ctx) -> int:
         scope = "static" + (" + app" if args.app or args.render else "")
         emit(f"{report.summary()} ({scope})" + ("" if report.errors else "; ok"))
     return EXIT_PROBLEMS if report.errors else EXIT_OK
-
-
-def cmd_capture(ctx: Ctx) -> int:
-    args = ctx.args
-    hb = bridge.require_app("capture", "kb capture")
-    explicit_project = args.project
-    project = None if explicit_project else ctx.project
-    target = explicit_project or project.project_id  # type: ignore[union-attr]
-    body: Dict[str, Any] = {"project": target}
-    if args.scene is not None:
-        body["scene"] = str(project.resolve(args.scene)[1]) if project else args.scene
-    if args.at is not None:
-        body["at"] = args.at
-    if args.aspect:
-        aspects = catmod.load_catalog().ids("aspects", catmod.FALLBACK_ASPECTS) or []
-        if aspects and args.aspect not in aspects:
-            raise KbError(f'unknown aspect "{args.aspect}"; one of {", ".join(aspects)}', 2, kind="usage")
-        body["aspect"] = args.aspect
-    if args.frames:
-        frames = bridge.frames_arg(args.frames)
-        if project:
-            for f in frames:
-                f["scene"] = str(project.resolve(f["scene"])[1])
-        body["frames"] = frames
-    if args.sheet:
-        body["sheet"] = True
-    if "scene" not in body and "frames" not in body and hb.get("openProject") != target:
-        raise KbError(
-            f"{target} is not open in the app (open: {hb.get('openProject') or 'none'}); a playhead capture needs the open project. Pass --scene S (any project) or ask the user to open it",
-            EXIT_ENV,
-        )
-    resp = bridge.require_ok(bridge.request("capture", body, args.timeout, "kb capture"), "capture")
-    if ctx.json:
-        ctx.out(resp, ok=True)
-        return EXIT_OK
-    frames_out = resp.get("frames") if isinstance(resp.get("frames"), list) else None
-    if frames_out:
-        for f in frames_out:
-            if isinstance(f, dict):
-                emit(f"{f.get('path')}  (scene {f.get('scene')} at {f.get('at')}s, t={f.get('tMs')}ms)")
-    else:
-        paths = resp.get("paths") if isinstance(resp.get("paths"), list) else [resp.get("path")]
-        for p in paths:
-            if p:
-                emit(str(p))
-    if resp.get("sheetPath"):
-        emit(f"sheet: {resp['sheetPath']}")
-    if resp.get("format"):
-        emit_err(f"kb: {resp.get('format')} frame from {resp.get('project')}; Read the PNG to see it")
-    served = bridge.served_line(resp)
-    if served:
-        emit_err(f"kb: {served}")
-    return EXIT_OK
 
 
 # ── scenes ────────────────────────────────────────────────────────────────────
@@ -1166,22 +1114,7 @@ def build_parser(video_extensions: bool = True) -> argparse.ArgumentParser:
     s.add_argument("--timeout", type=float, default=None, help="seconds to wait for the app (default 300, 600 with --render)")
     s.set_defaults(fn=cmd_check)
 
-    s = add(
-        "capture",
-        "render frames in the running app and print PNG paths to Read",
-        epilog="  kb capture                      the editor's playhead (this project must be open)\n"
-        "  kb capture --scene 03-x --at 1.5\n"
-        "  kb capture --scene 2 --aspect 9:16\n"
-        "  kb capture --frames 0@1,3@2.5 --sheet   several frames plus one contact sheet",
-    )
-    s.add_argument("--scene", help="scene index (0-based) or stem; default: the playhead")
-    s.add_argument("--at", type=float, help="seconds into the scene (default: its midpoint)")
-    s.add_argument("--aspect", help="render at this aspect for this request only (e.g. 9:16)")
-    s.add_argument("--frames", help="several frames: S@SEC,S@SEC,...")
-    s.add_argument("--sheet", action="store_true", help="also write one contact-sheet PNG")
-    s.add_argument("--timeout", type=float, default=120, help="seconds to wait (default 120; a many-frame sheet of a large project takes the longest)")
-    s.add_argument("--project", help=argparse.SUPPRESS)
-    s.set_defaults(fn=cmd_capture)
+    capturemod.register(sub, common, Formatter)
 
     scene = add("scene", "add, duplicate, move, remove or retime scenes (keeps project.json, files and ids consistent)")
     ss = scene.add_subparsers(dest="op", metavar="OP")

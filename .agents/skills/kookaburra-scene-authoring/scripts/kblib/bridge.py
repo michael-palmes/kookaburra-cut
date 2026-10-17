@@ -17,7 +17,6 @@ HEARTBEAT_FRESH_MS = 30_000
 POLL_S = 0.25
 PID_CHECK_S = 1.0
 BUSY_RETRY_S = 2.0
-CLAIM_WINDOW_S = 110.0
 MAX_FRAMES = 48
 DEFAULT_RESOURCES = Path("/Applications/Kookaburra Cut.app/Contents/Resources")
 
@@ -374,11 +373,14 @@ def _quit_error(inst: Instance, kind: str) -> KbError:
 
 
 def request(kind: str, body: Dict[str, Any], timeout: float, action: str, client: Optional[str] = None) -> Dict[str, Any]:
-    """Send one request to the instance that serves this project and wait for its answer; retries while it is busy exporting."""
+    """Send one request to the instance that serves this project and wait for its answer; retries while it is busy exporting, and the capture queue's policy (kblib/queue.py) adds the deadline, throttle waits and one retry after a GPU stall."""
+    from . import queue
+
     project = _project_for(body)
     inst = _require_instance(kind, action, project)
     deadline = time.monotonic() + timeout
-    payload = address(dict(body, kind=kind), inst, project, client)
+    policy = queue.Policy(kind, inst.hb, timeout, client)
+    payload = policy.payload(address(dict(body, kind=kind), inst, project, policy.client))
     rid = write_request(payload)
     sent = time.monotonic()
     checked = sent
@@ -397,6 +399,12 @@ def request(kind: str, body: Dict[str, Any], timeout: float, action: str, client
             if not isinstance(resp, dict):
                 raise KbError(f"the app answered {kind} with something that is not a JSON object", EXIT_PROBLEMS)
             check_served_by(resp, kind, project)
+            again = policy.after_response(resp, rid, payload)
+            if again is not None:
+                rid = write_request(again)
+                sent = time.monotonic()
+                claimed = False
+                continue
             if resp.get("busy"):
                 busy_note = str(resp.get("error") or "the app is busy")
                 time.sleep(BUSY_RETRY_S)
@@ -421,8 +429,9 @@ def request(kind: str, body: Dict[str, Any], timeout: float, action: str, client
                 raise _quit_error(inst, kind)
         if not claimed and not (bridge_dir() / "requests" / f"{rid}.json").exists():
             claimed = True
-        if not claimed and now - sent > CLAIM_WINDOW_S:
+        if not claimed and now - sent > policy.claim_window_s:
             break
+        policy.waiting(rid)
         time.sleep(POLL_S)
     _cleanup(rid)
     if busy_note:
@@ -438,7 +447,7 @@ def request(kind: str, body: Dict[str, Any], timeout: float, action: str, client
             retry_after_ms=5_000,
         )
     raise KbError(
-        f"the app did not pick up the {kind} request within {int(min(timeout, CLAIM_WINDOW_S))} s; it may still be busy with an earlier request, or its window is stuck",
+        f"the app did not pick up the {kind} request within {int(policy.claim_window_s)} s; it may still be busy with an earlier request, or its window is stuck",
         EXIT_TRANSIENT,
         kind="bridge-timeout",
         hint="rerun shortly; if it keeps happening, ask the user to check Kookaburra Cut",
