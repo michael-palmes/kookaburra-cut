@@ -207,7 +207,7 @@ intuition before the probe settled it).
 
 - **Probe:** `pnpm kookaburra:run --action perf --project ws:<slug>` plays every
   scene under elimination passes (baseline / dpr-1 / no-shadows /
-  no-transmission / frozen-media / half-media / no-devices / no-dof) and writes per-pass
+  no-transmission / frozen-media / half-media / no-devices / no-dof / no-motion-blur) and writes per-pass
   fps and frame-time stats to the run's `last-run.json`. It always runs
   foreground on its own dev port, so the window is visible (an occluded
   WKWebView suspends rAF), and it warns when another dev app is listening on

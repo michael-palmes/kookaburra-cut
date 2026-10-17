@@ -59,7 +59,8 @@ const ACTIVE_LEAD_MS = 500;
 
 export function useClipTexture(binding: ClipTextureBinding): ClipTextureState {
   const { src, startMs, loop, material, readyObjectRef, onPending, onBound } = binding;
-  const { localMs } = useTimeline();
+  // Screen media holds the frame instant's clip frame across a motion blur shutter.
+  const { localMs } = useTimeline(0);
   const sceneCtx = useSceneContext();
   const invalidate = useThree((s) => s.invalidate);
   const gl = useThree((s) => s.gl);

@@ -475,6 +475,7 @@ import {
   replaceDeviceMedia,
 } from "./deviceEditorModel";
 import { foldDegEditing, writeFoldDeg } from "./foldEditorModel";
+import { MotionBlurCameraFields } from "./MotionBlurFields";
 import {
   ActionRow,
   DrillBack,
@@ -1787,6 +1788,35 @@ function CameraSectionBody({
     if (seeding) useCameraEditStore.getState().select("k1", null);
   };
 
+  /** The Motion blur group for either camera mode: the scene's layer, then the current key's shutter. */
+  const motionBlurFields = (
+    keyShutter: number | undefined,
+    hasKey: boolean,
+    previewKey: (mutate: (p: { shutterDeg?: number }) => void) => void,
+    commitKey: (mutate: (p: { shutterDeg?: number }) => void) => void,
+  ) => {
+    const write = (deg: number | undefined) => (p: { shutterDeg?: number }) => {
+      if (deg === undefined) delete p.shutterDeg;
+      else p.shutterDeg = deg;
+    };
+    return (
+      <MotionBlurCameraFields
+        project={project.renderSettings.motionBlur}
+        scene={doc?.motionBlur}
+        onSceneChange={(next) =>
+          void patchDoc((d) => {
+            if (next) d.motionBlur = next;
+            else delete d.motionBlur;
+          })
+        }
+        hasKey={hasKey}
+        keyShutter={keyShutter}
+        onKeyPreview={(deg) => previewKey(write(deg))}
+        onKeyCommit={(deg) => commitKey(write(deg))}
+      />
+    );
+  };
+
   /** Per-key Reset (decision 6, moved here from the old strip's tools row): the selected-else-nearest key back to the scene-default pose, in whichever mode drives the scene. */
   const onResetKey = () => {
     if (free) {
@@ -1919,6 +1949,7 @@ function CameraSectionBody({
         commitPose={commitRigPose}
         commitRig={(next: RigDoc) => void commitRig(next)}
       />
+      {motionBlurFields(rigKey?.pose.shutterDeg, !!rigKey, previewRigPose, commitRigPose)}
       <ActionRow
         icon={<SceneRowIcon id="camera.animate" />}
         label="Animate scene"
@@ -2021,6 +2052,7 @@ function CameraSectionBody({
           })
         }
       />
+      {motionBlurFields(targetKey?.pose.shutterDeg, !!targetKey, previewPose, commitPose)}
       <ActionRow
         icon={<SceneRowIcon id="camera.animate" />}
         label="Animate scene"

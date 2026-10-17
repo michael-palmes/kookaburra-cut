@@ -300,9 +300,14 @@ describe("TextMotionDrill", () => {
       "Distance",
       "Delay start",
     ]);
-    expect(captures.segments.at(-1)?.options.map((option) => option.label)).toEqual([
+    expect(captures.segments.at(-2)?.options.map((option) => option.label)).toEqual([
       "Left",
       "Right",
+    ]);
+    expect(captures.segments.at(-1)?.options.map((option) => option.label)).toEqual([
+      "Inherit",
+      "Off",
+      "On",
     ]);
     expect(captures.toggles).toEqual([expect.objectContaining({ label: "Shine", checked: true })]);
     expect(html).toContain("Left Right");

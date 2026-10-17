@@ -85,6 +85,7 @@ import {
   emptyMediaChangeBatch,
   noteMediaChange,
 } from "./engine/mediaChangedEvent";
+import { isDefaultMotionBlur } from "./engine/motionBlur";
 import { canQueuePresetPoster, queuePresetPoster } from "./engine/presetPosters";
 import {
   refreshUserPresets,
@@ -98,7 +99,11 @@ import {
   syncPreviewAudioPlaying,
   updatePreviewAudioSpec,
 } from "./engine/previewAudio";
-import { setPreviewClipStride, setPreviewPlaybackActive } from "./engine/previewMedia";
+import {
+  setPreviewClipStride,
+  setPreviewMotionBlurPlayback,
+  setPreviewPlaybackActive,
+} from "./engine/previewMedia";
 import { SETTLE_STEPS, settleProjectOpen } from "./engine/previewSettle";
 import {
   type AudioMarkersSpec,
@@ -157,6 +162,7 @@ import { sceneErrorRefusal } from "./engine/sceneErrors";
 import { planDeletes, planDuplicates, planMoves } from "./engine/sceneOrder";
 import { ensureSceneThumbs, listCachedSceneThumbs } from "./engine/sceneThumbs";
 import { activeSceneIndex } from "./engine/sceneTimeline";
+import { SHUTTER_SAMPLES_DEFAULT } from "./engine/shutter";
 import { canCaptureSnapshot, captureSnapshot, type SnapshotSaved } from "./engine/snapshots";
 import {
   armSourceFiles,
@@ -784,9 +790,11 @@ export default function App() {
       const slug = nativeProjectSlug(current.id);
       const manifestBefore = await readProjectManifestSnapshot(slug);
       const manifest = JSON.parse(manifestBefore);
-      // ACES at 1.0 is the byte-identical default: stored as ABSENCE so untouched projects never carry the block.
-      if (settings.toneMapping === "aces" && settings.exposure === 1) delete manifest.render;
-      else manifest.render = settings;
+      // ACES at 1.0 with no motion blur is the byte-identical default: stored as ABSENCE so untouched projects never carry the block.
+      const { motionBlur, ...display } = settings;
+      const blur = isDefaultMotionBlur(motionBlur) ? undefined : motionBlur;
+      if (display.toneMapping === "aces" && display.exposure === 1 && !blur) delete manifest.render;
+      else manifest.render = blur ? { ...display, motionBlur: blur } : display;
       await writeProjectManifestSnapshot(
         slug,
         JSON.stringify(manifest, null, 2),
@@ -2134,6 +2142,14 @@ export default function App() {
   useEffect(() => {
     setPreviewClipStride(!exporting && previewQuality !== "full" ? 2 : 1);
   }, [exporting, previewQuality]);
+  const motionBlurWhilePlaying = useUiStore((s) => s.motionBlurWhilePlaying);
+  const projectBlurSamples = project?.renderSettings.motionBlur?.samples ?? SHUTTER_SAMPLES_DEFAULT;
+  useEffect(() => {
+    const samples = previewQuality === "full" ? projectBlurSamples : 4;
+    setPreviewMotionBlurPlayback(
+      motionBlurWhilePlaying && previewQuality !== "performance" ? samples : 0,
+    );
+  }, [motionBlurWhilePlaying, previewQuality, projectBlurSamples]);
 
   // Playback binds the small preview JPEGs; pausing flips every consumer back to exact full frames.
   useEffect(() => {
@@ -2395,6 +2411,7 @@ export default function App() {
           sceneFrames: project.sceneFrames,
           compareBDocs: project.compareBDocs,
           compareBThemes: project.compareBThemes,
+          motionBlur: project.renderSettings.motionBlur,
           audio: project.audio,
           codec: "libx264",
           encode: sel.encode,
@@ -2465,6 +2482,7 @@ export default function App() {
           sceneFrames: project.sceneFrames,
           compareBDocs: project.compareBDocs,
           compareBThemes: project.compareBThemes,
+          motionBlur: project.renderSettings.motionBlur,
           audio: project.audio,
           codec: "libx264",
           signal: abort.signal,
@@ -2722,6 +2740,7 @@ export default function App() {
                       sceneFrames={project.sceneFrames}
                       compareBDocs={project.compareBDocs}
                       compareBThemes={project.compareBThemes}
+                      motionBlur={project.renderSettings.motionBlur}
                       commitStamp={project}
                     />
                   )}

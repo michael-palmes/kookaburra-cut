@@ -423,12 +423,17 @@ describe("MediaDrillIn", () => {
     ]);
     expect(captures.segments[0]?.value).toBe("window");
     expect(captures.sliders.find((slider) => slider.label === "Size")?.max).toBe(1);
-    expect(captures.segments.at(-1)?.options.map((option) => option.label)).toEqual([
+    expect(captures.segments.at(-2)?.options.map((option) => option.label)).toEqual([
       "None",
       "Float",
       "Drift",
       "Tilt",
       "Push",
+    ]);
+    expect(captures.segments.at(-1)?.options.map((option) => option.label)).toEqual([
+      "Inherit",
+      "Off",
+      "On",
     ]);
     expect(captures.toggles.map((toggle) => toggle.label)).toEqual([
       "Window recording",

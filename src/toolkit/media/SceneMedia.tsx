@@ -19,6 +19,7 @@ import { useFormat } from "../../engine/format";
 import { frameLayerRenderOrder } from "../../engine/frameLayerOrder";
 import { useGizmoSectionOpen } from "../../engine/gizmoSections";
 import { useImageOverlayPreview, useImageStagePreview } from "../../engine/imageEditStore";
+import { motionBlurScale } from "../../engine/motionBlur";
 import { resolveAssetUrl } from "../../engine/project";
 import { ProjectIdContext, SceneDocContext, useSceneContext } from "../../engine/sceneContext";
 import { useSceneMedia } from "../../engine/sceneDoc";
@@ -645,7 +646,7 @@ function WindowMedia({ entry }: { entry: SceneDocMediaSpec }) {
     entry.id,
     editable && entry.host !== "stage",
   );
-  const { localMs } = useTimeline();
+  const { localMs } = useTimeline(motionBlurScale(entry.motionBlur));
   const format = useFormat();
   const chrome = useMemo(
     () => normalizeWindowChrome(entry.window ?? BARE_WINDOW_CHROME),
@@ -696,7 +697,7 @@ function StageMedia({ entry, mapShadows }: { entry: SceneDocMediaSpec; mapShadow
   const editable = context?.side === undefined && !exporting;
   const sectionOpen = useGizmoSectionOpen("media");
   const preview = useImageStagePreview(sceneIndex, entry.id, editable);
-  const { localMs } = useTimeline();
+  const { localMs } = useTimeline(motionBlurScale(entry.motionBlur));
   const url = useSceneImageUrl(entry.kind === "image" ? entry.src : null);
   const motion = sampleRenderedSceneMediaMotion(
     entry,
@@ -950,7 +951,7 @@ function OverlayMedia({ entry, stackOrder }: { entry: SceneDocMediaSpec; stackOr
   const editable = context?.side === undefined && !exporting;
   const sectionOpen = useGizmoSectionOpen("media");
   const preview = useImageOverlayPreview(sceneIndex, entry.id, editable);
-  const { localMs } = useTimeline();
+  const { localMs } = useTimeline(motionBlurScale(entry.motionBlur));
   const format = useFormat();
   const url = useSceneImageUrl(entry.kind === "image" ? entry.src : null);
   const placement = preview ?? entry.overlay;

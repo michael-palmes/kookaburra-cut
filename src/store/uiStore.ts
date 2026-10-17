@@ -31,6 +31,7 @@ export type PreviewQuality = "full" | "balanced" | "performance";
 
 const QUALITY_KEY = "kookaburra:preview-quality";
 const DETAILED_LANE_KEY = "kookaburra:detailed-animation-view";
+const MOTION_BLUR_PLAYBACK_KEY = "kookaburra:motion-blur-playback";
 const BEAT_LANE_KEY = "kookaburra:beat-lane-hidden";
 const FREE_CAMERA_WARNING_KEY = "kookaburra:free-camera-warning-dismissed";
 const STILLS_FORMAT_KEY = "kookaburra:stills-format";
@@ -56,6 +57,14 @@ function loadDetailedAnimationView(): boolean {
 function loadBeatLaneHidden(): boolean {
   try {
     return localStorage.getItem(BEAT_LANE_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function loadMotionBlurWhilePlaying(): boolean {
+  try {
+    return localStorage.getItem(MOTION_BLUR_PLAYBACK_KEY) === "1";
   } catch {
     return false;
   }
@@ -111,6 +120,8 @@ interface UiState {
   previewQuality: PreviewQuality;
   /** Animation lanes draw keyframes as narrow lines instead of diamonds (finer editing); chrome-only. */
   detailedAnimationView: boolean;
+  /** Camera motion blur during preview playback; paused frames always show it. Preview-only. */
+  motionBlurWhilePlaying: boolean;
   /** The beat lane auto-shows whenever the project has a soundtrack; this is the opt-out. */
   beatLaneHidden: boolean;
   /** The Free-camera warning stays hidden once the user ticks "Don't show this again". */
@@ -137,6 +148,7 @@ interface UiState {
   setAudioMuted: (muted: boolean) => void;
   setPreviewQuality: (quality: PreviewQuality) => void;
   setDetailedAnimationView: (detailed: boolean) => void;
+  setMotionBlurWhilePlaying: (on: boolean) => void;
   setBeatLaneHidden: (hidden: boolean) => void;
   setFreeCameraWarningDismissed: (dismissed: boolean) => void;
   setStillsFormat: (format: StillsFormat) => void;
@@ -166,6 +178,7 @@ export const useUiStore = create<UiState>((set) => ({
   audioMuted: false,
   previewQuality: loadPreviewQuality(),
   detailedAnimationView: loadDetailedAnimationView(),
+  motionBlurWhilePlaying: loadMotionBlurWhilePlaying(),
   beatLaneHidden: loadBeatLaneHidden(),
   freeCameraWarningDismissed: loadFreeCameraWarningDismissed(),
   stillsFormat: loadPref(STILLS_FORMAT_KEY, STILLS_FORMATS, DEFAULT_STILLS_FORMAT),
@@ -197,6 +210,14 @@ export const useUiStore = create<UiState>((set) => ({
       // Storage unavailable: the choice still applies for this session.
     }
     set({ detailedAnimationView });
+  },
+  setMotionBlurWhilePlaying: (motionBlurWhilePlaying) => {
+    try {
+      localStorage.setItem(MOTION_BLUR_PLAYBACK_KEY, motionBlurWhilePlaying ? "1" : "0");
+    } catch {
+      // Storage unavailable: the choice still applies for this session.
+    }
+    set({ motionBlurWhilePlaying });
   },
   setBeatLaneHidden: (beatLaneHidden) => {
     try {

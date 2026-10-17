@@ -61,6 +61,8 @@ One array for stills and videos. Where an entry draws depends only on its `host`
   (stills), `drift` (videos); tuning `amplitude`, `hz`, `degPerSec`, `durationMs`.
 - `video`: `startMs` (scene-local), `loop` (default false: holds the last frame).
 - `castShadow: true` for stage-hosted stills.
+- `motionBlur: { enabled, amount? }` keeps an item sharp or scales its trail under
+  motion blur (reference/camera.md).
 - Ids are stable (`img1`, `vid1`); camera rigs can aim at them.
 
 Presets: `image` (full-frame still), `video` (full-frame clip), `videowindow`
@@ -125,6 +127,7 @@ mount `<LayeredScreenshot title={...} />`). Preset: `layeredscreenshot`.
 - `pose`: `spread` 0 (flattest) to 1 (fully expanded), `azimuthDeg`/`elevationDeg`
   (0/0 front on; 18/12 isometric), `zoom` (1 is auto-fit), `pan` [x, y] world units.
 - `placement`: frame-relative offset -1..1, `size` multiplier, clockwise `rotationDeg`.
+- `motionBlur`: `{ enabled, amount? }` for the stack's own moves (reference/camera.md).
 - Animation: `"animation": { "keys": [{ "id", "tMs", "pose" }], "segments": [...], "presentLoop": { "mode": "jump" } }`
   plays ONLY with `"animatedTrack": "layeredScreenshot"` (which also stands the camera
   track down). Recipes the app's presets use:

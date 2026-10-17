@@ -61,6 +61,7 @@ Only `type` and `data` are required. `null` means auto (axis bounds nice themsel
 | `format.compact` | `1.2k`, `3.4M`, `1.2B` |
 | `animation.delivery` | `all`, `series`, `cascade` |
 | `animation.from` | `start`, `end`, `centre`, `edges`, `shuffle` (seeded) |
+| `animation.motionBlur` | `{ enabled, amount? }` for the build-in under motion blur (reference/camera.md) |
 
 - A pie charts the FIRST series; categories become slices.
 - Stacked types clamp negatives to 0; plain types draw them below the axis.

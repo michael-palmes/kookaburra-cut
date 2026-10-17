@@ -459,7 +459,7 @@ refusal is an error starting `conflict:`.
 level keys: `version`, `aspects`, `transitions`, `eases`, `textMotion`,
 `textLooks`, `themes`, `backgrounds` (`types`, `shaders`, `scene3d`, `gradients`,
 `images`), `lighting`, `effects`, `devices`, `deviceShadows`, `deviceMotion`,
-`deviceLayouts`, `camera` (`presets`, `dof`), `compare`, `charts`, `chipIcons`,
+`deviceLayouts`, `camera` (`presets`, `dof`, `motionBlur`), `compare`, `charts`, `chipIcons`,
 `bulletMarkers`, `fonts` (`bundled`), `sceneDoc` (`version`, `keys`),
 `projectManifest` (`version`, `keys`), `toolkit` (`imports`, `exports`), `presets`,
 `templates`. Every entry has an `id`; most have `label` and a one-line `summary`.

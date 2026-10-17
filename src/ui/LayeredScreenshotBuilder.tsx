@@ -44,6 +44,7 @@ import {
   resolveLayeredScreenshotPlacement,
   SCREENSHOT_STACK_SIZE_RANGE,
 } from "../engine/sceneLayeredScreenshot";
+import { MotionBlurOverrideRow } from "./inspector/MotionBlurFields";
 import {
   DrillBack,
   DrillGroup,
@@ -453,6 +454,17 @@ export function LayeredScreenshotBuilder({
           >
             <GizmoModeIcon mode="rotate" /> Reset placement
           </button>
+        </DrillGroup>
+        <DrillGroup label="Motion blur">
+          <MotionBlurOverrideRow
+            value={block.motionBlur}
+            onChange={(motionBlur) => {
+              const next = { ...block };
+              if (motionBlur) next.motionBlur = motionBlur;
+              else delete next.motionBlur;
+              commitBlock(next);
+            }}
+          />
         </DrillGroup>
         <div className="ls-builder-section">
           <div className="inspector-tabs" role="tablist">

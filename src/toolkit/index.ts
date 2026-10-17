@@ -101,6 +101,8 @@ export { LayeredScreenshot, type LayeredScreenshotProps } from "./media/LayeredS
 export { VideoClip, type VideoClipProps } from "./media/VideoClip";
 // A macOS screen recording as a floating window over a backing stage, animated in 3D.
 export { VideoWindow, type VideoWindowProps } from "./media/VideoWindow";
+// Per-subtree motion blur scale for code-authored motion (sidecar items use their own motionBlur field).
+export { MotionBlur } from "./motion/MotionBlur";
 // The 3D objects library: bundled + workspace manifests, staged by the sidecar `objects` array.
 export { ObjectsFallback, StagedObject } from "./objects/ObjectPrimitive";
 export { preloadSceneObjects } from "./objects/preload";

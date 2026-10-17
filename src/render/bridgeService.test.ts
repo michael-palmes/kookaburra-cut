@@ -10,6 +10,7 @@ import { insertPresetScene } from "../engine/presetInsert";
 import { bumpWorkspaceReloadToken, loadProject } from "../engine/project";
 import { withProjectAssetRevision } from "../engine/projectAssetRevision";
 import { TrustDeniedError } from "../engine/projectTrust";
+import { DEFAULT_RENDER_SETTINGS } from "../engine/renderSettings";
 import { awaitProjectCommitted } from "../engine/themePreviews";
 import { startBridgeService } from "./bridgeService";
 
@@ -89,6 +90,7 @@ const project = {
   slots: [{ durationMs: 4000, startMs: 0 }],
   totalMs: 4000,
   sceneFiles: ["hero.tsx"],
+  renderSettings: DEFAULT_RENDER_SETTINGS,
 } as Awaited<ReturnType<typeof loadProject>>;
 
 beforeEach(() => {
@@ -379,6 +381,7 @@ describe("bridge v2 requests", () => {
     sceneFiles: ["01-hero", "02-stats"],
     sceneDocs: [{ version: 1, media: { src: "assets/clip.mov" } }, undefined],
     compareBDocs: [undefined, undefined],
+    renderSettings: DEFAULT_RENDER_SETTINGS,
   } as unknown as Awaited<ReturnType<typeof loadProject>>;
 
   const serve = async (request: Record<string, unknown>) => {

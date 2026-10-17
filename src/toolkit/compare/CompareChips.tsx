@@ -21,7 +21,8 @@ export function CompareChips() {
   const ctx = useSceneContext();
   const theme = useTheme();
   const format = useFormat();
-  const { localMs } = useTimeline();
+  // The divider samples the frame instant (the compositor's compare plan), so the chips do too.
+  const { localMs } = useTimeline(0);
   const spec = useMemo(() => compareSpecOf(doc ?? undefined, theme), [doc, theme]);
   const side = ctx?.side === "b" ? "b" : "a";
   const textKey = compareChipTextKeyForSide(side);

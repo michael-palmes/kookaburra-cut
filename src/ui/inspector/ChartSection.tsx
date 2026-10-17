@@ -55,6 +55,7 @@ import { CHART_TYPE_IDS, CHART_TYPE_LABELS } from "../inspectorOptions";
 import type { ChartInspectorScreen } from "../inspectorTitles";
 import { OptionCard } from "../OptionCard";
 import { DebouncedRange } from "../TextAnimationPicker";
+import { MotionBlurOverrideRow } from "./MotionBlurFields";
 import {
   ActionRow,
   ChartTypeIcon,
@@ -1069,6 +1070,19 @@ export function ChartDrillIn({
             onCommit={(durationMs) => writeAnimation({ durationMs })}
           />
         </div>
+      </DrillGroup>
+      <DrillGroup label="Motion blur">
+        <MotionBlurOverrideRow
+          value={doc?.chart?.animation?.motionBlur}
+          onChange={(next) =>
+            write((c) => {
+              const animation = { ...c.animation };
+              if (next) animation.motionBlur = next;
+              else delete animation.motionBlur;
+              c.animation = animation;
+            }, "chart motion blur")
+          }
+        />
       </DrillGroup>
     </>
   );

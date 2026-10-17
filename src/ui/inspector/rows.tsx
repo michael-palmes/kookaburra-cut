@@ -301,6 +301,12 @@ export function RowIcon({ id }: { id: string }) {
         <path d="M8.5 7.5v5l4-2.5z" />
       </>
     ),
+    motionBlur: (
+      <>
+        <circle cx="13" cy="10" r="3.5" />
+        <path d="M2.5 7.5h5M2 10h6M2.5 12.5h5" />
+      </>
+    ),
     render: (
       <>
         <circle cx="10" cy="10" r="7" />
