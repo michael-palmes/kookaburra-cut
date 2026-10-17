@@ -1607,8 +1607,8 @@ pub fn spawn_native_bridge(app: AppHandle) {
                     }
                 }
             }
-            crate::capture_service::triage(&app, &root, pid);
-            crate::capture_service::watchdog(&app);
+            let waiting = crate::capture_service::triage(&app, &root, pid);
+            crate::capture_service::watchdog(&app, waiting);
             // The render window prunes on every claim, but it may never open in a session that only edits videos.
             if pruned.map_or(true, |at| at.elapsed() >= Duration::from_secs(60)) {
                 prune_bridge(&root, pid);

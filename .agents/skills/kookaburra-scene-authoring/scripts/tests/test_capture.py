@@ -86,6 +86,35 @@ class StallRetryTests(KbTestCase):
         self.assertEqual(len(app.requests), 1)
         self.assertNotIn("retrying", proc.stderr)
 
+    def test_a_window_that_cannot_come_up_says_so_then_wedged_exits_2(self) -> None:
+        now = int(time.time() * 1000)
+        restarting = health(
+            queue={"depth": 1, "oldestAgeMs": 1_000},
+            renderWindow={"alive": False, "beatAgeMs": 95_000, "restarting": True, "recycles": 2, "lastRecycle": {"atMs": now, "reason": "silent"}},
+            gpu={"stalled": True, "stalledUntilMs": now + 60_000, "stallsLast10Min": 2},
+        )
+        wedged = {"ok": False, "gpuStalled": True, "wedged": True, "recycled": False, "reason": "wedged", "retryAfterMs": None,
+                  "error": "GPU wedged: the render window stalled 3 times in 10 minutes, so Kookaburra Cut stopped capturing"}
+        app = self.app(lambda r: dict(wedged), health=restarting)
+        held_until = time.monotonic() + 2.5
+
+        def triage(body: Dict[str, Any]) -> bool:
+            if time.monotonic() < held_until:
+                return False
+            app.heartbeat["health"] = health(gpu={"wedged": True, "stallsLast10Min": 3}, renderWindow={"alive": False, "restarting": True})
+            return True
+
+        app.serve_filter = triage
+        with app:
+            proc = self.kb(["capture", "--scene", "0", "--json"], cwd=self.root)
+        self.assertExit(proc, 2)
+        envelope = json.loads(proc.stdout)
+        self.assertEqual(envelope["code"], "gpu-wedged")
+        self.assertIn("quit and reopen", envelope["hint"])
+        self.assertIn("kb: the app is restarting its render window after a GPU stall (try 2 of 3, in about", proc.stderr)
+        self.assertNotIn("retrying", proc.stderr)
+        self.assertEqual(len(app.requests), 1)
+
     def test_throttled_waits_then_succeeds_or_exits_3(self) -> None:
         answers = [{"ok": False, "throttled": True, "retryAfterMs": 300, "error": "alpha already has 4 requests waiting"}]
 
@@ -206,6 +235,33 @@ class PolicyTests(KbTestCase):
         self.assertEqual(err.getvalue().splitlines(), ["kb: queued 2 of 3, about 40 s", "kb: queued 1 of 1, about 2 s"])
 
 
+    def test_the_recovery_line_names_the_restart(self) -> None:
+        now = int(time.time() * 1000)
+        backoff = health(gpu={"stalled": True, "stalledUntilMs": now + 15_000, "stallsLast10Min": 2}, renderWindow={"alive": False, "restarting": True})
+        self.assertEqual(queue.recovery_line(backoff, now), "kb: the app is restarting its render window after a GPU stall (try 2 of 3, in about 15 s)")
+        no_beat = health(gpu={"stallsLast10Min": 3}, renderWindow={"alive": True, "beatAgeMs": None, "restarting": True})
+        self.assertEqual(queue.recovery_line(no_beat, now), "kb: the app is restarting its render window after a GPU stall (try 3 of 3)")
+        self.assertEqual(queue.recovery_line(health(gpu={"stallsLast10Min": 7}, renderWindow={"restarting": True}), now)[-12:], "(try 3 of 3)")
+        for quiet in (
+            health(gpu={"stallsLast10Min": 1}, renderWindow={"restarting": False}),
+            health(gpu={"stallsLast10Min": 1}),
+            health(gpu={"stallsLast10Min": 0}, renderWindow={"restarting": True}),
+            health(gpu={"wedged": True, "stallsLast10Min": 3, "stalledUntilMs": now + 9_000}, renderWindow={"restarting": True}),
+            {},
+        ):
+            self.assertIsNone(queue.recovery_line(quiet, now))
+        h = dict(no_beat, queue=dict(no_beat["queue"], order=["me"], etaMs=[2_000]))
+        write_json(self.bridge / "apps" / "4242.json", {"pid": 4242, "health": h})
+        policy = queue.Policy("capture", {"pid": 4242, "health": h}, 60, "alpha")
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            policy.waiting("me")
+            write_json(self.bridge / "apps" / "4242.json", {"pid": 4242, "health": health(queue={"order": ["me"], "etaMs": [2_000]})})
+            policy._health_at = 0.0
+            policy.waiting("me")
+        self.assertEqual(err.getvalue().splitlines(), ["kb: the app is restarting its render window after a GPU stall (try 3 of 3)", "kb: queued 1 of 1, about 2 s"])
+
+
 class CopyTests(KbTestCase):
     def setUp(self) -> None:
         super().setUp()
@@ -290,6 +346,10 @@ class StatusAndDebugTests(KbTestCase):
         self.assertIn("Render window: alive, beat 1.2 s ago; 1 recycle (last: contextLost)", text.stdout)
         self.assertIn("WebGL contexts: editor 3/16 (1 evicted, 0 GPU losses), render 16/16", text.stdout)
         self.assertEqual(data["health"], busy)
+        restarting = health(gpu={"stallsLast10Min": 2}, renderWindow={"beatAgeMs": None, "restarting": True, "recycles": 2, "lastRecycle": {"atMs": 1, "reason": "silent"}})
+        with FakeApp(self.bridge, ok_frame, kinds=KINDS, health=restarting):
+            text = self.kb(["status"], cwd=self.root)
+        self.assertIn("Render window: alive, no beat yet, restarting after a GPU stall; 2 recycles (last: silent)", text.stdout)
         with FakeApp(self.bridge, ok_frame, kinds=KINDS, health=health(gpu={"wedged": True})):
             wedged = self.kb(["status"], cwd=self.root)
         self.assertIn("GPU WEDGED", wedged.stdout)

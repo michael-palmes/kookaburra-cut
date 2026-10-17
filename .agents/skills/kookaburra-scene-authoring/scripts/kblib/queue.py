@@ -15,6 +15,8 @@ LEGACY_CLAIM_WINDOW_S = 110.0
 STALL_MIN_WAIT_S = 2.0
 POSITION_EVERY_S = 5.0
 HEALTH_EVERY_S = 1.0
+# Render window restarts in 10 minutes before the app stops and reports the GPU wedged.
+RECYCLE_LIMIT = 3
 WEDGED_HINT = "ask the user to quit and reopen Kookaburra Cut (or press Retry captures in the editor)"
 STALL_HINT = "rerun once, with the default sheet size or --scale 0.5 and fewer frames"
 
@@ -60,6 +62,21 @@ def require_features(hb: Optional[Dict[str, Any]], wanted: Dict[str, str]) -> No
             kind="env",
             hint=f"drop {', '.join(missing)}, or ask the user to update Kookaburra Cut",
         )
+
+
+def recovery_line(health: Dict[str, Any], now: Optional[int] = None) -> Optional[str]:
+    """`kb: the app is restarting its render window after a GPU stall (try 2 of 3)` while a stall's backoff runs or no window made since has beaten (`renderWindow.restarting`); None otherwise."""
+    gpu = health.get("gpu") if isinstance(health.get("gpu"), dict) else {}
+    rw = health.get("renderWindow") if isinstance(health.get("renderWindow"), dict) else {}
+    stalls = gpu.get("stallsLast10Min")
+    if gpu.get("wedged") or not isinstance(stalls, int) or isinstance(stalls, bool) or stalls < 1:
+        return None
+    now = now if now is not None else now_ms()
+    line = f"kb: the app is restarting its render window after a GPU stall (try {min(stalls, RECYCLE_LIMIT)} of {RECYCLE_LIMIT}"
+    until = gpu.get("stalledUntilMs")
+    if isinstance(until, (int, float)) and not isinstance(until, bool) and until > now:
+        return line + f", in about {max(1, int(round((until - now) / 1000)))} s)"
+    return line + ")" if rw.get("restarting") is True else None
 
 
 def position_line(health: Dict[str, Any], rid: str, now: Optional[int] = None) -> Optional[str]:
@@ -115,14 +132,15 @@ class Policy:
         return health_of(hb)
 
     def waiting(self, rid: str) -> None:
-        """While kb waits: the queue position on stderr when it changes, or every 5 s."""
+        """While kb waits: a render window restart after a GPU stall, else the queue position, on stderr when it changes or every 5 s."""
         if self.first_id is None:
             self.first_id = rid
         now = time.monotonic()
         if now - self._health_at < HEALTH_EVERY_S:
             return
         self._health_at = now
-        line = position_line(self._health(), rid)
+        health = self._health()
+        line = recovery_line(health) or position_line(health, rid)
         if line is None:
             return
         position = line.split(",")[0]

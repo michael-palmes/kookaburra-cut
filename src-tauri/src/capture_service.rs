@@ -32,8 +32,12 @@ pub(crate) const WEBGL_CAP: u32 = 16;
 const RECYCLE_WINDOW_MS: u64 = 600_000;
 /// Backoff before the next render window, by how many recycles the last 10 minutes held.
 const BACKOFF_MS: [u64; 3] = [0, 15_000, 60_000];
-/// A request in flight with no render beat for this long is hung.
+/// A request in flight with no render beat for this long is hung; a beaten window this quiet while requests wait is silent.
 pub(crate) const HUNG_AFTER_MS: u64 = 45_000;
+/// A new render window that has not beaten this long after its create is silent.
+pub(crate) const FIRST_BEAT_WITHIN_MS: u64 = 30_000;
+/// A watchdog tick this long after the last one (the Mac slept, or the process was suspended) restarts the silence clocks.
+const WATCH_GAP_MS: u64 = 20_000;
 /// The page gets this long to write its own stall answer before the window goes.
 const DESTROY_DELAY: Duration = Duration::from_millis(200);
 const MIN_RETRY_AFTER_MS: u64 = 2_000;
@@ -624,6 +628,8 @@ pub(crate) struct WindowTrack {
     content_reloads: u32,
     web_content_pid: Option<u32>,
     recycled_generation: Option<u64>,
+    /// A window created after the last recycle has beaten.
+    recovered: bool,
     last_outcome: Option<StallOutcome>,
 }
 
@@ -640,6 +646,7 @@ impl WindowTrack {
             content_reloads: 0,
             web_content_pid: None,
             recycled_generation: None,
+            recovered: false,
             last_outcome: None,
         }
     }
@@ -662,11 +669,28 @@ impl WindowTrack {
             self.content_reloads += 1;
             self.web_content_pid = None;
         }
+        if self
+            .recycled_generation
+            .is_some_and(|g| self.generation > g)
+        {
+            self.recovered = true;
+        }
         self.last_seq = Some(seq);
         self.created_since_beat = false;
         self.last_beat_ms = Some(now);
         self.gl_ms = Some(gl_ms);
         reloaded
+    }
+
+    /// A recycle happened and no window made since has beaten (kb's "restarting its render window" line).
+    pub(crate) fn restarting(&self) -> bool {
+        self.recycled_generation.is_some() && !self.recovered
+    }
+
+    fn recycled(&mut self, outcome: StallOutcome) {
+        self.recycled_generation = Some(self.generation);
+        self.recovered = false;
+        self.last_outcome = Some(outcome);
     }
 }
 
@@ -684,18 +708,97 @@ pub(crate) struct InFlight {
     pub version: u32,
 }
 
-/// Whether the hung watchdog fires: a request in flight and no beat (or create, or claim) for 45 s.
-pub(crate) fn hung(in_flight: &InFlight, window: &WindowTrack, now: u64) -> bool {
-    let last = [
-        Some(in_flight.started_at_ms),
-        window.last_beat_ms,
-        window.created_at_ms,
-    ]
-    .into_iter()
-    .flatten()
-    .max()
-    .unwrap_or(now);
-    now.saturating_sub(last) > HUNG_AFTER_MS
+/// The watchdog's own clocks: when it last ran, when it resumed after a gap, and since when render requests have waited unclaimed.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct SilenceWatch {
+    last_tick_ms: Option<u64>,
+    resumed_at_ms: Option<u64>,
+    pending_since_ms: Option<u64>,
+}
+
+impl SilenceWatch {
+    pub(crate) const fn new() -> Self {
+        Self {
+            last_tick_ms: None,
+            resumed_at_ms: None,
+            pending_since_ms: None,
+        }
+    }
+
+    /// One watchdog tick; a gap since the last one restarts the clocks, so a wake from sleep never reads as silence.
+    pub(crate) fn tick(&mut self, now: u64, pending: bool) {
+        if self
+            .last_tick_ms
+            .map_or(true, |at| now.saturating_sub(at) > WATCH_GAP_MS)
+        {
+            self.resumed_at_ms = Some(now);
+        }
+        self.last_tick_ms = Some(now);
+        self.pending_since_ms = if pending {
+            self.pending_since_ms.or(Some(now))
+        } else {
+            None
+        };
+    }
+}
+
+/// Why the watchdog recycles a render window that answers nothing.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) enum Silence {
+    /// Created and no first beat within 30 s.
+    NoFirstBeat,
+    /// Beat before, then none for 45 s while render requests wait.
+    Stopped,
+}
+
+fn since(times: &[Option<u64>], now: u64) -> u64 {
+    now.saturating_sub(times.iter().flatten().copied().max().unwrap_or(now))
+}
+
+/// Whether the hung watchdog fires: a request in flight and no beat (or create, or claim, or watchdog resume) for 45 s.
+pub(crate) fn hung(
+    in_flight: &InFlight,
+    window: &WindowTrack,
+    watch: &SilenceWatch,
+    now: u64,
+) -> bool {
+    let quiet = since(
+        &[
+            Some(in_flight.started_at_ms),
+            window.last_beat_ms,
+            window.created_at_ms,
+            watch.resumed_at_ms,
+        ],
+        now,
+    );
+    quiet > HUNG_AFTER_MS
+}
+
+/// Whether a live render window is silent: no first beat 30 s after its create, or beats stopped for 45 s while render requests wait (counted from the later of the last beat, the wait's start and any claim, so the hung check answers a request in flight first). Hidden pages beat about every 2 s, far inside both.
+pub(crate) fn silent(
+    window: &WindowTrack,
+    watch: &SilenceWatch,
+    in_flight: Option<&InFlight>,
+    now: u64,
+) -> Option<Silence> {
+    let created = window.created_at_ms?;
+    match window.last_beat_ms {
+        None => (since(&[Some(created), watch.resumed_at_ms], now) > FIRST_BEAT_WITHIN_MS)
+            .then_some(Silence::NoFirstBeat),
+        Some(beat) => {
+            let waiting = watch.pending_since_ms?;
+            let quiet = since(
+                &[
+                    Some(beat),
+                    Some(waiting),
+                    watch.resumed_at_ms,
+                    in_flight.map(|f| f.started_at_ms),
+                ],
+                now,
+            );
+            (quiet > HUNG_AFTER_MS).then_some(Silence::Stopped)
+        }
+    }
 }
 
 struct Censuses {
@@ -710,6 +813,7 @@ struct ServiceInner {
     durations: Durations,
     recycle: RecycleState,
     window: WindowTrack,
+    watch: SilenceWatch,
     censuses: Censuses,
     /// Ids Rust answered itself; a late page answer for one is dropped.
     answered: VecDeque<String>,
@@ -721,6 +825,7 @@ static SERVICE: Mutex<ServiceInner> = Mutex::new(ServiceInner {
     durations: Durations::new(),
     recycle: RecycleState::new(),
     window: WindowTrack::new(),
+    watch: SilenceWatch::new(),
     censuses: Censuses {
         editor: None,
         render: None,
@@ -856,8 +961,7 @@ pub(crate) fn stall(app: &AppHandle, reason: &str, counts: bool) -> StallOutcome
             (Some(g), Some(last)) if g == generation => (last, generation, false),
             _ => {
                 let outcome = s.recycle.stall(now, reason, counts);
-                s.window.recycled_generation = Some(generation);
-                s.window.last_outcome = Some(outcome);
+                s.window.recycled(outcome);
                 (outcome, generation, true)
             }
         }
@@ -884,6 +988,7 @@ pub(crate) fn stall(app: &AppHandle, reason: &str, counts: bool) -> StallOutcome
 fn stall_error(reason: &str) -> String {
     match reason {
         "hung" => "GPU stalled: the render window stopped responding for 45 s mid-request, so Kookaburra Cut recycled it".into(),
+        "silent" => "GPU stalled: the render window stopped beating (it could not draw), so Kookaburra Cut recycled it".into(),
         "wedged" => "GPU wedged: the render window stalled 3 times in 10 minutes, so Kookaburra Cut stopped capturing".into(),
         other => format!("GPU stalled ({other}): the render window lost its WebGL context, so Kookaburra Cut recycled it"),
     }
@@ -1000,25 +1105,39 @@ pub(crate) fn reset(app: &AppHandle) {
     emit_state(app);
 }
 
-/// The native loop's watchdog: a hung request recycles the window; one left in flight by a window that is gone is answered transient.
-pub(crate) fn watchdog(app: &AppHandle) {
+/// The native loop's watchdog, given how many render requests wait unclaimed: a hung request or a silent window recycles the window (counted like any stall, so the backoff and the wedged state apply); one left in flight by a window that is gone is answered transient.
+pub(crate) fn watchdog(app: &AppHandle, pending: usize) {
     let now = now_ms();
     let alive = render_alive(app);
-    let (is_hung, orphan) = {
+    let (recycle, orphan) = {
         let mut s = service();
-        let Some(f) = s.in_flight.clone() else {
-            return;
-        };
-        let stale = hung(&f, &s.window, now);
-        if !alive && stale {
-            s.in_flight = None;
-            (false, Some(f))
+        s.watch.tick(now, pending > 0);
+        let stale = s
+            .in_flight
+            .as_ref()
+            .is_some_and(|f| hung(f, &s.window, &s.watch, now));
+        if !alive {
+            (None, if stale { s.in_flight.take() } else { None })
+        } else if stale {
+            (Some(("hung", None)), None)
         } else {
-            (alive && stale, None)
+            let quiet = silent(&s.window, &s.watch, s.in_flight.as_ref(), now);
+            (quiet.map(|q| ("silent", Some(q))), None)
         }
     };
-    if is_hung {
-        stall(app, "hung", true);
+    if let Some((reason, quiet)) = recycle {
+        match quiet {
+            Some(Silence::NoFirstBeat) => log::warn!(
+                "[capture] the render window sent no first beat {} s after its create",
+                FIRST_BEAT_WITHIN_MS / 1000
+            ),
+            Some(Silence::Stopped) => log::warn!(
+                "[capture] the render window stopped beating for {} s with {pending} request(s) waiting",
+                HUNG_AFTER_MS / 1000
+            ),
+            None => {}
+        }
+        stall(app, reason, true);
     }
     if let Some(f) = orphan {
         let body = json!({
@@ -1067,13 +1186,13 @@ fn verdict_body(request: &BridgeRequest, p: &RequestPeek, verdict: &Verdict) -> 
     body
 }
 
-/// The native loop's triage of this instance's pending render requests: wedged, too large and throttled ones are answered at once (claimed first, so the render window never serves them too).
-pub(crate) fn triage(app: &AppHandle, root: &Path, pid: u32) {
+/// The native loop's triage of this instance's pending render requests: wedged, too large and throttled ones are answered at once (claimed first, so the render window never serves them too). Returns how many are left for the render window.
+pub(crate) fn triage(app: &AppHandle, root: &Path, pid: u32) -> usize {
     let now = now_ms();
     let own = crate::bridge::own_workspace_root(app);
     let pending = crate::bridge::pending_claimable_requests(root, own.as_deref(), pid, now);
     if pending.is_empty() {
-        return;
+        return 0;
     }
     let aspect = editor_aspect(app);
     let peeks: Vec<RequestPeek> = pending
@@ -1085,6 +1204,7 @@ pub(crate) fn triage(app: &AppHandle, root: &Path, pid: u32) {
         let wedged = s.recycle.wedged(now);
         verdicts(&peeks, &s.usage, &s.durations.estimate(), now, wedged)
     };
+    let left = judged.iter().filter(|v| **v == Verdict::Serve).count();
     for (((request, _), p), verdict) in pending.iter().zip(&peeks).zip(&judged) {
         if *verdict == Verdict::Serve {
             continue;
@@ -1092,7 +1212,7 @@ pub(crate) fn triage(app: &AppHandle, root: &Path, pid: u32) {
         let requests = root.join("requests");
         let claimed = requests.join(".claimed");
         if std::fs::create_dir_all(&claimed).is_err() {
-            return;
+            return left;
         }
         let from = requests.join(format!("{}.json", request.id));
         if std::fs::rename(&from, claimed.join(format!("{}.json", request.id))).is_err() {
@@ -1100,6 +1220,7 @@ pub(crate) fn triage(app: &AppHandle, root: &Path, pid: u32) {
         }
         write_answer(app, &request.id, verdict_body(request, p, verdict));
     }
+    left
 }
 
 /// The render claim's order: drop what triage answers, then serve fairly.
@@ -1199,6 +1320,7 @@ pub(crate) fn health(app: &AppHandle) -> Value {
         "createdAtMs": s.window.created_at_ms,
         "loadedProject": s.window.loaded_project,
         "contentReloads": s.window.content_reloads,
+        "restarting": s.window.restarting(),
         "recycles": s.recycle.total,
         "lastRecycle": s.recycle.last_json(),
     });
@@ -1809,6 +1931,27 @@ mod tests {
         w.created(20);
         assert!(!w.beat(0, 1.0, 21));
         assert_eq!((w.content_reloads, w.generation), (1, 2));
+        assert!(!w.restarting());
+        w.recycled(StallOutcome {
+            recycled: true,
+            retry_after_ms: Some(0),
+            wedged: false,
+            stalled_until_ms: None,
+        });
+        w.beat(1, 1.0, 22);
+        assert!(
+            w.restarting(),
+            "the stalled window's own late beat proves nothing"
+        );
+        w.created(30);
+        assert!(w.restarting());
+        w.beat(0, 1.0, 31);
+        assert!(!w.restarting());
+        w.created(40);
+        assert!(
+            !w.restarting(),
+            "a cold start after a recovery is not a restart"
+        );
         let f = InFlight {
             id: "a".into(),
             kind: "capture".into(),
@@ -1822,10 +1965,162 @@ mod tests {
         };
         let mut w = WindowTrack::new();
         w.created(0);
-        assert!(!hung(&f, &w, 100 + HUNG_AFTER_MS));
-        assert!(hung(&f, &w, 101 + HUNG_AFTER_MS));
+        let watch = SilenceWatch::new();
+        assert!(!hung(&f, &w, &watch, 100 + HUNG_AFTER_MS));
+        assert!(hung(&f, &w, &watch, 101 + HUNG_AFTER_MS));
         w.beat(1, 1.0, 40_000);
-        assert!(!hung(&f, &w, 40_000 + HUNG_AFTER_MS));
+        assert!(!hung(&f, &w, &watch, 40_000 + HUNG_AFTER_MS));
+    }
+
+    fn in_flight(started_at_ms: u64) -> InFlight {
+        InFlight {
+            id: "a".into(),
+            kind: "capture".into(),
+            client: "anon".into(),
+            frames: 1,
+            frames_done: 0,
+            units: 1,
+            started_at_ms,
+            generation: 1,
+            version: 2,
+        }
+    }
+
+    /// Ticks the watchdog every 300 ms over `[from, to)`, as the native loop does.
+    fn tick_through(watch: &mut SilenceWatch, from: u64, to: u64, pending: bool) {
+        let mut t = from;
+        while t < to {
+            watch.tick(t, pending);
+            t += 300;
+        }
+    }
+
+    #[test]
+    fn a_window_with_no_first_beat_in_30_s_is_silent() {
+        let t = 1_000_000;
+        let mut w = WindowTrack::new();
+        let mut watch = SilenceWatch::new();
+        assert_eq!(silent(&w, &watch, None, t), None);
+        w.created(t);
+        tick_through(&mut watch, t, t + FIRST_BEAT_WITHIN_MS, false);
+        watch.tick(t + FIRST_BEAT_WITHIN_MS, false);
+        assert_eq!(silent(&w, &watch, None, t + FIRST_BEAT_WITHIN_MS), None);
+        watch.tick(t + FIRST_BEAT_WITHIN_MS + 1, false);
+        assert_eq!(
+            silent(&w, &watch, None, t + FIRST_BEAT_WITHIN_MS + 1),
+            Some(Silence::NoFirstBeat)
+        );
+        w.beat(0, 1.0, t + 2_000);
+        assert_eq!(silent(&w, &watch, None, t + FIRST_BEAT_WITHIN_MS + 1), None);
+    }
+
+    #[test]
+    fn beats_that_stop_with_work_waiting_are_silent_and_idle_ones_are_not() {
+        let t = 1_000_000;
+        let mut w = WindowTrack::new();
+        let mut watch = SilenceWatch::new();
+        w.created(t);
+        w.beat(0, 1.0, t + 1_000);
+        tick_through(&mut watch, t, t + 600_000, false);
+        assert_eq!(
+            silent(&w, &watch, None, t + 600_000),
+            None,
+            "idle teardown owns a quiet idle window"
+        );
+        let queued = t + 600_000;
+        tick_through(&mut watch, queued, queued + HUNG_AFTER_MS + 300, true);
+        assert_eq!(silent(&w, &watch, None, queued + HUNG_AFTER_MS), None);
+        assert_eq!(
+            silent(&w, &watch, None, queued + HUNG_AFTER_MS + 1),
+            Some(Silence::Stopped)
+        );
+        let claimed = in_flight(queued + 10_000);
+        assert_eq!(
+            silent(&w, &watch, Some(&claimed), queued + HUNG_AFTER_MS + 1),
+            None,
+            "the hung check answers a request in flight first"
+        );
+        assert!(hung(&claimed, &w, &watch, queued + 10_001 + HUNG_AFTER_MS));
+        watch.tick(queued + HUNG_AFTER_MS + 600, false);
+        assert_eq!(silent(&w, &watch, None, queued + HUNG_AFTER_MS + 600), None);
+    }
+
+    #[test]
+    fn hidden_page_beats_and_a_wake_from_sleep_never_read_as_silence() {
+        let t = 1_000_000;
+        let mut w = WindowTrack::new();
+        let mut watch = SilenceWatch::new();
+        w.created(t);
+        let mut at = t;
+        for seq in 0..600 {
+            at = t + 1_500 + seq * 2_000;
+            w.beat(seq, 1.0, at);
+            tick_through(&mut watch, at, at + 2_000, true);
+            assert_eq!(silent(&w, &watch, None, at + 1_999), None);
+        }
+        let woke = at + 3_600_000;
+        watch.tick(woke, true);
+        assert_eq!(silent(&w, &watch, None, woke), None);
+        assert!(!hung(&in_flight(at), &w, &watch, woke));
+        tick_through(&mut watch, woke, woke + HUNG_AFTER_MS + 300, true);
+        assert_eq!(
+            silent(&w, &watch, None, woke + HUNG_AFTER_MS + 1),
+            Some(Silence::Stopped)
+        );
+        let mut fresh = WindowTrack::new();
+        fresh.created(t);
+        let mut slept = SilenceWatch::new();
+        slept.tick(t, false);
+        slept.tick(t + 25_000, false);
+        assert_eq!(silent(&fresh, &slept, None, t + 31_000), None);
+        assert_eq!(
+            silent(&fresh, &slept, None, t + 25_001 + FIRST_BEAT_WITHIN_MS),
+            Some(Silence::NoFirstBeat)
+        );
+    }
+
+    /// The scenario C failure: every new window stays silent. Each one is recycled through the same backoff, and the fourth stall wedges.
+    #[test]
+    fn silent_windows_recycle_through_the_backoff_then_wedge_until_retry() {
+        let t = 1_000_000;
+        let mut r = RecycleState::new();
+        let mut w = WindowTrack::new();
+        let mut watch = SilenceWatch::new();
+        let mut alive = false;
+        let mut outcomes: Vec<(u64, StallOutcome)> = Vec::new();
+        let mut now = t;
+        while now < t + 600_000 && !r.wedged(now) {
+            watch.tick(now, true);
+            if !alive && !r.window_blocked(now) {
+                w.created(now);
+                alive = true;
+            }
+            if alive && silent(&w, &watch, None, now).is_some() {
+                outcomes.push((now, r.stall(now, "silent", true)));
+                alive = false;
+            }
+            now += 300;
+        }
+        let backoffs: Vec<Option<u64>> = outcomes.iter().map(|(_, o)| o.retry_after_ms).collect();
+        assert_eq!(backoffs, [Some(0), Some(15_000), Some(60_000), None]);
+        let (at, last) = outcomes[3];
+        assert!(last.wedged && !last.recycled);
+        assert!(
+            at - t < 240_000,
+            "wedged within 4 minutes, not {} ms",
+            at - t
+        );
+        assert_eq!(
+            (r.total, r.last.as_ref().map(|l| l.1.as_str())),
+            (3, Some("silent"))
+        );
+        assert!(r.window_blocked(at + 300_000));
+        r.reset();
+        assert!(!r.wedged(at + 300_000) && !r.window_blocked(at + 300_000));
+        assert_eq!(
+            r.stall(at + 300_000, "silent", true).retry_after_ms,
+            Some(0)
+        );
     }
 
     fn touch(path: &Path, bytes: usize, mtime: u64) {

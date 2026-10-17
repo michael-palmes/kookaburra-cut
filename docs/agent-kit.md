@@ -619,8 +619,9 @@ finish and check its own work. Code: `scripts/kblib/exporting.py`, `src-tauri/sr
 
 - **Only the open project.** The editor must show this project; on the Welcome screen or another
   project the app answers `notOpen` or `wrongProject` (exit 2, kinds `not-open`, `wrong-project`).
-  While the person is mid-edit (a pointer down, a text field focused outside the embedded
-  terminal), the Export window is open, or an export, Verify, stills export or theme preview
+  While the person is mid-edit (a pointer down, or a focused text field outside the embedded
+  terminal that they typed in or changed in the last 10 s; a field left focused while idle does
+  not count), the Export window is open, or an export, Verify, stills export or theme preview
   runs, it answers busy; kb retries for 30 s (never past `--timeout`), then exits 3 (`app-busy`).
 - **Sync first.** Once accepted the editor stops playback, settles its own sidecar writes, and
   waits up to 20 s until the reload poll's baseline matches the disk and the reload it asked for
@@ -648,7 +649,9 @@ finish and check its own work. Code: `scripts/kblib/exporting.py`, `src-tauri/sr
   export's answer, then exits 130 (interrupted) or 1 (`timeout`). If kb itself dies, the app
   cancels the export when `clientPid` exits.
 - **Flash gate.** The answer carries the export tap's flash report. A failure exits 1 (`flashes`;
-  the file and its record are kept) unless `--allow-flashes`; warnings print and exit 0.
+  the file and its record are kept) unless `--allow-flashes`; warnings print and exit 0. A
+  flagged film also raises the Export button's persistent flash warning in the app, titled
+  "Claude's export ..." so the person knows who ran it.
 - **The record.** Every finished export saves `_bridge/exports/<slug>/<sha16>.json` (schema under
   "Film checks and verify-export"; the newest 50 per project stay), so `kb verify-export` checks
   the file against what was asked for.
@@ -986,6 +989,19 @@ is `kblib/queue.py` and `kblib/capture.py`. Bridge captures are never baselines.
   dropped with no window created in between (wry reloaded the page after a WebContent
   kill) answers the request in flight `{ ok: false, transient: true, reason:
   "contentReload" }` (kb exit 3).
+- **Silent windows.** A live render window that sent no first beat 30 s after its create,
+  or that beat before but sent none for 45 s while render requests wait (counted from the
+  later of its last beat and the wait's start), is destroyed and counted as a stall with
+  reason `silent`, so the backoff and the wedged state apply as above; the native loop
+  checks every 300 ms (`SilenceWatch`, `silent` in `capture_service.rs`). A tick more than
+  20 s after the last one (the Mac slept) restarts the clocks, and a hidden page beats about
+  every 2 s, so neither reads as silence. A quiet window with nothing waiting stays (idle
+  teardown owns it). `renderWindow.restarting` is true from a recycle until a window made
+  after it beats; while it is, or a backoff runs, kb's waiting line reads `kb: the app is
+  restarting its render window after a GPU stall (try 2 of 3, in about 15 s)`.
+- **Measured.** A killed GPU process recovers within seconds through a
+  fresh window (3.9 s); one stopped for 90 s then resumed did not recover through fresh
+  windows within 5 minutes, so wedged ("ask the user to quit and reopen") is the outcome.
 - **Retention.** Responses live 60 min under a 2 GiB cap, pruned oldest first per
   response (its JSON and PNGs), never one under 2 min old, at most once a minute, and only
   by their owner: `servedBy.pid` is this instance or dead, or there is none.
@@ -1009,7 +1025,8 @@ is `kblib/queue.py` and `kblib/capture.py`. Bridge captures are never baselines.
   lossClass, ageMs }]`. `kb debug lose-context` forces a loss on the render window (every
   build; it recycles at once); `--window editor` works in dev builds only and shows the
   banner. `scripts/gpu-stall-probe.sh` is the dev-only harness (lose-context, GPU process
-  killed, stopped and resumed, 17 contexts) against a test instance.
+  killed, stopped and resumed, 17 contexts) against a test instance; it prints one verdict
+  line per scenario, and C lists every recycle and whether the GPU wedged.
 
 `health` (the heartbeat's block; `queue.order` and `etaMs` are the picker's simulated
 order and the estimate to each answer, from the last 32 capture durations):
@@ -1026,7 +1043,8 @@ order and the estimate to each answer, from the last 32 capture durations):
     "unitMs": 400, "overheadMs": 1000, "samples": 20 },
   "renderWindow": { "alive": true, "beatAgeMs": 1900, "glMs": 3.1, "webContentPid": 2345,
     "createdAtMs": 1792019000000, "loadedProject": "ws:product-tour", "contentReloads": 0,
-    "recycles": 1, "lastRecycle": { "atMs": 1792019500000, "reason": "contextLost" } },
+    "restarting": false, "recycles": 1,
+    "lastRecycle": { "atMs": 1792019500000, "reason": "contextLost" } },
   "gpu": { "stalled": false, "stalledUntilMs": null, "wedged": false, "stallsLast10Min": 1,
     "editorLostAtMs": null },
   "webgl": { "cap": 16,
@@ -1038,8 +1056,10 @@ order and the estimate to each answer, from the last 32 capture durations):
 }
 ```
 
-`kb status` prints a GPU WEDGED or stalled line, the queue, the render window and the
-context counts from it; `--json` passes `health` through.
+`kb status` prints a GPU WEDGED or stalled line, the queue, the render window (with "no
+beat yet" and "restarting after a GPU stall" when they apply) and the context counts from
+it; `--json` passes `health` through. `lastRecycle.reason` is `contextLost`, `eviction`,
+`blankReadback`, `canvasFailed`, `notMounted`, `hung`, `silent` or `debug`.
 
 ## Headless edit CLI
 

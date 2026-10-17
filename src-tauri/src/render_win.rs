@@ -1,4 +1,4 @@
-//! Hidden render window (label `render`): the background renderer's shell. Never shown; it serves capture and thumbnail jobs without touching the editor's canvas or clock. Its beat (one a second, with a 1 px GL readback) feeds the capture service's watchdog and content-reload check; a GPU stall destroys it (`recycle_render_window`) and the backoff in `capture_service` decides when `ensure_render_window` may make the next one.
+//! Hidden render window (label `render`): the background renderer's shell. Never shown; it serves capture and thumbnail jobs without touching the editor's canvas or clock. Its beat (one a second, with a 1 px GL readback) feeds the capture service's hung and silent-window watchdog and its content-reload check; a GPU stall destroys it (`recycle_render_window`) and the backoff in `capture_service` decides when `ensure_render_window` may make the next one.
 
 use std::collections::VecDeque;
 use std::sync::Mutex;
