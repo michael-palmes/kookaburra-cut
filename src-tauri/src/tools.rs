@@ -1,8 +1,9 @@
 //! App-free paths shared by the Tauri commands and the headless `edit` CLI: the app data folder, the bundled ffmpeg/ffprobe sidecars and the hardware-video setting, all resolved without an `AppHandle` so both entry points reach the same files.
 
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 
-/// The bundle identifier (`tauri.conf.json` `identifier`); Tauri's macOS `app_data_dir` is named after it.
+/// The config identifier (`tauri.conf.json` `identifier`) that Tauri's macOS `app_data_dir` is named after; a bundle's own `Info.plist` overrides it.
 pub(crate) const APP_IDENTIFIER: &str = "com.mpalmes.kookaburracut";
 
 /// `$HOME/Library/Application Support/<identifier>`, exactly what Tauri's `app.path().app_data_dir()` returns on macOS.
@@ -10,7 +11,46 @@ pub(crate) fn app_data_dir() -> Result<PathBuf, String> {
     Ok(home_dir()?
         .join("Library")
         .join("Application Support")
-        .join(APP_IDENTIFIER))
+        .join(bundle_identifier()))
+}
+
+/// This executable's identifier: its bundle's `CFBundleIdentifier` (an acceptance build carries its own), else the config identifier for a dev binary outside a bundle.
+pub(crate) fn bundle_identifier() -> &'static str {
+    static ID: OnceLock<String> = OnceLock::new();
+    ID.get_or_init(|| {
+        current_exe()
+            .ok()
+            .and_then(|exe| bundle_identifier_of(&exe))
+            .unwrap_or_else(|| APP_IDENTIFIER.to_owned())
+    })
+}
+
+/// The `CFBundleIdentifier` of the `.app` holding `exe` in its `Contents/MacOS/`; None outside a bundle.
+fn bundle_identifier_of(exe: &Path) -> Option<String> {
+    let macos = exe.parent()?;
+    let contents = macos.parent()?;
+    let bundle = contents.parent()?;
+    if macos.file_name()? != "MacOS"
+        || contents.file_name()? != "Contents"
+        || bundle.extension()? != "app"
+    {
+        return None;
+    }
+    plist_string(
+        &std::fs::read_to_string(contents.join("Info.plist")).ok()?,
+        "CFBundleIdentifier",
+    )
+}
+
+/// The `<string>` right after `<key>KEY</key>` in an XML plist (Tauri writes `Info.plist` as XML).
+fn plist_string(plist: &str, key: &str) -> Option<String> {
+    let (_, rest) = plist.split_once(&format!("<key>{key}</key>"))?;
+    let (value, _) = rest
+        .trim_start()
+        .strip_prefix("<string>")?
+        .split_once("</string>")?;
+    let value = value.trim();
+    (!value.is_empty()).then(|| value.to_owned())
 }
 
 /// `$HOME` when set and non-empty, else the password database entry: the `dirs` crate's rule, which Tauri's path resolver uses.
@@ -45,9 +85,7 @@ fn passwd_home() -> Option<PathBuf> {
 
 /// A bundled sidecar's path, resolved like tauri-plugin-shell's `relative_command_path`: beside the running executable (packaged `Contents/MacOS/ffmpeg`, dev `target/debug/ffmpeg`), stepping out of `deps/` when a test binary runs.
 pub(crate) fn sidecar_path(name: &str) -> Result<PathBuf, String> {
-    let exe = tauri::utils::platform::current_exe()
-        .or_else(|_| std::env::current_exe().and_then(|p| p.canonicalize()))
-        .map_err(|e| format!("cannot locate the app binary: {e}"))?;
+    let exe = current_exe().map_err(|e| format!("cannot locate the app binary: {e}"))?;
     let dir = exe.parent().ok_or("the app binary has no parent folder")?;
     let base = if dir.ends_with("deps") {
         dir.parent().unwrap_or(dir)
@@ -55,6 +93,11 @@ pub(crate) fn sidecar_path(name: &str) -> Result<PathBuf, String> {
         dir
     };
     Ok(base.join(name))
+}
+
+fn current_exe() -> std::io::Result<PathBuf> {
+    tauri::utils::platform::current_exe()
+        .or_else(|_| std::env::current_exe().and_then(|p| p.canonicalize()))
 }
 
 /// The two media tools every edit core runs.
@@ -95,6 +138,73 @@ mod tests {
     fn app_data_sits_under_application_support() {
         let dir = app_data_dir().unwrap();
         assert!(dir.ends_with(format!("Library/Application Support/{APP_IDENTIFIER}")));
+    }
+
+    const PLIST: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0">
+<dict>
+	<key>CFBundleExecutable</key>
+	<string>kookaburra-cut</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.mpalmes.kookaburracut.acceptance.abc12345</string>
+</dict>
+</plist>
+"#;
+
+    #[test]
+    fn a_bundled_binary_reads_its_own_identifier() {
+        let dir = std::env::temp_dir().join(format!("kc-tools-plist-{}", std::process::id()));
+        let contents = dir.join("Kookaburra Cut Acceptance.app/Contents");
+        std::fs::create_dir_all(contents.join("MacOS")).unwrap();
+        let exe = contents.join("MacOS/kookaburra-cut");
+        assert_eq!(bundle_identifier_of(&exe), None);
+        std::fs::write(contents.join("Info.plist"), PLIST).unwrap();
+        assert_eq!(
+            bundle_identifier_of(&exe).as_deref(),
+            Some("com.mpalmes.kookaburracut.acceptance.abc12345")
+        );
+        let keyless = PLIST.replace("<key>CFBundleIdentifier</key>", "<key>Other</key>");
+        std::fs::write(contents.join("Info.plist"), keyless).unwrap();
+        assert_eq!(bundle_identifier_of(&exe), None);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn binaries_outside_a_bundle_use_the_config_identifier() {
+        let dir = std::env::temp_dir().join(format!("kc-tools-nobundle-{}", std::process::id()));
+        for exe in [
+            "target/debug/kookaburra-cut",
+            "X.app/MacOS/kookaburra-cut",
+            "X/Contents/MacOS/kookaburra-cut",
+        ] {
+            let exe = dir.join(exe);
+            let contents = exe.parent().unwrap().parent().unwrap();
+            std::fs::create_dir_all(exe.parent().unwrap()).unwrap();
+            std::fs::write(contents.join("Info.plist"), PLIST).unwrap();
+            assert_eq!(bundle_identifier_of(&exe), None, "{}", exe.display());
+        }
+        assert_eq!(bundle_identifier(), APP_IDENTIFIER);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn plist_strings_need_the_key_then_a_string() {
+        assert_eq!(
+            plist_string(PLIST, "CFBundleExecutable").as_deref(),
+            Some("kookaburra-cut")
+        );
+        assert_eq!(plist_string(PLIST, "CFBundleName"), None);
+        assert_eq!(
+            plist_string("<key>CFBundleIdentifier</key><true/>", "CFBundleIdentifier"),
+            None
+        );
+        assert_eq!(
+            plist_string(
+                "<key>CFBundleIdentifier</key>\n<string> </string>",
+                "CFBundleIdentifier"
+            ),
+            None
+        );
     }
 
     #[test]
