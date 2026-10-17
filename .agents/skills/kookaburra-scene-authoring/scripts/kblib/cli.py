@@ -16,6 +16,7 @@ from . import bridge
 from . import capture as capturemod
 from . import catalog as catmod
 from . import check as checkmod
+from . import coord_cli
 from . import docs as docmod
 from . import fonts as fontmod
 from . import git as gitmod
@@ -63,7 +64,9 @@ project folder (it also walks up from the cwd, or uses $CLAUDE_PROJECT_DIR).
   Video      video list | video show NAME | video new SRC [--for SCENE:SLOT]
              video cut|keep|split|trim|speed|freeze|tap|mask|apply NAME ... (kb video --help)
              video render NAME [--use --scene S] | video use NAME --scene S | video open NAME
-  History    checkpoint [MESSAGE] | history | undo [REV] | diff [REV] [--stat]
+  History    checkpoint [MESSAGE] [--scene S]... | history | undo [REV] [--scene S | --all] | diff [REV]
+  Agents     lease S [--ttl 2h] [--for NAME] [--release [--force]] | leases | note TEXT [--scene S] | notes
+             events [--follow] [--since 10m|CURSOR|all] [--kinds ...] [--all-agents]
   Helpers    beats ... | chart ... (soundtrack beats and chart data) | hook EVENT (Claude Code)
 
 S is a scene index (0-based) or file stem (03-pricing). PATH is dotted
@@ -882,162 +885,7 @@ def cmd_assets(ctx: Ctx) -> int:
     return EXIT_OK
 
 
-# ── history ───────────────────────────────────────────────────────────────────
-
-
-def cmd_checkpoint(ctx: Ctx) -> int:
-    message = " ".join(ctx.args.message) if ctx.args.message else "manual"
-    project = ctx.project
-    if ctx.dry_run:
-        gitmod.require_git()
-        state = gitmod.repo_state(project)
-        if state == "foreign":
-            raise KbError(f"{project.root} sits inside another git repository; kb only checkpoints a repository rooted at the project folder", EXIT_ENV)
-        files = gitmod.dirty_files(project) if state == "own" else [p for p in gitmod.TRACKED if (project.root / p).exists()]
-        if ctx.json:
-            ctx.out({"rev": None, "saved": False, "files": files, "newRepo": state == "none", "writes": [], "dryRun": True})
-        elif files:
-            emit(f"dry run, nothing committed: a checkpoint would save {len(files)} path(s)" + (" in a new git repository" if state == "none" else "") + ":")
-            for f in files:
-                emit(f"  {f}")
-        else:
-            emit("dry run: nothing changed since the last checkpoint")
-        return EXIT_OK
-    rev = gitmod.checkpoint(project, message)
-    if ctx.json:
-        ctx.out({"rev": rev, "saved": rev is not None, "dryRun": False})
-    elif rev is None:
-        emit("nothing changed since the last checkpoint")
-    else:
-        emit(f"checkpoint {rev}: project.json, scenes/ and edits/ saved (kb undo {rev} returns here)")
-    return EXIT_OK
-
-
-def cmd_history(ctx: Ctx) -> int:
-    rows = gitmod.history(ctx.project, ctx.args.n)
-    if ctx.json:
-        checkpoints = [dict(r, atMs=int(r["time"]) * 1000 if r["time"].isdigit() else None) for r in rows]
-        ctx.out({"checkpoints": checkpoints, "uncommitted": len(gitmod.dirty_files(ctx.project)) if rows else None})
-        return EXIT_OK
-    if not rows:
-        emit("no checkpoints yet (kb checkpoint saves one)")
-        return EXIT_OK
-    from .util import ago
-
-    for r in rows:
-        try:
-            when = ago(int(r["time"]) * 1000)
-        except ValueError:
-            when = "?"
-        emit(f"{r['rev']}  {when:<12} {r['subject']}")
-    dirty = gitmod.dirty_files(ctx.project)
-    if dirty:
-        emit(f"(uncommitted: {len(dirty)} file(s); kb diff shows them)")
-    return EXIT_OK
-
-
-def undo_plan(project: Project, rev: Optional[str]) -> Dict[str, Any]:
-    """What kb undo would do, touching nothing: the target git.undo picks, then each file it restores or trashes."""
-    gitmod.require_git()
-    if gitmod.repo_state(project) != "own" or not gitmod.has_head(project):
-        raise KbError("no checkpoints yet; make one with kb checkpoint first")
-    dirty = gitmod.dirty_files(project)
-    if rev:
-        target = gitmod.resolve_rev(project, rev)
-    elif dirty:
-        target = gitmod.resolve_rev(project, "HEAD")
-    else:
-        prev = gitmod.previous_rev(project)
-        if not prev:
-            raise KbError("nothing to undo: there is only one checkpoint and no changes since it")
-        target = prev
-    target_files = set(gitmod.files_at(project, target))
-    if "project.json" not in target_files:
-        raise KbError(f"checkpoint {target[:7]} has no project.json; pick another from kb history")
-    paths = gitmod.tracked_paths(project) or gitmod.TRACKED
-    changed = gitmod.run(project.root, ["diff", "--name-only", target, "--"] + paths, check=False).stdout.splitlines()
-    untracked = gitmod.run(project.root, ["ls-files", "--others", "--exclude-standard", "--"] + paths, check=False).stdout.splitlines()
-    writes: List[Dict[str, Any]] = []
-    for rel in sorted({r for r in changed + untracked if r}):
-        path = project.root / rel
-        if rel in target_files:
-            writes.append({"path": rel, "action": "modify" if path.is_file() else "create", "base": lockmod.current_hash(path)})
-        elif rel.startswith("scenes/") and path.is_file():
-            writes.append({"path": rel, "action": "trash", "base": lockmod.current_hash(path)})
-    return {"target": target, "checkpointFirst": bool(dirty), "writes": writes}
-
-
-def cmd_undo(ctx: Ctx) -> int:
-    project = ctx.project
-    if ctx.dry_run:
-        plan = undo_plan(project, ctx.args.rev)
-        if ctx.json:
-            ctx.out(dict(plan, dryRun=True))
-            return EXIT_OK
-        emit(f"dry run, nothing written: would restore project.json, scenes/ and edits/ to {plan['target'][:7]}" + (" (after a checkpoint of the changes since)" if plan["checkpointFirst"] else ""))
-        emit_writes(plan["writes"])
-        if not plan["writes"]:
-            emit("  (no file differs)")
-        return EXIT_OK
-    edits_before = gitmod.edit_hashes(project)
-    with lockmod.project_lock(project, "kb undo", ctx.wait, ctx.caller):
-        target, saved, trashed = gitmod.undo(project, ctx.args.rev)
-    edits_after = gitmod.edit_hashes(project)
-    stale: List[str] = []
-    for name in sorted(n for n in edits_after if edits_before.get(n) != edits_after[n]):
-        if (project.root / "assets" / f"{name}-edited.mp4").is_file():
-            stale.append(f"edits/{name}.json changed; assets/{name}-edited.mp4 is stale (renders are not versioned): kb video render {name}")
-        else:
-            stale.append(f"edits/{name}.json changed (not rendered yet: kb video render {name})")
-    report = checkmod.check_project(project)
-    if ctx.json:
-        ctx.out({"target": target, "checkpoint": saved, "trashed": trashed, "edits": stale, "check": report.as_json(), "dryRun": False})
-        return EXIT_OK
-    emit(f"restored project.json, scenes/ and edits/ to {target[:7]}")
-    for line in stale:
-        emit(line)
-    if saved:
-        emit(f"the state before this undo is checkpoint {saved} (kb undo {saved} reverts the undo)")
-    if trashed:
-        emit(f"moved to the Trash (not in {target[:7]}): {', '.join(trashed)}")
-    if report.errors:
-        emit(report.render("error"))
-    emit(f"check: {report.summary()}")
-    return EXIT_OK
-
-
-def cmd_diff(ctx: Ctx) -> int:
-    text = gitmod.diff(ctx.project, ctx.args.rev, ctx.args.stat).rstrip("\n")
-    if ctx.json:
-        ctx.out({"rev": ctx.args.rev, "stat": bool(ctx.args.stat), "diff": text})
-    else:
-        emit(text)
-    return EXIT_OK
-
-
 # ── helpers ───────────────────────────────────────────────────────────────────
-
-
-def cmd_hook(ctx: Ctx) -> int:
-    payload = hookmod.read_stdin()
-    event = ctx.args.event
-    try:
-        if event == "session-start":
-            code, out, err = hookmod.session_start(payload)
-        elif event == "pre-edit":
-            code, out, err = hookmod.pre_edit(payload)
-        else:
-            code, out, err = hookmod.post_edit(payload)
-    except Exception as e:  # a kb bug must never block the user's edit
-        if event == "post-edit":
-            note = {"hookSpecificOutput": {"hookEventName": "PostToolUse", "additionalContext": f"kb post-edit check crashed ({type(e).__name__}: {e}); run kb check"}}
-            sys.stdout.write(json.dumps(note) + "\n")
-        return EXIT_OK
-    if out:
-        sys.stdout.write(out if out.endswith("\n") else out + "\n")
-    if err:
-        sys.stderr.write(err if err.endswith("\n") else err + "\n")
-    return code
 
 
 def delegate(name: str, rest: List[str]) -> int:
@@ -1284,30 +1132,7 @@ def build_parser(video_extensions: bool = True) -> argparse.ArgumentParser:
     y.add_argument("asset", metavar="ASSET")
     s.set_defaults(fn=cmd_assets)
 
-    s = add("checkpoint", "git-commit project.json, scenes/ and edits/ (nothing else)", write=True)
-    s.add_argument("message", nargs="*", metavar="MESSAGE")
-    s.set_defaults(fn=cmd_checkpoint)
-    s = add("history", "recent checkpoints of project.json, scenes/ and edits/")
-    s.add_argument("-n", type=int, default=15, help="how many (default 15)")
-    s.set_defaults(fn=cmd_history)
-    s = add(
-        "undo",
-        "restore project.json, scenes/ and edits/ from a checkpoint (checkpoints first, so it is undoable)",
-        epilog="No REV: back to the last checkpoint (or the one before it when nothing changed since).\n"
-        "Scene files that the checkpoint lacks go to the Trash; edit docs never do. Renders\n"
-        "(assets/*-edited.mp4) are not versioned: re-render an edit that undo changed.",
-        write=True,
-    )
-    s.add_argument("rev", nargs="?", metavar="REV")
-    s.set_defaults(fn=cmd_undo)
-    s = add("diff", "changes to project.json, scenes/ and edits/ since the last checkpoint (or REV)")
-    s.add_argument("rev", nargs="?", metavar="REV")
-    s.add_argument("--stat", action="store_true", help="file summary only")
-    s.set_defaults(fn=cmd_diff)
-
-    s = add("hook", "Claude Code hook entry points (stdin JSON); wired by the app in .claude/settings.json")
-    s.add_argument("event", choices=["session-start", "pre-edit", "post-edit"])
-    s.set_defaults(fn=cmd_hook)
+    coord_cli.register(sub, common, Formatter)
 
     # A new command module: one import here and mod.register(sub, common, Formatter), as kb video does.
     from .video import commands as videomod

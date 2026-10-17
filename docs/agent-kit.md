@@ -99,15 +99,21 @@ Managed settings:
     "SessionStart": [{ "matcher": "startup|resume|clear|compact", "hooks": [
       { "type": "command", "timeout": 20,
         "command": "[ ! -f \"$CLAUDE_PROJECT_DIR\"/.claude/skills/kookaburra-scene-authoring/scripts/kb.py ] || python3 -I \"$CLAUDE_PROJECT_DIR\"/.claude/skills/kookaburra-scene-authoring/scripts/kb.py hook session-start" }] }],
-    "PreToolUse": [{ "matcher": "Edit|Write", "hooks": [
-      { "type": "command", "timeout": 20,
-        "command": "[ ! -f \"$CLAUDE_PROJECT_DIR\"/.claude/skills/kookaburra-scene-authoring/scripts/kb.py ] || python3 -I \"$CLAUDE_PROJECT_DIR\"/.claude/skills/kookaburra-scene-authoring/scripts/kb.py hook pre-edit" }] }],
-    "PostToolUse": [{ "matcher": "Edit|Write", "hooks": [
-      { "type": "command", "timeout": 30,
-        "command": "[ ! -f \"$CLAUDE_PROJECT_DIR\"/.claude/skills/kookaburra-scene-authoring/scripts/kb.py ] || python3 -I \"$CLAUDE_PROJECT_DIR\"/.claude/skills/kookaburra-scene-authoring/scripts/kb.py hook post-edit" }] }]
+    "PreToolUse": [
+      { "matcher": "Edit|Write", "hooks": [{ "type": "command", "timeout": 20, "command": "<guard> || python3 -I <kb.py> hook pre-edit" }] },
+      { "matcher": "Bash", "hooks": [{ "type": "command", "timeout": 10, "command": "<guard> || python3 -I <kb.py> hook bash-pre" }] }],
+    "PostToolUse": [
+      { "matcher": "Edit|Write", "hooks": [{ "type": "command", "timeout": 30, "command": "<guard> || python3 -I <kb.py> hook post-edit" }] },
+      { "matcher": "Bash", "hooks": [{ "type": "command", "timeout": 30, "command": "<guard> || python3 -I <kb.py> hook bash-post" }] }],
+    "PostToolUseFailure": [
+      { "matcher": "Bash", "hooks": [{ "type": "command", "timeout": 30, "command": "<guard> || python3 -I <kb.py> hook bash-post" }] }]
   }
 }
 ```
+
+`<kb.py>` is `"$CLAUDE_PROJECT_DIR"/.claude/skills/kookaburra-scene-authoring/scripts/kb.py` and `<guard>` is
+`[ ! -f <kb.py> ]`, written out in full in every command as SessionStart shows. A Bash command that exits
+non-zero fires PostToolUseFailure, not PostToolUse, so `bash-post` is wired to both.
 
 Each command is guarded so a missing `kb.py` exits 0 and never blocks an edit; `kb.py`
 itself fails open (exit 0) when its modules are missing mid-swap. Hooks only run once the user has accepted Claude Code's workspace trust for the folder.
@@ -139,9 +145,12 @@ under the project lock (`kblib.lock`) and re-validated after writing.
 | `presets [list \| show SLUG]` | Scene presets with what they show and a preview image path to Read (`--json`: `presets`) |
 | `catalog [FAMILY] [--search Q]` | Query `catalog.json` (`--json`: `families`; a family's raw entries as `{ family, items }`, or `{ family, value }` when it is not a list; a search's `items`) |
 | `assets list`, `assets add PATH [--name N]`, `assets probe ASSET` | Copy media in (never overwrites, renames on collision), probe with the app's bundled ffprobe (`list --json`: `assets`) |
-| `checkpoint [MESSAGE]`, `history`, `undo [REV]`, `diff` | Git checkpoints of `project.json`, `scenes/` and `edits/`; `undo` checkpoints first, so it is itself undoable, never trashes `edits/`, and names any render it leaves stale (`history --json`: `checkpoints`, each with `atMs`) |
+| `checkpoint [MESSAGE] [--scene S]... [--files P]...`, `history [--scene S]`, `undo [REV] [--scene S \| --all]`, `diff [REV] [--scene S]` | Git checkpoints of `project.json`, `scenes/` and `edits/`, or only some scenes' files; `undo` checkpoints first, so it is itself undoable, never trashes `edits/`, and names any render it leaves stale (`history --json`: `checkpoints`, each with `atMs`). See Coordination |
+| `lease S [--ttl 2h] [--note T] [--for NAME]`, `lease S --release [--force]`, `leases [--all]` | Opt-in scene leases (`lease --json`: `scene`, `action`, `lease`; `leases --json`: `leases`) |
+| `note "TEXT" [--scene S]`, `notes [--all]` | Shared notes in `.kb/notes.md` (`notes --json`: `notes`, `total`) |
+| `events [--follow] [--since 10m\|CURSOR\|all] [--kinds ...] [--all-agents] [--exit-after S]` | The coordination feed (`--json` without `--follow`: `events`, `cursor`) |
 | `video ...` | Video editing (below): edit documents, renders, re-points, cleanup, fit, review (`list --json`: `edits`) |
-| `hook session-start \| pre-edit \| post-edit` | Hook entry points (stdin JSON from Claude Code) |
+| `hook session-start \| pre-edit \| post-edit \| bash-pre \| bash-post` | Hook entry points (stdin JSON from Claude Code); any other event exits 0, so an older kit is safe with newer settings |
 | `beats ...`, `chart ...` | Delegate to the existing scripts |
 
 As built (`scripts/kblib/`):
@@ -166,7 +175,10 @@ As built (`scripts/kblib/`):
   and `sheetPath` name the copies and `bridgePath`, `bridgePaths`, `bridgeSheetPath` keep
   the app's originals (pruned after an hour). `--out DIR` copies there instead, `--no-copy`
   skips it; the newest 40 folders and at most 1 GB are kept.
-- `kb.py` never writes bytecode, and fails open for hooks when its modules are missing.
+- `kb.py` never writes bytecode into the kit: it points `sys.pycache_prefix` at
+  `$TMPDIR/kb-pyc/<sha1 of kit.json>[:12]` (a folder it owns, mode 0700; otherwise no bytecode at
+  all), so the stdlib and `kblib` compile once per stamp. It fails open for hooks when its modules
+  are missing.
 - `--json` is one envelope everywhere (`ok_envelope`, or `emit_ok` in modules not handed a
   context). The old bare arrays moved under keys: `history` to `checkpoints`, `fonts safe` to
   `faces`, the static `fonts check` to `results`, `presets` to `presets`, `catalog --search`
@@ -180,7 +192,8 @@ As built (`scripts/kblib/`):
   holds the project lock around its checkout. Structural `--json` results list `writes` and
   `dryRun`; `checkpoint --dry-run` and `undo --dry-run` only read git.
 - Exit 3 so far: the project lock or an edit lock held (`locked`, with `holder`), a write
-  that kept conflicting (`conflict`), a git timeout (`transient`).
+  that kept conflicting (`conflict`), a git timeout (`transient`), `.git/index.lock` held past
+  the backoff (`index-locked`, with `lockAgeMs`).
 
 Static checks: `project.json` (valid JSON, version, required fields, files exist, no
 duplicate entries, transitions and options, formats, theme id, audio file); sidecars
@@ -199,14 +212,43 @@ Hooks:
   matters because a desktop worktree session can carry the main folder as
   `CLAUDE_PROJECT_DIR`. Detection reads files only (`worktree_of` in `project.py`).
 - `pre-edit` blocks (exit 2 with a reason) writes to app-owned paths, to the managed
-  kit and to anything inside a linked git worktree of a project (the same STOP text).
-  Before the first write of a session into `project.json` or `scenes/` it makes a
-  checkpoint when the tree has changes since the last one.
-- `post-edit` runs the static check scoped to the edited file (plus the manifest
-  cross-checks). Errors the edit introduced exit 2 so Claude sees them and fixes them;
-  errors the file already had (snapshotted by `pre-edit`, keyed by the tool call) and
-  warnings go back as `additionalContext`. It must finish in about a second; it never
-  calls the app.
+  kit, to anything inside a linked git worktree of a project (the same STOP text) and to
+  kb's state files (`.kb/lock`, `.kb/.gitignore`, `.kb/leases/**`, `.kb/events*.jsonl`,
+  `.kb/notes*.md`, `.kb/agents/*/identity.json` and `seen.json`; scratch under
+  `.kb/agents/<name>/` and `.kb/captures/` is allowed). An edit to a scene leased to
+  someone else is denied with `permissionDecision: "deny"`, naming the holder, the expiry
+  and how to bind or leave a note; the holder's own edit renews the lease. Before the first
+  write of a session into `project.json` or `scenes/` it makes a checkpoint when the tree
+  has changes since the last one. When `.git/index.lock` stops that checkpoint, the edit
+  goes ahead with plain `additionalContext` saying so and naming the last checkpoint, no
+  session marker is written (the next write tries again), and `checkpoint.skipped` is
+  journalled.
+- `post-edit` journals `files.changed` (`via: "edit"`) and runs the static check scoped to
+  the edited file (plus the manifest cross-checks). Errors the edit introduced exit 2 so
+  Claude sees them and fixes them; errors the file already had (snapshotted by `pre-edit`,
+  keyed by the tool call) and warnings go back as `additionalContext`. It must finish in
+  about a second; it never calls the app.
+- `bash-pre` and `bash-post` run from `kblib/hookfast.py`, which `kb.py` dispatches to
+  before importing `kblib.cli` (standard library only; `check` loads only once a command
+  changed something). On `/usr/bin/python3` 3.9 with the bytecode cache warm a Bash hook
+  costs about 58 ms when nothing changed (the bare interpreter is about 48 ms) and about
+  80 ms when a sidecar changed; the first run after a stamp compiles (about 105 ms).
+  - `bash-pre` stamps `project.json`, `scenes/**` and `edits/*.json` (`<st_mtime_ns>:<size>`;
+    dotfiles, `*.tmp` and `*.kbtmp` skipped) into `$TMPDIR/kb-hooks/bash-<sha1(root, tool_use_id)>.json`.
+    It binds every `--agent NAME` a kb call passes to the hook's session and agent id, before
+    kb runs. It denies a command that names `scenes/<stem>` of a scene leased to someone else
+    (globs included) and visibly writes it: a redirection, `tee`, `mv`, `rm`, `touch`, a `cp`
+    or `install` destination, `sed -i`, `perl -i`, a heredoc, `write_text` or `open(..., 'w')`.
+    It makes the session checkpoint before a command that visibly writes `scenes/` or
+    `project.json` or runs a kb write. kb-only commands and `run_in_background` calls take no
+    snapshot.
+  - `bash-post` diffs the stamps, drops files other callers journalled meanwhile, journals
+    `files.changed` (`via: "bash"`) and runs the scoped check on the changed sources (the
+    full check past 20 files). Errors in the changed files, a change to `edits/` without
+    `kb video`, and a change to a scene leased to someone else (journalled `lease.violated`)
+    exit 2 with stderr; warnings come back as `additionalContext`. After PostToolUseFailure
+    it replies only through `additionalContext`. The Bash check has no baseline, which is why
+    Edit, Write and `kb doc` stay the preferred way to change scene files.
 
 ## kb conventions
 
@@ -264,7 +306,8 @@ Every kb command, including new ones, follows these rules. Code: `scripts/kblib/
   between, `fn` is re-applied to the fresh document up to 3 times, then exit 3; a pinned
   `--base`, or a scene addressed by an index that moved, refuses at once (exit 1, kind
   `conflict`). A dry run takes no lock, writes nothing and returns `writes: [{ path, action:
-  create | modify | trash, base }]`. Never hold the lock while waiting on the app or
+  create | modify | trash, base }]`, where a write a lease would refuse carries `refusal: { code:
+  "leased", error, holder, untilMs }` (`leases.check`, which touches nothing). Never hold the lock while waiting on the app or
   ffmpeg; take an edit lock before the project lock. Workspace themes are shared across
   projects: compare-and-swap only.
 - **New commands** live in their own module with `register(sub, common, Formatter)`;
@@ -290,32 +333,74 @@ packs and duplicates.
 - **Identity.** A caller is `{ name, session, agentId }` (`kblib/identity.py`). kb run from
   Bash knows `name` (`--agent`, default `session-<first 8 of CLAUDE_CODE_SESSION_ID>`, or
   `user` outside Claude Code) and `session`. Hooks know `session` and `agentId` (`main` outside a
-  subagent). The Bash pre-hook sees both a `--agent NAME` command and the subagent id,
-  and binds them in `.kb/agents/<name>/identity.json`, so Edit and Write checks can tell
-  subagents of one session apart.
-- **Leases.** Opt-in. `./kb lease S --agent A [--ttl 2h] [--note T]` takes or renews;
-  `--for NAME` assigns one to another agent; `--release`, and `--release --force` breaks
-  someone else's (journalled). TTL 2 h by default, 12 h at most, renewed by the holder's
-  writes once under half is left; expired leases are ignored. Edit and Write to a scene
-  leased to someone else are denied (`permissionDecision: "deny"` with the holder and
-  expiry); a Bash command that visibly writes one (`sed -i`, `>`, `tee`, `cp`, `mv`, a
-  heredoc, `write_text`, `open(..., 'w')`) is denied too, and any other change to it is
-  reported after the fact. kb's own writes check leases in the transaction.
-- **Scoped history.** `./kb checkpoint [MSG] --scene S` commits only S's files;
-  `./kb undo --scene S [REV]` restores only `scenes/S.tsx`, `scenes/S.json` and S's own
-  `project.json` entry (by compare-and-swap). A plain `undo` refuses, naming the files,
-  when the journal or a lease shows another agent changed files since its target;
-  `--all` overrides. `index.lock` is retried with backoff (50 ms doubling to 1.6 s), then
-  exit 3; a hook that skips its checkpoint says so in `additionalContext`.
-- **Events.** `./kb events [--follow] [--since 10m|CURSOR|all] [--kinds ...] [--all-agents]
-  [--exit-after SECONDS]` prints one compact object per line:
-  `{ "v": 1, "id", "atMs", "kind", "by": { name, session, agentId }, ...}`. kb journals
-  `checkpoint`, `checkpoint.skipped`, `undo`, `lease.*`, `note`, `files.changed`; the
-  follower adds app events read from heartbeat and progress-file changes (`load`,
-  `export.*`, `render.stalled`, `render.recovered`, `app.opened`, `app.closed`). A follow
-  ends with `{ "kind": "follow.end", "cursor" }` so a re-armed Claude Code Monitor resumes.
-- **Notes.** `./kb note "TEXT" [--scene S]` appends to `.kb/notes.md`; every agent's next
-  `./kb status` shows up to three unseen notes.
+  subagent) but no name. The Bash pre-hook sees both a `--agent NAME` command and the
+  agent id, and writes `.kb/agents/<name>/identity.json` (`{ session, agentId, atMs }`)
+  before kb runs; kb then takes the bound agent id for its own caller when the session
+  matches (`leases.resolve`), so Edit and Write checks can tell subagents of one session
+  apart. The defaults (`session-<id>`, `user`, `claude`) count as no name.
+- **Holder rule** (`leases.is_holder`). A caller holds a lease when its session and agent id
+  equal the holder's (an unbound holder, agent id null, must also have the caller's name),
+  or the binding of the holder's name equals the caller, or the caller has no name, its
+  session is the holder's and the holder's agent id is null or `main` (a lease the main
+  agent took covers its own subagents' edits; a subagent's lease excludes the rest).
+- **Leases.** Opt-in, one file per scene: `.kb/leases/<stem>.json` holds `{ version: 1, scene,
+  files: ["scenes/<stem>.tsx", "scenes/<stem>.json"], holder: { name, session, agentId },
+  assignedBy, takenAtMs, renewedAtMs, untilMs, note }`. `./kb lease S --agent A [--ttl 2h]
+  [--note T]` takes or renews; `--for NAME` assigns it to NAME (holder session and agent id
+  null) without binding anyone, and NAME claims it with its own `./kb lease S --agent NAME`;
+  `--release` (the holder or the assigner), and `--release --force` breaks someone else's
+  (journalled `lease.broken`). TTL 2 h by default, 12 h at most (a longer `--ttl` is capped
+  with a note); the holder's kb writes and Edit or Write calls renew it by its own TTL once
+  under half is left. Expired leases are ignored everywhere and pruned when kb next takes a
+  lease; `scene remove` releases the removed scene's. Someone else's lease is exit 1, `code:
+  "leased"`, with `holder` and `untilMs` in the envelope; a dry run reports it in the write's
+  `refusal` (and in `tx.refusals` / `Mutation.refusals`) instead of failing. Edit and Write
+  to a scene leased to someone else are denied (`permissionDecision: "deny"`); a Bash
+  command that visibly writes one is denied too, and any other Bash change to it is reported
+  after the fact (exit 2, `lease.violated`). A scene's `project.json` entry is not leased.
+- **Scoped history.** `./kb checkpoint [MSG] --scene S [--files P]` stages `git add -A --
+  <paths>` and commits `git commit --only` with `checkpoint(S): MSG [agent]`, so other
+  agents' staged and unstaged work stays out (paths are `scenes/S.tsx` and `.json`, kept when
+  on disk, in the index or in HEAD; `--files` takes paths under the tracked set). Every kb
+  checkpoint holds the project lock. `./kb undo --scene S [REV]` targets HEAD when S's files
+  are dirty, else the parent of the last commit that touched them; it makes a scoped
+  checkpoint first, checks out only S's files, trashes only S's own files, and splices S's
+  own `project.json` entry (everything but `file`) from the target by compare-and-swap. When
+  S was added or removed since, or the manifest version changed, it says so and leaves
+  `project.json` alone. A plain `undo` refuses (exit 1, `others-changed`, `files: [{ path, by
+  }]`) only when the journal's last `files.changed` writer of a file since the target is
+  someone else, or another agent leases it; otherwise it behaves as before, and `--all`
+  overrides. A dry run lists the same refusals.
+- **index.lock.** `git.run` retries a failure naming `index.lock` after 50, 100, 200, 400,
+  800 and 1600 ms, then exits 3 (`index-locked`) with a hint naming the lock's age (past
+  60 s it may be stale; kb never deletes it). A hook that skips its session checkpoint says
+  so in `additionalContext` and journals `checkpoint.skipped`.
+- **Events.** `.kb/events.jsonl` holds one compact object per line, under 4 KB (long lists
+  keep their first 8 plus `<key>More`): `{ "v": 1, "id": "<atMs>-<pid>-<rand>", "atMs",
+  "kind", "by": { name, session, agentId }, ...}`. Appends are one `O_APPEND` `write()` with
+  no lock; past 1 MiB kb rotates it to `events.1.jsonl` under the lock. kb journals
+  `checkpoint`, `checkpoint.skipped`, `undo`, `lease.taken`, `lease.released`, `lease.broken`,
+  `lease.violated`, `note` and `files.changed` (`via: "kb" | "edit" | "bash"`).
+  `./kb events [--follow] [--since 10m|CURSOR|all] [--kinds ...] [--all-agents] [--exit-after
+  SECONDS]` starts from the caller's saved cursor (`seen.json`), else the last 10 minutes
+  (or now, when following); drops the caller's own events and `files.changed` unless asked;
+  and, with `--follow`, waits on a kqueue (a 0.5 s poll elsewhere), flushes every line,
+  follows rotation by inode, and stops after `--exit-after` (1740 s, under the Monitor's 30
+  minutes) with `{ "kind": "follow.end", "cursor": "<inode>:<offset>" }`. The follower also
+  synthesises app events from the serving instance's heartbeat once a second (the app never
+  writes into a project): `load` (this project's `lastLoad` changed), `export.started`,
+  `export.progress` (every 10 %), `export.done` (from `exporting` and `exportJob`),
+  `render.stalled` and `render.recovered` (`health.gpu.stalled`), `app.opened` and
+  `app.closed`, each `by: { name: "app" }`.
+- **Notes.** `./kb note "TEXT" [--scene S]` appends `- YYYY-MM-DD HH:MM · <agent> · <scene>: text`
+  (one line) to `.kb/notes.md`, rotated past 256 KB to `notes.1.md`, and journals `note`.
+  `./kb notes` lists the newest 30 (`--all`: both files). Each agent's
+  `.kb/agents/<name>/seen.json` (`{ notesOffset, notesInode, eventsCursor }`) records what it
+  has read: `./kb status` prints the count of unseen notes from other agents and the newest
+  three, each capped at 160 characters, then marks them seen, plus the leases line
+  (`Leases: 06-feature alpha (yours, 1h52m) · 04-proof beta (40m)`); `--json` adds `leases`
+  and `notes`. The session-start context carries the leases line and the newest two notes.
+  `.kb/agents/<name>/` is the agent's scratch (created on binding).
 
 ## kb video
 

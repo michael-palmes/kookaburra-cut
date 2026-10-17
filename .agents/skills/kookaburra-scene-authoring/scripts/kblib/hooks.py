@@ -1,10 +1,14 @@
-"""Claude Code hook entry points: session-start, pre-edit, post-edit (stdin JSON in, exit code and text out)."""
+"""Claude Code hook entry points: session-start, pre-edit, post-edit (stdin JSON in, exit code and text out).
+
+The Bash hooks (bash-pre, bash-post) live in kblib.hookfast, which kb.py runs before importing the CLI.
+"""
 
 from __future__ import annotations
 
 import hashlib
 import json
 import os
+import re
 import sys
 import tempfile
 import time
@@ -13,12 +17,15 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from . import check as checkmod
 from . import git as gitmod
+from . import leases
+from .hookfast import hook_caller
 from .project import KIT_REL, MANIFEST, Project, SAFE_SESSION, find_root, worktree_of
-from .util import EXIT_OK, KbError, Report
+from .util import EXIT_OK, KbError, Report, ago
 
 BLOCK = 2
 SESSION_TTL_S = 14 * 86400
 MANAGED_SKILLS = (KIT_REL, ".claude/skills/kookaburra-video-editing")
+KB_STATE = re.compile(r"^\.kb/(?:lock|\.gitignore|leases(?:/.*)?|events[^/]*\.jsonl|notes[^/]*\.md|agents/[^/]+/(?:identity|seen)\.json)$")
 
 
 def read_stdin() -> Dict[str, Any]:
@@ -83,7 +90,30 @@ def blocked_reason(rel: str) -> Optional[str]:
     for kit in MANAGED_SKILLS:
         if rel == kit or rel.startswith(kit + "/"):
             return f"{rel} is the managed kit; the app replaces it on every launch, so edits are lost. Put project notes in CLAUDE.md instead."
+    if KB_STATE.match(rel):
+        return (f"{rel} is kb's own coordination state; change it only through kb (./kb lease, ./kb note, ./kb events). "
+                "Scratch files belong in .kb/agents/<your name>/ instead.")
     return None
+
+
+def journal_by(project: Project, caller: Dict[str, Any]) -> Dict[str, Any]:
+    return dict(caller, name=leases.bound_name(str(project.root), caller.get("session"), caller.get("agentId")))
+
+
+def lease_decision(project: Project, rel: str, payload: Dict[str, Any]) -> Optional[str]:
+    """A PreToolUse deny when rel belongs to a scene leased to someone else; the holder's own edit renews the lease."""
+    stem = leases.scene_of(rel)
+    root = str(project.root)
+    lease = leases.read(root, stem) if stem else None
+    if lease is None:
+        return None
+    caller = hook_caller(payload)
+    if leases.is_holder(root, lease, caller):
+        leases.renew_if_due(project, str(stem), lease, journal_by(project, caller))
+        return None
+    reason = leases.deny_reason(rel, lease)
+    out = {"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "deny", "permissionDecisionReason": reason}}
+    return json.dumps(out, ensure_ascii=False)
 
 
 def worktree_reason(project: Project, payload: Dict[str, Any]) -> Optional[str]:
@@ -168,31 +198,71 @@ def pre_edit(payload: Dict[str, Any]) -> Tuple[int, str, str]:
     reason = blocked_reason(rel)
     if reason:
         return BLOCK, "", f"kb: blocked: {reason}"
+    denied = lease_decision(project, rel, payload)
+    if denied:
+        return EXIT_OK, denied, ""
     if checked_source(rel):
         save_baseline(project, rel, payload)
     if rel != MANIFEST and not rel.startswith("scenes/"):
         return EXIT_OK, "", ""
     session = payload.get("session_id")
-    if not isinstance(session, str) or not session or not gitmod.git_available():
+    if not isinstance(session, str) or not session:
         return EXIT_OK, "", ""
+    caller = journal_by(project, hook_caller(payload))
+    from .identity import Caller
+
+    note = session_checkpoint(project, session, Caller(caller.get("name") or f"session-{session[:8]}", session, caller.get("agentId")))
+    if note:
+        out = {"hookSpecificOutput": {"hookEventName": "PreToolUse", "additionalContext": note}}
+        return EXIT_OK, json.dumps(out, ensure_ascii=False), ""
+    return EXIT_OK, "", ""
+
+
+def session_checkpoint(project: Project, session: str, caller: Any = None, what: str = "edit") -> Optional[str]:
+    """The once-per-session checkpoint before the first write into project.json or scenes/ (Edit, Write or Bash).
+
+    Returns None, or plain context when .git/index.lock kept it from running: no marker is written, so the next write retries.
+    """
+    if not gitmod.git_available():
+        return None
     try:
         state = gitmod.repo_state(project)
         if state == "foreign":
-            return EXIT_OK, "", ""
+            return None
         if state == "none":
             gitmod.ensure_repo(project)
         marker = session_marker(project, session)
         if marker.exists():
-            return EXIT_OK, "", ""
+            return None
         rev = None
         if not gitmod.has_head(project) or gitmod.dirty_files(project):
-            rev = gitmod.checkpoint(project, f"before Claude edits (session {session[:8]})")
+            rev = gitmod.checkpoint(project, f"before Claude edits (session {session[:8]})", caller=caller)
         marker.parent.mkdir(parents=True, exist_ok=True)
         marker.write_text(rev or "clean\n", encoding="utf-8")
         prune_sessions(marker.parent)
-    except (KbError, OSError):
-        return EXIT_OK, "", ""
-    return EXIT_OK, "", ""
+    except KbError as e:
+        if e.kind != "index-locked":
+            return None
+        return skipped_checkpoint(project, caller, what)
+    except OSError:
+        return None
+    return None
+
+
+def skipped_checkpoint(project: Project, caller: Any, what: str) -> str:
+    try:
+        last = gitmod.last_checkpoint(project)
+    except KbError:
+        last = None
+    try:
+        from . import events
+
+        events.append(project, "checkpoint.skipped", caller, reason="index-locked", last=last[0] if last else None)
+    except Exception:
+        pass
+    tail = f"The last checkpoint is {last[0]}, {ago(last[1])}." if last else "There is no checkpoint yet."
+    return (f"kb did not make the session checkpoint before this {what}: .git/index.lock is held by another git process. {tail} "
+            "kb tries again before the next write.")
 
 
 def post_edit(payload: Dict[str, Any]) -> Tuple[int, str, str]:
@@ -205,6 +275,12 @@ def post_edit(payload: Dict[str, Any]) -> Tuple[int, str, str]:
         return EXIT_OK, "", ""
     if not checked_source(rel):
         return EXIT_OK, "", ""
+    try:
+        from . import events
+
+        events.journal(project, "files.changed", journal_by(project, hook_caller(payload)), [rel], via="edit")
+    except Exception:
+        pass
     report = checkmod.check_project(project, files=[rel])
     return render_hook_report(report, rel, take_baseline(project, rel, payload))
 
@@ -258,7 +334,8 @@ def session_start(payload: Dict[str, Any], project: Optional[Project] = None) ->
         summary = []
     try:
         cwd = payload.get("cwd")
-        text = overview.context_text(project, summary, cwd if isinstance(cwd, str) else None)
+        caller = hook_caller(payload) if payload.get("session_id") else None
+        text = overview.context_text(project, summary, cwd if isinstance(cwd, str) else None, caller=caller)
     except Exception as e:
         text = f"Kookaburra Cut project {project.project_id} (kb context failed: {e}). Run python3 .claude/skills/kookaburra-scene-authoring/scripts/kb.py status"
     return EXIT_OK, text, ""

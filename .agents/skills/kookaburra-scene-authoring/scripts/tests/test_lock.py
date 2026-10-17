@@ -269,8 +269,12 @@ class TransactionTests(KbTestCase):
         self.assertEqual(len(calls), 3)
 
     def test_missing_lease_and_event_modules_are_skipped(self) -> None:
-        self.assertIsNone(lock._optional("leases"))
-        self.assertIsNone(lock._optional("events"))
+        self.assertIsNone(lock._optional("no_such_module"))
+        with mock.patch.object(lock, "_optional", return_value=None):
+            alpha = lock.WriteOpts(caller=identity.Caller("alpha"))
+            scenes.set_scene(self.project, "02-hero", 4100, None, None, None, alpha)
+        self.assertEqual(read_json(self.root / "project.json")["scenes"][1]["durationMs"], 4100)
+        self.assertFalse((self.root / ".kb" / "events.jsonl").exists())
 
 
 class DryRunTests(KbTestCase):
