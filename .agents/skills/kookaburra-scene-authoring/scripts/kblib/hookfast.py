@@ -323,7 +323,10 @@ def bash_pre(payload: Dict[str, Any]) -> Tuple[int, str, str]:
         return deny(leases.deny_reason(rel, lease) + " (kb denied this command: it writes a scene leased to someone else.)")
     call = payload.get("tool_use_id")
     if isinstance(call, str) and call and not ti.get("run_in_background") and not kb_only(command):
-        body = {"v": 1, "root": root, "atMs": now_ms(), "stamps": stamps(root)}
+        body: Dict[str, Any] = {"v": 1, "root": root, "atMs": now_ms(), "stamps": stamps(root)}
+        named = named_sources(root, command) if writes_project(command) else []
+        if named:
+            body["baseline"] = baseline_errors(root, named)
         _write_atomic(snap_path(root, call), json.dumps(body, separators=(",", ":")).encode("utf-8"))
         if os.urandom(1)[0] < 4:
             _prune_snaps()
@@ -340,6 +343,32 @@ def bash_pre(payload: Dict[str, Any]) -> Tuple[int, str, str]:
         if note:
             return 0, context("PreToolUse", note), ""
     return 0, "", ""
+
+
+def named_sources(root: str, command: str) -> List[str]:
+    """Existing project.json and scene files the command names, so their errors before it can be told from new ones."""
+    out = []
+    for token in SCENE_TOKEN.findall(command):
+        rel = token[token.find("scenes/"):]
+        if checked(rel) and os.path.isfile(os.path.join(root, rel)) and rel not in out:
+            out.append(rel)
+    if "project.json" in command and os.path.isfile(os.path.join(root, "project.json")):
+        out.append("project.json")
+    return out[:20]
+
+
+def baseline_errors(root: str, files: List[str]) -> List[str]:
+    """Error signatures the named files already have (the Edit hook's rule); empty when the check cannot run."""
+    try:
+        from pathlib import Path
+
+        from . import check as checkmod
+        from .project import Project
+
+        report = checkmod.check_project(Project(Path(root)), files=files)
+        return sorted({f"{i.file}\0{i.path}\0{i.message}" for i in report.errors})
+    except Exception:
+        return []
 
 
 # ── bash-post ─────────────────────────────────────────────────────────────────
@@ -365,15 +394,20 @@ def diff(before: Dict[str, str], after: Dict[str, str]) -> List[str]:
     return sorted(k for k in set(before) | set(after) if before.get(k) != after.get(k))
 
 
-def others_wrote(root: str, since_ms: int, caller: Dict[str, Any]) -> set:
-    """Files other callers journalled while this command ran (their own kb writes, edits and commands)."""
+def others_wrote(root: str, since_ms: int, caller: Dict[str, Any]) -> Tuple[set, set]:
+    """(other callers' writes while this command ran, this caller's own kb writes in it, which kb already checked)."""
     from . import events
 
-    out = set()
+    theirs, kb_own = set(), set()
     for event in events.recent_tail(root, since_ms):
-        if event.get("kind") == "files.changed" and not leases.same_caller(root, event.get("by"), caller):
-            out.update(f for f in event.get("files") or [] if isinstance(f, str))
-    return out
+        if event.get("kind") != "files.changed":
+            continue
+        files = {f for f in event.get("files") or [] if isinstance(f, str)}
+        if not leases.same_caller(root, event.get("by"), caller):
+            theirs |= files
+        elif event.get("via") == "kb":
+            kb_own |= files
+    return theirs, kb_own
 
 
 def checked(rel: str) -> bool:
@@ -402,8 +436,8 @@ def bash_post(payload: Dict[str, Any]) -> Tuple[int, str, str]:
         return 0, "", ""
     caller = hook_caller(payload)
     since = int(snap.get("atMs") or 0)
-    theirs = others_wrote(root, since, caller)
-    mine = [r for r in changed if r not in theirs]
+    theirs, kb_own = others_wrote(root, since, caller)
+    mine = [r for r in changed if r not in theirs and r not in kb_own]
     if not mine:
         return 0, "", ""
     from . import events
@@ -445,8 +479,14 @@ def bash_post(payload: Dict[str, Any]) -> Tuple[int, str, str]:
         shown = [i for i in report.issues if relevant(i, targets)] if len(targets) <= CHECK_ALL_OVER else report.issues
         from .util import Report
 
+        known = set(snap.get("baseline") or [])
+        older = [i for i in shown if i.severity == "error" and f"{i.file}\0{i.path}\0{i.message}" in known]
         scoped = Report()
-        scoped.issues = shown
+        scoped.issues = [i for i in shown if i not in older]
+        if older:
+            earlier = Report()
+            earlier.issues = older
+            notes.append(f"{len(older)} error(s) were already there before this command (not caused by it); fix them if they touch the task:\n{earlier.render('error')}")
         if scoped.errors:
             errors.append(f"kb check found problems in files this command changed: {', '.join(targets[:8])}{' ...' if len(targets) > 8 else ''}\n"
                           f"{scoped.render('error')}\nFix every error (prefer Edit or ./kb doc for scene files), then rerun ./kb check.")

@@ -299,7 +299,7 @@ def render_hook_report(report: Report, rel: str, before: Optional[set] = None) -
         lines.append(fresh.render())
         if older.errors:
             lines.append(f"({len(older.errors)} more error(s) were already there before this edit; kb check lists them.)")
-        lines.append("Rerun: python3 .claude/skills/kookaburra-scene-authoring/scripts/kb.py check")
+        lines.append("Rerun: ./kb check")
         return BLOCK, "", "\n".join(lines)
     notes: List[str] = []
     if older.errors:

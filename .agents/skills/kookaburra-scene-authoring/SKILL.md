@@ -48,7 +48,7 @@ ok; 1 problems (fix what it names); 2 usage or environment (tell the user); 3 tr
      carry tuned sidecars; never start from blank TSX when a preset fits.
    - TSX only for composition the sidecar cannot express, with Edit or Write.
    Change scene files with Edit, Write or `./kb doc`, never sed, Python or heredocs: the
-   Bash check only runs after the command, with no baseline to tell new errors from old.
+   Bash check only runs after the command, and only knows earlier errors in files it names.
 4. `./kb check --app` (the app's real compile, load, fonts and assets; `--render` also
    renders each scene once).
 5. `./kb capture --scene <s> --at <seconds>` and Read the PNG. When layout changed, capture

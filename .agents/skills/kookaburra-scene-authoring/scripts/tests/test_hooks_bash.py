@@ -65,6 +65,29 @@ class BashPostTests(BashHookCase):
         changed = [e for e in self.events() if e["kind"] == "files.changed"]
         self.assertEqual((changed[-1]["files"], changed[-1]["via"]), (["scenes/02-hero.tsx"], "bash"))
 
+    def test_errors_a_named_file_already_had_come_back_as_context(self) -> None:
+        self.break_hero()
+
+        def retitle() -> None:
+            path = self.root / "scenes" / "02-hero.tsx"
+            path.write_text(path.read_text() + "// retitled\n")
+
+        _pre, post = self.around("sed -i '' 's/a/b/' scenes/02-hero.tsx", retitle)
+        text = self.context(post)
+        self.assertIn("already there before this command", text)
+        self.assertIn('import "react"', text)
+
+    def test_kbs_own_write_inside_a_compound_command_is_not_checked_again(self) -> None:
+        def kb_wrote() -> None:
+            self.break_hero()
+            from kblib import events
+
+            events.journal(str(self.root), "files.changed", {"name": None, "session": SESSION, "agentId": "main"}, ["scenes/02-hero.tsx"], via="kb")
+
+        _pre, post = self.around("./kb doc 02-hero set name X && ls scenes", kb_wrote)
+        self.assertExit(post, 0)
+        self.assertEqual(post.stdout.strip(), "")
+
     def test_the_real_kb_entry_point_takes_the_fast_path(self) -> None:
         _pre, post = self.around("python3 rewrite.py", self.break_hero, process=True)
         self.assertExit(post, 2)
