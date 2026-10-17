@@ -186,7 +186,8 @@ As built (`scripts/kblib/`):
   readable names (`05-feature@1.5s.png`, `sheet.png`); `path`, `paths`, each frame's `path`
   and `sheetPath` name the copies and `bridgePath`, `bridgePaths`, `bridgeSheetPath` keep
   the app's originals (pruned after an hour). `--out DIR` copies there instead, `--no-copy`
-  skips it; the newest 40 folders and at most 1 GB are kept.
+  skips it; each agent's newest 40 folders are kept, and past 1 GB the oldest go, never one
+  under an hour old.
 - `kb.py` never writes bytecode into the kit: it points `sys.pycache_prefix` at
   `$TMPDIR/kb-pyc/<sha1 of kit.json>[:12]` (a folder it owns, mode 0700; otherwise no bytecode at
   all), so the stdlib and `kblib` compile once per stamp. It fails open for hooks when its modules
@@ -226,7 +227,9 @@ skipped?, paths?, transient?, retryAfterMs?, code? }` under `steps`:
    than `project.json`, `scenes/**` and `assets/**`; else skipped, naming the newer file.
    `--film` replaces it with `export` (`./kb export --fps 30 --short-edge 720
    --allow-flashes --json` as a child process, progress on stderr) and `film` (`check film
-   --file` on that export, in process).
+   --file` on that export, in process). The draft moves to `.kb/verify/<stamp>/` (the last 5
+   kept), and any Custom export already in `exports/` is held aside meanwhile and put back, so
+   the draft never replaces a film of the user's.
 
 Exit 1 when any step has errors, else 3 when a step was transient (`retryAfterMs` at the
 top level), else 0; skipped steps pass, and the text summary says when only the static
@@ -379,7 +382,7 @@ packs and duplicates.
 .kb/events.jsonl                newline JSON, rotated at 1 MiB (events.1.jsonl kept)
 .kb/notes.md                    shared notes, rotated at 256 KB
 .kb/agents/<name>/              identity.json, seen.json, the agent's scratch
-.kb/captures/<stamp>[-<agent>]/ capture copies, newest 40 folders, 1 GB at most
+.kb/captures/<stamp>[-<agent>]/ capture copies, newest 40 per agent, 1 GB (never under 1 h old)
 ```
 
 - **Identity.** A caller is `{ name, session, agentId }` (`kblib/identity.py`). kb run from
