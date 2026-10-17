@@ -16,7 +16,7 @@ export class TrustDeniedError extends Error {
 export class NeedsTrustError extends Error {
   constructor(slug: string) {
     super(
-      `Project "${slug}" changed since it was last opened in Kookaburra Cut; open it once in the app to allow its code, then rerun.`,
+      `Project "${slug}" has code Kookaburra Cut has not allowed yet (it is new to this app, or changed since it was last opened); open it once in the app to allow it, then rerun.`,
     );
     this.name = "NeedsTrustError";
   }

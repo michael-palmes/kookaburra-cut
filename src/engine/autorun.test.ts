@@ -144,5 +144,6 @@ describe("headless kb export knobs", () => {
     const args = call?.[1] as { resultJson: string } | undefined;
     const result = JSON.parse(args?.resultJson ?? "null");
     expect(result).toMatchObject({ ok: false, needsTrust: true });
+    expect(result.error).toMatch(/^Project "demo" has code Kookaburra Cut has not allowed yet/);
   });
 });

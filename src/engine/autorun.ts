@@ -534,7 +534,11 @@ export function reportAutoRunError(error: unknown): void {
     if (!autoRunEnv?.action?.trim()) return;
     // A stored-only run met a project the user has not allowed with these sources; kb tells them to open it once.
     const needsTrust = error instanceof Error && error.name === "NeedsTrustError";
-    await finish({ ok: false, error: String(error), ...(needsTrust ? { needsTrust: true } : {}) });
+    await finish({
+      ok: false,
+      error: needsTrust ? (error as Error).message : String(error),
+      ...(needsTrust ? { needsTrust: true } : {}),
+    });
   })().catch(() => {});
 }
 
