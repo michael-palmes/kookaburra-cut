@@ -337,7 +337,20 @@ def cmd_render(f: Dict[str, Any]) -> None:
 COMMANDS = {"caps": cmd_caps, "probe": cmd_probe, "create": cmd_create, "validate": cmd_validate, "save": cmd_save, "render": cmd_render}
 
 
+def load_behaviour() -> None:
+    """The FAKE_CLI_* knobs helpers.fake_cli stored for the shim that ran us (FAKE_CLI_SHIM is its $0)."""
+    shim, folder = os.environ.get("FAKE_CLI_SHIM"), os.environ.get("FAKE_CLI_BEHAVIOUR")
+    if not shim or not folder:
+        return
+    path = Path(folder) / f"{hashlib.sha256(os.path.realpath(shim).encode('utf-8')).hexdigest()}.json"
+    try:
+        os.environ.update(json.loads(path.read_text(encoding="utf-8")))
+    except (OSError, ValueError):
+        pass
+
+
 def main() -> None:
+    load_behaviour()
     argv = sys.argv[1:]
     ran = os.environ.get("FAKE_CLI_RAN")
     if ran:

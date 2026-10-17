@@ -11,7 +11,7 @@ from kblib.video import fit as f
 
 from . import video_synth as vs
 from .helpers import KbTestCase, write_json
-from .test_video_cleanup import engine_project, has_engine
+from .test_video_cleanup import engine_project, has_engine, reuse_analysis
 
 
 def analyses():
@@ -192,6 +192,7 @@ class FitCommandTests(KbTestCase):
     def setUp(self) -> None:
         super().setUp()
         self.root = engine_project(self)
+        reuse_analysis(self)
         self.assertExit(self.kb(["video", "new", "assets/sim-checkout.mov"], cwd=self.root), 0)
 
     def test_fit_lands_exact_frames_and_applies(self) -> None:

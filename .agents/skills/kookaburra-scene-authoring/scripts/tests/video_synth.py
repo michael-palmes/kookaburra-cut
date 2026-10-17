@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import atexit
+import hashlib
 import os
 import shutil
 import subprocess
 import tempfile
+import threading
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 REPO_BIN = Path(__file__).resolve().parents[5] / "src-tauri" / "bin"
 BUNDLED = Path("/Applications/Kookaburra Cut.app/Contents/MacOS")
@@ -17,6 +19,8 @@ NEEDED_FILTERS = ("freezedetect", "scdet", "tblend", "cropdetect", "tile", "draw
 _DIR: Optional[Path] = None
 _TOOLS: Optional[Tuple[str, str]] = None
 _SEARCHED = False
+_LOCKS: Dict[str, threading.Lock] = {}
+_LOCKS_GUARD = threading.Lock()
 
 
 def tools() -> Optional[Tuple[str, str]]:
@@ -63,6 +67,45 @@ def _run(args: List[str]) -> None:
     proc = subprocess.run(args, capture_output=True, text=True, timeout=300)
     if proc.returncode != 0:
         raise RuntimeError(f"fixture ffmpeg failed: {proc.stderr[-1500:]}")
+
+
+def _built(stem: str, ext: str, args: List[str]) -> Path:
+    """synth_dir()/<stem>-<hash of the ffmpeg args>.<ext>, built once per run (and per generator change) even when threads race."""
+    key = hashlib.sha256("\0".join(args).encode("utf-8")).hexdigest()[:10]
+    out = synth_dir() / f"{stem}-{key}.{ext}"
+    with _LOCKS_GUARD:
+        lock = _LOCKS.setdefault(str(out), threading.Lock())
+    with lock:
+        if not out.is_file():
+            part = out.with_name(f"{out.stem}.{os.getpid()}.part.{ext}")
+            _run(args + [str(part)])
+            os.replace(part, out)
+    return out
+
+
+def prebuild() -> None:
+    """Builds every recording at once (screen-cfr and screen-vfr wait on the one screen master)."""
+    if tools() is None:
+        return
+    in_parallel({f.__name__: f for f in (screen_vfr, screen_cfr, camera_cfr, counter_cfr)})
+
+
+def in_parallel(jobs: Dict[str, Callable[[], Any]]) -> Dict[str, Any]:
+    """Runs each job in its own thread (they wait on ffmpeg); a job's exception comes back as its result."""
+    results: Dict[str, Any] = {}
+
+    def run(name: str, job: Callable[[], Any]) -> None:
+        try:
+            results[name] = job()
+        except Exception as e:
+            results[name] = e
+
+    threads = [threading.Thread(target=run, args=item, daemon=True) for item in jobs.items()]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    return results
 
 
 def _require() -> Tuple[str, str]:
@@ -122,34 +165,25 @@ def _screen_graph() -> str:
 
 
 def screen_master() -> Path:
-    out = synth_dir() / "screen-master.mp4"
-    if not out.is_file():
-        ff, _ = _require()
-        _run([ff, "-v", "error", "-y", "-filter_complex", _screen_graph(), "-map", "[out]", "-c:v", "libx264",
-              "-preset", "veryfast", "-crf", "16", "-g", "120", "-bf", "0", str(out)])
-    return out
+    ff, _ = _require()
+    return _built("screen-master", "mp4", [ff, "-v", "error", "-y", "-filter_complex", _screen_graph(), "-map", "[out]", "-c:v", "libx264",
+                                           "-preset", "veryfast", "-crf", "16", "-g", "120", "-bf", "0"])
 
 
 def screen_vfr() -> Path:
     """A Simulator-like recording: a frame per screen change (mpdecimate), timescale 600."""
-    out = synth_dir() / "screen-vfr.mov"
-    if not out.is_file():
-        ff, _ = _require()
-        # tpad + select keep one copy of the final frame at the very end, as a Simulator stop does.
-        vf = "trim=end_frame=1679,mpdecimate,tpad=stop_mode=clone:stop=1"
-        _run([ff, "-v", "error", "-y", "-i", str(screen_master()), "-vf", vf, "-fps_mode", "vfr",
-              "-video_track_timescale", "600", "-c:v", "libx264", "-preset", "veryfast", "-crf", "16", "-bf", "0", str(out)])
-    return out
+    ff, _ = _require()
+    # tpad + select keep one copy of the final frame at the very end, as a Simulator stop does.
+    vf = "trim=end_frame=1679,mpdecimate,tpad=stop_mode=clone:stop=1"
+    return _built("screen-vfr", "mov", [ff, "-v", "error", "-y", "-i", str(screen_master()), "-vf", vf, "-fps_mode", "vfr",
+                                        "-video_track_timescale", "600", "-c:v", "libx264", "-preset", "veryfast", "-crf", "16", "-bf", "0"])
 
 
 def screen_cfr() -> Path:
     """The same screen at a constant 30 fps (a QuickTime-like capture)."""
-    out = synth_dir() / "screen-cfr.mp4"
-    if not out.is_file():
-        ff, _ = _require()
-        _run([ff, "-v", "error", "-y", "-i", str(screen_master()), "-vf", "fps=30", "-c:v", "libx264",
-              "-preset", "veryfast", "-crf", "16", "-g", "60", "-bf", "0", str(out)])
-    return out
+    ff, _ = _require()
+    return _built("screen-cfr", "mp4", [ff, "-v", "error", "-y", "-i", str(screen_master()), "-vf", "fps=30", "-c:v", "libx264",
+                                        "-preset", "veryfast", "-crf", "16", "-g", "60", "-bf", "0"])
 
 
 CAMERA_TRUTH = {"durationMs": 12000, "noisyStill": [4000, 8000], "trueFreeze": [8000, 9500]}
@@ -157,32 +191,26 @@ CAMERA_TRUTH = {"durationMs": 12000, "noisyStill": [4000, 8000], "trueFreeze": [
 
 def camera_cfr() -> Path:
     """Camera-like: moving noisy footage, a noisy still (never a freeze) and a true freeze."""
-    out = synth_dir() / "camera-cfr.mp4"
-    if not out.is_file():
-        ff, _ = _require()
-        graph = ";".join([
-            "testsrc2=s=640x360:r=30:d=12,noise=alls=14:allf=t+u[mov]",
-            "testsrc2=s=640x360:r=30:d=12,trim=end_frame=1,loop=loop=-1:size=1,setpts=N/30/TB,trim=duration=12,split[st1][st2]",
-            "[st1]noise=alls=14:allf=t+u[sn]",
-            "[mov][sn]overlay=enable='between(t\\,4\\,7.99)'[a]",
-            "[a][st2]overlay=enable='between(t\\,8\\,9.49)',format=yuv420p[out]",
-        ])
-        _run([ff, "-v", "error", "-y", "-filter_complex", graph, "-map", "[out]", "-c:v", "libx264", "-preset", "veryfast",
-              "-crf", "14", "-g", "30", "-bf", "0", "-t", "12", str(out)])
-    return out
+    ff, _ = _require()
+    graph = ";".join([
+        "testsrc2=s=640x360:r=30:d=12,noise=alls=14:allf=t+u[mov]",
+        "testsrc2=s=640x360:r=30:d=12,trim=end_frame=1,loop=loop=-1:size=1,setpts=N/30/TB,trim=duration=12,split[st1][st2]",
+        "[st1]noise=alls=14:allf=t+u[sn]",
+        "[mov][sn]overlay=enable='between(t\\,4\\,7.99)'[a]",
+        "[a][st2]overlay=enable='between(t\\,8\\,9.49)',format=yuv420p[out]",
+    ])
+    return _built("camera-cfr", "mp4", [ff, "-v", "error", "-y", "-filter_complex", graph, "-map", "[out]", "-c:v", "libx264", "-preset", "veryfast",
+                                        "-crf", "14", "-g", "30", "-bf", "0", "-t", "12"])
 
 
 def counter_cfr(seconds: int = 12, fps: int = 30) -> Path:
     """Each frame paints its own number as twelve black/white bars (readable back without drawtext)."""
-    out = synth_dir() / f"counter-{seconds}s-{fps}.mp4"
-    if not out.is_file():
-        ff, _ = _require()
-        bits = "+".join(f"gte(mod(floor(N/{1 << i})\\,2)\\,1)*gte(X\\,{i * 20})*lt(X\\,{i * 20 + 20})" for i in range(12))
-        graph = (f"color=c=black:s=240x120:r={fps}:d={seconds},format=gray,"
-                 f"geq=lum='if(lt(Y\\,60)\\,255*({bits})\\,128)',format=yuv420p[out]")
-        _run([ff, "-v", "error", "-y", "-filter_complex", graph, "-map", "[out]", "-c:v", "libx264", "-preset", "veryfast",
-              "-qp", "0", "-g", "300", "-bf", "0", str(out)])
-    return out
+    ff, _ = _require()
+    bits = "+".join(f"gte(mod(floor(N/{1 << i})\\,2)\\,1)*gte(X\\,{i * 20})*lt(X\\,{i * 20 + 20})" for i in range(12))
+    graph = (f"color=c=black:s=240x120:r={fps}:d={seconds},format=gray,"
+             f"geq=lum='if(lt(Y\\,60)\\,255*({bits})\\,128)',format=yuv420p[out]")
+    return _built(f"counter-{seconds}s-{fps}", "mp4", [ff, "-v", "error", "-y", "-filter_complex", graph, "-map", "[out]", "-c:v", "libx264",
+                                                       "-preset", "veryfast", "-qp", "0", "-g", "300", "-bf", "0"])
 
 
 # ── pure stand-ins (no ffmpeg) ───────────────────────────────────────────────

@@ -2,11 +2,18 @@
 
 from __future__ import annotations
 
+import atexit
+import hashlib
+import importlib.util
 import json
+import locale
 import os
 import plistlib
+import py_compile
 import shlex
 import shutil
+import signal
+import socket
 import struct
 import subprocess
 import sys
@@ -23,7 +30,248 @@ KB = SCRIPTS / "kb.py"
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
 FIXTURE_CATALOG = FIXTURES / "catalog.json"
 FAKE_CLI = Path(__file__).resolve().parent / "fake_app_cli.py"
-ENV_KEYS = ("KB_BRIDGE_DIR", "KB_TRASH_DIR", "KB_CATALOG", "KB_RESOURCES_DIR", "KB_APP_BIN", "CLAUDE_PROJECT_DIR")
+FORKSERVER = Path(__file__).resolve().parent / "kb_forkserver.py"
+# KB_TESTS_SUBPROCESS=1 runs every kb call as its own python3 -I -B kb.py, skipping the fork server.
+FORCE_PROCESS = os.environ.get("KB_TESTS_SUBPROCESS") == "1"
+ENV_KEYS = ("KB_BRIDGE_DIR", "KB_TRASH_DIR", "KB_CATALOG", "KB_RESOURCES_DIR", "KB_APP_BIN", "CLAUDE_PROJECT_DIR", "PATH")
+_RUN_DIR: Optional[Path] = None
+_PYC: Optional[str] = None
+_GIT_DIR: Optional[str] = None
+_GIT_SEARCHED = False
+_SHIMS: List[Path] = []
+_FORK: Optional["ForkServer"] = None
+_FORK_TRIED = False
+
+
+def run_dir() -> Path:
+    """Scratch shared by every test in this run, removed at exit."""
+    global _RUN_DIR
+    if _RUN_DIR is None:
+        _RUN_DIR = Path(tempfile.mkdtemp(prefix="kbtest-run-")).resolve()
+        atexit.register(shutil.rmtree, str(_RUN_DIR), True)
+    return _RUN_DIR
+
+
+_LIST_IMPORTS = """import importlib, pkgutil, sys
+sys.path.append(sys.argv[1])
+import kblib
+for m in pkgutil.walk_packages(kblib.__path__, "kblib."):
+    try:
+        importlib.import_module(m.name)
+    except Exception:
+        pass
+print("\\n".join(sorted({f for f in (getattr(m, "__file__", None) for m in list(sys.modules.values())) if f and f.endswith(".py")})))
+"""
+
+
+def pycache_prefix() -> str:
+    """Everything a kit child imports (stdlib too), compiled once per run outside the kit; kblib's pycs are hash-checked."""
+    global _PYC
+    if _PYC is None:
+        prefix = run_dir() / "pyc"
+        listed = subprocess.run([sys.executable, "-I", "-B", "-c", _LIST_IMPORTS, str(SCRIPTS)], capture_output=True, text=True, timeout=120)
+        sources = {Path(p) for p in listed.stdout.splitlines() if p} | set((SCRIPTS / "kblib").rglob("*.py"))
+        saved = sys.pycache_prefix
+        sys.pycache_prefix = str(prefix)
+        try:
+            for src in sorted(sources):
+                ours = SCRIPTS in src.parents
+                mode = py_compile.PycInvalidationMode.CHECKED_HASH if ours else py_compile.PycInvalidationMode.TIMESTAMP
+                try:
+                    py_compile.compile(str(src), cfile=importlib.util.cache_from_source(str(src)), doraise=True, invalidation_mode=mode)
+                except (py_compile.PyCompileError, OSError):
+                    continue
+        finally:
+            sys.pycache_prefix = saved
+        _PYC = str(prefix)
+    return _PYC
+
+
+def python_argv(script: Path) -> List[str]:
+    """How tests run a kit script: python3 -I -B like the hooks, reading this run's precompiled kblib."""
+    return [sys.executable, "-I", "-B", "-X", f"pycache_prefix={pycache_prefix()}", str(script)]
+
+
+def git_dir() -> Optional[str]:
+    """On macOS, a folder whose git links past the /usr/bin/git xcrun shim to the same binary (about 15 ms less a call)."""
+    global _GIT_DIR, _GIT_SEARCHED
+    if _GIT_SEARCHED:
+        return _GIT_DIR
+    _GIT_SEARCHED = True
+    exe = shutil.which("git")
+    if sys.platform != "darwin" or not exe or os.path.realpath(exe) != "/usr/bin/git":
+        return None
+    try:
+        real = subprocess.run(["xcrun", "--find", "git"], capture_output=True, text=True, timeout=20).stdout.strip()
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if not real or not os.access(real, os.X_OK):
+        return None
+    folder = run_dir() / "git-bin"
+    folder.mkdir(exist_ok=True)
+    os.symlink(real, folder / "git")
+    _GIT_DIR = str(folder)
+    return _GIT_DIR
+
+
+def shim_behaviour_path(shim: str) -> Path:
+    """Where fake_cli keeps a shim's FAKE_CLI_* knobs; fake_app_cli.py reads them back by its own path."""
+    return run_dir() / "fake-cli" / f"{hashlib.sha256(os.path.realpath(shim).encode('utf-8')).hexdigest()}.json"
+
+
+def shim_master(index: int) -> Path:
+    """The index-th identical shim script; tests hard-link one, since macOS vets every new executable on its first run.
+    A re-shim at the same path takes the next one, so the CLI's identity (path, size, mtime) still changes."""
+    while len(_SHIMS) <= index:
+        folder = run_dir() / "fake-cli"
+        folder.mkdir(exist_ok=True)
+        master = folder / f"shim-{len(_SHIMS)}"
+        exports = f"export FAKE_CLI_SHIM=\"$0\" FAKE_CLI_BEHAVIOUR={shlex.quote(str(folder))}\n"
+        master.write_text(f"#!/bin/sh\n{exports}exec {shlex.join(python_argv(FAKE_CLI))} \"$@\"\n", encoding="utf-8")
+        master.chmod(0o755)
+        _SHIMS.append(master)
+    return _SHIMS[index]
+
+
+def _send_msg(sock: socket.socket, obj: Dict[str, Any]) -> None:
+    data = json.dumps(obj).encode("utf-8")
+    sock.sendall(struct.pack(">I", len(data)) + data)
+
+
+def _recv_msg(sock: socket.socket) -> Optional[Dict[str, Any]]:
+    head = b""
+    while len(head) < 4:
+        chunk = sock.recv(4 - len(head))
+        if not chunk:
+            return None
+        head += chunk
+    size = struct.unpack(">I", head)[0]
+    body = b""
+    while len(body) < size:
+        chunk = sock.recv(size - len(body))
+        if not chunk:
+            return None
+        body += chunk
+    return json.loads(body.decode("utf-8"))
+
+
+def _drain(fd: int, sink: List[bytes]) -> None:
+    while True:
+        data = os.read(fd, 65536)
+        if not data:
+            break
+        sink.append(data)
+    os.close(fd)
+
+
+def _feed(fd: int, data: bytes) -> None:
+    try:
+        view = memoryview(data)
+        while view:
+            view = view[os.write(fd, view):]
+    except OSError:
+        pass
+    finally:
+        os.close(fd)
+
+
+def _text(data: bytes, encoding: str) -> str:
+    """What subprocess.run(text=True) makes of a pipe's bytes."""
+    return data.decode(encoding).replace("\r\n", "\n").replace("\r", "\n")
+
+
+class ForkServer:
+    """Client for kb_forkserver.py: every call is still its own kb process, minus about 50 ms of interpreter start-up."""
+
+    def __init__(self) -> None:
+        ours, theirs = socket.socketpair()
+        env = {k: v for k, v in os.environ.items() if not k.startswith(("KB_", "FAKE_CLI_")) and k != "CLAUDE_PROJECT_DIR"}
+        # Anything kblib read at import time would point here and fail loudly, never at the user's workspace.
+        sentinel = run_dir() / "forkserver-env"
+        env.update({k: str(sentinel / k) for k in ("KB_BRIDGE_DIR", "KB_TRASH_DIR", "KB_CATALOG", "KB_RESOURCES_DIR", "KB_APP_BIN")})
+        self.proc = subprocess.Popen(python_argv(FORKSERVER) + [str(theirs.fileno())], pass_fds=[theirs.fileno()], cwd=str(run_dir()), env=env,
+                                     stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        theirs.close()
+        self.sock = ours
+        hello = _recv_msg(ours)
+        self.ok = bool(hello and hello.get("ok"))
+        self.lock = threading.Lock()
+
+    def alive(self) -> bool:
+        return self.ok and self.proc.poll() is None
+
+    def close(self) -> None:
+        self.sock.close()
+        try:
+            self.proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            self.proc.kill()
+
+    def run(self, cmd: List[str], args: List[str], cwd: str, stdin: Optional[str], env: Dict[str, str], timeout: float) -> subprocess.CompletedProcess:
+        encoding = locale.getpreferredencoding(False)
+        with self.lock:
+            out_r, out_w = os.pipe()
+            err_r, err_w = os.pipe()
+            if stdin is None:
+                in_r, in_w = (0, None) if _fd_open(0) else (os.open(os.devnull, os.O_RDONLY), None)
+            else:
+                in_r, in_w = os.pipe()
+            try:
+                socket.send_fds(self.sock, [b"F"], [in_r, out_w, err_w])
+                _send_msg(self.sock, {"argv": args, "cwd": cwd, "env": env})
+            finally:
+                os.close(out_w)
+                os.close(err_w)
+                if in_r != 0:
+                    os.close(in_r)
+            started = _recv_msg(self.sock)
+            if started is None:
+                raise RuntimeError("the kb fork server died")
+            out: List[bytes] = []
+            err: List[bytes] = []
+            readers = [threading.Thread(target=_drain, args=(out_r, out), daemon=True), threading.Thread(target=_drain, args=(err_r, err), daemon=True)]
+            if in_w is not None:
+                threading.Thread(target=_feed, args=(in_w, (stdin or "").encode(encoding)), daemon=True).start()
+            for t in readers:
+                t.start()
+            deadline = time.monotonic() + timeout
+            for t in readers:
+                t.join(max(0.0, deadline - time.monotonic()))
+            timed_out = any(t.is_alive() for t in readers)
+            if timed_out:
+                os.kill(started["pid"], signal.SIGKILL)
+            done = _recv_msg(self.sock)
+            if done is None:
+                raise RuntimeError("the kb fork server died")
+            stdout, stderr = _text(b"".join(out), encoding), _text(b"".join(err), encoding)
+            if timed_out:
+                raise subprocess.TimeoutExpired(cmd, timeout, stdout, stderr)
+            return subprocess.CompletedProcess(cmd, done["returncode"], stdout, stderr)
+
+
+def _fd_open(fd: int) -> bool:
+    try:
+        os.fstat(fd)
+        return True
+    except OSError:
+        return False
+
+
+def fork_server() -> Optional[ForkServer]:
+    """The run's kb fork server, or None (no fork, KB_TESTS_SUBPROCESS=1, or kb would not import) for a plain subprocess."""
+    global _FORK, _FORK_TRIED
+    if not _FORK_TRIED:
+        _FORK_TRIED = True
+        if not FORCE_PROCESS and hasattr(os, "fork") and hasattr(socket, "send_fds"):
+            try:
+                server = ForkServer()
+            except OSError:
+                server = None
+            if server is not None and server.ok:
+                _FORK = server
+                atexit.register(server.close)
+    return _FORK if _FORK is not None and _FORK.alive() else None
+
 
 def png_bytes(width: int = 2, height: int = 3) -> bytes:
     def chunk(kind: bytes, data: bytes) -> bytes:
@@ -149,6 +397,9 @@ def make_resources(root: Path) -> Path:
 class KbTestCase(unittest.TestCase):
     """Every test gets a temp dir, an isolated bridge, trash and catalogue."""
 
+    # True runs this test's kb calls as real python3 -I -B kb.py processes rather than fork-server children.
+    real_process = False
+
     def setUp(self) -> None:
         self.tmp = Path(tempfile.mkdtemp(prefix="kbtest-")).resolve()
         self.bridge = self.tmp / "_bridge"
@@ -166,9 +417,13 @@ class KbTestCase(unittest.TestCase):
             "KB_RESOURCES_DIR": str(self.res),
             "KB_APP_BIN": str(self.tmp / "NoApp" / "kookaburra-cut"),
         })
+        git_link = git_dir()
+        if git_link:
+            self.env["PATH"] = git_link + os.pathsep + self.env.get("PATH", "")
         self._saved_env = {k: os.environ.get(k) for k in ENV_KEYS}
-        for k in ("KB_BRIDGE_DIR", "KB_TRASH_DIR", "KB_CATALOG", "KB_RESOURCES_DIR", "KB_APP_BIN"):
-            os.environ[k] = self.env[k]
+        for k in ("KB_BRIDGE_DIR", "KB_TRASH_DIR", "KB_CATALOG", "KB_RESOURCES_DIR", "KB_APP_BIN", "PATH"):
+            if k in self.env:
+                os.environ[k] = self.env[k]
         os.environ.pop("CLAUDE_PROJECT_DIR", None)
         from kblib import catalog
 
@@ -182,14 +437,17 @@ class KbTestCase(unittest.TestCase):
                 os.environ[k] = v
         shutil.rmtree(self.tmp, ignore_errors=True)
 
-    def kb(self, args: List[str], cwd: Optional[Path] = None, stdin: Optional[str] = None, env: Optional[Dict[str, str]] = None, script: Path = KB) -> subprocess.CompletedProcess:
+    def kb(self, args: List[str], cwd: Optional[Path] = None, stdin: Optional[str] = None, env: Optional[Dict[str, str]] = None, script: Path = KB,
+           process: bool = False) -> subprocess.CompletedProcess:
+        """Runs kb in its own process: forked from the run's fork server, or a real python3 -I -B kb.py when process=True."""
         full_env = dict(self.env)
         if env:
             full_env.update(env)
-        return subprocess.run(
-            [sys.executable, "-I", "-B", str(script)] + args,
-            cwd=str(cwd or self.tmp), input=stdin, capture_output=True, text=True, env=full_env, timeout=60,
-        )
+        cmd = python_argv(script) + args
+        server = fork_server() if script == KB and not (process or self.real_process) else None
+        if server is not None:
+            return server.run(cmd, list(args), os.path.abspath(str(cwd or self.tmp)), stdin, full_env, 60)
+        return subprocess.run(cmd, cwd=str(cwd or self.tmp), input=stdin, capture_output=True, text=True, env=full_env, timeout=60)
 
     def assertExit(self, proc: subprocess.CompletedProcess, code: int) -> None:
         if proc.returncode != code:
@@ -199,9 +457,16 @@ class KbTestCase(unittest.TestCase):
         """An executable shim running fake_app_cli.py; behaviour keys become FAKE_CLI_<KEY> env vars. Sets KB_APP_BIN to it."""
         target = path or (self.tmp / "bin" / "kookaburra-cut")
         target.parent.mkdir(parents=True, exist_ok=True)
-        exports = "".join(f"export FAKE_CLI_{k.upper()}={shlex.quote(str(v))}\n" for k, v in behaviour.items())
-        target.write_text(f"#!/bin/sh\n{exports}exec {shlex.quote(sys.executable)} -I -B {shlex.quote(str(FAKE_CLI))} \"$@\"\n", encoding="utf-8")
-        target.chmod(0o755)
+        write_json(shim_behaviour_path(str(target)), {f"FAKE_CLI_{k.upper()}": str(v) for k, v in behaviour.items()})
+        uses = self.__dict__.setdefault("_shim_uses", {})
+        master = shim_master(uses.get(target, 0))
+        uses[target] = uses.get(target, 0) + 1
+        if target.exists() or target.is_symlink():
+            target.unlink()
+        try:
+            os.link(master, target)
+        except OSError:
+            shutil.copy2(master, target)
         if path is None:
             self.env["KB_APP_BIN"] = str(target)
             os.environ["KB_APP_BIN"] = str(target)

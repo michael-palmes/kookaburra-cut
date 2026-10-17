@@ -8,6 +8,7 @@ import random
 import shutil
 import unittest
 from pathlib import Path
+from typing import Dict
 
 from kblib.video import cleanup as cl
 
@@ -231,6 +232,24 @@ def has_engine() -> bool:
     return hasattr(KbTestCase, "fake_cli")
 
 
+_ANALYSES: Dict[str, bytes] = {}
+
+
+def keep_analysis(case: KbTestCase) -> None:
+    """Keeps the analysis this test's kb run wrote, for later engine tests in this run."""
+    for path in sorted((case.bridge / "video").glob("*/analysis/*-v*.json")):
+        _ANALYSES.setdefault(str(path.relative_to(case.bridge)), path.read_bytes())
+
+
+def reuse_analysis(case: KbTestCase) -> None:
+    """Seeds this test's analysis cache from an earlier engine test, so kb skips re-decoding the same fixture.
+    The cache is keyed by content sha and analysis parameters: any mismatch is a miss and kb analyses afresh."""
+    for rel, data in _ANALYSES.items():
+        dest = case.bridge / rel
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(data)
+
+
 def engine_project(case: KbTestCase) -> Path:
     """A git project holding the VFR fixture as assets/sim-checkout.mov, kb wired to the fake app CLI and real ffmpeg."""
     root = make_project(case.tmp, git=True)
@@ -266,8 +285,10 @@ class CleanupCommandTests(KbTestCase):
         emitted = self.kb(["video", "cleanup", "sim-checkout", "--emit-plan"], cwd=self.root)
         self.assertExit(emitted, 0)
         self.assertEqual(json.loads(emitted.stdout)["ops"], [])
+        keep_analysis(self)
 
     def test_taps_suggest_lists_without_adding(self) -> None:
+        reuse_analysis(self)
         self.assertExit(self.kb(["video", "cleanup", "assets/sim-checkout.mov"], cwd=self.root), 0)
         out = self.kb(["video", "taps", "suggest", "sim-checkout", "--json"], cwd=self.root)
         self.assertExit(out, 0)

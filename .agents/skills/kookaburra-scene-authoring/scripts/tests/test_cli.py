@@ -23,10 +23,12 @@ class HelpTests(KbTestCase):
         self.assertIn("Exit codes", self.kb(["--help"]).stdout)
 
     def test_usage_errors_exit_2(self) -> None:
+        self.real_process = True
         self.assertExit(self.kb(["scene", "move", "0"], cwd=make_project(self.tmp)), 2)
         self.assertExit(self.kb(["nonsense"]), 2)
 
     def test_outside_a_project_is_exit_2(self) -> None:
+        self.real_process = True
         proc = self.kb(["scenes"], cwd=self.tmp)
         self.assertExit(proc, 2)
         self.assertIn("no project.json", proc.stderr)

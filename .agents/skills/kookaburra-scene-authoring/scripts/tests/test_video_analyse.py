@@ -17,6 +17,10 @@ TOOLS = vs.tools()
 needs_ffmpeg = unittest.skipUnless(TOOLS, "no ffmpeg with the analysis filters")
 
 
+def setUpModule() -> None:
+    vs.prebuild()
+
+
 def raw_series(changes, duration=10000.0, samples=None, black=(), vfr=True, gaps=(), scd=()):
     """A passes.collect()-shaped dict built by hand."""
     if samples is None:
@@ -139,9 +143,19 @@ class DetectSeriesTests(unittest.TestCase):
 
 @needs_ffmpeg
 class RecordingTests(unittest.TestCase):
-    def analyse(self, path: Path, profile: str = "auto") -> dict:
+    raws: dict = {}
+
+    @classmethod
+    def setUpClass(cls) -> None:
         t = passes.Tools(*TOOLS)  # type: ignore[misc]
-        return detect.analyse(passes.raw_for(t, path), profile)
+        # Three independent ffmpeg decodes, side by side.
+        cls.raws = vs.in_parallel({str(p): (lambda p=p: passes.raw_for(t, p)) for p in (vs.screen_vfr(), vs.screen_cfr(), vs.camera_cfr())})
+
+    def analyse(self, path: Path, profile: str = "auto") -> dict:
+        raw = self.raws[str(path)]
+        if isinstance(raw, Exception):
+            raise raw
+        return detect.analyse(raw, profile)
 
     def assert_intervals(self, out: dict, tolerance: float) -> None:
         got = out["intervals"]

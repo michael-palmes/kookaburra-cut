@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import os
 import subprocess
-import sys
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -11,7 +10,7 @@ from typing import Any, Dict, List, Optional
 from kblib.project import Project
 from kblib.video import editdoc
 
-from .helpers import KB, FakeApp, KbTestCase, fake_worktree, png_bytes, read_json, video_project, write_json, write_probe
+from .helpers import KB, FakeApp, KbTestCase, fake_worktree, png_bytes, python_argv, read_json, video_project, write_json, write_probe
 
 VIDEO_COMMANDS = [
     "list", "show", "map", "usages", "validate", "caps", "new", "reset", "split", "cut", "keep", "trim", "speed", "freeze", "hold",
@@ -83,6 +82,7 @@ class HelpAndInspectTests(VideoCase):
         self.assertEqual(caps["cli"]["source"], "KB_APP_BIN")
 
     def test_missing_cli_is_exit_2_for_writes(self) -> None:
+        self.real_process = True
         self.v("new", "assets/rec.mp4")
         self.env["KB_APP_BIN"] = str(self.tmp / "missing")
         proc = self.v("split", "rec", "--at", "2", code=2)
@@ -212,6 +212,7 @@ class ClipTests(VideoCase):
         self.assertIn(sha, self.calls("save")[-1])
 
     def test_lock_busy_is_exit_2(self) -> None:
+        self.real_process = True
         with editdoc.edit_lock(self.project, "rec", "kb video render", wait=0):
             proc = self.v("split", "rec", "--at", "2", "--wait", "0.3", code=2)
         self.assertIn("busy", proc.stderr)
@@ -367,7 +368,7 @@ class RenderTests(VideoCase):
             proc = self.v("render", "rec", code=2)
             self.assertIn("exporting", proc.stderr)
             started = time.monotonic()
-            run = subprocess.Popen([sys.executable, "-I", "-B", str(KB), "video", "render", "rec", "--wait", "30"], cwd=str(self.root), env=self.env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            run = subprocess.Popen(python_argv(KB) + ["video", "render", "rec", "--wait", "30"], cwd=str(self.root), env=self.env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
             time.sleep(1.0)
             app.heartbeat["exporting"] = False
             app.write_heartbeat()
@@ -386,7 +387,7 @@ class RenderTests(VideoCase):
         good = (self.root / "assets" / "rec-edited.mp4").read_bytes()
         self.v("split", "rec", "--at", "1")
         self.fake_cli(log=self.log, sleep="0.4")
-        run = subprocess.Popen([sys.executable, "-I", "-B", str(KB), "video", "render", "rec"], cwd=str(self.root), env=self.env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        run = subprocess.Popen(python_argv(KB) + ["video", "render", "rec"], cwd=str(self.root), env=self.env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         deadline = time.monotonic() + 20
         while time.monotonic() < deadline and not list((self.root / "assets" / ".kc-render").glob("*")):
             time.sleep(0.05)
@@ -467,6 +468,7 @@ class OpenTests(VideoCase):
 
 class WorktreeTests(KbTestCase):
     def test_mutations_refuse_in_a_linked_worktree(self) -> None:
+        self.real_process = True
         main = video_project(self.tmp)
         subprocess.run(["git", "init", "-q", str(main)], check=True)
         tree = fake_worktree(main, self.tmp / "tree" / "demo")
