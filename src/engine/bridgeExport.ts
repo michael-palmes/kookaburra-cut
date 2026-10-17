@@ -139,7 +139,8 @@ export interface EditorActivity {
   themePreviewRunning: boolean;
   exportModalOpen: boolean;
   pointerDown: boolean;
-  fieldFocused: boolean;
+  /** A focused text field the person typed in or changed in the last 10 s. */
+  fieldEditing: boolean;
 }
 
 /** The acceptance rules: only the project open in the editor, and only while the person is not mid-edit and nothing else holds the canvas. */
@@ -175,7 +176,7 @@ export function bridgeExportRefusal(
       "rerun in a moment, or ask the user to close the Export window",
     );
   }
-  if (editor.pointerDown || editor.fieldFocused) {
+  if (editor.pointerDown || editor.fieldEditing) {
     return busy(
       "editing",
       editor.pointerDown

@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { BridgeProgress } from "../engine/bridgeExport";
 import { BridgeExportOverlay, bridgeStageText, etaText } from "./BridgeExportOverlay";
 import { type FlashOutcome, flashNotice } from "./FlashWarning";
-import { isEditingFocus } from "./useBridgeExport";
+import { FIELD_EDIT_IDLE_MS, FieldActivity, isEditingFocus } from "./useBridgeExport";
 
 const el = (tagName: string, extra: Record<string, unknown> = {}, inTerminal = false) => ({
   tagName,
@@ -27,6 +27,34 @@ describe("isEditingFocus", () => {
     expect(isEditingFocus(el("BODY"))).toBe(false);
     expect(isEditingFocus(null)).toBe(false);
     expect(isEditingFocus(el("TEXTAREA", {}, true))).toBe(false);
+  });
+});
+
+describe("FieldActivity (a focused field blocks kb export only while the person types)", () => {
+  const field = el("INPUT");
+
+  it("lets an idle focused field through", () => {
+    const fields = new FieldActivity();
+    expect(fields.editing(field, 1_000)).toBe(false);
+    fields.note(field, 1_000);
+    expect(fields.editing(field, 1_000 + FIELD_EDIT_IDLE_MS - 1)).toBe(true);
+    expect(fields.editing(field, 1_000 + FIELD_EDIT_IDLE_MS)).toBe(false);
+  });
+
+  it("counts typing or a change in any field, but only while one is focused", () => {
+    const fields = new FieldActivity();
+    fields.note(el("SELECT"), 5_000);
+    expect(fields.editing(field, 6_000)).toBe(true);
+    expect(fields.editing(el("BUTTON"), 6_000)).toBe(false);
+    expect(fields.editing(null, 6_000)).toBe(false);
+  });
+
+  it("never counts the embedded Claude terminal or a toggle", () => {
+    const fields = new FieldActivity();
+    fields.note(el("TEXTAREA", {}, true), 1_000);
+    fields.note(el("INPUT", { type: "checkbox" }), 1_000);
+    expect(fields.editing(field, 2_000)).toBe(false);
+    expect(fields.editing(el("TEXTAREA", {}, true), 2_000)).toBe(false);
   });
 });
 

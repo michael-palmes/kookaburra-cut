@@ -84,7 +84,7 @@ interface FocusLike {
   closest?: (selector: string) => unknown;
 }
 
-/** A focused text field, select or editable region means the person is mid-edit; the embedded Claude terminal's input never counts (Claude itself types there). */
+/** A text field, select or editable region, where a focus can mean the person is mid-edit; the embedded Claude terminal's input never counts (Claude itself types there). */
 export function isEditingFocus(el: FocusLike | null | undefined): boolean {
   if (!el?.tagName) return false;
   if (el.closest?.(".terminal-panel, .xterm")) return false;
@@ -92,6 +92,27 @@ export function isEditingFocus(el: FocusLike | null | undefined): boolean {
   if (tag === "TEXTAREA" || tag === "SELECT") return true;
   if (tag === "INPUT") return TEXT_INPUT_TYPES.has((el.type ?? "").toLowerCase());
   return el.isContentEditable === true;
+}
+
+/** A focused field holds off `kb export` only this long after the person last typed in or changed one. */
+export const FIELD_EDIT_IDLE_MS = 10_000;
+
+/** When the person last typed in or changed a field (key, input and change events on one), so a field left focused while they look away does not block Claude's export. */
+export class FieldActivity {
+  private lastEditAt: number | null = null;
+
+  note(target: FocusLike | null | undefined, now: number): void {
+    if (isEditingFocus(target)) this.lastEditAt = now;
+  }
+
+  /** A focused field, typed in or changed in the last 10 s. */
+  editing(focused: FocusLike | null | undefined, now: number): boolean {
+    return (
+      this.lastEditAt !== null &&
+      now - this.lastEditAt < FIELD_EDIT_IDLE_MS &&
+      isEditingFocus(focused)
+    );
+  }
 }
 
 /** Bundled presets plus the workspace's `ws:` ones, as the modal lists them. */
@@ -206,6 +227,7 @@ export function useBridgeExport(host: BridgeExportHost): {
   const hostRef = useRef(host);
   hostRef.current = host;
   const pointerDown = useRef(false);
+  const fields = useRef(new FieldActivity());
   const running = useRef<{ id: string; abort: AbortController; by: string } | null>(null);
   const [overlay, setOverlay] = useState<BridgeOverlayState | null>(null);
   const autoRun = host.isAutoRun;
@@ -218,15 +240,19 @@ export function useBridgeExport(host: BridgeExportHost): {
     const up = () => {
       pointerDown.current = false;
     };
+    const edited = (e: Event) => fields.current.note(e.target as FocusLike | null, Date.now());
     window.addEventListener("pointerdown", down, true);
     window.addEventListener("pointerup", up, true);
     window.addEventListener("pointercancel", up, true);
     window.addEventListener("blur", up);
+    for (const type of ["keydown", "input", "change"]) window.addEventListener(type, edited, true);
     return () => {
       window.removeEventListener("pointerdown", down, true);
       window.removeEventListener("pointerup", up, true);
       window.removeEventListener("pointercancel", up, true);
       window.removeEventListener("blur", up);
+      for (const type of ["keydown", "input", "change"])
+        window.removeEventListener(type, edited, true);
     };
   }, [autoRun]);
 
@@ -239,7 +265,7 @@ export function useBridgeExport(host: BridgeExportHost): {
       themePreviewRunning: h.themePreviewRunning.current,
       exportModalOpen: h.showExport,
       pointerDown: pointerDown.current,
-      fieldFocused: isEditingFocus(document.activeElement as FocusLike | null),
+      fieldEditing: fields.current.editing(document.activeElement as FocusLike | null, Date.now()),
     };
     const refusal = bridgeExportRefusal(req, activity);
     if (refusal) {

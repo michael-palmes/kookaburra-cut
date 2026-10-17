@@ -38,7 +38,7 @@ const IDLE: EditorActivity = {
   themePreviewRunning: false,
   exportModalOpen: false,
   pointerDown: false,
-  fieldFocused: false,
+  fieldEditing: false,
 };
 
 const AUDIO: ProjectAudio = {
@@ -109,7 +109,7 @@ describe("bridgeExportRefusal (the acceptance rules)", () => {
       { themePreviewRunning: true },
       { exportModalOpen: true },
       { pointerDown: true },
-      { fieldFocused: true },
+      { fieldEditing: true },
     ]) {
       const refusal = bridgeExportRefusal(REQ, { ...IDLE, ...busy });
       expect(refusal?.busy, JSON.stringify(busy)).toBe(true);
