@@ -142,9 +142,11 @@ describe("flashNotice", () => {
   it("warns with timecodes and where the report is saved", () => {
     const notice = flashNotice(outcome([issue("fail", 41_000), issue("warn", 50_000)]));
     expect(notice?.tone).toBe("danger");
-    expect(notice?.title).toMatch(/1 moment\)/);
+    expect(notice?.title).toBe(
+      "Your cut is ready, but it flashes enough to risk seizures (1 moment)",
+    );
     expect(notice?.lines[0]).toBe(
-      "00:41.000 for 1.0 s: 4.5 flashes a second over 38.2% of the frame (WCAG general, fails)",
+      "00:41.000, 1.0 s: 4.5 flashes a second over 38.2% of the frame (fails WCAG 2.3.1)",
     );
     expect(notice?.hint).toBe(
       "Hold each state at least 334 ms, or keep the change under 10% luminance. The report is saved beside the export as demo-16x9.mp4.flashes.json.",
@@ -155,12 +157,26 @@ describe("flashNotice", () => {
   it("names Claude when Claude ran the export", () => {
     const flagged = outcome([issue("fail", 41_000)]);
     expect(flashNotice(flagged, "claude")?.title).toBe(
-      "Claude's export flashes enough to risk seizures (1 moment)",
+      "Claude's export is ready, but it flashes enough to risk seizures (1 moment)",
     );
     expect(flashNotice(outcome([issue("warn", 2000)]), "claude")?.title).toBe(
-      "Claude's export comes close to the flash limits",
+      "Claude's export is ready, but it comes close to the flash limits",
     );
-    expect(flashNotice(flagged)?.title).toMatch(/^This export/);
+    expect(flashNotice(flagged)?.title).toMatch(/^Your cut is ready/);
+  });
+
+  it("reads one stretch flagged by both standards as one moment", () => {
+    const both = outcome([
+      { ...issue("fail", 2000), standard: "itu", areaPct: 100 },
+      { ...issue("fail", 2000), areaPct: 99.8 },
+      { ...issue("fail", 9000), type: "red" },
+    ]);
+    const notice = flashNotice(both);
+    expect(notice?.title).toMatch(/\(2 moments\)$/);
+    expect(notice?.lines).toEqual([
+      "00:02.000, 1.0 s: 4.5 flashes a second over the whole frame (fails WCAG 2.3.1 and ITU-R BT.1702)",
+      "00:09.000, 1.0 s: 4.5 flashes a second over 38.2% of the frame (red flash, fails WCAG 2.3.1)",
+    ]);
   });
 
   it("stays quiet for a clean film or no report", () => {
@@ -202,9 +218,9 @@ describe("noteExportFlashes", () => {
 
   it("raises the warning for Claude's export, and a verify's latest report", async () => {
     const off = onFlaggedExport((f) => heard.push(f));
-    await noteExportFlashes(flagged.path, "claude");
+    expect(await noteExportFlashes(flagged.path, "claude")).toBe(true);
     await noteExportFlashes(null, "claude");
-    await noteExportFlashes("/Users/x/Downloads/other.mp4", "claude");
+    expect(await noteExportFlashes("/Users/x/Downloads/other.mp4", "claude")).toBe(false);
     await noteExportFlashes(flagged.path);
     off();
     await noteExportFlashes(flagged.path, "claude");
@@ -216,7 +232,7 @@ describe("noteExportFlashes", () => {
   it("stays quiet for a clean film", async () => {
     mocks.invoke.mockResolvedValue({ ...flagged, report: { ok: true, issues: [] } });
     const off = onFlaggedExport((f) => heard.push(f));
-    await noteExportFlashes(null, "claude");
+    expect(await noteExportFlashes(null, "claude")).toBe(false);
     off();
     expect(heard).toEqual([]);
   });

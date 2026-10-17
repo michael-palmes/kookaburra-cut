@@ -2403,13 +2403,14 @@ export default function App() {
     const abort = new AbortController();
     try {
       const output = (await runVideoExport(sel, { abort, destination: "setting" })).path ?? "";
-      // Written either way; a flagged film raises the persistent flash warning.
-      void noteExportFlashes(output);
-      setToast({
-        kind: "success",
-        message: "Your cut is ready: identical, frame for frame.",
-        path: output,
-      });
+      // Written either way; a flagged film gets the export card (ready, Show in Finder, the flagged moments) instead of the plain toast.
+      if (!(await noteExportFlashes(output))) {
+        setToast({
+          kind: "success",
+          message: "Your cut is ready: identical, frame for frame.",
+          path: output,
+        });
+      }
       void invoke("notify_export_done"); // dock bounce if we're in the background
       // Remember the pick per project (global fallback), restored on next modal open.
       void setLastExportPreset(project.id, sel.presetId).catch(() => {});
@@ -2992,7 +2993,6 @@ export default function App() {
               )}
               {isAutoRun && <div className="stage-busy-chip">Automated run — hands off</div>}
               <BridgeExportOverlay state={bridgeExport.overlay} onCancel={bridgeExport.cancel} />
-              <FlashWarning hidden={exporting || isAutoRun} />
 
               {error && !project && (
                 <div className="stage-error" role="alert">
@@ -3037,38 +3037,48 @@ export default function App() {
                 </div>
               )}
 
-              {toast && (
-                <div className={`toast toast-${toast.kind}`} role="status">
-                  <span className="toast-msg" title={toast.message}>
-                    {toast.message}
-                  </span>
-                  {toast.path ? (
+              <div className="toast-stack">
+                <FlashWarning
+                  hidden={exporting || isAutoRun}
+                  onReveal={() =>
+                    revealLastExport().catch((e) =>
+                      setToast({ kind: "error", message: `Couldn't reveal file: ${String(e)}` }),
+                    )
+                  }
+                />
+                {toast && (
+                  <div className={`toast toast-${toast.kind}`} role="status">
+                    <span className="toast-msg" title={toast.message}>
+                      {toast.message}
+                    </span>
+                    {toast.path ? (
+                      <button
+                        type="button"
+                        className="toast-action"
+                        onClick={() => {
+                          setToast(null);
+                          revealLastExport().catch((e) =>
+                            setToast({
+                              kind: "error",
+                              message: `Couldn't reveal file: ${String(e)}`,
+                            }),
+                          );
+                        }}
+                      >
+                        Show in Finder
+                      </button>
+                    ) : null}
                     <button
                       type="button"
-                      className="toast-action"
-                      onClick={() => {
-                        setToast(null);
-                        revealLastExport().catch((e) =>
-                          setToast({
-                            kind: "error",
-                            message: `Couldn't reveal file: ${String(e)}`,
-                          }),
-                        );
-                      }}
+                      className="toast-close"
+                      aria-label="Dismiss"
+                      onClick={() => setToast(null)}
                     >
-                      Show in Finder
+                      ×
                     </button>
-                  ) : null}
-                  <button
-                    type="button"
-                    className="toast-close"
-                    aria-label="Dismiss"
-                    onClick={() => setToast(null)}
-                  >
-                    ×
-                  </button>
-                </div>
-              )}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 

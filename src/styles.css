@@ -13563,11 +13563,96 @@ textarea.text-inspector-copy-input {
   flex: none;
 }
 
-.flash-warning {
+/* The toast corner: the export card and any toast stack in one column, so they never overlap. */
+.toast-stack {
   position: absolute;
   top: var(--space-6);
-  left: 50%;
-  z-index: 9;
+  right: var(--space-6);
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--space-3);
   inline-size: min(30rem, calc(100% - 2rem));
-  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.toast-stack > * {
+  pointer-events: auto;
+}
+
+.toast-stack .toast {
+  position: static;
+  max-width: 100%;
+}
+
+/* The export result for a flagged film: ready and Show in Finder first, then the flagged moments. */
+.export-card {
+  inline-size: 100%;
+  padding: var(--space-4) var(--space-4) var(--space-4) var(--space-5);
+  background: var(--surface-elevated);
+  border: 1px solid var(--border-default);
+  border-left: 3px solid var(--warning);
+  border-radius: var(--radius-md);
+  box-shadow: var(--elev-popover);
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+}
+
+.export-card-danger {
+  border-left-color: var(--danger);
+}
+
+.export-card-head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-4);
+}
+
+.export-card-head .load-notice-icon {
+  color: var(--warning);
+}
+
+.export-card-danger .export-card-head .load-notice-icon {
+  color: var(--danger);
+}
+
+.export-card-title {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-weight: 590;
+}
+
+.export-card-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: var(--space-3);
+  padding-bottom: var(--space-4);
+  border-bottom: 1px solid var(--border-default);
+}
+
+.export-card-action {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.export-card-list {
+  margin: var(--space-4) 0 0;
+  padding: 0;
+  list-style: none;
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  overflow-wrap: anywhere;
+}
+
+.export-card-list li + li {
+  margin-top: var(--space-2);
+}
+
+.export-card-hint {
+  margin: var(--space-3) 0 0;
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
 }
