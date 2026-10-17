@@ -22,7 +22,11 @@ pub struct ScannedItem {
 /// conflict model rests on.
 pub fn is_excluded(rel: &str) -> bool {
     let first = rel.split('/').next().unwrap_or("");
-    if matches!(first, "exports" | ".git" | ".kookaburra") {
+    if matches!(first, "exports" | ".git" | ".kookaburra" | ".kb") {
+        return true;
+    }
+    // The app's managed `./kb` shim, restamped on every load.
+    if rel == crate::kit::SHIM_NAME {
         return true;
     }
     // `.claude/settings.json` is user content (only written when missing); the rest of the folder is provisioned.
@@ -173,6 +177,11 @@ mod tests {
         assert!(is_excluded(".claude/skills/x/SKILL.md"));
         assert!(is_excluded("assets/.emoji-cache/a.png"));
         assert!(is_excluded("edits/_tap_prefs.json"));
+        assert!(is_excluded(".kb/x"));
+        assert!(is_excluded(".kb/agents/alpha/scratch.json"));
+        assert!(is_excluded("kb"));
+        assert!(!is_excluded("assets/kb"));
+        assert!(!is_excluded("scenes/kb.tsx"));
         // Legacy export path: rendered outputs sit at the project root, not in exports/.
         assert!(is_excluded("launch-2026-16x9.mp4"));
         assert!(is_excluded("launch-2026-9x16.mov"));
