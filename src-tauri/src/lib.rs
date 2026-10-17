@@ -394,6 +394,27 @@ fn partial_output_path(output: &std::path::Path) -> PathBuf {
 #[derive(Default)]
 struct LastExport(Mutex<Option<std::path::PathBuf>>);
 
+/// Every export this app finished in this session (newest last, capped), so `reveal_export` can show a named one under the same rule as `LastExport`.
+#[derive(Default)]
+struct ExportHistory(Mutex<Vec<std::path::PathBuf>>);
+
+const EXPORT_HISTORY_CAP: usize = 64;
+
+impl ExportHistory {
+    fn note(&self, path: &std::path::Path) {
+        if let Ok(mut history) = self.0.lock() {
+            history.retain(|p| p != path);
+            history.push(path.to_path_buf());
+            let excess = history.len().saturating_sub(EXPORT_HISTORY_CAP);
+            history.drain(..excess);
+        }
+    }
+
+    fn knows(&self, path: &std::path::Path) -> bool {
+        self.0.lock().is_ok_and(|history| history.iter().any(|p| p == path))
+    }
+}
+
 /// Spawns the ffmpeg sidecar with a piped stdin and begins an export, returning the destination path; frames are then streamed via `push_frame` and finalised with `finish_export`.
 /// One informational user-attention request (macOS: a single dock bounce) when a long-running export/verify finishes while the app is in the background; a no-op when the window is focused.
 #[tauri::command]
@@ -688,6 +709,7 @@ async fn finish_export(
     app: AppHandle,
     state: State<'_, ExportState>,
     last: State<'_, LastExport>,
+    history: State<'_, ExportHistory>,
     flash: State<'_, FlashState>,
 ) -> Result<String, String> {
     let mut active = state
@@ -722,6 +744,7 @@ async fn finish_export(
     if let Ok(mut guard) = last.0.lock() {
         *guard = Some(run.output.clone());
     }
+    history.note(&run.output);
     let (report, unavailable) = finish_flash_tap(detector);
     write_flash_report(&run.output, report.as_ref());
     flash.set(Some(FlashOutcome {
@@ -893,6 +916,24 @@ fn reveal_last_export(state: State<'_, LastExport>) -> Result<(), String> {
         .ok()
         .and_then(|p| p.clone())
         .ok_or("There is no export to show yet.")?;
+    if !path.is_file() {
+        return Err("The exported file is no longer where it was written.".into());
+    }
+    std::process::Command::new("open")
+        .arg("-R")
+        .arg(&path)
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| e.to_string())
+}
+
+/// Reveal one export this app wrote in this session (the flash card's file); any other path is refused, as `reveal_last_export` refuses to take one.
+#[tauri::command]
+fn reveal_export(history: State<'_, ExportHistory>, path: String) -> Result<(), String> {
+    let path = std::path::PathBuf::from(path);
+    if !history.knows(&path) {
+        return Err("That file is not an export Kookaburra Cut wrote in this session.".into());
+    }
     if !path.is_file() {
         return Err("The exported file is no longer where it was written.".into());
     }
@@ -1533,6 +1574,7 @@ macro_rules! kookaburra_handler {
             hash_file,
             reveal_in_finder,
             reveal_last_export,
+            reveal_export,
             get_autorun_config,
             finish_autorun,
             autorun_progress,
@@ -1767,6 +1809,7 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(ExportState::default())
         .manage(LastExport::default())
+        .manage(ExportHistory::default())
         .manage(FlashState::default())
         .manage(ScreenshotState(Mutex::new(None)))
         .manage(bridge::BridgeScreenshotState::default())
@@ -2229,6 +2272,20 @@ mod tests {
         assert!(!partial.exists());
         assert!(!mezz.exists());
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_export_history_knows_only_written_exports_and_stays_capped() {
+        let history = ExportHistory::default();
+        let a = std::path::Path::new("/Users/x/Downloads/demo-16x9.mp4");
+        assert!(!history.knows(a));
+        history.note(a);
+        assert!(history.knows(a));
+        for n in 0..EXPORT_HISTORY_CAP {
+            history.note(&std::path::PathBuf::from(format!("/Users/x/Downloads/demo-{n}.mp4")));
+        }
+        assert!(!history.knows(a), "the oldest entry falls off past the cap");
+        assert_eq!(history.0.lock().unwrap().len(), EXPORT_HISTORY_CAP);
     }
 
     fn rgba(width: usize, height: usize, level: u8) -> Vec<u8> {

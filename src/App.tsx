@@ -50,6 +50,7 @@ import {
   EXPORT_PREAMBLE_STEPS,
   type ExportProgress,
   exportProject,
+  revealExport,
   revealLastExport,
   verifyAllFormats,
   verifyDeterminism,
@@ -3040,8 +3041,8 @@ export default function App() {
               <div className="toast-stack">
                 <FlashWarning
                   hidden={exporting || isAutoRun}
-                  onReveal={() =>
-                    revealLastExport().catch((e) =>
+                  onReveal={(path) =>
+                    revealExport(path).catch((e) =>
                       setToast({ kind: "error", message: `Couldn't reveal file: ${String(e)}` }),
                     )
                   }

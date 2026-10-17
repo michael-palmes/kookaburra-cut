@@ -100,25 +100,26 @@ export interface FlaggedExport {
   origin: FlashOrigin;
 }
 
-const listeners = new Set<(flagged: FlaggedExport) => void>();
+const listeners = new Set<(flagged: FlaggedExport | null) => void>();
 
-/** Hears every flagged export; returns the unsubscribe. */
-export function onFlaggedExport(listener: (flagged: FlaggedExport) => void): () => void {
+/** Hears every finished export: the flagged one, or null for a clean one (which clears the card); returns the unsubscribe. */
+export function onFlaggedExport(listener: (flagged: FlaggedExport | null) => void): () => void {
   listeners.add(listener);
   return () => {
     listeners.delete(listener);
   };
 }
 
-/** After an export (the Export button's or Claude's): fetch the tap's report for that file and raise the export card when it flagged anything. A null path (a verify, whose second render Rust recorded) takes the latest report. True when the card took over from the success toast. */
+/** After every finished export (the Export button's or Claude's): fetch the tap's report for that file and raise the export card when it flagged anything, or clear an older card when it did not. A null path (a verify, whose second render Rust recorded) takes the latest report. True when the card took over from the success toast. */
 export async function noteExportFlashes(
   path: string | null,
   origin: FlashOrigin = "button",
 ): Promise<boolean> {
   const outcome = await invoke<FlashOutcome | null>("export_flash_report").catch(() => null);
-  if (!outcome || (path !== null && outcome.path !== path) || !flashNotice(outcome)) return false;
-  for (const listener of listeners) listener({ outcome, origin });
-  return true;
+  const flagged =
+    outcome && (path === null || outcome.path === path) && flashNotice(outcome) ? outcome : null;
+  for (const listener of listeners) listener(flagged ? { outcome: flagged, origin } : null);
+  return flagged !== null;
 }
 
 const REVEAL_ICON = (
@@ -138,8 +139,14 @@ const REVEAL_ICON = (
   </svg>
 );
 
-/** The export result for a flagged film, in the toast corner: ready, Show in Finder, then the flagged moments and the fix. Stays until dismissed or the next flagged export replaces it. */
-export function FlashWarning({ hidden, onReveal }: { hidden: boolean; onReveal: () => void }) {
+/** The export result for a flagged film, in the toast corner: ready, Show in Finder, then the flagged moments and the fix. Stays until dismissed or the next export replaces or clears it. */
+export function FlashWarning({
+  hidden,
+  onReveal,
+}: {
+  hidden: boolean;
+  onReveal: (path: string) => void;
+}) {
   const [flagged, setFlagged] = useState<FlaggedExport | null>(null);
   useEffect(() => onFlaggedExport(setFlagged), []);
   const notice = flagged ? flashNotice(flagged.outcome, flagged.origin) : null;
@@ -167,7 +174,7 @@ export function FlashWarning({ hidden, onReveal }: { hidden: boolean; onReveal: 
           className="toast-action export-card-action"
           onClick={() => {
             setFlagged(null);
-            onReveal();
+            onReveal(flagged?.outcome.path ?? "");
           }}
         >
           {REVEAL_ICON}

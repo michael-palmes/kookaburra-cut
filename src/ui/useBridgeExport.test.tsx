@@ -209,7 +209,7 @@ describe("noteExportFlashes", () => {
     },
     unavailable: null,
   };
-  const heard: FlaggedExport[] = [];
+  const heard: (FlaggedExport | null)[] = [];
   beforeEach(() => {
     heard.length = 0;
     mocks.invoke.mockReset();
@@ -225,15 +225,15 @@ describe("noteExportFlashes", () => {
     off();
     await noteExportFlashes(flagged.path, "claude");
     expect(mocks.invoke).toHaveBeenCalledWith("export_flash_report");
-    expect(heard.map((f) => f.origin)).toEqual(["claude", "claude", "button"]);
-    expect(heard[0].outcome).toBe(flagged);
+    expect(heard.map((f) => f?.origin ?? null)).toEqual(["claude", "claude", null, "button"]);
+    expect(heard[0]?.outcome).toBe(flagged);
   });
 
-  it("stays quiet for a clean film", async () => {
+  it("clears the card for a clean film", async () => {
     mocks.invoke.mockResolvedValue({ ...flagged, report: { ok: true, issues: [] } });
     const off = onFlaggedExport((f) => heard.push(f));
     expect(await noteExportFlashes(null, "claude")).toBe(false);
     off();
-    expect(heard).toEqual([]);
+    expect(heard).toEqual([null]);
   });
 });
