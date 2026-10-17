@@ -318,6 +318,22 @@ def guard(project: Any, caller: Any, rels: List[str]) -> None:
         leases.guard(project, caller, rels)
 
 
+def refusals(project: Any, caller: Any, rels: List[str]) -> List[Dict[str, Any]]:
+    """What guard() would refuse, touching nothing (dry runs report these instead of failing)."""
+    leases = _optional("leases")
+    check = getattr(leases, "check", None) if leases is not None else None
+    return check(project, caller, rels) if check is not None and rels else []
+
+
+def mark_refused(writes: List[Dict[str, Any]], found: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    by_path = {r["path"]: r for r in found}
+    for w in writes:
+        r = by_path.get(w["path"])
+        if r is not None:
+            w["refusal"] = {"code": "leased", "error": r["error"], "holder": r.get("holder"), "untilMs": r.get("untilMs")}
+    return writes
+
+
 def journal(project: Any, caller: Any, rels: List[str]) -> None:
     events = _optional("events")
     if events is None or not rels:
@@ -343,6 +359,7 @@ class Mutation:
         self.attempts = attempts
         self.writes = writes
         self.dry_run = dry_run
+        self.refusals: List[Dict[str, Any]] = []
 
     @property
     def rebased(self) -> bool:
@@ -391,7 +408,10 @@ def mutate_json(
                 return Mutation(before, after, sha, sha, False, attempt, [], dry_run)
             writes = [{"path": name, "action": "create" if sha == ABSENT else "modify", "base": sha}]
             if dry_run:
-                return Mutation(before, after, sha, sha, False, attempt, writes, True)
+                mut = Mutation(before, after, sha, sha, False, attempt, writes, True)
+                mut.refusals = refusals(project, who, rels)
+                mark_refused(writes, mut.refusals)
+                return mut
             if not guarded:
                 guard(project, who, rels)
                 guarded = True
@@ -454,6 +474,7 @@ class Txn:
         self.wait = wait
         self.attempt = 0
         self.committed = False
+        self.refusals: List[Dict[str, Any]] = []
         self._bases: Dict[str, str] = {}
         self._data: Dict[str, Optional[bytes]] = {}
         self._ops: Dict[str, _Op] = {}
@@ -511,7 +532,7 @@ class Txn:
 
     @property
     def writes(self) -> List[Dict[str, Any]]:
-        return [{"path": o.rel, "action": o.action, "base": o.base} for o in self._order()]
+        return mark_refused([{"path": o.rel, "action": o.action, "base": o.base} for o in self._order()], self.refusals)
 
     def _order(self) -> List[_Op]:
         ops = list(self._ops.values())
@@ -520,9 +541,12 @@ class Txn:
 
     def commit(self) -> None:
         """Lock, lease guard, verify every base, write new files first and project.json last, trash, journal."""
-        if self.dry_run or not self._ops:
+        if not self._ops:
             return
         ordered = self._order()
+        if self.dry_run:
+            self.refusals = refusals(self.project, self.caller, [o.rel for o in ordered])
+            return
         with project_lock(self.project, self.op, self.wait, self.caller):
             guard(self.project, self.caller, [o.rel for o in ordered])
             for o in ordered:

@@ -761,11 +761,13 @@ def move(project: Project, selector: str, to: Optional[int] = None, after: Optio
 def remove(project: Project, selector: str, trash_fn: Any, opts: Optional[lockmod.WriteOpts] = None) -> Tuple[int, List[str], List[Dict[str, Any]]]:
     """(index, trashed files, writes): project.json first, then the scene's own files go to the Trash."""
     pins = Pins()
+    removed_stem: List[str] = []
 
     def build(tx: lockmod.Txn) -> Tuple[int, List[str]]:
         _raw, manifest = _manifest_for_edit(tx)
         scenes = manifest["scenes"]
-        idx, _stem = pins.resolve(_view(project, manifest), selector)
+        idx, stem = pins.resolve(_view(project, manifest), selector)
+        removed_stem[:] = [stem]
         if len(scenes) <= 1:
             raise KbError("a project needs at least one scene; add another before removing this one")
         removed = scenes.pop(idx)
@@ -781,6 +783,10 @@ def remove(project: Project, selector: str, trash_fn: Any, opts: Optional[lockmo
         return idx, trashed
 
     (idx, trashed), tx = _run(project, "kb scene remove", build, opts)
+    if tx.committed and removed_stem:
+        from . import leases
+
+        leases.release_removed(project, removed_stem[0], tx.caller)
     return idx, trashed, tx.writes
 
 
