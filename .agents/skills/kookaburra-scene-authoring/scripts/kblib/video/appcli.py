@@ -112,7 +112,7 @@ def _cli_json() -> Optional[Dict[str, Any]]:
 
 
 def locate() -> CliInfo:
-    """KB_APP_BIN (exclusive), the live heartbeat's cliPath, _bridge/cli.json, then the bundles; raises KbError (exit 2)."""
+    """KB_APP_BIN (exclusive), the live heartbeat's cliPath, the installed bundles, then _bridge/cli.json; raises KbError (exit 2)."""
     override = os.environ.get("KB_APP_BIN")
     if override is not None:
         path = Path(override).expanduser()
@@ -140,13 +140,6 @@ def locate() -> CliInfo:
             found = take(Path(hb["cliPath"]), "heartbeat", hb.get("appVersion"), hb.get("build"))
             if found:
                 return found
-    record = _cli_json()
-    if record and isinstance(record.get("path"), str) and record["path"]:
-        level = record.get("cli")
-        if not isinstance(level, int) or level >= CLI_MIN:
-            found = take(Path(record["path"]), "cli.json", record.get("appVersion"), record.get("build"))
-            if found:
-                return found
     resources = os.environ.get("KB_RESOURCES_DIR")
     if resources:
         candidates = [(Path(resources).parent / "MacOS" / BIN_NAME, "KB_RESOURCES_DIR")]
@@ -162,6 +155,14 @@ def locate() -> CliInfo:
         found = take(path, source)
         if found:
             return found
+    # Last: a dev or other build that ran here once, so a stale debug binary never shadows the installed app.
+    record = _cli_json()
+    if record and isinstance(record.get("path"), str) and record["path"]:
+        level = record.get("cli")
+        if not isinstance(level, int) or level >= CLI_MIN:
+            found = take(Path(record["path"]), "cli.json", record.get("appVersion"), record.get("build"))
+            if found:
+                return found
     if too_old:
         raise KbError(too_old[0], EXIT_ENV)
     raise KbError(

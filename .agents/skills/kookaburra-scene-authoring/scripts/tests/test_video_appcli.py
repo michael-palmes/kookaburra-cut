@@ -38,7 +38,7 @@ class LocateTests(KbTestCase):
         os.environ["KB_APP_BIN"] = str(good)
         self.assertEqual(appcli.locate().source, "KB_APP_BIN")
 
-    def test_order_heartbeat_then_cli_json_then_resources(self) -> None:
+    def test_order_heartbeat_then_installed_app_then_cli_json(self) -> None:
         self.no_app_bin()
         live = self.fake_cli(self.tmp / "live" / "kookaburra-cut")
         recorded = self.fake_cli(self.tmp / "recorded" / "kookaburra-cut")
@@ -49,10 +49,10 @@ class LocateTests(KbTestCase):
         found = appcli.locate()
         self.assertEqual((found.path, found.source, found.app_version), (str(live), "heartbeat", "0.19.0-dev"))
         self.heartbeat(cliPath=str(live), updatedAtMs=1)
-        self.assertEqual(appcli.locate().source, "cli.json")
-        write_json(self.bridge / "cli.json", {"path": str(self.tmp / "gone"), "cli": 1})
         found = appcli.locate()
         self.assertEqual((found.source, found.app_version), ("KB_RESOURCES_DIR", "0.19.0"))
+        os.environ["KB_RESOURCES_DIR"] = str(self.tmp / "NoApp" / "Contents" / "Resources")
+        self.assertEqual(appcli.locate().source, "cli.json")
 
     def test_plist_gate_never_runs_an_old_bundle(self) -> None:
         self.no_app_bin()
