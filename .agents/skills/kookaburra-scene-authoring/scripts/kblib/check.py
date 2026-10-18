@@ -810,7 +810,9 @@ class Checker:
             from .video import repoint
 
             start = repoint.scene_starts(self.project)[index]
-            result = music.resolve_scene_local(at, project_music(self.project.manifest()), start)
+            from .beats import model as beatmodel
+
+            result = beatmodel.resolve_local(at, beatmodel.project_music(self.project.manifest()), start)
         except Exception:
             return
         if not result["ok"]:
@@ -1036,27 +1038,6 @@ def edit_of_output(project: Project, rel: str) -> Optional[str]:
 
 def _finite(v: Any) -> bool:
     return is_number(v) and math.isfinite(v)
-
-
-def project_music(manifest: Any) -> Dict[str, Any]:
-    """What kicks' positions resolve against (music.resolve's mapping), from project.json audio: a grid only when
-    sanitiseAudioMusic would keep it; cue and section values as authored (a bad one fails to resolve, which warns)."""
-    audio = manifest.get("audio") if isinstance(manifest, dict) else None
-    audio = audio if isinstance(audio, dict) else {}
-    grid = audio.get("grid")
-    music: Dict[str, Any] = {"grid": None, "startOffsetMs": audio["startOffsetMs"] if _finite(audio.get("startOffsetMs")) else 0, "cues": {}, "sections": {}}
-    if isinstance(grid, dict):
-        per_bar = grid.get("beatsPerBar", 4)
-        if _finite(grid.get("bpm")) and 30 <= grid["bpm"] <= 300 and _finite(grid.get("offsetMs")) and is_int(per_bar) and 1 <= per_bar <= 16:
-            music["grid"] = {"bpm": grid["bpm"], "offsetMs": grid["offsetMs"], "beatsPerBar": per_bar}
-    cues = audio.get("cues")
-    if isinstance(cues, dict):
-        music["cues"] = {k: v for k, v in cues.items() if isinstance(v, (str, int, float)) and not isinstance(v, bool)}
-    sections = audio.get("sections")
-    for s in sections if isinstance(sections, list) else []:
-        if isinstance(s, dict) and isinstance(s.get("id"), str) and "from" in s:
-            music["sections"].setdefault(s["id"], {"from": s["from"], "to": s.get("to")})
-    return music
 
 
 def free_id(base: str, taken: Set[Any]) -> str:
