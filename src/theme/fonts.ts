@@ -13,6 +13,7 @@ import openSansSemiBoldUrl from "../assets/fonts/OpenSans-SemiBold.woff?url";
 import playfairSemiBoldUrl from "../assets/fonts/PlayfairDisplay-SemiBold.woff?url";
 import spaceGroteskRegularUrl from "../assets/fonts/SpaceGrotesk-Regular.woff?url";
 import spaceGroteskSemiBoldUrl from "../assets/fonts/SpaceGrotesk-SemiBold.woff?url";
+import { preloadFontMetrics } from "./fontMetrics";
 import { vetFontUrl } from "./fontVet";
 import { FALLBACK_PRELOAD_CHARACTERS } from "./symbolsCodepoints.generated";
 import type { FontRef, Theme } from "./tokens";
@@ -188,6 +189,8 @@ export async function preloadAppFonts(refs?: readonly (FontRef | string)[]): Pro
       resolve,
     );
   });
+  // Our own parse of the same faces, for measureText; troika's atlas never sees it.
+  await preloadFontMetrics(urls);
 }
 
 /** Vets every non-bundled face before troika sees it: a face troika's parser throws on would wedge every pending preload (and with it the load or export), so it is swapped for Inter unless a load already chose a better stand-in. */

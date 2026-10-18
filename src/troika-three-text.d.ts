@@ -132,3 +132,17 @@ declare module "troika-three-text/libs/typr.factory.js" {
   const typrFactory: () => Typr;
   export default typrFactory;
 }
+
+/** troika's typesetter factory; the font metrics parity test runs it on pre-parsed faces. */
+declare module "troika-three-text/src/Typesetter.js" {
+  export interface TroikaTypesetResult {
+    topBaseline: number;
+    blockBounds: [number, number, number, number];
+  }
+  export function createTypesetter(
+    resolveFonts: unknown,
+    bidi: unknown,
+  ): {
+    typeset(params: Record<string, unknown>, callback: (result: TroikaTypesetResult) => void): void;
+  };
+}
