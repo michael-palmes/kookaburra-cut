@@ -410,6 +410,7 @@ class Checker:
         for keys in KEYED_TRACKS:
             self.keyed_track(file, ".".join(keys), dig(doc, *keys), allow_jump=keys[0] in ("camera", "cameraRig"))
         self.motion_blur(file, "motionBlur", doc.get("motionBlur"))
+        self.room(file, doc)
         stills = doc.get("stills")
         if isinstance(stills, dict) and "marksMs" in stills:
             marks = stills["marksMs"]
@@ -433,6 +434,127 @@ class Checker:
             rep.error(file, f"{path}.shutterDeg", "must be 0..360 (Crisp 90, Film 180, Smooth 270, Smear 360)")
         if "samples" in block:
             rep.warn(file, f"{path}.samples", "samples is project-wide: set it in project.json render.motionBlur")
+
+    # ── rooms ─────────────────────────────────────────────────────────────
+
+    ROOM_KEY_FIELDS = ("at", "colour", "themeId", "lighting", "transition", "origin", "durationMs", "ease")
+    ROOM_LIGHT_FIELDS = ("intensity", "color", "colorToken", "kelvin")
+    ROOM_TOKENS = ("background", "text", "accent", "muted")
+
+    def room(self, file: str, doc: Dict[str, Any]) -> None:
+        """The sidecar `room` track; a bad key is dropped by the app, a bad field falls back."""
+        block = doc.get("room")
+        if block is None:
+            return
+        rep = self.report
+        if not isinstance(block, dict) or not isinstance(block.get("keys"), list) or not block["keys"]:
+            rep.error(file, "room", "must be { keys: [...] } with at least one key (the app drops the block)")
+            return
+        for extra in block:
+            if extra != "keys":
+                rep.warn(file, f"room.{extra}", "not a room field (the app ignores it)")
+        flood_ends: List[Tuple[float, float, str]] = []
+        for i, key in enumerate(block["keys"]):
+            path = f"room.keys[{i}]"
+            if not isinstance(key, dict):
+                rep.error(file, path, "must be an object (the app drops it)")
+                continue
+            for field in key:
+                if field not in self.ROOM_KEY_FIELDS:
+                    rep.warn(file, f"{path}.{field}", f"not a room key field (the app ignores it).{did_you_mean(field, self.ROOM_KEY_FIELDS)}")
+            at = key.get("at")
+            if isinstance(at, str):
+                rep.error(file, f"{path}.at", "must be scene-local ms; positions like bar or cue strings aren't supported yet (the app drops the key)")
+            elif not is_number(at) or at < 0:
+                rep.error(file, f"{path}.at", "must be scene-local ms >= 0 (the app drops the key)")
+            colour = key.get("colour")
+            if colour is not None and not (isinstance(colour, str) and (HEX_RE.match(colour) and len(colour) in (4, 7) or colour in self.ROOM_TOKENS)):
+                rep.error(file, f"{path}.colour", f'must be a hex (#rgb or #rrggbb) or one of {", ".join(self.ROOM_TOKENS)}')
+            theme_id = key.get("themeId")
+            if theme_id is not None:
+                if isinstance(theme_id, str) and theme_id:
+                    self.theme_ref(file, f"{path}.themeId", theme_id)
+                else:
+                    rep.error(file, f"{path}.themeId", "must be a theme id; see kb theme list")
+            transition = key.get("transition", "cut")
+            if transition not in ("cut", "flood"):
+                rep.error(file, f"{path}.transition", "must be cut or flood (the app uses cut)")
+            origin = key.get("origin")
+            if origin is not None and not (isinstance(origin, list) and len(origin) == 2 and all(is_number(v) for v in origin)):
+                rep.error(file, f"{path}.origin", "must be [x, y] frame fractions: [0, 0] top-left, [1, 1] bottom-right")
+            duration = key.get("durationMs")
+            if duration is not None:
+                if not is_number(duration) or duration <= 0:
+                    rep.error(file, f"{path}.durationMs", "must be a positive number of ms (the app uses 800)")
+                elif transition != "flood":
+                    rep.warn(file, f"{path}.durationMs", "only a flood uses durationMs; a cut is instant")
+            if "ease" in key:
+                self.enum(file, f"{path}.ease", key["ease"], "eases", "ease")
+            lighting = key.get("lighting")
+            if lighting is not None:
+                self.room_lighting(file, f"{path}.lighting", lighting, doc)
+            if colour is None and theme_id is None and lighting is None:
+                rep.error(file, path, "needs a colour, a themeId or lighting (the app drops the key)")
+            if is_number(at) and at >= 0 and transition == "flood":
+                span = duration if is_number(duration) and duration > 0 else 800
+                flood_ends.append((at, at + span, path))
+        starts = sorted(k["at"] for k in block["keys"] if isinstance(k, dict) and is_number(k.get("at")))
+        for at, end, path in flood_ends:
+            later = [t for t in starts if t > at]
+            if later and end > later[0]:
+                rep.warn(file, path, f"the flood runs past the next key at {later[0]}ms and is cut short there")
+        if any(isinstance(k, dict) and ("lighting" in k or "themeId" in k) for k in block["keys"]):
+            stem = file[len("scenes/"):-len(".json")] if file.startswith("scenes/") else ""
+            tsx = self.ctx.all_tsx().get(f"scenes/{stem}.tsx")
+            if tsx is not None and "SceneStage" not in tsx:
+                rep.warn(file, "room", "only lights a <SceneStage> mounts follow a room; stage the scene for the lighting to change")
+
+    def room_lighting(self, file: str, path: str, lighting: Any, doc: Dict[str, Any]) -> None:
+        rep = self.report
+        if not isinstance(lighting, dict):
+            rep.error(file, path, "must be { sun, ambient, ambientColor, lights } (the app drops it)")
+            return
+        for field in lighting:
+            if field not in ("sun", "ambient", "ambientColor", "lights"):
+                rep.warn(file, f"{path}.{field}", "rooms change sun, ambient, ambientColor and lights only (the app ignores it)")
+        if "sun" in lighting:
+            self.room_light(file, f"{path}.sun", lighting["sun"])
+        ambient = lighting.get("ambient")
+        if ambient is not None and (not is_number(ambient) or ambient < 0):
+            rep.error(file, f"{path}.ambient", "must be a number >= 0")
+        ambient_colour = lighting.get("ambientColor")
+        if ambient_colour is not None and not (isinstance(ambient_colour, str) and (HEX_RE.match(ambient_colour) and len(ambient_colour) in (4, 7) or ambient_colour in self.ROOM_TOKENS)):
+            rep.error(file, f"{path}.ambientColor", "must be a hex or a theme colour token")
+        lights = lighting.get("lights")
+        if lights is None:
+            return
+        if not isinstance(lights, dict):
+            rep.error(file, f"{path}.lights", "must be an object keyed by light id")
+            return
+        declared = dig(doc, "lighting", "lights")
+        ids = {l.get("id") for l in declared if isinstance(l, dict)} if isinstance(declared, list) else None
+        for light_id, entry in lights.items():
+            if ids is not None and light_id not in ids:
+                rep.warn(file, f"{path}.lights.{light_id}", f"no light with this id in the sidecar's lighting.lights.{did_you_mean(light_id, [i for i in ids if isinstance(i, str)])}")
+            self.room_light(file, f"{path}.lights.{light_id}", entry)
+
+    def room_light(self, file: str, path: str, entry: Any) -> None:
+        rep = self.report
+        if not isinstance(entry, dict):
+            rep.error(file, path, "must be { intensity, kelvin | colorToken | color }")
+            return
+        for field in entry:
+            if field not in self.ROOM_LIGHT_FIELDS:
+                rep.warn(file, f"{path}.{field}", f"rooms set intensity and colour only (the app ignores it).{did_you_mean(field, self.ROOM_LIGHT_FIELDS)}")
+        if "intensity" in entry and (not is_number(entry["intensity"]) or entry["intensity"] < 0):
+            rep.error(file, f"{path}.intensity", "must be a number >= 0")
+        if "kelvin" in entry and not is_number(entry["kelvin"]):
+            rep.error(file, f"{path}.kelvin", "must be a number (1000..20000)")
+        if "colorToken" in entry and entry["colorToken"] not in self.ROOM_TOKENS:
+            rep.error(file, f"{path}.colorToken", f'must be one of {", ".join(self.ROOM_TOKENS)}')
+        color = entry.get("color")
+        if color is not None and not (isinstance(color, str) and HEX_RE.match(color) and len(color) in (4, 7)):
+            rep.error(file, f"{path}.color", "must be a hex (#rgb or #rrggbb)")
 
     def text_style(self, file: str, style: Any) -> None:
         if style is None:

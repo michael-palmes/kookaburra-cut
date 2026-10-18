@@ -62,6 +62,7 @@ needs no React import. Consequences:
 | `useSceneDoc()` | The raw sidecar, or null |
 | `useSceneChart()`, `useSceneObjects()`, `useSceneLayeredScreenshot()` | Those blocks (calling one stops the host fallback for it) |
 | `useSceneStaged()` | Whether a `SceneStage` owns lighting here |
+| `useRoom()` | The sidecar `room` now: `{ colour, key, flood: { colour, origin, progress, radius } \| null, pose }`, or null without a room. `colour` is null before the first key |
 | `useDepthBand()`, `useRigTrack()` | Inside `DepthStage`: the slot rect; the scene's rig track |
 | `useProjectShared(path?, fallback?)` | `project.json` `shared` constants: `useProjectShared("palette.accent", theme.colors.accent)`; no path returns the whole block (reference/project.md) |
 
@@ -196,16 +197,24 @@ export default defineScene({
 | `StagedObject`, `HeroObject` | 3D objects |
 | `ParticleField`, `WireGrid`, `Ribbon` | Seeded generative shapes on the clock |
 | `RoundedRect`, `Pill` | Flat cards, badges, chips and bars (Motion helpers above) |
+| `Room`, `RoomFlood` | A camera-locked room colour and a flood of colour from a frame point, for floods the scene times itself (the sidecar `room` block draws its own) |
 | `SceneStage`, `DepthStage`, `LightRig` | Staging and light |
 
 Generative shapes (all motion from the clock, randomness from `seed`):
 
-- `<ParticleField count={200} seed={1} bounds={[6, 3.5, 2]} size drift twinkle tone="accent" />`
-- `<WireGrid size={12} divisions={24} amplitude wavelength speed tone opacity position rotation />`
-- `<Ribbon seed={1} points bounds radius={0.05} from={0} to={1500} tone lit />`
+- `<ParticleField count={200} seed={1} bounds={[6, 3.5, 2]} size drift twinkle tone="accent" glow />`
+- `<WireGrid size={12} divisions={24} amplitude wavelength speed tone opacity glow position rotation />`
+- `<Ribbon seed={1} points bounds radius={0.05} from={0} to={1500} tone lit glow />`
+- `glow` (a luminance such as 1.5) makes the shape an exact-colour emitter that a bloom
+  threshold above 1 catches (reference/lighting.md, "Real glow").
 - `<ExtrudedText text from to position rotation fontSize depth bevel tone lit textKey />`
   (rotation in radians; bundled faces only)
 - `<HeroObject model="handset" position rotation scale spinDegPerSec floatAmplitude floatHz lit />`
+
+Rooms in code: `<RoomFlood colour={theme.colors.accent} origin={[0.2, 0.8]} radius={ramp(localMs, 600, 1500, "inOutCubic")} />`
+grows a circle of colour over the frame behind all content; `<Room colour={hex} flood={...} />` adds the
+frame-filling room under it. Prefer the sidecar `room` block, which also relights. Over a room,
+`cssOpacity(theme.colors.text, room.colour, 0.6)` is the exact opaque hex of text at 60% opacity.
 
 Light rigs add up: with several lit primitives and no `SceneStage`, mount one
 `<LightRig />` and pass `lit={false}` to each.
