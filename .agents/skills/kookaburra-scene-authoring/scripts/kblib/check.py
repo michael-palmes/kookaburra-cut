@@ -224,6 +224,7 @@ class Checker:
                 for key in ("gainDb", "fadeInMs", "fadeOutMs", "startOffsetMs"):
                     if key in audio and not is_number(audio[key]):
                         rep.error(file, f"audio.{key}", "must be a number")
+                self.music_manifest(audio, warn, include_warnings)
         persistent = m.get("persistent")
         if persistent is not None:
             if not isinstance(persistent, str) or not persistent.startswith("scenes/") or not persistent.endswith(".tsx"):
@@ -402,6 +403,7 @@ class Checker:
                     self.font(file, f"frame.decorations[{i}].font", deco["font"])
         for keys in KEYED_TRACKS:
             self.keyed_track(file, ".".join(keys), dig(doc, *keys), allow_jump=keys[0] in ("camera", "cameraRig"))
+        self.music_keys(file, doc)
         self.motion_blur(file, "motionBlur", doc.get("motionBlur"))
         stills = doc.get("stills")
         if isinstance(stills, dict) and "marksMs" in stills:
@@ -409,6 +411,90 @@ class Checker:
             if not isinstance(marks, list) or not all(is_int(t) and t >= 0 for t in marks) or marks != sorted(set(marks)):
                 rep.error(file, "stills.marksMs", "must be ascending, unique, whole milliseconds >= 0")
         self.assets_in(file, "", doc)
+
+    # ── music: audio.grid, cues, sections and `at` positions ──────────────
+
+    def music_manifest(self, audio: Dict[str, Any], warn: Any, include_warnings: bool) -> None:
+        """What the app's sanitiseAudioMusic drops (errors), bar: values with no grid, and a grid fitted to another file."""
+        from .beats import cache as beatcache
+        from .beats import model as beatmodel
+
+        spec, problems = beatmodel.sanitise_music(audio)
+        for path, why in problems:
+            self.report.error(MANIFEST, f"audio.{path}", f"{why} (the app drops it)")
+        grid = spec.get("grid")
+        if grid is None:
+            barred = [f"cues.{k}" for k, v in (spec.get("cues") or {}).items() if isinstance(v, str) and v.startswith("bar:")]
+            barred += [f"sections {s['id']}" for s in spec.get("sections") or [] if any(isinstance(s[e], str) and s[e].startswith("bar:") for e in ("from", "to"))]
+            if barred:
+                warn(MANIFEST, "audio.grid", f"{', '.join(barred[:4])} use bar: positions, which resolve only once there is a grid: ./kb song analyse, then ./kb beats set-grid --from-analysis")
+        source = grid.get("source") if grid else None
+        if include_warnings and isinstance(source, dict) and isinstance(source.get("sha256"), str):
+            rel = audio.get("file")
+            path = self.project.root / rel if isinstance(rel, str) and tsxmod.is_project_asset_ref(rel) else None
+            digest = beatcache.file_digest(path) if path is not None and path.is_file() else None
+            if digest is not None and digest != source["sha256"]:
+                warn(MANIFEST, "audio.grid.source.sha256", f"the grid was fitted to another file (its SHA-256 differs from {rel}); refit with ./kb song analyse --accept, or keep it if the music is the same")
+
+    def music_keys(self, file: str, doc: Dict[str, Any]) -> None:
+        """Positions on camera, rig and lighting keys and camera kicks that can't resolve, and `at` keys whose tMs cache is stale."""
+        from .beats import model as beatmodel
+
+        kicks = doc.get("cameraKicks") if isinstance(doc.get("cameraKicks"), list) else []
+        if not beatmodel.has_at(doc) and not any(isinstance(k, dict) and isinstance(k.get("at"), str) for k in kicks):
+            return
+        scope = self._music_scope(file)
+        if scope is None:
+            return
+        m, start = scope
+        stem = stem_of(file[:-5] + ".tsx") if file.endswith(".json") else file
+        for path, keys in beatmodel.timed_tracks(doc):
+            dotted = ".".join(path)
+            for i, key in enumerate(keys):
+                if not isinstance(key, dict) or "at" not in key:
+                    continue
+                where = f"{dotted}.keys[{i}].at"
+                at = key["at"]
+                if not isinstance(at, str):
+                    self.report.warn(file, where, 'must be a position string like "bar:13" (the app ignores it)')
+                    continue
+                r = beatmodel.resolve_local(at, m, start)
+                if not r["ok"]:
+                    self.music_position_issue(file, where, at, r, "the key stays at its stored tMs")
+                    continue
+                t = key.get("tMs")
+                if is_number(t) and t != r["projectMs"]:
+                    self.report.warn(file, f"{dotted}.keys[{i}].tMs", f'{t} isn\'t where "{at}" lands ({r["projectMs"]} ms), so the app uses {r["projectMs"]}: fine after a grid or timing change (the app rewrites it on load); to keep {t}, ./kb doc {stem} unset {dotted}.keys.{i}.at')
+        for i, kick in enumerate(kicks):
+            if isinstance(kick, dict) and isinstance(kick.get("at"), str):
+                r = beatmodel.resolve_local(kick["at"], m, start)
+                if not r["ok"]:
+                    self.music_position_issue(file, f"cameraKicks[{i}].at", kick["at"], r, "the app drops the kick")
+
+    def music_position_issue(self, file: str, where: str, at: str, r: Dict[str, Any], effect: str) -> None:
+        if r["code"] == "no-grid":
+            self.report.warn(file, where, f'"{at}" needs a beat grid, so {effect}: ./kb song analyse, then ./kb beats set-grid --from-analysis')
+        elif r["code"] == "unknown":
+            self.report.warn(file, where, f'"{at}": {r["message"]}, so {effect}. See ./kb beats')
+        else:
+            self.report.error(file, where, f'"{at}": {r["message"]} ({effect})')
+
+    def _music_scope(self, file: str) -> Optional[Tuple[Any, float]]:
+        """(the project's music, this sidecar's slot start), read once per check; None when project.json can't be read."""
+        from .beats import model as beatmodel
+
+        cached = getattr(self, "_music_cache", None)
+        if cached is None:
+            try:
+                manifest = self.project.manifest()
+                cached = (beatmodel.project_music(manifest), {s["stem"]: s["startMs"] for s in reversed(beatmodel.slots_of(self.project, manifest))})
+            except Exception:
+                cached = False
+            self._music_cache = cached
+        if not cached:
+            return None
+        stem = stem_of(file[:-5] + ".tsx") if file.endswith(".json") else file
+        return cached[0], cached[1].get(stem, 0)
 
     def motion_blur(self, file: str, path: str, block: Any) -> None:
         """The scene override; a bad field is dropped by the app, so the scene follows the project instead."""

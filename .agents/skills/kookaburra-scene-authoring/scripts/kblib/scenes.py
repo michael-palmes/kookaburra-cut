@@ -798,15 +798,17 @@ def set_scene(
     ease: Optional[str],
     name: Optional[str],
     opts: Optional[lockmod.WriteOpts] = None,
+    *,
+    timing: Optional[Callable[[Project, Dict[str, Any], int], Tuple[int, str]]] = None,
 ) -> Dict[str, Any]:
-    """{ index, stem, changes, writes, dryRun }."""
+    """{ index, stem, changes, writes, dryRun }; timing(project, manifest, index) -> (durationMs, change) computes a musical duration."""
     pins = Pins()
 
     def build(tx: lockmod.Txn) -> Dict[str, Any]:
         changes: List[str] = []
         _raw, manifest = _manifest_for_edit(tx)
         idx, stem = pins.resolve(_view(project, manifest), selector)
-        if duration is not None or transition is not None or ease is not None:
+        if duration is not None or timing is not None or transition is not None or ease is not None:
             scenes = manifest["scenes"]
             entry = scenes[idx]
             if duration is not None:
@@ -845,7 +847,15 @@ def set_scene(
                             spec["ease"] = ease
                     entry["transition"] = spec
                     changes.append(f"transition = {spec}")
+            if timing is not None:
+                entry["durationMs"], change = timing(project, manifest, idx)
+                changes.append(change)
             tx.write_json(MANIFEST, manifest)
+            from .beats import model as beatsmodel
+
+            notes: List[str] = []
+            moved = beatsmodel.refresh_sidecars(tx, project, manifest, notes)
+            changes += [f"refreshed tMs caches in {line}" for line in beatsmodel.moved_notes(moved)] + notes
         if name is not None:
             rel = f"scenes/{stem}.json"
             doc, _sha = tx.read_json(rel)

@@ -36,6 +36,7 @@ DEFAULT_HINTS: Dict[str, str] = {
     "throttled": "capture fewer or smaller frames (--scale 0.5), then rerun after retryAfterMs",
     "too-large": "use the default sheet size or --scale, and fewer frames",
     "flashes": "fix the flagged moments, or pass --allow-flashes after checking them",
+    "no-grid": "./kb song analyse, then ./kb beats set-grid --from-analysis",
     "transient": "rerun in a moment",
 }
 

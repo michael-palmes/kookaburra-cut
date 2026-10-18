@@ -43,11 +43,15 @@ def v1():
 
 
 class BeatsReaderTests(KbTestCase):
+    """scripts/beats.py: the readers kb video align loads, and `beats.py ...` running kb beats."""
+
     def setUp(self) -> None:
         super().setUp()
         self.mod = beats_module()
         self.cache = self.tmp / "beats"
-        self.mod.CACHE_DIR = self.cache
+        self._saved_cache = os.environ.get("KB_BEATS_CACHE_DIR")
+        os.environ["KB_BEATS_CACHE_DIR"] = str(self.cache)
+        self.addCleanup(self.restore_cache_env)
         self.root = self.tmp / "p"
         (self.root / "assets").mkdir(parents=True)
         (self.root / "assets" / "song.mp3").write_bytes(SONG)
@@ -55,6 +59,12 @@ class BeatsReaderTests(KbTestCase):
             "scenes": [{"file": "scenes/01-a.tsx", "durationMs": 10000}],
             "audio": {"file": "assets/song.mp3", "startOffsetMs": 0},
         })
+
+    def restore_cache_env(self) -> None:
+        if self._saved_cache is None:
+            os.environ.pop("KB_BEATS_CACHE_DIR", None)
+        else:
+            os.environ["KB_BEATS_CACHE_DIR"] = self._saved_cache
 
     def run_main(self, *args: str):
         out, err = io.StringIO(), io.StringIO()
@@ -82,6 +92,7 @@ class BeatsReaderTests(KbTestCase):
         self.assertEqual(code, 0)
         self.assertEqual(err, "")
         data = json.loads(out)
+        self.assertEqual((data["ok"], data["command"]), (True, "beats"))
         self.assertEqual(data["analysisVersion"], 2)
         self.assertEqual(data["tracker"], "nn")
         self.assertEqual(data["beatIntervalMs"], 444.07)
@@ -92,8 +103,8 @@ class BeatsReaderTests(KbTestCase):
         write_json(self.cache / f"{DIGEST}.json", v1())
         code, out, err = self.run_main("--json")
         self.assertEqual(code, 0)
-        self.assertIn("v1 (unrefined", err)
         data = json.loads(out)
+        self.assertIn("v1 (unrefined", data["notes"][0])
         self.assertEqual(data["analysisVersion"], 1)
         self.assertEqual(data["beatIntervalMs"], 444)
         self.assertIsNone(data["fit"])
@@ -103,16 +114,16 @@ class BeatsReaderTests(KbTestCase):
         write_json(self.cache / f"{DIGEST}-v2.json", v2())
         code, out, _ = self.run_main()
         self.assertEqual(code, 0)
-        self.assertIn("bpm: 135.114 (beat every 444.07ms, residual 0.91ms)", out)
+        self.assertIn("the analysis detects about 135.114 bpm", out)
 
-    def test_unknown_versions_and_a_missing_cache_fail(self) -> None:
+    def test_unknown_versions_and_a_missing_cache_say_what_to_run(self) -> None:
         code, _, err = self.run_main()
-        self.assertEqual(code, 3)
-        self.assertIn("no cached analysis", err)
+        self.assertEqual(code, 0)
+        self.assertIn("no analysis of this soundtrack yet: ./kb song analyse", err)
         write_json(self.cache / f"{DIGEST}-v2.json", {**v2(), "version": 3})
         code, _, err = self.run_main()
-        self.assertEqual(code, 2)
-        self.assertIn("unsupported", err)
+        self.assertEqual(code, 0)
+        self.assertIn("version 3, which this kit can't read", err)
 
     def test_beat_times_read_both_shapes(self) -> None:
         self.assertEqual(self.mod.beat_times({"beats": [{"ms": 1.5}, {"ms": None}, 3, True]}), [1.5, 3])

@@ -4,7 +4,8 @@ Probes come from `<asset>.probe.json` beside the file (or a fake render's own JS
 FAKE_CLI_FAIL=cmd[,cmd] fails those commands, FAKE_CLI_SLEEP=s between render progress lines, FAKE_CLI_LOG=path
 appends each argv as a JSON line, FAKE_CLI_CAPS={json} overrides caps fields, FAKE_CLI_MALFORMED=cmd prints junk,
 FAKE_CLI_NOISE=1 mixes junk lines into render output, FAKE_CLI_RACE=marker makes the first save find the doc changed underneath it (a racing editor), FAKE_CLI_RAN=path
-is touched on every run. `check flashes` answers FAKE_CLI_FLASH_REPORT (a JSON file), else a clean report.
+is touched on every run. `check flashes` answers FAKE_CLI_FLASH_REPORT (a JSON file), else a clean report. `song
+analyse` answers FAKE_CLI_SONG (a JSON analysis), else a steady 120 bpm click; FAKE_CLI_SONG_CACHED=1 says it was cached.
 """
 
 from __future__ import annotations
@@ -350,6 +351,48 @@ def cmd_check(argv: List[str]) -> None:
     emit({"ok": True, "file": f["file"], "report": report})
 
 
+def fake_analysis(bpm: float = 120.0, offset: float = 250.0) -> Dict[str, Any]:
+    """A v2 song analysis of a steady click: 4/4 at bpm with bar 1 at offset ms."""
+    period = 60000 / bpm
+    beats = [{"ms": round(offset + k * period, 3), "bar": k // 4 + 1, "beat": k % 4 + 1, "conf": 0.9} for k in range(64)]
+    return {
+        "version": 2, "sha256": "", "decoder": {"name": "ffmpeg", "version": "fake", "sampleRate": 48000, "channels": 1},
+        "tracker": "nn", "model": {"name": "beat_this_small", "sha256": "fake"}, "fallbackReason": None, "durationMs": 32000,
+        "fit": {"bpm": bpm, "offsetMs": offset, "beatsPerBar": 4, "periodMs": period, "phaseMs": 0.5, "residualMs": 0.9,
+                "maxDriftMs": 1.4, "constantTempo": True},
+        "beats": beats, "energy": None, "sections": [{"fromBar": 1, "toBar": 9, "novelty": 0.4}, {"fromBar": 9, "toBar": 17, "novelty": 0.7}],
+        "breaths": [{"fromMs": 16000, "toMs": 16400, "kind": "silence"}], "stabs": {"per16th": [1.0] + [0.1] * 15},
+        "lyrics": None, "keyMoments": [{"tMs": 4250, "strength": 0.9}], "envelope": {"hopMs": 21.333, "values": []},
+    }
+
+
+def cmd_song(argv: List[str]) -> None:
+    """`song caps|analyse --file ABS [--force] [--tracker nn|dsp]`: FAKE_CLI_SONG names a JSON analysis to answer with
+    (its sha256 becomes the file's), else fake_analysis(); FAKE_CLI_FAIL=song fails the analysis."""
+    if argv[:1] == ["caps"]:
+        emit({"ok": True, "commands": ["caps", "analyse"], "analysisVersion": 2, "trackers": ["nn", "dsp"],
+              "model": {"name": "beat_this_small", "available": True, "dir": "/tmp"}})
+        return
+    if argv[:1] != ["analyse"]:
+        fail("usage", "unknown song command", 2)
+    f = flags(argv[1:])
+    path = f.get("file")
+    if not isinstance(path, str) or not os.path.isabs(path):
+        fail("usage", "--file must be an absolute path", 2)
+    if not Path(path).is_file():
+        fail("missing", f"no file at {path}")
+    if "song" in (os.environ.get("FAKE_CLI_FAIL") or "").split(","):
+        fail("ffmpeg", "ffmpeg exited with 1: Invalid data found when processing input")
+    digest = sha(Path(path).read_bytes())
+    canned = os.environ.get("FAKE_CLI_SONG")
+    analysis = json.loads(Path(canned).read_text(encoding="utf-8")) if canned else fake_analysis()
+    analysis["sha256"] = digest
+    if isinstance(f.get("tracker"), str):
+        analysis["tracker"] = f["tracker"]
+    emit({"ok": True, "file": path, "cached": not f.get("force") and bool(os.environ.get("FAKE_CLI_SONG_CACHED")),
+          "cachePath": f"/tmp/fake-beats/{digest}-v2.json", "analysis": analysis})
+
+
 def load_behaviour() -> None:
     """The FAKE_CLI_* knobs helpers.fake_cli stored for the shim that ran us (FAKE_CLI_SHIM is its $0)."""
     shim, folder = os.environ.get("FAKE_CLI_SHIM"), os.environ.get("FAKE_CLI_BEHAVIOUR")
@@ -375,6 +418,9 @@ def main() -> None:
             fh.write(json.dumps(argv) + "\n")
     if argv[:1] == ["check"]:
         cmd_check(argv[1:])
+        return
+    if argv[:1] == ["song"]:
+        cmd_song(argv[1:])
         return
     if len(argv) < 2 or argv[0] != "edit" or argv[1] not in COMMANDS:
         fail("usage", f"usage: kookaburra-cut edit <{'|'.join(COMMANDS)}>", 2)
