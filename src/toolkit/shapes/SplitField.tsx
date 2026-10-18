@@ -8,10 +8,11 @@ import {
   SRGBColorSpace,
   type Texture,
 } from "three";
+import { registerClip } from "../../engine/clips";
 import { useClipTexture } from "../../engine/clipTexture";
 import { frameAtDepth, useFormat } from "../../engine/format";
 import { registerPresentTiming } from "../../engine/presentTimingRegistry";
-import { resolveAssetUrl } from "../../engine/project";
+import { resolveAssetPath, resolveAssetUrl } from "../../engine/project";
 import { ProjectIdContext, SceneDocContext, useSceneContext } from "../../engine/sceneContext";
 import type { SceneDocMosaicReveal, SceneDocMosaicTile } from "../../engine/sceneDocSchema";
 import {
@@ -232,6 +233,14 @@ function MountedSplitField({
 }) {
   const format = useFormat();
   const { localMs } = useTimeline();
+  const contextProjectId = useContext(ProjectIdContext);
+  const storeProjectId = useEditorStore((s) => s.projectId);
+  // Video tiles register here, before an image tile can suspend the subtree, so a cold export's extract barrier already knows them.
+  for (const tile of tiles) {
+    if (mosaicTileKind(tile) === "video") {
+      registerClip(resolveAssetPath(contextProjectId ?? storeProjectId, tile.src as string));
+    }
+  }
   const origin: V3 = position ?? [0, 0, SPLIT_FIELD_Z];
   const frame = frameAtDepth(format, origin[2]);
   const area = { width: width ?? frame.width, height: height ?? frame.height };
