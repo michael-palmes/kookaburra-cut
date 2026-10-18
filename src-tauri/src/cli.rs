@@ -313,7 +313,7 @@ fn caps_in(args: &[String], app_data: Option<PathBuf>) -> Result<Value, Fail> {
         "build": if cfg!(debug_assertions) { "dev" } else { "release" },
         "exe": exe,
         "commands": COMMANDS,
-        "docVersion": { "read": edit::EDIT_VERSION_READ_MAX, "write": [1, edit::EDIT_VERSION_MASKS] },
+        "docVersion": { "read": edit::EDIT_VERSION_READ_MAX, "write": [1, edit::EDIT_VERSION_MASKS, edit::EDIT_VERSION_CROP] },
         "song": { "analysisVersion": crate::song::ANALYSIS_VERSION, "trackers": crate::song::TRACKERS },
         "ffmpeg": { "path": tools.ffmpeg.to_string_lossy(), "ok": filters.is_ok() },
         "ffprobe": { "path": tools.ffprobe.to_string_lossy(), "ok": ffprobe_ok },
@@ -332,7 +332,9 @@ fn caps_in(args: &[String], app_data: Option<PathBuf>) -> Result<Value, Fail> {
             "styles": ["solid", "blur", "pixelate"],
             "defaultStrength": crate::edit_masks::DEFAULT_STRENGTH,
             "defaultColor": "#000000",
+            "fades": true,
         },
+        "crop": true,
         "limits": {
             "minClipSourceMs": edit::MIN_CLIP_SOURCE_MS,
             "minHoldMs": edit::MIN_HOLD_MS,
@@ -883,6 +885,7 @@ mod tests {
             "hardwareVideo",
             "tap",
             "mask",
+            "crop",
             "limits",
             "media",
         ];
@@ -892,7 +895,9 @@ mod tests {
         assert_eq!(got, expected);
         assert_eq!(caps["cli"], 1);
         assert_eq!(caps["commands"], json!(COMMANDS));
-        assert_eq!(caps["docVersion"], json!({"read": 2, "write": [1, 2]}));
+        assert_eq!(caps["docVersion"], json!({"read": 3, "write": [1, 2, 3]}));
+        assert_eq!(caps["mask"]["fades"], true);
+        assert_eq!(caps["crop"], true);
         assert_eq!(
             caps["song"],
             json!({"analysisVersion": 2, "trackers": ["nn", "dsp"]})

@@ -59,6 +59,13 @@ pub(crate) fn validate_mask(doc: &EditDoc, mask: &EditMask) -> Result<(), String
     if source.kind == EditSourceKind::Video && mask.end_ms <= mask.start_ms {
         return Err(format!("mask {} has an empty time span", mask.id));
     }
+    let fades = mask
+        .fade_in_ms
+        .unwrap_or(0)
+        .saturating_add(mask.fade_out_ms.unwrap_or(0));
+    if source.kind == EditSourceKind::Video && fades > mask.end_ms - mask.start_ms {
+        return Err(format!("mask {} fades for longer than its span", mask.id));
+    }
     for key in &mask.keys {
         let [x, y, w, h] = key.rect;
         if ![x, y, w, h].iter().all(|v| v.is_finite()) || w <= 0.0 || h <= 0.0 {
@@ -212,6 +219,31 @@ fn effect_window(mask: &EditMask, source: &EditSource, bounds: Edges) -> [i64; 4
     }
 }
 
+/// `fade … alpha=1` filters for a faded mask, each `,`-led (`t` is source seconds, as for `enable`); `None` for hard edges, which keep today's chain byte for byte.
+fn fade_filters(mask: &EditMask) -> Option<String> {
+    let fade_in = mask.fade_in_ms.unwrap_or(0);
+    let fade_out = mask.fade_out_ms.unwrap_or(0);
+    if fade_in == 0 && fade_out == 0 {
+        return None;
+    }
+    let mut out = String::new();
+    if fade_in > 0 {
+        out.push_str(&format!(
+            ",fade=t=in:st={:.6}:d={:.6}:alpha=1",
+            mask.start_ms as f64 / 1000.0,
+            fade_in as f64 / 1000.0
+        ));
+    }
+    if fade_out > 0 {
+        out.push_str(&format!(
+            ",fade=t=out:st={:.6}:d={:.6}:alpha=1",
+            mask.end_ms.saturating_sub(fade_out) as f64 / 1000.0,
+            fade_out as f64 / 1000.0
+        ));
+    }
+    Some(out)
+}
+
 /// Builds one mask's chain from `[input]` to `[output]` (each statement `;`-terminated). `span` is the active source window in seconds (`None` = always on, a still), `planes` the rate and length of generated planes (`r=…:d=…`), `tag` a label prefix unique to this mask.
 fn mask_chain(
     mask: &EditMask,
@@ -236,21 +268,30 @@ fn mask_chain(
         None => (vec![points[0]], points[0].1),
     };
     let fmt = if span.is_none() { ":format=yuv444" } else { "" };
+    // A still has no time to fade over; a faded box carries an alpha plane into its overlay.
+    let fades = span.and_then(|_| fade_filters(mask));
 
     if points.len() == 1 {
         let e = points[0].1;
         let (x, y) = (even_floor(e[0]), even_floor(e[1]));
         let w = even_ceil(e[2]).min(i64::from(source.width)) - x;
         let h = even_ceil(e[3]).min(i64::from(source.height)) - y;
-        return Ok(match mask.style {
-            EditMaskStyle::Solid => format!(
+        return Ok(match (mask.style, &fades) {
+            (EditMaskStyle::Solid, None) => format!(
                 "[{input}]drawbox=x={x}:y={y}:w={w}:h={h}:color={colour}:t=fill{enable}[{output}];"
+            ),
+            (EditMaskStyle::Solid, Some(f)) => format!(
+                "color=c={colour}:s={w}x{h}:{planes},format=yuva444p{f}[{tag}box];\
+                 [{input}][{tag}box]overlay=x={x}:y={y}:shortest=1{enable}[{output}];"
             ),
             _ => {
                 let [cx, cy, cw, ch] = effect_window(mask, source, bounds);
+                let alpha = fades
+                    .as_ref()
+                    .map_or(String::new(), |f| format!(",format=yuva420p{f}"));
                 format!(
                     "[{input}]split[{tag}a][{tag}b];\
-                     [{tag}b]crop={cw}:{ch}:{cx}:{cy},{},crop={w}:{h}:{}:{}[{tag}fx];\
+                     [{tag}b]crop={cw}:{ch}:{cx}:{cy},{},crop={w}:{h}:{}:{}{alpha}[{tag}fx];\
                      [{tag}a][{tag}fx]overlay=x={x}:y={y}{fmt}{enable}[{output}];",
                     effect(mask, source, &enable),
                     x - cx,
@@ -261,14 +302,18 @@ fn mask_chain(
     }
 
     let [bx, by, bw, bh] = moving_box(&points);
-    let sized_box = |c: &str, gray: bool| {
-        let g = if gray { "format=gray," } else { "" };
-        format!("color=c={c}:s=2x2:{planes},{g}scale=w='{bw}':h='{bh}':eval=frame[{tag}box];")
+    let sized_box = |c: &str, look: &str| {
+        format!("color=c={c}:s=2x2:{planes},{look}scale=w='{bw}':h='{bh}':eval=frame[{tag}box];")
     };
+    let fade_tail = fades.unwrap_or_default();
     Ok(match mask.style {
         EditMaskStyle::Solid => format!(
             "{}[{input}][{tag}box]overlay=x='{bx}':y='{by}':eval=frame:shortest=1{enable}[{output}];",
-            sized_box(&colour, false)
+            if fade_tail.is_empty() {
+                sized_box(&colour, "")
+            } else {
+                sized_box(&colour, &format!("format=yuva444p{fade_tail},"))
+            }
         ),
         _ => {
             let [cx, cy, cw, ch] = effect_window(mask, source, bounds);
@@ -277,10 +322,10 @@ fn mask_chain(
                  [{tag}b]crop={cw}:{ch}:{cx}:{cy},{}[{tag}fx];\
                  color=c=black:s={cw}x{ch}:{planes},format=gray[{tag}bg];\
                  {}[{tag}bg][{tag}box]overlay=x='{bx}-{cx}':y='{by}-{cy}':eval=frame,format=gray[{tag}alpha];\
-                 [{tag}fx][{tag}alpha]alphamerge[{tag}fxa];\
+                 [{tag}fx][{tag}alpha]alphamerge{fade_tail}[{tag}fxa];\
                  [{tag}a][{tag}fxa]overlay=x={cx}:y={cy}:shortest=1{enable}[{output}];",
                 effect(mask, source, &enable),
-                sized_box("white", true),
+                sized_box("white", "format=gray,"),
             )
         }
     })
@@ -384,6 +429,8 @@ mod tests {
             color: None,
             start_ms: 1000,
             end_ms: 3000,
+            fade_in_ms: None,
+            fade_out_ms: None,
             keys: keys
                 .iter()
                 .map(|&(source_ms, rect)| EditMaskKey { source_ms, rect })
@@ -517,6 +564,93 @@ mod tests {
         );
     }
 
+    fn faded(style: EditMaskStyle, keys: &[(u64, [f64; 4])]) -> EditMask {
+        let mut m = mask(style, keys);
+        m.fade_in_ms = Some(250);
+        m.fade_out_ms = Some(400);
+        m
+    }
+
+    const FADES: &str =
+        ",fade=t=in:st=1.000000:d=0.250000:alpha=1,fade=t=out:st=2.600000:d=0.400000:alpha=1";
+    const STILL_BOX: [f64; 4] = [0.1, 0.1, 0.2, 0.05];
+    const MOVED_BOX: [f64; 4] = [0.1, 0.5, 0.2, 0.05];
+
+    #[test]
+    fn a_faded_static_solid_overlays_a_fading_colour_plane() {
+        let m = faded(EditMaskStyle::Solid, &[(1000, STILL_BOX)]);
+        let out = video_chain(&[&m], &source(), 60.0, "n0", "src0_0", "k0").unwrap();
+        assert_eq!(
+            out,
+            format!(
+                "color=c=0x000000:s=238x130:r=60:d=20.000,format=yuva444p{FADES}[k0k0box];\
+                 [n0][k0k0box]overlay=x=116:y=254:shortest=1:enable='gte(t\\,0.983333)*lt(t\\,3.016667)'[src0_0];"
+            )
+        );
+    }
+
+    #[test]
+    fn faded_moving_solids_and_effects_fade_their_alpha_before_the_overlay() {
+        let keys = [(1000, STILL_BOX), (2000, MOVED_BOX)];
+        let solid = video_chain(
+            &[&faded(EditMaskStyle::Solid, &keys)],
+            &source(),
+            60.0,
+            "n0",
+            "o",
+            "k0",
+        )
+        .unwrap();
+        assert!(solid.starts_with(&format!(
+            "color=c=0x000000:s=2x2:r=60:d=20.000,format=yuva444p{FADES},scale=w='2*ceil(("
+        )));
+        let blur = video_chain(
+            &[&faded(EditMaskStyle::Blur, &keys)],
+            &source(),
+            60.0,
+            "n0",
+            "o",
+            "k0",
+        )
+        .unwrap();
+        assert!(blur.contains(&format!("[k0k0fx][k0k0alpha]alphamerge{FADES}[k0k0fxa];")));
+        let still = video_chain(
+            &[&faded(EditMaskStyle::Pixelate, &keys[..1])],
+            &source(),
+            60.0,
+            "n0",
+            "o",
+            "k0",
+        )
+        .unwrap();
+        assert!(still.contains(&format!(
+            ",crop=238:130:42:32,format=yuva420p{FADES}[k0k0fx];"
+        )));
+        let mut fade_in = faded(EditMaskStyle::Blur, &keys[..1]);
+        fade_in.fade_out_ms = None;
+        let one = video_chain(&[&fade_in], &source(), 60.0, "n0", "o", "k0").unwrap();
+        assert!(one.contains(",format=yuva420p,fade=t=in:st=1.000000:d=0.250000:alpha=1[k0k0fx];"));
+        assert!(!one.contains("t=out"));
+    }
+
+    #[test]
+    fn hard_edged_masks_keep_the_unfaded_chain() {
+        let mut m = mask(EditMaskStyle::Solid, &[(1000, STILL_BOX)]);
+        let plain = video_chain(&[&m], &source(), 60.0, "n0", "o", "k0").unwrap();
+        m.fade_in_ms = Some(0);
+        m.fade_out_ms = Some(0);
+        assert_eq!(
+            video_chain(&[&m], &source(), 60.0, "n0", "o", "k0").unwrap(),
+            plain
+        );
+        let mut s = source();
+        s.kind = EditSourceKind::Image;
+        let f = faded(EditMaskStyle::Blur, &[(0, STILL_BOX)]);
+        assert!(!image_chain(&[&f], &s, "1:v", "im1", "i1")
+            .unwrap()
+            .contains("fade"));
+    }
+
     #[test]
     fn masks_on_one_source_chain_in_order() {
         let a = mask(EditMaskStyle::Solid, &[(1000, [0.1, 0.1, 0.2, 0.05])]);
@@ -574,6 +708,11 @@ mod tests {
         doc_masks[0].end_ms = doc_masks[0].start_ms;
         assert!(check(&doc_masks).unwrap_err().contains("empty time span"));
         doc_masks[0].end_ms = 3000;
+        doc_masks[0].fade_in_ms = Some(1500);
+        doc_masks[0].fade_out_ms = Some(501);
+        assert!(check(&doc_masks).unwrap_err().contains("fades for longer"));
+        doc_masks[0].fade_out_ms = Some(500);
+        assert!(check(&doc_masks).is_ok());
         doc_masks[0].color = Some("black".into());
         assert!(check(&doc_masks).is_err());
         doc_masks[0].color = None;
@@ -607,6 +746,82 @@ mod tests {
         let frame = (w * h) as usize;
         assert_eq!(out.stdout.len() % frame, 0);
         out.stdout.chunks(frame).map(<[u8]>::to_vec).collect()
+    }
+
+    /// Mean absolute difference of two gray frames over the box `[x0, y0, x1, y1)`.
+    fn box_diff(a: &[u8], b: &[u8], w: u32, area: [u32; 4]) -> f64 {
+        let mut sum = 0u64;
+        for y in area[1]..area[3] {
+            for x in area[0]..area[2] {
+                let i = (y * w + x) as usize;
+                sum += u64::from(a[i].abs_diff(b[i]));
+            }
+        }
+        sum as f64 / f64::from((area[2] - area[0]) * (area[3] - area[1]))
+    }
+
+    /// editMasks.ts `maskOpacityAt` for a video mask.
+    fn opacity(m: &EditMask, s: f64) -> f64 {
+        let (start, end) = (m.start_ms as f64, m.end_ms as f64);
+        if s < start || s >= end {
+            return 0.0;
+        }
+        let mut a: f64 = 1.0;
+        if let Some(fi) = m.fade_in_ms.filter(|&f| f > 0) {
+            a = a.min((s - start) / fi as f64);
+        }
+        if let Some(fo) = m.fade_out_ms.filter(|&f| f > 0) {
+            a = a.min((end - s) / fo as f64);
+        }
+        a.clamp(0.0, 1.0)
+    }
+
+    /// A faded box blends `plain + a * (masked - plain)` per pixel, so its mean difference from the plain frame scales with the editor's opacity.
+    #[test]
+    #[ignore = "runs the dev ffmpeg sidecar (pnpm setup:ffmpeg)"]
+    fn rendered_mask_fades_ramp_the_box_by_its_opacity() {
+        let (w, h) = (320u32, 240u32);
+        let mut s = source();
+        s.width = w;
+        s.height = h;
+        s.fps = 30.0;
+        s.duration_ms = 2000;
+        let plain = render_gray("[n0]null[out];", w, h);
+        let rect = [0.25, 0.25, 0.5, 0.5];
+        let inner = [84, 64, 236, 176];
+        for (style, keys) in [
+            (EditMaskStyle::Solid, vec![(500, rect)]),
+            (EditMaskStyle::Solid, vec![(300, rect), (1700, rect)]),
+            (EditMaskStyle::Blur, vec![(500, rect)]),
+            (EditMaskStyle::Blur, vec![(300, rect), (1700, rect)]),
+            (EditMaskStyle::Pixelate, vec![(500, rect)]),
+        ] {
+            let mut m = mask(style, &keys);
+            m.color = Some("#ffffff".into());
+            (m.start_ms, m.end_ms) = (300, 1700);
+            let full = m.clone();
+            (m.fade_in_ms, m.fade_out_ms) = (Some(400), Some(600));
+            let chain =
+                |mask: &EditMask| video_chain(&[mask], &s, 30.0, "n0", "out", "k0").unwrap();
+            let got = render_gray(&chain(&m), w, h);
+            let on = render_gray(&chain(&full), w, h);
+            assert_eq!(got.len(), plain.len());
+            let mut ramped = 0;
+            for (k, frame) in got.iter().enumerate() {
+                let a = opacity(&m, k as f64 * 1000.0 / 30.0);
+                let want = a * box_diff(&on[k], &plain[k], w, inner);
+                let diff = box_diff(frame, &plain[k], w, inner);
+                assert!(
+                    (diff - want).abs() <= 1.5 + 0.02 * want,
+                    "{style:?} {} keys, frame {k} (alpha {a:.3}): differs by {diff:.2}, want {want:.2}",
+                    keys.len()
+                );
+                if a > 0.05 && a < 0.95 {
+                    ramped += 1;
+                }
+            }
+            assert!(ramped >= 20, "{style:?}: only {ramped} ramp frames");
+        }
     }
 
     #[test]
