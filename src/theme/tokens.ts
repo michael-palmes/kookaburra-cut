@@ -215,6 +215,8 @@ export interface LightingKey {
   id: string;
   /** Scene-local time, ms. */
   tMs: number;
+  /** Musical position this key sits on; `tMs` caches its resolved value and a move that disagrees drops it. */
+  at?: string;
   pose: LightingPose;
 }
 

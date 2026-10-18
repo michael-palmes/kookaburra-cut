@@ -96,6 +96,16 @@ export interface DeviceMediaSpec {
   fit?: "cover";
   /** Foldable inside display only: count `startMs` from the moment the fold opens past the switch angle, so the app carries on as the device opens. Inert without a fold that opens. */
   startOn?: "open";
+  /** Video only: source ms where playback begins (a trim-in); combines with a `startMs` delay. */
+  inMs?: number;
+  /** Video only: source ms where playback ends, exclusive; absent plays to the end. */
+  outMs?: number;
+  /** Video only: playback rate, 0 < speed <= 16 (default 1); frames repeat or skip, never blend. */
+  speed?: number;
+  /** Video only: wrap within `[inMs, outMs)` instead of holding the last frame. */
+  loop?: boolean;
+  /** Video only: source ms shown before playback starts (default: the first played frame). */
+  posterMs?: number;
 }
 
 export type DeviceMotionPreset = "none" | "turntable" | "float" | "tilt-reveal" | "push-in";

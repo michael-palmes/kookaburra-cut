@@ -125,6 +125,36 @@ export interface ProjectAudioSpec {
   fadeOutCurve?: AudioFadeCurve;
   startOffsetMs?: number;
   markers?: AudioMarkersSpec;
+  /** The authored tempo grid musical positions resolve against (`engine/musicTime.ts`); analysis only suggests it. */
+  grid?: AudioGridSpec;
+  sections?: AudioSectionSpec[];
+  /** Named times: a position or project ms each, addressed as `cue:<id>`. */
+  cues?: Record<string, string | number>;
+}
+
+/** Where an accepted grid came from: provenance only, never read by render. */
+export interface AudioGridSource {
+  sha256: string;
+  analysisVersion: number;
+  tracker: "nn" | "dsp";
+  residualMs?: number;
+}
+
+export interface AudioGridSpec {
+  bpm: number;
+  /** Track ms (ffmpeg decode) of bar 1 beat 1. */
+  offsetMs: number;
+  /** Default 4. */
+  beatsPerBar?: number;
+  source?: AudioGridSource;
+}
+
+export interface AudioSectionSpec {
+  id: string;
+  label?: string;
+  /** A position or project ms; `section:<id>` resolves to it. */
+  from: string | number;
+  to: string | number;
 }
 
 export const AUDIO_MARKERS_VERSION = 1;

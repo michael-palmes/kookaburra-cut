@@ -1,0 +1,6100 @@
+{
+  "version": 1,
+  "resolve": [
+    {
+      "id": "g0-o0-p0",
+      "music": {
+        "grid": {
+          "bpm": 135.11,
+          "offsetMs": 447.5,
+          "beatsPerBar": 4
+        },
+        "startOffsetMs": 0,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:1",
+      "sceneStartMs": 0,
+      "expect": {
+        "ok": true,
+        "projectMs": 447.5,
+        "rounded": 448,
+        "sceneLocalMs": 448
+      }
+    },
+    {
+      "id": "g0-o0-p1",
+      "music": {
+        "grid": {
+          "bpm": 135.11,
+          "offsetMs": 447.5,
+          "beatsPerBar": 4
+        },
+        "startOffsetMs": 0,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:13",
+      "sceneStartMs": 7333.5,
+      "expect": {
+        "ok": true,
+        "projectMs": 21763.464769447113,
+        "rounded": 21763,
+        "sceneLocalMs": 14430
+      }
+    },
+    {
+      "id": "g0-o0-p2",
+      "music": {
+        "grid": {
+          "bpm": 135.11,
+          "offsetMs": 447.5,
+          "beatsPerBar": 4
+        },
+        "startOffsetMs": 0,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:13.3",
+      "sceneStartMs": 14667,
+      "expect": {
+        "ok": true,
+        "projectMs": 22651.62996817408,
+        "rounded": 22652,
+        "sceneLocalMs": 7985
+      }
+    },
+    {
+      "id": "g0-o0-p3",
+      "music": {
+        "grid": {
+          "bpm": 135.11,
+          "offsetMs": 447.5,
+          "beatsPerBar": 4
+        },
+        "startOffsetMs": 0,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:13.3.2",
+      "sceneStartMs": 0,
+      "expect": {
+        "ok": true,
+        "projectMs": 22762.650618014948,
+        "rounded": 22763,
+        "sceneLocalMs": 22763
+      }
+    },
+    {
+      "id": "g0-o0-p4",
+      "music": {
+        "grid": {
+          "bpm": 135.11,
+          "offsetMs": 447.5,
+          "beatsPerBar": 4
+        },
+        "startOffsetMs": 0,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:12.3.4",
+      "sceneStartMs": 7333.5,
+      "expect": {
+        "ok": true,
+        "projectMs": 21208.361520242765,
+        "rounded": 21208,
+        "sceneLocalMs": 13875
+      }
+    },
+    {
+      "id": "g0-o0-p5",
+      "music": {
+        "grid": {
+          "bpm": 135.11,
+          "offsetMs": 447.5,
+          "beatsPerBar": 4
+        },
+        "startOffsetMs": 0,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:0.4",
+      "sceneStartMs": 14667,
+      "expect": {
+        "ok": true,
+        "projectMs": 3.417400636518437,
+        "rounded": 3,
+        "sceneLocalMs": -14664
+      }
+    },
+    {
+      "id": "g0-o0-p6",
+      "music": {
+        "grid": {
+          "bpm": 135.11,
+          "offsetMs": 447.5,
+          "beatsPerBar": 4
+        },
+        "startOffsetMs": 0,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:-1",
+      "sceneStartMs": 0,
+      "expect": {
+        "ok": true,
+        "projectMs": -3105.1607949078525,
+        "rounded": -3105,
+        "sceneLocalMs": -3105
+      }
+    },
+    {
+      "id": "g0-o0-p7",
+      "music": {
+        "grid": {
+          "bpm": 135.11,
+          "offsetMs": 447.5,
+          "beatsPerBar": 4
+        },
+        "startOffsetMs": 0,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:29-83ms",
+      "sceneStartMs": 7333.5,
+      "expect": {
+        "ok": true,
+        "projectMs": 50101.75112870993,
+        "rounded": 50102,
+        "sceneLocalMs": 42768
+      }
+    },
+    {
+      "id": "g0-o0-p8",
+      "music": {
+        "grid": {
+          "bpm": 135.11,
+          "offsetMs": 447.5,
+          "beatsPerBar": 4
+        },
+        "startOffsetMs": 0,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:36+12.5ms",
+      "sceneStartMs": 14667,
+      "expect": {
+        "ok": true,
+        "projectMs": 62631.56391088742,
+        "rounded": 62632,
+        "sceneLocalMs": 47965
+      }
+    },
+    {
+      "id": "g0-o0-p9",
+      "music": {
+        "grid": {
+          "bpm": 135.11,
+          "offsetMs": 447.5,
+          "beatsPerBar": 4
+        },
+        "startOffsetMs": 0,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:007.2",
+      "sceneStartMs": 0,
+      "expect": {
+        "ok": true,
+        "projectMs": 11549.56498408704,
+        "rounded": 11550,
+        "sceneLocalMs": 11550
+      }
+    },
+    {
+      "id": "g0-o0-p10",
+      "music": {
+        "grid": {
+          "bpm": 135.11,
+          "offsetMs": 447.5,
+          "beatsPerBar": 4
+        },
+        "startOffsetMs": 0,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "cue:drop",
+      "sceneStartMs": 7333.5,
+      "expect": {
+        "ok": true,
+        "projectMs": 50184.75112870993,
+        "rounded": 50185,
+        "sceneLocalMs": 42851
+      }
+    },
+    {
+      "id": "g0-o0-p11",
+      "music": {
+        "grid": {
+          "bpm": 135.11,
+          "offsetMs": 447.5,
+          "beatsPerBar": 4
+        },
+        "startOffsetMs": 0,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "cue:raw",
+      "sceneStartMs": 14667,
+      "expect": {
+        "ok": true,
+        "projectMs": 49400,
+        "rounded": 49400,
+        "sceneLocalMs": 34733
+      }
+    },
+    {
+      "id": "g0-o0-p12",
+      "music": {
+        "grid": {
+          "bpm": 135.11,
+          "offsetMs": 447.5,
+          "beatsPerBar": 4
+        },
+        "startOffsetMs": 0,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "cue:nudged+40ms",
+      "sceneStartMs": 0,
+      "expect": {
+        "ok": true,
+        "projectMs": 7996.904189179187,
+        "rounded": 7997,
+        "sceneLocalMs": 7997
+      }
+    },
+    {
+      "id": "g0-o0-p13",
+      "music": {
+        "grid": {
+          "bpm": 135.11,
+          "offsetMs": 447.5,
+          "beatsPerBar": 4
+        },
+        "startOffsetMs": 0,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "section:outro",
+      "sceneStartMs": 7333.5,
+      "expect": {
+        "ok": true,
+        "projectMs": 57734.15531788912,
+        "rounded": 57734,
+        "sceneLocalMs": 50401
+      }
+    },
+    {
+      "id": "g0-o0-p14",
+      "music": {
+        "grid": {
+          "bpm": 135.11,
+          "offsetMs": 447.5,
+          "beatsPerBar": 4
+        },
+        "startOffsetMs": 0,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "section:outro-0.25ms",
+      "sceneStartMs": 14667,
+      "expect": {
+        "ok": true,
+        "projectMs": 57733.90531788912,
+        "rounded": 57734,
+        "sceneLocalMs": 43067
+      }
+    },
+    {
+      "id": "g0-o0-p15",
+      "music": {
+        "grid": {
+          "bpm": 135.11,
+          "offsetMs": 447.5,
+          "beatsPerBar": 4
+        },
+        "startOffsetMs": 0,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:13.5",
+      "sceneStartMs": 0,
+      "expect": {
+        "ok": false,
+        "code": "range"
+      }
+    },
+    {
+      "id": "g0-o0-p16",
+      "music": {
+        "grid": {
+          "bpm": 135.11,
+          "offsetMs": 447.5,
+          "beatsPerBar": 4
+        },
+        "startOffsetMs": 0,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:13.0",
+      "sceneStartMs": 7333.5,
+      "expect": {
+        "ok": false,
+        "code": "range"
+      }
+    },
+    {
+      "id": "g0-o0-p17",
+      "music": {
+        "grid": {
+          "bpm": 135.11,
+          "offsetMs": 447.5,
+          "beatsPerBar": 4
+        },
+        "startOffsetMs": 0,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:13.1.5",
+      "sceneStartMs": 14667,
+      "expect": {
+        "ok": false,
+        "code": "range"
+      }
+    },
+    {
+      "id": "g0-o0-p18",
+      "music": {
+        "grid": {
+          "bpm": 135.11,
+          "offsetMs": 447.5,
+          "beatsPerBar": 4
+        },
+        "startOffsetMs": 0,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:100001",
+      "sceneStartMs": 0,
+      "expect": {
+        "ok": false,
+        "code": "range"
+      }
+    },
+    {
+      "id": "g0-o0-p19",
+      "music": {
+        "grid": {
+          "bpm": 135.11,
+          "offsetMs": 447.5,
+          "beatsPerBar": 4
+        },
+        "startOffsetMs": 0,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "beat:13.3",
+      "sceneStartMs": 7333.5,
+      "expect": {
+        "ok": false,
+        "code": "syntax"
+      }
+    },
+    {
+      "id": "g0-o0-p20",
+      "music": {
+        "grid": {
+          "bpm": 135.11,
+          "offsetMs": 447.5,
+          "beatsPerBar": 4
+        },
+        "startOffsetMs": 0,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:13+40",
+      "sceneStartMs": 14667,
+      "expect": {
+        "ok": false,
+        "code": "syntax"
+      }
+    },
+    {
+      "id": "g0-o0-p21",
+      "music": {
+        "grid": {
+          "bpm": 135.11,
+          "offsetMs": 447.5,
+          "beatsPerBar": 4
+        },
+        "startOffsetMs": 0,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "cue:missing",
+      "sceneStartMs": 0,
+      "expect": {
+        "ok": false,
+        "code": "unknown"
+      }
+    },
+    {
+      "id": "g0-o0-p22",
+      "music": {
+        "grid": {
+          "bpm": 135.11,
+          "offsetMs": 447.5,
+          "beatsPerBar": 4
+        },
+        "startOffsetMs": 0,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "cue:loop",
+      "sceneStartMs": 7333.5,
+      "expect": {
+        "ok": false,
+        "code": "nested"
+      }
+    },
+    {
+      "id": "g0-o0-p23",
+      "music": {
+        "grid": {
+          "bpm": 135.11,
+          "offsetMs": 447.5,
+          "beatsPerBar": 4
+        },
+        "startOffsetMs": 0,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "section:missing",
+      "sceneStartMs": 14667,
+      "expect": {
+        "ok": false,
+        "code": "unknown"
+      }
+    },
+    {
+      "id": "g0-o1250-p0",
+      "music": {
+        "grid": {
+          "bpm": 135.11,
+          "offsetMs": 447.5,
+          "beatsPerBar": 4
+        },
+        "startOffsetMs": 1250,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:1",
+      "sceneStartMs": 0,
+      "expect": {
+        "ok": true,
+        "projectMs": -802.5,
+        "rounded": -802,
+        "sceneLocalMs": -802
+      }
+    },
+    {
+      "id": "g0-o1250-p1",
+      "music": {
+        "grid": {
+          "bpm": 135.11,
+          "offsetMs": 447.5,
+          "beatsPerBar": 4
+        },
+        "startOffsetMs": 1250,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:13",
+      "sceneStartMs": 7333.5,
+      "expect": {
+        "ok": true,
+        "projectMs": 20513.464769447113,
+        "rounded": 20513,
+        "sceneLocalMs": 13180
+      }
+    },
+    {
+      "id": "g0-o1250-p2",
+      "music": {
+        "grid": {
+          "bpm": 135.11,
+          "offsetMs": 447.5,
+          "beatsPerBar": 4
+        },
+        "startOffsetMs": 1250,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:13.3",
+      "sceneStartMs": 14667,
+      "expect": {
+        "ok": true,
+        "projectMs": 21401.62996817408,
+        "rounded": 21402,
+        "sceneLocalMs": 6735
+      }
+    },
+    {
+      "id": "g0-o1250-p3",
+      "music": {
+        "grid": {
+          "bpm": 135.11,
+          "offsetMs": 447.5,
+          "beatsPerBar": 4
+        },
+        "startOffsetMs": 1250,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:13.3.2",
+      "sceneStartMs": 0,
+      "expect": {
+        "ok": true,
+        "projectMs": 21512.650618014948,
+        "rounded": 21513,
+        "sceneLocalMs": 21513
+      }
+    },
+    {
+      "id": "g0-o1250-p4",
+      "music": {
+        "grid": {
+          "bpm": 135.11,
+          "offsetMs": 447.5,
+          "beatsPerBar": 4
+        },
+        "startOffsetMs": 1250,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:12.3.4",
+      "sceneStartMs": 7333.5,
+      "expect": {
+        "ok": true,
+        "projectMs": 19958.361520242765,
+        "rounded": 19958,
+        "sceneLocalMs": 12625
+      }
+    },
+    {
+      "id": "g0-o1250-p5",
+      "music": {
+        "grid": {
+          "bpm": 135.11,
+          "offsetMs": 447.5,
+          "beatsPerBar": 4
+        },
+        "startOffsetMs": 1250,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:0.4",
+      "sceneStartMs": 14667,
+      "expect": {
+        "ok": true,
+        "projectMs": -1246.5825993634817,
+        "rounded": -1247,
+        "sceneLocalMs": -15914
+      }
+    },
+    {
+      "id": "g0-o1250-p6",
+      "music": {
+        "grid": {
+          "bpm": 135.11,
+          "offsetMs": 447.5,
+          "beatsPerBar": 4
+        },
+        "startOffsetMs": 1250,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:-1",
+      "sceneStartMs": 0,
+      "expect": {
+        "ok": true,
+        "projectMs": -4355.1607949078525,
+        "rounded": -4355,
+        "sceneLocalMs": -4355
+      }
+    },
+    {
+      "id": "g0-o1250-p7",
+      "music": {
+        "grid": {
+          "bpm": 135.11,
+          "offsetMs": 447.5,
+          "beatsPerBar": 4
+        },
+        "startOffsetMs": 1250,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:29-83ms",
+      "sceneStartMs": 7333.5,
+      "expect": {
+        "ok": true,
+        "projectMs": 48851.75112870993,
+        "rounded": 48852,
+        "sceneLocalMs": 41518
+      }
+    },
+    {
+      "id": "g0-o1250-p8",
+      "music": {
+        "grid": {
+          "bpm": 135.11,
+          "offsetMs": 447.5,
+          "beatsPerBar": 4
+        },
+        "startOffsetMs": 1250,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:36+12.5ms",
+      "sceneStartMs": 14667,
+      "expect": {
+        "ok": true,
+        "projectMs": 61381.56391088742,
+        "rounded": 61382,
+        "sceneLocalMs": 46715
+      }
+    },
+    {
+      "id": "g0-o1250-p9",
+      "music": {
+        "grid": {
+          "bpm": 135.11,
+          "offsetMs": 447.5,
+          "beatsPerBar": 4
+        },
+        "startOffsetMs": 1250,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:007.2",
+      "sceneStartMs": 0,
+      "expect": {
+        "ok": true,
+        "projectMs": 10299.56498408704,
+        "rounded": 10300,
+        "sceneLocalMs": 10300
+      }
+    },
+    {
+      "id": "g0-o1250-p10",
+      "music": {
+        "grid": {
+          "bpm": 135.11,
+          "offsetMs": 447.5,
+          "beatsPerBar": 4
+        },
+        "startOffsetMs": 1250,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "cue:drop",
+      "sceneStartMs": 7333.5,
+      "expect": {
+        "ok": true,
+        "projectMs": 48934.75112870993,
+        "rounded": 48935,
+        "sceneLocalMs": 41601
+      }
+    },
+    {
+      "id": "g0-o1250-p11",
+      "music": {
+        "grid": {
+          "bpm": 135.11,
+          "offsetMs": 447.5,
+          "beatsPerBar": 4
+        },
+        "startOffsetMs": 1250,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "cue:raw",
+      "sceneStartMs": 14667,
+      "expect": {
+        "ok": true,
+        "projectMs": 49400,
+        "rounded": 49400,
+        "sceneLocalMs": 34733
+      }
+    },
+    {
+      "id": "g0-o1250-p12",
+      "music": {
+        "grid": {
+          "bpm": 135.11,
+          "offsetMs": 447.5,
+          "beatsPerBar": 4
+        },
+        "startOffsetMs": 1250,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "cue:nudged+40ms",
+      "sceneStartMs": 0,
+      "expect": {
+        "ok": true,
+        "projectMs": 6746.904189179187,
+        "rounded": 6747,
+        "sceneLocalMs": 6747
+      }
+    },
+    {
+      "id": "g0-o1250-p13",
+      "music": {
+        "grid": {
+          "bpm": 135.11,
+          "offsetMs": 447.5,
+          "beatsPerBar": 4
+        },
+        "startOffsetMs": 1250,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "section:outro",
+      "sceneStartMs": 7333.5,
+      "expect": {
+        "ok": true,
+        "projectMs": 56484.15531788912,
+        "rounded": 56484,
+        "sceneLocalMs": 49151
+      }
+    },
+    {
+      "id": "g0-o1250-p14",
+      "music": {
+        "grid": {
+          "bpm": 135.11,
+          "offsetMs": 447.5,
+          "beatsPerBar": 4
+        },
+        "startOffsetMs": 1250,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "section:outro-0.25ms",
+      "sceneStartMs": 14667,
+      "expect": {
+        "ok": true,
+        "projectMs": 56483.90531788912,
+        "rounded": 56484,
+        "sceneLocalMs": 41817
+      }
+    },
+    {
+      "id": "g0-o1250-p15",
+      "music": {
+        "grid": {
+          "bpm": 135.11,
+          "offsetMs": 447.5,
+          "beatsPerBar": 4
+        },
+        "startOffsetMs": 1250,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:13.5",
+      "sceneStartMs": 0,
+      "expect": {
+        "ok": false,
+        "code": "range"
+      }
+    },
+    {
+      "id": "g0-o1250-p16",
+      "music": {
+        "grid": {
+          "bpm": 135.11,
+          "offsetMs": 447.5,
+          "beatsPerBar": 4
+        },
+        "startOffsetMs": 1250,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:13.0",
+      "sceneStartMs": 7333.5,
+      "expect": {
+        "ok": false,
+        "code": "range"
+      }
+    },
+    {
+      "id": "g0-o1250-p17",
+      "music": {
+        "grid": {
+          "bpm": 135.11,
+          "offsetMs": 447.5,
+          "beatsPerBar": 4
+        },
+        "startOffsetMs": 1250,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:13.1.5",
+      "sceneStartMs": 14667,
+      "expect": {
+        "ok": false,
+        "code": "range"
+      }
+    },
+    {
+      "id": "g0-o1250-p18",
+      "music": {
+        "grid": {
+          "bpm": 135.11,
+          "offsetMs": 447.5,
+          "beatsPerBar": 4
+        },
+        "startOffsetMs": 1250,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:100001",
+      "sceneStartMs": 0,
+      "expect": {
+        "ok": false,
+        "code": "range"
+      }
+    },
+    {
+      "id": "g0-o1250-p19",
+      "music": {
+        "grid": {
+          "bpm": 135.11,
+          "offsetMs": 447.5,
+          "beatsPerBar": 4
+        },
+        "startOffsetMs": 1250,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "beat:13.3",
+      "sceneStartMs": 7333.5,
+      "expect": {
+        "ok": false,
+        "code": "syntax"
+      }
+    },
+    {
+      "id": "g0-o1250-p20",
+      "music": {
+        "grid": {
+          "bpm": 135.11,
+          "offsetMs": 447.5,
+          "beatsPerBar": 4
+        },
+        "startOffsetMs": 1250,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:13+40",
+      "sceneStartMs": 14667,
+      "expect": {
+        "ok": false,
+        "code": "syntax"
+      }
+    },
+    {
+      "id": "g0-o1250-p21",
+      "music": {
+        "grid": {
+          "bpm": 135.11,
+          "offsetMs": 447.5,
+          "beatsPerBar": 4
+        },
+        "startOffsetMs": 1250,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "cue:missing",
+      "sceneStartMs": 0,
+      "expect": {
+        "ok": false,
+        "code": "unknown"
+      }
+    },
+    {
+      "id": "g0-o1250-p22",
+      "music": {
+        "grid": {
+          "bpm": 135.11,
+          "offsetMs": 447.5,
+          "beatsPerBar": 4
+        },
+        "startOffsetMs": 1250,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "cue:loop",
+      "sceneStartMs": 7333.5,
+      "expect": {
+        "ok": false,
+        "code": "nested"
+      }
+    },
+    {
+      "id": "g0-o1250-p23",
+      "music": {
+        "grid": {
+          "bpm": 135.11,
+          "offsetMs": 447.5,
+          "beatsPerBar": 4
+        },
+        "startOffsetMs": 1250,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "section:missing",
+      "sceneStartMs": 14667,
+      "expect": {
+        "ok": false,
+        "code": "unknown"
+      }
+    },
+    {
+      "id": "g1-o0-p0",
+      "music": {
+        "grid": {
+          "bpm": 120,
+          "offsetMs": 0,
+          "beatsPerBar": 4
+        },
+        "startOffsetMs": 0,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:1",
+      "sceneStartMs": 0,
+      "expect": {
+        "ok": true,
+        "projectMs": 0,
+        "rounded": 0,
+        "sceneLocalMs": 0
+      }
+    },
+    {
+      "id": "g1-o0-p1",
+      "music": {
+        "grid": {
+          "bpm": 120,
+          "offsetMs": 0,
+          "beatsPerBar": 4
+        },
+        "startOffsetMs": 0,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:13",
+      "sceneStartMs": 7333.5,
+      "expect": {
+        "ok": true,
+        "projectMs": 24000,
+        "rounded": 24000,
+        "sceneLocalMs": 16667
+      }
+    },
+    {
+      "id": "g1-o0-p2",
+      "music": {
+        "grid": {
+          "bpm": 120,
+          "offsetMs": 0,
+          "beatsPerBar": 4
+        },
+        "startOffsetMs": 0,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:13.3",
+      "sceneStartMs": 14667,
+      "expect": {
+        "ok": true,
+        "projectMs": 25000,
+        "rounded": 25000,
+        "sceneLocalMs": 10333
+      }
+    },
+    {
+      "id": "g1-o0-p3",
+      "music": {
+        "grid": {
+          "bpm": 120,
+          "offsetMs": 0,
+          "beatsPerBar": 4
+        },
+        "startOffsetMs": 0,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:13.3.2",
+      "sceneStartMs": 0,
+      "expect": {
+        "ok": true,
+        "projectMs": 25125,
+        "rounded": 25125,
+        "sceneLocalMs": 25125
+      }
+    },
+    {
+      "id": "g1-o0-p4",
+      "music": {
+        "grid": {
+          "bpm": 120,
+          "offsetMs": 0,
+          "beatsPerBar": 4
+        },
+        "startOffsetMs": 0,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:12.3.4",
+      "sceneStartMs": 7333.5,
+      "expect": {
+        "ok": true,
+        "projectMs": 23375,
+        "rounded": 23375,
+        "sceneLocalMs": 16042
+      }
+    },
+    {
+      "id": "g1-o0-p5",
+      "music": {
+        "grid": {
+          "bpm": 120,
+          "offsetMs": 0,
+          "beatsPerBar": 4
+        },
+        "startOffsetMs": 0,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:0.4",
+      "sceneStartMs": 14667,
+      "expect": {
+        "ok": true,
+        "projectMs": -500,
+        "rounded": -500,
+        "sceneLocalMs": -15167
+      }
+    },
+    {
+      "id": "g1-o0-p6",
+      "music": {
+        "grid": {
+          "bpm": 120,
+          "offsetMs": 0,
+          "beatsPerBar": 4
+        },
+        "startOffsetMs": 0,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:-1",
+      "sceneStartMs": 0,
+      "expect": {
+        "ok": true,
+        "projectMs": -4000,
+        "rounded": -4000,
+        "sceneLocalMs": -4000
+      }
+    },
+    {
+      "id": "g1-o0-p7",
+      "music": {
+        "grid": {
+          "bpm": 120,
+          "offsetMs": 0,
+          "beatsPerBar": 4
+        },
+        "startOffsetMs": 0,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:29-83ms",
+      "sceneStartMs": 7333.5,
+      "expect": {
+        "ok": true,
+        "projectMs": 55917,
+        "rounded": 55917,
+        "sceneLocalMs": 48584
+      }
+    },
+    {
+      "id": "g1-o0-p8",
+      "music": {
+        "grid": {
+          "bpm": 120,
+          "offsetMs": 0,
+          "beatsPerBar": 4
+        },
+        "startOffsetMs": 0,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:36+12.5ms",
+      "sceneStartMs": 14667,
+      "expect": {
+        "ok": true,
+        "projectMs": 70012.5,
+        "rounded": 70013,
+        "sceneLocalMs": 55346
+      }
+    },
+    {
+      "id": "g1-o0-p9",
+      "music": {
+        "grid": {
+          "bpm": 120,
+          "offsetMs": 0,
+          "beatsPerBar": 4
+        },
+        "startOffsetMs": 0,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:007.2",
+      "sceneStartMs": 0,
+      "expect": {
+        "ok": true,
+        "projectMs": 12500,
+        "rounded": 12500,
+        "sceneLocalMs": 12500
+      }
+    },
+    {
+      "id": "g1-o0-p10",
+      "music": {
+        "grid": {
+          "bpm": 120,
+          "offsetMs": 0,
+          "beatsPerBar": 4
+        },
+        "startOffsetMs": 0,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "cue:drop",
+      "sceneStartMs": 7333.5,
+      "expect": {
+        "ok": true,
+        "projectMs": 56000,
+        "rounded": 56000,
+        "sceneLocalMs": 48667
+      }
+    },
+    {
+      "id": "g1-o0-p11",
+      "music": {
+        "grid": {
+          "bpm": 120,
+          "offsetMs": 0,
+          "beatsPerBar": 4
+        },
+        "startOffsetMs": 0,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "cue:raw",
+      "sceneStartMs": 14667,
+      "expect": {
+        "ok": true,
+        "projectMs": 49400,
+        "rounded": 49400,
+        "sceneLocalMs": 34733
+      }
+    },
+    {
+      "id": "g1-o0-p12",
+      "music": {
+        "grid": {
+          "bpm": 120,
+          "offsetMs": 0,
+          "beatsPerBar": 4
+        },
+        "startOffsetMs": 0,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "cue:nudged+40ms",
+      "sceneStartMs": 0,
+      "expect": {
+        "ok": true,
+        "projectMs": 8500,
+        "rounded": 8500,
+        "sceneLocalMs": 8500
+      }
+    },
+    {
+      "id": "g1-o0-p13",
+      "music": {
+        "grid": {
+          "bpm": 120,
+          "offsetMs": 0,
+          "beatsPerBar": 4
+        },
+        "startOffsetMs": 0,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "section:outro",
+      "sceneStartMs": 7333.5,
+      "expect": {
+        "ok": true,
+        "projectMs": 64500,
+        "rounded": 64500,
+        "sceneLocalMs": 57167
+      }
+    },
+    {
+      "id": "g1-o0-p14",
+      "music": {
+        "grid": {
+          "bpm": 120,
+          "offsetMs": 0,
+          "beatsPerBar": 4
+        },
+        "startOffsetMs": 0,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "section:outro-0.25ms",
+      "sceneStartMs": 14667,
+      "expect": {
+        "ok": true,
+        "projectMs": 64499.75,
+        "rounded": 64500,
+        "sceneLocalMs": 49833
+      }
+    },
+    {
+      "id": "g1-o0-p15",
+      "music": {
+        "grid": {
+          "bpm": 120,
+          "offsetMs": 0,
+          "beatsPerBar": 4
+        },
+        "startOffsetMs": 0,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:13.5",
+      "sceneStartMs": 0,
+      "expect": {
+        "ok": false,
+        "code": "range"
+      }
+    },
+    {
+      "id": "g1-o0-p16",
+      "music": {
+        "grid": {
+          "bpm": 120,
+          "offsetMs": 0,
+          "beatsPerBar": 4
+        },
+        "startOffsetMs": 0,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:13.0",
+      "sceneStartMs": 7333.5,
+      "expect": {
+        "ok": false,
+        "code": "range"
+      }
+    },
+    {
+      "id": "g1-o0-p17",
+      "music": {
+        "grid": {
+          "bpm": 120,
+          "offsetMs": 0,
+          "beatsPerBar": 4
+        },
+        "startOffsetMs": 0,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:13.1.5",
+      "sceneStartMs": 14667,
+      "expect": {
+        "ok": false,
+        "code": "range"
+      }
+    },
+    {
+      "id": "g1-o0-p18",
+      "music": {
+        "grid": {
+          "bpm": 120,
+          "offsetMs": 0,
+          "beatsPerBar": 4
+        },
+        "startOffsetMs": 0,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:100001",
+      "sceneStartMs": 0,
+      "expect": {
+        "ok": false,
+        "code": "range"
+      }
+    },
+    {
+      "id": "g1-o0-p19",
+      "music": {
+        "grid": {
+          "bpm": 120,
+          "offsetMs": 0,
+          "beatsPerBar": 4
+        },
+        "startOffsetMs": 0,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "beat:13.3",
+      "sceneStartMs": 7333.5,
+      "expect": {
+        "ok": false,
+        "code": "syntax"
+      }
+    },
+    {
+      "id": "g1-o0-p20",
+      "music": {
+        "grid": {
+          "bpm": 120,
+          "offsetMs": 0,
+          "beatsPerBar": 4
+        },
+        "startOffsetMs": 0,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:13+40",
+      "sceneStartMs": 14667,
+      "expect": {
+        "ok": false,
+        "code": "syntax"
+      }
+    },
+    {
+      "id": "g1-o0-p21",
+      "music": {
+        "grid": {
+          "bpm": 120,
+          "offsetMs": 0,
+          "beatsPerBar": 4
+        },
+        "startOffsetMs": 0,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "cue:missing",
+      "sceneStartMs": 0,
+      "expect": {
+        "ok": false,
+        "code": "unknown"
+      }
+    },
+    {
+      "id": "g1-o0-p22",
+      "music": {
+        "grid": {
+          "bpm": 120,
+          "offsetMs": 0,
+          "beatsPerBar": 4
+        },
+        "startOffsetMs": 0,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "cue:loop",
+      "sceneStartMs": 7333.5,
+      "expect": {
+        "ok": false,
+        "code": "nested"
+      }
+    },
+    {
+      "id": "g1-o0-p23",
+      "music": {
+        "grid": {
+          "bpm": 120,
+          "offsetMs": 0,
+          "beatsPerBar": 4
+        },
+        "startOffsetMs": 0,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "section:missing",
+      "sceneStartMs": 14667,
+      "expect": {
+        "ok": false,
+        "code": "unknown"
+      }
+    },
+    {
+      "id": "g1-o1250-p0",
+      "music": {
+        "grid": {
+          "bpm": 120,
+          "offsetMs": 0,
+          "beatsPerBar": 4
+        },
+        "startOffsetMs": 1250,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:1",
+      "sceneStartMs": 0,
+      "expect": {
+        "ok": true,
+        "projectMs": -1250,
+        "rounded": -1250,
+        "sceneLocalMs": -1250
+      }
+    },
+    {
+      "id": "g1-o1250-p1",
+      "music": {
+        "grid": {
+          "bpm": 120,
+          "offsetMs": 0,
+          "beatsPerBar": 4
+        },
+        "startOffsetMs": 1250,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:13",
+      "sceneStartMs": 7333.5,
+      "expect": {
+        "ok": true,
+        "projectMs": 22750,
+        "rounded": 22750,
+        "sceneLocalMs": 15417
+      }
+    },
+    {
+      "id": "g1-o1250-p2",
+      "music": {
+        "grid": {
+          "bpm": 120,
+          "offsetMs": 0,
+          "beatsPerBar": 4
+        },
+        "startOffsetMs": 1250,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:13.3",
+      "sceneStartMs": 14667,
+      "expect": {
+        "ok": true,
+        "projectMs": 23750,
+        "rounded": 23750,
+        "sceneLocalMs": 9083
+      }
+    },
+    {
+      "id": "g1-o1250-p3",
+      "music": {
+        "grid": {
+          "bpm": 120,
+          "offsetMs": 0,
+          "beatsPerBar": 4
+        },
+        "startOffsetMs": 1250,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:13.3.2",
+      "sceneStartMs": 0,
+      "expect": {
+        "ok": true,
+        "projectMs": 23875,
+        "rounded": 23875,
+        "sceneLocalMs": 23875
+      }
+    },
+    {
+      "id": "g1-o1250-p4",
+      "music": {
+        "grid": {
+          "bpm": 120,
+          "offsetMs": 0,
+          "beatsPerBar": 4
+        },
+        "startOffsetMs": 1250,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:12.3.4",
+      "sceneStartMs": 7333.5,
+      "expect": {
+        "ok": true,
+        "projectMs": 22125,
+        "rounded": 22125,
+        "sceneLocalMs": 14792
+      }
+    },
+    {
+      "id": "g1-o1250-p5",
+      "music": {
+        "grid": {
+          "bpm": 120,
+          "offsetMs": 0,
+          "beatsPerBar": 4
+        },
+        "startOffsetMs": 1250,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:0.4",
+      "sceneStartMs": 14667,
+      "expect": {
+        "ok": true,
+        "projectMs": -1750,
+        "rounded": -1750,
+        "sceneLocalMs": -16417
+      }
+    },
+    {
+      "id": "g1-o1250-p6",
+      "music": {
+        "grid": {
+          "bpm": 120,
+          "offsetMs": 0,
+          "beatsPerBar": 4
+        },
+        "startOffsetMs": 1250,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:-1",
+      "sceneStartMs": 0,
+      "expect": {
+        "ok": true,
+        "projectMs": -5250,
+        "rounded": -5250,
+        "sceneLocalMs": -5250
+      }
+    },
+    {
+      "id": "g1-o1250-p7",
+      "music": {
+        "grid": {
+          "bpm": 120,
+          "offsetMs": 0,
+          "beatsPerBar": 4
+        },
+        "startOffsetMs": 1250,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:29-83ms",
+      "sceneStartMs": 7333.5,
+      "expect": {
+        "ok": true,
+        "projectMs": 54667,
+        "rounded": 54667,
+        "sceneLocalMs": 47334
+      }
+    },
+    {
+      "id": "g1-o1250-p8",
+      "music": {
+        "grid": {
+          "bpm": 120,
+          "offsetMs": 0,
+          "beatsPerBar": 4
+        },
+        "startOffsetMs": 1250,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:36+12.5ms",
+      "sceneStartMs": 14667,
+      "expect": {
+        "ok": true,
+        "projectMs": 68762.5,
+        "rounded": 68763,
+        "sceneLocalMs": 54096
+      }
+    },
+    {
+      "id": "g1-o1250-p9",
+      "music": {
+        "grid": {
+          "bpm": 120,
+          "offsetMs": 0,
+          "beatsPerBar": 4
+        },
+        "startOffsetMs": 1250,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:007.2",
+      "sceneStartMs": 0,
+      "expect": {
+        "ok": true,
+        "projectMs": 11250,
+        "rounded": 11250,
+        "sceneLocalMs": 11250
+      }
+    },
+    {
+      "id": "g1-o1250-p10",
+      "music": {
+        "grid": {
+          "bpm": 120,
+          "offsetMs": 0,
+          "beatsPerBar": 4
+        },
+        "startOffsetMs": 1250,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "cue:drop",
+      "sceneStartMs": 7333.5,
+      "expect": {
+        "ok": true,
+        "projectMs": 54750,
+        "rounded": 54750,
+        "sceneLocalMs": 47417
+      }
+    },
+    {
+      "id": "g1-o1250-p11",
+      "music": {
+        "grid": {
+          "bpm": 120,
+          "offsetMs": 0,
+          "beatsPerBar": 4
+        },
+        "startOffsetMs": 1250,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "cue:raw",
+      "sceneStartMs": 14667,
+      "expect": {
+        "ok": true,
+        "projectMs": 49400,
+        "rounded": 49400,
+        "sceneLocalMs": 34733
+      }
+    },
+    {
+      "id": "g1-o1250-p12",
+      "music": {
+        "grid": {
+          "bpm": 120,
+          "offsetMs": 0,
+          "beatsPerBar": 4
+        },
+        "startOffsetMs": 1250,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "cue:nudged+40ms",
+      "sceneStartMs": 0,
+      "expect": {
+        "ok": true,
+        "projectMs": 7250,
+        "rounded": 7250,
+        "sceneLocalMs": 7250
+      }
+    },
+    {
+      "id": "g1-o1250-p13",
+      "music": {
+        "grid": {
+          "bpm": 120,
+          "offsetMs": 0,
+          "beatsPerBar": 4
+        },
+        "startOffsetMs": 1250,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "section:outro",
+      "sceneStartMs": 7333.5,
+      "expect": {
+        "ok": true,
+        "projectMs": 63250,
+        "rounded": 63250,
+        "sceneLocalMs": 55917
+      }
+    },
+    {
+      "id": "g1-o1250-p14",
+      "music": {
+        "grid": {
+          "bpm": 120,
+          "offsetMs": 0,
+          "beatsPerBar": 4
+        },
+        "startOffsetMs": 1250,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "section:outro-0.25ms",
+      "sceneStartMs": 14667,
+      "expect": {
+        "ok": true,
+        "projectMs": 63249.75,
+        "rounded": 63250,
+        "sceneLocalMs": 48583
+      }
+    },
+    {
+      "id": "g1-o1250-p15",
+      "music": {
+        "grid": {
+          "bpm": 120,
+          "offsetMs": 0,
+          "beatsPerBar": 4
+        },
+        "startOffsetMs": 1250,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:13.5",
+      "sceneStartMs": 0,
+      "expect": {
+        "ok": false,
+        "code": "range"
+      }
+    },
+    {
+      "id": "g1-o1250-p16",
+      "music": {
+        "grid": {
+          "bpm": 120,
+          "offsetMs": 0,
+          "beatsPerBar": 4
+        },
+        "startOffsetMs": 1250,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:13.0",
+      "sceneStartMs": 7333.5,
+      "expect": {
+        "ok": false,
+        "code": "range"
+      }
+    },
+    {
+      "id": "g1-o1250-p17",
+      "music": {
+        "grid": {
+          "bpm": 120,
+          "offsetMs": 0,
+          "beatsPerBar": 4
+        },
+        "startOffsetMs": 1250,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:13.1.5",
+      "sceneStartMs": 14667,
+      "expect": {
+        "ok": false,
+        "code": "range"
+      }
+    },
+    {
+      "id": "g1-o1250-p18",
+      "music": {
+        "grid": {
+          "bpm": 120,
+          "offsetMs": 0,
+          "beatsPerBar": 4
+        },
+        "startOffsetMs": 1250,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:100001",
+      "sceneStartMs": 0,
+      "expect": {
+        "ok": false,
+        "code": "range"
+      }
+    },
+    {
+      "id": "g1-o1250-p19",
+      "music": {
+        "grid": {
+          "bpm": 120,
+          "offsetMs": 0,
+          "beatsPerBar": 4
+        },
+        "startOffsetMs": 1250,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "beat:13.3",
+      "sceneStartMs": 7333.5,
+      "expect": {
+        "ok": false,
+        "code": "syntax"
+      }
+    },
+    {
+      "id": "g1-o1250-p20",
+      "music": {
+        "grid": {
+          "bpm": 120,
+          "offsetMs": 0,
+          "beatsPerBar": 4
+        },
+        "startOffsetMs": 1250,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:13+40",
+      "sceneStartMs": 14667,
+      "expect": {
+        "ok": false,
+        "code": "syntax"
+      }
+    },
+    {
+      "id": "g1-o1250-p21",
+      "music": {
+        "grid": {
+          "bpm": 120,
+          "offsetMs": 0,
+          "beatsPerBar": 4
+        },
+        "startOffsetMs": 1250,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "cue:missing",
+      "sceneStartMs": 0,
+      "expect": {
+        "ok": false,
+        "code": "unknown"
+      }
+    },
+    {
+      "id": "g1-o1250-p22",
+      "music": {
+        "grid": {
+          "bpm": 120,
+          "offsetMs": 0,
+          "beatsPerBar": 4
+        },
+        "startOffsetMs": 1250,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "cue:loop",
+      "sceneStartMs": 7333.5,
+      "expect": {
+        "ok": false,
+        "code": "nested"
+      }
+    },
+    {
+      "id": "g1-o1250-p23",
+      "music": {
+        "grid": {
+          "bpm": 120,
+          "offsetMs": 0,
+          "beatsPerBar": 4
+        },
+        "startOffsetMs": 1250,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "section:missing",
+      "sceneStartMs": 14667,
+      "expect": {
+        "ok": false,
+        "code": "unknown"
+      }
+    },
+    {
+      "id": "g2-o0-p0",
+      "music": {
+        "grid": {
+          "bpm": 96.25,
+          "offsetMs": -311.7,
+          "beatsPerBar": 3
+        },
+        "startOffsetMs": 0,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:1",
+      "sceneStartMs": 0,
+      "expect": {
+        "ok": true,
+        "projectMs": -311.7,
+        "rounded": -312,
+        "sceneLocalMs": -312
+      }
+    },
+    {
+      "id": "g2-o0-p1",
+      "music": {
+        "grid": {
+          "bpm": 96.25,
+          "offsetMs": -311.7,
+          "beatsPerBar": 3
+        },
+        "startOffsetMs": 0,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:13",
+      "sceneStartMs": 7333.5,
+      "expect": {
+        "ok": true,
+        "projectMs": 22129.85844155844,
+        "rounded": 22130,
+        "sceneLocalMs": 14796
+      }
+    },
+    {
+      "id": "g2-o0-p2",
+      "music": {
+        "grid": {
+          "bpm": 96.25,
+          "offsetMs": -311.7,
+          "beatsPerBar": 3
+        },
+        "startOffsetMs": 0,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:13.3",
+      "sceneStartMs": 14667,
+      "expect": {
+        "ok": true,
+        "projectMs": 23376.611688311685,
+        "rounded": 23377,
+        "sceneLocalMs": 8710
+      }
+    },
+    {
+      "id": "g2-o0-p3",
+      "music": {
+        "grid": {
+          "bpm": 96.25,
+          "offsetMs": -311.7,
+          "beatsPerBar": 3
+        },
+        "startOffsetMs": 0,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:13.3.2",
+      "sceneStartMs": 0,
+      "expect": {
+        "ok": true,
+        "projectMs": 23532.455844155844,
+        "rounded": 23532,
+        "sceneLocalMs": 23532
+      }
+    },
+    {
+      "id": "g2-o0-p4",
+      "music": {
+        "grid": {
+          "bpm": 96.25,
+          "offsetMs": -311.7,
+          "beatsPerBar": 3
+        },
+        "startOffsetMs": 0,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:12.3.4",
+      "sceneStartMs": 7333.5,
+      "expect": {
+        "ok": true,
+        "projectMs": 21974.014285714286,
+        "rounded": 21974,
+        "sceneLocalMs": 14641
+      }
+    },
+    {
+      "id": "g2-o0-p5",
+      "music": {
+        "grid": {
+          "bpm": 96.25,
+          "offsetMs": -311.7,
+          "beatsPerBar": 3
+        },
+        "startOffsetMs": 0,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:0.4",
+      "sceneStartMs": 14667,
+      "expect": {
+        "ok": false,
+        "code": "range"
+      }
+    },
+    {
+      "id": "g2-o0-p6",
+      "music": {
+        "grid": {
+          "bpm": 96.25,
+          "offsetMs": -311.7,
+          "beatsPerBar": 3
+        },
+        "startOffsetMs": 0,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:-1",
+      "sceneStartMs": 0,
+      "expect": {
+        "ok": true,
+        "projectMs": -4051.95974025974,
+        "rounded": -4052,
+        "sceneLocalMs": -4052
+      }
+    },
+    {
+      "id": "g2-o0-p7",
+      "music": {
+        "grid": {
+          "bpm": 96.25,
+          "offsetMs": -311.7,
+          "beatsPerBar": 3
+        },
+        "startOffsetMs": 0,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:29-83ms",
+      "sceneStartMs": 7333.5,
+      "expect": {
+        "ok": true,
+        "projectMs": 51968.93636363636,
+        "rounded": 51969,
+        "sceneLocalMs": 44635
+      }
+    },
+    {
+      "id": "g2-o0-p8",
+      "music": {
+        "grid": {
+          "bpm": 96.25,
+          "offsetMs": -311.7,
+          "beatsPerBar": 3
+        },
+        "startOffsetMs": 0,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:36+12.5ms",
+      "sceneStartMs": 14667,
+      "expect": {
+        "ok": true,
+        "projectMs": 65155.34545454545,
+        "rounded": 65155,
+        "sceneLocalMs": 50488
+      }
+    },
+    {
+      "id": "g2-o0-p9",
+      "music": {
+        "grid": {
+          "bpm": 96.25,
+          "offsetMs": -311.7,
+          "beatsPerBar": 3
+        },
+        "startOffsetMs": 0,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:007.2",
+      "sceneStartMs": 0,
+      "expect": {
+        "ok": true,
+        "projectMs": 11532.455844155842,
+        "rounded": 11532,
+        "sceneLocalMs": 11532
+      }
+    },
+    {
+      "id": "g2-o0-p10",
+      "music": {
+        "grid": {
+          "bpm": 96.25,
+          "offsetMs": -311.7,
+          "beatsPerBar": 3
+        },
+        "startOffsetMs": 0,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "cue:drop",
+      "sceneStartMs": 7333.5,
+      "expect": {
+        "ok": true,
+        "projectMs": 52051.93636363636,
+        "rounded": 52052,
+        "sceneLocalMs": 44718
+      }
+    },
+    {
+      "id": "g2-o0-p11",
+      "music": {
+        "grid": {
+          "bpm": 96.25,
+          "offsetMs": -311.7,
+          "beatsPerBar": 3
+        },
+        "startOffsetMs": 0,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "cue:raw",
+      "sceneStartMs": 14667,
+      "expect": {
+        "ok": true,
+        "projectMs": 49400,
+        "rounded": 49400,
+        "sceneLocalMs": 34733
+      }
+    },
+    {
+      "id": "g2-o0-p12",
+      "music": {
+        "grid": {
+          "bpm": 96.25,
+          "offsetMs": -311.7,
+          "beatsPerBar": 3
+        },
+        "startOffsetMs": 0,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "cue:nudged+40ms",
+      "sceneStartMs": 0,
+      "expect": {
+        "ok": true,
+        "projectMs": 7792.1961038961035,
+        "rounded": 7792,
+        "sceneLocalMs": 7792
+      }
+    },
+    {
+      "id": "g2-o0-p13",
+      "music": {
+        "grid": {
+          "bpm": 96.25,
+          "offsetMs": -311.7,
+          "beatsPerBar": 3
+        },
+        "startOffsetMs": 0,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "section:outro",
+      "sceneStartMs": 7333.5,
+      "expect": {
+        "ok": true,
+        "projectMs": 60155.83246753247,
+        "rounded": 60156,
+        "sceneLocalMs": 52822
+      }
+    },
+    {
+      "id": "g2-o0-p14",
+      "music": {
+        "grid": {
+          "bpm": 96.25,
+          "offsetMs": -311.7,
+          "beatsPerBar": 3
+        },
+        "startOffsetMs": 0,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "section:outro-0.25ms",
+      "sceneStartMs": 14667,
+      "expect": {
+        "ok": true,
+        "projectMs": 60155.58246753247,
+        "rounded": 60156,
+        "sceneLocalMs": 45489
+      }
+    },
+    {
+      "id": "g2-o0-p15",
+      "music": {
+        "grid": {
+          "bpm": 96.25,
+          "offsetMs": -311.7,
+          "beatsPerBar": 3
+        },
+        "startOffsetMs": 0,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:13.5",
+      "sceneStartMs": 0,
+      "expect": {
+        "ok": false,
+        "code": "range"
+      }
+    },
+    {
+      "id": "g2-o0-p16",
+      "music": {
+        "grid": {
+          "bpm": 96.25,
+          "offsetMs": -311.7,
+          "beatsPerBar": 3
+        },
+        "startOffsetMs": 0,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:13.0",
+      "sceneStartMs": 7333.5,
+      "expect": {
+        "ok": false,
+        "code": "range"
+      }
+    },
+    {
+      "id": "g2-o0-p17",
+      "music": {
+        "grid": {
+          "bpm": 96.25,
+          "offsetMs": -311.7,
+          "beatsPerBar": 3
+        },
+        "startOffsetMs": 0,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:13.1.5",
+      "sceneStartMs": 14667,
+      "expect": {
+        "ok": false,
+        "code": "range"
+      }
+    },
+    {
+      "id": "g2-o0-p18",
+      "music": {
+        "grid": {
+          "bpm": 96.25,
+          "offsetMs": -311.7,
+          "beatsPerBar": 3
+        },
+        "startOffsetMs": 0,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:100001",
+      "sceneStartMs": 0,
+      "expect": {
+        "ok": false,
+        "code": "range"
+      }
+    },
+    {
+      "id": "g2-o0-p19",
+      "music": {
+        "grid": {
+          "bpm": 96.25,
+          "offsetMs": -311.7,
+          "beatsPerBar": 3
+        },
+        "startOffsetMs": 0,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "beat:13.3",
+      "sceneStartMs": 7333.5,
+      "expect": {
+        "ok": false,
+        "code": "syntax"
+      }
+    },
+    {
+      "id": "g2-o0-p20",
+      "music": {
+        "grid": {
+          "bpm": 96.25,
+          "offsetMs": -311.7,
+          "beatsPerBar": 3
+        },
+        "startOffsetMs": 0,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:13+40",
+      "sceneStartMs": 14667,
+      "expect": {
+        "ok": false,
+        "code": "syntax"
+      }
+    },
+    {
+      "id": "g2-o0-p21",
+      "music": {
+        "grid": {
+          "bpm": 96.25,
+          "offsetMs": -311.7,
+          "beatsPerBar": 3
+        },
+        "startOffsetMs": 0,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "cue:missing",
+      "sceneStartMs": 0,
+      "expect": {
+        "ok": false,
+        "code": "unknown"
+      }
+    },
+    {
+      "id": "g2-o0-p22",
+      "music": {
+        "grid": {
+          "bpm": 96.25,
+          "offsetMs": -311.7,
+          "beatsPerBar": 3
+        },
+        "startOffsetMs": 0,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "cue:loop",
+      "sceneStartMs": 7333.5,
+      "expect": {
+        "ok": false,
+        "code": "nested"
+      }
+    },
+    {
+      "id": "g2-o0-p23",
+      "music": {
+        "grid": {
+          "bpm": 96.25,
+          "offsetMs": -311.7,
+          "beatsPerBar": 3
+        },
+        "startOffsetMs": 0,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "section:missing",
+      "sceneStartMs": 14667,
+      "expect": {
+        "ok": false,
+        "code": "unknown"
+      }
+    },
+    {
+      "id": "g2-o1250-p0",
+      "music": {
+        "grid": {
+          "bpm": 96.25,
+          "offsetMs": -311.7,
+          "beatsPerBar": 3
+        },
+        "startOffsetMs": 1250,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:1",
+      "sceneStartMs": 0,
+      "expect": {
+        "ok": true,
+        "projectMs": -1561.7,
+        "rounded": -1562,
+        "sceneLocalMs": -1562
+      }
+    },
+    {
+      "id": "g2-o1250-p1",
+      "music": {
+        "grid": {
+          "bpm": 96.25,
+          "offsetMs": -311.7,
+          "beatsPerBar": 3
+        },
+        "startOffsetMs": 1250,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:13",
+      "sceneStartMs": 7333.5,
+      "expect": {
+        "ok": true,
+        "projectMs": 20879.85844155844,
+        "rounded": 20880,
+        "sceneLocalMs": 13546
+      }
+    },
+    {
+      "id": "g2-o1250-p2",
+      "music": {
+        "grid": {
+          "bpm": 96.25,
+          "offsetMs": -311.7,
+          "beatsPerBar": 3
+        },
+        "startOffsetMs": 1250,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:13.3",
+      "sceneStartMs": 14667,
+      "expect": {
+        "ok": true,
+        "projectMs": 22126.611688311685,
+        "rounded": 22127,
+        "sceneLocalMs": 7460
+      }
+    },
+    {
+      "id": "g2-o1250-p3",
+      "music": {
+        "grid": {
+          "bpm": 96.25,
+          "offsetMs": -311.7,
+          "beatsPerBar": 3
+        },
+        "startOffsetMs": 1250,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:13.3.2",
+      "sceneStartMs": 0,
+      "expect": {
+        "ok": true,
+        "projectMs": 22282.455844155844,
+        "rounded": 22282,
+        "sceneLocalMs": 22282
+      }
+    },
+    {
+      "id": "g2-o1250-p4",
+      "music": {
+        "grid": {
+          "bpm": 96.25,
+          "offsetMs": -311.7,
+          "beatsPerBar": 3
+        },
+        "startOffsetMs": 1250,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:12.3.4",
+      "sceneStartMs": 7333.5,
+      "expect": {
+        "ok": true,
+        "projectMs": 20724.014285714286,
+        "rounded": 20724,
+        "sceneLocalMs": 13391
+      }
+    },
+    {
+      "id": "g2-o1250-p5",
+      "music": {
+        "grid": {
+          "bpm": 96.25,
+          "offsetMs": -311.7,
+          "beatsPerBar": 3
+        },
+        "startOffsetMs": 1250,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:0.4",
+      "sceneStartMs": 14667,
+      "expect": {
+        "ok": false,
+        "code": "range"
+      }
+    },
+    {
+      "id": "g2-o1250-p6",
+      "music": {
+        "grid": {
+          "bpm": 96.25,
+          "offsetMs": -311.7,
+          "beatsPerBar": 3
+        },
+        "startOffsetMs": 1250,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:-1",
+      "sceneStartMs": 0,
+      "expect": {
+        "ok": true,
+        "projectMs": -5301.95974025974,
+        "rounded": -5302,
+        "sceneLocalMs": -5302
+      }
+    },
+    {
+      "id": "g2-o1250-p7",
+      "music": {
+        "grid": {
+          "bpm": 96.25,
+          "offsetMs": -311.7,
+          "beatsPerBar": 3
+        },
+        "startOffsetMs": 1250,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:29-83ms",
+      "sceneStartMs": 7333.5,
+      "expect": {
+        "ok": true,
+        "projectMs": 50718.93636363636,
+        "rounded": 50719,
+        "sceneLocalMs": 43385
+      }
+    },
+    {
+      "id": "g2-o1250-p8",
+      "music": {
+        "grid": {
+          "bpm": 96.25,
+          "offsetMs": -311.7,
+          "beatsPerBar": 3
+        },
+        "startOffsetMs": 1250,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:36+12.5ms",
+      "sceneStartMs": 14667,
+      "expect": {
+        "ok": true,
+        "projectMs": 63905.34545454545,
+        "rounded": 63905,
+        "sceneLocalMs": 49238
+      }
+    },
+    {
+      "id": "g2-o1250-p9",
+      "music": {
+        "grid": {
+          "bpm": 96.25,
+          "offsetMs": -311.7,
+          "beatsPerBar": 3
+        },
+        "startOffsetMs": 1250,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:007.2",
+      "sceneStartMs": 0,
+      "expect": {
+        "ok": true,
+        "projectMs": 10282.455844155842,
+        "rounded": 10282,
+        "sceneLocalMs": 10282
+      }
+    },
+    {
+      "id": "g2-o1250-p10",
+      "music": {
+        "grid": {
+          "bpm": 96.25,
+          "offsetMs": -311.7,
+          "beatsPerBar": 3
+        },
+        "startOffsetMs": 1250,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "cue:drop",
+      "sceneStartMs": 7333.5,
+      "expect": {
+        "ok": true,
+        "projectMs": 50801.93636363636,
+        "rounded": 50802,
+        "sceneLocalMs": 43468
+      }
+    },
+    {
+      "id": "g2-o1250-p11",
+      "music": {
+        "grid": {
+          "bpm": 96.25,
+          "offsetMs": -311.7,
+          "beatsPerBar": 3
+        },
+        "startOffsetMs": 1250,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "cue:raw",
+      "sceneStartMs": 14667,
+      "expect": {
+        "ok": true,
+        "projectMs": 49400,
+        "rounded": 49400,
+        "sceneLocalMs": 34733
+      }
+    },
+    {
+      "id": "g2-o1250-p12",
+      "music": {
+        "grid": {
+          "bpm": 96.25,
+          "offsetMs": -311.7,
+          "beatsPerBar": 3
+        },
+        "startOffsetMs": 1250,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "cue:nudged+40ms",
+      "sceneStartMs": 0,
+      "expect": {
+        "ok": true,
+        "projectMs": 6542.1961038961035,
+        "rounded": 6542,
+        "sceneLocalMs": 6542
+      }
+    },
+    {
+      "id": "g2-o1250-p13",
+      "music": {
+        "grid": {
+          "bpm": 96.25,
+          "offsetMs": -311.7,
+          "beatsPerBar": 3
+        },
+        "startOffsetMs": 1250,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "section:outro",
+      "sceneStartMs": 7333.5,
+      "expect": {
+        "ok": true,
+        "projectMs": 58905.83246753247,
+        "rounded": 58906,
+        "sceneLocalMs": 51572
+      }
+    },
+    {
+      "id": "g2-o1250-p14",
+      "music": {
+        "grid": {
+          "bpm": 96.25,
+          "offsetMs": -311.7,
+          "beatsPerBar": 3
+        },
+        "startOffsetMs": 1250,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "section:outro-0.25ms",
+      "sceneStartMs": 14667,
+      "expect": {
+        "ok": true,
+        "projectMs": 58905.58246753247,
+        "rounded": 58906,
+        "sceneLocalMs": 44239
+      }
+    },
+    {
+      "id": "g2-o1250-p15",
+      "music": {
+        "grid": {
+          "bpm": 96.25,
+          "offsetMs": -311.7,
+          "beatsPerBar": 3
+        },
+        "startOffsetMs": 1250,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:13.5",
+      "sceneStartMs": 0,
+      "expect": {
+        "ok": false,
+        "code": "range"
+      }
+    },
+    {
+      "id": "g2-o1250-p16",
+      "music": {
+        "grid": {
+          "bpm": 96.25,
+          "offsetMs": -311.7,
+          "beatsPerBar": 3
+        },
+        "startOffsetMs": 1250,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:13.0",
+      "sceneStartMs": 7333.5,
+      "expect": {
+        "ok": false,
+        "code": "range"
+      }
+    },
+    {
+      "id": "g2-o1250-p17",
+      "music": {
+        "grid": {
+          "bpm": 96.25,
+          "offsetMs": -311.7,
+          "beatsPerBar": 3
+        },
+        "startOffsetMs": 1250,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:13.1.5",
+      "sceneStartMs": 14667,
+      "expect": {
+        "ok": false,
+        "code": "range"
+      }
+    },
+    {
+      "id": "g2-o1250-p18",
+      "music": {
+        "grid": {
+          "bpm": 96.25,
+          "offsetMs": -311.7,
+          "beatsPerBar": 3
+        },
+        "startOffsetMs": 1250,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:100001",
+      "sceneStartMs": 0,
+      "expect": {
+        "ok": false,
+        "code": "range"
+      }
+    },
+    {
+      "id": "g2-o1250-p19",
+      "music": {
+        "grid": {
+          "bpm": 96.25,
+          "offsetMs": -311.7,
+          "beatsPerBar": 3
+        },
+        "startOffsetMs": 1250,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "beat:13.3",
+      "sceneStartMs": 7333.5,
+      "expect": {
+        "ok": false,
+        "code": "syntax"
+      }
+    },
+    {
+      "id": "g2-o1250-p20",
+      "music": {
+        "grid": {
+          "bpm": 96.25,
+          "offsetMs": -311.7,
+          "beatsPerBar": 3
+        },
+        "startOffsetMs": 1250,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:13+40",
+      "sceneStartMs": 14667,
+      "expect": {
+        "ok": false,
+        "code": "syntax"
+      }
+    },
+    {
+      "id": "g2-o1250-p21",
+      "music": {
+        "grid": {
+          "bpm": 96.25,
+          "offsetMs": -311.7,
+          "beatsPerBar": 3
+        },
+        "startOffsetMs": 1250,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "cue:missing",
+      "sceneStartMs": 0,
+      "expect": {
+        "ok": false,
+        "code": "unknown"
+      }
+    },
+    {
+      "id": "g2-o1250-p22",
+      "music": {
+        "grid": {
+          "bpm": 96.25,
+          "offsetMs": -311.7,
+          "beatsPerBar": 3
+        },
+        "startOffsetMs": 1250,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "cue:loop",
+      "sceneStartMs": 7333.5,
+      "expect": {
+        "ok": false,
+        "code": "nested"
+      }
+    },
+    {
+      "id": "g2-o1250-p23",
+      "music": {
+        "grid": {
+          "bpm": 96.25,
+          "offsetMs": -311.7,
+          "beatsPerBar": 3
+        },
+        "startOffsetMs": 1250,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "section:missing",
+      "sceneStartMs": 14667,
+      "expect": {
+        "ok": false,
+        "code": "unknown"
+      }
+    },
+    {
+      "id": "g3-o0-p0",
+      "music": {
+        "grid": {
+          "bpm": 174.000001,
+          "offsetMs": 12.25,
+          "beatsPerBar": 7
+        },
+        "startOffsetMs": 0,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:1",
+      "sceneStartMs": 0,
+      "expect": {
+        "ok": true,
+        "projectMs": 12.25,
+        "rounded": 12,
+        "sceneLocalMs": 12
+      }
+    },
+    {
+      "id": "g3-o0-p1",
+      "music": {
+        "grid": {
+          "bpm": 174.000001,
+          "offsetMs": 12.25,
+          "beatsPerBar": 7
+        },
+        "startOffsetMs": 0,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:13",
+      "sceneStartMs": 7333.5,
+      "expect": {
+        "ok": true,
+        "projectMs": 28977.767074910822,
+        "rounded": 28978,
+        "sceneLocalMs": 21644
+      }
+    },
+    {
+      "id": "g3-o0-p2",
+      "music": {
+        "grid": {
+          "bpm": 174.000001,
+          "offsetMs": 12.25,
+          "beatsPerBar": 7
+        },
+        "startOffsetMs": 0,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:13.3",
+      "sceneStartMs": 14667,
+      "expect": {
+        "ok": true,
+        "projectMs": 29667.422243361078,
+        "rounded": 29667,
+        "sceneLocalMs": 15000
+      }
+    },
+    {
+      "id": "g3-o0-p3",
+      "music": {
+        "grid": {
+          "bpm": 174.000001,
+          "offsetMs": 12.25,
+          "beatsPerBar": 7
+        },
+        "startOffsetMs": 0,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:13.3.2",
+      "sceneStartMs": 0,
+      "expect": {
+        "ok": true,
+        "projectMs": 29753.62913941736,
+        "rounded": 29754,
+        "sceneLocalMs": 29754
+      }
+    },
+    {
+      "id": "g3-o0-p4",
+      "music": {
+        "grid": {
+          "bpm": 174.000001,
+          "offsetMs": 12.25,
+          "beatsPerBar": 7
+        },
+        "startOffsetMs": 0,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:12.3.4",
+      "sceneStartMs": 7333.5,
+      "expect": {
+        "ok": true,
+        "projectMs": 27512.249841954024,
+        "rounded": 27512,
+        "sceneLocalMs": 20179
+      }
+    },
+    {
+      "id": "g3-o0-p5",
+      "music": {
+        "grid": {
+          "bpm": 174.000001,
+          "offsetMs": 12.25,
+          "beatsPerBar": 7
+        },
+        "startOffsetMs": 0,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:0.4",
+      "sceneStartMs": 14667,
+      "expect": {
+        "ok": true,
+        "projectMs": -1367.0603369005153,
+        "rounded": -1367,
+        "sceneLocalMs": -16034
+      }
+    },
+    {
+      "id": "g3-o0-p6",
+      "music": {
+        "grid": {
+          "bpm": 174.000001,
+          "offsetMs": 12.25,
+          "beatsPerBar": 7
+        },
+        "startOffsetMs": 0,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:-1",
+      "sceneStartMs": 0,
+      "expect": {
+        "ok": true,
+        "projectMs": -4815.336179151804,
+        "rounded": -4815,
+        "sceneLocalMs": -4815
+      }
+    },
+    {
+      "id": "g3-o0-p7",
+      "music": {
+        "grid": {
+          "bpm": 174.000001,
+          "offsetMs": 12.25,
+          "beatsPerBar": 7
+        },
+        "startOffsetMs": 0,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:29-83ms",
+      "sceneStartMs": 7333.5,
+      "expect": {
+        "ok": true,
+        "projectMs": 67515.45650812525,
+        "rounded": 67515,
+        "sceneLocalMs": 60182
+      }
+    },
+    {
+      "id": "g3-o0-p8",
+      "music": {
+        "grid": {
+          "bpm": 174.000001,
+          "offsetMs": 12.25,
+          "beatsPerBar": 7
+        },
+        "startOffsetMs": 0,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:36+12.5ms",
+      "sceneStartMs": 14667,
+      "expect": {
+        "ok": true,
+        "projectMs": 84507.50813515656,
+        "rounded": 84508,
+        "sceneLocalMs": 69841
+      }
+    },
+    {
+      "id": "g3-o0-p9",
+      "music": {
+        "grid": {
+          "bpm": 174.000001,
+          "offsetMs": 12.25,
+          "beatsPerBar": 7
+        },
+        "startOffsetMs": 0,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:007.2",
+      "sceneStartMs": 0,
+      "expect": {
+        "ok": true,
+        "projectMs": 14839.836121680539,
+        "rounded": 14840,
+        "sceneLocalMs": 14840
+      }
+    },
+    {
+      "id": "g3-o0-p10",
+      "music": {
+        "grid": {
+          "bpm": 174.000001,
+          "offsetMs": 12.25,
+          "beatsPerBar": 7
+        },
+        "startOffsetMs": 0,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "cue:drop",
+      "sceneStartMs": 7333.5,
+      "expect": {
+        "ok": true,
+        "projectMs": 67598.45650812525,
+        "rounded": 67598,
+        "sceneLocalMs": 60265
+      }
+    },
+    {
+      "id": "g3-o0-p11",
+      "music": {
+        "grid": {
+          "bpm": 174.000001,
+          "offsetMs": 12.25,
+          "beatsPerBar": 7
+        },
+        "startOffsetMs": 0,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "cue:raw",
+      "sceneStartMs": 14667,
+      "expect": {
+        "ok": true,
+        "projectMs": 49400,
+        "rounded": 49400,
+        "sceneLocalMs": 34733
+      }
+    },
+    {
+      "id": "g3-o0-p12",
+      "music": {
+        "grid": {
+          "bpm": 174.000001,
+          "offsetMs": 12.25,
+          "beatsPerBar": 7
+        },
+        "startOffsetMs": 0,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "cue:nudged+40ms",
+      "sceneStartMs": 0,
+      "expect": {
+        "ok": true,
+        "projectMs": 10012.249942528735,
+        "rounded": 10012,
+        "sceneLocalMs": 10012
+      }
+    },
+    {
+      "id": "g3-o0-p13",
+      "music": {
+        "grid": {
+          "bpm": 174.000001,
+          "offsetMs": 12.25,
+          "beatsPerBar": 7
+        },
+        "startOffsetMs": 0,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "section:outro",
+      "sceneStartMs": 7333.5,
+      "expect": {
+        "ok": true,
+        "projectMs": 77598.45645065399,
+        "rounded": 77598,
+        "sceneLocalMs": 70265
+      }
+    },
+    {
+      "id": "g3-o0-p14",
+      "music": {
+        "grid": {
+          "bpm": 174.000001,
+          "offsetMs": 12.25,
+          "beatsPerBar": 7
+        },
+        "startOffsetMs": 0,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "section:outro-0.25ms",
+      "sceneStartMs": 14667,
+      "expect": {
+        "ok": true,
+        "projectMs": 77598.20645065399,
+        "rounded": 77598,
+        "sceneLocalMs": 62931
+      }
+    },
+    {
+      "id": "g3-o0-p15",
+      "music": {
+        "grid": {
+          "bpm": 174.000001,
+          "offsetMs": 12.25,
+          "beatsPerBar": 7
+        },
+        "startOffsetMs": 0,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:13.5",
+      "sceneStartMs": 0,
+      "expect": {
+        "ok": true,
+        "projectMs": 30357.077411811337,
+        "rounded": 30357,
+        "sceneLocalMs": 30357
+      }
+    },
+    {
+      "id": "g3-o0-p16",
+      "music": {
+        "grid": {
+          "bpm": 174.000001,
+          "offsetMs": 12.25,
+          "beatsPerBar": 7
+        },
+        "startOffsetMs": 0,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:13.0",
+      "sceneStartMs": 7333.5,
+      "expect": {
+        "ok": false,
+        "code": "range"
+      }
+    },
+    {
+      "id": "g3-o0-p17",
+      "music": {
+        "grid": {
+          "bpm": 174.000001,
+          "offsetMs": 12.25,
+          "beatsPerBar": 7
+        },
+        "startOffsetMs": 0,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:13.1.5",
+      "sceneStartMs": 14667,
+      "expect": {
+        "ok": false,
+        "code": "range"
+      }
+    },
+    {
+      "id": "g3-o0-p18",
+      "music": {
+        "grid": {
+          "bpm": 174.000001,
+          "offsetMs": 12.25,
+          "beatsPerBar": 7
+        },
+        "startOffsetMs": 0,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:100001",
+      "sceneStartMs": 0,
+      "expect": {
+        "ok": false,
+        "code": "range"
+      }
+    },
+    {
+      "id": "g3-o0-p19",
+      "music": {
+        "grid": {
+          "bpm": 174.000001,
+          "offsetMs": 12.25,
+          "beatsPerBar": 7
+        },
+        "startOffsetMs": 0,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "beat:13.3",
+      "sceneStartMs": 7333.5,
+      "expect": {
+        "ok": false,
+        "code": "syntax"
+      }
+    },
+    {
+      "id": "g3-o0-p20",
+      "music": {
+        "grid": {
+          "bpm": 174.000001,
+          "offsetMs": 12.25,
+          "beatsPerBar": 7
+        },
+        "startOffsetMs": 0,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:13+40",
+      "sceneStartMs": 14667,
+      "expect": {
+        "ok": false,
+        "code": "syntax"
+      }
+    },
+    {
+      "id": "g3-o0-p21",
+      "music": {
+        "grid": {
+          "bpm": 174.000001,
+          "offsetMs": 12.25,
+          "beatsPerBar": 7
+        },
+        "startOffsetMs": 0,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "cue:missing",
+      "sceneStartMs": 0,
+      "expect": {
+        "ok": false,
+        "code": "unknown"
+      }
+    },
+    {
+      "id": "g3-o0-p22",
+      "music": {
+        "grid": {
+          "bpm": 174.000001,
+          "offsetMs": 12.25,
+          "beatsPerBar": 7
+        },
+        "startOffsetMs": 0,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "cue:loop",
+      "sceneStartMs": 7333.5,
+      "expect": {
+        "ok": false,
+        "code": "nested"
+      }
+    },
+    {
+      "id": "g3-o0-p23",
+      "music": {
+        "grid": {
+          "bpm": 174.000001,
+          "offsetMs": 12.25,
+          "beatsPerBar": 7
+        },
+        "startOffsetMs": 0,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "section:missing",
+      "sceneStartMs": 14667,
+      "expect": {
+        "ok": false,
+        "code": "unknown"
+      }
+    },
+    {
+      "id": "g3-o1250-p0",
+      "music": {
+        "grid": {
+          "bpm": 174.000001,
+          "offsetMs": 12.25,
+          "beatsPerBar": 7
+        },
+        "startOffsetMs": 1250,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:1",
+      "sceneStartMs": 0,
+      "expect": {
+        "ok": true,
+        "projectMs": -1237.75,
+        "rounded": -1238,
+        "sceneLocalMs": -1238
+      }
+    },
+    {
+      "id": "g3-o1250-p1",
+      "music": {
+        "grid": {
+          "bpm": 174.000001,
+          "offsetMs": 12.25,
+          "beatsPerBar": 7
+        },
+        "startOffsetMs": 1250,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:13",
+      "sceneStartMs": 7333.5,
+      "expect": {
+        "ok": true,
+        "projectMs": 27727.767074910822,
+        "rounded": 27728,
+        "sceneLocalMs": 20394
+      }
+    },
+    {
+      "id": "g3-o1250-p2",
+      "music": {
+        "grid": {
+          "bpm": 174.000001,
+          "offsetMs": 12.25,
+          "beatsPerBar": 7
+        },
+        "startOffsetMs": 1250,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:13.3",
+      "sceneStartMs": 14667,
+      "expect": {
+        "ok": true,
+        "projectMs": 28417.422243361078,
+        "rounded": 28417,
+        "sceneLocalMs": 13750
+      }
+    },
+    {
+      "id": "g3-o1250-p3",
+      "music": {
+        "grid": {
+          "bpm": 174.000001,
+          "offsetMs": 12.25,
+          "beatsPerBar": 7
+        },
+        "startOffsetMs": 1250,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:13.3.2",
+      "sceneStartMs": 0,
+      "expect": {
+        "ok": true,
+        "projectMs": 28503.62913941736,
+        "rounded": 28504,
+        "sceneLocalMs": 28504
+      }
+    },
+    {
+      "id": "g3-o1250-p4",
+      "music": {
+        "grid": {
+          "bpm": 174.000001,
+          "offsetMs": 12.25,
+          "beatsPerBar": 7
+        },
+        "startOffsetMs": 1250,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:12.3.4",
+      "sceneStartMs": 7333.5,
+      "expect": {
+        "ok": true,
+        "projectMs": 26262.249841954024,
+        "rounded": 26262,
+        "sceneLocalMs": 18929
+      }
+    },
+    {
+      "id": "g3-o1250-p5",
+      "music": {
+        "grid": {
+          "bpm": 174.000001,
+          "offsetMs": 12.25,
+          "beatsPerBar": 7
+        },
+        "startOffsetMs": 1250,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:0.4",
+      "sceneStartMs": 14667,
+      "expect": {
+        "ok": true,
+        "projectMs": -2617.0603369005153,
+        "rounded": -2617,
+        "sceneLocalMs": -17284
+      }
+    },
+    {
+      "id": "g3-o1250-p6",
+      "music": {
+        "grid": {
+          "bpm": 174.000001,
+          "offsetMs": 12.25,
+          "beatsPerBar": 7
+        },
+        "startOffsetMs": 1250,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:-1",
+      "sceneStartMs": 0,
+      "expect": {
+        "ok": true,
+        "projectMs": -6065.336179151804,
+        "rounded": -6065,
+        "sceneLocalMs": -6065
+      }
+    },
+    {
+      "id": "g3-o1250-p7",
+      "music": {
+        "grid": {
+          "bpm": 174.000001,
+          "offsetMs": 12.25,
+          "beatsPerBar": 7
+        },
+        "startOffsetMs": 1250,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:29-83ms",
+      "sceneStartMs": 7333.5,
+      "expect": {
+        "ok": true,
+        "projectMs": 66265.45650812525,
+        "rounded": 66265,
+        "sceneLocalMs": 58932
+      }
+    },
+    {
+      "id": "g3-o1250-p8",
+      "music": {
+        "grid": {
+          "bpm": 174.000001,
+          "offsetMs": 12.25,
+          "beatsPerBar": 7
+        },
+        "startOffsetMs": 1250,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:36+12.5ms",
+      "sceneStartMs": 14667,
+      "expect": {
+        "ok": true,
+        "projectMs": 83257.50813515656,
+        "rounded": 83258,
+        "sceneLocalMs": 68591
+      }
+    },
+    {
+      "id": "g3-o1250-p9",
+      "music": {
+        "grid": {
+          "bpm": 174.000001,
+          "offsetMs": 12.25,
+          "beatsPerBar": 7
+        },
+        "startOffsetMs": 1250,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:007.2",
+      "sceneStartMs": 0,
+      "expect": {
+        "ok": true,
+        "projectMs": 13589.836121680539,
+        "rounded": 13590,
+        "sceneLocalMs": 13590
+      }
+    },
+    {
+      "id": "g3-o1250-p10",
+      "music": {
+        "grid": {
+          "bpm": 174.000001,
+          "offsetMs": 12.25,
+          "beatsPerBar": 7
+        },
+        "startOffsetMs": 1250,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "cue:drop",
+      "sceneStartMs": 7333.5,
+      "expect": {
+        "ok": true,
+        "projectMs": 66348.45650812525,
+        "rounded": 66348,
+        "sceneLocalMs": 59015
+      }
+    },
+    {
+      "id": "g3-o1250-p11",
+      "music": {
+        "grid": {
+          "bpm": 174.000001,
+          "offsetMs": 12.25,
+          "beatsPerBar": 7
+        },
+        "startOffsetMs": 1250,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "cue:raw",
+      "sceneStartMs": 14667,
+      "expect": {
+        "ok": true,
+        "projectMs": 49400,
+        "rounded": 49400,
+        "sceneLocalMs": 34733
+      }
+    },
+    {
+      "id": "g3-o1250-p12",
+      "music": {
+        "grid": {
+          "bpm": 174.000001,
+          "offsetMs": 12.25,
+          "beatsPerBar": 7
+        },
+        "startOffsetMs": 1250,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "cue:nudged+40ms",
+      "sceneStartMs": 0,
+      "expect": {
+        "ok": true,
+        "projectMs": 8762.249942528735,
+        "rounded": 8762,
+        "sceneLocalMs": 8762
+      }
+    },
+    {
+      "id": "g3-o1250-p13",
+      "music": {
+        "grid": {
+          "bpm": 174.000001,
+          "offsetMs": 12.25,
+          "beatsPerBar": 7
+        },
+        "startOffsetMs": 1250,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "section:outro",
+      "sceneStartMs": 7333.5,
+      "expect": {
+        "ok": true,
+        "projectMs": 76348.45645065399,
+        "rounded": 76348,
+        "sceneLocalMs": 69015
+      }
+    },
+    {
+      "id": "g3-o1250-p14",
+      "music": {
+        "grid": {
+          "bpm": 174.000001,
+          "offsetMs": 12.25,
+          "beatsPerBar": 7
+        },
+        "startOffsetMs": 1250,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "section:outro-0.25ms",
+      "sceneStartMs": 14667,
+      "expect": {
+        "ok": true,
+        "projectMs": 76348.20645065399,
+        "rounded": 76348,
+        "sceneLocalMs": 61681
+      }
+    },
+    {
+      "id": "g3-o1250-p15",
+      "music": {
+        "grid": {
+          "bpm": 174.000001,
+          "offsetMs": 12.25,
+          "beatsPerBar": 7
+        },
+        "startOffsetMs": 1250,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:13.5",
+      "sceneStartMs": 0,
+      "expect": {
+        "ok": true,
+        "projectMs": 29107.077411811337,
+        "rounded": 29107,
+        "sceneLocalMs": 29107
+      }
+    },
+    {
+      "id": "g3-o1250-p16",
+      "music": {
+        "grid": {
+          "bpm": 174.000001,
+          "offsetMs": 12.25,
+          "beatsPerBar": 7
+        },
+        "startOffsetMs": 1250,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:13.0",
+      "sceneStartMs": 7333.5,
+      "expect": {
+        "ok": false,
+        "code": "range"
+      }
+    },
+    {
+      "id": "g3-o1250-p17",
+      "music": {
+        "grid": {
+          "bpm": 174.000001,
+          "offsetMs": 12.25,
+          "beatsPerBar": 7
+        },
+        "startOffsetMs": 1250,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:13.1.5",
+      "sceneStartMs": 14667,
+      "expect": {
+        "ok": false,
+        "code": "range"
+      }
+    },
+    {
+      "id": "g3-o1250-p18",
+      "music": {
+        "grid": {
+          "bpm": 174.000001,
+          "offsetMs": 12.25,
+          "beatsPerBar": 7
+        },
+        "startOffsetMs": 1250,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:100001",
+      "sceneStartMs": 0,
+      "expect": {
+        "ok": false,
+        "code": "range"
+      }
+    },
+    {
+      "id": "g3-o1250-p19",
+      "music": {
+        "grid": {
+          "bpm": 174.000001,
+          "offsetMs": 12.25,
+          "beatsPerBar": 7
+        },
+        "startOffsetMs": 1250,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "beat:13.3",
+      "sceneStartMs": 7333.5,
+      "expect": {
+        "ok": false,
+        "code": "syntax"
+      }
+    },
+    {
+      "id": "g3-o1250-p20",
+      "music": {
+        "grid": {
+          "bpm": 174.000001,
+          "offsetMs": 12.25,
+          "beatsPerBar": 7
+        },
+        "startOffsetMs": 1250,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "bar:13+40",
+      "sceneStartMs": 14667,
+      "expect": {
+        "ok": false,
+        "code": "syntax"
+      }
+    },
+    {
+      "id": "g3-o1250-p21",
+      "music": {
+        "grid": {
+          "bpm": 174.000001,
+          "offsetMs": 12.25,
+          "beatsPerBar": 7
+        },
+        "startOffsetMs": 1250,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "cue:missing",
+      "sceneStartMs": 0,
+      "expect": {
+        "ok": false,
+        "code": "unknown"
+      }
+    },
+    {
+      "id": "g3-o1250-p22",
+      "music": {
+        "grid": {
+          "bpm": 174.000001,
+          "offsetMs": 12.25,
+          "beatsPerBar": 7
+        },
+        "startOffsetMs": 1250,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "cue:loop",
+      "sceneStartMs": 7333.5,
+      "expect": {
+        "ok": false,
+        "code": "nested"
+      }
+    },
+    {
+      "id": "g3-o1250-p23",
+      "music": {
+        "grid": {
+          "bpm": 174.000001,
+          "offsetMs": 12.25,
+          "beatsPerBar": 7
+        },
+        "startOffsetMs": 1250,
+        "cues": {
+          "drop": "bar:29",
+          "raw": 49400,
+          "nudged": "bar:5.2-40ms",
+          "loop": "cue:drop"
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:33.2",
+            "to": "bar:41",
+            "label": "outro"
+          }
+        }
+      },
+      "position": "section:missing",
+      "sceneStartMs": 14667,
+      "expect": {
+        "ok": false,
+        "code": "unknown"
+      }
+    },
+    {
+      "id": "nogrid-bar:1",
+      "music": {
+        "startOffsetMs": 0,
+        "cues": {
+          "raw": 2500.5,
+          "bar": "bar:3"
+        },
+        "sections": {}
+      },
+      "position": "bar:1",
+      "sceneStartMs": 1000,
+      "expect": {
+        "ok": false,
+        "code": "no-grid"
+      }
+    },
+    {
+      "id": "nogrid-cue:raw",
+      "music": {
+        "startOffsetMs": 0,
+        "cues": {
+          "raw": 2500.5,
+          "bar": "bar:3"
+        },
+        "sections": {}
+      },
+      "position": "cue:raw",
+      "sceneStartMs": 1000,
+      "expect": {
+        "ok": true,
+        "projectMs": 2500.5,
+        "rounded": 2501,
+        "sceneLocalMs": 1501
+      }
+    },
+    {
+      "id": "nogrid-cue:bar",
+      "music": {
+        "startOffsetMs": 0,
+        "cues": {
+          "raw": 2500.5,
+          "bar": "bar:3"
+        },
+        "sections": {}
+      },
+      "position": "cue:bar",
+      "sceneStartMs": 1000,
+      "expect": {
+        "ok": false,
+        "code": "no-grid"
+      }
+    }
+  ],
+  "rounding": [
+    {
+      "x": 0.5,
+      "out": 1
+    },
+    {
+      "x": 1.5,
+      "out": 2
+    },
+    {
+      "x": -0.5,
+      "out": 0
+    },
+    {
+      "x": -1.5,
+      "out": -1
+    },
+    {
+      "x": 2.4999999999999996,
+      "out": 2
+    },
+    {
+      "x": 0.49999999999999994,
+      "out": 0
+    },
+    {
+      "x": 21762.5,
+      "out": 21763
+    },
+    {
+      "x": -21762.5,
+      "out": -21762
+    },
+    {
+      "x": 1234.5,
+      "out": 1235
+    },
+    {
+      "x": 4503599627370495.5,
+      "out": 4503599627370496
+    }
+  ]
+}

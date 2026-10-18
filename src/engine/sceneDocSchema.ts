@@ -289,10 +289,34 @@ export interface SceneDocCameraPose {
   shutterDeg?: number;
 }
 
+/** A time in a sidecar: scene-local ms, or a musical position (`"bar:13.3"`, `"cue:drop"`) resolved at load by `engine/musicTime.ts`. */
+export type SceneDocTimePosition = number | string;
+
+/** A camera kick: an attack, hold, release push added on top of whichever pose drives the scene (rig, orbit, project or base), a pure function of time. */
+export interface SceneDocCameraKick {
+  id?: string;
+  /** Scene-local start of the kick. */
+  at: SceneDocTimePosition;
+  /** Magnification at the peak (1.04 is 4% in), applied in tan space. */
+  zoom?: number;
+  /** Camera-space shift at the peak (+x right, +y up, +z back), moving the look point too. */
+  offset?: [number, number, number];
+  rollDeg?: number;
+  /** Default 0 (a snap). */
+  attackMs?: number;
+  /** Default 0. */
+  holdMs?: number;
+  releaseMs: number;
+  /** An `engine/ease.ts` name; default `"outQuad"`. */
+  ease?: string;
+}
+
 export interface SceneDocCameraKey {
   id: string;
   /** Scene-local time, ms. */
   tMs: number;
+  /** Musical position this key sits on; `tMs` caches its resolved value and a move that disagrees drops it. */
+  at?: string;
   pose: SceneDocCameraPose;
   /** Marks this key as a stills export page (see engine/stills.ts). */
   still?: true;
@@ -338,6 +362,8 @@ export interface SceneDocRigKey {
   id: string;
   /** Scene-local time, ms. */
   tMs: number;
+  /** Musical position this key sits on; `tMs` caches its resolved value and a move that disagrees drops it. */
+  at?: string;
   pose: SceneDocRigPose;
   /** First key only: start from the previous scene's final pose (resolved at load). */
   continueFromPrevious?: boolean;
