@@ -15,7 +15,8 @@ import { useTheme } from "../../theme";
 import { formatFontString, parseFontString } from "../../theme/fontRef";
 import { fontUrl, SDF_GLYPH_SIZE } from "../../theme/fonts";
 import { foldBandToChild, GroupAnimationContext } from "../group/context";
-import type { V3 } from "../types";
+import type { EaseName, V3 } from "../types";
+import { counterProgress } from "./counterProgress";
 import { caretQuad, type EmojiQuadState, EmojiQuads } from "./EmojiQuads";
 import { prepareEmojiText } from "./emojiText";
 import { materialProp, useExactText, useExactTextBase } from "./exactText";
@@ -34,9 +35,17 @@ export interface AnimatedCounterProps {
   anchorX?: "left" | "center" | "right";
   /** The sidecar style key this counter honours: registers the row in the Edit-text drill and applies the `textStyle.<textKey>*` overrides (Size/Color/Font/OffsetX/OffsetY/RotationDeg). */
   textKey?: string;
+  /** When the count starts, in ms (scene-local; default 0). */
+  startMs?: number;
+  /** An ease name shaping the count (default "linear"). */
+  ease?: EaseName;
+  /** Count in this many equal jumps instead of continuously, landing on `to`. */
+  steps?: number;
+  /** Where `position` sits on the number's Y axis (default "middle"). */
+  anchorY?: "top" | "middle" | "bottom";
 }
 
-/** Counts from `from` to `to` over `durationMs`, as a pure function of the timeline; inside an `AnimatedGroup` the group's alpha multiplies into the fill and shine-capable groups mount the band material so the sweep doesn't skip the digits, both structurally absent outside groups (standing bytes stay safe). With a `textKey` it joins the managed-text lifecycle, so it stands down under a generic takeover like every scene-owned text primitive. */
+/** Counts from `from` to `to` over `durationMs` (from `startMs`, shaped by `ease`, in `steps` jumps when set), as a pure function of the timeline; inside an `AnimatedGroup` the group's alpha multiplies into the fill and shine-capable groups mount the band material so the sweep doesn't skip the digits, both structurally absent outside groups (standing bytes stay safe). With a `textKey` it joins the managed-text lifecycle, so it stands down under a generic takeover like every scene-owned text primitive. */
 export function AnimatedCounter(props: AnimatedCounterProps) {
   const doc = useContext(SceneDocContext);
   if (props.textKey && !shouldRenderManagedTextRole(doc, "scene")) return null;
@@ -58,7 +67,7 @@ function AnimatedCounterRenderer(props: AnimatedCounterProps) {
   const theme = useTheme();
   const doc = useContext(SceneDocContext);
   const group = useContext(GroupAnimationContext);
-  const progress = durationMs <= 0 ? 1 : Math.min(1, Math.max(0, localMs / durationMs));
+  const progress = counterProgress(props, localMs);
   const value = from + (to - from) * progress;
   // Same substitution as headlines: digits hit the fast path, but an emoji prefix/suffix in `format` output gets its quad and a stray selector never tofus.
   const display = format(value);
@@ -79,10 +88,11 @@ function AnimatedCounterRenderer(props: AnimatedCounterProps) {
 
   const sceneIndex = useSceneContext()?.index;
   const counts = durationMs > 0 && from !== to;
+  const countEndMs = (props.startMs ?? 0) + durationMs;
   useEffect(() => {
     if (sceneIndex === undefined || !counts) return;
-    return registerPresentTiming(sceneIndex, { kind: "counter", toMs: durationMs });
-  }, [sceneIndex, counts, durationMs]);
+    return registerPresentTiming(sceneIndex, { kind: "counter", toMs: countEndMs });
+  }, [sceneIndex, counts, countEndMs]);
 
   // Report the editable field to the registry so the Edit-text drill-in offers it (the AnimatedHeadline registration, minus copy editing: the digits stay computed).
   const mountId = useId();
@@ -165,7 +175,7 @@ function AnimatedCounterRenderer(props: AnimatedCounterProps) {
         fontSize={size}
         color={fill}
         anchorX={props.anchorX ?? "center"}
-        anchorY="middle"
+        anchorY={props.anchorY ?? "middle"}
         {...(rotZ ? { rotation: [0, 0, rotZ] as V3 } : {})}
         {...(group ? { fillOpacity: group.alpha } : {})}
         {...materialProp(holder?.material ?? exactBase)}
