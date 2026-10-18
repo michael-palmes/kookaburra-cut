@@ -1551,6 +1551,7 @@ rolling-gate project (`showcase-tour`):
 | `ws:text-outline-spike` (outlined text in the text barrier: neon, whole-block blur-in, machine-local) | `87bb6b3a…` | — | — | — | — | — | — | — | — |
 | `ws:rooms-spike` (room cuts, a flood with a tokened light, a wipe while both sides flood; machine-local, never gated) | `2768226b…` | `82d0f4ac…` | — | — | — | — | — | — | — |
 | `ws:mask-fx-spike` (an image-mask seam between two bloom scenes on the effects lane; machine-local, never gated) | `c93487c0…` | — | — | — | — | — | — | — | — |
+| `ws:motion-toolkit-spike` (the toolkit primitives: shapes, device anchors, text metrics and presets, stamps, dashes, mosaic, taps; machine-local, never gated) | `fec675ba…` | `99721e0c…` | — | — | — | — | — | — | — |
 
 > **2026-10-18 (image-mask transition, a fifth material generation):** with the
 > code in and the fixtures untouched, `transition-spike` stayed EQUAL at
