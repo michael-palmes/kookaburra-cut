@@ -2,7 +2,7 @@
 
 // Named eases (the camera and text presets' curves) for code-authored motion.
 export { EASE_NAMES, type EaseOptions, ease, easeFn, isEaseName } from "../engine/ease";
-export { useFormat } from "../engine/format";
+export { frameAtDepth, useFormat } from "../engine/format";
 // project.json `shared`: author constants every scene reads.
 export { type ProjectShared, useProjectShared } from "../engine/projectShared";
 // Seeded RNG for generative geometry; scenes must never call Math.random.
@@ -35,6 +35,8 @@ export {
 // Time / format / theme hooks
 export { useTimeline } from "../engine/timeline";
 export { useTheme } from "../theme";
+// Text metrics from the parsed faces: size a pill or underline to a headline without capturing frames.
+export { type MeasureTextOptions, measureText, type TextMetrics } from "../theme/fontMetrics";
 export type { Theme } from "../theme/tokens";
 // Data charts: `<Chart />` draws the sidecar block, flat or as staged 3D solids; the fallback covers scenes that never mount it.
 export { Chart, type ChartProps } from "./chart/Chart";
@@ -145,6 +147,8 @@ export {
   useRigTrack,
 } from "./stage/DepthStage";
 export { SceneStage } from "./stage/SceneStage";
+// The scene camera's live pose, and the world rectangle it sees at a depth.
+export { type SceneCamera, useCameraFrame, useSceneCamera } from "./stage/sceneCamera";
 export { AnimatedCounter, type AnimatedCounterProps } from "./text/AnimatedCounter";
 // Text primitives
 export { AnimatedHeadline, type AnimatedHeadlineProps } from "./text/AnimatedHeadline";
@@ -160,6 +164,7 @@ export {
 } from "./text/presets";
 // Title + optional subtitle with theme-scale sizing and safe-area alignment.
 export { TitleBlock, type TitleBlockProps } from "./text/TitleBlock";
+export { type TextMetricsOptions, useTextMetrics } from "./text/useTextMetrics";
 // Extruded 3D text.
 export { ExtrudedText, type ExtrudedTextProps } from "./text3d/ExtrudedText";
 // Transition helpers

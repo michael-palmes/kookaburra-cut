@@ -71,6 +71,7 @@ screenshot text items use `ls-<itemId>` keys.
 | `outAt` | | Out start; plays over the in's length. Exits need this prop |
 | `preset`, `outPreset` | theme `textAnimation` | Prefer the sidecar spec (below) |
 | `stagger`, `staggerMs`, `delivery`, `delayMs`, `startScale`, `shine`, `direction`, `ease` | theme | As the spec fields |
+| `durationMs` | `"authored"` | A number pins the whole reveal, first unit's start to last unit's settle, whatever the copy's word or letter count (stagger and unit duration scale together); `"authored"` keeps the per-unit timing. `AnimatedGroup` takes it too |
 | `textKey` | | ALWAYS set it: enables sidecar styling and the inspector row |
 | `face` | `headline` | Or `body` |
 | `defaultColor` | `text` | Design default that stays app-editable |
@@ -88,9 +89,11 @@ screenshot text items use `ls-<itemId>` keys.
 - `BrandLockup title subtitle icon from to position iconWidth titleSize subtitleSize titleColor subtitleColor`:
   app icon (default `assets/app-icon.png`) beside a small title over a large subtitle,
   revealed as one unit; scales down for square and portrait.
-- `AnimatedCounter from to durationMs format position fontSize anchorX textKey`: counts
-  linearly from scene start over `durationMs` (no delay prop); `format` returns the
-  string, for example `(n) => "$" + n.toFixed(1) + "M"`; default size 0.5.
+- `AnimatedCounter from to durationMs format position fontSize anchorX anchorY textKey startMs ease steps`:
+  counts over `durationMs` from `startMs` (default 0, scene start), linear unless `ease`
+  names an ease, in `steps` equal jumps when set (landing on `to`); `format` returns the
+  string, for example `(n) => "$" + n.toFixed(1) + "M"`; default size 0.5, anchored
+  centre/middle.
 - `ExtrudedText`: lit 3D text, bundled families only, no emoji.
 - `ManagedTextStack`: the generic managed renderer the host mounts; rarely mounted by hand.
 
@@ -106,6 +109,7 @@ Write the spec in the sidecar so the app's Text motion panel stays live:
 | --- | --- |
 | `in`, `out` (required) | Preset ids (table); unknown names play as `fade` |
 | `staggerMs` | Per-unit delay; `stagger` is only honoured when this is above 0 |
+| `staggerExact` | `true` makes `staggerMs: 0` mean no stagger. Without it a 0 under a granularity (a letter or word preset, `by-paragraph`, a TSX `stagger`) plays that granularity's default delay; the app and `kb doc set` write it with a 0, and `kb check` warns where it is missing |
 | `stagger` | `char` or `word` |
 | `delivery` | `all-at-once` (forces one block), `by-paragraph` (`\n`), `by-paragraph-group` (blank lines) |
 | `delayMs` | Hold before the in starts |
@@ -157,6 +161,30 @@ apply). To make coded motion editable, remove the TSX preset props instead.
 "Unit" is the default granularity; `stagger` or `delivery` overrides it. Default
 delays: char 35 ms, word 90, paragraph 160, group 260. Per-character units ignore line
 breaks, so on multi-line copy prefer `by-paragraph`.
+
+## Measuring text
+
+Size a pill, underline or panel to a headline from its font, not from a captured frame.
+`useTextMetrics(textKey, text, opts)` takes the props the headline gets (`fontSize`,
+`face`, `fontRef`, `lineHeight`, `letterSpacing`) and applies the same sidecar
+`<key>Font`, `<key>Size` and `<key>LineHeight` overrides, so the box follows inspector
+edits. It returns world units, `{ width, height, ascent, descent, lines }`: `ascent`
+runs from the block top to the first baseline, `descent` from the last baseline to the
+bottom. Null means the font is still loading (one preview frame); exports and captures
+wait for it.
+
+```tsx
+const title = useSceneText("title", "Ship faster");
+const box = useTextMetrics("title", title, { fontSize: 0.5 });
+// ...
+{box && <Pill width={box.width + 0.5} height={box.height + 0.2} position={[0, 0, -0.01]} />}
+<AnimatedHeadline text={title} textKey="title" fontSize={0.5} />
+```
+
+Under a middle-anchored single line the baseline is at `y = box.height / 2 - box.ascent`,
+so an underline sits a little below that. `measureText(text, { font, fontSize, letterSpacing?, lineHeight? })` is
+the plain version (`font` is a theme `FontRef` or `"Family@weight"`). Explicit `\n`
+breaks count; `maxWidth` wrapping is not measured.
 
 ## Text looks (`textLook`)
 
