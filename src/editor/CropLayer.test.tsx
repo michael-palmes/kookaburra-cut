@@ -46,14 +46,25 @@ describe("crop gestures", () => {
     expect(quarter["--crop-k"]).toBe(2);
     expect(cropViewStyle([0, 0, 1, 1], { width: 0, height: 0 }, area)).toBeUndefined();
   });
+
+  it("frames a gliding zoom exactly, off the even-pixel grid", () => {
+    const area = { width: 800, height: 450 };
+    const between = [0.2501, 0.2501, 0.5, 0.5] as [number, number, number, number];
+    const snapped = cropViewStyle(between, land, area) as Record<string, unknown>;
+    const exact = cropViewStyle(between, land, area, true) as Record<string, unknown>;
+    expect(snapped.clipPath).toBe("inset(25% 25% 25% 25%)");
+    expect(exact.clipPath).not.toBe(snapped.clipPath);
+    expect(exact["--crop-k"]).toBe(2);
+  });
 });
 
 describe("CropLayer", () => {
-  const layer = (crop: [number, number, number, number] | null) =>
+  const layer = (crop: [number, number, number, number] | null, onKey = false) =>
     renderToStaticMarkup(
       <CropLayer
         source={land}
         crop={crop}
+        onKey={onKey}
         aspect={9 / 16}
         editable
         onGesture={noop}
@@ -65,7 +76,31 @@ describe("CropLayer", () => {
     const html = layer([0.25, 0, 0.5, 1]);
     expect(html).toContain('class="crop-box" style="left:25%;top:0%;width:50%;height:100%"');
     expect(html.split("crop-handle").length - 1).toBe(4);
+    expect(html).not.toContain("crop-key-badge");
     expect(layer(null)).not.toContain("crop-box");
+  });
+
+  it("marks a frame that holds a zoom key", () => {
+    const html = layer([0.25, 0, 0.5, 1], true);
+    expect(html).toContain('class="crop-box on-key"');
+    expect(html).toContain("crop-key-badge");
+  });
+
+  it("the strip deletes the zoom key only when the playhead is on one", () => {
+    const bar = (onKey: boolean) =>
+      renderToStaticMarkup(
+        <CropSettingsBar
+          clipId="c1"
+          hasCrop
+          onKey={onKey}
+          onFit={noop}
+          onDeleteKey={noop}
+          onReset={noop}
+        />,
+      );
+    expect(bar(false)).toMatch(/disabled=""[^>]*title="No zoom key at the playhead"/);
+    expect(bar(true)).toContain('title="Delete the zoom key at the playhead"');
+    expect(bar(true)).toContain("zoom between keys");
   });
 
   it("the strip fits and resets only what it can", () => {

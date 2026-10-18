@@ -15,7 +15,9 @@ export type ToolIconId =
   | "fadeOut"
   | "crop"
   | "fitCrop"
-  | "resetCrop";
+  | "resetCrop"
+  | "easeLinear"
+  | "easeSmooth";
 
 export function ToolIcon({ id }: { id: ToolIconId }) {
   const glyph = {
@@ -100,6 +102,20 @@ export function ToolIcon({ id }: { id: ToolIconId }) {
       <>
         <path d="M3.2 6.2A5 5 0 1 1 3 9.5" />
         <path d="M2.8 2.8v3.6h3.6" />
+      </>
+    ),
+    easeLinear: (
+      <>
+        <path d="M2.5 13.5l11-11" />
+        <circle cx="2.5" cy="13.5" r="1" fill="currentColor" stroke="none" />
+        <circle cx="13.5" cy="2.5" r="1" fill="currentColor" stroke="none" />
+      </>
+    ),
+    easeSmooth: (
+      <>
+        <path d="M2.5 13.5C8 13.5 8 2.5 13.5 2.5" />
+        <circle cx="2.5" cy="13.5" r="1" fill="currentColor" stroke="none" />
+        <circle cx="13.5" cy="2.5" r="1" fill="currentColor" stroke="none" />
       </>
     ),
   }[id];

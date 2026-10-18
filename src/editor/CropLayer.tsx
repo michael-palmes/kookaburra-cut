@@ -4,7 +4,7 @@ import { type CropRect, cropPixels, MIN_CROP_SIZE } from "../engine/editMath";
 import { rectStyle } from "./maskPreview";
 import { ToolIcon } from "./ToolIcon";
 
-/** The crop tool over the clip on screen, drawn on its whole source frame: the crop box with the outside dimmed, corner handles locked to the output's shape, a drag inside moves it and a drag outside draws a new one. Chrome only: the render cuts the crop in ffmpeg (edit.rs) and the paused preview shows the result through CSS on the video box (`cropViewStyle`). */
+/** The crop tool over the clip on screen, drawn on its whole source frame: the framing at the playhead with the outside dimmed, corner handles locked to the output's shape, a drag inside moves it and a drag outside draws a new one. Each commit sets the zoom key at the playhead (a new time adds one, so the framing glides between keys). Chrome only: the render frames the clip in ffmpeg (edit.rs) and the preview shows the framing through CSS on the video box (`cropViewStyle`). */
 
 type Corner = "nw" | "ne" | "se" | "sw";
 const CORNERS: Corner[] = ["nw", "ne", "se", "sw"];
@@ -44,15 +44,18 @@ const opposite = (box: CropRect, corner: Corner): [number, number] => [
   corner.includes("n") ? box[1] + box[3] : box[1],
 ];
 
-/** CSS on the source box that shows only `crop`, scaled to fit the preview area and centred in it; `--crop-k` lets handles and markers keep their size. */
+/** CSS on the source box that shows only `crop`, scaled to fit the preview area and centred in it; `--crop-k` lets handles and markers keep their size. A static crop shows its even pixels; a gliding zoom (`exact`) shows its framing as is, so it moves smoothly. */
 export function cropViewStyle(
   crop: CropRect,
   source: Pick<EditSource, "width" | "height">,
   area: { width: number; height: number },
+  exact = false,
 ): CSSProperties | undefined {
   const { width: W, height: H } = source;
   if (W <= 0 || H <= 0 || area.width <= 0 || area.height <= 0) return undefined;
-  const [x, y, w, h] = cropPixels(crop, source).map((v, i) => v / (i % 2 === 0 ? W : H));
+  const [x, y, w, h] = exact
+    ? crop
+    : cropPixels(crop, source).map((v, i) => v / (i % 2 === 0 ? W : H));
   const boxW = Math.min(area.width, (area.height * W) / H);
   const boxH = Math.min(area.height, (area.width * H) / W);
   const k = Math.min(area.width / (w * boxW), area.height / (h * boxH));
@@ -78,8 +81,10 @@ interface Drag {
 
 export interface CropLayerProps {
   source: EditSource;
-  /** The clip's crop; null = the whole frame. */
+  /** The clip's framing at the playhead; null = the whole frame. */
   crop: CropRect | null;
+  /** The playhead sits on one of the clip's zoom keys. */
+  onKey?: boolean;
   /** The output's width over its height: every box keeps it. */
   aspect: number;
   /** Paused and not trim-scrubbing: the box can be dragged. */
@@ -88,7 +93,15 @@ export interface CropLayerProps {
   onCommit: (rect: CropRect) => void;
 }
 
-export function CropLayer({ source, crop, aspect, editable, onGesture, onCommit }: CropLayerProps) {
+export function CropLayer({
+  source,
+  crop,
+  onKey = false,
+  aspect,
+  editable,
+  onGesture,
+  onCommit,
+}: CropLayerProps) {
   const layerRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<Drag | null>(null);
   const [draft, setDraft] = useState<CropRect | null>(null);
@@ -157,50 +170,70 @@ export function CropLayer({ source, crop, aspect, editable, onGesture, onCommit 
     >
       {shown && (
         <div
-          className="crop-box"
+          className={`crop-box${onKey ? " on-key" : ""}`}
           style={rectStyle(shown)}
-          title="Drag to move the crop; drag a corner to resize it at the output's shape"
+          title="Drag to move the framing here; drag a corner to resize it at the output's shape. At a new time it adds a zoom key"
           onPointerDown={(e) => begin(e, "move")}
         >
           {CORNERS.map((c) => (
             <span key={c} className={`crop-handle ${c}`} onPointerDown={(e) => begin(e, c)} />
           ))}
+          {onKey && <span className="crop-key-badge" aria-hidden />}
         </div>
       )}
     </div>
   );
 }
 
-/** The crop strip under the topbar (the mask strip's pattern) while the crop tool is armed: fit the output's shape, reset, and how to draw. */
+/** The crop strip under the topbar (the mask strip's pattern) while the crop tool is armed: fit the output's shape, delete the zoom key here, reset, and how to frame. */
 export function CropSettingsBar({
   clipId,
   hasCrop,
+  onKey = false,
   onFit,
+  onDeleteKey,
   onReset,
 }: {
   /** The clip on screen, or null when the playhead is off every clip. */
   clipId: string | null;
   hasCrop: boolean;
+  /** The playhead sits on one of the clip's zoom keys. */
+  onKey?: boolean;
   onFit: () => void;
+  onDeleteKey?: () => void;
   onReset: () => void;
 }) {
   return (
     <div className="tap-settings mask-settings crop-settings">
       <span className="mask-settings-hint">
-        {clipId
-          ? `Drag over the preview to crop ${clipId} to the output's shape.`
-          : "Move the playhead onto a clip to crop it."}
+        {!clipId
+          ? "Move the playhead onto a clip to crop it."
+          : hasCrop
+            ? `Drag to reframe ${clipId} here; move the playhead and drag again to zoom between keys.`
+            : `Drag over the preview to crop ${clipId} to the output's shape.`}
       </span>
       <button
         type="button"
         className="tap-settings-style-btn"
         disabled={!clipId}
-        title="Crop to the largest centred box at the output's shape"
+        title="Frame the largest centred box at the output's shape here"
         onClick={onFit}
       >
         <ToolIcon id="fitCrop" />
         Fit output
       </button>
+      {onDeleteKey && (
+        <button
+          type="button"
+          className="tap-settings-style-btn"
+          disabled={!clipId || !onKey}
+          title={onKey ? "Delete the zoom key at the playhead" : "No zoom key at the playhead"}
+          onClick={onDeleteKey}
+        >
+          <ToolIcon id="deleteKey" />
+          Delete key
+        </button>
+      )}
       <button
         type="button"
         className="tap-settings-style-btn"

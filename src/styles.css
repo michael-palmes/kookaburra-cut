@@ -3908,6 +3908,42 @@ button.beat-status {
   cursor: nesw-resize;
 }
 
+/* Keyed zoom: the crop box marks a frame that holds a zoom key, and each clip block carries its keys as diamonds (Timeline.tsx). */
+.crop-key-badge {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  width: 9px;
+  height: 9px;
+  transform: translateX(-50%) rotate(45deg);
+  background: var(--gizmo-selected);
+  border: 1px solid rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+}
+
+.timeline-zoom-key {
+  position: absolute;
+  bottom: 5px;
+  z-index: 2;
+  width: 8px;
+  height: 8px;
+  transform: translateX(-50%) rotate(45deg);
+  background: var(--surface-panel);
+  border: 1.5px solid var(--accent);
+  cursor: ew-resize;
+  touch-action: none;
+}
+
+/* A smooth glide softens its key's corners. */
+.timeline-zoom-key.smooth {
+  border-radius: 3px;
+}
+
+.timeline-zoom-key.dragging,
+.timeline-zoom-key:hover {
+  background: var(--accent);
+}
+
 .editor-clips {
   flex: 0 0 auto;
   max-height: 32vh;

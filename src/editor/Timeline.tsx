@@ -13,6 +13,7 @@ import {
   edgeTargetsMs,
   setClipHold,
   snapMs,
+  snapZoomMs,
   timelineDurationMs,
   trimClipIn,
   trimClipOut,
@@ -54,6 +55,10 @@ export interface TimelineProps {
   onSelectMask?: (id: string) => void;
   /** Right-click on a key diamond of the selected mask. */
   onMaskKeyMenu?: (id: string, sourceMs: number, x: number, y: number) => void;
+  /** The output rate zoom keys snap to while dragged. */
+  fps?: number;
+  /** Right-click on a clip's zoom key diamond (`tMs` is clip-local). */
+  onZoomKeyMenu?: (clipId: string, tMs: number, x: number, y: number) => void;
 }
 
 const PAD_L = 16; // content inset before t=0
@@ -158,6 +163,8 @@ export function Timeline({
   selectedMaskId = null,
   onSelectMask,
   onMaskKeyMenu,
+  fps = 60,
+  onZoomKeyMenu,
 }: TimelineProps) {
   const scrollerRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -446,6 +453,43 @@ export function Timeline({
     }
   }
 
+  // ── Zoom keys (diamonds on a clip's block) ───────────────────────────────
+  const [keyDrag, setKeyDrag] = useState<{
+    clipId: string;
+    tMs: number;
+    draftMs: number;
+    startClientX: number;
+    moved: boolean;
+  } | null>(null);
+
+  function onZoomKeyDown(e: React.PointerEvent, clipId: string, tMs: number) {
+    if (e.button !== 0) return;
+    e.stopPropagation();
+    e.currentTarget.setPointerCapture(e.pointerId);
+    setKeyDrag({ clipId, tMs, draftMs: tMs, startClientX: e.clientX, moved: false });
+  }
+
+  function onZoomKeyMove(e: React.PointerEvent, clip: EditClip) {
+    if (!keyDrag) return;
+    const dx = e.clientX - keyDrag.startClientX;
+    const moved = keyDrag.moved || Math.abs(dx) > MOVE_THRESHOLD_PX;
+    if (!moved) return;
+    const raw = Math.min(clipTimelineMs(clip), Math.max(0, keyDrag.tMs + dx / pxPerMs));
+    const local = snapMs(raw, [playheadMs - clip.startMs], snapThresholdMs);
+    setKeyDrag({ ...keyDrag, moved, draftMs: snapZoomMs(local, fps) });
+  }
+
+  function onZoomKeyUp(clip: EditClip) {
+    if (!keyDrag) return;
+    const { tMs, draftMs, moved } = keyDrag;
+    setKeyDrag(null);
+    if (!moved) {
+      onPlayhead(Math.round(clip.startMs + tMs));
+    } else if (draftMs !== tMs) {
+      onEditOp({ op: "moveZoomKey", clipId: clip.id, tMs, toMs: draftMs });
+    }
+  }
+
   /** Abandon any drag (pointercancel): discard the draft and clear the viewer override. */
   function cancelDrag() {
     setDrag(null);
@@ -675,6 +719,29 @@ export function Timeline({
                       />
                     </>
                   )}
+                  {(clip.zoom?.keys ?? []).map((k) => {
+                    const dragged = keyDrag?.clipId === clip.id && keyDrag.tMs === k.tMs;
+                    const at = dragged ? keyDrag.draftMs : k.tMs;
+                    if (at < 0 || at > clipTimelineMs(clip)) return null;
+                    return (
+                      // biome-ignore lint/a11y/noStaticElementInteractions: a key marker; the crop strip's buttons cover keyboard use
+                      <span
+                        key={k.tMs}
+                        className={`timeline-zoom-key${k.ease === "smooth" ? " smooth" : ""}${dragged ? " dragging" : ""}`}
+                        style={{ left: at * pxPerMs }}
+                        title="Zoom key: click to jump here, drag to retime, right-click to ease or delete"
+                        onPointerDown={(e) => onZoomKeyDown(e, clip.id, k.tMs)}
+                        onPointerMove={(e) => onZoomKeyMove(e, clip)}
+                        onPointerUp={() => onZoomKeyUp(clip)}
+                        onPointerCancel={() => setKeyDrag(null)}
+                        onContextMenu={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          onZoomKeyMenu?.(clip.id, k.tMs, e.clientX, e.clientY);
+                        }}
+                      />
+                    );
+                  })}
                 </div>
               );
             })}

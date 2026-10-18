@@ -5,9 +5,13 @@ import { keyToleranceMs, type MaskRect, sourceMomentAt } from "../engine/editMas
 import {
   type CropRect,
   clipIndexAt,
+  clipTimelineMs,
   cropPixels,
+  tapPosInZoom,
   timelineDurationMs,
   timelineToSource,
+  zoomKeyIndex,
+  zoomRectAt,
 } from "../engine/editMath";
 import { fsUrl } from "../engine/media";
 import { CropLayer, cropViewStyle } from "./CropLayer";
@@ -166,7 +170,17 @@ export function Preview({
       ? clips[activeIdx]
       : undefined;
   const framedClip = framed?.sourceId === activeSourceId ? framed : undefined;
-  const framedCrop = !armedCrop ? framedClip?.crop : undefined;
+  // The framing at the playhead (a trim drag frames its dragged edge); a zoom glides it while paused and playing.
+  const framedLocalMs = !framedClip
+    ? 0
+    : trimScrub
+      ? trimScrub.edge === "in"
+        ? 0
+        : clipTimelineMs(framedClip)
+      : playheadMs - framedClip.startMs;
+  const framing = framedClip ? zoomRectAt(framedClip, framedLocalMs, output.fps) : null;
+  const zoomed = !!framedClip?.zoom;
+  const framedCrop = !armedCrop ? (framing ?? undefined) : undefined;
 
   // Paused scrub: a trim-handle drag overrides the viewer with the exact edge frame; otherwise seek the active source to the playhead-mapped time.
   useEffect(() => {
@@ -324,13 +338,24 @@ export function Preview({
   const color = TAP_COLORS.find((c) => c.id === tapColor) ?? TAP_COLORS[0];
   const gradient = tapGradient(style, color);
 
-  /** The dot's width in cqw of the source box: a crop letterboxes its own pixels into the output, so the dot is sized against them. */
+  /** The dot's width in cqw of the source box: a crop letterboxes its own pixels into the output (a zoom fills it with its framing), so the dot is sized against them. */
   const dotWidth = (source: EditSource): number => {
     if (!framedCrop || source.id !== activeSourceId) {
       return tapDotWidthFraction(source, output, tapSize) * 100;
     }
-    const [, , w, h] = cropPixels(framedCrop, source);
+    const [, , w, h] = zoomed
+      ? [0, 0, framedCrop[2] * source.width, framedCrop[3] * source.height]
+      : cropPixels(framedCrop, source);
     return tapDotWidthFraction({ width: w, height: h }, output, tapSize) * (w / source.width) * 100;
+  };
+
+  /** Where a tap's glow sits in the source box: the render places it once, through the zoom's framing as it lands, so under a gliding zoom it holds still on screen while the frame moves beneath it. */
+  const glowPos = (tap: EditTap, startMs: number): [number, number] => {
+    if (!framedCrop || !zoomed || !framedClip) return tap.pos;
+    const landed = zoomRectAt(framedClip, startMs - framedClip.startMs, output.fps);
+    const uv = landed ? tapPosInZoom(tap.pos, landed) : null;
+    if (!uv) return tap.pos;
+    return [framedCrop[0] + uv[0] * framedCrop[2], framedCrop[1] + uv[1] * framedCrop[3]];
   };
 
   const dotStyle = (
@@ -386,7 +411,7 @@ export function Preview({
             style={{
               ...sourceBoxStyle(source),
               ...(framedCrop && area && source.id === activeSourceId
-                ? cropViewStyle(framedCrop, source, area)
+                ? cropViewStyle(framedCrop, source, area, zoomed)
                 : undefined),
             }}
             onPointerDown={(e) => {
@@ -438,7 +463,10 @@ export function Preview({
                 {armedCrop && framedClip && (
                   <CropLayer
                     source={source}
-                    crop={framedClip.crop ?? null}
+                    crop={framing}
+                    onKey={
+                      zoomKeyIndex(framedClip.zoom?.keys ?? [], framedLocalMs, output.fps) >= 0
+                    }
                     aspect={output.height > 0 ? output.width / output.height : 1}
                     editable={!playing && !trimScrub}
                     onGesture={() => onCropGesture?.()}
@@ -466,7 +494,7 @@ export function Preview({
                     <div
                       key={`${tap.id}:${startMs}`}
                       className="tap-glow"
-                      style={dotStyle(source, tap.pos, opacity, scale)}
+                      style={dotStyle(source, glowPos(tap, startMs), opacity, scale)}
                     />
                   );
                 })}
