@@ -79,7 +79,7 @@ import { useImageReconciliationStore } from "./engine/imageReconciliationStore";
 import { useLayeredScreenshotEditStore } from "./engine/layeredScreenshotEditStore";
 import { useLightingEditStore } from "./engine/lightingEditStore";
 import { ensureRectAreaLightUniforms } from "./engine/lightingState";
-import { importMedia } from "./engine/media";
+import { conformingAmong, importMedia } from "./engine/media";
 import {
   editRenderMatchesPending,
   emptyMediaChangeBatch,
@@ -531,13 +531,15 @@ export default function App() {
       const paths = dropped.filter((p) => !p.toLowerCase().endsWith(".kbpack"));
       const currentId = useEditorStore.getState().projectId;
       if (!isEditableProjectId(currentId) || paths.length === 0) return;
-      importMedia(nativeProjectSlug(currentId), paths)
-        .then((imported) => {
-          // importMedia's media-changed broadcast handles the picker refreshes.
+      const slug = nativeProjectSlug(currentId);
+      importMedia(slug, paths)
+        .then(async (imported) => {
+          // importMedia's media-changed broadcast handles the picker refreshes; a conform's landing broadcasts again.
           if (imported.length === 0) return;
+          const conforming = await conformingAmong(slug, imported);
           setToast({
             kind: "success",
-            message: `Added ${imported.length} file${imported.length === 1 ? "" : "s"} to assets`,
+            message: `Added ${imported.length} file${imported.length === 1 ? "" : "s"} to assets${conforming > 0 ? ` (conforming ${conforming})` : ""}`,
           });
         })
         .catch((e) => setToast({ kind: "error", message: `Import failed: ${String(e)}` }));

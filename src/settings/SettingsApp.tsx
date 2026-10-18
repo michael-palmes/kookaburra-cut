@@ -13,6 +13,7 @@ import {
   type SidecarVersions,
   sidecarVersions,
 } from "../engine/appCache";
+import { setConformNewVideosSetting } from "../engine/media";
 import { revealApp } from "../engine/reveal";
 import {
   clearWebsiteData,
@@ -50,6 +51,21 @@ function ClearDataIcon() {
   );
 }
 
+function ConformIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
+      <path
+        d="M13 6.5A5 5 0 0 0 3.6 4.6M3 9.5a5 5 0 0 0 9.4 1.9M3.4 2.4v2.4h2.4M12.6 13.6v-2.4h-2.4"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 /** The Settings window: native titlebar, opened via the app menu (⌘,). Cache management (media previews + clip extractions), the workspace location (the only place it can be changed, since first run no longer asks), the opt-in update lane (toggle + Check now), and read-only info (sidecar versions, app version). */
 
 export function SettingsApp() {
@@ -71,6 +87,7 @@ export function SettingsApp() {
   const [hwSupport, setHwSupport] = useState<HardwareVideoSupport | null>(null);
   const [lagWarning, setLagWarning] = useState<LagWarningMode | null>(null);
   const [downloadsExport, setDownloadsExport] = useState<boolean | null>(null);
+  const [conformNew, setConformNew] = useState<boolean | null>(null);
   const [websiteData, setWebsiteData] = useState<WebsiteDataRecord[] | null>(null);
   const [websiteDataBusy, setWebsiteDataBusy] = useState<string | null>(null);
 
@@ -101,6 +118,7 @@ export function SettingsApp() {
         setHwEnabled(!s.disableHardwareVideo);
         setLagWarning((s.lagWarning as LagWarningMode) ?? "off");
         setDownloadsExport(!s.keepExportsInProject);
+        setConformNew(!s.disableConformNewVideos);
       })
       .catch(() => setWorkspace(null));
     defaultWorkspaceRoot()
@@ -130,6 +148,11 @@ export function SettingsApp() {
   const toggleDownloadsExport = useCallback((enabled: boolean) => {
     setDownloadsExport(enabled);
     setExportToDownloadsSetting(enabled).catch((e) => setError(String(e)));
+  }, []);
+
+  const toggleConformNew = useCallback((enabled: boolean) => {
+    setConformNew(enabled);
+    setConformNewVideosSetting(enabled).catch((e) => setError(String(e)));
   }, []);
 
   const hwDetail = hwSupport
@@ -361,6 +384,29 @@ export function SettingsApp() {
             checked={hwEnabled ?? true}
             disabled={hwEnabled === null}
             onChange={(e) => toggleHardware(e.target.checked)}
+          />
+        </div>
+        <div className="settings-row">
+          <div className="settings-row-text">
+            <span
+              className="settings-row-title"
+              style={{ display: "inline-flex", alignItems: "center", gap: "var(--space-2)" }}
+            >
+              <ConformIcon />
+              Conform new videos
+            </span>
+            <span className="muted settings-row-detail">
+              Added videos with uneven frame timing, trims or wide colour become a steady 60 fps
+              copy that plays the frames QuickTime shows. The original stays in the project's
+              assets/.originals folder.
+            </span>
+          </div>
+          <input
+            type="checkbox"
+            aria-label="Conform new videos"
+            checked={conformNew ?? true}
+            disabled={conformNew === null}
+            onChange={(e) => toggleConformNew(e.target.checked)}
           />
         </div>
         <div className="settings-row">

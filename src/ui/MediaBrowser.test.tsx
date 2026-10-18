@@ -2,6 +2,7 @@ import { createRef } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import {
+  conformReasonText,
   MediaBrowser,
   MediaBrowserError,
   MediaCard,
@@ -274,5 +275,39 @@ describe("panel-scoped media preview", () => {
     expect(readSource("../App.tsx")).toContain(
       'if (document.querySelector(".media-preview")) return;',
     );
+  });
+
+  it("flags a probed clip, and shows a running conform instead", () => {
+    const card = (extra: Record<string, unknown>) =>
+      renderToStaticMarkup(
+        <MediaCard
+          rel="assets/rec.mov"
+          meta={null}
+          metaFailed={false}
+          edited={false}
+          canDrag={false}
+          selected={false}
+          onPreview={() => undefined}
+          {...extra}
+        />,
+      );
+    const flagged = card({ needsConform: "Needs conform: variable frame rate." });
+    expect(flagged).toContain(">Needs conform</span>");
+    expect(flagged).toContain('title="Needs conform: variable frame rate."');
+    const running = card({ needsConform: "x", conforming: 42 });
+    expect(running).toContain("Conforming… 42%");
+    expect(running).not.toContain(">Needs conform<");
+    expect(card({ edited: true, needsConform: "x", conforming: 5 })).not.toContain("onforming");
+    expect(card({})).not.toContain("conform");
+  });
+
+  it("names what the probe found in words", () => {
+    expect(conformReasonText({ why: ["vfr", "primaries"] })).toBe(
+      "Needs conform: variable frame rate, wide colour (P3). Conform from the ⋯ menu.",
+    );
+    expect(conformReasonText({ why: ["decoders", "novel"] })).toBe(
+      "Needs conform: decoders disagree, novel. Conform from the ⋯ menu.",
+    );
+    expect(conformReasonText({ why: [] })).toBe("Needs conform");
   });
 });

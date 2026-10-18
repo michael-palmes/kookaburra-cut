@@ -178,3 +178,86 @@ export async function deleteGlobalScreenshot(name: string): Promise<void> {
 export function renameMedia(slug: string, rel: string, newName: string): Promise<string> {
   return invoke("rename_media", { slug, rel, newName });
 }
+
+// ── Ingest conform (src-tauri/src/conform.rs) ──────────────────────────────────
+
+/** One conform the app is running: `rel` is where the mezzanine appears when it lands. */
+export interface ConformJob {
+  slug: string;
+  rel: string;
+  original: string;
+  frame: number;
+  total: number;
+}
+
+/** A conform job's progress, broadcast app-wide. */
+export interface ConformProgress {
+  slug: string;
+  rel: string;
+  stage: "queued" | "conforming" | "done" | "failed";
+  frame: number;
+  total: number;
+  error: string | null;
+}
+
+export const CONFORM_PROGRESS_EVENT = "kookaburra://conform-progress";
+
+/** A library card's conform flag, from a probe verdict cached by content sha. */
+export interface ConformStatus {
+  needsConform: boolean;
+  verdict: "ok" | "suspect" | "ffmpeg-misdecodes";
+  reasons: string[];
+  why: string[];
+  /** Why the file can't be conformed, when it can't. */
+  refused: string | null;
+}
+
+export function listConformJobs(slug: string): Promise<ConformJob[]> {
+  return invoke<ConformJob[]>("list_conform_jobs", { slug });
+}
+
+/** Conform a project video in place: the original moves to `assets/.originals/` and the mezzanine keeps the name, so references stay valid. Resolves once the job is queued. */
+export function conformMedia(slug: string, rel: string): Promise<string> {
+  return invoke<string>("conform_media", { slug, rel });
+}
+
+export function conformStatus(slug: string, rel: string, sha: string): Promise<ConformStatus> {
+  return invoke<ConformStatus>("conform_status", { slug, rel, sha });
+}
+
+/** How many of `rels` are still conforming (an import's toast says so). */
+export async function conformingAmong(slug: string, rels: readonly string[]): Promise<number> {
+  const jobs = await listConformJobs(slug).catch(() => [] as ConformJob[]);
+  return rels.filter((rel) => jobs.some((job) => job.rel === rel)).length;
+}
+
+/** A job's progress as a whole percentage; 0 while it waits for a slot. */
+export function conformPercent(job: Pick<ConformJob, "frame" | "total">): number {
+  return job.total > 0 ? Math.min(100, Math.floor((job.frame / job.total) * 100)) : 0;
+}
+
+/** Fold one progress event into the job list: queued and conforming upsert, done and failed drop the job. */
+export function applyConformProgress(
+  jobs: readonly ConformJob[],
+  event: ConformProgress,
+  original = "",
+): ConformJob[] {
+  const rest = jobs.filter((job) => !(job.slug === event.slug && job.rel === event.rel));
+  if (event.stage === "done" || event.stage === "failed") return rest;
+  const prior = jobs.find((job) => job.slug === event.slug && job.rel === event.rel);
+  return [
+    ...rest,
+    {
+      slug: event.slug,
+      rel: event.rel,
+      original: prior?.original ?? original,
+      frame: event.frame,
+      total: event.total,
+    },
+  ];
+}
+
+/** Settings: Conform new videos (on unless switched off). */
+export function setConformNewVideosSetting(enabled: boolean): Promise<void> {
+  return invoke<void>("set_conform_new_videos", { enabled });
+}

@@ -4,6 +4,14 @@ import { type RefObject, useCallback, useEffect, useMemo, useRef, useState } fro
 import { createPortal } from "react-dom";
 import { listEdits } from "../engine/edit";
 import {
+  applyConformProgress,
+  CONFORM_PROGRESS_EVENT,
+  type ConformJob,
+  type ConformProgress,
+  type ConformStatus,
+  conformMedia,
+  conformPercent,
+  conformStatus,
   deleteGlobalScreenshot,
   formatMediaDuration,
   fsUrl,
@@ -11,6 +19,7 @@ import {
   globalScreenshotMeta,
   importGlobalScreenshots,
   importMedia,
+  listConformJobs,
   listGlobalScreenshots,
   listProjectMedia,
   MEDIA_DRAG_TYPE,
@@ -151,8 +160,67 @@ function withPathItems(
       },
     },
   ];
+  return beforeDanger(items, path);
+}
+
+/** Slot `extra` just above the first danger item, so Delete stays last. */
+function beforeDanger(items: ContextMenuItem[], extra: ContextMenuItem[]): ContextMenuItem[] {
   const at = items.findIndex((it) => it.danger);
-  return at < 0 ? [...items, ...path] : [...items.slice(0, at), ...path, ...items.slice(at)];
+  return at < 0 ? [...items, ...extra] : [...items.slice(0, at), ...extra, ...items.slice(at)];
+}
+
+const CONFORM_REASONS: Record<string, string> = {
+  vfr: "variable frame rate",
+  "edit-list": "trimmed edit list",
+  "b-frames": "reordered frames",
+  primaries: "wide colour (P3)",
+  decoders: "decoders disagree",
+};
+
+/** The "Needs conform" chip's tooltip: what the probe found, in words. */
+export function conformReasonText(status: Pick<ConformStatus, "why">): string {
+  const words = status.why.map((why) => CONFORM_REASONS[why] ?? why);
+  return words.length > 0
+    ? `Needs conform: ${words.join(", ")}. Conform from the ⋯ menu.`
+    : "Needs conform";
+}
+
+function ConformIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true">
+      <path
+        d="M13 6.5A5 5 0 0 0 3.6 4.6M3 9.5a5 5 0 0 0 9.4 1.9M3.4 2.4v2.4h2.4M12.6 13.6v-2.4h-2.4"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+/** A mezzanine still being written: shown in the grid until its file lands. */
+function ConformingCard({ job }: { job: ConformJob }) {
+  const name = job.rel.replace(/^assets\//, "");
+  const percent = conformPercent(job);
+  return (
+    <div className="media-card" aria-busy="true" style={{ position: "relative" }}>
+      <div className="media-thumb">
+        <span className="media-thumb-pending">
+          {job.total > 0 ? `Conforming… ${percent}%` : "Waiting to conform…"}
+        </span>
+      </div>
+      <div className="media-card-body">
+        <span className="media-name" title={name}>
+          {name}
+        </span>
+        <div className="media-card-foot">
+          <span className="media-meta-line">60 fps copy</span>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 /** The import button, extracted so modal hosts can seat it in their title row (top-right, across from the heading). Hosts pass `onImported` to bump an embedded browser's `refreshKey`. */
@@ -357,6 +425,8 @@ export function MediaCard({
   onPreview,
   onPick,
   disabled,
+  conforming = null,
+  needsConform = null,
 }: {
   rel: string;
   meta: MediaMeta | null;
@@ -364,6 +434,10 @@ export function MediaCard({
   metaFailed: boolean;
   /** True for a rendered editor output whose edit document still exists. */
   edited: boolean;
+  /** Percent done while an in-place conform runs, else null. */
+  conforming?: number | null;
+  /** The "Needs conform" chip's tooltip when the probe flags this file, else null. */
+  needsConform?: string | null;
   canDrag: boolean;
   /** Accent-ring the card (the host's current selection). */
   selected: boolean;
@@ -459,6 +533,15 @@ export function MediaCard({
           <span className="media-duration">{formatMediaDuration(meta.durationMs)}</span>
         )}
         {edited && <span className="media-badge">Edited</span>}
+        {!edited && conforming !== null && (
+          <span className="media-badge">{`Conforming… ${conforming}%`}</span>
+        )}
+        {!edited && conforming === null && needsConform && (
+          // Above the card's activate button, so the reasons show on hover.
+          <span className="media-badge" title={needsConform} style={{ zIndex: 2 }}>
+            Needs conform
+          </span>
+        )}
         {onPick && (
           <button
             type="button"
@@ -672,6 +755,12 @@ export function MediaBrowser({
   const pickBusyRef = useRef(false);
   const [pickBusy, setPickBusy] = useState(false);
   const [unusedOpen, setUnusedOpen] = useState(false);
+  /** Conform jobs in flight for this project (imports still landing, in-place conforms). */
+  const [conformJobs, setConformJobs] = useState<ConformJob[]>([]);
+  /** Probe verdicts by rel, keyed to the content sha they were read for. */
+  const [verdicts, setVerdicts] = useState<Record<string, { sha: string; status: ConformStatus }>>(
+    {},
+  );
 
   // The visible kind set: a fixed `kinds` filter wins; else the toolbar toggle; else all.
   const allowedKinds = kinds ?? (kindToggle ? [kindTab] : null);
@@ -680,6 +769,9 @@ export function MediaBrowser({
   const visibleGlobal = globalShots?.filter(
     (s) => !allowedKinds || allowedKinds.includes(kindOfRel(s.name)),
   );
+  // Imports still conforming have no file yet, so they get cards of their own (always videos).
+  const pendingJobs = conformJobs.filter((job) => !rels?.includes(job.rel));
+  const visiblePending = !allowedKinds || allowedKinds.includes("video") ? pendingJobs : [];
 
   const refresh = useCallback(() => {
     listProjectMedia(slug)
@@ -811,6 +903,98 @@ export function MediaBrowser({
       cancelled = true;
     };
   }, [rels, slug]);
+
+  // Conform jobs: seeded on every scan, then followed live; a landed or failed job re-scans so its file (or the restored original) shows.
+  useEffect(() => {
+    void refreshKey;
+    let cancelled = false;
+    listConformJobs(slug)
+      .then((jobs) => {
+        if (!cancelled) setConformJobs(jobs);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [slug, refreshKey]);
+
+  useEffect(() => {
+    const unlisten = listen<ConformProgress>(CONFORM_PROGRESS_EVENT, (e) => {
+      const event = e.payload;
+      if (event.slug !== slug) return;
+      setConformJobs((prev) => applyConformProgress(prev, event));
+      if (event.stage !== "done" && event.stage !== "failed") return;
+      setVerdicts((prev) => {
+        if (!(event.rel in prev)) return prev;
+        const next = { ...prev };
+        delete next[event.rel];
+        return next;
+      });
+      if (event.stage === "failed") {
+        const name = event.rel.replace(/^assets\//, "");
+        setPickError(`Couldn't conform ${name}: ${event.error ?? "unknown error"}`);
+      }
+      refresh();
+      // Re-read the list too: a scan that raced this event could have brought the finished job back.
+      listConformJobs(slug)
+        .then(setConformJobs)
+        .catch(() => {});
+    });
+    return () => {
+      void unlisten.then((fn) => fn());
+    };
+  }, [slug, refresh]);
+
+  // Verdict pass behind the "Needs conform" chip, one video at a time once its sha is known; cached natively by content sha, so a re-scan costs a lookup.
+  const verdictsRef = useRef(verdicts);
+  verdictsRef.current = verdicts;
+  useEffect(() => {
+    if (!rels) return;
+    let cancelled = false;
+    (async () => {
+      for (const rel of rels) {
+        if (cancelled) return;
+        const meta = metas[rel];
+        if (meta?.kind !== "video" || verdictsRef.current[rel]?.sha === meta.sha) continue;
+        try {
+          const status = await conformStatus(slug, rel, meta.sha);
+          if (cancelled) return;
+          setVerdicts((prev) => ({ ...prev, [rel]: { sha: meta.sha, status } }));
+        } catch (e) {
+          console.warn(`[media] conform probe failed for ${rel}:`, e);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [rels, metas, slug]);
+
+  const conformJobFor = useCallback(
+    (rel: string) => conformJobs.find((job) => job.rel === rel) ?? null,
+    [conformJobs],
+  );
+
+  const startConform = useCallback(
+    (rel: string) => {
+      setPickError(null);
+      conformMedia(slug, rel)
+        .then(() =>
+          setConformJobs((prev) =>
+            applyConformProgress(prev, {
+              slug,
+              rel,
+              stage: "queued",
+              frame: 0,
+              total: 0,
+              error: null,
+            }),
+          ),
+        )
+        .catch((e) => setPickError(`Couldn't conform: ${String(e)}`));
+    },
+    [slug],
+  );
 
   /** The owning edit's name when `rel` is a rendered output (`assets/<name>-edited.mp4`) whose document still exists. */
   const editNameOf = useCallback(
@@ -1056,12 +1240,12 @@ export function MediaBrowser({
         )
       ) : rels === null ? (
         <p className="muted">Reading assets…</p>
-      ) : rels.length === 0 ? (
+      ) : rels.length === 0 && pendingJobs.length === 0 ? (
         <p className="muted">
           Drop in footage, images or logos: everything stays on your Mac, inside this project's
           assets folder.
         </p>
-      ) : visibleRels && visibleRels.length === 0 ? (
+      ) : visibleRels && visibleRels.length === 0 && visiblePending.length === 0 ? (
         <p className="muted">
           {allowedKinds?.includes("image")
             ? "No images in this project yet."
@@ -1069,33 +1253,57 @@ export function MediaBrowser({
         </p>
       ) : (
         <div className="media-grid">
-          {(visibleRels ?? []).map((rel) => (
-            <MediaCard
-              key={rel}
-              rel={rel}
-              meta={metas[rel] ?? null}
-              metaFailed={metaFailed.has(rel)}
-              edited={editNameOf(rel) !== null}
-              canDrag={Boolean(draggableMedia && metas[rel])}
-              selected={selectedRel != null && rel === selectedRel}
-              disabled={pickBusy}
-              onMenu={(x, y) =>
-                setMenu({
-                  x,
-                  y,
-                  items: withPathItems(
-                    cardMenu
-                      ? cardMenu(rel, metas[rel] ?? null, { editedOf: editNameOf(rel) })
-                      : [],
-                    `${projectPath}/${rel}`,
-                    setPickError,
-                  ),
-                })
-              }
-              onPreview={() => setPreview(rel)}
-              onPick={onPick ? () => onPick(rel, metas[rel] ?? null) : undefined}
-            />
+          {visiblePending.map((job) => (
+            <ConformingCard key={`conforming:${job.rel}`} job={job} />
           ))}
+          {(visibleRels ?? []).map((rel) => {
+            const job = conformJobFor(rel);
+            const status = verdicts[rel]?.status;
+            const flagged = !job && status?.needsConform === true;
+            return (
+              <MediaCard
+                key={rel}
+                rel={rel}
+                meta={metas[rel] ?? null}
+                metaFailed={metaFailed.has(rel)}
+                edited={editNameOf(rel) !== null}
+                conforming={job ? conformPercent(job) : null}
+                needsConform={flagged && status ? conformReasonText(status) : null}
+                canDrag={Boolean(draggableMedia && metas[rel])}
+                selected={selectedRel != null && rel === selectedRel}
+                disabled={pickBusy}
+                onMenu={(x, y) =>
+                  setMenu({
+                    x,
+                    y,
+                    items: withPathItems(
+                      beforeDanger(
+                        cardMenu
+                          ? cardMenu(rel, metas[rel] ?? null, { editedOf: editNameOf(rel) })
+                          : [],
+                        flagged
+                          ? [
+                              {
+                                id: "conform",
+                                label: "Conform",
+                                icon: <ConformIcon />,
+                                title:
+                                  "Re-encode at a steady 60 fps with QuickTime's timing and colour; the original moves to assets/.originals",
+                                onSelect: () => startConform(rel),
+                              },
+                            ]
+                          : [],
+                      ),
+                      `${projectPath}/${rel}`,
+                      setPickError,
+                    ),
+                  })
+                }
+                onPreview={() => setPreview(rel)}
+                onPick={onPick ? () => onPick(rel, metas[rel] ?? null) : undefined}
+              />
+            );
+          })}
         </div>
       )}
     </>
