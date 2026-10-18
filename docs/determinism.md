@@ -1118,6 +1118,12 @@ stays deterministic):
   gated by `otool -L` (system libs only). Same version ⇒ same bytes: proven by
   dev/packaged hash parity. Note: the dev `pnpm setup:ffmpeg` copy OVERWRITES the
   release sidecar; rerun `pnpm setup:ffmpeg:release` after.
+- **Editor zoom guards are per ffmpeg build.** `cargo test --manifest-path
+  src-tauri/Cargo.toml --lib zoom_frames_match -- --ignored` pins the zoom
+  stage's frame counter (`in-1`) and its bytes on both decode lanes for whichever
+  sidecar `src-tauri/bin` holds. Perspective's counter base and every hash belong
+  to one build, so before a release run it, and `edit_barcode_conformance`, once
+  after `pnpm setup:ffmpeg:release`.
 - **Troika typesets on the main thread**
   (`configureTextBuilder({ useWorker: false })`): WKWebView refuses troika's blob
   worker over `tauri://`, which silently blanks a packaged app. Main-thread
