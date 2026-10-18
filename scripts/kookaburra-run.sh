@@ -136,6 +136,13 @@ if [[ "$COLD" == "1" ]]; then
     *) echo "kookaburra:run: --cold only applies to verify, export, screenshot, packroundtrip, stills or stillsverify" >&2; exit 2 ;;
   esac
 fi
+# A packaged instance still shares $APPDATA caches with this run in an unmanaged way (it
+# takes no queue ticket and no per-run result dir), so that one stays a hard fail.
+# Executable paths only: `pgrep -f` also matched any shell whose arguments named the path.
+if [[ "$(ps -axo comm= 2>/dev/null)" == *"/Kookaburra Cut.app/Contents/MacOS/"* ]]; then
+  echo "kookaburra:run: a packaged Kookaburra Cut is already running. Quit it first (shared caches)." >&2
+  exit 2
+fi
 if [[ -n "$APP" ]]; then
   # Packaged mode: the sidecars sit beside the main binary, so resolve it from
   # Info.plist rather than guessing (a bare find can pick up ffmpeg instead).
@@ -175,12 +182,6 @@ if [[ -n "$PROJECT" && "$ACTION" != "preset-previews" ]]; then
       exit 2
     fi
   done
-fi
-# A packaged instance still shares $APPDATA caches with this run in an unmanaged way (it
-# takes no queue ticket and no per-run result dir), so that one stays a hard fail.
-if pgrep -f "Kookaburra Cut.app/Contents/MacOS/" >/dev/null 2>&1; then
-  echo "kookaburra:run: a packaged Kookaburra Cut is already running — quit it first (shared caches)." >&2
-  exit 2
 fi
 # The perf probe measures this machine's spare capacity, so an app running alongside skews
 # every number. It still runs (the operator may have judged it harmless), just warned.
@@ -536,8 +537,8 @@ if [[ "$COLD" == "1" ]] && ! grep -q '"cold": true' "$RESULT_FILE"; then
   echo "kookaburra:run: --cold was not honoured (no \"cold\": true in the result): this build predates it" >&2
   exit 2
 fi
-# `"ok": true` (2-space-indented JSON) ⇒ pass; anything else ⇒ fail.
-if ! grep -q '"ok": true' "$RESULT_FILE"; then
+# A top-level `"ok": true` (2-space-indented JSON) ⇒ pass; anything else ⇒ fail. Anchored, since result rows nest flash reports with their own `ok`.
+if ! grep -qE '^  "ok": true,?$' "$RESULT_FILE"; then
   exit 1
 fi
 

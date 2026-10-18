@@ -866,6 +866,11 @@ export async function revealInFinder(path: string): Promise<void> {
   await invoke("reveal_in_finder", { path });
 }
 
+/** Reveal one export this app wrote in this session (Rust refuses any other path, as it refuses to take one for `revealLastExport`). */
+export async function revealExport(path: string): Promise<void> {
+  await invoke("reveal_export", { path });
+}
+
 /** Reveal the most recent finished export. No path crosses the IPC boundary: exports default to ~/Downloads, outside `reveal_in_finder`'s confinement, so Rust reveals the destination it wrote itself. */
 export async function revealLastExport(): Promise<void> {
   await invoke("reveal_last_export");

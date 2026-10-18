@@ -46,6 +46,11 @@ export function getSceneTerminalSession(key: string): SceneTerminalLive | undefi
   return live.get(key);
 }
 
+/** Scene terminals whose process still runs. */
+export function runningSceneTerminalCount(): number {
+  return [...live.values()].filter((entry) => entry.status === "running").length;
+}
+
 /** The block's colour preset as an xterm theme; the opaque screen colour sits seamlessly over the panel's own screen plane. */
 export function sceneTerminalITheme(colours: SceneTerminalColours): ITheme {
   const [black, red, green, yellow, blue, magenta, cyan, white] = colours.ansi;

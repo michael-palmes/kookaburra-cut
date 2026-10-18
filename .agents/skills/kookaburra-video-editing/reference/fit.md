@@ -2,8 +2,8 @@
 
 ## Exact length
 
-`kb video fit NAME --to 8` makes the render exactly `round(8 x fps)` frames (480 at 60 fps): the
-timeline lands within half a frame of 8 s, then `kb video validate NAME` and the render agree to the
+`./kb video fit NAME --to 8` makes the render exactly `round(8 x fps)` frames (480 at 60 fps): the
+timeline lands within half a frame of 8 s, then `./kb video validate NAME` and the render agree to the
 frame. Check with `--dry-run` first; the report lists every step.
 
 Shortening (auto):
@@ -31,14 +31,14 @@ Offer that length, more cutting by hand, or a longer scene.
 
 ## Fit a scene
 
-`kb video fit NAME --scene 3 [--slot device]` reads the slot's start (`startMs`) and the scene's
+`./kb video fit NAME --scene 3 [--slot device]` reads the slot's start (`startMs`) and the scene's
 length: the target is from the start to where the outgoing transition begins (`--end scene-end` for
 the very end). The slot is picked for you when one slot in the scene shows the edit's source or
 render; otherwise pass `--slot` (`background`, `media[:ID]`, `window`, `device[:ID]`,
 `device-cover[:ID]`, `compare-device[:ID]`, `compare-device-cover[:ID]`).
 
 Follow-media scenes take their length from the video, so fitting to them changes nothing: pass
-`--to` with the length wanted, then `kb video render NAME --use --scene S` and the scene follows.
+`--to` with the length wanted, then `./kb video render NAME --use --scene S` and the scene follows.
 Check its transition and any camera or device keys past the new length afterwards.
 
 Prefer changing the edit over changing a scene's duration: transitions, beats and every later
@@ -53,15 +53,15 @@ stretch between anchors is fitted on its own, so every anchor lands within half 
 ## Align one moment
 
 ```
-kb video align NAME --tap t1 --beat 4 --scene 3
-kb video align NAME --src s1@24.967 --at 20 --keep-length
-kb video align NAME --tap t1 --scene-at 2.5 --scene 3 --prefer edit
+./kb video align NAME --tap t1 --beat 4 --scene 3
+./kb video align NAME --src s1@24.967 --at 20 --keep-length
+./kb video align NAME --tap t1 --scene-at 2.5 --scene 3 --prefer edit
 ```
 
 - The moment: `--src [SID@]T` or `--tap ID`. A tap lands 83 ms early (`--lead` changes it) so the
   highlight reads on the beat; a plain source moment lands exactly.
 - The target: `--at T` (edit timeline), or in a scene: `--scene-at T`, `--beat N` (the scene's Nth
-  grid beat, 1-based), `--moment N` (its Nth key moment). Beats come from `kb beats --scene S`; with
+  grid beat, 1-based), `--moment N` (its Nth key moment). Beats come from `./kb beats --scene S`; with
   no beat analysis yet, ask the user to open the project in the app once.
 - Scene side first: when moving the slot's `startMs` (0 to 1500 ms) alone lands it, align writes
   that to the scene's sidecar and leaves the edit and its render untouched (no re-render). Not for
@@ -69,5 +69,5 @@ kb video align NAME --tap t1 --scene-at 2.5 --scene 3 --prefer edit
   `--prefer scene` insists on it.
 - Edit side: the stretch before the moment is fitted so it lands on the target. `--keep-length`
   also fits what follows so the total stays the same; otherwise the length changes by the shift.
-- After aligning, `kb capture --scene S --at <target seconds>` and Read it: the touch should be on
+- After aligning, `./kb capture --scene S --at <target seconds>` and Read it: the touch should be on
   screen as the beat lands.

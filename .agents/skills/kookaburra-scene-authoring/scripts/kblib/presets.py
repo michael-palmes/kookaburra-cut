@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Optional
 
 from . import bridge
 from . import catalog as catmod
+from . import lock as lockmod
 from . import scenes as scenemod
 from .project import Project
 from .util import KbError, load_json
@@ -149,15 +150,23 @@ def _preset_manifest(p: Preset) -> Optional[Dict[str, Any]]:
     return manifest
 
 
-def insert_offline(project: Project, p: Preset, stem: Optional[str], name: Optional[str], position: Optional[int]) -> scenemod.Result:
-    """copy_scene_to_project from a preset folder, without the app."""
+def insert_offline(
+    project: Project,
+    p: Preset,
+    stem: Optional[str],
+    name: Optional[str],
+    position: Any,
+    opts: Optional[lockmod.WriteOpts] = None,
+    duration: Optional[int] = None,
+) -> scenemod.Result:
+    """copy_scene_to_project from a preset folder, without the app (position: a scenes.Place or a 0-based index)."""
     if p.folder is None:
         raise KbError(f"preset {p.ref} has no folder on disk (looked in {bridge.presets_dir()}); start the app or install it in /Applications", 2)
     manifest = _preset_manifest(p)
     if manifest is None:
         raise KbError(f"preset {p.ref} is malformed: a scene preset must contain exactly one scene")
     pool = bridge.samples_dir() if p.scope == "bundled" else None
-    return scenemod.copy_into(project, p.folder, manifest["scenes"][0], stem, name, position, True, pool)
+    return scenemod.copy_into(project, p.folder, manifest["scenes"][0], stem, name, position, True, pool, opts=opts, duration=duration)
 
 
 def insert_via_app(project: Project, p: Preset, name: Optional[str], position: Optional[int], timeout: float) -> scenemod.Result:

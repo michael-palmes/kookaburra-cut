@@ -9,6 +9,8 @@ import {
 import { useEditorStore } from "../store/editorStore";
 import { THEME_LINEUP } from "../theme/registry";
 import { preloadBundledBackdrops } from "../toolkit/stage/backdrops";
+import { highQualityEncode, openingPosterFrameEnabled, withPosterFrame } from "../ui/exportOptions";
+import { BridgeProgressTracker } from "./bridgeExport";
 import { releaseCompositorPools } from "./compositor";
 import { releaseComposer } from "./effects";
 import { collectEnvironmentSources, preloadEnvironments } from "./environments";
@@ -49,7 +51,7 @@ import {
   THEME_PREVIEW_PROJECT_ID,
   writeThemePreviews,
 } from "./themePreviews";
-import { createProject } from "./workspace";
+import { createProject, getSettings } from "./workspace";
 
 /** Headless auto-run: `pnpm kookaburra:run` sets `KOOKABURRA_*` env vars read via native `get_autorun_config` (process env, not `import.meta.env`, which is baked at build time and unreadable in a packaged app); drives the store then calls the same `verifyDeterminism`/`exportProject` the UI buttons call, so it never bypasses the real WebGL/ffmpeg export path. See docs/determinism.md. */
 
@@ -92,7 +94,12 @@ export interface AutoRunConfig {
   /** stills/stillsverify: PDF handout or PNG zip, and the page size. */
   stills: StillsFormat;
   stillsSize: StillsSize;
+  /** `KOOKABURRA_PROGRESS=1`: report progress through `autorun_progress` (kb's headless export polls it). */
+  progress: boolean;
 }
+
+/** `KOOKABURRA_POSTER`: the Export modal's opening poster frame for export and verify runs (`app` reads its setting). */
+type PosterChoice = "on" | "off" | "app";
 
 /** A single aspect's outcome: determinism digests (verify) or the output path (export). */
 interface AutoRunResult {
@@ -133,6 +140,11 @@ interface AutoRunResult {
   sha256?: string;
   pagesHash?: string;
   pageTimesMs?: number[];
+  /** export and verify rows: the output rate, the poster frame, and the flash tap's report on the written file (or why there is none). */
+  fps?: number;
+  posterFrame?: boolean;
+  flashes?: unknown;
+  flashesUnavailable?: string;
   warnings?: StillsWarning[];
   /** stillsverify rows: pass B's file (`<stem>-b` beside pass A's) and hashes, plus where the passes split. */
   pathB?: string;
@@ -218,6 +230,9 @@ interface AutoRunEnv {
   stills: string | null;
   stillsSize: string | null;
   cold: boolean;
+  trust?: string | null;
+  poster?: string | null;
+  progress?: boolean;
 }
 
 let autoRunEnv: AutoRunEnv | null = null;
@@ -225,6 +240,8 @@ let autoRunEnv: AutoRunEnv | null = null;
 let coldHeld = false;
 /** A `ws:` preset doc prefetched by `initAutoRunConfig` (the listing command is async; every consumer reads `getAutoRunConfig()` synchronously). */
 let wsPresetDoc: ExportPresetDoc | null = null;
+/** The modal's poster frame setting, prefetched for `KOOKABURRA_POSTER=app`. */
+let appPosterFrame = openingPosterFrameEnabled(undefined);
 
 /** Prefetches the auto-run env once, before React renders; every consumer reads `getAutoRunConfig()` synchronously during mount. Failures read as "interactive" (never throws), since nothing could report a result if IPC is down anyway. */
 export async function initAutoRunConfig(): Promise<void> {
@@ -244,6 +261,11 @@ export async function initAutoRunConfig(): Promise<void> {
       const listings = await invoke<{ slug: string; json: string }[]>("list_export_presets");
       const hit = listings.find((l) => l.slug === slug);
       if (hit) wsPresetDoc = parseExportPreset(JSON.parse(hit.json), presetId) ?? null;
+    }
+    if (autoRunEnv.poster?.trim() === "app") {
+      appPosterFrame = await getSettings()
+        .then((settings) => openingPosterFrameEnabled(settings.disableOpeningPosterFrame))
+        .catch(() => openingPosterFrameEnabled(undefined));
     }
   } catch (e) {
     console.warn("[autorun] get_autorun_config failed — treating as interactive:", e);
@@ -309,6 +331,14 @@ export function getAutoRunConfig(): AutoRunConfig | null {
   } else if (env.encodeJson?.trim()) {
     encode = JSON.parse(env.encodeJson) as EncodeSpec;
     outputSuffix = "custom";
+  }
+  // The poster frame rides the encode exactly as the modal adds it (High quality's spec lane with no preset); unset keeps the run's encode untouched.
+  const poster = parsePoster(env.poster ?? undefined);
+  if (
+    (action === "export" || action === "verify") &&
+    (poster === "on" || (poster === "app" && appPosterFrame))
+  ) {
+    encode = encode ? withPosterFrame(encode, true) : highQualityEncode(true);
   }
   // The preview batches render their dedicated projects unless one is forced.
   const projects = (
@@ -381,6 +411,68 @@ export function getAutoRunConfig(): AutoRunConfig | null {
       : undefined,
     stills,
     stillsSize,
+    progress: env.progress === true,
+  };
+}
+
+function parsePoster(raw: string | undefined): PosterChoice | null {
+  const value = raw?.trim();
+  if (!value) return null;
+  if (value === "on" || value === "off" || value === "app") return value;
+  throw new Error(`unknown KOOKABURRA_POSTER "${value}" (expected on | off | app)`);
+}
+
+/** `KOOKABURRA_PROGRESS=1`: the run's progress as `<run result dir>/progress.json`, once a second plus every stage change; the render never reads it. */
+function progressReporter(config: AutoRunConfig) {
+  let tracker: BridgeProgressTracker | null = null;
+  let leg: { project: string; aspect: string } | null = null;
+  let lastAt = 0;
+  let lastStage = "";
+  const write = () => {
+    if (!tracker || !leg) return;
+    const snap = tracker.snapshot();
+    const now = Date.now();
+    if (snap.stage === lastStage && now - lastAt < 1000) return;
+    lastAt = now;
+    lastStage = snap.stage;
+    const body = { version: 1, action: config.action, ...leg, ...snap, updatedAtMs: now };
+    void invoke("autorun_progress", { progressJson: JSON.stringify(body) }).catch(() => {});
+  };
+  return {
+    begin(project: string, aspect: string, runs: number) {
+      tracker = new BridgeProgressTracker(Date.now, runs);
+      tracker.setStage("preparing");
+      leg = { project, aspect };
+      lastStage = "";
+      write();
+    },
+    onProgress(p: ExportProgress) {
+      tracker?.onProgress(p);
+      write();
+    },
+    onPrepareStep(step: number) {
+      tracker?.onPrepareStep(step);
+      write();
+    },
+  };
+}
+
+/** The flash tap's verdict on the run's file, plus its SHA-256 for an export (a verify's is `hashB`). */
+async function writtenFacts(path: string | null): Promise<Partial<AutoRunResult>> {
+  const outcome = await invoke<{
+    path: string;
+    report: unknown;
+    unavailable: string | null;
+  } | null>("export_flash_report").catch(() => null);
+  const file = path ?? outcome?.path ?? null;
+  const sha256 =
+    path !== null ? await invoke<string>("hash_file", { path }).catch(() => undefined) : undefined;
+  const flash = outcome && outcome.path === file ? outcome : null;
+  return {
+    ...(path === null && file ? { path: file } : {}),
+    ...(sha256 ? { sha256 } : {}),
+    ...(flash?.report ? { flashes: flash.report } : {}),
+    ...(flash?.unavailable ? { flashesUnavailable: flash.unavailable } : {}),
   };
 }
 
@@ -422,7 +514,7 @@ function nextCommit(): Promise<void> {
   });
 }
 
-type FinishPayload = AutoRunReport | { ok: false; error: string };
+type FinishPayload = AutoRunReport | { ok: false; error: string; needsTrust?: true };
 
 let finished = false;
 /** Hands a result to native `finish_autorun` exactly once per process (it persists JSON and exits with a pass/fail code); idempotent so a config/load error, a later run, or a StrictMode re-invoke can't double-fire. */
@@ -440,7 +532,13 @@ export function reportAutoRunError(error: unknown): void {
   void (async () => {
     await initAutoRunConfig();
     if (!autoRunEnv?.action?.trim()) return;
-    await finish({ ok: false, error: String(error) });
+    // A stored-only run met a project the user has not allowed with these sources; kb tells them to open it once.
+    const needsTrust = error instanceof Error && error.name === "NeedsTrustError";
+    await finish({
+      ok: false,
+      error: needsTrust ? (error as Error).message : String(error),
+      ...(needsTrust ? { needsTrust: true } : {}),
+    });
   })().catch(() => {});
 }
 
@@ -510,10 +608,12 @@ export async function runAutoRun(
   await invoke("cancel_export").catch(() => {});
   await invoke("cancel_stills_export").catch(() => {});
 
+  const progress = config.progress ? progressReporter(config) : null;
   const onProgress = (p: ExportProgress) => {
     // console.warn not log: only warn/error forward into the wrapper's dev.log, and these breadcrumbs are how a stalled AFK run (or a WebContent footprint kill) gets localized post-hoc.
     if (p.frame % 120 === 0 || p.frame === p.total)
       console.warn(`[autorun] frame ${p.frame}/${p.total}`);
+    progress?.onProgress(p);
   };
 
   if (config.action === "option-previews") {
@@ -1002,6 +1102,7 @@ export async function runAutoRun(
       );
       for (const format of config.aspects) {
         console.warn(`[autorun] ${config.action} ${current.id} ${format.name} starting`);
+        progress?.begin(current.id, format.name, config.action === "verify" ? 2 : 1);
         useEditorStore.getState().setFormat(format);
         await nextCommit();
         console.warn(`[autorun] ${format.name} format committed`);
@@ -1125,6 +1226,9 @@ export async function runAutoRun(
             hashA: r.hashA,
             hashB: r.hashB,
             fingerprint: r.fingerprint,
+            fps: outFps,
+            posterFrame: encode?.posterFrame === true,
+            ...(await writtenFacts(null)),
             ...(r.divergentCount !== undefined
               ? {
                   divergentCount: r.divergentCount,
@@ -1137,8 +1241,22 @@ export async function runAutoRun(
           });
           if (!r.identical) ok = false;
         } else {
-          const path = await exportProject(base, onProgress);
-          results.push({ aspect: format.name, project: current.id, path });
+          const path = await exportProject(
+            base,
+            onProgress,
+            undefined,
+            undefined,
+            undefined,
+            progress?.onPrepareStep,
+          );
+          results.push({
+            aspect: format.name,
+            project: current.id,
+            path,
+            fps: outFps,
+            posterFrame: encode?.posterFrame === true,
+            ...(await writtenFacts(path)),
+          });
         }
         if (glInfo) {
           console.warn(

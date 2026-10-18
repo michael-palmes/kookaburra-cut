@@ -7,11 +7,12 @@ import filecmp
 import os
 import shutil
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
+from . import lock as lockmod
 from . import tsx as tsxmod
-from .project import DEFAULT_SCENE_DURATION_MS, Project, humanise, numeric_prefix, slugify, stem_of
-from .util import KbError, atomic_write_json, atomic_write_text, is_int, load_json, read_text
+from .project import DEFAULT_SCENE_DURATION_MS, MANIFEST, Project, humanise, numeric_prefix, slugify, stem_of
+from .util import EXIT_PROBLEMS, KbError, is_int, load_json, read_text
 
 TEXT_STYLE_SUFFIXES = ("Color", "Font", "Size", "OffsetX", "OffsetY", "LineHeight", "RotationDeg")
 FRAME_SHAPES = {"rect", "rounded-rect", "squircle", "circle", "capsule", "none"}
@@ -313,8 +314,9 @@ def copy_scene_assets(
     doc: Optional[Dict[str, Any]],
     entry: Dict[str, Any],
     sample_pool: Optional[Path],
+    tx: Optional[lockmod.Txn] = None,
 ) -> Tuple[str, Optional[Dict[str, Any]], Dict[str, Any], List[str]]:
-    """Copy every referenced asset; a name clash with different bytes gets a -2 sibling and the refs follow."""
+    """Copy every referenced asset (planned on tx when given); a name clash with different bytes gets a -2 sibling and the refs follow."""
     refs = tsxmod.scan_asset_refs(tsx_text)
     for rel in collect_json_asset_refs(entry) + (collect_json_asset_refs(doc) if doc is not None else []):
         if rel not in refs:
@@ -344,9 +346,12 @@ def copy_scene_assets(
             free = free_sibling_name(dest_dir, name)
             replacements.append((rel, f"{dir_rel}/{free}"))
             dest = dest_dir / free
-        dest_dir.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(str(src), str(dest))
-        os.utime(str(dest), None)
+        if tx is not None:
+            tx.copy_in(dest.relative_to(dest_root).as_posix(), src)
+        else:
+            dest_dir.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(str(src), str(dest))
+            os.utime(str(dest), None)
         copied.append(str(dest.relative_to(dest_root)))
     if replacements:
         tsx_text = tsxmod.rewrite_text_asset_refs(tsx_text, replacements)
@@ -402,18 +407,19 @@ def base_id_for(stem: str) -> str:
 
 def position_from(project: Project, after: Optional[str], at: Optional[int], count: int) -> Optional[int]:
     if after is not None and at is not None:
-        raise KbError("pass --after or --at, not both", 2)
+        raise KbError("pass --after or --at, not both", 2, kind="usage")
     if after is not None:
         idx, _ = project.resolve(after)
         return idx + 1
     if at is not None:
         if at < 0 or at > count:
-            raise KbError(f"--at {at} is out of range; use 0-{count} (0 = first, {count} = last)", 2)
+            raise KbError(f"--at {at} is out of range; use 0-{count} (0 = first, {count} = last)", 2, kind="usage")
         return at
     return None
 
 
 # ── operations ────────────────────────────────────────────────────────────────
+# Each plans its writes from a fresh project.json on a kblib.lock transaction, rebuilt when someone saved meanwhile.
 
 
 class Result:
@@ -423,69 +429,161 @@ class Result:
         self.scene_id = scene_id
         self.name = name
         self.notes = notes or []
+        self.writes: List[Dict[str, Any]] = []
+        self.dry_run = False
 
     def as_dict(self) -> Dict[str, Any]:
-        return {"file": self.file, "index": self.index, "id": self.scene_id, "name": self.name, "notes": self.notes}
+        return {"file": self.file, "index": self.index, "id": self.scene_id, "name": self.name, "notes": self.notes, "writes": self.writes, "dryRun": self.dry_run}
 
 
-def _load_manifest_for_edit(project: Project) -> Dict[str, Any]:
-    manifest = copy.deepcopy(project.manifest(reload=True))
-    scenes = manifest.get("scenes")
-    if not isinstance(scenes, list):
+class Pins:
+    """Scenes addressed by index: a rebuild on a newer project.json refuses when the index now names another scene."""
+
+    def __init__(self) -> None:
+        self.seen: Dict[str, str] = {}
+
+    def resolve(self, view: Project, selector: str) -> Tuple[int, str]:
+        idx, stem = view.resolve(selector)
+        key = selector.strip()
+        if key.isascii() and key.isdigit():
+            first = self.seen.setdefault(key, stem)
+            if first != stem:
+                raise KbError(
+                    f"scene {key} is now {stem}, not {first}: project.json changed while kb wrote it. Nothing was written",
+                    EXIT_PROBLEMS,
+                    kind="conflict",
+                    hint=f"address the scene by its stem ({first}) and rerun",
+                )
+        return idx, stem
+
+
+class Place:
+    """Where a new scene goes (--after S or --at N), resolved against the manifest each attempt reads."""
+
+    def __init__(self, after: Optional[str] = None, at: Optional[int] = None) -> None:
+        if after is not None and at is not None:
+            raise KbError("pass --after or --at, not both", 2, kind="usage")
+        self.after = after
+        self.at = at
+
+    @property
+    def given(self) -> bool:
+        return self.after is not None or self.at is not None
+
+    def index(self, view: Project, count: int, pins: Pins) -> Optional[int]:
+        if self.after is not None:
+            idx, _ = pins.resolve(view, self.after)
+            return idx + 1
+        if self.at is not None:
+            if self.at < 0 or self.at > count:
+                raise KbError(f"--at {self.at} is out of range; use 0-{count} (0 = first, {count} = last)", 2, kind="usage")
+            return self.at
+        return None
+
+
+def _place(place: Any) -> Place:
+    return place if isinstance(place, Place) else Place(at=place)
+
+
+def _view(project: Project, manifest: Dict[str, Any]) -> Project:
+    """A Project over a manifest this attempt read, so selectors resolve against the same bytes it writes back."""
+    view = Project(project.root)
+    view._manifest = manifest
+    return view
+
+
+def _manifest_for_edit(tx: lockmod.Txn) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    """(as read, migrated for editing)."""
+    raw, _sha = tx.read_json(MANIFEST, "project.json")
+    if raw is None:
+        raise KbError("project.json does not exist")
+    if not isinstance(raw, dict):
+        raise KbError("project.json must be a JSON object; restore it with kb undo")
+    if not isinstance(raw.get("scenes"), list):
         raise KbError('project.json has no "scenes" array; restore it with kb undo')
+    manifest = copy.deepcopy(raw)
     migrate_manifest_transitions(manifest)
-    return manifest
+    return raw, manifest
 
 
-def add_blank(project: Project, stem: str, name: Optional[str], duration: Optional[int], position: Optional[int]) -> Result:
-    manifest = _load_manifest_for_edit(project)
-    scenes: List[Dict[str, Any]] = manifest["scenes"]
-    requested = stem_of(stem.strip())
-    existing = project.scenes_dir / f"{requested}.tsx"
-    listed = [e.get("file") for e in scenes if isinstance(e, dict)]
-    notes: List[str] = []
-    if existing.is_file():
-        if f"scenes/{requested}.tsx" in listed:
-            raise KbError(f"scenes/{requested}.tsx is already scene {listed.index(f'scenes/{requested}.tsx')}; use kb scene duplicate to copy it")
-        return register_existing(project, manifest, requested, duration, position)
-    final = mint_stem(project, requested)
-    display = name or humanise(final)
-    sid = free_scene_id(base_id_for(final), taken_scene_ids(project))
-    dur = duration or 3000
-    tsx_text = BLANK_TSX.format(id=sid, duration=dur, title=_js_string(display))
-    atomic_write_text(project.tsx_path(final), tsx_text)
-    atomic_write_json(project.sidecar_path(final), {"version": SCENE_DOC_VERSION, "name": display, "text": {"title": display}})
-    entry = {"file": f"scenes/{final}.tsx", "durationMs": dur}
-    at = len(scenes) if position is None else min(position, len(scenes))
-    scenes.insert(at, entry)
-    seed_inserted_scene_transitions(scenes, at, project_default_transition(manifest))
-    project.save_manifest(manifest)
-    if final != requested:
-        notes.append(f'stem "{requested}" became "{final}" (numbered and unique)')
-    return Result(entry["file"], at, sid, display, notes)
+def _run(project: Project, op: str, build: Callable[[lockmod.Txn], Any], opts: Optional[lockmod.WriteOpts]) -> Tuple[Any, lockmod.Txn]:
+    opts = opts or lockmod.WriteOpts()
+    result, tx = lockmod.transact(project, op, build, dry_run=opts.dry_run, caller=opts.caller, wait=opts.wait)
+    if tx.committed and tx.planned(MANIFEST):
+        project.manifest(reload=True)
+    if isinstance(result, Result):
+        result.writes = tx.writes
+        result.dry_run = tx.dry_run
+    return result, tx
 
 
-def register_existing(project: Project, manifest: Dict[str, Any], stem: str, duration: Optional[int], position: Optional[int]) -> Result:
+def _read_text(tx: lockmod.Txn, rel: str) -> str:
+    data, _sha = tx.read(rel)
+    if data is None:
+        raise KbError(f"cannot read {rel}: it does not exist")
+    try:
+        return data.decode("utf-8")
+    except UnicodeDecodeError:
+        raise KbError(f"{rel} is not UTF-8 text") from None
+
+
+def add_blank(project: Project, stem: str, name: Optional[str], duration: Optional[int], place: Any = None, opts: Optional[lockmod.WriteOpts] = None) -> Result:
+    where = _place(place)
+    pins = Pins()
+
+    def build(tx: lockmod.Txn) -> Result:
+        _raw, manifest = _manifest_for_edit(tx)
+        view = _view(project, manifest)
+        scenes: List[Dict[str, Any]] = manifest["scenes"]
+        requested = stem_of(stem.strip())
+        existing = project.scenes_dir / f"{requested}.tsx"
+        listed = [e.get("file") for e in scenes if isinstance(e, dict)]
+        notes: List[str] = []
+        if existing.is_file():
+            if f"scenes/{requested}.tsx" in listed:
+                raise KbError(f"scenes/{requested}.tsx is already scene {listed.index(f'scenes/{requested}.tsx')}; use kb scene duplicate to copy it")
+            return _register_existing(tx, project, manifest, requested, duration, where.index(view, len(scenes), pins))
+        position = where.index(view, len(scenes), pins)
+        final = mint_stem(project, requested)
+        display = name or humanise(final)
+        sid = free_scene_id(base_id_for(final), taken_scene_ids(project))
+        dur = duration or 3000
+        tx.write_text(f"scenes/{final}.tsx", BLANK_TSX.format(id=sid, duration=dur, title=_js_string(display)), create_only=True)
+        tx.write_json(f"scenes/{final}.json", {"version": SCENE_DOC_VERSION, "name": display, "text": {"title": display}}, create_only=True)
+        entry = {"file": f"scenes/{final}.tsx", "durationMs": dur}
+        at = len(scenes) if position is None else min(position, len(scenes))
+        scenes.insert(at, entry)
+        seed_inserted_scene_transitions(scenes, at, project_default_transition(manifest))
+        tx.write_json(MANIFEST, manifest)
+        if final != requested:
+            notes.append(f'stem "{requested}" became "{final}" (numbered and unique)')
+        return Result(entry["file"], at, sid, display, notes)
+
+    return _run(project, "kb scene add", build, opts)[0]
+
+
+def _register_existing(tx: lockmod.Txn, project: Project, manifest: Dict[str, Any], stem: str, duration: Optional[int], position: Optional[int]) -> Result:
     """Adopt a scenes/<stem>.tsx that exists on disk but is not in project.json."""
     scenes: List[Dict[str, Any]] = manifest["scenes"]
-    text = project.read_tsx(stem)
-    notes = [f"registered the existing scenes/{stem}.tsx"]
+    rel = f"scenes/{stem}.tsx"
+    text = _read_text(tx, rel)
+    notes = [f"registered the existing {rel}"]
     sid = tsxmod.scene_id(text)
-    others = {f: t for f, t in project.all_tsx().items() if f != f"scenes/{stem}.tsx"}
+    others = {f: t for f, t in project.all_tsx().items() if f != rel}
     taken = {tsxmod.scene_id(t) for t in others.values()} - {None}
     if sid is not None and sid in taken:
         new_id = free_scene_id(base_id_for(stem), taken)  # type: ignore[arg-type]
         rewritten = tsxmod.rewrite_scene_id(text, new_id)
         if rewritten is not None:
-            atomic_write_text(project.tsx_path(stem), rewritten)
+            tx.write_text(rel, rewritten)
             notes.append(f'its id "{sid}" was taken, so it is now "{new_id}"')
             sid = new_id
     dur = duration or _tsx_duration(text) or 3000
-    entry = {"file": f"scenes/{stem}.tsx", "durationMs": dur}
+    entry = {"file": rel, "durationMs": dur}
     at = len(scenes) if position is None else min(position, len(scenes))
     scenes.insert(at, entry)
     seed_inserted_scene_transitions(scenes, at, project_default_transition(manifest))
-    project.save_manifest(manifest)
+    tx.write_json(MANIFEST, manifest)
     doc = project.load_sidecar(stem)
     name = doc.get("name") if isinstance(doc, dict) and isinstance(doc.get("name"), str) else humanise(stem)
     return Result(entry["file"], at, sid or "?", name, notes)
@@ -504,8 +602,10 @@ def _js_string(value: str) -> str:
     return json.dumps(value, ensure_ascii=False)
 
 
-def copy_into(
+def _copy(
+    tx: lockmod.Txn,
     project: Project,
+    manifest: Dict[str, Any],
     source_root: Path,
     source_entry: Dict[str, Any],
     stem: Optional[str],
@@ -513,7 +613,8 @@ def copy_into(
     position: Optional[int],
     is_preset: bool,
     sample_pool: Optional[Path],
-    duplicate_naming: bool = False,
+    duplicate_naming: bool,
+    duration: Optional[int],
 ) -> Result:
     """copy_scene_between / duplicate_scene: fresh stem and id, sidecar ids re-minted, assets carried."""
     file = source_entry.get("file")
@@ -533,8 +634,7 @@ def copy_into(
     same_project = source_root.resolve() == project.root.resolve()
     copied: List[str] = []
     if not same_project:
-        tsx_text, doc, entry, copied = copy_scene_assets(source_root, project.root, tsx_text, doc, entry, sample_pool)
-    manifest = _load_manifest_for_edit(project)
+        tsx_text, doc, entry, copied = copy_scene_assets(source_root, project.root, tsx_text, doc, entry, sample_pool, tx)
     if is_preset:
         doc = inherit_preset_context(doc, manifest)
     default_transition = project_default_transition(manifest) if is_preset else None
@@ -555,16 +655,16 @@ def copy_into(
         sid = tsxmod.scene_id(tsx_text) or "?"
     else:
         tsx_text = rewritten
-    atomic_write_text(project.tsx_path(final), tsx_text)
+    tx.write_text(f"scenes/{final}.tsx", tsx_text, create_only=True)
     if doc is not None:
         if duplicate_naming and source_name is not None:
             doc["name"] = f"{source_name} copy"
         if name:
             doc["name"] = name
         remint_scene_doc_ids(doc)
-        atomic_write_json(project.sidecar_path(final), doc)
+        tx.write_json(f"scenes/{final}.json", doc, create_only=True)
     scenes: List[Dict[str, Any]] = manifest["scenes"]
-    new_entry: Dict[str, Any] = {"file": f"scenes/{final}.tsx", "durationMs": entry_duration(entry)}
+    new_entry: Dict[str, Any] = {"file": f"scenes/{final}.tsx", "durationMs": duration if duration is not None else entry_duration(entry)}
     if duplicate_naming and "transition" in entry:
         new_entry["transition"] = entry["transition"]
     if not duplicate_naming and "effects" in entry:
@@ -572,57 +672,122 @@ def copy_into(
     at = len(scenes) if position is None else min(position, len(scenes))
     scenes.insert(at, new_entry)
     seed_inserted_scene_transitions(scenes, at, default_transition)
-    project.save_manifest(manifest)
+    tx.write_json(MANIFEST, manifest)
     if copied:
-        notes.append(f"copied {', '.join(copied)}")
+        notes.append(f"{'would copy' if tx.dry_run else 'copied'} {', '.join(copied)}")
     display = doc.get("name") if isinstance(doc, dict) and isinstance(doc.get("name"), str) else humanise(final)
     return Result(new_entry["file"], at, sid, display, notes)
 
 
-def duplicate(project: Project, selector: str, position: Optional[int]) -> Result:
-    idx, _stem = project.resolve(selector)
-    source = project.scene_entries()[idx]
-    pos = idx + 1 if position is None else position
-    return copy_into(project, project.root, source, None, None, pos, False, None, duplicate_naming=True)
+def copy_into(
+    project: Project,
+    source_root: Path,
+    source_entry: Dict[str, Any],
+    stem: Optional[str],
+    name: Optional[str],
+    position: Any,
+    is_preset: bool,
+    sample_pool: Optional[Path],
+    duplicate_naming: bool = False,
+    opts: Optional[lockmod.WriteOpts] = None,
+    duration: Optional[int] = None,
+) -> Result:
+    """A scene from another folder (a preset): position is a Place or a 0-based index; duration overrides its length."""
+    where = _place(position)
+    pins = Pins()
+
+    def build(tx: lockmod.Txn) -> Result:
+        _raw, manifest = _manifest_for_edit(tx)
+        at = where.index(_view(project, manifest), len(manifest["scenes"]), pins)
+        return _copy(tx, project, manifest, source_root, source_entry, stem, name, at, is_preset, sample_pool, duplicate_naming, duration)
+
+    return _run(project, "kb scene add", build, opts)[0]
 
 
-def copy_scene(project: Project, selector: str, stem: str, name: Optional[str], position: Optional[int]) -> Result:
-    idx, _ = project.resolve(selector)
-    source = project.scene_entries()[idx]
-    return copy_into(project, project.root, source, stem, name, position, False, None, duplicate_naming=True)
+def duplicate(project: Project, selector: str, position: Any = None, opts: Optional[lockmod.WriteOpts] = None) -> Result:
+    where = _place(position)
+    pins = Pins()
+
+    def build(tx: lockmod.Txn) -> Result:
+        raw, manifest = _manifest_for_edit(tx)
+        view = _view(project, raw)
+        idx, _stem = pins.resolve(view, selector)
+        at = where.index(view, len(manifest["scenes"]), pins) if where.given else idx + 1
+        return _copy(tx, project, manifest, project.root, raw["scenes"][idx], None, None, at, False, None, True, None)
+
+    return _run(project, "kb scene duplicate", build, opts)[0]
 
 
-def move(project: Project, selector: str, to: int) -> Tuple[int, int]:
-    manifest = _load_manifest_for_edit(project)
-    scenes = manifest["scenes"]
-    idx, _ = project.resolve(selector)
-    if to < 0 or to >= len(scenes):
-        raise KbError(f"--to {to} is out of range; use 0-{len(scenes) - 1}", 2)
-    if idx != to:
-        entry = scenes.pop(idx)
-        scenes.insert(to, entry)
-    project.save_manifest(manifest)
-    return idx, to
+def copy_scene(project: Project, selector: str, stem: str, name: Optional[str], position: Any = None, opts: Optional[lockmod.WriteOpts] = None, duration: Optional[int] = None) -> Result:
+    where = _place(position)
+    pins = Pins()
+
+    def build(tx: lockmod.Txn) -> Result:
+        raw, manifest = _manifest_for_edit(tx)
+        view = _view(project, raw)
+        idx, _ = pins.resolve(view, selector)
+        at = where.index(view, len(manifest["scenes"]), pins)
+        return _copy(tx, project, manifest, project.root, raw["scenes"][idx], stem, name, at, False, None, True, duration)
+
+    return _run(project, "kb scene add", build, opts)[0]
 
 
-def remove(project: Project, selector: str, trash_fn: Any) -> Tuple[int, List[str]]:
-    manifest = _load_manifest_for_edit(project)
-    scenes = manifest["scenes"]
-    idx, stem = project.resolve(selector)
-    if len(scenes) <= 1:
-        raise KbError("a project needs at least one scene; add another before removing this one")
-    removed = scenes.pop(idx)
-    project.save_manifest(manifest)
-    trashed: List[str] = []
-    file = removed.get("file") if isinstance(removed, dict) else None
-    still_used = {e.get("file") for e in scenes if isinstance(e, dict)}
-    if isinstance(file, str) and file.startswith("scenes/") and ".." not in file and file not in still_used:
-        for rel in (file, file[:-4] + ".json"):
-            path = project.root / rel
-            if path.is_file():
-                trash_fn(path)
-                trashed.append(rel)
-    return idx, trashed
+def move(project: Project, selector: str, to: Optional[int] = None, after: Optional[str] = None, opts: Optional[lockmod.WriteOpts] = None) -> Tuple[int, int, List[Dict[str, Any]]]:
+    """(from, to, writes); --after S places it right after S."""
+    pins = Pins()
+
+    def build(tx: lockmod.Txn) -> Tuple[int, int]:
+        _raw, manifest = _manifest_for_edit(tx)
+        view = _view(project, manifest)
+        scenes = manifest["scenes"]
+        idx, _ = pins.resolve(view, selector)
+        if after is not None:
+            dst, _ = pins.resolve(view, after)
+            target = dst if idx < dst else dst + 1
+        else:
+            target = int(to) if to is not None else idx
+        if target < 0 or target >= len(scenes):
+            raise KbError(f"--to {target} is out of range; use 0-{len(scenes) - 1}", 2, kind="usage")
+        if idx != target:
+            entry = scenes.pop(idx)
+            scenes.insert(target, entry)
+        tx.write_json(MANIFEST, manifest)
+        return idx, target
+
+    (frm, target), tx = _run(project, "kb scene move", build, opts)
+    return frm, target, tx.writes
+
+
+def remove(project: Project, selector: str, trash_fn: Any, opts: Optional[lockmod.WriteOpts] = None) -> Tuple[int, List[str], List[Dict[str, Any]]]:
+    """(index, trashed files, writes): project.json first, then the scene's own files go to the Trash."""
+    pins = Pins()
+    removed_stem: List[str] = []
+
+    def build(tx: lockmod.Txn) -> Tuple[int, List[str]]:
+        _raw, manifest = _manifest_for_edit(tx)
+        scenes = manifest["scenes"]
+        idx, stem = pins.resolve(_view(project, manifest), selector)
+        removed_stem[:] = [stem]
+        if len(scenes) <= 1:
+            raise KbError("a project needs at least one scene; add another before removing this one")
+        removed = scenes.pop(idx)
+        tx.write_json(MANIFEST, manifest)
+        trashed: List[str] = []
+        file = removed.get("file") if isinstance(removed, dict) else None
+        still_used = {e.get("file") for e in scenes if isinstance(e, dict)}
+        if isinstance(file, str) and file.startswith("scenes/") and ".." not in file and file not in still_used:
+            for rel in (file, file[:-4] + ".json"):
+                if (project.root / rel).is_file():
+                    tx.trash(rel, trash_fn)
+                    trashed.append(rel)
+        return idx, trashed
+
+    (idx, trashed), tx = _run(project, "kb scene remove", build, opts)
+    if tx.committed and removed_stem:
+        from . import leases
+
+        leases.release_removed(project, removed_stem[0], tx.caller)
+    return idx, trashed, tx.writes
 
 
 def set_scene(
@@ -632,54 +797,65 @@ def set_scene(
     transition: Optional[str],
     ease: Optional[str],
     name: Optional[str],
-) -> List[str]:
-    changes: List[str] = []
-    idx, stem = project.resolve(selector)
-    if duration is not None or transition is not None or ease is not None:
-        manifest = _load_manifest_for_edit(project)
-        scenes = manifest["scenes"]
-        entry = scenes[idx]
-        if duration is not None:
-            if duration <= 0:
-                raise KbError("--duration must be a positive number of milliseconds", 2)
-            entry["durationMs"] = duration
-            changes.append(f"durationMs = {duration}")
-        if transition is not None or ease is not None:
-            if idx + 1 >= len(scenes) and (transition not in (None, "none", "cut")):
-                raise KbError("the last scene has no outgoing transition (nothing follows it); set it on the scene before")
-            spec = entry.get("transition") if isinstance(entry.get("transition"), dict) else None
-            if transition in ("none", "cut"):
-                entry.pop("transition", None)
-                changes.append("transition removed (hard cut)")
-            else:
-                if transition is not None:
-                    kind, _, ms = transition.partition(":")
-                    if not kind:
-                        raise KbError('--transition needs TYPE or TYPE:MS, e.g. crossfade:600, or "none"', 2)
-                    keep = dict(spec) if spec and spec.get("type") == kind else {}
-                    keep["type"] = kind
-                    if ms:
-                        try:
-                            keep["durationMs"] = int(ms)
-                        except ValueError:
-                            raise KbError(f'--transition "{transition}": the part after ":" must be milliseconds', 2) from None
-                    elif "durationMs" not in keep:
-                        keep["durationMs"] = int(spec.get("durationMs", 600)) if spec and is_int(spec.get("durationMs")) else 600
-                    spec = keep
-                if spec is None:
-                    raise KbError("this scene has no transition to ease; pass --transition TYPE[:MS] too", 2)
-                if ease is not None:
-                    if ease == "linear":
-                        spec.pop("ease", None)
-                    else:
-                        spec["ease"] = ease
-                entry["transition"] = spec
-                changes.append(f"transition = {spec}")
-        project.save_manifest(manifest)
-    if name is not None:
-        path = project.sidecar_path(stem)
-        doc = project.load_sidecar(stem) or {"version": SCENE_DOC_VERSION}
-        doc["name"] = name
-        atomic_write_json(path, doc)
-        changes.append(f'name = "{name}"')
-    return changes
+    opts: Optional[lockmod.WriteOpts] = None,
+) -> Dict[str, Any]:
+    """{ index, stem, changes, writes, dryRun }."""
+    pins = Pins()
+
+    def build(tx: lockmod.Txn) -> Dict[str, Any]:
+        changes: List[str] = []
+        _raw, manifest = _manifest_for_edit(tx)
+        idx, stem = pins.resolve(_view(project, manifest), selector)
+        if duration is not None or transition is not None or ease is not None:
+            scenes = manifest["scenes"]
+            entry = scenes[idx]
+            if duration is not None:
+                if duration <= 0:
+                    raise KbError("--duration must be a positive number of milliseconds", 2, kind="usage")
+                entry["durationMs"] = duration
+                changes.append(f"durationMs = {duration}")
+            if transition is not None or ease is not None:
+                if idx + 1 >= len(scenes) and (transition not in (None, "none", "cut")):
+                    raise KbError("the last scene has no outgoing transition (nothing follows it); set it on the scene before")
+                spec = entry.get("transition") if isinstance(entry.get("transition"), dict) else None
+                if transition in ("none", "cut"):
+                    entry.pop("transition", None)
+                    changes.append("transition removed (hard cut)")
+                else:
+                    if transition is not None:
+                        kind, _, ms = transition.partition(":")
+                        if not kind:
+                            raise KbError('--transition needs TYPE or TYPE:MS, e.g. crossfade:600, or "none"', 2, kind="usage")
+                        keep = dict(spec) if spec and spec.get("type") == kind else {}
+                        keep["type"] = kind
+                        if ms:
+                            try:
+                                keep["durationMs"] = int(ms)
+                            except ValueError:
+                                raise KbError(f'--transition "{transition}": the part after ":" must be milliseconds', 2, kind="usage") from None
+                        elif "durationMs" not in keep:
+                            keep["durationMs"] = int(spec.get("durationMs", 600)) if spec and is_int(spec.get("durationMs")) else 600
+                        spec = keep
+                    if spec is None:
+                        raise KbError("this scene has no transition to ease; pass --transition TYPE[:MS] too", 2, kind="usage")
+                    if ease is not None:
+                        if ease == "linear":
+                            spec.pop("ease", None)
+                        else:
+                            spec["ease"] = ease
+                    entry["transition"] = spec
+                    changes.append(f"transition = {spec}")
+            tx.write_json(MANIFEST, manifest)
+        if name is not None:
+            rel = f"scenes/{stem}.json"
+            doc, _sha = tx.read_json(rel)
+            if doc is not None and not isinstance(doc, dict):
+                raise KbError(f"{rel} must be a JSON object")
+            doc = doc or {"version": SCENE_DOC_VERSION}
+            doc["name"] = name
+            tx.write_json(rel, doc)
+            changes.append(f'name = "{name}"')
+        return {"index": idx, "stem": stem, "changes": changes}
+
+    out, tx = _run(project, "kb scene set", build, opts)
+    return dict(out, writes=tx.writes, dryRun=tx.dry_run)

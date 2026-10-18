@@ -7,7 +7,7 @@ import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from .util import EXIT_ENV, KbError, atomic_write_json, is_int, load_json, read_text
+from .util import EXIT_ENV, KbError, is_int, load_json, read_text
 
 MANIFEST = "project.json"
 KIT_REL = ".claude/skills/kookaburra-scene-authoring"
@@ -118,6 +118,10 @@ class Project:
     def kit_dir(self) -> Path:
         return self.root / KIT_REL
 
+    def address(self) -> Dict[str, str]:
+        """Where a bridge request says this project lives: only an app on the same workspace root claims it."""
+        return {"workspaceRoot": str(self.workspace_root), "projectPath": str(self.root)}
+
     def manifest(self, reload: bool = False) -> Dict[str, Any]:
         if self._manifest is None or reload:
             data = load_json(self.manifest_path, "project.json")
@@ -132,8 +136,11 @@ class Project:
             raise KbError('project.json has no "scenes" array; restore it with kb undo')
         return scenes
 
-    def save_manifest(self, manifest: Dict[str, Any]) -> None:
-        atomic_write_json(self.manifest_path, manifest)
+    def save_manifest(self, manifest: Dict[str, Any], base: Optional[str] = None) -> None:
+        """Write project.json under the project lock; with base (the hash it was read at) a file changed since refuses (kblib.lock)."""
+        from . import lock
+
+        lock.save_json(self, MANIFEST, manifest, base, op="kb save project.json")
         self._manifest = manifest
 
     def scene_files(self) -> List[str]:

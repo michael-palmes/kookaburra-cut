@@ -4,7 +4,7 @@ Probes come from `<asset>.probe.json` beside the file (or a fake render's own JS
 FAKE_CLI_FAIL=cmd[,cmd] fails those commands, FAKE_CLI_SLEEP=s between render progress lines, FAKE_CLI_LOG=path
 appends each argv as a JSON line, FAKE_CLI_CAPS={json} overrides caps fields, FAKE_CLI_MALFORMED=cmd prints junk,
 FAKE_CLI_NOISE=1 mixes junk lines into render output, FAKE_CLI_RACE=marker makes the first save find the doc changed underneath it (a racing editor), FAKE_CLI_RAN=path
-is touched on every run.
+is touched on every run. `check flashes` answers FAKE_CLI_FLASH_REPORT (a JSON file), else a clean report.
 """
 
 from __future__ import annotations
@@ -337,6 +337,19 @@ def cmd_render(f: Dict[str, Any]) -> None:
 COMMANDS = {"caps": cmd_caps, "probe": cmd_probe, "create": cmd_create, "validate": cmd_validate, "save": cmd_save, "render": cmd_render}
 
 
+def cmd_check(argv: List[str]) -> None:
+    if argv[:1] != ["flashes"]:
+        fail("usage", "unknown check", 2)
+    f = flags(argv[1:])
+    if not isinstance(f.get("file"), str) or not Path(f["file"]).is_file():
+        fail("missing", f"no file at {f.get('file')}")
+    canned = os.environ.get("FAKE_CLI_FLASH_REPORT")
+    report = json.loads(Path(canned).read_text(encoding="utf-8")) if canned else {
+        "version": 1, "approximate": True, "standards": ["wcag-2.3.1", "itu-bt1702"], "source": "file", "fps": 60.0,
+        "frames": 0, "grid": [64, 36], "ok": True, "issues": []}
+    emit({"ok": True, "file": f["file"], "report": report})
+
+
 def load_behaviour() -> None:
     """The FAKE_CLI_* knobs helpers.fake_cli stored for the shim that ran us (FAKE_CLI_SHIM is its $0)."""
     shim, folder = os.environ.get("FAKE_CLI_SHIM"), os.environ.get("FAKE_CLI_BEHAVIOUR")
@@ -360,6 +373,9 @@ def main() -> None:
     if log:
         with open(log, "a", encoding="utf-8") as fh:
             fh.write(json.dumps(argv) + "\n")
+    if argv[:1] == ["check"]:
+        cmd_check(argv[1:])
+        return
     if len(argv) < 2 or argv[0] != "edit" or argv[1] not in COMMANDS:
         fail("usage", f"usage: kookaburra-cut edit <{'|'.join(COMMANDS)}>", 2)
     command = argv[1]

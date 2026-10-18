@@ -4,17 +4,17 @@
 
 - Everything a scene shows lives in `assets/` and is referenced as `assets/<file>`
   (exact case). Never absolute paths or URLs.
-- Bring files in with `kb assets add <path> [--name <name>]`: it copies, never
+- Bring files in with `./kb assets add <path> [--name <name>]`: it copies, never
   overwrites (renames on collision) and prints the final path to use.
-- `kb assets probe assets/<file>` reports duration, size and frame rate (the app's
+- `./kb assets probe assets/<file>` reports duration, size and frame rate (the app's
   ffprobe). Probe every video before referencing it.
 - Formats: images png, jpg, jpeg, webp; video mp4, mov, m4v, webm; audio mp3, wav, m4a,
   aac, flac, ogg; environments hdr, exr; grades `.cube`.
 - Before deleting or renaming an asset, search `scenes/*.json` and `scenes/*.tsx` for
-  its path, and run `kb video usages <asset>`: an edit may cut it. A dangling reference
+  its path, and run `./kb video usages <asset>`: an edit may cut it. A dangling reference
   renders a missing card or screen.
 - Never overwrite or re-encode an asset (no ffmpeg into `assets/`). To trim, speed up, freeze,
-  add taps or blur part of a video, use `kb video` (the kookaburra-video-editing skill): its
+  add taps or blur part of a video, use `./kb video` (the kookaburra-video-editing skill): its
   render is `assets/<name>-edited.mp4` and the source stays untouched.
 - Adding a file to `assets/` does not reload the project; the sidecar edit that uses it
   does.
@@ -76,12 +76,12 @@ Presets: `image` (full-frame still), `video` (full-frame clip), `videowindow`
 
 The app keeps the scene's `project.json` `durationMs` equal to the video, and ignores the
 video's `startMs` when it does: a nonzero `startMs` then hides the video's last `startMs` ms.
-To make the video itself a set length, `kb video fit <edit> --to T` (or `--scene S` for a
-fixed-length scene) and `kb video render <edit> --use --scene S`. Variants:
+To make the video itself a set length, `./kb video fit <edit> --to T` (or `--scene S` for a
+fixed-length scene) and `./kb video render <edit> --use --scene S`. Variants:
 `{ "mode": "follow-media", "sourceDeviceId": "hero" }` follows a device's screen
 video; with no pin the longest device video wins, else a video background.
 `{ "mode": "manual" }` turns it off. When you change the source by hand, update `durationMs`
-yourself too (`kb assets probe`); `kb video render <edit> --use` does it for edited videos.
+yourself too (`./kb assets probe`); `./kb video render <edit> --use` does it for edited videos.
 
 ## Full-frame video or image
 
@@ -137,8 +137,8 @@ mount `<LayeredScreenshot title={...} />`). Preset: `layeredscreenshot`.
     `pan` centring the screen.
   - Slow drift: four keys over up to 7 s, `inOutSine`, small azimuth (+6, -5), elevation
     and zoom wobbles, last pose equal to the first, `presentLoop: { "mode": "jump" }`.
-- Edit in place with paths: `kb doc S set layeredScreenshot.pose.spread 0.6`,
-  `kb doc S set layeredScreenshot.layers.0.items.1.src assets/detail.png`.
+- Edit in place with paths: `./kb doc S set layeredScreenshot.pose.spread 0.6`,
+  `./kb doc S set layeredScreenshot.layers.0.items.1.src assets/detail.png`.
 
 ## Terminal panel
 

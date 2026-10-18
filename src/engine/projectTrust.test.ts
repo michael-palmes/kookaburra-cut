@@ -3,12 +3,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 // The gate's three native commands, scripted per test; calls are recorded for order/count asserts.
 const calls: string[] = [];
 let autorunAction: string | null = null;
+let autorunTrust: string | null = null;
 let storedGrantValid = false;
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(async (cmd: string) => {
     calls.push(cmd);
-    if (cmd === "get_autorun_config") return { action: autorunAction };
+    if (cmd === "get_autorun_config") return { action: autorunAction, trust: autorunTrust };
     if (cmd === "is_project_trusted") return storedGrantValid;
     if (cmd === "trust_project") return undefined;
     throw new Error(`unexpected command ${cmd}`);
@@ -31,6 +32,7 @@ async function flush(): Promise<void> {
 beforeEach(() => {
   calls.length = 0;
   autorunAction = null;
+  autorunTrust = null;
   storedGrantValid = false;
 });
 
@@ -83,6 +85,22 @@ describe("ensureProjectTrusted", () => {
     await ensureProjectTrusted("launch-2026", "Launch 2026");
     expect(useTrustStore.getState().pending).toBeNull();
     expect(calls).toContain("trust_project");
+  });
+
+  it("never auto-trusts a stored-only autorun (kb's headless export)", async () => {
+    const { ensureProjectTrusted, NeedsTrustError, TrustDeniedError, useTrustStore } =
+      await freshGate();
+    autorunAction = "export";
+    autorunTrust = "stored-only";
+    const denied = ensureProjectTrusted("demo", "Demo");
+    await expect(denied).rejects.toThrow(NeedsTrustError);
+    await expect(denied).rejects.not.toThrow(TrustDeniedError);
+    expect(calls).not.toContain("trust_project");
+    expect(useTrustStore.getState().pending).toBeNull();
+    storedGrantValid = true;
+    calls.length = 0;
+    await ensureProjectTrusted("demo", "Demo");
+    expect(calls).toEqual(["is_project_trusted"]);
   });
 
   it("persists the grant when the user allows", async () => {

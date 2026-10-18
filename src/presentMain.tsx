@@ -1,5 +1,6 @@
 // Third Tauri window (label "present"): live video/slideshow playback of a project, chromeless and never part of the export path; bootTrap first for the same readable-crash surface as the main window.
 import "./engine/bootTrap";
+import "./engine/glContexts";
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { installDevPerformanceDrain } from "./engine/devPerformance";

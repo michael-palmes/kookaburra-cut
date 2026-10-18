@@ -22,7 +22,7 @@ def parse_value(raw: str, as_string: bool = False) -> Any:
 def split_path(path: str) -> List[str]:
     parts = [p for p in path.replace("[", ".").replace("]", "").split(".")]
     if not path or any(p == "" for p in parts):
-        raise KbError(f'bad path "{path}"; use dotted keys like textStyle.titleSize or devices.0.model', 2)
+        raise KbError(f'bad path "{path}"; use dotted keys like textStyle.titleSize or devices.0.model', 2, kind="usage")
     return parts
 
 
@@ -30,7 +30,7 @@ def _index(node: List[Any], part: str, path: str) -> int:
     try:
         i = int(part)
     except ValueError:
-        raise KbError(f'"{part}" in {path} must be a list index (0, 1, ... or -1)', 2) from None
+        raise KbError(f'"{part}" in {path} must be a list index (0, 1, ... or -1)', 2, kind="usage") from None
     if not -len(node) <= i < len(node):
         raise KbError(f"{path}: index {i} is out of range (the list has {len(node)} items)", 1)
     return i
@@ -111,6 +111,18 @@ def unset_path(doc: Any, path: str) -> Any:
         if grand_found and isinstance(grand, dict) and parts[-2] in grand and grand[parts[-2]] == {}:
             del grand[parts[-2]]
     return out
+
+
+def edit(doc: Any, op: str, path: str = "", value: Any = None) -> Tuple[Any, str]:
+    """One kb write as an operation on a fresh document (so a conflict can re-apply it): (new document, summary)."""
+    if op == "set":
+        new = set_path(doc, path, value)
+        return new, f"{path} = {json.dumps(get_path(new, path)[1], ensure_ascii=False)[:120]}"
+    if op == "unset":
+        return unset_path(doc, path), f"removed {path}"
+    if not isinstance(value, dict):
+        raise KbError("merge needs a JSON object (RFC 7386 merge patch: null deletes a key)", 2, kind="usage")
+    return merge_patch(doc, value), f"merged {', '.join(value.keys())}"
 
 
 def merge_patch(target: Any, patch: Any) -> Any:

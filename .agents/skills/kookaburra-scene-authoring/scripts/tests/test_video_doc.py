@@ -199,7 +199,7 @@ class ProjectDocTests(KbTestCase):
                 with editdoc.edit_lock(self.project, "rec", "kb video split", wait=0.5):
                     pass
             self.assertLess(time.monotonic() - started, 5)
-            self.assertEqual(cm.exception.code, 2)
+            self.assertEqual((cm.exception.code, cm.exception.kind), (3, "locked"))
             self.assertIn(f"pid {child.pid}", cm.exception.message)
             self.assertIn("kb video render", cm.exception.message)
         finally:

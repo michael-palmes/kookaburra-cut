@@ -9,6 +9,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use serde_json::{json, Map, Value};
 
+use crate::cli_check as check;
 use crate::edit::{self, CoreError, EditDoc, RenderEvent, RenderJob, RenderTarget};
 use crate::{live_edits, media, tools, workspace};
 
@@ -18,18 +19,18 @@ const COMMANDS: &[&str] = &["caps", "probe", "create", "validate", "save", "rend
 /// Counting packets demuxes the whole file, so only small files get an exact count when the container declares none.
 const COUNT_PACKETS_MAX_BYTES: u64 = 256 * 1024 * 1024;
 
-static CANCEL: AtomicBool = AtomicBool::new(false);
+pub(crate) static CANCEL: AtomicBool = AtomicBool::new(false);
 
 /// A failed command: its machine code, a sentence saying what to do, and any extra fields.
 #[derive(Debug)]
-struct Fail {
+pub(crate) struct Fail {
     code: &'static str,
     message: String,
     extra: Map<String, Value>,
 }
 
 impl Fail {
-    fn new(code: &'static str, message: impl Into<String>) -> Self {
+    pub(crate) fn new(code: &'static str, message: impl Into<String>) -> Self {
         Self {
             code,
             message: message.into(),
@@ -37,7 +38,7 @@ impl Fail {
         }
     }
 
-    fn usage(message: impl Into<String>) -> Self {
+    pub(crate) fn usage(message: impl Into<String>) -> Self {
         Self::new("usage", message)
     }
 
@@ -98,7 +99,7 @@ pub fn main(args: Vec<OsString>) -> i32 {
     }
 }
 
-fn finish(result: Result<Value, Fail>) -> i32 {
+pub(crate) fn finish(result: Result<Value, Fail>) -> i32 {
     match result {
         Ok(value) => {
             print_line(&value);
@@ -120,13 +121,13 @@ fn print_line(value: &Value) {
 
 /// `--key value`, `--key=value` and bare `--switch` flags, each allowed once.
 #[derive(Debug, Default)]
-struct Flags {
+pub(crate) struct Flags {
     values: BTreeMap<String, String>,
     switches: Vec<String>,
 }
 
 impl Flags {
-    fn parse(args: &[String], valued: &[&str], switches: &[&str]) -> Result<Self, Fail> {
+    pub(crate) fn parse(args: &[String], valued: &[&str], switches: &[&str]) -> Result<Self, Fail> {
         let mut flags = Flags::default();
         let mut it = args.iter();
         while let Some(arg) = it.next() {
@@ -166,11 +167,11 @@ impl Flags {
         Ok(flags)
     }
 
-    fn get(&self, key: &str) -> Option<&str> {
+    pub(crate) fn get(&self, key: &str) -> Option<&str> {
         self.values.get(key).map(String::as_str)
     }
 
-    fn require(&self, key: &str) -> Result<&str, Fail> {
+    pub(crate) fn require(&self, key: &str) -> Result<&str, Fail> {
         self.get(key)
             .ok_or_else(|| Fail::usage(format!("--{key} is required")))
     }
@@ -231,11 +232,11 @@ fn parse_doc(bytes: &[u8]) -> Result<EditDoc, CoreError> {
     edit::parse_doc_coded(text)
 }
 
-fn tools() -> Result<tools::Tools, Fail> {
+pub(crate) fn tools() -> Result<tools::Tools, Fail> {
     tools::Tools::beside_exe().map_err(|e| Fail::new("env", e))
 }
 
-fn require_tool(path: &Path, name: &str) -> Result<(), Fail> {
+pub(crate) fn require_tool(path: &Path, name: &str) -> Result<(), Fail> {
     if path.is_file() {
         Ok(())
     } else {
@@ -313,6 +314,9 @@ fn caps_in(args: &[String], app_data: Option<PathBuf>) -> Result<Value, Fail> {
         "build": if cfg!(debug_assertions) { "dev" } else { "release" },
         "exe": exe,
         "commands": COMMANDS,
+        "checks": check::CHECKS,
+        // kb's headless export refuses a binary without this: an older autorun auto-trusts and ignores KOOKABURRA_POSTER and KOOKABURRA_PROGRESS.
+        "autorun": { "actions": ["export", "verify"], "trust": ["stored-only"], "poster": true, "progress": true },
         "docVersion": { "read": edit::EDIT_VERSION_READ_MAX, "write": [1, edit::EDIT_VERSION_MASKS] },
         "ffmpeg": { "path": tools.ffmpeg.to_string_lossy(), "ok": filters.is_ok() },
         "ffprobe": { "path": tools.ffprobe.to_string_lossy(), "ok": ffprobe_ok },
@@ -663,7 +667,7 @@ extern "C" fn on_signal(_signal: libc::c_int) {
 }
 
 /// SIGINT/SIGTERM only raise the cancel flag; the render loop kills ffmpeg and removes its staging.
-fn install_signal_handlers() {
+pub(crate) fn install_signal_handlers() {
     let handler = on_signal as extern "C" fn(libc::c_int) as libc::sighandler_t;
     unsafe {
         libc::signal(libc::SIGINT, handler);
@@ -872,6 +876,8 @@ mod tests {
             "build",
             "exe",
             "commands",
+            "checks",
+            "autorun",
             "docVersion",
             "ffmpeg",
             "ffprobe",
@@ -887,6 +893,11 @@ mod tests {
         assert_eq!(got, expected);
         assert_eq!(caps["cli"], 1);
         assert_eq!(caps["commands"], json!(COMMANDS));
+        assert_eq!(caps["checks"], json!(["flashes"]));
+        assert_eq!(
+            caps["autorun"],
+            json!({"actions": ["export", "verify"], "trust": ["stored-only"], "poster": true, "progress": true})
+        );
         assert_eq!(caps["docVersion"], json!({"read": 2, "write": [1, 2]}));
         assert_eq!(
             caps["tap"]["styles"][0],

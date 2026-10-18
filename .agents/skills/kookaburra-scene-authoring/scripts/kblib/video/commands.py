@@ -84,8 +84,11 @@ def _err(text: str) -> None:
     sys.stderr.write(text if text.endswith("\n") else text + "\n")
 
 
-def _json(value: Any) -> None:
-    sys.stdout.write(json.dumps(value, indent=2, ensure_ascii=False) + "\n")
+def _json(value: Dict[str, Any]) -> None:
+    """The --json envelope ({ ok, command, ...value }); a value's own boolean "ok" (validate's verdict) is kept."""
+    from ..util import emit_ok
+
+    emit_ok(value)
 
 
 def _kb_error(message: str, code: int = EXIT_PROBLEMS) -> Exception:
@@ -447,7 +450,7 @@ def cmd_list(ctx: Any) -> int:
         row["usedBy"] = sorted({u["scene"] for u in _used_by(project, [row["output"]])})
         rows.append(row)
     if ctx.json:
-        _json(rows)
+        _json({"edits": rows})
         return EXIT_OK
     if not rows:
         _emit("no edits yet; start one with kb video new assets/<recording>.mp4")
