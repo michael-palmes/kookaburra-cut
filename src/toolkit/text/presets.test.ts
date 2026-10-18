@@ -1547,6 +1547,16 @@ describe("staggerExact (a spec's 0 means 0)", () => {
     expect(resolveTextAnimation({ stagger: "word" }, theme)?.staggerMs).toBe(0);
   });
 
+  it("ignores a stale flag on a spec whose staggerMs isn't 0", () => {
+    const stale = {
+      in: "fade-up",
+      out: "fade",
+      delivery: "by-paragraph",
+      staggerExact: true,
+    } as TextAnimationSpec;
+    expect(resolveTextAnimation({}, baseTheme, stale)?.staggerMs).toBe(160);
+  });
+
   it("lets props still win over the flag", () => {
     const flagged = spec({ delivery: "by-paragraph", staggerExact: true });
     expect(resolveTextAnimation({ staggerMs: 40 }, baseTheme, flagged)?.staggerMs).toBe(40);

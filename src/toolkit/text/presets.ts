@@ -417,7 +417,7 @@ export function resolveTextAnimation(
     granularity = forcedGranularity(preset) ?? forcedGranularity(outPreset);
   } else granularity = staggerMs > 0 && preset !== "none" && preset !== "static" ? "word" : null;
   // A granularity request without any delay configured gets the granularity's default, unless the scene explicitly passed staggerMs={0} or the spec marked its 0 exact, which win.
-  const exactZero = spec?.staggerExact === true;
+  const exactZero = spec?.staggerExact === true && spec.staggerMs === 0;
   if (granularity && staggerMs === 0 && props.staggerMs === undefined && !exactZero) {
     staggerMs = DEFAULT_STAGGER_MS[granularity];
   }
