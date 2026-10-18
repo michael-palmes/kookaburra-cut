@@ -97,6 +97,17 @@ screenshots and preview batches, with the result copied back to the legacy
 `_autorun/last-run.json`. Autoruns launch in the background (no Dock icon, no
 focus steal, window parked bottom-right); `--foreground` opts out.
 
+**Rust build cache across worktrees:** every checkout keeps its own
+`src-tauri/target`. Never point two checkouts at one target dir: cargo then
+reuses the other checkout's app binary as fresh, with its baked-in
+`CARGO_MANIFEST_DIR` and the resources tauri-build copies beside it.
+Instead, `pnpm install` in a new worktree runs `scripts/seed-cargo-target.sh`,
+which APFS-clones the primary checkout's third-party artefacts (seconds,
+near-zero disk until either side rebuilds) and drops kookaburra-cut's own, so
+the first build compiles only the app crate. `pnpm setup:target` does the same
+for a Rust-only session; it never touches an existing target. `du` counts
+clones in full, so judge real usage with `df`.
+
 Rust: the native shell is in `src-tauri/` (`cargo check --manifest-path src-tauri/Cargo.toml` to typecheck without bundling).
 
 ## Layout

@@ -91,3 +91,7 @@ wry = "=0.57.0"
 [profile.release.build-override]
 opt-level = 0
 debug = true
+
+# Unpacked debug info (the macOS default) leaves a new set of object files in target/debug/deps on every incremental rebuild of this crate (about 0.2 GB each).
+[profile.dev.package.kookaburra-cut]
+split-debuginfo = "off"
