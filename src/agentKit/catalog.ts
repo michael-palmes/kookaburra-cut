@@ -276,6 +276,13 @@ export const SCENE_DOC_KEYS: Record<
     type: "object",
     ref: "camera",
   },
+  room: {
+    summary:
+      "Room track { keys: [{ at, colour?, themeId?, lighting?, transition: cut|flood, origin?, durationMs?, ease? }] }: the backdrop colour cutting or flooding mid-scene, staged lights following.",
+    type: "object",
+    ref: "sidecar",
+    values: ["cut", "flood"],
+  },
 };
 
 /** One line per project.json key; exhaustive over `ProjectManifest`. */
@@ -703,6 +710,21 @@ export const TOOLKIT_SUMMARIES: Record<
   useProjectShared: {
     summary:
       'useProjectShared(path?, fallback?): project.json shared constants, e.g. "palette.accent".',
+  },
+  Room: {
+    summary:
+      "Camera-locked room: colour fills the frame behind all content, flood? grows over it. The sidecar room block draws its own.",
+  },
+  RoomFlood: {
+    summary:
+      "RoomFlood colour origin? radius: a circle of colour growing from a frame point ([0,0] top-left); radius 1 covers the frame.",
+  },
+  useRoom: {
+    summary:
+      "The scene's room now: { colour, key, flood: { colour, origin, progress, radius } | null, pose }, or null.",
+  },
+  cssOpacity: {
+    summary: "cssOpacity(fg, room, a): fg at opacity a over the room, as the exact opaque hex.",
   },
 };
 

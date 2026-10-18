@@ -851,6 +851,24 @@ export function hasLightingTracks(
 export interface SceneLightingSample {
   index: number;
   pose: LightingPose;
+  /** The scene has a room, so the apply seam writes every colour explicitly (ambient included) and a room never leaks across frames. */
+  roomed?: true;
+}
+
+/** A scene's room lighting at a scene-local time, null for a scene with no room (`sceneRoom.ts` supplies it; structural so this leaf module never imports rooms). */
+export type RoomPoseAt = (index: number, localMs: number) => LightingPose | null;
+
+/** A room's fields win over the keyed pose's on the same light. */
+function withRoomPose(pose: LightingPose, room: LightingPose): LightingPose {
+  if (room.ambient !== undefined) pose.ambient = room.ambient;
+  if (room.ambientColor !== undefined) pose.ambientColor = room.ambientColor;
+  if (room.sun) pose.sun = { ...pose.sun, ...room.sun };
+  if (room.lights) {
+    const lights = { ...pose.lights };
+    for (const [id, entry] of Object.entries(room.lights)) lights[id] = { ...lights[id], ...entry };
+    pose.lights = lights;
+  }
+  return pose;
 }
 
 /** The frame's lighting plan (solo | a/b + overlay, the FrameCameraPlan shape). Null whenever no scene in the project has a lighting track: the byte-identical legacy path. On transition frames A and B are at DIFFERENT scene-local times, so each target samples its own scene's track at its own time (the camera rule; same failure mode if got wrong). */
@@ -877,13 +895,23 @@ function resolveFrameLightingSamples(
   tracks: readonly (LightingTrack | null)[] | null | undefined,
   resolved: ResolvedLike,
   owned?: readonly boolean[],
+  rooms?: RoomPoseAt,
 ): FrameLightingSamples | null {
-  if ((!tracks || !hasLightingTracks(tracks)) && !owned?.some(Boolean)) return null;
+  if ((!tracks || !hasLightingTracks(tracks)) && !owned?.some(Boolean) && !rooms) return null;
   if (resolved.active.length === 0) return null;
   const sampleFor = (active: { index: number; localMs: number }): SceneLightingSample | null => {
     const track = tracks?.[active.index];
-    if (!track) return owned?.[active.index] ? { index: active.index, pose: {} } : null;
-    return { index: active.index, pose: sampleLightingPose(track, active.localMs) };
+    // Comparison B takes the room only where it owns a track; elsewhere it falls back to side A's sample, room included.
+    const room =
+      rooms && (!owned || owned[active.index]) ? rooms(active.index, active.localMs) : null;
+    if (!track) {
+      if (room) return { index: active.index, pose: room, roomed: true };
+      return owned?.[active.index] ? { index: active.index, pose: {} } : null;
+    }
+    const pose = sampleLightingPose(track, active.localMs);
+    return room
+      ? { index: active.index, pose: withRoomPose(pose, room), roomed: true }
+      : { index: active.index, pose };
   };
   const tr = resolved.transition;
   if (resolved.active.length < 2 || !tr) {
@@ -907,12 +935,14 @@ export function resolveFrameLighting(
   tracks: readonly (LightingTrack | null)[] | null | undefined,
   resolved: ResolvedLike,
   compareBTracks?: CompareBLightingTrackSet | null,
+  rooms?: RoomPoseAt,
 ): FrameLightingPlan | null {
-  const scene = resolveFrameLightingSamples(tracks, resolved);
+  const scene = resolveFrameLightingSamples(tracks, resolved, undefined, rooms);
   const compareB = resolveFrameLightingSamples(
     compareBTracks?.tracks,
     resolved,
     compareBTracks?.owned,
+    compareBTracks ? rooms : undefined,
   );
   if (!compareB) return scene;
 

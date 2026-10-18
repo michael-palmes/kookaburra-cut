@@ -54,6 +54,7 @@ import {
   DEFAULT_SCENE_MEDIA_WINDOW_RADIUS,
   sceneMediaFromLegacy,
 } from "./sceneMedia";
+import { type RoomTransition, validateRoomKeys } from "./sceneRoom";
 import { parseSceneTerminal, type SceneDocTerminal } from "./sceneTerminal";
 import { parseSceneWebsite, type SceneDocWebsite } from "./sceneWebsite";
 
@@ -642,6 +643,49 @@ export interface SceneDoc {
   stills?: SceneDocStills;
   /** Motion blur override: each present field replaces the project's `render.motionBlur` (see engine/motionBlur.ts); absent inherits. */
   motionBlur?: SceneDocMotionBlur;
+  /** The room track: the backdrop colour cutting or flooding mid-scene with the staged lights following (see engine/sceneRoom.ts); absent renders exactly as before. */
+  room?: SceneDocRoom;
+}
+
+/** A room key's light entry: intensity and a colour (kelvin, then token, then hex). */
+export interface SceneDocRoomLightEntry {
+  intensity?: number;
+  color?: string;
+  colorToken?: string;
+  kelvin?: number;
+}
+
+/** A room key's own lighting, layered over what its `themeId` brings. */
+export interface SceneDocRoomLighting {
+  sun?: SceneDocRoomLightEntry;
+  ambient?: number;
+  /** Hex or a theme colour token. */
+  ambientColor?: string;
+  /** By light id. */
+  lights?: Record<string, SceneDocRoomLightEntry>;
+}
+
+export interface SceneDocRoomKey {
+  /** Scene-local ms. Kept raw so a value this build can't resolve survives a write (see `resolveRoomAt`). */
+  at: number | string;
+  /** Hex or a theme colour token of the room's palette; absent takes the `themeId` theme's background, else the previous room. */
+  colour?: string;
+  /** Reads this theme's colours and lights; it never swaps the scene's theme. */
+  themeId?: string;
+  lighting?: SceneDocRoomLighting;
+  /** Absent = cut. */
+  transition?: RoomTransition;
+  /** Where a flood starts, in frame fractions: [0, 0] top-left to [1, 1] bottom-right; absent = the centre. */
+  origin?: [number, number];
+  /** Flood length; absent = 800. */
+  durationMs?: number;
+  /** An engine/ease.ts name shaping the flood's radius and light lerp. */
+  ease?: string;
+}
+
+/** Sidecar `room` block: keys pass through raw (the lighting keys precedent); `sceneRoom.ts` validates them. */
+export interface SceneDocRoom {
+  keys: SceneDocRoomKey[];
 }
 
 /** Sidecar `stills` block; absent means included with one automatic still. */
@@ -1810,6 +1854,19 @@ function validPresentLoop(raw: unknown): raw is SceneDocCameraPresentLoop {
   return true;
 }
 
+/** Warns about every room problem at load but keeps the raw keys, so a write never drops a key a later build can read. */
+function parseRoom(raw: unknown, source: string): SceneDocRoom | undefined {
+  if (!isRecord(raw) || !Array.isArray(raw.keys) || raw.keys.length === 0) {
+    parseWarn(`[sceneDoc] ${source}: room needs a non-empty keys array, dropped`);
+    return undefined;
+  }
+  for (const key of Object.keys(raw)) {
+    if (key !== "keys") parseWarn(`[sceneDoc] ${source}: room.${key} isn't a room field, ignored`);
+  }
+  validateRoomKeys(raw.keys, `[sceneDoc] ${source}: room`, parseWarn);
+  return { keys: raw.keys as SceneDocRoomKey[] };
+}
+
 /** Keeps only `exclude: true` and finite, non-negative marks (rounded, unique, ascending); an empty block drops, so absent stays the default. */
 function parseStills(raw: unknown, source: string): SceneDocStills | undefined {
   if (!isRecord(raw)) {
@@ -2247,6 +2304,10 @@ export function parseSceneDoc(raw: unknown, source: string): SceneDoc | undefine
   if (doc.motionBlur !== undefined) {
     const motionBlur = parseSceneMotionBlur(doc.motionBlur, source);
     if (motionBlur) out.motionBlur = motionBlur;
+  }
+  if (doc.room !== undefined) {
+    const room = parseRoom(doc.room, source);
+    if (room) out.room = room;
   }
   if (
     doc.animatedTrack === "camera" ||

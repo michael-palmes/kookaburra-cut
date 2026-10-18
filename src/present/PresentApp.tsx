@@ -19,6 +19,7 @@ import { SceneHost } from "../engine/SceneHost";
 import { sceneRenderErrorReporter } from "../engine/StageScenes";
 import { ProjectIdContext, ProjectLightingContext } from "../engine/sceneContext";
 import { animatedFixtureLightIds, buildLightingTracks } from "../engine/sceneLighting";
+import { buildRoomTracks } from "../engine/sceneRoom";
 import { useEditorStore } from "../store/editorStore";
 import { useTrustStore } from "../store/trustStore";
 import { ChartFallback } from "../toolkit/chart/ChartFallback";
@@ -28,6 +29,7 @@ import { LayeredScreenshotFallback } from "../toolkit/media/LayeredScreenshot";
 import { SceneMediaFallback } from "../toolkit/media/SceneMedia";
 import { ObjectsFallback } from "../toolkit/objects/ObjectPrimitive";
 import { SceneBackground } from "../toolkit/stage/FixedBackdrop";
+import { SceneRoom, SceneRoomScope } from "../toolkit/stage/Room";
 import { TextFallback } from "../toolkit/text/TitleBlock";
 import { PresentCompositorDriver } from "./PresentCompositorDriver";
 import { PresentTerminalOverlay } from "./PresentTerminalOverlay";
@@ -112,6 +114,17 @@ export function PresentApp() {
             animatedFixtureLightIds,
           )
         : [],
+    [project],
+  );
+  const roomTracks = useMemo(
+    () =>
+      project
+        ? buildRoomTracks(project.sceneDocs, {
+            sceneThemes: project.sceneThemes,
+            roomThemes: project.roomThemes,
+            projectLighting: project.projectLighting,
+          })
+        : null,
     [project],
   );
 
@@ -391,8 +404,9 @@ export function PresentApp() {
                           {isSceneErrorCard(scene) ? (
                             <SceneComponent />
                           ) : (
-                            <>
+                            <SceneRoomScope track={roomTracks?.[i] ?? null}>
                               <SceneBackground />
+                              <SceneRoom />
                               <SceneComponent />
                               <SceneMediaFallback />
                               <DevicesFallback />
@@ -400,7 +414,7 @@ export function PresentApp() {
                               <LayeredScreenshotFallback />
                               <ChartFallback />
                               <TextFallback />
-                            </>
+                            </SceneRoomScope>
                           )}
                         </AssetBoundary>
                       </SceneHost>

@@ -106,6 +106,8 @@ export interface ExportOptions {
   /** Comparison side-B docs/themes (`LoadedProject.compareBDocs`/`compareBThemes`); absent (or all undefined) means the compare path never engages. */
   compareBDocs?: (SceneDoc | undefined)[];
   compareBThemes?: (Theme | undefined)[];
+  /** Themes room keys name (`LoadedProject.roomThemes`); absent reads every room key against its scene's theme. */
+  roomThemes?: Readonly<Record<string, Theme>>;
   /** Encoder; defaults to the deterministic libx264. */
   codec?: Codec;
   /** The resolved encode spec (presets/custom). Absent means the frozen legacy argv, byte-pinned in Rust; standing baselines and Verify never carry one. */

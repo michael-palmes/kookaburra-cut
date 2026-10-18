@@ -21,12 +21,9 @@ import { type ReadbackContext, readFrameOrThrow } from "./readback";
 import { buildSceneCameraTracks, type FrameCameraPlan, resolveFrameCameras } from "./sceneCamera";
 import { compareSpecOf, resolveCompareFrame } from "./sceneCompare";
 import { getSceneHosts } from "./sceneHostRegistry";
-import {
-  buildCompareBLightingTracks,
-  buildLightingTracks,
-  resolveFrameLighting,
-} from "./sceneLighting";
-import { buildSceneRenderStates, resolveFrameSceneStates } from "./sceneState";
+import { buildCompareBLightingTracks, buildLightingTracks } from "./sceneLighting";
+import { buildRoomTracks } from "./sceneRoom";
+import { buildSceneRenderStates, resolveFramePlans } from "./sceneState";
 import type { Resolved } from "./sceneTimeline";
 import { accumulateFrame, releaseShutterLane, startAccumulation } from "./shutterLane";
 import {
@@ -110,6 +107,8 @@ export interface FramePlans {
   compareSpecs: ReturnType<typeof compareSpecOf>[];
   sceneStatesB: ReturnType<typeof buildSceneRenderStates>;
   overlays: ReturnType<typeof resolveOverlays>;
+  /** Null unless some scene has a room. */
+  roomTracks: ReturnType<typeof buildRoomTracks>;
   /** Null unless some scene's motion blur is on, which keeps the run on the byte-identical path. */
   shutter: ShutterPlan | null;
 }
@@ -173,6 +172,14 @@ export function buildFramePlans(
       )
     : null;
 
+  const roomTracks = opts.sceneThemes
+    ? buildRoomTracks(opts.sceneDocs ?? [], {
+        sceneThemes: opts.sceneThemes,
+        roomThemes: opts.roomThemes,
+        projectLighting: opts.projectLighting,
+      })
+    : null;
+
   const shutter = buildShutterPlan({
     fps: opts.fps,
     slots: opts.slots,
@@ -190,6 +197,7 @@ export function buildFramePlans(
     compareSpecs,
     sceneStatesB,
     overlays,
+    roomTracks,
     shutter,
   };
 }
@@ -276,12 +284,7 @@ export async function drawPlannedFrame(
   // The camera applies at this shared seam (mirrored in CompositorDriver), a pure function of tMs. Scene-doc tracks get a per-frame plan applied inside renderComposited (per-target on transition frames); otherwise the legacy project-track path runs, a hard no-op when the project declares no track. Neither touches `cam.aspect`, so the caller's resize guard stays the sole owner of aspect.
   const plan = resolveFrameCameras(plans.sceneTracks, cameraTrack, resolved, tMs);
   if (!plan) applyCameraTrack(cam, cameraTrack, tMs);
-  const statePlan = resolveFrameSceneStates(plans.sceneStates, resolved);
-  const lightingPlan = resolveFrameLighting(
-    plans.lightingTracks,
-    resolved,
-    plans.compareBLightingTracks,
-  );
+  const { statePlan, lightingPlan } = resolveFramePlans(plans, resolved);
   const compareFrame = resolveCompareFrame(
     plans.compareSpecs,
     plans.sceneStates,
@@ -299,7 +302,7 @@ export async function drawPlannedFrame(
       p ?? undefined,
       statePlan,
       plans.overlays ?? undefined,
-      lightingPlan ?? undefined,
+      lightingPlan,
       compareFrame,
     );
   const count = plans.shutter

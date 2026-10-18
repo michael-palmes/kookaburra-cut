@@ -202,11 +202,23 @@ export interface FixtureSpec {
 /** One sparse keyframe pose over the WHOLE rig (one track per scene, the camera precedent): absent fields leave the base value alone, so a key that only sets `sun.intensity` touches nothing else. Colours interpolate through Kelvin when both endpoints define it (a Kelvin ramp reads as a light warming; an RGB lerp between blackbody colours goes muddy). */
 export interface LightingPose {
   ambient?: number;
+  /** Hex; only a room writes it (lighting keys never carry colours). */
+  ambientColor?: string;
   environmentIntensity?: number;
   environmentRotationDeg?: number;
-  sun?: { azimuthDeg?: number; elevationDeg?: number; intensity?: number; kelvin?: number };
+  sun?: {
+    azimuthDeg?: number;
+    elevationDeg?: number;
+    intensity?: number;
+    kelvin?: number;
+    /** Hex; only a room writes it, and it wins over kelvin. */
+    color?: string;
+  };
   /** By light id. Camera/subject placements resolve per render target at the compositor seam. */
-  lights?: Record<string, { intensity?: number; kelvin?: number; placement?: Placement }>;
+  lights?: Record<
+    string,
+    { intensity?: number; kelvin?: number; placement?: Placement; color?: string }
+  >;
   /** By fixture id. */
   fixtures?: Record<string, { emissive?: number; lightIntensity?: number; placement?: Placement }>;
 }

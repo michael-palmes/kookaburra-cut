@@ -45,12 +45,9 @@ import {
 import { compareSpecOf, resolveCompareFrame } from "./sceneCompare";
 import type { SceneDoc } from "./sceneDocSchema";
 import { getSceneHosts } from "./sceneHostRegistry";
-import {
-  buildCompareBLightingTracks,
-  buildLightingTracks,
-  resolveFrameLighting,
-} from "./sceneLighting";
-import { buildSceneRenderStates, resolveFrameSceneStates } from "./sceneState";
+import { buildCompareBLightingTracks, buildLightingTracks } from "./sceneLighting";
+import { buildRoomTracks } from "./sceneRoom";
+import { buildSceneRenderStates, resolveFramePlans } from "./sceneState";
 import { resolveAt, type SceneSlot } from "./sceneTimeline";
 import {
   accumulateFrame,
@@ -102,6 +99,7 @@ export function CompositorDriver({
   sceneFrames,
   compareBDocs,
   compareBThemes,
+  roomThemes,
   motionBlur,
   commitStamp,
 }: {
@@ -121,6 +119,8 @@ export function CompositorDriver({
   /** Comparison side-B docs/themes (`LoadedProject.compareBDocs`/`compareBThemes`); drive the compare plan. */
   compareBDocs?: (SceneDoc | undefined)[];
   compareBThemes?: (Theme | undefined)[];
+  /** Themes room keys name (`LoadedProject.roomThemes`). */
+  roomThemes?: Readonly<Record<string, Theme>>;
   /** The manifest's `render.motionBlur`; paused frames show the export's blur, playback only on request. */
   motionBlur?: MotionBlurSettings;
   /** The LoadedProject identity, stamped on canvas commit (see exportBridge). */
@@ -177,6 +177,15 @@ export function CompositorDriver({
         ? buildCompareBLightingTracks(sceneThemes, compareBThemes, projectLighting, sceneDocs ?? [])
         : null,
     [sceneThemes, compareBThemes, projectLighting, sceneDocs],
+  );
+
+  // Room tracks; null unless some scene has a room.
+  const roomTracks = useMemo(
+    () =>
+      sceneThemes
+        ? buildRoomTracks(sceneDocs ?? [], { sceneThemes, roomThemes, projectLighting })
+        : null,
+    [sceneDocs, sceneThemes, roomThemes, projectLighting],
   );
 
   // Per-scene render states; null unless the project opts into themed scene state.
@@ -297,8 +306,6 @@ export function CompositorDriver({
     // Camera, at this shared seam (mirrored in the export loop), is always a pure function of the clock: projects with scene-doc tracks get a per-frame plan (applied inside renderComposited, per-target on transition frames); projects without fall back to the legacy path, a hard no-op when there's no project-level track either.
     const plan = resolveFrameCameras(tracks, cameraTrack, resolved, currentMs);
     if (!plan) applyCameraTrack(s.camera as PerspectiveCamera, cameraTrack, currentMs);
-    // Scene render state, same rules: an opted-in project gets an explicit per-target plan every frame; legacy projects pass undefined and the root scene is never touched.
-    const statePlan = resolveFrameSceneStates(sceneStates, resolved);
     let frameLightingTracks = lightingTracks;
     let frameCompareBLightingTracks = compareBLightingTracks;
     const lightingDraft = useLightingEditStore.getState().draft;
@@ -348,10 +355,15 @@ export function CompositorDriver({
         frameCompareBLightingTracks = { tracks: mergedTracks, owned: mergedOwned };
       }
     }
-    const lightingPlan = resolveFrameLighting(
-      frameLightingTracks,
+    // Scene render state and lighting, through the resolve export and Present share: an opted-in project gets an explicit per-target plan every frame; legacy projects pass undefined and the root scene is never touched.
+    const { statePlan, lightingPlan } = resolveFramePlans(
+      {
+        sceneStates,
+        lightingTracks: frameLightingTracks,
+        compareBLightingTracks: frameCompareBLightingTracks,
+        roomTracks,
+      },
       resolved,
-      frameCompareBLightingTracks,
     );
     // The comparison plan, resolved at the same shared seam (mirrored in the export loop); an in-flight divider drag replaces its scene's spec for this render, the camera-draft rule (imperative read, unreachable during export).
     let frameSpecs = compareSpecs;
@@ -382,7 +394,7 @@ export function CompositorDriver({
         p ?? undefined,
         statePlan,
         overlays ?? undefined,
-        lightingPlan ?? undefined,
+        lightingPlan,
         compareFrame,
       );
     s.gl.getDrawingBufferSize(bufferSize);

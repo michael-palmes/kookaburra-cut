@@ -2338,6 +2338,7 @@ export default function App() {
           sceneFrames: project.sceneFrames,
           compareBDocs: project.compareBDocs,
           compareBThemes: project.compareBThemes,
+          roomThemes: project.roomThemes,
           audio: project.audio,
           codec: "libx264",
           destination: toDownloads ? "downloads" : undefined,
@@ -2421,6 +2422,7 @@ export default function App() {
           sceneFrames: project.sceneFrames,
           compareBDocs: project.compareBDocs,
           compareBThemes: project.compareBThemes,
+          roomThemes: project.roomThemes,
           motionBlur: project.renderSettings.motionBlur,
           audio: project.audio,
           codec: "libx264",
@@ -2492,6 +2494,7 @@ export default function App() {
           sceneFrames: project.sceneFrames,
           compareBDocs: project.compareBDocs,
           compareBThemes: project.compareBThemes,
+          roomThemes: project.roomThemes,
           motionBlur: project.renderSettings.motionBlur,
           audio: project.audio,
           codec: "libx264",
@@ -2750,6 +2753,7 @@ export default function App() {
                       sceneFrames={project.sceneFrames}
                       compareBDocs={project.compareBDocs}
                       compareBThemes={project.compareBThemes}
+                      roomThemes={project.roomThemes}
                       motionBlur={project.renderSettings.motionBlur}
                       commitStamp={project}
                     />

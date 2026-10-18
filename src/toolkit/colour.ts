@@ -16,3 +16,8 @@ export function liftColour(from: string, to: string, amount: number): string {
   );
   return `#${_c.getHexString()}`;
 }
+
+/** `fg` at opacity `a` over a room colour, as the opaque hex a CSS overlay would show (the `liftColour` display-domain blend), so text and panels over a room stay exact. */
+export function cssOpacity(fg: string, room: string, a: number): string {
+  return liftColour(room, fg, a);
+}

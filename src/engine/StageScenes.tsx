@@ -7,6 +7,7 @@ import { LayeredScreenshotFallback } from "../toolkit/media/LayeredScreenshot";
 import { SceneMediaFallback } from "../toolkit/media/SceneMedia";
 import { ObjectsFallback } from "../toolkit/objects/ObjectPrimitive";
 import { SceneBackground } from "../toolkit/stage/FixedBackdrop";
+import { SceneRoom, SceneRoomScope } from "../toolkit/stage/Room";
 import { TextFallback } from "../toolkit/text/TitleBlock";
 import { FramePanel } from "./FramePanel";
 import { reportRenderError } from "./loadDiagnostics";
@@ -21,6 +22,7 @@ import {
   buildCompareBLightingTracks,
   buildLightingTracks,
 } from "./sceneLighting";
+import { buildRoomTracks } from "./sceneRoom";
 
 /** Records a render error a scene's backstop boundary caught, for the load diagnostics. */
 export function sceneRenderErrorReporter(
@@ -61,6 +63,18 @@ export function StageScenes({ project }: { project: LoadedProject | null }) {
       })(),
     [project],
   );
+  // Null unless some scene has a room; scenes without one get a null scope and mount nothing.
+  const roomTracks = useMemo(
+    () =>
+      project
+        ? buildRoomTracks(project.sceneDocs, {
+            sceneThemes: project.sceneThemes,
+            roomThemes: project.roomThemes,
+            projectLighting: project.projectLighting,
+          })
+        : null,
+    [project],
+  );
   const tree = (
     <ProjectIdContext.Provider value={project?.id ?? null}>
       <ProjectLightingContext.Provider value={project?.projectLighting ?? null}>
@@ -89,9 +103,10 @@ export function StageScenes({ project }: { project: LoadedProject | null }) {
                   {isSceneErrorCard(scene) ? (
                     <SceneComponent />
                   ) : (
-                    <>
+                    <SceneRoomScope track={roomTracks?.[i] ?? null}>
                       {/* The fixed background mounts host-side for every scene, staged or not, so Background picks never depend on the scene authoring a <SceneStage> (staging/lighting stays opt-in). */}
                       <SceneBackground />
+                      <SceneRoom />
                       <SceneComponent />
                       <SceneMediaFallback />
                       {/* Host-side fallbacks so Add device / Add text work on scenes whose TSX never wires the sidecar hooks; the registries suppress them when it does. */}
@@ -101,7 +116,7 @@ export function StageScenes({ project }: { project: LoadedProject | null }) {
                       <ChartFallback />
                       <TextFallback />
                       <CompareChips />
-                    </>
+                    </SceneRoomScope>
                   )}
                 </AssetBoundary>
               </SceneHost>
@@ -134,8 +149,9 @@ export function StageScenes({ project }: { project: LoadedProject | null }) {
                   {isSceneErrorCard(scene) ? (
                     <SceneComponent />
                   ) : (
-                    <>
+                    <SceneRoomScope track={roomTracks?.[i] ?? null}>
                       <SceneBackground />
+                      <SceneRoom />
                       <SceneComponent />
                       <SceneMediaFallback />
                       <DevicesFallback />
@@ -144,7 +160,7 @@ export function StageScenes({ project }: { project: LoadedProject | null }) {
                       <ChartFallback />
                       <TextFallback />
                       <CompareChips />
-                    </>
+                    </SceneRoomScope>
                   )}
                 </AssetBoundary>
               </SceneHost>

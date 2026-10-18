@@ -7,6 +7,13 @@ import {
   sceneMirrorRequest,
 } from "./environments";
 import type { SceneDoc } from "./sceneDocSchema";
+import {
+  type CompareBLightingTrackSet,
+  type FrameLightingPlan,
+  type LightingTrack,
+  resolveFrameLighting,
+} from "./sceneLighting";
+import { type RoomTrack, roomPoseAt, sampleRoom } from "./sceneRoom";
 import type { Resolved } from "./sceneTimeline";
 
 /** Per-scene render state at the compositor seam: values that live on the root three `Scene` (background, environment) and therefore cannot vary per scene by mounting things inside scene groups. Mirrors the per-scene camera plan: projects using no v8/v9 theme feature build a null state list and the compositor never touches `scene.background`/`scene.environment` (the byte-identical legacy path, where the background is the Canvas-root colour and the environment is the lit primitives' studio environment, if any), while an opted-in project gets an explicit state every frame, per offscreen target on transition frames (the stale-state lesson: no inheritance across scenes). See docs/determinism.md. */
@@ -54,7 +61,9 @@ export function usesThemedSceneState(
   if (lighting?.projectLighting?.environment) return true;
   return (lighting?.sceneDocs ?? []).some(
     (doc) =>
-      doc?.lighting?.environment || doc?.lighting?.fixtures?.some((f) => f.envMirror === true),
+      doc?.room ||
+      doc?.lighting?.environment ||
+      doc?.lighting?.fixtures?.some((f) => f.envMirror === true),
   );
 }
 
@@ -85,20 +94,72 @@ export function buildSceneRenderStates(
   });
 }
 
-/** The frame's state plan: solo scenes get `solo`, transition frames get per-target `a`/`b` plus the dominant scene's `overlay`; undefined only when the project didn't opt in (null states) or nothing is active. */
+const roomBackgrounds = new Map<string, Color>();
+
+/** A roomed scene's state carries its room colour as the background, sampled at that target's own scene-local time. */
+function roomedState(
+  states: readonly SceneRenderState[],
+  rooms: readonly (RoomTrack | null)[] | null | undefined,
+  index: number,
+  resolved: Resolved,
+): SceneRenderState {
+  const state = states[index];
+  const track = rooms?.[index];
+  const active = track ? resolved.active.find((s) => s.index === index) : undefined;
+  const colour = track && active ? sampleRoom(track, active.localMs).colour : null;
+  if (!colour || !state) return state;
+  let background = roomBackgrounds.get(colour);
+  if (!background) {
+    background = new Color(colour);
+    roomBackgrounds.set(colour, background);
+  }
+  return { ...state, background };
+}
+
+/** The frame's state plan: solo scenes get `solo`, transition frames get per-target `a`/`b` plus the dominant scene's `overlay`; undefined only when the project didn't opt in (null states) or nothing is active. Null `rooms` returns the prebuilt states untouched. */
 export function resolveFrameSceneStates(
   states: readonly SceneRenderState[] | null,
   resolved: Resolved,
+  rooms?: readonly (RoomTrack | null)[] | null,
 ): FrameSceneStatePlan | undefined {
   if (!states || resolved.active.length === 0) return undefined;
   const tr = resolved.transition;
   if (tr && resolved.active.length >= 2) {
-    const a = states[tr.fromIndex];
-    const b = states[tr.toIndex];
+    const a = rooms ? roomedState(states, rooms, tr.fromIndex, resolved) : states[tr.fromIndex];
+    const b = rooms ? roomedState(states, rooms, tr.toIndex, resolved) : states[tr.toIndex];
     return { a, b, overlay: tr.progress < 0.5 ? a : b };
   }
   const idx = resolved.active[resolved.active.length - 1].index;
-  return { solo: states[idx] };
+  return { solo: rooms ? roomedState(states, rooms, idx, resolved) : states[idx] };
+}
+
+/** Everything the per-frame state and lighting resolve reads, built once per project or run. */
+export interface FramePlanInputs {
+  sceneStates: readonly SceneRenderState[] | null;
+  lightingTracks: readonly (LightingTrack | null)[] | null | undefined;
+  compareBLightingTracks?: CompareBLightingTrackSet | null;
+  /** Null unless some scene has a room: today's path. */
+  roomTracks?: readonly (RoomTrack | null)[] | null;
+}
+
+export interface ResolvedFramePlans {
+  statePlan?: FrameSceneStatePlan;
+  lightingPlan?: FrameLightingPlan;
+}
+
+/** The ONE state + lighting resolve preview, export and Present share, so the three can't drift; rooms feed both, per target at its own scene-local time. */
+export function resolveFramePlans(inputs: FramePlanInputs, resolved: Resolved): ResolvedFramePlans {
+  const rooms = inputs.roomTracks ?? null;
+  return {
+    statePlan: resolveFrameSceneStates(inputs.sceneStates, resolved, rooms),
+    lightingPlan:
+      resolveFrameLighting(
+        inputs.lightingTracks,
+        resolved,
+        inputs.compareBLightingTracks,
+        rooms ? roomPoseAt(rooms) : undefined,
+      ) ?? undefined,
+  };
 }
 
 /** Writes one scene's state onto the shared root scene immediately before its render; `resolveEnvironment` is injected (engine/environments.ts in production, a fake in unit tests) and may return null while a source is still loading, in which case the shared snapshot applies instead. `"none"` clears the environment explicitly (no reflections, never the shared fallback). */
