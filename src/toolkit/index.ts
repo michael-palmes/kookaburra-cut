@@ -132,10 +132,9 @@ export { VideoWindow, type VideoWindowProps } from "./media/VideoWindow";
 export { MotionBlur } from "./motion/MotionBlur";
 // Motion helpers: eased ramps, keyed tracks and the stamp pop, all pure functions of the clock.
 export { clamp01, lerp, ramp } from "./motion/math";
-// Stamps children in with the stampScale pop; the extension is explicit because "./motion/Stamp" finds stamp.ts on a case-insensitive disk.
-export { Stamp, type StampProps } from "./motion/Stamp.tsx";
+export { Stamp, type StampProps } from "./motion/Stamp";
 export { type MotionKey, type SampleKeysOptions, sampleKeys } from "./motion/sampleKeys";
-export { type StampScaleOptions, stampScale } from "./motion/stamp";
+export { type StampScaleOptions, stampScale } from "./motion/stampScale";
 // The 3D objects library: bundled + workspace manifests, staged by the sidecar `objects` array.
 export { ObjectsFallback, StagedObject } from "./objects/ObjectPrimitive";
 export { preloadSceneObjects } from "./objects/preload";

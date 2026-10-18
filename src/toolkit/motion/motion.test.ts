@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { ease } from "../../engine/ease";
 import { clamp01, lerp, ramp } from "./math";
 import { sampleKeys } from "./sampleKeys";
-import { stampScale } from "./stamp";
+import { stampScale } from "./stampScale";
 
 describe("clamp01", () => {
   it("clamps and reads NaN as 0", () => {

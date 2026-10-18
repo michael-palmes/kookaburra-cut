@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { useTimeline } from "../../engine/timeline";
 import type { V3 } from "../types";
 import { ramp } from "./math";
-import { type StampScaleOptions, stampScale } from "./stamp";
+import { type StampScaleOptions, stampScale } from "./stampScale";
 
 const DEG2RAD = Math.PI / 180;
 

@@ -1,7 +1,7 @@
 import { ease } from "../../engine/ease";
 import type { MotionBlurOverride } from "../../engine/motionBlur";
 import type { TextAnimationSpec, Theme } from "../../theme/tokens";
-import { stampScale } from "../motion/stamp";
+import { stampScale } from "../motion/stampScale";
 
 /** Text-animation presets, the library behind `theme.textAnimation` and `AnimatedHeadline`'s `preset`/`ease`/`stagger` props: everything here is PURE math over the local scene clock so preview and the deterministic export loop agree byte-for-byte, and easing goes through the golden-tested `engine/ease` table, never an animation runtime. IMPORTANT (the null-for-legacy contract): when nothing is configured, `resolveTextAnimation` returns null and AnimatedHeadline runs its original v0 linear-ramp code verbatim, so committed projects on legacy themes must not change by a byte. */
 
