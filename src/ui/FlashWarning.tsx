@@ -110,6 +110,11 @@ export function onFlaggedExport(listener: (flagged: FlaggedExport | null) => voi
   };
 }
 
+/** A new export, stills or verify run starting: the previous card goes, so a failed or cancelled run never shows an older film's result. */
+export function clearExportCard(): void {
+  for (const listener of listeners) listener(null);
+}
+
 /** After every finished export (the Export button's or Claude's): fetch the tap's report for that file and raise the export card when it flagged anything, or clear an older card when it did not. A null path (a verify, whose second render Rust recorded) takes the latest report. True when the card took over from the success toast. */
 export async function noteExportFlashes(
   path: string | null,

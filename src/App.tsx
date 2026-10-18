@@ -235,7 +235,7 @@ import {
   type StillsExportSelection,
 } from "./ui/ExportModal";
 import { STILLS_ID } from "./ui/exportOptions";
-import { FlashWarning, noteExportFlashes } from "./ui/FlashWarning";
+import { clearExportCard, FlashWarning, noteExportFlashes } from "./ui/FlashWarning";
 import { GpuNotices } from "./ui/GpuNotices";
 import { OverlayImageGizmo } from "./ui/ImageOverlayGizmo";
 import { newChartBlock } from "./ui/inspector/ChartSection";
@@ -2324,6 +2324,7 @@ export default function App() {
     setProgress(null);
     setExportPrepStep(0);
     setToast(null);
+    clearExportCard();
     const abort = new AbortController();
     exportAbortRef.current = abort;
     try {
@@ -2433,6 +2434,7 @@ export default function App() {
     setProgress(null);
     setExportPrepStep(0);
     setToast(null);
+    clearExportCard();
     exportAbortRef.current = run.abort;
     try {
       const targetFormat = FORMATS[sel.aspect];
@@ -2487,6 +2489,7 @@ export default function App() {
     setExporting(true);
     setProgress(null);
     setToast(null);
+    clearExportCard();
     const startingFormat = useEditorStore.getState().format;
     const abort = new AbortController();
     exportAbortRef.current = abort;

@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { BridgeProgress } from "../engine/bridgeExport";
 import { BridgeExportOverlay, bridgeStageText, etaText } from "./BridgeExportOverlay";
 import {
+  clearExportCard,
   type FlaggedExport,
   type FlashOutcome,
   flashNotice,
@@ -233,6 +234,13 @@ describe("noteExportFlashes", () => {
     mocks.invoke.mockResolvedValue({ ...flagged, report: { ok: true, issues: [] } });
     const off = onFlaggedExport((f) => heard.push(f));
     expect(await noteExportFlashes(null, "claude")).toBe(false);
+    off();
+    expect(heard).toEqual([null]);
+  });
+
+  it("clears the card when a new run starts", () => {
+    const off = onFlaggedExport((f) => heard.push(f));
+    clearExportCard();
     off();
     expect(heard).toEqual([null]);
   });
