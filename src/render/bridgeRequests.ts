@@ -170,7 +170,11 @@ export function buildCheckReport(input: {
   project: Pick<
     LoadedProject,
     "sceneFiles" | "slots" | "sceneDocs" | "compareBDocs" | "healedSceneIds"
-  > & { sceneErrors?: readonly SceneLoadError[]; fontIssues?: readonly FontIssue[] };
+  > & {
+    sceneErrors?: readonly SceneLoadError[];
+    fontIssues?: readonly FontIssue[];
+    loadWarnings?: readonly string[];
+  };
   renderErrors?: readonly SceneLoadError[];
   assets?: readonly CheckAsset[];
 }): CheckReport {
@@ -214,9 +218,12 @@ export function buildCheckReport(input: {
       .filter((ref) => !issueKeys.has(fontKey(ref)))
       .map((ref) => ({ ref, ok: true })),
   ];
-  const warnings = (project.healedSceneIds ?? []).map(
-    (file) => `${file} shared its scene id with another scene, so it was given a new one`,
-  );
+  const warnings = [
+    ...(project.healedSceneIds ?? []).map(
+      (file) => `${file} shared its scene id with another scene, so it was given a new one`,
+    ),
+    ...(project.loadWarnings ?? []),
+  ];
   return {
     ok: scenes.every((s) => s.ok) && fonts.every((f) => f.ok) && assets.every((a) => a.ok),
     scenes,

@@ -12,6 +12,7 @@ import { listProjectEnvironmentAssets } from "../../engine/project";
 import type { SceneDoc } from "../../engine/sceneDocSchema";
 import {
   captureLightingPose,
+  DEFAULT_SHADOW_SPEC,
   resolveLighting,
   resolveLightingColour,
   SUN_ANGULAR_REFERENCE,
@@ -73,13 +74,6 @@ import {
 } from "./rows";
 
 const DEFAULT_SUN: SunSpec = { azimuthDeg: 35, elevationDeg: 40, intensity: 1.8 };
-const DEFAULT_SHADOW: ThemeShadowSpec = {
-  technique: "map",
-  softness: 0.5,
-  opacity: 0.3,
-  mapSize: 2048,
-  bias: -0.0005,
-};
 const MAP_SIZES = [1024, 2048, 4096];
 export const LIGHTING_EASING_OPTIONS = [
   { id: "linear", label: "Linear" },
@@ -315,7 +309,7 @@ export function LightingInspectorSection({
     next.lighting = { ...(next.lighting ?? {}), environment };
   };
   const writeShadow = (mutate: (shadow: ThemeShadowSpec) => void) => (next: SceneDoc) => {
-    const shadow = structuredClone(resolveNext(next)?.shadow ?? DEFAULT_SHADOW);
+    const shadow = structuredClone(resolveNext(next)?.shadow ?? DEFAULT_SHADOW_SPEC);
     mutate(shadow);
     next.lighting = { ...(next.lighting ?? {}), shadow };
   };
@@ -993,7 +987,7 @@ export function LightingInspectorSection({
   }
 
   if (screen === "shadows") {
-    const shadow = resolved?.shadow ?? DEFAULT_SHADOW;
+    const shadow = resolved?.shadow ?? DEFAULT_SHADOW_SPEC;
     const style = lightingShadowStyle(shadow);
     return shell(
       "Shadows",

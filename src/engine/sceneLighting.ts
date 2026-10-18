@@ -17,6 +17,7 @@ import type {
 } from "../theme/tokens";
 import { ease } from "./ease";
 import { KELVIN_MAX, KELVIN_MIN, kelvinToHex } from "./kelvin";
+import { parseWarn } from "./parseWarnings";
 
 /** v9 lighting: deep validation + the three-layer resolve (mirrors sceneCamera.ts). Pure (no three.js, no clock reads, no store imports — theme/schema.ts imports this module, so it must stay leaf-level) so preview and export agree by construction. Parsing follows parseSceneDoc's degrade-don't-crash contract: a malformed block drops whole, a malformed entry inside `lights`/`fixtures` drops that entry only, out-of-range numbers clamp, missing/duplicate ids drop the entry. Byte-identity invariant: `resolveLighting` returns undefined whenever no layer contributes a renderable rig, so pre-v9 projects run the legacy path verbatim. See docs/determinism.md. */
 
@@ -66,19 +67,30 @@ function parseV8LightSpec(v: unknown): ThemeLightSpec | undefined {
   return light;
 }
 
-function parseShadowSpec(v: unknown): ThemeShadowSpec | undefined {
+/** The shadow every theme or scene spec falls back to field by field: only `technique` is required. */
+export const DEFAULT_SHADOW_SPEC: Readonly<ThemeShadowSpec> = Object.freeze({
+  technique: "map",
+  softness: 0.5,
+  opacity: 0.3,
+  mapSize: 2048,
+  bias: -0.0005,
+});
+
+const SHADOW_NUMBERS = ["softness", "opacity", "mapSize", "bias"] as const;
+
+function parseShadowSpec(v: unknown, source: string): ThemeShadowSpec | undefined {
   if (!isRecord(v)) return undefined;
   if (v.technique !== "map" && v.technique !== "none") return undefined;
-  if (!isNum(v.softness) || !isNum(v.opacity) || !isNum(v.mapSize) || !isNum(v.bias)) {
-    return undefined;
+  const shadow: ThemeShadowSpec = { ...DEFAULT_SHADOW_SPEC, technique: v.technique };
+  for (const key of SHADOW_NUMBERS) {
+    const value = v[key];
+    if (isNum(value)) shadow[key] = value;
+    else if (value !== undefined) {
+      parseWarn(
+        `[lighting] ${source}: invalid "lighting.shadow.${key}", using ${DEFAULT_SHADOW_SPEC[key]}`,
+      );
+    }
   }
-  const shadow: ThemeShadowSpec = {
-    technique: v.technique,
-    softness: v.softness,
-    opacity: v.opacity,
-    mapSize: v.mapSize,
-    bias: v.bias,
-  };
   if (typeof v.enabled === "boolean") shadow.enabled = v.enabled;
   if (typeof v.catchBackdrop === "boolean") shadow.catchBackdrop = v.catchBackdrop;
   if (isStr(v.color)) shadow.color = v.color;
@@ -369,9 +381,12 @@ export function normalizeLighting(
   }
 
   if (raw.shadow !== undefined) {
-    const shadow = parseShadowSpec(raw.shadow);
+    const shadow = parseShadowSpec(raw.shadow, source);
     if (shadow) out.shadow = shadow;
-    else console.warn(`[lighting] ${source}: invalid "lighting.shadow" — dropped`);
+    else
+      parseWarn(
+        `[lighting] ${source}: "lighting.shadow" needs a "technique" of map or none, dropped`,
+      );
   }
   if (isStr(raw.preset)) out.preset = raw.preset;
   if (typeof raw.animationEnabled === "boolean" && !opts.themeLayer) {

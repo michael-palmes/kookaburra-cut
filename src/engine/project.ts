@@ -7,7 +7,7 @@ import { assetVersionSuffix, useAssetVersionStore } from "../store/assetVersionS
 import { parseFontString } from "../theme/fontRef";
 import { vetProjectFonts } from "../theme/fontSafety";
 import { collectThemeFontRefs, preloadAppFonts } from "../theme/fonts";
-import { resolveTheme } from "../theme/registry";
+import { resolveThemeReport, WORKSPACE_THEME_PREFIX } from "../theme/registry";
 import type {
   EffectsConfig,
   EffectsOverride,
@@ -33,6 +33,7 @@ import {
   type SceneLoadPhase,
 } from "./loadDiagnostics";
 import { fsUrl } from "./media";
+import { capWarnings, cleanParseWarning, collectParseWarnings, parseWarn } from "./parseWarnings";
 import { resolveSavedPosterTheme } from "./presetPosterThemes";
 import { withProjectAssetRevision } from "./projectAssetRevision";
 import { ensureProjectTrusted } from "./projectTrust";
@@ -147,7 +148,7 @@ export function sanitiseAudioMarkers(
     Array.isArray(markers.keyMoments) &&
     markers.keyMoments.every((t) => typeof t === "number" && Number.isFinite(t) && t >= 0);
   if (!ok) {
-    console.warn("[project] audio.markers invalid, ignoring (detected key moments stand)");
+    parseWarn("[project] audio.markers invalid, ignoring (detected key moments stand)");
     return undefined;
   }
   const keyMoments = [...new Set(markers.keyMoments.map((t) => Math.round(t)))].sort(
@@ -996,7 +997,7 @@ function parseProjectTypography(
 ): { headline?: FontRef; body?: FontRef; chart?: FontRef } | null {
   if (raw === undefined || raw === null) return null;
   if (typeof raw !== "object") {
-    console.warn(`[project] ${source}: typography must be an object`);
+    parseWarn(`[project] ${source}: typography must be an object`);
     return null;
   }
   const out: { headline?: FontRef; body?: FontRef; chart?: FontRef } = {};
@@ -1006,7 +1007,7 @@ function parseProjectTypography(
     if (typeof value === "string" && value.trim()) {
       out[slot] = parseFontString(value.trim());
     } else {
-      console.warn(`[project] ${source}: typography.${slot} isn't "Family" or "Family@weight"`);
+      parseWarn(`[project] ${source}: typography.${slot} isn't "Family" or "Family@weight"`);
     }
   }
   return out.headline || out.body || out.chart ? out : null;
@@ -1064,12 +1065,30 @@ export async function loadProject(
     scenes.push(sceneErrorCard({ file: entry.file, message: loaded.message, durationMs }));
   }
 
+  // What the parsers dropped, per file; surfaced as load warnings, never an export blocker.
+  const parseNotes: string[] = [];
+  const noteParse = (file: string, source: string, warnings: readonly string[]) => {
+    for (const warning of warnings)
+      parseNotes.push(`${file}: ${cleanParseWarning(warning, source)}`);
+  };
+  const projectSource = `${id}/project.json`;
+  const parseManifest = <T>(fn: () => T): T => {
+    const { result, warnings } = collectParseWarnings(fn);
+    noteParse("project.json", projectSource, warnings);
+    return result;
+  };
+
   // Sidecar scene documents, keyed off each entry's file stem; missing → undefined.
+  const sceneDocWarnings = manifest.scenes.map((): string[] => []);
   const sceneDocs = await Promise.all(
-    manifest.scenes.map((entry) =>
-      loadSceneDoc(id, entry.file, sceneDocGlob, bundledProjectDir(id)),
+    manifest.scenes.map((entry, i) =>
+      loadSceneDoc(id, entry.file, sceneDocGlob, bundledProjectDir(id), sceneDocWarnings[i]),
     ),
   );
+  manifest.scenes.forEach((entry, i) => {
+    const docFile = entry.file.replace(/\.tsx$/, ".json");
+    noteParse(docFile, docFile, sceneDocWarnings[i]);
+  });
 
   // Overlap-aware placement: a transition pulls the next scene's start back, shortening the project.
   const outgoing = outgoingSceneTransitions(manifest);
@@ -1084,10 +1103,22 @@ export async function loadProject(
   const totalMs = timelineTotalMs(slots);
 
   // Project-wide font override: outranks every resolved theme (project, per-scene and compare B alike); per-field sidecar `<key>Font` overrides still win downstream.
-  const typographyOverride = parseProjectTypography(manifest.typography, `${id}/project.json`);
+  const typographyOverride = parseManifest(() =>
+    parseProjectTypography(manifest.typography, projectSource),
+  );
   const applyTypography = (t: Theme): Theme =>
     typographyOverride ? { ...t, typography: { ...t.typography, ...typographyOverride } } : t;
-  const resolveProjectTheme = options?.readSavedThemes ? resolveSavedPosterTheme : resolveTheme;
+  const resolveProjectTheme = async (themeId: string | undefined, fallback?: Theme) => {
+    if (options?.readSavedThemes) return resolveSavedPosterTheme(themeId, fallback);
+    const report = await resolveThemeReport(themeId, fallback);
+    if (themeId && report.warnings.length > 0) {
+      const file = themeId.startsWith(WORKSPACE_THEME_PREFIX)
+        ? `themes/${themeId.slice(WORKSPACE_THEME_PREFIX.length)}/theme.json`
+        : `theme ${themeId}`;
+      noteParse(file, themeId, report.warnings);
+    }
+    return report.theme;
+  };
   const theme = applyTypography(
     options?.theme ?? (await resolveProjectTheme(options?.themeId ?? manifest.themeId)),
   );
@@ -1113,7 +1144,9 @@ export async function loadProject(
 
   // Per-scene overlay resolution: the sidecar's frame merges over the manifest's deck frame; a scene that resolves to `enabled:false` drops out so it renders full-bleed. The manifest is raw JSON.parse, so its frame parses here (sidecar frames already parsed through `parseSceneDoc`).
   const deckFrame =
-    manifest.frame === undefined ? undefined : parseFrameSpec(manifest.frame, `${id}/project.json`);
+    manifest.frame === undefined
+      ? undefined
+      : parseManifest(() => parseFrameSpec(manifest.frame, projectSource));
   const sceneFrames = sceneDocs.map((doc) => {
     const merged = mergeFrameSpec(deckFrame, doc?.frame);
     return merged?.enabled === false ? undefined : merged;
@@ -1148,8 +1181,8 @@ export async function loadProject(
   const projectLighting =
     manifest.lighting === undefined
       ? undefined
-      : (normalizeLighting(manifest.lighting, `${id}/project.json`) ?? undefined);
-  const renderSettings = parseRenderSettings(manifest.render, `${id}/project.json`);
+      : (parseManifest(() => normalizeLighting(manifest.lighting, projectSource)) ?? undefined);
+  const renderSettings = parseManifest(() => parseRenderSettings(manifest.render, projectSource));
 
   // Theme-swapped scenes replace the project-wide effect base wholesale (sparse; entries only where a sidecar overrides the theme, possibly `{}`, which turns effects OFF there).
   const sceneEffectDefaults: Record<number, EffectsConfig> = {};
@@ -1220,7 +1253,8 @@ export async function loadProject(
       const probe = await invoke<{ durationMs: number; sampleRate: number }>("probe_audio", {
         path: abs,
       });
-      audio = { ...withAudioDefaults(manifest.audio), abs, ...probe };
+      const spec = manifest.audio;
+      audio = { ...parseManifest(() => withAudioDefaults(spec)), abs, ...probe };
       const covered = audio.durationMs - (audio.startOffsetMs ?? 0);
       if (covered < totalMs) {
         console.warn(
@@ -1234,6 +1268,10 @@ export async function loadProject(
       );
     }
   }
+
+  const ignored = capWarnings(parseNotes);
+  for (const note of ignored) console.warn(`[project] ${id}: ${note}`);
+  loadWarnings.push(...ignored);
 
   // Every scoped id (workspace projects, templates, presets) survives the load: the asset resolvers route on it, and only a plain bundled project falls back to its manifest id.
   const loadedId = parseProjectId(id).scope === "bundled" ? manifest.id : id;

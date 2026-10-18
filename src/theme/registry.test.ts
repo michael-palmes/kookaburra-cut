@@ -6,6 +6,7 @@ import {
   isWorkspaceThemeId,
   lineupThemes,
   resolveTheme,
+  resolveThemeReport,
   THEME_LINEUP,
 } from "./registry";
 
@@ -53,5 +54,54 @@ describe("theme registry", () => {
     });
     vi.mocked(invoke).mockRejectedValueOnce(new Error("unavailable"));
     expect(await resolveTheme("ws:missing")).toBe(defaultTheme);
+  });
+});
+
+describe("resolveThemeReport", () => {
+  const docs: Record<string, unknown> = {};
+  beforeEach(() => {
+    for (const key of Object.keys(docs)) delete docs[key];
+    vi.mocked(invoke).mockImplementation(async (command, args) => {
+      const slug = (args as { slug?: string } | undefined)?.slug ?? "";
+      if (command !== "read_theme" || !(slug in docs)) throw new Error(`no ${slug}`);
+      return JSON.stringify(docs[slug]);
+    });
+  });
+
+  it("merges a workspace chain down to a bundled base", async () => {
+    docs.brand = { version: 3, id: "brand", name: "Brand", extends: "kookaburra-paper" };
+    docs.night = {
+      version: 3,
+      id: "night",
+      name: "Night",
+      extends: "ws:brand",
+      colors: { accent: "#ff00aa" },
+      chartColors: "nope",
+    };
+    const paper = builtinThemes["kookaburra-paper"];
+    const report = await resolveThemeReport("ws:night");
+    expect(report.theme.id).toBe("ws:night");
+    expect(report.theme.name).toBe("Night");
+    expect(report.theme.colors).toEqual({ ...paper?.colors, accent: "#ff00aa" });
+    expect(report.theme.typography).toEqual(paper?.typography);
+    expect(report.warnings).toEqual([`[theme] ws:night: "chartColors" isn't an array, dropped`]);
+  });
+
+  it("falls back on a loop or a missing base, with the reason", async () => {
+    const fallback = builtinThemes["kookaburra-paper"] ?? defaultTheme;
+    docs.a = { version: 3, id: "a", extends: "ws:b" };
+    docs.b = { version: 3, id: "b", extends: "ws:a" };
+    const loop = await resolveThemeReport("ws:a", fallback);
+    expect(loop.theme).toBe(fallback);
+    expect(loop.warnings[0]).toContain("loops back");
+    docs.c = { version: 3, id: "c", extends: "ws:gone" };
+    const gone = await resolveThemeReport("ws:c");
+    expect(gone.theme).toBe(defaultTheme);
+    expect(gone.warnings[0]).toContain('"ws:gone" can\'t be found');
+  });
+
+  it("notes an unknown bundled id and an unreadable workspace theme", async () => {
+    expect((await resolveThemeReport("kookaburra-nope")).warnings[0]).toContain("isn't a theme");
+    expect((await resolveThemeReport("ws:absent")).warnings[0]).toContain("can't be read");
   });
 });

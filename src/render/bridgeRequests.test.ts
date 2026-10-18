@@ -191,6 +191,23 @@ describe("buildCheckReport", () => {
     expect(report.scenes.every((scene) => scene.ok && scene.warnings.length === 0)).toBe(true);
     expect(report.fonts.map((font) => font.ref)).toEqual(["Menlo@400", "Inter@400"]);
   });
+
+  it("carries the load's ignored settings as warnings without failing the check", () => {
+    const report = buildCheckReport({
+      project: {
+        ...project,
+        sceneErrors: undefined,
+        fontIssues: undefined,
+        loadWarnings: [`themes/brand/theme.json: "card" is invalid, dropped`],
+      },
+      assets: [{ path: "assets/clip.MOV", ok: true }],
+    });
+    expect(report.ok).toBe(true);
+    expect(report.warnings).toEqual([
+      "scenes/02-stats.tsx shared its scene id with another scene, so it was given a new one",
+      `themes/brand/theme.json: "card" is invalid, dropped`,
+    ]);
+  });
 });
 
 describe("resolvePresetRef", () => {
