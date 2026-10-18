@@ -1209,6 +1209,54 @@ function parseDeviceLayout(raw: unknown, source: string): SceneDocDeviceLayout |
   return out;
 }
 
+const DEVICE_MEDIA_PLAYBACK_KEYS = ["inMs", "outMs", "speed", "loop", "posterMs"] as const;
+
+/** A device screen's source-timing keys: a bad one warns and drops alone, legacy fields stay verbatim, and `spec` itself comes back when nothing drops (no duration checks: nothing is probed at parse). */
+function parseDeviceMediaKeys(
+  spec: DeviceMediaSpec,
+  source: string,
+  label: string,
+): DeviceMediaSpec {
+  if (DEVICE_MEDIA_PLAYBACK_KEYS.every((key) => spec[key] === undefined)) return spec;
+  const out: DeviceMediaSpec = { ...spec };
+  let dropped = false;
+  const drop = (key: (typeof DEVICE_MEDIA_PLAYBACK_KEYS)[number], why: string) => {
+    delete out[key];
+    dropped = true;
+    console.warn(`[sceneDoc] ${source}: ${label}.${key} ${why}, dropped`);
+  };
+  if (spec.kind !== "video") {
+    for (const key of DEVICE_MEDIA_PLAYBACK_KEYS) {
+      if (spec[key] !== undefined) drop(key, "only applies to a video");
+    }
+    return out;
+  }
+  for (const key of ["inMs", "outMs", "posterMs"] as const) {
+    const value: unknown = spec[key];
+    if (value !== undefined && !(Number.isInteger(value) && (value as number) >= 0)) {
+      drop(key, "isn't a whole number of ms, 0 or more");
+    }
+  }
+  const speed: unknown = spec.speed;
+  if (
+    speed !== undefined &&
+    !(typeof speed === "number" && Number.isFinite(speed) && speed > 0 && speed <= 16)
+  ) {
+    drop("speed", "isn't a number above 0 and at most 16");
+  }
+  if (spec.loop !== undefined && typeof spec.loop !== "boolean") drop("loop", "isn't a boolean");
+  if (out.inMs !== undefined && typeof spec.startMs === "number" && spec.startMs < 0) {
+    drop(
+      "inMs",
+      "can't combine with a negative startMs (use inMs for a trim and startMs for a delay)",
+    );
+  }
+  if (out.outMs !== undefined && out.outMs <= (out.inMs ?? 0) + 16) {
+    drop("outMs", "trims the whole video (it must pass inMs by more than 16 ms)");
+  }
+  return dropped ? out : spec;
+}
+
 const COMPARE_GRIP_STYLES: SceneDocCompareGripStyle[] = ["chevrons", "dot", "bar", "arrows"];
 const COMPARE_HEX = /^#[0-9a-fA-F]{6}$/;
 
@@ -1253,7 +1301,7 @@ function parseCompare(raw: unknown, source: string): SceneDocCompare | undefined
           spec.src.length > 0 &&
           (spec.kind === "video" || spec.kind === "image")
         ) {
-          media[id] = spec;
+          media[id] = parseDeviceMediaKeys(spec, source, `compare.b.${field}["${id}"]`);
         } else {
           console.warn(`[sceneDoc] ${source}: compare.b.${field}["${id}"] is malformed, dropped`);
         }
@@ -2112,14 +2160,20 @@ export function parseSceneDoc(raw: unknown, source: string): SceneDoc | undefine
   }
   if (Array.isArray(doc.devices)) {
     const devices: SceneDocDeviceSpec[] = [];
-    for (const entry of doc.devices as unknown[]) {
-      const device = entry as SceneDocDeviceSpec;
+    for (const [index, entry] of (doc.devices as unknown[]).entries()) {
+      let device = entry as SceneDocDeviceSpec;
       if (
         device &&
         typeof device === "object" &&
         typeof device.id === "string" &&
         typeof device.model === "string"
       ) {
+        for (const field of ["media", "coverMedia"] as const) {
+          const media = device[field];
+          if (!media || typeof media !== "object") continue;
+          const parsed = parseDeviceMediaKeys(media, source, `devices[${index}].${field}`);
+          if (parsed !== media) device = { ...device, [field]: parsed };
+        }
         if (device.motionBlur === undefined) devices.push(device);
         else {
           const motionBlur = parseMotionBlurOverride(device.motionBlur, source);
