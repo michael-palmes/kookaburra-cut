@@ -1,6 +1,7 @@
 import { useCallback, useMemo } from "react";
 import { effectiveBeatGrid, effectiveKeyMoments, useBeatStore } from "../engine/beatState";
 import { type CameraTool, useCameraEditStore } from "../engine/cameraEditStore";
+import { type CameraKick, cameraKickEndMs, resolveCameraKicks } from "../engine/cameraKicks";
 import type { LoadedProject } from "../engine/project";
 import type { CameraDoc, RigDoc } from "../engine/sceneCameraEdit";
 import {
@@ -40,6 +41,39 @@ const select = (keyId: string | null, segment: number | null) => {
   useCameraEditStore.getState().select(keyId, segment);
   if (keyId !== null || segment !== null) clearOtherLaneSelections("camera");
 };
+
+/** A kick's envelope as a line glyph: the snap up, then the release falling away. */
+function KickIcon() {
+  return (
+    <svg
+      width="12"
+      height="12"
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M2 16.5h2.5V4c4 0 5.5 12.5 13.5 12.5" />
+    </svg>
+  );
+}
+
+const seconds = (ms: number) => `${(ms / 1000).toFixed(2)}s`;
+
+/** The marker's tooltip: where the kick sits (its position when authored as one) and what it moves. */
+function kickTitle(kick: CameraKick): string {
+  const where =
+    typeof kick.at === "string" ? `${kick.at} (${seconds(kick.atMs)})` : seconds(kick.atMs);
+  const channels: string[] = [];
+  if (kick.zoom !== undefined) channels.push(`zoom ${Math.round(kick.zoom * 100)}%`);
+  if (kick.offset) channels.push(`offset ${kick.offset.join(", ")}`);
+  if (kick.rollDeg !== undefined) channels.push(`roll ${kick.rollDeg}°`);
+  const name = kick.id ? ` "${kick.id}"` : "";
+  return `Camera kick${name} at ${where} · ${channels.join(" · ")} · read only, set in the sidecar's cameraKicks`;
+}
 
 export function AnimationLane({
   project,
@@ -144,6 +178,28 @@ export function AnimationLane({
     return beats.length || keyMoments.length ? { beats, keyMoments } : undefined;
   }, [analysis, project, slot, windowStartMs, windowEndMs]);
 
+  const kickDoc = project.sceneDocs[sceneIndex]?.cameraKicks;
+  const renderMarks = useMemo(() => {
+    const kicks = resolveCameraKicks(kickDoc, { music: project.music, sceneStartMs: slot.startMs });
+    const shown = (kicks ?? []).filter(
+      (kick) => kick.atMs <= windowEndMs && cameraKickEndMs(kick) >= windowStartMs,
+    );
+    if (shown.length === 0) return undefined;
+    return (xOf: (tMs: number) => number) =>
+      shown.map((kick) => {
+        const left = xOf(kick.atMs);
+        return (
+          <span key={kick.index} className="anim-kick" style={{ left }} title={kickTitle(kick)}>
+            <KickIcon />
+            <span
+              className="anim-kick-span"
+              style={{ width: Math.max(0, xOf(cameraKickEndMs(kick)) - left) }}
+            />
+          </span>
+        );
+      });
+  }, [kickDoc, project.music, slot.startMs, windowStartMs, windowEndMs]);
+
   const shared = {
     open,
     label,
@@ -152,6 +208,7 @@ export function AnimationLane({
     windowStartMs,
     windowEndMs,
     beatMarkers,
+    renderMarks,
     transitionInMs: slot.transitionIn?.durationMs ?? 0,
     transitionOutStartMs: nextSlot?.transitionIn
       ? slot.durationMs - nextSlot.transitionIn.durationMs

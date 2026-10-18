@@ -5927,6 +5927,28 @@ button.beat-status {
   background: color-mix(in srgb, var(--warning) 55%, transparent);
 }
 
+/* A read-only camera kick: its envelope glyph at the start, a faint bar to where it ends. */
+.anim-kick {
+  position: absolute;
+  bottom: 2px;
+  display: flex;
+  align-items: flex-end;
+  margin-left: -2px;
+  color: color-mix(in srgb, var(--lane-accent, var(--accent)) 85%, transparent);
+  z-index: 1;
+}
+
+.anim-kick > svg {
+  flex: none;
+}
+
+.anim-kick-span {
+  height: 2px;
+  margin: 0 0 1px -9px;
+  border-radius: 1px;
+  background: color-mix(in srgb, var(--lane-accent, var(--accent)) 35%, transparent);
+}
+
 .anim-playhead {
   position: absolute;
   top: -4px;

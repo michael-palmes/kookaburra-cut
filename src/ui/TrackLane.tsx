@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { useClockStore } from "../engine/clock";
 import { DEFAULT_EASE, EASE_FAMILIES, ease } from "../engine/ease";
 import { FPS } from "../engine/format";
@@ -133,6 +133,8 @@ export interface TrackLaneProps<P, T extends KeyedTrack<P>> {
   keyExtras?: KeyExtras;
   /** Soundtrack guidance (scene-local ms): faint beat ticks and stronger key-moment lines behind the keys, both joining the snap candidates. Absent keeps the lane byte for byte. */
   beatMarkers?: { beats: number[]; keyMoments: number[] };
+  /** Read-only marks drawn behind the keys through the lane's own time-to-x mapping (the camera lane's kicks). Absent keeps the lane byte for byte. */
+  renderMarks?: (xOf: (tMs: number) => number) => ReactNode;
 }
 
 /** Per-key stills marking: whether a key is a still, and the toggle that writes it. */
@@ -180,6 +182,7 @@ export function TrackLane<P, T extends KeyedTrack<P>>({
   segmentExtras,
   keyExtras,
   beatMarkers,
+  renderMarks,
 }: TrackLaneProps<P, T>) {
   const currentMs = useClockStore((s) => s.currentMs);
   const detailed = useUiStore((s) => s.detailedAnimationView);
@@ -665,6 +668,7 @@ export function TrackLane<P, T extends KeyedTrack<P>>({
               />
             ) : null,
           )}
+          {renderMarks?.(xOf)}
           {layout.segments.map((seg) => {
             const left = xOf(seg.fromTMs);
             const width = Math.max(innerW * MIN_SEGMENT_VISUAL, xOf(seg.toTMs) - left);
