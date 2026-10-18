@@ -2,6 +2,7 @@ import { createUserCatalogue, type LibraryItemInfo, listUserPresets } from "./li
 import { watchLibraryDocuments } from "./libraryDocuments";
 import { type LibraryPreviewPoint, parseLibraryPreviewPoint } from "./libraryPreviewPoint";
 import { fsUrl } from "./media";
+import { parseWarn } from "./parseWarnings";
 import {
   outgoingSceneTransitions,
   type ProjectManifest,
@@ -435,12 +436,12 @@ function buildCatalogue(): PresetEntry[] {
     const slug = path.split("/")[2];
     const parsed = presetManifestSchema.safeParse(raw, `${slug}/preset.json`);
     if (!parsed.success) {
-      console.warn(`[presets] ${slug}/preset.json ignored: ${parsed.error.message}`);
+      parseWarn(`[presets] ${slug}/preset.json ignored: ${parsed.error.message}`);
       continue;
     }
     const project = projectGlob[`/presets/${slug}/project.json`];
     if (!project) {
-      console.warn(`[presets] ${slug} has a preset.json but no project.json, ignored`);
+      parseWarn(`[presets] ${slug} has a preset.json but no project.json, ignored`);
       continue;
     }
     entries.push(buildPresetEntry(slug, parsed.data, project));
@@ -466,13 +467,13 @@ function toUserEntry(info: LibraryItemInfo): PresetEntry | null {
       `${info.slug}/preset.json`,
     );
     if (!parsed.success) {
-      console.warn(`[presets] ${info.slug}/preset.json ignored: ${parsed.error.message}`);
+      parseWarn(`[presets] ${info.slug}/preset.json ignored: ${parsed.error.message}`);
       return null;
     }
     manifest = { ...parsed.data, source: "user" };
     project = JSON.parse(info.projectJson) as ProjectManifest;
   } catch (e) {
-    console.warn(`[presets] ${info.slug} ignored:`, e);
+    parseWarn(`[presets] ${info.slug} ignored: ${e instanceof Error ? e.message : String(e)}`);
     return null;
   }
   // Cache the folder so the asset resolvers can route `ws-preset:<slug>` synchronously.
