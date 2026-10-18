@@ -1175,13 +1175,20 @@ export function underlineProgress(timing: TextAnimTiming, localMs: number): numb
 }
 
 /** stamp's scale over one unit's in window: the toolkit's `stampScale` from the oversize, landing on the squash at STAMP_IN_P, settling to 1. */
+const stampCurves = new Map<number, (ms: number) => number>();
+
 function stampCurve(durationMs: number): (ms: number) => number {
-  return stampScale({
-    from: STAMP_FROM_SCALE,
-    peak: STAMP_PEAK_SCALE,
-    inMs: STAMP_IN_P * durationMs,
-    settleMs: (1 - STAMP_IN_P) * durationMs,
-  });
+  let curve = stampCurves.get(durationMs);
+  if (!curve) {
+    curve = stampScale({
+      from: STAMP_FROM_SCALE,
+      peak: STAMP_PEAK_SCALE,
+      inMs: STAMP_IN_P * durationMs,
+      settleMs: (1 - STAMP_IN_P) * durationMs,
+    });
+    stampCurves.set(durationMs, curve);
+  }
+  return curve;
 }
 
 /** build's line re-centre at `localMs`, em: every word's eased progress weights its slot (the advance from the previous word's end), and the visible run shifts so it sits where the anchor puts the full line (`anchor` 0 left, 0.5 centre, 1 right). Undefined when the words span more than one line (build is single-line; the plain word fade plays instead) or the in is not build. */
