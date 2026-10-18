@@ -840,7 +840,28 @@ pub fn delete_media(
     if !used.is_empty() {
         return Err(format!("{rel} is still used by: {}", used.join(", ")));
     }
-    workspace::trash_path(&path).map_err(|e| format!("couldn't move the file to the Trash: {e}"))
+    let timing = timing_record_for(&project, &rel);
+    workspace::trash_path(&path).map_err(|e| format!("couldn't move the file to the Trash: {e}"))?;
+    // A conformed video's records go with it; its original stays in `assets/.originals/`.
+    if let Some(timing) = timing {
+        if let Err(e) = workspace::trash_path(&project.join(&timing)) {
+            log::warn!("[media] couldn't trash {timing}: {e}");
+        }
+    }
+    if let Err(e) = crate::asset_meta::forget_asset(&project, &rel) {
+        log::warn!("[media] couldn't drop {rel} from the provenance record: {e}");
+    }
+    Ok(())
+}
+
+/// A conformed video's timing record (`assets/<stem>.timing.json`), only when it names `rel` as its mezzanine.
+fn timing_record_for(project: &Path, rel: &str) -> Option<String> {
+    let (dir, name) = rel.rsplit_once('/')?;
+    let (stem, _) = name.rsplit_once('.')?;
+    let timing = format!("{dir}/{stem}{TIMING_SUFFIX}");
+    let text = std::fs::read_to_string(project.join(&timing)).ok()?;
+    let doc: serde_json::Value = serde_json::from_str(&text).ok()?;
+    (doc.pointer("/mezzanine/path")?.as_str()? == rel).then_some(timing)
 }
 
 /// One project asset nothing points at: a row in the "Delete unused" sheet.
@@ -1226,7 +1247,9 @@ fn start_conform_job(
                     (app.clone(), slug.clone(), project.clone(), plan.clone());
                 tauri::async_runtime::spawn_blocking(move || {
                     let _permit = permit;
-                    run_conform_job(&app, &slug, &project, &plan)
+                    let outcome = run_conform_job(&app, &slug, &project, &plan)?;
+                    record_conform_origin(&project, &outcome, imported);
+                    Ok(outcome)
                 })
                 .await
                 .map_err(|e| format!("conform task failed: {e}"))
@@ -1271,6 +1294,35 @@ fn start_conform_job(
             serde_json::json!({ "slug": slug, "paths": paths, "origin": "conform" }),
         );
     });
+}
+
+/// The mezzanine's provenance in `assets/_meta.json`: the original it came from and the conform that made it. A failed write only warns; the conform itself stands.
+fn record_conform_origin(
+    project: &Path,
+    outcome: &crate::conform::ConformOutcome,
+    imported: bool,
+) {
+    let source_name = outcome.original_rel.rsplit('/').next().unwrap_or_default();
+    let at_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_millis() as u64);
+    let origin = serde_json::json!({
+        "kind": if imported { "import" } else { "derived" },
+        "from": outcome.original_rel,
+        "sourceName": source_name,
+        "tool": if imported { "app import" } else { "app conform" },
+        "atMs": at_ms,
+    });
+    let transforms = vec![serde_json::json!({
+        "op": "conform",
+        "fps": crate::conform::CONFORM_FPS,
+        "colour": "bt709",
+    })];
+    if let Err(e) =
+        crate::asset_meta::record_asset_origin(project, &outcome.target_rel, origin, transforms)
+    {
+        log::warn!("[conform] provenance for {} not recorded: {e}", outcome.target_rel);
+    }
 }
 
 /// A failed import conform hands the user their file back: the original moves out of `.originals/` to a free name in `assets/`.
@@ -2155,6 +2207,23 @@ mod tests {
             ["themes/brand/theme.json"]
         );
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_timing_record_is_found_only_for_its_own_mezzanine() {
+        let project = scratch_assets("timing");
+        std::fs::write(
+            project.join("assets/rec.timing.json"),
+            r#"{"mezzanine":{"path":"assets/rec.mp4"}}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            timing_record_for(&project, "assets/rec.mp4").as_deref(),
+            Some("assets/rec.timing.json")
+        );
+        assert_eq!(timing_record_for(&project, "assets/rec.mov"), None);
+        assert_eq!(timing_record_for(&project, "assets/other.mp4"), None);
+        let _ = std::fs::remove_dir_all(&project);
     }
 
     #[test]
