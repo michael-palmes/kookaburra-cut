@@ -435,7 +435,7 @@ fn theme_chain(root: &Path, doc: &Value) -> Vec<(String, Option<Value>)> {
 /// The document a theme renders from: its chain merged when every base is in the workspace, else its own.
 fn merged_theme(root: &Path, slug: &str, doc: &Value) -> Value {
     crate::theme::resolve_theme_document(doc, &format!("ws:{slug}"), |id| {
-        crate::theme::read_workspace_theme(root, id)
+        crate::theme::read_workspace_theme(root, id).or_else(|| crate::theme::builtin_theme(id))
     })
     .doc
     .unwrap_or_else(|| doc.clone())
@@ -1766,6 +1766,18 @@ mod tests {
             .warnings
             .iter()
             .any(|w| matches!(w, ClosureWarning::MissingGradient { .. })));
+        let day = closure
+            .contents
+            .themes
+            .iter()
+            .find(|t| t.base.slug == "acme-day")
+            .unwrap();
+        let paper = crate::theme::builtin_theme("kookaburra-paper").unwrap();
+        let colours: Vec<String> = ["background", "text", "accent", "muted"]
+            .iter()
+            .map(|k| paper["colors"][k].as_str().unwrap().to_owned())
+            .collect();
+        assert_eq!(day.swatches, colours);
         let _ = std::fs::remove_dir_all(&root);
     }
 

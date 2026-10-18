@@ -130,6 +130,18 @@ pub fn resolve_theme_document(
     }
 }
 
+mod builtin {
+    include!(concat!(env!("OUT_DIR"), "/builtin_themes.rs"));
+}
+
+/// A bundled theme's raw document by id (embedded at build time from `src/theme/builtin/`).
+pub fn builtin_theme(id: &str) -> Option<Value> {
+    builtin::BUILTIN_THEME_DOCS
+        .iter()
+        .find(|(builtin_id, _)| *builtin_id == id)
+        .and_then(|(_, text)| serde_json::from_str(text).ok())
+}
+
 /// A workspace theme's raw document by `ws:<slug>` id under `root/themes/`, the lookup packs and moves use.
 pub fn read_workspace_theme(root: &Path, id: &str) -> Option<Value> {
     let slug = id
