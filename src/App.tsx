@@ -2415,6 +2415,7 @@ export default function App() {
           slots: project.slots,
           cameraTrack: project.cameraTrack,
           sceneDocs: project.sceneDocs,
+          music: project.music,
           theme: project.theme,
           sceneThemes: project.sceneThemes,
           projectLighting: project.projectLighting,
@@ -2498,6 +2499,7 @@ export default function App() {
           slots: project.slots,
           cameraTrack: project.cameraTrack,
           sceneDocs: project.sceneDocs,
+          music: project.music,
           theme: project.theme,
           sceneThemes: project.sceneThemes,
           projectLighting: project.projectLighting,
@@ -2569,6 +2571,7 @@ export default function App() {
           slots: project.slots,
           cameraTrack: project.cameraTrack,
           sceneDocs: project.sceneDocs,
+          music: project.music,
           theme: project.theme,
           sceneThemes: project.sceneThemes,
           projectLighting: project.projectLighting,
@@ -2834,6 +2837,7 @@ export default function App() {
                       compareBDocs={project.compareBDocs}
                       compareBThemes={project.compareBThemes}
                       motionBlur={project.renderSettings.motionBlur}
+                      music={project.music}
                       commitStamp={project}
                     />
                   )}

@@ -52,6 +52,7 @@ import { useImageEditStore } from "./imageEditStore";
 import { HELPER_LAYER } from "./lightEditStore";
 import { yieldMacrotask } from "./macrotask";
 import type { MotionBlurSettings } from "./motionBlur";
+import type { ProjectMusic } from "./musicTime";
 import { useObjectEditStore } from "./objectEditStore";
 import { preloadOverlayPanelImages } from "./overlayPanelTexture";
 import { overlayPanelImageSources } from "./overlayPlan";
@@ -96,6 +97,8 @@ export interface ExportOptions {
   cameraTrack?: CameraKeyframe[];
   /** Sidecar scene docs, index-aligned with `slots`; per-scene camera tracks live here. Absent (or no doc declares a track) means the legacy camera path runs unchanged. */
   sceneDocs?: (SceneDoc | undefined)[];
+  /** The project's authored music (`LoadedProject.music`); resolves musical camera kick positions. Absent leaves only numeric kick times. */
+  music?: ProjectMusic;
   /** The project's theme + resolved per-scene themes; drive the per-target scene-state plan (background/environment). Absent means the root scene is never touched (the byte-identical legacy paths). */
   theme?: Theme;
   sceneThemes?: Theme[];

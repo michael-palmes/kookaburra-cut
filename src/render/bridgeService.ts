@@ -601,6 +601,7 @@ function exportOptions(project: LoadedProject, format: FormatSpec) {
     slots: project.slots,
     cameraTrack: project.cameraTrack,
     sceneDocs: project.sceneDocs,
+    music: project.music,
     theme: project.theme,
     sceneThemes: project.sceneThemes,
     projectLighting: project.projectLighting,
