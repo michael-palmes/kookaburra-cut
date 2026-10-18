@@ -1,3 +1,4 @@
+import { linearToSrgb, srgbToLinear } from "../theme/oklch";
 import type { LightingPose, LightingSpec, Theme } from "../theme/tokens";
 import { DEFAULT_EASE, ease, isEaseName } from "./ease";
 import { KELVIN_MAX, KELVIN_MIN } from "./kelvin";
@@ -533,11 +534,6 @@ export function mixRoomColour(a: string, b: string, t: number): string {
   }
   return out;
 }
-
-const srgbToLinear = (c: number): number =>
-  c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
-const linearToSrgb = (c: number): number =>
-  c <= 0.0031308 ? c * 12.92 : 1.055 * c ** (1 / 2.4) - 0.055;
 
 function hexToLinear(hex: string): [number, number, number] | null {
   const h = normaliseHex(hex);
