@@ -124,8 +124,8 @@ Text motion by purpose (sidecar `textAnimation`):
   orbits. `jump` for cuts.
 - Devices: `push-in` or `tilt-reveal` to enter, `float` (amplitude 0.06 to 0.08) to
   idle. Avoid `turntable` while the screen matters: it turns away.
-- Sync to the soundtrack where there is one (reference/beats.md): land reveals and
-  cuts ON beats.
+- Sync to the soundtrack where there is one (reference/beats.md): give it a beat grid
+  (`./kb song analyse --accept`), then land reveals and cuts ON beats.
 
 ## Camera by intent
 
@@ -137,7 +137,8 @@ Text motion by purpose (sidecar `textAnimation`):
 | Energy through layers | `fly-through` with `DepthStage` |
 | Depth with layered content | `parallax-slide` |
 | A dramatic beat | `dolly-zoom`, once per video |
-| A cut on the music | Two keys with a `jump` segment |
+| A cut on the music | Two keys with a `jump` segment, the second with an `at` |
+| A hit on a strong beat | A `cameraKicks` push (`zoom` 1.04) on top of the move |
 
 Text-heavy scenes keep the camera still or nearly so. Depth of field (`Cinematic`
 blur 0.6, range 1.2) separates a device from a busy background; keep text on the

@@ -17,15 +17,16 @@ before any edit or any answer about what is on screen.
    sed, Python or heredocs. `edits/` changes only through `./kb video`. Never touch
    `exports/`, `.kookaburra*` or `.claude/skills/`, nor `.kb/` beyond your scratch folder
    `.kb/agents/<name>/`. Never re-encode videos by hand.
-6. Structure through kb: `./kb scene ...`, `./kb doc ...`, `./kb assets add`. Start new
-   scenes from a preset.
-7. After editing: `./kb check --app`, then `./kb capture` and Read the PNGs (a portrait
+6. Structure through kb: `./kb scene ...`, `./kb doc ...`. Start new scenes from a preset.
+7. Add recordings and other media with `./kb assets add <file>`, never by copying files into
+   `assets/`: it conforms recordings that would play wrong, so use the path it prints.
+8. After editing: `./kb check --app`, then `./kb capture` and Read the PNGs (a portrait
    aspect too when layout changed). Before calling the work done: `./kb verify`.
-8. With no app running, kb checks are static only: ask the user to open the app, and never
+9. With no app running, kb checks are static only: ask the user to open the app, and never
    assume the preview matches the files.
-9. Never end a turn with the project failing to load: fix it or `./kb undo`.
-10. Fonts outside the bundled set need `./kb fonts check` first.
-11. No dev servers, installs or build commands. There is nothing to run here.
+10. Never end a turn with the project failing to load: fix it or `./kb undo`.
+11. Fonts outside the bundled set need `./kb fonts check` first.
+12. No dev servers, installs or build commands. There is nothing to run here.
 
 ## Exit codes and other agents
 
@@ -39,8 +40,8 @@ before any edit or any answer about what is on screen.
 1. Once any effect exists (vignette, bloom), every frame is tone-mapped: flat hexes shift.
 2. A theme's `textAnimation.durationMs` overrides every TSX `from`/`to` window.
 3. Partial theme blocks are dropped silently: copy whole blocks from `./kb theme show`.
-4. Replacing an asset under the same name leaves the preview stale: use a new name.
-5. The beat grid drifts on long tracks: use the key moments from `./kb beats`.
+4. Land music on the authored grid: `./kb song analyse --accept`, then `bar:` positions
+   (an `at` on keys, `./kb capture --at bar:N`).
 
 ## Live edits
 
