@@ -12,6 +12,7 @@ import { FramePanel } from "./FramePanel";
 import { reportRenderError } from "./loadDiagnostics";
 import { PersistentLayer } from "./PersistentLayer";
 import { type LoadedProject, sceneMountKey } from "./project";
+import { ProjectSharedContext } from "./projectShared";
 import { isSceneErrorCard } from "./SceneErrorCard";
 import { SceneHost } from "./SceneHost";
 import { ProjectIdContext, ProjectLightingContext } from "./sceneContext";
@@ -60,7 +61,7 @@ export function StageScenes({ project }: { project: LoadedProject | null }) {
       })(),
     [project],
   );
-  return (
+  const tree = (
     <ProjectIdContext.Provider value={project?.id ?? null}>
       <ProjectLightingContext.Provider value={project?.projectLighting ?? null}>
         <Suspense fallback={null}>
@@ -177,5 +178,10 @@ export function StageScenes({ project }: { project: LoadedProject | null }) {
         </Suspense>
       </ProjectLightingContext.Provider>
     </ProjectIdContext.Provider>
+  );
+  return (
+    <ProjectSharedContext.Provider value={project?.projectShared ?? null}>
+      {tree}
+    </ProjectSharedContext.Provider>
   );
 }

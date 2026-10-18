@@ -1090,12 +1090,15 @@ fn copy_scene_assets(
 }
 
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CopiedSceneResult {
     #[serde(flatten)]
     pub scene: SceneCopyResult,
     pub index: usize,
     /// The copy's sidecar display name, when it has one.
     pub name: Option<String>,
+    /// Source `shared` keys copied into the destination manifest, which lacked them.
+    pub shared_keys: Vec<String>,
 }
 
 /// Copy scene content and assets, preserving effects and committing its final position in one manifest write. `name` renames the copy (sidecar name, stem and scene id follow it).
@@ -1297,6 +1300,7 @@ fn copy_named_scene_between(
     let at = position.unwrap_or(scenes.len()).min(scenes.len());
     scenes.insert(at, entry);
     seed_inserted_scene_transitions(scenes, at, default_transition.as_ref());
+    let shared_keys = inherit_shared(&source_manifest, &mut dest_manifest);
     atomic_write_json(&dest_manifest_path, &dest_manifest)?;
 
     let name = doc
@@ -1313,7 +1317,33 @@ fn copy_named_scene_between(
         },
         index: at,
         name,
+        shared_keys,
     })
+}
+
+/// Copy the source manifest's `shared` keys the destination lacks (never overwriting), so a copied scene's constants travel with it; returns the copied keys.
+fn inherit_shared(source: &Value, dest: &mut Value) -> Vec<String> {
+    let Some(from) = source.get("shared").and_then(Value::as_object) else {
+        return Vec::new();
+    };
+    let Some(manifest) = dest.as_object_mut().filter(|_| !from.is_empty()) else {
+        return Vec::new();
+    };
+    let Some(into) = manifest
+        .entry("shared")
+        .or_insert_with(|| json!({}))
+        .as_object_mut()
+    else {
+        return Vec::new();
+    };
+    let mut copied = Vec::new();
+    for (key, value) in from {
+        if !into.contains_key(key) {
+            into.insert(key.clone(), value.clone());
+            copied.push(key.clone());
+        }
+    }
+    copied
 }
 
 fn inherit_preset_context(doc: &mut Option<Value>, manifest: &Value) {
@@ -1968,6 +1998,48 @@ mod preset_insertion_tests {
         let doc = read_json(&fixture.dest.join(&copied.scene.doc_file));
         assert_eq!(doc["name"], "Feature Checks");
         assert_eq!(doc["version"], SCENE_DOC_VERSION);
+    }
+
+    #[test]
+    fn copies_bring_missing_shared_keys_and_never_overwrite() {
+        let mut dest = destination();
+        dest["shared"] = json!({ "palette": { "accent": "#000000" } });
+        let fixture = Fixture::new(None, &dest);
+        let mut source = read_json(&fixture.source.join("project.json"));
+        source["shared"] = json!({
+            "palette": { "accent": "#ff6a3d" },
+            "timing": { "beatMs": 480 }
+        });
+        atomic_write_json(&fixture.source.join("project.json"), &source).unwrap();
+
+        let copied = fixture.insert("hero", None);
+        assert_eq!(copied.shared_keys, vec!["timing".to_string()]);
+        let landed = read_json(&fixture.dest.join("project.json"));
+        assert_eq!(landed["shared"]["palette"]["accent"], "#000000");
+        assert_eq!(landed["shared"]["timing"]["beatMs"], 480);
+        assert_eq!(
+            fixture.insert("hero", None).shared_keys,
+            Vec::<String>::new()
+        );
+
+        let bare = Fixture::new(None, &destination());
+        atomic_write_json(&bare.source.join("project.json"), &source).unwrap();
+        let mut keys = bare.insert("hero", None).shared_keys;
+        keys.sort();
+        assert_eq!(keys, vec!["palette".to_string(), "timing".to_string()]);
+        let landed = read_json(&bare.dest.join("project.json"));
+        assert_eq!(landed["shared"], source["shared"]);
+        let json = serde_json::to_value(bare.insert("hero", None)).unwrap();
+        assert_eq!(json["sharedKeys"], json!([]));
+    }
+
+    #[test]
+    fn copies_without_source_shared_leave_the_destination_alone() {
+        let fixture = Fixture::new(None, &destination());
+        assert!(fixture.insert("hero", None).shared_keys.is_empty());
+        assert!(read_json(&fixture.dest.join("project.json"))
+            .get("shared")
+            .is_none());
     }
 
     fn read_json(path: &Path) -> Value {

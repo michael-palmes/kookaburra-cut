@@ -35,6 +35,7 @@ import {
 import { fsUrl } from "./media";
 import { resolveSavedPosterTheme } from "./presetPosterThemes";
 import { withProjectAssetRevision } from "./projectAssetRevision";
+import { type ProjectShared, parseProjectShared } from "./projectShared";
 import { ensureProjectTrusted } from "./projectTrust";
 import { parseRenderSettings, type RenderSettings } from "./renderSettings";
 import { sceneErrorCard } from "./SceneErrorCard";
@@ -91,6 +92,8 @@ export interface ProjectManifest {
   appliedBackground?: { background?: ThemeBackground; backdrop?: ThemeBackdrop };
   /** Transition seeded onto new boundaries. Missing keeps the catalogue crossfade for older projects; null explicitly means a hard cut. */
   defaultTransition?: TransitionSpec | null;
+  /** Author constants every scene can read through `useProjectShared` (palette, timings); raw here, parsed on load by `parseProjectShared`. Nothing renders from it directly. */
+  shared?: unknown;
 }
 
 /** Manifest transitions in outgoing terms: v2 reads them straight off each scene; legacy unversioned files stored each transition on the incoming scene, so they shift one scene earlier, which reproduces the exact pre-v2 timeline. */
@@ -234,6 +237,8 @@ export interface LoadedProject {
   exportBlockers?: string[];
   /** The manifest's declared aspects in its order; the first is where the editor opens the project until one is remembered. */
   formats: string[];
+  /** The manifest's deep-frozen `shared` block, provided to scenes via `ProjectSharedContext`; absent when the manifest has none. */
+  projectShared?: ProjectShared;
 }
 
 /** A scene file's stem; the sidecar/thumb cache key (`scenes/01-hero.tsx` → `01-hero`). */
@@ -1150,6 +1155,7 @@ export async function loadProject(
       ? undefined
       : (normalizeLighting(manifest.lighting, `${id}/project.json`) ?? undefined);
   const renderSettings = parseRenderSettings(manifest.render, `${id}/project.json`);
+  const projectShared = parseProjectShared(manifest.shared, `${id}/project.json`);
 
   // Theme-swapped scenes replace the project-wide effect base wholesale (sparse; entries only where a sidecar overrides the theme, possibly `{}`, which turns effects OFF there).
   const sceneEffectDefaults: Record<number, EffectsConfig> = {};
@@ -1267,6 +1273,7 @@ export async function loadProject(
     loadWarnings,
     exportBlockers,
     formats: manifest.formats ?? [],
+    projectShared,
   };
 }
 

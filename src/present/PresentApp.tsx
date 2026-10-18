@@ -2,7 +2,7 @@ import { Canvas, useThree } from "@react-three/fiber";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow, LogicalPosition } from "@tauri-apps/api/window";
-import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { type ReactNode, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useClockStore } from "../engine/clock";
 import { useEffectsStore } from "../engine/effectsStore";
 import { FramePanel } from "../engine/FramePanel";
@@ -12,6 +12,7 @@ import { setPresentSlideshowActive } from "../engine/presentMode";
 import { setPreviewAudioProject, syncPreviewAudioPlaying } from "../engine/previewAudio";
 import { setPreviewClipStride, setPreviewPlaybackActive } from "../engine/previewMedia";
 import { type LoadedProject, loadProject, sceneMountKey } from "../engine/project";
+import { ProjectSharedContext } from "../engine/projectShared";
 import { revealApp } from "../engine/reveal";
 import { isSceneErrorCard } from "../engine/SceneErrorCard";
 import { SceneHost } from "../engine/SceneHost";
@@ -361,7 +362,7 @@ export function PresentApp() {
             <color attach="background" args={[project.theme.colors.background]} />
             <PresentClock />
             <PresentCompositorDriver project={project} mode={mode} />
-            <ProjectIdContext.Provider value={project.id}>
+            <ProjectScope project={project}>
               <ProjectLightingContext.Provider value={project.projectLighting ?? null}>
                 <Suspense fallback={null}>
                   {project.scenes.map((scene, i) => {
@@ -439,7 +440,7 @@ export function PresentApp() {
                   <CommittedProbe />
                 </Suspense>
               </ProjectLightingContext.Provider>
-            </ProjectIdContext.Provider>
+            </ProjectScope>
           </Canvas>
           {mode === "slideshow" && stageReady && (
             <PresentTerminalOverlay project={project} aspect={aspect} />
@@ -493,5 +494,16 @@ export function PresentApp() {
         />
       )}
     </div>
+  );
+}
+
+/** The project id and `shared` contexts Present's scene tree reads, as StageScenes provides them. */
+function ProjectScope({ project, children }: { project: LoadedProject; children: ReactNode }) {
+  return (
+    <ProjectIdContext.Provider value={project.id}>
+      <ProjectSharedContext.Provider value={project.projectShared ?? null}>
+        {children}
+      </ProjectSharedContext.Provider>
+    </ProjectIdContext.Provider>
   );
 }
