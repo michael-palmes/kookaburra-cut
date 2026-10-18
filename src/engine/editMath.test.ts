@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 import type { EditClip, EditTap } from "./edit";
 import {
   addTap,
+  aspectCropRect,
   clipIndexAt,
   clipTimelineMs,
+  cropPixels,
   DEFAULT_HOLD_MS,
   edgeTargetsMs,
   freezeAt,
@@ -18,14 +20,18 @@ import {
   nextSourceId,
   nextTapId,
   outputToSource,
+  posInCrop,
   relayout,
   removeClip,
   removeTap,
   retimeTap,
+  setClipCrop,
   setClipHold,
   setClipSpeed,
+  snapCropRect,
   snapMs,
   splitAt,
+  tapPosInCrop,
   tapWindows,
   timelineDurationMs,
   timelineToSource,
@@ -403,5 +409,60 @@ describe("taps", () => {
   it("nextTapId continues the t<n> sequence and survives foreign ids", () => {
     expect(nextTapId([tap("t1", 0), tap("t5", 0), { ...tap("x", 0), id: "intro" }])).toBe("t6");
     expect(nextTapId([])).toBe("t1");
+  });
+});
+
+describe("static crop", () => {
+  const phone = { width: 1179, height: 2556 };
+  const crop: [number, number, number, number] = [0.25, 0.25, 0.5, 0.5];
+
+  it("cropPixels cuts on even pixels inside the frame", () => {
+    expect(cropPixels([0, 0, 1, 1], phone)).toEqual([0, 0, 1178, 2556]);
+    expect(cropPixels([0.1, 0.2, 0.5, 0.25], { width: 1170, height: 2532 })).toEqual([
+      118, 506, 586, 634,
+    ]);
+    expect(cropPixels([0.99, 0.99, 0.5, 0.5], phone)).toEqual([588, 1278, 590, 1278]);
+    expect(cropPixels([-0.2, 0.5, 0.001, 2], phone)).toEqual([0, 0, 2, 2556]);
+    for (const v of cropPixels([0.3333, 0.3333, 0.3333, 0.3333], { width: 333, height: 777 })) {
+      expect(v % 2).toBe(0);
+    }
+  });
+
+  it("snapCropRect keeps the minimum size and is stable on its own output", () => {
+    const snapped = snapCropRect([0, 0, 0.001, 0.001], phone);
+    expect(snapped[2]).toBeGreaterThanOrEqual(0.049);
+    expect(cropPixels(snapped, phone)).toEqual([0, 0, 58, 128]);
+    const once = snapCropRect([0.31, 0.12, 0.43, 0.27], phone);
+    expect(snapCropRect(once, phone)).toEqual(once);
+  });
+
+  it("aspectCropRect fits the largest centred rect at an aspect, slid inside the frame", () => {
+    const land = { width: 1920, height: 1080 };
+    expect(cropPixels(aspectCropRect(land, 9 / 16), land)).toEqual([656, 0, 608, 1080]);
+    expect(cropPixels(aspectCropRect(land, 9 / 16, [0.02, 0.5]), land)).toEqual([0, 0, 608, 1080]);
+    expect(cropPixels(aspectCropRect(phone, 9 / 16), phone)).toEqual([0, 230, 1178, 2096]);
+  });
+
+  it("taps map into the crop's pixels and drop outside it", () => {
+    expect(posInCrop([0.25, 0.75], crop)).toBe(true);
+    expect(posInCrop([0.76, 0.5], crop)).toBe(false);
+    expect(tapPosInCrop([0.1, 0.5], crop, phone)).toBeNull();
+    const [u, v] = tapPosInCrop([0.5, 0.5], crop, phone) ?? [0, 0];
+    expect(u).toBeCloseTo((0.5 * 1179 - 294) / 590, 12);
+    expect(v).toBeCloseTo((1278 - 640) / 1278, 12);
+    const tap: EditTap = { id: "t1", sourceId: "s1", sourceMs: 500, pos: [0.1, 0.5] };
+    const cropped = relayout([{ ...clip("c1", 0, 1000), crop }, clip("c2", 0, 1000)]);
+    expect(tapWindows(cropped, tap, 550)).toEqual([{ startMs: 1500, endMs: 2000 }]);
+  });
+
+  it("splits and freezes keep the clip's crop; setClipCrop sets and clears it", () => {
+    const clips = setClipCrop(relayout([clip("c1", 0, 2000)]), "c1", crop);
+    expect(clips[0].crop).toEqual(crop);
+    const split = splitAt(clips, 1000, "c2") ?? [];
+    expect(split.map((c) => c.crop)).toEqual([crop, crop]);
+    expect((freezeAt(clips, 1000, 500) ?? [])[1].crop).toEqual(crop);
+    expect((freezeAtEnd(clips, 60, 500) ?? [])[1].crop).toEqual(crop);
+    expect("crop" in setClipCrop(clips, "c1", null)[0]).toBe(false);
+    expect("crop" in (freezeAt(relayout([clip("c1", 0, 2000)]), 1000, 500) ?? [])[1]).toBe(false);
   });
 });

@@ -17,8 +17,9 @@ from . import editmath as em
 
 OP_NAMES = (
     "addClip", "insertClip", "split", "freeze", "removeClip", "moveClip", "setSpeed", "trimIn", "trimOut", "setHold",
-    "addTap", "addTapAtSource", "moveTap", "retimeTap", "removeTap", "setTapLook",
-    "addMask", "setMaskRect", "offsetMask", "addMaskKey", "removeMaskKey", "retimeMaskEdge", "setMaskLook", "removeMask",
+    "setClipCrop", "addTap", "addTapAtSource", "moveTap", "retimeTap", "removeTap", "setTapLook",
+    "addMask", "setMaskRect", "offsetMask", "addMaskKey", "removeMaskKey", "retimeMaskEdge", "setMaskLook", "setMaskFade",
+    "removeMask",
 )
 ERROR_CODES = (
     "no-clip", "no-split", "no-freeze", "unknown-clip", "unknown-tap", "unknown-mask", "unknown-source",
@@ -69,6 +70,19 @@ def _pos(v: Any) -> bool:
 
 def _rect(v: Any) -> bool:
     return isinstance(v, list) and len(v) == 4 and all(_num(n) for n in v)
+
+
+def _crop(v: Any) -> bool:
+    return _rect(v) and v[2] > 0 and v[3] > 0
+
+
+def _same_rect(a: Any, b: Any) -> bool:
+    return a is b or (a is not None and b is not None and all(x == y for x, y in zip(a, b)))
+
+
+def _fade_problem(op: Dict[str, Any], key: str) -> Optional[str]:
+    v = op.get(key)
+    return None if v is None or (_num(v) and v >= 0) else f"{key} must be 0 or more ms"
 
 
 def _fmt(v: Any) -> str:
@@ -294,6 +308,25 @@ def apply_op(input_doc: Doc, op: Any) -> OpResult:
             raise OpError("bad-arg", f"{clip['id']} is not a freeze or still: change its speed or trim it instead.")
         return _done(dict(doc, clips=em.set_clip_hold(clips, clip["id"], op["holdMs"])), "retime freeze")
 
+    if name == "setClipCrop":
+        reset = "crop" in op and op["crop"] is None
+        if not reset and not _crop(op.get("crop")):
+            raise OpError("bad-arg", "crop must be [x, y, w, h] numbers with w and h > 0, or null")
+        clip = _clip(doc, op.get("clipId"))
+        source = next((s for s in doc["sources"] if s["id"] == clip["sourceId"]), None)
+        if source is None:
+            raise OpError("unknown-source", f"No source {clip['sourceId']} in this edit.")
+        if reset:
+            if not clip.get("crop"):
+                raise OpError("no-change", f"{clip['id']} has no crop.")
+            return _done(dict(doc, clips=em.set_clip_crop(clips, clip["id"], None)), "reset crop")
+        if source["width"] < 2 or source["height"] < 2:
+            raise OpError("bad-arg", f"{source['id']} has no pixel size to crop against.")
+        crop = em.snap_crop_rect(op["crop"], source)
+        if _same_rect(crop, clip.get("crop")):
+            raise OpError("no-change", f"{clip['id']} already has that crop.")
+        return _done(dict(doc, clips=em.set_clip_crop(clips, clip["id"], crop)), "crop clip")
+
     if name == "addTap":
         _bad(_at_problem(op) or (None if _pos(op.get("pos")) else "pos must be [x, y] in 0..1"))
         at = em.output_to_source(clips, op["atMs"])
@@ -440,6 +473,28 @@ def apply_op(input_doc: Doc, op: Any) -> OpResult:
                 continue
             nxt = _without(nxt, key) if op[key] is None else dict(nxt, **{key: op[key]})
         return _done(_with_mask(doc, nxt), MASK_LABELS[fields[0]] if len(fields) == 1 else "change mask look")
+
+    if name == "setMaskFade":
+        if "fadeInMs" not in op and "fadeOutMs" not in op:
+            raise OpError("bad-arg", "Give a fadeInMs or fadeOutMs.")
+        _bad(_fade_problem(op, "fadeInMs") or _fade_problem(op, "fadeOutMs"))
+        mask = _mask(doc, op.get("maskId"))
+        source = next((s for s in doc["sources"] if s["id"] == mask["sourceId"]), None)
+        if source is not None and source.get("kind") == "image":
+            raise OpError("image-source", "A mask on a still covers every frame: it has no span to fade.")
+
+        def pick(key: str) -> Any:
+            if key not in op:
+                return mask.get(key) or 0
+            return 0 if op[key] is None else em.js_round(op[key])
+
+        fade_in, fade_out = pick("fadeInMs"), pick("fadeOutMs")
+        span = mask["endMs"] - mask["startMs"]
+        if fade_in + fade_out > span:
+            raise OpError("bad-arg", f"Fades of {_fmt(fade_in)} + {_fmt(fade_out)}ms don't fit {mask['id']}'s {_fmt(span)}ms span.")
+        if fade_in == (mask.get("fadeInMs") or 0) and fade_out == (mask.get("fadeOutMs") or 0):
+            raise OpError("no-change", f"{mask['id']} already fades like that.")
+        return _done(_with_mask(doc, em.with_mask_fades(mask, fade_in, fade_out)), "change mask fade")
 
     if name == "removeMask":
         mask = _mask(doc, op.get("maskId"))

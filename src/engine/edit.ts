@@ -23,6 +23,8 @@ export interface EditClip {
   startMs: number;
   /** Freeze frame: hold the source frame at `inMs` (== `outMs`) for this long on the timeline. Every clip of an image source carries one. */
   holdMs?: number;
+  /** Static crop `[x, y, w, h]` normalised 0..1 across the SOURCE frame, on even source pixels; the render letterboxes it into the output. Absent = the whole frame. A cropped doc saves as version 3, which older app versions refuse to open. */
+  crop?: [number, number, number, number];
 }
 
 export interface EditSettings {
@@ -62,6 +64,9 @@ export interface EditMask {
   color?: string;
   startMs: number;
   endMs: number;
+  /** Integer source ms the mask fades in over from `startMs` and out over before `endMs` (sum <= the span); absent = a hard edge. Still in version 2: an older app drops them and renders hard edges, never less hiding. */
+  fadeInMs?: number;
+  fadeOutMs?: number;
   /** Sorted by `sourceMs`, unique times. */
   keys: EditMaskKey[];
 }
@@ -79,7 +84,7 @@ export interface EditDoc {
   tapColor?: string;
   /** Tap size multiplier on the default dot size; absent = 1.25. */
   tapSize?: number;
-  /** Privacy masks. A masked document saves as version 2, which older app versions refuse to open. */
+  /** Privacy masks. A masked document saves as version 2 (3 with a crop), which older app versions refuse to open. */
   masks?: EditMask[];
   /** The side-by-side reference pairing (scene matching); editor convenience, never read by renders. Older app versions strip it on their next autosave, which only forgets the pairing. */
   reference?: { rel: string; offsetMs: number };

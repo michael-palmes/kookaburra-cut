@@ -118,6 +118,41 @@ export function maskActiveAt(mask: EditMask, sourceMs: number, image: boolean): 
   return image || (sourceMs >= mask.startMs && sourceMs < mask.endMs);
 }
 
+/** A mask's opacity at a source moment: 0 outside its span, ramping linearly over `fadeInMs` from its start and `fadeOutMs` into its end (the render's `fade … alpha=1` reads the same source time). A still's mask is always fully on. */
+export function maskOpacityAt(mask: EditMask, sourceMs: number, image: boolean): number {
+  if (image) return 1;
+  if (!maskActiveAt(mask, sourceMs, false)) return 0;
+  const fadeIn = mask.fadeInMs ?? 0;
+  const fadeOut = mask.fadeOutMs ?? 0;
+  let a = 1;
+  if (fadeIn > 0) a = Math.min(a, (sourceMs - mask.startMs) / fadeIn);
+  if (fadeOut > 0) a = Math.min(a, (mask.endMs - sourceMs) / fadeOut);
+  return clamp(a, 0, 1);
+}
+
+/** Sets both fades as integer ms; a fade of zero (or less) is a hard edge, stored as no field. */
+export function withMaskFades(mask: EditMask, fadeInMs: number, fadeOutMs: number): EditMask {
+  const { fadeInMs: _in, fadeOutMs: _out, ...rest } = mask;
+  const fadeIn = Math.max(0, Math.round(fadeInMs));
+  const fadeOut = Math.max(0, Math.round(fadeOutMs));
+  const next: EditMask = fadeIn > 0 ? { ...rest, fadeInMs: fadeIn } : rest;
+  return fadeOut > 0 ? { ...next, fadeOutMs: fadeOut } : next;
+}
+
+/** Fades that outgrow a shortened span give way, the moved edge's first. */
+function fitMaskFades(mask: EditMask, moved: "start" | "end"): EditMask {
+  const fadeIn = mask.fadeInMs ?? 0;
+  const fadeOut = mask.fadeOutMs ?? 0;
+  const span = mask.endMs - mask.startMs;
+  if (fadeIn + fadeOut <= span) return mask;
+  if (moved === "start") {
+    const out = Math.min(fadeOut, span);
+    return withMaskFades(mask, span - out, out);
+  }
+  const keep = Math.min(fadeIn, span);
+  return withMaskFades(mask, keep, span - keep);
+}
+
 /** Where a mask shows on the timeline inside one clip. `startEdge`/`endEdge` mark the mask's own ends (not a clip cut); `hold` is a freeze or still bar. */
 export interface MaskWindow {
   maskId: string;
@@ -292,7 +327,7 @@ export function timelineToSourceUnclamped(clip: EditClip, tMs: number): number {
   return clip.inMs + (tMs - clip.startMs) * effectiveSpeed(clip.speed);
 }
 
-/** Moves one end of a mask's span, keeping the minimum span and staying inside the source. Keys are untouched: ones outside the span still shape the glide inside it. */
+/** Moves one end of a mask's span, keeping the minimum span and staying inside the source; fades shrink to fit. Keys are untouched: ones outside the span still shape the glide inside it. */
 export function retimeMaskEdge(
   mask: EditMask,
   edge: "start" | "end",
@@ -301,10 +336,10 @@ export function retimeMaskEdge(
 ): EditMask {
   const ms = Math.round(sourceMs);
   if (edge === "start") {
-    return { ...mask, startMs: clamp(ms, 0, mask.endMs - MIN_MASK_SPAN_MS) };
+    return fitMaskFades({ ...mask, startMs: clamp(ms, 0, mask.endMs - MIN_MASK_SPAN_MS) }, edge);
   }
   const limit = sourceDurationMs > 0 ? sourceDurationMs : Number.POSITIVE_INFINITY;
-  return { ...mask, endMs: clamp(ms, mask.startMs + MIN_MASK_SPAN_MS, limit) };
+  return fitMaskFades({ ...mask, endMs: clamp(ms, mask.startMs + MIN_MASK_SPAN_MS, limit) }, edge);
 }
 
 /** Next free "m<n>" mask id. */

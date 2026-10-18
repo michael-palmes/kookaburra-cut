@@ -1,4 +1,4 @@
-import type { EditClip, EditTap } from "./edit";
+import type { EditClip, EditSource, EditTap } from "./edit";
 
 /** Pure timeline math for the video editor. The timeline is magnetic/gapless (locked): clips always butt together end-to-end, so a clip's `startMs` is derived state, array order is timeline order, and every mutation returns a relaid-out array. "Timeline" times are output-video ms (source spans retimed by `speed`); "source" times index into the source file. Persisted fields stay integers (u64 on the Rust side). Functions that read `startMs` expect a relaid array (every mutator returns one; the editor also relays on load). */
 
@@ -140,15 +140,10 @@ export function imageClip(clips: EditClip[], sourceId: string, holdMs: number): 
   };
 }
 
-/** Insert a freeze of the frame under t: splits the containing clip there (or slips in at its edge when a half would fall under the source floor) and holds that frame for `holdMs`. Null when t misses every clip or lands on an existing freeze. */
-export function freezeAt(clips: EditClip[], tMs: number, holdMs: number): EditClip[] | null {
-  const i = clipIndexAt(clips, tMs);
-  if (i < 0) return null;
-  const clip = clips[i];
-  if (clip.holdMs !== undefined) return null;
-  const src = Math.round(timelineToSource(clip, tMs));
+/** A freeze of `clip`'s source frame at `src`, framed by the clip's crop. */
+function freezeOf(clip: EditClip, id: string, src: number, holdMs: number): EditClip {
   const freeze: EditClip = {
-    id: nextClipId(clips),
+    id,
     sourceId: clip.sourceId,
     inMs: src,
     outMs: src,
@@ -156,6 +151,17 @@ export function freezeAt(clips: EditClip[], tMs: number, holdMs: number): EditCl
     holdMs: Math.max(MIN_HOLD_MS, Math.round(holdMs)),
     startMs: 0,
   };
+  return clip.crop ? { ...freeze, crop: clip.crop } : freeze;
+}
+
+/** Insert a freeze of the frame under t: splits the containing clip there (or slips in at its edge when a half would fall under the source floor) and holds that frame for `holdMs`, keeping the clip's crop. Null when t misses every clip or lands on an existing freeze. */
+export function freezeAt(clips: EditClip[], tMs: number, holdMs: number): EditClip[] | null {
+  const i = clipIndexAt(clips, tMs);
+  if (i < 0) return null;
+  const clip = clips[i];
+  if (clip.holdMs !== undefined) return null;
+  const src = Math.round(timelineToSource(clip, tMs));
+  const freeze = freezeOf(clip, nextClipId(clips), src, holdMs);
   if (src - clip.inMs < MIN_CLIP_SOURCE_MS) {
     return relayout([...clips.slice(0, i), freeze, ...clips.slice(i)]);
   }
@@ -179,16 +185,7 @@ export function freezeAtEnd(
   const endMs = clip.startMs + clipTimelineMs(clip);
   const sampleMs = Math.max(clip.startMs, endMs - 1000 / fps);
   const src = Math.round(timelineToSource(clip, sampleMs));
-  const freeze: EditClip = {
-    id: nextClipId(clips),
-    sourceId: clip.sourceId,
-    inMs: src,
-    outMs: src,
-    speed: 1,
-    holdMs: Math.max(MIN_HOLD_MS, Math.round(holdMs)),
-    startMs: 0,
-  };
-  return relayout([...clips, freeze]);
+  return relayout([...clips, freezeOf(clip, nextClipId(clips), src, holdMs)]);
 }
 
 /** Splice a caller-built clip in at output time t, mirroring freezeAt: splits the containing clip there, slips to its nearer edge when a half would fall under the source floor (or when t lands on a freeze), and appends off-timeline (including exactly at the end). The caller owns `newClip`'s id (nextClipId against the pre-splice array is safe: the split's right half collision-checks against it). */
@@ -298,13 +295,14 @@ export interface TapWindow {
   endMs: number;
 }
 
-/** Every output window in which `tap` is visible: one per clip containing its source point, so a duplicated segment shows the tap in each copy. Duration is fixed in OUTPUT ms and clamped to the clip's end, so a tap near a cut truncates rather than bleeding into the next clip. Freezes are skipped (zero-length span, containment can never hold). */
+/** Every output window in which `tap` is visible: one per clip containing its source point, so a duplicated segment shows the tap in each copy. Duration is fixed in OUTPUT ms and clamped to the clip's end, so a tap near a cut truncates rather than bleeding into the next clip. Freezes are skipped (zero-length span, containment can never hold), and so is a clip whose crop cuts the tap's point out. */
 export function tapWindows(clips: EditClip[], tap: EditTap, tapDurationMs: number): TapWindow[] {
   const windows: TapWindow[] = [];
   for (const clip of clips) {
     if (clip.holdMs !== undefined) continue;
     if (clip.sourceId !== tap.sourceId) continue;
     if (tap.sourceMs < clip.inMs || tap.sourceMs >= clip.outMs) continue;
+    if (clip.crop && !posInCrop(tap.pos, clip.crop)) continue;
     const startMs = clip.startMs + (tap.sourceMs - clip.inMs) / effectiveSpeed(clip.speed);
     const clipEndMs = clip.startMs + clipTimelineMs(clip);
     windows.push({ startMs, endMs: Math.min(startMs + tapDurationMs, clipEndMs) });
@@ -338,5 +336,88 @@ export function nextTapId(taps: EditTap[]): string {
   return nextPrefixedId(
     "t",
     taps.map((tap) => tap.id),
+  );
+}
+
+// ── Static crop ───────────────────────────────────────────────────────────────
+
+export type CropRect = [number, number, number, number];
+
+/** Smallest crop edge, as a fraction of the source frame. */
+export const MIN_CROP_SIZE = 0.05;
+
+const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+
+/** A crop in even source pixels `[x, y, w, h]`, inside the frame; yuv420 cuts on even pixels, so the render and the preview cut the same ones (mirrored: edit.rs `crop_px`). */
+export function cropPixels(crop: CropRect, source: Pick<EditSource, "width" | "height">): CropRect {
+  const axis = (pos: number, len: number, size: number): [number, number] => {
+    const max = size - (size % 2);
+    const l = clamp(2 * Math.round((len * size) / 2), Math.min(2, max), max);
+    return [clamp(2 * Math.round((pos * size) / 2), 0, max - l), l];
+  };
+  const [x, w] = axis(crop[0], crop[2], source.width);
+  const [y, h] = axis(crop[1], crop[3], source.height);
+  return [x, y, w, h];
+}
+
+/** A crop as stored: inside the frame, no edge under MIN_CROP_SIZE, on even source pixels (normalised back). */
+export function snapCropRect(
+  rect: CropRect,
+  source: Pick<EditSource, "width" | "height">,
+): CropRect {
+  const w = clamp(rect[2], MIN_CROP_SIZE, 1);
+  const h = clamp(rect[3], MIN_CROP_SIZE, 1);
+  const [x, y, pw, ph] = cropPixels(
+    [clamp(rect[0], 0, 1 - w), clamp(rect[1], 0, 1 - h), w, h],
+    source,
+  );
+  return [x / source.width, y / source.height, pw / source.width, ph / source.height];
+}
+
+/** The largest crop at `aspect` (width over height, in pixels) centred on `centre`, slid inside the frame and snapped: "Fit output", and kb's `--aspect`. */
+export function aspectCropRect(
+  source: Pick<EditSource, "width" | "height">,
+  aspect: number,
+  centre: [number, number] = [0.5, 0.5],
+): CropRect {
+  const frame = source.width / source.height;
+  const w = aspect >= frame ? 1 : aspect / frame;
+  const h = aspect >= frame ? frame / aspect : 1;
+  return snapCropRect([centre[0] - w / 2, centre[1] - h / 2, w, h], source);
+}
+
+/** Whether a normalised source point is inside a crop (edges included). */
+export function posInCrop(pos: [number, number], crop: CropRect): boolean {
+  return (
+    pos[0] >= crop[0] &&
+    pos[0] <= crop[0] + crop[2] &&
+    pos[1] >= crop[1] &&
+    pos[1] <= crop[1] + crop[3]
+  );
+}
+
+/** A tap's point on a cropped clip, normalised 0..1 across the crop's even pixels, or null when the crop cuts it out; the render then maps it through the letterbox (mirrored: edit.rs tap overlay). */
+export function tapPosInCrop(
+  pos: [number, number],
+  crop: CropRect,
+  source: Pick<EditSource, "width" | "height">,
+): [number, number] | null {
+  if (!posInCrop(pos, crop)) return null;
+  const [x, y, w, h] = cropPixels(crop, source);
+  return [
+    clamp((pos[0] * source.width - x) / w, 0, 1),
+    clamp((pos[1] * source.height - y) / h, 0, 1),
+  ];
+}
+
+/** Sets a clip's crop (null removes it). */
+export function setClipCrop(clips: EditClip[], id: string, crop: CropRect | null): EditClip[] {
+  return relayout(
+    clips.map((clip) => {
+      if (clip.id !== id) return clip;
+      if (crop) return { ...clip, crop };
+      const { crop: _, ...rest } = clip;
+      return rest;
+    }),
   );
 }

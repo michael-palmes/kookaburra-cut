@@ -118,6 +118,14 @@ const STILL_MASK: EditMask = {
   keys: [{ sourceMs: 0, rect: [0.4, 0.4, 0.2, 0.2] }],
 };
 const TAP: EditTap = { id: "t1", sourceId: "s1", sourceMs: 1500, pos: [0.5, 0.4] };
+const FADED: EditMask = { ...KEYED, fadeInMs: 250, fadeOutMs: 400 };
+const CROPPED = math.relayout([
+  clip("c1", 0, 4000, 1, { crop: [0.1, 0.1, 0.5, 0.5] }),
+  hold("c2", 4000, 1000),
+  clip("c3", 6000, 9000, 2),
+]);
+const ODD = { width: 1179, height: 2556 };
+const QUAD: [number, number, number, number] = [0.25, 0.25, 0.5, 0.5];
 
 /** Every exported function with its cases; Map arguments and results are written as plain objects. */
 function fnCases(): FnVector[] {
@@ -200,6 +208,8 @@ function fnCases(): FnVector[] {
     [TRIO, 4500, 2000],
     [TRIO, 5250.5, 50],
     [HALVES, 250.25, 1234.5],
+    [CROPPED, 2000, 2000],
+    [CROPPED, 40, 2000],
   );
   add(
     "freezeAtEnd",
@@ -209,6 +219,7 @@ function fnCases(): FnVector[] {
     [TRIO.slice(0, 1), 29.97, 1500],
     [TRIO.slice(0, 2), 60, 2000],
     [[], 60, 2000],
+    [CROPPED.slice(0, 1), 60, 1500],
   );
   add(
     "insertClipAt",
@@ -253,11 +264,62 @@ function fnCases(): FnVector[] {
     [math.relayout([hold("c1", 1500, 1000)]), TAP, 550],
     [TRIO, { ...TAP, sourceId: "s2" }, 550],
     [math.relayout([clip("c1", 1000, 3000, 0.25)]), TAP, 550],
+    [math.relayout([clip("c1", 0, 2000, 1, { crop: [0.6, 0, 0.4, 0.5] })]), TAP, 550],
+    [math.relayout([clip("c1", 0, 2000, 1, { crop: QUAD })]), TAP, 550],
   );
   add("addTap", [[TAP], { ...TAP, id: "t2" }]);
   add("moveTap", [[TAP], "t1", [0.1, 0.9]], [[TAP], "t9", [0.1, 0.9]]);
   add("retimeTap", [[TAP], "t1", "s3", 250]);
   add("removeTap", [[TAP], "t1"], [[TAP], "t9"]);
+  add(
+    "cropPixels",
+    [[0.1, 0.2, 0.5, 0.25], VIDEO],
+    [[0, 0, 1, 1], ODD],
+    [[0.99, 0.99, 0.5, 0.5], VIDEO],
+    [[-0.2, 0.5, 0.001, 2], VIDEO],
+    [QUAD, { width: 0, height: 0 }],
+    [[0.3333, 0.3333, 0.3333, 0.3333], { width: 333, height: 777 }],
+    [[0.5, 0.5, 0.5, 0.5], { width: 1, height: 1 }],
+  );
+  add(
+    "snapCropRect",
+    [[0.1, 0.2, 0.5, 0.25], VIDEO],
+    [[0.9, 0.9, 0.5, 0.5], VIDEO],
+    [[0, 0, 0.001, 0.001], VIDEO],
+    [[-1, -1, 3, 3], ODD],
+    [[0.3333, 0.1, 0.3333, 0.2], { width: 333, height: 777 }],
+  );
+  add(
+    "aspectCropRect",
+    [VIDEO, 1080 / 1920],
+    [VIDEO, 16 / 9],
+    [IMAGE, 9 / 16],
+    [IMAGE, 9 / 16, [0.1, 0.5]],
+    [IMAGE, 9 / 16, [0.95, 0.2]],
+    [ODD, 1],
+  );
+  add(
+    "posInCrop",
+    [[0.5, 0.5], QUAD],
+    [[0.25, 0.25], QUAD],
+    [[0.75, 0.75], QUAD],
+    [[0.76, 0.5], QUAD],
+    [[0.1, 0.9], QUAD],
+  );
+  add(
+    "tapPosInCrop",
+    [[0.5, 0.4], QUAD, VIDEO],
+    [[0.1, 0.1], QUAD, VIDEO],
+    [[0.75, 0.75], QUAD, ODD],
+    [[0.3, 0.3], [0.2, 0.2, 0.4, 0.4], { width: 333, height: 777 }],
+  );
+  add(
+    "setClipCrop",
+    [TRIO, "c1", [0.1, 0.1, 0.5, 0.5]],
+    [CROPPED, "c1", null],
+    [TRIO, "c9", [0, 0, 1, 1]],
+    [TRIO, "c2", [0.2, 0.2, 0.4, 0.4]],
+  );
 
   add(
     "maskBlurSigmaPx",
@@ -329,6 +391,21 @@ function fnCases(): FnVector[] {
     [KEYED, 2999, false],
     [KEYED, 10, true],
   );
+  add(
+    "maskOpacityAt",
+    [FADED, 999, false],
+    [FADED, 1000, false],
+    [FADED, 1100, false],
+    [FADED, 1250, false],
+    [FADED, 2000, false],
+    [FADED, 2900, false],
+    [FADED, 2999, false],
+    [FADED, 3000, false],
+    [KEYED, 1500, false],
+    [STILL_MASK, 0, true],
+    [{ ...KEYED, fadeOutMs: 500 }, 2750, false],
+  );
+  add("withMaskFades", [KEYED, 250.5, 0], [FADED, 0, 0], [FADED, -5, 120.4], [KEYED, 1999.5, 0.5]);
   const twoCuts = math.relayout([
     clip("c1", 0, 1500),
     hold("c2", 2000, 700),
@@ -407,6 +484,11 @@ function fnCases(): FnVector[] {
     [KEYED, "end", 20000, 12000],
     [KEYED, "end", 20000, 0],
     [KEYED, "end", 1050.5, 12000],
+    [FADED, "start", 2500, 12000],
+    [FADED, "end", 1300, 12000],
+    [FADED, "end", 1100, 12000],
+    [FADED, "start", 1500, 12000],
+    [{ ...KEYED, fadeInMs: 1900 }, "start", 1500, 12000],
   );
   add("replaceMask", [[KEYED, STILL_MASK], { ...STILL_MASK, style: "blur" }]);
 
@@ -497,6 +579,13 @@ function handVectors(): OpVector[] {
     ...HAND_DOC,
     settings: { ...HAND_DOC.settings, fps: 0 },
     clips: HAND_DOC.clips.slice(0, 3),
+  };
+  const sizeless: EditDoc = {
+    ...HAND_DOC,
+    sources: [{ ...VIDEO, width: 1, height: 0 }, IMAGE],
+    clips: math.relayout([clip("c1", 0, 2000), { ...clip("c2", 0, 1000), sourceId: "s9" }]),
+    taps: [],
+    masks: [],
   };
   const v = (id: string, ops: EditOp[], doc = HAND_DOC) => runSteps(`hand/${id}`, doc, ops);
   return [
@@ -676,6 +765,45 @@ function handVectors(): OpVector[] {
       { op: "removeMask", maskId: "m9" },
       { op: "removeMask", maskId: "m2" },
     ]),
+    v("crop", [
+      bad({ op: "setClipCrop", clipId: "c1", crop: [0.1, 0.1, 0.5] }),
+      { op: "setClipCrop", clipId: "c1", crop: [0.1, 0.1, 0, 0.5] },
+      bad({ op: "setClipCrop", clipId: "c1" }),
+      { op: "setClipCrop", clipId: "c9", crop: QUAD },
+      { op: "setClipCrop", clipId: "c1", crop: null },
+      { op: "setClipCrop", clipId: "c1", crop: [0.1, 0.2, 0.5, 0.25] },
+      { op: "setClipCrop", clipId: "c1", crop: [0.1, 0.2, 0.5, 0.25] },
+      { op: "setClipCrop", clipId: "c2", crop: [0.9, 0.9, 0.5, 0.5] },
+      { op: "setClipCrop", clipId: "c4", crop: [0.25, 0, 0.5, 1] },
+      { op: "split", atMs: 2000 },
+      { op: "freeze", atMs: 1000 },
+      { op: "addTap", atMs: 500, pos: [0.05, 0.05] },
+      { op: "setClipCrop", clipId: "c1", crop: null },
+    ]),
+    v(
+      "crop-refusals",
+      [
+        { op: "setClipCrop", clipId: "c1", crop: QUAD },
+        { op: "setClipCrop", clipId: "c2", crop: QUAD },
+        { op: "setClipCrop", clipId: "c1", crop: null },
+      ],
+      sizeless,
+    ),
+    v("mask-fade", [
+      { op: "setMaskFade", maskId: "m1" },
+      { op: "setMaskFade", maskId: "m1", fadeInMs: -1 },
+      bad({ op: "setMaskFade", maskId: "m1", fadeOutMs: "1s" }),
+      { op: "setMaskFade", maskId: "m9", fadeInMs: 100 },
+      { op: "setMaskFade", maskId: "m2", fadeInMs: 100 },
+      { op: "setMaskFade", maskId: "m1", fadeInMs: 1500, fadeOutMs: 600 },
+      { op: "setMaskFade", maskId: "m1", fadeInMs: 250.5 },
+      { op: "setMaskFade", maskId: "m1", fadeInMs: 251 },
+      { op: "setMaskFade", maskId: "m1", fadeOutMs: 400 },
+      { op: "retimeMaskEdge", maskId: "m1", edge: "end", sourceMs: 1500 },
+      { op: "setMaskFade", maskId: "m1", fadeInMs: null },
+      { op: "setMaskFade", maskId: "m1", fadeInMs: 0, fadeOutMs: 0 },
+      { op: "setMaskFade", maskId: "m1", fadeOutMs: null },
+    ]),
     v("unknown-op", [bad({ op: "explode" }), bad({ op: "split" })]),
   ];
 }
@@ -797,10 +925,29 @@ export function randomEditDoc(rand: () => number): EditDoc {
     };
     if (rand() < 0.3) mask.strength = round(rand(), 2);
     if (mask.style === "solid" && rand() < 0.3) mask.color = "#ff0000";
-    docMasks.push(mask);
+    const span = endMs - startMs;
+    docMasks.push(
+      s.kind === "video" && rand() < 0.35
+        ? masks.withMaskFades(mask, int(0, span / 2), int(0, span / 2))
+        : mask,
+    );
+  }
+  for (const [i, c] of clips.entries()) {
+    const s = sources.find((x) => x.id === c.sourceId);
+    if (!s || rand() >= 0.2) continue;
+    const crop = math.snapCropRect(
+      [
+        round(rand() * 0.5, 2),
+        round(rand() * 0.5, 2),
+        round(0.2 + rand() * 0.6, 2),
+        round(0.2 + rand() * 0.6, 2),
+      ],
+      s,
+    );
+    clips[i] = { ...c, crop };
   }
   const doc: EditDoc = {
-    version: docMasks.length > 0 ? 2 : 1,
+    version: clips.some((c) => c.crop) ? 3 : docMasks.length > 0 ? 2 : 1,
     name: "rand",
     sources,
     settings: { width: 1080, height: 1920, fps },
@@ -863,6 +1010,7 @@ export function randomEditOp(rand: () => number, doc: EditDoc): EditOp {
     "trimIn",
     "trimOut",
     "setHold",
+    "setClipCrop",
     "addTap",
     "addTap",
     "addTapAtSource",
@@ -878,6 +1026,7 @@ export function randomEditOp(rand: () => number, doc: EditDoc): EditOp {
     "removeMaskKey",
     "retimeMaskEdge",
     "setMaskLook",
+    "setMaskFade",
     "removeMask",
   ] as const);
   // Edits of taps or masks a doc doesn't have mostly add one instead, so sequences reach the interesting paths.
@@ -888,6 +1037,7 @@ export function randomEditOp(rand: () => number, doc: EditDoc): EditOp {
     "removeMaskKey",
     "retimeMaskEdge",
     "setMaskLook",
+    "setMaskFade",
     "removeMask",
   ].includes(picked);
   const targetsTap = ["moveTap", "retimeTap", "removeTap"].includes(picked);
@@ -926,6 +1076,15 @@ export function randomEditOp(rand: () => number, doc: EditDoc): EditOp {
       return { op: kind, clipId: clipId(), outMs: round(rand() * 13000, 1) };
     case "setHold":
       return { op: kind, clipId: clipId(), holdMs: pick([50, 400, 2000, 3333.3]) };
+    case "setClipCrop": {
+      if (rand() < 0.25) return { op: kind, clipId: clipId(), crop: null };
+      const edge = () => (rand() < 0.05 ? 0 : round(0.05 + rand() * 0.6, 2));
+      return {
+        op: kind,
+        clipId: clipId(),
+        crop: [round(rand() * 0.6, 2), round(rand() * 0.6, 2), edge(), edge()],
+      };
+    }
     case "addTap":
       return { op: kind, atMs: atMs(), pos: pos() };
     case "addTapAtSource":
@@ -978,6 +1137,13 @@ export function randomEditOp(rand: () => number, doc: EditDoc): EditOp {
       if (roll < 0.7)
         return { op: kind, maskId: maskId(), strength: rand() < 0.2 ? null : round(rand(), 2) };
       return { op: kind, maskId: maskId(), color: rand() < 0.3 ? null : "#00ff00" };
+    }
+    case "setMaskFade": {
+      const ms = () => pick([0, 100, 250, 600, 1500, null]);
+      const roll = rand();
+      if (roll < 0.4) return { op: kind, maskId: maskId(), fadeInMs: ms() };
+      if (roll < 0.8) return { op: kind, maskId: maskId(), fadeOutMs: ms() };
+      return { op: kind, maskId: maskId(), fadeInMs: ms(), fadeOutMs: ms() };
     }
     case "removeMask":
       return { op: kind, maskId: maskId() };

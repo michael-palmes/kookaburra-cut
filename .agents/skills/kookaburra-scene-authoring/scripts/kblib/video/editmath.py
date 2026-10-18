@@ -31,6 +31,7 @@ MASK_BLUR_MIN = 0.008
 MASK_BLUR_MAX = 0.04
 MASK_BLOCK_MIN = 0.025
 MASK_BLOCK_MAX = 0.1
+MIN_CROP_SIZE = 0.05
 
 
 def js_round(x: Any) -> Any:
@@ -175,8 +176,10 @@ def image_clip(clips: Sequence[Clip], source_id: str, hold_ms: float) -> Clip:
     }
 
 
-def _freeze_clip(clip_id: str, source_id: str, src: int, hold_ms: float) -> Clip:
-    return {"id": clip_id, "sourceId": source_id, "inMs": src, "outMs": src, "speed": 1, "holdMs": max(MIN_HOLD_MS, js_round(hold_ms)), "startMs": 0}
+def _freeze_of(clip: Clip, clip_id: str, src: int, hold_ms: float) -> Clip:
+    """freezeOf: the clip's source frame at src, framed by the clip's crop."""
+    freeze = {"id": clip_id, "sourceId": clip["sourceId"], "inMs": src, "outMs": src, "speed": 1, "holdMs": max(MIN_HOLD_MS, js_round(hold_ms)), "startMs": 0}
+    return dict(freeze, crop=clip["crop"]) if clip.get("crop") else freeze
 
 
 def freeze_at(clips: Sequence[Clip], t_ms: float, hold_ms: float) -> Optional[List[Clip]]:
@@ -187,7 +190,7 @@ def freeze_at(clips: Sequence[Clip], t_ms: float, hold_ms: float) -> Optional[Li
     if "holdMs" in clip:
         return None
     src = js_round(timeline_to_source(clip, t_ms))
-    freeze = _freeze_clip(next_clip_id(clips), clip["sourceId"], src, hold_ms)
+    freeze = _freeze_of(clip, next_clip_id(clips), src, hold_ms)
     if src - clip["inMs"] < MIN_CLIP_SOURCE_MS:
         return relayout(list(clips[:i]) + [freeze] + list(clips[i:]))
     if clip["outMs"] - src < MIN_CLIP_SOURCE_MS:
@@ -207,8 +210,7 @@ def freeze_at_end(clips: Sequence[Clip], fps_out: Any, hold_ms: float) -> Option
     end_ms = clip["startMs"] + clip_timeline_ms(clip)
     sample_ms = max(clip["startMs"], end_ms - 1000 / fps)
     src = js_round(timeline_to_source(clip, sample_ms))
-    freeze = _freeze_clip(next_clip_id(clips), clip["sourceId"], src, hold_ms)
-    return relayout(list(clips) + [freeze])
+    return relayout(list(clips) + [_freeze_of(clip, next_clip_id(clips), src, hold_ms)])
 
 
 def insert_clip_at(clips: Sequence[Clip], t_ms: float, new_clip: Clip) -> List[Clip]:
@@ -298,6 +300,8 @@ def tap_windows(clips: Sequence[Clip], tap: Tap, tap_duration_ms: float = TAP_DU
             continue
         if tap["sourceMs"] < clip["inMs"] or tap["sourceMs"] >= clip["outMs"]:
             continue
+        if clip.get("crop") and not pos_in_crop(tap["pos"], clip["crop"]):
+            continue
         start = clip["startMs"] + (tap["sourceMs"] - clip["inMs"]) / effective_speed(clip.get("speed"))
         clip_end = clip["startMs"] + clip_timeline_ms(clip)
         windows.append({"startMs": start, "endMs": min(start + tap_duration_ms, clip_end)})
@@ -322,6 +326,56 @@ def remove_tap(taps: Sequence[Tap], tap_id: str) -> List[Tap]:
 
 def next_tap_id(taps: Sequence[Tap]) -> str:
     return next_prefixed_id("t", [t["id"] for t in taps])
+
+
+def crop_pixels(crop: Sequence[float], source: Dict[str, Any]) -> List[int]:
+    """Even source pixels [x, y, w, h] inside the frame (edit.rs crop_px)."""
+
+    def axis(pos: float, length: float, size: int) -> Tuple[int, int]:
+        mx = size - (size % 2)
+        ln = clamp(2 * js_round((length * size) / 2), min(2, mx), mx)
+        return clamp(2 * js_round((pos * size) / 2), 0, mx - ln), ln
+
+    x, w = axis(crop[0], crop[2], source["width"])
+    y, h = axis(crop[1], crop[3], source["height"])
+    return [x, y, w, h]
+
+
+def snap_crop_rect(rect: Sequence[float], source: Dict[str, Any]) -> List[float]:
+    w = clamp(rect[2], MIN_CROP_SIZE, 1)
+    h = clamp(rect[3], MIN_CROP_SIZE, 1)
+    x, y, pw, ph = crop_pixels([clamp(rect[0], 0, 1 - w), clamp(rect[1], 0, 1 - h), w, h], source)
+    return [x / source["width"], y / source["height"], pw / source["width"], ph / source["height"]]
+
+
+def aspect_crop_rect(source: Dict[str, Any], aspect: float, centre: Sequence[float] = (0.5, 0.5)) -> List[float]:
+    frame = source["width"] / source["height"]
+    w = 1 if aspect >= frame else aspect / frame
+    h = frame / aspect if aspect >= frame else 1
+    return snap_crop_rect([centre[0] - w / 2, centre[1] - h / 2, w, h], source)
+
+
+def pos_in_crop(pos: Sequence[float], crop: Sequence[float]) -> bool:
+    return pos[0] >= crop[0] and pos[0] <= crop[0] + crop[2] and pos[1] >= crop[1] and pos[1] <= crop[1] + crop[3]
+
+
+def tap_pos_in_crop(pos: Sequence[float], crop: Sequence[float], source: Dict[str, Any]) -> Optional[List[float]]:
+    if not pos_in_crop(pos, crop):
+        return None
+    x, y, w, h = crop_pixels(crop, source)
+    return [clamp((pos[0] * source["width"] - x) / w, 0, 1), clamp((pos[1] * source["height"] - y) / h, 0, 1)]
+
+
+def set_clip_crop(clips: Sequence[Clip], clip_id: str, crop: Optional[Sequence[float]]) -> List[Clip]:
+    out: List[Clip] = []
+    for c in clips:
+        if c["id"] != clip_id:
+            out.append(c)
+        elif crop:
+            out.append(dict(c, crop=list(crop)))
+        else:
+            out.append({k: v for k, v in c.items() if k != "crop"})
+    return relayout(out)
 
 
 # ── editMasks.ts ──────────────────────────────────────────────────────────────
@@ -397,6 +451,46 @@ def source_moment_at(clips: Sequence[Clip], t_ms: float) -> Optional[Dict[str, A
 
 def mask_active_at(mask: Mask, source_ms: float, image: bool) -> bool:
     return bool(image) or (source_ms >= mask["startMs"] and source_ms < mask["endMs"])
+
+
+def mask_opacity_at(mask: Mask, source_ms: float, image: bool) -> Any:
+    if image:
+        return 1
+    if not mask_active_at(mask, source_ms, False):
+        return 0
+    fade_in = mask.get("fadeInMs") or 0
+    fade_out = mask.get("fadeOutMs") or 0
+    a: Any = 1
+    if fade_in > 0:
+        a = min(a, (source_ms - mask["startMs"]) / fade_in)
+    if fade_out > 0:
+        a = min(a, (mask["endMs"] - source_ms) / fade_out)
+    return clamp(a, 0, 1)
+
+
+def with_mask_fades(mask: Mask, fade_in_ms: float, fade_out_ms: float) -> Mask:
+    out = {k: v for k, v in mask.items() if k not in ("fadeInMs", "fadeOutMs")}
+    fade_in = max(0, js_round(fade_in_ms))
+    fade_out = max(0, js_round(fade_out_ms))
+    if fade_in > 0:
+        out["fadeInMs"] = fade_in
+    if fade_out > 0:
+        out["fadeOutMs"] = fade_out
+    return out
+
+
+def _fit_mask_fades(mask: Mask, moved: str) -> Mask:
+    """fitMaskFades: fades that outgrow a shortened span give way, the moved edge's first."""
+    fade_in = mask.get("fadeInMs") or 0
+    fade_out = mask.get("fadeOutMs") or 0
+    span = mask["endMs"] - mask["startMs"]
+    if fade_in + fade_out <= span:
+        return mask
+    if moved == "start":
+        out = min(fade_out, span)
+        return with_mask_fades(mask, span - out, out)
+    keep = min(fade_in, span)
+    return with_mask_fades(mask, keep, span - keep)
 
 
 def mask_windows(clips: Sequence[Clip], mask: Mask, image: bool) -> List[Dict[str, Any]]:
@@ -542,9 +636,9 @@ def timeline_to_source_unclamped(clip: Clip, t_ms: float) -> Any:
 def retime_mask_edge(mask: Mask, edge: str, source_ms: float, source_duration_ms: Any) -> Mask:
     ms = js_round(source_ms)
     if edge == "start":
-        return dict(mask, startMs=clamp(ms, 0, mask["endMs"] - MIN_MASK_SPAN_MS))
+        return _fit_mask_fades(dict(mask, startMs=clamp(ms, 0, mask["endMs"] - MIN_MASK_SPAN_MS)), edge)
     limit = source_duration_ms if source_duration_ms > 0 else math.inf
-    return dict(mask, endMs=clamp(ms, mask["startMs"] + MIN_MASK_SPAN_MS, limit))
+    return _fit_mask_fades(dict(mask, endMs=clamp(ms, mask["startMs"] + MIN_MASK_SPAN_MS, limit)), edge)
 
 
 def next_mask_id(masks: Sequence[Mask]) -> str:

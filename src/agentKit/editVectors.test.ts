@@ -26,6 +26,7 @@ const OP_NAMES: Record<EditOpName, true> = {
   trimIn: true,
   trimOut: true,
   setHold: true,
+  setClipCrop: true,
   addTap: true,
   addTapAtSource: true,
   moveTap: true,
@@ -39,6 +40,7 @@ const OP_NAMES: Record<EditOpName, true> = {
   removeMaskKey: true,
   retimeMaskEdge: true,
   setMaskLook: true,
+  setMaskFade: true,
   removeMask: true,
 };
 const ERROR_CODES: Record<EditOpErrorCode, true> = {
@@ -85,7 +87,7 @@ describe("edit conformance vectors", () => {
 
   it("is deterministic, compact and one vector per line", () => {
     expect(serialiseEditVectors(buildEditVectors())).toBe(text);
-    expect(Buffer.byteLength(text)).toBeLessThan(250_000);
+    expect(Buffer.byteLength(text)).toBeLessThan(300_000);
     expect(text).not.toContain(EM_DASH);
     const lines = text.trimEnd().split("\n");
     expect(lines).toHaveLength(vectors.fns.length + vectors.ops.length + 5);

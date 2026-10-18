@@ -14,9 +14,11 @@ import {
   type SourceMoment,
   sourceMomentAt,
   upsertMaskKey,
+  withMaskFades,
 } from "./editMasks";
 import {
   addTap,
+  type CropRect,
   clipIndexAt,
   DEFAULT_HOLD_MS,
   freezeAt,
@@ -33,8 +35,10 @@ import {
   removeClip,
   removeTap,
   retimeTap,
+  setClipCrop,
   setClipHold,
   setClipSpeed,
+  snapCropRect,
   splitAt,
   timelineDurationMs,
   trimClipIn,
@@ -63,6 +67,7 @@ export type EditOp =
   | { op: "trimIn"; clipId: string; inMs: number }
   | { op: "trimOut"; clipId: string; outMs: number }
   | { op: "setHold"; clipId: string; holdMs: number }
+  | { op: "setClipCrop"; clipId: string; crop: [number, number, number, number] | null }
   | { op: "addTap"; atMs: number; pos: [number, number] }
   | { op: "addTapAtSource"; sourceId: string; sourceMs: number; pos: [number, number] }
   | { op: "moveTap"; tapId: string; pos: [number, number] }
@@ -89,6 +94,7 @@ export type EditOp =
       strength?: number | null;
       color?: string | null;
     }
+  | { op: "setMaskFade"; maskId: string; fadeInMs?: number | null; fadeOutMs?: number | null }
   | { op: "removeMask"; maskId: string };
 
 export type EditOpName = EditOp["op"];
@@ -141,6 +147,19 @@ function isPos(v: unknown): v is [number, number] {
 
 function isRect(v: unknown): v is MaskRect {
   return Array.isArray(v) && v.length === 4 && v.every(isNum);
+}
+
+function isCrop(v: unknown): v is CropRect {
+  return isRect(v) && v[2] > 0 && v[3] > 0;
+}
+
+const sameRect = (a: readonly number[] | undefined, b: readonly number[] | undefined) =>
+  a === b || (!!a && !!b && a.every((v, i) => v === b[i]));
+
+function fadeProblem(key: "fadeInMs" | "fadeOutMs", v: unknown): string | null {
+  return v === undefined || v === null || (isNum(v) && v >= 0)
+    ? null
+    : `${key} must be 0 or more ms`;
 }
 
 function sourceProblem(s: SourceMeta | undefined): string | null {
@@ -384,6 +403,27 @@ export function applyEditOp(input: EditDoc, op: EditOp): EditOpResult {
         "retime freeze",
       );
     }
+    case "setClipCrop": {
+      if (op.crop !== null && !isCrop(op.crop)) {
+        return fail("bad-arg", "crop must be [x, y, w, h] numbers with w and h > 0, or null");
+      }
+      const clip = findClip(doc, op.clipId);
+      if ("error" in clip) return clip.error;
+      const source = doc.sources.find((s) => s.id === clip.found.sourceId);
+      if (!source) return fail("unknown-source", `No source ${clip.found.sourceId} in this edit.`);
+      if (op.crop === null) {
+        if (!clip.found.crop) return fail("no-change", `${clip.found.id} has no crop.`);
+        return done({ ...doc, clips: setClipCrop(doc.clips, clip.found.id, null) }, "reset crop");
+      }
+      if (source.width < 2 || source.height < 2) {
+        return fail("bad-arg", `${source.id} has no pixel size to crop against.`);
+      }
+      const crop = snapCropRect(op.crop, source);
+      if (sameRect(crop, clip.found.crop)) {
+        return fail("no-change", `${clip.found.id} already has that crop.`);
+      }
+      return done({ ...doc, clips: setClipCrop(doc.clips, clip.found.id, crop) }, "crop clip");
+    }
     case "addTap": {
       const bad = atMsProblem(op.atMs) ?? (isPos(op.pos) ? null : "pos must be [x, y] in 0..1");
       if (bad) return fail("bad-arg", bad);
@@ -563,6 +603,38 @@ export function applyEditOp(input: EditDoc, op: EditOp): EditOpResult {
         { ...doc, masks: replaceMask(doc.masks ?? [], next) },
         fields.length === 1 ? MASK_LABELS[fields[0]] : "change mask look",
       );
+    }
+    case "setMaskFade": {
+      if (op.fadeInMs === undefined && op.fadeOutMs === undefined) {
+        return fail("bad-arg", "Give a fadeInMs or fadeOutMs.");
+      }
+      const bad = fadeProblem("fadeInMs", op.fadeInMs) ?? fadeProblem("fadeOutMs", op.fadeOutMs);
+      if (bad) return fail("bad-arg", bad);
+      const mask = findMask(doc, op.maskId);
+      if ("error" in mask) return mask.error;
+      const source = doc.sources.find((s) => s.id === mask.found.sourceId);
+      if (source?.kind === "image") {
+        return fail(
+          "image-source",
+          "A mask on a still covers every frame: it has no span to fade.",
+        );
+      }
+      const pick = (v: number | null | undefined, now: number | undefined) =>
+        v === undefined ? (now ?? 0) : v === null ? 0 : Math.round(v);
+      const fadeIn = pick(op.fadeInMs, mask.found.fadeInMs);
+      const fadeOut = pick(op.fadeOutMs, mask.found.fadeOutMs);
+      const span = mask.found.endMs - mask.found.startMs;
+      if (fadeIn + fadeOut > span) {
+        return fail(
+          "bad-arg",
+          `Fades of ${fadeIn} + ${fadeOut}ms don't fit ${mask.found.id}'s ${span}ms span.`,
+        );
+      }
+      if (fadeIn === (mask.found.fadeInMs ?? 0) && fadeOut === (mask.found.fadeOutMs ?? 0)) {
+        return fail("no-change", `${mask.found.id} already fades like that.`);
+      }
+      const next = withMaskFades(mask.found, fadeIn, fadeOut);
+      return done({ ...doc, masks: replaceMask(doc.masks ?? [], next) }, "change mask fade");
     }
     case "removeMask": {
       const mask = findMask(doc, op.maskId);
