@@ -59,7 +59,7 @@ import { useTimeline } from "../../engine/timeline";
 import { useEditorStore } from "../../store/editorStore";
 import { useStudioEnvironment } from "../lighting/studioEnvironment";
 import { AssetBoundary } from "../media/AssetBoundary";
-import { preparingVideoTexture } from "../media/preparingTexture";
+import { useClipStandInTexture } from "../media/conformStandIn";
 import { useSceneStaged, useStageFloorY, useStageMapShadows } from "../stage/context";
 import type { V3 } from "../types";
 import {
@@ -351,7 +351,8 @@ function ScreenVideo(props: {
   const clipCropRef = useRef<UvRect | null>(null);
   const boundRef = useRef(false);
 
-  // Until the first frame binds, the screen shows the "Preparing video…" card, except during export where it stays plain black (belt-and-braces atop the preamble/barrier guarantees; the frame bind overwrites `map`, so no cleanup is needed).
+  // Until the first frame binds, the screen shows the "Preparing video…" card (or, while a conform writes the clip, its poster and progress), except during export where it stays plain black (belt-and-braces atop the preamble/barrier guarantees; the frame bind overwrites `map`, so no cleanup is needed).
+  const standIn = useClipStandInTexture(src, screenAspect, false);
   const onPending = useCallback(() => {
     boundRef.current = false;
     if (isExporting()) {
@@ -362,10 +363,10 @@ function ScreenVideo(props: {
     }
     const rect = coverCropRect(screenAspect, screenAspect, false); // identity, unflipped
     for (const mesh of screens) bakeScreenUvs(mesh, rect);
-    material.map = preparingVideoTexture(screenAspect, false);
+    material.map = standIn;
     material.color.set(0xffffff);
     material.needsUpdate = true;
-  }, [material, screens, screenAspect]);
+  }, [material, screens, screenAspect, standIn]);
   // Binds land asynchronously, after Device has set this frame's brightness, so they read the level instead of forcing white.
   const onBound = useCallback(() => {
     material.color.setScalar(levelRef.current);

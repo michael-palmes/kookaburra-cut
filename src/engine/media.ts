@@ -1,5 +1,5 @@
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
-import { emit } from "@tauri-apps/api/event";
+import { emit, listen } from "@tauri-apps/api/event";
 import { refreshWorkspaceAssets } from "./assetRevisions";
 
 /** Media library frontend over the native module (src-tauri/src/media.rs): per-project asset listing/import and the sha-keyed poster/scrub-frame cache. */
@@ -73,9 +73,14 @@ export function importChartData(
   });
 }
 
-/** Probe + thumbnail one asset (cached by content hash; first call generates). */
-export function mediaMeta(slug: string, rel: string): Promise<MediaMeta> {
-  return invoke<MediaMeta>("media_meta", { slug, rel });
+/** Probe + thumbnail one asset (cached by content hash; first call generates). A file a conform is still writing (a clip placed while it conforms) answers once the job ends. */
+export async function mediaMeta(slug: string, rel: string): Promise<MediaMeta> {
+  try {
+    return await invoke<MediaMeta>("media_meta", { slug, rel });
+  } catch (e) {
+    if (!(await conformEnded(slug, rel))) throw e;
+    return invoke<MediaMeta>("media_meta", { slug, rel });
+  }
 }
 
 /** A native file as a webview-loadable URL: Tauri's asset protocol, one seam for both dev and packaged. The path must be inside the asset-protocol scope: the static `$APPDATA/cache/**` + `$HOME/Kookaburra Cut/**` entries in tauri.conf.json, plus the runtime workspace allow in workspace.rs `require_root` (user-chosen roots outside ~/Kookaburra Cut). */
@@ -236,25 +241,146 @@ export function conformPercent(job: Pick<ConformJob, "frame" | "total">): number
   return job.total > 0 ? Math.min(100, Math.floor((job.frame / job.total) * 100)) : 0;
 }
 
-/** Fold one progress event into the job list: queued and conforming upsert, done and failed drop the job. */
+/** Fold one progress event into the job list: queued and conforming upsert in place (the queue keeps its order), done and failed drop the job. */
 export function applyConformProgress(
   jobs: readonly ConformJob[],
   event: ConformProgress,
   original = "",
 ): ConformJob[] {
-  const rest = jobs.filter((job) => !(job.slug === event.slug && job.rel === event.rel));
-  if (event.stage === "done" || event.stage === "failed") return rest;
-  const prior = jobs.find((job) => job.slug === event.slug && job.rel === event.rel);
-  return [
-    ...rest,
-    {
-      slug: event.slug,
-      rel: event.rel,
-      original: prior?.original ?? original,
-      frame: event.frame,
-      total: event.total,
-    },
-  ];
+  const same = (job: ConformJob) => job.slug === event.slug && job.rel === event.rel;
+  if (event.stage === "done" || event.stage === "failed") return jobs.filter((job) => !same(job));
+  const prior = jobs.find(same);
+  const next: ConformJob = {
+    slug: event.slug,
+    rel: event.rel,
+    original: prior?.original || original,
+    frame: event.frame,
+    total: event.total,
+  };
+  return prior ? jobs.map((job) => (job === prior ? next : job)) : [...jobs, next];
+}
+
+/** The error a conform stopped from the queue reports (its stage is `failed`). */
+export const CONFORM_CANCELLED = "cancelled";
+
+/** Whether an event is a stop rather than a failure worth showing. */
+export function conformWasCancelled(event: Pick<ConformProgress, "stage" | "error">): boolean {
+  return event.stage === "failed" && event.error === CONFORM_CANCELLED;
+}
+
+/** Stop a running or queued conform: an import comes back as its original, a plain file; an in-place conform leaves the file as it was. */
+export function cancelConform(slug: string, rel: string): Promise<void> {
+  return invoke<void>("cancel_conform", { slug, rel });
+}
+
+/** The frame rate every mezzanine is written at (conform.rs `CONFORM_FPS`). */
+export const CONFORM_FPS = 60;
+
+/** Resolves when a conform writing `rel` ends, landed or not; false at once when none is running. */
+async function conformEnded(slug: string, rel: string): Promise<boolean> {
+  const running = async () =>
+    (await listConformJobs(slug).catch(() => [] as ConformJob[])).some((job) => job.rel === rel);
+  if (!(await running())) return false;
+  await new Promise<void>((resolve) => {
+    let ended = false;
+    let unlisten: (() => void) | null = null;
+    const end = () => {
+      if (ended) return;
+      ended = true;
+      unlisten?.();
+      resolve();
+    };
+    listen<ConformProgress>(CONFORM_PROGRESS_EVENT, ({ payload }) => {
+      if (payload.slug !== slug || payload.rel !== rel) return;
+      if (payload.stage === "done" || payload.stage === "failed") end();
+    })
+      .then(async (fn) => {
+        unlisten = fn;
+        if (ended) fn();
+        // The job may have ended between the first look and the listener going up.
+        else if (!(await running())) end();
+      })
+      .catch(end);
+  });
+  return true;
+}
+
+const pendingMetaLoads = new Map<string, Promise<MediaMeta>>();
+
+/** A still-conforming import's card meta, read off its original (`assets/.originals/…`: same picture size and length) under the mezzanine's rel and frame rate, so the card shows a poster and can be placed before the file exists. */
+export async function pendingConformMeta(
+  slug: string,
+  job: Pick<ConformJob, "rel" | "original">,
+): Promise<MediaMeta> {
+  let original = job.original;
+  if (!original) {
+    const jobs = await listConformJobs(slug);
+    original = jobs.find((candidate) => candidate.rel === job.rel)?.original ?? "";
+    if (!original) throw new Error(`${job.rel} isn't conforming`);
+  }
+  const key = `${slug}\n${original}`;
+  let load = pendingMetaLoads.get(key);
+  if (!load) {
+    load = invoke<MediaMeta>("media_meta", { slug, rel: original });
+    pendingMetaLoads.set(key, load);
+    // Shared while it runs only: a later import can reuse the original's name for another file.
+    void load.then(
+      () => pendingMetaLoads.delete(key),
+      () => pendingMetaLoads.delete(key),
+    );
+  }
+  const meta = await load;
+  return { ...meta, rel: job.rel, fps: CONFORM_FPS };
+}
+
+// ── Kept originals (`assets/.originals/`) ──────────────────────────────────────
+
+/** One kept original, as `list_originals` reports it. */
+export interface OriginalFile {
+  /** `assets/.originals/<file>`. */
+  rel: string;
+  bytes: number;
+  /** The conformed clip made from it, while that clip exists. */
+  clip: string | null;
+  /** Why it can't be removed now (still conforming, or a project file names it), else null. */
+  busy: string | null;
+}
+
+export interface RemovedOriginals {
+  count: number;
+  bytes: number;
+}
+
+export function listOriginals(slug: string): Promise<OriginalFile[]> {
+  return invoke<OriginalFile[]>("list_originals", { slug });
+}
+
+/** The originals Remove originals would take: count and total bytes. */
+export function removableOriginals(originals: readonly OriginalFile[]): RemovedOriginals {
+  const free = originals.filter((original) => original.busy === null);
+  return { count: free.length, bytes: free.reduce((sum, original) => sum + original.bytes, 0) };
+}
+
+/** The original `rel` (a conformed clip) was made from, if one is kept. */
+export function originalOfClip(
+  originals: readonly OriginalFile[],
+  rel: string,
+): OriginalFile | null {
+  return originals.find((original) => original.clip === rel) ?? null;
+}
+
+/** Move a clip's original to the Trash; the clip stays. Other windows' libraries re-scan. */
+export async function removeOriginal(slug: string, rel: string): Promise<RemovedOriginals> {
+  const removed = await invoke<RemovedOriginals>("remove_original", { slug, rel });
+  await emit("kookaburra://media-changed", null);
+  return removed;
+}
+
+/** Move every original nothing needs to the Trash. */
+export async function removeOriginals(slug: string): Promise<RemovedOriginals> {
+  const removed = await invoke<RemovedOriginals>("remove_originals", { slug });
+  if (removed.count > 0) await emit("kookaburra://media-changed", null);
+  return removed;
 }
 
 /** Settings: Conform new videos (on unless switched off). */

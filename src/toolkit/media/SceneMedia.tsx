@@ -49,6 +49,7 @@ import { useProjectAssetUrl } from "../../engine/useProjectAssetUrl";
 import { useStageMapShadows } from "../stage/context";
 import type { FormatInfo } from "../types";
 import { AssetBoundary } from "./AssetBoundary";
+import { useClipStandInTexture } from "./conformStandIn";
 import {
   applyCardMask,
   type CardUniforms,
@@ -56,7 +57,6 @@ import {
   SHADOW_FRAG,
   SHADOW_VERT,
 } from "./LayeredScreenshot";
-import { preparingVideoTexture } from "./preparingTexture";
 import { StageImageGizmo, StageImageOutline } from "./StageImageGizmo";
 
 const DEG2RAD = Math.PI / 180;
@@ -515,6 +515,7 @@ function ClipPlane({
   useLayoutEffect(() => {
     if (info && info.height > 0) onIntrinsics(info.width, info.height);
   }, [info, onIntrinsics]);
+  const standIn = useClipStandInTexture(src, rect.width / rect.height, true);
   return (
     <group ref={readyRef}>
       <group ref={contentRef} visible={false}>
@@ -522,14 +523,11 @@ function ClipPlane({
           <planeGeometry args={[rect.width, rect.height]} />
         </mesh>
       </group>
-      {/* While frames extract, the shared "Preparing video…" card fills the plane, PREVIEW ONLY: `isExporting()` stands it down and the export barriers mean no captured frame can sample it anyway. */}
+      {/* While frames extract (or a conform still writes the clip), the shared stand-in card fills the plane, PREVIEW ONLY: `isExporting()` stands it down and the export barriers mean no captured frame can sample it anyway. */}
       {!ready && !isExporting() && (
         <mesh renderOrder={renderOrder}>
           <planeGeometry args={[rect.width, rect.height]} />
-          <meshBasicMaterial
-            map={preparingVideoTexture(rect.width / rect.height, true)}
-            toneMapped={false}
-          />
+          <meshBasicMaterial map={standIn} toneMapped={false} />
         </mesh>
       )}
     </group>

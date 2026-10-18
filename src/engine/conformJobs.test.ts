@@ -1,9 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
   applyConformProgress,
+  CONFORM_CANCELLED,
   type ConformJob,
   type ConformProgress,
   conformPercent,
+  conformWasCancelled,
+  type OriginalFile,
+  originalOfClip,
+  removableOriginals,
 } from "./media";
 
 const event = (patch: Partial<ConformProgress>): ConformProgress => ({
@@ -48,6 +53,41 @@ describe("conform job progress", () => {
     };
     const next = applyConformProgress([other], event({ stage: "done" }));
     expect(next).toEqual([other]);
+  });
+
+  it("keeps the queue in start order as jobs report", () => {
+    let jobs: ConformJob[] = [];
+    for (const stem of ["a", "b", "c"]) {
+      const rel = `assets/${stem}.mp4`;
+      jobs = applyConformProgress(
+        jobs,
+        event({ rel, stage: "queued" }),
+        `assets/.originals/${stem}.mov`,
+      );
+    }
+    jobs = applyConformProgress(jobs, event({ rel: "assets/a.mp4", frame: 30, total: 60 }));
+    jobs = applyConformProgress(jobs, event({ rel: "assets/b.mp4", frame: 30, total: 90 }));
+    expect(jobs.map((job) => job.rel)).toEqual(["assets/a.mp4", "assets/b.mp4", "assets/c.mp4"]);
+    expect(jobs[0].original).toBe("assets/.originals/a.mov");
+    expect(jobs[1]).toMatchObject({ frame: 30, total: 90 });
+  });
+
+  it("tells a stop from a failure", () => {
+    expect(conformWasCancelled(event({ stage: "failed", error: CONFORM_CANCELLED }))).toBe(true);
+    expect(conformWasCancelled(event({ stage: "failed", error: "boom" }))).toBe(false);
+    expect(conformWasCancelled(event({ stage: "done", error: CONFORM_CANCELLED }))).toBe(false);
+  });
+
+  it("totals only the originals nothing holds, and finds a clip's own", () => {
+    const originals: OriginalFile[] = [
+      { rel: "assets/.originals/rec.mov", bytes: 10, clip: "assets/rec.mp4", busy: null },
+      { rel: "assets/.originals/demo.mp4", bytes: 20, clip: "assets/demo.mp4", busy: "x" },
+      { rel: "assets/.originals/orphan.mov", bytes: 30, clip: null, busy: null },
+    ];
+    expect(removableOriginals(originals)).toEqual({ count: 2, bytes: 40 });
+    expect(removableOriginals([])).toEqual({ count: 0, bytes: 0 });
+    expect(originalOfClip(originals, "assets/rec.mp4")?.rel).toBe("assets/.originals/rec.mov");
+    expect(originalOfClip(originals, "assets/orphan.mov")).toBeNull();
   });
 
   it("reads progress as a whole percentage, zero while waiting", () => {
