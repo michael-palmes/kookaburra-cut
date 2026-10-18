@@ -24,6 +24,8 @@ pub(crate) const DEFAULT_CAP_GB: u32 = 20;
 const LOW_WATER: f64 = 0.9;
 /// A chunk's last-use stamp moves at most this often, never per frame read.
 const TOUCH_INTERVAL: Duration = Duration::from_secs(60);
+/// A chunk used this recently is never evicted: another app instance may be reading it (its pins live in that process), and readers touch a chunk at most every `TOUCH_INTERVAL`.
+const RECENT_USE: Duration = Duration::from_secs(15 * 60);
 /// How often deferred maintenance (a clear or an eviction another run blocked) re-checks.
 const MAINTENANCE_POLL: Duration = Duration::from_secs(5);
 /// Deferred maintenance gives up after this long (a stale queue ticket must not keep a task alive forever).
@@ -1176,6 +1178,10 @@ pub(crate) fn pick_evictions(
     total: u64,
     target: u64,
 ) -> Vec<Candidate> {
+    let fresh = SystemTime::now()
+        .checked_sub(RECENT_USE)
+        .unwrap_or(SystemTime::UNIX_EPOCH);
+    candidates.retain(|c| c.last_use < fresh);
     candidates.sort_by(|a, b| {
         a.last_use
             .cmp(&b.last_use)
@@ -1537,6 +1543,19 @@ mod tests {
         assert!((0..3).all(|c| chunk_marker(&dir, c).is_file()));
         assert!(is_whole(&dir));
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn eviction_never_takes_a_chunk_used_recently() {
+        let now = SystemTime::now();
+        let candidate = |chunk: u32, ago: u64| Candidate {
+            dir: PathBuf::from("/x/clip-60fps"),
+            chunk,
+            last_use: now - Duration::from_secs(ago),
+            bytes: 100,
+        };
+        let picked = pick_evictions(vec![candidate(0, 60), candidate(1, 3600)], 1000, 0);
+        assert_eq!(picked.iter().map(|c| c.chunk).collect::<Vec<_>>(), [1]);
     }
 
     #[test]
