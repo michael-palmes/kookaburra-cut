@@ -54,16 +54,24 @@ export function setCompareSlotMedia(
   if (Object.keys(map).length === 0) delete doc.compare.b?.[field];
 }
 
-/** Every video one device plays, on either display and either comparison side (both sides render, so none may cut short). */
+/** Every video screen one device shows, on either display and either comparison side (both sides render, so none may cut short), with the spec that times it. */
+export function deviceVideoSlots(
+  doc: SceneDoc | null | undefined,
+  device: SceneDocDeviceSpec,
+): DeviceMediaSpec[] {
+  return DEVICE_SCREEN_SLOTS.flatMap((slot) =>
+    [deviceSlotMedia(device, slot), compareSlotMedia(doc, device.id, slot)].flatMap((media) =>
+      media?.kind === "video" ? [media] : [],
+    ),
+  );
+}
+
+/** Every video one device plays (`deviceVideoSlots`, sources only). */
 export function deviceVideoSources(
   doc: SceneDoc | null | undefined,
   device: SceneDocDeviceSpec,
 ): string[] {
-  return DEVICE_SCREEN_SLOTS.flatMap((slot) =>
-    [deviceSlotMedia(device, slot), compareSlotMedia(doc, device.id, slot)].flatMap((media) =>
-      media?.kind === "video" ? [media.src] : [],
-    ),
-  );
+  return deviceVideoSlots(doc, device).map((media) => media.src);
 }
 
 export function deviceHasFollowVideo(doc: SceneDoc, deviceId: string): boolean {

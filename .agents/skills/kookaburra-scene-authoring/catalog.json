@@ -21349,6 +21349,63 @@
       "summary": "Two devices split front and back (exactly 2, else toe-in)."
     }
   ],
+  "deviceMedia": {
+    "keys": [
+      {
+        "id": "src",
+        "summary": "Project-relative image or video path, e.g. assets/demo.mp4.",
+        "type": "string"
+      },
+      {
+        "id": "kind",
+        "summary": "What src is.",
+        "type": "string",
+        "values": ["video", "image"]
+      },
+      {
+        "id": "startMs",
+        "summary": "Video: scene-time delay before playback, holding the first played frame; a negative value pre-rolls the clip on the scene clock.",
+        "type": "number"
+      },
+      {
+        "id": "fit",
+        "summary": "Always cover: fills the screen and crops the overflow.",
+        "type": "string",
+        "values": ["cover"]
+      },
+      {
+        "id": "startOn",
+        "summary": "Foldable inside display: startMs counts from the moment the fold opens.",
+        "type": "string",
+        "values": ["open"]
+      },
+      {
+        "id": "inMs",
+        "summary": "Video: source ms where playback begins (a trim-in); combines with a startMs delay, never with a negative startMs.",
+        "type": "number"
+      },
+      {
+        "id": "outMs",
+        "summary": "Video: source ms where playback ends, exclusive; must pass inMs by more than 16 ms. Absent plays to the end.",
+        "type": "number"
+      },
+      {
+        "id": "speed",
+        "summary": "Video: playback rate, above 0 and at most 16 (default 1); frames repeat or skip, never blend. The editor offers 0.25 to 6.",
+        "type": "number"
+      },
+      {
+        "id": "loop",
+        "summary": "Video: wraps within [inMs, outMs) instead of holding the last frame, through Present holds too.",
+        "type": "boolean"
+      },
+      {
+        "id": "posterMs",
+        "summary": "Video: source ms shown before playback (during a delay or before a fold opens); default the first played frame.",
+        "type": "number"
+      }
+    ]
+  },
   "mediaMotion": [
     {
       "id": "none",
@@ -22593,6 +22650,12 @@
         "ref": "camera"
       },
       {
+        "id": "cameraKicks",
+        "summary": "Kicks added on whichever pose drives: { at (ms or bar:13), zoom, offset, rollDeg, attackMs, holdMs, releaseMs, ease }.",
+        "type": "array",
+        "ref": "camera"
+      },
+      {
         "id": "themeId",
         "summary": "Swap the whole theme for this scene.",
         "type": "string",
@@ -22767,7 +22830,7 @@
       },
       {
         "id": "audio",
-        "summary": "Soundtrack { file, gainDb, fadeInMs, fadeOutMs, fadeOutCurve, startOffsetMs, markers }.",
+        "summary": "Soundtrack { file, gainDb, fadeInMs, fadeOutMs, fadeOutCurve, startOffsetMs, markers } plus music: grid { bpm, offsetMs (track ms of bar 1), beatsPerBar }, cues { id: position | ms }, sections [{ id, from, to }]; keys take at: \"bar:13.3\".",
         "type": "object"
       },
       {
@@ -23081,6 +23144,11 @@
         "internal": true
       },
       {
+        "id": "pulse",
+        "kind": "function",
+        "summary": "pulse(time, times, { attackMs, holdMs, releaseMs, ease }) returns 0..1 at each time; overlaps take the max."
+      },
+      {
         "id": "resolveAvailableDeviceId",
         "kind": "function",
         "summary": "The id a model renders as in this build."
@@ -23116,6 +23184,16 @@
         "id": "slide",
         "kind": "function",
         "summary": "slide(time, [startMs, endMs], axis) returns { offset } 1..0; axis is ignored."
+      },
+      {
+        "id": "useBeatGrid",
+        "kind": "hook",
+        "summary": "The authored audio.grid in scene ms, or null: bar(13, 3), at(\"cue:drop\"), position(localMs), beatMs."
+      },
+      {
+        "id": "useCues",
+        "kind": "hook",
+        "summary": "audio.cues as { id: scene-local ms }; {} when there are none."
       },
       {
         "id": "useDepthBand",
@@ -23192,6 +23270,12 @@
       },
       {
         "id": "AnimatedHeadlineProps"
+      },
+      {
+        "id": "BeatGrid"
+      },
+      {
+        "id": "BeatPosition"
       },
       {
         "id": "BrandLockupProps"
@@ -23318,6 +23402,9 @@
       },
       {
         "id": "ParticleFieldProps"
+      },
+      {
+        "id": "PulseOptions"
       },
       {
         "id": "ResolvedChart"
@@ -24838,6 +24925,77 @@
       "loudnessTarget": -24,
       "lane": "spec",
       "hardware": false
+    }
+  ],
+  "samplePool": [
+    {
+      "id": "app-icon.png"
+    },
+    {
+      "id": "home-dark-sample.jpg"
+    },
+    {
+      "id": "home-light-sample.jpg"
+    },
+    {
+      "id": "home-new-sample.jpg"
+    },
+    {
+      "id": "home-old-sample.jpg"
+    },
+    {
+      "id": "kooka-alt-loop-sample.mp4"
+    },
+    {
+      "id": "kooka-dark-loop-sample.mp4"
+    },
+    {
+      "id": "kooka-feed-loop-sample.mp4"
+    },
+    {
+      "id": "kooka-icon-dark-sample.png"
+    },
+    {
+      "id": "kooka-icon-sample.png"
+    },
+    {
+      "id": "kooka-onboard-loop-sample.mp4"
+    },
+    {
+      "id": "kooka-terminal-loop-sample.mp4"
+    },
+    {
+      "id": "onboard-1-sample.jpg"
+    },
+    {
+      "id": "onboard-2-sample.jpg"
+    },
+    {
+      "id": "onboard-3-sample.jpg"
+    },
+    {
+      "id": "pro-badge-sample.png"
+    },
+    {
+      "id": "sample-laptop-recording.mp4"
+    },
+    {
+      "id": "sample-phone-recording.mp4"
+    },
+    {
+      "id": "settings-off-sample.jpg"
+    },
+    {
+      "id": "settings-on-sample.jpg"
+    },
+    {
+      "id": "shot-a-sample.jpg"
+    },
+    {
+      "id": "shot-b-sample.jpg"
+    },
+    {
+      "id": "shot-c-sample.jpg"
     }
   ]
 }

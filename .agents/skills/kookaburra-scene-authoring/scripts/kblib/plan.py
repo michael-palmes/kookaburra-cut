@@ -15,7 +15,7 @@ from .util import EXIT_ENV, EXIT_OK, EXIT_PROBLEMS, KbError, emit, set_command
 PLANNABLE = (
     "scene add", "scene duplicate", "scene move", "scene remove", "scene set",
     "doc set", "doc unset", "doc merge", "project set", "project unset", "theme set",
-    "assets add", "checkpoint", "undo", "lease",
+    "assets add", "assets conform", "assets replace", "assets unused", "assets restore", "assets meta", "checkpoint", "undo", "lease",
 )
 # A dry run that fails with one of these exit-1 kinds is a refusal the plan reports, not a failure of the plan.
 REFUSAL_KINDS = ("leased", "others-changed", "invalid", "conflict")
@@ -24,7 +24,8 @@ REFUSAL_FIELDS = ("holder", "untilMs", "scene", "file", "issues", "files", "by")
 EPILOG = """\
 Runs the command with --dry-run --json and reports what it would do; nothing is written,
 committed or leased. Covers scene add, duplicate, move, remove and set; doc set, unset and
-merge; project set and unset; theme set; assets add; checkpoint; undo; lease.
+merge; project set and unset; theme set; assets add, conform, replace, unused, restore and
+meta; checkpoint; undo; lease.
 
   ./kb plan scene add pricing --preset title --after 02-hero
   ./kb plan doc 03-pricing set textStyle.titleFont "Inter@600"
@@ -119,9 +120,10 @@ def notes_for(command: str, env: Dict[str, Any]) -> List[str]:
         if env.get("summary"):
             out.insert(0, f"{env.get('file')}: {env['summary']}")
         out += [f"{i.get('severity')}: {i.get('path') + ': ' if i.get('path') else ''}{i.get('message')}" for i in env.get("issues") or [] if isinstance(i, dict)]
-    elif command == "assets add":
+    elif command.startswith("assets "):
         if env.get("note"):
             out.append(str(env["note"]))
+        out += [str(w) for w in env.get("warnings") or [] if isinstance(w, str)]
     elif command == "checkpoint":
         files = env.get("files") or []
         out.append(f"a checkpoint would commit {len(files)} path(s){' in a new git repository' if env.get('newRepo') else ''}: {', '.join(files)}"

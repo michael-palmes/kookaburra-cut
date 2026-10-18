@@ -1,10 +1,8 @@
 import { useGLTF, useTexture } from "@react-three/drei";
-import { useContext, useMemo } from "react";
+import { useMemo } from "react";
 import { Box3, type Material, type Mesh, MeshBasicMaterial, type Object3D, Vector3 } from "three";
-import { resolveAssetUrl } from "../../engine/project";
-import { ProjectIdContext } from "../../engine/sceneContext";
 import { useTimeline } from "../../engine/timeline";
-import { useEditorStore } from "../../store/editorStore";
+import { useProjectAssetUrl } from "../../engine/useProjectAssetUrl";
 import { useStudioEnvironment } from "../lighting/studioEnvironment";
 import { AssetBoundary } from "../media/AssetBoundary";
 import { useSceneStaged } from "../stage/context";
@@ -37,16 +35,8 @@ function materialName(material: Material | Material[]): string | undefined {
 
 /** Loads a bundled handset glTF and maps a static project image onto its screen mesh; the export preamble awaits `preloadDeviceModels()` / `preloadProjectImages()` so a cold export never races a still-loading asset. See docs/determinism.md. A missing screen asset degrades to no mockup; never tear down the canvas tree. */
 export function DeviceMockup(props: DeviceMockupProps) {
-  // The owning project's id (see ProjectIdContext): the store's projectId flips to the target project one render before this scene unmounts on a project switch, and resolveAssetUrl against the wrong project throws mid-render (glob miss), tearing down the canvas tree.
-  const contextProjectId = useContext(ProjectIdContext);
-  const storeProjectId = useEditorStore((s) => s.projectId);
-  const projectId = contextProjectId ?? storeProjectId;
-  let url: string | null = null;
-  try {
-    url = resolveAssetUrl(projectId, props.screen);
-  } catch (e) {
-    console.warn(`[device] mockup screen "${props.screen}" unresolved:`, e);
-  }
+  // Resolved against the owning project (ProjectIdContext): the store's projectId flips to the target project one render before this scene unmounts on a project switch.
+  const url = useProjectAssetUrl(props.screen, "[device] mockup screen");
   if (!url) return null;
   return (
     <AssetBoundary key={url} label={props.screen}>

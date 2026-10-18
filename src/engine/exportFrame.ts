@@ -18,7 +18,12 @@ import { computeFormat } from "./format";
 import { yieldMacrotask } from "./macrotask";
 import { resolveOverlays } from "./overlayPlan";
 import { type ReadbackContext, readFrameOrThrow } from "./readback";
-import { buildSceneCameraTracks, type FrameCameraPlan, resolveFrameCameras } from "./sceneCamera";
+import {
+  buildSceneCameraTracks,
+  type FrameCameraPlan,
+  resolveFrameCameras,
+  sceneCameraTiming,
+} from "./sceneCamera";
 import { compareSpecOf, resolveCompareFrame } from "./sceneCompare";
 import { getSceneHosts } from "./sceneHostRegistry";
 import {
@@ -123,6 +128,7 @@ export function buildFramePlans(
     opts.sceneDocs ?? [],
     computeFormat(opts.format),
     sceneFloorYs,
+    sceneCameraTiming(opts),
   );
   const lightingTracks = opts.sceneThemes
     ? buildLightingTracks(opts.sceneThemes, opts.projectLighting, opts.sceneDocs ?? [])

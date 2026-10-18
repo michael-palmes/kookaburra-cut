@@ -12,7 +12,7 @@ import {
   useSyncExternalStore,
 } from "react";
 import { flushSync } from "react-dom";
-import { refreshWorkspaceAssets } from "../../engine/assetInventory";
+import { noteAssetWritten } from "../../engine/assetRevisions";
 import { useCameraEditStore } from "../../engine/cameraEditStore";
 import { useChartEditStore } from "../../engine/chartEditStore";
 import { useClockStore } from "../../engine/clock";
@@ -44,8 +44,8 @@ import { formatMediaDuration, fsUrl, type MediaMeta, mediaMeta } from "../../eng
 import { useObjectEditStore } from "../../engine/objectEditStore";
 import { optionPreviewClip, optionPreviewStill } from "../../engine/optionPreviews";
 import {
+  assetFileUrl,
   type LoadedProject,
-  resolveAssetPath,
   sceneFileStem,
   workspaceProjectPath,
 } from "../../engine/project";
@@ -150,7 +150,6 @@ import {
 import { TRANSITION_CATALOG } from "../../engine/transitionCatalog";
 import { useWebsiteEditStore } from "../../engine/websiteEditStore";
 import { DEFAULT_LOOP_BLEND_MS } from "../../present/cameraLoop";
-import { useAssetVersionStore } from "../../store/assetVersionStore";
 import { useUiStore } from "../../store/uiStore";
 import { formatFontString, parseFontString } from "../../theme/fontRef";
 import { preloadAppFonts } from "../../theme/fonts";
@@ -2498,7 +2497,7 @@ function mediaSourceSummary(
 function inspectorAssetUrl(projectId: string, src: string): string {
   if (/^(?:[a-z][a-z0-9+.-]*:|\/)/i.test(src)) return src;
   try {
-    return fsUrl(resolveAssetPath(projectId, src));
+    return assetFileUrl(projectId, src);
   } catch {
     return src;
   }
@@ -7071,8 +7070,7 @@ export function SceneTab({
       source: "snapshot" | "image",
     ) => {
       if (!website) return;
-      await refreshWorkspaceAssets(project.id);
-      useAssetVersionStore.getState().bump(project.id, result.src);
+      await noteAssetWritten(project.id, result.src);
       await patchDoc(
         (next) => {
           if (!next.website) return;
@@ -8642,9 +8640,11 @@ export function SceneTab({
         screenMediaPreviewUrl={screen.previewUrl}
         screenMediaAspectRatio={screen.aspectRatio}
         screenMediaDetail={screen.detail}
+        screenMediaDurationMs={deviceMediaMeta?.durationMs}
         coverMediaPreviewUrl={cover.previewUrl}
         coverMediaAspectRatio={cover.aspectRatio}
         coverMediaDetail={cover.detail}
+        coverMediaDurationMs={coverMediaMeta?.durationMs}
         slot={project.slots[sceneIndex]}
         comparison={
           hasComparison(doc) ? { side: compareSideActive, onSideChange: setCompareSide } : undefined

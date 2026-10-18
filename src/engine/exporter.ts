@@ -16,17 +16,19 @@ import { awaitEmojiRastersIdle, preloadEmojiRasters } from "../toolkit/text/emoj
 import { preloadText3dFonts } from "../toolkit/text3d/fonts";
 import { applyCameraPose, baseCameraPose, type CameraKeyframe } from "./cameraTrack";
 import { useChartEditStore } from "./chartEditStore";
+import { CLIP_ACTIVE_LEAD_MS } from "./clipChunks";
+import { clipFrameIndex, deviceClipFrameIndex } from "./clipFrame";
 import {
   awaitVideoFramesReady,
+  type ClipDemand,
   everydayClipLane,
   laneForCodec,
-  preextractClips,
-  registerClip,
+  prepareExportClips,
   setClipLane,
 } from "./clips";
 import { useClockStore } from "./clock";
 import { useDeviceEditStore } from "./deviceEditStore";
-import { deviceVideoSources } from "./deviceScreens";
+import { deviceVideoSlots } from "./deviceScreens";
 import { preloadEffectLuts } from "./effects";
 import {
   collectEnvironmentSources,
@@ -52,6 +54,7 @@ import { useImageEditStore } from "./imageEditStore";
 import { HELPER_LAYER } from "./lightEditStore";
 import { yieldMacrotask } from "./macrotask";
 import type { MotionBlurSettings } from "./motionBlur";
+import type { ProjectMusic } from "./musicTime";
 import { useObjectEditStore } from "./objectEditStore";
 import { preloadOverlayPanelImages } from "./overlayPanelTexture";
 import { overlayPanelImageSources } from "./overlayPlan";
@@ -96,6 +99,8 @@ export interface ExportOptions {
   cameraTrack?: CameraKeyframe[];
   /** Sidecar scene docs, index-aligned with `slots`; per-scene camera tracks live here. Absent (or no doc declares a track) means the legacy camera path runs unchanged. */
   sceneDocs?: (SceneDoc | undefined)[];
+  /** The project's authored music (`LoadedProject.music`); resolves musical camera kick positions. Absent leaves only numeric kick times. */
+  music?: ProjectMusic;
   /** The project's theme + resolved per-scene themes; drive the per-target scene-state plan (background/environment). Absent means the root scene is never touched (the byte-identical legacy paths). */
   theme?: Theme;
   sceneThemes?: Theme[];
@@ -257,6 +262,63 @@ export async function awaitSceneHostsCommitted(expected: number): Promise<void> 
 }
 
 /**
+ * Every sidecar-declared video per source, each with the frames its slot shows over the scene window `[−500, duration + 500]` ms (the consumers' near gate): device screens through `deviceClipFrameIndex`, media entries and layered-screenshot cards through `clipFrameIndex` with their loop semantics, on both comparison sides. Layered-screenshot cards and screens behind a model's suspense mount after the last barrier, so the barrier must already know them. A screen timed by a fold opening (`startOn: "open"`) is declared with no demand: its mounted consumer covers it, else it takes the whole clip.
+ */
+function declaredClipDemands(opts: ExportOptions): Map<string, ClipDemand[]> {
+  const declared = new Map<string, ClipDemand[]>();
+  const declare = (src: string, demand: ClipDemand | null) => {
+    const abs = resolveAssetPath(opts.projectId, src);
+    const list = declared.get(abs) ?? [];
+    if (demand) list.push(demand);
+    declared.set(abs, list);
+  };
+  const docs = [
+    ...(opts.sceneDocs ?? []).map((doc, i) => ({ doc, slot: opts.slots[i] })),
+    ...(opts.compareBDocs ?? []).map((doc, i) => ({ doc, slot: opts.slots[i] })),
+  ];
+  for (const { doc, slot } of docs) {
+    if (!doc) continue;
+    const window: [number, number] | null = slot
+      ? [-CLIP_ACTIVE_LEAD_MS, slot.durationMs + CLIP_ACTIVE_LEAD_MS]
+      : null;
+    const clip = (startMs: number, loop: boolean): ClipDemand | null =>
+      window && {
+        window,
+        sceneStartMs: slot?.startMs ?? 0,
+        frameAt: (ms, info) => clipFrameIndex(ms, startMs, info.fps, info.frameCount, loop),
+      };
+    for (const layer of doc.layeredScreenshot?.layers ?? []) {
+      for (const item of layer.items ?? []) {
+        if (item.kind === "screen" && item.media === "video" && typeof item.src === "string") {
+          declare(item.src, clip(typeof item.startMs === "number" ? item.startMs : 0, false));
+        }
+      }
+    }
+    for (const entry of resolveSceneDocMedia(doc)) {
+      if (entry.kind === "video") {
+        declare(entry.src, clip(entry.video?.startMs ?? 0, entry.video?.loop === true));
+      }
+    }
+    for (const device of doc.devices ?? []) {
+      for (const media of deviceVideoSlots(doc, device)) {
+        declare(
+          media.src,
+          window && media.startOn !== "open"
+            ? {
+                window,
+                sceneStartMs: slot?.startMs ?? 0,
+                frameAt: (ms, info) =>
+                  deviceClipFrameIndex(ms, 0, media, info.fps, info.frameCount),
+              }
+            : null,
+        );
+      }
+    }
+  }
+  return declared;
+}
+
+/**
  * Deterministic export loop: reuses the live preview canvas, sizing its drawing buffer to the export resolution, then for each frame seeks the clock, awaits typesetting, renders the frame, reads the pixels, and streams them to the ffmpeg sidecar. Frame N is a pure function of the frame index, no wall clock, no UI state. See docs/determinism.md.
  *
  * @returns the output file path reported by the native side.
@@ -274,6 +336,8 @@ export async function exportPreamble(
   opts: ExportOptions,
   gl: WebGLRenderer,
   onStep?: (step: number) => void,
+  /** A one-frame capture's project time: clips extract only the frames that instant shows. */
+  atMs?: number,
 ): Promise<void> {
   configureDeterministicEngine();
   // Explicit, not incidental: an object, chart, device, image or terminal gizmo selected when an export starts must never reach a frame.
@@ -298,29 +362,9 @@ export async function exportPreamble(
   );
   // Deterministic codecs read the software-decoded frame lane (the one baselines were recorded from); fast-draft hardware codecs keep the everyday hw lane. Restored in the run's finally, preamble throws included.
   setClipLane(laneForCodec(opts.encode?.codec ?? opts.codec));
-  // Layered-screenshot video cards mount behind their image Suspense, so render-time registration can miss a cold run's extract barrier; every sidecar-declared screen video registers here explicitly (docs/determinism.md).
-  for (const doc of opts.sceneDocs ?? []) {
-    for (const layer of doc?.layeredScreenshot?.layers ?? []) {
-      for (const item of layer.items ?? []) {
-        if (item.kind === "screen" && item.media === "video" && typeof item.src === "string") {
-          registerClip(resolveAssetPath(opts.projectId, item.src));
-        }
-      }
-    }
-  }
-  // Every video media entry and device screen video, on both comparison sides: a fallback-mounted entry, or a screen behind its model's suspense, is only in the tree after the last barrier, so the extract barrier below must already know about it.
-  for (const doc of [...(opts.sceneDocs ?? []), ...(opts.compareBDocs ?? [])]) {
-    for (const entry of resolveSceneDocMedia(doc)) {
-      if (entry.kind === "video") registerClip(resolveAssetPath(opts.projectId, entry.src));
-    }
-    for (const device of doc?.devices ?? []) {
-      for (const src of deviceVideoSources(doc, device)) {
-        registerClip(resolveAssetPath(opts.projectId, src));
-      }
-    }
-  }
-  // Pre-extracts every VideoClip's frame sequence before frame 0, mirroring font preload so no frame races an async decode; extraction is cached, so this is a no-op after the first.
-  await preextractClips();
+  // Extracts, before frame 0, the chunks every sidecar-declared video needs over its scene window, mirroring font preload so no frame races an async decode; cached chunks make it a no-op after the first.
+  const declaredClips = declaredClipDemands(opts);
+  await prepareExportClips(declaredClips, { consumers: false, atMs });
   onStep?.(1);
   // Fetches + parses bundled 3D models and this project's screen images (and warms drei's caches) before frame 0, so a cold export never captures a still-loading DeviceMockup; no-op once cached. See docs/determinism.md.
   await preloadDeviceModels();
@@ -384,8 +428,8 @@ export async function exportPreamble(
   onStep?.(3);
   // Last barrier: the scenes must actually be in the canvas tree. A cold-load suspense (shared boundary) can still be holding every scene out of the graph at this point, but the preloads above have resolved its assets so the retry commit is imminent; wait for it or frame 0 captures a scene-less frame. See awaitSceneHostsCommitted.
   await awaitSceneHostsCommitted(opts.slots.length);
-  // A second extract pass for clips registered by primitives that only mounted at the barrier above (a video background or code-authored VideoClip behind the shared suspense); a no-op when the first pass already knew them all.
-  await preextractClips();
+  // A second extract pass over every mounted consumer's own window and held frame: clips registered by primitives that only mounted at the barrier above (a video background or code-authored VideoClip behind the shared suspense), plus the timing only a mounted consumer knows; a no-op when the first pass already covered them all.
+  await prepareExportClips(declaredClips, { consumers: true, atMs });
   // In-world TitleBlocks measure their own title/subtitle blocks, and their props only exist once the scenes are in the tree, so this barrier runs last: settle those typesets and let the tree re-render with them, or frame 0 captures the pre-measure layout (engine/titleBlockMeasure).
   await awaitTitleMeasuresSettled();
 }
@@ -615,7 +659,7 @@ async function captureFrameRgbaHeld(
   let restoreCameraPose: (() => void) | null = null;
   setExporting(true);
   try {
-    await exportPreamble(opts, gl);
+    await exportPreamble(opts, gl, undefined, tMs);
     const sceneFloorYs = snapshotSceneStageFloors(opts.slots.length);
 
     const { width, height } = opts.format;

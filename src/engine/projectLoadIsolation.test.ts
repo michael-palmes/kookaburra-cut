@@ -40,8 +40,9 @@ vi.mock("./sceneCompiler", () => ({
 vi.mock("./projectTrust", () => ({ ensureProjectTrusted: vi.fn(async () => {}) }));
 vi.mock("./sceneIds", () => ({ ensureUniqueSceneIds: vi.fn(async () => null) }));
 vi.mock("./sampleAssets", () => ({ ensureSampleAssets: vi.fn(async () => {}) }));
-vi.mock("./assetInventory", () => ({
-  refreshWorkspaceAssets: vi.fn(async () => {}),
+vi.mock("./assetRevisions", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./assetRevisions")>()),
+  refreshWorkspaceAssets: vi.fn(async () => []),
   workspaceAssetMissing: () => false,
 }));
 vi.mock("./sceneDoc", () => ({ loadSceneDoc: vi.fn(async () => undefined) }));

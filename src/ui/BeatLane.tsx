@@ -8,25 +8,66 @@ import {
 } from "react";
 import type { BeatAnalysis } from "../engine/beatAnalysis";
 import {
+  type EffectiveBeatGrid,
+  effectiveBeatGrid,
   effectiveKeyMoments,
   projectBeatGrid,
   retryBeatAnalysis,
   useBeatStore,
 } from "../engine/beatState";
+import { makeBarOneGrid, setDownbeatGrid } from "../engine/musicGridEdit";
 import {
   AUDIO_MARKERS_VERSION,
+  type AudioGridSpec,
   type AudioMarkersSpec,
   type LoadedProject,
 } from "../engine/project";
 import { activeSceneIndex } from "../engine/sceneTimeline";
 import { ContextMenu, type ContextMenuItem, type ContextMenuState } from "./ContextMenu";
+import { MusicGridIcon } from "./musicGridIcons";
 import { msFromTrackX, playheadFraction, type SceneCellSpan, sceneCellSpans } from "./scrubMath";
 
 /** Marker drags snap to the beat grid within this many screen px (the TrackLane radius). */
 const SNAP_PX = 8;
 const DRAG_THRESHOLD_PX = 3;
 
-/** Beat lane: soundtrack waveform, beat grid and key-moment diamonds directly above the scene strip. It lives in the playback bar's centre column and maps every time through the same span maths as the playhead, so markers sit exactly on the scene cuts below. Click a diamond to jump there; drag to nudge (first edit copies the detected set into `audio.markers`); double-click adds; right-click deletes or resets. Editor chrome only; the export path reads none of it. */
+/** The lane menu's authored-grid actions at a clicked track time: "Set downbeat here" moves the phase and keeps bar numbers, "Make this bar 1" renumbers from the nearest downbeat; both start a grid from the detected tempo when there is none. */
+export function beatGridMenuItems({
+  grid,
+  analysis,
+  trackMs,
+  onSetGrid,
+}: {
+  grid: AudioGridSpec | undefined;
+  analysis: BeatAnalysis | null;
+  /** The clicked time in track ms (project ms plus the start offset). */
+  trackMs: number;
+  onSetGrid: (grid: AudioGridSpec) => void;
+}): ContextMenuItem[] {
+  const downbeat = setDownbeatGrid(grid, analysis, trackMs);
+  const barOne = makeBarOneGrid(grid, analysis, trackMs);
+  const title = grid ? undefined : "Needs a detected tempo";
+  return [
+    {
+      id: "grid-downbeat",
+      label: "Set downbeat here",
+      icon: <MusicGridIcon type="downbeat" />,
+      disabled: !downbeat,
+      title: downbeat ? undefined : title,
+      onSelect: () => downbeat && onSetGrid(downbeat),
+    },
+    {
+      id: "grid-bar-one",
+      label: "Make this bar 1",
+      icon: <MusicGridIcon type="barone" />,
+      disabled: !barOne,
+      title: barOne ? undefined : title,
+      onSelect: () => barOne && onSetGrid(barOne),
+    },
+  ];
+}
+
+/** Beat lane: soundtrack waveform, beat grid and key-moment diamonds directly above the scene strip. It lives in the playback bar's centre column and maps every time through the same span maths as the playhead, so markers sit exactly on the scene cuts below. Click a diamond to jump there; drag to nudge (first edit copies the detected set into `audio.markers`); double-click adds; right-click deletes or resets, or sets the authored grid's downbeat. The authored `audio.grid` is the grid drawn and snapped to whenever there is one. Editor chrome only; the export path reads none of it. */
 export function BeatLane({
   project,
   durationMs,
@@ -35,6 +76,7 @@ export function BeatLane({
   onUpdateMarkers,
   onAddCameraKey,
   onSyncCamera,
+  onSetGrid,
 }: {
   project: LoadedProject;
   durationMs: number;
@@ -48,6 +90,8 @@ export function BeatLane({
   onAddCameraKey: (ms: number) => void;
   /** Generate the owning scene's camera track from its key beats. */
   onSyncCamera: (ms: number) => void;
+  /** Write the authored `audio.grid` (the grid menu items); absent hides them. */
+  onSetGrid?: (grid: AudioGridSpec) => void;
 }) {
   const status = useBeatStore((s) => s.status);
   const analysis = useBeatStore((s) => s.analysis);
@@ -64,20 +108,22 @@ export function BeatLane({
     () => effectiveKeyMoments(analysis, project.audio?.markers, startOffsetMs, durationMs),
     [analysis, project, startOffsetMs, durationMs],
   );
-  const grid = useMemo(
-    () => projectBeatGrid(analysis, startOffsetMs, durationMs),
-    [analysis, startOffsetMs, durationMs],
+  const music = project.music;
+  const effective = useMemo(
+    () => effectiveBeatGrid(analysis, music, startOffsetMs, durationMs),
+    [analysis, music, startOffsetMs, durationMs],
   );
+  const grid = effective.beats;
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const draw = () => drawWave(canvas, analysis, spans, durationMs, startOffsetMs);
+    const draw = () => drawWave(canvas, analysis, effective, spans, durationMs, startOffsetMs);
     draw();
     const ro = new ResizeObserver(draw);
     ro.observe(canvas);
     return () => ro.disconnect();
-  }, [analysis, spans, durationMs, startOffsetMs]);
+  }, [analysis, effective, spans, durationMs, startOffsetMs]);
 
   // Idle means no analysis was ever kicked for this window (no audio project, or an autorun); no lane.
   if (status === "idle") return null;
@@ -89,13 +135,13 @@ export function BeatLane({
   };
 
   /** Snap in px space (the mapping is non-linear): the nearest grid beat within SNAP_PX wins. */
-  const snapToGrid = (rawMs: number): number => {
+  const snapToGrid = (rawMs: number, beats: readonly number[] = grid): number => {
     const rect = laneRef.current?.getBoundingClientRect();
     if (!rect || rect.width <= 0) return rawMs;
     const rawPx = playheadFraction(rawMs, durationMs, spans) * rect.width;
     let best = rawMs;
     let bestD = SNAP_PX;
-    for (const b of grid) {
+    for (const b of beats) {
       const d = Math.abs(playheadFraction(b, durationMs, spans) * rect.width - rawPx);
       if (d < bestD) {
         bestD = d;
@@ -156,6 +202,21 @@ export function BeatLane({
     const diamond = (e.target as HTMLElement).closest<HTMLElement>(".beat-diamond");
     const tMs = diamond ? Number(diamond.dataset.tms) : laneMsAt(e.clientX);
     if (tMs === null || Number.isNaN(tMs)) return;
+    // A downbeat set here lands on the detected onset under the pointer when there is one.
+    const onsetMs = diamond
+      ? tMs
+      : snapToGrid(tMs, projectBeatGrid(analysis, startOffsetMs, durationMs));
+    const gridItems: (ContextMenuItem | "separator")[] = onSetGrid
+      ? [
+          "separator",
+          ...beatGridMenuItems({
+            grid: project.audio?.grid,
+            analysis,
+            trackMs: onsetMs + startOffsetMs,
+            onSetGrid,
+          }),
+        ]
+      : [];
     setMenu({
       x: e.clientX,
       y: e.clientY,
@@ -169,6 +230,7 @@ export function BeatLane({
               danger: true,
               onSelect: () => deleteMarker(tMs),
             },
+            ...gridItems,
             "separator",
             resetItem,
           ]
@@ -176,6 +238,7 @@ export function BeatLane({
             { id: "add", label: "Add marker here", onSelect: () => addMarker(snapToGrid(tMs)) },
             "separator",
             ...cameraItemsFor(tMs),
+            ...gridItems,
             "separator",
             resetItem,
           ],
@@ -265,10 +328,11 @@ export function BeatLane({
   );
 }
 
-/** Repaint the waveform and beat grid; per-column sampling through `msFromTrackX` keeps the drawing aligned with the non-linear scene cells. */
+/** Repaint the waveform and beat grid (bar lines stronger); per-column sampling through `msFromTrackX` keeps the drawing aligned with the non-linear scene cells. */
 function drawWave(
   canvas: HTMLCanvasElement,
   analysis: BeatAnalysis | null,
+  grid: EffectiveBeatGrid,
   spans: readonly SceneCellSpan[],
   durationMs: number,
   startOffsetMs: number,
@@ -282,26 +346,31 @@ function drawWave(
   if (!ctx) return;
   ctx.scale(dpr, dpr);
   ctx.clearRect(0, 0, rect.width, rect.height);
-  if (!analysis || durationMs <= 0) return;
+  if (durationMs <= 0) return;
   const styles = getComputedStyle(canvas);
   const waveColour = styles.getPropertyValue("--text-tertiary").trim() || "#8a8a8a";
   const gridColour = styles.getPropertyValue("--border-default").trim() || "#555555";
 
+  const strokeLines = (times: readonly number[], alpha: number, minGapPx: number) => {
+    ctx.globalAlpha = alpha;
+    ctx.beginPath();
+    let lastX = -minGapPx;
+    for (const t of times) {
+      const x = Math.round(playheadFraction(t, durationMs, spans) * rect.width) + 0.5;
+      if (x - lastX < minGapPx) continue;
+      lastX = x;
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, rect.height);
+    }
+    ctx.stroke();
+  };
   ctx.strokeStyle = gridColour;
-  ctx.globalAlpha = 0.55;
   ctx.lineWidth = 1;
-  ctx.beginPath();
-  let lastX = -8;
-  for (const beat of projectBeatGrid(analysis, startOffsetMs, durationMs)) {
-    const x = Math.round(playheadFraction(beat, durationMs, spans) * rect.width) + 0.5;
-    if (x - lastX < 4) continue;
-    lastX = x;
-    ctx.moveTo(x, 0);
-    ctx.lineTo(x, rect.height);
-  }
-  ctx.stroke();
+  strokeLines(grid.beats, 0.55, 4);
+  strokeLines(grid.bars, 0.95, 8);
   ctx.globalAlpha = 1;
 
+  if (!analysis) return;
   const { hopMs, values } = analysis.envelope;
   const mid = rect.height / 2;
   ctx.fillStyle = waveColour;

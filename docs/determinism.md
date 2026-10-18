@@ -48,7 +48,7 @@ GPU/driver, not across fleets.)
 | **A GPU-process stall mid-readback** (2026-10-01: the unified log shows `WebContent Connection::waitForSyncReply: Timed-out while waiting for reply for RemoteGraphicsContextGL_ReadPixelsSharedMemory`, then a GPU process restart). The timed-out `readPixels` delivers no pixels: a fresh buffer comes back all zero (the black preview cards), and the export reuses one buffer, so there a stall could silently repeat the previous frame instead. The restored context renders with every render target emptied (PMREM environments, mirror bakes, cached by content key and never rebuilt), so later frames look plausible and are wrong. Verify cannot be trusted with it: stalls show only as a mismatch, and a restart before both passes is EQUAL and wrong. | `readFrameOrThrow` (`engine/readback.ts`) zeroes the reused buffer before every export and `captureFrameRgba` readback, then fails the run, before the frame reaches `push_frame`, on an all-zero result, a lost context, or any context loss on the live canvas since it opened (`ExportBridge` counts `webglcontextlost` per canvas). Exports and captures also refuse to start on such a canvas. The error reads "GPU stalled (…): … quit and reopen Kookaburra Cut, then rerun"; autoruns are a fresh boot, so rerunning `kookaburra:run` is the reopen. A delivered read overwrites every byte, so good frames are untouched (gate:merge EQUAL 2026-10-03). |
 | **A poisoned render window kept alive by queued requests** (a multi-agent session, 2026-10-16): after a stall the render window correctly refused every capture, but idle teardown waited for an empty queue and agents' retries kept it alive for about 50 minutes | The capture service answers `gpuStalled` and destroys the window, so the next request gets a fresh realm; recycles back off 0, 15 and 60 s and the GPU counts as wedged after three in 10 minutes; a silent-window watchdog destroys a window that sends no first beat within 30 s of its create (90 s in dev builds), or none for 45 s while render requests wait, and counts it like any stall (reason `silent`); a wake from sleep restarts its clocks, and kb's waiting line names the restart. Measured 2026-10-17: a killed GPU process recovers through a fresh window in about 4 s; one frozen and resumed did not recover within 5 minutes, so wedged means quit and reopen |
 | **A lit primitive's environment rebuilt every frame** (measured 2026-10-02): `Device`, `DeviceMockup` and `HeroObject` each mounted drei's `<Environment frames={1}>`, whose layout effect re-runs whenever its children change, and the parent re-renders every clock tick, so every mounted lit primitive re-rendered its cube (six renders) and rebuilt its PMREM every frame: a 2 to 3x export slowdown and about 4 MB of GPU memory each. On a cold boot (hidden window or `--cold`, no preview frames) frame 0 used the mount-time build and every later frame a mid-run rebuild, and the two differed on a few highlight pixels (2 px, 131 vs 187), so cold pass A diverged from pass B at frame 0: a gate that passed or failed on window visibility. | One studio environment per renderer (`toolkit/lighting/studioEnvironment.ts`): the same three Lightformer rects, one cube render and one PMREM, built at the first lit mount and held on the root scene while any lit primitive is mounted (restored when the last unmounts). Nothing rebuilds it per frame, so cold and warm runs light devices identically. Frame 0 also draws twice and captures the second, so no frame is ever a run's first draw. |
-| **A screen video registered after the extract barrier** (2026-10-10): a Device's screen clip registered only when the Device mounted, behind its model's suspense. With a cold clip cache (an acceptance bundle's first launch: it owns its own `$APPDATA`) the mount landed after `preextractClips` had read the registry, nothing awaited the extraction, and the consumer's pending readiness resolved at once, so pass A's frame 0 captured the black pending screen and pass B (cache now warm) the video. Not `--cold` or packaging: a dev run with the clip's cache dirs moved aside fails the same way. | The preamble registers every sidecar device video (`deviceVideoSources`: both displays, both comparison sides) beside the media entries, and runs `preextractClips` again after `awaitSceneHostsCommitted` for anything registered at mount. A pending consumer's readiness (`pendingFrameReady`) waits for its current extraction (following a lane switch) and then its first completed bind; a cancelled bind run never releases it, a failed extraction or an unmount does, and a bind that has not started `FIRST_BIND_STALL_MS` after its extraction fails the run (one timer: hidden pages throttle spin chains). `useClipEntry` re-renders even when extraction settles between render and effect. |
+| **A screen video registered after the extract barrier** (2026-10-10): a Device's screen clip registered only when the Device mounted, behind its model's suspense. With a cold clip cache (an acceptance bundle's first launch: it owns its own `$APPDATA`) the mount landed after `preextractClips` had read the registry, nothing awaited the extraction, and the consumer's pending readiness resolved at once, so pass A's frame 0 captured the black pending screen and pass B (cache now warm) the video. Not `--cold` or packaging: a dev run with the clip's cache dirs moved aside fails the same way. | The preamble registers every sidecar device video (`deviceVideoSlots`: both displays, both comparison sides) beside the media entries, and runs `prepareExportClips` again after `awaitSceneHostsCommitted` for anything registered at mount. A pending consumer's readiness (`pendingFrameReady`) waits for its current extraction (following a lane switch) and then its first completed bind; a cancelled bind run never releases it, a failed extraction or an unmount does, and a bind that has not started `FIRST_BIND_STALL_MS` after its extraction fails the run (one timer: hidden pages throttle spin chains). `useClipEntry` re-renders even when extraction settles between render and effect. |
 | **Dev React's performance entries** (React 19.2 development builds, which every autorun and gate runs): react-dom and r3f's reconciler record a `performance.measure` with a props diff for every re-render whose props changed, and WebKit never evicts them. Every mounted scene re-renders per tick, about 1 MB a frame on a 40-scene project, so a Verify reached the 4 GB WebContent ceiling near frame 1250, and live preview playback of `ws:device-env-40` in `pnpm tauri dev` grew about 1.3 GB a minute (measured 2026-10-09). The packaged app runs production React and records none. | Every window entry installs a dev-only drain (`installDevPerformanceDrain` in `engine/devPerformance.ts`: a `PerformanceObserver` that clears marks and measures as they land), so preview, Present, the editor windows and DOM-only re-renders are all covered; the export loop also clears them synchronously every frame. The same preview playback holds flat at 1.2 to 1.6 GB. |
 | **WebKit kills the WebContent process near its 4 GB footprint ceiling** (measured 2026-07-25: a 4K verify's page footprint rode at ~3.9–4.5 GB, dominated by never-freed compositor/composer MSAA render-target pools, ~285–886 MB each; when a periodic check under system memory pressure catches it over 4096 MB the process is killed ("Unable to shrink memory footprint … Killed" in the unified log) and wry auto-reloads the page; window focus does NOT lift the ceiling) | Export frames release the pools they did not touch (`releaseIdlePools` in compositor.ts, `releaseComposer` in effects.ts; the multi-project autorun also resets between legs), dropping the 4K plateau to ~3.2 GB; the SDR pair is lazy so fx projects never allocate it, and verify releases confirmed-identical retained frames early. Transient fx-transition-window spikes can still crest ~4.1 GB on heavy projects (launch-2026), so `runAutoRun`'s reload latch stays the backstop: one benign reload tolerated, then a fast, retryable failure naming this mode. Deeper shave if ever needed: a shared MSAA scratch target with plain resolve textures for the A/B pairs. Diagnose with `log stream --predicate 'process == "kookaburra-cut" AND composedMessage CONTAINS "footprint"'`. |
 | **Stills: Present holds leaking into a video export or capture.** A held scene's text, groups and decorations freeze at the hold, so a frame rendered while the stills export holds scenes is not a pure function of `t`. | Guarded: `exportProjectHeld` and `captureFrameRgbaHeld` refuse to start while `hasSceneHolds()` (`assertNoSceneHolds`). The stills run writes its holds once (`replaceSceneHolds`) and clears them in `finally` before `setExporting(false)`, so the preview never draws a held scene either. |
@@ -62,11 +62,11 @@ GPU/driver, not across fleets.)
 ```
 configureDeterministicEngine();               // anime.js: no rAF
 await preloadAppFonts();                      // SDF glyphs ready before frame 0 (SEQUENTIAL: atlas order is contract)
-await preextractClips();                      // ffmpeg → CFR frame sequences on disk (cached)
+await prepareExportClips(declared, …);        // ffmpeg → the CFR frame chunks each slot shows (cached)
 // …models/images/LUTs/environments preloads…
 await awaitSceneHostsCommitted(slots.length); // LAST barrier: the scenes are actually IN the canvas
                                               // (a cold-mount suspense can hold ALL of them out)
-await preextractClips();                      // second pass: clips registered by primitives that mounted late
+await prepareExportClips(declared, …);        // second pass: every mounted consumer's own frames
 const total = Math.max(1, Math.round(durationMs / 1000 * fps));
 const rgba  = new Uint8Array(width * height * 4);   // one reused buffer
 gl.setSize(width, height, false);             // size the preview canvas to 4K for the run
@@ -204,15 +204,79 @@ endpoints preserved; absent means linear, so stored specs keep exact bytes.
 
 `VideoClip` renders a source video without ever seeking an `HTMLVideoElement`:
 
-- **Pre-extract, once, cached.** On demand (first preview or export), the Rust
-  `extract_clip_frames` command runs the ffmpeg sidecar to decode the source into
-  a **constant-frame-rate** PNG sequence at 60fps (`-vf fps=60 -fps_mode cfr`).
-  This normalises variable-frame-rate sources (e.g. screen recordings) so
-  sampling is exact. Frames land in `$APPDATA/cache/clips/<sha256>-60fps/` keyed
-  by the source-file hash; a `.done` marker means a re-run reuses them.
-  PNGs are written with `-compression_level 1 -pred 0` (identical pixels,
-  roughly 2x faster and 2x larger; only decoded pixels matter downstream).
+- **Extract on demand, in chunks, cached.** The ffmpeg sidecar decodes the
+  source into a **constant-frame-rate** PNG sequence at 60fps, the frames the
+  whole-clip extraction (`-vf fps=60 -fps_mode cfr`) would write. This
+  normalises variable-frame-rate sources (e.g. screen recordings) so sampling is
+  exact. Frames land in `$APPDATA/cache/clips/<sha256>-60fps/frame-%05d.png`
+  keyed by the source-file hash. PNGs are written with
+  `-compression_level 1 -pred 0` (identical pixels, roughly 2x faster and 2x
+  larger; only decoded pixels matter downstream). `src-tauri/src/clip_cache.rs`,
   `engine/clips.ts`.
+  - `clip_info` hashes the source and runs a **decode-only count pass**
+    (`fps=60` + cfr into the null muxer, plus one PNG for the size) into
+    `count.json` `{ frames, width, height }`, so `frameCount` is the whole
+    clip's count before any frame exists.
+  - Frames fill in **120-frame chunks** (`ensure_clip_chunks`), each extracted
+    with **no seek** and trimmed by frame number:
+    `fps=60:start_time=0,trim=start_frame=A:end_frame=B,setpts=PTS-STARTPTS`
+    with `-fps_mode passthrough -start_number A`. Input seeks are not
+    frame-exact (a fixed pre-roll fails across a held frame), and
+    `start_time=0` is what makes the fps filter pad a late first frame the way
+    the whole extraction's cfr sync does (without it every index after an
+    11 ms late first frame shifts by one). Consecutive missing chunks run as one
+    pass; a second request for a chunk waits for the first. Each chunk is staged
+    inside the entry, renamed in frame by frame and marked `.chunk-<A>`; a short
+    pass fails loudly. Every chunk present means `.done`, so an entry from
+    before chunking is a valid whole hit (and is adopted on sight: its
+    `count.json` and markers are written, its frames untouched).
+  - **The proof:** the `#[ignore]` `chunk_barcode_conformance` test
+    (`cargo test --manifest-path src-tauri/Cargo.toml --lib chunk_barcode_conformance -- --ignored`)
+    extracts CFR 60, 30 fps, a VFR clip with a four-second held frame, a
+    late-start clip and an HEVC clip VideoToolbox decodes differently (so the
+    hardware lane is shown to be its own) whole and in chunks, on both lanes, one chunk per pass (last
+    first, so each is cold of its neighbours) and as one run, and demands equal
+    PNG file bytes and decoded pixels for every frame, chunk boundaries 0, 120
+    and the last partial chunk included, plus the count pass equal to the PNG
+    count. The bytes are identical, so the cache key keeps no argv version.
+  - **The export preamble awaits exactly what it binds** (`prepareExportClips`,
+    twice). The first pass extracts each sidecar slot's frames over its scene
+    window `[−500, duration + 500]` ms (the consumers' near gate): device screens
+    through `deviceClipFrameIndex`, media entries and layered-screenshot cards
+    through `clipFrameIndex` with their loop semantics, both comparison sides. The
+    pass after `awaitSceneHostsCommitted` adds every mounted consumer's own
+    mapping over its window and the frame it holds off the playhead; a declared
+    source nobody can time (a screen started by a fold opening, still behind its
+    model's suspense) takes the whole clip. A window too long to sample takes the
+    whole clip too, which covers a loop and a held last frame. Sampling every
+    1 ms is exact, since no clip frame lasts under 1.04 ms (60 fps at 16x). A
+    one-frame capture (a thumb, a bridge capture) takes only the frames its
+    instant shows.
+    Nothing extracts ahead of need, so a chunk missed by both passes still
+    extracts inside the frame's own `videoFrameReady` barrier (logged), and a
+    chunk that cannot be extracted fails the export rather than capturing black.
+  - **Preview** asks for a missing chunk when it binds a frame there and holds
+    the previous bound frame meanwhile; no read-ahead (decode is main-thread
+    work, and prefetching was measured worse once). A load its consumer moved
+    past while the chunk extracted is dropped before decode. The preview JPEG
+    tier (`ensure_clip_previews`) is made per chunk, after playback first binds
+    the chunk's PNGs.
+  - **The cap:** Settings holds `clipCacheCapGb` (default 20). After an
+    extraction pushes the cache past it, whole chunks go least recently used
+    first (a chunk's marker mtime, touched on read at most once a minute) down to
+    90% of the cap. Each window pins the entries its mounted clips and a running
+    export or capture use (`set_clip_cache_pins`), and those are never evicted.
+    Eviction waits while another terminal run is queued
+    (`~/Kookaburra Cut/_autorun/queue`: other sessions' gates read this cache)
+    or an export runs; Settings' Clear is refused mid-export and deferred while
+    another run is queued. A reader whose chunk another app instance evicted
+    extracts it again, once.
+  - **Pending conforms:** a clip whose file a conform job is still writing
+    (`clip_conform_pending`) waits with no extraction, no error and no texture;
+    `clipPendingState(srcAbs)` gives consumers its progress, and the job's landing
+    (`media-changed` with `origin: "conform"`) releases it. An export waits for
+    it, with a status line, and fails with a clear message after 15 minutes or
+    when the conform fails.
 - **Two decode lanes.** VideoToolbox hardware decode is measurably NOT
   pixel-identical to software decode, so extraction is lane-split: preview and
   hardware fast-draft exports use the `hw` lane (`-hwaccel videotoolbox`, cache
@@ -242,6 +306,12 @@ endpoints preserved; absent means linear, so stored specs keep exact bytes.
   capturing black. The clip is an
   ordinary mesh in its `<SceneHost>` group, so it flows through the compositor's
   fast and transition paths unchanged.
+- **Conformed sources.** The ingest conform (`conform.rs`) swaps a flagged
+  recording for a constant 60 fps libx264 mezzanine before a scene uses it. The
+  export path is untouched: the mezzanine is an ordinary clip with fixed bytes,
+  written once (staged in `assets/.kc-render/`, renamed into place) and never
+  re-encoded behind a project's back. Existing clips are flagged, not migrated,
+  so a hash moves only when someone conforms a clip a scene already shows.
 
 Layout uses `fit` (`contain` letterboxes, `cover` fills+crops) computed from
 `useFormat().frame` and the clip aspect. One clip serves every aspect. Clips are
@@ -294,6 +364,10 @@ the mix like every pixel. Rules:
   export/autorun: `isExporting()` guards every state change and tick. The gain
   envelope mirrors the qsin afade curves per clock tick. The mux is the only
   mixdown that counts.
+- **Song analysis never feeds render.** The beat lane's and `<exe> song
+  analyse`'s output (`src-tauri/src/song/`, cached as `<sha>-v2.json`) is
+  editor and agent guidance only; an autorun never starts it, and only an
+  authored `audio.grid` copied from it reaches a frame.
 
 ## Device screens
 
@@ -533,6 +607,18 @@ result. The invariants:
   draft track read imperatively inside `CompositorDriver`'s `useFrame`, which
   stands down for the entire export (`isExporting`), so the export loop samples
   only what the sidecar declares.
+- **Kicks are a pure function of time, and absent kicks change nothing.**
+  `cameraKicks` (`engine/cameraKicks.ts`) add an attack, hold, release push on
+  the pose that won, per scene-local ms; musical `at` positions resolve at track
+  build from the project's music and the slot start, never written back. With
+  no kick live, or a channel absent, `applyCameraKicks` returns the base pose
+  OBJECT itself rather than multiplying by one (the tan/atan round trip is not
+  bit-exact), and a doc with no `cameraKicks` builds exactly the tracks it did
+  before. A kicks-only scene counts as a scene track, so its project takes the
+  explicit-plan path. Zero attacks, zero releases and `jump` snaps are camera
+  breaks for motion blur, and rig overscan adds one sample per kick peak to the
+  fixed 64. Changing the envelope, the zoom formula, the 15..90 clamp or the
+  application order re-renders every project that uses kicks.
 
 ## Camera rig (free flight)
 
@@ -913,7 +999,7 @@ camera exactly:
   workspace-shared and can't reference project assets: the theme parser drops it
   with a warn). Frames come from the same pre-extracted CFR sequence + shared
   `useClipTexture` binding as VideoClip/Device: the export preamble's
-  `preextractClips` covers the source (registered at mount like any clip) and the
+  `prepareExportClips` covers the source (registered at mount like any clip) and the
   per-frame `awaitVideoFramesReady` barrier reaches the fill's group. Frame
   choice is a pure clock function pinned beside `clipFrame.ts`: absent `loop` ⇒
   the modulo wrap; `loop:false` ⇒ the frozen clamp (hold semantics). Cover-crop
@@ -1097,6 +1183,12 @@ stays deterministic):
   gated by `otool -L` (system libs only). Same version ⇒ same bytes: proven by
   dev/packaged hash parity. Note: the dev `pnpm setup:ffmpeg` copy OVERWRITES the
   release sidecar; rerun `pnpm setup:ffmpeg:release` after.
+- **Editor zoom guards are per ffmpeg build.** `cargo test --manifest-path
+  src-tauri/Cargo.toml --lib zoom_frames_match -- --ignored` pins the zoom
+  stage's frame counter (`in-1`) and its bytes on both decode lanes for whichever
+  sidecar `src-tauri/bin` holds. Perspective's counter base and every hash belong
+  to one build, so before a release run it, and `edit_barcode_conformance`, once
+  after `pnpm setup:ffmpeg:release`.
 - **Troika typesets on the main thread**
   (`configureTextBuilder({ useWorker: false })`): WKWebView refuses troika's blob
   worker over `tauri://`, which silently blanks a packaged app. Main-thread
@@ -1297,7 +1389,9 @@ tier is under "Gate tiers" and the baselines under "Current baselines".
   exercises a first extraction (`--cold` holds preview frames only, never
   the clip cache). To rehearse one, move
   `cache/clips/<sha>-60fps` and `<sha>-60fps-hw` aside (`<sha>` is
-  `shasum -a 256` of the source), run, then put them back.
+  `shasum -a 256` of the source), run, then put them back. A `--action perf`
+  run ends with a `cold-extraction` row: each clip's time from first reference
+  to first bound frame and the bytes this session wrote to the clip cache.
 - **On failure, the report localizes the divergence:** per-frame 8×8 tile hashes
   give the exact divergent frame ranges and where in the frame they differ; the
   bound clip-frame index per exported frame separates a stale texture bind from a
@@ -1462,10 +1556,11 @@ rolling-gate project (`showcase-tour`):
 | `ws:layered-screenshot-spike` (LS gate, machine-local) | `4ec7b223…` | — | — | — | — | — | — | — | — |
 | `ws:video-window-spike` (VideoWindow gate, machine-local) | `6dfe68a6…` | — | — | — | — | — | — | — | — |
 | `ws:lighting-spike-fable` (v9 lighting gate, machine-local) | stale | — | — | — | — | — | — | — | — |
-| `ws:camera-rig-spike-opus` (camera rig gate, machine-local) | stale | — | — | — | — | — | — | — | — |
+| `ws:camera-rig-spike-opus` (camera rig gate, machine-local) | `81429136…` | — | — | — | — | — | — | — | — |
 | `ws:multi-device-spike` (deviceLayout gate, machine-local) | stale | stale | stale | — | — | — | — | — | — |
 | `ws:dof-spike` (depth-of-field gate, machine-local) | stale | stale | — | — | — | — | — | — | — |
 | `ws:motion-blur-spike` (motion blur gate, machine-local) | `bb5b4682…` | `504c9591…` | — | — | — | — | — | — | — |
+| `ws:camera-kick-spike` (camera kicks, musical positions and `useBeatGrid`, machine-local; never in a gate) | `1ab8d22d…` | — | — | — | — | — | — | — | — |
 | `ws:chart-spike` (chart gate, machine-local) | `d58ff1f2…` | stale | stale | stale | — | — | — | — | — |
 | `ws:duplicate-spike` (scene-id heal gate, machine-local) | stale | — | — | — | — | — | — | — | — |
 | `ws:overlay-spike` (overlay gate, machine-local) | stale | — | — | — | — | — | — | — | — |
@@ -1473,6 +1568,20 @@ rolling-gate project (`showcase-tour`):
 | `ws:device-video-spike` (device/media/camera gate, built-in-lit devices, machine-local) | `386c8419…` | — | — | — | — | — | — | — | — |
 | `ws:device-env-spike` (cold frame-0 repro: a built-in-lit handset's top edge, machine-local) | `9f3418a2…` | — | — | — | — | — | — | — | — |
 | `ws:text-outline-spike` (outlined text in the text barrier: neon, whole-block blur-in, machine-local) | `87bb6b3a…` | — | — | — | — | — | — | — | — |
+
+> **2026-10-18 (camera kicks and musical positions):** `ws:camera-kick-spike`
+> (a generated 128.4 BPM click soundtrack, an authored `audio.grid`, orbit and
+> rig keys and kicks on `bar:`, `cue:` and `section:` positions, a `useBeatGrid()`
+> pulse, and a snap kick under a 180° shutter) verifies ×2 at `1ab8d22d…`. Frames
+> eyeballed: the zoom kick peaks on bar 2 and the snap renders without a ghost.
+> Kick-free projects held EQUAL: `ws:camera-rig-spike-opus` `81429136…`,
+> `ws:motion-blur-spike` `bb5b4682…`. Run the fixture only when kicks, the grid
+> or positions change; it never joins `gate`, `gate:merge`, CI or release parity.
+
+> **2026-10-18 (`ws:camera-rig-spike-opus` re-baselined on main `18538e02`):**
+> the fixture's 16:9 baseline had gone stale, so it re-recorded on pristine
+> main before the camera-kick work: Verify ×2 identical at `81429136…`, frame
+> eyeballed (rig angle, handset screen video, decorations all present).
 
 > **2026-10-08 (outlined text joins the text barrier, hash-neutral):** troika
 > returns `[outline, main]` from `Text.material` whenever an outline is set

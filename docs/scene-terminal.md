@@ -70,8 +70,8 @@ Bake (`sceneTerminalRaster.ts` + `sceneTerminalBake.ts`) draws the grid on an
 offscreen 2D canvas at 2x and lands the PNG via the Rust
 `write_terminal_snapshot` command: fixed-name overwrite at
 `assets/terminal-<stem>.png`, temp-then-rename (the app-icon rule, because
-`import_media_bytes` collision-suffixes). Recaptures bump `assetVersionStore`
-so mounted textures re-fetch. Capture happens only at author time: export and
+`import_media_bytes` collision-suffixes). Recaptures re-read the asset
+revisions (`noteAssetWritten`), so mounted textures re-fetch at a new URL. Capture happens only at author time: export and
 preview never rasterise.
 
 ## Sessions: the three realms

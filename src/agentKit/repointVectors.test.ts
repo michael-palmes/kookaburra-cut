@@ -31,7 +31,7 @@ describe("repoint conformance vectors", () => {
 
   it("are deterministic, unique and cover every slot", () => {
     expect(serialiseRepointVectors(buildRepointVectors())).toBe(serialiseRepointVectors(vectors));
-    const ids = [...vectors.repoint, ...vectors.follow].map((v) => v.id);
+    const ids = [...vectors.repoint, ...vectors.follow, ...vectors.followLength].map((v) => v.id);
     expect(new Set(ids).size).toBe(ids.length);
     const slots = new Set(vectors.repoint.filter((v) => v.expect).map((v) => v.slot));
     for (const slot of [
@@ -46,6 +46,14 @@ describe("repoint conformance vectors", () => {
       expect(slots.has(slot as never), `no landing vector for ${slot}`).toBe(true);
     }
     expect(vectors.repoint.some((v) => v.expect === null)).toBe(true);
+  });
+
+  it("pin timed follow lengths that differ from the probe", () => {
+    const timed = vectors.followLength.flatMap((v) =>
+      v.slots.filter((s) => s.lengthMs !== (v.probed[s.src] ?? 0)),
+    );
+    expect(timed.length).toBeGreaterThan(5);
+    expect(vectors.followLength.some((v) => v.expect === 0)).toBe(true);
   });
 
   it("re-point every landing vector at the render", () => {

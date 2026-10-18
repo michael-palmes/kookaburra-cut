@@ -1,4 +1,5 @@
 import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { speedChoices } from "../../editor/speedOptions";
 import { useClockStore } from "../../engine/clock";
 import { useDeviceEditStore } from "../../engine/deviceEditStore";
 import {
@@ -94,10 +95,13 @@ export interface DeviceDrillInProps {
   screenMediaPreviewUrl?: string;
   screenMediaAspectRatio?: number;
   screenMediaDetail?: string;
+  /** The probed clip length, so the Playback sliders span the whole video. */
+  screenMediaDurationMs?: number;
   /** A foldable's outside display; unused by single-screen devices. */
   coverMediaPreviewUrl?: string;
   coverMediaAspectRatio?: number;
   coverMediaDetail?: string;
+  coverMediaDurationMs?: number;
   comparison?: DeviceComparisonProps;
   /** The scene's slot on the project timeline: lets a foldable's fold edits land on the key nearest the playhead. */
   slot?: { startMs: number; durationMs: number };
@@ -345,7 +349,22 @@ function ChevronIcon() {
 function DeviceControlIcon({
   type,
 }: {
-  type: "x" | "y" | "depth" | "tilt" | "turn" | "roll" | "size" | "lid" | "delay" | "fold";
+  type:
+    | "x"
+    | "y"
+    | "depth"
+    | "tilt"
+    | "turn"
+    | "roll"
+    | "size"
+    | "lid"
+    | "delay"
+    | "fold"
+    | "trimStart"
+    | "trimEnd"
+    | "speed"
+    | "loop"
+    | "poster";
 }) {
   const glyph = {
     x: <path d="M2.6 8h10.8M4.8 5.8 2.6 8l2.2 2.2M11.2 5.8 13.4 8l-2.2 2.2" />,
@@ -390,6 +409,36 @@ function DeviceControlIcon({
         <path d="M6.4 2.2h3.2" />
       </>
     ),
+    trimStart: (
+      <>
+        <path d="M5.4 3H3.4v10h2" />
+        <path d="M7 8h6M10.8 5.8 13 8l-2.2 2.2" />
+      </>
+    ),
+    trimEnd: (
+      <>
+        <path d="M10.6 3h2v10h-2" />
+        <path d="M3 8h6M6.8 5.8 9 8l-2.2 2.2" />
+      </>
+    ),
+    speed: (
+      <>
+        <path d="M2.8 11.6a5.4 5.4 0 1 1 10.4 0" />
+        <path d="m8 10.2 2.6-3.2" />
+      </>
+    ),
+    loop: (
+      <>
+        <path d="M3.2 8a4.8 4.8 0 0 1 8.3-3.3M12.8 8a4.8 4.8 0 0 1-8.3 3.3" />
+        <path d="M11.8 2.4v2.6H9.2M4.2 13.6V11h2.6" />
+      </>
+    ),
+    poster: (
+      <>
+        <rect x="2.4" y="3.4" width="11.2" height="9.2" rx="1.4" />
+        <path d="m6.8 6.2 3.2 1.8-3.2 1.8z" />
+      </>
+    ),
   }[type];
   return (
     <svg
@@ -405,6 +454,167 @@ function DeviceControlIcon({
     >
       {glyph}
     </svg>
+  );
+}
+
+/** The Playback sliders' span when the clip's length isn't probed yet. */
+const PLAYBACK_FALLBACK_MS = 30_000;
+/** The sidecar parser keeps an out point only past `inMs + 16`. */
+const MIN_PLAY_MS = 17;
+
+const formatSeconds = (seconds: number) => `${Number(seconds.toFixed(2))}s`;
+
+/** The Playback rows' writes: each returns a new spec and deletes a field at its default, so a reset screen goes back to the legacy frame maths. */
+export const screenPlaybackWrites = {
+  trimStart(spec: DeviceMediaSpec, ms: number): DeviceMediaSpec {
+    const next = { ...spec };
+    let inMs = Math.max(0, ms);
+    if (next.outMs !== undefined) inMs = Math.min(inMs, next.outMs - MIN_PLAY_MS);
+    if (inMs > 0) next.inMs = inMs;
+    else delete next.inMs;
+    // A trim replaces a negative pre-roll: the parser refuses the pair.
+    if (next.inMs !== undefined && (next.startMs ?? 0) < 0) delete next.startMs;
+    return next;
+  },
+  /** Reaching `endMs` (the clip's length) clears the out point, which reads as the end. */
+  trimEnd(spec: DeviceMediaSpec, ms: number, endMs: number): DeviceMediaSpec {
+    const next = { ...spec };
+    if (ms >= endMs) delete next.outMs;
+    else next.outMs = Math.max(ms, (next.inMs ?? 0) + MIN_PLAY_MS);
+    return next;
+  },
+  poster(spec: DeviceMediaSpec, ms: number): DeviceMediaSpec {
+    const next = { ...spec };
+    const posterMs = Math.max(0, ms);
+    if (posterMs === (next.inMs ?? 0)) delete next.posterMs;
+    else next.posterMs = posterMs;
+    return next;
+  },
+  speed(spec: DeviceMediaSpec, speed: number): DeviceMediaSpec {
+    const next = { ...spec };
+    if (speed === 1 || !Number.isFinite(speed) || speed <= 0) delete next.speed;
+    else next.speed = Math.min(16, speed);
+    return next;
+  },
+  loop(spec: DeviceMediaSpec, on: boolean): DeviceMediaSpec {
+    const next = { ...spec };
+    if (on) next.loop = true;
+    else delete next.loop;
+    return next;
+  },
+};
+
+/** A screen video's source timing (trim, speed, loop, poster); every write goes through `patch`, so side B writes its own override. */
+function ScreenPlaybackGroup({
+  media,
+  durationMs,
+  disabled,
+  patch,
+}: {
+  media: DeviceMediaSpec;
+  durationMs?: number;
+  disabled: boolean;
+  patch: (
+    apply: (spec: DeviceMediaSpec) => DeviceMediaSpec,
+    history: string,
+    preview: boolean,
+  ) => void;
+}) {
+  const endMs =
+    durationMs && Number.isFinite(durationMs) && durationMs > 0 ? durationMs : PLAYBACK_FALLBACK_MS;
+  // Round up to the step so a drag can reach the end.
+  const maxSeconds = Math.ceil(endMs / 100) / 10;
+  const slider =
+    (history: string, apply: (spec: DeviceMediaSpec, ms: number) => DeviceMediaSpec) =>
+    (preview: boolean) =>
+    (seconds: number) =>
+      patch((spec) => apply(spec, Math.round(seconds * 1000)), history, preview);
+  const trimStart = slider("screen trim start", screenPlaybackWrites.trimStart);
+  const trimEnd = slider("screen trim end", (spec, ms) =>
+    screenPlaybackWrites.trimEnd(spec, ms, endMs),
+  );
+  const poster = slider("screen poster frame", screenPlaybackWrites.poster);
+  const showPoster = (media.startMs ?? 0) > 0 || media.startOn === "open";
+  return (
+    <DrillGroup label="Playback">
+      <InspectorSliderRow
+        icon={<DeviceControlIcon type="trimStart" />}
+        label="Trim start"
+        value={(media.inMs ?? 0) / 1000}
+        min={0}
+        max={maxSeconds}
+        step={0.1}
+        overflowMax
+        formatValue={formatSeconds}
+        disabled={disabled}
+        onInput={trimStart(true)}
+        onCommit={trimStart(false)}
+      />
+      <InspectorSliderRow
+        icon={<DeviceControlIcon type="trimEnd" />}
+        label="Trim end"
+        value={media.outMs === undefined ? maxSeconds : media.outMs / 1000}
+        min={0}
+        max={maxSeconds}
+        step={0.1}
+        overflowMax
+        formatValue={(seconds) =>
+          media.outMs === undefined && seconds >= endMs / 1000 ? "End" : formatSeconds(seconds)
+        }
+        disabled={disabled}
+        onInput={trimEnd(true)}
+        onCommit={trimEnd(false)}
+      />
+      <label className="popover-row device-editor-speed-row">
+        <span className="popover-inline slider-row-label">
+          <span className="inspector-slider-row-icon">
+            <DeviceControlIcon type="speed" />
+          </span>
+          Speed
+        </span>
+        <select
+          className="modal-input"
+          aria-label="Screen video speed"
+          value={String(media.speed ?? 1)}
+          disabled={disabled}
+          onChange={(event) => {
+            const speed = Number(event.target.value);
+            patch((spec) => screenPlaybackWrites.speed(spec, speed), "screen speed", false);
+          }}
+        >
+          {speedChoices(media.speed).map((choice) => (
+            <option key={choice.value} value={choice.value}>
+              {choice.label}
+            </option>
+          ))}
+        </select>
+      </label>
+      <ToggleRow
+        icon={<DeviceControlIcon type="loop" />}
+        label="Loop"
+        description="Plays again from Trim start at Trim end, instead of holding the last frame."
+        checked={media.loop === true}
+        disabled={disabled}
+        onChange={(on) =>
+          patch((spec) => screenPlaybackWrites.loop(spec, on), "screen loop", false)
+        }
+      />
+      {showPoster && (
+        <InspectorSliderRow
+          icon={<DeviceControlIcon type="poster" />}
+          label="Poster frame"
+          value={(media.posterMs ?? media.inMs ?? 0) / 1000}
+          min={0}
+          max={maxSeconds}
+          step={0.1}
+          overflowMax
+          formatValue={formatSeconds}
+          disabled={disabled}
+          onInput={poster(true)}
+          onCommit={poster(false)}
+        />
+      )}
+    </DrillGroup>
   );
 }
 
@@ -649,9 +859,11 @@ export function DeviceDrillIn({
   screenMediaPreviewUrl,
   screenMediaAspectRatio,
   screenMediaDetail,
+  screenMediaDurationMs,
   coverMediaPreviewUrl,
   coverMediaAspectRatio,
   coverMediaDetail,
+  coverMediaDurationMs,
   comparison,
   slot,
   settingsDisabled = false,
@@ -836,7 +1048,7 @@ export function DeviceDrillIn({
     );
   };
 
-  // Screen video start delay: seconds in the UI, `startMs` in the doc (0 deletes the field). After writes its own `compare.b` override, materialising an inherited spec first.
+  // Screen video timing: seconds in the UI, ms in the doc (a default deletes its field). After writes its own `compare.b` override, materialising an inherited spec first.
   const patchScreenVideo = (
     screen: DeviceScreenSlot,
     apply: (spec: DeviceMediaSpec) => DeviceMediaSpec,
@@ -862,11 +1074,13 @@ export function DeviceDrillIn({
     patchWithGesture(patch, history, preview);
   };
   const setScreenDelay = (seconds: number, preview = false, screen: DeviceScreenSlot = "main") => {
-    const startMs = Math.max(0, Math.round(seconds * 1000));
     patchScreenVideo(
       screen,
       (spec) => {
         const media = { ...spec };
+        // A negative delay pre-rolls the clip; beside a Trim start it would be refused, so it holds at 0.
+        const ms = Math.round(seconds * 1000);
+        const startMs = media.inMs === undefined ? ms : Math.max(0, ms);
         if (startMs === 0) delete media.startMs;
         else media.startMs = startMs;
         return media;
@@ -986,6 +1200,7 @@ export function DeviceDrillIn({
       return {
         screen,
         routing: sideRouting,
+        durationMs: cover ? coverMediaDurationMs : screenMediaDurationMs,
         label: model.coverScreen ? (cover ? "Outside screen" : "Inside screen") : "Screen",
         previewUrl: cover ? coverMediaPreviewUrl : screenMediaPreviewUrl,
         aspectRatio: cover ? coverMediaAspectRatio : screenMediaAspectRatio,
@@ -1148,6 +1363,7 @@ export function DeviceDrillIn({
                 min={0}
                 max={10}
                 step={0.1}
+                overflowMin
                 overflowMax
                 formatValue={(v) => `${Number(v.toFixed(2))}s`}
                 disabled={settingsDisabled}
@@ -1163,6 +1379,16 @@ export function DeviceDrillIn({
                 checked={group.routing.media.startOn === "open"}
                 disabled={settingsDisabled}
                 onChange={setStartOnOpen}
+              />
+            )}
+            {group.routing.media?.kind === "video" && (
+              <ScreenPlaybackGroup
+                media={group.routing.media}
+                durationMs={group.durationMs}
+                disabled={settingsDisabled}
+                patch={(apply, history, preview) =>
+                  patchScreenVideo(group.screen, apply, history, preview)
+                }
               />
             )}
           </MediaSourceGroup>

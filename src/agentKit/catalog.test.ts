@@ -94,6 +94,27 @@ describe("agent catalogue", () => {
     }
   });
 
+  it("lists every device media key the parser keeps", () => {
+    const media: Record<string, unknown> = {
+      src: "assets/clip.mp4",
+      kind: "video",
+      startMs: 400,
+      fit: "cover",
+      startOn: "open",
+      inMs: 1000,
+      outMs: 4000,
+      speed: 2,
+      loop: true,
+      posterMs: 0,
+    };
+    expect(ids("deviceMedia.keys").sort()).toEqual(Object.keys(media).sort());
+    const doc = parseSceneDoc(
+      { version: 1, devices: [{ id: "d1", model: "iphone-17-pro", media }] },
+      "test",
+    );
+    expect(doc?.devices?.[0].media).toEqual(media);
+  });
+
   it("lists background and backdrop types the parsers accept", () => {
     const samples: Record<string, Record<string, unknown>> = {
       none: { type: "none" },

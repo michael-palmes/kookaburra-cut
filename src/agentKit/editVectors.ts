@@ -1,9 +1,15 @@
 /** Conformance vectors for kb video's Python mirror of the editor maths (kblib/video/editmath.py, editops.py): every editMath/editMasks export on hand-picked edge cases, then edit ops (one hand vector per op covering each error code, plus seeded random sequences) recorded step by step with the final doc. `editVectors.test.ts` writes them under KB_WRITE_VECTORS=1 and fails when the committed file is stale. Contract: docs/agent-kit.md ("Conformance vectors"). */
 
-import type { EditClip, EditDoc, EditMask, EditSource, EditTap } from "../engine/edit";
+import type { EditClip, EditDoc, EditMask, EditSource, EditTap, EditZoomKey } from "../engine/edit";
 import * as masks from "../engine/editMasks";
 import * as math from "../engine/editMath";
-import { applyEditOp, type EditOp, MASK_STYLES, type SourceMeta } from "../engine/editOps";
+import {
+  applyEditOp,
+  type EditOp,
+  MASK_STYLES,
+  type SourceMeta,
+  ZOOM_EASES,
+} from "../engine/editOps";
 
 export const EDIT_VECTORS_VERSION = 1;
 export const RANDOM_SEQUENCES = 100;
@@ -118,6 +124,38 @@ const STILL_MASK: EditMask = {
   keys: [{ sourceMs: 0, rect: [0.4, 0.4, 0.2, 0.2] }],
 };
 const TAP: EditTap = { id: "t1", sourceId: "s1", sourceMs: 1500, pos: [0.5, 0.4] };
+const FADED: EditMask = { ...KEYED, fadeInMs: 250, fadeOutMs: 400 };
+const CROPPED = math.relayout([
+  clip("c1", 0, 4000, 1, { crop: [0.1, 0.1, 0.5, 0.5] }),
+  hold("c2", 4000, 1000),
+  clip("c3", 6000, 9000, 2),
+]);
+const ODD = { width: 1179, height: 2556 };
+const QUAD: [number, number, number, number] = [0.25, 0.25, 0.5, 0.5];
+const PUSH_IN: EditZoomKey[] = [
+  { tMs: 0, rect: [0, 0, 1, 1], ease: "smooth" },
+  { tMs: 1000, rect: QUAD },
+  { tMs: 2000, rect: [0.5, 0.5, 0.25, 0.25] },
+];
+const PULL_OUT: EditZoomKey[] = [
+  { tMs: 0, rect: QUAD },
+  { tMs: 500, rect: [0.1, 0.1, 0.6, 0.6], ease: "smooth" },
+  { tMs: 1000, rect: [0, 0, 1, 1] },
+];
+const ZOOMED = math.relayout([
+  clip("c1", 0, 4000, 1, { zoom: { keys: PUSH_IN } }),
+  hold("c2", 4000, 1000),
+  clip("c3", 6000, 9000, 2, { zoom: { keys: PULL_OUT } }),
+]);
+const ONE_KEY = clip("c1", 0, 2000, 1, { zoom: { keys: [{ tMs: 300, rect: QUAD }] } });
+const SAME_FRAME = clip("c1", 0, 2000, 1, {
+  zoom: {
+    keys: [
+      { tMs: 1000, rect: QUAD },
+      { tMs: 1004, rect: [0, 0, 1, 1] },
+    ],
+  },
+});
 
 /** Every exported function with its cases; Map arguments and results are written as plain objects. */
 function fnCases(): FnVector[] {
@@ -200,6 +238,8 @@ function fnCases(): FnVector[] {
     [TRIO, 4500, 2000],
     [TRIO, 5250.5, 50],
     [HALVES, 250.25, 1234.5],
+    [CROPPED, 2000, 2000],
+    [CROPPED, 40, 2000],
   );
   add(
     "freezeAtEnd",
@@ -209,6 +249,7 @@ function fnCases(): FnVector[] {
     [TRIO.slice(0, 1), 29.97, 1500],
     [TRIO.slice(0, 2), 60, 2000],
     [[], 60, 2000],
+    [CROPPED.slice(0, 1), 60, 1500],
   );
   add(
     "insertClipAt",
@@ -253,11 +294,62 @@ function fnCases(): FnVector[] {
     [math.relayout([hold("c1", 1500, 1000)]), TAP, 550],
     [TRIO, { ...TAP, sourceId: "s2" }, 550],
     [math.relayout([clip("c1", 1000, 3000, 0.25)]), TAP, 550],
+    [math.relayout([clip("c1", 0, 2000, 1, { crop: [0.6, 0, 0.4, 0.5] })]), TAP, 550],
+    [math.relayout([clip("c1", 0, 2000, 1, { crop: QUAD })]), TAP, 550],
   );
   add("addTap", [[TAP], { ...TAP, id: "t2" }]);
   add("moveTap", [[TAP], "t1", [0.1, 0.9]], [[TAP], "t9", [0.1, 0.9]]);
   add("retimeTap", [[TAP], "t1", "s3", 250]);
   add("removeTap", [[TAP], "t1"], [[TAP], "t9"]);
+  add(
+    "cropPixels",
+    [[0.1, 0.2, 0.5, 0.25], VIDEO],
+    [[0, 0, 1, 1], ODD],
+    [[0.99, 0.99, 0.5, 0.5], VIDEO],
+    [[-0.2, 0.5, 0.001, 2], VIDEO],
+    [QUAD, { width: 0, height: 0 }],
+    [[0.3333, 0.3333, 0.3333, 0.3333], { width: 333, height: 777 }],
+    [[0.5, 0.5, 0.5, 0.5], { width: 1, height: 1 }],
+  );
+  add(
+    "snapCropRect",
+    [[0.1, 0.2, 0.5, 0.25], VIDEO],
+    [[0.9, 0.9, 0.5, 0.5], VIDEO],
+    [[0, 0, 0.001, 0.001], VIDEO],
+    [[-1, -1, 3, 3], ODD],
+    [[0.3333, 0.1, 0.3333, 0.2], { width: 333, height: 777 }],
+  );
+  add(
+    "aspectCropRect",
+    [VIDEO, 1080 / 1920],
+    [VIDEO, 16 / 9],
+    [IMAGE, 9 / 16],
+    [IMAGE, 9 / 16, [0.1, 0.5]],
+    [IMAGE, 9 / 16, [0.95, 0.2]],
+    [ODD, 1],
+  );
+  add(
+    "posInCrop",
+    [[0.5, 0.5], QUAD],
+    [[0.25, 0.25], QUAD],
+    [[0.75, 0.75], QUAD],
+    [[0.76, 0.5], QUAD],
+    [[0.1, 0.9], QUAD],
+  );
+  add(
+    "tapPosInCrop",
+    [[0.5, 0.4], QUAD, VIDEO],
+    [[0.1, 0.1], QUAD, VIDEO],
+    [[0.75, 0.75], QUAD, ODD],
+    [[0.3, 0.3], [0.2, 0.2, 0.4, 0.4], { width: 333, height: 777 }],
+  );
+  add(
+    "setClipCrop",
+    [TRIO, "c1", [0.1, 0.1, 0.5, 0.5]],
+    [CROPPED, "c1", null],
+    [TRIO, "c9", [0, 0, 1, 1]],
+    [TRIO, "c2", [0.2, 0.2, 0.4, 0.4]],
+  );
 
   add(
     "maskBlurSigmaPx",
@@ -329,6 +421,21 @@ function fnCases(): FnVector[] {
     [KEYED, 2999, false],
     [KEYED, 10, true],
   );
+  add(
+    "maskOpacityAt",
+    [FADED, 999, false],
+    [FADED, 1000, false],
+    [FADED, 1100, false],
+    [FADED, 1250, false],
+    [FADED, 2000, false],
+    [FADED, 2900, false],
+    [FADED, 2999, false],
+    [FADED, 3000, false],
+    [KEYED, 1500, false],
+    [STILL_MASK, 0, true],
+    [{ ...KEYED, fadeOutMs: 500 }, 2750, false],
+  );
+  add("withMaskFades", [KEYED, 250.5, 0], [FADED, 0, 0], [FADED, -5, 120.4], [KEYED, 1999.5, 0.5]);
   const twoCuts = math.relayout([
     clip("c1", 0, 1500),
     hold("c2", 2000, 700),
@@ -407,8 +514,110 @@ function fnCases(): FnVector[] {
     [KEYED, "end", 20000, 12000],
     [KEYED, "end", 20000, 0],
     [KEYED, "end", 1050.5, 12000],
+    [FADED, "start", 2500, 12000],
+    [FADED, "end", 1300, 12000],
+    [FADED, "end", 1100, 12000],
+    [FADED, "start", 1500, 12000],
+    [{ ...KEYED, fadeInMs: 1900 }, "start", 1500, 12000],
   );
   add("replaceMask", [[KEYED, STILL_MASK], { ...STILL_MASK, style: "blur" }]);
+
+  // Keyed zoom, and the edits that carry a zoom with them.
+  add(
+    "snapZoomMs",
+    [0, 60],
+    [8, 60],
+    [9, 60],
+    [1000, 29.97],
+    [-25, 60],
+    [16.5, 0],
+    [33.3, 30],
+    [1234.5, 24],
+  );
+  add(
+    "zoomKeyIndex",
+    [PUSH_IN, 0, 60],
+    [PUSH_IN, 1008, 60],
+    [PUSH_IN, 1009, 60],
+    [PUSH_IN, 500, 60],
+    [PUSH_IN, 1990, 30],
+    [[], 0, 60],
+  );
+  add(
+    "zoomRectAt",
+    [ZOOMED[0], -100, 60],
+    [ZOOMED[0], 0, 60],
+    [ZOOMED[0], 500, 60],
+    [ZOOMED[0], 1500.5, 60],
+    [ZOOMED[0], 2000, 60],
+    [ZOOMED[0], 9000, 60],
+    [ZOOMED[0], 500, 30],
+    [ZOOMED[0], 500, 0],
+    [ZOOMED[2], 250, 60],
+    [ONE_KEY, 1500],
+    [SAME_FRAME, 999],
+    [SAME_FRAME, 1000],
+    [CROPPED[0], 100],
+    [TRIO[0], 100],
+  );
+  add("tapPosInZoom", [[0.5, 0.5], QUAD], [[0.1, 0.1], QUAD], [[0.75, 0.25], QUAD]);
+  add(
+    "fitZoomRect",
+    [[0.1, 0.1, 0.5, 0.5], VIDEO, 1080 / 1920],
+    [[0.1, 0.1, 0.2, 0.6], VIDEO, 1080 / 1920],
+    [[0, 0, 1, 1], VIDEO, 16 / 9],
+    [[0.4, 0.4, 0.9, 0.2], IMAGE, 1],
+    [[0.9, 0.9, 0.3, 0.3], ODD, 9 / 16],
+    [QUAD, VIDEO, 0],
+  );
+  add(
+    "setZoomKey",
+    [TRIO, "c1", 1000, QUAD],
+    [ZOOMED, "c1", 1004, [0.2, 0.2, 0.4, 0.4]],
+    [ZOOMED, "c1", 1500.4, QUAD, 60, "smooth"],
+    [ZOOMED, "c1", 0, QUAD, 60, "linear"],
+    [CROPPED, "c1", 500, QUAD, 30],
+    [TRIO, "c9", 0, QUAD],
+  );
+  add(
+    "removeZoomKey",
+    [ZOOMED, "c1", 1000],
+    [ZOOMED, "c1", 1500],
+    [[ONE_KEY], "c1", 300],
+    [TRIO, "c1", 0],
+  );
+  add(
+    "setZoomKeyEase",
+    [ZOOMED, "c1", 1000, "smooth"],
+    [ZOOMED, "c1", 0, "linear"],
+    [ZOOMED, "c1", 1500, "smooth"],
+  );
+  add(
+    "moveZoomKey",
+    [ZOOMED, "c1", 1000, 1500.3],
+    [ZOOMED, "c1", 1000, 2500],
+    [ZOOMED, "c1", 0, 2000],
+    [ZOOMED, "c1", 777, 100],
+  );
+  add(
+    "splitAt",
+    [ZOOMED, 1500.5, "c9"],
+    [ZOOMED, 500, "c9", 30],
+    [ZOOMED, 5750, "c9"],
+    [ZOOMED, 3000, "c9"],
+  );
+  add("freezeAt", [ZOOMED, 1500, 1000], [ZOOMED, 50, 1000], [ZOOMED, 5500, 500, 30]);
+  add("freezeAtEnd", [ZOOMED.slice(0, 1), 60, 1500], [ZOOMED, 30, 1500]);
+  add("insertClipAt", [ZOOMED, 2500, clip("c9", 0, 500)], [ZOOMED, 5400, clip("c9", 0, 500), 30]);
+  add("trimClipIn", [ZOOMED, "c1", 1000], [ZOOMED, "c3", 7000.5, 30], [ZOOMED, "c1", 0]);
+  add("setClipSpeed", [ZOOMED, "c1", 2], [ZOOMED, "c3", 0.5, 30], [ZOOMED, "c1", 1]);
+  add(
+    "tapWindows",
+    [ZOOMED, TAP, 550],
+    [ZOOMED, { ...TAP, pos: [0.2, 0.2] }, 550],
+    [ZOOMED, { ...TAP, sourceMs: 7000, pos: [0.3, 0.3] }, 550, 30],
+  );
+  add("setClipCrop", [ZOOMED, "c1", QUAD], [ZOOMED, "c3", null]);
 
   const table = { ...math, ...masks } as unknown as Record<string, (...a: unknown[]) => unknown>;
   return cases.map(([fn, args]) => {
@@ -497,6 +706,13 @@ function handVectors(): OpVector[] {
     ...HAND_DOC,
     settings: { ...HAND_DOC.settings, fps: 0 },
     clips: HAND_DOC.clips.slice(0, 3),
+  };
+  const sizeless: EditDoc = {
+    ...HAND_DOC,
+    sources: [{ ...VIDEO, width: 1, height: 0 }, IMAGE],
+    clips: math.relayout([clip("c1", 0, 2000), { ...clip("c2", 0, 1000), sourceId: "s9" }]),
+    taps: [],
+    masks: [],
   };
   const v = (id: string, ops: EditOp[], doc = HAND_DOC) => runSteps(`hand/${id}`, doc, ops);
   return [
@@ -676,6 +892,103 @@ function handVectors(): OpVector[] {
       { op: "removeMask", maskId: "m9" },
       { op: "removeMask", maskId: "m2" },
     ]),
+    v("crop", [
+      bad({ op: "setClipCrop", clipId: "c1", crop: [0.1, 0.1, 0.5] }),
+      { op: "setClipCrop", clipId: "c1", crop: [0.1, 0.1, 0, 0.5] },
+      bad({ op: "setClipCrop", clipId: "c1" }),
+      { op: "setClipCrop", clipId: "c9", crop: QUAD },
+      { op: "setClipCrop", clipId: "c1", crop: null },
+      { op: "setClipCrop", clipId: "c1", crop: [0.1, 0.2, 0.5, 0.25] },
+      { op: "setClipCrop", clipId: "c1", crop: [0.1, 0.2, 0.5, 0.25] },
+      { op: "setClipCrop", clipId: "c2", crop: [0.9, 0.9, 0.5, 0.5] },
+      { op: "setClipCrop", clipId: "c4", crop: [0.25, 0, 0.5, 1] },
+      { op: "split", atMs: 2000 },
+      { op: "freeze", atMs: 1000 },
+      { op: "addTap", atMs: 500, pos: [0.05, 0.05] },
+      { op: "setClipCrop", clipId: "c1", crop: null },
+    ]),
+    v(
+      "crop-refusals",
+      [
+        { op: "setClipCrop", clipId: "c1", crop: QUAD },
+        { op: "setClipCrop", clipId: "c2", crop: QUAD },
+        { op: "setClipCrop", clipId: "c1", crop: null },
+      ],
+      sizeless,
+    ),
+    v("mask-fade", [
+      { op: "setMaskFade", maskId: "m1" },
+      { op: "setMaskFade", maskId: "m1", fadeInMs: -1 },
+      bad({ op: "setMaskFade", maskId: "m1", fadeOutMs: "1s" }),
+      { op: "setMaskFade", maskId: "m9", fadeInMs: 100 },
+      { op: "setMaskFade", maskId: "m2", fadeInMs: 100 },
+      { op: "setMaskFade", maskId: "m1", fadeInMs: 1500, fadeOutMs: 600 },
+      { op: "setMaskFade", maskId: "m1", fadeInMs: 250.5 },
+      { op: "setMaskFade", maskId: "m1", fadeInMs: 251 },
+      { op: "setMaskFade", maskId: "m1", fadeOutMs: 400 },
+      { op: "retimeMaskEdge", maskId: "m1", edge: "end", sourceMs: 1500 },
+      { op: "setMaskFade", maskId: "m1", fadeInMs: null },
+      { op: "setMaskFade", maskId: "m1", fadeInMs: 0, fadeOutMs: 0 },
+      { op: "setMaskFade", maskId: "m1", fadeOutMs: null },
+    ]),
+    v("zoom", [
+      bad({ op: "setZoomKey", clipId: "c1", atMs: 500, rect: [0.1, 0.1, 0.5] }),
+      { op: "setZoomKey", clipId: "c1", atMs: 500, rect: [0.1, 0.1, 0, 0.5] },
+      { op: "setZoomKey", clipId: "c1", atMs: 500, rect: QUAD, ease: bad("bouncy") },
+      { op: "setZoomKey", clipId: "c9", atMs: 500, rect: QUAD },
+      { op: "setZoomKey", clipId: "c1", atMs: 4500, rect: QUAD },
+      { op: "setZoomKey", clipId: "c1", atMs: 500, rect: QUAD },
+      { op: "setZoomKey", clipId: "c1", atMs: 504, rect: QUAD },
+      { op: "setZoomKey", clipId: "c1", atMs: 2000.5, rect: [0.4, 0.5, 0.3, 0.2] },
+      { op: "setZoomKey", clipId: "c1", atMs: 1000, rect: [0, 0, 1, 1], ease: "smooth" },
+      { op: "setZoomKey", clipId: "c1", atMs: 1000, rect: [0, 0, 1, 1], ease: "smooth" },
+      { op: "setZoomKey", clipId: "c1", atMs: 1000, rect: [0, 0, 1, 1], ease: "linear" },
+      { op: "setZoomKey", clipId: "c2", atMs: 4200, rect: QUAD },
+      { op: "setZoomKey", clipId: "c4", atMs: 7000, rect: [0.1, 0.1, 0.5, 0.5] },
+      bad({ op: "removeZoomKey", clipId: "c1", tMs: "1s" }),
+      { op: "removeZoomKey", clipId: "c9", tMs: 500 },
+      { op: "removeZoomKey", clipId: "c3", tMs: 0 },
+      { op: "removeZoomKey", clipId: "c1", tMs: 1500 },
+      { op: "removeZoomKey", clipId: "c1", tMs: 1008 },
+      { op: "setZoomKeyEase", clipId: "c1", tMs: 500, ease: bad("fast") },
+      { op: "setZoomKeyEase", clipId: "c1", tMs: 500, ease: "linear" },
+      { op: "setZoomKeyEase", clipId: "c1", tMs: 500, ease: "smooth" },
+      { op: "setZoomKeyEase", clipId: "c1", tMs: 777, ease: "smooth" },
+      bad({ op: "moveZoomKey", clipId: "c1", tMs: 500, toMs: "2s" }),
+      { op: "moveZoomKey", clipId: "c1", tMs: 500, toMs: 505 },
+      { op: "moveZoomKey", clipId: "c1", tMs: 500, toMs: 2000 },
+      { op: "moveZoomKey", clipId: "c1", tMs: 500, toMs: 1250.2 },
+      { op: "moveZoomKey", clipId: "c4", tMs: 500, toMs: 100 },
+      { op: "setClipCrop", clipId: "c1", crop: null },
+      { op: "setClipCrop", clipId: "c2", crop: null },
+      { op: "setClipCrop", clipId: "c2", crop: null },
+    ]),
+    v(
+      "zoom-edits",
+      [
+        { op: "split", atMs: 1500.5 },
+        { op: "trimIn", clipId: "c1", inMs: 250 },
+        { op: "setSpeed", clipId: "c1", speed: 2 },
+        { op: "freeze", atMs: 300 },
+        { op: "insertClip", source: newVideo, atMs: 600 },
+        { op: "addTap", atMs: 2500, pos: [0.45, 0.45] },
+        { op: "addTap", atMs: 2500, pos: [0.05, 0.9] },
+        { op: "trimOut", clipId: "c3", outMs: 8000 },
+        { op: "setClipCrop", clipId: "c3", crop: QUAD },
+        { op: "setZoomKey", clipId: "c3", atMs: 6000, rect: [0.3, 0.3, 0.2, 0.2] },
+        { op: "setZoomKey", clipId: "c3", atMs: 9200, rect: [0.3, 0.3, 0.2, 0.2] },
+        { op: "freeze", atMs: 99999 },
+      ],
+      { ...HAND_DOC, version: 3, clips: ZOOMED, taps: [], masks: [] },
+    ),
+    v(
+      "zoom-refusals",
+      [
+        { op: "setZoomKey", clipId: "c1", atMs: 100, rect: QUAD },
+        { op: "setZoomKey", clipId: "c2", atMs: 2100, rect: QUAD },
+      ],
+      sizeless,
+    ),
     v("unknown-op", [bad({ op: "explode" }), bad({ op: "split" })]),
   ];
 }
@@ -797,10 +1110,29 @@ export function randomEditDoc(rand: () => number): EditDoc {
     };
     if (rand() < 0.3) mask.strength = round(rand(), 2);
     if (mask.style === "solid" && rand() < 0.3) mask.color = "#ff0000";
-    docMasks.push(mask);
+    const span = endMs - startMs;
+    docMasks.push(
+      s.kind === "video" && rand() < 0.35
+        ? masks.withMaskFades(mask, int(0, span / 2), int(0, span / 2))
+        : mask,
+    );
+  }
+  for (const [i, c] of clips.entries()) {
+    const s = sources.find((x) => x.id === c.sourceId);
+    if (!s || rand() >= 0.2) continue;
+    const crop = math.snapCropRect(
+      [
+        round(rand() * 0.5, 2),
+        round(rand() * 0.5, 2),
+        round(0.2 + rand() * 0.6, 2),
+        round(0.2 + rand() * 0.6, 2),
+      ],
+      s,
+    );
+    clips[i] = { ...c, crop };
   }
   const doc: EditDoc = {
-    version: docMasks.length > 0 ? 2 : 1,
+    version: clips.some((c) => c.crop) ? 3 : docMasks.length > 0 ? 2 : 1,
     name: "rand",
     sources,
     settings: { width: 1080, height: 1920, fps },
@@ -863,6 +1195,7 @@ export function randomEditOp(rand: () => number, doc: EditDoc): EditOp {
     "trimIn",
     "trimOut",
     "setHold",
+    "setClipCrop",
     "addTap",
     "addTap",
     "addTapAtSource",
@@ -878,6 +1211,7 @@ export function randomEditOp(rand: () => number, doc: EditDoc): EditOp {
     "removeMaskKey",
     "retimeMaskEdge",
     "setMaskLook",
+    "setMaskFade",
     "removeMask",
   ] as const);
   // Edits of taps or masks a doc doesn't have mostly add one instead, so sequences reach the interesting paths.
@@ -888,6 +1222,7 @@ export function randomEditOp(rand: () => number, doc: EditDoc): EditOp {
     "removeMaskKey",
     "retimeMaskEdge",
     "setMaskLook",
+    "setMaskFade",
     "removeMask",
   ].includes(picked);
   const targetsTap = ["moveTap", "retimeTap", "removeTap"].includes(picked);
@@ -926,6 +1261,15 @@ export function randomEditOp(rand: () => number, doc: EditDoc): EditOp {
       return { op: kind, clipId: clipId(), outMs: round(rand() * 13000, 1) };
     case "setHold":
       return { op: kind, clipId: clipId(), holdMs: pick([50, 400, 2000, 3333.3]) };
+    case "setClipCrop": {
+      if (rand() < 0.25) return { op: kind, clipId: clipId(), crop: null };
+      const edge = () => (rand() < 0.05 ? 0 : round(0.05 + rand() * 0.6, 2));
+      return {
+        op: kind,
+        clipId: clipId(),
+        crop: [round(rand() * 0.6, 2), round(rand() * 0.6, 2), edge(), edge()],
+      };
+    }
     case "addTap":
       return { op: kind, atMs: atMs(), pos: pos() };
     case "addTapAtSource":
@@ -979,6 +1323,13 @@ export function randomEditOp(rand: () => number, doc: EditDoc): EditOp {
         return { op: kind, maskId: maskId(), strength: rand() < 0.2 ? null : round(rand(), 2) };
       return { op: kind, maskId: maskId(), color: rand() < 0.3 ? null : "#00ff00" };
     }
+    case "setMaskFade": {
+      const ms = () => pick([0, 100, 250, 600, 1500, null]);
+      const roll = rand();
+      if (roll < 0.4) return { op: kind, maskId: maskId(), fadeInMs: ms() };
+      if (roll < 0.8) return { op: kind, maskId: maskId(), fadeOutMs: ms() };
+      return { op: kind, maskId: maskId(), fadeInMs: ms(), fadeOutMs: ms() };
+    }
     case "removeMask":
       return { op: kind, maskId: maskId() };
   }
@@ -1002,12 +1353,128 @@ function randomVectors(): OpVector[] {
   return out;
 }
 
+export const ZOOM_SEQUENCES = 12;
+
+/** A random doc (randomEditDoc) whose clips mostly carry one to three zoom keys, built through the editor's own setZoomKey. */
+export function randomZoomDoc(rand: () => number): EditDoc {
+  const doc = randomEditDoc(rand);
+  const fps = doc.settings.fps > 0 ? doc.settings.fps : 60;
+  let clips = doc.clips;
+  for (const c of doc.clips) {
+    const source = doc.sources.find((s) => s.id === c.sourceId);
+    if (!source || c.crop || rand() < 0.1) continue;
+    for (let n = 1 + Math.floor(rand() * 3); n > 0; n--) {
+      const w = round(0.3 + rand() * 0.7, 2);
+      const rect = math.fitZoomRect(
+        [round(rand() * (1 - w), 2), round(rand() * (1 - w), 2), w, w],
+        source,
+        1080 / 1920,
+      );
+      const tMs = round(rand() * math.clipTimelineMs(c), 1);
+      clips = math.setZoomKey(clips, c.id, tMs, rect, fps, rand() < 0.4 ? "smooth" : undefined);
+    }
+  }
+  return { ...doc, version: 3, clips };
+}
+
+/** A random zoom op (or an edit that carries a zoom) against `doc`, biased to zoomed clips and their key times. */
+export function randomZoomOp(rand: () => number, doc: EditDoc): EditOp {
+  const pick = <T>(list: readonly T[]): T => list[Math.floor(rand() * list.length)];
+  const zoomed = doc.clips.filter((c) => c.zoom);
+  const target =
+    doc.clips.length === 0 || rand() < 0.08
+      ? undefined
+      : pick(zoomed.length > 0 && rand() < 0.75 ? zoomed : doc.clips);
+  const clipId = target?.id ?? "c99";
+  const keyMs = () => {
+    const keys = target?.zoom?.keys ?? [];
+    return keys.length > 0 && rand() < 0.8 ? pick(keys).tMs : round(rand() * 2000, 1);
+  };
+  const inClip = () =>
+    target
+      ? round(target.startMs + rand() * math.clipTimelineMs(target), 1)
+      : round(rand() * math.timelineDurationMs(doc.clips), 1);
+  const rect = (): [number, number, number, number] => {
+    const w = round(0.2 + rand() * 0.8, 2);
+    return [
+      round(rand() * (1 - w), 2),
+      round(rand() * (1 - w), 2),
+      w,
+      round(w * (0.5 + rand()), 2),
+    ];
+  };
+  const kind = pick([
+    "setZoomKey",
+    "setZoomKey",
+    "setZoomKey",
+    "removeZoomKey",
+    "setZoomKeyEase",
+    "moveZoomKey",
+    "moveZoomKey",
+    "split",
+    "freeze",
+    "trimIn",
+    "setSpeed",
+    "insertClip",
+    "setClipCrop",
+    "addTap",
+  ] as const);
+  switch (kind) {
+    case "setZoomKey":
+      return rand() < 0.7
+        ? { op: kind, clipId, atMs: inClip(), rect: rect() }
+        : { op: kind, clipId, atMs: inClip(), rect: rect(), ease: pick(ZOOM_EASES) };
+    case "removeZoomKey":
+      return { op: kind, clipId, tMs: keyMs() };
+    case "setZoomKeyEase":
+      return { op: kind, clipId, tMs: keyMs(), ease: pick(ZOOM_EASES) };
+    case "moveZoomKey":
+      return {
+        op: kind,
+        clipId,
+        tMs: keyMs(),
+        toMs: rand() < 0.3 ? keyMs() : inClip() - (target?.startMs ?? 0),
+      };
+    case "split":
+    case "freeze":
+      return { op: kind, atMs: inClip() };
+    case "trimIn":
+      return { op: kind, clipId, inMs: round((target?.inMs ?? 0) + (rand() - 0.3) * 1500, 1) };
+    case "setSpeed":
+      return { op: kind, clipId, speed: pick(SPEEDS) };
+    case "insertClip":
+      return { op: kind, source: newVideo, atMs: inClip() };
+    case "setClipCrop":
+      return { op: kind, clipId, crop: rand() < 0.4 ? null : rect() };
+    case "addTap":
+      return { op: kind, atMs: inClip(), pos: [round(rand(), 2), round(rand(), 2)] };
+  }
+}
+
+function zoomVectors(): OpVector[] {
+  const out: OpVector[] = [];
+  for (let i = 0; i < ZOOM_SEQUENCES; i++) {
+    const rand = mulberry32(0x7a6f6f6d + i);
+    const doc = randomZoomDoc(rand);
+    let current = doc;
+    const ops: EditOp[] = [];
+    for (let n = 0; n < 5; n++) {
+      const op = randomZoomOp(rand, current);
+      ops.push(op);
+      const result = applyEditOp(current, op);
+      if (result.ok) current = result.doc;
+    }
+    out.push(runSteps(`zoom-random/${i}`, doc, ops));
+  }
+  return out;
+}
+
 export function buildEditVectors(): EditVectors {
   return {
     version: EDIT_VECTORS_VERSION,
     constants: constants(),
     fns: fnCases(),
-    ops: [...handVectors(), ...randomVectors()],
+    ops: [...handVectors(), ...randomVectors(), ...zoomVectors()],
   };
 }
 

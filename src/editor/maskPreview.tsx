@@ -206,28 +206,31 @@ function PixelCanvas({
   return <canvas ref={ref} className="mask-canvas pixelated" style={style} />;
 }
 
-/** One mask's look at `rect`: an opaque fill, or a canvas clipped to the box. */
+/** One mask's look at `rect`: an opaque fill, or a canvas clipped to the box; a fading mask shows at its `opacity` (maskOpacityAt), as the render blends it. */
 export function MaskEffect({
   mask,
   rect,
   source,
   media,
+  opacity = 1,
 }: {
   mask: EditMask;
   rect: MaskRect;
   source: EditSource;
   media: MaskMedia | null;
+  opacity?: number;
 }) {
+  const fade = opacity < 1 ? { opacity } : {};
   if (mask.style === "solid") {
     return (
       <div
         className="mask-effect"
-        style={{ ...rectStyle(rect), background: mask.color ?? DEFAULT_MASK_COLOR }}
+        style={{ ...rectStyle(rect), background: mask.color ?? DEFAULT_MASK_COLOR, ...fade }}
       />
     );
   }
   return (
-    <div className="mask-effect" style={rectStyle(rect)}>
+    <div className="mask-effect" style={{ ...rectStyle(rect), ...fade }}>
       {mask.style === "blur" ? (
         <BlurCanvas mask={mask} rect={rect} source={source} media={media} />
       ) : (

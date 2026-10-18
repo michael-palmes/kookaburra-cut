@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { emit, listen } from "@tauri-apps/api/event";
-import { refreshWorkspaceAssets } from "../engine/assetInventory";
+import { projectAssetsStamp, refreshWorkspaceAssets } from "../engine/assetRevisions";
 import { resolveScreenshotTimeMs } from "../engine/autorun";
 import { invalidateChangedClips } from "../engine/clips";
 import { canvasHandle } from "../engine/exportBridge";
@@ -128,6 +128,8 @@ interface Liveness {
 interface LoadedState {
   project: LoadedProject;
   fingerprint: string | null;
+  /** The asset stamp at load (null when unreadable): an asset-only change reloads without recompiling. */
+  assetStamp: string | null;
   formatName: string;
 }
 
@@ -168,17 +170,18 @@ export function startBridgeService(
             () => null,
           )
         : null);
-    if (
+    const assetStamp = editable && !sourceRevision ? await projectAssetsStamp(targetId) : null;
+    const sameSources =
       current?.project.id === targetId &&
       current.fingerprint === fingerprint &&
-      (fingerprint !== null || !editable)
-    ) {
+      (fingerprint !== null || !editable);
+    if (current && sameSources && current.assetStamp === assetStamp) {
       if (current.formatName !== format.name) {
         const project = { ...current.project };
         current = null;
         apply(project, format);
         await awaitProjectCommitted(project);
-        current = { project, fingerprint, formatName: format.name };
+        current = { project, fingerprint, assetStamp, formatName: format.name };
       }
     } else {
       if (sourceRevision) {
@@ -186,13 +189,19 @@ export function startBridgeService(
         await refreshBundledProjectAssets(targetId);
         await invalidateChangedClips();
       }
-      bumpWorkspaceReloadToken();
+      if (sameSources) {
+        // Assets only (a file replaced in place): new revisions and clips, the compiled sources kept.
+        await refreshWorkspaceAssets(targetId);
+        await invalidateChangedClips();
+      } else {
+        bumpWorkspaceReloadToken();
+      }
       const loaded = sourceRevision
         ? await loadProject(targetId, { trustMode: "stored-only", readSavedThemes: true })
         : await loadForBridge(targetId);
       apply(loaded, format);
       await awaitProjectCommitted(loaded);
-      current = { project: loaded, fingerprint, formatName: format.name };
+      current = { project: loaded, fingerprint, assetStamp, formatName: format.name };
     }
     loadedProjectId = current.project.id;
     return current.project;
@@ -772,6 +781,7 @@ function exportOptions(project: LoadedProject, format: FormatSpec) {
     slots: project.slots,
     cameraTrack: project.cameraTrack,
     sceneDocs: project.sceneDocs,
+    music: project.music,
     theme: project.theme,
     sceneThemes: project.sceneThemes,
     projectLighting: project.projectLighting,

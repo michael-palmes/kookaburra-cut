@@ -413,3 +413,168 @@ def raw_for(tools: Tools, path: Path, *, short_edge: int = SCREEN_SHORT_EDGE, ca
     if cache_file is not None:
         atomic_write_text(cache_file, json.dumps(data, separators=(",", ":")))
     return data
+
+
+# ── P3: full-rate small frames and row profiles (kb video log and pair) ──────
+
+PROFILE_VERSION = 1
+PROFILE_WIDTH = 54
+PROFILE_ROWS = (6, 480)
+_SHOWINFO_RE = re.compile(r"\] n:\s*(\d+)\s+pts:\s*(\S+)\s+pts_time:\S*\s+duration:\s*(\S+)")
+_TIMEBASE_RE = re.compile(r"\] config in time_base: (\d+)/(\d+)")
+
+
+def profile_size(width: int, height: int) -> Tuple[int, int]:
+    """PROFILE_WIDTH wide, an even height keeping the display aspect."""
+    if width <= 0 or height <= 0:
+        return (PROFILE_WIDTH, PROFILE_WIDTH)
+    return (PROFILE_WIDTH, max(2, int(round(height * PROFILE_WIDTH / width / 2.0)) * 2))
+
+
+def profile_graph(sw: int, sh: int) -> str:
+    pw, ph = PROFILE_ROWS
+    return (f"[0:v]split=2[a][b];[a]scale={sw}:{sh}:flags=area,format=gray,showinfo[s];"
+            f"[b]scale={pw}:{ph}:flags=area,format=gray[p]")
+
+
+def profile_key() -> str:
+    text = json.dumps([PROFILE_VERSION, PROFILE_WIDTH, list(PROFILE_ROWS)])
+    return f"p{PROFILE_VERSION}-{hashlib.sha256(text.encode()).hexdigest()[:8]}"
+
+
+def parse_showinfo(lines: Iterable[str]) -> List[Tuple[Optional[float], Optional[float]]]:
+    """showinfo lines -> (pts ms, duration ms) per frame, from the integer pts and the input time base."""
+    out: List[Tuple[Optional[float], Optional[float]]] = []
+    tb: Optional[Tuple[int, int]] = None
+    for line in lines:
+        m = _SHOWINFO_RE.search(line)
+        if m is None:
+            t = _TIMEBASE_RE.search(line)
+            if t is not None and int(t.group(2)):
+                tb = (int(t.group(1)) * 1000, int(t.group(2)))
+            continue
+        pts: Optional[float] = None
+        dur: Optional[float] = None
+        if tb is not None:
+            try:
+                pts = int(m.group(2)) * tb[0] / tb[1]
+            except ValueError:
+                pts = None
+            try:
+                d = int(m.group(3))
+                dur = d * tb[0] / tb[1] if 0 < d < (1 << 40) else None
+            except ValueError:
+                dur = None
+        out.append((pts, dur))
+    return out
+
+
+def frame_times(rows: List[Tuple[Optional[float], Optional[float]]], duration_ms: float) -> Tuple[List[float], float]:
+    """Rising frame start times (a missing or out-of-order pts follows its predecessor) and the video's end: the later of
+    the container duration and the last frame's own end, as the app's constant-rate fill shows it."""
+    pts: List[float] = []
+    for i, (p, _d) in enumerate(rows):
+        if p is None or (pts and p <= pts[-1]):
+            step = rows[i - 1][1] if i else None
+            p = pts[-1] + (step or 1000.0 / 60) if pts else 0.0
+        pts.append(round(max(0.0, p), 3))
+    if not pts:
+        return [], float(duration_ms)
+    return pts, round(max(float(duration_ms), pts[-1] + (rows[-1][1] or 0.0)), 3)
+
+
+def decode_profile(tools: Tools, path: Path, small: Tuple[int, int], work: Path,
+                   timeout_s: float = DECODE_TIMEOUT_S) -> Tuple[List[Tuple[Optional[float], Optional[float]]], bytes, bytes]:
+    """One full-rate decode to gray small frames and row profiles (two raw files in work), timed by showinfo."""
+    small_raw, rows_raw = work / "small.raw", work / "rows.raw"
+    args = [tools.ffmpeg, "-hide_banner", "-nostdin", "-nostats", "-v", "info", "-i", str(path), "-filter_complex", profile_graph(*small),
+            "-map", "[s]", "-fps_mode", "passthrough", "-f", "rawvideo", "-y", str(small_raw),
+            "-map", "[p]", "-fps_mode", "passthrough", "-f", "rawvideo", "-y", str(rows_raw)]
+    try:
+        proc = subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True, errors="replace")
+    except OSError as e:
+        raise KbError(f"ffmpeg failed to start: {e}", EXIT_ENV) from None
+    timer = threading.Timer(timeout_s, proc.kill)
+    timer.start()
+    tail: List[str] = []
+    try:
+        assert proc.stderr is not None
+        timing = parse_showinfo(line for line in _keep_tail(proc.stderr, tail) if "showinfo" in line)
+        proc.wait()
+    finally:
+        timer.cancel()
+        if proc.stderr is not None:
+            proc.stderr.close()
+    if proc.returncode != 0:
+        raise KbError(f"ffmpeg could not decode {path.name}: {' '.join(tail[-3:]).strip()[:400]}")
+    return timing, small_raw.read_bytes(), rows_raw.read_bytes()
+
+
+def _write_bytes(path: Path, data: bytes) -> None:
+    tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    with open(tmp, "wb") as f:
+        f.write(data)
+    os.replace(tmp, path)
+
+
+def _cached_profile(header: Path, small_file: Path, rows_file: Path) -> Optional[Dict[str, Any]]:
+    import zlib
+
+    try:
+        data = json.loads(header.read_text(encoding="utf-8"))
+        if not isinstance(data, dict) or data.get("version") != PROFILE_VERSION:
+            return None
+        sw, sh = data["small"]
+        pw, ph = data["rows"]
+        n = int(data["frames"])
+        small = zlib.decompress(small_file.read_bytes())
+        rows = zlib.decompress(rows_file.read_bytes())
+    except (OSError, ValueError, KeyError, TypeError, zlib.error):
+        return None
+    if len(small) != n * sw * sh or len(rows) != n * pw * ph or len(data.get("ptsMs") or []) != n:
+        return None
+    data["smallData"], data["rowData"] = small, rows
+    return data
+
+
+def profile_pass(tools: Tools, path: Path, *, cache_dir: Optional[Path] = None, refresh: bool = False) -> Dict[str, Any]:
+    """Every decoded frame as a PROFILE_WIDTH-wide gray frame plus a 6 x 480 row profile, with its pts; cached by content sha.
+
+    Returns { version, sha256, info, small: [w, h], rows: [w, h], frames, ptsMs, endMs, smallData, rowData }, the two data
+    keys being raw bytes frame after frame. Kept apart from raw_for, so analyse's cache, its version and cleanup stay put.
+    """
+    import tempfile
+    import zlib
+
+    files: Optional[Tuple[Path, Path, Path]] = None
+    sha = None
+    if cache_dir is not None:
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        sha = file_sha256(path, cache_dir / "shas.json")
+        stem = f"{sha[:24]}-{profile_key()}"
+        files = (cache_dir / f"{stem}.json", cache_dir / f"{stem}.small.z", cache_dir / f"{stem}.rows.z")
+        if not refresh:
+            hit = _cached_profile(*files)
+            if hit is not None:
+                return hit
+    info = probe(tools, path)
+    small = profile_size(info["width"], info["height"])
+    work = Path(tempfile.mkdtemp(prefix="kb-profile-", dir=str(cache_dir) if cache_dir is not None else None))
+    try:
+        timing, small_data, row_data = decode_profile(tools, path, small, work)
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+    pw, ph = PROFILE_ROWS
+    n = min(len(timing), len(small_data) // (small[0] * small[1]), len(row_data) // (pw * ph))
+    if n <= 0:
+        raise KbError(f"ffmpeg decoded no frames from {path.name}")
+    pts, end = frame_times(timing[:n], float(info.get("durationMs") or 0))
+    data: Dict[str, Any] = {"version": PROFILE_VERSION, "sha256": sha, "info": info, "small": list(small), "rows": [pw, ph],
+                            "frames": n, "ptsMs": pts, "endMs": end}
+    small_data, row_data = small_data[:n * small[0] * small[1]], row_data[:n * pw * ph]
+    if files is not None:
+        _write_bytes(files[1], zlib.compress(small_data, 6))
+        _write_bytes(files[2], zlib.compress(row_data, 6))
+        atomic_write_text(files[0], json.dumps(data, separators=(",", ":")))
+    data["smallData"], data["rowData"] = small_data, row_data
+    return data

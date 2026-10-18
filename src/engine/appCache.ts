@@ -7,6 +7,33 @@ export interface CacheStats {
   mediaEntries: number;
   clipsBytes: number;
   clipsEntries: number;
+  /** The clip cache's cap; least recently used chunks go past it, never ones an open project or export needs. */
+  clipsCapBytes: number;
+}
+
+/** The cap Settings starts at (native `DEFAULT_CAP_GB`). */
+export const DEFAULT_CLIP_CACHE_CAP_GB = 20;
+
+/** The caps Settings offers, in GB. */
+export const CLIP_CACHE_CAP_OPTIONS_GB = [5, 10, 20, 50, 100, 200] as const;
+
+/** A cap in whole GB from the native byte figure (GiB, the unit `formatBytes` prints as GB). */
+export function capGb(bytes: number): number {
+  return Math.max(1, Math.round(bytes / 1024 ** 3));
+}
+
+/** The cap options with the current one included, in order. */
+export function clipCacheCapOptions(current: number): number[] {
+  return [...new Set<number>([...CLIP_CACHE_CAP_OPTIONS_GB, current])].sort((a, b) => a - b);
+}
+
+export function setClipCacheCap(gb: number): Promise<void> {
+  return invoke("set_clip_cache_cap", { gb });
+}
+
+/** How a Clear went: done now, or deferred while a terminal run (another session's gate) is using the clip cache. */
+export interface ClearOutcome {
+  deferred: boolean;
 }
 
 export interface SidecarVersions {
@@ -22,9 +49,9 @@ export function clearMediaCache(): Promise<void> {
   return invoke("clear_media_cache");
 }
 
-/** Refused while an export is running (the export loop reads extracted frames). */
-export function clearClipsCache(): Promise<void> {
-  return invoke("clear_clips_cache");
+/** Refused while an export is running (the export loop reads extracted frames); deferred while a terminal run is queued. */
+export function clearClipsCache(): Promise<ClearOutcome> {
+  return invoke<ClearOutcome>("clear_clips_cache");
 }
 
 export function sidecarVersions(): Promise<SidecarVersions> {

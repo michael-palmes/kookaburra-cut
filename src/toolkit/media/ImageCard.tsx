@@ -1,11 +1,8 @@
 import { useTexture } from "@react-three/drei";
 import { useContext, useLayoutEffect, useMemo } from "react";
 import { MeshBasicMaterial, SRGBColorSpace, type Texture, Vector2, Vector4 } from "three";
-import { resolveAssetUrl } from "../../engine/project";
-import { ProjectIdContext } from "../../engine/sceneContext";
 import { useTimeline } from "../../engine/timeline";
-import { assetVersionKey, useAssetVersionStore } from "../../store/assetVersionStore";
-import { useEditorStore } from "../../store/editorStore";
+import { useProjectAssetUrl } from "../../engine/useProjectAssetUrl";
 import { foldBandToChild, GroupAnimationContext, groupImageEffects } from "../group/context";
 import { SHINE_AXIS, SHINE_INTENSITY } from "../text/presets";
 import type { V3 } from "../types";
@@ -27,19 +24,8 @@ export interface ImageCardProps {
 /** A flat image plane for icons, logos and stills: renders UNLIT with `toneMapped: false` so the asset's pixels land exactly (the device-screen/backdrop precedent), respecting PNG alpha so rounded/irregular shapes come from the asset itself; the suspense texture load is settled by the export preamble before frame 0. */
 export function ImageCard(props: ImageCardProps) {
   const { src, position = [0, 0, 0], width = 1, maxHeight, from, to } = props;
-  const contextProjectId = useContext(ProjectIdContext);
-  const storeProjectId = useEditorStore((s) => s.projectId);
-  const projectId = contextProjectId ?? storeProjectId;
-  // Re-render when the asset is re-imported in place (app-icon swap) so the URL busts.
-  const version = useAssetVersionStore((s) => s.versions[assetVersionKey(projectId, src)] ?? 0);
-  // A missing asset degrades to nothing; never tear down the canvas tree.
-  let url: string | null = null;
-  try {
-    url = resolveAssetUrl(projectId, src);
-    if (version > 0) url += `?v=${version}`;
-  } catch (e) {
-    console.warn(`[image] "${src}" unresolved:`, e);
-  }
+  // Re-renders on an in-place replace (an app-icon swap), whose revision makes a new URL.
+  const url = useProjectAssetUrl(src, "[image]");
   if (!url) return null;
   return (
     <AssetBoundary key={url} label={src}>

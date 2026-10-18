@@ -103,6 +103,15 @@ export { VideoClip, type VideoClipProps } from "./media/VideoClip";
 export { VideoWindow, type VideoWindowProps } from "./media/VideoWindow";
 // Per-subtree motion blur scale for code-authored motion (sidecar items use their own motionBlur field).
 export { MotionBlur } from "./motion/MotionBlur";
+// Attack, hold, release levels fired at given times (beats, cues); overlapping pulses take the max.
+export { type PulseOptions, pulse } from "./motion/pulse";
+// Musical time from the authored audio.grid and audio.cues: null and {} without them.
+export {
+  type BeatGrid,
+  type BeatPosition,
+  useBeatGrid,
+  useCues,
+} from "./music/useBeatGrid";
 // The 3D objects library: bundled + workspace manifests, staged by the sidecar `objects` array.
 export { ObjectsFallback, StagedObject } from "./objects/ObjectPrimitive";
 export { preloadSceneObjects } from "./objects/preload";

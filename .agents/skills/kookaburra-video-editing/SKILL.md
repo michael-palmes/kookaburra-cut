@@ -1,6 +1,6 @@
 ---
 name: kookaburra-video-editing
-description: Edits the videos inside a Kookaburra Cut project as the app's own video-editor documents, so the user can open every change in the editor. Covers trim, cut, split, reorder, speed up or slow down, freeze and hold frames, stills, tap highlights, blur, pixelate or solid privacy masks, removing dead time, fitting to an exact length or a scene, landing a moment on a beat, and frame grabs and contact sheets to check the result. Use when asked to trim, cut, shorten, "make this video shorter", "cut the dead time", remove idle, pauses or loading, speed up, slow down, retime, "fit to 8 seconds", freeze frame, "hold the last frame", edit a screen recording or simulator recording, add a tap highlight, blur, redact, "hide the email", add a privacy mask, pixelate, "land on the beat", or use the video editor.
+description: Edits the videos inside a Kookaburra Cut project as the app's own video-editor documents, so the user can open every change in the editor. Covers trim, cut, split, reorder, speed, freeze and hold frames, stills, tap highlights, blur, pixelate or solid privacy masks with fades, crop and zoom, removing dead time, fitting to a length or a scene, landing a moment on a beat, footage logs, and frame grabs and contact sheets to check the result. Use when asked to trim, cut, shorten, "make this video shorter", "cut the dead time", remove idle, pauses or loading, speed up, slow down, retime, "fit to 8 seconds", freeze frame, "hold the last frame", edit a screen recording or simulator recording, add a tap highlight, blur, redact, "hide the email", add a privacy mask, pixelate, crop or zoom in, "land on the beat", "log this recording", "find the money frames", "line up my notes with the video", "compare two takes", "pair re-recorded footage", or use the video editor.
 when_to_use: Load before changing what a video shows, when or how fast (anything under edits/ or an assets/*-edited.mp4). Scene layout, devices and which scene shows a video stay with kookaburra-scene-authoring.
 allowed-tools: Bash(./kb video *), Bash(python3 .claude/skills/kookaburra-scene-authoring/scripts/kb.py video *)
 ---
@@ -38,7 +38,9 @@ hand: cuts, speeds and freezes bend every mapping. Bare numbers are seconds; `25
 
 1. `./kb status`, then `./kb video list` (edits, lengths, render state, which scenes play them). New
    recording: `./kb video new assets/<file>` (or `--for <scene>:<slot>` to edit what a slot plays).
-2. Look first: `./kb video sheet NAME` and Read the PNG. `./kb video analyse NAME` for dead time.
+2. Look first: `./kb video sheet NAME` and Read the PNG. `./kb video analyse NAME` for dead time;
+   `./kb video log NAME --sheet` for what happens when (holds, screen changes, scrolls, the best
+   frames to show) and to line up the user's notes (reference/footage.md).
 3. Plan with `--dry-run` (every mutation takes it) and read the printed timeline.
 4. Apply. Cleanup, fit, align, cut, keep and remove checkpoint first; `./kb undo` restores the doc.
 5. Review: `./kb video sheet NAME --seams` (or `--changes`), `./kb video frames NAME --at T,...`;
@@ -66,6 +68,10 @@ hand: cuts, speeds and freezes bend every mapping. Bare numbers are seconds; `25
 | Recordings joined, a title still | `./kb video append NAME assets/b.mov`, `./kb video insert NAME assets/logo.png --at 0 --hold 1.5` |
 | Tap highlights | `./kb video taps suggest NAME`, check a gridded frame, then `./kb video tap add NAME --src s1@T --pos X,Y` |
 | Something hidden (email, name, token) | `./kb video mask add NAME --at T --rect X,Y,W,H --until T2 --style blur`, then `./kb video frames NAME --mask m1` |
+| A mask that fades, or lifts on a scene moment | `--fade-in 0.2 --fade-out 0.3` on `mask add` or `mask set`; `--until-scene 2.4 --scene 3` ends it where the scene shows that moment |
+| Part of the frame (a crop, a push into a button) | `./kb video crop NAME c1 --aspect 9:16 --centre 0.5,0.4`; `./kb video zoom NAME c1 --at 1.5 --rect X,Y,W,H` (reference/edit-doc.md) |
+| What happens when; notes lined up; the best frames | `./kb video log NAME --notes notes.md --sheet` (reference/footage.md) |
+| Two takes of one flow compared | `./kb video pair assets/take1.mov assets/take2.mov` |
 | "What does it show?" | `./kb video sheet NAME`, `./kb video frames NAME --at T --grid` |
 
 ## Hard rules
@@ -94,8 +100,12 @@ hand: cuts, speeds and freezes bend every mapping. Bare numbers are seconds; `25
 - With other agents: pass `--agent <name>` to every kb command. A plain `./kb undo` refuses when
   it would revert another agent's files; leave a `./kb note` rather than editing a recording a
   scene leased to someone else plays.
-- Recording notes and memory drift from the footage: take times from `./kb video analyse` and
-  `./kb video frames`, never from notes.
+- Recording notes and memory drift from the footage: take times from `./kb video log` (`--notes FILE`
+  lines the notes up with the changes it finds), `./kb video analyse` and `./kb video frames`, never
+  from the notes themselves.
+- A scene slot with its own timing (`inMs`, `outMs`, `speed`, `loop` or `posterMs` on a device
+  screen) can't take `fit --scene` or a scene-target `align` (exit 1): trim and retime in the edit,
+  then drop the slot's keys (`./kb doc S unset devices.N.media.inMs`, and the others).
 
 ## Defaults
 
@@ -118,7 +128,8 @@ hand: cuts, speeds and freezes bend every mapping. Bare numbers are seconds; `25
 | `new SRC [--name N] [--for S:SLOT]`, `reset NAME --yes` | Start or rebuild an edit |
 | `split --at T`, `cut A-B`, `keep A-B[@Nx]`, `trim`, `speed`, `freeze`, `hold`, `remove`, `move`, `insert`, `append` | Clip edits |
 | `tap add\|move\|retime\|remove\|style\|list` | Tap highlights |
-| `mask add\|key\|hold\|unkey\|offset\|set\|span\|remove\|list` | Privacy masks |
+| `mask add\|key\|hold\|unkey\|offset\|set\|span\|remove\|list [--fade-in D] [--fade-out D] [--until-scene T --scene S]` | Privacy masks |
+| `crop NAME CLIP (--rect x,y,w,h \| --aspect 9:16 [--centre x,y] \| --clear)`, `zoom NAME CLIP (--at T [--rect] [--ease] \| --remove T \| --move T --to T2 \| --clear)` | Framing: a static crop, or keyed zoom |
 | `apply NAME PLAN\|@file\|-` | A JSON plan, all or nothing |
 | `analyse NAME\|SRC [--range A-B]` | Black, lead-in/out, static, blink, loading, typing, screen changes, tap candidates |
 | `cleanup NAME [--gentle\|--aggressive] [--keep A-B] [--skip iN] [--dry-run]` | Remove dead time |
@@ -127,18 +138,24 @@ hand: cuts, speeds and freezes bend every mapping. Bare numbers are seconds; `25
 | `frames NAME\|SRC (--at \| --src \| --tap \| --mask) [--grid] [--zoom x,y,w,h] [--overlay taps,masks]` | PNGs to Read |
 | `sheet NAME\|SRC [--count N \| --every T \| --seams \| --compare \| --changes]` | Contact sheet to Read |
 | `taps suggest NAME` | Likely taps, with the commands to check and add each |
+| `log NAME\|SRC [--notes FILE] [--sheet] [--range A-B] [--money N]`, `pair A B` | Footage log: holds, changes, scrolls, money frames, notes aligned; two takes matched |
 | `render NAME [--use --scene S --slot P] [--draft]`, `use NAME --scene S`, `durations`, `open NAME` | Output |
 
 Every command takes `--json`. Exit 0 ok, 1 a problem (read the message), 2 environment (app CLI
 missing or too old, app closed for `open`, a worktree), 3 transient (another kb command holds the
-edit, or the app is busy: wait `retryAfterMs` and rerun).
+edit, or the app is busy: wait `retryAfterMs` and rerun). Mask fades, crop and zoom need a current
+app: kb refuses them (exit 2, "ask the user to update Kookaburra Cut") with an older one, and any
+write to a doc that already has them, since an older app would drop them on save. `./kb video caps`
+shows what the app's CLI has.
 
 ## Routing
 
-- reference/edit-doc.md: the document, ids, limits, clock formulas, frame grid, letterbox, tap
-  and mask geometry, stills, naming.
+- reference/edit-doc.md: the document, ids, limits, clock formulas, frame grid, letterbox, crop
+  and zoom, tap and mask geometry, mask fades, stills, naming.
 - reference/cleanup.md: what cleanup cuts and never cuts, the strength table, reading the report.
 - reference/fit.md: exact lengths, strategies, anchors, align and beats, scene slots.
 - reference/review.md: frames, grids, zooms, overlays, sheets, seam diffs, where files go.
+- reference/footage.md: `./kb video log` (holds, changes, scrolls, money frames, notes) and
+  `./kb video pair` (two takes).
 - reference/recipes.md: worked requests from start to finish.
 - Scenes, devices, captures and beats: the kookaburra-scene-authoring skill.

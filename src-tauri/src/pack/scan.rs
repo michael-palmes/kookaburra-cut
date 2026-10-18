@@ -33,7 +33,8 @@ pub fn is_excluded(rel: &str) -> bool {
     if rel.starts_with(".claude/") && rel != ".claude/settings.json" {
         return true;
     }
-    if rel.starts_with("assets/.emoji-cache/") {
+    // Caches and conform originals stay home; a pack carries the mezzanine the project renders.
+    if rel.starts_with("assets/.emoji-cache/") || rel.starts_with("assets/.originals/") {
         return true;
     }
     if rel == "edits/_tap_prefs.json" {
@@ -194,6 +195,9 @@ mod tests {
         assert!(!is_excluded(".claude/settings.json"));
         assert!(!is_excluded("edits/clip.json"));
         assert!(!is_excluded("scenes/01-hero.tsx"));
+        assert!(is_excluded("assets/.originals/rec.mov"));
+        assert!(!is_excluded("assets/rec.timing.json"));
+        assert!(!is_excluded("assets/originals/rec.mov"));
     }
 
     #[test]

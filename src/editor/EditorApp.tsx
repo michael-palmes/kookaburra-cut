@@ -3,6 +3,7 @@ import { emit, listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { ask } from "@tauri-apps/plugin-dialog";
 import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { refreshWorkspaceAssets } from "../engine/assetRevisions";
 import {
   DEVICE_SCREEN_SLOTS,
   type DeviceScreenSlot,
@@ -40,7 +41,10 @@ import {
   sourceMomentAt,
 } from "../engine/editMasks";
 import {
+  aspectCropRect,
+  type CropRect,
   clipIndexAt,
+  clipTimelineMs,
   DEFAULT_HOLD_MS,
   freezeAt,
   freezeAtEnd,
@@ -49,9 +53,11 @@ import {
   splitAt,
   tapWindows,
   timelineDurationMs,
+  zoomKeyIndex,
 } from "../engine/editMath";
 import { applyEditOp, type EditOp, type EditOpResult, type SourceMeta } from "../engine/editOps";
 import { formatMediaDuration, importMediaBytes, type MediaMeta, mediaMeta } from "../engine/media";
+import { projectIdForNativeSlug } from "../engine/project";
 import { readProjectManifestSnapshot } from "../engine/projectEdit";
 import { revealApp } from "../engine/reveal";
 import { parseSceneDoc } from "../engine/sceneDocSchema";
@@ -62,6 +68,7 @@ import { MediaBrowser } from "../ui/MediaBrowser";
 import { mediaCardMenu } from "../ui/mediaCardMenu";
 import { hasPendingTextEdit, spaceMeansPlayback } from "../ui/textEditFocus";
 import { useEscapeClose } from "../ui/useEscapeClose";
+import { CropSettingsBar } from "./CropLayer";
 import {
   adoptOwnWrite,
   createEditStampState,
@@ -279,6 +286,11 @@ export function EditorApp() {
   const [armedTap, setArmedTap] = useState(false);
   const [selectedMaskId, setSelectedMaskId] = useState<string | null>(null);
   const [armedMask, setArmedMask] = useState(false);
+  const [armedCrop, setArmedCrop] = useState(false);
+  // One tool at a time: arming tap or mask (button or key) puts the crop tool down.
+  useEffect(() => {
+    if (armedTap || armedMask) setArmedCrop(false);
+  }, [armedTap, armedMask]);
   const [maskMenu, setMaskMenu] = useState<ContextMenuState | null>(null);
   const [tapMenu, setTapMenu] = useState<ContextMenuState | null>(null);
   const [clipMenu, setClipMenu] = useState<ContextMenuState | null>(null);
@@ -655,9 +667,13 @@ export function EditorApp() {
     };
   }, [load]);
 
-  // Media changed elsewhere (import, cache cleared in Settings) → re-scan the panel.
+  // Media changed elsewhere (import, cache cleared in Settings) → re-scan the panel, and re-read revisions so a file replaced in place reloads.
   useEffect(() => {
-    const unlisten = listen("kookaburra://media-changed", () => setMediaRefresh((n) => n + 1));
+    const unlisten = listen("kookaburra://media-changed", () => {
+      setMediaRefresh((n) => n + 1);
+      const t = targetRef.current;
+      if (t) void refreshWorkspaceAssets(projectIdForNativeSlug(t.slug));
+    });
     return () => {
       void unlisten.then((fn) => fn());
     };
@@ -1355,6 +1371,78 @@ export function EditorApp() {
     [runOp],
   );
 
+  const handleMaskFade = useCallback(
+    (maskId: string, edge: "in" | "out", ms: number) => {
+      runOp(
+        edge === "in"
+          ? { op: "setMaskFade", maskId, fadeInMs: ms }
+          : { op: "setMaskFade", maskId, fadeOutMs: ms },
+        { coalesceKey: `mask-fade-${edge}:${maskId}` },
+      );
+    },
+    [runOp],
+  );
+
+  /** A crop drag or Fit output sets the zoom key at the playhead (a new time adds one, gliding smoothly; an existing key keeps its ease); Reset (null) clears the clip's crop and zoom. The ops snap boxes to even source pixels. */
+  const handleCommitCrop = useCallback(
+    (clipId: string, crop: CropRect | null) => {
+      if (!crop) {
+        runOp({ op: "setClipCrop", clipId, crop: null });
+        return;
+      }
+      const atMs = playheadRef.current;
+      const current = docRef.current;
+      const clip = current?.clips.find((c) => c.id === clipId);
+      const fps = current && current.settings.fps > 0 ? current.settings.fps : 60;
+      const isNew = !clip?.zoom || zoomKeyIndex(clip.zoom.keys, atMs - clip.startMs, fps) < 0;
+      runOp({ op: "setZoomKey", clipId, atMs, rect: crop, ...(isNew ? { ease: "smooth" } : {}) });
+    },
+    [runOp],
+  );
+
+  /** Right-click on a zoom key diamond: how its glide to the next key eases, or delete it. */
+  const handleZoomKeyMenu = useCallback(
+    (clipId: string, tMs: number, x: number, y: number) => {
+      const keys = docRef.current?.clips.find((c) => c.id === clipId)?.zoom?.keys ?? [];
+      const at = keys.findIndex((k) => k.tMs === tMs);
+      if (at < 0) return;
+      const last = at === keys.length - 1;
+      const smooth = keys[at].ease === "smooth";
+      const lastTitle = "The last key has no glide after it";
+      setClipMenu({
+        x,
+        y,
+        items: [
+          {
+            id: "ease-linear",
+            label: "Glide linearly",
+            icon: <ToolIcon id="easeLinear" />,
+            disabled: last || !smooth,
+            title: last ? lastTitle : smooth ? undefined : "This key already glides linearly",
+            onSelect: () => runOp({ op: "setZoomKeyEase", clipId, tMs, ease: "linear" }),
+          },
+          {
+            id: "ease-smooth",
+            label: "Glide smoothly",
+            icon: <ToolIcon id="easeSmooth" />,
+            disabled: last || smooth,
+            title: last ? lastTitle : smooth ? "This key already glides smoothly" : undefined,
+            onSelect: () => runOp({ op: "setZoomKeyEase", clipId, tMs, ease: "smooth" }),
+          },
+          "separator",
+          {
+            id: "delete-key",
+            label: "Delete key",
+            icon: <ToolIcon id="deleteKey" />,
+            danger: true,
+            onSelect: () => runOp({ op: "removeZoomKey", clipId, tMs }),
+          },
+        ],
+      });
+    },
+    [runOp],
+  );
+
   const handleMaskColor = useCallback(
     (maskId: string, color: string | undefined) => {
       runOp({ op: "setMaskLook", maskId, color: color ?? null });
@@ -1400,6 +1488,12 @@ export function EditorApp() {
     : false;
   const canTap = doc ? outputToSource(doc.clips, playheadMs) !== null : false;
   const canMask = doc ? sourceMomentAt(doc.clips, playheadMs) !== null : false;
+  const cropClip = doc ? (sourceMomentAt(doc.clips, playheadMs)?.clip ?? null) : null;
+  const cropKeys = cropClip?.zoom?.keys ?? [];
+  const cropKeyAt = cropClip
+    ? zoomKeyIndex(cropKeys, playheadMs - cropClip.startMs, outputFps)
+    : -1;
+  const cropKeyMs = cropKeyAt >= 0 ? cropKeys[cropKeyAt].tMs : null;
   const selectedMask = doc?.masks?.find((m) => m.id === selectedMaskId) ?? null;
   const selectedMaskImage =
     !!selectedMask && doc?.sources.find((s) => s.id === selectedMask.sourceId)?.kind === "image";
@@ -1414,7 +1508,12 @@ export function EditorApp() {
   const tapWindowList = useMemo(
     () =>
       (doc?.taps ?? []).flatMap((tap) =>
-        tapWindows(doc?.clips ?? [], tap, TAP_ANIMATION_DURATION_MS).map((w) => ({ tap, ...w })),
+        tapWindows(
+          doc?.clips ?? [],
+          tap,
+          TAP_ANIMATION_DURATION_MS,
+          doc && doc.settings.fps > 0 ? doc.settings.fps : 60,
+        ).map((w) => ({ tap, ...w })),
       ),
     [doc],
   );
@@ -1479,6 +1578,28 @@ export function EditorApp() {
             },
           },
           {
+            id: "crop",
+            label: "Crop…",
+            disabled: !clip,
+            title: "Frame this clip at the output's shape with the crop tool",
+            onSelect: () => {
+              if (!clip) return;
+              const at = playheadRef.current;
+              const end = clip.startMs + clipTimelineMs(clip);
+              if (at < clip.startMs || at >= end) setPlayheadMs(clip.startMs);
+              setArmedTap(false);
+              setArmedMask(false);
+              setArmedCrop(true);
+            },
+          },
+          {
+            id: "reset-crop",
+            label: "Reset crop",
+            disabled: !clip?.crop && !clip?.zoom,
+            title: "Show this clip's whole frame again",
+            onSelect: () => handleCommitCrop(id, null),
+          },
+          {
             id: "remove",
             label: "Remove clip",
             confirmLabel: "Really remove?",
@@ -1490,7 +1611,7 @@ export function EditorApp() {
         ],
       });
     },
-    [doc, handleInsertClipAt, handleAddClip, handleRemoveClip],
+    [doc, handleInsertClipAt, handleAddClip, handleRemoveClip, handleCommitCrop],
   );
 
   // Space plays/pauses (committing the value first when it comes from the tap-size slider or the hold field, where a literal space means nothing); S/F split/freeze at the playhead; Delete/Backspace removes the selected clip; Escape deselects. Lives below canSplit/canFreeze so the dependency array can read them.
@@ -1533,7 +1654,8 @@ export function EditorApp() {
         handleRemoveClip(selectedId);
       } else if (e.key === "Escape") {
         // Disarm a tool first, deselect only when none was armed (the AnimationLane pattern).
-        if (armedMask) setArmedMask(false);
+        if (armedCrop) setArmedCrop(false);
+        else if (armedMask) setArmedMask(false);
         else if (armedTap) setArmedTap(false);
         else if (selectedMaskId) setSelectedMaskId(null);
         else setSelectedId(null);
@@ -1555,6 +1677,7 @@ export function EditorApp() {
     canTap,
     armedMask,
     canMask,
+    armedCrop,
     selectedMaskId,
     handleDeleteMask,
   ]);
@@ -1613,7 +1736,28 @@ export function EditorApp() {
         </aside>
         <div className="editor-stage-col">
           <main className="editor-stage" ref={stageRef}>
-            {doc && maskStrip ? (
+            {doc && armedCrop ? (
+              <div className="editor-tap-bar">
+                <CropSettingsBar
+                  clipId={cropClip?.id ?? null}
+                  hasCrop={!!cropClip?.crop || !!cropClip?.zoom}
+                  onKey={cropKeyMs !== null}
+                  onFit={() => {
+                    const source = doc.sources.find((s) => s.id === cropClip?.sourceId);
+                    const { width, height } = doc.settings;
+                    if (cropClip && source && height > 0) {
+                      handleCommitCrop(cropClip.id, aspectCropRect(source, width / height));
+                    }
+                  }}
+                  onDeleteKey={() => {
+                    if (cropClip && cropKeyMs !== null) {
+                      runOp({ op: "removeZoomKey", clipId: cropClip.id, tMs: cropKeyMs });
+                    }
+                  }}
+                  onReset={() => cropClip && handleCommitCrop(cropClip.id, null)}
+                />
+              </div>
+            ) : doc && maskStrip ? (
               <div className="editor-tap-bar">
                 <MaskSettingsBar
                   mask={selectedMask}
@@ -1625,6 +1769,8 @@ export function EditorApp() {
                   onStrength={(v) => selectedMask && handleMaskStrength(selectedMask.id, v)}
                   onStrengthCommit={closeEditorHistoryCoalescing}
                   onColor={(hex) => selectedMask && handleMaskColor(selectedMask.id, hex)}
+                  onFade={(edge, ms) => selectedMask && handleMaskFade(selectedMask.id, edge, ms)}
+                  onFadeCommit={closeEditorHistoryCoalescing}
                   onAddKey={() => selectedMask && handleAddMaskKey(selectedMask.id)}
                   onRemoveKey={() => selectedMask && handleRemoveMaskKey(selectedMask.id)}
                   onDelete={() => selectedMask && handleDeleteMask(selectedMask.id)}
@@ -1676,6 +1822,7 @@ export function EditorApp() {
                     clips={doc.clips}
                     sources={doc.sources}
                     basePath={target?.path ?? ""}
+                    projectId={target ? projectIdForNativeSlug(target.slug) : null}
                     playheadMs={playheadMs}
                     playing={playing}
                     trimScrub={trimScrub}
@@ -1702,12 +1849,16 @@ export function EditorApp() {
                     onCommitMaskRect={handleCommitMaskRect}
                     onCommitMaskPath={handleCommitMaskPath}
                     onMaskContextMenu={handleMaskContextMenu}
+                    armedCrop={armedCrop}
+                    onCropGesture={handleMaskGesture}
+                    onCommitCrop={handleCommitCrop}
                   />
                   {refView && (
                     <ReferencePane
                       clips={refView.clips}
                       sources={refView.sources}
                       basePath={target?.path ?? ""}
+                      projectId={target ? projectIdForNativeSlug(target.slug) : null}
                       timeMs={playheadMs + (doc.reference?.offsetMs ?? 0)}
                       playing={playing}
                     />
@@ -1765,6 +1916,21 @@ export function EditorApp() {
               >
                 <ToolIcon id="mask" />
                 Mask
+              </button>
+              <button
+                type="button"
+                className={`btn${armedCrop ? " selected" : ""}`}
+                aria-pressed={armedCrop}
+                onClick={() => {
+                  setArmedCrop((a) => !a);
+                  setArmedTap(false);
+                  setArmedMask(false);
+                }}
+                disabled={!armedCrop && !cropClip}
+                title="Crop: drag over the preview to frame the clip on screen at the output's shape; reframe at another time to zoom between keys"
+              >
+                <ToolIcon id="crop" />
+                Crop
               </button>
               <button
                 type="button"
@@ -1985,6 +2151,8 @@ export function EditorApp() {
           selectedMaskId={selectedMaskId}
           onSelectMask={selectMask}
           onMaskKeyMenu={handleMaskKeyMenu}
+          fps={outputFps}
+          onZoomKeyMenu={handleZoomKeyMenu}
         />
       )}
 

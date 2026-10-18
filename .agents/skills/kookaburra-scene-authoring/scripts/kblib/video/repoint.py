@@ -1,9 +1,10 @@
 """Point a scene slot at an edit's render, on RAW sidecar JSON, exactly as the app's applyEditRepoint writes it.
 
-Mirrors src/engine/sceneDoc.ts (applyEditRepoint, followMediaSources), src/engine/sceneMedia.ts (the legacy
-images/videoWindow promotion), src/engine/deviceScreens.ts (device and comparison slots) and the parse defaults
-in src/engine/sceneDocSchema.ts that the app's write bakes into the touched subtrees. Everything outside those
-subtrees stays as authored. Pinned by fixtures/repoint-vectors.json.
+Mirrors src/engine/sceneDoc.ts (applyEditRepoint, followMediaSlots, followMediaLengthMs, followMediaDurationMs),
+src/engine/sceneMedia.ts (the legacy images/videoWindow promotion), src/engine/deviceScreens.ts (device and
+comparison slots) and the parse defaults in src/engine/sceneDocSchema.ts (parseDeviceMediaKeys among them) that
+the app's write bakes into the touched subtrees. Everything outside those subtrees stays as authored. Pinned by
+fixtures/repoint-vectors.json.
 """
 
 from __future__ import annotations
@@ -14,6 +15,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from ..lock import mutate_json
 from ..util import EXIT_PROBLEMS, KbError, is_int, js_json, load_json_text
+from .editmath import js_round
 
 SCENE_DOC_VERSION = 1
 # kb slot name -> the app's EditRepointSlot
@@ -40,6 +42,11 @@ RADIUS_PRESETS = ("sharp", "subtle", "macos", "rounded")
 IMAGE_EXTS = {"png", "jpg", "jpeg", "webp"}
 SCREEN_FIELD = {"main": "media", "cover": "coverMedia"}
 KEYED_TRACKS = (("camera",), ("cameraRig",), ("deviceTrack",), ("lighting",), ("compare", "track"), ("chart", "track"), ("layeredScreenshot", "animation"))
+# A device screen's source-timing keys (DeviceMediaSpec), in the parser's order.
+PLAYBACK_KEYS = ("inMs", "outMs", "speed", "loop", "posterMs")
+SPEED_MAX = 16
+MIN_FOLLOW_MS = 17
+RETIMED_HINT = "drop the slot's timing first (./kb doc S unset devices.N.media.inMs, and outMs, speed, loop, posterMs), or trim and retime the edit itself"
 
 
 class Unparseable(KbError):
@@ -358,8 +365,57 @@ def parsed_devices(raw: Dict[str, Any]) -> List[Dict[str, Any]]:
     return [d for d in devices if _rec(d) and isinstance(d.get("id"), str) and isinstance(d.get("model"), str)]
 
 
+def _whole(v: Any) -> bool:
+    """Number.isInteger: a finite number with no fraction (2.0 counts)."""
+    return _num(v) and float(v).is_integer()
+
+
+def media_key_problems(spec: Dict[str, Any]) -> List[Tuple[str, str]]:
+    """parseDeviceMediaKeys: (key, why) for each source-timing key the app drops, in the parser's order."""
+    if not any(k in spec for k in PLAYBACK_KEYS):
+        return []
+    if spec.get("kind") != "video":
+        return [(k, "only applies to a video") for k in PLAYBACK_KEYS if k in spec]
+    out: List[Tuple[str, str]] = []
+    for key in ("inMs", "outMs", "posterMs"):
+        if key in spec and not (_whole(spec[key]) and spec[key] >= 0):
+            out.append((key, "isn't a whole number of ms, 0 or more"))
+    if "speed" in spec and not (_num(spec["speed"]) and 0 < spec["speed"] <= SPEED_MAX):
+        out.append(("speed", f"isn't a number above 0 and at most {SPEED_MAX}"))
+    if "loop" in spec and not isinstance(spec["loop"], bool):
+        out.append(("loop", "isn't a boolean"))
+    dropped = {k for k, _ in out}
+    start = spec.get("startMs")
+    if "inMs" in spec and "inMs" not in dropped and _num(start) and start < 0:
+        out.append(("inMs", "can't combine with a negative startMs (use inMs for a trim and startMs for a delay)"))
+        dropped.add("inMs")
+    in_ms = spec["inMs"] if "inMs" in spec and "inMs" not in dropped else 0
+    if "outMs" in spec and "outMs" not in dropped and spec["outMs"] <= in_ms + 16:
+        out.append(("outMs", "trims the whole video (it must pass inMs by more than 16 ms)"))
+    return out
+
+
+def parse_media_keys(spec: Dict[str, Any]) -> Dict[str, Any]:
+    """The spec as the app's parse keeps it: bad source-timing keys gone, everything else verbatim (spec itself when nothing drops)."""
+    drop = {k for k, _ in media_key_problems(spec)}
+    return {k: v for k, v in spec.items() if k not in drop} if drop else spec
+
+
+def has_playback_keys(spec: Dict[str, Any]) -> bool:
+    """clipFrame.ts hasPlaybackKeys, on a parsed spec."""
+    return any(k in spec for k in PLAYBACK_KEYS)
+
+
+def playback_timing(spec: Any) -> Dict[str, Any]:
+    """The source-timing keys a screen spec plays with (after the app's parse), {} for none."""
+    if not _rec(spec):
+        return {}
+    parsed = parse_media_keys(spec)
+    return {k: parsed[k] for k in PLAYBACK_KEYS if k in parsed}
+
+
 def parsed_compare_map(raw: Dict[str, Any], field: str) -> Optional[Dict[str, Any]]:
-    """compare.b.<media|coverMedia> as parseCompare keeps it (malformed overrides dropped), or None."""
+    """compare.b.<media|coverMedia> as parseCompare keeps it (malformed overrides and bad timing keys dropped), or None."""
     compare = raw.get("compare")
     b = compare.get("b") if _rec(compare) else None
     m = b.get(field) if _rec(b) else None
@@ -368,7 +424,7 @@ def parsed_compare_map(raw: Dict[str, Any], field: str) -> Optional[Dict[str, An
     out = {}
     for k, spec in m.items():
         if _rec(spec) and isinstance(spec.get("src"), str) and spec["src"] and spec.get("kind") in ("video", "image"):
-            out[k] = spec
+            out[k] = parse_media_keys(spec)
     return out or None
 
 
@@ -392,6 +448,16 @@ def readable(raw: Any) -> bool:
 
 
 # ── applyEditRepoint and followMediaSources on raw JSON ───────────────────────
+
+
+def _repointed_device_media(media: Any, rel: str) -> Dict[str, Any]:
+    """repointedDeviceMedia: the render owns the timing, so source-timing keys and a negative startMs go; a delay and startOn stay."""
+    nxt = dict(_spread(media), src=rel, kind="video")
+    for key in PLAYBACK_KEYS:
+        nxt.pop(key, None)
+    if _num(nxt.get("startMs")) and nxt["startMs"] < 0:
+        del nxt["startMs"]
+    return js_json(nxt)
 
 
 def apply_raw(raw: Dict[str, Any], slot: str, rel: str, target_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
@@ -436,28 +502,29 @@ def apply_raw(raw: Dict[str, Any], slot: str, rel: str, target_id: Optional[str]
         compare = nxt["compare"]
         if not _rec(compare.get("b")):
             compare["b"] = {}
-        compare["b"][field] = js_json(dict(current, **{device["id"]: dict(_spread(media), src=rel, kind="video")}))
+        compare["b"][field] = js_json(dict(current, **{device["id"]: _repointed_device_media(media, rel)}))
         return nxt
     media = device.get(field)
     if not _truthy(media):
         return None
-    device[field] = js_json(dict(_spread(media), src=rel, kind="video"))
+    device[field] = _repointed_device_media(media, rel)
     return nxt
 
 
-def _device_videos(raw: Dict[str, Any], device: Dict[str, Any]) -> List[str]:
-    out: List[str] = []
+def _device_videos(raw: Dict[str, Any], device: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """deviceVideoSlots: every video screen a device shows, each as the parsed spec that times it."""
+    out: List[Dict[str, Any]] = []
     for screen in ("main", "cover"):
         field = SCREEN_FIELD[screen]
         override = (parsed_compare_map(raw, field) or {}).get(device["id"])
         for media in (device.get(field), override):
             if _rec(media) and media.get("kind") == "video":
-                out.append(media.get("src"))
+                out.append(parse_media_keys(media))
     return out
 
 
-def follow_media_sources(raw: Any) -> List[str]:
-    """followMediaSources: the videos a follow-media scene's length derives from (the longest wins)."""
+def follow_media_slots(raw: Any) -> List[Dict[str, Any]]:
+    """followMediaSlots: [{src, spec?}] for the videos a follow-media scene's length derives from; device screens carry their spec."""
     if not readable(raw):
         return []
     duration = raw.get("duration")
@@ -469,44 +536,73 @@ def follow_media_sources(raw: Any) -> List[str]:
             entry = next((e for e in media if "sourceMediaId" in duration and e["id"] == duration["sourceMediaId"]), None)
         else:
             entry = window_entry(media)
-        return [entry["src"]] if entry and entry.get("kind") == "video" else []
+        return [{"src": entry["src"]}] if entry and entry.get("kind") == "video" else []
     devices = parsed_devices(raw)
     pinned = next((d for d in devices if d["id"] == duration.get("sourceDeviceId")), None) if "sourceDeviceId" in duration else None
-    videos = [v for d in ([pinned] if pinned else devices) for v in _device_videos(raw, d)]
+    videos = [{"src": spec.get("src"), "spec": spec} for d in ([pinned] if pinned else devices) for spec in _device_videos(raw, d)]
     if videos:
         return videos
-    media_videos = [e["src"] for e in media if e.get("kind") == "video"]
+    media_videos = [{"src": e["src"]} for e in media if e.get("kind") == "video"]
     if media_videos:
         return media_videos
     bg = parsed_video_background(raw.get("background"))
-    return [bg["src"]] if bg else []
+    return [{"src": bg["src"]}] if bg else []
+
+
+def follow_media_sources(raw: Any) -> List[str]:
+    """followMediaSources: the videos a follow-media scene's length derives from (the longest wins)."""
+    return [slot["src"] for slot in follow_media_slots(raw)]
+
+
+def follow_media_length_ms(spec: Optional[Dict[str, Any]], probed_ms: Any) -> Any:
+    """followMediaLengthMs: a timed screen plays startMs + (min(outMs, probed) - inMs) / speed (one pass, at least 17 ms); anything else the probe."""
+    if not spec or not has_playback_keys(spec):
+        return probed_ms
+    start = spec["startMs"] if _num(spec.get("startMs")) else 0
+    end = min(spec["outMs"] if "outMs" in spec else probed_ms, probed_ms)
+    in_ms = spec["inMs"] if "inMs" in spec else 0
+    speed = spec["speed"] if "speed" in spec else 1
+    return max(MIN_FOLLOW_MS, js_round(start + (end - in_ms) / speed))
+
+
+def follow_media_duration_ms(slots: List[Dict[str, Any]], probed_ms: Dict[str, Any]) -> Any:
+    """followMediaDurationMs: the longest slot; a source probed at 0 (or not at all) counts for nothing."""
+    longest = 0
+    for slot in slots:
+        probed = probed_ms.get(slot["src"]) or 0
+        if probed > 0:
+            longest = max(longest, follow_media_length_ms(slot.get("spec"), probed))
+    return longest
 
 
 # ── slots in a scene ──────────────────────────────────────────────────────────
 
 
 def slot_entries(raw: Any) -> List[Dict[str, Any]]:
-    """Every slot that shows a media file: {slot (kb name), targetId, src, kind, startMs, fit, startOn, repointable}."""
+    """Every slot that shows a media file: {slot (kb name), targetId, src, kind, startMs, fit, startOn, timing, retimed, repointable}.
+    timing holds a device screen's source-timing keys as the app parses them; retimed says it has any."""
     if not readable(raw):
         return []
     out: List[Dict[str, Any]] = []
     bg = raw.get("background")
     if _rec(bg) and bg.get("type") in ("video", "image") and isinstance(bg.get("src"), str) and bg["src"]:
-        out.append({"slot": "background", "targetId": None, "src": bg["src"], "kind": bg["type"], "startMs": None, "fit": bg.get("fit"), "startOn": None, "repointable": bg["type"] == "video"})
+        out.append({"slot": "background", "targetId": None, "src": bg["src"], "kind": bg["type"], "startMs": None, "fit": bg.get("fit"), "startOn": None, "timing": {}, "retimed": False, "repointable": bg["type"] == "video"})
     media = resolve_media(raw)
     window = window_entry(media)
     for m in media:
         video = m.get("video") or {}
-        out.append({"slot": "media", "targetId": m["id"], "src": m["src"], "kind": m["kind"], "startMs": video.get("startMs"), "fit": None, "startOn": None, "repointable": True, "window": m is window})
+        out.append({"slot": "media", "targetId": m["id"], "src": m["src"], "kind": m["kind"], "startMs": video.get("startMs"), "fit": None, "startOn": None, "timing": {}, "retimed": False, "loop": video.get("loop") is True, "repointable": True, "window": m is window})
     for d in parsed_devices(raw):
         for screen, slot in (("main", "device"), ("cover", "device-cover")):
             media_spec = d.get(SCREEN_FIELD[screen])
             if _rec(media_spec) and isinstance(media_spec.get("src"), str):
-                out.append({"slot": slot, "targetId": d["id"], "src": media_spec["src"], "kind": media_spec.get("kind"), "startMs": media_spec.get("startMs"), "fit": media_spec.get("fit"), "startOn": media_spec.get("startOn"), "repointable": True})
+                timing = playback_timing(media_spec)
+                out.append({"slot": slot, "targetId": d["id"], "src": media_spec["src"], "kind": media_spec.get("kind"), "startMs": media_spec.get("startMs"), "fit": media_spec.get("fit"), "startOn": media_spec.get("startOn"), "timing": timing, "retimed": bool(timing), "repointable": True})
         for screen, slot in (("main", "compare-device"), ("cover", "compare-device-cover")):
             override = (parsed_compare_map(raw, SCREEN_FIELD[screen]) or {}).get(d["id"])
             if override:
-                out.append({"slot": slot, "targetId": d["id"], "src": override["src"], "kind": override.get("kind"), "startMs": override.get("startMs"), "fit": override.get("fit"), "startOn": override.get("startOn"), "repointable": True})
+                timing = playback_timing(override)
+                out.append({"slot": slot, "targetId": d["id"], "src": override["src"], "kind": override.get("kind"), "startMs": override.get("startMs"), "fit": override.get("fit"), "startOn": override.get("startOn"), "timing": timing, "retimed": bool(timing), "repointable": True})
     return out
 
 
@@ -591,6 +687,7 @@ def usages(project: Any, rel: Any = None) -> List[Dict[str, Any]]:
             out.append({
                 "scene": stem, "index": index, "slot": e["slot"], "targetId": e["targetId"], "ref": slot_ref(e["slot"], e["targetId"]),
                 "src": e["src"], "kind": e["kind"], "followsMedia": e["src"] in follows, "repointable": e["repointable"],
+                "startMs": e.get("startMs"), "timing": e.get("timing") or {}, "retimed": bool(e.get("retimed")),
             })
     return out
 
@@ -675,10 +772,44 @@ def slot_info(project: Any, scene: str, slot: str) -> Dict[str, Any]:
     return {
         "scene": stem, "index": idx, "slot": base, "targetId": hit["targetId"], "ref": slot_ref(base, hit["targetId"]),
         "src": hit["src"], "kind": hit["kind"], "startMs": hit.get("startMs") or 0, "fit": hit.get("fit"), "startOn": hit.get("startOn"),
+        "timing": hit.get("timing") or {}, "retimed": bool(hit.get("retimed")), "loop": bool(hit.get("loop") or (hit.get("timing") or {}).get("loop")),
         "followsMedia": hit["src"] in follow_media_sources(raw), "sceneDurationMs": dur,
         "transitionOutStartMs": (dur - overlap) if dur is not None else None,
         "sceneStartMs": scene_starts(project)[idx],
     }
+
+
+def slot_media_ms(info: Dict[str, Any], scene_ms: float) -> float:
+    """Scene-local ms to the ms of the video a slot plays (deviceClipFrameIndex's mapping before frames: the startMs
+    delay, then inMs + elapsed * speed). KbError when the slot isn't playing a new frame then, or kb can't place it."""
+    where = f"{info.get('ref') or info.get('slot')} in scene {info.get('scene')}"
+    if info.get("slot") == "background":
+        raise KbError(f"{where} is a video background, which loops with the scene; pick a device or media slot", 2, kind="usage")
+    if info.get("startOn"):
+        raise KbError(f"{where} starts when its fold opens, which kb can't place in scene time", 2, kind="usage", hint="give the timeline time with --until T instead")
+    timing = info.get("timing") or {}
+    if info.get("loop") or timing.get("loop"):
+        raise KbError(f"{where} loops, so that scene time shows a moment on every pass", 2, kind="usage", hint="give the timeline time with --until T instead")
+    start = info.get("startMs") if _num(info.get("startMs")) else 0
+    elapsed = (scene_ms - start) * (timing.get("speed") or 1)
+    if elapsed < 0:
+        raise KbError(f"{where} starts {start / 1000:.3f}s into the scene, after {scene_ms / 1000:.3f}s", kind="invalid", hint="pick a later scene time, or move the video's start")
+    media_ms = (timing.get("inMs") or 0) + elapsed
+    out = timing.get("outMs")
+    if out is not None and media_ms >= out:
+        raise KbError(f"{where} stops at its outMs {out} ms before {scene_ms / 1000:.3f}s, so it holds its last frame then", kind="invalid", hint="pick an earlier scene time, or raise the slot's outMs")
+    return media_ms
+
+
+def slot_scene_ms(info: Dict[str, Any], media_ms: float) -> Optional[float]:
+    """slot_media_ms backwards: the scene-local ms a slot first shows media_ms of its video, None outside [inMs, outMs)."""
+    timing = info.get("timing") or {}
+    in_ms = timing.get("inMs") or 0
+    out = timing.get("outMs")
+    if media_ms < in_ms or (out is not None and media_ms >= out):
+        return None
+    start = info.get("startMs") if _num(info.get("startMs")) else 0
+    return start + (media_ms - in_ms) / (timing.get("speed") or 1)
 
 
 def _validator(project: Any, label: str) -> Any:
@@ -767,18 +898,18 @@ def overhanging_keys(raw: Dict[str, Any], duration_ms: int) -> List[str]:
 
 
 def resync_durations(project: Any, rels: Optional[List[str]] = None, *, write: bool = True) -> List[Dict[str, Any]]:
-    """Follow-media scenes whose project.json length differs from their longest source video (probed with the app's CLI).
-    rels limits it to scenes following one of those files. Writes project.json (hash-checked) unless write is False."""
+    """Follow-media scenes whose project.json length differs from their longest slot (follow_media_duration_ms over the
+    app CLI's probes). rels limits it to scenes following one of those files. Writes project.json (hash-checked) unless write is False."""
     from . import appcli
 
     wanted = set(rels) if rels is not None else None
     changes: List[Dict[str, Any]] = []
     probed: Dict[str, Optional[int]] = {}
     for index, stem, raw in _scenes(project):
-        srcs = follow_media_sources(raw)
+        slots = follow_media_slots(raw)
+        srcs = [slot["src"] for slot in slots]
         if not srcs or (wanted is not None and not wanted.intersection(srcs)):
             continue
-        longest = 0
         missing = []
         for src in srcs:
             if src not in probed:
@@ -786,10 +917,9 @@ def resync_durations(project: Any, rels: Optional[List[str]] = None, *, write: b
                     probed[src] = int(appcli.probe(project, src).get("durationMs") or 0)
                 except KbError:
                     probed[src] = None
-            if probed[src] is None:
+            if probed[src] is None and src not in missing:
                 missing.append(src)
-            else:
-                longest = max(longest, probed[src] or 0)
+        longest = follow_media_duration_ms(slots, {k: v for k, v in probed.items() if v is not None})
         entry = project.scene_entries()[index]
         current = _entry_duration(entry)
         if longest > 0 and longest != current:
@@ -862,9 +992,10 @@ def set_follow(project: Any, scene: str, ref: str, *, force: bool = False) -> Di
 
 
 def set_start(project: Any, scene: str, slot: str, start_ms: int, *, force: bool = False) -> Dict[str, Any]:
-    """Move when a slot's video starts in its scene (scene-local ms; 0 drops the field), hash-checked like any sidecar write."""
-    if not is_int(start_ms) or start_ms < 0:
-        raise KbError("a video start must be whole milliseconds >= 0", 2)
+    """Move when a slot's video starts in its scene (scene-local ms; 0 drops the field), hash-checked like any sidecar write.
+    A negative start pre-rolls the video on the scene clock, so it is refused beside a device screen's inMs trim."""
+    if not is_int(start_ms):
+        raise KbError("a video start must be whole milliseconds", 2)
     base, ident = parse_slot(slot)
     if base == "background":
         raise KbError("a video background always starts with the scene; pick a device or media slot", 2)
@@ -909,6 +1040,12 @@ def set_start(project: Any, scene: str, slot: str, start_ms: int, *, force: bool
                 media = device.get(field)
             if not _rec(media) or media.get("kind") != "video":
                 raise KbError(f"scene {stem} has no video in {slot_ref(base, device['id'])}")
+            if start_ms < 0 and "inMs" in playback_timing(media):
+                raise KbError(
+                    f"{slot_ref(base, device['id'])} in scene {stem} trims with inMs, so its start can't be negative (inMs is the trim, startMs the delay)",
+                    kind="invalid",
+                    hint="give a start of 0 or more, or move the trim with ./kb doc S set devices.N.media.inMs MS",
+                )
             before = media.get("startMs", 0)
             if start_ms:
                 media["startMs"] = start_ms

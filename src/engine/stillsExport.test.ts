@@ -45,7 +45,7 @@ vi.mock("./compositor", async (original) => ({
 }));
 vi.mock("./clips", async (original) => ({
   ...(await original<typeof import("./clips")>()),
-  preextractClips: vi.fn(async () => {}),
+  prepareExportClips: vi.fn(async () => {}),
   awaitVideoFramesReady: vi.fn(async () => {}),
 }));
 vi.mock("./effects", async (original) => ({

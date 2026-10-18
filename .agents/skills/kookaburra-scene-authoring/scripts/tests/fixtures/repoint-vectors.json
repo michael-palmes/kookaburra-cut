@@ -598,6 +598,275 @@
       }
     },
     {
+      "id": "device-drops-playback-keys-keeps-delay",
+      "raw": {
+        "version": 1,
+        "name": "Scene",
+        "devices": [
+          {
+            "id": "d1",
+            "model": "iphone-17-pro",
+            "media": {
+              "src": "assets/a.mp4",
+              "kind": "video",
+              "startMs": 300,
+              "inMs": 1000,
+              "outMs": 4000,
+              "speed": 2,
+              "loop": true,
+              "posterMs": 500,
+              "fit": "cover"
+            }
+          }
+        ]
+      },
+      "slot": "device",
+      "rel": "assets/clip-edited.mp4",
+      "targetId": "d1",
+      "expect": {
+        "devices.0.media": {
+          "src": "assets/clip-edited.mp4",
+          "kind": "video",
+          "startMs": 300,
+          "fit": "cover"
+        }
+      }
+    },
+    {
+      "id": "device-drops-negative-start-keeps-start-on",
+      "raw": {
+        "version": 1,
+        "name": "Scene",
+        "devices": [
+          {
+            "id": "d1",
+            "model": "iphone-duo",
+            "media": {
+              "src": "assets/in.mp4",
+              "kind": "video",
+              "startMs": -1500,
+              "startOn": "open",
+              "speed": 0.5
+            }
+          }
+        ]
+      },
+      "slot": "device",
+      "rel": "assets/clip-edited.mp4",
+      "targetId": "d1",
+      "expect": {
+        "devices.0.media": {
+          "src": "assets/clip-edited.mp4",
+          "kind": "video",
+          "startOn": "open"
+        }
+      }
+    },
+    {
+      "id": "device-legacy-negative-start-drops",
+      "raw": {
+        "version": 1,
+        "name": "Scene",
+        "devices": [
+          {
+            "id": "d1",
+            "model": "iphone-17-pro",
+            "media": {
+              "src": "assets/a.mp4",
+              "kind": "video",
+              "startMs": -800
+            }
+          }
+        ]
+      },
+      "slot": "device",
+      "rel": "assets/clip-edited.mp4",
+      "targetId": null,
+      "expect": {
+        "devices.0.media": {
+          "src": "assets/clip-edited.mp4",
+          "kind": "video"
+        }
+      }
+    },
+    {
+      "id": "device-drops-invalid-playback-keys",
+      "raw": {
+        "version": 1,
+        "name": "Scene",
+        "devices": [
+          {
+            "id": "d1",
+            "model": "iphone-17-pro",
+            "media": {
+              "src": "assets/a.mp4",
+              "kind": "video",
+              "inMs": 1.5,
+              "speed": "fast",
+              "loop": "yes",
+              "outMs": 900
+            }
+          }
+        ]
+      },
+      "slot": "device",
+      "rel": "assets/clip-edited.mp4",
+      "targetId": "d1",
+      "expect": {
+        "devices.0.media": {
+          "src": "assets/clip-edited.mp4",
+          "kind": "video"
+        }
+      }
+    },
+    {
+      "id": "device-cover-drops-playback-keys",
+      "raw": {
+        "version": 1,
+        "name": "Scene",
+        "devices": [
+          {
+            "id": "d1",
+            "model": "iphone-duo",
+            "media": {
+              "src": "assets/in.mp4",
+              "kind": "video",
+              "inMs": 500
+            },
+            "coverMedia": {
+              "src": "assets/out.mp4",
+              "kind": "video",
+              "outMs": 2000,
+              "posterMs": 0,
+              "startMs": 120
+            }
+          }
+        ]
+      },
+      "slot": "deviceCover",
+      "rel": "assets/clip-edited.mp4",
+      "targetId": "d1",
+      "expect": {
+        "devices.0.media": {
+          "src": "assets/in.mp4",
+          "kind": "video",
+          "inMs": 500
+        },
+        "devices.0.coverMedia": {
+          "src": "assets/clip-edited.mp4",
+          "kind": "video",
+          "startMs": 120
+        }
+      }
+    },
+    {
+      "id": "compare-device-override-drops-playback-keys",
+      "raw": {
+        "version": 1,
+        "name": "Scene",
+        "devices": [
+          {
+            "id": "d1",
+            "model": "iphone-17-pro",
+            "media": {
+              "src": "assets/before.mp4",
+              "kind": "video",
+              "inMs": 200
+            }
+          },
+          {
+            "id": "d2",
+            "model": "iphone-17-pro",
+            "media": {
+              "src": "assets/other.mp4",
+              "kind": "video"
+            }
+          }
+        ],
+        "compare": {
+          "b": {
+            "media": {
+              "d1": {
+                "src": "assets/after.mp4",
+                "kind": "video",
+                "speed": 3,
+                "startMs": -400
+              },
+              "d2": {
+                "src": "assets/other-after.mp4",
+                "kind": "video",
+                "speed": 40,
+                "loop": true
+              }
+            }
+          }
+        }
+      },
+      "slot": "compareDevice",
+      "rel": "assets/clip-edited.mp4",
+      "targetId": "d1",
+      "expect": {
+        "devices.0.media": {
+          "src": "assets/before.mp4",
+          "kind": "video",
+          "inMs": 200
+        },
+        "compare.b.media": {
+          "d1": {
+            "src": "assets/clip-edited.mp4",
+            "kind": "video"
+          },
+          "d2": {
+            "src": "assets/other-after.mp4",
+            "kind": "video",
+            "loop": true
+          }
+        }
+      }
+    },
+    {
+      "id": "compare-device-inherits-without-playback-keys",
+      "raw": {
+        "version": 1,
+        "name": "Scene",
+        "devices": [
+          {
+            "id": "d1",
+            "model": "iphone-17-pro",
+            "media": {
+              "src": "assets/before.mp4",
+              "kind": "video",
+              "inMs": 200,
+              "outMs": 3000,
+              "startMs": 100
+            }
+          }
+        ],
+        "compare": {
+          "b": {}
+        }
+      },
+      "slot": "compareDevice",
+      "rel": "assets/clip-edited.mp4",
+      "targetId": "d1",
+      "expect": {
+        "devices.0.media": {
+          "src": "assets/before.mp4",
+          "kind": "video",
+          "inMs": 200,
+          "outMs": 3000,
+          "startMs": 100
+        },
+        "compare.b.media": {
+          "d1": {
+            "src": "assets/clip-edited.mp4",
+            "kind": "video",
+            "startMs": 100
+          }
+        }
+      }
+    },
+    {
       "id": "media-by-id-drops-start",
       "raw": {
         "version": 1,
@@ -1931,6 +2200,705 @@
         "duration": "follow-media"
       },
       "expect": []
+    }
+  ],
+  "followLength": [
+    {
+      "id": "legacy-ignores-start",
+      "raw": {
+        "version": 1,
+        "name": "Scene",
+        "duration": {
+          "mode": "follow-media"
+        },
+        "devices": [
+          {
+            "id": "d1",
+            "model": "iphone-17-pro",
+            "media": {
+              "src": "assets/a.mp4",
+              "kind": "video",
+              "startMs": 400
+            }
+          }
+        ]
+      },
+      "probed": {
+        "assets/a.mp4": 3000
+      },
+      "slots": [
+        {
+          "src": "assets/a.mp4",
+          "lengthMs": 3000
+        }
+      ],
+      "expect": 3000
+    },
+    {
+      "id": "legacy-negative-start-ignored",
+      "raw": {
+        "version": 1,
+        "name": "Scene",
+        "duration": {
+          "mode": "follow-media"
+        },
+        "devices": [
+          {
+            "id": "d1",
+            "model": "iphone-17-pro",
+            "media": {
+              "src": "assets/a.mp4",
+              "kind": "video",
+              "startMs": -1200
+            }
+          }
+        ]
+      },
+      "probed": {
+        "assets/a.mp4": 3000
+      },
+      "slots": [
+        {
+          "src": "assets/a.mp4",
+          "lengthMs": 3000
+        }
+      ],
+      "expect": 3000
+    },
+    {
+      "id": "trim-speed-and-delay",
+      "raw": {
+        "version": 1,
+        "name": "Scene",
+        "duration": {
+          "mode": "follow-media"
+        },
+        "devices": [
+          {
+            "id": "d1",
+            "model": "iphone-17-pro",
+            "media": {
+              "src": "assets/a.mp4",
+              "kind": "video",
+              "startMs": 500,
+              "inMs": 1000,
+              "outMs": 3000,
+              "speed": 2
+            }
+          }
+        ]
+      },
+      "probed": {
+        "assets/a.mp4": 6000
+      },
+      "slots": [
+        {
+          "src": "assets/a.mp4",
+          "lengthMs": 1500
+        }
+      ],
+      "expect": 1500
+    },
+    {
+      "id": "out-past-the-probe-clamps",
+      "raw": {
+        "version": 1,
+        "name": "Scene",
+        "duration": {
+          "mode": "follow-media"
+        },
+        "devices": [
+          {
+            "id": "d1",
+            "model": "iphone-17-pro",
+            "media": {
+              "src": "assets/a.mp4",
+              "kind": "video",
+              "inMs": 1000,
+              "outMs": 9000
+            }
+          }
+        ]
+      },
+      "probed": {
+        "assets/a.mp4": 4000
+      },
+      "slots": [
+        {
+          "src": "assets/a.mp4",
+          "lengthMs": 3000
+        }
+      ],
+      "expect": 3000
+    },
+    {
+      "id": "loop-counts-one-pass",
+      "raw": {
+        "version": 1,
+        "name": "Scene",
+        "duration": {
+          "mode": "follow-media"
+        },
+        "devices": [
+          {
+            "id": "d1",
+            "model": "iphone-17-pro",
+            "media": {
+              "src": "assets/a.mp4",
+              "kind": "video",
+              "startMs": 250,
+              "loop": true
+            }
+          }
+        ]
+      },
+      "probed": {
+        "assets/a.mp4": 2000
+      },
+      "slots": [
+        {
+          "src": "assets/a.mp4",
+          "lengthMs": 2250
+        }
+      ],
+      "expect": 2250
+    },
+    {
+      "id": "poster-alone-honours-the-delay",
+      "raw": {
+        "version": 1,
+        "name": "Scene",
+        "duration": {
+          "mode": "follow-media"
+        },
+        "devices": [
+          {
+            "id": "d1",
+            "model": "iphone-17-pro",
+            "media": {
+              "src": "assets/a.mp4",
+              "kind": "video",
+              "startMs": 750,
+              "posterMs": 100
+            }
+          }
+        ]
+      },
+      "probed": {
+        "assets/a.mp4": 2000
+      },
+      "slots": [
+        {
+          "src": "assets/a.mp4",
+          "lengthMs": 2750
+        }
+      ],
+      "expect": 2750
+    },
+    {
+      "id": "half-ms-rounds-up",
+      "raw": {
+        "version": 1,
+        "name": "Scene",
+        "duration": {
+          "mode": "follow-media"
+        },
+        "devices": [
+          {
+            "id": "d1",
+            "model": "iphone-17-pro",
+            "media": {
+              "src": "assets/a.mp4",
+              "kind": "video",
+              "outMs": 1001,
+              "speed": 2
+            }
+          }
+        ]
+      },
+      "probed": {
+        "assets/a.mp4": 5000
+      },
+      "slots": [
+        {
+          "src": "assets/a.mp4",
+          "lengthMs": 501
+        }
+      ],
+      "expect": 501
+    },
+    {
+      "id": "fractional-speed",
+      "raw": {
+        "version": 1,
+        "name": "Scene",
+        "duration": {
+          "mode": "follow-media"
+        },
+        "devices": [
+          {
+            "id": "d1",
+            "model": "iphone-17-pro",
+            "media": {
+              "src": "assets/a.mp4",
+              "kind": "video",
+              "inMs": 0,
+              "outMs": 1001,
+              "speed": 3
+            }
+          }
+        ]
+      },
+      "probed": {
+        "assets/a.mp4": 5000
+      },
+      "slots": [
+        {
+          "src": "assets/a.mp4",
+          "lengthMs": 334
+        }
+      ],
+      "expect": 334
+    },
+    {
+      "id": "slow-motion",
+      "raw": {
+        "version": 1,
+        "name": "Scene",
+        "duration": {
+          "mode": "follow-media"
+        },
+        "devices": [
+          {
+            "id": "d1",
+            "model": "iphone-17-pro",
+            "media": {
+              "src": "assets/a.mp4",
+              "kind": "video",
+              "speed": 0.25,
+              "outMs": 1234
+            }
+          }
+        ]
+      },
+      "probed": {
+        "assets/a.mp4": 5000
+      },
+      "slots": [
+        {
+          "src": "assets/a.mp4",
+          "lengthMs": 4936
+        }
+      ],
+      "expect": 4936
+    },
+    {
+      "id": "negative-start-pre-rolls",
+      "raw": {
+        "version": 1,
+        "name": "Scene",
+        "duration": {
+          "mode": "follow-media"
+        },
+        "devices": [
+          {
+            "id": "d1",
+            "model": "iphone-17-pro",
+            "media": {
+              "src": "assets/a.mp4",
+              "kind": "video",
+              "startMs": -2000,
+              "loop": false
+            }
+          }
+        ]
+      },
+      "probed": {
+        "assets/a.mp4": 3000
+      },
+      "slots": [
+        {
+          "src": "assets/a.mp4",
+          "lengthMs": 1000
+        }
+      ],
+      "expect": 1000
+    },
+    {
+      "id": "floor-of-17",
+      "raw": {
+        "version": 1,
+        "name": "Scene",
+        "duration": {
+          "mode": "follow-media"
+        },
+        "devices": [
+          {
+            "id": "d1",
+            "model": "iphone-17-pro",
+            "media": {
+              "src": "assets/a.mp4",
+              "kind": "video",
+              "startMs": -5000,
+              "speed": 1
+            }
+          }
+        ]
+      },
+      "probed": {
+        "assets/a.mp4": 3000
+      },
+      "slots": [
+        {
+          "src": "assets/a.mp4",
+          "lengthMs": 17
+        }
+      ],
+      "expect": 17
+    },
+    {
+      "id": "invalid-keys-drop-first",
+      "raw": {
+        "version": 1,
+        "name": "Scene",
+        "duration": {
+          "mode": "follow-media"
+        },
+        "devices": [
+          {
+            "id": "d1",
+            "model": "iphone-17-pro",
+            "media": {
+              "src": "assets/a.mp4",
+              "kind": "video",
+              "startMs": 100,
+              "speed": 40,
+              "inMs": 1.5,
+              "outMs": 2500
+            }
+          }
+        ]
+      },
+      "probed": {
+        "assets/a.mp4": 4000
+      },
+      "slots": [
+        {
+          "src": "assets/a.mp4",
+          "lengthMs": 2600
+        }
+      ],
+      "expect": 2600
+    },
+    {
+      "id": "in-beside-negative-start-drops",
+      "raw": {
+        "version": 1,
+        "name": "Scene",
+        "duration": {
+          "mode": "follow-media"
+        },
+        "devices": [
+          {
+            "id": "d1",
+            "model": "iphone-17-pro",
+            "media": {
+              "src": "assets/a.mp4",
+              "kind": "video",
+              "startMs": -300,
+              "inMs": 1000
+            }
+          }
+        ]
+      },
+      "probed": {
+        "assets/a.mp4": 4000
+      },
+      "slots": [
+        {
+          "src": "assets/a.mp4",
+          "lengthMs": 4000
+        }
+      ],
+      "expect": 4000
+    },
+    {
+      "id": "out-too-close-drops",
+      "raw": {
+        "version": 1,
+        "name": "Scene",
+        "duration": {
+          "mode": "follow-media"
+        },
+        "devices": [
+          {
+            "id": "d1",
+            "model": "iphone-17-pro",
+            "media": {
+              "src": "assets/a.mp4",
+              "kind": "video",
+              "inMs": 1000,
+              "outMs": 1016,
+              "startMs": 50
+            }
+          }
+        ]
+      },
+      "probed": {
+        "assets/a.mp4": 4000
+      },
+      "slots": [
+        {
+          "src": "assets/a.mp4",
+          "lengthMs": 3050
+        }
+      ],
+      "expect": 3050
+    },
+    {
+      "id": "string-start-reads-as-zero",
+      "raw": {
+        "version": 1,
+        "name": "Scene",
+        "duration": {
+          "mode": "follow-media"
+        },
+        "devices": [
+          {
+            "id": "d1",
+            "model": "iphone-17-pro",
+            "media": {
+              "src": "assets/a.mp4",
+              "kind": "video",
+              "startMs": "400",
+              "outMs": 2000
+            }
+          }
+        ]
+      },
+      "probed": {
+        "assets/a.mp4": 4000
+      },
+      "slots": [
+        {
+          "src": "assets/a.mp4",
+          "lengthMs": 2000
+        }
+      ],
+      "expect": 2000
+    },
+    {
+      "id": "start-on-open-is-not-counted",
+      "raw": {
+        "version": 1,
+        "name": "Scene",
+        "duration": {
+          "mode": "follow-media"
+        },
+        "devices": [
+          {
+            "id": "d1",
+            "model": "iphone-duo",
+            "media": {
+              "src": "assets/in.mp4",
+              "kind": "video",
+              "startOn": "open",
+              "startMs": 200,
+              "outMs": 3000
+            }
+          }
+        ]
+      },
+      "probed": {
+        "assets/in.mp4": 5000
+      },
+      "slots": [
+        {
+          "src": "assets/in.mp4",
+          "lengthMs": 3200
+        }
+      ],
+      "expect": 3200
+    },
+    {
+      "id": "longest-slot-wins-after-timing",
+      "raw": {
+        "version": 1,
+        "name": "Scene",
+        "duration": {
+          "mode": "follow-media"
+        },
+        "devices": [
+          {
+            "id": "d1",
+            "model": "iphone-17-pro",
+            "media": {
+              "src": "assets/long.mp4",
+              "kind": "video",
+              "outMs": 2000
+            }
+          },
+          {
+            "id": "d2",
+            "model": "iphone-17-pro",
+            "media": {
+              "src": "assets/short.mp4",
+              "kind": "video"
+            }
+          }
+        ]
+      },
+      "probed": {
+        "assets/long.mp4": 9000,
+        "assets/short.mp4": 3000
+      },
+      "slots": [
+        {
+          "src": "assets/long.mp4",
+          "lengthMs": 2000
+        },
+        {
+          "src": "assets/short.mp4",
+          "lengthMs": 3000
+        }
+      ],
+      "expect": 3000
+    },
+    {
+      "id": "comparison-override-timing-counts",
+      "raw": {
+        "version": 1,
+        "name": "Scene",
+        "duration": {
+          "mode": "follow-media"
+        },
+        "devices": [
+          {
+            "id": "d1",
+            "model": "iphone-17-pro",
+            "media": {
+              "src": "assets/before.mp4",
+              "kind": "video"
+            }
+          }
+        ],
+        "compare": {
+          "b": {
+            "media": {
+              "d1": {
+                "src": "assets/after.mp4",
+                "kind": "video",
+                "startMs": 1000,
+                "speed": 0.5
+              }
+            }
+          }
+        }
+      },
+      "probed": {
+        "assets/before.mp4": 3000,
+        "assets/after.mp4": 2000
+      },
+      "slots": [
+        {
+          "src": "assets/before.mp4",
+          "lengthMs": 3000
+        },
+        {
+          "src": "assets/after.mp4",
+          "lengthMs": 5000
+        }
+      ],
+      "expect": 5000
+    },
+    {
+      "id": "unprobed-source-counts-for-nothing",
+      "raw": {
+        "version": 1,
+        "name": "Scene",
+        "duration": {
+          "mode": "follow-media"
+        },
+        "devices": [
+          {
+            "id": "d1",
+            "model": "iphone-17-pro",
+            "media": {
+              "src": "assets/a.mp4",
+              "kind": "video",
+              "startMs": 400,
+              "loop": true
+            }
+          },
+          {
+            "id": "d2",
+            "model": "iphone-17-pro",
+            "media": {
+              "src": "assets/b.mp4",
+              "kind": "video"
+            }
+          }
+        ]
+      },
+      "probed": {
+        "assets/b.mp4": 1500
+      },
+      "slots": [
+        {
+          "src": "assets/a.mp4",
+          "lengthMs": 400
+        },
+        {
+          "src": "assets/b.mp4",
+          "lengthMs": 1500
+        }
+      ],
+      "expect": 1500
+    },
+    {
+      "id": "media-entry-has-no-timing",
+      "raw": {
+        "version": 1,
+        "name": "Scene",
+        "duration": {
+          "mode": "follow-media",
+          "source": "media",
+          "sourceMediaId": "vid1"
+        },
+        "media": [
+          {
+            "id": "vid1",
+            "kind": "video",
+            "src": "assets/v1.mp4",
+            "video": {
+              "startMs": 900
+            }
+          }
+        ]
+      },
+      "probed": {
+        "assets/v1.mp4": 2500
+      },
+      "slots": [
+        {
+          "src": "assets/v1.mp4",
+          "lengthMs": 2500
+        }
+      ],
+      "expect": 2500
+    },
+    {
+      "id": "manual-follows-nothing",
+      "raw": {
+        "version": 1,
+        "name": "Scene",
+        "duration": {
+          "mode": "manual"
+        }
+      },
+      "probed": {},
+      "slots": [],
+      "expect": 0
     }
   ]
 }

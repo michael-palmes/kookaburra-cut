@@ -23,6 +23,7 @@ import storyUrl from "../assets/hdri/story-studio.hdr?url";
 import sunsetUrl from "../assets/hdri/sunset.hdr?url";
 import warehouseUrl from "../assets/hdri/warehouse.hdr?url";
 import type { FixtureSpec, LightingSpec, Theme } from "../theme/tokens";
+import { assetRevision } from "./assetRevisions";
 import { fixtureWorldInstances } from "./fixtures";
 import { resolveProjectHdrUrl } from "./project";
 import { projectAssetRevision } from "./projectAssetRevision";
@@ -64,12 +65,15 @@ const loaded = new Map<string, Texture | null>();
 const inflight = new Map<string, Promise<Texture | null>>();
 const revisedSources = new Map<string, { projectId: string; rel: string }>();
 
-/** The environments cache key for an authored source: bundled ids and "none" pass through; project-relative user paths key per project so two projects' "assets/studio.hdr" never collide. */
+/** The environments cache key for an authored source: bundled ids and "none" pass through; project-relative user paths key per project so two projects' "assets/studio.hdr" never collide, plus the file's revision (`|r=`) so a map replaced in place loads afresh. */
 export function environmentCacheKey(projectId: string | undefined, source: string): string {
   if (source.startsWith("kookaburra:") || source === NONE_SOURCE) return source;
   const revision = projectAssetRevision(projectId);
-  const key = `${projectId ?? ""}|${source}${revision ? `|${revision}` : ""}`;
-  if (revision) revisedSources.set(key, { projectId: projectId ?? "", rel: source });
+  const fileRevision = projectId ? assetRevision(projectId, source) : undefined;
+  const poster = revision ? `|${revision}` : "";
+  const file = fileRevision ? `|r=${fileRevision}` : "";
+  const key = `${projectId ?? ""}|${source}${poster}${file}`;
+  if (poster || file) revisedSources.set(key, { projectId: projectId ?? "", rel: source });
   return key;
 }
 

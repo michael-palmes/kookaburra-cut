@@ -186,6 +186,22 @@ class BeatTests(KbTestCase):
         with self.assertRaises(f.FitError):
             f.scene_beats(root, 1, lambda p: json.loads(Path(p).read_text()), cache_dir=self.tmp / "empty")
 
+    def test_scene_beats_follow_the_authored_grid(self) -> None:
+        root = self.tmp / "g"
+        (root / "assets").mkdir(parents=True)
+        (root / "assets" / "song.mp3").write_bytes(b"grid audio")
+        write_json(root / "project.json", {"scenes": [{"file": "scenes/01-a.tsx", "durationMs": 4000}, {"file": "scenes/02-b.tsx", "durationMs": 4000}],
+                                           "audio": {"file": "assets/song.mp3", "grid": {"bpm": 100, "offsetMs": 250, "beatsPerBar": 4}}})
+        cache = self.tmp / "beats-g"
+        digest = hashlib.sha256(b"grid audio").hexdigest()
+        write_json(cache / f"{digest}.json", {"version": 1, "bpm": 120, "beats": [500 * i for i in range(20)], "keyMoments": []})
+        load = lambda p: json.loads(Path(p).read_text())  # noqa: E731
+        info = f.scene_beats(root, 1, load, cache_dir=cache)
+        self.assertEqual(info["beats"][:2], [250 + 600 * 7 - 4000, 250 + 600 * 8 - 4000])
+        bare = f.scene_beats(root, 1, load, cache_dir=self.tmp / "empty")
+        self.assertEqual(bare["beats"], info["beats"])
+        self.assertEqual(bare["moments"], [])
+
 
 @unittest.skipUnless(has_engine() and vs.tools(), "needs avk-kb's engine and ffmpeg")
 class FitCommandTests(KbTestCase):

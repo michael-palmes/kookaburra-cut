@@ -1,5 +1,6 @@
 /** Slideshow ambience: the project soundtrack looping as background music, deliberately decoupled from the deck (slideshow pacing is unpredictable, so there is nothing to sync to). Video mode uses previewAudio's clock-synced lane instead. */
 
+import { assetRevision, withAssetRevision } from "../engine/assetRevisions";
 import { fsUrl } from "../engine/media";
 import type { LoadedProject } from "../engine/project";
 
@@ -9,7 +10,7 @@ export function startPresentAmbience(project: LoadedProject): void {
   stopPresentAmbience();
   const audio = project.audio;
   if (!audio) return;
-  const a = new Audio(fsUrl(audio.abs));
+  const a = new Audio(withAssetRevision(fsUrl(audio.abs), assetRevision(project.id, audio.file)));
   a.loop = true;
   a.volume = Math.min(1, 10 ** ((audio.gainDb ?? 0) / 20));
   el = a;

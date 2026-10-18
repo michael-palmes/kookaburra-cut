@@ -1,7 +1,14 @@
-import { applyEditRepoint, type EditRepointSlot, followMediaSources } from "../engine/sceneDoc";
+import {
+  applyEditRepoint,
+  type EditRepointSlot,
+  followMediaDurationMs,
+  followMediaLengthMs,
+  followMediaSlots,
+  followMediaSources,
+} from "../engine/sceneDoc";
 import { parseSceneDoc } from "../engine/sceneDocSchema";
 
-/** Conformance vectors for kb's raw-JSON mirror of the edit re-point (`scripts/kblib/video/repoint.py`): each raw sidecar goes through the app's own parse and `applyEditRepoint`, and `expect` holds the subtrees the app's sidecar write (JSON.stringify of the patched doc, as `commitSceneDocPatch` writes it) carries; a null value means the path is absent from the write. `follow` pins `followMediaSources`. */
+/** Conformance vectors for kb's raw-JSON mirror of the edit re-point (`scripts/kblib/video/repoint.py`): each raw sidecar goes through the app's own parse and `applyEditRepoint`, and `expect` holds the subtrees the app's sidecar write (JSON.stringify of the patched doc, as `commitSceneDocPatch` writes it) carries; a null value means the path is absent from the write. `follow` pins `followMediaSources`; `followLength` pins `followMediaSlots`, `followMediaLengthMs` and `followMediaDurationMs` against scripted probes. */
 
 type Raw = Record<string, unknown>;
 
@@ -20,10 +27,21 @@ export interface FollowVector {
   expect: string[];
 }
 
+export interface FollowLengthVector {
+  id: string;
+  raw: Raw;
+  /** Probed ms per source; a source missing here probes as 0. */
+  probed: Record<string, number>;
+  /** Each follow slot's source and its `followMediaLengthMs` at that probe. */
+  slots: { src: string; lengthMs: number }[];
+  expect: number;
+}
+
 export interface RepointVectors {
   version: 1;
   repoint: RepointVector[];
   follow: FollowVector[];
+  followLength: FollowLengthVector[];
 }
 
 const REL = "assets/clip-edited.mp4";
@@ -239,6 +257,121 @@ const REPOINT_CASES: Case[] = [
     slot: "compareDeviceCover",
     targetId: "d1",
     paths: ["devices.0.coverMedia", "compare.b.coverMedia"],
+  },
+  {
+    id: "device-drops-playback-keys-keeps-delay",
+    raw: doc({
+      devices: [
+        {
+          id: "d1",
+          model: "iphone-17-pro",
+          media: video("assets/a.mp4", {
+            startMs: 300,
+            inMs: 1000,
+            outMs: 4000,
+            speed: 2,
+            loop: true,
+            posterMs: 500,
+            fit: "cover",
+          }),
+        },
+      ],
+    }),
+    slot: "device",
+    targetId: "d1",
+    paths: ["devices.0.media"],
+  },
+  {
+    id: "device-drops-negative-start-keeps-start-on",
+    raw: doc({
+      devices: [
+        {
+          id: "d1",
+          model: "iphone-duo",
+          media: video("assets/in.mp4", { startMs: -1500, startOn: "open", speed: 0.5 }),
+        },
+      ],
+    }),
+    slot: "device",
+    targetId: "d1",
+    paths: ["devices.0.media"],
+  },
+  {
+    id: "device-legacy-negative-start-drops",
+    raw: doc({
+      devices: [
+        { id: "d1", model: "iphone-17-pro", media: video("assets/a.mp4", { startMs: -800 }) },
+      ],
+    }),
+    slot: "device",
+    paths: ["devices.0.media"],
+  },
+  {
+    id: "device-drops-invalid-playback-keys",
+    raw: doc({
+      devices: [
+        {
+          id: "d1",
+          model: "iphone-17-pro",
+          media: video("assets/a.mp4", { inMs: 1.5, speed: "fast", loop: "yes", outMs: 900 }),
+        },
+      ],
+    }),
+    slot: "device",
+    targetId: "d1",
+    paths: ["devices.0.media"],
+  },
+  {
+    id: "device-cover-drops-playback-keys",
+    raw: doc({
+      devices: [
+        {
+          id: "d1",
+          model: "iphone-duo",
+          media: video("assets/in.mp4", { inMs: 500 }),
+          coverMedia: video("assets/out.mp4", { outMs: 2000, posterMs: 0, startMs: 120 }),
+        },
+      ],
+    }),
+    slot: "deviceCover",
+    targetId: "d1",
+    paths: ["devices.0.media", "devices.0.coverMedia"],
+  },
+  {
+    id: "compare-device-override-drops-playback-keys",
+    raw: doc({
+      devices: [
+        { id: "d1", model: "iphone-17-pro", media: video("assets/before.mp4", { inMs: 200 }) },
+        { id: "d2", model: "iphone-17-pro", media: video("assets/other.mp4") },
+      ],
+      compare: {
+        b: {
+          media: {
+            d1: video("assets/after.mp4", { speed: 3, startMs: -400 }),
+            d2: video("assets/other-after.mp4", { speed: 40, loop: true }),
+          },
+        },
+      },
+    }),
+    slot: "compareDevice",
+    targetId: "d1",
+    paths: ["devices.0.media", "compare.b.media"],
+  },
+  {
+    id: "compare-device-inherits-without-playback-keys",
+    raw: doc({
+      devices: [
+        {
+          id: "d1",
+          model: "iphone-17-pro",
+          media: video("assets/before.mp4", { inMs: 200, outMs: 3000, startMs: 100 }),
+        },
+      ],
+      compare: { b: {} },
+    }),
+    slot: "compareDevice",
+    targetId: "d1",
+    paths: ["devices.0.media", "compare.b.media"],
   },
   {
     id: "media-by-id-drops-start",
@@ -520,6 +653,135 @@ const FOLLOW_CASES: { id: string; raw: Raw }[] = [
   { id: "duration-not-an-object", raw: doc({ duration: "follow-media" }) },
 ];
 
+const follows = (devices: Raw[], extra: Raw = {}): Raw =>
+  doc({ duration: { mode: "follow-media" }, devices, ...extra });
+const phone = (id: string, media: Raw): Raw => ({ id, model: "iphone-17-pro", media });
+
+const FOLLOW_LENGTH_CASES: { id: string; raw: Raw; probed: Record<string, number> }[] = [
+  {
+    id: "legacy-ignores-start",
+    raw: follows([phone("d1", video("assets/a.mp4", { startMs: 400 }))]),
+    probed: { "assets/a.mp4": 3000 },
+  },
+  {
+    id: "legacy-negative-start-ignored",
+    raw: follows([phone("d1", video("assets/a.mp4", { startMs: -1200 }))]),
+    probed: { "assets/a.mp4": 3000 },
+  },
+  {
+    id: "trim-speed-and-delay",
+    raw: follows([
+      phone("d1", video("assets/a.mp4", { startMs: 500, inMs: 1000, outMs: 3000, speed: 2 })),
+    ]),
+    probed: { "assets/a.mp4": 6000 },
+  },
+  {
+    id: "out-past-the-probe-clamps",
+    raw: follows([phone("d1", video("assets/a.mp4", { inMs: 1000, outMs: 9000 }))]),
+    probed: { "assets/a.mp4": 4000 },
+  },
+  {
+    id: "loop-counts-one-pass",
+    raw: follows([phone("d1", video("assets/a.mp4", { startMs: 250, loop: true }))]),
+    probed: { "assets/a.mp4": 2000 },
+  },
+  {
+    id: "poster-alone-honours-the-delay",
+    raw: follows([phone("d1", video("assets/a.mp4", { startMs: 750, posterMs: 100 }))]),
+    probed: { "assets/a.mp4": 2000 },
+  },
+  {
+    id: "half-ms-rounds-up",
+    raw: follows([phone("d1", video("assets/a.mp4", { outMs: 1001, speed: 2 }))]),
+    probed: { "assets/a.mp4": 5000 },
+  },
+  {
+    id: "fractional-speed",
+    raw: follows([phone("d1", video("assets/a.mp4", { inMs: 0, outMs: 1001, speed: 3 }))]),
+    probed: { "assets/a.mp4": 5000 },
+  },
+  {
+    id: "slow-motion",
+    raw: follows([phone("d1", video("assets/a.mp4", { speed: 0.25, outMs: 1234 }))]),
+    probed: { "assets/a.mp4": 5000 },
+  },
+  {
+    id: "negative-start-pre-rolls",
+    raw: follows([phone("d1", video("assets/a.mp4", { startMs: -2000, loop: false }))]),
+    probed: { "assets/a.mp4": 3000 },
+  },
+  {
+    id: "floor-of-17",
+    raw: follows([phone("d1", video("assets/a.mp4", { startMs: -5000, speed: 1 }))]),
+    probed: { "assets/a.mp4": 3000 },
+  },
+  {
+    id: "invalid-keys-drop-first",
+    raw: follows([
+      phone("d1", video("assets/a.mp4", { startMs: 100, speed: 40, inMs: 1.5, outMs: 2500 })),
+    ]),
+    probed: { "assets/a.mp4": 4000 },
+  },
+  {
+    id: "in-beside-negative-start-drops",
+    raw: follows([phone("d1", video("assets/a.mp4", { startMs: -300, inMs: 1000 }))]),
+    probed: { "assets/a.mp4": 4000 },
+  },
+  {
+    id: "out-too-close-drops",
+    raw: follows([phone("d1", video("assets/a.mp4", { inMs: 1000, outMs: 1016, startMs: 50 }))]),
+    probed: { "assets/a.mp4": 4000 },
+  },
+  {
+    id: "string-start-reads-as-zero",
+    raw: follows([phone("d1", video("assets/a.mp4", { startMs: "400", outMs: 2000 }))]),
+    probed: { "assets/a.mp4": 4000 },
+  },
+  {
+    id: "start-on-open-is-not-counted",
+    raw: follows([
+      {
+        id: "d1",
+        model: "iphone-duo",
+        media: video("assets/in.mp4", { startOn: "open", startMs: 200, outMs: 3000 }),
+      },
+    ]),
+    probed: { "assets/in.mp4": 5000 },
+  },
+  {
+    id: "longest-slot-wins-after-timing",
+    raw: follows([
+      phone("d1", video("assets/long.mp4", { outMs: 2000 })),
+      phone("d2", video("assets/short.mp4")),
+    ]),
+    probed: { "assets/long.mp4": 9000, "assets/short.mp4": 3000 },
+  },
+  {
+    id: "comparison-override-timing-counts",
+    raw: follows([phone("d1", video("assets/before.mp4"))], {
+      compare: { b: { media: { d1: video("assets/after.mp4", { startMs: 1000, speed: 0.5 }) } } },
+    }),
+    probed: { "assets/before.mp4": 3000, "assets/after.mp4": 2000 },
+  },
+  {
+    id: "unprobed-source-counts-for-nothing",
+    raw: follows([
+      phone("d1", video("assets/a.mp4", { startMs: 400, loop: true })),
+      phone("d2", video("assets/b.mp4")),
+    ]),
+    probed: { "assets/b.mp4": 1500 },
+  },
+  {
+    id: "media-entry-has-no-timing",
+    raw: doc({
+      duration: { mode: "follow-media", source: "media", sourceMediaId: "vid1" },
+      media: [{ id: "vid1", kind: "video", src: "assets/v1.mp4", video: { startMs: 900 } }],
+    }),
+    probed: { "assets/v1.mp4": 2500 },
+  },
+  { id: "manual-follows-nothing", raw: doc({ duration: { mode: "manual" } }), probed: {} },
+];
+
 function pick(value: unknown, path: string): unknown {
   let node: unknown = value;
   for (const part of path.split(".")) {
@@ -550,7 +812,21 @@ export function buildRepointVectors(): RepointVectors {
       expect: followMediaSources(parseSceneDoc(structuredClone(c.raw), `vector ${c.id}`)),
     }),
   );
-  return { version: 1, repoint, follow };
+  const followLength = FOLLOW_LENGTH_CASES.map((c): FollowLengthVector => {
+    const slots = followMediaSlots(parseSceneDoc(structuredClone(c.raw), `vector ${c.id}`));
+    const probed = new Map(Object.entries(c.probed));
+    return {
+      id: c.id,
+      raw: c.raw,
+      probed: c.probed,
+      slots: slots.map((s) => ({
+        src: s.src,
+        lengthMs: followMediaLengthMs(s.spec, probed.get(s.src) ?? 0),
+      })),
+      expect: followMediaDurationMs(slots, probed),
+    };
+  });
+  return { version: 1, repoint, follow, followLength };
 }
 
 export function serialiseRepointVectors(vectors: RepointVectors): string {

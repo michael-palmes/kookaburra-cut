@@ -1,6 +1,7 @@
 /** Beat-driven camera generation: pure track builders behind the beat lane's "Sync scene camera to beats" and "Add camera keyframe here" actions. Everything returns ordinary orbit `CameraDoc` data written through the normal sidecar path, so results are editable, undoable and add no determinism surface. Best effort by design; free-flight (rig) scenes are out of scope. */
 
 import type { BeatKeyMoment } from "./beatAnalysis";
+import { nearestGridBeat } from "./beatState";
 import { type CameraKeyframe, sampleCameraTrack } from "./cameraTrack";
 import { DEFAULT_EASE } from "./ease";
 import {
@@ -12,6 +13,7 @@ import {
   type TrackContext,
   trackLayout,
 } from "./keyedTrack";
+import { type ProjectMusic, resolveSceneLocalMs } from "./musicTime";
 import type { LoadedProject } from "./project";
 import {
   defaultOrbitPose,
@@ -79,11 +81,31 @@ export function pickSyncMoments(
   return kept.sort((a, b) => a - b);
 }
 
-/** The generated track: a base key at the span start, then a key landing ON each picked beat, alternating a gentle push-in and pull-back with a small azimuth drift. Replaces the scene's orbit track wholesale (the action's contract; undo restores). */
+/** Where a beat-lane camera key lands on the authored grid: the grid beat within a quarter beat of `projectMs`, as scene-local ms with its `bar:` position, resolved exactly as a sidecar `at` is so the key keeps it. Null without a grid (detected beats stay as they are) or off the beat. */
+export function authoredBeatKey(
+  music: ProjectMusic | undefined,
+  projectMs: number,
+  slotStartMs: number,
+): { tMs: number; at: string } | null {
+  const beat = nearestGridBeat(music, projectMs);
+  if (!beat || !music?.grid) return null;
+  if (Math.abs(beat.projectMs - projectMs) > 60000 / music.grid.bpm / 4) return null;
+  const r = resolveSceneLocalMs(beat.position, music, slotStartMs);
+  return r.ok ? { tMs: r.projectMs, at: beat.position } : null;
+}
+
+/** Tags the key sitting exactly at `tMs` with a musical position; the same track when none sits there. */
+export function withKeyAt(track: CameraDoc, tMs: number, at: string): CameraDoc {
+  if (!track.keys.some((k) => k.tMs === tMs)) return track;
+  return { ...track, keys: track.keys.map((k) => (k.tMs === tMs ? { ...k, at } : k)) };
+}
+
+/** The generated track: a base key at the span start, then a key landing ON each picked beat, alternating a gentle push-in and pull-back with a small azimuth drift. Replaces the scene's orbit track wholesale (the action's contract; undo restores). `positions` (index-parallel to `timesLocal`) gives keys on the authored grid their `at`. */
 export function buildSyncTrack(
   basePose: SceneDocCameraPose,
   timesLocal: number[],
   spanStartMs: number,
+  positions?: readonly (string | undefined)[],
 ): CameraDoc {
   const keys: KeyedTrackKey<SceneDocCameraPose>[] = [
     { id: "k1", tMs: Math.round(spanStartMs), pose: basePose },
@@ -92,9 +114,11 @@ export function buildSyncTrack(
   timesLocal.forEach((t, i) => {
     const id = `k${i + 2}`;
     const push = i % 2 === 0;
+    const at = positions?.[i];
     keys.push({
       id,
       tMs: Math.round(t),
+      ...(at ? { at } : {}),
       pose: {
         ...basePose,
         distance: basePose.distance * (push ? SYNC_PUSH_IN : SYNC_PULL_BACK),

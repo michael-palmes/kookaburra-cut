@@ -26,7 +26,7 @@ scenes built from device presets read them with `useSceneDevices()` and
 | `id` | Stable, unique in the scene; tracks, layouts and camera aims reference it |
 | `model` | Device id (table); unknown or unavailable ids render as `android` without rewriting the file |
 | `colour` | A colour id for that model, or `custom:#rrggbb` (a tint that keeps the finish structure) |
-| `media` | `{ src, kind: "video" \| "image", startMs?, fit?: "cover", startOn?: "open" }`; cover-cropped to the screen |
+| `media` | `{ src, kind: "video" \| "image", startMs?, fit?: "cover", startOn?: "open" }` plus the video timing keys (below); cover-cropped to the screen |
 | `placement` | `position` (world units), `rotationDeg` (DEGREES), `scale` (times the auto-fit), `ground` (stand on a staged floor) |
 | `motion` | `{ preset, ...params }` (table) |
 | `motionBlur` | `{ enabled, amount? }`: keep this device sharp or scale its trail under motion blur (reference/camera.md) |
@@ -38,13 +38,51 @@ scenes built from device presets read them with `useSceneDevices()` and
   multiplies that. Hosts without TSX draw devices at 0.92 (landscape) or 0.8
   (portrait) of their placement scale.
 - Screen videos play from `startMs` (scene-local) and HOLD their first frame before
-  and their last frame after; they do not loop. Make the scene no longer than the
+  and their last frame after, unless `loop` (below). Make the scene no longer than the
   clip, use `duration.mode: "follow-media"` (reference/media.md), or fit the clip to the
   scene with `./kb video fit <edit> --scene S --slot device:<id>` (kookaburra-video-editing).
 - Rotation reads best small: front on `[0, 0, 0]`, editorial `[-6, 14, 0]`, mirrored
   `[-6, -14, 0]`.
 - Lighting: under `<SceneStage>` the theme lights devices. Without a stage each Device
   brings its own light set, so several devices over-light; stage the scene.
+
+## Screen timing
+
+Video screens (`devices[i].media`, `coverMedia`, `compare.b.media["id"]`) take source-time
+keys for a plain trim, speed-up or loop of a recording. Cuts, freezes, taps and masks need a
+`./kb video` edit, whose render carries its own timing, so trim and retime in the edit
+instead of putting these keys on an `-edited.mp4`.
+
+```json
+"media": { "src": "assets/demo.mp4", "kind": "video", "startMs": 400, "inMs": 2000, "outMs": 9000, "speed": 1.5, "posterMs": 2000 }
+```
+
+| Key | Meaning |
+| --- | --- |
+| `inMs`, `outMs` | Source ms where playback starts and ends (`outMs` exclusive, more than 16 ms past `inMs`) |
+| `speed` | Playback rate, above 0 and at most 16 (default 1); frames repeat or skip, never blend. The inspector offers 0.25 to 6 |
+| `loop` | Wraps within `[inMs, outMs)` instead of holding the last frame, through Present holds too |
+| `posterMs` | Source ms shown during a `startMs` delay or before a fold opens (default: the first played frame) |
+
+- `startMs` stays the scene-time delay. Never pair a negative `startMs` (a pre-roll) with
+  `inMs`: use `inMs` to trim and `startMs` to delay. Images take none of these keys.
+- The user edits the same keys in the inspector's screen video card (Playback: Trim start,
+  Trim end, Speed, Loop, Poster frame).
+- A follow-media scene with a timed screen lasts `startMs + (min(outMs, length) - inMs) /
+  speed` (one pass of a loop, at least 17 ms); untimed screens follow the video's length
+  and ignore `startMs`.
+- `./kb video render NAME --use` (and `./kb video use`) drops `inMs`, `outMs`, `speed`,
+  `loop`, `posterMs` and a negative `startMs` from the slot: the render owns the timing. A
+  `startMs` of 0 or more and `startOn` stay.
+- A slot with these keys is "retimed": `./kb video fit --scene` and `./kb video align`
+  refuse it, since scene time is no longer `startMs` plus edit time. To fit or align, drop
+  the slot's keys (`./kb doc S unset devices.N.media.inMs`, and the others) and do the
+  trim in the edit.
+- `./kb check`: a bad key is an error (the app drops it); an unknown key, a speed outside
+  0.25 to 6, an inert `posterMs` (no delay and no `startOn`), and timing keys on an edit's
+  render (trim in the edit instead) warn. Once `./kb video` has probed the file, `inMs` at
+  or past its end is an error and `outMs` past it a warning. `./kb catalog deviceMedia.keys`
+  lists every key.
 
 ## Models
 

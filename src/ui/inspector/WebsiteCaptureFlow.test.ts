@@ -19,11 +19,9 @@ describe("Website capture flow", () => {
       /const writeCapture = async[\s\S]*?const captureCurrentWebsite/,
     )?.[0];
     if (!writeCapture) throw new Error("Website capture flow not found");
-    const refresh = writeCapture.indexOf("await refreshWorkspaceAssets(project.id)");
-    const bump = writeCapture.indexOf("useAssetVersionStore.getState().bump");
+    const refresh = writeCapture.indexOf("await noteAssetWritten(project.id, result.src)");
     const patch = writeCapture.indexOf("await patchDoc");
     expect(refresh).toBeGreaterThan(-1);
-    expect(bump).toBeGreaterThan(refresh);
-    expect(patch).toBeGreaterThan(bump);
+    expect(patch).toBeGreaterThan(refresh);
   });
 });

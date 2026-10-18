@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { refreshWorkspaceAssets } from "../engine/assetInventory";
+import { refreshWorkspaceAssets } from "../engine/assetRevisions";
 import { resolveScreenshotTimeMs } from "../engine/autorun";
 import { invalidateChangedClips } from "../engine/clips";
 import { canvasHandle } from "../engine/exportBridge";
@@ -62,7 +62,10 @@ vi.mock("../engine/exporter", () => ({
 }));
 vi.mock("../engine/themePreviews", () => ({ awaitProjectCommitted: vi.fn() }));
 vi.mock("../engine/clips", () => ({ invalidateChangedClips: vi.fn(async () => {}) }));
-vi.mock("../engine/assetInventory", () => ({ refreshWorkspaceAssets: vi.fn(async () => {}) }));
+vi.mock("../engine/assetRevisions", () => ({
+  projectAssetsStamp: vi.fn(async () => null),
+  refreshWorkspaceAssets: vi.fn(async () => []),
+}));
 vi.mock("../engine/project", () => ({
   bumpWorkspaceReloadToken: vi.fn(),
   isEditableProjectId: () => true,

@@ -3,7 +3,6 @@ import { invoke } from "@tauri-apps/api/core";
 import { join, resourceDir } from "@tauri-apps/api/path";
 import type { ComponentType } from "react";
 import { TextureLoader } from "three";
-import { assetVersionSuffix, useAssetVersionStore } from "../store/assetVersionStore";
 import { parseFontString } from "../theme/fontRef";
 import { vetProjectFonts } from "../theme/fontSafety";
 import { collectThemeFontRefs, preloadAppFonts } from "../theme/fonts";
@@ -20,7 +19,14 @@ import type {
 import type { FrameSpec } from "../toolkit/frame/types";
 import { preloadEmojiRasters } from "../toolkit/text/emojiRaster";
 import type { SceneModule } from "../toolkit/types";
-import { refreshWorkspaceAssets, workspaceAssetMissing } from "./assetInventory";
+import {
+  assetRevision,
+  noteBundledAssetChanged,
+  refreshWorkspaceAssets,
+  subscribeAssetChanges,
+  withAssetRevision,
+  workspaceAssetMissing,
+} from "./assetRevisions";
 import type { CameraKeyframe } from "./cameraTrack";
 import { preloadEffectLuts } from "./effects";
 import { mergeFrameSpec, parseFrameSpec } from "./frameSchema";
@@ -33,6 +39,13 @@ import {
   type SceneLoadPhase,
 } from "./loadDiagnostics";
 import { fsUrl } from "./media";
+import {
+  isMusicPosition,
+  MUSIC_ID_PATTERN,
+  type MusicGrid,
+  type ProjectMusic,
+  resolveMusicPosition,
+} from "./musicTime";
 import { resolveSavedPosterTheme } from "./presetPosterThemes";
 import { withProjectAssetRevision } from "./projectAssetRevision";
 import { ensureProjectTrusted } from "./projectTrust";
@@ -42,6 +55,7 @@ import { ensureSampleAssets } from "./sampleAssets";
 import { deriveCompareBDoc } from "./sceneCompare";
 import { compileSceneModule } from "./sceneCompiler";
 import { loadSceneDoc } from "./sceneDoc";
+import { resolveProjectDocsMusic } from "./sceneDocMusic";
 import { collectSceneDocFontRefs, type SceneDoc } from "./sceneDocSchema";
 import { ensureUniqueSceneIds } from "./sceneIds";
 import { normalizeLighting } from "./sceneLighting";
@@ -125,6 +139,36 @@ export interface ProjectAudioSpec {
   fadeOutCurve?: AudioFadeCurve;
   startOffsetMs?: number;
   markers?: AudioMarkersSpec;
+  /** The authored tempo grid musical positions resolve against (`engine/musicTime.ts`); analysis only suggests it. */
+  grid?: AudioGridSpec;
+  sections?: AudioSectionSpec[];
+  /** Named times: a position or project ms each, addressed as `cue:<id>`. */
+  cues?: Record<string, string | number>;
+}
+
+/** Where an accepted grid came from: provenance only, never read by render. */
+export interface AudioGridSource {
+  sha256: string;
+  analysisVersion: number;
+  tracker: "nn" | "dsp";
+  residualMs?: number;
+}
+
+export interface AudioGridSpec {
+  bpm: number;
+  /** Track ms (ffmpeg decode) of bar 1 beat 1. */
+  offsetMs: number;
+  /** Default 4. */
+  beatsPerBar?: number;
+  source?: AudioGridSource;
+}
+
+export interface AudioSectionSpec {
+  id: string;
+  label?: string;
+  /** A position or project ms; `section:<id>` resolves to it. */
+  from: string | number;
+  to: string | number;
 }
 
 export const AUDIO_MARKERS_VERSION = 1;
@@ -154,6 +198,160 @@ export function sanitiseAudioMarkers(
     (a, b) => a - b,
   );
   return { version: AUDIO_MARKERS_VERSION, keyMoments };
+}
+
+/** The authored music fields of an `audio` block, each present only when valid. */
+export type AudioMusicSpec = Pick<ProjectAudioSpec, "grid" | "sections" | "cues">;
+
+const isRecordValue = (v: unknown): v is Record<string, unknown> =>
+  typeof v === "object" && v !== null && !Array.isArray(v);
+
+/** Why a cue or section bound can't stand, or null: ms must be finite, a position must parse, never name a cue or section, and stay in range under the grid. */
+function musicValueProblem(value: unknown, grid: MusicGrid | undefined): string | null {
+  if (typeof value === "number") return Number.isFinite(value) ? null : "isn't finite";
+  if (typeof value !== "string") return "isn't a position or ms";
+  if (!isMusicPosition(value)) return `"${value}" isn't a position`;
+  if (/^(cue|section):/.test(value)) return `"${value}" can't point at another cue or section`;
+  const r = resolveMusicPosition(value, { grid, startOffsetMs: 0, cues: {}, sections: {} });
+  return r.ok || r.code === "no-grid" ? null : r.message;
+}
+
+/** Warn-and-drop validation for `audio.grid`, `audio.sections` and `audio.cues`, field by field; `grid.source` is provenance and passes through untouched. */
+export function sanitiseAudioMusic(spec: ProjectAudioSpec | undefined): AudioMusicSpec {
+  const out: AudioMusicSpec = {};
+  if (!spec) return out;
+  const warn = (what: string) => console.warn(`[project] audio.${what}, dropped`);
+  let grid: MusicGrid | undefined;
+  if (spec.grid !== undefined) {
+    const raw: unknown = spec.grid;
+    const g = isRecordValue(raw) ? raw : {};
+    const bpm = g.bpm;
+    const offsetMs = g.offsetMs;
+    const beatsPerBar = g.beatsPerBar ?? 4;
+    if (typeof bpm !== "number" || !Number.isFinite(bpm) || bpm < 30 || bpm > 300) {
+      warn("grid.bpm must be 30..300");
+    } else if (typeof offsetMs !== "number" || !Number.isFinite(offsetMs)) {
+      warn("grid.offsetMs must be finite ms");
+    } else if (
+      typeof beatsPerBar !== "number" ||
+      !Number.isInteger(beatsPerBar) ||
+      beatsPerBar < 1 ||
+      beatsPerBar > 16
+    ) {
+      warn("grid.beatsPerBar must be an integer 1..16");
+    } else {
+      grid = { bpm, offsetMs, beatsPerBar };
+      out.grid = isRecordValue(g.source)
+        ? { ...grid, source: g.source as unknown as AudioGridSource }
+        : grid;
+    }
+  }
+  if (spec.cues !== undefined) {
+    if (!isRecordValue(spec.cues)) warn("cues must be an object");
+    else {
+      const cues: Record<string, string | number> = {};
+      for (const [id, value] of Object.entries(spec.cues)) {
+        const problem = MUSIC_ID_PATTERN.test(id)
+          ? musicValueProblem(value, grid)
+          : "id must be lowercase letters, digits and dashes";
+        if (problem) warn(`cues.${id} ${problem}`);
+        else cues[id] = value as string | number;
+      }
+      if (Object.keys(cues).length > 0) out.cues = cues;
+    }
+  }
+  if (spec.sections !== undefined) {
+    if (!Array.isArray(spec.sections)) warn("sections must be an array");
+    else {
+      const sections: AudioSectionSpec[] = [];
+      const seen = new Set<string>();
+      for (const [i, raw] of (spec.sections as unknown[]).entries()) {
+        const s = isRecordValue(raw) ? raw : {};
+        const id = typeof s.id === "string" ? s.id : "";
+        const problem = !MUSIC_ID_PATTERN.test(id)
+          ? "needs an id of lowercase letters, digits and dashes"
+          : seen.has(id)
+            ? "repeats an id"
+            : (musicValueProblem(s.from, grid) ?? musicValueProblem(s.to, grid));
+        const from = problem ? null : sectionBoundMs(s.from, grid);
+        const to = problem ? null : sectionBoundMs(s.to, grid);
+        if (problem) warn(`sections[${i}] ${problem}`);
+        else if (from !== null && to !== null && from >= to) {
+          warn(`sections[${i}] needs "from" before "to"`);
+        } else {
+          seen.add(id);
+          const section: AudioSectionSpec = {
+            id,
+            from: s.from as string | number,
+            to: s.to as string | number,
+          };
+          if (typeof s.label === "string") section.label = s.label;
+          sections.push(section);
+        }
+      }
+      if (sections.length > 0) out.sections = sections;
+    }
+  }
+  return out;
+}
+
+function sectionBoundMs(value: unknown, grid: MusicGrid | undefined): number | null {
+  if (typeof value === "number") return value;
+  const r = resolveMusicPosition(String(value), {
+    grid,
+    startOffsetMs: 0,
+    cues: {},
+    sections: {},
+  });
+  return r.ok ? r.projectMs : null;
+}
+
+/** The block with its music fields replaced by their sanitised selves; the same object when it authors none. */
+export function withSanitisedMusic(spec: ProjectAudioSpec): ProjectAudioSpec {
+  if (spec.grid === undefined && spec.cues === undefined && spec.sections === undefined) {
+    return spec;
+  }
+  const { grid: _grid, cues: _cues, sections: _sections, ...rest } = spec;
+  return { ...rest, ...sanitiseAudioMusic(spec) };
+}
+
+/** The block a newly chosen soundtrack writes: the file, keeping the authored grid, cues and sections; the mix and markers belonged to the old track and reset. */
+export function soundtrackAudioBlock(existing: unknown, file: string): ProjectAudioSpec {
+  const block: ProjectAudioSpec = { file };
+  if (!isRecordValue(existing)) return block;
+  for (const key of ["grid", "cues", "sections"] as const) {
+    if (existing[key] !== undefined)
+      (block as unknown as Record<string, unknown>)[key] = existing[key];
+  }
+  return block;
+}
+
+/** What musical positions resolve against, built from an already sanitised block; undefined when it authors no grid, cues or sections, so legacy projects carry nothing. */
+export function projectMusicOf(spec: ProjectAudioSpec | undefined): ProjectMusic | undefined {
+  if (!spec || (!spec.grid && !spec.cues && !spec.sections)) return undefined;
+  const offset = spec.startOffsetMs;
+  const sections: Record<string, { from: string | number; to: string | number; label?: string }> =
+    {};
+  for (const s of spec.sections ?? []) {
+    sections[s.id] =
+      s.label === undefined
+        ? { from: s.from, to: s.to }
+        : { from: s.from, to: s.to, label: s.label };
+  }
+  return {
+    ...(spec.grid
+      ? {
+          grid: {
+            bpm: spec.grid.bpm,
+            offsetMs: spec.grid.offsetMs,
+            beatsPerBar: spec.grid.beatsPerBar ?? 4,
+          },
+        }
+      : {}),
+    startOffsetMs: typeof offset === "number" && Number.isFinite(offset) ? offset : 0,
+    cues: { ...spec.cues },
+    sections,
+  };
 }
 
 /** The loaded soundtrack: the spec plus the resolved path and probed stream facts. */
@@ -212,6 +410,10 @@ export interface LoadedProject {
   sceneFrames: (FrameSpec | undefined)[];
   /** Present only when the manifest declares (and the probe accepted) a soundtrack. */
   audio?: ProjectAudio;
+  /** The authored grid, cues and sections, built from the manifest even when the soundtrack can't load; undefined when the block authors none. Sidecar `at` positions resolve against it at load. */
+  music?: ProjectMusic;
+  /** Scenes whose sidecar `tMs` caches the load re-resolved from `at` (a grid or slot moved since they were written); the editor writes them back. Absent when none did. */
+  musicCacheRewrites?: number[];
   /** BASE effect stacks for scenes whose sidecar swaps the theme (sparse, keyed by scene index); a wholesale replacement of the project default for that scene, LUT urls already resolved. See `sceneBaseEffects` (engine/effectParams.ts). */
   sceneEffectDefaults: Record<number, EffectsConfig>;
   /** The manifest's validated project-default lighting layer, if it declares one (manifest `lighting`); provided to the canvas tree via `ProjectLightingContext`. */
@@ -663,7 +865,7 @@ for (const tree of ["presets", "projects"] as const) {
     }
     const [, , slug, ...relative] = path.split("/");
     const scope = tree === "presets" ? "preset" : "template";
-    useAssetVersionStore.getState().bump(`${scope}:${slug}`, relative.join("/"));
+    noteBundledAssetChanged(`${scope}:${slug}`, relative.join("/"));
   });
 }
 
@@ -717,14 +919,41 @@ function projectAssetKey(projectId: string, relPath: string): string {
   return pooled ? `/projects/_samples/${pooled}` : key;
 }
 
-/** Resolve every `lut.url` in an effect config from project-relative (how project.json/themes author it) to its project glob key (how engine/effects.ts loads and caches it). Pure; returns fresh objects, never mutates (the theme's EffectsConfig is a shared module value). */
+/** A resolved asset URL with both cache-busts: the poster renderer's `?poster=` and the asset's own revision (`assetRevisions.ts`), so an in-place replace is a new URL. */
+function revisedAssetUrl(projectId: string, url: string, relPath: string): string {
+  return withAssetRevision(
+    withProjectAssetRevision(projectId, url),
+    assetRevision(projectId, relPath),
+  );
+}
+
+// Drei's texture cache never evicts: drop a replaced image's old URL so it holds no decoded copy.
+subscribeAssetChanges((projectId, changes) => {
+  if (!isWorkspaceBackedProjectId(projectId)) return;
+  const stale: string[] = [];
+  for (const { rel, before } of changes) {
+    if (!before || !/\.(png|jpe?g|webp)$/i.test(rel)) continue;
+    try {
+      const url = withProjectAssetRevision(projectId, projectAssetKey(projectId, rel));
+      stale.push(withAssetRevision(url, before));
+    } catch {
+      // The project's folder is gone; nothing it loaded will be asked for again.
+    }
+  }
+  if (stale.length > 0) useTexture.clear(stale);
+});
+
+/** Resolve every `lut.url` in an effect config from project-relative (how project.json/themes author it) to its project glob key (how engine/effects.ts loads and caches it). Pure; returns fresh objects, never mutates (the theme's EffectsConfig is a shared module value). Workspace LUTs carry their revision; bundled ones keep the bare glob key effects.ts looks up. */
 function resolveLutUrls<T extends EffectsConfig | EffectsOverride>(projectId: string, cfg: T): T {
   if (!cfg.lut?.url) return cfg;
+  const key = projectAssetKey(projectId, cfg.lut.url);
   return {
     ...cfg,
     lut: {
       ...cfg.lut,
-      url: withProjectAssetRevision(projectId, projectAssetKey(projectId, cfg.lut.url)),
+      url: isWorkspaceBackedProjectId(projectId)
+        ? revisedAssetUrl(projectId, key, cfg.lut.url)
+        : withProjectAssetRevision(projectId, key),
     },
   };
 }
@@ -740,7 +969,7 @@ export function resolveAssetUrl(projectId: string, relPath: string): string {
           "Put it under the project's assets/ folder and reference it relatively.",
       );
     }
-    return withProjectAssetRevision(projectId, key);
+    return revisedAssetUrl(projectId, key, relPath);
   }
   const url = assetUrlGlob[key];
   if (!url) {
@@ -749,7 +978,15 @@ export function resolveAssetUrl(projectId: string, relPath: string): string {
         "Put it under projects/<project>/assets/ and reference it relatively.",
     );
   }
-  return withProjectAssetRevision(projectId, url);
+  return revisedAssetUrl(projectId, url, relPath);
+}
+
+/** A project asset as a plain webview URL with its revision, for UI `<img>`s, previews and audio fetches (textures go through `resolveAssetUrl`). Throws like `resolveAssetPath`. */
+export function assetFileUrl(projectId: string, relPath: string): string {
+  return withAssetRevision(
+    fsUrl(resolveAssetPath(projectId, relPath)),
+    assetRevision(projectId, relPath),
+  );
 }
 
 /** Resolve a project-relative environment map (`.hdr`/`.exr`) to a loadable URL. THROWS on a missing file, at resolve time, so a bad source fails an autorun loudly instead of exporting without reflections (the AssetBoundary lesson: boundary-caught errors still fail autoruns). */
@@ -762,7 +999,7 @@ export function resolveProjectHdrUrl(projectId: string, relPath: string): string
           "Put a .hdr or .exr under the project's assets/ folder and reference it relatively.",
       );
     }
-    return withProjectAssetRevision(projectId, projectAssetKey(projectId, clean));
+    return revisedAssetUrl(projectId, projectAssetKey(projectId, clean), clean);
   }
   const url = assetHdrGlob[`${bundledProjectDir(projectId)}/${clean}`];
   if (!url) {
@@ -771,10 +1008,10 @@ export function resolveProjectHdrUrl(projectId: string, relPath: string): string
         "Put a .hdr or .exr under projects/<project>/assets/ and reference it relatively.",
     );
   }
-  return withProjectAssetRevision(projectId, url);
+  return revisedAssetUrl(projectId, url, clean);
 }
 
-/** Workspace environment inventory (`.hdr`/`.exr` rel paths per project), refreshed on project load; mirrors assetInventory.ts for the environment glob. */
+/** Workspace environment inventory (`.hdr`/`.exr` rel paths per project), refreshed on project load; mirrors assetRevisions.ts's image check for the environment glob. */
 const workspaceEnvironments = new Map<string, Set<string>>();
 
 async function refreshWorkspaceEnvironments(projectId: string): Promise<void> {
@@ -843,17 +1080,13 @@ export async function preloadProjectImages(projectId: string): Promise<void> {
     // The workspace equivalent of the eager glob: ask the native side for the project's image assets and load them at their asset-protocol URLs.
     const slug = nativeProjectSlug(projectId);
     const rels = await invoke<string[]>("list_project_assets", { slug });
-    // Match ImageCard's cache-bust suffix so a re-imported icon warms the URL it will request.
-    urls = rels.map((rel) => resolveAssetUrl(projectId, rel) + assetVersionSuffix(projectId, rel));
+    // The consumers' own resolver, so the warmed URL is the requested URL by construction.
+    urls = rels.map((rel) => resolveAssetUrl(projectId, rel));
   } else {
     const prefix = `${bundledProjectDir(projectId)}/`;
-    urls = Object.entries(assetUrlGlob)
-      .filter(([key]) => key.startsWith(prefix))
-      .map(
-        ([key, url]) =>
-          withProjectAssetRevision(projectId, url) +
-          assetVersionSuffix(projectId, key.slice(prefix.length)),
-      );
+    urls = Object.keys(assetUrlGlob)
+      .filter((key) => key.startsWith(prefix))
+      .map((key) => resolveAssetUrl(projectId, key.slice(prefix.length)));
   }
   if (urls.length === 0) return;
   const loader = new TextureLoader();
@@ -1110,7 +1343,7 @@ export async function loadProject(
   }
 
   // Sidecar scene documents, keyed off each entry's file stem; missing → undefined.
-  const sceneDocs = await Promise.all(
+  const loadedDocs = await Promise.all(
     manifest.scenes.map((entry) =>
       loadSceneDoc(id, entry.file, sceneDocGlob, bundledProjectDir(id)),
     ),
@@ -1127,6 +1360,14 @@ export async function loadProject(
     })),
   );
   const totalMs = timelineTotalMs(slots);
+
+  // Authored music comes from the manifest alone, so a missing soundtrack never moves a visual; sidecar `at` positions resolve against it here, before anything reads a key time.
+  const audioSpec = isRecordValue(manifest.audio)
+    ? withSanitisedMusic(manifest.audio as ProjectAudioSpec)
+    : undefined;
+  const music = projectMusicOf(audioSpec);
+  const resolved = resolveProjectDocsMusic(loadedDocs, music, slots);
+  const sceneDocs = resolved.docs;
 
   // Project-wide font override: outranks every resolved theme (project, per-scene and compare B alike); per-field sidecar `<key>Font` overrides still win downstream.
   const typographyOverride = parseProjectTypography(manifest.typography, `${id}/project.json`);
@@ -1204,6 +1445,15 @@ export async function loadProject(
 
   // LUT textures must be cached before the effects store publishes them; the composer chain builds synchronously on the next rendered frame. (The export preamble re-awaits; no-op.) A LUT that fails to load degrades to no LUT rather than failing the project.
   const loadWarnings: string[] = [];
+  if (resolved.issues.length > 0) {
+    const n = resolved.issues.length;
+    console.warn(
+      `[project] musical positions kept their stored times:\n  ${resolved.issues.join("\n  ")}`,
+    );
+    loadWarnings.push(
+      `${n === 1 ? "A musical position" : `${n} musical positions`} couldn't resolve, so the stored time stands: ${resolved.issues[0]}${n > 1 ? " (and more)" : ""}`,
+    );
+  }
   const exportBlockers: string[] = fontIssues
     .filter((issue) => issue.transient)
     .map((issue) => `the font file for ${issue.ref} couldn't be read (${issue.message})`);
@@ -1259,13 +1509,13 @@ export async function loadProject(
 
   // The soundtrack: resolve + probe, degrade-never-crash; a missing or unprobeable file loads the project SILENT with a warning (the malformed-theme rule).
   let audio: ProjectAudio | undefined;
-  if (manifest.audio?.file) {
+  if (audioSpec?.file) {
     try {
-      const abs = resolveAssetPath(id, manifest.audio.file);
+      const abs = resolveAssetPath(id, audioSpec.file);
       const probe = await invoke<{ durationMs: number; sampleRate: number }>("probe_audio", {
         path: abs,
       });
-      audio = { ...withAudioDefaults(manifest.audio), abs, ...probe };
+      audio = { ...withAudioDefaults(audioSpec), abs, ...probe };
       const covered = audio.durationMs - (audio.startOffsetMs ?? 0);
       if (covered < totalMs) {
         console.warn(
@@ -1273,10 +1523,7 @@ export async function loadProject(
         );
       }
     } catch (e) {
-      console.warn(
-        `[project] soundtrack "${manifest.audio.file}" unavailable — loading silent:`,
-        e,
-      );
+      console.warn(`[project] soundtrack "${audioSpec.file}" unavailable, loading silent:`, e);
     }
   }
 
@@ -1293,6 +1540,8 @@ export async function loadProject(
     effects,
     effectOverrides,
     audio,
+    music,
+    ...(resolved.changed.length > 0 ? { musicCacheRewrites: resolved.changed } : {}),
     cameraTrack: manifest.camera,
     persistent,
     sceneDocs,

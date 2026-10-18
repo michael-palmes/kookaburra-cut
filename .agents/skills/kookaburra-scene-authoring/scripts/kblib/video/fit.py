@@ -255,7 +255,11 @@ def minimum_length(doc: Dict[str, Any], analyses: Dict[str, Dict[str, Any]]) -> 
 def _freeze(clip: Dict[str, Any], src: int, hold: float, ids: List[str]) -> Dict[str, Any]:
     fid = cl.next_id("c", ids)
     ids.append(fid)
-    return {"id": fid, "sourceId": clip["sourceId"], "inMs": int(src), "outMs": int(src), "speed": 1, "holdMs": int(round(hold)), "startMs": 0}
+    out = {"id": fid, "sourceId": clip["sourceId"], "inMs": int(src), "outMs": int(src), "speed": 1, "holdMs": int(round(hold)), "startMs": 0}
+    for framing in ("crop", "zoom"):
+        if clip.get(framing) is not None:
+            out[framing] = clip[framing]
+    return out
 
 
 def _lengthen(doc: Dict[str, Any], clips: List[Dict[str, Any]], analyses: Dict[str, Dict[str, Any]], need: float,
@@ -801,6 +805,8 @@ def align(doc: Dict[str, Any], analyses: Dict[str, Dict[str, Any]], source_id: s
     plan = AlignPlan()
     plan.moment_ms = moment
     start_now = int((slot or {}).get("startMs") or 0)
+    if target_local is not None and (slot or {}).get("retimed"):
+        raise FitError("the slot plays its video with its own timing (inMs, outMs, speed, loop or posterMs), so a scene time can't be landed through startMs")
     if target_local is not None:
         if prefer in ("auto", "scene"):
             start, why = scene_shift(target_local, lead, moment, slot)
@@ -849,8 +855,10 @@ def _beats_module() -> Any:
 
 
 def scene_beats(root: Path, scene_index: int, load_json: Callable[[Path], Any], cache_dir: Optional[Path] = None) -> Dict[str, Any]:
-    """Scene-local grid beats and key moments, exactly as kb beats --json reports them."""
+    """Scene-local grid beats and key moments, exactly as kb beats --json reports them: the authored grid wins once it exists."""
     import hashlib
+
+    from ..beats import model as music_model
 
     beats = _beats_module()
     manifest = load_json(root / "project.json")
@@ -860,18 +868,23 @@ def scene_beats(root: Path, scene_index: int, load_json: Callable[[Path], Any], 
     audio_path = root / audio["file"]
     if not audio_path.is_file():
         raise FitError(f"the soundtrack {audio['file']} is missing")
+    authored = music_model.project_music(manifest)
+    if authored is not None and authored.get("grid") is None:
+        authored = None
     digest = hashlib.sha256(audio_path.read_bytes()).hexdigest()
-    cache = (cache_dir or beats.CACHE_DIR) / f"{digest}.json"
-    if not cache.is_file():
-        raise FitError("no beat analysis yet: ask the user to open the project in Kookaburra Cut once, then rerun")
-    analysis = load_json(cache)
+    analysis, _ = beats.load_analysis(digest, load_json, cache_dir)
+    if analysis is None and authored is None:
+        raise FitError("no beat grid yet: run ./kb song analyse --accept (or ./kb beats set-grid), then rerun")
     slots = beats.build_slots(manifest.get("scenes", []))
     if not 0 <= scene_index < len(slots):
         raise FitError(f"scene {scene_index} is out of range")
     total = slots[-1]["endMs"] if slots else 0
     offset = audio.get("startOffsetMs", 0) or 0
-    grid = [t - offset for t in analysis.get("beats", []) if 0 <= t - offset <= total]
-    moments, _ = beats.effective_key_moments(analysis, audio.get("markers"), offset, total)
+    if authored is not None:
+        grid = music_model.grid_beats(authored, total)[0]
+    else:
+        grid = [t - offset for t in beats.beat_times(analysis) if 0 <= t - offset <= total]
+    moments, _ = beats.effective_key_moments(analysis or {}, audio.get("markers"), offset, total)
     s = slots[scene_index]
     return {
         "beats": [t - s["startMs"] for t in grid if s["startMs"] <= t <= s["endMs"]],

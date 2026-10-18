@@ -1,5 +1,5 @@
 import { useTexture } from "@react-three/drei";
-import { useContext, useEffect, useLayoutEffect, useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useState } from "react";
 import {
   BufferAttribute,
   BufferGeometry,
@@ -14,9 +14,7 @@ import {
   type Texture,
   TextureLoader,
 } from "three";
-import { resolveAssetUrl } from "../../engine/project";
-import { ProjectIdContext } from "../../engine/sceneContext";
-import { useEditorStore } from "../../store/editorStore";
+import { useProjectAssetUrl } from "../../engine/useProjectAssetUrl";
 import { useTheme } from "../../theme";
 import { hexToOklch, mixOklch, type Oklch, oklchToBytes } from "../../theme/oklch";
 import type { GradientSpec, ThemeBackdrop, ThemeShadowSpec } from "../../theme/tokens";
@@ -331,23 +329,16 @@ function ImagePlane({
   spec,
   shadow,
 }: BackdropProps & { spec: Extract<ThemeBackdrop, { type: "image" }> }) {
-  const contextProjectId = useContext(ProjectIdContext);
-  const storeProjectId = useEditorStore((s) => s.projectId);
-  const projectId = contextProjectId ?? storeProjectId;
+  const bundledSrc = spec.src.startsWith("kookaburra:");
   // Missing assets degrade to no backdrop, never tear down the canvas tree (the bootTrap lesson); the suspense load is covered by the scene-host commit barrier (`awaitSceneHostsCommitted`), same as every other cold-mount texture.
-  if (spec.src.startsWith("kookaburra:")) {
+  const url = useProjectAssetUrl(bundledSrc ? null : spec.src, "[stage] image backdrop");
+  if (bundledSrc) {
     const bundled = bundledBackdropUrl(spec.src.slice("kookaburra:".length));
     if (!bundled) {
       console.warn(`[stage] bundled backdrop "${spec.src}" not found — no backdrop`);
       return null;
     }
     return <ImagePlaneBundled url={bundled} spec={spec} shadow={shadow} />;
-  }
-  let url: string | null = null;
-  try {
-    url = resolveAssetUrl(projectId, spec.src);
-  } catch (e) {
-    console.warn(`[stage] image backdrop "${spec.src}" unresolved:`, e);
   }
   if (!url) return null;
   return (

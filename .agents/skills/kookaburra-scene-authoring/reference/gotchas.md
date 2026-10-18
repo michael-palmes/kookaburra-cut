@@ -14,19 +14,19 @@ that a coming update changes; the fix here is the one that works today.
 | A Bash `sed -i`, heredoc or Python write to a scene was never checked | Only Edit and Write used to trigger the check | The Bash hooks now check the scene files a command changed, after the fact. Still prefer Edit, Write or `./kb doc`: the Bash check only knows a file's earlier errors when the command names it, so a script's or glob's writes are judged without them |
 | `kb undo` reverted another agent's work | A plain undo restores the whole project | A plain undo now refuses (`others-changed`) when another agent changed files since its target. Undo your own scene with `./kb undo --scene S`, and lease scenes you edit with `./kb lease S` |
 | kb stored in a shell variable fails in zsh (`command not found`) | zsh does not split a variable into words | Run `./kb <command>` from the project folder, never through a variable or alias |
-| Times from recording notes are seconds off the footage | Notes are written from memory, not from the file | Measure from decoded frames: `./kb video analyse NAME` (screen changes), then `./kb video frames NAME --at T` |
+| Times from recording notes are seconds off the footage | Notes are written from memory, not from the file | Align them to the footage: `./kb video log NAME --notes notes.md` matches each note to the screen change it describes (kookaburra-video-editing, reference/footage.md); check with `./kb video frames NAME --src T` |
 | `./kb status` leads with `DEV BUILD` | A development build serves this project; React dev builds use far more WebContent memory, so long sessions stall and reload | Ask the user to run the packaged app for long or multi-agent sessions |
 
 ## Media and timing
 
 | Symptom | Cause | Fix |
 | --- | --- | --- |
-| A replaced image still shows the old one in the preview (captures show the new one) | The editor caches media by file name; captures load fresh (until a later update) | Add the new file under a new name and point the scene at it, or use the app's "Set as icon" |
-| `./kb assets add` wrote `name-2.png` instead of replacing `name.png` | It never overwrites (until a later update adds a replace) | Point the scene at the new name with `./kb doc S set ...` |
-| A screen in a variable-frame-rate screen recording appears early | ffmpeg decodes some VFR recordings out of order (until a later update) | Conform the recording to constant 60 fps first and cut from that copy, never from the original |
-| A negative `media.startMs` jumps back to 0 | Editing the device in the inspector resets it (until a later update) | Trim the head off the video with `./kb video trim NAME first --head T` instead |
-| A device video freezes on its last frame | Device videos never loop, so a scene longer than its clip holds the last frame | Size the scene to the clip (`./kb assets probe` gives its length), or `./kb video fit NAME --scene S` or `./kb video hold` |
-| A cut lands up to about 120 ms off the beat on a long track | The app's beat grid drifts on long tracks (until a later update) | Use the key moments from `./kb beats --scene S`, never raw grid beats |
+| `./kb assets add` wrote `name-2.png` instead of replacing `name.png` | It never overwrites | New bytes under the same name: `./kb assets replace assets/name.png FILE` (every scene picks them up; the old file goes to `.kb/archive/`). Remove the `-2` copy |
+| `./kb assets add rec.mov` printed `assets/rec.mp4` | The recording needed conforming, so it landed as a constant 60 fps `<stem>.mp4` (the original is in `assets/.originals/`) | Use the printed path. An in-place `./kb assets conform` keeps the name and container |
+| A recording shows a screen early, or its timing differs from QuickTime | Its edit list (a trim saved without re-encoding) opens inside a held frame, so ffmpeg drops that frame and shows the rest early. `./kb assets probe` says `ffmpeg-misdecodes` and `./kb check` warns | `./kb assets conform assets/x.mov` (same name, original kept), then capture again |
+| A device video freezes on its last frame | Device screens hold their last frame, so a scene longer than its clip holds it | Size the scene to the clip (`./kb assets probe` gives its length), `./kb video fit NAME --scene S`, `./kb video hold`, or `"loop": true` on the screen's media (reference/devices.md) |
+| A key snaps back after a hand edit of its `tMs` | It has an `at`, and the app re-resolves it on load | `./kb doc S set camera.keys.N.tMs MS` (drops the `at`), or `./kb doc S unset camera.keys.N.at` to keep the time |
+| `./kb video fit --scene` or `./kb video align` refuses a device slot as retimed | The slot has its own timing (`inMs`, `outMs`, `speed`, `loop`, `posterMs`), so scene time is no longer `startMs` plus edit time | Trim and retime in the edit instead, then drop the slot's keys (`./kb doc S unset devices.N.media.inMs`, and the others) |
 
 ## Text and themes
 

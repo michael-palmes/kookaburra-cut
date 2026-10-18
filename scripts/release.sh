@@ -67,6 +67,14 @@ if [[ -n "$MISSING_MODELS" ]]; then
   exit 1
 fi
 
+# The beat-this model is a gitignored bundle resource: a CI stub or a stale download would
+# ship with every song silently on the DSP fallback.
+echo "==> Checking the beat-this model"
+if ! bash "$ROOT/scripts/setup-models.sh" --check; then
+  echo "ERROR: the beat-this model is missing or not the pinned build; run pnpm setup:models." >&2
+  exit 1
+fi
+
 # The README and every release body state the floor the bundle enforces; 0.15 and 0.16 advertised
 # "macOS 13+" for a binary that refuses to launch below 26.
 if ! grep -q "macOS ${MIN_OS}+" "$ROOT/README.md"; then
@@ -91,6 +99,10 @@ pnpm lint
 
 "$ROOT/scripts/sign-and-notarize.sh"
 [[ -f "$APP_DMG" ]] || { echo "ERROR: expected DMG missing at $APP_DMG" >&2; exit 1; }
+bash "$ROOT/scripts/setup-models.sh" --check "$APP_BUNDLE/Contents/Resources/models" >/dev/null || {
+  echo "ERROR: the signed bundle's beat-this model does not match the pins." >&2
+  exit 1
+}
 
 echo "==> Zipping artefacts"
 rm -f "$APP_ZIP" "$APP_ZIP_SHA"

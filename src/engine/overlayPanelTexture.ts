@@ -1,7 +1,6 @@
 /** Panel-fill textures for the overlay slide pass, cached at module level because the compositor reads them SYNCHRONOUSLY at the render seam (it cannot suspend). Gradients bake through the stage's `gradientTexture`, so a panel gradient and a background gradient are the same pixels; images load once per URL and settle before frame 0 through `preloadOverlayPanelImages` (the `preloadProjectImages` barrier pattern). In preview a not-yet-loaded image renders the panel's fallback colour for a frame and self-heals on the next; during export the barrier means that can never happen. See docs/overlays.md. */
 
 import { type DataTexture, SRGBColorSpace, type Texture, TextureLoader } from "three";
-import { assetVersionSuffix } from "../store/assetVersionStore";
 import type { GradientSpec } from "../theme/tokens";
 import { gradientTexture } from "../toolkit/stage/backdrops";
 import { canvasHandle } from "./exportBridge";
@@ -35,10 +34,10 @@ const images = new Map<string, Texture>();
 const loading = new Map<string, Promise<void>>();
 const warned = new Set<string>();
 
-/** The loadable URL for a panel image, matching `ImageCard`'s cache-bust suffix so a re-imported asset lands the URL the rest of the app requests. A missing asset degrades to the flat panel colour, warning once (the seam runs every frame) but never latching, so importing the file later heals it. */
+/** The loadable URL for a panel image, revision included (the URL `ImageCard` requests), so a replaced asset lands as a new URL. A missing asset degrades to the flat panel colour, warning once (the seam runs every frame) but never latching, so importing the file later heals it. */
 function panelImageUrl(projectId: string, src: string): string | null {
   try {
-    return resolveAssetUrl(projectId, src) + assetVersionSuffix(projectId, src);
+    return resolveAssetUrl(projectId, src);
   } catch (e) {
     const id = `${projectId}:${src}`;
     if (!warned.has(id)) {
