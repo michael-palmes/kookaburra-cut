@@ -123,9 +123,11 @@ Text motion by purpose (sidecar `textAnimation`):
   or `inOutSine`. `outBack` only for small pops. `linear` only for continuous spins and
   orbits. `jump` for cuts.
 - In TSX, `ramp(localMs, start, end, "outCubic")` drives one-shot moves, `sampleKeys`
-  multi-step moves and `stampScale()` a stamped pop for badges, ticks and pills
-  (`RoundedRect`, `Pill`). Keep timings several scenes share in `project.json`
+  multi-step moves and `<Stamp at>` (or `stampScale()`) a stamped pop for badges, ticks
+  and pills (`RoundedRect`, `Pill`). Keep timings several scenes share in `project.json`
   `shared` (`useProjectShared`).
+- Product demos: show a tap where the finger lands (sidecar `taps` on the device, or a
+  `Cursor` for laptop screens), one tap per beat of the story, never a tap storm.
 - Devices: `push-in` or `tilt-reveal` to enter, `float` (amplitude 0.06 to 0.08) to
   idle. Avoid `turntable` while the screen matters: it turns away.
 - Sync to the soundtrack where there is one (reference/beats.md): land reveals and

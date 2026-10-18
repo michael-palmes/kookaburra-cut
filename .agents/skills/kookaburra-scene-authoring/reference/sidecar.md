@@ -51,6 +51,8 @@ kb doc 02-demo unset textLook
 | `motionBlur` | Scene override of the project's motion blur | camera.md |
 | `media` | Images and videos (stage, overlay, window hosts) | media.md |
 | `layeredScreenshot` | 3D stack of app screens | media.md |
+| `mosaic` | The frame split into image, video or colour tiles with a staggered reveal | media.md |
+| `taps` | Tap pulses in world space or on a device's screen | media.md |
 | `terminal`, `website` | Terminal and website panels | media.md |
 | `chart` | One data chart | charts.md |
 | `frame` | Overlay panel with a cutout | below |
@@ -65,7 +67,8 @@ writes the sidecar, so never park notes or experiments in a sidecar.
 
 The host mounts these for EVERY scene, so adding the sidecar block is enough:
 `background`, `room`, `media`, `devices` (unless the TSX calls `useSceneDevices`),
-`objects`, `layeredScreenshot`, `chart`, a title/subtitle from `text.title`/`text.subtitle` or
+`objects`, `layeredScreenshot`, `chart`, `mosaic` (unless the TSX places `SplitField`),
+`taps`, a title/subtitle from `text.title`/`text.subtitle` or
 `managedText` (unless the TSX renders those keys), and compare chips. `backdrop`,
 theme lighting and real shadows need a `<SceneStage>` in the TSX.
 

@@ -107,6 +107,7 @@ it), ask the user to open it once in the app.
 | Before/after wipe | `compare` | reference/devices.md | `compare.presets` |
 | Camera moves, depth of field, motion blur | `camera`, `cameraRig`, key `dof`, `motionBlur` | reference/camera.md | `camera.presets`, `camera.motionBlur`, `eases` |
 | Images, videos, screenshot stacks | `media`, `layeredScreenshot`, video `background` | reference/media.md | `mediaMotion` |
+| Tiled split field, tap pulses on a scene or screen | `mosaic`, `taps` | reference/media.md | |
 | Trim, speed, freeze, taps, blur inside a video | `kb video` | kookaburra-video-editing skill | |
 | Charts and numbers | `chart` | reference/charts.md | `charts.styles`, `charts.animations` |
 | Slide panel, overlay, stills, PDF | `frame`, `stills` | reference/sidecar.md | `chipIcons` |

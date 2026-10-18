@@ -1,4 +1,4 @@
-# Assets, images, video, screenshot stacks, terminal, website
+# Assets, images, video, split fields, taps, screenshot stacks, terminal, website
 
 ## Assets
 
@@ -56,7 +56,9 @@ One array for stills and videos. Where an entry draws depends only on its `host`
 - `window` chrome (either kind, any host): `radius` (`sharp`, `subtle`, `macos`,
   `rounded` or `{ "custom": 0..0.5 }`), `recording: true` crops a raw macOS window
   capture's margins, `border` `{ enabled, color, width, opacity }`, `shadow`
-  `{ opacity, blur, offset }` (short-edge fractions).
+  `{ opacity, blur, offset, colour? }` (short-edge fractions). `colour` (`#rrggbb`)
+  tints the shadow; with `blur: 0` it is a hard offset shadow, for example
+  `{ "opacity": 1, "blur": 0, "offset": [0.03, -0.03], "colour": "#ff6a3d" }`.
 - `motion.preset`: `none`, `float`, `tilt-reveal`, `push-in` (both kinds), `turntable`
   (stills), `drift` (videos); tuning `amplitude`, `hz`, `degPerSec`, `durationMs`.
 - `video`: `startMs` (scene-local), `loop` (default false: holds the last frame).
@@ -93,8 +95,72 @@ See reference/backgrounds.md.
 
 - `<ImageCard src="assets/logo.png" width={1.2} maxHeight position from to />`: flat,
   colour-exact plane; PNG alpha shapes it; optional linear fade window.
+  `shadow={{ offset: [0.06, -0.06], colour: theme.colors.accent, opacity: 1, radius: 0.2 }}`
+  adds a hard (unblurred) offset shadow behind it: offset and radius are fractions of the
+  card's short edge (x right, y up), colour defaults to the theme text colour, and the
+  shadow fades with the card. Use `radius` to match an icon's rounded corners.
 - `<VideoClip src="assets/clip.mp4" startMs={0} fit="contain" | "cover" position scale />`:
   a video plane; holds the first frame before `startMs` and the last after the end.
+
+## Split field (`mosaic`)
+
+The frame split into tiles of project images, videos or theme colours, each tile landing
+in turn. Renders with no TSX; a scene that places `<SplitField />` draws it there instead.
+
+```json
+"mosaic": {
+  "tiles": [
+    { "src": "assets/shot-a.jpg" },
+    { "src": "assets/feed.mp4", "startMs": 0, "loop": true },
+    { "colour": "accent" },
+    { "src": "assets/shot-b.jpg" }
+  ],
+  "gap": 0.02,
+  "reveal": { "at": 200, "staggerMs": 90, "durationMs": 500, "order": "rows", "ease": "outCubic" }
+}
+```
+
+- Tiles fill the whole frame in reading order, edge to edge, on the grid with the most
+  square tiles for the aspect, so one block serves 16:9 and 9:16 (6 tiles: 3 x 2 wide,
+  2 x 3 tall). `columns` fixes the grid instead. A short last row stretches to fill.
+- Images and videos cover-fit their tile (centre crop). A tile with no `src` is a flat
+  `colour` (a hex or `background`, `text`, `accent`, `muted`; default `muted`).
+- `gap` is a fraction of the frame's short side (default 0.02); the scene's background
+  shows through it.
+- `reveal`: tile n fades and grows in over `durationMs` from `at + n * staggerMs`
+  (defaults 0, 90, 500). `order` `rows` (reading order), `columns` (left to right) or
+  `centre` (rings out from the middle). `staggerMs: 0, durationMs: 0` shows everything
+  at once.
+- The field sits just behind z = 0, so titles and devices at z = 0 draw over it.
+- In TSX: `<SplitField tiles={[...]} columns gap reveal width height position />` takes
+  the same tile and reveal shapes; without `tiles` it draws the sidecar block.
+
+## Taps (`taps`)
+
+A tap pulse is a ring and dot that pops in, pulses once and fades over 550 ms: the same
+curve as the video editor's tap highlights.
+
+```json
+"taps": [
+  { "at": 1200, "screenUv": [0.5, 0.62], "device": "d1" },
+  { "at": 2400, "position": [1.4, -0.6, 0.2], "colour": "accent", "size": 1.4 }
+]
+```
+
+- `at` is scene-local ms. Place a tap with `screenUv` `[u, v]` on the sidecar device
+  `device` (u right, v down, 0..1 from the screen's top-left, the media pixel order) or
+  with a world `position` `[x, y, z]`. Screen taps follow the device's float, turn and
+  scale; their ring is sized from the screen.
+- `colour`: a hex or theme token (default `accent`); `size` multiplies the ring.
+- A tap on a missing device id draws nothing; duplicating a scene keeps taps on their
+  devices.
+- In TSX: `<TapRing at={1200} radius={0.12} colour position dot />` (inside a
+  `DeviceScreenAnchor` to sit on a screen), and
+  `<Cursor keys={[{ tMs: 0, position: [-1, 0.4] }, { tMs: 900, position: [0.6, -0.2] }]} presses={[1000]} />`:
+  a pointer travelling a keyed path (`sampleKeys`, default ease `inOutCubic`, every key the
+  same position length) that presses with a small dip and a tap ring at each `presses`
+  time. `size` is the arrow height (default 0.16); `colour` and `outline` default to the
+  theme text and background colours.
 
 ## Layered screenshot (3D stack of screens)
 
