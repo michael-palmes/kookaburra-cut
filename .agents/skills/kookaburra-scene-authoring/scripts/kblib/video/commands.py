@@ -44,6 +44,10 @@ writes assets/NAME-edited.mp4 and can point a scene at it.
             append NAME MEDIA [--hold D]
   Taps      tap add|move|retime|remove|style|list NAME ...
   Masks     mask add|key|hold|unkey|offset|set|span|remove|list NAME ...
+            [--fade-in D] [--fade-out D] [--until-scene T --scene S [--slot P]]
+  Framing   crop NAME CLIP (--rect x,y,w,h | --aspect 9:16 [--centre x,y] | --clear)
+            zoom NAME CLIP (--at T [--rect x,y,w,h] [--ease linear|smooth] | --remove T
+                 | --move T --to T2 | --clear)
   Batch     apply NAME PLAN|@file|-
   Smart     analyse SRC|NAME | cleanup NAME|SRC [--gentle|--aggressive] | taps suggest NAME
             fit NAME (--to T|--scene S [--slot P]) | align NAME (--src T|--tap ID) (--at T|--beat N)
@@ -193,6 +197,9 @@ def timeline_data(doc: Dict[str, Any]) -> Dict[str, Any]:
         }
         if "holdMs" in c:
             row["holdMs"] = c["holdMs"]
+        for framing in ("crop", "zoom"):
+            if c.get(framing) is not None:
+                row[framing] = c[framing]
         out_clips.append(row)
     taps = [dict(t, windows=em.tap_windows(clips, t, em.TAP_DURATION_MS)) for t in doc.get("taps") or []]
     masks = []
@@ -221,6 +228,10 @@ def timeline_lines(doc: Dict[str, Any], state: Optional[str] = None) -> List[str
         else:
             span = f"{fmt_s(c['inMs']):<9} {fmt_s(c['outMs']):<9} {_speed(c['speed']):<7}"
         lines.append(f"  {c['index']:>2}  {c['id']:<6} {c['sourceId']:<7} {span} {fmt_s(c['startMs'])}-{fmt_s(c['endMs']):<10} {c['startFrame']}+{c['frames']}")
+        if c.get("crop"):
+            lines.append(f"        crop {_box(c['crop'])}")
+        for k in (c.get("zoom") or {}).get("keys") or []:
+            lines.append(f"        zoom key at {fmt_s(c['startMs'] + k['tMs'])} {_box(k['rect'])}" + (", glides smoothly" if k.get("ease") == "smooth" else ""))
     for s in data["sources"]:
         lines.append(f"  source {s['id']} {s.get('rel')} ({s.get('kind', 'video')} {s.get('width')}x{s.get('height')}, {s.get('fps', 0):g} fps, {fmt_s(s.get('durationMs'))})")
     for t in data["taps"]:
@@ -229,10 +240,15 @@ def timeline_lines(doc: Dict[str, Any], state: Optional[str] = None) -> List[str
     for m in data["masks"]:
         where = ", ".join(f"{fmt_s(w['startMs'])}-{fmt_s(w['endMs'])}" for w in m["windows"]) or "never on screen"
         look = m.get("style", "solid") + (f" {m['strength']:g}" if "strength" in m else "") + (f" {m['color']}" if "color" in m else "")
-        lines.append(f"  mask {m['id']} {look} {m['sourceId']} {fmt_s(m['startMs'])}-{fmt_s(m['endMs'])}, {len(m['keys'])} key(s) -> {where}")
+        fades = "".join(f", fades {edge} {fmt_s(m[key])}" for edge, key in (("in", "fadeInMs"), ("out", "fadeOutMs")) if m.get(key))
+        lines.append(f"  mask {m['id']} {look} {m['sourceId']} {fmt_s(m['startMs'])}-{fmt_s(m['endMs'])}{fades}, {len(m['keys'])} key(s) -> {where}")
     if data["taps"] and (data.get("tapStyle") or data.get("tapColor") or data.get("tapSize")):
         lines.append(f"  tap look: style {data.get('tapStyle') or 'default'}, colour {data.get('tapColor') or 'default'}, size {data.get('tapSize') or 'default'}")
     return lines
+
+
+def _box(r: List[float]) -> str:
+    return f"x {r[0]:.3f} y {r[1]:.3f} w {r[2]:.3f} h {r[3]:.3f}"
 
 
 def _issue_lines(issues: List[Dict[str, Any]]) -> List[str]:
@@ -425,6 +441,70 @@ def _span_ops(doc: Dict[str, Any], mask_ref: str, a: Any, at: Optional[float]) -
     return ops
 
 
+def _scene_source_moment(project: Any, name: str, doc: Dict[str, Any], a: Any) -> Tuple[str, int, Dict[str, Any]]:
+    """--until-scene T --scene S [--slot P]: the source moment the slot shows at scene time T, through its delay, inMs and speed."""
+    m = _mods()
+    if getattr(a, "scene", None) is None:
+        raise _kb_error("--until-scene needs the scene that plays this edit: --scene S [--slot P]", EXIT_ENV)
+    output = m.editdoc.output_rel(name)
+    slot = a.slot
+    if slot is None:
+        base, target = m.repoint.pick_slot(project, a.scene, [output] + [s["rel"] for s in doc["sources"]])
+        slot = m.repoint.slot_ref(base, target)
+    info = m.repoint.slot_info(project, a.scene, slot)
+    scene_ms = m.plan.parse_time(a.until_scene, total_ms=info.get("sceneDurationMs"), what="--until-scene")
+    media_ms = m.repoint.slot_media_ms(info, scene_ms)
+    if info["src"] == output:
+        laid = m.em.relayout(doc["clips"])
+        total = m.plan.total_ms(doc)
+        i = m.em.clip_index_at(laid, min(media_ms, total - 1e-6))
+        if i < 0 or media_ms > total:
+            raise _kb_error(f"scene time {a.until_scene} reaches {fmt_s(media_ms)} into the render, past the edit's {fmt_s(total)}")
+        return laid[i]["sourceId"], m.em.js_round(m.em.timeline_to_source_unclamped(laid[i], media_ms)), info
+    source = next((s for s in doc["sources"] if s["rel"] == info["src"]), None)
+    if source is None:
+        raise _kb_error(f"{info['ref']} in scene {info['scene']} plays {info['src']}, which is neither this edit's render nor one of its sources", EXIT_ENV)
+    return source["id"], m.em.js_round(media_ms), info
+
+
+def _until_scene_op(project: Any, name: str, doc: Dict[str, Any], a: Any, mask_ref: str, source_id: str) -> Dict[str, Any]:
+    sid, source_ms, info = _scene_source_moment(project, name, doc, a)
+    if sid != source_id:
+        raise _kb_error(f"at scene time {a.until_scene}, {info['ref']} shows source {sid}, not the mask's {source_id}")
+    return {"op": "retimeMaskEdge", "maskId": mask_ref, "edge": "end", "sourceMs": source_ms}
+
+
+def _fade_ms(doc: Dict[str, Any], text: Optional[str], what: str) -> Optional[int]:
+    if text is None:
+        return None
+    if text.strip().lower() in ("none", "off"):
+        return 0
+    m = _mods()
+    ms = m.plan.parse_time(text, fps=m.em.output_fps(doc), what=what)
+    if ms < 0:
+        raise _kb_error(f"{what} is a length of source time, 0 or more", EXIT_ENV)
+    return m.em.js_round(ms)
+
+
+def _fade_op(doc: Dict[str, Any], a: Any, mask_ref: str) -> Optional[Dict[str, Any]]:
+    fade_in, fade_out = _fade_ms(doc, getattr(a, "fade_in", None), "--fade-in"), _fade_ms(doc, getattr(a, "fade_out", None), "--fade-out")
+    if fade_in is None and fade_out is None:
+        return None
+    op: Dict[str, Any] = {"op": "setMaskFade", "maskId": mask_ref}
+    if fade_in is not None:
+        op["fadeInMs"] = fade_in
+    if fade_out is not None:
+        op["fadeOutMs"] = fade_out
+    return op
+
+
+def _require_caps(features: List[str], what: str) -> None:
+    """Refuse a flag the app's edit CLI can't save (a dry run with no CLI to ask goes ahead)."""
+    caps = _caps_or_none()
+    if caps is not None and features:
+        _mods().editdoc.require_caps(caps, features, what)
+
+
 # ── inspect ───────────────────────────────────────────────────────────────────
 
 
@@ -565,7 +645,11 @@ def cmd_map(ctx: Any) -> int:
     elif a.scene_at is not None:
         if where is None:
             raise _kb_error("--scene-at needs the scene that shows this edit: pass --scene S [--slot P]", EXIT_ENV)
-        t = m.plan.parse_time(a.scene_at, total_ms=where.get("sceneDurationMs"), what="--scene-at") - (where.get("startMs") or 0)
+        scene_t = m.plan.parse_time(a.scene_at, total_ms=where.get("sceneDurationMs"), what="--scene-at")
+        if where.get("retimed"):
+            t = m.repoint.slot_media_ms(where, scene_t)
+        else:
+            t = scene_t - (where.get("startMs") or 0)
         if t < 0:
             raise _kb_error(f"the video starts {fmt_s(where.get('startMs'))} into the scene, after {a.scene_at}")
         times = [t]
@@ -575,8 +659,10 @@ def cmd_map(ctx: Any) -> int:
     rows = []
     for t in times:
         info, lines = _moment_lines(doc, t)
-        if where is not None:
-            scene_ms = (where.get("startMs") or 0) + t
+        if where is not None and where.get("retimed") and m.repoint.slot_scene_ms(where, t) is None:
+            lines.append(f"  scene {where['scene']} {where['ref']}: never shown (outside the slot's inMs..outMs)")
+        elif where is not None:
+            scene_ms = m.repoint.slot_scene_ms(where, t) if where.get("retimed") else (where.get("startMs") or 0) + t
             info["scene"] = {"scene": where["scene"], "slot": where["ref"], "sceneMs": scene_ms, "projectMs": where["sceneStartMs"] + scene_ms, "startMs": where.get("startMs") or 0, "sceneDurationMs": where.get("sceneDurationMs")}
             past = where.get("sceneDurationMs") is not None and scene_ms >= where["sceneDurationMs"]
             lines.append(f"  scene {where['scene']} {where['ref']}: {fmt_s(scene_ms)} into the scene (video starts at {fmt_s(where.get('startMs') or 0)}), project {fmt_s(info['scene']['projectMs'])}" + ("  PAST THE SCENE END" if past else ""))
@@ -629,7 +715,8 @@ def cmd_usages(ctx: Any) -> int:
         _emit("no scene shows " + (", ".join(rels) if rels else "any edit's media"))
         return EXIT_OK
     for u in used:
-        tags = [u["kind"] or "?"] + (["follows media"] if u["followsMedia"] else []) + ([] if u["repointable"] else ["not re-pointable"])
+        timing = ", ".join(f"{k} {v}" for k, v in (u.get("timing") or {}).items())
+        tags = [u["kind"] or "?"] + (["follows media"] if u["followsMedia"] else []) + ([] if u["repointable"] else ["not re-pointable"]) + ([f"retimed: {timing}"] if timing else [])
         _emit(f"scene {u['index']} {u['scene']} {u['ref']}: {u['src']} ({', '.join(tags)})")
     for e in edits_using:
         _emit(f"edit {e['edit']} uses {e['source']}")
@@ -1128,11 +1215,19 @@ def cmd_mask(ctx: Any) -> int:
             _emit(f"{a.name} has no masks; add one with kb video mask add {a.name} --at T --rect x,y,w,h")
         for mk in data["masks"]:
             where = ", ".join(f"{fmt_s(w['startMs'])}-{fmt_s(w['endMs'])}" for w in mk["windows"]) or "never on screen"
-            _emit(f"{mk['id']} {mk.get('style')} {mk['sourceId']} source {fmt_s(mk['startMs'])}-{fmt_s(mk['endMs'])} -> {where}")
+            fades = "".join(f", fades {edge} {fmt_s(mk[key])}" for edge, key in (("in", "fadeInMs"), ("out", "fadeOutMs")) if mk.get(key))
+            _emit(f"{mk['id']} {mk.get('style')} {mk['sourceId']} source {fmt_s(mk['startMs'])}-{fmt_s(mk['endMs'])}{fades} -> {where}")
             for k in mk["keys"]:
                 r = k["rect"]
                 _emit(f"    key {mk['sourceId']}@{fmt_s(k['sourceMs'])}: x {r[0]:.3f} y {r[1]:.3f} w {r[2]:.3f} h {r[3]:.3f}")
         return EXIT_OK
+
+    fading = getattr(a, "fade_in", None) is not None or getattr(a, "fade_out", None) is not None
+    if fading:
+        _require_caps(["mask.fades"], f"mask {verb} --fade-in/--fade-out")
+    if getattr(a, "until_scene", None) is None and (getattr(a, "scene", None) is not None or getattr(a, "slot", None) is not None):
+        raise _kb_error("--scene and --slot go with --until-scene T", EXIT_ENV)
+    project = ctx.project
 
     def build(doc: Dict[str, Any]) -> List[Dict[str, Any]]:
         if verb == "add":
@@ -1144,7 +1239,11 @@ def cmd_mask(ctx: Any) -> int:
                 op["strength"] = _strength(a.strength)
             if a.colour is not None:
                 op["color"] = _hex(a.colour)
-            return [op] + _span_ops(doc, "$new", a, t)
+            ops = [op] + _span_ops(doc, "$new", a, t)
+            if a.until_scene is not None:
+                ops.append(_until_scene_op(project, a.name, doc, a, "$new", _source_at(doc, t)["id"]))
+            fade = _fade_op(doc, a, "$new")
+            return ops + ([fade] if fade else [])
         if verb == "remove":
             ids = []
             for sel in a.masks:
@@ -1176,15 +1275,109 @@ def cmd_mask(ctx: Any) -> int:
                 op["strength"] = None if a.strength.lower() in ("none", "default") else _strength(a.strength)
             if a.colour is not None:
                 op["color"] = None if a.colour.lower() in ("none", "default") else _hex(a.colour)
-            if len(op) == 2:
-                raise _kb_error("mask set needs --style, --strength or --colour", EXIT_ENV)
-            return [op]
+            ops = [op] if len(op) > 2 else []
+            if a.until_scene is not None:
+                ops.append(_until_scene_op(project, a.name, doc, a, mask["id"], mask["sourceId"]))
+            fade = _fade_op(doc, a, mask["id"])
+            ops += [fade] if fade else []
+            if not ops:
+                raise _kb_error("mask set needs --style, --strength, --colour, --fade-in, --fade-out or --until-scene", EXIT_ENV)
+            return ops
         ops = _span_ops(doc, mask["id"], a, None)
+        if a.until_scene is not None:
+            ops.append(_until_scene_op(project, a.name, doc, a, mask["id"], mask["sourceId"]))
         if not ops:
-            raise _kb_error("mask span needs --from T / --until T (timeline) or --src-start S / --src-end S (source)", EXIT_ENV)
+            raise _kb_error("mask span needs --from T / --until T (timeline), --src-start S / --src-end S (source) or --until-scene T --scene S", EXIT_ENV)
         return ops
 
     return run_mutation(ctx, a.name, build, f"mask {verb}")
+
+
+# ── crop and zoom ─────────────────────────────────────────────────────────────
+
+
+def _clip_source(doc: Dict[str, Any], clip: Dict[str, Any]) -> Dict[str, Any]:
+    source = next((s for s in doc["sources"] if s["id"] == clip["sourceId"]), None)
+    if source is None:
+        raise _kb_error(f"clip {clip['id']} plays source {clip['sourceId']}, which this edit lacks")
+    return source
+
+
+def _aspect(text: str) -> float:
+    raw = text.strip()
+    try:
+        if ":" in raw:
+            w, h = (float(v) for v in raw.split(":", 1))
+            value = w / h
+        else:
+            value = float(raw)
+    except (ValueError, ZeroDivisionError):
+        raise _kb_error(f'--aspect "{text}" is not W:H (9:16) or a ratio (0.5625)', EXIT_ENV) from None
+    if not 0 < value < 100:
+        raise _kb_error(f'--aspect "{text}" must be a positive width:height', EXIT_ENV)
+    return value
+
+
+def cmd_crop(ctx: Any) -> int:
+    m = _mods()
+    a = ctx.args
+    if a.centre is not None and a.aspect is None:
+        raise _kb_error("--centre goes with --aspect", EXIT_ENV)
+    if not a.clear:
+        _require_caps(["crop"], "a crop")
+
+    def build(doc: Dict[str, Any]) -> List[Dict[str, Any]]:
+        clip = m.plan.select_clip(doc, a.clip)
+        if a.clear:
+            return [{"op": "setClipCrop", "clipId": clip["id"], "crop": None}]
+        if a.rect is not None:
+            rect = m.plan.parse_pair(a.rect, "--rect", 4)
+        else:
+            centre = m.plan.parse_pair(a.centre, "--centre") if a.centre is not None else [0.5, 0.5]
+            rect = m.em.aspect_crop_rect(_clip_source(doc, clip), _aspect(a.aspect), centre)
+        return [{"op": "setClipCrop", "clipId": clip["id"], "crop": rect}]
+
+    return run_mutation(ctx, a.name, build, "crop")
+
+
+def cmd_zoom(ctx: Any) -> int:
+    m = _mods()
+    a = ctx.args
+    if a.at is None and (a.rect is not None or a.ease is not None):
+        raise _kb_error("--rect and --ease go with --at T", EXIT_ENV)
+    if a.at is not None and a.rect is None and a.ease is None:
+        raise _kb_error("--at T needs --rect x,y,w,h (a key there), or --ease linear|smooth (how the key there glides)", EXIT_ENV)
+    if a.to is not None and a.move is None:
+        raise _kb_error("--to goes with --move T", EXIT_ENV)
+    if a.move is not None and a.to is None:
+        raise _kb_error("--move T needs --to T2", EXIT_ENV)
+    if a.at is not None or a.move is not None:
+        _require_caps(["zoom"], "a zoom key")
+
+    def build(doc: Dict[str, Any]) -> List[Dict[str, Any]]:
+        clip = m.plan.select_clip(doc, a.clip)
+        fps = m.em.output_fps(doc)
+        keys = (clip.get("zoom") or {}).get("keys") or []
+        if a.clear:
+            if not keys:
+                raise _kb_error(f"clip {clip['id']} has no zoom keys" + (f" (its static crop goes with kb video crop {a.name} {clip['id']} --clear)" if clip.get("crop") else ""))
+            return [{"op": "setClipCrop", "clipId": clip["id"], "crop": None}]
+        if a.at is not None:
+            t = _times(doc, [a.at])[0]
+            local = t - clip["startMs"]
+            if a.rect is None:
+                return [{"op": "setZoomKeyEase", "clipId": clip["id"], "tMs": local, "ease": a.ease}]
+            op: Dict[str, Any] = {"op": "setZoomKey", "clipId": clip["id"], "atMs": t, "rect": m.plan.parse_pair(a.rect, "--rect", 4)}
+            ease = a.ease if a.ease is not None else (None if m.em.zoom_key_index(keys, local, fps) >= 0 else "smooth")
+            if ease is not None:
+                op["ease"] = ease
+            return [op]
+        if a.remove is not None:
+            return [{"op": "removeZoomKey", "clipId": clip["id"], "tMs": _times(doc, [a.remove], "--remove")[0] - clip["startMs"]}]
+        frm, to = _times(doc, [a.move, a.to], "--move")
+        return [{"op": "moveZoomKey", "clipId": clip["id"], "tMs": frm - clip["startMs"], "toMs": to - clip["startMs"]}]
+
+    return run_mutation(ctx, a.name, build, "zoom")
 
 
 # ── batch ─────────────────────────────────────────────────────────────────────
@@ -1629,8 +1822,19 @@ def register(sub: Any, common: argparse.ArgumentParser, Formatter: Any, extensio
         g.add_argument("--rect-px", dest="rect_px", metavar="X,Y,W,H", help="source pixels")
         g.add_argument("--pos", metavar="X,Y", help="a default-sized box centred here")
 
+    def scene_end(p: argparse.ArgumentParser, group: Any = None) -> None:
+        (group or p).add_argument("--until-scene", dest="until_scene", metavar="T", help="end where scene S shows this edit at scene time T (through the slot's delay, inMs and speed)")
+        p.add_argument("--scene", metavar="S", help="with --until-scene: the scene that plays the edit")
+        p.add_argument("--slot", metavar="P", help="with --until-scene: the slot in that scene (default: the one showing this edit)")
+
+    def fades(p: argparse.ArgumentParser) -> None:
+        p.add_argument("--fade-in", dest="fade_in", metavar="D", help="fade in over this much source time from the start (0 or none: a hard edge)")
+        p.add_argument("--fade-out", dest="fade_out", metavar="D", help="fade out over this much source time before the end")
+
     def span(p: argparse.ArgumentParser, with_span: bool) -> None:
-        p.add_argument("--until", metavar="T", help="end at this timeline time")
+        ends = p.add_mutually_exclusive_group()
+        ends.add_argument("--until", metavar="T", help="end at this timeline time")
+        scene_end(p, ends)
         if with_span:
             p.add_argument("--span", metavar="D", help="cover this much timeline (default 3s)")
         else:
@@ -1639,7 +1843,8 @@ def register(sub: Any, common: argparse.ArgumentParser, Formatter: Any, extensio
         p.add_argument("--src-end", dest="src_end", metavar="[SID@]T", help="end at this source time")
 
     p = cmd(ms, "add", "add a mask from a moment (solid black, 3 s of timeline unless told otherwise)", cmd_mask, mutates=True,
-            epilog="  kb video mask add demo --at 0 --rect 0.1,0.05,0.5,0.06 --until 5\n  kb video mask add demo --src 3 --rect-px 40,120,600,80 --style blur --strength 0.6")
+            epilog="  kb video mask add demo --at 0 --rect 0.1,0.05,0.5,0.06 --until 5\n  kb video mask add demo --src 3 --rect-px 40,120,600,80 --style blur --strength 0.6\n"
+            "  kb video mask add demo --at 0 --rect 0.1,0.05,0.5,0.06 --until-scene 2.4 --scene 03-demo --fade-out 0.3")
     p.add_argument("name", metavar="NAME")
     at_src(p, required=True)
     box(p)
@@ -1647,6 +1852,7 @@ def register(sub: Any, common: argparse.ArgumentParser, Formatter: Any, extensio
     p.add_argument("--strength", metavar="0..1")
     p.add_argument("--colour", "--color", dest="colour", metavar="#RRGGBB")
     span(p, with_span=True)
+    fades(p)
     p = cmd(ms, "key", "set the box at a moment (auto-key: replaces a key there or adds one)", cmd_mask, mutates=True)
     p.add_argument("name", metavar="NAME")
     p.add_argument("masks", nargs=1, metavar="MASK")
@@ -1665,12 +1871,15 @@ def register(sub: Any, common: argparse.ArgumentParser, Formatter: Any, extensio
     p.add_argument("masks", nargs=1, metavar="MASK")
     p.add_argument("--by", metavar="DX,DY", required=True)
     p.add_argument("--px", action="store_true", help="--by is in source pixels")
-    p = cmd(ms, "set", "a mask's look: style, strength, colour (none resets)", cmd_mask, mutates=True)
+    p = cmd(ms, "set", "a mask's look: style, strength, colour (none resets), fades, and its end at a scene time", cmd_mask, mutates=True,
+            epilog="  kb video mask set demo m1 --fade-in 0.2 --fade-out 0.4\n  kb video mask set demo m1 --until-scene 3.5 --scene 03-demo --slot device:phone")
     p.add_argument("name", metavar="NAME")
     p.add_argument("masks", nargs=1, metavar="MASK")
     p.add_argument("--style", choices=["solid", "blur", "pixelate"])
     p.add_argument("--strength", metavar="0..1|none")
     p.add_argument("--colour", "--color", dest="colour", metavar="#RRGGBB|none")
+    fades(p)
+    scene_end(p)
     p = cmd(ms, "span", "move a mask's start or end", cmd_mask, mutates=True)
     p.add_argument("name", metavar="NAME")
     p.add_argument("masks", nargs=1, metavar="MASK")
@@ -1681,14 +1890,44 @@ def register(sub: Any, common: argparse.ArgumentParser, Formatter: Any, extensio
     p = cmd(ms, "list", "masks with their keys and when they show", cmd_mask)
     p.add_argument("name", metavar="NAME")
 
+    p = cmd(vs, "crop", "a clip's static crop: a box of its source, letterboxed into the output (replaces any zoom keys)", cmd_crop, mutates=True,
+            epilog="  kb video crop demo c1 --rect 0.1,0.2,0.8,0.5       0..1 across the source frame\n"
+            "  kb video crop demo c1 --aspect 9:16 --centre 0.5,0.4  the largest 9:16 box, centred there\n"
+            "  kb video crop demo c1 --clear                        the whole frame again (clears zoom keys too)\n"
+            "Boxes snap to even source pixels. Needs an app whose edit CLI writes document version 3.")
+    p.add_argument("name", metavar="NAME")
+    p.add_argument("clip", metavar="CLIP")
+    g = p.add_mutually_exclusive_group(required=True)
+    g.add_argument("--rect", metavar="X,Y,W,H", help="0..1 across the source frame")
+    g.add_argument("--aspect", metavar="W:H", help="the largest box of this shape (e.g. 9:16)")
+    g.add_argument("--clear", action="store_true", help="remove the crop (and any zoom keys)")
+    p.add_argument("--centre", "--center", dest="centre", metavar="X,Y", help="with --aspect: the box's centre (default 0.5,0.5)")
+    p = cmd(vs, "zoom", "a clip's keyed zoom: framing keys that glide between output moments (the crop tool's keys)", cmd_zoom, mutates=True,
+            epilog="  kb video zoom demo c1 --at 1.5 --rect 0.2,0.2,0.5,0.5   a key (a new one glides smoothly)\n"
+            "  kb video zoom demo c1 --at 1.5 --ease linear             how the key at 1.5 glides to the next\n"
+            "  kb video zoom demo c1 --move 1.5 --to 2                  retime a key\n"
+            "  kb video zoom demo c1 --remove 2 | --clear\n"
+            "Times are timeline times inside CLIP. Boxes take the output's shape and snap to even source pixels.")
+    p.add_argument("name", metavar="NAME")
+    p.add_argument("clip", metavar="CLIP")
+    g = p.add_mutually_exclusive_group(required=True)
+    g.add_argument("--at", metavar="T", help="set the key at this timeline time (with --rect, --ease or both)")
+    g.add_argument("--remove", metavar="T", help="delete the key at this timeline time")
+    g.add_argument("--move", metavar="T", help="retime the key at this timeline time (with --to)")
+    g.add_argument("--clear", action="store_true", help="remove every zoom key")
+    p.add_argument("--rect", metavar="X,Y,W,H", help="the framing, 0..1 across the source frame")
+    p.add_argument("--ease", choices=["linear", "smooth"], help="how the key glides into the next (a new key: smooth)")
+    p.add_argument("--to", metavar="T2", help="with --move: the new timeline time")
+
     p = cmd(vs, "apply", "run a JSON plan of edit ops all or nothing", cmd_apply, mutates=True,
             epilog='  kb video apply demo \'[{"op": "split", "atMs": 2500}, {"op": "setSpeed", "clipId": "c2", "speed": 2}]\'\n'
             "  kb video apply demo @plan.json\n"
             '  {"baseHash": "<sha>", "ops": [{"op": "addMask", "atMs": 0, "rect": [0.1, 0.1, 0.4, 0.1], "as": "m"},\n'
             '                               {"op": "retimeMaskEdge", "maskId": "$m", "edge": "end", "sourceMs": 5000}]}\n'
             "Ops: the editor's own (addClip insertClip split freeze removeClip moveClip setSpeed trimIn trimOut setHold\n"
-            "addTap addTapAtSource moveTap retimeTap removeTap setTapLook addMask setMaskRect offsetMask addMaskKey\n"
-            "removeMaskKey retimeMaskEdge setMaskLook removeMask) plus cutSource, speedSource and keep (source ms).")
+            "setClipCrop setZoomKey removeZoomKey setZoomKeyEase moveZoomKey addTap addTapAtSource moveTap retimeTap\n"
+            "removeTap setTapLook addMask setMaskRect offsetMask addMaskKey removeMaskKey retimeMaskEdge setMaskLook\n"
+            "setMaskFade removeMask) plus cutSource, speedSource and keep (source ms).")
     p.add_argument("name", metavar="NAME")
     p.add_argument("plan", metavar="PLAN|@file|-")
 
