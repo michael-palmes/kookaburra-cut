@@ -2,7 +2,7 @@ import { Text } from "@react-three/drei";
 import { useContext, useEffect, useId, useLayoutEffect, useMemo, useState } from "react";
 import { Color, MeshBasicMaterial, SRGBColorSpace, Vector2 } from "three";
 import { useTheme } from "../theme";
-import { fontUrl } from "../theme/fonts";
+import { fontUrl, SDF_GLYPH_SIZE } from "../theme/fonts";
 import type { Theme } from "../theme/tokens";
 import { resolveChipIconId } from "../toolkit/frame/chipIcons";
 import type { FrameChipSpec } from "../toolkit/frame/types";
@@ -168,6 +168,7 @@ export function FrameChip({
         anchorY="middle"
         fillOpacity={fade}
         renderOrder={1}
+        sdfGlyphSize={SDF_GLYPH_SIZE}
         onSync={(troika: { textRenderInfo?: { blockBounds?: number[] } }) => {
           const b = troika.textRenderInfo?.blockBounds;
           if (b && b.length === 4) setBounds([b[0], b[1], b[2], b[3]]);

@@ -2,7 +2,7 @@
 
 import { Text } from "troika-three-text";
 import { parseFontString } from "../theme/fontRef";
-import { fontUrl } from "../theme/fonts";
+import { fontUrl, SDF_GLYPH_SIZE } from "../theme/fonts";
 import type { Theme } from "../theme/tokens";
 import type { FrameSpec } from "../toolkit/frame/types";
 import { prepareEmojiText } from "../toolkit/text/emojiText";
@@ -110,6 +110,7 @@ export function requestPanelTextMeasure(spec: PanelTextSpec): void {
   if (blocks.has(key) || inflight.has(key)) return;
   const job = new Promise<void>((resolve) => {
     const t = new Text();
+    t.sdfGlyphSize = SDF_GLYPH_SIZE;
     t.text = spec.text;
     t.font = spec.font;
     t.fontSize = spec.fontSize;

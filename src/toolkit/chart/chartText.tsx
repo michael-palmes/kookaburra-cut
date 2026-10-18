@@ -15,7 +15,7 @@ import {
   Vector3,
 } from "three";
 import { useTheme } from "../../theme";
-import { fontUrl } from "../../theme/fonts";
+import { fontUrl, SDF_GLYPH_SIZE } from "../../theme/fonts";
 import type { FontRef, Theme } from "../../theme/tokens";
 import { liftColour } from "../colour";
 import { chartLabelBeforeRender } from "./billboardLabel";
@@ -210,6 +210,7 @@ export function ChartLabel(props: ChartLabelProps) {
           matrixAutoUpdate={false}
           frustumCulled={false}
           onBeforeRender={faceCamera}
+          sdfGlyphSize={SDF_GLYPH_SIZE}
         >
           {text}
         </Text>
@@ -226,6 +227,7 @@ export function ChartLabel(props: ChartLabelProps) {
         anchorY={anchorY}
         fillOpacity={alpha}
         renderOrder={renderOrder}
+        sdfGlyphSize={SDF_GLYPH_SIZE}
       >
         {text}
       </Text>

@@ -31,6 +31,8 @@ declare module "troika-three-text" {
     textRenderInfo?: { blockBounds: [number, number, number, number] };
     /** Any non-zero outline makes the `material` getter return `[outline, main]`. */
     outlineBlur: number | string;
+    /** Atlas cell size; every site pins `SDF_GLYPH_SIZE` (theme/fonts.ts). */
+    sdfGlyphSize: number | null;
     /** Private but stable in the pinned 0.52.5: the only quiescence signal, since `sync(cb)` drops the callback when no sync is needed (including mid-typeset). */
     _needsSync?: boolean;
     _isSyncing?: boolean;

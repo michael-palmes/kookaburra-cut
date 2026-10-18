@@ -13,7 +13,7 @@ import { useSceneText } from "../../engine/sceneDoc";
 import { useTextKeyRegistry } from "../../engine/textKeyRegistry";
 import { useTimeline } from "../../engine/timeline";
 import { useTheme } from "../../theme";
-import { fontUrl } from "../../theme/fonts";
+import { fontUrl, SDF_GLYPH_SIZE } from "../../theme/fonts";
 
 /** The comparison's label chips, mounted host-side inside EACH side's subtree so the mask clips a chip with its own half: side A renders the before label, side B the after. Positions are fixed at the top quarters; opacity fades by the side's coverage at the chip's spot (the compositor's exact field maths via compareCoverageAt), so a sweeping divider dissolves a label as its half shrinks instead of stranding it. Copy and typography are inspector-owned text content (`text.beforeLabel` / `text.afterLabel` plus the usual `textStyle` suffixes, resolved by the managed-text renderer's rules); an unstyled chip draws exactly its coded defaults. Deterministic: the divider value derives from the timeline through the same sampler the compositor uses; colours and the face come from the side's own theme. Renders null on every scene without `compare.chrome.chips`. */
 export function CompareChips() {
@@ -68,6 +68,7 @@ export function CompareChips() {
       {...(style.rotationRad !== undefined
         ? { rotation: [0, 0, style.rotationRad] as [number, number, number] }
         : {})}
+      sdfGlyphSize={SDF_GLYPH_SIZE}
     >
       {label}
     </Text>

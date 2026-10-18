@@ -32,7 +32,7 @@ import { useTextMotionRegistry } from "../../engine/textMotionRegistry";
 import { MotionBlurContext, useTimeline } from "../../engine/timeline";
 import { useTheme } from "../../theme";
 import { formatFontString, parseFontString } from "../../theme/fontRef";
-import { fontUrl } from "../../theme/fonts";
+import { fontUrl, SDF_GLYPH_SIZE } from "../../theme/fonts";
 import type { FontRef, TextAnimationSpec, TextLookSpec, Theme } from "../../theme/tokens";
 import { foldBandToChild, GroupAnimationContext } from "../group/context";
 import { LookText3D } from "../text3d/LookText3D";
@@ -684,6 +684,7 @@ function LegacyHeadline(
         {...layoutProps(props)}
         {...(rotZ ? { rotation: [0, 0, rotZ] as V3 } : {})}
         {...(holder ? { material: holder.material } : {})}
+        sdfGlyphSize={SDF_GLYPH_SIZE}
         onSync={
           hasEmoji
             ? (troika: CaretInfo) => {
@@ -841,6 +842,7 @@ function BlockHeadline(
         outlineColor={halo ? halo.outlineColor : fill}
         outlineOpacity={halo ? Math.max(halo.outlineOpacity * alpha, haloOpacity) : haloOpacity}
         {...(holder ? { material: holder.material } : {})}
+        sdfGlyphSize={SDF_GLYPH_SIZE}
         onSync={
           measuring || hasEmoji
             ? (troika: CaretInfo) => {
@@ -1193,6 +1195,7 @@ function StaggeredHeadline(
           {...layoutProps(props)}
           {...(rotZ ? { rotation: [0, 0, rotZ] as V3 } : {})}
           material={offsetHolder.material}
+          sdfGlyphSize={SDF_GLYPH_SIZE}
         >
           {text}
         </Text>
@@ -1209,6 +1212,7 @@ function StaggeredHeadline(
           {...layoutProps(props)}
           {...(rotZ ? { rotation: [0, 0, rotZ] as V3 } : {})}
           material={echo.material}
+          sdfGlyphSize={SDF_GLYPH_SIZE}
         >
           {text}
         </Text>
@@ -1238,6 +1242,7 @@ function StaggeredHeadline(
         {...layoutProps(props)}
         {...(rotZ ? { rotation: [0, 0, rotZ] as V3 } : {})}
         material={holder.material}
+        sdfGlyphSize={SDF_GLYPH_SIZE}
         onSync={(troika: CaretInfo) => {
           const info = troika.textRenderInfo;
           const caretPositions = info?.caretPositions;

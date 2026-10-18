@@ -975,6 +975,11 @@ camera exactly:
   set only; system-font refs fall back to Inter there. The converter is
   byte-stable: regenerating Inter's typeface reproduced the committed file
   exactly.
+- **One glyph size, so one atlas.** `SDF_GLYPH_SIZE = 64` (theme/fonts.ts,
+  re-exported from format.ts) is passed to `configureTextBuilder`, every
+  `preloadFont` and every `Text` site, and a static test fails on any site
+  that omits it. A second size would open a second atlas with its own cell
+  order; changing the constant re-rasterises every glyph (a full rebase).
 - **Adding a bundled font is a REBASE EVENT.** troika-three-text keeps ONE SDF
   atlas per `sdfGlyphSize`, SHARED ACROSS EVERY FONT (`atlases[sdfGlyphSize]`):
   glyph cells are allocated in first-typeset order, so expanding `BUNDLED_FONTS`

@@ -1,7 +1,7 @@
 import { Text } from "@react-three/drei";
 import type { ComponentType } from "react";
 import { type Camera, type Group, Matrix4, type Object3D, type PerspectiveCamera } from "three";
-import { fontUrl } from "../theme/fonts";
+import { fontUrl, SDF_GLYPH_SIZE } from "../theme/fonts";
 import type { SceneModule } from "../toolkit/types";
 import { CAMERA, useFormat } from "./format";
 import { errorHeadline } from "./sceneErrors";
@@ -62,6 +62,7 @@ function SceneErrorCardView({ file, detail }: { file: string; detail: string }) 
         maxWidth={column}
         position={[left, titleSize * 0.35, 0]}
         frustumCulled={false}
+        sdfGlyphSize={SDF_GLYPH_SIZE}
       >
         This scene can’t load
       </Text>
@@ -76,6 +77,7 @@ function SceneErrorCardView({ file, detail }: { file: string; detail: string }) 
         overflowWrap="break-word"
         position={[left, -titleSize * 0.2, 0]}
         frustumCulled={false}
+        sdfGlyphSize={SDF_GLYPH_SIZE}
       >
         {detail ? `${file}\n${detail}` : file}
       </Text>

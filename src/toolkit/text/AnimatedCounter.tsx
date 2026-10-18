@@ -13,7 +13,7 @@ import {
 import { useTimeline } from "../../engine/timeline";
 import { useTheme } from "../../theme";
 import { formatFontString, parseFontString } from "../../theme/fontRef";
-import { fontUrl } from "../../theme/fonts";
+import { fontUrl, SDF_GLYPH_SIZE } from "../../theme/fonts";
 import { foldBandToChild, GroupAnimationContext } from "../group/context";
 import type { V3 } from "../types";
 import { caretQuad, type EmojiQuadState, EmojiQuads } from "./EmojiQuads";
@@ -166,6 +166,7 @@ function AnimatedCounterRenderer(props: AnimatedCounterProps) {
         {...(rotZ ? { rotation: [0, 0, rotZ] as V3 } : {})}
         {...(group ? { fillOpacity: group.alpha } : {})}
         {...(holder ? { material: holder.material } : {})}
+        sdfGlyphSize={SDF_GLYPH_SIZE}
         onSync={
           hasEmoji
             ? (troika: { textRenderInfo?: { caretPositions?: Float32Array } }) => {
