@@ -72,7 +72,9 @@
       "../.agents/skills/kookaburra-scene-authoring/scripts/*.py": "claude-skills/kookaburra-scene-authoring/scripts/",
       "../.agents/skills/kookaburra-scene-authoring/scripts/kblib": "claude-skills/kookaburra-scene-authoring/scripts/kblib",
       "../.agents/skills/kookaburra-video-editing/*.md": "claude-skills/kookaburra-video-editing/",
-      "../.agents/skills/kookaburra-video-editing/reference": "claude-skills/kookaburra-video-editing/reference"
+      "../.agents/skills/kookaburra-video-editing/reference": "claude-skills/kookaburra-video-editing/reference",
+      "resources/models/beat_this_small.onnx": "models/beat_this_small.onnx",
+      "resources/models/mel_spectrogram.onnx": "models/mel_spectrogram.onnx"
     },
     "icon": [
       "icons/32x32.png",

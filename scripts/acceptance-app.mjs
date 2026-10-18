@@ -54,6 +54,47 @@ export function assertCheckoutMatches(expected, actual) {
   }
 }
 
+/** The beat-this model the bundle carries: the worktree's own pinned copy, else the main checkout's copied in (never a download). Returns the folder `bundle.resources` reads. */
+export function provisionModels(worktree, primaryRoot, run = execFileSync) {
+  const script = join(worktree, "scripts", "setup-models.sh");
+  const pinned = (dir) => {
+    try {
+      run("bash", [script, "--check", dir], { stdio: "ignore" });
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  const local = join(worktree, "src-tauri", "resources", "models");
+  if (pinned(local)) return local;
+  const primary = join(primaryRoot, "src-tauri", "resources", "models");
+  if (primary !== local && pinned(primary)) {
+    run("bash", [script, "--from", primary], { stdio: "inherit" });
+    if (pinned(local)) return local;
+  }
+  throw new Error(
+    "acceptance-app: the beat-this model is missing or not the pinned build; run pnpm setup:models",
+  );
+}
+
+/** True when the built bundle's `Contents/Resources/models` matches the pins. */
+export function bundledModelsPinned(worktree, bundlePath, run = execFileSync) {
+  try {
+    run(
+      "bash",
+      [
+        join(worktree, "scripts", "setup-models.sh"),
+        "--check",
+        join(bundlePath, "Contents", "Resources", "models"),
+      ],
+      { stdio: "ignore" },
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function git(worktree, ...args) {
   return execFileSync("git", args, {
     cwd: worktree,
@@ -111,6 +152,7 @@ function run() {
     throw new Error("acceptance-app: this acceptance bundle is already running");
   }
 
+  provisionModels(before.worktree, primaryRoot);
   const tauriRoot = join(before.worktree, "src-tauri");
   const primaryBin = join(primaryRoot, "src-tauri", "bin");
   const override = {
@@ -157,6 +199,9 @@ function run() {
     throw new Error("acceptance-app: built bundle identifier does not match");
   }
   if (!existsSync(executablePath)) throw new Error("acceptance-app: built executable is missing");
+  if (!bundledModelsPinned(before.worktree, bundlePath)) {
+    throw new Error("acceptance-app: the bundle's beat-this model does not match the pins");
+  }
 
   mkdirSync(workspaceRoot, { recursive: true });
   const result = {

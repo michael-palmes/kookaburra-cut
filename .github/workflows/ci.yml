@@ -90,6 +90,10 @@ jobs:
             chmod +x "src-tauri/bin/${bin}-${triple}"
           done
 
+      # tauri-build also validates bundle.resources; the beat-this model is gitignored (pnpm setup:models) and check/clippy never load it.
+      - name: Stub the beat-this model
+        run: bash scripts/setup-models.sh --stub
+
       - name: cargo check
         working-directory: src-tauri
         run: cargo check --locked --all-targets

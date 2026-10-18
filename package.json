@@ -28,6 +28,7 @@
     "format": "biome format --write .",
     "setup:ffmpeg": "bash scripts/setup-ffmpeg.sh",
     "setup:ffmpeg:release": "bash scripts/build-ffmpeg-sidecar.sh",
+    "setup:models": "bash scripts/setup-models.sh",
     "setup:icon": "bash scripts/make-icons.sh",
     "clean:shell": "cargo clean --manifest-path src-tauri/Cargo.toml -p kookaburra-cut",
     "assets:hdri": "zsh scripts/prepare-hdri.sh",
