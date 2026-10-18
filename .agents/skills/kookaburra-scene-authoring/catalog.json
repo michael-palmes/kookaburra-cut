@@ -21349,6 +21349,63 @@
       "summary": "Two devices split front and back (exactly 2, else toe-in)."
     }
   ],
+  "deviceMedia": {
+    "keys": [
+      {
+        "id": "src",
+        "summary": "Project-relative image or video path, e.g. assets/demo.mp4.",
+        "type": "string"
+      },
+      {
+        "id": "kind",
+        "summary": "What src is.",
+        "type": "string",
+        "values": ["video", "image"]
+      },
+      {
+        "id": "startMs",
+        "summary": "Video: scene-time delay before playback, holding the first played frame; a negative value pre-rolls the clip on the scene clock.",
+        "type": "number"
+      },
+      {
+        "id": "fit",
+        "summary": "Always cover: fills the screen and crops the overflow.",
+        "type": "string",
+        "values": ["cover"]
+      },
+      {
+        "id": "startOn",
+        "summary": "Foldable inside display: startMs counts from the moment the fold opens.",
+        "type": "string",
+        "values": ["open"]
+      },
+      {
+        "id": "inMs",
+        "summary": "Video: source ms where playback begins (a trim-in); combines with a startMs delay, never with a negative startMs.",
+        "type": "number"
+      },
+      {
+        "id": "outMs",
+        "summary": "Video: source ms where playback ends, exclusive; must pass inMs by more than 16 ms. Absent plays to the end.",
+        "type": "number"
+      },
+      {
+        "id": "speed",
+        "summary": "Video: playback rate, above 0 and at most 16 (default 1); frames repeat or skip, never blend. The editor offers 0.25 to 6.",
+        "type": "number"
+      },
+      {
+        "id": "loop",
+        "summary": "Video: wraps within [inMs, outMs) instead of holding the last frame, through Present holds too.",
+        "type": "boolean"
+      },
+      {
+        "id": "posterMs",
+        "summary": "Video: source ms shown before playback (during a delay or before a fold opens); default the first played frame.",
+        "type": "number"
+      }
+    ]
+  },
   "mediaMotion": [
     {
       "id": "none",

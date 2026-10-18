@@ -61,7 +61,7 @@ import {
   DEVICE_IDS,
   FALLBACK_DEVICE_ID,
 } from "../toolkit/device/catalog";
-import type { DeviceMotionPreset } from "../toolkit/device/Device";
+import type { DeviceMediaSpec, DeviceMotionPreset } from "../toolkit/device/Device";
 import { DEVICE_SHADOW_CHOICES, DEVICE_SHADOW_MODES } from "../toolkit/device/shadowProjector";
 import { CHIP_ICON_IDS } from "../toolkit/frame/chipIcons";
 import toolkitIndexSource from "../toolkit/index.ts?raw";
@@ -337,6 +337,58 @@ export const PROJECT_MANIFEST_KEYS: Record<
   appliedBackground: {
     summary: "Background last applied to all scenes; new scenes inherit it.",
     type: "object",
+  },
+};
+
+/** One line per device screen media key (`devices[].media`, `coverMedia`, `compare.b` maps); exhaustive over `DeviceMediaSpec`. */
+export const DEVICE_MEDIA_KEYS: Record<
+  keyof DeviceMediaSpec,
+  { summary: string; type: string; values?: string[] }
+> = {
+  src: {
+    summary: "Project-relative image or video path, e.g. assets/demo.mp4.",
+    type: "string",
+  },
+  kind: { summary: "What src is.", type: "string", values: ["video", "image"] },
+  startMs: {
+    summary:
+      "Video: scene-time delay before playback, holding the first played frame; a negative value pre-rolls the clip on the scene clock.",
+    type: "number",
+  },
+  fit: {
+    summary: "Always cover: fills the screen and crops the overflow.",
+    type: "string",
+    values: ["cover"],
+  },
+  startOn: {
+    summary: "Foldable inside display: startMs counts from the moment the fold opens.",
+    type: "string",
+    values: ["open"],
+  },
+  inMs: {
+    summary:
+      "Video: source ms where playback begins (a trim-in); combines with a startMs delay, never with a negative startMs.",
+    type: "number",
+  },
+  outMs: {
+    summary:
+      "Video: source ms where playback ends, exclusive; must pass inMs by more than 16 ms. Absent plays to the end.",
+    type: "number",
+  },
+  speed: {
+    summary:
+      "Video: playback rate, above 0 and at most 16 (default 1); frames repeat or skip, never blend. The editor offers 0.25 to 6.",
+    type: "number",
+  },
+  loop: {
+    summary:
+      "Video: wraps within [inMs, outMs) instead of holding the last frame, through Present holds too.",
+    type: "boolean",
+  },
+  posterMs: {
+    summary:
+      "Video: source ms shown before playback (during a delay or before a fold opens); default the first played frame.",
+    type: "number",
   },
 };
 
@@ -1260,6 +1312,12 @@ export function buildAgentCatalog(): Record<string, Json> {
       ...(id === "none" ? { default: true } : {}),
     })),
     deviceLayouts: DEVICE_LAYOUT_PRESETS.map((id) => ({ id, ...DEVICE_LAYOUTS[id] })),
+    deviceMedia: {
+      keys: (Object.keys(DEVICE_MEDIA_KEYS) as (keyof DeviceMediaSpec)[]).map((id) => ({
+        id,
+        ...DEVICE_MEDIA_KEYS[id],
+      })),
+    },
     mediaMotion: SCENE_MEDIA_MOTION_PRESETS.map((id) => ({ id, ...MEDIA_MOTION[id] })),
     objects: Object.values(builtinObjects)
       .map((o) => ({
