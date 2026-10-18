@@ -71,6 +71,7 @@ export {
   type DeviceColourSpec,
   type DeviceForm,
   type DeviceId,
+  type DeviceScreenRect,
   type DeviceSpec,
   deviceColour,
   FALLBACK_DEVICE_ID,
@@ -91,7 +92,25 @@ export {
 } from "./device/Device";
 // DeviceMockup is the legacy (pre-catalog) device primitive; prefer Device for new scenes.
 export { DeviceMockup, type DeviceMockupProps } from "./device/DeviceMockup";
+// Screen anchors: pin content to a device's screen from committed measurements of each model.
+export {
+  type DeviceScreen,
+  DeviceScreenAnchor,
+  type DeviceScreenAnchorProps,
+  useDeviceScreen,
+} from "./device/DeviceScreenAnchor";
 export { resolveDeviceLayout } from "./device/layout";
+export {
+  type DeviceScreenDisplay,
+  type DeviceScreenHinge,
+  type DeviceScreenPose,
+  deviceScreenLocal,
+  deviceScreenPoint,
+  deviceScreenRect,
+  mediaPixelToScreenUv,
+  SCREEN_LIFT,
+  screenUvToMediaPixel,
+} from "./device/screenAnchor";
 // Icon + text lockups animated as one unit through the text presets.
 export { AnimatedGroup, type AnimatedGroupProps } from "./group/AnimatedGroup";
 export { type GroupAnimationState, useGroupAnimation } from "./group/context";

@@ -59,6 +59,7 @@ import {
   CUSTOM_COLOUR_PREFIX,
   DEVICE_CATALOG,
   DEVICE_IDS,
+  type DeviceScreenRect,
   FALLBACK_DEVICE_ID,
 } from "../toolkit/device/catalog";
 import type { DeviceMotionPreset } from "../toolkit/device/Device";
@@ -603,6 +604,29 @@ export const TOOLKIT_SUMMARIES: Record<
   DEVICE_IDS: { summary: "Every catalogue device id." },
   DepthStage: { summary: "Four depth slots sized to stay full-bleed through a camera rig." },
   Device: { summary: "A catalogue device with screen media, placement, motion and shadow." },
+  DeviceScreenAnchor: {
+    summary:
+      "Child of Device: <DeviceScreenAnchor u v> pins content to its screen (u right, v down, 0..1).",
+  },
+  SCREEN_LIFT: { summary: "Default gap between anchored content and the glass (fitted units)." },
+  deviceScreenLocal: {
+    summary: "deviceScreenLocal(model, u, v, lift?, hinge?): a screen point in the device's frame.",
+  },
+  deviceScreenPoint: {
+    summary: "deviceScreenPoint(model, u, v, pose, lift?): a screen point in world space.",
+  },
+  deviceScreenRect: {
+    summary: "deviceScreenRect(model, display?): the measured screen rect this build renders.",
+  },
+  mediaPixelToScreenUv: {
+    summary: "mediaPixelToScreenUv(model, [x, y], { width, height }): media pixel to screen UV.",
+  },
+  screenUvToMediaPixel: {
+    summary: "screenUvToMediaPixel(model, [u, v], { width, height }): screen UV to media pixel.",
+  },
+  useDeviceScreen: {
+    summary: "Inside Device: { rect, coverRect, local(u, v) } for the screen it renders, or null.",
+  },
   DeviceMockup: { summary: "Pre-catalogue phone with a static screen image.", legacy: true },
   ExtrudedText: { summary: "Lit 3D extruded text (ASCII, bundled face)." },
   FALLBACK_DEVICE_ID: { summary: "android: what unknown or unavailable models render as." },
@@ -1097,6 +1121,18 @@ function effects(): Entry[] {
   }));
 }
 
+/** A measured screen rect for the kit: fitted units at placement scale 1, UV u right and v down. */
+function screenRectEntry(rect: DeviceScreenRect): Json {
+  return {
+    width: round(rect.width, 4),
+    height: round(rect.height, 4),
+    centre: rect.centre.map((n) => round(n, 4)),
+    z: round(rect.z, 4),
+    cornerRadius: round(rect.cornerRadius, 4),
+    ...(rect.frame ? { frame: { ...rect.frame } } : {}),
+  };
+}
+
 function devices(): Entry[] {
   return DEVICE_IDS.map((id) => {
     const spec = DEVICE_CATALOG[id];
@@ -1110,9 +1146,19 @@ function devices(): Entry[] {
       customColour: `${CUSTOM_COLOUR_PREFIX}#rrggbb`,
       screenAspect: round(spec.screen.aspect, 4),
       ...(spec.coverScreen ? { coverScreenAspect: round(spec.coverScreen.aspect, 4) } : {}),
+      screen: screenRectEntry(spec.screen.rect),
+      ...(spec.coverScreen ? { coverScreen: screenRectEntry(spec.coverScreen.rect) } : {}),
       fittedHeight: round(spec.fittedHeight),
       layoutWidth: round(spec.layoutWidth),
-      ...(spec.lid ? { lid: { defaultDeg: spec.lid.defaultDeg, openDeg: spec.lid.openDeg } } : {}),
+      ...(spec.lid
+        ? {
+            lid: {
+              defaultDeg: spec.lid.defaultDeg,
+              openDeg: spec.lid.openDeg,
+              ...(spec.lid.pivot ? { pivot: spec.lid.pivot.map((n) => round(n, 4)) } : {}),
+            },
+          }
+        : {}),
       ...(spec.fold
         ? { fold: { defaultDeg: spec.fold.defaultDeg, openDeg: spec.fold.openDeg } }
         : {}),
