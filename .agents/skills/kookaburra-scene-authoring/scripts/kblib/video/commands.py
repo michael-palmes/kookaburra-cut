@@ -14,17 +14,18 @@ _extensions_loaded = False
 
 
 def load_extensions() -> List[Callable[..., None]]:
-    """Each extension's register(video_subparsers, common, Formatter); smart_commands when it ships (loaded only for kb video)."""
+    """Each extension's register(video_subparsers, common, Formatter); smart_commands and footage_commands when they ship (loaded only for kb video)."""
     global _extensions_loaded
     if not _extensions_loaded:
         _extensions_loaded = True
-        try:
-            from . import smart_commands
+        import importlib
 
-            EXTENSIONS.append(smart_commands.register)
-        except ImportError as e:
-            if getattr(e, "name", None) != f"{__package__}.smart_commands":
-                EXTENSION_ERRORS.append(f"smart_commands: {e}")
+        for name in ("smart_commands", "footage_commands"):
+            try:
+                EXTENSIONS.append(importlib.import_module(f"{__package__}.{name}").register)
+            except ImportError as e:
+                if getattr(e, "name", None) != f"{__package__}.{name}":
+                    EXTENSION_ERRORS.append(f"{name}: {e}")
     return EXTENSIONS
 
 EXIT_OK, EXIT_PROBLEMS, EXIT_ENV = 0, 1, 2
@@ -51,6 +52,7 @@ writes assets/NAME-edited.mp4 and can point a scene at it.
   Batch     apply NAME PLAN|@file|-
   Smart     analyse SRC|NAME | cleanup NAME|SRC [--gentle|--aggressive] | taps suggest NAME
             fit NAME (--to T|--scene S [--slot P]) | align NAME (--src T|--tap ID) (--at T|--beat N)
+  Footage   log NAME|SRC [--notes FILE] [--sheet] [--range A-B] [--money N] | pair A B
   Review    frames NAME|SRC (--at L|--src L|--tap ID|--mask ID) [--grid] [--zoom x,y,w,h]
             sheet NAME|SRC [--count N|--every T|--seams|--compare|--changes] [--grid]
   Output    render NAME [--use [--scene S] [--slot P]] [--draft] | use NAME --scene S [--slot P]

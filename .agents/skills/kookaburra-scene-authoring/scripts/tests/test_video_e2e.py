@@ -95,3 +95,28 @@ class VideoEndToEndTests(KbTestCase):
         self.assertEqual(out["done"]["frames"], report["app"]["totalFrames"])
         media = read_json(self.root / "scenes" / "02-hero.json")["devices"][0]["media"]
         self.assertEqual(media, {"src": "assets/rec-edited.mp4", "kind": "video", "startMs": 500})
+
+    def test_footage_log_checks_the_decode_with_the_media_probe(self) -> None:
+        caps = self.json("caps")["caps"]
+        if "probe" not in ((caps.get("media") or {}).get("commands") or []):
+            self.skipTest("this app's CLI predates media probe")
+        clean = self.json("log", "assets/rec.mp4")
+        self.assertEqual(clean["decode"]["verdict"], "ok")
+        self.assertTrue(clean["holds"] or clean["changes"])
+        # A held barcode clip, one frame per change, then a stream-copy trim whose edit list opens inside a held frame.
+        work = self.tmp / "misdecode"
+        work.mkdir()
+        value = "if(lt(N,30),N,if(lt(N,90),29,if(lt(N,150),N,if(lt(N,210),149,N))))"
+        graph = (f"color=c=gray:s=320x240:r=60:d=4,format=yuv420p,"
+                 f"geq=lum='if(lt(Y,32),if(mod(floor(({value})/pow(2,floor(X/(W/16)))),2),235,16),lum(X,Y))':cb=128:cr=128")
+        run = lambda *args: subprocess.run([self.ffmpeg, "-v", "error", "-y", *args], check=True)  # noqa: E731
+        run("-f", "lavfi", "-i", graph, "-c:v", "libx264", "-qp", "0", "-pix_fmt", "yuv420p", str(work / "held.mp4"))
+        run("-i", str(work / "held.mp4"), "-vf", "mpdecimate=hi=1:lo=1:frac=0:max=0", "-fps_mode", "vfr", "-c:v", "libx264", "-qp", "0",
+            "-pix_fmt", "yuv420p", str(work / "vfr.mov"))
+        run("-ss", "0.55", "-i", str(work / "vfr.mov"), "-c", "copy", str(self.root / "assets" / "trim.mov"))
+        proc = self.kb(["video", "log", "assets/trim.mov", "--json"], cwd=self.root)
+        self.assertExit(proc, 1)
+        refused = json.loads(proc.stdout)
+        self.assertEqual((refused["code"], refused["hint"], refused["decode"]["verdict"]), ("invalid", "./kb assets conform trim.mov", "ffmpeg-misdecodes"))
+        allowed = self.json("log", "assets/trim.mov", "--allow-misdecode")
+        self.assertEqual(allowed["decode"]["verdict"], "ffmpeg-misdecodes")
