@@ -61,7 +61,7 @@ export type {
   ChartValueFormat,
 } from "./chart/types";
 // Scene registration + types
-export { cssOpacity, liftColour } from "./colour";
+export { cssOpacity, glowColour, liftColour } from "./colour";
 export { defineScene } from "./defineScene";
 // The device catalog + Device primitive, the device+media pillar.
 export {

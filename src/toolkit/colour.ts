@@ -21,3 +21,28 @@ export function liftColour(from: string, to: string, amount: number): string {
 export function cssOpacity(fg: string, room: string, a: number): string {
   return liftColour(room, fg, a);
 }
+
+const LUMA = [0.2126, 0.7152, 0.0722] as const;
+/** Linear value of an sRGB 255 channel, with float slack. */
+const FULL = 0.999;
+
+/** `hex` brightened in linear light to luminance `glow` by raising only its full (255) channels: past a bloom threshold above 1 it glows, and once clamped (tone mapping off, or `linear`) it lands exactly on `hex`. A colour with no full channel scales whole, which is not exact; a `glow` at or under its own luminance returns it unchanged. */
+export function glowColour(hex: string, glow: number): Color {
+  const c = new Color(hex);
+  const ch = [c.r, c.g, c.b];
+  const lum = ch.reduce((sum, v, i) => sum + LUMA[i] * v, 0);
+  if (!(glow > lum)) return c;
+  let fullWeight = 0;
+  let rest = 0;
+  ch.forEach((v, i) => {
+    if (v >= FULL) fullWeight += LUMA[i];
+    else rest += LUMA[i] * v;
+  });
+  if (fullWeight > 0) {
+    const v = (glow - rest) / fullWeight;
+    c.setRGB(...(ch.map((x) => (x >= FULL ? v : x)) as [number, number, number]));
+  } else if (lum > 0) {
+    c.multiplyScalar(glow / lum);
+  }
+  return c;
+}

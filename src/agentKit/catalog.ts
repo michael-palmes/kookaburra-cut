@@ -726,6 +726,10 @@ export const TOOLKIT_SUMMARIES: Record<
   cssOpacity: {
     summary: "cssOpacity(fg, room, a): fg at opacity a over the room, as the exact opaque hex.",
   },
+  glowColour: {
+    summary:
+      "glowColour(hex, glow): full channels raised to luminance glow, so bloom (threshold above 1) catches it and it still clamps to hex.",
+  },
 };
 
 // ── Helpers ──
