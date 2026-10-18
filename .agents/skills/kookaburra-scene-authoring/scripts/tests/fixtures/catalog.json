@@ -17,7 +17,8 @@
   "textMotion": [
     { "id": "none", "label": "None" },
     { "id": "fade-up", "label": "Fade up", "summary": "Rises while fading in" },
-    { "id": "fade", "label": "Fade" }
+    { "id": "fade", "label": "Fade" },
+    { "id": "tracking", "label": "Tracking", "granularity": "char" }
   ],
   "textLooks": [
     { "id": "gradient", "label": "Gradient" },
