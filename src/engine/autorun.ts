@@ -30,7 +30,7 @@ import { type AspectName, FORMATS, type FormatSpec, FPS, STANDING_ASPECTS } from
 import { libraryPreviewFormat, resolveLibraryPreviewPoint } from "./libraryPreviewPoint";
 import { captureOptionPreviews, optionPreviewSetsOf } from "./optionPreviews";
 import { runPackRoundTrip } from "./packRoundTrip";
-import { runPerfProbe } from "./perfProbe";
+import { clipColdMetric, runPerfProbe } from "./perfProbe";
 import { listPresets, presetPreviewFrame } from "./presets";
 import { type LoadedProject, loadProject, previewLabProjectIds, sceneFileStem } from "./project";
 import type { RenderStateFingerprint } from "./renderFingerprint";
@@ -153,6 +153,14 @@ interface AutoRunResult {
   fileIdentical?: boolean;
   divergentPages?: number[];
   firstDivergence?: StillsDivergence;
+  /** perf's cold-extraction row: clip reference-to-first-bind times and this session's clip cache writes (engine/perfProbe.ts). */
+  clipsReferenced?: number;
+  clipsBound?: number;
+  firstBindMaxMs?: number | null;
+  firstBindAvgMs?: number | null;
+  clipBytesWritten?: number;
+  clipChunksExtracted?: number;
+  clipCountPasses?: number;
 }
 
 /** The full run payload serialised to `<run result dir>/last-run.json` (`KOOKABURRA_RESULT_DIR`, falling back to `~/Kookaburra Cut/_autorun`). */
@@ -736,6 +744,7 @@ export async function runAutoRun(
           slots: created.slots,
           cameraTrack: created.cameraTrack,
           sceneDocs: created.sceneDocs,
+          music: created.music,
           theme: created.theme,
           sceneThemes: created.sceneThemes,
           projectLighting: created.projectLighting,
@@ -831,6 +840,7 @@ export async function runAutoRun(
             slots: loaded.slots,
             cameraTrack: loaded.cameraTrack,
             sceneDocs: loaded.sceneDocs,
+            music: loaded.music,
             theme: loaded.theme,
             sceneThemes: loaded.sceneThemes,
             projectLighting: loaded.projectLighting,
@@ -882,6 +892,8 @@ export async function runAutoRun(
       await awaitSceneHostsCommitted(project.slots.length);
       const rows = await runPerfProbe(project);
       for (const row of rows) results.push({ aspect: format.name, ...row });
+      // Meaningful on a --cold run with the clip cache moved aside: how long first frames took to extract and what that wrote.
+      results.push({ aspect: format.name, ...(await clipColdMetric()) });
     } catch (e) {
       ok = false;
       error = String(e);
@@ -980,6 +992,7 @@ export async function runAutoRun(
           slots: project.slots,
           cameraTrack: project.cameraTrack,
           sceneDocs: project.sceneDocs,
+          music: project.music,
           theme: project.theme,
           sceneThemes: project.sceneThemes,
           projectLighting: project.projectLighting,
@@ -1150,6 +1163,7 @@ export async function runAutoRun(
           slots: current.slots,
           cameraTrack: current.cameraTrack,
           sceneDocs: current.sceneDocs,
+          music: current.music,
           theme: current.theme,
           sceneThemes: current.sceneThemes,
           projectLighting: current.projectLighting,

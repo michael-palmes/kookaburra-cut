@@ -29,6 +29,7 @@ import { FPS, useFormat } from "./format";
 import { HELPER_LAYER } from "./lightEditStore";
 import { useLightingEditStore } from "./lightingEditStore";
 import type { MotionBlurSettings } from "./motionBlur";
+import type { ProjectMusic } from "./musicTime";
 import { resolveOverlays } from "./overlayPlan";
 import {
   previewMotionBlurOff,
@@ -41,6 +42,7 @@ import {
   hasSceneCameraTracks,
   resolveFrameCameras,
   type SceneCameraTracks,
+  sceneCameraTiming,
 } from "./sceneCamera";
 import { compareSpecOf, resolveCompareFrame } from "./sceneCompare";
 import type { SceneDoc } from "./sceneDocSchema";
@@ -101,6 +103,7 @@ export function CompositorDriver({
   compareBThemes,
   roomThemes,
   motionBlur,
+  music,
   commitStamp,
 }: {
   /** The loaded project's id, guards the camera-edit draft against a mid-switch mismatch. */
@@ -123,6 +126,8 @@ export function CompositorDriver({
   roomThemes?: Readonly<Record<string, Theme>>;
   /** The manifest's `render.motionBlur`; paused frames show the export's blur, playback only on request. */
   motionBlur?: MotionBlurSettings;
+  /** The project's authored music (`LoadedProject.music`); resolves musical camera kick positions. */
+  music?: ProjectMusic;
   /** The LoadedProject identity, stamped on canvas commit (see exportBridge). */
   commitStamp?: unknown;
 }) {
@@ -137,8 +142,14 @@ export function CompositorDriver({
 
   // Normalized once per project load; null entries for scenes without a camera track.
   const sceneTracks = useMemo(
-    () => buildSceneCameraTracks(sceneDocs ?? [], format, sceneFloorYs),
-    [sceneDocs, format, sceneFloorYs],
+    () =>
+      buildSceneCameraTracks(
+        sceneDocs ?? [],
+        format,
+        sceneFloorYs,
+        sceneCameraTiming({ music, slots }),
+      ),
+    [sceneDocs, format, sceneFloorYs, music, slots],
   );
 
   const shutterPlan = useMemo(
@@ -183,9 +194,14 @@ export function CompositorDriver({
   const roomTracks = useMemo(
     () =>
       sceneThemes
-        ? buildRoomTracks(sceneDocs ?? [], { sceneThemes, roomThemes, projectLighting })
+        ? buildRoomTracks(sceneDocs ?? [], {
+            sceneThemes,
+            roomThemes,
+            projectLighting,
+            timing: sceneCameraTiming({ music, slots }),
+          })
         : null,
-    [sceneDocs, sceneThemes, roomThemes, projectLighting],
+    [sceneDocs, sceneThemes, roomThemes, projectLighting, music, slots],
   );
 
   // Per-scene render states; null unless the project opts into themed scene state.

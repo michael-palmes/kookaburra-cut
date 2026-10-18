@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useAssetRevisions } from "../engine/assetRevisions";
 import { useCameraEditStore } from "../engine/cameraEditStore";
 import { computeFormat } from "../engine/format";
 import { resolveCutoutRender } from "../engine/frameFormat";
@@ -19,7 +20,6 @@ import type {
 } from "../engine/sceneDocSchema";
 import { resolveSceneDocMedia, sceneMediaOverlayPlaced } from "../engine/sceneMedia";
 import { cutoutStageRect, frameWorldCutout } from "../engine/stageViewport";
-import { assetVersionKey, useAssetVersionStore } from "../store/assetVersionStore";
 import { useEditorStore } from "../store/editorStore";
 import {
   OVERLAY_MEDIA_SIZE_RANGE,
@@ -53,11 +53,7 @@ function decodeImageAspect(url: string): Promise<number | null> {
 }
 
 /** An overlay source's pixel aspect, from the same `media_meta` probe the inspector reads (cached per asset by content hash), falling back to an image decode for a project outside the workspace. Null when neither answers, which keeps a still's box off the layer instead of guessing a square. */
-async function probeImageAspect(
-  projectId: string,
-  src: string,
-  suffix: string,
-): Promise<number | null> {
+async function probeImageAspect(projectId: string, src: string): Promise<number | null> {
   if (isEditableProjectId(projectId)) {
     try {
       const meta = await mediaMeta(nativeProjectSlug(projectId), src);
@@ -67,7 +63,7 @@ async function probeImageAspect(
     }
   }
   try {
-    return await decodeImageAspect(resolveAssetUrl(projectId, src) + suffix);
+    return await decodeImageAspect(resolveAssetUrl(projectId, src));
   } catch {
     return null;
   }
@@ -77,17 +73,12 @@ async function probeImageAspect(
 const imageAspectCache = new Map<string, number>();
 const imageAspectInFlight = new Map<string, Promise<number | null>>();
 
-function fetchImageAspect(
-  projectId: string,
-  src: string,
-  suffix: string,
-  key: string,
-): Promise<number | null> {
+function fetchImageAspect(projectId: string, src: string, key: string): Promise<number | null> {
   const cached = imageAspectCache.get(key);
   if (cached !== undefined) return Promise.resolve(cached);
   let flight = imageAspectInFlight.get(key);
   if (!flight) {
-    flight = probeImageAspect(projectId, src, suffix).then((aspect) => {
+    flight = probeImageAspect(projectId, src).then((aspect) => {
       imageAspectInFlight.delete(key);
       if (aspect !== null) imageAspectCache.set(key, aspect);
       return aspect;
@@ -149,9 +140,8 @@ export function OverlayImageGizmo({
     () => sceneMediaOverlayPlaced(resolveSceneDocMedia(project.sceneDocs[sceneIndex])),
     [project.sceneDocs, sceneIndex],
   );
-  const versionSignal = useAssetVersionStore((state) =>
-    images.map((image) => state.versions[assetVersionKey(project.id, image.src)] ?? 0).join("|"),
-  );
+  const imageSrcs = useMemo(() => images.map((image) => image.src), [images]);
+  const revisionSignal = useAssetRevisions(project.id, imageSrcs);
   // Two spaces in one layer: a frame-layer entry draws against the whole frame, while a window-hosted one is world content and lands inside an overlay's cutout, laid out against the cutout's own format.
   const frameSpec = project.sceneFrames[sceneIndex];
   const cutout = useMemo(
@@ -171,30 +161,26 @@ export function OverlayImageGizmo({
   );
 
   const sourceRequests = useMemo(() => {
-    const versions = versionSignal.split("|").map(Number);
+    const revisions = revisionSignal.split("|");
     return Object.fromEntries(
-      images.map((image, index) => {
-        const version = versions[index] ?? 0;
-        const suffix = version > 0 ? `?v=${version}` : "";
-        return [
-          image.id,
-          {
-            src: image.src,
-            key: `${project.id}\u0000${image.src}${suffix}`,
-            suffix,
-            // A clip sizes off the aspect its doc recorded at pick time; an edit render re-points a still without one, so the native probe answers for those.
-            probe: image.kind === "image" || image.video?.aspect === undefined,
-          },
-        ];
-      }),
+      images.map((image, index) => [
+        image.id,
+        {
+          src: image.src,
+          // An in-place replace moves the revision, so its aspect is probed afresh.
+          key: `${project.id}\u0000${image.src}\u0000${revisions[index] ?? ""}`,
+          // A clip sizes off the aspect its doc recorded at pick time; an edit render re-points a still without one, so the native probe answers for those.
+          probe: image.kind === "image" || image.video?.aspect === undefined,
+        },
+      ]),
     );
-  }, [images, project.id, versionSignal]);
+  }, [images, project.id, revisionSignal]);
 
   useEffect(() => {
     let alive = true;
     for (const request of Object.values(sourceRequests)) {
       if (!request.probe) continue;
-      void fetchImageAspect(project.id, request.src, request.suffix, request.key).then((aspect) => {
+      void fetchImageAspect(project.id, request.src, request.key).then((aspect) => {
         if (alive && aspect !== null) {
           setSourceAspects((current) =>
             current[request.key] === aspect ? current : { ...current, [request.key]: aspect },

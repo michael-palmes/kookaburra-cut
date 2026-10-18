@@ -63,9 +63,53 @@ class ParseTests(KbTestCase):
 
     def test_newer_versions_refuse(self) -> None:
         with self.assertRaises(editdoc.DocError) as cm:
-            editdoc.parse(json.dumps(raw_doc(version=3)))
+            editdoc.parse(json.dumps(raw_doc(version=4)))
         self.assertEqual(cm.exception.kind, "version")
         self.assertIn("needs a newer Kookaburra Cut", cm.exception.message)
+
+    def test_fades_crop_and_zoom_survive_a_round_trip(self) -> None:
+        mask = {"id": "m1", "sourceId": "s1", "startMs": 0, "endMs": 3000, "fadeInMs": 250, "fadeOutMs": None, "keys": [{"sourceMs": 0, "rect": [0, 0, 0.1, 0.1]}]}
+        c = raw_doc()["clips"][0]
+        zoomed = dict(c, id="c2", zoom={"keys": [{"tMs": -17, "rect": [0, 0, 0.5, 0.5], "ease": "smooth"}, {"tMs": 900, "rect": [0.5, 0.5, 0.5, 0.5], "ease": None, "x": 1}], "extra": 2})
+        doc = editdoc.parse(json.dumps(raw_doc(version=3, masks=[mask], clips=[dict(c, crop=[0.1, 0.1, 0.5, 0.5]), zoomed])))
+        self.assertEqual(doc["masks"][0]["fadeInMs"], 250)
+        self.assertNotIn("fadeOutMs", doc["masks"][0])
+        self.assertEqual(doc["clips"][0]["crop"], [0.1, 0.1, 0.5, 0.5])
+        self.assertEqual(doc["clips"][1]["zoom"], {"keys": [{"tMs": -17, "rect": [0, 0, 0.5, 0.5], "ease": "smooth"}, {"tMs": 900, "rect": [0.5, 0.5, 0.5, 0.5]}]})
+        self.assertEqual(editdoc.parse(json.dumps(doc)), doc)
+        self.assertEqual(editdoc.stamped_version(doc), 3)
+        self.assertEqual(editdoc.stamped_version(dict(doc, clips=[c])), 2)
+        self.assertEqual(editdoc.needs(doc), ["mask.fades", "crop", "zoom"])
+        self.assertEqual(editdoc.needs(dict(doc, masks=[dict(mask, fadeInMs=0)], clips=[c])), [])
+        self.assertIn("unknown variant `fast`", self.corrupt(raw_doc(clips=[dict(c, zoom={"keys": [{"tMs": 0, "rect": [0, 0, 1, 1], "ease": "fast"}]})])))
+        self.assertIn("missing field `keys`", self.corrupt(raw_doc(clips=[dict(c, zoom={})])))
+        self.assertIn("expected i64", self.corrupt(raw_doc(clips=[dict(c, zoom={"keys": [{"tMs": 1.5, "rect": [0, 0, 1, 1]}]})])))
+        self.assertIn("expected u64", self.corrupt(raw_doc(masks=[dict(mask, fadeInMs=-1)])))
+        self.assertIn("length 4", self.corrupt(raw_doc(clips=[dict(c, crop=[0, 0, 1])])))
+
+    def test_crop_zoom_and_fade_static_issues(self) -> None:
+        c = raw_doc()["clips"][0]
+        key = {"sourceMs": 0, "rect": [0, 0, 0.1, 0.1]}
+
+        def problems(**extra: Any) -> list:
+            return [i["message"] for i in editdoc.static_issues(editdoc.parse(json.dumps(raw_doc(**extra)))) if i["code"] in ("bad-crop", "bad-mask")]
+
+        self.assertEqual(problems(clips=[dict(c, crop=[0.1, 0.1, 0.5, 0.5])]), [])
+        self.assertEqual(problems(clips=[dict(c, crop=[0.6, 0, 0.5, 1])]), ["clip c1 has a crop outside its source frame"])
+        self.assertEqual(problems(clips=[dict(c, crop=[0, 0, 1, 1], zoom={"keys": [{"tMs": 0, "rect": [0, 0, 1, 1]}]})]), ["clip c1 has both a crop and zoom keys"])
+        self.assertEqual(problems(clips=[dict(c, zoom={"keys": []})]), ["clip c1 has a zoom with no keys"])
+        self.assertEqual(problems(clips=[dict(c, zoom={"keys": [{"tMs": 0, "rect": [0, 0, 1, 1]}, {"tMs": 8, "rect": [0, 0, 1, 1]}]})]), ["clip c1 has zoom keys out of order or two on one output frame"])
+        self.assertEqual(problems(masks=[{"id": "m1", "sourceId": "s1", "startMs": 0, "endMs": 500, "fadeInMs": 300, "fadeOutMs": 300, "keys": [key]}]), ["mask m1 fades for longer than its span"])
+
+    def test_caps_gate(self) -> None:
+        full = {"appVersion": "9", "mask": {"fades": True}, "crop": True, "zoom": True, "docVersion": {"read": 3, "write": [1, 2, 3]}}
+        editdoc.require_caps(full, ["mask.fades", "crop", "zoom"], "edits/rec.json")
+        older = {"appVersion": "0.18.0", "mask": {"styles": ["solid"]}, "docVersion": {"read": 2, "write": [1, 2]}}
+        with self.assertRaises(KbError) as cm:
+            editdoc.require_caps(older, ["mask.fades", "zoom"], "edits/rec.json")
+        self.assertEqual((cm.exception.code, cm.exception.kind), (2, "env"))
+        self.assertIn("mask fades and zoom keys", cm.exception.message)
+        self.assertFalse(editdoc.caps_supports(dict(full, docVersion={"write": [1, 2]}), "crop"))
 
     def test_names_follow_rust_slugify(self) -> None:
         self.assertEqual(editdoc.slugify("  Screen Recording 2026-10-16 at 09.41.22  "), "screen-recording-2026-10-16-at-09-41-22")
@@ -172,6 +216,22 @@ class ProjectDocTests(KbTestCase):
         self.assertIn("changed since", cm.exception.message)
         with self.assertRaises(KbError):
             editdoc.mutate(self.project, "rec", lambda d: d, base="f" * 64)
+
+    def test_mutate_keeps_fades_and_refuses_an_older_cli(self) -> None:
+        mask = {"id": "m1", "sourceId": "s1", "startMs": 0, "endMs": 4000, "fadeInMs": 200, "fadeOutMs": 300, "keys": [{"sourceMs": 0, "rect": [0, 0, 0.2, 0.2]}]}
+        write_json(self.root / "edits" / "rec.json", raw_doc(version=2, masks=[mask]))
+        self.fake_cli()
+        editdoc.mutate(self.project, "rec", lambda d: apply_op(d, {"op": "split", "atMs": 6000}).doc)
+        saved = json.loads((self.root / "edits" / "rec.json").read_text())
+        self.assertEqual((saved["version"], saved["masks"][0]["fadeInMs"], saved["masks"][0]["fadeOutMs"]), (2, 200, 300))
+        self.fake_cli(self.tmp / "old" / "kookaburra-cut", caps=json.dumps({"mask": {"styles": ["solid"]}, "docVersion": {"read": 2, "write": [1, 2]}}))
+        os.environ["KB_APP_BIN"] = str(self.tmp / "old" / "kookaburra-cut")
+        before = (self.root / "edits" / "rec.json").read_bytes()
+        with self.assertRaises(KbError) as cm:
+            editdoc.mutate(self.project, "rec", lambda d: apply_op(d, {"op": "split", "atMs": 2000}).doc)
+        self.assertEqual(cm.exception.code, 2)
+        self.assertIn("mask fades", cm.exception.message)
+        self.assertEqual((self.root / "edits" / "rec.json").read_bytes(), before)
 
     def test_mutate_refuses_new_errors(self) -> None:
         self.fake_cli()

@@ -1,5 +1,5 @@
 import { useTexture } from "@react-three/drei";
-import { useContext, useLayoutEffect, useMemo } from "react";
+import { useLayoutEffect, useMemo } from "react";
 import {
   DataTexture,
   MeshBasicMaterial,
@@ -8,8 +8,6 @@ import {
   type Texture,
   Vector2,
 } from "three";
-import { assetVersionKey, useAssetVersionStore } from "../store/assetVersionStore";
-import { useEditorStore } from "../store/editorStore";
 import { useTheme } from "../theme";
 import { AssetBoundary } from "../toolkit/media/AssetBoundary";
 import {
@@ -20,8 +18,6 @@ import {
 } from "../toolkit/media/LayeredScreenshot";
 import { AnimatedHeadline } from "../toolkit/text/AnimatedHeadline";
 import { useFormat } from "./format";
-import { resolveAssetUrl } from "./project";
-import { ProjectIdContext } from "./sceneContext";
 import { useSceneDoc } from "./sceneDoc";
 import {
   type ResolvedSceneTerminal,
@@ -30,6 +26,7 @@ import {
   sceneTerminalLayout,
 } from "./sceneTerminal";
 import { resolveTerminalColours, type SceneTerminalColours } from "./sceneTerminalTheme";
+import { useProjectAssetUrl } from "./useProjectAssetUrl";
 
 /** The terminal block's screen-locked window: chrome (shadow, rounded body, bezel, traffic lights, title) rendered live from the theme, with the captured snapshot raster as the screen pixels and a resting block cursor before any capture exists. Mounted inside the frame-panel group, so the compositor draws it over the composited slide from the base pose; everything here is a pure function of the doc + theme (no clock reads). The interactive DOM overlay shares `sceneTerminalLayout`, so the live xterm and these pixels cannot drift. */
 
@@ -192,9 +189,6 @@ function TerminalWindow({
 }) {
   const format = useFormat();
   const theme = useTheme();
-  const contextProjectId = useContext(ProjectIdContext);
-  const storeProjectId = useEditorStore((s) => s.projectId);
-  const projectId = contextProjectId ?? storeProjectId;
   const layout = useMemo(
     () => sceneTerminalLayout(terminal, format.frame),
     [terminal, format.frame],
@@ -207,18 +201,8 @@ function TerminalWindow({
   const mac = terminal.chrome.style === "mac";
   const { window, screen, grid, cell, radius, titleBarHeight } = layout;
   const snapshotSrc = terminal.snapshot?.src ?? null;
-  // Recaptures overwrite the snapshot in place, so the version suffix is what makes a re-bake a genuinely new URL (the app-icon rule).
-  const version = useAssetVersionStore((s) =>
-    projectId && snapshotSrc ? (s.versions[assetVersionKey(projectId, snapshotSrc)] ?? 0) : 0,
-  );
-  let snapshotUrl: string | null = null;
-  if (snapshotSrc) {
-    try {
-      snapshotUrl = resolveAssetUrl(projectId, snapshotSrc) + (version > 0 ? `?v=${version}` : "");
-    } catch (e) {
-      console.warn(`[terminal] snapshot "${snapshotSrc}" unresolved:`, e);
-    }
-  }
+  // Recaptures overwrite the snapshot in place; its revision is what makes a re-bake a new URL.
+  const snapshotUrl = useProjectAssetUrl(snapshotSrc, "[terminal] snapshot");
 
   const lightY = window.y + window.height / 2 - titleBarHeight / 2;
   const lightR = LIGHT_RADIUS * titleBarHeight;

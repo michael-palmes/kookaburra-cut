@@ -135,3 +135,56 @@ describe("writeSceneDocRebased", () => {
     expect(reports).toEqual([{ slug: "demo", files: [FILE], action: "reloaded" }]);
   });
 });
+
+describe("writeSceneDocRebased and musical positions", () => {
+  // 120 BPM, bar 1 at 250: bar 5 is project 8250, scene-local 6250 for a scene starting at 2000.
+  const scope = {
+    music: {
+      grid: { bpm: 120, offsetMs: 250, beatsPerBar: 4 },
+      startOffsetMs: 0,
+      cues: {},
+      sections: {},
+    },
+    sceneStartMs: 2000,
+  };
+  const pose = { target: [0, 0, 0], azimuthDeg: 0, elevationDeg: 0, distance: 6 };
+  const withKeyAt = (tMs: number) => ({
+    version: 1,
+    camera: { keys: [{ id: "k1", tMs, at: "bar:5", pose }], segments: [] },
+  });
+  const moveTo = (tMs: number) => (from: SceneDoc | undefined) => {
+    if (!from?.camera) return null;
+    const next = structuredClone(from);
+    if (next.camera) next.camera.keys[0].tMs = tMs;
+    return next;
+  };
+  const writtenKey = () => JSON.parse(disk.get(FILE) ?? "{}").camera.keys[0];
+
+  it("drops at from a key the write moved off its position", async () => {
+    disk.set(FILE, json(withKeyAt(6250)));
+    const written = await writeSceneDocRebased("demo", TSX, await load(), moveTo(7000), scope);
+    expect(writtenKey()).toEqual({ id: "k1", tMs: 7000, pose });
+    expect(written?.doc.camera?.keys[0].at).toBeUndefined();
+  });
+
+  it("keeps at while the key still sits on its position", async () => {
+    disk.set(FILE, json(withKeyAt(6250)));
+    await writeSceneDocRebased("demo", TSX, await load(), rename("Hero"), scope);
+    expect(writtenKey()).toEqual({ id: "k1", tMs: 6250, at: "bar:5", pose });
+  });
+
+  it("applies the same rule on the rebased path", async () => {
+    disk.set(FILE, json(withKeyAt(6250)));
+    const stale = await load();
+    disk.set(FILE, json({ ...withKeyAt(6250), name: "Claude" }));
+    const written = await writeSceneDocRebased("demo", TSX, stale, moveTo(6000), scope);
+    expect(written?.rebased).toBe(true);
+    expect(writtenKey()).toEqual({ id: "k1", tMs: 6000, pose });
+  });
+
+  it("leaves every key alone without a scope (the legacy write)", async () => {
+    disk.set(FILE, json(withKeyAt(6250)));
+    await writeSceneDocRebased("demo", TSX, await load(), moveTo(7000));
+    expect(writtenKey()).toEqual({ id: "k1", tMs: 7000, at: "bar:5", pose });
+  });
+});

@@ -27,7 +27,9 @@ import {
   Vector3,
 } from "three";
 import { clone as cloneSkinned } from "three/examples/jsm/utils/SkeletonUtils.js";
-import { useClipTexture } from "../../engine/clipTexture";
+import { useAssetRevision } from "../../engine/assetRevisions";
+import { deviceClipFrameIndex, hasPlaybackKeys } from "../../engine/clipFrame";
+import { type ClipTextureBinding, useClipTexture } from "../../engine/clipTexture";
 import { deviceAcknowledgementMatches, useDeviceEditStore } from "../../engine/deviceEditStore";
 import { useSceneConsumesDevices } from "../../engine/deviceRegistry";
 import { ease } from "../../engine/ease";
@@ -58,7 +60,7 @@ import { useTimeline } from "../../engine/timeline";
 import { useEditorStore } from "../../store/editorStore";
 import { useStudioEnvironment } from "../lighting/studioEnvironment";
 import { AssetBoundary } from "../media/AssetBoundary";
-import { preparingVideoTexture } from "../media/preparingTexture";
+import { useClipStandInTexture } from "../media/conformStandIn";
 import { DeviceScreenTaps, useHasScreenTaps } from "../shapes/TapRing";
 import { useSceneStaged, useStageFloorY, useStageMapShadows } from "../stage/context";
 import type { V3 } from "../types";
@@ -99,6 +101,16 @@ export interface DeviceMediaSpec {
   fit?: "cover";
   /** Foldable inside display only: count `startMs` from the moment the fold opens past the switch angle, so the app carries on as the device opens. Inert without a fold that opens. */
   startOn?: "open";
+  /** Video only: source ms where playback begins (a trim-in); combines with a `startMs` delay. */
+  inMs?: number;
+  /** Video only: source ms where playback ends, exclusive; absent plays to the end. */
+  outMs?: number;
+  /** Video only: playback rate, 0 < speed <= 16 (default 1); frames repeat or skip, never blend. */
+  speed?: number;
+  /** Video only: wrap within `[inMs, outMs)` instead of holding the last frame. */
+  loop?: boolean;
+  /** Video only: source ms shown before playback starts (default: the first played frame). */
+  posterMs?: number;
 }
 
 export type DeviceMotionPreset = "none" | "turntable" | "float" | "tilt-reveal" | "push-in";
@@ -329,18 +341,25 @@ function bakeScreenUvs(mesh: Mesh, rect: UvRect): void {
 function ScreenVideo(props: {
   src: string;
   startMs: number;
+  frameAt?: ClipTextureBinding["frameAt"];
   material: MeshBasicMaterial;
   screens: Mesh[];
   screenAspect: number;
   levelRef: MutableRefObject<number>;
 }) {
-  const { src, startMs, material, screens, screenAspect, levelRef } = props;
+  const { src, startMs, frameAt, material, screens, screenAspect, levelRef } = props;
 
   // The readiness node lives in this component's own subtree since own-subtree refs attach before layout effects run; a parent's ref is still null during the mount commit, which previously left the binding effect bailing on stale deps and the screen black for the whole clamp window.
   const readyRef = useRef<Group>(null);
 
-  // Until the first frame binds, the screen shows the "Preparing video…" card, except during export where it stays plain black (belt-and-braces atop the preamble/barrier guarantees; the frame bind overwrites `map`, so no cleanup is needed).
+  // The clip's crop, baked once a frame binds in preview (frames can extract well after the size is known, and the card must not show through the clip's flipped UVs meanwhile); exports bake it as soon as the size is known.
+  const clipCropRef = useRef<UvRect | null>(null);
+  const boundRef = useRef(false);
+
+  // Until the first frame binds, the screen shows the "Preparing video…" card (or, while a conform writes the clip, its poster and progress), except during export where it stays plain black (belt-and-braces atop the preamble/barrier guarantees; the frame bind overwrites `map`, so no cleanup is needed).
+  const standIn = useClipStandInTexture(src, screenAspect, false);
   const onPending = useCallback(() => {
+    boundRef.current = false;
     if (isExporting()) {
       material.map = null;
       material.color.set(0x000000);
@@ -349,19 +368,22 @@ function ScreenVideo(props: {
     }
     const rect = coverCropRect(screenAspect, screenAspect, false); // identity, unflipped
     for (const mesh of screens) bakeScreenUvs(mesh, rect);
-    material.map = preparingVideoTexture(screenAspect, false);
+    material.map = standIn;
     material.color.set(0xffffff);
     material.needsUpdate = true;
-  }, [material, screens, screenAspect]);
+  }, [material, screens, screenAspect, standIn]);
   // Binds land asynchronously, after Device has set this frame's brightness, so they read the level instead of forcing white.
-  const onBound = useCallback(
-    () => material.color.setScalar(levelRef.current),
-    [material, levelRef],
-  );
+  const onBound = useCallback(() => {
+    material.color.setScalar(levelRef.current);
+    boundRef.current = true;
+    const crop = clipCropRef.current;
+    if (crop) for (const mesh of screens) bakeScreenUvs(mesh, crop);
+  }, [material, levelRef, screens]);
 
   const { info } = useClipTexture({
     src,
     startMs,
+    frameAt,
     material,
     readyObjectRef: readyRef,
     onPending,
@@ -372,7 +394,8 @@ function ScreenVideo(props: {
     if (!info) return;
     // Pre-flipped clip bitmaps put the source's bottom row at v=0, but glTF screens have v=0 at the top; flip V in the baked crop (see engine/screenFit.ts).
     const rect = coverCropRect(info.width / info.height, screenAspect, true);
-    for (const mesh of screens) bakeScreenUvs(mesh, rect);
+    clipCropRef.current = rect;
+    if (boundRef.current || isExporting()) for (const mesh of screens) bakeScreenUvs(mesh, rect);
   }, [info, screens, screenAspect]);
 
   return <group ref={readyRef} />;
@@ -388,6 +411,7 @@ function ScreenImage(props: {
   projectId: string;
 }) {
   const { src, projectId, ...rest } = props;
+  useAssetRevision(projectId, src);
   let url: string | null = null;
   try {
     url = resolveAssetUrl(projectId, src);
@@ -435,8 +459,18 @@ function ScreenMedia(props: {
 }) {
   const { media, projectId, startOffsetMs = 0, ...screen } = props;
   if (media?.kind === "video") {
+    // Only a retimed screen leaves the legacy startMs mapping.
+    const frameAt = hasPlaybackKeys(media)
+      ? (localMs: number, info: { fps: number; frameCount: number }) =>
+          deviceClipFrameIndex(localMs, startOffsetMs, media, info.fps, info.frameCount)
+      : undefined;
     return (
-      <ScreenVideo src={media.src} startMs={startOffsetMs + (media.startMs ?? 0)} {...screen} />
+      <ScreenVideo
+        src={media.src}
+        startMs={startOffsetMs + (media.startMs ?? 0)}
+        frameAt={frameAt}
+        {...screen}
+      />
     );
   }
   if (media?.kind === "image") {
@@ -449,7 +483,7 @@ function ScreenMedia(props: {
   return null;
 }
 
-/** The pillar device primitive: the export preamble awaits `preloadCatalogModels` / `preextractClips` / `preloadProjectImages` so every frame renders synchronously after load; see docs/determinism.md and docs/decisions.md. */
+/** The pillar device primitive: the export preamble awaits `preloadCatalogModels` / `prepareExportClips` / `preloadProjectImages` so every frame renders synchronously after load; see docs/determinism.md and docs/decisions.md. */
 export function Device(props: DeviceProps) {
   const {
     id,

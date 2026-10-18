@@ -7,6 +7,11 @@ keys falls through to the orbit track. The default camera sits at z = 5 looking 
 origin, 45 degree field of view. Track rules (keys, segments, holds, eases, `jump`):
 reference/sidecar.md.
 
+Every frame composes in one order, the same in preview, export, captures, stills and
+Present: the scene's rig, else its orbit track, else the project-level track, else the
+default camera; then `cameraKicks` add on top of whichever won (below); motion blur samples
+that result. Moving a TSX group moves content, never the camera.
+
 ## Orbit track (`camera`)
 
 A pose is an orbit around a target, not a raw position:
@@ -146,6 +151,47 @@ scene cuts never smear. Stills exports and Present never blur. Streaky text
 presets (blur-in, converge, vapor) already fake a smear: lower their `amount`.
 Check a blurred frame with `./kb capture`, which renders the export's blur.
 
+## Kicks (`cameraKicks`)
+
+A kick is a momentary push on top of whatever pose drives the scene, in either mode or
+none: an attack, hold and release envelope, a pure function of scene time, never turned
+into keys. Kick the strongest hits (a section's first downbeat, a cue); a kick on every
+beat reads as shake.
+
+```json
+"cameraKicks": [
+  { "at": "bar:13", "zoom": 1.04, "releaseMs": 300 },
+  { "at": 4200, "offset": [0, -0.05, 0], "rollDeg": 1.5, "attackMs": 40, "releaseMs": 500 }
+]
+```
+
+| Field | Meaning |
+| --- | --- |
+| `at` | Required: scene-local ms (0 or more), or a position (`bar:13.3`, `cue:drop`, `section:outro`, optional `+40ms`; reference/beats.md). The sidecar keeps the position; nothing writes ms back |
+| `zoom` | Magnification at the peak, 0.25..4 (1.04 is 4% in); fov stays within 15..90 |
+| `offset` | Camera-space shift at the peak `[x, y, z]` (+x right, +y up, +z back), moving the look point with it |
+| `rollDeg` | Bank added at the peak |
+| `attackMs`, `holdMs`, `releaseMs` | The envelope; attack and hold default to 0 (a snap); `releaseMs` (0 or more) is required |
+| `ease` | Both ramps, from `./kb catalog eases`; default `outQuad` |
+| `id` | Optional string |
+
+- Each kick needs at least one of `zoom`, `offset` or `rollDeg`.
+- Kicks sum (offsets and roll add, zooms multiply). Outside every kick's window the camera
+  is exactly its keyframes.
+- A zero attack is a snap: under motion blur the snap stays sharp and the release smears.
+- The scene's camera rests after its last key or its last kick's end, whichever is later
+  (Present and the automatic still settle there).
+- The camera lane shows kicks as read-only markers. Author them in the sidecar:
+  `./kb doc S set cameraKicks '[{"at": "bar:13", "zoom": 1.04, "releaseMs": 300}]'`.
+- `./kb check`: a bad field is an error (the app drops it, or the whole kick when `at`,
+  `releaseMs` or every channel is bad); an unknown field warns. A position that doesn't
+  resolve warns (the app drops that kick; with no grid: `./kb song analyse`, then `./kb
+  beats set-grid --from-analysis`).
+- An orbit camera kick that pulls out (zoom below 1, an offset or a roll) in a scene staging
+  `<DepthStage>` warns: orbit scenes get no overscan, so band edges can show. Push in (zoom
+  above 1), or kick a rig camera, whose bands size for each kick's peak.
+- Scene code gets the same envelope as a 0..1 level from `pulse()` (reference/scenes.md).
+
 ## Present loops
 
 `camera.presentLoop` or `cameraRig.presentLoop`: `{ "mode": "jump" }` or
@@ -159,5 +205,6 @@ move the camera across the whole project and own `fov`. Prefer per-scene tracks.
 
 ## Beats
 
-Land keys on the soundtrack: `./kb beats --scene <s>` prints beat times in scene-local
-ms (reference/beats.md).
+Land keys on the soundtrack: give a key `"at": "bar:13"` so it follows the grid
+(`./kb doc S set camera.keys.N.at bar:13`), or read times from `./kb beats --scene <s>`
+(scene-local ms). Both are in reference/beats.md.

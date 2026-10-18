@@ -5,14 +5,18 @@ import { useCallback, useEffect, useState } from "react";
 import {
   type CacheStats,
   cacheStats,
+  capGb,
   clearClipsCache,
   clearMediaCache,
+  clipCacheCapOptions,
   formatBytes,
   type HardwareVideoSupport,
   hardwareVideoSupport,
   type SidecarVersions,
+  setClipCacheCap,
   sidecarVersions,
 } from "../engine/appCache";
+import { setConformNewVideosSetting } from "../engine/media";
 import { revealApp } from "../engine/reveal";
 import {
   clearWebsiteData,
@@ -50,6 +54,51 @@ function ClearDataIcon() {
   );
 }
 
+function ClipCacheIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
+      <path
+        d="M2.5 3.5h11v9h-11zM2.5 6h11M2.5 10h11M5 3.5v2.5M8 3.5v2.5M11 3.5v2.5M5 10v2.5M8 10v2.5M11 10v2.5"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.35"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function CacheLimitIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true">
+      <path
+        d="M2.6 11.5a5.5 5.5 0 1 1 10.8 0M8 10.2 10.6 6M3.5 13.5h9"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.35"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function ConformIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
+      <path
+        d="M13 6.5A5 5 0 0 0 3.6 4.6M3 9.5a5 5 0 0 0 9.4 1.9M3.4 2.4v2.4h2.4M12.6 13.6v-2.4h-2.4"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 /** The Settings window: native titlebar, opened via the app menu (⌘,). Cache management (media previews + clip extractions), the workspace location (the only place it can be changed, since first run no longer asks), the opt-in update lane (toggle + Check now), and read-only info (sidecar versions, app version). */
 
 export function SettingsApp() {
@@ -71,8 +120,10 @@ export function SettingsApp() {
   const [hwSupport, setHwSupport] = useState<HardwareVideoSupport | null>(null);
   const [lagWarning, setLagWarning] = useState<LagWarningMode | null>(null);
   const [downloadsExport, setDownloadsExport] = useState<boolean | null>(null);
+  const [conformNew, setConformNew] = useState<boolean | null>(null);
   const [websiteData, setWebsiteData] = useState<WebsiteDataRecord[] | null>(null);
   const [websiteDataBusy, setWebsiteDataBusy] = useState<string | null>(null);
+  const [clipsClearDeferred, setClipsClearDeferred] = useState(false);
 
   const refreshStats = useCallback(() => {
     cacheStats()
@@ -101,6 +152,7 @@ export function SettingsApp() {
         setHwEnabled(!s.disableHardwareVideo);
         setLagWarning((s.lagWarning as LagWarningMode) ?? "off");
         setDownloadsExport(!s.keepExportsInProject);
+        setConformNew(!s.disableConformNewVideos);
       })
       .catch(() => setWorkspace(null));
     defaultWorkspaceRoot()
@@ -132,6 +184,11 @@ export function SettingsApp() {
     setExportToDownloadsSetting(enabled).catch((e) => setError(String(e)));
   }, []);
 
+  const toggleConformNew = useCallback((enabled: boolean) => {
+    setConformNew(enabled);
+    setConformNewVideosSetting(enabled).catch((e) => setError(String(e)));
+  }, []);
+
   const hwDetail = hwSupport
     ? [
         hwSupport.h264 && "H.264",
@@ -147,10 +204,25 @@ export function SettingsApp() {
     (which: "media" | "clips") => {
       setBusy(which);
       setError(null);
-      (which === "media" ? clearMediaCache() : clearClipsCache())
+      (which === "media"
+        ? clearMediaCache()
+        : clearClipsCache().then((outcome) => setClipsClearDeferred(outcome.deferred))
+      )
         .then(refreshStats)
         .catch((e) => setError(String(e)))
         .finally(() => setBusy(null));
+    },
+    [refreshStats],
+  );
+
+  // A lower cap evicts straight away, so the size refreshes once the native side has had a moment.
+  const changeClipCap = useCallback(
+    (gb: number) => {
+      setError(null);
+      setStats((s) => (s ? { ...s, clipsCapBytes: gb * 1024 ** 3 } : s));
+      setClipCacheCap(gb)
+        .then(() => setTimeout(refreshStats, 1500))
+        .catch((e) => setError(String(e)));
     },
     [refreshStats],
   );
@@ -280,24 +352,55 @@ export function SettingsApp() {
             {busy === "media" ? "Clearing…" : "Clear"}
           </button>
         </div>
-        <div className="settings-row">
+        <div className="settings-row stacked">
           <div className="settings-row-text">
-            <span className="settings-row-title">Clip extractions</span>
+            <span
+              className="settings-row-title"
+              style={{ display: "inline-flex", alignItems: "center", gap: "var(--space-2)" }}
+            >
+              <ClipCacheIcon />
+              Clip cache
+            </span>
             <span className="muted settings-row-detail">
               {stats
-                ? `${formatBytes(stats.clipsBytes)} · ${stats.clipsEntries} item${stats.clipsEntries === 1 ? "" : "s"}`
+                ? `${formatBytes(stats.clipsBytes)} of ${capGb(stats.clipsCapBytes)} GB · ${stats.clipsEntries} item${stats.clipsEntries === 1 ? "" : "s"}`
                 : "…"}
             </span>
+            <span className="muted settings-row-detail">
+              {clipsClearDeferred
+                ? "Clears once the terminal run using it finishes."
+                : "Video frames, extracted as scenes need them. Past the limit the least recently used go first; clips in an open project or a running export stay."}
+            </span>
           </div>
-          <button
-            type="button"
-            className="btn"
-            disabled={busy !== null || !stats || stats.clipsBytes === 0}
-            onClick={() => clear("clips")}
-            title="VideoClip frame sequences — re-extracted on the next export"
-          >
-            {busy === "clips" ? "Clearing…" : "Clear"}
-          </button>
+          <div className="settings-row-actions">
+            <span style={{ display: "inline-flex", alignItems: "center", gap: "var(--space-2)" }}>
+              <CacheLimitIcon />
+              <select
+                className="select"
+                aria-label="Clip cache limit"
+                value={stats ? capGb(stats.clipsCapBytes) : ""}
+                disabled={!stats}
+                onChange={(e) => changeClipCap(Number(e.target.value))}
+              >
+                {stats &&
+                  clipCacheCapOptions(capGb(stats.clipsCapBytes)).map((gb) => (
+                    <option key={gb} value={gb}>
+                      {`${gb} GB limit`}
+                    </option>
+                  ))}
+              </select>
+            </span>
+            <button
+              type="button"
+              className="btn"
+              disabled={busy !== null || !stats || stats.clipsBytes === 0}
+              onClick={() => clear("clips")}
+              title="Removes every extracted video frame; scenes extract them again as they need them"
+            >
+              <ClearDataIcon />
+              {busy === "clips" ? "Clearing…" : "Clear"}
+            </button>
+          </div>
         </div>
       </section>
 
@@ -361,6 +464,29 @@ export function SettingsApp() {
             checked={hwEnabled ?? true}
             disabled={hwEnabled === null}
             onChange={(e) => toggleHardware(e.target.checked)}
+          />
+        </div>
+        <div className="settings-row">
+          <div className="settings-row-text">
+            <span
+              className="settings-row-title"
+              style={{ display: "inline-flex", alignItems: "center", gap: "var(--space-2)" }}
+            >
+              <ConformIcon />
+              Conform new videos
+            </span>
+            <span className="muted settings-row-detail">
+              Added videos with uneven frame timing, trims or wide colour become a steady 60 fps
+              copy that plays the frames QuickTime shows. The original stays in the project's
+              assets/.originals folder.
+            </span>
+          </div>
+          <input
+            type="checkbox"
+            aria-label="Conform new videos"
+            checked={conformNew ?? true}
+            disabled={conformNew === null}
+            onChange={(e) => toggleConformNew(e.target.checked)}
           />
         </div>
         <div className="settings-row">

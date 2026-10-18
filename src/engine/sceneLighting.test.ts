@@ -530,6 +530,24 @@ describe("lighting keyframes (v9 · PR 6)", () => {
     expect(normalizeLightingTrack(specWithTrack([]), "t")).toBeNull();
   });
 
+  it("keeps a key's musical position beside its time, and nothing else unknown", () => {
+    const track = normalizeLightingTrack(
+      specWithTrack([
+        { id: "k1", tMs: 0, pose: {} },
+        { id: "k2", tMs: 8250, at: "bar:5", pose: {}, stray: true },
+        { id: "k3", tMs: 9000, at: 12, pose: {} },
+      ]),
+      "t",
+    );
+    expect(track?.keys).toEqual([
+      { id: "k1", tMs: 0, pose: {} },
+      { id: "k2", tMs: 8250, at: "bar:5", pose: {} },
+      { id: "k3", tMs: 9000, pose: {} },
+    ]);
+    const raw = normalizeLighting({ keys: [{ id: "k1", tMs: 8250, at: "bar:5", pose: {} }] }, "t");
+    expect(raw?.keys?.[0].at).toBe("bar:5");
+  });
+
   it("samples eased interpolation inside a segment and holds outside", () => {
     const track = normalizeLightingTrack(
       specWithTrack(

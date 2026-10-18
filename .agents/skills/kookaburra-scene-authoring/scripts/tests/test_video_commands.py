@@ -14,8 +14,9 @@ from .helpers import KB, FakeApp, KbTestCase, fake_worktree, png_bytes, python_a
 
 VIDEO_COMMANDS = [
     "list", "show", "map", "usages", "validate", "caps", "new", "reset", "split", "cut", "keep", "trim", "speed", "freeze", "hold",
-    "remove", "move", "insert", "append", "tap", "mask", "apply", "render", "use", "durations", "open",
+    "remove", "move", "insert", "append", "tap", "mask", "crop", "zoom", "apply", "render", "use", "durations", "open",
 ]
+OLD_CAPS = json.dumps({"appVersion": "0.18.0", "mask": {"styles": ["solid", "blur", "pixelate"]}, "crop": False, "zoom": False, "docVersion": {"read": 2, "write": [1, 2]}})
 TAP_OPS = ["add", "move", "retime", "remove", "style", "list"]
 MASK_OPS = ["add", "key", "hold", "unkey", "offset", "set", "span", "remove", "list"]
 
@@ -278,6 +279,124 @@ class TapMaskTests(VideoCase):
         out = self.v("cut", "rec", "0-2").stdout
         self.assertIn("m1", out)
         self.assertNotIn("masks", self.doc())
+
+
+class FadeCropZoomTests(VideoCase):
+    def setUp(self) -> None:
+        super().setUp()
+        self.v("new", "assets/rec.mp4")
+
+    def older_app(self) -> None:
+        old = self.fake_cli(self.tmp / "old" / "kookaburra-cut", caps=OLD_CAPS)
+        self.env["KB_APP_BIN"] = str(old)
+
+    def timed_scene(self, src: str, **timing: Any) -> None:
+        media = dict({"src": src, "kind": "video"}, **timing)
+        write_json(self.root / "scenes" / "02-hero.json", {"version": 1, "name": "Hero", "devices": [{"id": "phone", "model": "iphone-17-pro", "media": media}]})
+
+    def test_mask_fades(self) -> None:
+        self.v("mask", "add", "rec", "--at", "1", "--rect", "0.1,0.1,0.3,0.1", "--until", "5", "--fade-in", "0.2", "--fade-out", "300ms")
+        m = self.doc()["masks"][0]
+        self.assertEqual((m["startMs"], m["endMs"], m["fadeInMs"], m["fadeOutMs"], self.doc()["version"]), (1000, 5000, 200, 300, 2))
+        self.v("mask", "set", "rec", "m1", "--fade-in", "none")
+        m = self.doc()["masks"][0]
+        self.assertNotIn("fadeInMs", m)
+        self.assertEqual(m["fadeOutMs"], 300)
+        self.assertIn("fades out 0.300s", self.v("mask", "list", "rec").stdout)
+        self.assertIn("fades out 0.300s", self.v("show", "rec").stdout)
+        self.assertIn("don't fit", self.v("mask", "set", "rec", "m1", "--fade-out", "5", code=1).stderr)
+        self.v("mask", "span", "rec", "m1", "--until", "1.5")
+        self.assertEqual((self.doc()["masks"][0]["endMs"], self.doc()["masks"][0]["fadeOutMs"]), (1500, 300))
+        self.v("mask", "set", "rec", "m1", "--fade-in", "-1", code=2)
+        self.v("mask", "set", "rec", "m1", code=2)
+
+    def test_fades_refused_by_an_older_app(self) -> None:
+        self.v("mask", "add", "rec", "--at", "1", "--rect", "0.1,0.1,0.3,0.1", "--fade-out", "0.2")
+        self.older_app()
+        proc = self.v("mask", "set", "rec", "m1", "--fade-in", "0.1", code=2)
+        self.assertIn("mask fades", proc.stderr)
+        self.assertIn("update Kookaburra Cut", proc.stderr)
+        proc = self.v("split", "rec", "--at", "4", code=2)
+        self.assertIn("would drop them on save", proc.stderr)
+        self.assertEqual(len(self.doc()["clips"]), 1)
+        self.v("mask", "add", "rec", "--at", "1", "--rect", "0.1,0.1,0.3,0.1", "--fade-in", "0.1", "--dry-run", code=2)
+
+    def test_until_scene_through_a_timed_slot(self) -> None:
+        self.timed_scene("assets/rec.mp4", startMs=500, inMs=1000, speed=2)
+        out = self.j("mask", "add", "rec", "--at", "1", "--rect", "0.1,0.1,0.3,0.1", "--until-scene", "2", "--scene", "02-hero")
+        self.assertEqual(out["timeline"]["masks"][0]["endMs"], 1000 + (2000 - 500) * 2)
+        self.v("mask", "set", "rec", "m1", "--until-scene", "2.25", "--scene", "02-hero", "--slot", "device:phone", "--fade-out", "0.25")
+        m = self.doc()["masks"][0]
+        self.assertEqual((m["endMs"], m["fadeOutMs"]), (4500, 250))
+        self.assertIn("into the scene", self.v("mask", "set", "rec", "m1", "--until-scene", "0.2", "--scene", "02-hero", code=1).stderr)
+        self.v("mask", "set", "rec", "m1", "--until-scene", "2", code=2)
+        self.v("mask", "set", "rec", "m1", "--scene", "02-hero", "--fade-in", "0.1", code=2)
+        self.v("mask", "add", "rec", "--at", "1", "--rect", "0,0,1,1", "--until", "2", "--until-scene", "2", "--scene", "02-hero", code=2)
+        self.timed_scene("assets/rec.mp4", loop=True)
+        self.assertIn("loops", self.v("mask", "span", "rec", "m1", "--until-scene", "2", "--scene", "02-hero", code=2).stderr)
+
+    def test_until_scene_through_the_render(self) -> None:
+        self.v("trim", "rec", "c1", "--in", "2")
+        self.v("render", "rec")
+        self.timed_scene("assets/rec-edited.mp4", startMs=500, speed=0.5, outMs=6000)
+        self.v("mask", "add", "rec", "--at", "0", "--rect", "0.1,0.1,0.3,0.1", "--until-scene", "2.5", "--scene", "02-hero")
+        self.assertEqual(self.doc()["masks"][0]["endMs"], 2000 + 1000)
+        mapped = self.j("map", "rec", "--scene-at", "2.5", "--scene", "02-hero")
+        self.assertEqual(mapped["results"][0]["timelineMs"], 1000)
+        self.assertEqual(mapped["results"][0]["scene"]["sceneMs"], 2500)
+        used = self.j("usages", "rec")["slots"][0]
+        self.assertEqual((used["retimed"], used["timing"]), (True, {"outMs": 6000, "speed": 0.5}))
+        self.assertIn("retimed: outMs 6000, speed 0.5", self.v("usages", "rec").stdout)
+        self.assertIn("own timing", self.v("fit", "rec", "--scene", "02-hero", code=1).stderr)
+        self.assertIn("own timing", self.v("align", "rec", "--src", "3", "--scene-at", "2", "--scene", "02-hero", code=1).stderr)
+
+    def test_crop(self) -> None:
+        self.v("crop", "rec", "c1", "--rect", "0.1,0.1,0.5,0.5")
+        clip = self.doc()["clips"][0]
+        self.assertEqual((self.doc()["version"], clip["crop"]), (3, [0.1, 0.1, 0.5, 0.5]))
+        self.assertIn("crop x 0.100 y 0.100 w 0.500 h 0.500", self.v("show", "rec").stdout)
+        self.v("crop", "rec", "c1", "--aspect", "9:16", "--centre", "0.25,0.5")
+        x, y, w, h = self.doc()["clips"][0]["crop"]
+        self.assertAlmostEqual((w * 1920) / (h * 1080), 9 / 16, delta=0.01)
+        self.assertEqual((y, h), (0, 1))
+        self.assertEqual(self.j("show", "rec")["timeline"]["clips"][0]["crop"], [x, y, w, h])
+        self.v("crop", "rec", "c1", "--clear")
+        self.assertNotIn("crop", self.doc()["clips"][0])
+        self.assertEqual(self.doc()["version"], 1)
+        self.v("crop", "rec", "c1", "--rect", "0.1,0.1,0.5,0.5", "--centre", "0.5,0.5", code=2)
+        self.v("crop", "rec", "c1", "--aspect", "wide", code=2)
+        self.v("crop", "rec", "c1", "--clear", code=1)
+        self.older_app()
+        self.assertIn("a crop", self.v("crop", "rec", "c1", "--rect", "0.1,0.1,0.5,0.5", code=2).stderr)
+
+    def test_zoom_keys(self) -> None:
+        self.v("zoom", "rec", "c1", "--at", "1", "--rect", "0.2,0.2,0.5,0.5")
+        keys = self.doc()["clips"][0]["zoom"]["keys"]
+        self.assertEqual((len(keys), keys[0]["tMs"], keys[0]["ease"], self.doc()["version"]), (1, 1000, "smooth", 3))
+        self.v("zoom", "rec", "c1", "--at", "2", "--rect", "0.1,0.1,0.5,0.5", "--ease", "linear")
+        self.v("zoom", "rec", "c1", "--at", "1", "--rect", "0.3,0.3,0.4,0.4")
+        keys = self.doc()["clips"][0]["zoom"]["keys"]
+        self.assertEqual([(k["tMs"], k.get("ease")) for k in keys], [(1000, "smooth"), (2000, None)])
+        self.v("zoom", "rec", "c1", "--at", "1", "--ease", "linear")
+        self.assertNotIn("ease", self.doc()["clips"][0]["zoom"]["keys"][0])
+        self.v("zoom", "rec", "c1", "--move", "2", "--to", "3")
+        self.assertEqual([k["tMs"] for k in self.doc()["clips"][0]["zoom"]["keys"]], [1000, 3000])
+        self.assertIn("zoom key at 3.000s", self.v("show", "rec").stdout)
+        self.assertIn("gliding zoom", self.v("fit", "rec", "--to", "5", code=1).stderr)
+        self.assertIn("gliding zoom", self.v("cut", "rec", "0.5-0.8", code=1).stderr)
+        self.assertIn("gliding zoom", self.v("cut", "rec", "--src", "0.5-0.8", code=1).stderr)
+        self.assertIn("gliding zoom", self.v("keep", "rec", "0-2", code=1).stderr)
+        self.v("zoom", "rec", "c1", "--remove", "3")
+        self.assertEqual(len(self.doc()["clips"][0]["zoom"]["keys"]), 1)
+        self.v("zoom", "rec", "c1", "--remove", "3", code=1)
+        self.v("zoom", "rec", "c1", "--clear")
+        self.assertNotIn("zoom", self.doc()["clips"][0])
+        self.v("crop", "rec", "c1", "--rect", "0.1,0.1,0.5,0.5")
+        self.assertIn("static crop", self.v("zoom", "rec", "c1", "--clear", code=1).stderr)
+        for bad in (["--at", "1"], ["--move", "1"], ["--remove", "1", "--to", "2"], ["--remove", "1", "--rect", "0,0,1,1"]):
+            self.v("zoom", "rec", "c1", *bad, code=2)
+        self.older_app()
+        self.assertIn("zoom keys", self.v("zoom", "rec", "c1", "--at", "1", "--rect", "0.2,0.2,0.5,0.5", code=2).stderr)
 
 
 class ApplyTests(VideoCase):

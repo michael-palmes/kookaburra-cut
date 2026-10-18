@@ -7,6 +7,7 @@ import {
 } from "./project";
 import { readProjectManifestSnapshot, writeProjectManifestSnapshot } from "./projectEdit";
 import { contentHash, isAppHash, sceneDocBase } from "./sceneDocBase";
+import { sceneMusicScope } from "./sceneDocMusic";
 import { type RebasedSceneDocWrite, writeSceneDocRebased } from "./sceneDocRebase";
 import type { SceneDoc } from "./sceneDocSchema";
 
@@ -149,12 +150,18 @@ export function commitSceneDocPatch(
   );
   return enqueueSceneDocPatch(queue, async () => {
     const current = queue.latestDoc;
-    const written = await writeSceneDocRebased(slug, sceneFile, current, (from) => {
-      const draft: SceneDoc = structuredClone(from ?? { version: 1 });
-      const result = patch(draft);
-      if (result === false) return null;
-      return isSceneDoc(result) ? result : draft;
-    });
+    const written = await writeSceneDocRebased(
+      slug,
+      sceneFile,
+      current,
+      (from) => {
+        const draft: SceneDoc = structuredClone(from ?? { version: 1 });
+        const result = patch(draft);
+        if (result === false) return null;
+        return isSceneDoc(result) ? result : draft;
+      },
+      sceneMusicScope(project, sceneIndex),
+    );
     if (!written) return null;
     const next = written.doc;
     queue.latestDoc = next;

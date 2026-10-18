@@ -36,6 +36,7 @@ DEFAULT_HINTS: Dict[str, str] = {
     "throttled": "capture fewer or smaller frames (--scale 0.5), then rerun after retryAfterMs",
     "too-large": "use the default sheet size or --scale, and fewer frames",
     "flashes": "fix the flagged moments, or pass --allow-flashes after checking them",
+    "no-grid": "./kb song analyse, then ./kb beats set-grid --from-analysis",
     "transient": "rerun in a moment",
 }
 
@@ -329,6 +330,10 @@ class Report:
     def warn(self, file: str, path: str, message: str) -> None:
         self.issues.append(Issue("warning", file, path, message))
 
+    def info(self, file: str, path: str, message: str) -> None:
+        """Worth knowing, never a problem: counted in neither summary total."""
+        self.issues.append(Issue("info", file, path, message))
+
     def extend(self, issues: Iterable[Issue]) -> None:
         for issue in issues:
             if not any(
@@ -365,7 +370,7 @@ class Report:
             for issue in self.issues:
                 if issue.file != file or (only and issue.severity != only):
                     continue
-                tag = "error" if issue.severity == "error" else "warn "
+                tag = {"error": "error", "info": "info "}.get(issue.severity, "warn ")
                 where = f"{issue.path}: " if issue.path else ""
                 out.append(f"  {tag}  {where}{issue.message}")
         return "\n".join(out)

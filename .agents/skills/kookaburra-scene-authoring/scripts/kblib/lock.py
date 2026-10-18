@@ -167,6 +167,23 @@ def sha256_hex(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
+HASH_CHUNK = 1 << 20
+
+
+def file_sha256(path: Path) -> str:
+    """The file's hash read in 1 MiB chunks (a large asset never sits in memory whole); "absent" when there is no file."""
+    h = hashlib.sha256()
+    try:
+        with open(path, "rb") as f:
+            for chunk in iter(lambda: f.read(HASH_CHUNK), b""):
+                h.update(chunk)
+    except (FileNotFoundError, IsADirectoryError, NotADirectoryError):
+        return ABSENT
+    except OSError as e:
+        raise KbError(f"cannot read {path}: {e.strerror}") from None
+    return h.hexdigest()
+
+
 def read_with_hash(path: Path) -> Tuple[Optional[bytes], str]:
     """(bytes, hash), or (None, "absent") when there is no file."""
     try:
@@ -179,7 +196,7 @@ def read_with_hash(path: Path) -> Tuple[Optional[bytes], str]:
 
 
 def current_hash(path: Path) -> str:
-    return read_with_hash(path)[1]
+    return file_sha256(path)
 
 
 def _temp_beside(path: Path) -> str:
@@ -239,10 +256,33 @@ def write_if_unchanged(path: Path, base: str, data: bytes) -> bool:
 
 def copy_if_absent(src: Path, path: Path) -> bool:
     """Copy a file in under a name that must still be free."""
+    return copy_if_unchanged(src, path, ABSENT)
+
+
+def copy_if_unchanged(src: Path, path: Path, base: str) -> bool:
+    """Copy src to a temp file beside path, then land it as write_if_unchanged does (a large file is never read whole)."""
     tmp = _temp_beside(Path(path))
     try:
         shutil.copyfile(str(src), tmp)
-        return _land(tmp, Path(path), ABSENT)
+        return _land(tmp, Path(path), base)
+    finally:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+
+
+def link_if_unchanged(src: Path, path: Path, base: str) -> bool:
+    """Give src's bytes the name path (a hard link; a copy where links fail), landing as write_if_unchanged does."""
+    path = Path(path)
+    tmp = _temp_beside(path)
+    try:
+        os.unlink(tmp)
+        try:
+            os.link(str(src), tmp)
+        except OSError:
+            shutil.copyfile(str(src), tmp)
+        return _land(tmp, path, base)
     finally:
         try:
             os.unlink(tmp)
@@ -450,9 +490,10 @@ def save_json(project: Any, rel: str, value: Any, base: Optional[str] = None, *,
 
 
 class _Op:
-    __slots__ = ("rel", "action", "base", "data", "src", "trash_fn", "landed")
+    __slots__ = ("rel", "action", "base", "data", "src", "trash_fn", "landed", "move_from", "move_base")
 
-    def __init__(self, rel: str, action: str, base: str, data: Optional[bytes] = None, src: Optional[Path] = None, trash_fn: Any = None) -> None:
+    def __init__(self, rel: str, action: str, base: str, data: Optional[bytes] = None, src: Optional[Path] = None, trash_fn: Any = None,
+                 move_from: Optional[str] = None, move_base: Optional[str] = None) -> None:
         self.rel = rel
         self.action = action
         self.base = base
@@ -460,6 +501,8 @@ class _Op:
         self.src = src
         self.trash_fn = trash_fn
         self.landed: Optional[Tuple[int, int]] = None
+        self.move_from = move_from
+        self.move_base = move_base
 
 
 class Txn:
@@ -494,6 +537,12 @@ class Txn:
         data, sha = self.read(rel)
         return (None if data is None else decode_json(data, label or rel)), sha
 
+    def hash(self, rel: str) -> str:
+        """The file's base hash, streamed (a large asset is never read into memory); later ops on rel check against it."""
+        if rel not in self._bases:
+            self._bases[rel] = current_hash(self.root / rel)
+        return self._bases[rel]
+
     def _base(self, rel: str, create_only: bool, base: Optional[str]) -> str:
         if base is not None:
             return base
@@ -521,6 +570,19 @@ class Txn:
         b = self._base(rel, True, None)
         self._ops[rel] = _Op(rel, "create", b, src=Path(src))
 
+    def copy_over(self, rel: str, src: Path, base: Optional[str] = None) -> None:
+        """Copy src onto rel at commit while rel still hashes to base (default: its hash now; "absent" creates)."""
+        b = base if base is not None else self.hash(rel)
+        self._ops[rel] = _Op(rel, "create" if b == ABSENT else "modify", b, src=Path(src))
+
+    def move(self, rel: str, dest: str, *, base: Optional[str] = None, dest_base: str = ABSENT) -> None:
+        """Move rel to dest at commit: dest gets rel's bytes (a hard link, else a copy) while dest still hashes to
+        dest_base ("absent": a new name), and rel goes once every write landed, unless another op writes rel."""
+        b = base if base is not None else self.hash(rel)
+        if b == ABSENT:
+            raise KbError(f"{rel} does not exist, so it can't be moved", EXIT_PROBLEMS, kind="invalid")
+        self._ops[dest] = _Op(dest, "create" if dest_base == ABSENT else "modify", dest_base, move_from=rel, move_base=b)
+
     def trash(self, rel: str, trash_fn: Callable[[Path], Any]) -> None:
         """Move rel to the Trash at commit, after every write (a missing file is no change)."""
         b = self._base(rel, False, None)
@@ -530,29 +592,49 @@ class Txn:
     def planned(self, rel: str) -> bool:
         return rel in self._ops
 
+    def _vacated(self) -> List[_Op]:
+        """Moves whose source goes at the end (no other op writes it)."""
+        return [o for o in self._ops.values() if o.move_from is not None and o.move_from not in self._ops]
+
     @property
     def writes(self) -> List[Dict[str, Any]]:
-        return mark_refused([{"path": o.rel, "action": o.action, "base": o.base} for o in self._order()], self.refusals)
+        out: List[Dict[str, Any]] = []
+        for o in self._order():
+            w: Dict[str, Any] = {"path": o.rel, "action": o.action, "base": o.base}
+            if o.move_from is not None:
+                w["from"] = o.move_from
+            out.append(w)
+        out += [{"path": o.move_from, "action": "delete", "base": o.move_base, "to": o.rel} for o in self._vacated()]
+        return mark_refused(out, self.refusals)
 
     def _order(self) -> List[_Op]:
         ops = list(self._ops.values())
         rank = {"create": 0, "modify": 1, "trash": 3}
         return sorted(ops, key=lambda o: 2 if o.rel == MANIFEST and o.action != "trash" else rank[o.action])
 
+    def _touched(self, ordered: List[_Op]) -> List[str]:
+        return [o.rel for o in ordered] + [str(o.move_from) for o in self._vacated()]
+
     def commit(self) -> None:
-        """Lock, lease guard, verify every base, write new files first and project.json last, trash, journal."""
+        """Lock, lease guard, verify every base, write new files first and project.json last, trash, drop moved
+        sources, journal."""
         if not self._ops:
             return
         ordered = self._order()
+        touched = self._touched(ordered)
         if self.dry_run:
-            self.refusals = refusals(self.project, self.caller, [o.rel for o in ordered])
+            self.refusals = refusals(self.project, self.caller, touched)
             return
         with project_lock(self.project, self.op, self.wait, self.caller):
-            guard(self.project, self.caller, [o.rel for o in ordered])
+            guard(self.project, self.caller, touched)
             for o in ordered:
                 now = current_hash(self.root / o.rel)
                 if now != o.base:
                     raise Conflict(o.rel, o.base, now)
+                if o.move_from is not None:
+                    now = current_hash(self.root / o.move_from)
+                    if now != o.move_base:
+                        raise Conflict(o.move_from, o.move_base or ABSENT, now)
             done: List[_Op] = []
             for o in ordered:
                 path = self.root / o.rel
@@ -562,7 +644,12 @@ class Txn:
                         raise Conflict(o.rel, o.base, current_hash(path))
                     o.trash_fn(path)
                     continue
-                ok = copy_if_absent(o.src, path) if o.src is not None else write_if_unchanged(path, o.base, o.data or b"")
+                if o.move_from is not None:
+                    ok = link_if_unchanged(self.root / o.move_from, path, o.base)
+                elif o.src is not None:
+                    ok = copy_if_unchanged(o.src, path, o.base)
+                else:
+                    ok = write_if_unchanged(path, o.base, o.data or b"")
                 if not ok:
                     self._undo(done)
                     raise Conflict(o.rel, o.base, current_hash(path))
@@ -572,8 +659,24 @@ class Txn:
                 except OSError:
                     o.landed = None
                 done.append(o)
+            for o in self._vacated():
+                self._drop_source(o)
             self.committed = True
-            journal(self.project, self.caller, [o.rel for o in ordered])
+            journal(self.project, self.caller, touched)
+
+    def _drop_source(self, o: _Op) -> None:
+        """A move's source once its bytes landed: unlinked while it is still the same file, or still hashes the same."""
+        src = self.root / str(o.move_from)
+        try:
+            st = src.stat()
+        except OSError:
+            return
+        same = o.landed is not None and (st.st_dev, st.st_ino) == o.landed
+        if same or current_hash(src) == o.move_base:
+            try:
+                src.unlink()
+            except OSError:
+                pass
 
     def _undo(self, done: List[_Op]) -> None:
         """Best effort: take back this commit's earlier writes when a later one lost its race."""
@@ -591,6 +694,10 @@ class Txn:
                     path.unlink()
                 except OSError:
                     pass
+                continue
+            keeper = next((d for d in done if d.move_from == o.rel), None)
+            if keeper is not None:
+                link_if_unchanged(self.root / keeper.rel, path, current_hash(path))
             elif self._data.get(o.rel) is not None and o.data is not None:
                 write_if_unchanged(path, sha256_hex(o.data), self._data[o.rel] or b"")
 

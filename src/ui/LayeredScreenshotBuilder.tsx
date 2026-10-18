@@ -1,5 +1,6 @@
 import { listen } from "@tauri-apps/api/event";
 import { useEffect, useMemo, useState } from "react";
+import { assetRevision, withAssetRevision } from "../engine/assetRevisions";
 import { useClockStore } from "../engine/clock";
 import { useFormat } from "../engine/format";
 import {
@@ -242,7 +243,9 @@ export function LayeredScreenshotBuilder({
       const poster = metas[it.src]?.posterPath;
       return poster ? fsUrl(poster) : null;
     }
-    return projectPath ? fsUrl(`${projectPath}/${it.src}`) : null;
+    return projectPath
+      ? withAssetRevision(fsUrl(`${projectPath}/${it.src}`), assetRevision(project.id, it.src))
+      : null;
   };
 
   const addScreen = (rel: string, meta: MediaMeta | null) => {

@@ -1,11 +1,11 @@
-//! The app Settings window: a small native-chrome window opened from the application menu ("Settings...", Cmd+,), scoped to cache management (media previews + clip extractions: sizes on disk, per-cache clear) and read-only info (workspace path, sidecar versions; app version lives frontend-side).
+//! The app Settings window: a small native-chrome window opened from the application menu ("Settings...", Cmd+,), scoped to cache management (media previews + clip extractions: sizes on disk, per-cache clear, the clip cache cap) and read-only info (workspace path, sidecar versions; app version lives frontend-side).
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
 
-use crate::media;
+use crate::{clip_cache, media, workspace};
 
 /// Open (or focus) the settings window; native titlebar, should feel like a stock macOS Settings panel, not app chrome.
 pub(crate) fn open_settings_window(app: &AppHandle) -> Result<(), String> {
@@ -31,28 +31,8 @@ pub(crate) fn open_settings_window(app: &AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-fn clips_cache_root(app: &AppHandle) -> Result<PathBuf, String> {
-    Ok(app
-        .path()
-        .app_data_dir()
-        .map_err(|e| e.to_string())?
-        .join("cache")
-        .join("clips"))
-}
-
 fn dir_bytes(dir: &Path) -> u64 {
-    let mut bytes = 0u64;
-    if let Ok(read) = std::fs::read_dir(dir) {
-        for entry in read.flatten() {
-            let path = entry.path();
-            if path.is_dir() {
-                bytes += dir_bytes(&path);
-            } else if let Ok(md) = entry.metadata() {
-                bytes += md.len();
-            }
-        }
-    }
-    bytes
+    clip_cache::dir_bytes(dir)
 }
 
 /// Top-level cache entries (sha dirs); `skip` excludes bookkeeping dirs like `by-path`.
@@ -73,17 +53,20 @@ pub struct CacheStats {
     media_entries: u64,
     clips_bytes: u64,
     clips_entries: u64,
+    /// The clip cache's cap (Settings, default 20 GB); eviction keeps the cache under it.
+    clips_cap_bytes: u64,
 }
 
 #[tauri::command]
 pub fn cache_stats(app: AppHandle) -> Result<CacheStats, String> {
     let media_dir = media::media_cache_root(&app)?;
-    let clips_dir = clips_cache_root(&app)?;
+    let clips_dir = clip_cache::clips_root(&app)?;
     Ok(CacheStats {
         media_bytes: dir_bytes(&media_dir),
         media_entries: dir_entries(&media_dir, "by-path"),
         clips_bytes: dir_bytes(&clips_dir),
         clips_entries: dir_entries(&clips_dir, ""),
+        clips_cap_bytes: clip_cache::cap_bytes(&app),
     })
 }
 
@@ -98,21 +81,31 @@ pub fn clear_media_cache(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-/// Clear the clip-extraction cache (CFR PNG sequences); refused while an export is running, since the export loop reads extracted frames from it.
+/// Clear the clip-extraction cache (CFR PNG sequences): refused while an export runs (the loop reads extracted frames from it), deferred while another terminal run is queued (other sessions' gates read it too).
 #[tauri::command]
-pub fn clear_clips_cache(
+pub fn clear_clips_cache(app: AppHandle) -> Result<clip_cache::ClearOutcome, String> {
+    clip_cache::clear(&app)
+}
+
+/// The largest clip cache cap Settings accepts, in GB.
+const MAX_CLIP_CACHE_CAP_GB: u32 = 1000;
+
+/// Set the clip cache cap; a lower cap evicts least recently used chunks straight away (never pinned ones).
+#[tauri::command]
+pub fn set_clip_cache_cap(
     app: AppHandle,
-    export: State<'_, crate::ExportState>,
+    state: State<'_, workspace::SettingsState>,
+    gb: u32,
 ) -> Result<(), String> {
-    if export.busy() {
-        return Err("an export is running — clear the clip cache after it finishes".into());
+    if !(1..=MAX_CLIP_CACHE_CAP_GB).contains(&gb) {
+        return Err(format!(
+            "the clip cache cap must be 1 to {MAX_CLIP_CACHE_CAP_GB} GB, got {gb}"
+        ));
     }
-    let dir = clips_cache_root(&app)?;
-    if dir.exists() {
-        std::fs::remove_dir_all(&dir).map_err(|e| e.to_string())?;
-    }
-    // Mounted videos hold in-memory extractions keyed to this cache; tell the main window to drop them.
-    let _ = app.emit("kookaburra://clips-cache-cleared", ());
+    workspace::update_settings(&app, &state, |settings| {
+        settings.clip_cache_cap_gb = Some(gb)
+    })?;
+    clip_cache::recheck_cap(&app);
     Ok(())
 }
 

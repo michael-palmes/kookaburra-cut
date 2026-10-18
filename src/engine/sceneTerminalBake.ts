@@ -1,7 +1,7 @@
 /** The bake step between a captured grid and the export truth: raster the resolved terminal through its colour preset, land the PNG at the scene's canonical asset home, and cache-bust mounted readers. The caller owns the sidecar write (grid + returned src) so the doc update and its history entry stay with the capture action. Workspace projects only, like every asset import. */
 
-import { useAssetVersionStore } from "../store/assetVersionStore";
 import type { Theme } from "../theme/tokens";
+import { noteAssetWritten } from "./assetRevisions";
 import { writeTerminalSnapshot } from "./media";
 import { isWorkspaceProjectId, nativeProjectSlug } from "./project";
 import type { ResolvedSceneTerminal } from "./sceneTerminal";
@@ -21,6 +21,6 @@ export async function bakeTerminalSnapshot(
   const colours = resolveTerminalColours(terminal.theme, theme);
   const bytes = await rasterTerminalSnapshot(terminal, colours);
   const rel = await writeTerminalSnapshot(nativeProjectSlug(projectId), sceneStem, bytes);
-  useAssetVersionStore.getState().bump(projectId, rel);
+  await noteAssetWritten(projectId, rel);
   return rel;
 }

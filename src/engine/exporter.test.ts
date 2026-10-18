@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { Mesh, MeshBasicMaterial, PerspectiveCamera, Scene } from "three";
 import { Text } from "troika-three-text";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { prepareExportClips } from "./clips";
 import { useClockStore } from "./clock";
 import { renderComposited } from "./compositor";
 import { canvasHandle, trackContextLosses } from "./exportBridge";
@@ -14,6 +15,7 @@ import {
 } from "./exporter";
 import { isExporting } from "./exportState";
 import { FORMATS } from "./format";
+import type { SceneDoc } from "./sceneDocSchema";
 import { reportTextDerivedPending } from "./textDerivedState";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn(), Channel: class {} }));
@@ -31,7 +33,7 @@ vi.mock("./compositor", async (original) => ({
 }));
 vi.mock("./clips", async (original) => ({
   ...(await original<typeof import("./clips")>()),
-  preextractClips: vi.fn(async () => {}),
+  prepareExportClips: vi.fn(async () => {}),
   awaitVideoFramesReady: vi.fn(async () => {}),
 }));
 vi.mock("./effects", async (original) => ({
@@ -212,6 +214,52 @@ describe("export readback guard", () => {
     mountCanvas();
     const shot = await captureFrameRgba(opts, 0);
     expect(Array.from(shot.rgba)).toEqual(Array.from(drawn(0)));
+  });
+});
+
+describe("export clip barrier", () => {
+  const withDevices: ExportOptions = {
+    ...opts,
+    sceneDocs: [
+      {
+        devices: [
+          { id: "d1", media: { src: "assets/a.mp4", kind: "video", startMs: 500 } },
+          { id: "d2", media: { src: "assets/b.mp4", kind: "video", startOn: "open" } },
+        ],
+      } as unknown as SceneDoc,
+    ],
+  };
+  const barrierCalls = () =>
+    vi.mocked(prepareExportClips).mock.calls.map(([declared, options]) => ({
+      declared: [...declared.entries()].map(([src, demands]) => [src.split("/").pop(), demands]),
+      options,
+    }));
+
+  beforeEach(() => vi.mocked(prepareExportClips).mockClear());
+
+  it("declares each sidecar screen with its scene window, and a fold-timed one with none", async () => {
+    mountCanvas();
+    await exportProject(withDevices);
+    const [first, second] = barrierCalls();
+    expect(first.options).toMatchObject({ consumers: false, atMs: undefined });
+    expect(second.options).toMatchObject({ consumers: true, atMs: undefined });
+    const [[nameA, demandsA], [nameB, demandsB]] = first.declared as [
+      string,
+      { window: [number, number]; frameAt: (ms: number, info: object) => number }[],
+    ][];
+    expect([nameA, nameB]).toEqual(["a.mp4", "b.mp4"]);
+    expect(demandsB).toEqual([]);
+    expect(demandsA[0].window).toEqual([-500, 550]);
+    // The legacy device mapping: frame 0 until the 500 ms delay, then one frame per 1/60 s.
+    const info = { fps: 60, frameCount: 600 };
+    expect(demandsA[0].frameAt(500, info)).toBe(0);
+    expect(demandsA[0].frameAt(1000, info)).toBe(30);
+  });
+
+  it("asks a one-frame capture's barrier for that instant only", async () => {
+    mountCanvas();
+    await captureFrameRgba(withDevices, 20);
+    expect(barrierCalls().map((call) => call.options.atMs)).toEqual([20, 20]);
   });
 });
 

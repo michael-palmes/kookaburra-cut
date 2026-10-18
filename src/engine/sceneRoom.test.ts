@@ -2,6 +2,7 @@ import { AmbientLight, DirectionalLight, Scene } from "three";
 import { describe, expect, it } from "vitest";
 import type { LightingSpec, Theme } from "../theme/tokens";
 import { applyFrameLighting, registerLightingAnimatable } from "./lightingAnimation";
+import { resolveSceneLocalMs } from "./musicTime";
 import { collectParseWarnings } from "./parseWarnings";
 import { parseSceneDoc, type SceneDoc } from "./sceneDocSchema";
 import { buildLightingTracks, resolveFrameLighting } from "./sceneLighting";
@@ -84,15 +85,25 @@ const doc = (room: unknown, extra: Partial<SceneDoc> = {}): SceneDoc =>
   ({ version: 1, room, ...extra }) as SceneDoc;
 
 describe("room key validation", () => {
-  it("resolves numeric at only; strings wait for musical positions", () => {
+  it("resolves numbers, and musical positions against the scene's music", () => {
     expect(resolveRoomAt(1200)).toBe(1200);
     expect(resolveRoomAt(-5)).toBe(0);
-    expect(resolveRoomAt("bar:2.3")).toBeNull();
+    expect(resolveRoomAt("bar:2.3")).toBeUndefined();
+    expect(resolveRoomAt("soon")).toBeNull();
+    const music = { startOffsetMs: 0, cues: { drop: 2000 }, sections: {} };
+    const expected = resolveSceneLocalMs("cue:drop", music, 500);
+    if (!expected.ok) throw new Error("the cue should resolve");
+    expect(resolveRoomAt("cue:drop", { music, sceneStartMs: 500 })).toBe(expected.projectMs);
+    expect(resolveRoomAt("cue:nope", { music, sceneStartMs: 500 })).toBeNull();
     const warnings: string[] = [];
     expect(
-      validateRoomKey({ at: "cue:drop", colour: "#ff0000" }, "k", (m) => warnings.push(m)),
+      validateRoomKey({ at: "cue:nope", colour: "#ff0000" }, "k", (m) => warnings.push(m), {
+        music,
+        sceneStartMs: 0,
+      }),
     ).toBeNull();
-    expect(warnings[0]).toContain("isn't supported yet");
+    expect(warnings[0]).toContain("doesn't resolve");
+    expect(validateRoomKey({ at: "bar:2", colour: "#ff0000" }, "k")).not.toBeNull();
   });
 
   it("defaults a cut, fills a flood, and warns on bad fields", () => {
@@ -147,13 +158,15 @@ describe("room key validation", () => {
       room: {
         keys: [
           { at: "bar:2", colour: "#ff0000" },
+          { at: "soon", colour: "#0000ff" },
           { at: 0, colour: "#00ff00" },
         ],
       },
     };
     const { result, warnings } = collectParseWarnings(() => parseSceneDoc(raw, "scenes/a.json"));
-    expect(result?.room?.keys).toHaveLength(2);
-    expect(warnings.some((w) => w.includes("room.keys[0].at"))).toBe(true);
+    expect(result?.room?.keys).toHaveLength(3);
+    expect(warnings.some((w) => w.includes("room.keys[0].at"))).toBe(false);
+    expect(warnings.some((w) => w.includes("room.keys[1].at"))).toBe(true);
     const dropped = collectParseWarnings(() =>
       parseSceneDoc({ version: 1, room: { keys: [] } }, "scenes/b.json"),
     );

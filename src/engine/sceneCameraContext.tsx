@@ -3,7 +3,7 @@ import type { CameraKeyframe } from "./cameraTrack";
 import { useFormat } from "./format";
 import { collectParseWarnings } from "./parseWarnings";
 import type { LoadedProject } from "./project";
-import { buildSceneCameraTracks, type SceneCameraTracks } from "./sceneCamera";
+import { buildSceneCameraTracks, type SceneCameraTracks, sceneCameraTiming } from "./sceneCamera";
 import { useSceneStageFloors } from "./stageRegistry";
 
 /** The loaded project's scene camera tracks for `useSceneCamera`, built on first read (projects whose scenes never ask pay nothing) from the same inputs the render seams use. */
@@ -31,7 +31,7 @@ export function SceneCameraTracksProvider({
       projectTrack: project.cameraTrack,
       tracks: () => {
         built ??= collectParseWarnings(() =>
-          buildSceneCameraTracks(project.sceneDocs, format, floorYs),
+          buildSceneCameraTracks(project.sceneDocs, format, floorYs, sceneCameraTiming(project)),
         ).result;
         return built;
       },

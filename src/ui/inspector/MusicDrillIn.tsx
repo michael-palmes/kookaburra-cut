@@ -1,4 +1,7 @@
 import { useEffect, useState } from "react";
+import type { BeatAnalysis } from "../../engine/beatAnalysis";
+import { type BeatStatus, useBeatStore } from "../../engine/beatState";
+import { detectedGrid, GRID_BPM_MAX, GRID_BPM_MIN, withGridBpm } from "../../engine/musicGridEdit";
 import {
   AUDIO_FADE_CURVES,
   type AudioFadeCurve,
@@ -6,8 +9,9 @@ import {
   type ProjectAudio,
   type ProjectAudioSpec,
 } from "../../engine/project";
+import { MusicGridIcon } from "../musicGridIcons";
 import { SceneMenuIcon } from "../sceneMenu";
-import { DrillBack, DrillGroup, InspectorSliderRow } from "./rows";
+import { ActionRow, DrillBack, DrillGroup, InspectorSliderRow } from "./rows";
 
 /** The Project tab's Music drill: the soundtrack plus its whole mix surface (volume, start offset, fades and the fade-out shape), every control writing the same project.json `audio` block preview and export read. */
 
@@ -96,6 +100,147 @@ const formatDb = (value: number): string => `${value > 0 ? "+" : ""}${Number(val
 function trackLengthLabel(durationMs: number): string {
   const seconds = Math.round(durationMs / 1000);
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+}
+
+const round3 = (v: number) => Math.round(v * 1000) / 1000;
+
+/** What the Use detected grid row says beside its label: the fit and its residual, or why there is none. */
+export function detectedGridLabel(status: BeatStatus, analysis: BeatAnalysis | null): string {
+  if (status === "analysing") return "Analysing…";
+  if (status === "error") return "Analysis failed";
+  const grid = detectedGrid(analysis);
+  const fit = analysis?.fit;
+  if (!grid || !fit) return "No steady tempo found";
+  return `${grid.bpm.toFixed(3)} BPM, ${fit.residualMs.toFixed(1)} ms off`;
+}
+
+/** The authored `audio.grid` musical positions resolve against: tempo, meter and where bar 1 falls, taken from the analysis or set by hand. Every write is the whole grid through `onPatch`, so the host re-resolves musical keys. */
+export function BeatGridGroup({
+  audio,
+  onPatch,
+}: {
+  audio: ProjectAudio;
+  onPatch: (patch: Partial<ProjectAudioSpec>) => void;
+}) {
+  const status = useBeatStore((s) => s.status);
+  const analysis = useBeatStore((s) => s.analysis);
+  return <BeatGridRows audio={audio} status={status} analysis={analysis} onPatch={onPatch} />;
+}
+
+/** The group's rows for one analysis state (the store-free half, so tests can render each state). */
+export function BeatGridRows({
+  audio,
+  status,
+  analysis,
+  onPatch,
+}: {
+  audio: ProjectAudio;
+  status: BeatStatus;
+  analysis: BeatAnalysis | null;
+  onPatch: (patch: Partial<ProjectAudioSpec>) => void;
+}) {
+  const grid = audio.grid;
+  const detected = detectedGrid(analysis);
+  const setBpm = (bpm: number) => {
+    const next = grid && withGridBpm(grid, bpm);
+    if (next) onPatch({ grid: next });
+  };
+  return (
+    <DrillGroup
+      label="Beat grid"
+      hint={
+        grid
+          ? undefined
+          : "Musical positions like bar:13 need a grid. Use the detected one, or set the downbeat from the beat lane."
+      }
+    >
+      {grid && (
+        <>
+          <InspectorSliderRow
+            icon={<MusicGridIcon type="tempo" />}
+            label="BPM"
+            value={grid.bpm}
+            min={GRID_BPM_MIN}
+            max={GRID_BPM_MAX}
+            step={0.001}
+            formatValue={(value) => value.toFixed(3)}
+            onCommit={setBpm}
+          />
+          <div className="device-editor-media-actions">
+            <button
+              type="button"
+              className="btn"
+              aria-label="Double the tempo"
+              disabled={grid.bpm * 2 > GRID_BPM_MAX}
+              onClick={() => setBpm(grid.bpm * 2)}
+            >
+              <MusicGridIcon type="double" />
+              ×2
+            </button>
+            <button
+              type="button"
+              className="btn"
+              aria-label="Halve the tempo"
+              disabled={grid.bpm / 2 < GRID_BPM_MIN}
+              onClick={() => setBpm(grid.bpm / 2)}
+            >
+              <MusicGridIcon type="halve" />
+              ÷2
+            </button>
+          </div>
+          <InspectorSliderRow
+            icon={<MusicGridIcon type="meter" />}
+            label="Beats per bar"
+            value={grid.beatsPerBar ?? 4}
+            min={1}
+            max={16}
+            step={1}
+            formatValue={(value) => String(Math.round(value))}
+            onCommit={(value) =>
+              onPatch({
+                grid: { ...grid, beatsPerBar: Math.min(16, Math.max(1, Math.round(value))) },
+              })
+            }
+          />
+          <InspectorSliderRow
+            icon={<MusicGridIcon type="barone" />}
+            label="Bar 1 at"
+            value={grid.offsetMs / 1000}
+            min={0}
+            max={Math.max(1, audio.durationMs / 1000)}
+            step={0.001}
+            overflowMin
+            overflowMax
+            formatValue={(value) => `${value.toFixed(3)}s`}
+            onCommit={(value) => onPatch({ grid: { ...grid, offsetMs: round3(value * 1000) } })}
+          />
+        </>
+      )}
+      <ActionRow
+        icon={<MusicGridIcon type="detect" />}
+        label="Use detected grid"
+        value={detectedGridLabel(status, analysis)}
+        chevron={false}
+        disabled={!detected}
+        onClick={() => detected && onPatch({ grid: detected })}
+      />
+      {detected && analysis?.fit && !analysis.fit.constantTempo && (
+        <p className="modal-hint">
+          The tempo drifts by up to {Math.round(analysis.fit.maxDriftMs)} ms, so one grid won't sit
+          on every beat.
+        </p>
+      )}
+      {grid && (
+        <ActionRow
+          icon={<MusicGridIcon type="clear" />}
+          label="Clear grid"
+          chevron={false}
+          danger
+          onClick={() => onPatch({ grid: undefined })}
+        />
+      )}
+    </DrillGroup>
+  );
 }
 
 export function MusicDrillIn({
@@ -252,6 +397,8 @@ export function MusicDrillIn({
                 the video when the track outlasts it.
               </p>
             </DrillGroup>
+
+            <BeatGridGroup audio={audio} onPatch={onPatch} />
           </>
         )}
       </div>

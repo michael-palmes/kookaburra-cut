@@ -202,9 +202,9 @@ class CheckTests(KbTestCase):
         }
         write_json(self.root / "scenes" / "02-hero.json", doc)
         report = self.run_check(["scenes/02-hero.json"])
+        self.assertFalse(any("room.keys[0].at" in e for e in messages(report)))
         self.assertHasError(
             report,
-            "room.keys[0].at",
             "room.keys[1].colour",
             'unknown theme "kookaburra-nope"',
             'unknown ease "inOutQaud"',
@@ -448,6 +448,122 @@ class CheckTests(KbTestCase):
         )
         write(self.root / "scenes" / "02-hero.tsx", tsx)
         self.assertEqual(messages(self.run_check(["scenes/02-hero.tsx"]), "warning"), [])
+
+    def probe_cache(self, rel: str, duration_ms: int) -> None:
+        st = (self.root / rel).stat()
+        write_json(self.tmp / "_bridge" / "video" / "demo" / "probe-cache.json", {f"/x/kookaburra-cut|1|2|{rel}|{st.st_size}|{st.st_mtime_ns}": {"ok": True, "kind": "video", "durationMs": duration_ms}})
+
+    def test_device_media_keys(self) -> None:
+        (self.root / "assets" / "rec.mp4").write_bytes(b"fake video")
+        self.probe_cache("assets/rec.mp4", 4000)
+        video = {"src": "assets/rec.mp4", "kind": "video"}
+        write_json(self.root / "scenes" / "02-hero.json", {
+            "version": 1,
+            "devices": [
+                {"id": "d1", "model": "iphone-17-pro", "media": dict(video, inMs=5000, outMs=6000, speed=8, posterMs=10, mystery=1)},
+                {"id": "d2", "model": "iphone-17-pro", "media": dict(video, startMs=-100, inMs=100, loop="yes", outMs=10)},
+                {"id": "d3", "model": "iphone-17-pro", "media": {"src": "assets/logo.png", "kind": "image", "speed": 2}},
+                {"id": "d4", "model": "iphone-17-pro", "media": dict(video, startMs=300, inMs=500, outMs=3000, speed=2, posterMs=0), "coverMedia": dict(video, inMs=1.5)},
+                {"id": "d5", "model": "iphone-17-pro", "media": dict(video, outMs=4500, startOn="open", posterMs=0)},
+            ],
+            "compare": {"b": {"media": {"d1": dict(video, speed=0)}}},
+        })
+        report = self.run_check(["scenes/02-hero.json"])
+        errors = messages(report)
+        for path, needle in (
+            ("devices[0].media.inMs", "at or past the end of assets/rec.mp4 (4000 ms)"),
+            ("devices[1].media.inMs", "use inMs for a trim and startMs for a delay"),
+            ("devices[1].media.loop", "isn't a boolean"),
+            ("devices[1].media.outMs", "trims the whole video"),
+            ("devices[2].media.speed", "only applies to a video"),
+            ("devices[3].coverMedia.inMs", "isn't a whole number of ms"),
+            ('compare.b.media["d1"].speed', "above 0 and at most 16"),
+        ):
+            self.assertTrue(any(f"{path} " in e and needle in e for e in errors), f"{path}: {needle}\n" + "\n".join(errors))
+        self.assertEqual(len(errors), 7, "\n".join(errors))
+        warnings = messages(report, "warning")
+        for path, needle in (
+            ("devices[0].media.outMs", "past the end of assets/rec.mp4"),
+            ("devices[0].media.speed", "outside the editor's 0.25x to 6x"),
+            ("devices[0].media.posterMs", "is inert"),
+            ("devices[0].media.mystery", "unknown media key"),
+            ("devices[4].media.outMs", "past the end"),
+        ):
+            self.assertTrue(any(f"{path} " in w and needle in w for w in warnings), f"{path}: {needle}\n" + "\n".join(warnings))
+        self.assertFalse(any("devices[3].media" in w or "devices[4].media.posterMs" in w for w in warnings), "\n".join(warnings))
+        (self.root / "assets" / "rec.mp4").write_bytes(b"a re-encoded video")
+        self.assertFalse(any("past the end" in i.message for i in self.run_check(["scenes/02-hero.json"]).issues))
+        proc = self.kb(["check", "--json", "scenes/02-hero.json"], cwd=self.root)
+        self.assertExit(proc, 1)
+        self.assertEqual(json.loads(proc.stdout)["code"], "invalid")
+
+    def test_retimed_render_warns(self) -> None:
+        write_json(self.root / "edits" / "rec.json", {"version": 1})
+        (self.root / "assets" / "rec-edited.mp4").write_bytes(b"render")
+        media = {"src": "assets/rec-edited.mp4", "kind": "video", "speed": 2, "loop": True}
+        write_json(self.root / "scenes" / "02-hero.json", {"version": 1, "devices": [{"id": "d1", "model": "iphone-17-pro", "media": media}]})
+        warnings = messages(self.run_check(["scenes/02-hero.json"]), "warning")
+        self.assertTrue(any("devices[0].media " in w and "retimes the render of edits/rec.json with speed" in w for w in warnings), "\n".join(warnings))
+        write_json(self.root / "scenes" / "02-hero.json", {"version": 1, "devices": [{"id": "d1", "model": "iphone-17-pro", "media": {k: v for k, v in media.items() if k != "speed"}}]})
+        self.assertFalse(any("retimes the render" in w for w in messages(self.run_check(["scenes/02-hero.json"]), "warning")))
+
+    def test_device_media_keys_follow_the_real_catalogue(self) -> None:
+        from kblib import catalog
+
+        cat = catalog.Catalog(read_json(catalog.SKILL_DIR / "catalog.json"), catalog.SKILL_DIR / "catalog.json")
+        self.assertEqual(catalog.device_media_keys(cat), catalog.FALLBACK_DEVICE_MEDIA_KEYS)
+        self.assertEqual(catalog.scene_doc_keys(cat), catalog.FALLBACK_SCENE_DOC_KEYS)
+
+    def kick_scene(self, kicks: object, tsx: str = "", **extra: object) -> check.Report:
+        write(self.root / "scenes" / "02-hero.tsx", SCENE_TSX.format(id="hero").replace("<SceneStage>", f"<SceneStage>{tsx}"))
+        write_json(self.root / "scenes" / "02-hero.json", dict({"version": 1, "cameraKicks": kicks}, **extra))
+        return self.run_check(["scenes/02-hero.json"])
+
+    def test_camera_kicks(self) -> None:
+        (self.root / "assets" / "track.mp3").write_bytes(b"fake audio")
+        m = read_json(self.root / "project.json")
+        m["audio"] = {"file": "assets/track.mp3", "grid": {"bpm": 120, "offsetMs": 0, "beatsPerBar": 4}, "cues": {"drop": "bar:3"}}
+        write_json(self.root / "project.json", m)
+        kicks = [
+            {"at": "bar:3", "zoom": 1.04, "releaseMs": 300},
+            {"at": "cue:drop+40ms", "zoom": 1.1, "releaseMs": 200, "ease": "outQuad"},
+            {"at": "cue:nope", "zoom": 1.1, "releaseMs": 200},
+            {"at": -5, "zoom": 1.1, "releaseMs": 200},
+            {"at": 100, "zoom": 9, "releaseMs": 200},
+            {"at": 100, "offset": [0, 0, 0.2], "releaseMs": 200, "ease": "bouncy", "wobble": 1},
+            {"at": 100, "rollDeg": "x", "releaseMs": 200},
+            {"at": 100, "zoom": 1.1},
+            "nope",
+        ]
+        report = self.kick_scene(kicks, tsx="<DepthStage />")
+        errors = messages(report)
+        for path, needle in (
+            ("cameraKicks[3].at", "scene ms >= 0 or a position"),
+            ("cameraKicks[4].zoom", "0.25 to 4"),
+            ("cameraKicks[4] ", "no valid zoom, offset or rollDeg"),
+            ("cameraKicks[5].ease", 'unknown ease "bouncy"'),
+            ("cameraKicks[6].rollDeg", "degrees"),
+            ("cameraKicks[7].releaseMs", "required"),
+            ("cameraKicks[8] ", "must be an object"),
+        ):
+            self.assertTrue(any(path in e and needle in e for e in errors), f"{path}: {needle}\n" + "\n".join(errors))
+        self.assertFalse(any("cameraKicks[0]" in e or "cameraKicks[1]" in e or "cameraKicks[2]" in e for e in errors), "\n".join(errors))
+        warnings = messages(report, "warning")
+        self.assertTrue(any("cameraKicks[2].at" in w and 'no cue "nope"' in w for w in warnings), "\n".join(warnings))
+        self.assertTrue(any("cameraKicks[5].wobble" in w and "unknown kick field" in w for w in warnings), "\n".join(warnings))
+        self.assertTrue(any("cameraKicks[5] " in w and "DepthStage" in w for w in warnings), "\n".join(warnings))
+        self.assertFalse(any("cameraKicks[0]" in w or "cameraKicks[1]" in w or "unknown key" in w for w in warnings), "\n".join(warnings))
+        pull = [{"at": 100, "zoom": 0.9, "releaseMs": 100}]
+        self.assertFalse(any("DepthStage" in i.message for i in self.kick_scene(pull).issues))
+        rig = self.kick_scene(pull, tsx="<DepthStage />", cameraMode="rig", cameraRig={"keys": [], "segments": []})
+        self.assertFalse(any("DepthStage" in i.message for i in rig.issues))
+        self.assertTrue(any("DepthStage" in i.message for i in self.kick_scene(pull, tsx="<DepthStage />").issues))
+        self.assertHasError(self.kick_scene({"at": 0}), "cameraKicks must be an array")
+        del m["audio"]["grid"]
+        write_json(self.root / "project.json", m)
+        self.project = Project(self.root)
+        unresolved = [i.message for i in self.kick_scene([{"at": "bar:2", "zoom": 1.1, "releaseMs": 100}]).issues if i.severity == "warning"]
+        self.assertTrue(any("no audio.grid" in w and "./kb beats set-grid" in w for w in unresolved), unresolved)
 
     def test_duplicate_ids_flag_only_the_later_scene(self) -> None:
         write(self.root / "scenes" / "03-outro.tsx", SCENE_TSX.format(id="hero"))

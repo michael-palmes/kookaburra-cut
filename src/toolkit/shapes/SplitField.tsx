@@ -12,7 +12,7 @@ import { registerClip } from "../../engine/clips";
 import { useClipTexture } from "../../engine/clipTexture";
 import { frameAtDepth, useFormat } from "../../engine/format";
 import { registerPresentTiming } from "../../engine/presentTimingRegistry";
-import { resolveAssetPath, resolveAssetUrl } from "../../engine/project";
+import { resolveAssetPath } from "../../engine/project";
 import { ProjectIdContext, SceneDocContext, useSceneContext } from "../../engine/sceneContext";
 import type { SceneDocMosaicReveal, SceneDocMosaicTile } from "../../engine/sceneDocSchema";
 import {
@@ -33,7 +33,7 @@ import {
 } from "../../engine/sceneMosaic";
 import { coverCropRect, remapUv } from "../../engine/screenFit";
 import { useTimeline } from "../../engine/timeline";
-import { assetVersionKey, useAssetVersionStore } from "../../store/assetVersionStore";
+import { useProjectAssetUrl } from "../../engine/useProjectAssetUrl";
 import { useEditorStore } from "../../store/editorStore";
 import { useTheme } from "../../theme";
 import { AssetBoundary } from "../media/AssetBoundary";
@@ -147,17 +147,7 @@ function LoadedImageTile({ draw, url }: { draw: TileDraw; url: string }) {
 
 function ImageTile({ draw }: { draw: TileDraw }) {
   const src = draw.tile.src as string;
-  const contextProjectId = useContext(ProjectIdContext);
-  const storeProjectId = useEditorStore((s) => s.projectId);
-  const projectId = contextProjectId ?? storeProjectId;
-  const version = useAssetVersionStore((s) => s.versions[assetVersionKey(projectId, src)] ?? 0);
-  let url: string | null = null;
-  try {
-    url = resolveAssetUrl(projectId, src);
-    if (version > 0) url += `?v=${version}`;
-  } catch (e) {
-    console.warn(`[mosaic] "${src}" unresolved:`, e);
-  }
+  const url = useProjectAssetUrl(src, "[mosaic]");
   if (!url) return null;
   return (
     <AssetBoundary key={url} label={src}>

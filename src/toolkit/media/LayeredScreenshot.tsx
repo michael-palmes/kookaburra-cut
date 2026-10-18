@@ -10,6 +10,7 @@ import {
   Vector2,
   Vector3,
 } from "three";
+import { useAssetRevisions } from "../../engine/assetRevisions";
 import { useClipTexture } from "../../engine/clipTexture";
 import { useFormat } from "../../engine/format";
 import { registerGizmoTarget, unregisterGizmoTarget } from "../../engine/gizmoTargetRegistry";
@@ -387,7 +388,17 @@ function StackRenderer({
     [normalized],
   );
 
+  const imageSrcs = useMemo(
+    () =>
+      layers.flatMap((l) =>
+        l.items.flatMap((i) => (i.kind === "screen" && i.media === "image" ? [i.src] : [])),
+      ),
+    [layers],
+  );
+  // An in-place replace moves a revision, and so the URL its texture loads under.
+  const revisions = useAssetRevisions(projectId, imageSrcs);
   // A missing image degrades to nothing; never tear down the canvas tree (the ImageCard contract).
+  // biome-ignore lint/correctness/useExhaustiveDependencies: revisions stands in for the resolved URLs
   const images = useMemo(() => {
     const out: { id: string; url: string }[] = [];
     for (const layer of layers) {
@@ -402,7 +413,7 @@ function StackRenderer({
       }
     }
     return out;
-  }, [layers, projectId]);
+  }, [layers, projectId, revisions]);
 
   const textures = useTexture(images.map((i) => i.url)) as Texture[];
   useLayoutEffect(() => {

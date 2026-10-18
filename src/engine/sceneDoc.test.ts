@@ -48,6 +48,9 @@ import type { LoadedProject, ProjectManifest } from "./project";
 import {
   applyEditRepoint,
   clampDocTracksToDuration,
+  followMediaDurationMs,
+  followMediaLengthMs,
+  followMediaSlots,
   followMediaSources,
   loadSceneDoc,
   resyncFollowMediaDuration,
@@ -202,6 +205,47 @@ describe("applyEditRepoint (edit-render re-point targeting)", () => {
       src: rel,
       kind: "video",
     });
+  });
+
+  it("a device slot sheds its source timing and a negative start, keeping a delay and startOn", () => {
+    const timed = {
+      src: "assets/a.mp4",
+      kind: "video",
+      startMs: 300,
+      startOn: "open",
+      inMs: 1000,
+      outMs: 4000,
+      speed: 2,
+      loop: true,
+      posterMs: 500,
+    } as const;
+    const doc = docWith({
+      devices: [
+        { id: "d1", model: "iphone-duo", media: timed },
+        {
+          id: "d2",
+          model: "iphone-17-pro",
+          media: { src: "assets/b.mp4", kind: "video", startMs: -900 },
+        },
+      ] as SceneDoc["devices"],
+      compare: { b: { media: { d1: { ...timed, startMs: -200, inMs: undefined } } } },
+    });
+    expect(applyEditRepoint(doc, "device", rel, "d1")?.devices?.[0].media).toEqual({
+      src: rel,
+      kind: "video",
+      startMs: 300,
+      startOn: "open",
+    });
+    expect(applyEditRepoint(doc, "device", rel, "d2")?.devices?.[1].media).toEqual({
+      src: rel,
+      kind: "video",
+    });
+    expect(applyEditRepoint(doc, "compareDevice", rel, "d1")?.compare?.b?.media?.d1).toEqual({
+      src: rel,
+      kind: "video",
+      startOn: "open",
+    });
+    expect(doc.devices?.[0].media).toEqual(timed);
   });
 
   it("a media-less device and a device-less doc re-point nothing", () => {
@@ -430,10 +474,81 @@ describe("followMediaSources (the follow-media source rule)", () => {
   });
 });
 
+describe("followMediaLengthMs (a slot's own timing)", () => {
+  const video = { src: "assets/a.mp4", kind: "video" } as const;
+
+  it("a slot without source timing is the probe, still ignoring startMs", () => {
+    expect(followMediaLengthMs(undefined, 3000)).toBe(3000);
+    expect(followMediaLengthMs({ ...video, startMs: 400 }, 3000)).toBe(3000);
+    expect(followMediaLengthMs({ ...video, startMs: -1200, startOn: "open" }, 3000)).toBe(3000);
+  });
+
+  it("a timed slot plays its delay plus one pass of its window at its speed", () => {
+    const timed = { ...video, startMs: 500, inMs: 1000, outMs: 3000, speed: 2 };
+    expect(followMediaLengthMs(timed, 6000)).toBe(1500);
+    expect(followMediaLengthMs({ ...video, inMs: 1000, outMs: 9000 }, 4000)).toBe(3000);
+    expect(followMediaLengthMs({ ...video, startMs: 250, loop: true }, 2000)).toBe(2250);
+    expect(followMediaLengthMs({ ...video, outMs: 1001, speed: 2 }, 5000)).toBe(501);
+    expect(followMediaLengthMs({ ...video, startMs: -5000, speed: 1 }, 3000)).toBe(17);
+  });
+
+  it("the longest slot wins and an unprobed source counts for nothing", () => {
+    const doc = docWith({
+      duration: { mode: "follow-media" },
+      devices: [
+        { id: "d1", model: "x", media: { ...video, outMs: 2000 } },
+        { id: "d2", model: "x", media: { src: "assets/b.mp4", kind: "video", startMs: 900 } },
+      ] as SceneDoc["devices"],
+    });
+    const slots = followMediaSlots(doc);
+    expect(slots.map((s) => s.src)).toEqual(followMediaSources(doc));
+    expect(
+      followMediaDurationMs(
+        slots,
+        new Map([
+          ["assets/a.mp4", 9000],
+          ["assets/b.mp4", 3000],
+        ]),
+      ),
+    ).toBe(3000);
+    expect(followMediaDurationMs(slots, new Map([["assets/a.mp4", 9000]]))).toBe(2000);
+    expect(followMediaDurationMs(slots, new Map())).toBe(0);
+  });
+});
+
 describe("resyncFollowMediaDuration follows the longest qualifying video", () => {
   beforeEach(() => {
     lengths.clear();
     written.length = 0;
+  });
+
+  it("a timed screen follows its own window, probing each source once", async () => {
+    lengths.set("assets/a.mp4", 8000);
+    const invoke = vi.mocked((await import("@tauri-apps/api/core")).invoke);
+    const before = invoke.mock.calls.filter(([cmd]) => cmd === "media_meta").length;
+    const doc = parseSceneDoc(
+      {
+        version: 1,
+        duration: { mode: "follow-media" },
+        devices: [
+          {
+            id: "d1",
+            model: "x",
+            media: { src: "assets/a.mp4", kind: "video", startMs: 400, inMs: 1000, speed: 2 },
+          },
+          {
+            id: "d2",
+            model: "x",
+            media: { src: "assets/a.mp4", kind: "video", speed: 40, outMs: 2000 },
+          },
+        ],
+      },
+      "timed",
+    );
+    const result = await resyncFollowMediaDuration("proj", 0, doc, 3000);
+    expect(result.wrote).toBe(true);
+    expect(written).toEqual([{ index: 0, durationMs: 400 + (8000 - 1000) / 2 }]);
+    expect(invoke.mock.calls.filter(([cmd]) => cmd === "media_meta").length - before).toBe(1);
   });
 
   it("an unpinned comparison follows whichever recording runs longer", async () => {
@@ -587,5 +702,31 @@ describe("clampDocTracksToDuration still marks", () => {
   it("is null when no mark or track overhangs", () => {
     expect(clampDocTracksToDuration(docWith({ stills: { marksMs: [500] } }), 2000)).toBeNull();
     expect(clampDocTracksToDuration(docWith({ stills: { exclude: true } }), 10)).toBeNull();
+  });
+});
+
+describe("clampDocTracksToDuration musical keys", () => {
+  it("detaches a key it clamps and keeps the rest on their positions", () => {
+    const pose = {
+      target: [0, 0, 0] as [number, number, number],
+      azimuthDeg: 0,
+      elevationDeg: 0,
+      distance: 6,
+    };
+    const doc = docWith({
+      camera: {
+        keys: [
+          { id: "k1", tMs: 250, at: "bar:1", pose },
+          { id: "k2", tMs: 4250, at: "bar:3", pose },
+        ],
+        segments: [{ from: "k1", to: "k2", ease: "inOutQuad" }],
+      },
+    });
+    const next = clampDocTracksToDuration(doc, 3000);
+    expect(next?.camera?.keys).toEqual([
+      { id: "k1", tMs: 250, at: "bar:1", pose },
+      { id: "k2", tMs: 3000, pose },
+    ]);
+    expect(doc.camera?.keys[1].at).toBe("bar:3");
   });
 });

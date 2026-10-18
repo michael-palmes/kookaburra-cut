@@ -38,6 +38,11 @@ KEYED_TRACKS = [
 EASE_CALLS = {"ease": 0, "easeFn": 0, "ramp": 3}
 EASE_CALL_RE = re.compile(r"(?<![\w$.])(ease|easeFn|ramp)\s*\(")
 DECLARED_RE = re.compile(r"\b(?:function|const|let|var)\s+([\w$]+)")
+# Device media keys and camera kicks (sceneDocSchema.ts parseDeviceMediaKeys, parseCameraKicks).
+EDITOR_SPEEDS = (0.25, 6)
+KICK_FIELDS = ("id", "at", "zoom", "offset", "rollDeg", "attackMs", "holdMs", "releaseMs", "ease")
+KICK_ZOOM = (0.25, 4)
+DEPTH_STAGE_RE = re.compile(r"<DepthStage\b")
 
 
 def dig(value: Any, *keys: Any) -> Any:
@@ -90,6 +95,7 @@ class Checker:
         self._mwarn: Any = self.report.warn
         self._fonts: Dict[Tuple[str, str, str], Any] = {}
         self.outputs: List[Tuple[str, str, str, str]] = []
+        self.media_refs: List[Tuple[str, str, str]] = []
 
     # ── shared ────────────────────────────────────────────────────────────
 
@@ -145,6 +151,7 @@ class Checker:
             return
         if edit:
             self.outputs.append((file, path, rel, edit))
+        self.media_refs.append((file, path, rel))
         ext = rel.rsplit(".", 1)[-1].lower() if "." in rel.rsplit("/", 1)[-1] else ""
         if ext not in SUPPORTED_ASSET_EXTS:
             self.report.warn(file, path, f'"{rel}" has an unsupported extension ".{ext}"; use png/jpg/webp images, mp4/mov/webm video, mp3/wav/m4a audio')
@@ -232,6 +239,7 @@ class Checker:
                 for key in ("gainDb", "fadeInMs", "fadeOutMs", "startOffsetMs"):
                     if key in audio and not is_number(audio[key]):
                         rep.error(file, f"audio.{key}", "must be a number")
+                self.music_manifest(audio, warn, include_warnings)
         if "shared" in m and not isinstance(m["shared"], dict):
             rep.error(file, "shared", 'must be an object of constants, e.g. {"palette": {"accent": "#ff6a3d"}}; the app ignores anything else')
         persistent = m.get("persistent")
@@ -395,6 +403,8 @@ class Checker:
             for key, spec in looks.items():
                 self.text_look(file, f"textLookOverrides.{key}", spec)
         self.devices(file, doc)
+        self.device_media(file, doc)
+        self.camera_kicks(file, doc)
         layout = doc.get("deviceLayout")
         if isinstance(layout, dict) and "preset" in layout:
             self.enum(file, "deviceLayout.preset", layout["preset"], "deviceLayouts", "device layout")
@@ -425,6 +435,7 @@ class Checker:
                     self.font(file, f"frame.decorations[{i}].font", deco["font"])
         for keys in KEYED_TRACKS:
             self.keyed_track(file, ".".join(keys), dig(doc, *keys), allow_jump=keys[0] in ("camera", "cameraRig"))
+        self.music_keys(file, doc)
         self.motion_blur(file, "motionBlur", doc.get("motionBlur"))
         self.room(file, doc)
         self.taps(file, doc)
@@ -436,6 +447,90 @@ class Checker:
             if not isinstance(marks, list) or not all(is_int(t) and t >= 0 for t in marks) or marks != sorted(set(marks)):
                 rep.error(file, "stills.marksMs", "must be ascending, unique, whole milliseconds >= 0")
         self.assets_in(file, "", doc)
+
+    # ── music: audio.grid, cues, sections and `at` positions ──────────────
+
+    def music_manifest(self, audio: Dict[str, Any], warn: Any, include_warnings: bool) -> None:
+        """What the app's sanitiseAudioMusic drops (errors), bar: values with no grid, and a grid fitted to another file."""
+        from .beats import cache as beatcache
+        from .beats import model as beatmodel
+
+        spec, problems = beatmodel.sanitise_music(audio)
+        for path, why in problems:
+            self.report.error(MANIFEST, f"audio.{path}", f"{why} (the app drops it)")
+        grid = spec.get("grid")
+        if grid is None:
+            barred = [f"cues.{k}" for k, v in (spec.get("cues") or {}).items() if isinstance(v, str) and v.startswith("bar:")]
+            barred += [f"sections {s['id']}" for s in spec.get("sections") or [] if any(isinstance(s[e], str) and s[e].startswith("bar:") for e in ("from", "to"))]
+            if barred:
+                warn(MANIFEST, "audio.grid", f"{', '.join(barred[:4])} use bar: positions, which resolve only once there is a grid: ./kb song analyse, then ./kb beats set-grid --from-analysis")
+        source = grid.get("source") if grid else None
+        if include_warnings and isinstance(source, dict) and isinstance(source.get("sha256"), str):
+            rel = audio.get("file")
+            path = self.project.root / rel if isinstance(rel, str) and tsxmod.is_project_asset_ref(rel) else None
+            digest = beatcache.file_digest(path) if path is not None and path.is_file() else None
+            if digest is not None and digest != source["sha256"]:
+                warn(MANIFEST, "audio.grid.source.sha256", f"the grid was fitted to another file (its SHA-256 differs from {rel}); refit with ./kb song analyse --accept, or keep it if the music is the same")
+
+    def music_keys(self, file: str, doc: Dict[str, Any]) -> None:
+        """Positions on camera, rig and lighting keys and camera kicks that can't resolve, and `at` keys whose tMs cache is stale."""
+        from .beats import model as beatmodel
+
+        kicks = doc.get("cameraKicks") if isinstance(doc.get("cameraKicks"), list) else []
+        if not beatmodel.has_at(doc) and not any(isinstance(k, dict) and isinstance(k.get("at"), str) for k in kicks):
+            return
+        scope = self._music_scope(file)
+        if scope is None:
+            return
+        m, start = scope
+        stem = stem_of(file[:-5] + ".tsx") if file.endswith(".json") else file
+        for path, keys in beatmodel.timed_tracks(doc):
+            dotted = ".".join(path)
+            for i, key in enumerate(keys):
+                if not isinstance(key, dict) or "at" not in key:
+                    continue
+                where = f"{dotted}.keys[{i}].at"
+                at = key["at"]
+                if not isinstance(at, str):
+                    self.report.warn(file, where, 'must be a position string like "bar:13" (the app ignores it)')
+                    continue
+                r = beatmodel.resolve_local(at, m, start)
+                if not r["ok"]:
+                    self.music_position_issue(file, where, at, r, "the key stays at its stored tMs")
+                    continue
+                t = key.get("tMs")
+                if is_number(t) and t != r["projectMs"]:
+                    self.report.warn(file, f"{dotted}.keys[{i}].tMs", f'{t} isn\'t where "{at}" lands ({r["projectMs"]} ms), so the app uses {r["projectMs"]}: fine after a grid or timing change (the app rewrites it on load); to keep {t}, ./kb doc {stem} unset {dotted}.keys.{i}.at')
+        for i, kick in enumerate(kicks):
+            if isinstance(kick, dict) and isinstance(kick.get("at"), str):
+                r = beatmodel.resolve_local(kick["at"], m, start)
+                if not r["ok"]:
+                    self.music_position_issue(file, f"cameraKicks[{i}].at", kick["at"], r, "the app drops the kick")
+
+    def music_position_issue(self, file: str, where: str, at: str, r: Dict[str, Any], effect: str) -> None:
+        if r["code"] == "no-grid":
+            self.report.warn(file, where, f'"{at}" needs a beat grid, so {effect}: ./kb song analyse, then ./kb beats set-grid --from-analysis')
+        elif r["code"] == "unknown":
+            self.report.warn(file, where, f'"{at}": {r["message"]}, so {effect}. See ./kb beats')
+        else:
+            self.report.error(file, where, f'"{at}": {r["message"]} ({effect})')
+
+    def _music_scope(self, file: str) -> Optional[Tuple[Any, float]]:
+        """(the project's music, this sidecar's slot start), read once per check; None when project.json can't be read."""
+        from .beats import model as beatmodel
+
+        cached = getattr(self, "_music_cache", None)
+        if cached is None:
+            try:
+                manifest = self.project.manifest()
+                cached = (beatmodel.project_music(manifest), {s["stem"]: s["startMs"] for s in reversed(beatmodel.slots_of(self.project, manifest))})
+            except Exception:
+                cached = False
+            self._music_cache = cached
+        if not cached:
+            return None
+        stem = stem_of(file[:-5] + ".tsx") if file.endswith(".json") else file
+        return cached[0], cached[1].get(stem, 0)
 
     def motion_blur(self, file: str, path: str, block: Any) -> None:
         """The scene override; a bad field is dropped by the app, so the scene follows the project instead."""
@@ -483,7 +578,12 @@ class Checker:
                     rep.warn(file, f"{path}.{field}", f"not a room key field (the app ignores it).{did_you_mean(field, self.ROOM_KEY_FIELDS)}")
             at = key.get("at")
             if isinstance(at, str):
-                rep.error(file, f"{path}.at", "must be scene-local ms; positions like bar or cue strings aren't supported yet (the app drops the key)")
+                from . import music
+
+                if music.is_position(at):
+                    self.kick_position(file, f"{path}.at", at, "room key")
+                else:
+                    rep.error(file, f"{path}.at", 'must be scene-local ms or a position like "bar:13" or "cue:drop" (the app drops the key)')
             elif not is_number(at):
                 rep.error(file, f"{path}.at", "must be scene-local ms (the app drops the key)")
             elif at < 0:
@@ -966,6 +1066,152 @@ class Checker:
                 seen.add(key)
                 self.report.warn(rel, f"line {key[0]}", f'passes {key[1]} to Device, but scenes/{stem_of(rel)}.json has a deviceLayout, which owns device poses, so this fights the layout. Remove {key[1]} here, or delete deviceLayout')
 
+    # ── device media keys and camera kicks ────────────────────────────────
+
+    def device_media(self, file: str, doc: Dict[str, Any]) -> None:
+        """Every device screen spec (both displays, both comparison sides) under the app parser's source-timing rules."""
+        specs: List[Tuple[str, Dict[str, Any]]] = []
+        devices = doc.get("devices")
+        for i, d in enumerate(devices if isinstance(devices, list) else []):
+            if isinstance(d, dict) and isinstance(d.get("id"), str) and isinstance(d.get("model"), str):
+                specs += [(f"devices[{i}].{field}", d[field]) for field in ("media", "coverMedia") if isinstance(d.get(field), dict)]
+        side = dig(doc, "compare", "b")
+        for field in ("media", "coverMedia"):
+            overrides = side.get(field) if isinstance(side, dict) else None
+            if isinstance(overrides, dict):
+                specs += [(f'compare.b.{field}["{ident}"]', spec) for ident, spec in overrides.items() if isinstance(spec, dict)]
+        known = catmod.device_media_keys(self.cat)
+        for path, spec in specs:
+            self.media_spec(file, path, spec, known)
+
+    def media_spec(self, file: str, path: str, spec: Dict[str, Any], known: List[str]) -> None:
+        from .video import repoint
+
+        rep = self.report
+        for key in spec:
+            if key not in known:
+                rep.warn(file, f"{path}.{key}", f"unknown media key (the app ignores it).{did_you_mean(key, known)} See kb catalog deviceMedia.keys")
+        for key, why in repoint.media_key_problems(spec):
+            rep.error(file, f"{path}.{key}", f"{why}, so the app drops it")
+        timing = repoint.playback_timing(spec)
+        speed = timing.get("speed")
+        if speed is not None and not EDITOR_SPEEDS[0] <= speed <= EDITOR_SPEEDS[1]:
+            rep.warn(file, f"{path}.speed", f"{speed:g}x is outside the editor's {EDITOR_SPEEDS[0]:g}x to {EDITOR_SPEEDS[1]:g}x, so the inspector can't show it")
+        edit = edit_of_output(self.project, spec["src"]) if timing and isinstance(spec.get("src"), str) else None
+        if edit and any(k in timing for k in ("inMs", "outMs", "speed")):
+            rep.warn(file, path, f"retimes the render of edits/{edit}.json with {', '.join(k for k in ('inMs', 'outMs', 'speed') if k in timing)}, so two places now own its timing; trim and retime in the edit (./kb video trim {edit} ...), and kb video fit and align refuse this slot until then")
+        start = spec.get("startMs")
+        if "posterMs" in timing and not (is_number(start) and start > 0) and spec.get("startOn") is None:
+            rep.warn(file, f"{path}.posterMs", "is inert: a poster shows only during a delay (startMs above 0) or before a fold opens (startOn)")
+        duration = self.probed_duration_ms(spec.get("src")) if "inMs" in timing or "outMs" in timing else None
+        if duration:
+            if "inMs" in timing and timing["inMs"] >= duration:
+                rep.error(file, f"{path}.inMs", f'{timing["inMs"]} ms is at or past the end of {spec.get("src")} ({duration} ms), so the screen shows only its last frame')
+            if "outMs" in timing and timing["outMs"] > duration:
+                rep.warn(file, f"{path}.outMs", f'{timing["outMs"]} ms is past the end of {spec.get("src")} ({duration} ms), so playback stops at the end')
+
+    def probed_duration_ms(self, rel: Any) -> Optional[int]:
+        """The video's length from kb video's probe cache (no app call: checks run in hooks), None when unprobed or changed since."""
+        if not isinstance(rel, str) or not tsxmod.is_project_asset_ref(rel):
+            return None
+        try:
+            st = (self.project.root / rel).stat()
+        except OSError:
+            return None
+        cache = getattr(self, "_probe_cache", None)
+        if cache is None:
+            from .util import bridge_dir
+
+            try:
+                cache = json.loads((bridge_dir() / "video" / self.project.slug / "probe-cache.json").read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                cache = {}
+            self._probe_cache = cache if isinstance(cache, dict) else {}
+            cache = self._probe_cache
+        suffix = f"|{rel}|{st.st_size}|{st.st_mtime_ns}"
+        for key, value in cache.items():
+            if key.endswith(suffix) and isinstance(value, dict) and is_int(value.get("durationMs")) and value["durationMs"] > 0:
+                return value["durationMs"]
+        return None
+
+    def camera_kicks(self, file: str, doc: Dict[str, Any]) -> None:
+        """cameraKicks under the app parser's rules, positions that won't resolve, and orbit kicks that pull out past a DepthStage."""
+        kicks = doc.get("cameraKicks")
+        if kicks is None:
+            return
+        rep = self.report
+        if not isinstance(kicks, list):
+            rep.error(file, "cameraKicks", "must be an array of kicks like {\"at\": \"bar:13\", \"zoom\": 1.04, \"releaseMs\": 300} (the app drops it)")
+            return
+        from . import music
+
+        eases = self.ctx.ids("eases")
+        orbit = not (doc.get("cameraMode") == "rig" and isinstance(doc.get("cameraRig"), dict))
+        for i, kick in enumerate(kicks):
+            path = f"cameraKicks[{i}]"
+            if not isinstance(kick, dict):
+                rep.error(file, path, "must be an object {at, releaseMs, zoom | offset | rollDeg} (the app drops it)")
+                continue
+            for key in kick:
+                if key not in KICK_FIELDS:
+                    rep.warn(file, f"{path}.{key}", f"unknown kick field (the app ignores it).{did_you_mean(key, KICK_FIELDS)} Fields: {', '.join(KICK_FIELDS)}")
+            at = kick.get("at")
+            at_ok = (_finite(at) and at >= 0) or music.is_position(at)
+            if not at_ok:
+                rep.error(file, f"{path}.at", 'must be scene ms >= 0 or a position like "bar:13" or "cue:drop" (the app drops the kick)')
+            if not (_finite(kick.get("releaseMs")) and kick["releaseMs"] >= 0):
+                rep.error(file, f"{path}.releaseMs", "required: ms >= 0 the kick takes to ease back (the app drops the kick)")
+            if "id" in kick and not isinstance(kick["id"], str):
+                rep.error(file, f"{path}.id", "must be a string (the app drops it)")
+            zoom = kick.get("zoom")
+            zoom_ok = _finite(zoom) and KICK_ZOOM[0] <= zoom <= KICK_ZOOM[1]
+            if "zoom" in kick and not zoom_ok:
+                rep.error(file, f"{path}.zoom", f"must be a magnification {KICK_ZOOM[0]:g} to {KICK_ZOOM[1]:g} (1.04 pushes in 4%; the app drops it)")
+            offset_ok = isinstance(kick.get("offset"), list) and len(kick["offset"]) == 3 and all(_finite(v) for v in kick["offset"])
+            if "offset" in kick and not offset_ok:
+                rep.error(file, f"{path}.offset", "must be three numbers [x, y, z] in camera space (the app drops it)")
+            roll_ok = _finite(kick.get("rollDeg"))
+            if "rollDeg" in kick and not roll_ok:
+                rep.error(file, f"{path}.rollDeg", "must be a number of degrees (the app drops it)")
+            for field in ("attackMs", "holdMs"):
+                if field in kick and not (_finite(kick[field]) and kick[field] >= 0):
+                    rep.error(file, f"{path}.{field}", "must be ms >= 0 (the app drops it)")
+            if "ease" in kick and eases is not None:
+                self.enum(file, f"{path}.ease", kick["ease"], "eases", "ease")
+            if not (zoom_ok or offset_ok or roll_ok):
+                rep.error(file, path, "has no valid zoom, offset or rollDeg, so the app drops the kick")
+                continue
+            if at_ok and isinstance(at, str):
+                self.kick_position(file, f"{path}.at", at)
+            pulls = (zoom_ok and zoom < 1) or (offset_ok and any(v != 0 for v in kick["offset"])) or (roll_ok and kick["rollDeg"] != 0)
+            if orbit and pulls and self.stages_depth(file):
+                rep.warn(file, path, "pulls the orbit camera out (zoom below 1, an offset or a roll) in a scene that stages a DepthStage; orbit kicks get no overscan, so band edges can show. Push in with zoom above 1, or kick a rig camera")
+
+    def kick_position(self, file: str, path: str, at: str, what: str = "kick") -> None:
+        from . import music
+
+        stem = stem_of(file[:-5]) if file.endswith(".json") else None
+        try:
+            entries = self.project.scene_entries()
+            index = next((i for i, e in enumerate(entries) if isinstance(e, dict) and e.get("file") == f"scenes/{stem}.tsx"), None)
+            if index is None:
+                return
+            from .video import repoint
+
+            start = repoint.scene_starts(self.project)[index]
+            from .beats import model as beatmodel
+
+            result = beatmodel.resolve_local(at, beatmodel.project_music(self.project.manifest()), start)
+        except Exception:
+            return
+        if not result["ok"]:
+            hint = " (./kb song analyse, then ./kb beats set-grid --from-analysis)" if result["code"] == "no-grid" else ""
+            self.report.warn(file, path, f'"{at}" doesn\'t resolve: {result["message"]}, so the app drops this {what}{hint}')
+
+    def stages_depth(self, file: str) -> bool:
+        rel = f"{file[:-5]}.tsx" if file.endswith(".json") else file
+        return bool(DEPTH_STAGE_RE.search(tsxmod.blank_comments_and_strings(self.ctx.all_tsx().get(rel, ""))))
+
     def keyed_track(self, file: str, path: str, track: Any, allow_jump: bool) -> None:
         if not isinstance(track, dict):
             return
@@ -1357,6 +1603,10 @@ def stamp_stagger_exact(old: Any, new: Any) -> Any:
     return out
 
 
+def _finite(v: Any) -> bool:
+    return is_number(v) and math.isfinite(v)
+
+
 def free_id(base: str, taken: Set[Any]) -> str:
     if base not in taken:
         return base
@@ -1389,6 +1639,9 @@ def check_project(project: Project, files: Optional[List[str]] = None, heartbeat
         checker.strays()
         checker.theme_fonts()
         checker.edits()
+        from . import assets_check
+
+        assets_check.run(checker)
         return checker.report
     for f in files or []:
         if f == MANIFEST:

@@ -2,7 +2,7 @@
 
 TSX is for composition: what is mounted, where, and custom motion the sidecar cannot
 express. Copy, devices, camera, backgrounds and styling belong in the sidecar so the
-app's inspector stays live. Start new scenes from a preset (`kb scene add <stem>
+app's inspector stays live. Start new scenes from a preset (`./kb scene add <stem>
 --preset <slug>`) and adapt; write TSX from scratch only for bespoke compositions.
 
 ## Contract
@@ -64,6 +64,8 @@ needs no React import. Consequences:
 | `useSceneStaged()` | Whether a `SceneStage` owns lighting here |
 | `useRoom()` | The sidecar `room` now: `{ colour, key, flood: { colour, origin, progress, radius } \| null, pose }`, or null without a room. `colour` is null before the first key |
 | `useDepthBand()`, `useRigTrack()` | Inside `DepthStage`: the slot rect; the scene's rig track |
+| `useBeatGrid()` | The project's `audio.grid` in this scene's time, or null without one: `bar(13, 3)`, `at("cue:drop")`, `position(localMs)` (`{ bar, beat, sixteenth, beatPhase, barPhase }`), `local(projectMs)`, `project(localMs)`, `beatMs`, `barMs`, `bpm`, `beatsPerBar`. Times are integer scene-local ms (negative before the scene), the same frames a sidecar `"at": "bar:13"` lands on; `at()` throws on a position that can't resolve |
+| `useCues()` | `audio.cues` as `{ id: scene-local ms }`; `{}` without any |
 | `useProjectShared(path?, fallback?)` | `project.json` `shared` constants: `useProjectShared("palette.accent", theme.colors.accent)`; no path returns the whole block (reference/project.md) |
 | `useTextMetrics(textKey, text, opts?)` | `{ width, height, ascent, descent, lines }` of the block an `AnimatedHeadline` with those props draws (sidecar overrides included), or null for a frame while its font loads; size pills and underlines with it (reference/text.md) |
 | `useSceneCamera()` | The scene camera's pose this frame: `{ position, lookAt, fov, rollDeg? }` |
@@ -181,6 +183,21 @@ export default defineScene({
 - `fade(useTimeline(), [startMs, endMs])` gives `{ opacity }`;
   `slide(time, [startMs, endMs], "x")` gives `{ offset }` 1 to 0 (the axis argument is
   ignored: apply the offset yourself).
+- On the beat: `pulse(time, times, { attackMs?, holdMs?, releaseMs, ease? })` is a 0..1
+  level that fires at each scene-local time and falls back to 0 between them (overlaps take
+  the max). Give it an attack of at least 17 ms (one frame) so it smears instead of
+  ghosting under motion blur, and a fallback when `useBeatGrid()` is null:
+
+  ```tsx
+  import { pulse, useBeatGrid, useTimeline } from "@kookaburra/toolkit";
+  // inside Scene():
+  const time = useTimeline();
+  const grid = useBeatGrid();
+  const hits = grid ? [grid.bar(1), grid.bar(2), grid.bar(2, 3)] : [400, 1400, 1900];
+  const glow = pulse(time, hits, { attackMs: 17, releaseMs: 280 });
+  return <mesh scale={1 + glow * 0.06}>{/* geometry, material */}</mesh>;
+  ```
+
 - Randomness: `createSeededRandom(seed)` at module scope, for example
   `const rand = createSeededRandom(7); const DOTS = Array.from({ length: 40 }, () => [rand() * 2 - 1, rand()]);`.
   Never `Math.random`, `Date`, `performance.now`, timers or `requestAnimationFrame`.

@@ -42,7 +42,7 @@ impl Fail {
         Self::new("usage", message)
     }
 
-    fn with(mut self, key: &str, value: impl Into<Value>) -> Self {
+    pub(crate) fn with(mut self, key: &str, value: impl Into<Value>) -> Self {
         self.extra.insert(key.to_owned(), value.into());
         self
     }
@@ -112,7 +112,7 @@ pub(crate) fn finish(result: Result<Value, Fail>) -> i32 {
     }
 }
 
-fn print_line(value: &Value) {
+pub(crate) fn print_line(value: &Value) {
     let stdout = std::io::stdout();
     let mut out = stdout.lock();
     let _ = writeln!(out, "{value}");
@@ -176,13 +176,13 @@ impl Flags {
             .ok_or_else(|| Fail::usage(format!("--{key} is required")))
     }
 
-    fn has(&self, key: &str) -> bool {
+    pub(crate) fn has(&self, key: &str) -> bool {
         self.switches.iter().any(|s| s == key)
     }
 }
 
 /// `--project`: an absolute folder holding `project.json`; the CLI never consults the workspace root.
-fn project(flags: &Flags) -> Result<PathBuf, Fail> {
+pub(crate) fn project(flags: &Flags) -> Result<PathBuf, Fail> {
     let raw = flags.require("project")?;
     let path = PathBuf::from(raw);
     if !path.is_absolute() {
@@ -317,7 +317,8 @@ fn caps_in(args: &[String], app_data: Option<PathBuf>) -> Result<Value, Fail> {
         "checks": check::CHECKS,
         // kb's headless export refuses a binary without this: an older autorun auto-trusts and ignores KOOKABURRA_POSTER and KOOKABURRA_PROGRESS.
         "autorun": { "actions": ["export", "verify"], "trust": ["stored-only"], "poster": true, "progress": true },
-        "docVersion": { "read": edit::EDIT_VERSION_READ_MAX, "write": [1, edit::EDIT_VERSION_MASKS] },
+        "docVersion": { "read": edit::EDIT_VERSION_READ_MAX, "write": [1, edit::EDIT_VERSION_MASKS, edit::EDIT_VERSION_CROP] },
+        "song": { "analysisVersion": crate::song::ANALYSIS_VERSION, "trackers": crate::song::TRACKERS },
         "ffmpeg": { "path": tools.ffmpeg.to_string_lossy(), "ok": filters.is_ok() },
         "ffprobe": { "path": tools.ffprobe.to_string_lossy(), "ok": ffprobe_ok },
         "filters": filters.unwrap_or_default(),
@@ -335,13 +336,18 @@ fn caps_in(args: &[String], app_data: Option<PathBuf>) -> Result<Value, Fail> {
             "styles": ["solid", "blur", "pixelate"],
             "defaultStrength": crate::edit_masks::DEFAULT_STRENGTH,
             "defaultColor": "#000000",
+            "fades": true,
         },
+        "crop": true,
+        "zoom": true,
         "limits": {
             "minClipSourceMs": edit::MIN_CLIP_SOURCE_MS,
             "minHoldMs": edit::MIN_HOLD_MS,
             "defaultHoldMs": edit::DEFAULT_IMAGE_HOLD_MS,
             "defaultFps": 60,
         },
+        // kb checks this before `media …`: an older binary would start the GUI on the unknown verb.
+        "media": { "version": crate::conform::MEDIA_CLI_VERSION, "commands": crate::cli_media::CAPS_COMMANDS },
     }))
 }
 
@@ -879,13 +885,17 @@ mod tests {
             "checks",
             "autorun",
             "docVersion",
+            "song",
             "ffmpeg",
             "ffprobe",
             "filters",
             "hardwareVideo",
             "tap",
             "mask",
+            "crop",
+            "zoom",
             "limits",
+            "media",
         ];
         expected.sort();
         let mut got = keys.clone();
@@ -898,7 +908,14 @@ mod tests {
             caps["autorun"],
             json!({"actions": ["export", "verify"], "trust": ["stored-only"], "poster": true, "progress": true})
         );
-        assert_eq!(caps["docVersion"], json!({"read": 2, "write": [1, 2]}));
+        assert_eq!(caps["docVersion"], json!({"read": 3, "write": [1, 2, 3]}));
+        assert_eq!(caps["mask"]["fades"], true);
+        assert_eq!(caps["crop"], true);
+        assert_eq!(caps["zoom"], true);
+        assert_eq!(
+            caps["song"],
+            json!({"analysisVersion": 2, "trackers": ["nn", "dsp"]})
+        );
         assert_eq!(
             caps["tap"]["styles"][0],
             crate::tap_dot_frames::TAP_DOT_STYLES[0].0
@@ -909,6 +926,10 @@ mod tests {
         assert_eq!(
             caps["limits"],
             json!({"minClipSourceMs": 100, "minHoldMs": 100, "defaultHoldMs": 2000, "defaultFps": 60})
+        );
+        assert_eq!(
+            caps["media"],
+            json!({"version": 1, "commands": ["probe", "conform"]})
         );
     }
 

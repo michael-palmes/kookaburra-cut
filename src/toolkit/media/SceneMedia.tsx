@@ -20,8 +20,7 @@ import { frameLayerRenderOrder } from "../../engine/frameLayerOrder";
 import { useGizmoSectionOpen } from "../../engine/gizmoSections";
 import { useImageOverlayPreview, useImageStagePreview } from "../../engine/imageEditStore";
 import { motionBlurScale } from "../../engine/motionBlur";
-import { resolveAssetUrl } from "../../engine/project";
-import { ProjectIdContext, SceneDocContext, useSceneContext } from "../../engine/sceneContext";
+import { SceneDocContext, useSceneContext } from "../../engine/sceneContext";
 import { useSceneMedia } from "../../engine/sceneDoc";
 import type {
   SceneDocMediaSpec,
@@ -46,11 +45,11 @@ import {
   recordingCrop,
 } from "../../engine/sceneVideoWindow";
 import { useTimeline } from "../../engine/timeline";
-import { assetVersionKey, useAssetVersionStore } from "../../store/assetVersionStore";
-import { useEditorStore } from "../../store/editorStore";
+import { useProjectAssetUrl } from "../../engine/useProjectAssetUrl";
 import { useStageMapShadows } from "../stage/context";
 import type { FormatInfo } from "../types";
 import { AssetBoundary } from "./AssetBoundary";
+import { useClipStandInTexture } from "./conformStandIn";
 import {
   applyCardMask,
   type CardUniforms,
@@ -59,7 +58,6 @@ import {
   SHADOW_FRAG,
   SHADOW_VERT,
 } from "./LayeredScreenshot";
-import { preparingVideoTexture } from "./preparingTexture";
 import { StageImageGizmo, StageImageOutline } from "./StageImageGizmo";
 
 const DEG2RAD = Math.PI / 180;
@@ -260,20 +258,7 @@ function textureIntrinsics(texture: Texture): { width: number; height: number } 
 
 /** The still's loadable URL, or null for a clip (which the clip pipeline resolves from the project-relative src itself) and for anything unresolvable. */
 function useSceneImageUrl(src: string | null): string | null {
-  const contextProjectId = useContext(ProjectIdContext);
-  const storeProjectId = useEditorStore((state) => state.projectId);
-  const projectId = contextProjectId ?? storeProjectId;
-  const version = useAssetVersionStore((state) =>
-    src === null ? 0 : (state.versions[assetVersionKey(projectId, src)] ?? 0),
-  );
-  if (src === null) return null;
-  try {
-    const url = resolveAssetUrl(projectId, src);
-    return version > 0 ? `${url}?v=${version}` : url;
-  } catch (error) {
-    console.warn(`[image] "${src}" unresolved:`, error);
-    return null;
-  }
+  return useProjectAssetUrl(src, "[image]");
 }
 
 function useColourTexture(url: string): Texture {
@@ -529,7 +514,7 @@ function ClipPlane({
   const onBound = useCallback(() => {
     if (contentRef.current) contentRef.current.visible = true;
   }, []);
-  const { info } = useClipTexture({
+  const { info, ready } = useClipTexture({
     src,
     startMs,
     loop,
@@ -541,6 +526,7 @@ function ClipPlane({
   useLayoutEffect(() => {
     if (info && info.height > 0) onIntrinsics(info.width, info.height);
   }, [info, onIntrinsics]);
+  const standIn = useClipStandInTexture(src, rect.width / rect.height, true);
   return (
     <group ref={readyRef}>
       <group ref={contentRef} visible={false}>
@@ -548,14 +534,11 @@ function ClipPlane({
           <planeGeometry args={[rect.width, rect.height]} />
         </mesh>
       </group>
-      {/* While frames extract, the shared "Preparing video…" card fills the plane, PREVIEW ONLY: `isExporting()` stands it down and the export barriers mean no captured frame can sample it anyway. */}
-      {!info && !isExporting() && (
+      {/* While frames extract (or a conform still writes the clip), the shared stand-in card fills the plane, PREVIEW ONLY: `isExporting()` stands it down and the export barriers mean no captured frame can sample it anyway. */}
+      {!ready && !isExporting() && (
         <mesh renderOrder={renderOrder}>
           <planeGeometry args={[rect.width, rect.height]} />
-          <meshBasicMaterial
-            map={preparingVideoTexture(rect.width / rect.height, true)}
-            toneMapped={false}
-          />
+          <meshBasicMaterial map={standIn} toneMapped={false} />
         </mesh>
       )}
     </group>

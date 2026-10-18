@@ -47,6 +47,8 @@ base64 = { version = "0.23", default-features = false, features = ["std"] }
 # Naming the type of `RunEvent::Opened { urls }` (Open With); already in the lock via tauri.
 url = "2"
 png = "=0.18.1"
+# Song analysis: beat and downbeat tracking with the bundled beat-this small model (pure-Rust rten runtime; we decode with the ffmpeg sidecar, so no symphonia).
+beat-this = { version = "=1.1.0", default-features = false }
 
 # macOS-only: reach the real NSMenuItem to set a true SF Symbol on the Settings
 # menu entry (Tauri/muda's NativeIcon can't reference systemSymbolName images).
@@ -84,10 +86,73 @@ objc2-web-kit = { version = "=0.3.2", default-features = false, features = [
   "WKWebsiteDataStore",
 ] }
 block2 = "0.6"
+# Ingest conform (conform_av.rs): AVFoundation decodes in-process, so no second binary to sign; the 0.3.2 family the AppKit bindings already lock.
+objc2-av-foundation = { version = "0.3.2", default-features = false, features = [
+  "std",
+  "AVAsset",
+  "AVAssetReader",
+  "AVAssetReaderOutput",
+  "AVAssetTrack",
+  "AVAssetTrackSegment",
+  "AVMediaFormat",
+  "AVVideoSettings",
+  "objc2-core-foundation",
+  "objc2-core-media",
+] }
+objc2-core-foundation = { version = "0.3.2", default-features = false, features = [
+  "std",
+  "CFCGTypes",
+  "CFDictionary",
+  "CFNumber",
+  "CFString",
+] }
+objc2-core-media = { version = "0.3.2", default-features = false, features = [
+  "std",
+  "CMBase",
+  "CMFormatDescription",
+  "CMSampleBuffer",
+  "CMTime",
+  "CMTimeRange",
+  "objc2-core-video",
+] }
+objc2-core-video = { version = "0.3.2", default-features = false, features = [
+  "std",
+  "CVBase",
+  "CVBuffer",
+  "CVImageBuffer",
+  "CVPixelBuffer",
+  "CVReturn",
+] }
 # Never imported: pins the webview layer to tauri-runtime-wry's wry, so move it with tauri (one wry in the lock).
 wry = "=0.57.0"
+
+# Inference at opt-level 0 is far too slow for the dev app and tests, so dev builds optimise the beat-this stack.
+[profile.dev.package.beat-this]
+opt-level = 3
+[profile.dev.package.rten]
+opt-level = 3
+[profile.dev.package.rten-base]
+opt-level = 3
+[profile.dev.package.rten-gemm]
+opt-level = 3
+[profile.dev.package.rten-simd]
+opt-level = 3
+[profile.dev.package.rten-tensor]
+opt-level = 3
+[profile.dev.package.rten-vecmath]
+opt-level = 3
+[profile.dev.package.rubato]
+opt-level = 3
+[profile.dev.package.realfft]
+opt-level = 3
+[profile.dev.package.rustfft]
+opt-level = 3
 
 # macOS 27 dyld rejects optimised proc-macro dylibs (mis-aligned LINKEDIT string pool); opt-level 0 here covers only build scripts and proc macros, the shipped binary is unaffected.
 [profile.release.build-override]
 opt-level = 0
 debug = true
+
+# Unpacked debug info (the macOS default) leaves a new set of object files in target/debug/deps on every incremental rebuild of this crate (about 0.2 GB each).
+[profile.dev.package.kookaburra-cut]
+split-debuginfo = "off"

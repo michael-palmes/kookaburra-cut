@@ -242,6 +242,12 @@ face for all chart text. Use bundled families unless `./kb fonts check` passes
   `exponential`, `logarithmic`.
 - `startOffsetMs` skips into the track. `markers` holds user beat overrides
   (reference/beats.md).
+- `grid` (the beat grid), `cues` (named times) and `sections` make the music addressable
+  as `bar:13`, `cue:drop` and `section:chorus`. Write them with `./kb song analyse
+  --accept` and `./kb beats ...`, never by hand: kb validates them as the app does and
+  moves every key that follows them in the same write (reference/beats.md). A new
+  soundtrack keeps them, so refit (`./kb song analyse --accept`); `./kb check` warns
+  while the grid was fitted to another file.
 
 ## Effects (postprocessing)
 

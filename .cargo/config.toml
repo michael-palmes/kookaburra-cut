@@ -1,0 +1,3 @@
+# tauri dev and build export bundle.macOS.minimumSystemVersion as this; matching it stops plain cargo rebuilding the C crates (and everything above them) after a tauri build.
+[env]
+MACOSX_DEPLOYMENT_TARGET = "26.0"

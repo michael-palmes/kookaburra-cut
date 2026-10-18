@@ -1563,6 +1563,113 @@ describe("parseSceneDoc", () => {
   });
 });
 
+describe("parseSceneDoc device media keys", () => {
+  const video = { src: "assets/clip.mp4", kind: "video" } as const;
+  const parseMedia = (media: Record<string, unknown>) => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const doc = parseSceneDoc(
+      { version: 1, devices: [{ id: "d1", model: "iphone-17-pro", media }] },
+      "test",
+    );
+    const warnings = warn.mock.calls.map((call) => String(call[0]));
+    warn.mockRestore();
+    return { media: doc?.devices?.[0].media, warnings };
+  };
+
+  it("passes a legacy device through as the same object", () => {
+    const device = {
+      id: "d1",
+      model: "iphone-17-pro",
+      media: { ...video, startMs: -2000, fit: "cover", startOn: "open" },
+      coverMedia: { src: "assets/cover.png", kind: "image" },
+    };
+    const doc = parseSceneDoc({ version: 1, devices: [device] }, "test");
+    expect(doc?.devices?.[0]).toBe(device);
+  });
+
+  it("keeps valid playback keys verbatim", () => {
+    const media = { ...video, startMs: 400, inMs: 1000, outMs: 4000, speed: 2, loop: true };
+    const parsed = parseMedia({ ...media, posterMs: 0 });
+    expect(parsed.media).toEqual({ ...media, posterMs: 0 });
+    expect(parsed.warnings).toEqual([]);
+  });
+
+  it("drops a malformed key alone, keeping the legacy fields", () => {
+    const parsed = parseMedia({
+      ...video,
+      startMs: 250,
+      fit: "cover",
+      inMs: 12.5,
+      outMs: -1,
+      posterMs: "0",
+      speed: 1.5,
+      loop: "yes",
+    });
+    expect(parsed.media).toEqual({ ...video, startMs: 250, fit: "cover", speed: 1.5 });
+    expect(parsed.warnings).toHaveLength(4);
+    expect(parsed.warnings[0]).toContain("devices[0].media.inMs");
+  });
+
+  it("bounds speed to 0 < s <= 16", () => {
+    for (const speed of [0, -1, 16.01, Number.POSITIVE_INFINITY, Number.NaN, "2"]) {
+      expect(parseMedia({ ...video, speed }).media, String(speed)).toEqual(video);
+    }
+    expect(parseMedia({ ...video, speed: 16 }).media?.speed).toBe(16);
+    expect(parseMedia({ ...video, speed: 0.1 }).media?.speed).toBe(0.1);
+  });
+
+  it("drops an out point that trims the whole video", () => {
+    expect(parseMedia({ ...video, inMs: 1000, outMs: 1016 }).media).toEqual({
+      ...video,
+      inMs: 1000,
+    });
+    const parsed = parseMedia({ ...video, outMs: 10 });
+    expect(parsed.media).toEqual(video);
+    expect(parsed.warnings[0]).toContain("trims the whole video");
+    expect(parseMedia({ ...video, inMs: 1000, outMs: 1017 }).media?.outMs).toBe(1017);
+  });
+
+  it("drops a trim-in beside a negative startMs", () => {
+    const parsed = parseMedia({ ...video, startMs: -500, inMs: 1000, outMs: 3000 });
+    expect(parsed.media).toEqual({ ...video, startMs: -500, outMs: 3000 });
+    expect(parsed.warnings[0]).toContain("use inMs for a trim and startMs for a delay");
+    expect(parseMedia({ ...video, startMs: 0, inMs: 1000 }).media?.inMs).toBe(1000);
+  });
+
+  it("drops every playback key from an image", () => {
+    const image = { src: "assets/screen.png", kind: "image" };
+    const parsed = parseMedia({ ...image, inMs: 0, speed: 2, loop: true });
+    expect(parsed.media).toEqual(image);
+    expect(parsed.warnings).toHaveLength(3);
+  });
+
+  it("checks the outside display and comparison side B the same way", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const legacyB = { ...video, startMs: 300 };
+    const doc = parseSceneDoc(
+      {
+        version: 1,
+        devices: [{ id: "d1", model: "iphone-17-pro", coverMedia: { ...video, speed: 99 } }],
+        compare: {
+          b: {
+            media: { d1: { ...video, loop: 1, inMs: 500 } },
+            coverMedia: { d1: legacyB },
+          },
+        },
+      },
+      "test",
+    );
+    expect(doc?.devices?.[0].coverMedia).toEqual(video);
+    expect(doc?.compare?.b?.media?.d1).toEqual({ ...video, inMs: 500 });
+    expect(doc?.compare?.b?.coverMedia?.d1).toBe(legacyB);
+    expect(warn.mock.calls.map((call) => String(call[0]))).toEqual([
+      expect.stringContaining("devices[0].coverMedia.speed"),
+      expect.stringContaining('compare.b.media["d1"].loop'),
+    ]);
+    warn.mockRestore();
+  });
+});
+
 describe("parseSceneDoc stills", () => {
   it("keeps exclude and normalises marks: finite, non-negative, rounded, unique, ascending", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});

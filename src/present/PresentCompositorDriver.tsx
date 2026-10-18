@@ -1,6 +1,7 @@
 import { useFrame, useThree } from "@react-three/fiber";
 import { useEffect, useMemo, useRef } from "react";
 import type { PerspectiveCamera } from "three";
+import { applyCameraKicks } from "../engine/cameraKicks";
 import { applyCameraTrack, sampleCameraTrack } from "../engine/cameraTrack";
 import { useClockStore } from "../engine/clock";
 import { renderComposited } from "../engine/compositor";
@@ -20,6 +21,7 @@ import {
   orbitToView,
   resolveFrameCameras,
   sceneCameraEndMs,
+  sceneCameraTiming,
 } from "../engine/sceneCamera";
 import { getSceneHosts } from "../engine/sceneHostRegistry";
 import { buildLightingTracks } from "../engine/sceneLighting";
@@ -70,7 +72,8 @@ export function PresentCompositorDriver({
   const format = useFormat();
   const sceneFloorYs = useSceneStageFloors(project.slots.length);
   const sceneTracks = useMemo(
-    () => buildSceneCameraTracks(project.sceneDocs, format, sceneFloorYs),
+    () =>
+      buildSceneCameraTracks(project.sceneDocs, format, sceneFloorYs, sceneCameraTiming(project)),
     [project, format, sceneFloorYs],
   );
   const lightingTracks = useMemo(
@@ -96,6 +99,7 @@ export function PresentCompositorDriver({
         sceneThemes: project.sceneThemes,
         roomThemes: project.roomThemes,
         projectLighting: project.projectLighting,
+        timing: sceneCameraTiming(project),
       }),
     [project],
   );
@@ -282,20 +286,20 @@ export function PresentCompositorDriver({
         const loop = slotDoc?.cameraRig?.presentLoop;
         if (loop) {
           const s = sampleLoopedSceneRig(tracks.rig, loopRawMs, loop);
-          plan = {
-            solo: {
-              position: s.position,
-              lookAt: s.lookAt,
-              fov: s.fov ?? fov,
-              rollDeg: s.rollDeg,
-            },
+          const solo = {
+            position: s.position,
+            lookAt: s.lookAt,
+            fov: s.fov ?? fov,
+            rollDeg: s.rollDeg,
           };
+          plan = { solo: applyCameraKicks(solo, tracks.kicks, loopRawMs) };
         }
       } else if (tracks?.orbit) {
         const loop = slotDoc?.camera?.presentLoop;
         if (loop) {
           const view = orbitToView(sampleLoopedSceneCamera(tracks.orbit, loopRawMs, loop));
-          plan = { solo: { position: view.position, lookAt: view.lookAt, fov } };
+          const solo = { position: view.position, lookAt: view.lookAt, fov };
+          plan = { solo: applyCameraKicks(solo, tracks.kicks, loopRawMs) };
         }
       }
     }

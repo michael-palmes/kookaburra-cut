@@ -14,6 +14,8 @@ export interface AppSettings {
   disableOpeningPosterFrame?: boolean;
   /** Inverted flag so its default (false) means hardware video ON. */
   disableHardwareVideo?: boolean;
+  /** Inverted flag so its default (false) means Conform new videos ON. */
+  disableConformNewVideos?: boolean;
   /** Inverted flag so its default (false) means app exports land in ~/Downloads. */
   keepExportsInProject?: boolean;
   /** Playback slowdown-badge sensitivity: "off" | "sustained" | "strict"; absent = "off". */

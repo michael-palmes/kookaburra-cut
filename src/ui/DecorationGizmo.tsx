@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useAssetRevisions } from "../engine/assetRevisions";
 import { useCameraEditStore } from "../engine/cameraEditStore";
 import { useDecorationEditStore } from "../engine/decorationEditStore";
 import {
@@ -127,18 +128,24 @@ export function DecorationGizmo({
 
   // Each decoration image's natural aspect, for the box height (shape "none"); circle stays square.
   const srcKey = decorations.map((d) => d.src ?? "").join("|");
-  // biome-ignore lint/correctness/useExhaustiveDependencies: srcKey stands in for decorations; the array itself is a fresh identity each render
+  // An in-place replace moves a revision, so its new URL is measured again.
+  const revisionKey = useAssetRevisions(
+    project.id,
+    decorations.flatMap((d) => (d.src ? [d.src] : [])),
+  );
+  // biome-ignore lint/correctness/useExhaustiveDependencies: srcKey and revisionKey stand in for decorations; the array itself is a fresh identity each render
   useEffect(() => {
     let alive = true;
     for (const d of decorations) {
-      if (!d.src || requested.current.has(d.src)) continue;
-      requested.current.add(d.src);
+      if (!d.src) continue;
       let url: string;
       try {
         url = resolveAssetUrl(project.id, d.src);
       } catch {
         continue;
       }
+      if (requested.current.has(url)) continue;
+      requested.current.add(url);
       const img = new Image();
       const src = d.src;
       img.onload = () => {
@@ -151,7 +158,7 @@ export function DecorationGizmo({
     return () => {
       alive = false;
     };
-  }, [srcKey, project.id]);
+  }, [srcKey, revisionKey, project.id]);
 
   // Text decoration boxes come from the panel's troika measurement cache; the estimate stands in until each lands.
   const textKey = decorations

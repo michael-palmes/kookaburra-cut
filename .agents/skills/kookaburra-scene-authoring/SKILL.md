@@ -72,6 +72,8 @@ the app, and never claim the preview matches the files.
   Bash calls. Big batches are what stall the GPU.
 - Exact colours: `--probe x,y[,x,y...]` returns the pixel values; never judge a hex by
   reading a PNG.
+- On the music: `--at bar:13` (or `cue:drop`) captures the scene that owns that moment, and
+  `--frames bars:13-16` each downbeat, once the project has a beat grid (reference/beats.md).
 - kb copies every PNG into `.kb/captures/<time>-<agent>/` and prints those paths: Read them.
 - `GPU stalled` (exit 3): the render window recycled itself; wait `retryAfterMs`, rerun
   with fewer or smaller frames. `GPU wedged` (exit 2): stop capturing and ask the user to
@@ -113,14 +115,17 @@ it is:
   sidecar `textStyle`, never hard-coded in TSX.
 - Lay out with `useFormat()`: `frame` and `safe` are world units at z = 0; branch on
   `aspect < 1` for portrait.
-- Assets live in `assets/` (copy in with `./kb assets add`); exact case; images png, jpg,
-  jpeg, webp; videos mp4, mov, m4v, webm.
+- Assets live in `assets/` (copy in with `./kb assets add` and use the path it prints: a
+  recording it conforms lands as `<stem>.mp4`); exact case; images png, jpg, jpeg, webp;
+  videos mp4, mov, m4v, webm.
 - Fonts: bundled families are always safe (`./kb fonts safe`). Any other Font Book family
   needs `./kb fonts check "Family@weight"` first; a face that fails silently falls back.
 - `./kb doc` paths walk objects and array indexes (`devices.0.colour`); a write that
   would add errors is refused, so read the message instead of forcing it.
-- Never re-encode, trim or overwrite media with ffmpeg: scenes and edits point at the
-  file. Edited versions come from `./kb video render` (`assets/<name>-edited.mp4`).
+- Never re-encode, trim or overwrite media with ffmpeg or a copy: scenes and edits point
+  at the file. New bytes under a name come from `./kb assets replace`, a conformed copy
+  from `./kb assets conform`, edited versions from `./kb video render`
+  (`assets/<name>-edited.mp4`).
 
 ## Live edits
 
@@ -143,16 +148,16 @@ since the user last allowed it), ask the user to open it once in the app.
 | Whole look | `themeId` (project or scene) | reference/project.md | `themes` |
 | Background, floor | `background`, `backdrop` | reference/backgrounds.md | `backgrounds.shaders`, `backgrounds.scene3d` |
 | Lighting, exposure | `lighting`; project `render` | reference/lighting.md | `lighting.presets` |
-| Phones, laptops, tablets | `devices`, `deviceLayout`, `deviceTrack` | reference/devices.md | `devices`, `deviceShadows` |
+| Phones, laptops, tablets, screen timing | `devices`, `deviceLayout`, `deviceTrack` | reference/devices.md | `devices`, `deviceShadows`, `deviceMedia.keys` |
 | Before/after wipe | `compare` | reference/devices.md | `compare.presets` |
-| Camera moves, depth of field, motion blur | `camera`, `cameraRig`, key `dof`, `motionBlur` | reference/camera.md | `camera.presets`, `camera.motionBlur`, `eases` |
-| Images, videos, screenshot stacks | `media`, `layeredScreenshot`, video `background` | reference/media.md | `mediaMotion` |
+| Camera moves, kicks, depth of field, motion blur | `camera`, `cameraRig`, `cameraKicks`, key `dof`, `motionBlur` | reference/camera.md | `camera.presets`, `camera.motionBlur`, `eases` |
+| Images, videos, screen recordings, screenshot stacks | `./kb assets`, `media`, `layeredScreenshot`, video `background` | reference/media.md | `mediaMotion` |
 | Tiled split field, tap pulses on a scene or screen | `mosaic`, `taps` | reference/media.md | |
 | Trim, speed, freeze, taps, blur inside a video | `./kb video` | kookaburra-video-editing skill | |
 | Charts and numbers | `chart` | reference/charts.md | `charts.styles`, `charts.animations` |
 | Slide panel, overlay, stills, PDF | `frame`, `stills` | reference/sidecar.md | `chipIcons` |
 | Order, duration, transitions, music | `./kb scene`, `project.json` | reference/project.md | `transitions` |
-| Sync to the soundtrack | camera keys, text timing | reference/beats.md | |
+| Sync to the soundtrack | `./kb song`, `./kb beats`, `at` on keys, `cameraKicks` | reference/beats.md | |
 | New scene, custom 3D composition | `./kb scene add`, TSX | reference/scenes.md | `presets`, `toolkit.exports` |
 | The finished film, flash safety | `./kb export`, `./kb verify-export`, `./kb check film` | reference/export.md | `exportPresets` |
 | Constants shared by scenes (palette, timings) | `project.json` `shared`, `useProjectShared` | reference/project.md | |
@@ -168,10 +173,12 @@ kookaburra-video-editing skill. Something behaves oddly (stale preview, a fade w
 word, colours off, a stall): reference/gotchas.md first. Topic files in reference/:
 project (project.json, themes, transitions, music, effects), sidecar (every key,
 overlays, stills, keyed tracks), scenes (TSX), text (copy, fonts, motion, looks),
-devices (devices, layouts, objects, before/after), camera, backgrounds, lighting, media,
-charts, beats, export (exports, film checks, the flash gate), gotchas (symptom, cause,
-fix). Worked examples: `./kb presets show <slug>`, and template scenes under the app's
-Resources folder (`./kb status` prints it): `projects/<template>/scenes/`.
+devices (devices, screen timing, layouts, objects, before/after), camera (keys, kicks),
+backgrounds, lighting, media (assets, screen recordings, conform), charts, beats (the
+beat grid, cues, musical positions), export (exports, film checks, the flash gate),
+gotchas (symptom, cause, fix). Worked examples: `./kb presets show <slug>`, and template
+scenes under the app's Resources folder (`./kb status` prints it):
+`projects/<template>/scenes/`.
 
 ## kb cheat sheet
 
@@ -180,21 +187,23 @@ Resources folder (`./kb status` prints it): `projects/<template>/scenes/`.
 | `./kb status`, `./kb context` | App, open project, aspect, last load errors, leases, notes; session summary |
 | `./kb scenes` | Roster: index, stem, name, duration, transition, text |
 | `./kb check [--app] [--render] [files]` | Static checks; `--app` real compile and load |
-| `./kb capture [--scene S] [--at T] [--aspect A] [--frames S@T,...] [--sheet] [--scale F] [--probe X,Y]` | Rendered PNGs to Read |
+| `./kb capture [--scene S] [--at SEC\|POS] [--aspect A] [--frames S@SEC,POS,bars:A-B,beats:A-B] [--sheet] [--scale F] [--probe X,Y]` | Rendered PNGs to Read |
 | `./kb verify [--scene S] [--aspect A] [--no-render] [--film]` | Every check before calling the work done |
 | `./kb scene add <name> --preset P [--after S \| --at N] [--duration MS] [--name N]` | Insert a preset scene, numbered stem (or `--copy S`); default position is the end |
-| `./kb scene duplicate S`, `move S --to N`, `remove S`, `set S --duration MS --transition TYPE:MS\|none --ease E` | Manifest-safe scene operations (indexes 0-based) |
+| `./kb scene duplicate S`, `move S --to N`, `remove S`, `set S --duration MS\|--duration-bars N\|--cut-at POS --transition TYPE:MS\|none --ease E` | Manifest-safe scene operations (indexes 0-based) |
 | `./kb doc S get [path]`, `set path value [--string]`, `unset path`, `merge JSON` | Sidecar edits; values parse as JSON, else string; merge is a JSON merge patch |
 | `./kb project get [path]`, `./kb project set path value` | project.json fields other than scenes |
 | `./kb theme list`, `show [id]`, `set path value` | Themes and tokens |
 | `./kb fonts safe`, `check REF...`, `list` | Font safety |
 | `./kb presets [list \| show SLUG]` | Scene presets with preview images |
 | `./kb catalog [FAMILY] [--search Q]` | Ids and enums from the app's registries |
-| `./kb assets list`, `add PATH [--name N]`, `probe ASSET` | Media in, never overwriting; ffprobe |
+| `./kb assets list`, `add PATH [--name N] [--no-conform]`, `probe ASSET [--deep]`, `conform ASSET [--repoint]`, `replace NAME FILE [--as-new]`, `unused [--archive]`, `restore [ID]`, `meta NAME [--set K=V]` | Media in (flagged videos conformed, never overwriting), decode verdict, safe replace and cleanup (reference/media.md) |
 | `./kb plan <command ...>` | What a structural command would write or refuse; writes nothing |
 | `./kb checkpoint [MSG] [--scene S]`, `history`, `undo [REV] [--scene S]`, `diff` | Git safety net |
 | `./kb lease S`, `leases`, `note TEXT [--scene S]`, `notes`, `events [--follow]` | Several agents: who edits what, messages, the event feed |
 | `./kb export [--aspect A] [--preset ID]`, `./kb verify-export FILE`, `./kb check film` | The finished film and its checks (reference/export.md) |
-| `./kb beats ...`, `./kb chart ...` | Soundtrack beats; chart data and keys |
+| `./kb song analyse [--accept] [--lyrics]` | The soundtrack's tempo fit, downbeat, sections (reference/beats.md) |
+| `./kb beats [--scene S]`, `set-grid`, `set-downbeat`, `clear-grid`, `cue`, `section`, `resolve` | The beat grid, cues, sections, positions |
+| `./kb chart ...` | Chart data and keys |
 | `./kb video ...` | Edit recordings: cuts, speed, taps, masks, fit (kookaburra-video-editing skill) |
 | `./kb debug contexts` | The app's WebGL contexts, when captures keep stalling |

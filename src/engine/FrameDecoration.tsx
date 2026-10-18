@@ -1,7 +1,6 @@
 import { useTexture } from "@react-three/drei";
-import { useContext, useEffect, useLayoutEffect, useMemo } from "react";
+import { useEffect, useLayoutEffect, useMemo } from "react";
 import { MeshBasicMaterial, SRGBColorSpace, type Texture } from "three";
-import { useEditorStore } from "../store/editorStore";
 import { parseFontString } from "../theme/fontRef";
 import { isTextDecoration } from "../toolkit/frame/icon";
 import type { FrameDecorationSpec } from "../toolkit/frame/types";
@@ -11,9 +10,9 @@ import type { FormatInfo } from "../toolkit/types";
 import { frameLayerRenderOrder } from "./frameLayerOrder";
 import { useHeldLocalMs } from "./presentHold";
 import { registerPresentTiming } from "./presentTimingRegistry";
-import { resolveAssetUrl } from "./project";
-import { ProjectIdContext, useSceneContext } from "./sceneContext";
+import { useSceneContext } from "./sceneContext";
 import { useTimeline } from "./timeline";
+import { useProjectAssetUrl } from "./useProjectAssetUrl";
 
 /** Crops a square plane to a disc via an SDF alpha on the raw plane uv (not the map uv), the `ImageCard` shine precedent; a pure function of uv, so AA is compile-stable. A circle decoration expects a roughly square source. */
 function applyCircleMask(material: MeshBasicMaterial): void {
@@ -62,22 +61,16 @@ export function FrameDecoration({
   /** Array index within the panel's decorations, added to the layer band for a stable front/back order. */
   order?: number;
 }) {
-  const contextProjectId = useContext(ProjectIdContext);
-  const storeProjectId = useEditorStore((s) => s.projectId);
-  const projectId = contextProjectId ?? storeProjectId;
+  const url = useProjectAssetUrl(
+    isTextDecoration(decoration) ? null : decoration.src,
+    "[frame] decoration",
+  );
   if (isTextDecoration(decoration)) {
     return (
       <TextDecoration decoration={decoration} format={format} from={from} to={to} order={order} />
     );
   }
-  if (!decoration.src) return null;
-  let url: string | null = null;
-  try {
-    url = resolveAssetUrl(projectId, decoration.src);
-  } catch (e) {
-    console.warn(`[frame] decoration "${decoration.src}" unresolved:`, e);
-  }
-  if (!url) return null;
+  if (!decoration.src || !url) return null;
   return (
     <AssetBoundary key={url} label={decoration.src}>
       <LoadedDecoration

@@ -567,7 +567,12 @@ export function normalizeLightingTrack(
     }
     seen.add(key.id);
     const pose = normalizePose(key.pose, lightIds, fixtureIds, source);
-    keys.push({ id: key.id, tMs: key.tMs < 0 ? 0 : key.tMs, pose });
+    const tMs = key.tMs < 0 ? 0 : key.tMs;
+    keys.push(
+      typeof key.at === "string"
+        ? { id: key.id, tMs, at: key.at, pose }
+        : { id: key.id, tMs, pose },
+    );
   }
   if (keys.length === 0) return null;
   keys.sort((a, b) => a.tMs - b.tMs);

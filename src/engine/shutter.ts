@@ -1,3 +1,4 @@
+import { cameraKickBreaks } from "./cameraKicks";
 import { projectToStage, viewBasis } from "./cameraProject";
 import type { CameraPose } from "./cameraTrack";
 import { ease } from "./ease";
@@ -37,7 +38,7 @@ export function shutterUnitOffsets(samples: number): number[] {
   return Array.from({ length: n }, (_, k) => (k + 0.5) / n - 0.5);
 }
 
-/** Times where a camera track snaps rather than moves: the end of any segment with a `jump` channel, and any key not reached by a segment (a held key switching). A shutter window never samples across one. */
+/** Times where a camera track snaps rather than moves: the end of any segment with a `jump` channel, any key not reached by a segment (a held key switching), and a kick's snaps (`cameraKickBreaks`: a zero attack's start, so the snap never ghosts and the release smears). A shutter window never samples across one. */
 export function cameraBreaks(tracks: SceneCameraTracks | null | undefined): number[] {
   if (!tracks) return [];
   const breaks = new Set<number>();
@@ -61,6 +62,7 @@ export function cameraBreaks(tracks: SceneCameraTracks | null | undefined): numb
       if (i > 0 && !reached.has(key.id)) breaks.add(key.tMs);
     });
   }
+  for (const t of cameraKickBreaks(tracks.kicks)) breaks.add(t);
   return [...breaks].sort((a, b) => a - b);
 }
 

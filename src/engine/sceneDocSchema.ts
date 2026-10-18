@@ -46,6 +46,7 @@ import {
   parseSceneMotionBlur,
   type SceneDocMotionBlur,
 } from "./motionBlur";
+import { isMusicPosition } from "./musicTime";
 import { parseWarn } from "./parseWarnings";
 import { normalizeLighting } from "./sceneLighting";
 import {
@@ -293,10 +294,34 @@ export interface SceneDocCameraPose {
   shutterDeg?: number;
 }
 
+/** A time in a sidecar: scene-local ms, or a musical position (`"bar:13.3"`, `"cue:drop"`) resolved at load by `engine/musicTime.ts`. */
+export type SceneDocTimePosition = number | string;
+
+/** A camera kick: an attack, hold, release push added on top of whichever pose drives the scene (rig, orbit, project or base), a pure function of time. */
+export interface SceneDocCameraKick {
+  id?: string;
+  /** Scene-local start of the kick. */
+  at: SceneDocTimePosition;
+  /** Magnification at the peak (1.04 is 4% in), applied in tan space. */
+  zoom?: number;
+  /** Camera-space shift at the peak (+x right, +y up, +z back), moving the look point too. */
+  offset?: [number, number, number];
+  rollDeg?: number;
+  /** Default 0 (a snap). */
+  attackMs?: number;
+  /** Default 0. */
+  holdMs?: number;
+  releaseMs: number;
+  /** An `engine/ease.ts` name; default `"outQuad"`. */
+  ease?: string;
+}
+
 export interface SceneDocCameraKey {
   id: string;
   /** Scene-local time, ms. */
   tMs: number;
+  /** Musical position this key sits on; `tMs` caches its resolved value and a move that disagrees drops it. */
+  at?: string;
   pose: SceneDocCameraPose;
   /** Marks this key as a stills export page (see engine/stills.ts). */
   still?: true;
@@ -342,6 +367,8 @@ export interface SceneDocRigKey {
   id: string;
   /** Scene-local time, ms. */
   tMs: number;
+  /** Musical position this key sits on; `tMs` caches its resolved value and a move that disagrees drops it. */
+  at?: string;
   pose: SceneDocRigPose;
   /** First key only: start from the previous scene's final pose (resolved at load). */
   continueFromPrevious?: boolean;
@@ -607,6 +634,8 @@ export interface SceneDoc {
     segments: SceneDocRigSegment[];
     presentLoop?: SceneDocCameraPresentLoop;
   };
+  /** Camera kicks added at render on whichever pose drives the scene, in either mode (see `engine/cameraKicks.ts`); never expanded into keys. */
+  cameraKicks?: SceneDocCameraKick[];
   /** Theme override for this scene: a theme id that swaps the whole theme (colours, typography, lighting, backdrop, effects base); absent falls back to the project's theme, and unknown ids degrade rather than crash. */
   themeId?: string;
   /** Staging override: replaces the theme's backdrop for this scene. */
@@ -723,8 +752,8 @@ export interface SceneDocRoomLighting {
 }
 
 export interface SceneDocRoomKey {
-  /** Scene-local ms. Kept raw so a value this build can't resolve survives a write (see `resolveRoomAt`). */
-  at: number | string;
+  /** Scene-local ms or a musical position, resolved at build (see `resolveRoomAt`). */
+  at: SceneDocTimePosition;
   /** Hex or a theme colour token of the room's palette; absent takes the `themeId` theme's background, else the previous room. */
   colour?: string;
   /** Reads this theme's colours and lights; it never swaps the scene's theme. */
@@ -1288,6 +1317,54 @@ function parseDeviceLayout(raw: unknown, source: string): SceneDocDeviceLayout |
   return out;
 }
 
+const DEVICE_MEDIA_PLAYBACK_KEYS = ["inMs", "outMs", "speed", "loop", "posterMs"] as const;
+
+/** A device screen's source-timing keys: a bad one warns and drops alone, legacy fields stay verbatim, and `spec` itself comes back when nothing drops (no duration checks: nothing is probed at parse). */
+function parseDeviceMediaKeys(
+  spec: DeviceMediaSpec,
+  source: string,
+  label: string,
+): DeviceMediaSpec {
+  if (DEVICE_MEDIA_PLAYBACK_KEYS.every((key) => spec[key] === undefined)) return spec;
+  const out: DeviceMediaSpec = { ...spec };
+  let dropped = false;
+  const drop = (key: (typeof DEVICE_MEDIA_PLAYBACK_KEYS)[number], why: string) => {
+    delete out[key];
+    dropped = true;
+    console.warn(`[sceneDoc] ${source}: ${label}.${key} ${why}, dropped`);
+  };
+  if (spec.kind !== "video") {
+    for (const key of DEVICE_MEDIA_PLAYBACK_KEYS) {
+      if (spec[key] !== undefined) drop(key, "only applies to a video");
+    }
+    return out;
+  }
+  for (const key of ["inMs", "outMs", "posterMs"] as const) {
+    const value: unknown = spec[key];
+    if (value !== undefined && !(Number.isInteger(value) && (value as number) >= 0)) {
+      drop(key, "isn't a whole number of ms, 0 or more");
+    }
+  }
+  const speed: unknown = spec.speed;
+  if (
+    speed !== undefined &&
+    !(typeof speed === "number" && Number.isFinite(speed) && speed > 0 && speed <= 16)
+  ) {
+    drop("speed", "isn't a number above 0 and at most 16");
+  }
+  if (spec.loop !== undefined && typeof spec.loop !== "boolean") drop("loop", "isn't a boolean");
+  if (out.inMs !== undefined && typeof spec.startMs === "number" && spec.startMs < 0) {
+    drop(
+      "inMs",
+      "can't combine with a negative startMs (use inMs for a trim and startMs for a delay)",
+    );
+  }
+  if (out.outMs !== undefined && out.outMs <= (out.inMs ?? 0) + 16) {
+    drop("outMs", "trims the whole video (it must pass inMs by more than 16 ms)");
+  }
+  return dropped ? out : spec;
+}
+
 const COMPARE_GRIP_STYLES: SceneDocCompareGripStyle[] = ["chevrons", "dot", "bar", "arrows"];
 const COMPARE_HEX = /^#[0-9a-fA-F]{6}$/;
 
@@ -1332,7 +1409,7 @@ function parseCompare(raw: unknown, source: string): SceneDocCompare | undefined
           spec.src.length > 0 &&
           (spec.kind === "video" || spec.kind === "image")
         ) {
-          media[id] = spec;
+          media[id] = parseDeviceMediaKeys(spec, source, `compare.b.${field}["${id}"]`);
         } else {
           parseWarn(`[sceneDoc] ${source}: compare.b.${field}["${id}"] is malformed, dropped`);
         }
@@ -2097,6 +2174,68 @@ function parseMosaic(raw: unknown, source: string): SceneDocMosaic | undefined {
   return mosaic;
 }
 
+/** Magnification range a kick's `zoom` may author. */
+export const CAMERA_KICK_ZOOM_MIN = 0.25;
+export const CAMERA_KICK_ZOOM_MAX = 4;
+
+const nonNegativeMs = (v: unknown): v is number => finiteNum(v) && v >= 0;
+
+/** Warn and drop: a kick without a valid `at` or `releaseMs`, or with no channel left, drops whole; a bad optional field drops alone. A valid kick is kept verbatim (the same object), so a written sidecar keeps `bar:13` and any unknown fields. */
+function parseCameraKicks(raw: unknown, source: string): SceneDocCameraKick[] | undefined {
+  if (!Array.isArray(raw)) {
+    parseWarn(`[sceneDoc] ${source}: cameraKicks isn't an array, dropped`);
+    return undefined;
+  }
+  const out: SceneDocCameraKick[] = [];
+  raw.forEach((entry, i) => {
+    const kick = parseCameraKick(entry, `${source}: cameraKicks[${i}]`);
+    if (kick) out.push(kick);
+  });
+  return out.length > 0 ? out : undefined;
+}
+
+function parseCameraKick(raw: unknown, where: string): SceneDocCameraKick | null {
+  if (!isRecord(raw)) {
+    parseWarn(`[sceneDoc] ${where} isn't an object, dropped`);
+    return null;
+  }
+  const at = raw.at;
+  if (!nonNegativeMs(at) && !(typeof at === "string" && isMusicPosition(at))) {
+    parseWarn(`[sceneDoc] ${where}.at isn't ms >= 0 or a musical position, kick dropped`);
+    return null;
+  }
+  if (!nonNegativeMs(raw.releaseMs)) {
+    parseWarn(`[sceneDoc] ${where}.releaseMs must be ms >= 0, kick dropped`);
+    return null;
+  }
+  let kick = raw;
+  const drop = (field: string, why: string) => {
+    parseWarn(`[sceneDoc] ${where}.${field} ${why}, dropped`);
+    if (kick === raw) kick = { ...raw };
+    delete kick[field];
+  };
+  if (raw.id !== undefined && typeof raw.id !== "string") drop("id", "isn't a string");
+  if (
+    raw.zoom !== undefined &&
+    !(finiteNum(raw.zoom) && raw.zoom >= CAMERA_KICK_ZOOM_MIN && raw.zoom <= CAMERA_KICK_ZOOM_MAX)
+  ) {
+    drop("zoom", `isn't ${CAMERA_KICK_ZOOM_MIN}..${CAMERA_KICK_ZOOM_MAX}`);
+  }
+  if (raw.offset !== undefined && !finiteV3(raw.offset)) drop("offset", "isn't three numbers");
+  if (raw.rollDeg !== undefined && !finiteNum(raw.rollDeg)) drop("rollDeg", "isn't a number");
+  for (const field of ["attackMs", "holdMs"]) {
+    if (raw[field] !== undefined && !nonNegativeMs(raw[field])) drop(field, "isn't ms >= 0");
+  }
+  if (raw.ease !== undefined && !(typeof raw.ease === "string" && isEaseName(raw.ease))) {
+    drop("ease", "isn't a known ease");
+  }
+  if (kick.zoom === undefined && kick.offset === undefined && kick.rollDeg === undefined) {
+    parseWarn(`[sceneDoc] ${where} has no zoom, offset or rollDeg, kick dropped`);
+    return null;
+  }
+  return kick as unknown as SceneDocCameraKick;
+}
+
 /** Keeps only `exclude: true` and finite, non-negative marks (rounded, unique, ascending); an empty block drops, so absent stays the default. */
 function parseStills(raw: unknown, source: string): SceneDocStills | undefined {
   if (!isRecord(raw)) {
@@ -2375,14 +2514,20 @@ export function parseSceneDoc(raw: unknown, source: string): SceneDoc | undefine
   }
   if (Array.isArray(doc.devices)) {
     const devices: SceneDocDeviceSpec[] = [];
-    for (const entry of doc.devices as unknown[]) {
-      const device = entry as SceneDocDeviceSpec;
+    for (const [index, entry] of (doc.devices as unknown[]).entries()) {
+      let device = entry as SceneDocDeviceSpec;
       if (
         device &&
         typeof device === "object" &&
         typeof device.id === "string" &&
         typeof device.model === "string"
       ) {
+        for (const field of ["media", "coverMedia"] as const) {
+          const media = device[field];
+          if (!media || typeof media !== "object") continue;
+          const parsed = parseDeviceMediaKeys(media, source, `devices[${index}].${field}`);
+          if (parsed !== media) device = { ...device, [field]: parsed };
+        }
         if (device.motionBlur === undefined) devices.push(device);
         else {
           const motionBlur = parseMotionBlurOverride(device.motionBlur, source);
@@ -2453,6 +2598,10 @@ export function parseSceneDoc(raw: unknown, source: string): SceneDoc | undefine
         out.cameraRig = rig;
       }
     }
+  }
+  if (doc.cameraKicks !== undefined) {
+    const kicks = parseCameraKicks(doc.cameraKicks, source);
+    if (kicks) out.cameraKicks = kicks;
   }
   if (typeof doc.themeId === "string" && doc.themeId.length > 0) out.themeId = doc.themeId;
   if (doc.backdrop !== undefined) {

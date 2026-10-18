@@ -2,7 +2,7 @@ import { useContext } from "react";
 import { sampleCameraTrack } from "../../engine/cameraTrack";
 import { useFormat } from "../../engine/format";
 import { frameOnPlane, type PlaneFrame } from "../../engine/frustum";
-import { hasSceneCameraTracks, sceneTrackPose } from "../../engine/sceneCamera";
+import { hasSceneCameraTracks, sceneCameraPose } from "../../engine/sceneCamera";
 import { SceneCameraTracksContext } from "../../engine/sceneCameraContext";
 import { useSceneContext } from "../../engine/sceneContext";
 import { useTimeline } from "../../engine/timeline";
@@ -27,7 +27,7 @@ export function useSceneCamera(): SceneCamera {
   const tracks = ctx?.tracks();
   const pose =
     scene && tracks && hasSceneCameraTracks(tracks)
-      ? sceneTrackPose(tracks[scene.index], localMs, fallback)
+      ? sceneCameraPose(tracks[scene.index], localMs, fallback)
       : fallback;
   return {
     position: pose.position,

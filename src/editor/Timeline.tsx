@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { EditClip, EditMask, EditSource, EditTap } from "../engine/edit";
 import {
+  maskOpacityAt,
   maskWindows,
   packMaskRows,
   retimeMaskEdge,
@@ -12,6 +13,7 @@ import {
   edgeTargetsMs,
   setClipHold,
   snapMs,
+  snapZoomMs,
   timelineDurationMs,
   trimClipIn,
   trimClipOut,
@@ -53,6 +55,10 @@ export interface TimelineProps {
   onSelectMask?: (id: string) => void;
   /** Right-click on a key diamond of the selected mask. */
   onMaskKeyMenu?: (id: string, sourceMs: number, x: number, y: number) => void;
+  /** The output rate zoom keys snap to while dragged. */
+  fps?: number;
+  /** Right-click on a clip's zoom key diamond (`tMs` is clip-local). */
+  onZoomKeyMenu?: (clipId: string, tMs: number, x: number, y: number) => void;
 }
 
 const PAD_L = 16; // content inset before t=0
@@ -111,6 +117,31 @@ function effectiveSpeed(speed: number): number {
   return speed > 0 ? speed : 1;
 }
 
+/** A faded mask's ramps inside one clip's bar: timeline ms from the bar's start, and the opacity at each end. */
+function fadeRamps(
+  mask: EditMask,
+  clip: EditClip,
+  barOffsetMs: number,
+): { x: number; w: number; from: number; to: number }[] {
+  const speed = effectiveSpeed(clip.speed);
+  const spans: [number, number][] = [];
+  if (mask.fadeInMs) spans.push([mask.startMs, mask.startMs + mask.fadeInMs]);
+  if (mask.fadeOutMs) spans.push([mask.endMs - mask.fadeOutMs, mask.endMs]);
+  return spans.flatMap(([s0, s1]) => {
+    const a = Math.max(s0, clip.inMs);
+    const b = Math.min(s1, clip.outMs);
+    if (b <= a) return [];
+    return [
+      {
+        x: (a - clip.inMs) / speed - barOffsetMs,
+        w: (b - a) / speed,
+        from: maskOpacityAt(mask, a, false),
+        to: maskOpacityAt(mask, b, false),
+      },
+    ];
+  });
+}
+
 export function Timeline({
   clips,
   sources,
@@ -132,6 +163,8 @@ export function Timeline({
   selectedMaskId = null,
   onSelectMask,
   onMaskKeyMenu,
+  fps = 60,
+  onZoomKeyMenu,
 }: TimelineProps) {
   const scrollerRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -248,6 +281,7 @@ export function Timeline({
     const clip = draft.find((c) => c.id === id);
     if (!clip) return null;
     return {
+      clipId: clip.id,
       sourceId: clip.sourceId,
       sourceMs: kind === "trim-in" ? clip.inMs : clip.outMs,
       edge: kind === "trim-in" ? ("in" as const) : ("out" as const),
@@ -416,6 +450,43 @@ export function Timeline({
         edge,
         sourceMs: edge === "start" ? draft.startMs : draft.endMs,
       });
+    }
+  }
+
+  // ── Zoom keys (diamonds on a clip's block) ───────────────────────────────
+  const [keyDrag, setKeyDrag] = useState<{
+    clipId: string;
+    tMs: number;
+    draftMs: number;
+    startClientX: number;
+    moved: boolean;
+  } | null>(null);
+
+  function onZoomKeyDown(e: React.PointerEvent, clipId: string, tMs: number) {
+    if (e.button !== 0) return;
+    e.stopPropagation();
+    e.currentTarget.setPointerCapture(e.pointerId);
+    setKeyDrag({ clipId, tMs, draftMs: tMs, startClientX: e.clientX, moved: false });
+  }
+
+  function onZoomKeyMove(e: React.PointerEvent, clip: EditClip) {
+    if (!keyDrag) return;
+    const dx = e.clientX - keyDrag.startClientX;
+    const moved = keyDrag.moved || Math.abs(dx) > MOVE_THRESHOLD_PX;
+    if (!moved) return;
+    const raw = Math.min(clipTimelineMs(clip), Math.max(0, keyDrag.tMs + dx / pxPerMs));
+    const local = snapMs(raw, [playheadMs - clip.startMs], snapThresholdMs);
+    setKeyDrag({ ...keyDrag, moved, draftMs: snapZoomMs(local, fps) });
+  }
+
+  function onZoomKeyUp(clip: EditClip) {
+    if (!keyDrag) return;
+    const { tMs, draftMs, moved } = keyDrag;
+    setKeyDrag(null);
+    if (!moved) {
+      onPlayhead(Math.round(clip.startMs + tMs));
+    } else if (draftMs !== tMs) {
+      onEditOp({ op: "moveZoomKey", clipId: clip.id, tMs, toMs: draftMs });
     }
   }
 
@@ -648,6 +719,29 @@ export function Timeline({
                       />
                     </>
                   )}
+                  {(clip.zoom?.keys ?? []).map((k) => {
+                    const dragged = keyDrag?.clipId === clip.id && keyDrag.tMs === k.tMs;
+                    const at = dragged ? keyDrag.draftMs : k.tMs;
+                    if (at < 0 || at > clipTimelineMs(clip)) return null;
+                    return (
+                      // biome-ignore lint/a11y/noStaticElementInteractions: a key marker; the crop strip's buttons cover keyboard use
+                      <span
+                        key={k.tMs}
+                        className={`timeline-zoom-key${k.ease === "smooth" ? " smooth" : ""}${dragged ? " dragging" : ""}`}
+                        style={{ left: at * pxPerMs }}
+                        title="Zoom key: click to jump here, drag to retime, right-click to ease or delete"
+                        onPointerDown={(e) => onZoomKeyDown(e, clip.id, k.tMs)}
+                        onPointerMove={(e) => onZoomKeyMove(e, clip)}
+                        onPointerUp={() => onZoomKeyUp(clip)}
+                        onPointerCancel={() => setKeyDrag(null)}
+                        onContextMenu={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          onZoomKeyMenu?.(clip.id, k.tMs, e.clientX, e.clientY);
+                        }}
+                      />
+                    );
+                  })}
                 </div>
               );
             })}
@@ -656,7 +750,7 @@ export function Timeline({
             <div
               className="timeline-mask-lane"
               style={{ height: maskRowCount * MASK_ROW_PX + 4 }}
-              title="Masks: click a bar to select it, drag its ends to retime"
+              title="Masks: click a bar to select it, drag its ends to retime; a sloped end fades"
             >
               {masks.map((committed) => {
                 const mask = maskDrag?.orig.id === committed.id ? maskDrag.draft : committed;
@@ -672,6 +766,7 @@ export function Timeline({
                   const speed = effectiveSpeed(clip.speed);
                   const x = PAD_L + block.x + (w.startMs - clip.startMs) * pxPerMs;
                   const width = Math.max(3, (w.endMs - w.startMs) * pxPerMs);
+                  const ramps = w.hold ? [] : fadeRamps(mask, clip, w.startMs - clip.startMs);
                   const keys =
                     selected && !w.hold
                       ? mask.keys.filter(
@@ -700,6 +795,18 @@ export function Timeline({
                         if (e.key === "Enter") onSelectMask?.(mask.id);
                       }}
                     >
+                      {ramps.map((r) => (
+                        <span
+                          key={r.x}
+                          className="timeline-mask-ramp"
+                          aria-hidden
+                          style={{
+                            left: r.x * pxPerMs,
+                            width: r.w * pxPerMs,
+                            clipPath: `polygon(0 0, 100% 0, 100% ${(1 - r.to) * 100}%, 0 ${(1 - r.from) * 100}%)`,
+                          }}
+                        />
+                      ))}
                       {keys.map((k) => (
                         // biome-ignore lint/a11y/noStaticElementInteractions: a key marker; the strip's key buttons cover keyboard use
                         <span

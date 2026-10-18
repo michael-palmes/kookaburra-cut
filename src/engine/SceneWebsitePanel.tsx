@@ -1,5 +1,5 @@
 import { useTexture } from "@react-three/drei";
-import { useContext, useLayoutEffect, useMemo } from "react";
+import { useLayoutEffect, useMemo } from "react";
 import {
   DataTexture,
   MeshBasicMaterial,
@@ -8,8 +8,6 @@ import {
   type Texture,
   Vector2,
 } from "three";
-import { assetVersionKey, useAssetVersionStore } from "../store/assetVersionStore";
-import { useEditorStore } from "../store/editorStore";
 import { useTheme } from "../theme";
 import { AssetBoundary } from "../toolkit/media/AssetBoundary";
 import {
@@ -20,8 +18,6 @@ import {
 } from "../toolkit/media/LayeredScreenshot";
 import { AnimatedHeadline } from "../toolkit/text/AnimatedHeadline";
 import { useFormat } from "./format";
-import { resolveAssetUrl } from "./project";
-import { ProjectIdContext } from "./sceneContext";
 import { useSceneDoc } from "./sceneDoc";
 import {
   type ResolvedSceneWebsite,
@@ -30,6 +26,7 @@ import {
   sceneWebsiteLayout,
 } from "./sceneWebsite";
 import { resolveWebsiteColours } from "./sceneWebsiteTheme";
+import { useProjectAssetUrl } from "./useProjectAssetUrl";
 
 interface RectCS {
   x: number;
@@ -170,23 +167,10 @@ function WebsiteWindow({
 }) {
   const format = useFormat();
   const theme = useTheme();
-  const contextProjectId = useContext(ProjectIdContext);
-  const storeProjectId = useEditorStore((state) => state.projectId);
-  const projectId = contextProjectId ?? storeProjectId;
   const layout = useMemo(() => sceneWebsiteLayout(website, format.frame), [website, format.frame]);
   const colours = useMemo(() => resolveWebsiteColours(website, theme), [website, theme]);
   const captureSrc = website.capture?.src ?? null;
-  const version = useAssetVersionStore((state) =>
-    projectId && captureSrc ? (state.versions[assetVersionKey(projectId, captureSrc)] ?? 0) : 0,
-  );
-  let captureUrl: string | null = null;
-  if (captureSrc) {
-    try {
-      captureUrl = resolveAssetUrl(projectId, captureSrc) + (version > 0 ? `?v=${version}` : "");
-    } catch (error) {
-      console.warn(`[website] capture "${captureSrc}" unresolved:`, error);
-    }
-  }
+  const captureUrl = useProjectAssetUrl(captureSrc, "[website] capture");
 
   const { window, toolbar, page, originBar, controls, radius, toolbarHeight } = layout;
   const originLabel = website.origin ?? "Website not configured";

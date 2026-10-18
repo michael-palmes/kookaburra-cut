@@ -1,33 +1,142 @@
-# Beat-matched animation
+# Music: the beat grid and beat-matched motion
 
-How to read the soundtrack's beats and land camera moves, cuts and text on the music.
-Beat data is editor guidance only: exports never read it.
+How to give the soundtrack an authored beat grid, name its moments, and land camera
+moves, kicks, cuts and text on the music.
 
-## What the app already does
+## The grid is data
 
-With a soundtrack the app shows a beat lane: waveform, a faint beat grid and key-moment
-diamonds (strong onsets and energy shifts worth cutting on). Its menu offers "Add camera
-keyframe here" and "Sync scene camera to beats" (a gentle push-in and pull-back). Your
-value is bespoke motion: jump cuts, asymmetric moves, text timed to the music and scene
-cuts moved onto key moments.
-
-## Getting the data
+`project.json` `audio.grid` (`bpm`, `offsetMs` of bar 1 beat 1, `beatsPerBar`) is the
+music's clock. Once it exists, everything uses it: `bar:` positions in sidecars,
+`./kb beats`, `./kb capture --at bar:N`, the app's beat lane, snapping and "Sync scene
+camera to beats". Keys with an `at`, `bar:` kicks and `useBeatGrid()` render from it, so changing
+the grid moves them. The song analysis only suggests a grid; until one is authored,
+`./kb beats` shows the analysis's detected beats (`beatSource: "detected"`) and every `bar:`
+position refuses (`no-grid`).
 
 ```bash
-./kb beats              # per-scene summary
-./kb beats --scene 2    # one scene: every beat and key moment in scene-local ms
-./kb beats --json       # the full dump
+./kb song analyse --accept     # analyse the soundtrack and make its fitted grid the project's
+./kb beats                     # the grid, each scene's bars and beats, cues and sections
+./kb beats --scene 2           # one scene: every bar line (bar@ms), beat, cue and key moment, scene-local ms
+./kb beats --json              # everything
 ```
 
-Times account for `audio.startOffsetMs` and transition overlaps: use them directly as
-`tMs`. With no cached analysis, ask the user to open the project in the app once
-(analysis runs on load), then rerun.
+Times account for `audio.startOffsetMs` and transition overlaps. The user can also set the
+grid in the app: the Music inspector's Beat grid group, or the beat lane's right-click
+"Set downbeat here" and "Make this bar 1".
 
-- Key moments: strong, cut-worthy events with a 0..1 `strength`.
-- Grid beats: the regular pulse for fine placement.
-- User overrides: `project.json` `audio.markers` `{ "version": 1, "keyMoments": [ms, ...] }`
-  in PROJECT ms replaces the detected key moments (the grid stays detected). Sorted,
-  non-negative integers; delete the block to return to detection.
+## Song analysis
+
+```bash
+./kb song analyse [--force] [--tracker nn|dsp] [--lyrics] [--accept] [--dry-run]
+```
+
+- Runs the app's own analyser, with the app closed too; cached by the file's SHA-256, and
+  copied to `.kb/song/<sha12>.json` (Read it for the per-beat data). `project.json` changes
+  only with `--accept`.
+- Prints the tempo (bpm, beat period, residual, max drift, steady or drifting), the
+  downbeat (track and film ms), sections (bar ranges where the music changes; author the
+  ones you use with `./kb beats section set`), breaths (silences and sharp dips, worth
+  holding on) and the stab histogram (where in the bar the hits fall, per sixteenth: kick
+  the strong slots). Lyrics print only with `--lyrics`.
+- A drifting tempo (`constantTempo` false: live playing, tempo changes) can't take one
+  grid, so `--accept` refuses it. Place keys at the detected beats and key moments that
+  `./kb beats --scene S` prints, as plain `tMs`. `./kb beats set-grid --from-analysis
+  --force` takes the grid anyway, its bar lines off by up to the reported max drift.
+- Tell the user the bpm and where bar 1 landed: you can't hear it. If they say bar 1 is
+  off, `./kb beats set-downbeat` (below).
+- Exit 2 `env` "can't analyse songs from the terminal": the app is too old; ask the user to
+  update it. Exit 1 `invalid`: no soundtrack (`./kb assets add FILE`, then
+  `./kb project set audio.file assets/<name>`).
+
+## Setting the grid
+
+```bash
+./kb beats set-grid --from-analysis [--force] [--beats-per-bar N]   # the fit, with grid.source provenance
+./kb beats set-grid --bpm 120 --offset 250 [--beats-per-bar 4]      # by hand; --offset is TRACK ms of bar 1 beat 1
+./kb beats set-downbeat 12.48s          # the nearest bar line moves to 12.48 s of film time; bars keep their numbers
+./kb beats set-downbeat bar:9 --bar 1   # that moment becomes bar 1 beat 1 (the tempo is kept)
+./kb beats clear-grid                   # keys keep their last tMs and stop following
+```
+
+bpm is 30..300 (kept to 3 decimals), beats per bar 1..16. Every grid write also rewrites
+the cached `tMs` of every sidecar key with an `at`, in the same transaction (a sidecar
+another agent leases is left, with a note; the app re-resolves it on load). `./kb check`
+warns when the grid was fitted to a different file than `audio.file`.
+
+## Positions
+
+`bar:B[.beat[.16th]]` (1-based; bar 0 and below are pickups), `cue:ID`, `section:ID` (its
+start), each with an optional `+40ms` or `-40ms` nudge. Where kb takes a time, `12.5s`,
+`12500ms` or bare seconds (film time) work too.
+
+```bash
+./kb beats resolve bar:13.3+40ms [--scene S]   # project ms, the owning scene and its local ms, the nearest beat
+```
+
+Errors: any `bar:` position (and `--duration-bars`, `--cut-at`) without a grid is exit 1
+`no-grid`; bad syntax or a beat past the bar is exit 2 `usage`; a position outside the film
+is exit 1 `invalid`.
+
+## Cues and sections
+
+Named times, so keys and kicks follow the music's structure rather than bar numbers:
+
+```bash
+./kb beats cue set drop bar:29        # a position (kept as text) or a time (stored as whole ms)
+./kb beats cue rm drop
+./kb beats section set chorus --from bar:17 --to bar:25 --label Chorus
+./kb beats section rm chorus
+```
+
+They live in `audio.cues` and `audio.sections`. Ids are 1 to 40 lowercase letters, digits
+and dashes. A cue or section never points at another cue or section, and a section's
+`from` comes before its `to` (exit 1 `invalid`, nothing written).
+
+## Keys that follow the music
+
+Camera, rig and lighting keys (and `compare.b.lighting` keys) take a sibling `at`:
+`{ "id": "k2", "tMs": 21000, "at": "bar:13" }`. The `at` rules; `tMs` caches where it
+lands in scene-local ms.
+
+```bash
+./kb doc 03-drop set camera.keys.1.at bar:13    # kb sets tMs to match now
+./kb doc 03-drop set camera.keys.1.tMs 21400    # moves the key off the music: its at is dropped
+./kb doc 03-drop unset camera.keys.1.at         # keep tMs, stop following
+```
+
+Every `./kb doc` write refreshes the other keys' caches. Never hand-edit the `tMs` of a key
+with an `at`: the app puts it back on load (`./kb check` warns). Dragging the key in the
+app detaches it. Other tracks (`deviceTrack`, `compare`, `chart`, the layered screenshot),
+scene durations and device media take plain ms only.
+
+## Kicks and pulses
+
+- `cameraKicks`: a short push (zoom, offset or roll) on top of whatever camera drives the
+  scene, at a position: `{ "at": "bar:13", "zoom": 1.04, "releaseMs": 300 }`
+  (reference/camera.md). Kicks are accents for the strongest hits (a section's first
+  downbeat, a drop cue); a kick on every beat reads as shake.
+- In TSX, `useBeatGrid()`, `useCues()` and `pulse()` time scale, glow or opacity to the
+  grid (reference/scenes.md).
+
+## Capture on the beat
+
+```bash
+./kb capture --at bar:13                       # the scene that owns that moment (mid-transition: the incoming one past halfway)
+./kb capture --scene 03-drop --at cue:drop     # refused (exit 1) when the moment is outside that scene; the hint names the owner
+./kb capture --frames bars:13-16 --sheet       # each downbeat; beats:13-14 for every beat; mix with S@SEC and S@POS; 48 at most
+```
+
+Responses carry `position` and `projectMs` (per frame for `--frames`).
+
+## Scene cuts on the beat
+
+```bash
+./kb scene set 03-drop --duration-bars 4                 # four bars at the grid's tempo, as whole ms
+./kb scene set 03-drop --cut-at bar:17 [--align mid]     # end at bar 17, or centre the outgoing transition on it
+```
+
+Durations are written as ms and never follow the grid later: rerun after a grid change.
+Keys with an `at` in later scenes are refreshed in the same write.
 
 ## Matching motion to the music
 
@@ -44,20 +153,24 @@ Hard cut (a `jump` segment holds `from`, then snaps at the `to` key):
 "camera": {
   "keys": [
     { "id": "k1", "tMs": 0, "pose": { "target": [0, 0, 0], "azimuthDeg": 0, "elevationDeg": 0, "distance": 5 } },
-    { "id": "k2", "tMs": 3410, "pose": { "target": [0, 0, 0], "azimuthDeg": 18, "elevationDeg": 6, "distance": 3.4 } }
+    { "id": "k2", "tMs": 3410, "at": "bar:5", "pose": { "target": [0, 0, 0], "azimuthDeg": 18, "elevationDeg": 6, "distance": 3.4 } }
   ],
   "segments": [{ "from": "k1", "to": "k2", "ease": "jump" }]
 }
 ```
 
+Its `tMs` is wherever `bar:5` lands in the scene: write the `at` with
+`./kb doc S set camera.keys.1.at bar:5` and kb sets it.
+
 Smooth move: the same with an eased segment (`inOutQuad`, or `outCubic` for a settle)
-whose `to.tMs` is the beat; start it one or two grid beats earlier.
+whose `to` key is on the beat; start it one or two beats earlier.
 
 Placement rules:
 
 - Space camera moves at least about 1200 ms apart, roughly 6 per scene at most; tighter
   reads as jitter. Keys at least 17 ms apart.
-- Cut on the strongest key moments first; use grid beats for lesser accents.
+- Land on downbeats, section starts and cues first; use other beats for lesser accents.
+  Without a grid, cut on the strongest key moments.
 - Stay inside the scene's window and out of transitions (between the end of the
   incoming transition and the start of the outgoing one; `./kb beats --scene` prints both).
 - Open composed: first key at the window start with the base framing.
@@ -67,11 +180,13 @@ Placement rules:
 ## Beyond the camera
 
 - Text: time `from`/`to` (or the sidecar `textAnimation.delayMs`) so reveals COMPLETE on
-  scene-local beats.
-- A moment inside a recording (a tap, a screen change): `kb video align <edit> --tap tN
-  --beat N --scene S` lands it on the scene's Nth beat, shifting the video's start when that is
-  enough, else retiming the edit (the kookaburra-video-editing skill).
-- Scene cuts: adjust `durationMs` (`./kb scene set S --duration MS`) so a boundary lands
-  on a strong key moment. Overlaps shift every later start, so rerun `./kb beats` after
-  each change instead of doing the arithmetic.
-- After any beat edit, capture frames at the beat times and check the pose reads.
+  scene-local beats (`./kb beats --scene S`, or `useBeatGrid()` in TSX).
+- A moment inside a recording (a tap, a screen change): `./kb video align <edit> --tap tN
+  --beat N --scene S` lands it on the scene's Nth beat (the grid's, else the analysis's),
+  shifting the video's start when that is enough, else retiming the edit (the
+  kookaburra-video-editing skill).
+- Scene cuts: `./kb scene set S --cut-at bar:B [--align mid]` (above), not hand arithmetic.
+- Key moments (strong onsets worth cutting on, 0..1 `strength`) come from the analysis;
+  `project.json` `audio.markers` `{ "version": 1, "keyMoments": [ms, ...] }` in PROJECT ms
+  replaces them (sorted, non-negative integers; delete the block to return to detection).
+- After any beat edit, `./kb capture --frames bars:A-B --sheet` and check each pose reads.

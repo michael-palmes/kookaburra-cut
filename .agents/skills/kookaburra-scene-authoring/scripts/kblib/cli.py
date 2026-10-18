@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from . import KB_VERSION
-from . import assets as assetmod
+from . import assets_cli
 from . import bridge
 from . import capture as capturemod
 from . import catalog as catmod
@@ -58,13 +58,16 @@ the cwd, or uses $CLAUDE_PROJECT_DIR.
              debug contexts | debug lose-context [--window render|editor]
   Scenes     scene add NAME [--preset P | --copy S] [--after S | --at N] [--duration MS] [--name N]
              scene duplicate S | scene move S --to N | scene remove S
-             scene set S [--duration MS] [--transition TYPE[:MS]|none] [--ease E] [--name N]
+             scene set S [--duration MS | --duration-bars N | --cut-at POS [--align end|mid]]
+                         [--transition TYPE[:MS]|none] [--ease E] [--name N]
   Documents  doc S get [PATH] | doc S set PATH VALUE | doc S unset PATH | doc S merge JSON
              project get [PATH] | project set PATH VALUE | project unset PATH
              theme list | theme show [ID] | theme set PATH VALUE
   Library    presets [list | show SLUG] | catalog [FAMILY] [--search Q]
              fonts safe | fonts check REF... | fonts list
-  Media      assets list | assets add FILE [--name N] | assets probe ASSET
+  Media      assets list | assets add FILE [--name N] [--no-conform] | assets probe ASSET [--deep]
+             assets conform ASSET [--repoint] | assets replace NAME FILE [--keep-old K] [--as-new]
+             assets unused [--kind K] [--archive [DIR]] | assets restore [ID] | assets meta NAME [--set K=V]
   Video      video list | video show NAME | video new SRC [--for SCENE:SLOT]
              video cut|keep|split|trim|speed|freeze|tap|mask|apply NAME ... (kb video --help)
              video render NAME [--use --scene S] | video use NAME --scene S | video open NAME
@@ -77,7 +80,9 @@ the cwd, or uses $CLAUDE_PROJECT_DIR.
   Agents     lease S [--ttl 2h] [--note T] [--for NAME] | lease S --release [--force] | leases [--all]
              note TEXT [--scene S] | notes [--all]
              events [--follow] [--since 10m|CURSOR|all] [--kinds ...] [--all-agents] [--exit-after S]
-  Helpers    beats ... | chart ... (soundtrack beats and chart data) | hook EVENT (Claude Code)
+  Music      beats [--scene S] | beats set-grid|set-downbeat|clear-grid|cue|section|resolve ...
+             song analyse [--force] [--tracker nn|dsp] [--lyrics] [--accept]
+  Helpers    chart ... (chart data) | hook EVENT (Claude Code)
 
 S is a scene index (0-based) or file stem (03-pricing). PATH is dotted
 (textStyle.titleFont, devices.0.model, devices.+ appends). VALUE is parsed as
@@ -418,8 +423,17 @@ def cmd_scene_remove(ctx: Ctx) -> int:
 
 def cmd_scene_set(ctx: Ctx) -> int:
     a = ctx.args
-    if a.duration is None and a.transition is None and a.ease is None and a.name is None:
-        raise KbError("scene set needs at least one of --duration, --transition, --ease, --name", 2, kind="usage")
+    timing = None
+    if sum(x is not None for x in (a.duration, a.duration_bars, a.cut_at)) > 1:
+        raise KbError("pass one of --duration, --duration-bars or --cut-at", 2, kind="usage")
+    if a.align is not None and a.cut_at is None:
+        raise KbError("--align goes with --cut-at", 2, kind="usage")
+    if a.duration_bars is not None or a.cut_at is not None:
+        from .beats import model as beatsmodel
+
+        timing = beatsmodel.bars_timing(a.duration_bars) if a.duration_bars is not None else beatsmodel.cut_timing(a.cut_at, a.align or "end")
+    if a.duration is None and timing is None and a.transition is None and a.ease is None and a.name is None:
+        raise KbError("scene set needs at least one of --duration, --duration-bars, --cut-at, --transition, --ease, --name", 2, kind="usage")
     if a.ease is not None and a.ease not in catmod.TRANSITION_EASES:
         raise KbError(f'--ease must be one of {", ".join(catmod.TRANSITION_EASES)}', 2, kind="usage")
     if a.transition and a.transition not in ("none", "cut"):
@@ -427,7 +441,7 @@ def cmd_scene_set(ctx: Ctx) -> int:
         known = catmod.load_catalog().ids("transitions", catmod.FALLBACK_TRANSITIONS) or []
         if kind not in known:
             raise KbError(f'unknown transition "{kind}".{checkmod.did_you_mean(kind, known)} See kb catalog transitions', 2, kind="usage")
-    res = scenemod.set_scene(ctx.project, a.scene, a.duration, a.transition, a.ease, a.name, ctx.opts)
+    res = scenemod.set_scene(ctx.project, a.scene, a.duration, a.transition, a.ease, a.name, ctx.opts, timing=timing)
     idx, stem = res["index"], res["stem"]
     if ctx.dry_run:
         if ctx.json:
@@ -571,9 +585,20 @@ def cmd_doc(ctx: Ctx) -> int:
         if a.op == "unset" and doc is None:
             raise KbError(f"{label} does not exist")
         new, summary = docmod.edit(doc if doc is not None else {"version": version}, a.op, getattr(a, "path", "") or "", arg)
-        return checkmod.stamp_stagger_exact(doc, new), summary
+        return settle_music(project, stem, doc, checkmod.stamp_stagger_exact(doc, new), summary)
 
     return guarded_write(ctx, label, label, edit, sidecar_validator(ctx, label))
+
+
+def settle_music(project: Project, stem: str, before: Any, after: Any, summary: str) -> Tuple[Any, str]:
+    """The detach rule on a sidecar write: a key this write moved drops its `at`; every other `at` refreshes its tMs."""
+    from .beats import model as beatsmodel
+
+    if not (beatsmodel.has_at(before) or beatsmodel.has_at(after)):
+        return after, summary
+    music, start = beatsmodel.scene_scope(project, stem)
+    settled, notes = beatsmodel.settle_written(before, after, music, start)
+    return settled, "; ".join([summary] + notes)
 
 
 def cmd_project(ctx: Ctx) -> int:
@@ -854,50 +879,11 @@ def cmd_catalog(ctx: Ctx) -> int:
     return EXIT_OK
 
 
-def cmd_assets(ctx: Ctx) -> int:
-    a = ctx.args
-    project = ctx.project
-    if a.op == "list":
-        items = assetmod.list_assets(project)
-        if ctx.json:
-            ctx.out({"assets": items})
-            return EXIT_OK
-        if not items:
-            emit("assets/ is empty; copy media in with kb assets add <file>")
-            return EXIT_OK
-        for item in items:
-            used = ", ".join(item["usedBy"]) if item["usedBy"] else "unused"
-            emit(f"{item['path']}  {item['kind']}  {assetmod.human_size(item['bytes'])}  ({used})")
-        return EXIT_OK
-    if a.op == "add":
-        res = assetmod.add(project, a.file, a.name, a.dir, dry_run=ctx.dry_run)
-        if ctx.json:
-            ctx.out(res)
-        elif ctx.dry_run:
-            emit(f"dry run, nothing written: would copy {a.file} to {res['path']}" if res["writes"] else f"{res['path']} (identical file already in assets/)")
-            if res.get("note"):
-                emit_err(f"kb: {res['note']}")
-        else:
-            emit(res["path"])
-            if res.get("note"):
-                emit_err(f"kb: {res['note']}")
-            if res.get("kind") in ("video", "audio"):
-                emit_err(f"kb: kb assets probe {res['path']} gives its duration for durationMs")
-        return EXIT_OK
-    info = assetmod.probe(project, a.asset)
-    if ctx.json:
-        ctx.out(info)
-    else:
-        for key, value in info.items():
-            emit(f"{key}: {value}")
-    return EXIT_OK
-
-
 # ── helpers ───────────────────────────────────────────────────────────────────
 
 
 def delegate(name: str, rest: List[str]) -> int:
-    """beats and chart run the existing scripts from the project folder, arguments untouched."""
+    """chart runs the existing script from the project folder, arguments untouched."""
     root = find_root()
     proc = subprocess.run([sys.executable, str(SCRIPTS_DIR / f"{name}.py")] + rest, cwd=str(root))
     return proc.returncode
@@ -1018,10 +1004,17 @@ def build_parser(video_extensions: bool = True) -> argparse.ArgumentParser:
     x = scene_op(
         "set",
         "change a scene's duration, outgoing transition or name",
-        epilog="  kb scene set 2 --duration 4500\n  kb scene set 02-hero --transition glasssweep:700 --ease smooth\n  kb scene set 02-hero --transition none      hard cut",
+        epilog="  ./kb scene set 2 --duration 4500\n  ./kb scene set 02-hero --transition glasssweep:700 --ease smooth\n  ./kb scene set 02-hero --transition none      hard cut\n"
+        "  ./kb scene set 02-hero --duration-bars 4     four bars at the grid's tempo\n"
+        "  ./kb scene set 02-hero --cut-at bar:9 --align mid   its outgoing transition centred on bar 9\n"
+        "Durations are written as ms: a later grid change does not move them. Keys with an \"at\" in this and later\n"
+        "scenes get their tMs caches refreshed in the same write.",
     )
     x.add_argument("scene", metavar="S")
     x.add_argument("--duration", type=int, metavar="MS")
+    x.add_argument("--duration-bars", type=float, metavar="N", help="N bars at the beat grid's tempo (whole ms)")
+    x.add_argument("--cut-at", metavar="POS", help="end the scene at a position or time (bar:9, cue:drop, 12.5s)")
+    x.add_argument("--align", choices=["end", "mid"], help="with --cut-at: end (the scene is gone at POS, default) or mid (its outgoing transition centred on POS)")
     x.add_argument("--transition", metavar="TYPE[:MS]", help="outgoing transition (kb catalog transitions), or none")
     x.add_argument("--ease", metavar="E", help="transition ease: linear, smooth or snappy")
     x.add_argument("--name", metavar="N", help="display name")
@@ -1128,18 +1121,7 @@ def build_parser(video_extensions: bool = True) -> argparse.ArgumentParser:
     s.add_argument("--search", metavar="Q", help="case-insensitive search of ids, labels and summaries")
     s.set_defaults(fn=cmd_catalog)
 
-    s = add("assets", "list media (with which scenes use it), copy media in, probe duration and size")
-    asub = s.add_subparsers(dest="op", metavar="OP")
-    asub.required = True
-    asub.add_parser("list", help="every file under assets/ and who uses it", parents=[common], formatter_class=Formatter)
-    y = asub.add_parser("add", help="copy a file into assets/ (never overwrites; prints the path to use)", parents=writes, formatter_class=Formatter)
-    y.add_argument("file", metavar="FILE")
-    y.add_argument("--name", help="file name inside assets/")
-    y.add_argument("--dir", help="subfolder of assets/")
-    y = asub.add_parser("probe", help="duration (ms), size, fps and codecs via the app's ffprobe", parents=[common], formatter_class=Formatter)
-    y.add_argument("asset", metavar="ASSET")
-    s.set_defaults(fn=cmd_assets)
-
+    assets_cli.register(sub, common, Formatter)
     coord_cli.register(sub, common, Formatter)
 
     # A new command module: one import here and mod.register(sub, common, Formatter), as kb video does.
@@ -1157,7 +1139,12 @@ def build_parser(video_extensions: bool = True) -> argparse.ArgumentParser:
     verify.register(sub, common, Formatter)
     plan.register(sub, common, Formatter)
 
-    add("beats", "soundtrack beat grid and key moments per scene (every argument goes to beats.py)")
+    from .beats import commands as beatsmod
+
+    beatsmod.register(sub, common, Formatter)
+    from . import song as songmod
+
+    songmod.register(sub, common, Formatter)
     add("chart", "chart data and keyframes for a scene (every argument goes to chart.py)")
     return p
 
@@ -1213,7 +1200,7 @@ def run(ctx: Ctx, fn: Callable[[Ctx], Any]) -> int:
 
 def main(argv: Optional[List[str]] = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
-    if argv and argv[0] in ("beats", "chart"):
+    if argv and argv[0] == "chart":
         try:
             return delegate(argv[0], argv[1:])
         except KbError as e:

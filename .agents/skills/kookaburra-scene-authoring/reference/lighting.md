@@ -126,7 +126,8 @@ Poses are sparse: `ambient`, `environmentIntensity`, `environmentRotationDeg`,
 `sun.{azimuthDeg, elevationDeg, intensity, kelvin}`, `lights.<id>.{intensity, kelvin, placement}`,
 `fixtures.<id>.{emissive, lightIntensity, placement}`. Absent fields keep the base.
 Colours interpolate through kelvin when both ends set it. Only the scene layer
-animates. `animatedTrack: "lighting"` puts the track on the app's lane.
+animates. `animatedTrack: "lighting"` puts the track on the app's lane. A key may sit on
+the music with `"at": "bar:13"` (reference/beats.md).
 
 ## Rooms relight
 

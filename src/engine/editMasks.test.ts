@@ -9,6 +9,7 @@ import {
   type MaskRect,
   maskBlockPx,
   maskBlurSigmaPx,
+  maskOpacityAt,
   maskWindows,
   nextMaskId,
   offsetMaskKeys,
@@ -21,6 +22,7 @@ import {
   sourceMomentAt,
   timelineToSourceUnclamped,
   upsertMaskKey,
+  withMaskFades,
 } from "./editMasks";
 import { relayout } from "./editMath";
 
@@ -304,5 +306,43 @@ describe("mask editing", () => {
     expect(maskBlockPx({ strength: 0 }, video)).toBe(30);
     expect(maskBlockPx({}, video)).toBe(74);
     expect(maskBlockPx({ strength: 1 }, video)).toBe(118);
+  });
+});
+
+describe("mask fades", () => {
+  const faded = mask({ fadeInMs: 250, fadeOutMs: 400 });
+
+  it("ramps opacity in from the start and out into the end", () => {
+    expect(maskOpacityAt(faded, 999, false)).toBe(0);
+    expect(maskOpacityAt(faded, 1000, false)).toBe(0);
+    expect(maskOpacityAt(faded, 1125, false)).toBe(0.5);
+    expect(maskOpacityAt(faded, 1250, false)).toBe(1);
+    expect(maskOpacityAt(faded, 2600, false)).toBe(1);
+    expect(maskOpacityAt(faded, 2800, false)).toBe(0.5);
+    expect(maskOpacityAt(faded, 3000, false)).toBe(0);
+  });
+
+  it("an unfaded mask is fully on across its span, a still's always", () => {
+    expect(maskOpacityAt(mask(), 1000, false)).toBe(1);
+    expect(maskOpacityAt(mask(), 2999, false)).toBe(1);
+    expect(maskOpacityAt(mask(), 3000, false)).toBe(0);
+    expect(maskOpacityAt(faded, 0, true)).toBe(1);
+  });
+
+  it("withMaskFades rounds to integers and stores a hard edge as no field", () => {
+    expect(withMaskFades(mask(), 250.5, 0)).toEqual(mask({ fadeInMs: 251 }));
+    expect(withMaskFades(faded, 0, -5)).toEqual(mask());
+    expect("fadeInMs" in withMaskFades(faded, 0, 120)).toBe(false);
+  });
+
+  it("retiming the span shrinks the moved edge's fade first", () => {
+    const start = retimeMaskEdge(faded, "start", 2500, 10_000);
+    expect([start.startMs, start.fadeInMs, start.fadeOutMs]).toEqual([2500, 100, 400]);
+    const end = retimeMaskEdge(faded, "end", 1300, 10_000);
+    expect([end.endMs, end.fadeInMs, end.fadeOutMs]).toEqual([1300, 250, 50]);
+    const tight = retimeMaskEdge(faded, "end", 1100, 10_000);
+    expect([tight.fadeInMs, "fadeOutMs" in tight]).toEqual([100, false]);
+    expect(retimeMaskEdge(mask(), "start", 2500, 10_000)).toEqual(mask({ startMs: 2500 }));
+    expect(retimeMaskEdge(faded, "start", 1500, 10_000).fadeInMs).toBe(250);
   });
 });

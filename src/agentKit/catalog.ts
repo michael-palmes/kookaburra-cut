@@ -63,7 +63,7 @@ import {
   type DeviceScreenRect,
   FALLBACK_DEVICE_ID,
 } from "../toolkit/device/catalog";
-import type { DeviceMotionPreset } from "../toolkit/device/Device";
+import type { DeviceMediaSpec, DeviceMotionPreset } from "../toolkit/device/Device";
 import { DEVICE_SHADOW_CHOICES, DEVICE_SHADOW_MODES } from "../toolkit/device/shadowProjector";
 import { CHIP_ICON_IDS } from "../toolkit/frame/chipIcons";
 import toolkitIndexSource from "../toolkit/index.ts?raw";
@@ -186,6 +186,12 @@ export const SCENE_DOC_KEYS: Record<
   cameraRig: {
     summary: "Free-flight camera track: keys of { position, aim, fov, rollDeg }.",
     type: "object",
+    ref: "camera",
+  },
+  cameraKicks: {
+    summary:
+      "Kicks added on whichever pose drives: { at (ms or bar:13), zoom, offset, rollDeg, attackMs, holdMs, releaseMs, ease }.",
+    type: "array",
     ref: "camera",
   },
   themeId: { summary: "Swap the whole theme for this scene.", type: "string", ref: "project" },
@@ -335,7 +341,7 @@ export const PROJECT_MANIFEST_KEYS: Record<
   },
   audio: {
     summary:
-      "Soundtrack { file, gainDb, fadeInMs, fadeOutMs, fadeOutCurve, startOffsetMs, markers }.",
+      'Soundtrack { file, gainDb, fadeInMs, fadeOutMs, fadeOutCurve, startOffsetMs, markers } plus music: grid { bpm, offsetMs (track ms of bar 1), beatsPerBar }, cues { id: position | ms }, sections [{ id, from, to }]; keys take at: "bar:13.3".',
     type: "object",
   },
   defaultTransition: {
@@ -365,6 +371,58 @@ export const PROJECT_MANIFEST_KEYS: Record<
     summary:
       "Author constants (palette, timings) scenes read with useProjectShared; copied with scenes into projects that lack the key.",
     type: "object",
+  },
+};
+
+/** One line per device screen media key (`devices[].media`, `coverMedia`, `compare.b` maps); exhaustive over `DeviceMediaSpec`. */
+export const DEVICE_MEDIA_KEYS: Record<
+  keyof DeviceMediaSpec,
+  { summary: string; type: string; values?: string[] }
+> = {
+  src: {
+    summary: "Project-relative image or video path, e.g. assets/demo.mp4.",
+    type: "string",
+  },
+  kind: { summary: "What src is.", type: "string", values: ["video", "image"] },
+  startMs: {
+    summary:
+      "Video: scene-time delay before playback, holding the first played frame; a negative value pre-rolls the clip on the scene clock.",
+    type: "number",
+  },
+  fit: {
+    summary: "Always cover: fills the screen and crops the overflow.",
+    type: "string",
+    values: ["cover"],
+  },
+  startOn: {
+    summary: "Foldable inside display: startMs counts from the moment the fold opens.",
+    type: "string",
+    values: ["open"],
+  },
+  inMs: {
+    summary:
+      "Video: source ms where playback begins (a trim-in); combines with a startMs delay, never with a negative startMs.",
+    type: "number",
+  },
+  outMs: {
+    summary:
+      "Video: source ms where playback ends, exclusive; must pass inMs by more than 16 ms. Absent plays to the end.",
+    type: "number",
+  },
+  speed: {
+    summary:
+      "Video: playback rate, above 0 and at most 16 (default 1); frames repeat or skip, never blend. The editor offers 0.25 to 6.",
+    type: "number",
+  },
+  loop: {
+    summary:
+      "Video: wraps within [inMs, outMs) instead of holding the last frame, through Present holds too.",
+    type: "boolean",
+  },
+  posterMs: {
+    summary:
+      "Video: source ms shown before playback (during a delay or before a fold opens); default the first played frame.",
+    type: "number",
   },
 };
 
@@ -703,6 +761,10 @@ export const TOOLKIT_SUMMARIES: Record<
   parseObjectManifest: { summary: "Validates object.json (app only).", internal: true },
   preloadCatalogModels: { summary: "Export barrier for device models (app only).", internal: true },
   preloadSceneObjects: { summary: "Export barrier for 3D objects (app only).", internal: true },
+  pulse: {
+    summary:
+      "pulse(time, times, { attackMs, holdMs, releaseMs, ease }) returns 0..1 at each time; overlaps take the max.",
+  },
   resolveAvailableDeviceId: { summary: "The id a model renders as in this build." },
   resolveAvailableDeviceSpec: { summary: "The spec a model renders with in this build." },
   resolveDeviceLayout: {
@@ -714,6 +776,11 @@ export const TOOLKIT_SUMMARIES: Record<
   slide: {
     summary: "slide(time, [startMs, endMs], axis) returns { offset } 1..0; axis is ignored.",
   },
+  useBeatGrid: {
+    summary:
+      'The authored audio.grid in scene ms, or null: bar(13, 3), at("cue:drop"), position(localMs), beatMs.',
+  },
+  useCues: { summary: "audio.cues as { id: scene-local ms }; {} when there are none." },
   useDepthBand: { summary: "Inside DepthStage: the slot's { name, z, width, height }." },
   useFormat: { summary: "{ width, height, aspect, frame, safe } in world units at z=0." },
   useGroupAnimation: { summary: "Lets a custom child join an AnimatedGroup's alpha and shine." },
@@ -1383,6 +1450,22 @@ function templates(): Entry[] {
   });
 }
 
+/** workspace.rs SAMPLE_MEDIA_EXTENSIONS: what `ensure_sample_assets` restores, so the unused sweep keeps these names. */
+const SAMPLE_POOL_EXTENSIONS = ["png", "jpg", "jpeg", "webp", "mp4", "mov", "m4a"];
+const samplePoolFiles = Object.keys(import.meta.glob("/projects/_samples/*", { query: "?url" }));
+
+/** The shared sample pool (`projects/_samples/`), so kb's `assets unused` keeps the restored samples offline. */
+function samplePool(): Entry[] {
+  return samplePoolFiles
+    .map((path) => path.slice(path.lastIndexOf("/") + 1))
+    .filter((name) => {
+      const ext = name.slice(name.lastIndexOf(".") + 1).toLowerCase();
+      return !name.startsWith(".") && name.includes(".") && SAMPLE_POOL_EXTENSIONS.includes(ext);
+    })
+    .sort()
+    .map((id) => ({ id }));
+}
+
 /** The Export modal's video rows (High quality, then the bundled presets): what `kb export --preset` takes and what `kb verify-export` expects of a file. `lane` is `frozen` for High quality (its spec lane with the poster frame on), `spec` for presets; `hardware` lanes are excluded from Verify. */
 function exportPresets(): Entry[] {
   return railPresets(BUNDLED_EXPORT_PRESETS).map((doc) => ({
@@ -1451,6 +1534,12 @@ export function buildAgentCatalog(): Record<string, Json> {
       ...(id === "none" ? { default: true } : {}),
     })),
     deviceLayouts: DEVICE_LAYOUT_PRESETS.map((id) => ({ id, ...DEVICE_LAYOUTS[id] })),
+    deviceMedia: {
+      keys: (Object.keys(DEVICE_MEDIA_KEYS) as (keyof DeviceMediaSpec)[]).map((id) => ({
+        id,
+        ...DEVICE_MEDIA_KEYS[id],
+      })),
+    },
     mediaMotion: SCENE_MEDIA_MOTION_PRESETS.map((id) => ({ id, ...MEDIA_MOTION[id] })),
     objects: Object.values(builtinObjects)
       .map((o) => ({
@@ -1532,6 +1621,7 @@ export function buildAgentCatalog(): Record<string, Json> {
     presets: presets(),
     templates: templates(),
     exportPresets: exportPresets(),
+    samplePool: samplePool(),
   };
   return tidy(catalog) as Record<string, Json>;
 }

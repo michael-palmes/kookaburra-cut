@@ -7,12 +7,13 @@ import re
 import shutil
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from . import bridge
 from . import catalog as catmod
-from . import queue
-from .util import EXIT_ENV, EXIT_OK, KbError, emit, emit_err, now_ms
+from . import music, queue
+from .film import timeline as tl
+from .util import EXIT_ENV, EXIT_OK, EXIT_PROBLEMS, KbError, emit, emit_err, now_ms
 
 CAPTURES = "captures"
 KEEP_FOLDERS = 40
@@ -29,6 +30,10 @@ CAPTURE_EPILOG = """\
   kb capture --frames 0@1,3@2.5 --sheet   several frames (1280 px long edge) plus one contact sheet
   kb capture --scene 2 --scale 0.5    half size; --width 960 sets the width in pixels
   kb capture --scene 2 --probe 100,200,640,360   exact pixel values (x,y in the returned image, top left)
+  ./kb capture --at bar:13                 the frame at a musical position, in the scene that owns it
+  ./kb capture --frames bars:13-16 --sheet   each downbeat of bars 13 to 16 (beats:13-14 for every beat)
+Positions (bar:B[.beat[.16th]], cue:ID, section:ID, optionally +40ms) resolve against audio.grid; a mid-transition
+moment belongs to the scene the editor shows as current. With --scene S a position outside S is refused.
 Copies land in .kb/captures/<time>-<agent>/ (each agent's newest 40 kept); --out DIR copies there, --no-copy
 skips it. A request costs frames x ceil(pixels / 921600) units: at most 144 per request and 240 a
 minute per agent (a 4K frame is 9 units, a 1280x720 frame 1)."""
@@ -181,24 +186,118 @@ def captures_root(project: Any) -> Path:
     return lock.kb_dir(project) / CAPTURES
 
 
+def _musical(text: str) -> bool:
+    from .beats import model
+
+    return music.is_position(text) or model.is_range(text)
+
+
+def place(project: Any, scope: Tuple[Any, List[Dict[str, Any]]], text: str, scene: Optional[str]) -> Dict[str, Any]:
+    """A musical position as the frame that shows it: { scene, at (seconds into it), position, projectMs }. The scene is
+    the one the editor attributes that moment to (mid-transition boundaries), or `scene` when the moment is inside it."""
+    from .beats import model
+
+    m, slots = scope
+    r = model.resolve(text, m)
+    if not r["ok"]:
+        raise model.position_error(text, r)
+    exact = r["projectMs"]
+    rounded = music.round_ms(exact)
+    total = music.round_ms(tl.timeline_total_ms(slots))
+    if not slots or not 0 <= rounded <= total:
+        raise KbError(f'"{text}" lands at {rounded} ms, outside the film (0 to {total} ms)', EXIT_PROBLEMS, kind="invalid",
+                      hint="pick a position inside the film; ./kb beats lists each scene's bars")
+    owner = model.owner_index(slots, rounded)
+    index = owner
+    if scene is not None:
+        index = project.resolve(scene)[0]
+    local = music.round_ms(exact - slots[index]["startMs"])
+    if not model.in_slot(slots, index, local):
+        stem = slots[owner]["stem"]
+        raise KbError(f'"{text}" lands at {rounded} ms, in scene {owner} {stem}, outside {slots[index]["stem"]}', EXIT_PROBLEMS, kind="invalid",
+                      hint=f"capture it with --scene {stem}, or drop --scene")
+    return {"scene": slots[index]["stem"], "at": local / 1000, "position": text, "projectMs": music.round_ms(slots[index]["startMs"] + local)}
+
+
+def position_frames(project: Any, spec: str, default_scene: Optional[str]) -> Tuple[List[Dict[str, Any]], List[Optional[Dict[str, Any]]]]:
+    """--frames with positions: S@SEC and S as before, plus POS, S@POS, bars:A-B (each downbeat) and beats:A-B (every beat
+    of bars A to B). Returns (frames for the request, each frame's { position, projectMs } or None)."""
+    from .beats import model
+
+    manifest = project.manifest()
+    scope = (model.project_music(manifest), model.slots_of(project, manifest))
+    items: List[Tuple[Optional[str], str, Optional[str]]] = []
+    for part in (p.strip() for p in spec.split(",")):
+        if not part:
+            continue
+        scene, rest = part.rsplit("@", 1) if "@" in part else (None, part)
+        scene = scene.strip() if scene is not None else None
+        rest = rest.strip()
+        positions = model.expand_range(rest, scope[0], limit=bridge.MAX_FRAMES + 1) or ([rest] if music.is_position(rest) else None)
+        if positions is None:
+            items.append((None, part, None))
+        else:
+            items += [(scene if scene is not None else default_scene, text, "position") for text in positions]
+        if len(items) > bridge.MAX_FRAMES:
+            raise KbError(f"--frames comes to more than {bridge.MAX_FRAMES} frames; a request takes at most {bridge.MAX_FRAMES}, so split it", EXIT_ENV, kind="usage")
+    if not items:
+        raise KbError('--frames needs scene@seconds pairs or positions, e.g. "0@1,bar:13,beats:13-14"', EXIT_ENV, kind="usage")
+    frames: List[Dict[str, Any]] = []
+    meta: List[Optional[Dict[str, Any]]] = []
+    for scene, text, kind in items:
+        if kind is None:
+            for f in bridge.frames_arg(text):
+                f["scene"] = str(project.resolve(f["scene"])[1])
+                frames.append(f)
+                meta.append(None)
+            continue
+        placed = place(project, scope, text, scene)
+        frames.append({"scene": placed["scene"], "at": placed["at"]})
+        meta.append({"position": text, "projectMs": placed["projectMs"]})
+    return frames, meta
+
+
 def cmd_capture(ctx: Any) -> int:
     args = ctx.args
     explicit_project = args.project
     # Bound before the election, so -C from another folder still picks this project's instance.
     project = None if explicit_project else ctx.project
+    at_position = args.at is not None and _musical(args.at)
+    frame_positions = bool(args.frames) and any(_musical(p.strip().rsplit("@", 1)[-1].strip()) for p in args.frames.split(","))
+    if (at_position or frame_positions) and project is None:
+        raise KbError("musical positions need the project folder; run kb from it instead of passing --project", EXIT_ENV, kind="usage")
+    seconds = None
+    if args.at is not None and not at_position:
+        try:
+            seconds = float(args.at)
+        except ValueError:
+            raise KbError(f'--at "{args.at}" is neither seconds into the scene nor a position', EXIT_ENV, kind="usage",
+                          hint="use --at 1.5 (seconds) or --at bar:13 (bar:B[.beat[.16th]], cue:ID, section:ID)") from None
+    body: Dict[str, Any] = {}
+    meta: List[Optional[Dict[str, Any]]] = []
+    echo: Optional[Dict[str, Any]] = None
+    if at_position:
+        from .beats import model
+
+        manifest = project.manifest()  # type: ignore[union-attr]
+        placed = place(project, (model.project_music(manifest), model.slots_of(project, manifest)), args.at, args.scene)
+        body.update(scene=placed["scene"], at=placed["at"])
+        echo = None if args.frames else {"position": placed["position"], "projectMs": placed["projectMs"]}
+    if args.frames and frame_positions:
+        body["frames"], meta = position_frames(project, args.frames, args.scene)
     hb = bridge.require_app("capture", "kb capture", project)
     target = explicit_project or project.project_id  # type: ignore[union-attr]
-    body: Dict[str, Any] = {"project": target}
-    if args.scene is not None:
+    body["project"] = target
+    if args.scene is not None and not at_position:
         body["scene"] = str(project.resolve(args.scene)[1]) if project else args.scene
-    if args.at is not None:
-        body["at"] = args.at
+    if seconds is not None:
+        body["at"] = seconds
     if args.aspect:
         aspects = catmod.load_catalog().ids("aspects", catmod.FALLBACK_ASPECTS) or []
         if aspects and args.aspect not in aspects:
             raise KbError(f'unknown aspect "{args.aspect}"; one of {", ".join(aspects)}', EXIT_ENV, kind="usage")
         body["aspect"] = args.aspect
-    if args.frames:
+    if args.frames and not frame_positions:
         frames = bridge.frames_arg(args.frames)
         if project:
             for f in frames:
@@ -219,12 +318,25 @@ def cmd_capture(ctx: Any) -> int:
             EXIT_ENV,
         )
     resp = bridge.require_ok(bridge.request("capture", body, args.timeout, "kb capture", client=ctx.caller.name), "capture")
-    resp = copied(ctx, resp, project)
+    resp = with_positions(copied(ctx, resp, project), echo, meta)
     if ctx.json:
         ctx.out(resp, ok=True)
         return EXIT_OK
     print_capture(resp)
     return EXIT_OK
+
+
+def with_positions(resp: Dict[str, Any], echo: Optional[Dict[str, Any]], meta: List[Optional[Dict[str, Any]]]) -> Dict[str, Any]:
+    """The answer with the position each frame was asked for and the project ms it resolved to."""
+    out = dict(resp, **echo) if echo else dict(resp)
+    frames = resp.get("frames") if isinstance(resp.get("frames"), list) else None
+    if frames is not None and (echo or any(meta)):
+        tagged = []
+        for i, f in enumerate(frames):
+            extra = (meta[i] if i < len(meta) else None) if meta else echo
+            tagged.append(dict(f, **extra) if isinstance(f, dict) and extra else f)
+        out["frames"] = tagged
+    return out
 
 
 def copied(ctx: Any, resp: Dict[str, Any], project: Any) -> Dict[str, Any]:
@@ -255,7 +367,8 @@ def print_capture(resp: Dict[str, Any]) -> None:
         for f in frames_out:
             if not isinstance(f, dict):
                 continue
-            emit(f"{f.get('path')}  (scene {f.get('scene')} at {f.get('at')}s, t={f.get('tMs')}ms)")
+            pos = f" = {f['position']}" if f.get("position") else ""
+            emit(f"{f.get('path')}  (scene {f.get('scene')} at {f.get('at')}s, t={f.get('tMs')}ms{pos})")
             for p in f.get("probes") or []:
                 if isinstance(p, dict):
                     rgba = ",".join(str(c) for c in p.get("rgba") or [])
@@ -265,6 +378,8 @@ def print_capture(resp: Dict[str, Any]) -> None:
         for p in paths:
             if p:
                 emit(str(p))
+        if resp.get("position"):
+            emit_err(f"kb: {resp['position']} = {resp.get('projectMs')} ms in the film")
     if resp.get("sheetPath"):
         emit(f"sheet: {resp['sheetPath']}")
     size = resp.get("size") if isinstance(resp.get("size"), dict) else None
@@ -402,9 +517,9 @@ def register(sub: Any, common: argparse.ArgumentParser, Formatter: Any) -> None:
         parents=[common],
     )
     s.add_argument("--scene", help="scene index (0-based) or stem; default: the playhead")
-    s.add_argument("--at", type=float, help="seconds into the scene (default: its midpoint)")
+    s.add_argument("--at", metavar="SEC|POS", help="seconds into the scene (default: its midpoint), or a musical position (bar:13, cue:drop)")
     s.add_argument("--aspect", help="render at this aspect for this request only (e.g. 9:16)")
-    s.add_argument("--frames", help="several frames: S@SEC,S@SEC,...")
+    s.add_argument("--frames", help="several frames: S@SEC, S, POS, S@POS, bars:A-B, beats:A-B (comma separated, at most 48)")
     s.add_argument("--sheet", action="store_true", help="also write one contact-sheet PNG")
     size = s.add_mutually_exclusive_group()
     size.add_argument("--width", type=int, metavar="N", help="capture width in pixels (never upscaled)")

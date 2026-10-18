@@ -135,7 +135,7 @@ pub struct ClosureFile {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum AssetGroup {
-    /// `media_references()` found nothing pointing at it.
+    /// The shared in-use rule (`media::AssetRefs`) found nothing pointing at it.
     Unreferenced,
     /// An `assets/*-edited.mp4` flattened render, listed even when referenced.
     FlattenedRender,
@@ -1201,13 +1201,19 @@ fn build_project(
 
     let mut reviewed = Vec::new();
     let mut dropped: BTreeSet<String> = BTreeSet::new();
+    let refs = (kind == ItemKind::Project).then(|| crate::media::project_asset_refs(&dir));
+    let asset_rels: Vec<String> = candidates
+        .iter()
+        .map(|(rel, _)| rel.clone())
+        .filter(|rel| rel.starts_with("assets/"))
+        .collect();
     for (rel, path) in &candidates {
         // The unused-file review is a project feature: a template or preset carries only what it was saved with.
         if kind != ItemKind::Project || !rel.starts_with("assets/") {
             continue;
         }
         let flattened = rel.ends_with(FLATTENED_SUFFIX);
-        let referenced = !crate::media::media_references(&dir, rel).is_empty();
+        let referenced = refs.as_ref().is_some_and(|r| r.in_use(rel, &asset_rels));
         if !flattened && referenced {
             continue;
         }

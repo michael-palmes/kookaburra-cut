@@ -2,9 +2,51 @@ import type { EditMask, EditMaskStyle } from "../engine/edit";
 import { DEFAULT_MASK_COLOR, DEFAULT_MASK_STRENGTH } from "../engine/editMasks";
 import { ColourPicker } from "../ui/colour/ColourPicker";
 import { normaliseHex } from "../ui/colour/colourUtils";
-import { ToolIcon } from "./ToolIcon";
+import { ToolIcon, type ToolIconId } from "./ToolIcon";
 
-/** The mask strip under the topbar (the tap strip's pattern): the selected mask's style, its strength or colour, its keys at the playhead and delete; with the tool armed and nothing selected, a hint for drawing. */
+/** The mask strip under the topbar (the tap strip's pattern): the selected mask's style, its strength or colour, its fades, its keys at the playhead and delete; with the tool armed and nothing selected, a hint for drawing. */
+
+const FADE_STEP_MS = 10;
+
+/** One fade length: up to what the span leaves after the other fade. */
+function FadeSlider({
+  icon,
+  label,
+  title,
+  valueMs,
+  maxMs,
+  onChange,
+  onCommit,
+}: {
+  icon: ToolIconId;
+  label: string;
+  title: string;
+  valueMs: number;
+  maxMs: number;
+  onChange: (ms: number) => void;
+  onCommit: () => void;
+}) {
+  return (
+    <label className="tap-settings-size mask-fade" title={title}>
+      <ToolIcon id={icon} />
+      <span className="tap-settings-size-label">{label}</span>
+      <input
+        type="range"
+        min={0}
+        max={Math.max(0, maxMs)}
+        step={FADE_STEP_MS}
+        value={valueMs}
+        disabled={maxMs <= 0}
+        onChange={(e) => onChange(Number(e.currentTarget.value))}
+        onPointerUp={onCommit}
+        onPointerCancel={onCommit}
+        onKeyUp={onCommit}
+        onBlur={onCommit}
+      />
+      <span className="mask-fade-value">{(valueMs / 1000).toFixed(2)}s</span>
+    </label>
+  );
+}
 
 const STYLES: { id: EditMaskStyle; label: string; title: string }[] = [
   {
@@ -31,6 +73,8 @@ export function MaskSettingsBar({
   onStrength,
   onStrengthCommit,
   onColor,
+  onFade,
+  onFadeCommit,
   onAddKey,
   onRemoveKey,
   onDelete,
@@ -43,6 +87,9 @@ export function MaskSettingsBar({
   onStrength: (strength: number) => void;
   onStrengthCommit: () => void;
   onColor: (hex: string | undefined) => void;
+  /** A fade slider moved: the new length in source ms (0 = a hard edge). */
+  onFade: (edge: "in" | "out", ms: number) => void;
+  onFadeCommit: () => void;
   onAddKey: () => void;
   onRemoveKey: () => void;
   onDelete: () => void;
@@ -58,6 +105,9 @@ export function MaskSettingsBar({
     );
   }
   const strength = mask.strength ?? DEFAULT_MASK_STRENGTH;
+  const span = mask.endMs - mask.startMs;
+  const fadeIn = mask.fadeInMs ?? 0;
+  const fadeOut = mask.fadeOutMs ?? 0;
   const why = !keyState.editable
     ? image
       ? "A mask on a still is one static box"
@@ -110,6 +160,28 @@ export function MaskSettingsBar({
             onBlur={onStrengthCommit}
           />
         </label>
+      )}
+      {!image && (
+        <>
+          <FadeSlider
+            icon="fadeIn"
+            label="Fade in"
+            title="Fade the mask in from where it starts (0 = a hard edge)"
+            valueMs={fadeIn}
+            maxMs={span - fadeOut}
+            onChange={(ms) => onFade("in", ms)}
+            onCommit={onFadeCommit}
+          />
+          <FadeSlider
+            icon="fadeOut"
+            label="Fade out"
+            title="Fade the mask out before it ends (0 = a hard edge)"
+            valueMs={fadeOut}
+            maxMs={span - fadeIn}
+            onChange={(ms) => onFade("out", ms)}
+            onCommit={onFadeCommit}
+          />
+        </>
       )}
       <button
         type="button"

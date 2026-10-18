@@ -132,9 +132,18 @@ export { VideoWindow, type VideoWindowProps } from "./media/VideoWindow";
 export { MotionBlur } from "./motion/MotionBlur";
 // Motion helpers: eased ramps, keyed tracks and the stamp pop, all pure functions of the clock.
 export { clamp01, lerp, ramp } from "./motion/math";
+// Attack, hold, release levels fired at given times (beats, cues); overlapping pulses take the max.
+export { type PulseOptions, pulse } from "./motion/pulse";
 export { Stamp, type StampProps } from "./motion/Stamp";
 export { type MotionKey, type SampleKeysOptions, sampleKeys } from "./motion/sampleKeys";
 export { type StampScaleOptions, stampScale } from "./motion/stampScale";
+// Musical time from the authored audio.grid and audio.cues: null and {} without them.
+export {
+  type BeatGrid,
+  type BeatPosition,
+  useBeatGrid,
+  useCues,
+} from "./music/useBeatGrid";
 // The 3D objects library: bundled + workspace manifests, staged by the sidecar `objects` array.
 export { ObjectsFallback, StagedObject } from "./objects/ObjectPrimitive";
 export { preloadSceneObjects } from "./objects/preload";

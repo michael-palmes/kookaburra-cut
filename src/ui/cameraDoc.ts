@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useCameraEditStore } from "../engine/cameraEditStore";
+import { resolveCameraKicks } from "../engine/cameraKicks";
 import { type CameraPose, sampleCameraTrack } from "../engine/cameraTrack";
 import { useFormat } from "../engine/format";
 import { isEditableProjectId, type LoadedProject, nativeProjectSlug } from "../engine/project";
@@ -62,11 +63,15 @@ export function useCameraDoc(
           next.mode === "rig"
             ? normalizeSceneRig(next.rig, "camera-edit", doc, format, stageFloorY)
             : null,
+          resolveCameraKicks(doc?.cameraKicks, {
+            music: project.music,
+            sceneStartMs: slot.startMs,
+          }),
         ),
         committed,
       });
     },
-    [project.id, sceneIndex, doc, format, stageFloorY],
+    [project.id, project.music, slot.startMs, sceneIndex, doc, format, stageFloorY],
   );
 
   /** Write the camera slice to the sidecar (creating a minimal doc for doc-less scenes) and hand the written doc to the host for the in-memory patch. Empty blocks are omitted entirely (`camera` included, so a rig-only scene never grows an empty orbit stub), keeping legacy sidecars byte-identical. */

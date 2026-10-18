@@ -3,6 +3,7 @@ import {
   compareSlotMedia,
   deviceHasFollowVideo,
   deviceSlotMedia,
+  deviceVideoSlots,
   deviceVideoSources,
   setCompareSlotMedia,
   setDeviceSlotMedia,
@@ -66,6 +67,13 @@ describe("device screen slots", () => {
       "after-in.mp4",
       "out.mp4",
       "after-out.mp4",
+    ]);
+    // The export barrier times each slot from its own spec.
+    expect(deviceVideoSlots(doc, device)).toEqual([
+      doc.devices?.[0].media,
+      doc.compare?.b?.media?.d1,
+      doc.devices?.[0].coverMedia,
+      doc.compare?.b?.coverMedia?.d1,
     ]);
     expect(followMediaSources(doc)).toEqual([
       "in.mp4",

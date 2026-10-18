@@ -448,6 +448,92 @@ describe("applyEditOp", () => {
     });
   });
 
+  it("setClipCrop snaps to even pixels, and resets", () => {
+    const cropped = ok({ op: "setClipCrop", clipId: "c1", crop: [0.1, 0.2, 0.5, 0.25] });
+    expect(cropped.label).toBe("crop clip");
+    const crop = cropped.doc.clips[0].crop ?? [Number.NaN, 0, Number.NaN, 0];
+    expect([crop[0] * 1170, crop[2] * 1170].map((v) => Math.round(v) % 2)).toEqual([0, 0]);
+    expect(code({ op: "setClipCrop", clipId: "c1", crop }, cropped.doc)).toBe("no-change");
+    const reset = ok({ op: "setClipCrop", clipId: "c1", crop: null }, cropped.doc);
+    expect(reset.label).toBe("reset crop");
+    expect("crop" in reset.doc.clips[0]).toBe(false);
+    expect(code({ op: "setClipCrop", clipId: "c1", crop: null })).toBe("no-change");
+    expect(code({ op: "setClipCrop", clipId: "c1", crop: [0, 0, 0, 1] })).toBe("bad-arg");
+    expect(code({ op: "setClipCrop", clipId: "c1" })).toBe("bad-arg");
+    expect(code({ op: "setClipCrop", clipId: "c9", crop: [0, 0, 1, 1] })).toBe("unknown-clip");
+    const sizeless = { ...DOC, sources: [{ ...VIDEO, width: 0, height: 0 }, IMAGE] };
+    expect(code({ op: "setClipCrop", clipId: "c1", crop: [0, 0, 1, 1] }, sizeless)).toBe("bad-arg");
+    expect(
+      ok({ op: "setClipCrop", clipId: "c4", crop: [0.25, 0, 0.5, 1] }).doc.clips[3].crop,
+    ).toEqual([0.25, 0, 0.5, 1]);
+  });
+
+  it("setZoomKey snaps time to the frame grid, fits the output's shape and refuses off-clip times", () => {
+    const added = ok({ op: "setZoomKey", clipId: "c1", atMs: 1004.4, rect: [0.1, 0.1, 0.2, 0.4] });
+    expect(added.label).toBe("add zoom key");
+    const [key] = added.doc.clips[0].zoom?.keys ?? [];
+    expect(key.tMs).toBe(1000);
+    expect((key.rect[2] * 1170) / (key.rect[3] * 2532)).toBeCloseTo(1170 / 2532, 2);
+    expect(code({ op: "setZoomKey", clipId: "c1", atMs: 1000, rect: key.rect }, added.doc)).toBe(
+      "no-change",
+    );
+    const moved = ok(
+      { op: "setZoomKey", clipId: "c1", atMs: 1000, rect: [0, 0, 1, 1], ease: "smooth" },
+      added.doc,
+    );
+    expect(moved.label).toBe("change zoom key");
+    expect(moved.doc.clips[0].zoom?.keys).toEqual([
+      { tMs: 1000, rect: [0, 0, 1, 1], ease: "smooth" },
+    ]);
+    expect(code({ op: "setZoomKey", clipId: "c1", atMs: 4500, rect: [0, 0, 1, 1] })).toBe(
+      "no-clip",
+    );
+    expect(code({ op: "setZoomKey", clipId: "c1", atMs: 0, rect: [0, 0, 0, 1] })).toBe("bad-arg");
+    expect(code({ op: "setZoomKey", clipId: "c9", atMs: 0, rect: [0, 0, 1, 1] })).toBe(
+      "unknown-clip",
+    );
+    expect(
+      ok({ op: "setZoomKey", clipId: "c2", atMs: 4500, rect: [0, 0, 1, 1] }).doc.clips[1].zoom,
+    ).toBeDefined();
+  });
+
+  it("zoom keys delete, ease and retime by their frame, with refusals", () => {
+    const one = ok({ op: "setZoomKey", clipId: "c1", atMs: 500, rect: [0, 0, 1, 1] }).doc;
+    const two = ok({ op: "setZoomKey", clipId: "c1", atMs: 2000, rect: [0, 0, 0.5, 0.5] }, one).doc;
+    expect(code({ op: "setZoomKeyEase", clipId: "c1", tMs: 500, ease: "linear" }, two)).toBe(
+      "no-change",
+    );
+    const eased = ok({ op: "setZoomKeyEase", clipId: "c1", tMs: 504, ease: "smooth" }, two);
+    expect(eased.doc.clips[0].zoom?.keys[0].ease).toBe("smooth");
+    expect(code({ op: "moveZoomKey", clipId: "c1", tMs: 500, toMs: 2000 }, two)).toBe("bad-arg");
+    expect(code({ op: "moveZoomKey", clipId: "c1", tMs: 500, toMs: 505 }, two)).toBe("no-change");
+    const retimed = ok({ op: "moveZoomKey", clipId: "c1", tMs: 500, toMs: 2500.2 }, two);
+    expect(retimed.doc.clips[0].zoom?.keys.map((k) => k.tMs)).toEqual([2000, 2500]);
+    expect(code({ op: "removeZoomKey", clipId: "c1", tMs: 1000 }, two)).toBe("no-change");
+    const gone = ok({ op: "removeZoomKey", clipId: "c1", tMs: 500 }, one);
+    expect("zoom" in gone.doc.clips[0]).toBe(false);
+    expect(code({ op: "removeZoomKey", clipId: "c1", tMs: Number.NaN })).toBe("bad-arg");
+    const reset = ok({ op: "setClipCrop", clipId: "c1", crop: null }, two);
+    expect("zoom" in reset.doc.clips[0]).toBe(false);
+  });
+
+  it("setMaskFade fits fades inside the span and refuses stills", () => {
+    const faded = ok({ op: "setMaskFade", maskId: "m1", fadeInMs: 250.4, fadeOutMs: 500 });
+    expect(faded.label).toBe("change mask fade");
+    expect(faded.doc.masks?.[0]).toMatchObject({ fadeInMs: 250, fadeOutMs: 500 });
+    const cleared = ok({ op: "setMaskFade", maskId: "m1", fadeInMs: null }, faded.doc);
+    expect("fadeInMs" in (cleared.doc.masks?.[0] ?? {})).toBe(false);
+    expect(cleared.doc.masks?.[0].fadeOutMs).toBe(500);
+    expect(code({ op: "setMaskFade", maskId: "m1", fadeOutMs: 500 }, faded.doc)).toBe("no-change");
+    expect(code({ op: "setMaskFade", maskId: "m1", fadeInMs: 1500, fadeOutMs: 600 })).toBe(
+      "bad-arg",
+    );
+    expect(code({ op: "setMaskFade", maskId: "m1", fadeInMs: -1 })).toBe("bad-arg");
+    expect(code({ op: "setMaskFade", maskId: "m1" })).toBe("bad-arg");
+    expect(code({ op: "setMaskFade", maskId: "m2", fadeInMs: 100 })).toBe("image-source");
+    expect(code({ op: "setMaskFade", maskId: "m9", fadeInMs: 100 })).toBe("unknown-mask");
+  });
+
   it("refuses unknown ops", () => {
     expect(code({ op: "explode" })).toBe("bad-arg");
     expect(code(null)).toBe("bad-arg");
@@ -641,7 +727,8 @@ describe("applyEditOp matches the pre-op editor handlers", () => {
       for (let step = 0; step < 6; step++) {
         const op = randomEditOp(rand, doc);
         const result: EditOpResult = applyEditOp(doc, op);
-        if (op.op === "addTapAtSource" || (!result.ok && UNREACHABLE.has(result.code))) {
+        const fresh = ["addTapAtSource", "setClipCrop", "setMaskFade"].includes(op.op);
+        if (fresh || (!result.ok && UNREACHABLE.has(result.code))) {
           if (result.ok) doc = result.doc;
           continue;
         }

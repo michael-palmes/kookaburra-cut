@@ -2,6 +2,7 @@ import { linearToSrgb, srgbToLinear } from "../theme/oklch";
 import type { LightingPose, LightingSpec, Theme } from "../theme/tokens";
 import { DEFAULT_EASE, ease, isEaseName } from "./ease";
 import { KELVIN_MAX, KELVIN_MIN } from "./kelvin";
+import { isMusicPosition, type ProjectMusic, resolveSceneLocalMs } from "./musicTime";
 import type {
   SceneDoc,
   SceneDocRoom,
@@ -51,9 +52,21 @@ const clamp = (v: number, lo: number, hi: number): number => Math.min(hi, Math.m
 export type RoomWarn = (message: string) => void;
 const silent: RoomWarn = () => {};
 
-/** The seam musical positions plug into: a key's `at` as scene-local ms, or null when it can't resolve. Numbers only today. */
-export function resolveRoomAt(at: unknown): number | null {
-  return isNum(at) ? Math.max(0, at) : null;
+const NO_MUSIC: ProjectMusic = { startOffsetMs: 0, cues: {}, sections: {} };
+
+/** What resolves a musical `at`: the project's music and the scene's start on the timeline. */
+export interface RoomTimeScope {
+  music?: ProjectMusic;
+  sceneStartMs: number;
+}
+
+/** A key's `at` as scene-local ms: a number, or a musical position (`"bar:13.3"`, `"cue:drop"`) resolved against `scope`. Null when it can't resolve; undefined for a well-formed position with no scope yet (parse time). */
+export function resolveRoomAt(at: unknown, scope?: RoomTimeScope): number | null | undefined {
+  if (isNum(at)) return Math.max(0, at);
+  if (typeof at !== "string" || !isMusicPosition(at)) return null;
+  if (!scope) return undefined;
+  const r = resolveSceneLocalMs(at, scope.music ?? NO_MUSIC, scope.sceneStartMs);
+  return r.ok ? Math.max(0, r.projectMs) : null;
 }
 
 /** A hex (`#rgb` or `#rrggbb`) as lower-case `#rrggbb`; anything else passes through. */
@@ -156,23 +169,26 @@ export function validateRoomKey(
   raw: unknown,
   label: string,
   warn: RoomWarn = silent,
+  scope?: RoomTimeScope,
 ): RoomKeyFields | null {
   if (!isRecord(raw)) {
     warn(`${label} isn't an object, dropped`);
     return null;
   }
   warnUnknown(raw, ROOM_KEY_FIELDS, label, warn);
-  const at = resolveRoomAt(raw.at);
+  const at = resolveRoomAt(raw.at, scope);
   if (at === null) {
     warn(
-      typeof raw.at === "string"
-        ? `${label}.at "${raw.at}" isn't supported yet (scene-local ms only), key dropped`
-        : `${label} needs a numeric "at" (scene-local ms), key dropped`,
+      typeof raw.at !== "string"
+        ? `${label} needs an "at": scene-local ms or a musical position, key dropped`
+        : isMusicPosition(raw.at)
+          ? `${label}.at "${raw.at}" doesn't resolve (no audio grid, or an unknown cue or section), key dropped`
+          : `${label}.at "${raw.at}" isn't scene-local ms or a musical position, key dropped`,
     );
     return null;
   }
   const out: RoomKeyFields = {
-    at,
+    at: at ?? Number.NaN,
     transition: "cut",
     origin: [ROOM_DEFAULT_ORIGIN[0], ROOM_DEFAULT_ORIGIN[1]],
     durationMs: 0,
@@ -221,12 +237,15 @@ export function validateRoomKeys(
   raw: readonly unknown[],
   label: string,
   warn: RoomWarn = silent,
+  scope?: RoomTimeScope,
 ): RoomKeyFields[] {
   const keys: RoomKeyFields[] = [];
   raw.forEach((entry, i) => {
-    const key = validateRoomKey(entry, `${label}.keys[${i}]`, warn);
+    const key = validateRoomKey(entry, `${label}.keys[${i}]`, warn, scope);
     if (key) keys.push(key);
   });
+  // A musical `at` stays unresolved at parse time, so order and overlap wait for the build.
+  if (!keys.every((key) => Number.isFinite(key.at))) return keys;
   keys.sort((a, b) => a.at - b.at);
   for (let i = 0; i + 1 < keys.length; i++) {
     const room = keys[i];
@@ -271,6 +290,8 @@ export interface RoomTrack {
 }
 
 export interface RoomTrackContext {
+  /** Resolves musical `at` values; absent resolves numbers only. */
+  time?: RoomTimeScope;
   sceneTheme: Theme;
   /** Themes room keys name (`LoadedProject.roomThemes`); an id missing here reads the scene's theme. */
   roomThemes?: Readonly<Record<string, Theme>>;
@@ -443,7 +464,7 @@ export function normalizeRoomTrack(
   ctx: RoomTrackContext,
 ): RoomTrack | null {
   if (!room || !Array.isArray(room.keys)) return null;
-  const fields = validateRoomKeys(room.keys, "room");
+  const fields = validateRoomKeys(room.keys, "room", silent, ctx.time ?? { sceneStartMs: 0 });
   if (fields.length === 0) return null;
   const base = baseLights(ctx);
   let colour = normaliseHex(ctx.sceneTheme.colors.background);
@@ -472,6 +493,8 @@ export function normalizeRoomTrack(
 }
 
 export interface RoomThemeInputs {
+  /** The project's music and each scene's start (`sceneCameraTiming`), for musical `at` values. */
+  timing?: { music?: ProjectMusic; sceneStartMs: readonly number[] };
   sceneThemes: readonly Theme[];
   roomThemes?: Readonly<Record<string, Theme>>;
   projectLighting?: LightingSpec;
@@ -487,6 +510,7 @@ export function buildRoomTracks(
     const doc = docs[i];
     if (!doc?.room) return null;
     return normalizeRoomTrack(doc.room, {
+      time: { music: themes.timing?.music, sceneStartMs: themes.timing?.sceneStartMs[i] ?? 0 },
       sceneTheme,
       roomThemes: themes.roomThemes,
       projectLighting: themes.projectLighting,
