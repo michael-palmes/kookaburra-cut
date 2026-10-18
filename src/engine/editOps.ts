@@ -1,4 +1,12 @@
-import type { EditClip, EditDoc, EditMask, EditMaskStyle, EditTap } from "./edit";
+import type {
+  EditClip,
+  EditDoc,
+  EditMask,
+  EditMaskStyle,
+  EditSource,
+  EditTap,
+  EditZoomEase,
+} from "./edit";
 import {
   addHoldKey,
   clampRect,
@@ -20,13 +28,16 @@ import {
   addTap,
   type CropRect,
   clipIndexAt,
+  clipTimelineMs,
   DEFAULT_HOLD_MS,
+  fitZoomRect,
   freezeAt,
   freezeAtEnd,
   imageClip,
   insertClipAt,
   moveClip,
   moveTap,
+  moveZoomKey,
   nextClipId,
   nextSourceId,
   nextTapId,
@@ -34,15 +45,20 @@ import {
   relayout,
   removeClip,
   removeTap,
+  removeZoomKey,
   retimeTap,
   setClipCrop,
   setClipHold,
   setClipSpeed,
+  setZoomKey,
+  setZoomKeyEase,
   snapCropRect,
+  snapZoomMs,
   splitAt,
   timelineDurationMs,
   trimClipIn,
   trimClipOut,
+  zoomKeyIndex,
 } from "./editMath";
 
 /** The editor's document mutations as pure ops: each reproduces an EditorApp handler exactly, so the editor and `kb video` (kblib/video/editops.py mirrors this file, pinned by edit-vectors.json) share one spec. The input is relaid out first and never mutated; a success applies the editor's commit normalisation (orphan masks pruned). Where a handler silently does nothing, the op fails with a code and leaves the doc alone. Timeline times (`atMs`) may be fractional like the playhead; source times are integers. Check order: argument shape (`bad-arg`), then lookups (`unknown-*`), then the handler's own refusals. */
@@ -68,6 +84,16 @@ export type EditOp =
   | { op: "trimOut"; clipId: string; outMs: number }
   | { op: "setHold"; clipId: string; holdMs: number }
   | { op: "setClipCrop"; clipId: string; crop: [number, number, number, number] | null }
+  | {
+      op: "setZoomKey";
+      clipId: string;
+      atMs: number;
+      rect: [number, number, number, number];
+      ease?: EditZoomEase;
+    }
+  | { op: "removeZoomKey"; clipId: string; tMs: number }
+  | { op: "setZoomKeyEase"; clipId: string; tMs: number; ease: EditZoomEase }
+  | { op: "moveZoomKey"; clipId: string; tMs: number; toMs: number }
   | { op: "addTap"; atMs: number; pos: [number, number] }
   | { op: "addTapAtSource"; sourceId: string; sourceMs: number; pos: [number, number] }
   | { op: "moveTap"; tapId: string; pos: [number, number] }
@@ -117,6 +143,7 @@ export type EditOpResult =
   | { ok: false; code: EditOpErrorCode; message: string };
 
 export const MASK_STYLES: readonly EditMaskStyle[] = ["solid", "blur", "pixelate"];
+export const ZOOM_EASES: readonly EditZoomEase[] = ["linear", "smooth"];
 const HEX_COLOUR = /^#[0-9a-fA-F]{6}$/;
 
 /** The output rate every op reads: the doc's, or 60 when unset. */
@@ -155,6 +182,23 @@ function isCrop(v: unknown): v is CropRect {
 
 const sameRect = (a: readonly number[] | undefined, b: readonly number[] | undefined) =>
   a === b || (!!a && !!b && a.every((v, i) => v === b[i]));
+
+const easeProblem = (v: unknown) =>
+  v === undefined || ZOOM_EASES.includes(v as EditZoomEase)
+    ? null
+    : 'ease must be "linear" or "smooth"';
+
+/** The output's width over its height, or the source's when the output has no size. */
+function outputAspect(doc: EditDoc, source: EditSource): number {
+  const { width, height } = doc.settings;
+  return width > 0 && height > 0 ? width / height : source.width / source.height;
+}
+
+/** The zoom key a clip-local time names (on its output frame), or the refusal. */
+function findZoomKey(doc: EditDoc, clip: EditClip, tMs: number): EditOpResult | number {
+  const at = zoomKeyIndex(clip.zoom?.keys ?? [], tMs, editFps(doc));
+  return at >= 0 ? at : fail("no-change", `${clip.id} has no zoom key at ${tMs}ms.`);
+}
 
 function fadeProblem(key: "fadeInMs" | "fadeOutMs", v: unknown): string | null {
   return v === undefined || v === null || (isNum(v) && v >= 0)
@@ -304,7 +348,7 @@ export function applyEditOp(input: EditDoc, op: EditOp): EditOpResult {
       if (bad) return fail("bad-arg", bad);
       const { doc: withSource, clip } = spliceSource(doc, op.source);
       return done(
-        { ...withSource, clips: insertClipAt(withSource.clips, op.atMs, clip) },
+        { ...withSource, clips: insertClipAt(withSource.clips, op.atMs, clip, editFps(doc)) },
         "insert clip",
         clip.id,
       );
@@ -314,7 +358,7 @@ export function applyEditOp(input: EditDoc, op: EditOp): EditOpResult {
       if (bad) return fail("bad-arg", bad);
       if (clipIndexAt(doc.clips, op.atMs) < 0) return noMoment(op.atMs);
       const id = nextClipId(doc.clips);
-      const clips = splitAt(doc.clips, op.atMs, id);
+      const clips = splitAt(doc.clips, op.atMs, id, editFps(doc));
       if (!clips) {
         return fail(
           "no-split",
@@ -335,7 +379,7 @@ export function applyEditOp(input: EditDoc, op: EditOp): EditOpResult {
       const id = nextClipId(doc.clips);
       const clips = atEnd
         ? freezeAtEnd(doc.clips, fps, holdMs)
-        : freezeAt(doc.clips, op.atMs, holdMs);
+        : freezeAt(doc.clips, op.atMs, holdMs, fps);
       if (!clips) {
         return fail("no-freeze", `Can't freeze at ${op.atMs}ms: that frame is already a hold.`);
       }
@@ -362,7 +406,7 @@ export function applyEditOp(input: EditDoc, op: EditOp): EditOpResult {
       if ("error" in clip) return clip.error;
       if (clip.found.holdMs !== undefined) return holdClip(clip.found);
       return done(
-        { ...doc, clips: setClipSpeed(doc.clips, clip.found.id, op.speed) },
+        { ...doc, clips: setClipSpeed(doc.clips, clip.found.id, op.speed, editFps(doc)) },
         "change clip speed",
       );
     }
@@ -372,7 +416,7 @@ export function applyEditOp(input: EditDoc, op: EditOp): EditOpResult {
       if ("error" in clip) return clip.error;
       if (clip.found.holdMs !== undefined) return holdClip(clip.found);
       return done(
-        { ...doc, clips: trimClipIn(doc.clips, clip.found.id, op.inMs) },
+        { ...doc, clips: trimClipIn(doc.clips, clip.found.id, op.inMs, editFps(doc)) },
         "trim clip start",
       );
     }
@@ -412,7 +456,9 @@ export function applyEditOp(input: EditDoc, op: EditOp): EditOpResult {
       const source = doc.sources.find((s) => s.id === clip.found.sourceId);
       if (!source) return fail("unknown-source", `No source ${clip.found.sourceId} in this edit.`);
       if (op.crop === null) {
-        if (!clip.found.crop) return fail("no-change", `${clip.found.id} has no crop.`);
+        if (!clip.found.crop && !clip.found.zoom) {
+          return fail("no-change", `${clip.found.id} has no crop.`);
+        }
         return done({ ...doc, clips: setClipCrop(doc.clips, clip.found.id, null) }, "reset crop");
       }
       if (source.width < 2 || source.height < 2) {
@@ -423,6 +469,81 @@ export function applyEditOp(input: EditDoc, op: EditOp): EditOpResult {
         return fail("no-change", `${clip.found.id} already has that crop.`);
       }
       return done({ ...doc, clips: setClipCrop(doc.clips, clip.found.id, crop) }, "crop clip");
+    }
+    case "setZoomKey": {
+      const bad =
+        atMsProblem(op.atMs) ??
+        (isCrop(op.rect) ? null : "rect must be [x, y, w, h] numbers with w and h > 0") ??
+        easeProblem(op.ease);
+      if (bad) return fail("bad-arg", bad);
+      const clip = findClip(doc, op.clipId);
+      if ("error" in clip) return clip.error;
+      const source = doc.sources.find((s) => s.id === clip.found.sourceId);
+      if (!source) return fail("unknown-source", `No source ${clip.found.sourceId} in this edit.`);
+      if (source.width < 2 || source.height < 2) {
+        return fail("bad-arg", `${source.id} has no pixel size to zoom against.`);
+      }
+      const localMs = op.atMs - clip.found.startMs;
+      if (localMs < 0 || localMs > clipTimelineMs(clip.found)) {
+        return fail("no-clip", `${clip.found.id} doesn't play at ${op.atMs}ms.`);
+      }
+      const fps = editFps(doc);
+      const rect = fitZoomRect(op.rect, source, outputAspect(doc, source));
+      const keys = clip.found.zoom?.keys ?? [];
+      const at = zoomKeyIndex(keys, localMs, fps);
+      if (
+        at >= 0 &&
+        sameRect(keys[at].rect, rect) &&
+        (op.ease === undefined || (keys[at].ease ?? "linear") === op.ease)
+      ) {
+        return fail("no-change", `${clip.found.id} already has that zoom key.`);
+      }
+      return done(
+        { ...doc, clips: setZoomKey(doc.clips, clip.found.id, localMs, rect, fps, op.ease) },
+        at >= 0 ? "change zoom key" : "add zoom key",
+      );
+    }
+    case "removeZoomKey":
+    case "setZoomKeyEase":
+    case "moveZoomKey": {
+      if (!isNum(op.tMs)) return fail("bad-arg", "tMs must be clip-local ms");
+      if (op.op === "setZoomKeyEase" && !ZOOM_EASES.includes(op.ease)) {
+        return fail("bad-arg", 'ease must be "linear" or "smooth"');
+      }
+      if (op.op === "moveZoomKey" && !isNum(op.toMs)) {
+        return fail("bad-arg", "toMs must be clip-local ms");
+      }
+      const clip = findClip(doc, op.clipId);
+      if ("error" in clip) return clip.error;
+      const at = findZoomKey(doc, clip.found, op.tMs);
+      if (typeof at !== "number") return at;
+      const fps = editFps(doc);
+      const keys = clip.found.zoom?.keys ?? [];
+      const id = clip.found.id;
+      if (op.op === "removeZoomKey") {
+        return done(
+          { ...doc, clips: removeZoomKey(doc.clips, id, op.tMs, fps) },
+          "delete zoom key",
+        );
+      }
+      if (op.op === "setZoomKeyEase") {
+        if ((keys[at].ease ?? "linear") === op.ease) {
+          const how = op.ease === "smooth" ? "smoothly" : "linearly";
+          return fail("no-change", `${id}'s key at ${op.tMs}ms already glides ${how}.`);
+        }
+        return done(
+          { ...doc, clips: setZoomKeyEase(doc.clips, id, op.tMs, op.ease, fps) },
+          "change zoom ease",
+        );
+      }
+      const to = snapZoomMs(op.toMs, fps);
+      const there = zoomKeyIndex(keys, to, fps);
+      if (there === at) return fail("no-change", `${id}'s key is already at ${to}ms.`);
+      if (there >= 0) return fail("bad-arg", `${id} already has a zoom key at ${to}ms.`);
+      return done(
+        { ...doc, clips: moveZoomKey(doc.clips, id, op.tMs, op.toMs, fps) },
+        "retime zoom key",
+      );
     }
     case "addTap": {
       const bad = atMsProblem(op.atMs) ?? (isPos(op.pos) ? null : "pos must be [x, y] in 0..1");

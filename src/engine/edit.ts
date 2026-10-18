@@ -25,6 +25,25 @@ export interface EditClip {
   holdMs?: number;
   /** Static crop `[x, y, w, h]` normalised 0..1 across the SOURCE frame, on even source pixels; the render letterboxes it into the output. Absent = the whole frame. A cropped doc saves as version 3, which older app versions refuse to open. */
   crop?: [number, number, number, number];
+  /** Keyed zoom: the framing glides between keys and holds outside them. Never beside `crop`; one key (or keys that never move) renders exactly like a static crop. Saves as version 3. */
+  zoom?: EditZoom;
+}
+
+export type EditZoomEase = "linear" | "smooth";
+
+/** One zoom key: the framing at a clip-local OUTPUT moment. */
+export interface EditZoomKey {
+  /** Integer clip-local output ms on the output frame grid; a split or trim can leave a key before the clip's start or past its end. */
+  tMs: number;
+  /** `[x, y, w, h]` normalised 0..1 across the SOURCE frame at the output's shape, on even source pixels. */
+  rect: [number, number, number, number];
+  /** How the glide from this key to the next eases; absent = linear. */
+  ease?: EditZoomEase;
+}
+
+export interface EditZoom {
+  /** Sorted by `tMs`, one key per output frame, at least one. */
+  keys: EditZoomKey[];
 }
 
 export interface EditSettings {
@@ -84,7 +103,7 @@ export interface EditDoc {
   tapColor?: string;
   /** Tap size multiplier on the default dot size; absent = 1.25. */
   tapSize?: number;
-  /** Privacy masks. A masked document saves as version 2 (3 with a crop), which older app versions refuse to open. */
+  /** Privacy masks. A masked document saves as version 2 (3 with a crop or zoom), which older app versions refuse to open. */
   masks?: EditMask[];
   /** The side-by-side reference pairing (scene matching); editor convenience, never read by renders. Older app versions strip it on their next autosave, which only forgets the pairing. */
   reference?: { rel: string; offsetMs: number };

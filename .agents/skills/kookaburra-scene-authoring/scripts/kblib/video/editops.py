@@ -17,7 +17,8 @@ from . import editmath as em
 
 OP_NAMES = (
     "addClip", "insertClip", "split", "freeze", "removeClip", "moveClip", "setSpeed", "trimIn", "trimOut", "setHold",
-    "setClipCrop", "addTap", "addTapAtSource", "moveTap", "retimeTap", "removeTap", "setTapLook",
+    "setClipCrop", "setZoomKey", "removeZoomKey", "setZoomKeyEase", "moveZoomKey",
+    "addTap", "addTapAtSource", "moveTap", "retimeTap", "removeTap", "setTapLook",
     "addMask", "setMaskRect", "offsetMask", "addMaskKey", "removeMaskKey", "retimeMaskEdge", "setMaskLook", "setMaskFade",
     "removeMask",
 )
@@ -26,6 +27,7 @@ ERROR_CODES = (
     "source-mismatch", "image-source", "no-change", "bad-arg",
 )
 MASK_STYLES = ("solid", "blur", "pixelate")
+ZOOM_EASES = ("linear", "smooth")
 HEX_COLOUR = re.compile(r"#[0-9a-fA-F]{6}", re.ASCII)
 TAP_LABELS = {"style": "change tap style", "color": "change tap colour", "size": "resize tap"}
 MASK_LABELS = {"style": "change mask style", "strength": "change mask strength", "color": "change mask colour"}
@@ -78,6 +80,18 @@ def _crop(v: Any) -> bool:
 
 def _same_rect(a: Any, b: Any) -> bool:
     return a is b or (a is not None and b is not None and all(x == y for x, y in zip(a, b)))
+
+
+def _ease_problem(op: Dict[str, Any]) -> Optional[str]:
+    if "ease" not in op or op["ease"] in ZOOM_EASES:
+        return None
+    return 'ease must be "linear" or "smooth"'
+
+
+def _output_aspect(doc: Doc, source: Dict[str, Any]) -> Any:
+    settings = doc.get("settings") or {}
+    w, h = settings.get("width"), settings.get("height")
+    return w / h if _num(w) and _num(h) and w > 0 and h > 0 else source["width"] / source["height"]
 
 
 def _fade_problem(op: Dict[str, Any], key: str) -> Optional[str]:
@@ -234,14 +248,14 @@ def apply_op(input_doc: Doc, op: Any) -> OpResult:
     if name == "insertClip":
         _bad(_source_problem(op.get("source")) or _at_problem(op))
         with_source, clip = _splice_source(doc, op["source"])
-        return _done(dict(with_source, clips=em.insert_clip_at(with_source["clips"], op["atMs"], clip)), "insert clip", clip["id"])
+        return _done(dict(with_source, clips=em.insert_clip_at(with_source["clips"], op["atMs"], clip, edit_fps(doc))), "insert clip", clip["id"])
 
     if name == "split":
         _bad(_at_problem(op))
         if em.clip_index_at(clips, op["atMs"]) < 0:
             raise _no_moment(op["atMs"])
         new_id = em.next_clip_id(clips)
-        out = em.split_at(clips, op["atMs"], new_id)
+        out = em.split_at(clips, op["atMs"], new_id, edit_fps(doc))
         if out is None:
             raise OpError("no-split", f"Can't split at {_fmt(op['atMs'])}ms: it is on a freeze or still, or a half would be under 100ms of source.")
         return _done(dict(doc, clips=out), "split clip", new_id)
@@ -256,7 +270,7 @@ def apply_op(input_doc: Doc, op: Any) -> OpResult:
         if not at_end and em.clip_index_at(clips, op["atMs"]) < 0:
             raise _no_moment(op["atMs"])
         new_id = em.next_clip_id(clips)
-        out = em.freeze_at_end(clips, fps, hold) if at_end else em.freeze_at(clips, op["atMs"], hold)
+        out = em.freeze_at_end(clips, fps, hold) if at_end else em.freeze_at(clips, op["atMs"], hold, fps)
         if out is None:
             raise OpError("no-freeze", f"Can't freeze at {_fmt(op['atMs'])}ms: that frame is already a hold.")
         return _done(dict(doc, clips=out), "freeze frame", new_id)
@@ -280,7 +294,7 @@ def apply_op(input_doc: Doc, op: Any) -> OpResult:
         clip = _clip(doc, op.get("clipId"))
         if "holdMs" in clip:
             raise _hold_clip(clip)
-        return _done(dict(doc, clips=em.set_clip_speed(clips, clip["id"], op["speed"])), "change clip speed")
+        return _done(dict(doc, clips=em.set_clip_speed(clips, clip["id"], op["speed"], edit_fps(doc))), "change clip speed")
 
     if name == "trimIn":
         if not _num(op.get("inMs")):
@@ -288,7 +302,7 @@ def apply_op(input_doc: Doc, op: Any) -> OpResult:
         clip = _clip(doc, op.get("clipId"))
         if "holdMs" in clip:
             raise _hold_clip(clip)
-        return _done(dict(doc, clips=em.trim_clip_in(clips, clip["id"], op["inMs"])), "trim clip start")
+        return _done(dict(doc, clips=em.trim_clip_in(clips, clip["id"], op["inMs"], edit_fps(doc))), "trim clip start")
 
     if name == "trimOut":
         if not _num(op.get("outMs")):
@@ -317,7 +331,7 @@ def apply_op(input_doc: Doc, op: Any) -> OpResult:
         if source is None:
             raise OpError("unknown-source", f"No source {clip['sourceId']} in this edit.")
         if reset:
-            if not clip.get("crop"):
+            if not clip.get("crop") and not clip.get("zoom"):
                 raise OpError("no-change", f"{clip['id']} has no crop.")
             return _done(dict(doc, clips=em.set_clip_crop(clips, clip["id"], None)), "reset crop")
         if source["width"] < 2 or source["height"] < 2:
@@ -326,6 +340,54 @@ def apply_op(input_doc: Doc, op: Any) -> OpResult:
         if _same_rect(crop, clip.get("crop")):
             raise OpError("no-change", f"{clip['id']} already has that crop.")
         return _done(dict(doc, clips=em.set_clip_crop(clips, clip["id"], crop)), "crop clip")
+
+    if name == "setZoomKey":
+        _bad(_at_problem(op) or (None if _crop(op.get("rect")) else "rect must be [x, y, w, h] numbers with w and h > 0") or _ease_problem(op))
+        clip = _clip(doc, op.get("clipId"))
+        source = next((s for s in doc["sources"] if s["id"] == clip["sourceId"]), None)
+        if source is None:
+            raise OpError("unknown-source", f"No source {clip['sourceId']} in this edit.")
+        if source["width"] < 2 or source["height"] < 2:
+            raise OpError("bad-arg", f"{source['id']} has no pixel size to zoom against.")
+        local = op["atMs"] - clip["startMs"]
+        if local < 0 or local > em.clip_timeline_ms(clip):
+            raise OpError("no-clip", f"{clip['id']} doesn't play at {_fmt(op['atMs'])}ms.")
+        fps = edit_fps(doc)
+        rect = em.fit_zoom_rect(op["rect"], source, _output_aspect(doc, source))
+        keys = em._zoom_keys(clip)
+        at = em.zoom_key_index(keys, local, fps)
+        ease = op.get("ease")
+        if at >= 0 and _same_rect(keys[at]["rect"], rect) and (ease is None or keys[at].get("ease", "linear") == ease):
+            raise OpError("no-change", f"{clip['id']} already has that zoom key.")
+        return _done(dict(doc, clips=em.set_zoom_key(clips, clip["id"], local, rect, fps, ease)), "change zoom key" if at >= 0 else "add zoom key")
+
+    if name in ("removeZoomKey", "setZoomKeyEase", "moveZoomKey"):
+        if not _num(op.get("tMs")):
+            raise OpError("bad-arg", "tMs must be clip-local ms")
+        if name == "setZoomKeyEase" and op.get("ease") not in ZOOM_EASES:
+            raise OpError("bad-arg", 'ease must be "linear" or "smooth"')
+        if name == "moveZoomKey" and not _num(op.get("toMs")):
+            raise OpError("bad-arg", "toMs must be clip-local ms")
+        clip = _clip(doc, op.get("clipId"))
+        fps = edit_fps(doc)
+        keys = em._zoom_keys(clip)
+        at = em.zoom_key_index(keys, op["tMs"], fps)
+        if at < 0:
+            raise OpError("no-change", f"{clip['id']} has no zoom key at {_fmt(op['tMs'])}ms.")
+        if name == "removeZoomKey":
+            return _done(dict(doc, clips=em.remove_zoom_key(clips, clip["id"], op["tMs"], fps)), "delete zoom key")
+        if name == "setZoomKeyEase":
+            if keys[at].get("ease", "linear") == op["ease"]:
+                how = "smoothly" if op["ease"] == "smooth" else "linearly"
+                raise OpError("no-change", f"{clip['id']}'s key at {_fmt(op['tMs'])}ms already glides {how}.")
+            return _done(dict(doc, clips=em.set_zoom_key_ease(clips, clip["id"], op["tMs"], op["ease"], fps)), "change zoom ease")
+        to = em.snap_zoom_ms(op["toMs"], fps)
+        there = em.zoom_key_index(keys, to, fps)
+        if there == at:
+            raise OpError("no-change", f"{clip['id']}'s key is already at {to}ms.")
+        if there >= 0:
+            raise OpError("bad-arg", f"{clip['id']} already has a zoom key at {to}ms.")
+        return _done(dict(doc, clips=em.move_zoom_key(clips, clip["id"], op["tMs"], op["toMs"], fps)), "retime zoom key")
 
     if name == "addTap":
         _bad(_at_problem(op) or (None if _pos(op.get("pos")) else "pos must be [x, y] in 0..1"))

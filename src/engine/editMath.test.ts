@@ -1,13 +1,15 @@
 import { describe, expect, it } from "vitest";
-import type { EditClip, EditTap } from "./edit";
+import type { EditClip, EditTap, EditZoomKey } from "./edit";
 import {
   addTap,
   aspectCropRect,
+  type CropRect,
   clipIndexAt,
   clipTimelineMs,
   cropPixels,
   DEFAULT_HOLD_MS,
   edgeTargetsMs,
+  fitZoomRect,
   freezeAt,
   freezeAtEnd,
   imageClip,
@@ -16,6 +18,7 @@ import {
   MIN_HOLD_MS,
   moveClip,
   moveTap,
+  moveZoomKey,
   nextClipId,
   nextSourceId,
   nextTapId,
@@ -24,19 +27,26 @@ import {
   relayout,
   removeClip,
   removeTap,
+  removeZoomKey,
   retimeTap,
   setClipCrop,
   setClipHold,
   setClipSpeed,
+  setZoomKey,
+  setZoomKeyEase,
   snapCropRect,
   snapMs,
+  snapZoomMs,
   splitAt,
   tapPosInCrop,
+  tapPosInZoom,
   tapWindows,
   timelineDurationMs,
   timelineToSource,
   trimClipIn,
   trimClipOut,
+  zoomKeyIndex,
+  zoomRectAt,
 } from "./editMath";
 
 function clip(id: string, inMs: number, outMs: number, speed = 1, startMs = 0): EditClip {
@@ -464,5 +474,121 @@ describe("static crop", () => {
     expect((freezeAtEnd(clips, 60, 500) ?? [])[1].crop).toEqual(crop);
     expect("crop" in setClipCrop(clips, "c1", null)[0]).toBe(false);
     expect("crop" in (freezeAt(relayout([clip("c1", 0, 2000)]), 1000, 500) ?? [])[1]).toBe(false);
+  });
+});
+
+describe("keyed zoom", () => {
+  const full: CropRect = [0, 0, 1, 1];
+  const quad: CropRect = [0.25, 0.25, 0.5, 0.5];
+  const corner: CropRect = [0.5, 0.5, 0.25, 0.25];
+  const keys: EditZoomKey[] = [
+    { tMs: 0, rect: full, ease: "smooth" },
+    { tMs: 1000, rect: quad },
+    { tMs: 2000, rect: corner },
+  ];
+  const zoomed = (inMs = 0, outMs = 4000, speed = 1): EditClip => ({
+    ...clip("c1", inMs, outMs, speed),
+    zoom: { keys },
+  });
+  const near = (a: CropRect | null, b: CropRect | null) =>
+    (a ?? []).every((v, i) => Math.abs(v - (b ?? [])[i]) < 1e-9);
+
+  it("key times live on the output frame grid", () => {
+    expect([8, 9, 1000, -25].map((ms) => snapZoomMs(ms, 60))).toEqual([0, 17, 1000, -17]);
+    expect(snapZoomMs(1000, 29.97)).toBe(1001);
+    expect(zoomKeyIndex(keys, 1008, 60)).toBe(1);
+    expect(zoomKeyIndex(keys, 1009, 60)).toBe(-1);
+  });
+
+  it("glides between keys (smooth or linear) and holds outside them", () => {
+    const c = zoomed();
+    expect(zoomRectAt(c, -500)).toEqual(full);
+    expect(zoomRectAt(c, 500)).toEqual([0.125, 0.125, 0.75, 0.75]);
+    expect(zoomRectAt(c, 250)?.[0]).toBeCloseTo(0.25 * (0.0625 * 2.5), 12);
+    expect(zoomRectAt(c, 1500)).toEqual([0.375, 0.375, 0.375, 0.375]);
+    expect(zoomRectAt(c, 9000)).toEqual(corner);
+    expect(zoomRectAt({ ...clip("c1", 0, 1000), crop: quad }, 300)).toEqual(quad);
+    expect(zoomRectAt(clip("c1", 0, 1000), 300)).toBeNull();
+  });
+
+  it("glides on output frames: a key's frame, not its ms, anchors the glide", () => {
+    const c: EditClip = {
+      ...clip("c1", 0, 2000),
+      zoom: {
+        keys: [
+          { tMs: 9, rect: full },
+          { tMs: 1000, rect: quad },
+        ],
+      },
+    };
+    expect(zoomRectAt(c, 500, 60)?.[0]).toBeCloseTo((0.25 * 29) / 59, 12);
+    expect(zoomRectAt(c, 500, 30)?.[0]).toBeCloseTo(0.125, 12);
+    expect(near(zoomRectAt(c, 1000 / 60, 60), full)).toBe(true);
+  });
+
+  it("a split carries the zoom on through the cut", () => {
+    const clips = relayout([zoomed()]);
+    const split = splitAt(clips, 1500, "c2") ?? [];
+    const [left, right] = split;
+    for (const t of [0, 500, 1400]) expect(zoomRectAt(left, t)).toEqual(zoomRectAt(clips[0], t));
+    for (const t of [0, 300, 600, 1200]) {
+      expect(near(zoomRectAt(right, t), zoomRectAt(clips[0], t + 1500))).toBe(true);
+    }
+    expect(right.zoom?.keys.map((k) => k.tMs)).toEqual([-500, 500]);
+  });
+
+  it("trims and speed changes keep keys on the frames they framed; a freeze takes the framing as a crop", () => {
+    const clips = relayout([zoomed()]);
+    const trimmed = trimClipIn(clips, "c1", 500)[0];
+    expect(trimmed.zoom?.keys.map((k) => k.tMs)).toEqual([-500, 500, 1500]);
+    const fast = setClipSpeed(clips, "c1", 2)[0];
+    expect(fast.zoom?.keys.map((k) => k.tMs)).toEqual([0, 500, 1000]);
+    const freeze = (freezeAt(clips, 1500, 800) ?? [])[1];
+    expect(freeze.holdMs).toBe(800);
+    expect(freeze.crop).toEqual(zoomRectAt(clips[0], 1500));
+    expect(freeze.zoom).toBeUndefined();
+  });
+
+  it("set, ease, move and remove keys; a crop gives way and setClipCrop takes the zoom away", () => {
+    const cropped = relayout([{ ...clip("c1", 0, 4000), crop: quad }]);
+    const one = setZoomKey(cropped, "c1", 1004, corner)[0];
+    expect(one.crop).toBeUndefined();
+    expect(one.zoom?.keys).toEqual([{ tMs: 1000, rect: corner }]);
+    const two = setZoomKey([one], "c1", 500, full, 60, "smooth");
+    expect(two[0].zoom?.keys).toEqual([
+      { tMs: 500, rect: full, ease: "smooth" },
+      { tMs: 1000, rect: corner },
+    ]);
+    expect(setZoomKey(two, "c1", 500, quad)[0].zoom?.keys[0]).toEqual({
+      tMs: 500,
+      rect: quad,
+      ease: "smooth",
+    });
+    expect(setZoomKeyEase(two, "c1", 500, "linear")[0].zoom?.keys[0]).toEqual({
+      tMs: 500,
+      rect: full,
+    });
+    expect(moveZoomKey(two, "c1", 500, 1500)[0].zoom?.keys.map((k) => k.tMs)).toEqual([1000, 1500]);
+    expect(removeZoomKey(two, "c1", 1000)[0].zoom?.keys).toHaveLength(1);
+    expect("zoom" in removeZoomKey([one], "c1", 1000)[0]).toBe(false);
+    expect("zoom" in setClipCrop(two, "c1", quad)[0]).toBe(false);
+    expect(Object.keys(setClipCrop(two, "c1", null)[0])).not.toContain("zoom");
+  });
+
+  it("taps drop when the framing cuts them out as they land, and map across the framing", () => {
+    const clips = relayout([zoomed()]);
+    const tap: EditTap = { id: "t1", sourceId: "s1", sourceMs: 1500, pos: [0.5, 0.4] };
+    expect(tapWindows(clips, tap, 550)).toEqual([{ startMs: 1500, endMs: 2050 }]);
+    expect(tapWindows(clips, { ...tap, pos: [0.2, 0.2] }, 550)).toEqual([]);
+    expect(tapPosInZoom([0.5, 0.5], quad)).toEqual([0.5, 0.5]);
+    expect(tapPosInZoom([0.1, 0.5], quad)).toBeNull();
+  });
+
+  it("fitZoomRect covers a box at the output's shape and stays inside the frame", () => {
+    const phone = { width: 1170, height: 2532 };
+    const [x, y, w, h] = fitZoomRect([0.1, 0.1, 0.2, 0.6], phone, 1080 / 1920);
+    expect(cropPixels([x, y, w, h], phone)).toEqual([0, 254, 854, 1520]);
+    expect((w * 1170) / (h * 2532)).toBeCloseTo(1080 / 1920, 2);
+    expect(fitZoomRect([0, 0, 1, 1], phone, 1170 / 2532)).toEqual([0, 0, 1, 1]);
   });
 });

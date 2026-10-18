@@ -27,6 +27,10 @@ const OP_NAMES: Record<EditOpName, true> = {
   trimOut: true,
   setHold: true,
   setClipCrop: true,
+  setZoomKey: true,
+  removeZoomKey: true,
+  setZoomKeyEase: true,
+  moveZoomKey: true,
   addTap: true,
   addTapAtSource: true,
   moveTap: true,
@@ -87,7 +91,7 @@ describe("edit conformance vectors", () => {
 
   it("is deterministic, compact and one vector per line", () => {
     expect(serialiseEditVectors(buildEditVectors())).toBe(text);
-    expect(Buffer.byteLength(text)).toBeLessThan(300_000);
+    expect(Buffer.byteLength(text)).toBeLessThan(400_000);
     expect(text).not.toContain(EM_DASH);
     const lines = text.trimEnd().split("\n");
     expect(lines).toHaveLength(vectors.fns.length + vectors.ops.length + 5);
@@ -133,5 +137,15 @@ describe("edit conformance vectors", () => {
     expect(docs.some((d) => d.clips.some((c) => ![1, 2].includes(c.speed)))).toBe(true);
     expect(docs.some((d) => (d.masks?.length ?? 0) > 0)).toBe(true);
     expect(docs.some((d) => (d.taps?.length ?? 0) > 0)).toBe(true);
+  });
+
+  it("runs seeded zoom sequences over zoomed docs", () => {
+    const zoom = vectors.ops.filter((v) => v.id.startsWith("zoom-random/"));
+    expect(zoom).toHaveLength(12);
+    const steps = zoom.flatMap((v) => v.steps);
+    const ok = steps.filter((s) => s.ok).length;
+    expect(ok / steps.length).toBeGreaterThan(0.4);
+    expect(ok / steps.length).toBeLessThan(0.95);
+    expect(zoom.filter((v) => v.doc.clips.some((c) => c.zoom)).length).toBeGreaterThanOrEqual(8);
   });
 });

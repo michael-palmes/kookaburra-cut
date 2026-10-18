@@ -1,4 +1,4 @@
-import type { EditClip, EditSource, EditTap } from "./edit";
+import type { EditClip, EditSource, EditTap, EditZoomEase, EditZoomKey } from "./edit";
 
 /** Pure timeline math for the video editor. The timeline is magnetic/gapless (locked): clips always butt together end-to-end, so a clip's `startMs` is derived state, array order is timeline order, and every mutation returns a relaid-out array. "Timeline" times are output-video ms (source spans retimed by `speed`); "source" times index into the source file. Persisted fields stay integers (u64 on the Rust side). Functions that read `startMs` expect a relaid array (every mutator returns one; the editor also relays on load). */
 
@@ -47,8 +47,13 @@ export function timelineToSource(clip: EditClip, tMs: number): number {
   return Math.min(clip.outMs, Math.max(clip.inMs, clip.inMs + offset));
 }
 
-/** Splits the clip under t into two at that point (the right half gets `newId`); returns null when t misses every clip or either half would fall under the source-span floor. */
-export function splitAt(clips: EditClip[], tMs: number, newId: string): EditClip[] | null {
+/** Splits the clip under t into two at that point (the right half gets `newId`, a zoom carries on across the cut); returns null when t misses every clip or either half would fall under the source-span floor. */
+export function splitAt(
+  clips: EditClip[],
+  tMs: number,
+  newId: string,
+  fps = 60,
+): EditClip[] | null {
   const i = clipIndexAt(clips, tMs);
   if (i < 0) return null;
   const clip = clips[i];
@@ -57,8 +62,12 @@ export function splitAt(clips: EditClip[], tMs: number, newId: string): EditClip
   if (srcSplit - clip.inMs < MIN_CLIP_SOURCE_MS || clip.outMs - srcSplit < MIN_CLIP_SOURCE_MS) {
     return null;
   }
-  const left = { ...clip, outMs: srcSplit };
-  const right = { ...clip, id: newId, inMs: srcSplit };
+  const [left, right] = splitZoom(
+    clip,
+    { ...clip, outMs: srcSplit },
+    { ...clip, id: newId, inMs: srcSplit },
+    fps,
+  );
   return relayout([...clips.slice(0, i), left, right, ...clips.slice(i + 1)]);
 }
 
@@ -75,27 +84,26 @@ export function moveClip(clips: EditClip[], from: number, to: number): EditClip[
   return relayout(next);
 }
 
-export function setClipSpeed(clips: EditClip[], id: string, speed: number): EditClip[] {
+/** Retime a clip; its zoom keys stretch with it, so they stay on the frames they framed. */
+export function setClipSpeed(clips: EditClip[], id: string, speed: number, fps = 60): EditClip[] {
   return relayout(
-    clips.map((clip) =>
-      clip.id === id && clip.holdMs === undefined
-        ? { ...clip, speed: effectiveSpeed(speed) }
-        : clip,
-    ),
+    clips.map((clip) => {
+      if (clip.id !== id || clip.holdMs !== undefined) return clip;
+      const ratio = effectiveSpeed(clip.speed) / effectiveSpeed(speed);
+      return retimeZoom({ ...clip, speed: effectiveSpeed(speed) }, (t) => t * ratio, fps);
+    }),
   );
 }
 
-/** Move a clip's in-point (left trim), clamped to [0, outMs - floor]; freezes have no span to trim. */
-export function trimClipIn(clips: EditClip[], id: string, inMs: number): EditClip[] {
+/** Move a clip's in-point (left trim), clamped to [0, outMs - floor], its zoom keys moving with the frames; freezes have no span to trim. */
+export function trimClipIn(clips: EditClip[], id: string, inMs: number, fps = 60): EditClip[] {
   return relayout(
-    clips.map((clip) =>
-      clip.id === id && clip.holdMs === undefined
-        ? {
-            ...clip,
-            inMs: Math.max(0, Math.min(Math.round(inMs), clip.outMs - MIN_CLIP_SOURCE_MS)),
-          }
-        : clip,
-    ),
+    clips.map((clip) => {
+      if (clip.id !== id || clip.holdMs !== undefined) return clip;
+      const next = Math.max(0, Math.min(Math.round(inMs), clip.outMs - MIN_CLIP_SOURCE_MS));
+      const shift = (next - clip.inMs) / effectiveSpeed(clip.speed);
+      return retimeZoom({ ...clip, inMs: next }, (t) => t - shift, fps);
+    }),
   );
 }
 
@@ -140,8 +148,8 @@ export function imageClip(clips: EditClip[], sourceId: string, holdMs: number): 
   };
 }
 
-/** A freeze of `clip`'s source frame at `src`, framed by the clip's crop. */
-function freezeOf(clip: EditClip, id: string, src: number, holdMs: number): EditClip {
+/** A freeze of `clip`'s source frame at `src`, framed by the clip's crop or its zoom's framing there. */
+function freezeOf(clip: EditClip, id: string, src: number, holdMs: number, fps: number): EditClip {
   const freeze: EditClip = {
     id,
     sourceId: clip.sourceId,
@@ -151,25 +159,35 @@ function freezeOf(clip: EditClip, id: string, src: number, holdMs: number): Edit
     holdMs: Math.max(MIN_HOLD_MS, Math.round(holdMs)),
     startMs: 0,
   };
-  return clip.crop ? { ...freeze, crop: clip.crop } : freeze;
+  const framing = zoomRectAt(clip, (src - clip.inMs) / effectiveSpeed(clip.speed), fps);
+  return framing ? { ...freeze, crop: framing } : freeze;
 }
 
-/** Insert a freeze of the frame under t: splits the containing clip there (or slips in at its edge when a half would fall under the source floor) and holds that frame for `holdMs`, keeping the clip's crop. Null when t misses every clip or lands on an existing freeze. */
-export function freezeAt(clips: EditClip[], tMs: number, holdMs: number): EditClip[] | null {
+/** Insert a freeze of the frame under t: splits the containing clip there (or slips in at its edge when a half would fall under the source floor) and holds that frame for `holdMs`, keeping the clip's framing. Null when t misses every clip or lands on an existing freeze. */
+export function freezeAt(
+  clips: EditClip[],
+  tMs: number,
+  holdMs: number,
+  fps = 60,
+): EditClip[] | null {
   const i = clipIndexAt(clips, tMs);
   if (i < 0) return null;
   const clip = clips[i];
   if (clip.holdMs !== undefined) return null;
   const src = Math.round(timelineToSource(clip, tMs));
-  const freeze = freezeOf(clip, nextClipId(clips), src, holdMs);
+  const freeze = freezeOf(clip, nextClipId(clips), src, holdMs, fps);
   if (src - clip.inMs < MIN_CLIP_SOURCE_MS) {
     return relayout([...clips.slice(0, i), freeze, ...clips.slice(i)]);
   }
   if (clip.outMs - src < MIN_CLIP_SOURCE_MS) {
     return relayout([...clips.slice(0, i + 1), freeze, ...clips.slice(i + 1)]);
   }
-  const left = { ...clip, outMs: src };
-  const right = { ...clip, id: nextClipId([...clips, freeze]), inMs: src };
+  const [left, right] = splitZoom(
+    clip,
+    { ...clip, outMs: src },
+    { ...clip, id: nextClipId([...clips, freeze]), inMs: src },
+    fps,
+  );
   return relayout([...clips.slice(0, i), left, freeze, right, ...clips.slice(i + 1)]);
 }
 
@@ -185,11 +203,16 @@ export function freezeAtEnd(
   const endMs = clip.startMs + clipTimelineMs(clip);
   const sampleMs = Math.max(clip.startMs, endMs - 1000 / fps);
   const src = Math.round(timelineToSource(clip, sampleMs));
-  return relayout([...clips, freezeOf(clip, nextClipId(clips), src, holdMs)]);
+  return relayout([...clips, freezeOf(clip, nextClipId(clips), src, holdMs, fps)]);
 }
 
 /** Splice a caller-built clip in at output time t, mirroring freezeAt: splits the containing clip there, slips to its nearer edge when a half would fall under the source floor (or when t lands on a freeze), and appends off-timeline (including exactly at the end). The caller owns `newClip`'s id (nextClipId against the pre-splice array is safe: the split's right half collision-checks against it). */
-export function insertClipAt(clips: EditClip[], tMs: number, newClip: EditClip): EditClip[] {
+export function insertClipAt(
+  clips: EditClip[],
+  tMs: number,
+  newClip: EditClip,
+  fps = 60,
+): EditClip[] {
   const i = clipIndexAt(clips, tMs);
   if (i < 0) return relayout([...clips, newClip]);
   const clip = clips[i];
@@ -208,8 +231,12 @@ export function insertClipAt(clips: EditClip[], tMs: number, newClip: EditClip):
   if (endShort) {
     return relayout([...clips.slice(0, i + 1), newClip, ...clips.slice(i + 1)]);
   }
-  const left = { ...clip, outMs: src };
-  const right = { ...clip, id: nextClipId([...clips, newClip]), inMs: src };
+  const [left, right] = splitZoom(
+    clip,
+    { ...clip, outMs: src },
+    { ...clip, id: nextClipId([...clips, newClip]), inMs: src },
+    fps,
+  );
   return relayout([...clips.slice(0, i), left, newClip, right, ...clips.slice(i + 1)]);
 }
 
@@ -295,15 +322,23 @@ export interface TapWindow {
   endMs: number;
 }
 
-/** Every output window in which `tap` is visible: one per clip containing its source point, so a duplicated segment shows the tap in each copy. Duration is fixed in OUTPUT ms and clamped to the clip's end, so a tap near a cut truncates rather than bleeding into the next clip. Freezes are skipped (zero-length span, containment can never hold), and so is a clip whose crop cuts the tap's point out. */
-export function tapWindows(clips: EditClip[], tap: EditTap, tapDurationMs: number): TapWindow[] {
+/** Every output window in which `tap` is visible: one per clip containing its source point, so a duplicated segment shows the tap in each copy. Duration is fixed in OUTPUT ms and clamped to the clip's end, so a tap near a cut truncates rather than bleeding into the next clip. Freezes are skipped (zero-length span, containment can never hold), and so is a clip whose crop, or whose zoom's framing as the tap lands, cuts the tap's point out. */
+export function tapWindows(
+  clips: EditClip[],
+  tap: EditTap,
+  tapDurationMs: number,
+  fps = 60,
+): TapWindow[] {
   const windows: TapWindow[] = [];
   for (const clip of clips) {
     if (clip.holdMs !== undefined) continue;
     if (clip.sourceId !== tap.sourceId) continue;
     if (tap.sourceMs < clip.inMs || tap.sourceMs >= clip.outMs) continue;
     if (clip.crop && !posInCrop(tap.pos, clip.crop)) continue;
-    const startMs = clip.startMs + (tap.sourceMs - clip.inMs) / effectiveSpeed(clip.speed);
+    const localMs = (tap.sourceMs - clip.inMs) / effectiveSpeed(clip.speed);
+    const framing = clip.zoom ? zoomRectAt(clip, localMs, fps) : null;
+    if (framing && !posInCrop(tap.pos, framing)) continue;
+    const startMs = clip.startMs + localMs;
     const clipEndMs = clip.startMs + clipTimelineMs(clip);
     windows.push({ startMs, endMs: Math.min(startMs + tapDurationMs, clipEndMs) });
   }
@@ -410,14 +445,205 @@ export function tapPosInCrop(
   ];
 }
 
-/** Sets a clip's crop (null removes it). */
+/** Sets a clip's static crop in place of any zoom (null removes both). */
 export function setClipCrop(clips: EditClip[], id: string, crop: CropRect | null): EditClip[] {
   return relayout(
     clips.map((clip) => {
       if (clip.id !== id) return clip;
-      if (crop) return { ...clip, crop };
-      const { crop: _, ...rest } = clip;
+      const { zoom: _, ...framed } = clip;
+      if (crop) return { ...framed, crop };
+      const { crop: __, ...rest } = framed;
       return rest;
+    }),
+  );
+}
+
+// ── Keyed zoom ────────────────────────────────────────────────────────────────
+
+const rateOf = (fps: number) => (fps > 0 ? fps : 60);
+
+/** The output frame a clip-local ms sits on (mirrored: edit.rs `zoom_frame`). */
+const zoomFrame = (tMs: number, fps: number) => Math.round((tMs * rateOf(fps)) / 1000);
+
+/** Clip-local ms snapped onto the output frame grid, where zoom keys live. */
+export function snapZoomMs(ms: number, fps: number): number {
+  return Math.round((zoomFrame(ms, fps) * 1000) / rateOf(fps));
+}
+
+/** The index of the key on `tMs`'s output frame, or -1. */
+export function zoomKeyIndex(keys: EditZoomKey[], tMs: number, fps: number): number {
+  const frame = zoomFrame(tMs, fps);
+  return keys.findIndex((k) => zoomFrame(k.tMs, fps) === frame);
+}
+
+/** Keys in time order, one per output frame (the later of two that land together wins). */
+function tidyZoomKeys(keys: EditZoomKey[], fps: number): EditZoomKey[] {
+  const out: EditZoomKey[] = [];
+  for (const key of [...keys].sort((a, b) => a.tMs - b.tMs)) {
+    const last = out.at(-1);
+    if (last && zoomFrame(last.tMs, fps) === zoomFrame(key.tMs, fps)) out[out.length - 1] = key;
+    else out.push(key);
+  }
+  return out;
+}
+
+const easeZoom = (p: number, ease: EditZoomEase | undefined) =>
+  ease === "smooth" ? p * p * (3 - 2 * p) : p;
+
+/** The framing on screen `clipMs` into a clip: its zoom glided on the output frame grid (frame-exact with edit.rs at whole frames), else its crop, else null (the whole frame). */
+export function zoomRectAt(clip: EditClip, clipMs: number, fps = 60): CropRect | null {
+  const keys = clip.zoom?.keys;
+  if (!keys || keys.length === 0) return clip.crop ?? null;
+  const f = (clipMs * rateOf(fps)) / 1000;
+  const rect: CropRect = [...keys[0].rect];
+  for (let i = 0; i + 1 < keys.length; i++) {
+    const [a, b] = [keys[i], keys[i + 1]];
+    const [fa, fb] = [zoomFrame(a.tMs, fps), zoomFrame(b.tMs, fps)];
+    const p = fb > fa ? clamp((f - fa) / (fb - fa), 0, 1) : f >= fb ? 1 : 0;
+    const e = easeZoom(p, a.ease);
+    for (let j = 0; j < 4; j++) rect[j] += (b.rect[j] - a.rect[j]) * e;
+  }
+  return rect;
+}
+
+/** A point normalised across a zoom's framing, or null when the framing cuts it out. */
+export function tapPosInZoom(pos: [number, number], rect: CropRect): [number, number] | null {
+  if (!posInCrop(pos, rect)) return null;
+  return [(pos[0] - rect[0]) / rect[2], (pos[1] - rect[1]) / rect[3]];
+}
+
+/** A zoom rect at the output's shape: the smallest box at `aspect` (width over height, in pixels) around `rect`'s centre that covers it, shrunk to fit the frame, slid inside and snapped. */
+export function fitZoomRect(
+  rect: CropRect,
+  source: Pick<EditSource, "width" | "height">,
+  aspect: number,
+): CropRect {
+  const k =
+    source.width > 0 && source.height > 0 && aspect > 0
+      ? (aspect * source.height) / source.width
+      : 1;
+  let w = Math.max(rect[2], rect[3] * k);
+  let h = w / k;
+  if (w > 1) [w, h] = [1, h / w];
+  if (h > 1) [w, h] = [w / h, 1];
+  return snapCropRect([rect[0] + rect[2] / 2 - w / 2, rect[1] + rect[3] / 2 - h / 2, w, h], source);
+}
+
+function withEase(key: EditZoomKey, ease: EditZoomEase | undefined): EditZoomKey {
+  if (ease === "smooth") return { ...key, ease };
+  if (ease === undefined) return key;
+  const { ease: _, ...plain } = key;
+  return plain;
+}
+
+/** Maps every zoom key's time (re-snapped), for a clip whose local clock moved under its frames. */
+function retimeZoom(clip: EditClip, map: (tMs: number) => number, fps: number): EditClip {
+  if (!clip.zoom) return clip;
+  const keys = clip.zoom.keys.map((k) => ({ ...k, tMs: snapZoomMs(map(k.tMs), fps) }));
+  return { ...clip, zoom: { keys: tidyZoomKeys(keys, fps) } };
+}
+
+/** Drops keys that can no longer shape a cut half: before the last one at or before its start, after the first one at or past its end. */
+function pruneZoom(clip: EditClip): EditClip {
+  const keys = clip.zoom?.keys;
+  if (!keys) return clip;
+  const end = clipTimelineMs(clip);
+  let lo = 0;
+  let hi = keys.length - 1;
+  for (let i = 0; i < keys.length; i++) if (keys[i].tMs <= 0) lo = i;
+  for (let i = keys.length - 1; i >= 0; i--) if (keys[i].tMs >= end) hi = i;
+  hi = Math.max(lo, hi);
+  if (lo === 0 && hi === keys.length - 1) return clip;
+  return { ...clip, zoom: { keys: keys.slice(lo, hi + 1) } };
+}
+
+/** The halves of a cut through `clip`: the right half's keys shift back by the cut, so the zoom carries on through it. */
+function splitZoom(
+  clip: EditClip,
+  left: EditClip,
+  right: EditClip,
+  fps: number,
+): [EditClip, EditClip] {
+  if (!clip.zoom) return [left, right];
+  const cut = (right.inMs - clip.inMs) / effectiveSpeed(clip.speed);
+  return [pruneZoom(left), pruneZoom(retimeZoom(right, (t) => t - cut, fps))];
+}
+
+/** Sets the zoom key on `tMs`'s output frame: an existing key keeps its time and ease unless `ease` is given, a new one lands snapped and glides linearly. A static crop gives way to the key. */
+export function setZoomKey(
+  clips: EditClip[],
+  id: string,
+  tMs: number,
+  rect: CropRect,
+  fps = 60,
+  ease?: EditZoomEase,
+): EditClip[] {
+  return relayout(
+    clips.map((clip) => {
+      if (clip.id !== id) return clip;
+      const { crop: _, ...rest } = clip;
+      const keys = clip.zoom?.keys ?? [];
+      const at = zoomKeyIndex(keys, tMs, fps);
+      const key = withEase(
+        at >= 0 ? { ...keys[at], rect } : { tMs: snapZoomMs(tMs, fps), rect },
+        ease,
+      );
+      const next =
+        at >= 0 ? keys.map((k, i) => (i === at ? key : k)) : tidyZoomKeys([...keys, key], fps);
+      return { ...rest, zoom: { keys: next } };
+    }),
+  );
+}
+
+/** Deletes the zoom key on `tMs`'s output frame; the last one takes the zoom with it. */
+export function removeZoomKey(clips: EditClip[], id: string, tMs: number, fps = 60): EditClip[] {
+  return relayout(
+    clips.map((clip) => {
+      if (clip.id !== id || !clip.zoom) return clip;
+      const at = zoomKeyIndex(clip.zoom.keys, tMs, fps);
+      const keys = clip.zoom.keys.filter((_, i) => i !== at);
+      if (keys.length > 0) return { ...clip, zoom: { keys } };
+      const { zoom: _, ...rest } = clip;
+      return rest;
+    }),
+  );
+}
+
+/** Sets how the glide from the key on `tMs`'s output frame eases (linear drops the field). */
+export function setZoomKeyEase(
+  clips: EditClip[],
+  id: string,
+  tMs: number,
+  ease: EditZoomEase,
+  fps = 60,
+): EditClip[] {
+  return relayout(
+    clips.map((clip) => {
+      if (clip.id !== id || !clip.zoom) return clip;
+      const at = zoomKeyIndex(clip.zoom.keys, tMs, fps);
+      return {
+        ...clip,
+        zoom: { keys: clip.zoom.keys.map((k, i) => (i === at ? withEase(k, ease) : k)) },
+      };
+    }),
+  );
+}
+
+/** Moves the key on `tMs`'s output frame to `toMs` (snapped), keeping its framing and ease. */
+export function moveZoomKey(
+  clips: EditClip[],
+  id: string,
+  tMs: number,
+  toMs: number,
+  fps = 60,
+): EditClip[] {
+  return relayout(
+    clips.map((clip) => {
+      if (clip.id !== id || !clip.zoom) return clip;
+      const at = zoomKeyIndex(clip.zoom.keys, tMs, fps);
+      const to = snapZoomMs(toMs, fps);
+      const keys = clip.zoom.keys.map((k, i) => (i === at ? { ...k, tMs: to } : k));
+      return { ...clip, zoom: { keys: tidyZoomKeys(keys, fps) } };
     }),
   );
 }
