@@ -1,9 +1,9 @@
 # The edit document
 
-`edits/<name>.json` is the video editor's own document. `kb video` reads it, changes it through the
+`edits/<name>.json` is the video editor's own document. `./kb video` reads it, changes it through the
 same operations the editor's buttons run, and has the app save it (hash-checked, so an open editor
 and kb never overwrite each other; the editor shows a kb change as one "Claude edit" undo step).
-Read it with `kb video show NAME` or `--json`; never write it by hand.
+Read it with `./kb video show NAME` or `--json`; never write it by hand.
 
 ```json
 {
@@ -47,7 +47,7 @@ also take `first`, `last`, a 0-based index, or `@4.5` (the clip under timeline 4
   least 100 ms.
 - Times in JSON plans ending in `Ms` are integers.
 
-## Clocks (what `kb video map` computes)
+## Clocks (what `./kb video map` computes)
 
 For a clip `c` on the timeline:
 
@@ -56,20 +56,20 @@ For a clip `c` on the timeline:
 - Timeline `t` inside `c` shows source `c.inMs + (t - c.startMs) * c.speed`.
 - In a scene, the video starts at its slot's `startMs`: scene-local = `startMs` + timeline.
   Devices and media hold the first frame before that and the last frame after the end.
-- Project time = the scene's start (after transition overlaps, as `kb beats` reports) + scene-local.
+- Project time = the scene's start (after transition overlaps, as `./kb beats` reports) + scene-local.
 
 ## The frame grid
 
 The render cuts every clip to a whole number of output frames on one cumulative grid:
 `frames(c) = max(1, round(end(c) * fps / 1000) - round(start(c) * fps / 1000))`, rounding halves
 up. The output therefore has `round(length * fps / 1000)` frames, and the timeline length decides
-the frame count to within half a frame. `kb video fit` aims at the centre of that window.
+the frame count to within half a frame. `./kb video fit` aims at the centre of that window.
 
 What each output frame shows: the source is first resampled to the output fps from 0 s (a slot
 shows the latest source frame at or before it, so a held Simulator frame fills every slot until the
 next one). A clip keeps the slots from `round(inMs)` to before `round(outMs)` in that grid; at speed
 `s`, output frame `j` of the clip shows the latest kept slot whose index divided by `s` (rounded
-down) is at most `j`. `kb video frames --predict` uses exactly this.
+down) is at most `j`. `./kb video frames --predict` uses exactly this.
 
 ## Letterbox
 
@@ -83,15 +83,15 @@ the SOURCE frame, never of the output, so bars never move them.
 - Drawn on the output: a glow dot `0.07 x min(output width, height) x tapSize` pixels across, for
   550 ms of output from the moment, cut short at the end of its clip (a tap just before a cut
   truncates). Freezes never show a tap.
-- Look: `kb video tap style NAME --style target|glow|dot|ring --colour blue|light|dark|red|terracotta --size 1.25`
-  (`kb video caps` lists the current vocabulary). One look per edit.
+- Look: `./kb video tap style NAME --style target|glow|dot|ring --colour blue|light|dark|red|terracotta --size 1.25`
+  (`./kb video caps` lists the current vocabulary). One look per edit.
 
 ## Masks
 
 - A mask covers a source span `[startMs, endMs)`; it is applied to the source before cutting, so
   every clip, speed and freeze of that span is covered. A still's mask ignores the span.
 - Keys `{sourceMs, rect: [x, y, w, h]}` glide linearly; the box holds before the first key and
-  after the last. `kb video mask key` adds or replaces a key at a moment; `mask hold` pins the box
+  after the last. `./kb video mask key` adds or replaces a key at a moment; `mask hold` pins the box
   where it is so a later key only moves what follows.
 - Styles: `solid` (fill `#rrggbb`, default black), `blur`, `pixelate`. Strength 0..1 (default 0.5)
   maps to a blur sigma of `(0.008 + 0.032 x strength) x min(source width, height)` pixels, or a
@@ -101,7 +101,7 @@ the SOURCE frame, never of the output, so bars never move them.
 
 ## Stills
 
-`kb video insert NAME assets/title.png --at 0 --hold 1.5` or `append`: a still joins as a hold
+`./kb video insert NAME assets/title.png --at 0 --hold 1.5` or `append`: a still joins as a hold
 clip of the image source. Odd image sizes are evened for the encoder. Masks on a still use their
 first key.
 

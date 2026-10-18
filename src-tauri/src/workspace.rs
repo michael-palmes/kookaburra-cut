@@ -331,12 +331,20 @@ pub fn trash_path(path: &Path) -> Result<(), trash::Error> {
     ctx.delete(path)
 }
 
+/// `KOOKABURRA_WORKSPACE_ROOT`: a gate can point one boot at a throwaway root without mutating the user's settings (the pack round trip does exactly this).
+pub(crate) fn root_override() -> Option<PathBuf> {
+    std::env::var("KOOKABURRA_WORKSPACE_ROOT")
+        .ok()
+        .map(|over| over.trim().to_owned())
+        .filter(|over| !over.is_empty())
+        .map(PathBuf::from)
+}
+
 /// The configured workspace root, layout re-asserted. Errors if first-run hasn't completed.
 pub fn require_root(app: &AppHandle, state: &State<'_, SettingsState>) -> Result<PathBuf, String> {
-    // A gate can point one boot at a throwaway root without mutating the user's settings (the pack round trip does exactly this).
-    let root = match std::env::var("KOOKABURRA_WORKSPACE_ROOT") {
-        Ok(over) if !over.trim().is_empty() => PathBuf::from(over.trim()),
-        _ => {
+    let root = match root_override() {
+        Some(over) => over,
+        None => {
             let settings = load_settings(app, state)?;
             PathBuf::from(
                 settings
@@ -861,7 +869,7 @@ pub fn move_workspace(
         );
     }
     // A gate boot runs against a throwaway root the settings file knows nothing about; moving would repoint the real one.
-    if std::env::var("KOOKABURRA_WORKSPACE_ROOT").is_ok_and(|v| !v.trim().is_empty()) {
+    if root_override().is_some() {
         return Err("this run is pinned to a workspace by KOOKABURRA_WORKSPACE_ROOT".into());
     }
     let settings = load_settings(&app, &state)?;
@@ -1142,8 +1150,7 @@ pub fn duplicate_project(
         .flatten()
     {
         let file_name = entry.file_name();
-        let skip = matches!(file_name.to_str(), Some("exports") | Some(".kookaburra"));
-        if skip {
+        if duplicate_skips(&file_name) {
             continue;
         }
         let from = entry.path();
@@ -1166,6 +1173,11 @@ pub fn duplicate_project(
     std::fs::write(&manifest_path, pretty + "\n").map_err(|e| e.to_string())?;
     stamp_claude_provisioning(&app, &dst)?;
     Ok(new_slug)
+}
+
+/// Top-level entries a duplicate leaves behind: exports, app state and kb's agent state (leases, events, notes).
+fn duplicate_skips(name: &std::ffi::OsStr) -> bool {
+    matches!(name.to_str(), Some("exports" | ".kookaburra" | ".kb"))
 }
 
 /// Move a project to the TRASH, never `rm -rf`, so Finder's Put Back works; a matching `last_project` is cleared so the next boot lands on the welcome screen.
@@ -2217,6 +2229,16 @@ mod tests {
             std::env::temp_dir().join(format!("kookaburra-settings-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         dir.join("settings.json")
+    }
+
+    #[test]
+    fn a_duplicate_skips_exports_app_state_and_kb_state() {
+        for name in ["exports", ".kookaburra", ".kb"] {
+            assert!(duplicate_skips(std::ffi::OsStr::new(name)), "{name}");
+        }
+        for name in ["scenes", "assets", "edits", "project.json", ".claude", "kb", ".kbx"] {
+            assert!(!duplicate_skips(std::ffi::OsStr::new(name)), "{name}");
+        }
     }
 
     #[test]

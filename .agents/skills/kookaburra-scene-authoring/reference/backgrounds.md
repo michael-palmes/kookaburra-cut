@@ -29,9 +29,9 @@ records it in `project.json` `appliedBackground` so new scenes inherit it.
 - Inline gradient spec: `{ "type": "linear" | "radial", "angleDeg": 180, "space": "oklch", "stops": [["#DCE9F5", 0], ["#F1DED4", 1]] }`.
   `angleDeg` 180 puts the first stop on top; radial runs centre to corners; `oklch`
   interpolates perceptually (use it for new work). 24 curated specs:
-  `kb catalog backgrounds.gradients --json` (Teal Drift, Midnight Ink, Gilded Dusk...).
+  `./kb catalog backgrounds.gradients --json` (Teal Drift, Midnight Ink, Gilded Dusk...).
 - Theme gradient names (often `brand`, `backdrop`) are listed per theme in
-  `kb catalog themes --json`.
+  `./kb catalog themes --json`.
 
 ## Shader backgrounds
 
@@ -56,7 +56,7 @@ ignored, and the fill follows theme swaps). `scale` (0.1..4) zooms the pattern.
 Each shader has nine presets: `p1`..`p5` light (black text reads), `p6`..`p9` dark
 (white text reads), every stop checked for contrast. Apply one the way the inspector
 does, copying its `colors`, `speed`, `scale` and `params` plus `"preset": "<id>"`
-(param ranges and preset values: `kb catalog backgrounds.shaders --json`):
+(param ranges and preset values: `./kb catalog backgrounds.shaders --json`):
 
 ```json
 "background": { "type": "shader", "shader": "mesh-gradient", "preset": "p6",
@@ -83,7 +83,7 @@ the geometry (a colour, gradient, image or shader; never another scene3d).
 | Kinetic | box-kites, calder-mobiles, flip-disc-floor, helix-spinners, long-exposure, louvre-ring, origami-tide, pendulum-ring, rain-canopy, sand-table, shylight-blooms, skeleton-clockwork, wind-wands |
 
 Each look has nine presets (`p1`..`p5` light, `p6`..`p9` dark; values in
-`kb catalog backgrounds.scene3d --json`). Applying one writes:
+`./kb catalog backgrounds.scene3d --json`). Applying one writes:
 
 ```json
 "background": { "type": "scene3d", "look": "grid-plain", "preset": "p7",

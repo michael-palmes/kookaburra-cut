@@ -1,5 +1,6 @@
 // FIRST import, deliberately: installs the uncaught-error surface before any module that could crash at boot evaluates (see engine/bootTrap.ts).
 import "./engine/bootTrap";
+import "./engine/glContexts";
 import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";

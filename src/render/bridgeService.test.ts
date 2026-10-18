@@ -4,12 +4,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { refreshWorkspaceAssets } from "../engine/assetRevisions";
 import { resolveScreenshotTimeMs } from "../engine/autorun";
 import { invalidateChangedClips } from "../engine/clips";
+import { canvasHandle } from "../engine/exportBridge";
 import { awaitSceneHostsCommitted, captureFrameRgba } from "../engine/exporter";
 import { type AspectName, FORMATS } from "../engine/format";
 import { insertPresetScene } from "../engine/presetInsert";
 import { bumpWorkspaceReloadToken, loadProject } from "../engine/project";
 import { withProjectAssetRevision } from "../engine/projectAssetRevision";
 import { TrustDeniedError } from "../engine/projectTrust";
+import { GpuStallError } from "../engine/readback";
 import { DEFAULT_RENDER_SETTINGS } from "../engine/renderSettings";
 import { awaitProjectCommitted } from "../engine/themePreviews";
 import { startBridgeService } from "./bridgeService";
@@ -493,15 +495,162 @@ describe("bridge v2 requests", () => {
       ],
       sheetPath: "/bridge/responses/0001-1-abc-sheet.png",
       format: "1:1",
+      size: { width: 1280, height: 1280 },
+      nativeSize: { width: 2160, height: 2160 },
+      timing: { queuedMs: expect.any(Number), renderMs: expect.any(Number) },
     });
+    // Sheets render at the 1280 long edge; the store keeps the native format.
     expect(captureFrameRgba).toHaveBeenCalledWith(
-      expect.objectContaining({ format: FORMATS["1:1"] }),
+      expect.objectContaining({ format: { name: "1:1", width: 1280, height: 1280 } }),
       1000,
     );
     expect(sheets).toEqual([
-      { size: [2, 2160, 2160], labels: ["0  01-hero  @ 1.00s", "1  02-stats  @ 1.50s"] },
+      { size: [2, 1280, 1280], labels: ["0  01-hero  @ 1.00s", "1  02-stats  @ 1.50s"] },
     ]);
     expect(editor.aspect).toBe("9:16");
+  });
+
+  it("captures one frame native unless it is sized, and refuses a bad size", async () => {
+    const served = await serveAll([
+      { kind: "capture", scene: "0", aspect: "16:9" },
+      { kind: "capture", scene: "0", aspect: "16:9", scale: 0.5 },
+      { kind: "capture", scene: "0", aspect: "16:9", width: 640 },
+      {
+        kind: "capture",
+        scene: "0",
+        aspect: "16:9",
+        frames: [{ scene: "0" }],
+        sheet: true,
+        probe: [[1, 1]],
+      },
+      { kind: "capture", scene: "0", scale: 1.5 },
+      { kind: "capture", scene: "0", width: 12.5 },
+    ]);
+    expect(served.map((r) => r.size ?? r.error)).toEqual([
+      { width: 3840, height: 2160 },
+      { width: 1920, height: 1080 },
+      { width: 640, height: 360 },
+      { width: 3840, height: 2160 },
+      "Error: scale must be in (0, 1], got 1.5",
+      "Error: width must be a whole number of pixels, got 12.5",
+    ]);
+  });
+
+  it("samples probe points from the readback, top-left origin, per frame", async () => {
+    const rgba = new Uint8Array(4 * 2 * 4);
+    rgba.set([10, 20, 30, 255], 0); // bottom-left in GL rows
+    rgba.set([245, 245, 245, 255], (1 * 4 + 3) * 4); // top-right
+    vi.mocked(captureFrameRgba).mockResolvedValue({ rgba, width: 4, height: 2 });
+    const response = await serve({
+      kind: "capture",
+      scene: "0",
+      width: 64,
+      probe: [
+        [3, 0],
+        [0, 1],
+      ],
+    });
+    expect(response.frames).toEqual([
+      expect.objectContaining({
+        probes: [
+          { x: 3, y: 0, rgba: [245, 245, 245, 255], hex: "#f5f5f5" },
+          { x: 0, y: 1, rgba: [10, 20, 30, 255], hex: "#0a141e" },
+        ],
+      }),
+    ]);
+    stop?.();
+    // The editor's 9:16 at 64 wide is 64x114.
+    const outside = await serve({ kind: "capture", scene: "0", width: 64, probe: [[64, 0]] });
+    expect(outside.error).toContain("probe point 64,0 is outside the 64x114 capture");
+  });
+
+  it("answers too large before rendering anything", async () => {
+    const response = await serve({
+      kind: "capture",
+      aspect: "16:9",
+      scale: 1,
+      frames: Array.from({ length: 17 }, () => ({ scene: "0" })),
+    });
+    expect(response).toMatchObject({ ok: false, tooLarge: true, units: 153, maxUnits: 144 });
+    expect(captureFrameRgba).not.toHaveBeenCalled();
+  });
+
+  it("stops between frames when the client gave up or an export began", async () => {
+    let checks = 0;
+    const base = vi.mocked(invoke).getMockImplementation();
+    vi.mocked(invoke).mockImplementation(async (command, args) => {
+      if (command === "bridge_request_live") {
+        checks += 1;
+        return checks === 2 ? { live: false, reason: "cancelled" } : { live: true };
+      }
+      return base?.(command, args);
+    });
+    const response = await serve({
+      kind: "capture",
+      frames: [{ scene: "0" }, { scene: "1" }, { scene: "1" }],
+    });
+    expect(response).toMatchObject({ ok: false, cancelled: true });
+    expect(captureFrameRgba).toHaveBeenCalledTimes(1);
+    expect(invoke).toHaveBeenCalledWith("bridge_request_live", { id: "0001-1-abc", frame: 1 });
+    checks = 1;
+    vi.mocked(invoke).mockImplementation(async (command, args) => {
+      if (command === "bridge_request_live") return { live: false, reason: "busy" };
+      return base?.(command, args);
+    });
+    stop?.();
+    const busy = await serve({ kind: "capture", scene: "0" });
+    expect(busy).toMatchObject({ ok: false, busy: true });
+  });
+
+  it("answers a GPU stall once on every path, then stops serving on that canvas", async () => {
+    vi.mocked(captureFrameRgba).mockRejectedValue(
+      new GpuStallError(
+        "blankReadback",
+        "GPU stalled (capture at 0ms): readPixels returned an all-zero frame",
+      ),
+    );
+    const served = await serveAll([
+      { kind: "capture", scene: "0" },
+      { kind: "check", render: true },
+    ]);
+    expect(served[0]).toMatchObject({
+      ok: false,
+      gpuStalled: true,
+      reason: "blankReadback",
+      error: "Error: GPU stalled (capture at 0ms): readPixels returned an all-zero frame",
+    });
+    expect(served[1]).toMatchObject({ ok: false, gpuStalled: true, reason: "blankReadback" });
+    expect(captureFrameRgba).toHaveBeenCalledTimes(1);
+  });
+
+  it("stops a render check at the first stall instead of failing every scene", async () => {
+    vi.mocked(captureFrameRgba).mockRejectedValue(
+      new GpuStallError(
+        "contextLost",
+        "GPU stalled (capture at 2000ms): the WebGL context was lost",
+      ),
+    );
+    const response = await serve({ kind: "check", render: true });
+    expect(response).toMatchObject({ ok: false, gpuStalled: true, reason: "contextLost" });
+    expect(response.scenes).toBeUndefined();
+    expect(captureFrameRgba).toHaveBeenCalledTimes(1);
+  });
+
+  it("forces a context loss on its own stage for debug lose-context", async () => {
+    const forceContextLoss = vi.fn();
+    canvasHandle.current = { gl: { forceContextLoss } } as unknown as NonNullable<
+      typeof canvasHandle.current
+    >;
+    try {
+      const response = await serve({ kind: "debug", op: "lose-context", window: "render" });
+      expect(response).toMatchObject({ ok: true, op: "lose-context", lost: true, recycling: true });
+      expect(forceContextLoss).toHaveBeenCalledTimes(1);
+    } finally {
+      canvasHandle.current = null;
+    }
+    stop?.();
+    const unknown = await serve({ kind: "debug", op: "explode" });
+    expect(unknown.error).toContain('debug op "explode"');
   });
 
   it("switches only the format when the loaded project is captured at another aspect", async () => {
@@ -759,5 +908,50 @@ describe("media changed in the render window", () => {
     await vi.advanceTimersByTimeAsync(1000);
     expect(invalidateChangedClips).toHaveBeenCalledTimes(1);
     expect(refreshWorkspaceAssets).not.toHaveBeenCalled();
+  });
+});
+
+describe("GPU stalls in the idle queues", () => {
+  const stall = new GpuStallError(
+    "contextLost",
+    "GPU stalled (capture at 2400ms): the WebGL context was lost",
+  );
+
+  it("puts a stalled preset poster back, reports the stall and stops draining", async () => {
+    jobs.push({ ...jobs[0], slot: 1 });
+    vi.mocked(captureFrameRgba).mockRejectedValue(stall);
+    stop = startBridgeService(vi.fn());
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(captureFrameRgba).toHaveBeenCalledTimes(1);
+    expect(invoke).toHaveBeenCalledWith(
+      "render_finish_preset_poster",
+      expect.objectContaining({ retry: true }),
+    );
+    expect(invoke).toHaveBeenCalledWith("render_report_gpu_event", {
+      reason: "contextLost",
+      deliberate: false,
+    });
+  });
+
+  it("reports a stalled thumb and never takes another", async () => {
+    jobs = [];
+    let taken = 0;
+    const base = vi.mocked(invoke).getMockImplementation();
+    vi.mocked(invoke).mockImplementation(async (command, args) => {
+      if (command === "render_take_thumb_job") {
+        taken += 1;
+        return { slug: "preset:hero", generation: 1, stem: "hero.tsx", stamp: "s", remaining: 3 };
+      }
+      return base?.(command, args);
+    });
+    vi.mocked(captureFrameRgba).mockRejectedValue(stall);
+    stop = startBridgeService(vi.fn());
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(taken).toBe(1);
+    expect(invoke).toHaveBeenCalledWith("render_report_gpu_event", {
+      reason: "contextLost",
+      deliberate: false,
+    });
+    expect(vi.mocked(invoke).mock.calls.some(([name]) => name === "write_scene_thumb")).toBe(false);
   });
 });

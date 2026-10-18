@@ -1,13 +1,13 @@
 # Cleanup: removing dead time
 
-`kb video cleanup NAME` cuts what nobody wants to watch (black, long heads and tails, still
+`./kb video cleanup NAME` cuts what nobody wants to watch (black, long heads and tails, still
 screens, a cursor blinking while nothing happens) and speeds up loading spinners. It applies and
 reports; `--dry-run` shows the same report and writes nothing. Run it on a source path and it uses
 (or makes) that recording's edit.
 
 ## What the analysis sees
 
-`kb video analyse NAME|SRC` decodes the recording once (cached by content) and splits it into
+`./kb video analyse NAME|SRC` decodes the recording once (cached by content) and splits it into
 intervals, each with a confidence:
 
 | Kind | What it is | Confidence |
@@ -80,5 +80,5 @@ next: Read the changes sheet, then kb video render sim-checkout; undo: kb undo; 
 - The changes sheet pairs the last frame before each jump with the first after (red edge), plus
   each speed change; Read it. Identical pairs mean an invisible cut.
 - `--emit-plan` prints the source-range ops (`cutSource`, `speedSource`) instead of applying them,
-  for `kb video apply NAME -` after you edit the list.
-- `kb video taps suggest NAME` lists tap candidates with the commands to check and add each.
+  for `./kb video apply NAME -` after you edit the list.
+- `./kb video taps suggest NAME` lists tap candidates with the commands to check and add each.

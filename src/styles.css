@@ -1734,11 +1734,32 @@ button.beat-status {
 }
 
 .pb-right {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: flex-end;
   gap: 6px;
   padding-top: 11px; /* baseline-align the readout with the track */
+}
+
+/* "Claude capturing": floats above the readout so the bar never reflows or rescales the track. */
+.pb-activity {
+  position: absolute;
+  right: 0;
+  bottom: 100%;
+  z-index: 5;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: 20px;
+  padding: 0 var(--space-3);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  white-space: nowrap;
+  background: var(--surface-elevated);
+  border: 1px solid var(--border-default);
+  border-radius: 10px;
+  pointer-events: none;
 }
 
 /* Timecode: mono + tabular so digits never jitter while scrubbing (§5.3). */
@@ -1909,6 +1930,12 @@ button.beat-status {
   margin: var(--space-2) 0 0;
   color: var(--text-secondary);
   font-size: var(--text-xs);
+}
+
+.load-notice-actions {
+  display: flex;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
 }
 
 /* The Welcome screen's copy sits in the page flow, not over the stage. */
@@ -13609,4 +13636,164 @@ textarea.text-inspector-copy-input {
   color: var(--text-secondary);
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* ── Claude's bridge export and the flash warning ─────────────────────────── */
+
+.bridge-export {
+  position: absolute;
+  bottom: var(--space-6);
+  left: 50%;
+  z-index: 8;
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  inline-size: min(26rem, calc(100% - 2rem));
+  padding: var(--space-4) var(--space-4) var(--space-4) var(--space-5);
+  transform: translateX(-50%);
+  background: var(--surface-elevated);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  box-shadow: var(--elev-popover);
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+}
+
+.bridge-export-icon {
+  flex: none;
+  color: var(--accent);
+}
+
+.bridge-export-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.bridge-export-title {
+  font-weight: 590;
+  font-variant-numeric: tabular-nums;
+}
+
+.bridge-export-detail {
+  overflow: hidden;
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.bridge-export-bar {
+  block-size: 3px;
+  border-radius: 2px;
+  background: var(--border-subtle);
+  overflow: hidden;
+}
+
+.bridge-export-fill {
+  display: block;
+  block-size: 100%;
+  background: var(--accent);
+  transition: width var(--dur-fast) var(--ease-standard);
+}
+
+.bridge-export-cancel {
+  flex: none;
+}
+
+/* The toast corner: the export card and any toast stack in one column, so they never overlap. */
+.toast-stack {
+  position: absolute;
+  top: var(--space-6);
+  right: var(--space-6);
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--space-3);
+  inline-size: min(30rem, calc(100% - 2rem));
+  pointer-events: none;
+}
+
+.toast-stack > * {
+  pointer-events: auto;
+}
+
+.toast-stack .toast {
+  position: static;
+  max-width: 100%;
+}
+
+/* The export result for a flagged film: ready and Show in Finder first, then the flagged moments. */
+.export-card {
+  inline-size: 100%;
+  padding: var(--space-4) var(--space-4) var(--space-4) var(--space-5);
+  background: var(--surface-elevated);
+  border: 1px solid var(--border-default);
+  border-left: 3px solid var(--warning);
+  border-radius: var(--radius-md);
+  box-shadow: var(--elev-popover);
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+}
+
+.export-card-danger {
+  border-left-color: var(--danger);
+}
+
+.export-card-head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-4);
+}
+
+.export-card-head .load-notice-icon {
+  color: var(--warning);
+}
+
+.export-card-danger .export-card-head .load-notice-icon {
+  color: var(--danger);
+}
+
+.export-card-title {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-weight: 590;
+}
+
+.export-card-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: var(--space-3);
+  padding-bottom: var(--space-4);
+  border-bottom: 1px solid var(--border-default);
+}
+
+.export-card-action {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.export-card-list {
+  margin: var(--space-4) 0 0;
+  padding: 0;
+  list-style: none;
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  overflow-wrap: anywhere;
+}
+
+.export-card-list li + li {
+  margin-top: var(--space-2);
+}
+
+.export-card-hint {
+  margin: var(--space-3) 0 0;
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
 }

@@ -9,6 +9,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use serde_json::{json, Map, Value};
 
+use crate::cli_check as check;
 use crate::edit::{self, CoreError, EditDoc, RenderEvent, RenderJob, RenderTarget};
 use crate::{live_edits, media, tools, workspace};
 
@@ -313,6 +314,9 @@ fn caps_in(args: &[String], app_data: Option<PathBuf>) -> Result<Value, Fail> {
         "build": if cfg!(debug_assertions) { "dev" } else { "release" },
         "exe": exe,
         "commands": COMMANDS,
+        "checks": check::CHECKS,
+        // kb's headless export refuses a binary without this: an older autorun auto-trusts and ignores KOOKABURRA_POSTER and KOOKABURRA_PROGRESS.
+        "autorun": { "actions": ["export", "verify"], "trust": ["stored-only"], "poster": true, "progress": true },
         "docVersion": { "read": edit::EDIT_VERSION_READ_MAX, "write": [1, edit::EDIT_VERSION_MASKS, edit::EDIT_VERSION_CROP] },
         "song": { "analysisVersion": crate::song::ANALYSIS_VERSION, "trackers": crate::song::TRACKERS },
         "ffmpeg": { "path": tools.ffmpeg.to_string_lossy(), "ok": filters.is_ok() },
@@ -878,6 +882,8 @@ mod tests {
             "build",
             "exe",
             "commands",
+            "checks",
+            "autorun",
             "docVersion",
             "song",
             "ffmpeg",
@@ -897,6 +903,11 @@ mod tests {
         assert_eq!(got, expected);
         assert_eq!(caps["cli"], 1);
         assert_eq!(caps["commands"], json!(COMMANDS));
+        assert_eq!(caps["checks"], json!(["flashes"]));
+        assert_eq!(
+            caps["autorun"],
+            json!({"actions": ["export", "verify"], "trust": ["stored-only"], "poster": true, "progress": true})
+        );
         assert_eq!(caps["docVersion"], json!({"read": 3, "write": [1, 2, 3]}));
         assert_eq!(caps["mask"]["fades"], true);
         assert_eq!(caps["crop"], true);

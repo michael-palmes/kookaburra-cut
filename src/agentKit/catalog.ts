@@ -34,6 +34,7 @@ import {
 } from "../engine/shutter";
 import { listTemplates } from "../engine/templates";
 import { FEEL_LABELS, TRANSITION_CATALOG } from "../engine/transitionCatalog";
+import { BUNDLED_EXPORT_PRESETS } from "../export/presetRegistry";
 import { BUILTIN_THEME_CATALOGUE, THEME_CATEGORIES } from "../theme/catalogue";
 import { formatFontString } from "../theme/fontRef";
 import { BUNDLED_FONTS } from "../theme/fonts";
@@ -80,6 +81,7 @@ import {
   SHADER_BACKGROUNDS,
 } from "../toolkit/stage/shaders";
 import { resolveTextAnimation, type TextPresetName } from "../toolkit/text/presets";
+import { KOOKABURRA_STANDARD_ID, presetAspects, railPresets } from "../ui/exportOptions";
 import { CHART_TYPE_LABELS } from "../ui/inspectorOptions";
 import {
   DELIVERY_DEFAULT_MS,
@@ -1278,6 +1280,25 @@ function templates(): Entry[] {
   });
 }
 
+/** The Export modal's video rows (High quality, then the bundled presets): what `kb export --preset` takes and what `kb verify-export` expects of a file. `lane` is `frozen` for High quality (its spec lane with the poster frame on), `spec` for presets; `hardware` lanes are excluded from Verify. */
+function exportPresets(): Entry[] {
+  return railPresets(BUNDLED_EXPORT_PRESETS).map((doc) => ({
+    id: doc.id,
+    label: doc.name,
+    summary: doc.description,
+    platform: doc.platform,
+    aspects: [...presetAspects(doc)],
+    favouredAspect: doc.favouredAspect,
+    fps: doc.video.fps,
+    shortEdge: doc.video.scaleShortEdgeTo ?? null,
+    codec: doc.video.codec,
+    container: doc.video.codec.startsWith("prores") ? "mov" : "mp4",
+    loudnessTarget: doc.audio.loudnessTarget ?? null,
+    lane: doc.id === KOOKABURRA_STANDARD_ID ? "frozen" : "spec",
+    hardware: doc.video.codec.endsWith("_videotoolbox"),
+  }));
+}
+
 function toolkitFamily(): Record<string, unknown> {
   const runtime = Object.keys(toolkit).sort();
   const exports = runtime.map((name) => {
@@ -1413,6 +1434,7 @@ export function buildAgentCatalog(): Record<string, Json> {
     toolkit: toolkitFamily(),
     presets: presets(),
     templates: templates(),
+    exportPresets: exportPresets(),
   };
   return tidy(catalog) as Record<string, Json>;
 }

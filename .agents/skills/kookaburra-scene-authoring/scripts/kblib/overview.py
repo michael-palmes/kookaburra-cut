@@ -14,11 +14,11 @@ from .util import KbError, ago, fmt_secs, is_int, read_text
 CONTEXT_BUDGET = 4000
 
 RULES = [
-    "Structural edits go through kb (scene add/duplicate/move/remove/set, doc set, project set); never hand-edit the scenes array in project.json.",
-    "Scenes import only from @kookaburra/toolkit: no React hooks (useMemo/useState/useRef...), no Date.now, timers, Math.random, document/window or <Html>. Drive motion from useTimeline().",
-    "Fonts: bundled families are always safe (kb fonts safe). Any other face must pass kb fonts check \"Family@weight\" first; a face that fails falls back to the theme face.",
-    "After every change: kb check (errors must be zero), then look at it with kb capture --scene <stem> and Read the PNG.",
-    "Start new scenes from presets (kb presets, kb scene add <name> --preset <slug>); kb checkpoint before risky work, kb undo to roll back.",
+    "Run kb as ./kb <command> from this folder, never through a variable or alias. Exit 3: wait retryAfterMs and rerun; 1: fix what it names; 2: tell the user.",
+    "Structure goes through kb (./kb scene add/duplicate/move/remove/set, ./kb doc, ./kb project set), new scenes from presets (./kb presets). Change scene files with Edit, Write or ./kb doc, never sed, Python or heredocs.",
+    "Scenes import only from @kookaburra/toolkit: no React hooks, Date.now, timers, Math.random, document/window or <Html>; drive motion from useTimeline(). Fonts outside the bundled set need ./kb fonts check first.",
+    "After a change: ./kb check --app, then ./kb capture --scene <stem> and Read the PNG; ./kb verify before calling the work done. With no app running, checks are static only: ask the user to open it.",
+    "./kb checkpoint before risky work, ./kb undo to roll back. With other agents: --agent <name> on every kb command, ./kb lease <scene> before editing it, --scene on checkpoint and undo, and a ./kb note instead of editing someone else's leased scene.",
 ]
 
 
@@ -94,7 +94,9 @@ def load_lines(last: Optional[Dict[str, Any]], limit: int = 6) -> List[str]:
     return out
 
 
-def app_line(project: Project, hb: Optional[Dict[str, Any]]) -> str:
+def app_line(project: Project, hb: Optional[Dict[str, Any]], rows: Optional[List[Dict[str, Any]]] = None) -> str:
+    if not hb and rows:
+        return "App: running, but no instance serves this project's workspace (see Instances; kb check is static only until one does)"
     if not hb:
         return "App: not running (kb check is static only; capture, check --app and fonts check need the app)"
     open_ = hb.get("openProject")
@@ -269,11 +271,60 @@ def edits_line(rows: List[Dict[str, Any]], limit: int = 6) -> Optional[str]:
     return f"Edits: {'; '.join(bits)}{more}"
 
 
+def instance_line(row: Dict[str, Any]) -> str:
+    if row["servesThisProject"]:
+        why = "serves this project" + (f"; open: {row['openProject']}" if row.get("openProject") else "")
+    elif not row["serving"]:
+        why = f"bridge off: {row.get('reason') or 'not serving'}"
+    else:
+        why = "serves another workspace" if row.get("workspaceRoot") else "no workspace configured"
+    who = " ".join(str(b) for b in (row.get("build") or "?", row.get("appVersion") or "?", row.get("bundleId") or "") if b)
+    star = "*" if row["chosen"] else " "
+    return f"  {star} pid {row['pid']} {who}, workspace {row.get('workspaceRoot') or 'none'} ({why})"
+
+
+def instance_lines(rows: List[Dict[str, Any]]) -> List[str]:
+    """Shown when more than one instance is live or none serves this project."""
+    serving_here = [r for r in rows if r["servesThisProject"]]
+    if not rows or (len(rows) == 1 and serving_here):
+        return []
+    out = ["Instances:"] + [instance_line(r) for r in rows]
+    if len(serving_here) > 1:
+        out.append("  several instances serve this workspace; kb addresses the starred one (project open, then release, then the earliest start)")
+    return out
+
+
+def dev_build_lines(hb: Optional[Dict[str, Any]]) -> List[str]:
+    if not hb or hb.get("build") != "dev":
+        return []
+    checkout = hb.get("checkout") if isinstance(hb.get("checkout"), dict) else {}
+    where = f" from {checkout['path']}" if checkout.get("path") else ""
+    return [
+        f"DEV BUILD: a development build serves this project (pid {hb.get('pid')}{where}). React dev builds use far more WebContent memory; "
+        "for long or multi-agent sessions ask the user to use the packaged app instead."
+    ]
+
+
+def coordination(project: Project, caller: Any = None, mark: bool = True) -> Tuple[Optional[str], List[str], List[Dict[str, Any]], List[Dict[str, Any]]]:
+    """(leases line, notes lines, lease rows, unseen notes) for kb status; mark=True records the notes as seen."""
+    from . import events, identity, leases
+
+    who = caller if caller is not None else identity.current()
+    try:
+        rows = leases.rows(project, who)
+        unseen = events.unseen_notes(project, who, mark=mark)
+        return leases.line(project, who), events.notes_lines(unseen), rows, unseen
+    except Exception:  # coordination state is advisory; status must still print
+        return None, [], [], []
+
+
 def status_data(project: Project) -> Dict[str, Any]:
-    hb = bridge.live_heartbeat()
+    hb = bridge.live_heartbeat(project)
+    rows = bridge.instance_rows(project)
     manifest = project.manifest()
     entries = project.scene_entries()
     worktree = session_worktree(project)
+    coord = coordination(project)
     return {
         "project": project.project_id,
         "root": str(project.root),
@@ -284,18 +335,27 @@ def status_data(project: Project) -> Dict[str, Any]:
         "scenes": len(entries),
         "totalMs": project.total_ms(),
         "app": {
-            "running": hb is not None,
+            "running": hb is not None or bool(rows),
+            "servesThisProject": hb is not None,
+            "pid": hb.get("pid") if hb else None,
+            "bundleId": hb.get("bundleId") if hb else None,
+            "build": hb.get("build") if hb else None,
+            "workspaceRoot": hb.get("workspaceRoot") if hb else None,
             "version": hb.get("appVersion") if hb else None,
             "openProject": hb.get("openProject") if hb else None,
             "aspect": hb.get("aspect") if hb else None,
             "playheadMs": hb.get("playheadMs") if hb else None,
             "exporting": hb.get("exporting") if hb else None,
         },
+        "instances": rows,
+        "health": hb.get("health") if hb else None,
         "lastLoad": last_load_for(project, hb),
         "kit": kit_info(project),
         "checkpoint": checkpoint_line(project),
         "edits": edits_summary(project),
         "videoCli": video_cli(),
+        "leases": coord[2],
+        "notes": coord[3],
     }
 
 
@@ -306,26 +366,46 @@ def video_cli() -> Dict[str, Any]:
 
 
 def status_text(project: Project) -> str:
-    hb = bridge.live_heartbeat()
+    hb = bridge.live_heartbeat(project)
+    rows = bridge.instance_rows(project)
     manifest = project.manifest()
     fmts = manifest.get("formats") if isinstance(manifest.get("formats"), list) else []
-    lines = worktree_lines(project) + [
+    lines = worktree_lines(project) + dev_build_lines(hb) + [
         f"Project: {manifest.get('name', '?')} ({project.project_id}) at {project.root}",
         f"Theme {manifest.get('themeId', '?')} · formats {' '.join(str(f) for f in fmts)} · {len(project.scene_entries())} scenes · {fmt_secs(project.total_ms())}",
-        app_line(project, hb),
+        app_line(project, hb, rows),
     ]
+    lines += instance_lines(rows)
+    from .capture import health_lines
+
+    lines += health_lines(hb)
     lines += load_lines(last_load_for(project, hb))
     edits = edits_line(edits_summary(project))
     if edits:
         lines.append(edits)
     lines.append(checkpoint_line(project))
+    lease_line, note_lines, _rows, _unseen = coordination(project)
+    if lease_line:
+        lines.append(lease_line)
+    lines += note_lines
     lines.append(kit_info(project))
     return "\n".join(lines)
 
 
-def context_text(project: Project, check_summary: Optional[List[str]] = None, cwd: Optional[str] = None) -> str:
+def coordination_context(project: Project, caller: Any = None) -> List[str]:
+    """The leases line and the newest two notes, for the session-start briefing (nothing is marked seen)."""
+    from . import events, leases
+
+    try:
+        lease_line = leases.line(project, caller)
+        return ([lease_line] if lease_line else []) + events.newest_lines(str(project.root), 2)
+    except Exception:
+        return []
+
+
+def context_text(project: Project, check_summary: Optional[List[str]] = None, cwd: Optional[str] = None, caller: Any = None) -> str:
     """The SessionStart text: under 4 KB, most useful first (a worktree STOP banner leads)."""
-    hb = bridge.live_heartbeat()
+    hb = bridge.live_heartbeat(project)
     head: List[str] = worktree_lines(project, cwd)
     try:
         manifest = project.manifest()
@@ -333,7 +413,7 @@ def context_text(project: Project, check_summary: Optional[List[str]] = None, cw
         head.append(f"Kookaburra Cut project \"{manifest.get('name', '?')}\" ({project.project_id}) · theme {manifest.get('themeId', '?')} · {' '.join(str(f) for f in fmts)} · {len(project.scene_entries())} scenes · {fmt_secs(project.total_ms())}")
     except KbError as e:
         head.append(f"Kookaburra Cut project {project.project_id}: project.json problem: {e.message}")
-    head.append(app_line(project, hb))
+    head.append(app_line(project, hb, None if hb else bridge.instance_rows(project)))
     head += load_lines(last_load_for(project, hb), limit=4)
     if check_summary:
         head += check_summary
@@ -347,8 +427,9 @@ def context_text(project: Project, check_summary: Optional[List[str]] = None, cw
         head.append(checkpoint_line(project))
     except KbError:
         pass
+    head += coordination_context(project, caller)
     tail = ["Rules:"] + [f"{i + 1}. {r}" for i, r in enumerate(RULES)]
-    tail.append("Tool: python3 .claude/skills/kookaburra-scene-authoring/scripts/kb.py <command> (kb --help lists them; the skill explains the workflow)")
+    tail.append("Tool: ./kb <command> from the project folder (./kb --help lists them; the skill explains the workflow and its reference/gotchas.md the known traps)")
     budget = CONTEXT_BUDGET - len("\n".join(head + tail).encode("utf-8")) - 80
     scene_lines: List[str] = []
     try:

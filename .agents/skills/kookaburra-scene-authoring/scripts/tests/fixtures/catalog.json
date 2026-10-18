@@ -2,10 +2,28 @@
   "version": 1,
   "appVersion": "0.19.0-test",
   "aspects": [
-    { "id": "16:9", "label": "16:9", "summary": "3840x2160 landscape" },
-    { "id": "9:16", "label": "9:16", "summary": "2160x3840 portrait" },
-    { "id": "1:1", "label": "1:1", "summary": "2160x2160 square" },
-    { "id": "4:5", "label": "4:5", "summary": "2160x2700 portrait social" }
+    {
+      "id": "16:9",
+      "label": "16:9",
+      "width": 3840,
+      "height": 2160,
+      "summary": "3840x2160 landscape"
+    },
+    {
+      "id": "9:16",
+      "label": "9:16",
+      "width": 2160,
+      "height": 3840,
+      "summary": "2160x3840 portrait"
+    },
+    { "id": "1:1", "label": "1:1", "width": 2160, "height": 2160, "summary": "2160x2160 square" },
+    {
+      "id": "4:5",
+      "label": "4:5",
+      "width": 2160,
+      "height": 2700,
+      "summary": "2160x2700 portrait social"
+    }
   ],
   "transitions": [
     { "id": "crossfade", "label": "Crossfade", "summary": "Dissolve between scenes" },

@@ -13,17 +13,122 @@ from typing import Any, Dict, Iterable, List, Optional
 EXIT_OK = 0
 EXIT_PROBLEMS = 1
 EXIT_ENV = 2
+EXIT_TRANSIENT = 3
 
 WORKSPACE_DIR_NAME = "Kookaburra Cut"
 
+DEFAULT_KIND = {EXIT_PROBLEMS: "failed", EXIT_ENV: "env", EXIT_TRANSIENT: "transient"}
+
+DEFAULT_HINTS: Dict[str, str] = {
+    "usage": "run ./kb <command> --help",
+    "no-app": "ask the user to open Kookaburra Cut, or run the static ./kb check",
+    "needs-trust": "ask the user to open this project once in Kookaburra Cut",
+    "invalid": "fix the file named above, then rerun",
+    "leased": "leave the holder a ./kb note, or wait for the lease to end (./kb leases)",
+    "others-changed": "undo only your own scene with ./kb undo --scene S, or pass --all",
+    "conflict": "re-read the file and rerun the command",
+    "locked": "another kb command holds the project lock; rerun in a moment",
+    "index-locked": "another git process holds .git/index.lock; rerun in a moment",
+    "app-busy": "the app is busy (exporting or rendering); rerun in a moment",
+    "bridge-timeout": "the app did not answer in time; check ./kb status, then rerun",
+    "gpu-stalled": "the render window was recycled; rerun once, with fewer or smaller frames",
+    "gpu-wedged": "ask the user to quit and reopen Kookaburra Cut",
+    "throttled": "capture fewer or smaller frames (--scale 0.5), then rerun after retryAfterMs",
+    "too-large": "use the default sheet size or --scale, and fewer frames",
+    "flashes": "fix the flagged moments, or pass --allow-flashes after checking them",
+    "transient": "rerun in a moment",
+}
+
 
 class KbError(Exception):
-    """A failure with a message that says what to do next, and the exit code to use."""
+    """A failure with a message that says what to do next.
 
-    def __init__(self, message: str, code: int = EXIT_PROBLEMS) -> None:
+    `code` is the exit code (0 ok, 1 problems, 2 usage or environment, 3 transient); `kind` is the
+    stable kebab-case id printed as the envelope's `code`; `hint` is the single next step.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        code: int = EXIT_PROBLEMS,
+        *,
+        kind: Optional[str] = None,
+        hint: Optional[str] = None,
+        retry_after_ms: Optional[int] = None,
+        data: Optional[Dict[str, Any]] = None,
+    ) -> None:
         super().__init__(message)
         self.message = message
         self.code = code
+        self.kind = kind or DEFAULT_KIND.get(code, "failed")
+        self.hint = hint if hint is not None else DEFAULT_HINTS.get(self.kind)
+        self.retry_after_ms = retry_after_ms
+        self.data = data or {}
+
+    def envelope(self, command: str) -> Dict[str, Any]:
+        out: Dict[str, Any] = {"ok": False, "command": command, "code": self.kind, "error": self.message}
+        if self.hint:
+            out["hint"] = self.hint
+        if self.retry_after_ms is not None:
+            out["retryAfterMs"] = int(self.retry_after_ms)
+        for key, value in self.data.items():
+            out.setdefault(key, value)
+        return out
+
+    def text(self) -> str:
+        lines = [f"kb: {self.message}"]
+        if self.hint:
+            lines.append(f"  hint: {self.hint}")
+        return "\n".join(lines)
+
+
+def ok_envelope(
+    command: str,
+    payload: Optional[Dict[str, Any]] = None,
+    *,
+    ok: Optional[bool] = None,
+    code: Optional[str] = None,
+    error: Optional[str] = None,
+) -> Dict[str, Any]:
+    """The --json shape: { ok, command, ...payload } (lists live under plural keys, never bare).
+
+    ok defaults to the payload's own boolean "ok" (a check's verdict), else True. A report that exits 1 (problems
+    found) is ok false and carries `code` (default "failed") and `error`, like a failure envelope.
+    """
+    body = dict(payload or {})
+    own = body.pop("ok", None)
+    flag = ok if ok is not None else (own if isinstance(own, bool) else True)
+    out: Dict[str, Any] = {"ok": flag, "command": command}
+    if not flag:
+        out["code"] = code or body.pop("code", None) or "failed"
+        out["error"] = error or body.pop("error", None) or "problems found (see the rest of this object)"
+    for key, value in body.items():
+        out.setdefault(key, value)
+    return out
+
+
+COMMAND_DESTS = ("command", "op", "action", "vop", "tap_op", "mask_op", "taps_op")
+_command = ""
+
+
+def command_name(args: Any) -> str:
+    """The envelope's `command`: the subcommand and its ops, for example "scene add" or "video tap add"."""
+    parts = []
+    for dest in COMMAND_DESTS:
+        value = getattr(args, dest, None)
+        if isinstance(value, str) and value:
+            parts.append(value)
+    return " ".join(parts)
+
+
+def set_command(name: str) -> None:
+    """The command this kb process runs, for emit_ok() in modules that are not handed it."""
+    global _command
+    _command = name
+
+
+def emit_ok(payload: Optional[Dict[str, Any]] = None, **kwargs: Any) -> None:
+    emit_json(ok_envelope(_command, payload, **kwargs))
 
 
 def home() -> Path:
@@ -31,9 +136,13 @@ def home() -> Path:
 
 
 def bridge_dir() -> Path:
+    """KB_BRIDGE_DIR, else the app's KOOKABURRA_BRIDGE_DIR (absolute only, as the app reads it), else ~/Kookaburra Cut/_bridge."""
     override = os.environ.get("KB_BRIDGE_DIR")
     if override:
         return Path(override)
+    app_dir = os.environ.get("KOOKABURRA_BRIDGE_DIR", "").strip()
+    if app_dir and os.path.isabs(app_dir):
+        return Path(app_dir)
     return home() / WORKSPACE_DIR_NAME / "_bridge"
 
 
@@ -149,14 +258,6 @@ def file_sha256(path: Path) -> Optional[str]:
             return hashlib.sha256(f.read()).hexdigest()
     except OSError:
         return None
-
-
-def atomic_write_json_if(path: Path, value: Any, expected_sha: Optional[str]) -> bool:
-    """Write only when the file still hashes to expected_sha (None: it must not exist); False means it changed, so re-read and retry."""
-    if file_sha256(path) != expected_sha:
-        return False
-    atomic_write_json(path, value)
-    return True
 
 
 def js_json(value: Any) -> Any:

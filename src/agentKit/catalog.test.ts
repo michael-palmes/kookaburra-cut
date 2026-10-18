@@ -212,6 +212,22 @@ describe("agent catalogue", () => {
     expect(ids("deviceShadows")).toContain("wetfloor");
     expect(ids("fonts.bundled")).toContain("JetBrains Mono");
     expect(ids("presets")).toContain("title");
+    expect(ids("exportPresets")[0]).not.toBe("kookaburra-standard");
+    const hq = family("exportPresets").find((e) => e.id === "kookaburra-standard");
+    expect(hq).toMatchObject({
+      fps: 60,
+      shortEdge: null,
+      codec: "libx264",
+      lane: "frozen",
+      hardware: false,
+    });
+    expect(family("exportPresets").find((e) => e.id === "tiktok")).toMatchObject({
+      aspects: ["9:16", "1:1"],
+      fps: 30,
+      shortEdge: 1080,
+      loudnessTarget: -14,
+      lane: "spec",
+    });
     expect(ids("templates").length).toBeGreaterThan(5);
     expect(ids("toolkit.imports")).toContain("@kookaburra/toolkit");
     expect(ids("toolkit.types")).toContain("SceneDoc");

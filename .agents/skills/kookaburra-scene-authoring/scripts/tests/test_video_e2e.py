@@ -63,4 +63,4 @@ class VideoEndToEndTests(KbTestCase):
         doc: Dict[str, Any] = read_json(self.root / "scenes" / "02-hero.json")
         self.assertEqual(doc["devices"][0]["media"]["src"], "assets/rec-edited.mp4")
         self.assertEqual(read_json(self.root / "edits" / ".renders" / "rec.json")["output"], "assets/rec-edited.mp4")
-        self.assertEqual(self.json("list")[0]["render"]["state"], "fresh")
+        self.assertEqual(self.json("list")["edits"][0]["render"]["state"], "fresh")

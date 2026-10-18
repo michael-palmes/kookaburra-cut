@@ -3,8 +3,10 @@ import { emit, listen } from "@tauri-apps/api/event";
 import { projectAssetsStamp, refreshWorkspaceAssets } from "../engine/assetRevisions";
 import { resolveScreenshotTimeMs } from "../engine/autorun";
 import { invalidateChangedClips } from "../engine/clips";
+import { canvasHandle } from "../engine/exportBridge";
 import { captureFrameRgba } from "../engine/exporter";
 import { type AspectName, FORMATS, type FormatSpec, FPS } from "../engine/format";
+import { glContextCensus, tagGlCanvas } from "../engine/glContexts";
 import { libraryPreviewFormat } from "../engine/libraryPreviewPoint";
 import {
   clearRenderErrors,
@@ -27,6 +29,7 @@ import {
   sceneFileStem,
 } from "../engine/project";
 import { setProjectAssetRevision } from "../engine/projectAssetRevision";
+import { GpuStallError } from "../engine/readback";
 import { awaitProjectCommitted } from "../engine/themePreviews";
 import { serveFontsRequest } from "./bridgeFonts";
 import {
@@ -34,19 +37,26 @@ import {
   type BridgeRequest,
   buildCheckReport,
   type CheckAsset,
+  captureFormat,
   collectAssetRefs,
   frameScene,
   isNativeBridgeKind,
+  MAX_REQUEST_UNITS,
+  type ProbeSample,
+  parseProbes,
+  requestCaptureFormat,
   requestFormat,
   requestFrames,
   resolvePresetRef,
   responseVersion,
+  samplePixels,
   trustDeniedSlug,
   trustSentence,
+  unitsFor,
 } from "./bridgeRequests";
 import { ContactSheet } from "./contactSheet";
 
-/** The render window's half of the bridge (docs/agent-kit.md, "The bridge (v2)"): claim one request per tick, load (or reload) the target project into this window's own canvas and serve it (capture, check, fonts, insertPreset) through the deterministic export path, all without touching the editor realm. A media-changed broadcast marks the clip cache dirty; the next tick sweeps it before claiming, so a capture after an in-place re-render shows the new frames. The editor's open project loads under the editor's session trust; any other loads stored-only and never prompts here. Playhead captures (no scene) need the editor's open project, whose id/aspect/playhead arrive via the pushed editor context. Idle ticks drain the thumb queue instead (fast tier: same path, small buffer), parked while the editor is playing. */
+/** The render window's half of the bridge (docs/agent-kit.md, "The bridge (v2)"): claim one request per tick, load (or reload) the target project into this window's own canvas and serve it (capture, check, fonts, insertPreset, the render window's debug ops) through the deterministic export path, all without touching the editor realm. Captures render at `captureFormat` (sheets and multi-frame at a 1280 long edge) while the store keeps the native format, check the client still waits before every frame, and sample `probe` points from the readback. A GPU stall on any path (capture, check render, thumbs, posters) answers `gpuStalled` once and stops this window; Rust recycles it. A media-changed broadcast marks the clip cache dirty; the next tick sweeps it before claiming, so a capture after an in-place re-render shows the new frames. The editor's open project loads under the editor's session trust; any other loads stored-only and never prompts here. Playhead captures (no scene) need the editor's open project, whose id/aspect/playhead arrive via the pushed editor context. Idle ticks drain the thumb queue instead (fast tier: same path, small buffer), parked while the editor is playing. */
 
 /** Mirror of bridge.rs's EditorContext. */
 interface EditorContext {
@@ -81,11 +91,39 @@ const BRIDGE_COMMANDS = { begin: "begin_bridge_screenshot", save: "save_bridge_s
 /** Fast-tier thumb width; matches the legacy preview-canvas thumbs. */
 const THUMB_WIDTH = 640;
 
-const smallFormat = (format: FormatSpec): FormatSpec => ({
-  name: format.name,
-  width: THUMB_WIDTH,
-  height: Math.round((THUMB_WIDTH * format.height) / format.width / 2) * 2,
-});
+const smallFormat = (format: FormatSpec): FormatSpec =>
+  captureFormat(format, { width: THUMB_WIDTH });
+
+let canvasFailure: string | null = null;
+let loadedProjectId: string | null = null;
+
+/** The stage canvas never started (RenderApp's boundary): every request from here on is a stall. */
+export function markCanvasFailed(error: unknown): void {
+  canvasFailure = error == null ? null : String(error);
+}
+
+/** The project this window has loaded, for its beat. */
+export function renderLoadedProject(): string | null {
+  return loadedProjectId;
+}
+
+/** Why `error` is a GPU stall (the canvas is poisoned), or null for a content failure. */
+export function stallReason(error: unknown): string | null {
+  if (error instanceof GpuStallError) return error.reason;
+  if (canvasFailure !== null) return "canvasFailed";
+  if (error instanceof Error && error.message.startsWith("Export bridge not mounted")) {
+    return "notMounted";
+  }
+  return null;
+}
+
+const reportStall = (reason: string) =>
+  invoke("render_report_gpu_event", { reason, deliberate: false }).catch(() => {});
+
+interface Liveness {
+  live: boolean;
+  reason?: string;
+}
 
 interface LoadedState {
   project: LoadedProject;
@@ -101,6 +139,8 @@ export function startBridgeService(
 ): () => void {
   let busy = false;
   let current: LoadedState | null = null;
+  // Set by the first stall: this window's canvas can't be trusted again, and Rust is about to destroy it.
+  let poisoned: string | null = null;
   let mediaDirty = false;
   const dirtySlugs = new Set<string>();
   const ready = invoke("render_reset_preset_posters");
@@ -163,7 +203,21 @@ export function startBridgeService(
       await awaitProjectCommitted(loaded);
       current = { project: loaded, fingerprint, assetStamp, formatName: format.name };
     }
+    loadedProjectId = current.project.id;
     return current.project;
+  };
+
+  /** A load or render failed: the next request reloads cold. */
+  const forget = () => {
+    current = null;
+    loadedProjectId = null;
+  };
+
+  /** Whether `error` stalled the GPU; the first one poisons this window. */
+  const noteStall = (error: unknown): string | null => {
+    const reason = stallReason(error);
+    if (reason && !poisoned) poisoned = reason;
+    return reason;
   };
 
   const contextFormat = (context: EditorContext | null): FormatSpec =>
@@ -194,13 +248,54 @@ export function startBridgeService(
       });
       return;
     }
-    const format = requestFormat(request.aspect, context?.aspect);
-    const project = await ensureLoaded(targetId, format);
+    const servedAt = Date.now();
+    const native = requestFormat(request.aspect, context?.aspect);
+    const format = requestCaptureFormat(request, native);
+    const units = unitsFor(frames.length, format);
+    if (units > MAX_REQUEST_UNITS) {
+      await respond(request, {
+        ok: false,
+        tooLarge: true,
+        units,
+        maxUnits: MAX_REQUEST_UNITS,
+        error: `this capture costs ${units} units (${frames.length} frame(s) at ${format.width}x${format.height}); one request takes at most ${MAX_REQUEST_UNITS}`,
+        hint: "drop --scale/--width, use the default sheet size",
+      });
+      return;
+    }
+    const probes = parseProbes(request.probe, format);
+    // The store keeps the native format (layout, safe areas); only the capture buffer is scaled.
+    const project = await ensureLoaded(targetId, native);
     const sheet = request.sheet
       ? new ContactSheet(frames.length, format.width, format.height)
       : null;
-    const shots: { scene: string; at: number; tMs: number; path: string; index: number }[] = [];
+    const shots: {
+      scene: string;
+      at: number;
+      tMs: number;
+      path: string;
+      index: number;
+      probes?: ProbeSample[];
+    }[] = [];
+    const renderStart = Date.now();
     for (const [n, frame] of frames.entries()) {
+      const live = await invoke<Liveness | null>("bridge_request_live", {
+        id: request.id,
+        frame: n,
+      }).catch(() => null);
+      if (live && !live.live) {
+        await respond(
+          request,
+          live.reason === "busy"
+            ? { ok: false, busy: true, error: "Kookaburra Cut started exporting; retry shortly" }
+            : {
+                ok: false,
+                cancelled: true,
+                error: "the client stopped waiting, so the app stopped rendering this capture",
+              },
+        );
+        return;
+      }
       const tMs = resolveScreenshotTimeMs(
         project,
         frame.scene ?? undefined,
@@ -208,6 +303,8 @@ export function startBridgeService(
         isOpen ? context?.currentMs : undefined,
       );
       const { rgba, width, height } = await captureFrameRgba(exportOptions(project, format), tMs);
+      // Probes read the readback already in memory, before the PNG save.
+      const sampled = probes.length ? samplePixels(rgba, width, height, probes) : undefined;
       await invoke(BRIDGE_COMMANDS.begin, {
         width,
         height,
@@ -228,8 +325,10 @@ export function startBridgeService(
         tMs: Math.round(tMs),
         path,
         index: where.index,
+        ...(sampled ? { probes: sampled } : {}),
       });
     }
+    const renderMs = Date.now() - renderStart;
     let sheetPath: string | undefined;
     if (sheet) {
       const png = await sheet.png();
@@ -247,6 +346,13 @@ export function startBridgeService(
       project: project.id,
       tMs: shots[0].tMs,
       format: format.name,
+      size: { width: format.width, height: format.height },
+      nativeSize: { width: native.width, height: native.height },
+      timing: {
+        queuedMs: request.requestedAtMs > 0 ? Math.max(0, servedAt - request.requestedAtMs) : null,
+        renderMs,
+        perFrameMs: Math.round(renderMs / shots.length),
+      },
       // Provenance for hash disputes: this surface is visually exact but not hash-exact against the cold-boot screenshot (docs/determinism.md).
       surface: "render-window",
     });
@@ -266,8 +372,8 @@ export function startBridgeService(
     try {
       project = await ensureLoaded(targetId, format);
     } catch (e) {
-      if (trustDeniedSlug(e)) throw e;
-      current = null;
+      if (trustDeniedSlug(e) || stallReason(e)) throw e;
+      forget();
       await respond(request, {
         ok: false,
         error: String(e),
@@ -304,6 +410,8 @@ export function startBridgeService(
             Math.round(slot.startMs + slot.durationMs / 2),
           );
         } catch (e) {
+          // A stall is the GPU's, not this scene's: stop and answer it once.
+          if (stallReason(e)) throw e;
           renderErrors.push({
             index,
             file: project.sceneFiles[index] ?? "",
@@ -368,9 +476,60 @@ export function startBridgeService(
     });
   };
 
+  /** The render window's debug ops: lose-context on its own stage (Rust recycles it, no backoff), and in dev builds spawn-contexts to see which context WebKit evicts past 16. */
+  const serveDebug = async (request: BridgeRequest) => {
+    const op = request.op ?? "";
+    if (op === "lose-context" && (request.window ?? "render") === "render") {
+      const gl = canvasHandle.current?.gl;
+      if (!gl) {
+        await respond(request, { ok: false, error: "the render window's stage is not mounted" });
+        return;
+      }
+      await respond(request, { ok: true, op, window: "render", lost: true, recycling: true });
+      poisoned = "debug";
+      gl.forceContextLoss();
+      return;
+    }
+    if (op === "spawn-contexts") {
+      if (!import.meta.env.DEV) {
+        await respond(request, { ok: false, error: "spawn-contexts runs only in dev builds" });
+        return;
+      }
+      const n = Math.min(32, Math.max(1, Math.round(request.n ?? 17)));
+      const held: WebGLRenderingContext[] = [];
+      for (let i = 0; i < n; i++) {
+        const canvas = document.createElement("canvas");
+        canvas.width = 16;
+        canvas.height = 16;
+        tagGlCanvas(canvas, `spawned-${i}`);
+        const gl = canvas.getContext("webgl");
+        if (gl) held.push(gl);
+      }
+      // WebKit's evictions arrive as webglcontextlost events after the creating call returns.
+      await new Promise((resolve) => window.setTimeout(resolve, 1500));
+      const census = glContextCensus();
+      for (const gl of held) gl.getExtension("WEBGL_lose_context")?.loseContext();
+      await respond(request, { ok: true, op, n, created: held.length, census });
+      return;
+    }
+    await respond(request, {
+      ok: false,
+      error: `debug op "${op}" isn't served by the render window (lose-context, spawn-contexts)`,
+    });
+  };
+
   const serveRequest = async (request: BridgeRequest): Promise<void> => {
     const context = await invoke<EditorContext | null>("get_editor_context").catch(() => null);
     const kind = request.kind ?? "capture";
+    if (poisoned) {
+      await respond(request, {
+        ok: false,
+        gpuStalled: true,
+        reason: poisoned,
+        error: `GPU stalled (${poisoned}): this render window can't render again; Kookaburra Cut is recycling it`,
+      });
+      return;
+    }
     try {
       if (isNativeBridgeKind(kind)) {
         await respond(request, {
@@ -402,6 +561,8 @@ export function startBridgeService(
         }
         case "insertPreset":
           return await serveInsertPreset(request, context);
+        case "debug":
+          return await serveDebug(request);
         default:
           await respond(request, {
             ok: false,
@@ -410,7 +571,13 @@ export function startBridgeService(
       }
     } catch (e) {
       // A failed load poisons nothing: drop the cached project so the next request reloads cold.
-      current = null;
+      forget();
+      const stalled = noteStall(e);
+      if (stalled) {
+        // Rust fills in recycled, retryAfterMs, wedged and the hint, then recycles this window.
+        await respond(request, { ok: false, gpuStalled: true, reason: stalled, error: String(e) });
+        return;
+      }
       const denied = trustDeniedSlug(e);
       await respond(
         request,
@@ -448,7 +615,13 @@ export function startBridgeService(
       });
       await emit("kookaburra://thumbs-updated", { slug: take.slug });
     } catch (e) {
-      current = null;
+      forget();
+      const stalled = noteStall(e);
+      if (stalled) {
+        // The job is dropped with the window; the editor asks again for thumbs it still lacks.
+        await reportStall(stalled);
+        return false;
+      }
       console.warn(`[render-bridge] thumb ${take.slug}/${take.stem} failed:`, e);
     }
     return true;
@@ -511,7 +684,14 @@ export function startBridgeService(
         },
       });
     } catch (error) {
-      current = null;
+      forget();
+      const stalled = noteStall(error);
+      if (stalled) {
+        // Back in the queue for the next window, never marked failed.
+        await finish(true).catch(() => false);
+        await reportStall(stalled);
+        return false;
+      }
       const owned = await finish(false).catch(() => false);
       if (owned)
         await emit("kookaburra://library-preview-failed", {
@@ -553,13 +733,13 @@ export function startBridgeService(
     }
     // Drain the whole thumb queue in one tick: the claim interval is timer-clamped (~2s hidden), so a job-per-tick cadence would stack seconds of idle wait between thumbs. Context re-reads keep the playback/export parking live mid-drain, and a capture request arriving mid-drain takes over.
     for (;;) {
+      if (poisoned) return;
       const context = await invoke<EditorContext | null>("get_editor_context").catch(() => null);
-      if (
-        !(await servePresetPoster(context, true)) &&
-        !(await serveThumb(context)) &&
-        !(await servePresetPoster(context))
-      )
-        return;
+      const served =
+        (await servePresetPoster(context, true)) ||
+        (!poisoned && (await serveThumb(context))) ||
+        (!poisoned && (await servePresetPoster(context)));
+      if (!served || poisoned) return;
       await sweepChangedMedia();
       const next = await invoke<BridgeRequest | null>("bridge_claim_request").catch(() => null);
       if (next) {
