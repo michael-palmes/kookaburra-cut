@@ -390,18 +390,14 @@ fn partial_output_path(output: &std::path::Path) -> PathBuf {
     output.with_file_name(format!(".{stem}.part.{ext}"))
 }
 
-/// The output path of the most recent finished export, for `reveal_last_export`; exports default to ~/Downloads, which `reveal_in_finder`'s confinement rightly refuses, so the only safe reveal is the destination this app computed and wrote itself (the `reveal_pack` pattern).
+/// Every export this app finished in this session (newest last, capped), for `reveal_last_export` and `reveal_export`; exports default to ~/Downloads, which `reveal_in_finder`'s confinement rightly refuses, so the only safe reveal is a destination this app computed and wrote itself (the `reveal_pack` pattern).
 #[derive(Default)]
-struct LastExport(Mutex<Option<std::path::PathBuf>>);
-
-/// Every export this app finished in this session (newest last, capped), so `reveal_export` can show a named one under the same rule as `LastExport`.
-#[derive(Default)]
-struct ExportHistory(Mutex<Vec<std::path::PathBuf>>);
+pub(crate) struct ExportHistory(Mutex<Vec<std::path::PathBuf>>);
 
 const EXPORT_HISTORY_CAP: usize = 64;
 
 impl ExportHistory {
-    fn note(&self, path: &std::path::Path) {
+    pub(crate) fn note(&self, path: &std::path::Path) {
         if let Ok(mut history) = self.0.lock() {
             history.retain(|p| p != path);
             history.push(path.to_path_buf());
@@ -412,6 +408,10 @@ impl ExportHistory {
 
     fn knows(&self, path: &std::path::Path) -> bool {
         self.0.lock().is_ok_and(|history| history.iter().any(|p| p == path))
+    }
+
+    fn last(&self) -> Option<std::path::PathBuf> {
+        self.0.lock().ok().and_then(|history| history.last().cloned())
     }
 }
 
@@ -708,7 +708,6 @@ fn push_frame(state: State<'_, ExportState>, request: tauri::ipc::Request) -> Re
 async fn finish_export(
     app: AppHandle,
     state: State<'_, ExportState>,
-    last: State<'_, LastExport>,
     history: State<'_, ExportHistory>,
     flash: State<'_, FlashState>,
 ) -> Result<String, String> {
@@ -741,9 +740,6 @@ async fn finish_export(
         flash.set(None);
     }
     result?;
-    if let Ok(mut guard) = last.0.lock() {
-        *guard = Some(run.output.clone());
-    }
     history.note(&run.output);
     let (report, unavailable) = finish_flash_tap(detector);
     write_flash_report(&run.output, report.as_ref());
@@ -907,15 +903,10 @@ fn reveal_in_finder(
         .map_err(|e| e.to_string())
 }
 
-/// Reveal the most recent finished export. Takes no path (see `LastExport`).
+/// Reveal the most recent finished export. Takes no path (see `ExportHistory`).
 #[tauri::command]
-fn reveal_last_export(state: State<'_, LastExport>) -> Result<(), String> {
-    let path = state
-        .0
-        .lock()
-        .ok()
-        .and_then(|p| p.clone())
-        .ok_or("There is no export to show yet.")?;
+fn reveal_last_export(history: State<'_, ExportHistory>) -> Result<(), String> {
+    let path = history.last().ok_or("There is no export to show yet.")?;
     if !path.is_file() {
         return Err("The exported file is no longer where it was written.".into());
     }
@@ -1808,7 +1799,6 @@ pub fn run() {
     let builder = builder
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(ExportState::default())
-        .manage(LastExport::default())
         .manage(ExportHistory::default())
         .manage(FlashState::default())
         .manage(ScreenshotState(Mutex::new(None)))
@@ -2279,12 +2269,15 @@ mod tests {
         let history = ExportHistory::default();
         let a = std::path::Path::new("/Users/x/Downloads/demo-16x9.mp4");
         assert!(!history.knows(a));
+        assert_eq!(history.last(), None);
         history.note(a);
         assert!(history.knows(a));
+        assert_eq!(history.last().as_deref(), Some(a));
         for n in 0..EXPORT_HISTORY_CAP {
             history.note(&std::path::PathBuf::from(format!("/Users/x/Downloads/demo-{n}.mp4")));
         }
         assert!(!history.knows(a), "the oldest entry falls off past the cap");
+        assert_eq!(history.last(), Some(std::path::PathBuf::from(format!("/Users/x/Downloads/demo-{}.mp4", EXPORT_HISTORY_CAP - 1))));
         assert_eq!(history.0.lock().unwrap().len(), EXPORT_HISTORY_CAP);
     }
 
