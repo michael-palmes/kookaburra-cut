@@ -16,6 +16,8 @@ export interface RenderSettings {
   exposure: number;
   /** Absent means motion blur is off unless a scene switches it on (see engine/motionBlur.ts). */
   motionBlur?: MotionBlurSettings;
+  /** SDF text renders with tone mapping off, so theme colours land exactly on effect-free frames; a no-op under effects, where the composer tone-maps every pixel once. Absent keeps today's programs and bytes. */
+  exactText?: true;
 }
 
 export const DEFAULT_TONE_MAPPING: ToneMappingId = "aces";
@@ -57,7 +59,14 @@ export function parseRenderSettings(raw: unknown, source: string): RenderSetting
     }
   }
   const motionBlur = parseMotionBlurSettings(block.motionBlur, source);
-  return motionBlur ? { toneMapping, exposure, motionBlur } : { toneMapping, exposure };
+  const settings: RenderSettings = motionBlur
+    ? { toneMapping, exposure, motionBlur }
+    : { toneMapping, exposure };
+  if (block.exactText === true) settings.exactText = true;
+  else if (block.exactText !== undefined && block.exactText !== false) {
+    console.warn(`[render] ${source}: exactText must be true or false; text stays tone-mapped`);
+  }
+  return settings;
 }
 
 /** The r3f-pipeline constant for a mode (three 0.185 ships all four). */

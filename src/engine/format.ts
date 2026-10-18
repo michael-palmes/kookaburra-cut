@@ -25,6 +25,9 @@ export const MSAA_SAMPLES = 4;
 /** Renderer shadow-map type: VSM drives a REAL (deterministic) gaussian blur via `shadow.radius`, giving the soft photoshoot falloff the staged themes want; PCFSoft ignores radius entirely. Enabled globally but inert for any project without a staged (castShadow) light. Staged-scene shadow params (mapSize, radius, bias, the ortho frustum in SceneStage) are export contract; CHANGING THIS TYPE REBASES EVERY STAGED PROJECT. */
 export const SHADOW_MAP_TYPE = VSMShadowMap;
 
+/** troika's one SDF atlas cell size, re-exported from its owning module. CHANGING IT REBASES EVERY PROJECT. */
+export { SDF_GLYPH_SIZE } from "../theme/fonts";
+
 /** Display transform (v9 · PR 8), re-exported from its owning module: ACES at 1.0 was react-three-fiber's implicit default until v9 and is now the explicit contract. CHANGING THE DEFAULT REBASES EVERY PROJECT. */
 export { DEFAULT_EXPOSURE, DEFAULT_TONE_MAPPING } from "./renderSettings";
 

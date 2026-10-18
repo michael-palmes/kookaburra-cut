@@ -136,6 +136,14 @@ more softly with truer saturated colour; `neutral` keeps product colours closest
 `linear` is flat and clips. Applies to the whole project. The same block's `motionBlur`
 is in reference/camera.md.
 
+Text colour: backdrops, fixed backgrounds and device screens skip tone mapping and land on
+their exact hex, but troika text is tone-mapped by default, so under `aces` a `#F5F7FA` text
+token renders as about `#DFE0E1`. For brand-exact flat work (logos, wordmarks, colour-matched
+titles) set `"exactText": true` in the same `render` block: all SDF text then lands on its
+exact theme colour. It holds only on projects without postprocessing effects; with bloom,
+vignette, LUT or grain the effect chain tone-maps every pixel once, text and backdrops
+alike. Extruded 3D text is a lit body and stays tone-mapped either way.
+
 ## Recipes
 
 - Product hero: `soft-studio`, then lower `ambient` to 0.25 and add one `dark-rim` style

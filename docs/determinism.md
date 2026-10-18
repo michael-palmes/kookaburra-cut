@@ -975,6 +975,11 @@ camera exactly:
   set only; system-font refs fall back to Inter there. The converter is
   byte-stable: regenerating Inter's typeface reproduced the committed file
   exactly.
+- **One glyph size, so one atlas.** `SDF_GLYPH_SIZE = 64` (theme/fonts.ts,
+  re-exported from format.ts) is passed to `configureTextBuilder`, every
+  `preloadFont` and every `Text` site, and a static test fails on any site
+  that omits it. A second size would open a second atlas with its own cell
+  order; changing the constant re-rasterises every glyph (a full rebase).
 - **Adding a bundled font is a REBASE EVENT.** troika-three-text keeps ONE SDF
   atlas per `sdfGlyphSize`, SHARED ACROSS EVERY FONT (`atlases[sdfGlyphSize]`):
   glyph cells are allocated in first-typeset order, so expanding `BUNDLED_FONTS`
@@ -1007,10 +1012,11 @@ Emoji and text-default symbols route through two different mechanisms, neither
 of which can move pixels for text that uses neither (proven EQUAL on
 `showcase-tour` and `ws:launch-2026` when the feature landed):
 
-- **The wedge is patched away.** troika 0.52.4's fallback resolver had no
-  `.catch()`: any codepoint outside the loaded fonts CSP-blocked a CDN fetch
-  and left `_isSyncing` true forever, freezing the `<Text>` on its last-good
-  string. The pnpm patch (`patches/troika-three-text@0.52.4.patch`) degrades
+- **The wedge is patched away.** troika's fallback resolver (still in 0.52.5)
+  has no `.catch()`: any codepoint outside the loaded fonts CSP-blocked a CDN
+  fetch and left `_isSyncing` true forever, freezing the `<Text>` on its
+  last-good string. The pnpm patch (`patches/troika-three-text@0.52.5.patch`,
+  exact pin, guarded by `src/theme/troika.test.ts`) degrades
   every failure (fallback fetch, font-file 404, parse error) to `.notdef` tofu
   and keeps sync alive; `unicodeFontsURL` points at a dead same-origin path so
   the CDN is never consulted even under a loosened CSP.
@@ -1453,6 +1459,22 @@ rolling-gate project (`showcase-tour`):
 | `ws:device-video-spike` (device/media/camera gate, built-in-lit devices, machine-local) | `386c8419…` | — | — | — | — | — | — | — | — |
 | `ws:device-env-spike` (cold frame-0 repro: a built-in-lit handset's top edge, machine-local) | `9f3418a2…` | — | — | — | — | — | — | — | — |
 | `ws:text-outline-spike` (outlined text in the text barrier: neon, whole-block blur-in, machine-local) | `87bb6b3a…` | — | — | — | — | — | — | — | — |
+
+> **2026-10-18 (troika 0.52.5, one SDF size, opt-in exact text: hash-neutral):**
+> troika-three-text and troika-three-utils move to an exact `0.52.5` pin, one
+> copy in the tree (drei dedupes onto it). Upstream 0.52.5 ships our ANGLE Metal
+> `inout` fix verbatim, so the utils patch is gone, and
+> `patches/troika-three-text@0.52.5.patch` keeps only the wedge fix and the Typr
+> cmap fall-through. The patched 0.52.5 esm and umd text builds are
+> byte-identical to the patched 0.52.4 ones, and the utils builds differ by one
+> JS comment. `SDF_GLYPH_SIZE` pins the 64 every site already used, and no gate
+> project sets `render.exactText`. `pnpm gate:merge` stayed EQUAL
+> (`showcase-tour` `13b5994d…`, `ws:launch-2026` `eb89826c…`), as did
+> `ws:text-outline-spike` (`87bb6b3a…`). `ws:emoji-spike` reads `da3b7d53…` on
+> this change AND on pristine main `18538e02`, so its 2026-07-13 `fc772d5b…`
+> record is earlier drift, not this change (`da3b7d53…` is its current 16:9
+> value). With `exactText` on, an effect-free headline's `#F5F7FA` lands at
+> (245,247,250) instead of ACES's (223,224,225), with the layout unchanged.
 
 > **2026-10-08 (outlined text joins the text barrier, hash-neutral):** troika
 > returns `[outline, main]` from `Text.material` whenever an outline is set

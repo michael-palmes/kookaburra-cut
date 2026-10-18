@@ -220,7 +220,7 @@ if (vGanMixWS.y != 0.0 || vGanMixWS.z > 0.0) {
 if (gl_FragColor.a == 0.0) discard;
 `;
 
-// Troika discards at zero base coverage BEFORE the over layer runs, which would kill every fragment a bolder weight or outward soft halo needs; pack mounts strip it and re-discard after the re-threshold. Pinned to troika 0.52.4's exact bytes (re-check on any troika upgrade).
+// Troika discards at zero base coverage BEFORE the over layer runs, which would kill every fragment a bolder weight or outward soft halo needs; pack mounts strip it and re-discard after the re-threshold. Pinned to troika 0.52.5's exact bytes (re-check on any troika upgrade).
 const TROIKA_EDGE_DISCARD_RE = /if \(edgeAlpha == 0\.0\) \{\s*discard;\s*\}/;
 function stripTroikaEdgeDiscard(shaders: { vertexShader: string; fragmentShader: string }): {
   vertexShader: string;
@@ -371,6 +371,8 @@ export interface StaggerMaterialFeatures {
   gradient?: boolean;
   /** arc look: bend glyphs along a circular arc (forces the geometry sandwich). */
   arc?: boolean;
+  /** `render.exactText`: the base renders with tone mapping off (the whole derived chain inherits it). */
+  exactText?: boolean;
 }
 
 export function createStaggerTextMaterial(
@@ -399,6 +401,7 @@ export function createStaggerTextMaterial(
     ...(echo !== undefined ? { echo } : {}),
   };
   const base = new MeshBasicMaterial({ transparent: true });
+  if (features.exactText === true) base.toneMapped = false;
   const uniforms = {
     uGanCount: { value: 1 },
     uGanEm: { value: 1 },
