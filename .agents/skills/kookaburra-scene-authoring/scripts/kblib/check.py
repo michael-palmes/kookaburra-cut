@@ -87,6 +87,7 @@ class Checker:
         self._mwarn: Any = self.report.warn
         self._fonts: Dict[Tuple[str, str, str], Any] = {}
         self.outputs: List[Tuple[str, str, str, str]] = []
+        self.media_refs: List[Tuple[str, str, str]] = []
 
     # ── shared ────────────────────────────────────────────────────────────
 
@@ -142,6 +143,7 @@ class Checker:
             return
         if edit:
             self.outputs.append((file, path, rel, edit))
+        self.media_refs.append((file, path, rel))
         ext = rel.rsplit(".", 1)[-1].lower() if "." in rel.rsplit("/", 1)[-1] else ""
         if ext not in SUPPORTED_ASSET_EXTS:
             self.report.warn(file, path, f'"{rel}" has an unsupported extension ".{ext}"; use png/jpg/webp images, mp4/mov/webm video, mp3/wav/m4a audio')
@@ -1089,6 +1091,9 @@ def check_project(project: Project, files: Optional[List[str]] = None, heartbeat
         checker.strays()
         checker.theme_fonts()
         checker.edits()
+        from . import assets_check
+
+        assets_check.run(checker)
         return checker.report
     for f in files or []:
         if f == MANIFEST:
