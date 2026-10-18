@@ -170,3 +170,17 @@ describe("describeSpec", () => {
     );
   });
 });
+
+describe("build's word slide in the picker", () => {
+  it("round-trips buildShiftEm, writing it only for build away from the default", () => {
+    const draft = specToDraft({ in: "build", out: "none", staggerMs: 200, stagger: "word" });
+    expect(draft.buildShiftEm).toBe(0.3);
+    expect(draftToSpec(draft)).not.toHaveProperty("buildShiftEm");
+    const spec = draftToSpec({ ...draft, buildShiftEm: 0.6 });
+    expect(spec.buildShiftEm).toBe(0.6);
+    expect(parseTextAnimationSpec(spec, "test")).toEqual(spec);
+    expect(draftToSpec({ ...defaultDraft("fade"), buildShiftEm: 0.6 })).not.toHaveProperty(
+      "buildShiftEm",
+    );
+  });
+});

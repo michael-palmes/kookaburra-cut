@@ -3,6 +3,7 @@ import { EASE_NAMES } from "../../engine/ease";
 import type { SceneDoc, SceneManagedTextItemType } from "../../engine/sceneDocSchema";
 import type { TextAnimationSpec } from "../../theme/tokens";
 import {
+  BUILD_SHIFT_EM,
   DEFAULT_START_SCALE,
   STATIC_TEXT_PRESET,
   type TextDirection,
@@ -431,8 +432,23 @@ export function TextMotionDrill({
 
         {current &&
           current.in !== STATIC_TEXT_PRESET &&
-          (meta?.hasScaleParams || meta?.hasDirection || twistScale) && (
+          (meta?.hasScaleParams || meta?.hasDirection || meta?.hasBuildShift || twistScale) && (
             <DrillGroup label="Preset controls">
+              {meta?.hasBuildShift && (
+                <InspectorSliderRow
+                  icon={<MotionControlIcon type="distance" />}
+                  label="Word slide"
+                  min={0}
+                  max={1.5}
+                  step={0.05}
+                  {...slider(
+                    "build-shift",
+                    current.buildShiftEm ?? BUILD_SHIFT_EM,
+                    (spec, buildShiftEm) => ({ ...spec, buildShiftEm }),
+                    "text motion word slide",
+                  )}
+                />
+              )}
               {(meta?.hasScaleParams || twistScale) && (
                 <InspectorSliderRow
                   icon={<MotionControlIcon type="scale" />}

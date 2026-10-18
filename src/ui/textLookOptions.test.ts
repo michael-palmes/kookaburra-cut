@@ -161,3 +161,19 @@ describe("darkenedStopB (display-only)", () => {
     expect(darkenedStopB("#12")).toBe("#12");
   });
 });
+
+describe("offset-print direction and opacity in the picker", () => {
+  it("writes them only away from their defaults, and only for offset-print", () => {
+    const draft = lookSpecToDraft({ preset: "offset-print" });
+    expect(lookDraftToSpec(draft)).toEqual({ preset: "offset-print" });
+    const spec = lookDraftToSpec({ ...draft, offsetDir: 200, offsetOpacity: 0.5 });
+    expect(spec).toEqual({ preset: "offset-print", offsetDir: 200, offsetOpacity: 0.5 });
+    expect(parseTextLookSpec(spec, "test")).toEqual(spec);
+    expect(
+      lookSpecToDraft({ preset: "offset-print", offsetDir: 45, offsetOpacity: 0.3 }),
+    ).toMatchObject({ offsetDir: 45, offsetOpacity: 0.3 });
+    expect(lookDraftToSpec({ ...defaultLookDraft("neon"), offsetDir: 10 })).toEqual({
+      preset: "neon",
+    });
+  });
+});
