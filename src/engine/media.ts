@@ -273,6 +273,11 @@ export function cancelConform(slug: string, rel: string): Promise<void> {
   return invoke<void>("cancel_conform", { slug, rel });
 }
 
+/** The project files that reference `rel` (the native in-use rule), e.g. the scenes a still-conforming clip was already placed in. */
+export function mediaUsers(slug: string, rel: string): Promise<string[]> {
+  return invoke<string[]>("media_users", { slug, rel });
+}
+
 /** The frame rate every mezzanine is written at (conform.rs `CONFORM_FPS`). */
 export const CONFORM_FPS = 60;
 

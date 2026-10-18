@@ -23,6 +23,7 @@ import {
   removeOriginalsLabel,
   removeOriginalsMessage,
   runMediaPickSingleFlight,
+  stopConformNote,
 } from "./MediaBrowser";
 
 // Posters resolve through the asset protocol, which needs a window the node runner lacks.
@@ -399,6 +400,26 @@ describe("placing a clip while it conforms", () => {
     expect(cancel.confirmLabel).toBe("Really stop?");
     cancel.onSelect();
     expect(stop).toHaveBeenCalledTimes(1);
+    expect(cancel.title).toBe("Stops the conform; the original is added as it is");
+    const placed = pendingCardItems(host, "/Users/x/product-tour/assets/rec.mp4", stop, 2)[2];
+    expect(placed.title).toBe(
+      "Stops the conform; it's used in 2 places, so the original comes back under this name, flagged Needs conform",
+    );
+  });
+
+  it("warns on an armed stop when the pending clip is already placed", () => {
+    const html = renderToStaticMarkup(
+      <ConformQueue
+        jobs={[job]}
+        armed="assets/rec.mp4"
+        onCancel={() => undefined}
+        usedBy={{ "assets/rec.mp4": 1 }}
+      />,
+    );
+    expect(html).toContain(
+      "Press again to stop; it&#x27;s used in 1 place, so the original comes back under this name, flagged Needs conform",
+    );
+    expect(stopConformNote(0)).toBe("the original is added as it is");
   });
 
   it("lists the queue in order with progress, waiting rows and a two-step stop", () => {

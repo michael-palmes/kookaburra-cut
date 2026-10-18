@@ -30,6 +30,7 @@ import {
   MEDIA_DRAG_TYPE,
   type MediaMeta,
   mediaMeta,
+  mediaUsers,
   type OriginalFile,
   originalOfClip,
   pendingConformMeta,
@@ -258,11 +259,19 @@ export function removeOriginalsMessage(originals: readonly OriginalFile[]): stri
   return `Move ${what} (${formatBytes(bytes)}) to the Trash? The conformed clips stay.${stays}`;
 }
 
+/** What stopping a conform leaves: an import already placed somewhere comes back under the name it was placed with. */
+export function stopConformNote(users: number): string {
+  return users > 0
+    ? `it's used in ${users} ${users === 1 ? "place" : "places"}, so the original comes back under this name, flagged Needs conform`
+    : "the original is added as it is";
+}
+
 /** A conforming card's ⋯ menu: the host's primary action (placing works now), Copy path, and a confirmed Stop conforming. Edit, Add to library and Delete wait for the file. */
 export function pendingCardItems(
   host: readonly ContextMenuItem[],
   absPath: string,
   onCancel: () => void,
+  users = 0,
 ): ContextMenuItem[] {
   return [
     ...host.filter((item) => item.id === "primary"),
@@ -276,7 +285,7 @@ export function pendingCardItems(
       label: "Stop conforming",
       icon: <StopIcon />,
       confirmLabel: "Really stop?",
-      title: "Stops the conform; the original is added as it is",
+      title: `Stops the conform; ${stopConformNote(users)}`,
       onSelect: onCancel,
     },
   ];
@@ -378,11 +387,14 @@ export function ConformQueue({
   jobs,
   armed,
   onCancel,
+  usedBy = {},
 }: {
   jobs: readonly ConformJob[];
   /** The rel whose stop is armed, else null. */
   armed: string | null;
   onCancel: (rel: string) => void;
+  /** How many project files already use each pending rel. */
+  usedBy?: Readonly<Record<string, number>>;
 }) {
   if (jobs.length === 0) return null;
   return (
@@ -444,7 +456,7 @@ export function ConformQueue({
                 aria-label={isArmed ? `Stop conforming ${name}` : `Cancel conforming ${name}`}
                 title={
                   isArmed
-                    ? "Press again to stop; the original is added as it is"
+                    ? `Press again to stop; ${stopConformNote(usedBy[job.rel] ?? 0)}`
                     : "Stop this conform"
                 }
                 style={
@@ -1341,10 +1353,14 @@ export function MediaBrowser({
     return () => window.clearTimeout(timer);
   }, [armedCancel]);
 
+  const [stopUsers, setStopUsers] = useState<Record<string, number>>({});
   const cancelJob = useCallback(
     (rel: string) => {
       if (armedCancel !== rel) {
         setArmedCancel(rel);
+        mediaUsers(slug, rel)
+          .then((files) => setStopUsers((prev) => ({ ...prev, [rel]: files.length })))
+          .catch(() => {});
         return;
       }
       setArmedCancel(null);
@@ -1592,7 +1608,12 @@ export function MediaBrowser({
       )}
       {pickError && <MediaBrowserError message={pickError} />}
       {sourceTab === "project" && (!allowedKinds || allowedKinds.includes("video")) && (
-        <ConformQueue jobs={conformJobs} armed={armedCancel} onCancel={cancelJob} />
+        <ConformQueue
+          jobs={conformJobs}
+          armed={armedCancel}
+          onCancel={cancelJob}
+          usedBy={stopUsers}
+        />
       )}
 
       {sourceTab === "global" ? (
@@ -1677,22 +1698,27 @@ export function MediaBrowser({
                 canDrag={Boolean(draggableMedia)}
                 selected={selectedRel != null && job.rel === selectedRel}
                 disabled={pickBusy}
-                onMenu={(x, y) =>
-                  setMenu({
-                    x,
-                    y,
-                    items: pendingCardItems(
-                      cardMenu ? cardMenu(job.rel, meta, { editedOf: null }) : [],
-                      `${projectPath}/${job.rel}`,
-                      () => {
-                        setPickError(null);
-                        cancelConform(slug, job.rel).catch((e) =>
-                          setPickError(`Couldn't stop conforming: ${String(e)}`),
-                        );
-                      },
-                    ),
-                  })
-                }
+                onMenu={(x, y) => {
+                  void mediaUsers(slug, job.rel)
+                    .catch(() => [] as string[])
+                    .then((files) =>
+                      setMenu({
+                        x,
+                        y,
+                        items: pendingCardItems(
+                          cardMenu ? cardMenu(job.rel, meta, { editedOf: null }) : [],
+                          `${projectPath}/${job.rel}`,
+                          () => {
+                            setPickError(null);
+                            cancelConform(slug, job.rel).catch((e) =>
+                              setPickError(`Couldn't stop conforming: ${String(e)}`),
+                            );
+                          },
+                          files.length,
+                        ),
+                      }),
+                    );
+                }}
                 onPreview={() => setPreview(job.rel)}
                 onPick={onPick ? () => onPick(job.rel, meta) : undefined}
               />

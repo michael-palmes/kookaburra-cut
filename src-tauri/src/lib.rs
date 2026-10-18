@@ -1417,6 +1417,7 @@ macro_rules! kookaburra_handler {
             media::list_conform_jobs,
             media::conform_media,
             media::cancel_conform,
+            media::media_users,
             media::list_originals,
             media::remove_original,
             media::remove_originals,

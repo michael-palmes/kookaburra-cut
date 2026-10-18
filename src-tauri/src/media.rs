@@ -1236,7 +1236,7 @@ fn run_conform_job(
     crate::conform::conform(project, plan, &tools, &mut on, cancel).map_err(String::from)
 }
 
-/// A conform that didn't land: the error it reports (a stop reads as `CONFORM_CANCELLED`) and the paths that changed, an import's original coming back as a plain file.
+/// A conform that didn't land: the error it reports (a stop reads as `CONFORM_CANCELLED`) and the paths that changed, an import's original coming back as a plain file. An import a scene already placed comes back under the name it was placed with, so the scene keeps its video (flagged Needs conform again).
 fn unwind_conform(
     project: &Path,
     plan: &crate::conform::ConformPlan,
@@ -1250,7 +1250,13 @@ fn unwind_conform(
         error
     };
     let restored = imported
-        .then(|| restore_import(project, &plan.original_rel))
+        .then(|| {
+            let placed = !media_references(project, &plan.target_rel).is_empty();
+            placed
+                .then(|| restore_import_as(project, &plan.original_rel, &plan.target_rel))
+                .flatten()
+                .or_else(|| restore_import(project, &plan.original_rel))
+        })
         .flatten();
     (error, vec![restored.unwrap_or_else(|| plan.target_rel.clone())])
 }
@@ -1394,6 +1400,29 @@ fn restore_import(project: &Path, original_rel: &str) -> Option<String> {
     std::fs::rename(&original, assets.join(&candidate)).ok()?;
     workspace::touch_now(&assets.join(&candidate));
     Some(format!("assets/{candidate}"))
+}
+
+fn restore_import_as(project: &Path, original_rel: &str, target_rel: &str) -> Option<String> {
+    let target = project.join(target_rel);
+    if target.exists() {
+        return None;
+    }
+    std::fs::rename(project.join(original_rel), &target).ok()?;
+    workspace::touch_now(&target);
+    Some(target_rel.to_owned())
+}
+
+/// The project files that reference an asset by the shared in-use rule, so the library can say what stopping its conform would affect.
+#[tauri::command]
+pub fn media_users(
+    app: AppHandle,
+    state: State<'_, SettingsState>,
+    slug: String,
+    rel: String,
+) -> Result<Vec<String>, String> {
+    validate_asset_rel(&rel)?;
+    let project = workspace::project_dir(&app, &state, &slug)?;
+    Ok(media_references(&project, &rel))
 }
 
 /// The conform jobs running for one project, so a freshly opened library shows their cards.
@@ -2635,6 +2664,32 @@ mod tests {
         assert_eq!(std::fs::read(project.join("assets/rec.mov")).unwrap(), b"original");
         assert!(!project.join("assets/.originals/rec.mov").exists());
         assert!(!project.join("assets/rec.mp4").exists());
+        let _ = std::fs::remove_dir_all(&project);
+    }
+
+    #[test]
+    fn a_stopped_import_a_scene_placed_keeps_the_placed_name() {
+        let project = scratch_assets("placed");
+        std::fs::create_dir_all(project.join("scenes")).unwrap();
+        std::fs::write(project.join("assets/.originals/rec.mov"), b"original").unwrap();
+        std::fs::write(
+            project.join("scenes/01-hero.json"),
+            br#"{"version":1,"devices":[{"id":"d","model":"m","media":{"src":"assets/rec.mp4","kind":"video"}}]}"#,
+        )
+        .unwrap();
+        let plan = crate::conform::plan(
+            "assets/.originals/rec.mov",
+            Some("rec"),
+            crate::conform::KeepOriginal::Move,
+            false,
+        )
+        .unwrap();
+        let (error, paths) = unwind_conform(&project, &plan, true, "stopped".into(), true);
+        assert_eq!(error, CONFORM_CANCELLED);
+        assert_eq!(paths, ["assets/rec.mp4"]);
+        assert_eq!(std::fs::read(project.join("assets/rec.mp4")).unwrap(), b"original");
+        assert!(!project.join("assets/rec.mov").exists());
+        assert!(!project.join("assets/.originals/rec.mov").exists());
         let _ = std::fs::remove_dir_all(&project);
     }
 
