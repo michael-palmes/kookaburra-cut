@@ -22777,7 +22777,7 @@
       },
       {
         "id": "render",
-        "summary": "Display transform { toneMapping, exposure } plus motionBlur { enabled, shutterDeg, samples, camera, objects }; absent is aces at 1, no blur.",
+        "summary": "Display transform { toneMapping, exposure }, exactText (true keeps SDF text off tone mapping) and motionBlur { enabled, shutterDeg, samples, camera, objects }; absent is aces at 1, tone-mapped text, no blur.",
         "type": "object"
       },
       {
@@ -22803,6 +22803,11 @@
       {
         "id": "appliedBackground",
         "summary": "Background last applied to all scenes; new scenes inherit it.",
+        "type": "object"
+      },
+      {
+        "id": "shared",
+        "summary": "Author constants (palette, timings) scenes read with useProjectShared; copied with scenes into projects that lack the key.",
         "type": "object"
       }
     ]
@@ -22907,6 +22912,11 @@
         "legacy": true
       },
       {
+        "id": "EASE_NAMES",
+        "kind": "constant",
+        "summary": "Every ease name (see kb catalog eases)."
+      },
+      {
         "id": "ExtrudedText",
         "kind": "component",
         "summary": "Lit 3D extruded text (ASCII, bundled face)."
@@ -22958,9 +22968,19 @@
         "summary": "Seeded instanced particles drifting on the clock."
       },
       {
+        "id": "Pill",
+        "kind": "component",
+        "summary": "RoundedRect with fully round ends: width, height, color, opacity, stroke."
+      },
+      {
         "id": "Ribbon",
         "kind": "component",
         "summary": "Seeded tube that grows along a curve."
+      },
+      {
+        "id": "RoundedRect",
+        "kind": "component",
+        "summary": "Flat, colour-exact rounded rect: width, height, radius, color, opacity, stroke."
       },
       {
         "id": "SceneStage",
@@ -23005,6 +23025,11 @@
         "summary": "Travelling-wave wire grid on the clock."
       },
       {
+        "id": "clamp01",
+        "kind": "function",
+        "summary": "clamp01(x): x clamped to 0..1."
+      },
+      {
         "id": "createSeededRandom",
         "kind": "function",
         "summary": "Seeded PRNG: createSeededRandom(seed)() returns 0..1. Use instead of Math.random."
@@ -23018,6 +23043,16 @@
         "id": "deviceColour",
         "kind": "function",
         "summary": "Resolve a colour id against a device spec."
+      },
+      {
+        "id": "ease",
+        "kind": "function",
+        "summary": "ease(name, t, { overshoot }?): the curve at t clamped to 0..1; unknown names use \"inOutQuad\"."
+      },
+      {
+        "id": "easeFn",
+        "kind": "function",
+        "summary": "easeFn(name, { overshoot }?): the raw curve as a function (no clamping)."
       },
       {
         "id": "fade",
@@ -23041,6 +23076,11 @@
         "summary": "Whether a string is a catalogue device id."
       },
       {
+        "id": "isEaseName",
+        "kind": "function",
+        "summary": "Whether a value is an ease name."
+      },
+      {
         "id": "isTextPresetName",
         "kind": "function",
         "summary": "Whether a string is a text motion preset."
@@ -23050,6 +23090,11 @@
         "kind": "function",
         "summary": "Whether an object id is a ws: workspace object.",
         "internal": true
+      },
+      {
+        "id": "lerp",
+        "kind": "function",
+        "summary": "lerp(a, b, t): a + (b - a) * t."
       },
       {
         "id": "liftColour",
@@ -23081,6 +23126,11 @@
         "internal": true
       },
       {
+        "id": "ramp",
+        "kind": "function",
+        "summary": "ramp(localMs, startMs, endMs, ease?, opts?): eased 0..1 progress through a window."
+      },
+      {
         "id": "resolveAvailableDeviceId",
         "kind": "function",
         "summary": "The id a model renders as in this build."
@@ -23108,6 +23158,11 @@
         "internal": true
       },
       {
+        "id": "sampleKeys",
+        "kind": "function",
+        "summary": "sampleKeys([{ tMs, ease?, ...values }], localMs): keyed values; each key's ease shapes the segment into it."
+      },
+      {
         "id": "sampleSharedTransform",
         "kind": "function",
         "summary": "Samples a persistent-module keyframe track at globalMs."
@@ -23116,6 +23171,11 @@
         "id": "slide",
         "kind": "function",
         "summary": "slide(time, [startMs, endMs], axis) returns { offset } 1..0; axis is ignored."
+      },
+      {
+        "id": "stampScale",
+        "kind": "function",
+        "summary": "stampScale({ from, peak, inMs, settleMs }?) returns ms => scale: a pop to 1.12 that settles."
       },
       {
         "id": "useDepthBand",
@@ -23131,6 +23191,11 @@
         "id": "useGroupAnimation",
         "kind": "hook",
         "summary": "Lets a custom child join an AnimatedGroup's alpha and shine."
+      },
+      {
+        "id": "useProjectShared",
+        "kind": "hook",
+        "summary": "useProjectShared(path?, fallback?): project.json shared constants, e.g. \"palette.accent\"."
       },
       {
         "id": "useRigTrack",
@@ -23290,6 +23355,9 @@
         "id": "EaseName"
       },
       {
+        "id": "EaseOptions"
+      },
+      {
         "id": "ExtrudedTextProps"
       },
       {
@@ -23311,6 +23379,9 @@
         "id": "ManagedTextStackProps"
       },
       {
+        "id": "MotionKey"
+      },
+      {
         "id": "ObjectLicence"
       },
       {
@@ -23320,6 +23391,12 @@
         "id": "ParticleFieldProps"
       },
       {
+        "id": "PillProps"
+      },
+      {
+        "id": "ProjectShared"
+      },
+      {
         "id": "ResolvedChart"
       },
       {
@@ -23327,6 +23404,12 @@
       },
       {
         "id": "RibbonProps"
+      },
+      {
+        "id": "RoundedRectProps"
+      },
+      {
+        "id": "SampleKeysOptions"
       },
       {
         "id": "SceneDeviceProps"
@@ -23366,6 +23449,9 @@
       },
       {
         "id": "StaggerGranularity"
+      },
+      {
+        "id": "StampScaleOptions"
       },
       {
         "id": "TextPresetName"
