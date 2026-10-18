@@ -2122,7 +2122,7 @@ the PNG zip's file hash must match too; a PDF's file hash is advisory only.
 > session (the legacy path never sets `clipRect`). This note was restored on
 > 2026-07-17 after the public-release history squash captured a tree from just
 > before the original doc commit.
-| `ws:emoji-spike` (emoji/symbol pipeline) | `fc772d5b…` | `3e0c8cfb…` | n/a | n/a |
+| `ws:emoji-spike` (emoji/symbol pipeline) | `da3b7d53…` (2026-10-18) | stale | n/a | n/a |
 | `ws:shader-spike` (animated background pack) | `9ed15e3e…` | n/a | n/a | n/a |
 
 > **2026-07-13 (emoji session): the pre-emoji 16:9 hashes had already drifted**

@@ -166,7 +166,7 @@ duplicate entries, transitions and options, formats, theme id, audio file); side
 exact case and a supported extension); TSX (imports only `@kookaburra/toolkit`, one
 `export default defineScene(`, a literal id unique in the project, no wall clock,
 timers, `Math.random`, DOM or drei `Html`, no React hooks, which the toolkit does not
-export). Errors exit 1; warnings print but pass.
+export; unknown `ease("...")` names warn). Errors exit 1; warnings print but pass.
 
 Hooks:
 
