@@ -9633,6 +9633,11 @@ button.inspector-scene-overview-group-main:hover .inspector-scene-overview-group
   width: 100%;
 }
 
+.device-editor-speed-row .modal-input {
+  flex: 1;
+  min-width: 0;
+}
+
 .device-editor-arrangement-row {
   min-height: 50px;
   padding: var(--space-3) var(--space-4);

@@ -8642,9 +8642,11 @@ export function SceneTab({
         screenMediaPreviewUrl={screen.previewUrl}
         screenMediaAspectRatio={screen.aspectRatio}
         screenMediaDetail={screen.detail}
+        screenMediaDurationMs={deviceMediaMeta?.durationMs}
         coverMediaPreviewUrl={cover.previewUrl}
         coverMediaAspectRatio={cover.aspectRatio}
         coverMediaDetail={cover.detail}
+        coverMediaDurationMs={coverMediaMeta?.durationMs}
         slot={project.slots[sceneIndex]}
         comparison={
           hasComparison(doc) ? { side: compareSideActive, onSideChange: setCompareSide } : undefined

@@ -8,7 +8,7 @@ import {
   isDeviceAvailable,
   resolveAvailableDeviceSpec,
 } from "../../toolkit/device/catalog";
-import { effectiveDeviceShadowMode } from "../../toolkit/device/Device";
+import { type DeviceMediaSpec, effectiveDeviceShadowMode } from "../../toolkit/device/Device";
 import {
   changeFirstClassDeviceModel,
   DeviceDrillIn,
@@ -19,11 +19,14 @@ import {
   deviceNavigationFocusTarget,
   duplicateFirstClassDevice,
   removeFirstClassDevice,
+  screenPlaybackWrites,
 } from "./DeviceDrillIn";
 
 interface CapturedSliderProps {
   label: string;
   value: number;
+  max?: number;
+  formatValue?: (value: number) => string;
   onInput?: (value: number) => void;
   onCommit: (value: number) => void;
 }
@@ -151,6 +154,9 @@ function deviceDoc(): SceneDoc {
   };
 }
 
+/** The demo screen video's Playback rows: it has a start delay, so the poster frame shows. */
+const PLAYBACK_SLIDERS = ["Trim start", "Trim end", "Poster frame"];
+
 function props(doc: SceneDoc): DeviceDrillInProps {
   return {
     doc,
@@ -216,11 +222,13 @@ describe("DeviceDrillIn", () => {
     ]);
     expect(captures.sliders.map((slider) => slider.label)).toEqual([
       "Start delay",
+      ...PLAYBACK_SLIDERS,
       "Left-right",
       "Up-down",
       "Depth",
     ]);
     expect(captures.toggles).toEqual([
+      expect.objectContaining({ label: "Loop", checked: false }),
       expect.objectContaining({ label: "Rest on floor", checked: true }),
       expect.objectContaining({ label: "Keyframes", checked: false }),
     ]);
@@ -254,11 +262,12 @@ describe("DeviceDrillIn", () => {
     const rotateHtml = renderToStaticMarkup(<DeviceDrillIn {...props(doc)} />);
     expect(captures.sliders.map((slider) => slider.label)).toEqual([
       "Start delay",
+      ...PLAYBACK_SLIDERS,
       "Tilt",
       "Turn",
       "Roll",
     ]);
-    expect(captures.sliders.map(({ value }) => value)).toEqual([0.3, -6, 14, 0]);
+    expect(captures.sliders.map(({ value }) => value)).toEqual([0.3, 0, 30, 0, -6, 14, 0]);
     expect(rotateHtml).toContain('class="device-editor-pose-choice selected"');
     expect(rotateHtml).toContain("Front on");
     expect(rotateHtml).toContain("Editorial");
@@ -268,8 +277,12 @@ describe("DeviceDrillIn", () => {
     captures.segments.length = 0;
     deviceStore.gizmoMode = "scale";
     renderToStaticMarkup(<DeviceDrillIn {...props(doc)} />);
-    expect(captures.sliders.map((slider) => slider.label)).toEqual(["Start delay", "Size"]);
-    expect(captures.sliders[1]?.value).toBe(1.35);
+    expect(captures.sliders.map((slider) => slider.label)).toEqual([
+      "Start delay",
+      ...PLAYBACK_SLIDERS,
+      "Size",
+    ]);
+    expect(captures.sliders.at(-1)?.value).toBe(1.35);
   });
 
   it("retains the live laptop lid control", () => {
@@ -445,7 +458,7 @@ describe("DeviceDrillIn", () => {
 
     renderToStaticMarkup(<DeviceDrillIn {...props(doc)} patchDoc={patchDoc} />);
     captures.colours[0]?.onCommit("#ABCDEF");
-    captures.toggles[0]?.onChange(false);
+    captures.toggles.find((toggle) => toggle.label === "Rest on floor")?.onChange(false);
     captures.options.find((option) => option.label === "Sun sweep")?.onSelect();
 
     expect(histories).toEqual(["device finish", "device floor placement", "device shadow"]);
@@ -647,6 +660,7 @@ describe("DeviceDrillIn comparison sides", () => {
     expect(html).not.toContain("Match the before side");
     expect(captures.sliders.map((slider) => slider.label)).toEqual([
       "Start delay",
+      ...PLAYBACK_SLIDERS,
       "Left-right",
       "Up-down",
       "Depth",
@@ -669,7 +683,10 @@ describe("DeviceDrillIn comparison sides", () => {
     expect(html).not.toContain("Push-in settle");
     expect(html).not.toContain("Reset position");
     expect(html).not.toContain("Match the before side");
-    expect(captures.sliders.map((slider) => slider.label)).toEqual(["Start delay"]);
+    expect(captures.sliders.map((slider) => slider.label)).toEqual([
+      "Start delay",
+      ...PLAYBACK_SLIDERS,
+    ]);
     expect(captures.options.map((option) => option.label)).toEqual([
       "Soft contact",
       "Long & smooth",
@@ -775,6 +792,151 @@ describe("DeviceDrillIn comparison sides", () => {
       startMs: 2000,
     });
     expect(working.devices?.[1].media?.startMs).toBe(300);
+  });
+});
+
+describe("DeviceDrillIn screen playback", () => {
+  const slider = (label: string) => captures.sliders.find((s) => s.label === label);
+  const toggle = (label: string) => captures.toggles.find((t) => t.label === label);
+  const withMedia = (media: DeviceMediaSpec): SceneDoc => {
+    const doc = deviceDoc();
+    const device = doc.devices?.[1];
+    if (device) device.media = media;
+    return doc;
+  };
+  const demo = { src: "assets/demo.mov", kind: "video" } as const;
+
+  function editable(doc: SceneDoc, extra: Partial<DeviceDrillInProps> = {}) {
+    let working = structuredClone(doc);
+    const histories: Array<string | false | undefined> = [];
+    const patchDoc: DevicePatchDoc = async (patch, options) => {
+      const next = structuredClone(working);
+      patch(next);
+      working = next;
+      histories.push(options?.history);
+    };
+    const html = renderToStaticMarkup(
+      <DeviceDrillIn {...props(doc)} patchDoc={patchDoc} {...extra} />,
+    );
+    return {
+      html,
+      histories,
+      media: () => working.devices?.[1].media,
+      after: () => working.compare?.b?.media?.d2,
+    };
+  }
+
+  it("writes trim, loop and poster in source ms, clearing each at its default", () => {
+    const edit = editable(deviceDoc(), { screenMediaDurationMs: 12_000 });
+    slider("Trim start")?.onCommit(1.25);
+    slider("Trim end")?.onCommit(4);
+    toggle("Loop")?.onChange(true);
+    slider("Poster frame")?.onCommit(2);
+    expect(edit.media()).toEqual({
+      ...demo,
+      startMs: 300,
+      inMs: 1250,
+      outMs: 4000,
+      loop: true,
+      posterMs: 2000,
+    });
+
+    slider("Trim start")?.onCommit(0);
+    slider("Trim end")?.onCommit(12);
+    toggle("Loop")?.onChange(false);
+    slider("Poster frame")?.onCommit(0);
+    expect(edit.media()).toEqual({ ...demo, startMs: 300 });
+    expect(edit.histories).toEqual([
+      "screen trim start",
+      "screen trim end",
+      "screen loop",
+      "screen poster frame",
+      "screen trim start",
+      "screen trim end",
+      "screen loop",
+      "screen poster frame",
+    ]);
+  });
+
+  it("spans the probed clip and reads an absent out point as the end", () => {
+    editable(deviceDoc(), { screenMediaDurationMs: 12_345 });
+    const trimEnd = slider("Trim end");
+    expect(trimEnd?.max).toBe(12.4);
+    expect(trimEnd?.value).toBe(12.4);
+    expect(trimEnd?.formatValue?.(12.4)).toBe("End");
+    expect(slider("Trim start")?.max).toBe(12.4);
+
+    captures.sliders.length = 0;
+    editable(withMedia({ ...demo, outMs: 4000 }));
+    expect(slider("Trim end")?.max).toBe(30);
+    expect(slider("Trim end")?.value).toBe(4);
+    expect(slider("Trim end")?.formatValue?.(4)).toBe("4s");
+  });
+
+  it("keeps the out point past the trim start and lets a trim replace a pre-roll", () => {
+    const edit = editable(withMedia({ ...demo, startMs: -1500 }));
+    slider("Trim start")?.onCommit(1);
+    expect(edit.media()).toEqual({ ...demo, inMs: 1000 });
+    slider("Trim end")?.onCommit(0.5);
+    expect(edit.media()).toEqual({ ...demo, inMs: 1000, outMs: 1017 });
+    slider("Trim start")?.onCommit(5);
+    expect(edit.media()?.inMs).toBe(1000);
+    // Beside a trim the delay holds at 0 rather than write a pair the parser refuses.
+    slider("Start delay")?.onCommit(-2);
+    expect(edit.media()?.startMs).toBeUndefined();
+  });
+
+  it("leaves a typed negative start delay unclamped", () => {
+    const edit = editable(deviceDoc());
+    slider("Start delay")?.onCommit(-2);
+    expect(edit.media()).toEqual({ ...demo, startMs: -2000 });
+  });
+
+  it("shows the poster frame only with a delay or Start when opened", () => {
+    editable(withMedia({ ...demo }));
+    expect(slider("Poster frame")).toBeUndefined();
+    captures.sliders.length = 0;
+    editable(withMedia({ ...demo, startMs: -500 }));
+    expect(slider("Poster frame")).toBeUndefined();
+    captures.sliders.length = 0;
+    editable(withMedia({ ...demo, startOn: "open" }));
+    expect(slider("Poster frame")?.value).toBe(0);
+    captures.sliders.length = 0;
+    editable(withMedia({ ...demo, startMs: 800, inMs: 1500 }));
+    expect(slider("Poster frame")?.value).toBe(1.5);
+  });
+
+  it("offers the video editor's speed menu with a leading icon", () => {
+    const { html } = editable(withMedia({ ...demo, speed: 2 }));
+    expect(html).toContain('aria-label="Screen video speed"');
+    expect(html).toContain('<option value="2" selected="">2×</option>');
+    expect(html).toContain('<option value="0.25">0.25×</option>');
+    expect(html).toMatch(/inspector-slider-row-icon"><svg[\s\S]*?<\/svg><\/span>Speed/);
+    const offMenu = editable(withMedia({ ...demo, speed: 3 })).html;
+    expect(offMenu).toContain('<option value="3" selected="">3×</option>');
+  });
+
+  it("writes speed, clearing it at 1×", () => {
+    const write = screenPlaybackWrites.speed;
+    expect(write({ ...demo }, 2)).toEqual({ ...demo, speed: 2 });
+    expect(write({ ...demo, speed: 2 }, 1)).toEqual(demo);
+    expect(write({ ...demo, speed: 2 }, Number.NaN)).toEqual(demo);
+    expect(write({ ...demo }, 20)).toEqual({ ...demo, speed: 16 });
+  });
+
+  it("writes After playback through compare.b.media, never through Before", () => {
+    const doc = comparisonDoc();
+    const edit = editable(doc, { comparison: { side: "b", onSideChange: () => undefined } });
+    slider("Trim start")?.onCommit(0.5);
+    toggle("Loop")?.onChange(true);
+    expect(edit.after()).toEqual({ ...demo, startMs: 300, inMs: 500, loop: true });
+    expect(edit.media()).toEqual({ ...demo, startMs: 300 });
+  });
+
+  it("offers no playback rows for an image screen", () => {
+    editable(withMedia({ src: "assets/screen.png", kind: "image" }));
+    expect(captures.sliders.map((s) => s.label)).not.toContain("Trim start");
+    expect(captures.toggles.map((t) => t.label)).not.toContain("Loop");
   });
 });
 
