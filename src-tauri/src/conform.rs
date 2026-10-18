@@ -1,4 +1,4 @@
-//! Ingest conform: a variable-rate, edit-listed, B-frame or wide-gamut recording becomes a constant 60 fps libx264 mezzanine plus `<stem>.timing.json`, decoded by AVFoundation (conform_av.rs, the one unsafe module) so the timing matches what QuickTime shows. The planning (the slot map, holds, triggers and the timing record) is pure and unit-tested here; the encode pipes raw NV12 into the bundled ffmpeg. Shared by `<exe> media` (cli_media.rs) and the app's import path (media.rs). Contract: docs/decisions.md (ingest conform).
+//! Ingest conform: a variable-rate, edit-listed, misdecoded or wide-gamut recording becomes a constant 60 fps libx264 mezzanine plus `<stem>.timing.json`, decoded by AVFoundation (conform_av.rs, the one unsafe module) so the timing matches what QuickTime shows. The planning (the slot map, holds, triggers and the timing record) is pure and unit-tested here; the encode pipes raw NV12 into the bundled ffmpeg. Shared by `<exe> media` (cli_media.rs) and the app's import path (media.rs). Contract: docs/decisions.md (ingest conform).
 
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::{Path, PathBuf};
@@ -614,30 +614,32 @@ pub(crate) fn evaluate(
     let mut reasons = Vec::new();
     let mut why = Vec::new();
     let mut verdict = "ok";
+    let edited = av.is_some_and(AvFacts::edited) || ff.discarded_packets.is_some_and(|n| n > 0);
+    let mismatch = decoded.map_or_else(Vec::new, |(a, f)| decoder_reasons(a, f));
     if ff.vfr || av.is_some_and(AvFacts::vfr) {
         reasons.push("vfr");
         why.push("vfr");
     }
-    if av.is_some_and(AvFacts::edited) || ff.discarded_packets.is_some_and(|n| n > 0) {
+    if edited {
         reasons.push("edit-list");
         why.push("edit-list");
         verdict = "suspect";
     }
+    // B-frames alone decode fine; they only count beside an edit list or a misdecode.
     if ff.bframes > 0 || av.is_some_and(|a| a.reorders) {
         reasons.push("b-frames");
-        why.push("b-frames");
+        if edited || !mismatch.is_empty() {
+            why.push("b-frames");
+        }
     }
     if wide_gamut(ff, av) {
         reasons.push("primaries");
         why.push("primaries");
     }
-    if let Some((av_timing, ff_timing)) = decoded {
-        let mismatch = decoder_reasons(av_timing, ff_timing);
-        if !mismatch.is_empty() {
-            verdict = "ffmpeg-misdecodes";
-            why.push("decoders");
-            reasons.extend(mismatch);
-        }
+    if !mismatch.is_empty() {
+        verdict = "ffmpeg-misdecodes";
+        why.push("decoders");
+        reasons.extend(mismatch);
     }
     let refused = refusal(ff, av);
     if let Some(refusal) = &refused {
@@ -1655,13 +1657,31 @@ pub(crate) mod tests {
         av_vfr.nominal_fps = 15.2;
         assert_eq!(evaluate(&ff_clean(), Some(&av_vfr), None).why, ["vfr"]);
 
+        // B-frames alone are information, not a trigger.
         let mut bframes = ff_clean();
         bframes.bframes = 2;
         let v = evaluate(&bframes, Some(&av_clean()), None);
+        assert_eq!(v.reasons, ["b-frames"]);
+        assert!(v.why.is_empty() && !v.recommended);
+        assert_eq!(v.verdict, "ok");
+        let mut reorders = av_clean();
+        reorders.reorders = true;
+        assert!(!evaluate(&ff_clean(), Some(&reorders), None).recommended);
+        let same = DecodeTiming {
+            pts_ms: vec![0.0, 16.7],
+        };
+        assert!(!evaluate(&bframes, Some(&av_clean()), Some((&same, &same))).recommended);
+        // Beside an edit list or a misdecode they count.
+        let mut trimmed = bframes.clone();
+        trimmed.discarded_packets = Some(3);
         assert_eq!(
-            (v.verdict, v.why.clone(), v.recommended),
-            ("ok", vec!["b-frames"], true)
+            evaluate(&trimmed, Some(&av_clean()), None).why,
+            ["edit-list", "b-frames"]
         );
+        let short = DecodeTiming { pts_ms: vec![0.0] };
+        let v = evaluate(&bframes, Some(&av_clean()), Some((&same, &short)));
+        assert_eq!(v.why, ["b-frames", "decoders"]);
+        assert!(v.recommended);
 
         let mut p3 = av_clean();
         p3.colour.primaries = Some("P3_D65".into());
