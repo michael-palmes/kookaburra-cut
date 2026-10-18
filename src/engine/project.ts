@@ -1523,7 +1523,7 @@ export async function loadProject(
         );
       }
     } catch (e) {
-      console.warn(`[project] soundtrack "${audioSpec.file}" unavailable — loading silent:`, e);
+      console.warn(`[project] soundtrack "${audioSpec.file}" unavailable, loading silent:`, e);
     }
   }
 
