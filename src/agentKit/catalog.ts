@@ -124,7 +124,7 @@ export const SCENE_DOC_KEYS: Record<
   },
   textStyle: {
     summary:
-      "Per text key overrides: <key>Color, Font, Size, OffsetX, OffsetY, LineHeight, RotationDeg.",
+      "Per text key overrides: <key>Color, Font, Size, OffsetX, OffsetY, LineHeight, RotationDeg, Emphasis.",
     type: "object",
     ref: "text",
   },
@@ -652,6 +652,10 @@ export const TOOLKIT_SUMMARIES: Record<
     internal: true,
   },
   ParticleField: { summary: "Seeded instanced particles drifting on the clock." },
+  PromptBar: {
+    summary:
+      "Chat prompt bar: text types in from `from` to `to` (45 ms a key by default), caret, send button.",
+  },
   Ribbon: { summary: "Seeded tube that grows along a curve." },
   SceneStage: { summary: "Theme lighting, backdrop and real shadows for the scene." },
   StagedObject: { summary: "One sidecar objects entry, auto-fitted." },
@@ -967,6 +971,7 @@ function textMotion(): Entry[] {
       ...(p.hasScaleParams ? ["startScale", "shine"] : []),
       ...(p.hasDirection ? ["direction"] : []),
       ...(DISTANCE.has(p.preset) ? ["distance"] : []),
+      ...(p.hasBuildShift ? ["buildShiftEm"] : []),
     ],
   }));
   presets.push({
@@ -1006,6 +1011,8 @@ function textLooks(): Entry[] {
       ...(l.hasHollow ? ["hollow"] : []),
       ...(l.hasIntensity ? ["intensity"] : []),
       ...(l.hasOffset ? ["offsetEm"] : []),
+      ...(l.hasOffsetDir ? ["offsetDir"] : []),
+      ...(l.hasOffsetOpacity ? ["offsetOpacity"] : []),
       ...(l.hasCurve ? ["curveDeg"] : []),
     ],
     threeD: l.preset.endsWith("-3d"),
