@@ -26,6 +26,7 @@ import {
   Vector3,
 } from "three";
 import { clone as cloneSkinned } from "three/examples/jsm/utils/SkeletonUtils.js";
+import { useAssetRevision } from "../../engine/assetRevisions";
 import { deviceClipFrameIndex, hasPlaybackKeys } from "../../engine/clipFrame";
 import { type ClipTextureBinding, useClipTexture } from "../../engine/clipTexture";
 import { deviceAcknowledgementMatches, useDeviceEditStore } from "../../engine/deviceEditStore";
@@ -396,6 +397,7 @@ function ScreenImage(props: {
   projectId: string;
 }) {
   const { src, projectId, ...rest } = props;
+  useAssetRevision(projectId, src);
   let url: string | null = null;
   try {
     url = resolveAssetUrl(projectId, src);

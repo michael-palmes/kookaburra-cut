@@ -2,6 +2,7 @@ import { listen } from "@tauri-apps/api/event";
 import { open as openFilePicker } from "@tauri-apps/plugin-dialog";
 import { type RefObject, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { useAssetRevision, withAssetRevision } from "../engine/assetRevisions";
 import { listEdits } from "../engine/edit";
 import {
   applyConformProgress,
@@ -27,6 +28,7 @@ import {
   mediaMeta,
   revealPath,
 } from "../engine/media";
+import { projectIdForNativeSlug } from "../engine/project";
 import { ContextMenu, type ContextMenuItem, type ContextMenuState } from "./ContextMenu";
 import { SegmentedRow, ToggleFieldset } from "./inspector/rows";
 import { modalHost } from "./modalHost";
@@ -1019,6 +1021,11 @@ export function MediaBrowser({
       ? (globalShots?.find((s) => s.name === preview)?.absPath ?? null)
       : `${projectPath}/${preview}`
     : null;
+  // A file replaced in place previews at its new revision.
+  const previewRevision = useAssetRevision(
+    sourceTab === "project" ? projectIdForNativeSlug(slug) : null,
+    preview,
+  );
   // Metadata streams in one file at a time, so a freshly listed image has none yet: fall back to the extension rather than handing a PNG to the video player.
   const previewKind = preview ? (previewMeta?.kind ?? kindOfRel(preview)) : "image";
 
@@ -1331,7 +1338,7 @@ export function MediaBrowser({
       {preview && previewSrc && (
         <MediaPreviewOverlay
           name={preview}
-          src={fsUrl(previewSrc)}
+          src={withAssetRevision(fsUrl(previewSrc), previewRevision)}
           kind={previewKind}
           fps={previewMeta?.fps}
           panel={inspectorPreview}

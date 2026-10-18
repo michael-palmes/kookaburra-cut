@@ -31,10 +31,9 @@ import { useClipTexture } from "../../engine/clipTexture";
 import { useClockStore } from "../../engine/clock";
 import { isExporting } from "../../engine/exportState";
 import { useFormat } from "../../engine/format";
-import { resolveAssetUrl } from "../../engine/project";
-import { ProjectIdContext, SceneDocContext } from "../../engine/sceneContext";
+import { SceneDocContext } from "../../engine/sceneContext";
 import { MotionBlurContext } from "../../engine/timeline";
-import { useEditorStore } from "../../store/editorStore";
+import { useProjectAssetUrl } from "../../engine/useProjectAssetUrl";
 import { useTheme } from "../../theme";
 import type { ThemeBackground } from "../../theme/tokens";
 import { AssetBoundary } from "../media/AssetBoundary";
@@ -273,22 +272,15 @@ function FixedImageLoaded({
 }
 
 function FixedImage({ spec }: { spec: Extract<ThemeBackground, { type: "image" }> }) {
-  const contextProjectId = useContext(ProjectIdContext);
-  const storeProjectId = useEditorStore((s) => s.projectId);
-  const projectId = contextProjectId ?? storeProjectId;
-  if (spec.src.startsWith("kookaburra:")) {
+  const bundledSrc = spec.src.startsWith("kookaburra:");
+  const url = useProjectAssetUrl(bundledSrc ? null : spec.src, "[stage] background image");
+  if (bundledSrc) {
     const bundled = bundledBackdropUrl(spec.src.slice("kookaburra:".length));
     if (!bundled) {
       console.warn(`[stage] bundled background "${spec.src}" not found — no background`);
       return null;
     }
     return <FixedImageBundled url={bundled} spec={spec} />;
-  }
-  let url: string | null = null;
-  try {
-    url = resolveAssetUrl(projectId, spec.src);
-  } catch (e) {
-    console.warn(`[stage] background image "${spec.src}" unresolved:`, e);
   }
   if (!url) return null;
   return (

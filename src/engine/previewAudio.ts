@@ -1,5 +1,6 @@
 /** Preview playback of the project soundtrack; UI lane only, the export mux (start_export) is the authoritative mixdown. Uses a decoded WebAudio `AudioBuffer` (not an `HTMLAudioElement`) because WebKit seeks VBR MP3s by byte-estimate, often 120ms+ off target, causing audible play-stop-play stutter; a buffer source starts sample-exact and position is pure `ctx.currentTime` arithmetic, so steady play needs no correction. Sync: play/pause follows the transport, target position derives from the clock, and the source restarts only on a genuine clock jump (drift > 250ms, e.g. a scrub or the play-loop wraparound). Nothing plays while `isExporting()`; the AudioContext resumes on the first play (a user gesture, WKWebView autoplay policy). */
 
+import { assetRevision, subscribeAssetRevision, withAssetRevision } from "./assetRevisions";
 import { useClockStore } from "./clock";
 import { isExporting } from "./exportState";
 import { fsUrl } from "./media";
@@ -137,17 +138,27 @@ export function setPreviewAudioProject(project: LoadedProject | null): void {
     }),
   };
   state = s;
-  void (async () => {
+  const decode = async () => {
     try {
-      const bytes = await (await fetch(fsUrl(s.audio.abs))).arrayBuffer();
+      const url = withAssetRevision(fsUrl(s.audio.abs), assetRevision(project.id, s.audio.file));
+      const bytes = await (await fetch(url)).arrayBuffer();
       const buffer = await ctx.decodeAudioData(bytes);
       if (state !== s) return; // project switched mid-decode
+      stopSource(s);
       s.buffer = buffer;
       if (wantPlaying && !isExporting()) applyTick(s); // play pressed while decoding
     } catch (e) {
       console.warn("[audio] preview decode failed (preview stays silent):", e);
     }
-  })();
+  };
+  // A soundtrack replaced in place re-decodes at its new revision.
+  const unwatch = subscribeAssetRevision(project.id, s.audio.file, () => void decode());
+  const unsubscribeClock = s.unsubscribe;
+  s.unsubscribe = () => {
+    unsubscribeClock();
+    unwatch();
+  };
+  void decode();
 }
 
 /** Live-update the mix params (gain, fades, offset) without re-decoding: the Music drill's slider-drag lane. No-op without a loaded soundtrack. */

@@ -1,6 +1,6 @@
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { emit } from "@tauri-apps/api/event";
-import { refreshWorkspaceAssets } from "./assetInventory";
+import { refreshWorkspaceAssets } from "./assetRevisions";
 
 /** Media library frontend over the native module (src-tauri/src/media.rs): per-project asset listing/import and the sha-keyed poster/scrub-frame cache. */
 
@@ -48,7 +48,7 @@ export async function importMediaBytes(
   return rel;
 }
 
-/** One scene's terminal snapshot PNG, overwriting the canonical `assets/terminal-<stem>.png` in place (recaptures re-bake at one home; callers bump `assetVersionStore` so mounted readers re-fetch). Same inventory refresh and media-changed broadcast as the other imports. */
+/** One scene's terminal snapshot PNG, overwriting the canonical `assets/terminal-<stem>.png` in place (recaptures re-bake at one home; its refreshed revision moves mounted readers to a new URL). Same inventory refresh and media-changed broadcast as the other imports. */
 export async function writeTerminalSnapshot(
   slug: string,
   sceneStem: string,

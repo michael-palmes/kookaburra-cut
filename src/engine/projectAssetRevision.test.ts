@@ -2,7 +2,9 @@ import { useTexture } from "@react-three/drei";
 import { invoke } from "@tauri-apps/api/core";
 import { Texture, TextureLoader } from "three";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { refreshWorkspaceAssets } from "./assetRevisions";
 import {
+  assetFileUrl,
   preloadProjectImages,
   refreshBundledProjectAssets,
   rememberWorkspaceLibraryPath,
@@ -63,6 +65,33 @@ describe("poster source asset revisions", () => {
     expect(after).not.toBe(before);
     expect(after).toContain("poster=replacement");
     expect(preload).toHaveBeenLastCalledWith(after);
+  });
+
+  it("folds the file revision in after the poster query, and preloads the URL consumers request", async () => {
+    const id = "ws-preset:revision-test";
+    rememberWorkspaceLibraryPath(id, "/workspace/presets/revision-test");
+    let size = 10;
+    vi.mocked(invoke).mockImplementation(async (command) =>
+      command === "list_project_asset_stamps"
+        ? { stamp: `s${size}`, assets: [{ rel: "assets/screen.png", size, mtimeNs: "99" }] }
+        : ["assets/screen.png"],
+    );
+    const preload = vi.spyOn(useTexture, "preload").mockImplementation(() => {});
+    const clear = vi.spyOn(useTexture, "clear").mockImplementation(() => {});
+    vi.spyOn(TextureLoader.prototype, "loadAsync").mockResolvedValue(new Texture());
+    await refreshWorkspaceAssets(id);
+    const base = "asset:///workspace/presets/revision-test/assets/screen.png";
+    expect(resolveAssetUrl(id, "assets/screen.png")).toBe(`${base}?r=10-99`);
+    expect(assetFileUrl(id, "assets/screen.png")).toBe(`${base}?r=10-99`);
+    setProjectAssetRevision(id, "p1");
+    expect(resolveAssetUrl(id, "assets/screen.png")).toBe(`${base}?poster=p1&r=10-99`);
+    await preloadProjectImages(id);
+    expect(preload).toHaveBeenLastCalledWith(`${base}?poster=p1&r=10-99`);
+
+    size = 11;
+    await refreshWorkspaceAssets(id);
+    expect(resolveAssetUrl(id, "assets/screen.png")).toBe(`${base}?poster=p1&r=11-99`);
+    expect(clear).toHaveBeenCalledWith([`${base}?poster=p1&r=10-99`]);
   });
 
   it("makes a revised development LUT fetchable at its original same-origin path", () => {

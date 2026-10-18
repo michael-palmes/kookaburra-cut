@@ -20,8 +20,7 @@ import { frameLayerRenderOrder } from "../../engine/frameLayerOrder";
 import { useGizmoSectionOpen } from "../../engine/gizmoSections";
 import { useImageOverlayPreview, useImageStagePreview } from "../../engine/imageEditStore";
 import { motionBlurScale } from "../../engine/motionBlur";
-import { resolveAssetUrl } from "../../engine/project";
-import { ProjectIdContext, SceneDocContext, useSceneContext } from "../../engine/sceneContext";
+import { SceneDocContext, useSceneContext } from "../../engine/sceneContext";
 import { useSceneMedia } from "../../engine/sceneDoc";
 import type {
   SceneDocMediaSpec,
@@ -46,8 +45,7 @@ import {
   recordingCrop,
 } from "../../engine/sceneVideoWindow";
 import { useTimeline } from "../../engine/timeline";
-import { assetVersionKey, useAssetVersionStore } from "../../store/assetVersionStore";
-import { useEditorStore } from "../../store/editorStore";
+import { useProjectAssetUrl } from "../../engine/useProjectAssetUrl";
 import { useStageMapShadows } from "../stage/context";
 import type { FormatInfo } from "../types";
 import { AssetBoundary } from "./AssetBoundary";
@@ -259,20 +257,7 @@ function textureIntrinsics(texture: Texture): { width: number; height: number } 
 
 /** The still's loadable URL, or null for a clip (which the clip pipeline resolves from the project-relative src itself) and for anything unresolvable. */
 function useSceneImageUrl(src: string | null): string | null {
-  const contextProjectId = useContext(ProjectIdContext);
-  const storeProjectId = useEditorStore((state) => state.projectId);
-  const projectId = contextProjectId ?? storeProjectId;
-  const version = useAssetVersionStore((state) =>
-    src === null ? 0 : (state.versions[assetVersionKey(projectId, src)] ?? 0),
-  );
-  if (src === null) return null;
-  try {
-    const url = resolveAssetUrl(projectId, src);
-    return version > 0 ? `${url}?v=${version}` : url;
-  } catch (error) {
-    console.warn(`[image] "${src}" unresolved:`, error);
-    return null;
-  }
+  return useProjectAssetUrl(src, "[image]");
 }
 
 function useColourTexture(url: string): Texture {

@@ -3,6 +3,7 @@ import { emit, listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { ask } from "@tauri-apps/plugin-dialog";
 import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { refreshWorkspaceAssets } from "../engine/assetRevisions";
 import {
   DEVICE_SCREEN_SLOTS,
   type DeviceScreenSlot,
@@ -55,6 +56,7 @@ import {
 } from "../engine/editMath";
 import { applyEditOp, type EditOp, type EditOpResult, type SourceMeta } from "../engine/editOps";
 import { formatMediaDuration, importMediaBytes, type MediaMeta, mediaMeta } from "../engine/media";
+import { projectIdForNativeSlug } from "../engine/project";
 import { readProjectManifestSnapshot } from "../engine/projectEdit";
 import { revealApp } from "../engine/reveal";
 import { parseSceneDoc } from "../engine/sceneDocSchema";
@@ -664,9 +666,13 @@ export function EditorApp() {
     };
   }, [load]);
 
-  // Media changed elsewhere (import, cache cleared in Settings) → re-scan the panel.
+  // Media changed elsewhere (import, cache cleared in Settings) → re-scan the panel, and re-read revisions so a file replaced in place reloads.
   useEffect(() => {
-    const unlisten = listen("kookaburra://media-changed", () => setMediaRefresh((n) => n + 1));
+    const unlisten = listen("kookaburra://media-changed", () => {
+      setMediaRefresh((n) => n + 1);
+      const t = targetRef.current;
+      if (t) void refreshWorkspaceAssets(projectIdForNativeSlug(t.slug));
+    });
     return () => {
       void unlisten.then((fn) => fn());
     };
@@ -1747,6 +1753,7 @@ export function EditorApp() {
                     clips={doc.clips}
                     sources={doc.sources}
                     basePath={target?.path ?? ""}
+                    projectId={target ? projectIdForNativeSlug(target.slug) : null}
                     playheadMs={playheadMs}
                     playing={playing}
                     trimScrub={trimScrub}
@@ -1782,6 +1789,7 @@ export function EditorApp() {
                       clips={refView.clips}
                       sources={refView.sources}
                       basePath={target?.path ?? ""}
+                      projectId={target ? projectIdForNativeSlug(target.slug) : null}
                       timeMs={playheadMs + (doc.reference?.offsetMs ?? 0)}
                       playing={playing}
                     />

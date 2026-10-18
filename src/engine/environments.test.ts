@@ -1,5 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { invoke } from "@tauri-apps/api/core";
+import { describe, expect, it, vi } from "vitest";
 import type { FixtureSpec, Theme } from "../theme/tokens";
+import { refreshWorkspaceAssets } from "./assetRevisions";
 import {
   BUNDLED_ENVIRONMENT_IDS,
   collectEnvironmentSources,
@@ -9,6 +11,11 @@ import {
   resolveSceneEnvironment,
 } from "./environments";
 import { setProjectAssetRevision } from "./projectAssetRevision";
+
+vi.mock("@tauri-apps/api/core", () => ({
+  invoke: vi.fn(),
+  convertFileSrc: (path: string) => `asset://${path}`,
+}));
 
 function makeTheme(overrides: Partial<Theme> = {}): Theme {
   return {
@@ -36,6 +43,22 @@ describe("environmentCacheKey", () => {
     setProjectAssetRevision(projectId, "second");
     expect(environmentCacheKey(projectId, "assets/studio.hdr")).not.toBe(first);
     expect(environmentCacheKey(projectId, "kookaburra:warehouse")).toBe("kookaburra:warehouse");
+  });
+  it("keys a user map by its file revision, so a map replaced in place loads afresh", async () => {
+    let mtimeNs = "1";
+    vi.mocked(invoke).mockImplementation(async () => ({
+      stamp: mtimeNs,
+      assets: [{ rel: "assets/studio.hdr", size: 9, mtimeNs }],
+    }));
+    await refreshWorkspaceAssets("ws:hdr-rev");
+    expect(environmentCacheKey("ws:hdr-rev", "assets/studio.hdr")).toBe(
+      "ws:hdr-rev|assets/studio.hdr|r=9-1",
+    );
+    mtimeNs = "2";
+    await refreshWorkspaceAssets("ws:hdr-rev");
+    expect(environmentCacheKey("ws:hdr-rev", "assets/studio.hdr")).toBe(
+      "ws:hdr-rev|assets/studio.hdr|r=9-2",
+    );
   });
   it("passes bundled ids and none through, keys user paths per project", () => {
     expect(environmentCacheKey("ws:a", "kookaburra:warehouse")).toBe("kookaburra:warehouse");

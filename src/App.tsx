@@ -1,6 +1,6 @@
 import { Canvas, useThree } from "@react-three/fiber";
 import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
+import { emit, listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { open as openFolderPicker } from "@tauri-apps/plugin-dialog";
 import {
@@ -13,7 +13,12 @@ import {
   useSyncExternalStore,
 } from "react";
 import { lastLoadReport, reportLastLoad, stampProjectKit } from "./engine/appHeartbeat";
-import { refreshWorkspaceAssets } from "./engine/assetInventory";
+import {
+  noteAssetWritten,
+  observeAssetStamp,
+  projectAssetsStamp,
+  refreshWorkspaceAssets,
+} from "./engine/assetRevisions";
 import {
   type AutoRunConfig,
   getAutoRunConfig,
@@ -209,7 +214,6 @@ import {
   setProjectTypography,
   slugifyName,
 } from "./engine/workspace";
-import { useAssetVersionStore } from "./store/assetVersionStore";
 import { useEditorStore } from "./store/editorStore";
 import {
   projectOpenAspect,
@@ -721,8 +725,8 @@ export default function App() {
     try {
       const source = resolveAssetPath(current.id, pickedRel);
       const rel = await invoke<string>("import_app_icon", { slug, sourcePath: source });
-      // The icon overwrites a fixed path, so bump its cache-bust version to force a new URL.
-      useAssetVersionStore.getState().bump(current.id, rel);
+      // The icon overwrites a fixed path; its new revision is what makes a new URL.
+      await noteAssetWritten(current.id, rel);
       handleTimingChanged();
       setToast({ kind: "success", message: "App icon updated" });
     } catch (e) {
@@ -1975,6 +1979,20 @@ export default function App() {
           setLoadNonce((n) => n + 1);
         })
         .catch(() => {}); // missing project etc, the load path owns error surfacing
+      // Assets replaced in place (never the TSX reload token): new revisions, rev-gated clips, then the app-wide broadcast. A LUT or environment map is baked in at load, so it reloads.
+      void projectAssetsStamp(projectId)
+        .then(async (stamp) => {
+          if (cancelled || isExporting() || stamp === null) return;
+          if (!observeAssetStamp(projectId, stamp)) return;
+          const paths = await refreshWorkspaceAssets(projectId);
+          if (cancelled || isExporting() || paths.length === 0) return;
+          await invalidateChangedClips().catch((e) =>
+            console.warn("[clips] invalidation sweep failed:", e),
+          );
+          await emit("kookaburra://media-changed", { slug, paths, origin: "watch" });
+          if (paths.some((rel) => /\.(cube|hdr|exr)$/i.test(rel))) setLoadNonce((n) => n + 1);
+        })
+        .catch((e) => console.warn("[assets] watch failed:", e));
     }, 1000);
     return () => {
       cancelled = true;

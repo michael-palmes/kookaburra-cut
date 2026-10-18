@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { useReplacedRevisions, withAssetRevision } from "../engine/assetRevisions";
 import type { EditClip, EditSource } from "../engine/edit";
 import { clipIndexAt, timelineDurationMs, timelineToSource } from "../engine/editMath";
 import { fsUrl } from "../engine/media";
@@ -17,6 +18,7 @@ export function ReferencePane({
   clips,
   sources,
   basePath,
+  projectId,
   timeMs,
   playing,
 }: {
@@ -25,8 +27,14 @@ export function ReferencePane({
   /** The lockstep time: active playhead plus the reference offset, in the reference's output ms. */
   timeMs: number;
   basePath: string;
+  /** The project's id, so a source replaced in place loads at its new revision. */
+  projectId?: string | null;
   playing: boolean;
 }) {
+  const revisions = useReplacedRevisions(
+    projectId,
+    sources.map((s) => s.rel),
+  );
   const videos = useRef(new Map<string, HTMLVideoElement>());
   const total = timelineDurationMs(clips);
   const outOfRange = timeMs < 0 || timeMs >= total;
@@ -62,17 +70,21 @@ export function ReferencePane({
 
   return (
     <div className={`editor-reference${outOfRange ? " out-of-range" : ""}`}>
-      {sources.map((source) => (
+      {sources.map((source, index) => (
         <div
           key={source.id}
           className={`editor-video${source.id === activeSourceId ? "" : " hidden"}`}
         >
           <div className="editor-video-box" style={sourceBoxStyle(source)}>
             {source.kind === "image" ? (
-              <img className="editor-still" src={fsUrl(`${basePath}/${source.rel}`)} alt="" />
+              <img
+                className="editor-still"
+                src={withAssetRevision(fsUrl(`${basePath}/${source.rel}`), revisions[index])}
+                alt=""
+              />
             ) : (
               <video
-                src={fsUrl(`${basePath}/${source.rel}`)}
+                src={withAssetRevision(fsUrl(`${basePath}/${source.rel}`), revisions[index])}
                 muted
                 playsInline
                 preload="auto"

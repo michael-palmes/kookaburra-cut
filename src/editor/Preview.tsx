@@ -1,4 +1,5 @@
 import { type CSSProperties, useCallback, useEffect, useRef, useState } from "react";
+import { useReplacedRevisions, withAssetRevision } from "../engine/assetRevisions";
 import type { EditClip, EditMask, EditSource, EditTap } from "../engine/edit";
 import { keyToleranceMs, type MaskRect, sourceMomentAt } from "../engine/editMasks";
 import {
@@ -38,6 +39,7 @@ export interface PreviewProps {
   clips: EditClip[]; // relaid (magnetic)
   sources: EditSource[];
   basePath: string; // absolute project folder (sources resolve via the asset protocol)
+  projectId?: string | null; // its id, so a source replaced in place loads at its new revision
   playheadMs: number;
   playing: boolean;
   trimScrub?: TrimScrub | null;
@@ -99,6 +101,7 @@ export function Preview({
   clips,
   sources,
   basePath,
+  projectId,
   playheadMs,
   playing,
   trimScrub,
@@ -129,6 +132,10 @@ export function Preview({
   onCropGesture,
   onCommitCrop,
 }: PreviewProps) {
+  const revisions = useReplacedRevisions(
+    projectId,
+    sources.map((s) => s.rel),
+  );
   const videos = useRef(new Map<string, HTMLVideoElement>());
   const imgs = useRef(new Map<string, HTMLImageElement>());
   // Latest-value mirrors so the playback loop never restarts on scrub/edit.
@@ -369,7 +376,7 @@ export function Preview({
 
   return (
     <div className="editor-preview" ref={rootRef}>
-      {sources.map((source) => (
+      {sources.map((source, index) => (
         <div
           key={source.id}
           className={`editor-video${source.id === activeSourceId ? "" : " hidden"}`}
@@ -391,7 +398,7 @@ export function Preview({
               // A still has no decode clock, so it never joins the video map: the transport loop's freeze branch just advances past it.
               <img
                 className="editor-still"
-                src={fsUrl(`${basePath}/${source.rel}`)}
+                src={withAssetRevision(fsUrl(`${basePath}/${source.rel}`), revisions[index])}
                 alt=""
                 ref={(el) => {
                   if (el) imgs.current.set(source.id, el);
@@ -400,7 +407,7 @@ export function Preview({
               />
             ) : (
               <video
-                src={fsUrl(`${basePath}/${source.rel}`)}
+                src={withAssetRevision(fsUrl(`${basePath}/${source.rel}`), revisions[index])}
                 muted
                 playsInline
                 preload="auto"

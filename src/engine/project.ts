@@ -3,7 +3,6 @@ import { invoke } from "@tauri-apps/api/core";
 import { join, resourceDir } from "@tauri-apps/api/path";
 import type { ComponentType } from "react";
 import { TextureLoader } from "three";
-import { assetVersionSuffix, useAssetVersionStore } from "../store/assetVersionStore";
 import { parseFontString } from "../theme/fontRef";
 import { vetProjectFonts } from "../theme/fontSafety";
 import { collectThemeFontRefs, preloadAppFonts } from "../theme/fonts";
@@ -20,7 +19,14 @@ import type {
 import type { FrameSpec } from "../toolkit/frame/types";
 import { preloadEmojiRasters } from "../toolkit/text/emojiRaster";
 import type { SceneModule } from "../toolkit/types";
-import { refreshWorkspaceAssets, workspaceAssetMissing } from "./assetInventory";
+import {
+  assetRevision,
+  noteBundledAssetChanged,
+  refreshWorkspaceAssets,
+  subscribeAssetChanges,
+  withAssetRevision,
+  workspaceAssetMissing,
+} from "./assetRevisions";
 import type { CameraKeyframe } from "./cameraTrack";
 import { preloadEffectLuts } from "./effects";
 import { mergeFrameSpec, parseFrameSpec } from "./frameSchema";
@@ -814,7 +820,7 @@ for (const tree of ["presets", "projects"] as const) {
     }
     const [, , slug, ...relative] = path.split("/");
     const scope = tree === "presets" ? "preset" : "template";
-    useAssetVersionStore.getState().bump(`${scope}:${slug}`, relative.join("/"));
+    noteBundledAssetChanged(`${scope}:${slug}`, relative.join("/"));
   });
 }
 
@@ -868,14 +874,41 @@ function projectAssetKey(projectId: string, relPath: string): string {
   return pooled ? `/projects/_samples/${pooled}` : key;
 }
 
-/** Resolve every `lut.url` in an effect config from project-relative (how project.json/themes author it) to its project glob key (how engine/effects.ts loads and caches it). Pure; returns fresh objects, never mutates (the theme's EffectsConfig is a shared module value). */
+/** A resolved asset URL with both cache-busts: the poster renderer's `?poster=` and the asset's own revision (`assetRevisions.ts`), so an in-place replace is a new URL. */
+function revisedAssetUrl(projectId: string, url: string, relPath: string): string {
+  return withAssetRevision(
+    withProjectAssetRevision(projectId, url),
+    assetRevision(projectId, relPath),
+  );
+}
+
+// Drei's texture cache never evicts: drop a replaced image's old URL so it holds no decoded copy.
+subscribeAssetChanges((projectId, changes) => {
+  if (!isWorkspaceBackedProjectId(projectId)) return;
+  const stale: string[] = [];
+  for (const { rel, before } of changes) {
+    if (!before || !/\.(png|jpe?g|webp)$/i.test(rel)) continue;
+    try {
+      const url = withProjectAssetRevision(projectId, projectAssetKey(projectId, rel));
+      stale.push(withAssetRevision(url, before));
+    } catch {
+      // The project's folder is gone; nothing it loaded will be asked for again.
+    }
+  }
+  if (stale.length > 0) useTexture.clear(stale);
+});
+
+/** Resolve every `lut.url` in an effect config from project-relative (how project.json/themes author it) to its project glob key (how engine/effects.ts loads and caches it). Pure; returns fresh objects, never mutates (the theme's EffectsConfig is a shared module value). Workspace LUTs carry their revision; bundled ones keep the bare glob key effects.ts looks up. */
 function resolveLutUrls<T extends EffectsConfig | EffectsOverride>(projectId: string, cfg: T): T {
   if (!cfg.lut?.url) return cfg;
+  const key = projectAssetKey(projectId, cfg.lut.url);
   return {
     ...cfg,
     lut: {
       ...cfg.lut,
-      url: withProjectAssetRevision(projectId, projectAssetKey(projectId, cfg.lut.url)),
+      url: isWorkspaceBackedProjectId(projectId)
+        ? revisedAssetUrl(projectId, key, cfg.lut.url)
+        : withProjectAssetRevision(projectId, key),
     },
   };
 }
@@ -891,7 +924,7 @@ export function resolveAssetUrl(projectId: string, relPath: string): string {
           "Put it under the project's assets/ folder and reference it relatively.",
       );
     }
-    return withProjectAssetRevision(projectId, key);
+    return revisedAssetUrl(projectId, key, relPath);
   }
   const url = assetUrlGlob[key];
   if (!url) {
@@ -900,7 +933,15 @@ export function resolveAssetUrl(projectId: string, relPath: string): string {
         "Put it under projects/<project>/assets/ and reference it relatively.",
     );
   }
-  return withProjectAssetRevision(projectId, url);
+  return revisedAssetUrl(projectId, url, relPath);
+}
+
+/** A project asset as a plain webview URL with its revision, for UI `<img>`s, previews and audio fetches (textures go through `resolveAssetUrl`). Throws like `resolveAssetPath`. */
+export function assetFileUrl(projectId: string, relPath: string): string {
+  return withAssetRevision(
+    fsUrl(resolveAssetPath(projectId, relPath)),
+    assetRevision(projectId, relPath),
+  );
 }
 
 /** Resolve a project-relative environment map (`.hdr`/`.exr`) to a loadable URL. THROWS on a missing file, at resolve time, so a bad source fails an autorun loudly instead of exporting without reflections (the AssetBoundary lesson: boundary-caught errors still fail autoruns). */
@@ -913,7 +954,7 @@ export function resolveProjectHdrUrl(projectId: string, relPath: string): string
           "Put a .hdr or .exr under the project's assets/ folder and reference it relatively.",
       );
     }
-    return withProjectAssetRevision(projectId, projectAssetKey(projectId, clean));
+    return revisedAssetUrl(projectId, projectAssetKey(projectId, clean), clean);
   }
   const url = assetHdrGlob[`${bundledProjectDir(projectId)}/${clean}`];
   if (!url) {
@@ -922,10 +963,10 @@ export function resolveProjectHdrUrl(projectId: string, relPath: string): string
         "Put a .hdr or .exr under projects/<project>/assets/ and reference it relatively.",
     );
   }
-  return withProjectAssetRevision(projectId, url);
+  return revisedAssetUrl(projectId, url, clean);
 }
 
-/** Workspace environment inventory (`.hdr`/`.exr` rel paths per project), refreshed on project load; mirrors assetInventory.ts for the environment glob. */
+/** Workspace environment inventory (`.hdr`/`.exr` rel paths per project), refreshed on project load; mirrors assetRevisions.ts's image check for the environment glob. */
 const workspaceEnvironments = new Map<string, Set<string>>();
 
 async function refreshWorkspaceEnvironments(projectId: string): Promise<void> {
@@ -994,17 +1035,13 @@ export async function preloadProjectImages(projectId: string): Promise<void> {
     // The workspace equivalent of the eager glob: ask the native side for the project's image assets and load them at their asset-protocol URLs.
     const slug = nativeProjectSlug(projectId);
     const rels = await invoke<string[]>("list_project_assets", { slug });
-    // Match ImageCard's cache-bust suffix so a re-imported icon warms the URL it will request.
-    urls = rels.map((rel) => resolveAssetUrl(projectId, rel) + assetVersionSuffix(projectId, rel));
+    // The consumers' own resolver, so the warmed URL is the requested URL by construction.
+    urls = rels.map((rel) => resolveAssetUrl(projectId, rel));
   } else {
     const prefix = `${bundledProjectDir(projectId)}/`;
-    urls = Object.entries(assetUrlGlob)
-      .filter(([key]) => key.startsWith(prefix))
-      .map(
-        ([key, url]) =>
-          withProjectAssetRevision(projectId, url) +
-          assetVersionSuffix(projectId, key.slice(prefix.length)),
-      );
+    urls = Object.keys(assetUrlGlob)
+      .filter((key) => key.startsWith(prefix))
+      .map((key) => resolveAssetUrl(projectId, key.slice(prefix.length)));
   }
   if (urls.length === 0) return;
   const loader = new TextureLoader();
