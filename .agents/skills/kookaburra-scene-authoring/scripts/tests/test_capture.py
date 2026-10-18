@@ -337,6 +337,19 @@ class CopyTests(KbTestCase):
         self.assertEqual([p.name for p in removed], ["20261017-000000-alpha"])
         self.assertEqual(len([p for p in root.iterdir() if p.name.endswith("-beta")]), 5)
 
+    def test_a_same_second_capture_stays_with_its_agent(self) -> None:
+        root = self.tmp / "captures"
+        root.mkdir()
+        first = capture.capture_folder(root, "alpha", at=0)
+        first.mkdir()
+        second = capture.capture_folder(root, "alpha", at=0)
+        second.mkdir()
+        untagged = capture.capture_folder(root, None, at=0)
+        untagged.mkdir()
+        again = capture.capture_folder(root, None, at=0)
+        self.assertEqual(second.name, first.name + "+2")
+        self.assertEqual([capture.capture_owner(p) for p in (first, second, untagged, again)], ["alpha", "alpha", "", ""])
+
 
 class StatusAndDebugTests(KbTestCase):
     def setUp(self) -> None:

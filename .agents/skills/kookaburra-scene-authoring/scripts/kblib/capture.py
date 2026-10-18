@@ -80,7 +80,7 @@ def capture_folder(root: Path, agent: Optional[str], at: Optional[float] = None)
     base = f"{stamp}-{tag}" if tag else stamp
     folder, n = root / base, 2
     while folder.exists():
-        folder, n = root / f"{base}-{n}", n + 1
+        folder, n = root / f"{base}+{n}", n + 1
     return folder
 
 
@@ -133,8 +133,9 @@ def _size(path: Path) -> int:
 
 
 def capture_owner(folder: Path) -> str:
-    """The agent tag after a capture folder's stamp ('' for untagged ones), so each agent's folders are counted apart."""
-    return folder.name[16:]
+    """The agent tag after a capture folder's stamp ('' for untagged ones), so each agent's folders are counted apart; a same-second `+n` suffix stays with its agent."""
+    tag = folder.name[15:].split("+")[0]
+    return tag[1:] if tag.startswith("-") else tag
 
 
 def prune_captures(root: Path, keep: Optional[Path] = None, keep_folders: int = KEEP_FOLDERS, max_bytes: int = MAX_CAPTURE_BYTES,
