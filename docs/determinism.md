@@ -1101,6 +1101,23 @@ of which can move pixels for text that uses neither (proven EQUAL on
   is read-only, so bundled demos keep a session-only in-memory cache; emoji
   belongs in workspace projects (recorded non-goal, `docs/decisions.md`).
 
+## Text emphasis and the typewriter mask
+
+- **Markup never reaches troika.** `prepareDisplayText` (`toolkit/text/displayText.ts`)
+  strips `*word*` emphasis (markdown flanking rules) before emoji substitution, in every
+  path that typesets or measures (headlines, title and panel measures, `measureText`, the
+  decoration gizmo). Copy without a flanking pair returns `prepareEmojiText`'s exact
+  output, so no standing layout can move.
+- **Gated programs.** Emphasis and the typewriter mask are stagger-material features
+  (`emphasis`, `typeMask`) that only mount on text that uses them;
+  `staggerPrograms.test.ts` pins every pre-existing feature combination's GLSL by hash.
+  Emphasis weight rewrites troika 0.52.5's own edge-offset sites per glyph (the quad
+  grow and the edge alpha, the outline mechanism); the rewrite is pinned to troika's
+  exact bytes and warns if they move, so re-check it on any troika upgrade.
+- **Barriers.** Emphasis rects and the type head come from the first typeset's carets,
+  so both report text-derived pending (`textDerivedState.ts`) until the carets land: no
+  capture draws the pre-measure frame.
+
 ## Generative 3D primitives
 
 The generative toolkit primitives (`ExtrudedText`, `ParticleField`, `WireGrid`,

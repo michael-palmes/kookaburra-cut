@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "name": "Text motion: typewriter",
+  "text": {
+    "headline": "Hello, world"
+  },
+  "textAnimation": { "in": "typewriter", "out": "none", "staggerMs": 0 }
+}

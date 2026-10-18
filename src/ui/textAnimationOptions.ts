@@ -1,5 +1,6 @@
 import type { TextAnimationSpec } from "../theme/tokens";
 import {
+  BUILD_SHIFT_EM,
   DEFAULT_START_SCALE,
   isTextPresetName,
   type TextDirection,
@@ -19,6 +20,8 @@ export interface TextPresetMeta {
   hasDirection?: boolean;
   /** scatter-scale and the per-glyph wave-2 presets: per-character by design, "all at once" would collapse it. */
   perCharacter?: boolean;
+  /** build: the word-slide slider applies. */
+  hasBuildShift?: boolean;
 }
 
 /** Card order = grid order (the Theme-default chip renders before all of these). */
@@ -122,6 +125,14 @@ export const TEXT_PRESET_CATALOG: readonly TextPresetMeta[] = [
     hint: "Text condenses out of drifting vapour",
     perCharacter: true,
   },
+  { preset: "stamp", label: "Stamp", hint: "Stamps down from oversize and settles" },
+  {
+    preset: "build",
+    label: "Build",
+    hint: "Words land one at a time as the line re-centres",
+    hasBuildShift: true,
+  },
+  { preset: "typewriter", label: "Typewriter", hint: "Types in one character at a time" },
 ] as const;
 
 /** How the text is delivered, one control folding stagger + delivery spellings. */
@@ -165,6 +176,8 @@ export interface TextAnimationDraft {
   startScale: number;
   shine: boolean;
   direction: TextDirection;
+  /** build: each word's slide, em. */
+  buildShiftEm: number;
 }
 
 export function defaultDraft(preset: TextPresetName): TextAnimationDraft {
@@ -177,6 +190,7 @@ export function defaultDraft(preset: TextPresetName): TextAnimationDraft {
     startScale: DEFAULT_START_SCALE,
     shine: false,
     direction: "from-left",
+    buildShiftEm: BUILD_SHIFT_EM,
   };
 }
 
@@ -216,6 +230,9 @@ export function draftToSpec(draft: TextAnimationDraft): TextAnimationSpec {
   ) {
     spec.direction = "from-right";
   }
+  if (draft.preset === "build" && draft.buildShiftEm !== BUILD_SHIFT_EM) {
+    spec.buildShiftEm = draft.buildShiftEm;
+  }
   return spec;
 }
 
@@ -234,6 +251,7 @@ export function specToDraft(spec: TextAnimationSpec): TextAnimationDraft {
   if (spec.startScale !== undefined) draft.startScale = spec.startScale;
   if (spec.shine !== undefined) draft.shine = spec.shine;
   if (spec.direction !== undefined) draft.direction = spec.direction;
+  if (spec.buildShiftEm !== undefined) draft.buildShiftEm = spec.buildShiftEm;
   return draft;
 }
 

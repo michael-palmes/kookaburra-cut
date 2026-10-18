@@ -516,7 +516,7 @@ pub(crate) fn move_scene_at(
 // ── Copied-document id re-minting ─────────────────────────────────────────────
 
 /// The `<textKey><Suffix>` override keys a sidecar's `textStyle` carries (`sceneDocSchema.ts`).
-const TEXT_STYLE_SUFFIXES: [&str; 7] = [
+const TEXT_STYLE_SUFFIXES: [&str; 8] = [
     "Color",
     "Font",
     "Size",
@@ -524,6 +524,7 @@ const TEXT_STYLE_SUFFIXES: [&str; 7] = [
     "OffsetY",
     "LineHeight",
     "RotationDeg",
+    "Emphasis",
 ];
 
 /// Give one entry a fresh `<prefix><n>` id, recording old -> new; an entry with no string id is left alone and takes no number. Repeated ids map to their FIRST sighting, the normalisers' own duplicate rule.

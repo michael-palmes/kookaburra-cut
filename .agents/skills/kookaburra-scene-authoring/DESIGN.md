@@ -81,7 +81,8 @@ unit is about 261 px. The safe inset is 0.249 units (65 px).
 ## Colour
 
 - Use theme tokens: `text` for copy, `muted` for secondary, `accent` for the one thing
-  to look at (a key word via `highlight-block`, a chip, a rule, a chart series).
+  to look at (a key word via `*word*` emphasis or `highlight-block`, a chip, a rule, a
+  chart series).
 - Pick the theme by mood (`kb catalog themes`): light themes for calm product stories,
   dark themes for drama, launches and anything with bloom or neon.
 - Text over moving backgrounds: use shader or 3D presets whose mode matches the theme
@@ -111,8 +112,8 @@ Text motion by purpose (sidecar `textAnimation`):
 | Purpose | Presets |
 | --- | --- |
 | Calm, corporate | `fade-up` (word, 70 to 90 ms), `fade`, `mask-reveal`, `rise-mask` |
-| Launch energy | `fade-scale` with `shine`, `slam`, `spring-pop`, `tracking` |
-| Tech and developer | `tracking`, `develop`, `glint-wipe`, `highlight-wipe` |
+| Launch energy | `fade-scale` with `shine`, `slam`, `stamp`, `spring-pop`, `tracking`, `build` |
+| Tech and developer | `tracking`, `develop`, `glint-wipe`, `highlight-wipe`, `typewriter` (or `PromptBar`) |
 | Editorial | `blur-in`, `weight-build`, `underline-draw` |
 | Playful | `spring-pop`, `flip-cascade`, `word-cycle`, `ribbon` |
 | Cinematic | `dolly`, `chromatic`, `line-stretch` |

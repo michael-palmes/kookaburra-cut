@@ -29,6 +29,7 @@ const MANAGED_TEXT_STYLE_SUFFIXES = [
   "OffsetY",
   "LineHeight",
   "RotationDeg",
+  "Emphasis",
 ] as const;
 
 export interface ResolvedManagedTextGroup extends SceneManagedTextGroup {

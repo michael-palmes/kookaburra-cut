@@ -5,7 +5,7 @@ import { parseFontString } from "../theme/fontRef";
 import { fontUrl, SDF_GLYPH_SIZE } from "../theme/fonts";
 import type { Theme } from "../theme/tokens";
 import type { FrameSpec } from "../toolkit/frame/types";
-import { prepareEmojiText } from "../toolkit/text/emojiText";
+import { prepareDisplayText } from "../toolkit/text/displayText";
 import type { FormatInfo } from "../toolkit/types";
 import { framePanelLayout, frameTextAlign } from "./framePanelLayout";
 import { estimateTitleLines } from "./framePanelText";
@@ -193,7 +193,7 @@ function textInput(
   const sizeMul = doc?.textStyle?.[`${key}Size`];
   const lineHeight = doc?.textStyle?.[`${key}LineHeight`];
   return {
-    text: prepareEmojiText(text).text,
+    text: prepareDisplayText(text).text,
     font: fontUrl(
       typeof fontValue === "string" ? parseFontString(fontValue) : theme.typography[face],
     ),

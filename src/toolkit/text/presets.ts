@@ -1,6 +1,7 @@
 import { ease } from "../../engine/ease";
 import type { MotionBlurOverride } from "../../engine/motionBlur";
 import type { TextAnimationSpec, Theme } from "../../theme/tokens";
+import { stampScale } from "../motion/stamp";
 
 /** Text-animation presets, the library behind `theme.textAnimation` and `AnimatedHeadline`'s `preset`/`ease`/`stagger` props: everything here is PURE math over the local scene clock so preview and the deterministic export loop agree byte-for-byte, and easing goes through the golden-tested `engine/ease` table, never an animation runtime. IMPORTANT (the null-for-legacy contract): when nothing is configured, `resolveTextAnimation` returns null and AnimatedHeadline runs its original v0 linear-ramp code verbatim, so committed projects on legacy themes must not change by a byte. */
 
@@ -37,6 +38,10 @@ export const TEXT_PRESET_NAMES = [
   "converge",
   "glint-wipe",
   "vapor",
+  // The motion toolkit pack.
+  "stamp",
+  "build",
+  "typewriter",
 ] as const;
 /** Inspector “None”: fully static, distinct from legacy `none`'s plain linear reveal. */
 export const STATIC_TEXT_PRESET = "static" as const;
@@ -72,11 +77,18 @@ const SHADER_PATH_PRESETS: ReadonlySet<TextPresetName> = new Set([
   "converge",
   "glint-wipe",
   "vapor",
+  "stamp",
+  "build",
 ]);
 
 /** Whether the renderer must force the stagger shader path even at granularity null (mounting one whole-block unit); legacy presets stay on their original paths verbatim. */
 export function presetNeedsShaderPath(name: TextPresetName): boolean {
   return SHADER_PATH_PRESETS.has(name);
+}
+
+/** Whether the preset reveals through the typewriter mask (the stagger path, one block unit, no pack). */
+export function presetNeedsTypeMask(name: TextPresetName): boolean {
+  return name === "typewriter";
 }
 
 /** Wave-2 forced default granularities (the scatter-scale precedent): applied only when nothing else chose, so no legacy input resolves differently. */
@@ -97,6 +109,7 @@ const FORCED_WORD_PRESETS: ReadonlySet<TextPresetName> = new Set([
   "stand-up",
   "spring-pop",
   "spotlight",
+  "build",
 ]);
 function forcedGranularity(name: TextPresetName): StaggerGranularity | null {
   if (FORCED_CHAR_PRESETS.has(name)) return "char";
@@ -269,6 +282,16 @@ export const VAPOR_SOFT_EM = 0.5;
 /** vapor: per-char duration multiplier floor (slight hashed rate jitter). */
 export const VAPOR_RATE_MIN = 0.85;
 
+// ── Motion toolkit contract constants (golden-pinned) ──
+/** stamp: the oversize it drops from, the squash it lands on, and the fraction of the in spent landing (the toolkit's `stampScale` curve, ease ignored). */
+export const STAMP_FROM_SCALE = 1.6;
+export const STAMP_PEAK_SCALE = 0.94;
+export const STAMP_IN_P = 0.45;
+/** build: each arriving word's slide in from the right, em (`buildShiftEm` overrides). */
+export const BUILD_SHIFT_EM = 0.3;
+/** build: fraction of a word's in spent fading in. */
+export const BUILD_FADE_P = 0.4;
+
 /** Deterministic per-unit randomness: a pure integer avalanche hash → [0, 1), never Math.random (same unit, same salt, same value forever, the seeded `engine/rng`/PCG-glitch precedent). Golden-pinned. */
 export function unitHash01(index: number, salt: number): number {
   let h = (Math.imul(index + 1, 0x9e3779b9) ^ Math.imul(salt + 1, 0x85ebca6b)) >>> 0;
@@ -297,6 +320,8 @@ export interface TextPresetParams {
   shine: boolean;
   /** twist-scale and orbit (the sweep sign): +1 = from-left, −1 = from-right. */
   twistDir: 1 | -1;
+  /** build: an explicitly authored word slide, em; absent keeps BUILD_SHIFT_EM. */
+  buildShiftEm?: number;
 }
 
 /** A fully resolved animation: what to play, how to ease it, and how to stagger it. */
@@ -328,6 +353,7 @@ export interface ResolveTextAnimationProps {
   shine?: boolean;
   direction?: string;
   delivery?: string;
+  buildShiftEm?: number;
 }
 
 const warnedPresets = new Set<string>();
@@ -393,6 +419,7 @@ export function resolveTextAnimation(
     props.shine !== undefined ||
     props.direction !== undefined ||
     props.delivery !== undefined ||
+    props.buildShiftEm !== undefined ||
     spec !== undefined;
   if (!configured) return null;
 
@@ -425,12 +452,15 @@ export function resolveTextAnimation(
   const direction = props.direction ?? spec?.direction;
   const rawDelay = props.delayMs ?? spec?.delayMs;
   const delayMs = rawDelay === undefined ? undefined : clampDelayMs(rawDelay);
+  const rawBuildShift = props.buildShiftEm ?? spec?.buildShiftEm;
   return {
     preset,
     outPreset,
     ease: props.ease ?? spec?.ease ?? theme.motion.easings.standard,
     staggerMs,
-    granularity: preset === "none" || preset === "static" ? null : granularity,
+    // typewriter reveals through its mask over one block unit, whatever granularity was asked for.
+    granularity:
+      preset === "none" || preset === "static" || preset === "typewriter" ? null : granularity,
     // 0 resolves to absent, so a written-then-zeroed delay stays byte-identical to never-set.
     ...(delayMs !== undefined && delayMs > 0 ? { delayMs } : {}),
     ...(spec?.durationMs !== undefined ? { durationMs: spec.durationMs } : {}),
@@ -442,6 +472,9 @@ export function resolveTextAnimation(
         : {}),
       shine: props.shine ?? spec?.shine ?? false,
       twistDir: direction === "from-right" ? -1 : 1,
+      ...(rawBuildShift !== undefined && Number.isFinite(rawBuildShift)
+        ? { buildShiftEm: rawBuildShift }
+        : {}),
     },
   };
 }
@@ -522,7 +555,8 @@ export function hasOwnAnimationProps(props: ResolveTextAnimationProps): boolean 
     props.startScale !== undefined ||
     props.shine !== undefined ||
     props.direction !== undefined ||
-    props.delivery !== undefined
+    props.delivery !== undefined ||
+    props.buildShiftEm !== undefined
   );
 }
 
@@ -578,6 +612,8 @@ export interface TextUnitSample {
 export interface ScatterSampleContext {
   count: number;
   unitCenterEm?: readonly [number, number];
+  /** build: this frame's line re-centre shift in em (`buildLineShiftEm`); absent (multi-line or unmeasured) plays a plain word fade. */
+  lineShiftEm?: number;
 }
 
 const FULL_SWEEP: readonly [number, number] = [0, 1];
@@ -852,6 +888,22 @@ export function sampleTextUnit(
       softEm = VAPOR_SOFT_EM * settle;
       break;
     }
+    case "stamp": {
+      // A hard alpha gate: a true 0 until the stamp starts, never a faint oversized ghost.
+      const ms = localMs - from - delay;
+      alpha = ms > 0 ? 1 : 0;
+      scale = stampCurve(unitDurationMs)(ms);
+      break;
+    }
+    case "build":
+      alpha = clamp01(p / BUILD_FADE_P);
+      if (ctx?.lineShiftEm !== undefined) {
+        dxEm += ctx.lineShiftEm + (1 - p) * (anim.params.buildShiftEm ?? BUILD_SHIFT_EM);
+      }
+      break;
+    case "typewriter":
+      alpha = localMs - from - delay > 0 ? 1 : 0;
+      break;
   }
 
   if (q > 0) {
@@ -1036,6 +1088,17 @@ export function sampleTextUnit(
         softEm += VAPOR_SOFT_EM * q;
         break;
       }
+      case "stamp":
+        alpha *= 1 - q;
+        scale *= 1 + (STAMP_FROM_SCALE - 1) * q;
+        break;
+      case "build":
+        alpha *= 1 - q;
+        break;
+      // The backspace runs through the mask; the block only gates off once it has emptied.
+      case "typewriter":
+        if (clamp01((localMs - (outAt ?? 0) - delay) / unitDurationMs) >= 1) alpha = 0;
+        break;
     }
   }
   if (cycleCentered && ctx?.unitCenterEm) dxEm -= ctx.unitCenterEm[0];
@@ -1109,6 +1172,90 @@ export function underlineProgress(timing: TextAnimTiming, localMs: number): numb
   if (!inActive) return 0;
   const p = ease(anim.ease, clamp01((localMs - from) / durationMs));
   return clamp01(p / UNDERLINE_DRAW_P);
+}
+
+/** stamp's scale over one unit's in window: the toolkit's `stampScale` from the oversize, landing on the squash at STAMP_IN_P, settling to 1. */
+function stampCurve(durationMs: number): (ms: number) => number {
+  return stampScale({
+    from: STAMP_FROM_SCALE,
+    peak: STAMP_PEAK_SCALE,
+    inMs: STAMP_IN_P * durationMs,
+    settleMs: (1 - STAMP_IN_P) * durationMs,
+  });
+}
+
+/** build's line re-centre at `localMs`, em: every word's eased progress weights its slot (the advance from the previous word's end), and the visible run shifts so it sits where the anchor puts the full line (`anchor` 0 left, 0.5 centre, 1 right). Undefined when the words span more than one line (build is single-line; the plain word fade plays instead) or the in is not build. */
+export function buildLineShiftEm(
+  timing: TextAnimTiming,
+  localMs: number,
+  units: StaggerUnits,
+  anchor: number,
+  fontSize: number,
+): number | undefined {
+  const { anim, to } = timing;
+  if (anim.preset !== "build" || units.count < 1 || fontSize <= 0) return undefined;
+  for (let i = 1; i < units.count; i++) {
+    if (Math.abs(units.centerY[i] - units.centerY[0]) > fontSize * 0.5) return undefined;
+  }
+  const durationMs = Math.max(1, to - timing.from);
+  const from = anim.delayMs === undefined ? timing.from : timing.from + anim.delayMs;
+  const full = units.endX[units.count - 1] - units.startX[0];
+  let shown = 0;
+  for (let i = 0; i < units.count; i++) {
+    const slot = i === 0 ? units.endX[0] - units.startX[0] : units.endX[i] - units.endX[i - 1];
+    const p = ease(anim.ease, clamp01((localMs - from - i * anim.staggerMs) / durationMs));
+    shown += p * slot;
+  }
+  return ((full - shown) * anchor) / fontSize;
+}
+
+/** The typewriter's keystrokes: the code-unit index of every code point except line breaks (spaces take a beat too). */
+export function typewriterStops(text: string): number[] {
+  const stops: number[] = [];
+  for (let i = 0; i < text.length; ) {
+    const cp = text.codePointAt(i) ?? 0;
+    if (text[i] !== "\n" && text[i] !== "\r") stops.push(i);
+    i += cp > 0xffff ? 2 : 1;
+  }
+  return stops;
+}
+
+/** How many keystrokes show at `localMs`: the in types them evenly across its window (a resolved delay shifts it; linear, the ease is ignored) and a typewriter out deletes from the end over the same length. A true 0 before the in starts. */
+export function typewriterCount(timing: TextAnimTiming, localMs: number, total: number): number {
+  const { anim, to, outAt } = timing;
+  const durationMs = Math.max(1, to - timing.from);
+  const from = anim.delayMs === undefined ? timing.from : timing.from + anim.delayMs;
+  let n =
+    anim.preset === "typewriter"
+      ? Math.min(total, Math.floor(total * clamp01((localMs - from) / durationMs)))
+      : total;
+  if (outAt !== undefined && anim.outPreset === "typewriter") {
+    const gone = Math.min(total, Math.floor(total * clamp01((localMs - outAt) / durationMs)));
+    n = Math.min(n, total - gone);
+  }
+  return n;
+}
+
+/** The type head after `n` keystrokes, from troika's carets: the last shown character's right edge on its line. "none"/"all" at the ends; unmeasured partial reveals hide everything until the carets land. */
+export function typewriterHead(
+  text: string,
+  stops: readonly number[],
+  carets: Float32Array | null,
+  n: number,
+): "none" | "all" | { x: number; bottom: number; top: number } {
+  if (n <= 0) return "none";
+  if (n >= stops.length) return "all";
+  const c = stops[n - 1];
+  const last = c + ((text.codePointAt(c) ?? 0) > 0xffff ? 1 : 0);
+  if (!carets || last * 4 + 3 >= carets.length) return "none";
+  let x = Number.NEGATIVE_INFINITY;
+  for (let i = c; i <= last; i++) x = Math.max(x, carets[i * 4], carets[i * 4 + 1]);
+  const o = c * 4;
+  return {
+    x,
+    bottom: Math.min(carets[o + 2], carets[o + 3]),
+    top: Math.max(carets[o + 2], carets[o + 3]),
+  };
 }
 
 /** Stagger units measured from a completed troika typeset: `startX`/`endX` are each unit's layout-space X extent, kept for ALL granularities (mask-reveal's per-unit sweep stays X-based; each paragraph wipes left→right). `edgeKey[i]` is the decision boundary a glyph's centre is compared against in the vertex shader, in KEY space: layout X for char/word, −Y for the paragraph granularities, midway between unit i's end and unit i+1's start, +∞ for the last; char/word edge values are bit-for-bit the legacy `edgeX`. All arrays are `count` long, `count ≤ MAX_STAGGER_UNITS`. */

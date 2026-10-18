@@ -64,6 +64,7 @@ const TEXT_STYLE_SUFFIXES = [
   "OffsetY",
   "LineHeight",
   "RotationDeg",
+  "Emphasis",
 ] as const;
 
 export function contentMenuActions(row: SceneOverviewRowModel): ContentMenuAction[] {

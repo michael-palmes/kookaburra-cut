@@ -323,6 +323,10 @@ export function parseTextAnimationSpec(v: unknown, source: string): TextAnimatio
   else if (v.distance !== undefined) {
     parseWarn(`[theme] ${source}: invalid "textAnimation.distance", dropped`);
   }
+  if (isNum(v.buildShiftEm)) spec.buildShiftEm = v.buildShiftEm;
+  else if (v.buildShiftEm !== undefined) {
+    parseWarn(`[theme] ${source}: invalid "textAnimation.buildShiftEm", dropped`);
+  }
   if (isStr(v.ease)) spec.ease = v.ease;
   else if (v.ease !== undefined) {
     parseWarn(`[theme] ${source}: invalid "textAnimation.ease", dropped`);
@@ -366,6 +370,14 @@ export function parseTextLookSpec(v: unknown, source: string): TextLookSpec | un
   if (isNum(v.offsetEm)) spec.offsetEm = v.offsetEm;
   else if (v.offsetEm !== undefined) {
     parseWarn(`[theme] ${source}: invalid "textLook.offsetEm", dropped`);
+  }
+  if (isNum(v.offsetDir)) spec.offsetDir = v.offsetDir;
+  else if (v.offsetDir !== undefined) {
+    parseWarn(`[theme] ${source}: invalid "textLook.offsetDir", dropped`);
+  }
+  if (isNum(v.offsetOpacity)) spec.offsetOpacity = v.offsetOpacity;
+  else if (v.offsetOpacity !== undefined) {
+    parseWarn(`[theme] ${source}: invalid "textLook.offsetOpacity", dropped`);
   }
   if (isNum(v.curveDeg)) spec.curveDeg = v.curveDeg;
   else if (v.curveDeg !== undefined) {

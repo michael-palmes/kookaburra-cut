@@ -160,6 +160,14 @@ export function neonCoreFill(fill: string, intensity: number): string {
   return lightenHex(fill, NEON_CORE_LIFT * intensity);
 }
 
+/** offset-print's under-layer displacement in world units: without `offsetDir` the legacy down-right expression exactly; with it, the same diagonal distance (offsetEm × √2) turned to the direction, clockwise from up. */
+export function offsetPrintOffset(look: ResolvedTextLook, fontSize: number): [number, number] {
+  if (look.offsetDir === undefined) return [look.offsetEm * fontSize, -(look.offsetEm * fontSize)];
+  const rad = (look.offsetDir * Math.PI) / 180;
+  const length = look.offsetEm * Math.SQRT2 * fontSize;
+  return [length * Math.sin(rad), length * Math.cos(rad)];
+}
+
 /** frosted's per-unit pack deltas (added to every sample's softEm/weightEm before upload); exactly zero at intensity 0, so the uploaded floats match the look-off bytes. */
 export function frostedDeltas(intensity: number): { softEm: number; weightEm: number } {
   return { softEm: FROSTED_SOFT_EM * intensity, weightEm: FROSTED_WEIGHT_EM * intensity };

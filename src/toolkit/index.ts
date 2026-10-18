@@ -202,6 +202,8 @@ export { AnimatedHeadline, type AnimatedHeadlineProps } from "./text/AnimatedHea
 // Horizontal app-icon + title/subtitle lockup revealed as one unit.
 export { BrandLockup, type BrandLockupProps } from "./text/BrandLockup";
 export { ManagedTextStack, type ManagedTextStackProps } from "./text/ManagedTextStack";
+// Chat-style prompt bar whose text types in, with a caret and a send button.
+export { PromptBar, type PromptBarProps } from "./text/PromptBar";
 // Text-animation presets: theme `textAnimation` defaults + per-primitive overrides.
 export {
   isTextPresetName,

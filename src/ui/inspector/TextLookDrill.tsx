@@ -7,13 +7,16 @@ import {
   DEFAULT_LOOK_CURVE_DEG,
   DEFAULT_LOOK_HOLLOW,
   DEFAULT_LOOK_INTENSITY,
+  DEFAULT_LOOK_OFFSET_DIR_DEG,
   DEFAULT_LOOK_OFFSET_EM,
+  DEFAULT_LOOK_OFFSET_OPACITY,
   DEFAULT_LOOK_STROKE_EM,
   type TextLookName,
 } from "../../toolkit/text/looks";
 import { ColourPicker } from "../colour/ColourPicker";
 import { TextLookIcon } from "../TextLookPicker";
 import { darkenedStopB, TEXT_LOOK_CATALOG, textLookMeta } from "../textLookOptions";
+import { lightingDirectionFromPoint } from "./LightingDirectionDial";
 import type { ManagedTextWrite } from "./ManagedTextDrill";
 import { TextControlIcon, TextScopeIcon } from "./ManagedTextDrill";
 import {
@@ -54,9 +57,23 @@ export interface TextLookDrillProps {
   disabled?: boolean;
 }
 
-function LookParamIcon({ type }: { type: "angle" | "stroke" | "intensity" | "offset" | "curve" }) {
+function LookParamIcon({
+  type,
+}: {
+  type: "angle" | "stroke" | "intensity" | "offset" | "curve" | "direction" | "opacity";
+}) {
   const glyph =
-    type === "angle" ? (
+    type === "direction" ? (
+      <>
+        <circle cx="8" cy="8" r="5.5" />
+        <path d="M8 8l3.2 3.2M11.2 8.6v2.6H8.6" />
+      </>
+    ) : type === "opacity" ? (
+      <>
+        <rect x="2.75" y="2.75" width="10.5" height="10.5" rx="1.5" />
+        <path d="M2.75 13.25 13.25 2.75M6.5 13.25l6.75-6.75M2.75 9.5l6.75-6.75" opacity="0.55" />
+      </>
+    ) : type === "angle" ? (
       <>
         <path d="M3 13h10M3 13V3" />
         <path d="M3 13 11 5M6.5 13a5 5 0 0 0-1.46-3.54" />
@@ -96,6 +113,86 @@ function LookParamIcon({ type }: { type: "angle" | "stroke" | "intensity" | "off
     >
       {glyph}
     </svg>
+  );
+}
+
+/** offset-print's direction dial (the sun dial's look and gestures): degrees clockwise from up, 0..360. */
+function OffsetDirectionDial({
+  value,
+  disabled,
+  onInput,
+  onCommit,
+}: {
+  value: number;
+  disabled?: boolean;
+  onInput: (value: number) => void;
+  onCommit: (value: number) => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const latest = useRef(value);
+  const wrap = (deg: number) => ((Math.round(deg) % 360) + 360) % 360;
+  const update = (clientX: number, clientY: number, commit: boolean) => {
+    const rect = ref.current?.getBoundingClientRect();
+    if (!rect || disabled) return;
+    const next = wrap(lightingDirectionFromPoint(rect, clientX, clientY));
+    latest.current = next;
+    if (commit) onCommit(next);
+    else onInput(next);
+  };
+  return (
+    <div className="lighting-direction-control">
+      <div
+        ref={ref}
+        className="lighting-direction-dial"
+        role="slider"
+        tabIndex={disabled ? -1 : 0}
+        aria-label="Offset direction"
+        aria-disabled={disabled}
+        aria-valuemin={0}
+        aria-valuemax={359}
+        aria-valuenow={Math.round(value)}
+        aria-valuetext={`${Math.round(value)} degrees`}
+        onPointerDown={(event) => {
+          if (event.button !== 0 || disabled) return;
+          event.currentTarget.setPointerCapture(event.pointerId);
+          update(event.clientX, event.clientY, false);
+        }}
+        onPointerMove={(event) => {
+          if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
+          update(event.clientX, event.clientY, false);
+        }}
+        onPointerUp={(event) => {
+          if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
+          event.currentTarget.releasePointerCapture(event.pointerId);
+          update(event.clientX, event.clientY, true);
+        }}
+        onPointerCancel={(event) => {
+          if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+            event.currentTarget.releasePointerCapture(event.pointerId);
+          }
+          onCommit(latest.current);
+        }}
+        onKeyDown={(event) => {
+          if (disabled) return;
+          const step = event.shiftKey ? 10 : 1;
+          if (event.key === "ArrowLeft" || event.key === "ArrowDown") {
+            event.preventDefault();
+            onCommit(wrap(value - step));
+          } else if (event.key === "ArrowRight" || event.key === "ArrowUp") {
+            event.preventDefault();
+            onCommit(wrap(value + step));
+          }
+        }}
+      >
+        <span className="lighting-direction-subject" aria-hidden="true" />
+        <span
+          className="lighting-direction-sun"
+          style={{ transform: `rotate(${value}deg) translateY(-37px)` }}
+          aria-hidden="true"
+        />
+      </div>
+      <span className="lighting-direction-value">{Math.round(value)}°</span>
+    </div>
   );
 }
 
@@ -208,6 +305,16 @@ export function TextLookDrill({
     },
     value,
   });
+
+  const offsetDirControl =
+    current && meta?.hasOffsetDir
+      ? slider(
+          "offset-dir",
+          current.offsetDir ?? DEFAULT_LOOK_OFFSET_DIR_DEG,
+          (spec, offsetDir) => ({ ...spec, offsetDir }),
+          "text style offset direction",
+        )
+      : null;
 
   const choosePreset = (preset: TextLookName | "theme") => {
     if (preset === "theme") writeSpec(undefined, "follow theme text style");
@@ -406,6 +513,8 @@ export function TextLookDrill({
               meta.hasHollow ||
               meta.hasIntensity ||
               meta.hasOffset ||
+              meta.hasOffsetDir ||
+              meta.hasOffsetOpacity ||
               meta.hasCurve) && (
               <DrillGroup label="Preset controls">
                 {meta.hasAngle && (
@@ -469,6 +578,37 @@ export function TextLookDrill({
                       current.offsetEm ?? DEFAULT_LOOK_OFFSET_EM,
                       (spec, offsetEm) => ({ ...spec, offsetEm }),
                       "text style offset",
+                    )}
+                  />
+                )}
+                {offsetDirControl && (
+                  <div className="popover-row text-look-direction-row">
+                    <span className="action-row-icon">
+                      <LookParamIcon type="direction" />
+                    </span>
+                    <span className="popover-inline">Direction</span>
+                    <OffsetDirectionDial
+                      value={offsetDirControl.value}
+                      disabled={disabled}
+                      onInput={offsetDirControl.onInput}
+                      onCommit={offsetDirControl.onCommit}
+                    />
+                  </div>
+                )}
+                {meta.hasOffsetOpacity && (
+                  <InspectorSliderRow
+                    icon={<LookParamIcon type="opacity" />}
+                    label="Under-layer"
+                    min={0}
+                    max={1}
+                    step={0.05}
+                    disabled={disabled}
+                    formatValue={(v) => `${Math.round(v * 100)}%`}
+                    {...slider(
+                      "offset-opacity",
+                      current.offsetOpacity ?? DEFAULT_LOOK_OFFSET_OPACITY,
+                      (spec, offsetOpacity) => ({ ...spec, offsetOpacity }),
+                      "text style offset opacity",
                     )}
                   />
                 )}
