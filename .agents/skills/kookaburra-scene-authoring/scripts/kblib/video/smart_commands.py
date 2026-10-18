@@ -347,7 +347,24 @@ def clean_clip(c: Dict[str, Any]) -> Dict[str, Any]:
         out["speed"] = int(out["speed"])
     if c.get("holdMs") is not None:
         out["holdMs"] = int(round(c["holdMs"]))
+    for framing in ("crop", "zoom"):
+        if c.get(framing) is not None:
+            out[framing] = c[framing]
     return out
+
+
+def zoom_moves(clip: Dict[str, Any]) -> bool:
+    """Whether a clip's zoom keys frame different boxes (a static crop or a one-box zoom survives any re-slicing)."""
+    keys = (clip.get("zoom") or {}).get("keys") or []
+    return len({tuple(k.get("rect") or ()) for k in keys}) > 1
+
+
+def refuse_moving_zoom(doc: Dict[str, Any], name: str, verb: str) -> None:
+    """Smart passes re-slice clips without retiming zoom keys, so a gliding zoom would land on the wrong frames."""
+    moving = [c["id"] for c in doc.get("clips") or [] if zoom_moves(c)]
+    if moving:
+        raise KbError(f"kb video {verb} can't keep the gliding zoom on {', '.join(moving)} of {name} in step (it re-slices clips without retiming zoom keys)",
+                      kind="invalid", hint=f"clear it with ./kb video zoom {name} {moving[0]} --clear, run ./kb video {verb}, then key the zoom again")
 
 
 def apply_clips(project: Project, name: str, clips: Sequence[Dict[str, Any]], sha: Optional[str], label: str) -> Any:
@@ -385,6 +402,7 @@ def cmd_cleanup(ctx: Any) -> int:
     if not target.is_edit:
         target = edit_for_source(project, target.rel or a.target, a.dry_run or a.emit_plan, tools)
     doc = target.doc
+    refuse_moving_zoom(doc, target.name, "cleanup")
     analyses = analyses_for(project, doc, tools)
     keep = keep_ranges(doc, a.keep or [])
     plan = cl.plan_cleanup(doc, analyses, preset=preset, keep=keep, skip=a.skip or [], cuts_only=a.cuts_only, no_speed=a.no_speed)
@@ -488,6 +506,10 @@ def scene_slot(project: Project, scene: str, slot: Optional[str], doc: Dict[str,
     info = repoint.slot_info(project, scene, slot)
     if not isinstance(info, dict):
         raise KbError(f"scene {scene} has no slot {slot} showing this video", 2)
+    if info.get("retimed"):
+        keys = ", ".join(f"{k} {v}" for k, v in (info.get("timing") or {}).items())
+        raise KbError(f"{info['ref']} in scene {info['scene']} plays its video with its own timing ({keys}), so scene time is not the edit's time plus startMs",
+                      kind="invalid", hint=repoint.RETIMED_HINT)
     return info
 
 
@@ -517,6 +539,7 @@ def cmd_fit(ctx: Any) -> int:
     if not target.is_edit:
         raise KbError(f"fit works on an edit; make one first: {KB} new {target.rel}", 2)
     doc = target.doc
+    refuse_moving_zoom(doc, target.name, "fit")
     fps = cl.doc_fps(doc)
     images = cl.image_ids(doc)
     total = cl.total_ms(doc["clips"], images)
@@ -636,6 +659,8 @@ def cmd_align(ctx: Any) -> int:
         return EXIT_OK
     res = plan.fit
     assert res is not None
+    if clip_signature(res.clips) != clip_signature(cl.relayout(doc["clips"], cl.image_ids(doc))):
+        refuse_moving_zoom(doc, target.name, "align")
     if not a.dry_run and clip_signature(res.clips) != clip_signature(cl.relayout(doc["clips"], cl.image_ids(doc))):
         refuse_worktree(project)
         checkpoint(project, f"{KB} align {target.name}")

@@ -255,7 +255,11 @@ def minimum_length(doc: Dict[str, Any], analyses: Dict[str, Dict[str, Any]]) -> 
 def _freeze(clip: Dict[str, Any], src: int, hold: float, ids: List[str]) -> Dict[str, Any]:
     fid = cl.next_id("c", ids)
     ids.append(fid)
-    return {"id": fid, "sourceId": clip["sourceId"], "inMs": int(src), "outMs": int(src), "speed": 1, "holdMs": int(round(hold)), "startMs": 0}
+    out = {"id": fid, "sourceId": clip["sourceId"], "inMs": int(src), "outMs": int(src), "speed": 1, "holdMs": int(round(hold)), "startMs": 0}
+    for framing in ("crop", "zoom"):
+        if clip.get(framing) is not None:
+            out[framing] = clip[framing]
+    return out
 
 
 def _lengthen(doc: Dict[str, Any], clips: List[Dict[str, Any]], analyses: Dict[str, Dict[str, Any]], need: float,
@@ -801,6 +805,8 @@ def align(doc: Dict[str, Any], analyses: Dict[str, Dict[str, Any]], source_id: s
     plan = AlignPlan()
     plan.moment_ms = moment
     start_now = int((slot or {}).get("startMs") or 0)
+    if target_local is not None and (slot or {}).get("retimed"):
+        raise FitError("the slot plays its video with its own timing (inMs, outMs, speed, loop or posterMs), so a scene time can't be landed through startMs")
     if target_local is not None:
         if prefer in ("auto", "scene"):
             start, why = scene_shift(target_local, lead, moment, slot)
