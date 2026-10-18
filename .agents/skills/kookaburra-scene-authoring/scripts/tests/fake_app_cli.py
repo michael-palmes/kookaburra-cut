@@ -6,6 +6,8 @@ appends each argv as a JSON line, FAKE_CLI_CAPS={json} overrides caps fields, FA
 FAKE_CLI_NOISE=1 mixes junk lines into render output, FAKE_CLI_RACE=marker makes the first save find the doc changed underneath it (a racing editor), FAKE_CLI_RAN=path
 is touched on every run. `check flashes` answers FAKE_CLI_FLASH_REPORT (a JSON file), else a clean report. `song
 analyse` answers FAKE_CLI_SONG (a JSON analysis), else a steady 120 bpm click; FAKE_CLI_SONG_CACHED=1 says it was cached.
+`media probe|conform` mirror cli_media.rs (caps lists `media` only when FAKE_CLI_CAPS adds MEDIA_CAPS);
+FAKE_CLI_FAIL=media-probe or media-conform fails them.
 """
 
 from __future__ import annotations
@@ -337,6 +339,123 @@ def cmd_render(f: Dict[str, Any]) -> None:
 
 COMMANDS = {"caps": cmd_caps, "probe": cmd_probe, "create": cmd_create, "validate": cmd_validate, "save": cmd_save, "render": cmd_render}
 
+# ── media (cli_media.rs): probe answers <file>.media.json when present, else derives from <file>.probe.json ──
+
+MEDIA_CAPS = {"version": 1, "commands": ["probe", "conform"]}
+ORIGINALS = "assets/.originals"
+
+
+def media_report(path: Path, pts: bool) -> Dict[str, Any]:
+    canned = Path(str(path) + ".media.json")
+    if canned.is_file():
+        report = json.loads(canned.read_text(encoding="utf-8"))
+    else:
+        p = probe_abs(path)
+        vfr = bool(p.get("vfr"))
+        why = ["vfr"] if vfr else []
+        report = {
+            "ffmpeg": {"container": "mov", "codec": "h264", "width": p["width"], "height": p["height"], "vfr": vfr, "bframes": 0, "discardedPackets": 0},
+            "avfoundation": {"codec": "avc1", "width": p["width"], "height": p["height"], "durationMs": p["durationMs"], "editList": [], "colour": {}},
+            "verdict": "ok", "reasons": list(why), "conform": {"recommended": bool(why), "why": why, "refused": None},
+        }
+    if pts and isinstance(report.get("ffmpeg"), dict):
+        report["ffmpeg"].setdefault("decode", {"frames": 1, "firstPtsMs": 0.0, "lastPtsMs": 0.0})
+    return dict(report, ok=True, file=str(path), kind="video")
+
+
+def media_plan(f: Dict[str, Any]) -> Dict[str, Any]:
+    """conform.rs plan: in place unless --name differs or the source sits in assets/.originals/."""
+    source = str(f.get("source") or "")
+    source = source[2:] if source.startswith("./") else source
+    if not source.startswith("assets/") or any(p in ("", "..") for p in source.split("/")):
+        fail("usage", f"--source must be a file under assets/, not {source!r}", 2)
+    name_part = source.rsplit("/", 1)[-1]
+    stem, _, ext = name_part.rpartition(".")
+    if ext.lower() not in ("mp4", "mov", "m4v"):
+        fail("invalid", f"{source} is not an MP4, MOV or M4V video AVFoundation can conform")
+    name = f.get("name") if isinstance(f.get("name"), str) else None
+    from_originals = source.startswith(ORIGINALS + "/")
+    in_place = not from_originals and (name is None or name == stem)
+    target = source if in_place else f"assets/{name or stem}.mp4"
+    keep = f.get("keep-original") or "move"
+    if keep not in ("move", "copy"):
+        fail("usage", f"--keep-original takes move or copy, not {keep!r}", 2)
+    if keep == "copy" and target == source:
+        fail("usage", "--keep-original copy needs a mezzanine with another name: give --name", 2)
+    tdir, _, tname = target.rpartition("/")
+    return {"source": source, "target": target, "original": source if from_originals else f"{ORIGINALS}/{name_part}",
+            "timing": f"{tdir}/{tname.rpartition('.')[0]}.timing.json", "keep": keep, "inPlace": in_place}
+
+
+def cmd_media(argv: List[str]) -> None:
+    if not argv or argv[0] not in ("caps", "probe", "conform"):
+        fail("usage", "give a media command: caps, probe, conform", 2)
+    f = flags(argv[1:])
+    if f"media-{argv[0]}" in (os.environ.get("FAKE_CLI_FAIL") or "").split(",") and argv[0] != "conform":
+        fail("invalid", f"fake media {argv[0]} failure")
+    if argv[0] == "caps":
+        emit({"ok": True, "cli": 1, "commands": ["caps", "probe", "conform"], "timingVersion": 1, "fps": 60, "keepOriginal": ["move", "copy"],
+              "exitCodes": {"ok": 0, "failed": 1, "usage": 2, "interrupted": 130}})
+        return
+    if argv[0] == "probe":
+        raw = f.get("file")
+        if not isinstance(raw, str) or not os.path.isabs(raw):
+            fail("usage", "--file must be an absolute path", 2)
+        if not Path(raw).is_file():
+            fail("missing", f"no file at {raw}")
+        emit(media_report(Path(raw), bool(f.get("pts"))))
+        return
+    project = project_of(f)
+    plan = media_plan(f)
+    src, target, original, timing = (project / plan[k] for k in ("source", "target", "original", "timing"))
+    if not src.is_file():
+        fail("missing", f"no video at {plan['source']}")
+    if plan["original"] != plan["source"] and original.exists():
+        fail("exists", f"{plan['original']} already holds an original: move it aside first")
+    if timing.exists() and not f.get("force"):
+        fail("exists", f"{plan['timing']} already exists: pass --force to replace it")
+    if not plan["inPlace"] and target.exists() and not f.get("force"):
+        fail("exists", f"{plan['target']} already exists: pass --name for another name or --force to replace it")
+    if plan["keep"] == "move" and not plan["inPlace"] and plan["source"] != plan["original"]:
+        from kblib.asset_refs import AssetRefs
+
+        used = AssetRefs.of(project).references(plan["source"])
+        if used:
+            fail("in-use", f"{plan['source']} is used by {', '.join(used)}: re-point them to {plan['target']} first", files=used)
+    info = probe_abs(src)
+    frames = max(1, -(-int(info.get("durationMs") or 0) * 60 // 1000))
+    emit({"event": "start", "total": frames, "out": str(target)})
+    emit({"event": "progress", "frame": frames // 2, "total": frames})
+    kept = False
+    if not original.exists():
+        original.parent.mkdir(parents=True, exist_ok=True)
+        original.write_bytes(src.read_bytes())
+        side = Path(str(src) + ".probe.json")
+        if side.is_file():
+            Path(str(original) + ".probe.json").write_bytes(side.read_bytes())
+        kept = True
+    if "media-conform" in (os.environ.get("FAKE_CLI_FAIL") or "").split(","):
+        if kept:
+            original.unlink()
+        fail("ffmpeg", "ffmpeg exited with 1: Invalid argument", event=True)
+    duration = em.js_round(frames * 1000 / 60)
+    body = {"fakeRender": True, "conformed": True, "frames": frames, "durationMs": duration, "width": info["width"], "height": info["height"], "fps": 60}
+    target.write_bytes(json.dumps(body).encode("utf-8"))
+    for stale in (Path(str(target) + ".probe.json"),):
+        if stale.exists():
+            stale.unlink()
+    if plan["keep"] == "move" and not plan["inPlace"] and plan["source"] != plan["original"]:
+        src.unlink()
+    report = media_report(original, False)
+    record = {"version": 1, "kind": "conform",
+              "source": {"original": plan["original"], "sha256": sha(original.read_bytes()), "verdict": report["verdict"], "reasons": report["reasons"]},
+              "mezzanine": {"path": plan["target"], "sha256": sha(target.read_bytes()), "fps": 60, "frames": frames, "durationMs": duration},
+              "slots": [[0, 0]], "holds": [{"fromMs": 0, "toMs": 100, "slots": [0, 5], "source": 0}]}
+    timing.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+    emit({"event": "done", "ok": True, "rel": plan["target"], "path": str(target), "original": plan["original"], "timing": plan["timing"],
+          "inPlace": plan["inPlace"], "frames": frames, "durationMs": duration, "bytes": target.stat().st_size, "elapsedMs": 5,
+          "verdict": report["verdict"], "reasons": report["reasons"]})
+
 
 def cmd_check(argv: List[str]) -> None:
     if argv[:1] != ["flashes"]:
@@ -421,6 +540,9 @@ def main() -> None:
         return
     if argv[:1] == ["song"]:
         cmd_song(argv[1:])
+        return
+    if argv[:1] == ["media"]:
+        cmd_media(argv[1:])
         return
     if len(argv) < 2 or argv[0] != "edit" or argv[1] not in COMMANDS:
         fail("usage", f"usage: kookaburra-cut edit <{'|'.join(COMMANDS)}>", 2)

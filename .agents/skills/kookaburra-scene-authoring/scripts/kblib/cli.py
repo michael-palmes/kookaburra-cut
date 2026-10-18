@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from . import KB_VERSION
-from . import assets as assetmod
+from . import assets_cli
 from . import bridge
 from . import capture as capturemod
 from . import catalog as catmod
@@ -65,7 +65,9 @@ the cwd, or uses $CLAUDE_PROJECT_DIR.
              theme list | theme show [ID] | theme set PATH VALUE
   Library    presets [list | show SLUG] | catalog [FAMILY] [--search Q]
              fonts safe | fonts check REF... | fonts list
-  Media      assets list | assets add FILE [--name N] | assets probe ASSET
+  Media      assets list | assets add FILE [--name N] [--no-conform] | assets probe ASSET [--deep]
+             assets conform ASSET [--repoint] | assets replace NAME FILE [--keep-old K] [--as-new]
+             assets unused [--kind K] [--archive [DIR]] | assets restore [ID] | assets meta NAME [--set K=V]
   Video      video list | video show NAME | video new SRC [--for SCENE:SLOT]
              video cut|keep|split|trim|speed|freeze|tap|mask|apply NAME ... (kb video --help)
              video render NAME [--use --scene S] | video use NAME --scene S | video open NAME
@@ -881,45 +883,6 @@ def cmd_catalog(ctx: Ctx) -> int:
     return EXIT_OK
 
 
-def cmd_assets(ctx: Ctx) -> int:
-    a = ctx.args
-    project = ctx.project
-    if a.op == "list":
-        items = assetmod.list_assets(project)
-        if ctx.json:
-            ctx.out({"assets": items})
-            return EXIT_OK
-        if not items:
-            emit("assets/ is empty; copy media in with kb assets add <file>")
-            return EXIT_OK
-        for item in items:
-            used = ", ".join(item["usedBy"]) if item["usedBy"] else "unused"
-            emit(f"{item['path']}  {item['kind']}  {assetmod.human_size(item['bytes'])}  ({used})")
-        return EXIT_OK
-    if a.op == "add":
-        res = assetmod.add(project, a.file, a.name, a.dir, dry_run=ctx.dry_run)
-        if ctx.json:
-            ctx.out(res)
-        elif ctx.dry_run:
-            emit(f"dry run, nothing written: would copy {a.file} to {res['path']}" if res["writes"] else f"{res['path']} (identical file already in assets/)")
-            if res.get("note"):
-                emit_err(f"kb: {res['note']}")
-        else:
-            emit(res["path"])
-            if res.get("note"):
-                emit_err(f"kb: {res['note']}")
-            if res.get("kind") in ("video", "audio"):
-                emit_err(f"kb: kb assets probe {res['path']} gives its duration for durationMs")
-        return EXIT_OK
-    info = assetmod.probe(project, a.asset)
-    if ctx.json:
-        ctx.out(info)
-    else:
-        for key, value in info.items():
-            emit(f"{key}: {value}")
-    return EXIT_OK
-
-
 # ── helpers ───────────────────────────────────────────────────────────────────
 
 
@@ -1162,18 +1125,7 @@ def build_parser(video_extensions: bool = True) -> argparse.ArgumentParser:
     s.add_argument("--search", metavar="Q", help="case-insensitive search of ids, labels and summaries")
     s.set_defaults(fn=cmd_catalog)
 
-    s = add("assets", "list media (with which scenes use it), copy media in, probe duration and size")
-    asub = s.add_subparsers(dest="op", metavar="OP")
-    asub.required = True
-    asub.add_parser("list", help="every file under assets/ and who uses it", parents=[common], formatter_class=Formatter)
-    y = asub.add_parser("add", help="copy a file into assets/ (never overwrites; prints the path to use)", parents=writes, formatter_class=Formatter)
-    y.add_argument("file", metavar="FILE")
-    y.add_argument("--name", help="file name inside assets/")
-    y.add_argument("--dir", help="subfolder of assets/")
-    y = asub.add_parser("probe", help="duration (ms), size, fps and codecs via the app's ffprobe", parents=[common], formatter_class=Formatter)
-    y.add_argument("asset", metavar="ASSET")
-    s.set_defaults(fn=cmd_assets)
-
+    assets_cli.register(sub, common, Formatter)
     coord_cli.register(sub, common, Formatter)
 
     # A new command module: one import here and mod.register(sub, common, Formatter), as kb video does.
