@@ -18,6 +18,7 @@ import { preloadOverlayPanelImages } from "./overlayPanelTexture";
 import { overlayPanelImageSources } from "./overlayPlan";
 import { type LoadedProject, preloadProjectImages } from "./project";
 import { awaitProjectCommitted, sceneMiddles } from "./themePreviews";
+import { preloadTransitionMasks } from "./transitionMask";
 
 const SETTLE_CAP_MS = 5000;
 const TEXTURE_SETTLE_MS = 200;
@@ -65,6 +66,7 @@ export async function settleProjectOpen(
         preloadOverlayPanelImages(loaded.id, overlayPanelImageSources(loaded.sceneFrames)),
       ),
       guard("bundled backdrops", preloadBundledBackdrops()),
+      guard("transition masks", preloadTransitionMasks(loaded.slots, gl)),
       gl
         ? guard(
             "environments",

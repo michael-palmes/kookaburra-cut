@@ -74,6 +74,7 @@ import { snapshotSceneStageFloors } from "./stageRegistry";
 import { useTerminalEditStore } from "./terminalEditStore";
 import { configureDeterministicEngine } from "./timeline";
 import { awaitTitleMeasuresSettled } from "./titleBlockMeasure";
+import { preloadTransitionMasks } from "./transitionMask";
 import { useWebsiteEditStore } from "./websiteEditStore";
 
 export { awaitTextSync } from "./exportFrame";
@@ -331,6 +332,8 @@ export async function exportPreamble(
   // Staged library objects referenced by any scene (and compare side B), the same barrier over a dynamic id set.
   await preloadSceneObjects([...(opts.sceneDocs ?? []), ...(opts.compareBDocs ?? [])]);
   await preloadProjectImages(opts.projectId);
+  // Image-mask transitions sample their SDF at the render seam, so each one is built and uploaded here; a missing or unreadable mask fails the run.
+  await preloadTransitionMasks(opts.slots, gl);
   onStep?.(2);
   // Parses the bundled typeface JSON for ExtrudedText (synchronous today; the barrier is kept so a future fetched font can't race frame 0).
   await preloadText3dFonts();

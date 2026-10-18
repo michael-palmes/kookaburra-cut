@@ -56,6 +56,30 @@ class CheckTests(KbTestCase):
         self.assertHasError(report, 'unknown transition "crossfdae". Did you mean \'crossfade\'', "unknown ease", "09-missing.tsx\" does not exist", "already scene 1", 'unknown aspect "21:9"', "kookaburra-midnight")
         self.assertTrue(any("mystery" in w for w in messages(report, "warning")))
 
+    def test_image_mask_transition(self) -> None:
+        m = read_json(self.root / "project.json")
+        mask = {"type": "luma", "durationMs": 600, "shape": "image", "src": "assets/star.png"}
+        m["scenes"][0]["transition"] = dict(mask)
+        write_json(self.root / "project.json", m)
+        self.assertHasError(self.run_check(), 'assets/star.png" does not exist')
+        (self.root / "assets").mkdir(exist_ok=True)
+        (self.root / "assets" / "star.png").write_bytes(b"\x89PNG\r\n\x1a\n")
+        self.assertFalse([e for e in messages(self.run_check()) if ".transition.s" in e])
+        m["scenes"][0]["transition"] = {**mask, "src": "assets/star.gif"}
+        write_json(self.root / "project.json", m)
+        self.assertHasError(self.run_check(), "not a supported mask image")
+        m["scenes"][0]["transition"] = {k: v for k, v in mask.items() if k != "src"}
+        write_json(self.root / "project.json", m)
+        self.assertHasError(self.run_check(), 'shape "image" needs "src"')
+        m["scenes"][0]["transition"] = {**mask, "type": "glasssweep"}
+        write_json(self.root / "project.json", m)
+        report = self.run_check()
+        self.assertEqual(messages(report), [])
+        self.assertTrue(any("only applies to luma" in w for w in messages(report, "warning")))
+        m["scenes"][0]["transition"] = {"type": "luma", "durationMs": 600, "src": "assets/star.png"}
+        write_json(self.root / "project.json", m)
+        self.assertTrue(any("src is only read" in w for w in messages(self.run_check(), "warning")))
+
     def test_invalid_manifest_json(self) -> None:
         write(self.root / "project.json", '{"id": "demo",')
         report = self.run_check()

@@ -55,6 +55,7 @@ import {
   timelineTotalMs,
 } from "./sceneTimeline";
 import { ensureFontRefsPinned } from "./systemFonts";
+import { resolveSlotTransitionMasks } from "./transitionMask";
 
 /** On-disk project manifest (`projects/<id>/project.json`). */
 export interface ProjectManifest {
@@ -1100,13 +1101,19 @@ export async function loadProject(
 
   // Overlap-aware placement: a transition pulls the next scene's start back, shortening the project.
   const outgoing = outgoingSceneTransitions(manifest);
-  const slots = buildSceneTimeline(
+  const timeline = buildSceneTimeline(
     manifest.scenes.map((_, i) => ({
       // TSX-authored, so it may collide: never key a mount off it, files are the identity (`sceneMountKey`).
       id: scenes[i].id,
       durationMs: scenes[i].durationMs,
       transition: outgoing[i],
     })),
+  );
+  const slots = parseManifest(() =>
+    resolveSlotTransitionMasks(
+      timeline,
+      (src) => resolveAssetUrl(id, src) + assetVersionSuffix(id, src),
+    ),
   );
   const totalMs = timelineTotalMs(slots);
 
