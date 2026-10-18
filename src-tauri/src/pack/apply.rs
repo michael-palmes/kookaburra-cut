@@ -126,6 +126,9 @@ pub fn apply_import(
     outcome
         .notes
         .extend(theme_fallback_notes(root, &manifest, &work));
+    outcome
+        .notes
+        .extend(theme_base_notes(root, &staging, &work));
 
     let total = fonts.len() + work.len();
     let mut done = 0usize;
@@ -304,6 +307,15 @@ fn is_project_shaped(kind: ItemKind) -> bool {
 
 /// Point the folders in this import at the slugs a keep-both moved them to. Anything outside the import is never read.
 fn rewrite_references(staging: &Path, work: &[Work], renames: &Renames) -> Result<(), PackError> {
+    for theme in work
+        .iter()
+        .filter(|w| w.kind == ItemKind::Theme && w.resolution != Resolution::Skip)
+    {
+        rewrite_theme_base(
+            &staged_source(staging, ItemKind::Theme, &theme.slug).join("theme.json"),
+            renames,
+        )?;
+    }
     for project in work
         .iter()
         .filter(|w| is_project_shaped(w.kind) && w.resolution != Resolution::Skip)
@@ -341,6 +353,29 @@ fn rewrite_doc(path: &Path, renames: &Renames, own_slug: Option<&str>) -> Result
     if !changed {
         return Ok(());
     }
+    let pretty = serde_json::to_string_pretty(&doc).map_err(|e| PackError::Io(e.to_string()))?;
+    std::fs::write(path, pretty + "\n")?;
+    Ok(())
+}
+
+/// A staged variant follows its base to a keep-both slug. Only `extends` is touched: a theme's gradient names are its own.
+fn rewrite_theme_base(path: &Path, renames: &Renames) -> Result<(), PackError> {
+    let Ok(text) = std::fs::read_to_string(path) else {
+        return Ok(());
+    };
+    let Ok(mut doc) = serde_json::from_str::<Value>(&text) else {
+        return Ok(());
+    };
+    let Some(to) = doc
+        .get("extends")
+        .and_then(Value::as_str)
+        .and_then(|id| id.strip_prefix("ws:"))
+        .and_then(|slug| renames.themes.get(slug))
+        .cloned()
+    else {
+        return Ok(());
+    };
+    doc["extends"] = Value::String(format!("ws:{to}"));
     let pretty = serde_json::to_string_pretty(&doc).map_err(|e| PackError::Io(e.to_string()))?;
     std::fs::write(path, pretty + "\n")?;
     Ok(())
@@ -454,6 +489,50 @@ fn theme_fallback_notes(root: &Path, manifest: &PackManifest, work: &[Work]) -> 
                 }
             }
         }
+    }
+    notes
+}
+
+/// A variant whose base does not arrive with it binds to the recipient's theme of that slug, or to nothing.
+fn theme_base_notes(root: &Path, staging: &Path, work: &[Work]) -> Vec<String> {
+    let mut notes = Vec::new();
+    for theme in work
+        .iter()
+        .filter(|w| w.kind == ItemKind::Theme && w.resolution != Resolution::Skip)
+    {
+        let path = staged_source(staging, ItemKind::Theme, &theme.slug).join("theme.json");
+        let Some(base) = std::fs::read_to_string(&path)
+            .ok()
+            .and_then(|text| serde_json::from_str::<Value>(&text).ok())
+            .and_then(|doc| crate::theme::theme_extends_of(&doc))
+        else {
+            continue;
+        };
+        let Some(base_slug) = base.strip_prefix("ws:") else {
+            continue;
+        };
+        let arrives = work.iter().any(|w| {
+            w.kind == ItemKind::Theme
+                && w.target_slug == base_slug
+                && w.resolution != Resolution::Skip
+        });
+        if arrives {
+            continue;
+        }
+        let local = workspace_target(root, ItemKind::Theme, base_slug)
+            .ok()
+            .filter(|target| target.exists());
+        notes.push(match local {
+            Some(target) => format!(
+                "{} will be based on your existing {} theme.",
+                theme.name,
+                local_name(ItemKind::Theme, &target.path, base_slug)
+            ),
+            None => format!(
+                "{} is based on \"{base_slug}\", which is not in this pack or your workspace, so it falls back to the default theme.",
+                theme.name
+            ),
+        });
     }
     notes
 }
@@ -837,6 +916,145 @@ mod tests {
         assert_eq!(kept.outcome, ItemOutcome::KeptBoth);
         assert_eq!(kept.slug, "acme-dark-2");
 
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    fn extends_of(path: &Path) -> String {
+        serde_json::from_str::<Value>(&read(path))
+            .ok()
+            .and_then(|doc| {
+                doc.get("extends")
+                    .and_then(Value::as_str)
+                    .map(str::to_owned)
+            })
+            .unwrap_or_default()
+    }
+
+    /// A variant follows its kept-both base to the new slug; a local variant of the old slug stays put.
+    #[test]
+    fn keep_both_rewrites_a_variant_base() {
+        let root = scratch("kb-variant-root");
+        let staging = scratch("kb-variant-staging");
+        put_local(
+            &root,
+            ItemKind::Theme,
+            "acme-core",
+            r#"{"version":2,"name":"Acme Core"}"#,
+        );
+        put_local(
+            &root,
+            ItemKind::Theme,
+            "mine-night",
+            r#"{"version":3,"name":"Mine","extends":"ws:acme-core"}"#,
+        );
+        let core = stage_dir_item(
+            &staging,
+            ItemKind::Theme,
+            "acme-core",
+            &[("theme.json", r#"{"version":2,"name":"Acme Core (theirs)"}"#)],
+            FUTURE,
+        );
+        let night = stage_dir_item(
+            &staging,
+            ItemKind::Theme,
+            "acme-night",
+            &[(
+                "theme.json",
+                r#"{"version":3,"name":"Acme Night","extends":"ws:acme-core","gradients":{"acme-core":{}}}"#,
+            )],
+            FUTURE,
+        );
+        let mut contents = PackContents {
+            themes: vec![theme_of(core), theme_of(night)],
+            ..Default::default()
+        };
+        contents.themes[1].base.name = "Acme Night".into();
+        let outcome = apply_import(
+            &root,
+            staged_pack(staging.clone(), contents),
+            &resolutions(&[
+                (ItemKind::Theme, "acme-core", Resolution::KeepBoth),
+                (ItemKind::Theme, "acme-night", Resolution::Replace),
+            ]),
+            |_, _, _| {},
+        )
+        .unwrap();
+        assert!(outcome.stopped_at.is_none(), "{:?}", outcome.results);
+        assert_eq!(
+            extends_of(&root.join("themes/acme-night/theme.json")),
+            "ws:acme-core-2"
+        );
+        assert!(read(&root.join("themes/acme-night/theme.json")).contains("\"acme-core\": {}"));
+        assert_eq!(
+            extends_of(&root.join("themes/mine-night/theme.json")),
+            "ws:acme-core"
+        );
+        assert!(outcome.notes.is_empty(), "{:?}", outcome.notes);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A variant whose base stays behind says what it binds to instead.
+    #[test]
+    fn a_variant_without_its_base_says_what_it_binds_to() {
+        let root = scratch("variant-note-root");
+        let staging = scratch("variant-note-staging");
+        put_local(
+            &root,
+            ItemKind::Theme,
+            "acme-core",
+            r#"{"version":2,"name":"My Core"}"#,
+        );
+        let core = stage_dir_item(
+            &staging,
+            ItemKind::Theme,
+            "acme-core",
+            &[("theme.json", r#"{"version":2,"name":"Theirs"}"#)],
+            FUTURE,
+        );
+        let night = stage_dir_item(
+            &staging,
+            ItemKind::Theme,
+            "acme-night",
+            &[(
+                "theme.json",
+                r#"{"version":3,"name":"Acme Night","extends":"ws:acme-core"}"#,
+            )],
+            FUTURE,
+        );
+        let day = stage_dir_item(
+            &staging,
+            ItemKind::Theme,
+            "acme-day",
+            &[(
+                "theme.json",
+                r#"{"version":3,"name":"Acme Day","extends":"ws:acme-gone"}"#,
+            )],
+            FUTURE,
+        );
+        let mut contents = PackContents {
+            themes: vec![theme_of(core), theme_of(night), theme_of(day)],
+            ..Default::default()
+        };
+        contents.themes[1].base.name = "Acme Night".into();
+        contents.themes[2].base.name = "Acme Day".into();
+        let outcome = apply_import(
+            &root,
+            staged_pack(staging.clone(), contents),
+            &resolutions(&[
+                (ItemKind::Theme, "acme-core", Resolution::Skip),
+                (ItemKind::Theme, "acme-night", Resolution::Replace),
+                (ItemKind::Theme, "acme-day", Resolution::Replace),
+            ]),
+            |_, _, _| {},
+        )
+        .unwrap();
+        assert!(outcome
+            .notes
+            .contains(&"Acme Night will be based on your existing My Core theme.".to_owned()));
+        assert!(outcome
+            .notes
+            .iter()
+            .any(|n| n.starts_with("Acme Day is based on \"acme-gone\"")));
         let _ = std::fs::remove_dir_all(&root);
     }
 

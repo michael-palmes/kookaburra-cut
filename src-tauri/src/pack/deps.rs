@@ -410,6 +410,37 @@ fn scan_source(text: &str, out: &mut DocRefs) {
     }
 }
 
+/// A theme's bases nearest first: workspace ones with their documents, a bundled one (which ends the chain) without. Stops at a missing base, a loop or the cap.
+fn theme_chain(root: &Path, doc: &Value) -> Vec<(String, Option<Value>)> {
+    let mut chain: Vec<(String, Option<Value>)> = Vec::new();
+    let mut next = crate::theme::theme_extends_of(doc);
+    while let Some(id) = next.take() {
+        if chain.len() >= crate::theme::MAX_THEME_CHAIN || chain.iter().any(|(seen, _)| *seen == id)
+        {
+            break;
+        }
+        if strip_ws(&id).is_none() {
+            chain.push((id, None));
+            break;
+        }
+        let Some(base) = crate::theme::read_workspace_theme(root, &id) else {
+            break;
+        };
+        next = crate::theme::theme_extends_of(&base);
+        chain.push((id, Some(base)));
+    }
+    chain
+}
+
+/// The document a theme renders from: its chain merged when every base is in the workspace, else its own.
+fn merged_theme(root: &Path, slug: &str, doc: &Value) -> Value {
+    crate::theme::resolve_theme_document(doc, &format!("ws:{slug}"), |id| {
+        crate::theme::read_workspace_theme(root, id)
+    })
+    .doc
+    .unwrap_or_else(|| doc.clone())
+}
+
 // - Files ----------------------------------------------------------------------
 
 fn read_json(path: &Path) -> Result<Value, String> {
@@ -795,6 +826,15 @@ impl<'a> Resolver<'a> {
         let label = item_key(ItemKind::Theme, slug);
         let mut requires = PackRequires::default();
 
+        // A variant travels with its base, whose own visit pulls the rest of the chain.
+        if let Some(base) = crate::theme::theme_extends_of(&doc) {
+            if let Some(base_slug) = strip_ws(&base) {
+                requires.themes.push(base_slug.to_owned());
+                self.require(ItemKind::Theme, base_slug, Some(&label));
+            }
+        }
+        let chain = theme_chain(self.root, &doc);
+
         for role in ["headline", "body"] {
             let Some(value) = doc.get("typography").and_then(|t| t.get(role)) else {
                 continue;
@@ -816,11 +856,20 @@ impl<'a> Resolver<'a> {
 
         let mut refs = DocRefs::default();
         scan_value(&doc, None, &mut refs);
-        let own: BTreeSet<String> = doc
-            .get("gradients")
-            .and_then(Value::as_object)
-            .map(|m| m.keys().cloned().collect())
-            .unwrap_or_default();
+        // Gradient names resolve chain-wide: a name any base defines is the theme's own.
+        let mut own: BTreeSet<String> = BTreeSet::new();
+        let mut bundled_base = false;
+        for link in std::iter::once(Some(&doc)).chain(chain.iter().map(|(_, d)| d.as_ref())) {
+            match link {
+                Some(d) => own.extend(
+                    d.get("gradients")
+                        .and_then(Value::as_object)
+                        .map(|m| m.keys().cloned().collect::<Vec<_>>())
+                        .unwrap_or_default(),
+                ),
+                None => bundled_base = true,
+            }
+        }
         for name in refs.gradients {
             let slug_ref = strip_ws(&name).unwrap_or(&name).to_owned();
             if own.contains(&name) || slug_ref.is_empty() {
@@ -833,6 +882,9 @@ impl<'a> Resolver<'a> {
             {
                 requires.gradients.push(slug_ref.clone());
                 self.require(ItemKind::Gradient, &slug_ref, Some(&label));
+            } else if bundled_base {
+                // A bundled base ships with the app and may define the name; Rust cannot see its gradients.
+                continue;
             } else {
                 self.warnings.push(ClosureWarning::MissingGradient {
                     slug: slug_ref,
@@ -852,6 +904,8 @@ impl<'a> Resolver<'a> {
             requires.fonts.push(key.clone());
             self.require(ItemKind::Font, &key, Some(&label));
         }
+        requires.themes.sort();
+        requires.themes.dedup();
         requires.fonts.sort();
         requires.fonts.dedup();
         requires.gradients.sort();
@@ -1237,7 +1291,8 @@ fn build_theme(
         .join(ItemKind::Theme.workspace_dir().unwrap_or("themes"))
         .join(slug)
         .join("theme.json");
-    let doc = read_json(&file).unwrap_or(Value::Null);
+    let own = read_json(&file).unwrap_or(Value::Null);
+    let doc = merged_theme(root, slug, &own);
     let staged = stage_all(
         vec![(
             "theme.json".to_owned(),
@@ -1615,6 +1670,102 @@ mod tests {
             closure.required_by.get("gradient:acme-glow").unwrap(),
             &vec!["theme:acme-dark".to_owned()]
         );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A variant carries its whole base chain, and a gradient a base defines is the theme's own, not a saved preset.
+    #[test]
+    fn a_variant_carries_its_base_chain() {
+        let root = fixture("variant");
+        write(
+            &root,
+            "themes/acme-dark/theme.json",
+            r##"{"version":3,"name":"Acme Dark","extends":"ws:acme-core","mode":"dark",
+                "background":{"type":"gradient","gradient":"acme-glow"}}"##,
+        );
+        write(
+            &root,
+            "themes/acme-core/theme.json",
+            r##"{"version":2,"name":"Acme Core","mode":"light",
+                "colors":{"background":"#000","text":"#fff","accent":"#f50","muted":"#888"},
+                "typography":{"headline":{"family":"Avenir Next","weight":600},"body":"Inter","scale":1.25},
+                "gradients":{"core-wash":{"type":"radial","stops":[["#000",0],["#fff",1]]}}}"##,
+        );
+        write(
+            &root,
+            "themes/acme-night/theme.json",
+            r##"{"version":3,"name":"Acme Night","extends":"ws:acme-dark",
+                "backdrop":{"type":"gradient","gradient":"core-wash"}}"##,
+        );
+        let sel = PackSelection {
+            themes: vec!["acme-night".to_owned()],
+            ..Default::default()
+        };
+        let closure = resolve_closure(&root, &sel).unwrap();
+        let slugs: Vec<&str> = closure
+            .contents
+            .themes
+            .iter()
+            .map(|t| t.base.slug.as_str())
+            .collect();
+        assert_eq!(slugs.len(), 3, "{slugs:?}");
+        for slug in ["acme-night", "acme-dark", "acme-core"] {
+            assert!(slugs.contains(&slug), "{slug} missing from {slugs:?}");
+        }
+        assert_eq!(
+            closure.required_by.get("theme:acme-core").unwrap(),
+            &vec!["theme:acme-dark".to_owned()]
+        );
+        assert_eq!(
+            closure.required_by.get("theme:acme-dark").unwrap(),
+            &vec!["theme:acme-night".to_owned()]
+        );
+        assert_eq!(closure.contents.gradients.len(), 1);
+        assert_eq!(closure.contents.gradients[0].base.slug, "acme-glow");
+        assert!(!closure
+            .warnings
+            .iter()
+            .any(|w| matches!(w, ClosureWarning::MissingGradient { .. })));
+        let night = closure
+            .contents
+            .themes
+            .iter()
+            .find(|t| t.base.slug == "acme-night")
+            .unwrap();
+        assert_eq!(night.base.name, "Acme Night");
+        assert_eq!(night.mode, "dark");
+        assert_eq!(night.swatches, vec!["#000", "#fff", "#f50", "#888"]);
+        assert_eq!(night.requires.themes, vec!["acme-dark".to_owned()]);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_missing_base_warns_and_a_bundled_base_stays_home() {
+        let root = fixture("variant-missing");
+        write(
+            &root,
+            "themes/acme-night/theme.json",
+            r#"{"version":3,"name":"Acme Night","extends":"ws:acme-gone"}"#,
+        );
+        write(
+            &root,
+            "themes/acme-day/theme.json",
+            r#"{"version":3,"name":"Acme Day","extends":"kookaburra-paper","background":{"type":"gradient","gradient":"paper-wash"}}"#,
+        );
+        let sel = PackSelection {
+            themes: vec!["acme-night".to_owned(), "acme-day".to_owned()],
+            ..Default::default()
+        };
+        let closure = resolve_closure(&root, &sel).unwrap();
+        assert_eq!(closure.contents.themes.len(), 2);
+        assert!(closure.warnings.iter().any(|w| matches!(
+            w,
+            ClosureWarning::MissingTheme { slug, required_by } if slug == "acme-gone" && required_by == "theme:acme-night"
+        )));
+        assert!(!closure
+            .warnings
+            .iter()
+            .any(|w| matches!(w, ClosureWarning::MissingGradient { .. })));
         let _ = std::fs::remove_dir_all(&root);
     }
 
