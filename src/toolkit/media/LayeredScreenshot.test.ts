@@ -1,6 +1,36 @@
+import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { computeFormat, FORMATS } from "../../engine/format";
-import { layeredScreenshotTitleLayout } from "./LayeredScreenshot";
+import {
+  colouredShadowMaterial,
+  layeredScreenshotTitleLayout,
+  SHADOW_FRAG,
+  SHADOW_FRAG_HARD,
+} from "./LayeredScreenshot";
+
+describe("shadow shaders", () => {
+  it("keeps the soft shadow program source-identical beside the coloured one", () => {
+    const hash = createHash("sha256").update(SHADOW_FRAG).digest("hex").slice(0, 16);
+    expect(hash).toBe("ac2c1b2ddfd17689");
+    expect(SHADOW_FRAG_HARD).not.toBe(SHADOW_FRAG);
+    expect(SHADOW_FRAG_HARD).toContain("uniform vec3 uColor;");
+  });
+
+  it("builds the coloured shadow untone-mapped with its colour", () => {
+    const material = colouredShadowMaterial({
+      size: [2, 1],
+      half: [1, 0.5],
+      radius: 0,
+      blur: 0,
+      opacity: 0.5,
+      colour: "#ffffff",
+    });
+    expect(material.fragmentShader).toBe(SHADOW_FRAG_HARD);
+    expect(material.toneMapped).toBe(false);
+    expect(material.uniforms.uColor.value.getHexString()).toBe("ffffff");
+    expect(material.uniforms.uOpacity.value).toBe(0.5);
+  });
+});
 
 describe("layeredScreenshotTitleLayout", () => {
   it.each(["16:9", "9:16"] as const)("reserves a clear title band in %s", (aspect) => {

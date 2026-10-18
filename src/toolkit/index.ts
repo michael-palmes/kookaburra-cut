@@ -123,7 +123,7 @@ export { HeroObject, type HeroObjectProps } from "./hero/HeroObject";
 // Shared light rig for lit primitives (mount once per scene, pass lit={false} to primitives)
 export { LightRig } from "./lighting/LightRig";
 // Flat image plane for icons/logos/stills: unlit, colour-exact, PNG alpha.
-export { ImageCard, type ImageCardProps } from "./media/ImageCard";
+export { type HardShadowSpec, ImageCard, type ImageCardProps } from "./media/ImageCard";
 export { LayeredScreenshot, type LayeredScreenshotProps } from "./media/LayeredScreenshot";
 export { VideoClip, type VideoClipProps } from "./media/VideoClip";
 // A macOS screen recording as a floating window over a backing stage, animated in 3D.

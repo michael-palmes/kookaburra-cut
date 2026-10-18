@@ -468,6 +468,8 @@ export interface VideoWindowShadow {
   opacity: number;
   blur: number;
   offset: [number, number];
+  /** `#rrggbb`; absent is the black soft shadow. With `blur: 0` it is a hard shadow. */
+  colour?: string;
 }
 
 /** The window's edge stroke. `width` is a fraction of the short edge, `opacity` 0..1; `enabled: false` turns it off. */
@@ -1037,7 +1039,13 @@ function parseSceneMediaWindow(
   const window: SceneMediaWindow = { radius: parseSceneMediaRadius(raw.radius, source, label) };
   if (typeof raw.recording === "boolean") window.recording = raw.recording;
   if (isRecord(raw.border)) window.border = raw.border as unknown as VideoWindowBorder;
-  if (isRecord(raw.shadow)) window.shadow = raw.shadow as unknown as VideoWindowShadow;
+  if (isRecord(raw.shadow)) {
+    window.shadow = raw.shadow as unknown as VideoWindowShadow;
+    const colour = raw.shadow.colour;
+    if (colour !== undefined && !(typeof colour === "string" && COMPARE_HEX.test(colour))) {
+      parseWarn(`[sceneDoc] ${source}: ${label}.window.shadow.colour isn't #rrggbb, ignored`);
+    }
+  }
   return window;
 }
 
