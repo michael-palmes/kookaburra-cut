@@ -47,6 +47,8 @@ base64 = { version = "0.23", default-features = false, features = ["std"] }
 # Naming the type of `RunEvent::Opened { urls }` (Open With); already in the lock via tauri.
 url = "2"
 png = "=0.18.1"
+# Song analysis: beat and downbeat tracking with the bundled beat-this small model (pure-Rust rten runtime; we decode with the ffmpeg sidecar, so no symphonia).
+beat-this = { version = "=1.1.0", default-features = false }
 
 # macOS-only: reach the real NSMenuItem to set a true SF Symbol on the Settings
 # menu entry (Tauri/muda's NativeIcon can't reference systemSymbolName images).
@@ -86,6 +88,28 @@ objc2-web-kit = { version = "=0.3.2", default-features = false, features = [
 block2 = "0.6"
 # Never imported: pins the webview layer to tauri-runtime-wry's wry, so move it with tauri (one wry in the lock).
 wry = "=0.57.0"
+
+# Inference at opt-level 0 is far too slow for the dev app and tests, so dev builds optimise the beat-this stack.
+[profile.dev.package.beat-this]
+opt-level = 3
+[profile.dev.package.rten]
+opt-level = 3
+[profile.dev.package.rten-base]
+opt-level = 3
+[profile.dev.package.rten-gemm]
+opt-level = 3
+[profile.dev.package.rten-simd]
+opt-level = 3
+[profile.dev.package.rten-tensor]
+opt-level = 3
+[profile.dev.package.rten-vecmath]
+opt-level = 3
+[profile.dev.package.rubato]
+opt-level = 3
+[profile.dev.package.realfft]
+opt-level = 3
+[profile.dev.package.rustfft]
+opt-level = 3
 
 # macOS 27 dyld rejects optimised proc-macro dylibs (mis-aligned LINKEDIT string pool); opt-level 0 here covers only build scripts and proc macros, the shipped binary is unaffected.
 [profile.release.build-override]

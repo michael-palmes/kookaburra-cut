@@ -3,15 +3,26 @@ import type { BeatAnalysis } from "./beatAnalysis";
 import { effectiveKeyMoments, projectBeatGrid } from "./beatState";
 
 const analysis: BeatAnalysis = {
-  version: 1,
+  version: 2,
+  sha256: "",
+  tracker: "dsp",
+  fallbackReason: null,
   durationMs: 10_000,
   bpm: 120,
+  fit: null,
   beats: [],
+  beatInfo: [],
+  downbeats: [],
   keyMoments: [
     { tMs: 1000, strength: 0.9 },
     { tMs: 4000, strength: 0.5 },
   ],
   envelope: { hopMs: 21.333, values: [] },
+  energy: null,
+  sections: [],
+  breaths: [],
+  stabs: [],
+  lyrics: null,
 };
 
 describe("effectiveKeyMoments", () => {

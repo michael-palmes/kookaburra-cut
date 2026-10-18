@@ -1,15 +1,9 @@
-/** Beat guidance for the loaded project's soundtrack: cache-first via Rust (`beat_cache_load`/`beat_cache_store`), else decode at the pinned rate and analyse in the webview. Module singleton beside `previewAudio`; the store carries only what the lanes draw, and the export path never reads it. */
+/** Beat guidance for the loaded project's soundtrack: the native song analyser (`song_analysis`: ffmpeg decode, the bundled beat-this model or the DSP fit, cached by audio SHA) supplies it and this module keeps the lanes' copy. Module singleton beside `previewAudio`; the store carries only what the lanes draw, and the export path never reads it. */
 
 import { invoke } from "@tauri-apps/api/core";
 import { create } from "zustand";
-import type { BeatKeyMoment } from "./beatAnalysis";
-import {
-  analyseBeats,
-  BEAT_SAMPLE_RATE,
-  type BeatAnalysis,
-  parseBeatAnalysis,
-} from "./beatAnalysis";
-import { fsUrl } from "./media";
+import type { BeatAnalysis, BeatKeyMoment } from "./beatAnalysis";
+import { parseBeatAnalysis } from "./beatAnalysis";
 import type { AudioMarkersSpec, LoadedProject } from "./project";
 
 export type BeatStatus = "idle" | "analysing" | "ready" | "error";
@@ -24,21 +18,7 @@ export const useBeatStore = create<BeatStoreState>(() => ({ status: "idle", anal
 let generation = 0;
 let currentAbs: string | null = null;
 
-async function decodeMono(bytes: ArrayBuffer): Promise<Float32Array> {
-  const ctx = new OfflineAudioContext(1, 1, BEAT_SAMPLE_RATE);
-  const buffer = await ctx.decodeAudioData(bytes);
-  const mono = new Float32Array(buffer.length);
-  for (let ch = 0; ch < buffer.numberOfChannels; ch++) {
-    const data = buffer.getChannelData(ch);
-    for (let i = 0; i < data.length; i++) mono[i] += data[i];
-  }
-  if (buffer.numberOfChannels > 1) {
-    for (let i = 0; i < mono.length; i++) mono[i] /= buffer.numberOfChannels;
-  }
-  return mono;
-}
-
-function run(): void {
+function run(force: boolean): void {
   const gen = ++generation;
   const abs = currentAbs;
   if (!abs) {
@@ -48,21 +28,11 @@ function run(): void {
   useBeatStore.setState({ status: "analysing", analysis: null });
   void (async () => {
     try {
-      const cached = await invoke<string | null>("beat_cache_load", { path: abs });
+      const raw = await invoke<unknown>("song_analysis", { path: abs, force });
       if (gen !== generation) return;
-      const parsed = cached ? parseBeatAnalysis(cached) : null;
-      if (parsed) {
-        useBeatStore.setState({ status: "ready", analysis: parsed });
-        return;
-      }
-      const bytes = await (await fetch(fsUrl(abs))).arrayBuffer();
-      const mono = await decodeMono(bytes);
-      if (gen !== generation) return;
-      const analysis = analyseBeats(mono, BEAT_SAMPLE_RATE);
+      const analysis = parseBeatAnalysis(raw);
+      if (!analysis) throw new Error("the song analysis did not validate");
       useBeatStore.setState({ status: "ready", analysis });
-      void invoke("beat_cache_store", { path: abs, json: JSON.stringify(analysis) }).catch((e) => {
-        console.warn("[beats] cache store failed (analysis kept in memory):", e);
-      });
     } catch (e) {
       console.warn("[beats] analysis failed (beat lane shows an error chip):", e);
       if (gen === generation) useBeatStore.setState({ status: "error", analysis: null });
@@ -73,12 +43,12 @@ function run(): void {
 /** Point beat analysis at a freshly-loaded project (or none). Cache makes reloads instant. */
 export function setBeatProject(project: LoadedProject | null): void {
   currentAbs = project?.audio?.abs ?? null;
-  run();
+  run(false);
 }
 
-/** Re-run after a failure (the error chip's retry). */
+/** Re-run after a failure (the error chip's retry), bypassing the cache. */
 export function retryBeatAnalysis(): void {
-  run();
+  run(true);
 }
 
 /** How close a manual marker sits to a detected moment before it inherits that strength. */
