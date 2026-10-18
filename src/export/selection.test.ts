@@ -412,6 +412,7 @@ describe("buildVideoExportOptions", () => {
     sceneFrames: [undefined],
     compareBDocs: [undefined],
     compareBThemes: [undefined],
+    roomThemes: { "kookaburra-sunrise": { id: "kookaburra-sunrise" } },
     renderSettings: { motionBlur: { shutter: 0.5 } },
     audio: AUDIO,
   } as unknown as LoadedProject;
@@ -435,6 +436,7 @@ describe("buildVideoExportOptions", () => {
     sceneFrames: project.sceneFrames,
     compareBDocs: project.compareBDocs,
     compareBThemes: project.compareBThemes,
+    roomThemes: project.roomThemes,
     motionBlur: project.renderSettings.motionBlur,
     audio: project.audio,
     codec: "libx264",
