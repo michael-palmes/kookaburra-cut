@@ -175,6 +175,22 @@ class CheckTests(KbTestCase):
         report = self.run_check(["scenes/02-hero.json"])
         self.assertTrue(any("stage the scene" in w for w in messages(report, "warning")))
 
+    def test_room_reaches_project_lights_and_clamps_negative_at(self) -> None:
+        manifest = read_json(self.root / "project.json")
+        manifest["lighting"] = {"lights": [{"id": "key", "type": "point", "intensity": 2, "placement": {"mode": "point", "position": [0, 1, 2]}}]}
+        write_json(self.root / "project.json", manifest)
+        doc = {
+            "version": 1,
+            "lighting": {"lights": [{"id": "wash", "type": "point", "intensity": 4, "placement": {"mode": "point", "position": [0, 1, 2]}}]},
+            "room": {"keys": [{"at": -200, "colour": "#ff0000", "lighting": {"lights": {"key": {"intensity": 1}}}}]},
+        }
+        write_json(self.root / "scenes" / "02-hero.json", doc)
+        report = self.run_check(["scenes/02-hero.json"])
+        self.assertFalse(any("room.keys[0].at" in e for e in messages(report)))
+        warnings = messages(report, "warning")
+        self.assertTrue(any("room.keys[0].at" in w and "from 0" in w for w in warnings))
+        self.assertFalse(any("lights.key" in w for w in warnings), warnings)
+
     def test_sidecar_version_and_json(self) -> None:
         write_json(self.root / "scenes" / "02-hero.json", {"name": "x"})
         self.assertHasError(self.run_check(["scenes/02-hero.json"]), "ignores the whole sidecar")

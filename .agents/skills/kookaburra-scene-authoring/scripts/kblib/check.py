@@ -466,8 +466,10 @@ class Checker:
             at = key.get("at")
             if isinstance(at, str):
                 rep.error(file, f"{path}.at", "must be scene-local ms; positions like bar or cue strings aren't supported yet (the app drops the key)")
-            elif not is_number(at) or at < 0:
-                rep.error(file, f"{path}.at", "must be scene-local ms >= 0 (the app drops the key)")
+            elif not is_number(at):
+                rep.error(file, f"{path}.at", "must be scene-local ms (the app drops the key)")
+            elif at < 0:
+                rep.warn(file, f"{path}.at", "is below 0; the app plays the key from 0")
             colour = key.get("colour")
             if colour is not None and not (isinstance(colour, str) and (HEX_RE.match(colour) and len(colour) in (4, 7) or colour in self.ROOM_TOKENS)):
                 rep.error(file, f"{path}.colour", f'must be a hex (#rgb or #rrggbb) or one of {", ".join(self.ROOM_TOKENS)}')
@@ -532,12 +534,40 @@ class Checker:
         if not isinstance(lights, dict):
             rep.error(file, f"{path}.lights", "must be an object keyed by light id")
             return
-        declared = dig(doc, "lighting", "lights")
-        ids = {l.get("id") for l in declared if isinstance(l, dict)} if isinstance(declared, list) else None
+        ids = self.room_light_ids(doc)
         for light_id, entry in lights.items():
             if ids is not None and light_id not in ids:
-                rep.warn(file, f"{path}.lights.{light_id}", f"no light with this id in the sidecar's lighting.lights.{did_you_mean(light_id, [i for i in ids if isinstance(i, str)])}")
+                rep.warn(file, f"{path}.lights.{light_id}", f"no light with this id in the theme, project or sidecar lighting.{did_you_mean(light_id, sorted(ids))}")
             self.room_light(file, f"{path}.lights.{light_id}", entry)
+
+    def room_light_ids(self, doc: Dict[str, Any]) -> Optional[Set[str]]:
+        """Light ids a room can reach in this scene (theme, project and sidecar layers), or None when the theme's lights can't be read here (an unknown theme, or a variant whose base merges in)."""
+        try:
+            manifest = self.project.manifest()
+        except Exception:
+            return None
+        theme_id = doc.get("themeId") or manifest.get("themeId")
+        theme: Any = {}
+        if isinstance(theme_id, str) and theme_id and not theme_id.startswith("ws:"):
+            theme = next((e for e in self.cat.entries("themes") or [] if isinstance(e, dict) and e.get("id") == theme_id), None)
+            if theme is None:
+                return None
+        elif isinstance(theme_id, str) and theme_id:
+            path = self.project.theme_file(theme_id)
+            if path is None or not path.is_file():
+                return None
+            try:
+                theme = json.loads(read_text(path))
+            except (OSError, ValueError):
+                return None
+            if not isinstance(theme, dict) or "extends" in theme:
+                return None
+        ids: Set[str] = set()
+        for layer in (theme, manifest, doc):
+            declared = dig(layer, "lighting", "lights")
+            if isinstance(declared, list):
+                ids.update(l["id"] for l in declared if isinstance(l, dict) and isinstance(l.get("id"), str))
+        return ids
 
     def room_light(self, file: str, path: str, entry: Any) -> None:
         rep = self.report
