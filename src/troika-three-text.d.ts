@@ -1,4 +1,4 @@
-// troika-three-text ships no type declarations; declare only what we import directly (drei's <Text> consumes it internally with its own typings).
+// troika-three-text wires no type declarations (0.52.5's dist/types has no package.json entry); declare only what we import directly (drei's <Text> consumes it internally with its own typings).
 declare module "troika-three-text" {
   import type { BufferGeometry, Material, Mesh, Object3DEventMap } from "three";
 
@@ -31,7 +31,7 @@ declare module "troika-three-text" {
     textRenderInfo?: { blockBounds: [number, number, number, number] };
     /** Any non-zero outline makes the `material` getter return `[outline, main]`. */
     outlineBlur: number | string;
-    /** Private but stable in the pinned 0.52.4: the only quiescence signal, since `sync(cb)` drops the callback when no sync is needed (including mid-typeset). */
+    /** Private but stable in the pinned 0.52.5: the only quiescence signal, since `sync(cb)` drops the callback when no sync is needed (including mid-typeset). */
     _needsSync?: boolean;
     _isSyncing?: boolean;
     sync(callback?: () => void): void;
@@ -98,6 +98,24 @@ declare module "troika-three-text/src/FontParser.js" {
   }
   const fontParser: { onMainThread(buffer: ArrayBuffer): Promise<TroikaParsedFont> };
   export default fontParser;
+}
+
+/** troika's font resolver factory; the wedge test drives it with a failing fallback client. */
+declare module "troika-three-text/src/FontResolver.js" {
+  export interface FontResolverClient {
+    getFontsForString(
+      text: string,
+      options: object,
+    ): Promise<{ fontUrls: string[]; chars: Uint8Array }>;
+  }
+  export function createFontResolver(
+    fontParser: (buffer: ArrayBuffer) => unknown,
+    client: FontResolverClient,
+  ): (
+    text: string,
+    callback: (result: { chars: Uint8Array; fonts: unknown[] }) => void,
+    options?: { fonts?: unknown[]; unicodeFontsURL?: string },
+  ) => void;
 }
 
 /** The Typr build troika bundles; the cmap selection test drives `U.codeToGlyph` directly. */

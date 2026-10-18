@@ -1007,10 +1007,11 @@ Emoji and text-default symbols route through two different mechanisms, neither
 of which can move pixels for text that uses neither (proven EQUAL on
 `showcase-tour` and `ws:launch-2026` when the feature landed):
 
-- **The wedge is patched away.** troika 0.52.4's fallback resolver had no
-  `.catch()`: any codepoint outside the loaded fonts CSP-blocked a CDN fetch
-  and left `_isSyncing` true forever, freezing the `<Text>` on its last-good
-  string. The pnpm patch (`patches/troika-three-text@0.52.4.patch`) degrades
+- **The wedge is patched away.** troika's fallback resolver (still in 0.52.5)
+  has no `.catch()`: any codepoint outside the loaded fonts CSP-blocked a CDN
+  fetch and left `_isSyncing` true forever, freezing the `<Text>` on its
+  last-good string. The pnpm patch (`patches/troika-three-text@0.52.5.patch`,
+  exact pin, guarded by `src/theme/troika.test.ts`) degrades
   every failure (fallback fetch, font-file 404, parse error) to `.notdef` tofu
   and keeps sync alive; `unicodeFontsURL` points at a dead same-origin path so
   the CDN is never consulted even under a loosened CSP.
