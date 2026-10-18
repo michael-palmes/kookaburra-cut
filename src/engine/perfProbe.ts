@@ -1,3 +1,4 @@
+import { invoke } from "@tauri-apps/api/core";
 import type { Material, Mesh, Object3D, Scene, WebGLRenderer } from "three";
 import { useClockStore } from "./clock";
 import { canvasHandle } from "./exportBridge";
@@ -41,6 +42,46 @@ export function noteClipReferenced(key: string): void {
 
 export function noteClipBound(key: string): void {
   if (clipReferencedAt.has(key) && !clipBoundAt.has(key)) clipBoundAt.set(key, performance.now());
+}
+
+/** The cold-extraction row (`--action perf`): reference-to-first-bind times and what this session wrote to the clip cache. */
+export interface ClipColdRow {
+  scene: string;
+  pass: "cold-extraction";
+  clipsReferenced: number;
+  clipsBound: number;
+  firstBindMaxMs: number | null;
+  firstBindAvgMs: number | null;
+  clipBytesWritten: number;
+  clipChunksExtracted: number;
+  clipCountPasses: number;
+}
+
+export async function clipColdMetric(): Promise<ClipColdRow> {
+  const waits = [...clipBoundAt.entries()].map(
+    ([key, bound]) => bound - (clipReferencedAt.get(key) ?? bound),
+  );
+  const stats = await invoke<{
+    bytesWritten: number;
+    chunksExtracted: number;
+    countPasses: number;
+  }>("clip_cache_session_stats").catch(() => ({
+    bytesWritten: 0,
+    chunksExtracted: 0,
+    countPasses: 0,
+  }));
+  const round = (ms: number) => Math.round(ms * 10) / 10;
+  return {
+    scene: "all",
+    pass: "cold-extraction",
+    clipsReferenced: clipReferencedAt.size,
+    clipsBound: waits.length,
+    firstBindMaxMs: waits.length ? round(Math.max(...waits)) : null,
+    firstBindAvgMs: waits.length ? round(waits.reduce((a, b) => a + b, 0) / waits.length) : null,
+    clipBytesWritten: stats.bytesWritten,
+    clipChunksExtracted: stats.chunksExtracted,
+    clipCountPasses: stats.countPasses,
+  };
 }
 
 /** Consecutive steady frames (each under WARMUP_STEADY_MS) that end a window's unsampled warm-up; absorbs shader recompiles and first-frame loads. */
