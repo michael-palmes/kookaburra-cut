@@ -23138,6 +23138,11 @@
         "internal": true
       },
       {
+        "id": "pulse",
+        "kind": "function",
+        "summary": "pulse(time, times, { attackMs, holdMs, releaseMs, ease }) returns 0..1 at each time; overlaps take the max."
+      },
+      {
         "id": "resolveAvailableDeviceId",
         "kind": "function",
         "summary": "The id a model renders as in this build."
@@ -23391,6 +23396,9 @@
       },
       {
         "id": "ParticleFieldProps"
+      },
+      {
+        "id": "PulseOptions"
       },
       {
         "id": "ResolvedChart"

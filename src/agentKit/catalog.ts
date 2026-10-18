@@ -699,6 +699,10 @@ export const TOOLKIT_SUMMARIES: Record<
   parseObjectManifest: { summary: "Validates object.json (app only).", internal: true },
   preloadCatalogModels: { summary: "Export barrier for device models (app only).", internal: true },
   preloadSceneObjects: { summary: "Export barrier for 3D objects (app only).", internal: true },
+  pulse: {
+    summary:
+      "pulse(time, times, { attackMs, holdMs, releaseMs, ease }) returns 0..1 at each time; overlaps take the max.",
+  },
   resolveAvailableDeviceId: { summary: "The id a model renders as in this build." },
   resolveAvailableDeviceSpec: { summary: "The spec a model renders with in this build." },
   resolveDeviceLayout: {
