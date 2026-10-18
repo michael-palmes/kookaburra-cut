@@ -21083,6 +21083,13 @@
       ],
       "customColour": "custom:#rrggbb",
       "screenAspect": 0.46,
+      "screen": {
+        "width": 1.1517,
+        "height": 2.5038,
+        "centre": [0, 0],
+        "z": 0.1149,
+        "cornerRadius": 0.1906
+      },
       "fittedHeight": 2.6,
       "layoutWidth": 1.25
     },
@@ -21107,6 +21114,26 @@
       "customColour": "custom:#rrggbb",
       "screenAspect": 1.4217,
       "coverScreenAspect": 0.6873,
+      "screen": {
+        "width": 3.5011,
+        "height": 2.4478,
+        "centre": [-0.005, -0.005],
+        "z": 0.1176,
+        "cornerRadius": 0.2173,
+        "frame": {
+          "foldDeg": 180
+        }
+      },
+      "coverScreen": {
+        "width": 1.7151,
+        "height": 2.4804,
+        "centre": [-0.0116, -0.005],
+        "z": 0.2482,
+        "cornerRadius": 0.2278,
+        "frame": {
+          "foldDeg": 0
+        }
+      },
       "fittedHeight": 2.6,
       "layoutWidth": 3.65,
       "fold": {
@@ -21134,11 +21161,22 @@
       ],
       "customColour": "custom:#rrggbb",
       "screenAspect": 1.547,
+      "screen": {
+        "width": 3.307,
+        "height": 2.1448,
+        "centre": [0.0004, 0.17],
+        "z": -0.7783,
+        "cornerRadius": 0.0552,
+        "frame": {
+          "lidDeg": 90
+        }
+      },
       "fittedHeight": 2.305,
       "layoutWidth": 3.4,
       "lid": {
         "defaultDeg": 90,
-        "openDeg": 110
+        "openDeg": 110,
+        "pivot": [0.0004, -1.0595, -0.7321]
       }
     },
     {
@@ -21161,6 +21199,13 @@
       ],
       "customColour": "custom:#rrggbb",
       "screenAspect": 1.3333,
+      "screen": {
+        "width": 3.1878,
+        "height": 2.4085,
+        "centre": [0.0048, -0.0024],
+        "z": 0.0436,
+        "cornerRadius": 0.1046
+      },
       "fittedHeight": 2.6,
       "layoutWidth": 3.4
     },
@@ -21194,6 +21239,13 @@
       ],
       "customColour": "custom:#rrggbb",
       "screenAspect": 0.4613,
+      "screen": {
+        "width": 1.1551,
+        "height": 2.4996,
+        "centre": [0, 0.0011],
+        "z": 0.1065,
+        "cornerRadius": 0.1678
+      },
       "fittedHeight": 2.6,
       "layoutWidth": 1.25
     },
@@ -21222,6 +21274,13 @@
       ],
       "customColour": "custom:#rrggbb",
       "screenAspect": 0.4499,
+      "screen": {
+        "width": 1.1257,
+        "height": 2.5014,
+        "centre": [-0.0127, 0.0068],
+        "z": 0.1303,
+        "cornerRadius": 0.1354
+      },
       "fittedHeight": 2.6,
       "layoutWidth": 1.22
     }
@@ -22713,6 +22772,13 @@
         "summary": "Motion blur override { enabled, shutterDeg, camera, objects }; each field replaces the project's render.motionBlur.",
         "type": "object",
         "ref": "camera"
+      },
+      {
+        "id": "room",
+        "summary": "Room track { keys: [{ at, colour?, themeId?, lighting?, transition: cut|flood, origin?, durationMs?, ease? }] }: the backdrop colour cutting or flooding mid-scene, staged lights following.",
+        "type": "object",
+        "ref": "sidecar",
+        "values": ["cut", "flood"]
       }
     ]
   },
@@ -22832,7 +22898,7 @@
       {
         "id": "AnimatedCounter",
         "kind": "component",
-        "summary": "Number counting from `from` to `to` over durationMs from scene start."
+        "summary": "Number counting from `from` to `to` over durationMs; startMs, ease and steps shape it."
       },
       {
         "id": "AnimatedGroup",
@@ -22912,6 +22978,11 @@
         "legacy": true
       },
       {
+        "id": "DeviceScreenAnchor",
+        "kind": "component",
+        "summary": "Child of Device: <DeviceScreenAnchor u v> pins content to its screen (u right, v down, 0..1)."
+      },
+      {
         "id": "EASE_NAMES",
         "kind": "constant",
         "summary": "Every ease name (see kb catalog eases)."
@@ -22978,9 +23049,24 @@
         "summary": "Seeded tube that grows along a curve."
       },
       {
+        "id": "Room",
+        "kind": "component",
+        "summary": "Camera-locked room: colour fills the frame behind all content, flood? grows over it. The sidecar room block draws its own."
+      },
+      {
+        "id": "RoomFlood",
+        "kind": "component",
+        "summary": "RoomFlood colour origin? radius: a circle of colour growing from a frame point ([0,0] top-left); radius 1 covers the frame."
+      },
+      {
         "id": "RoundedRect",
         "kind": "component",
         "summary": "Flat, colour-exact rounded rect: width, height, radius, color, opacity, stroke."
+      },
+      {
+        "id": "SCREEN_LIFT",
+        "kind": "constant",
+        "summary": "Default gap between anchored content and the glass (fitted units)."
       },
       {
         "id": "SceneStage",
@@ -23035,6 +23121,11 @@
         "summary": "Seeded PRNG: createSeededRandom(seed)() returns 0..1. Use instead of Math.random."
       },
       {
+        "id": "cssOpacity",
+        "kind": "function",
+        "summary": "cssOpacity(fg, room, a): fg at opacity a over the room, as the exact opaque hex."
+      },
+      {
         "id": "defineScene",
         "kind": "function",
         "summary": "Every scene file default-exports defineScene({ id, durationMs, Scene })."
@@ -23043,6 +23134,21 @@
         "id": "deviceColour",
         "kind": "function",
         "summary": "Resolve a colour id against a device spec."
+      },
+      {
+        "id": "deviceScreenLocal",
+        "kind": "function",
+        "summary": "deviceScreenLocal(model, u, v, lift?, hinge?): a screen point in the device's frame."
+      },
+      {
+        "id": "deviceScreenPoint",
+        "kind": "function",
+        "summary": "deviceScreenPoint(model, u, v, pose, lift?): a screen point in world space."
+      },
+      {
+        "id": "deviceScreenRect",
+        "kind": "function",
+        "summary": "deviceScreenRect(model, display?): the measured screen rect this build renders."
       },
       {
         "id": "ease",
@@ -23058,6 +23164,16 @@
         "id": "fade",
         "kind": "function",
         "summary": "fade(time, [startMs, endMs]) returns { opacity } 0..1."
+      },
+      {
+        "id": "frameAtDepth",
+        "kind": "function",
+        "summary": "frameAtDepth(format, z): the base camera's visible { width, height } at depth z."
+      },
+      {
+        "id": "glowColour",
+        "kind": "function",
+        "summary": "glowColour(hex, glow): full channels raised to luminance glow, so bloom (threshold above 1) catches it and it still clamps to hex."
       },
       {
         "id": "importObject",
@@ -23106,6 +23222,16 @@
         "kind": "function",
         "summary": "Lists library objects (app only).",
         "internal": true
+      },
+      {
+        "id": "measureText",
+        "kind": "function",
+        "summary": "measureText(text, { font, fontSize, letterSpacing?, lineHeight? }): { width, height, ascent, descent, lines } in world units, or null."
+      },
+      {
+        "id": "mediaPixelToScreenUv",
+        "kind": "function",
+        "summary": "mediaPixelToScreenUv(model, [x, y], { width, height }): media pixel to screen UV."
       },
       {
         "id": "parseObjectManifest",
@@ -23168,6 +23294,11 @@
         "summary": "Samples a persistent-module keyframe track at globalMs."
       },
       {
+        "id": "screenUvToMediaPixel",
+        "kind": "function",
+        "summary": "screenUvToMediaPixel(model, [u, v], { width, height }): screen UV to media pixel."
+      },
+      {
         "id": "slide",
         "kind": "function",
         "summary": "slide(time, [startMs, endMs], axis) returns { offset } 1..0; axis is ignored."
@@ -23178,9 +23309,19 @@
         "summary": "stampScale({ from, peak, inMs, settleMs }?) returns ms => scale: a pop to 1.12 that settles."
       },
       {
+        "id": "useCameraFrame",
+        "kind": "hook",
+        "summary": "useCameraFrame(z): the world { width, height, center } the scene camera sees at z."
+      },
+      {
         "id": "useDepthBand",
         "kind": "hook",
         "summary": "Inside DepthStage: the slot's { name, z, width, height }."
+      },
+      {
+        "id": "useDeviceScreen",
+        "kind": "hook",
+        "summary": "Inside Device: { rect, coverRect, local(u, v) } for the screen it renders, or null."
       },
       {
         "id": "useFormat",
@@ -23201,6 +23342,16 @@
         "id": "useRigTrack",
         "kind": "hook",
         "summary": "The scene's normalised camera rig track, or null."
+      },
+      {
+        "id": "useRoom",
+        "kind": "hook",
+        "summary": "The scene's room now: { colour, key, flood: { colour, origin, progress, radius } | null, pose }, or null."
+      },
+      {
+        "id": "useSceneCamera",
+        "kind": "hook",
+        "summary": "The scene camera's pose this frame: { position, lookAt, fov }."
       },
       {
         "id": "useSceneChart",
@@ -23236,6 +23387,11 @@
         "id": "useSceneText",
         "kind": "hook",
         "summary": "useSceneText(key, fallback, role?): sidecar copy for a text key."
+      },
+      {
+        "id": "useTextMetrics",
+        "kind": "hook",
+        "summary": "useTextMetrics(textKey, text, opts?): the block an AnimatedHeadline with those props typesets, sidecar overrides included."
       },
       {
         "id": "useTheme",
@@ -23346,6 +23502,24 @@
         "id": "DeviceProps"
       },
       {
+        "id": "DeviceScreen"
+      },
+      {
+        "id": "DeviceScreenAnchorProps"
+      },
+      {
+        "id": "DeviceScreenDisplay"
+      },
+      {
+        "id": "DeviceScreenHinge"
+      },
+      {
+        "id": "DeviceScreenPose"
+      },
+      {
+        "id": "DeviceScreenRect"
+      },
+      {
         "id": "DeviceShadowMode"
       },
       {
@@ -23379,6 +23553,9 @@
         "id": "ManagedTextStackProps"
       },
       {
+        "id": "MeasureTextOptions"
+      },
+      {
         "id": "MotionKey"
       },
       {
@@ -23406,10 +23583,25 @@
         "id": "RibbonProps"
       },
       {
+        "id": "RoomFloodProps"
+      },
+      {
+        "id": "RoomFloodSample"
+      },
+      {
+        "id": "RoomProps"
+      },
+      {
+        "id": "RoomSample"
+      },
+      {
         "id": "RoundedRectProps"
       },
       {
         "id": "SampleKeysOptions"
+      },
+      {
+        "id": "SceneCamera"
       },
       {
         "id": "SceneDeviceProps"
@@ -23452,6 +23644,12 @@
       },
       {
         "id": "StampScaleOptions"
+      },
+      {
+        "id": "TextMetrics"
+      },
+      {
+        "id": "TextMetricsOptions"
       },
       {
         "id": "TextPresetName"
