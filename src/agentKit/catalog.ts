@@ -284,6 +284,19 @@ export const SCENE_DOC_KEYS: Record<
     ref: "sidecar",
     values: ["cut", "flood"],
   },
+  taps: {
+    summary:
+      "Tap pulses [{ at, position: [x, y, z] } or { at, screenUv: [u, v], device }, colour?, size?]: a ring on the video editor's tap curve, in world space or on a sidecar device's screen.",
+    type: "array",
+    ref: "media",
+  },
+  mosaic: {
+    summary:
+      "Split field { tiles: [{ src?, startMs?, loop?, colour? }], columns?, gap?, reveal: { at, staggerMs, durationMs, order, ease } }: images, videos or theme colours filling the frame, reflowed per aspect.",
+    type: "object",
+    ref: "media",
+    values: ["rows", "columns", "centre"],
+  },
 };
 
 /** One line per project.json key; exhaustive over `ProjectManifest`. */
@@ -769,6 +782,35 @@ export const TOOLKIT_SUMMARIES: Record<
   glowColour: {
     summary:
       "glowColour(hex, glow): full channels raised to luminance glow, so bloom (threshold above 1) catches it and it still clamps to hex.",
+  },
+  Stamp: {
+    summary:
+      "<Stamp at rotateDeg? position rotation scale>: stamps children in at `at` ms with the stampScale pop and an optional rotation settle.",
+  },
+  DashedRule: {
+    summary:
+      "Dashed straight rule from `from` to `to` [x, y]: thickness, dash, gap, color, opacity, progress (draw-on), round.",
+  },
+  DashedBracket: {
+    summary:
+      "Dashed bracket over a span: span, depth, side top|bottom|left|right, plus the DashedRule style; progress draws out from the middle.",
+  },
+  SplitField: {
+    summary:
+      "Frame split into tiles (images, videos, theme colours) with a staggered reveal that reflows per aspect; no tiles draws the sidecar mosaic.",
+  },
+  MosaicFallback: {
+    summary: "Host-mounted sidecar mosaic for scenes without SplitField.",
+    internal: true,
+  },
+  TapRing: {
+    summary:
+      "TapRing at radius? colour? dot? position: a ring pulse on the video editor's 550 ms tap curve.",
+  },
+  TapsFallback: { summary: "Host-mounted world-space sidecar taps.", internal: true },
+  Cursor: {
+    summary:
+      "Cursor keys=[{ tMs, position, ease? }] presses=[ms]: a pointer travelling a keyed path, pressing with a small scale and a tap ring.",
   },
 };
 

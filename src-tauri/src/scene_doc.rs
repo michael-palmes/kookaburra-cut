@@ -709,6 +709,13 @@ fn remint_scene_doc_ids(doc: &mut Value) {
         }
     }
 
+    // A screen tap names the device it sits on.
+    if let Some(taps) = doc.get_mut("taps").and_then(Value::as_array_mut) {
+        for tap in taps {
+            remap_field(Some(tap), "device", &devices);
+        }
+    }
+
     renumber_track(doc.get_mut("camera"));
     renumber_track(doc.get_mut("cameraRig"));
     renumber_track(doc.get_mut("deviceTrack"));
@@ -3078,6 +3085,26 @@ mod remint_tests {
         assert_eq!(keys[1]["pose"]["d1"]["foldDeg"], json!(180));
         assert_eq!(doc["deviceTrack"]["segments"][0]["from"], json!("k1"));
         assert_eq!(doc["deviceTrack"]["segments"][0]["to"], json!("k2"));
+    }
+
+    #[test]
+    fn screen_taps_follow_their_renumbered_device() {
+        let mut doc = json!({
+            "version": 1,
+            "devices": [{ "id": "d7", "model": "android" }, { "id": "d3", "model": "android" }],
+            "taps": [
+                { "at": 400, "screenUv": [0.5, 0.6], "device": "d3" },
+                { "at": 900, "position": [0, 0, 0] },
+                { "at": 1200, "screenUv": [0.2, 0.3], "device": "d7" },
+                { "at": 1500, "screenUv": [0.2, 0.3], "device": "gone" },
+            ],
+        });
+        remint_scene_doc_ids(&mut doc);
+        assert_eq!(ids(&doc["devices"]), ["d1", "d2"]);
+        assert_eq!(doc["taps"][0]["device"], json!("d2"));
+        assert_eq!(doc["taps"][1], json!({ "at": 900, "position": [0, 0, 0] }));
+        assert_eq!(doc["taps"][2]["device"], json!("d1"));
+        assert_eq!(doc["taps"][3]["device"], json!("gone"));
     }
 
     #[test]

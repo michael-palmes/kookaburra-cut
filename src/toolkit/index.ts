@@ -123,7 +123,7 @@ export { HeroObject, type HeroObjectProps } from "./hero/HeroObject";
 // Shared light rig for lit primitives (mount once per scene, pass lit={false} to primitives)
 export { LightRig } from "./lighting/LightRig";
 // Flat image plane for icons/logos/stills: unlit, colour-exact, PNG alpha.
-export { ImageCard, type ImageCardProps } from "./media/ImageCard";
+export { type HardShadowSpec, ImageCard, type ImageCardProps } from "./media/ImageCard";
 export { LayeredScreenshot, type LayeredScreenshotProps } from "./media/LayeredScreenshot";
 export { VideoClip, type VideoClipProps } from "./media/VideoClip";
 // A macOS screen recording as a floating window over a backing stage, animated in 3D.
@@ -132,6 +132,8 @@ export { VideoWindow, type VideoWindowProps } from "./media/VideoWindow";
 export { MotionBlur } from "./motion/MotionBlur";
 // Motion helpers: eased ramps, keyed tracks and the stamp pop, all pure functions of the clock.
 export { clamp01, lerp, ramp } from "./motion/math";
+// Stamps children in with the stampScale pop; the extension is explicit because "./motion/Stamp" finds stamp.ts on a case-insensitive disk.
+export { Stamp, type StampProps } from "./motion/Stamp.tsx";
 export { type MotionKey, type SampleKeysOptions, sampleKeys } from "./motion/sampleKeys";
 export { type StampScaleOptions, stampScale } from "./motion/stamp";
 // The 3D objects library: bundled + workspace manifests, staged by the sidecar `objects` array.
@@ -151,11 +153,27 @@ export {
   type ObjectManifest,
   parseObjectManifest,
 } from "./objects/schema";
+// Dashed rules and brackets, tiled split fields (the sidecar `mosaic`), tap rings (the sidecar `taps`) and a travelling cursor.
+export { Cursor, type CursorKey, type CursorProps } from "./shapes/Cursor";
+export {
+  DashedBracket,
+  type DashedBracketProps,
+  type DashedBracketSide,
+  DashedRule,
+  type DashedRuleProps,
+} from "./shapes/DashedRule";
 // Generative shapes: all randomness via createSeededRandom, all motion via the clock.
 export { ParticleField, type ParticleFieldProps } from "./shapes/ParticleField";
 export { Ribbon, type RibbonProps } from "./shapes/Ribbon";
 // Flat, colour-exact rounded rectangles and pills.
 export { Pill, type PillProps, RoundedRect, type RoundedRectProps } from "./shapes/RoundedRect";
+export {
+  MosaicFallback,
+  SplitField,
+  type SplitFieldProps,
+  type SplitFieldTile,
+} from "./shapes/SplitField";
+export { TapRing, type TapRingProps, TapsFallback } from "./shapes/TapRing";
 export { WireGrid, type WireGridProps } from "./shapes/WireGrid";
 export { useSceneStaged } from "./stage/context";
 // Theme-driven stage: lights the scene from theme.lighting tokens; staged primitives' bundled lit sets stand down automatically (useSceneStaged).

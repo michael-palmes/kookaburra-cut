@@ -412,6 +412,9 @@ class Checker:
             self.keyed_track(file, ".".join(keys), dig(doc, *keys), allow_jump=keys[0] in ("camera", "cameraRig"))
         self.motion_blur(file, "motionBlur", doc.get("motionBlur"))
         self.room(file, doc)
+        self.taps(file, doc)
+        self.mosaic(file, doc)
+        self.window_shadow_colours(file, doc)
         stills = doc.get("stills")
         if isinstance(stills, dict) and "marksMs" in stills:
             marks = stills["marksMs"]
@@ -511,6 +514,129 @@ class Checker:
             tsx = self.ctx.all_tsx().get(f"scenes/{stem}.tsx")
             if tsx is not None and "SceneStage" not in tsx:
                 rep.warn(file, "room", "only lights a <SceneStage> mounts follow a room; stage the scene for the lighting to change")
+
+    # ── taps, mosaic, window shadow colour ────────────────────────────────
+
+    TAP_FIELDS = ("at", "position", "screenUv", "device", "colour", "size")
+    MOSAIC_FIELDS = ("tiles", "columns", "gap", "reveal")
+    MOSAIC_TILE_FIELDS = ("src", "startMs", "loop", "colour")
+    MOSAIC_REVEAL_FIELDS = ("at", "staggerMs", "durationMs", "order", "ease")
+    MOSAIC_ORDERS = ("rows", "columns", "centre")
+    MOSAIC_IMAGE_EXTS = {"png", "jpg", "jpeg", "webp"}
+    MOSAIC_VIDEO_EXTS = {"mp4", "mov", "m4v", "webm"}
+
+    def scene_colour(self, value: Any) -> bool:
+        return isinstance(value, str) and (bool(re.match(r"^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$", value)) or value in self.ROOM_TOKENS)
+
+    @staticmethod
+    def numbers(value: Any, n: int) -> bool:
+        return isinstance(value, list) and len(value) == n and all(is_number(v) for v in value)
+
+    def taps(self, file: str, doc: Dict[str, Any]) -> None:
+        """The sidecar `taps` list; a tap the app can't place is dropped, a bad optional field falls back."""
+        taps = doc.get("taps")
+        if taps is None:
+            return
+        rep = self.report
+        if not isinstance(taps, list):
+            rep.error(file, "taps", "must be an array of { at, position } or { at, screenUv, device } (the app drops the block)")
+            return
+        device_ids = {d.get("id") for d in doc.get("devices") or [] if isinstance(d, dict)}
+        for i, tap in enumerate(taps):
+            path = f"taps[{i}]"
+            if not isinstance(tap, dict):
+                rep.error(file, path, "must be an object (the app drops it)")
+                continue
+            for field in tap:
+                if field not in self.TAP_FIELDS:
+                    rep.warn(file, f"{path}.{field}", f"not a tap field (the app ignores it).{did_you_mean(field, self.TAP_FIELDS)}")
+            at = tap.get("at")
+            if not is_number(at) or at < 0:
+                rep.error(file, f"{path}.at", "must be scene-local ms >= 0 (the app drops the tap)")
+            on_screen = self.numbers(tap.get("screenUv"), 2) and isinstance(tap.get("device"), str) and bool(tap.get("device"))
+            if on_screen:
+                if "position" in tap:
+                    rep.warn(file, path, "has screenUv and position; the app uses screenUv")
+                if tap["device"] not in device_ids:
+                    rep.warn(file, f"{path}.device", f'no sidecar device "{tap["device"]}" in this scene, so the tap draws nothing.{did_you_mean(tap["device"], [d for d in device_ids if isinstance(d, str)])}')
+                if not all(0 <= v <= 1 for v in tap["screenUv"]):
+                    rep.warn(file, f"{path}.screenUv", "is off the screen; u and v run 0..1 from the top-left")
+            elif not self.numbers(tap.get("position"), 3):
+                rep.error(file, path, "needs a position [x, y, z] or screenUv [u, v] with a device (the app drops it)")
+            if "colour" in tap and not self.scene_colour(tap["colour"]):
+                rep.error(file, f"{path}.colour", f'must be a hex (#rgb or #rrggbb) or one of {", ".join(self.ROOM_TOKENS)} (the app uses the accent)')
+            if "size" in tap and not (is_number(tap["size"]) and tap["size"] > 0):
+                rep.error(file, f"{path}.size", "must be a positive multiplier (the app uses 1)")
+
+    def mosaic(self, file: str, doc: Dict[str, Any]) -> None:
+        """The sidecar `mosaic` block; a bad tile is dropped, a bad field falls back to its default."""
+        block = doc.get("mosaic")
+        if block is None:
+            return
+        rep = self.report
+        if not isinstance(block, dict) or not isinstance(block.get("tiles"), list):
+            rep.error(file, "mosaic", "must be { tiles: [...] } (the app drops the block)")
+            return
+        for field in block:
+            if field not in self.MOSAIC_FIELDS:
+                rep.warn(file, f"mosaic.{field}", f"not a mosaic field (the app ignores it).{did_you_mean(field, self.MOSAIC_FIELDS)}")
+        usable = 0
+        for i, tile in enumerate(block["tiles"]):
+            path = f"mosaic.tiles[{i}]"
+            if not isinstance(tile, dict):
+                rep.error(file, path, "must be an object (the app drops it)")
+                continue
+            for field in tile:
+                if field not in self.MOSAIC_TILE_FIELDS:
+                    rep.warn(file, f"{path}.{field}", f"not a tile field (the app ignores it).{did_you_mean(field, self.MOSAIC_TILE_FIELDS)}")
+            src = tile.get("src")
+            ext = src.rsplit(".", 1)[-1].lower() if isinstance(src, str) and "." in src else ""
+            if src is not None and not (isinstance(src, str) and src.startswith("assets/") and ext in self.MOSAIC_IMAGE_EXTS | self.MOSAIC_VIDEO_EXTS):
+                rep.error(file, f"{path}.src", "must be an assets/ image (png, jpg, jpeg, webp) or video (mp4, mov, m4v, webm) (the app drops the tile)")
+                continue
+            usable += 1
+            if "startMs" in tile and not (is_number(tile["startMs"]) and tile["startMs"] >= 0):
+                rep.error(file, f"{path}.startMs", "must be scene-local ms >= 0 (the app uses 0)")
+            if "loop" in tile and not isinstance(tile["loop"], bool):
+                rep.error(file, f"{path}.loop", "must be true or false")
+            if ("startMs" in tile or "loop" in tile) and ext not in self.MOSAIC_VIDEO_EXTS:
+                rep.warn(file, path, "startMs and loop only apply to a video tile")
+            if "colour" in tile and not self.scene_colour(tile["colour"]):
+                rep.error(file, f"{path}.colour", f'must be a hex (#rgb or #rrggbb) or one of {", ".join(self.ROOM_TOKENS)} (the app uses muted)')
+            if "colour" in tile and src is not None:
+                rep.warn(file, f"{path}.colour", "only a tile without src is a colour tile")
+        if usable == 0:
+            rep.error(file, "mosaic.tiles", "has no usable tile (the app drops the block)")
+        columns = block.get("columns")
+        if columns is not None:
+            if not is_int(columns) or columns < 1:
+                rep.error(file, "mosaic.columns", "must be a whole number from 1; leave it out to reflow per aspect")
+            elif columns > usable > 0:
+                rep.warn(file, "mosaic.columns", f"is more than the {usable} tiles; the app uses {usable}")
+        gap = block.get("gap")
+        if gap is not None and not (is_number(gap) and gap >= 0):
+            rep.error(file, "mosaic.gap", "must be a fraction of the frame's short side >= 0 (the app uses 0.02)")
+        reveal = block.get("reveal")
+        if reveal is not None:
+            if not isinstance(reveal, dict):
+                rep.error(file, "mosaic.reveal", "must be { at, staggerMs, durationMs, order, ease }")
+                return
+            for field in reveal:
+                if field not in self.MOSAIC_REVEAL_FIELDS:
+                    rep.warn(file, f"mosaic.reveal.{field}", f"not a reveal field (the app ignores it).{did_you_mean(field, self.MOSAIC_REVEAL_FIELDS)}")
+            for field in ("at", "staggerMs", "durationMs"):
+                if field in reveal and not (is_number(reveal[field]) and reveal[field] >= 0):
+                    rep.error(file, f"mosaic.reveal.{field}", "must be ms >= 0 (the app uses its default)")
+            if "order" in reveal and reveal["order"] not in self.MOSAIC_ORDERS:
+                rep.error(file, "mosaic.reveal.order", f'must be one of {", ".join(self.MOSAIC_ORDERS)}')
+            if "ease" in reveal:
+                self.enum(file, "mosaic.reveal.ease", reveal["ease"], "eases", "ease")
+
+    def window_shadow_colours(self, file: str, doc: Dict[str, Any]) -> None:
+        for i, entry in enumerate(doc.get("media") or []):
+            colour = dig(entry, "window", "shadow", "colour")
+            if colour is not None and not (isinstance(colour, str) and re.match(r"^#[0-9a-fA-F]{6}$", colour)):
+                self.report.error(file, f"media[{i}].window.shadow.colour", "must be #rrggbb (the app draws the black shadow)")
 
     def room_lighting(self, file: str, path: str, lighting: Any, doc: Dict[str, Any]) -> None:
         rep = self.report

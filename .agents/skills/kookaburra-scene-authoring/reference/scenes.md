@@ -163,6 +163,10 @@ export default defineScene({
   (positions) interpolate; strings and other values switch at the key.
 - `stampScale({ from, peak, inMs, settleMs }?)` returns `ms => scale`: 0 to 1.12 over
   180 ms (outCubic), back to 1 over 260 ms (inOutSine). Pass ms since the stamp starts.
+- `<Stamp at={600} rotateDeg={-8} position={[0, 0.4, 0.01]}>...</Stamp>` wraps children
+  in that pop (hidden before `at`, pivot at the group origin, so centre children on it);
+  `rotateDeg` adds a small swing about Z that settles with a slight overshoot. It takes the
+  `stampScale` options and a base `scale`. Prefer it to hand-copying the pop.
 - `clamp01(x)`, `lerp(a, b, t)` for the rest.
 - `RoundedRect` (`width`, `height`, `radius`, `color`, `opacity`, `strokeWidth`,
   `strokeColor`, `position`, `rotation`, `scale`, `renderOrder`) and `Pill` (radius is
@@ -203,6 +207,10 @@ export default defineScene({
 | `StagedObject`, `HeroObject` | 3D objects |
 | `ParticleField`, `WireGrid`, `Ribbon` | Seeded generative shapes on the clock |
 | `RoundedRect`, `Pill` | Flat cards, badges, chips and bars (Motion helpers above) |
+| `DashedRule`, `DashedBracket` | Dashed dividers, connectors and span brackets with a draw-on (below) |
+| `SplitField` | The frame split into image, video or colour tiles (the sidecar `mosaic`, reference/media.md) |
+| `TapRing`, `Cursor` | Tap pulses and a travelling, clicking pointer (the sidecar `taps`, reference/media.md) |
+| `Stamp` | Stamps its children in (Motion helpers above) |
 | `Room`, `RoomFlood` | A camera-locked room colour and a flood of colour from a frame point, for floods the scene times itself (the sidecar `room` block draws its own) |
 | `SceneStage`, `DepthStage`, `LightRig` | Staging and light |
 
@@ -216,6 +224,16 @@ Generative shapes (all motion from the clock, randomness from `seed`):
 - `<ExtrudedText text from to position rotation fontSize depth bevel tone lit textKey />`
   (rotation in radians; bundled faces only)
 - `<HeroObject model="handset" position rotation scale spinDegPerSec floatAmplitude floatHz lit />`
+
+Dashed shapes (flat and colour-exact, one mesh per dash, colour defaulting to the theme
+muted):
+
+- `<DashedRule from={[-2, 0]} to={[2, 0]} thickness={0.02} dash={0.12} gap={0.08} color progress round position />`:
+  each run starts and ends on a dash (dashes stretch slightly to fit); `progress` 0..1
+  draws it on from `from`, e.g. `progress={ramp(localMs, 300, 1100, "inOutCubic")}`.
+- `<DashedBracket span={2.4} depth={0.18} side="top" progress />` marks a span: `side`
+  is where it sits against what it marks (`top` ticks point down, `bottom` up, `left`
+  right, `right` left), centred on its `position`; `progress` grows from the middle out.
 
 Rooms in code: `<RoomFlood colour={theme.colors.accent} origin={[0.2, 0.8]} radius={ramp(localMs, 600, 1500, "inOutCubic")} />`
 grows a circle of colour over the frame behind all content; `<Room colour={hex} flood={...} />` adds the

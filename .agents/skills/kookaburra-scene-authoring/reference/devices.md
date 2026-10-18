@@ -86,6 +86,9 @@ further forward and off centre).
   the device. `lift` (default `SCREEN_LIFT`, 0.002) keeps them off the glass.
 - Laptops: anchors ride the lid at any `lidDeg`. `iphone-duo`: anchor on the inside
   display's static right half (`u` above 0.56) at any fold, or on `display="cover"` closed.
+- Taps on a sidecar device need no TSX: `"taps": [{ "at": 1200, "screenUv": [0.5, 0.62], "device": "d1" }]`
+  pulses a ring at that screen point (reference/media.md, "Taps"). In TSX, put a
+  `<TapRing at={1200} />` inside a `DeviceScreenAnchor`.
 - Inside a Device, `useDeviceScreen()` gives `{ rect, coverRect, local(u, v) }`. Outside one,
   `deviceScreenPoint(model, u, v, { position, rotationDeg, scale })` is a static device's
   world point and `deviceScreenRect(model)` its rect.

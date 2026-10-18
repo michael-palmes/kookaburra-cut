@@ -175,6 +175,75 @@ class CheckTests(KbTestCase):
         report = self.run_check(["scenes/02-hero.json"])
         self.assertTrue(any("stage the scene" in w for w in messages(report, "warning")))
 
+    def test_sidecar_taps(self) -> None:
+        doc = {
+            "version": 1,
+            "devices": [{"id": "d1", "model": "android"}],
+            "taps": [
+                {"at": 400, "screenUv": [0.5, 0.6], "device": "d1"},
+                {"at": 900, "position": [0, 0, 0], "colour": "accent", "size": 1.5},
+                {"at": -5, "position": [0, 0]},
+                {"at": 100, "screenUv": [1.2, 0.5], "device": "d9", "colour": "teal", "size": 0, "when": 1},
+            ],
+        }
+        write_json(self.root / "scenes" / "02-hero.json", doc)
+        report = self.run_check(["scenes/02-hero.json"])
+        self.assertHasError(report, "taps[2].at", "taps[2] needs a position", "taps[3].colour", "taps[3].size")
+        self.assertFalse(any("taps[0]" in e or "taps[1]" in e for e in messages(report)))
+        warnings = messages(report, "warning")
+        for needle in ("taps[3].when", 'no sidecar device "d9"', "taps[3].screenUv is off the screen"):
+            self.assertTrue(any(needle in w for w in warnings), (needle, warnings))
+        write_json(self.root / "scenes" / "02-hero.json", {"version": 1, "taps": {"at": 0}})
+        self.assertHasError(self.run_check(["scenes/02-hero.json"]), "taps must be an array")
+
+    def test_sidecar_mosaic(self) -> None:
+        write(self.root / "assets" / "a.jpg", "jpg")
+        doc = {
+            "version": 1,
+            "mosaic": {
+                "tiles": [
+                    {"src": "assets/a.jpg"},
+                    {"colour": "accent"},
+                    {"src": "assets/missing.mp4", "loop": True},
+                    {"src": "assets/notes.txt"},
+                    {"src": "assets/a.jpg", "startMs": 100},
+                    {"colour": "teal", "tint": 1},
+                ],
+                "columns": 0,
+                "gap": -1,
+                "reveal": {"order": "diagonal", "ease": "outCubc", "staggerMs": -2},
+                "layout": "grid",
+            },
+        }
+        write_json(self.root / "scenes" / "02-hero.json", doc)
+        report = self.run_check(["scenes/02-hero.json"])
+        self.assertHasError(
+            report,
+            "mosaic.tiles[2].src",
+            "mosaic.tiles[3].src must be an assets/ image",
+            "mosaic.tiles[5].colour",
+            "mosaic.columns",
+            "mosaic.gap",
+            "mosaic.reveal.order",
+            'unknown ease "outCubc"',
+            "mosaic.reveal.staggerMs",
+        )
+        warnings = messages(report, "warning")
+        for needle in ("mosaic.layout", "mosaic.tiles[5].tint", "mosaic.tiles[4] startMs and loop only apply"):
+            self.assertTrue(any(needle in w for w in warnings), (needle, warnings))
+        write_json(self.root / "scenes" / "02-hero.json", {"version": 1, "mosaic": {"tiles": [{"src": "x.png"}]}})
+        self.assertHasError(self.run_check(["scenes/02-hero.json"]), "mosaic.tiles has no usable tile")
+
+    def test_window_shadow_colour(self) -> None:
+        doc = {
+            "version": 1,
+            "media": [
+                {"id": "v1", "kind": "video", "src": "assets/demo.mp4", "host": "window", "window": {"radius": "macos", "shadow": {"opacity": 1, "blur": 0, "offset": [0.03, -0.03], "colour": "accent"}}},
+            ],
+        }
+        write_json(self.root / "scenes" / "02-hero.json", doc)
+        self.assertHasError(self.run_check(["scenes/02-hero.json"]), "media[0].window.shadow.colour must be #rrggbb")
+
     def test_room_reaches_project_lights_and_clamps_negative_at(self) -> None:
         manifest = read_json(self.root / "project.json")
         manifest["lighting"] = {"lights": [{"id": "key", "type": "point", "intensity": 2, "placement": {"mode": "point", "position": [0, 1, 2]}}]}
