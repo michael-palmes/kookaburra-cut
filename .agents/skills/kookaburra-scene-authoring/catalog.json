@@ -22650,6 +22650,12 @@
         "ref": "camera"
       },
       {
+        "id": "cameraKicks",
+        "summary": "Kicks added on whichever pose drives: { at (ms or bar:13), zoom, offset, rollDeg, attackMs, holdMs, releaseMs, ease }.",
+        "type": "array",
+        "ref": "camera"
+      },
+      {
         "id": "themeId",
         "summary": "Swap the whole theme for this scene.",
         "type": "string",

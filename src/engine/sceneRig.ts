@@ -3,6 +3,7 @@
 import { resolveDeviceLayout } from "../toolkit/device/layout";
 import { type DeviceFloorY, resolveDeviceWorldAnchor } from "../toolkit/device/worldAnchor";
 import type { FormatInfo } from "../toolkit/types";
+import { applyCameraKicks, type CameraKick, cameraKickPeaks } from "./cameraKicks";
 import { viewBasis } from "./cameraProject";
 import {
   carryDof,
@@ -490,13 +491,14 @@ export const ENVELOPE_SAMPLES = 64;
 /** Cap on the overscan factor: a band the camera crosses goes edge-on and would ask for an infinite rect it can never usefully fill. */
 export const OVERSCAN_CAP = 4;
 
-/** How much a full-bleed layer at depth `z` must be oversized to stay full-bleed for this rig's whole travel: at each of the fixed samples the camera's four frustum corner rays (roll and aim direction included, via the same basis the overlay projects through) intersect the layer's plane, and the widest hit sets the rect. `minimum` keeps an existing constant as the floor, so a rig can only ever ask for MORE, never shrink what a rig-less scene renders. Pure sizing maths, evaluated once per scene, never per frame. */
+/** How much a full-bleed layer at depth `z` must be oversized to stay full-bleed for this rig's whole travel: at each of the fixed samples the camera's four frustum corner rays (roll and aim direction included, via the same basis the overlay projects through) intersect the layer's plane, and the widest hit sets the rect. The scene's `kicks` add one sample at each kick's peak, the kicked pose there. `minimum` keeps an existing constant as the floor, so a rig can only ever ask for MORE, never shrink what a rig-less scene renders. Pure sizing maths, evaluated once per scene, never per frame. */
 export function rigOverscan(
   track: SceneRigTrack,
   frame: { width: number; height: number },
   z = 0,
   minimum = 1,
   fallbackFov = CAMERA.fov,
+  kicks?: readonly CameraKick[] | null,
 ): number {
   const first = track.keys[0].tMs;
   const last = track.keys[track.keys.length - 1].tMs;
@@ -504,10 +506,20 @@ export function rigOverscan(
   const aspect = frame.width / frame.height;
   let halfW = 0;
   let halfH = 0;
+  const samples: { t: number; kicked: boolean }[] = [];
   for (let i = 0; i < ENVELOPE_SAMPLES; i++) {
     // A zero-span track (one key, or every key at the same instant) samples that one pose.
-    const t = span <= 0 ? first : first + (span * i) / (ENVELOPE_SAMPLES - 1);
-    const pose = sampleSceneRig(track, t);
+    samples.push({
+      t: span <= 0 ? first : first + (span * i) / (ENVELOPE_SAMPLES - 1),
+      kicked: false,
+    });
+  }
+  for (const t of cameraKickPeaks(kicks)) samples.push({ t, kicked: true });
+  for (const sample of samples) {
+    const rig = sampleSceneRig(track, sample.t);
+    const pose = sample.kicked
+      ? applyCameraKicks({ ...rig, fov: rig.fov ?? fallbackFov }, kicks, sample.t)
+      : rig;
     const fov = pose.fov ?? fallbackFov;
     const basis = viewBasis({ ...pose, fov });
     const tanV = Math.tan((fov * Math.PI) / 360);

@@ -3,6 +3,12 @@
 import type { DeviceFloorY } from "../toolkit/device/worldAnchor";
 import type { FormatInfo } from "../toolkit/types";
 import {
+  applyCameraKicks,
+  type CameraKick,
+  cameraKicksEndMs,
+  resolveCameraKicks,
+} from "./cameraKicks";
+import {
   baseCameraPose,
   type CameraKeyframe,
   type CameraPose,
@@ -20,6 +26,7 @@ import {
 } from "./dof";
 import { ease, isEaseName } from "./ease";
 import { lerp, lerp3 } from "./keyframes";
+import type { ProjectMusic } from "./musicTime";
 import type {
   SceneDoc,
   SceneDocCameraKey,
@@ -226,15 +233,49 @@ export interface SceneCameraTracks {
   mode: "orbit" | "rig";
   orbit: SceneCameraTrack | null;
   rig: SceneRigTrack | null;
+  /** The scene's resolved kicks, applied on whichever pose wins; absent when it has none. */
+  kicks?: readonly CameraKick[];
 }
 
-/** Assemble a scene's camera tracks from its two normalized blocks. The ONE place `mode` is decided, so the editor's live draft and the loaded project can't disagree about which block drives. */
+/** Assemble a scene's camera tracks from its two normalized blocks and its resolved kicks. The ONE place `mode` is decided, so the editor's live draft and the loaded project can't disagree about which block drives. A scene with only kicks still gets tracks (both blocks null). */
 export function sceneCameraTracks(
   orbit: SceneCameraTrack | null,
   rig: SceneRigTrack | null,
+  kicks?: readonly CameraKick[] | null,
 ): SceneCameraTracks | null {
-  if (!orbit && !rig) return null;
-  return { mode: rig ? "rig" : "orbit", orbit, rig };
+  const kicked = !!kicks && kicks.length > 0;
+  if (!orbit && !rig && !kicked) return null;
+  const tracks: SceneCameraTracks = { mode: rig ? "rig" : "orbit", orbit, rig };
+  if (kicked) tracks.kicks = kicks;
+  return tracks;
+}
+
+/** What musical kick positions resolve against when tracks are built: the project's music and each scene's slot start (project ms), index-aligned with the docs. */
+export interface SceneCameraTiming {
+  music?: ProjectMusic;
+  sceneStartMs: readonly number[];
+}
+
+/** The timing for a loaded project (or anything carrying its music and slots). */
+export function sceneCameraTiming(project: {
+  music?: ProjectMusic;
+  slots: readonly { startMs: number }[];
+}): SceneCameraTiming {
+  return { music: project.music, sceneStartMs: project.slots.map((slot) => slot.startMs) };
+}
+
+/** One scene's kicks resolved against `timing`, warning once per kick that can't resolve. */
+export function sceneCameraKicks(
+  doc: SceneDoc | undefined,
+  index: number,
+  timing?: SceneCameraTiming,
+): CameraKick[] | null {
+  if (!doc?.cameraKicks) return null;
+  return resolveCameraKicks(
+    doc.cameraKicks,
+    { music: timing?.music, sceneStartMs: timing?.sceneStartMs[index] ?? 0 },
+    (message) => console.warn(`[sceneCamera] scene ${index}: ${message}`),
+  );
 }
 
 /** Wrap an orbit track alone (the orbit-only draft shape). */
@@ -242,7 +283,7 @@ export function orbitCameraTracks(orbit: SceneCameraTrack | null): SceneCameraTr
   return sceneCameraTracks(orbit, null);
 }
 
-/** The pose a scene's camera holds after its last key: what the NEXT scene continues from. Null when the scene drives nothing. */
+/** The pose a scene's camera holds after its last key: what the NEXT scene continues from. Null when the scene drives nothing. Kicks are ignored: they are momentary and have ended by then. */
 export function finalScenePose(
   tracks: SceneCameraTracks | null | undefined,
 ): SceneDocRigPose | null {
@@ -266,11 +307,14 @@ export function finalScenePose(
 
 /** Normalize every scene doc's camera once per project load (index-aligned with the slots). A scene whose animated track is the layered screenshot contributes nothing (its keys stay on disk untouched; the toggle just stands the camera down). The rig is only normalized under `cameraMode: "rig"`, so an orbit-mode scene carrying a stale rig block costs nothing and warns about nothing.
  *
- * A rig whose earliest key sets `continueFromPrevious` has that key's pose REPLACED at load with the previous scene's final applied pose. It is a load-time substitution and nothing else: `resolveFrameCameras`, the compositor and the export loop are all untouched. The walk runs forward, so a chain of continuing scenes resolves correctly and cannot cycle. */
+ * A rig whose earliest key sets `continueFromPrevious` has that key's pose REPLACED at load with the previous scene's final applied pose. It is a load-time substitution and nothing else: `resolveFrameCameras`, the compositor and the export loop are all untouched. The walk runs forward, so a chain of continuing scenes resolves correctly and cannot cycle.
+ *
+ * `timing` resolves musical kick positions (`sceneCameraTiming(project)`); without it only numeric kick times resolve. */
 export function buildSceneCameraTracks(
   sceneDocs: readonly (SceneDoc | undefined)[],
   format?: FormatInfo,
   floorYs?: readonly DeviceFloorY[],
+  timing?: SceneCameraTiming,
 ): (SceneCameraTracks | null)[] {
   const tracks: (SceneCameraTracks | null)[] = [];
   for (let i = 0; i < sceneDocs.length; i++) {
@@ -293,7 +337,11 @@ export function buildSceneCameraTracks(
       }
     }
     tracks.push(
-      sceneCameraTracks(orbit, normalizeSceneRig(rigRaw, source, doc, format, floorYs?.[i])),
+      sceneCameraTracks(
+        orbit,
+        normalizeSceneRig(rigRaw, source, doc, format, floorYs?.[i]),
+        sceneCameraKicks(doc, i, timing),
+      ),
     );
   }
   return tracks;
@@ -334,10 +382,11 @@ export function hasSceneCameraTracks(
   return !!tracks?.some(Boolean);
 }
 
-/** The last authored key time on whichever block drives this scene (Present anchors its first scene past it). */
+/** When this scene's camera comes to rest: the last authored key time on whichever block drives it, or the last kick's end when that is later (Present anchors its first scene past it, and the automatic still settles after it). */
 export function sceneCameraEndMs(tracks: SceneCameraTracks | null | undefined): number {
   const keys = tracks?.mode === "rig" ? tracks.rig?.keys : tracks?.orbit?.keys;
-  return keys?.[keys.length - 1]?.tMs ?? 0;
+  const keyEnd = keys?.[keys.length - 1]?.tMs ?? 0;
+  return tracks?.kicks ? Math.max(keyEnd, cameraKicksEndMs(tracks.kicks)) : keyEnd;
 }
 
 /** The camera plan for one frame when scene tracks are in play (null → legacy path). */
@@ -375,7 +424,35 @@ export function dofUnionOf(
   return any ? union : null;
 }
 
-/** Resolve the frame's camera plan. Null whenever the PROJECT has no scene tracks (the seams then run today's exact path, `applyCameraTrack`, preserving byte-identity for every existing project). When any scene has a track, EVERY frame gets an explicit plan (untracked scenes fall back to the project-level track sample, else the base pose) so the camera never inherits a stale pose from a neighbouring scene. Per-scene precedence is rig -> orbit -> project -> base; `fov` comes from the project-level track unless a rig key authored one. */
+/** The pose that wins for one scene at scene-local `localMs`, before its kicks: the rig under rig mode, else the orbit track, else `fallback` itself (the project-level track sample, else the base pose). `fov` comes from a rig key that authors one, else `fallback`; only the rig has roll; dof rides the driving track. The rendered pose is `applyCameraKicks(sceneCameraPose(...), scene.kicks, localMs)`, which `resolveFrameCameras` applies (docs/camera.md, "Composition order"). */
+export function sceneCameraPose(
+  scene: SceneCameraTracks | null | undefined,
+  localMs: number,
+  fallback: CameraPose,
+): CameraPose {
+  if (!scene) return fallback;
+  if (scene.mode === "rig" && scene.rig) {
+    const rig = sampleSceneRig(scene.rig, localMs);
+    return {
+      position: rig.position,
+      lookAt: rig.lookAt,
+      fov: rig.fov ?? fallback.fov,
+      rollDeg: rig.rollDeg,
+      dof: rig.dof,
+    };
+  }
+  if (!scene.orbit) return fallback;
+  const sample = sampleSceneCameraWithDof(scene.orbit, localMs);
+  const view = orbitToView(sample.pose);
+  return {
+    position: view.position,
+    lookAt: view.lookAt,
+    fov: fallback.fov,
+    dof: sample.dof ?? undefined,
+  };
+}
+
+/** Resolve the frame's camera plan. Null whenever the PROJECT has no scene tracks (the seams then run today's exact path, `applyCameraTrack`, preserving byte-identity for every existing project). When any scene has a track, EVERY frame gets an explicit plan (untracked scenes fall back to the project-level track sample, else the base pose) so the camera never inherits a stale pose from a neighbouring scene. Per-scene precedence is rig -> orbit -> project -> base (`sceneCameraPose`), then the scene's kicks; `fov` comes from the project-level track unless a rig key authored one. */
 export function resolveFrameCameras(
   tracks: readonly (SceneCameraTracks | null)[] | null | undefined,
   projectTrack: CameraKeyframe[] | undefined,
@@ -388,26 +465,8 @@ export function resolveFrameCameras(
   const fallback = sampleCameraTrack(projectTrack ?? [], globalMs);
   const poseFor = (active: ActiveScene): CameraPose => {
     const scene = tracks[active.index];
-    if (!scene) return fallback;
-    if (scene.mode === "rig" && scene.rig) {
-      const rig = sampleSceneRig(scene.rig, active.localMs);
-      return {
-        position: rig.position,
-        lookAt: rig.lookAt,
-        fov: rig.fov ?? fallback.fov,
-        rollDeg: rig.rollDeg,
-        dof: rig.dof,
-      };
-    }
-    if (!scene.orbit) return fallback;
-    const sample = sampleSceneCameraWithDof(scene.orbit, active.localMs);
-    const view = orbitToView(sample.pose);
-    return {
-      position: view.position,
-      lookAt: view.lookAt,
-      fov: fallback.fov,
-      dof: sample.dof ?? undefined,
-    };
+    const pose = sceneCameraPose(scene, active.localMs, fallback);
+    return scene?.kicks ? applyCameraKicks(pose, scene.kicks, active.localMs) : pose;
   };
 
   const dofUnion = dofUnionOf(tracks);

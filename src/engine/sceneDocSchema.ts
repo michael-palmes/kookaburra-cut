@@ -36,6 +36,7 @@ import type {
 } from "../toolkit/device/Device";
 import type { FrameOverrideSpec } from "../toolkit/frame/types";
 import type { SceneDocDof } from "./dof";
+import { isEaseName } from "./ease";
 import type { DeviceFoldTransitionSpec } from "./foldTransition";
 import { parseFrameOverride } from "./frameSchema";
 import {
@@ -44,6 +45,7 @@ import {
   parseSceneMotionBlur,
   type SceneDocMotionBlur,
 } from "./motionBlur";
+import { isMusicPosition } from "./musicTime";
 import { normalizeLighting } from "./sceneLighting";
 import {
   DEFAULT_SCENE_IMAGE_OVERLAY,
@@ -627,6 +629,8 @@ export interface SceneDoc {
     segments: SceneDocRigSegment[];
     presentLoop?: SceneDocCameraPresentLoop;
   };
+  /** Camera kicks added at render on whichever pose drives the scene, in either mode (see `engine/cameraKicks.ts`); never expanded into keys. */
+  cameraKicks?: SceneDocCameraKick[];
   /** Theme override for this scene: a theme id that swaps the whole theme (colours, typography, lighting, backdrop, effects base); absent falls back to the project's theme, and unknown ids degrade rather than crash. */
   themeId?: string;
   /** Staging override: replaces the theme's backdrop for this scene. */
@@ -1886,6 +1890,68 @@ function validPresentLoop(raw: unknown): raw is SceneDocCameraPresentLoop {
   return true;
 }
 
+/** Magnification range a kick's `zoom` may author. */
+export const CAMERA_KICK_ZOOM_MIN = 0.25;
+export const CAMERA_KICK_ZOOM_MAX = 4;
+
+const nonNegativeMs = (v: unknown): v is number => finiteNum(v) && v >= 0;
+
+/** Warn and drop: a kick without a valid `at` or `releaseMs`, or with no channel left, drops whole; a bad optional field drops alone. A valid kick is kept verbatim (the same object), so a written sidecar keeps `bar:13` and any unknown fields. */
+function parseCameraKicks(raw: unknown, source: string): SceneDocCameraKick[] | undefined {
+  if (!Array.isArray(raw)) {
+    console.warn(`[sceneDoc] ${source}: cameraKicks isn't an array, dropped`);
+    return undefined;
+  }
+  const out: SceneDocCameraKick[] = [];
+  raw.forEach((entry, i) => {
+    const kick = parseCameraKick(entry, `${source}: cameraKicks[${i}]`);
+    if (kick) out.push(kick);
+  });
+  return out.length > 0 ? out : undefined;
+}
+
+function parseCameraKick(raw: unknown, where: string): SceneDocCameraKick | null {
+  if (!isRecord(raw)) {
+    console.warn(`[sceneDoc] ${where} isn't an object, dropped`);
+    return null;
+  }
+  const at = raw.at;
+  if (!nonNegativeMs(at) && !(typeof at === "string" && isMusicPosition(at))) {
+    console.warn(`[sceneDoc] ${where}.at isn't ms >= 0 or a musical position, kick dropped`);
+    return null;
+  }
+  if (!nonNegativeMs(raw.releaseMs)) {
+    console.warn(`[sceneDoc] ${where}.releaseMs must be ms >= 0, kick dropped`);
+    return null;
+  }
+  let kick = raw;
+  const drop = (field: string, why: string) => {
+    console.warn(`[sceneDoc] ${where}.${field} ${why}, dropped`);
+    if (kick === raw) kick = { ...raw };
+    delete kick[field];
+  };
+  if (raw.id !== undefined && typeof raw.id !== "string") drop("id", "isn't a string");
+  if (
+    raw.zoom !== undefined &&
+    !(finiteNum(raw.zoom) && raw.zoom >= CAMERA_KICK_ZOOM_MIN && raw.zoom <= CAMERA_KICK_ZOOM_MAX)
+  ) {
+    drop("zoom", `isn't ${CAMERA_KICK_ZOOM_MIN}..${CAMERA_KICK_ZOOM_MAX}`);
+  }
+  if (raw.offset !== undefined && !finiteV3(raw.offset)) drop("offset", "isn't three numbers");
+  if (raw.rollDeg !== undefined && !finiteNum(raw.rollDeg)) drop("rollDeg", "isn't a number");
+  for (const field of ["attackMs", "holdMs"]) {
+    if (raw[field] !== undefined && !nonNegativeMs(raw[field])) drop(field, "isn't ms >= 0");
+  }
+  if (raw.ease !== undefined && !(typeof raw.ease === "string" && isEaseName(raw.ease))) {
+    drop("ease", "isn't a known ease");
+  }
+  if (kick.zoom === undefined && kick.offset === undefined && kick.rollDeg === undefined) {
+    console.warn(`[sceneDoc] ${where} has no zoom, offset or rollDeg, kick dropped`);
+    return null;
+  }
+  return kick as unknown as SceneDocCameraKick;
+}
+
 /** Keeps only `exclude: true` and finite, non-negative marks (rounded, unique, ascending); an empty block drops, so absent stays the default. */
 function parseStills(raw: unknown, source: string): SceneDocStills | undefined {
   if (!isRecord(raw)) {
@@ -2244,6 +2310,10 @@ export function parseSceneDoc(raw: unknown, source: string): SceneDoc | undefine
         out.cameraRig = rig;
       }
     }
+  }
+  if (doc.cameraKicks !== undefined) {
+    const kicks = parseCameraKicks(doc.cameraKicks, source);
+    if (kicks) out.cameraKicks = kicks;
   }
   if (typeof doc.themeId === "string" && doc.themeId.length > 0) out.themeId = doc.themeId;
   if (doc.backdrop !== undefined) {

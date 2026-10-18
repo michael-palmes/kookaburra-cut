@@ -185,6 +185,12 @@ export const SCENE_DOC_KEYS: Record<
     type: "object",
     ref: "camera",
   },
+  cameraKicks: {
+    summary:
+      "Kicks added on whichever pose drives: { at (ms or bar:13), zoom, offset, rollDeg, attackMs, holdMs, releaseMs, ease }.",
+    type: "array",
+    ref: "camera",
+  },
   themeId: { summary: "Swap the whole theme for this scene.", type: "string", ref: "project" },
   backdrop: {
     summary: "World-space staging: none, floor, gradient or image (needs SceneStage).",

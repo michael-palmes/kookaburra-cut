@@ -1,7 +1,8 @@
 import { createContext, type ReactNode, useContext, useEffect, useMemo } from "react";
+import { type CameraKick, resolveCameraKicks } from "../../engine/cameraKicks";
 import { useDepthStageRegistry } from "../../engine/depthStageRegistry";
 import { useFormat } from "../../engine/format";
-import { SceneDocContext, useSceneContext } from "../../engine/sceneContext";
+import { ProjectMusicContext, SceneDocContext, useSceneContext } from "../../engine/sceneContext";
 import { normalizeSceneRig, rigOverscan, type SceneRigTrack } from "../../engine/sceneRig";
 import { useStageFloorY } from "./context";
 
@@ -43,6 +44,18 @@ export function useRigTrack(): SceneRigTrack | null {
   }, [doc, format, stageFloorY]);
 }
 
+/** A rig scene's kicks, resolved against the slot start exactly as the camera tracks resolve them; null otherwise (orbit kicks get no overscan). */
+function useRigKicks(): CameraKick[] | null {
+  const doc = useContext(SceneDocContext);
+  const music = useContext(ProjectMusicContext);
+  const scene = useSceneContext();
+  return useMemo(() => {
+    if (doc?.cameraMode !== "rig" || !doc.cameraKicks) return null;
+    const sceneStartMs = scene ? (music?.sceneStartsMs[scene.index] ?? scene.startMs) : 0;
+    return resolveCameraKicks(doc.cameraKicks, { music: music?.music, sceneStartMs });
+  }, [doc, music, scene]);
+}
+
 export function DepthStage({
   foreground,
   content,
@@ -56,6 +69,7 @@ export function DepthStage({
 }) {
   const format = useFormat();
   const track = useRigTrack();
+  const kicks = useRigKicks();
   // Mount-time reporting, so the bounds advisory knows this scene sizes its own layers.
   const sceneIndex = useSceneContext()?.index;
   useEffect(() => {
@@ -67,7 +81,7 @@ export function DepthStage({
     const build = (name: DepthBandName): DepthBand => {
       const z = DEPTH_BANDS[name];
       // No rig: the band covers exactly what the base camera sees there, today's assumption.
-      const scale = track ? rigOverscan(track, format.frame, z) : 1;
+      const scale = track ? rigOverscan(track, format.frame, z, 1, undefined, kicks) : 1;
       return {
         name,
         z,
@@ -81,7 +95,7 @@ export function DepthStage({
       midground: build("midground"),
       backdrop: build("backdrop"),
     };
-  }, [track, format.frame]);
+  }, [track, kicks, format.frame]);
 
   // Rear to front, so a band's children draw over the ones behind them without depth tricks.
   return (

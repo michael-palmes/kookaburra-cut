@@ -6,10 +6,12 @@ import gateHeroDoc from "./__fixtures__/device-video-spike/01-hero.json";
 import gateTurntableDoc from "./__fixtures__/device-video-spike/02-turntable.json";
 import { baseCameraPose } from "./cameraTrack";
 import { computeFormat, FORMATS } from "./format";
+import type { ProjectMusic } from "./musicTime";
 import {
   buildSceneCameraTracks,
   defaultOrbitPose,
   dofUnionOf,
+  finalScenePose,
   hasSceneCameraTracks,
   normalizeSceneCamera,
   orbitFromView,
@@ -18,6 +20,9 @@ import {
   type SceneCameraTrack,
   sampleSceneCamera,
   sampleSceneCameraWithDof,
+  sceneCameraEndMs,
+  sceneCameraPose,
+  sceneCameraTiming,
 } from "./sceneCamera";
 import { parseSceneDoc, type SceneDoc, type SceneDocCameraPose } from "./sceneDocSchema";
 import { resolveAt, type SceneSlot } from "./sceneTimeline";
@@ -667,5 +672,184 @@ describe("orbit dof", () => {
       directional: true,
       split: false,
     });
+  });
+});
+
+describe("sceneCameraPose", () => {
+  const slots: SceneSlot[] = [
+    { index: 0, id: "s0", startMs: 0, endMs: 2000, durationMs: 2000 },
+    { index: 1, id: "s1", startMs: 2000, endMs: 4000, durationMs: 2000 },
+    { index: 2, id: "s2", startMs: 4000, endMs: 6000, durationMs: 2000 },
+  ];
+  const docs: SceneDoc[] = [
+    {
+      version: 1,
+      camera: {
+        keys: [
+          { id: "a", tMs: 0, pose: pose() },
+          { id: "b", tMs: 1500, pose: pose({ azimuthDeg: 60, distance: 3 }) },
+        ],
+        segments: [{ from: "a", to: "b", ease: "inOutCubic" }],
+      },
+    },
+    {
+      version: 1,
+      cameraMode: "rig",
+      cameraRig: {
+        keys: [
+          { id: "a", tMs: 0, pose: { position: [0, 1, 6], aim: { mode: "point", at: [0, 0, 0] } } },
+          {
+            id: "b",
+            tMs: 1800,
+            pose: {
+              position: [2, 0, 4],
+              aim: { mode: "point", at: [0, 0, 0] },
+              fov: 30,
+              rollDeg: 8,
+            },
+          },
+        ],
+        segments: [{ from: "a", to: "b", ease: "linear" }],
+      },
+    },
+    { version: 1 },
+  ];
+  const projectTrack = [
+    { tMs: 0, fov: 40 },
+    { tMs: 6000, fov: 50 },
+  ];
+
+  it("is the extracted per-scene pose: equal to the solo plan, and the fallback itself untracked", () => {
+    const tracks = buildSceneCameraTracks(docs);
+    for (const globalMs of [0, 400, 1200, 1999, 2500, 3300, 3990, 4500, 5999]) {
+      const resolved = resolveAt(slots, globalMs);
+      const active = resolved.active[resolved.active.length - 1];
+      const fallback = resolveFrameCameras(
+        tracks,
+        projectTrack,
+        { active: [{ index: 2, localMs: 0 }] },
+        globalMs,
+      )?.solo;
+      if (!fallback) throw new Error("fallback expected");
+      const plan = resolveFrameCameras(tracks, projectTrack, resolved, globalMs);
+      expect(sceneCameraPose(tracks[active.index], active.localMs, fallback)).toEqual(plan?.solo);
+    }
+    const fallback = baseCameraPose();
+    expect(sceneCameraPose(tracks[2], 100, fallback)).toBe(fallback);
+    expect(sceneCameraPose(null, 100, fallback)).toBe(fallback);
+  });
+
+  it("leaves kick-free tracks as they were (no kicks key)", () => {
+    for (const track of buildSceneCameraTracks(docs)) {
+      if (track) expect("kicks" in track).toBe(false);
+    }
+  });
+});
+
+describe("camera kicks on scene tracks", () => {
+  const slots: SceneSlot[] = [
+    { index: 0, id: "s0", startMs: 0, endMs: 2000, durationMs: 2000 },
+    { index: 1, id: "s1", startMs: 2000, endMs: 6000, durationMs: 4000 },
+  ];
+  // 120 bpm in 4/4: bar 2 is project 2000, bar 3 project 4000.
+  const music: ProjectMusic = {
+    grid: { bpm: 120, offsetMs: 0, beatsPerBar: 4 },
+    startOffsetMs: 0,
+    cues: {},
+    sections: {},
+  };
+  const kicksOnly: SceneDoc = {
+    version: 1,
+    cameraKicks: [{ at: "bar:3", zoom: 1.2, releaseMs: 400 }],
+  };
+
+  it("gives a kicks-only scene a track, resolving positions from the slot start", () => {
+    const tracks = buildSceneCameraTracks(
+      [{ version: 1 }, kicksOnly],
+      undefined,
+      undefined,
+      sceneCameraTiming({ music, slots }),
+    );
+    expect(tracks[0]).toBeNull();
+    expect(tracks[1]?.orbit).toBeNull();
+    expect(tracks[1]?.rig).toBeNull();
+    expect(tracks[1]?.kicks?.map((k) => k.atMs)).toEqual([2000]);
+    expect(kicksOnly.cameraKicks?.[0].at).toBe("bar:3");
+    const before = resolveFrameCameras(tracks, undefined, resolveAt(slots, 3999), 3999);
+    expect(before?.solo).toEqual(baseCameraPose());
+    const peak = resolveFrameCameras(tracks, undefined, resolveAt(slots, 4000), 4000);
+    expect(peak?.solo?.fov).toBeLessThan(baseCameraPose().fov);
+    expect(peak?.solo?.position).toEqual(baseCameraPose().position);
+  });
+
+  it("drops a position it can't resolve, leaving the scene untracked", () => {
+    const tracks = buildSceneCameraTracks([{ version: 1 }, kicksOnly]);
+    expect(tracks[1]).toBeNull();
+    expect(hasSceneCameraTracks(tracks)).toBe(false);
+  });
+
+  it("applies on whichever pose wins, per side in a transition", () => {
+    const orbitDoc: SceneDoc = {
+      version: 1,
+      camera: { keys: [{ id: "k", tMs: 0, pose: pose({ azimuthDeg: 30 }) }], segments: [] },
+      cameraKicks: [{ at: 0, offset: [0, 0.5, 0], releaseMs: 1000 }],
+    };
+    const fade: SceneSlot[] = [
+      { index: 0, id: "s0", startMs: 0, endMs: 2000, durationMs: 2000 },
+      {
+        index: 1,
+        id: "s1",
+        startMs: 1500,
+        endMs: 3500,
+        durationMs: 2000,
+        transitionIn: { type: "crossfade", durationMs: 500 },
+      },
+    ];
+    const plain = buildSceneCameraTracks([{ ...orbitDoc, cameraKicks: undefined }, { version: 1 }]);
+    const kicked = buildSceneCameraTracks([
+      orbitDoc,
+      { ...kicksOnly, cameraKicks: [{ at: 0, rollDeg: 6, releaseMs: 2000 }] },
+    ]);
+    const resolved = resolveAt(fade, 1600);
+    const a = resolveFrameCameras(kicked, undefined, resolved, 1600);
+    const base = resolveFrameCameras(plain, undefined, resolved, 1600);
+    // Scene 0 is past its kick; scene 1 is 100 ms into its own.
+    expect(a?.a).toEqual(base?.a);
+    expect(a?.b?.rollDeg).toBeGreaterThan(0);
+    const early = resolveFrameCameras(kicked, undefined, resolveAt(fade, 200), 200);
+    const flat = resolveFrameCameras(plain, undefined, resolveAt(fade, 200), 200);
+    expect(early?.solo?.position[1]).toBeGreaterThan(flat?.solo?.position[1] ?? 0);
+  });
+
+  it("counts kick ends in sceneCameraEndMs and ignores kicks in finalScenePose", () => {
+    const rigDoc: SceneDoc = {
+      version: 1,
+      cameraMode: "rig",
+      cameraRig: {
+        keys: [
+          { id: "a", tMs: 0, pose: { position: [0, 0, 5], aim: { mode: "point", at: [0, 0, 0] } } },
+          {
+            id: "b",
+            tMs: 800,
+            pose: { position: [1, 0, 5], aim: { mode: "point", at: [0, 0, 0] } },
+          },
+        ],
+        segments: [{ from: "a", to: "b", ease: "linear" }],
+      },
+    };
+    const late = { ...rigDoc, cameraKicks: [{ at: 700, zoom: 1.1, holdMs: 100, releaseMs: 300 }] };
+    const early = { ...rigDoc, cameraKicks: [{ at: 100, zoom: 1.1, releaseMs: 300 }] };
+    const [plain, kickedLate, kickedEarly, only] = buildSceneCameraTracks([
+      rigDoc,
+      late,
+      early,
+      { version: 1, cameraKicks: [{ at: 250, rollDeg: 2, attackMs: 50, releaseMs: 200 }] },
+    ]);
+    expect(sceneCameraEndMs(plain)).toBe(800);
+    expect(sceneCameraEndMs(kickedLate)).toBe(1100);
+    expect(sceneCameraEndMs(kickedEarly)).toBe(800);
+    expect(sceneCameraEndMs(only)).toBe(500);
+    expect(finalScenePose(kickedLate)).toEqual(finalScenePose(plain));
+    expect(finalScenePose(only)).toBeNull();
   });
 });
