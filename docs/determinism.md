@@ -1460,6 +1460,22 @@ rolling-gate project (`showcase-tour`):
 | `ws:device-env-spike` (cold frame-0 repro: a built-in-lit handset's top edge, machine-local) | `9f3418a2…` | — | — | — | — | — | — | — | — |
 | `ws:text-outline-spike` (outlined text in the text barrier: neon, whole-block blur-in, machine-local) | `87bb6b3a…` | — | — | — | — | — | — | — | — |
 
+> **2026-10-18 (troika 0.52.5, one SDF size, opt-in exact text: hash-neutral):**
+> troika-three-text and troika-three-utils move to an exact `0.52.5` pin, one
+> copy in the tree (drei dedupes onto it). Upstream 0.52.5 ships our ANGLE Metal
+> `inout` fix verbatim, so the utils patch is gone, and
+> `patches/troika-three-text@0.52.5.patch` keeps only the wedge fix and the Typr
+> cmap fall-through. The patched 0.52.5 esm and umd text builds are
+> byte-identical to the patched 0.52.4 ones, and the utils builds differ by one
+> JS comment. `SDF_GLYPH_SIZE` pins the 64 every site already used, and no gate
+> project sets `render.exactText`. `pnpm gate:merge` stayed EQUAL
+> (`showcase-tour` `13b5994d…`, `ws:launch-2026` `eb89826c…`), as did
+> `ws:text-outline-spike` (`87bb6b3a…`). `ws:emoji-spike` reads `da3b7d53…` on
+> this change AND on pristine main `18538e02`, so its 2026-07-13 `fc772d5b…`
+> record is earlier drift, not this change (`da3b7d53…` is its current 16:9
+> value). With `exactText` on, an effect-free headline's `#F5F7FA` lands at
+> (245,247,250) instead of ACES's (223,224,225), with the layout unchanged.
+
 > **2026-10-08 (outlined text joins the text barrier, hash-neutral):** troika
 > returns `[outline, main]` from `Text.material` whenever an outline is set
 > (neon's halo, whole-block blur-in's `outlineBlur`), so `awaitTextSync` never
