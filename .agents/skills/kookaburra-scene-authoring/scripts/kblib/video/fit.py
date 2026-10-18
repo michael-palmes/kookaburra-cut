@@ -855,8 +855,10 @@ def _beats_module() -> Any:
 
 
 def scene_beats(root: Path, scene_index: int, load_json: Callable[[Path], Any], cache_dir: Optional[Path] = None) -> Dict[str, Any]:
-    """Scene-local grid beats and key moments, exactly as kb beats --json reports them."""
+    """Scene-local grid beats and key moments, exactly as kb beats --json reports them: the authored grid wins once it exists."""
     import hashlib
+
+    from ..beats import model as music_model
 
     beats = _beats_module()
     manifest = load_json(root / "project.json")
@@ -866,17 +868,23 @@ def scene_beats(root: Path, scene_index: int, load_json: Callable[[Path], Any], 
     audio_path = root / audio["file"]
     if not audio_path.is_file():
         raise FitError(f"the soundtrack {audio['file']} is missing")
+    authored = music_model.project_music(manifest)
+    if authored is not None and authored.get("grid") is None:
+        authored = None
     digest = hashlib.sha256(audio_path.read_bytes()).hexdigest()
     analysis, _ = beats.load_analysis(digest, load_json, cache_dir)
-    if analysis is None:
-        raise FitError("no beat analysis yet: ask the user to open the project in Kookaburra Cut once, then rerun")
+    if analysis is None and authored is None:
+        raise FitError("no beat grid yet: run ./kb song analyse --accept (or ./kb beats set-grid), then rerun")
     slots = beats.build_slots(manifest.get("scenes", []))
     if not 0 <= scene_index < len(slots):
         raise FitError(f"scene {scene_index} is out of range")
     total = slots[-1]["endMs"] if slots else 0
     offset = audio.get("startOffsetMs", 0) or 0
-    grid = [t - offset for t in beats.beat_times(analysis) if 0 <= t - offset <= total]
-    moments, _ = beats.effective_key_moments(analysis, audio.get("markers"), offset, total)
+    if authored is not None:
+        grid = music_model.grid_beats(authored, total)[0]
+    else:
+        grid = [t - offset for t in beats.beat_times(analysis) if 0 <= t - offset <= total]
+    moments, _ = beats.effective_key_moments(analysis or {}, audio.get("markers"), offset, total)
     s = slots[scene_index]
     return {
         "beats": [t - s["startMs"] for t in grid if s["startMs"] <= t <= s["endMs"]],
