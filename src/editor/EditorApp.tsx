@@ -1383,11 +1383,19 @@ export function EditorApp() {
     [runOp],
   );
 
-  /** A crop drag or Fit output sets the zoom key at the playhead (a new time adds one); Reset (null) clears the clip's crop and zoom. The ops snap boxes to even source pixels. */
+  /** A crop drag or Fit output sets the zoom key at the playhead (a new time adds one, gliding smoothly; an existing key keeps its ease); Reset (null) clears the clip's crop and zoom. The ops snap boxes to even source pixels. */
   const handleCommitCrop = useCallback(
     (clipId: string, crop: CropRect | null) => {
-      if (crop) runOp({ op: "setZoomKey", clipId, atMs: playheadRef.current, rect: crop });
-      else runOp({ op: "setClipCrop", clipId, crop: null });
+      if (!crop) {
+        runOp({ op: "setClipCrop", clipId, crop: null });
+        return;
+      }
+      const atMs = playheadRef.current;
+      const current = docRef.current;
+      const clip = current?.clips.find((c) => c.id === clipId);
+      const fps = current && current.settings.fps > 0 ? current.settings.fps : 60;
+      const isNew = !clip?.zoom || zoomKeyIndex(clip.zoom.keys, atMs - clip.startMs, fps) < 0;
+      runOp({ op: "setZoomKey", clipId, atMs, rect: crop, ...(isNew ? { ease: "smooth" } : {}) });
     },
     [runOp],
   );
