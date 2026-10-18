@@ -31,6 +31,18 @@ export function perfClipsFrozen(): boolean {
   return clipsFrozen;
 }
 
+/** Cold-extraction metric: when each clip (lane + source) was first referenced and when a consumer first bound one of its frames. Wall-clock reads stay in this diagnostics module; nothing on the render path reads them. */
+const clipReferencedAt = new Map<string, number>();
+const clipBoundAt = new Map<string, number>();
+
+export function noteClipReferenced(key: string): void {
+  if (!clipReferencedAt.has(key)) clipReferencedAt.set(key, performance.now());
+}
+
+export function noteClipBound(key: string): void {
+  if (clipReferencedAt.has(key) && !clipBoundAt.has(key)) clipBoundAt.set(key, performance.now());
+}
+
 /** Consecutive steady frames (each under WARMUP_STEADY_MS) that end a window's unsampled warm-up; absorbs shader recompiles and first-frame loads. */
 const WARMUP_FRAMES = 20;
 const WARMUP_STEADY_MS = 1000;

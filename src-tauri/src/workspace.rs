@@ -79,6 +79,9 @@ pub struct AppSettings {
     /// Playback slowdown-badge sensitivity: "off" | "sustained" | "strict"; absent = "off".
     #[serde(default)]
     pub lag_warning: Option<String>,
+    /// The clip extraction cache's size cap in GB; absent means `clip_cache::DEFAULT_CAP_GB`.
+    #[serde(default)]
+    pub clip_cache_cap_gb: Option<u32>,
     /// Tri-state auto-update consent: None = undecided (first-run ask still owed), Some(true) = on, Some(false) = off.
     #[serde(default)]
     pub update_check_consent: Option<bool>,

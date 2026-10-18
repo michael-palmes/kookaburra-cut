@@ -347,8 +347,13 @@ function ScreenVideo(props: {
   // The readiness node lives in this component's own subtree since own-subtree refs attach before layout effects run; a parent's ref is still null during the mount commit, which previously left the binding effect bailing on stale deps and the screen black for the whole clamp window.
   const readyRef = useRef<Group>(null);
 
+  // The clip's crop, baked once a frame binds in preview (frames can extract well after the size is known, and the card must not show through the clip's flipped UVs meanwhile); exports bake it as soon as the size is known.
+  const clipCropRef = useRef<UvRect | null>(null);
+  const boundRef = useRef(false);
+
   // Until the first frame binds, the screen shows the "Preparing video…" card, except during export where it stays plain black (belt-and-braces atop the preamble/barrier guarantees; the frame bind overwrites `map`, so no cleanup is needed).
   const onPending = useCallback(() => {
+    boundRef.current = false;
     if (isExporting()) {
       material.map = null;
       material.color.set(0x000000);
@@ -362,10 +367,12 @@ function ScreenVideo(props: {
     material.needsUpdate = true;
   }, [material, screens, screenAspect]);
   // Binds land asynchronously, after Device has set this frame's brightness, so they read the level instead of forcing white.
-  const onBound = useCallback(
-    () => material.color.setScalar(levelRef.current),
-    [material, levelRef],
-  );
+  const onBound = useCallback(() => {
+    material.color.setScalar(levelRef.current);
+    boundRef.current = true;
+    const crop = clipCropRef.current;
+    if (crop) for (const mesh of screens) bakeScreenUvs(mesh, crop);
+  }, [material, levelRef, screens]);
 
   const { info } = useClipTexture({
     src,
@@ -381,7 +388,8 @@ function ScreenVideo(props: {
     if (!info) return;
     // Pre-flipped clip bitmaps put the source's bottom row at v=0, but glTF screens have v=0 at the top; flip V in the baked crop (see engine/screenFit.ts).
     const rect = coverCropRect(info.width / info.height, screenAspect, true);
-    for (const mesh of screens) bakeScreenUvs(mesh, rect);
+    clipCropRef.current = rect;
+    if (boundRef.current || isExporting()) for (const mesh of screens) bakeScreenUvs(mesh, rect);
   }, [info, screens, screenAspect]);
 
   return <group ref={readyRef} />;
@@ -469,7 +477,7 @@ function ScreenMedia(props: {
   return null;
 }
 
-/** The pillar device primitive: the export preamble awaits `preloadCatalogModels` / `preextractClips` / `preloadProjectImages` so every frame renders synchronously after load; see docs/determinism.md and docs/decisions.md. */
+/** The pillar device primitive: the export preamble awaits `preloadCatalogModels` / `prepareExportClips` / `preloadProjectImages` so every frame renders synchronously after load; see docs/determinism.md and docs/decisions.md. */
 export function Device(props: DeviceProps) {
   const {
     id,

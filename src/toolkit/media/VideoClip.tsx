@@ -40,7 +40,7 @@ export function VideoClip(props: VideoClipProps) {
     if (meshRef.current) meshRef.current.visible = true;
   }, []);
 
-  const { info } = useClipTexture({
+  const { info, ready } = useClipTexture({
     src,
     startMs,
     material,
@@ -69,7 +69,7 @@ export function VideoClip(props: VideoClipProps) {
         <planeGeometry args={[planeSize.width, planeSize.height]} />
         <primitive object={material} attach="material" />
       </mesh>
-      {!info && !isExporting() && (
+      {!ready && !isExporting() && (
         <mesh position={position} scale={scale}>
           <planeGeometry args={[pendingSize.width, pendingSize.height]} />
           <meshBasicMaterial map={preparingVideoTexture(16 / 9, true)} toneMapped={false} />

@@ -319,7 +319,7 @@ function FixedVideo({ spec }: { spec: Extract<ThemeBackground, { type: "video" }
     if (groupRef.current) groupRef.current.visible = true;
   }, []);
 
-  const { info, error } = useClipTexture({
+  const { info, error, ready } = useClipTexture({
     src: spec.src,
     startMs: 0,
     loop: spec.loop !== false,
@@ -363,7 +363,7 @@ function FixedVideo({ spec }: { spec: Extract<ThemeBackground, { type: "video" }
           renderOrder={isFit ? FIXED_BG_RENDER_ORDER + 1 : undefined}
         />
       </group>
-      {!info && !isExporting() && <FixedQuad material={pendingMaterial} />}
+      {!ready && !isExporting() && <FixedQuad material={pendingMaterial} />}
     </>
   );
 }

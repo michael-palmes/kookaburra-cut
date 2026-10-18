@@ -503,7 +503,7 @@ function ClipPlane({
   const onBound = useCallback(() => {
     if (contentRef.current) contentRef.current.visible = true;
   }, []);
-  const { info } = useClipTexture({
+  const { info, ready } = useClipTexture({
     src,
     startMs,
     loop,
@@ -523,7 +523,7 @@ function ClipPlane({
         </mesh>
       </group>
       {/* While frames extract, the shared "Preparing video…" card fills the plane, PREVIEW ONLY: `isExporting()` stands it down and the export barriers mean no captured frame can sample it anyway. */}
-      {!info && !isExporting() && (
+      {!ready && !isExporting() && (
         <mesh renderOrder={renderOrder}>
           <planeGeometry args={[rect.width, rect.height]} />
           <meshBasicMaterial

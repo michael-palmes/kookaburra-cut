@@ -1,10 +1,17 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
-// The pipeline's native commands, scripted per test: hash_file serves the current sha per path (throws when absent, a deleted file), file_revisions the current stamp (null when unset, the legacy full re-hash), extract_clip_frames stubs a sequence keyed by that sha.
+// The pipeline's native commands, scripted per test: hash_file serves the current sha per path (throws when absent, a deleted file), file_revisions the current stamp (null when unset, the legacy full re-hash), clip_info a cold entry keyed by that sha, ensure_clip_chunks records each request, clip_conform_pending serves the scripted conform jobs.
 const shas = new Map<string, string>();
 const revs = new Map<string, string>();
+const frameCounts = new Map<string, number>();
+const conformJobs = new Map<string, { slug: string; rel: string; frame: number; total: number }>();
+const ensureCalls: { srcAbs: string; chunks: number[] }[] = [];
+const pinCalls: string[][] = [];
+const infoCalls: string[] = [];
 let failExtract = false;
+let failChunks = false;
 let hashCalls = 0;
+const eventHandlers = new Map<string, (event: { payload: unknown }) => void>();
 
 vi.mock("@tauri-apps/api/core", () => ({
   // Channel stands in for the ipc progress channel; tests never feed it messages.
@@ -21,13 +28,56 @@ vi.mock("@tauri-apps/api/core", () => ({
     if (cmd === "file_revisions") {
       return ((args?.paths ?? []) as string[]).map((path) => revs.get(path) ?? null);
     }
-    if (cmd === "extract_clip_frames") {
+    if (cmd === "clip_info") {
+      const srcAbs = args?.srcAbs as string;
+      infoCalls.push(srcAbs);
       if (failExtract) throw new Error("extraction failed");
-      return { cacheDir: `/cache/${args?.sha}`, frameCount: 10, width: 64, height: 64, fps: 60 };
+      const sha = shas.get(srcAbs);
+      if (!sha) throw new Error("unreadable");
+      return {
+        cacheDir: `/cache/${sha}`,
+        frameCount: frameCounts.get(srcAbs) ?? 10,
+        width: 64,
+        height: 64,
+        fps: 60,
+        sha,
+        chunks: [],
+        previewChunks: [],
+      };
     }
+    if (cmd === "ensure_clip_chunks") {
+      if (failChunks) throw new Error("ffmpeg died");
+      ensureCalls.push({
+        srcAbs: args?.srcAbs as string,
+        chunks: [...((args?.chunks ?? []) as number[])],
+      });
+      return null;
+    }
+    if (cmd === "clip_conform_pending") return conformJobs.get(args?.srcAbs as string) ?? null;
+    if (cmd === "set_clip_cache_pins") {
+      pinCalls.push([...((args?.dirs ?? []) as string[])]);
+      return null;
+    }
+    if (cmd === "read_clip_frame") return new ArrayBuffer(8);
     throw new Error(`unexpected command ${cmd}`);
   }),
 }));
+
+vi.mock("@tauri-apps/api/event", () => ({
+  listen: vi.fn(async (name: string, handler: (event: { payload: unknown }) => void) => {
+    eventHandlers.set(name, handler);
+    return () => {};
+  }),
+}));
+
+const flush = () => new Promise((r) => setTimeout(r, 0));
+
+function chunksRequested(srcAbs: string): number[] {
+  return ensureCalls
+    .filter((call) => call.srcAbs === srcAbs)
+    .flatMap((call) => call.chunks)
+    .sort((a, b) => a - b);
+}
 
 // Fresh module state per test: the registry and its version counter are module-level.
 async function freshClips() {
@@ -43,7 +93,14 @@ beforeAll(async () => {
 beforeEach(() => {
   shas.clear();
   revs.clear();
+  frameCounts.clear();
+  conformJobs.clear();
+  ensureCalls.length = 0;
+  pinCalls.length = 0;
+  infoCalls.length = 0;
+  eventHandlers.clear();
   failExtract = false;
+  failChunks = false;
   hashCalls = 0;
 });
 
@@ -273,5 +330,266 @@ describe("pendingFrameReady", () => {
     await expect(clips.pendingFrameReady(firstBind, "assets/a.mp4", 10)).rejects.toThrow(
       /assets\/a\.mp4.*never bound/,
     );
+  });
+});
+
+describe("prepareExportClips", () => {
+  const SRC = "/p/assets/rec.mp4";
+  // Frames 0..150 of a 600-frame clip: a scene-length window from frame 0 touches chunks 0 and 1.
+  const fromStart = {
+    window: [-500, 2000] as const,
+    frameAt: (ms: number, info: { fps: number; frameCount: number }) =>
+      Math.min(info.frameCount - 1, Math.max(0, Math.floor((ms / 1000) * info.fps))),
+  };
+
+  it("extracts only the chunks a declared slot shows", async () => {
+    const clips = await freshClips();
+    shas.set(SRC, "sha-rec");
+    frameCounts.set(SRC, 600);
+    await clips.prepareExportClips(new Map([[SRC, [fromStart]]]), { consumers: false });
+    expect(chunksRequested(SRC)).toEqual([0, 1]);
+  });
+
+  it("adds every mounted consumer's window and held frame on the consumer pass", async () => {
+    const clips = await freshClips();
+    shas.set(SRC, "sha-rec");
+    frameCounts.set(SRC, 600);
+    const entry = clips.registerClip(SRC);
+    await entry.promise;
+    clips.publishClipConsumer(entry, {}, () => ({
+      window: [-500, 1500],
+      frameAt: (ms) => 300 + Math.max(0, Math.floor((ms / 1000) * 60)),
+      heldFrame: 590,
+    }));
+    await clips.prepareExportClips(new Map(), { consumers: true });
+    expect(chunksRequested(SRC)).toEqual([2, 3, 4]);
+  });
+
+  it("extracts only the instant's chunk for a one-frame capture", async () => {
+    const clips = await freshClips();
+    shas.set(SRC, "sha-rec");
+    frameCounts.set(SRC, 600);
+    const entry = clips.registerClip(SRC);
+    await entry.promise;
+    // A later scene starting at 10 s, held off the playhead at frame 0.
+    clips.publishClipConsumer(entry, {}, () => ({
+      ...fromStart,
+      sceneStartMs: 10_000,
+      heldFrame: 0,
+    }));
+    const declared = new Map([[SRC, [{ ...fromStart, sceneStartMs: 0 }]]]);
+    await clips.prepareExportClips(declared, { consumers: true, atMs: 1500 });
+    expect(chunksRequested(SRC)).toEqual([0]);
+    await clips.prepareExportClips(declared, { consumers: true, atMs: 12_000 });
+    // 2 s into the later scene is frame 120; the first scene is past its window.
+    expect(chunksRequested(SRC)).toEqual([0, 1]);
+  });
+
+  it("takes the whole clip for a declared source nobody can time", async () => {
+    const clips = await freshClips();
+    shas.set(SRC, "sha-rec");
+    frameCounts.set(SRC, 600);
+    const declared = new Map([[SRC, []]]);
+    await clips.prepareExportClips(declared, { consumers: false });
+    expect(chunksRequested(SRC)).toEqual([]);
+    await clips.prepareExportClips(declared, { consumers: true });
+    expect(chunksRequested(SRC)).toEqual([0, 1, 2, 3, 4]);
+  });
+
+  it("extracts nothing for a known clip no consumer or slot needs", async () => {
+    const clips = await freshClips();
+    shas.set(SRC, "sha-rec");
+    frameCounts.set(SRC, 600);
+    await clips.registerClip(SRC).promise;
+    await clips.prepareExportClips(new Map(), { consumers: true });
+    expect(ensureCalls).toEqual([]);
+  });
+
+  it("fails loudly when a chunk cannot be extracted", async () => {
+    const clips = await freshClips();
+    shas.set(SRC, "sha-rec");
+    frameCounts.set(SRC, 600);
+    failChunks = true;
+    await expect(
+      clips.prepareExportClips(new Map([[SRC, [fromStart]]]), { consumers: false }),
+    ).rejects.toBeInstanceOf(clips.ClipChunkError);
+  });
+
+  it("degrades an unreadable source as before instead of failing the run", async () => {
+    const clips = await freshClips();
+    await expect(
+      clips.prepareExportClips(new Map([[SRC, [fromStart]]]), { consumers: true }),
+    ).resolves.toBeUndefined();
+    expect(clips.registerClip(SRC).error).toBeTruthy();
+  });
+
+  it("pins what a running export holds and lets go when it ends", async () => {
+    const clips = await freshClips();
+    const exportState = await import("./exportState");
+    shas.set(SRC, "sha-rec");
+    frameCounts.set(SRC, 600);
+    exportState.setExporting(true);
+    await clips.prepareExportClips(new Map([[SRC, [fromStart]]]), { consumers: false });
+    await flush();
+    expect(pinCalls.at(-1)).toEqual(["/cache/sha-rec"]);
+    exportState.setExporting(false);
+    await flush();
+    expect(pinCalls.at(-1)).toEqual([]);
+  });
+});
+
+describe("clip consumers", () => {
+  it("pin their entry while mounted", async () => {
+    const clips = await freshClips();
+    shas.set("/p/assets/a.mp4", "sha-a");
+    const entry = clips.registerClip("/p/assets/a.mp4");
+    await entry.promise;
+    const unpublish = clips.publishClipConsumer(entry, {}, () => ({
+      window: null,
+      frameAt: () => 0,
+    }));
+    await flush();
+    expect(pinCalls.at(-1)).toEqual(["/cache/sha-a"]);
+    unpublish();
+    await flush();
+    expect(pinCalls.at(-1)).toEqual([]);
+  });
+});
+
+describe("ClipFrames chunks", () => {
+  beforeAll(() => {
+    vi.stubGlobal("createImageBitmap", async () => ({ width: 8, height: 8, close() {} }));
+  });
+
+  async function readyEntry(frameCount = 600) {
+    const clips = await freshClips();
+    shas.set("/p/assets/a.mp4", "sha-a");
+    frameCounts.set("/p/assets/a.mp4", frameCount);
+    const entry = clips.registerClip("/p/assets/a.mp4");
+    await entry.promise;
+    if (!entry.frames) throw new Error("no frames");
+    return { clips, entry, frames: entry.frames };
+  }
+
+  it("extracts a frame's chunk once however many frames ask for it", async () => {
+    const { frames } = await readyEntry();
+    frames.request({}, 130);
+    const a = frames.get(130);
+    frames.request({}, 131);
+    const b = frames.get(131);
+    await Promise.all([a, b]);
+    expect(ensureCalls).toEqual([{ srcAbs: "/p/assets/a.mp4", chunks: [1] }]);
+    expect(frames.hasFrame(239)).toBe(true);
+    expect(frames.hasFrame(240)).toBe(false);
+  });
+
+  it("skips the decode of a frame its consumer moved past while the chunk extracted", async () => {
+    const { clips, frames } = await readyEntry();
+    const owner = {};
+    frames.request(owner, 10);
+    const stale = frames.get(10);
+    frames.request(owner, 250);
+    const fresh = frames.get(250);
+    await expect(stale).rejects.toBeInstanceOf(clips.ClipLoadSuperseded);
+    await expect(fresh).resolves.toBeTruthy();
+  });
+
+  it("reads a whole entry's frames without extracting", async () => {
+    const { ClipFrames } = await freshClips();
+    const frames = new ClipFrames({
+      cacheDir: "/cache/whole",
+      frameCount: 300,
+      width: 8,
+      height: 8,
+      fps: 60,
+    });
+    frames.request({}, 299);
+    await frames.get(299);
+    expect(ensureCalls).toEqual([]);
+  });
+
+  it("stops asking for a chunk that failed twice", async () => {
+    const { clips, frames } = await readyEntry();
+    failChunks = true;
+    await expect(frames.ensureChunks([0])).rejects.toBeInstanceOf(clips.ClipChunkError);
+    await expect(frames.ensureChunks([0])).rejects.toBeInstanceOf(clips.ClipChunkError);
+    failChunks = false;
+    await expect(frames.ensureChunks([0])).rejects.toBeInstanceOf(clips.ClipChunkError);
+    expect(ensureCalls).toEqual([]);
+    await frames.ensureChunks([1]);
+    expect(ensureCalls).toEqual([{ srcAbs: "/p/assets/a.mp4", chunks: [1] }]);
+  });
+
+  it("maps frame indices to their chunks for ensureFrames", async () => {
+    const { clips, entry } = await readyEntry(250);
+    await clips.ensureFrames(entry, [0, 119, 120, 999]);
+    expect(chunksRequested("/p/assets/a.mp4")).toEqual([0, 1, 2]);
+  });
+});
+
+describe("pending conforms", () => {
+  const SRC = "/ws/demo/assets/rec.mp4";
+  const job = { slug: "demo", rel: "assets/rec.mp4", frame: 30, total: 120 };
+
+  it("hold a clip with no extraction until its conform lands", async () => {
+    const clips = await freshClips();
+    conformJobs.set(SRC, job);
+    const entry = clips.registerClip(SRC);
+    await flush();
+    await flush();
+    expect(clips.clipPendingState(SRC)).toMatchObject({ rel: "assets/rec.mp4", progress: 0.25 });
+    expect(infoCalls).toEqual([]);
+    expect(entry.error).toBeUndefined();
+
+    eventHandlers.get("kookaburra://conform-progress")?.({
+      payload: { ...job, stage: "conforming", frame: 60, error: null },
+    });
+    expect(clips.clipPendingState(SRC)?.progress).toBe(0.5);
+
+    shas.set(SRC, "sha-mezz");
+    revs.set(SRC, "10-1");
+    conformJobs.delete(SRC);
+    eventHandlers.get("kookaburra://media-changed")?.({
+      payload: { slug: "demo", paths: ["assets/rec.mp4"], origin: "conform" },
+    });
+    expect((await entry.promise).cacheDir).toBe("/cache/sha-mezz");
+    expect(clips.clipPendingState(SRC)).toBeNull();
+  });
+
+  it("fail the clip, and an export of it, when the conform fails", async () => {
+    const clips = await freshClips();
+    conformJobs.set(SRC, job);
+    const entry = clips.registerClip(SRC);
+    const run = clips.prepareExportClips(new Map([[SRC, []]]), { consumers: false });
+    await flush();
+    await flush();
+    eventHandlers.get("kookaburra://conform-progress")?.({
+      payload: { ...job, stage: "failed", error: "refused" },
+    });
+    await expect(entry.promise).rejects.toBeInstanceOf(clips.ClipConformError);
+    await expect(run).rejects.toThrow(/Conforming "assets\/rec\.mp4" failed: refused/);
+  });
+
+  it("fail an export with a clear message past the bounded wait", async () => {
+    const clips = await freshClips();
+    conformJobs.set(SRC, job);
+    const lines: string[] = [];
+    await expect(
+      clips.prepareExportClips(new Map([[SRC, []]]), {
+        consumers: false,
+        conformWaitMs: 50,
+        onStatus: (line) => lines.push(line),
+      }),
+    ).rejects.toThrow(/"rec\.mp4" is still conforming/);
+    expect(lines.some((line) => line.includes('waiting for "rec.mp4" to finish conforming'))).toBe(
+      true,
+    );
+  });
+
+  it("leave a missing file nobody is conforming to fail as before", async () => {
+    const clips = await freshClips();
+    const entry = clips.registerClip(SRC);
+    await expect(entry.promise).rejects.toThrow(/unreadable/);
+    expect(clips.clipPendingState(SRC)).toBeNull();
   });
 });

@@ -6,6 +6,7 @@ mod claude_update;
 pub mod cli;
 pub mod cli_media;
 pub mod cli_song;
+mod clip_cache;
 mod concurrency;
 mod conform;
 #[cfg(target_os = "macos")]
@@ -134,20 +135,6 @@ struct Progress {
     total: u32,
     /// "render" (frames streaming) | "pass1" | "pass2" (the two-pass transcode).
     stage: &'static str,
-}
-
-/// Canonical VideoClip extraction rate: clips are normalised to this CFR so one export frame index maps 1:1 to one source frame; must match the frontend `FPS`.
-const CLIP_FPS: u32 = 60;
-
-/// Result of pre-extracting a clip: the on-disk frame sequence plus its geometry, so the frontend can sample `frame-%05d.png` by index and size the plane to the clip's aspect.
-#[derive(Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct ClipInfo {
-    cache_dir: String,
-    frame_count: u32,
-    width: u32,
-    height: u32,
-    fps: u32,
 }
 
 /// A pending two-pass transcode held in `ActiveExport` across `push_frame` invocations: the mezzanine the render is writing, plus everything `finish_export` needs to run passes 1/2 file-to-file afterwards.
@@ -729,8 +716,8 @@ pub(crate) fn hex_digest(bytes: &[u8]) -> String {
     s
 }
 
-/// Streams a file in 64 KiB chunks through SHA-256 and returns the hex digest (shared by `hash_file` and the clip-cache rebind in `extract_clip_frames`, F-005).
-fn sha256_file(path: &std::path::Path) -> Result<String, String> {
+/// Streams a file in 64 KiB chunks through SHA-256 and returns the hex digest (shared by `hash_file` and the clip-cache rebind in `clip_cache::clip_info`, F-005).
+pub(crate) fn sha256_file(path: &std::path::Path) -> Result<String, String> {
     let mut file = std::fs::File::open(path).map_err(|e| e.to_string())?;
     let mut hasher = Sha256::new();
     let mut buf = [0u8; 65536];
@@ -1036,294 +1023,6 @@ pub(crate) fn write_atomic(path: &std::path::Path, bytes: &[u8]) -> Result<(), S
     })
 }
 
-/// Determinate extraction progress for the "Preparing video…" chip, streamed over an ipc `Channel` (frames written vs a probe-estimated total); pure observability, the extraction args and output bytes are untouched.
-#[derive(Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct ExtractProgress {
-    frame: u32,
-    total: u32,
-}
-
-/// Pre-extracts a source video to a deterministic constant-frame-rate PNG sequence for `VideoClip`; frames are cached under `$APPDATA/cache/clips/<sha>-<fps>fps/` keyed by the source-file hash and reused across runs (a `.done` marker guards against a partial extraction being mistaken for a complete one); the sidecar decodes the source, including variable-frame-rate screen recordings, into CFR frames via `fps=` + cfr.
-#[tauri::command]
-async fn extract_clip_frames(
-    app: AppHandle,
-    settings: State<'_, workspace::SettingsState>,
-    src_abs: String,
-    // F-005: client-supplied hash is untrusted, ignored below in favour of a native recompute.
-    _sha: String,
-    // VideoToolbox decode is NOT pixel-identical to software, so each lane owns its own cache dir; the software dir is the one standing baselines were recorded from.
-    hardware: bool,
-    on_progress: Channel<ExtractProgress>,
-) -> Result<ClipInfo, String> {
-    // The Settings toggle can force everything onto the software lane.
-    let hardware = hardware && workspace::hardware_video_enabled(&app);
-    // Confine the source before it reaches the sidecar (TAU-01); scene data can supply it.
-    let src_path = workspace::confine_readable(&app, &settings, &src_abs)?;
-    // Rebind the cache key to the confined file's own hash so a lying client can't collide with or poison another clip's cache entry; matches the client value for a legitimate file, so the cache key and output are unchanged.
-    let sha = sha256_file(&src_path)?;
-    let src_abs = src_path.to_string_lossy().into_owned();
-    let lane_suffix = if hardware { "-hw" } else { "" };
-    let dir = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| e.to_string())?
-        .join("cache")
-        .join("clips")
-        .join(format!("{sha}-{CLIP_FPS}fps{lane_suffix}"));
-    let done = dir.join(".done");
-
-    // Cache hit: a completed extraction for this exact source + rate.
-    if done.exists() {
-        if let Some(info) = read_clip_info(&dir)? {
-            return Ok(info);
-        }
-    }
-
-    // Estimate the output frame count for the progress channel (best-effort; 0-duration probes just skip reporting).
-    let total = match media::probe_media(&app, &src_path).await {
-        Ok(probe) => ((probe.duration_ms as f64 / 1000.0) * f64::from(CLIP_FPS)).ceil() as u32,
-        Err(_) => 0,
-    };
-
-    // A `.done` entry that got here has no readable frames: ours must replace it rather than defer to it at commit time.
-    let replacing_broken = done.exists();
-
-    // Re-extract from scratch into a staging sibling, renamed onto `dir` once complete, so a second app instance extracting the same clip can neither interleave with nor read this extraction.
-    let staging = staging_sibling(&dir)?;
-    let _ = std::fs::remove_dir_all(&staging);
-    std::fs::create_dir_all(&staging).map_err(|e| e.to_string())?;
-    let pattern = staging.join("frame-%05d.png");
-    let mut args: Vec<String> = vec!["-y".into(), "-progress".into(), "pipe:1".into()];
-    if hardware {
-        args.extend(["-hwaccel".into(), "videotoolbox".into()]);
-    }
-    args.extend([
-        "-i".into(),
-        src_abs,
-        "-vf".into(),
-        format!("fps={CLIP_FPS}"),
-        "-fps_mode".into(),
-        "cfr".into(),
-        // Cheap deflate + no predictor: identical pixels, ~2x faster writes, ~2x file size.
-        "-compression_level".into(),
-        "1".into(),
-        "-pred".into(),
-        "0".into(),
-        "-start_number".into(),
-        "0".into(),
-        pattern.to_string_lossy().into_owned(),
-    ]);
-
-    let _permit = app
-        .state::<concurrency::BackgroundLimiter>()
-        .acquire()
-        .await?;
-    let (mut rx, child) = app
-        .shell()
-        .sidecar("ffmpeg")
-        .map_err(|e| format!("ffmpeg sidecar not found: {e}"))?
-        .args(args)
-        .spawn()
-        .map_err(|e| format!("failed to start ffmpeg sidecar: {e}"))?;
-    concurrency::lower_priority(child.pid());
-
-    // No stdin to feed, but the event channel (buffer 1) must still be drained.
-    let mut code: Option<i32> = None;
-    let mut last_error: Option<String> = None;
-    let mut buffer = String::new();
-    while let Some(event) = rx.recv().await {
-        match event {
-            CommandEvent::Stdout(bytes) => {
-                // ffmpeg `-progress pipe:1` emits `key=value` lines; pull `frame=N`.
-                buffer.push_str(&String::from_utf8_lossy(&bytes));
-                while let Some(nl) = buffer.find('\n') {
-                    let line: String = buffer.drain(..=nl).collect();
-                    if let Some(v) = line.trim().strip_prefix("frame=") {
-                        if let (Ok(frame), true) = (v.trim().parse::<u32>(), total > 0) {
-                            let _ = on_progress.send(ExtractProgress {
-                                frame: frame.min(total),
-                                total,
-                            });
-                        }
-                    }
-                }
-            }
-            CommandEvent::Terminated(payload) => {
-                code = payload.code;
-                break;
-            }
-            CommandEvent::Error(e) => last_error = Some(e),
-            _ => {}
-        }
-    }
-    if code != Some(0) {
-        let _ = std::fs::remove_dir_all(&staging);
-        return Err(last_error.unwrap_or_else(|| format!("ffmpeg extract exited with {code:?}")));
-    }
-
-    let info = read_clip_info(&staging)?.ok_or("extraction produced no frames")?;
-    std::fs::write(staging.join(".done"), []).map_err(|e| e.to_string())?;
-    if replacing_broken {
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-    commit_staged_dir(&staging, &dir)?;
-    Ok(ClipInfo {
-        cache_dir: dir.to_string_lossy().into_owned(),
-        ..info
-    })
-}
-
-/// Counts PNG frames in an extracted clip dir and reads the geometry from one of them, or `None` if the dir is missing/empty.
-fn read_clip_info(dir: &std::path::Path) -> Result<Option<ClipInfo>, String> {
-    if !dir.is_dir() {
-        return Ok(None);
-    }
-    let mut count = 0u32;
-    let mut sample: Option<PathBuf> = None;
-    for entry in std::fs::read_dir(dir).map_err(|e| e.to_string())? {
-        let path = entry.map_err(|e| e.to_string())?.path();
-        if path.extension().and_then(|s| s.to_str()) == Some("png") {
-            count += 1;
-            if sample.is_none() {
-                sample = Some(path);
-            }
-        }
-    }
-    let Some(sample) = sample else {
-        return Ok(None);
-    };
-    let (width, height) = png_dimensions(&sample)?;
-    Ok(Some(ClipInfo {
-        cache_dir: dir.to_string_lossy().into_owned(),
-        frame_count: count,
-        width,
-        height,
-        fps: CLIP_FPS,
-    }))
-}
-
-/// Reads width/height from a PNG's IHDR header (big-endian u32s at byte offsets 16 and 20), avoiding an image-decoding dependency; all frames in a clip share the same geometry.
-fn png_dimensions(path: &std::path::Path) -> Result<(u32, u32), String> {
-    let mut file = std::fs::File::open(path).map_err(|e| e.to_string())?;
-    let mut head = [0u8; 24];
-    file.read_exact(&mut head).map_err(|e| e.to_string())?;
-    let width = u32::from_be_bytes([head[16], head[17], head[18], head[19]]);
-    let height = u32::from_be_bytes([head[20], head[21], head[22], head[23]]);
-    Ok((width, height))
-}
-
-/// Reads a pre-extracted clip frame's bytes for the webview to decode into a texture, using Rust `std::fs` (bypassing the webview fs ACL, which doesn't cover `$APPDATA` reads by default) but restricted to the clip cache so the frontend can't read arbitrary files; returns the raw PNG bytes, and the JS `invoke` resolves to an `ArrayBuffer`.
-#[tauri::command]
-fn read_clip_frame(app: AppHandle, path: String) -> Result<tauri::ipc::Response, String> {
-    let cache_root = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| e.to_string())?
-        .join("cache")
-        .join("clips");
-    let requested = PathBuf::from(&path);
-    let has_traversal = requested
-        .components()
-        .any(|c| matches!(c, std::path::Component::ParentDir));
-    if has_traversal || !requested.starts_with(&cache_root) {
-        return Err(format!("refusing to read outside the clip cache: {path}"));
-    }
-    // F-011: canonicalise both sides so a symlink planted inside the cache can't resolve outside it.
-    let canon_requested = requested
-        .canonicalize()
-        .map_err(|e| format!("cannot access {path}: {e}"))?;
-    let canon_root = cache_root
-        .canonicalize()
-        .map_err(|e| format!("cannot access the clip cache: {e}"))?;
-    if !canon_requested.starts_with(&canon_root) {
-        return Err(format!("refusing to read outside the clip cache: {path}"));
-    }
-    let bytes = std::fs::read(&canon_requested).map_err(|e| e.to_string())?;
-    Ok(tauri::ipc::Response::new(bytes))
-}
-
-/// Generates a clip's preview JPEG set (lazy, once): `preview/frame-%05d.jpg` beside the full PNGs, long edge capped at 960. Preview playback decodes these instead of the full frames; exports always read the PNGs, so determinism is untouched. Reads the already-extracted sequence, never the source video.
-#[tauri::command]
-async fn ensure_clip_previews(app: AppHandle, cache_dir: String) -> Result<(), String> {
-    let cache_root = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| e.to_string())?
-        .join("cache")
-        .join("clips");
-    let dir = PathBuf::from(&cache_dir);
-    // Same confinement rule as read_clip_frame: the frontend only ever points inside the clip cache.
-    let has_traversal = dir
-        .components()
-        .any(|c| matches!(c, std::path::Component::ParentDir));
-    if has_traversal || !dir.starts_with(&cache_root) {
-        return Err(format!(
-            "refusing to touch outside the clip cache: {cache_dir}"
-        ));
-    }
-    if !dir.join(".done").exists() {
-        return Err("ensure_clip_previews: clip not fully extracted".into());
-    }
-    let preview = dir.join("preview");
-    if preview.join(".done").exists() {
-        return Ok(());
-    }
-    // Staged inside the clip entry and renamed onto `preview` once complete, so a second app instance never binds a half-generated tier.
-    let staging = staging_sibling(&preview)?;
-    let _ = std::fs::remove_dir_all(&staging);
-    std::fs::create_dir_all(&staging).map_err(|e| e.to_string())?;
-    let args: Vec<String> = vec![
-        "-y".into(),
-        "-f".into(),
-        "image2".into(),
-        "-start_number".into(),
-        "0".into(),
-        "-i".into(),
-        dir.join("frame-%05d.png").to_string_lossy().into_owned(),
-        "-vf".into(),
-        "scale=w=min(960\\,iw):h=min(960\\,ih):force_original_aspect_ratio=decrease".into(),
-        "-q:v".into(),
-        "4".into(),
-        "-start_number".into(),
-        "0".into(),
-        staging
-            .join("frame-%05d.jpg")
-            .to_string_lossy()
-            .into_owned(),
-    ];
-    let _permit = app
-        .state::<concurrency::BackgroundLimiter>()
-        .acquire()
-        .await?;
-    let (mut rx, child) = app
-        .shell()
-        .sidecar("ffmpeg")
-        .map_err(|e| format!("ffmpeg sidecar not found: {e}"))?
-        .args(args)
-        .spawn()
-        .map_err(|e| format!("failed to start ffmpeg sidecar: {e}"))?;
-    concurrency::lower_priority(child.pid());
-    let mut code: Option<i32> = None;
-    let mut last_error: Option<String> = None;
-    while let Some(event) = rx.recv().await {
-        match event {
-            CommandEvent::Terminated(payload) => {
-                code = payload.code;
-                break;
-            }
-            CommandEvent::Error(e) => last_error = Some(e),
-            _ => {}
-        }
-    }
-    if code != Some(0) {
-        let _ = std::fs::remove_dir_all(&staging);
-        return Err(last_error.unwrap_or_else(|| format!("ffmpeg preview exited with {code:?}")));
-    }
-    std::fs::write(staging.join(".done"), []).map_err(|e| e.to_string())?;
-    commit_staged_dir(&staging, &preview)
-}
-
 /// Best-effort: park a background auto-run's main window at the config minimum size, bottom-right of its monitor, so it never lands over the work of whoever is using the machine. Any missing piece leaves the window exactly as it was.
 fn park_background_window(window: &tauri::WebviewWindow) {
     const WIDTH: f64 = 1200.0;
@@ -1375,9 +1074,13 @@ macro_rules! kookaburra_handler {
             push_frame,
             finish_export,
             cancel_export,
-            extract_clip_frames,
-            read_clip_frame,
-            ensure_clip_previews,
+            clip_cache::clip_info,
+            clip_cache::ensure_clip_chunks,
+            clip_cache::read_clip_frame,
+            clip_cache::ensure_clip_previews,
+            clip_cache::set_clip_cache_pins,
+            clip_cache::clip_cache_session_stats,
+            clip_cache::clip_conform_pending,
             hash_file,
             reveal_in_finder,
             reveal_last_export,
@@ -1525,6 +1228,7 @@ macro_rules! kookaburra_handler {
             settings_win::cache_stats,
             settings_win::clear_media_cache,
             settings_win::clear_clips_cache,
+            settings_win::set_clip_cache_cap,
             settings_win::sidecar_versions,
             settings_win::hardware_video_support,
             updater::check_for_update,
@@ -1613,6 +1317,7 @@ pub fn run() {
         .manage(ScreenshotState(Mutex::new(None)))
         .manage(bridge::BridgeScreenshotState::default())
         .manage(concurrency::BackgroundLimiter::default())
+        .manage(clip_cache::ClipCacheState::default())
         .manage(media::ConformJobs::default())
         .manage(workspace::SettingsState::default())
         .manage(updater::PendingUpdate::default())
