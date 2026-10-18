@@ -100,7 +100,7 @@ describe("resolveSceneDocMusic", () => {
   it("keeps the stored time and reports once when a position can't resolve", () => {
     const doc = docWith([
       { id: "k1", tMs: 1200, at: "bar:5" },
-      { id: "k2", tMs: 2400, at: "cue:nowhere" },
+      { id: "k2", tMs: 9400, at: "cue:nowhere" },
     ]);
     const noGrid = resolveSceneDocMusic(doc, undefined, 0);
     expect(noGrid.doc).toBe(doc);
@@ -117,6 +117,19 @@ describe("resolveSceneDocMusic", () => {
     const out = resolveSceneDocMusic(doc, music(), 0).doc;
     expect(out).not.toBe(doc);
     expect(sceneDocBase(out)).toBe("hash-1");
+  });
+
+  it("reports a track whose keys cross when their positions resolve", () => {
+    const doc = docWith([
+      { id: "k1", tMs: 1000, at: "bar:5" },
+      { id: "k2", tMs: 2000 },
+    ]);
+    const { issues } = resolveSceneDocMusic(doc, music(), 0);
+    expect(issues).toHaveLength(1);
+    expect(issues[0]).toContain("camera keys reorder to k2 k1");
+    expect(
+      resolveSceneDocMusic(docWith([{ id: "k1", tMs: 0, at: "bar:2" }]), music(), 0).issues,
+    ).toEqual([]);
   });
 });
 

@@ -86,7 +86,36 @@ export function resolveSceneDocMusic(
     }
     return r.projectMs === key.tMs ? key : { ...key, tMs: r.projectMs };
   });
+  if (next !== doc) issues.push(...crossedKeys(doc, next));
   return { doc: next, issues };
+}
+
+const TIMED_TRACKS: [string, (d: SceneDoc) => readonly TimedKey[] | undefined][] = [
+  ["camera", (d) => d.camera?.keys],
+  ["cameraRig", (d) => d.cameraRig?.keys],
+  ["lighting", (d) => d.lighting?.keys],
+  ["compare.b.lighting", (d) => d.compare?.b?.lighting?.keys],
+];
+
+/** Tracks whose key order changed when their positions resolved: the segment between crossed keys is dropped on load, so say which. */
+function crossedKeys(before: SceneDoc, after: SceneDoc): string[] {
+  const order = (keys: readonly TimedKey[] | undefined) =>
+    (Array.isArray(keys) ? keys : [])
+      .filter((k) => k && Number.isFinite(k.tMs))
+      .sort((a, b) => a.tMs - b.tMs)
+      .map((k) => k.id)
+      .join(" ");
+  const out: string[] = [];
+  for (const [track, keysOf] of TIMED_TRACKS) {
+    const was = order(keysOf(before));
+    const now = order(keysOf(after));
+    if (was !== now) {
+      out.push(
+        `${track} keys reorder to ${now} under the current grid, so the moves between crossed keys are dropped; move a key or change its at`,
+      );
+    }
+  }
+  return out;
 }
 
 /** Drops `at` from every key whose `tMs` no longer equals its resolved position: the user moved it. An unresolvable `at` keeps both values. */
