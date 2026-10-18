@@ -24926,5 +24926,76 @@
       "lane": "spec",
       "hardware": false
     }
+  ],
+  "samplePool": [
+    {
+      "id": "app-icon.png"
+    },
+    {
+      "id": "home-dark-sample.jpg"
+    },
+    {
+      "id": "home-light-sample.jpg"
+    },
+    {
+      "id": "home-new-sample.jpg"
+    },
+    {
+      "id": "home-old-sample.jpg"
+    },
+    {
+      "id": "kooka-alt-loop-sample.mp4"
+    },
+    {
+      "id": "kooka-dark-loop-sample.mp4"
+    },
+    {
+      "id": "kooka-feed-loop-sample.mp4"
+    },
+    {
+      "id": "kooka-icon-dark-sample.png"
+    },
+    {
+      "id": "kooka-icon-sample.png"
+    },
+    {
+      "id": "kooka-onboard-loop-sample.mp4"
+    },
+    {
+      "id": "kooka-terminal-loop-sample.mp4"
+    },
+    {
+      "id": "onboard-1-sample.jpg"
+    },
+    {
+      "id": "onboard-2-sample.jpg"
+    },
+    {
+      "id": "onboard-3-sample.jpg"
+    },
+    {
+      "id": "pro-badge-sample.png"
+    },
+    {
+      "id": "sample-laptop-recording.mp4"
+    },
+    {
+      "id": "sample-phone-recording.mp4"
+    },
+    {
+      "id": "settings-off-sample.jpg"
+    },
+    {
+      "id": "settings-on-sample.jpg"
+    },
+    {
+      "id": "shot-a-sample.jpg"
+    },
+    {
+      "id": "shot-b-sample.jpg"
+    },
+    {
+      "id": "shot-c-sample.jpg"
+    }
   ]
 }

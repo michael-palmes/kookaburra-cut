@@ -1280,6 +1280,22 @@ function templates(): Entry[] {
   });
 }
 
+/** workspace.rs SAMPLE_MEDIA_EXTENSIONS: what `ensure_sample_assets` restores, so the unused sweep keeps these names. */
+const SAMPLE_POOL_EXTENSIONS = ["png", "jpg", "jpeg", "webp", "mp4", "mov", "m4a"];
+const samplePoolFiles = Object.keys(import.meta.glob("/projects/_samples/*", { query: "?url" }));
+
+/** The shared sample pool (`projects/_samples/`), so kb's `assets unused` keeps the restored samples offline. */
+function samplePool(): Entry[] {
+  return samplePoolFiles
+    .map((path) => path.slice(path.lastIndexOf("/") + 1))
+    .filter((name) => {
+      const ext = name.slice(name.lastIndexOf(".") + 1).toLowerCase();
+      return !name.startsWith(".") && name.includes(".") && SAMPLE_POOL_EXTENSIONS.includes(ext);
+    })
+    .sort()
+    .map((id) => ({ id }));
+}
+
 /** The Export modal's video rows (High quality, then the bundled presets): what `kb export --preset` takes and what `kb verify-export` expects of a file. `lane` is `frozen` for High quality (its spec lane with the poster frame on), `spec` for presets; `hardware` lanes are excluded from Verify. */
 function exportPresets(): Entry[] {
   return railPresets(BUNDLED_EXPORT_PRESETS).map((doc) => ({
@@ -1435,6 +1451,7 @@ export function buildAgentCatalog(): Record<string, Json> {
     presets: presets(),
     templates: templates(),
     exportPresets: exportPresets(),
+    samplePool: samplePool(),
   };
   return tidy(catalog) as Record<string, Json>;
 }
