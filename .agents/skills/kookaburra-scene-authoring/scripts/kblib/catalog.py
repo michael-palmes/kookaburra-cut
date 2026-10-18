@@ -26,7 +26,7 @@ AUDIO_FADE_CURVES = ["smooth", "linear", "scurve", "exponential", "logarithmic"]
 FALLBACK_SCENE_DOC_KEYS = [
     "version", "name", "duration", "text", "textLayout", "textStyle", "headerIcon", "managedText",
     "devices", "media", "images", "deviceLayout", "deviceTrack", "objects", "camera", "cameraMode",
-    "cameraRig", "themeId", "backdrop", "background", "textAnimation", "textAnimationForce",
+    "cameraRig", "cameraKicks", "themeId", "backdrop", "background", "textAnimation", "textAnimationForce",
     "textAnimationOverrides", "textLook", "textLookForce", "textLookOverrides", "lighting", "frame",
     "layeredScreenshot", "videoWindow", "compare", "chart", "terminal", "website", "animatedTrack",
     "stills", "motionBlur",
@@ -35,6 +35,7 @@ FALLBACK_MANIFEST_KEYS = [
     "id", "name", "group", "audio", "themeId", "typography", "formats", "version", "scenes",
     "camera", "persistent", "frame", "render", "lighting", "appliedBackground", "defaultTransition",
 ]
+FALLBACK_DEVICE_MEDIA_KEYS = ["src", "kind", "startMs", "fit", "startOn", "inMs", "outMs", "speed", "loop", "posterMs"]
 SCENE_DOC_VERSION = 1
 MANIFEST_VERSION = 2
 
@@ -161,6 +162,10 @@ def scene_doc_keys(cat: Catalog) -> List[str]:
 
 def manifest_keys(cat: Catalog) -> List[str]:
     return cat.ids("projectManifest.keys", FALLBACK_MANIFEST_KEYS) or FALLBACK_MANIFEST_KEYS
+
+
+def device_media_keys(cat: Catalog) -> List[str]:
+    return cat.ids("deviceMedia.keys", FALLBACK_DEVICE_MEDIA_KEYS) or FALLBACK_DEVICE_MEDIA_KEYS
 
 
 def entry_line(entry: Dict[str, Any]) -> str:
