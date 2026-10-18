@@ -1,0 +1,145 @@
+{
+  "version": 1,
+  "description": "The shared in-use rule for project assets: the app's Delete unused sheet and pack review (src-tauri/src/media.rs AssetRefs) and kb's unused listing read these cases. Each case lays out a workspace: files (empty, under the project), project.json, scene sidecars and modules (keys may name a nested folder under scenes/), edit documents, and workspace themes (themes/<slug>/theme.json beside the project).",
+  "rule": [
+    "The corpus is project.json, every scenes/**/*.json and *.tsx (dot names skipped), edits/*.json, and themes/<slug>/theme.json for every ws:<slug> named by a themeId anywhere in project.json or a sidecar (project theme, scene themes, compare.b).",
+    "A file is referenced when its rel (assets/...) appears as a substring of any corpus file, or matches a pattern.",
+    "Patterns come from string literals that open on assets/ or ./assets/ right after a quote (\", ' or `): a template substitution ${...} in a backtick literal becomes *, a literal followed by + becomes <literal>*, and a literal ending in / becomes <literal>*. Only literals with a * are patterns; a literal that breaks a line or never closes makes none. * matches any run of characters, / included.",
+    "assets/_meta.json is always referenced. assets/<stem>.timing.json is referenced exactly when a file assets/<stem>.<ext> (one extension) is.",
+    "unused is every file not referenced, minus the sample pool: names that sit flat under assets/ and appear in samplePool. The app further limits its sheet to media extensions."
+  ],
+  "cases": [
+    {
+      "name": "json strings, tsx literals, the manifest and edit documents",
+      "files": [
+        "assets/a.png",
+        "assets/b.mp4",
+        "assets/c.png",
+        "assets/d.mp3",
+        "assets/e.mp4"
+      ],
+      "project": { "version": 1, "audio": { "file": "assets/d.mp3" } },
+      "sidecars": { "01-intro.json": { "background": { "type": "image", "src": "assets/a.png" } } },
+      "tsx": { "01-intro.tsx": "export const clip = \"assets/b.mp4\";\n" },
+      "edits": { "take.json": { "version": 2, "sources": [{ "rel": "assets/e.mp4" }] } },
+      "patterns": [],
+      "referenced": ["assets/a.png", "assets/b.mp4", "assets/d.mp3", "assets/e.mp4"],
+      "unused": ["assets/c.png"]
+    },
+    {
+      "name": "a template literal becomes a glob",
+      "files": [
+        "assets/glyph-a.png",
+        "assets/glyph-b.png",
+        "assets/glyph-a.jpg",
+        "assets/other.png"
+      ],
+      "tsx": { "02-glyphs.tsx": "const src = (id: string) => `assets/glyph-${id}.png`;\n" },
+      "patterns": ["assets/glyph-*.png"],
+      "referenced": ["assets/glyph-a.png", "assets/glyph-b.png"],
+      "unused": ["assets/glyph-a.jpg", "assets/other.png"]
+    },
+    {
+      "name": "a concatenation becomes a glob up to the operator",
+      "files": ["assets/frame-1.png", "assets/frame-2.jpg", "assets/framed.png"],
+      "tsx": { "03-frames.tsx": "const src = \"assets/frame-\" + n + \".png\";\n" },
+      "patterns": ["assets/frame-*"],
+      "referenced": ["assets/frame-1.png", "assets/frame-2.jpg"],
+      "unused": ["assets/framed.png"]
+    },
+    {
+      "name": "a folder literal covers everything under it",
+      "files": ["assets/shots/a.png", "assets/shots/deep/b.png", "assets/shot.png"],
+      "tsx": { "04-shots.tsx": "const dir = \"assets/shots/\";\nconst src = dir + name;\n" },
+      "patterns": ["assets/shots/*"],
+      "referenced": ["assets/shots/a.png", "assets/shots/deep/b.png"],
+      "unused": ["assets/shot.png"]
+    },
+    {
+      "name": "a leading ./ and a nested scenes folder",
+      "files": ["assets/logo.png", "assets/icons/one.png", "assets/icons.png"],
+      "tsx": {
+        "deck/05-icons.tsx": "const logo = './assets/logo.png';\nconst icon = (n: string) => `./assets/icons/${n}.png`;\n"
+      },
+      "patterns": ["assets/icons/*.png"],
+      "referenced": ["assets/icons/one.png", "assets/logo.png"],
+      "unused": ["assets/icons.png"]
+    },
+    {
+      "name": "the workspace themes the project and its scenes use",
+      "files": [
+        "assets/wall.png",
+        "assets/studio.hdr",
+        "assets/grade.cube",
+        "assets/floor.jpg",
+        "assets/orphan.png"
+      ],
+      "project": { "version": 1, "themeId": "ws:brand" },
+      "sidecars": {
+        "01-intro.json": { "themeId": "ws:night" },
+        "02-compare.json": { "compare": { "b": { "themeId": "ws:after" } } },
+        "03-bundled.json": { "themeId": "kookaburra-default" }
+      },
+      "themes": {
+        "brand": {
+          "version": 2,
+          "background": { "type": "image", "src": "assets/wall.png" },
+          "lighting": { "environment": { "source": "assets/studio.hdr" } }
+        },
+        "night": { "version": 2, "effects": { "lut": { "url": "assets/grade.cube" } } },
+        "after": { "version": 2, "backdrop": { "type": "image", "src": "assets/floor.jpg" } },
+        "spare": { "version": 2, "background": { "type": "image", "src": "assets/orphan.png" } }
+      },
+      "patterns": [],
+      "referenced": ["assets/floor.jpg", "assets/grade.cube", "assets/studio.hdr", "assets/wall.png"],
+      "unused": ["assets/orphan.png"]
+    },
+    {
+      "name": "the restored sample pool is never unused",
+      "files": [
+        "assets/app-icon.png",
+        "assets/kooka-icon-sample.png",
+        "assets/sample-phone-recording.mp4",
+        "assets/mine.png",
+        "assets/nested/app-icon.png"
+      ],
+      "samplePool": ["app-icon.png", "kooka-icon-sample.png", "sample-phone-recording.mp4"],
+      "patterns": [],
+      "referenced": [],
+      "unused": ["assets/mine.png", "assets/nested/app-icon.png"]
+    },
+    {
+      "name": "a timing record follows its mezzanine and the provenance record is kept",
+      "files": [
+        "assets/rec.mp4",
+        "assets/rec.timing.json",
+        "assets/old.timing.json",
+        "assets/_meta.json",
+        "assets/take.mov"
+      ],
+      "sidecars": {
+        "01-device.json": { "devices": [{ "media": { "src": "assets/rec.mp4", "kind": "video" } }] }
+      },
+      "patterns": [],
+      "referenced": ["assets/_meta.json", "assets/rec.mp4", "assets/rec.timing.json"],
+      "unused": ["assets/old.timing.json", "assets/take.mov"]
+    },
+    {
+      "name": "near misses and prose are not references",
+      "files": ["assets/logo.png", "assets/logo-2.png"],
+      "sidecars": { "01-intro.json": { "src": "assets/logo-2.png" } },
+      "tsx": { "01-intro.tsx": "// put screens in assets/ first\nexport const note = \"see assets/logo for more\";\n" },
+      "patterns": [],
+      "referenced": ["assets/logo-2.png"],
+      "unused": ["assets/logo.png"]
+    },
+    {
+      "name": "a bare assets/ literal keeps every file",
+      "files": ["assets/a.png", "assets/b/c.mp4"],
+      "tsx": { "01-any.tsx": "const base = \"assets/\";\n" },
+      "patterns": ["assets/*"],
+      "referenced": ["assets/a.png", "assets/b/c.mp4"],
+      "unused": []
+    }
+  ]
+}

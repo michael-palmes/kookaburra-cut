@@ -527,26 +527,38 @@ pub(crate) struct ProjectText {
     text: String,
 }
 
-/// Every project file a media reference can live in, read once: the manifest, scene sidecars and modules, and edit documents. Unreadable files are skipped, and order does not matter because `references_in` sorts its hits.
+/// Every project file a media reference can live in, read once: the manifest, scene sidecars and modules (nested folders too), edit documents, and the workspace themes the project or a scene names (`ws:<slug>`, from any `themeId`), which can reference `background.src`, `backdrop.src`, `lut.url` and environment maps. Unreadable files are skipped, and order does not matter because `references` sorts its hits.
 pub(crate) fn project_texts(project: &Path) -> Vec<ProjectText> {
     let mut texts = Vec::new();
-    let mut read = |path: &Path, display: String| {
+    let read = |texts: &mut Vec<ProjectText>, path: &Path, display: String| {
         if let Ok(text) = std::fs::read_to_string(path) {
             texts.push(ProjectText { display, text });
         }
     };
     read(
+        &mut texts,
         &project.join(MANIFEST_FILENAME),
         MANIFEST_FILENAME.to_owned(),
     );
-    if let Ok(entries) = std::fs::read_dir(project.join("scenes")) {
+    let scenes = project.join("scenes");
+    let mut folders = vec![scenes.clone()];
+    while let Some(folder) = folders.pop() {
+        let Ok(entries) = std::fs::read_dir(&folder) else {
+            continue;
+        };
         for entry in entries.flatten() {
             let path = entry.path();
+            if entry.file_name().to_string_lossy().starts_with('.') {
+                continue;
+            }
+            if path.is_dir() {
+                folders.push(path);
+                continue;
+            }
             let ext = path.extension().and_then(|s| s.to_str());
             if path.is_file() && matches!(ext, Some("json") | Some("tsx")) {
-                if let Some(name) = path.file_name().and_then(|s| s.to_str()) {
-                    let display = name.to_owned();
-                    read(&path, display);
+                if let Ok(rel) = path.strip_prefix(&scenes) {
+                    read(&mut texts, &path, rel.to_string_lossy().into_owned());
                 }
             }
         }
@@ -558,36 +570,243 @@ pub(crate) fn project_texts(project: &Path) -> Vec<ProjectText> {
             if path.is_file() && path.extension().and_then(|s| s.to_str()) == Some("json") {
                 if let Some(name) = path.file_name().and_then(|s| s.to_str()) {
                     let display = format!("edits/{name}");
-                    read(&path, display);
+                    read(&mut texts, &path, display);
                 }
             }
+        }
+    }
+    if let Some(themes) = workspace_themes_dir(project) {
+        for slug in workspace_theme_slugs(&texts) {
+            let display = format!("{}/{slug}/theme.json", crate::theme::THEMES_DIR_NAME);
+            read(&mut texts, &themes.join(&slug).join("theme.json"), display);
         }
     }
     texts
 }
 
-/// The files in `texts` that mention `rel`, sorted; substring match, so a false positive only ever REFUSES a destructive action, never allows one.
-pub(crate) fn references_in(texts: &[ProjectText], rel: &str) -> Vec<String> {
-    let mut hits: Vec<String> = texts
-        .iter()
-        .filter(|file| file.text.contains(rel))
-        .map(|file| file.display.clone())
-        .collect();
-    hits.sort();
-    hits
+/// The workspace's themes folder beside a project (`<root>/<slug>`) or a library item (`<root>/templates/<slug>`); None for the bundled trees, whose themes ship with the app.
+fn workspace_themes_dir(project: &Path) -> Option<PathBuf> {
+    let parent = project.parent()?;
+    let library = matches!(
+        parent.file_name().and_then(|n| n.to_str()),
+        Some(crate::library::TEMPLATES_DIR_NAME | crate::library::PRESETS_DIR_NAME)
+    );
+    let root = if library { parent.parent()? } else { parent };
+    let themes = root.join(crate::theme::THEMES_DIR_NAME);
+    themes.is_dir().then_some(themes)
 }
 
-/// The entries of `rels` that nothing in `texts` mentions, input order preserved.
-pub(crate) fn unreferenced_rels<'a>(texts: &[ProjectText], rels: &'a [String]) -> Vec<&'a str> {
-    rels.iter()
-        .filter(|rel| !texts.iter().any(|file| file.text.contains(rel.as_str())))
-        .map(|rel| rel.as_str())
-        .collect()
+/// The workspace theme slugs any manifest or sidecar names through a `themeId` (project theme, scene themes, comparison side B), sorted.
+fn workspace_theme_slugs(texts: &[ProjectText]) -> Vec<String> {
+    fn collect(value: &serde_json::Value, out: &mut std::collections::BTreeSet<String>) {
+        match value {
+            serde_json::Value::Object(fields) => {
+                let id = fields.get("themeId").and_then(serde_json::Value::as_str);
+                if let Some(slug) = id.and_then(|id| id.strip_prefix("ws:")) {
+                    if workspace::validate_slug(slug).is_ok() {
+                        out.insert(slug.to_owned());
+                    }
+                }
+                fields.values().for_each(|child| collect(child, out));
+            }
+            serde_json::Value::Array(items) => items.iter().for_each(|child| collect(child, out)),
+            _ => {}
+        }
+    }
+    let mut slugs = std::collections::BTreeSet::new();
+    for file in texts {
+        if !file.display.ends_with(".json") || file.display.starts_with("edits/") {
+            continue;
+        }
+        if let Ok(doc) = serde_json::from_str::<serde_json::Value>(&file.text) {
+            collect(&doc, &mut slugs);
+        }
+    }
+    slugs.into_iter().collect()
 }
 
-/// Every project file that mentions `rel` (the in-use guard): scene sidecars, scene TSX modules, edit documents and project.json (audio); substring match, so a false positive only ever REFUSES a destructive action, never allows one.
+/// A conform's timing record beside its mezzanine (`assets/<stem>.timing.json`).
+const TIMING_SUFFIX: &str = ".timing.json";
+
+/// One glob a template literal or concatenation stands for (`assets/glyph-*.png`), and the file it came from.
+struct RefPattern {
+    glob: String,
+    display: String,
+}
+
+/// The shared in-use rule over a project's text files (conformance cases in the kit's `asset-ref-vectors.json`): a file is referenced when its rel appears anywhere in a project file (substring, so a false positive only ever refuses a destructive action), or when it matches a glob a string literal stands for. A literal opening on `assets/` (or `./assets/`) is a glob when it carries a template substitution (`${…}` becomes `*`), is concatenated (`"assets/glyph-" + id` becomes `assets/glyph-*`) or ends in a folder (`"assets/shots/"` becomes `assets/shots/*`); `*` matches across `/`.
+pub(crate) struct AssetRefs {
+    texts: Vec<ProjectText>,
+    patterns: Vec<RefPattern>,
+}
+
+impl AssetRefs {
+    pub(crate) fn from_texts(texts: Vec<ProjectText>) -> Self {
+        let patterns = texts
+            .iter()
+            .flat_map(|file| {
+                literal_patterns(&file.text)
+                    .into_iter()
+                    .map(|glob| RefPattern {
+                        glob,
+                        display: file.display.clone(),
+                    })
+            })
+            .collect();
+        Self { texts, patterns }
+    }
+
+    /// The files that reference `rel`, sorted, each once.
+    pub(crate) fn references(&self, rel: &str) -> Vec<String> {
+        let mut hits: std::collections::BTreeSet<String> = self
+            .texts
+            .iter()
+            .filter(|file| file.text.contains(rel))
+            .map(|file| file.display.clone())
+            .collect();
+        hits.extend(
+            self.patterns
+                .iter()
+                .filter(|p| glob_matches(&p.glob, rel))
+                .map(|p| p.display.clone()),
+        );
+        hits.into_iter().collect()
+    }
+
+    /// Whether `rel` is in use, given every file in `assets/`: the provenance record always is, and a conform's timing record is exactly when its mezzanine is.
+    pub(crate) fn in_use(&self, rel: &str, files: &[String]) -> bool {
+        if rel == crate::asset_meta::META_REL {
+            return true;
+        }
+        if let Some(stem) = rel.strip_suffix(TIMING_SUFFIX) {
+            let prefix = format!("{stem}.");
+            return files.iter().any(|file| {
+                file.strip_prefix(&prefix)
+                    .is_some_and(|ext| !ext.is_empty() && !ext.contains('.'))
+                    && !self.references(file).is_empty()
+            });
+        }
+        !self.references(rel).is_empty()
+    }
+
+    /// The globs the corpus's literals stand for, sorted, each once.
+    #[cfg(test)]
+    pub(crate) fn patterns(&self) -> Vec<String> {
+        let globs: std::collections::BTreeSet<&str> =
+            self.patterns.iter().map(|p| p.glob.as_str()).collect();
+        globs.into_iter().map(str::to_owned).collect()
+    }
+
+    /// The entries of `rels` not in use and not a restored sample (`pool` names sit flat under `assets/`), input order kept.
+    pub(crate) fn unused<'a>(&self, rels: &'a [String], pool: &[String]) -> Vec<&'a str> {
+        rels.iter()
+            .filter(|rel| !self.in_use(rel, rels))
+            .filter(|rel| {
+                !rel.strip_prefix("assets/")
+                    .is_some_and(|name| pool.iter().any(|p| p == name))
+            })
+            .map(String::as_str)
+            .collect()
+    }
+}
+
+/// The globs the string literals in `text` stand for (see `AssetRefs`); plain literals are left to the substring match.
+fn literal_patterns(text: &str) -> Vec<String> {
+    const PREFIX: &str = "assets/";
+    let mut out: Vec<String> = Vec::new();
+    let mut from = 0;
+    while let Some(found) = text[from..].find(PREFIX) {
+        let start = from + found;
+        from = start + PREFIX.len();
+        let before = &text[..start];
+        let before = before.strip_suffix("./").unwrap_or(before);
+        let Some(quote) = before
+            .chars()
+            .next_back()
+            .filter(|c| matches!(c, '"' | '\'' | '`'))
+        else {
+            continue;
+        };
+        let body = &text[start + PREFIX.len()..];
+        let mut glob = String::from(PREFIX);
+        let mut chars = body.char_indices().peekable();
+        let mut end = None;
+        while let Some((i, c)) = chars.next() {
+            if c == quote {
+                end = Some(i);
+                break;
+            }
+            if c == '\n' || c == '\\' {
+                break;
+            }
+            if quote == '`' && c == '$' && chars.peek().is_some_and(|&(_, n)| n == '{') {
+                let mut depth = 0u32;
+                let mut closed = false;
+                for (_, n) in chars.by_ref() {
+                    match n {
+                        '{' => depth += 1,
+                        '}' => {
+                            depth -= 1;
+                            if depth == 0 {
+                                closed = true;
+                                break;
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                if !closed {
+                    break;
+                }
+                if !glob.ends_with('*') {
+                    glob.push('*');
+                }
+                continue;
+            }
+            glob.push(c);
+        }
+        let Some(end) = end else {
+            continue;
+        };
+        let rest = &body[end + quote.len_utf8()..];
+        if (rest.trim_start().starts_with('+') || glob.ends_with('/')) && !glob.ends_with('*') {
+            glob.push('*');
+        }
+        if glob.contains('*') && !out.contains(&glob) {
+            out.push(glob);
+        }
+    }
+    out
+}
+
+/// `*` matches any run of characters, `/` included.
+fn glob_matches(glob: &str, rel: &str) -> bool {
+    let mut parts = glob.split('*');
+    let first = parts.next().unwrap_or_default();
+    let Some(mut rest) = rel.strip_prefix(first) else {
+        return false;
+    };
+    let tail: Vec<&str> = parts.collect();
+    let Some((last, middle)) = tail.split_last() else {
+        return rest.is_empty();
+    };
+    for part in middle {
+        match rest.find(part) {
+            Some(at) => rest = &rest[at + part.len()..],
+            None => return false,
+        }
+    }
+    rest.ends_with(last)
+}
+
+/// The in-use rule over a project's files, read once.
+pub(crate) fn project_asset_refs(project: &Path) -> AssetRefs {
+    AssetRefs::from_texts(project_texts(project))
+}
+
+/// Every project file that references `rel` (the in-use guard behind delete, rename and conform): project.json, scene sidecars and modules, edit documents and the workspace themes in use, by the shared rule (`AssetRefs`).
 pub(crate) fn media_references(project: &Path, rel: &str) -> Vec<String> {
-    references_in(&project_texts(project), rel)
+    project_asset_refs(project).references(rel)
 }
 
 /// A project-relative asset path that stays inside `assets/` (no traversal, no nesting tricks), the shared validation for delete/rename.
@@ -633,7 +852,7 @@ pub struct UnusedAsset {
     pub kind: String, // "video" | "image"
 }
 
-/// Every media file in a project's `assets/` that no scene, edit or the manifest mentions, newest added first (the grid's order). One pass over the project's text files answers every asset, and the answer comes from the same guard `delete_media` enforces, so the list can never drift from what a delete will allow. Media extensions only: fonts, HDRIs, 3D objects and chart data can be referenced from files this guard never reads, so sweeping them would risk trashing something in use. The samples `ensure_sample_assets` restores at every project load are left out, since deleting one only brings it back.
+/// Every media file in a project's `assets/` that nothing references (the shared rule, `AssetRefs`), newest added first (the grid's order). One pass over the project's text files answers every asset, and the answer comes from the same guard `delete_media` enforces, so the list can never drift from what a delete will allow. Media extensions only: fonts, HDRIs, 3D objects and chart data can be referenced from files this guard never reads, so sweeping them would risk trashing something in use. The samples `ensure_sample_assets` restores at every project load are left out, since deleting one only brings it back.
 #[tauri::command]
 pub fn unused_media(
     app: AppHandle,
@@ -642,16 +861,10 @@ pub fn unused_media(
 ) -> Result<Vec<UnusedAsset>, String> {
     let project = workspace::project_dir(&app, &state, &slug)?;
     let rels = workspace::project_media_rels(&project)?;
-    let texts = project_texts(&project);
-    let backfilled: std::collections::HashSet<String> = workspace::backfilled_sample_names(&app)
+    let pool = workspace::backfilled_sample_names(&app);
+    Ok(project_asset_refs(&project)
+        .unused(&rels, &pool)
         .into_iter()
-        .collect();
-    Ok(unreferenced_rels(&texts, &rels)
-        .into_iter()
-        .filter(|rel| {
-            !rel.strip_prefix("assets/")
-                .is_some_and(|name| backfilled.contains(name))
-        })
         .map(|rel| UnusedAsset {
             bytes: std::fs::metadata(project.join(rel))
                 .map(|m| m.len())
@@ -1707,9 +1920,13 @@ mod tests {
         }
     }
 
+    fn refs(corpus: Vec<ProjectText>) -> AssetRefs {
+        AssetRefs::from_texts(corpus)
+    }
+
     #[test]
     fn a_mention_in_any_project_file_is_reported_once_and_sorted() {
-        let corpus = vec![
+        let corpus = refs(vec![
             file(MANIFEST_FILENAME, r#"{"audio":"assets/theme.mp3"}"#),
             file(
                 "02-hero.json",
@@ -1717,53 +1934,227 @@ mod tests {
             ),
             file("02-hero.tsx", "const src = \"assets/other.mp4\";"),
             file("edits/take.json", r#"{"source":"assets/clip.mp4"}"#),
-        ];
+        ]);
 
         assert_eq!(
-            references_in(&corpus, "assets/clip.mp4"),
+            corpus.references("assets/clip.mp4"),
             vec!["02-hero.json".to_owned(), "edits/take.json".to_owned()]
         );
         assert_eq!(
-            references_in(&corpus, "assets/theme.mp3"),
+            corpus.references("assets/theme.mp3"),
             vec![MANIFEST_FILENAME.to_owned()]
         );
     }
 
     #[test]
     fn a_near_miss_path_is_not_a_reference() {
-        let corpus = vec![file("02-hero.json", r#"{"a":"assets/logo-2.png"}"#)];
+        let corpus = refs(vec![file("02-hero.json", r#"{"a":"assets/logo-2.png"}"#)]);
 
-        assert!(references_in(&corpus, "assets/logo.png").is_empty());
+        assert!(corpus.references("assets/logo.png").is_empty());
     }
 
     #[test]
     fn the_substring_match_only_ever_over_reports() {
-        let corpus = vec![file("02-hero.json", r#"{"a":"x/assets/clip.mp4"}"#)];
+        let corpus = refs(vec![file("02-hero.json", r#"{"a":"x/assets/clip.mp4"}"#)]);
 
         assert_eq!(
-            references_in(&corpus, "assets/clip.mp4"),
+            corpus.references("assets/clip.mp4"),
             vec!["02-hero.json".to_owned()]
         );
     }
 
     #[test]
-    fn unreferenced_rels_keeps_input_order_and_drops_anything_mentioned() {
-        let corpus = vec![file("02-hero.json", r#"{"a":"assets/middle.png"}"#)];
+    fn unused_keeps_input_order_and_drops_anything_mentioned_or_pooled() {
+        let corpus = refs(vec![file("02-hero.json", r#"{"a":"assets/middle.png"}"#)]);
         let rels = vec![
             "assets/first.mp4".to_owned(),
             "assets/middle.png".to_owned(),
+            "assets/app-icon.png".to_owned(),
             "assets/last.png".to_owned(),
         ];
 
         assert_eq!(
-            unreferenced_rels(&corpus, &rels),
+            corpus.unused(&rels, &["app-icon.png".to_owned()]),
             vec!["assets/first.mp4", "assets/last.png"]
         );
     }
 
     #[test]
-    fn media_references_and_references_in_agree_on_an_empty_corpus() {
-        assert!(references_in(&[], "assets/clip.mp4").is_empty());
+    fn an_empty_corpus_references_nothing() {
+        assert!(refs(Vec::new()).references("assets/clip.mp4").is_empty());
+    }
+
+    #[test]
+    fn template_literals_concatenations_and_folders_become_globs() {
+        let text = concat!(
+            "const a = `assets/glyph-${id}.png`;\n",
+            "const b = \"assets/frame-\" + n + \".jpg\";\n",
+            "const c = './assets/shots/';\n",
+            "const d = `assets/${set}/${name}-${size}.webp`;\n",
+            "const e = \"assets/plain.png\";\n",
+            "// see assets/ for the files\n",
+            "const f = `assets/nested-${a ? `${b}` : c}.png`;\n",
+        );
+        assert_eq!(
+            literal_patterns(text),
+            [
+                "assets/glyph-*.png",
+                "assets/frame-*",
+                "assets/shots/*",
+                "assets/*/*-*.webp",
+                "assets/nested-*.png",
+            ]
+        );
+    }
+
+    #[test]
+    fn an_unclosed_literal_or_a_line_break_makes_no_glob() {
+        assert!(literal_patterns("const a = `assets/glyph-${id.png").is_empty());
+        assert!(literal_patterns("const a = \"assets/glyph-\n\" + b").is_empty());
+    }
+
+    #[test]
+    fn a_glob_matches_across_folders() {
+        assert!(glob_matches("assets/glyph-*.png", "assets/glyph-a.png"));
+        assert!(glob_matches("assets/glyph-*.png", "assets/glyph-a/b.png"));
+        assert!(!glob_matches("assets/glyph-*.png", "assets/glyph-a.jpg"));
+        assert!(glob_matches("assets/*/*-*.webp", "assets/set/name-2.webp"));
+        assert!(!glob_matches("assets/*-*.png", "assets/name.png"));
+        assert!(glob_matches("assets/shots/*", "assets/shots/a.png"));
+        assert!(!glob_matches("assets/shots/*", "assets/shot.png"));
+    }
+
+    #[test]
+    fn a_timing_record_follows_its_mezzanine_and_the_provenance_record_is_always_kept() {
+        let corpus = refs(vec![file("01.json", r#"{"src":"assets/rec.mp4"}"#)]);
+        let files = vec![
+            "assets/rec.mp4".to_owned(),
+            "assets/rec.timing.json".to_owned(),
+            "assets/old.timing.json".to_owned(),
+            "assets/_meta.json".to_owned(),
+        ];
+        assert!(corpus.in_use("assets/rec.timing.json", &files));
+        assert!(!corpus.in_use("assets/old.timing.json", &files));
+        assert!(corpus.in_use("assets/_meta.json", &files));
+    }
+
+    /// One case of the shared in-use vectors (`asset-ref-vectors.json`), laid out as a workspace on disk.
+    #[derive(serde::Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct GuardCase {
+        name: String,
+        files: Vec<String>,
+        #[serde(default)]
+        sample_pool: Vec<String>,
+        #[serde(default)]
+        project: Option<serde_json::Value>,
+        #[serde(default)]
+        sidecars: std::collections::BTreeMap<String, serde_json::Value>,
+        #[serde(default)]
+        tsx: std::collections::BTreeMap<String, String>,
+        #[serde(default)]
+        edits: std::collections::BTreeMap<String, serde_json::Value>,
+        #[serde(default)]
+        themes: std::collections::BTreeMap<String, serde_json::Value>,
+        #[serde(default)]
+        patterns: Vec<String>,
+        referenced: Vec<String>,
+        unused: Vec<String>,
+    }
+
+    fn write_case(root: &Path, case: &GuardCase) -> PathBuf {
+        let project = root.join("product-tour");
+        let write = |path: PathBuf, text: String| {
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, text).unwrap();
+        };
+        for rel in &case.files {
+            write(project.join(rel), String::new());
+        }
+        if let Some(doc) = &case.project {
+            write(project.join(MANIFEST_FILENAME), doc.to_string());
+        }
+        for (name, doc) in &case.sidecars {
+            write(project.join("scenes").join(name), doc.to_string());
+        }
+        for (name, text) in &case.tsx {
+            write(project.join("scenes").join(name), text.clone());
+        }
+        for (name, doc) in &case.edits {
+            write(project.join("edits").join(name), doc.to_string());
+        }
+        std::fs::create_dir_all(root.join(crate::theme::THEMES_DIR_NAME)).unwrap();
+        for (slug, doc) in &case.themes {
+            write(
+                root.join(crate::theme::THEMES_DIR_NAME)
+                    .join(slug)
+                    .join("theme.json"),
+                doc.to_string(),
+            );
+        }
+        project
+    }
+
+    #[test]
+    fn the_shared_asset_reference_vectors_hold() {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join(
+            "../.agents/skills/kookaburra-scene-authoring/scripts/tests/fixtures/asset-ref-vectors.json",
+        );
+        let doc: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+        assert_eq!(doc["version"], 1);
+        let cases: Vec<GuardCase> = serde_json::from_value(doc["cases"].clone()).unwrap();
+        assert!(cases.len() >= 8);
+        for (i, case) in cases.iter().enumerate() {
+            let root =
+                std::env::temp_dir().join(format!("kc-guard-{}-{i}", std::process::id()));
+            let _ = std::fs::remove_dir_all(&root);
+            let project = write_case(&root, case);
+            let corpus = project_asset_refs(&project);
+            let mut files = case.files.clone();
+            files.sort();
+            let referenced: Vec<String> = files
+                .iter()
+                .filter(|rel| corpus.in_use(rel, &files))
+                .cloned()
+                .collect();
+            let unused: Vec<String> = corpus
+                .unused(&files, &case.sample_pool)
+                .into_iter()
+                .map(str::to_owned)
+                .collect();
+            let mut want_referenced = case.referenced.clone();
+            want_referenced.sort();
+            let mut want_unused = case.unused.clone();
+            want_unused.sort();
+            let mut want_patterns = case.patterns.clone();
+            want_patterns.sort();
+            assert_eq!(referenced, want_referenced, "{}: referenced", case.name);
+            assert_eq!(unused, want_unused, "{}: unused", case.name);
+            assert_eq!(corpus.patterns(), want_patterns, "{}: patterns", case.name);
+            let _ = std::fs::remove_dir_all(&root);
+        }
+    }
+
+    #[test]
+    fn a_library_item_reads_the_workspace_themes_beside_its_folder() {
+        let root = std::env::temp_dir().join(format!("kc-guard-lib-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let item = root.join(crate::library::TEMPLATES_DIR_NAME).join("deck");
+        std::fs::create_dir_all(&item).unwrap();
+        std::fs::write(item.join(MANIFEST_FILENAME), r#"{"themeId":"ws:brand"}"#).unwrap();
+        let theme = root.join(crate::theme::THEMES_DIR_NAME).join("brand");
+        std::fs::create_dir_all(&theme).unwrap();
+        std::fs::write(
+            theme.join("theme.json"),
+            r#"{"background":{"type":"image","src":"assets/wall.png"}}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            media_references(&item, "assets/wall.png"),
+            ["themes/brand/theme.json"]
+        );
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]
