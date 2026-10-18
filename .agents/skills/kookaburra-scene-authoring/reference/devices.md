@@ -58,9 +58,40 @@ scenes built from device presets read them with `useSceneDevices()` and
 | `android` | phone | `graphite`, `black`, `white` |
 
 Every model except `android` is licensed and may be missing from a build; it then
-renders as Android. `kb catalog devices --json` lists screen aspects and sizes. Match media to
-the screen: phones are portrait (about 1206 x 2622), the iPad landscape, the MacBook
-about 16:10 (1.547).
+renders as Android. `kb catalog devices --json` lists screen aspects, sizes and each
+display's measured rect. Match media to the screen: phones are portrait (about 1206 x
+2622), the iPad landscape, the MacBook about 16:10 (1.547).
+
+## Overlays on the screen: `DeviceScreenAnchor`
+
+Pin anything to a point on a device's screen with `DeviceScreenAnchor` as a child of
+`Device`. Never measure the screen off a capture: the anchor reads committed
+measurements of the model this build actually renders, so it stays right when a
+licensed model is missing and the Android stands in (a different body, its screen
+further forward and off centre).
+
+```tsx
+<Device {...d}>
+  <DeviceScreenAnchor u={0.5} v={0.1}>
+    <RoundedRect width={0.7} height={0.16} radius={0.08} color={theme.colors.accent} />
+  </DeviceScreenAnchor>
+</Device>
+```
+
+- `u` runs 0 (left edge) to 1 (right), `v` 0 (top) to 1 (bottom): media pixel order.
+  A point at pixel (x, y) of the screen's media is
+  `mediaPixelToScreenUv(model, [x, y], { width, height })`, which allows for the cover crop.
+- Children lie in the screen's plane (x right, y up, +z out of the glass) in the device's
+  fitted units (a phone screen is about 1.15 x 2.5), and scale, float, turn and intro with
+  the device. `lift` (default `SCREEN_LIFT`, 0.002) keeps them off the glass.
+- Laptops: anchors ride the lid at any `lidDeg`. `iphone-duo`: anchor on the inside
+  display's static right half (`u` above 0.56) at any fold, or on `display="cover"` closed.
+- Inside a Device, `useDeviceScreen()` gives `{ rect, coverRect, local(u, v) }`. Outside one,
+  `deviceScreenPoint(model, u, v, { position, rotationDeg, scale })` is a static device's
+  world point and `deviceScreenRect(model)` its rect.
+- `kb check` warns when a scene uses a model the running app renders as the Android
+  fallback, and when TSX passes `position`, `rotationDeg` or `ground` to a `Device` in a
+  scene with a `deviceLayout` (the layout owns the pose).
 
 ## Motion presets
 

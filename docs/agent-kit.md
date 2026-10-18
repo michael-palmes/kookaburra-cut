@@ -166,7 +166,9 @@ duplicate entries, transitions and options, formats, theme id, audio file); side
 exact case and a supported extension); TSX (imports only `@kookaburra/toolkit`, one
 `export default defineScene(`, a literal id unique in the project, no wall clock,
 timers, `Math.random`, DOM or drei `Html`, no React hooks, which the toolkit does not
-export; unknown `ease("...")` names warn). Errors exit 1; warnings print but pass.
+export; unknown `ease("...")` names warn). Devices warn when the heartbeat's build lacks
+their model, and when TSX passes `position`, `rotationDeg` or `ground` to a `Device` in a
+scene whose sidecar has a `deviceLayout`. Errors exit 1; warnings print but pass.
 
 Hooks:
 
@@ -260,7 +262,8 @@ throttled while the app is hidden), removed on exit; autorun instances never wri
     "error": null,
     "sceneErrors": [{ "index": 12, "file": "scenes/224-x.tsx", "phase": "compile", "message": "line 4: ..." }],
     "fontIssues": [{ "ref": "Menlo@400", "message": "unknown cmap table format 6", "fallback": "Inter@400" }],
-    "warnings": []
+    "warnings": [],
+    "availableDevices": ["iphone-17-pro", "android"]
   }
 }
 ```
@@ -269,7 +272,9 @@ Two more fields locate the presets: `presetsDir` (holds `<slug>/`) and
 `presetPreviewsDir` (holds `<slug>.jpg`); in dev the posters live under `src/assets`.
 `playheadMs` is an integer and `openProject` is null on the Welcome screen. The editor
 reports `lastLoad` after every load attempt (`set_last_load`); `warnings` includes
-healed scene ids and dropped LUTs.
+healed scene ids and dropped LUTs. `availableDevices` names the device models this build
+renders with their own glb; `kb check` warns on a scene using any other, since it renders
+as the Android fallback.
 
 `kb` treats the app as running when `updatedAtMs` is under 30 s old and the pid is
 alive. It never uses `pgrep` (it matches unrelated processes and misses others).

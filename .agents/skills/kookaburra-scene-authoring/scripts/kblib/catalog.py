@@ -172,4 +172,28 @@ def entry_line(entry: Dict[str, Any]) -> str:
         parts.append(f"({label})")
     if summary:
         parts.append(f"- {summary}")
+    parts.extend(screen_notes(entry))
     return " ".join(parts)
+
+
+# ── device screens ────────────────────────────────────────────────────────────
+
+
+def screen_rect_note(label: str, rect: Any) -> Optional[str]:
+    """One measured screen rect (fitted units at scale 1, UV u right and v down) as a short phrase."""
+    if not isinstance(rect, dict) or not all(isinstance(rect.get(k), (int, float)) for k in ("width", "height", "z")):
+        return None
+    centre = rect.get("centre") if isinstance(rect.get("centre"), list) else [0, 0]
+    note = f"{label} {rect['width']} x {rect['height']} at ({', '.join(str(c) for c in centre)}, {rect['z']})"
+    if isinstance(rect.get("cornerRadius"), (int, float)):
+        note += f" r {rect['cornerRadius']}"
+    frame = rect.get("frame")
+    if isinstance(frame, dict):
+        note += "".join(f" at {k[:-3]} {v}" for k, v in frame.items() if k.endswith("Deg"))
+    return note
+
+
+def screen_notes(entry: Dict[str, Any]) -> List[str]:
+    """`kb catalog devices` lines carry each display's rect: anchor with DeviceScreenAnchor, never measure by capture."""
+    notes = [screen_rect_note("screen", entry.get("screen")), screen_rect_note("cover", entry.get("coverScreen"))]
+    return [f"[{n}]" for n in notes if n]
