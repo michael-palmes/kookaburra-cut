@@ -1026,10 +1026,14 @@ fn copy_scene_assets(
     tsx: &mut String,
     doc: &mut Option<Value>,
     entry: &mut Value,
+    shared: &mut Value,
     sample_pool: Option<&Path>,
 ) -> Result<(), String> {
     let mut refs = scan_asset_refs(tsx);
-    for rel in collect_json_asset_refs(entry) {
+    for rel in collect_json_asset_refs(entry)
+        .into_iter()
+        .chain(collect_json_asset_refs(shared))
+    {
         if !refs.contains(&rel) {
             refs.push(rel);
         }
@@ -1085,6 +1089,7 @@ fn copy_scene_assets(
             rewrite_json_asset_refs(doc, &replacements);
         }
         rewrite_json_asset_refs(entry, &replacements);
+        rewrite_json_asset_refs(shared, &replacements);
     }
     Ok(())
 }
@@ -1233,12 +1238,22 @@ fn copy_named_scene_between(
         Err(e) => return Err(format!("reading {doc_file_src}: {e}")),
     };
 
-    copy_scene_assets(project, dest, &mut tsx, &mut doc, &mut source, sample_pool)?;
-
     let dest_text = std::fs::read_to_string(&dest_manifest_path)
         .map_err(|e| format!("reading {dest_slug}/project.json: {e}"))?;
     let mut dest_manifest: Value = serde_json::from_str(&dest_text)
         .map_err(|e| format!("{dest_slug}/project.json isn't valid JSON: {e}"))?;
+    let mut shared = Value::Object(missing_shared(&source_manifest, &dest_manifest));
+
+    copy_scene_assets(
+        project,
+        dest,
+        &mut tsx,
+        &mut doc,
+        &mut source,
+        &mut shared,
+        sample_pool,
+    )?;
+
     migrate_manifest_transitions(&mut dest_manifest);
     if is_preset {
         inherit_preset_context(&mut doc, &dest_manifest);
@@ -1300,7 +1315,7 @@ fn copy_named_scene_between(
     let at = position.unwrap_or(scenes.len()).min(scenes.len());
     scenes.insert(at, entry);
     seed_inserted_scene_transitions(scenes, at, default_transition.as_ref());
-    let shared_keys = inherit_shared(&source_manifest, &mut dest_manifest);
+    let shared_keys = inherit_shared(&mut dest_manifest, shared);
     atomic_write_json(&dest_manifest_path, &dest_manifest)?;
 
     let name = doc
@@ -1321,29 +1336,41 @@ fn copy_named_scene_between(
     })
 }
 
-/// Copy the source manifest's `shared` keys the destination lacks (never overwriting), so a copied scene's constants travel with it; returns the copied keys.
-fn inherit_shared(source: &Value, dest: &mut Value) -> Vec<String> {
+/// The source manifest's `shared` keys the destination lacks (never overwriting); none when the destination's `shared` isn't an object.
+fn missing_shared(source: &Value, dest: &Value) -> serde_json::Map<String, Value> {
     let Some(from) = source.get("shared").and_then(Value::as_object) else {
+        return serde_json::Map::new();
+    };
+    let have = match dest.get("shared") {
+        None => None,
+        Some(Value::Object(have)) => Some(have),
+        Some(_) => return serde_json::Map::new(),
+    };
+    from.iter()
+        .filter(|(key, _)| !have.is_some_and(|have| have.contains_key(*key)))
+        .map(|(key, value)| (key.clone(), value.clone()))
+        .collect()
+}
+
+/// Adds the inherited `shared` keys (their asset paths already copied and re-pointed) to the destination; returns their names.
+fn inherit_shared(dest: &mut Value, inherited: Value) -> Vec<String> {
+    let Value::Object(inherited) = inherited else {
         return Vec::new();
     };
-    let Some(manifest) = dest.as_object_mut().filter(|_| !from.is_empty()) else {
+    if inherited.is_empty() {
         return Vec::new();
-    };
-    let Some(into) = manifest
-        .entry("shared")
-        .or_insert_with(|| json!({}))
-        .as_object_mut()
-    else {
-        return Vec::new();
-    };
-    let mut copied = Vec::new();
-    for (key, value) in from {
-        if !into.contains_key(key) {
-            into.insert(key.clone(), value.clone());
-            copied.push(key.clone());
-        }
     }
-    copied
+    let Some(into) = dest.as_object_mut().and_then(|manifest| {
+        manifest
+            .entry("shared")
+            .or_insert_with(|| json!({}))
+            .as_object_mut()
+    }) else {
+        return Vec::new();
+    };
+    let keys = inherited.keys().cloned().collect();
+    into.extend(inherited);
+    keys
 }
 
 fn inherit_preset_context(doc: &mut Option<Value>, manifest: &Value) {
@@ -2034,6 +2061,32 @@ mod preset_insertion_tests {
     }
 
     #[test]
+    fn inherited_shared_asset_paths_copy_and_re_point() {
+        let fixture = Fixture::new(None, &destination());
+        let mut source = read_json(&fixture.source.join("project.json"));
+        source["shared"] = json!({ "logo": "assets/logo.png", "badge": "assets/badge.png" });
+        atomic_write_json(&fixture.source.join("project.json"), &source).unwrap();
+        std::fs::write(fixture.source.join("assets/logo.png"), b"theirs").unwrap();
+        std::fs::write(fixture.source.join("assets/badge.png"), b"badge").unwrap();
+        std::fs::write(fixture.dest.join("assets/logo.png"), b"mine").unwrap();
+
+        fixture.insert("hero", None);
+        let landed = read_json(&fixture.dest.join("project.json"));
+        assert_eq!(landed["shared"]["badge"], "assets/badge.png");
+        assert_eq!(
+            std::fs::read(fixture.dest.join("assets/badge.png")).unwrap(),
+            b"badge"
+        );
+        let logo = landed["shared"]["logo"].as_str().unwrap();
+        assert_ne!(logo, "assets/logo.png");
+        assert_eq!(std::fs::read(fixture.dest.join(logo)).unwrap(), b"theirs");
+        assert_eq!(
+            std::fs::read(fixture.dest.join("assets/logo.png")).unwrap(),
+            b"mine"
+        );
+    }
+
+    #[test]
     fn copies_without_source_shared_leave_the_destination_alone() {
         let fixture = Fixture::new(None, &destination());
         assert!(fixture.insert("hero", None).shared_keys.is_empty());
@@ -2643,7 +2696,16 @@ mod asset_scan_tests {
             "note": format!("Preview assets/{name} here"),
         }));
 
-        copy_scene_assets(&project, &dest, &mut tsx, &mut doc, &mut Value::Null, None).unwrap();
+        copy_scene_assets(
+            &project,
+            &dest,
+            &mut tsx,
+            &mut doc,
+            &mut Value::Null,
+            &mut Value::Null,
+            None,
+        )
+        .unwrap();
 
         let rewritten = "assets/Kākāpō @2 (final)-2.png";
         assert_eq!(doc.as_ref().unwrap()["images"][0]["src"], json!(rewritten));
@@ -2675,7 +2737,16 @@ mod asset_scan_tests {
             r#"const image = "assets/foo.png"; const unrelated = "my-assets/foo.png";"#.to_string();
         let mut doc = None;
 
-        copy_scene_assets(&project, &dest, &mut tsx, &mut doc, &mut Value::Null, None).unwrap();
+        copy_scene_assets(
+            &project,
+            &dest,
+            &mut tsx,
+            &mut doc,
+            &mut Value::Null,
+            &mut Value::Null,
+            None,
+        )
+        .unwrap();
 
         assert_eq!(
             tsx,
