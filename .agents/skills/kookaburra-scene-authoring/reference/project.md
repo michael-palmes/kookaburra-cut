@@ -103,7 +103,7 @@ carries one. No transition is a hard cut. Unknown types render as `crossfade`.
 | `rackfocus` | dissolve | Defocus to bokeh, refocus | 800 | intensity, softness, shape linear/hex |
 | `flowmorph` | dissolve | Currents carry the frame | 900 | intensity, parallax |
 | `wipe` | reveal | Hard reveal line | 500 | direction |
-| `luma` | reveal | Iris wipe (shape iris; also linear, radial) | 600 | softness, center, shape |
+| `luma` | reveal | Iris wipe (shape iris; also linear, radial, image) | 600 | softness, center, shape, src |
 | `dip` | reveal | Out through a colour, back in | 600 | color (default theme background) |
 | `inkbleed` | reveal | Irregular wicking edge | 800 | direction, intensity, softness |
 | `halftone` | reveal | Print screens through an ink plate | 700 | direction, color, blocks[0], intensity, shape |
@@ -122,6 +122,15 @@ carries one. No transition is a hard cut. Unknown types render as `crossfade`.
 | `chromasplit` | digital | Channels peel and reconverge | 500 | direction, intensity, softness |
 | `pixelstretch` | digital | Luma-keyed smear collapse | 600 | direction, intensity, softness |
 | `shatter` | digital | Shards drift out, lit edges | 700 | direction, blocks[0], intensity, parallax |
+
+Image mask: `luma` with `"shape": "image"` and `"src": "assets/<file>.png"` reveals the
+next scene inside the image's shape, growing from `center` until it covers the frame.
+A PNG with transparency uses its alpha (opaque = inside); a fully opaque image uses its
+brightness (light = inside). png, jpg or webp under `assets/`, at least 1024 px on the
+long side for crisp 4K edges. The edge is always one pixel wide (`softness` does not
+apply). The picker only shows it, so write it by hand:
+`{ "type": "luma", "durationMs": 700, "shape": "image", "src": "assets/star.png" }`.
+A missing or unreadable mask fails export; a bad `src` renders the iris.
 
 Choosing one: DESIGN.md "Transitions by feel".
 

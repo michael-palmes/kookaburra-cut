@@ -1,6 +1,6 @@
 /** Pure global → local time mapping for a sequence of scenes (no React, no clock): scenes lay back-to-back, but a transition makes the next scene start early by its clamped duration (the overlap/cross-dissolve model, so total = Σdurations − Σoverlaps); resolveAt maps a global ms onto the 1 (solo) or 2 (mid-transition) active scenes and their scene-local times. Pure functions, so preview and export agree by construction (see docs/determinism.md). */
 
-/** The composite transition types (see engine/transitionShader.ts): the legacy four (crossfade/dip/slide/wipe) render through the v1 GLSL1 materials, the extended pack (blur/push/zoom/whip/luma/glitch) through the GLSL3 materials, the v14 pack (slice/dissolve/warp) through a third material generation, and the v15 pack (inkbleed through spinblur) through a fourth, so earlier programs stay source-identical. */
+/** The composite transition types (see engine/transitionShader.ts): the legacy four (crossfade/dip/slide/wipe) render through the v1 GLSL1 materials, the extended pack (blur/push/zoom/whip/luma/glitch) through the GLSL3 materials, the v14 pack (slice/dissolve/warp) through a third material generation, the v15 pack (inkbleed through spinblur) through a fourth, and luma's image mask (`shape: "image"`) through a fifth, so earlier programs stay source-identical. */
 export type TransitionType =
   | "crossfade"
   | "dip"
@@ -39,8 +39,19 @@ export function applyTransitionEase(ease: TransitionEase | undefined, t: number)
   return t;
 }
 
-/** Procedural ramp/aperture shapes: linear/radial/iris are the luma ramps; hex is the rack-focus aperture (the v15 pack reuses the shared shape field with per-type meanings). */
-export type TransitionShape = "linear" | "radial" | "iris" | "hex";
+/** Ramp/aperture shapes: linear/radial/iris are the procedural luma ramps and image is luma's image mask (with `src`); hex is the rack-focus aperture (the v15 pack reuses the shared shape field with per-type meanings). */
+export type TransitionShape = "linear" | "radial" | "iris" | "hex" | "image";
+
+const MASK_SOURCE_RE = /^assets\/(?:[^/]+\/)*[^/]+\.(?:png|jpe?g|webp)$/i;
+
+/** A clean project-relative image path under assets/ (png, jpg, jpeg or webp), the only `src` an image mask reads. */
+export function isTransitionMaskSource(value: unknown): value is string {
+  return (
+    typeof value === "string" &&
+    MASK_SOURCE_RE.test(value) &&
+    !value.split("/").some((part) => part === "." || part === "..")
+  );
+}
 
 /** Resolved per-type parameters, all defaults baked (see resolveTransitionParams). */
 export interface TransitionParams {
@@ -71,6 +82,14 @@ export interface TransitionSpec extends Partial<TransitionParams> {
   color?: string;
   /** Progress easing; absent = linear (the stored-spec byte contract). */
   ease?: TransitionEase;
+  /** Luma's image mask, project-relative (`shape: "image"` only). */
+  src?: string;
+}
+
+/** An image mask as a slot carries it: the authored path and its loadable URL, null when it failed to resolve. */
+export interface TransitionMaskRef {
+  src: string;
+  url: string | null;
 }
 
 /** Minimal scene shape the timeline needs (decoupled from LoadedProject for testability). */
@@ -90,6 +109,8 @@ export interface SceneSlot {
   durationMs: number;
   /** Present only when this slot overlaps the previous one; durationMs is the clamped overlap. */
   transitionIn?: TransitionSpec;
+  /** The incoming transition's image mask, resolved at project load (absent for every other transition). */
+  transitionMask?: TransitionMaskRef;
 }
 
 /** A scene that is on-screen at a given instant, with its scene-local time. */
@@ -111,6 +132,8 @@ export interface ResolvedTransition {
   fromIndex: number;
   /** Incoming (B) scene index. */
   toIndex: number;
+  /** The image mask, present only when params.shape is "image". */
+  mask?: TransitionMaskRef;
 }
 
 /** What is on-screen at an instant: 1 active scene (solo) or 2 (+ a transition). */
@@ -259,7 +282,11 @@ export function resolveTransitionParams(spec: TransitionSpec): TransitionParams 
       spec.shape === "linear" ||
       spec.shape === "hex"
         ? spec.shape
-        : (SHAPE_DEFAULTS[spec.type] ?? "linear"),
+        : spec.shape === "image" && spec.type === "luma"
+          ? isTransitionMaskSource(spec.src)
+            ? "image"
+            : "iris"
+          : (SHAPE_DEFAULTS[spec.type] ?? "linear"),
     steps: Math.round(num(spec.steps, STEPS_DEFAULTS[spec.type] ?? 12, 1, 60)),
     parallax: num(spec.parallax, 0.5, 0, 1),
   };
@@ -344,6 +371,7 @@ export function resolveAt(slots: SceneSlot[], tMs: number): Resolved {
 
   const linear = spec.durationMs > 0 ? clamp((t - b.startMs) / spec.durationMs, 0, 1) : 1;
   const progress = applyTransitionEase(spec.ease, linear);
+  const params = resolveTransitionParams(spec);
   return {
     active: [
       { index: a.index, localMs: clamp(t - a.startMs, 0, a.durationMs) },
@@ -352,11 +380,14 @@ export function resolveAt(slots: SceneSlot[], tMs: number): Resolved {
     transition: {
       type: spec.type,
       direction: spec.direction ?? defaultDirection(spec.type),
-      params: resolveTransitionParams(spec),
+      params,
       color: spec.color,
       progress,
       fromIndex: a.index,
       toIndex: b.index,
+      ...(params.shape === "image"
+        ? { mask: b.transitionMask ?? { src: spec.src ?? "", url: null } }
+        : {}),
     },
   };
 }

@@ -200,6 +200,29 @@ accumulation-heavy types (weighted bokeh sums, rotation resampling). Progress
 easing (`ease: smooth | snappy`) is applied CPU-side before the uniforms,
 endpoints preserved; absent means linear, so stored specs keep exact bytes.
 
+The image mask (`luma` with `shape: "image"` and a project-relative `src`) is a
+**fifth generation** (`fragmentShaderMask` / `fragmentShaderMaskHdr`), selected
+only for that shape, so every earlier program stays source-identical. The mask's
+signed distance field is built once per image at preload
+(`engine/transitionMaskSdf.ts`, pure and golden-hashed): coverage is the alpha
+when any pixel is translucent, else the Rec. 709 luma of the stored bytes (0.5
+is the edge); an exact Felzenszwalb-Huttenlocher EDT runs on both sides of the
+edge, seeded with sub-pixel offsets from partial coverage; values are
+normalised to the field's longest side (at most 1024 px, box-downsampled
+above) and packed as round-to-nearest-even half floats for a linear-filtered
+R16F texture. The shader never derives the field: it samples it, extends it
+past the stored box by the box distance, and caps it by `|u| - inset` (the
+inscribed disc about the anchor, a bound the true SDF always meets). Scale
+(linear), dilation (cubic) and the one-pixel edge width are CPU uniforms
+(`maskReveal`), and that cap lets the schedule guarantee every frame pixel is
+inside the shape at progress 1; the body keeps the ext3 endpoint guard, so the
+seams stay raw selections. `engine/transitionMask.ts` caches each texture by
+URL; the export preamble and the project-open settle await
+`preloadTransitionMasks` (upload included), a missing or unreadable mask
+rejects there and fails the run, and a render-time miss throws during export.
+In preview a miss renders the procedural iris for a frame and repaints when
+the field lands.
+
 ## Embedded video
 
 `VideoClip` renders a source video without ever seeking an `HTMLVideoElement`:
@@ -1508,8 +1531,8 @@ rolling-gate project (`showcase-tour`):
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `ws:launch-2026` (legacy sentinel: must stay EQUAL) | `eb89826c…` | stale | stale | stale | — | — | — | — | — |
 | `showcase-tour` (rolling gate) | `13b5994d…` | stale | stale | stale | stale | stale (pre-trim) | — | — | — |
-| `transition-spike` (transition gate) | `fb727cac…` | `a6383707…` | — | — | — | — | — | — | — |
-| `transition-bg-spike` (animated-background transition gate) | `2df76336…` | — | — | — | — | — | — | — | — |
+| `transition-spike` (transition gate, image mask included) | `53b6c496…` | `892e8e10…` | — | — | — | — | — | — | — |
+| `transition-bg-spike` (animated-background transition gate) | `f16fe7c1…` | — | — | — | — | — | — | — | — |
 | `compare-spike` (before/after comparison gate) | `f425a9a8…` | stale | stale | stale | — | — | — | — | — |
 | `image-flip-spike` (image-orientation gate, eyeball it) | stale | — | — | — | — | — | — | — | — |
 | `ws:layered-screenshot-spike` (LS gate, machine-local) | `4ec7b223…` | — | — | — | — | — | — | — | — |
@@ -1527,6 +1550,24 @@ rolling-gate project (`showcase-tour`):
 | `ws:device-env-spike` (cold frame-0 repro: a built-in-lit handset's top edge, machine-local) | `9f3418a2…` | — | — | — | — | — | — | — | — |
 | `ws:text-outline-spike` (outlined text in the text barrier: neon, whole-block blur-in, machine-local) | `87bb6b3a…` | — | — | — | — | — | — | — | — |
 | `ws:rooms-spike` (room cuts, a flood with a tokened light, a wipe while both sides flood; machine-local, never gated) | `2768226b…` | `82d0f4ac…` | — | — | — | — | — | — | — |
+| `ws:mask-fx-spike` (an image-mask seam between two bloom scenes on the effects lane; machine-local, never gated) | `c93487c0…` | — | — | — | — | — | — | — | — |
+
+> **2026-10-18 (image-mask transition, a fifth material generation):** with the
+> code in and the fixtures untouched, `transition-spike` stayed EQUAL at
+> `fb727cac…` (16:9) and `a6383707…` (9:16), the proof that every earlier
+> program is untouched, and `pnpm gate:merge` stayed EQUAL (`showcase-tour`
+> `13b5994d…`, `ws:launch-2026` `eb89826c…`). `transition-bg-spike` reads
+> `f16fe7c1…` on this change AND on its pristine base `33646df1`, so the
+> `2df76336…` record from #50 was earlier drift. `transition-spike` then gained
+> one seam (spin blur into a star `shape: "image"` luma, 700 ms smooth, mask
+> `assets/star-mask.png`, a procedurally drawn 1024 px alpha star), recording
+> `53b6c496…` (16:9) and `892e8e10…` (9:16), eyeballed at 4K: a crisp
+> one-pixel edge, sharp notches, tips rounding as the dilation grows, cover
+> complete before the seam. `ws:mask-fx-spike` (two bloom scenes, the same
+> mask) records `c93487c0…`. Leg order matters: `showcase-tour` read
+> `e36392de…` as the third leg of a boot after `transition-spike` and
+> `ws:mask-fx-spike`, and `13b5994d…` again first in its own boot, so gate
+> anchors run first or in their own boot.
 
 > **2026-10-18 (troika 0.52.5, one SDF size, opt-in exact text: hash-neutral):**
 > troika-three-text and troika-three-utils move to an exact `0.52.5` pin, one

@@ -302,6 +302,18 @@ class Checker:
         eases = self.ctx.ids("transitionEases", catmod.TRANSITION_EASES) or catmod.TRANSITION_EASES
         if ease is not None and ease not in eases:
             self.report.error(file, f"{path}.ease", f'unknown ease "{ease}"; one of {", ".join(eases)} (absent = linear)')
+        src = spec.get("src")
+        if spec.get("shape") == "image":
+            if spec["type"] != "luma":
+                self._mwarn(file, f"{path}.shape", 'shape "image" only applies to luma; this type ignores it')
+            elif not isinstance(src, str) or not src:
+                self.report.error(file, f"{path}.src", 'shape "image" needs "src": a png, jpg or webp under assets/ (without it the app renders the iris)')
+            elif src.rsplit(".", 1)[-1].lower() not in ("png", "jpg", "jpeg", "webp"):
+                self.report.error(file, f"{path}.src", f'"{src}" is not a supported mask image; use png (alpha), jpg or webp under assets/')
+            else:
+                self.asset(file, f"{path}.src", src)
+        elif src is not None:
+            self._mwarn(file, f"{path}.src", 'src is only read with "shape": "image" on luma, so it is ignored here')
 
     def theme_ref(self, file: str, path: str, theme_id: str, warn: Any = None) -> None:
         if theme_id.startswith("ws:"):
