@@ -19,7 +19,7 @@ import { fontUrl } from "../theme/fonts";
 import type { Theme } from "../theme/tokens";
 import { isTextDecoration } from "../toolkit/frame/icon";
 import type { FrameDecorationSpec } from "../toolkit/frame/types";
-import { prepareEmojiText } from "../toolkit/text/emojiText";
+import { parseEmphasisMarkup, prepareDisplayText } from "../toolkit/text/displayText";
 import { ContextMenu, type ContextMenuState } from "./ContextMenu";
 import { Gizmo2D, type Gizmo2DGesture, type Gizmo2DItem } from "./gizmo/Gizmo2D";
 import type { Pt } from "./gizmo/gizmo2dMath";
@@ -48,7 +48,7 @@ function toPos(x: number, y: number, rect: StageRect): [number, number] {
 function textSpec(d: FrameDecorationSpec, theme: Theme | undefined): PanelTextSpec | null {
   if (!isTextDecoration(d) || !d.text || !theme) return null;
   return {
-    text: prepareEmojiText(d.text).text,
+    text: prepareDisplayText(d.text).text,
     font: fontUrl(d.font ? parseFontString(d.font) : theme.typography[d.face ?? "headline"]),
     fontSize: 1,
     maxWidth: Number.POSITIVE_INFINITY,
@@ -108,7 +108,9 @@ export function DecorationGizmo({
       if (isTextDecoration(d)) {
         void measureTick;
         const spec = textSpec(d, theme);
-        const em = (spec && measuredPanelTextBlock(spec)) || estimateEm(d.text ?? "");
+        const em =
+          (spec && measuredPanelTextBlock(spec)) ||
+          estimateEm(parseEmphasisMarkup(d.text ?? "").text);
         // An empty (or unmeasured, zero-width) text still needs a grabbable box.
         return [
           Math.max(MIN_SIZE, d.size * em.width),

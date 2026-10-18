@@ -2,7 +2,7 @@
 
 import fontParser, { type TroikaParsedFont } from "troika-three-text/src/FontParser.js";
 import kookaburraFallbackUrl from "../assets/fonts/KookaburraFallback.otf?url";
-import { prepareEmojiText } from "../toolkit/text/emojiText";
+import { prepareDisplayText } from "../toolkit/text/displayText";
 import { parseFontString } from "./fontRef";
 import { fontUrl } from "./fonts";
 import type { FontRef } from "./tokens";
@@ -146,7 +146,7 @@ export function measureText(text: string, opts: MeasureTextOptions): TextMetrics
   const primary = faces.get(metricsFontUrl(opts.font));
   if (!primary) return null;
   const fallback = faces.get(kookaburraFallbackUrl) ?? null;
-  const str = prepareEmojiText(text).text.replace(/\r\n?/g, "\n");
+  const str = prepareDisplayText(text).text.replace(/\r\n?/g, "\n");
   const { fontSize } = opts;
   const letterSpacing = opts.letterSpacing ?? 0;
   const perChar = resolveFaces(str, primary, fallback);
