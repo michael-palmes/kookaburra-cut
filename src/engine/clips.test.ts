@@ -19,7 +19,7 @@ vi.mock("@tauri-apps/api/core", () => ({
       return sha;
     }
     if (cmd === "file_revisions") {
-      return (args?.paths as string[]).map((path) => revs.get(path) ?? null);
+      return ((args?.paths ?? []) as string[]).map((path) => revs.get(path) ?? null);
     }
     if (cmd === "extract_clip_frames") {
       if (failExtract) throw new Error("extraction failed");
