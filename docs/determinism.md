@@ -241,6 +241,12 @@ endpoints preserved; absent means linear, so stored specs keep exact bytes.
   capturing black. The clip is an
   ordinary mesh in its `<SceneHost>` group, so it flows through the compositor's
   fast and transition paths unchanged.
+- **Conformed sources.** The ingest conform (`conform.rs`) swaps a flagged
+  recording for a constant 60 fps libx264 mezzanine before a scene uses it. The
+  export path is untouched: the mezzanine is an ordinary clip with fixed bytes,
+  written once (staged in `assets/.kc-render/`, renamed into place) and never
+  re-encoded behind a project's back. Existing clips are flagged, not migrated,
+  so a hash moves only when someone conforms a clip a scene already shows.
 
 Layout uses `fit` (`contain` letterboxes, `cover` fills+crops) computed from
 `useFormat().frame` and the clip aspect. One clip serves every aspect. Clips are
