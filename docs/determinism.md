@@ -1442,7 +1442,7 @@ rolling-gate project (`showcase-tour`):
 | `ws:layered-screenshot-spike` (LS gate, machine-local) | `4ec7b223…` | — | — | — | — | — | — | — | — |
 | `ws:video-window-spike` (VideoWindow gate, machine-local) | `6dfe68a6…` | — | — | — | — | — | — | — | — |
 | `ws:lighting-spike-fable` (v9 lighting gate, machine-local) | stale | — | — | — | — | — | — | — | — |
-| `ws:camera-rig-spike-opus` (camera rig gate, machine-local) | stale | — | — | — | — | — | — | — | — |
+| `ws:camera-rig-spike-opus` (camera rig gate, machine-local) | `81429136…` | — | — | — | — | — | — | — | — |
 | `ws:multi-device-spike` (deviceLayout gate, machine-local) | stale | stale | stale | — | — | — | — | — | — |
 | `ws:dof-spike` (depth-of-field gate, machine-local) | stale | stale | — | — | — | — | — | — | — |
 | `ws:motion-blur-spike` (motion blur gate, machine-local) | `bb5b4682…` | `504c9591…` | — | — | — | — | — | — | — |
@@ -1453,6 +1453,11 @@ rolling-gate project (`showcase-tour`):
 | `ws:device-video-spike` (device/media/camera gate, built-in-lit devices, machine-local) | `386c8419…` | — | — | — | — | — | — | — | — |
 | `ws:device-env-spike` (cold frame-0 repro: a built-in-lit handset's top edge, machine-local) | `9f3418a2…` | — | — | — | — | — | — | — | — |
 | `ws:text-outline-spike` (outlined text in the text barrier: neon, whole-block blur-in, machine-local) | `87bb6b3a…` | — | — | — | — | — | — | — | — |
+
+> **2026-10-18 (`ws:camera-rig-spike-opus` re-baselined on main `18538e02`):**
+> the fixture's 16:9 baseline had gone stale, so it re-recorded on pristine
+> main before the camera-kick work: Verify ×2 identical at `81429136…`, frame
+> eyeballed (rig angle, handset screen video, decorations all present).
 
 > **2026-10-08 (outlined text joins the text barrier, hash-neutral):** troika
 > returns `[outline, main]` from `Text.material` whenever an outline is set
