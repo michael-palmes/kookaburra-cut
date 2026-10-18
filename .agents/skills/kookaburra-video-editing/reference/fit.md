@@ -29,6 +29,9 @@ moves), then hold the last frame.
 Too short to reach: exit 1 naming the shortest it can go (cleanup plus 6x everywhere, 2x by taps).
 Offer that length, more cutting by hand, or a longer scene.
 
+Fit, cleanup and an edit-side align keep static crops and one-box zooms, but refuse a gliding zoom
+(exit 1): `./kb video zoom NAME CLIP --clear`, run the pass, then key the zoom again.
+
 ## Fit a scene
 
 `./kb video fit NAME --scene 3 [--slot device]` reads the slot's start (`startMs`) and the scene's
@@ -36,6 +39,11 @@ length: the target is from the start to where the outgoing transition begins (`-
 the very end). The slot is picked for you when one slot in the scene shows the edit's source or
 render; otherwise pass `--slot` (`background`, `media[:ID]`, `window`, `device[:ID]`,
 `device-cover[:ID]`, `compare-device[:ID]`, `compare-device-cover[:ID]`).
+
+A slot with its own timing (a device screen with `inMs`, `outMs`, `speed`, `loop` or `posterMs`;
+`./kb video usages` tags it "retimed") is refused (exit 1): scene time is no longer `startMs` plus
+edit time; a negative `startMs` alone (a pre-roll) doesn't count. Trim and retime in the edit,
+then drop the slot's keys (`./kb doc S unset devices.N.media.inMs`, and the others).
 
 Follow-media scenes take their length from the video, so fitting to them changes nothing: pass
 `--to` with the length wanted, then `./kb video render NAME --use --scene S` and the scene follows.
@@ -61,12 +69,13 @@ stretch between anchors is fitted on its own, so every anchor lands within half 
 - The moment: `--src [SID@]T` or `--tap ID`. A tap lands 83 ms early (`--lead` changes it) so the
   highlight reads on the beat; a plain source moment lands exactly.
 - The target: `--at T` (edit timeline), or in a scene: `--scene-at T`, `--beat N` (the scene's Nth
-  grid beat, 1-based), `--moment N` (its Nth key moment). Beats come from `./kb beats --scene S`; with
-  no beat analysis yet, ask the user to open the project in the app once.
+  beat, 1-based), `--moment N` (its Nth key moment). Beats come from the project's beat grid, else
+  the song analysis, exactly as `./kb beats --scene S` prints them; with neither, `./kb song
+  analyse --accept` first (the scene skill's reference/beats.md).
 - Scene side first: when moving the slot's `startMs` (0 to 1500 ms) alone lands it, align writes
   that to the scene's sidecar and leaves the edit and its render untouched (no re-render). Not for
   follow-media scenes, and never into the outgoing transition. `--prefer edit` skips this,
-  `--prefer scene` insists on it.
+  `--prefer scene` insists on it. Retimed slots are refused, as in "Fit a scene".
 - Edit side: the stretch before the moment is fitted so it lands on the target. `--keep-length`
   also fits what follows so the total stays the same; otherwise the length changes by the shift.
 - After aligning, `./kb capture --scene S --at <target seconds>` and Read it: the touch should be on
