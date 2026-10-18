@@ -23,8 +23,10 @@ SUPPORTED_ASSET_EXTS = {
     "hdr", "exr", "csv", "tsv", "txt", "cube", "glb", "gltf",
 }
 AUDIO_EXTS = {"mp3", "wav", "m4a", "aac", "flac", "ogg"}
-TEXT_STYLE_SUFFIXES = ("Color", "Font", "Size", "OffsetX", "OffsetY", "LineHeight", "RotationDeg")
+TEXT_STYLE_SUFFIXES = ("Color", "Font", "Size", "OffsetX", "OffsetY", "LineHeight", "RotationDeg", "Emphasis")
 HEX_RE = re.compile(r"^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$")
+# textStyle.<key>Emphasis: "<colour>" or "<colour>@<weight>" (toolkit/text/emphasis.ts).
+EMPHASIS_RE = re.compile(r"^(text|muted|accent|#[0-9a-fA-F]{3}|#[0-9a-fA-F]{6})(?:@(\d{1,4}))?$")
 FALLBACK_BACKGROUND_TYPES = ["none", "color", "gradient", "image", "video", "scene3d", "shader"]
 BACKDROP_TYPES = ["none", "floor", "gradient", "image"]
 PATH_KEYS = {"src", "file", "poster"}
@@ -374,6 +376,7 @@ class Checker:
         if isinstance(overrides, dict):
             for key, spec in overrides.items():
                 self.text_animation(file, f"textAnimationOverrides.{key}", spec)
+        self.build_single_line(file, doc)
         self.text_look(file, "textLook", doc.get("textLook"))
         looks = doc.get("textLookOverrides")
         if isinstance(looks, dict):
@@ -610,6 +613,10 @@ class Checker:
             elif suffix == "Size":
                 if not is_number(value) or value <= 0:
                     rep.error(file, path, "must be a positive number (a multiplier; 1 = as designed)")
+            elif suffix == "Emphasis":
+                m = EMPHASIS_RE.match(value.strip()) if isinstance(value, str) else None
+                if not m or (m.group(2) is not None and not 1 <= int(m.group(2)) <= 1000):
+                    rep.error(file, path, 'must be "<colour>" or "<colour>@<weight>", e.g. "accent@700" (the app drops it)')
             elif not is_number(value):
                 rep.error(file, path, "must be a finite number")
 
@@ -697,7 +704,20 @@ class Checker:
         for field in ("in", "out"):
             if field in spec:
                 self.enum(file, f"{path}.{field}", spec[field], "textMotion", "text motion")
+        if "buildShiftEm" in spec and not is_number(spec["buildShiftEm"]):
+            self.report.error(file, f"{path}.buildShiftEm", "must be a number of em (the app drops it)")
         self.stagger_exact(file, path, spec)
+
+    def build_single_line(self, file: str, doc: Dict[str, Any]) -> None:
+        """build re-centres one growing line; copy with a line break plays a plain word fade instead."""
+        text = doc.get("text") if isinstance(doc.get("text"), dict) else {}
+        overrides = doc.get("textAnimationOverrides") if isinstance(doc.get("textAnimationOverrides"), dict) else {}
+        scene_build = dig(doc, "textAnimation", "in") == "build"
+        for key, value in text.items():
+            spec = overrides.get(key)
+            builds = dig(spec, "in") == "build" if isinstance(spec, dict) else scene_build
+            if builds and isinstance(value, str) and "\n" in value:
+                self.report.warn(file, f"text.{key}", "build is single line; this copy breaks lines, so it plays a plain word fade")
 
     def stagger_exact(self, file: str, path: str, spec: Any) -> None:
         """A spec's staggerMs 0 without staggerExact plays the granularity's default delay wherever the spec picks one."""
@@ -719,6 +739,11 @@ class Checker:
             self.report.error(file, path, 'must be an object with a "preset"')
             return
         self.enum(file, f"{path}.preset", spec["preset"], "textLooks", "text look", extra=["none"])
+        if "offsetDir" in spec and not is_number(spec["offsetDir"]):
+            self.report.error(file, f"{path}.offsetDir", "must be degrees clockwise from up (the app drops it)")
+        opacity = spec.get("offsetOpacity")
+        if opacity is not None and (not is_number(opacity) or not 0 <= opacity <= 1):
+            self.report.warn(file, f"{path}.offsetOpacity", "must be 0..1 (the app clamps it)")
 
     def devices(self, file: str, doc: Dict[str, Any]) -> None:
         devices = doc.get("devices")

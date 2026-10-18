@@ -108,6 +108,25 @@ class CheckTests(KbTestCase):
         self.assertTrue(any("extraThing" in w for w in warnings))
         self.assertTrue(any("not a #rgb" in w for w in warnings))
 
+    def test_emphasis_and_build_checks(self) -> None:
+        doc = {
+            "version": 1,
+            "text": {"title": "Ship *twice*\nas fast", "tag": "One line", "sub": "Two\nlines"},
+            "textStyle": {"titleEmphasis": "accent@700", "tagEmphasis": "bold", "subEmphasis": "#fff@2000"},
+            "textAnimation": {"in": "build", "out": "none", "staggerMs": 200, "buildShiftEm": "far"},
+            "textAnimationOverrides": {"sub": {"in": "fade", "out": "none", "staggerMs": 0}},
+            "textLook": {"preset": "offset-print", "offsetDir": "left", "offsetOpacity": 2},
+        }
+        write_json(self.root / "scenes" / "02-hero.json", doc)
+        report = self.run_check(["scenes/02-hero.json"])
+        self.assertHasError(report, "textStyle.tagEmphasis", "textStyle.subEmphasis", "buildShiftEm", "textLook.offsetDir")
+        self.assertFalse(any("titleEmphasis" in e for e in messages(report)))
+        warnings = messages(report, "warning")
+        self.assertTrue(any("text.title" in w and "build is single line" in w for w in warnings))
+        self.assertFalse(any("text.sub" in w and "build is single line" in w for w in warnings))
+        self.assertFalse(any("text.tag" in w and "build is single line" in w for w in warnings))
+        self.assertTrue(any("offsetOpacity" in w for w in warnings))
+
     def test_sidecar_motion_blur(self) -> None:
         doc = {"version": 1, "motionBlur": {"enabled": "yes", "shutterDeg": 720, "samples": 16}}
         write_json(self.root / "scenes" / "02-hero.json", doc)
