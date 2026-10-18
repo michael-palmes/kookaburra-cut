@@ -1468,6 +1468,7 @@ rolling-gate project (`showcase-tour`):
 | `ws:multi-device-spike` (deviceLayout gate, machine-local) | stale | stale | stale | — | — | — | — | — | — |
 | `ws:dof-spike` (depth-of-field gate, machine-local) | stale | stale | — | — | — | — | — | — | — |
 | `ws:motion-blur-spike` (motion blur gate, machine-local) | `bb5b4682…` | `504c9591…` | — | — | — | — | — | — | — |
+| `ws:camera-kick-spike` (camera kicks, musical positions and `useBeatGrid`, machine-local; never in a gate) | `1ab8d22d…` | — | — | — | — | — | — | — | — |
 | `ws:chart-spike` (chart gate, machine-local) | `d58ff1f2…` | stale | stale | stale | — | — | — | — | — |
 | `ws:duplicate-spike` (scene-id heal gate, machine-local) | stale | — | — | — | — | — | — | — | — |
 | `ws:overlay-spike` (overlay gate, machine-local) | stale | — | — | — | — | — | — | — | — |
@@ -1475,6 +1476,15 @@ rolling-gate project (`showcase-tour`):
 | `ws:device-video-spike` (device/media/camera gate, built-in-lit devices, machine-local) | `386c8419…` | — | — | — | — | — | — | — | — |
 | `ws:device-env-spike` (cold frame-0 repro: a built-in-lit handset's top edge, machine-local) | `9f3418a2…` | — | — | — | — | — | — | — | — |
 | `ws:text-outline-spike` (outlined text in the text barrier: neon, whole-block blur-in, machine-local) | `87bb6b3a…` | — | — | — | — | — | — | — | — |
+
+> **2026-10-18 (camera kicks and musical positions):** `ws:camera-kick-spike`
+> (a generated 128.4 BPM click soundtrack, an authored `audio.grid`, orbit and
+> rig keys and kicks on `bar:`, `cue:` and `section:` positions, a `useBeatGrid()`
+> pulse, and a snap kick under a 180° shutter) verifies ×2 at `1ab8d22d…`. Frames
+> eyeballed: the zoom kick peaks on bar 2 and the snap renders without a ghost.
+> Kick-free projects held EQUAL: `ws:camera-rig-spike-opus` `81429136…`,
+> `ws:motion-blur-spike` `bb5b4682…`. Run the fixture only when kicks, the grid
+> or positions change; it never joins `gate`, `gate:merge`, CI or release parity.
 
 > **2026-10-18 (`ws:camera-rig-spike-opus` re-baselined on main `18538e02`):**
 > the fixture's 16:9 baseline had gone stale, so it re-recorded on pristine
