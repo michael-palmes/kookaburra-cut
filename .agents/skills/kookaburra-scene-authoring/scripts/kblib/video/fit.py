@@ -861,16 +861,15 @@ def scene_beats(root: Path, scene_index: int, load_json: Callable[[Path], Any], 
     if not audio_path.is_file():
         raise FitError(f"the soundtrack {audio['file']} is missing")
     digest = hashlib.sha256(audio_path.read_bytes()).hexdigest()
-    cache = (cache_dir or beats.CACHE_DIR) / f"{digest}.json"
-    if not cache.is_file():
+    analysis, _ = beats.load_analysis(digest, load_json, cache_dir)
+    if analysis is None:
         raise FitError("no beat analysis yet: ask the user to open the project in Kookaburra Cut once, then rerun")
-    analysis = load_json(cache)
     slots = beats.build_slots(manifest.get("scenes", []))
     if not 0 <= scene_index < len(slots):
         raise FitError(f"scene {scene_index} is out of range")
     total = slots[-1]["endMs"] if slots else 0
     offset = audio.get("startOffsetMs", 0) or 0
-    grid = [t - offset for t in analysis.get("beats", []) if 0 <= t - offset <= total]
+    grid = [t - offset for t in beats.beat_times(analysis) if 0 <= t - offset <= total]
     moments, _ = beats.effective_key_moments(analysis, audio.get("markers"), offset, total)
     s = slots[scene_index]
     return {

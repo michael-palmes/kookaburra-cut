@@ -7,8 +7,10 @@ Run from a project folder (where project.json lives):
     python3 .claude/skills/kookaburra-scene-authoring/scripts/beats.py --scene 2   # one scene, every beat listed
     python3 .claude/skills/kookaburra-scene-authoring/scripts/beats.py --json      # machine-readable dump
 
-Reads the analysis cache the app writes when a project with a soundtrack opens.
-If it is missing, ask the user to open this project in Kookaburra Cut once, then rerun.
+Reads the analysis cache the app writes when a project with a soundtrack opens
+(`<sha>-v2.json`, the refined grid; an older app's unrefined `<sha>.json` still reads,
+with a warning). If it is missing, ask the user to open this project in Kookaburra Cut
+once, then rerun.
 """
 
 from __future__ import annotations
@@ -20,9 +22,45 @@ import sys
 from pathlib import Path
 
 CACHE_DIR = Path.home() / "Library/Application Support/com.mpalmes.kookaburracut/cache/beats"
-ANALYSIS_VERSION = 1
+ANALYSIS_VERSION = 2
+SUPPORTED_VERSIONS = (1, 2)
+V1_WARNING = ("beats: this analysis is v1 (unrefined, beats up to ~30 ms off); open the project "
+              "in an updated Kookaburra Cut to refresh it")
 MARKER_MATCH_MS = 30
 MANUAL_STRENGTH = 0.8
+
+
+def read_json(path):
+    return json.loads(Path(path).read_text(encoding="utf-8"))
+
+
+def load_analysis(digest, load_json=read_json, cache_dir=None):
+    """The cached analysis for a soundtrack's SHA-256, v2 first: (analysis, path), or (None, None)."""
+    base = Path(cache_dir) if cache_dir else CACHE_DIR
+    for path in (base / f"{digest}-v{ANALYSIS_VERSION}.json", base / f"{digest}.json"):
+        if path.is_file():
+            return load_json(path), path
+    return None, None
+
+
+def beat_times(analysis):
+    """Track ms of every beat: v2 stores {ms, bar, beat, conf} objects, v1 bare numbers."""
+    times = []
+    for b in analysis.get("beats", []):
+        if isinstance(b, dict):
+            b = b.get("ms")
+        if isinstance(b, (int, float)) and not isinstance(b, bool):
+            times.append(b)
+    return times
+
+
+def tempo(analysis):
+    """(bpm, beat interval ms): v2's fitted periodMs as stored, never re-derived from a rounded bpm."""
+    fit = analysis.get("fit")
+    if isinstance(fit, dict) and fit.get("periodMs"):
+        return fit.get("bpm"), fit["periodMs"]
+    bpm = analysis.get("bpm")
+    return bpm, (round(60_000 / bpm) if bpm else None)
 
 
 def build_slots(scenes):
@@ -102,31 +140,36 @@ def main() -> int:
         return 2
 
     digest = hashlib.sha256(audio_path.read_bytes()).hexdigest()
-    cache_path = CACHE_DIR / f"{digest}.json"
-    if not cache_path.is_file():
+    analysis, _ = load_analysis(digest)
+    if analysis is None:
         print(
             "beats: no cached analysis for this soundtrack yet.\n"
             "Open this project in Kookaburra Cut once (analysis runs on load), then rerun.",
             file=sys.stderr,
         )
         return 3
-    analysis = json.loads(cache_path.read_text())
-    if analysis.get("version") != ANALYSIS_VERSION:
-        print(f"beats: cache version {analysis.get('version')} unsupported", file=sys.stderr)
+    version = analysis.get("version")
+    if version not in SUPPORTED_VERSIONS:
+        print(f"beats: cache version {version} unsupported", file=sys.stderr)
         return 2
+    if version == 1:
+        print(V1_WARNING, file=sys.stderr)
 
     slots = build_slots(manifest.get("scenes", []))
     total = slots[-1]["endMs"] if slots else 0
     offset = audio.get("startOffsetMs", 0) or 0
-    beats = [t - offset for t in analysis.get("beats", []) if 0 <= t - offset <= total]
+    beats = [t - offset for t in beat_times(analysis) if 0 <= t - offset <= total]
     moments, source = effective_key_moments(analysis, audio.get("markers"), offset, total)
-    bpm = analysis.get("bpm")
-    interval = round(60_000 / bpm) if bpm else None
+    bpm, interval = tempo(analysis)
+    fit = analysis.get("fit") if version >= 2 else None
 
     if args.json:
         print(json.dumps({
+            "analysisVersion": version,
+            "tracker": analysis.get("tracker"),
             "bpm": bpm,
-            "beatIntervalMs": interval,
+            "beatIntervalMs": round(interval, 3) if interval else None,
+            "fit": fit,
             "keyMomentSource": source,
             "projectTotalMs": total,
             "startOffsetMs": offset,
@@ -158,7 +201,13 @@ def main() -> int:
             print(f"beats: no scene '{args.scene}' (use an index or file stem)", file=sys.stderr)
             return 2
 
-    bpm_line = f"{bpm:.1f} (beat every {interval}ms)" if bpm else "unknown (no regular grid found)"
+    if not bpm:
+        bpm_line = "unknown (no regular grid found)"
+    elif fit:
+        drift = "" if fit.get("constantTempo", True) else ", tempo drifts: grid is approximate"
+        bpm_line = f"{bpm:.3f} (beat every {interval:.2f}ms, residual {fit.get('residualMs', 0):.2f}ms{drift})"
+    else:
+        bpm_line = f"{bpm:.1f} (beat every {interval}ms)"
     print(f"Soundtrack: {audio['file']}   bpm: {bpm_line}")
     print(f"Key moments: {len(moments)} ({source})   grid beats: {len(beats)}   startOffsetMs: {offset}")
 
