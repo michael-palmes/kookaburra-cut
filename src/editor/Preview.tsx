@@ -1,8 +1,15 @@
 import { type CSSProperties, useCallback, useEffect, useRef, useState } from "react";
 import type { EditClip, EditMask, EditSource, EditTap } from "../engine/edit";
 import { keyToleranceMs, type MaskRect, sourceMomentAt } from "../engine/editMasks";
-import { clipIndexAt, timelineDurationMs, timelineToSource } from "../engine/editMath";
+import {
+  type CropRect,
+  clipIndexAt,
+  cropPixels,
+  timelineDurationMs,
+  timelineToSource,
+} from "../engine/editMath";
 import { fsUrl } from "../engine/media";
+import { CropLayer, cropViewStyle } from "./CropLayer";
 import { MaskLayer } from "./MaskLayer";
 import {
   TAP_MARKER_NEAR_MS,
@@ -20,6 +27,8 @@ const TRIM_SEEK_EPSILON_MS = 4; // trim scrubbing is frame-exact, seek on any re
 
 /** A transient viewer override while a trim handle is dragged: show THIS source frame. */
 export interface TrimScrub {
+  /** The trimmed clip, so the viewer keeps its crop. */
+  clipId?: string;
   sourceId: string;
   sourceMs: number; // the draft edge, in source time
   edge: "in" | "out"; // out-points are exclusive, display the last included frame
@@ -55,6 +64,9 @@ export interface PreviewProps {
   onCommitMaskRect: (id: string, rect: MaskRect, kind: "move" | "resize") => void;
   onCommitMaskPath: (id: string, dx: number, dy: number) => void;
   onMaskContextMenu: (id: string, clientX: number, clientY: number) => void;
+  armedCrop?: boolean; // the crop tool: the clip on screen shows its whole frame with the crop box
+  onCropGesture?: () => void; // a crop drag started: pause playback
+  onCommitCrop?: (clipId: string, rect: CropRect) => void;
 }
 
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
@@ -113,6 +125,9 @@ export function Preview({
   onCommitMaskRect,
   onCommitMaskPath,
   onMaskContextMenu,
+  armedCrop = false,
+  onCropGesture,
+  onCommitCrop,
 }: PreviewProps) {
   const videos = useRef(new Map<string, HTMLVideoElement>());
   const imgs = useRef(new Map<string, HTMLImageElement>());
@@ -125,6 +140,26 @@ export function Preview({
   const activeIdx = displayIndexAt(clips, playheadMs);
   const activeSourceId =
     trimScrub?.sourceId ?? (activeIdx >= 0 ? clips[activeIdx].sourceId : (sources[0]?.id ?? null));
+
+  // The clip on screen frames its source: the crop tool shows the whole frame, otherwise the box shows only the crop.
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [area, setArea] = useState<{ width: number; height: number } | null>(null);
+  useEffect(() => {
+    const el = rootRef.current;
+    if (!el) return;
+    const measure = () => setArea({ width: el.clientWidth, height: el.clientHeight });
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    measure();
+    return () => ro.disconnect();
+  }, []);
+  const framed = trimScrub
+    ? clips.find((c) => c.id === trimScrub.clipId)
+    : activeIdx >= 0
+      ? clips[activeIdx]
+      : undefined;
+  const framedClip = framed?.sourceId === activeSourceId ? framed : undefined;
+  const framedCrop = !armedCrop ? framedClip?.crop : undefined;
 
   // Paused scrub: a trim-handle drag overrides the viewer with the exact edge frame; otherwise seek the active source to the playhead-mapped time.
   useEffect(() => {
@@ -282,6 +317,15 @@ export function Preview({
   const color = TAP_COLORS.find((c) => c.id === tapColor) ?? TAP_COLORS[0];
   const gradient = tapGradient(style, color);
 
+  /** The dot's width in cqw of the source box: a crop letterboxes its own pixels into the output, so the dot is sized against them. */
+  const dotWidth = (source: EditSource): number => {
+    if (!framedCrop || source.id !== activeSourceId) {
+      return tapDotWidthFraction(source, output, tapSize) * 100;
+    }
+    const [, , w, h] = cropPixels(framedCrop, source);
+    return tapDotWidthFraction({ width: w, height: h }, output, tapSize) * (w / source.width) * 100;
+  };
+
   const dotStyle = (
     source: EditSource,
     pos: [number, number],
@@ -290,7 +334,7 @@ export function Preview({
   ): CSSProperties => ({
     left: `${pos[0] * 100}%`,
     top: `${pos[1] * 100}%`,
-    width: `${tapDotWidthFraction(source, output, tapSize) * 100}cqw`,
+    width: `${dotWidth(source)}cqw`,
     opacity,
     transform: `translate(-50%, -50%) scale(${scale})`,
     backgroundImage: gradient,
@@ -324,7 +368,7 @@ export function Preview({
   };
 
   return (
-    <div className="editor-preview">
+    <div className="editor-preview" ref={rootRef}>
       {sources.map((source) => (
         <div
           key={source.id}
@@ -332,7 +376,12 @@ export function Preview({
         >
           <div
             className="editor-video-box"
-            style={sourceBoxStyle(source)}
+            style={{
+              ...sourceBoxStyle(source),
+              ...(framedCrop && area && source.id === activeSourceId
+                ? cropViewStyle(framedCrop, source, area)
+                : undefined),
+            }}
             onPointerDown={(e) => {
               const tag = (e.target as HTMLElement).tagName;
               if (tag === "VIDEO" || tag === "IMG") onSelectMask(null);
@@ -379,6 +428,16 @@ export function Preview({
                   onCommitPath={onCommitMaskPath}
                   onContextMenu={onMaskContextMenu}
                 />
+                {armedCrop && framedClip && (
+                  <CropLayer
+                    source={source}
+                    crop={framedClip.crop ?? null}
+                    aspect={output.height > 0 ? output.width / output.height : 1}
+                    editable={!playing && !trimScrub}
+                    onGesture={() => onCropGesture?.()}
+                    onCommit={(rect) => onCommitCrop?.(framedClip.id, rect)}
+                  />
+                )}
                 {armedTap && canPlaceTap && (
                   <div
                     className="tap-layer"

@@ -84,6 +84,12 @@ describe("MaskLayer", () => {
     expect(layer({ masks: [mask({ style: "pixelate" })] })).toContain("mask-canvas pixelated");
   });
 
+  it("shows a fading mask at its opacity and a full one without any", () => {
+    const fading = layer({ masks: [mask({ fadeInMs: 400 })], sourceMs: 1100 });
+    expect(fading).toContain("background:#000000;opacity:0.25");
+    expect(layer({ masks: [mask({ fadeInMs: 400 })], sourceMs: 1500 })).not.toContain("opacity");
+  });
+
   it("arms a draw surface and hides everything with no frame on screen", () => {
     expect(layer({ armed: true })).toContain("mask-draw-layer");
     expect(layer({ sourceMs: null })).not.toContain("mask-effect");
@@ -101,11 +107,22 @@ describe("MaskSettingsBar", () => {
         onStrength={noop}
         onStrengthCommit={noop}
         onColor={noop}
+        onFade={noop}
+        onFadeCommit={noop}
         onAddKey={noop}
         onRemoveKey={noop}
         onDelete={noop}
       />,
     );
+
+  it("offers fade sliders bounded by what the span leaves, never on a still", () => {
+    const html = bar(mask({ fadeInMs: 250, fadeOutMs: 500 }));
+    expect(count(html, "mask-fade-value")).toBe(2);
+    expect(html).toMatch(/max="1500"[^>]*value="250"/);
+    expect(html).toMatch(/max="1750"[^>]*value="500"/);
+    expect(html).toContain("0.25s");
+    expect(bar(mask(), { onKey: true, editable: false }, true)).not.toContain("mask-fade");
+  });
 
   it("hints how to draw when nothing is selected", () => {
     expect(bar(null)).toContain("Drag over the preview to hide an area");

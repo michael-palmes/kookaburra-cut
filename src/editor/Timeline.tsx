@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { EditClip, EditMask, EditSource, EditTap } from "../engine/edit";
 import {
+  maskOpacityAt,
   maskWindows,
   packMaskRows,
   retimeMaskEdge,
@@ -109,6 +110,31 @@ function tickLabel(ms: number): string {
 
 function effectiveSpeed(speed: number): number {
   return speed > 0 ? speed : 1;
+}
+
+/** A faded mask's ramps inside one clip's bar: timeline ms from the bar's start, and the opacity at each end. */
+function fadeRamps(
+  mask: EditMask,
+  clip: EditClip,
+  barOffsetMs: number,
+): { x: number; w: number; from: number; to: number }[] {
+  const speed = effectiveSpeed(clip.speed);
+  const spans: [number, number][] = [];
+  if (mask.fadeInMs) spans.push([mask.startMs, mask.startMs + mask.fadeInMs]);
+  if (mask.fadeOutMs) spans.push([mask.endMs - mask.fadeOutMs, mask.endMs]);
+  return spans.flatMap(([s0, s1]) => {
+    const a = Math.max(s0, clip.inMs);
+    const b = Math.min(s1, clip.outMs);
+    if (b <= a) return [];
+    return [
+      {
+        x: (a - clip.inMs) / speed - barOffsetMs,
+        w: (b - a) / speed,
+        from: maskOpacityAt(mask, a, false),
+        to: maskOpacityAt(mask, b, false),
+      },
+    ];
+  });
 }
 
 export function Timeline({
@@ -248,6 +274,7 @@ export function Timeline({
     const clip = draft.find((c) => c.id === id);
     if (!clip) return null;
     return {
+      clipId: clip.id,
       sourceId: clip.sourceId,
       sourceMs: kind === "trim-in" ? clip.inMs : clip.outMs,
       edge: kind === "trim-in" ? ("in" as const) : ("out" as const),
@@ -656,7 +683,7 @@ export function Timeline({
             <div
               className="timeline-mask-lane"
               style={{ height: maskRowCount * MASK_ROW_PX + 4 }}
-              title="Masks: click a bar to select it, drag its ends to retime"
+              title="Masks: click a bar to select it, drag its ends to retime; a sloped end fades"
             >
               {masks.map((committed) => {
                 const mask = maskDrag?.orig.id === committed.id ? maskDrag.draft : committed;
@@ -672,6 +699,7 @@ export function Timeline({
                   const speed = effectiveSpeed(clip.speed);
                   const x = PAD_L + block.x + (w.startMs - clip.startMs) * pxPerMs;
                   const width = Math.max(3, (w.endMs - w.startMs) * pxPerMs);
+                  const ramps = w.hold ? [] : fadeRamps(mask, clip, w.startMs - clip.startMs);
                   const keys =
                     selected && !w.hold
                       ? mask.keys.filter(
@@ -700,6 +728,18 @@ export function Timeline({
                         if (e.key === "Enter") onSelectMask?.(mask.id);
                       }}
                     >
+                      {ramps.map((r) => (
+                        <span
+                          key={r.x}
+                          className="timeline-mask-ramp"
+                          aria-hidden
+                          style={{
+                            left: r.x * pxPerMs,
+                            width: r.w * pxPerMs,
+                            clipPath: `polygon(0 0, 100% 0, 100% ${(1 - r.to) * 100}%, 0 ${(1 - r.from) * 100}%)`,
+                          }}
+                        />
+                      ))}
                       {keys.map((k) => (
                         // biome-ignore lint/a11y/noStaticElementInteractions: a key marker; the strip's key buttons cover keyboard use
                         <span

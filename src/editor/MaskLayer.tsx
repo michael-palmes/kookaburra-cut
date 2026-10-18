@@ -6,6 +6,7 @@ import {
   keyIndexAt,
   type MaskRect,
   maskActiveAt,
+  maskOpacityAt,
   rectFromCorners,
   sampleMaskRect,
 } from "../engine/editMasks";
@@ -180,7 +181,13 @@ export function MaskLayer({
         const onKey = image || keyIndexAt(mask.keys, at, keyTolMs) >= 0;
         return (
           <div key={mask.id} className="mask-item">
-            <MaskEffect mask={mask} rect={rect} source={source} media={media} />
+            <MaskEffect
+              mask={mask}
+              rect={rect}
+              source={source}
+              media={media}
+              opacity={maskOpacityAt(mask, at, image)}
+            />
             {editable && (
               // biome-ignore lint/a11y/noStaticElementInteractions: a draggable box; the strip and ⌫ cover keyboard use
               <div

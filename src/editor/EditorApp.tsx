@@ -40,7 +40,10 @@ import {
   sourceMomentAt,
 } from "../engine/editMasks";
 import {
+  aspectCropRect,
+  type CropRect,
   clipIndexAt,
+  clipTimelineMs,
   DEFAULT_HOLD_MS,
   freezeAt,
   freezeAtEnd,
@@ -62,6 +65,7 @@ import { MediaBrowser } from "../ui/MediaBrowser";
 import { mediaCardMenu } from "../ui/mediaCardMenu";
 import { hasPendingTextEdit, spaceMeansPlayback } from "../ui/textEditFocus";
 import { useEscapeClose } from "../ui/useEscapeClose";
+import { CropSettingsBar } from "./CropLayer";
 import {
   adoptOwnWrite,
   createEditStampState,
@@ -279,6 +283,11 @@ export function EditorApp() {
   const [armedTap, setArmedTap] = useState(false);
   const [selectedMaskId, setSelectedMaskId] = useState<string | null>(null);
   const [armedMask, setArmedMask] = useState(false);
+  const [armedCrop, setArmedCrop] = useState(false);
+  // One tool at a time: arming tap or mask (button or key) puts the crop tool down.
+  useEffect(() => {
+    if (armedTap || armedMask) setArmedCrop(false);
+  }, [armedTap, armedMask]);
   const [maskMenu, setMaskMenu] = useState<ContextMenuState | null>(null);
   const [tapMenu, setTapMenu] = useState<ContextMenuState | null>(null);
   const [clipMenu, setClipMenu] = useState<ContextMenuState | null>(null);
@@ -1355,6 +1364,26 @@ export function EditorApp() {
     [runOp],
   );
 
+  const handleMaskFade = useCallback(
+    (maskId: string, edge: "in" | "out", ms: number) => {
+      runOp(
+        edge === "in"
+          ? { op: "setMaskFade", maskId, fadeInMs: ms }
+          : { op: "setMaskFade", maskId, fadeOutMs: ms },
+        { coalesceKey: `mask-fade-${edge}:${maskId}` },
+      );
+    },
+    [runOp],
+  );
+
+  /** A crop drag, Fit output or Reset on one clip; the op snaps a box to even source pixels. */
+  const handleCommitCrop = useCallback(
+    (clipId: string, crop: CropRect | null) => {
+      runOp({ op: "setClipCrop", clipId, crop });
+    },
+    [runOp],
+  );
+
   const handleMaskColor = useCallback(
     (maskId: string, color: string | undefined) => {
       runOp({ op: "setMaskLook", maskId, color: color ?? null });
@@ -1400,6 +1429,7 @@ export function EditorApp() {
     : false;
   const canTap = doc ? outputToSource(doc.clips, playheadMs) !== null : false;
   const canMask = doc ? sourceMomentAt(doc.clips, playheadMs) !== null : false;
+  const cropClip = doc ? (sourceMomentAt(doc.clips, playheadMs)?.clip ?? null) : null;
   const selectedMask = doc?.masks?.find((m) => m.id === selectedMaskId) ?? null;
   const selectedMaskImage =
     !!selectedMask && doc?.sources.find((s) => s.id === selectedMask.sourceId)?.kind === "image";
@@ -1479,6 +1509,28 @@ export function EditorApp() {
             },
           },
           {
+            id: "crop",
+            label: "Crop…",
+            disabled: !clip,
+            title: "Frame this clip at the output's shape with the crop tool",
+            onSelect: () => {
+              if (!clip) return;
+              const at = playheadRef.current;
+              const end = clip.startMs + clipTimelineMs(clip);
+              if (at < clip.startMs || at >= end) setPlayheadMs(clip.startMs);
+              setArmedTap(false);
+              setArmedMask(false);
+              setArmedCrop(true);
+            },
+          },
+          {
+            id: "reset-crop",
+            label: "Reset crop",
+            disabled: !clip?.crop,
+            title: "Show this clip's whole frame again",
+            onSelect: () => handleCommitCrop(id, null),
+          },
+          {
             id: "remove",
             label: "Remove clip",
             confirmLabel: "Really remove?",
@@ -1490,7 +1542,7 @@ export function EditorApp() {
         ],
       });
     },
-    [doc, handleInsertClipAt, handleAddClip, handleRemoveClip],
+    [doc, handleInsertClipAt, handleAddClip, handleRemoveClip, handleCommitCrop],
   );
 
   // Space plays/pauses (committing the value first when it comes from the tap-size slider or the hold field, where a literal space means nothing); S/F split/freeze at the playhead; Delete/Backspace removes the selected clip; Escape deselects. Lives below canSplit/canFreeze so the dependency array can read them.
@@ -1533,7 +1585,8 @@ export function EditorApp() {
         handleRemoveClip(selectedId);
       } else if (e.key === "Escape") {
         // Disarm a tool first, deselect only when none was armed (the AnimationLane pattern).
-        if (armedMask) setArmedMask(false);
+        if (armedCrop) setArmedCrop(false);
+        else if (armedMask) setArmedMask(false);
         else if (armedTap) setArmedTap(false);
         else if (selectedMaskId) setSelectedMaskId(null);
         else setSelectedId(null);
@@ -1555,6 +1608,7 @@ export function EditorApp() {
     canTap,
     armedMask,
     canMask,
+    armedCrop,
     selectedMaskId,
     handleDeleteMask,
   ]);
@@ -1613,7 +1667,22 @@ export function EditorApp() {
         </aside>
         <div className="editor-stage-col">
           <main className="editor-stage" ref={stageRef}>
-            {doc && maskStrip ? (
+            {doc && armedCrop ? (
+              <div className="editor-tap-bar">
+                <CropSettingsBar
+                  clipId={cropClip?.id ?? null}
+                  hasCrop={!!cropClip?.crop}
+                  onFit={() => {
+                    const source = doc.sources.find((s) => s.id === cropClip?.sourceId);
+                    const { width, height } = doc.settings;
+                    if (cropClip && source && height > 0) {
+                      handleCommitCrop(cropClip.id, aspectCropRect(source, width / height));
+                    }
+                  }}
+                  onReset={() => cropClip && handleCommitCrop(cropClip.id, null)}
+                />
+              </div>
+            ) : doc && maskStrip ? (
               <div className="editor-tap-bar">
                 <MaskSettingsBar
                   mask={selectedMask}
@@ -1625,6 +1694,8 @@ export function EditorApp() {
                   onStrength={(v) => selectedMask && handleMaskStrength(selectedMask.id, v)}
                   onStrengthCommit={closeEditorHistoryCoalescing}
                   onColor={(hex) => selectedMask && handleMaskColor(selectedMask.id, hex)}
+                  onFade={(edge, ms) => selectedMask && handleMaskFade(selectedMask.id, edge, ms)}
+                  onFadeCommit={closeEditorHistoryCoalescing}
                   onAddKey={() => selectedMask && handleAddMaskKey(selectedMask.id)}
                   onRemoveKey={() => selectedMask && handleRemoveMaskKey(selectedMask.id)}
                   onDelete={() => selectedMask && handleDeleteMask(selectedMask.id)}
@@ -1702,6 +1773,9 @@ export function EditorApp() {
                     onCommitMaskRect={handleCommitMaskRect}
                     onCommitMaskPath={handleCommitMaskPath}
                     onMaskContextMenu={handleMaskContextMenu}
+                    armedCrop={armedCrop}
+                    onCropGesture={handleMaskGesture}
+                    onCommitCrop={handleCommitCrop}
                   />
                   {refView && (
                     <ReferencePane
@@ -1765,6 +1839,21 @@ export function EditorApp() {
               >
                 <ToolIcon id="mask" />
                 Mask
+              </button>
+              <button
+                type="button"
+                className={`btn${armedCrop ? " selected" : ""}`}
+                aria-pressed={armedCrop}
+                onClick={() => {
+                  setArmedCrop((a) => !a);
+                  setArmedTap(false);
+                  setArmedMask(false);
+                }}
+                disabled={!armedCrop && !cropClip}
+                title="Crop: drag over the preview to frame the clip on screen at the output's shape"
+              >
+                <ToolIcon id="crop" />
+                Crop
               </button>
               <button
                 type="button"

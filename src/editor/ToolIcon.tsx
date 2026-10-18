@@ -10,7 +10,12 @@ export type ToolIconId =
   | "blur"
   | "pixelate"
   | "addKey"
-  | "deleteKey";
+  | "deleteKey"
+  | "fadeIn"
+  | "fadeOut"
+  | "crop"
+  | "fitCrop"
+  | "resetCrop";
 
 export function ToolIcon({ id }: { id: ToolIconId }) {
   const glyph = {
@@ -65,6 +70,36 @@ export function ToolIcon({ id }: { id: ToolIconId }) {
       <>
         <path d="M8 2.2L13.8 8 8 13.8 2.2 8z" />
         <path d="M5.6 8h4.8" />
+      </>
+    ),
+    fadeIn: (
+      <>
+        <path d="M2 13.5L8 4h6" />
+        <path d="M2 13.5h12" strokeDasharray="1.6 1.7" />
+      </>
+    ),
+    fadeOut: (
+      <>
+        <path d="M2 4h6l6 9.5" />
+        <path d="M2 13.5h12" strokeDasharray="1.6 1.7" />
+      </>
+    ),
+    crop: (
+      <>
+        <path d="M4.5 1.5v10h10" />
+        <path d="M1.5 4.5h10v10" />
+      </>
+    ),
+    fitCrop: (
+      <>
+        <rect x="2" y="3" width="12" height="10" rx="1.5" strokeDasharray="1.6 1.7" />
+        <rect x="5.5" y="3" width="5" height="10" rx="1" />
+      </>
+    ),
+    resetCrop: (
+      <>
+        <path d="M3.2 6.2A5 5 0 1 1 3 9.5" />
+        <path d="M2.8 2.8v3.6h3.6" />
       </>
     ),
   }[id];

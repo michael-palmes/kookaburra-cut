@@ -3675,13 +3675,26 @@ button.beat-status {
   color: var(--text-secondary);
 }
 
+/* Fade sliders: leading icon, label, range and the length in seconds. */
+.mask-fade {
+  color: var(--text-secondary);
+}
+
+.mask-fade-value {
+  min-width: 3.4em;
+  font-size: var(--text-2xs);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+}
+
 /* A placed tap's edit affordance: subtle ring, stronger while the tool is armed. */
 .tap-marker {
   position: absolute;
   width: 18px;
   height: 18px;
   padding: 0;
-  transform: translate(-50%, -50%);
+  /* A cropped clip's box is scaled up by --crop-k (Preview.tsx); edit affordances keep their size. */
+  transform: translate(-50%, -50%) scale(calc(1 / var(--crop-k, 1)));
   border: 2px solid rgba(255, 255, 255, 0.45);
   border-radius: 50%;
   background: transparent;
@@ -3738,7 +3751,7 @@ button.beat-status {
 
 .mask-frame.selected {
   z-index: 2;
-  border: 1.5px solid var(--gizmo-selected);
+  border: calc(1.5px / var(--crop-k, 1)) solid var(--gizmo-selected);
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
   cursor: move;
 }
@@ -3752,7 +3765,7 @@ button.beat-status {
   position: absolute;
   width: 9px;
   height: 9px;
-  transform: translate(-50%, -50%);
+  transform: translate(-50%, -50%) scale(calc(1 / var(--crop-k, 1)));
   background: var(--gizmo-handle);
   border: 1px solid var(--gizmo-handle-edge);
   border-radius: 2px;
@@ -3813,7 +3826,7 @@ button.beat-status {
   top: 6px;
   width: 8px;
   height: 8px;
-  transform: rotate(45deg);
+  transform: rotate(45deg) scale(calc(1 / var(--crop-k, 1)));
   border: 1.5px solid var(--gizmo-selected);
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.4);
 }
@@ -3837,6 +3850,62 @@ button.beat-status {
   border: 1.5px dashed var(--gizmo-selected);
   background: rgba(0, 0, 0, 0.35);
   pointer-events: none;
+}
+
+/* The crop tool (CropLayer.tsx) over the clip's whole frame: chrome only, the render cuts the crop in ffmpeg. The box's spread shadow dims everything outside it. */
+.crop-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  overflow: hidden;
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.crop-layer.locked {
+  cursor: default;
+}
+
+.crop-box {
+  position: absolute;
+  box-sizing: border-box;
+  border: 1.5px solid var(--gizmo-selected);
+  box-shadow: 0 0 0 100vmax rgba(0, 0, 0, 0.55);
+  cursor: move;
+}
+
+.crop-handle {
+  position: absolute;
+  width: 11px;
+  height: 11px;
+  transform: translate(-50%, -50%);
+  background: var(--gizmo-handle);
+  border: 1px solid var(--gizmo-handle-edge);
+  border-radius: 2px;
+}
+
+.crop-handle.nw {
+  left: 0;
+  top: 0;
+  cursor: nwse-resize;
+}
+
+.crop-handle.ne {
+  left: 100%;
+  top: 0;
+  cursor: nesw-resize;
+}
+
+.crop-handle.se {
+  left: 100%;
+  top: 100%;
+  cursor: nwse-resize;
+}
+
+.crop-handle.sw {
+  left: 0;
+  top: 100%;
+  cursor: nesw-resize;
 }
 
 .editor-clips {
@@ -4120,6 +4189,15 @@ button.beat-status {
   border-color: var(--accent);
   box-shadow: 0 0 0 1px var(--accent);
   z-index: 1;
+}
+
+/* A faded end notches its bar down to the mask's opacity (Timeline.tsx sets the clip-path). */
+.timeline-mask-ramp {
+  position: absolute;
+  top: -1px;
+  bottom: -1px;
+  background: var(--surface-panel);
+  pointer-events: none;
 }
 
 .timeline-mask-key {
