@@ -63,7 +63,7 @@ function Dashes({
     <group position={position} rotation={rotation}>
       {pieces.map((piece, i) => (
         <RoundedRect
-          // biome-ignore lint/suspicious/noArrayIndexKey: dash slots are fixed for a given path, so the index is the identity
+          // biome-ignore lint/suspicious/noArrayIndexKey: dashes are stateless, so an index that shifts as a bracket draws on only updates props
           key={i}
           width={piece.length}
           height={thickness}
