@@ -124,8 +124,9 @@ class LogCommandTests(KbTestCase):
         kinds = {c["kind"] for c in d["changes"]}
         self.assertTrue({"screen", "scroll", "tap"} <= kinds, d["changes"])
         self.assertEqual([m["atMs"] for m in d["moneyFrames"]], [1500, 6000, 7750])
-        self.assertIsNone(d["decode"])
-        self.assertTrue(any("decode not checked" in n for n in d["notesForAgent"]))
+        self.assertEqual((d["decode"]["verdict"], d["decode"]["via"]), ("ok", "kb"))
+        self.assertNotIn("app", d["decode"]["checks"])
+        self.assertTrue(any("boxes only" in n for n in d["notesForAgent"]))
         log = self.root / ".kb" / "footage" / "rec.json"
         self.assertEqual(d["log"], str(log))
         self.assertEqual(read_json(log)["holds"], d["holds"])
@@ -239,7 +240,7 @@ class LogCommandTests(KbTestCase):
         log = self.tmp / "argv.jsonl"
         self.fake_cli(log=log)
         d = self.json("log", "assets/rec.mp4")
-        self.assertIsNone(d["decode"])
+        self.assertEqual(d["decode"]["via"], "kb")
         argvs = [json.loads(line) for line in log.read_text().splitlines()]
         self.assertTrue(argvs)
         self.assertFalse([a for a in argvs if a[:1] == ["media"]], argvs)

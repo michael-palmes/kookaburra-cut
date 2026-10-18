@@ -121,6 +121,8 @@ def resolve_source(project: Project, text: str, tools: passes.Tools, allow_misde
         why = ", ".join(src.decode.get("reasons") or []) or "decoder disagreement"
         raise KbError(f"ffmpeg decodes {src.rel} wrongly ({why}), so its log would time the wrong frames; conform it, or pass --allow-misdecode to log it anyway",
                       EXIT_PROBLEMS, kind="invalid", hint=f"./kb assets conform {name}", data={"decode": src.decode})
+    elif "app" not in (src.decode.get("checks") or []):
+        src.notes.append(f"{src.rel}: decode checked from the file's boxes only (no Kookaburra Cut with the media probe)")
     return src
 
 
