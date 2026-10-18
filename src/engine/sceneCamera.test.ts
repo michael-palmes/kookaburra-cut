@@ -744,6 +744,22 @@ describe("sceneCameraPose", () => {
       if (track) expect("kicks" in track).toBe(false);
     }
   });
+
+  it("returns the rendered pose, kicks included", () => {
+    const kicked: SceneDoc = { version: 1, cameraKicks: [{ at: 100, zoom: 1.2, releaseMs: 400 }] };
+    const [tracks] = buildSceneCameraTracks([kicked]);
+    const fallback = baseCameraPose();
+    const pose = sceneCameraPose(tracks, 100, fallback);
+    expect(pose.fov).toBeLessThan(fallback.fov);
+    const plan = resolveFrameCameras(
+      [tracks],
+      undefined,
+      { active: [{ index: 0, localMs: 100 }] },
+      100,
+    );
+    expect(pose).toEqual(plan?.solo);
+    expect(sceneCameraPose(tracks, 1000, fallback)).toBe(fallback);
+  });
 });
 
 describe("camera kicks on scene tracks", () => {

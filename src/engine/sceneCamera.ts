@@ -424,8 +424,17 @@ export function dofUnionOf(
   return any ? union : null;
 }
 
-/** The pose that wins for one scene at scene-local `localMs`, before its kicks: the rig under rig mode, else the orbit track, else `fallback` itself (the project-level track sample, else the base pose). `fov` comes from a rig key that authors one, else `fallback`; only the rig has roll; dof rides the driving track. The rendered pose is `applyCameraKicks(sceneCameraPose(...), scene.kicks, localMs)`, which `resolveFrameCameras` applies (docs/camera.md, "Composition order"). */
+/** The pose one scene renders at scene-local `localMs`: the driving pose (the rig under rig mode, else the orbit track, else `fallback` itself, the project-level track sample or the base pose) with the scene's kicks on top. `fov` comes from a rig key that authors one, else `fallback`; only the rig has roll; dof rides the driving track. Without kicks the driving pose object comes back untouched (docs/camera.md, "Composition order"). */
 export function sceneCameraPose(
+  scene: SceneCameraTracks | null | undefined,
+  localMs: number,
+  fallback: CameraPose,
+): CameraPose {
+  const pose = drivingPose(scene, localMs, fallback);
+  return scene?.kicks ? applyCameraKicks(pose, scene.kicks, localMs) : pose;
+}
+
+function drivingPose(
   scene: SceneCameraTracks | null | undefined,
   localMs: number,
   fallback: CameraPose,
@@ -464,9 +473,7 @@ export function resolveFrameCameras(
 
   const fallback = sampleCameraTrack(projectTrack ?? [], globalMs);
   const poseFor = (active: ActiveScene): CameraPose => {
-    const scene = tracks[active.index];
-    const pose = sceneCameraPose(scene, active.localMs, fallback);
-    return scene?.kicks ? applyCameraKicks(pose, scene.kicks, active.localMs) : pose;
+    return sceneCameraPose(tracks[active.index], active.localMs, fallback);
   };
 
   const dofUnion = dofUnionOf(tracks);

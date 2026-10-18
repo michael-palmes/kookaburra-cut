@@ -34,13 +34,14 @@ and Present:
    falls through to orbit (`sceneCameraTracks`). A scene whose animated track is
    the layered screenshot contributes no camera at all, kicks included.
 2. **Fallbacks.** Rig, then orbit, then the project-level track sampled at
-   global time, then the base pose (`sceneCameraPose`). A project with no scene
+   global time, then the base pose. A project with no scene
    track and no kick anywhere skips the plan and runs the legacy
    `applyCameraTrack`.
 3. **Fov and roll ownership.** Fov comes from a rig key that authors it, else
    the project-level track; orbit poses never own fov. Only rig keys carry roll.
 4. **Kicks.** The sidecar's `cameraKicks` add on top of whatever won
-   (`applyCameraKicks`). See [Kicks](#kicks).
+   (`applyCameraKicks`). `sceneCameraPose` returns steps 1 to 4 for one scene,
+   the pose that renders. See [Kicks](#kicks).
 5. **Shutter sampling.** Motion blur re-runs steps 1 to 4 at each sub-frame
    sample, so kicks blur for free. Samples never cross a camera break, and a
    kick's snap is one. Depth of field stays at the frame instant.
@@ -48,8 +49,8 @@ and Present:
    own scene at its own local time; the persistent overlay takes the dominant
    side's pose.
 7. **TSX groups are not the camera.** Moving a group in a scene's TSX moves
-   content, never the camera. Code that needs the camera's pose composes it
-   through `sceneCameraPose` then `applyCameraKicks`, never its own precedence.
+   content, never the camera. Code that needs the camera's pose calls
+   `sceneCameraPose` (kicks included), never its own precedence.
 8. **DepthStage overscan.** Bands size from the rig's 64 fixed samples plus
    each kick's peak. Orbit scenes get no overscan, so an orbit kick that pulls
    out (zoom below 1, an offset, roll) can show a band's edge.
