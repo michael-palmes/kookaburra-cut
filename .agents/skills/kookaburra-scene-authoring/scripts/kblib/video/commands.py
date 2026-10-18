@@ -969,6 +969,7 @@ def cmd_cut(ctx: Any) -> int:
     a = ctx.args
 
     def build(doc: Dict[str, Any]) -> List[Dict[str, Any]]:
+        _refuse_moving_zoom(doc, a.name, "cut")
         if a.src:
             return [dict(m.plan.parse_src_range(doc, r), op="cutSource") for r in a.ranges]
         ranges = [m.plan.parse_range(r, fps=m.em.output_fps(doc), total_ms=m.plan.total_ms(doc)) for r in a.ranges]
@@ -983,7 +984,19 @@ def cmd_cut(ctx: Any) -> int:
 def cmd_keep(ctx: Any) -> int:
     m = _mods()
     a = ctx.args
-    return run_mutation(ctx, a.name, lambda doc: [{"op": "keep", "ranges": [m.plan.parse_src_range(doc, r) for r in a.ranges]}], "keep", checkpoint=True)
+
+    def build(doc: Dict[str, Any]) -> List[Dict[str, Any]]:
+        _refuse_moving_zoom(doc, a.name, "keep")
+        return [{"op": "keep", "ranges": [m.plan.parse_src_range(doc, r) for r in a.ranges]}]
+
+    return run_mutation(ctx, a.name, build, "keep", checkpoint=True)
+
+
+def _refuse_moving_zoom(doc: Dict[str, Any], name: str, verb: str) -> None:
+    """Range cuts re-slice clips without retiming zoom keys, as the smart passes do."""
+    from .smart_commands import refuse_moving_zoom
+
+    refuse_moving_zoom(doc, name, verb)
 
 
 def cmd_trim(ctx: Any) -> int:
