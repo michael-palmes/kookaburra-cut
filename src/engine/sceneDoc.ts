@@ -377,7 +377,14 @@ export function clampDocTracksToDuration(doc: SceneDoc, durationMs: number): Sce
   const stillsChanged = stills !== doc.stills;
   if (!camChanged && !animChanged && !cmpChanged && !chartChanged && !stillsChanged) return null;
   const next = structuredClone(doc);
-  if (camChanged) next.camera = structuredClone(cam) as SceneDoc["camera"];
+  if (camChanged && next.camera) {
+    const before = new Map(doc.camera?.keys.map((k) => [k.id, k.tMs]));
+    next.camera = structuredClone(cam) as NonNullable<SceneDoc["camera"]>;
+    // A clamped key left its musical position, so it detaches.
+    for (const key of next.camera.keys) {
+      if (key.at !== undefined && before.get(key.id) !== key.tMs) delete key.at;
+    }
+  }
   if (animChanged && next.layeredScreenshot) {
     next.layeredScreenshot.animation = structuredClone(anim) as NonNullable<
       SceneDoc["layeredScreenshot"]

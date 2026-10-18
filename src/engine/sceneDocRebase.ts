@@ -6,6 +6,7 @@ import {
   reportOutsideChange,
   sceneDocBase,
 } from "./sceneDocBase";
+import { detachSceneDocMusic, type SceneDocMusicScope } from "./sceneDocMusic";
 import type { SceneDoc } from "./sceneDocSchema";
 
 export interface RebasedSceneDocWrite {
@@ -17,14 +18,17 @@ export interface RebasedSceneDocWrite {
   outside: boolean;
 }
 
-/** The conflict-aware sidecar write: writes `build(base)` over `base`'s hash; when the file changed first, re-reads it, rebuilds on the fresh document and writes that instead, reporting an outside change so the editor reloads. Null when `build` aborts. Never writes content derived from a stale document. */
+/** The conflict-aware sidecar write: writes `build(base)` over `base`'s hash; when the file changed first, re-reads it, rebuilds on the fresh document and writes that instead, reporting an outside change so the editor reloads. Null when `build` aborts. Never writes content derived from a stale document. With a music `scope`, a key whose `tMs` left its `at` position loses the `at` on the way out (the detach rule), so a move survives the next load. */
 export async function writeSceneDocRebased(
   slug: string,
   sceneFile: string,
   base: SceneDoc | undefined,
   build: (from: SceneDoc | undefined) => SceneDoc | null,
+  scope?: SceneDocMusicScope,
 ): Promise<RebasedSceneDocWrite | null> {
-  const next = build(base);
+  const settle = (doc: SceneDoc | null) =>
+    doc && scope ? detachSceneDocMusic(doc, scope.music, scope.sceneStartMs) : doc;
+  const next = settle(build(base));
   if (!next) return null;
   try {
     await writeSceneDoc(slug, sceneFile, next, sceneDocBase(base));
@@ -43,7 +47,7 @@ export async function writeSceneDocRebased(
     throw new Error(`${docFile} changed outside the app and can't be read: ${String(e)}`);
   }
   const outside = !isAppHash(fresh.hash);
-  const rebased = build(fresh.doc);
+  const rebased = settle(build(fresh.doc));
   if (!rebased) {
     if (outside) report("reloaded");
     return null;

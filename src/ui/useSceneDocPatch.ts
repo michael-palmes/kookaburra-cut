@@ -7,7 +7,9 @@ import { readProjectManifestSnapshot, updateSceneDuration } from "../engine/proj
 import type { RigDoc } from "../engine/sceneCameraEdit";
 import { clampDocTracksToDuration, resyncFollowMediaDuration } from "../engine/sceneDoc";
 import { sceneDocBase } from "../engine/sceneDocBase";
+import { resolveSceneDocMusic, sceneMusicScope } from "../engine/sceneDocMusic";
 import {
+  commitSceneDocPatch,
   type DocChangedHandler,
   enqueueSceneDocPatch,
   noteRebasedWrite,
@@ -127,6 +129,7 @@ export function useSceneDocPatch(
   const sceneFile = project.sceneFiles[sceneIndex];
   const queueIdentity = sceneDocPatchQueueIdentity(project.id, sceneFile, sceneIndex);
   const patchQueue = sceneDocPatchQueue(queueIdentity, doc);
+  const musicScope = sceneMusicScope(project, sceneIndex);
 
   /** Write a patched copy of the doc, re-sync duration when asked, and report whether the complete operation succeeded. */
   async function patchDocResult(
@@ -141,8 +144,12 @@ export function useSceneDocPatch(
       try {
         // Object-bound camera aims refresh in the SAME write, so moving a device and the keys
         // following it are one undo. The engine only ever READS bindings; this is the editor's half.
-        const written = await writeSceneDocRebased(slug, sceneFile, current, (from) =>
-          from ? applyAbortableSceneDocPatch(from, patch, format, floorY) : null,
+        const written = await writeSceneDocRebased(
+          slug,
+          sceneFile,
+          current,
+          (from) => (from ? applyAbortableSceneDocPatch(from, patch, format, floorY) : null),
+          musicScope,
         );
         if (!written) return false;
         const next = written.doc;
@@ -237,10 +244,16 @@ export function useSceneDocPatch(
         const latest = patchQueue.latestDoc;
         // After an outside change the baseline predates it: build on the latest document instead.
         const outside = patchQueue.outsideBase;
-        const written = await writeSceneDocRebased(slug, sceneFile, latest, (from) => {
-          const start = from === latest && !outside ? baseline : from;
-          return start ? applyAbortableSceneDocPatch(start, patch, format, floorY) : null;
-        });
+        const written = await writeSceneDocRebased(
+          slug,
+          sceneFile,
+          latest,
+          (from) => {
+            const start = from === latest && !outside ? baseline : from;
+            return start ? applyAbortableSceneDocPatch(start, patch, format, floorY) : null;
+          },
+          musicScope,
+        );
         if (!written) return false;
         const after = written.doc;
         const before = written.rebased ? written.from : (outside ?? baseline);
@@ -290,8 +303,12 @@ export function useSceneDocPatch(
       if (!current) return false;
       setError(null);
       try {
-        const written = await writeSceneDocRebased(slug, sceneFile, current, (from) =>
-          from ? applyAbortableSceneDocPatch(from, patch, format, floorY) : null,
+        const written = await writeSceneDocRebased(
+          slug,
+          sceneFile,
+          current,
+          (from) => (from ? applyAbortableSceneDocPatch(from, patch, format, floorY) : null),
+          musicScope,
         );
         if (!written) return false;
         const after = written.doc;
@@ -378,23 +395,29 @@ async function commitSceneDurationNow(
   }
   // Typing an explicit length flips the scene to manual mode permanently (the locked duration decision); a shrink also clamps overhanging keyframe tracks in the SAME write; doc-less scenes just get the project.json write.
   if (doc && slug && sceneFile) {
-    const written = await writeSceneDocRebased(slug, sceneFile, doc, (from) => {
-      if (!from) return null;
-      let next = structuredClone(from);
-      let dirty = false;
-      if (from.duration?.mode !== "manual") {
-        next.duration = { mode: "manual" };
-        dirty = true;
-      }
-      if (shrinking) {
-        const clamped = clampDocTracksToDuration(next, ms);
-        if (clamped) {
-          next = clamped;
+    const written = await writeSceneDocRebased(
+      slug,
+      sceneFile,
+      doc,
+      (from) => {
+        if (!from) return null;
+        let next = structuredClone(from);
+        let dirty = false;
+        if (from.duration?.mode !== "manual") {
+          next.duration = { mode: "manual" };
           dirty = true;
         }
-      }
-      return dirty ? next : null;
-    });
+        if (shrinking) {
+          const clamped = clampDocTracksToDuration(next, ms);
+          if (clamped) {
+            next = clamped;
+            dirty = true;
+          }
+        }
+        return dirty ? next : null;
+      },
+      sceneMusicScope(project, sceneIndex),
+    );
     if (written) {
       const next = written.doc;
       writtenDoc = next;
@@ -460,4 +483,26 @@ export async function commitSceneDuration(
     if (written) queue.latestDoc = written;
     return written;
   });
+}
+
+/** The context-change path's disk half: rewrites each listed scene's `tMs` caches under `project.music` and its slots (resolve only, never detach) through the queued write, so disk keeps in step with memory. Returns the sidecar changes for the caller's history entry; a scene that fails is skipped with a warning. */
+export async function writeMusicCaches(
+  project: LoadedProject,
+  indices: readonly number[],
+  onDocChanged: DocChangedHandler,
+): Promise<HistoryChange[]> {
+  const changes: HistoryChange[] = [];
+  for (const sceneIndex of indices) {
+    const { music, sceneStartMs } = sceneMusicScope(project, sceneIndex);
+    try {
+      const result = await commitSceneDocPatch(
+        { project, sceneIndex, label: false, onDocChanged },
+        (draft) => resolveSceneDocMusic(draft, music, sceneStartMs).doc,
+      );
+      if (result) changes.push(result.change);
+    } catch (e) {
+      console.warn(`[music] scene ${sceneIndex + 1}'s musical key times didn't save:`, e);
+    }
+  }
+  return changes;
 }

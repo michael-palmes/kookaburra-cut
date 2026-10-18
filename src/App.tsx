@@ -23,9 +23,11 @@ import {
 import {
   addKeyAtBeat,
   appliedOrbitPoseAt,
+  authoredBeatKey,
   buildSyncTrack,
   pickSyncMoments,
   sceneTrackContext,
+  withKeyAt,
 } from "./engine/beatCameraSync";
 import { effectiveKeyMoments, setBeatProject, useBeatStore } from "./engine/beatState";
 import { CompositorDriver } from "./engine/CompositorDriver";
@@ -122,10 +124,13 @@ import {
   parseProjectId,
   projectFolderPath,
   projectIdForNativeSlug,
+  projectMusicOf,
   resolveAssetPath,
   sceneFileStem,
+  soundtrackAudioBlock,
   WORKSPACE_PROJECT_PREFIX,
   withAudioDefaults,
+  withSanitisedMusic,
 } from "./engine/project";
 import {
   duplicateProjectScene,
@@ -156,6 +161,12 @@ import {
   outsideChangeMessage,
   reportOutsideChange,
 } from "./engine/sceneDocBase";
+import {
+  resolveProjectDocsMusic,
+  resolveSceneDocMusic,
+  sceneMusicScope,
+  settleEditedSceneDocMusic,
+} from "./engine/sceneDocMusic";
 import { commitSceneDocPatch, docPatchMatchesProject } from "./engine/sceneDocPatchQueue";
 import type { SceneDoc } from "./engine/sceneDocSchema";
 import { sceneErrorRefusal } from "./engine/sceneErrors";
@@ -270,7 +281,7 @@ import { duplicateThemeDoc } from "./ui/theme-editor/themeDraft";
 import { onThemeSaved, readThemeSourceDoc } from "./ui/theme-editor/themeEditorIo";
 import { onThemeMoved } from "./ui/theme-editor/themeMove";
 import { UpdateAvailableDialog, UpdateConsentDialog } from "./ui/updateDialogs";
-import { commitSceneDuration, resolveDocPatchIndex } from "./ui/useSceneDocPatch";
+import { commitSceneDuration, resolveDocPatchIndex, writeMusicCaches } from "./ui/useSceneDocPatch";
 import { WebsiteGizmo } from "./ui/WebsiteGizmo";
 import { Welcome } from "./ui/Welcome";
 
@@ -653,13 +664,24 @@ export default function App() {
 
   // Surgical edit plumbing (flicker fix): UI writes never bump the workspace reload token since app writes only touch sidecars/project.json, never TSX; handleDocChanged patches the doc in memory, handleTimingChanged does a nonce-only refresh.
   const handleDocChanged = useCallback(
-    (sceneIndex: number, doc: SceneDoc, sceneFile?: string, writtenProjectId?: string) => {
+    (
+      sceneIndex: number,
+      written: SceneDoc,
+      sceneFile?: string,
+      writtenProjectId?: string,
+      /** An undo or redo restores a document as it was, so its musical keys only re-resolve. */
+      restore = false,
+    ) => {
       setProject((prev) => {
         if (!prev) return prev;
         if (!docPatchMatchesProject(prev.id, writtenProjectId)) return prev;
         // The written FILE addresses the slot, never the captured index: a write awaits real IPC, and an insert or reorder landing first shifts every later scene (the phantom-device bug).
         const at = resolveDocPatchIndex(prev.sceneFiles, sceneIndex, sceneFile);
         if (at === null) return prev;
+        const scope = sceneMusicScope(prev, at);
+        const doc = restore
+          ? resolveSceneDocMusic(written, scope.music, scope.sceneStartMs).doc
+          : settleEditedSceneDocMusic(written, scope.music, scope.sceneStartMs);
         // Re-resolve this scene's overlay from the new sidecar override, mirroring loadProject:
         // the render reads sceneFrames (the deck+override merge), not doc.frame, so it must recompute.
         const merged = mergeFrameSpec(prev.deckFrame, doc.frame);
@@ -721,7 +743,8 @@ export default function App() {
     try {
       const rel = await invoke<string>("import_audio", { slug, sourcePath: picked });
       const manifestBefore = await readProjectManifestSnapshot(slug);
-      await invoke("set_project_audio", { slug, audio: { file: rel } });
+      const audio = soundtrackAudioBlock(JSON.parse(manifestBefore).audio, rel);
+      await invoke("set_project_audio", { slug, audio });
       pushHistory({
         label: "soundtrack",
         changes: [
@@ -748,7 +771,7 @@ export default function App() {
     updatePreviewAudioSpec({ ...current.audio, ...patch });
   }, []);
 
-  /** Merge mix fields into project.json's audio block (file and markers kept) with manifest history, then patch the loaded project in place so the drill, beat lane and preview envelope follow without a reload flash. */
+  /** Merge mix and grid fields into project.json's audio block (file and markers kept; `grid: undefined` clears the grid) with manifest history, then patch the loaded project in place so the drill, beat lane and preview envelope follow without a reload flash. A grid or start offset change is a context change: musical keys re-resolve (never detach) and their sidecars rewrite in the same history entry. */
   async function handlePatchAudio(patch: Partial<ProjectAudioSpec>) {
     const current = loadedProjectRef.current;
     if (!current?.audio || !isEditableProjectId(current.id)) return;
@@ -764,22 +787,45 @@ export default function App() {
       if (audio.startOffsetMs === 0) delete audio.startOffsetMs;
       if (audio.fadeOutMs === DEFAULT_AUDIO_FADE_OUT_MS) delete audio.fadeOutMs;
       if (audio.fadeOutCurve === "smooth") delete audio.fadeOutCurve;
+      if (audio.grid === undefined) delete audio.grid;
       await invoke("set_project_audio", { slug, audio });
-      pushHistory({
-        label: "music settings",
-        changes: [
-          {
-            kind: "manifest",
-            slug,
-            before: manifestBefore,
-            after: await readProjectManifestSnapshot(slug),
-            reload: false,
-          },
-        ],
+      const changes: HistoryChange[] = [
+        {
+          kind: "manifest",
+          slug,
+          before: manifestBefore,
+          after: await readProjectManifestSnapshot(slug),
+          reload: false,
+        },
+      ];
+      const merged = withAudioDefaults(
+        withSanitisedMusic({ ...current.audio, ...patch }),
+      ) as ProjectAudio;
+      if (merged.grid === undefined) delete merged.grid;
+      const rebuilt = projectMusicOf(merged);
+      // A mix-only patch keeps the music object, so nothing reading it re-renders.
+      const music =
+        JSON.stringify(rebuilt) === JSON.stringify(current.music) ? current.music : rebuilt;
+      setProject((prev) => {
+        if (!prev?.audio) return prev;
+        const r = resolveProjectDocsMusic(prev.sceneDocs, music, prev.slots);
+        if (r.changed.length === 0) return { ...prev, audio: merged, music };
+        return {
+          ...prev,
+          audio: merged,
+          music,
+          sceneDocs: r.docs,
+          compareBDocs: prev.compareBDocs.map((d, i) =>
+            r.changed.includes(i) ? (deriveCompareBDoc(r.docs[i]) ?? undefined) : d,
+          ),
+        };
       });
-      const merged = withAudioDefaults({ ...current.audio, ...patch }) as ProjectAudio;
-      setProject((prev) => (prev?.audio ? { ...prev, audio: merged } : prev));
       updatePreviewAudioSpec(merged);
+      const moved = resolveProjectDocsMusic(current.sceneDocs, music, current.slots).changed;
+      if (moved.length > 0) {
+        changes.push(...(await writeMusicCaches({ ...current, music }, moved, handleDocChanged)));
+      }
+      pushHistory({ label: "music settings", changes });
     } catch (e) {
       setToast({ kind: "error", message: `Music settings failed: ${String(e)}` });
     }
@@ -1075,7 +1121,10 @@ export default function App() {
       const slot = current.slots[sceneIndex];
       const camera = (doc?.camera as CameraDoc | undefined) ?? { keys: [], segments: [] };
       const ctx = sceneTrackContext(current, sceneIndex);
-      const local = Math.min(ctx.windowEndMs, Math.max(ctx.windowStartMs, tMs - slot.startMs));
+      // On an authored grid the key lands on the beat itself and keeps its bar position.
+      const beat = authoredBeatKey(current.music, tMs, slot.startMs);
+      const target = beat?.tMs ?? tMs - slot.startMs;
+      const local = Math.min(ctx.windowEndMs, Math.max(ctx.windowStartMs, target));
       const next = addKeyAtBeat(camera, ctx, local, (t) =>
         appliedOrbitPoseAt(camera, current.cameraTrack, slot.startMs, t),
       );
@@ -1083,7 +1132,8 @@ export default function App() {
         setToast({ kind: "error", message: "No room for a camera keyframe at that beat" });
         return;
       }
-      await writeSceneCameraDoc(sceneIndex, next, "camera keyframe at beat");
+      const tagged = beat && local === beat.tMs ? withKeyAt(next, beat.tMs, beat.at) : next;
+      await writeSceneCameraDoc(sceneIndex, tagged, "camera keyframe at beat");
     },
     [writeSceneCameraDoc],
   );
@@ -1116,9 +1166,17 @@ export default function App() {
         slot.startMs,
         ctx.transitionInMs,
       );
+      const landed = picked.map((t) =>
+        authoredBeatKey(current.music, slot.startMs + t, slot.startMs),
+      );
       await writeSceneCameraDoc(
         sceneIndex,
-        buildSyncTrack(base, picked, ctx.transitionInMs),
+        buildSyncTrack(
+          base,
+          picked.map((t, i) => landed[i]?.tMs ?? t),
+          ctx.transitionInMs,
+          landed.map((b) => b?.at),
+        ),
         "sync camera to music",
       );
       setToast({
@@ -1261,6 +1319,7 @@ export default function App() {
           target,
           change.file,
           projectIdForNativeSlug(change.slug),
+          true,
         );
         // A themeId revert resolves at load; without this the undo lands on disk invisibly until the next reload.
         if (change.reload) handleTimingChanged();
@@ -1341,6 +1400,20 @@ export default function App() {
       void u2.then((fn) => fn());
     };
   }, [isAutoRun, exporting, applyHistoryChange]);
+
+  // A load that re-resolved musical keys (the grid, offset or a slot moved since they were written) writes the caches back so disk keeps in step; no history, since nothing was edited, and never during an undo replay, whose documents are already consistent.
+  const musicCacheRewrites = project?.musicCacheRewrites;
+  const musicCachesHandledRef = useRef<number[] | undefined>(undefined);
+  useEffect(() => {
+    const current = loadedProjectRef.current;
+    if (isAutoRun || exporting || historyBusyRef.current || !musicCacheRewrites) return;
+    if (musicCachesHandledRef.current === musicCacheRewrites) return;
+    if (current?.musicCacheRewrites !== musicCacheRewrites || !isEditableProjectId(current.id)) {
+      return;
+    }
+    musicCachesHandledRef.current = musicCacheRewrites;
+    void writeMusicCaches(current, musicCacheRewrites, handleDocChanged);
+  }, [musicCacheRewrites, isAutoRun, exporting, handleDocChanged]);
 
   // A changed media library may change a follow-media scene's source length; re-probe and rewrite project.json. Keyed on the refresh counter alone since `project` here is just the snapshot the sync reads, and keying on it would loop. An agent's render (origin "agent") only refreshes: kb owns its re-point and durations, and this in-memory doc may be stale.
   const mediaRefreshRef = useRef(0);
@@ -3193,6 +3266,7 @@ export default function App() {
             onUpdateAudioMarkers={(m) => void handleUpdateAudioMarkers(m)}
             onAddCameraKeyAtBeat={(ms) => void handleAddCameraKeyAtBeat(ms)}
             onSyncCameraToBeats={(ms) => void handleSyncCameraToBeats(ms)}
+            onSetMusicGrid={(grid) => void handlePatchAudio({ grid })}
           />
         </TimelineDock>
       )}

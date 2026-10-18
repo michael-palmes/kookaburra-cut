@@ -11,6 +11,7 @@ import {
   docPatchMatchesProject,
   resolveDocPatchIndex,
   useSceneDocPatch,
+  writeMusicCaches,
 } from "./useSceneDocPatch";
 
 const mocks = vi.hoisted(() => ({
@@ -403,5 +404,79 @@ describe("live edits from outside the app", () => {
       before: reloaded,
       after: written,
     });
+  });
+});
+
+describe("musical keys through the sidecar writes", () => {
+  // 120 BPM, bar 1 at 250: bar 5 is project 8250, so 6250 in a scene starting at 2000.
+  const music = {
+    grid: { bpm: 120, offsetMs: 250, beatsPerBar: 4 },
+    startOffsetMs: 0,
+    cues: {},
+    sections: {},
+  };
+  const pose = {
+    target: [0, 0, 0] as [number, number, number],
+    azimuthDeg: 0,
+    elevationDeg: 0,
+    distance: 6,
+  };
+  const docAt = (tMs: number): SceneDoc => ({
+    version: 1,
+    camera: { keys: [{ id: "k1", tMs, at: "bar:5", pose }], segments: [] },
+  });
+  const musicProject = (id: string, doc: SceneDoc): LoadedProject =>
+    ({
+      id: `ws:${id}`,
+      sceneDocs: [undefined, doc],
+      sceneFiles: ["scenes/01-a.tsx", "scenes/02-b.tsx"],
+      slots: [{ startMs: 0 }, { startMs: 2000 }],
+      music,
+    }) as unknown as LoadedProject;
+  const writtenDoc = () => mocks.writeSceneDoc.mock.calls[0]?.[2];
+
+  it("a moved key loses its at on the way to disk, so the move survives a reload", async () => {
+    const { patchDocResult } = useSceneDocPatch(
+      musicProject("music-move", docAt(6250)),
+      1,
+      mocks.onDocChanged,
+      mocks.onTimingChanged,
+    );
+    expect(
+      await patchDocResult((next) => {
+        if (next.camera) next.camera.keys[0].tMs = 7000;
+      }),
+    ).toBe(true);
+    expect(writtenDoc()?.camera?.keys[0]).toEqual({ id: "k1", tMs: 7000, pose });
+    expect(mocks.onDocChanged).toHaveBeenCalledWith(
+      1,
+      writtenDoc(),
+      "scenes/02-b.tsx",
+      "ws:music-move",
+    );
+  });
+
+  it("an edit elsewhere keeps the key on its position", async () => {
+    const { patchDocResult } = useSceneDocPatch(
+      musicProject("music-keep", docAt(6250)),
+      1,
+      mocks.onDocChanged,
+      mocks.onTimingChanged,
+    );
+    await patchDocResult((next) => {
+      next.name = "Renamed";
+    });
+    expect(writtenDoc()?.camera?.keys[0]).toEqual({ id: "k1", tMs: 6250, at: "bar:5", pose });
+  });
+
+  it("writeMusicCaches resolves under the new grid, keeps at and returns the changes", async () => {
+    const slower = { ...music, grid: { bpm: 60, offsetMs: 250, beatsPerBar: 4 } };
+    const project = { ...musicProject("music-cache", docAt(6250)), music: slower };
+    const changes = await writeMusicCaches(project, [1], mocks.onDocChanged);
+    // At 60 BPM bar 5 is 250 + 4 * 4000 = 16250, scene-local 14250.
+    expect(writtenDoc()?.camera?.keys[0]).toEqual({ id: "k1", tMs: 14250, at: "bar:5", pose });
+    expect(changes).toHaveLength(1);
+    expect(changes[0]).toMatchObject({ kind: "sceneDoc", file: "scenes/02-b.tsx", sceneIndex: 1 });
+    expect(mocks.pushHistory).not.toHaveBeenCalled();
   });
 });

@@ -589,3 +589,29 @@ describe("clampDocTracksToDuration still marks", () => {
     expect(clampDocTracksToDuration(docWith({ stills: { exclude: true } }), 10)).toBeNull();
   });
 });
+
+describe("clampDocTracksToDuration musical keys", () => {
+  it("detaches a key it clamps and keeps the rest on their positions", () => {
+    const pose = {
+      target: [0, 0, 0] as [number, number, number],
+      azimuthDeg: 0,
+      elevationDeg: 0,
+      distance: 6,
+    };
+    const doc = docWith({
+      camera: {
+        keys: [
+          { id: "k1", tMs: 250, at: "bar:1", pose },
+          { id: "k2", tMs: 4250, at: "bar:3", pose },
+        ],
+        segments: [{ from: "k1", to: "k2", ease: "inOutQuad" }],
+      },
+    });
+    const next = clampDocTracksToDuration(doc, 3000);
+    expect(next?.camera?.keys).toEqual([
+      { id: "k1", tMs: 250, at: "bar:1", pose },
+      { id: "k2", tMs: 3000, pose },
+    ]);
+    expect(doc.camera?.keys[1].at).toBe("bar:3");
+  });
+});
