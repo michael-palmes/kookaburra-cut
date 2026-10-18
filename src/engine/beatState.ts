@@ -4,6 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { create } from "zustand";
 import type { BeatAnalysis, BeatKeyMoment } from "./beatAnalysis";
 import { parseBeatAnalysis } from "./beatAnalysis";
+import type { ProjectMusic } from "./musicTime";
 import type { AudioMarkersSpec, LoadedProject } from "./project";
 
 export type BeatStatus = "idle" | "analysing" | "ready" | "error";
@@ -83,4 +84,73 @@ export function projectBeatGrid(
   return (analysis?.beats ?? [])
     .map((t) => t - startOffsetMs)
     .filter((t) => t >= 0 && t <= durationMs);
+}
+
+/** The grid the lanes draw and snap to, in project ms clipped to the timeline: the authored `audio.grid` whenever there is one (it wins everywhere), else the analysis. `bars` are the downbeats. */
+export interface EffectiveBeatGrid {
+  source: "authored" | "detected";
+  beats: number[];
+  bars: number[];
+}
+
+const MAX_GRID_BEATS = 100000;
+
+const mod = (n: number, m: number) => ((n % m) + m) % m;
+
+/** `startOffsetMs` places detected beats; an authored grid uses its own `music.startOffsetMs`. Without a finite `durationMs` the authored grid runs to the analysed track's end. */
+export function effectiveBeatGrid(
+  analysis: BeatAnalysis | null,
+  music: ProjectMusic | undefined,
+  startOffsetMs = 0,
+  durationMs = Number.POSITIVE_INFINITY,
+): EffectiveBeatGrid {
+  const grid = music?.grid;
+  if (!grid) {
+    return {
+      source: "detected",
+      beats: projectBeatGrid(analysis, startOffsetMs, durationMs),
+      bars: (analysis?.downbeats ?? [])
+        .map((t) => t - startOffsetMs)
+        .filter((t) => t >= 0 && t <= durationMs),
+    };
+  }
+  const end = Number.isFinite(durationMs)
+    ? durationMs
+    : analysis
+      ? analysis.durationMs - music.startOffsetMs
+      : 0;
+  const beatMs = 60000 / grid.bpm;
+  const beats: number[] = [];
+  const bars: number[] = [];
+  for (
+    let k = Math.ceil((music.startOffsetMs - grid.offsetMs) / beatMs);
+    beats.length < MAX_GRID_BEATS;
+    k++
+  ) {
+    // The resolver's operation order, so a drawn beat and a resolved `bar:` position agree.
+    const t = grid.offsetMs + k * beatMs - music.startOffsetMs;
+    if (t > end) break;
+    if (t < 0) continue;
+    beats.push(t);
+    if (mod(k, grid.beatsPerBar) === 0) bars.push(t);
+  }
+  return { source: "authored", beats, bars };
+}
+
+/** The authored beat nearest a project time: its index from bar 1 beat 1, its `bar:` position and its unrounded project ms. Null without a grid. */
+export function nearestGridBeat(
+  music: ProjectMusic | undefined,
+  projectMs: number,
+): { index: number; position: string; projectMs: number } | null {
+  const grid = music?.grid;
+  if (!grid) return null;
+  const beatMs = 60000 / grid.bpm;
+  const index = Math.round((projectMs + music.startOffsetMs - grid.offsetMs) / beatMs);
+  const bar = Math.floor(index / grid.beatsPerBar) + 1;
+  const beat = index - (bar - 1) * grid.beatsPerBar + 1;
+  return {
+    index,
+    position: beat === 1 ? `bar:${bar}` : `bar:${bar}.${beat}`,
+    projectMs: grid.offsetMs + index * beatMs - music.startOffsetMs,
+  };
 }

@@ -1,5 +1,5 @@
 import { useCallback, useMemo } from "react";
-import { effectiveKeyMoments, projectBeatGrid, useBeatStore } from "../engine/beatState";
+import { effectiveBeatGrid, effectiveKeyMoments, useBeatStore } from "../engine/beatState";
 import { type CameraTool, useCameraEditStore } from "../engine/cameraEditStore";
 import type { LoadedProject } from "../engine/project";
 import type { CameraDoc, RigDoc } from "../engine/sceneCameraEdit";
@@ -132,11 +132,11 @@ export function AnimationLane({
   const analysis = useBeatStore((s) => s.analysis);
   const beatMarkers = useMemo(() => {
     const audio = project.audio;
-    if (!audio || (!analysis && !audio.markers)) return undefined;
+    if (!audio || (!analysis && !audio.markers && !project.music?.grid)) return undefined;
     const offset = audio.startOffsetMs ?? 0;
     const inWindow = (t: number) => t >= windowStartMs && t <= windowEndMs;
-    const beats = projectBeatGrid(analysis, offset, project.totalMs)
-      .map((t) => t - slot.startMs)
+    const beats = effectiveBeatGrid(analysis, project.music, offset, project.totalMs)
+      .beats.map((t) => t - slot.startMs)
       .filter(inWindow);
     const keyMoments = effectiveKeyMoments(analysis, audio.markers, offset, project.totalMs)
       .map((m) => m.tMs - slot.startMs)

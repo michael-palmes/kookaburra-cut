@@ -10,6 +10,7 @@ import {
 } from "react";
 import { isExporting } from "../engine/exportState";
 import {
+  type AudioGridSpec,
   type AudioMarkersSpec,
   type LoadedProject,
   nativeProjectSlug,
@@ -56,6 +57,7 @@ export function PlaybackBar({
   onUpdateAudioMarkers,
   onAddCameraKeyAtBeat,
   onSyncCameraToBeats,
+  onSetMusicGrid,
   onSceneInserted,
 }: {
   project: LoadedProject | null;
@@ -93,6 +95,8 @@ export function PlaybackBar({
   onAddCameraKeyAtBeat: (ms: number) => void;
   /** Generate the owning scene's camera track from its key beats (the host resolves the scene). */
   onSyncCameraToBeats: (ms: number) => void;
+  /** Write the authored `audio.grid` from the beat lane (the host re-resolves musical keys). */
+  onSetMusicGrid?: (grid: AudioGridSpec) => void;
   /** A preset insert landed a new scene file: reload and select it. Optional, since the host's on-disk fingerprint poll picks the change up within a couple of seconds anyway. */
   onSceneInserted?: (file: string) => void;
 }) {
@@ -336,6 +340,7 @@ export function PlaybackBar({
             onUpdateMarkers={onUpdateAudioMarkers}
             onAddCameraKey={onAddCameraKeyAtBeat}
             onSyncCamera={onSyncCameraToBeats}
+            onSetGrid={onSetMusicGrid}
           />
         )}
         {/* The scrub handlers live on the whole bar (they map against this rect); keyboard access rides the app-wide transport keydown (←/→ frame-step). */}
