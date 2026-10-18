@@ -5,12 +5,15 @@ import { useCallback, useEffect, useState } from "react";
 import {
   type CacheStats,
   cacheStats,
+  capGb,
   clearClipsCache,
   clearMediaCache,
+  clipCacheCapOptions,
   formatBytes,
   type HardwareVideoSupport,
   hardwareVideoSupport,
   type SidecarVersions,
+  setClipCacheCap,
   sidecarVersions,
 } from "../engine/appCache";
 import { setConformNewVideosSetting } from "../engine/media";
@@ -41,6 +44,36 @@ function ClearDataIcon() {
     <svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true">
       <path
         d="M3.5 4.5h9M6 4.5V3.2h4v1.3m-5.5 0 .6 8.3h5.8l.6-8.3M7 6.5v4.2m2-4.2v4.2"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.35"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function ClipCacheIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
+      <path
+        d="M2.5 3.5h11v9h-11zM2.5 6h11M2.5 10h11M5 3.5v2.5M8 3.5v2.5M11 3.5v2.5M5 10v2.5M8 10v2.5M11 10v2.5"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.35"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function CacheLimitIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true">
+      <path
+        d="M2.6 11.5a5.5 5.5 0 1 1 10.8 0M8 10.2 10.6 6M3.5 13.5h9"
         fill="none"
         stroke="currentColor"
         strokeWidth="1.35"
@@ -90,6 +123,7 @@ export function SettingsApp() {
   const [conformNew, setConformNew] = useState<boolean | null>(null);
   const [websiteData, setWebsiteData] = useState<WebsiteDataRecord[] | null>(null);
   const [websiteDataBusy, setWebsiteDataBusy] = useState<string | null>(null);
+  const [clipsClearDeferred, setClipsClearDeferred] = useState(false);
 
   const refreshStats = useCallback(() => {
     cacheStats()
@@ -170,10 +204,25 @@ export function SettingsApp() {
     (which: "media" | "clips") => {
       setBusy(which);
       setError(null);
-      (which === "media" ? clearMediaCache() : clearClipsCache())
+      (which === "media"
+        ? clearMediaCache()
+        : clearClipsCache().then((outcome) => setClipsClearDeferred(outcome.deferred))
+      )
         .then(refreshStats)
         .catch((e) => setError(String(e)))
         .finally(() => setBusy(null));
+    },
+    [refreshStats],
+  );
+
+  // A lower cap evicts straight away, so the size refreshes once the native side has had a moment.
+  const changeClipCap = useCallback(
+    (gb: number) => {
+      setError(null);
+      setStats((s) => (s ? { ...s, clipsCapBytes: gb * 1024 ** 3 } : s));
+      setClipCacheCap(gb)
+        .then(() => setTimeout(refreshStats, 1500))
+        .catch((e) => setError(String(e)));
     },
     [refreshStats],
   );
@@ -303,24 +352,55 @@ export function SettingsApp() {
             {busy === "media" ? "Clearing…" : "Clear"}
           </button>
         </div>
-        <div className="settings-row">
+        <div className="settings-row stacked">
           <div className="settings-row-text">
-            <span className="settings-row-title">Clip extractions</span>
+            <span
+              className="settings-row-title"
+              style={{ display: "inline-flex", alignItems: "center", gap: "var(--space-2)" }}
+            >
+              <ClipCacheIcon />
+              Clip cache
+            </span>
             <span className="muted settings-row-detail">
               {stats
-                ? `${formatBytes(stats.clipsBytes)} · ${stats.clipsEntries} item${stats.clipsEntries === 1 ? "" : "s"}`
+                ? `${formatBytes(stats.clipsBytes)} of ${capGb(stats.clipsCapBytes)} GB · ${stats.clipsEntries} item${stats.clipsEntries === 1 ? "" : "s"}`
                 : "…"}
             </span>
+            <span className="muted settings-row-detail">
+              {clipsClearDeferred
+                ? "Clears once the terminal run using it finishes."
+                : "Video frames, extracted as scenes need them. Past the limit the least recently used go first; clips in an open project or a running export stay."}
+            </span>
           </div>
-          <button
-            type="button"
-            className="btn"
-            disabled={busy !== null || !stats || stats.clipsBytes === 0}
-            onClick={() => clear("clips")}
-            title="VideoClip frame sequences — re-extracted on the next export"
-          >
-            {busy === "clips" ? "Clearing…" : "Clear"}
-          </button>
+          <div className="settings-row-actions">
+            <span style={{ display: "inline-flex", alignItems: "center", gap: "var(--space-2)" }}>
+              <CacheLimitIcon />
+              <select
+                className="select"
+                aria-label="Clip cache limit"
+                value={stats ? capGb(stats.clipsCapBytes) : ""}
+                disabled={!stats}
+                onChange={(e) => changeClipCap(Number(e.target.value))}
+              >
+                {stats &&
+                  clipCacheCapOptions(capGb(stats.clipsCapBytes)).map((gb) => (
+                    <option key={gb} value={gb}>
+                      {`${gb} GB limit`}
+                    </option>
+                  ))}
+              </select>
+            </span>
+            <button
+              type="button"
+              className="btn"
+              disabled={busy !== null || !stats || stats.clipsBytes === 0}
+              onClick={() => clear("clips")}
+              title="Removes every extracted video frame; scenes extract them again as they need them"
+            >
+              <ClearDataIcon />
+              {busy === "clips" ? "Clearing…" : "Clear"}
+            </button>
+          </div>
         </div>
       </section>
 
