@@ -209,6 +209,59 @@ class CheckTests(KbTestCase):
         self.assertIn("crossfdae", proc.stdout)
         self.assertNotIn("anything", proc.stdout)
 
+    def test_shared_must_be_an_object(self) -> None:
+        m = read_json(self.root / "project.json")
+        m["shared"] = {"palette": {"accent": "#ff6a3d"}, "beats": [0, 480]}
+        write_json(self.root / "project.json", m)
+        report = self.run_check()
+        self.assertEqual(messages(report), [])
+        self.assertFalse(any("shared" in w for w in messages(report, "warning")))
+        m["shared"] = ["#ff6a3d"]
+        write_json(self.root / "project.json", m)
+        self.assertHasError(self.run_check(), "project.json shared must be an object")
+
+    def test_unknown_ease_literals_warn(self) -> None:
+        tsx = (
+            'import { defineScene, ease, easeFn, ramp, useTimeline } from "@kookaburra/toolkit";\n'
+            "export default defineScene({\n"
+            '  id: "hero",\n'
+            "  durationMs: 3000,\n"
+            "  Scene() {\n"
+            "    const { localMs } = useTimeline();\n"
+            '    const a = ease("outQaud", localMs / 900);\n'
+            "    const b = easeFn('inOutCubic')(0.5);\n"
+            '    const c = ramp(localMs, Math.min(100, 200), 900, "outBounce", { overshoot: 2 });\n'
+            '    const d = ramp(localMs, 0, 900, "linear");\n'
+            "    const e = ramp(localMs, 0, 900);\n"
+            '    // ease("commented")\n'
+            '    const f = "ease(\"quoted\")";\n'
+            "    return null;\n"
+            "  },\n"
+            "});\n"
+        )
+        write(self.root / "scenes" / "02-hero.tsx", tsx)
+        report = self.run_check(["scenes/02-hero.tsx"])
+        self.assertEqual(messages(report), [])
+        warnings = messages(report, "warning")
+        self.assertEqual(len(warnings), 2, warnings)
+        self.assertIn('line 7 unknown ease "outQaud" falls back to the default ease, inOutQuad. Did you mean \'outQuad\'', warnings[0])
+        self.assertIn('line 9 unknown ease "outBounce"', warnings[1])
+
+    def test_ease_literals_ignore_local_functions(self) -> None:
+        tsx = (
+            'import { defineScene } from "@kookaburra/toolkit";\n'
+            "const ease = (name: string, t: number) => t;\n"
+            "export default defineScene({\n"
+            '  id: "hero",\n'
+            "  durationMs: 3000,\n"
+            "  Scene() {\n"
+            '    return ease("custom", 0.5) ? null : null;\n'
+            "  },\n"
+            "});\n"
+        )
+        write(self.root / "scenes" / "02-hero.tsx", tsx)
+        self.assertEqual(messages(self.run_check(["scenes/02-hero.tsx"]), "warning"), [])
+
     def test_duplicate_ids_flag_only_the_later_scene(self) -> None:
         write(self.root / "scenes" / "03-outro.tsx", SCENE_TSX.format(id="hero"))
         errs = messages(self.run_check())

@@ -34,6 +34,7 @@ FALLBACK_SCENE_DOC_KEYS = [
 FALLBACK_MANIFEST_KEYS = [
     "id", "name", "group", "audio", "themeId", "typography", "formats", "version", "scenes",
     "camera", "persistent", "frame", "render", "lighting", "appliedBackground", "defaultTransition",
+    "shared",
 ]
 SCENE_DOC_VERSION = 1
 MANIFEST_VERSION = 2

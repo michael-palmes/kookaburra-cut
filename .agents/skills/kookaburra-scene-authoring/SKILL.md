@@ -63,7 +63,8 @@ visuals from code.
   materials, lights) work.
 - One `export default defineScene({ id, durationMs, Scene })` per file, with a literal
   `id` unique in the project.
-- Motion is a pure function of `useTimeline().localMs` (scene-local ms). `progress` is
+- Motion is a pure function of `useTimeline().localMs` (scene-local ms), shaped with the
+  toolkit's `ramp`, `ease`, `sampleKeys` and `stampScale`. `progress` is
   PROJECT-wide; never use it for scene motion. No `Date`, `performance.now`,
   `requestAnimationFrame`, timers or `Math.random` (use `createSeededRandom`).
 - Text only through toolkit primitives (AnimatedHeadline, TitleBlock, BrandLockup,
@@ -112,6 +113,7 @@ it), ask the user to open it once in the app.
 | Order, duration, transitions, music | `kb scene`, `project.json` | reference/project.md | `transitions` |
 | Sync to the soundtrack | camera keys, text timing | reference/beats.md | |
 | New scene, custom 3D composition | `kb scene add`, TSX | reference/scenes.md | `presets`, `toolkit.exports` |
+| Constants shared by scenes (palette, timings) | `project.json` `shared`, `useProjectShared` | reference/project.md | |
 
 Ids: `kb catalog <family>` (nested families are dotted, such as `backgrounds.shaders`
 or `lighting.presets`; `--json` prints full entries; `--search <word>` finds ids).

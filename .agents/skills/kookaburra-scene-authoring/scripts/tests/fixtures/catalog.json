@@ -124,7 +124,8 @@
       "render",
       "lighting",
       "appliedBackground",
-      "defaultTransition"
+      "defaultTransition",
+      "shared"
     ]
   },
   "toolkit": {
@@ -139,7 +140,15 @@
       { "id": "useTimeline" },
       { "id": "Device" },
       { "id": "AnimatedHeadline" },
-      { "id": "createSeededRandom" }
+      { "id": "createSeededRandom" },
+      { "id": "ease" },
+      { "id": "easeFn" },
+      { "id": "ramp" },
+      { "id": "sampleKeys" },
+      { "id": "stampScale" },
+      { "id": "RoundedRect" },
+      { "id": "Pill" },
+      { "id": "useProjectShared" }
     ]
   },
   "presets": [{ "id": "title", "label": "Title", "summary": "A title on the theme background" }],

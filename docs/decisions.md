@@ -72,6 +72,9 @@ The full contract and its failure catalogue are in
 | Undo/redo | Whole-manifest snapshots, session-only, compound entries; replays ride the same atomic writers | Generic undoability without per-operation inverse logic |
 | Deletes | Everything routes through the system Trash; media delete/rename is refused while any scene references the file (the error names the referencers) | A safety net beneath every destructive action; no silent scene breakage |
 | Project rename | Display-name only; the slug/folder never changes | Stable ids and paths under a mutable label |
+| Motion helpers (2026-10-18) | Scenes shape motion with toolkit `ease`/`easeFn` (the engine's named curves, plus a Back `overshoot`), `ramp`, `sampleKeys` (each key's `ease` shapes the segment arriving at it) and `stampScale`; the stamp defaults (0 to 1.12 in 180 ms outCubic, settle 260 ms inOutSine) and every curve are golden-pinned | Hand-written inline curves drifted between scenes; one vocabulary matches the camera and text presets, and changing a pinned value re-renders every scene using it |
+| Rounded shapes (2026-10-18) | `RoundedRect`/`Pill` are an unlit SDF on a unit plane with their own program, `toneMapped: false` and the stock colour-space chunk; FrameChip, the card mask and charts keep theirs | A token hex lands exactly on the direct path, sizes animate without geometry rebuilds, and no existing program's source or cache key moves |
+| Project `shared` (2026-10-18) | `project.json` `shared` is a free-form object of author constants, deep-frozen on load and read with `useProjectShared(path?, fallback?)`; preset saves keep it, and scene copies bring the keys the destination lacks, never overwriting | Scenes repeat palettes and timings; one source keeps them in step without growing the theme schema, and a copy must not silently restyle the destination |
 
 ### Themes & typography
 

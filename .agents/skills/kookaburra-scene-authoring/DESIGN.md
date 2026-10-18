@@ -122,6 +122,10 @@ Text motion by purpose (sidecar `textAnimation`):
 - Entrances decelerate: `outCubic`, `outQuart`, `outExpo`. Camera moves: `inOutCubic`
   or `inOutSine`. `outBack` only for small pops. `linear` only for continuous spins and
   orbits. `jump` for cuts.
+- In TSX, `ramp(localMs, start, end, "outCubic")` drives one-shot moves, `sampleKeys`
+  multi-step moves and `stampScale()` a stamped pop for badges, ticks and pills
+  (`RoundedRect`, `Pill`). Keep timings several scenes share in `project.json`
+  `shared` (`useProjectShared`).
 - Devices: `push-in` or `tilt-reveal` to enter, `float` (amplitude 0.06 to 0.08) to
   idle. Avoid `turntable` while the screen matters: it turns away.
 - Sync to the soundtrack where there is one (reference/beats.md): land reveals and

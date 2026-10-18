@@ -1,6 +1,10 @@
 /** `@kookaburra/toolkit`, the SHIPPED authoring surface; scene files import everything from here. See .agents/skills/kookaburra-scene-authoring for the authoring rules. */
 
+// Named eases (the camera and text presets' curves) for code-authored motion.
+export { EASE_NAMES, type EaseOptions, ease, easeFn, isEaseName } from "../engine/ease";
 export { useFormat } from "../engine/format";
+// project.json `shared`: author constants every scene reads.
+export { type ProjectShared, useProjectShared } from "../engine/projectShared";
 // Seeded RNG for generative geometry; scenes must never call Math.random.
 export { createSeededRandom, type SeededRandom } from "../engine/rng";
 // The resolved sidecar chart block: every default baked and the data track sorted.
@@ -103,6 +107,10 @@ export { VideoClip, type VideoClipProps } from "./media/VideoClip";
 export { VideoWindow, type VideoWindowProps } from "./media/VideoWindow";
 // Per-subtree motion blur scale for code-authored motion (sidecar items use their own motionBlur field).
 export { MotionBlur } from "./motion/MotionBlur";
+// Motion helpers: eased ramps, keyed tracks and the stamp pop, all pure functions of the clock.
+export { clamp01, lerp, ramp } from "./motion/math";
+export { type MotionKey, type SampleKeysOptions, sampleKeys } from "./motion/sampleKeys";
+export { type StampScaleOptions, stampScale } from "./motion/stamp";
 // The 3D objects library: bundled + workspace manifests, staged by the sidecar `objects` array.
 export { ObjectsFallback, StagedObject } from "./objects/ObjectPrimitive";
 export { preloadSceneObjects } from "./objects/preload";
@@ -123,6 +131,8 @@ export {
 // Generative shapes: all randomness via createSeededRandom, all motion via the clock.
 export { ParticleField, type ParticleFieldProps } from "./shapes/ParticleField";
 export { Ribbon, type RibbonProps } from "./shapes/Ribbon";
+// Flat, colour-exact rounded rectangles and pills.
+export { Pill, type PillProps, RoundedRect, type RoundedRectProps } from "./shapes/RoundedRect";
 export { WireGrid, type WireGridProps } from "./shapes/WireGrid";
 export { useSceneStaged } from "./stage/context";
 // Theme-driven stage: lights the scene from theme.lighting tokens; staged primitives' bundled lit sets stand down automatically (useSceneStaged).

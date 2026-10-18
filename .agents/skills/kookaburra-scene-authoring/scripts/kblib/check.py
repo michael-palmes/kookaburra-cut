@@ -31,6 +31,10 @@ KEYED_TRACKS = [
     ("camera",), ("cameraRig",), ("deviceTrack",), ("lighting",), ("compare", "track"),
     ("chart", "track"), ("layeredScreenshot", "animation"),
 ]
+# Toolkit calls taking an ease name, and the 0-based argument it sits in.
+EASE_CALLS = {"ease": 0, "easeFn": 0, "ramp": 3}
+EASE_CALL_RE = re.compile(r"(?<![\w$.])(ease|easeFn|ramp)\s*\(")
+DECLARED_RE = re.compile(r"\b(?:function|const|let|var)\s+([\w$]+)")
 
 
 def dig(value: Any, *keys: Any) -> Any:
@@ -224,6 +228,8 @@ class Checker:
                 for key in ("gainDb", "fadeInMs", "fadeOutMs", "startOffsetMs"):
                     if key in audio and not is_number(audio[key]):
                         rep.error(file, f"audio.{key}", "must be a number")
+        if "shared" in m and not isinstance(m["shared"], dict):
+            rep.error(file, "shared", 'must be an object of constants, e.g. {"palette": {"accent": "#ff6a3d"}}; the app ignores anything else')
         persistent = m.get("persistent")
         if persistent is not None:
             if not isinstance(persistent, str) or not persistent.startswith("scenes/") or not persistent.endswith(".tsx"):
@@ -699,6 +705,12 @@ class Checker:
                 rep.error(rel, f"line {line}", f"{name} is not imported from @kookaburra/toolkit.{hint}")
         for line, ref in tsxmod.literal_asset_refs(text):
             self.asset(rel, f"line {line}", ref)
+        eases = self.cat.ids("eases")
+        if eases is not None:
+            declared = set(DECLARED_RE.findall(code))
+            for line, name in ease_literals(text, code, toolkit_names - declared):
+                if name not in eases:
+                    rep.warn(rel, f"line {line}", f'unknown ease "{name}" falls back to the default ease, inOutQuad.{did_you_mean(name, eases)} See kb catalog eases')
 
     def heal_order(self) -> List[str]:
         """The app's id-healing order: manifest scenes first, then stray scenes/*.tsx by name; the first sighting keeps its id."""
@@ -783,6 +795,35 @@ class Checker:
                 if issue["code"] in ("not-laid-out", "short-clip", "short-hold"):
                     continue
                 (self.report.error if severity == "error" else self.report.warn)(label, where, issue["message"])
+
+
+def ease_literals(text: str, code: str, imported: Set[str]) -> List[Tuple[int, str]]:
+    """String-literal ease names passed to the toolkit's ease, easeFn and ramp (`code` is `text` with comments and strings blanked)."""
+    found: List[Tuple[int, str]] = []
+    for m in EASE_CALL_RE.finditer(code):
+        if m.group(1) not in imported:
+            continue
+        want, arg, depth, j = EASE_CALLS[m.group(1)], 0, 0, m.end()
+        while arg < want and j < len(code):
+            c = code[j]
+            if c in "([{":
+                depth += 1
+            elif c in ")]}":
+                if depth == 0:
+                    break
+                depth -= 1
+            elif c == "," and depth == 0:
+                arg += 1
+            j += 1
+        if arg < want:
+            continue
+        while j < len(code) and code[j] in " \t\r\n":
+            j += 1
+        if j < len(code) and code[j] in "\"'":
+            end = code.find(code[j], j + 1)
+            if end > j:
+                found.append((tsxmod.line_of(text, j), text[j + 1:end]))
+    return found
 
 
 def edit_of_output(project: Project, rel: str) -> Optional[str]:

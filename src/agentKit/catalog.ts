@@ -338,6 +338,11 @@ export const PROJECT_MANIFEST_KEYS: Record<
     summary: "Background last applied to all scenes; new scenes inherit it.",
     type: "object",
   },
+  shared: {
+    summary:
+      "Author constants (palette, timings) scenes read with useProjectShared; copied with scenes into projects that lack the key.",
+    type: "object",
+  },
 };
 
 const BACKGROUND_TYPES: Record<
@@ -671,6 +676,34 @@ export const TOOLKIT_SUMMARIES: Record<
   useSceneText: { summary: "useSceneText(key, fallback, role?): sidecar copy for a text key." },
   useTheme: { summary: "The resolved theme tokens for this scene." },
   useTimeline: { summary: "{ localMs, globalMs, progress }; progress is PROJECT-wide." },
+  EASE_NAMES: { summary: "Every ease name (see kb catalog eases)." },
+  Pill: { summary: "RoundedRect with fully round ends: width, height, color, opacity, stroke." },
+  RoundedRect: {
+    summary: "Flat, colour-exact rounded rect: width, height, radius, color, opacity, stroke.",
+  },
+  clamp01: { summary: "clamp01(x): x clamped to 0..1." },
+  ease: {
+    summary:
+      'ease(name, t, { overshoot }?): the curve at t clamped to 0..1; unknown names use "inOutQuad".',
+  },
+  easeFn: { summary: "easeFn(name, { overshoot }?): the raw curve as a function (no clamping)." },
+  isEaseName: { summary: "Whether a value is an ease name." },
+  lerp: { summary: "lerp(a, b, t): a + (b - a) * t." },
+  ramp: {
+    summary: "ramp(localMs, startMs, endMs, ease?, opts?): eased 0..1 progress through a window.",
+  },
+  sampleKeys: {
+    summary:
+      "sampleKeys([{ tMs, ease?, ...values }], localMs): keyed values; each key's ease shapes the segment into it.",
+  },
+  stampScale: {
+    summary:
+      "stampScale({ from, peak, inMs, settleMs }?) returns ms => scale: a pop to 1.12 that settles.",
+  },
+  useProjectShared: {
+    summary:
+      'useProjectShared(path?, fallback?): project.json shared constants, e.g. "palette.accent".',
+  },
 };
 
 // ── Helpers ──

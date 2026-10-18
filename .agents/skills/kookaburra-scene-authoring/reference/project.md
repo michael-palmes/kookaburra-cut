@@ -45,6 +45,7 @@ transitions with `kb scene ...` (manifest-safe, atomic); other fields with
 | `camera` | | Project camera keys on the global clock (reference/camera.md). |
 | `persistent` | | Module path mounted once across all scenes (reference/scenes.md). |
 | `appliedBackground` | | `{ background?, backdrop? }` last applied to all scenes; new scenes inherit it. Nothing renders from it. |
+| `shared` | | Author constants every scene reads with `useProjectShared` (below). |
 
 Rules:
 
@@ -236,6 +237,24 @@ dropped with a warning (the scene renders ungraded).
 `camera` is a list of `{ tMs, position?, fov?, lookAt? }` keys on the GLOBAL clock,
 interpolated per property. It is the only owner of `fov` unless a rig key sets one.
 Prefer per-scene `camera` / `cameraRig` sidecar tracks (reference/camera.md).
+
+## Shared constants
+
+`shared` is an object of your own constants for scene TSX: a palette beyond the theme,
+beat timings, repeated sizes. Nothing renders from it directly.
+
+```json
+"shared": { "palette": { "highlight": "#ffcc4d" }, "timing": { "beatMs": 480 } }
+```
+
+- Read it with `useProjectShared("timing.beatMs", 500)` (dotted path, array indexes as
+  numbers, the fallback when missing); `useProjectShared()` returns the whole block.
+- Set values with `./kb project set shared.timing.beatMs 480`. Anything but an object is
+  an error and the app ignores it.
+- Theme tokens stay the source of brand colour; keep `shared` for values the theme has
+  no token for.
+- Copying a scene into another project (or inserting a preset) brings the `shared`
+  keys the destination lacks; existing keys are never overwritten.
 
 ## App icon and media library
 

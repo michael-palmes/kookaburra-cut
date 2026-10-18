@@ -46,7 +46,8 @@ needs no React import. Consequences:
 - r3f intrinsics work: `<group>`, `<mesh>`, `<planeGeometry>`, `<ringGeometry>`,
   `<boxGeometry>`, `<meshBasicMaterial>`, `<meshStandardMaterial>`, lights. Colours
   as hex strings from theme tokens.
-- No easing import: write the curve inline (examples below) or use `fade`/`slide`.
+- Motion curves come from the toolkit: `ramp`, `ease`, `sampleKeys`, `stampScale`
+  (below). Ease names are the catalogue's (`./kb catalog eases`).
 - `import type { ... } from "@kookaburra/toolkit"` is fine (`SceneDoc`, `V3`, ...).
 
 ## Hooks
@@ -62,6 +63,7 @@ needs no React import. Consequences:
 | `useSceneChart()`, `useSceneObjects()`, `useSceneLayeredScreenshot()` | Those blocks (calling one stops the host fallback for it) |
 | `useSceneStaged()` | Whether a `SceneStage` owns lighting here |
 | `useDepthBand()`, `useRigTrack()` | Inside `DepthStage`: the slot rect; the scene's rig track |
+| `useProjectShared(path?, fallback?)` | `project.json` `shared` constants: `useProjectShared("palette.accent", theme.colors.accent)`; no path returns the whole block (reference/project.md) |
 
 ## Layout
 
@@ -77,36 +79,92 @@ needs no React import. Consequences:
 - Typical sizes: TitleBlock title 0.56 (landscape) / 0.34 (portrait); AnimatedHeadline
   default 0.6; body copy 0.2 to 0.28; a fitted phone is 2.6 units tall.
 
-## Motion without hooks
+## Motion helpers
 
 ```tsx
-import { defineScene, useFormat, useTheme, useTimeline } from "@kookaburra/toolkit";
+import {
+  defineScene,
+  liftColour,
+  Pill,
+  RoundedRect,
+  ramp,
+  sampleKeys,
+  stampScale,
+  useFormat,
+  useTheme,
+  useTimeline,
+} from "@kookaburra/toolkit";
 
-const clamp01 = (t: number) => Math.min(1, Math.max(0, t));
-const outCubic = (t: number) => 1 - (1 - t) ** 3;
+const pop = stampScale();
+const SLIDE = [
+  { tMs: 0, x: -1.2, opacity: 0 },
+  { tMs: 700, x: 0, opacity: 1, ease: "outCubic" },
+  { tMs: 2200, x: 0, opacity: 1 },
+  { tMs: 2600, x: 1.2, opacity: 0, ease: "inCubic" },
+];
 
 export default defineScene({
-  id: "accent-ring",
+  id: "feature-card",
   durationMs: 3000,
   Scene() {
     const { localMs } = useTimeline();
-    const theme = useTheme();
+    const { colors } = useTheme();
     const { frame } = useFormat();
-    const p = outCubic(clamp01((localMs - 150) / 900));
-    const r = 0.2 + p * frame.height * 0.3;
+    const card = sampleKeys(SLIDE, localMs);
+    const w = Math.min(frame.width * 0.6, 3.2);
+    const bar = w * 0.8 * ramp(localMs, 900, 1800, "inOutCubic");
     return (
-      <mesh scale={[r, r, 1]}>
-        <ringGeometry args={[0.92, 1, 96]} />
-        <meshBasicMaterial color={theme.colors.accent} toneMapped={false} transparent opacity={p} />
-      </mesh>
+      <group position={[card.x, 0, 0]}>
+        <RoundedRect
+          width={w}
+          height={1.6}
+          radius={0.16}
+          color={liftColour(colors.background, colors.text, 0.08)}
+          strokeWidth={0.02}
+          strokeColor={colors.muted}
+          opacity={card.opacity}
+        />
+        <Pill
+          width={1.2}
+          height={0.3}
+          color={colors.accent}
+          position={[0, 0.3, 0.01]}
+          scale={pop(localMs - 600)}
+          opacity={card.opacity}
+        />
+        <Pill
+          width={bar}
+          height={0.08}
+          color={colors.accent}
+          position={[-w * 0.4 + bar / 2, -0.4, 0.01]}
+          opacity={card.opacity}
+        />
+      </group>
     );
   },
 });
 ```
 
+- `ramp(localMs, startMs, endMs, ease?, opts?)`: eased 0 to 1 through a window (time
+  clamped, `linear` by default); an empty window steps at `startMs`.
+- `ease(name, t, { overshoot }?)` and `easeFn(name, opts?)`: the named curves (the
+  camera's and text presets'). `overshoot` widens the Back family (`outBack` for small
+  pops). Unknown names fall back to `inOutQuad`, and `./kb check` warns on them.
+- `sampleKeys(keys, localMs, { ease }?)`: keys `{ tMs, ease?, ...values }` in any order.
+  Holds the first key before it and the last after it; each key's `ease` shapes the
+  segment ARRIVING at it (default `linear`). Numbers and equal-length number arrays
+  (positions) interpolate; strings and other values switch at the key.
+- `stampScale({ from, peak, inMs, settleMs }?)` returns `ms => scale`: 0 to 1.12 over
+  180 ms (outCubic), back to 1 over 260 ms (inOutSine). Pass ms since the stamp starts.
+- `clamp01(x)`, `lerp(a, b, t)` for the rest.
+- `RoundedRect` (`width`, `height`, `radius`, `color`, `opacity`, `strokeWidth`,
+  `strokeColor`, `position`, `rotation`, `scale`, `renderOrder`) and `Pill` (radius is
+  half the shorter side) are flat and colour-exact; size, radius and colours animate
+  freely (no geometry rebuild). Fills default to the theme accent, strokes to the text
+  colour.
 - Per-frame geometry pitfall: never animate geometry `args` (a growing radius in
   `args` rebuilds the geometry every frame). Build a unit geometry once and animate
-  `scale`, `position`, `rotation` or material `opacity`, as above.
+  `scale`, `position`, `rotation` or material `opacity`.
 - Flat graphic colours: `toneMapped={false}` keeps a token colour exact; lit
   materials (`meshStandardMaterial`) respond to the scene's lighting and tone mapping.
 - `fade(useTimeline(), [startMs, endMs])` gives `{ opacity }`;
@@ -137,6 +195,7 @@ export default defineScene({
 | `Chart` | The sidecar chart (reference/charts.md) |
 | `StagedObject`, `HeroObject` | 3D objects |
 | `ParticleField`, `WireGrid`, `Ribbon` | Seeded generative shapes on the clock |
+| `RoundedRect`, `Pill` | Flat cards, badges, chips and bars (Motion helpers above) |
 | `SceneStage`, `DepthStage`, `LightRig` | Staging and light |
 
 Generative shapes (all motion from the clock, randomness from `seed`):
@@ -154,7 +213,8 @@ Light rigs add up: with several lit primitives and no `SceneStage`, mount one
 `<AnimatedGroup from to outAt preset outPreset ease startScale shine direction position em extent>`
 animates its children as ONE unit (the group origin is the pivot; place children
 symmetrically around [0, 0, 0]). `ImageCard`, `AnimatedHeadline` and `AnimatedCounter`
-inside it take the group's fade and shine; other primitives ride its transform only.
+inside it take the group's fade and shine, `RoundedRect` and `Pill` its fade; other
+primitives ride its transform only.
 
 ## Persistent module
 
