@@ -180,6 +180,19 @@ describe("flashNotice", () => {
     ]);
   });
 
+  it("reads a stretch that fails one standard and nears the other as one moment", () => {
+    const mixed = outcome([
+      { ...issue("warn", 4000), standard: "itu" },
+      { ...issue("fail", 4000), hint: "keep the change under 10% luminance" },
+    ]);
+    const notice = flashNotice(mixed);
+    expect(notice?.title).toMatch(/\(1 moment\)$/);
+    expect(notice?.lines).toEqual([
+      "00:04.000, 1.0 s: 4.5 flashes a second over 38.2% of the frame (fails WCAG 2.3.1, close to the limit of ITU-R BT.1702)",
+    ]);
+    expect(notice?.hint).toMatch(/^Keep the change under 10% luminance\./);
+  });
+
   it("stays quiet for a clean film or no report", () => {
     expect(flashNotice(outcome([]))).toBeNull();
     expect(

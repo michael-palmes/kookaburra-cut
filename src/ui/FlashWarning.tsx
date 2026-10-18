@@ -29,40 +29,48 @@ const MAX_LINES = 5;
 
 const STANDARD_NAMES: Record<string, string> = { wcag: "WCAG 2.3.1", itu: "ITU-R BT.1702" };
 
-/** One flagged moment: the same stretch judged by one or both standards. */
+/** One flagged moment: the same stretch judged by one or both standards, each with its own verdict. */
 interface FlashMoment {
   issue: FlashIssue;
-  standards: string[];
+  fails: string[];
+  near: string[];
   areaPct: number;
 }
+
+const byStandard = (a: string, b: string) => {
+  const order = Object.values(STANDARD_NAMES);
+  return (order.indexOf(a) + 1 || 99) - (order.indexOf(b) + 1 || 99);
+};
 
 /** The standards report the same stretch separately; one line per stretch reads them together. */
 function flashMoments(issues: FlashIssue[]): FlashMoment[] {
   const moments = new Map<string, FlashMoment>();
   for (const issue of issues) {
-    const key = `${issue.tc}|${issue.type}|${issue.severity}`;
+    const key = `${issue.tc}|${issue.type}`;
     const name = STANDARD_NAMES[issue.standard] ?? issue.standard.toUpperCase();
-    const moment = moments.get(key);
-    if (moment) {
-      if (!moment.standards.includes(name)) moment.standards.push(name);
-      moment.areaPct = Math.max(moment.areaPct, issue.areaPct);
-    } else {
-      moments.set(key, { issue, standards: [name], areaPct: issue.areaPct });
-    }
+    const moment = moments.get(key) ?? { issue, fails: [], near: [], areaPct: issue.areaPct };
+    moments.set(key, moment);
+    const verdicts = issue.severity === "fail" ? moment.fails : moment.near;
+    if (!verdicts.includes(name)) verdicts.push(name);
+    if (issue.severity === "fail" && moment.issue.severity !== "fail") moment.issue = issue;
+    moment.areaPct = Math.max(moment.areaPct, issue.areaPct);
   }
-  const order = Object.values(STANDARD_NAMES);
   for (const moment of moments.values()) {
-    moment.standards.sort((a, b) => (order.indexOf(a) + 1 || 99) - (order.indexOf(b) + 1 || 99));
+    moment.fails.sort(byStandard);
+    moment.near.sort(byStandard);
   }
   return [...moments.values()];
 }
 
-function momentLine({ issue, standards, areaPct }: FlashMoment): string {
+function momentLine({ issue, fails, near, areaPct }: FlashMoment): string {
   const seconds = Math.max(0.1, (issue.endMs - issue.startMs) / 1000).toFixed(1);
   const area = areaPct >= 99.5 ? "the whole frame" : `${areaPct}% of the frame`;
   const kind = issue.type === "general" ? "" : `${issue.type} flash, `;
-  const verdict = issue.severity === "fail" ? "fails" : "close to the limit of";
-  return `${issue.tc}, ${seconds} s: ${issue.flashesPerSecond} flashes a second over ${area} (${kind}${verdict} ${standards.join(" and ")})`;
+  const verdicts = [
+    fails.length ? `fails ${fails.join(" and ")}` : "",
+    near.length ? `close to the limit of ${near.join(" and ")}` : "",
+  ].filter(Boolean);
+  return `${issue.tc}, ${seconds} s: ${issue.flashesPerSecond} flashes a second over ${area} (${kind}${verdicts.join(", ")})`;
 }
 
 /** The export card's flash section for an export with flagged moments, or null when it is clean (or the tap had nothing). */
@@ -78,7 +86,7 @@ export function flashNotice(
   const issues = outcome?.report?.issues ?? [];
   if (!outcome || issues.length === 0) return null;
   const moments = flashMoments(issues);
-  const fails = moments.filter((m) => m.issue.severity === "fail");
+  const fails = moments.filter((m) => m.fails.length > 0);
   const name = outcome.path.split("/").pop() ?? outcome.path;
   const lines = moments.slice(0, MAX_LINES).map(momentLine);
   if (moments.length > MAX_LINES) lines.push(`and ${moments.length - MAX_LINES} more`);
