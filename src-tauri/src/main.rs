@@ -3,9 +3,15 @@
 
 fn main() {
     let mut args = std::env::args_os().skip(1);
-    // `edit …` is the headless CLI: it must return before anything Tauri or AppKit starts (no Dock icon).
-    if args.next().is_some_and(|first| first == "edit") {
-        std::process::exit(kookaburra_cut_lib::cli::main(args.collect()));
+    // `edit …` and `song …` are the headless CLIs: they must return before anything Tauri or AppKit starts (no Dock icon).
+    match args.next() {
+        Some(first) if first == "edit" => {
+            std::process::exit(kookaburra_cut_lib::cli::main(args.collect()))
+        }
+        Some(first) if first == "song" => {
+            std::process::exit(kookaburra_cut_lib::cli_song::main(args.collect()))
+        }
+        _ => {}
     }
     kookaburra_cut_lib::run();
 }
