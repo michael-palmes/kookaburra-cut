@@ -10,6 +10,7 @@ from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
 
 from . import catalog as catmod
 from . import fonts as fontmod
+from . import themes as thememod
 from . import tsx as tsxmod
 from .catalog import Catalog
 from .project import MANIFEST, Project, stem_of
@@ -735,6 +736,7 @@ class Checker:
                 self.report.warn(rel, "", "sidecar without a scene file; delete it or restore the .tsx")
 
     def theme_fonts(self) -> None:
+        """The project's workspace theme, checked like kb theme set checks a write."""
         try:
             theme_id = self.project.manifest().get("themeId")
         except Exception:
@@ -749,14 +751,96 @@ class Checker:
         except (OSError, ValueError):
             self.report.error(f"../themes/{theme_id[3:]}/theme.json", "", "not valid JSON; the app falls back to the default theme")
             return
-        typography = theme.get("typography") if isinstance(theme, dict) else None
-        if not isinstance(typography, dict):
-            return
-        for slot, ref in typography.items():
-            if isinstance(ref, dict) and isinstance(ref.get("family"), str):
-                weight = ref.get("weight", 400)
-                self.font(f"../themes/{theme_id[3:]}/theme.json", f"typography.{slot}", f'{ref["family"]}@{weight}')
+        self.theme_doc(theme_id, theme)
 
+    def theme_doc(self, theme_id: str, doc: Any, file: Optional[str] = None) -> None:
+        """A workspace theme document: font strings, the shadow technique, gradient angles and extends."""
+        file = file or (f"../themes/{theme_id[3:]}/theme.json" if theme_id.startswith("ws:") else theme_id)
+        rep = self.report
+        if not isinstance(doc, dict):
+            rep.error(file, "", "a theme must be a JSON object; the app falls back to the default theme")
+            return
+        typography = doc.get("typography")
+        if isinstance(typography, dict):
+            for slot in ("headline", "body"):
+                ref = typography.get(slot)
+                if isinstance(ref, str):
+                    self.font(file, f"typography.{slot}", ref)
+                elif isinstance(ref, dict) and isinstance(ref.get("family"), str):
+                    self.font(file, f"typography.{slot}", f"{ref['family']}@{ref.get('weight', 400)}")
+                elif ref is not None:
+                    rep.error(file, f"typography.{slot}", 'must be "Family", "Family@weight" or {"family": ..., "weight": ...}')
+        gradients = doc.get("gradients")
+        if isinstance(gradients, dict):
+            for name, spec in gradients.items():
+                self.theme_gradient(file, f"gradients.{name}", spec)
+        for key in ("background", "backdrop"):
+            block = doc.get(key)
+            if isinstance(block, dict) and block.get("type") == "gradient" and "spec" in block:
+                self.theme_gradient(file, f"{key}.spec", block["spec"], block.get("gradient"))
+        shadow = dig(doc, "lighting", "shadow")
+        if shadow is not None:
+            if not isinstance(shadow, dict) or shadow.get("technique") not in ("map", "none"):
+                rep.error(file, "lighting.shadow.technique", 'needs "map" or "none"; without it the shadow block drops')
+            else:
+                for key in ("softness", "opacity", "mapSize", "bias"):
+                    if key in shadow and not is_number(shadow[key]):
+                        rep.warn(file, f"lighting.shadow.{key}", "must be a number; the default is used")
+        if "extends" in doc:
+            self.theme_extends(file, theme_id, doc)
+
+    def theme_gradient(self, file: str, path: str, spec: Any, fallback: Any = None) -> None:
+        why = gradient_problem(spec)
+        if why is None:
+            return
+        if isinstance(fallback, str) and fallback:
+            self.report.warn(file, path, f'{why}, so the "{fallback}" gradient shows instead')
+        else:
+            self.report.error(file, path, f"{why}; the app drops it")
+
+    def theme_extends(self, file: str, theme_id: str, doc: Dict[str, Any]) -> None:
+        rep = self.report
+        value = doc.get("extends")
+        if not isinstance(value, str) or not value.strip():
+            rep.error(file, "extends", "must be a theme id (ws:<slug> or a bundled id); see kb theme list")
+            return
+        if not is_number(doc.get("version")) or doc["version"] < thememod.EXTENDS_VERSION:
+            rep.error(file, "extends", f'needs "version": {thememod.EXTENDS_VERSION}; below that the app ignores it')
+            return
+        bundled = self.ctx.ids("themes")
+
+        def lookup(tid: str) -> Any:
+            if tid == theme_id:
+                return doc
+            if tid.startswith("ws:"):
+                path = self.project.theme_file(tid)
+                if path is None or not path.is_file():
+                    return None
+                try:
+                    return json.loads(read_text(path))
+                except (OSError, ValueError):
+                    return None
+            return {"version": 2} if bundled is None or tid in bundled else None
+
+        merged, problem = thememod.resolve_theme_document(doc, theme_id, lookup)
+        walk = [theme_id]
+        nxt = thememod.extends_of(doc)
+        while nxt is not None and nxt not in walk and len(walk) <= thememod.MAX_CHAIN:
+            walk.append(nxt)
+            nxt = thememod.extends_of(lookup(nxt))
+        if problem == "cycle":
+            loop = " > ".join(walk + [nxt or theme_id])
+            rep.error(file, "extends", f"loops back on itself ({loop}); the app falls back to the default theme")
+        elif problem == "too-long":
+            rep.error(file, "extends", f"chains through more than {thememod.MAX_CHAIN} themes; the app falls back to the default theme")
+        elif problem == "missing":
+            gone = walk[-1]
+            hint = "" if gone.startswith("ws:") else did_you_mean(gone, bundled or [])
+            rep.error(file, "extends", f'base theme "{gone}" can\'t be found; the app falls back to the default theme.{hint} See kb theme list')
+        elif isinstance(merged, dict) and all(tid.startswith("ws:") for tid in walk):
+            missing = theme_required_gaps(merged)
+            if missing:
+                rep.error(file, "", f"with its base merged it still lacks {', '.join(missing)}; the app falls back to the default theme")
 
     # ── video edits (full check only) ─────────────────────────────────────
 
@@ -783,6 +867,38 @@ class Checker:
                 if issue["code"] in ("not-laid-out", "short-clip", "short-hold"):
                     continue
                 (self.report.error if severity == "error" else self.report.warn)(label, where, issue["message"])
+
+
+def gradient_problem(spec: Any) -> Optional[str]:
+    """Why the app would drop a gradient spec, or None (src/theme/schema.ts parseGradient)."""
+    if not isinstance(spec, dict):
+        return "isn't a gradient object"
+    if spec.get("type") not in ("linear", "radial"):
+        return 'needs a "type" of linear or radial'
+    if not is_number(spec.get("angleDeg")) and not (spec.get("type") == "radial" and "angleDeg" not in spec):
+        return 'needs a numeric "angleDeg" (only a radial gradient may leave it out)'
+    stops = spec.get("stops")
+    if not isinstance(stops, list) or not all(isinstance(s, list) and len(s) >= 2 and isinstance(s[0], str) and s[0] and is_number(s[1]) for s in stops):
+        return 'needs "stops" as ["colour", position] pairs'
+    if len(stops) < 2:
+        return "needs at least two stops"
+    return None
+
+
+def theme_required_gaps(doc: Dict[str, Any]) -> List[str]:
+    """The required theme blocks a document lacks (src/theme/schema.ts parseThemeDoc)."""
+    gaps: List[str] = [] if isinstance(doc.get("id"), str) and doc.get("id") else ["its own id"]
+    colors = doc.get("colors")
+    if not isinstance(colors, dict) or not all(isinstance(colors.get(k), str) and colors.get(k) for k in ("background", "text", "accent", "muted")):
+        gaps.append("colors (background, text, accent, muted)")
+    typography = doc.get("typography")
+    if not isinstance(typography, dict) or not all(typography.get(k) for k in ("headline", "body")) or not is_number(typography.get("scale")):
+        gaps.append("typography (headline, body, scale)")
+    durations = dig(doc, "motion", "durations")
+    easings = dig(doc, "motion", "easings")
+    if not isinstance(durations, dict) or not all(is_number(durations.get(k)) for k in ("fast", "base", "slow")) or not isinstance(easings, dict) or not all(isinstance(easings.get(k), str) and easings.get(k) for k in ("standard", "emphasized")):
+        gaps.append("motion (three durations, two easings)")
+    return gaps
 
 
 def edit_of_output(project: Project, rel: str) -> Optional[str]:

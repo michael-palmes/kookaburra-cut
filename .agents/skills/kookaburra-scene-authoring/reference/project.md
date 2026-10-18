@@ -183,6 +183,29 @@ corners), `lighting`, `environment`, `backdrop`, `background` (no video), `effec
 An absent optional block keeps the simplest render path. A theme edit shows on the
 next project reload; `kb check --app` and captures always load it fresh.
 
+### Theme variants (`extends`)
+
+A brand variant (a light cut, a launch accent) is a version 3 workspace theme that
+names its base and carries only what differs:
+
+```json
+{ "version": 3, "id": "acme-light", "name": "Acme Light", "extends": "ws:acme",
+  "mode": "light", "colors": { "background": "#f6f7fb", "text": "#0b1020" }, "background": null }
+```
+
+- `extends` takes `ws:<slug>` or a bundled id. Objects merge key by key, arrays and
+  plain values replace, the variant wins, and `null` clears an inherited block. The
+  base never lends its `version`, `id`, `name` or `catalogue`, so a variant writes its
+  own. Chains are fine; a loop or a missing base makes the app fall back to the
+  default theme.
+- Bundled themes cannot extend, and `extends` is ignored below version 3.
+- Set it with `./kb theme set extends ws:acme --theme ws:acme-light`; the write is
+  refused when the base is missing, loops or the merge still lacks a required block.
+- Theme fonts take the sidecar grammar (`"Inter@600"`); a radial gradient may leave
+  out `angleDeg`, a linear one may not; a `lighting.shadow` needs only `technique`.
+- `./kb check` flags dropped blocks, and the app lists what it ignored under "Some
+  settings were ignored" (`./kb status` shows the same lines).
+
 ## Typography overrides
 
 `project.json` `typography` replaces the theme faces project-wide; `chart` sets one

@@ -572,12 +572,7 @@ def cmd_theme(ctx: Ctx) -> int:
 
     def validate(doc: Any) -> Report:
         report = Report()
-        typography = doc.get("typography") if isinstance(doc, dict) else None
-        if isinstance(typography, dict):
-            checker = checkmod.Checker(checkmod.Context(project), report)
-            for slot, ref in typography.items():
-                if isinstance(ref, dict) and isinstance(ref.get("family"), str):
-                    checker.font(theme_id, f"typography.{slot}", f"{ref['family']}@{ref.get('weight', 400)}")
+        checkmod.Checker(checkmod.Context(project), report).theme_doc(theme_id, doc, theme_id)
         return report
 
     emit_err(f"kb: note: {theme_id} is shared by every project that uses it")
