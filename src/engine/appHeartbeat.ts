@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { AVAILABLE_DEVICE_IDS } from "../toolkit/device/catalog";
 import type { FontIssue, SceneLoadError } from "./loadDiagnostics";
 import { isWorkspaceProjectId, type LoadedProject, nativeProjectSlug } from "./project";
 
@@ -13,6 +14,8 @@ export interface LastLoadReport {
   sceneErrors: SceneLoadError[];
   fontIssues: FontIssue[];
   warnings: string[];
+  /** Device ids this build renders with their own model; `kb check` warns on the rest, which render as Android. */
+  availableDevices?: string[];
 }
 
 export function lastLoadReport(
@@ -58,7 +61,11 @@ export function lastLoadReport(
 
 /** Best effort: a heartbeat that misses one load is stale, not wrong. */
 export function reportLastLoad(report: LastLoadReport): void {
-  void invoke("set_last_load", { load: report }).catch(() => {});
+  const load = {
+    ...report,
+    availableDevices: report.availableDevices ?? [...AVAILABLE_DEVICE_IDS],
+  };
+  void invoke("set_last_load", { load }).catch(() => {});
 }
 
 const stampedThisSession = new Set<string>();
