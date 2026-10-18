@@ -136,6 +136,32 @@ pub(crate) fn forget_asset(project: &Path, rel: &str) -> Result<(), String> {
     write_meta(project, &doc)
 }
 
+/// An original left the project (Remove original): every record whose `origin.from` names it loses that link and gains `origin.originalRemovedAtMs`, and any record of the original itself goes. Returns how many records changed; a missing record file is nothing to do.
+pub(crate) fn detach_original(project: &Path, original: &str, at_ms: u64) -> Result<usize, String> {
+    project_rel(original)?;
+    if !project.join(META_REL).is_file() {
+        return Ok(0);
+    }
+    let _serial = WRITES.lock().unwrap_or_else(|e| e.into_inner());
+    let mut doc = read_meta(project)?;
+    let assets = assets_of(&mut doc);
+    let mut changed = usize::from(assets.remove(original).is_some());
+    for record in assets.values_mut() {
+        let Some(origin) = record.get_mut("origin").and_then(Value::as_object_mut) else {
+            continue;
+        };
+        if origin.get("from").and_then(Value::as_str) == Some(original) {
+            origin.remove("from");
+            origin.insert("originalRemovedAtMs".into(), json!(at_ms));
+            changed += 1;
+        }
+    }
+    if changed > 0 {
+        write_meta(project, &doc)?;
+    }
+    Ok(changed)
+}
+
 /// One asset's provenance as recorded, with whether its file has changed since (`stale`: the sha256 no longer matches, or the file is gone).
 #[allow(dead_code)] // Read by kb's `assets meta` in a later wave.
 #[derive(Debug, Clone, PartialEq)]
@@ -253,6 +279,52 @@ mod tests {
             std::fs::read_to_string(project.join(META_REL)).unwrap(),
             r#"{"version":2,"assets":{}}"#
         );
+        let _ = std::fs::remove_dir_all(&project);
+    }
+
+    #[test]
+    fn a_removed_original_unlinks_every_record_that_came_from_it() {
+        let project = scratch("detach");
+        std::fs::write(project.join("assets/rec.mp4"), b"mezzanine").unwrap();
+        std::fs::write(project.join("assets/other.mp4"), b"other").unwrap();
+        record_asset_origin(&project, "assets/rec.mp4", conform_origin(), conform_steps())
+            .unwrap();
+        let elsewhere = json!({ "kind": "import", "from": "assets/.originals/other.mov", "sourceName": "other.mov", "tool": "app import", "atMs": 1 });
+        record_asset_origin(&project, "assets/other.mp4", elsewhere, conform_steps()).unwrap();
+        assert_eq!(
+            detach_original(&project, "assets/.originals/rec.mov", 42).unwrap(),
+            1
+        );
+        let doc: Value =
+            serde_json::from_str(&std::fs::read_to_string(project.join(META_REL)).unwrap())
+                .unwrap();
+        let origin = &doc["assets"]["assets/rec.mp4"]["origin"];
+        assert!(origin.get("from").is_none());
+        assert_eq!(origin["originalRemovedAtMs"], 42);
+        assert_eq!(origin["sourceName"], "rec.mov");
+        assert_eq!(doc["assets"]["assets/rec.mp4"]["transforms"][0]["op"], "conform");
+        assert_eq!(
+            doc["assets"]["assets/other.mp4"]["origin"]["from"],
+            "assets/.originals/other.mov"
+        );
+        let before = std::fs::read_to_string(project.join(META_REL)).unwrap();
+        assert_eq!(
+            detach_original(&project, "assets/.originals/rec.mov", 43).unwrap(),
+            0
+        );
+        assert_eq!(std::fs::read_to_string(project.join(META_REL)).unwrap(), before);
+        assert!(detach_original(&project, "/Users/x/rec.mov", 1).is_err());
+        let _ = std::fs::remove_dir_all(&project);
+    }
+
+    #[test]
+    fn detaching_without_a_record_file_writes_nothing() {
+        let project = scratch("detach-none");
+        assert_eq!(
+            detach_original(&project, "assets/.originals/rec.mov", 1).unwrap(),
+            0
+        );
+        assert!(!project.join(META_REL).exists());
         let _ = std::fs::remove_dir_all(&project);
     }
 

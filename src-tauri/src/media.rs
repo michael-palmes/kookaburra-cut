@@ -1118,7 +1118,36 @@ pub struct ConformJob {
     pub original: String,
     pub frame: u64,
     pub total: u64,
+    #[serde(skip)]
+    pub(crate) cancel: std::sync::Arc<ConformCancel>,
 }
+
+/// A job's stop request: the flag the conform loops poll, and a wake-up for a job still waiting for a background slot.
+#[derive(Debug, Default)]
+pub(crate) struct ConformCancel {
+    flag: std::sync::atomic::AtomicBool,
+    wake: tokio::sync::Notify,
+}
+
+impl ConformCancel {
+    fn cancel(&self) {
+        self.flag.store(true, std::sync::atomic::Ordering::SeqCst);
+        self.wake.notify_one();
+    }
+
+    fn is_cancelled(&self) -> bool {
+        self.flag.load(std::sync::atomic::Ordering::SeqCst)
+    }
+
+    async fn cancelled(&self) {
+        while !self.is_cancelled() {
+            self.wake.notified().await;
+        }
+    }
+}
+
+/// The error a cancelled conform fails with, so the library can tell a stop from a failure.
+const CONFORM_CANCELLED: &str = "cancelled";
 
 /// Conform jobs in flight, app-wide.
 #[derive(Default)]
@@ -1173,6 +1202,7 @@ fn run_conform_job(
     slug: &str,
     project: &Path,
     plan: &crate::conform::ConformPlan,
+    cancel: &std::sync::atomic::AtomicBool,
 ) -> Result<crate::conform::ConformOutcome, String> {
     let tools = crate::conform::ConformTools {
         ffmpeg: crate::tools::sidecar_path("ffmpeg")?,
@@ -1203,11 +1233,29 @@ fn run_conform_job(
             },
         );
     };
-    let cancel = std::sync::atomic::AtomicBool::new(false);
-    crate::conform::conform(project, plan, &tools, &mut on, &cancel).map_err(String::from)
+    crate::conform::conform(project, plan, &tools, &mut on, cancel).map_err(String::from)
 }
 
-/// Queue a conform under the background ffmpeg cap; it reports through `CONFORM_EVENT` and lands with a `media-changed` broadcast. An import whose conform fails falls back to its original, imported as is.
+/// A conform that didn't land: the error it reports (a stop reads as `CONFORM_CANCELLED`) and the paths that changed, an import's original coming back as a plain file.
+fn unwind_conform(
+    project: &Path,
+    plan: &crate::conform::ConformPlan,
+    imported: bool,
+    error: String,
+    cancelled: bool,
+) -> (String, Vec<String>) {
+    let error = if cancelled {
+        CONFORM_CANCELLED.to_owned()
+    } else {
+        error
+    };
+    let restored = imported
+        .then(|| restore_import(project, &plan.original_rel))
+        .flatten();
+    (error, vec![restored.unwrap_or_else(|| plan.target_rel.clone())])
+}
+
+/// Queue a conform under the background ffmpeg cap; it reports through `CONFORM_EVENT` and lands with a `media-changed` broadcast. An import whose conform fails or is cancelled falls back to its original, imported as is.
 fn start_conform_job(
     app: &AppHandle,
     slug: &str,
@@ -1215,12 +1263,14 @@ fn start_conform_job(
     plan: crate::conform::ConformPlan,
     imported: bool,
 ) {
+    let cancel = std::sync::Arc::new(ConformCancel::default());
     let job = ConformJob {
         slug: slug.to_owned(),
         rel: plan.target_rel.clone(),
         original: plan.original_rel.clone(),
         frame: 0,
         total: 0,
+        cancel: cancel.clone(),
     };
     with_jobs(app, |jobs| jobs.push(job));
     emit_progress(
@@ -1236,18 +1286,27 @@ fn start_conform_job(
     );
     let (app, slug, project) = (app.clone(), slug.to_owned(), project.to_path_buf());
     tauri::async_runtime::spawn(async move {
-        let result = match app
-            .state::<crate::concurrency::BackgroundLimiter>()
-            .acquire()
-            .await
-        {
+        // A job cancelled while it waits for a slot never takes one.
+        let permit = {
+            let limiter = app.state::<crate::concurrency::BackgroundLimiter>();
+            tokio::select! {
+                permit = limiter.acquire() => permit,
+                () = cancel.cancelled() => Err(CONFORM_CANCELLED.to_owned()),
+            }
+        };
+        let result = match permit {
             Err(e) => Err(e),
             Ok(permit) => {
-                let (app, slug, project, plan) =
-                    (app.clone(), slug.clone(), project.clone(), plan.clone());
+                let (app, slug, project, plan, cancel) = (
+                    app.clone(),
+                    slug.clone(),
+                    project.clone(),
+                    plan.clone(),
+                    cancel.clone(),
+                );
                 tauri::async_runtime::spawn_blocking(move || {
                     let _permit = permit;
-                    let outcome = run_conform_job(&app, &slug, &project, &plan)?;
+                    let outcome = run_conform_job(&app, &slug, &project, &plan, &cancel.flag)?;
                     record_conform_origin(&project, &outcome, imported);
                     Ok(outcome)
                 })
@@ -1267,13 +1326,14 @@ fn start_conform_job(
                 ("done", outcome.frames, None)
             }
             Err(error) => {
-                log::warn!("[conform] {rel} failed: {error}");
-                if let Some(fallback) = imported
-                    .then(|| restore_import(&project, &plan.original_rel))
-                    .flatten()
-                {
-                    paths = vec![fallback];
+                let cancelled = cancel.is_cancelled();
+                if cancelled {
+                    log::info!("[conform] {rel} cancelled");
+                } else {
+                    log::warn!("[conform] {rel} failed: {error}");
                 }
+                let (error, changed) = unwind_conform(&project, &plan, imported, error, cancelled);
+                paths = changed;
                 ("failed", 0, Some(error))
             }
         };
@@ -1365,6 +1425,254 @@ pub fn conform_media(
         .map_err(String::from)?;
     start_conform_job(&app, &slug, &project, plan, false);
     Ok(rel)
+}
+
+/// Ask `rel`'s job to stop; false when no such job is running or queued.
+fn request_cancel(jobs: &[ConformJob], slug: &str, rel: &str) -> bool {
+    let job = jobs.iter().find(|j| j.slug == slug && j.rel == rel);
+    if let Some(job) = job {
+        job.cancel.cancel();
+    }
+    job.is_some()
+}
+
+/// Stop a running or queued conform (the library's queue). It unwinds through the failure path with the error `cancelled`: an import gets its original back as a plain file, an in-place conform leaves the file as it was, and `media-changed` follows. A job whose encode already finished lands anyway.
+#[tauri::command]
+pub fn cancel_conform(app: AppHandle, slug: String, rel: String) -> Result<(), String> {
+    if with_jobs(&app, |jobs| request_cancel(jobs, &slug, &rel)).unwrap_or(false) {
+        Ok(())
+    } else {
+        Err(format!("{rel} isn't conforming"))
+    }
+}
+
+/// One kept original in `assets/.originals/`, for the library's Remove original actions.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct OriginalFile {
+    /// `assets/.originals/<file>`.
+    pub rel: String,
+    pub bytes: u64,
+    /// The conformed clip whose timing record names this original, while that clip exists.
+    pub clip: Option<String>,
+    /// Why it can't be removed now (a conform reads it, or a project file points at it), else None.
+    pub busy: Option<String>,
+}
+
+/// What a Remove original(s) moved to the Trash.
+#[derive(Debug, Clone, Copy, Default, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct RemovedOriginals {
+    pub count: u64,
+    pub bytes: u64,
+}
+
+/// Every conform timing record under `assets/` (dot folders skipped), as (mezzanine, original) pairs.
+fn timing_links(project: &Path) -> Vec<(String, String)> {
+    let mut links = Vec::new();
+    let mut folders = vec![project.join("assets")];
+    while let Some(folder) = folders.pop() {
+        let Ok(entries) = std::fs::read_dir(&folder) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            let path = entry.path();
+            if name.starts_with('.') {
+                continue;
+            }
+            if path.is_dir() {
+                folders.push(path);
+                continue;
+            }
+            if !name.ends_with(TIMING_SUFFIX) {
+                continue;
+            }
+            let doc = std::fs::read_to_string(&path)
+                .ok()
+                .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok());
+            let field = |pointer: &str| {
+                doc.as_ref()
+                    .and_then(|d| d.pointer(pointer))
+                    .and_then(serde_json::Value::as_str)
+                    .map(str::to_owned)
+            };
+            if let (Some(clip), Some(original)) = (field("/mezzanine/path"), field("/source/original")) {
+                links.push((clip, original));
+            }
+        }
+    }
+    links.sort();
+    links
+}
+
+/// The kept originals in `assets/.originals/`, by name; `running` lists the originals conform jobs are reading. Dot names (an import still landing) are skipped.
+fn originals_in(project: &Path, running: &[String]) -> Vec<OriginalFile> {
+    let dir = project.join("assets").join(crate::conform::ORIGINALS_DIR);
+    let Ok(entries) = std::fs::read_dir(&dir) else {
+        return Vec::new();
+    };
+    let links = timing_links(project);
+    let refs = project_asset_refs(project);
+    let mut originals: Vec<OriginalFile> = entries
+        .flatten()
+        .filter_map(|entry| {
+            let name = entry.file_name().to_str()?.to_owned();
+            let meta = entry.metadata().ok()?;
+            (!name.starts_with('.') && meta.is_file()).then_some((name, meta.len()))
+        })
+        .map(|(name, bytes)| {
+            let rel = format!("assets/{}/{name}", crate::conform::ORIGINALS_DIR);
+            let clip = links
+                .iter()
+                .find(|(clip, original)| *original == rel && project.join(clip).is_file())
+                .map(|(clip, _)| clip.clone());
+            let used = refs.references(&rel);
+            let busy = if running.contains(&rel) {
+                Some(format!("{name} is still conforming"))
+            } else if !used.is_empty() {
+                Some(format!("{rel} is still used by: {}", used.join(", ")))
+            } else {
+                None
+            };
+            OriginalFile {
+                rel,
+                bytes,
+                clip,
+                busy,
+            }
+        })
+        .collect();
+    originals.sort_by(|a, b| a.rel.cmp(&b.rel));
+    originals
+}
+
+/// Move one original out (`dispose` is the Trash in the app) and drop the provenance links to it.
+fn dispose_original(
+    project: &Path,
+    original: &OriginalFile,
+    dispose: &dyn Fn(&Path) -> Result<(), String>,
+    at_ms: u64,
+) -> Result<(), String> {
+    dispose(&project.join(&original.rel))?;
+    if let Err(e) = crate::asset_meta::detach_original(project, &original.rel, at_ms) {
+        log::warn!("[media] provenance for {} not updated: {e}", original.rel);
+    }
+    Ok(())
+}
+
+/// Remove the original of `rel`: a conformed clip (found through its timing record) or an `assets/.originals/` path itself. Refused while a conform reads it or a project file points at it.
+fn remove_original_in(
+    project: &Path,
+    rel: &str,
+    running: &[String],
+    dispose: &dyn Fn(&Path) -> Result<(), String>,
+    at_ms: u64,
+) -> Result<RemovedOriginals, String> {
+    validate_asset_rel(rel)?;
+    let originals = originals_in(project, running);
+    let found = originals
+        .iter()
+        .find(|o| o.rel == rel || o.clip.as_deref() == Some(rel))
+        .ok_or_else(|| format!("{rel} has no kept original"))?;
+    if let Some(reason) = &found.busy {
+        return Err(reason.clone());
+    }
+    dispose_original(project, found, dispose, at_ms)?;
+    Ok(RemovedOriginals {
+        count: 1,
+        bytes: found.bytes,
+    })
+}
+
+/// Remove every original nothing needs; ones a conform reads or a project file names stay. Fails only when something was removable and nothing could be moved.
+fn remove_originals_in(
+    project: &Path,
+    running: &[String],
+    dispose: &dyn Fn(&Path) -> Result<(), String>,
+    at_ms: u64,
+) -> Result<RemovedOriginals, String> {
+    let mut removed = RemovedOriginals::default();
+    let mut errors = Vec::new();
+    for original in originals_in(project, running) {
+        if original.busy.is_some() {
+            continue;
+        }
+        match dispose_original(project, &original, dispose, at_ms) {
+            Ok(()) => {
+                removed.count += 1;
+                removed.bytes += original.bytes;
+            }
+            Err(e) => errors.push(e),
+        }
+    }
+    if removed.count == 0 && !errors.is_empty() {
+        return Err(errors.join("; "));
+    }
+    for e in errors {
+        log::warn!("[media] {e}");
+    }
+    Ok(removed)
+}
+
+/// The originals this project's conform jobs are reading.
+fn running_originals(app: &AppHandle, slug: &str) -> Vec<String> {
+    with_jobs(app, |jobs| {
+        jobs.iter()
+            .filter(|j| j.slug == slug)
+            .map(|j| j.original.clone())
+            .collect()
+    })
+    .unwrap_or_default()
+}
+
+fn trash_original(path: &Path) -> Result<(), String> {
+    workspace::trash_path(path).map_err(|e| {
+        let name = path.file_name().unwrap_or_default().to_string_lossy();
+        format!("couldn't move {name} to the Trash: {e}")
+    })
+}
+
+fn now_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_millis() as u64)
+}
+
+/// The project's kept originals with their sizes and clips, for the Remove original items and the bulk label.
+#[tauri::command]
+pub fn list_originals(
+    app: AppHandle,
+    state: State<'_, SettingsState>,
+    slug: String,
+) -> Result<Vec<OriginalFile>, String> {
+    let project = workspace::project_dir(&app, &state, &slug)?;
+    Ok(originals_in(&project, &running_originals(&app, &slug)))
+}
+
+/// Move one clip's original to the Trash (the clip's ⋯ Remove original); the conformed clip stays and its provenance loses the link.
+#[tauri::command]
+pub fn remove_original(
+    app: AppHandle,
+    state: State<'_, SettingsState>,
+    slug: String,
+    rel: String,
+) -> Result<RemovedOriginals, String> {
+    let project = workspace::project_dir_mut(&app, &state, &slug)?;
+    let running = running_originals(&app, &slug);
+    remove_original_in(&project, &rel, &running, &trash_original, now_ms())
+}
+
+/// Move every original nothing needs to the Trash (the library's ⋯ Remove originals).
+#[tauri::command]
+pub fn remove_originals(
+    app: AppHandle,
+    state: State<'_, SettingsState>,
+    slug: String,
+) -> Result<RemovedOriginals, String> {
+    let project = workspace::project_dir_mut(&app, &state, &slug)?;
+    let running = running_originals(&app, &slug);
+    remove_originals_in(&project, &running, &trash_original, now_ms())
 }
 
 /// A library card's conform flag.
@@ -2256,6 +2564,207 @@ mod tests {
         std::fs::write(assets.join(".originals/rec-3.mov"), b"x").unwrap();
         let pending = vec!["assets/rec-4.mp4".to_owned()];
         assert_eq!(free_conform_stem(&assets, "rec", "mov", &pending), "rec-5");
+        let _ = std::fs::remove_dir_all(&project);
+    }
+
+    fn job(slug: &str, rel: &str) -> ConformJob {
+        ConformJob {
+            slug: slug.into(),
+            rel: rel.into(),
+            original: String::new(),
+            frame: 0,
+            total: 0,
+            cancel: Default::default(),
+        }
+    }
+
+    #[test]
+    fn a_cancel_reaches_only_its_own_job() {
+        let jobs = vec![
+            job("product-tour", "assets/rec.mp4"),
+            job("product-tour", "assets/rec-2.mp4"),
+            job("highlights", "assets/rec.mp4"),
+        ];
+        assert!(request_cancel(&jobs, "product-tour", "assets/rec.mp4"));
+        assert!(jobs[0].cancel.is_cancelled());
+        assert!(!jobs[1].cancel.is_cancelled());
+        assert!(!jobs[2].cancel.is_cancelled());
+        assert!(!request_cancel(&jobs, "product-tour", "assets/gone.mp4"));
+        // The flag never reaches the library's job list.
+        let json = serde_json::to_value(&jobs[0]).unwrap();
+        assert!(json.get("cancel").is_none());
+    }
+
+    #[tokio::test]
+    async fn a_queued_job_wakes_when_it_is_cancelled() {
+        let cancel = std::sync::Arc::new(ConformCancel::default());
+        let waiting = tokio::spawn({
+            let cancel = cancel.clone();
+            async move { cancel.cancelled().await }
+        });
+        tokio::task::yield_now().await;
+        assert!(!waiting.is_finished());
+        cancel.cancel();
+        tokio::time::timeout(std::time::Duration::from_secs(2), waiting)
+            .await
+            .expect("the wait ends")
+            .unwrap();
+        // Cancelled before anyone waits: the wait returns at once.
+        let early = ConformCancel::default();
+        early.cancel();
+        tokio::time::timeout(std::time::Duration::from_secs(2), early.cancelled())
+            .await
+            .expect("an early cancel is kept");
+    }
+
+    #[test]
+    fn a_cancelled_import_comes_back_as_a_plain_file() {
+        let project = scratch_assets("cancel");
+        std::fs::write(project.join("assets/.originals/rec.mov"), b"original").unwrap();
+        let plan = crate::conform::plan(
+            "assets/.originals/rec.mov",
+            Some("rec"),
+            crate::conform::KeepOriginal::Move,
+            false,
+        )
+        .unwrap();
+        let (error, paths) =
+            unwind_conform(&project, &plan, true, "the conform was interrupted".into(), true);
+        assert_eq!(error, CONFORM_CANCELLED);
+        assert_eq!(paths, ["assets/rec.mov"]);
+        assert_eq!(std::fs::read(project.join("assets/rec.mov")).unwrap(), b"original");
+        assert!(!project.join("assets/.originals/rec.mov").exists());
+        assert!(!project.join("assets/rec.mp4").exists());
+        let _ = std::fs::remove_dir_all(&project);
+    }
+
+    #[test]
+    fn a_failed_or_in_place_conform_reports_its_own_error_and_rel() {
+        let project = scratch_assets("unwind");
+        std::fs::write(project.join("assets/clip.mov"), b"source").unwrap();
+        let plan =
+            crate::conform::plan("assets/clip.mov", None, crate::conform::KeepOriginal::Move, false)
+                .unwrap();
+        let (error, paths) = unwind_conform(&project, &plan, false, "boom".into(), false);
+        assert_eq!((error.as_str(), paths), ("boom", vec!["assets/clip.mov".to_owned()]));
+        let (error, _) = unwind_conform(&project, &plan, false, "boom".into(), true);
+        assert_eq!(error, CONFORM_CANCELLED);
+        assert_eq!(std::fs::read(project.join("assets/clip.mov")).unwrap(), b"source");
+        let _ = std::fs::remove_dir_all(&project);
+    }
+
+    /// A project with two conformed clips, one orphan original and an import still landing.
+    fn originals_project(tag: &str) -> PathBuf {
+        let project = scratch_assets(tag);
+        let write = |rel: &str, bytes: &[u8]| std::fs::write(project.join(rel), bytes).unwrap();
+        write("assets/.originals/rec.mov", &[1; 10]);
+        write("assets/.originals/demo.mp4", &[2; 20]);
+        write("assets/.originals/orphan.mov", &[3; 30]);
+        write("assets/.originals/.incoming-1-0.mov", &[4; 40]);
+        write("assets/rec.mp4", b"mezzanine");
+        write("assets/demo.mp4", b"mezzanine");
+        write(
+            "assets/rec.timing.json",
+            br#"{"source":{"original":"assets/.originals/rec.mov"},"mezzanine":{"path":"assets/rec.mp4"}}"#,
+        );
+        write(
+            "assets/demo.timing.json",
+            br#"{"source":{"original":"assets/.originals/demo.mp4"},"mezzanine":{"path":"assets/demo.mp4"}}"#,
+        );
+        project
+    }
+
+    fn remove_file(path: &Path) -> Result<(), String> {
+        std::fs::remove_file(path).map_err(|e| e.to_string())
+    }
+
+    #[test]
+    fn originals_list_with_their_clips_sizes_and_what_holds_them() {
+        let project = originals_project("list");
+        std::fs::create_dir_all(project.join("scenes")).unwrap();
+        std::fs::write(
+            project.join("scenes/01.json"),
+            r#"{"media":[{"src":"assets/.originals/orphan.mov"}]}"#,
+        )
+        .unwrap();
+        let running = vec!["assets/.originals/demo.mp4".to_owned()];
+        let list = originals_in(&project, &running);
+        let rels: Vec<&str> = list.iter().map(|o| o.rel.as_str()).collect();
+        assert_eq!(
+            rels,
+            [
+                "assets/.originals/demo.mp4",
+                "assets/.originals/orphan.mov",
+                "assets/.originals/rec.mov"
+            ]
+        );
+        assert_eq!(list[2].clip.as_deref(), Some("assets/rec.mp4"));
+        assert_eq!(list[2].bytes, 10);
+        assert_eq!(list[2].busy, None);
+        assert_eq!(list[0].busy.as_deref(), Some("demo.mp4 is still conforming"));
+        assert_eq!(list[1].clip, None);
+        assert!(list[1].busy.as_deref().unwrap().contains("01.json"));
+        // A clip deleted since leaves its original an orphan.
+        std::fs::remove_file(project.join("assets/rec.mp4")).unwrap();
+        assert_eq!(originals_in(&project, &[])[2].clip, None);
+        assert!(originals_in(&scratch_assets("list-empty"), &[]).is_empty());
+        let _ = std::fs::remove_dir_all(&project);
+        let _ = std::fs::remove_dir_all(scratch_assets("list-empty"));
+    }
+
+    #[test]
+    fn remove_original_takes_the_clips_original_and_unlinks_its_provenance() {
+        let project = originals_project("remove-one");
+        let origin = serde_json::json!({ "kind": "import", "from": "assets/.originals/rec.mov", "sourceName": "rec.mov", "tool": "app import", "atMs": 1 });
+        crate::asset_meta::record_asset_origin(&project, "assets/rec.mp4", origin, vec![])
+            .unwrap();
+        let removed = remove_original_in(&project, "assets/rec.mp4", &[], &remove_file, 7).unwrap();
+        assert_eq!(removed, RemovedOriginals { count: 1, bytes: 10 });
+        assert!(!project.join("assets/.originals/rec.mov").exists());
+        assert!(project.join("assets/rec.mp4").is_file());
+        let meta: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(project.join(crate::asset_meta::META_REL)).unwrap(),
+        )
+        .unwrap();
+        let origin = &meta["assets"]["assets/rec.mp4"]["origin"];
+        assert!(origin.get("from").is_none());
+        assert_eq!(origin["originalRemovedAtMs"], 7);
+        // Named by its own path, an orphan goes too.
+        let orphan =
+            remove_original_in(&project, "assets/.originals/orphan.mov", &[], &remove_file, 7)
+                .unwrap();
+        assert_eq!(orphan.bytes, 30);
+        let gone = remove_original_in(&project, "assets/rec.mp4", &[], &remove_file, 7);
+        assert_eq!(gone.unwrap_err(), "assets/rec.mp4 has no kept original");
+        let running = vec!["assets/.originals/demo.mp4".to_owned()];
+        assert!(remove_original_in(&project, "assets/demo.mp4", &running, &remove_file, 7)
+            .unwrap_err()
+            .contains("still conforming"));
+        assert!(project.join("assets/.originals/demo.mp4").is_file());
+        assert!(remove_original_in(&project, "../x.mov", &[], &remove_file, 7).is_err());
+        let _ = std::fs::remove_dir_all(&project);
+    }
+
+    #[test]
+    fn remove_originals_clears_everything_nothing_needs() {
+        let project = originals_project("remove-all");
+        let running = vec!["assets/.originals/demo.mp4".to_owned()];
+        let removed = remove_originals_in(&project, &running, &remove_file, 7).unwrap();
+        assert_eq!(removed, RemovedOriginals { count: 2, bytes: 40 });
+        assert!(project.join("assets/.originals/demo.mp4").is_file());
+        assert!(project.join("assets/.originals/.incoming-1-0.mov").is_file());
+        assert!(!project.join("assets/.originals/rec.mov").exists());
+        assert!(!project.join("assets/.originals/orphan.mov").exists());
+        assert_eq!(
+            remove_originals_in(&project, &running, &remove_file, 7).unwrap(),
+            RemovedOriginals::default()
+        );
+        let refuse = |_: &Path| Err::<(), String>("the Trash said no".into());
+        assert_eq!(
+            remove_originals_in(&project, &[], &refuse, 7).unwrap_err(),
+            "the Trash said no"
+        );
+        assert!(project.join("assets/.originals/demo.mp4").is_file());
         let _ = std::fs::remove_dir_all(&project);
     }
 
