@@ -285,6 +285,10 @@ export function parseTextAnimationSpec(v: unknown, source: string): TextAnimatio
     out: v.out,
     staggerMs: isNum(v.staggerMs) ? v.staggerMs : 0,
   };
+  if (v.staggerExact === true) spec.staggerExact = true;
+  else if (v.staggerExact !== undefined && v.staggerExact !== false) {
+    parseWarn(`[theme] ${source}: invalid "textAnimation.staggerExact", dropped`);
+  }
   if (v.stagger === "char" || v.stagger === "word") spec.stagger = v.stagger;
   if (isNum(v.delayMs)) spec.delayMs = v.delayMs;
   else if (v.delayMs !== undefined) {

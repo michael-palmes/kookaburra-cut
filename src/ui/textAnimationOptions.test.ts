@@ -130,6 +130,15 @@ describe("specToDraft (seeding)", () => {
     expect(draft.delivery).toBe("word");
   });
 
+  it("writes an explicit zero delay exact, and round-trips it", () => {
+    const draft = { ...defaultDraft("fade-up"), delivery: "by-paragraph" as const, staggerMs: 0 };
+    const spec = draftToSpec(draft);
+    expect(spec).toMatchObject({ staggerMs: 0, staggerExact: true });
+    expect(resolveTextAnimation({}, theme, spec)?.staggerMs).toBe(0);
+    expect(specToDraft(spec)).toEqual(draft);
+    expect(draftToSpec(defaultDraft("fade")).staggerExact).toBeUndefined();
+  });
+
   it("round-trips a start delay", () => {
     const draft = specToDraft({ in: "fade", out: "none", staggerMs: 0, delayMs: 750 });
     expect(draft.delayMs).toBe(750);

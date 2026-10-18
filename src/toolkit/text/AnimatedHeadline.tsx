@@ -27,11 +27,12 @@ import {
   useSceneContext,
 } from "../../engine/sceneContext";
 import { registerSceneText } from "../../engine/sceneTextRegistry";
+import { reportTextDerivedPending } from "../../engine/textDerivedState";
 import { useTextKeyRegistry } from "../../engine/textKeyRegistry";
 import { useTextMotionRegistry } from "../../engine/textMotionRegistry";
 import { MotionBlurContext, useTimeline } from "../../engine/timeline";
 import { useTheme } from "../../theme";
-import { formatFontString, parseFontString } from "../../theme/fontRef";
+import { formatFontString } from "../../theme/fontRef";
 import { fontUrl, SDF_GLYPH_SIZE } from "../../theme/fonts";
 import type { FontRef, TextAnimationSpec, TextLookSpec, Theme } from "../../theme/tokens";
 import { foldBandToChild, GroupAnimationContext } from "../group/context";
@@ -47,6 +48,7 @@ import {
 import { type PreparedEmojiText, prepareEmojiText } from "./emojiText";
 import { materialProp, useExactText, useExactTextBase } from "./exactText";
 import { computeUnitYExtents, HighlightQuads } from "./HighlightQuads";
+import { resolveHeadlineType } from "./headlineType";
 import {
   arcGlyphTransform,
   arcSpec,
@@ -74,6 +76,7 @@ import {
   DEFAULT_START_SCALE,
   EDGE_SENTINEL,
   hasOwnAnimationProps,
+  pinRevealDuration,
   presetNeedsShaderPath,
   type ResolvedTextAnimation,
   resolveTextAnimationWithDoc,
@@ -126,6 +129,8 @@ export interface AnimatedHeadlineProps {
   staggerMs?: number;
   /** Hold before the in starts, ms (clamped ≥ 0; the out never shifts). Defaults to `textAnimation.delayMs`. */
   delayMs?: number;
+  /** Pins the whole reveal, first unit's start to last unit's settle, to this many ms for the text's unit count (stagger and unit duration scale together); "authored" or absent keeps the authored per-unit timing. */
+  durationMs?: number | "authored";
   /** fade-scale: starting scale, landing at 1 (default 0.8, clamped 0.05-4). */
   startScale?: number;
   /** fade-scale: sweep the soft white shine band once during the scale-in. */
@@ -364,11 +369,8 @@ function AnimatedHeadlineRenderer(props: AnimatedHeadlineProps) {
   const textRegistryMountId = useId();
   const registrationMotion = props.managedTextCodedMotion ?? codedMotion;
   const registrationColor = fill ?? "text";
-  const registrationFont = formatFontString(
-    typeof fontValue === "string"
-      ? parseFontString(fontValue)
-      : (props.fontRef ?? theme.typography[props.face ?? "headline"]),
-  );
+  const type = resolveHeadlineType(theme, doc, props);
+  const registrationFont = formatFontString(type.fontRef);
   useLayoutEffect(() => {
     if (sceneIndex === undefined || !textKey) return;
     useTextKeyRegistry.getState().register(sceneIndex, textKey, textRegistryMountId, {
@@ -425,9 +427,9 @@ function AnimatedHeadlineRenderer(props: AnimatedHeadlineProps) {
     const base = props.position ?? [0, 0, 0];
     styled = {
       ...props,
-      ...(typeof fontValue === "string" ? { fontRef: parseFontString(fontValue) } : {}),
-      ...(typeof sizeMul === "number" ? { fontSize: (props.fontSize ?? 0.6) * sizeMul } : {}),
-      ...(typeof lineHeight === "number" ? { lineHeight } : {}),
+      ...(typeof fontValue === "string" ? { fontRef: type.fontRef } : {}),
+      ...(typeof sizeMul === "number" ? { fontSize: type.fontSize } : {}),
+      ...(typeof lineHeight === "number" ? { lineHeight: type.lineHeight } : {}),
       ...(typeof offX === "number" || typeof offY === "number"
         ? {
             position: [
@@ -492,7 +494,15 @@ function AnimatedHeadlineRenderer(props: AnimatedHeadlineProps) {
   const windowToMs = anim
     ? textAnimationWindowToMs(props.from ?? 0, authoredToMs, anim)
     : authoredToMs;
-  const holdToMs = anim ? textAnimationEndMs(props.from ?? 0, authoredToMs, anim) : authoredToMs;
+  // A pinned reveal (`durationMs`) ends exactly there whatever the unit count; the staggered path scales its own timing once its units exist.
+  const pinnedMs = typeof props.durationMs === "number" ? Math.max(0, props.durationMs) : undefined;
+  const pinnedTo = pinnedMs === undefined ? undefined : (props.from ?? 0) + pinnedMs;
+  const holdToMs =
+    pinnedTo !== undefined
+      ? pinnedTo + (anim?.delayMs ?? 0)
+      : anim
+        ? textAnimationEndMs(props.from ?? 0, authoredToMs, anim)
+        : authoredToMs;
   const holdOutMs = hasOut ? props.outAt : undefined;
   useEffect(() => {
     if (sceneIndex === undefined) return;
@@ -500,6 +510,7 @@ function AnimatedHeadlineRenderer(props: AnimatedHeadlineProps) {
   }, [sceneIndex, holdToMs, holdOutMs]);
   const legacyMotion = anim === null || (anim.preset === "none" && !hasOut);
   const animated = windowToMs === authoredToMs ? styled : { ...styled, to: windowToMs };
+  const whole = pinnedTo === undefined ? animated : { ...styled, to: pinnedTo };
   if (look3d && !emojiIn3d && look !== null) {
     // 3D looks re-render as an extruded twin; motion degrades to whole-block transforms from the unit-0 sample (legacyMotion keeps the v0 linear ramp on material opacity).
     return (
@@ -509,7 +520,7 @@ function AnimatedHeadlineRenderer(props: AnimatedHeadlineProps) {
         theme={theme}
         anim={legacyMotion ? null : anim}
         from={animated.from}
-        to={animated.to}
+        to={whole.to}
         outAt={animated.outAt}
         position={animated.position}
         fontSize={animated.fontSize}
@@ -541,7 +552,7 @@ function AnimatedHeadlineRenderer(props: AnimatedHeadlineProps) {
     }
     return (
       <LegacyHeadline
-        {...styled}
+        {...(pinnedTo === undefined ? styled : whole)}
         color={fill}
         theme={theme}
         lookSpec={activeLook}
@@ -572,7 +583,7 @@ function AnimatedHeadlineRenderer(props: AnimatedHeadlineProps) {
   }
   return (
     <BlockHeadline
-      {...animated}
+      {...whole}
       color={fill}
       theme={theme}
       anim={anim}
@@ -1024,9 +1035,19 @@ function StaggeredHeadline(
 
   // The stagger spread is only known after the first typeset; the dispatcher's entry covers the base window meanwhile.
   const sceneIndex = useSceneContext()?.index;
-  const spreadMs = units ? Math.max(0, units.count - 1) * anim.staggerMs : null;
+  // A pinned reveal scales the stagger and unit duration to the real unit count, so captures wait for the first typeset's units.
+  const pinned =
+    typeof props.durationMs === "number"
+      ? pinRevealDuration(anim, from, to, blockUnit ? 1 : (units?.count ?? 1), props.durationMs)
+      : null;
+  const unitAnim = pinned?.anim ?? anim;
+  const unitTo = pinned?.to ?? to;
+  const pinPending =
+    pinned !== null && units === null && !blockUnit && anim.staggerMs > 0 && text.length > 0;
+  useLayoutEffect(() => (pinPending ? reportTextDerivedPending() : undefined), [pinPending]);
+  const spreadMs = units ? Math.max(0, units.count - 1) * unitAnim.staggerMs : null;
   // A resolved delay lands the whole spread that much later (the window `to` excludes it).
-  const settleToMs = anim.delayMs === undefined ? to : to + anim.delayMs;
+  const settleToMs = anim.delayMs === undefined ? unitTo : unitTo + anim.delayMs;
   useEffect(() => {
     if (sceneIndex === undefined || spreadMs === null || spreadMs <= 0) return;
     return registerPresentTiming(sceneIndex, {
@@ -1042,7 +1063,7 @@ function StaggeredHeadline(
     return reportPresentTimingPending(sceneIndex);
   }, [sceneIndex, spreadPending]);
 
-  const timing: TextAnimTiming = { anim, from, to, outAt };
+  const timing: TextAnimTiming = { anim: unitAnim, from, to: unitTo, outAt };
   const { font, fill } = textStyle(theme, props);
   const count = units ? Math.max(1, units.count) : 1;
   const measuring = ownShine || scattering || pack || lookGradient || lookArc;
@@ -1051,9 +1072,9 @@ function StaggeredHeadline(
   const elemCY = bounds ? (bounds[1] + bounds[3]) / 2 : 0;
   // Group alpha folds into every unit's alpha CPU-side (× 1 fp-exact outside groups, so the uploaded uniform floats cannot move on standing projects); legacyReveal mounts fold the v0 linear ramp in the same way.
   const legacyAlpha = props.legacyReveal
-    ? to <= from
+    ? unitTo <= from
       ? 1
-      : Math.min(1, Math.max(0, (localMs - from) / (to - from)))
+      : Math.min(1, Math.max(0, (localMs - from) / (unitTo - from)))
     : 1;
   const groupAlpha = (group?.alpha ?? 1) * legacyAlpha;
   const samples = [];
