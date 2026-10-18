@@ -12,12 +12,15 @@ export interface StampScaleOptions {
   settleMs?: number;
 }
 
-/** A "stamped in" pop: returns the scale for ms since the stamp started (`from` before 0, 1 once settled). The defaults are part of the export contract. */
+/** The pop's defaults, part of the export contract. */
+export const STAMP_SCALE_DEFAULTS = { from: 0, peak: 1.12, inMs: 180, settleMs: 260 } as const;
+
+/** A "stamped in" pop: returns the scale for ms since the stamp started (`from` before 0, 1 once settled). */
 export function stampScale({
-  from = 0,
-  peak = 1.12,
-  inMs = 180,
-  settleMs = 260,
+  from = STAMP_SCALE_DEFAULTS.from,
+  peak = STAMP_SCALE_DEFAULTS.peak,
+  inMs = STAMP_SCALE_DEFAULTS.inMs,
+  settleMs = STAMP_SCALE_DEFAULTS.settleMs,
 }: StampScaleOptions = {}): (msSinceStart: number) => number {
   return (ms) => {
     if (!(ms >= 0)) return from;

@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { useTimeline } from "../../engine/timeline";
 import type { V3 } from "../types";
 import { ramp } from "./math";
-import { type StampScaleOptions, stampScale } from "./stampScale";
+import { STAMP_SCALE_DEFAULTS, type StampScaleOptions, stampScale } from "./stampScale";
 
 const DEG2RAD = Math.PI / 180;
 
@@ -32,7 +32,8 @@ export function Stamp({
   const { localMs } = useTimeline();
   const ms = localMs - at;
   const s = stampScale(pop)(ms) * scale;
-  const span = (pop.inMs ?? 180) + (pop.settleMs ?? 260);
+  const span =
+    (pop.inMs ?? STAMP_SCALE_DEFAULTS.inMs) + (pop.settleMs ?? STAMP_SCALE_DEFAULTS.settleMs);
   const settle = rotateDeg === 0 ? 0 : rotateDeg * DEG2RAD * (1 - ramp(ms, 0, span, "outBack"));
   return (
     <group
