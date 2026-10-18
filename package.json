@@ -23,7 +23,7 @@
     "test:kit:e2e": "python3 -B -m unittest discover -s .agents/skills/kookaburra-scene-authoring/scripts/tests -t .agents/skills/kookaburra-scene-authoring/scripts -p 'test_video_e2e.py'",
     "test:watch": "vitest",
     "agent:catalog": "KB_WRITE_CATALOG=1 vitest run src/agentKit/catalog.test.ts && biome format --write .agents/skills/kookaburra-scene-authoring/catalog.json",
-    "agent:vectors": "KB_WRITE_VECTORS=1 vitest run src/agentKit/editVectors.test.ts src/agentKit/repointVectors.test.ts && biome format --write --no-errors-on-unmatched .agents/skills/kookaburra-scene-authoring/scripts/tests/fixtures/edit-vectors.json .agents/skills/kookaburra-scene-authoring/scripts/tests/fixtures/repoint-vectors.json",
+    "agent:vectors": "KB_WRITE_VECTORS=1 vitest run src/agentKit/editVectors.test.ts src/agentKit/repointVectors.test.ts src/agentKit/themeMergeVectors.test.ts && biome format --write --no-errors-on-unmatched .agents/skills/kookaburra-scene-authoring/scripts/tests/fixtures/edit-vectors.json .agents/skills/kookaburra-scene-authoring/scripts/tests/fixtures/repoint-vectors.json .agents/skills/kookaburra-scene-authoring/scripts/tests/fixtures/theme-merge-vectors.json",
     "lint": "biome check .",
     "format": "biome format --write .",
     "setup:ffmpeg": "bash scripts/setup-ffmpeg.sh",

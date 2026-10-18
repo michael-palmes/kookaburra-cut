@@ -220,7 +220,8 @@ skill is its playbook. Code: `scripts/kblib/video/`.
 - Conformance: `pnpm agent:vectors` regenerates `edit-vectors.json` (editOps, editMath,
   editMasks) and `repoint-vectors.json` (re-points, follow-media sources) from the real
   TypeScript; `pnpm test:kit` replays them through the Python mirror, and a stale file
-  fails vitest. The Rust barcode fixtures (`fixtures/video-conformance/`, an `#[ignore]`
+  fails vitest. `theme-merge-vectors.json` does the same for theme `extends`
+  (`src/theme/extends.ts`, mirrored by `kblib/themes.py` and `src-tauri/src/theme.rs`). The Rust barcode fixtures (`fixtures/video-conformance/`, an `#[ignore]`
   test) pin which source frame the render shows at every output frame.
 - Hooks keep Edit and Write out of `edits/` and both managed skill folders; `kb video`
   is the only way an agent changes an edit.

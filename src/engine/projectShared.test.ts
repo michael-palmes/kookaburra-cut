@@ -19,7 +19,7 @@ describe("parseProjectShared", () => {
       expect(parseProjectShared(raw, "p/project.json")).toBeUndefined();
     }
     expect(warn).toHaveBeenCalledTimes(4);
-    expect(warn.mock.calls[0][0]).toContain("p/project.json: shared must be an object");
+    expect(warn.mock.calls[0][0]).toContain(`p/project.json: "shared" must be an object`);
     warn.mockRestore();
   });
 

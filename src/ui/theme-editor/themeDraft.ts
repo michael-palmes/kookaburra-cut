@@ -1,4 +1,13 @@
+import { collectParseWarnings } from "../../engine/parseWarnings";
 import { THEME_CATEGORIES, type ThemeCategoryId } from "../../theme/catalogue";
+import {
+  mergeThemeDocs,
+  patchThemeVariant,
+  resolveThemeDocument,
+  type ThemeDocLookup,
+  themeExtendsOf,
+} from "../../theme/extends";
+import { parseFontString } from "../../theme/fontRef";
 import { WORKSPACE_THEME_PREFIX } from "../../theme/registry";
 import { parseThemeDoc } from "../../theme/schema";
 import type { TextLookSpec, Theme, ThemeShadowSpec } from "../../theme/tokens";
@@ -79,25 +88,70 @@ export function isDirty(doc: ThemeDoc, savedText: string): boolean {
 }
 
 export interface ThemeDraftParse {
-  /** The resolved theme, absent when a REQUIRED block (colors/typography/motion) is invalid. */
+  /** The resolved theme, absent when a REQUIRED block (colors/typography/motion) is invalid or a variant's base is missing. */
   theme?: Theme;
   /** Everything the schema warned about, surfaced in the editor instead of hiding in the console. */
   warnings: string[];
 }
 
-/** Parse the draft through the shipping schema, capturing its drop-and-warn messages: `parseThemeDoc` reports by console, and the editor must show those without blocking the edit that caused them. */
-export function parseThemeDraft(doc: ThemeDoc, source: string): ThemeDraftParse {
-  const warnings: string[] = [];
-  const original = console.warn;
-  console.warn = (...args: unknown[]) => {
-    warnings.push(args.map((arg) => (typeof arg === "string" ? arg : String(arg))).join(" "));
+const noBases: ThemeDocLookup = () => undefined;
+
+/** Parse the draft through the shipping schema (a variant merged over its base first), collecting its drop-and-warn messages so the editor shows them without blocking the edit that caused them. */
+export function parseThemeDraft(
+  doc: ThemeDoc,
+  source: string,
+  lookup: ThemeDocLookup = noBases,
+): ThemeDraftParse {
+  const { result: theme, warnings } = collectParseWarnings(() => {
+    const resolved = resolveThemeDocument(doc, source, lookup);
+    return resolved === undefined ? undefined : parseThemeDoc(resolved, source);
+  });
+  return { theme, warnings };
+}
+
+// ── Variants ──────────────────────────────────────────────────────────────
+
+export interface ThemeVariant {
+  /** The theme id the draft names in `extends`. */
+  baseId: string;
+  /** The base's display name, else its id. */
+  baseName: string;
+  /** The base chain merged, absent when it can't be resolved. */
+  base?: ThemeDoc;
+}
+
+/** The base a draft extends, read through `lookup`; null for a theme that extends nothing. */
+export function readThemeVariant(doc: ThemeDoc, lookup: ThemeDocLookup): ThemeVariant | null {
+  const baseId = themeExtendsOf(doc);
+  if (baseId === undefined) return null;
+  const raw = lookup(baseId);
+  const base = collectParseWarnings(() => resolveThemeDocument(raw, baseId, lookup)).result;
+  const named = isRecord(raw) && typeof raw.name === "string" && raw.name.trim() !== "";
+  return {
+    baseId,
+    baseName: named ? (raw.name as string) : baseId,
+    ...(isRecord(base) ? { base } : {}),
   };
-  try {
-    const theme = parseThemeDoc(doc, source);
-    return { theme, warnings };
-  } finally {
-    console.warn = original;
-  }
+}
+
+/** What the editor's sections read: the variant merged over its base, else the draft itself. */
+export function effectiveThemeDoc(doc: ThemeDoc, variant: ThemeVariant | null): ThemeDoc {
+  return variant?.base ? mergeThemeDocs(variant.base, doc) : doc;
+}
+
+/** Lands a section's edit of the effective document back on the draft: a variant keeps only what it overrides. */
+export function patchThemeDraft(
+  doc: ThemeDoc,
+  variant: ThemeVariant | null,
+  next: ThemeDoc,
+): ThemeDoc {
+  if (!variant?.base) return next;
+  return patchThemeVariant(doc, variant.base, effectiveThemeDoc(doc, variant), next);
+}
+
+/** The merged document as a standalone theme without `extends` (the Detach action). */
+export function standaloneThemeDoc(doc: ThemeDoc, variant: ThemeVariant): ThemeDoc {
+  return variant.base ? mergeThemeDocs(variant.base, doc) : doc;
 }
 
 // ── Identity ──────────────────────────────────────────────────────────────
@@ -348,7 +402,7 @@ export function readFontSlot(
   fallbackWeight: number,
 ): FontSlotValue {
   const value = getIn(doc, ["typography", slot]);
-  if (typeof value === "string") return { family: value, weight: fallbackWeight };
+  if (typeof value === "string" && value !== "") return parseFontString(value);
   if (isRecord(value) && typeof value.family === "string") {
     return { family: value.family, weight: isNum(value.weight) ? value.weight : fallbackWeight };
   }

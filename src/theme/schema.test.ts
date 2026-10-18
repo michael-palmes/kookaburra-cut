@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { collectParseWarnings } from "../engine/parseWarnings";
+import { DEFAULT_SHADOW_SPEC } from "../engine/sceneLighting";
 import kookaburraAbyssDoc from "./builtin/kookaburra-abyss.json";
 import kookaburraDefaultDoc from "./builtin/kookaburra-default.json";
 import kookaburraEmberDoc from "./builtin/kookaburra-ember.json";
@@ -908,5 +910,78 @@ describe("v8 -> v9 theme parse equivalence (the whole-lineup pin)", () => {
     expect(parsed?.lights).toBeUndefined();
     expect(parsed?.fixtures).toBeUndefined();
     expect(parsed?.environment).toBeUndefined();
+  });
+});
+
+describe("theme schema v3 parse rules", () => {
+  const stops = [
+    ["#000000", 0],
+    ["#ffffff", 1],
+  ];
+  const warnings = (fn: () => unknown): string[] => collectParseWarnings(fn).warnings;
+
+  it("reads font strings with the sidecar grammar", () => {
+    const theme = parseThemeDoc(
+      { ...validDoc(), typography: { headline: "Avenir Next@600", body: "Inter", scale: 1.2 } },
+      "t",
+    );
+    expect(theme?.typography.headline).toEqual({ family: "Avenir Next", weight: 600 });
+    expect(theme?.typography.body).toEqual({ family: "Inter", weight: 400 });
+  });
+
+  it("defaults a radial angle, and warns when a linear one drops", () => {
+    const doc = {
+      ...validDoc(),
+      gradients: { glow: { type: "radial", stops }, band: { type: "linear", stops } },
+    };
+    const { result: theme, warnings: found } = collectParseWarnings(() => parseThemeDoc(doc, "t"));
+    expect(theme?.gradients).toEqual({ glow: { type: "radial", angleDeg: 0, stops } });
+    expect(found).toEqual(['[theme] t: gradient "band" needs a numeric "angleDeg", dropped']);
+  });
+
+  it("warns when an inline spec falls back to its named gradient", () => {
+    const { result: background, warnings: found } = collectParseWarnings(() =>
+      parseBackgroundSpec(
+        { type: "gradient", gradient: "brand", spec: { type: "linear", stops } },
+        "t",
+      ),
+    );
+    expect(background).toEqual({ type: "gradient", gradient: "brand" });
+    expect(found).toEqual([
+      `[theme] t: "background.spec" isn't a valid gradient, so the "brand" gradient shows instead`,
+    ]);
+    expect(
+      warnings(() => parseBackdropSpec({ type: "gradient", gradient: "brand", spec: 3 }, "t")),
+    ).toHaveLength(1);
+    expect(warnings(() => parseBackdropSpec({ type: "gradient", gradient: "brand" }, "t"))).toEqual(
+      [],
+    );
+  });
+
+  it("fills a shadow from the defaults when only the technique is set", () => {
+    const theme = parseThemeDoc(
+      {
+        ...validDoc(),
+        lighting: {
+          key: { azimuthDeg: 0, elevationDeg: 45, intensity: 1 },
+          ambient: 0.5,
+          shadow: { technique: "map", opacity: 0.45, bias: "x" },
+        },
+      },
+      "t",
+    );
+    expect(theme?.lighting?.shadow).toEqual({ ...DEFAULT_SHADOW_SPEC, opacity: 0.45 });
+  });
+
+  it("accepts version 3 and still reads v1 and v2 documents unchanged", () => {
+    expect(THEME_DOC_VERSION).toBe(3);
+    const v2 = parseThemeDoc(validDoc(), "t");
+    expect(parseThemeDoc({ ...validDoc(), version: 3 }, "t")).toEqual(v2);
+    expect(parseThemeDoc({ ...validDoc(), version: 1 }, "t")).toEqual(v2);
+  });
+
+  it("reports through parseWarn, so a collector sees what the console used to", () => {
+    const found = warnings(() => parseThemeDoc({ ...validDoc(), chartColors: "x" }, "ws:brand"));
+    expect(found).toEqual([`[theme] ws:brand: "chartColors" isn't an array, dropped`]);
   });
 });

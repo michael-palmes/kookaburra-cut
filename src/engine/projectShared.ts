@@ -1,4 +1,5 @@
 import { createContext, useContext } from "react";
+import { parseWarn } from "./parseWarnings";
 
 export type ProjectSharedValue =
   | null
@@ -25,7 +26,7 @@ function deepFreeze<T>(value: T): T {
 export function parseProjectShared(raw: unknown, source: string): ProjectShared | undefined {
   if (raw === undefined) return undefined;
   if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
-    console.warn(`[project] ${source}: shared must be an object, ignoring it`);
+    parseWarn(`[project] ${source}: "shared" must be an object, dropped`);
     return undefined;
   }
   return deepFreeze(JSON.parse(JSON.stringify(raw)) as ProjectShared);

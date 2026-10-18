@@ -1,0 +1,3450 @@
+{
+  "version": 1,
+  "merge": [
+    {
+      "id": "identity-only-child",
+      "base": {
+        "version": 2,
+        "id": "base",
+        "name": "Base",
+        "catalogue": {
+          "category": "essentials",
+          "useLabel": "Base",
+          "tags": [
+            "brand"
+          ],
+          "stage": "none"
+        },
+        "mode": "dark",
+        "colors": {
+          "background": "#0b1020",
+          "text": "#f4f6fb",
+          "accent": "#ff5a36",
+          "muted": "#8a94ab"
+        },
+        "typography": {
+          "headline": {
+            "family": "Space Grotesk",
+            "weight": 600
+          },
+          "body": "Inter",
+          "scale": 1.25
+        },
+        "motion": {
+          "durations": {
+            "fast": 200,
+            "base": 500,
+            "slow": 900
+          },
+          "easings": {
+            "standard": "outCubic",
+            "emphasized": "outExpo"
+          }
+        },
+        "chartColors": [
+          "#ff5a36",
+          "#3ad1c4"
+        ],
+        "gradients": {
+          "brand": {
+            "type": "linear",
+            "angleDeg": 160,
+            "stops": [
+              [
+                "#0b1020",
+                0
+              ],
+              [
+                "#1b2350",
+                1
+              ]
+            ]
+          }
+        },
+        "background": {
+          "type": "gradient",
+          "gradient": "brand",
+          "parallax": 0.2
+        },
+        "lighting": {
+          "sun": {
+            "azimuthDeg": 35,
+            "elevationDeg": 40,
+            "intensity": 1.8
+          },
+          "ambient": 0.4
+        }
+      },
+      "child": {
+        "version": 3,
+        "id": "variant",
+        "name": "Variant"
+      },
+      "out": {
+        "mode": "dark",
+        "colors": {
+          "background": "#0b1020",
+          "text": "#f4f6fb",
+          "accent": "#ff5a36",
+          "muted": "#8a94ab"
+        },
+        "typography": {
+          "headline": {
+            "family": "Space Grotesk",
+            "weight": 600
+          },
+          "body": "Inter",
+          "scale": 1.25
+        },
+        "motion": {
+          "durations": {
+            "fast": 200,
+            "base": 500,
+            "slow": 900
+          },
+          "easings": {
+            "standard": "outCubic",
+            "emphasized": "outExpo"
+          }
+        },
+        "chartColors": [
+          "#ff5a36",
+          "#3ad1c4"
+        ],
+        "gradients": {
+          "brand": {
+            "type": "linear",
+            "angleDeg": 160,
+            "stops": [
+              [
+                "#0b1020",
+                0
+              ],
+              [
+                "#1b2350",
+                1
+              ]
+            ]
+          }
+        },
+        "background": {
+          "type": "gradient",
+          "gradient": "brand",
+          "parallax": 0.2
+        },
+        "lighting": {
+          "sun": {
+            "azimuthDeg": 35,
+            "elevationDeg": 40,
+            "intensity": 1.8
+          },
+          "ambient": 0.4
+        },
+        "version": 3,
+        "id": "variant",
+        "name": "Variant"
+      }
+    },
+    {
+      "id": "scalar-replaces",
+      "base": {
+        "version": 2,
+        "id": "base",
+        "name": "Base",
+        "catalogue": {
+          "category": "essentials",
+          "useLabel": "Base",
+          "tags": [
+            "brand"
+          ],
+          "stage": "none"
+        },
+        "mode": "dark",
+        "colors": {
+          "background": "#0b1020",
+          "text": "#f4f6fb",
+          "accent": "#ff5a36",
+          "muted": "#8a94ab"
+        },
+        "typography": {
+          "headline": {
+            "family": "Space Grotesk",
+            "weight": 600
+          },
+          "body": "Inter",
+          "scale": 1.25
+        },
+        "motion": {
+          "durations": {
+            "fast": 200,
+            "base": 500,
+            "slow": 900
+          },
+          "easings": {
+            "standard": "outCubic",
+            "emphasized": "outExpo"
+          }
+        },
+        "chartColors": [
+          "#ff5a36",
+          "#3ad1c4"
+        ],
+        "gradients": {
+          "brand": {
+            "type": "linear",
+            "angleDeg": 160,
+            "stops": [
+              [
+                "#0b1020",
+                0
+              ],
+              [
+                "#1b2350",
+                1
+              ]
+            ]
+          }
+        },
+        "background": {
+          "type": "gradient",
+          "gradient": "brand",
+          "parallax": 0.2
+        },
+        "lighting": {
+          "sun": {
+            "azimuthDeg": 35,
+            "elevationDeg": 40,
+            "intensity": 1.8
+          },
+          "ambient": 0.4
+        }
+      },
+      "child": {
+        "version": 3,
+        "id": "variant",
+        "name": "Variant",
+        "mode": "light",
+        "colors": {
+          "accent": "#00aa88"
+        }
+      },
+      "out": {
+        "mode": "light",
+        "colors": {
+          "background": "#0b1020",
+          "text": "#f4f6fb",
+          "accent": "#00aa88",
+          "muted": "#8a94ab"
+        },
+        "typography": {
+          "headline": {
+            "family": "Space Grotesk",
+            "weight": 600
+          },
+          "body": "Inter",
+          "scale": 1.25
+        },
+        "motion": {
+          "durations": {
+            "fast": 200,
+            "base": 500,
+            "slow": 900
+          },
+          "easings": {
+            "standard": "outCubic",
+            "emphasized": "outExpo"
+          }
+        },
+        "chartColors": [
+          "#ff5a36",
+          "#3ad1c4"
+        ],
+        "gradients": {
+          "brand": {
+            "type": "linear",
+            "angleDeg": 160,
+            "stops": [
+              [
+                "#0b1020",
+                0
+              ],
+              [
+                "#1b2350",
+                1
+              ]
+            ]
+          }
+        },
+        "background": {
+          "type": "gradient",
+          "gradient": "brand",
+          "parallax": 0.2
+        },
+        "lighting": {
+          "sun": {
+            "azimuthDeg": 35,
+            "elevationDeg": 40,
+            "intensity": 1.8
+          },
+          "ambient": 0.4
+        },
+        "version": 3,
+        "id": "variant",
+        "name": "Variant"
+      }
+    },
+    {
+      "id": "objects-merge-deep",
+      "base": {
+        "version": 2,
+        "id": "base",
+        "name": "Base",
+        "catalogue": {
+          "category": "essentials",
+          "useLabel": "Base",
+          "tags": [
+            "brand"
+          ],
+          "stage": "none"
+        },
+        "mode": "dark",
+        "colors": {
+          "background": "#0b1020",
+          "text": "#f4f6fb",
+          "accent": "#ff5a36",
+          "muted": "#8a94ab"
+        },
+        "typography": {
+          "headline": {
+            "family": "Space Grotesk",
+            "weight": 600
+          },
+          "body": "Inter",
+          "scale": 1.25
+        },
+        "motion": {
+          "durations": {
+            "fast": 200,
+            "base": 500,
+            "slow": 900
+          },
+          "easings": {
+            "standard": "outCubic",
+            "emphasized": "outExpo"
+          }
+        },
+        "chartColors": [
+          "#ff5a36",
+          "#3ad1c4"
+        ],
+        "gradients": {
+          "brand": {
+            "type": "linear",
+            "angleDeg": 160,
+            "stops": [
+              [
+                "#0b1020",
+                0
+              ],
+              [
+                "#1b2350",
+                1
+              ]
+            ]
+          }
+        },
+        "background": {
+          "type": "gradient",
+          "gradient": "brand",
+          "parallax": 0.2
+        },
+        "lighting": {
+          "sun": {
+            "azimuthDeg": 35,
+            "elevationDeg": 40,
+            "intensity": 1.8
+          },
+          "ambient": 0.4
+        }
+      },
+      "child": {
+        "version": 3,
+        "id": "variant",
+        "name": "Variant",
+        "lighting": {
+          "sun": {
+            "intensity": 2.4
+          }
+        },
+        "typography": {
+          "scale": 1.4
+        }
+      },
+      "out": {
+        "mode": "dark",
+        "colors": {
+          "background": "#0b1020",
+          "text": "#f4f6fb",
+          "accent": "#ff5a36",
+          "muted": "#8a94ab"
+        },
+        "typography": {
+          "headline": {
+            "family": "Space Grotesk",
+            "weight": 600
+          },
+          "body": "Inter",
+          "scale": 1.4
+        },
+        "motion": {
+          "durations": {
+            "fast": 200,
+            "base": 500,
+            "slow": 900
+          },
+          "easings": {
+            "standard": "outCubic",
+            "emphasized": "outExpo"
+          }
+        },
+        "chartColors": [
+          "#ff5a36",
+          "#3ad1c4"
+        ],
+        "gradients": {
+          "brand": {
+            "type": "linear",
+            "angleDeg": 160,
+            "stops": [
+              [
+                "#0b1020",
+                0
+              ],
+              [
+                "#1b2350",
+                1
+              ]
+            ]
+          }
+        },
+        "background": {
+          "type": "gradient",
+          "gradient": "brand",
+          "parallax": 0.2
+        },
+        "lighting": {
+          "sun": {
+            "azimuthDeg": 35,
+            "elevationDeg": 40,
+            "intensity": 2.4
+          },
+          "ambient": 0.4
+        },
+        "version": 3,
+        "id": "variant",
+        "name": "Variant"
+      }
+    },
+    {
+      "id": "arrays-replace-whole",
+      "base": {
+        "version": 2,
+        "id": "base",
+        "name": "Base",
+        "catalogue": {
+          "category": "essentials",
+          "useLabel": "Base",
+          "tags": [
+            "brand"
+          ],
+          "stage": "none"
+        },
+        "mode": "dark",
+        "colors": {
+          "background": "#0b1020",
+          "text": "#f4f6fb",
+          "accent": "#ff5a36",
+          "muted": "#8a94ab"
+        },
+        "typography": {
+          "headline": {
+            "family": "Space Grotesk",
+            "weight": 600
+          },
+          "body": "Inter",
+          "scale": 1.25
+        },
+        "motion": {
+          "durations": {
+            "fast": 200,
+            "base": 500,
+            "slow": 900
+          },
+          "easings": {
+            "standard": "outCubic",
+            "emphasized": "outExpo"
+          }
+        },
+        "chartColors": [
+          "#ff5a36",
+          "#3ad1c4"
+        ],
+        "gradients": {
+          "brand": {
+            "type": "linear",
+            "angleDeg": 160,
+            "stops": [
+              [
+                "#0b1020",
+                0
+              ],
+              [
+                "#1b2350",
+                1
+              ]
+            ]
+          }
+        },
+        "background": {
+          "type": "gradient",
+          "gradient": "brand",
+          "parallax": 0.2
+        },
+        "lighting": {
+          "sun": {
+            "azimuthDeg": 35,
+            "elevationDeg": 40,
+            "intensity": 1.8
+          },
+          "ambient": 0.4
+        }
+      },
+      "child": {
+        "version": 3,
+        "id": "variant",
+        "name": "Variant",
+        "chartColors": [
+          "#111111"
+        ],
+        "gradients": {
+          "brand": {
+            "stops": [
+              [
+                "#000000",
+                0
+              ],
+              [
+                "#ffffff",
+                1
+              ]
+            ]
+          }
+        }
+      },
+      "out": {
+        "mode": "dark",
+        "colors": {
+          "background": "#0b1020",
+          "text": "#f4f6fb",
+          "accent": "#ff5a36",
+          "muted": "#8a94ab"
+        },
+        "typography": {
+          "headline": {
+            "family": "Space Grotesk",
+            "weight": 600
+          },
+          "body": "Inter",
+          "scale": 1.25
+        },
+        "motion": {
+          "durations": {
+            "fast": 200,
+            "base": 500,
+            "slow": 900
+          },
+          "easings": {
+            "standard": "outCubic",
+            "emphasized": "outExpo"
+          }
+        },
+        "chartColors": [
+          "#111111"
+        ],
+        "gradients": {
+          "brand": {
+            "type": "linear",
+            "angleDeg": 160,
+            "stops": [
+              [
+                "#000000",
+                0
+              ],
+              [
+                "#ffffff",
+                1
+              ]
+            ]
+          }
+        },
+        "background": {
+          "type": "gradient",
+          "gradient": "brand",
+          "parallax": 0.2
+        },
+        "lighting": {
+          "sun": {
+            "azimuthDeg": 35,
+            "elevationDeg": 40,
+            "intensity": 1.8
+          },
+          "ambient": 0.4
+        },
+        "version": 3,
+        "id": "variant",
+        "name": "Variant"
+      }
+    },
+    {
+      "id": "null-clears-top-level",
+      "base": {
+        "version": 2,
+        "id": "base",
+        "name": "Base",
+        "catalogue": {
+          "category": "essentials",
+          "useLabel": "Base",
+          "tags": [
+            "brand"
+          ],
+          "stage": "none"
+        },
+        "mode": "dark",
+        "colors": {
+          "background": "#0b1020",
+          "text": "#f4f6fb",
+          "accent": "#ff5a36",
+          "muted": "#8a94ab"
+        },
+        "typography": {
+          "headline": {
+            "family": "Space Grotesk",
+            "weight": 600
+          },
+          "body": "Inter",
+          "scale": 1.25
+        },
+        "motion": {
+          "durations": {
+            "fast": 200,
+            "base": 500,
+            "slow": 900
+          },
+          "easings": {
+            "standard": "outCubic",
+            "emphasized": "outExpo"
+          }
+        },
+        "chartColors": [
+          "#ff5a36",
+          "#3ad1c4"
+        ],
+        "gradients": {
+          "brand": {
+            "type": "linear",
+            "angleDeg": 160,
+            "stops": [
+              [
+                "#0b1020",
+                0
+              ],
+              [
+                "#1b2350",
+                1
+              ]
+            ]
+          }
+        },
+        "background": {
+          "type": "gradient",
+          "gradient": "brand",
+          "parallax": 0.2
+        },
+        "lighting": {
+          "sun": {
+            "azimuthDeg": 35,
+            "elevationDeg": 40,
+            "intensity": 1.8
+          },
+          "ambient": 0.4
+        }
+      },
+      "child": {
+        "version": 3,
+        "id": "variant",
+        "name": "Variant",
+        "background": null,
+        "chartColors": null
+      },
+      "out": {
+        "mode": "dark",
+        "colors": {
+          "background": "#0b1020",
+          "text": "#f4f6fb",
+          "accent": "#ff5a36",
+          "muted": "#8a94ab"
+        },
+        "typography": {
+          "headline": {
+            "family": "Space Grotesk",
+            "weight": 600
+          },
+          "body": "Inter",
+          "scale": 1.25
+        },
+        "motion": {
+          "durations": {
+            "fast": 200,
+            "base": 500,
+            "slow": 900
+          },
+          "easings": {
+            "standard": "outCubic",
+            "emphasized": "outExpo"
+          }
+        },
+        "gradients": {
+          "brand": {
+            "type": "linear",
+            "angleDeg": 160,
+            "stops": [
+              [
+                "#0b1020",
+                0
+              ],
+              [
+                "#1b2350",
+                1
+              ]
+            ]
+          }
+        },
+        "lighting": {
+          "sun": {
+            "azimuthDeg": 35,
+            "elevationDeg": 40,
+            "intensity": 1.8
+          },
+          "ambient": 0.4
+        },
+        "version": 3,
+        "id": "variant",
+        "name": "Variant"
+      }
+    },
+    {
+      "id": "null-clears-nested",
+      "base": {
+        "version": 2,
+        "id": "base",
+        "name": "Base",
+        "catalogue": {
+          "category": "essentials",
+          "useLabel": "Base",
+          "tags": [
+            "brand"
+          ],
+          "stage": "none"
+        },
+        "mode": "dark",
+        "colors": {
+          "background": "#0b1020",
+          "text": "#f4f6fb",
+          "accent": "#ff5a36",
+          "muted": "#8a94ab"
+        },
+        "typography": {
+          "headline": {
+            "family": "Space Grotesk",
+            "weight": 600
+          },
+          "body": "Inter",
+          "scale": 1.25
+        },
+        "motion": {
+          "durations": {
+            "fast": 200,
+            "base": 500,
+            "slow": 900
+          },
+          "easings": {
+            "standard": "outCubic",
+            "emphasized": "outExpo"
+          }
+        },
+        "chartColors": [
+          "#ff5a36",
+          "#3ad1c4"
+        ],
+        "gradients": {
+          "brand": {
+            "type": "linear",
+            "angleDeg": 160,
+            "stops": [
+              [
+                "#0b1020",
+                0
+              ],
+              [
+                "#1b2350",
+                1
+              ]
+            ]
+          }
+        },
+        "background": {
+          "type": "gradient",
+          "gradient": "brand",
+          "parallax": 0.2
+        },
+        "lighting": {
+          "sun": {
+            "azimuthDeg": 35,
+            "elevationDeg": 40,
+            "intensity": 1.8
+          },
+          "ambient": 0.4
+        }
+      },
+      "child": {
+        "version": 3,
+        "id": "variant",
+        "name": "Variant",
+        "lighting": {
+          "ambient": null
+        },
+        "background": {
+          "parallax": null
+        }
+      },
+      "out": {
+        "mode": "dark",
+        "colors": {
+          "background": "#0b1020",
+          "text": "#f4f6fb",
+          "accent": "#ff5a36",
+          "muted": "#8a94ab"
+        },
+        "typography": {
+          "headline": {
+            "family": "Space Grotesk",
+            "weight": 600
+          },
+          "body": "Inter",
+          "scale": 1.25
+        },
+        "motion": {
+          "durations": {
+            "fast": 200,
+            "base": 500,
+            "slow": 900
+          },
+          "easings": {
+            "standard": "outCubic",
+            "emphasized": "outExpo"
+          }
+        },
+        "chartColors": [
+          "#ff5a36",
+          "#3ad1c4"
+        ],
+        "gradients": {
+          "brand": {
+            "type": "linear",
+            "angleDeg": 160,
+            "stops": [
+              [
+                "#0b1020",
+                0
+              ],
+              [
+                "#1b2350",
+                1
+              ]
+            ]
+          }
+        },
+        "background": {
+          "type": "gradient",
+          "gradient": "brand"
+        },
+        "lighting": {
+          "sun": {
+            "azimuthDeg": 35,
+            "elevationDeg": 40,
+            "intensity": 1.8
+          }
+        },
+        "version": 3,
+        "id": "variant",
+        "name": "Variant"
+      }
+    },
+    {
+      "id": "null-for-absent-key",
+      "base": {
+        "version": 2,
+        "id": "base",
+        "name": "Base",
+        "catalogue": {
+          "category": "essentials",
+          "useLabel": "Base",
+          "tags": [
+            "brand"
+          ],
+          "stage": "none"
+        },
+        "mode": "dark",
+        "colors": {
+          "background": "#0b1020",
+          "text": "#f4f6fb",
+          "accent": "#ff5a36",
+          "muted": "#8a94ab"
+        },
+        "typography": {
+          "headline": {
+            "family": "Space Grotesk",
+            "weight": 600
+          },
+          "body": "Inter",
+          "scale": 1.25
+        },
+        "motion": {
+          "durations": {
+            "fast": 200,
+            "base": 500,
+            "slow": 900
+          },
+          "easings": {
+            "standard": "outCubic",
+            "emphasized": "outExpo"
+          }
+        },
+        "chartColors": [
+          "#ff5a36",
+          "#3ad1c4"
+        ],
+        "gradients": {
+          "brand": {
+            "type": "linear",
+            "angleDeg": 160,
+            "stops": [
+              [
+                "#0b1020",
+                0
+              ],
+              [
+                "#1b2350",
+                1
+              ]
+            ]
+          }
+        },
+        "background": {
+          "type": "gradient",
+          "gradient": "brand",
+          "parallax": 0.2
+        },
+        "lighting": {
+          "sun": {
+            "azimuthDeg": 35,
+            "elevationDeg": 40,
+            "intensity": 1.8
+          },
+          "ambient": 0.4
+        }
+      },
+      "child": {
+        "version": 3,
+        "id": "variant",
+        "name": "Variant",
+        "effects": null,
+        "card": {
+          "radius": null
+        }
+      },
+      "out": {
+        "mode": "dark",
+        "colors": {
+          "background": "#0b1020",
+          "text": "#f4f6fb",
+          "accent": "#ff5a36",
+          "muted": "#8a94ab"
+        },
+        "typography": {
+          "headline": {
+            "family": "Space Grotesk",
+            "weight": 600
+          },
+          "body": "Inter",
+          "scale": 1.25
+        },
+        "motion": {
+          "durations": {
+            "fast": 200,
+            "base": 500,
+            "slow": 900
+          },
+          "easings": {
+            "standard": "outCubic",
+            "emphasized": "outExpo"
+          }
+        },
+        "chartColors": [
+          "#ff5a36",
+          "#3ad1c4"
+        ],
+        "gradients": {
+          "brand": {
+            "type": "linear",
+            "angleDeg": 160,
+            "stops": [
+              [
+                "#0b1020",
+                0
+              ],
+              [
+                "#1b2350",
+                1
+              ]
+            ]
+          }
+        },
+        "background": {
+          "type": "gradient",
+          "gradient": "brand",
+          "parallax": 0.2
+        },
+        "lighting": {
+          "sun": {
+            "azimuthDeg": 35,
+            "elevationDeg": 40,
+            "intensity": 1.8
+          },
+          "ambient": 0.4
+        },
+        "version": 3,
+        "id": "variant",
+        "name": "Variant",
+        "card": {}
+      }
+    },
+    {
+      "id": "object-over-scalar",
+      "base": {
+        "version": 2,
+        "id": "base",
+        "name": "Base",
+        "catalogue": {
+          "category": "essentials",
+          "useLabel": "Base",
+          "tags": [
+            "brand"
+          ],
+          "stage": "none"
+        },
+        "mode": "dark",
+        "colors": {
+          "background": "#0b1020",
+          "text": "#f4f6fb",
+          "accent": "#ff5a36",
+          "muted": "#8a94ab"
+        },
+        "typography": {
+          "headline": {
+            "family": "Space Grotesk",
+            "weight": 600
+          },
+          "body": "Inter",
+          "scale": 1.25
+        },
+        "motion": {
+          "durations": {
+            "fast": 200,
+            "base": 500,
+            "slow": 900
+          },
+          "easings": {
+            "standard": "outCubic",
+            "emphasized": "outExpo"
+          }
+        },
+        "chartColors": [
+          "#ff5a36",
+          "#3ad1c4"
+        ],
+        "gradients": {
+          "brand": {
+            "type": "linear",
+            "angleDeg": 160,
+            "stops": [
+              [
+                "#0b1020",
+                0
+              ],
+              [
+                "#1b2350",
+                1
+              ]
+            ]
+          }
+        },
+        "background": {
+          "type": "gradient",
+          "gradient": "brand",
+          "parallax": 0.2
+        },
+        "lighting": {
+          "sun": {
+            "azimuthDeg": 35,
+            "elevationDeg": 40,
+            "intensity": 1.8
+          },
+          "ambient": 0.4
+        },
+        "textLook": "plain"
+      },
+      "child": {
+        "version": 3,
+        "id": "variant",
+        "name": "Variant",
+        "textLook": {
+          "preset": "outline",
+          "strokeEm": null
+        }
+      },
+      "out": {
+        "mode": "dark",
+        "colors": {
+          "background": "#0b1020",
+          "text": "#f4f6fb",
+          "accent": "#ff5a36",
+          "muted": "#8a94ab"
+        },
+        "typography": {
+          "headline": {
+            "family": "Space Grotesk",
+            "weight": 600
+          },
+          "body": "Inter",
+          "scale": 1.25
+        },
+        "motion": {
+          "durations": {
+            "fast": 200,
+            "base": 500,
+            "slow": 900
+          },
+          "easings": {
+            "standard": "outCubic",
+            "emphasized": "outExpo"
+          }
+        },
+        "chartColors": [
+          "#ff5a36",
+          "#3ad1c4"
+        ],
+        "gradients": {
+          "brand": {
+            "type": "linear",
+            "angleDeg": 160,
+            "stops": [
+              [
+                "#0b1020",
+                0
+              ],
+              [
+                "#1b2350",
+                1
+              ]
+            ]
+          }
+        },
+        "background": {
+          "type": "gradient",
+          "gradient": "brand",
+          "parallax": 0.2
+        },
+        "lighting": {
+          "sun": {
+            "azimuthDeg": 35,
+            "elevationDeg": 40,
+            "intensity": 1.8
+          },
+          "ambient": 0.4
+        },
+        "textLook": {
+          "preset": "outline"
+        },
+        "version": 3,
+        "id": "variant",
+        "name": "Variant"
+      }
+    },
+    {
+      "id": "scalar-over-object",
+      "base": {
+        "version": 2,
+        "id": "base",
+        "name": "Base",
+        "catalogue": {
+          "category": "essentials",
+          "useLabel": "Base",
+          "tags": [
+            "brand"
+          ],
+          "stage": "none"
+        },
+        "mode": "dark",
+        "colors": {
+          "background": "#0b1020",
+          "text": "#f4f6fb",
+          "accent": "#ff5a36",
+          "muted": "#8a94ab"
+        },
+        "typography": {
+          "headline": {
+            "family": "Space Grotesk",
+            "weight": 600
+          },
+          "body": "Inter",
+          "scale": 1.25
+        },
+        "motion": {
+          "durations": {
+            "fast": 200,
+            "base": 500,
+            "slow": 900
+          },
+          "easings": {
+            "standard": "outCubic",
+            "emphasized": "outExpo"
+          }
+        },
+        "chartColors": [
+          "#ff5a36",
+          "#3ad1c4"
+        ],
+        "gradients": {
+          "brand": {
+            "type": "linear",
+            "angleDeg": 160,
+            "stops": [
+              [
+                "#0b1020",
+                0
+              ],
+              [
+                "#1b2350",
+                1
+              ]
+            ]
+          }
+        },
+        "background": {
+          "type": "gradient",
+          "gradient": "brand",
+          "parallax": 0.2
+        },
+        "lighting": {
+          "sun": {
+            "azimuthDeg": 35,
+            "elevationDeg": 40,
+            "intensity": 1.8
+          },
+          "ambient": 0.4
+        }
+      },
+      "child": {
+        "version": 3,
+        "id": "variant",
+        "name": "Variant",
+        "background": "none"
+      },
+      "out": {
+        "mode": "dark",
+        "colors": {
+          "background": "#0b1020",
+          "text": "#f4f6fb",
+          "accent": "#ff5a36",
+          "muted": "#8a94ab"
+        },
+        "typography": {
+          "headline": {
+            "family": "Space Grotesk",
+            "weight": 600
+          },
+          "body": "Inter",
+          "scale": 1.25
+        },
+        "motion": {
+          "durations": {
+            "fast": 200,
+            "base": 500,
+            "slow": 900
+          },
+          "easings": {
+            "standard": "outCubic",
+            "emphasized": "outExpo"
+          }
+        },
+        "chartColors": [
+          "#ff5a36",
+          "#3ad1c4"
+        ],
+        "gradients": {
+          "brand": {
+            "type": "linear",
+            "angleDeg": 160,
+            "stops": [
+              [
+                "#0b1020",
+                0
+              ],
+              [
+                "#1b2350",
+                1
+              ]
+            ]
+          }
+        },
+        "background": "none",
+        "lighting": {
+          "sun": {
+            "azimuthDeg": 35,
+            "elevationDeg": 40,
+            "intensity": 1.8
+          },
+          "ambient": 0.4
+        },
+        "version": 3,
+        "id": "variant",
+        "name": "Variant"
+      }
+    },
+    {
+      "id": "identity-never-inherited",
+      "base": {
+        "version": 2,
+        "id": "base",
+        "name": "Base",
+        "catalogue": {
+          "category": "essentials",
+          "useLabel": "Base",
+          "tags": [
+            "brand"
+          ],
+          "stage": "none"
+        },
+        "mode": "dark",
+        "colors": {
+          "background": "#0b1020",
+          "text": "#f4f6fb",
+          "accent": "#ff5a36",
+          "muted": "#8a94ab"
+        },
+        "typography": {
+          "headline": {
+            "family": "Space Grotesk",
+            "weight": 600
+          },
+          "body": "Inter",
+          "scale": 1.25
+        },
+        "motion": {
+          "durations": {
+            "fast": 200,
+            "base": 500,
+            "slow": 900
+          },
+          "easings": {
+            "standard": "outCubic",
+            "emphasized": "outExpo"
+          }
+        },
+        "chartColors": [
+          "#ff5a36",
+          "#3ad1c4"
+        ],
+        "gradients": {
+          "brand": {
+            "type": "linear",
+            "angleDeg": 160,
+            "stops": [
+              [
+                "#0b1020",
+                0
+              ],
+              [
+                "#1b2350",
+                1
+              ]
+            ]
+          }
+        },
+        "background": {
+          "type": "gradient",
+          "gradient": "brand",
+          "parallax": 0.2
+        },
+        "lighting": {
+          "sun": {
+            "azimuthDeg": 35,
+            "elevationDeg": 40,
+            "intensity": 1.8
+          },
+          "ambient": 0.4
+        },
+        "extends": "kookaburra-midnight"
+      },
+      "child": {
+        "version": 3,
+        "extends": "ws:base",
+        "colors": {
+          "muted": "#999999"
+        }
+      },
+      "out": {
+        "mode": "dark",
+        "colors": {
+          "background": "#0b1020",
+          "text": "#f4f6fb",
+          "accent": "#ff5a36",
+          "muted": "#999999"
+        },
+        "typography": {
+          "headline": {
+            "family": "Space Grotesk",
+            "weight": 600
+          },
+          "body": "Inter",
+          "scale": 1.25
+        },
+        "motion": {
+          "durations": {
+            "fast": 200,
+            "base": 500,
+            "slow": 900
+          },
+          "easings": {
+            "standard": "outCubic",
+            "emphasized": "outExpo"
+          }
+        },
+        "chartColors": [
+          "#ff5a36",
+          "#3ad1c4"
+        ],
+        "gradients": {
+          "brand": {
+            "type": "linear",
+            "angleDeg": 160,
+            "stops": [
+              [
+                "#0b1020",
+                0
+              ],
+              [
+                "#1b2350",
+                1
+              ]
+            ]
+          }
+        },
+        "background": {
+          "type": "gradient",
+          "gradient": "brand",
+          "parallax": 0.2
+        },
+        "lighting": {
+          "sun": {
+            "azimuthDeg": 35,
+            "elevationDeg": 40,
+            "intensity": 1.8
+          },
+          "ambient": 0.4
+        },
+        "version": 3
+      }
+    },
+    {
+      "id": "nested-identity-names-inherit",
+      "base": {
+        "version": 2,
+        "id": "base",
+        "name": "Base",
+        "catalogue": {
+          "category": "essentials",
+          "useLabel": "Base",
+          "tags": [
+            "brand"
+          ],
+          "stage": "none"
+        },
+        "mode": "dark",
+        "colors": {
+          "background": "#0b1020",
+          "text": "#f4f6fb",
+          "accent": "#ff5a36",
+          "muted": "#8a94ab"
+        },
+        "typography": {
+          "headline": {
+            "family": "Space Grotesk",
+            "weight": 600
+          },
+          "body": "Inter",
+          "scale": 1.25
+        },
+        "motion": {
+          "durations": {
+            "fast": 200,
+            "base": 500,
+            "slow": 900
+          },
+          "easings": {
+            "standard": "outCubic",
+            "emphasized": "outExpo"
+          }
+        },
+        "chartColors": [
+          "#ff5a36",
+          "#3ad1c4"
+        ],
+        "gradients": {
+          "brand": {
+            "type": "linear",
+            "angleDeg": 160,
+            "stops": [
+              [
+                "#0b1020",
+                0
+              ],
+              [
+                "#1b2350",
+                1
+              ]
+            ]
+          }
+        },
+        "background": {
+          "type": "gradient",
+          "gradient": "brand",
+          "parallax": 0.2
+        },
+        "lighting": {
+          "name": "rig",
+          "id": "key",
+          "version": 4,
+          "sun": {
+            "intensity": 1
+          }
+        }
+      },
+      "child": {
+        "version": 3,
+        "id": "variant",
+        "name": "Variant",
+        "lighting": {
+          "sun": {
+            "intensity": 2
+          }
+        }
+      },
+      "out": {
+        "mode": "dark",
+        "colors": {
+          "background": "#0b1020",
+          "text": "#f4f6fb",
+          "accent": "#ff5a36",
+          "muted": "#8a94ab"
+        },
+        "typography": {
+          "headline": {
+            "family": "Space Grotesk",
+            "weight": 600
+          },
+          "body": "Inter",
+          "scale": 1.25
+        },
+        "motion": {
+          "durations": {
+            "fast": 200,
+            "base": 500,
+            "slow": 900
+          },
+          "easings": {
+            "standard": "outCubic",
+            "emphasized": "outExpo"
+          }
+        },
+        "chartColors": [
+          "#ff5a36",
+          "#3ad1c4"
+        ],
+        "gradients": {
+          "brand": {
+            "type": "linear",
+            "angleDeg": 160,
+            "stops": [
+              [
+                "#0b1020",
+                0
+              ],
+              [
+                "#1b2350",
+                1
+              ]
+            ]
+          }
+        },
+        "background": {
+          "type": "gradient",
+          "gradient": "brand",
+          "parallax": 0.2
+        },
+        "lighting": {
+          "name": "rig",
+          "id": "key",
+          "version": 4,
+          "sun": {
+            "intensity": 2
+          }
+        },
+        "version": 3,
+        "id": "variant",
+        "name": "Variant"
+      }
+    },
+    {
+      "id": "array-of-objects-replaces",
+      "base": {
+        "version": 2,
+        "id": "base",
+        "name": "Base",
+        "catalogue": {
+          "category": "essentials",
+          "useLabel": "Base",
+          "tags": [
+            "brand"
+          ],
+          "stage": "none"
+        },
+        "mode": "dark",
+        "colors": {
+          "background": "#0b1020",
+          "text": "#f4f6fb",
+          "accent": "#ff5a36",
+          "muted": "#8a94ab"
+        },
+        "typography": {
+          "headline": {
+            "family": "Space Grotesk",
+            "weight": 600
+          },
+          "body": "Inter",
+          "scale": 1.25
+        },
+        "motion": {
+          "durations": {
+            "fast": 200,
+            "base": 500,
+            "slow": 900
+          },
+          "easings": {
+            "standard": "outCubic",
+            "emphasized": "outExpo"
+          }
+        },
+        "chartColors": [
+          "#ff5a36",
+          "#3ad1c4"
+        ],
+        "gradients": {
+          "brand": {
+            "type": "linear",
+            "angleDeg": 160,
+            "stops": [
+              [
+                "#0b1020",
+                0
+              ],
+              [
+                "#1b2350",
+                1
+              ]
+            ]
+          }
+        },
+        "background": {
+          "type": "gradient",
+          "gradient": "brand",
+          "parallax": 0.2
+        },
+        "lighting": {
+          "lights": [
+            {
+              "id": "a",
+              "intensity": 1
+            },
+            {
+              "id": "b"
+            }
+          ]
+        }
+      },
+      "child": {
+        "version": 3,
+        "id": "variant",
+        "name": "Variant",
+        "lighting": {
+          "lights": [
+            {
+              "id": "a",
+              "intensity": 3
+            }
+          ]
+        }
+      },
+      "out": {
+        "mode": "dark",
+        "colors": {
+          "background": "#0b1020",
+          "text": "#f4f6fb",
+          "accent": "#ff5a36",
+          "muted": "#8a94ab"
+        },
+        "typography": {
+          "headline": {
+            "family": "Space Grotesk",
+            "weight": 600
+          },
+          "body": "Inter",
+          "scale": 1.25
+        },
+        "motion": {
+          "durations": {
+            "fast": 200,
+            "base": 500,
+            "slow": 900
+          },
+          "easings": {
+            "standard": "outCubic",
+            "emphasized": "outExpo"
+          }
+        },
+        "chartColors": [
+          "#ff5a36",
+          "#3ad1c4"
+        ],
+        "gradients": {
+          "brand": {
+            "type": "linear",
+            "angleDeg": 160,
+            "stops": [
+              [
+                "#0b1020",
+                0
+              ],
+              [
+                "#1b2350",
+                1
+              ]
+            ]
+          }
+        },
+        "background": {
+          "type": "gradient",
+          "gradient": "brand",
+          "parallax": 0.2
+        },
+        "lighting": {
+          "lights": [
+            {
+              "id": "a",
+              "intensity": 3
+            }
+          ]
+        },
+        "version": 3,
+        "id": "variant",
+        "name": "Variant"
+      }
+    },
+    {
+      "id": "type-switch-keeps-stale-fields",
+      "base": {
+        "version": 2,
+        "id": "base",
+        "name": "Base",
+        "catalogue": {
+          "category": "essentials",
+          "useLabel": "Base",
+          "tags": [
+            "brand"
+          ],
+          "stage": "none"
+        },
+        "mode": "dark",
+        "colors": {
+          "background": "#0b1020",
+          "text": "#f4f6fb",
+          "accent": "#ff5a36",
+          "muted": "#8a94ab"
+        },
+        "typography": {
+          "headline": {
+            "family": "Space Grotesk",
+            "weight": 600
+          },
+          "body": "Inter",
+          "scale": 1.25
+        },
+        "motion": {
+          "durations": {
+            "fast": 200,
+            "base": 500,
+            "slow": 900
+          },
+          "easings": {
+            "standard": "outCubic",
+            "emphasized": "outExpo"
+          }
+        },
+        "chartColors": [
+          "#ff5a36",
+          "#3ad1c4"
+        ],
+        "gradients": {
+          "brand": {
+            "type": "linear",
+            "angleDeg": 160,
+            "stops": [
+              [
+                "#0b1020",
+                0
+              ],
+              [
+                "#1b2350",
+                1
+              ]
+            ]
+          }
+        },
+        "background": {
+          "type": "gradient",
+          "gradient": "brand",
+          "parallax": 0.2
+        },
+        "lighting": {
+          "sun": {
+            "azimuthDeg": 35,
+            "elevationDeg": 40,
+            "intensity": 1.8
+          },
+          "ambient": 0.4
+        }
+      },
+      "child": {
+        "version": 3,
+        "id": "variant",
+        "name": "Variant",
+        "background": {
+          "type": "color",
+          "color": "#101010"
+        }
+      },
+      "out": {
+        "mode": "dark",
+        "colors": {
+          "background": "#0b1020",
+          "text": "#f4f6fb",
+          "accent": "#ff5a36",
+          "muted": "#8a94ab"
+        },
+        "typography": {
+          "headline": {
+            "family": "Space Grotesk",
+            "weight": 600
+          },
+          "body": "Inter",
+          "scale": 1.25
+        },
+        "motion": {
+          "durations": {
+            "fast": 200,
+            "base": 500,
+            "slow": 900
+          },
+          "easings": {
+            "standard": "outCubic",
+            "emphasized": "outExpo"
+          }
+        },
+        "chartColors": [
+          "#ff5a36",
+          "#3ad1c4"
+        ],
+        "gradients": {
+          "brand": {
+            "type": "linear",
+            "angleDeg": 160,
+            "stops": [
+              [
+                "#0b1020",
+                0
+              ],
+              [
+                "#1b2350",
+                1
+              ]
+            ]
+          }
+        },
+        "background": {
+          "type": "color",
+          "gradient": "brand",
+          "parallax": 0.2,
+          "color": "#101010"
+        },
+        "lighting": {
+          "sun": {
+            "azimuthDeg": 35,
+            "elevationDeg": 40,
+            "intensity": 1.8
+          },
+          "ambient": 0.4
+        },
+        "version": 3,
+        "id": "variant",
+        "name": "Variant"
+      }
+    }
+  ],
+  "resolve": [
+    {
+      "id": "no-extends-is-unchanged",
+      "source": "ws:solo",
+      "raw": {
+        "version": 2,
+        "id": "base",
+        "name": "Base",
+        "catalogue": {
+          "category": "essentials",
+          "useLabel": "Base",
+          "tags": [
+            "brand"
+          ],
+          "stage": "none"
+        },
+        "mode": "dark",
+        "colors": {
+          "background": "#0b1020",
+          "text": "#f4f6fb",
+          "accent": "#ff5a36",
+          "muted": "#8a94ab"
+        },
+        "typography": {
+          "headline": {
+            "family": "Space Grotesk",
+            "weight": 600
+          },
+          "body": "Inter",
+          "scale": 1.25
+        },
+        "motion": {
+          "durations": {
+            "fast": 200,
+            "base": 500,
+            "slow": 900
+          },
+          "easings": {
+            "standard": "outCubic",
+            "emphasized": "outExpo"
+          }
+        },
+        "chartColors": [
+          "#ff5a36",
+          "#3ad1c4"
+        ],
+        "gradients": {
+          "brand": {
+            "type": "linear",
+            "angleDeg": 160,
+            "stops": [
+              [
+                "#0b1020",
+                0
+              ],
+              [
+                "#1b2350",
+                1
+              ]
+            ]
+          }
+        },
+        "background": {
+          "type": "gradient",
+          "gradient": "brand",
+          "parallax": 0.2
+        },
+        "lighting": {
+          "sun": {
+            "azimuthDeg": 35,
+            "elevationDeg": 40,
+            "intensity": 1.8
+          },
+          "ambient": 0.4
+        }
+      },
+      "docs": {},
+      "out": {
+        "version": 2,
+        "id": "base",
+        "name": "Base",
+        "catalogue": {
+          "category": "essentials",
+          "useLabel": "Base",
+          "tags": [
+            "brand"
+          ],
+          "stage": "none"
+        },
+        "mode": "dark",
+        "colors": {
+          "background": "#0b1020",
+          "text": "#f4f6fb",
+          "accent": "#ff5a36",
+          "muted": "#8a94ab"
+        },
+        "typography": {
+          "headline": {
+            "family": "Space Grotesk",
+            "weight": 600
+          },
+          "body": "Inter",
+          "scale": 1.25
+        },
+        "motion": {
+          "durations": {
+            "fast": 200,
+            "base": 500,
+            "slow": 900
+          },
+          "easings": {
+            "standard": "outCubic",
+            "emphasized": "outExpo"
+          }
+        },
+        "chartColors": [
+          "#ff5a36",
+          "#3ad1c4"
+        ],
+        "gradients": {
+          "brand": {
+            "type": "linear",
+            "angleDeg": 160,
+            "stops": [
+              [
+                "#0b1020",
+                0
+              ],
+              [
+                "#1b2350",
+                1
+              ]
+            ]
+          }
+        },
+        "background": {
+          "type": "gradient",
+          "gradient": "brand",
+          "parallax": 0.2
+        },
+        "lighting": {
+          "sun": {
+            "azimuthDeg": 35,
+            "elevationDeg": 40,
+            "intensity": 1.8
+          },
+          "ambient": 0.4
+        }
+      },
+      "problem": null
+    },
+    {
+      "id": "workspace-base",
+      "source": "ws:variant",
+      "raw": {
+        "version": 3,
+        "id": "variant",
+        "name": "Variant",
+        "extends": "ws:base",
+        "colors": {
+          "accent": "#00aa88"
+        }
+      },
+      "docs": {
+        "ws:base": {
+          "version": 2,
+          "id": "base",
+          "name": "Base",
+          "catalogue": {
+            "category": "essentials",
+            "useLabel": "Base",
+            "tags": [
+              "brand"
+            ],
+            "stage": "none"
+          },
+          "mode": "dark",
+          "colors": {
+            "background": "#0b1020",
+            "text": "#f4f6fb",
+            "accent": "#ff5a36",
+            "muted": "#8a94ab"
+          },
+          "typography": {
+            "headline": {
+              "family": "Space Grotesk",
+              "weight": 600
+            },
+            "body": "Inter",
+            "scale": 1.25
+          },
+          "motion": {
+            "durations": {
+              "fast": 200,
+              "base": 500,
+              "slow": 900
+            },
+            "easings": {
+              "standard": "outCubic",
+              "emphasized": "outExpo"
+            }
+          },
+          "chartColors": [
+            "#ff5a36",
+            "#3ad1c4"
+          ],
+          "gradients": {
+            "brand": {
+              "type": "linear",
+              "angleDeg": 160,
+              "stops": [
+                [
+                  "#0b1020",
+                  0
+                ],
+                [
+                  "#1b2350",
+                  1
+                ]
+              ]
+            }
+          },
+          "background": {
+            "type": "gradient",
+            "gradient": "brand",
+            "parallax": 0.2
+          },
+          "lighting": {
+            "sun": {
+              "azimuthDeg": 35,
+              "elevationDeg": 40,
+              "intensity": 1.8
+            },
+            "ambient": 0.4
+          }
+        }
+      },
+      "out": {
+        "mode": "dark",
+        "colors": {
+          "background": "#0b1020",
+          "text": "#f4f6fb",
+          "accent": "#00aa88",
+          "muted": "#8a94ab"
+        },
+        "typography": {
+          "headline": {
+            "family": "Space Grotesk",
+            "weight": 600
+          },
+          "body": "Inter",
+          "scale": 1.25
+        },
+        "motion": {
+          "durations": {
+            "fast": 200,
+            "base": 500,
+            "slow": 900
+          },
+          "easings": {
+            "standard": "outCubic",
+            "emphasized": "outExpo"
+          }
+        },
+        "chartColors": [
+          "#ff5a36",
+          "#3ad1c4"
+        ],
+        "gradients": {
+          "brand": {
+            "type": "linear",
+            "angleDeg": 160,
+            "stops": [
+              [
+                "#0b1020",
+                0
+              ],
+              [
+                "#1b2350",
+                1
+              ]
+            ]
+          }
+        },
+        "background": {
+          "type": "gradient",
+          "gradient": "brand",
+          "parallax": 0.2
+        },
+        "lighting": {
+          "sun": {
+            "azimuthDeg": 35,
+            "elevationDeg": 40,
+            "intensity": 1.8
+          },
+          "ambient": 0.4
+        },
+        "version": 3,
+        "id": "variant",
+        "name": "Variant"
+      },
+      "problem": null
+    },
+    {
+      "id": "bundled-base",
+      "source": "ws:variant",
+      "raw": {
+        "version": 3,
+        "id": "variant",
+        "name": "Variant",
+        "extends": "kookaburra-midnight",
+        "mode": "light"
+      },
+      "docs": {
+        "kookaburra-midnight": {
+          "version": 2,
+          "id": "kookaburra-midnight",
+          "name": "Midnight",
+          "catalogue": {
+            "category": "essentials",
+            "useLabel": "Base",
+            "tags": [
+              "brand"
+            ],
+            "stage": "none"
+          },
+          "mode": "dark",
+          "colors": {
+            "background": "#0b1020",
+            "text": "#f4f6fb",
+            "accent": "#ff5a36",
+            "muted": "#8a94ab"
+          },
+          "typography": {
+            "headline": {
+              "family": "Space Grotesk",
+              "weight": 600
+            },
+            "body": "Inter",
+            "scale": 1.25
+          },
+          "motion": {
+            "durations": {
+              "fast": 200,
+              "base": 500,
+              "slow": 900
+            },
+            "easings": {
+              "standard": "outCubic",
+              "emphasized": "outExpo"
+            }
+          },
+          "chartColors": [
+            "#ff5a36",
+            "#3ad1c4"
+          ],
+          "gradients": {
+            "brand": {
+              "type": "linear",
+              "angleDeg": 160,
+              "stops": [
+                [
+                  "#0b1020",
+                  0
+                ],
+                [
+                  "#1b2350",
+                  1
+                ]
+              ]
+            }
+          },
+          "background": {
+            "type": "gradient",
+            "gradient": "brand",
+            "parallax": 0.2
+          },
+          "lighting": {
+            "sun": {
+              "azimuthDeg": 35,
+              "elevationDeg": 40,
+              "intensity": 1.8
+            },
+            "ambient": 0.4
+          }
+        }
+      },
+      "out": {
+        "mode": "light",
+        "colors": {
+          "background": "#0b1020",
+          "text": "#f4f6fb",
+          "accent": "#ff5a36",
+          "muted": "#8a94ab"
+        },
+        "typography": {
+          "headline": {
+            "family": "Space Grotesk",
+            "weight": 600
+          },
+          "body": "Inter",
+          "scale": 1.25
+        },
+        "motion": {
+          "durations": {
+            "fast": 200,
+            "base": 500,
+            "slow": 900
+          },
+          "easings": {
+            "standard": "outCubic",
+            "emphasized": "outExpo"
+          }
+        },
+        "chartColors": [
+          "#ff5a36",
+          "#3ad1c4"
+        ],
+        "gradients": {
+          "brand": {
+            "type": "linear",
+            "angleDeg": 160,
+            "stops": [
+              [
+                "#0b1020",
+                0
+              ],
+              [
+                "#1b2350",
+                1
+              ]
+            ]
+          }
+        },
+        "background": {
+          "type": "gradient",
+          "gradient": "brand",
+          "parallax": 0.2
+        },
+        "lighting": {
+          "sun": {
+            "azimuthDeg": 35,
+            "elevationDeg": 40,
+            "intensity": 1.8
+          },
+          "ambient": 0.4
+        },
+        "version": 3,
+        "id": "variant",
+        "name": "Variant"
+      },
+      "problem": null
+    },
+    {
+      "id": "chain-of-three",
+      "source": "ws:grandchild",
+      "raw": {
+        "version": 3,
+        "id": "variant",
+        "name": "Variant",
+        "extends": "ws:child",
+        "lighting": {
+          "ambient": 0.9
+        },
+        "background": null
+      },
+      "docs": {
+        "ws:child": {
+          "version": 3,
+          "id": "variant",
+          "name": "Child",
+          "extends": "ws:base",
+          "lighting": {
+            "sun": {
+              "intensity": 3
+            },
+            "ambient": null
+          },
+          "chartColors": [
+            "#222222",
+            "#333333"
+          ]
+        },
+        "ws:base": {
+          "version": 2,
+          "id": "base",
+          "name": "Base",
+          "catalogue": {
+            "category": "essentials",
+            "useLabel": "Base",
+            "tags": [
+              "brand"
+            ],
+            "stage": "none"
+          },
+          "mode": "dark",
+          "colors": {
+            "background": "#0b1020",
+            "text": "#f4f6fb",
+            "accent": "#ff5a36",
+            "muted": "#8a94ab"
+          },
+          "typography": {
+            "headline": {
+              "family": "Space Grotesk",
+              "weight": 600
+            },
+            "body": "Inter",
+            "scale": 1.25
+          },
+          "motion": {
+            "durations": {
+              "fast": 200,
+              "base": 500,
+              "slow": 900
+            },
+            "easings": {
+              "standard": "outCubic",
+              "emphasized": "outExpo"
+            }
+          },
+          "chartColors": [
+            "#ff5a36",
+            "#3ad1c4"
+          ],
+          "gradients": {
+            "brand": {
+              "type": "linear",
+              "angleDeg": 160,
+              "stops": [
+                [
+                  "#0b1020",
+                  0
+                ],
+                [
+                  "#1b2350",
+                  1
+                ]
+              ]
+            }
+          },
+          "background": {
+            "type": "gradient",
+            "gradient": "brand",
+            "parallax": 0.2
+          },
+          "lighting": {
+            "sun": {
+              "azimuthDeg": 35,
+              "elevationDeg": 40,
+              "intensity": 1.8
+            },
+            "ambient": 0.4
+          }
+        }
+      },
+      "out": {
+        "mode": "dark",
+        "colors": {
+          "background": "#0b1020",
+          "text": "#f4f6fb",
+          "accent": "#ff5a36",
+          "muted": "#8a94ab"
+        },
+        "typography": {
+          "headline": {
+            "family": "Space Grotesk",
+            "weight": 600
+          },
+          "body": "Inter",
+          "scale": 1.25
+        },
+        "motion": {
+          "durations": {
+            "fast": 200,
+            "base": 500,
+            "slow": 900
+          },
+          "easings": {
+            "standard": "outCubic",
+            "emphasized": "outExpo"
+          }
+        },
+        "chartColors": [
+          "#222222",
+          "#333333"
+        ],
+        "gradients": {
+          "brand": {
+            "type": "linear",
+            "angleDeg": 160,
+            "stops": [
+              [
+                "#0b1020",
+                0
+              ],
+              [
+                "#1b2350",
+                1
+              ]
+            ]
+          }
+        },
+        "lighting": {
+          "sun": {
+            "azimuthDeg": 35,
+            "elevationDeg": 40,
+            "intensity": 3
+          },
+          "ambient": 0.9
+        },
+        "version": 3,
+        "id": "variant",
+        "name": "Variant"
+      },
+      "problem": null
+    },
+    {
+      "id": "chain-re-adds-a-cleared-value",
+      "source": "ws:grandchild",
+      "raw": {
+        "version": 3,
+        "id": "variant",
+        "name": "Variant",
+        "extends": "ws:child",
+        "background": {
+          "type": "color",
+          "color": "#202020"
+        }
+      },
+      "docs": {
+        "ws:child": {
+          "version": 3,
+          "id": "variant",
+          "name": "Variant",
+          "extends": "ws:base",
+          "background": null
+        },
+        "ws:base": {
+          "version": 2,
+          "id": "base",
+          "name": "Base",
+          "catalogue": {
+            "category": "essentials",
+            "useLabel": "Base",
+            "tags": [
+              "brand"
+            ],
+            "stage": "none"
+          },
+          "mode": "dark",
+          "colors": {
+            "background": "#0b1020",
+            "text": "#f4f6fb",
+            "accent": "#ff5a36",
+            "muted": "#8a94ab"
+          },
+          "typography": {
+            "headline": {
+              "family": "Space Grotesk",
+              "weight": 600
+            },
+            "body": "Inter",
+            "scale": 1.25
+          },
+          "motion": {
+            "durations": {
+              "fast": 200,
+              "base": 500,
+              "slow": 900
+            },
+            "easings": {
+              "standard": "outCubic",
+              "emphasized": "outExpo"
+            }
+          },
+          "chartColors": [
+            "#ff5a36",
+            "#3ad1c4"
+          ],
+          "gradients": {
+            "brand": {
+              "type": "linear",
+              "angleDeg": 160,
+              "stops": [
+                [
+                  "#0b1020",
+                  0
+                ],
+                [
+                  "#1b2350",
+                  1
+                ]
+              ]
+            }
+          },
+          "background": {
+            "type": "gradient",
+            "gradient": "brand",
+            "parallax": 0.2
+          },
+          "lighting": {
+            "sun": {
+              "azimuthDeg": 35,
+              "elevationDeg": 40,
+              "intensity": 1.8
+            },
+            "ambient": 0.4
+          }
+        }
+      },
+      "out": {
+        "mode": "dark",
+        "colors": {
+          "background": "#0b1020",
+          "text": "#f4f6fb",
+          "accent": "#ff5a36",
+          "muted": "#8a94ab"
+        },
+        "typography": {
+          "headline": {
+            "family": "Space Grotesk",
+            "weight": 600
+          },
+          "body": "Inter",
+          "scale": 1.25
+        },
+        "motion": {
+          "durations": {
+            "fast": 200,
+            "base": 500,
+            "slow": 900
+          },
+          "easings": {
+            "standard": "outCubic",
+            "emphasized": "outExpo"
+          }
+        },
+        "chartColors": [
+          "#ff5a36",
+          "#3ad1c4"
+        ],
+        "gradients": {
+          "brand": {
+            "type": "linear",
+            "angleDeg": 160,
+            "stops": [
+              [
+                "#0b1020",
+                0
+              ],
+              [
+                "#1b2350",
+                1
+              ]
+            ]
+          }
+        },
+        "lighting": {
+          "sun": {
+            "azimuthDeg": 35,
+            "elevationDeg": 40,
+            "intensity": 1.8
+          },
+          "ambient": 0.4
+        },
+        "version": 3,
+        "id": "variant",
+        "name": "Variant",
+        "background": {
+          "type": "color",
+          "color": "#202020"
+        }
+      },
+      "problem": null
+    },
+    {
+      "id": "missing-base",
+      "source": "ws:variant",
+      "raw": {
+        "version": 3,
+        "id": "variant",
+        "name": "Variant",
+        "extends": "ws:gone"
+      },
+      "docs": {},
+      "out": null,
+      "problem": "missing"
+    },
+    {
+      "id": "missing-grandparent",
+      "source": "ws:variant",
+      "raw": {
+        "version": 3,
+        "id": "variant",
+        "name": "Variant",
+        "extends": "ws:child"
+      },
+      "docs": {
+        "ws:child": {
+          "version": 3,
+          "id": "variant",
+          "name": "Variant",
+          "extends": "ws:gone"
+        }
+      },
+      "out": null,
+      "problem": "missing"
+    },
+    {
+      "id": "self-cycle",
+      "source": "ws:loop",
+      "raw": {
+        "version": 3,
+        "id": "variant",
+        "name": "Variant",
+        "extends": "ws:loop"
+      },
+      "docs": {
+        "ws:loop": {
+          "version": 3,
+          "id": "variant",
+          "name": "Variant",
+          "extends": "ws:loop"
+        }
+      },
+      "out": null,
+      "problem": "cycle"
+    },
+    {
+      "id": "two-step-cycle",
+      "source": "ws:a",
+      "raw": {
+        "version": 3,
+        "id": "variant",
+        "name": "Variant",
+        "extends": "ws:b"
+      },
+      "docs": {
+        "ws:a": {
+          "version": 3,
+          "id": "variant",
+          "name": "Variant",
+          "extends": "ws:b"
+        },
+        "ws:b": {
+          "version": 3,
+          "id": "variant",
+          "name": "Variant",
+          "extends": "ws:a"
+        }
+      },
+      "out": null,
+      "problem": "cycle"
+    },
+    {
+      "id": "too-long",
+      "source": "ws:t0",
+      "raw": {
+        "version": 3,
+        "id": "variant",
+        "name": "Variant",
+        "extends": "ws:t1"
+      },
+      "docs": {
+        "ws:t1": {
+          "version": 3,
+          "id": "variant",
+          "name": "Variant",
+          "extends": "ws:t2"
+        },
+        "ws:t2": {
+          "version": 3,
+          "id": "variant",
+          "name": "Variant",
+          "extends": "ws:t3"
+        },
+        "ws:t3": {
+          "version": 3,
+          "id": "variant",
+          "name": "Variant",
+          "extends": "ws:t4"
+        },
+        "ws:t4": {
+          "version": 3,
+          "id": "variant",
+          "name": "Variant",
+          "extends": "ws:t5"
+        },
+        "ws:t5": {
+          "version": 3,
+          "id": "variant",
+          "name": "Variant",
+          "extends": "ws:t6"
+        },
+        "ws:t6": {
+          "version": 3,
+          "id": "variant",
+          "name": "Variant",
+          "extends": "ws:t7"
+        },
+        "ws:t7": {
+          "version": 3,
+          "id": "variant",
+          "name": "Variant",
+          "extends": "ws:t8"
+        },
+        "ws:t8": {
+          "version": 3,
+          "id": "variant",
+          "name": "Variant",
+          "extends": "ws:t9"
+        },
+        "ws:t9": {
+          "version": 3,
+          "id": "variant",
+          "name": "Variant",
+          "extends": "ws:t10"
+        },
+        "ws:t10": {
+          "version": 3,
+          "id": "variant",
+          "name": "Variant",
+          "extends": "ws:t11"
+        },
+        "ws:t11": {
+          "version": 3,
+          "id": "variant",
+          "name": "Variant",
+          "extends": "ws:t12"
+        },
+        "ws:t12": {
+          "version": 3,
+          "id": "variant",
+          "name": "Variant",
+          "extends": "ws:t13"
+        },
+        "ws:t13": {
+          "version": 3,
+          "id": "variant",
+          "name": "Variant",
+          "extends": "ws:t14"
+        },
+        "ws:t14": {
+          "version": 3,
+          "id": "variant",
+          "name": "Variant",
+          "extends": "ws:t15"
+        },
+        "ws:t15": {
+          "version": 3,
+          "id": "variant",
+          "name": "Variant",
+          "extends": "ws:t16"
+        },
+        "ws:t16": {
+          "version": 3,
+          "id": "variant",
+          "name": "Variant",
+          "extends": "ws:t17"
+        },
+        "ws:t17": {
+          "version": 3,
+          "id": "variant",
+          "name": "Variant",
+          "extends": "ws:t18"
+        },
+        "ws:t18": {
+          "version": 3,
+          "id": "variant",
+          "name": "Variant",
+          "extends": "ws:t19"
+        },
+        "ws:t19": {
+          "version": 3,
+          "id": "variant",
+          "name": "Variant",
+          "extends": "ws:t20"
+        },
+        "ws:t20": {
+          "version": 3,
+          "id": "variant",
+          "name": "Variant",
+          "extends": "ws:t21"
+        }
+      },
+      "out": null,
+      "problem": "too-long"
+    },
+    {
+      "id": "v2-extends-ignored",
+      "source": "ws:old",
+      "raw": {
+        "version": 2,
+        "id": "base",
+        "name": "Base",
+        "catalogue": {
+          "category": "essentials",
+          "useLabel": "Base",
+          "tags": [
+            "brand"
+          ],
+          "stage": "none"
+        },
+        "mode": "dark",
+        "colors": {
+          "background": "#0b1020",
+          "text": "#f4f6fb",
+          "accent": "#ff5a36",
+          "muted": "#8a94ab"
+        },
+        "typography": {
+          "headline": {
+            "family": "Space Grotesk",
+            "weight": 600
+          },
+          "body": "Inter",
+          "scale": 1.25
+        },
+        "motion": {
+          "durations": {
+            "fast": 200,
+            "base": 500,
+            "slow": 900
+          },
+          "easings": {
+            "standard": "outCubic",
+            "emphasized": "outExpo"
+          }
+        },
+        "chartColors": [
+          "#ff5a36",
+          "#3ad1c4"
+        ],
+        "gradients": {
+          "brand": {
+            "type": "linear",
+            "angleDeg": 160,
+            "stops": [
+              [
+                "#0b1020",
+                0
+              ],
+              [
+                "#1b2350",
+                1
+              ]
+            ]
+          }
+        },
+        "background": {
+          "type": "gradient",
+          "gradient": "brand",
+          "parallax": 0.2
+        },
+        "lighting": {
+          "sun": {
+            "azimuthDeg": 35,
+            "elevationDeg": 40,
+            "intensity": 1.8
+          },
+          "ambient": 0.4
+        },
+        "extends": "ws:other"
+      },
+      "docs": {
+        "ws:other": {
+          "version": 2,
+          "id": "base",
+          "name": "Base",
+          "catalogue": {
+            "category": "essentials",
+            "useLabel": "Base",
+            "tags": [
+              "brand"
+            ],
+            "stage": "none"
+          },
+          "mode": "light",
+          "colors": {
+            "background": "#0b1020",
+            "text": "#f4f6fb",
+            "accent": "#ff5a36",
+            "muted": "#8a94ab"
+          },
+          "typography": {
+            "headline": {
+              "family": "Space Grotesk",
+              "weight": 600
+            },
+            "body": "Inter",
+            "scale": 1.25
+          },
+          "motion": {
+            "durations": {
+              "fast": 200,
+              "base": 500,
+              "slow": 900
+            },
+            "easings": {
+              "standard": "outCubic",
+              "emphasized": "outExpo"
+            }
+          },
+          "chartColors": [
+            "#ff5a36",
+            "#3ad1c4"
+          ],
+          "gradients": {
+            "brand": {
+              "type": "linear",
+              "angleDeg": 160,
+              "stops": [
+                [
+                  "#0b1020",
+                  0
+                ],
+                [
+                  "#1b2350",
+                  1
+                ]
+              ]
+            }
+          },
+          "background": {
+            "type": "gradient",
+            "gradient": "brand",
+            "parallax": 0.2
+          },
+          "lighting": {
+            "sun": {
+              "azimuthDeg": 35,
+              "elevationDeg": 40,
+              "intensity": 1.8
+            },
+            "ambient": 0.4
+          }
+        }
+      },
+      "out": {
+        "version": 2,
+        "id": "base",
+        "name": "Base",
+        "catalogue": {
+          "category": "essentials",
+          "useLabel": "Base",
+          "tags": [
+            "brand"
+          ],
+          "stage": "none"
+        },
+        "mode": "dark",
+        "colors": {
+          "background": "#0b1020",
+          "text": "#f4f6fb",
+          "accent": "#ff5a36",
+          "muted": "#8a94ab"
+        },
+        "typography": {
+          "headline": {
+            "family": "Space Grotesk",
+            "weight": 600
+          },
+          "body": "Inter",
+          "scale": 1.25
+        },
+        "motion": {
+          "durations": {
+            "fast": 200,
+            "base": 500,
+            "slow": 900
+          },
+          "easings": {
+            "standard": "outCubic",
+            "emphasized": "outExpo"
+          }
+        },
+        "chartColors": [
+          "#ff5a36",
+          "#3ad1c4"
+        ],
+        "gradients": {
+          "brand": {
+            "type": "linear",
+            "angleDeg": 160,
+            "stops": [
+              [
+                "#0b1020",
+                0
+              ],
+              [
+                "#1b2350",
+                1
+              ]
+            ]
+          }
+        },
+        "background": {
+          "type": "gradient",
+          "gradient": "brand",
+          "parallax": 0.2
+        },
+        "lighting": {
+          "sun": {
+            "azimuthDeg": 35,
+            "elevationDeg": 40,
+            "intensity": 1.8
+          },
+          "ambient": 0.4
+        }
+      },
+      "problem": "version"
+    },
+    {
+      "id": "non-string-extends-ignored",
+      "source": "ws:odd",
+      "raw": {
+        "version": 3,
+        "id": "base",
+        "name": "Base",
+        "catalogue": {
+          "category": "essentials",
+          "useLabel": "Base",
+          "tags": [
+            "brand"
+          ],
+          "stage": "none"
+        },
+        "mode": "dark",
+        "colors": {
+          "background": "#0b1020",
+          "text": "#f4f6fb",
+          "accent": "#ff5a36",
+          "muted": "#8a94ab"
+        },
+        "typography": {
+          "headline": {
+            "family": "Space Grotesk",
+            "weight": 600
+          },
+          "body": "Inter",
+          "scale": 1.25
+        },
+        "motion": {
+          "durations": {
+            "fast": 200,
+            "base": 500,
+            "slow": 900
+          },
+          "easings": {
+            "standard": "outCubic",
+            "emphasized": "outExpo"
+          }
+        },
+        "chartColors": [
+          "#ff5a36",
+          "#3ad1c4"
+        ],
+        "gradients": {
+          "brand": {
+            "type": "linear",
+            "angleDeg": 160,
+            "stops": [
+              [
+                "#0b1020",
+                0
+              ],
+              [
+                "#1b2350",
+                1
+              ]
+            ]
+          }
+        },
+        "background": {
+          "type": "gradient",
+          "gradient": "brand",
+          "parallax": 0.2
+        },
+        "lighting": {
+          "sun": {
+            "azimuthDeg": 35,
+            "elevationDeg": 40,
+            "intensity": 1.8
+          },
+          "ambient": 0.4
+        },
+        "extends": 7
+      },
+      "docs": {},
+      "out": {
+        "version": 3,
+        "id": "base",
+        "name": "Base",
+        "catalogue": {
+          "category": "essentials",
+          "useLabel": "Base",
+          "tags": [
+            "brand"
+          ],
+          "stage": "none"
+        },
+        "mode": "dark",
+        "colors": {
+          "background": "#0b1020",
+          "text": "#f4f6fb",
+          "accent": "#ff5a36",
+          "muted": "#8a94ab"
+        },
+        "typography": {
+          "headline": {
+            "family": "Space Grotesk",
+            "weight": 600
+          },
+          "body": "Inter",
+          "scale": 1.25
+        },
+        "motion": {
+          "durations": {
+            "fast": 200,
+            "base": 500,
+            "slow": 900
+          },
+          "easings": {
+            "standard": "outCubic",
+            "emphasized": "outExpo"
+          }
+        },
+        "chartColors": [
+          "#ff5a36",
+          "#3ad1c4"
+        ],
+        "gradients": {
+          "brand": {
+            "type": "linear",
+            "angleDeg": 160,
+            "stops": [
+              [
+                "#0b1020",
+                0
+              ],
+              [
+                "#1b2350",
+                1
+              ]
+            ]
+          }
+        },
+        "background": {
+          "type": "gradient",
+          "gradient": "brand",
+          "parallax": 0.2
+        },
+        "lighting": {
+          "sun": {
+            "azimuthDeg": 35,
+            "elevationDeg": 40,
+            "intensity": 1.8
+          },
+          "ambient": 0.4
+        }
+      },
+      "problem": "invalid"
+    },
+    {
+      "id": "v2-base-extends-not-followed",
+      "source": "ws:variant",
+      "raw": {
+        "version": 3,
+        "id": "variant",
+        "name": "Variant",
+        "extends": "ws:legacy",
+        "mode": "light"
+      },
+      "docs": {
+        "ws:legacy": {
+          "version": 2,
+          "id": "base",
+          "name": "Base",
+          "catalogue": {
+            "category": "essentials",
+            "useLabel": "Base",
+            "tags": [
+              "brand"
+            ],
+            "stage": "none"
+          },
+          "mode": "dark",
+          "colors": {
+            "background": "#0b1020",
+            "text": "#f4f6fb",
+            "accent": "#ff5a36",
+            "muted": "#8a94ab"
+          },
+          "typography": {
+            "headline": {
+              "family": "Space Grotesk",
+              "weight": 600
+            },
+            "body": "Inter",
+            "scale": 1.25
+          },
+          "motion": {
+            "durations": {
+              "fast": 200,
+              "base": 500,
+              "slow": 900
+            },
+            "easings": {
+              "standard": "outCubic",
+              "emphasized": "outExpo"
+            }
+          },
+          "chartColors": [
+            "#ff5a36",
+            "#3ad1c4"
+          ],
+          "gradients": {
+            "brand": {
+              "type": "linear",
+              "angleDeg": 160,
+              "stops": [
+                [
+                  "#0b1020",
+                  0
+                ],
+                [
+                  "#1b2350",
+                  1
+                ]
+              ]
+            }
+          },
+          "background": {
+            "type": "gradient",
+            "gradient": "brand",
+            "parallax": 0.2
+          },
+          "lighting": {
+            "sun": {
+              "azimuthDeg": 35,
+              "elevationDeg": 40,
+              "intensity": 1.8
+            },
+            "ambient": 0.4
+          },
+          "extends": "ws:gone"
+        }
+      },
+      "out": {
+        "mode": "light",
+        "colors": {
+          "background": "#0b1020",
+          "text": "#f4f6fb",
+          "accent": "#ff5a36",
+          "muted": "#8a94ab"
+        },
+        "typography": {
+          "headline": {
+            "family": "Space Grotesk",
+            "weight": 600
+          },
+          "body": "Inter",
+          "scale": 1.25
+        },
+        "motion": {
+          "durations": {
+            "fast": 200,
+            "base": 500,
+            "slow": 900
+          },
+          "easings": {
+            "standard": "outCubic",
+            "emphasized": "outExpo"
+          }
+        },
+        "chartColors": [
+          "#ff5a36",
+          "#3ad1c4"
+        ],
+        "gradients": {
+          "brand": {
+            "type": "linear",
+            "angleDeg": 160,
+            "stops": [
+              [
+                "#0b1020",
+                0
+              ],
+              [
+                "#1b2350",
+                1
+              ]
+            ]
+          }
+        },
+        "background": {
+          "type": "gradient",
+          "gradient": "brand",
+          "parallax": 0.2
+        },
+        "lighting": {
+          "sun": {
+            "azimuthDeg": 35,
+            "elevationDeg": 40,
+            "intensity": 1.8
+          },
+          "ambient": 0.4
+        },
+        "version": 3,
+        "id": "variant",
+        "name": "Variant"
+      },
+      "problem": null
+    }
+  ]
+}

@@ -82,7 +82,7 @@ The full contract and its failure catalogue are in
 | --- | --- | --- |
 | Theme format | JSON (schema-versioned), one format for bundled and user themes; degrade-don't-crash validation, unknown fields pass through | The app, a human and an agent edit the same source of truth |
 | Theme storage | Bundled themes in the app; user themes workspace-shared at `~/Kookaburra Cut/themes/<slug>/` | One theme serves all projects |
-| Per-scene theming | A sidecar `themeId` swaps the whole theme for that scene; token-level tweaks mean duplicating the theme | Full swap keeps resolution trivial and previews honest |
+| Per-scene theming | A sidecar `themeId` swaps the whole theme for that scene. Token-level variants are themes too: a v3 workspace theme may `extends` another (bundled themes may not), deep-merged before parsing (objects merge, arrays and scalars replace, the child wins, `null` clears); packs carry the whole base chain | Resolution stays one theme per scene, previews key on the merged document so they stay honest, and a variant no longer copies every token it does not change |
 | Cross-theme transitions | Each side renders fully in its own theme; the composite blends finished pixels. Theme values never interpolate | Matches the compositor architecture |
 | Bundled fonts | OFL static faces only, committed to the repo | Exports survive OS font updates; licence-clean |
 | System fonts | Pinned by copying the face (extracting from `.ttc` where needed) into `~/Kookaburra Cut/fonts/` on first reference; pins are idempotent and never overwritten | The export depends on pinned bytes, not on macOS |

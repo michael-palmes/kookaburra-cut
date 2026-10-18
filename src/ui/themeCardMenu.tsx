@@ -25,6 +25,15 @@ export interface ThemeCardMenuOptions {
   onMove?: (choice: ThemeChoice) => void;
 }
 
+/** "X is based on it" for a theme other themes extend, naming up to two; null when none do. */
+export function dependentsNote(choice: Pick<ThemeChoice, "dependents">): string | null {
+  const names = choice.dependents ?? [];
+  if (names.length === 0) return null;
+  if (names.length === 1) return `${names[0]} is based on it`;
+  if (names.length === 2) return `${names[0]} and ${names[1]} are based on it`;
+  return `${names[0]}, ${names[1]} and ${names.length - 2} more are based on it`;
+}
+
 export function buildThemeCardMenu(
   choice: ThemeChoice,
   opts: ThemeCardMenuOptions,
@@ -54,12 +63,18 @@ export function buildThemeCardMenu(
     });
   }
   if (isWs) {
-    if (dev && opts.onMove)
+    if (dev && opts.onMove) {
+      const linked = choice.basedOn !== undefined || (choice.dependents?.length ?? 0) > 0;
       items.push({
         id: "move",
         label: "Move to app themes…",
+        disabled: linked,
+        ...(linked
+          ? { title: "Themes based on another theme, or that others are based on, stay personal" }
+          : {}),
         onSelect: () => opts.onMove?.(choice),
       });
+    }
     items.push(
       {
         id: "fonts",
@@ -80,7 +95,9 @@ export function buildThemeCardMenu(
       {
         id: "delete",
         label: "Delete",
-        confirmLabel: "Really delete?",
+        confirmLabel: dependentsNote(choice)
+          ? `Delete? ${dependentsNote(choice)}`
+          : "Really delete?",
         danger: true,
         onSelect: () => {
           void invoke("delete_theme", { slug })

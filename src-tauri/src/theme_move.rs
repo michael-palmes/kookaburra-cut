@@ -139,6 +139,32 @@ fn replace_file(path: &Path, expected: &[u8], bytes: &[u8]) -> Result<(), String
     result
 }
 
+/// Names of the workspace themes whose `extends` names `ws:<slug>` directly.
+fn theme_dependents(workspace: &Path, slug: &str) -> Vec<String> {
+    let target = format!("ws:{slug}");
+    let Ok(entries) = fs::read_dir(workspace.join("themes")) else {
+        return Vec::new();
+    };
+    let mut names: Vec<String> = entries
+        .flatten()
+        .filter_map(|entry| {
+            let other = entry.file_name().to_string_lossy().into_owned();
+            if other == slug || other.starts_with('.') {
+                return None;
+            }
+            let doc = crate::theme::read_workspace_theme(workspace, &format!("ws:{other}"))?;
+            (crate::theme::theme_extends_of(&doc).as_deref() == Some(target.as_str())).then(|| {
+                doc.get("name")
+                    .and_then(Value::as_str)
+                    .filter(|n| !n.trim().is_empty())
+                    .map_or(other, str::to_owned)
+            })
+        })
+        .collect();
+    names.sort();
+    names
+}
+
 fn move_theme(
     workspace: &Path,
     checkout: &Path,
@@ -172,8 +198,26 @@ fn move_theme(
     let source_file = real(&source.join("theme.json"), &workspace)?;
     let original = read(&source_file)?;
     let mut doc: Value = serde_json::from_slice(&original).map_err(|e| e.to_string())?;
-    if !doc.is_object() || !matches!(doc.get("version").and_then(Value::as_u64), Some(1 | 2)) {
+    if !doc.is_object()
+        || !doc
+            .get("version")
+            .and_then(Value::as_u64)
+            .is_some_and(|v| (1..=crate::theme::THEME_DOC_VERSION).contains(&v))
+    {
         return Err("This theme needs a supported theme document version.".into());
+    }
+    if doc.get("extends").is_some() {
+        return Err(
+            "This theme is based on another theme. Detach it in the theme editor before moving it."
+                .into(),
+        );
+    }
+    let dependents = theme_dependents(&workspace, slug);
+    if !dependents.is_empty() {
+        return Err(format!(
+            "Other themes are based on this one ({}). Detach them in the theme editor before moving it.",
+            dependents.join(", ")
+        ));
     }
     let destination =
         real(&checkout.join("src/theme/builtin"), &checkout)?.join(format!("{id}.json"));
@@ -486,6 +530,41 @@ mod tests {
             assert!(read(&recovery.join("journal.json")).is_ok());
             assert!(read(&recovery.join("source.json")).is_ok());
         }
+    }
+
+    #[test]
+    fn variants_and_their_bases_stay_personal() {
+        let f = Fixture::new();
+        let base = f.workspace.join("themes/personal/theme.json");
+        let original = read(&base).unwrap();
+        fs::create_dir_all(f.workspace.join("themes/variant")).unwrap();
+        fs::write(
+            f.workspace.join("themes/variant/theme.json"),
+            r#"{"version":3,"name":"Night variant","extends":"ws:personal"}"#,
+        )
+        .unwrap();
+        let error = f.run(None).unwrap_err();
+        assert!(error.contains("Night variant"), "{error}");
+        assert_eq!(read(&base).unwrap(), original);
+        assert!(!f.checkout.join("src/theme/builtin/new-app.json").exists());
+
+        fs::write(&base, r#"{"version":3,"name":"Personal","extends":"kookaburra-midnight","catalogue":{"category":"essentials","tags":[],"useLabel":"Test","stage":"none"}}"#).unwrap();
+        fs::remove_dir_all(f.workspace.join("themes/variant")).unwrap();
+        assert!(f.run(None).unwrap_err().contains("based on another theme"));
+        assert!(!f.checkout.join("src/theme/builtin/new-app.json").exists());
+    }
+
+    #[test]
+    fn moves_a_version_three_theme() {
+        let f = Fixture::new();
+        fs::write(
+            f.workspace.join("themes/personal/theme.json"),
+            r#"{"version":3,"id":"old","name":"Personal","catalogue":{"category":"essentials","tags":[],"useLabel":"Test","stage":"none"}}"#,
+        )
+        .unwrap();
+        let result = f.run(None).unwrap();
+        let doc: Value = serde_json::from_str(&result.json).unwrap();
+        assert_eq!(doc["version"], 3);
     }
 
     #[test]

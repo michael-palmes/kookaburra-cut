@@ -108,7 +108,16 @@ waits for a pending save, prompts once for dirty changes and destroys a clean
 window directly. A cancelled prompt or failed save leaves the editor usable.
 Bundled saves refresh the runtime catalogue as well as the source document.
 
+A workspace theme that extends another (`docs/decisions.md`, "Per-scene theming")
+opens as a variant: Identity shows "Based on" with the base's name, every section
+reads the merged theme, and an edit writes only what the variant overrides (a
+cleared inherited value becomes `null`). Detach replaces the draft with the merged
+document without `extends`; Save keeps it. Deleting a theme others are based on
+names them in the confirm, and Move to app themes is off for variants and their
+bases.
+
 Theme preview jobs use the exact saved document and a canonical JSON cache key.
+A variant keys on its merged document, and saving a base queues its variants.
 They run serially while the editor is idle, retain deferred work when the canvas
 is busy, and restore the playhead without restoring a project the user left.
 

@@ -1,9 +1,11 @@
 import { invoke } from "@tauri-apps/api/core";
+import { collectParseWarnings } from "../engine/parseWarnings";
 import {
   BUILTIN_THEME_CATALOGUE,
   discoverBuiltinThemeCatalogue,
   refreshThemeLineup,
 } from "./catalogue";
+import { collectThemeChain, resolveThemeDocument, type ThemeDocLookup } from "./extends";
 import { parseThemeDoc } from "./schema";
 import type { Theme } from "./tokens";
 
@@ -54,26 +56,75 @@ export function isWorkspaceThemeId(id: string): boolean {
   return id.startsWith(WORKSPACE_THEME_PREFIX);
 }
 
+/** The raw document behind any theme id, for an `extends` chain: bundled ones off the catalogue, workspace ones through the native read. */
+export async function readThemeDocument(id: string): Promise<unknown> {
+  if (isWorkspaceThemeId(id)) {
+    const slug = id.slice(WORKSPACE_THEME_PREFIX.length);
+    return JSON.parse(await invoke<string>("read_theme", { slug }));
+  }
+  return BUILTIN_THEME_CATALOGUE.find((entry) => entry.id === id)?.doc;
+}
+
+/** A lookup over an already-read map (the picker's listing, a prefetched chain), then the bundled documents. */
+export function themeDocLookup(docs: ReadonlyMap<string, unknown>): ThemeDocLookup {
+  return (id) =>
+    docs.has(id) ? docs.get(id) : BUILTIN_THEME_CATALOGUE.find((entry) => entry.id === id)?.doc;
+}
+
+/** A raw document with its `extends` chain merged, bases read through the native side; undefined (warned) when the chain is broken. */
+export async function resolveThemeJson(raw: unknown, source: string): Promise<unknown> {
+  const docs = await collectThemeChain(raw, readThemeDocument);
+  return resolveThemeDocument(raw, source, themeDocLookup(docs));
+}
+
+export interface ThemeReport {
+  theme: Theme;
+  /** What the document dropped, or why the theme fell back, as parser messages. */
+  warnings: string[];
+}
+
+/** `resolveTheme` plus the warnings its parse raised, for a load that surfaces them. Never rejects. */
+export async function resolveThemeReport(
+  id: string | undefined,
+  fallback: Theme = defaultTheme,
+): Promise<ThemeReport> {
+  // A manifest without a themeId (hand-edited project.json) degrades to the fallback instead of crashing the load.
+  if (!id) return { theme: fallback, warnings: [] };
+  if (isWorkspaceThemeId(id)) {
+    let raw: unknown;
+    let docs: Map<string, unknown>;
+    try {
+      raw = await readThemeDocument(id);
+      docs = await collectThemeChain(raw, readThemeDocument);
+    } catch (e) {
+      console.warn(`[theme] workspace theme "${id}" failed to load:`, e);
+      return {
+        theme: fallback,
+        warnings: [`[theme] ${id}: can't be read, so a fallback theme shows`],
+      };
+    }
+    const { result: theme, warnings } = collectParseWarnings(() => {
+      const doc = resolveThemeDocument(raw, id, themeDocLookup(docs));
+      return doc === undefined ? undefined : parseThemeDoc(doc, id);
+    });
+    // The folder slug is the identity (like workspace projects); the document's own id field cannot collide with another theme's.
+    return theme ? { theme: { ...theme, id }, warnings } : { theme: fallback, warnings };
+  }
+  const theme = builtinThemes[id];
+  if (theme) return { theme, warnings: [] };
+  console.warn(`[theme] unknown themeId "${id}", falling back`);
+  return {
+    theme: fallback,
+    warnings: [`[theme] ${id}: isn't a theme this version knows, so a fallback theme shows`],
+  };
+}
+
 /** Resolves a theme id from either source; async because workspace themes read through the native side. Never rejects: unknown/broken ids return `fallback` (a scene-level override falls back to its PROJECT's theme instead). */
 export async function resolveTheme(
   id: string | undefined,
   fallback: Theme = defaultTheme,
 ): Promise<Theme> {
-  // A manifest without a themeId (hand-edited project.json) degrades to the fallback instead of crashing the load.
-  if (!id) return fallback;
-  if (isWorkspaceThemeId(id)) {
-    const slug = id.slice(WORKSPACE_THEME_PREFIX.length);
-    try {
-      const text = await invoke<string>("read_theme", { slug });
-      const theme = parseThemeDoc(JSON.parse(text), id);
-      // The folder slug is the identity (like workspace projects); the document's own id field cannot collide with another theme's.
-      if (theme) return { ...theme, id };
-    } catch (e) {
-      console.warn(`[theme] workspace theme "${id}" failed to load:`, e);
-    }
-    return fallback;
-  }
-  const theme = builtinThemes[id];
-  if (!theme) console.warn(`[theme] unknown themeId "${id}" — falling back`);
-  return theme ?? fallback;
+  const report = await resolveThemeReport(id, fallback);
+  for (const warning of report.warnings) console.warn(warning);
+  return report.theme;
 }
