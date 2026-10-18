@@ -121,11 +121,11 @@ def cmd_caps(f: Dict[str, Any]) -> None:
     caps = {
         "ok": True, "cli": 1, "appVersion": "0.19.0-fake", "build": "dev", "exe": sys.argv[0],
         "commands": ["caps", "probe", "create", "validate", "save", "render"],
-        "docVersion": {"read": 2, "write": [1, 2]},
+        "docVersion": {"read": 3, "write": [1, 2, 3]},
         "ffmpeg": {"path": "/usr/bin/false", "ok": True}, "ffprobe": {"path": "/usr/bin/false", "ok": True},
         "filters": ["blackdetect", "freezedetect", "scdet", "tile"], "hardwareVideo": True,
         "tap": {"styles": ["target", "glow", "dot", "ring"], "colors": ["blue", "light", "dark", "red", "terracotta"], "sizeRange": [0.25, 4], "defaultSize": 1.25, "durationMs": 550, "defaultStyle": "target", "defaultColor": "blue"},
-        "mask": {"styles": ["solid", "blur", "pixelate"], "defaultStrength": 0.5, "defaultColor": "#000000"},
+        "mask": {"styles": ["solid", "blur", "pixelate"], "defaultStrength": 0.5, "defaultColor": "#000000", "fades": True}, "crop": True, "zoom": True,
         "limits": {"minClipSourceMs": 100, "minHoldMs": 100, "defaultHoldMs": 2000, "defaultFps": 60},
     }
     caps.update(json.loads(os.environ.get("FAKE_CLI_CAPS") or "{}"))

@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from ..lock import RETRY_AFTER_MS, FileLock
-from ..util import EXIT_PROBLEMS, EXIT_TRANSIENT, KbError, exact_case_exists
+from ..util import EXIT_ENV, EXIT_PROBLEMS, EXIT_TRANSIENT, KbError, exact_case_exists
 from . import editmath as em
 
 EDITS_DIR = "edits"
@@ -23,7 +23,8 @@ RENDERS_DIR = ".renders"
 OUTPUT_RE = re.compile(r"^assets/(.+)-edited\.mp4$")
 VERSION = 1
 VERSION_MASKS = 2
-VERSION_READ_MAX = 2
+VERSION_CROP = 3
+VERSION_READ_MAX = 3
 U32_MAX = 2 ** 32 - 1
 U64_MAX = 2 ** 64 - 1
 I64_MIN, I64_MAX = -(2 ** 63), 2 ** 63 - 1
@@ -31,6 +32,8 @@ LOCK_WAIT_S = 10.0
 SAVE_RETRIES = 3
 TAP_SIZE_RANGE = (0.25, 4.0)
 HEX6 = re.compile(r"^#[0-9A-Fa-f]{6}$", re.ASCII)
+ZOOM_EASES = ("linear", "smooth")
+UPDATE_HINT = "ask the user to update Kookaburra Cut"
 
 
 class DocError(KbError):
@@ -284,6 +287,21 @@ def _clip(raw: Any, path: str) -> Dict[str, Any]:
     hold = s.opt("holdMs")
     if hold is not None:
         out["holdMs"] = _u64(hold, s._field("holdMs"))
+    crop = s.opt("crop")
+    if crop is not None:
+        out["crop"] = _array(crop, s._field("crop"), 4)
+    zoom = s.opt("zoom")
+    if zoom is not None:
+        zs = _Struct(zoom, "EditZoom", s._field("zoom"))
+        keys = []
+        for i, k in enumerate(_seq(zs.req("keys"), zs._field("keys"))):
+            ks = _Struct(k, "EditZoomKey", f"{zs._field('keys')}[{i}]")
+            key: Dict[str, Any] = {"tMs": _i64(ks.req("tMs"), ks._field("tMs")), "rect": _array(ks.req("rect"), ks._field("rect"), 4)}
+            ease = ks.opt("ease")
+            if ease is not None:
+                key["ease"] = _enum(ease, ks._field("ease"), ZOOM_EASES)
+            keys.append(key)
+        out["zoom"] = {"keys": keys}
     return out
 
 
@@ -318,6 +336,10 @@ def _mask(raw: Any, path: str) -> Dict[str, Any]:
         out["color"] = _str(color, s._field("color"))
     out["startMs"] = _u64(s.req("startMs"), s._field("startMs")) if s.has("startMs") else 0
     out["endMs"] = _u64(s.req("endMs"), s._field("endMs")) if s.has("endMs") else 0
+    for key in ("fadeInMs", "fadeOutMs"):
+        fade = s.opt(key)
+        if fade is not None:
+            out[key] = _u64(fade, s._field(key))
     keys = []
     for i, k in enumerate(_seq(s.req("keys"), s._field("keys"))):
         ks = _Struct(k, "EditMaskKey", f"{s._field('keys')}[{i}]")
@@ -398,14 +420,54 @@ def load(project: Any, name: str) -> Tuple[Dict[str, Any], str]:
 
 
 def stamped_version(doc: Dict[str, Any]) -> int:
+    """edit.rs doc_version: the lowest version that carries everything in the doc (a crop or zoom needs 3)."""
+    if any("crop" in c or "zoom" in c for c in doc.get("clips") or []):
+        return VERSION_CROP
     return VERSION_MASKS if doc.get("masks") else VERSION
+
+
+FEATURE_LABELS = {"mask.fades": "mask fades", "crop": "a crop", "zoom": "zoom keys"}
+
+
+def needs(doc: Dict[str, Any]) -> List[str]:
+    """What an app's edit CLI must serve to save doc without dropping part of it (keys of FEATURE_LABELS)."""
+    out = []
+    if any(m.get("fadeInMs") or m.get("fadeOutMs") for m in doc.get("masks") or []):
+        out.append("mask.fades")
+    clips = doc.get("clips") or []
+    for feature in ("crop", "zoom"):
+        if any(feature in c for c in clips):
+            out.append(feature)
+    return out
+
+
+def caps_supports(caps: Dict[str, Any], feature: str) -> bool:
+    """Whether an `edit caps` answer serves a needs() feature: mask.fades, or crop and zoom with doc version 3 writes."""
+    if feature == "mask.fades":
+        mask = caps.get("mask")
+        return isinstance(mask, dict) and mask.get("fades") is True
+    written = (caps.get("docVersion") or {}).get("write") if isinstance(caps.get("docVersion"), dict) else None
+    return caps.get(feature) is True and isinstance(written, list) and VERSION_CROP in written
+
+
+def require_caps(caps: Dict[str, Any], features: List[str], what: str) -> None:
+    """Refuse (exit 2) before an older app CLI saves a doc it would silently strip, or is asked for what it lacks."""
+    missing = [f for f in features if not caps_supports(caps, f)]
+    if missing:
+        labels = " and ".join(FEATURE_LABELS.get(f, f) for f in missing)
+        raise KbError(
+            f"{what} needs {labels}, which Kookaburra Cut {caps.get('appVersion') or '?'}'s edit CLI doesn't support (it would drop them on save)",
+            EXIT_ENV,
+            kind="env",
+            hint=UPDATE_HINT,
+        )
 
 
 U64_PATHS = {
     "sources": ("durationMs",),
     "clips": ("inMs", "outMs", "startMs", "holdMs"),
     "taps": ("sourceMs",),
-    "masks": ("startMs", "endMs"),
+    "masks": ("startMs", "endMs", "fadeInMs", "fadeOutMs"),
 }
 
 
@@ -431,6 +493,11 @@ def u64_problems(doc: Dict[str, Any]) -> List[str]:
             if group == "masks":
                 for j, k in enumerate(item.get("keys") or []):
                     check(k.get("sourceMs"), f"masks[{i}].keys[{j}].sourceMs")
+            if group == "clips" and isinstance(item.get("zoom"), dict):
+                for j, k in enumerate(item["zoom"].get("keys") or []):
+                    t = k.get("tMs")
+                    if isinstance(t, bool) or not isinstance(t, int) or not I64_MIN <= t <= I64_MAX:
+                        bad.append(f"clips[{i}].zoom.keys[{j}].tMs = {t!r}")
     return bad
 
 
@@ -460,11 +527,57 @@ def mask_errors(doc: Dict[str, Any]) -> List[Dict[str, Any]]:
             out.append(_issue("error", "bad-mask", f"mask {mask['id']} has no keyframes", mask=mask["id"]))
         if source.get("kind", "video") == "video" and mask["endMs"] <= mask["startMs"]:
             out.append(_issue("error", "bad-mask", f"mask {mask['id']} has an empty time span", mask=mask["id"]))
+        elif source.get("kind", "video") == "video" and (mask.get("fadeInMs") or 0) + (mask.get("fadeOutMs") or 0) > mask["endMs"] - mask["startMs"]:
+            out.append(_issue("error", "bad-mask", f"mask {mask['id']} fades for longer than its span", mask=mask["id"]))
         for k in mask.get("keys") or []:
             r = k.get("rect") or []
             if len(r) != 4 or not all(isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v) for v in r) or r[2] <= 0 or r[3] <= 0:
                 out.append(_issue("error", "bad-mask", f"mask {mask['id']} has an invalid box", mask=mask["id"]))
                 break
+    return out
+
+
+def _rect_inside(r: Any) -> bool:
+    """edit.rs rect_inside: a real normalised box inside the frame."""
+    return (
+        isinstance(r, list) and len(r) == 4 and all(isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v) for v in r)
+        and r[2] > 0 and r[3] > 0 and r[0] >= 0 and r[1] >= 0 and r[0] + r[2] <= 1 + 1e-9 and r[1] + r[3] <= 1 + 1e-9
+    )
+
+
+def crop_errors(doc: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """edit.rs validate_crops (crop_problem, zoom_problem): fail closed on a crop or zoom that cannot render as drawn."""
+    out = []
+    fps = em.output_fps(doc)
+    sources = {s["id"]: s for s in doc.get("sources") or []}
+    for clip in doc.get("clips") or []:
+        source = sources.get(clip.get("sourceId"))
+        if source is None:
+            continue
+        cid = clip["id"]
+        tiny = source.get("width", 0) < 2 or source.get("height", 0) < 2
+        problem = None
+        if "crop" in clip:
+            if not _rect_inside(clip["crop"]):
+                problem = f"clip {cid} has a crop outside its source frame"
+            elif tiny:
+                problem = f"clip {cid} crops a source with no pixel size"
+        if problem is None and "zoom" in clip:
+            keys = clip["zoom"].get("keys") or []
+            frames = [em.js_round(k["tMs"] * fps / 1000) for k in keys]
+            if "crop" in clip:
+                problem = f"clip {cid} has both a crop and zoom keys"
+            elif not keys:
+                problem = f"clip {cid} has a zoom with no keys"
+            elif not all(_rect_inside(k.get("rect")) for k in keys):
+                problem = f"clip {cid} has a zoom key outside its source frame"
+            elif tiny:
+                problem = f"clip {cid} zooms a source with no pixel size"
+            elif any(b <= a for a, b in zip(frames, frames[1:])):
+                problem = f"clip {cid} has zoom keys out of order or two on one output frame"
+        if problem:
+            out.append(_issue("error", "bad-crop", problem, clip=cid))
+            break
     return out
 
 
@@ -508,6 +621,7 @@ def static_issues(doc: Dict[str, Any], name: Optional[str] = None, project: Any 
         if c.get("startMs") != l.get("startMs"):
             issues.append(_issue("warning", "not-laid-out", f"clip {cid} startMs {c.get('startMs')} is not laid out (should be {l.get('startMs')})", clip=cid))
     issues.extend(mask_errors(doc))
+    issues.extend(crop_errors(doc))
     used = {c.get("sourceId") for c in clips}
     for mask in doc.get("masks") or []:
         if mask["sourceId"] not in used:
@@ -696,6 +810,9 @@ def mutate(
             return Mutation(after, before, sha, sha, rebased, pruned, False, issues)
         from . import appcli
 
+        features = needs(after)
+        if features:
+            require_caps(caps or appcli.caps(), features, f"edits/{name}.json")
         try:
             saved = appcli.save(project, name, after, sha)
         except appcli.CliError as e:
