@@ -18,6 +18,7 @@ import { foldBandToChild, GroupAnimationContext } from "../group/context";
 import type { V3 } from "../types";
 import { caretQuad, type EmojiQuadState, EmojiQuads } from "./EmojiQuads";
 import { prepareEmojiText } from "./emojiText";
+import { materialProp, useExactText, useExactTextBase } from "./exactText";
 import { createStaggerTextMaterial, writeShineBand } from "./staggerMaterial";
 
 export interface AnimatedCounterProps {
@@ -124,9 +125,11 @@ function AnimatedCounterRenderer(props: AnimatedCounterProps) {
   ]);
 
   const groupShine = group?.shineCapable === true;
+  const exact = useExactText();
+  const exactBase = useExactTextBase();
   const holder = useMemo(
-    () => (groupShine ? createStaggerTextMaterial({ shine: true }) : null),
-    [groupShine],
+    () => (groupShine ? createStaggerTextMaterial({ shine: true, exactText: exact }) : null),
+    [groupShine, exact],
   );
   useEffect(() => () => holder?.dispose(), [holder]);
   if (holder) writeShineBand(holder, foldBandToChild(group, pos));
@@ -165,7 +168,7 @@ function AnimatedCounterRenderer(props: AnimatedCounterProps) {
         anchorY="middle"
         {...(rotZ ? { rotation: [0, 0, rotZ] as V3 } : {})}
         {...(group ? { fillOpacity: group.alpha } : {})}
-        {...(holder ? { material: holder.material } : {})}
+        {...materialProp(holder?.material ?? exactBase)}
         sdfGlyphSize={SDF_GLYPH_SIZE}
         onSync={
           hasEmoji

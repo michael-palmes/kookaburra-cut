@@ -371,6 +371,8 @@ export interface StaggerMaterialFeatures {
   gradient?: boolean;
   /** arc look: bend glyphs along a circular arc (forces the geometry sandwich). */
   arc?: boolean;
+  /** `render.exactText`: the base renders with tone mapping off (the whole derived chain inherits it). */
+  exactText?: boolean;
 }
 
 export function createStaggerTextMaterial(
@@ -399,6 +401,7 @@ export function createStaggerTextMaterial(
     ...(echo !== undefined ? { echo } : {}),
   };
   const base = new MeshBasicMaterial({ transparent: true });
+  if (features.exactText === true) base.toneMapped = false;
   const uniforms = {
     uGanCount: { value: 1 },
     uGanEm: { value: 1 },

@@ -39,7 +39,7 @@ transitions with `kb scene ...` (manifest-safe, atomic); other fields with
 | `typography` | | `{ headline, body, chart }`, each `"Family"` or `"Family@weight"`. Beats every theme; sidecar `textStyle` still wins. |
 | `audio` | | One soundtrack (below). |
 | `defaultTransition` | | Seeded onto new boundaries; `null` means hard cut. |
-| `render` | | `{ toneMapping, exposure }` (reference/lighting.md) and `motionBlur` (reference/camera.md). Absent is aces at 1, no blur. |
+| `render` | | `{ toneMapping, exposure, exactText }` (reference/lighting.md) and `motionBlur` (reference/camera.md). Absent is aces at 1, tone-mapped text, no blur. |
 | `lighting` | | Project lighting layer between theme and scene (reference/lighting.md). |
 | `frame` | | Deck-wide overlay merged into every scene (reference/sidecar.md). |
 | `camera` | | Project camera keys on the global clock (reference/camera.md). |

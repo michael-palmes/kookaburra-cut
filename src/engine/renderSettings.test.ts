@@ -34,6 +34,18 @@ describe("parseRenderSettings", () => {
     expect(parseRenderSettings({ exposure: 100 }, "t").exposure).toBe(4);
     expect(parseRenderSettings({ exposure: 0 }, "t").exposure).toBe(0.25);
   });
+
+  it("carries exactText only when it is true", () => {
+    expect(parseRenderSettings({ exactText: true }, "t")).toEqual({
+      ...DEFAULT_RENDER_SETTINGS,
+      exactText: true,
+    });
+    for (const exactText of [false, "yes", 1, null]) {
+      const parsed = parseRenderSettings({ exactText }, "t");
+      expect(parsed).toEqual(DEFAULT_RENDER_SETTINGS);
+      expect("exactText" in parsed).toBe(false);
+    }
+  });
 });
 
 describe("mode mapping (the two render paths MUST agree)", () => {

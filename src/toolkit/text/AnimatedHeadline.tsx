@@ -45,6 +45,7 @@ import {
   sweepCoverage,
 } from "./EmojiQuads";
 import { type PreparedEmojiText, prepareEmojiText } from "./emojiText";
+import { materialProp, useExactText, useExactTextBase } from "./exactText";
 import { computeUnitYExtents, HighlightQuads } from "./HighlightQuads";
 import {
   arcGlyphTransform,
@@ -626,9 +627,11 @@ function LegacyHeadline(
   const [carets, setCarets] = useState<Float32Array | null>(null);
 
   const groupShine = group?.shineCapable === true;
+  const exact = useExactText();
+  const exactBase = useExactTextBase();
   const holder = useMemo(
-    () => (groupShine ? createStaggerTextMaterial({ shine: true }) : null),
-    [groupShine],
+    () => (groupShine ? createStaggerTextMaterial({ shine: true, exactText: exact }) : null),
+    [groupShine, exact],
   );
   useEffect(() => () => holder?.dispose(), [holder]);
   if (holder) writeShineBand(holder, foldBandToChild(group, position));
@@ -683,7 +686,7 @@ function LegacyHeadline(
           : {})}
         {...layoutProps(props)}
         {...(rotZ ? { rotation: [0, 0, rotZ] as V3 } : {})}
-        {...(holder ? { material: holder.material } : {})}
+        {...materialProp(holder?.material ?? exactBase)}
         sdfGlyphSize={SDF_GLYPH_SIZE}
         onSync={
           hasEmoji
@@ -745,9 +748,11 @@ function BlockHeadline(
   const ownShine =
     anim.params.shine && (anim.preset === "fade-scale" || anim.preset === "twist-scale");
   const shining = ownShine || group?.shineCapable === true;
+  const exact = useExactText();
+  const exactBase = useExactTextBase();
   const holder = useMemo(
-    () => (shining ? createStaggerTextMaterial({ shine: true }) : null),
-    [shining],
+    () => (shining ? createStaggerTextMaterial({ shine: true, exactText: exact }) : null),
+    [shining, exact],
   );
   useEffect(() => () => holder?.dispose(), [holder]);
   if (holder) {
@@ -841,7 +846,7 @@ function BlockHeadline(
         }
         outlineColor={halo ? halo.outlineColor : fill}
         outlineOpacity={halo ? Math.max(halo.outlineOpacity * alpha, haloOpacity) : haloOpacity}
-        {...(holder ? { material: holder.material } : {})}
+        {...materialProp(holder?.material ?? exactBase)}
         sdfGlyphSize={SDF_GLYPH_SIZE}
         onSync={
           measuring || hasEmoji
@@ -928,6 +933,7 @@ function StaggeredHeadline(
   const chroming = usesPreset(CHROMA_PRESETS, anim);
   const highlighting = usesPreset(HIGHLIGHT_PRESETS, anim);
   const underlining = usesPreset(UNDERLINE_PRESETS, anim);
+  const exact = useExactText();
   const holder = useMemo(
     () =>
       createStaggerTextMaterial({
@@ -939,19 +945,43 @@ function StaggeredHeadline(
         pack,
         gradient: lookGradient,
         arc: lookArc,
+        exactText: exact,
       }),
-    [shining, glinting, axis, twisting, scattering, pack, lookGradient, lookArc, lookFrosted],
+    [
+      shining,
+      glinting,
+      axis,
+      twisting,
+      scattering,
+      pack,
+      lookGradient,
+      lookArc,
+      lookFrosted,
+      exact,
+    ],
   );
   useEffect(() => () => holder.dispose(), [holder]);
   const echoHolders = useMemo(
     () =>
       chroming
         ? ([
-            createStaggerTextMaterial({ axis, echo: 1, gradient: lookGradient, arc: lookArc }),
-            createStaggerTextMaterial({ axis, echo: -1, gradient: lookGradient, arc: lookArc }),
+            createStaggerTextMaterial({
+              axis,
+              echo: 1,
+              gradient: lookGradient,
+              arc: lookArc,
+              exactText: exact,
+            }),
+            createStaggerTextMaterial({
+              axis,
+              echo: -1,
+              gradient: lookGradient,
+              arc: lookArc,
+              exactText: exact,
+            }),
           ] as const)
         : null,
-    [chroming, axis, lookGradient, lookArc],
+    [chroming, axis, lookGradient, lookArc, exact],
   );
   useEffect(() => {
     if (!echoHolders) return;
@@ -963,9 +993,15 @@ function StaggeredHeadline(
   const offsetHolder = useMemo(
     () =>
       lookOffsetPrint
-        ? createStaggerTextMaterial({ axis, twist: twisting, scatter: scattering, pack })
+        ? createStaggerTextMaterial({
+            axis,
+            twist: twisting,
+            scatter: scattering,
+            pack,
+            exactText: exact,
+          })
         : null,
-    [lookOffsetPrint, axis, twisting, scattering, pack],
+    [lookOffsetPrint, axis, twisting, scattering, pack, exact],
   );
   useEffect(() => () => offsetHolder?.dispose(), [offsetHolder]);
   const accent = theme.colors.accent;

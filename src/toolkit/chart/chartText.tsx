@@ -18,6 +18,7 @@ import { useTheme } from "../../theme";
 import { fontUrl, SDF_GLYPH_SIZE } from "../../theme/fonts";
 import type { FontRef, Theme } from "../../theme/tokens";
 import { liftColour } from "../colour";
+import { materialProp, useExactTextBase } from "../text/exactText";
 import { chartLabelBeforeRender } from "./billboardLabel";
 import {
   CHART_2D_ORDER,
@@ -192,6 +193,7 @@ export function ChartLabel(props: ChartLabelProps) {
       ),
     [rotation],
   );
+  const exactBase = useExactTextBase();
   if (!text || alpha <= 0) return null;
   // Every face here is a ref something DECLARES (the block's `chart.font`, the project's chart font, or the theme's own), never a synthesised weight: the export preamble preloads exactly the declared refs, and a face first typeset mid-run claims cells in the shared SDF atlas late (docs/determinism.md, "Fonts").
   const face: FontRef = chartFace(chartFont, theme, bold);
@@ -210,6 +212,7 @@ export function ChartLabel(props: ChartLabelProps) {
           matrixAutoUpdate={false}
           frustumCulled={false}
           onBeforeRender={faceCamera}
+          {...materialProp(exactBase)}
           sdfGlyphSize={SDF_GLYPH_SIZE}
         >
           {text}
@@ -227,6 +230,7 @@ export function ChartLabel(props: ChartLabelProps) {
         anchorY={anchorY}
         fillOpacity={alpha}
         renderOrder={renderOrder}
+        {...materialProp(exactBase)}
         sdfGlyphSize={SDF_GLYPH_SIZE}
       >
         {text}

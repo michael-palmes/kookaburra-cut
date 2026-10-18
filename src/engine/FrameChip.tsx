@@ -6,6 +6,7 @@ import { fontUrl, SDF_GLYPH_SIZE } from "../theme/fonts";
 import type { Theme } from "../theme/tokens";
 import { resolveChipIconId } from "../toolkit/frame/chipIcons";
 import type { FrameChipSpec } from "../toolkit/frame/types";
+import { materialProp, useExactTextBase } from "../toolkit/text/exactText";
 import type { V3 } from "../toolkit/types";
 import { FrameIcon } from "./FrameIcon";
 import { FrameSymbol } from "./FrameSymbol";
@@ -102,6 +103,7 @@ export function FrameChip({
 
   const pill = useMemo(() => makePillMaterial(), []);
   useEffect(() => () => pill.material.dispose(), [pill]);
+  const exactBase = useExactTextBase();
 
   const fill = resolveChipColour(theme, chip.colour);
   const labelColour = contrastToken(theme, fill);
@@ -168,6 +170,7 @@ export function FrameChip({
         anchorY="middle"
         fillOpacity={fade}
         renderOrder={1}
+        {...materialProp(exactBase)}
         sdfGlyphSize={SDF_GLYPH_SIZE}
         onSync={(troika: { textRenderInfo?: { blockBounds?: number[] } }) => {
           const b = troika.textRenderInfo?.blockBounds;
