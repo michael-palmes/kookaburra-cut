@@ -19,7 +19,8 @@ import {
   type ThemeCatalogueStage,
   type ThemeCategoryId,
 } from "../theme/catalogue";
-import { WORKSPACE_THEME_PREFIX } from "../theme/registry";
+import { resolveThemeDocument, themeDependents, themeExtendsOf } from "../theme/extends";
+import { themeDocLookup, WORKSPACE_THEME_PREFIX } from "../theme/registry";
 import { parseThemeDoc } from "../theme/schema";
 import { THEME_CATEGORY_ICONS } from "./libraryIcons";
 import { canEditBundledThemes } from "./theme-editor/themeEditorIo";
@@ -42,6 +43,10 @@ export interface ThemeChoice {
   text: string;
   /** `catalogue.order`, when the document carries one; the sort key drag-reorder rewrites. */
   order?: number;
+  /** The theme id this one extends, when it is a variant. */
+  basedOn?: string;
+  /** Names of the workspace themes whose `extends` chain reaches this one. */
+  dependents?: readonly string[];
 }
 
 export type ThemeCollectionId = "all" | "recent" | ThemeCategoryId | "my-themes";
@@ -217,19 +222,33 @@ export async function listThemeChoices(): Promise<ThemeChoice[]> {
   );
   try {
     const listings = await invoke<{ slug: string; json: string }[]>("list_themes");
+    const docs = new Map<string, unknown>();
+    for (const { slug, json } of listings) {
+      try {
+        docs.set(`${WORKSPACE_THEME_PREFIX}${slug}`, JSON.parse(json));
+      } catch {
+        // Unparseable listings drop below with their own warning.
+      }
+    }
+    const lookup = themeDocLookup(docs);
+    const names = new Map<string, string>();
     const workspaceChoices = await Promise.all(
       listings.map(async ({ slug, json }): Promise<ThemeChoice | null> => {
         const id = `${WORKSPACE_THEME_PREFIX}${slug}`;
         try {
           const raw: unknown = JSON.parse(json);
-          const theme = parseThemeDoc(raw, id);
+          const merged = resolveThemeDocument(raw, id, lookup);
+          const theme = merged === undefined ? undefined : parseThemeDoc(merged, id);
           if (!theme) return null;
+          names.set(id, theme.name);
+          const basedOn = themeExtendsOf(raw);
           const rawCatalogue = isRecord(raw) ? raw.catalogue : undefined;
           const metadata =
             rawCatalogue !== undefined ? parseThemeCatalogueMetadata(rawCatalogue, id) : undefined;
           // Read leniently: the reorder command writes `catalogue.order` alone, and a partial block the full parser rejects must still keep its sort key.
           const order = readCatalogueOrder(rawCatalogue);
-          const previews = await themePreviewKey(json)
+          // A variant keys its previews on the merged document, so a base edit shows as stale art.
+          const previews = await themePreviewKey(merged === raw ? json : JSON.stringify(merged))
             .then((key) => cachedThemePreviews(key))
             .catch(() => null);
           return {
@@ -247,6 +266,7 @@ export async function listThemeChoices(): Promise<ThemeChoice[]> {
             accent: theme.colors.accent,
             text: theme.colors.text,
             ...(order === undefined ? {} : { order }),
+            ...(basedOn === undefined ? {} : { basedOn }),
           };
         } catch (error) {
           console.warn(`[theme] workspace theme "${id}" failed to list:`, error);
@@ -254,12 +274,13 @@ export async function listThemeChoices(): Promise<ThemeChoice[]> {
         }
       }),
     );
+    const listed = workspaceChoices.filter((choice): choice is ThemeChoice => choice !== null);
+    for (const choice of [...choices, ...listed]) {
+      const dependents = themeDependents(choice.id, docs).map((id) => names.get(id) ?? id);
+      if (dependents.length > 0) choice.dependents = dependents;
+    }
     // My themes sort on `catalogue.order` when the documents carry one (drag-reorder writes it), alphabetically otherwise; the native listing's own order is only a tiebreak.
-    choices.push(
-      ...sortWorkspaceThemes(
-        workspaceChoices.filter((choice): choice is ThemeChoice => choice !== null),
-      ),
-    );
+    choices.push(...sortWorkspaceThemes(listed));
   } catch (error) {
     console.warn("[theme] listing workspace themes failed:", error);
   }

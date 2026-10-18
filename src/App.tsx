@@ -185,7 +185,7 @@ import {
   updateBundledTemplatePreview,
 } from "./engine/templates";
 import { getLiveSession } from "./engine/terminal";
-import { ensureUserThemePreviews } from "./engine/themePreviews";
+import { ensureUserThemePreviews, themeVariantsOf } from "./engine/themePreviews";
 import { useUpdateCheck } from "./engine/updates";
 import {
   type AppSettings,
@@ -1586,6 +1586,9 @@ export default function App() {
 
   const handleThemeEdited = useCallback(async (themeId: string, json: string) => {
     setPendingThemePreviews((pending) => ({ ...pending, [themeId]: json }));
+    const variants = await themeVariantsOf(themeId).catch(() => []);
+    if (variants.length > 0)
+      setPendingThemePreviews((pending) => ({ ...pending, ...Object.fromEntries(variants) }));
   }, []);
 
   const handleDuplicateTheme = useCallback(

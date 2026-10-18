@@ -7,25 +7,30 @@ import {
   defaultGradientStops,
   duplicateThemeDoc,
   EFFECT_DEFAULTS,
+  effectiveThemeDoc,
   environmentPath,
   FALLBACK_USE_LABEL,
   firstGradientName,
   getIn,
   isDirty,
   parseThemeDraft,
+  patchThemeDraft,
   readBackdropKind,
   readBackgroundKind,
   readEffect,
   readEnvironment,
   readFills,
+  readFontSlot,
   readGradients,
   readIdentity,
   readSun,
+  readThemeVariant,
   removeTag,
   renameGradient,
   serialiseThemeDoc,
   setIn,
   setSunEnabled,
+  standaloneThemeDoc,
   sunPath,
   type ThemeDoc,
   themeScope,
@@ -285,6 +290,66 @@ describe("parseThemeDraft", () => {
     const before = console.warn;
     parseThemeDraft(setIn(base(), ["card"], { radius: 9 }), "demo");
     expect(console.warn).toBe(before);
+  });
+
+  it("parses a variant over its base, and reports a missing base", () => {
+    const variant: ThemeDoc = { version: 3, id: "night", name: "Night", extends: "ws:demo" };
+    const lookup = (id: string) => (id === "ws:demo" ? base() : undefined);
+    expect(parseThemeDraft(variant, "ws:night", lookup).theme?.colors.accent).toBe("#3ad1c4");
+    const orphan = parseThemeDraft(variant, "ws:night");
+    expect(orphan.theme).toBeUndefined();
+    expect(orphan.warnings.join(" ")).toContain('"ws:demo" can\'t be found');
+  });
+});
+
+describe("theme variants in the editor", () => {
+  const lookup = (id: string) => (id === "ws:demo" ? base() : undefined);
+  const child = (): ThemeDoc => ({
+    version: 3,
+    id: "night",
+    name: "Night",
+    extends: "ws:demo",
+    colors: { accent: "#ff00aa" },
+  });
+
+  it("reads the base it names, merged, with its display name", () => {
+    expect(readThemeVariant(base(), lookup)).toBeNull();
+    const variant = readThemeVariant(child(), lookup);
+    expect(variant).toMatchObject({ baseId: "ws:demo", baseName: "Demo" });
+    expect(variant?.base?.futureBlock).toEqual({ keep: "me" });
+    expect(readThemeVariant({ ...child(), extends: "ws:gone" }, lookup)).toEqual({
+      baseId: "ws:gone",
+      baseName: "ws:gone",
+    });
+  });
+
+  it("edits the merged view but keeps only what the variant overrides", () => {
+    const variant = readThemeVariant(child(), lookup);
+    const effective = effectiveThemeDoc(child(), variant);
+    expect(getIn(effective, ["colors", "text"])).toBe("#ffffff");
+    expect(getIn(effective, ["name"])).toBe("Night");
+    const next = patchThemeDraft(child(), variant, writeIdentity(effective, { mode: "light" }));
+    expect(next.mode).toBe("light");
+    expect(next.colors).toEqual({ accent: "#ff00aa" });
+    expect(next.extends).toBe("ws:demo");
+    expect(next.typography).toBeUndefined();
+  });
+
+  it("detaches into the merged document without extends", () => {
+    const variant = readThemeVariant(child(), lookup);
+    if (!variant) throw new Error("expected a variant");
+    const standalone = standaloneThemeDoc(child(), variant);
+    expect(standalone.extends).toBeUndefined();
+    expect(standalone.id).toBe("night");
+    expect(getIn(standalone, ["colors", "accent"])).toBe("#ff00aa");
+    expect(getIn(standalone, ["motion", "durations", "base"])).toBe(500);
+    expect(parseThemeDraft(standalone, "ws:night").theme).toBeDefined();
+  });
+
+  it("reads font strings the way the schema renders them", () => {
+    const doc = setIn(base(), ["typography", "headline"], "Avenir Next@600");
+    expect(readFontSlot(doc, "headline", 400)).toEqual({ family: "Avenir Next", weight: 600 });
+    expect(readFontSlot(base(), "headline", 600)).toEqual({ family: "Inter", weight: 400 });
   });
 });
 

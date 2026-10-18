@@ -1,4 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
+import { themeDependents } from "../theme/extends";
+import { resolveThemeJson } from "../theme/registry";
 import { parseThemeDoc } from "../theme/schema";
 import { canvasCommittedProject } from "./exportBridge";
 import { isExporting } from "./exportState";
@@ -91,7 +93,23 @@ export async function writeThemePreviews(
   }
 }
 
-/** A user theme's cache key: sha-256 of its JSON text (hex, truncated, slug-safe). */
+/** The workspace themes built on `themeId` (its `extends` dependents) with their raw JSON, so a base edit can queue their previews too. */
+export async function themeVariantsOf(themeId: string): Promise<[string, string][]> {
+  const listings = await invoke<{ slug: string; json: string }[]>("list_themes");
+  const texts = new Map<string, string>();
+  const docs = new Map<string, unknown>();
+  for (const { slug, json } of listings) {
+    try {
+      docs.set(`ws:${slug}`, JSON.parse(json));
+      texts.set(`ws:${slug}`, json);
+    } catch {
+      // An unreadable listing extends nothing.
+    }
+  }
+  return themeDependents(themeId, docs).map((id) => [id, texts.get(id) ?? "{}"]);
+}
+
+/** A user theme's cache key: sha-256 of its canonical JSON (hex, truncated, slug-safe); a variant keys on its MERGED document, so a base edit re-renders it. */
 export async function themePreviewKey(themeJson: string): Promise<string> {
   const canonicalise = (value: unknown): unknown => {
     if (Array.isArray(value)) return value.map(canonicalise);
@@ -128,13 +146,17 @@ export async function ensureUserThemePreviews(
 ): Promise<string[] | null> {
   const canCapture = () => isCurrent() && !isExporting();
   if (!canCapture()) return null;
-  const key = await themePreviewKey(themeJson);
+  const merged = await resolveThemeJson(JSON.parse(themeJson), themeId);
+  if (merged === undefined)
+    throw new Error("Cannot render previews for a theme whose base is missing.");
+  const mergedJson = JSON.stringify(merged);
+  const key = await themePreviewKey(mergedJson);
   const existing = await cachedThemePreviews(key).catch(() => null);
   if (existing) return existing;
   const { loadProject } = await import("./project");
   const { awaitSceneHostsCommitted } = await import("./exporter");
   const { preloadBundledBackdrops } = await import("../toolkit/stage/backdrops");
-  const theme = parseThemeDoc(JSON.parse(themeJson), themeId);
+  const theme = parseThemeDoc(merged, themeId);
   if (!theme) throw new Error("Cannot render previews for an invalid theme.");
   let swapped = false;
   try {
