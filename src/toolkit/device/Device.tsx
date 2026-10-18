@@ -26,7 +26,8 @@ import {
   Vector3,
 } from "three";
 import { clone as cloneSkinned } from "three/examples/jsm/utils/SkeletonUtils.js";
-import { useClipTexture } from "../../engine/clipTexture";
+import { deviceClipFrameIndex, hasPlaybackKeys } from "../../engine/clipFrame";
+import { type ClipTextureBinding, useClipTexture } from "../../engine/clipTexture";
 import { deviceAcknowledgementMatches, useDeviceEditStore } from "../../engine/deviceEditStore";
 import { useSceneConsumesDevices } from "../../engine/deviceRegistry";
 import { ease } from "../../engine/ease";
@@ -334,12 +335,13 @@ function bakeScreenUvs(mesh: Mesh, rect: UvRect): void {
 function ScreenVideo(props: {
   src: string;
   startMs: number;
+  frameAt?: ClipTextureBinding["frameAt"];
   material: MeshBasicMaterial;
   screens: Mesh[];
   screenAspect: number;
   levelRef: MutableRefObject<number>;
 }) {
-  const { src, startMs, material, screens, screenAspect, levelRef } = props;
+  const { src, startMs, frameAt, material, screens, screenAspect, levelRef } = props;
 
   // The readiness node lives in this component's own subtree since own-subtree refs attach before layout effects run; a parent's ref is still null during the mount commit, which previously left the binding effect bailing on stale deps and the screen black for the whole clamp window.
   const readyRef = useRef<Group>(null);
@@ -367,6 +369,7 @@ function ScreenVideo(props: {
   const { info } = useClipTexture({
     src,
     startMs,
+    frameAt,
     material,
     readyObjectRef: readyRef,
     onPending,
@@ -440,8 +443,18 @@ function ScreenMedia(props: {
 }) {
   const { media, projectId, startOffsetMs = 0, ...screen } = props;
   if (media?.kind === "video") {
+    // Only a retimed screen leaves the legacy startMs mapping.
+    const frameAt = hasPlaybackKeys(media)
+      ? (localMs: number, info: { fps: number; frameCount: number }) =>
+          deviceClipFrameIndex(localMs, startOffsetMs, media, info.fps, info.frameCount)
+      : undefined;
     return (
-      <ScreenVideo src={media.src} startMs={startOffsetMs + (media.startMs ?? 0)} {...screen} />
+      <ScreenVideo
+        src={media.src}
+        startMs={startOffsetMs + (media.startMs ?? 0)}
+        frameAt={frameAt}
+        {...screen}
+      />
     );
   }
   if (media?.kind === "image") {

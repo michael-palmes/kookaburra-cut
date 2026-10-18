@@ -24,6 +24,8 @@ export interface ClipTextureBinding {
   startMs: number;
   /** Video background fills: wraps the frame index instead of holding the last frame; absent keeps the frozen clamp semantics (VideoClip/Device untouched). */
   loop?: boolean;
+  /** Device screens with source-timing keys: picks the frame itself, replacing the `startMs`/`loop` mapping; absent keeps `clipFrameIndex`. */
+  frameAt?: (localMs: number, info: ClipInfo) => number;
   /** Caller-owned material the current frame is written onto (`material.map`). */
   material: MeshBasicMaterial;
   /** Object that carries `userData.videoFrameReady`, reached by the export loop's scene traversal; must be a node rendered by the calling component's own subtree, since a parent's ref is still null during the mount commit (the divergent-verify root cause). */
@@ -58,7 +60,7 @@ function releaseFirstBind(ref: RefObject<FirstBind | null>, firstBind: FirstBind
 const ACTIVE_LEAD_MS = 500;
 
 export function useClipTexture(binding: ClipTextureBinding): ClipTextureState {
-  const { src, startMs, loop, material, readyObjectRef, onPending, onBound } = binding;
+  const { src, startMs, loop, frameAt, material, readyObjectRef, onPending, onBound } = binding;
   // Screen media holds the frame instant's clip frame across a motion blur shutter.
   const { localMs } = useTimeline(0);
   const sceneCtx = useSceneContext();
@@ -72,7 +74,9 @@ export function useClipTexture(binding: ClipTextureBinding): ClipTextureState {
     !sceneCtx || (localMs >= -ACTIVE_LEAD_MS && localMs <= sceneCtx.durationMs + ACTIVE_LEAD_MS);
   const heldFrameRef = useRef(0);
   if (info && near && !perfClipsFrozen()) {
-    const raw = clipFrameIndex(localMs, startMs, info.fps, info.frameCount, loop === true);
+    const raw = frameAt
+      ? frameAt(localMs, info)
+      : clipFrameIndex(localMs, startMs, info.fps, info.frameCount, loop === true);
     // Balanced/Performance thin preview media to every strideth frame; exports always bind exact frames.
     const stride = isExporting() ? 1 : previewClipStride();
     heldFrameRef.current = stride > 1 ? raw - (raw % stride) : raw;
