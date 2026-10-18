@@ -65,6 +65,36 @@ class RepointVectorTests(unittest.TestCase):
         for v in self.vectors["follow"]:
             self.assertEqual(repoint.follow_media_sources(v["raw"]), v["expect"], v["id"])
 
+    def test_every_follow_length_vector(self) -> None:
+        self.assertGreater(len(self.vectors["followLength"]), 10)
+        for v in self.vectors["followLength"]:
+            slots = repoint.follow_media_slots(v["raw"])
+            lengths = [{"src": s["src"], "lengthMs": repoint.follow_media_length_ms(s.get("spec"), v["probed"].get(s["src"], 0))} for s in slots]
+            self.assertEqual(lengths, v["slots"], v["id"])
+            self.assertEqual(repoint.follow_media_duration_ms(slots, v["probed"]), v["expect"], v["id"])
+
+    def test_media_key_parse_mirrors_the_app(self) -> None:
+        video = {"src": "assets/a.mp4", "kind": "video"}
+        timed = dict(video, speed=2)
+        self.assertIs(repoint.parse_media_keys(timed), timed)
+        self.assertEqual(repoint.parse_media_keys(dict(video, inMs=1000.0)), dict(video, inMs=1000.0))
+        self.assertEqual(repoint.parse_media_keys(dict(video, inMs=None, loop=None, speed=0)), video)
+        self.assertEqual(repoint.parse_media_keys({"src": "assets/a.png", "kind": "image", "speed": 2}), {"src": "assets/a.png", "kind": "image"})
+        self.assertEqual([k for k, _ in repoint.media_key_problems(dict(video, startMs=-1, inMs=10, outMs=20))], ["inMs"])
+        self.assertEqual([k for k, _ in repoint.media_key_problems(dict(video, inMs=10, outMs=26))], ["outMs"])
+        self.assertEqual(repoint.media_key_problems(dict(video, inMs=10, outMs=27)), [])
+
+    def test_slot_media_ms(self) -> None:
+        info = {"slot": "device", "ref": "device:phone", "scene": "02-hero", "startMs": 500, "timing": {"inMs": 1000, "speed": 2, "outMs": 9000}}
+        self.assertEqual(repoint.slot_media_ms(info, 2500), 5000)
+        self.assertEqual(repoint.slot_media_ms(dict(info, timing={}, startMs=-2000), 1000), 3000)
+        self.assertEqual(repoint.slot_scene_ms(info, 5000), 2500)
+        self.assertIsNone(repoint.slot_scene_ms(info, 9000))
+        for bad, scene_ms in ((dict(info, startMs=3000), 1000), (info, 9000), (dict(info, timing={"loop": True}), 1000), (dict(info, slot="media", timing={}, loop=True), 1000),
+                              (dict(info, startOn="open"), 1000), (dict(info, slot="background"), 1000)):
+            with self.assertRaises(KbError):
+                repoint.slot_media_ms(bad, scene_ms)
+
 
 class RepointProjectTests(KbTestCase):
     def setUp(self) -> None:
@@ -127,6 +157,7 @@ class RepointProjectTests(KbTestCase):
             repoint.pick_slot(self.project, "02-hero", ["assets/none.mp4"])
         info = repoint.slot_info(self.project, "02-hero", "window")
         self.assertEqual((info["src"], info["startMs"], info["sceneDurationMs"], info["transitionOutStartMs"], info["sceneStartMs"]), ("assets/rec.mp4", 300, 3000, 2400, 2400))
+        self.assertEqual((info["timing"], info["retimed"], info["loop"]), ({}, False, False))
         inherited = repoint.slot_info(self.project, "02-hero", "compare-device:phone")
         self.assertEqual(inherited["src"], "assets/rec.mp4")
         self.assertTrue(repoint.slot_info(self.project, "02-hero", "device:phone")["followsMedia"])
@@ -192,3 +223,30 @@ class RepointProjectTests(KbTestCase):
             repoint.set_start(self.project, "02-hero", "background", 100)
         with self.assertRaises(KbError):
             repoint.set_start(self.project, "02-hero", "device-cover:phone", 100)
+
+    def test_set_start_negative_only_without_a_trim(self) -> None:
+        repoint.set_start(self.project, "02-hero", "device:phone", -1200)
+        self.assertEqual(self.sidecar()["devices"][0]["media"]["startMs"], -1200)
+        doc = self.sidecar()
+        doc["devices"][1]["media"]["inMs"] = 500
+        write_json(self.root / "scenes" / "02-hero.json", doc)
+        with self.assertRaises(KbError) as cm:
+            repoint.set_start(self.project, "02-hero", "device:tab", -300)
+        self.assertIn("inMs", cm.exception.message)
+        repoint.set_start(self.project, "02-hero", "device:tab", 300)
+        self.assertEqual(self.sidecar()["devices"][1]["media"], {"src": "assets/bg.mp4", "kind": "video", "inMs": 500, "startMs": 300})
+
+    def test_timing_reported_and_followed(self) -> None:
+        doc = self.sidecar()
+        doc["devices"][0]["media"].update({"inMs": 1000, "outMs": 5000, "speed": 2, "startMs": 400, "loop": "yes"})
+        doc["devices"][1]["media"] = {"src": "assets/bg.mp4", "kind": "video"}
+        write_json(self.root / "scenes" / "02-hero.json", doc)
+        write_probe(self.root / "assets" / "rec.mp4", durationMs=8000)
+        used = {u["ref"]: u for u in repoint.usages(self.project, ["assets/rec.mp4"])}
+        self.assertEqual(used["device:phone"]["timing"], {"inMs": 1000, "outMs": 5000, "speed": 2})
+        self.assertTrue(used["device:phone"]["retimed"])
+        self.assertFalse(used["media:videoWindow"]["retimed"])
+        info = repoint.slot_info(self.project, "02-hero", "device:phone")
+        self.assertEqual((info["timing"]["speed"], info["retimed"], info["startMs"]), (2, True, 400))
+        changes = repoint.resync_durations(self.project, None, write=False)
+        self.assertEqual([(c["scene"], c["toMs"]) for c in changes], [("02-hero", 2400)])

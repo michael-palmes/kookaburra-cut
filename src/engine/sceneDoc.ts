@@ -1,15 +1,16 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useContext, useId, useLayoutEffect, useMemo } from "react";
 import type { DeviceId } from "../toolkit/device/catalog";
-import type { DeviceProps } from "../toolkit/device/Device";
+import type { DeviceMediaSpec, DeviceProps } from "../toolkit/device/Device";
 import { resolveDeviceLayout } from "../toolkit/device/layout";
 import { useChartRegistry } from "./chartRegistry";
+import { hasPlaybackKeys } from "./clipFrame";
 import { useDeviceRegistry } from "./deviceRegistry";
 import {
   compareSlotMedia,
   type DeviceScreenSlot,
   deviceSlotMedia,
-  deviceVideoSources,
+  deviceVideoSlots,
   setCompareSlotMedia,
   setDeviceSlotMedia,
 } from "./deviceScreens";
@@ -255,7 +256,17 @@ export type EditRepointSlot =
   | "videoWindow"
   | "media";
 
-/** Applies an edit-render re-point to a scene doc: the slot's media src becomes `rel` (the freshly rendered `assets/<name>-edited.mp4`), and a device or media slot's kind becomes "video" (an edited still renders out as a clip). Pure clone-and-patch so App can write, patch in memory and record undo atomically; returns null when the slot has nothing to re-point. A `targetId` names the device or media entry alone (a stale id re-points nothing, never a neighbour); without one the first device keeps the legacy behaviour. */
+const DEVICE_PLAYBACK_KEYS = ["inMs", "outMs", "speed", "loop", "posterMs"] as const;
+
+/** A device screen pointed at a render: the edit now owns the timing, so the source-timing keys and a negative `startMs` (a head trim) go, while a delay and `startOn` stay. */
+function repointedDeviceMedia(media: DeviceMediaSpec, rel: string): DeviceMediaSpec {
+  const next: DeviceMediaSpec = { ...media, src: rel, kind: "video" };
+  for (const key of DEVICE_PLAYBACK_KEYS) delete next[key];
+  if (typeof next.startMs === "number" && next.startMs < 0) delete next.startMs;
+  return next;
+}
+
+/** Applies an edit-render re-point to a scene doc: the slot's media src becomes `rel` (the freshly rendered `assets/<name>-edited.mp4`), and a device or media slot's kind becomes "video" (an edited still renders out as a clip). Pure clone-and-patch so App can write, patch in memory and record undo atomically; returns null when the slot has nothing to re-point. A `targetId` names the device or media entry alone (a stale id re-points nothing, never a neighbour); without one the first device keeps the legacy behaviour. A device slot also sheds its source timing (`repointedDeviceMedia`). */
 export function applyEditRepoint(
   doc: SceneDoc,
   slot: EditRepointSlot,
@@ -291,12 +302,12 @@ export function applyEditRepoint(
     if (!next.compare) return null;
     const media = compareSlotMedia(next, device.id, screen) ?? deviceSlotMedia(device, screen);
     if (!media) return null;
-    setCompareSlotMedia(next, device.id, screen, { ...media, src: rel, kind: "video" });
+    setCompareSlotMedia(next, device.id, screen, repointedDeviceMedia(media, rel));
     return next;
   }
   const media = deviceSlotMedia(device, screen);
   if (!media) return null;
-  setDeviceSlotMedia(device, screen, { ...media, src: rel, kind: "video" });
+  setDeviceSlotMedia(device, screen, repointedDeviceMedia(media, rel));
   return next;
 }
 
@@ -306,26 +317,63 @@ interface MediaMetaLike {
   durationMs: number;
 }
 
-/** The video sources a follow-media scene's duration derives from (pure so tests can pin it; the resync probes them all and follows the LONGEST). A media pin (`source: "media"` with a `sourceMediaId`, or the legacy `"videoWindow"` naming whichever entry serves as the window) follows that entry alone; a matching `sourceDeviceId` pins one device; a comparison's `compare.b.media` videos count beside each device's own (both sides render, so neither recording may cut short); unpinned (or stale-pinned) docs return every qualifying video; device-less docs keep the media-then-background chain. */
-export function followMediaSources(doc: SceneDoc | undefined): string[] {
+/** One video a follow-media scene's length derives from; a device screen carries the spec that times it. */
+export interface FollowMediaSlot {
+  src: string;
+  spec?: DeviceMediaSpec;
+}
+
+/** The videos a follow-media scene's duration derives from (pure so tests can pin it; the resync probes them all and follows the LONGEST). A media pin (`source: "media"` with a `sourceMediaId`, or the legacy `"videoWindow"` naming whichever entry serves as the window) follows that entry alone; a matching `sourceDeviceId` pins one device; a comparison's `compare.b.media` videos count beside each device's own (both sides render, so neither recording may cut short); unpinned (or stale-pinned) docs return every qualifying video; device-less docs keep the media-then-background chain. */
+export function followMediaSlots(doc: SceneDoc | undefined): FollowMediaSlot[] {
   const duration = doc?.duration;
   if (duration?.mode !== "follow-media") return [];
   const media = resolveSceneDocMedia(doc);
   if (duration.source === "media" || duration.source === "videoWindow") {
     const entry = pinnedFollowMediaEntry(duration, media);
-    return entry?.kind === "video" ? [entry.src] : [];
+    return entry?.kind === "video" ? [{ src: entry.src }] : [];
   }
   const devices = doc?.devices ?? [];
   const pinned = devices.find((d) => d.id === duration.sourceDeviceId);
-  const deviceVideos = (pinned ? [pinned] : devices).flatMap((d) => deviceVideoSources(doc, d));
+  const deviceVideos = (pinned ? [pinned] : devices).flatMap((d) =>
+    deviceVideoSlots(doc, d).map((spec) => ({ src: spec.src, spec })),
+  );
   if (deviceVideos.length > 0) return deviceVideos;
-  const mediaVideos = media.filter((entry) => entry.kind === "video").map((entry) => entry.src);
+  const mediaVideos = media
+    .filter((entry) => entry.kind === "video")
+    .map((entry) => ({ src: entry.src }));
   if (mediaVideos.length > 0) return mediaVideos;
-  if (doc?.background?.type === "video") return [doc.background.src];
+  if (doc?.background?.type === "video") return [{ src: doc.background.src }];
   return [];
 }
 
-/** Re-syncs one follow-media scene's `project.json` duration from its source videos' probed lengths (no-op for manual mode, image, or missing media); sources come from `followMediaSources`, the longest winning when more than one device video qualifies. `wrote` says `project.json` was rewritten so UI callers know a timing refresh is needed (sidecar-only edits patch in memory and never reload); when a shrink leaves keyframe tracks overhanging and `sceneFile` is given, the sidecar is rewritten with clamped tracks and handed back as `clampedDoc` for the caller's in-memory patch. */
+/** `followMediaSlots`, sources only. */
+export function followMediaSources(doc: SceneDoc | undefined): string[] {
+  return followMediaSlots(doc).map((slot) => slot.src);
+}
+
+/** How long one slot plays its probed video: a screen with source timing runs `startMs + (min(outMs, probed) - inMs) / speed` (one pass of a loop; `startOn` stays out), at least 17 ms; any other slot is the probed length, still ignoring `startMs`. */
+export function followMediaLengthMs(spec: DeviceMediaSpec | undefined, probedMs: number): number {
+  if (!spec || !hasPlaybackKeys(spec)) return probedMs;
+  const startMs =
+    typeof spec.startMs === "number" && Number.isFinite(spec.startMs) ? spec.startMs : 0;
+  const endMs = Math.min(spec.outMs ?? probedMs, probedMs);
+  return Math.max(17, Math.round(startMs + (endMs - (spec.inMs ?? 0)) / (spec.speed ?? 1)));
+}
+
+/** The length a follow-media scene follows: its longest slot by `followMediaLengthMs`; a source probed at 0 ms (or not at all) counts for nothing, so 0 means leave the scene alone. */
+export function followMediaDurationMs(
+  slots: readonly FollowMediaSlot[],
+  probedMs: ReadonlyMap<string, number>,
+): number {
+  let longest = 0;
+  for (const slot of slots) {
+    const probed = probedMs.get(slot.src) ?? 0;
+    if (probed > 0) longest = Math.max(longest, followMediaLengthMs(slot.spec, probed));
+  }
+  return longest;
+}
+
+/** Re-syncs one follow-media scene's `project.json` duration from its source videos' probed lengths (no-op for manual mode, image, or missing media); slots come from `followMediaSlots` and lengths from `followMediaDurationMs`, the longest winning when more than one device video qualifies. `wrote` says `project.json` was rewritten so UI callers know a timing refresh is needed (sidecar-only edits patch in memory and never reload); when a shrink leaves keyframe tracks overhanging and `sceneFile` is given, the sidecar is rewritten with clamped tracks and handed back as `clampedDoc` for the caller's in-memory patch. */
 export async function resyncFollowMediaDuration(
   slug: string,
   index: number,
@@ -335,13 +383,14 @@ export async function resyncFollowMediaDuration(
   /** The module at `index`, guarding the manifest write when `sceneFile` is omitted. */
   manifestFile?: string,
 ): Promise<{ wrote: boolean; clampedDoc: SceneDoc | null }> {
-  const srcs = followMediaSources(doc);
-  if (srcs.length === 0) return { wrote: false, clampedDoc: null };
-  const meta = { durationMs: 0 };
-  for (const src of srcs) {
-    const probed = await invoke<MediaMetaLike>("media_meta", { slug, rel: src });
-    if (probed.durationMs > meta.durationMs) meta.durationMs = probed.durationMs;
+  const slots = followMediaSlots(doc);
+  if (slots.length === 0) return { wrote: false, clampedDoc: null };
+  const probed = new Map<string, number>();
+  for (const { src } of slots) {
+    if (probed.has(src)) continue;
+    probed.set(src, (await invoke<MediaMetaLike>("media_meta", { slug, rel: src })).durationMs);
   }
+  const meta = { durationMs: followMediaDurationMs(slots, probed) };
   if (meta.durationMs > 0 && meta.durationMs !== currentDurationMs) {
     await updateSceneDuration(slug, index, meta.durationMs, sceneFile ?? manifestFile);
     let clampedDoc: SceneDoc | null = null;
