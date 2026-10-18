@@ -734,17 +734,18 @@ fn free_asset_name(assets: &Path, base: &str, ext: &str) -> String {
     candidate
 }
 
-/// Copy files into the project's `assets/` (slugged filenames, `-2`-style collision suffixes); non-media files are skipped with a warning. Returns the imported project-relative paths.
+/// Copy files into the project's `assets/` (slugged filenames, `-2`-style collision suffixes); non-media files are skipped with a warning. A video the conform probe flags (Settings: Conform new videos) lands as its original in `assets/.originals/` while a background job writes the mezzanine, so its returned rel names a file that appears when the job finishes. Returns the imported project-relative paths.
 #[tauri::command]
-pub fn import_media(
+pub async fn import_media(
     app: AppHandle,
     state: State<'_, SettingsState>,
     slug: String,
     paths: Vec<String>,
 ) -> Result<Vec<String>, String> {
-    let assets = workspace::project_dir_mut(&app, &state, &slug)?.join("assets");
-    std::fs::create_dir_all(&assets).map_err(|e| e.to_string())?;
-
+    let project = workspace::project_dir_mut(&app, &state, &slug)?;
+    std::fs::create_dir_all(project.join("assets")).map_err(|e| e.to_string())?;
+    let conform_on = conform_new_videos(&app);
+    let _serial = IMPORTS.lock().await;
     let mut imported = Vec::new();
     for source in paths {
         let source = PathBuf::from(source);
@@ -752,13 +753,459 @@ pub fn import_media(
             log::warn!("skipping non-media import: {}", source.display());
             continue;
         };
-        let candidate = free_asset_name(&assets, &base, &ext);
-        let dest = assets.join(&candidate);
-        std::fs::copy(&source, &dest).map_err(|e| format!("copying {}: {e}", source.display()))?;
-        workspace::touch_now(&dest);
-        imported.push(format!("assets/{candidate}"));
+        let incoming = Incoming::Path(source);
+        imported.push(import_one(&app, &slug, &project, incoming, &base, &ext, conform_on).await?);
     }
     Ok(imported)
+}
+
+/// Imports pick free names and then write them across an await (the probe), so they take turns, as they did when imports were synchronous.
+static IMPORTS: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+/// An import parked in `assets/.originals/` while it is probed; removed unless it moved on.
+struct Landing(PathBuf);
+
+impl Drop for Landing {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.0);
+    }
+}
+
+/// Where an import's bytes come from.
+enum Incoming {
+    Path(PathBuf),
+    Bytes(Vec<u8>),
+}
+
+impl Incoming {
+    fn write_to(&self, dest: &Path) -> Result<(), String> {
+        match self {
+            Incoming::Path(source) => std::fs::copy(source, dest)
+                .map(|_| ())
+                .map_err(|e| format!("copying {}: {e}", source.display())),
+            Incoming::Bytes(bytes) => std::fs::write(dest, bytes).map_err(|e| e.to_string()),
+        }
+    }
+}
+
+/// One file into `assets/`: today's copy, or (a flagged video with conform on) the original into `assets/.originals/` and a queued conform job.
+async fn import_one(
+    app: &AppHandle,
+    slug: &str,
+    project: &Path,
+    incoming: Incoming,
+    base: &str,
+    ext: &str,
+    conform_on: bool,
+) -> Result<String, String> {
+    let assets = project.join("assets");
+    if !(conform_on && is_video(ext)) {
+        let candidate = free_asset_name(&assets, base, ext);
+        let dest = assets.join(&candidate);
+        incoming.write_to(&dest)?;
+        workspace::touch_now(&dest);
+        return Ok(format!("assets/{candidate}"));
+    }
+    let originals = assets.join(crate::conform::ORIGINALS_DIR);
+    std::fs::create_dir_all(&originals).map_err(|e| e.to_string())?;
+    // Probed where it lands if it conforms, so a clean file costs one rename, never a second copy.
+    let landing = Landing(originals.join(format!(
+        ".incoming-{}-{}.{ext}",
+        std::process::id(),
+        next_seq()
+    )));
+    incoming.write_to(&landing.0)?;
+    let probe_path = landing.0.clone();
+    let recommended = tauri::async_runtime::spawn_blocking(move || {
+        let ffprobe = crate::tools::sidecar_path("ffprobe")?;
+        let (ff, av) = crate::conform::probe_static(&ffprobe, &probe_path)?;
+        Ok::<bool, String>(crate::conform::evaluate(&ff, av.as_ref(), None).recommended)
+    })
+    .await
+    .map_err(|e| format!("probe task failed: {e}"))?
+    .unwrap_or_else(|e| {
+        log::warn!("[conform] probe failed, importing as is: {e}");
+        false
+    });
+    if !recommended {
+        let candidate = free_asset_name(&assets, base, ext);
+        let dest = assets.join(&candidate);
+        std::fs::rename(&landing.0, &dest).map_err(|e| e.to_string())?;
+        workspace::touch_now(&dest);
+        return Ok(format!("assets/{candidate}"));
+    }
+    let stem = free_conform_stem(&assets, base, ext, &reserved_rels(app, slug));
+    let original_rel = format!("assets/{}/{stem}.{ext}", crate::conform::ORIGINALS_DIR);
+    std::fs::rename(&landing.0, project.join(&original_rel)).map_err(|e| e.to_string())?;
+    let plan = crate::conform::plan(
+        &original_rel,
+        Some(&stem),
+        crate::conform::KeepOriginal::Move,
+        false,
+    )
+    .map_err(String::from)?;
+    let rel = plan.target_rel.clone();
+    start_conform_job(app, slug, project, plan, true);
+    Ok(rel)
+}
+
+fn next_seq() -> u64 {
+    static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+}
+
+/// The first stem whose mezzanine, timing record and original are all free and no pending job has claimed: base, base-2, base-3, …
+fn free_conform_stem(assets: &Path, base: &str, ext: &str, reserved: &[String]) -> String {
+    let taken = |stem: &str| {
+        assets.join(format!("{stem}.mp4")).exists()
+            || assets.join(format!("{stem}.timing.json")).exists()
+            || assets
+                .join(crate::conform::ORIGINALS_DIR)
+                .join(format!("{stem}.{ext}"))
+                .exists()
+            || reserved.contains(&format!("assets/{stem}.mp4"))
+    };
+    let mut stem = base.to_owned();
+    let mut n = 1u32;
+    while taken(&stem) {
+        n += 1;
+        stem = format!("{base}-{n}");
+    }
+    stem
+}
+
+/// One conform the app is running, for the library's "Conforming…" card.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConformJob {
+    pub slug: String,
+    /// The mezzanine's rel: where the file appears when the job lands.
+    pub rel: String,
+    pub original: String,
+    pub frame: u64,
+    pub total: u64,
+}
+
+/// Conform jobs in flight, app-wide.
+#[derive(Default)]
+pub(crate) struct ConformJobs(std::sync::Mutex<Vec<ConformJob>>);
+
+const CONFORM_EVENT: &str = "kookaburra://conform-progress";
+
+/// A job's progress for the library: `queued`, `conforming`, `done` or `failed`.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ConformProgress<'a> {
+    slug: &'a str,
+    rel: &'a str,
+    stage: &'static str,
+    frame: u64,
+    total: u64,
+    error: Option<String>,
+}
+
+fn with_jobs<T>(app: &AppHandle, edit: impl FnOnce(&mut Vec<ConformJob>) -> T) -> Option<T> {
+    app.state::<ConformJobs>()
+        .0
+        .lock()
+        .ok()
+        .map(|mut jobs| edit(&mut jobs))
+}
+
+fn reserved_rels(app: &AppHandle, slug: &str) -> Vec<String> {
+    with_jobs(app, |jobs| {
+        jobs.iter()
+            .filter(|j| j.slug == slug)
+            .map(|j| j.rel.clone())
+            .collect()
+    })
+    .unwrap_or_default()
+}
+
+fn emit_progress(app: &AppHandle, progress: ConformProgress<'_>) {
+    use tauri::Emitter;
+    let _ = app.emit(CONFORM_EVENT, progress);
+}
+
+/// Whether imports conform flagged videos (Settings: Conform new videos, on unless switched off).
+fn conform_new_videos(app: &AppHandle) -> bool {
+    let state = app.state::<SettingsState>();
+    workspace::load_settings(app, &state).map_or(true, |s| !s.disable_conform_new_videos)
+}
+
+/// Run one conform on a blocking thread, publishing its progress to the job list and the library.
+fn run_conform_job(
+    app: &AppHandle,
+    slug: &str,
+    project: &Path,
+    plan: &crate::conform::ConformPlan,
+) -> Result<crate::conform::ConformOutcome, String> {
+    let tools = crate::conform::ConformTools {
+        ffmpeg: crate::tools::sidecar_path("ffmpeg")?,
+        ffprobe: crate::tools::sidecar_path("ffprobe")?,
+        background: true,
+    };
+    let rel = plan.target_rel.as_str();
+    let mut on = |event: crate::conform::ConformEvent| {
+        let (frame, total) = match event {
+            crate::conform::ConformEvent::Start { total, .. } => (0, total),
+            crate::conform::ConformEvent::Progress { frame, total } => (frame, total),
+        };
+        with_jobs(app, |jobs| {
+            if let Some(job) = jobs.iter_mut().find(|j| j.slug == slug && j.rel == rel) {
+                job.frame = frame;
+                job.total = total;
+            }
+        });
+        emit_progress(
+            app,
+            ConformProgress {
+                slug,
+                rel,
+                stage: "conforming",
+                frame,
+                total,
+                error: None,
+            },
+        );
+    };
+    let cancel = std::sync::atomic::AtomicBool::new(false);
+    crate::conform::conform(project, plan, &tools, &mut on, &cancel).map_err(String::from)
+}
+
+/// Queue a conform under the background ffmpeg cap; it reports through `CONFORM_EVENT` and lands with a `media-changed` broadcast. An import whose conform fails falls back to its original, imported as is.
+fn start_conform_job(
+    app: &AppHandle,
+    slug: &str,
+    project: &Path,
+    plan: crate::conform::ConformPlan,
+    imported: bool,
+) {
+    let job = ConformJob {
+        slug: slug.to_owned(),
+        rel: plan.target_rel.clone(),
+        original: plan.original_rel.clone(),
+        frame: 0,
+        total: 0,
+    };
+    with_jobs(app, |jobs| jobs.push(job));
+    emit_progress(
+        app,
+        ConformProgress {
+            slug,
+            rel: &plan.target_rel,
+            stage: "queued",
+            frame: 0,
+            total: 0,
+            error: None,
+        },
+    );
+    let (app, slug, project) = (app.clone(), slug.to_owned(), project.to_path_buf());
+    tauri::async_runtime::spawn(async move {
+        let result = match app
+            .state::<crate::concurrency::BackgroundLimiter>()
+            .acquire()
+            .await
+        {
+            Err(e) => Err(e),
+            Ok(permit) => {
+                let (app, slug, project, plan) =
+                    (app.clone(), slug.clone(), project.clone(), plan.clone());
+                tauri::async_runtime::spawn_blocking(move || {
+                    let _permit = permit;
+                    run_conform_job(&app, &slug, &project, &plan)
+                })
+                .await
+                .map_err(|e| format!("conform task failed: {e}"))
+                .and_then(|r| r)
+            }
+        };
+        let rel = plan.target_rel.as_str();
+        with_jobs(&app, |jobs| {
+            jobs.retain(|j| !(j.slug == slug && j.rel == rel))
+        });
+        let mut paths = vec![rel.to_owned()];
+        let (stage, frames, error) = match result {
+            Ok(outcome) => {
+                workspace::touch_now(&project.join(&outcome.target_rel));
+                ("done", outcome.frames, None)
+            }
+            Err(error) => {
+                log::warn!("[conform] {rel} failed: {error}");
+                if let Some(fallback) = imported
+                    .then(|| restore_import(&project, &plan.original_rel))
+                    .flatten()
+                {
+                    paths = vec![fallback];
+                }
+                ("failed", 0, Some(error))
+            }
+        };
+        emit_progress(
+            &app,
+            ConformProgress {
+                slug: &slug,
+                rel,
+                stage,
+                frame: frames,
+                total: frames,
+                error,
+            },
+        );
+        use tauri::Emitter;
+        let _ = app.emit(
+            "kookaburra://media-changed",
+            serde_json::json!({ "slug": slug, "paths": paths, "origin": "conform" }),
+        );
+    });
+}
+
+/// A failed import conform hands the user their file back: the original moves out of `.originals/` to a free name in `assets/`.
+fn restore_import(project: &Path, original_rel: &str) -> Option<String> {
+    let original = project.join(original_rel);
+    let (base, ext) = media_stem_and_ext(&original)?;
+    let assets = project.join("assets");
+    let candidate = free_asset_name(&assets, &base, &ext);
+    std::fs::rename(&original, assets.join(&candidate)).ok()?;
+    workspace::touch_now(&assets.join(&candidate));
+    Some(format!("assets/{candidate}"))
+}
+
+/// The conform jobs running for one project, so a freshly opened library shows their cards.
+#[tauri::command]
+pub fn list_conform_jobs(app: AppHandle, slug: String) -> Vec<ConformJob> {
+    with_jobs(&app, |jobs| {
+        jobs.iter().filter(|j| j.slug == slug).cloned().collect()
+    })
+    .unwrap_or_default()
+}
+
+/// Conform an existing project video in place (the library's Conform action): the original moves to `assets/.originals/` and the mezzanine takes the same name and container, so every reference stays valid. Returns the rel once the job is queued.
+#[tauri::command]
+pub fn conform_media(
+    app: AppHandle,
+    state: State<'_, SettingsState>,
+    slug: String,
+    rel: String,
+) -> Result<String, String> {
+    validate_asset_rel(&rel)?;
+    let project = workspace::project_dir_mut(&app, &state, &slug)?;
+    if !project.join(&rel).is_file() {
+        return Err(format!("no asset at {rel}"));
+    }
+    if reserved_rels(&app, &slug).contains(&rel) {
+        return Err(format!("{rel} is already conforming"));
+    }
+    let plan = crate::conform::plan(&rel, None, crate::conform::KeepOriginal::Move, false)
+        .map_err(String::from)?;
+    start_conform_job(&app, &slug, &project, plan, false);
+    Ok(rel)
+}
+
+/// A library card's conform flag.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConformStatus {
+    pub needs_conform: bool,
+    /// `ok | suspect | ffmpeg-misdecodes`.
+    pub verdict: String,
+    pub reasons: Vec<String>,
+    pub why: Vec<String>,
+    /// Why the file can't be conformed, when it can't.
+    pub refused: Option<String>,
+}
+
+/// Bumped when the probe's verdict changes for the same bytes; older cached verdicts re-probe.
+const VERDICT_VERSION: u32 = 1;
+
+#[derive(Serialize, Deserialize)]
+struct CachedVerdict {
+    version: u32,
+    status: ConformStatus,
+}
+
+fn status_of(verdict: &crate::conform::Verdict) -> ConformStatus {
+    ConformStatus {
+        needs_conform: verdict.recommended,
+        verdict: verdict.verdict.to_owned(),
+        reasons: verdict.reasons.iter().map(|r| r.to_string()).collect(),
+        why: verdict.why.iter().map(|r| r.to_string()).collect(),
+        refused: verdict.refused.as_ref().map(|r| r.hint.to_owned()),
+    }
+}
+
+/// Files the library never flags: editor renders, mezzanines this app wrote, and the samples every load restores.
+fn conform_exempt(app: &AppHandle, project: &Path, rel: &str) -> bool {
+    let name = rel.strip_prefix("assets/").unwrap_or(rel);
+    name.ends_with("-edited.mp4")
+        || crate::conform::source_is_mezzanine(project, rel)
+        || workspace::backfilled_sample_names(app)
+            .iter()
+            .any(|s| s == name)
+}
+
+/// Whether a project video needs a conform, from a probe verdict cached by content sha (`sha` from `media_meta`); clean, exempt and non-video files never do.
+#[tauri::command]
+pub async fn conform_status(
+    app: AppHandle,
+    state: State<'_, SettingsState>,
+    slug: String,
+    rel: String,
+    sha: String,
+) -> Result<ConformStatus, String> {
+    let project = workspace::project_dir(&app, &state, &slug)?;
+    let abs = resolve_asset_in(&project, &rel)?;
+    if !is_video(&extension_of(&abs)) || conform_exempt(&app, &project, &rel) {
+        return Ok(ConformStatus {
+            needs_conform: false,
+            verdict: "ok".into(),
+            reasons: Vec::new(),
+            why: Vec::new(),
+            refused: None,
+        });
+    }
+    if sha.len() != 64 || !sha.chars().all(|c| c.is_ascii_hexdigit()) {
+        return Err("not a content sha".into());
+    }
+    let cache = media_cache_root(&app)?
+        .join("verdicts")
+        .join(format!("{sha}.json"));
+    let cached = std::fs::read_to_string(&cache)
+        .ok()
+        .and_then(|text| serde_json::from_str::<CachedVerdict>(&text).ok())
+        .filter(|c| c.version == VERDICT_VERSION);
+    if let Some(cached) = cached {
+        return Ok(cached.status);
+    }
+    let status = tauri::async_runtime::spawn_blocking(move || {
+        let ffprobe = crate::tools::sidecar_path("ffprobe")?;
+        let (ff, av) = crate::conform::probe_static(&ffprobe, &abs)?;
+        Ok::<ConformStatus, String>(status_of(&crate::conform::evaluate(&ff, av.as_ref(), None)))
+    })
+    .await
+    .map_err(|e| format!("probe task failed: {e}"))??;
+    if let Some(dir) = cache.parent() {
+        std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    }
+    let record = CachedVerdict {
+        version: VERDICT_VERSION,
+        status: status.clone(),
+    };
+    let text = serde_json::to_string(&record).map_err(|e| e.to_string())?;
+    crate::write_atomic(&cache, text.as_bytes())?;
+    Ok(status)
+}
+
+/// Settings: Conform new videos.
+#[tauri::command]
+pub fn set_conform_new_videos(
+    app: AppHandle,
+    state: State<'_, SettingsState>,
+    enabled: bool,
+) -> Result<(), String> {
+    workspace::update_settings(&app, &state, |settings| {
+        settings.disable_conform_new_videos = !enabled
+    })
 }
 
 /// One string header off a byte-import request (the slug and file name the raw-body imports carry).
@@ -780,12 +1227,12 @@ fn plain_file_name(name: &str) -> Result<String, String> {
         .ok_or_else(|| "the file name must be a plain name".into())
 }
 
-/// One file's bytes into the project's `assets/`: the editor window's HTML5 drops, where WKWebView exposes content but no real paths. Headers carry the slug and the dropped file's name, the body is the raw content (`write_snapshot` pattern). Returns the project-relative path, or None for a non-media extension (mirrors `import_media`'s skip).
+/// One file's bytes into the project's `assets/`: the editor window's HTML5 drops, where WKWebView exposes content but no real paths. Headers carry the slug and the dropped file's name, the body is the raw content (`write_snapshot` pattern). A flagged video conforms as in `import_media`. Returns the project-relative path, or None for a non-media extension (mirrors `import_media`'s skip).
 #[tauri::command]
-pub fn import_media_bytes(
+pub async fn import_media_bytes(
     app: AppHandle,
     state: State<'_, SettingsState>,
-    request: tauri::ipc::Request,
+    request: tauri::ipc::Request<'_>,
 ) -> Result<Option<String>, String> {
     let slug = request_header(&request, "x-kookaburra-slug")?;
     let name = plain_file_name(&request_header(&request, "x-kookaburra-name")?)?;
@@ -795,11 +1242,14 @@ pub fn import_media_bytes(
     let Some((base, ext)) = media_stem_and_ext(Path::new(&name)) else {
         return Ok(None);
     };
-    let assets = workspace::project_dir_mut(&app, &state, &slug)?.join("assets");
-    std::fs::create_dir_all(&assets).map_err(|e| e.to_string())?;
-    let candidate = free_asset_name(&assets, &base, &ext);
-    std::fs::write(assets.join(&candidate), bytes).map_err(|e| e.to_string())?;
-    Ok(Some(format!("assets/{candidate}")))
+    let project = workspace::project_dir_mut(&app, &state, &slug)?;
+    std::fs::create_dir_all(project.join("assets")).map_err(|e| e.to_string())?;
+    let incoming = Incoming::Bytes(bytes.clone());
+    let conform_on = conform_new_videos(&app);
+    let _serial = IMPORTS.lock().await;
+    import_one(&app, &slug, &project, incoming, &base, &ext, conform_on)
+        .await
+        .map(Some)
 }
 
 /// One scene's terminal snapshot PNG into the project's `assets/`, OVERWRITING the canonical `terminal-<stem>.png` (the app-icon rule: an app-owned asset with one home, so recaptures never litter collision suffixes; `assetVersionStore` cache-busts readers). Headers carry the slug and the scene stem, the body is the raw PNG; temp-then-rename so a failed write never truncates the previous bake. Returns the project-relative path.
@@ -1322,5 +1772,43 @@ mod tests {
         for ext in CHART_DATA_EXTENSIONS {
             assert!(!workspace::MEDIA_EXTENSIONS.contains(ext));
         }
+    }
+
+    fn scratch_assets(tag: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("kc-media-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("assets/.originals")).unwrap();
+        dir
+    }
+
+    #[test]
+    fn a_conform_stem_skips_mezzanines_records_originals_and_pending_jobs() {
+        let project = scratch_assets("stem");
+        let assets = project.join("assets");
+        assert_eq!(free_conform_stem(&assets, "rec", "mov", &[]), "rec");
+        // A plain import of another container never blocks the mezzanine name.
+        std::fs::write(assets.join("rec.mov"), b"x").unwrap();
+        assert_eq!(free_conform_stem(&assets, "rec", "mov", &[]), "rec");
+        std::fs::write(assets.join("rec.mp4"), b"x").unwrap();
+        assert_eq!(free_conform_stem(&assets, "rec", "mov", &[]), "rec-2");
+        std::fs::write(assets.join("rec-2.timing.json"), b"{}").unwrap();
+        assert_eq!(free_conform_stem(&assets, "rec", "mov", &[]), "rec-3");
+        std::fs::write(assets.join(".originals/rec-3.mov"), b"x").unwrap();
+        let pending = vec!["assets/rec-4.mp4".to_owned()];
+        assert_eq!(free_conform_stem(&assets, "rec", "mov", &pending), "rec-5");
+        let _ = std::fs::remove_dir_all(&project);
+    }
+
+    #[test]
+    fn a_failed_import_conform_hands_the_original_back() {
+        let project = scratch_assets("restore");
+        std::fs::write(project.join("assets/rec.mov"), b"taken").unwrap();
+        std::fs::write(project.join("assets/.originals/rec.mov"), b"original").unwrap();
+        let restored = restore_import(&project, "assets/.originals/rec.mov").unwrap();
+        assert_eq!(restored, "assets/rec-2.mov");
+        assert_eq!(std::fs::read(project.join(&restored)).unwrap(), b"original");
+        assert!(!project.join("assets/.originals/rec.mov").exists());
+        assert_eq!(restore_import(&project, "assets/.originals/gone.mov"), None);
+        let _ = std::fs::remove_dir_all(&project);
     }
 }

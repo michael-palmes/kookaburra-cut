@@ -1505,6 +1505,10 @@ macro_rules! kookaburra_handler {
             claude_update::dismiss_claude_update,
             media::import_media,
             media::import_media_bytes,
+            media::list_conform_jobs,
+            media::conform_media,
+            media::conform_status,
+            media::set_conform_new_videos,
             media::write_terminal_snapshot,
             media::import_chart_data,
             media::media_meta,
@@ -1605,6 +1609,7 @@ pub fn run() {
         .manage(ScreenshotState(Mutex::new(None)))
         .manage(bridge::BridgeScreenshotState::default())
         .manage(concurrency::BackgroundLimiter::default())
+        .manage(media::ConformJobs::default())
         .manage(workspace::SettingsState::default())
         .manage(updater::PendingUpdate::default())
         .manage(pty::PtyState::default())

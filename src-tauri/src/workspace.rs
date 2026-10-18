@@ -70,6 +70,9 @@ pub struct AppSettings {
     /// Inverted so the serde/Default false means hardware ON; deterministic exports pin to software regardless.
     #[serde(default)]
     pub disable_hardware_video: bool,
+    /// Inverted so the serde/Default false means Conform new videos ON: an imported video with a timing or colour trigger becomes a constant-rate mezzanine (conform.rs).
+    #[serde(default)]
+    pub disable_conform_new_videos: bool,
     /// Inverted so the serde/Default false means Downloads ON: app-triggered exports land in ~/Downloads; terminal autoruns always keep the canonical paths.
     #[serde(default)]
     pub keep_exports_in_project: bool,
