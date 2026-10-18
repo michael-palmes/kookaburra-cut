@@ -292,6 +292,40 @@ describe("sampleRoom", () => {
     expect(done.pose.ambient).toBe(1);
   });
 
+  it("keeps the lights between the two rooms when a Back ease overshoots", () => {
+    const back = normalizeRoomTrack(
+      {
+        keys: [
+          { at: 0, colour: "#ff0000", lighting: { ambient: 0.2 } },
+          {
+            at: 100,
+            colour: "#0000ff",
+            transition: "flood",
+            durationMs: 400,
+            ease: "inBack",
+            lighting: { ambient: 3 },
+          },
+          {
+            at: 600,
+            colour: "#00ff00",
+            transition: "flood",
+            durationMs: 400,
+            ease: "outBack",
+            lighting: { ambient: 1 },
+          },
+        ],
+      },
+      { sceneTheme: theme },
+    );
+    if (!back) throw new Error("no track");
+    const dip = sampleRoom(back, 150);
+    expect(dip.flood?.radius).toBeLessThan(0);
+    expect(dip.pose.ambient).toBe(0.2);
+    const over = sampleRoom(back, 900);
+    expect(over.flood?.radius).toBeGreaterThan(1);
+    expect(over.pose.ambient).toBe(1);
+  });
+
   it("a first flood spreads over the scene's own background from the base pose", () => {
     const first = normalizeRoomTrack(
       { keys: [{ at: 0, colour: "#ffffff", transition: "flood", lighting: { ambient: 2 } }] },

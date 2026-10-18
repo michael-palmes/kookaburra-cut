@@ -594,11 +594,13 @@ export function sampleRoom(track: RoomTrack, localMs: number): RoomSample {
     const progress = elapsed / key.durationMs;
     const radius = ease(key.ease, progress);
     const prev = k > 0 ? track.keys[k - 1] : null;
+    // A Back ease may overshoot the circle, never the lights (an intensity must stay between the two rooms).
+    const mix = clamp(radius, 0, 1);
     return {
       colour: prev?.colour ?? null,
       key: k - 1,
       flood: { colour: key.colour, origin: key.origin, progress, radius },
-      pose: mixRoomPose(prev?.pose ?? track.basePose, key.pose, radius),
+      pose: mixRoomPose(prev?.pose ?? track.basePose, key.pose, mix),
     };
   }
   return { colour: key.colour, key: k, flood: null, pose: key.pose };
