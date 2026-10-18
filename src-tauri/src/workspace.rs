@@ -2071,6 +2071,105 @@ fn list_by_extension_in(project: &Path, extensions: &[&str]) -> Result<Vec<Strin
     Ok(files)
 }
 
+/// Every extension a scene or the app loads from `assets/` at a URL: the asset revision stamps' scope.
+pub(crate) const STAMPED_EXTENSIONS: &[&str] = &[
+    "png", "jpg", "jpeg", "webp", "gif", "mp4", "mov", "m4v", "webm", "hdr", "exr", "mp3", "wav",
+    "m4a", "aac", "flac", "ogg", "cube",
+];
+
+/// One asset's revision inputs: its size and modified time (nanoseconds, as a string for JSON).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AssetStamp {
+    pub rel: String,
+    pub size: u64,
+    pub mtime_ns: String,
+}
+
+/// A project's asset stamps plus one aggregate `stamp` that moves when any of them does.
+#[derive(Debug, Clone, Serialize)]
+pub struct ProjectAssetStamps {
+    pub stamp: String,
+    pub assets: Vec<AssetStamp>,
+}
+
+fn mtime_ns(meta: &std::fs::Metadata) -> u128 {
+    meta.modified()
+        .ok()
+        .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+        .map_or(0, |d| d.as_nanos())
+}
+
+/// One walk of `assets/` (dot names skipped, loadable extensions only), sorted by rel. Separate from `compute_project_fingerprint`, which is also the trust fingerprint and must never cover assets.
+pub(crate) fn asset_stamps_in(project: &Path) -> ProjectAssetStamps {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+
+    let assets: Vec<AssetStamp> = list_by_extension_in(project, STAMPED_EXTENSIONS)
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|rel| {
+            let meta = std::fs::metadata(project.join(&rel)).ok()?;
+            Some(AssetStamp {
+                size: meta.len(),
+                mtime_ns: mtime_ns(&meta).to_string(),
+                rel,
+            })
+        })
+        .collect();
+    let mut hasher = DefaultHasher::new();
+    for asset in &assets {
+        (&asset.rel, asset.size, &asset.mtime_ns).hash(&mut hasher);
+    }
+    ProjectAssetStamps {
+        stamp: format!("{:016x}", hasher.finish()),
+        assets,
+    }
+}
+
+/// Every loadable asset's size and modified time, plus the aggregate stamp: the frontend's asset revisions (`?r=<size>-<mtimeNs>`).
+#[tauri::command]
+pub async fn list_project_asset_stamps(
+    app: AppHandle,
+    state: State<'_, SettingsState>,
+    slug: String,
+) -> Result<ProjectAssetStamps, String> {
+    let dir = project_dir(&app, &state, &slug)?;
+    tauri::async_runtime::spawn_blocking(move || asset_stamps_in(&dir))
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// The aggregate asset stamp alone, for the once-a-second editor poll and the render window's reload check.
+#[tauri::command]
+pub async fn project_assets_stamp(
+    app: AppHandle,
+    state: State<'_, SettingsState>,
+    slug: String,
+) -> Result<String, String> {
+    let dir = project_dir(&app, &state, &slug)?;
+    tauri::async_runtime::spawn_blocking(move || asset_stamps_in(&dir).stamp)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// `<size>-<mtimeNs>` for each readable path (null when unreadable or outside the readable roots), the same revision the asset stamps give, so the clip sweep re-hashes only files that moved.
+#[tauri::command]
+pub fn file_revisions(
+    app: AppHandle,
+    state: State<'_, SettingsState>,
+    paths: Vec<String>,
+) -> Vec<Option<String>> {
+    paths
+        .iter()
+        .map(|path| {
+            let path = confine_readable(&app, &state, path).ok()?;
+            let meta = std::fs::metadata(path).ok()?;
+            Some(format!("{}-{}", meta.len(), mtime_ns(&meta)))
+        })
+        .collect()
+}
+
 fn collect_files(
     base: &Path,
     dir: &Path,
@@ -2082,16 +2181,16 @@ fn collect_files(
     };
     for entry in entries.flatten() {
         let path = entry.path();
-        // Dot-prefixed folders are app caches (.emoji-cache), never user media.
+        // Dot names are app caches and staging (.emoji-cache, .kc-render, .originals), never user media.
+        let hidden = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .is_some_and(|n| n.starts_with('.'));
+        if hidden {
+            continue;
+        }
         if path.is_dir() {
-            let hidden = path
-                .file_name()
-                .and_then(|n| n.to_str())
-                .map(|n| n.starts_with('.'))
-                .unwrap_or(false);
-            if !hidden {
-                collect_files(base, &path, extensions, out)?;
-            }
+            collect_files(base, &path, extensions, out)?;
         } else if path
             .extension()
             .and_then(|s| s.to_str())
@@ -2921,5 +3020,93 @@ mod tests {
             &PathBuf::from("/other/demo"),
             "abc"
         ));
+    }
+
+    #[test]
+    fn asset_stamps_skip_dot_names_and_cover_every_loadable_extension() {
+        let dir = scratch_dir();
+        let assets = dir.join("assets");
+        for rel in [
+            ".emoji-cache/1f600.png",
+            ".kc-render/stage.mp4",
+            ".originals/rec.mov",
+            "sub/.hidden.png",
+            "notes.txt",
+            "rec.timing.json",
+            "_meta.json",
+            "clip.mp4.kbtmp",
+            "a.png",
+            "b.gif",
+            "c.mov",
+            "studio.hdr",
+            "grade.cube",
+            "song.mp3",
+            "sub/d.webp",
+        ] {
+            let path = assets.join(rel);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(&path, rel.as_bytes()).unwrap();
+        }
+        std::fs::write(assets.join(".DS_Store"), b"x").unwrap();
+        let listed = asset_stamps_in(&dir);
+        let rels: Vec<&str> = listed.assets.iter().map(|a| a.rel.as_str()).collect();
+        assert_eq!(
+            rels,
+            [
+                "assets/a.png",
+                "assets/b.gif",
+                "assets/c.mov",
+                "assets/grade.cube",
+                "assets/song.mp3",
+                "assets/studio.hdr",
+                "assets/sub/d.webp",
+            ]
+        );
+        let a = &listed.assets[0];
+        assert_eq!(a.size, "a.png".len() as u64);
+        assert!(a.mtime_ns.parse::<u128>().unwrap() > 0);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_asset_stamp_moves_on_an_in_place_replace_and_ignores_dot_names() {
+        let dir = scratch_dir();
+        let assets = dir.join("assets");
+        std::fs::create_dir_all(assets.join(".kc-render")).unwrap();
+        std::fs::write(assets.join("shot.png"), b"one").unwrap();
+        let before = asset_stamps_in(&dir).stamp;
+        assert_eq!(before, asset_stamps_in(&dir).stamp);
+        std::fs::write(assets.join(".kc-render/stage.png"), b"staging").unwrap();
+        std::fs::write(assets.join(".hidden.png"), b"hidden").unwrap();
+        assert_eq!(before, asset_stamps_in(&dir).stamp);
+        std::fs::write(assets.join("shot.png"), b"two!").unwrap();
+        assert_ne!(before, asset_stamps_in(&dir).stamp);
+        // The trust fingerprint never sees assets.
+        let trust = compute_project_fingerprint(&dir);
+        std::fs::write(assets.join("shot.png"), b"three").unwrap();
+        assert_eq!(trust, compute_project_fingerprint(&dir));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn collect_files_skips_dot_files_as_well_as_dot_folders() {
+        let dir = scratch_dir();
+        let assets = dir.join("assets");
+        std::fs::create_dir_all(assets.join(".emoji-cache")).unwrap();
+        std::fs::create_dir_all(assets.join("shots")).unwrap();
+        for rel in [
+            "shown.png",
+            ".hidden.png",
+            ".emoji-cache/1f600.png",
+            "shots/inner.png",
+            "shots/.inner.png",
+        ] {
+            std::fs::write(assets.join(rel), b"x").unwrap();
+        }
+        assert_eq!(
+            list_by_extension_in(&dir, IMAGE_EXTENSIONS).unwrap(),
+            ["assets/shots/inner.png", "assets/shown.png"]
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
