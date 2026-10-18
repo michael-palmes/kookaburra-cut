@@ -206,6 +206,27 @@ class VerifyTests(KbTestCase):
         self.assertEqual((mine.read_bytes(), report.read_text(), other.read_bytes()), (b"user", "{}", b"keep"))
         self.assertFalse(hold.exists())
 
+    def test_a_killed_runs_held_exports_come_back_next_time(self) -> None:
+        import subprocess
+        import sys
+
+        root = make_project(self.tmp)
+        project = self._project(root)
+        (root / "exports").mkdir()
+        dead = subprocess.Popen([sys.executable, "-c", "pass"])
+        dead.wait()
+        orphan = verify.drafts_root(project) / f"held-{dead.pid}-1"
+        running = verify.drafts_root(project) / f"held-{os.getpid()}-2"
+        for hold, name in ((orphan, "demo-16x9-custom.mp4"), (running, "demo-9x16-custom.mp4")):
+            hold.mkdir(parents=True)
+            (hold / name).write_bytes(b"user")
+        notes = verify.recover_held_exports(project)
+        self.assertEqual((root / "exports" / "demo-16x9-custom.mp4").read_bytes(), b"user")
+        self.assertFalse(orphan.exists())
+        self.assertTrue((running / "demo-9x16-custom.mp4").is_file(), "a live run keeps what it holds")
+        self.assertEqual(len(notes), 1)
+        self.assertIn("put back demo-16x9-custom.mp4", notes[0])
+
     def _project(self, root: Path) -> Any:
         from kblib.project import Project
 

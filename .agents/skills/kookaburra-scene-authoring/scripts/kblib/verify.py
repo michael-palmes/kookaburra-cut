@@ -8,6 +8,7 @@ import io
 import json
 import os
 import shutil
+import signal
 import subprocess
 import sys
 import time
@@ -449,9 +450,35 @@ def restore_custom_exports(held: List[Tuple[Path, Path]], hold: Path) -> List[st
     return notes
 
 
+def recover_held_exports(project: Any) -> List[str]:
+    """Put back Custom exports that a killed earlier run held aside (its held-<pid>-<ms> folder outlived its pid)."""
+    exports = project.root / "exports"
+    try:
+        holds = sorted(p for p in drafts_root(project).iterdir() if p.is_dir() and p.name.startswith("held-"))
+    except OSError:
+        return []
+    notes: List[str] = []
+    for hold in holds:
+        pid = hold.name.split("-")[1]
+        if pid.isdigit() and bridge.pid_alive(int(pid)):
+            continue
+        held = [(exports / f.name, f) for f in sorted(hold.iterdir()) if f.is_file()]
+        exports.mkdir(exist_ok=True)
+        conflicts = restore_custom_exports(held, hold)
+        notes += [f"put back {original.name}, which an interrupted kb verify --film had set aside" for original, aside in held if not aside.exists()]
+        notes += conflicts
+    return notes
+
+
+def _terminate(signum: int, frame: Any) -> None:
+    raise KeyboardInterrupt()
+
+
 def step_export(ctx: Any, aspect: Optional[str]) -> Tuple[Step, Optional[str]]:
     """./kb export at draft size, kept in .kb/verify/ with the user's Custom exports held aside meanwhile; the draft's absolute path."""
+    recovered = recover_held_exports(ctx.project)
     hold = drafts_root(ctx.project) / f"held-{os.getpid()}-{int(time.time() * 1000)}"
+    previous = signal.signal(signal.SIGTERM, _terminate)
     held = hold_custom_exports(ctx.project, hold)
     film: Optional[str] = None
     try:
@@ -462,7 +489,8 @@ def step_export(ctx: Any, aspect: Optional[str]) -> Tuple[Step, Optional[str]]:
             st.extra["file"] = film
     finally:
         notes = restore_custom_exports(held, hold)
-    st.warnings += notes
+        signal.signal(signal.SIGTERM, previous)
+    st.warnings += recovered + notes
     return st, film
 
 
@@ -483,17 +511,24 @@ def run_export(ctx: Any, aspect: Optional[str]) -> Tuple[Step, Optional[str]]:
         st.errors.append(f"could not run kb export: {e}")
         return st, None
     assert proc.stdout is not None
-    for line in proc.stdout:
-        try:
-            obj = json.loads(line)
-        except ValueError:
-            continue
-        if not isinstance(obj, dict):
-            continue
-        if obj.get("event") == "progress":
-            emit_err(f"kb verify: export {exporting.progress_text(obj)}")
-        elif "ok" in obj:
-            final = obj
+    try:
+        for line in proc.stdout:
+            try:
+                obj = json.loads(line)
+            except ValueError:
+                continue
+            if not isinstance(obj, dict):
+                continue
+            if obj.get("event") == "progress":
+                emit_err(f"kb verify: export {exporting.progress_text(obj)}")
+            elif "ok" in obj:
+                final = obj
+    except BaseException:
+        # kb export cancels the app's export on SIGTERM, so no draft lands under the user's held name.
+        proc.terminate()
+        with contextlib.suppress(subprocess.TimeoutExpired):
+            proc.wait(timeout=exporting.TERM_GRACE_S + 5)
+        raise
     code = proc.wait()
     if final is None:
         st.errors.append(f"kb export exited {code} without an answer")
