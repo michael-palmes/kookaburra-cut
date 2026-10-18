@@ -41,7 +41,7 @@ impl Fail {
         Self::new("usage", message)
     }
 
-    fn with(mut self, key: &str, value: impl Into<Value>) -> Self {
+    pub(crate) fn with(mut self, key: &str, value: impl Into<Value>) -> Self {
         self.extra.insert(key.to_owned(), value.into());
         self
     }
@@ -111,7 +111,7 @@ pub(crate) fn finish(result: Result<Value, Fail>) -> i32 {
     }
 }
 
-fn print_line(value: &Value) {
+pub(crate) fn print_line(value: &Value) {
     let stdout = std::io::stdout();
     let mut out = stdout.lock();
     let _ = writeln!(out, "{value}");
@@ -181,7 +181,7 @@ impl Flags {
 }
 
 /// `--project`: an absolute folder holding `project.json`; the CLI never consults the workspace root.
-fn project(flags: &Flags) -> Result<PathBuf, Fail> {
+pub(crate) fn project(flags: &Flags) -> Result<PathBuf, Fail> {
     let raw = flags.require("project")?;
     let path = PathBuf::from(raw);
     if !path.is_absolute() {
@@ -339,6 +339,8 @@ fn caps_in(args: &[String], app_data: Option<PathBuf>) -> Result<Value, Fail> {
             "defaultHoldMs": edit::DEFAULT_IMAGE_HOLD_MS,
             "defaultFps": 60,
         },
+        // kb checks this before `media …`: an older binary would start the GUI on the unknown verb.
+        "media": { "version": crate::conform::MEDIA_CLI_VERSION, "commands": crate::cli_media::CAPS_COMMANDS },
     }))
 }
 
@@ -882,6 +884,7 @@ mod tests {
             "tap",
             "mask",
             "limits",
+            "media",
         ];
         expected.sort();
         let mut got = keys.clone();
@@ -904,6 +907,10 @@ mod tests {
         assert_eq!(
             caps["limits"],
             json!({"minClipSourceMs": 100, "minHoldMs": 100, "defaultHoldMs": 2000, "defaultFps": 60})
+        );
+        assert_eq!(
+            caps["media"],
+            json!({"version": 1, "commands": ["probe", "conform"]})
         );
     }
 

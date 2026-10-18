@@ -3,6 +3,7 @@
 mod bridge;
 mod claude_update;
 pub mod cli;
+pub mod cli_media;
 pub mod cli_song;
 mod concurrency;
 mod conform;
