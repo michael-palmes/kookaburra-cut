@@ -1,6 +1,7 @@
 import { useGLTF, useTexture } from "@react-three/drei";
 import {
   type MutableRefObject,
+  type ReactNode,
   useCallback,
   useContext,
   useEffect,
@@ -69,6 +70,7 @@ import {
   resolveAvailableDeviceId,
 } from "./catalog";
 import { DeviceGizmo } from "./DeviceGizmo";
+import { DeviceScreenContext } from "./DeviceScreenAnchor";
 import { DeviceShadow } from "./DeviceShadow";
 import { clampFoldDeg, foldCentreOffset, foldVisibleWidth } from "./foldPose";
 import {
@@ -155,6 +157,8 @@ export interface DeviceProps {
   foldTransition?: DeviceFoldTransitionSpec;
   /** Motion blur override; absent inherits the scene's Objects switch. */
   motionBlur?: MotionBlurOverride;
+  /** Content riding the device's pose in its fitted frame; `DeviceScreenAnchor` pins it to the screen. */
+  children?: ReactNode;
 }
 
 /** One sampled channel of a foldable's clip, bound to a node of this device's private clone. */
@@ -461,6 +465,7 @@ export function Device(props: DeviceProps) {
     bothScreensOn = false,
     foldTransition,
     motionBlur,
+    children,
   } = props;
   // The layout stamp wins over the scalar fields (see DevicePlacement.resolvedLayout).
   const position = placement.resolvedLayout?.position ?? placement.position ?? [0, 0, 0];
@@ -881,6 +886,15 @@ export function Device(props: DeviceProps) {
           ]}
           scale={introScale}
         >
+          {children != null && (
+            <group scale={animatedScale}>
+              <DeviceScreenContext.Provider
+                value={{ model, renderModel, lidDeg: renderedLidDeg, foldDeg: renderedFoldDeg }}
+              >
+                {children}
+              </DeviceScreenContext.Provider>
+            </group>
+          )}
           <group scale={animatedScale * fit}>
             {fold ? (
               // The fit scale sits outside, so a fitted-unit shift divides back into model units.

@@ -267,3 +267,51 @@ class CheckTests(KbTestCase):
         errs = messages(self.run_check())
         self.assertTrue(any(e.startswith("scenes/03-outro.tsx") and "already the id of scenes/02-hero.tsx" in e for e in errs))
         self.assertFalse(any(e.startswith("scenes/02-hero.tsx") for e in errs))
+
+    def device_scene(self, props: str) -> str:
+        return (
+            'import { defineScene, Device, useSceneDevices } from "@kookaburra/toolkit";\n'
+            "export default defineScene({\n"
+            '  id: "hero",\n'
+            "  durationMs: 3000,\n"
+            "  Scene() {\n"
+            "    const [d] = useSceneDevices();\n"
+            "    return (\n"
+            f"      <Device {{...d}} {props}>\n"
+            "        <group position={[0, 0, 0]} />\n"
+            "      </Device>\n"
+            "    );\n"
+            "  },\n"
+            "});\n"
+        )
+
+    def test_devices_this_build_lacks_warn(self) -> None:
+        write_json(self.root / "scenes" / "02-hero.json", {"version": 1, "devices": [{"id": "d1", "model": "iphone-17-pro"}]})
+        write(self.root / "scenes" / "02-hero.tsx", self.device_scene('model="macbook-pro-16"'))
+        files = ["scenes/02-hero.json", "scenes/02-hero.tsx"]
+        build = {"lastLoad": {"project": "ws:other", "availableDevices": ["android"]}}
+        warnings = messages(check.check_project(self.project, files=files, heartbeat=build), "warning")
+        self.assertTrue(any(w.startswith("scenes/02-hero.json devices[0].model") and '"iphone-17-pro" is not in this build' in w and "DeviceScreenAnchor" in w for w in warnings), warnings)
+        self.assertTrue(any(w.startswith("scenes/02-hero.tsx line 8") and '"macbook-pro-16" is not in this build' in w for w in warnings), warnings)
+        # Unknown without a heartbeat (or an older app's), and silent for models the build has.
+        for heartbeat in (None, {"lastLoad": {"project": "ws:demo"}}, {"lastLoad": {"availableDevices": ["android", "iphone-17-pro", "macbook-pro-16"]}}):
+            warnings = messages(check.check_project(self.project, files=files, heartbeat=heartbeat), "warning")
+            self.assertFalse(any("not in this build" in w for w in warnings), (heartbeat, warnings))
+
+    def test_device_layout_owns_tsx_poses(self) -> None:
+        write(self.root / "scenes" / "02-hero.tsx", self.device_scene("placement={{ ...d.placement, position: [1, 0, 0], ground: true, scale: 0.8 }}"))
+        write_json(self.root / "scenes" / "02-hero.json", {"version": 1, "devices": [{"id": "d1", "model": "android"}]})
+        self.assertEqual(messages(self.run_check(["scenes/02-hero.tsx"]), "warning"), [])
+        write_json(self.root / "scenes" / "02-hero.json", {"version": 1, "devices": [{"id": "d1", "model": "android"}], "deviceLayout": {"preset": "row"}})
+        warnings = messages(self.run_check(["scenes/02-hero.tsx"]), "warning")
+        self.assertEqual(len(warnings), 2, warnings)
+        self.assertIn("line 8 passes position to Device, but scenes/02-hero.json has a deviceLayout", warnings[0])
+        self.assertIn("line 8 passes ground to Device", warnings[1])
+
+    def test_catalog_lines_carry_screen_rects(self) -> None:
+        from kblib import catalog
+
+        rect = {"width": 3.307, "height": 2.1448, "centre": [0.0004, 0.17], "z": -0.7783, "cornerRadius": 0.0552, "frame": {"lidDeg": 90}}
+        line = catalog.entry_line({"id": "macbook-pro-16", "label": "MacBook", "screen": rect})
+        self.assertEqual(line, "macbook-pro-16 (MacBook) [screen 3.307 x 2.1448 at (0.0004, 0.17, -0.7783) r 0.0552 at lid 90]")
+        self.assertEqual(catalog.entry_line({"id": "fade", "label": "Fade"}), "fade (Fade)")

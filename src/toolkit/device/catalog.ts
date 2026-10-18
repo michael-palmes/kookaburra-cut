@@ -17,6 +17,7 @@ import previewDuoNightSky from "../../assets/device-previews/iphone-duo/night-sk
 import previewDuoStarWhite from "../../assets/device-previews/iphone-duo/star-white.png?url";
 import previewMbpSilver from "../../assets/device-previews/macbook-pro-16/silver.png?url";
 import previewMbpGrey from "../../assets/device-previews/macbook-pro-16/space-grey.png?url";
+import type { V3 } from "../types";
 import { modelBarrierOnce } from "./modelBarrier";
 import {
   androidModelUrl,
@@ -31,6 +32,7 @@ import {
   macbookPro16ModelUrl,
   phoneModelUrl,
 } from "./modelUrl";
+import { DEVICE_SCREEN_GEOMETRY as SCREENS } from "./screenGeometry";
 
 /** The device catalog: devices keyed by stable id + colour id, with build-time availability separate from document identity so a missing licensed model never rewrites a project. Real product names are a deliberate 2026-07-05 trade-dress-risk decision (see docs/decisions.md), and iphone-15-pro's model derives from a LICENSED vendor .blend (see src/assets/models/README.md) whose colour overrides are exact linear-to-sRGB baseColorFactor replacements, not approximate tints. */
 
@@ -79,10 +81,24 @@ export interface DeviceShadowSpec {
   fold?: { hingeZ: number };
 }
 
+/** Where a display's media sits, measured off the glb (`screenGeometry.ts`) in the frame `Device` renders in at placement scale 1 (recentred and fitted). UV (0, 0) is the top-left corner, u runs right and v down. */
+export interface DeviceScreenRect {
+  width: number;
+  height: number;
+  centre: [number, number];
+  /** The display plane's depth; it faces +Z at the measured pose. */
+  z: number;
+  /** The largest of the display's four corner radii. */
+  cornerRadius: number;
+  /** The hinge pose a riding display was measured at (a laptop's lid; a foldable's fold, the cover closed and the inside open flat, auto-centre included). */
+  frame?: { lidDeg?: number; foldDeg?: number };
+}
+
 /** One display: the screen mesh's material name + the display's width/height. */
 export interface DeviceScreenSpec {
   material: string;
   aspect: number;
+  rect: DeviceScreenRect;
 }
 
 /** A foldable's hinge. The glb carries a clip keyed ONE FRAME PER DEGREE (time = foldDeg / degPerSecond; 0 closed), with the camera half baked static so closed and open both face glTF +Z. Built by scripts/blender-duo-prepare.py. */
@@ -124,8 +140,8 @@ export interface DeviceSpec {
   fittedHeight: number;
   /** Cast-shadow silhouette; see `DeviceShadowSpec`. */
   shadow: DeviceShadowSpec;
-  /** Hinge for lid-angle control: the glb node (three.js-sanitised name) whose local X rotation opens the lid, the authored open angle, and the default pose when the doc sets none. */
-  lid?: { node: string; openDeg: number; defaultDeg: number };
+  /** Hinge for lid-angle control: the glb node (three.js-sanitised name) whose local X rotation opens the lid, the authored open angle, the default pose when the doc sets none, and the measured hinge point (fitted frame) the lid turns about. */
+  lid?: { node: string; openDeg: number; defaultDeg: number; pivot?: V3 };
   fold?: DeviceFoldSpec;
 }
 
@@ -188,7 +204,7 @@ export const DEVICE_CATALOG: Record<DeviceId, DeviceSpec> = {
     form: "phone",
     glbUrl: iphone17ProModelUrl,
     // 2622 x 1206 display, portrait; matches the measured screen mesh (0.0664 x 0.1445 m).
-    screen: { material: "screen", aspect: 1206 / 2622 },
+    screen: { material: "screen", aspect: 1206 / 2622, rect: SCREENS["iphone-17-pro"].screen },
     // 71.9 x 149.6 mm body, height-fitted to 2.6.
     layoutWidth: 1.25,
     fittedHeight: 2.6,
@@ -239,8 +255,12 @@ export const DEVICE_CATALOG: Record<DeviceId, DeviceSpec> = {
     form: "foldable",
     glbUrl: iphoneDuoModelUrl,
     // Inside: 2670 x 1878, landscape (mesh 0.1576 x 0.1102 m). Outside: 1398 x 2034, portrait (mesh 0.0772 x 0.1116 m).
-    screen: { material: "SCREEN_MAIN", aspect: 2670 / 1878 },
-    coverScreen: { material: "SCREEN_COVER", aspect: 1398 / 2034 },
+    screen: { material: "SCREEN_MAIN", aspect: 2670 / 1878, rect: SCREENS["iphone-duo"].screen },
+    coverScreen: {
+      material: "SCREEN_COVER",
+      aspect: 1398 / 2034,
+      rect: SCREENS["iphone-duo"].coverScreen,
+    },
     // 164.9 x 117.5 mm open body, height-fitted to 2.6; height is fold-invariant, and layouts reserve the open width.
     layoutWidth: 3.65,
     fittedHeight: 2.6,
@@ -281,7 +301,7 @@ export const DEVICE_CATALOG: Record<DeviceId, DeviceSpec> = {
     form: "laptop",
     glbUrl: macbookPro16ModelUrl,
     // 3456 x 2234 display, landscape; matches the measured screen mesh (0.3456 x 0.2234 m).
-    screen: { material: "SCREEN.001", aspect: 3456 / 2234 },
+    screen: { material: "SCREEN.001", aspect: 3456 / 2234, rect: SCREENS["macbook-pro-16"].screen },
     colours: [
       // The vendor authored the aluminium dark (0.25 reflectance) and glossy (0.35) for its own studio HDRI; under our Lightformer rig a metal that dark reads flat and dim with hot specular flashes, so both finishes lift the reflectance and soften the roughness. Space Grey per the vendor's colour .blend (same extraction as the iPhones).
       {
@@ -321,7 +341,12 @@ export const DEVICE_CATALOG: Record<DeviceId, DeviceSpec> = {
       lid: { length: 2.424, thickness: 0.051, hingeY: -1.113, hingeZ: -0.697 },
     },
     // DISPLAY.001 in the glb ("DISPLAY001" after three.js name sanitising), authored open at 110 degrees.
-    lid: { node: "DISPLAY001", openDeg: 110, defaultDeg: 90 },
+    lid: {
+      node: "DISPLAY001",
+      openDeg: 110,
+      defaultDeg: 90,
+      pivot: SCREENS["macbook-pro-16"].lidPivot,
+    },
   },
   "ipad-pro-13": {
     id: "ipad-pro-13",
@@ -329,7 +354,7 @@ export const DEVICE_CATALOG: Record<DeviceId, DeviceSpec> = {
     form: "tablet",
     glbUrl: ipadPro13ModelUrl,
     // 2752 x 2064 display, landscape identity (camera edge up); matches the measured screen mesh (0.2642 x 0.1981 m).
-    screen: { material: "SCREEN", aspect: 2752 / 2064 },
+    screen: { material: "SCREEN", aspect: 2752 / 2064, rect: SCREENS["ipad-pro-13"].screen },
     // 281.6 x 215.5 mm body, height-fitted to 2.6.
     layoutWidth: 3.4,
     fittedHeight: 2.6,
@@ -364,7 +389,7 @@ export const DEVICE_CATALOG: Record<DeviceId, DeviceSpec> = {
     form: "phone",
     glbUrl: phoneModelUrl,
     // 2556 × 1179 display, portrait.
-    screen: { material: "SCREEN", aspect: 1179 / 2556 },
+    screen: { material: "SCREEN", aspect: 1179 / 2556, rect: SCREENS["iphone-15-pro"].screen },
     // 70.6 x 146.6 mm body, height-fitted to 2.6.
     layoutWidth: 1.25,
     fittedHeight: 2.6,
@@ -409,7 +434,7 @@ export const DEVICE_CATALOG: Record<DeviceId, DeviceSpec> = {
     form: "phone",
     glbUrl: androidModelUrl,
     // Generated Pixel-style handset; the "screen" mesh measures 0.0665 x 0.1478 m.
-    screen: { material: "screen", aspect: 0.0665 / 0.1478 },
+    screen: { material: "screen", aspect: 0.0665 / 0.1478, rect: SCREENS.android.screen },
     // Slimmer Pixel-style body, height-fitted to 2.6.
     layoutWidth: 1.22,
     fittedHeight: 2.6,

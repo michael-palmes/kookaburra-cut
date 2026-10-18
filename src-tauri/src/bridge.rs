@@ -183,6 +183,9 @@ pub struct LastLoad {
     pub font_issues: Vec<LoadFontIssue>,
     #[serde(default)]
     pub warnings: Vec<String>,
+    /// Device ids this build renders with their own model (the rest render as Android).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub available_devices: Vec<String>,
 }
 
 /// Where this build reads its bundled content from; resolved once.
@@ -1297,6 +1300,7 @@ mod tests {
                 fallback: Some("Inter@400".into()),
             }],
             warnings: vec![],
+            available_devices: vec![],
         };
         let places = HeartbeatPlaces {
             resources_dir: Some("/Applications/Kookaburra Cut.app/Contents/Resources".into()),
@@ -1384,6 +1388,7 @@ mod tests {
         }))
         .unwrap();
         assert!(load.scene_errors.is_empty() && load.font_issues.is_empty());
+        assert!(load.available_devices.is_empty());
     }
 
     #[test]

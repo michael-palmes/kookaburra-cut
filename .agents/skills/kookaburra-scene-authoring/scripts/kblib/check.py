@@ -67,6 +67,7 @@ class Context:
             issues = last.get("fontIssues")
             if isinstance(issues, list):
                 self.font_issues = [i for i in issues if isinstance(i, dict)]
+        self.available_devices = Checker.heartbeat_devices(heartbeat)
         self._tsx: Optional[Dict[str, str]] = None
 
     def ids(self, family: str, fallback: Optional[List[str]] = None) -> Optional[List[str]]:
@@ -571,6 +572,7 @@ class Checker:
                 rep.error(file, f"{path}.id", f'duplicate device id "{d["id"]}"')
             ids.add(d["id"])
             self.enum(file, f"{path}.model", d["model"], "devices", "device model")
+            self.device_in_build(file, f"{path}.model", d["model"])
             if "colour" in d:
                 self.device_colour(file, f"{path}.colour", d["model"], d["colour"])
             if "shadow" in d:
@@ -588,6 +590,52 @@ class Checker:
         if isinstance(colour, str) and (colour in ids or re.match(r"^custom:#[0-9a-fA-F]{6}$", colour)):
             return
         self.report.error(file, path, f'"{colour}" is not a {model} colour; one of {", ".join(ids)} or custom:#rrggbb')
+
+    # ── devices this build renders, and poses a deviceLayout owns ─────────
+
+    DEVICE_TAG_RE = re.compile(r"<Device(?![\w$.])")
+    DEVICE_MODEL_RE = re.compile(r"(?<![\w$.])model\s*=\s*\{?\s*([\"'])([\w-]+)\1")
+    DEVICE_POSE_RE = re.compile(r"(?<![\w$.])(position|rotationDeg|ground)\s*[:,}]")
+
+    @staticmethod
+    def heartbeat_devices(heartbeat: Optional[Dict[str, Any]]) -> Optional[Set[str]]:
+        """The device ids the running build renders with their own model (lastLoad.availableDevices), or None when unknown."""
+        ids = dig(heartbeat, "lastLoad", "availableDevices")
+        if isinstance(ids, list) and ids and all(isinstance(i, str) for i in ids):
+            return set(ids)
+        return None
+
+    def device_in_build(self, file: str, path: str, model: Any) -> None:
+        available = self.ctx.available_devices
+        if available is None or not isinstance(model, str) or model in available:
+            return
+        if model not in (self.ctx.ids("devices") or []):
+            return
+        self.report.warn(file, path, f'"{model}" is not in this build of the app, so it renders as the android fallback: a different body, with the screen somewhere else. Pin overlays with DeviceScreenAnchor rather than positions measured off a capture, or use one of {", ".join(sorted(available))}')
+
+    def device_tags(self, rel: str, text: str, code: str) -> None:
+        """Each <Device ...> opening tag: a literal model this build lacks, and pose props a sidecar deviceLayout owns."""
+        layout: Any = None
+        try:
+            layout = json.loads(read_text(self.project.sidecar_path(stem_of(rel)))).get("deviceLayout")
+        except (OSError, ValueError, AttributeError, UnicodeDecodeError):
+            pass
+        seen: Set[Tuple[int, str]] = set()
+        for m in self.DEVICE_TAG_RE.finditer(code):
+            depth, end = 0, m.end()
+            while end < len(code) and not (code[end] == ">" and depth == 0):
+                depth += {"{": 1, "}": -1}.get(code[end], 0)
+                end += 1
+            for model in self.DEVICE_MODEL_RE.finditer(text, m.end(), end):
+                self.device_in_build(rel, f"line {tsxmod.line_of(text, model.start())}", model.group(2))
+            if not isinstance(layout, dict):
+                continue
+            for pose in self.DEVICE_POSE_RE.finditer(code, m.end(), end):
+                key = (tsxmod.line_of(code, pose.start()), pose.group(1))
+                if key in seen:
+                    continue
+                seen.add(key)
+                self.report.warn(rel, f"line {key[0]}", f'passes {key[1]} to Device, but scenes/{stem_of(rel)}.json has a deviceLayout, which owns device poses, so this fights the layout. Remove {key[1]} here, or delete deviceLayout')
 
     def keyed_track(self, file: str, path: str, track: Any, allow_jump: bool) -> None:
         if not isinstance(track, dict):
@@ -706,6 +754,7 @@ class Checker:
                 rep.error(rel, f"line {line}", f"{name} is not imported from @kookaburra/toolkit.{hint}")
         for line, ref in tsxmod.literal_asset_refs(text):
             self.asset(rel, f"line {line}", ref)
+        self.device_tags(rel, text, code)
         eases = self.cat.ids("eases")
         if eases is not None:
             declared = set(DECLARED_RE.findall(code))
