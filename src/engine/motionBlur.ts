@@ -1,3 +1,4 @@
+import { parseWarn } from "./parseWarnings";
 import type { SceneDoc } from "./sceneDocSchema";
 import {
   SHUTTER_DEG_DEFAULT,
@@ -108,7 +109,7 @@ export function parseMotionBlurSettings(
   source: string,
 ): MotionBlurSettings | undefined {
   if (raw === undefined) return undefined;
-  const warn: Warn = (m) => console.warn(`[render] ${source}: motionBlur ${m}`);
+  const warn: Warn = (m) => parseWarn(`[render] ${source}: motionBlur ${m}`);
   if (!isRecord(raw)) {
     warn("isn't an object, ignored");
     return undefined;
@@ -145,7 +146,7 @@ export function isDefaultMotionBlur(settings: MotionBlurSettings | undefined): b
 
 /** Parses the sidecar `motionBlur` block, keeping only valid fields; an empty block is dropped. */
 export function parseSceneMotionBlur(raw: unknown, source: string): SceneDocMotionBlur | undefined {
-  const warn: Warn = (m) => console.warn(`[sceneDoc] ${source}: motionBlur ${m}`);
+  const warn: Warn = (m) => parseWarn(`[sceneDoc] ${source}: motionBlur ${m}`);
   if (!isRecord(raw)) {
     warn("isn't an object, dropped");
     return undefined;
@@ -168,7 +169,7 @@ export function parseMotionBlurOverride(
   source: string,
 ): MotionBlurOverride | undefined {
   if (raw === undefined) return undefined;
-  const warn: Warn = (m) => console.warn(`[sceneDoc] ${source}: motionBlur ${m}`);
+  const warn: Warn = (m) => parseWarn(`[sceneDoc] ${source}: motionBlur ${m}`);
   if (!isRecord(raw) || typeof raw.enabled !== "boolean") {
     warn("needs a boolean enabled, dropped");
     return undefined;

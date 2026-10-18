@@ -1,3 +1,5 @@
+import { parseWarn } from "./parseWarnings";
+
 /** Terminal scene content core: parses the sidecar `terminal` block (degrade-not-throw, the chart pattern) and resolves it into a fully defaulted `ResolvedSceneTerminal` so renderers never null-check fields. Pure (no clock reads, no three.js). The block is screen-locked overlay content drawn by the frame-panel pass; the interactive DOM overlay and the snapshot raster both derive their geometry from `sceneTerminalLayout` so they cannot drift. */
 
 /** Logical cell metrics in em of `fontPx`, the contract shared by the panel layout, the raster baker and the DOM overlay's fit. */
@@ -123,13 +125,13 @@ export function sanitizeStartCommand(raw: string): string {
 
 function parseSnapshot(raw: unknown, source: string): SceneDocTerminalSnapshot | undefined {
   if (!isRecord(raw) || !Array.isArray(raw.grid)) {
-    console.warn(`[sceneDoc] ${source}: terminal.snapshot needs a "grid" array, dropped`);
+    parseWarn(`[sceneDoc] ${source}: terminal.snapshot needs a "grid" array, dropped`);
     return undefined;
   }
   const grid: SceneTerminalRun[][] = [];
   for (const rawRow of raw.grid as unknown[]) {
     if (!Array.isArray(rawRow)) {
-      console.warn(`[sceneDoc] ${source}: terminal.snapshot row isn't an array, read as blank`);
+      parseWarn(`[sceneDoc] ${source}: terminal.snapshot row isn't an array, read as blank`);
       grid.push([]);
       continue;
     }
@@ -137,7 +139,7 @@ function parseSnapshot(raw: unknown, source: string): SceneDocTerminalSnapshot |
     for (const rawRun of rawRow as unknown[]) {
       const run = parseRun(rawRun);
       if (run) row.push(run);
-      else console.warn(`[sceneDoc] ${source}: terminal.snapshot run is malformed, dropped`);
+      else parseWarn(`[sceneDoc] ${source}: terminal.snapshot run is malformed, dropped`);
     }
     grid.push(row);
   }
@@ -149,11 +151,11 @@ function parseSnapshot(raw: unknown, source: string): SceneDocTerminalSnapshot |
       ...(raw.cursor.visible === false ? { visible: false } : {}),
     };
   } else if (raw.cursor !== undefined) {
-    console.warn(`[sceneDoc] ${source}: terminal.snapshot.cursor is malformed, dropped`);
+    parseWarn(`[sceneDoc] ${source}: terminal.snapshot.cursor is malformed, dropped`);
   }
   if (typeof raw.src === "string" && raw.src.length > 0) out.src = raw.src;
   else if (raw.src !== undefined) {
-    console.warn(`[sceneDoc] ${source}: terminal.snapshot.src isn't a path, dropped`);
+    parseWarn(`[sceneDoc] ${source}: terminal.snapshot.src isn't a path, dropped`);
   }
   return out;
 }
@@ -161,50 +163,50 @@ function parseSnapshot(raw: unknown, source: string): SceneDocTerminalSnapshot |
 /** Field-level parse for the terminal block (the degrade-not-throw rule): every malformed field drops alone with a warning, and only a non-object drops the block whole. */
 export function parseSceneTerminal(raw: unknown, source: string): SceneDocTerminal | undefined {
   if (!isRecord(raw)) {
-    console.warn(`[sceneDoc] ${source}: terminal isn't an object, dropped`);
+    parseWarn(`[sceneDoc] ${source}: terminal isn't an object, dropped`);
     return undefined;
   }
   const out: SceneDocTerminal = {};
   if (typeof raw.theme === "string" && raw.theme.trim().length > 0) out.theme = raw.theme.trim();
   else if (raw.theme !== undefined) {
-    console.warn(`[sceneDoc] ${source}: terminal.theme isn't a preset id, dropped`);
+    parseWarn(`[sceneDoc] ${source}: terminal.theme isn't a preset id, dropped`);
   }
   if (isRecord(raw.chrome)) {
     const chrome: NonNullable<SceneDocTerminal["chrome"]> = {};
     if (raw.chrome.style === "mac" || raw.chrome.style === "bare") chrome.style = raw.chrome.style;
     else if (raw.chrome.style !== undefined) {
-      console.warn(`[sceneDoc] ${source}: terminal.chrome.style isn't mac|bare, dropped`);
+      parseWarn(`[sceneDoc] ${source}: terminal.chrome.style isn't mac|bare, dropped`);
     }
     if (typeof raw.chrome.title === "string") chrome.title = raw.chrome.title;
     else if (raw.chrome.title !== undefined) {
-      console.warn(`[sceneDoc] ${source}: terminal.chrome.title isn't a string, dropped`);
+      parseWarn(`[sceneDoc] ${source}: terminal.chrome.title isn't a string, dropped`);
     }
     if (Object.keys(chrome).length > 0) out.chrome = chrome;
   } else if (raw.chrome !== undefined) {
-    console.warn(`[sceneDoc] ${source}: terminal.chrome isn't an object, dropped`);
+    parseWarn(`[sceneDoc] ${source}: terminal.chrome isn't an object, dropped`);
   }
   for (const key of ["cols", "rows", "fontPx", "size"] as const) {
     const value = raw[key];
     if (finiteNum(value)) out[key] = value;
     else if (value !== undefined) {
-      console.warn(`[sceneDoc] ${source}: terminal.${key} isn't a finite number, dropped`);
+      parseWarn(`[sceneDoc] ${source}: terminal.${key} isn't a finite number, dropped`);
     }
   }
   if (typeof raw.startPath === "string" && raw.startPath.length > 0) out.startPath = raw.startPath;
   else if (raw.startPath !== undefined) {
-    console.warn(`[sceneDoc] ${source}: terminal.startPath isn't a non-empty string, dropped`);
+    parseWarn(`[sceneDoc] ${source}: terminal.startPath isn't a non-empty string, dropped`);
   }
   if (typeof raw.startCommand === "string" && raw.startCommand.length > 0) {
     const command = sanitizeStartCommand(raw.startCommand);
     if (command.length > 0) out.startCommand = command;
-    else console.warn(`[sceneDoc] ${source}: terminal.startCommand had no runnable text, dropped`);
+    else parseWarn(`[sceneDoc] ${source}: terminal.startCommand had no runnable text, dropped`);
   } else if (raw.startCommand !== undefined) {
-    console.warn(`[sceneDoc] ${source}: terminal.startCommand isn't a non-empty string, dropped`);
+    parseWarn(`[sceneDoc] ${source}: terminal.startCommand isn't a non-empty string, dropped`);
   }
   if (Array.isArray(raw.position) && finiteNum(raw.position[0]) && finiteNum(raw.position[1])) {
     out.position = [raw.position[0], raw.position[1]];
   } else if (raw.position !== undefined) {
-    console.warn(`[sceneDoc] ${source}: terminal.position isn't [x, y], dropped`);
+    parseWarn(`[sceneDoc] ${source}: terminal.position isn't [x, y], dropped`);
   }
   if (raw.snapshot !== undefined) {
     const snapshot = parseSnapshot(raw.snapshot, source);
