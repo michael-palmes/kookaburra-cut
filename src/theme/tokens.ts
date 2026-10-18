@@ -331,6 +331,8 @@ export interface TextAnimationSpec {
   in: string;
   out: string;
   staggerMs: number;
+  /** `staggerMs: 0` means exactly 0; absent, a 0 under a granularity falls back to that granularity's default delay. */
+  staggerExact?: true;
   /** Stagger granularity when staggerMs > 0 (default "word"). */
   stagger?: "char" | "word";
   /** Hold before the in starts, ms (clamped to ≥ 0 at resolve; the out never shifts). */

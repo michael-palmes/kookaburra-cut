@@ -472,6 +472,7 @@ def cmd_doc(ctx: Ctx) -> int:
             raise KbError("merge needs a JSON object (RFC 7386 merge patch: null deletes a key)", 2)
         new = docmod.merge_patch(base, patch)
         summary = f"merged {', '.join(patch.keys())}"
+    new = checkmod.stamp_stagger_exact(doc, new)
     return guarded_write(ctx, label, path, doc, new, sidecar_validator(ctx, label), summary)
 
 
@@ -568,7 +569,7 @@ def cmd_theme(ctx: Ctx) -> int:
     if not path.is_file():
         raise KbError(f"workspace theme {theme_id} not found at {path}")
     data = load_json(path, str(path))
-    new = docmod.set_path(data, a.path, docmod.parse_value(a.value, a.string))
+    new = checkmod.stamp_stagger_exact(data, docmod.set_path(data, a.path, docmod.parse_value(a.value, a.string)))
 
     def validate(doc: Any) -> Report:
         report = Report()

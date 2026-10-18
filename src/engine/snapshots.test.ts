@@ -1,5 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { awaitEmojiRastersIdle } from "../toolkit/text/emojiRaster";
+import { awaitVideoFramesReady } from "./clips";
 import { useClockStore } from "./clock";
 import {
   canvasCommittedClockMs,
@@ -7,6 +9,7 @@ import {
   canvasContextLosses,
   canvasHandle,
 } from "./exportBridge";
+import { awaitTextSync } from "./exporter";
 import { setExporting } from "./exportState";
 import {
   canCaptureSnapshot,
@@ -25,6 +28,8 @@ vi.mock("./exportBridge", () => ({
   setCapturingPreview: vi.fn(),
 }));
 vi.mock("./exporter", () => ({ awaitTextSync: vi.fn(async () => {}) }));
+vi.mock("./clips", () => ({ awaitVideoFramesReady: vi.fn(async () => {}) }));
+vi.mock("../toolkit/text/emojiRaster", () => ({ awaitEmojiRastersIdle: vi.fn(async () => {}) }));
 vi.mock("./gizmoRegistry", () => ({ hideGizmoHandles: vi.fn(() => () => {}) }));
 vi.mock("./project", () => ({
   isWorkspaceBackedProjectId: (id: string) => /^(ws|ws-template|ws-preset):/.test(id),
@@ -163,6 +168,18 @@ describe("snapshot destinations", () => {
     const result = withBorrowedClock(() => captureFrameAt(500, 32, "jpeg")).catch(String);
     await vi.runAllTimersAsync();
     expect(await result).toMatch(/preview capture 64x36\): readPixels returned an all-zero frame/);
+  });
+
+  it("runs the export barriers in order: clip frames, text, then emoji rasters", async () => {
+    prepareCapture();
+    const order: string[] = [];
+    vi.mocked(awaitVideoFramesReady).mockImplementationOnce(async () => void order.push("video"));
+    vi.mocked(awaitTextSync).mockImplementationOnce(async () => void order.push("text"));
+    vi.mocked(awaitEmojiRastersIdle).mockImplementationOnce(async () => void order.push("emoji"));
+    const result = withBorrowedClock(() => captureFrameAt(500, 32, "jpeg"));
+    await vi.runAllTimersAsync();
+    expect(await result).not.toBeNull();
+    expect(order).toEqual(["video", "text", "emoji"]);
   });
 
   it("refuses a frame read from a lost context", async () => {

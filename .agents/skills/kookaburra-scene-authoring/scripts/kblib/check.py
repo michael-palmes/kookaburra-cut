@@ -545,6 +545,20 @@ class Checker:
         for field in ("in", "out"):
             if field in spec:
                 self.enum(file, f"{path}.{field}", spec[field], "textMotion", "text motion")
+        self.stagger_exact(file, path, spec)
+
+    def stagger_exact(self, file: str, path: str, spec: Any) -> None:
+        """A spec's staggerMs 0 without staggerExact plays the granularity's default delay wherever the spec picks one."""
+        if not isinstance(spec, dict) or not (is_number(spec.get("staggerMs")) and spec["staggerMs"] == 0):
+            return
+        if spec.get("staggerExact") is True:
+            return
+        granular = spec.get("delivery") in ("by-paragraph", "by-paragraph-group")
+        if not granular:
+            motion = {e.get("id"): e.get("granularity") for e in (self.cat.entries("textMotion") or [])}
+            granular = any(motion.get(spec.get(field)) for field in ("in", "out"))
+        if granular:
+            self.report.warn(file, f"{path}.staggerMs", 'staggerMs 0 plays the default delay here; add "staggerExact": true for no stagger')
 
     def text_look(self, file: str, path: str, spec: Any) -> None:
         if spec is None:
@@ -847,6 +861,7 @@ class Checker:
                 for key in ("softness", "opacity", "mapSize", "bias"):
                     if key in shadow and not is_number(shadow[key]):
                         rep.warn(file, f"lighting.shadow.{key}", "must be a number; the default is used")
+        self.stagger_exact(file, "textAnimation", doc.get("textAnimation"))
         if "extends" in doc:
             self.theme_extends(file, theme_id, doc)
 
@@ -999,6 +1014,32 @@ def edit_of_output(project: Project, rel: str) -> Optional[str]:
 
     name = editdoc.name_of_output(rel)
     return name if name and editdoc.edit_path(project, name).is_file() else None
+
+
+def text_specs(doc: Any) -> List[Tuple[str, Dict[str, Any]]]:
+    """A sidecar's or theme's text motion specs by dotted path."""
+    if not isinstance(doc, dict):
+        return []
+    found: List[Tuple[str, Dict[str, Any]]] = []
+    if isinstance(doc.get("textAnimation"), dict):
+        found.append(("textAnimation", doc["textAnimation"]))
+    overrides = doc.get("textAnimationOverrides")
+    if isinstance(overrides, dict):
+        found.extend((f"textAnimationOverrides.{k}", v) for k, v in overrides.items() if isinstance(v, dict))
+    return found
+
+
+def stamp_stagger_exact(old: Any, new: Any) -> Any:
+    """A kb write that turns a text spec's staggerMs to 0 also writes staggerExact: true (the inspector's rule), so the 0 means no stagger."""
+    before = dict(text_specs(old))
+    out = json.loads(json.dumps(new))
+    for path, spec in text_specs(out):
+        zero = is_number(spec.get("staggerMs")) and spec["staggerMs"] == 0
+        prior = before.get(path)
+        was_zero = isinstance(prior, dict) and is_number(prior.get("staggerMs")) and prior["staggerMs"] == 0
+        if zero and not was_zero and "staggerExact" not in spec:
+            spec["staggerExact"] = True
+    return out
 
 
 def free_id(base: str, taken: Set[Any]) -> str:

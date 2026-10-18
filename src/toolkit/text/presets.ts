@@ -416,8 +416,9 @@ export function resolveTextAnimation(
   else if (forcedGranularity(preset) ?? forcedGranularity(outPreset)) {
     granularity = forcedGranularity(preset) ?? forcedGranularity(outPreset);
   } else granularity = staggerMs > 0 && preset !== "none" && preset !== "static" ? "word" : null;
-  // A granularity request without any delay configured gets the granularity's default, unless the scene explicitly passed staggerMs={0}, which wins.
-  if (granularity && staggerMs === 0 && props.staggerMs === undefined) {
+  // A granularity request without any delay configured gets the granularity's default, unless the scene explicitly passed staggerMs={0} or the spec marked its 0 exact, which win.
+  const exactZero = spec?.staggerExact === true;
+  if (granularity && staggerMs === 0 && props.staggerMs === undefined && !exactZero) {
     staggerMs = DEFAULT_STAGGER_MS[granularity];
   }
   const rawStart = props.startScale ?? spec?.startScale;
@@ -491,6 +492,22 @@ export function textAnimationEndMs(
 ): number {
   const end = textAnimationWindowToMs(from, authoredTo, anim);
   return anim.delayMs === undefined ? end : end + anim.delayMs;
+}
+
+/** A pinned total reveal (a primitive's `durationMs` prop) for `count` units: the authored stagger and unit duration scale together so the first unit's start to the last unit's settle spans `totalMs`. One unit, or no stagger, simply takes the whole span. */
+export function pinRevealDuration(
+  anim: ResolvedTextAnimation,
+  from: number,
+  to: number,
+  count: number,
+  totalMs: number,
+): { anim: ResolvedTextAnimation; to: number } {
+  const total = Math.max(0, totalMs);
+  const units = Math.max(1, count);
+  if (units === 1 || anim.staggerMs === 0) return { anim, to: from + total };
+  const unitMs = Math.max(1, to - from);
+  const k = total / ((units - 1) * anim.staggerMs + unitMs);
+  return { anim: { ...anim, staggerMs: anim.staggerMs * k }, to: from + unitMs * k };
 }
 
 /** Whether a primitive's props configure its own animation, exactly the resolver's props-only "configured" test (what the coded-motion registry reports). */

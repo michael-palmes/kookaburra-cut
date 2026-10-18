@@ -64,6 +64,12 @@ needs no React import. Consequences:
 | `useSceneStaged()` | Whether a `SceneStage` owns lighting here |
 | `useDepthBand()`, `useRigTrack()` | Inside `DepthStage`: the slot rect; the scene's rig track |
 | `useProjectShared(path?, fallback?)` | `project.json` `shared` constants: `useProjectShared("palette.accent", theme.colors.accent)`; no path returns the whole block (reference/project.md) |
+| `useTextMetrics(textKey, text, opts?)` | `{ width, height, ascent, descent, lines }` of the block an `AnimatedHeadline` with those props draws (sidecar overrides included), or null for a frame while its font loads; size pills and underlines with it (reference/text.md) |
+| `useSceneCamera()` | The scene camera's pose this frame: `{ position, lookAt, fov, rollDeg? }` |
+| `useCameraFrame(z?)` | `{ width, height, center }`: the world rectangle the scene camera sees on the plane at depth `z` this frame (reference/camera.md) |
+
+Plain helpers: `measureText(text, { font, fontSize })` measures without a text key, and
+`frameAtDepth(format, z)` gives the default camera's visible `{ width, height }` at depth `z`.
 
 ## Layout
 

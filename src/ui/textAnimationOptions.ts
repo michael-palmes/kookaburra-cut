@@ -185,6 +185,14 @@ export function formatDelaySeconds(ms: number): string {
   return `${Number((ms / 1000).toFixed(3))}s`;
 }
 
+/** A spec with `staggerMs` written: an explicit 0 is stamped `staggerExact` so it never falls back to the granularity's default; any other value drops the stamp. */
+export function withStaggerMs(spec: TextAnimationSpec, staggerMs: number): TextAnimationSpec {
+  const next: TextAnimationSpec = { ...spec, staggerMs };
+  if (staggerMs === 0) next.staggerExact = true;
+  else delete next.staggerExact;
+  return next;
+}
+
 /** The whole-spec sidecar shape for a draft; what `doc.textAnimation` receives. */
 export function draftToSpec(draft: TextAnimationDraft): TextAnimationSpec {
   const spec: TextAnimationSpec = {
@@ -192,6 +200,9 @@ export function draftToSpec(draft: TextAnimationDraft): TextAnimationSpec {
     out: draft.out,
     staggerMs: draft.staggerMs ?? DELIVERY_DEFAULT_MS[draft.delivery],
   };
+  if (spec.staggerMs === 0 && (draft.staggerMs === 0 || draft.delivery === "all-at-once")) {
+    spec.staggerExact = true;
+  }
   if (draft.delivery === "word" || draft.delivery === "char") spec.stagger = draft.delivery;
   else if (draft.delivery !== "default") spec.delivery = draft.delivery;
   if (draft.delayMs > 0) spec.delayMs = draft.delayMs;
@@ -216,6 +227,8 @@ export function specToDraft(spec: TextAnimationSpec): TextAnimationDraft {
   else if (spec.delivery) draft.delivery = spec.delivery;
   if (spec.staggerMs > 0 && spec.staggerMs !== DELIVERY_DEFAULT_MS[draft.delivery]) {
     draft.staggerMs = spec.staggerMs;
+  } else if (spec.staggerMs === 0 && spec.staggerExact && DELIVERY_DEFAULT_MS[draft.delivery] > 0) {
+    draft.staggerMs = 0;
   }
   if (spec.delayMs !== undefined && spec.delayMs > 0) draft.delayMs = spec.delayMs;
   if (spec.startScale !== undefined) draft.startScale = spec.startScale;

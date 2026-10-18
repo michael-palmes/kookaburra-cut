@@ -582,7 +582,8 @@ export const TOOLKIT_SUMMARIES: Record<
 > = {
   AVAILABLE_DEVICE_IDS: { summary: "Device ids this build can render with their own model." },
   AnimatedCounter: {
-    summary: "Number counting from `from` to `to` over durationMs from scene start.",
+    summary:
+      "Number counting from `from` to `to` over durationMs; startMs, ease and steps shape it.",
   },
   AnimatedGroup: { summary: "Animates icon + text lockups as one unit with the text presets." },
   AnimatedHeadline: {
@@ -727,6 +728,21 @@ export const TOOLKIT_SUMMARIES: Record<
   useProjectShared: {
     summary:
       'useProjectShared(path?, fallback?): project.json shared constants, e.g. "palette.accent".',
+  },
+  measureText: {
+    summary:
+      "measureText(text, { font, fontSize, letterSpacing?, lineHeight? }): { width, height, ascent, descent, lines } in world units, or null.",
+  },
+  useTextMetrics: {
+    summary:
+      "useTextMetrics(textKey, text, opts?): the block an AnimatedHeadline with those props typesets, sidecar overrides included.",
+  },
+  useSceneCamera: { summary: "The scene camera's pose this frame: { position, lookAt, fov }." },
+  frameAtDepth: {
+    summary: "frameAtDepth(format, z): the base camera's visible { width, height } at depth z.",
+  },
+  useCameraFrame: {
+    summary: "useCameraFrame(z): the world { width, height, center } the scene camera sees at z.",
   },
 };
 

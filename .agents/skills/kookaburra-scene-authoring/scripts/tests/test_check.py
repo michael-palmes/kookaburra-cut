@@ -116,6 +116,33 @@ class CheckTests(KbTestCase):
         self.assertTrue(any("samples is project-wide" in w for w in messages(report, "warning")))
         self.assertFalse(any("unknown key" in w and "motionBlur" in w for w in messages(report, "warning")))
 
+    def test_zero_stagger_warns_only_where_a_default_delay_applies(self) -> None:
+        doc = {
+            "version": 1,
+            "textAnimation": {"in": "tracking", "out": "fade", "staggerMs": 0},
+            "textAnimationOverrides": {
+                "title": {"in": "fade", "out": "none", "staggerMs": 0, "delivery": "by-paragraph"},
+                "plain": {"in": "fade", "out": "none", "staggerMs": 0},
+                "exact": {"in": "tracking", "out": "none", "staggerMs": 0, "staggerExact": True},
+            },
+        }
+        write_json(self.root / "scenes" / "02-hero.json", doc)
+        warned = [w for w in messages(self.run_check(["scenes/02-hero.json"]), "warning") if "staggerExact" in w]
+        self.assertEqual(len(warned), 2, warned)
+        self.assertTrue(any("textAnimation.staggerMs" in w for w in warned))
+        self.assertTrue(any("textAnimationOverrides.title.staggerMs" in w for w in warned))
+
+    def test_kb_writes_stamp_a_new_zero_stagger_exact(self) -> None:
+        spec = {"in": "fade-up", "out": "fade", "staggerMs": 90, "delivery": "by-paragraph"}
+        write_json(self.root / "scenes" / "02-hero.json", {"version": 1, "textAnimation": spec})
+        self.assertExit(self.kb(["doc", "02-hero", "set", "textAnimation.staggerMs", "0"], cwd=self.root), 0)
+        self.assertIs(read_json(self.root / "scenes" / "02-hero.json")["textAnimation"]["staggerExact"], True)
+        seed = {"version": 1, "textAnimation": {"in": "fade", "out": "none", "staggerMs": 0}}
+        stamped = check.stamp_stagger_exact(seed, dict(seed, name="Hero"))
+        self.assertNotIn("staggerExact", stamped["textAnimation"])
+        added = check.stamp_stagger_exact(seed, dict(seed, textAnimationOverrides={"t": {"in": "fade", "out": "none", "staggerMs": 0}}))
+        self.assertIs(added["textAnimationOverrides"]["t"]["staggerExact"], True)
+
     def test_sidecar_version_and_json(self) -> None:
         write_json(self.root / "scenes" / "02-hero.json", {"name": "x"})
         self.assertHasError(self.run_check(["scenes/02-hero.json"]), "ignores the whole sidecar")

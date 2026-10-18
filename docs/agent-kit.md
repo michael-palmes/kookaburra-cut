@@ -145,7 +145,8 @@ atomic (temp file in the same folder, then rename) and re-validated after writin
 As built (`scripts/kblib/`):
 
 - `doc`, `project` and `theme set` refuse a write that would add errors (exit 1, nothing
-  written) unless `--force`.
+  written) unless `--force`. `doc` and `theme set` stamp `staggerExact: true` on a text
+  spec whose `staggerMs` they turn to 0 (the inspector's rule).
 - The app's font verdicts from `fonts` and `check` responses are cached in
   `~/Kookaburra Cut/_bridge/font-verdicts.json`; static checks honour them, so a
   vetted face stops warning and a failed one is an error naming its fallback.
@@ -163,7 +164,8 @@ As built (`scripts/kblib/`):
 Static checks: `project.json` (valid JSON, version, required fields, files exist, no
 duplicate entries, transitions and options, formats, theme id, audio file); sidecars
 (JSON, version, unknown top-level keys, enum values, font refs, asset paths exist with
-exact case and a supported extension); TSX (imports only `@kookaburra/toolkit`, one
+exact case and a supported extension; a text spec's `staggerMs: 0` without `staggerExact`
+warns where a granularity default would replace it, in workspace themes too); TSX (imports only `@kookaburra/toolkit`, one
 `export default defineScene(`, a literal id unique in the project, no wall clock,
 timers, `Math.random`, DOM or drei `Html`, no React hooks, which the toolkit does not
 export; unknown `ease("...")` names warn). Devices warn when the heartbeat's build lacks

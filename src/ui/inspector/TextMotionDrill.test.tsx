@@ -2,6 +2,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { SceneDoc } from "../../engine/sceneDocSchema";
 import type { TextAnimationSpec } from "../../theme/tokens";
+import { withStaggerMs } from "../textAnimationOptions";
 import type { ManagedTextWrite } from "./ManagedTextDrill";
 import {
   motionDeliveryChoices,
@@ -97,6 +98,7 @@ describe("text motion editor model", () => {
       in: "static",
       out: "static",
       staggerMs: 0,
+      staggerExact: true,
       startScale: 0.72,
       shine: true,
     });
@@ -120,6 +122,7 @@ describe("text motion editor model", () => {
     expect(motionSpecForDelivery(spec, "all-at-once")).toEqual({
       ...spec,
       delivery: "all-at-once",
+      staggerExact: true,
     });
     expect(motionSpecForDelivery(spec, "word")).toEqual({
       ...spec,
@@ -132,6 +135,26 @@ describe("text motion editor model", () => {
       staggerMs: 260,
     });
     expect(selectedDelivery(motionSpecForDelivery(spec, "by-paragraph"))).toBe("by-paragraph");
+  });
+
+  it("stamps an explicit zero stagger exact, and leaves Default's zero to the defaults", () => {
+    const paragraphs: TextAnimationSpec = {
+      in: "fade-up",
+      out: "none",
+      staggerMs: 160,
+      delivery: "by-paragraph",
+    };
+    expect(withStaggerMs(paragraphs, 0)).toEqual({
+      ...paragraphs,
+      staggerMs: 0,
+      staggerExact: true,
+    });
+    expect(withStaggerMs({ ...paragraphs, staggerMs: 0, staggerExact: true }, 40)).toEqual({
+      ...paragraphs,
+      staggerMs: 40,
+    });
+    const reset = motionSpecForDelivery({ ...paragraphs, staggerExact: true }, "default");
+    expect(reset).toEqual({ in: "fade-up", out: "none", staggerMs: 0 });
   });
 
   it("hides invalid granular delivery for icons and per-character scatter", () => {

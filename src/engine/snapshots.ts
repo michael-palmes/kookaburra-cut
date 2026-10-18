@@ -1,4 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
+import { awaitEmojiRastersIdle } from "../toolkit/text/emojiRaster";
+import { awaitVideoFramesReady } from "./clips";
 import { NO_SHUTTER, useClockStore } from "./clock";
 import { downscaleRgba } from "./downscale";
 import {
@@ -83,7 +85,10 @@ export async function captureFrameAt(
   await delay(200);
   if (isExporting() || !canvasHandle.current || !isCurrent()) return null;
   // Text meshes freshly committed by this seek (a theme's font swap, a scene first entered here) may still be typesetting; headless windows never fire rAF, so nothing else kicks or completes them and a lone forced paint reads glyphs one capture late (the invisible-Playfair-title theme-preview bug). Kick and await quiescence exactly like the export loop, then give onSync-driven commits (mask-reveal bounds) a beat to land.
+  await awaitVideoFramesReady(canvasHandle.current.scene);
+  if (isExporting() || !canvasHandle.current || !isCurrent()) return null;
   await awaitTextSync(canvasHandle.current.scene);
+  await awaitEmojiRastersIdle();
   await delay(50);
   if (isExporting() || !canvasHandle.current || !isCurrent()) return null;
   // Then force one synchronous preview render; the on-demand GL render is normally rAF-driven and WKWebView suspends rAF for occluded windows (the AFK lesson), so a headless `kookaburra:run --action theme-previews` would otherwise capture a stale buffer.

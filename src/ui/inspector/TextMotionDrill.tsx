@@ -14,6 +14,7 @@ import {
   type DeliveryChoice,
   formatDelaySeconds,
   TEXT_PRESET_CATALOG,
+  withStaggerMs,
 } from "../textAnimationOptions";
 import type { ManagedTextWrite } from "./ManagedTextDrill";
 import { TextScopeIcon } from "./ManagedTextDrill";
@@ -126,7 +127,7 @@ export function motionSpecForPreset(
 ): TextAnimationSpec {
   const seed = motionSeed(current);
   if (preset === STATIC_TEXT_PRESET) {
-    const next = { ...seed, in: STATIC_TEXT_PRESET, out: STATIC_TEXT_PRESET, staggerMs: 0 };
+    const next = withStaggerMs({ ...seed, in: STATIC_TEXT_PRESET, out: STATIC_TEXT_PRESET }, 0);
     delete next.stagger;
     delete next.delivery;
     return next;
@@ -137,9 +138,13 @@ export function motionSpecForPreset(
     out: seed.out === STATIC_TEXT_PRESET ? "none" : seed.out,
   };
   if (preset === "scatter-scale") {
-    next.stagger = "char";
-    next.staggerMs = seed.staggerMs > 0 ? seed.staggerMs : DELIVERY_DEFAULT_MS.char;
-    delete next.delivery;
+    const stamped = withStaggerMs(
+      next,
+      seed.staggerMs > 0 ? seed.staggerMs : DELIVERY_DEFAULT_MS.char,
+    );
+    stamped.stagger = "char";
+    delete stamped.delivery;
+    return stamped;
   }
   return next;
 }
@@ -174,19 +179,22 @@ export function motionSpecForDelivery(
   const next = structuredClone(current);
   delete next.stagger;
   delete next.delivery;
+  delete next.staggerExact;
   if (delivery === "default") {
+    // Default leaves the 0 unstamped: the preset or TSX granularity keeps its own default delay.
     next.staggerMs = 0;
-  } else if (delivery === "all-at-once") {
-    next.delivery = "all-at-once";
-    next.staggerMs = 0;
-  } else if (delivery === "word" || delivery === "char") {
-    next.stagger = delivery;
-    next.staggerMs = current.staggerMs > 0 ? current.staggerMs : DELIVERY_DEFAULT_MS[delivery];
-  } else {
-    next.delivery = delivery;
-    next.staggerMs = current.staggerMs > 0 ? current.staggerMs : DELIVERY_DEFAULT_MS[delivery];
+    return next;
   }
-  return next;
+  if (delivery === "all-at-once") {
+    next.delivery = "all-at-once";
+    return withStaggerMs(next, 0);
+  }
+  if (delivery === "word" || delivery === "char") next.stagger = delivery;
+  else next.delivery = delivery;
+  return withStaggerMs(
+    next,
+    current.staggerMs > 0 ? current.staggerMs : DELIVERY_DEFAULT_MS[delivery],
+  );
 }
 
 function namedMotionCopy(names: readonly string[]): string {
@@ -508,12 +516,7 @@ export function TextMotionDrill({
                 min={0}
                 max={2_000}
                 step={5}
-                {...slider(
-                  "stagger",
-                  current.staggerMs,
-                  (spec, staggerMs) => ({ ...spec, staggerMs }),
-                  "text motion stagger",
-                )}
+                {...slider("stagger", current.staggerMs, withStaggerMs, "text motion stagger")}
               />
             )}
           </DrillGroup>
