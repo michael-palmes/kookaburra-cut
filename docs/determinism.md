@@ -542,6 +542,18 @@ result. The invariants:
   draft track read imperatively inside `CompositorDriver`'s `useFrame`, which
   stands down for the entire export (`isExporting`), so the export loop samples
   only what the sidecar declares.
+- **Kicks are a pure function of time, and absent kicks change nothing.**
+  `cameraKicks` (`engine/cameraKicks.ts`) add an attack, hold, release push on
+  the pose that won, per scene-local ms; musical `at` positions resolve at track
+  build from the project's music and the slot start, never written back. With
+  no kick live, or a channel absent, `applyCameraKicks` returns the base pose
+  OBJECT itself rather than multiplying by one (the tan/atan round trip is not
+  bit-exact), and a doc with no `cameraKicks` builds exactly the tracks it did
+  before. A kicks-only scene counts as a scene track, so its project takes the
+  explicit-plan path. Zero attacks, zero releases and `jump` snaps are camera
+  breaks for motion blur, and rig overscan adds one sample per kick peak to the
+  fixed 64. Changing the envelope, the zoom formula, the 15..90 clamp or the
+  application order re-renders every project that uses kicks.
 
 ## Camera rig (free flight)
 

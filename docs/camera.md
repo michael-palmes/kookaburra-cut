@@ -24,6 +24,80 @@ available and never moves the shot. Free to orbit is offered only when every
 key aims at a point or an object (a tangent aim has no target to orbit) and
 drops fov and roll, which orbit has nowhere to keep.
 
+## Composition order
+
+Every frame's camera is composed in one fixed order, in `engine/sceneCamera.ts`
+and `engine/cameraKicks.ts`, identically in preview, export, captures, stills
+and Present:
+
+1. **Mode select.** `cameraMode` picks the block; rig mode with no rig keys
+   falls through to orbit (`sceneCameraTracks`). A scene whose animated track is
+   the layered screenshot contributes no camera at all, kicks included.
+2. **Fallbacks.** Rig, then orbit, then the project-level track sampled at
+   global time, then the base pose (`sceneCameraPose`). A project with no scene
+   track and no kick anywhere skips the plan and runs the legacy
+   `applyCameraTrack`.
+3. **Fov and roll ownership.** Fov comes from a rig key that authors it, else
+   the project-level track; orbit poses never own fov. Only rig keys carry roll.
+4. **Kicks.** The sidecar's `cameraKicks` add on top of whatever won
+   (`applyCameraKicks`). See [Kicks](#kicks).
+5. **Shutter sampling.** Motion blur re-runs steps 1 to 4 at each sub-frame
+   sample, so kicks blur for free. Samples never cross a camera break, and a
+   kick's snap is one. Depth of field stays at the frame instant.
+6. **Per-side poses in transitions.** Each side of a transition composes its
+   own scene at its own local time; the persistent overlay takes the dominant
+   side's pose.
+7. **TSX groups are not the camera.** Moving a group in a scene's TSX moves
+   content, never the camera. Code that needs the camera's pose composes it
+   through `sceneCameraPose` then `applyCameraKicks`, never its own precedence.
+8. **DepthStage overscan.** Bands size from the rig's 64 fixed samples plus
+   each kick's peak. Orbit scenes get no overscan, so an orbit kick that pulls
+   out (zoom below 1, an offset, roll) can show a band's edge.
+
+## Kicks
+
+A kick is a momentary push: an attack, hold and release envelope applied on
+top of whichever pose drives the scene, in either mode or none. It is a pure
+function of scene-local time and is never expanded into keys.
+
+```json
+"cameraKicks": [
+  { "at": "bar:13", "zoom": 1.04, "releaseMs": 300 },
+  { "at": 4200, "offset": [0, -0.05, 0], "rollDeg": 1.5, "attackMs": 40, "releaseMs": 500 }
+]
+```
+
+| Field | Meaning |
+| --- | --- |
+| `at` | Scene-local ms, or a musical position (`bar:13.3`, `cue:drop`, `section:outro`, with a `+40ms` nudge) resolved against the project's `audio.grid`. The sidecar keeps the position; nothing writes the resolved ms back |
+| `zoom` | Magnification at the peak, 0.25..4 (1.04 is 4% in), applied in tan space; fov clamps to 15..90 |
+| `offset` | Camera-space shift at the peak (+x right, +y up, +z back), moving the look point with it |
+| `rollDeg` | Bank added at the peak |
+| `attackMs`, `holdMs`, `releaseMs` | The envelope; attack and hold default to 0 (a snap), release is required |
+| `ease` | An `engine/ease.ts` name for both ramps; default `outQuad` |
+
+- **Overlap.** Kicks sum (offsets and roll add, zooms multiply), applied in a
+  fixed order: resolved `at`, then position in the list. Opposite rolls cancel.
+- **Outside every window nothing changes.** The resolver hands back the very
+  same pose object, so a scene with kicks renders its keyframes exactly as
+  before whenever no kick is live.
+- **Ends.** A scene's camera rests after its last key or its last kick's end,
+  whichever is later: Present's first scene and the automatic still settle
+  there. Continue from previous scene ignores kicks.
+- **Motion blur.** A zero attack is a camera break, so the snap never ghosts
+  and the release smears. So are a zero release and the `jump` ease's two snaps.
+- **Lane.** Kicks show as read-only markers on the camera lane (their envelope
+  glyph and span, with a tooltip naming the position and channels). Author
+  them in the sidecar or with `kb doc`.
+- **Unresolvable positions** (no grid, an unknown cue) drop that kick with one
+  warning; the sidecar keeps it.
+
+The toolkit's `pulse(time, times, { attackMs, holdMs, releaseMs, ease })` is
+the same envelope for scene code: a 0..1 level at each time (beats from
+`useBeatGrid()`, `useCues()` values), where overlapping pulses take the max.
+Object motion blur shifts `useTimeline()`, so give a pulse an attack of at
+least one frame (17 ms) or its rise ghosts across the shutter.
+
 ## Aim modes
 
 A free pose points the camera one of three ways. All three store `at`, the
