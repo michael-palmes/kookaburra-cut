@@ -6,11 +6,11 @@ drei `Html`. Copy lives in the sidecar; styling exceptions in `textStyle`; motio
 
 ## Who owns the copy
 
-Read the sidecar first (`kb doc S get`):
+Read the sidecar first (`./kb doc S get`):
 
 | Sidecar has | Owner | Edit |
 | --- | --- | --- |
-| no `managedText` | Code-owned: TSX reads `text.<key>` via `useSceneText(key, fallback)` | `kb doc S set text.title "New title"` |
+| no `managedText` | Code-owned: TSX reads `text.<key>` via `useSceneText(key, fallback)` | `./kb doc S set text.title "New title"` |
 | `managedText` with `"layout": "template"` | The scene's own composition renders the managed items; `useSceneText(key)` returns the item with that key (blank if none) | Edit the item's `text`; keep `text.<key>` mirrored |
 | `managedText` without `layout` | The generic responsive stack (ManagedTextStack) renders the items; TSX headlines with the default role stand down | Edit `managedText.items` |
 
@@ -260,7 +260,7 @@ Font strings are `"Family"` (weight 400) or `"Family@weight"`. Set them in the t
 `project.json` `typography`, `textStyle.<key>Font`, `chart.font` or a frame text
 decoration's `font`.
 
-Bundled families are always safe (`kb fonts safe`):
+Bundled families are always safe (`./kb fonts safe`):
 
 | Family | Weights |
 | --- | --- |
@@ -281,13 +281,13 @@ Any other family installed in Font Book can work. The first use copies the exact
 into `~/Kookaburra Cut/fonts/` so exports never follow a macOS update, and the app vets
 it with the text engine's own parser. A face that still fails (SF Mono and LastResort
 do) falls back to the theme face of the nearest weight (else Inter) with a warning
-banner and a font issue in `kb status`: the text renders, just not in your font. So:
+banner and a font issue in `./kb status`: the text renders, just not in your font. So:
 
 1. Prefer bundled families.
-2. Before writing any other family: `kb fonts check "Family@weight"`. It runs the real
-   parser when the app is open and pins the face on success. `kb fonts list` shows
+2. Before writing any other family: `./kb fonts check "Family@weight"`. It runs the real
+   parser when the app is open and pins the face on success. `./kb fonts list` shows
    installed families and their weights.
 3. Name a weight the family has. Futura has no 400 (Medium 500, Bold 700): write
    `Futura@500` or `Futura@700`.
-4. After using one, `kb check --app` and capture a frame with that text to confirm it is
+4. After using one, `./kb check --app` and capture a frame with that text to confirm it is
    your font and not the fallback.

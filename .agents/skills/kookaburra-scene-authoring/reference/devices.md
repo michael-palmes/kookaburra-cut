@@ -40,7 +40,7 @@ scenes built from device presets read them with `useSceneDevices()` and
 - Screen videos play from `startMs` (scene-local) and HOLD their first frame before
   and their last frame after; they do not loop. Make the scene no longer than the
   clip, use `duration.mode: "follow-media"` (reference/media.md), or fit the clip to the
-  scene with `kb video fit <edit> --scene S --slot device:<id>` (kookaburra-video-editing).
+  scene with `./kb video fit <edit> --scene S --slot device:<id>` (kookaburra-video-editing).
 - Rotation reads best small: front on `[0, 0, 0]`, editorial `[-6, 14, 0]`, mirrored
   `[-6, -14, 0]`.
 - Lighting: under `<SceneStage>` the theme lights devices. Without a stage each Device
@@ -58,7 +58,7 @@ scenes built from device presets read them with `useSceneDevices()` and
 | `android` | phone | `graphite`, `black`, `white` |
 
 Every model except `android` is licensed and may be missing from a build; it then
-renders as Android. `kb catalog devices --json` lists screen aspects, sizes and each
+renders as Android. `./kb catalog devices --json` lists screen aspects, sizes and each
 display's measured rect. Match media to the screen: phones are portrait (about 1206 x
 2622), the iPad landscape, the MacBook about 16:10 (1.547).
 
@@ -92,7 +92,7 @@ further forward and off centre).
 - Inside a Device, `useDeviceScreen()` gives `{ rect, coverRect, local(u, v) }`. Outside one,
   `deviceScreenPoint(model, u, v, { position, rotationDeg, scale })` is a static device's
   world point and `deviceScreenRect(model)` its rect.
-- `kb check` warns when a scene uses a model the running app renders as the Android
+- `./kb check` warns when a scene uses a model the running app renders as the Android
   fallback, and when TSX passes `position`, `rotationDeg` or `ground` to a `Device` in a
   scene with a `deviceLayout` (the layout owns the pose).
 
@@ -219,6 +219,6 @@ Side A is the scene as authored; `compare.b` overrides side B; a mask reveals B.
 | `chrome.chips` | Before/After labels; copy in `text.beforeLabel` / `text.afterLabel` |
 | `chrome.tint` | `{ a, b, amount (0.08) }` per-side tints (token or hex) |
 
-Track presets (`kb catalog compare.presets --json` has the exact keys for a 4 s scene): `reveal`,
+Track presets (`./kb catalog compare.presets --json` has the exact keys for a 4 s scene): `reveal`,
 `sweep-settle`, `peek`, `hold`. Set `animatedTrack: "compare"` so the app's lane edits
 the divider.

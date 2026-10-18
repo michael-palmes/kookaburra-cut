@@ -15,11 +15,14 @@ export const BRIDGE_KINDS = [
   "insertPreset",
   "mediaChanged",
   "openEdit",
+  "debug",
+  "export",
+  "cancelExport",
 ] as const;
 export type BridgeKind = (typeof BRIDGE_KINDS)[number];
 
 /** Mirror of bridge.rs's NATIVE_KINDS: served by the app's Rust loop, never claimed by the render window. */
-export const NATIVE_BRIDGE_KINDS = ["mediaChanged", "openEdit"] as const;
+export const NATIVE_BRIDGE_KINDS = ["mediaChanged", "openEdit", "export", "cancelExport"] as const;
 
 export function isNativeBridgeKind(kind: string | null | undefined): boolean {
   return (NATIVE_BRIDGE_KINDS as readonly string[]).includes(kind ?? "");
@@ -54,6 +57,157 @@ export interface BridgeRequest {
   paths?: string[] | null;
   edit?: string | null;
   projectPath?: string | null;
+  client?: string | null;
+  deadlineAtMs?: number | null;
+  retryOf?: string | null;
+  /** Capture width in pixels (literal), else `scale` in (0, 1]. */
+  width?: number | null;
+  scale?: number | null;
+  /** `[[x, y], ...]` in the returned image. */
+  probe?: unknown;
+  op?: string | null;
+  window?: string | null;
+  n?: number | null;
+}
+
+/** One unit is a 1280x720 frame's pixels (bridge.rs's capture_service mirrors the costs). */
+export const UNIT_PIXELS = 921_600;
+/** A capture costing more units is answered `tooLarge`. */
+export const MAX_REQUEST_UNITS = 144;
+/** Sheets and multi-frame captures default to this long edge. */
+export const SHEET_LONG_EDGE = 1280;
+export const MIN_CAPTURE_EDGE = 64;
+export const MAX_PROBES = 64;
+
+const even = (x: number): number => Math.round(x / 2) * 2;
+
+export interface CaptureSizeOptions {
+  /** A literal width in pixels. */
+  width?: number | null;
+  /** A fraction of the native size, in (0, 1]. */
+  scale?: number | null;
+  frames?: number;
+  sheet?: boolean;
+  /** A probe without a size renders native. */
+  probe?: boolean;
+}
+
+/** The size a capture renders at, keeping the aspect's name: a literal width, else a scale, else the 1280 long edge for sheets and multi-frame captures (unless probed), else native. Never upscaled, even dimensions, at least 64 on the short edge. Mirrored by `capture_size` in src-tauri/src/capture_service.rs. */
+export function captureFormat(native: FormatSpec, options: CaptureSizeOptions = {}): FormatSpec {
+  const { width: nw, height: nh } = native;
+  const long = Math.max(nw, nh);
+  let w: number;
+  let h: number;
+  if (options.width != null && Number.isFinite(options.width) && options.width > 0) {
+    if (options.width >= nw) return native;
+    w = even(options.width);
+    h = even((w * nh) / nw);
+  } else {
+    const sized = options.scale != null && Number.isFinite(options.scale) && options.scale > 0;
+    const multi = (options.sheet || (options.frames ?? 1) > 1) && !options.probe;
+    const target = sized ? long * (options.scale as number) : multi ? SHEET_LONG_EDGE : long;
+    if (target >= long) return native;
+    if (nw >= nh) {
+      w = even(target);
+      h = even((w * nh) / nw);
+    } else {
+      h = even(target);
+      w = even((h * nw) / nh);
+    }
+  }
+  if (Math.min(w, h) < MIN_CAPTURE_EDGE) {
+    if (nw <= nh) {
+      w = MIN_CAPTURE_EDGE;
+      h = even((MIN_CAPTURE_EDGE * nh) / nw);
+    } else {
+      h = MIN_CAPTURE_EDGE;
+      w = even((MIN_CAPTURE_EDGE * nw) / nh);
+    }
+  }
+  return { name: native.name, width: w, height: h };
+}
+
+/** A request's size options, validated: `width` a positive integer, `scale` in (0, 1]. */
+export function requestCaptureFormat(request: BridgeRequest, native: FormatSpec): FormatSpec {
+  const { width, scale } = request;
+  if (width != null && !(Number.isInteger(width) && width > 0)) {
+    throw new Error(`width must be a whole number of pixels, got ${width}`);
+  }
+  if (scale != null && !(Number.isFinite(scale) && scale > 0 && scale <= 1)) {
+    throw new Error(`scale must be in (0, 1], got ${scale}`);
+  }
+  const frames = request.frames?.length ? request.frames.length : 1;
+  return captureFormat(native, {
+    width,
+    scale,
+    frames,
+    sheet: Boolean(request.sheet),
+    probe: request.probe != null,
+  });
+}
+
+/** What a capture costs: frames x ceil(pixels / 921600). */
+export function unitsFor(frames: number, format: Pick<FormatSpec, "width" | "height">): number {
+  return frames * Math.max(1, Math.ceil((format.width * format.height) / UNIT_PIXELS));
+}
+
+/** `--probe` points as `[x, y]` pairs: pairs, a flat list or an "x,y,x,y" string, pixel coordinates in the returned image (origin top-left), at most 64, every one in bounds. */
+export function parseProbes(
+  raw: unknown,
+  size: Pick<FormatSpec, "width" | "height">,
+): { x: number; y: number }[] {
+  if (raw == null) return [];
+  const flat: unknown[] =
+    typeof raw === "string"
+      ? raw.split(",").map((part) => (part.trim() === "" ? Number.NaN : Number(part)))
+      : Array.isArray(raw)
+        ? raw.flatMap((item) => (Array.isArray(item) ? item : [item]))
+        : [Number.NaN];
+  if (flat.length === 0 || flat.length % 2 !== 0) {
+    throw new Error("probe needs x,y pairs, e.g. 100,200,640,360");
+  }
+  const points: { x: number; y: number }[] = [];
+  for (let i = 0; i < flat.length; i += 2) {
+    const [x, y] = [flat[i], flat[i + 1]];
+    if (!Number.isInteger(x) || !Number.isInteger(y)) {
+      throw new Error(
+        `probe point ${i / 2 + 1} must be whole pixels, got ${String(x)},${String(y)}`,
+      );
+    }
+    const [px, py] = [x as number, y as number];
+    if (px < 0 || py < 0 || px >= size.width || py >= size.height) {
+      throw new Error(
+        `probe point ${px},${py} is outside the ${size.width}x${size.height} capture (origin top-left)`,
+      );
+    }
+    points.push({ x: px, y: py });
+  }
+  if (points.length > MAX_PROBES) {
+    throw new Error(`a capture takes at most ${MAX_PROBES} probe points (got ${points.length})`);
+  }
+  return points;
+}
+
+export interface ProbeSample {
+  x: number;
+  y: number;
+  rgba: [number, number, number, number];
+  hex: string;
+}
+
+/** Samples a GL readback (rows bottom-up, so row `height - 1 - y`) at top-left pixel coordinates. */
+export function samplePixels(
+  rgba: Uint8Array,
+  width: number,
+  height: number,
+  points: readonly { x: number; y: number }[],
+): ProbeSample[] {
+  const hex2 = (n: number) => n.toString(16).padStart(2, "0");
+  return points.map(({ x, y }) => {
+    const i = ((height - 1 - y) * width + x) * 4;
+    const px: [number, number, number, number] = [rgba[i], rgba[i + 1], rgba[i + 2], rgba[i + 3]];
+    return { x, y, rgba: px, hex: `#${hex2(px[0])}${hex2(px[1])}${hex2(px[2])}` };
+  });
 }
 
 /** v1 clients get v1 responses (same fields, extra ones ignored); everything else answers as v2. */

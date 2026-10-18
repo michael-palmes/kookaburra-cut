@@ -3,7 +3,7 @@ import { errorHeadline } from "../engine/sceneErrors";
 
 const MAX_LINES = 6;
 
-function WarningIcon() {
+export function WarningIcon() {
   return (
     <svg
       className="load-notice-icon"

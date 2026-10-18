@@ -146,6 +146,6 @@ class HookStatusTests(KbTestCase):
 
     def test_assets_usage_counts_edit_docs(self) -> None:
         write_json(self.root / "edits" / "rec.json", edit_doc())
-        items = json.loads(self.kb(["assets", "list", "--json"], cwd=self.root).stdout)
+        items = json.loads(self.kb(["assets", "list", "--json"], cwd=self.root).stdout)["assets"]
         rec = next(i for i in items if i["path"] == "assets/rec.mp4")
         self.assertEqual(rec["usedBy"], ["edits/rec.json"])

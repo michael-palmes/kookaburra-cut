@@ -95,7 +95,7 @@ Dark-first presets relax automatically on light themes.
 two carry a glowing head); `ticker` counts with an overshoot-and-settle; `ledger`
 builds stacks bottom-up; `allocation` is the portfolio pie; `drop` lands 3D columns
 with a squash. A preset on a type it does not cover degrades to that family's default.
-`kb catalog charts.animations --json` lists the types each preset was designed for.
+`./kb catalog charts.animations --json` lists the types each preset was designed for.
 
 ## Colours
 
@@ -125,13 +125,13 @@ segments morph. `animatedTrack: "chart"` puts the track on the app's lane.
 ## kb chart
 
 ```bash
-kb chart 03-results show                          # type, presets, data table, keys
-kb chart 03-results seed                          # starter block on a scene without one
-kb chart 03-results set-data assets/q3.csv        # first row categories, first column series
-kb chart 03-results set-data --inline "Q1,Q2;Direct,10,20;Partner,5,8"
-kb chart 03-results add-key 2500 --ease outQuad   # key holding the current values
-kb doc 03-results set chart.style.preset neonLedger
-kb doc 03-results set chart.axis.value.format '{"prefix": "$", "compact": true}'
+./kb chart 03-results show                          # type, presets, data table, keys
+./kb chart 03-results seed                          # starter block on a scene without one
+./kb chart 03-results set-data assets/q3.csv        # first row categories, first column series
+./kb chart 03-results set-data --inline "Q1,Q2;Direct,10,20;Partner,5,8"
+./kb chart 03-results add-key 2500 --ease outQuad   # key holding the current values
+./kb doc 03-results set chart.style.preset neonLedger
+./kb doc 03-results set chart.axis.value.format '{"prefix": "$", "compact": true}'
 ```
 
 `set-data` replaces the data and removes any data track. CSV, TSV or TXT.

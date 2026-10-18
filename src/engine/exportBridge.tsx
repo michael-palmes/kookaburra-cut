@@ -35,9 +35,22 @@ export function canvasContextLosses(): number {
   return canvas ? (contextLosses.get(canvas) ?? 0) : 0;
 }
 
+const lostListeners = new Set<(canvas: HTMLCanvasElement) => void>();
+
+/** Calls `listener` whenever a tracked (live stage) canvas loses its context; the returned function unsubscribes. */
+export function onCanvasContextLost(listener: (canvas: HTMLCanvasElement) => void): () => void {
+  lostListeners.add(listener);
+  return () => {
+    lostListeners.delete(listener);
+  };
+}
+
 /** Counts `canvas`'s context losses until the returned cleanup runs. */
 export function trackContextLosses(canvas: HTMLCanvasElement): () => void {
-  const onLost = () => contextLosses.set(canvas, (contextLosses.get(canvas) ?? 0) + 1);
+  const onLost = () => {
+    contextLosses.set(canvas, (contextLosses.get(canvas) ?? 0) + 1);
+    for (const listener of lostListeners) listener(canvas);
+  };
   canvas.addEventListener("webglcontextlost", onLost);
   return () => canvas.removeEventListener("webglcontextlost", onLost);
 }

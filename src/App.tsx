@@ -28,6 +28,7 @@ import {
   sceneTrackContext,
 } from "./engine/beatCameraSync";
 import { effectiveKeyMoments, setBeatProject, useBeatStore } from "./engine/beatState";
+import type { VideoRun, VideoRunResult } from "./engine/bridgeExport";
 import { CompositorDriver } from "./engine/CompositorDriver";
 import { useCameraEditStore } from "./engine/cameraEditStore";
 import { ensureCaptureService } from "./engine/captureBridge";
@@ -49,8 +50,10 @@ import {
   EXPORT_PREAMBLE_STEPS,
   type ExportProgress,
   exportProject,
+  revealExport,
   revealLastExport,
   verifyAllFormats,
+  verifyDeterminism,
 } from "./engine/exporter";
 import { isExporting } from "./engine/exportState";
 import {
@@ -198,6 +201,7 @@ import {
   setProjectTypography,
   slugifyName,
 } from "./engine/workspace";
+import { buildVideoExportOptions, type VideoExportSelection } from "./export/selection";
 import { useAssetVersionStore } from "./store/assetVersionStore";
 import { useEditorStore } from "./store/editorStore";
 import {
@@ -209,6 +213,8 @@ import { useTrustStore } from "./store/trustStore";
 import { useUiStore } from "./store/uiStore";
 import { WORKSPACE_THEME_PREFIX } from "./theme/registry";
 import { AnimationLane } from "./ui/AnimationLane";
+import { BridgeActivityPill } from "./ui/BridgeActivityPill";
+import { BridgeExportOverlay } from "./ui/BridgeExportOverlay";
 import { CameraPathOverlay } from "./ui/CameraPathOverlay";
 import { CameraPill } from "./ui/CameraPill";
 import { CameraToolOverlay } from "./ui/CameraToolOverlay";
@@ -229,6 +235,8 @@ import {
   type StillsExportSelection,
 } from "./ui/ExportModal";
 import { STILLS_ID } from "./ui/exportOptions";
+import { clearExportCard, FlashWarning, noteExportFlashes } from "./ui/FlashWarning";
+import { GpuNotices } from "./ui/GpuNotices";
 import { OverlayImageGizmo } from "./ui/ImageOverlayGizmo";
 import { newChartBlock } from "./ui/inspector/ChartSection";
 import { InspectorPanel } from "./ui/inspector/InspectorPanel";
@@ -270,6 +278,7 @@ import { duplicateThemeDoc } from "./ui/theme-editor/themeDraft";
 import { onThemeSaved, readThemeSourceDoc } from "./ui/theme-editor/themeEditorIo";
 import { onThemeMoved } from "./ui/theme-editor/themeMove";
 import { UpdateAvailableDialog, UpdateConsentDialog } from "./ui/updateDialogs";
+import { useBridgeExport } from "./ui/useBridgeExport";
 import { commitSceneDuration, resolveDocPatchIndex } from "./ui/useSceneDocPatch";
 import { WebsiteGizmo } from "./ui/WebsiteGizmo";
 import { Welcome } from "./ui/Welcome";
@@ -1692,6 +1701,12 @@ export default function App() {
 
   // Bumped by the error panel's Retry: workspace manifest fixes happen outside Vite's module graph, so nothing reloads automatically; the user retries once Claude fixed the file.
   const [loadNonce, setLoadNonce] = useState(0);
+  // A bridge export waits until the source poll's last reload is on stage (or failed): `requested` counts the poll's reloads, `landed` the last one to land.
+  const sourceReloads = useRef({ requested: 0, landed: 0 });
+  const [reloadLanded, setReloadLanded] = useState(0);
+  useEffect(() => {
+    sourceReloads.current.landed = Math.max(sourceReloads.current.landed, reloadLanded);
+  }, [reloadLanded]);
 
   useEffect(
     () =>
@@ -1741,9 +1756,11 @@ export default function App() {
       setError(null);
     }
     // A failed live reload keeps its banner through the next attempt; only a successful load clears it.
+    const reloadTicket = sourceReloads.current.requested;
     loadProject(projectId)
       .then((loaded) => {
         if (cancelled) return;
+        setReloadLanded(reloadTicket);
         setError(null);
         if (!isAutoRun) {
           reportLastLoad(lastLoadReport(projectId, { loaded }, Date.now()));
@@ -1773,6 +1790,7 @@ export default function App() {
       })
       .catch((e) => {
         if (cancelled) return;
+        setReloadLanded(reloadTicket);
         if (!isAutoRun) {
           reportLastLoad(lastLoadReport(projectId, { error: e }, Date.now()));
           // Declining trust means zero writes, the kit included.
@@ -1906,6 +1924,7 @@ export default function App() {
       projectFileStamps(slug)
         .then((stamps) => {
           if (cancelled || !observeSourceStamps(slug, stamps)) return;
+          sourceReloads.current.requested += 1;
           bumpWorkspaceReloadToken();
           setLoadNonce((n) => n + 1);
         })
@@ -2315,6 +2334,7 @@ export default function App() {
     setProgress(null);
     setExportPrepStep(0);
     setToast(null);
+    clearExportCard();
     const abort = new AbortController();
     exportAbortRef.current = abort;
     try {
@@ -2393,58 +2413,17 @@ export default function App() {
       return;
     }
     setShowExport(false);
-    setExporting(true);
-    setProgress(null);
-    setExportPrepStep(0);
-    setToast(null);
     const abort = new AbortController();
-    exportAbortRef.current = abort;
     try {
-      const targetFormat = FORMATS[sel.aspect];
-      await commitFormat(targetFormat);
-      // App exports honour the Downloads setting (default on, the inverted flag); autorun exports never pass a destination.
-      const toDownloads = await getSettings()
-        .then((s) => !s.keepExportsInProject)
-        .catch(() => true);
-      // Render at the output rate: a 30fps spec steps the clock at 30 directly since i·(1000/30) is bit-identical to 2i·(1000/60) in float64, giving the same bytes the old fps=30 decimation kept, at half the render.
-      const output = await exportProject(
-        {
-          projectId: project.id,
-          fps: sel.encode?.fps ?? FPS,
-          durationMs: project.totalMs,
-          format: targetFormat,
-          slots: project.slots,
-          cameraTrack: project.cameraTrack,
-          sceneDocs: project.sceneDocs,
-          theme: project.theme,
-          sceneThemes: project.sceneThemes,
-          projectLighting: project.projectLighting,
-          sceneFrames: project.sceneFrames,
-          compareBDocs: project.compareBDocs,
-          compareBThemes: project.compareBThemes,
-          roomThemes: project.roomThemes,
-          motionBlur: project.renderSettings.motionBlur,
-          audio: project.audio,
-          codec: "libx264",
-          encode: sel.encode,
-          outputSuffix: sel.outputSuffix,
-          destination: toDownloads ? "downloads" : undefined,
-          signal: abort.signal,
-        },
-        (p) => {
-          setExportPrepStep(null); // first frame progress: the preamble is done, hand off to the % counter
-          setProgress(p);
-        },
-        undefined,
-        undefined,
-        undefined,
-        setExportPrepStep,
-      );
-      setToast({
-        kind: "success",
-        message: "Your cut is ready: identical, frame for frame.",
-        path: output,
-      });
+      const output = (await runVideoExport(sel, { abort, destination: "setting" })).path ?? "";
+      // Written either way; a flagged film gets the export card (ready, Show in Finder, the flagged moments) instead of the plain toast.
+      if (!(await noteExportFlashes(output))) {
+        setToast({
+          kind: "success",
+          message: "Your cut is ready: identical, frame for frame.",
+          path: output,
+        });
+      }
       void invoke("notify_export_done"); // dock bounce if we're in the background
       // Remember the pick per project (global fallback), restored on next modal open.
       void setLastExportPreset(project.id, sel.presetId).catch(() => {});
@@ -2456,6 +2435,52 @@ export default function App() {
           ? { kind: "info", message: "Export cancelled. Nothing was saved." }
           : { kind: "error", message: `Export failed: ${String(e)}` },
       );
+    }
+  }
+
+  // The Export button's run, shared with Claude's bridge export (useBridgeExport): only the destination, the abort signal and the callbacks differ, and none of them reach the bytes.
+  async function runVideoExport(sel: VideoExportSelection, run: VideoRun): Promise<VideoRunResult> {
+    if (!project) throw new Error("No project is open.");
+    setExporting(true);
+    setProgress(null);
+    setExportPrepStep(0);
+    setToast(null);
+    clearExportCard();
+    exportAbortRef.current = run.abort;
+    try {
+      const targetFormat = FORMATS[sel.aspect];
+      await commitFormat(targetFormat);
+      // App exports honour the Downloads setting (default on, the inverted flag); Claude's land in the project, and autorun exports never pass a destination.
+      const toDownloads =
+        run.destination === "setting" &&
+        (await getSettings()
+          .then((s) => !s.keepExportsInProject)
+          .catch(() => true));
+      // Render at the output rate: a 30fps spec steps the clock at 30 directly since i·(1000/30) is bit-identical to 2i·(1000/60) in float64, giving the same bytes the old fps=30 decimation kept, at half the render.
+      const options = buildVideoExportOptions(project, sel, {
+        destination: toDownloads ? "downloads" : undefined,
+        signal: run.abort.signal,
+      });
+      const onProgress = (p: ExportProgress) => {
+        setExportPrepStep(null); // first frame progress: the preamble is done, hand off to the % counter
+        setProgress(p);
+        run.onProgress?.(p);
+      };
+      if (run.verify) {
+        return { path: null, options, verify: await verifyDeterminism(options, onProgress) };
+      }
+      const path = await exportProject(
+        options,
+        onProgress,
+        undefined,
+        undefined,
+        undefined,
+        (step) => {
+          setExportPrepStep(step);
+          run.onPrepareStep?.(step);
+        },
+      );
+      return { path, options };
     } finally {
       exportAbortRef.current = null;
       setCancelling(false);
@@ -2475,6 +2500,7 @@ export default function App() {
     setExporting(true);
     setProgress(null);
     setToast(null);
+    clearExportCard();
     const startingFormat = useEditorStore.getState().format;
     const abort = new AbortController();
     exportAbortRef.current = abort;
@@ -2526,6 +2552,20 @@ export default function App() {
       void commitFormat(startingFormat);
     }
   }
+
+  const bridgeExport = useBridgeExport({
+    isAutoRun,
+    view,
+    project,
+    exporting,
+    showExport,
+    themePreviewRunning,
+    reloadError: error,
+    loadInFlight: () => sourceReloads.current.requested > sourceReloads.current.landed,
+    stopPlayback: () => setPlaying(false),
+    runVideoExport,
+    commitFormat,
+  });
 
   function cancelExport() {
     if (!exportAbortRef.current || cancelling) return;
@@ -2969,6 +3009,7 @@ export default function App() {
                 </div>
               )}
               {isAutoRun && <div className="stage-busy-chip">Automated run — hands off</div>}
+              <BridgeExportOverlay state={bridgeExport.overlay} onCancel={bridgeExport.cancel} />
 
               {error && !project && (
                 <div className="stage-error" role="alert">
@@ -2985,8 +3026,9 @@ export default function App() {
                 </div>
               )}
 
-              {project && !exporting && !isAutoRun && (error || loadNotice) && (
+              {project && !exporting && !isAutoRun && (
                 <div className="load-notices">
+                  <GpuNotices />
                   {error && (
                     <LoadNotice
                       tone="danger"
@@ -3012,38 +3054,48 @@ export default function App() {
                 </div>
               )}
 
-              {toast && (
-                <div className={`toast toast-${toast.kind}`} role="status">
-                  <span className="toast-msg" title={toast.message}>
-                    {toast.message}
-                  </span>
-                  {toast.path ? (
+              <div className="toast-stack">
+                <FlashWarning
+                  hidden={exporting || isAutoRun}
+                  onReveal={(path) =>
+                    revealExport(path).catch((e) =>
+                      setToast({ kind: "error", message: `Couldn't reveal file: ${String(e)}` }),
+                    )
+                  }
+                />
+                {toast && (
+                  <div className={`toast toast-${toast.kind}`} role="status">
+                    <span className="toast-msg" title={toast.message}>
+                      {toast.message}
+                    </span>
+                    {toast.path ? (
+                      <button
+                        type="button"
+                        className="toast-action"
+                        onClick={() => {
+                          setToast(null);
+                          revealLastExport().catch((e) =>
+                            setToast({
+                              kind: "error",
+                              message: `Couldn't reveal file: ${String(e)}`,
+                            }),
+                          );
+                        }}
+                      >
+                        Show in Finder
+                      </button>
+                    ) : null}
                     <button
                       type="button"
-                      className="toast-action"
-                      onClick={() => {
-                        setToast(null);
-                        revealLastExport().catch((e) =>
-                          setToast({
-                            kind: "error",
-                            message: `Couldn't reveal file: ${String(e)}`,
-                          }),
-                        );
-                      }}
+                      className="toast-close"
+                      aria-label="Dismiss"
+                      onClick={() => setToast(null)}
                     >
-                      Show in Finder
+                      ×
                     </button>
-                  ) : null}
-                  <button
-                    type="button"
-                    className="toast-close"
-                    aria-label="Dismiss"
-                    onClick={() => setToast(null)}
-                  >
-                    ×
-                  </button>
-                </div>
-              )}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
@@ -3205,6 +3257,7 @@ export default function App() {
             onUpdateAudioMarkers={(m) => void handleUpdateAudioMarkers(m)}
             onAddCameraKeyAtBeat={(ms) => void handleAddCameraKeyAtBeat(ms)}
             onSyncCameraToBeats={(ms) => void handleSyncCameraToBeats(ms)}
+            status={isAutoRun ? null : <BridgeActivityPill />}
           />
         </TimelineDock>
       )}

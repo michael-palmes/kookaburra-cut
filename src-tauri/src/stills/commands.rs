@@ -18,7 +18,7 @@ use super::{
     full_user_name, local_now, Civil, FinishPlan, PageMeta, PagePayload, Sink, StillsJob,
     StillsKind, TextItem,
 };
-use crate::{workspace, ExportState, LastExport, Progress};
+use crate::{workspace, ExportHistory, ExportState, Progress};
 
 const MAX_PAGES: u32 = 2000;
 const MAX_PAGE_EDGE: u32 = 8192;
@@ -464,9 +464,7 @@ pub(crate) async fn finish_stills_export(app: AppHandle) -> Result<StillsResult,
     };
     state.stills.end_finish(serial, result.is_ok());
     let result = result?;
-    if let Ok(mut last) = app.state::<LastExport>().0.lock() {
-        *last = Some(PathBuf::from(&result.path));
-    }
+    app.state::<ExportHistory>().note(&PathBuf::from(&result.path));
     Ok(result)
 }
 

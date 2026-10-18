@@ -24,7 +24,7 @@ WHOLESALE (no merge by id). Absent everywhere keeps the theme's simple rig.
 }
 ```
 
-That is the `golden-hour` preset. `kb catalog lighting.presets --json` holds every preset's full spec;
+That is the `golden-hour` preset. `./kb catalog lighting.presets --json` holds every preset's full spec;
 write one into the sidecar and tune from there:
 
 | Preset | Look |

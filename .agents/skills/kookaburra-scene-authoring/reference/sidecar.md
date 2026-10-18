@@ -4,23 +4,23 @@ Every scene may have `scenes/<stem>.json` beside `scenes/<stem>.tsx` (keyed by F
 stem, never the `defineScene` id). The sidecar holds everything the app's inspector
 edits; the TSX is the composition. Both reload live. A scene without a sidecar is
 legal. A sidecar that is not valid JSON, or has a `version` other than 1, is ignored
-whole (the scene renders bare); `kb check` names it. Inside a valid sidecar a bad field
+whole (the scene renders bare); `./kb check` names it. Inside a valid sidecar a bad field
 drops alone with a warning.
 
 ## Editing
 
 ```bash
-kb doc 02-demo get                        # whole sidecar
-kb doc 02-demo get devices                # one key
-kb doc 02-demo set name "Live demo"
-kb doc 02-demo set textStyle.titleSize 1.2
-kb doc 02-demo set background '{"type":"shader","shader":"mesh-gradient","themeColors":true}'
-kb doc 02-demo unset textLook
+./kb doc 02-demo get                        # whole sidecar
+./kb doc 02-demo get devices                # one key
+./kb doc 02-demo set name "Live demo"
+./kb doc 02-demo set textStyle.titleSize 1.2
+./kb doc 02-demo set background '{"type":"shader","shader":"mesh-gradient","themeColors":true}'
+./kb doc 02-demo unset textLook
 ```
 
 - Values parse as JSON, else as a string (`--string` keeps `"true"` or `"42"` a string).
-- Paths walk objects and array indexes: `kb doc 02-demo set devices.0.media.src assets/new.mp4`.
-- `kb doc S merge '<json>'` is a JSON merge patch: objects merge, `null` deletes, arrays
+- Paths walk objects and array indexes: `./kb doc 02-demo set devices.0.media.src assets/new.mp4`.
+- `./kb doc S merge '<json>'` is a JSON merge patch: objects merge, `null` deletes, arrays
   replace whole (`@file.json` reads the patch from a file).
 - Every write is validated; one that would add errors is refused with the reason.
 - Never re-mint existing ids (devices, media, keys): the app and the gizmos select by id.
@@ -133,7 +133,7 @@ alone (no deck needed). A sidecar `cutout` replaces the deck's outright.
 | `cutout.radius` | Corner radius for `rounded-rect` (default 0.12) |
 | `background` | Theme token (`accent`, `muted`, `text`, `background`), a hex, or `{type: "transparent" \| "color" \| "gradient" \| "image"}` |
 | `icon` | Emoji or `assets/` image above the title; `""` hides an inherited icon |
-| `chip` | `{ label, icon?, colour? }`; icon is a chip icon id (`kb catalog chipIcons`), an emoji or an asset |
+| `chip` | `{ label, icon?, colour? }`; icon is a chip icon id (`./kb catalog chipIcons`), an emoji or an asset |
 | `chart` | `true`, `false` or `{ height, position: "below" \| "replace" }`: hosts the scene's `chart` with `mount: "panel"` |
 | `decorations` | Images (`src`, `shape: "circle"` optional) or text (`text`, `colour`, `face`, `font`, `lineHeight`); `position` -1..1 frame-relative, `size` a fraction of frame width (image width or font size), `layer` `above` (over the window) or `below` |
 | `textAlign` | `left`, `center`, `right` |
@@ -166,7 +166,7 @@ Which frames become pages is sidecar data:
   block that drives the scene, and never under `animatedTrack: "layeredScreenshot"`.
   Delete the field to unmark; never write `false`.
 - A hand-rolled TSX animation the app cannot see may be caught mid-move by the
-  automatic still: add a mark instead. Check a mark with `kb capture --scene S --at <ms/1000>`.
+  automatic still: add a mark instead. Check a mark with `./kb capture --scene S --at <ms/1000>`.
 
 ## Rooms: the `room` block
 
@@ -210,5 +210,5 @@ Present.
   over it, so pair rooms with a colour background or none.
 - Colours land exactly on the hex in exports without effects. Scene code reads the
   room with `useRoom()` (colour, flood, progress) and matches text or panels with
-  `cssOpacity(fg, room.colour, a)`. Check a flood with `kb capture --scene S --at <s>`
+  `cssOpacity(fg, room.colour, a)`. Check a flood with `./kb capture --scene S --at <s>`
   before, during and after.

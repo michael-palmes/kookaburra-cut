@@ -32,12 +32,12 @@ export default defineScene({
 - The manifest's `durationMs` wins. A scene cannot read its own duration, so time
   motion from the start in absolute ms, and keep any end-relative timing in sync
   with `project.json`.
-- Register new files with `kb scene add` (or `kb scene duplicate`), never by hand-
+- Register new files with `./kb scene add` (or `./kb scene duplicate`), never by hand-
   editing two places.
 
 ## Import surface
 
-Only `@kookaburra/toolkit` resolves (`kb catalog toolkit.exports` lists every export). No
+Only `@kookaburra/toolkit` resolves (`./kb catalog toolkit.exports` lists every export). No
 `react`, `three`, `@react-three/*`, anime.js, relative imports or other scenes; JSX
 needs no React import. Consequences:
 
@@ -82,7 +82,7 @@ Plain helpers: `measureText(text, { font, fontSize })` measures without a text k
 - Safe rectangle: x within `frame.width / 2 - safe.left`, y within
   `frame.height / 2 - safe.top`.
 - One scene serves every aspect: branch on `aspect < 1` for portrait sizes and
-  positions; never write per-aspect files. Check both with `kb capture --aspect`.
+  positions; never write per-aspect files. Check both with `./kb capture --aspect`.
 - Typical sizes: TitleBlock title 0.56 (landscape) / 0.34 (portrait); AnimatedHeadline
   default 0.6; body copy 0.2 to 0.28; a fitted phone is 2.6 units tall.
 
@@ -258,13 +258,16 @@ there returns global time. `sampleSharedTransform(track, globalMs)` interpolates
 
 ## Fixing failures
 
+Load errors are below. Behaviour that surprises (a stale preview, a fade word by word,
+colours off, a GPU stall, an export that waits): reference/gotchas.md.
+
 | Symptom | Cause and fix |
 | --- | --- |
 | "user scenes may import only @kookaburra/toolkit" | A non-toolkit import; remove it |
 | "must default-export defineScene" | Missing or bare default export |
 | `useMemo is not defined` (or any React hook) | Hooks unavailable; compute inline or at module scope |
-| "This scene can't load" card; `kb status` lists the file | Compile, evaluate or export failed: read the phase and first error line, fix, `kb check --app` |
+| "This scene can't load" card; `./kb status` lists the file | Compile, evaluate or export failed: read the phase and first error line, fix, `./kb check --app` |
 | Error with scene index -1 | The `persistent` module failed |
-| Export or stills refuse | An error card exists somewhere; `kb status` names it |
+| Export or stills refuse | An error card exists somewhere; `./kb status` names it |
 | Fine in preview, differs on export | A wall-clock read, `Math.random`, or an asset added after load |
 | Clipped at the edges in portrait | Fixed x positions; derive from `frame` and `safe`, capture `--aspect 9:16` |

@@ -203,7 +203,7 @@ page tree and xref wait for the finish.
 | --- | --- |
 | `start_stills_export` | Refuses while any export runs; validates (1 to 2000 pages, page edge at most 8192, title at most 4096 bytes, an optional `zipFolder` of at most 255 ASCII letters, digits, `-`, `_` or `@`); resolves the output; opens the hidden temp file `.<stem>.part.<ext>` beside it; returns the planned path |
 | `push_still` | One page as a raw body. Headers: `x-kookaburra-still` (index), `-width`, `-height`, `-meta` (base64 JSON `{ sceneIndex, sceneName, kind, sceneMs, globalMs }`) and, PDF only, `-text-bytes`. Body: PDF `[JPEG][UTF-8 JSON text layer]`, PNG exactly `w × h × 4` top-down RGBA. Enforces page order and size, cross-checks the JPEG's SOI, frame header and EOI, and caps the text layer (8 MB, 4000 lines). Any failure clears the job and deletes the temp file |
-| `finish_stills_export` | Once every planned page is in: finalises on a blocking worker, `sync_all`, hashes, renames the temp file onto the output, records `LastExport` (Show in Finder); returns `{ path, kind, pages, bytes, sha256, pageSha256[], zipFolder? }` |
+| `finish_stills_export` | Once every planned page is in: finalises on a blocking worker, `sync_all`, hashes, renames the temp file onto the output, records it in `ExportHistory` (Show in Finder); returns `{ path, kind, pages, bytes, sha256, pageSha256[], zipFolder? }` |
 | `cancel_stills_export` | Idempotent: drops a streaming job (and its temp file) or makes a finalising one unwind before the rename. Called on abort or any error, once on main-window boot (a WebContent reload mid-export leaves the job busy until then) and at autorun boot |
 
 `ExportState` holds the video run and a separate stills slot. `start_export` and

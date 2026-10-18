@@ -2,7 +2,7 @@
 
 How to make Kookaburra Cut videos, decks and demos look outstanding. Mechanics live in
 reference/; this file is taste. When in doubt, copy what the bundled templates do: they
-were tuned by eye (`kb catalog templates` lists their scenes; read them under the app's
+were tuned by eye (`./kb catalog templates` lists their scenes; read them under the app's
 Resources folder, `projects/<template>/scenes/`).
 
 ## Principles
@@ -83,7 +83,7 @@ unit is about 261 px. The safe inset is 0.249 units (65 px).
 - Use theme tokens: `text` for copy, `muted` for secondary, `accent` for the one thing
   to look at (a key word via `*word*` emphasis or `highlight-block`, a chip, a rule, a
   chart series).
-- Pick the theme by mood (`kb catalog themes`): light themes for calm product stories,
+- Pick the theme by mood (`./kb catalog themes`): light themes for calm product stories,
   dark themes for drama, launches and anything with bloom or neon.
 - Text over moving backgrounds: use shader or 3D presets whose mode matches the theme
   (light preset with a light theme), and keep busy looks behind, not under, copy.
@@ -95,7 +95,7 @@ unit is about 261 px. The safe inset is 0.249 units (65 px).
 2. Map to tokens: `background` (the brand's darkest or lightest neutral), `text` (at
    least 7:1 against background), `accent` (the brand primary; at least 3:1),
    `muted` (text mixed about 40% toward background).
-3. Fonts: use the brand family only if `kb fonts check` passes; otherwise the closest
+3. Fonts: use the brand family only if `./kb fonts check` passes; otherwise the closest
    bundled family: geometric sans to Space Grotesk or Inter; humanist sans to Open Sans
    or Nunito; condensed to Barlow Condensed; editorial serif to Playfair Display, Lora
    or Cormorant Garamond; corporate sans to Libre Franklin; mono to JetBrains Mono.
@@ -187,7 +187,7 @@ focus plane.
 
 ## Recipes
 
-Each starts from scene presets (`kb scene add <stem> --preset <slug>`) or a template
+Each starts from scene presets (`./kb scene add <stem> --preset <slug>`) or a template
 the user creates from the app's Welcome screen.
 
 **Product demo (20 to 40 s).** `title-opener`, then two or three `hero-device` scenes
@@ -229,8 +229,11 @@ or `b.background`. Templates: `before-after-update`, `dark-mode-launch`,
 
 ## Before you deliver
 
-- [ ] `kb status` clean: no error cards, no font issues, no missing assets.
-- [ ] `kb check --app` passes.
+- [ ] `./kb status` clean: no error cards, no font issues, no missing assets.
+- [ ] `./kb verify` passes (static, the app's load and render, first and last frames,
+      handoffs, flashes), and its sheets were Read.
+- [ ] A film for the user: `./kb export`, then `./kb verify-export` on it, flash gate
+      included (reference/export.md).
 - [ ] Every changed scene captured in a landscape AND a portrait aspect (and every
       aspect in `formats`), mid-reveal and settled.
 - [ ] All text inside the safe area, nothing clipped, nothing overlapping a device.
@@ -238,6 +241,6 @@ or `b.background`. Templates: `before-after-update`, `dark-mode-launch`,
       backgrounds.
 - [ ] Durations give every line its reading time; nothing exits before it is read.
 - [ ] One theme, consistent transitions, accent used once per scene.
-- [ ] Fonts bundled or passed `kb fonts check`; capture confirms the face.
+- [ ] Fonts bundled or passed `./kb fonts check`; capture confirms the face.
 - [ ] Videos probed; follow-media durations match.
 - [ ] Told the user what changed, in plain words.

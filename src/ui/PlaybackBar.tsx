@@ -1,6 +1,7 @@
 import { listen } from "@tauri-apps/api/event";
 import {
   type MouseEvent as ReactMouseEvent,
+  type ReactNode,
   type PointerEvent as ReactPointerEvent,
   type RefObject,
   useEffect,
@@ -57,6 +58,7 @@ export function PlaybackBar({
   onAddCameraKeyAtBeat,
   onSyncCameraToBeats,
   onSceneInserted,
+  status,
 }: {
   project: LoadedProject | null;
   playing: boolean;
@@ -95,6 +97,8 @@ export function PlaybackBar({
   onSyncCameraToBeats: (ms: number) => void;
   /** A preset insert landed a new scene file: reload and select it. Optional, since the host's on-disk fingerprint poll picks the change up within a couple of seconds anyway. */
   onSceneInserted?: (file: string) => void;
+  /** A transient status pill floated above the readout (the bridge activity). */
+  status?: ReactNode;
 }) {
   const trackRef = useRef<HTMLDivElement>(null);
   const scrubbing = useRef(false);
@@ -422,6 +426,7 @@ export function PlaybackBar({
       </div>
 
       <div className="pb-right">
+        {status}
         <span className="pb-readout" onPointerDown={holdPointer}>
           {readout}
         </span>
