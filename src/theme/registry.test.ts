@@ -5,6 +5,7 @@ import {
   defaultTheme,
   isWorkspaceThemeId,
   lineupThemes,
+  memoThemeReader,
   resolveTheme,
   resolveThemeReport,
   THEME_LINEUP,
@@ -103,5 +104,21 @@ describe("resolveThemeReport", () => {
   it("notes an unknown bundled id and an unreadable workspace theme", async () => {
     expect((await resolveThemeReport("kookaburra-nope")).warnings[0]).toContain("isn't a theme");
     expect((await resolveThemeReport("ws:absent")).warnings[0]).toContain("can't be read");
+  });
+});
+
+describe("memoThemeReader", () => {
+  it("reads each theme once per load, chain links and repeat scenes alike", async () => {
+    const base = { ...workspaceDoc(), id: "base" };
+    const variant = { version: 3, id: "variant", extends: "ws:base" };
+    vi.mocked(invoke).mockImplementation(async (_cmd, args) =>
+      JSON.stringify((args as { slug: string }).slug === "base" ? base : variant),
+    );
+    const read = memoThemeReader();
+    const first = await resolveThemeReport("ws:variant", defaultTheme, read);
+    const second = await resolveThemeReport("ws:variant", defaultTheme, read);
+    expect(first.theme.id).toBe("ws:variant");
+    expect(second.theme.colors.accent).toBe("#ff0000");
+    expect(vi.mocked(invoke)).toHaveBeenCalledTimes(2);
   });
 });

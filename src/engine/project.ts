@@ -7,7 +7,7 @@ import { assetVersionSuffix, useAssetVersionStore } from "../store/assetVersionS
 import { parseFontString } from "../theme/fontRef";
 import { vetProjectFonts } from "../theme/fontSafety";
 import { collectThemeFontRefs, preloadAppFonts } from "../theme/fonts";
-import { resolveThemeReport, WORKSPACE_THEME_PREFIX } from "../theme/registry";
+import { memoThemeReader, resolveThemeReport, WORKSPACE_THEME_PREFIX } from "../theme/registry";
 import type {
   EffectsConfig,
   EffectsOverride,
@@ -1113,9 +1113,10 @@ export async function loadProject(
   );
   const applyTypography = (t: Theme): Theme =>
     typographyOverride ? { ...t, typography: { ...t.typography, ...typographyOverride } } : t;
+  const readTheme = memoThemeReader();
   const resolveProjectTheme = async (themeId: string | undefined, fallback?: Theme) => {
     if (options?.readSavedThemes) return resolveSavedPosterTheme(themeId, fallback);
-    const report = await resolveThemeReport(themeId, fallback);
+    const report = await resolveThemeReport(themeId, fallback, readTheme);
     if (themeId && report.warnings.length > 0) {
       const file = themeId.startsWith(WORKSPACE_THEME_PREFIX)
         ? `themes/${themeId.slice(WORKSPACE_THEME_PREFIX.length)}/theme.json`

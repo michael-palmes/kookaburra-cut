@@ -83,10 +83,26 @@ export interface ThemeReport {
   warnings: string[];
 }
 
+/** Memoises `readThemeDocument` for one load, so every scene and chain link naming a theme reads it once. */
+export function memoThemeReader(
+  read: (id: string) => Promise<unknown> = readThemeDocument,
+): (id: string) => Promise<unknown> {
+  const docs = new Map<string, Promise<unknown>>();
+  return (id) => {
+    let doc = docs.get(id);
+    if (!doc) {
+      doc = read(id);
+      docs.set(id, doc);
+    }
+    return doc;
+  };
+}
+
 /** `resolveTheme` plus the warnings its parse raised, for a load that surfaces them. Never rejects. */
 export async function resolveThemeReport(
   id: string | undefined,
   fallback: Theme = defaultTheme,
+  read: (id: string) => Promise<unknown> = readThemeDocument,
 ): Promise<ThemeReport> {
   // A manifest without a themeId (hand-edited project.json) degrades to the fallback instead of crashing the load.
   if (!id) return { theme: fallback, warnings: [] };
@@ -94,8 +110,8 @@ export async function resolveThemeReport(
     let raw: unknown;
     let docs: Map<string, unknown>;
     try {
-      raw = await readThemeDocument(id);
-      docs = await collectThemeChain(raw, readThemeDocument);
+      raw = await read(id);
+      docs = await collectThemeChain(raw, read);
     } catch (e) {
       console.warn(`[theme] workspace theme "${id}" failed to load:`, e);
       return {
