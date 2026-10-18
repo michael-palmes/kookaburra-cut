@@ -361,6 +361,8 @@ export interface TextAnimationSpec {
   durationMs?: number;
   /** Optional preset travel distance in em. Absent keeps each preset's tuned distance. */
   distance?: number;
+  /** build: how far each arriving word slides in, em (default 0.3; the line itself always re-centres). */
+  buildShiftEm?: number;
   /** An engine/ease.ts name. Absent keeps the theme's standard easing. */
   ease?: string;
   /** Motion blur override; absent inherits the scene's Objects switch (see engine/motionBlur.ts). */
@@ -385,6 +387,10 @@ export interface TextLookSpec {
   intensity?: number;
   /** Offset-print under-layer displacement in em (default 0.06). */
   offsetEm?: number;
+  /** Offset-print direction in degrees clockwise from up (absent keeps the classic down-right, 135); the distance stays the default diagonal's. */
+  offsetDir?: number;
+  /** Offset-print under-layer opacity 0..1 (absent is fully opaque). */
+  offsetOpacity?: number;
   /** Arc: total bend in degrees, positive arcs upward (default 60). */
   curveDeg?: number;
 }

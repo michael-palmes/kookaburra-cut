@@ -35,6 +35,7 @@ import type {
   DeviceShadowMode,
 } from "../toolkit/device/Device";
 import type { FrameOverrideSpec } from "../toolkit/frame/types";
+import { parseEmphasisValue } from "../toolkit/text/emphasis";
 import type { SceneDocDof } from "./dof";
 import type { DeviceFoldTransitionSpec } from "./foldTransition";
 import { parseFrameOverride } from "./frameSchema";
@@ -573,7 +574,7 @@ export interface SceneDoc {
   text?: Record<string, string>;
   /** Layout for the scene's text block; consumed by TitleBlock (inert when a scene positions text by hand, the `backdrop` precedent). */
   textLayout?: { align?: SceneTextAlign };
-  /** Per-text-element overrides keyed `<textKey><Suffix>`: `Color` (raw hex fill, the one narrow exception to "colours stay tokens"), `Font` ("Family" or "Family@weight"), `Size` (multiplier of the element's default, 1 = unchanged), `OffsetX`/`OffsetY` (world-unit nudges from the scene's layout), `LineHeight` (line spacing as a multiple of the font size, clamped 0.8..2; absent means troika's own "normal") and `RotationDeg` (clockwise tilt in degrees about the block's anchor; absent or 0 is upright); consumed by text primitives given a matching `textKey`, inert otherwise. */
+  /** Per-text-element overrides keyed `<textKey><Suffix>`: `Color` (raw hex fill, the one narrow exception to "colours stay tokens"), `Font` ("Family" or "Family@weight"), `Size` (multiplier of the element's default, 1 = unchanged), `OffsetX`/`OffsetY` (world-unit nudges from the scene's layout), `LineHeight` (line spacing as a multiple of the font size, clamped 0.8..2; absent means troika's own "normal") `RotationDeg` (clockwise tilt in degrees about the block's anchor; absent or 0 is upright) and `Emphasis` (`*word*` emphasis: "<colour>" or "<colour>@<weight>", a token or hex and a CSS weight; absent is the accent one weight step bolder); consumed by text primitives given a matching `textKey`, inert otherwise. */
   textStyle?: Record<string, string | number>;
   /** Header icon for a plain (non-overlay) scene's text: an emoji or an `assets/` image path, drawn above the headline by `TextFallback`/`TitleBlock`. Overlay scenes carry their icon on `frame.icon` instead; both scale by `textStyle.iconSize`. */
   headerIcon?: string;
@@ -2128,9 +2129,16 @@ export function parseSceneDoc(raw: unknown, source: string): SceneDoc | undefine
         } else {
           parseWarn(`[sceneDoc] ${source}: textStyle.${key} isn't a finite number, dropped`);
         }
+      } else if (key.endsWith("Emphasis")) {
+        if (parseEmphasisValue(value)) textStyle[key] = (value as string).trim();
+        else {
+          parseWarn(
+            `[sceneDoc] ${source}: textStyle.${key} isn't "<colour>" or "<colour>@<weight>", dropped`,
+          );
+        }
       } else {
         parseWarn(
-          `[sceneDoc] ${source}: textStyle.${key} isn't a <textKey>Color|Font|Size|OffsetX|OffsetY|LineHeight|RotationDeg key, dropped`,
+          `[sceneDoc] ${source}: textStyle.${key} isn't a <textKey>Color|Font|Size|OffsetX|OffsetY|LineHeight|RotationDeg|Emphasis key, dropped`,
         );
       }
     }
