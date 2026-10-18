@@ -59,6 +59,7 @@ import { useEditorStore } from "../../store/editorStore";
 import { useStudioEnvironment } from "../lighting/studioEnvironment";
 import { AssetBoundary } from "../media/AssetBoundary";
 import { preparingVideoTexture } from "../media/preparingTexture";
+import { DeviceScreenTaps, useHasScreenTaps } from "../shapes/TapRing";
 import { useSceneStaged, useStageFloorY, useStageMapShadows } from "../stage/context";
 import type { V3 } from "../types";
 import {
@@ -481,6 +482,7 @@ export function Device(props: DeviceProps) {
 
   const ctx = useSceneContext();
   const sceneIndex = ctx?.index;
+  const screenTaps = useHasScreenTaps(id);
   // The gizmo drives the pose through state, not the group directly: the clock re-renders this component every frame, which would stomp a mutated group. Never reaches an export (the gizmo unmounts when `exportPreamble` clears the selection, and `isExporting` is the belt to that brace).
   const [drag, setDrag] = useState<DevicePose | null>(null);
   const [gizmoResetKey, setGizmoResetKey] = useState(0);
@@ -886,12 +888,13 @@ export function Device(props: DeviceProps) {
           ]}
           scale={introScale}
         >
-          {children != null && (
+          {(children != null || screenTaps) && (
             <group scale={animatedScale}>
               <DeviceScreenContext.Provider
                 value={{ model, renderModel, lidDeg: renderedLidDeg, foldDeg: renderedFoldDeg }}
               >
                 {children}
+                {screenTaps && id !== undefined && <DeviceScreenTaps deviceId={id} />}
               </DeviceScreenContext.Provider>
             </group>
           )}

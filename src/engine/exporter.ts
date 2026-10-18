@@ -69,6 +69,7 @@ import { hasSceneCameraTracks } from "./sceneCamera";
 import { collectSceneDocFontRefs, type SceneDoc } from "./sceneDocSchema";
 import { getSceneHosts } from "./sceneHostRegistry";
 import { resolveSceneDocMedia } from "./sceneMedia";
+import { mosaicVideoSources } from "./sceneMosaic";
 import { resolveAt, type SceneSlot } from "./sceneTimeline";
 import { snapshotSceneStageFloors } from "./stageRegistry";
 import { useTerminalEditStore } from "./terminalEditStore";
@@ -320,6 +321,7 @@ export async function exportPreamble(
         registerClip(resolveAssetPath(opts.projectId, src));
       }
     }
+    for (const src of mosaicVideoSources(doc)) registerClip(resolveAssetPath(opts.projectId, src));
   }
   // Pre-extracts every VideoClip's frame sequence before frame 0, mirroring font preload so no frame races an async decode; extraction is cached, so this is a no-op after the first.
   await preextractClips();

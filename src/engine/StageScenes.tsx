@@ -6,6 +6,8 @@ import { AssetBoundary } from "../toolkit/media/AssetBoundary";
 import { LayeredScreenshotFallback } from "../toolkit/media/LayeredScreenshot";
 import { SceneMediaFallback } from "../toolkit/media/SceneMedia";
 import { ObjectsFallback } from "../toolkit/objects/ObjectPrimitive";
+import { MosaicFallback } from "../toolkit/shapes/SplitField";
+import { TapsFallback } from "../toolkit/shapes/TapRing";
 import { SceneBackground } from "../toolkit/stage/FixedBackdrop";
 import { SceneRoom, SceneRoomScope } from "../toolkit/stage/Room";
 import { TextFallback } from "../toolkit/text/TitleBlock";
@@ -115,6 +117,8 @@ export function StageScenes({ project }: { project: LoadedProject | null }) {
                       <ObjectsFallback />
                       <LayeredScreenshotFallback />
                       <ChartFallback />
+                      <MosaicFallback />
+                      <TapsFallback />
                       <TextFallback />
                       <CompareChips />
                     </SceneRoomScope>
@@ -159,6 +163,8 @@ export function StageScenes({ project }: { project: LoadedProject | null }) {
                       <ObjectsFallback />
                       <LayeredScreenshotFallback />
                       <ChartFallback />
+                      <MosaicFallback />
+                      <TapsFallback />
                       <TextFallback />
                       <CompareChips />
                     </SceneRoomScope>

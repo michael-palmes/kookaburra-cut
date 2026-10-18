@@ -36,6 +36,7 @@ import type {
 } from "../toolkit/device/Device";
 import type { FrameOverrideSpec } from "../toolkit/frame/types";
 import type { SceneDocDof } from "./dof";
+import { isEaseName } from "./ease";
 import type { DeviceFoldTransitionSpec } from "./foldTransition";
 import { parseFrameOverride } from "./frameSchema";
 import {
@@ -647,6 +648,59 @@ export interface SceneDoc {
   motionBlur?: SceneDocMotionBlur;
   /** The room track: the backdrop colour cutting or flooding mid-scene with the staged lights following (see engine/sceneRoom.ts); absent renders exactly as before. */
   room?: SceneDocRoom;
+  /** Tap pulses on the clock, in world space or on a sidecar device's screen (see engine/sceneTaps.ts); absent renders exactly as before. */
+  taps?: SceneDocTap[];
+  /** A frame split into tiles with a staggered reveal, drawn by `SplitField` or the host fallback (see engine/sceneMosaic.ts); absent renders exactly as before. */
+  mosaic?: SceneDocMosaic;
+}
+
+/** One tap: a ring pulse on the tap highlight curve, starting at `at`. Placed by `position` (world space) or by `screenUv` on the sidecar device `device`. */
+export interface SceneDocTap {
+  /** Scene-local ms the pulse starts. */
+  at: number;
+  /** World-space centre; the ring faces +z. */
+  position?: [number, number, number];
+  /** A point on the device's screen: u right, v down, 0..1 from the top-left (media pixel order). */
+  screenUv?: [number, number];
+  /** The sidecar device id `screenUv` is on. */
+  device?: string;
+  /** Hex or a theme colour token (background | text | accent | muted); absent is the accent. */
+  colour?: string;
+  /** Multiplier on the default ring size. */
+  size?: number;
+}
+
+/** One mosaic tile: a project image or video, or a flat colour when it has no `src`. */
+export interface SceneDocMosaicTile {
+  /** Project image (png, jpg, jpeg, webp) or video (mp4, mov, m4v, webm) under `assets/`. */
+  src?: string;
+  /** Video only: scene-local ms playback starts (default 0). */
+  startMs?: number;
+  /** Video only: wrap instead of holding the last frame. */
+  loop?: boolean;
+  /** Hex or a theme colour token; a colour tile's fill (default muted). */
+  colour?: string;
+}
+
+export type MosaicRevealOrder = "rows" | "columns" | "centre";
+
+/** Tile reveal timing: the tile ranked `n` lands over `durationMs` from `at + n * staggerMs`. */
+export interface SceneDocMosaicReveal {
+  at?: number;
+  staggerMs?: number;
+  durationMs?: number;
+  order?: MosaicRevealOrder;
+  /** An engine/ease.ts name. */
+  ease?: string;
+}
+
+/** Sidecar `mosaic` block: tiles fill the frame in reading order on a grid that reflows per aspect (or a fixed `columns`); a short last row stretches to fill. Defaults live in sceneMosaic.ts. */
+export interface SceneDocMosaic {
+  tiles: SceneDocMosaicTile[];
+  columns?: number;
+  /** Gap between tiles as a fraction of the frame's short side. */
+  gap?: number;
+  reveal?: SceneDocMosaicReveal;
 }
 
 /** A room key's light entry: intensity and a colour (kelvin, then token, then hex). */
@@ -1875,6 +1929,173 @@ function parseRoom(raw: unknown, source: string): SceneDocRoom | undefined {
   return { keys: raw.keys as SceneDocRoomKey[] };
 }
 
+const TAP_FIELDS = ["at", "position", "screenUv", "device", "colour", "size"];
+
+/** Keeps each well-formed tap (a bad entry drops alone, a bad optional field falls back); an empty result drops the block. */
+function parseTaps(raw: unknown, source: string): SceneDocTap[] | undefined {
+  if (!Array.isArray(raw)) {
+    parseWarn(`[sceneDoc] ${source}: taps isn't an array, dropped`);
+    return undefined;
+  }
+  const taps: SceneDocTap[] = [];
+  raw.forEach((entry, i) => {
+    const label = `taps[${i}]`;
+    if (!isRecord(entry)) {
+      parseWarn(`[sceneDoc] ${source}: ${label} isn't an object, dropped`);
+      return;
+    }
+    for (const key of Object.keys(entry)) {
+      if (!TAP_FIELDS.includes(key)) {
+        parseWarn(`[sceneDoc] ${source}: ${label}.${key} isn't a tap field, ignored`);
+      }
+    }
+    if (!finiteNum(entry.at) || entry.at < 0) {
+      parseWarn(`[sceneDoc] ${source}: ${label}.at isn't a non-negative number, dropped`);
+      return;
+    }
+    const tap: SceneDocTap = { at: entry.at };
+    const { screenUv, device } = entry;
+    if (finiteV2(screenUv) && typeof device === "string" && device.length > 0) {
+      tap.screenUv = [screenUv[0], screenUv[1]];
+      tap.device = device;
+      if (entry.position !== undefined) {
+        parseWarn(`[sceneDoc] ${source}: ${label} has screenUv and position, using screenUv`);
+      }
+    } else if (finiteV3(entry.position)) {
+      const [x, y, z] = entry.position;
+      tap.position = [x, y, z];
+    } else {
+      parseWarn(
+        `[sceneDoc] ${source}: ${label} needs a position [x, y, z] or screenUv [u, v] with a device, dropped`,
+      );
+      return;
+    }
+    if (isChartColour(entry.colour)) tap.colour = entry.colour;
+    else if (entry.colour !== undefined) {
+      parseWarn(`[sceneDoc] ${source}: ${label}.colour isn't a hex or theme colour, dropped`);
+    }
+    if (finiteNum(entry.size) && entry.size > 0) tap.size = entry.size;
+    else if (entry.size !== undefined) {
+      parseWarn(`[sceneDoc] ${source}: ${label}.size isn't a positive number, dropped`);
+    }
+    taps.push(tap);
+  });
+  return taps.length > 0 ? taps : undefined;
+}
+
+const MOSAIC_FIELDS = ["tiles", "columns", "gap", "reveal"];
+const MOSAIC_TILE_FIELDS = ["src", "startMs", "loop", "colour"];
+const MOSAIC_REVEAL_ORDERS: MosaicRevealOrder[] = ["rows", "columns", "centre"];
+const MOSAIC_VIDEO_EXTENSIONS = new Set(["mp4", "mov", "m4v", "webm"]);
+
+/** A mosaic tile source's kind from its extension, or null when it isn't a project image or video. */
+export function mosaicSourceKind(src: unknown): "image" | "video" | null {
+  if (isSceneImageSource(src)) return "image";
+  if (!isProjectAssetPath(src)) return null;
+  const extension = src.split(".").at(-1)?.toLowerCase();
+  return extension !== undefined && MOSAIC_VIDEO_EXTENSIONS.has(extension) ? "video" : null;
+}
+
+function parseMosaicTile(raw: unknown, source: string, label: string): SceneDocMosaicTile | null {
+  if (!isRecord(raw)) {
+    parseWarn(`[sceneDoc] ${source}: ${label} isn't an object, dropped`);
+    return null;
+  }
+  for (const key of Object.keys(raw)) {
+    if (!MOSAIC_TILE_FIELDS.includes(key)) {
+      parseWarn(`[sceneDoc] ${source}: ${label}.${key} isn't a mosaic tile field, ignored`);
+    }
+  }
+  const tile: SceneDocMosaicTile = {};
+  if (raw.src !== undefined) {
+    if (!mosaicSourceKind(raw.src)) {
+      parseWarn(`[sceneDoc] ${source}: ${label}.src isn't a project image or video, dropped`);
+      return null;
+    }
+    tile.src = raw.src as string;
+  }
+  if (finiteNum(raw.startMs) && raw.startMs >= 0) tile.startMs = raw.startMs;
+  else if (raw.startMs !== undefined) {
+    parseWarn(`[sceneDoc] ${source}: ${label}.startMs isn't a non-negative number, dropped`);
+  }
+  if (typeof raw.loop === "boolean") tile.loop = raw.loop;
+  else if (raw.loop !== undefined) {
+    parseWarn(`[sceneDoc] ${source}: ${label}.loop isn't a boolean, dropped`);
+  }
+  if (isChartColour(raw.colour)) tile.colour = raw.colour;
+  else if (raw.colour !== undefined) {
+    parseWarn(`[sceneDoc] ${source}: ${label}.colour isn't a hex or theme colour, dropped`);
+  }
+  return tile;
+}
+
+function parseMosaicReveal(raw: unknown, source: string): SceneDocMosaicReveal | undefined {
+  if (!isRecord(raw)) {
+    parseWarn(`[sceneDoc] ${source}: mosaic.reveal isn't an object, dropped`);
+    return undefined;
+  }
+  const reveal: SceneDocMosaicReveal = {};
+  for (const field of ["at", "staggerMs", "durationMs"] as const) {
+    const value = raw[field];
+    if (finiteNum(value) && value >= 0) reveal[field] = value;
+    else if (value !== undefined) {
+      parseWarn(
+        `[sceneDoc] ${source}: mosaic.reveal.${field} isn't a non-negative number, dropped`,
+      );
+    }
+  }
+  if (MOSAIC_REVEAL_ORDERS.includes(raw.order as MosaicRevealOrder)) {
+    reveal.order = raw.order as MosaicRevealOrder;
+  } else if (raw.order !== undefined) {
+    parseWarn(`[sceneDoc] ${source}: mosaic.reveal.order isn't rows|columns|centre, dropped`);
+  }
+  if (typeof raw.ease === "string" && isEaseName(raw.ease)) reveal.ease = raw.ease;
+  else if (raw.ease !== undefined) {
+    parseWarn(`[sceneDoc] ${source}: mosaic.reveal.ease isn't a known ease, dropped`);
+  }
+  for (const key of Object.keys(raw)) {
+    if (!["at", "staggerMs", "durationMs", "order", "ease"].includes(key)) {
+      parseWarn(`[sceneDoc] ${source}: mosaic.reveal.${key} isn't a reveal field, ignored`);
+    }
+  }
+  return Object.keys(reveal).length > 0 ? reveal : undefined;
+}
+
+/** Keeps the well-formed tiles and fields; a block left with no tiles drops, so absent stays the old path. */
+function parseMosaic(raw: unknown, source: string): SceneDocMosaic | undefined {
+  if (!isRecord(raw) || !Array.isArray(raw.tiles)) {
+    parseWarn(`[sceneDoc] ${source}: mosaic needs a tiles array, dropped`);
+    return undefined;
+  }
+  for (const key of Object.keys(raw)) {
+    if (!MOSAIC_FIELDS.includes(key)) {
+      parseWarn(`[sceneDoc] ${source}: mosaic.${key} isn't a mosaic field, ignored`);
+    }
+  }
+  const tiles = raw.tiles
+    .map((tile, i) => parseMosaicTile(tile, source, `mosaic.tiles[${i}]`))
+    .filter((tile): tile is SceneDocMosaicTile => tile !== null);
+  if (tiles.length === 0) {
+    parseWarn(`[sceneDoc] ${source}: mosaic has no usable tiles, dropped`);
+    return undefined;
+  }
+  const mosaic: SceneDocMosaic = { tiles };
+  if (Number.isInteger(raw.columns) && (raw.columns as number) >= 1) {
+    mosaic.columns = raw.columns as number;
+  } else if (raw.columns !== undefined) {
+    parseWarn(`[sceneDoc] ${source}: mosaic.columns isn't a whole number from 1, dropped`);
+  }
+  if (finiteNum(raw.gap) && raw.gap >= 0) mosaic.gap = raw.gap;
+  else if (raw.gap !== undefined) {
+    parseWarn(`[sceneDoc] ${source}: mosaic.gap isn't a non-negative number, dropped`);
+  }
+  if (raw.reveal !== undefined) {
+    const reveal = parseMosaicReveal(raw.reveal, source);
+    if (reveal) mosaic.reveal = reveal;
+  }
+  return mosaic;
+}
+
 /** Keeps only `exclude: true` and finite, non-negative marks (rounded, unique, ascending); an empty block drops, so absent stays the default. */
 function parseStills(raw: unknown, source: string): SceneDocStills | undefined {
   if (!isRecord(raw)) {
@@ -2316,6 +2537,14 @@ export function parseSceneDoc(raw: unknown, source: string): SceneDoc | undefine
   if (doc.room !== undefined) {
     const room = parseRoom(doc.room, source);
     if (room) out.room = room;
+  }
+  if (doc.taps !== undefined) {
+    const taps = parseTaps(doc.taps, source);
+    if (taps) out.taps = taps;
+  }
+  if (doc.mosaic !== undefined) {
+    const mosaic = parseMosaic(doc.mosaic, source);
+    if (mosaic) out.mosaic = mosaic;
   }
   if (
     doc.animatedTrack === "camera" ||
