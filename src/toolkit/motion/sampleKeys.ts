@@ -48,7 +48,7 @@ export function sampleKeys<K extends MotionKey>(
   const out: Record<string, unknown> = {};
   for (const key of sorted) {
     for (const prop of Object.keys(key)) {
-      if (prop === "tMs" || prop === "ease" || prop in out) continue;
+      if (prop === "tMs" || prop === "ease" || Object.hasOwn(out, prop)) continue;
       out[prop] = sampleKeyProperty(sorted, localMs, (k) => k[prop], mixValue, easeT);
     }
   }

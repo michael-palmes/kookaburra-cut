@@ -86,6 +86,14 @@ describe("sampleKeys", () => {
     ];
     expect(sampleKeys(track, 50, { overshoot: 3 }).s).toBe(1.25);
   });
+
+  it("samples properties named like object prototype keys", () => {
+    const track = [
+      { tMs: 0, valueOf: 0, constructor: 2 },
+      { tMs: 100, valueOf: 1, constructor: 4 },
+    ];
+    expect(sampleKeys(track, 50)).toEqual({ valueOf: 0.5, constructor: 3 });
+  });
 });
 
 describe("stampScale", () => {
