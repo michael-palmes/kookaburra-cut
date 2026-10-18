@@ -17,6 +17,7 @@ Ask focused multiple-choice questions when a decision materially changes the imp
 ```bash
 pnpm install            # install JS deps
 pnpm setup:ffmpeg       # provision the ffmpeg sidecar (dev copy of system ffmpeg)
+pnpm setup:models       # provision the beat-this model (SHA-256 pinned; every build needs it, CI uses --stub)
 pnpm tauri dev          # run the app (Vite HMR + WKWebView shell)
 pnpm build              # tsc --noEmit + vite build
 pnpm test               # vitest + node tests + the kb suite (pnpm test:kit)
