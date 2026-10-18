@@ -2,6 +2,7 @@ import { listen } from "@tauri-apps/api/event";
 import { open as openFilePicker } from "@tauri-apps/plugin-dialog";
 import { type RefObject, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { formatBytes } from "../engine/appCache";
 import { useAssetRevision, withAssetRevision } from "../engine/assetRevisions";
 import { listEdits } from "../engine/edit";
 import {
@@ -10,9 +11,11 @@ import {
   type ConformJob,
   type ConformProgress,
   type ConformStatus,
+  cancelConform,
   conformMedia,
   conformPercent,
   conformStatus,
+  conformWasCancelled,
   deleteGlobalScreenshot,
   formatMediaDuration,
   fsUrl,
@@ -22,10 +25,18 @@ import {
   importMedia,
   listConformJobs,
   listGlobalScreenshots,
+  listOriginals,
   listProjectMedia,
   MEDIA_DRAG_TYPE,
   type MediaMeta,
   mediaMeta,
+  type OriginalFile,
+  originalOfClip,
+  pendingConformMeta,
+  type RemovedOriginals,
+  removableOriginals,
+  removeOriginal,
+  removeOriginals,
   revealPath,
 } from "../engine/media";
 import { projectIdForNativeSlug } from "../engine/project";
@@ -202,23 +213,320 @@ function ConformIcon() {
   );
 }
 
-/** A mezzanine still being written: shown in the grid until its file lands. */
-function ConformingCard({ job }: { job: ConformJob }) {
-  const name = job.rel.replace(/^assets\//, "");
-  const percent = conformPercent(job);
+function StopIcon() {
   return (
-    <div className="media-card" aria-busy="true" style={{ position: "relative" }}>
-      <div className="media-thumb">
-        <span className="media-thumb-pending">
-          {job.total > 0 ? `Conforming… ${percent}%` : "Waiting to conform…"}
-        </span>
-      </div>
-      <div className="media-card-body">
-        <span className="media-name" title={name}>
-          {name}
-        </span>
-        <div className="media-card-foot">
-          <span className="media-meta-line">60 fps copy</span>
+    <svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true">
+      <circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" strokeWidth="1.5" />
+      <rect x="5.75" y="5.75" width="4.5" height="4.5" rx="0.75" fill="currentColor" />
+    </svg>
+  );
+}
+
+/** The payload a media card drags: its project-relative path, the final one for a clip still conforming. */
+export function mediaDragData(rel: string): [type: string, value: string][] {
+  return [
+    [MEDIA_DRAG_TYPE, rel],
+    ["text/plain", rel],
+  ];
+}
+
+/** A conform's card and queue state: its percent, or waiting for a background slot. */
+export function conformCardState(job: Pick<ConformJob, "frame" | "total">): number | "waiting" {
+  return job.total > 0 ? conformPercent(job) : "waiting";
+}
+
+function fileName(rel: string): string {
+  return rel.split("/").pop() ?? rel;
+}
+
+/** The single Remove original confirmation. */
+export function removeOriginalMessage(clipRel: string, bytes: number): string {
+  return `Remove the original of ${fileName(clipRel)} (${formatBytes(bytes)})? The conformed clip stays.`;
+}
+
+/** The library ⋯ item, with what it frees. */
+export function removeOriginalsLabel(bytes: number): string {
+  return `Remove originals (${formatBytes(bytes)})…`;
+}
+
+/** The bulk confirmation; originals still in use are named as staying. */
+export function removeOriginalsMessage(originals: readonly OriginalFile[]): string {
+  const { count, bytes } = removableOriginals(originals);
+  const kept = originals.length - count;
+  const what = count === 1 ? "the original" : `${count} originals`;
+  const stays = kept > 0 ? ` ${kept} still in use ${kept === 1 ? "stays" : "stay"}.` : "";
+  return `Move ${what} (${formatBytes(bytes)}) to the Trash? The conformed clips stay.${stays}`;
+}
+
+/** A conforming card's ⋯ menu: the host's primary action (placing works now), Copy path, and a confirmed Stop conforming. Edit, Add to library and Delete wait for the file. */
+export function pendingCardItems(
+  host: readonly ContextMenuItem[],
+  absPath: string,
+  onCancel: () => void,
+): ContextMenuItem[] {
+  return [
+    ...host.filter((item) => item.id === "primary"),
+    {
+      id: "copy-path",
+      label: "Copy path",
+      onSelect: () => void navigator.clipboard?.writeText(absPath),
+    },
+    {
+      id: "cancel-conform",
+      label: "Stop conforming",
+      icon: <StopIcon />,
+      confirmLabel: "Really stop?",
+      title: "Stops the conform; the original is added as it is",
+      onSelect: onCancel,
+    },
+  ];
+}
+
+/** A conformed clip's Remove original item: opens the confirmation, or explains why it can't run yet. */
+export function removeOriginalItem(
+  original: OriginalFile,
+  clip: string,
+  open: (target: { kind: "one"; original: OriginalFile; clip: string }) => void,
+): ContextMenuItem {
+  return {
+    id: "remove-original",
+    label: "Remove original…",
+    icon: <SceneMenuIcon id="delete" />,
+    disabled: original.busy !== null,
+    title:
+      original.busy ??
+      `Move the original (${formatBytes(original.bytes)}) to the Trash; this clip stays`,
+    onSelect: () => open({ kind: "one", original, clip }),
+  };
+}
+
+/** A mezzanine still being written, as a full card: the original's poster and size under the final path, so it can be picked, dragged or menued like a finished clip while the conform runs. */
+export function ConformingCard({
+  job,
+  meta,
+  canDrag,
+  selected,
+  onMenu,
+  onPreview,
+  onPick,
+  disabled,
+}: {
+  job: ConformJob;
+  /** Read off the original (`pendingConformMeta`); null until it lands. */
+  meta: MediaMeta | null;
+  canDrag: boolean;
+  selected: boolean;
+  onMenu?: (x: number, y: number) => void;
+  onPreview: () => void;
+  onPick?: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <MediaCard
+      rel={job.rel}
+      meta={meta}
+      metaFailed={false}
+      edited={false}
+      conforming={conformCardState(job)}
+      canDrag={canDrag && meta !== null}
+      selected={selected}
+      onMenu={onMenu}
+      onPreview={onPreview}
+      onPick={onPick}
+      disabled={disabled}
+    />
+  );
+}
+
+const QUEUE_STYLE = {
+  flex: "0 0 auto",
+  display: "flex",
+  flexDirection: "column",
+  gap: "var(--space-2)",
+  padding: "var(--space-2) var(--space-3)",
+  background: "var(--surface-raised)",
+  border: "1px solid var(--border-subtle)",
+  borderRadius: "var(--radius-sm)",
+} as const;
+
+const QUEUE_NAME_STYLE = {
+  flex: "1 1 auto",
+  minWidth: 0,
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
+  fontSize: "var(--text-xs)",
+} as const;
+
+const QUEUE_PERCENT_STYLE = {
+  flex: "none",
+  minWidth: "3.5em",
+  textAlign: "right",
+  fontSize: "var(--text-2xs)",
+  fontVariantNumeric: "tabular-nums",
+} as const;
+
+/** The queue's heading: how many run and how many wait for a slot. */
+export function conformQueueHeading(jobs: readonly ConformJob[]): string {
+  const waiting = jobs.filter((job) => job.total === 0).length;
+  const videos = jobs.length === 1 ? "1 video" : `${jobs.length} videos`;
+  return `Conforming ${videos}${waiting > 0 && waiting < jobs.length ? `, ${waiting} waiting` : ""}`;
+}
+
+/** The conform queue above the grid: every job in start order with its progress and a two-step stop (the first press arms, a second within 3 s stops). */
+export function ConformQueue({
+  jobs,
+  armed,
+  onCancel,
+}: {
+  jobs: readonly ConformJob[];
+  /** The rel whose stop is armed, else null. */
+  armed: string | null;
+  onCancel: (rel: string) => void;
+}) {
+  if (jobs.length === 0) return null;
+  return (
+    <section aria-label="Conform queue" style={QUEUE_STYLE}>
+      <span
+        className="muted"
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "var(--space-2)",
+          fontSize: "var(--text-2xs)",
+        }}
+      >
+        <ConformIcon />
+        {conformQueueHeading(jobs)}
+      </span>
+      <ol
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: "var(--space-1)",
+          margin: 0,
+          padding: 0,
+          listStyle: "none",
+        }}
+      >
+        {jobs.map((job) => {
+          const name = fileName(job.rel);
+          const state = conformCardState(job);
+          const isArmed = armed === job.rel;
+          return (
+            <li
+              key={`${job.slug}:${job.rel}`}
+              style={{ display: "flex", alignItems: "center", gap: "var(--space-2)", minWidth: 0 }}
+            >
+              <span title={name} style={QUEUE_NAME_STYLE}>
+                {name}
+              </span>
+              <span
+                className="stage-busy-progress"
+                role="progressbar"
+                aria-label={`${name} conform progress`}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={state === "waiting" ? undefined : state}
+                style={{ flex: "none" }}
+              >
+                <span
+                  className="stage-busy-progress-bar"
+                  style={{ width: `${state === "waiting" ? 0 : state}%` }}
+                />
+              </span>
+              <span className="muted" style={QUEUE_PERCENT_STYLE}>
+                {state === "waiting" ? "Waiting" : `${state}%`}
+              </span>
+              <button
+                type="button"
+                className="media-browser-more"
+                aria-label={isArmed ? `Stop conforming ${name}` : `Cancel conforming ${name}`}
+                title={
+                  isArmed
+                    ? "Press again to stop; the original is added as it is"
+                    : "Stop this conform"
+                }
+                style={
+                  isArmed
+                    ? {
+                        width: "auto",
+                        gap: "var(--space-1)",
+                        padding: "0 var(--space-2)",
+                        color: "var(--danger)",
+                      }
+                    : undefined
+                }
+                onClick={() => onCancel(job.rel)}
+              >
+                <StopIcon />
+                {isArmed && <span style={{ fontSize: "var(--text-2xs)" }}>Stop?</span>}
+              </button>
+            </li>
+          );
+        })}
+      </ol>
+    </section>
+  );
+}
+
+/** The Remove original(s) confirmation: what goes to the Trash, and that the conformed clips stay. */
+export function RemoveOriginalsSheet({
+  title,
+  message,
+  run,
+  onDone,
+  onClose,
+}: {
+  title: string;
+  message: string;
+  run: () => Promise<RemovedOriginals>;
+  /** Something moved: the host re-scans. */
+  onDone: () => void;
+  onClose: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  useEscapeClose(onClose, !busy);
+  const confirm = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const removed = await run();
+      if (removed.count > 0) onDone();
+      onClose();
+    } catch (e) {
+      setError(String(e));
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="modal-overlay" role="dialog" aria-modal="true" aria-label={title}>
+      <div className="modal">
+        <div className="modal-title-row">
+          <h2 className="modal-title">{title}</h2>
+          <button
+            type="button"
+            className="modal-close"
+            aria-label="Close"
+            onClick={onClose}
+            disabled={busy}
+          />
+        </div>
+        <p className="modal-hint">{message}</p>
+        {error && <p className="modal-error">{error}</p>}
+        <div className="modal-actions">
+          <button type="button" className="btn" onClick={onClose} disabled={busy}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="btn primary"
+            disabled={busy}
+            onClick={() => void confirm()}
+          >
+            {busy ? "Moving…" : "Move to Trash"}
+          </button>
         </div>
       </div>
     </div>
@@ -436,8 +744,8 @@ export function MediaCard({
   metaFailed: boolean;
   /** True for a rendered editor output whose edit document still exists. */
   edited: boolean;
-  /** Percent done while an in-place conform runs, else null. */
-  conforming?: number | null;
+  /** Percent done while a conform runs ("waiting" before it has a slot), else null. */
+  conforming?: number | "waiting" | null;
   /** The "Needs conform" chip's tooltip when the probe flags this file, else null. */
   needsConform?: string | null;
   canDrag: boolean;
@@ -478,8 +786,7 @@ export function MediaCard({
         onClick={actions.activate}
         onDragStart={(e) => {
           if (!canDrag) return;
-          e.dataTransfer.setData(MEDIA_DRAG_TYPE, rel);
-          e.dataTransfer.setData("text/plain", rel);
+          for (const [type, value] of mediaDragData(rel)) e.dataTransfer.setData(type, value);
           e.dataTransfer.effectAllowed = "copy";
         }}
         onContextMenu={
@@ -536,7 +843,9 @@ export function MediaCard({
         )}
         {edited && <span className="media-badge">Edited</span>}
         {!edited && conforming !== null && (
-          <span className="media-badge">{`Conforming… ${conforming}%`}</span>
+          <span className="media-badge">
+            {conforming === "waiting" ? "Waiting to conform" : `Conforming… ${conforming}%`}
+          </span>
         )}
         {!edited && conforming === null && needsConform && (
           // Above the card's activate button, so the reasons show on hover.
@@ -763,6 +1072,16 @@ export function MediaBrowser({
   const [verdicts, setVerdicts] = useState<Record<string, { sha: string; status: ConformStatus }>>(
     {},
   );
+  /** Card metas for imports still conforming, read off their originals. */
+  const [pendingMetas, setPendingMetas] = useState<Record<string, MediaMeta>>({});
+  /** The project's kept originals, behind Remove original and Remove originals. */
+  const [originals, setOriginals] = useState<OriginalFile[]>([]);
+  /** The queue row whose stop is armed. */
+  const [armedCancel, setArmedCancel] = useState<string | null>(null);
+  /** The open Remove original(s) confirmation: one original, or every removable one. */
+  const [removing, setRemoving] = useState<
+    { kind: "one"; original: OriginalFile; clip: string } | { kind: "all" } | null
+  >(null);
 
   // The visible kind set: a fixed `kinds` filter wins; else the toolbar toggle; else all.
   const allowedKinds = kinds ?? (kindToggle ? [kindTab] : null);
@@ -783,6 +1102,9 @@ export function MediaBrowser({
     listEdits(slug)
       .then(setEdits)
       .catch(() => setEdits([]));
+    listOriginals(slug)
+      .then(setOriginals)
+      .catch(() => setOriginals([]));
   }, [slug]);
 
   useEffect(() => {
@@ -932,7 +1254,14 @@ export function MediaBrowser({
         delete next[event.rel];
         return next;
       });
-      if (event.stage === "failed") {
+      setPendingMetas((prev) => {
+        if (!(event.rel in prev)) return prev;
+        const next = { ...prev };
+        delete next[event.rel];
+        return next;
+      });
+      setArmedCancel((armed) => (armed === event.rel ? null : armed));
+      if (event.stage === "failed" && !conformWasCancelled(event)) {
         const name = event.rel.replace(/^assets\//, "");
         setPickError(`Couldn't conform ${name}: ${event.error ?? "unknown error"}`);
       }
@@ -972,9 +1301,57 @@ export function MediaBrowser({
     };
   }, [rels, metas, slug]);
 
+  // Poster and size for each import still conforming, read off its original, so its card can be placed now.
+  const pendingKey = JSON.stringify(pendingJobs.map((job) => [job.rel, job.original]));
+  const pendingMetasRef = useRef(pendingMetas);
+  pendingMetasRef.current = pendingMetas;
+  useEffect(() => {
+    const jobs = (JSON.parse(pendingKey) as [string, string][]).map(([rel, original]) => ({
+      rel,
+      original,
+    }));
+    if (jobs.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      for (const job of jobs) {
+        if (cancelled) return;
+        if (pendingMetasRef.current[job.rel]) continue;
+        try {
+          const meta = await pendingConformMeta(slug, job);
+          if (!cancelled) setPendingMetas((prev) => ({ ...prev, [job.rel]: meta }));
+        } catch (e) {
+          console.warn(`[media] no card for conforming ${job.rel}:`, e);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [pendingKey, slug]);
+
   const conformJobFor = useCallback(
     (rel: string) => conformJobs.find((job) => job.rel === rel) ?? null,
     [conformJobs],
+  );
+
+  // A queue stop is two presses: the first arms the row, which disarms itself after 3 s.
+  useEffect(() => {
+    if (armedCancel === null) return;
+    const timer = window.setTimeout(() => setArmedCancel(null), 3000);
+    return () => window.clearTimeout(timer);
+  }, [armedCancel]);
+
+  const cancelJob = useCallback(
+    (rel: string) => {
+      if (armedCancel !== rel) {
+        setArmedCancel(rel);
+        return;
+      }
+      setArmedCancel(null);
+      setPickError(null);
+      cancelConform(slug, rel).catch((e) => setPickError(`Couldn't stop conforming: ${String(e)}`));
+    },
+    [armedCancel, slug],
   );
 
   const startConform = useCallback(
@@ -1013,13 +1390,18 @@ export function MediaBrowser({
   );
 
   const previewOpen = preview !== null;
+  // A clip still conforming previews its original, the file that exists.
+  const previewPending =
+    preview && sourceTab === "project" ? pendingJobs.find((job) => job.rel === preview) : undefined;
   const previewMeta = preview
-    ? ((sourceTab === "global" ? globalMetas[preview] : metas[preview]) ?? null)
+    ? ((sourceTab === "global"
+        ? globalMetas[preview]
+        : (metas[preview] ?? pendingMetas[preview])) ?? null)
     : null;
   const previewSrc = preview
     ? sourceTab === "global"
       ? (globalShots?.find((s) => s.name === preview)?.absPath ?? null)
-      : `${projectPath}/${preview}`
+      : `${projectPath}/${previewPending?.original || preview}`
     : null;
   // A file replaced in place previews at its new revision.
   const previewRevision = useAssetRevision(
@@ -1125,8 +1507,34 @@ export function MediaBrowser({
     <AddMediaButton slug={slug} kinds={kinds} onImported={refresh} />
   );
   // Library files live in ~/Kookaburra Cut/screenshots and have their own per-card Delete.
-  const cleanupButton =
-    !cleanupUnused || sourceTab !== "project" ? null : cleanupUnused === "menu" ? (
+  const managing = Boolean(cleanupUnused) && sourceTab === "project";
+  const freeOriginals = removableOriginals(originals);
+  // The sheets own the selection and the confirm, so the items themselves stay plain opens.
+  const actionItems: ContextMenuItem[] = [
+    ...(cleanupUnused === "menu"
+      ? [
+          {
+            id: "delete-unused",
+            label: "Delete unused…",
+            icon: <SceneMenuIcon id="delete" />,
+            onSelect: () => setUnusedOpen(true),
+          },
+        ]
+      : []),
+    ...(freeOriginals.count > 0
+      ? [
+          {
+            id: "remove-originals",
+            label: removeOriginalsLabel(freeOriginals.bytes),
+            icon: <SceneMenuIcon id="delete" />,
+            title: "Move the originals kept beside conformed clips to the Trash",
+            onSelect: () => setRemoving({ kind: "all" }),
+          },
+        ]
+      : []),
+  ];
+  const actionsButton =
+    managing && actionItems.length > 0 ? (
       <button
         type="button"
         className="media-browser-more"
@@ -1141,21 +1549,15 @@ export function MediaBrowser({
             y: r.bottom + 4,
             ariaLabel: MEDIA_ACTIONS_MENU,
             returnFocus: e.currentTarget,
-            // The sheet owns the selection and the confirm, so the item itself stays a plain open.
-            items: [
-              {
-                id: "delete-unused",
-                label: "Delete unused…",
-                icon: <SceneMenuIcon id="delete" />,
-                onSelect: () => setUnusedOpen(true),
-              },
-            ],
+            items: actionItems,
           });
         }}
       >
         <MoreIcon />
       </button>
-    ) : (
+    ) : null;
+  const cleanupButton =
+    managing && cleanupUnused === true ? (
       <button
         type="button"
         className="btn media-browser-cleanup"
@@ -1163,7 +1565,7 @@ export function MediaBrowser({
       >
         Delete unused…
       </button>
-    );
+    ) : null;
 
   const body = (
     <>
@@ -1171,15 +1573,17 @@ export function MediaBrowser({
         kindRow ||
         hint ||
         addButton ||
-        cleanupButton) && (
+        cleanupButton ||
+        actionsButton) && (
         <div className="media-browser-bar">
           <div className="media-browser-toggles">
             {!(sourceRow && kindRow) && sourceRow}
             {kindRow}
             {hint && <span className="muted media-browser-hint">{hint}</span>}
           </div>
-          {(cleanupButton || addButton) && (
+          {(cleanupButton || actionsButton || addButton) && (
             <div className="media-browser-actions">
+              {actionsButton}
               {cleanupButton}
               {addButton}
             </div>
@@ -1187,6 +1591,9 @@ export function MediaBrowser({
         </div>
       )}
       {pickError && <MediaBrowserError message={pickError} />}
+      {sourceTab === "project" && (!allowedKinds || allowedKinds.includes("video")) && (
+        <ConformQueue jobs={conformJobs} armed={armedCancel} onCancel={cancelJob} />
+      )}
 
       {sourceTab === "global" ? (
         globalShots === null || visibleGlobal === undefined ? (
@@ -1260,13 +1667,42 @@ export function MediaBrowser({
         </p>
       ) : (
         <div className="media-grid">
-          {visiblePending.map((job) => (
-            <ConformingCard key={`conforming:${job.rel}`} job={job} />
-          ))}
+          {visiblePending.map((job) => {
+            const meta = pendingMetas[job.rel] ?? null;
+            return (
+              <ConformingCard
+                key={`conforming:${job.rel}`}
+                job={job}
+                meta={meta}
+                canDrag={Boolean(draggableMedia)}
+                selected={selectedRel != null && job.rel === selectedRel}
+                disabled={pickBusy}
+                onMenu={(x, y) =>
+                  setMenu({
+                    x,
+                    y,
+                    items: pendingCardItems(
+                      cardMenu ? cardMenu(job.rel, meta, { editedOf: null }) : [],
+                      `${projectPath}/${job.rel}`,
+                      () => {
+                        setPickError(null);
+                        cancelConform(slug, job.rel).catch((e) =>
+                          setPickError(`Couldn't stop conforming: ${String(e)}`),
+                        );
+                      },
+                    ),
+                  })
+                }
+                onPreview={() => setPreview(job.rel)}
+                onPick={onPick ? () => onPick(job.rel, meta) : undefined}
+              />
+            );
+          })}
           {(visibleRels ?? []).map((rel) => {
             const job = conformJobFor(rel);
             const status = verdicts[rel]?.status;
             const flagged = !job && status?.needsConform === true;
+            const kept = job ? null : originalOfClip(originals, rel);
             return (
               <MediaCard
                 key={rel}
@@ -1288,18 +1724,21 @@ export function MediaBrowser({
                         cardMenu
                           ? cardMenu(rel, metas[rel] ?? null, { editedOf: editNameOf(rel) })
                           : [],
-                        flagged
-                          ? [
-                              {
-                                id: "conform",
-                                label: "Conform",
-                                icon: <ConformIcon />,
-                                title:
-                                  "Re-encode at a steady 60 fps with QuickTime's timing and colour; the original moves to assets/.originals",
-                                onSelect: () => startConform(rel),
-                              },
-                            ]
-                          : [],
+                        [
+                          ...(flagged
+                            ? [
+                                {
+                                  id: "conform",
+                                  label: "Conform",
+                                  icon: <ConformIcon />,
+                                  title:
+                                    "Re-encode at a steady 60 fps with QuickTime's timing and colour; the original moves to assets/.originals",
+                                  onSelect: () => startConform(rel),
+                                },
+                              ]
+                            : []),
+                          ...(kept ? [removeOriginalItem(kept, rel, setRemoving)] : []),
+                        ],
                       ),
                       `${projectPath}/${rel}`,
                       setPickError,
@@ -1332,6 +1771,28 @@ export function MediaBrowser({
             onDeleted={refresh}
             onClose={() => setUnusedOpen(false)}
           />,
+          modalHost(),
+        )}
+
+      {removing &&
+        createPortal(
+          removing.kind === "one" ? (
+            <RemoveOriginalsSheet
+              title="Remove original"
+              message={removeOriginalMessage(removing.clip, removing.original.bytes)}
+              run={() => removeOriginal(slug, removing.clip)}
+              onDone={refresh}
+              onClose={() => setRemoving(null)}
+            />
+          ) : (
+            <RemoveOriginalsSheet
+              title="Remove originals"
+              message={removeOriginalsMessage(originals)}
+              run={() => removeOriginals(slug)}
+              onDone={refresh}
+              onClose={() => setRemoving(null)}
+            />
+          ),
           modalHost(),
         )}
 

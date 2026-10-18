@@ -563,7 +563,7 @@ export default function App() {
           const conforming = await conformingAmong(slug, imported);
           setToast({
             kind: "success",
-            message: `Added ${imported.length} file${imported.length === 1 ? "" : "s"} to assets${conforming > 0 ? ` (conforming ${conforming})` : ""}`,
+            message: `Added ${imported.length} file${imported.length === 1 ? "" : "s"} to assets${conforming > 0 ? `; ${conforming} conforming (place ${conforming === 1 ? "it" : "them"} now, Media shows progress)` : ""}`,
           });
         })
         .catch((e) => setToast({ kind: "error", message: `Import failed: ${String(e)}` }));

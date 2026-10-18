@@ -1,17 +1,35 @@
 import { createRef } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
+import { MEDIA_DRAG_TYPE, type MediaMeta, type OriginalFile } from "../engine/media";
 import {
+  ConformingCard,
+  ConformQueue,
+  conformCardState,
+  conformQueueHeading,
   conformReasonText,
   MediaBrowser,
   MediaBrowserError,
   MediaCard,
   MediaPreviewOverlay,
   mediaCardActions,
+  mediaDragData,
   mediaPreviewStep,
   mediaPreviewTabTarget,
+  pendingCardItems,
+  RemoveOriginalsSheet,
+  removeOriginalItem,
+  removeOriginalMessage,
+  removeOriginalsLabel,
+  removeOriginalsMessage,
   runMediaPickSingleFlight,
 } from "./MediaBrowser";
+
+// Posters resolve through the asset protocol, which needs a window the node runner lacks.
+vi.mock("@tauri-apps/api/core", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@tauri-apps/api/core")>()),
+  convertFileSrc: (path: string) => `asset://localhost${path}`,
+}));
 
 const testProcess = (
   globalThis as unknown as {
@@ -309,5 +327,168 @@ describe("panel-scoped media preview", () => {
       "Needs conform: decoders disagree, novel. Conform from the ⋯ menu.",
     );
     expect(conformReasonText({ why: [] })).toBe("Needs conform");
+  });
+});
+
+describe("placing a clip while it conforms", () => {
+  const job = {
+    slug: "product-tour",
+    rel: "assets/rec.mp4",
+    original: "assets/.originals/rec.mov",
+    frame: 30,
+    total: 120,
+  };
+  const pendingMeta: MediaMeta = {
+    rel: "assets/rec.mp4",
+    kind: "video",
+    width: 1179,
+    height: 2556,
+    fps: 60,
+    durationMs: 30_000,
+    posterPath: "/cache/media/abc/poster.jpg",
+    scrubPaths: [],
+    sha: "a".repeat(64),
+  };
+  const card = (extra: Partial<Parameters<typeof ConformingCard>[0]> = {}) =>
+    renderToStaticMarkup(
+      <ConformingCard
+        job={job}
+        meta={pendingMeta}
+        canDrag
+        selected={false}
+        onPreview={() => undefined}
+        {...extra}
+      />,
+    );
+
+  it("drags and picks under the final path, with the original's poster", () => {
+    const html = card({ onPick: () => undefined, onMenu: () => undefined });
+    expect(html).toContain('draggable="true"');
+    expect(html).toContain('aria-label="Use rec.mp4"');
+    expect(html).toContain('aria-label="Actions for rec.mp4"');
+    expect(html).toContain("Conforming… 25%");
+    expect(html).toContain("poster.jpg");
+    expect(html).toContain("1179×2556 · 60 fps");
+    expect(mediaDragData(job.rel)).toEqual([
+      [MEDIA_DRAG_TYPE, "assets/rec.mp4"],
+      ["text/plain", "assets/rec.mp4"],
+    ]);
+  });
+
+  it("waits to be draggable until its card meta is read, and says when it waits for a slot", () => {
+    const early = card({ meta: null, job: { ...job, frame: 0, total: 0 } });
+    expect(early).not.toContain('draggable="true"');
+    expect(early).toContain("Waiting to conform");
+    expect(card({ canDrag: false })).not.toContain('draggable="true"');
+    expect(conformCardState({ frame: 0, total: 0 })).toBe("waiting");
+    expect(conformCardState({ frame: 60, total: 120 })).toBe(50);
+  });
+
+  it("keeps the host's placing action and offers a confirmed stop", () => {
+    const host = [
+      { id: "edit", label: "Edit", onSelect: () => undefined },
+      { id: "primary", label: "Select", onSelect: () => undefined },
+      { id: "add-global", label: "Add to library", onSelect: () => undefined },
+      { id: "delete", label: "Delete", danger: true, onSelect: () => undefined },
+    ];
+    const stop = vi.fn();
+    const items = pendingCardItems(host, "/Users/x/product-tour/assets/rec.mp4", stop);
+    expect(items.map((item) => item.id)).toEqual(["primary", "copy-path", "cancel-conform"]);
+    const cancel = items[2];
+    expect(cancel.icon).toBeTruthy();
+    expect(cancel.confirmLabel).toBe("Really stop?");
+    cancel.onSelect();
+    expect(stop).toHaveBeenCalledTimes(1);
+  });
+
+  it("lists the queue in order with progress, waiting rows and a two-step stop", () => {
+    const jobs = [
+      job,
+      { ...job, rel: "assets/rec-2.mp4", frame: 0, total: 0 },
+      { ...job, rel: "assets/demo.mp4", frame: 90, total: 90 },
+    ];
+    const html = renderToStaticMarkup(
+      <ConformQueue jobs={jobs} armed="assets/rec-2.mp4" onCancel={() => undefined} />,
+    );
+    expect(html).toContain('aria-label="Conform queue"');
+    expect(html).toContain("Conforming 3 videos, 1 waiting");
+    expect(html.indexOf("rec.mp4")).toBeLessThan(html.indexOf("rec-2.mp4"));
+    expect(html.indexOf("rec-2.mp4")).toBeLessThan(html.indexOf("demo.mp4"));
+    expect(html).toContain('aria-valuenow="25"');
+    expect(html).toContain('aria-valuenow="100"');
+    expect(html).toContain(">Waiting<");
+    expect(html).toContain('aria-label="Cancel conforming rec.mp4"');
+    expect(html).toContain('aria-label="Stop conforming rec-2.mp4"');
+    expect(html).toContain(">Stop?<");
+    // The heading's icon plus one stop icon per row.
+    expect(html.match(/<svg/g)?.length).toBe(4);
+    expect(
+      renderToStaticMarkup(<ConformQueue jobs={[]} armed={null} onCancel={() => undefined} />),
+    ).toBe("");
+    expect(conformQueueHeading([job])).toBe("Conforming 1 video");
+    expect(conformQueueHeading([job, job])).toBe("Conforming 2 videos");
+  });
+});
+
+describe("removing originals", () => {
+  const MB = 1024 * 1024;
+  const original = (extra: Partial<OriginalFile>): OriginalFile => ({
+    rel: "assets/.originals/rec.mov",
+    bytes: 24 * MB,
+    clip: "assets/rec.mp4",
+    busy: null,
+    ...extra,
+  });
+
+  it("names the clip, the size and that the clip stays", () => {
+    expect(removeOriginalMessage("assets/rec.mp4", 24 * MB)).toBe(
+      "Remove the original of rec.mp4 (24.0 MB)? The conformed clip stays.",
+    );
+    expect(removeOriginalsLabel(240 * MB)).toBe("Remove originals (240 MB)…");
+    expect(
+      removeOriginalsMessage([
+        original({}),
+        original({ rel: "assets/.originals/b.mov", bytes: 8 * MB }),
+        original({ rel: "assets/.originals/c.mov", busy: "c.mov is still conforming" }),
+      ]),
+    ).toBe(
+      "Move 2 originals (32.0 MB) to the Trash? The conformed clips stay. 1 still in use stays.",
+    );
+    expect(removeOriginalsMessage([original({})])).toBe(
+      "Move the original (24.0 MB) to the Trash? The conformed clips stay.",
+    );
+  });
+
+  it("opens the confirmation from the clip menu, or says why it can't yet", () => {
+    const open = vi.fn();
+    const item = removeOriginalItem(original({}), "assets/rec.mp4", open);
+    expect(item.label).toBe("Remove original…");
+    expect(item.icon).toBeTruthy();
+    expect(item.disabled).toBe(false);
+    item.onSelect();
+    expect(open).toHaveBeenCalledWith({
+      kind: "one",
+      original: original({}),
+      clip: "assets/rec.mp4",
+    });
+    const busy = removeOriginalItem(original({ busy: "rec.mov is still conforming" }), "x", open);
+    expect(busy.disabled).toBe(true);
+    expect(busy.title).toBe("rec.mov is still conforming");
+  });
+
+  it("confirms as a dialog that moves to the Trash", () => {
+    const html = renderToStaticMarkup(
+      <RemoveOriginalsSheet
+        title="Remove original"
+        message={removeOriginalMessage("assets/rec.mp4", 24 * MB)}
+        run={async () => ({ count: 1, bytes: 24 * MB })}
+        onDone={() => undefined}
+        onClose={() => undefined}
+      />,
+    );
+    expect(html).toContain('role="dialog"');
+    expect(html).toContain('aria-label="Remove original"');
+    expect(html).toContain("The conformed clip stays.");
+    expect(html).toContain("Move to Trash");
   });
 });
