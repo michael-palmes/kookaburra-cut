@@ -153,6 +153,11 @@ export function mosaicRevealRanks(rects: MosaicTileRect[], order: MosaicRevealOr
 }
 
 /** A tile's reveal, 0..1 (an overshooting ease may pass 1), at scene-local `localMs`. */
+/** Scene-local ms when the last tile's reveal settles, for Present holds and automatic stills. */
+export function mosaicRevealEndMs(ranks: readonly number[], reveal: ResolvedMosaicReveal): number {
+  return reveal.at + Math.max(0, ...ranks) * reveal.staggerMs + reveal.durationMs;
+}
+
 export function mosaicTileReveal(
   localMs: number,
   rank: number,

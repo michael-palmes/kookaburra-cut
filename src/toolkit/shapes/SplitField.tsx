@@ -10,6 +10,7 @@ import {
 } from "three";
 import { useClipTexture } from "../../engine/clipTexture";
 import { frameAtDepth, useFormat } from "../../engine/format";
+import { registerPresentTiming } from "../../engine/presentTimingRegistry";
 import { resolveAssetUrl } from "../../engine/project";
 import { ProjectIdContext, SceneDocContext, useSceneContext } from "../../engine/sceneContext";
 import type { SceneDocMosaicReveal, SceneDocMosaicTile } from "../../engine/sceneDocSchema";
@@ -17,6 +18,7 @@ import {
   MOSAIC_DEFAULT_GAP,
   MOSAIC_REVEAL_FROM_SCALE,
   mosaicGrid,
+  mosaicRevealEndMs,
   mosaicRevealRanks,
   mosaicTileKind,
   mosaicTileRects,
@@ -241,6 +243,12 @@ function MountedSplitField({
     Math.max(0, gap) * Math.min(area.width, area.height),
   );
   const ranks = mosaicRevealRanks(rects, reveal.order);
+  const sceneIndex = useSceneContext()?.index;
+  const settleMs = mosaicRevealEndMs(ranks, reveal);
+  useEffect(() => {
+    if (sceneIndex === undefined) return;
+    return registerPresentTiming(sceneIndex, { kind: "decoration", toMs: settleMs });
+  }, [sceneIndex, settleMs]);
   return (
     <group position={origin}>
       {tiles.map((tile, i) => (

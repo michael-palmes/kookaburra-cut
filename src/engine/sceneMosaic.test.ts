@@ -4,6 +4,7 @@ import { parseSceneDoc } from "./sceneDocSchema";
 import {
   MOSAIC_DEFAULT_REVEAL,
   mosaicGrid,
+  mosaicRevealEndMs,
   mosaicRevealRanks,
   mosaicTileKind,
   mosaicTileRects,
@@ -72,6 +73,13 @@ describe("mosaic reveal", () => {
     expect(mosaicTileReveal(200, 0, reveal)).toBe(0.5);
     expect(mosaicTileReveal(200, 2, reveal)).toBe(0);
     expect(mosaicTileReveal(400, 2, reveal)).toBe(1);
+  });
+
+  it("settles when the last-ranked tile does", () => {
+    const reveal = resolveMosaicReveal({ at: 100, staggerMs: 50, durationMs: 200, ease: "linear" });
+    expect(mosaicRevealEndMs([0, 2, 1], reveal)).toBe(400);
+    expect(mosaicTileReveal(mosaicRevealEndMs([0, 2, 1], reveal), 2, reveal)).toBe(1);
+    expect(mosaicRevealEndMs([], reveal)).toBe(300);
   });
 
   it("layers reveal fields over the defaults, skipping absent ones", () => {
