@@ -86,6 +86,43 @@ objc2-web-kit = { version = "=0.3.2", default-features = false, features = [
   "WKWebsiteDataStore",
 ] }
 block2 = "0.6"
+# Ingest conform (conform_av.rs): AVFoundation decodes in-process, so no second binary to sign; the 0.3.2 family the AppKit bindings already lock.
+objc2-av-foundation = { version = "0.3.2", default-features = false, features = [
+  "std",
+  "AVAsset",
+  "AVAssetReader",
+  "AVAssetReaderOutput",
+  "AVAssetTrack",
+  "AVAssetTrackSegment",
+  "AVMediaFormat",
+  "AVVideoSettings",
+  "objc2-core-foundation",
+  "objc2-core-media",
+] }
+objc2-core-foundation = { version = "0.3.2", default-features = false, features = [
+  "std",
+  "CFCGTypes",
+  "CFDictionary",
+  "CFNumber",
+  "CFString",
+] }
+objc2-core-media = { version = "0.3.2", default-features = false, features = [
+  "std",
+  "CMBase",
+  "CMFormatDescription",
+  "CMSampleBuffer",
+  "CMTime",
+  "CMTimeRange",
+  "objc2-core-video",
+] }
+objc2-core-video = { version = "0.3.2", default-features = false, features = [
+  "std",
+  "CVBase",
+  "CVBuffer",
+  "CVImageBuffer",
+  "CVPixelBuffer",
+  "CVReturn",
+] }
 # Never imported: pins the webview layer to tauri-runtime-wry's wry, so move it with tauri (one wry in the lock).
 wry = "=0.57.0"
 

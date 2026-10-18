@@ -5,6 +5,9 @@ mod claude_update;
 pub mod cli;
 pub mod cli_song;
 mod concurrency;
+mod conform;
+#[cfg(target_os = "macos")]
+mod conform_av;
 mod edit;
 mod edit_masks;
 mod encode;
