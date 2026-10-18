@@ -143,6 +143,38 @@ class CheckTests(KbTestCase):
         added = check.stamp_stagger_exact(seed, dict(seed, textAnimationOverrides={"t": {"in": "fade", "out": "none", "staggerMs": 0}}))
         self.assertIs(added["textAnimationOverrides"]["t"]["staggerExact"], True)
 
+    def test_sidecar_room(self) -> None:
+        doc = {
+            "version": 1,
+            "lighting": {"lights": [{"id": "wash", "type": "point", "intensity": 4, "placement": {"mode": "point", "position": [0, 1, 2]}}]},
+            "room": {
+                "keys": [
+                    {"at": "bar:2", "colour": "#ff0000"},
+                    {"at": 0, "color": "#00ff00", "colour": "teal"},
+                    {"at": 100, "themeId": "kookaburra-nope", "transition": "flood", "ease": "inOutQaud", "durationMs": 900},
+                    {"at": 500, "lighting": {"lights": {"wsh": {"intensity": 2}}}},
+                    {"at": 700},
+                ]
+            },
+        }
+        write_json(self.root / "scenes" / "02-hero.json", doc)
+        report = self.run_check(["scenes/02-hero.json"])
+        self.assertHasError(
+            report,
+            "room.keys[0].at",
+            "room.keys[1].colour",
+            'unknown theme "kookaburra-nope"',
+            'unknown ease "inOutQaud"',
+            "room.keys[4] needs a colour, a themeId or lighting",
+        )
+        warnings = messages(report, "warning")
+        self.assertTrue(any("room.keys[1].color" in w and "colour" in w for w in warnings))
+        self.assertTrue(any("runs past the next key at 500ms" in w for w in warnings))
+        self.assertTrue(any("lights.wsh" in w and "wash" in w for w in warnings))
+        write(self.root / "scenes" / "02-hero.tsx", "export default 1;")
+        report = self.run_check(["scenes/02-hero.json"])
+        self.assertTrue(any("stage the scene" in w for w in messages(report, "warning")))
+
     def test_sidecar_version_and_json(self) -> None:
         write_json(self.root / "scenes" / "02-hero.json", {"name": "x"})
         self.assertHasError(self.run_check(["scenes/02-hero.json"]), "ignores the whole sidecar")

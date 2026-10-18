@@ -112,6 +112,7 @@ export function SceneStage({
           sceneIndex,
           light: ambientRef.current,
           base: lighting.ambient,
+          baseColor: lighting.ambientColor,
         }),
       );
     }

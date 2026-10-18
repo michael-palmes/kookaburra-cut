@@ -43,6 +43,7 @@ kb doc 02-demo unset textLook
 | `background` | Camera-locked fill (colour, gradient, image, video, shader, 3D) | backgrounds.md |
 | `backdrop` | World-space staging (floor, gradient, image) | backgrounds.md |
 | `lighting` | Scene lighting layer and keyframes | lighting.md |
+| `room` | The backdrop colour cutting or flooding mid-scene, staged lights following | below |
 | `devices`, `deviceLayout`, `deviceTrack` | Devices, arrangement, keyframes | devices.md |
 | `objects` | Staged 3D objects | devices.md |
 | `compare` | Before/after comparison | devices.md |
@@ -63,8 +64,8 @@ writes the sidecar, so never park notes or experiments in a sidecar.
 ## What renders without TSX
 
 The host mounts these for EVERY scene, so adding the sidecar block is enough:
-`background`, `media`, `devices` (unless the TSX calls `useSceneDevices`), `objects`,
-`layeredScreenshot`, `chart`, a title/subtitle from `text.title`/`text.subtitle` or
+`background`, `room`, `media`, `devices` (unless the TSX calls `useSceneDevices`),
+`objects`, `layeredScreenshot`, `chart`, a title/subtitle from `text.title`/`text.subtitle` or
 `managedText` (unless the TSX renders those keys), and compare chips. `backdrop`,
 theme lighting and real shadows need a `<SceneStage>` in the TSX.
 
@@ -163,3 +164,48 @@ Which frames become pages is sidecar data:
   Delete the field to unmark; never write `false`.
 - A hand-rolled TSX animation the app cannot see may be caught mid-move by the
   automatic still: add a mark instead. Check a mark with `kb capture --scene S --at <ms/1000>`.
+
+## Rooms: the `room` block
+
+A room is the scene's backdrop colour changing mid-scene, by a hard cut or a flood
+spreading from a point, with the lights following. Never fake one in TSX with timed
+colour planes: write the block and the app draws it the same in preview, export and
+Present.
+
+```json
+"room": {
+  "keys": [
+    { "at": 0, "colour": "#1d2b53" },
+    { "at": 1200, "colour": "accent", "transition": "flood", "origin": [0.15, 0.85],
+      "durationMs": 900, "ease": "inOutCubic", "lighting": { "ambient": 0.5 } },
+    { "at": 2400, "themeId": "kookaburra-sunrise" }
+  ]
+}
+```
+
+- `at`: scene-local ms, a number. Keys sort by `at`; a flood still running when the
+  next key lands is shortened to end there. Before the first key the scene's own
+  background shows.
+- `colour`: a hex or a theme colour token (`background`, `text`, `accent`, `muted`) of
+  the room's palette. Absent: the `themeId` theme's background, else the previous room.
+- `themeId`: reads that theme's colours and its sun, ambient and same-id lights
+  (intensity and colour). It never swaps the scene's theme, so text and fonts stay.
+- `lighting`: the key's own `{ sun, ambient, ambientColor, lights: { <id>: {...} } }`;
+  each light takes `intensity` and a colour (`kelvin`, `colorToken` or hex `color`). It
+  wins over the theme's and over a lighting key on the same light. Rooms relight, they
+  never move a light.
+- `transition`: `cut` (default) or `flood`. A flood grows a circle of the new colour
+  from `origin` (frame fractions: `[0, 0]` top-left, `[1, 1]` bottom-right, default the
+  centre) over `durationMs` (default 800), shaped by `ease`, and the lights lerp by the
+  same amount.
+- A light whose colour is a `colorToken` follows the room: `"colorToken": "background"`
+  takes each room's colour.
+- Only lights a `<SceneStage>` mounts follow a room: stage the scene. A `Device`'s own
+  built-in lights (an unstaged scene) never relight, and the environment (reflections)
+  stays the scene's.
+- The room covers the fixed `background`; transparent parts of a 3D look still draw
+  over it, so pair rooms with a colour background or none.
+- Colours land exactly on the hex in exports without effects. Scene code reads the
+  room with `useRoom()` (colour, flood, progress) and matches text or panels with
+  `cssOpacity(fg, room.colour, a)`. Check a flood with `kb capture --scene S --at <s>`
+  before, during and after.

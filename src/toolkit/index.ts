@@ -26,6 +26,8 @@ export type {
   SceneDocObjectSpec,
   SceneTextAlign,
 } from "../engine/sceneDocSchema";
+// What useRoom returns: the room colour, any flood in progress and the room's lighting pose.
+export type { RoomFloodSample, RoomSample } from "../engine/sceneRoom";
 // Shared-element morph sampling for persistent (hoisted) modules.
 export {
   type SharedKeyframe,
@@ -61,7 +63,7 @@ export type {
   ChartValueFormat,
 } from "./chart/types";
 // Scene registration + types
-export { liftColour } from "./colour";
+export { cssOpacity, glowColour, liftColour } from "./colour";
 export { defineScene } from "./defineScene";
 // The device catalog + Device primitive, the device+media pillar.
 export {
@@ -165,6 +167,14 @@ export {
   useDepthBand,
   useRigTrack,
 } from "./stage/DepthStage";
+// Rooms: the scene's backdrop colour cutting or flooding mid-scene (the sidecar `room` block, or composed by hand).
+export {
+  Room,
+  RoomFlood,
+  type RoomFloodProps,
+  type RoomProps,
+  useRoom,
+} from "./stage/Room";
 export { SceneStage } from "./stage/SceneStage";
 // The scene camera's live pose, and the world rectangle it sees at a depth.
 export { type SceneCamera, useCameraFrame, useSceneCamera } from "./stage/sceneCamera";

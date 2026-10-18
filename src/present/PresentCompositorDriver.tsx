@@ -22,8 +22,9 @@ import {
   sceneCameraEndMs,
 } from "../engine/sceneCamera";
 import { getSceneHosts } from "../engine/sceneHostRegistry";
-import { buildLightingTracks, resolveFrameLighting } from "../engine/sceneLighting";
-import { buildSceneRenderStates, resolveFrameSceneStates } from "../engine/sceneState";
+import { buildLightingTracks } from "../engine/sceneLighting";
+import { buildRoomTracks } from "../engine/sceneRoom";
+import { buildSceneRenderStates, resolveFramePlans } from "../engine/sceneState";
 import {
   applyTransitionEase,
   defaultDirection,
@@ -87,6 +88,15 @@ export function PresentCompositorDriver({
   );
   const overlays = useMemo(
     () => resolveOverlays(project.sceneFrames, project.sceneThemes, project.sceneDocs, project.id),
+    [project],
+  );
+  const roomTracks = useMemo(
+    () =>
+      buildRoomTracks(project.sceneDocs, {
+        sceneThemes: project.sceneThemes,
+        roomThemes: project.roomThemes,
+        projectLighting: project.projectLighting,
+      }),
     [project],
   );
 
@@ -290,7 +300,10 @@ export function PresentCompositorDriver({
       }
     }
     if (!plan) applyCameraTrack(s.camera as PerspectiveCamera, project.cameraTrack, clockMs);
-    const statePlan = resolveFrameSceneStates(sceneStates, resolved);
+    const { statePlan, lightingPlan } = resolveFramePlans(
+      { sceneStates, lightingTracks, roomTracks },
+      resolved,
+    );
     renderComposited(
       s.gl,
       s.scene,
@@ -300,7 +313,7 @@ export function PresentCompositorDriver({
       plan,
       statePlan,
       overlays ?? undefined,
-      resolveFrameLighting(lightingTracks, resolved) ?? undefined,
+      lightingPlan,
     );
   }, 1);
 

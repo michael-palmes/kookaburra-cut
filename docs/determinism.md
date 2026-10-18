@@ -922,6 +922,50 @@ camera exactly:
   resolved underlay shows); at export/capture that state is unreachable by the
   preamble barriers.
 
+### Rooms
+
+- **Null for legacy.** `buildRoomTracks` returns `null` unless a scene doc carries a
+  `room` block with a key that survives validation. Null rooms means
+  `resolveFrameSceneStates` returns the prebuilt states untouched, the lighting plan
+  is built exactly as before, and the host `<SceneRoom>` renders nothing (no mesh, no
+  clock subscription, no program). A doc with a `room` block also opts the project
+  into themed scene state (`usesThemedSceneState`), so each target's root background
+  is explicit.
+- **One seam for three windows.** `resolveFramePlans` (engine/sceneState.ts) is the
+  single per-frame state and lighting resolve; preview (`CompositorDriver`), export
+  (`drawPlannedFrame`) and Present (`PresentCompositorDriver`) all call it with the
+  same prebuilt inputs, so they cannot drift. Rooms feed both halves: the target's
+  root background becomes the room colour, and the room's lighting pose merges into
+  that target's lighting sample (room fields win over lighting keys on the same
+  light). Each transition target samples its own scene's room at its own scene-local
+  time, exactly like the camera and lighting tracks.
+- **Every sample is a pure function of scene-local time.** `sampleRoom` holds the
+  latest key at or before `t`; inside a flood the previous room shows with the
+  incoming colour growing and the lights lerping by the same eased amount (colours
+  in linear light, rounded to `#rrggbb`). Keys are validated into complete poses at
+  build (every key filled to the union of touched fields from the scene's own
+  values), so a flood always lerps from real values and nothing accumulates. A
+  roomed sample writes every light colour explicitly, ambient included, so a room
+  never leaks into the next frame; un-roomed lights keep their colours untouched.
+  The environment (IBL) is never a room field.
+- **The flood is geometry, not a shader.** A camera-locked quad (`FixedQuad`, the
+  fixed background's per-draw matrix lock) in the room colour at
+  `ROOM_RENDER_ORDER = −40`, and a `CircleGeometry(1, 256)` one order above it, both
+  `MeshBasicMaterial`, `toneMapped: false`, `depthTest/depthWrite: false`: the fixed
+  colour fill's existing program, so room colours land exactly on the direct path and
+  nothing compiles. The circle's centre and radius come from `roomFloodCircle`
+  (camera fov and aspect, frame-fraction origin with `[0, 0]` top-left); at radius 1
+  the 256-gon's inscribed circle covers the far frame corner with the fixed
+  background's 1.001 overscan. Both meshes stay mounted for a roomed scene and
+  toggle `visible`, so a key landing mid-run never mounts anything. The room covers
+  the fixed background (−100) and opaque 3D look geometry (−50); transparent look
+  layers draw in three's transparent pass and stay in front.
+- **Export contract.** `ROOM_RENDER_ORDER`, `ROOM_FLOOD_SEGMENTS`, the cover
+  overscan, `ROOM_FLOOD_MS` and the default origin and ease re-render every roomed
+  project when changed. `ws:rooms-spike` (cuts, a flood with a tokened light, a wipe
+  while both sides flood) is the machine-local fixture: look at it after any room
+  change; it is not in any gate.
+
 ### Fonts
 
 - **Every rendered glyph comes from a file we control.** Theme typography is a
@@ -1465,6 +1509,7 @@ rolling-gate project (`showcase-tour`):
 | `ws:device-video-spike` (device/media/camera gate, built-in-lit devices, machine-local) | `386c8419…` | — | — | — | — | — | — | — | — |
 | `ws:device-env-spike` (cold frame-0 repro: a built-in-lit handset's top edge, machine-local) | `9f3418a2…` | — | — | — | — | — | — | — | — |
 | `ws:text-outline-spike` (outlined text in the text barrier: neon, whole-block blur-in, machine-local) | `87bb6b3a…` | — | — | — | — | — | — | — | — |
+| `ws:rooms-spike` (room cuts, a flood with a tokened light, a wipe while both sides flood; machine-local, never gated) | `2768226b…` | `82d0f4ac…` | — | — | — | — | — | — | — |
 
 > **2026-10-18 (troika 0.52.5, one SDF size, opt-in exact text: hash-neutral):**
 > troika-three-text and troika-three-utils move to an exact `0.52.5` pin, one

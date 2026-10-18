@@ -47,6 +47,7 @@ import { loadSceneDoc } from "./sceneDoc";
 import { collectSceneDocFontRefs, type SceneDoc } from "./sceneDocSchema";
 import { ensureUniqueSceneIds } from "./sceneIds";
 import { normalizeLighting } from "./sceneLighting";
+import { collectRoomThemeIds } from "./sceneRoom";
 import {
   buildSceneTimeline,
   type SceneSlot,
@@ -240,6 +241,8 @@ export interface LoadedProject {
   formats: string[];
   /** The manifest's deep-frozen `shared` block, provided to scenes via `ProjectSharedContext`; absent when the manifest has none. */
   projectShared?: ProjectShared;
+  /** Themes room keys name, by id (their colours and lights only); absent when no room key names one. */
+  roomThemes?: Readonly<Record<string, Theme>>;
 }
 
 /** A scene file's stem; the sidecar/thumb cache key (`scenes/01-hero.tsx` → `01-hero`). */
@@ -1136,6 +1139,16 @@ export async function loadProject(
     ),
   );
 
+  // Room keys read other themes' colours and lights without swapping the scene's theme; an unknown id reads the project theme (warned).
+  const roomThemeIds = collectRoomThemeIds(sceneDocs);
+  const roomThemes = roomThemeIds.length
+    ? Object.fromEntries(
+        await Promise.all(
+          roomThemeIds.map(async (rid) => [rid, await resolveProjectTheme(rid, theme)]),
+        ),
+      )
+    : undefined;
+
   // Comparison scenes: derive side B's doc and resolve its theme; undefined everywhere else so projects without a compare block never touch the compare path.
   const compareBDocs = sceneDocs.map((doc) => deriveCompareBDoc(doc) ?? undefined);
   const compareBThemes = await Promise.all(
@@ -1313,6 +1326,7 @@ export async function loadProject(
     exportBlockers,
     formats: manifest.formats ?? [],
     projectShared,
+    roomThemes,
   };
 }
 

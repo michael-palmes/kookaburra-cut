@@ -143,7 +143,7 @@ function parseEntryBase(
   what: string,
 ): { id: string; name?: string; enabled?: boolean; space?: LightSpace } | undefined {
   if (!isStr(v.id)) {
-    console.warn(`[lighting] ${source}: ${what} needs a string "id" — dropped`);
+    parseWarn(`[lighting] ${source}: ${what} needs a string "id", dropped`);
     return undefined;
   }
   const out: { id: string; name?: string; enabled?: boolean; space?: LightSpace } = { id: v.id };
@@ -151,7 +151,7 @@ function parseEntryBase(
   if (typeof v.enabled === "boolean") out.enabled = v.enabled;
   if (v.space !== undefined) {
     if (LIGHT_SPACES.includes(v.space as LightSpace)) out.space = v.space as LightSpace;
-    else console.warn(`[lighting] ${source}: ${what} "${v.id}" has an unknown space — using world`);
+    else parseWarn(`[lighting] ${source}: ${what} "${v.id}" has an unknown space, using world`);
   }
   return out;
 }
@@ -161,12 +161,12 @@ function parseLight(v: unknown, source: string): LightSpec | undefined {
   const base = parseEntryBase(v, source, "light");
   if (!base) return undefined;
   if (!isNum(v.intensity)) {
-    console.warn(`[lighting] ${source}: light "${base.id}" needs a numeric intensity — dropped`);
+    parseWarn(`[lighting] ${source}: light "${base.id}" needs a numeric intensity, dropped`);
     return undefined;
   }
   const placement = parsePlacement(v.placement);
   if (!placement) {
-    console.warn(`[lighting] ${source}: light "${base.id}" has an invalid placement — dropped`);
+    parseWarn(`[lighting] ${source}: light "${base.id}" has an invalid placement, dropped`);
     return undefined;
   }
   const shared = { ...base, intensity: v.intensity, placement };
@@ -187,16 +187,16 @@ function parseLight(v: unknown, source: string): LightSpec | undefined {
       if (isNum(v.decay)) light.decay = Math.max(0, v.decay);
       if (castShadow) {
         // Cube shadow maps cost six renders per light; not worth the memory headroom.
-        console.warn(
-          `[lighting] ${source}: point light "${base.id}" cannot cast shadows — flag dropped`,
+        parseWarn(
+          `[lighting] ${source}: point light "${base.id}" cannot cast shadows, flag dropped`,
         );
       }
       return light;
     }
     case "spot": {
       if (!isNum(v.angleDeg) || !isNum(v.penumbra)) {
-        console.warn(
-          `[lighting] ${source}: spot light "${base.id}" needs angleDeg + penumbra — dropped`,
+        parseWarn(
+          `[lighting] ${source}: spot light "${base.id}" needs angleDeg + penumbra, dropped`,
         );
         return undefined;
       }
@@ -213,22 +213,22 @@ function parseLight(v: unknown, source: string): LightSpec | undefined {
     }
     case "area": {
       if (!isNum(v.width) || !isNum(v.height) || v.width <= 0 || v.height <= 0) {
-        console.warn(
-          `[lighting] ${source}: area light "${base.id}" needs positive width + height — dropped`,
+        parseWarn(
+          `[lighting] ${source}: area light "${base.id}" needs positive width + height, dropped`,
         );
         return undefined;
       }
       const light: LightSpec = { ...shared, type: "area", width: v.width, height: v.height };
       if (castShadow) {
         // three.js cannot shadow-cast from RectAreaLight (upstream #14161).
-        console.warn(
-          `[lighting] ${source}: area light "${base.id}" cannot cast shadows — flag dropped`,
+        parseWarn(
+          `[lighting] ${source}: area light "${base.id}" cannot cast shadows, flag dropped`,
         );
       }
       return light;
     }
     default:
-      console.warn(`[lighting] ${source}: light "${base.id}" has an unknown type — dropped`);
+      parseWarn(`[lighting] ${source}: light "${base.id}" has an unknown type, dropped`);
       return undefined;
   }
 }
@@ -236,7 +236,7 @@ function parseLight(v: unknown, source: string): LightSpec | undefined {
 function parseRepeat(v: unknown, source: string, id: string): FixtureRepeat | undefined {
   if (!isRecord(v)) return undefined;
   if (!isNum(v.count) || !isNum(v.spacing) || !AXES.includes(v.axis as (typeof AXES)[number])) {
-    console.warn(`[lighting] ${source}: fixture "${id}" has an invalid repeat — dropped`);
+    parseWarn(`[lighting] ${source}: fixture "${id}" has an invalid repeat, dropped`);
     return undefined;
   }
   const repeat: FixtureRepeat = {
@@ -256,7 +256,7 @@ function parseFixture(v: unknown, source: string): FixtureSpec | undefined {
   const base = parseEntryBase(v, source, "fixture");
   if (!base) return undefined;
   if (!FIXTURE_FORMS.includes(v.form as FixtureSpec["form"])) {
-    console.warn(`[lighting] ${source}: fixture "${base.id}" has an unknown form — dropped`);
+    parseWarn(`[lighting] ${source}: fixture "${base.id}" has an unknown form, dropped`);
     return undefined;
   }
   if (
@@ -267,18 +267,18 @@ function parseFixture(v: unknown, source: string): FixtureSpec | undefined {
     v.size[0] <= 0 ||
     v.size[1] < 0
   ) {
-    console.warn(`[lighting] ${source}: fixture "${base.id}" needs a [w, h] size — dropped`);
+    parseWarn(`[lighting] ${source}: fixture "${base.id}" needs a [w, h] size, dropped`);
     return undefined;
   }
   if (!isNum(v.emissive) || !isNum(v.lightIntensity)) {
-    console.warn(
-      `[lighting] ${source}: fixture "${base.id}" needs emissive + lightIntensity — dropped`,
+    parseWarn(
+      `[lighting] ${source}: fixture "${base.id}" needs emissive + lightIntensity, dropped`,
     );
     return undefined;
   }
   const placement = parsePlacement(v.placement);
   if (!placement) {
-    console.warn(`[lighting] ${source}: fixture "${base.id}" has an invalid placement — dropped`);
+    parseWarn(`[lighting] ${source}: fixture "${base.id}" has an invalid placement, dropped`);
     return undefined;
   }
   const fixture: FixtureSpec = {
@@ -308,7 +308,7 @@ function dedupeById<T extends { id: string }>(entries: T[], source: string, what
   const out: T[] = [];
   for (const entry of entries) {
     if (seen.has(entry.id)) {
-      console.warn(`[lighting] ${source}: duplicate ${what} id "${entry.id}" — dropped`);
+      parseWarn(`[lighting] ${source}: duplicate ${what} id "${entry.id}", dropped`);
       continue;
     }
     seen.add(entry.id);
@@ -330,7 +330,7 @@ export function normalizeLighting(
   const sun = parseSun(raw.sun) ?? parseSun(raw.key);
   if (sun) out.sun = sun;
   else if (raw.sun !== undefined || raw.key !== undefined) {
-    console.warn(`[lighting] ${source}: invalid sun/key light — dropped`);
+    parseWarn(`[lighting] ${source}: invalid sun/key light, dropped`);
   }
   if (isNum(raw.ambient)) out.ambient = raw.ambient;
   if (isStr(raw.ambientColor)) out.ambientColor = raw.ambientColor;
@@ -340,7 +340,7 @@ export function normalizeLighting(
     for (const f of raw.fills) {
       const fill = parseV8LightSpec(f);
       if (fill) fills.push(fill);
-      else console.warn(`[lighting] ${source}: invalid fill light — dropped`);
+      else parseWarn(`[lighting] ${source}: invalid fill light, dropped`);
     }
     out.fills = fills;
   }
@@ -353,7 +353,7 @@ export function normalizeLighting(
         rotationDeg: isNum(raw.environment.rotationDeg) ? raw.environment.rotationDeg : 0,
       };
     } else {
-      console.warn(`[lighting] ${source}: "environment" needs a string source — dropped`);
+      parseWarn(`[lighting] ${source}: "environment" needs a string source, dropped`);
     }
   }
 
@@ -364,8 +364,8 @@ export function normalizeLighting(
       "light",
     );
     if (lights.length > MAX_SCENE_LIGHTS) {
-      console.warn(
-        `[lighting] ${source}: ${lights.length} lights exceeds the cap of ${MAX_SCENE_LIGHTS} — extra lights dropped`,
+      parseWarn(
+        `[lighting] ${source}: ${lights.length} lights exceeds the cap of ${MAX_SCENE_LIGHTS}, extra lights dropped`,
       );
       lights.length = MAX_SCENE_LIGHTS;
     }
@@ -401,11 +401,11 @@ export function normalizeLighting(
   if (raw.companion !== undefined && !opts.themeLayer) {
     const companion = parseCompanion(raw.companion, source);
     if (companion) out.companion = companion;
-    else console.warn(`[lighting] ${source}: invalid "companion" record — dropped`);
+    else parseWarn(`[lighting] ${source}: invalid "companion" record, dropped`);
   }
 
   if (opts.themeLayer && !hasV8Rig(out) && !hasV9Content(out)) {
-    console.warn(`[theme] ${source}: "lighting" needs a valid key light + ambient — dropped`);
+    parseWarn(`[theme] ${source}: "lighting" needs a valid key light + ambient, dropped`);
     return null;
   }
   return Object.keys(out).length > 0 ? out : null;
@@ -851,6 +851,24 @@ export function hasLightingTracks(
 export interface SceneLightingSample {
   index: number;
   pose: LightingPose;
+  /** The scene has a room, so the apply seam writes every colour explicitly (ambient included) and a room never leaks across frames. */
+  roomed?: true;
+}
+
+/** A scene's room lighting at a scene-local time, null for a scene with no room (`sceneRoom.ts` supplies it; structural so this leaf module never imports rooms). */
+export type RoomPoseAt = (index: number, localMs: number) => LightingPose | null;
+
+/** A room's fields win over the keyed pose's on the same light. */
+function withRoomPose(pose: LightingPose, room: LightingPose): LightingPose {
+  if (room.ambient !== undefined) pose.ambient = room.ambient;
+  if (room.ambientColor !== undefined) pose.ambientColor = room.ambientColor;
+  if (room.sun) pose.sun = { ...pose.sun, ...room.sun };
+  if (room.lights) {
+    const lights = { ...pose.lights };
+    for (const [id, entry] of Object.entries(room.lights)) lights[id] = { ...lights[id], ...entry };
+    pose.lights = lights;
+  }
+  return pose;
 }
 
 /** The frame's lighting plan (solo | a/b + overlay, the FrameCameraPlan shape). Null whenever no scene in the project has a lighting track: the byte-identical legacy path. On transition frames A and B are at DIFFERENT scene-local times, so each target samples its own scene's track at its own time (the camera rule; same failure mode if got wrong). */
@@ -877,13 +895,23 @@ function resolveFrameLightingSamples(
   tracks: readonly (LightingTrack | null)[] | null | undefined,
   resolved: ResolvedLike,
   owned?: readonly boolean[],
+  rooms?: RoomPoseAt,
 ): FrameLightingSamples | null {
-  if ((!tracks || !hasLightingTracks(tracks)) && !owned?.some(Boolean)) return null;
+  if ((!tracks || !hasLightingTracks(tracks)) && !owned?.some(Boolean) && !rooms) return null;
   if (resolved.active.length === 0) return null;
   const sampleFor = (active: { index: number; localMs: number }): SceneLightingSample | null => {
     const track = tracks?.[active.index];
-    if (!track) return owned?.[active.index] ? { index: active.index, pose: {} } : null;
-    return { index: active.index, pose: sampleLightingPose(track, active.localMs) };
+    // Comparison B takes the room only where it owns a track; elsewhere it falls back to side A's sample, room included.
+    const room =
+      rooms && (!owned || owned[active.index]) ? rooms(active.index, active.localMs) : null;
+    if (!track) {
+      if (room) return { index: active.index, pose: room, roomed: true };
+      return owned?.[active.index] ? { index: active.index, pose: {} } : null;
+    }
+    const pose = sampleLightingPose(track, active.localMs);
+    return room
+      ? { index: active.index, pose: withRoomPose(pose, room), roomed: true }
+      : { index: active.index, pose };
   };
   const tr = resolved.transition;
   if (resolved.active.length < 2 || !tr) {
@@ -907,12 +935,14 @@ export function resolveFrameLighting(
   tracks: readonly (LightingTrack | null)[] | null | undefined,
   resolved: ResolvedLike,
   compareBTracks?: CompareBLightingTrackSet | null,
+  rooms?: RoomPoseAt,
 ): FrameLightingPlan | null {
-  const scene = resolveFrameLightingSamples(tracks, resolved);
+  const scene = resolveFrameLightingSamples(tracks, resolved, undefined, rooms);
   const compareB = resolveFrameLightingSamples(
     compareBTracks?.tracks,
     resolved,
     compareBTracks?.owned,
+    compareBTracks ? rooms : undefined,
   );
   if (!compareB) return scene;
 

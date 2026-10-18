@@ -179,6 +179,7 @@ export function SpecimenCanvas({ theme }: { theme: Theme }) {
                 sceneFrames={project.sceneFrames}
                 compareBDocs={project.compareBDocs}
                 compareBThemes={project.compareBThemes}
+                roomThemes={project.roomThemes}
                 commitStamp={project}
               />
             )}
