@@ -206,11 +206,15 @@ fn move_theme(
     {
         return Err("This theme needs a supported theme document version.".into());
     }
-    if doc.get("extends").is_some() {
+    if crate::theme::theme_extends_of(&doc).is_some() {
         return Err(
             "This theme is based on another theme. Detach it in the theme editor before moving it."
                 .into(),
         );
+    }
+    // An `extends` the app ignores (below version 3, or empty) must not reach the bundled set, which rejects any.
+    if let Some(map) = doc.as_object_mut() {
+        map.remove("extends");
     }
     let dependents = theme_dependents(&workspace, slug);
     if !dependents.is_empty() {
@@ -552,6 +556,19 @@ mod tests {
         fs::remove_dir_all(f.workspace.join("themes/variant")).unwrap();
         assert!(f.run(None).unwrap_err().contains("based on another theme"));
         assert!(!f.checkout.join("src/theme/builtin/new-app.json").exists());
+    }
+
+    #[test]
+    fn an_ignored_extends_moves_without_it() {
+        let f = Fixture::new();
+        fs::write(
+            f.workspace.join("themes/personal/theme.json"),
+            r#"{"version":2,"id":"old","name":"Personal","extends":"ws:elsewhere","catalogue":{"category":"essentials","tags":[],"useLabel":"Test","stage":"none"}}"#,
+        )
+        .unwrap();
+        let result = f.run(None).unwrap();
+        let doc: Value = serde_json::from_str(&result.json).unwrap();
+        assert!(doc.get("extends").is_none(), "{doc}");
     }
 
     #[test]
