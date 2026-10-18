@@ -28,6 +28,20 @@ interface ClipEntry {
   error?: string;
   /** Content hash at extraction time; the invalidation sweep compares against a re-hash. */
   sha?: string;
+  /** The file's `<size>-<mtimeNs>` read before that hash; the sweep re-hashes only when it moved. */
+  rev?: string | null;
+}
+
+/** Each path's `<size>-<mtimeNs>` (null when unreadable); null for all of them when the command fails. */
+async function fileRevisions(paths: string[]): Promise<(string | null)[]> {
+  if (paths.length === 0) return [];
+  try {
+    const revs = await invoke<(string | null)[]>("file_revisions", { paths });
+    if (Array.isArray(revs) && revs.length === paths.length) return revs;
+  } catch {
+    // Unreadable stamps fall back to the full re-hash.
+  }
+  return paths.map(() => null);
 }
 
 /** Number of decoded frame textures kept resident per clip (LRU window). */
@@ -116,7 +130,12 @@ export function clipExtractionProgress(): number | null {
   return total > 0 ? Math.min(1, frames / total) : null;
 }
 
-async function extract(srcAbs: string, lane: ClipLane): Promise<{ info: ClipInfo; sha: string }> {
+async function extract(
+  srcAbs: string,
+  lane: ClipLane,
+): Promise<{ info: ClipInfo; sha: string; rev: string | null }> {
+  // Stamped before hashing, so a write landing between the two reads as moved on the next sweep.
+  const [rev] = await fileRevisions([srcAbs]);
   const sha = await invoke<string>("hash_file", { path: srcAbs });
   const key = `${lane}:${srcAbs}`;
   const onProgress = new Channel<ExtractProgress>();
@@ -131,7 +150,7 @@ async function extract(srcAbs: string, lane: ClipLane): Promise<{ info: ClipInfo
       hardware: lane === "hw",
       onProgress,
     });
-    return { info, sha };
+    return { info, sha, rev };
   } finally {
     extractionProgress.delete(key);
     notifyExtraction();
@@ -146,9 +165,10 @@ export function registerClip(srcAbs: string): ClipEntry {
   if (existing) return existing;
   const entry: ClipEntry = { srcAbs, promise: undefined as unknown as Promise<ClipInfo> };
   entry.promise = extract(srcAbs, lane)
-    .then(({ info, sha }) => {
+    .then(({ info, sha, rev }) => {
       entry.info = info;
       entry.sha = sha;
+      entry.rev = rev;
       entry.frames = new ClipFrames(info);
       // Preview JPEGs generate lazily in the background; playback binds full PNGs until they exist.
       void invoke("ensure_clip_previews", { cacheDir: info.cacheDir })
@@ -197,15 +217,20 @@ export function evictAllClips(): void {
   notifyRegistry();
 }
 
-/** The media-changed sweep: re-hashes every settled clip and evicts those whose file changed on disk (an edit render overwrote it) plus any failed extraction, so consumers re-extract instead of serving stale frames. */
+/** The media-changed sweep: evicts every settled clip whose file changed on disk (an edit render or a replace overwrote it) plus any failed extraction, so consumers re-extract instead of serving stale frames. Rev-gated: one stat per clip, and a re-hash only where the size or modified time moved (a moved stamp over the same bytes just adopts the new stamp). */
 export async function invalidateChangedClips(): Promise<void> {
+  const entries = [...registry.entries()].filter(([, entry]) => entry.info || entry.error);
+  const revs = await fileRevisions(entries.map(([, entry]) => entry.srcAbs));
   const evicted = await Promise.all(
-    [...registry.entries()].map(async ([key, entry]) => {
-      if (!entry.info && !entry.error) return false; // still extracting, already fresh
+    entries.map(async ([key, entry], i) => {
       if (!entry.error) {
+        const rev = revs[i];
+        if (rev !== null && rev === entry.rev) return false;
         try {
-          if ((await invoke<string>("hash_file", { path: entry.srcAbs })) === entry.sha)
+          if ((await invoke<string>("hash_file", { path: entry.srcAbs })) === entry.sha) {
+            entry.rev = rev;
             return false;
+          }
         } catch {
           // Unreadable now (deleted or moved): evict so consumers surface the error.
         }

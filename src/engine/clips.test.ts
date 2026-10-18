@@ -1,8 +1,10 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
-// The pipeline's two native commands, scripted per test: hash_file serves the current sha per path (throws when absent, a deleted file), extract_clip_frames stubs a sequence keyed by that sha.
+// The pipeline's native commands, scripted per test: hash_file serves the current sha per path (throws when absent, a deleted file), file_revisions the current stamp (null when unset, the legacy full re-hash), extract_clip_frames stubs a sequence keyed by that sha.
 const shas = new Map<string, string>();
+const revs = new Map<string, string>();
 let failExtract = false;
+let hashCalls = 0;
 
 vi.mock("@tauri-apps/api/core", () => ({
   // Channel stands in for the ipc progress channel; tests never feed it messages.
@@ -11,9 +13,13 @@ vi.mock("@tauri-apps/api/core", () => ({
   },
   invoke: vi.fn(async (cmd: string, args?: Record<string, unknown>) => {
     if (cmd === "hash_file") {
+      hashCalls++;
       const sha = shas.get(args?.path as string);
       if (!sha) throw new Error("unreadable");
       return sha;
+    }
+    if (cmd === "file_revisions") {
+      return (args?.paths as string[]).map((path) => revs.get(path) ?? null);
     }
     if (cmd === "extract_clip_frames") {
       if (failExtract) throw new Error("extraction failed");
@@ -36,7 +42,9 @@ beforeAll(async () => {
 
 beforeEach(() => {
   shas.clear();
+  revs.clear();
   failExtract = false;
+  hashCalls = 0;
 });
 
 describe("invalidateChangedClips", () => {
@@ -93,6 +101,53 @@ describe("invalidateChangedClips", () => {
     shas.delete("/p/assets/a.mp4");
     await clips.invalidateChangedClips();
     expect(clips.registerClip("/p/assets/a.mp4")).not.toBe(before);
+  });
+
+  it("never re-hashes a clip whose stamp has not moved", async () => {
+    const clips = await freshClips();
+    shas.set("/p/assets/a.mp4", "sha-1");
+    revs.set("/p/assets/a.mp4", "100-1");
+    const before = clips.registerClip("/p/assets/a.mp4");
+    await before.promise;
+    const hashed = hashCalls;
+
+    await clips.invalidateChangedClips();
+    await clips.invalidateChangedClips();
+    expect(hashCalls).toBe(hashed);
+    expect(clips.registerClip("/p/assets/a.mp4")).toBe(before);
+  });
+
+  it("re-hashes once when the stamp moves over the same bytes, then adopts it", async () => {
+    const clips = await freshClips();
+    shas.set("/p/assets/a.mp4", "sha-1");
+    revs.set("/p/assets/a.mp4", "100-1");
+    const before = clips.registerClip("/p/assets/a.mp4");
+    await before.promise;
+    const hashed = hashCalls;
+
+    revs.set("/p/assets/a.mp4", "100-2");
+    const version = clips.clipRegistryVersion();
+    await clips.invalidateChangedClips();
+    expect(hashCalls).toBe(hashed + 1);
+    expect(clips.clipRegistryVersion()).toBe(version);
+    await clips.invalidateChangedClips();
+    expect(hashCalls).toBe(hashed + 1);
+    expect(clips.registerClip("/p/assets/a.mp4")).toBe(before);
+  });
+
+  it("evicts a clip replaced in place once its stamp moves", async () => {
+    const clips = await freshClips();
+    shas.set("/p/assets/a.mp4", "sha-old");
+    revs.set("/p/assets/a.mp4", "100-1");
+    const before = clips.registerClip("/p/assets/a.mp4");
+    await before.promise;
+
+    shas.set("/p/assets/a.mp4", "sha-new");
+    revs.set("/p/assets/a.mp4", "120-2");
+    await clips.invalidateChangedClips();
+    const after = clips.registerClip("/p/assets/a.mp4");
+    expect(after).not.toBe(before);
+    expect((await after.promise).cacheDir).toBe("/cache/sha-new");
   });
 
   it("skips entries still extracting", async () => {
