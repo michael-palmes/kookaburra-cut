@@ -814,7 +814,7 @@ fn frame_at(ms: f64, fps: f64) -> u32 {
     ((ms / 1000.0) * fps).round().max(0.0) as u32
 }
 
-/// Tap-highlight constants, hand-mirrored from src/editor/tapAnimation.ts and scripts/generate-tap-dot.mjs.
+/// Tap-highlight constants, hand-mirrored from src/engine/tapCurve.ts and src/editor/tapAnimation.ts.
 pub(crate) const TAP_ANIMATION_DURATION_MS: f64 = 550.0;
 const TAP_DOT_SIZE_FRACTION: f64 = 0.07;
 /// The baked frames leave pulse headroom around the scale-1 dot; the overlay scales up by the same factor so the dot lands at exactly TAP_DOT_SIZE_FRACTION of min(w, h).

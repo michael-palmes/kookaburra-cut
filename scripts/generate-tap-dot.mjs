@@ -6,7 +6,7 @@
 // consumers: the include_bytes! style map + colour multipliers edit.rs embeds,
 // and the style/colour lists the editor preview renders. This script is the
 // single source of truth for style and colour data; only the motion curve is
-// still hand-mirrored from src/editor/tapAnimation.ts. Maintainer-only; the
+// still hand-mirrored from src/engine/tapCurve.ts. Maintainer-only; the
 // output is committed. Run: node scripts/generate-tap-dot.mjs
 
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
@@ -81,7 +81,7 @@ const COLORS = [
 const lerp = (a, b, t) => a + (b - a) * t;
 const easeOutCubic = (t) => 1 - (1 - t) ** 3;
 
-/** Mirror of tapAnimation.ts tapDotFrame(): pop-in, pulse, settle, fade. */
+/** Mirror of engine/tapCurve.ts tapDotFrame(): pop-in, pulse, settle, fade. */
 function tapDotFrame(p) {
   if (p < 0.15) {
     const t = easeOutCubic(p / 0.15);
