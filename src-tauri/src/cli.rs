@@ -335,6 +335,7 @@ fn caps_in(args: &[String], app_data: Option<PathBuf>) -> Result<Value, Fail> {
             "fades": true,
         },
         "crop": true,
+        "zoom": true,
         "limits": {
             "minClipSourceMs": edit::MIN_CLIP_SOURCE_MS,
             "minHoldMs": edit::MIN_HOLD_MS,
@@ -886,6 +887,7 @@ mod tests {
             "tap",
             "mask",
             "crop",
+            "zoom",
             "limits",
             "media",
         ];
@@ -898,6 +900,7 @@ mod tests {
         assert_eq!(caps["docVersion"], json!({"read": 3, "write": [1, 2, 3]}));
         assert_eq!(caps["mask"]["fades"], true);
         assert_eq!(caps["crop"], true);
+        assert_eq!(caps["zoom"], true);
         assert_eq!(
             caps["song"],
             json!({"analysisVersion": 2, "trackers": ["nn", "dsp"]})

@@ -57,6 +57,36 @@ pub struct EditClip {
     /// Static crop `[x, y, w, h]` normalised 0..1 across the SOURCE frame (even pixels), letterboxed into the output; absent = the whole frame.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub crop: Option<[f64; 4]>,
+    /// Keyed zoom (never beside `crop`): the framing glides between keys and holds outside them; keys that never move render exactly like `crop`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub zoom: Option<EditZoom>,
+}
+
+/// How the glide from a zoom key to the next one eases.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum EditZoomEase {
+    Linear,
+    Smooth,
+}
+
+/// One zoom key: the framing at a clip-local OUTPUT moment.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EditZoomKey {
+    /// Clip-local output ms on the output frame grid; a split or trim can leave a key before the clip's start or past its end.
+    pub t_ms: i64,
+    /// `[x, y, w, h]` normalised 0..1 across the SOURCE frame at the output's shape (even pixels).
+    pub rect: [f64; 4],
+    /// Absent = linear.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ease: Option<EditZoomEase>,
+}
+
+/// A clip's zoom keys, sorted by time, one per output frame.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EditZoom {
+    pub keys: Vec<EditZoomKey>,
 }
 
 /// Output geometry, taken from the first source when the edit is created, editable later.
@@ -190,7 +220,7 @@ pub struct RenderProgress {
 const EDIT_VERSION: u32 = 1;
 /// A masked edit saves as this version, so an older app (which drops unknown fields on autosave) refuses it instead of silently unmasking the next render.
 pub(crate) const EDIT_VERSION_MASKS: u32 = 2;
-/// A cropped edit saves as this version: an older app would render the whole frame and show what the crop hides.
+/// A cropped or zoomed edit saves as this version: an older app would render the whole frame and show what the crop hides.
 pub(crate) const EDIT_VERSION_CROP: u32 = 3;
 pub(crate) const EDIT_VERSION_READ_MAX: u32 = 3;
 
@@ -218,7 +248,11 @@ impl From<CoreError> for String {
 
 /// The version a document is written as: the lowest one that still carries everything in it.
 pub(crate) fn doc_version(doc: &EditDoc) -> u32 {
-    if doc.clips.iter().any(|c| c.crop.is_some()) {
+    if doc
+        .clips
+        .iter()
+        .any(|c| c.crop.is_some() || c.zoom.is_some())
+    {
         EDIT_VERSION_CROP
     } else if doc.masks.is_empty() {
         EDIT_VERSION
@@ -561,6 +595,7 @@ fn default_doc(
             start_ms: 0,
             hold_ms: image.then_some(DEFAULT_IMAGE_HOLD_MS),
             crop: None,
+            zoom: None,
         }],
         taps: Vec::new(),
         tap_style: prefs.tap_style,
@@ -840,17 +875,21 @@ pub(crate) fn crop_px(crop: [f64; 4], source: &EditSource) -> [u32; 4] {
     [x, y, w, h]
 }
 
-/// Why a clip's crop can't render as drawn (fail closed, like masks): `None` when it can, or when it has none.
-fn crop_problem(clip: &EditClip, source: &EditSource) -> Option<String> {
-    let [x, y, w, h] = clip.crop?;
-    let inside = [x, y, w, h].iter().all(|v| v.is_finite())
+/// Whether a normalised `[x, y, w, h]` is a real box inside the frame.
+fn rect_inside([x, y, w, h]: [f64; 4]) -> bool {
+    [x, y, w, h].iter().all(|v| v.is_finite())
         && w > 0.0
         && h > 0.0
         && x >= 0.0
         && y >= 0.0
         && x + w <= 1.0 + 1e-9
-        && y + h <= 1.0 + 1e-9;
-    if !inside {
+        && y + h <= 1.0 + 1e-9
+}
+
+/// Why a clip's crop can't render as drawn (fail closed, like masks): `None` when it can, or when it has none.
+fn crop_problem(clip: &EditClip, source: &EditSource) -> Option<String> {
+    let crop = clip.crop?;
+    if !rect_inside(crop) {
         Some(format!(
             "clip {} has a crop outside its source frame",
             clip.id
@@ -866,9 +905,12 @@ fn crop_problem(clip: &EditClip, source: &EditSource) -> Option<String> {
 }
 
 fn validate_crops(doc: &EditDoc) -> Result<(), String> {
+    let fps = render_fps(doc);
     for clip in &doc.clips {
         if let Some(source) = doc.sources.iter().find(|s| s.id == clip.source_id) {
-            if let Some(problem) = crop_problem(clip, source) {
+            if let Some(problem) =
+                crop_problem(clip, source).or_else(|| zoom_problem(clip, source, fps))
+            {
                 return Err(problem);
             }
         }
@@ -882,6 +924,145 @@ fn pos_in_crop(pos: [f64; 2], crop: [f64; 4]) -> bool {
         && pos[0] <= crop[0] + crop[2]
         && pos[1] >= crop[1]
         && pos[1] <= crop[1] + crop[3]
+}
+
+/// The output frame a clip-local ms sits on (mirrored: editMath.ts `zoomFrame`).
+fn zoom_frame(t_ms: f64, fps: f64) -> i64 {
+    js_round(t_ms * fps / 1000.0) as i64
+}
+
+/// Why a clip's zoom can't render as drawn (fail closed, like crops): `None` when it can, or when it has none.
+fn zoom_problem(clip: &EditClip, source: &EditSource, fps: f64) -> Option<String> {
+    let zoom = clip.zoom.as_ref()?;
+    let id = &clip.id;
+    let frames: Vec<i64> = zoom
+        .keys
+        .iter()
+        .map(|k| zoom_frame(k.t_ms as f64, fps))
+        .collect();
+    if clip.crop.is_some() {
+        Some(format!("clip {id} has both a crop and zoom keys"))
+    } else if zoom.keys.is_empty() {
+        Some(format!("clip {id} has a zoom with no keys"))
+    } else if !zoom.keys.iter().all(|k| rect_inside(k.rect)) {
+        Some(format!("clip {id} has a zoom key outside its source frame"))
+    } else if source.width < 2 || source.height < 2 {
+        Some(format!("clip {id} zooms a source with no pixel size"))
+    } else if frames.windows(2).any(|f| f[1] <= f[0]) {
+        Some(format!(
+            "clip {id} has zoom keys out of order or two on one output frame"
+        ))
+    } else {
+        None
+    }
+}
+
+/// One zoom key ready to glide: its output frame, its framing and whether it eases smoothly into the next key.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct GlideKey {
+    frame: i64,
+    rect: [f64; 4],
+    smooth: bool,
+}
+
+/// The framing at (fractional) clip frame `f`: the first key plus each glide's share, saturating outside it (mirrored: editMath.ts `zoomRectAt`).
+fn glide_at(keys: &[GlideKey], f: f64) -> [f64; 4] {
+    let mut rect = keys[0].rect;
+    for pair in keys.windows(2) {
+        let (a, b) = (pair[0], pair[1]);
+        let p = if b.frame > a.frame {
+            ((f - a.frame as f64) / (b.frame - a.frame) as f64).clamp(0.0, 1.0)
+        } else if f >= b.frame as f64 {
+            1.0
+        } else {
+            0.0
+        };
+        let e = if a.smooth { p * p * (3.0 - 2.0 * p) } else { p };
+        for (j, v) in rect.iter_mut().enumerate() {
+            *v += (b.rect[j] - a.rect[j]) * e;
+        }
+    }
+    rect
+}
+
+/// A zoom's keys as glide keys, normalised or (with a source) in its even pixels.
+fn glide_keys(zoom: &EditZoom, fps: f64, source: Option<&EditSource>) -> Vec<GlideKey> {
+    zoom.keys
+        .iter()
+        .map(|k| GlideKey {
+            frame: zoom_frame(k.t_ms as f64, fps),
+            rect: source.map_or(k.rect, |s| crop_px(k.rect, s).map(f64::from)),
+            smooth: k.ease == Some(EditZoomEase::Smooth),
+        })
+        .collect()
+}
+
+/// How the render frames a clip: whole, one static rect on the crop path, or a moving zoom in even source pixels.
+enum Framing {
+    Whole,
+    Static([f64; 4]),
+    Moving(Vec<GlideKey>),
+}
+
+/// A zoom whose keys all cut the same pixels stays on today's crop path: cheaper, sharper, and byte-identical to a crop.
+fn framing_of(clip: &EditClip, source: &EditSource, fps: f64) -> Framing {
+    if let Some(crop) = clip.crop {
+        return Framing::Static(crop);
+    }
+    let Some(zoom) = clip.zoom.as_ref().filter(|z| !z.keys.is_empty()) else {
+        return Framing::Whole;
+    };
+    let keys = glide_keys(zoom, fps, Some(source));
+    if keys.iter().all(|k| k.rect == keys[0].rect) {
+        Framing::Static(zoom.keys[0].rect)
+    } else {
+        Framing::Moving(keys)
+    }
+}
+
+/// An ffmpeg expression for one framing component `c` at frame `f` (mirrors `glide_at`).
+fn glide_expr(keys: &[GlideKey], c: usize, f: &str) -> String {
+    let mut out = format!("{}", keys[0].rect[c]);
+    for pair in keys.windows(2) {
+        let (a, b) = (pair[0], pair[1]);
+        let delta = b.rect[c] - a.rect[c];
+        if delta == 0.0 {
+            continue;
+        }
+        let p = format!(
+            "clip(({f}{:+})/{},0,1)",
+            -a.frame,
+            (b.frame - a.frame).max(1)
+        );
+        let e = if a.smooth {
+            format!("{p}*{p}*(3-2*{p})")
+        } else {
+            p
+        };
+        out.push_str(&format!("{delta:+}*{e}"));
+    }
+    format!("({out})")
+}
+
+/// The stage that glides a moving zoom over a clip's retimed frames: `perspective` maps the framing's corners (a half-pixel corrected `x + 0.5 * (w / W - 1)`) onto the whole frame in 4:4:4 (4:2:0 would shift chroma by half the zoom), then a plain scale fills the output. `frame` pins one literal frame with `eval=init` (the guard's static reference); otherwise F is `in-1`, as perspective counts frames from 1 in this ffmpeg build.
+fn zoom_stage(
+    keys: &[GlideKey],
+    source: &EditSource,
+    out_w: u32,
+    out_h: u32,
+    frame: Option<i64>,
+) -> String {
+    let f = frame.map_or_else(|| "(in-1)".to_string(), |k| format!("({k})"));
+    let [x, y, w, h] = [0, 1, 2, 3].map(|c| glide_expr(keys, c, &f));
+    let (sw, sh) = (source.width, source.height);
+    let ox = format!("({x}+0.5*({w}/{sw}-1))");
+    let oy = format!("({y}+0.5*({h}/{sh}-1))");
+    let eval = if frame.is_some() { "init" } else { "frame" };
+    format!(
+        "format=yuv444p,perspective=x0='{ox}':y0='{oy}':x1='{ox}+{w}':y1='{oy}':\
+         x2='{ox}':y2='{oy}+{h}':x3='{ox}+{w}':y3='{oy}+{h}':\
+         sense=source:interpolation=cubic:eval={eval},scale={out_w}:{out_h},format=yuv420p,setsar=1"
+    )
 }
 
 /// Tap-highlight constants, hand-mirrored from src/editor/tapAnimation.ts and scripts/generate-tap-dot.mjs.
@@ -957,10 +1138,17 @@ pub(crate) fn ensure_tap_dot_frames_in(app_data: &Path) -> Result<PathBuf, Strin
     }
 }
 
-/// Mirror of editMath.ts `tapWindows`: one `(tap, clip, start_ms, end_ms)` per clip containing the tap's source point, so a duplicated segment shows it in each copy. Duration is fixed in output ms, clamped at the clip's end (a tap near a cut truncates); freezes are skipped (zero-length source span), and so is a clip whose crop cuts the tap's point out.
+/// The tap's moment inside a clip, in clip-local output ms.
+fn tap_local_ms(tap: &EditTap, clip: &EditClip) -> f64 {
+    let speed = if clip.speed > 0.0 { clip.speed } else { 1.0 };
+    tap.source_ms.saturating_sub(clip.in_ms) as f64 / speed
+}
+
+/// Mirror of editMath.ts `tapWindows`: one `(tap, clip, start_ms, end_ms)` per clip containing the tap's source point, so a duplicated segment shows it in each copy. Duration is fixed in output ms, clamped at the clip's end (a tap near a cut truncates); freezes are skipped (zero-length source span), and so is a clip whose crop, or whose zoom's framing as the tap lands, cuts the tap's point out.
 pub(crate) fn tap_windows<'a>(
     clips_sorted: &[&'a EditClip],
     taps: &'a [EditTap],
+    fps: f64,
 ) -> Vec<(&'a EditTap, &'a EditClip, f64, f64)> {
     let mut windows = Vec::new();
     for tap in taps {
@@ -973,8 +1161,20 @@ pub(crate) fn tap_windows<'a>(
             {
                 continue;
             }
+            let local = tap_local_ms(tap, clip);
+            let framed_out = clip
+                .zoom
+                .as_ref()
+                .filter(|z| !z.keys.is_empty())
+                .is_some_and(|z| {
+                    let f = local * fps / 1000.0;
+                    !pos_in_crop(tap.pos, glide_at(&glide_keys(z, fps, None), f))
+                });
+            if framed_out {
+                continue;
+            }
             let speed = if clip.speed > 0.0 { clip.speed } else { 1.0 };
-            let start = clip.start_ms as f64 + (tap.source_ms - clip.in_ms) as f64 / speed;
+            let start = clip.start_ms as f64 + local;
             let clip_end = clip.start_ms as f64 + (clip.out_ms - clip.in_ms) as f64 / speed;
             windows.push((
                 tap,
@@ -1183,16 +1383,27 @@ pub(crate) fn build_render_args_for(
                 clip_label[i]
             )
         };
-        // A static crop cuts the retimed frames before the letterbox; masks baked in before the split, so they stay where they were drawn.
-        let crop = clip.crop.map_or(String::new(), |c| {
-            let [cx, cy, cw, ch] = crop_px(c, input_order[idx]);
-            format!("crop={cw}:{ch}:{cx}:{cy},")
-        });
+        // A static crop cuts the retimed frames before the letterbox and a moving zoom glides over them; masks baked in before the split, so they stay where they were drawn.
+        let fit = match framing_of(clip, input_order[idx], fps) {
+            Framing::Moving(keys) => zoom_stage(&keys, input_order[idx], w, h, None),
+            framing => {
+                let crop = match framing {
+                    Framing::Static(c) => {
+                        let [cx, cy, cw, ch] = crop_px(c, input_order[idx]);
+                        format!("crop={cw}:{ch}:{cx}:{cy},")
+                    }
+                    _ => String::new(),
+                };
+                format!(
+                    "{crop}scale={w}:{h}:force_original_aspect_ratio=decrease,\
+                     pad={w}:{h}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1"
+                )
+            }
+        };
         // `tpad` clones the last frame past a short cut, `fps` regrids the clones onto contiguous slots and `trim` drops any overrun, so the count is exact either way.
         filter.push_str(&format!(
             "{head}tpad=stop_mode=clone:stop={frames},fps={fps},trim=end_frame={frames},\
-             setpts=PTS-STARTPTS,{crop}scale={w}:{h}:force_original_aspect_ratio=decrease,\
-             pad={w}:{h}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1[{label}];"
+             setpts=PTS-STARTPTS,{fit}[{label}];"
         ));
         labels.push(label);
         total_frames += frames;
@@ -1204,7 +1415,7 @@ pub(crate) fn build_render_args_for(
 
     // Tap highlights: one baked glow-dot input per visible window, overlaid AFTER concat on the output-resolution stream (windows are output-time; positions map through each clip's own scale+pad letterbox, multi-source safe).
     let windows = match tap_dot_dir {
-        Some(_) => tap_windows(&clips_sorted, &doc.taps),
+        Some(_) => tap_windows(&clips_sorted, &doc.taps, fps),
         None => Vec::new(),
     };
     let mut out_label = "outv".to_string();
@@ -1222,14 +1433,20 @@ pub(crate) fn build_render_args_for(
                 .iter()
                 .find(|s| s.id == clip.source_id)
                 .ok_or_else(|| format!("tap references unknown source {}", clip.source_id))?;
-            // A cropped clip letterboxes its crop, so the tap maps into the crop's pixels first (its windows already dropped taps outside it).
-            let (fit_w, fit_h, pos) = match clip.crop {
-                None => (source.width, source.height, tap.pos),
-                Some(c) => {
+            // A cropped clip letterboxes its crop, so the tap maps into the crop's pixels first; a moving zoom fills the output with its framing as the tap lands (its windows already dropped taps outside either).
+            let (fit_w, fit_h, pos) = match framing_of(clip, source, fps) {
+                Framing::Whole => (source.width, source.height, tap.pos),
+                Framing::Static(c) => {
                     let [cx, cy, cw, ch] = crop_px(c, source);
                     let u = (tap.pos[0] * f64::from(source.width) - f64::from(cx)) / f64::from(cw);
                     let v = (tap.pos[1] * f64::from(source.height) - f64::from(cy)) / f64::from(ch);
                     (cw, ch, [u, v])
+                }
+                Framing::Moving(keys) => {
+                    let [rx, ry, rw, rh] = glide_at(&keys, tap_local_ms(tap, clip) * fps / 1000.0);
+                    let u = (tap.pos[0] * f64::from(source.width) - rx) / rw;
+                    let v = (tap.pos[1] * f64::from(source.height) - ry) / rh;
+                    (w, h, [u, v])
                 }
             };
             // Mirror ffmpeg's integer geometry exactly: `scale=…:force_original_aspect_ratio=decrease` rounds the free dimension to the nearest integer (av_rescale) and `pad`'s (ow-iw)/2 truncates, so the overlay centre must come from those integer results, not raw floats.
@@ -2066,6 +2283,9 @@ pub(crate) fn validate_doc(project: &Path, doc: &EditDoc, expect_name: Option<&s
         if let Some(problem) = crop_problem(clip, source) {
             errors.push(Issue::new("bad-crop", problem).clip(&clip.id));
         }
+        if let Some(problem) = zoom_problem(clip, source, fps) {
+            errors.push(Issue::new("bad-zoom", problem).clip(&clip.id));
+        }
         if !clip.speed.is_finite() || clip.speed <= 0.0 {
             errors.push(
                 Issue::new(
@@ -2188,7 +2408,7 @@ pub(crate) fn validate_doc(project: &Path, doc: &EditDoc, expect_name: Option<&s
     let sorted: Vec<&EditClip> = plan.iter().map(|p| p.clip).collect();
     let mut taps = Vec::new();
     for tap in &doc.taps {
-        let windows: Vec<TapWindow> = tap_windows(&sorted, std::slice::from_ref(tap))
+        let windows: Vec<TapWindow> = tap_windows(&sorted, std::slice::from_ref(tap), fps)
             .into_iter()
             .map(|(_, _, start_ms, end_ms)| TapWindow { start_ms, end_ms })
             .collect();
@@ -2288,6 +2508,7 @@ mod tests {
                 start_ms: 0,
                 hold_ms: None,
                 crop: None,
+                zoom: None,
             }],
             taps: Vec::new(),
             tap_style: None,
@@ -2360,6 +2581,7 @@ mod tests {
             start_ms: 1000,
             hold_ms: Some(2000),
             crop: None,
+            zoom: None,
         });
         let (args, total) = build_render_args(&d, "/out/x.mp4", false, None).unwrap();
         assert_eq!(total, 60 + 120); // 1s of source + 2s hold at 60fps
@@ -2387,6 +2609,7 @@ mod tests {
             start_ms: 509,
             hold_ms: None,
             crop: None,
+            zoom: None,
         });
         let (args, total) = build_render_args(&d, "/out/x.mp4", false, None).unwrap();
         assert_eq!(total, 61);
@@ -2440,6 +2663,7 @@ mod tests {
             start_ms: 1000,
             hold_ms: Some(hold_ms),
             crop: None,
+            zoom: None,
         });
         d
     }
@@ -2485,6 +2709,7 @@ mod tests {
             start_ms: 3000,
             hold_ms: Some(5000),
             crop: None,
+            zoom: None,
         });
         let (args, total) = build_render_args(&d, "/out/x.mp4", true, None).unwrap();
         assert_eq!(total, 60 + 120 + 300);
@@ -2575,6 +2800,7 @@ mod tests {
             start_ms: 1000,
             hold_ms: None,
             crop: None,
+            zoom: None,
         });
         d.taps.push(EditTap {
             id: "t1".into(),
@@ -2620,6 +2846,7 @@ mod tests {
             id: "c2".into(),
             start_ms: 1000,
             crop: None,
+            zoom: None,
             ..d.clips[0].clone()
         });
         let (args, total) = build_render_args(&d, "/out/x.mp4", false, None).unwrap();
@@ -2662,7 +2889,7 @@ mod tests {
             filter.contains("[tapv0][dot1]overlay=x=1200.000-overlay_w/2:y=1080.000-overlay_h/2:")
         );
         let sorted: Vec<&EditClip> = d.clips.iter().collect();
-        let ids: Vec<&str> = tap_windows(&sorted, &d.taps)
+        let ids: Vec<&str> = tap_windows(&sorted, &d.taps, 60.0)
             .iter()
             .map(|(t, ..)| t.id.as_str())
             .collect();
@@ -2689,6 +2916,181 @@ mod tests {
         d.sources[0].width = 1920;
         assert!(validate_doc(&dir, &d, Some("cut")).ok);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    const FULL: [f64; 4] = [0.0, 0.0, 1.0, 1.0];
+    const QUAD: [f64; 4] = [0.25, 0.25, 0.5, 0.5];
+    const SMOOTH: Option<EditZoomEase> = Some(EditZoomEase::Smooth);
+
+    fn key(t_ms: i64, rect: [f64; 4], ease: Option<EditZoomEase>) -> EditZoomKey {
+        EditZoomKey { t_ms, rect, ease }
+    }
+
+    fn zoom(keys: Vec<EditZoomKey>) -> Option<EditZoom> {
+        Some(EditZoom { keys })
+    }
+
+    #[test]
+    fn a_zoom_that_never_moves_renders_exactly_like_its_crop() {
+        let rect = [0.25, 0.1, 0.3, 0.5];
+        let mut cropped = doc();
+        cropped.clips[0].crop = Some(rect);
+        let (crop_args, _) = build_render_args(&cropped, "/out/x.mp4", false, None).unwrap();
+        for keys in [
+            vec![key(300, rect, None)],
+            vec![key(0, rect, SMOOTH), key(500, rect, None)],
+        ] {
+            let mut d = doc();
+            d.clips[0].zoom = zoom(keys);
+            let (args, _) = build_render_args(&d, "/out/x.mp4", false, None).unwrap();
+            assert_eq!(filter_of(&args), filter_of(&crop_args));
+        }
+    }
+
+    #[test]
+    fn a_moving_zoom_glides_through_perspective_after_the_retime() {
+        let mut d = doc();
+        d.clips[0].zoom = zoom(vec![key(0, FULL, SMOOTH), key(500, QUAD, None)]);
+        let (args, total) = build_render_args(&d, "/out/x.mp4", false, None).unwrap();
+        let filter = filter_of(&args);
+        assert_eq!(total, 60);
+        let p = "clip(((in-1)+0)/30,0,1)";
+        let s = format!("{p}*{p}*(3-2*{p})");
+        let (x, y) = (format!("(0+480*{s})"), format!("(0+270*{s})"));
+        let (w, h) = (format!("(1920-960*{s})"), format!("(1080-540*{s})"));
+        let ox = format!("({x}+0.5*({w}/1920-1))");
+        let oy = format!("({y}+0.5*({h}/1080-1))");
+        assert!(
+            filter.contains(&format!(
+                "setpts=PTS-STARTPTS,format=yuv444p,perspective=x0='{ox}':y0='{oy}':\
+                 x1='{ox}+{w}':y1='{oy}':x2='{ox}':y2='{oy}+{h}':x3='{ox}+{w}':y3='{oy}+{h}':\
+                 sense=source:interpolation=cubic:eval=frame,scale=1920:1080,format=yuv420p,setsar=1[v0];"
+            )),
+            "{filter}"
+        );
+        assert!(!filter.contains("force_original_aspect_ratio"));
+    }
+
+    #[test]
+    fn the_fixed_frame_stage_is_the_same_glide_with_a_literal_frame() {
+        let source = &doc().sources[0];
+        let keys = [
+            GlideKey {
+                frame: -3,
+                rect: [0.0, 0.0, 1920.0, 1080.0],
+                smooth: false,
+            },
+            GlideKey {
+                frame: 57,
+                rect: [480.0, 270.0, 960.0, 540.0],
+                smooth: true,
+            },
+        ];
+        let fixed = zoom_stage(&keys, source, 1920, 1080, Some(12));
+        assert!(fixed.contains("clip(((12)+3)/60,0,1)") && fixed.contains("eval=init"));
+        assert_eq!(
+            fixed
+                .replace("(12)", "(in-1)")
+                .replace("eval=init", "eval=frame"),
+            zoom_stage(&keys, source, 1920, 1080, None)
+        );
+    }
+
+    #[test]
+    fn zoom_framing_glides_on_output_frames_like_edit_math_ts() {
+        let z = EditZoom {
+            keys: vec![
+                key(0, FULL, SMOOTH),
+                key(1000, QUAD, None),
+                key(2000, [0.5, 0.5, 0.25, 0.25], None),
+            ],
+        };
+        let keys = glide_keys(&z, 60.0, None);
+        // edit-vectors.json: zoomRectAt on this clip at 500 and 1500.5 ms.
+        assert_eq!(
+            glide_at(&keys, 500.0 * 60.0 / 1000.0),
+            [0.125, 0.125, 0.75, 0.75]
+        );
+        assert_eq!(
+            glide_at(&keys, 1500.5 * 60.0 / 1000.0),
+            [
+                0.37512500000000004,
+                0.37512500000000004,
+                0.37487499999999996,
+                0.37487499999999996
+            ]
+        );
+        assert_eq!(glide_at(&keys, -6.0), FULL);
+        assert_eq!(glide_at(&keys, 540.0), [0.5, 0.5, 0.25, 0.25]);
+    }
+
+    #[test]
+    fn taps_take_a_moving_zoom_s_framing_as_they_land_and_drop_outside_it() {
+        let mut d = doc();
+        d.clips[0].out_ms = 2000;
+        d.clips[0].zoom = zoom(vec![key(0, FULL, None), key(1000, QUAD, None)]);
+        for (id, source_ms, pos) in [("t1", 500, [0.5, 0.25]), ("t2", 1500, [0.2, 0.5])] {
+            d.taps.push(EditTap {
+                id: id.into(),
+                source_id: "s1".into(),
+                source_ms,
+                pos,
+            });
+        }
+        let (args, _) =
+            build_render_args(&d, "/out/x.mp4", false, Some(Path::new("/cache/tapdot"))).unwrap();
+        assert_eq!(args.iter().filter(|a| *a == "-itsoffset").count(), 1);
+        // Half way in, the framing is [240, 135, 1440, 810]: u = (960 - 240) / 1440, v = (270 - 135) / 810.
+        assert!(filter_of(&args)
+            .contains("[outv][dot0]overlay=x=960.000-overlay_w/2:y=180.000-overlay_h/2:"));
+    }
+
+    #[test]
+    fn a_zoom_that_cannot_render_as_drawn_fails_validation_and_the_render() {
+        let dir = temp_project("bad-zoom");
+        std::fs::write(dir.join("assets/a.mp4"), b"x").unwrap();
+        let mut d = doc();
+        let good = zoom(vec![key(0, FULL, None), key(500, QUAD, None)]);
+        for (framing, crop, why) in [
+            (
+                zoom(vec![key(0, [0.6, 0.0, 0.6, 1.0], None)]),
+                None,
+                "outside its source frame",
+            ),
+            (
+                zoom(vec![key(500, QUAD, None), key(504, FULL, None)]),
+                None,
+                "two on one output frame",
+            ),
+            (zoom(Vec::new()), None, "no keys"),
+            (good.clone(), Some(FULL), "both a crop and zoom keys"),
+        ] {
+            (d.clips[0].zoom, d.clips[0].crop) = (framing, crop);
+            let report = validate_doc(&dir, &d, Some("cut"));
+            assert!(report.errors.iter().any(|e| e.code == "bad-zoom"), "{why}");
+            assert!(build_render_args(&d, "/out/x.mp4", false, None)
+                .unwrap_err()
+                .contains(why));
+        }
+        (d.clips[0].zoom, d.clips[0].crop) = (good, None);
+        assert!(validate_doc(&dir, &d, Some("cut")).ok);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_zoomed_doc_is_written_as_version_three_and_round_trips() {
+        let mut d = doc();
+        d.clips[0].zoom = zoom(vec![key(-17, QUAD, SMOOTH), key(500, FULL, None)]);
+        assert_eq!(doc_version(&d), 3);
+        let text = String::from_utf8(doc_bytes(&d).unwrap()).unwrap();
+        assert!(text.contains("\"tMs\": -17") && text.contains("\"ease\": \"smooth\""));
+        assert_eq!(text.matches("ease").count(), 1);
+        let read = parse_doc(&text).unwrap();
+        let keys = &read.clips[0].zoom.as_ref().unwrap().keys;
+        assert_eq!(
+            (keys[0].t_ms, keys[0].ease, keys[1].ease),
+            (-17, SMOOTH, None)
+        );
     }
 
     #[test]
@@ -2859,6 +3261,7 @@ mod tests {
             start_ms: 1000,
             hold_ms: Some(2000),
             crop: None,
+            zoom: None,
         });
         d.masks.push(solid_mask());
         let (args, _) = build_render_args(&d, "/out/x.mp4", false, None).unwrap();
@@ -2890,6 +3293,7 @@ mod tests {
             start_ms: 3000,
             hold_ms: Some(1000),
             crop: None,
+            zoom: None,
         });
         let mut m = solid_mask();
         m.source_id = "s2".into();
@@ -3088,6 +3492,7 @@ mod tests {
             start_ms: 509,
             hold_ms: None,
             crop: None,
+            zoom: None,
         });
         let plan = clip_frame_plan(&d).unwrap();
         let slots: Vec<(u32, u32)> = plan.iter().map(|p| (p.start_frame, p.frames)).collect();
@@ -3505,6 +3910,7 @@ mod tests {
             start_ms: 999,
             hold_ms: Some(50),
             crop: None,
+            zoom: None,
         });
         d.taps.push(EditTap {
             id: "t1".into(),
@@ -3547,6 +3953,7 @@ mod tests {
             start_ms: 0,
             hold_ms: None,
             crop: None,
+            zoom: None,
         });
         d.sources.push(EditSource {
             id: "s2".into(),
@@ -3653,6 +4060,7 @@ mod tests {
             start_ms: 800,
             hold_ms: Some(700),
             crop: None,
+            zoom: None,
         });
         d.taps.push(EditTap {
             id: "t1".into(),
@@ -3714,6 +4122,57 @@ mod tests {
             "yuv420p",
             out.to_str().unwrap(),
         ]);
+    }
+
+    /// The zoom source: the top band barcode plus the same value as a 4x4 grid of 16 px cells at the frame's centre, inside every zoom key's framing.
+    fn zoom_barcode_source(out: &Path) {
+        let graph = "color=c=gray:s=320x240:r=60:d=4,format=yuv420p,\
+             geq=lum='if(lt(Y,32),if(mod(floor(N/pow(2,floor(X/(W/16)))),2),235,16),\
+             if(between(X,128,191)*between(Y,88,151),\
+             if(mod(floor(N/pow(2,floor((X-128)/16)+4*floor((Y-88)/16))),2),235,16),lum(X,Y)))':cb=128:cr=128";
+        ffmpeg_ok(&[
+            "-f",
+            "lavfi",
+            "-i",
+            graph,
+            "-c:v",
+            "libx264",
+            "-qp",
+            "0",
+            "-pix_fmt",
+            "yuv420p",
+            out.to_str().unwrap(),
+        ]);
+    }
+
+    /// The centre grid's value in every frame of a moving-zoom clip, read where its framing puts each cell.
+    fn decode_zoom_grid(gray: &[Vec<u8>], p: &ClipFrames, source: &EditSource) -> Vec<(u32, u32)> {
+        let Framing::Moving(keys) = framing_of(p.clip, source, 60.0) else {
+            return Vec::new();
+        };
+        (0..p.frames)
+            .map(|f| {
+                let [rx, ry, rw, rh] = glide_at(&keys, f64::from(f));
+                let frame = &gray[(p.start_frame + f) as usize];
+                let value = (0..16u32)
+                    .filter(|bit| {
+                        let cx = 128.0 + 16.0 * f64::from(bit % 4) + 8.0;
+                        let cy = 88.0 + 16.0 * f64::from(bit / 4) + 8.0;
+                        let ox = ((cx - rx) * 320.0 / rw).round() as i64;
+                        let oy = ((cy - ry) * 240.0 / rh).round() as i64;
+                        let mut sum = 0u32;
+                        for dy in -1..=1 {
+                            for dx in -1..=1 {
+                                sum += u32::from(frame[((oy + dy) * 320 + ox + dx) as usize]);
+                            }
+                        }
+                        sum > 128 * 9
+                    })
+                    .map(|bit| 1u32 << bit)
+                    .sum();
+                (p.start_frame + f, value)
+            })
+            .collect()
     }
 
     /// The barcode value of every stored frame, in order (passthrough: a variable-rate file is not regridded).
@@ -3837,6 +4296,7 @@ mod tests {
             start_ms: 0,
             hold_ms: hold,
             crop: None,
+            zoom: None,
         }
     }
 
@@ -3927,6 +4387,7 @@ mod tests {
             "yuv420p",
             assets.join("vfr60.mp4").to_str().unwrap(),
         ]);
+        zoom_barcode_source(&assets.join("zoom60.mp4"));
         let still = format!(
             "color=c=gray:s=320x240:r=1:d=1,format=yuv420p,\
              geq=lum='if(lt(Y,32),if(mod(floor({}/pow(2,floor(X/(W/16)))),2),235,16),lum(X,Y))':cb=128:cr=128",
@@ -3966,6 +4427,12 @@ mod tests {
                 file: "still.png",
                 kind: EditSourceKind::Image,
                 index_fps: 0,
+            },
+            BarcodeSource {
+                id: "zoom60",
+                file: "zoom60.mp4",
+                kind: EditSourceKind::Video,
+                index_fps: 60,
             },
         ];
         let probed: Vec<(EditSource, serde_json::Value)> = sources
@@ -4073,6 +4540,36 @@ mod tests {
             Vec::new(),
         ));
         cases.push((
+            "zoom".into(),
+            vec!["zoom60"],
+            vec![
+                EditClip {
+                    zoom: zoom(vec![
+                        key(0, FULL, SMOOTH),
+                        key(500, [0.3, 0.3, 0.4, 0.4], None),
+                        key(1000, [0.2, 0.25, 0.5, 0.5], None),
+                    ]),
+                    ..clip("c1", "zoom60", 1017, 2524, 1.0, None)
+                },
+                EditClip {
+                    zoom: zoom(vec![
+                        key(0, [0.2, 0.25, 0.5, 0.5], SMOOTH),
+                        key(400, [0.35, 1.0 / 3.0, 0.3, 0.3], None),
+                    ]),
+                    ..clip("c2", "zoom60", 2524, 2524, 1.0, Some(500))
+                },
+                EditClip {
+                    zoom: zoom(vec![
+                        key(0, FULL, None),
+                        key(250, [0.3, 0.3, 0.4, 0.4], None),
+                    ]),
+                    ..clip("c3", "zoom60", 2600, 3200, 2.0, None)
+                },
+                clip("c4", "zoom60", 500, 1000, 1.0, None),
+            ],
+            Vec::new(),
+        ));
+        cases.push((
             "mask-fade".into(),
             vec!["cfr60"],
             vec![clip("c1", "cfr60", 0, 2000, 1.0, None)],
@@ -4149,6 +4646,20 @@ mod tests {
                 for k in p.start_frame..p.start_frame + p.frames {
                     assert_eq!(shown[k as usize], 0, "{case}: frame {k} pad is not black");
                     shown[k as usize] = lower[k as usize];
+                }
+            }
+            // A moving zoom's frames carry the centre grid where its framing puts each cell.
+            if doc.clips.iter().any(|c| c.zoom.is_some()) {
+                let gray = gray_frames(&out, 320, 240);
+                for p in clip_frame_plan(&doc).unwrap() {
+                    let source = doc
+                        .sources
+                        .iter()
+                        .find(|s| s.id == p.clip.source_id)
+                        .unwrap();
+                    for (k, value) in decode_zoom_grid(&gray, &p, source) {
+                        shown[k as usize] = value;
+                    }
                 }
             }
             // A faded mask's box differs from the plain render by its opacity times the full mask's difference.
@@ -4251,6 +4762,162 @@ mod tests {
         );
     }
 
+    /// The filter graph's frames as raw yuv420p (its encoder swapped for a raw file), so filter output compares byte for byte.
+    fn raw_frames(args: &[String], out: &Path, frame_bytes: usize) -> Vec<Vec<u8>> {
+        let cut = args.iter().position(|a| a == "-c:v").unwrap();
+        let mut raw = args[..cut].to_vec();
+        raw.extend(["-f", "rawvideo", "-pix_fmt", "yuv420p"].map(String::from));
+        raw.push(out.to_string_lossy().into_owned());
+        let run = std::process::Command::new(DEV_FFMPEG)
+            .args(&raw)
+            .output()
+            .unwrap();
+        assert!(
+            run.status.success(),
+            "{}",
+            String::from_utf8_lossy(&run.stderr)
+        );
+        std::fs::read(out)
+            .unwrap()
+            .chunks(frame_bytes)
+            .map(<[u8]>::to_vec)
+            .collect()
+    }
+
+    /// The spike's guard, kept: every sampled frame of a moving zoom, on both decode lanes, is byte-identical to one source frame run through the same stage with that frame index as a literal (`eval=init`), and differs from its neighbours' literals while the framing moves. It pins the stage's `in-1` (perspective counts from 1 in this ffmpeg build) and the per-clip counter reset; hashes are per ffmpeg build, so rerun it against the release sidecar before a release.
+    #[test]
+    #[ignore = "runs the dev ffmpeg sidecar (pnpm setup:ffmpeg)"]
+    fn zoom_frames_match_a_fixed_frame_render_on_both_lanes() {
+        let dir = temp_project("zoom-guard");
+        let src = dir.join("assets/a.mp4");
+        ffmpeg_ok(&[
+            "-f",
+            "lavfi",
+            "-i",
+            "testsrc2=s=640x480:r=60:d=4",
+            "-c:v",
+            "libx264",
+            "-qp",
+            "0",
+            "-pix_fmt",
+            "yuv420p",
+            src.to_str().unwrap(),
+        ]);
+        let mut d = doc();
+        d.sources[0] = EditSource {
+            width: 640,
+            height: 480,
+            duration_ms: 4000,
+            abs: src.to_string_lossy().into_owned(),
+            ..d.sources[0].clone()
+        };
+        d.settings = EditSettings {
+            width: 320,
+            height: 240,
+            fps: 60.0,
+        };
+        d.clips = laid_out(
+            vec![
+                EditClip {
+                    zoom: zoom(vec![
+                        key(0, FULL, SMOOTH),
+                        key(1000, [0.3, 0.2, 0.4, 0.4], None),
+                        key(1500, [0.1, 0.4, 0.5, 0.5], None),
+                    ]),
+                    ..clip("c1", "s1", 200, 2200, 1.0, None)
+                },
+                EditClip {
+                    zoom: zoom(vec![key(0, QUAD, SMOOTH), key(1000, FULL, None)]),
+                    ..clip("c2", "s1", 1000, 1000, 1.0, Some(1000))
+                },
+            ],
+            &[],
+        );
+        let source = d.sources[0].clone();
+        let (out_bytes, src_bytes) = (320 * 240 * 3 / 2, 640 * 480 * 3 / 2);
+        let plan: Vec<(u32, Vec<GlideKey>)> = clip_frame_plan(&d)
+            .unwrap()
+            .iter()
+            .map(|p| match framing_of(p.clip, &source, 60.0) {
+                Framing::Moving(keys) => (p.start_frame, keys),
+                _ => panic!("{} should move", p.clip.id),
+            })
+            .collect();
+        let mut lanes = Vec::new();
+        for hardware in [false, true] {
+            let lane = if hardware { "hw" } else { "sw" };
+            let (args, total) = build_render_args(&d, "/unused.mp4", hardware, None).unwrap();
+            assert_eq!(total, 180);
+            let animated = raw_frames(&args, &dir.join(format!("{lane}.yuv")), out_bytes);
+            assert_eq!(animated.len(), 180, "{lane}: frames");
+            assert_eq!(
+                raw_frames(&args, &dir.join(format!("{lane}-again.yuv")), out_bytes),
+                animated,
+                "{lane}: run to run"
+            );
+            // The same graph with each zoom stage taken out: the frames the stages read.
+            let filter_at = args.iter().position(|a| a == "-filter_complex").unwrap() + 1;
+            let mut bare = args.clone();
+            for (_, keys) in &plan {
+                bare[filter_at] =
+                    bare[filter_at].replace(&zoom_stage(keys, &source, 320, 240, None), "null");
+            }
+            let inputs = raw_frames(&bare, &dir.join(format!("{lane}-in.yuv")), src_bytes);
+            for (c, (start, keys)) in plan.iter().enumerate() {
+                let samples: &[i64] = if c == 0 {
+                    &[0, 1, 30, 59, 60, 61, 75, 89, 90, 91, 119]
+                } else {
+                    &[0, 1, 30, 59]
+                };
+                let reference = |f: i64, input: &[u8]| -> Vec<u8> {
+                    let frame = dir.join(format!("{lane}-f.yuv"));
+                    let out = dir.join(format!("{lane}-ref.yuv"));
+                    std::fs::write(&frame, input).unwrap();
+                    ffmpeg_ok(&[
+                        "-f",
+                        "rawvideo",
+                        "-pix_fmt",
+                        "yuv420p",
+                        "-s",
+                        "640x480",
+                        "-framerate",
+                        "60",
+                        "-i",
+                        frame.to_str().unwrap(),
+                        "-vf",
+                        &zoom_stage(keys, &source, 320, 240, Some(f)),
+                        "-f",
+                        "rawvideo",
+                        "-pix_fmt",
+                        "yuv420p",
+                        out.to_str().unwrap(),
+                    ]);
+                    std::fs::read(&out).unwrap()
+                };
+                for &f in samples {
+                    let k = *start as usize + f as usize;
+                    assert_eq!(
+                        animated[k],
+                        reference(f, &inputs[k]),
+                        "{lane}: clip {c} frame {f}"
+                    );
+                    for n in [f - 1, f + 1] {
+                        if glide_at(keys, n as f64) != glide_at(keys, f as f64) {
+                            assert_ne!(
+                                animated[k],
+                                reference(n, &inputs[k]),
+                                "{lane}: clip {c} frame {f} matches frame {n}'s framing"
+                            );
+                        }
+                    }
+                }
+            }
+            lanes.push(animated);
+        }
+        eprintln!("zoom guard: decode lanes agree: {}", lanes[0] == lanes[1]);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[test]
     #[ignore = "runs the dev ffmpeg sidecar (pnpm setup:ffmpeg)"]
     fn a_masked_edit_renders_end_to_end_through_the_sidecar() {
@@ -4332,6 +4999,7 @@ mod tests {
             start_ms,
             hold_ms,
             crop: None,
+            zoom: None,
         };
         d.clips = vec![
             clip_at("c1", "s1", 0, 1500, 0, None),
