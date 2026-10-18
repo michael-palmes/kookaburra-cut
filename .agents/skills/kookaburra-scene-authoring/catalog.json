@@ -22824,7 +22824,7 @@
       },
       {
         "id": "audio",
-        "summary": "Soundtrack { file, gainDb, fadeInMs, fadeOutMs, fadeOutCurve, startOffsetMs, markers }.",
+        "summary": "Soundtrack { file, gainDb, fadeInMs, fadeOutMs, fadeOutCurve, startOffsetMs, markers } plus music: grid { bpm, offsetMs (track ms of bar 1), beatsPerBar }, cues { id: position | ms }, sections [{ id, from, to }]; keys take at: \"bar:13.3\".",
         "type": "object"
       },
       {
@@ -23175,6 +23175,16 @@
         "summary": "slide(time, [startMs, endMs], axis) returns { offset } 1..0; axis is ignored."
       },
       {
+        "id": "useBeatGrid",
+        "kind": "hook",
+        "summary": "The authored audio.grid in scene ms, or null: bar(13, 3), at(\"cue:drop\"), position(localMs), beatMs."
+      },
+      {
+        "id": "useCues",
+        "kind": "hook",
+        "summary": "audio.cues as { id: scene-local ms }; {} when there are none."
+      },
+      {
         "id": "useDepthBand",
         "kind": "hook",
         "summary": "Inside DepthStage: the slot's { name, z, width, height }."
@@ -23249,6 +23259,12 @@
       },
       {
         "id": "AnimatedHeadlineProps"
+      },
+      {
+        "id": "BeatGrid"
+      },
+      {
+        "id": "BeatPosition"
       },
       {
         "id": "BrandLockupProps"

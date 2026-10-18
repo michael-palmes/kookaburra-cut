@@ -16,7 +16,12 @@ import { revealApp } from "../engine/reveal";
 import { isSceneErrorCard } from "../engine/SceneErrorCard";
 import { SceneHost } from "../engine/SceneHost";
 import { sceneRenderErrorReporter } from "../engine/StageScenes";
-import { ProjectIdContext, ProjectLightingContext } from "../engine/sceneContext";
+import {
+  ProjectIdContext,
+  ProjectLightingContext,
+  ProjectMusicContext,
+  projectMusicValue,
+} from "../engine/sceneContext";
 import { animatedFixtureLightIds, buildLightingTracks } from "../engine/sceneLighting";
 import { useEditorStore } from "../store/editorStore";
 import { useTrustStore } from "../store/trustStore";
@@ -113,6 +118,7 @@ export function PresentApp() {
         : [],
     [project],
   );
+  const musicValue = useMemo(() => projectMusicValue(project), [project]);
 
   useEffect(() => {
     let live = true;
@@ -363,81 +369,91 @@ export function PresentApp() {
             <PresentCompositorDriver project={project} mode={mode} />
             <ProjectIdContext.Provider value={project.id}>
               <ProjectLightingContext.Provider value={project.projectLighting ?? null}>
-                <Suspense fallback={null}>
-                  {project.scenes.map((scene, i) => {
-                    const slot = project.slots[i];
-                    const SceneComponent = scene.Scene;
-                    const active = mode === "slideshow" && deck.sceneIndex === i;
-                    return (
-                      <SceneHost
-                        key={sceneMountKey(project.id, project.sceneFiles[i])}
-                        index={i}
-                        id={project.sceneFiles[i]}
-                        startMs={mode === "slideshow" ? (anchors[i] ?? slot.startMs) : slot.startMs}
-                        durationMs={
-                          active ? slot.durationMs + ACTIVE_DURATION_EXTENSION_MS : slot.durationMs
-                        }
-                        doc={project.sceneDocs[i]}
-                        theme={project.sceneThemes[i]}
-                        frame={project.sceneFrames[i]}
-                        animatedFixtureLightIds={animatedFixtureLightSets[i]}
-                      >
-                        <AssetBoundary
-                          label={`scene ${i + 1}`}
-                          resetKey={project}
-                          onError={sceneRenderErrorReporter(project, i)}
+                <ProjectMusicContext.Provider value={musicValue}>
+                  <Suspense fallback={null}>
+                    {project.scenes.map((scene, i) => {
+                      const slot = project.slots[i];
+                      const SceneComponent = scene.Scene;
+                      const active = mode === "slideshow" && deck.sceneIndex === i;
+                      return (
+                        <SceneHost
+                          key={sceneMountKey(project.id, project.sceneFiles[i])}
+                          index={i}
+                          id={project.sceneFiles[i]}
+                          startMs={
+                            mode === "slideshow" ? (anchors[i] ?? slot.startMs) : slot.startMs
+                          }
+                          durationMs={
+                            active
+                              ? slot.durationMs + ACTIVE_DURATION_EXTENSION_MS
+                              : slot.durationMs
+                          }
+                          doc={project.sceneDocs[i]}
+                          theme={project.sceneThemes[i]}
+                          frame={project.sceneFrames[i]}
+                          animatedFixtureLightIds={animatedFixtureLightSets[i]}
                         >
-                          {isSceneErrorCard(scene) ? (
-                            <SceneComponent />
-                          ) : (
-                            <>
-                              <SceneBackground />
+                          <AssetBoundary
+                            label={`scene ${i + 1}`}
+                            resetKey={project}
+                            onError={sceneRenderErrorReporter(project, i)}
+                          >
+                            {isSceneErrorCard(scene) ? (
                               <SceneComponent />
-                              <SceneMediaFallback />
-                              <DevicesFallback />
-                              <ObjectsFallback />
-                              <LayeredScreenshotFallback />
-                              <ChartFallback />
-                              <TextFallback />
-                            </>
-                          )}
-                        </AssetBoundary>
-                      </SceneHost>
-                    );
-                  })}
-                  {/* Hoisted morphs key off the authored global timeline, which a slideshow's steered clock no longer matches; video mode keeps them. */}
-                  {mode === "video" && project.persistent && (
-                    <PersistentLayer key={`${project.id}:persistent`}>
-                      <project.persistent />
-                    </PersistentLayer>
-                  )}
-                  {project.scenes.map((_, i) => {
-                    const frame = project.sceneFrames[i];
-                    if (
-                      !frame &&
-                      !project.sceneDocs[i]?.terminal &&
-                      !project.sceneDocs[i]?.website
-                    ) {
-                      return null;
-                    }
-                    const slot = project.slots[i];
-                    const active = mode === "slideshow" && deck.sceneIndex === i;
-                    return (
-                      <FramePanel
-                        key={`${sceneMountKey(project.id, project.sceneFiles[i])}:panel`}
-                        index={i}
-                        startMs={mode === "slideshow" ? (anchors[i] ?? slot.startMs) : slot.startMs}
-                        durationMs={
-                          active ? slot.durationMs + ACTIVE_DURATION_EXTENSION_MS : slot.durationMs
-                        }
-                        doc={project.sceneDocs[i]}
-                        theme={project.sceneThemes[i]}
-                        frame={frame ?? undefined}
-                      />
-                    );
-                  })}
-                  <CommittedProbe />
-                </Suspense>
+                            ) : (
+                              <>
+                                <SceneBackground />
+                                <SceneComponent />
+                                <SceneMediaFallback />
+                                <DevicesFallback />
+                                <ObjectsFallback />
+                                <LayeredScreenshotFallback />
+                                <ChartFallback />
+                                <TextFallback />
+                              </>
+                            )}
+                          </AssetBoundary>
+                        </SceneHost>
+                      );
+                    })}
+                    {/* Hoisted morphs key off the authored global timeline, which a slideshow's steered clock no longer matches; video mode keeps them. */}
+                    {mode === "video" && project.persistent && (
+                      <PersistentLayer key={`${project.id}:persistent`}>
+                        <project.persistent />
+                      </PersistentLayer>
+                    )}
+                    {project.scenes.map((_, i) => {
+                      const frame = project.sceneFrames[i];
+                      if (
+                        !frame &&
+                        !project.sceneDocs[i]?.terminal &&
+                        !project.sceneDocs[i]?.website
+                      ) {
+                        return null;
+                      }
+                      const slot = project.slots[i];
+                      const active = mode === "slideshow" && deck.sceneIndex === i;
+                      return (
+                        <FramePanel
+                          key={`${sceneMountKey(project.id, project.sceneFiles[i])}:panel`}
+                          index={i}
+                          startMs={
+                            mode === "slideshow" ? (anchors[i] ?? slot.startMs) : slot.startMs
+                          }
+                          durationMs={
+                            active
+                              ? slot.durationMs + ACTIVE_DURATION_EXTENSION_MS
+                              : slot.durationMs
+                          }
+                          doc={project.sceneDocs[i]}
+                          theme={project.sceneThemes[i]}
+                          frame={frame ?? undefined}
+                        />
+                      );
+                    })}
+                    <CommittedProbe />
+                  </Suspense>
+                </ProjectMusicContext.Provider>
               </ProjectLightingContext.Provider>
             </ProjectIdContext.Provider>
           </Canvas>

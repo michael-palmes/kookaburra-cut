@@ -26,6 +26,19 @@ describe("Present lighting scope", () => {
     expect(scopeEnd).toBeGreaterThan(sceneHost);
   });
 
+  it("provides the project's music to every scene host", () => {
+    expect(source).toMatch(/useMemo\(\(\) => projectMusicValue\(project\), \[project\]\)/);
+    const scopeStart = source.indexOf("<ProjectMusicContext.Provider value={musicValue}>");
+    const sceneHost = source.indexOf("<SceneHost", scopeStart);
+    const persistent = source.indexOf("<PersistentLayer", scopeStart);
+    const scopeEnd = source.indexOf("</ProjectMusicContext.Provider>", sceneHost);
+
+    expect(scopeStart).toBeGreaterThan(source.indexOf("<ProjectLightingContext.Provider"));
+    expect(sceneHost).toBeGreaterThan(scopeStart);
+    expect(scopeEnd).toBeGreaterThan(persistent);
+    expect(source.indexOf("</ProjectLightingContext.Provider>")).toBeGreaterThan(scopeEnd);
+  });
+
   it("reserves zero-base paired lights from the active A-side track", () => {
     expect(source).toMatch(
       /useMemo\([\s\S]*buildLightingTracks\([\s\S]*\.map\(\s*animatedFixtureLightIds,?\s*\)[\s\S]*\[project\]/,

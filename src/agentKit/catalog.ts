@@ -312,7 +312,7 @@ export const PROJECT_MANIFEST_KEYS: Record<
   },
   audio: {
     summary:
-      "Soundtrack { file, gainDb, fadeInMs, fadeOutMs, fadeOutCurve, startOffsetMs, markers }.",
+      'Soundtrack { file, gainDb, fadeInMs, fadeOutMs, fadeOutCurve, startOffsetMs, markers } plus music: grid { bpm, offsetMs (track ms of bar 1), beatsPerBar }, cues { id: position | ms }, sections [{ id, from, to }]; keys take at: "bar:13.3".',
     type: "object",
   },
   defaultTransition: {
@@ -710,6 +710,11 @@ export const TOOLKIT_SUMMARIES: Record<
   slide: {
     summary: "slide(time, [startMs, endMs], axis) returns { offset } 1..0; axis is ignored.",
   },
+  useBeatGrid: {
+    summary:
+      'The authored audio.grid in scene ms, or null: bar(13, 3), at("cue:drop"), position(localMs), beatMs.',
+  },
+  useCues: { summary: "audio.cues as { id: scene-local ms }; {} when there are none." },
   useDepthBand: { summary: "Inside DepthStage: the slot's { name, z, width, height }." },
   useFormat: { summary: "{ width, height, aspect, frame, safe } in world units at z=0." },
   useGroupAnimation: { summary: "Lets a custom child join an AnimatedGroup's alpha and shine." },

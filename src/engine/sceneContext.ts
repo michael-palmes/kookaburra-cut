@@ -1,6 +1,7 @@
 import { createContext, useContext } from "react";
 import type { LightingSpec, Theme } from "../theme/tokens";
 import type { FormatInfo } from "../toolkit/types";
+import type { ProjectMusic } from "./musicTime";
 import type { SceneDoc } from "./sceneDocSchema";
 
 /** Per-scene placement on the global timeline (supplied by `<SceneHost>`, read by `useTimeline()`); created inside the canvas subtree so it bridges within the r3f reconciler. */
@@ -30,6 +31,23 @@ export const AnimatedFixtureLightIdsContext = createContext<ReadonlySet<string>>
 
 /** The project-default lighting layer (`LoadedProject.projectLighting`), the middle layer of theme -> project -> scene; provided beside `ProjectIdContext` inside the canvas so `SceneStage` resolves it per scene. Null when the manifest declares none, which resolves exactly as before. */
 export const ProjectLightingContext = createContext<LightingSpec | null>(null);
+
+/** The project's authored music (`LoadedProject.music`) plus each scene's authored slot start, so `useBeatGrid()` and `useCues()` measure scene-local time exactly as sidecar `at` positions do, even where a host steers the scene clock (Present's slideshow anchors). */
+export interface ProjectMusicValue {
+  music: ProjectMusic;
+  sceneStartsMs: readonly number[];
+}
+
+/** Provided beside `ProjectLightingContext`; null when the project authors no grid, cues or sections, so the hooks return their empty values. */
+export const ProjectMusicContext = createContext<ProjectMusicValue | null>(null);
+
+/** The context value for a project, memoised by the caller per project. */
+export function projectMusicValue(
+  project: { music?: ProjectMusic; slots: readonly { startMs: number }[] } | null,
+): ProjectMusicValue | null {
+  if (!project?.music) return null;
+  return { music: project.music, sceneStartsMs: project.slots.map((s) => s.startMs) };
+}
 
 /** The mounted scene's resolved theme (the project theme unless the sidecar overrides `themeId`); `useTheme()` reads this first, falling back to the editor store for UI chrome, which deliberately keeps the project theme since per-scene render state is applied at the compositor seam instead. */
 export const SceneThemeContext = createContext<Theme | null>(null);
