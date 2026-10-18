@@ -20,6 +20,7 @@ import {
 } from "./dof";
 import { ease, isEaseName } from "./ease";
 import { lerp, lerp3 } from "./keyframes";
+import { parseWarn } from "./parseWarnings";
 import type {
   SceneDoc,
   SceneDocCameraKey,
@@ -85,17 +86,17 @@ export function normalizeSceneCamera(
   const seen = new Set<string>();
   for (const key of raw.keys ?? []) {
     if (!key || typeof key.id !== "string" || !Number.isFinite(key.tMs) || !validPose(key.pose)) {
-      console.warn(`[sceneCamera] ${source}: invalid camera key — dropped`);
+      parseWarn(`[sceneCamera] ${source}: invalid camera key, dropped`);
       continue;
     }
     if (seen.has(key.id)) {
-      console.warn(`[sceneCamera] ${source}: duplicate camera key id "${key.id}" — dropped`);
+      parseWarn(`[sceneCamera] ${source}: duplicate camera key id "${key.id}", dropped`);
       continue;
     }
     seen.add(key.id);
     const pose = { ...key.pose };
     const dofAuthored = normalizeDocDof(key.pose.dof, (message) =>
-      console.warn(`[sceneCamera] ${source}: camera key "${key.id}" ${message}`),
+      parseWarn(`[sceneCamera] ${source}: camera key "${key.id}" ${message}`),
     );
     if (dofAuthored) pose.dof = dofAuthored;
     else delete pose.dof;
@@ -113,7 +114,7 @@ export function normalizeSceneCamera(
   for (const key of keys) {
     const authored = key.pose.dof;
     if (authored?.mode && dofMode && authored.mode !== dofMode) {
-      console.warn(
+      parseWarn(
         `[sceneCamera] ${source}: dof mode is per scene; key "${key.id}" "${authored.mode}" ignored`,
       );
     }
@@ -130,18 +131,18 @@ export function normalizeSceneCamera(
     const from = seg ? byId.get(seg.from) : undefined;
     const to = seg ? byId.get(seg.to) : undefined;
     if (!from || !to || from.tMs >= to.tMs) {
-      console.warn(`[sceneCamera] ${source}: invalid camera segment — dropped`);
+      parseWarn(`[sceneCamera] ${source}: invalid camera segment, dropped`);
       continue;
     }
     if (typeof seg.ease === "string" && !isEaseName(seg.ease)) {
-      console.warn(`[sceneCamera] ${source}: unknown ease "${seg.ease}" — will render as default`);
+      parseWarn(`[sceneCamera] ${source}: unknown ease "${seg.ease}", will render as default`);
     }
     let easeDof: string | undefined;
     if (seg.easeDof !== undefined) {
       if (isEaseName(seg.easeDof)) easeDof = seg.easeDof;
       else {
-        console.warn(
-          `[sceneCamera] ${source}: unknown easeDof "${seg.easeDof}" — falling back to the segment's`,
+        parseWarn(
+          `[sceneCamera] ${source}: unknown easeDof "${seg.easeDof}", falling back to the segment's`,
         );
       }
     }
@@ -152,7 +153,7 @@ export function normalizeSceneCamera(
   for (const seg of segments) {
     const prev = ordered[ordered.length - 1];
     if (prev && seg.from.tMs < prev.to.tMs) {
-      console.warn(`[sceneCamera] ${source}: overlapping camera segment — dropped`);
+      parseWarn(`[sceneCamera] ${source}: overlapping camera segment, dropped`);
       continue;
     }
     ordered.push(seg);
@@ -285,8 +286,8 @@ export function buildSceneCameraTracks(
     if (rigRaw && continuesFromPrevious(rigRaw)) {
       const previous = i > 0 ? finalScenePose(tracks[i - 1]) : null;
       if (!previous) {
-        console.warn(
-          `[sceneCamera] ${source}: continueFromPrevious has no previous camera to continue — ignored`,
+        parseWarn(
+          `[sceneCamera] ${source}: continueFromPrevious has no previous camera to continue, ignored`,
         );
       } else {
         rigRaw = withEarliestKeyPose(rigRaw, previous);
@@ -375,6 +376,34 @@ export function dofUnionOf(
   return any ? union : null;
 }
 
+/** One scene's applied camera pose at scene-local time (rig, then orbit, then `fallback`, the project track sample); `resolveFrameCameras` and `useSceneCamera` share it. Internal: swapped for the shared `sceneCameraPose()` once that lands. */
+export function sceneTrackPose(
+  scene: SceneCameraTracks | null | undefined,
+  localMs: number,
+  fallback: CameraPose,
+): CameraPose {
+  if (!scene) return fallback;
+  if (scene.mode === "rig" && scene.rig) {
+    const rig = sampleSceneRig(scene.rig, localMs);
+    return {
+      position: rig.position,
+      lookAt: rig.lookAt,
+      fov: rig.fov ?? fallback.fov,
+      rollDeg: rig.rollDeg,
+      dof: rig.dof,
+    };
+  }
+  if (!scene.orbit) return fallback;
+  const sample = sampleSceneCameraWithDof(scene.orbit, localMs);
+  const view = orbitToView(sample.pose);
+  return {
+    position: view.position,
+    lookAt: view.lookAt,
+    fov: fallback.fov,
+    dof: sample.dof ?? undefined,
+  };
+}
+
 /** Resolve the frame's camera plan. Null whenever the PROJECT has no scene tracks (the seams then run today's exact path, `applyCameraTrack`, preserving byte-identity for every existing project). When any scene has a track, EVERY frame gets an explicit plan (untracked scenes fall back to the project-level track sample, else the base pose) so the camera never inherits a stale pose from a neighbouring scene. Per-scene precedence is rig -> orbit -> project -> base; `fov` comes from the project-level track unless a rig key authored one. */
 export function resolveFrameCameras(
   tracks: readonly (SceneCameraTracks | null)[] | null | undefined,
@@ -386,29 +415,8 @@ export function resolveFrameCameras(
   if (resolved.active.length === 0) return null;
 
   const fallback = sampleCameraTrack(projectTrack ?? [], globalMs);
-  const poseFor = (active: ActiveScene): CameraPose => {
-    const scene = tracks[active.index];
-    if (!scene) return fallback;
-    if (scene.mode === "rig" && scene.rig) {
-      const rig = sampleSceneRig(scene.rig, active.localMs);
-      return {
-        position: rig.position,
-        lookAt: rig.lookAt,
-        fov: rig.fov ?? fallback.fov,
-        rollDeg: rig.rollDeg,
-        dof: rig.dof,
-      };
-    }
-    if (!scene.orbit) return fallback;
-    const sample = sampleSceneCameraWithDof(scene.orbit, active.localMs);
-    const view = orbitToView(sample.pose);
-    return {
-      position: view.position,
-      lookAt: view.lookAt,
-      fov: fallback.fov,
-      dof: sample.dof ?? undefined,
-    };
-  };
+  const poseFor = (active: ActiveScene): CameraPose =>
+    sceneTrackPose(tracks[active.index], active.localMs, fallback);
 
   const dofUnion = dofUnionOf(tracks);
   const tr = resolved.transition;

@@ -2,6 +2,7 @@ import { useContext } from "react";
 import { VSMShadowMap } from "three";
 import { useEditorStore } from "../store/editorStore";
 import type { FormatInfo } from "../toolkit/types";
+import { frameOnPlane } from "./frustum";
 import { FormatContext } from "./sceneContext";
 
 /** Ids are slug-safe (the export path runs `name.replace(":", "x")` through the Rust slug check), so the device-panel pair reads as a slug, not a ratio; `aspectLabel()` owns what the UI shows. */
@@ -104,6 +105,20 @@ export function computeFormat(spec: FormatSpec): FormatInfo {
     frame,
     safe: { top: inset, right: inset, bottom: inset, left: inset },
   };
+}
+
+/** The visible frame's world size at depth `z` under the base camera: `format.frame` scaled by the frustum's growth from the content plane (exactly `format.frame` at z = 0, zero at or behind the camera). Scenes place backdrops behind their text with it. */
+export function frameAtDepth(format: FormatInfo, z: number): { width: number; height: number } {
+  const base = {
+    position: CAMERA.position,
+    lookAt: [0, 0, CAMERA.contentZ] as [number, number, number],
+    fov: CAMERA.fov,
+  };
+  const at = frameOnPlane(base, format.aspect, z);
+  const content = frameOnPlane(base, format.aspect, CAMERA.contentZ);
+  if (!at || !content) return { width: 0, height: 0 };
+  const k = at.height / content.height;
+  return { width: format.frame.width * k, height: format.frame.height * k };
 }
 
 /** Reactive format info for the currently selected export aspect. Inside a scene rendering through an overlay cutout, `<SceneHost>` supplies a cutout-scoped override (the cutout as its own frame); everywhere else this is null and it falls back to the export format, byte-identical to before overlays. Mirrors the context-first/store-fallback shape of `useTheme()`. */

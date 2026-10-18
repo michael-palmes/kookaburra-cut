@@ -15,6 +15,7 @@ import { type LoadedProject, sceneMountKey } from "./project";
 import { ProjectSharedContext } from "./projectShared";
 import { isSceneErrorCard } from "./SceneErrorCard";
 import { SceneHost } from "./SceneHost";
+import { SceneCameraTracksProvider } from "./sceneCameraContext";
 import { ProjectIdContext, ProjectLightingContext } from "./sceneContext";
 import {
   animatedFixtureLightIds,
@@ -181,7 +182,7 @@ export function StageScenes({ project }: { project: LoadedProject | null }) {
   );
   return (
     <ProjectSharedContext.Provider value={project?.projectShared ?? null}>
-      {tree}
+      <SceneCameraTracksProvider project={project}>{tree}</SceneCameraTracksProvider>
     </ProjectSharedContext.Provider>
   );
 }

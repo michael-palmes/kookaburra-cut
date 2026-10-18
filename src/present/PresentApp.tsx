@@ -17,6 +17,7 @@ import { revealApp } from "../engine/reveal";
 import { isSceneErrorCard } from "../engine/SceneErrorCard";
 import { SceneHost } from "../engine/SceneHost";
 import { sceneRenderErrorReporter } from "../engine/StageScenes";
+import { SceneCameraTracksProvider } from "../engine/sceneCameraContext";
 import { ProjectIdContext, ProjectLightingContext } from "../engine/sceneContext";
 import { animatedFixtureLightIds, buildLightingTracks } from "../engine/sceneLighting";
 import { useEditorStore } from "../store/editorStore";
@@ -502,7 +503,7 @@ function ProjectScope({ project, children }: { project: LoadedProject; children:
   return (
     <ProjectIdContext.Provider value={project.id}>
       <ProjectSharedContext.Provider value={project.projectShared ?? null}>
-        {children}
+        <SceneCameraTracksProvider project={project}>{children}</SceneCameraTracksProvider>
       </ProjectSharedContext.Provider>
     </ProjectIdContext.Provider>
   );
