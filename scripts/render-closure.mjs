@@ -28,6 +28,21 @@ export async function renderClosure() {
     "silent",
   );
   const config = loaded.config;
+  // The module graph, not the output chunks: chunks drop modules the bundler inlined or folded (shader strings, registries).
+  const ids = new Set();
+  config.plugins = [
+    ...(config.plugins ?? []),
+    {
+      name: "kookaburra-render-closure",
+      transform(_code, id) {
+        ids.add(id);
+        return null;
+      },
+      buildEnd() {
+        for (const id of this.getModuleIds?.() ?? []) ids.add(id);
+      },
+    },
+  ];
   // Replaced, not merged: the app's own HTML entries would pull in every window's chrome.
   config.build = {
     ...config.build,
@@ -44,9 +59,8 @@ export async function renderClosure() {
   // vite build writes NODE_ENV process-wide; vitest and the dev app spawned later must not inherit it.
   const nodeEnv = process.env.NODE_ENV;
   process.env.NODE_ENV = "development";
-  let out;
   try {
-    out = await build({
+    await build({
       ...config,
       mode: "development",
       root: ROOT,
@@ -58,15 +72,10 @@ export async function renderClosure() {
     else process.env.NODE_ENV = nodeEnv;
   }
   const files = new Set();
-  for (const output of Array.isArray(out) ? out : [out]) {
-    for (const chunk of output.output) {
-      if (chunk.type !== "chunk") continue;
-      for (const id of chunk.moduleIds) {
-        const path = id.replace(/^\0/, "").split("?")[0];
-        if (!path.startsWith(ROOT) || path.includes("/node_modules/")) continue;
-        files.add(relative(ROOT, path));
-      }
-    }
+  for (const id of ids) {
+    const path = id.replace(/^\0/, "").split("?")[0];
+    if (!path.startsWith(ROOT) || path.includes("/node_modules/")) continue;
+    files.add(relative(ROOT, path));
   }
   return files;
 }
