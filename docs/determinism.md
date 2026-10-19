@@ -38,6 +38,7 @@ GPU/driver, not across fleets.)
 | **Awaiting troika `sync(cb)` naively**: troika has no `isTroikaText` mesh flag (matching on one awaits nothing), silently DROPS the callback when `_needsSync` is false (including mid-typeset), and only kicks changed text in `onBeforeRender` (one frame late) | `awaitTextSync` matches troika's `Text` by class (its `material` is an `[outline, main]` array for outlined text: neon, whole-block blur-in), kicks a pending typeset itself pre-render, awaits quiescence via the `synccomplete` event, and fails the run, naming the text, if a typeset never lands. |
 | A mid-run window resize retriggering r3f's size handling (corrupts the export's fixed drawing buffer for every remaining frame) | The frame loop re-asserts the export size/camera aspect if drifted, after the awaits and immediately before the (synchronous) render + readback. |
 | Non-preloaded textures/assets | Await all asset loads before frame 0. |
+| **Rendering into a plain render target** (2026-10-19): three r185 tone-maps, encodes sRGB in-shader and converts the clear colour only for the canvas or an `isXRRenderTarget` target, so `toneMapped` materials land raw in a plain one, and hardware `SRGB8_ALPHA8` storage then blends and resolves MSAA in linear light. Transition frames showed raw-colour, bolder text; comparison and framed scenes were never tone-mapped, and a comparison inside a transition was encoded twice. | Every SDR compositor target is a display target (`engine/displayTarget.ts`: the XR flag plus `RGBA8` storage), and its samplers read raw; `displayTarget.test.ts` pins three's gate and every SDR sampler. On any three upgrade, re-check each `isXRRenderTarget` read in three's WebGL renderer (`node_modules/three/src/renderers` outside `common/`, `webgpu/`, `webgl-fallback/` and `webxr/`: six in r185) and eyeball `transition-spike` frames. |
 | **A cold-mount suspense holding EVERY scene out of the canvas**: all scenes share one `<Suspense fallback={null}>` (App.tsx); a suspending primitive (`ImageCard`'s `useTexture`) keeps the whole boundary uncommitted until React's retry render lands, and that retry races the export preamble on the wall clock. Frame 0 rendered first captures a scene-less (white) frame. `awaitCanvasClockCommit` cannot catch it: the clock is already committed at its initial 0. | `awaitSceneHostsCommitted(slots.length)`: the preamble's LAST barrier spins until every scene's host has registered (registration is a `useEffect`, which only runs once the boundary's content commits). The preceding asset preloads resolve whatever the suspense was waiting on, so the wait is a few ticks. |
 | **A layout that depends on a measurement only the mounted tree can request**: `TitleBlock` cascades its header icon and subtitle off the title's MEASURED block height, but its props exist only once the scene is in the tree, so the preamble cannot pre-warm them the way `preloadPanelMeasures` does for overlay panels. A cold pass would render frame 0 pre-measure while a warm second pass renders it cascaded. | `awaitTitleMeasuresSettled()`, the barrier after `awaitSceneHostsCommitted`: mounted TitleBlocks report their outstanding typesets, and the spin exits only once they have landed AND the tree has re-rendered with them (`engine/titleBlockMeasure.ts`). Single-line text solves to a hard 0 growth, so standing layouts keep their authored constants bit-for-bit either way. |
 | **Layout derived from measured text** (a pill sized by `useTextMetrics`, a pinned `durationMs` reveal waiting on its unit count): the derived state lands one re-render after its face parses or its first typeset, so a frame captured in between draws the pre-measure layout. | Pending reports (`engine/textDerivedState.ts`, from layout effects): `awaitTextSync` settles typesets, spins (bounded at 5000) until nothing is outstanding, then settles once more for typesets the settling commit queued. A tree that reports nothing takes the old path exactly. Preview captures (`captureFrameAt`) also run the export's clip, text and emoji barriers, in that order. |
@@ -145,37 +146,49 @@ and the exporter, so they cannot drift. Two paths:
 
 Determinism rules specific to the composite path:
 
-- **Tone-map once, encode once, per path.** No-effects: scene passes tone-map
-  (ACES) via the live r3f pipeline into the 8-bit targets, whose stored bytes are
-  the correctly-encoded image (hardware `SRGB8_ALPHA8`); the composite re-encodes
-  its hardware-decoded samples and writes display bytes straight to the canvas:
-  net zero conversions. Effects: scenes render **un-tone-mapped** into
+- **Tone-map once, encode once, per path.** No-effects: every SDR target is a
+  **display target** (`engine/displayTarget.ts`): three r185 applies tone
+  mapping, the in-shader sRGB encode and the sRGB clear colour only when the
+  current target is `null` or flagged `isXRRenderTarget`, so the flag makes
+  scene passes render into the target exactly as onto the canvas (the same
+  programs; the target takes the renderer's `outputColorSpace` as its tag, and
+  the pools re-allocate if it changes), and explicit `RGBA8` storage keeps
+  those display bytes raw. The
+  composite reads them untouched and writes display bytes straight to the
+  canvas: net zero conversions. Before 2026-10-19 the targets were plain
+  hardware `SRGB8_ALPHA8`, so three never tone-mapped inside them: text and lit
+  bodies jumped to their raw colour for every transition frame, and comparison
+  and framed scenes were never tone-mapped at all. Effects: scenes render **un-tone-mapped** into
   `HalfFloatType`/linear targets (8-bit targets would clamp >1.0 linear BEFORE
   the composer's ACES and dim highlights) and the composer still owns the
   project's single ACES + encode.
 - **Blending domain.** Both composite variants mix in the **display (encoded
   sRGB) domain**: a dissolve is a perceptual effect; linear-light mixing
-  back-loads the apparent fade. Sample semantics matter: three allocates hardware
-  sRGB storage for `UnsignedByteType` + `SRGBColorSpace` render targets, so
-  `texture2D()` returns hardware-DECODED linear; a shader that assumes encoded
-  samples and decodes again displays `srgbToLinear(image)` for every transition
-  frame (a whole-frame "snaps dim / snaps back" bug). The SDR shader's
-  `sampleDisplay` re-encodes the sample (recovering the exact stored bytes; the
-  composite at progress 0/1 equals the neighbouring solo frame byte-for-byte),
-  and the effects-path shader blends through three's exact ACES forward/inverse
+  back-loads the apparent fade. Sample semantics matter: a display target
+  stores encoded bytes raw, so the SDR shaders' `sampleDisplay` / `S()` read
+  `texture()` untouched (the composite at progress 0/1 equals the neighbouring
+  solo frame byte-for-byte); any decode or re-encode there shows a whole-frame
+  "snaps dim / snaps back" or a washed-out double encode. Without
+  `internalFormat: "RGBA8"`, three allocates hardware `SRGB8_ALPHA8` for an
+  `UnsignedByteType` + `SRGBColorSpace` target and `texture()` returns
+  hardware-DECODED linear (the pre-2026-10-19 contract), and the effects-path shader blends through three's exact ACES forward/inverse
   pair (`engine/acesCurve.ts`, golden-pinned, self-inverting → seam-exact within
   fp32; the encoded mix is clamped ≤ 0.999 before inversion so blown-out/toe
   pixels land back at white/black after the composer re-tone-maps). Slide/wipe
   select whole pixels: display-encoded on the SDR path, raw linear HDR on the
-  effects path; `dip` lands on the **authored hex**. **Accepted residual:**
-  inside transition windows MSAA resolves in the sRGB target (linear-domain
-  average) vs the canvas (encoded-domain average), so AA **edge** pixels sit
-  ~1 LSB brighter, sub-perceptual.
+  effects path; `dip` lands on the **authored hex**. Alpha blending and the
+  MSAA resolve run in the encoded domain inside display targets, as on the
+  canvas, so AA and alpha edges match the solo frames too. (The old
+  hardware-sRGB targets blended and resolved in linear light; the "~1 LSB,
+  sub-perceptual" edge residual recorded here was wrong: about 77 % of glyph-edge
+  pixels differed by 9 LSB or more, which read as bolder text in transitions.)
 - **`progress` (and `direction`) are CPU-computed** and passed as uniforms (
   never derived from time inside GLSL), so the frame stays a pure function of `t`.
 - **MSAA 4×** on all A/B targets (`samples: MSAA_SAMPLES`); **`NearestFilter`**
   with targets sized 1:1 to the drawing buffer (no bilinear taps). Target
-  type/colorSpace ride the verify `renderStateFingerprint` (`compositorTargets`).
+  type, colour space, storage and the display flag ride the verify
+  `renderStateFingerprint` (`compositorTargets`, for example
+  `1009/srgb/RGBA8/display`).
 - **Orientation:** the composite samples targets with straight UVs (the 2×2 plane
   maps uv(0,0)→clip(−1,−1)), so the composited default-framebuffer orientation
   equals a direct render. The existing Rust `vflip` stays correct.
@@ -1679,28 +1692,29 @@ rolling-gate project (`showcase-tour`):
 
 | Project | 16:9 | 9:16 | 1:1 | 4:5 | 5:4 | 3:2 | 2:3 | phone | phone-landscape |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `ws:launch-2026` (legacy sentinel: must stay EQUAL) | `eb89826c…` | stale | stale | stale | — | — | — | — | — |
+| `ws:launch-2026` (legacy sentinel: must stay EQUAL) | `1ad4b2e6…` | stale | stale | stale | — | — | — | — | — |
 | `showcase-tour` (rolling gate) | `13b5994d…` | stale | stale | stale | stale | stale (pre-trim) | — | — | — |
-| `transition-spike` (transition gate, image mask included) | `53b6c496…` | `892e8e10…` | — | — | — | — | — | — | — |
-| `transition-bg-spike` (animated-background transition gate) | `f16fe7c1…` | — | — | — | — | — | — | — | — |
-| `compare-spike` (before/after comparison gate) | `f425a9a8…` | stale | stale | stale | — | — | — | — | — |
+| `transition-spike` (transition gate, image mask included) | `9aaa76b6…` | `40867f7d…` | — | — | — | — | — | — | — |
+| `transition-bg-spike` (animated-background transition gate) | `179521c0…` | — | — | — | — | — | — | — | — |
+| `compare-spike` (before/after comparison gate) | `3689575d…` | stale | stale | stale | — | — | — | — | — |
+| `compare-transition-spike` (comparisons through transitions) | `452c9f2c…` | — | — | — | — | — | — | — | — |
 | `image-flip-spike` (image-orientation gate, eyeball it) | stale | — | — | — | — | — | — | — | — |
-| `ws:layered-screenshot-spike` (LS gate, machine-local) | `4ec7b223…` | — | — | — | — | — | — | — | — |
+| `ws:layered-screenshot-spike` (LS gate, machine-local) | `1b3cde02…` | — | — | — | — | — | — | — | — |
 | `ws:video-window-spike` (VideoWindow gate, machine-local) | `6dfe68a6…` | — | — | — | — | — | — | — | — |
 | `ws:lighting-spike-fable` (v9 lighting gate, machine-local) | `bf5021f2…` | — | — | — | — | — | — | — | — |
 | `ws:camera-rig-spike-opus` (camera rig gate, machine-local) | `81429136…` | — | — | — | — | — | — | — | — |
 | `ws:multi-device-spike` (deviceLayout gate, machine-local) | `fb5a182d…` | stale | stale | — | — | — | — | — | — |
-| `ws:dof-spike` (depth-of-field gate, machine-local) | stale | stale | — | — | — | — | — | — | — |
-| `ws:motion-blur-spike` (motion blur gate, machine-local) | `bb5b4682…` | `504c9591…` | — | — | — | — | — | — | — |
+| `ws:dof-spike` (depth-of-field gate, machine-local) | `c9c48d7d…` | stale | — | — | — | — | — | — | — |
+| `ws:motion-blur-spike` (motion blur gate, machine-local) | `7c9b3662…` | `a8edaf27…` | — | — | — | — | — | — | — |
 | `ws:camera-kick-spike` (camera kicks, musical positions and `useBeatGrid`, machine-local; never in a gate) | `1ab8d22d…` | — | — | — | — | — | — | — | — |
-| `ws:chart-spike` (chart gate, machine-local) | `d58ff1f2…` | stale | stale | stale | — | — | — | — | — |
+| `ws:chart-spike` (chart gate, machine-local) | `3e81edbd…` | stale | stale | stale | — | — | — | — | — |
 | `ws:duplicate-spike` (scene-id heal gate, machine-local) | stale | — | — | — | — | — | — | — | — |
 | `ws:overlay-spike` (overlay gate, machine-local) | stale | — | — | — | — | — | — | — | — |
 | `ws:duo-spike` (foldable gate, machine-local) | `2e023390…` | `b28e7c7f…` | — | — | — | — | — | — | — |
-| `ws:device-video-spike` (device/media/camera gate, built-in-lit devices, machine-local) | `386c8419…` | — | — | — | — | — | — | — | — |
+| `ws:device-video-spike` (device/media/camera gate, built-in-lit devices, machine-local) | `2d9882c6…` | — | — | — | — | — | — | — | — |
 | `ws:device-env-spike` (cold frame-0 repro: a built-in-lit handset's top edge, machine-local) | `9f3418a2…` | — | — | — | — | — | — | — | — |
 | `ws:text-outline-spike` (outlined text in the text barrier: neon, whole-block blur-in, machine-local) | `87bb6b3a…` | — | — | — | — | — | — | — | — |
-| `ws:rooms-spike` (room cuts, a flood with a tokened light, a wipe while both sides flood; machine-local, never gated) | `2768226b…` | `82d0f4ac…` | — | — | — | — | — | — | — |
+| `ws:rooms-spike` (room cuts, a flood with a tokened light, a wipe while both sides flood; machine-local, never gated) | `ea0da8bd…` | `2933616e…` | — | — | — | — | — | — | — |
 | `ws:mask-fx-spike` (an image-mask seam between two bloom scenes on the effects lane; machine-local, never gated) | `c93487c0…` | — | — | — | — | — | — | — | — |
 | `ws:motion-toolkit-spike` (the toolkit primitives: shapes, device anchors, text metrics and presets, stamps, dashes, mosaic, taps; machine-local, gated when motion or shape primitives change) | `fba8fa0e…` | `91bea026…` | — | — | — | — | — | — | — |
 
@@ -1714,6 +1728,37 @@ rolling-gate project (`showcase-tour`):
 > render. The same session's `pnpm ready` proved a single export matches a
 > ×2-recorded baseline: `showcase-tour` `13b5994d…` and `ws:launch-2026`
 > `eb89826c…` (second leg) both matched.
+
+> **2026-10-19 (display targets: a deliberate rebase):** every no-effects SDR
+> target is now a display target (see "Rendering into a plain render target"),
+> so transition sides, comparison sides and framed cutouts tone-map like the
+> canvas. Eyeballed at 4K against main `c6ce484f` through `--action
+> screenshot`: a mid-push headline goes from its raw (242,245,250) to ACES's
+> (223,223,225), the solo value, with every glyph-interior pixel exact and the
+> bright histogram identical to the solo frame; a comparison's "after" label
+> reads (120,210,202) in both its solo and push frames where main showed
+> (58,209,196) solo and the double-encoded (131,234,227) mid push; plain solo
+> frames are byte-identical to main. Dim text on a comparison side darkens
+> under the ACES toe, as it does on any canvas frame. A framed scene in an
+> effects project moves too: its solo frames take the framed branch ahead of
+> the effects lane, so three's tone map now applies inside the cutout where it
+> was raw (its transition frames still fall back to the unframed HDR render).
+> No gate fixture combines a frame with effects. `showcase-tour` stayed
+> EQUAL (`13b5994d…`), as did `ws:lighting-spike-fable` (`bf5021f2…`),
+> `ws:mask-fx-spike` (`c93487c0…`) and the `showcase-tour` stills: the
+> composer lane never touches these targets. Moved, re-recorded: the
+> sentinel `ws:launch-2026` `eb89826c…` → `1ad4b2e6…` (Verify ×2, then a
+> single anchors-first export, both as `gate:merge`'s second leg),
+> `transition-spike` (Verify ×2 in both aspects; a 16:9 `--cold` export matches),
+> `compare-transition-spike` (first record, Verify ×2), and from single
+> exports, each fixture alone in its own boot: `transition-bg-spike`,
+> `compare-spike`, `ws:dof-spike`, `ws:device-video-spike`,
+> `ws:motion-blur-spike` (both aspects), `ws:layered-screenshot-spike`,
+> `ws:chart-spike` (its framed scene), `ws:rooms-spike` (both aspects) and the
+> `ws:stills-spike` stills. `ws:emoji-spike` and `ws:shader-spike` (one
+> crossfade each) are marked stale, as `ws:overlay-spike` and
+> `ws:duplicate-spike` already were. Every leg was recorded anchors first or
+> alone in its own boot ("Boots and order" above).
 
 > **2026-10-18 (image-mask transition, a fifth material generation):** with the
 > code in and the fixtures untouched, `transition-spike` stayed EQUAL at
@@ -1782,8 +1827,8 @@ the PNG zip's file hash must match too; a PDF's file hash is advisory only.
 | --- | --- | --- | --- | --- |
 | `showcase-tour` | PDF | 7 | `f6da6cf4637416499984e0439c04b2973e79e4fcb489e66df5d41882e40be2c2` | `70af2d9934a5fb131a518f40a7cadcfab1b5660dbbae42ccd9047fff5016d2b8` (advisory) |
 | `showcase-tour` | PNG zip | 7 | `171c5a1c501aef6b2890c67a50fd0750716ece97c05574dd0e7c1b69aab2b98c` | `17d30425d2f0ce7569350db987b84b64054929560903e1ca10465e52e020b4db` |
-| `ws:stills-spike` (stills gate, machine-local) | PDF | 9 | `a0cdf7c7da8b06e50ada72f7deb460fb33c8bb13ddb518f06e9c1a55a2d410e4` | `191bb8507a659c26d4e63d57ab0d001f1803dd3ca8764eb2250ed2aa563b6708` (advisory) |
-| `ws:stills-spike` (stills gate, machine-local) | PNG zip | 9 | `ee9a08b4e2fbb4aa10b22dbbd454176ea2ee06d81ba667383354c87fe5fc0f4c` | `09de73a1cff3e68f9d37ceb5d75d88f321be5955fd8348243aac6e95191dddaf` |
+| `ws:stills-spike` (stills gate, machine-local) | PDF | 9 | `0c258a3aab29c4acb55350e0f549f6da7304155c95f822447e5355bc5403cc59` | `295e3a13f481dd63c0f8cf0e4bc59552e75607b4bda2521c460c1a0f1833816c` (advisory) |
+| `ws:stills-spike` (stills gate, machine-local) | PNG zip | 9 | `38d4d4721c323ccd45143a6b9400012afee3d2cd9d8ef7b8f1c0d2dda35c2b24` | `4b3da02d4cb6d3451452cbf6c8b08620e9cbcaed95e952a617293b029f347345` |
 
 > **2026-10-08 (stills export, a fresh record):** `showcase-tour` records its
 > first stills baselines (above), `stillsverify` EQUAL for both formats, every
@@ -2082,6 +2127,8 @@ the PNG zip's file hash must match too; a PDF's file hash is advisory only.
 > raw, and on this WKWebView/ANGLE Metal stack the canvas and render-target
 > program variants do not even tone-map identically (a probe pixel decoded
 > ACES-minus-its-matrices in a target pass; the macOS 27 translator family).
+> (Corrected 2026-10-19: not the translator. three never tone-maps inside a
+> plain render target; see "Rendering into a plain render target" above.)
 > The fix removes the seam BY CONSTRUCTION instead of matching curves:
 > effects-free dof projects render every frame on the ORIGINAL byte-identical
 > paths, and an active pose is blurred IN PLACE (canvas copy or SDR-scratch
@@ -2309,7 +2356,9 @@ the PNG zip's file hash must match too; a PDF's file hash is advisory only.
 > now reroutes each vendored fragment's `main()` so the engine can flip the
 > output to linear light (`u_linearOut`, set per draw from
 > `renderer.getRenderTarget()`) for colour-managed targets only; the canvas path
-> is a pass-through, so solo frames are byte-identical. New fixture
+> is a pass-through, so solo frames are byte-identical. (Since 2026-10-19 the
+> compositor's targets are display targets holding raw bytes, so `u_linearOut`
+> stays 0 there; it still serves any hardware-sRGB target.) New fixture
 > `transition-bg-spike` (mesh-gradient → crossfade → swirl → dip-to-white →
 > neuro-noise) covers the previously untested shader-background × transition
 > combination, recorded `2df76336…` Verify ×2 EQUAL after eyeballing seam frames
@@ -2408,8 +2457,8 @@ the PNG zip's file hash must match too; a PDF's file hash is advisory only.
 > session (the legacy path never sets `clipRect`). This note was restored on
 > 2026-07-17 after the public-release history squash captured a tree from just
 > before the original doc commit.
-| `ws:emoji-spike` (emoji/symbol pipeline) | `da3b7d53…` (2026-10-18) | stale | n/a | n/a |
-| `ws:shader-spike` (animated background pack) | `9ed15e3e…` | n/a | n/a | n/a |
+| `ws:emoji-spike` (emoji/symbol pipeline) | stale (2026-10-19 rebase) | stale | n/a | n/a |
+| `ws:shader-spike` (animated background pack) | stale (2026-10-19 rebase) | n/a | n/a | n/a |
 
 > **2026-07-13 (emoji session): the pre-emoji 16:9 hashes had already drifted**
 > (`b70c9788…` → `26fc273b…`, `e967fe26…` → `d4ec139c…`): an A/B control at

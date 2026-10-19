@@ -1,4 +1,4 @@
-/** Transition picker: an edit-bar modal editing the transition into the scene at the playhead, with a live-GL preview driven by the real composite shaders (engine/transitionShader.ts) so every type previews faithfully; one small renderer per modal open, disposed on close, never one context per card (WKWebView context pressure); wall-clock use is fine here since the edit bar is unmounted during export/autorun; textures load with `colorSpace = SRGBColorSpace` to match the compositor's render-target semantics. */
+/** Transition picker: an edit-bar modal editing the transition into the scene at the playhead, with a live-GL preview driven by the real composite shaders (engine/transitionShader.ts) so every type previews faithfully; one small renderer per modal open, disposed on close, never one context per card (WKWebView context pressure); wall-clock use is fine here since the edit bar is unmounted during export/autorun; textures load linear-tagged so they sample raw, like the compositor's display targets, while the browser still converts embedded colour profiles. */
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -6,11 +6,11 @@ import {
   CanvasTexture,
   Color,
   GLSL3,
+  LinearSRGBColorSpace,
   Mesh,
   PlaneGeometry,
   Scene,
   ShaderMaterial,
-  SRGBColorSpace,
   type Texture,
   TextureLoader,
   Vector2,
@@ -136,7 +136,7 @@ function sampleSlideTexture(colors: SlideColors, variant: "a" | "b"): CanvasText
     }
   }
   const tex = new CanvasTexture(canvas);
-  tex.colorSpace = SRGBColorSpace;
+  tex.colorSpace = LinearSRGBColorSpace;
   return tex;
 }
 
@@ -238,7 +238,7 @@ function TransitionPreview({
             t.dispose();
             return;
           }
-          t.colorSpace = SRGBColorSpace;
+          t.colorSpace = LinearSRGBColorSpace;
           assign(t);
         },
         undefined,

@@ -10,6 +10,7 @@ updates:
       default-days: 7
     groups:
       # three is 0.x, so each release shifts lit pixels (a baseline rebase); postprocessing caps its range.
+      # The compositor's display targets lean on three's isXRRenderTarget gates: re-check them (docs/determinism.md).
       three-family:
         applies-to: version-updates
         patterns: ["three", "@types/three", "postprocessing"]

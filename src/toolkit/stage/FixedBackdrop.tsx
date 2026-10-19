@@ -29,6 +29,7 @@ import {
 } from "three";
 import { useClipTexture } from "../../engine/clipTexture";
 import { useClockStore } from "../../engine/clock";
+import { encodesSrgbOnStore } from "../../engine/displayTarget";
 import { isExporting } from "../../engine/exportState";
 import { useFormat } from "../../engine/format";
 import { SceneDocContext } from "../../engine/sceneContext";
@@ -420,10 +421,8 @@ function FixedShader({ spec }: { spec: Extract<ThemeBackground, { type: "shader"
     (renderer: WebGLRenderer) => {
       if (!material) return;
       material.uniforms.u_time.value = (useClockStore.getState().currentMs / 1000) * speed;
-      // Colour-managed (hardware sRGB) targets re-encode on store, so hand them linear light; the canvas keeps the raw display-domain bytes.
-      const target = renderer.getRenderTarget();
-      material.uniforms.u_linearOut.value =
-        target && target.texture.colorSpace === SRGBColorSpace ? 1 : 0;
+      // Hardware-sRGB targets re-encode on store, so hand them linear light; the canvas and display targets keep the raw display-domain bytes.
+      material.uniforms.u_linearOut.value = encodesSrgbOnStore(renderer.getRenderTarget()) ? 1 : 0;
     },
     [material, speed],
   );

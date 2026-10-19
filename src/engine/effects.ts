@@ -28,7 +28,6 @@ import {
   RGBAFormat,
   Scene,
   type ShaderMaterial,
-  SRGBColorSpace,
   Uniform,
   UnsignedByteType,
   Vector2,
@@ -37,6 +36,7 @@ import {
 } from "three";
 import type { EffectsConfig, EffectsOverride } from "../theme/tokens";
 import { DeterministicGrainEffect } from "./DeterministicGrainEffect";
+import { asDisplayTarget } from "./displayTarget";
 import type { DofUnion, ResolvedDof } from "./dof";
 import { ExposureEffect } from "./ExposureEffect";
 import { blendEffectParams, resolveEffectParams, sceneBaseEffects } from "./effectParams";
@@ -615,8 +615,7 @@ export function drawingBufferSize(gl: WebGLRenderer): Vector2 {
 // The dof-only lane: dof over the FINISHED frame. When a project declares no
 // effects, the composer-owned tone map must not exist at all, or toggling dof
 // regrades the scene (the direct path renders exact-colour surfaces raw while
-// any full-frame transform bends them, and canvas/target program variants do
-// not even tone-map identically on this stack). So dof-only projects render
+// any full-frame transform bends them). So dof-only projects render
 // every frame on the ORIGINAL byte-identical paths, and a frame whose pose
 // carries ACTIVE dof is then blurred in place: the finished pixels are copied,
 // the dof chain runs over them (depth from a dedicated pre-pass for the CoC
@@ -628,7 +627,7 @@ interface DofOverlayState extends DofEffects {
   pass: EffectPass;
   /** Wraps the canvas copy (or nothing in target mode) as the pass's input protocol. */
   inputShim: WebGLRenderTarget;
-  /** The canvas bytes, copied via copyFramebufferToTexture (sRGB-tagged, hardware-decoded on sample). */
+  /** The canvas bytes, copied via copyFramebufferToTexture (linear-tagged, sampled raw). */
   frameTexture: FramebufferTexture | null;
   /** Target mode: the side renders here first, the pass reads it and writes the real target. */
   scratch: WebGLRenderTarget | null;
@@ -738,7 +737,7 @@ export function renderDofOverCanvas(
   gl.setRenderTarget(prevTarget);
 }
 
-/** Target-mode side blur: the caller has rendered the side into `dofSideScratch()` instead of `target`; this runs the dof chain from the scratch into `target`. The scratch shares the SDR pair's semantics (hardware sRGB, MSAA), so an inactive side rendered straight to `target` and an active side routed through here carry the same pixel contract. */
+/** Target-mode side blur: the caller has rendered the side into `dofSideScratch()` instead of `target`; this runs the dof chain from the scratch into `target`. The scratch shares the SDR pair's semantics (display target, MSAA), so an inactive side rendered straight to `target` and an active side routed through here carry the same pixel contract. */
 export function renderDofOverTarget(
   gl: WebGLRenderer,
   scene: Scene,
@@ -755,13 +754,13 @@ export function renderDofOverTarget(
   st.pass.mainCamera = camera;
   applyDofUniforms(st, dof);
   st.pass.renderToScreen = false;
-  // The scratch samples hardware-decoded (linear) and the sRGB target re-encodes on store; the shader must not encode again.
+  // Scratch and target hold display bytes raw, like the canvas mode, so the shader must not encode.
   st.pass.encodeOutput = false;
   st.pass.render(gl, st.scratch as WebGLRenderTarget, target);
   gl.setRenderTarget(prevTarget);
 }
 
-/** The scratch the compositor renders an ACTIVE dof side into before renderDofOverTarget copies it, blurred, into the real side target. Same contract as the SDR pair (hardware sRGB store, MSAA). */
+/** The scratch the compositor renders an ACTIVE dof side into before renderDofOverTarget copies it, blurred, into the real side target. Same contract as the SDR pair (display target, MSAA). */
 export function dofSideScratch(
   gl: WebGLRenderer,
   w: number,
@@ -769,6 +768,10 @@ export function dofSideScratch(
   u: DofUnion,
 ): WebGLRenderTarget {
   const st = ensureDofOverlay(gl, w, h, u);
+  if (st.scratch && st.scratch.texture.colorSpace !== gl.outputColorSpace) {
+    st.scratch.dispose();
+    st.scratch = null;
+  }
   if (!st.scratch) {
     const t = new WebGLRenderTarget(w, h, {
       minFilter: NearestFilter,
@@ -780,7 +783,7 @@ export function dofSideScratch(
       generateMipmaps: false,
       samples: MSAA_SAMPLES,
     });
-    t.texture.colorSpace = SRGBColorSpace;
+    asDisplayTarget(t, gl.outputColorSpace);
     t.texture.wrapS = ClampToEdgeWrapping;
     t.texture.wrapT = ClampToEdgeWrapping;
     st.scratch = t;

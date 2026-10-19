@@ -40,8 +40,9 @@ file live in this skill's `REFERENCE.md`.
    needs texture noise, set `noise: true`, keep the `sampler2D u_noiseTexture` declaration and
    exclude it too; the engine attaches the shared `DataTexture` from `noiseTexture.ts`. Never
    embed a new image; decode to raw bytes at vendor time like `NOISE_B64`. The fragment writes
-   display-domain colour raw; the engine wraps `main()` (`shaders/wrap.ts`) so compositor
-   render targets receive linear light instead (`wrap.test.ts` pins the rewrite markers).
+   display-domain colour raw, which the canvas and the compositor's display targets keep as is;
+   the engine wraps `main()` (`shaders/wrap.ts`) so any hardware-sRGB target receives linear
+   light instead (`wrap.test.ts` pins the rewrite markers).
 4. **Register it** in `src/toolkit/stage/shaders/index.ts`: add to `SHADER_BACKGROUNDS` and to
    `SHADER_BACKGROUND_IDS` (the inspector's display order).
 5. **If ported, record the attribution.** Add the source file to
