@@ -147,7 +147,7 @@ fi
 # Heavy swap or booted simulators doubled one fixture's verify (5.4 to 11.7 min, 2026-10-19); warn, never block.
 busy_warning() {
   local used sims reasons=()
-  used="$(sysctl -n vm.swapusage 2>/dev/null | sed -n 's/.*used = \([0-9.]*\)M.*/\1/p')"
+  used="$(sysctl -n vm.swapusage 2>/dev/null | sed -n 's/.*used = \([0-9.]*\)M.*/\1/p' || true)"
   if [[ -n "$used" ]] && (( ${used%.*} >= 4096 )); then
     reasons+=("$(( ${used%.*} / 1024 )) GB of swap in use")
   fi

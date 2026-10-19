@@ -113,4 +113,20 @@ describe("kookaburra-run busy warning", () => {
     );
     assert.doesNotMatch(result.stderr, /busy machine/);
   });
+
+  // Linux CI has neither: a failed sysctl once ended the run under set -e before any other check.
+  test("never blocks when sysctl and xcrun fail", () => {
+    const bin = mkdtempSync(join(tmpdir(), "kb-run-busy-"));
+    bins.push(bin);
+    for (const tool of ["sysctl", "xcrun"]) {
+      writeFileSync(join(bin, tool), "#!/bin/sh\nexit 1\n");
+      chmodSync(join(bin, tool), 0o755);
+    }
+    const result = run(["--action", "verify", "--app", "/nonexistent/Fake.app"], {
+      ...process.env,
+      PATH: `${bin}:${process.env.PATH}`,
+    });
+    assert.equal(result.status, 2);
+    assert.match(result.stderr, /no executable found inside/);
+  });
 });
