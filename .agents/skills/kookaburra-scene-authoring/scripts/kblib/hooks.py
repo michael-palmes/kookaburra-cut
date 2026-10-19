@@ -18,7 +18,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from . import check as checkmod
 from . import git as gitmod
 from . import leases
-from .hookfast import hook_caller
+from .hookfast import asset_record_reason, hook_caller
 from .project import KIT_REL, MANIFEST, Project, SAFE_SESSION, find_root, worktree_of
 from .util import EXIT_OK, KbError, Report, ago
 
@@ -93,7 +93,7 @@ def blocked_reason(rel: str) -> Optional[str]:
     if KB_STATE.match(rel):
         return (f"{rel} is kb's own coordination state; change it only through kb (./kb lease, ./kb note, ./kb events). "
                 "Scratch files belong in .kb/agents/<your name>/ instead.")
-    return None
+    return asset_record_reason(rel)
 
 
 def journal_by(project: Project, caller: Dict[str, Any]) -> Dict[str, Any]:

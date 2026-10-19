@@ -1,9 +1,10 @@
 """The ingest conform from the terminal: the app's headless `media` CLI (`<exe> media probe|conform`) and kb's verdict.
 
 The verdict mirrors conform.rs `evaluate`: VFR, a non-trivial edit list, B-frames beside an edit list or a decoder
-disagreement, and non-BT.709 primaries recommend a conform; HDR, 10-bit and unreadable files are refused. kb adds
-what needs no app at all: the container's own sample tables (kblib/mp4box.py) and ffprobe's discarded-packet flags,
-which catch an edit list that opens inside a frame (ffmpeg drops that frame and shows the next one at 0 s).
+disagreement, and non-BT.709 primaries recommend a conform; HDR, 10-bit and unreadable files are refused. kb reads
+what needs no app at all: the container's own sample tables (kblib/mp4box.py, the rule mp4box.rs shares through
+edit-start-vectors.json) and ffprobe's discarded-packet flags, which catch an edit list that opens inside a frame
+(ffmpeg drops that frame and shows the next one at 0 s).
 """
 
 from __future__ import annotations
@@ -423,7 +424,7 @@ def evaluate(ff: Optional[Dict[str, Any]], box: Optional[Dict[str, Any]], ext: s
 
 
 def merge(app: Dict[str, Any], static: Dict[str, Any]) -> Dict[str, Any]:
-    """The app's verdict with what the container parse adds (an edit inside a frame); the app's refusal stands."""
+    """The app's verdict with what the container parse adds (an edit inside a frame, for app builds before mp4box.rs); the app's refusal stands."""
     conform = app.get("conform") if isinstance(app.get("conform"), dict) else {}
     verdict = str(app.get("verdict") or "ok")
     if VERDICT_RANK.get(static["verdict"], 0) > VERDICT_RANK.get(verdict, 0):

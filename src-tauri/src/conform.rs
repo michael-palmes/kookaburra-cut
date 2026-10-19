@@ -9,6 +9,7 @@ use serde::Serialize;
 use serde_json::{json, Value};
 
 use crate::edit::CoreError;
+use crate::mp4box::EditStart;
 
 /// The mezzanine rate: the clip extraction rate (`CLIP_FPS`) and the frontend `FPS`.
 pub(crate) const CONFORM_FPS: u32 = 60;
@@ -260,6 +261,8 @@ pub(crate) struct FfFacts {
     pub nb_frames: Option<u64>,
     /// Packets ffmpeg drops for the edit list, over the leading `PACKET_SCAN`; None when not scanned.
     pub discarded_packets: Option<u32>,
+    /// Where the container's edit list opens (mp4box.rs, kb's rule); None when its boxes can't be read.
+    pub edit_start: Option<EditStart>,
 }
 
 fn tag(stream: &Value, key: &str) -> Option<String> {
@@ -311,6 +314,7 @@ pub(crate) fn parse_ff_facts(stdout: &str, abs: &Path) -> Result<FfFacts, String
         duration_ms: info.duration_ms,
         nb_frames: info.nb_frames,
         discarded_packets: None,
+        edit_start: None,
     })
 }
 
@@ -351,7 +355,7 @@ fn run_capture(tool: &Path, args: &[String]) -> Result<String, String> {
     }
 }
 
-/// The ffprobe facts plus the leading packets' discard flags; no decode.
+/// The ffprobe facts plus the leading packets' discard flags and the container's edit start; no decode.
 pub(crate) fn ffprobe_facts(ffprobe: &Path, abs: &Path) -> Result<FfFacts, String> {
     let stdout = run_capture(ffprobe, &crate::media::probe_args(abs))
         .map_err(|e| format!("ffprobe could not read {}: {e}", abs.display()))?;
@@ -373,6 +377,7 @@ pub(crate) fn ffprobe_facts(ffprobe: &Path, abs: &Path) -> Result<FfFacts, Strin
         ],
     );
     facts.discarded_packets = packets.ok().map(|csv| count_discarded(&csv));
+    facts.edit_start = crate::mp4box::edit_start(abs);
     Ok(facts)
 }
 
@@ -614,7 +619,9 @@ pub(crate) fn evaluate(
     let mut reasons = Vec::new();
     let mut why = Vec::new();
     let mut verdict = "ok";
-    let edited = av.is_some_and(AvFacts::edited) || ff.discarded_packets.is_some_and(|n| n > 0);
+    let edited = av.is_some_and(AvFacts::edited)
+        || ff.discarded_packets.is_some_and(|n| n > 0)
+        || ff.edit_start.is_some_and(EditStart::edited);
     let mismatch = decoded.map_or_else(Vec::new, |(a, f)| decoder_reasons(a, f));
     if ff.vfr || av.is_some_and(AvFacts::vfr) {
         reasons.push("vfr");
@@ -624,6 +631,11 @@ pub(crate) fn evaluate(
         reasons.push("edit-list");
         why.push("edit-list");
         verdict = "suspect";
+    }
+    // ffmpeg drops the frame the edit opens inside and shows the next one at 0 s.
+    if ff.edit_start == Some(EditStart::MidSample) {
+        reasons.push("edit-mid-sample");
+        verdict = "ffmpeg-misdecodes";
     }
     // B-frames alone decode fine; they only count beside an edit list or a misdecode.
     if ff.bframes > 0 || av.is_some_and(|a| a.reorders) {
@@ -1720,6 +1732,113 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn the_containers_edit_start_judges_like_kb() {
+        let with = |start| FfFacts {
+            edit_start: Some(start),
+            ..ff_clean()
+        };
+        let verdict = |start| {
+            let v = evaluate(&with(start), Some(&av_clean()), None);
+            (v.verdict, v.reasons, v.why)
+        };
+        assert_eq!(verdict(EditStart::None), ("ok", vec![], vec![]));
+        assert_eq!(verdict(EditStart::FirstFrame), ("ok", vec![], vec![]));
+        for start in [EditStart::Frame, EditStart::Gap, EditStart::Complex] {
+            assert_eq!(
+                verdict(start),
+                ("suspect", vec!["edit-list"], vec!["edit-list"])
+            );
+        }
+        assert_eq!(
+            verdict(EditStart::MidSample),
+            (
+                "ffmpeg-misdecodes",
+                vec!["edit-list", "edit-mid-sample"],
+                vec!["edit-list"]
+            )
+        );
+        // The decoder check stays: a disagreement over a trivial edit still misdecodes.
+        let av = DecodeTiming {
+            pts_ms: vec![0.0, 16.7],
+        };
+        let ff = DecodeTiming { pts_ms: vec![0.0] };
+        let v = evaluate(
+            &with(EditStart::FirstFrame),
+            Some(&av_clean()),
+            Some((&av, &ff)),
+        );
+        assert_eq!((v.verdict, v.why), ("ffmpeg-misdecodes", vec!["decoders"]));
+    }
+
+    /// The kit's `edit-start-vectors.json`, which kb's tests replay through kblib/mp4box.py and kblib/conform.py.
+    #[test]
+    fn edit_start_vectors_match_kb() {
+        let text = std::fs::read_to_string(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../.agents/skills/kookaburra-scene-authoring/scripts/tests/fixtures/edit-start-vectors.json"
+        ))
+        .expect("edit-start-vectors.json");
+        let vectors: Value = serde_json::from_str(&text).unwrap();
+        let cases = vectors["cases"].as_array().unwrap();
+        assert!(cases.len() >= 4);
+        let ints = |v: &Value| -> Vec<i64> {
+            v.as_array()
+                .unwrap()
+                .iter()
+                .map(|x| x.as_i64().unwrap())
+                .collect()
+        };
+        for case in cases {
+            let name = case["name"].as_str().unwrap();
+            let m = &case["movie"];
+            let offsets = m.get("offsets").map(ints);
+            let edits: Option<Vec<(u64, i64, f64)>> = m.get("edits").map(|e| {
+                e.as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|row| {
+                        (
+                            row[0].as_u64().unwrap(),
+                            row[1].as_i64().unwrap(),
+                            row[2].as_f64().unwrap(),
+                        )
+                    })
+                    .collect()
+            });
+            let bytes = crate::mp4box::synth::movie(
+                &ints(&m["deltas"]),
+                offsets.as_deref(),
+                edits.as_deref(),
+                m.get("timescale").and_then(Value::as_u64).unwrap_or(600) as u32,
+                m.get("movieScale").and_then(Value::as_u64).unwrap_or(1000) as u32,
+                m.get("elstVersion").and_then(Value::as_u64).unwrap_or(0) as u8,
+            );
+            let path = std::env::temp_dir()
+                .join(format!("kc-edit-start-{}-{name}.mov", std::process::id()));
+            std::fs::write(&path, &bytes).unwrap();
+            let start = crate::mp4box::edit_start(&path);
+            let _ = std::fs::remove_file(&path);
+            assert_eq!(
+                serde_json::to_value(start).unwrap(),
+                case["editStart"],
+                "{name}"
+            );
+            let ff = FfFacts {
+                edit_start: start,
+                ..ff_clean()
+            };
+            let v = evaluate(&ff, Some(&av_clean()), None);
+            assert_eq!(v.verdict, case["verdict"].as_str().unwrap(), "{name}");
+            assert_eq!(json!(v.reasons), case["reasons"], "{name}");
+            assert_eq!(
+                v.recommended,
+                case["recommended"].as_bool().unwrap(),
+                "{name}"
+            );
+        }
+    }
+
+    #[test]
     fn decoders_that_disagree_mean_ffmpeg_misdecodes() {
         let av = DecodeTiming {
             pts_ms: vec![0.0, 950.0, 966.7, 3433.3],
@@ -2090,6 +2209,15 @@ pub(crate) mod tests {
             90,
             "ffmpeg shows frame 90 at 0 s"
         );
+        // The static probe already knows, as kb's does: the trim's edit opens inside the held frame.
+        let (ff_trim, av_trim) = probe_static(Path::new(DEV_FFPROBE), &trim).unwrap();
+        assert_eq!(ff_trim.edit_start, Some(EditStart::MidSample));
+        assert_eq!(
+            evaluate(&ff_trim, av_trim.as_ref(), None).verdict,
+            "ffmpeg-misdecodes"
+        );
+        let (ff_vfr, _) = probe_static(Path::new(DEV_FFPROBE), &vfr).unwrap();
+        assert_eq!(ff_vfr.edit_start, Some(EditStart::FirstFrame));
 
         let mut hashes = Vec::new();
         for run in 0..2 {

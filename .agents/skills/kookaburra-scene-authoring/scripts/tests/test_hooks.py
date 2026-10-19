@@ -37,6 +37,16 @@ class HookTests(KbTestCase):
         for rel in ("assets/new.png", "CLAUDE.md", ".claude/settings.json"):
             self.assertExit(self.hook("pre-edit", payload(self.root / rel)), 0)
 
+    def test_pre_edit_blocks_hand_writes_to_asset_records(self) -> None:
+        for rel, command in (("assets/_meta.json", "./kb assets meta"), ("assets/rec.timing.json", "./kb assets conform"),
+                             ("assets/clips/rec.timing.json", "./kb assets replace"), ("assets/.originals/rec.mov", "./kb assets restore")):
+            proc = self.hook("pre-edit", payload(self.root / rel))
+            self.assertExit(proc, 2)
+            self.assertIn("blocked", proc.stderr)
+            self.assertIn(command, proc.stderr, rel)
+        for rel in ("assets/rec.mp4", "assets/notes.json", "assets/originals/rec.mov", "_meta.json"):
+            self.assertExit(self.hook("pre-edit", payload(self.root / rel)), 0)
+
     def test_hooks_ignore_files_outside_the_project(self) -> None:
         self.real_process = True
         outside = self.tmp / "elsewhere" / "exports" / "x.json"

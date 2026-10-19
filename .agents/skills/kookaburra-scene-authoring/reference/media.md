@@ -39,8 +39,12 @@
   `./kb video` (the kookaburra-video-editing skill): its render is
   `assets/<name>-edited.mp4` and the source stays untouched.
 - Never hand-edit `assets/_meta.json` or `*.timing.json`, and never touch
-  `assets/.originals/`: `./kb assets list` folds a conformed clip's timing and provenance
-  into its entry.
+  `assets/.originals/` (the only copy of a conformed clip's source frames): the hooks
+  block an Edit, Write or Bash write to them. Provenance goes through `./kb assets meta`,
+  a timing record only through `./kb assets conform`, and new bytes for a conformed clip
+  through `./kb assets replace` (its timing record moves aside with the old file;
+  `./kb assets restore` undoes it). `./kb assets list` folds a conformed clip's timing and
+  provenance into its entry.
 - Formats: images png, jpg, jpeg, webp; video mp4, mov, m4v, webm; audio mp3, wav, m4a,
   aac, flac, ogg; environments hdr, exr; grades `.cube`.
 - Adding a file to `assets/` does not reload the project; the sidecar edit that uses it
@@ -68,7 +72,8 @@ preview and export decode with, misplays some of them, so they are checked on th
   `--no-conform` copies a flagged video as it is. Without the app kb copies and says the
   file wasn't checked; a failed conform gives the file back, copied as it is.
 - Clips already in a project are flagged, never changed: the app's media library marks
-  them "Needs conform", and `./kb check` warns when a scene shows a video ffmpeg
+  them "Needs conform" by the same rules as `./kb assets probe` (an edit list opening
+  inside a frame included), and `./kb check` warns when a scene shows a video ffmpeg
   misdecodes. `./kb assets conform assets/<file>` conforms one in place through the app
   (same name and container, original kept in `assets/.originals/`, nothing to re-point).
   `--repoint` turns a `.mov` or `.m4v` into `assets/<stem>.mp4` and rewrites the JSON
@@ -78,8 +83,10 @@ preview and export decode with, misplays some of them, so they are checked on th
 - A recording the user drops into the app conforms in the background (10 to 20 s; the
   library shows a Conforming card). Scenes can point at its final `assets/<stem>.mp4`
   straight away: the preview shows the original's poster under a progress ring until the
-  frames land, and exports wait for or refuse it. `./kb check` reports that path missing
-  until the file lands, so wait and rerun.
+  frames land, and exports wait for or refuse it. Until it lands `./kb check` notes the
+  path as `info` (still conforming from its original in `assets/.originals/`), not an
+  error; rerun it once the library's card is gone. A missing `assets/<stem>.mp4` with no
+  original beside it, or one whose timing record already exists, is still an error.
 - Originals stay (packs never carry them) until the user removes them in the app: Remove
   original in a clip's ⋯ menu, or Remove originals in the library's ⋯ menu, moves them to
   the Trash.

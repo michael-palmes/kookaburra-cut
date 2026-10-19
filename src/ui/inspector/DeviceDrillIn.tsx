@@ -75,7 +75,7 @@ import {
 export type DeviceDocPatch = (next: SceneDoc) => void;
 export type DevicePatchDoc = (
   patch: DeviceDocPatch,
-  opts?: { history?: string | false },
+  opts?: { history?: string | false; resync?: boolean },
 ) => Promise<void>;
 export type DevicePatchDocResult = (
   patch: (next: SceneDoc) => unknown,
@@ -120,7 +120,11 @@ export interface DeviceDrillInProps {
   onDeviceRemoved?: () => void;
   patchDoc: DevicePatchDoc;
   patchDocResult: DevicePatchDocResult;
-  commitFromBaseline: (baseline: SceneDoc, patch: DeviceDocPatch) => Promise<void>;
+  commitFromBaseline: (
+    baseline: SceneDoc,
+    patch: DeviceDocPatch,
+    opts?: { resync?: boolean },
+  ) => Promise<void>;
 }
 
 export interface DeviceModelDrillInProps {
@@ -938,12 +942,18 @@ export function DeviceDrillIn({
     );
   }
 
-  const patchWithGesture = (patch: (next: SceneDoc) => void, history: string, preview: boolean) => {
+  const patchWithGesture = (
+    patch: (next: SceneDoc) => void,
+    history: string,
+    preview: boolean,
+    resync = false,
+  ) => {
+    const commitOpts = resync ? { resync } : undefined;
     if (preview) {
       if (!dragBaseline.current) dragBaseline.current = structuredClone(doc);
       const baseline = dragBaseline.current;
       pendingGesture.current = () => {
-        void commitFromBaseline(baseline, patch);
+        void commitFromBaseline(baseline, patch, commitOpts);
       };
       void patchDoc(patch, { history: false });
       return;
@@ -951,8 +961,8 @@ export function DeviceDrillIn({
     const baseline = dragBaseline.current;
     pendingGesture.current = null;
     dragBaseline.current = null;
-    if (baseline) void commitFromBaseline(baseline, patch);
-    else void patchDoc(patch, { history });
+    if (baseline) void commitFromBaseline(baseline, patch, commitOpts);
+    else void patchDoc(patch, { history, ...commitOpts });
   };
 
   const patchDevice = (mutate: DeviceMutation, history: string, preview = false) => {
@@ -1071,7 +1081,7 @@ export function DeviceDrillIn({
             const own = deviceSlotMedia(candidate, screen);
             if (own?.kind === "video") setDeviceSlotMedia(candidate, screen, apply(own));
           });
-    patchWithGesture(patch, history, preview);
+    patchWithGesture(patch, history, preview, true);
   };
   const setScreenDelay = (seconds: number, preview = false, screen: DeviceScreenSlot = "main") => {
     patchScreenVideo(

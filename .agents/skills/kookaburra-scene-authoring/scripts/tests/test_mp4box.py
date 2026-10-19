@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import shutil
 import subprocess
 import tempfile
@@ -11,6 +12,7 @@ from pathlib import Path
 from kblib import conform, mp4box
 
 from . import mp4synth as ms
+from .helpers import FIXTURES
 from .video_synth import REPO_BIN
 
 
@@ -77,6 +79,25 @@ class EditStartTests(unittest.TestCase):
     def test_a_gap_before_the_first_frame(self) -> None:
         box = analyse(ms.movie([10] * 30, offsets=[60] * 30, edits=[(500, 0, 1.0)]))
         self.assertEqual((box["editStart"], box["edited"]), ("gap", True))
+
+
+class EditStartVectorTests(unittest.TestCase):
+    """edit-start-vectors.json, which conform.rs's edit_start_vectors_match_kb replays through mp4box.rs and evaluate."""
+
+    CLEAN_FF = {"vfr": False, "bframes": 0, "bits": 8, "discardedPackets": 0, "colour": {}}
+
+    def test_edit_start_vectors(self) -> None:
+        vectors = json.loads((FIXTURES / "edit-start-vectors.json").read_text(encoding="utf-8"))
+        self.assertGreaterEqual(len(vectors["cases"]), 4)
+        for case in vectors["cases"]:
+            m = case["movie"]
+            data = ms.movie(m["deltas"], offsets=m.get("offsets"), edits=[tuple(e) for e in m["edits"]] if "edits" in m else None,
+                            timescale=m.get("timescale", 600), movie_scale=m.get("movieScale", 1000), elst_version=m.get("elstVersion", 0))
+            box = analyse(data)
+            self.assertEqual(box["editStart"], case["editStart"], case["name"])
+            verdict = conform.evaluate(self.CLEAN_FF, {"editStart": box["editStart"], "edited": box["edited"]}, "mov")
+            self.assertEqual((verdict["verdict"], verdict["reasons"], verdict["recommended"]),
+                             (case["verdict"], case["reasons"], case["recommended"]), case["name"])
 
 
 class ContainerTests(unittest.TestCase):

@@ -28,7 +28,7 @@ contract for the kit, the bridge it talks to and the app behaviour it relies on.
 | `.claude/skills/kookaburra-video-editing/` | app (managed) | Sibling skill (SKILL.md + `reference/`, no scripts; it drives `kb video`) |
 | `.claude/skills/<skill>/kit.json` | app | `{ "kitVersion", "appVersion", "stampedAtMs" }`, one per shipped skill |
 | `project.json`, `scenes/`, `assets/` | user (Claude edits) | The only folders Claude writes by hand |
-| `assets/.originals/`, `assets/<stem>.timing.json`, `assets/_meta.json` | app and kb | A conform's kept original (never packed: `pack/scan.rs` `is_excluded`), its frame map, and provenance records; written by the app's conform and `kb assets`, never by hand |
+| `assets/.originals/`, `assets/<stem>.timing.json`, `assets/_meta.json` | app and kb | A conform's kept original (never packed: `pack/scan.rs` `is_excluded`), its frame map, and provenance records; written by the app's conform and `kb assets`, never by hand (the hooks block it) |
 | `edits/` | app, and `kb video` | Video edit documents; Rust is the only writer (the editor window and `kb video` through the app's CLI); never hand-edited |
 | `exports/`, `.kookaburra*` | app | Never edited by Claude |
 | `./kb` | app (managed) | The zsh-safe shim from `src-tauri/templates/project-kb.sh` (mode 0755): `exec python3 -I .claude/skills/kookaburra-scene-authoring/scripts/kb.py "$@"`, exit 2 "the kit is missing" without the kit; replaced only while one of its first three lines starts `# kookaburra-cut kb shim` (a user's own `kb`, folder or link is left alone); `/kb` is in `.git/info/exclude`; never packed |
@@ -155,7 +155,7 @@ under the project lock (`kblib.lock`) and re-validated after writing.
 | `fonts safe`, `fonts check REF...`, `fonts list` | Bundled faces are always safe; `check` and `list` use the app's real parser when it runs, else a static verdict (`--json`: `faces`, `results`, `families` or the static `bundled` and `pinned`) |
 | `presets [list \| show SLUG]` | Scene presets with what they show and a preview image path to Read (`--json`: `presets`) |
 | `catalog [FAMILY] [--search Q]` | Query `catalog.json` (`--json`: `families`; a family's raw entries as `{ family, items }`, or `{ family, value }` when it is not a list; a search's `items`) |
-| `assets list`, `assets add PATH [--name N] [--dir D] [--no-conform]`, `assets probe ASSET [--deep]`, `assets conform ASSET [--repoint]`, `assets replace NAME FILE [--keep-old archive\|trash\|none] [--as-new]`, `assets unused [--kind K] [--archive [DIR]]`, `assets restore [ID \| --list]`, `assets meta NAME [--set K=V]` | Media in (never overwrites, renames on collision; a video the app's probe flags is conformed through `<exe> media conform`, gated on `edit caps.media`), the decode verdict (`ok`, `suspect`, `ffmpeg-misdecodes`; the container's own `elst`/`stts`/`ctts` parse without the app, AVFoundation's view with it), an in-place conform (`--repoint` turns a `.mov` into `<stem>.mp4` and rewrites literals), an in-place replace with the old bytes in `.kb/archive/`, the app's shared in-use rule (`unused`, archived and restorable; `media.rs` and `asset_refs.py` replay one `asset-ref-vectors.json`), and `assets/_meta.json` provenance (`list --json`: `assets`, each with a conformed clip's timing and provenance folded in). Code: `kblib/assets_cli.py`, `asset_ops.py`, `conform.py`, `mp4box.py`, `asset_refs.py`, `archive.py`, `asset_meta.py` |
+| `assets list`, `assets add PATH [--name N] [--dir D] [--no-conform]`, `assets probe ASSET [--deep]`, `assets conform ASSET [--repoint]`, `assets replace NAME FILE [--keep-old archive\|trash\|none] [--as-new]`, `assets unused [--kind K] [--archive [DIR]]`, `assets restore [ID \| --list]`, `assets meta NAME [--set K=V]` | Media in (never overwrites, renames on collision; a video the app's probe flags is conformed through `<exe> media conform`, gated on `edit caps.media`), the decode verdict (`ok`, `suspect`, `ffmpeg-misdecodes`; the container's own `elst`/`stts`/`ctts` parse without the app, AVFoundation's view with it; an edit opening inside a sample is `ffmpeg-misdecodes` on both sides, `mp4box.rs` and `mp4box.py` replaying one `edit-start-vectors.json`), an in-place conform (`--repoint` turns a `.mov` into `<stem>.mp4` and rewrites literals), an in-place replace with the old bytes in `.kb/archive/`, the app's shared in-use rule (`unused`, archived and restorable; `media.rs` and `asset_refs.py` replay one `asset-ref-vectors.json`), and `assets/_meta.json` provenance (`list --json`: `assets`, each with a conformed clip's timing and provenance folded in). Code: `kblib/assets_cli.py`, `asset_ops.py`, `conform.py`, `mp4box.py`, `asset_refs.py`, `archive.py`, `asset_meta.py` |
 | `checkpoint [MESSAGE] [--scene S]... [--files P]...`, `history [--scene S]`, `undo [REV] [--scene S \| --all]`, `diff [REV] [--scene S]` | Git checkpoints of `project.json`, `scenes/` and `edits/`, or only some scenes' files; `undo` checkpoints first, so it is itself undoable, never trashes `edits/`, and names any render it leaves stale (`history --json`: `checkpoints`, each with `atMs`). See Coordination |
 | `lease S [--ttl 2h] [--note T] [--for NAME]`, `lease S --release [--force]`, `leases [--all]` | Opt-in scene leases (`lease --json`: `scene`, `action`, `lease`; `leases --json`: `leases`) |
 | `note "TEXT" [--scene S]`, `notes [--all]` | Shared notes in `.kb/notes.md` (`notes --json`: `notes`, `total`) |
@@ -255,8 +255,10 @@ notes.
 Static checks: `project.json` (valid JSON, version, required fields, files exist, no
 duplicate entries, transitions and options, formats, theme id, audio file); sidecars
 (JSON, version, unknown top-level keys, enum values, font refs, asset paths exist with
-exact case and a supported extension; a text spec's `staggerMs: 0` without `staggerExact`
-warns where a granularity default would replace it, in workspace themes too); TSX (imports only `@kookaburra/toolkit`, one
+exact case and a supported extension; a missing `assets/<stem>.mp4` whose original sits in
+`assets/.originals/` with no `<stem>.timing.json` yet is a conform still landing, so `info`,
+not an error; a text spec's `staggerMs: 0` without `staggerExact` warns where a granularity
+default would replace it, in workspace themes too); TSX (imports only `@kookaburra/toolkit`, one
 `export default defineScene(`, a literal id unique in the project, no wall clock,
 timers, `Math.random`, DOM or drei `Html`, no React hooks, which the toolkit does not
 export; unknown `ease("...")` names warn). Devices warn when the heartbeat's build lacks
@@ -293,7 +295,9 @@ Hooks:
   kit, to anything inside a linked git worktree of a project (the same STOP text) and to
   kb's state files (`.kb/lock`, `.kb/.gitignore`, `.kb/leases/**`, `.kb/events*.jsonl`,
   `.kb/notes*.md`, `.kb/agents/*/identity.json` and `seen.json`; scratch under
-  `.kb/agents/<name>/` and `.kb/captures/` is allowed). An edit to a scene leased to
+  `.kb/agents/<name>/` and `.kb/captures/` is allowed), and to the asset records
+  (`assets/_meta.json`, `assets/**/*.timing.json`, anything under `assets/.originals/`),
+  each reason naming the kb command to use (`kblib/hookfast.py` `asset_record_reason`). An edit to a scene leased to
   someone else is denied with `permissionDecision: "deny"`, naming the holder, the expiry
   and how to bind or leave a note; the holder's own edit renews the lease. Before the first
   write of a session into `project.json` or `scenes/` it makes a checkpoint when the tree
@@ -317,7 +321,9 @@ Hooks:
     kb runs. It denies a command that names `scenes/<stem>` of a scene leased to someone else
     (globs included) and visibly writes it: a redirection, `tee`, `mv`, `rm`, `touch`, a `cp`
     or `install` destination, `sed -i`, `perl -i`, a heredoc, `write_text` or `open(..., 'w')`.
-    It makes the session checkpoint before a command that visibly writes `scenes/` or
+    It denies the same visible writes to an asset record (a glob expands as the shell would,
+    relative paths resolve from the hook's `cwd`; `sed -i` and Python writes count when they
+    name one; a read, a `cp` out of `assets/.originals/` and kb-only commands pass). It makes the session checkpoint before a command that visibly writes `scenes/` or
     `project.json` or runs a kb write, and records the errors the scene files and `project.json`
     it names already have. kb-only commands and `run_in_background` calls take no snapshot.
   - `bash-post` diffs the stamps, drops files other callers journalled meanwhile and the

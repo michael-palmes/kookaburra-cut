@@ -132,6 +132,23 @@ class CheckTests(KbTestCase):
         self.assertTrue(any("extraThing" in w for w in warnings))
         self.assertTrue(any("not a #rgb" in w for w in warnings))
 
+    def test_a_clip_placed_while_it_conforms_is_info_until_it_lands(self) -> None:
+        doc = {"version": 1, "devices": [{"id": "d1", "model": "android", "media": {"src": "assets/rec.mp4", "kind": "video"}}]}
+        write_json(self.root / "scenes" / "02-hero.json", doc)
+        write(self.root / "assets" / ".originals" / "rec.MOV", "original")
+        report = self.run_check(["scenes/02-hero.json"])
+        self.assertEqual(messages(report), [])
+        self.assertTrue(any('"assets/rec.mp4" is still conforming from assets/.originals/rec.MOV' in i for i in messages(report, "info")))
+
+        # A landed conform writes its timing record last, so a missing mezzanine beside one is gone, not conforming.
+        write_json(self.root / "assets" / "rec.timing.json", {"version": 1})
+        self.assertHasError(self.run_check(["scenes/02-hero.json"]), '"assets/rec.mp4" does not exist')
+        (self.root / "assets" / "rec.timing.json").unlink()
+        for src in ("assets/clips/rec.mp4", "assets/rec.mov", "assets/other.mp4"):
+            doc["devices"][0]["media"]["src"] = src
+            write_json(self.root / "scenes" / "02-hero.json", doc)
+            self.assertHasError(self.run_check(["scenes/02-hero.json"]), f'"{src}" does not exist')
+
     def test_emphasis_and_build_checks(self) -> None:
         doc = {
             "version": 1,
