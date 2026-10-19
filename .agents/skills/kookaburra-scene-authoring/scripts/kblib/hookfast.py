@@ -2,7 +2,8 @@
 
 Standard library only, and nothing heavy until a command actually changed a project file: the pre-hook stamps
 project.json, scenes/** and edits/*.json, binds `--agent NAME` to the hook's agent id, denies a visible write to a
-scene leased to someone else and makes the session checkpoint before the first write; the post-hook diffs the stamps,
+scene leased to someone else or to an asset record (assets/_meta.json, timing records, assets/.originals/) and makes
+the session checkpoint before the first write; the post-hook diffs the stamps,
 reports the changed files' check results and journals `files.changed`. Every failure exits 0 (fail open).
 """
 
@@ -30,6 +31,8 @@ FILE_OPS = re.compile(r"(?:^|[\s;&|(])(mv|rm|cp|install|rsync|truncate|touch|ln)
 HEREDOC = re.compile(r"<<-?\s*[\"']?[A-Za-z_]\w*")
 PY_WRITE = re.compile(r"\.write_(?:text|bytes)\s*\(|\bopen\s*\([^)]*,\s*[\"'][rwax]?[wax+]|\bjson\.dump\s*\(|\bos\.(?:replace|rename|remove|unlink)\s*\(|\bshutil\.(?:copy\w*|move)\s*\(")
 SCENE_TOKEN = re.compile(r"(?:[^\s\"'=;&|<>()]*/)?scenes/[^\s\"';&|<>(),]*")
+ASSET_TOKEN = re.compile(r"(?:[^\s\"'=;&|<>()]*/)?(?:assets/|\.originals/)[^\s\"';&|<>(),]*")
+RECORD_WORDS = ("assets", ".originals", "_meta.json", ".timing.json")
 KB_WRITE = re.compile(
     r"\bkb(?:\.py)?[\"']?\s+(?:--?[\w-]+(?:[= ][^\s-][^\s]*)?\s+)*"
     r"(?:scene\s+(?:add|duplicate|move|remove|set)|doc\s+\S+\s+(?:set|unset|merge)|project\s+(?:set|unset)|theme\s+set|assets\s+(?:add|conform|replace)|"
@@ -156,6 +159,54 @@ def write_targets(command: str) -> List[str]:
 
 def scripted_write(command: str) -> bool:
     return bool(SED_I.search(command) or HEREDOC.search(command) or PY_WRITE.search(command))
+
+
+def asset_record_reason(rel: str) -> Optional[str]:
+    """Why a hand write to an asset record is refused: the provenance file, a conform's timing record or a kept original."""
+    if rel == "assets/_meta.json":
+        return "assets/_meta.json is the provenance record kb and the app keep in step with the files; change it only with ./kb assets meta <asset> --set key=value."
+    if rel.startswith("assets/") and rel.endswith(".timing.json"):
+        return (f"{rel} is a conform's frame map, written with its video; only ./kb assets conform (or the app's Conform) writes it. "
+                "To swap the video use ./kb assets replace, which moves the record aside with the old file (./kb assets restore undoes it).")
+    if rel == "assets/.originals" or rel.startswith("assets/.originals/"):
+        return ("assets/.originals/ keeps the untouched original of each conformed video, the only copy of its source frames. "
+                "./kb assets conform keeps originals there and the app's media library removes them; to swap a clip's file use ./kb assets replace "
+                "(./kb assets restore undoes it).")
+    return None
+
+
+def _project_rels(root: str, cwd: Any, token: str) -> List[str]:
+    """A command's path token as project-relative paths (a glob expands the way the shell would); none outside the project."""
+    import glob
+
+    if not token or token.startswith(("~", "$")):
+        return []
+    base = cwd if isinstance(cwd, str) and os.path.isdir(cwd) else root
+    path = os.path.join(base, token)
+    paths = [path]
+    if any(c in token for c in "*?["):
+        paths = sorted(glob.glob(path)) or paths
+    out = []
+    for p in paths:
+        rel = os.path.relpath(os.path.realpath(p), root).replace(os.sep, "/")
+        if rel != ".." and not rel.startswith("../"):
+            out.append(rel)
+    return out
+
+
+def asset_record_write(root: str, command: str, cwd: Any) -> Optional[Tuple[str, str]]:
+    """(rel, reason) for the first asset record the command visibly writes; kb's own commands write them through kb."""
+    if not any(word in command for word in RECORD_WORDS) or kb_only(command):
+        return None
+    tokens = write_targets(command)
+    if SED_I.search(command) or PY_WRITE.search(command):
+        tokens += ASSET_TOKEN.findall(command)
+    for token in tokens:
+        for rel in _project_rels(root, cwd, token.strip("\"'")):
+            reason = asset_record_reason(rel)
+            if reason:
+                return rel, reason
+    return None
 
 
 def writes_project(command: str) -> bool:
@@ -322,6 +373,9 @@ def bash_pre(payload: Dict[str, Any]) -> Tuple[int, str, str]:
     if hits:
         rel, lease = hits[0]
         return deny(leases.deny_reason(rel, lease) + " (kb denied this command: it writes a scene leased to someone else.)")
+    record = asset_record_write(root, command, payload.get("cwd"))
+    if record:
+        return deny(f"{record[1]} (kb denied this command: it writes {record[0]} by hand.)")
     call = payload.get("tool_use_id")
     if isinstance(call, str) and call and not ti.get("run_in_background") and not kb_only(command):
         body: Dict[str, Any] = {"v": 1, "root": root, "atMs": now_ms(), "stamps": stamps(root)}

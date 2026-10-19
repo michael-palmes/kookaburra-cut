@@ -196,6 +196,55 @@ class BashPreTests(BashHookCase):
         self.around("./kb scene set 02-hero --duration 4000")
         self.assertEqual(run_git(self.root, ["rev-list", "--count", "HEAD"]).strip(), "2")
 
+    def denial(self, command: str, cwd: Optional[Path] = None) -> Optional[str]:
+        body = json.loads(self.payload("PreToolUse", command, f"toolu_deny_{time.time_ns()}"))
+        if cwd is not None:
+            body["cwd"] = str(cwd)
+        proc = self.kb(["hook", "bash-pre"], cwd=self.root, stdin=json.dumps(body))
+        self.assertExit(proc, 0)
+        if not proc.stdout.strip():
+            return None
+        out = json.loads(proc.stdout)["hookSpecificOutput"]
+        return out["permissionDecisionReason"] if out.get("permissionDecision") == "deny" else None
+
+    def test_hand_writes_to_asset_records_are_denied(self) -> None:
+        write_json(self.root / "assets" / "_meta.json", {"version": 1, "assets": {}})
+        write_json(self.root / "assets" / "rec.timing.json", {"version": 1})
+        write(self.root / "assets" / ".originals" / "rec.mov", "original")
+        for command, rel, hint in (
+            ("echo '{}' > assets/_meta.json", "assets/_meta.json", "./kb assets meta"),
+            ("jq '.x=1' assets/_meta.json > /tmp/m && mv /tmp/m assets/_meta.json", "assets/_meta.json", "./kb assets meta"),
+            ("sed -i '' 's/1/2/' assets/rec.timing.json", "assets/rec.timing.json", "./kb assets conform"),
+            ("rm assets/*.timing.json", "assets/rec.timing.json", "./kb assets conform"),
+            (f"rm -f {self.root}/assets/.originals/rec.mov", "assets/.originals/rec.mov", "./kb assets restore"),
+            ("rm -rf assets/.originals", "assets/.originals", "./kb assets replace"),
+            ("python3 -c \"import json; json.dump({}, open('assets/_meta.json', 'w'))\"", "assets/_meta.json", "./kb assets meta"),
+            ("./kb assets list > assets/_meta.json", "assets/_meta.json", "./kb assets meta"),
+        ):
+            reason = self.denial(command)
+            self.assertIsNotNone(reason, command)
+            self.assertIn(f"it writes {rel} by hand", reason or "")
+            self.assertIn(hint, reason or "", command)
+        self.assertIn("assets/.originals/rec.mov", self.denial("rm .originals/rec.mov", cwd=self.root / "assets") or "")
+        for command in (
+            "cat assets/_meta.json | jq .",
+            "python3 -c \"import json; print(json.load(open('assets/_meta.json')))\"",
+            "cp assets/.originals/rec.mov ~/Desktop/",
+            "ffprobe assets/.originals/rec.mov 2>&1 | head -5",
+            "rm assets/old.png",
+            "./kb assets meta assets/rec.mp4 --set licence.id=CC-BY-4.0",
+            "./kb assets conform assets/rec.mov && ./kb check",
+            "python3 -I .claude/skills/kookaburra-scene-authoring/scripts/kb.py assets probe assets/.originals/rec.mov",
+        ):
+            self.assertIsNone(self.denial(command), command)
+
+    def test_kbs_own_asset_record_writes_pass_the_hook(self) -> None:
+        write(self.root / "assets" / "rec.mp4", "video")
+        command = "./kb assets meta assets/rec.mp4 --set licence.id=CC-BY-4.0"
+        self.assertIsNone(self.denial(command))
+        self.assertExit(self.kb(["assets", "meta", "assets/rec.mp4", "--set", "licence.id=CC-BY-4.0"], cwd=self.root), 0)
+        self.assertEqual(read_json(self.root / "assets" / "_meta.json")["assets"]["assets/rec.mp4"]["licence"]["id"], "CC-BY-4.0")
+
     def test_write_patterns(self) -> None:
         self.assertTrue(hookfast.writes_project("./kb scene add pricing --preset title"))
         self.assertFalse(hookfast.writes_project("./kb scene add pricing --dry-run"))
