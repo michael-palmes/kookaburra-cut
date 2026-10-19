@@ -20,7 +20,7 @@
     "preview": "vite preview",
     "postinstall": "bash scripts/seed-cargo-target.sh",
     "test": "vitest run && node --test scripts/*.test.mjs && pnpm test:kit",
-    "test:kit": "python3 -B -m unittest discover -s .agents/skills/kookaburra-scene-authoring/scripts/tests -t .agents/skills/kookaburra-scene-authoring/scripts",
+    "test:kit": "node scripts/test-kit.mjs",
     "test:kit:e2e": "python3 -B -m unittest discover -s .agents/skills/kookaburra-scene-authoring/scripts/tests -t .agents/skills/kookaburra-scene-authoring/scripts -p 'test_video_e2e.py'",
     "test:watch": "vitest",
     "agent:catalog": "KB_WRITE_CATALOG=1 vitest run src/agentKit/catalog.test.ts && biome format --write .agents/skills/kookaburra-scene-authoring/catalog.json",
