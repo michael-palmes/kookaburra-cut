@@ -1,7 +1,24 @@
 import assert from "node:assert/strict";
+import { existsSync, readFileSync } from "node:fs";
+import { dirname, join, normalize } from "node:path";
 import { before, describe, test } from "node:test";
+import { fileURLToPath } from "node:url";
 import { classify, plan, readBaselines, readStillsBaselines } from "./gate-plan.mjs";
 import { renderClosure } from "./render-closure.mjs";
+
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
+// Runtime relative imports only: `import type` and `export type` are erased and never load.
+const RUNTIME_IMPORT =
+  /(?:^|\n)\s*(?:import|export)\s+(?!type\b)(?:[^;]*?\sfrom\s+)?["'](\.{1,2}\/[^"'?]+)[^"']*["']|import\(\s*["'](\.{1,2}\/[^"'?]+)/g;
+
+function resolveImport(from, spec) {
+  const base = normalize(join(dirname(from), spec));
+  return [base, `${base}.ts`, `${base}.tsx`, `${base}/index.ts`, `${base}/index.tsx`].find(
+    (p) =>
+      existsSync(join(ROOT, p)) &&
+      /\.(tsx?|json|glsl|png|jpg|glb|hdr|ktx2|woff2?|ttf|otf)$/.test(p),
+  );
+}
 
 const legsOf = (p) => p.legs.map((l) => `${l.project}@${l.aspect}`);
 
@@ -130,6 +147,22 @@ describe("the render closure", () => {
   let real;
   before(async () => {
     real = await renderClosure();
+  });
+
+  // The output chunks once dropped inlined modules (overlayShader.ts, shaders/wrap.ts), so a change there planned no gate.
+  test("holds every module a closure file imports at runtime", () => {
+    const missing = [];
+    for (const file of real) {
+      if (!/^src\/.*\.tsx?$/.test(file)) continue;
+      for (const m of readFileSync(join(ROOT, file), "utf8").matchAll(RUNTIME_IMPORT)) {
+        const target = resolveImport(file, m[1] ?? m[2]);
+        if (target && !real.has(target)) missing.push(`${target} <- ${file}`);
+      }
+    }
+    assert.deepEqual(missing, []);
+    for (const path of ["src/engine/overlayShader.ts", "src/toolkit/stage/shaders/wrap.ts"]) {
+      assert.ok(real.has(path), path);
+    }
   });
 
   test("holds the export loop and the toolkit, not the inspector", () => {
