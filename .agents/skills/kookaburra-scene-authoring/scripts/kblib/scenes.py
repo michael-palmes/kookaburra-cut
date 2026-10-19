@@ -14,7 +14,7 @@ from . import tsx as tsxmod
 from .project import DEFAULT_SCENE_DURATION_MS, MANIFEST, Project, humanise, numeric_prefix, slugify, stem_of
 from .util import EXIT_PROBLEMS, KbError, is_int, load_json, read_text
 
-TEXT_STYLE_SUFFIXES = ("Color", "Font", "Size", "OffsetX", "OffsetY", "LineHeight", "RotationDeg")
+TEXT_STYLE_SUFFIXES = ("Color", "Font", "Size", "OffsetX", "OffsetY", "LineHeight", "RotationDeg", "Emphasis")
 FRAME_SHAPES = {"rect", "rounded-rect", "squircle", "circle", "capsule", "none"}
 SCENE_DOC_VERSION = 1
 

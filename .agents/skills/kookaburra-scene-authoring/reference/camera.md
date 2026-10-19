@@ -64,6 +64,22 @@ Set `"cameraMode": "rig"`. A pose is a position plus an aim:
 
 `<DepthStage>` (reference/scenes.md) gives a rig layers to fly through.
 
+## Placing by depth
+
+Something behind the text must grow to fill the same share of the frame:
+
+- `frameAtDepth(format, z)`: the default camera's visible `{ width, height }` at depth
+  `z` (exactly `format.frame` at 0; twice it at z = -5). Size static backdrops with it.
+- `useCameraFrame(z)`: `{ width, height, center }`, the world rectangle the scene
+  camera sees on that plane this frame (its orbit or rig track included; the bounding
+  box when tilted or rolled). Keep a plate covering the view through a camera move.
+- `useSceneCamera()`: the pose itself, `{ position, lookAt, fov, rollDeg? }`.
+
+```tsx
+const view = useCameraFrame(-3);
+<RoundedRect width={view.width} height={view.height} radius={0} position={view.center} />
+```
+
 ## Presets
 
 The app's camera presets write ordinary keys you can tune. `./kb catalog camera.presets --json` prints

@@ -56,9 +56,21 @@ Keys are `<textKey><Suffix>`; a primitive must carry `textKey` (or be managed te
 | `OffsetX`, `OffsetY` | World-unit nudges from the layout position |
 | `LineHeight` | Multiple of font size, 0.8..2; absent is the font's own |
 | `RotationDeg` | Clockwise tilt about the anchor |
+| `Emphasis` | `*word*` styling: `"<colour>"` or `"<colour>@<weight>"` (token or hex, CSS weight), e.g. `"accent@700"`; absent is the accent one step bolder |
 
 Also `iconSize`, `frameIconSize` and `chipSize` scale icons and chips. Layered
 screenshot text items use `ls-<itemId>` keys.
+
+## Emphasis (`*word*`)
+
+Wrap words in asterisks in any copy (`text`, managed items, decorations) to emphasise
+them: `"Ship *twice* as fast"`. The asterisks never render or affect layout; the words
+take `textStyle.<key>Emphasis` (default the theme accent, a weight step bolder, drawn as
+an SDF weight so every face works). Markdown's flanking rules decide what counts:
+`5 * 3`, a lone `*` and an asterisk beside a space stay literal; `**word**` is the same
+emphasis; emphasis never crosses a blank line. It works in every motion and look
+(`PromptBar` strips it and types the words plain). Emphasis is always on: to show a
+literal pair, add spaces or use `∗` (U+2217).
 
 ## Primitives
 
@@ -71,6 +83,7 @@ screenshot text items use `ls-<itemId>` keys.
 | `outAt` | | Out start; plays over the in's length. Exits need this prop |
 | `preset`, `outPreset` | theme `textAnimation` | Prefer the sidecar spec (below) |
 | `stagger`, `staggerMs`, `delivery`, `delayMs`, `startScale`, `shine`, `direction`, `ease` | theme | As the spec fields |
+| `durationMs` | `"authored"` | A number pins the whole reveal, first unit's start to last unit's settle, whatever the copy's word or letter count (stagger and unit duration scale together); `"authored"` keeps the per-unit timing. `AnimatedGroup` takes it too |
 | `textKey` | | ALWAYS set it: enables sidecar styling and the inspector row |
 | `face` | `headline` | Or `body` |
 | `defaultColor` | `text` | Design default that stays app-editable |
@@ -88,11 +101,25 @@ screenshot text items use `ls-<itemId>` keys.
 - `BrandLockup title subtitle icon from to position iconWidth titleSize subtitleSize titleColor subtitleColor`:
   app icon (default `assets/app-icon.png`) beside a small title over a large subtitle,
   revealed as one unit; scales down for square and portrait.
-- `AnimatedCounter from to durationMs format position fontSize anchorX textKey`: counts
-  linearly from scene start over `durationMs` (no delay prop); `format` returns the
-  string, for example `(n) => "$" + n.toFixed(1) + "M"`; default size 0.5.
+- `AnimatedCounter from to durationMs format position fontSize anchorX anchorY textKey startMs ease steps`:
+  counts over `durationMs` from `startMs` (default 0, scene start), linear unless `ease`
+  names an ease, in `steps` equal jumps when set (landing on `to`); `format` returns the
+  string, for example `(n) => "$" + n.toFixed(1) + "M"`; default size 0.5, anchored
+  centre/middle.
 - `ExtrudedText`: lit 3D text, bundled families only, no emoji.
 - `ManagedTextStack`: the generic managed renderer the host mounts; rarely mounted by hand.
+- `PromptBar text textKey from to position width height fontSize face send caret`: a
+  chat prompt bar (theme tokens only). The text types in one keystroke at a time from
+  `from` to `to` (default 45 ms a key), scrolling like a real input once it outgrows
+  the bar; the caret holds solid while typing and blinks on the timeline once idle; a
+  send button (accent circle, up arrow) brightens once text is typed. Defaults: height
+  0.62, width 0.62 of the frame, text 0.4 of the height, the `body` face. One line;
+  `textStyle.<key>Color`, `Font` and `Size` apply.
+
+```tsx
+const prompt = useSceneText("prompt", "Summarise this week's release notes");
+<PromptBar text={prompt} textKey="prompt" from={300} to={2100} position={[0, -0.4, 0]} />
+```
 
 ## Text motion (`textAnimation`)
 
@@ -106,6 +133,7 @@ Write the spec in the sidecar so the app's Text motion panel stays live:
 | --- | --- |
 | `in`, `out` (required) | Preset ids (table); unknown names play as `fade` |
 | `staggerMs` | Per-unit delay; `stagger` is only honoured when this is above 0 |
+| `staggerExact` | `true` makes `staggerMs: 0` mean no stagger. Without it a 0 under a granularity (a letter or word preset, `by-paragraph`, a TSX `stagger`) plays that granularity's default delay; the app and `kb doc set` write it with a 0, and `kb check` warns where it is missing |
 | `stagger` | `char` or `word` |
 | `delivery` | `all-at-once` (forces one block), `by-paragraph` (`\n`), `by-paragraph-group` (blank lines) |
 | `delayMs` | Hold before the in starts |
@@ -113,6 +141,7 @@ Write the spec in the sidecar so the app's Text motion panel stays live:
 | `startScale`, `shine` | `fade-scale` (startScale 0.05..4, default 0.8; shine is one soft band sweep) |
 | `direction` | `from-left`, `from-right` (`twist-scale`, `orbit`) |
 | `distance` | Travel in em (`fade-up`, `slide`, `scatter-scale`) |
+| `buildShiftEm` | `build`: how far each arriving word slides in, em (default 0.3; 0 lands in place) |
 | `ease` | An ease name (reference/sidecar.md) |
 | `motionBlur` | `{ enabled, amount? }`: keep text sharp or scale its trail under motion blur (reference/camera.md); lower `amount` on presets that already smear |
 
@@ -153,10 +182,47 @@ apply). To make coded motion editable, remove the TSX preset props instead.
 | `converge` | Letters streak in from both edges | char |
 | `glint-wipe` | Wipes on behind a bright glint | block |
 | `vapor` | Condenses out of drifting vapour (a good out) | char |
+| `stamp` | Stamps down from 1.6x, squashes to 0.94 and settles; invisible until it starts, then fully opaque (no fade) | block |
+| `build` | Words land one at a time while the line re-centres around them | word |
+| `typewriter` | Types in one character at a time; as an out it backspaces | mask |
 
 "Unit" is the default granularity; `stagger` or `delivery` overrides it. Default
 delays: char 35 ms, word 90, paragraph 160, group 260. Per-character units ignore line
 breaks, so on multi-line copy prefer `by-paragraph`.
+
+- `stamp` runs its own fixed curve (the toolkit's `stampScale` shape over the in
+  window); `ease` is ignored.
+- `build` is single line: each word's slot joins the line as it fades in, so the
+  visible words stay centred (or held to the left or right edge by `anchorX`). Copy
+  that breaks onto a second line (a `\n` or `maxWidth` wrap) plays a plain word fade
+  instead; `kb check` warns. Give it a word stagger the eye can follow (150 to 300 ms).
+- `typewriter` types every character, spaces included, evenly across the in window
+  (`from` to `to`, or the primitive's `durationMs`), whatever the length; stagger and
+  ease are ignored. Nothing shows before it starts. Inside a chat bar, use `PromptBar`.
+
+## Measuring text
+
+Size a pill, underline or panel to a headline from its font, not from a captured frame.
+`useTextMetrics(textKey, text, opts)` takes the props the headline gets (`fontSize`,
+`face`, `fontRef`, `lineHeight`, `letterSpacing`) and applies the same sidecar
+`<key>Font`, `<key>Size` and `<key>LineHeight` overrides, so the box follows inspector
+edits. It returns world units, `{ width, height, ascent, descent, lines }`: `ascent`
+runs from the block top to the first baseline, `descent` from the last baseline to the
+bottom. Null means the font is still loading (one preview frame); exports and captures
+wait for it.
+
+```tsx
+const title = useSceneText("title", "Ship faster");
+const box = useTextMetrics("title", title, { fontSize: 0.5 });
+// ...
+{box && <Pill width={box.width + 0.5} height={box.height + 0.2} position={[0, 0, -0.01]} />}
+<AnimatedHeadline text={title} textKey="title" fontSize={0.5} />
+```
+
+Under a middle-anchored single line the baseline is at `y = box.height / 2 - box.ascent`,
+so an underline sits a little below that. `measureText(text, { font, fontSize, letterSpacing?, lineHeight? })` is
+the plain version (`font` is a theme `FontRef` or `"Family@weight"`). Explicit `\n`
+breaks count; `maxWidth` wrapping is not measured; `*word*` markup is stripped first.
 
 ## Text looks (`textLook`)
 
@@ -170,7 +236,7 @@ breaks, so on multi-line copy prefer `by-paragraph`.
 | `gradient` | Two-stop fill | `colorA`, `colorB` (default darkened A), `angleDeg` (90 vertical, A on top) |
 | `outline` | Stroke per glyph | `colorA`, `strokeEm` (0.035, max 0.2), `hollow` (true hides the fill) |
 | `neon` | Glow halo | `colorA`, `intensity` 0..1 (0.6) |
-| `offset-print` | Tinted under-layer offset down-right | `colorA`, `offsetEm` (0.06) |
+| `offset-print` | Tinted under-layer offset down-right | `colorA`, `offsetEm` (0.06), `offsetDir` (degrees clockwise from up; absent is down-right, 135; the distance stays the diagonal's), `offsetOpacity` 0..1 (1) |
 | `highlight-block` | Accent block behind each word | `colorA` |
 | `frosted` | Soft glass read with a faint shine | `intensity` |
 | `arc` | Baseline bent on an arc | `curveDeg` (60, positive arcs up) |

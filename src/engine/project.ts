@@ -6,7 +6,7 @@ import { TextureLoader } from "three";
 import { parseFontString } from "../theme/fontRef";
 import { vetProjectFonts } from "../theme/fontSafety";
 import { collectThemeFontRefs, preloadAppFonts } from "../theme/fonts";
-import { resolveTheme } from "../theme/registry";
+import { memoThemeReader, resolveThemeReport, WORKSPACE_THEME_PREFIX } from "../theme/registry";
 import type {
   EffectsConfig,
   EffectsOverride,
@@ -46,8 +46,10 @@ import {
   type ProjectMusic,
   resolveMusicPosition,
 } from "./musicTime";
+import { capWarnings, cleanParseWarning, collectParseWarnings, parseWarn } from "./parseWarnings";
 import { resolveSavedPosterTheme } from "./presetPosterThemes";
 import { withProjectAssetRevision } from "./projectAssetRevision";
+import { type ProjectShared, parseProjectShared } from "./projectShared";
 import { ensureProjectTrusted } from "./projectTrust";
 import { parseRenderSettings, type RenderSettings } from "./renderSettings";
 import { sceneErrorCard } from "./SceneErrorCard";
@@ -59,6 +61,7 @@ import { resolveProjectDocsMusic } from "./sceneDocMusic";
 import { collectSceneDocFontRefs, type SceneDoc } from "./sceneDocSchema";
 import { ensureUniqueSceneIds } from "./sceneIds";
 import { normalizeLighting } from "./sceneLighting";
+import { collectRoomThemeIds } from "./sceneRoom";
 import {
   buildSceneTimeline,
   type SceneSlot,
@@ -66,6 +69,7 @@ import {
   timelineTotalMs,
 } from "./sceneTimeline";
 import { ensureFontRefsPinned } from "./systemFonts";
+import { resolveSlotTransitionMasks } from "./transitionMask";
 
 /** On-disk project manifest (`projects/<id>/project.json`). */
 export interface ProjectManifest {
@@ -105,6 +109,8 @@ export interface ProjectManifest {
   appliedBackground?: { background?: ThemeBackground; backdrop?: ThemeBackdrop };
   /** Transition seeded onto new boundaries. Missing keeps the catalogue crossfade for older projects; null explicitly means a hard cut. */
   defaultTransition?: TransitionSpec | null;
+  /** Author constants every scene can read through `useProjectShared` (palette, timings); raw here, parsed on load by `parseProjectShared`. Nothing renders from it directly. */
+  shared?: unknown;
 }
 
 /** Manifest transitions in outgoing terms: v2 reads them straight off each scene; legacy unversioned files stored each transition on the incoming scene, so they shift one scene earlier, which reproduces the exact pre-v2 timeline. */
@@ -191,7 +197,7 @@ export function sanitiseAudioMarkers(
     Array.isArray(markers.keyMoments) &&
     markers.keyMoments.every((t) => typeof t === "number" && Number.isFinite(t) && t >= 0);
   if (!ok) {
-    console.warn("[project] audio.markers invalid, ignoring (detected key moments stand)");
+    parseWarn("[project] audio.markers invalid, ignoring (detected key moments stand)");
     return undefined;
   }
   const keyMoments = [...new Set(markers.keyMoments.map((t) => Math.round(t)))].sort(
@@ -436,6 +442,10 @@ export interface LoadedProject {
   exportBlockers?: string[];
   /** The manifest's declared aspects in its order; the first is where the editor opens the project until one is remembered. */
   formats: string[];
+  /** The manifest's deep-frozen `shared` block, provided to scenes via `ProjectSharedContext`; absent when the manifest has none. */
+  projectShared?: ProjectShared;
+  /** Themes room keys name, by id (their colours and lights only); absent when no room key names one. */
+  roomThemes?: Readonly<Record<string, Theme>>;
 }
 
 /** A scene file's stem; the sidecar/thumb cache key (`scenes/01-hero.tsx` → `01-hero`). */
@@ -1274,7 +1284,7 @@ function parseProjectTypography(
 ): { headline?: FontRef; body?: FontRef; chart?: FontRef } | null {
   if (raw === undefined || raw === null) return null;
   if (typeof raw !== "object") {
-    console.warn(`[project] ${source}: typography must be an object`);
+    parseWarn(`[project] ${source}: typography must be an object`);
     return null;
   }
   const out: { headline?: FontRef; body?: FontRef; chart?: FontRef } = {};
@@ -1284,7 +1294,7 @@ function parseProjectTypography(
     if (typeof value === "string" && value.trim()) {
       out[slot] = parseFontString(value.trim());
     } else {
-      console.warn(`[project] ${source}: typography.${slot} isn't "Family" or "Family@weight"`);
+      parseWarn(`[project] ${source}: typography.${slot} isn't "Family" or "Family@weight"`);
     }
   }
   return out.headline || out.body || out.chart ? out : null;
@@ -1342,22 +1352,43 @@ export async function loadProject(
     scenes.push(sceneErrorCard({ file: entry.file, message: loaded.message, durationMs }));
   }
 
+  // What the parsers dropped, per file; surfaced as load warnings, never an export blocker.
+  const parseNotes: string[] = [];
+  const noteParse = (file: string, source: string, warnings: readonly string[]) => {
+    for (const warning of warnings)
+      parseNotes.push(`${file}: ${cleanParseWarning(warning, source)}`);
+  };
+  const projectSource = `${id}/project.json`;
+  const parseManifest = <T>(fn: () => T): T => {
+    const { result, warnings } = collectParseWarnings(fn);
+    noteParse("project.json", projectSource, warnings);
+    return result;
+  };
+
   // Sidecar scene documents, keyed off each entry's file stem; missing → undefined.
+  const sceneDocWarnings = manifest.scenes.map((): string[] => []);
   const loadedDocs = await Promise.all(
-    manifest.scenes.map((entry) =>
-      loadSceneDoc(id, entry.file, sceneDocGlob, bundledProjectDir(id)),
+    manifest.scenes.map((entry, i) =>
+      loadSceneDoc(id, entry.file, sceneDocGlob, bundledProjectDir(id), sceneDocWarnings[i]),
     ),
   );
+  manifest.scenes.forEach((entry, i) => {
+    const docFile = entry.file.replace(/\.tsx$/, ".json");
+    noteParse(docFile, docFile, sceneDocWarnings[i]);
+  });
 
   // Overlap-aware placement: a transition pulls the next scene's start back, shortening the project.
   const outgoing = outgoingSceneTransitions(manifest);
-  const slots = buildSceneTimeline(
+  const timeline = buildSceneTimeline(
     manifest.scenes.map((_, i) => ({
       // TSX-authored, so it may collide: never key a mount off it, files are the identity (`sceneMountKey`).
       id: scenes[i].id,
       durationMs: scenes[i].durationMs,
       transition: outgoing[i],
     })),
+  );
+  const slots = parseManifest(() =>
+    resolveSlotTransitionMasks(timeline, (src) => resolveAssetUrl(id, src)),
   );
   const totalMs = timelineTotalMs(slots);
 
@@ -1370,10 +1401,23 @@ export async function loadProject(
   const sceneDocs = resolved.docs;
 
   // Project-wide font override: outranks every resolved theme (project, per-scene and compare B alike); per-field sidecar `<key>Font` overrides still win downstream.
-  const typographyOverride = parseProjectTypography(manifest.typography, `${id}/project.json`);
+  const typographyOverride = parseManifest(() =>
+    parseProjectTypography(manifest.typography, projectSource),
+  );
   const applyTypography = (t: Theme): Theme =>
     typographyOverride ? { ...t, typography: { ...t.typography, ...typographyOverride } } : t;
-  const resolveProjectTheme = options?.readSavedThemes ? resolveSavedPosterTheme : resolveTheme;
+  const readTheme = memoThemeReader();
+  const resolveProjectTheme = async (themeId: string | undefined, fallback?: Theme) => {
+    if (options?.readSavedThemes) return resolveSavedPosterTheme(themeId, fallback);
+    const report = await resolveThemeReport(themeId, fallback, readTheme);
+    if (themeId && report.warnings.length > 0) {
+      const file = themeId.startsWith(WORKSPACE_THEME_PREFIX)
+        ? `themes/${themeId.slice(WORKSPACE_THEME_PREFIX.length)}/theme.json`
+        : `theme ${themeId}`;
+      noteParse(file, themeId, report.warnings);
+    }
+    return report.theme;
+  };
   const theme = applyTypography(
     options?.theme ?? (await resolveProjectTheme(options?.themeId ?? manifest.themeId)),
   );
@@ -1384,6 +1428,16 @@ export async function loadProject(
       doc?.themeId ? resolveProjectTheme(doc.themeId, theme).then(applyTypography) : theme,
     ),
   );
+
+  // Room keys read other themes' colours and lights without swapping the scene's theme; an unknown id reads the project theme (warned).
+  const roomThemeIds = collectRoomThemeIds(sceneDocs);
+  const roomThemes = roomThemeIds.length
+    ? Object.fromEntries(
+        await Promise.all(
+          roomThemeIds.map(async (rid) => [rid, await resolveProjectTheme(rid, theme)]),
+        ),
+      )
+    : undefined;
 
   // Comparison scenes: derive side B's doc and resolve its theme; undefined everywhere else so projects without a compare block never touch the compare path.
   const compareBDocs = sceneDocs.map((doc) => deriveCompareBDoc(doc) ?? undefined);
@@ -1399,7 +1453,9 @@ export async function loadProject(
 
   // Per-scene overlay resolution: the sidecar's frame merges over the manifest's deck frame; a scene that resolves to `enabled:false` drops out so it renders full-bleed. The manifest is raw JSON.parse, so its frame parses here (sidecar frames already parsed through `parseSceneDoc`).
   const deckFrame =
-    manifest.frame === undefined ? undefined : parseFrameSpec(manifest.frame, `${id}/project.json`);
+    manifest.frame === undefined
+      ? undefined
+      : parseManifest(() => parseFrameSpec(manifest.frame, projectSource));
   const sceneFrames = sceneDocs.map((doc) => {
     const merged = mergeFrameSpec(deckFrame, doc?.frame);
     return merged?.enabled === false ? undefined : merged;
@@ -1434,8 +1490,9 @@ export async function loadProject(
   const projectLighting =
     manifest.lighting === undefined
       ? undefined
-      : (normalizeLighting(manifest.lighting, `${id}/project.json`) ?? undefined);
-  const renderSettings = parseRenderSettings(manifest.render, `${id}/project.json`);
+      : (parseManifest(() => normalizeLighting(manifest.lighting, projectSource)) ?? undefined);
+  const renderSettings = parseManifest(() => parseRenderSettings(manifest.render, projectSource));
+  const projectShared = parseManifest(() => parseProjectShared(manifest.shared, projectSource));
 
   // Theme-swapped scenes replace the project-wide effect base wholesale (sparse; entries only where a sidecar overrides the theme, possibly `{}`, which turns effects OFF there).
   const sceneEffectDefaults: Record<number, EffectsConfig> = {};
@@ -1515,7 +1572,7 @@ export async function loadProject(
       const probe = await invoke<{ durationMs: number; sampleRate: number }>("probe_audio", {
         path: abs,
       });
-      audio = { ...withAudioDefaults(audioSpec), abs, ...probe };
+      audio = { ...parseManifest(() => withAudioDefaults(audioSpec)), abs, ...probe };
       const covered = audio.durationMs - (audio.startOffsetMs ?? 0);
       if (covered < totalMs) {
         console.warn(
@@ -1526,6 +1583,10 @@ export async function loadProject(
       console.warn(`[project] soundtrack "${audioSpec.file}" unavailable, loading silent:`, e);
     }
   }
+
+  const ignored = capWarnings(parseNotes);
+  for (const note of ignored) console.warn(`[project] ${id}: ${note}`);
+  loadWarnings.push(...ignored);
 
   // Every scoped id (workspace projects, templates, presets) survives the load: the asset resolvers route on it, and only a plain bundled project falls back to its manifest id.
   const loadedId = parseProjectId(id).scope === "bundled" ? manifest.id : id;
@@ -1561,6 +1622,8 @@ export async function loadProject(
     loadWarnings,
     exportBlockers,
     formats: manifest.formats ?? [],
+    projectShared,
+    roomThemes,
   };
 }
 

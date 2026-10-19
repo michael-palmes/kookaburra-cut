@@ -2,6 +2,7 @@ import { useLayoutEffect, useMemo } from "react";
 import { BufferAttribute, BufferGeometry } from "three";
 import { useTimeline } from "../../engine/timeline";
 import { useTheme } from "../../theme";
+import { glowColour } from "../colour";
 import type { V3 } from "../types";
 
 export interface WireGridProps {
@@ -19,6 +20,8 @@ export interface WireGridProps {
   tone?: "text" | "accent" | "muted";
   /** Line opacity (lines don't bloom hard; keep them a quiet backdrop). */
   opacity?: number;
+  /** Glow: a target luminance (above a bloom threshold over 1) reached by raising only the tone's full channels, unlit with tone mapping off so it still lands exactly on the token (see `glowColour`). Absent renders as before. */
+  glow?: number;
   position?: V3;
   /** Base rotation in radians; lay it flat as a floor (default) or tilt it as a backdrop. */
   rotation?: V3;
@@ -36,12 +39,15 @@ export function WireGrid(props: WireGridProps) {
     speed = 0.25,
     tone = "muted",
     opacity = 0.6,
+    glow,
     position = [0, 0, 0],
     rotation = [0, 0, 0],
   } = props;
 
   const { localMs } = useTimeline();
   const theme = useTheme();
+  const hex = theme.colors[tone];
+  const glowing = useMemo(() => (glow ? glowColour(hex, glow) : null), [hex, glow]);
 
   // Segment endpoints for both grid directions, flat in XZ. Rebuilt only on prop change.
   const { geometry, positions } = useMemo(() => {
@@ -80,7 +86,11 @@ export function WireGrid(props: WireGridProps) {
 
   return (
     <lineSegments geometry={geometry} position={position} rotation={rotation} frustumCulled={false}>
-      <lineBasicMaterial color={theme.colors[tone]} transparent opacity={opacity} />
+      {glowing ? (
+        <lineBasicMaterial color={glowing} transparent opacity={opacity} toneMapped={false} />
+      ) : (
+        <lineBasicMaterial color={hex} transparent opacity={opacity} />
+      )}
     </lineSegments>
   );
 }

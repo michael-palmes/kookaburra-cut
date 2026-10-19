@@ -3,6 +3,7 @@ import { CatmullRomCurve3, TubeGeometry, Vector3 } from "three";
 import { createSeededRandom } from "../../engine/rng";
 import { useTimeline } from "../../engine/timeline";
 import { useTheme } from "../../theme";
+import { glowColour } from "../colour";
 import { LightRig } from "../lighting/LightRig";
 import { useSceneStaged } from "../stage/context";
 import type { V3 } from "../types";
@@ -24,6 +25,8 @@ export interface RibbonProps {
   tone?: "text" | "accent" | "muted";
   /** Bundle the standard light rig (see `LightRig`); turn off when the scene lights itself. */
   lit?: boolean;
+  /** Glow: a target luminance (above a bloom threshold over 1) reached by raising only the tone's full channels, drawn as an unlit emitter with tone mapping off so it still lands exactly on the token (see `glowColour`). Absent renders as before. */
+  glow?: number;
   position?: V3;
   rotation?: V3;
 }
@@ -42,6 +45,7 @@ export function Ribbon(props: RibbonProps) {
     to = 1500,
     tone = "accent",
     lit,
+    glow,
     position = [0, 0, 0],
     rotation = [0, 0, 0],
   } = props;
@@ -53,6 +57,8 @@ export function Ribbon(props: RibbonProps) {
   const { localMs } = useTimeline();
   const theme = useTheme();
   const [bx, by, bz] = bounds;
+  const hex = theme.colors[tone];
+  const glowing = useMemo(() => (glow ? glowColour(hex, glow) : null), [hex, glow]);
 
   const geometry = useMemo(() => {
     const rand = createSeededRandom(seed);
@@ -80,7 +86,11 @@ export function Ribbon(props: RibbonProps) {
       {isLit && <LightRig />}
       {/* drawRange growth would fight a curve-fit bounding sphere; never cull the sweep. */}
       <mesh geometry={geometry} frustumCulled={false}>
-        <meshStandardMaterial color={theme.colors[tone]} roughness={0.3} metalness={0.35} />
+        {glowing ? (
+          <meshBasicMaterial color={glowing} toneMapped={false} />
+        ) : (
+          <meshStandardMaterial color={hex} roughness={0.3} metalness={0.35} />
+        )}
       </mesh>
     </group>
   );

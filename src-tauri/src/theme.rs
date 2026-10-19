@@ -10,7 +10,176 @@ use tauri::{AppHandle, Manager, State};
 use crate::workspace::{require_root, validate_slug, SettingsState};
 
 /// Newest theme-document version this build can rewrite (mirrors `THEME_DOC_VERSION` in `src/theme/schema.ts`).
-const THEME_DOC_VERSION: u64 = 2;
+pub const THEME_DOC_VERSION: u64 = 3;
+
+// ── Theme variants (`extends`) ──────────────────────────────────────
+
+/// First theme-document version that honours `extends` (mirrors `src/theme/extends.ts`, replayed against `theme-merge-vectors.json`).
+pub const THEME_EXTENDS_VERSION: u64 = 3;
+
+/// Longest chain followed before giving up.
+pub const MAX_THEME_CHAIN: usize = 16;
+
+const OWN_KEYS: [&str; 5] = ["id", "name", "catalogue", "version", "extends"];
+
+/// The base a document names, when its version honours `extends`.
+pub fn theme_extends_of(doc: &Value) -> Option<String> {
+    let base = doc.get("extends")?.as_str()?.trim();
+    let version = doc.get("version")?.as_f64()?;
+    (!base.is_empty() && version >= THEME_EXTENDS_VERSION as f64).then(|| base.to_owned())
+}
+
+fn merge_record(
+    base: &serde_json::Map<String, Value>,
+    patch: &serde_json::Map<String, Value>,
+) -> serde_json::Map<String, Value> {
+    let mut out = base.clone();
+    for (key, value) in patch {
+        match value {
+            Value::Null => {
+                out.remove(key);
+            }
+            Value::Object(child) => {
+                let empty = serde_json::Map::new();
+                let prior = out.get(key).and_then(Value::as_object).unwrap_or(&empty);
+                let merged = merge_record(prior, child);
+                out.insert(key.clone(), Value::Object(merged));
+            }
+            other => {
+                out.insert(key.clone(), other.clone());
+            }
+        }
+    }
+    out
+}
+
+/// One level of the chain: the base's settings under the child's, the child's identity only, no `extends`.
+pub fn merge_theme_docs(base: &Value, child: &Value) -> Value {
+    let empty = serde_json::Map::new();
+    let inherited: serde_json::Map<String, Value> = base
+        .as_object()
+        .unwrap_or(&empty)
+        .iter()
+        .filter(|(key, _)| !OWN_KEYS.contains(&key.as_str()))
+        .map(|(key, value)| (key.clone(), value.clone()))
+        .collect();
+    let mut merged = merge_record(&inherited, child.as_object().unwrap_or(&empty));
+    merged.remove("extends");
+    Value::Object(merged)
+}
+
+/// The document a theme resolves to and, when its chain broke or `extends` was ignored, why.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ResolvedTheme {
+    pub doc: Option<Value>,
+    pub problem: Option<&'static str>,
+}
+
+/// `resolveThemeDocument`: the raw document when it extends nothing, the merged chain when it does, no document when the chain is broken (`missing`, `cycle`, `too-long`); `version` and `invalid` keep the document without its `extends`.
+pub fn resolve_theme_document(
+    raw: &Value,
+    source: &str,
+    lookup: impl Fn(&str) -> Option<Value>,
+) -> ResolvedTheme {
+    let Some(map) = raw.as_object().filter(|m| m.contains_key("extends")) else {
+        return ResolvedTheme {
+            doc: Some(raw.clone()),
+            problem: None,
+        };
+    };
+    let Some(base_id) = theme_extends_of(raw) else {
+        let named = map
+            .get("extends")
+            .and_then(Value::as_str)
+            .is_some_and(|s| !s.trim().is_empty());
+        let mut rest = map.clone();
+        rest.remove("extends");
+        return ResolvedTheme {
+            doc: Some(Value::Object(rest)),
+            problem: Some(if named { "version" } else { "invalid" }),
+        };
+    };
+    let broken = |problem| ResolvedTheme {
+        doc: None,
+        problem: Some(problem),
+    };
+    let mut chain = vec![raw.clone()];
+    let mut seen = vec![source.to_owned()];
+    let mut next = Some(base_id);
+    while let Some(id) = next {
+        if seen.contains(&id) {
+            return broken("cycle");
+        }
+        if chain.len() > MAX_THEME_CHAIN {
+            return broken("too-long");
+        }
+        let Some(base) = lookup(&id).filter(Value::is_object) else {
+            return broken("missing");
+        };
+        next = theme_extends_of(&base);
+        seen.push(id);
+        chain.push(base);
+    }
+    let mut merged = chain.pop().unwrap_or(Value::Null);
+    while let Some(child) = chain.pop() {
+        merged = merge_theme_docs(&merged, &child);
+    }
+    ResolvedTheme {
+        doc: Some(merged),
+        problem: None,
+    }
+}
+
+mod builtin {
+    include!(concat!(env!("OUT_DIR"), "/builtin_themes.rs"));
+}
+
+/// A bundled theme's raw document by id (embedded at build time from `src/theme/builtin/`).
+pub fn builtin_theme(id: &str) -> Option<Value> {
+    builtin::BUILTIN_THEME_DOCS
+        .iter()
+        .find(|(builtin_id, _)| *builtin_id == id)
+        .and_then(|(_, text)| serde_json::from_str(text).ok())
+}
+
+/// A workspace theme's raw document by `ws:<slug>` id under `root/themes/`, the lookup packs and moves use.
+pub fn read_workspace_theme(root: &Path, id: &str) -> Option<Value> {
+    let slug = id
+        .strip_prefix("ws:")
+        .filter(|s| validate_slug(s).is_ok())?;
+    let text =
+        std::fs::read_to_string(root.join(THEMES_DIR_NAME).join(slug).join("theme.json")).ok()?;
+    serde_json::from_str(&text).ok()
+}
+
+#[cfg(test)]
+mod extends_tests {
+    use super::*;
+
+    const VECTORS: &str =
+        include_str!("../../.agents/skills/kookaburra-scene-authoring/scripts/tests/fixtures/theme-merge-vectors.json");
+
+    #[test]
+    fn replays_the_shared_merge_vectors() {
+        let vectors: Value = serde_json::from_str(VECTORS).unwrap();
+        for v in vectors["merge"].as_array().unwrap() {
+            assert_eq!(
+                merge_theme_docs(&v["base"], &v["child"]),
+                v["out"],
+                "{}",
+                v["id"]
+            );
+        }
+        for v in vectors["resolve"].as_array().unwrap() {
+            let docs = v["docs"].as_object().unwrap();
+            let resolved = resolve_theme_document(&v["raw"], v["source"].as_str().unwrap(), |id| {
+                docs.get(id).cloned()
+            });
+            assert_eq!(resolved.doc.unwrap_or(Value::Null), v["out"], "{}", v["id"]);
+            assert_eq!(resolved.problem, v["problem"].as_str(), "{}", v["id"]);
+        }
+    }
+}
 
 /// Previews per theme, the 4 standard `preview-lab-theme` scenes' middle frames.
 const PREVIEWS_PER_THEME: u32 = 4;

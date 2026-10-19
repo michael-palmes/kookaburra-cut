@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { catmullRom, catmullRomTangent, lerp3 } from "./keyframes";
+import { catmullRom, catmullRomTangent, lerp, lerp3, sampleKeyProperty } from "./keyframes";
 
 type V3 = [number, number, number];
 
@@ -85,5 +85,35 @@ describe("catmullRomTangent", () => {
     expect(t[1]).toBeCloseTo(0, 12);
     expect(t[2]).toBeCloseTo(0, 12);
     expect(t[0]).toBeGreaterThan(0);
+  });
+});
+
+describe("sampleKeyProperty easeT", () => {
+  const keys = [
+    { tMs: 0, v: 0, tag: "a" },
+    { tMs: 100, v: 10, tag: "b" },
+  ];
+  it("is linear without easeT", () => {
+    expect(sampleKeyProperty(keys, 25, (k) => k.v, lerp)).toBe(2.5);
+  });
+  it("eases the segment progress with the surrounding keys in hand", () => {
+    const seen: string[] = [];
+    const v = sampleKeyProperty(
+      keys,
+      50,
+      (k) => k.v,
+      lerp,
+      (t, before, after) => {
+        seen.push(`${before.tag}${after.tag}`);
+        return t * t;
+      },
+    );
+    expect(v).toBe(2.5);
+    expect(seen).toEqual(["ab"]);
+  });
+  it("never eases the clamped ends", () => {
+    const easeT = () => 0.5;
+    expect(sampleKeyProperty(keys, -10, (k) => k.v, lerp, easeT)).toBe(0);
+    expect(sampleKeyProperty(keys, 100, (k) => k.v, lerp, easeT)).toBe(10);
   });
 });

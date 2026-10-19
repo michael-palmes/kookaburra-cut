@@ -19,6 +19,7 @@ import { clampTrackToDuration, type KeyedTrack } from "./keyedTrack";
 import { useLayeredScreenshotRegistry } from "./layeredScreenshotRegistry";
 import { type ManagedTextRenderRole, resolveTemplateManagedTextCopy } from "./managedText";
 import { useObjectRegistry } from "./objectRegistry";
+import { parseInto } from "./parseWarnings";
 import { isEditableProjectId, type LoadedProject, nativeProjectSlug } from "./project";
 import { updateSceneDuration } from "./projectEdit";
 import { type ResolvedChart, resolveChart } from "./sceneChart";
@@ -51,19 +52,20 @@ import { useTextKeyRegistry } from "./textKeyRegistry";
 
 /** Scene-document IO and hooks: docs load beside their scene modules in `loadProject` into `LoadedProject.sceneDocs` and reach components via `SceneHost`'s `SceneDocContext`, but the engine (camera sampling, duration sync) reads `LoadedProject.sceneDocs` directly so export never touches React context or the editor store; schema and validation live in `sceneDocSchema.ts`. */
 
-/** Editable sidecars read fresh through native IO; read-only bundled scenes use their build-time imports. */
+/** Editable sidecars read fresh through native IO; read-only bundled scenes use their build-time imports. With `warnings`, what the parse dropped lands there instead of the console. */
 export async function loadSceneDoc(
   projectId: string,
   sceneFile: string,
   bundledDocs: Record<string, () => Promise<{ default: unknown }>>,
   bundledDir?: string,
+  warnings?: string[],
 ): Promise<SceneDoc | undefined> {
   const docFile = sceneFile.replace(/\.tsx$/, ".json");
   if (docFile === sceneFile) return undefined;
   if (isEditableProjectId(projectId)) {
     const slug = nativeProjectSlug(projectId);
     try {
-      return (await readSceneDocEntry(slug, docFile)).doc;
+      return (await readSceneDocEntry(slug, docFile, warnings)).doc;
     } catch (e) {
       console.warn(`[sceneDoc] reading ${slug}/${docFile} failed:`, e);
       return undefined;
@@ -72,20 +74,23 @@ export async function loadSceneDoc(
   const key = `${bundledDir ?? `/projects/${projectId}`}/${docFile}`;
   const load = bundledDocs[key];
   if (!load) return undefined;
-  return parseSceneDoc((await load()).default, key);
+  const raw = (await load()).default;
+  return parseInto(warnings, () => parseSceneDoc(raw, key));
 }
 
 /** A sidecar read with its content hash remembered as the document's write base; throws when the file exists but can't be read or parsed. */
 export async function readSceneDocEntry(
   slug: string,
   docFile: string,
+  warnings?: string[],
 ): Promise<{ doc: SceneDoc | undefined; hash: string }> {
   const entry = await invoke<{ text: string; hash: string } | null>("read_scene_doc_entry", {
     slug,
     file: docFile,
   });
   if (entry == null) return { doc: undefined, hash: ABSENT_BASE };
-  const doc = parseSceneDoc(JSON.parse(entry.text), `${slug}/${docFile}`);
+  const raw: unknown = JSON.parse(entry.text);
+  const doc = parseInto(warnings, () => parseSceneDoc(raw, `${slug}/${docFile}`));
   if (!doc) throw new Error(`${docFile} isn't a scene document this version can read`);
   rememberSceneDocHash(doc, entry.hash);
   return { doc, hash: entry.hash };

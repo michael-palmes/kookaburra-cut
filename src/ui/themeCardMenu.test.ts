@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { ContextMenuItem } from "./ContextMenu";
 import type { ThemeChoice } from "./ThemePicker";
-import { buildThemeCardMenu } from "./themeCardMenu";
+import { buildThemeCardMenu, dependentsNote } from "./themeCardMenu";
 
 const choice = (id: string): ThemeChoice => ({
   id,
@@ -70,5 +70,25 @@ describe("theme card actions", () => {
       "delete-builtin",
     ]);
     expect(bundled.find((item) => item.id === "delete-builtin")?.confirmLabel).toBeTruthy();
+  });
+  it("names the themes based on one before it is deleted", () => {
+    const base = { ...choice("ws:base"), dependents: ["Night", "Day", "Dusk"] };
+    const items = actions(buildThemeCardMenu(base, options(), vi.fn(), false));
+    expect(items.find((item) => item.id === "delete")?.confirmLabel).toBe(
+      "Delete? Night, Day and 1 more are based on it",
+    );
+    expect(dependentsNote({ dependents: ["Night"] })).toBe("Night is based on it");
+    expect(dependentsNote({ dependents: ["Night", "Day"] })).toBe("Night and Day are based on it");
+    expect(dependentsNote({})).toBeNull();
+    const plain = actions(buildThemeCardMenu(choice("ws:solo"), options(), vi.fn(), false));
+    expect(plain.find((item) => item.id === "delete")?.confirmLabel).toBe("Really delete?");
+  });
+  it("keeps variants and their bases out of the move to app themes", () => {
+    const opts = { ...options(), onMove: vi.fn() };
+    const move = (c: ThemeChoice) =>
+      actions(buildThemeCardMenu(c, opts, vi.fn(), true)).find((item) => item.id === "move");
+    expect(move({ ...choice("ws:variant"), basedOn: "ws:base" })?.disabled).toBe(true);
+    expect(move({ ...choice("ws:base"), dependents: ["Night"] })?.disabled).toBe(true);
+    expect(move(choice("ws:solo"))?.disabled).toBe(false);
   });
 });

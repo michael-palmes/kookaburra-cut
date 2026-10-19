@@ -4,7 +4,7 @@ import { setExporting } from "./exportState";
 import type { LoadedProject } from "./project";
 import { loadProject } from "./project";
 import { captureFrameAt } from "./snapshots";
-import { ensureUserThemePreviews, themePreviewKey } from "./themePreviews";
+import { ensureUserThemePreviews, themePreviewKey, themeVariantsOf } from "./themePreviews";
 
 const state = vi.hoisted(() => ({
   applied: null as unknown,
@@ -99,5 +99,46 @@ describe("theme preview generation", () => {
     expect(
       vi.mocked(invoke).mock.calls.some(([command]) => command === "write_theme_preview"),
     ).toBe(false);
+  });
+
+  it("keys and renders a variant on its merged document", async () => {
+    const base = { version: 2, id: "base", name: "Base", mode: "dark", colors: { accent: "red" } };
+    const variant = { version: 3, id: "night", name: "Night", extends: "ws:base", mode: "light" };
+    vi.mocked(invoke).mockImplementation(async (command: string) =>
+      command === "read_theme" ? JSON.stringify(base) : null,
+    );
+    await ensureUserThemePreviews("ws:night", JSON.stringify(variant), apply, vi.fn());
+    const merged = {
+      mode: "light",
+      colors: { accent: "red" },
+      version: 3,
+      id: "night",
+      name: "Night",
+    };
+    expect(loadProject).toHaveBeenCalledWith("preview-lab-theme", {
+      theme: { ...merged, id: "ws:night" },
+    });
+    const key = await themePreviewKey(JSON.stringify(merged));
+    expect(
+      vi
+        .mocked(invoke)
+        .mock.calls.some(
+          ([command, args]) =>
+            command === "list_theme_previews" && (args as { key: string }).key === key,
+        ),
+    ).toBe(true);
+  });
+
+  it("lists the variants a base edit should re-render", async () => {
+    vi.mocked(invoke).mockResolvedValue([
+      { slug: "base", json: '{"version":2}' },
+      { slug: "night", json: '{"version":3,"extends":"ws:base"}' },
+      { slug: "late", json: '{"version":3,"extends":"ws:night"}' },
+      { slug: "solo", json: '{"version":3}' },
+    ]);
+    expect(await themeVariantsOf("ws:base")).toEqual([
+      ["ws:night", '{"version":3,"extends":"ws:base"}'],
+      ["ws:late", '{"version":3,"extends":"ws:night"}'],
+    ]);
   });
 });

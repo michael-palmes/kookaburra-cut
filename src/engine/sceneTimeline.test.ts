@@ -5,6 +5,7 @@ import {
   attributionBoundaries,
   attributionStartMs,
   buildSceneTimeline,
+  isTransitionMaskSource,
   normalizeTransitionType,
   resolveAt,
   resolveTransitionParams,
@@ -279,6 +280,53 @@ describe("resolveTransitionParams (v10 M2)", () => {
   it("accepts the hex aperture shape", () => {
     const p = resolveTransitionParams({ type: "rackfocus", durationMs: 600, shape: "hex" });
     expect(p.shape).toBe("hex");
+  });
+
+  it("accepts the image shape on luma with a clean src, else falls back", () => {
+    const base = { type: "luma", durationMs: 600, shape: "image" } as const;
+    expect(resolveTransitionParams({ ...base, src: "assets/star.png" }).shape).toBe("image");
+    expect(resolveTransitionParams({ ...base, src: "assets/masks/Badge.WEBP" }).shape).toBe(
+      "image",
+    );
+    expect(resolveTransitionParams(base).shape).toBe("iris");
+    expect(resolveTransitionParams({ ...base, src: "assets/../star.png" }).shape).toBe("iris");
+    expect(resolveTransitionParams({ ...base, src: "star.png" }).shape).toBe("iris");
+    expect(resolveTransitionParams({ ...base, src: "assets/star.gif" }).shape).toBe("iris");
+    expect(
+      resolveTransitionParams({ ...base, type: "spinblur", src: "assets/star.png" }).shape,
+    ).toBe("linear");
+    expect(
+      resolveTransitionParams({ ...base, type: "halftone", src: "assets/star.png" }).shape,
+    ).toBe("radial");
+  });
+
+  it("isTransitionMaskSource takes clean assets/ image paths only", () => {
+    expect(isTransitionMaskSource("assets/a.png")).toBe(true);
+    expect(isTransitionMaskSource("assets/x/y/a.jpeg")).toBe(true);
+    expect(isTransitionMaskSource("assets//a.png")).toBe(false);
+    expect(isTransitionMaskSource("assets/./a.png")).toBe(false);
+    expect(isTransitionMaskSource("/assets/a.png")).toBe(false);
+    expect(isTransitionMaskSource("assets/a.mp4")).toBe(false);
+    expect(isTransitionMaskSource(42)).toBe(false);
+  });
+
+  it("resolveAt carries the slot's mask only for an image shape", () => {
+    const spec = { type: "luma", durationMs: 500, shape: "image", src: "assets/s.png" } as const;
+    const slots = buildSceneTimeline([
+      { id: "a", durationMs: 2000, transition: spec },
+      { id: "b", durationMs: 2000 },
+    ]);
+    expect(resolveAt(slots, 1750).transition?.mask).toEqual({ src: "assets/s.png", url: null });
+    slots[1] = { ...slots[1], transitionMask: { src: "assets/s.png", url: "/u/s.png" } };
+    expect(resolveAt(slots, 1750).transition?.mask).toEqual({
+      src: "assets/s.png",
+      url: "/u/s.png",
+    });
+    const iris = buildSceneTimeline([
+      { id: "a", durationMs: 2000, transition: { type: "luma", durationMs: 500, shape: "iris" } },
+      { id: "b", durationMs: 2000 },
+    ]);
+    expect(resolveAt(iris, 1750).transition).not.toHaveProperty("mask");
   });
 
   it("resolveAt carries baked params on the resolved transition", () => {

@@ -1,6 +1,7 @@
 import { Color, MeshBasicMaterial, Vector2, Vector3, Vector4 } from "three";
 import { createTextDerivedMaterial } from "troika-three-text";
 import { createDerivedMaterial } from "troika-three-utils";
+import { MAX_EMPHASIS_RECTS } from "./emphasis";
 import {
   EDGE_SENTINEL,
   GLINT_HALF_W,
@@ -219,8 +220,13 @@ if (vGanMixWS.y != 0.0 || vGanMixWS.z > 0.0) {
 }
 if (gl_FragColor.a == 0.0) discard;
 `;
+// Emphasis mounts fold the per-glyph weight into the re-threshold too.
+const PACK_OVER_FRAGMENT_EMPH = PACK_OVER_FRAGMENT.replace(
+  "uTroikaEdgeOffset + vGanMixWS.y",
+  "uTroikaEdgeOffset + vGanMixWS.y + vGanEmphW",
+);
 
-// Troika discards at zero base coverage BEFORE the over layer runs, which would kill every fragment a bolder weight or outward soft halo needs; pack mounts strip it and re-discard after the re-threshold. Pinned to troika 0.52.4's exact bytes (re-check on any troika upgrade).
+// Troika discards at zero base coverage BEFORE the over layer runs, which would kill every fragment a bolder weight or outward soft halo needs; pack mounts strip it and re-discard after the re-threshold. Pinned to troika 0.52.5's exact bytes (re-check on any troika upgrade).
 const TROIKA_EDGE_DISCARD_RE = /if \(edgeAlpha == 0\.0\) \{\s*discard;\s*\}/;
 function stripTroikaEdgeDiscard(shaders: { vertexShader: string; fragmentShader: string }): {
   vertexShader: string;
@@ -333,6 +339,90 @@ if (uGanArc.x != 0.0) {
 }
 `;
 
+// ── Per-word emphasis (`*word*`): a glyph whose rest centre falls in one of the per-line rects takes the emphasis colour and a per-glyph SDF weight. The weight rides troika's own edge offset (rewritten per glyph), so troika grows the quad and moves the edge exactly as it does for an outline. Emphasis-off mounts never carry these bytes. ──
+const ER = MAX_EMPHASIS_RECTS;
+
+const EMPH_VERTEX_DEFS = /* glsl */ `
+uniform vec4 uGanEmph[${ER}];
+uniform float uGanEmphCount;
+uniform float uGanEmphWeight;
+varying float vGanEmph;
+varying float vGanEmphW;
+`;
+
+// The over layer runs before troika's placement, so the shared global is set before troika reads it.
+const EMPH_OVER_VERTEX = /* glsl */ `
+vec2 ganEmphC = (aTroikaGlyphBounds.xy + aTroikaGlyphBounds.zw) * 0.5;
+float ganEmphOn = 0.0;
+for (int i = 0; i < ${ER}; i++) {
+  if (float(i) >= uGanEmphCount - 0.5) break;
+  vec4 ganEmphR = uGanEmph[i];
+  if (ganEmphC.x >= ganEmphR.x && ganEmphC.x <= ganEmphR.z && ganEmphC.y >= ganEmphR.y && ganEmphC.y <= ganEmphR.w) ganEmphOn = 1.0;
+}
+ganEmphG = ganEmphOn * uGanEmphWeight;
+vGanEmph = ganEmphOn;
+vGanEmphW = ganEmphG;
+`;
+
+const EMPH_FRAGMENT_DEFS = /* glsl */ `
+uniform vec3 uGanEmphColor;
+varying float vGanEmph;
+varying float vGanEmphW;
+`;
+
+const EMPH_FRAGMENT = /* glsl */ `
+if (vGanEmph > 0.5) {
+  gl_FragColor.rgb = uGanEmphColor;
+}
+`;
+
+// troika 0.52.5's exact edge-offset sites (re-check on any troika upgrade): the quad grow and the edge alpha.
+const TROIKA_OUTLINE_BOUNDS_RE =
+  /bounds\.xy - uTroikaEdgeOffset - uTroikaBlurRadius,(\s*)bounds\.zw \+ uTroikaEdgeOffset \+ uTroikaBlurRadius/;
+const TROIKA_EDGE_ALPHA_RE =
+  /troikaGetEdgeAlpha\(fragDistance, uTroikaEdgeOffset, max\(aaDist, uTroikaBlurRadius\)\)/;
+function rewriteEmphasisEdge(shaders: { vertexShader: string; fragmentShader: string }): {
+  vertexShader: string;
+  fragmentShader: string;
+} {
+  const { vertexShader, fragmentShader } = shaders;
+  if (!TROIKA_OUTLINE_BOUNDS_RE.test(vertexShader) || !TROIKA_EDGE_ALPHA_RE.test(fragmentShader)) {
+    console.warn("[text] troika edge offset not found; emphasised words keep their weight");
+    return { vertexShader: `float ganEmphG;\n${vertexShader}`, fragmentShader };
+  }
+  return {
+    vertexShader: `float ganEmphG;\n${vertexShader.replace(
+      TROIKA_OUTLINE_BOUNDS_RE,
+      "bounds.xy - (uTroikaEdgeOffset + ganEmphG) - uTroikaBlurRadius,$1bounds.zw + (uTroikaEdgeOffset + ganEmphG) + uTroikaBlurRadius",
+    )}`,
+    fragmentShader: fragmentShader.replace(
+      TROIKA_EDGE_ALPHA_RE,
+      "troikaGetEdgeAlpha(fragDistance, uTroikaEdgeOffset + vGanEmphW, max(aaDist, uTroikaBlurRadius))",
+    ),
+  };
+}
+const rewritePackEmphasis = (shaders: { vertexShader: string; fragmentShader: string }) =>
+  rewriteEmphasisEdge(stripTroikaEdgeDiscard(shaders));
+
+// ── The typewriter mask: a glyph shows once the type head has passed it (lines above the head line, or the head line up to the head's x). (headX, lineBottom, lineTop); sentinels hide or show everything. ──
+const TYPE_VERTEX_DEFS = /* glsl */ `
+uniform vec3 uGanType;
+varying float vGanType;
+`;
+
+const TYPE_OVER_VERTEX = /* glsl */ `
+vec2 ganTypeC = (aTroikaGlyphBounds.xy + aTroikaGlyphBounds.zw) * 0.5;
+vGanType = (ganTypeC.y > uGanType.z || (ganTypeC.y >= uGanType.y && ganTypeC.x <= uGanType.x)) ? 1.0 : 0.0;
+`;
+
+const TYPE_FRAGMENT_DEFS = /* glsl */ `
+varying float vGanType;
+`;
+
+const TYPE_FRAGMENT = /* glsl */ `
+if (vGanType < 0.5) discard;
+`;
+
 type DerivedTextMaterial = ReturnType<typeof createDerivedMaterial>;
 
 export interface StaggerTextMaterial {
@@ -348,6 +438,8 @@ export interface StaggerTextMaterial {
     gradient: boolean;
     arc: boolean;
     echo?: 1 | -1;
+    emphasis?: true;
+    typeMask?: true;
   };
   dispose(): void;
 }
@@ -371,6 +463,12 @@ export interface StaggerMaterialFeatures {
   gradient?: boolean;
   /** arc look: bend glyphs along a circular arc (forces the geometry sandwich). */
   arc?: boolean;
+  /** `render.exactText`: the base renders with tone mapping off (the whole derived chain inherits it). */
+  exactText?: boolean;
+  /** Per-word emphasis: colour and SDF weight inside per-line rects. */
+  emphasis?: boolean;
+  /** The typewriter's reveal head. */
+  typeMask?: boolean;
 }
 
 export function createStaggerTextMaterial(
@@ -385,6 +483,8 @@ export function createStaggerTextMaterial(
   const scatter = features.scatter === true || pack;
   const gradient = features.gradient === true;
   const arc = features.arc === true;
+  const emphasis = features.emphasis === true;
+  const typeMask = features.typeMask === true;
   const geometry = twist || scatter || arc;
   const walk = axisY ? VERTEX_TRANSFORM_AXIS_Y : VERTEX_TRANSFORM;
   const resolved = {
@@ -397,8 +497,11 @@ export function createStaggerTextMaterial(
     gradient,
     arc,
     ...(echo !== undefined ? { echo } : {}),
+    ...(emphasis ? { emphasis: true as const } : {}),
+    ...(typeMask ? { typeMask: true as const } : {}),
   };
   const base = new MeshBasicMaterial({ transparent: true });
+  if (features.exactText === true) base.toneMapped = false;
   const uniforms = {
     uGanCount: { value: 1 },
     uGanEm: { value: 1 },
@@ -429,6 +532,17 @@ export function createStaggerTextMaterial(
         }
       : {}),
     ...(arc ? { uGanArc: { value: new Vector3(0, 0, 0) } } : {}),
+    ...(emphasis
+      ? {
+          uGanEmph: { value: new Float32Array(ER * 4) },
+          uGanEmphCount: { value: 0 },
+          uGanEmphWeight: { value: 0 },
+          uGanEmphColor: { value: new Color(1, 1, 1) },
+        }
+      : {}),
+    ...(typeMask
+      ? { uGanType: { value: new Vector3(EDGE_SENTINEL, EDGE_SENTINEL, EDGE_SENTINEL) } }
+      : {}),
   };
   const shineDefs = shineTint
     ? SHINE_FRAGMENT_DEFS + SHINE_FRAGMENT_TINT_DEFS
@@ -438,14 +552,20 @@ export function createStaggerTextMaterial(
     FRAGMENT_DEFS +
     (gradient ? GRADIENT_FRAGMENT_DEFS : "") +
     (pack ? PACK_FRAGMENT_DEFS : "") +
-    (shine ? shineDefs : "");
+    (shine ? shineDefs : "") +
+    (emphasis ? EMPH_FRAGMENT_DEFS : "") +
+    (typeMask ? TYPE_FRAGMENT_DEFS : "");
   const fragmentColorTransform =
+    (typeMask ? TYPE_FRAGMENT : "") +
     (gradient ? GRADIENT_FRAGMENT : "") +
+    (emphasis ? EMPH_FRAGMENT : "") +
     FRAGMENT_COLOR_TRANSFORM +
     (pack ? PACK_FRAGMENT : "") +
     (echo !== undefined ? echoFragmentFor(echo) : "") +
     (shine ? shineFragment : "") +
     (pack ? PACK_FRAGMENT_STASH : "");
+  const extraVertexDefs = (emphasis ? EMPH_VERTEX_DEFS : "") + (typeMask ? TYPE_VERTEX_DEFS : "");
+  const extraOverVertex = (emphasis ? EMPH_OVER_VERTEX : "") + (typeMask ? TYPE_OVER_VERTEX : "");
 
   if (!geometry) {
     // The OVER-chain (ours wraps the text material) is byte-frozen: feature-off emits the exact v8 program (walk === VERTEX_TRANSFORM for axis "x"); the shine and gradient variants stay on their gated bytes; axis "-y" swaps only the walk comparison.
@@ -454,11 +574,18 @@ export function createStaggerTextMaterial(
       chained: true,
       uniforms,
       vertexDefs:
-        VERTEX_DEFS + (shine ? SHINE_VERTEX_DEFS : "") + (gradient ? LOOK_REST_VERTEX_DEFS : ""),
+        VERTEX_DEFS +
+        (shine ? SHINE_VERTEX_DEFS : "") +
+        (gradient ? LOOK_REST_VERTEX_DEFS : "") +
+        extraVertexDefs,
       vertexTransform:
-        (shine ? SHINE_VERTEX_PRELUDE : "") + (gradient ? LOOK_REST_CAPTURE : "") + walk,
+        (shine ? SHINE_VERTEX_PRELUDE : "") +
+        (gradient ? LOOK_REST_CAPTURE : "") +
+        walk +
+        extraOverVertex,
       fragmentDefs,
       fragmentColorTransform,
+      ...(emphasis ? { customRewriter: rewriteEmphasisEdge } : {}),
     });
     // Present as an already-derived text material so Text's setter adopts it as-is.
     if (!material.isTroikaTextMaterial) {
@@ -487,7 +614,8 @@ export function createStaggerTextMaterial(
       (scatter ? SCATTER_VERTEX_DEFS : "") +
       (pack ? PACK_VERTEX_DEFS : "") +
       (gradient ? LOOK_REST_VERTEX_DEFS : "") +
-      (arc ? ARC_VERTEX_DEFS : ""),
+      (arc ? ARC_VERTEX_DEFS : "") +
+      extraVertexDefs,
     vertexTransform:
       UNDER_TRANSFORM +
       (pack ? PACK_VERTEX_TRANSFORM : "") +
@@ -506,14 +634,17 @@ export function createStaggerTextMaterial(
       (axisY ? OVER_WALK_AXIS_Y : OVER_WALK) +
       (pack ? PACK_OVER_WALK : "") +
       (shine ? SHINE_VERTEX_PRELUDE : "") +
-      (gradient ? LOOK_REST_CAPTURE : ""),
+      (gradient ? LOOK_REST_CAPTURE : "") +
+      extraOverVertex,
     ...(pack
       ? {
           vertexMainOutro: PACK_OVER_OUTRO,
-          fragmentColorTransform: PACK_OVER_FRAGMENT,
-          customRewriter: stripTroikaEdgeDiscard,
+          fragmentColorTransform: emphasis ? PACK_OVER_FRAGMENT_EMPH : PACK_OVER_FRAGMENT,
+          customRewriter: emphasis ? rewritePackEmphasis : stripTroikaEdgeDiscard,
         }
-      : {}),
+      : emphasis
+        ? { customRewriter: rewriteEmphasisEdge }
+        : {}),
   });
   // Present as an already-derived text material so Text's setter adopts it as-is.
   if (!material.isTroikaTextMaterial) {
@@ -637,6 +768,35 @@ export function writeHeldShineUniforms(
     return;
   }
   uniform.set(band.centerS, band.invHalfWidthS, intensity, 1);
+}
+
+/** Write the emphasis rects (from `computeEmphasisRects`), the weight in LAYOUT units and the colour; null rects (unmeasured) emphasise nothing. No-op on mounts without the feature. */
+export function writeEmphasisUniforms(
+  mat: StaggerTextMaterial,
+  rects: Float32Array | null,
+  weight: number,
+  color: Color,
+): void {
+  const u = mat.material.uniforms;
+  if (!u.uGanEmph) return;
+  const dst: Float32Array = u.uGanEmph.value;
+  const count = rects ? Math.min(MAX_EMPHASIS_RECTS, Math.floor(rects.length / 4)) : 0;
+  if (rects) dst.set(rects.subarray(0, count * 4));
+  u.uGanEmphCount.value = count;
+  u.uGanEmphWeight.value = weight;
+  (u.uGanEmphColor.value as Color).copy(color);
+}
+
+/** The typewriter head: "none" hides every glyph, "all" shows every glyph, else glyphs on lines above the head line and those on it up to `x`. No-op on mounts without the mask. */
+export function writeTypeMaskUniforms(
+  mat: StaggerTextMaterial,
+  head: "none" | "all" | { x: number; bottom: number; top: number },
+): void {
+  const u = mat.material.uniforms.uGanType?.value as Vector3 | undefined;
+  if (!u) return;
+  if (head === "none") u.set(EDGE_SENTINEL, EDGE_SENTINEL, EDGE_SENTINEL);
+  else if (head === "all") u.set(EDGE_SENTINEL, -EDGE_SENTINEL, -EDGE_SENTINEL);
+  else u.set(head.x, head.bottom, head.top);
 }
 
 function buildUnitAArray(): Float32Array {

@@ -13,15 +13,20 @@ import openSansSemiBoldUrl from "../assets/fonts/OpenSans-SemiBold.woff?url";
 import playfairSemiBoldUrl from "../assets/fonts/PlayfairDisplay-SemiBold.woff?url";
 import spaceGroteskRegularUrl from "../assets/fonts/SpaceGrotesk-Regular.woff?url";
 import spaceGroteskSemiBoldUrl from "../assets/fonts/SpaceGrotesk-SemiBold.woff?url";
+import { preloadFontMetrics } from "./fontMetrics";
 import { vetFontUrl } from "./fontVet";
 import { FALLBACK_PRELOAD_CHARACTERS } from "./symbolsCodepoints.generated";
 import type { FontRef, Theme } from "./tokens";
+
+/** troika's SDF cell size, passed explicitly to the builder, every preload and every `Text` site so the whole app shares ONE glyph atlas. EXPORT CONTRACT: changing it re-rasterises every glyph and rebases every project. */
+export const SDF_GLYPH_SIZE = 64;
 
 // Typeset on the MAIN thread: troika's worker dies in the packaged app (WKWebView blocks blob workers over tauri://); this also keeps the deterministic export path scheduling-free.
 // unicodeFontsURL is a dead same-origin path: the CDN fallback must never fetch remote fonts (patched troika degrades uncovered codepoints to .notdef instead of wedging).
 // defaultFontURL is troika's global fallback slot, tried only for codepoints the per-Text font lacks: text-default symbols plus the empty emoji placeholder glyphs.
 configureTextBuilder({
   useWorker: false,
+  sdfGlyphSize: SDF_GLYPH_SIZE,
   unicodeFontsURL: "/__no-unicode-font-resolver__",
   defaultFontURL: kookaburraFallbackUrl,
 });
@@ -170,13 +175,22 @@ export async function preloadAppFonts(refs?: readonly (FontRef | string)[]): Pro
   }
   for (const font of urls) {
     await new Promise<void>((resolve) => {
-      preloadFont({ font, characters: PRELOAD_CHARACTERS }, resolve);
+      preloadFont({ font, characters: PRELOAD_CHARACTERS, sdfGlyphSize: SDF_GLYPH_SIZE }, resolve);
     });
   }
   // The fallback face always loads LAST so its atlas cells append after every existing glyph (docs/determinism.md "Fonts").
   await new Promise<void>((resolve) => {
-    preloadFont({ font: kookaburraFallbackUrl, characters: FALLBACK_PRELOAD_CHARACTERS }, resolve);
+    preloadFont(
+      {
+        font: kookaburraFallbackUrl,
+        characters: FALLBACK_PRELOAD_CHARACTERS,
+        sdfGlyphSize: SDF_GLYPH_SIZE,
+      },
+      resolve,
+    );
   });
+  // Our own parse of the same faces, for measureText; troika's atlas never sees it.
+  await preloadFontMetrics(urls);
 }
 
 /** Vets every non-bundled face before troika sees it: a face troika's parser throws on would wedge every pending preload (and with it the load or export), so it is swapped for Inter unless a load already chose a better stand-in. */

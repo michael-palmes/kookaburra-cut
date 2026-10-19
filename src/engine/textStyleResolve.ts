@@ -11,7 +11,8 @@ export type TextStyleSuffix =
   | "OffsetX"
   | "OffsetY"
   | "LineHeight"
-  | "RotationDeg";
+  | "RotationDeg"
+  | "Emphasis";
 
 export function textStyleValue(
   doc: SceneDoc | null | undefined,

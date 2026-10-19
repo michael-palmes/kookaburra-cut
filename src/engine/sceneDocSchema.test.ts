@@ -226,6 +226,19 @@ describe("parseSceneDoc", () => {
     warn.mockRestore();
   });
 
+  it("parses textStyle emphasis as <colour> or <colour>@<weight>, dropping the rest", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const good = parseSceneDoc(
+      { version: 1, textStyle: { titleEmphasis: "accent@700", subtitleEmphasis: " #ff8800 " } },
+      "test",
+    );
+    expect(good?.textStyle).toEqual({ titleEmphasis: "accent@700", subtitleEmphasis: "#ff8800" });
+    const bad = parseSceneDoc({ version: 1, textStyle: { titleEmphasis: "bold" } }, "test");
+    expect(bad?.textStyle).toBeUndefined();
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("textStyle.titleEmphasis"));
+    warn.mockRestore();
+  });
+
   it("collects distinct sidecar font refs across docs", () => {
     const a = parseSceneDoc(
       { version: 1, textStyle: { titleFont: "Avenir Next@600", subtitleFont: "Georgia" } },

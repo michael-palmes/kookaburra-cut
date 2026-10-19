@@ -172,7 +172,8 @@ under the project lock (`kblib.lock`) and re-validated after writing.
 As built (`scripts/kblib/`):
 
 - `doc`, `project` and `theme set` refuse a write that would add errors (exit 1, nothing
-  written) unless `--force`.
+  written) unless `--force`. `doc` and `theme set` stamp `staggerExact: true` on a text
+  spec whose `staggerMs` they turn to 0 (the inspector's rule).
 - The app's font verdicts from `fonts` and `check` responses are cached in
   `~/Kookaburra Cut/_bridge/font-verdicts.json`; static checks honour them, so a
   vetted face stops warning and a failed one is an error naming its fallback.
@@ -256,10 +257,13 @@ duplicate entries, transitions and options, formats, theme id, audio file); side
 (JSON, version, unknown top-level keys, enum values, font refs, asset paths exist with
 exact case and a supported extension; a missing `assets/<stem>.mp4` whose original sits in
 `assets/.originals/` with no `<stem>.timing.json` yet is a conform still landing, so `info`,
-not an error); TSX (imports only `@kookaburra/toolkit`, one
+not an error; a text spec's `staggerMs: 0` without `staggerExact` warns where a granularity
+default would replace it, in workspace themes too); TSX (imports only `@kookaburra/toolkit`, one
 `export default defineScene(`, a literal id unique in the project, no wall clock,
 timers, `Math.random`, DOM or drei `Html`, no React hooks, which the toolkit does not
-export). Errors exit 1; warnings print but pass; `info` lines are notes only.
+export; unknown `ease("...")` names warn). Devices warn when the heartbeat's build lacks
+their model, and when TSX passes `position`, `rotationDeg` or `ground` to a `Device` in a
+scene whose sidecar has a `deviceLayout`. Errors exit 1; warnings print but pass; `info` lines are notes only.
 
 - **Music.** `audio.grid`, `cues` and `sections` under `sanitiseAudioMusic`'s rules (what the
   app drops is an error); `bar:` values with no grid, and a grid whose `source.sha256` is not
@@ -552,7 +556,8 @@ skill is its playbook. Code: `scripts/kblib/video/`.
 - Conformance: `pnpm agent:vectors` regenerates `edit-vectors.json` (editOps, editMath,
   editMasks) and `repoint-vectors.json` (re-points, follow-media sources) from the real
   TypeScript; `pnpm test:kit` replays them through the Python mirror, and a stale file
-  fails vitest. The Rust barcode fixtures (`fixtures/video-conformance/`, an `#[ignore]`
+  fails vitest. `theme-merge-vectors.json` does the same for theme `extends`
+  (`src/theme/extends.ts`, mirrored by `kblib/themes.py` and `src-tauri/src/theme.rs`). The Rust barcode fixtures (`fixtures/video-conformance/`, an `#[ignore]`
   test) pin which source frame the render shows at every output frame.
 - Hooks keep Edit and Write out of `edits/` and both managed skill folders; `kb video`
   is the only way an agent changes an edit.
@@ -866,7 +871,8 @@ throttled while the app is hidden), removed on exit; autorun instances never wri
     "error": null,
     "sceneErrors": [{ "index": 12, "file": "scenes/224-x.tsx", "phase": "compile", "message": "line 4: ..." }],
     "fontIssues": [{ "ref": "Menlo@400", "message": "unknown cmap table format 6", "fallback": "Inter@400" }],
-    "warnings": []
+    "warnings": [],
+    "availableDevices": ["iphone-17-pro", "android"]
   },
   "exportJob": null,
   "health": null
@@ -877,7 +883,9 @@ Two more fields locate the presets: `presetsDir` (holds `<slug>/`) and
 `presetPreviewsDir` (holds `<slug>.jpg`); in dev the posters live under `src/assets`.
 `playheadMs` is an integer and `openProject` is null on the Welcome screen. The editor
 reports `lastLoad` after every load attempt (`set_last_load`); `warnings` includes
-healed scene ids and dropped LUTs. `rootSource` is `settings`, `env`
+healed scene ids and dropped LUTs. `availableDevices` names the device models this build
+renders with their own glb; `./kb check` warns on a scene using any other, since it renders
+as the Android fallback. `rootSource` is `settings`, `env`
 (`KOOKABURRA_WORKSPACE_ROOT`) or `none`; `checkout` is `{ path, worktree }` for a debug
 build, else null. `health` (serving instances only, `src-tauri/src/bridge_health.rs`, shape
 in "The capture service") is null on a passive instance; `exportJob` is null until the

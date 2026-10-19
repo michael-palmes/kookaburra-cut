@@ -202,11 +202,23 @@ export interface FixtureSpec {
 /** One sparse keyframe pose over the WHOLE rig (one track per scene, the camera precedent): absent fields leave the base value alone, so a key that only sets `sun.intensity` touches nothing else. Colours interpolate through Kelvin when both endpoints define it (a Kelvin ramp reads as a light warming; an RGB lerp between blackbody colours goes muddy). */
 export interface LightingPose {
   ambient?: number;
+  /** Hex; only a room writes it (lighting keys never carry colours). */
+  ambientColor?: string;
   environmentIntensity?: number;
   environmentRotationDeg?: number;
-  sun?: { azimuthDeg?: number; elevationDeg?: number; intensity?: number; kelvin?: number };
+  sun?: {
+    azimuthDeg?: number;
+    elevationDeg?: number;
+    intensity?: number;
+    kelvin?: number;
+    /** Hex; only a room writes it, and it wins over kelvin. */
+    color?: string;
+  };
   /** By light id. Camera/subject placements resolve per render target at the compositor seam. */
-  lights?: Record<string, { intensity?: number; kelvin?: number; placement?: Placement }>;
+  lights?: Record<
+    string,
+    { intensity?: number; kelvin?: number; placement?: Placement; color?: string }
+  >;
   /** By fixture id. */
   fixtures?: Record<string, { emissive?: number; lightIntensity?: number; placement?: Placement }>;
 }
@@ -333,6 +345,8 @@ export interface TextAnimationSpec {
   in: string;
   out: string;
   staggerMs: number;
+  /** `staggerMs: 0` means exactly 0; absent, a 0 under a granularity falls back to that granularity's default delay. */
+  staggerExact?: true;
   /** Stagger granularity when staggerMs > 0 (default "word"). */
   stagger?: "char" | "word";
   /** Hold before the in starts, ms (clamped to ≥ 0 at resolve; the out never shifts). */
@@ -349,6 +363,8 @@ export interface TextAnimationSpec {
   durationMs?: number;
   /** Optional preset travel distance in em. Absent keeps each preset's tuned distance. */
   distance?: number;
+  /** build: how far each arriving word slides in, em (default 0.3; the line itself always re-centres). */
+  buildShiftEm?: number;
   /** An engine/ease.ts name. Absent keeps the theme's standard easing. */
   ease?: string;
   /** Motion blur override; absent inherits the scene's Objects switch (see engine/motionBlur.ts). */
@@ -373,6 +389,10 @@ export interface TextLookSpec {
   intensity?: number;
   /** Offset-print under-layer displacement in em (default 0.06). */
   offsetEm?: number;
+  /** Offset-print direction in degrees clockwise from up (absent keeps the classic down-right, 135); the distance stays the default diagonal's. */
+  offsetDir?: number;
+  /** Offset-print under-layer opacity 0..1 (absent is fully opaque). */
+  offsetOpacity?: number;
   /** Arc: total bend in degrees, positive arcs upward (default 60). */
   curveDeg?: number;
 }

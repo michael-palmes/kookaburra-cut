@@ -3,7 +3,7 @@
 import { parseFontString } from "../theme/fontRef";
 import { fontUrl } from "../theme/fonts";
 import type { Theme } from "../theme/tokens";
-import { prepareEmojiText } from "../toolkit/text/emojiText";
+import { prepareDisplayText } from "../toolkit/text/displayText";
 import {
   awaitPanelMeasuresIdle,
   measuredPanelTextHeight,
@@ -47,7 +47,7 @@ function specOf(
   const sizeMul = key ? doc?.textStyle?.[`${key}Size`] : undefined;
   const lineHeight = key ? doc?.textStyle?.[`${key}LineHeight`] : undefined;
   return {
-    text: prepareEmojiText(input.text).text,
+    text: prepareDisplayText(input.text).text,
     font: fontUrl(
       typeof fontValue === "string" ? parseFontString(fontValue) : theme.typography[input.face],
     ),

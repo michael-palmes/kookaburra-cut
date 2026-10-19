@@ -11,6 +11,7 @@ from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
 
 from . import catalog as catmod
 from . import fonts as fontmod
+from . import themes as thememod
 from . import tsx as tsxmod
 from .catalog import Catalog
 from .project import MANIFEST, Project, stem_of
@@ -23,8 +24,10 @@ SUPPORTED_ASSET_EXTS = {
     "hdr", "exr", "csv", "tsv", "txt", "cube", "glb", "gltf",
 }
 AUDIO_EXTS = {"mp3", "wav", "m4a", "aac", "flac", "ogg"}
-TEXT_STYLE_SUFFIXES = ("Color", "Font", "Size", "OffsetX", "OffsetY", "LineHeight", "RotationDeg")
+TEXT_STYLE_SUFFIXES = ("Color", "Font", "Size", "OffsetX", "OffsetY", "LineHeight", "RotationDeg", "Emphasis")
 HEX_RE = re.compile(r"^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$")
+# textStyle.<key>Emphasis: "<colour>" or "<colour>@<weight>" (toolkit/text/emphasis.ts).
+EMPHASIS_RE = re.compile(r"^(text|muted|accent|#[0-9a-fA-F]{3}|#[0-9a-fA-F]{6})(?:@(\d{1,4}))?$")
 FALLBACK_BACKGROUND_TYPES = ["none", "color", "gradient", "image", "video", "scene3d", "shader"]
 BACKDROP_TYPES = ["none", "floor", "gradient", "image"]
 PATH_KEYS = {"src", "file", "poster"}
@@ -32,6 +35,10 @@ KEYED_TRACKS = [
     ("camera",), ("cameraRig",), ("deviceTrack",), ("lighting",), ("compare", "track"),
     ("chart", "track"), ("layeredScreenshot", "animation"),
 ]
+# Toolkit calls taking an ease name, and the 0-based argument it sits in.
+EASE_CALLS = {"ease": 0, "easeFn": 0, "ramp": 3}
+EASE_CALL_RE = re.compile(r"(?<![\w$.])(ease|easeFn|ramp)\s*\(")
+DECLARED_RE = re.compile(r"\b(?:function|const|let|var)\s+([\w$]+)")
 # Device media keys and camera kicks (sceneDocSchema.ts parseDeviceMediaKeys, parseCameraKicks).
 EDITOR_SPEEDS = (0.25, 6)
 KICK_FIELDS = ("id", "at", "zoom", "offset", "rollDeg", "attackMs", "holdMs", "releaseMs", "ease")
@@ -68,6 +75,7 @@ class Context:
             issues = last.get("fontIssues")
             if isinstance(issues, list):
                 self.font_issues = [i for i in issues if isinstance(i, dict)]
+        self.available_devices = Checker.heartbeat_devices(heartbeat)
         self._tsx: Optional[Dict[str, str]] = None
 
     def ids(self, family: str, fallback: Optional[List[str]] = None) -> Optional[List[str]]:
@@ -237,6 +245,8 @@ class Checker:
                     if key in audio and not is_number(audio[key]):
                         rep.error(file, f"audio.{key}", "must be a number")
                 self.music_manifest(audio, warn, include_warnings)
+        if "shared" in m and not isinstance(m["shared"], dict):
+            rep.error(file, "shared", 'must be an object of constants, e.g. {"palette": {"accent": "#ff6a3d"}}; the app ignores anything else')
         persistent = m.get("persistent")
         if persistent is not None:
             if not isinstance(persistent, str) or not persistent.startswith("scenes/") or not persistent.endswith(".tsx"):
@@ -305,6 +315,18 @@ class Checker:
         eases = self.ctx.ids("transitionEases", catmod.TRANSITION_EASES) or catmod.TRANSITION_EASES
         if ease is not None and ease not in eases:
             self.report.error(file, f"{path}.ease", f'unknown ease "{ease}"; one of {", ".join(eases)} (absent = linear)')
+        src = spec.get("src")
+        if spec.get("shape") == "image":
+            if spec["type"] != "luma":
+                self._mwarn(file, f"{path}.shape", 'shape "image" only applies to luma; this type ignores it')
+            elif not isinstance(src, str) or not src:
+                self.report.error(file, f"{path}.src", 'shape "image" needs "src": a png, jpg or webp under assets/ (without it the app renders the iris)')
+            elif src.rsplit(".", 1)[-1].lower() not in ("png", "jpg", "jpeg", "webp"):
+                self.report.error(file, f"{path}.src", f'"{src}" is not a supported mask image; use png (alpha), jpg or webp under assets/')
+            else:
+                self.asset(file, f"{path}.src", src)
+        elif src is not None:
+            self._mwarn(file, f"{path}.src", 'src is only read with "shape": "image" on luma, so it is ignored here')
 
     def theme_ref(self, file: str, path: str, theme_id: str, warn: Any = None) -> None:
         if theme_id.startswith("ws:"):
@@ -379,6 +401,7 @@ class Checker:
         if isinstance(overrides, dict):
             for key, spec in overrides.items():
                 self.text_animation(file, f"textAnimationOverrides.{key}", spec)
+        self.build_single_line(file, doc)
         self.text_look(file, "textLook", doc.get("textLook"))
         looks = doc.get("textLookOverrides")
         if isinstance(looks, dict):
@@ -419,6 +442,10 @@ class Checker:
             self.keyed_track(file, ".".join(keys), dig(doc, *keys), allow_jump=keys[0] in ("camera", "cameraRig"))
         self.music_keys(file, doc)
         self.motion_blur(file, "motionBlur", doc.get("motionBlur"))
+        self.room(file, doc)
+        self.taps(file, doc)
+        self.mosaic(file, doc)
+        self.window_shadow_colours(file, doc)
         stills = doc.get("stills")
         if isinstance(stills, dict) and "marksMs" in stills:
             marks = stills["marksMs"]
@@ -527,6 +554,285 @@ class Checker:
         if "samples" in block:
             rep.warn(file, f"{path}.samples", "samples is project-wide: set it in project.json render.motionBlur")
 
+    # ── rooms ─────────────────────────────────────────────────────────────
+
+    ROOM_KEY_FIELDS = ("at", "colour", "themeId", "lighting", "transition", "origin", "durationMs", "ease")
+    ROOM_LIGHT_FIELDS = ("intensity", "color", "colorToken", "kelvin")
+    ROOM_TOKENS = ("background", "text", "accent", "muted")
+
+    def room(self, file: str, doc: Dict[str, Any]) -> None:
+        """The sidecar `room` track; a bad key is dropped by the app, a bad field falls back."""
+        block = doc.get("room")
+        if block is None:
+            return
+        rep = self.report
+        if not isinstance(block, dict) or not isinstance(block.get("keys"), list) or not block["keys"]:
+            rep.error(file, "room", "must be { keys: [...] } with at least one key (the app drops the block)")
+            return
+        for extra in block:
+            if extra != "keys":
+                rep.warn(file, f"room.{extra}", "not a room field (the app ignores it)")
+        flood_ends: List[Tuple[float, float, str]] = []
+        for i, key in enumerate(block["keys"]):
+            path = f"room.keys[{i}]"
+            if not isinstance(key, dict):
+                rep.error(file, path, "must be an object (the app drops it)")
+                continue
+            for field in key:
+                if field not in self.ROOM_KEY_FIELDS:
+                    rep.warn(file, f"{path}.{field}", f"not a room key field (the app ignores it).{did_you_mean(field, self.ROOM_KEY_FIELDS)}")
+            at = key.get("at")
+            if isinstance(at, str):
+                from . import music
+
+                if music.is_position(at):
+                    self.kick_position(file, f"{path}.at", at, "room key")
+                else:
+                    rep.error(file, f"{path}.at", 'must be scene-local ms or a position like "bar:13" or "cue:drop" (the app drops the key)')
+            elif not is_number(at):
+                rep.error(file, f"{path}.at", "must be scene-local ms (the app drops the key)")
+            elif at < 0:
+                rep.warn(file, f"{path}.at", "is below 0; the app plays the key from 0")
+            colour = key.get("colour")
+            if colour is not None and not (isinstance(colour, str) and (HEX_RE.match(colour) and len(colour) in (4, 7) or colour in self.ROOM_TOKENS)):
+                rep.error(file, f"{path}.colour", f'must be a hex (#rgb or #rrggbb) or one of {", ".join(self.ROOM_TOKENS)}')
+            theme_id = key.get("themeId")
+            if theme_id is not None:
+                if isinstance(theme_id, str) and theme_id:
+                    self.theme_ref(file, f"{path}.themeId", theme_id)
+                else:
+                    rep.error(file, f"{path}.themeId", "must be a theme id; see kb theme list")
+            transition = key.get("transition", "cut")
+            if transition not in ("cut", "flood"):
+                rep.error(file, f"{path}.transition", "must be cut or flood (the app uses cut)")
+            origin = key.get("origin")
+            if origin is not None and not (isinstance(origin, list) and len(origin) == 2 and all(is_number(v) for v in origin)):
+                rep.error(file, f"{path}.origin", "must be [x, y] frame fractions: [0, 0] top-left, [1, 1] bottom-right")
+            duration = key.get("durationMs")
+            if duration is not None:
+                if not is_number(duration) or duration <= 0:
+                    rep.error(file, f"{path}.durationMs", "must be a positive number of ms (the app uses 800)")
+                elif transition != "flood":
+                    rep.warn(file, f"{path}.durationMs", "only a flood uses durationMs; a cut is instant")
+            if "ease" in key:
+                self.enum(file, f"{path}.ease", key["ease"], "eases", "ease")
+            lighting = key.get("lighting")
+            if lighting is not None:
+                self.room_lighting(file, f"{path}.lighting", lighting, doc)
+            if colour is None and theme_id is None and lighting is None:
+                rep.error(file, path, "needs a colour, a themeId or lighting (the app drops the key)")
+            if is_number(at) and at >= 0 and transition == "flood":
+                span = duration if is_number(duration) and duration > 0 else 800
+                flood_ends.append((at, at + span, path))
+        starts = sorted(k["at"] for k in block["keys"] if isinstance(k, dict) and is_number(k.get("at")))
+        for at, end, path in flood_ends:
+            later = [t for t in starts if t > at]
+            if later and end > later[0]:
+                rep.warn(file, path, f"the flood runs past the next key at {later[0]}ms and is cut short there")
+        if any(isinstance(k, dict) and ("lighting" in k or "themeId" in k) for k in block["keys"]):
+            stem = file[len("scenes/"):-len(".json")] if file.startswith("scenes/") else ""
+            tsx = self.ctx.all_tsx().get(f"scenes/{stem}.tsx")
+            if tsx is not None and "SceneStage" not in tsx:
+                rep.warn(file, "room", "only lights a <SceneStage> mounts follow a room; stage the scene for the lighting to change")
+
+    # ── taps, mosaic, window shadow colour ────────────────────────────────
+
+    TAP_FIELDS = ("at", "position", "screenUv", "device", "colour", "size")
+    MOSAIC_FIELDS = ("tiles", "columns", "gap", "reveal")
+    MOSAIC_TILE_FIELDS = ("src", "startMs", "loop", "colour")
+    MOSAIC_REVEAL_FIELDS = ("at", "staggerMs", "durationMs", "order", "ease")
+    MOSAIC_ORDERS = ("rows", "columns", "centre")
+    MOSAIC_IMAGE_EXTS = {"png", "jpg", "jpeg", "webp"}
+    MOSAIC_VIDEO_EXTS = {"mp4", "mov", "m4v", "webm"}
+
+    def scene_colour(self, value: Any) -> bool:
+        return isinstance(value, str) and (bool(re.match(r"^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$", value)) or value in self.ROOM_TOKENS)
+
+    @staticmethod
+    def numbers(value: Any, n: int) -> bool:
+        return isinstance(value, list) and len(value) == n and all(is_number(v) for v in value)
+
+    def taps(self, file: str, doc: Dict[str, Any]) -> None:
+        """The sidecar `taps` list; a tap the app can't place is dropped, a bad optional field falls back."""
+        taps = doc.get("taps")
+        if taps is None:
+            return
+        rep = self.report
+        if not isinstance(taps, list):
+            rep.error(file, "taps", "must be an array of { at, position } or { at, screenUv, device } (the app drops the block)")
+            return
+        device_ids = {d.get("id") for d in doc.get("devices") or [] if isinstance(d, dict)}
+        for i, tap in enumerate(taps):
+            path = f"taps[{i}]"
+            if not isinstance(tap, dict):
+                rep.error(file, path, "must be an object (the app drops it)")
+                continue
+            for field in tap:
+                if field not in self.TAP_FIELDS:
+                    rep.warn(file, f"{path}.{field}", f"not a tap field (the app ignores it).{did_you_mean(field, self.TAP_FIELDS)}")
+            at = tap.get("at")
+            if not is_number(at) or at < 0:
+                rep.error(file, f"{path}.at", "must be scene-local ms >= 0 (the app drops the tap)")
+            on_screen = self.numbers(tap.get("screenUv"), 2) and isinstance(tap.get("device"), str) and bool(tap.get("device"))
+            if on_screen:
+                if "position" in tap:
+                    rep.warn(file, path, "has screenUv and position; the app uses screenUv")
+                if tap["device"] not in device_ids:
+                    rep.warn(file, f"{path}.device", f'no sidecar device "{tap["device"]}" in this scene, so the tap draws nothing.{did_you_mean(tap["device"], [d for d in device_ids if isinstance(d, str)])}')
+                if not all(0 <= v <= 1 for v in tap["screenUv"]):
+                    rep.warn(file, f"{path}.screenUv", "is off the screen; u and v run 0..1 from the top-left")
+            elif not self.numbers(tap.get("position"), 3):
+                rep.error(file, path, "needs a position [x, y, z] or screenUv [u, v] with a device (the app drops it)")
+            if "colour" in tap and not self.scene_colour(tap["colour"]):
+                rep.error(file, f"{path}.colour", f'must be a hex (#rgb or #rrggbb) or one of {", ".join(self.ROOM_TOKENS)} (the app uses the accent)')
+            if "size" in tap and not (is_number(tap["size"]) and tap["size"] > 0):
+                rep.error(file, f"{path}.size", "must be a positive multiplier (the app uses 1)")
+
+    def mosaic(self, file: str, doc: Dict[str, Any]) -> None:
+        """The sidecar `mosaic` block; a bad tile is dropped, a bad field falls back to its default."""
+        block = doc.get("mosaic")
+        if block is None:
+            return
+        rep = self.report
+        if not isinstance(block, dict) or not isinstance(block.get("tiles"), list):
+            rep.error(file, "mosaic", "must be { tiles: [...] } (the app drops the block)")
+            return
+        for field in block:
+            if field not in self.MOSAIC_FIELDS:
+                rep.warn(file, f"mosaic.{field}", f"not a mosaic field (the app ignores it).{did_you_mean(field, self.MOSAIC_FIELDS)}")
+        usable = 0
+        for i, tile in enumerate(block["tiles"]):
+            path = f"mosaic.tiles[{i}]"
+            if not isinstance(tile, dict):
+                rep.error(file, path, "must be an object (the app drops it)")
+                continue
+            for field in tile:
+                if field not in self.MOSAIC_TILE_FIELDS:
+                    rep.warn(file, f"{path}.{field}", f"not a tile field (the app ignores it).{did_you_mean(field, self.MOSAIC_TILE_FIELDS)}")
+            src = tile.get("src")
+            ext = src.rsplit(".", 1)[-1].lower() if isinstance(src, str) and "." in src else ""
+            if src is not None and not (isinstance(src, str) and src.startswith("assets/") and ext in self.MOSAIC_IMAGE_EXTS | self.MOSAIC_VIDEO_EXTS):
+                rep.error(file, f"{path}.src", "must be an assets/ image (png, jpg, jpeg, webp) or video (mp4, mov, m4v, webm) (the app drops the tile)")
+                continue
+            usable += 1
+            if "startMs" in tile and not (is_number(tile["startMs"]) and tile["startMs"] >= 0):
+                rep.error(file, f"{path}.startMs", "must be scene-local ms >= 0 (the app uses 0)")
+            if "loop" in tile and not isinstance(tile["loop"], bool):
+                rep.error(file, f"{path}.loop", "must be true or false")
+            if ("startMs" in tile or "loop" in tile) and ext not in self.MOSAIC_VIDEO_EXTS:
+                rep.warn(file, path, "startMs and loop only apply to a video tile")
+            if "colour" in tile and not self.scene_colour(tile["colour"]):
+                rep.error(file, f"{path}.colour", f'must be a hex (#rgb or #rrggbb) or one of {", ".join(self.ROOM_TOKENS)} (the app uses muted)')
+            if "colour" in tile and src is not None:
+                rep.warn(file, f"{path}.colour", "only a tile without src is a colour tile")
+        if usable == 0:
+            rep.error(file, "mosaic.tiles", "has no usable tile (the app drops the block)")
+        columns = block.get("columns")
+        if columns is not None:
+            if not is_int(columns) or columns < 1:
+                rep.error(file, "mosaic.columns", "must be a whole number from 1; leave it out to reflow per aspect")
+            elif columns > usable > 0:
+                rep.warn(file, "mosaic.columns", f"is more than the {usable} tiles; the app uses {usable}")
+        gap = block.get("gap")
+        if gap is not None and not (is_number(gap) and gap >= 0):
+            rep.error(file, "mosaic.gap", "must be a fraction of the frame's short side >= 0 (the app uses 0.02)")
+        reveal = block.get("reveal")
+        if reveal is not None:
+            if not isinstance(reveal, dict):
+                rep.error(file, "mosaic.reveal", "must be { at, staggerMs, durationMs, order, ease }")
+                return
+            for field in reveal:
+                if field not in self.MOSAIC_REVEAL_FIELDS:
+                    rep.warn(file, f"mosaic.reveal.{field}", f"not a reveal field (the app ignores it).{did_you_mean(field, self.MOSAIC_REVEAL_FIELDS)}")
+            for field in ("at", "staggerMs", "durationMs"):
+                if field in reveal and not (is_number(reveal[field]) and reveal[field] >= 0):
+                    rep.error(file, f"mosaic.reveal.{field}", "must be ms >= 0 (the app uses its default)")
+            if "order" in reveal and reveal["order"] not in self.MOSAIC_ORDERS:
+                rep.error(file, "mosaic.reveal.order", f'must be one of {", ".join(self.MOSAIC_ORDERS)}')
+            if "ease" in reveal:
+                self.enum(file, "mosaic.reveal.ease", reveal["ease"], "eases", "ease")
+
+    def window_shadow_colours(self, file: str, doc: Dict[str, Any]) -> None:
+        for i, entry in enumerate(doc.get("media") or []):
+            colour = dig(entry, "window", "shadow", "colour")
+            if colour is not None and not (isinstance(colour, str) and re.match(r"^#[0-9a-fA-F]{6}$", colour)):
+                self.report.error(file, f"media[{i}].window.shadow.colour", "must be #rrggbb (the app draws the black shadow)")
+
+    def room_lighting(self, file: str, path: str, lighting: Any, doc: Dict[str, Any]) -> None:
+        rep = self.report
+        if not isinstance(lighting, dict):
+            rep.error(file, path, "must be { sun, ambient, ambientColor, lights } (the app drops it)")
+            return
+        for field in lighting:
+            if field not in ("sun", "ambient", "ambientColor", "lights"):
+                rep.warn(file, f"{path}.{field}", "rooms change sun, ambient, ambientColor and lights only (the app ignores it)")
+        if "sun" in lighting:
+            self.room_light(file, f"{path}.sun", lighting["sun"])
+        ambient = lighting.get("ambient")
+        if ambient is not None and (not is_number(ambient) or ambient < 0):
+            rep.error(file, f"{path}.ambient", "must be a number >= 0")
+        ambient_colour = lighting.get("ambientColor")
+        if ambient_colour is not None and not (isinstance(ambient_colour, str) and (HEX_RE.match(ambient_colour) and len(ambient_colour) in (4, 7) or ambient_colour in self.ROOM_TOKENS)):
+            rep.error(file, f"{path}.ambientColor", "must be a hex or a theme colour token")
+        lights = lighting.get("lights")
+        if lights is None:
+            return
+        if not isinstance(lights, dict):
+            rep.error(file, f"{path}.lights", "must be an object keyed by light id")
+            return
+        ids = self.room_light_ids(doc)
+        for light_id, entry in lights.items():
+            if ids is not None and light_id not in ids:
+                rep.warn(file, f"{path}.lights.{light_id}", f"no light with this id in the theme, project or sidecar lighting.{did_you_mean(light_id, sorted(ids))}")
+            self.room_light(file, f"{path}.lights.{light_id}", entry)
+
+    def room_light_ids(self, doc: Dict[str, Any]) -> Optional[Set[str]]:
+        """Light ids a room can reach in this scene (theme, project and sidecar layers), or None when the theme's lights can't be read here (an unknown theme, or a variant whose base merges in)."""
+        try:
+            manifest = self.project.manifest()
+        except Exception:
+            return None
+        theme_id = doc.get("themeId") or manifest.get("themeId")
+        theme: Any = {}
+        if isinstance(theme_id, str) and theme_id and not theme_id.startswith("ws:"):
+            theme = next((e for e in self.cat.entries("themes") or [] if isinstance(e, dict) and e.get("id") == theme_id), None)
+            if theme is None:
+                return None
+        elif isinstance(theme_id, str) and theme_id:
+            path = self.project.theme_file(theme_id)
+            if path is None or not path.is_file():
+                return None
+            try:
+                theme = json.loads(read_text(path))
+            except (OSError, ValueError):
+                return None
+            if not isinstance(theme, dict) or "extends" in theme:
+                return None
+        ids: Set[str] = set()
+        for layer in (theme, manifest, doc):
+            declared = dig(layer, "lighting", "lights")
+            if isinstance(declared, list):
+                ids.update(l["id"] for l in declared if isinstance(l, dict) and isinstance(l.get("id"), str))
+        return ids
+
+    def room_light(self, file: str, path: str, entry: Any) -> None:
+        rep = self.report
+        if not isinstance(entry, dict):
+            rep.error(file, path, "must be { intensity, kelvin | colorToken | color }")
+            return
+        for field in entry:
+            if field not in self.ROOM_LIGHT_FIELDS:
+                rep.warn(file, f"{path}.{field}", f"rooms set intensity and colour only (the app ignores it).{did_you_mean(field, self.ROOM_LIGHT_FIELDS)}")
+        if "intensity" in entry and (not is_number(entry["intensity"]) or entry["intensity"] < 0):
+            rep.error(file, f"{path}.intensity", "must be a number >= 0")
+        if "kelvin" in entry and not is_number(entry["kelvin"]):
+            rep.error(file, f"{path}.kelvin", "must be a number (1000..20000)")
+        if "colorToken" in entry and entry["colorToken"] not in self.ROOM_TOKENS:
+            rep.error(file, f"{path}.colorToken", f'must be one of {", ".join(self.ROOM_TOKENS)}')
+        color = entry.get("color")
+        if color is not None and not (isinstance(color, str) and HEX_RE.match(color) and len(color) in (4, 7)):
+            rep.error(file, f"{path}.color", "must be a hex (#rgb or #rrggbb)")
+
     def text_style(self, file: str, style: Any) -> None:
         if style is None:
             return
@@ -550,6 +856,10 @@ class Checker:
             elif suffix == "Size":
                 if not is_number(value) or value <= 0:
                     rep.error(file, path, "must be a positive number (a multiplier; 1 = as designed)")
+            elif suffix == "Emphasis":
+                m = EMPHASIS_RE.match(value.strip()) if isinstance(value, str) else None
+                if not m or (m.group(2) is not None and not 1 <= int(m.group(2)) <= 1000):
+                    rep.error(file, path, 'must be "<colour>" or "<colour>@<weight>", e.g. "accent@700" (the app drops it)')
             elif not is_number(value):
                 rep.error(file, path, "must be a finite number")
 
@@ -637,6 +947,33 @@ class Checker:
         for field in ("in", "out"):
             if field in spec:
                 self.enum(file, f"{path}.{field}", spec[field], "textMotion", "text motion")
+        if "buildShiftEm" in spec and not is_number(spec["buildShiftEm"]):
+            self.report.error(file, f"{path}.buildShiftEm", "must be a number of em (the app drops it)")
+        self.stagger_exact(file, path, spec)
+
+    def build_single_line(self, file: str, doc: Dict[str, Any]) -> None:
+        """build re-centres one growing line; copy with a line break plays a plain word fade instead."""
+        text = doc.get("text") if isinstance(doc.get("text"), dict) else {}
+        overrides = doc.get("textAnimationOverrides") if isinstance(doc.get("textAnimationOverrides"), dict) else {}
+        scene_build = dig(doc, "textAnimation", "in") == "build"
+        for key, value in text.items():
+            spec = overrides.get(key)
+            builds = dig(spec, "in") == "build" if isinstance(spec, dict) else scene_build
+            if builds and isinstance(value, str) and "\n" in value:
+                self.report.warn(file, f"text.{key}", "build is single line; this copy breaks lines, so it plays a plain word fade")
+
+    def stagger_exact(self, file: str, path: str, spec: Any) -> None:
+        """A spec's staggerMs 0 without staggerExact plays the granularity's default delay wherever the spec picks one."""
+        if not isinstance(spec, dict) or not (is_number(spec.get("staggerMs")) and spec["staggerMs"] == 0):
+            return
+        if spec.get("staggerExact") is True:
+            return
+        granular = spec.get("delivery") in ("by-paragraph", "by-paragraph-group")
+        if not granular:
+            motion = {e.get("id"): e.get("granularity") for e in (self.cat.entries("textMotion") or [])}
+            granular = any(motion.get(spec.get(field)) for field in ("in", "out"))
+        if granular:
+            self.report.warn(file, f"{path}.staggerMs", 'staggerMs 0 plays the default delay here; add "staggerExact": true for no stagger')
 
     def text_look(self, file: str, path: str, spec: Any) -> None:
         if spec is None:
@@ -645,6 +982,11 @@ class Checker:
             self.report.error(file, path, 'must be an object with a "preset"')
             return
         self.enum(file, f"{path}.preset", spec["preset"], "textLooks", "text look", extra=["none"])
+        if "offsetDir" in spec and not is_number(spec["offsetDir"]):
+            self.report.error(file, f"{path}.offsetDir", "must be degrees clockwise from up (the app drops it)")
+        opacity = spec.get("offsetOpacity")
+        if opacity is not None and (not is_number(opacity) or not 0 <= opacity <= 1):
+            self.report.warn(file, f"{path}.offsetOpacity", "must be 0..1 (the app clamps it)")
 
     def devices(self, file: str, doc: Dict[str, Any]) -> None:
         devices = doc.get("devices")
@@ -664,6 +1006,7 @@ class Checker:
                 rep.error(file, f"{path}.id", f'duplicate device id "{d["id"]}"')
             ids.add(d["id"])
             self.enum(file, f"{path}.model", d["model"], "devices", "device model")
+            self.device_in_build(file, f"{path}.model", d["model"])
             if "colour" in d:
                 self.device_colour(file, f"{path}.colour", d["model"], d["colour"])
             if "shadow" in d:
@@ -681,6 +1024,52 @@ class Checker:
         if isinstance(colour, str) and (colour in ids or re.match(r"^custom:#[0-9a-fA-F]{6}$", colour)):
             return
         self.report.error(file, path, f'"{colour}" is not a {model} colour; one of {", ".join(ids)} or custom:#rrggbb')
+
+    # ── devices this build renders, and poses a deviceLayout owns ─────────
+
+    DEVICE_TAG_RE = re.compile(r"<Device(?![\w$.])")
+    DEVICE_MODEL_RE = re.compile(r"(?<![\w$.])model\s*=\s*\{?\s*([\"'])([\w-]+)\1")
+    DEVICE_POSE_RE = re.compile(r"(?<![\w$.])(position|rotationDeg|ground)\s*[:,}]")
+
+    @staticmethod
+    def heartbeat_devices(heartbeat: Optional[Dict[str, Any]]) -> Optional[Set[str]]:
+        """The device ids the running build renders with their own model (lastLoad.availableDevices), or None when unknown."""
+        ids = dig(heartbeat, "lastLoad", "availableDevices")
+        if isinstance(ids, list) and ids and all(isinstance(i, str) for i in ids):
+            return set(ids)
+        return None
+
+    def device_in_build(self, file: str, path: str, model: Any) -> None:
+        available = self.ctx.available_devices
+        if available is None or not isinstance(model, str) or model in available:
+            return
+        if model not in (self.ctx.ids("devices") or []):
+            return
+        self.report.warn(file, path, f'"{model}" is not in this build of the app, so it renders as the android fallback: a different body, with the screen somewhere else. Pin overlays with DeviceScreenAnchor rather than positions measured off a capture, or use one of {", ".join(sorted(available))}')
+
+    def device_tags(self, rel: str, text: str, code: str) -> None:
+        """Each <Device ...> opening tag: a literal model this build lacks, and pose props a sidecar deviceLayout owns."""
+        layout: Any = None
+        try:
+            layout = json.loads(read_text(self.project.sidecar_path(stem_of(rel)))).get("deviceLayout")
+        except (OSError, ValueError, AttributeError, UnicodeDecodeError):
+            pass
+        seen: Set[Tuple[int, str]] = set()
+        for m in self.DEVICE_TAG_RE.finditer(code):
+            depth, end = 0, m.end()
+            while end < len(code) and not (code[end] == ">" and depth == 0):
+                depth += {"{": 1, "}": -1}.get(code[end], 0)
+                end += 1
+            for model in self.DEVICE_MODEL_RE.finditer(text, m.end(), end):
+                self.device_in_build(rel, f"line {tsxmod.line_of(text, model.start())}", model.group(2))
+            if not isinstance(layout, dict):
+                continue
+            for pose in self.DEVICE_POSE_RE.finditer(code, m.end(), end):
+                key = (tsxmod.line_of(code, pose.start()), pose.group(1))
+                if key in seen:
+                    continue
+                seen.add(key)
+                self.report.warn(rel, f"line {key[0]}", f'passes {key[1]} to Device, but scenes/{stem_of(rel)}.json has a deviceLayout, which owns device poses, so this fights the layout. Remove {key[1]} here, or delete deviceLayout')
 
     # ── device media keys and camera kicks ────────────────────────────────
 
@@ -803,7 +1192,7 @@ class Checker:
             if orbit and pulls and self.stages_depth(file):
                 rep.warn(file, path, "pulls the orbit camera out (zoom below 1, an offset or a roll) in a scene that stages a DepthStage; orbit kicks get no overscan, so band edges can show. Push in with zoom above 1, or kick a rig camera")
 
-    def kick_position(self, file: str, path: str, at: str) -> None:
+    def kick_position(self, file: str, path: str, at: str, what: str = "kick") -> None:
         from . import music
 
         stem = stem_of(file[:-5]) if file.endswith(".json") else None
@@ -822,7 +1211,7 @@ class Checker:
             return
         if not result["ok"]:
             hint = " (./kb song analyse, then ./kb beats set-grid --from-analysis)" if result["code"] == "no-grid" else ""
-            self.report.warn(file, path, f'"{at}" doesn\'t resolve: {result["message"]}, so the app drops this kick{hint}')
+            self.report.warn(file, path, f'"{at}" doesn\'t resolve: {result["message"]}, so the app drops this {what}{hint}')
 
     def stages_depth(self, file: str) -> bool:
         rel = f"{file[:-5]}.tsx" if file.endswith(".json") else file
@@ -945,6 +1334,13 @@ class Checker:
                 rep.error(rel, f"line {line}", f"{name} is not imported from @kookaburra/toolkit.{hint}")
         for line, ref in tsxmod.literal_asset_refs(text):
             self.asset(rel, f"line {line}", ref)
+        self.device_tags(rel, text, code)
+        eases = self.cat.ids("eases")
+        if eases is not None:
+            declared = set(DECLARED_RE.findall(code))
+            for line, name in ease_literals(text, code, toolkit_names - declared):
+                if name not in eases:
+                    rep.warn(rel, f"line {line}", f'unknown ease "{name}" falls back to the default ease, inOutQuad.{did_you_mean(name, eases)} See kb catalog eases')
 
     def heal_order(self) -> List[str]:
         """The app's id-healing order: manifest scenes first, then stray scenes/*.tsx by name; the first sighting keeps its id."""
@@ -981,6 +1377,7 @@ class Checker:
                 self.report.warn(rel, "", "sidecar without a scene file; delete it or restore the .tsx")
 
     def theme_fonts(self) -> None:
+        """The project's workspace theme, checked like kb theme set checks a write."""
         try:
             theme_id = self.project.manifest().get("themeId")
         except Exception:
@@ -995,14 +1392,97 @@ class Checker:
         except (OSError, ValueError):
             self.report.error(f"../themes/{theme_id[3:]}/theme.json", "", "not valid JSON; the app falls back to the default theme")
             return
-        typography = theme.get("typography") if isinstance(theme, dict) else None
-        if not isinstance(typography, dict):
-            return
-        for slot, ref in typography.items():
-            if isinstance(ref, dict) and isinstance(ref.get("family"), str):
-                weight = ref.get("weight", 400)
-                self.font(f"../themes/{theme_id[3:]}/theme.json", f"typography.{slot}", f'{ref["family"]}@{weight}')
+        self.theme_doc(theme_id, theme)
 
+    def theme_doc(self, theme_id: str, doc: Any, file: Optional[str] = None) -> None:
+        """A workspace theme document: font strings, the shadow technique, gradient angles and extends."""
+        file = file or (f"../themes/{theme_id[3:]}/theme.json" if theme_id.startswith("ws:") else theme_id)
+        rep = self.report
+        if not isinstance(doc, dict):
+            rep.error(file, "", "a theme must be a JSON object; the app falls back to the default theme")
+            return
+        typography = doc.get("typography")
+        if isinstance(typography, dict):
+            for slot in ("headline", "body"):
+                ref = typography.get(slot)
+                if isinstance(ref, str):
+                    self.font(file, f"typography.{slot}", ref)
+                elif isinstance(ref, dict) and isinstance(ref.get("family"), str):
+                    self.font(file, f"typography.{slot}", f"{ref['family']}@{ref.get('weight', 400)}")
+                elif ref is not None:
+                    rep.error(file, f"typography.{slot}", 'must be "Family", "Family@weight" or {"family": ..., "weight": ...}')
+        gradients = doc.get("gradients")
+        if isinstance(gradients, dict):
+            for name, spec in gradients.items():
+                self.theme_gradient(file, f"gradients.{name}", spec)
+        for key in ("background", "backdrop"):
+            block = doc.get(key)
+            if isinstance(block, dict) and block.get("type") == "gradient" and "spec" in block:
+                self.theme_gradient(file, f"{key}.spec", block["spec"], block.get("gradient"))
+        shadow = dig(doc, "lighting", "shadow")
+        if shadow is not None:
+            if not isinstance(shadow, dict) or shadow.get("technique") not in ("map", "none"):
+                rep.error(file, "lighting.shadow.technique", 'needs "map" or "none"; without it the shadow block drops')
+            else:
+                for key in ("softness", "opacity", "mapSize", "bias"):
+                    if key in shadow and not is_number(shadow[key]):
+                        rep.warn(file, f"lighting.shadow.{key}", "must be a number; the default is used")
+        self.stagger_exact(file, "textAnimation", doc.get("textAnimation"))
+        if "extends" in doc:
+            self.theme_extends(file, theme_id, doc)
+
+    def theme_gradient(self, file: str, path: str, spec: Any, fallback: Any = None) -> None:
+        why = gradient_problem(spec)
+        if why is None:
+            return
+        if isinstance(fallback, str) and fallback:
+            self.report.warn(file, path, f'{why}, so the "{fallback}" gradient shows instead')
+        else:
+            self.report.error(file, path, f"{why}; the app drops it")
+
+    def theme_extends(self, file: str, theme_id: str, doc: Dict[str, Any]) -> None:
+        rep = self.report
+        value = doc.get("extends")
+        if not isinstance(value, str) or not value.strip():
+            rep.error(file, "extends", "must be a theme id (ws:<slug> or a bundled id); see kb theme list")
+            return
+        if not is_number(doc.get("version")) or doc["version"] < thememod.EXTENDS_VERSION:
+            rep.error(file, "extends", f'needs "version": {thememod.EXTENDS_VERSION}; below that the app ignores it')
+            return
+        bundled = self.ctx.ids("themes")
+
+        def lookup(tid: str) -> Any:
+            if tid == theme_id:
+                return doc
+            if tid.startswith("ws:"):
+                path = self.project.theme_file(tid)
+                if path is None or not path.is_file():
+                    return None
+                try:
+                    return json.loads(read_text(path))
+                except (OSError, ValueError):
+                    return None
+            return {"version": 2} if bundled is None or tid in bundled else None
+
+        merged, problem = thememod.resolve_theme_document(doc, theme_id, lookup)
+        walk = [theme_id]
+        nxt = thememod.extends_of(doc)
+        while nxt is not None and nxt not in walk and len(walk) <= thememod.MAX_CHAIN:
+            walk.append(nxt)
+            nxt = thememod.extends_of(lookup(nxt))
+        if problem == "cycle":
+            loop = " > ".join(walk + [nxt or theme_id])
+            rep.error(file, "extends", f"loops back on itself ({loop}); the app falls back to the default theme")
+        elif problem == "too-long":
+            rep.error(file, "extends", f"chains through more than {thememod.MAX_CHAIN} themes; the app falls back to the default theme")
+        elif problem == "missing":
+            gone = walk[-1]
+            hint = "" if gone.startswith("ws:") else did_you_mean(gone, bundled or [])
+            rep.error(file, "extends", f'base theme "{gone}" can\'t be found; the app falls back to the default theme.{hint} See kb theme list')
+        elif isinstance(merged, dict) and all(tid.startswith("ws:") for tid in walk):
+            missing = theme_required_gaps(merged)
+            if missing:
+                rep.error(file, "", f"with its base merged it still lacks {', '.join(missing)}; the app falls back to the default theme")
 
     # ── video edits (full check only) ─────────────────────────────────────
 
@@ -1029,6 +1509,67 @@ class Checker:
                 if issue["code"] in ("not-laid-out", "short-clip", "short-hold"):
                     continue
                 (self.report.error if severity == "error" else self.report.warn)(label, where, issue["message"])
+
+
+def ease_literals(text: str, code: str, imported: Set[str]) -> List[Tuple[int, str]]:
+    """String-literal ease names passed to the toolkit's ease, easeFn and ramp (`code` is `text` with comments and strings blanked)."""
+    found: List[Tuple[int, str]] = []
+    for m in EASE_CALL_RE.finditer(code):
+        if m.group(1) not in imported:
+            continue
+        want, arg, depth, j = EASE_CALLS[m.group(1)], 0, 0, m.end()
+        while arg < want and j < len(code):
+            c = code[j]
+            if c in "([{":
+                depth += 1
+            elif c in ")]}":
+                if depth == 0:
+                    break
+                depth -= 1
+            elif c == "," and depth == 0:
+                arg += 1
+            j += 1
+        if arg < want:
+            continue
+        while j < len(code) and code[j] in " \t\r\n":
+            j += 1
+        if j < len(code) and code[j] in "\"'":
+            end = code.find(code[j], j + 1)
+            if end > j:
+                found.append((tsxmod.line_of(text, j), text[j + 1:end]))
+    return found
+
+
+def gradient_problem(spec: Any) -> Optional[str]:
+    """Why the app would drop a gradient spec, or None (src/theme/schema.ts parseGradient)."""
+    if not isinstance(spec, dict):
+        return "isn't a gradient object"
+    if spec.get("type") not in ("linear", "radial"):
+        return 'needs a "type" of linear or radial'
+    if not is_number(spec.get("angleDeg")) and not (spec.get("type") == "radial" and "angleDeg" not in spec):
+        return 'needs a numeric "angleDeg" (only a radial gradient may leave it out)'
+    stops = spec.get("stops")
+    if not isinstance(stops, list) or not all(isinstance(s, list) and len(s) >= 2 and isinstance(s[0], str) and s[0] and is_number(s[1]) for s in stops):
+        return 'needs "stops" as ["colour", position] pairs'
+    if len(stops) < 2:
+        return "needs at least two stops"
+    return None
+
+
+def theme_required_gaps(doc: Dict[str, Any]) -> List[str]:
+    """The required theme blocks a document lacks (src/theme/schema.ts parseThemeDoc)."""
+    gaps: List[str] = [] if isinstance(doc.get("id"), str) and doc.get("id") else ["its own id"]
+    colors = doc.get("colors")
+    if not isinstance(colors, dict) or not all(isinstance(colors.get(k), str) and colors.get(k) for k in ("background", "text", "accent", "muted")):
+        gaps.append("colors (background, text, accent, muted)")
+    typography = doc.get("typography")
+    if not isinstance(typography, dict) or not all(typography.get(k) for k in ("headline", "body")) or not is_number(typography.get("scale")):
+        gaps.append("typography (headline, body, scale)")
+    durations = dig(doc, "motion", "durations")
+    easings = dig(doc, "motion", "easings")
+    if not isinstance(durations, dict) or not all(is_number(durations.get(k)) for k in ("fast", "base", "slow")) or not isinstance(easings, dict) or not all(isinstance(easings.get(k), str) and easings.get(k) for k in ("standard", "emphasized")):
+        gaps.append("motion (three durations, two easings)")
+    return gaps
 
 
 def edit_of_output(project: Project, rel: str) -> Optional[str]:
@@ -1059,6 +1600,32 @@ def conforming_original(project: Project, rel: str) -> Optional[str]:
         if stem == name[:-4] and ext.lower() in CONFORMABLE_EXTS and (project.root / ORIGINALS / kept).is_file():
             return f"{ORIGINALS}/{kept}"
     return None
+
+
+def text_specs(doc: Any) -> List[Tuple[str, Dict[str, Any]]]:
+    """A sidecar's or theme's text motion specs by dotted path."""
+    if not isinstance(doc, dict):
+        return []
+    found: List[Tuple[str, Dict[str, Any]]] = []
+    if isinstance(doc.get("textAnimation"), dict):
+        found.append(("textAnimation", doc["textAnimation"]))
+    overrides = doc.get("textAnimationOverrides")
+    if isinstance(overrides, dict):
+        found.extend((f"textAnimationOverrides.{k}", v) for k, v in overrides.items() if isinstance(v, dict))
+    return found
+
+
+def stamp_stagger_exact(old: Any, new: Any) -> Any:
+    """A kb write that turns a text spec's staggerMs to 0 also writes staggerExact: true (the inspector's rule), so the 0 means no stagger."""
+    before = dict(text_specs(old))
+    out = json.loads(json.dumps(new))
+    for path, spec in text_specs(out):
+        zero = is_number(spec.get("staggerMs")) and spec["staggerMs"] == 0
+        prior = before.get(path)
+        was_zero = isinstance(prior, dict) and is_number(prior.get("staggerMs")) and prior["staggerMs"] == 0
+        if zero and not was_zero and "staggerExact" not in spec:
+            spec["staggerExact"] = True
+    return out
 
 
 def _finite(v: Any) -> bool:

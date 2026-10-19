@@ -218,4 +218,12 @@ describe("scalable bundled discovery", () => {
       discoverBuiltinThemeCatalogue({ "./builtin/not-the-id.json": syntheticDoc(2) }),
     ).toThrow("expected not-the-id");
   });
+
+  it("refuses a bundled theme that extends another", () => {
+    expect(() =>
+      discoverBuiltinThemeCatalogue({
+        "./builtin/synthetic-003.json": { ...syntheticDoc(3), extends: "kookaburra-default" },
+      }),
+    ).toThrow("can't extend another theme");
+  });
 });

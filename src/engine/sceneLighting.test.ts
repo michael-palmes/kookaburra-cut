@@ -1,11 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { LightingSpec, LightSpec, Placement } from "../theme/tokens";
+import { collectParseWarnings } from "./parseWarnings";
 import {
   animatedFixtureLightIds,
   buildCompareBLightingTracks,
   buildLightingTracks,
   captureLightingPose,
   chainLightingSegments,
+  DEFAULT_SHADOW_SPEC,
   FIXTURE_MAX_COUNT,
   lightingSampleForCompareSide,
   MAX_SCENE_LIGHTS,
@@ -294,6 +296,23 @@ describe("normalizeLighting", () => {
     expect(
       normalizeLighting({ animationEnabled: false }, "theme", { themeLayer: true }),
     ).toBeNull();
+  });
+
+  it("needs only a shadow technique, filling the rest from DEFAULT_SHADOW_SPEC", () => {
+    expect(normalizeLighting({ shadow: { technique: "none" } }, "scene")?.shadow).toEqual({
+      ...DEFAULT_SHADOW_SPEC,
+      technique: "none",
+    });
+    const { result, warnings } = collectParseWarnings(() =>
+      normalizeLighting({ shadow: { technique: "map", softness: "x", mapSize: 4096 } }, "scene"),
+    );
+    expect(result?.shadow).toEqual({ ...DEFAULT_SHADOW_SPEC, mapSize: 4096 });
+    expect(warnings).toEqual(['[lighting] scene: invalid "lighting.shadow.softness", using 0.5']);
+    const dropped = collectParseWarnings(() =>
+      normalizeLighting({ ambient: 0.4, shadow: { softness: 0.2 } }, "scene"),
+    );
+    expect(dropped.result?.shadow).toBeUndefined();
+    expect(dropped.warnings[0]).toContain('needs a "technique"');
   });
 });
 

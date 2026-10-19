@@ -214,6 +214,17 @@
     },
     {
       "file": "scenes/25-spinblur.tsx",
+      "durationMs": 1800,
+      "transition": {
+        "type": "luma",
+        "durationMs": 700,
+        "shape": "image",
+        "src": "assets/star-mask.png",
+        "ease": "smooth"
+      }
+    },
+    {
+      "file": "scenes/26-imagemask.tsx",
       "durationMs": 1800
     }
   ]

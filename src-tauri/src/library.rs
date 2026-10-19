@@ -454,7 +454,7 @@ fn save_preset(source: &Path, library: &Path, scene_stem: &str) -> Result<Librar
             .unwrap_or_else(|| serde_json::json!(DEFAULT_FORMATS)),
         "scenes": [{ "file": file, "durationMs": duration_ms }],
     });
-    for field in ["typography", "lighting", "render", "frame"] {
+    for field in ["typography", "lighting", "render", "frame", "shared"] {
         if let Some(value) = source_manifest.get(field) {
             project[field] = value.clone();
         }
@@ -1066,6 +1066,7 @@ mod tests {
         manifest["render"] = serde_json::json!({ "toneMapping": "neutral", "exposure": 1.4 });
         manifest["frame"] = serde_json::json!({ "type": "browser" });
         manifest["typography"] = serde_json::json!({ "headline": "Inter@700" });
+        manifest["shared"] = serde_json::json!({ "palette": { "accent": "#ff6a3d" } });
         manifest["scenes"][1]["effects"] = serde_json::json!({ "vignette": { "enabled": true } });
         atomic_write_json(&source.join(MANIFEST_FILENAME), &manifest).unwrap();
         let doc = serde_json::json!({
@@ -1085,7 +1086,7 @@ mod tests {
         let item = save_preset(&source, &library, "02-stat").unwrap();
         let saved = library.join(item.slug);
         let project = read_json(&saved.join(MANIFEST_FILENAME)).unwrap();
-        for field in ["lighting", "render", "frame", "typography"] {
+        for field in ["lighting", "render", "frame", "typography", "shared"] {
             assert_eq!(project[field], manifest[field]);
         }
         assert_eq!(

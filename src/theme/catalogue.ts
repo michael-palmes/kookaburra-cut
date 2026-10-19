@@ -220,6 +220,9 @@ export function discoverBuiltinThemeCatalogue(
   const ids = new Set<string>();
   for (const [source, imported] of Object.entries(modules)) {
     const doc = importedDocument(imported);
+    if (isRecord(doc) && doc.extends !== undefined) {
+      throw new Error(`Bundled theme ${source} can't extend another theme`);
+    }
     const theme = parseThemeDoc(doc, source);
     if (!theme) throw new Error(`Bundled theme ${source} failed to parse`);
     const filename = sourceFilename(source);

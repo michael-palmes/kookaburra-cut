@@ -27,16 +27,18 @@ import {
   useSceneContext,
 } from "../../engine/sceneContext";
 import { registerSceneText } from "../../engine/sceneTextRegistry";
+import { reportTextDerivedPending } from "../../engine/textDerivedState";
 import { useTextKeyRegistry } from "../../engine/textKeyRegistry";
 import { useTextMotionRegistry } from "../../engine/textMotionRegistry";
 import { MotionBlurContext, useTimeline } from "../../engine/timeline";
 import { useTheme } from "../../theme";
-import { formatFontString, parseFontString } from "../../theme/fontRef";
-import { fontUrl } from "../../theme/fonts";
+import { formatFontString } from "../../theme/fontRef";
+import { fontUrl, SDF_GLYPH_SIZE } from "../../theme/fonts";
 import type { FontRef, TextAnimationSpec, TextLookSpec, Theme } from "../../theme/tokens";
 import { foldBandToChild, GroupAnimationContext } from "../group/context";
 import { LookText3D } from "../text3d/LookText3D";
 import type { EaseName, V3 } from "../types";
+import { type PreparedDisplayText, parseEmphasisMarkup, prepareDisplayText } from "./displayText";
 import {
   caretQuad,
   EMOJI_QUAD_EM,
@@ -44,8 +46,10 @@ import {
   EmojiQuads,
   sweepCoverage,
 } from "./EmojiQuads";
-import { type PreparedEmojiText, prepareEmojiText } from "./emojiText";
+import { computeEmphasisRects, type ResolvedEmphasis, resolveEmphasis } from "./emphasis";
+import { materialProp, useExactText, useExactTextBase } from "./exactText";
 import { computeUnitYExtents, HighlightQuads } from "./HighlightQuads";
+import { resolveHeadlineType } from "./headlineType";
 import {
   arcGlyphTransform,
   arcSpec,
@@ -59,6 +63,7 @@ import {
   neonCoreFill,
   neonHalo,
   OFFSET_PRINT_Z_EM,
+  offsetPrintOffset,
   outlineStroke,
 } from "./lookStyle";
 import {
@@ -69,11 +74,14 @@ import {
 } from "./looks";
 import {
   BLUR_EM,
+  buildLineShiftEm,
   computeStaggerUnits,
   DEFAULT_START_SCALE,
   EDGE_SENTINEL,
   hasOwnAnimationProps,
+  pinRevealDuration,
   presetNeedsShaderPath,
+  presetNeedsTypeMask,
   type ResolvedTextAnimation,
   resolveTextAnimationWithDoc,
   resolveTextMotionBlur,
@@ -89,6 +97,9 @@ import {
   textAnimationEndMs,
   textAnimationWindowToMs,
   textPresetHasMotion,
+  typewriterCount,
+  typewriterHead,
+  typewriterStops,
   underlineProgress,
   unitIndexForKey,
 } from "./presets";
@@ -97,13 +108,16 @@ import {
   CLIP_PAD_X_EM,
   createStaggerTextMaterial,
   type StaggerPackFrame,
+  type StaggerTextMaterial,
   writeArcUniforms,
+  writeEmphasisUniforms,
   writeGlintUniforms,
   writeGradientUniforms,
   writeHeldShineUniforms,
   writeShineBand,
   writeShineUniforms,
   writeStaggerUniforms,
+  writeTypeMaskUniforms,
 } from "./staggerMaterial";
 import { UnderlineRule } from "./UnderlineRule";
 
@@ -125,12 +139,16 @@ export interface AnimatedHeadlineProps {
   staggerMs?: number;
   /** Hold before the in starts, ms (clamped ≥ 0; the out never shifts). Defaults to `textAnimation.delayMs`. */
   delayMs?: number;
+  /** Pins the whole reveal, first unit's start to last unit's settle, to this many ms for the text's unit count (stagger and unit duration scale together); "authored" or absent keeps the authored per-unit timing. */
+  durationMs?: number | "authored";
   /** fade-scale: starting scale, landing at 1 (default 0.8, clamped 0.05-4). */
   startScale?: number;
   /** fade-scale: sweep the soft white shine band once during the scale-in. */
   shine?: boolean;
   /** twist-scale: the side the card turns in from (default "from-left"). */
   direction?: TextDirection;
+  /** build: how far each arriving word slides in, em (default 0.3). */
+  buildShiftEm?: number;
   /** all-at-once / by-paragraph / by-paragraph-group. Paragraphs split on `\n`, groups on blank lines; all-at-once forces the whole-block path. */
   delivery?: TextDelivery;
   /** Easing for preset animations. Defaults to the theme's `motion.easings.standard`. */
@@ -259,6 +277,7 @@ function AnimatedHeadlineRenderer(props: AnimatedHeadlineProps) {
   const animTwistStartScale = anim?.params.twistStartScale;
   const animShine = anim?.params.shine;
   const animTwistDir = anim?.params.twistDir;
+  const animBuildShift = anim?.params.buildShiftEm;
   const codedMotion = useMemo<TextAnimationSpec | undefined>(() => {
     if (!coded || !animPreset || !animOutPreset || animStaggerMs === undefined) return undefined;
     const motion: TextAnimationSpec = {
@@ -288,6 +307,9 @@ function AnimatedHeadlineRenderer(props: AnimatedHeadlineProps) {
       if (animShine) motion.shine = true;
       motion.direction = animTwistDir < 0 ? "from-right" : "from-left";
     }
+    if (animPreset === "build" && animBuildShift !== undefined) {
+      motion.buildShiftEm = animBuildShift;
+    }
     return motion;
   }, [
     coded,
@@ -303,6 +325,7 @@ function AnimatedHeadlineRenderer(props: AnimatedHeadlineProps) {
     animTwistStartScale,
     animShine,
     animTwistDir,
+    animBuildShift,
     props.delivery,
   ]);
   // The app-editable fill: an explicit `color` prop pins the fill (prop-wins, the text-motion precedent), otherwise the sidecar's `textStyle.<textKey>Color` overrides the design default. Report the editable field to the registry so the Edit-text drill-in shows its swatch; a pinned fill registers nothing (the swatch would be dead).
@@ -336,6 +359,8 @@ function AnimatedHeadlineRenderer(props: AnimatedHeadlineProps) {
   const lookIntensity = lookResolved?.intensity;
   const lookOffsetEm = lookResolved?.offsetEm;
   const lookCurveDeg = lookResolved?.curveDeg;
+  const lookOffsetDir = lookResolved?.offsetDir;
+  const lookOffsetOpacity = lookResolved?.offsetOpacity;
   const codedLook = useMemo<TextLookSpec | undefined>(() => {
     if (!codedLookProps || lookPreset === undefined || lookPreset === "none") return undefined;
     const spec: TextLookSpec = { preset: lookPreset };
@@ -347,6 +372,8 @@ function AnimatedHeadlineRenderer(props: AnimatedHeadlineProps) {
     if (lookIntensity !== undefined) spec.intensity = lookIntensity;
     if (lookOffsetEm !== undefined) spec.offsetEm = lookOffsetEm;
     if (lookCurveDeg !== undefined) spec.curveDeg = lookCurveDeg;
+    if (lookOffsetDir !== undefined) spec.offsetDir = lookOffsetDir;
+    if (lookOffsetOpacity !== undefined) spec.offsetOpacity = lookOffsetOpacity;
     return spec;
   }, [
     codedLookProps,
@@ -359,15 +386,14 @@ function AnimatedHeadlineRenderer(props: AnimatedHeadlineProps) {
     lookIntensity,
     lookOffsetEm,
     lookCurveDeg,
+    lookOffsetDir,
+    lookOffsetOpacity,
   ]);
   const textRegistryMountId = useId();
   const registrationMotion = props.managedTextCodedMotion ?? codedMotion;
   const registrationColor = fill ?? "text";
-  const registrationFont = formatFontString(
-    typeof fontValue === "string"
-      ? parseFontString(fontValue)
-      : (props.fontRef ?? theme.typography[props.face ?? "headline"]),
-  );
+  const type = resolveHeadlineType(theme, doc, props);
+  const registrationFont = formatFontString(type.fontRef);
   useLayoutEffect(() => {
     if (sceneIndex === undefined || !textKey) return;
     useTextKeyRegistry.getState().register(sceneIndex, textKey, textRegistryMountId, {
@@ -424,9 +450,9 @@ function AnimatedHeadlineRenderer(props: AnimatedHeadlineProps) {
     const base = props.position ?? [0, 0, 0];
     styled = {
       ...props,
-      ...(typeof fontValue === "string" ? { fontRef: parseFontString(fontValue) } : {}),
-      ...(typeof sizeMul === "number" ? { fontSize: (props.fontSize ?? 0.6) * sizeMul } : {}),
-      ...(typeof lineHeight === "number" ? { lineHeight } : {}),
+      ...(typeof fontValue === "string" ? { fontRef: type.fontRef } : {}),
+      ...(typeof sizeMul === "number" ? { fontSize: type.fontSize } : {}),
+      ...(typeof lineHeight === "number" ? { lineHeight: type.lineHeight } : {}),
       ...(typeof offX === "number" || typeof offY === "number"
         ? {
             position: [
@@ -458,7 +484,7 @@ function AnimatedHeadlineRenderer(props: AnimatedHeadlineProps) {
     return () => unregisterGizmoTarget(targetKey);
   }, [targetKey, sceneIndex, textKey, side]);
   // Report the text + resolved size; the Scene tab derives its default scene name from the scene's largest mounted text. UI-only, an effect.
-  const registeredText = props.text;
+  const registeredText = useMemo(() => parseEmphasisMarkup(props.text).text, [props.text]);
   const registeredSize = styled.fontSize ?? 0.6;
   useEffect(() => {
     if (sceneIndex === undefined || typeof registeredText !== "string" || !registeredText.trim()) {
@@ -466,8 +492,13 @@ function AnimatedHeadlineRenderer(props: AnimatedHeadlineProps) {
     }
     return registerSceneText(sceneIndex, registeredText, registeredSize);
   }, [sceneIndex, registeredText, registeredSize]);
-  // Emoji clusters swap to placeholder codepoints before troika sees the string; identical text for emoji-free strings, so legacy bytes stay safe (the registry above keeps the ORIGINAL text).
-  const prepared = useMemo(() => prepareEmojiText(props.text), [props.text]);
+  // Emphasis markup strips and emoji clusters swap to placeholder codepoints before troika sees the string; identical text for markup- and emoji-free strings, so legacy bytes stay safe (the registry above keeps the ORIGINAL text).
+  const prepared = useMemo(() => prepareDisplayText(props.text), [props.text]);
+  const emphasisValue = styleOf("Emphasis");
+  const emphasis =
+    prepared.emphasis.length > 0
+      ? resolveEmphasis(theme.colors, emphasisValue, type.fontRef.weight)
+      : null;
   const look = lookResolved !== null && lookResolved.preset !== "none" ? lookResolved : null;
   const look3d = look !== null && lookIs3d(look.preset);
   const emojiIn3d = look3d && prepared.clusters.length > 0;
@@ -491,7 +522,15 @@ function AnimatedHeadlineRenderer(props: AnimatedHeadlineProps) {
   const windowToMs = anim
     ? textAnimationWindowToMs(props.from ?? 0, authoredToMs, anim)
     : authoredToMs;
-  const holdToMs = anim ? textAnimationEndMs(props.from ?? 0, authoredToMs, anim) : authoredToMs;
+  // A pinned reveal (`durationMs`) ends exactly there whatever the unit count; the staggered path scales its own timing once its units exist.
+  const pinnedMs = typeof props.durationMs === "number" ? Math.max(0, props.durationMs) : undefined;
+  const pinnedTo = pinnedMs === undefined ? undefined : (props.from ?? 0) + pinnedMs;
+  const holdToMs =
+    pinnedTo !== undefined
+      ? pinnedTo + (anim?.delayMs ?? 0)
+      : anim
+        ? textAnimationEndMs(props.from ?? 0, authoredToMs, anim)
+        : authoredToMs;
   const holdOutMs = hasOut ? props.outAt : undefined;
   useEffect(() => {
     if (sceneIndex === undefined) return;
@@ -499,16 +538,17 @@ function AnimatedHeadlineRenderer(props: AnimatedHeadlineProps) {
   }, [sceneIndex, holdToMs, holdOutMs]);
   const legacyMotion = anim === null || (anim.preset === "none" && !hasOut);
   const animated = windowToMs === authoredToMs ? styled : { ...styled, to: windowToMs };
+  const whole = pinnedTo === undefined ? animated : { ...styled, to: pinnedTo };
   if (look3d && !emojiIn3d && look !== null) {
     // 3D looks re-render as an extruded twin; motion degrades to whole-block transforms from the unit-0 sample (legacyMotion keeps the v0 linear ramp on material opacity).
     return (
       <LookText3D
-        text={props.text}
+        text={prepared.text}
         look={look}
         theme={theme}
         anim={legacyMotion ? null : anim}
         from={animated.from}
-        to={animated.to}
+        to={whole.to}
         outAt={animated.outAt}
         position={animated.position}
         fontSize={animated.fontSize}
@@ -533,6 +573,7 @@ function AnimatedHeadlineRenderer(props: AnimatedHeadlineProps) {
           lookSpec={activeLook}
           legacyReveal
           prepared={prepared}
+          emphasis={emphasis}
           meshRef={meshRef}
           rotZ={rotZ}
         />
@@ -540,20 +581,23 @@ function AnimatedHeadlineRenderer(props: AnimatedHeadlineProps) {
     }
     return (
       <LegacyHeadline
-        {...styled}
+        {...(pinnedTo === undefined ? styled : whole)}
         color={fill}
         theme={theme}
         lookSpec={activeLook}
         prepared={prepared}
+        emphasis={emphasis}
         meshRef={meshRef}
         rotZ={rotZ}
       />
     );
   }
-  // Pack presets (and the shader looks) need the derived material's per-unit terms even whole-block: force the staggered path (one block unit) instead of BlockHeadline.
+  // Pack presets (and the shader looks, and the typewriter's mask) need the derived material's per-unit terms even whole-block: force the staggered path (one block unit) instead of BlockHeadline.
   const shaderPath =
     presetNeedsShaderPath(anim.preset) ||
     presetNeedsShaderPath(anim.outPreset) ||
+    presetNeedsTypeMask(anim.preset) ||
+    presetNeedsTypeMask(anim.outPreset) ||
     (activeLook !== null && lookNeedsShaderPath(activeLook.preset));
   if ((anim.granularity && anim.staggerMs > 0) || shaderPath) {
     return (
@@ -564,6 +608,7 @@ function AnimatedHeadlineRenderer(props: AnimatedHeadlineProps) {
         anim={anim}
         lookSpec={activeLook}
         prepared={prepared}
+        emphasis={emphasis}
         meshRef={meshRef}
         rotZ={rotZ}
       />
@@ -571,16 +616,55 @@ function AnimatedHeadlineRenderer(props: AnimatedHeadlineProps) {
   }
   return (
     <BlockHeadline
-      {...animated}
+      {...whole}
       color={fill}
       theme={theme}
       anim={anim}
       lookSpec={activeLook}
       prepared={prepared}
+      emphasis={emphasis}
       meshRef={meshRef}
       rotZ={rotZ}
     />
   );
+}
+
+/** Per-word emphasis for one headline: the per-line rects from the typeset's carets (pending until they land, so no capture draws the unemphasised frame) and the colour, memoised on its hex. Inert when the text carries no markup. */
+function useEmphasis(
+  emphasis: ResolvedEmphasis | null,
+  prepared: PreparedDisplayText,
+  carets: Float32Array | null,
+): { rects: Float32Array | null; colour: Color } {
+  const on = emphasis !== null;
+  const rects = useMemo(
+    () => (on && carets ? computeEmphasisRects(prepared.text, prepared.emphasis, carets) : null),
+    [on, carets, prepared],
+  );
+  const pending = on && carets === null && prepared.text.length > 0;
+  useLayoutEffect(() => (pending ? reportTextDerivedPending() : undefined), [pending]);
+  const hex = emphasis?.color ?? "#ffffff";
+  const colour = useMemo(() => new Color(hex), [hex]);
+  return { rects, colour };
+}
+
+/** Type a typewriter preset through the mask on every holder: the head after this frame's keystroke count, from the typeset's carets. Returns the last shown code unit (the emoji quads' twin), or null when the mask is off. */
+function useTypewriter(
+  holders: readonly (StaggerTextMaterial | null | undefined)[],
+  typing: boolean,
+  timing: TextAnimTiming,
+  localMs: number,
+  text: string,
+  carets: Float32Array | null,
+): number | null {
+  const stops = useMemo(() => (typing ? typewriterStops(text) : []), [typing, text]);
+  const pending = typing && carets === null && text.length > 0;
+  useLayoutEffect(() => (pending ? reportTextDerivedPending() : undefined), [pending]);
+  if (!typing) return null;
+  const n = typewriterCount(timing, localMs, stops.length);
+  const head = typewriterHead(text, stops, carets, n);
+  for (const holder of holders) if (holder) writeTypeMaskUniforms(holder, head);
+  if (head === "all") return Number.POSITIVE_INFINITY;
+  return head === "none" ? -1 : stops[n - 1];
 }
 
 let warnedEmoji3d = false;
@@ -599,7 +683,12 @@ type HeadlineHost = { meshRef: RefObject<Object3D | null>; rotZ: number };
 /** The v0 path, verbatim, the null-for-legacy contract for every pre-v8 project (role/color default to the original headline-face/text-token resolution, so pixels cannot move); inside an `AnimatedGroup` the group's alpha multiplies in (× 1 is fp-exact outside groups) and shine-capable groups mount the band material, both structurally inert when there is no group, so legacy bytes stay safe. Emoji quads (and their caret capture) mount only when the text actually contains emoji. */
 function LegacyHeadline(
   props: AnimatedHeadlineProps &
-    HeadlineHost & { theme: Theme; prepared: PreparedEmojiText; lookSpec: ResolvedTextLook | null },
+    HeadlineHost & {
+      theme: Theme;
+      prepared: PreparedDisplayText;
+      lookSpec: ResolvedTextLook | null;
+      emphasis: ResolvedEmphasis | null;
+    },
 ) {
   const {
     from = 0,
@@ -611,6 +700,7 @@ function LegacyHeadline(
     meshRef,
     rotZ,
     lookSpec,
+    emphasis,
   } = props;
   const { localMs: rawLocalMs } = useTimeline();
   const localMs = useHeldLocalMs(rawLocalMs);
@@ -623,15 +713,34 @@ function LegacyHeadline(
   const coreFill = lookSpec?.preset === "neon" ? neonCoreFill(fill, lookSpec.intensity) : fill;
   const reveal = to <= from ? 1 : Math.min(1, Math.max(0, (localMs - from) / (to - from)));
   const hasEmoji = prepared.clusters.length > 0;
+  const emph = emphasis !== null;
   const [carets, setCarets] = useState<Float32Array | null>(null);
 
   const groupShine = group?.shineCapable === true;
+  const exact = useExactText();
+  const exactBase = useExactTextBase();
   const holder = useMemo(
-    () => (groupShine ? createStaggerTextMaterial({ shine: true }) : null),
-    [groupShine],
+    () =>
+      groupShine || emph
+        ? createStaggerTextMaterial(
+            emph
+              ? { shine: groupShine, emphasis: true, exactText: exact }
+              : { shine: true, exactText: exact },
+          )
+        : null,
+    [groupShine, emph, exact],
   );
   useEffect(() => () => holder?.dispose(), [holder]);
   if (holder) writeShineBand(holder, foldBandToChild(group, position));
+  const emphasised = useEmphasis(emphasis, prepared, carets);
+  if (holder && emphasis) {
+    writeEmphasisUniforms(
+      holder,
+      emphasised.rects,
+      emphasis.weightEm * fontSize,
+      emphasised.colour,
+    );
+  }
 
   const alpha = reveal * (group?.alpha ?? 1);
   const states: EmojiQuadState[] = [];
@@ -683,9 +792,10 @@ function LegacyHeadline(
           : {})}
         {...layoutProps(props)}
         {...(rotZ ? { rotation: [0, 0, rotZ] as V3 } : {})}
-        {...(holder ? { material: holder.material } : {})}
+        {...materialProp(holder?.material ?? exactBase)}
+        sdfGlyphSize={SDF_GLYPH_SIZE}
         onSync={
-          hasEmoji
+          hasEmoji || emph
             ? (troika: CaretInfo) => {
                 const c = troika.textRenderInfo?.caretPositions;
                 if (c) setCarets(c);
@@ -711,8 +821,9 @@ function BlockHeadline(
     HeadlineHost & {
       theme: Theme;
       anim: ResolvedTextAnimation;
-      prepared: PreparedEmojiText;
+      prepared: PreparedDisplayText;
       lookSpec: ResolvedTextLook | null;
+      emphasis: ResolvedEmphasis | null;
     },
 ) {
   const {
@@ -727,6 +838,7 @@ function BlockHeadline(
     meshRef,
     rotZ,
     lookSpec,
+    emphasis,
   } = props;
   const { localMs: rawLocalMs } = useTimeline();
   const localMs = useHeldLocalMs(rawLocalMs);
@@ -744,14 +856,33 @@ function BlockHeadline(
   const ownShine =
     anim.params.shine && (anim.preset === "fade-scale" || anim.preset === "twist-scale");
   const shining = ownShine || group?.shineCapable === true;
+  const emph = emphasis !== null;
+  const exact = useExactText();
+  const exactBase = useExactTextBase();
   const holder = useMemo(
-    () => (shining ? createStaggerTextMaterial({ shine: true }) : null),
-    [shining],
+    () =>
+      shining || emph
+        ? createStaggerTextMaterial(
+            emph
+              ? { shine: shining, emphasis: true, exactText: exact }
+              : { shine: true, exactText: exact },
+          )
+        : null,
+    [shining, emph, exact],
   );
   useEffect(() => () => holder?.dispose(), [holder]);
   if (holder) {
     if (ownShine) writeShineUniforms(holder, bounds, sample.shineU);
     else writeShineBand(holder, foldBandToChild(group, position));
+  }
+  const emphasised = useEmphasis(emphasis, prepared, carets);
+  if (holder && emphasis) {
+    writeEmphasisUniforms(
+      holder,
+      emphasised.rects,
+      emphasis.weightEm * fontSize,
+      emphasised.colour,
+    );
   }
 
   // Until the first typeset reports bounds, a partial sweep clips to nothing; the measured rect lands on the next committed frame (deterministic in preview AND export). An unclipped state must be spelled null, never undefined: r3f leaves a prop that merely disappears at its previous value (troika itself clears a clip with null, the JSX cast covers drei's narrower typing), so a seek jumping from pre-reveal (zero-width rect) straight past `to` would keep the stale rect and clip the text to nothing forever (the invisible mask-reveal title bug).
@@ -840,16 +971,17 @@ function BlockHeadline(
         }
         outlineColor={halo ? halo.outlineColor : fill}
         outlineOpacity={halo ? Math.max(halo.outlineOpacity * alpha, haloOpacity) : haloOpacity}
-        {...(holder ? { material: holder.material } : {})}
+        {...materialProp(holder?.material ?? exactBase)}
+        sdfGlyphSize={SDF_GLYPH_SIZE}
         onSync={
-          measuring || hasEmoji
+          measuring || hasEmoji || emph
             ? (troika: CaretInfo) => {
                 const info = troika.textRenderInfo;
                 const b = info?.blockBounds;
                 if ((measuring || hasEmoji) && b && b.length === 4) {
                   setBounds([b[0], b[1], b[2], b[3]]);
                 }
-                if (hasEmoji && info?.caretPositions) setCarets(info.caretPositions);
+                if ((hasEmoji || emph) && info?.caretPositions) setCarets(info.caretPositions);
               }
             : undefined
         }
@@ -877,8 +1009,9 @@ function StaggeredHeadline(
     HeadlineHost & {
       theme: Theme;
       anim: ResolvedTextAnimation;
-      prepared: PreparedEmojiText;
+      prepared: PreparedDisplayText;
       lookSpec: ResolvedTextLook | null;
+      emphasis: ResolvedEmphasis | null;
       /** Fold the v0 linear reveal ramp in (a shader look mounted with no motion configured). */
       legacyReveal?: boolean;
     },
@@ -895,9 +1028,13 @@ function StaggeredHeadline(
     meshRef,
     rotZ,
     lookSpec,
+    emphasis,
   } = props;
   const text = prepared.text;
   const hasEmoji = prepared.clusters.length > 0;
+  const emph = emphasis !== null;
+  const typing = presetNeedsTypeMask(anim.preset) || presetNeedsTypeMask(anim.outPreset);
+  const building = anim.preset === "build";
   const [carets, setCarets] = useState<Float32Array | null>(null);
   const { localMs: rawLocalMs } = useTimeline();
   const localMs = useHeldLocalMs(rawLocalMs);
@@ -926,6 +1063,7 @@ function StaggeredHeadline(
   const chroming = usesPreset(CHROMA_PRESETS, anim);
   const highlighting = usesPreset(HIGHLIGHT_PRESETS, anim);
   const underlining = usesPreset(UNDERLINE_PRESETS, anim);
+  const exact = useExactText();
   const holder = useMemo(
     () =>
       createStaggerTextMaterial({
@@ -937,19 +1075,51 @@ function StaggeredHeadline(
         pack,
         gradient: lookGradient,
         arc: lookArc,
+        exactText: exact,
+        emphasis: emph,
+        typeMask: typing,
       }),
-    [shining, glinting, axis, twisting, scattering, pack, lookGradient, lookArc, lookFrosted],
+    [
+      shining,
+      glinting,
+      axis,
+      twisting,
+      scattering,
+      pack,
+      lookGradient,
+      lookArc,
+      lookFrosted,
+      exact,
+      emph,
+      typing,
+    ],
   );
   useEffect(() => () => holder.dispose(), [holder]);
   const echoHolders = useMemo(
     () =>
       chroming
         ? ([
-            createStaggerTextMaterial({ axis, echo: 1, gradient: lookGradient, arc: lookArc }),
-            createStaggerTextMaterial({ axis, echo: -1, gradient: lookGradient, arc: lookArc }),
+            createStaggerTextMaterial({
+              axis,
+              echo: 1,
+              gradient: lookGradient,
+              arc: lookArc,
+              exactText: exact,
+              emphasis: emph,
+              typeMask: typing,
+            }),
+            createStaggerTextMaterial({
+              axis,
+              echo: -1,
+              gradient: lookGradient,
+              arc: lookArc,
+              exactText: exact,
+              emphasis: emph,
+              typeMask: typing,
+            }),
           ] as const)
         : null,
-    [chroming, axis, lookGradient, lookArc],
+    [chroming, axis, lookGradient, lookArc, exact, emph, typing],
   );
   useEffect(() => {
     if (!echoHolders) return;
@@ -961,9 +1131,17 @@ function StaggeredHeadline(
   const offsetHolder = useMemo(
     () =>
       lookOffsetPrint
-        ? createStaggerTextMaterial({ axis, twist: twisting, scatter: scattering, pack })
+        ? createStaggerTextMaterial({
+            axis,
+            twist: twisting,
+            scatter: scattering,
+            pack,
+            exactText: exact,
+            emphasis: emph,
+            typeMask: typing,
+          })
         : null,
-    [lookOffsetPrint, axis, twisting, scattering, pack],
+    [lookOffsetPrint, axis, twisting, scattering, pack, exact, emph, typing],
   );
   useEffect(() => () => offsetHolder?.dispose(), [offsetHolder]);
   const accent = theme.colors.accent;
@@ -986,9 +1164,19 @@ function StaggeredHeadline(
 
   // The stagger spread is only known after the first typeset; the dispatcher's entry covers the base window meanwhile.
   const sceneIndex = useSceneContext()?.index;
-  const spreadMs = units ? Math.max(0, units.count - 1) * anim.staggerMs : null;
+  // A pinned reveal scales the stagger and unit duration to the real unit count, so captures wait for the first typeset's units.
+  const pinned =
+    typeof props.durationMs === "number"
+      ? pinRevealDuration(anim, from, to, blockUnit ? 1 : (units?.count ?? 1), props.durationMs)
+      : null;
+  const unitAnim = pinned?.anim ?? anim;
+  const unitTo = pinned?.to ?? to;
+  const pinPending =
+    pinned !== null && units === null && !blockUnit && anim.staggerMs > 0 && text.length > 0;
+  useLayoutEffect(() => (pinPending ? reportTextDerivedPending() : undefined), [pinPending]);
+  const spreadMs = units ? Math.max(0, units.count - 1) * unitAnim.staggerMs : null;
   // A resolved delay lands the whole spread that much later (the window `to` excludes it).
-  const settleToMs = anim.delayMs === undefined ? to : to + anim.delayMs;
+  const settleToMs = anim.delayMs === undefined ? unitTo : unitTo + anim.delayMs;
   useEffect(() => {
     if (sceneIndex === undefined || spreadMs === null || spreadMs <= 0) return;
     return registerPresentTiming(sceneIndex, {
@@ -1004,7 +1192,7 @@ function StaggeredHeadline(
     return reportPresentTimingPending(sceneIndex);
   }, [sceneIndex, spreadPending]);
 
-  const timing: TextAnimTiming = { anim, from, to, outAt };
+  const timing: TextAnimTiming = { anim: unitAnim, from, to: unitTo, outAt };
   const { font, fill } = textStyle(theme, props);
   const count = units ? Math.max(1, units.count) : 1;
   const measuring = ownShine || scattering || pack || lookGradient || lookArc;
@@ -1013,11 +1201,17 @@ function StaggeredHeadline(
   const elemCY = bounds ? (bounds[1] + bounds[3]) / 2 : 0;
   // Group alpha folds into every unit's alpha CPU-side (× 1 fp-exact outside groups, so the uploaded uniform floats cannot move on standing projects); legacyReveal mounts fold the v0 linear ramp in the same way.
   const legacyAlpha = props.legacyReveal
-    ? to <= from
+    ? unitTo <= from
       ? 1
-      : Math.min(1, Math.max(0, (localMs - from) / (to - from)))
+      : Math.min(1, Math.max(0, (localMs - from) / (unitTo - from)))
     : 1;
   const groupAlpha = (group?.alpha ?? 1) * legacyAlpha;
+  // build re-centres the growing line about the anchor, single line only.
+  const anchorFactor = props.anchorX === "left" ? 0 : props.anchorX === "right" ? 1 : 0.5;
+  const lineShiftEm =
+    building && units && !blockUnit
+      ? buildLineShiftEm(timing, localMs, units, anchorFactor, fontSize)
+      : undefined;
   const samples = [];
   for (let i = 0; i < count; i++) {
     const ctx: ScatterSampleContext | undefined =
@@ -1031,6 +1225,7 @@ function StaggeredHeadline(
                     (units.centerY[i] - elemCY) / fontSize,
                   ]
                 : undefined,
+            ...(lineShiftEm !== undefined ? { lineShiftEm } : {}),
           }
         : undefined;
     const sample = sampleTextUnit(timing, i, localMs, ctx);
@@ -1065,6 +1260,28 @@ function StaggeredHeadline(
     for (const echo of echoHolders) writeStaggerUniforms(echo, units, samples, fontSize, packFrame);
   }
   if (offsetHolder) writeStaggerUniforms(offsetHolder, units, samples, fontSize, packFrame);
+  // Emphasis on every layer (the offset under-layer keeps its own colour, gaining only the weight); the typewriter head masks them all alike.
+  const emphasised = useEmphasis(emphasis, prepared, carets);
+  if (emphasis) {
+    const weight = emphasis.weightEm * fontSize;
+    writeEmphasisUniforms(holder, emphasised.rects, weight, emphasised.colour);
+    if (echoHolders) {
+      for (const echo of echoHolders) {
+        writeEmphasisUniforms(echo, emphasised.rects, weight, emphasised.colour);
+      }
+    }
+    if (offsetHolder) {
+      writeEmphasisUniforms(offsetHolder, emphasised.rects, weight, lookAColor ?? accentColor);
+    }
+  }
+  const typedTo = useTypewriter(
+    [holder, ...(echoHolders ?? []), offsetHolder],
+    typing,
+    timing,
+    localMs,
+    text,
+    carets,
+  );
   // The look's frame terms: gradient's projection and arc's bend both derive from the measured block; unmeasured frames park the exact-identity guards.
   const lookArcSpec = lookSpec && lookArc ? arcSpec(bounds, lookSpec.curveDeg) : null;
   if (lookGradient && lookSpec && lookAColor && gradBColor) {
@@ -1128,6 +1345,7 @@ function StaggeredHeadline(
       } else if (sample.sweep[1] <= 0) {
         coverage = 0;
       }
+      if (typedTo !== null && cluster.codeUnitIndex > typedTo) coverage = 0;
       // clipFinal parity: the quad cannot hard-clip, so its box coverage inside the unit's final rect fades it through the mask edge.
       if (sample.clipFinal && clipRects && unit * 4 + 3 < clipRects.length) {
         const o = unit * 4;
@@ -1175,24 +1393,27 @@ function StaggeredHeadline(
   const stroke = lookSpec?.preset === "outline" ? outlineStroke(lookSpec, accent, fontSize) : null;
   const halo = lookSpec?.preset === "neon" ? neonHalo(lookSpec, accent, fontSize) : null;
   const coreFill = lookSpec?.preset === "neon" ? neonCoreFill(fill, lookSpec.intensity) : fill;
+  const offsetXY = offsetHolder && lookSpec ? offsetPrintOffset(lookSpec, fontSize) : null;
 
   return (
     <>
-      {offsetHolder && lookSpec && (
+      {offsetHolder && lookSpec && offsetXY && (
         <Text
           font={font}
           position={[
-            position[0] + lookSpec.offsetEm * fontSize,
-            position[1] - lookSpec.offsetEm * fontSize,
+            position[0] + offsetXY[0],
+            position[1] + offsetXY[1],
             position[2] - OFFSET_PRINT_Z_EM * fontSize,
           ]}
           fontSize={fontSize}
           color={lookAHex ?? accent}
           anchorX={props.anchorX ?? "center"}
           anchorY="middle"
+          {...(lookSpec.offsetOpacity !== undefined ? { fillOpacity: lookSpec.offsetOpacity } : {})}
           {...layoutProps(props)}
           {...(rotZ ? { rotation: [0, 0, rotZ] as V3 } : {})}
           material={offsetHolder.material}
+          sdfGlyphSize={SDF_GLYPH_SIZE}
         >
           {text}
         </Text>
@@ -1209,6 +1430,7 @@ function StaggeredHeadline(
           {...layoutProps(props)}
           {...(rotZ ? { rotation: [0, 0, rotZ] as V3 } : {})}
           material={echo.material}
+          sdfGlyphSize={SDF_GLYPH_SIZE}
         >
           {text}
         </Text>
@@ -1238,6 +1460,7 @@ function StaggeredHeadline(
         {...layoutProps(props)}
         {...(rotZ ? { rotation: [0, 0, rotZ] as V3 } : {})}
         material={holder.material}
+        sdfGlyphSize={SDF_GLYPH_SIZE}
         onSync={(troika: CaretInfo) => {
           const info = troika.textRenderInfo;
           const caretPositions = info?.caretPositions;
@@ -1257,7 +1480,7 @@ function StaggeredHeadline(
             setLookWordUnits(words);
             setLookWordBoxes(computeUnitYExtents(words, text, caretPositions));
           }
-          if (caretPositions && hasEmoji) setCarets(caretPositions);
+          if (caretPositions && (hasEmoji || emph || typing)) setCarets(caretPositions);
           if (measuring && b && b.length === 4) setBounds([b[0], b[1], b[2], b[3]]);
         }}
       >

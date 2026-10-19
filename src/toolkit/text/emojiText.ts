@@ -64,6 +64,12 @@ export function emojiClusterKey(cluster: string): string {
  * Pure and deterministic: placeholders assign in first-encounter order per string.
  */
 export function prepareEmojiText(raw: string): PreparedEmojiText {
+  const { text, clusters } = prepareEmojiTextMapped(raw);
+  return { text, clusters };
+}
+
+/** `prepareEmojiText` plus, when the string changed shape, `map[i]`: the output code unit input unit `i` lands on (`map[raw.length]` is the output length), so ranges over the raw string follow the substitution. */
+export function prepareEmojiTextMapped(raw: string): PreparedEmojiText & { map?: Int32Array } {
   let needsWork = false;
   for (let i = 0; i < raw.length; i++) {
     if (raw.charCodeAt(i) >= FAST_PATH_BELOW) {
@@ -75,8 +81,18 @@ export function prepareEmojiText(raw: string): PreparedEmojiText {
 
   const assigned = new Map<string, number>();
   const clusters: EmojiCluster[] = [];
+  const map = new Int32Array(raw.length + 1);
   let out = "";
-  for (const { segment } of segmenter.segment(raw)) {
+  for (const { segment, index } of segmenter.segment(raw)) {
+    const outStart = out.length;
+    emitSegment(segment);
+    const outLen = out.length - outStart;
+    for (let k = 0; k < segment.length; k++) map[index + k] = outStart + Math.min(k, outLen);
+  }
+  map[raw.length] = out.length;
+  return { text: out, clusters, map };
+
+  function emitSegment(segment: string): void {
     const emoji = emojiForm(segment);
     if (emoji !== null) {
       let pua = assigned.get(emoji);
@@ -89,7 +105,7 @@ export function prepareEmojiText(raw: string): PreparedEmojiText {
             );
           }
           out += segment;
-          continue;
+          return;
         }
         pua = EMOJI_PUA_START + assigned.size;
         assigned.set(emoji, pua);
@@ -103,5 +119,4 @@ export function prepareEmojiText(raw: string): PreparedEmojiText {
       out += segment;
     }
   }
-  return { text: out, clusters };
 }

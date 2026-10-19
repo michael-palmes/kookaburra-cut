@@ -6,11 +6,11 @@ export interface Oklch {
   h: number; // degrees, [0, 360)
 }
 
-function srgbToLinear(c: number): number {
+export function srgbToLinear(c: number): number {
   return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
 }
 
-function linearToSrgb(c: number): number {
+export function linearToSrgb(c: number): number {
   return c <= 0.0031308 ? 12.92 * c : 1.055 * c ** (1 / 2.4) - 0.055;
 }
 

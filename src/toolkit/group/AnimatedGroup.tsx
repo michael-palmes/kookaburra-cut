@@ -31,6 +31,8 @@ export interface AnimatedGroupProps {
   to?: number;
   /** Out start, in ms; the out plays over the same duration as the in. */
   outAt?: number;
+  /** Pins the reveal (the group is one unit) to this many ms; "authored" or absent keeps the authored window. */
+  durationMs?: number | "authored";
   /** In-animation preset. Defaults to the theme's `textAnimation.in`. */
   preset?: TextPresetName;
   /** Out-animation preset; plays only when `outAt` is set. */
@@ -83,8 +85,19 @@ export function AnimatedGroup(props: AnimatedGroupProps) {
     props.ignoreSceneMotion === true,
   );
   // The window `to` carries the in duration; the effective end (delay included) is what present timing holds for.
-  const windowTo = anim ? textAnimationWindowToMs(from, to, anim) : to;
-  const effectiveTo = anim ? textAnimationEndMs(from, to, anim) : to;
+  const pinnedMs = typeof props.durationMs === "number" ? Math.max(0, props.durationMs) : undefined;
+  const windowTo =
+    anim && pinnedMs !== undefined
+      ? from + pinnedMs
+      : anim
+        ? textAnimationWindowToMs(from, to, anim)
+        : to;
+  const effectiveTo =
+    anim && pinnedMs !== undefined
+      ? windowTo + (anim.delayMs ?? 0)
+      : anim
+        ? textAnimationEndMs(from, to, anim)
+        : to;
   const hasOut = anim !== null && textPresetHasMotion(anim.outPreset) && outAt !== undefined;
   const animated = anim !== null && (textPresetHasMotion(anim.preset) || hasOut);
   const holdOutMs = hasOut ? outAt : undefined;

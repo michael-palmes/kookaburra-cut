@@ -130,6 +130,15 @@ describe("specToDraft (seeding)", () => {
     expect(draft.delivery).toBe("word");
   });
 
+  it("writes an explicit zero delay exact, and round-trips it", () => {
+    const draft = { ...defaultDraft("fade-up"), delivery: "by-paragraph" as const, staggerMs: 0 };
+    const spec = draftToSpec(draft);
+    expect(spec).toMatchObject({ staggerMs: 0, staggerExact: true });
+    expect(resolveTextAnimation({}, theme, spec)?.staggerMs).toBe(0);
+    expect(specToDraft(spec)).toEqual(draft);
+    expect(draftToSpec(defaultDraft("fade")).staggerExact).toBeUndefined();
+  });
+
   it("round-trips a start delay", () => {
     const draft = specToDraft({ in: "fade", out: "none", staggerMs: 0, delayMs: 750 });
     expect(draft.delayMs).toBe(750);
@@ -158,6 +167,20 @@ describe("describeSpec", () => {
     );
     expect(describeSpec({ in: "fade", out: "none", staggerMs: 0, delayMs: 500 })).toBe(
       "Fade · 0.5s delay",
+    );
+  });
+});
+
+describe("build's word slide in the picker", () => {
+  it("round-trips buildShiftEm, writing it only for build away from the default", () => {
+    const draft = specToDraft({ in: "build", out: "none", staggerMs: 200, stagger: "word" });
+    expect(draft.buildShiftEm).toBe(0.3);
+    expect(draftToSpec(draft)).not.toHaveProperty("buildShiftEm");
+    const spec = draftToSpec({ ...draft, buildShiftEm: 0.6 });
+    expect(spec.buildShiftEm).toBe(0.6);
+    expect(parseTextAnimationSpec(spec, "test")).toEqual(spec);
+    expect(draftToSpec({ ...defaultDraft("fade"), buildShiftEm: 0.6 })).not.toHaveProperty(
+      "buildShiftEm",
     );
   });
 });

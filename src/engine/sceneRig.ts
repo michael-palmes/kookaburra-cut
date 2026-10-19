@@ -4,7 +4,6 @@ import { resolveDeviceLayout } from "../toolkit/device/layout";
 import { type DeviceFloorY, resolveDeviceWorldAnchor } from "../toolkit/device/worldAnchor";
 import type { FormatInfo } from "../toolkit/types";
 import { applyCameraKicks, type CameraKick, cameraKickPeaks } from "./cameraKicks";
-import { viewBasis } from "./cameraProject";
 import {
   carryDof,
   type EffectiveDof,
@@ -16,6 +15,7 @@ import {
 } from "./dof";
 import { ease, isEaseName } from "./ease";
 import { CAMERA } from "./format";
+import { frustumOnPlane } from "./frustum";
 import { catmullRom, catmullRomTangent, lerp, lerp3 } from "./keyframes";
 import type {
   SceneDoc,
@@ -520,24 +520,11 @@ export function rigOverscan(
     const pose = sample.kicked
       ? applyCameraKicks({ ...rig, fov: rig.fov ?? fallbackFov }, kicks, sample.t)
       : rig;
-    const fov = pose.fov ?? fallbackFov;
-    const basis = viewBasis({ ...pose, fov });
-    const tanV = Math.tan((fov * Math.PI) / 360);
-    const [px, py, pz] = pose.position;
-    for (const sx of [-1, 1]) {
-      for (const sy of [-1, 1]) {
-        const d: [number, number, number] = [
-          -basis.z[0] + sx * tanV * aspect * basis.x[0] + sy * tanV * basis.y[0],
-          -basis.z[1] + sx * tanV * aspect * basis.x[1] + sy * tanV * basis.y[1],
-          -basis.z[2] + sx * tanV * aspect * basis.x[2] + sy * tanV * basis.y[2],
-        ];
-        // A corner that never reaches the plane sees past it; no rect covers that, so it asks nothing.
-        if (Math.abs(d[2]) < 1e-6) continue;
-        const along = (z - pz) / d[2];
-        if (along <= 0) continue;
-        halfW = Math.max(halfW, Math.abs(px + d[0] * along));
-        halfH = Math.max(halfH, Math.abs(py + d[1] * along));
-      }
+    for (const hit of frustumOnPlane({ ...pose, fov: pose.fov ?? fallbackFov }, aspect, z)) {
+      // A corner that never reaches the plane sees past it; no rect covers that, so it asks nothing.
+      if (!hit) continue;
+      halfW = Math.max(halfW, Math.abs(hit[0]));
+      halfH = Math.max(halfH, Math.abs(hit[1]));
     }
   }
   return Math.max(

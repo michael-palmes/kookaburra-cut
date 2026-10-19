@@ -585,7 +585,7 @@ def cmd_doc(ctx: Ctx) -> int:
         if a.op == "unset" and doc is None:
             raise KbError(f"{label} does not exist")
         new, summary = docmod.edit(doc if doc is not None else {"version": version}, a.op, getattr(a, "path", "") or "", arg)
-        return settle_music(project, stem, doc, new, summary)
+        return settle_music(project, stem, doc, checkmod.stamp_stagger_exact(doc, new), summary)
 
     return guarded_write(ctx, label, label, edit, sidecar_validator(ctx, label))
 
@@ -703,16 +703,12 @@ def cmd_theme(ctx: Ctx) -> int:
     def edit(data: Any) -> Tuple[Any, str]:
         if data is None:
             raise KbError(f"workspace theme {theme_id} not found at {path}")
-        return docmod.edit(data, "set", a.path, value)
+        new, summary = docmod.edit(data, "set", a.path, value)
+        return checkmod.stamp_stagger_exact(data, new), summary
 
     def validate(doc: Any) -> Report:
         report = Report()
-        typography = doc.get("typography") if isinstance(doc, dict) else None
-        if isinstance(typography, dict):
-            checker = checkmod.Checker(checkmod.Context(project), report)
-            for slot, ref in typography.items():
-                if isinstance(ref, dict) and isinstance(ref.get("family"), str):
-                    checker.font(theme_id, f"typography.{slot}", f"{ref['family']}@{ref.get('weight', 400)}")
+        checkmod.Checker(checkmod.Context(project), report).theme_doc(theme_id, doc, theme_id)
         return report
 
     emit_err(f"kb: note: {theme_id} is shared by every project that uses it")

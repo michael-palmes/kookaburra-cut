@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "name": "Text motion: build",
+  "text": {
+    "headline": "One word at a time"
+  },
+  "textAnimation": {
+    "in": "build",
+    "out": "none",
+    "staggerMs": 220,
+    "stagger": "word",
+    "durationMs": 400
+  }
+}

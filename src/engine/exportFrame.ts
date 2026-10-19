@@ -26,12 +26,9 @@ import {
 } from "./sceneCamera";
 import { compareSpecOf, resolveCompareFrame } from "./sceneCompare";
 import { getSceneHosts } from "./sceneHostRegistry";
-import {
-  buildCompareBLightingTracks,
-  buildLightingTracks,
-  resolveFrameLighting,
-} from "./sceneLighting";
-import { buildSceneRenderStates, resolveFrameSceneStates } from "./sceneState";
+import { buildCompareBLightingTracks, buildLightingTracks } from "./sceneLighting";
+import { buildRoomTracks } from "./sceneRoom";
+import { buildSceneRenderStates, resolveFramePlans } from "./sceneState";
 import type { Resolved } from "./sceneTimeline";
 import { accumulateFrame, releaseShutterLane, startAccumulation } from "./shutterLane";
 import {
@@ -42,6 +39,7 @@ import {
   type ShutterPlan,
 } from "./shutterPlan";
 import type { snapshotSceneStageFloors } from "./stageRegistry";
+import { textDerivedPendingCount } from "./textDerivedState";
 
 /** The per-frame body the deterministic loops share (video export and stills): barriers, camera/state/lighting/compare plans, `renderComposited`, readback. Moved verbatim out of exporter.ts, so the video loop's GL call sequence is unchanged. See docs/determinism.md. */
 
@@ -71,6 +69,20 @@ export async function awaitHoldsCommitted(version: number): Promise<void> {
 
 /** Awaits typesetting for every troika text mesh in the scene: per-frame layout can be async (e.g. a counter whose text changes each frame), so we must wait for it before capturing or read stale glyphs. Hard-won subtleties (the text half of the back-to-back Verify ×2 race): meshes are matched by class, since troika's mesh carries no `isTroikaText` flag and its `material` getter returns `[outline, main]` for outlined text (neon, whole-block blur-in), so material sniffing misses them; a pending typeset is kicked here (pre-render) rather than left to troika's own `onBeforeRender` kick (which would start it a frame late), with quiescence awaited via the `synccomplete` event since `sync(cb)` drops callbacks when no new sync is needed; and the wait is spin-bounded, failing the run rather than hanging on a typeset that never lands. Exported for the borrowed-clock capture paths (snapshots.ts), whose single forced paint otherwise reads glyphs one capture late (the invisible-Playfair-title theme-preview bug). */
 export async function awaitTextSync(scene: Scene): Promise<void> {
+  await settleTypesets(scene);
+  if (textDerivedPendingCount() === 0) return;
+  // Layout derived from measured text re-renders after its typesets land; settle until none is outstanding, then once more for typesets the settling commit queued.
+  for (let spins = 0; textDerivedPendingCount() > 0; spins++) {
+    if (spins > 5000) {
+      throw new Error(`Text-derived layout never settled: ${textDerivedPendingCount()} pending.`);
+    }
+    await yieldMacrotask();
+    await settleTypesets(scene);
+  }
+  await settleTypesets(scene);
+}
+
+async function settleTypesets(scene: Scene): Promise<void> {
   const unsettled = new Set<TroikaText>();
   const pending: Promise<void>[] = [];
   scene.traverse((obj: Object3D) => {
@@ -115,6 +127,8 @@ export interface FramePlans {
   compareSpecs: ReturnType<typeof compareSpecOf>[];
   sceneStatesB: ReturnType<typeof buildSceneRenderStates>;
   overlays: ReturnType<typeof resolveOverlays>;
+  /** Null unless some scene has a room. */
+  roomTracks: ReturnType<typeof buildRoomTracks>;
   /** Null unless some scene's motion blur is on, which keeps the run on the byte-identical path. */
   shutter: ShutterPlan | null;
 }
@@ -179,6 +193,15 @@ export function buildFramePlans(
       )
     : null;
 
+  const roomTracks = opts.sceneThemes
+    ? buildRoomTracks(opts.sceneDocs ?? [], {
+        sceneThemes: opts.sceneThemes,
+        roomThemes: opts.roomThemes,
+        projectLighting: opts.projectLighting,
+        timing: sceneCameraTiming(opts),
+      })
+    : null;
+
   const shutter = buildShutterPlan({
     fps: opts.fps,
     slots: opts.slots,
@@ -196,6 +219,7 @@ export function buildFramePlans(
     compareSpecs,
     sceneStatesB,
     overlays,
+    roomTracks,
     shutter,
   };
 }
@@ -282,12 +306,7 @@ export async function drawPlannedFrame(
   // The camera applies at this shared seam (mirrored in CompositorDriver), a pure function of tMs. Scene-doc tracks get a per-frame plan applied inside renderComposited (per-target on transition frames); otherwise the legacy project-track path runs, a hard no-op when the project declares no track. Neither touches `cam.aspect`, so the caller's resize guard stays the sole owner of aspect.
   const plan = resolveFrameCameras(plans.sceneTracks, cameraTrack, resolved, tMs);
   if (!plan) applyCameraTrack(cam, cameraTrack, tMs);
-  const statePlan = resolveFrameSceneStates(plans.sceneStates, resolved);
-  const lightingPlan = resolveFrameLighting(
-    plans.lightingTracks,
-    resolved,
-    plans.compareBLightingTracks,
-  );
+  const { statePlan, lightingPlan } = resolveFramePlans(plans, resolved);
   const compareFrame = resolveCompareFrame(
     plans.compareSpecs,
     plans.sceneStates,
@@ -305,7 +324,7 @@ export async function drawPlannedFrame(
       p ?? undefined,
       statePlan,
       plans.overlays ?? undefined,
-      lightingPlan ?? undefined,
+      lightingPlan,
       compareFrame,
     );
   const count = plans.shutter

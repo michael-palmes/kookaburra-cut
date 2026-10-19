@@ -6,6 +6,7 @@ import type {
   SceneMediaHost,
   SceneMediaKind,
   SceneMediaMotionPreset,
+  VideoWindowShadow,
 } from "../../engine/sceneDocSchema";
 import { editSceneDocMedia, resolveSceneDocMedia } from "../../engine/sceneMedia";
 import { resolveVideoWindowRadius } from "../../engine/sceneVideoWindow";
@@ -146,8 +147,9 @@ const GIZMO_OPTIONS: SegmentedOption<"translate" | "rotate" | "scale">[] = [
   { value: "scale", label: "Scale", icon: <GizmoModeIcon mode="scale" /> },
 ];
 
-function MediaControlIcon({ type }: { type: "x" | "y" | "depth" | "size" | "roll" }) {
+function MediaControlIcon({ type }: { type: "x" | "y" | "depth" | "size" | "roll" | "colour" }) {
   const glyph = {
+    colour: <path d="M8 2.4C8 2.4 3.6 7.2 3.6 9.8a4.4 4.4 0 008.8 0C12.4 7.2 8 2.4 8 2.4z" />,
     x: <path d="M2.6 8h10.8M4.8 5.8 2.6 8l2.2 2.2M11.2 5.8 13.4 8l-2.2 2.2" />,
     y: <path d="M8 2.6v10.8M5.8 4.8 8 2.6l2.2 2.2M5.8 11.2 8 13.4l2.2-2.2" />,
     depth: (
@@ -326,11 +328,14 @@ const DEFAULT_WINDOW_BORDER = {
   opacity: 0.12,
 } as const;
 
-const DEFAULT_WINDOW_SHADOW = {
+const DEFAULT_WINDOW_SHADOW: VideoWindowShadow = {
   opacity: 0.32,
   blur: 0.14,
-  offset: [0, -0.05] as [number, number],
+  offset: [0, -0.05],
 };
+
+/** The window shadow's default (soft black) as the picker shows it. */
+const DEFAULT_SHADOW_COLOUR = "#000000";
 
 function mediaFileName(src: string): string {
   return src.split("/").filter(Boolean).at(-1) ?? src;
@@ -1047,6 +1052,34 @@ export function MediaDrillIn({
               )}
               {windowed && (
                 <>
+                  <div className="popover-row inspector-slider-row">
+                    <span className="popover-inline slider-row-label">
+                      <span className="inspector-slider-row-icon">
+                        <MediaControlIcon type="colour" />
+                      </span>
+                      Colour
+                    </span>
+                    <ColourPicker
+                      value={shadow.colour ?? DEFAULT_SHADOW_COLOUR}
+                      label="Shadow colour"
+                      defaultValue={DEFAULT_SHADOW_COLOUR}
+                      disabled={settingsDisabled}
+                      onCommit={(hex) =>
+                        patchWindow((window) => {
+                          window.shadow = { ...shadow, colour: hex };
+                        }, "window shadow")
+                      }
+                      onReset={
+                        shadow.colour === undefined
+                          ? undefined
+                          : () =>
+                              patchWindow((window) => {
+                                const { colour: _drop, ...rest } = shadow;
+                                window.shadow = rest;
+                              }, "window shadow")
+                      }
+                    />
+                  </div>
                   <div className="popover-row">
                     <span className="popover-inline slider-row-label">Strength</span>
                     <DebouncedRange

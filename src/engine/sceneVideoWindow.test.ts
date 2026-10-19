@@ -237,6 +237,22 @@ describe("normalizeWindowChrome", () => {
     });
     expect(chrome.shadow).toEqual({ opacity: 0.32, blur: 0.14, offset: [0, -0.05] });
   });
+
+  it("carries a #rrggbb shadow colour, and only that", () => {
+    const shadow = (colour: unknown) =>
+      normalizeWindowChrome({
+        radius: "macos",
+        shadow: { opacity: 1, blur: 0, offset: [0.04, -0.04], colour } as never,
+      }).shadow;
+    expect(shadow("#ff5500")).toEqual({
+      opacity: 1,
+      blur: 0,
+      offset: [0.04, -0.04],
+      colour: "#ff5500",
+    });
+    expect(shadow("accent")).toEqual({ opacity: 1, blur: 0, offset: [0.04, -0.04] });
+    expect("colour" in shadow(undefined)).toBe(false);
+  });
 });
 
 describe("videoWindowMotionEndMs", () => {

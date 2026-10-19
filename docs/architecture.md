@@ -91,7 +91,7 @@ than restating versions.) Pins live in `package.json` and `src-tauri/Cargo.toml`
 | @react-three/fiber | 9.7.x | React renderer for Three.js | MIT |
 | @react-three/drei | 10.7.x | Loaders, controls, `<Text>` helper | MIT |
 | @react-three/postprocessing | 3.1.x | Bloom, vignette, colour grading | MIT |
-| troika-three-text | 0.52.x | SDF text in WebGL (the text engine) | MIT |
+| troika-three-text + troika-three-utils | 0.52.5 (exact, one copy, patched) | SDF text in WebGL (the text engine) | MIT |
 | anime.js | 4.5.x | Global seekable timeline / sequencing | MIT |
 | d3-ease | 3.x | Permissive easing primitives | ISC |
 | d3-interpolate | 3.x | Permissive value interpolation primitives | ISC |

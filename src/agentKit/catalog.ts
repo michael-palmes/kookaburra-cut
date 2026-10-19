@@ -60,6 +60,7 @@ import {
   CUSTOM_COLOUR_PREFIX,
   DEVICE_CATALOG,
   DEVICE_IDS,
+  type DeviceScreenRect,
   FALLBACK_DEVICE_ID,
 } from "../toolkit/device/catalog";
 import type { DeviceMediaSpec, DeviceMotionPreset } from "../toolkit/device/Device";
@@ -125,7 +126,7 @@ export const SCENE_DOC_KEYS: Record<
   },
   textStyle: {
     summary:
-      "Per text key overrides: <key>Color, Font, Size, OffsetX, OffsetY, LineHeight, RotationDeg.",
+      "Per text key overrides: <key>Color, Font, Size, OffsetX, OffsetY, LineHeight, RotationDeg, Emphasis.",
     type: "object",
     ref: "text",
   },
@@ -284,6 +285,26 @@ export const SCENE_DOC_KEYS: Record<
     type: "object",
     ref: "camera",
   },
+  room: {
+    summary:
+      "Room track { keys: [{ at, colour?, themeId?, lighting?, transition: cut|flood, origin?, durationMs?, ease? }] }: the backdrop colour cutting or flooding mid-scene, staged lights following.",
+    type: "object",
+    ref: "sidecar",
+    values: ["cut", "flood"],
+  },
+  taps: {
+    summary:
+      "Tap pulses [{ at, position: [x, y, z] } or { at, screenUv: [u, v], device }, colour?, size?]: a ring on the video editor's tap curve, in world space or on a sidecar device's screen.",
+    type: "array",
+    ref: "media",
+  },
+  mosaic: {
+    summary:
+      "Split field { tiles: [{ src?, startMs?, loop?, colour? }], columns?, gap?, reveal: { at, staggerMs, durationMs, order, ease } }: images, videos or theme colours filling the frame, reflowed per aspect.",
+    type: "object",
+    ref: "media",
+    values: ["rows", "columns", "centre"],
+  },
 };
 
 /** One line per project.json key; exhaustive over `ProjectManifest`. */
@@ -329,7 +350,7 @@ export const PROJECT_MANIFEST_KEYS: Record<
   },
   render: {
     summary:
-      "Display transform { toneMapping, exposure } plus motionBlur { enabled, shutterDeg, samples, camera, objects }; absent is aces at 1, no blur.",
+      "Display transform { toneMapping, exposure }, exactText (true keeps SDF text off tone mapping) and motionBlur { enabled, shutterDeg, samples, camera, objects }; absent is aces at 1, tone-mapped text, no blur.",
     type: "object",
   },
   lighting: { summary: "Project lighting layer between theme and scene.", type: "object" },
@@ -344,6 +365,11 @@ export const PROJECT_MANIFEST_KEYS: Record<
   },
   appliedBackground: {
     summary: "Background last applied to all scenes; new scenes inherit it.",
+    type: "object",
+  },
+  shared: {
+    summary:
+      "Author constants (palette, timings) scenes read with useProjectShared; copied with scenes into projects that lack the key.",
     type: "object",
   },
 };
@@ -636,7 +662,8 @@ export const TOOLKIT_SUMMARIES: Record<
 > = {
   AVAILABLE_DEVICE_IDS: { summary: "Device ids this build can render with their own model." },
   AnimatedCounter: {
-    summary: "Number counting from `from` to `to` over durationMs from scene start.",
+    summary:
+      "Number counting from `from` to `to` over durationMs; startMs, ease and steps shape it.",
   },
   AnimatedGroup: { summary: "Animates icon + text lockups as one unit with the text presets." },
   AnimatedHeadline: {
@@ -658,6 +685,29 @@ export const TOOLKIT_SUMMARIES: Record<
   DEVICE_IDS: { summary: "Every catalogue device id." },
   DepthStage: { summary: "Four depth slots sized to stay full-bleed through a camera rig." },
   Device: { summary: "A catalogue device with screen media, placement, motion and shadow." },
+  DeviceScreenAnchor: {
+    summary:
+      "Child of Device: <DeviceScreenAnchor u v> pins content to its screen (u right, v down, 0..1).",
+  },
+  SCREEN_LIFT: { summary: "Default gap between anchored content and the glass (fitted units)." },
+  deviceScreenLocal: {
+    summary: "deviceScreenLocal(model, u, v, lift?, hinge?): a screen point in the device's frame.",
+  },
+  deviceScreenPoint: {
+    summary: "deviceScreenPoint(model, u, v, pose, lift?): a screen point in world space.",
+  },
+  deviceScreenRect: {
+    summary: "deviceScreenRect(model, display?): the measured screen rect this build renders.",
+  },
+  mediaPixelToScreenUv: {
+    summary: "mediaPixelToScreenUv(model, [x, y], { width, height }): media pixel to screen UV.",
+  },
+  screenUvToMediaPixel: {
+    summary: "screenUvToMediaPixel(model, [u, v], { width, height }): screen UV to media pixel.",
+  },
+  useDeviceScreen: {
+    summary: "Inside Device: { rect, coverRect, local(u, v) } for the screen it renders, or null.",
+  },
   DeviceMockup: { summary: "Pre-catalogue phone with a static screen image.", legacy: true },
   ExtrudedText: { summary: "Lit 3D extruded text (ASCII, bundled face)." },
   FALLBACK_DEVICE_ID: { summary: "android: what unknown or unavailable models render as." },
@@ -675,6 +725,10 @@ export const TOOLKIT_SUMMARIES: Record<
     internal: true,
   },
   ParticleField: { summary: "Seeded instanced particles drifting on the clock." },
+  PromptBar: {
+    summary:
+      "Chat prompt bar: text types in from `from` to `to` (45 ms a key by default), caret, send button.",
+  },
   Ribbon: { summary: "Seeded tube that grows along a curve." },
   SceneStage: { summary: "Theme lighting, backdrop and real shadows for the scene." },
   StagedObject: { summary: "One sidecar objects entry, auto-fitted." },
@@ -740,6 +794,97 @@ export const TOOLKIT_SUMMARIES: Record<
   useSceneText: { summary: "useSceneText(key, fallback, role?): sidecar copy for a text key." },
   useTheme: { summary: "The resolved theme tokens for this scene." },
   useTimeline: { summary: "{ localMs, globalMs, progress }; progress is PROJECT-wide." },
+  EASE_NAMES: { summary: "Every ease name (see kb catalog eases)." },
+  Pill: { summary: "RoundedRect with fully round ends: width, height, color, opacity, stroke." },
+  RoundedRect: {
+    summary: "Flat, colour-exact rounded rect: width, height, radius, color, opacity, stroke.",
+  },
+  clamp01: { summary: "clamp01(x): x clamped to 0..1." },
+  ease: {
+    summary:
+      'ease(name, t, { overshoot }?): the curve at t clamped to 0..1; unknown names use "inOutQuad".',
+  },
+  easeFn: { summary: "easeFn(name, { overshoot }?): the raw curve as a function (no clamping)." },
+  isEaseName: { summary: "Whether a value is an ease name." },
+  lerp: { summary: "lerp(a, b, t): a + (b - a) * t." },
+  ramp: {
+    summary: "ramp(localMs, startMs, endMs, ease?, opts?): eased 0..1 progress through a window.",
+  },
+  sampleKeys: {
+    summary:
+      "sampleKeys([{ tMs, ease?, ...values }], localMs): keyed values; each key's ease shapes the segment into it.",
+  },
+  stampScale: {
+    summary:
+      "stampScale({ from, peak, inMs, settleMs }?) returns ms => scale: a pop to 1.12 that settles.",
+  },
+  useProjectShared: {
+    summary:
+      'useProjectShared(path?, fallback?): project.json shared constants, e.g. "palette.accent".',
+  },
+  measureText: {
+    summary:
+      "measureText(text, { font, fontSize, letterSpacing?, lineHeight? }): { width, height, ascent, descent, lines } in world units, or null.",
+  },
+  useTextMetrics: {
+    summary:
+      "useTextMetrics(textKey, text, opts?): the block an AnimatedHeadline with those props typesets, sidecar overrides included.",
+  },
+  useSceneCamera: { summary: "The scene camera's pose this frame: { position, lookAt, fov }." },
+  frameAtDepth: {
+    summary: "frameAtDepth(format, z): the base camera's visible { width, height } at depth z.",
+  },
+  useCameraFrame: {
+    summary: "useCameraFrame(z): the world { width, height, center } the scene camera sees at z.",
+  },
+  Room: {
+    summary:
+      "Camera-locked room: colour fills the frame behind all content, flood? grows over it. The sidecar room block draws its own.",
+  },
+  RoomFlood: {
+    summary:
+      "RoomFlood colour origin? radius: a circle of colour growing from a frame point ([0,0] top-left); radius 1 covers the frame.",
+  },
+  useRoom: {
+    summary:
+      "The scene's room now: { colour, key, flood: { colour, origin, progress, radius } | null, pose }, or null.",
+  },
+  cssOpacity: {
+    summary: "cssOpacity(fg, room, a): fg at opacity a over the room, as the exact opaque hex.",
+  },
+  glowColour: {
+    summary:
+      "glowColour(hex, glow): full channels raised to luminance glow, so bloom (threshold above 1) catches it and it still clamps to hex.",
+  },
+  Stamp: {
+    summary:
+      "<Stamp at rotateDeg? position rotation scale>: stamps children in at `at` ms with the stampScale pop and an optional rotation settle.",
+  },
+  DashedRule: {
+    summary:
+      "Dashed straight rule from `from` to `to` [x, y]: thickness, dash, gap, color, opacity, progress (draw-on), round.",
+  },
+  DashedBracket: {
+    summary:
+      "Dashed bracket over a span: span, depth, side top|bottom|left|right, plus the DashedRule style; progress draws out from the middle.",
+  },
+  SplitField: {
+    summary:
+      "Frame split into tiles (images, videos, theme colours) with a staggered reveal that reflows per aspect; no tiles draws the sidecar mosaic.",
+  },
+  MosaicFallback: {
+    summary: "Host-mounted sidecar mosaic for scenes without SplitField.",
+    internal: true,
+  },
+  TapRing: {
+    summary:
+      "TapRing at radius? colour? dot? position: a ring pulse on the video editor's 550 ms tap curve.",
+  },
+  TapsFallback: { summary: "Host-mounted world-space sidecar taps.", internal: true },
+  Cursor: {
+    summary:
+      "Cursor keys=[{ tMs, position, ease? }] presses=[ms]: a pointer travelling a keyed path, pressing with a small scale and a tap ring.",
+  },
 };
 
 // ── Helpers ──
@@ -937,6 +1082,7 @@ function textMotion(): Entry[] {
       ...(p.hasScaleParams ? ["startScale", "shine"] : []),
       ...(p.hasDirection ? ["direction"] : []),
       ...(DISTANCE.has(p.preset) ? ["distance"] : []),
+      ...(p.hasBuildShift ? ["buildShiftEm"] : []),
     ],
   }));
   presets.push({
@@ -976,6 +1122,8 @@ function textLooks(): Entry[] {
       ...(l.hasHollow ? ["hollow"] : []),
       ...(l.hasIntensity ? ["intensity"] : []),
       ...(l.hasOffset ? ["offsetEm"] : []),
+      ...(l.hasOffsetDir ? ["offsetDir"] : []),
+      ...(l.hasOffsetOpacity ? ["offsetOpacity"] : []),
       ...(l.hasCurve ? ["curveDeg"] : []),
     ],
     threeD: l.preset.endsWith("-3d"),
@@ -1133,6 +1281,18 @@ function effects(): Entry[] {
   }));
 }
 
+/** A measured screen rect for the kit: fitted units at placement scale 1, UV u right and v down. */
+function screenRectEntry(rect: DeviceScreenRect): Json {
+  return {
+    width: round(rect.width, 4),
+    height: round(rect.height, 4),
+    centre: rect.centre.map((n) => round(n, 4)),
+    z: round(rect.z, 4),
+    cornerRadius: round(rect.cornerRadius, 4),
+    ...(rect.frame ? { frame: { ...rect.frame } } : {}),
+  };
+}
+
 function devices(): Entry[] {
   return DEVICE_IDS.map((id) => {
     const spec = DEVICE_CATALOG[id];
@@ -1146,9 +1306,19 @@ function devices(): Entry[] {
       customColour: `${CUSTOM_COLOUR_PREFIX}#rrggbb`,
       screenAspect: round(spec.screen.aspect, 4),
       ...(spec.coverScreen ? { coverScreenAspect: round(spec.coverScreen.aspect, 4) } : {}),
+      screen: screenRectEntry(spec.screen.rect),
+      ...(spec.coverScreen ? { coverScreen: screenRectEntry(spec.coverScreen.rect) } : {}),
       fittedHeight: round(spec.fittedHeight),
       layoutWidth: round(spec.layoutWidth),
-      ...(spec.lid ? { lid: { defaultDeg: spec.lid.defaultDeg, openDeg: spec.lid.openDeg } } : {}),
+      ...(spec.lid
+        ? {
+            lid: {
+              defaultDeg: spec.lid.defaultDeg,
+              openDeg: spec.lid.openDeg,
+              ...(spec.lid.pivot ? { pivot: spec.lid.pivot.map((n) => round(n, 4)) } : {}),
+            },
+          }
+        : {}),
       ...(spec.fold
         ? { fold: { defaultDeg: spec.fold.defaultDeg, openDeg: spec.fold.openDeg } }
         : {}),
