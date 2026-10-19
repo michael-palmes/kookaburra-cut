@@ -1717,8 +1717,8 @@ pub struct ConformStatus {
     pub refused: Option<String>,
 }
 
-/// Bumped when the probe's verdict changes for the same bytes; older cached verdicts re-probe. 2: B-frames alone no longer flag.
-const VERDICT_VERSION: u32 = 2;
+/// Bumped when the probe's verdict changes for the same bytes; older cached verdicts re-probe. 2: B-frames alone no longer flag. 3: the container's edit start (kb's rule).
+const VERDICT_VERSION: u32 = 3;
 
 #[derive(Serialize, Deserialize)]
 struct CachedVerdict {

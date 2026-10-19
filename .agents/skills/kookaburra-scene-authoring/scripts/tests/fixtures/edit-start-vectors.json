@@ -1,0 +1,152 @@
+{
+  "version": 1,
+  "description": "Where a video's edit list opens and what that does to the conform verdict: src-tauri/src/mp4box.rs + conform.rs evaluate (cargo test edit_start_vectors_match_kb) and kblib/mp4box.py + kblib/conform.py (test_edit_start_vectors) replay these cases. Each movie is one video track built box by box (tests/mp4synth.py, mp4box.rs synth): decode deltas (stts), composition offsets (ctts), an edit list of [segment duration in movie units, media time in media units or -1, rate], a media timescale (default 600), a movie timescale (default 1000) and the elst version (default 0). The verdict is judged from the edit start alone, over an otherwise clean file.",
+  "rule": [
+    "Zero-length empty edits are dropped. No edit left: none. Several segments, an empty edit or a rate other than 1: complex.",
+    "Otherwise the one edit's media time against the sorted composition times: equal to the first is first-frame, earlier is gap, equal to a later one is frame, between two is mid-sample.",
+    "none and first-frame leave the verdict ok. Any other start is an edit list (suspect, conform recommended); mid-sample adds edit-mid-sample and makes the verdict ffmpeg-misdecodes, since ffmpeg drops that frame and shows the next one at 0 s."
+  ],
+  "cases": [
+    {
+      "name": "no-edit-list",
+      "movie": {
+        "deltas": [10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10]
+      },
+      "editStart": "none",
+      "verdict": "ok",
+      "reasons": [],
+      "recommended": false
+    },
+    {
+      "name": "trivial",
+      "movie": {
+        "deltas": [10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10],
+        "edits": [[1000, 0, 1.0]]
+      },
+      "editStart": "first-frame",
+      "verdict": "ok",
+      "reasons": [],
+      "recommended": false
+    },
+    {
+      "name": "b-frame-delay",
+      "movie": {
+        "deltas": [10, 10, 10, 10, 10, 10, 10, 10],
+        "offsets": [20, 50, 10, 10, 50, 20, 20, 20],
+        "edits": [[133, 20, 1.0]]
+      },
+      "editStart": "first-frame",
+      "verdict": "ok",
+      "reasons": [],
+      "recommended": false
+    },
+    {
+      "name": "zero-length-empty-edit",
+      "movie": {
+        "deltas": [10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10],
+        "edits": [[0, -1, 1.0], [500, 0, 1.0]]
+      },
+      "editStart": "first-frame",
+      "verdict": "ok",
+      "reasons": [],
+      "recommended": false
+    },
+    {
+      "name": "whole-frame",
+      "movie": {
+        "deltas": [10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10],
+        "edits": [[1500, 300, 1.0]]
+      },
+      "editStart": "frame",
+      "verdict": "suspect",
+      "reasons": [
+        "edit-list"
+      ],
+      "recommended": true
+    },
+    {
+      "name": "mid-sample",
+      "movie": {
+        "deltas": [10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 600, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10],
+        "edits": [[1500, 450, 1.0]]
+      },
+      "editStart": "mid-sample",
+      "verdict": "ffmpeg-misdecodes",
+      "reasons": [
+        "edit-list",
+        "edit-mid-sample"
+      ],
+      "recommended": true
+    },
+    {
+      "name": "mid-sample-elst-v1",
+      "movie": {
+        "deltas": [10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 600, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10],
+        "edits": [[1500, 450, 1.0]],
+        "elstVersion": 1
+      },
+      "editStart": "mid-sample",
+      "verdict": "ffmpeg-misdecodes",
+      "reasons": [
+        "edit-list",
+        "edit-mid-sample"
+      ],
+      "recommended": true
+    },
+    {
+      "name": "mid-sample-b-frames",
+      "movie": {
+        "deltas": [10, 10, 10, 10, 10, 10, 10, 10],
+        "offsets": [20, 50, 10, 10, 50, 20, 20, 20],
+        "edits": [[100, 45, 1.0]]
+      },
+      "editStart": "mid-sample",
+      "verdict": "ffmpeg-misdecodes",
+      "reasons": [
+        "edit-list",
+        "edit-mid-sample"
+      ],
+      "recommended": true
+    },
+    {
+      "name": "gap",
+      "movie": {
+        "deltas": [10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10],
+        "offsets": [60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60],
+        "edits": [[500, 0, 1.0]]
+      },
+      "editStart": "gap",
+      "verdict": "suspect",
+      "reasons": [
+        "edit-list"
+      ],
+      "recommended": true
+    },
+    {
+      "name": "empty-edit",
+      "movie": {
+        "deltas": [10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10],
+        "edits": [[200, -1, 1.0], [500, 0, 1.0]]
+      },
+      "editStart": "complex",
+      "verdict": "suspect",
+      "reasons": [
+        "edit-list"
+      ],
+      "recommended": true
+    },
+    {
+      "name": "slow-rate",
+      "movie": {
+        "deltas": [10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10],
+        "edits": [[1000, 0, 0.5]]
+      },
+      "editStart": "complex",
+      "verdict": "suspect",
+      "reasons": [
+        "edit-list"
+      ],
+      "recommended": true
+    }
+  ]
+}

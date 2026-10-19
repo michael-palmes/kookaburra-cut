@@ -29,6 +29,7 @@ mod library_previews;
 mod live_edits;
 mod loudness;
 mod media;
+mod mp4box;
 mod objects;
 mod pack;
 mod packs_win;
