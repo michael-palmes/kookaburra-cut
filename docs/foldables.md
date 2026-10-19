@@ -284,4 +284,4 @@ because the inside media is landscape and would crop badly.
    `layoutWidth` (open), then the `modelUrl.ts` constant (named `*_GLB`, which the
    release guard reads) and the availability row.
 3. Render card art from the built glb if a finish is derived.
-4. Gate: a fixture Verify ×2, then `pnpm gate:merge`.
+4. Gate: `pnpm ready` (it adds `ws:duo-spike` for fold paths); a new fixture verifies ×2.

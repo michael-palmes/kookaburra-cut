@@ -139,10 +139,28 @@ fi
 # A packaged instance still shares $APPDATA caches with this run in an unmanaged way (it
 # takes no queue ticket and no per-run result dir), so that one stays a hard fail.
 # Executable paths only: `pgrep -f` also matched any shell whose arguments named the path.
-if [[ "$(ps -axo comm= 2>/dev/null)" == *"/Kookaburra Cut.app/Contents/MacOS/"* ]]; then
+# The main binary only: kb's tests borrow the bundle's ffmpeg, which shares nothing.
+if [[ "$(ps -axo comm= 2>/dev/null)" == *"/Kookaburra Cut.app/Contents/MacOS/kookaburra-cut"* ]]; then
   echo "kookaburra:run: a packaged Kookaburra Cut is already running. Quit it first (shared caches)." >&2
   exit 2
 fi
+# Heavy swap or booted simulators doubled one fixture's verify (5.4 to 11.7 min, 2026-10-19); warn, never block.
+busy_warning() {
+  local used sims reasons=()
+  used="$(sysctl -n vm.swapusage 2>/dev/null | sed -n 's/.*used = \([0-9.]*\)M.*/\1/p' || true)"
+  if [[ -n "$used" ]] && (( ${used%.*} >= 4096 )); then
+    reasons+=("$(( ${used%.*} / 1024 )) GB of swap in use")
+  fi
+  sims="$(xcrun simctl list devices booted 2>/dev/null | grep -c '(Booted)' || true)"
+  if [[ "${sims:-0}" -gt 0 ]]; then reasons+=("$sims iOS simulator(s) booted"); fi
+  if [[ ${#reasons[@]} -gt 0 ]]; then
+    local joined
+    joined="$(printf '%s, ' "${reasons[@]}")"
+    echo "kookaburra:run: warning: busy machine (${joined%, }): runs can take twice as long; close simulators and apps you aren't using" >&2
+  fi
+}
+busy_warning
+
 if [[ -n "$APP" ]]; then
   # Packaged mode: the sidecars sit beside the main binary, so resolve it from
   # Info.plist rather than guessing (a bare find can pick up ffmpeg instead).
@@ -278,7 +296,10 @@ while :; do
   sleep 2
   waited=$((waited + 2))
 done
-if [[ "$waited" -gt 0 ]]; then echo "kookaburra:run: queue acquired after ${waited}s"; fi
+if [[ "$waited" -gt 0 ]]; then
+  echo "kookaburra:run: queue acquired after ${waited}s"
+  busy_warning
+fi
 
 mkdir -p "$RUN_DIR"
 : >"$DEV_LOG"

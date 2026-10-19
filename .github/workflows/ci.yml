@@ -14,7 +14,29 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Scopes the rust job and kb suite by path; pushes, and a failed scope (empty flags), run everything.
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      rust: ${{ steps.scope.outputs.rust }}
+      kit: ${{ steps.scope.outputs.kit }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 2
+
+      - name: Scope
+        id: scope
+        env:
+          EVENT: ${{ github.event_name }}
+        run: bash scripts/ci-scope.sh "$EVENT" >> "$GITHUB_OUTPUT"
+
   frontend:
+    needs: changes
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -41,10 +63,20 @@ jobs:
       - name: Typecheck and build
         run: pnpm build
 
-      - name: Test
-        run: pnpm test
+      - name: Unit tests
+        run: pnpm vitest run
+
+      - name: Script tests
+        run: node --test scripts/*.test.mjs
+
+      # Mostly waiting on fake apps and retries, so modules run well past the core count.
+      - name: kb tests
+        if: ${{ needs.changes.outputs.kit != 'false' }}
+        run: node scripts/test-kit.mjs --jobs 8
 
   rust:
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.rust != 'false' }}
     runs-on: macos-latest
     timeout-minutes: 40
     steps:
@@ -80,7 +112,7 @@ jobs:
         with:
           workspaces: "src-tauri -> target"
 
-      # tauri-build validates externalBin paths; the real sidecars are gitignored and check/clippy never run them.
+      # tauri-build validates externalBin paths; the real sidecars are gitignored and the tests that run them are #[ignore]d.
       - name: Stub ffmpeg sidecars
         run: |
           triple="$(rustc -vV | sed -n 's/host: //p')"
@@ -90,14 +122,15 @@ jobs:
             chmod +x "src-tauri/bin/${bin}-${triple}"
           done
 
-      # tauri-build also validates bundle.resources; the beat-this model is gitignored (pnpm setup:models) and check/clippy never load it.
+      # tauri-build also validates bundle.resources; the beat-this model is gitignored (pnpm setup:models) and no test loads it.
       - name: Stub the beat-this model
         run: bash scripts/setup-models.sh --stub
 
-      - name: cargo check
-        working-directory: src-tauri
-        run: cargo check --locked --all-targets
-
+      # clippy runs the full check, so a separate cargo check would only repeat it.
       - name: cargo clippy
         working-directory: src-tauri
         run: cargo clippy --locked --all-targets -- -D warnings
+
+      - name: cargo test
+        working-directory: src-tauri
+        run: cargo test --locked

@@ -1278,7 +1278,8 @@ has an `id`; most have `label` and a one-line `summary`.
 
 ## Verification
 
-- Python: `pnpm test:kit` (unittest; part of `pnpm test`); `pnpm test:kit:e2e` with
+- Python: `pnpm test:kit` (unittest, one process per module in parallel; part of
+  `pnpm test`, `pnpm test:kit test_check` runs one module); `pnpm test:kit:e2e` with
   `KB_E2E_APP_BIN=<kookaburra-cut binary>` runs `kb video` against the real CLI.
 - Rust: `cargo test -- --ignored edit_` renders through the real sidecar (CLI end to
   end, core vs CLI byte-identical, barcode conformance, masks).

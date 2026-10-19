@@ -26,10 +26,10 @@ One fixed shape for every PR description: a summary, a short What changed list, 
 - <deliberate behaviour changes and known limitations are bullets here too, e.g. "Transitions adjacent to a comparison blend the before side only">
 
 ## Verification
-<ONE line, no hashes: e.g. "New gate fixture Verify x2 identical in all four aspects; gate:merge EQUAL on both anchors; 1128 tests green.">
+<ONE line, no hashes, the outcome `pnpm ready` printed: e.g. "pnpm ready READY: gate:merge EQUAL on both anchors, ws:device-video-spike EQUAL.">
 ```
 
-Omit `## Verification` entirely when the PR is trivial chrome or docs (nothing gated beyond build, lint and tests). Never add other sections.
+Omit `## Verification` entirely when `pnpm ready` planned no gates (nothing on the export path changed), since CI covers the rest. Never add other sections.
 
 ## Hard exclusions
 
@@ -38,7 +38,7 @@ Each of these has leaked into a real PR description before; the alternative is a
 1. **No local paths, planning folders, worktrees or memory notes.** PR #105 referenced a private planning folder that reviewers cannot see. Point to repo docs instead (`docs/comparisons.md`, `docs/determinism.md`).
 2. **No internal work-package narrative.** No "PR 3 of the ladder", batch numbers, or session history ("found along the way", "after the in-hand pass"). State what the PR does now, in the present tense.
 3. **No commit-by-commit recounts.** The PR's commit list already shows them.
-4. **No baseline hashes.** They live in `docs/determinism.md`; the Verification line says the outcome ("Verify x2 identical", "gate EQUAL"), not the bytes.
+4. **No baseline hashes.** They live in `docs/determinism.md`; the Verification line says the outcome ("gate:merge EQUAL", "new fixture Verify x2 identical"), not the bytes.
 5. **No screenshots or media attachments.** A visual change gets a What-changed bullet describing it; reviewers see the pixels in the app and the gate fixtures.
 6. **Never name the developer.** No "Michael", no "the author". The PR describes the change, not the people.
 7. **No private workspace names.** The user's own `~/Kookaburra Cut` projects are private: no project, scene, product, client or people's names from them. Describe the case generically instead ("a large media-heavy project"). The pre-flight below greps for workspace folder names; also check for any project opened during the work.
@@ -69,5 +69,5 @@ Adds before/after comparison scenes: one scene rendered as two sides under an an
 - Transitions adjacent to a comparison blend the before side only (said in the picker)
 
 ## Verification
-New gate fixture Verify x2 identical in all four aspects; gate:merge EQUAL on both anchors; 1128 tests green.
+pnpm ready READY: gate:merge EQUAL on both anchors, compare-spike EQUAL; new fixture Verify x2 identical in all four aspects.
 ```
