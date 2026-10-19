@@ -5,6 +5,7 @@ from __future__ import annotations
 import difflib
 import json
 import math
+import os
 import re
 from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
 
@@ -127,6 +128,10 @@ class Checker:
         problem = exact_case_exists(self.project.root, rel)
         edit = edit_of_output(self.project, rel)
         if problem == "missing":
+            original = conforming_original(self.project, rel)
+            if original:
+                self.report.info(file, path, f'"{rel}" is still conforming from {original}; rerun ./kb check when it lands')
+                return
             msg = f'"{rel}" does not exist; copy the file in with kb assets add <file> and use the path it prints'
             if edit:
                 msg = f'"{rel}" is not rendered yet (edits/{edit}.json exists): kb video render {edit}'
@@ -1034,6 +1039,26 @@ def edit_of_output(project: Project, rel: str) -> Optional[str]:
 
     name = editdoc.name_of_output(rel)
     return name if name and editdoc.edit_path(project, name).is_file() else None
+
+
+def conforming_original(project: Project, rel: str) -> Optional[str]:
+    """The kept original a conform is still turning into rel, else None: the app's import and kb assets add land
+    assets/<stem>.mp4 from assets/.originals/<stem>.<ext> and write assets/<stem>.timing.json last."""
+    from .assets import ORIGINALS, TIMING_SUFFIX
+    from .conform import CONFORMABLE_EXTS
+
+    folder, _, name = rel.rpartition("/")
+    if folder != "assets" or not name.endswith(".mp4") or (project.assets_dir / f"{name[:-4]}{TIMING_SUFFIX}").exists():
+        return None
+    try:
+        names = sorted(os.listdir(project.root / ORIGINALS))
+    except OSError:
+        return None
+    for kept in names:
+        stem, _, ext = kept.rpartition(".")
+        if stem == name[:-4] and ext.lower() in CONFORMABLE_EXTS and (project.root / ORIGINALS / kept).is_file():
+            return f"{ORIGINALS}/{kept}"
+    return None
 
 
 def _finite(v: Any) -> bool:
