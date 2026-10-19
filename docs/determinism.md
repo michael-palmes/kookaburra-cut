@@ -1576,36 +1576,70 @@ serialises them across every worktree). **Default to the smallest gate that
 covers the changed CODE PATHS: theme/scene DATA variations (colours, light
 params, text) do not add code paths and do not need their own verifies.**
 
-- **Tier 0: statics (every change, free):** `pnpm vitest run` · `pnpm build` ·
-  `pnpm lint`. Pure math (eases, presets, schemas, edit math) belongs in unit
-  tests, not in verify runs.
-- **Tier 1: the DEFAULT per-change gate (1 run):** ONE feature-matched
-  project, Verify ×2, **16:9 only**: pick the project whose content exercises
-  the changed path: `showcase-tour` for themes/staging/text/presets (the
-  rolling gate project, six themes, devices, video, ImageCard, camera moves
-  and bloom in one project), `ws:device-video-spike` for device/media/camera, `ws:duo-spike` for
-  foldables (fold, second display, auto power),
-  `ws:fx-spike` for effects, `ws:dof-spike` for depth of field,
-  `ws:motion-blur-spike` for motion blur, a hand-rolled
-  workspace mini-project for anything narrower. `pnpm gate` runs the
-  showcase-tour leg (~2 min).
-- **Pre-merge: the sentinel pair (2026-07-25 tier change):** before a PR
-  merges (and at any rebase or phase close), `pnpm gate:merge` runs
-  `showcase-tour` + `ws:launch-2026` Verify ×2 in ONE app boot (`--project`
-  takes a comma list for verify/export; per-leg results carry a `project`
-  field in `last-run.json`). `ws:launch-2026` must be EQUAL: the
-  null-for-legacy proof. A legacy regression is caught per PR instead of per
-  change; it still cannot merge.
+**`pnpm ready` applies these tiers to the branch's diff (2026-10-19).** It
+classes each changed path (`scripts/gate-plan.mjs`), runs only the Tier 0
+checks the diff needs, then every verify leg it needs, and prints READY or NOT
+READY. A `src/` file gates only when the export path loads it: the render
+closure (`scripts/render-closure.mjs`) is a write-free vite build of what the
+app mounts inside its canvas, plus the autorun harness and the toolkit, so
+`import.meta.glob` and `?raw` resolve as in the app. Outside `src/`, a short
+list of paths never reaches pixels (docs, the kit, CI, tests, non-export Rust
+modules) and everything unlisted is gated. A test fails if a closure file is
+ever classed as no-verify. `pnpm ready --plan` prints the plan without running
+it.
+
+- **One export against the baseline (2026-10-19, Michael).** A leg with a
+  recorded baseline exports ONCE (`--action export`) and must match it: the
+  baseline came from a passed ×2, so a match proves no regression and
+  run-to-run stability together. A mismatch re-runs the leg as Verify ×2 and
+  names the outcome: MOVED (×2 identical on a new hash: attribute or rebase)
+  or NONDETERMINISTIC. A leg with no baseline verifies ×2, as does every leg of
+  a Tier 2+ change (the planner sees the seam). A rebase runs `pnpm ready --x2`
+  on the fixture that proves the changed path, then records the rest from
+  single exports ("Recording rebases" below).
+- **Boots and order.** Hashes depend on what ran earlier in the same boot, so
+  the anchors run first in one boot (`showcase-tour`, then `ws:launch-2026`)
+  and every other leg gets its own boot.
+- **The result cache.** An EQUAL leg is recorded in
+  `~/Kookaburra Cut/_autorun/gate-cache.json` against a hash of its inputs:
+  every gated repo file, the licensed models, the ffmpeg sidecar and, for a
+  `ws:` leg, the fixture folder (sizes and mtimes, exports excluded). An
+  unchanged leg is skipped, in any worktree; `--force` re-runs it.
+- **Tier 0: statics (free):** lint, build, `vitest related` on the changed
+  `src/` files, the script tests, the kb suite and `cargo clippy` + `cargo
+  test`, each only when the diff touches its area. CI runs all of them on every
+  PR (`scripts/ci-scope.sh` scopes the rust job and the kb suite). Pure math
+  (eases, presets, schemas, edit math) belongs in unit tests, not in verify
+  runs.
+- **The PR gate: `pnpm gate:merge`, once, when the render path changed.**
+  `showcase-tour` + `ws:launch-2026`, 16:9, one boot. `ws:launch-2026` must be
+  EQUAL: the null-for-legacy proof. A PR that touches nothing on the export
+  path skips it. Run it after the last code change, not after each fix; the
+  cache makes a repeat free when nothing it reads moved. `pnpm gate` runs the
+  `showcase-tour` leg alone.
+- **Feature fixtures, only when touched (Tier 1):** the fixture whose content
+  exercises the changed path joins the run, never as a routine PR check:
+  `ws:device-video-spike` for device/media/camera, `ws:duo-spike` for
+  foldables, `ws:fx-spike` for effects, `ws:dof-spike` for depth of field,
+  `ws:motion-blur-spike` for motion blur, `ws:motion-toolkit-spike` for the
+  motion and shape primitives, `ws:camera-kick-spike` for kicks and the beat
+  grid, and the rest in `FEATURE_LEGS` (`scripts/gate-plan.mjs`). A
+  hand-rolled workspace mini-project covers anything narrower.
+- **Fixture budget:** a new gate fixture runs 8 s or less (480 frames) unless
+  its path genuinely spans longer: an export costs about 0.1 to 0.3 s per 4K
+  frame.
 - **Tier 2: escalate selectively:** changes at a SHARED render seam (compositor,
   exporter, SceneStage, effects chain, camera application) add the other class
   project and ONE 9:16 spot-check (aspect-dependent code is rare: it's layout,
-  not pipeline). A hash that moves when it shouldn't is a STOP: attribute it
+  not pipeline); `pnpm ready` adds both and verifies every leg ×2. A hash that
+  moves when it shouldn't is a STOP: attribute it
   first (`git stash` the suspect file and re-verify; check the render-state
   fingerprint) before running anything else.
 - **Tier 3: the full matrix (all standing projects × all aspects):** ONLY for
   engine-wide constants (FPS, MSAA, shadow type, tone mapping, blending domain,
   font-atlas order), deliberate baseline rebases, phase-closing gates, and
-  packaged-app parity checks.
+  packaged-app parity checks. `pnpm ready` notes when a diff touches a file
+  that holds one, but can't tell a constant edit from any other.
 - **Pack round trip (v13, any change under `src-tauri/src/pack/**` or
   `fonts.rs`):** export a gate project to a `.kbpack`, import it into a clean
   workspace root, verify THERE, and demand the same baseline hash. Every other
@@ -1630,9 +1664,9 @@ params, text) do not add code paths and do not need their own verifies.**
   the `ws:stills-spike` legs (machine-local: key and time marks, a dormant mark,
   holds, transition overlaps, an excluded scene) for planning changes. Compare
   `pagesHash` (and the PNG zip's file SHA-256) against "Current baselines", not
-  just A = B. `exportFrame.ts` is also the video loop's per-frame body, so a
-  change there takes the video gates too (`pnpm gate`, then `pnpm gate:merge`
-  pre-merge). A new Present timing registration moves Present and automatic
+  just A = B (`pnpm ready` runs both formats and compares). `exportFrame.ts`
+  is also the video loop's per-frame body, so a change there takes the video
+  gates too. A new Present timing registration moves Present and automatic
   stills, never video bytes: re-record the stills baselines deliberately.
 - **Recording rebases:** once the changed code path is PROVEN deterministic by
   the Tier-1 verify, record the other affected projects' new hashes from a
@@ -1648,7 +1682,9 @@ params, text) do not add code paths and do not need their own verifies.**
 ### Current baselines
 
 Baselines are same-machine SHA-256 prefixes of the frozen-path (`libx264`,
-16:9 unless noted) export, recorded after a passed Verify ×2. Two projects anchor
+16:9 unless noted) export, recorded after a passed Verify ×2. `pnpm ready`
+reads both tables below, so keep their shape: one backticked id per row and
+each recorded hash backticked in its own cell. Two projects anchor
 the set: the null-for-legacy sentinel (`ws:launch-2026`, a hash-identical
 workspace copy of the reel dropped from the bundled set on 2026-07-13, scene
 durations re-frozen 2026-07-25, see the splice note below) and the bundled
@@ -1680,7 +1716,18 @@ rolling-gate project (`showcase-tour`):
 | `ws:text-outline-spike` (outlined text in the text barrier: neon, whole-block blur-in, machine-local) | `87bb6b3a…` | — | — | — | — | — | — | — | — |
 | `ws:rooms-spike` (room cuts, a flood with a tokened light, a wipe while both sides flood; machine-local, never gated) | `ea0da8bd…` | `2933616e…` | — | — | — | — | — | — | — |
 | `ws:mask-fx-spike` (an image-mask seam between two bloom scenes on the effects lane; machine-local, never gated) | `c93487c0…` | — | — | — | — | — | — | — | — |
-| `ws:motion-toolkit-spike` (the toolkit primitives: shapes, device anchors, text metrics and presets, stamps, dashes, mosaic, taps; machine-local, never gated) | `fec675ba…` | `99721e0c…` | — | — | — | — | — | — | — |
+| `ws:motion-toolkit-spike` (the toolkit primitives: shapes, device anchors, text metrics and presets, stamps, dashes, mosaic, taps; machine-local, gated when motion or shape primitives change) | `fba8fa0e…` | `91bea026…` | — | — | — | — | — | — | — |
+
+> **2026-10-19 (`ws:motion-toolkit-spike` trimmed to the fixture budget,
+> Michael):** its 13 scenes went from 3000 to 600 ms in the manifest (39 s to
+> 7.8 s, 468 frames), the original kept beside it as
+> `project.json.pre-trim-2026-10-19`. Verify ×2 identical at `fba8fa0e…` (16:9)
+> and `91bea026…` (9:16) on render code unchanged from main `c6ce484f`, so the
+> move is the trim alone. Accepted cost: moments past 600 ms into a scene (the
+> shape path's later keys, a tap press at 1.3 s, a tap ring at 2 s) no longer
+> render. The same session's `pnpm ready` proved a single export matches a
+> ×2-recorded baseline: `showcase-tour` `13b5994d…` and `ws:launch-2026`
+> `eb89826c…` (second leg) both matched.
 
 > **2026-10-19 (display targets: a deliberate rebase):** every no-effects SDR
 > target is now a display target (see "Rendering into a plain render target"),

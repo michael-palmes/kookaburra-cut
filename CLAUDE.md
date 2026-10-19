@@ -33,8 +33,9 @@ pnpm format             # biome format --write .
 # Bundled gate projects take NO prefix (showcase-tour); workspace fixtures take ws:.
 pnpm kookaburra:run --action verify --project ws:launch-2026 --aspect all
 pnpm kookaburra:run --action export --project ws:device-video-spike --aspect 16:9 --codec libx264
-pnpm gate               # the default per-change gate: showcase-tour Verify ×2, 16:9 (~2 min)
-pnpm gate:merge         # pre-merge pair (showcase-tour + ws:launch-2026, 16:9) in ONE app boot
+pnpm ready              # PR readiness: the statics and verify legs this branch's diff needs (--plan to preview)
+pnpm gate:merge         # the ONE PR gate: showcase-tour + ws:launch-2026, 16:9, one boot, ×1 vs baseline
+pnpm gate               # the showcase-tour leg alone
 
 # Cold run: the preview stands down from boot, so no preview frame draws before the run
 # whatever the window does ("gl memory before" in dev.log shows programs 0 or 1). Warm runs
@@ -79,11 +80,14 @@ pnpm release           # guards -> package:signed -> zip + checksum -> tag -> dr
 
 For native Computer Use verification, run `pnpm acceptance:app` and target only the full `.app` path it prints. Never use `Kookaburra Cut`, `com.mpalmes.kookaburracut` or `/Applications/Kookaburra Cut.app`; if the helper fails, stop rather than falling back.
 
-**Gate economy:** the default per-change gate is ONE feature-matched project
-Verify ×2 in 16:9 (`showcase-tour` is the rolling gate project, ~2 min). The
-legacy sentinel gates PRE-MERGE: `pnpm gate:merge` runs showcase-tour +
-`ws:launch-2026` in one boot (~3 min); `ws:launch-2026` must be EQUAL (the
-null-for-legacy proof).
+**Gate economy:** before a PR, run `pnpm ready` once, after the last code
+change. It maps the diff to exactly what it needs: Tier 0 checks for the areas
+touched, then `pnpm gate:merge` (the ONE PR gate: showcase-tour +
+`ws:launch-2026`, which must be EQUAL as the null-for-legacy proof) only when
+the export path changed, plus a feature fixture only when its area changed.
+Each leg exports ONCE against its recorded baseline and falls back to Verify ×2
+on a mismatch; a leg whose inputs haven't changed since an EQUAL run is
+skipped. CI runs every hermetic test, so don't rerun full suites locally.
 Theme/scene DATA variations don't need their own verifies; only changed CODE
 PATHS do. Full matrices (all projects × all aspects) are reserved for engine-wide
 constants, deliberate rebases and phase-closing gates. Full tier policy and the

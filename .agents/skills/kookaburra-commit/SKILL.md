@@ -15,7 +15,7 @@ Reviews all uncommitted changes, groups them into logical conventional commits a
 ## Instructions
 
 1. **Gather.** `git status`, `git diff HEAD --stat`, `git ls-files --others --exclude-standard`, then read the full `git diff HEAD` and any untracked files. Nothing to commit: say so and stop. Merge conflicts: ask the user to resolve first and stop.
-2. **Validate.** `pnpm lint` always; `pnpm build` when TypeScript changed; `pnpm test` when `src/engine/` or `src/toolkit/` changed. Fix and rerun until clean. Never run verifies here: they gate render and export changes via `docs/determinism.md`, not commits.
+2. **Validate.** `pnpm lint` always; `pnpm build` when TypeScript changed; `pnpm vitest related --run <changed src files>` when `src/` changed. Fix and rerun until clean. Never run full suites or verifies here: CI runs every hermetic test on push, and `pnpm ready` runs the verifies a branch needs once before its PR (`docs/determinism.md`, "Gate tiers").
 3. **Light review.** Scan the diff for red flags before planning:
    - Determinism: wall-clock APIs (`Date.now`, `performance.now`, `new Date`, `requestAnimationFrame`, `setTimeout`) in scenes, engine or toolkit; drive motion from `useTimeline()` instead
    - Hard-coded colours, type or motion in scenes; use `useTheme()` tokens instead

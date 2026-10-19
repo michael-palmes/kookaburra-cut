@@ -51,6 +51,15 @@ describe("kookaburra-run packaged app check", () => {
     assert.match(result.stderr, /a packaged Kookaburra Cut is already running/);
   });
 
+  test("ignores the bundle's ffmpeg running on its own", () => {
+    const result = run(
+      ["--action", "verify", "--app", "/nonexistent/Fake.app"],
+      envWithProcesses(["/Applications/Kookaburra Cut.app/Contents/MacOS/ffmpeg"]),
+    );
+    assert.equal(result.status, 2);
+    assert.doesNotMatch(result.stderr, /already running/);
+  });
+
   test("ignores a shell that only names the packaged path", () => {
     const result = run(
       ["--action", "verify", "--app", "/nonexistent/Fake.app"],
@@ -58,6 +67,66 @@ describe("kookaburra-run packaged app check", () => {
     );
     assert.equal(result.status, 2);
     assert.doesNotMatch(result.stderr, /already running/);
+    assert.match(result.stderr, /no executable found inside/);
+  });
+});
+
+describe("kookaburra-run busy warning", () => {
+  const bins = [];
+  after(() => {
+    for (const bin of bins) rmSync(bin, { recursive: true, force: true });
+  });
+
+  // Fake sysctl and xcrun report the given swap use and booted simulators.
+  function envWithLoad(swapMb, booted) {
+    const bin = mkdtempSync(join(tmpdir(), "kb-run-busy-"));
+    bins.push(bin);
+    writeFileSync(
+      join(bin, "sysctl"),
+      `#!/bin/sh\necho "total = 20480.00M  used = ${swapMb}.00M  free = 1.00M  (encrypted)"\n`,
+    );
+    const lines = Array.from(
+      { length: booted },
+      (_, i) => `    Sim ${i} (0000-${i}) (Booted)`,
+    ).join("\\n");
+    writeFileSync(join(bin, "xcrun"), `#!/bin/sh\nprintf '== Devices ==\\n${lines}\\n'\n`);
+    chmodSync(join(bin, "sysctl"), 0o755);
+    chmodSync(join(bin, "xcrun"), 0o755);
+    return { ...process.env, PATH: `${bin}:${process.env.PATH}` };
+  }
+
+  test("names heavy swap and booted simulators", () => {
+    const result = run(
+      ["--action", "verify", "--app", "/nonexistent/Fake.app"],
+      envWithLoad(14336, 3),
+    );
+    assert.match(
+      result.stderr,
+      /busy machine \(14 GB of swap in use, 3 iOS simulator\(s\) booted\)/,
+    );
+  });
+
+  test("stays quiet on an idle machine", () => {
+    const result = run(
+      ["--action", "verify", "--app", "/nonexistent/Fake.app"],
+      envWithLoad(512, 0),
+    );
+    assert.doesNotMatch(result.stderr, /busy machine/);
+  });
+
+  // Linux CI has neither: a failed sysctl once ended the run under set -e before any other check.
+  test("never blocks when sysctl and xcrun fail", () => {
+    const bin = mkdtempSync(join(tmpdir(), "kb-run-busy-"));
+    bins.push(bin);
+    for (const tool of ["sysctl", "xcrun"]) {
+      writeFileSync(join(bin, tool), "#!/bin/sh\nexit 1\n");
+      chmodSync(join(bin, tool), 0o755);
+    }
+    const result = run(["--action", "verify", "--app", "/nonexistent/Fake.app"], {
+      ...process.env,
+      PATH: `${bin}:${process.env.PATH}`,
+    });
+    assert.equal(result.status, 2);
     assert.match(result.stderr, /no executable found inside/);
   });
 });

@@ -197,6 +197,8 @@ class ExportViaBridgeTests(KbTestCase):
     def test_sigterm_cancels_and_exits_130(self) -> None:
         def handler(r: Dict[str, Any]) -> Optional[Dict[str, Any]]:
             if r.get("kind") == "cancelExport":
+                write_json(self.bridge / "responses" / f"{r['target']}.json",
+                           {"version": 2, "id": r["target"], "ok": False, "code": "cancelled", "error": "export cancelled"})
                 return {"ok": True, "cancelled": True, "state": "cancelling"}
             self.progress(r, stage="render", frame=1, total=541)
             return None
