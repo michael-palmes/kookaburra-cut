@@ -1757,9 +1757,8 @@ rolling-gate project (`showcase-tour`):
 > `ws:chart-spike` (its framed scene), `ws:rooms-spike` (both aspects) and the
 > `ws:stills-spike` stills. `ws:emoji-spike` and `ws:shader-spike` (one
 > crossfade each) are marked stale, as `ws:overlay-spike` and
-> `ws:duplicate-spike` already were. Boot order still matters: a fixture's hash
-> can differ as a later leg of a multi-project boot, so record and re-check
-> each one alone, anchors first.
+> `ws:duplicate-spike` already were. Every leg was recorded anchors first or
+> alone in its own boot ("Boots and order" above).
 
 > **2026-10-18 (image-mask transition, a fifth material generation):** with the
 > code in and the fixtures untouched, `transition-spike` stayed EQUAL at
