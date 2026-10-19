@@ -70,3 +70,47 @@ describe("kookaburra-run packaged app check", () => {
     assert.match(result.stderr, /no executable found inside/);
   });
 });
+
+describe("kookaburra-run busy warning", () => {
+  const bins = [];
+  after(() => {
+    for (const bin of bins) rmSync(bin, { recursive: true, force: true });
+  });
+
+  // Fake sysctl and xcrun report the given swap use and booted simulators.
+  function envWithLoad(swapMb, booted) {
+    const bin = mkdtempSync(join(tmpdir(), "kb-run-busy-"));
+    bins.push(bin);
+    writeFileSync(
+      join(bin, "sysctl"),
+      `#!/bin/sh\necho "total = 20480.00M  used = ${swapMb}.00M  free = 1.00M  (encrypted)"\n`,
+    );
+    const lines = Array.from(
+      { length: booted },
+      (_, i) => `    Sim ${i} (0000-${i}) (Booted)`,
+    ).join("\\n");
+    writeFileSync(join(bin, "xcrun"), `#!/bin/sh\nprintf '== Devices ==\\n${lines}\\n'\n`);
+    chmodSync(join(bin, "sysctl"), 0o755);
+    chmodSync(join(bin, "xcrun"), 0o755);
+    return { ...process.env, PATH: `${bin}:${process.env.PATH}` };
+  }
+
+  test("names heavy swap and booted simulators", () => {
+    const result = run(
+      ["--action", "verify", "--app", "/nonexistent/Fake.app"],
+      envWithLoad(14336, 3),
+    );
+    assert.match(
+      result.stderr,
+      /busy machine \(14 GB of swap in use, 3 iOS simulator\(s\) booted\)/,
+    );
+  });
+
+  test("stays quiet on an idle machine", () => {
+    const result = run(
+      ["--action", "verify", "--app", "/nonexistent/Fake.app"],
+      envWithLoad(512, 0),
+    );
+    assert.doesNotMatch(result.stderr, /busy machine/);
+  });
+});
