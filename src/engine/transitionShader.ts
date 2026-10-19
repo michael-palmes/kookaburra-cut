@@ -59,7 +59,7 @@ export const vertexShader = /* glsl */ `
   }
 `;
 
-// Crossfade/dip mix in the display (encoded sRGB) domain since a dissolve is a perceptual effect and linear-light mixing back-loads the apparent fade (slide/wipe move or mask whole pixels, no cross-blending); the no-fx A/B targets are hardware SRGB8_ALPHA8, so texture2D() returns hardware-decoded linear and sampleDisplay must re-encode it to recover the exact stored bytes, fixing the "snaps dim / snaps back" bug where a double-decode desynced the composite from the neighbouring solo frame (launch-2026 frame 263→264, 2026-07-07). progress/direction are supplied as uniforms, never derived from time in GLSL.
+// Crossfade/dip mix in the display (encoded sRGB) domain since a dissolve is a perceptual effect and linear-light mixing back-loads the apparent fade (slide/wipe move or mask whole pixels, no cross-blending); the no-fx A/B targets are display targets (engine/displayTarget.ts) holding the canvas's own bytes raw, so sampleDisplay reads them untouched; a decode or re-encode here desyncs the composite from the neighbouring solo frame (the "snaps dim / snaps back" bug, launch-2026 frame 263→264, 2026-07-07). progress/direction are supplied as uniforms, never derived from time in GLSL.
 export const fragmentShader = /* glsl */ `
   precision highp float;
   varying vec2 vUv;
@@ -74,9 +74,9 @@ export const fragmentShader = /* glsl */ `
     c = clamp(c, 0.0, 1.0);
     return mix(c * 12.92, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(vec3(0.0031308), c));
   }
-  // Hardware-decoded linear sample, re-encoded to the display domain (== stored bytes).
+  // The stored display bytes, raw.
   vec3 sampleDisplay(sampler2D t, vec2 uv) {
-    return linearToSrgb(texture2D(t, clamp(uv, 0.0, 1.0)).rgb);
+    return texture2D(t, clamp(uv, 0.0, 1.0)).rgb;
   }
 
   void main() {
@@ -279,19 +279,15 @@ const extBody = /* glsl */ `
   }
 `;
 
-/** Extended SDR composite (GLSL3): display-domain throughout, samples are hardware-decoded linear from the sRGB targets, re-encoded per tap (matching the legacy shader's semantics), output encoded straight to the canvas. Selections and mixes share the same S(). */
+/** Extended SDR composite (GLSL3): display-domain throughout, S() reads the display targets' bytes raw (the legacy shader's semantics) and the output lands straight on the canvas. Selections and mixes share the same S(). */
 export const fragmentShaderExt = /* glsl */ `
   precision highp float;
   in vec2 vUv;
   out vec4 fragColor;
   ${extCommon}
 
-  vec3 linearToSrgb(vec3 c) {
-    c = clamp(c, 0.0, 1.0);
-    return mix(c * 12.92, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(vec3(0.0031308), c));
-  }
   vec3 S(sampler2D t, vec2 uv) {
-    return linearToSrgb(texture(t, clamp(uv, vec2(0.0), vec2(1.0))).rgb);
+    return texture(t, clamp(uv, vec2(0.0), vec2(1.0))).rgb;
   }
   vec3 SEL_RAW(sampler2D t, vec2 uv) { return S(t, uv); }
 
@@ -380,12 +376,8 @@ export const fragmentShaderExt2 = /* glsl */ `
   out vec4 fragColor;
   ${extCommon}
 
-  vec3 linearToSrgb(vec3 c) {
-    c = clamp(c, 0.0, 1.0);
-    return mix(c * 12.92, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(vec3(0.0031308), c));
-  }
   vec3 S(sampler2D t, vec2 uv) {
-    return linearToSrgb(texture(t, clamp(uv, vec2(0.0), vec2(1.0))).rgb);
+    return texture(t, clamp(uv, vec2(0.0), vec2(1.0))).rgb;
   }
   vec3 SEL_RAW(sampler2D t, vec2 uv) { return S(t, uv); }
 
@@ -821,7 +813,7 @@ export const fragmentShaderExt3 = /* glsl */ `
     return mix(c * 12.92, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(vec3(0.0031308), c));
   }
   vec3 S(sampler2D t, vec2 uv) {
-    return linearToSrgb(texture(t, clamp(uv, vec2(0.0), vec2(1.0))).rgb);
+    return texture(t, clamp(uv, vec2(0.0), vec2(1.0))).rgb;
   }
   vec3 SEL_RAW(sampler2D t, vec2 uv) { return S(t, uv); }
 
@@ -913,12 +905,8 @@ export const fragmentShaderMask = /* glsl */ `
   ${extCommon}
   ${maskCommon}
 
-  vec3 linearToSrgb(vec3 c) {
-    c = clamp(c, 0.0, 1.0);
-    return mix(c * 12.92, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(vec3(0.0031308), c));
-  }
   vec3 S(sampler2D t, vec2 uv) {
-    return linearToSrgb(texture(t, clamp(uv, vec2(0.0), vec2(1.0))).rgb);
+    return texture(t, clamp(uv, vec2(0.0), vec2(1.0))).rgb;
   }
   vec3 SEL_RAW(sampler2D t, vec2 uv) { return S(t, uv); }
 

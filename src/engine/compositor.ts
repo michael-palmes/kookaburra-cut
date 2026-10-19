@@ -14,7 +14,6 @@ import {
   RGBAFormat,
   Scene,
   ShaderMaterial,
-  SRGBColorSpace,
   type Texture,
   UnsignedByteType,
   Vector2,
@@ -29,6 +28,7 @@ import { fixedCoverCrop } from "../toolkit/stage/fixedMath";
 import { applyCameraPose, baseCameraPose } from "./cameraTrack";
 import { useClockStore } from "./clock";
 import { compareFragmentShader, compareFragmentShaderHdr } from "./compareShader";
+import { asDisplayTarget, encodesSrgbOnStore, isDisplayTarget } from "./displayTarget";
 import type { DofUnion, ResolvedDof } from "./dof";
 import { grainSeed } from "./effectParams";
 import {
@@ -93,7 +93,7 @@ import {
   vertexShader300,
 } from "./transitionShader";
 
-/** Renders the active scene(s) for one frame, applying any cross-scene transition; one function called by both preview and export so they cannot drift. Fast path (one scene, no transition): direct `gl.render` to the default framebuffer, byte-identical to v0 (never routed through render targets, which would change the bytes). Transition path (two scenes): each renders to its own `WebGLRenderTarget` (no-fx: sRGB 8-bit, tone-mapped once; fx: HalfFloat linear, un-tone-mapped for the composer), then a fullscreen pass composites them in the display domain. All touched renderer state is snapshotted and restored. See docs/determinism.md. */
+/** Renders the active scene(s) for one frame, applying any cross-scene transition; one function called by both preview and export so they cannot drift. Fast path (one scene, no transition): direct `gl.render` to the default framebuffer, byte-identical to v0 (never routed through render targets, which would change the bytes). Transition path (two scenes): each renders to its own `WebGLRenderTarget` (no-fx: an 8-bit display target that renders exactly as the canvas does; fx: HalfFloat linear, un-tone-mapped for the composer), then a fullscreen pass composites them in the display domain. All touched renderer state is snapshotted and restored. See docs/determinism.md. */
 
 interface CompositorState {
   /** SDR A/B pair for no-fx transition frames, allocated lazily on first use (fx projects' transitions never touch it) and released between windows during export: the WebContent process rides WebKit's 4 GB footprint ceiling at 4K, and each MSAA pair is ~570 MB. */
@@ -149,7 +149,7 @@ function makeTarget(w: number, h: number, hdr: boolean, samples = MSAA_SAMPLES):
     minFilter: NearestFilter,
     magFilter: NearestFilter,
     format: RGBAFormat,
-    // SDR (no-fx): UnsignedByteType + SRGBColorSpace allocates hardware SRGB8_ALPHA8 (tone-mapped bytes, hardware-decoded to linear on sample); HDR (fx): RGBA16F linear so the un-tone-mapped scene survives to the composer, since 8-bit fx targets used to clamp >1.0 linear before the composer's ACES (the highlight dim). Half-float MSAA matches the effect composer's proven configuration (effects.ts).
+    // SDR (no-fx): a display target (RGBA8 holding the canvas's tone-mapped, encoded bytes raw); HDR (fx): RGBA16F linear so the un-tone-mapped scene survives to the composer, since 8-bit fx targets used to clamp >1.0 linear before the composer's ACES (the highlight dim). Half-float MSAA matches the effect composer's proven configuration (effects.ts).
     type: hdr ? HalfFloatType : UnsignedByteType,
     depthBuffer: true,
     stencilBuffer: false,
@@ -157,7 +157,8 @@ function makeTarget(w: number, h: number, hdr: boolean, samples = MSAA_SAMPLES):
     // MSAA: the A/B scene renders sample at MSAA_SAMPLES and three resolves via blitFramebuffer when the composite samples the texture; the resolve is fixed-function, so it's same-machine deterministic, gated by Verify ×2 like everything else, and matches the context's own antialiasing so transition frames keep the solo frames' edge quality. Fullscreen-quad receivers pass 0: a quad has no edges to sample.
     samples,
   });
-  t.texture.colorSpace = hdr ? LinearSRGBColorSpace : SRGBColorSpace;
+  if (hdr) t.texture.colorSpace = LinearSRGBColorSpace;
+  else asDisplayTarget(t);
   t.texture.wrapS = ClampToEdgeWrapping;
   t.texture.wrapT = ClampToEdgeWrapping;
   return t;
@@ -442,14 +443,15 @@ export function releaseCompositorPools(): void {
   state.sceneTarget = null;
 }
 
-/** Diagnostic snapshot of the compositor's A/B target formats for the verify render-state fingerprint; target type/colorSpace is part of the transition contract, so a cross-build divergence should name itself in one JSON diff. */
+/** Diagnostic snapshot of the compositor's A/B target formats for the verify render-state fingerprint; target type, colour space, storage and the display flag are part of the transition contract, so a cross-build divergence should name itself in one JSON diff. */
 export function compositorTargetFingerprint(): {
   sdr: string | null;
   hdr: string | null;
   samples: number;
 } | null {
   if (!state) return null;
-  const describe = (t: WebGLRenderTarget) => `${t.texture.type}/${t.texture.colorSpace}`;
+  const describe = (t: WebGLRenderTarget) =>
+    `${t.texture.type}/${t.texture.colorSpace}/${t.texture.internalFormat ?? "auto"}${isDisplayTarget(t) ? "/display" : ""}`;
   return {
     sdr: state.targetA ? describe(state.targetA) : null,
     hdr: state.targetAHdr ? describe(state.targetAHdr) : null,
@@ -566,7 +568,7 @@ function renderFramedScene(
       bufferW,
       bufferH,
     );
-    st.slideMaterial.uniforms.encodeToLinear.value = dest ? 1 : 0;
+    st.slideMaterial.uniforms.encodeToLinear.value = encodesSrgbOnStore(dest) ? 1 : 0;
     gl.setRenderTarget(dest);
     gl.render(st.slideScene, st.quadCamera);
     return;
@@ -589,8 +591,7 @@ function renderFramedScene(
   }
 
   setSlideUniforms(st, overlay, layout, px, bufferW, bufferH);
-  // A non-null dest is a hardware-sRGB A/B target that encodes on write; emit the linear precursor so it lands the same display bytes as the solo path (default FB, no encode).
-  st.slideMaterial.uniforms.encodeToLinear.value = dest ? 1 : 0;
+  st.slideMaterial.uniforms.encodeToLinear.value = encodesSrgbOnStore(dest) ? 1 : 0;
   gl.setRenderTarget(dest);
   gl.render(st.slideScene, st.quadCamera);
 }
@@ -920,7 +921,7 @@ export function renderComposited(
   const prevAutoClear = gl.autoClear;
   gl.autoClear = true;
 
-  // Effects (hdr lane): the composer owns the project's single ACES tone-map, so scenes must reach the targets un-tone-mapped, otherwise transition frames get three's ACES here plus the composer's ACES (a double tone-map that pops at the seam); those un-tone-mapped HDR values need the HalfFloat/linear pair, since old 8-bit fx targets clamped >1.0 before the composer's ACES (the highlight dim). No effects AND the dof-only lane: the r3f pipeline tone-maps here exactly once into the hardware-sRGB SDR pair (dof-only sides route through the side composer on the way in).
+  // Effects (hdr lane): the composer owns the project's single ACES tone-map, so scenes must reach the targets un-tone-mapped, otherwise transition frames get three's ACES here plus the composer's ACES (a double tone-map that pops at the seam); those un-tone-mapped HDR values need the HalfFloat/linear pair, since old 8-bit fx targets clamped >1.0 before the composer's ACES (the highlight dim). No effects AND the dof-only lane: the SDR pair are display targets, so each side tone-maps and encodes here exactly as on the canvas (dof-only sides blur through the scratch on the way in).
   const prevToneMapping = gl.toneMapping;
   if (hdrLane) {
     gl.toneMapping = NoToneMapping;

@@ -1,6 +1,6 @@
 import { ACES_FORWARD_GLSL, ACES_INVERSE_GLSL } from "./acesCurve";
 
-/** The comparison composite's mask shaders: side A (before) and side B (after) render to the transition machinery's A/B targets and blend under the mask here. Mask family: linear (a straight divider at any angle), circle (the after inside a growing window, the transition iris ramp), radial (the after sweeps around the centre, the transition radial ramp), blend (a held crossfade). Chrome is procedural SDF in the same pass: the divider line (linear + circle), the grip handle (linear, one of four styles dispatched on `gripStyle`, 0 being the legacy ring and chevrons), per-side tints. Same contracts as the transition shaders: a pure function of (uv, uniforms), every animated value CPU-computed; the SDR variant re-encodes hardware-decoded samples via sampleDisplay (the snaps-dim lesson), the HDR variant tone-maps both samples, composites in the display domain and inverts back (the self-inverting ACES pair, seam-exact within fp32). All divider maths is aspect-corrected so lines are straight ON SCREEN and widths are 1080-tall reference pixels. */
+/** The comparison composite's mask shaders: side A (before) and side B (after) render to the transition machinery's A/B targets and blend under the mask here. Mask family: linear (a straight divider at any angle), circle (the after inside a growing window, the transition iris ramp), radial (the after sweeps around the centre, the transition radial ramp), blend (a held crossfade). Chrome is procedural SDF in the same pass: the divider line (linear + circle), the grip handle (linear, one of four styles dispatched on `gripStyle`, 0 being the legacy ring and chevrons), per-side tints. Same contracts as the transition shaders: a pure function of (uv, uniforms), every animated value CPU-computed; the SDR variant reads the display targets' bytes raw via sampleDisplay (the snaps-dim lesson), the HDR variant tone-maps both samples, composites in the display domain and inverts back (the self-inverting ACES pair, seam-exact within fp32). All divider maths is aspect-corrected so lines are straight ON SCREEN and widths are 1080-tall reference pixels. */
 
 const UNIFORMS_GLSL = /* glsl */ `
   varying vec2 vUv;
@@ -114,12 +114,8 @@ const BODY_GLSL = /* glsl */ `
 export const compareFragmentShader = /* glsl */ `
   precision highp float;
 ${UNIFORMS_GLSL}
-  vec3 linearToSrgb(vec3 c) {
-    c = clamp(c, 0.0, 1.0);
-    return mix(c * 12.92, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(vec3(0.0031308), c));
-  }
   vec3 sampleDisplay(sampler2D t, vec2 uv) {
-    return linearToSrgb(texture2D(t, clamp(uv, 0.0, 1.0)).rgb);
+    return texture2D(t, clamp(uv, 0.0, 1.0)).rgb;
   }
 ${BODY_GLSL.replace("SAMPLE_A", "sampleDisplay(texA, vUv)")
   .replace("SAMPLE_B", "sampleDisplay(texB, vUv)")

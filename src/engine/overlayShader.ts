@@ -1,4 +1,4 @@
-/** The overlay ("frame") compositing shader: a fullscreen pass that keys the rendered scene texture into a shaped cutout and fills the rest with the panel fill (a flat colour, or a sampled gradient/image texture through `panelMode`; a transparent panel takes the flat route with the backdrop's own colour, and only reaches this pass when the cutout has a shape). Same display-domain semantics as the transition composite (engine/transitionShader.ts): the SDR scene target is hardware SRGB8, so `texture2D` returns hardware-decoded linear and `sampleDisplay` re-encodes to recover the stored bytes; the panel colour arrives linear and encodes the same way, so a cutout pixel round-trips sRGB->linear->sRGB (identity in 8-bit) and matches a direct scene render. The cutout SDF and its constants are EXPORT CONTRACT: pure functions of (uv, uniforms), no time, no derivatives (the superellipse edge uses an analytic gradient-normalised distance, not fwidth, so AA is compile-stable). See docs/overlays.md. */
+/** The overlay ("frame") compositing shader: a fullscreen pass that keys the rendered scene texture into a shaped cutout and fills the rest with the panel fill (a flat colour, or a sampled gradient/image texture through `panelMode`; a transparent panel takes the flat route with the backdrop's own colour, and only reaches this pass when the cutout has a shape). Same display-domain semantics as the transition composite (engine/transitionShader.ts): the scene target is a display target holding the canvas's own bytes raw, so a cutout pixel matches a direct scene render; the panel colour arrives linear and encodes in-shader. The cutout SDF and its constants are EXPORT CONTRACT: pure functions of (uv, uniforms), no time, no derivatives (the superellipse edge uses an analytic gradient-normalised distance, not fwidth, so AA is compile-stable). See docs/overlays.md. */
 
 /** Rounded-box family (rect/rounded-rect/circle/capsule via `cutoutRadius`). */
 export const CUTOUT_MODE_BOX = 0;
@@ -28,7 +28,7 @@ export const overlayFragmentShader = /* glsl */ `
   uniform int cutoutMode;
   uniform float aspect;
   uniform float softness;       // physical edge half-width
-  uniform float encodeToLinear; // 1 when the dest is a hardware-sRGB target (transition A/B), else 0
+  uniform float encodeToLinear; // 1 when the dest hardware-encodes sRGB on store, else 0
   uniform sampler2D panelTex;   // the sampled fill (gradient raster / project image), panelMode 1 only
   uniform int panelMode;        // 0 = flat panelColor (every legacy frame), 1 = sample panelTex
   uniform vec4 panelUv;         // xy scale, zw offset over vUv (the image's cover crop; a gradient stretches with 1,1,0,0)
@@ -71,9 +71,9 @@ export const overlayFragmentShader = /* glsl */ `
     }
     float inside = 1.0 - smoothstep(-softness, softness, dist);
     vec2 sceneUv = (vUv - cutoutRect.xy) / cutoutRect.zw;
-    vec3 sceneSrgb = sampleDisplay(sceneTex, sceneUv);
+    vec3 sceneSrgb = texture2D(sceneTex, clamp(sceneUv, 0.0, 1.0)).rgb;
     vec3 panelSrgb = panelDisplay(vUv);
-    // Solo emits display sRGB to the default FB; a transition emits the linear precursor so the hardware-sRGB A/B target's encode-on-write lands the same bytes, not a double-encode (the brighter-mid-transition bug).
+    // A hardware-sRGB dest gets the linear precursor so its encode-on-write lands the same bytes, not a double encode (the brighter-mid-transition bug).
     vec3 outSrgb = mix(panelSrgb, sceneSrgb, inside);
     gl_FragColor = vec4(encodeToLinear > 0.5 ? srgbToLinear(outSrgb) : outSrgb, 1.0);
   }
