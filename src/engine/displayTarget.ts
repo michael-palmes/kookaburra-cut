@@ -1,9 +1,9 @@
 import { type RenderTarget, SRGBColorSpace, UnsignedByteType } from "three";
 
-/** Makes an SDR target an offscreen canvas: three applies tone mapping, the in-shader sRGB encode and the sRGB clear colour only for `null` or `isXRRenderTarget` targets, and RGBA8 storage keeps those bytes raw, so blending, the MSAA resolve and sampling stay in the canvas's domain. Call before the first setRenderTarget (it allocates the storage). */
-export function asDisplayTarget<T extends RenderTarget>(target: T): T {
+/** Makes an SDR target an offscreen canvas: three applies tone mapping, the in-shader output encode and the clear-colour conversion only for `null` or `isXRRenderTarget` targets (an XR target encodes to its own tag, so pass the renderer's `outputColorSpace`), and RGBA8 storage keeps those bytes raw, so blending, the MSAA resolve and sampling stay in the canvas's domain. Call before the first setRenderTarget (it allocates the storage). */
+export function asDisplayTarget<T extends RenderTarget>(target: T, outputColorSpace: string): T {
   (target as T & { isXRRenderTarget: boolean }).isXRRenderTarget = true;
-  target.texture.colorSpace = SRGBColorSpace;
+  target.texture.colorSpace = outputColorSpace;
   target.texture.internalFormat = "RGBA8";
   return target;
 }

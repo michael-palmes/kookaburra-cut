@@ -768,6 +768,10 @@ export function dofSideScratch(
   u: DofUnion,
 ): WebGLRenderTarget {
   const st = ensureDofOverlay(gl, w, h, u);
+  if (st.scratch && st.scratch.texture.colorSpace !== gl.outputColorSpace) {
+    st.scratch.dispose();
+    st.scratch = null;
+  }
   if (!st.scratch) {
     const t = new WebGLRenderTarget(w, h, {
       minFilter: NearestFilter,
@@ -779,7 +783,7 @@ export function dofSideScratch(
       generateMipmaps: false,
       samples: MSAA_SAMPLES,
     });
-    asDisplayTarget(t);
+    asDisplayTarget(t, gl.outputColorSpace);
     t.texture.wrapS = ClampToEdgeWrapping;
     t.texture.wrapT = ClampToEdgeWrapping;
     st.scratch = t;

@@ -42,12 +42,16 @@ const noLights = {
   numLightProbes: 0,
 };
 
-function paramsFor(target: WebGLRenderTarget | null, toneMapped: boolean) {
+function paramsFor(
+  target: WebGLRenderTarget | null,
+  toneMapped: boolean,
+  outputColorSpace: string = SRGBColorSpace,
+) {
   const renderer = {
     getRenderTarget: () => target,
     state: { buffers: { depth: { getReversed: () => false } } },
     toneMapping: ACESFilmicToneMapping,
-    outputColorSpace: SRGBColorSpace,
+    outputColorSpace,
     shadowMap: { enabled: false, type: 0 },
   };
   const programs = new Programs(
@@ -65,7 +69,7 @@ function paramsFor(target: WebGLRenderTarget | null, toneMapped: boolean) {
 
 describe("asDisplayTarget", () => {
   it("compiles the canvas's own program parameters", () => {
-    const display = asDisplayTarget(new WebGLRenderTarget(4, 4));
+    const display = asDisplayTarget(new WebGLRenderTarget(4, 4), SRGBColorSpace);
     for (const toneMapped of [true, false]) {
       const canvas = paramsFor(null, toneMapped);
       const flagged = paramsFor(display, toneMapped);
@@ -76,6 +80,14 @@ describe("asDisplayTarget", () => {
     expect(paramsFor(display, true).outputColorSpace).toBe(SRGBColorSpace);
   });
 
+  it("encodes to the renderer's output colour space it is given", () => {
+    const display = asDisplayTarget(new WebGLRenderTarget(4, 4), LinearSRGBColorSpace);
+    const canvas = paramsFor(null, true, LinearSRGBColorSpace);
+    expect(paramsFor(display, true, LinearSRGBColorSpace).outputColorSpace).toBe(
+      canvas.outputColorSpace,
+    );
+  });
+
   it("leaves plain targets un-tone-mapped (the three gate this works around)", () => {
     const plain = new WebGLRenderTarget(4, 4);
     plain.texture.colorSpace = SRGBColorSpace;
@@ -83,7 +95,7 @@ describe("asDisplayTarget", () => {
   });
 
   it("stores the display bytes raw", () => {
-    const display = asDisplayTarget(new WebGLRenderTarget(4, 4));
+    const display = asDisplayTarget(new WebGLRenderTarget(4, 4), SRGBColorSpace);
     expect(display.texture.internalFormat).toBe("RGBA8");
     expect(isDisplayTarget(display)).toBe(true);
     expect(encodesSrgbOnStore(display)).toBe(false);

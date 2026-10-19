@@ -96,6 +96,8 @@ import {
 /** Renders the active scene(s) for one frame, applying any cross-scene transition; one function called by both preview and export so they cannot drift. Fast path (one scene, no transition): direct `gl.render` to the default framebuffer, byte-identical to v0 (never routed through render targets, which would change the bytes). Transition path (two scenes): each renders to its own `WebGLRenderTarget` (no-fx: an 8-bit display target that renders exactly as the canvas does; fx: HalfFloat linear, un-tone-mapped for the composer), then a fullscreen pass composites them in the display domain. All touched renderer state is snapshotted and restored. See docs/determinism.md. */
 
 interface CompositorState {
+  /** The renderer's output colour space the display targets encode to; a change re-allocates every pool, like a resize. */
+  outputColorSpace: string;
   /** SDR A/B pair for no-fx transition frames, allocated lazily on first use (fx projects' transitions never touch it) and released between windows during export: the WebContent process rides WebKit's 4 GB footprint ceiling at 4K, and each MSAA pair is ~570 MB. */
   targetA: WebGLRenderTarget | null;
   targetB: WebGLRenderTarget | null;
@@ -144,7 +146,14 @@ const _dip = new Color();
 const _camPos = new Vector3();
 const _camQuat = new Quaternion();
 
-function makeTarget(w: number, h: number, hdr: boolean, samples = MSAA_SAMPLES): WebGLRenderTarget {
+/** `display` is the renderer's output colour space for an SDR display target, or null for the HDR (fx) target. */
+function makeTarget(
+  w: number,
+  h: number,
+  display: string | null,
+  samples = MSAA_SAMPLES,
+): WebGLRenderTarget {
+  const hdr = display === null;
   const t = new WebGLRenderTarget(w, h, {
     minFilter: NearestFilter,
     magFilter: NearestFilter,
@@ -157,8 +166,8 @@ function makeTarget(w: number, h: number, hdr: boolean, samples = MSAA_SAMPLES):
     // MSAA: the A/B scene renders sample at MSAA_SAMPLES and three resolves via blitFramebuffer when the composite samples the texture; the resolve is fixed-function, so it's same-machine deterministic, gated by Verify ×2 like everything else, and matches the context's own antialiasing so transition frames keep the solo frames' edge quality. Fullscreen-quad receivers pass 0: a quad has no edges to sample.
     samples,
   });
-  if (hdr) t.texture.colorSpace = LinearSRGBColorSpace;
-  else asDisplayTarget(t);
+  if (display === null) t.texture.colorSpace = LinearSRGBColorSpace;
+  else asDisplayTarget(t, display);
   t.texture.wrapS = ClampToEdgeWrapping;
   t.texture.wrapT = ClampToEdgeWrapping;
   return t;
@@ -274,8 +283,15 @@ function setCompositeUniforms(
 }
 
 /** Lazily allocate (and resize, disposing the old) targets to the live drawing-buffer size. */
-function ensureState(w: number, h: number): CompositorState {
-  if (state && state.size.x === w && state.size.y === h) return state;
+function ensureState(w: number, h: number, outputColorSpace: string): CompositorState {
+  if (
+    state &&
+    state.size.x === w &&
+    state.size.y === h &&
+    state.outputColorSpace === outputColorSpace
+  ) {
+    return state;
+  }
 
   if (state) {
     state.targetA?.dispose();
@@ -297,6 +313,7 @@ function ensureState(w: number, h: number): CompositorState {
     state.sceneTarget?.dispose();
     state.sceneTarget = null;
     state.size.set(w, h);
+    state.outputColorSpace = outputColorSpace;
     return state;
   }
 
@@ -324,6 +341,7 @@ function ensureState(w: number, h: number): CompositorState {
   slideScene.add(slideMesh);
 
   state = {
+    outputColorSpace,
     targetA: null,
     targetB: null,
     targetAHdr: null,
@@ -357,26 +375,27 @@ function ensureState(w: number, h: number): CompositorState {
 
 /** Allocate the fx-path HDR pair on first use (lazy, no-fx projects never pay for it). */
 function ensureHdrTargets(st: CompositorState): void {
-  if (!st.targetAHdr) st.targetAHdr = makeTarget(st.size.x, st.size.y, true);
-  if (!st.targetBHdr) st.targetBHdr = makeTarget(st.size.x, st.size.y, true);
+  if (!st.targetAHdr) st.targetAHdr = makeTarget(st.size.x, st.size.y, null);
+  if (!st.targetBHdr) st.targetBHdr = makeTarget(st.size.x, st.size.y, null);
 }
 
 /** Allocate the SDR pair on first use (lazy, mirroring the HDR pair). */
 function ensureSdrTargets(st: CompositorState): void {
-  if (!st.targetA) st.targetA = makeTarget(st.size.x, st.size.y, false);
-  if (!st.targetB) st.targetB = makeTarget(st.size.x, st.size.y, false);
+  if (!st.targetA) st.targetA = makeTarget(st.size.x, st.size.y, st.outputColorSpace);
+  if (!st.targetB) st.targetB = makeTarget(st.size.x, st.size.y, st.outputColorSpace);
 }
 
 /** Allocate the flat comparison-composite target(s) on first use; the second only exists once both scenes of a transition frame compare. */
 function ensureCompTargets(st: CompositorState, hdr: boolean, count: number): void {
   if (count < 1) return;
   if (hdr) {
-    if (!st.targetCompHdr) st.targetCompHdr = makeTarget(st.size.x, st.size.y, true, 0);
+    if (!st.targetCompHdr) st.targetCompHdr = makeTarget(st.size.x, st.size.y, null, 0);
     if (count > 1 && !st.targetComp2Hdr)
-      st.targetComp2Hdr = makeTarget(st.size.x, st.size.y, true, 0);
+      st.targetComp2Hdr = makeTarget(st.size.x, st.size.y, null, 0);
   } else {
-    if (!st.targetComp) st.targetComp = makeTarget(st.size.x, st.size.y, false, 0);
-    if (count > 1 && !st.targetComp2) st.targetComp2 = makeTarget(st.size.x, st.size.y, false, 0);
+    const cs = st.outputColorSpace;
+    if (!st.targetComp) st.targetComp = makeTarget(st.size.x, st.size.y, cs, 0);
+    if (count > 1 && !st.targetComp2) st.targetComp2 = makeTarget(st.size.x, st.size.y, cs, 0);
   }
 }
 
@@ -473,7 +492,7 @@ function ensureSceneTarget(st: CompositorState, w: number, h: number): WebGLRend
     return st.sceneTarget;
   }
   st.sceneTarget?.dispose();
-  st.sceneTarget = makeTarget(w, h, false);
+  st.sceneTarget = makeTarget(w, h, st.outputColorSpace);
   return st.sceneTarget;
 }
 
@@ -771,7 +790,7 @@ export function renderComposited(
   if (soloCompare) {
     const idx = soloCompare.index;
     const size = gl.getDrawingBufferSize(_size);
-    const st = ensureState(size.x, size.y);
+    const st = ensureState(size.x, size.y, gl.outputColorSpace);
     const prevAutoClear = gl.autoClear;
     gl.autoClear = true;
     const prevToneMapping = gl.toneMapping;
@@ -874,7 +893,7 @@ export function renderComposited(
     if (overlay) {
       // Overlay path: the scene renders into its cutout, then the slide keys it in over the panel. Effects don't yet compose onto a framed scene (docs/overlays.md open question), so this branch is taken ahead of fx.
       const size = gl.getDrawingBufferSize(_size);
-      const st = ensureState(size.x, size.y);
+      const st = ensureState(size.x, size.y, gl.outputColorSpace);
       renderFramedScene(gl, scene, camera, st, overlay, size.x, size.y, null);
       const panel = panelFor(idx);
       if (panel) drawFramePanelOver(gl, scene, camera, hosts, persistent, panel, null);
@@ -917,7 +936,7 @@ export function renderComposited(
 
   // Transition path: render A and B to their targets, then composite to the default FB.
   const size = gl.getDrawingBufferSize(_size);
-  const st = ensureState(size.x, size.y);
+  const st = ensureState(size.x, size.y, gl.outputColorSpace);
   const prevAutoClear = gl.autoClear;
   gl.autoClear = true;
 

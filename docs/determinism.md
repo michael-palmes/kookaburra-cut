@@ -151,7 +151,9 @@ Determinism rules specific to the composite path:
   mapping, the in-shader sRGB encode and the sRGB clear colour only when the
   current target is `null` or flagged `isXRRenderTarget`, so the flag makes
   scene passes render into the target exactly as onto the canvas (the same
-  programs), and explicit `RGBA8` storage keeps those display bytes raw. The
+  programs; the target takes the renderer's `outputColorSpace` as its tag, and
+  the pools re-allocate if it changes), and explicit `RGBA8` storage keeps
+  those display bytes raw. The
   composite reads them untouched and writes display bytes straight to the
   canvas: net zero conversions. Before 2026-10-19 the targets were plain
   hardware `SRGB8_ALPHA8`, so three never tone-mapped inside them: text and lit
@@ -1690,7 +1692,11 @@ rolling-gate project (`showcase-tour`):
 > reads (120,210,202) in both its solo and push frames where main showed
 > (58,209,196) solo and the double-encoded (131,234,227) mid push; plain solo
 > frames are byte-identical to main. Dim text on a comparison side darkens
-> under the ACES toe, as it does on any canvas frame. `showcase-tour` stayed
+> under the ACES toe, as it does on any canvas frame. A framed scene in an
+> effects project moves too: its solo frames take the framed branch ahead of
+> the effects lane, so three's tone map now applies inside the cutout where it
+> was raw (its transition frames still fall back to the unframed HDR render).
+> No gate fixture combines a frame with effects. `showcase-tour` stayed
 > EQUAL (`13b5994d…`), as did `ws:lighting-spike-fable` (`bf5021f2…`),
 > `ws:mask-fx-spike` (`c93487c0…`) and the `showcase-tour` stills: the
 > composer lane never touches these targets. Moved, re-recorded: the
