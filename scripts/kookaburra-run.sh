@@ -139,7 +139,8 @@ fi
 # A packaged instance still shares $APPDATA caches with this run in an unmanaged way (it
 # takes no queue ticket and no per-run result dir), so that one stays a hard fail.
 # Executable paths only: `pgrep -f` also matched any shell whose arguments named the path.
-if [[ "$(ps -axo comm= 2>/dev/null)" == *"/Kookaburra Cut.app/Contents/MacOS/"* ]]; then
+# The main binary only: kb's tests borrow the bundle's ffmpeg, which shares nothing.
+if [[ "$(ps -axo comm= 2>/dev/null)" == *"/Kookaburra Cut.app/Contents/MacOS/kookaburra-cut"* ]]; then
   echo "kookaburra:run: a packaged Kookaburra Cut is already running. Quit it first (shared caches)." >&2
   exit 2
 fi

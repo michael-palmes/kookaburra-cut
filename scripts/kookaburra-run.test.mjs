@@ -51,6 +51,15 @@ describe("kookaburra-run packaged app check", () => {
     assert.match(result.stderr, /a packaged Kookaburra Cut is already running/);
   });
 
+  test("ignores the bundle's ffmpeg running on its own", () => {
+    const result = run(
+      ["--action", "verify", "--app", "/nonexistent/Fake.app"],
+      envWithProcesses(["/Applications/Kookaburra Cut.app/Contents/MacOS/ffmpeg"]),
+    );
+    assert.equal(result.status, 2);
+    assert.doesNotMatch(result.stderr, /already running/);
+  });
+
   test("ignores a shell that only names the packaged path", () => {
     const result = run(
       ["--action", "verify", "--app", "/nonexistent/Fake.app"],
