@@ -10,18 +10,30 @@ import {
   TextField,
 } from "./fields";
 import { ThemeEditorIcon } from "./icons";
-import { addTag, readIdentity, removeTag, type ThemeDoc, writeIdentity } from "./themeDraft";
+import {
+  addTag,
+  readIdentity,
+  removeTag,
+  type ThemeDoc,
+  type ThemeVariant,
+  writeIdentity,
+} from "./themeDraft";
 
 /** Identity: everything the theme browser reads off a card. Name and mode live at the document root, the rest in the `catalogue` block, which the schema only accepts whole, so `writeIdentity` rewrites it from the resolved values. */
 export function IdentitySection({
   doc,
   onPatch,
   devTools,
+  variant = null,
+  onDetach,
 }: {
   doc: ThemeDoc;
   onPatch: (next: ThemeDoc) => void;
   /** Bundled themes in a checkout: the hidden flag only means anything there. */
   devTools: boolean;
+  /** The base this theme extends, shown read-only. */
+  variant?: ThemeVariant | null;
+  onDetach?: () => void;
 }) {
   const identity = readIdentity(doc);
   const [tagDraft, setTagDraft] = useState("");
@@ -32,6 +44,31 @@ export function IdentitySection({
       title="Identity"
       hint="How this theme shows up in the browser: its name, its collection, and the words that find it."
     >
+      {variant && (
+        <Field
+          label="Based on"
+          icon="base"
+          hint={
+            variant.base
+              ? "Anything this theme doesn't set comes from its base. Detach copies it all in and drops the link."
+              : "The base theme can't be found, so this theme can't load until it's back."
+          }
+        >
+          <div className="theme-editor-based-on">
+            <span className="theme-editor-based-on-name">{variant.baseName}</span>
+            <button
+              type="button"
+              className="btn btn-small chip-with-icon"
+              onClick={onDetach}
+              disabled={!variant.base || !onDetach}
+            >
+              <ThemeEditorIcon name="detach" size={14} />
+              Detach
+            </button>
+          </div>
+        </Field>
+      )}
+
       <Field label="Name" icon="identity">
         <TextField
           label="Theme name"

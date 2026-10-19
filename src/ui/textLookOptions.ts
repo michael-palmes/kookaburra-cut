@@ -4,7 +4,9 @@ import {
   DEFAULT_LOOK_CURVE_DEG,
   DEFAULT_LOOK_HOLLOW,
   DEFAULT_LOOK_INTENSITY,
+  DEFAULT_LOOK_OFFSET_DIR_DEG,
   DEFAULT_LOOK_OFFSET_EM,
+  DEFAULT_LOOK_OFFSET_OPACITY,
   DEFAULT_LOOK_STROKE_EM,
   isTextLookName,
   type TextLookName,
@@ -24,6 +26,8 @@ export interface TextLookMeta {
   hasHollow?: boolean;
   hasIntensity?: boolean;
   hasOffset?: boolean;
+  hasOffsetDir?: boolean;
+  hasOffsetOpacity?: boolean;
   hasCurve?: boolean;
   /** Colour well label override (default "Colour"). */
   colorALabel?: string;
@@ -63,6 +67,8 @@ export const TEXT_LOOK_CATALOG: readonly TextLookMeta[] = [
     hint: "A retro duotone under-layer behind the text",
     hasColorA: true,
     hasOffset: true,
+    hasOffsetDir: true,
+    hasOffsetOpacity: true,
   },
   {
     preset: "highlight-block",
@@ -109,6 +115,8 @@ export interface TextLookDraft {
   intensity: number;
   offsetEm: number;
   curveDeg: number;
+  offsetDir: number;
+  offsetOpacity: number;
 }
 
 export function defaultLookDraft(preset: TextLookName): TextLookDraft {
@@ -122,6 +130,8 @@ export function defaultLookDraft(preset: TextLookName): TextLookDraft {
     intensity: DEFAULT_LOOK_INTENSITY,
     offsetEm: DEFAULT_LOOK_OFFSET_EM,
     curveDeg: DEFAULT_LOOK_CURVE_DEG,
+    offsetDir: DEFAULT_LOOK_OFFSET_DIR_DEG,
+    offsetOpacity: DEFAULT_LOOK_OFFSET_OPACITY,
   };
 }
 
@@ -140,6 +150,12 @@ export function lookDraftToSpec(draft: TextLookDraft): TextLookSpec {
   }
   if (meta.hasOffset && draft.offsetEm !== DEFAULT_LOOK_OFFSET_EM) spec.offsetEm = draft.offsetEm;
   if (meta.hasCurve && draft.curveDeg !== DEFAULT_LOOK_CURVE_DEG) spec.curveDeg = draft.curveDeg;
+  if (meta.hasOffsetDir && draft.offsetDir !== DEFAULT_LOOK_OFFSET_DIR_DEG) {
+    spec.offsetDir = draft.offsetDir;
+  }
+  if (meta.hasOffsetOpacity && draft.offsetOpacity !== DEFAULT_LOOK_OFFSET_OPACITY) {
+    spec.offsetOpacity = draft.offsetOpacity;
+  }
   return spec;
 }
 
@@ -154,6 +170,8 @@ export function lookSpecToDraft(spec: TextLookSpec): TextLookDraft {
   if (spec.intensity !== undefined) draft.intensity = spec.intensity;
   if (spec.offsetEm !== undefined) draft.offsetEm = spec.offsetEm;
   if (spec.curveDeg !== undefined) draft.curveDeg = spec.curveDeg;
+  if (spec.offsetDir !== undefined) draft.offsetDir = spec.offsetDir;
+  if (spec.offsetOpacity !== undefined) draft.offsetOpacity = spec.offsetOpacity;
   return draft;
 }
 

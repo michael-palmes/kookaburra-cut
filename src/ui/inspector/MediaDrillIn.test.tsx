@@ -451,6 +451,7 @@ describe("MediaDrillIn", () => {
     expect(captures.numbers.map((field) => field.label)).toEqual(["Start time"]);
     expect(captures.numbers[0]?.value).toBe(1.5);
     expect(html).not.toContain("Cast shadow");
+    expect(html).toContain('data-colour="Shadow colour">#000000</div>');
   });
 
   it("clears the window block when the corners drop to none", () => {

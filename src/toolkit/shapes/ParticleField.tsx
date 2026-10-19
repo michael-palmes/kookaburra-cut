@@ -3,6 +3,7 @@ import { type InstancedMesh, Matrix4, Quaternion, Vector3 } from "three";
 import { createSeededRandom } from "../../engine/rng";
 import { useTimeline } from "../../engine/timeline";
 import { useTheme } from "../../theme";
+import { glowColour } from "../colour";
 import type { V3 } from "../types";
 
 export interface ParticleFieldProps {
@@ -20,6 +21,8 @@ export interface ParticleFieldProps {
   twinkle?: number;
   /** Theme colour token (unlit material, pops under bloom). */
   tone?: "text" | "accent" | "muted";
+  /** Glow: a target luminance (above a bloom threshold over 1) reached by raising only the tone's full channels, unlit with tone mapping off so it still lands exactly on the token (see `glowColour`). Absent renders as before. */
+  glow?: number;
   position?: V3;
 }
 
@@ -47,6 +50,7 @@ export function ParticleField(props: ParticleFieldProps) {
     drift = 0.15,
     twinkle = 0.25,
     tone = "accent",
+    glow,
     position = [0, 0, 0],
   } = props;
 
@@ -54,6 +58,8 @@ export function ParticleField(props: ParticleFieldProps) {
   const theme = useTheme();
   const ref = useRef<InstancedMesh>(null);
   const [bx, by, bz] = bounds;
+  const hex = theme.colors[tone];
+  const glowing = useMemo(() => (glow ? glowColour(hex, glow) : null), [hex, glow]);
 
   const particles = useMemo<Particle[]>(() => {
     const rand = createSeededRandom(seed);
@@ -96,7 +102,11 @@ export function ParticleField(props: ParticleFieldProps) {
         frustumCulled={false}
       >
         <icosahedronGeometry args={[1, 1]} />
-        <meshBasicMaterial color={theme.colors[tone]} />
+        {glowing ? (
+          <meshBasicMaterial color={glowing} toneMapped={false} />
+        ) : (
+          <meshBasicMaterial color={hex} />
+        )}
       </instancedMesh>
     </group>
   );

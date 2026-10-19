@@ -54,6 +54,7 @@ import {
   applyCardMask,
   type CardUniforms,
   cardUniforms,
+  colouredShadowMaterial,
   SHADOW_FRAG,
   SHADOW_VERT,
 } from "./LayeredScreenshot";
@@ -407,22 +408,32 @@ function WindowShadow({
   const width = rect.width + blur * 2;
   const height = rect.height + blur * 2;
   const radius = radiusFraction * short;
+  const colour = shadow.colour;
   const material = useMemo(
     () =>
-      new ShaderMaterial({
-        transparent: true,
-        depthWrite: false,
-        vertexShader: SHADOW_VERT,
-        fragmentShader: SHADOW_FRAG,
-        uniforms: {
-          uSize: { value: new Vector2(width, height) },
-          uHalf: { value: new Vector2(rect.width / 2, rect.height / 2) },
-          uRadius: { value: radius },
-          uBlur: { value: blur },
-          uOpacity: { value: shadow.opacity },
-        },
-      }),
-    [width, height, rect.width, rect.height, radius, blur, shadow.opacity],
+      colour
+        ? colouredShadowMaterial({
+            size: [width, height],
+            half: [rect.width / 2, rect.height / 2],
+            radius,
+            blur,
+            opacity: shadow.opacity,
+            colour,
+          })
+        : new ShaderMaterial({
+            transparent: true,
+            depthWrite: false,
+            vertexShader: SHADOW_VERT,
+            fragmentShader: SHADOW_FRAG,
+            uniforms: {
+              uSize: { value: new Vector2(width, height) },
+              uHalf: { value: new Vector2(rect.width / 2, rect.height / 2) },
+              uRadius: { value: radius },
+              uBlur: { value: blur },
+              uOpacity: { value: shadow.opacity },
+            },
+          }),
+    [width, height, rect.width, rect.height, radius, blur, shadow.opacity, colour],
   );
   useLayoutEffect(() => () => material.dispose(), [material]);
   return (

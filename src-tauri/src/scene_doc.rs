@@ -516,7 +516,7 @@ pub(crate) fn move_scene_at(
 // ── Copied-document id re-minting ─────────────────────────────────────────────
 
 /// The `<textKey><Suffix>` override keys a sidecar's `textStyle` carries (`sceneDocSchema.ts`).
-const TEXT_STYLE_SUFFIXES: [&str; 7] = [
+const TEXT_STYLE_SUFFIXES: [&str; 8] = [
     "Color",
     "Font",
     "Size",
@@ -524,6 +524,7 @@ const TEXT_STYLE_SUFFIXES: [&str; 7] = [
     "OffsetY",
     "LineHeight",
     "RotationDeg",
+    "Emphasis",
 ];
 
 /// Give one entry a fresh `<prefix><n>` id, recording old -> new; an entry with no string id is left alone and takes no number. Repeated ids map to their FIRST sighting, the normalisers' own duplicate rule.
@@ -706,6 +707,13 @@ fn remint_scene_doc_ids(doc: &mut Value) {
     {
         for key in keys {
             remap_keys(key.get_mut("pose"), &devices);
+        }
+    }
+
+    // A screen tap names the device it sits on.
+    if let Some(taps) = doc.get_mut("taps").and_then(Value::as_array_mut) {
+        for tap in taps {
+            remap_field(Some(tap), "device", &devices);
         }
     }
 
@@ -1026,10 +1034,14 @@ fn copy_scene_assets(
     tsx: &mut String,
     doc: &mut Option<Value>,
     entry: &mut Value,
+    shared: &mut Value,
     sample_pool: Option<&Path>,
 ) -> Result<(), String> {
     let mut refs = scan_asset_refs(tsx);
-    for rel in collect_json_asset_refs(entry) {
+    for rel in collect_json_asset_refs(entry)
+        .into_iter()
+        .chain(collect_json_asset_refs(shared))
+    {
         if !refs.contains(&rel) {
             refs.push(rel);
         }
@@ -1085,17 +1097,21 @@ fn copy_scene_assets(
             rewrite_json_asset_refs(doc, &replacements);
         }
         rewrite_json_asset_refs(entry, &replacements);
+        rewrite_json_asset_refs(shared, &replacements);
     }
     Ok(())
 }
 
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CopiedSceneResult {
     #[serde(flatten)]
     pub scene: SceneCopyResult,
     pub index: usize,
     /// The copy's sidecar display name, when it has one.
     pub name: Option<String>,
+    /// Source `shared` keys copied into the destination manifest, which lacked them.
+    pub shared_keys: Vec<String>,
 }
 
 /// Copy scene content and assets, preserving effects and committing its final position in one manifest write. `name` renames the copy (sidecar name, stem and scene id follow it).
@@ -1230,12 +1246,22 @@ fn copy_named_scene_between(
         Err(e) => return Err(format!("reading {doc_file_src}: {e}")),
     };
 
-    copy_scene_assets(project, dest, &mut tsx, &mut doc, &mut source, sample_pool)?;
-
     let dest_text = std::fs::read_to_string(&dest_manifest_path)
         .map_err(|e| format!("reading {dest_slug}/project.json: {e}"))?;
     let mut dest_manifest: Value = serde_json::from_str(&dest_text)
         .map_err(|e| format!("{dest_slug}/project.json isn't valid JSON: {e}"))?;
+    let mut shared = Value::Object(missing_shared(&source_manifest, &dest_manifest));
+
+    copy_scene_assets(
+        project,
+        dest,
+        &mut tsx,
+        &mut doc,
+        &mut source,
+        &mut shared,
+        sample_pool,
+    )?;
+
     migrate_manifest_transitions(&mut dest_manifest);
     if is_preset {
         inherit_preset_context(&mut doc, &dest_manifest);
@@ -1297,6 +1323,7 @@ fn copy_named_scene_between(
     let at = position.unwrap_or(scenes.len()).min(scenes.len());
     scenes.insert(at, entry);
     seed_inserted_scene_transitions(scenes, at, default_transition.as_ref());
+    let shared_keys = inherit_shared(&mut dest_manifest, shared);
     atomic_write_json(&dest_manifest_path, &dest_manifest)?;
 
     let name = doc
@@ -1313,7 +1340,45 @@ fn copy_named_scene_between(
         },
         index: at,
         name,
+        shared_keys,
     })
+}
+
+/// The source manifest's `shared` keys the destination lacks (never overwriting); none when the destination's `shared` isn't an object.
+fn missing_shared(source: &Value, dest: &Value) -> serde_json::Map<String, Value> {
+    let Some(from) = source.get("shared").and_then(Value::as_object) else {
+        return serde_json::Map::new();
+    };
+    let have = match dest.get("shared") {
+        None => None,
+        Some(Value::Object(have)) => Some(have),
+        Some(_) => return serde_json::Map::new(),
+    };
+    from.iter()
+        .filter(|(key, _)| !have.is_some_and(|have| have.contains_key(*key)))
+        .map(|(key, value)| (key.clone(), value.clone()))
+        .collect()
+}
+
+/// Adds the inherited `shared` keys (their asset paths already copied and re-pointed) to the destination; returns their names.
+fn inherit_shared(dest: &mut Value, inherited: Value) -> Vec<String> {
+    let Value::Object(inherited) = inherited else {
+        return Vec::new();
+    };
+    if inherited.is_empty() {
+        return Vec::new();
+    }
+    let Some(into) = dest.as_object_mut().and_then(|manifest| {
+        manifest
+            .entry("shared")
+            .or_insert_with(|| json!({}))
+            .as_object_mut()
+    }) else {
+        return Vec::new();
+    };
+    let keys = inherited.keys().cloned().collect();
+    into.extend(inherited);
+    keys
 }
 
 fn inherit_preset_context(doc: &mut Option<Value>, manifest: &Value) {
@@ -1970,6 +2035,74 @@ mod preset_insertion_tests {
         assert_eq!(doc["version"], SCENE_DOC_VERSION);
     }
 
+    #[test]
+    fn copies_bring_missing_shared_keys_and_never_overwrite() {
+        let mut dest = destination();
+        dest["shared"] = json!({ "palette": { "accent": "#000000" } });
+        let fixture = Fixture::new(None, &dest);
+        let mut source = read_json(&fixture.source.join("project.json"));
+        source["shared"] = json!({
+            "palette": { "accent": "#ff6a3d" },
+            "timing": { "beatMs": 480 }
+        });
+        atomic_write_json(&fixture.source.join("project.json"), &source).unwrap();
+
+        let copied = fixture.insert("hero", None);
+        assert_eq!(copied.shared_keys, vec!["timing".to_string()]);
+        let landed = read_json(&fixture.dest.join("project.json"));
+        assert_eq!(landed["shared"]["palette"]["accent"], "#000000");
+        assert_eq!(landed["shared"]["timing"]["beatMs"], 480);
+        assert_eq!(
+            fixture.insert("hero", None).shared_keys,
+            Vec::<String>::new()
+        );
+
+        let bare = Fixture::new(None, &destination());
+        atomic_write_json(&bare.source.join("project.json"), &source).unwrap();
+        let mut keys = bare.insert("hero", None).shared_keys;
+        keys.sort();
+        assert_eq!(keys, vec!["palette".to_string(), "timing".to_string()]);
+        let landed = read_json(&bare.dest.join("project.json"));
+        assert_eq!(landed["shared"], source["shared"]);
+        let json = serde_json::to_value(bare.insert("hero", None)).unwrap();
+        assert_eq!(json["sharedKeys"], json!([]));
+    }
+
+    #[test]
+    fn inherited_shared_asset_paths_copy_and_re_point() {
+        let fixture = Fixture::new(None, &destination());
+        let mut source = read_json(&fixture.source.join("project.json"));
+        source["shared"] = json!({ "logo": "assets/logo.png", "badge": "assets/badge.png" });
+        atomic_write_json(&fixture.source.join("project.json"), &source).unwrap();
+        std::fs::write(fixture.source.join("assets/logo.png"), b"theirs").unwrap();
+        std::fs::write(fixture.source.join("assets/badge.png"), b"badge").unwrap();
+        std::fs::write(fixture.dest.join("assets/logo.png"), b"mine").unwrap();
+
+        fixture.insert("hero", None);
+        let landed = read_json(&fixture.dest.join("project.json"));
+        assert_eq!(landed["shared"]["badge"], "assets/badge.png");
+        assert_eq!(
+            std::fs::read(fixture.dest.join("assets/badge.png")).unwrap(),
+            b"badge"
+        );
+        let logo = landed["shared"]["logo"].as_str().unwrap();
+        assert_ne!(logo, "assets/logo.png");
+        assert_eq!(std::fs::read(fixture.dest.join(logo)).unwrap(), b"theirs");
+        assert_eq!(
+            std::fs::read(fixture.dest.join("assets/logo.png")).unwrap(),
+            b"mine"
+        );
+    }
+
+    #[test]
+    fn copies_without_source_shared_leave_the_destination_alone() {
+        let fixture = Fixture::new(None, &destination());
+        assert!(fixture.insert("hero", None).shared_keys.is_empty());
+        assert!(read_json(&fixture.dest.join("project.json"))
+            .get("shared")
+            .is_none());
+    }
+
     fn read_json(path: &Path) -> Value {
         serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap()
     }
@@ -2571,7 +2704,16 @@ mod asset_scan_tests {
             "note": format!("Preview assets/{name} here"),
         }));
 
-        copy_scene_assets(&project, &dest, &mut tsx, &mut doc, &mut Value::Null, None).unwrap();
+        copy_scene_assets(
+            &project,
+            &dest,
+            &mut tsx,
+            &mut doc,
+            &mut Value::Null,
+            &mut Value::Null,
+            None,
+        )
+        .unwrap();
 
         let rewritten = "assets/Kākāpō @2 (final)-2.png";
         assert_eq!(doc.as_ref().unwrap()["images"][0]["src"], json!(rewritten));
@@ -2603,7 +2745,16 @@ mod asset_scan_tests {
             r#"const image = "assets/foo.png"; const unrelated = "my-assets/foo.png";"#.to_string();
         let mut doc = None;
 
-        copy_scene_assets(&project, &dest, &mut tsx, &mut doc, &mut Value::Null, None).unwrap();
+        copy_scene_assets(
+            &project,
+            &dest,
+            &mut tsx,
+            &mut doc,
+            &mut Value::Null,
+            &mut Value::Null,
+            None,
+        )
+        .unwrap();
 
         assert_eq!(
             tsx,
@@ -2935,6 +3086,26 @@ mod remint_tests {
         assert_eq!(keys[1]["pose"]["d1"]["foldDeg"], json!(180));
         assert_eq!(doc["deviceTrack"]["segments"][0]["from"], json!("k1"));
         assert_eq!(doc["deviceTrack"]["segments"][0]["to"], json!("k2"));
+    }
+
+    #[test]
+    fn screen_taps_follow_their_renumbered_device() {
+        let mut doc = json!({
+            "version": 1,
+            "devices": [{ "id": "d7", "model": "android" }, { "id": "d3", "model": "android" }],
+            "taps": [
+                { "at": 400, "screenUv": [0.5, 0.6], "device": "d3" },
+                { "at": 900, "position": [0, 0, 0] },
+                { "at": 1200, "screenUv": [0.2, 0.3], "device": "d7" },
+                { "at": 1500, "screenUv": [0.2, 0.3], "device": "gone" },
+            ],
+        });
+        remint_scene_doc_ids(&mut doc);
+        assert_eq!(ids(&doc["devices"]), ["d1", "d2"]);
+        assert_eq!(doc["taps"][0]["device"], json!("d2"));
+        assert_eq!(doc["taps"][1], json!({ "at": 900, "position": [0, 0, 0] }));
+        assert_eq!(doc["taps"][2]["device"], json!("d1"));
+        assert_eq!(doc["taps"][3]["device"], json!("gone"));
     }
 
     #[test]

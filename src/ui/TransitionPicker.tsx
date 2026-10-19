@@ -35,6 +35,7 @@ import {
   type TransitionMeta,
   type TransitionParamDef,
 } from "../engine/transitionCatalog";
+import { peekTransitionMask, setMaskUniforms, withMaskUniforms } from "../engine/transitionMask";
 import {
   EXT2_MIN_TYPE,
   EXT3_MIN_TYPE,
@@ -43,6 +44,7 @@ import {
   fragmentShaderExt,
   fragmentShaderExt2,
   fragmentShaderExt3,
+  fragmentShaderMask,
   SHAPE_ID,
   TYPE_ID,
   vertexShader,
@@ -147,6 +149,7 @@ interface PreviewHandles {
   matExt: ShaderMaterial;
   matExt2: ShaderMaterial;
   matExt3: ShaderMaterial;
+  matMask: ShaderMaterial;
   texA: Texture;
   texB: Texture;
   raf: number;
@@ -159,6 +162,7 @@ function TransitionPreview({
   thumbB,
   fallbackA,
   fallbackB,
+  maskUrl,
 }: {
   /** The draft; null = None (hard cut). */
   spec: TransitionSpec | null;
@@ -167,10 +171,14 @@ function TransitionPreview({
   /** Theme colours for the sample-slide stand-ins. */
   fallbackA: SlideColors;
   fallbackB: SlideColors;
+  /** The boundary's resolved image mask; the iris previews until it loads. */
+  maskUrl: string | null;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const specRef = useRef(spec);
   specRef.current = spec;
+  const maskUrlRef = useRef(maskUrl);
+  maskUrlRef.current = maskUrl;
   const startRef = useRef(performance.now());
 
   // A type change (pick or hover) restarts the cycle just before the run so the new transition shows straight away; param edits stay mid-loop.
@@ -198,6 +206,7 @@ function TransitionPreview({
     const matExt = makePreviewMaterial(fragmentShaderExt, true);
     const matExt2 = makePreviewMaterial(fragmentShaderExt2, true);
     const matExt3 = makePreviewMaterial(fragmentShaderExt3, true);
+    const matMask = withMaskUniforms(makePreviewMaterial(fragmentShaderMask, true));
     const mesh = new Mesh(new PlaneGeometry(2, 2), matSdr);
     mesh.frustumCulled = false;
     scene.add(mesh);
@@ -211,6 +220,7 @@ function TransitionPreview({
       matExt,
       matExt2,
       matExt3,
+      matMask,
       texA: sampleSlideTexture(fallbackA, "a"),
       texB: sampleSlideTexture(fallbackB, "b"),
       raf: 0,
@@ -254,8 +264,11 @@ function TransitionPreview({
       const type: TransitionType = s?.type ?? "crossfade";
       const p = s ? applyTransitionEase(s.ease, progress) : progress < 0.5 ? 0 : 1;
       const id = TYPE_ID[type];
-      const mat =
-        id >= EXT3_MIN_TYPE
+      const params = resolveTransitionParams(s ?? { type: "crossfade", durationMs: 600 });
+      const mask = params.shape === "image" ? peekTransitionMask(maskUrlRef.current) : null;
+      const mat = mask
+        ? handles.matMask
+        : id >= EXT3_MIN_TYPE
           ? handles.matExt3
           : id >= EXT2_MIN_TYPE
             ? handles.matExt2
@@ -264,7 +277,6 @@ function TransitionPreview({
               : handles.matSdr;
       handles.mesh.material = mat;
       const u = mat.uniforms;
-      const params = resolveTransitionParams(s ?? { type: "crossfade", durationMs: 600 });
       u.texA.value = handles.texA;
       u.texB.value = handles.texB;
       u.progress.value = p;
@@ -279,6 +291,7 @@ function TransitionPreview({
       u.shape.value = SHAPE_ID[params.shape];
       u.steps.value = params.steps;
       u.parallax.value = params.parallax;
+      if (mask) setMaskUniforms(u, { progress: p, params }, mask, PREVIEW_W, PREVIEW_H);
       renderer.render(scene, camera);
       handles.raf = requestAnimationFrame(frame);
     };
@@ -293,6 +306,7 @@ function TransitionPreview({
       matExt.dispose();
       matExt2.dispose();
       matExt3.dispose();
+      matMask.dispose();
       mesh.geometry.dispose();
       renderer.dispose();
       renderer.forceContextLoss();
@@ -328,6 +342,7 @@ const PARAM_ICONS: Record<string, string> = {
   centerX: "M10 3 V8 M10 12 V17 M3 10 H8 M12 10 H17",
   centerY: "M10 3 V8 M10 12 V17 M3 10 H8 M12 10 H17",
   shape: "M4 12 a4 4 0 1 0 8 0 a4 4 0 1 0 -8 0 M11 4 H17 V10 H11 Z",
+  mask: "M10 3 L12 8 L17 8 L13 11 L14.5 16 L10 13 L5.5 16 L7 11 L3 8 L8 8 Z",
 };
 
 function ParamIcon({ id }: { id: string }) {
@@ -386,7 +401,10 @@ function TransitionParamRow({
                 type="button"
                 className={`btn btn-small${active ? " selected" : ""}`}
                 aria-pressed={active}
-                onClick={() => persist({ ...draft, shape: opt.value })}
+                onClick={() => {
+                  const { src: _src, ...rest } = draft;
+                  persist({ ...rest, shape: opt.value });
+                }}
               >
                 {opt.label}
               </button>
@@ -530,6 +548,7 @@ export function TransitionModal({
   const themeIn = project.sceneThemes[boundaryIndex + 1] ?? project.theme;
   const themeOut = project.sceneThemes[boundaryIndex] ?? project.theme;
   const meta = draft ? TRANSITION_CATALOG.find((m) => m.type === draft.type) : null;
+  const maskRef = project.slots[boundaryIndex + 1]?.transitionMask ?? null;
 
   const previewSpec = useMemo(() => {
     if (hoverType === null) return draft;
@@ -662,6 +681,9 @@ export function TransitionModal({
             thumbB={fsUrlB}
             fallbackA={themeOut.colors}
             fallbackB={themeIn.colors}
+            maskUrl={
+              previewSpec?.src && previewSpec.src === maskRef?.src ? (maskRef?.url ?? null) : null
+            }
           />
 
           {draft && (
@@ -762,6 +784,20 @@ export function TransitionModal({
               )}
             </div>
           )}
+
+          {draft?.type === "luma" && draft.shape === "image" ? (
+            <div className="transition-advanced">
+              <div className="popover-row" title={draft.src}>
+                <span className="popover-inline slider-row-label">
+                  <ParamIcon id="mask" />
+                  Image mask
+                </span>
+                <span className="transition-mask-src">
+                  {draft.src?.split("/").pop() || "Missing"}
+                </span>
+              </div>
+            </div>
+          ) : null}
 
           {draft && meta?.params?.length ? (
             <div className="transition-advanced">

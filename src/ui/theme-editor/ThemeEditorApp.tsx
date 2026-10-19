@@ -5,7 +5,8 @@ import { ask } from "@tauri-apps/plugin-dialog";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { revealApp } from "../../engine/reveal";
-import { defaultTheme } from "../../theme/registry";
+import { collectThemeChain } from "../../theme/extends";
+import { defaultTheme, readThemeDocument, themeDocLookup } from "../../theme/registry";
 import type { Theme } from "../../theme/tokens";
 import { useNativeTextUndo } from "../useNativeTextUndo";
 import { ColoursSection } from "./ColoursSection";
@@ -21,9 +22,13 @@ import { TextLookSection } from "./TextLookSection";
 import { TypographySection } from "./TypographySection";
 import {
   isDirty as draftIsDirty,
+  effectiveThemeDoc,
   isRecord,
   parseThemeDraft,
+  patchThemeDraft,
+  readThemeVariant,
   serialiseThemeDoc,
+  standaloneThemeDoc,
   type ThemeDoc,
   themeScope,
 } from "./themeDraft";
@@ -68,6 +73,7 @@ export function ThemeEditorApp() {
   useNativeTextUndo();
   const [themeId, setThemeId] = useState<string | null>(null);
   const [doc, setDoc] = useState<ThemeDoc | null>(null);
+  const [bases, setBases] = useState<ReadonlyMap<string, unknown>>(() => new Map());
   const [savedText, setSavedText] = useState("");
   const [section, setSection] = useState<SectionId>("identity");
   const [error, setError] = useState<string | null>(null);
@@ -89,6 +95,9 @@ export function ThemeEditorApp() {
     if (version !== loadVersion.current) return;
     const parsed: unknown = JSON.parse(text);
     if (!isRecord(parsed)) throw new Error("that theme document isn't a JSON object");
+    const chain = await collectThemeChain(parsed, readThemeDocument);
+    if (version !== loadVersion.current) return;
+    setBases(chain);
     setThemeId(id);
     setDoc(parsed);
     setSavedText(text);
@@ -183,9 +192,24 @@ export function ThemeEditorApp() {
     };
   }, []);
 
+  const lookup = useMemo(() => themeDocLookup(bases), [bases]);
+  const lookupRef = useRef(lookup);
+  lookupRef.current = lookup;
+  const variant = useMemo(() => (doc ? readThemeVariant(doc, lookup) : null), [doc, lookup]);
+  const effective = useMemo(() => (doc ? effectiveThemeDoc(doc, variant) : null), [doc, variant]);
+  const patchDraft = useCallback(
+    (next: ThemeDoc) =>
+      setDoc((current) => (current ? patchThemeDraft(current, variant, next) : next)),
+    [variant],
+  );
+  const detach = useCallback(() => {
+    if (doc && variant?.base) setDoc(standaloneThemeDoc(doc, variant));
+  }, [doc, variant]);
+
   const parsed = useMemo(
-    () => (doc ? parseThemeDraft(doc, themeId ?? "theme") : { theme: undefined, warnings: [] }),
-    [doc, themeId],
+    () =>
+      doc ? parseThemeDraft(doc, themeId ?? "theme", lookup) : { theme: undefined, warnings: [] },
+    [doc, themeId, lookup],
   );
 
   // The last theme that parsed: an in-flight edit that breaks a required block must not blank the specimen.
@@ -240,7 +264,7 @@ export function ThemeEditorApp() {
             if (
               !current.doc ||
               current.themeId !== payload.themeId ||
-              !parseThemeDraft(current.doc, current.themeId).theme
+              !parseThemeDraft(current.doc, current.themeId, lookupRef.current).theme
             )
               throw new Error("Fix the theme before moving it.");
             if (dirtyRef.current) {
@@ -324,7 +348,7 @@ export function ThemeEditorApp() {
         </p>
       )}
 
-      {doc && (
+      {doc && effective && (
         <div className="theme-editor-body">
           <nav className="theme-editor-nav" aria-label="Theme sections">
             {SECTIONS.map((entry) => (
@@ -365,22 +389,44 @@ export function ThemeEditorApp() {
             )}
 
             {section === "identity" && (
-              <IdentitySection doc={doc} onPatch={setDoc} devTools={canEditBundledThemes} />
+              <IdentitySection
+                doc={effective}
+                onPatch={patchDraft}
+                devTools={canEditBundledThemes}
+                variant={variant}
+                onDetach={detach}
+              />
             )}
-            {section === "colours" && <ColoursSection doc={doc} onPatch={setDoc} theme={theme} />}
+            {section === "colours" && (
+              <ColoursSection doc={effective} onPatch={patchDraft} theme={theme} />
+            )}
             {section === "gradients" && (
-              <GradientsSection doc={doc} onPatch={setDoc} theme={theme} />
+              <GradientsSection doc={effective} onPatch={patchDraft} theme={theme} />
             )}
-            {section === "typography" && <TypographySection doc={doc} onPatch={setDoc} />}
+            {section === "typography" && <TypographySection doc={effective} onPatch={patchDraft} />}
             {section === "text-look" && (
-              <TextLookSection key={themeId ?? ""} doc={doc} theme={theme} onPatch={setDoc} />
+              <TextLookSection
+                key={themeId ?? ""}
+                doc={effective}
+                theme={theme}
+                onPatch={patchDraft}
+              />
             )}
             {section === "motion" && (
-              <MotionSection key={themeId ?? ""} doc={doc} onPatch={setDoc} theme={theme} />
+              <MotionSection
+                key={themeId ?? ""}
+                doc={effective}
+                onPatch={patchDraft}
+                theme={theme}
+              />
             )}
-            {section === "stage" && <StageSection doc={doc} onPatch={setDoc} theme={theme} />}
-            {section === "lighting" && <LightingSection doc={doc} onPatch={setDoc} theme={theme} />}
-            {section === "effects" && <EffectsSection doc={doc} onPatch={setDoc} />}
+            {section === "stage" && (
+              <StageSection doc={effective} onPatch={patchDraft} theme={theme} />
+            )}
+            {section === "lighting" && (
+              <LightingSection doc={effective} onPatch={patchDraft} theme={theme} />
+            )}
+            {section === "effects" && <EffectsSection doc={effective} onPatch={patchDraft} />}
           </main>
 
           <SpecimenPanel theme={theme} />

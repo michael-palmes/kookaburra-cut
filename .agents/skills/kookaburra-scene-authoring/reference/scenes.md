@@ -46,7 +46,8 @@ needs no React import. Consequences:
 - r3f intrinsics work: `<group>`, `<mesh>`, `<planeGeometry>`, `<ringGeometry>`,
   `<boxGeometry>`, `<meshBasicMaterial>`, `<meshStandardMaterial>`, lights. Colours
   as hex strings from theme tokens.
-- No easing import: write the curve inline (examples below) or use `fade`/`slide`.
+- Motion curves come from the toolkit: `ramp`, `ease`, `sampleKeys`, `stampScale`
+  (below). Ease names are the catalogue's (`./kb catalog eases`).
 - `import type { ... } from "@kookaburra/toolkit"` is fine (`SceneDoc`, `V3`, ...).
 
 ## Hooks
@@ -61,9 +62,17 @@ needs no React import. Consequences:
 | `useSceneDoc()` | The raw sidecar, or null |
 | `useSceneChart()`, `useSceneObjects()`, `useSceneLayeredScreenshot()` | Those blocks (calling one stops the host fallback for it) |
 | `useSceneStaged()` | Whether a `SceneStage` owns lighting here |
+| `useRoom()` | The sidecar `room` now: `{ colour, key, flood: { colour, origin, progress, radius } \| null, pose }`, or null without a room. `colour` is null before the first key |
 | `useDepthBand()`, `useRigTrack()` | Inside `DepthStage`: the slot rect; the scene's rig track |
 | `useBeatGrid()` | The project's `audio.grid` in this scene's time, or null without one: `bar(13, 3)`, `at("cue:drop")`, `position(localMs)` (`{ bar, beat, sixteenth, beatPhase, barPhase }`), `local(projectMs)`, `project(localMs)`, `beatMs`, `barMs`, `bpm`, `beatsPerBar`. Times are integer scene-local ms (negative before the scene), the same frames a sidecar `"at": "bar:13"` lands on; `at()` throws on a position that can't resolve |
 | `useCues()` | `audio.cues` as `{ id: scene-local ms }`; `{}` without any |
+| `useProjectShared(path?, fallback?)` | `project.json` `shared` constants: `useProjectShared("palette.accent", theme.colors.accent)`; no path returns the whole block (reference/project.md) |
+| `useTextMetrics(textKey, text, opts?)` | `{ width, height, ascent, descent, lines }` of the block an `AnimatedHeadline` with those props draws (sidecar overrides included), or null for a frame while its font loads; size pills and underlines with it (reference/text.md) |
+| `useSceneCamera()` | The scene camera's pose this frame: `{ position, lookAt, fov, rollDeg? }` |
+| `useCameraFrame(z?)` | `{ width, height, center }`: the world rectangle the scene camera sees on the plane at depth `z` this frame (reference/camera.md) |
+
+Plain helpers: `measureText(text, { font, fontSize })` measures without a text key, and
+`frameAtDepth(format, z)` gives the default camera's visible `{ width, height }` at depth `z`.
 
 ## Layout
 
@@ -79,36 +88,96 @@ needs no React import. Consequences:
 - Typical sizes: TitleBlock title 0.56 (landscape) / 0.34 (portrait); AnimatedHeadline
   default 0.6; body copy 0.2 to 0.28; a fitted phone is 2.6 units tall.
 
-## Motion without hooks
+## Motion helpers
 
 ```tsx
-import { defineScene, useFormat, useTheme, useTimeline } from "@kookaburra/toolkit";
+import {
+  defineScene,
+  liftColour,
+  Pill,
+  RoundedRect,
+  ramp,
+  sampleKeys,
+  stampScale,
+  useFormat,
+  useTheme,
+  useTimeline,
+} from "@kookaburra/toolkit";
 
-const clamp01 = (t: number) => Math.min(1, Math.max(0, t));
-const outCubic = (t: number) => 1 - (1 - t) ** 3;
+const pop = stampScale();
+const SLIDE = [
+  { tMs: 0, x: -1.2, opacity: 0 },
+  { tMs: 700, x: 0, opacity: 1, ease: "outCubic" },
+  { tMs: 2200, x: 0, opacity: 1 },
+  { tMs: 2600, x: 1.2, opacity: 0, ease: "inCubic" },
+];
 
 export default defineScene({
-  id: "accent-ring",
+  id: "feature-card",
   durationMs: 3000,
   Scene() {
     const { localMs } = useTimeline();
-    const theme = useTheme();
+    const { colors } = useTheme();
     const { frame } = useFormat();
-    const p = outCubic(clamp01((localMs - 150) / 900));
-    const r = 0.2 + p * frame.height * 0.3;
+    const card = sampleKeys(SLIDE, localMs);
+    const w = Math.min(frame.width * 0.6, 3.2);
+    const bar = w * 0.8 * ramp(localMs, 900, 1800, "inOutCubic");
     return (
-      <mesh scale={[r, r, 1]}>
-        <ringGeometry args={[0.92, 1, 96]} />
-        <meshBasicMaterial color={theme.colors.accent} toneMapped={false} transparent opacity={p} />
-      </mesh>
+      <group position={[card.x, 0, 0]}>
+        <RoundedRect
+          width={w}
+          height={1.6}
+          radius={0.16}
+          color={liftColour(colors.background, colors.text, 0.08)}
+          strokeWidth={0.02}
+          strokeColor={colors.muted}
+          opacity={card.opacity}
+        />
+        <Pill
+          width={1.2}
+          height={0.3}
+          color={colors.accent}
+          position={[0, 0.3, 0.01]}
+          scale={pop(localMs - 600)}
+          opacity={card.opacity}
+        />
+        <Pill
+          width={bar}
+          height={0.08}
+          color={colors.accent}
+          position={[-w * 0.4 + bar / 2, -0.4, 0.01]}
+          opacity={card.opacity}
+        />
+      </group>
     );
   },
 });
 ```
 
+- `ramp(localMs, startMs, endMs, ease?, opts?)`: eased 0 to 1 through a window (time
+  clamped, `linear` by default); an empty window steps at `startMs`.
+- `ease(name, t, { overshoot }?)` and `easeFn(name, opts?)`: the named curves (the
+  camera's and text presets'). `overshoot` widens the Back family (`outBack` for small
+  pops). Unknown names fall back to `inOutQuad`, and `./kb check` warns on them.
+- `sampleKeys(keys, localMs, { ease }?)`: keys `{ tMs, ease?, ...values }` in any order.
+  Holds the first key before it and the last after it; each key's `ease` shapes the
+  segment ARRIVING at it (default `linear`). Numbers and equal-length number arrays
+  (positions) interpolate; strings and other values switch at the key.
+- `stampScale({ from, peak, inMs, settleMs }?)` returns `ms => scale`: 0 to 1.12 over
+  180 ms (outCubic), back to 1 over 260 ms (inOutSine). Pass ms since the stamp starts.
+- `<Stamp at={600} rotateDeg={-8} position={[0, 0.4, 0.01]}>...</Stamp>` wraps children
+  in that pop (hidden before `at`, pivot at the group origin, so centre children on it);
+  `rotateDeg` adds a small swing about Z that settles with a slight overshoot. It takes the
+  `stampScale` options and a base `scale`. Prefer it to hand-copying the pop.
+- `clamp01(x)`, `lerp(a, b, t)` for the rest.
+- `RoundedRect` (`width`, `height`, `radius`, `color`, `opacity`, `strokeWidth`,
+  `strokeColor`, `position`, `rotation`, `scale`, `renderOrder`) and `Pill` (radius is
+  half the shorter side) are flat and colour-exact; size, radius and colours animate
+  freely (no geometry rebuild). Fills default to the theme accent, strokes to the text
+  colour.
 - Per-frame geometry pitfall: never animate geometry `args` (a growing radius in
   `args` rebuilds the geometry every frame). Build a unit geometry once and animate
-  `scale`, `position`, `rotation` or material `opacity`, as above.
+  `scale`, `position`, `rotation` or material `opacity`.
 - Flat graphic colours: `toneMapped={false}` keeps a token colour exact; lit
   materials (`meshStandardMaterial`) respond to the scene's lighting and tone mapping.
 - `fade(useTimeline(), [startMs, endMs])` gives `{ opacity }`;
@@ -154,16 +223,39 @@ export default defineScene({
 | `Chart` | The sidecar chart (reference/charts.md) |
 | `StagedObject`, `HeroObject` | 3D objects |
 | `ParticleField`, `WireGrid`, `Ribbon` | Seeded generative shapes on the clock |
+| `RoundedRect`, `Pill` | Flat cards, badges, chips and bars (Motion helpers above) |
+| `DashedRule`, `DashedBracket` | Dashed dividers, connectors and span brackets with a draw-on (below) |
+| `SplitField` | The frame split into image, video or colour tiles (the sidecar `mosaic`, reference/media.md) |
+| `TapRing`, `Cursor` | Tap pulses and a travelling, clicking pointer (the sidecar `taps`, reference/media.md) |
+| `Stamp` | Stamps its children in (Motion helpers above) |
+| `Room`, `RoomFlood` | A camera-locked room colour and a flood of colour from a frame point, for floods the scene times itself (the sidecar `room` block draws its own) |
 | `SceneStage`, `DepthStage`, `LightRig` | Staging and light |
 
 Generative shapes (all motion from the clock, randomness from `seed`):
 
-- `<ParticleField count={200} seed={1} bounds={[6, 3.5, 2]} size drift twinkle tone="accent" />`
-- `<WireGrid size={12} divisions={24} amplitude wavelength speed tone opacity position rotation />`
-- `<Ribbon seed={1} points bounds radius={0.05} from={0} to={1500} tone lit />`
+- `<ParticleField count={200} seed={1} bounds={[6, 3.5, 2]} size drift twinkle tone="accent" glow />`
+- `<WireGrid size={12} divisions={24} amplitude wavelength speed tone opacity glow position rotation />`
+- `<Ribbon seed={1} points bounds radius={0.05} from={0} to={1500} tone lit glow />`
+- `glow` (a luminance such as 1.5) makes the shape an exact-colour emitter that a bloom
+  threshold above 1 catches (reference/lighting.md, "Real glow").
 - `<ExtrudedText text from to position rotation fontSize depth bevel tone lit textKey />`
   (rotation in radians; bundled faces only)
 - `<HeroObject model="handset" position rotation scale spinDegPerSec floatAmplitude floatHz lit />`
+
+Dashed shapes (flat and colour-exact, one mesh per dash, colour defaulting to the theme
+muted):
+
+- `<DashedRule from={[-2, 0]} to={[2, 0]} thickness={0.02} dash={0.12} gap={0.08} color progress round position />`:
+  each run starts and ends on a dash (dashes stretch slightly to fit); `progress` 0..1
+  draws it on from `from`, e.g. `progress={ramp(localMs, 300, 1100, "inOutCubic")}`.
+- `<DashedBracket span={2.4} depth={0.18} side="top" progress />` marks a span: `side`
+  is where it sits against what it marks (`top` ticks point down, `bottom` up, `left`
+  right, `right` left), centred on its `position`; `progress` grows from the middle out.
+
+Rooms in code: `<RoomFlood colour={theme.colors.accent} origin={[0.2, 0.8]} radius={ramp(localMs, 600, 1500, "inOutCubic")} />`
+grows a circle of colour over the frame behind all content; `<Room colour={hex} flood={...} />` adds the
+frame-filling room under it. Prefer the sidecar `room` block, which also relights. Over a room,
+`cssOpacity(theme.colors.text, room.colour, 0.6)` is the exact opaque hex of text at 60% opacity.
 
 Light rigs add up: with several lit primitives and no `SceneStage`, mount one
 `<LightRig />` and pass `lit={false}` to each.
@@ -171,7 +263,8 @@ Light rigs add up: with several lit primitives and no `SceneStage`, mount one
 `<AnimatedGroup from to outAt preset outPreset ease startScale shine direction position em extent>`
 animates its children as ONE unit (the group origin is the pivot; place children
 symmetrically around [0, 0, 0]). `ImageCard`, `AnimatedHeadline` and `AnimatedCounter`
-inside it take the group's fade and shine; other primitives ride its transform only.
+inside it take the group's fade and shine, `RoundedRect` and `Pill` its fade; other
+primitives ride its transform only.
 
 ## Persistent module
 

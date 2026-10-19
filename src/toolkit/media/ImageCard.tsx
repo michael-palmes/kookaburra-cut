@@ -3,10 +3,26 @@ import { useContext, useLayoutEffect, useMemo } from "react";
 import { MeshBasicMaterial, SRGBColorSpace, type Texture, Vector2, Vector4 } from "three";
 import { useTimeline } from "../../engine/timeline";
 import { useProjectAssetUrl } from "../../engine/useProjectAssetUrl";
+import { useTheme } from "../../theme";
 import { foldBandToChild, GroupAnimationContext, groupImageEffects } from "../group/context";
 import { SHINE_AXIS, SHINE_INTENSITY } from "../text/presets";
 import type { V3 } from "../types";
 import { AssetBoundary } from "./AssetBoundary";
+import { colouredShadowMaterial } from "./LayeredScreenshot";
+
+/** A flat, unblurred offset shadow (the hard-shadow look). Offsets and radius are fractions of the card's short edge. */
+export interface HardShadowSpec {
+  /** x right, y up (default [0.06, -0.06]). */
+  offset?: [number, number];
+  /** A theme token hex (default the theme text colour). */
+  colour?: string;
+  /** 0..1 (default 1); multiplies with the card's own fade. */
+  opacity?: number;
+  /** Corner radius, for assets with rounded corners (default 0). */
+  radius?: number;
+}
+
+const HARD_SHADOW_Z = 0.01;
 
 export interface ImageCardProps {
   /** Project-relative asset path (e.g. `assets/app-icon.png`). */
@@ -19,11 +35,13 @@ export interface ImageCardProps {
   /** Optional linear fade-in window, ms (local scene time). Absent = always opaque. */
   from?: number;
   to?: number;
+  /** A hard offset shadow behind the card; absent draws none. */
+  shadow?: HardShadowSpec;
 }
 
 /** A flat image plane for icons, logos and stills: renders UNLIT with `toneMapped: false` so the asset's pixels land exactly (the device-screen/backdrop precedent), respecting PNG alpha so rounded/irregular shapes come from the asset itself; the suspense texture load is settled by the export preamble before frame 0. */
 export function ImageCard(props: ImageCardProps) {
-  const { src, position = [0, 0, 0], width = 1, maxHeight, from, to } = props;
+  const { src, position = [0, 0, 0], width = 1, maxHeight, from, to, shadow } = props;
   // Re-renders on an in-place replace (an app-icon swap), whose revision makes a new URL.
   const url = useProjectAssetUrl(src, "[image]");
   if (!url) return null;
@@ -36,6 +54,7 @@ export function ImageCard(props: ImageCardProps) {
         maxHeight={maxHeight}
         from={from}
         to={to}
+        shadow={shadow}
       />
     </AssetBoundary>
   );
@@ -144,6 +163,7 @@ function LoadedImageCard({
   maxHeight,
   from,
   to,
+  shadow,
 }: {
   url: string;
   position: V3;
@@ -151,6 +171,7 @@ function LoadedImageCard({
   maxHeight?: number;
   from?: number;
   to?: number;
+  shadow?: HardShadowSpec;
 }) {
   const { localMs } = useTimeline();
   const group = useContext(GroupAnimationContext);
@@ -217,9 +238,65 @@ function LoadedImageCard({
     }
   }
 
-  return (
+  const card = (
     <mesh position={position} material={material}>
       <planeGeometry args={[contained.width, contained.height]} />
+    </mesh>
+  );
+  if (!shadow) return card;
+  return (
+    <>
+      <HardShadow
+        width={contained.width}
+        height={contained.height}
+        position={position}
+        shadow={shadow}
+        opacity={material.opacity}
+      />
+      {card}
+    </>
+  );
+}
+
+function HardShadow({
+  width,
+  height,
+  position,
+  shadow,
+  opacity,
+}: {
+  width: number;
+  height: number;
+  position: V3;
+  shadow: HardShadowSpec;
+  opacity: number;
+}) {
+  const theme = useTheme();
+  const short = Math.min(width, height);
+  const [dx, dy] = shadow.offset ?? [0.06, -0.06];
+  const radius = Math.min(Math.max(0, shadow.radius ?? 0), 0.5) * short;
+  const colour = shadow.colour ?? theme.colors.text;
+  const material = useMemo(
+    () =>
+      colouredShadowMaterial({
+        size: [width, height],
+        half: [width / 2, height / 2],
+        radius,
+        blur: 0,
+        opacity: 1,
+        colour,
+      }),
+    [width, height, radius, colour],
+  );
+  useLayoutEffect(() => () => material.dispose(), [material]);
+  material.uniforms.uOpacity.value = Math.min(Math.max(shadow.opacity ?? 1, 0), 1) * opacity;
+  return (
+    <mesh
+      position={[position[0] + dx * short, position[1] + dy * short, position[2] - HARD_SHADOW_Z]}
+      material={material}
+      visible={short > 0}
+    >
+      <planeGeometry args={[width, height]} />
     </mesh>
   );
 }

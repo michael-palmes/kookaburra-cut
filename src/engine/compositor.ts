@@ -72,6 +72,7 @@ import {
 } from "./sceneState";
 import type { Resolved, ResolvedTransition } from "./sceneTimeline";
 import { releaseShutterLane } from "./shutterLane";
+import { setMaskUniforms, transitionMaskForFrame, withMaskUniforms } from "./transitionMask";
 import {
   EXT2_MIN_TYPE,
   EXT3_MIN_TYPE,
@@ -84,6 +85,8 @@ import {
   fragmentShaderExt3Hdr,
   fragmentShaderExtHdr,
   fragmentShaderHdr,
+  fragmentShaderMask,
+  fragmentShaderMaskHdr,
   SHAPE_ID,
   TYPE_ID,
   vertexShader,
@@ -120,6 +123,9 @@ interface CompositorState {
   /** v15 pack (types 13-25, GLSL3), its own generation for the same reason. */
   materialExt3: ShaderMaterial;
   materialExt3Hdr: ShaderMaterial;
+  /** Luma's image mask (`shape: "image"`, GLSL3), a fifth generation for the same reason. */
+  materialMask: ShaderMaterial;
+  materialMaskHdr: ShaderMaterial;
   /** The comparison mask pair (before/after split), its own generation so it never recompiles the transition programs. */
   compareMaterial: ShaderMaterial;
   compareMaterialHdr: ShaderMaterial;
@@ -301,6 +307,8 @@ function ensureState(w: number, h: number): CompositorState {
   const materialExt2Hdr = makeCompositeMaterial(fragmentShaderExt2Hdr, true);
   const materialExt3 = makeCompositeMaterial(fragmentShaderExt3, true);
   const materialExt3Hdr = makeCompositeMaterial(fragmentShaderExt3Hdr, true);
+  const materialMask = withMaskUniforms(makeCompositeMaterial(fragmentShaderMask, true));
+  const materialMaskHdr = withMaskUniforms(makeCompositeMaterial(fragmentShaderMaskHdr, true));
   const compareMaterial = makeCompareMaterial(compareFragmentShader);
   const compareMaterialHdr = makeCompareMaterial(compareFragmentShaderHdr);
   const quadScene = new Scene();
@@ -334,6 +342,8 @@ function ensureState(w: number, h: number): CompositorState {
     materialExt2Hdr,
     materialExt3,
     materialExt3Hdr,
+    materialMask,
+    materialMaskHdr,
     compareMaterial,
     compareMaterialHdr,
     mesh,
@@ -1091,7 +1101,7 @@ export function renderComposited(
 
   // Effects: composites in linear into the composer (which owns tone-map + sRGB encode); no effects: composites straight to the default FB with sRGB encode, the original path, unchanged.
   const id = TYPE_ID[tr.type];
-  const activeMaterial =
+  const proceduralMaterial =
     id >= EXT3_MIN_TYPE
       ? hdrLane
         ? st.materialExt3Hdr
@@ -1107,6 +1117,10 @@ export function renderComposited(
           : hdrLane
             ? st.materialHdr
             : st.material;
+  // A null mask in preview keeps the extended luma material, which reads `image` as the iris.
+  const mask = tr.params.shape === "image" ? transitionMaskForFrame(tr) : null;
+  const maskMaterial = hdrLane ? st.materialMaskHdr : st.materialMask;
+  const activeMaterial = mask ? maskMaterial : proceduralMaterial;
   st.mesh.material = activeMaterial;
   setCompositeUniforms(
     activeMaterial.uniforms,
@@ -1116,6 +1130,7 @@ export function renderComposited(
     (compB ?? tgtB).texture,
     st.size.x / st.size.y,
   );
+  if (mask) setMaskUniforms(activeMaterial.uniforms, tr, mask, st.size.x, st.size.y);
 
   // The overlay draw renders `scene` again, with only the persistent layers visible, so the morph appears exactly once, over the blended composite, with the real camera.
   const hasOverlay = persistent.length > 0;

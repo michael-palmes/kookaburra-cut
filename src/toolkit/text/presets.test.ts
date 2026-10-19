@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { Theme } from "../../theme/tokens";
+import type { TextAnimationSpec, Theme } from "../../theme/tokens";
 import {
   CHROMA_EM,
   CONVERGE_EM,
@@ -21,6 +21,7 @@ import {
   LINE_SCALE_Y0,
   MAX_STAGGER_UNITS,
   ORBIT_SWEEP_RAD,
+  pinRevealDuration,
   presetNeedsShaderPath,
   RIBBON_BOW_EM,
   RIBBON_RAD,
@@ -1517,5 +1518,91 @@ describe("sampleTextUnit delayMs (the delayed-start hold)", () => {
       1000,
     );
     expect(underlineProgress(withOut, 1080)).toBeCloseTo(0.5, 12); // q = 0.2: re-drawing on time
+  });
+});
+
+describe("staggerExact (a spec's 0 means 0)", () => {
+  const spec = (extra: Partial<TextAnimationSpec>): TextAnimationSpec => ({
+    in: "fade-up",
+    out: "fade",
+    staggerMs: 0,
+    ...extra,
+  });
+
+  it("keeps today's granularity default for an unflagged 0", () => {
+    const anim = resolveTextAnimation({}, baseTheme, spec({ delivery: "by-paragraph" }));
+    expect(anim).toMatchObject({ granularity: "paragraph", staggerMs: 160 });
+    expect(resolveTextAnimation({ stagger: "word" }, baseTheme, spec({}))?.staggerMs).toBe(90);
+    expect(resolveTextAnimation({}, baseTheme, spec({ in: "tracking" }))?.staggerMs).toBe(35);
+  });
+
+  it("holds the flagged 0 exactly, from a sidecar or a theme spec", () => {
+    const flagged = spec({ delivery: "by-paragraph", staggerExact: true });
+    expect(resolveTextAnimation({}, baseTheme, flagged)).toMatchObject({
+      granularity: "paragraph",
+      staggerMs: 0,
+    });
+    const theme = { ...baseTheme, textAnimation: spec({ in: "tracking", staggerExact: true }) };
+    expect(resolveTextAnimation({}, theme)?.staggerMs).toBe(0);
+    expect(resolveTextAnimation({ stagger: "word" }, theme)?.staggerMs).toBe(0);
+  });
+
+  it("ignores a stale flag on a spec whose staggerMs isn't 0", () => {
+    const stale = {
+      in: "fade-up",
+      out: "fade",
+      delivery: "by-paragraph",
+      staggerExact: true,
+    } as TextAnimationSpec;
+    expect(resolveTextAnimation({}, baseTheme, stale)?.staggerMs).toBe(160);
+  });
+
+  it("lets props still win over the flag", () => {
+    const flagged = spec({ delivery: "by-paragraph", staggerExact: true });
+    expect(resolveTextAnimation({ staggerMs: 40 }, baseTheme, flagged)?.staggerMs).toBe(40);
+  });
+});
+
+describe("pinRevealDuration (the durationMs prop)", () => {
+  const anim = (staggerMs: number) => {
+    const resolved = resolveTextAnimation(
+      { preset: "fade", stagger: "word", staggerMs },
+      baseTheme,
+    );
+    if (!resolved) throw new Error("expected an animation");
+    return resolved;
+  };
+  const lastSettle = (
+    pinned: { anim: { staggerMs: number }; to: number },
+    from: number,
+    n: number,
+  ) => pinned.to + (n - 1) * pinned.anim.staggerMs - from;
+
+  it("lands the last unit exactly on the pinned total for any unit count", () => {
+    for (const n of [1, 2, 5, 17]) {
+      const pinned = pinRevealDuration(anim(90), 200, 800, n, 1500);
+      expect(lastSettle(pinned, 200, n)).toBeCloseTo(1500, 9);
+    }
+  });
+
+  it("keeps the authored stagger to duration ratio", () => {
+    const pinned = pinRevealDuration(anim(100), 0, 600, 5, 500);
+    expect(pinned.anim.staggerMs / pinned.to).toBeCloseTo(100 / 600, 12);
+  });
+
+  it("gives one unit, or no stagger, the whole span", () => {
+    expect(pinRevealDuration(anim(90), 100, 700, 1, 1200).to).toBe(1300);
+    const still = anim(0);
+    const pinned = pinRevealDuration(still, 100, 700, 6, 1200);
+    expect(pinned.anim).toBe(still);
+    expect(pinned.to).toBe(1300);
+  });
+
+  it("drives sampleTextUnit so the last unit settles at the pin", () => {
+    const pinned = pinRevealDuration(anim(90), 0, 600, 4, 1000);
+    const t: TextAnimTiming = { anim: pinned.anim, from: 0, to: pinned.to };
+    expect(sampleTextUnit(t, 3, 999).alpha).toBeLessThan(1);
+    expect(sampleTextUnit(t, 3, 1000).alpha).toBe(1);
+    expect(sampleTextUnit(t, 0, 0).alpha).toBe(0);
   });
 });

@@ -81,7 +81,8 @@ unit is about 261 px. The safe inset is 0.249 units (65 px).
 ## Colour
 
 - Use theme tokens: `text` for copy, `muted` for secondary, `accent` for the one thing
-  to look at (a key word via `highlight-block`, a chip, a rule, a chart series).
+  to look at (a key word via `*word*` emphasis or `highlight-block`, a chip, a rule, a
+  chart series).
 - Pick the theme by mood (`./kb catalog themes`): light themes for calm product stories,
   dark themes for drama, launches and anything with bloom or neon.
 - Text over moving backgrounds: use shader or 3D presets whose mode matches the theme
@@ -111,8 +112,8 @@ Text motion by purpose (sidecar `textAnimation`):
 | Purpose | Presets |
 | --- | --- |
 | Calm, corporate | `fade-up` (word, 70 to 90 ms), `fade`, `mask-reveal`, `rise-mask` |
-| Launch energy | `fade-scale` with `shine`, `slam`, `spring-pop`, `tracking` |
-| Tech and developer | `tracking`, `develop`, `glint-wipe`, `highlight-wipe` |
+| Launch energy | `fade-scale` with `shine`, `slam`, `stamp`, `spring-pop`, `tracking`, `build` |
+| Tech and developer | `tracking`, `develop`, `glint-wipe`, `highlight-wipe`, `typewriter` (or `PromptBar`) |
 | Editorial | `blur-in`, `weight-build`, `underline-draw` |
 | Playful | `spring-pop`, `flip-cascade`, `word-cycle`, `ribbon` |
 | Cinematic | `dolly`, `chromatic`, `line-stretch` |
@@ -122,6 +123,12 @@ Text motion by purpose (sidecar `textAnimation`):
 - Entrances decelerate: `outCubic`, `outQuart`, `outExpo`. Camera moves: `inOutCubic`
   or `inOutSine`. `outBack` only for small pops. `linear` only for continuous spins and
   orbits. `jump` for cuts.
+- In TSX, `ramp(localMs, start, end, "outCubic")` drives one-shot moves, `sampleKeys`
+  multi-step moves and `<Stamp at>` (or `stampScale()`) a stamped pop for badges, ticks
+  and pills (`RoundedRect`, `Pill`). Keep timings several scenes share in `project.json`
+  `shared` (`useProjectShared`).
+- Product demos: show a tap where the finger lands (sidecar `taps` on the device, or a
+  `Cursor` for laptop screens), one tap per beat of the story, never a tap storm.
 - Devices: `push-in` or `tilt-reveal` to enter, `float` (amplitude 0.06 to 0.08) to
   idle. Avoid `turntable` while the screen matters: it turns away.
 - Sync to the soundtrack where there is one (reference/beats.md): give it a beat grid

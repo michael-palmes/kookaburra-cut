@@ -55,7 +55,9 @@ export type ThemeEditorIconName =
   | "bloom"
   | "vignette"
   | "lut"
-  | "grain";
+  | "grain"
+  | "base"
+  | "detach";
 
 const paths: Record<ThemeEditorIconName, ReactNode> = {
   identity: (
@@ -340,6 +342,20 @@ const paths: Record<ThemeEditorIconName, ReactNode> = {
     <>
       <rect x="3.5" y="4.5" width="13" height="11" rx="2" />
       <path d="M6.5 8h.1M9 11h.1M12.5 7.5h.1M13.5 12h.1M7.5 13h.1M11 9h.1" />
+    </>
+  ),
+  base: (
+    <>
+      <path d="M8.5 11.5l3-3" />
+      <path d="M7 9.5L5.5 11a2.5 2.5 0 003.5 3.5l1.5-1.5" />
+      <path d="M13 10.5L14.5 9A2.5 2.5 0 0011 5.5L9.5 7" />
+    </>
+  ),
+  detach: (
+    <>
+      <path d="M7 9.5L5.5 11a2.5 2.5 0 003.5 3.5l1.5-1.5" />
+      <path d="M13 10.5L14.5 9A2.5 2.5 0 0011 5.5L9.5 7" />
+      <path d="M4.5 4.5l2 2M15.5 15.5l-2-2" />
     </>
   ),
 };

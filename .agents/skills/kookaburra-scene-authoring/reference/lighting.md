@@ -129,6 +129,30 @@ Colours interpolate through kelvin when both ends set it. Only the scene layer
 animates. `animatedTrack: "lighting"` puts the track on the app's lane. A key may sit on
 the music with `"at": "bar:13"` (reference/beats.md).
 
+## Rooms relight
+
+A sidecar `room` (reference/sidecar.md) changes the backdrop colour mid-scene and
+relights with it: each key's `themeId` brings that theme's sun, ambient and same-id
+lights, its own `lighting` block wins, and a light coloured by `colorToken` follows the
+room's palette (`"colorToken": "background"` takes the room colour). Floods lerp
+intensities and colours with the flood. Rooms change intensity and colour only, never
+placement, and never the environment. A room wins over a lighting key on the same light.
+Only `<SceneStage>` lights follow: stage the scene (a Device's built-in lights in an
+unstaged scene never relight).
+
+## Real glow (bloom threshold above 1)
+
+Bloom at a threshold under 1 also catches bright surfaces and text. For glow
+only on chosen things, set the theme's `effects.bloom.luminanceThreshold` to 1 or a
+little above, then raise what should glow past it: fixtures with `emissive` above 1,
+and `ParticleField`, `WireGrid` and `Ribbon` with `glow` (a target luminance such as
+1.5). `glow` raises only the token's full (255) channels and renders unlit with tone
+mapping off, so without effects the colour lands exactly on the token, and under
+effects with `"toneMapping": "linear"` the glowing pixels clamp back to it while bloom
+spreads the light around them. `glowColour(hex, glow)` gives the same colour for your
+own unlit materials (set `toneMapped={false}`). A colour with no full channel cannot
+stay exact.
+
 ## Display transform
 
 `project.json` `render`: `{ "toneMapping": "aces" | "agx" | "neutral" | "linear", "exposure": 1 }`
@@ -136,6 +160,14 @@ the music with `"at": "bar:13"` (reference/beats.md).
 more softly with truer saturated colour; `neutral` keeps product colours closest;
 `linear` is flat and clips. Applies to the whole project. The same block's `motionBlur`
 is in reference/camera.md.
+
+Text colour: backdrops, fixed backgrounds and device screens skip tone mapping and land on
+their exact hex, but troika text is tone-mapped by default, so under `aces` a `#F5F7FA` text
+token renders as about `#DFE0E1`. For brand-exact flat work (logos, wordmarks, colour-matched
+titles) set `"exactText": true` in the same `render` block: all SDF text then lands on its
+exact theme colour. It holds only on projects without postprocessing effects; with bloom,
+vignette, LUT or grain the effect chain tone-maps every pixel once, text and backdrops
+alike. Extruded 3D text is a lit body and stays tone-mapped either way.
 
 ## Recipes
 

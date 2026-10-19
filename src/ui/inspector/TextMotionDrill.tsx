@@ -3,6 +3,7 @@ import { EASE_NAMES } from "../../engine/ease";
 import type { SceneDoc, SceneManagedTextItemType } from "../../engine/sceneDocSchema";
 import type { TextAnimationSpec } from "../../theme/tokens";
 import {
+  BUILD_SHIFT_EM,
   DEFAULT_START_SCALE,
   STATIC_TEXT_PRESET,
   type TextDirection,
@@ -14,6 +15,7 @@ import {
   type DeliveryChoice,
   formatDelaySeconds,
   TEXT_PRESET_CATALOG,
+  withStaggerMs,
 } from "../textAnimationOptions";
 import type { ManagedTextWrite } from "./ManagedTextDrill";
 import { TextScopeIcon } from "./ManagedTextDrill";
@@ -126,7 +128,7 @@ export function motionSpecForPreset(
 ): TextAnimationSpec {
   const seed = motionSeed(current);
   if (preset === STATIC_TEXT_PRESET) {
-    const next = { ...seed, in: STATIC_TEXT_PRESET, out: STATIC_TEXT_PRESET, staggerMs: 0 };
+    const next = withStaggerMs({ ...seed, in: STATIC_TEXT_PRESET, out: STATIC_TEXT_PRESET }, 0);
     delete next.stagger;
     delete next.delivery;
     return next;
@@ -137,9 +139,13 @@ export function motionSpecForPreset(
     out: seed.out === STATIC_TEXT_PRESET ? "none" : seed.out,
   };
   if (preset === "scatter-scale") {
-    next.stagger = "char";
-    next.staggerMs = seed.staggerMs > 0 ? seed.staggerMs : DELIVERY_DEFAULT_MS.char;
-    delete next.delivery;
+    const stamped = withStaggerMs(
+      next,
+      seed.staggerMs > 0 ? seed.staggerMs : DELIVERY_DEFAULT_MS.char,
+    );
+    stamped.stagger = "char";
+    delete stamped.delivery;
+    return stamped;
   }
   return next;
 }
@@ -174,19 +180,22 @@ export function motionSpecForDelivery(
   const next = structuredClone(current);
   delete next.stagger;
   delete next.delivery;
+  delete next.staggerExact;
   if (delivery === "default") {
+    // Default leaves the 0 unstamped: the preset or TSX granularity keeps its own default delay.
     next.staggerMs = 0;
-  } else if (delivery === "all-at-once") {
-    next.delivery = "all-at-once";
-    next.staggerMs = 0;
-  } else if (delivery === "word" || delivery === "char") {
-    next.stagger = delivery;
-    next.staggerMs = current.staggerMs > 0 ? current.staggerMs : DELIVERY_DEFAULT_MS[delivery];
-  } else {
-    next.delivery = delivery;
-    next.staggerMs = current.staggerMs > 0 ? current.staggerMs : DELIVERY_DEFAULT_MS[delivery];
+    return next;
   }
-  return next;
+  if (delivery === "all-at-once") {
+    next.delivery = "all-at-once";
+    return withStaggerMs(next, 0);
+  }
+  if (delivery === "word" || delivery === "char") next.stagger = delivery;
+  else next.delivery = delivery;
+  return withStaggerMs(
+    next,
+    current.staggerMs > 0 ? current.staggerMs : DELIVERY_DEFAULT_MS[delivery],
+  );
 }
 
 function namedMotionCopy(names: readonly string[]): string {
@@ -423,8 +432,23 @@ export function TextMotionDrill({
 
         {current &&
           current.in !== STATIC_TEXT_PRESET &&
-          (meta?.hasScaleParams || meta?.hasDirection || twistScale) && (
+          (meta?.hasScaleParams || meta?.hasDirection || meta?.hasBuildShift || twistScale) && (
             <DrillGroup label="Preset controls">
+              {meta?.hasBuildShift && (
+                <InspectorSliderRow
+                  icon={<MotionControlIcon type="distance" />}
+                  label="Word slide"
+                  min={0}
+                  max={1.5}
+                  step={0.05}
+                  {...slider(
+                    "build-shift",
+                    current.buildShiftEm ?? BUILD_SHIFT_EM,
+                    (spec, buildShiftEm) => ({ ...spec, buildShiftEm }),
+                    "text motion word slide",
+                  )}
+                />
+              )}
               {(meta?.hasScaleParams || twistScale) && (
                 <InspectorSliderRow
                   icon={<MotionControlIcon type="scale" />}
@@ -508,12 +532,7 @@ export function TextMotionDrill({
                 min={0}
                 max={2_000}
                 step={5}
-                {...slider(
-                  "stagger",
-                  current.staggerMs,
-                  (spec, staggerMs) => ({ ...spec, staggerMs }),
-                  "text motion stagger",
-                )}
+                {...slider("stagger", current.staggerMs, withStaggerMs, "text motion stagger")}
               />
             )}
           </DrillGroup>

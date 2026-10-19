@@ -40,6 +40,7 @@ GPU/driver, not across fleets.)
 | Non-preloaded textures/assets | Await all asset loads before frame 0. |
 | **A cold-mount suspense holding EVERY scene out of the canvas**: all scenes share one `<Suspense fallback={null}>` (App.tsx); a suspending primitive (`ImageCard`'s `useTexture`) keeps the whole boundary uncommitted until React's retry render lands, and that retry races the export preamble on the wall clock. Frame 0 rendered first captures a scene-less (white) frame. `awaitCanvasClockCommit` cannot catch it: the clock is already committed at its initial 0. | `awaitSceneHostsCommitted(slots.length)`: the preamble's LAST barrier spins until every scene's host has registered (registration is a `useEffect`, which only runs once the boundary's content commits). The preceding asset preloads resolve whatever the suspense was waiting on, so the wait is a few ticks. |
 | **A layout that depends on a measurement only the mounted tree can request**: `TitleBlock` cascades its header icon and subtitle off the title's MEASURED block height, but its props exist only once the scene is in the tree, so the preamble cannot pre-warm them the way `preloadPanelMeasures` does for overlay panels. A cold pass would render frame 0 pre-measure while a warm second pass renders it cascaded. | `awaitTitleMeasuresSettled()`, the barrier after `awaitSceneHostsCommitted`: mounted TitleBlocks report their outstanding typesets, and the spin exits only once they have landed AND the tree has re-rendered with them (`engine/titleBlockMeasure.ts`). Single-line text solves to a hard 0 growth, so standing layouts keep their authored constants bit-for-bit either way. |
+| **Layout derived from measured text** (a pill sized by `useTextMetrics`, a pinned `durationMs` reveal waiting on its unit count): the derived state lands one re-render after its face parses or its first typeset, so a frame captured in between draws the pre-measure layout. | Pending reports (`engine/textDerivedState.ts`, from layout effects): `awaitTextSync` settles typesets, spins (bounded at 5000) until nothing is outstanding, then settles once more for typesets the settling commit queued. A tree that reports nothing takes the old path exactly. Preview captures (`captureFrameAt`) also run the export's clip, text and emoji barriers, in that order. |
 | **Preview frames interleaving a Verify ×2**: between the two passes the preview driver rendered a wall-clock-varying number of frames (restored clock, preview size), leaking GPU/render state into pass B's first frames | `verifyDeterminism` holds the preview stand-down across BOTH passes; `engine/exportState` is depth-counted so the whole-run hold nests over each pass's own. Pass B starts from exactly the state pass A ended in. |
 | **Parallel font preload**: troika claims shared-atlas cells at preload COMPLETION, i.e. fetch-race order, shifting multi-font projects' glyph cells per BOOT (a per-session hash lottery: every run internally consistent, every boot different) | `preloadAppFonts` preloads SEQUENTIALLY in canonical order (Inter Regular, then declaration/ref order), and `loadProject` pre-generates every project face's glyphs BEFORE the scenes mount. See "Fonts". |
 | Muxer writing a wall-clock `creation_time` / encoder version tag | ffmpeg `-flags:v +bitexact -fflags +bitexact -map_metadata -1` (set in `start_export`) so the container is reproducible. |
@@ -199,6 +200,29 @@ convention, so seam frames stay byte-equal to the solo neighbours even for
 accumulation-heavy types (weighted bokeh sums, rotation resampling). Progress
 easing (`ease: smooth | snappy`) is applied CPU-side before the uniforms,
 endpoints preserved; absent means linear, so stored specs keep exact bytes.
+
+The image mask (`luma` with `shape: "image"` and a project-relative `src`) is a
+**fifth generation** (`fragmentShaderMask` / `fragmentShaderMaskHdr`), selected
+only for that shape, so every earlier program stays source-identical. The mask's
+signed distance field is built once per image at preload
+(`engine/transitionMaskSdf.ts`, pure and golden-hashed): coverage is the alpha
+when any pixel is translucent, else the Rec. 709 luma of the stored bytes (0.5
+is the edge); an exact Felzenszwalb-Huttenlocher EDT runs on both sides of the
+edge, seeded with sub-pixel offsets from partial coverage; values are
+normalised to the field's longest side (at most 1024 px, box-downsampled
+above) and packed as round-to-nearest-even half floats for a linear-filtered
+R16F texture. The shader never derives the field: it samples it, extends it
+past the stored box by the box distance, and caps it by `|u| - inset` (the
+inscribed disc about the anchor, a bound the true SDF always meets). Scale
+(linear), dilation (cubic) and the one-pixel edge width are CPU uniforms
+(`maskReveal`), and that cap lets the schedule guarantee every frame pixel is
+inside the shape at progress 1; the body keeps the ext3 endpoint guard, so the
+seams stay raw selections. `engine/transitionMask.ts` caches each texture by
+URL; the export preamble and the project-open settle await
+`preloadTransitionMasks` (upload included), a missing or unreadable mask
+rejects there and fails the run, and a render-time miss throws during export.
+In preview a miss renders the procedural iris for a frame and repaints when
+the field lands.
 
 ## Embedded video
 
@@ -1008,6 +1032,50 @@ camera exactly:
   resolved underlay shows); at export/capture that state is unreachable by the
   preamble barriers.
 
+### Rooms
+
+- **Null for legacy.** `buildRoomTracks` returns `null` unless a scene doc carries a
+  `room` block with a key that survives validation. Null rooms means
+  `resolveFrameSceneStates` returns the prebuilt states untouched, the lighting plan
+  is built exactly as before, and the host `<SceneRoom>` renders nothing (no mesh, no
+  clock subscription, no program). A doc with a `room` block also opts the project
+  into themed scene state (`usesThemedSceneState`), so each target's root background
+  is explicit.
+- **One seam for three windows.** `resolveFramePlans` (engine/sceneState.ts) is the
+  single per-frame state and lighting resolve; preview (`CompositorDriver`), export
+  (`drawPlannedFrame`) and Present (`PresentCompositorDriver`) all call it with the
+  same prebuilt inputs, so they cannot drift. Rooms feed both halves: the target's
+  root background becomes the room colour, and the room's lighting pose merges into
+  that target's lighting sample (room fields win over lighting keys on the same
+  light). Each transition target samples its own scene's room at its own scene-local
+  time, exactly like the camera and lighting tracks.
+- **Every sample is a pure function of scene-local time.** `sampleRoom` holds the
+  latest key at or before `t`; inside a flood the previous room shows with the
+  incoming colour growing and the lights lerping by the same eased amount (colours
+  in linear light, rounded to `#rrggbb`). Keys are validated into complete poses at
+  build (every key filled to the union of touched fields from the scene's own
+  values), so a flood always lerps from real values and nothing accumulates. A
+  roomed sample writes every light colour explicitly, ambient included, so a room
+  never leaks into the next frame; un-roomed lights keep their colours untouched.
+  The environment (IBL) is never a room field.
+- **The flood is geometry, not a shader.** A camera-locked quad (`FixedQuad`, the
+  fixed background's per-draw matrix lock) in the room colour at
+  `ROOM_RENDER_ORDER = −40`, and a `CircleGeometry(1, 256)` one order above it, both
+  `MeshBasicMaterial`, `toneMapped: false`, `depthTest/depthWrite: false`: the fixed
+  colour fill's existing program, so room colours land exactly on the direct path and
+  nothing compiles. The circle's centre and radius come from `roomFloodCircle`
+  (camera fov and aspect, frame-fraction origin with `[0, 0]` top-left); at radius 1
+  the 256-gon's inscribed circle covers the far frame corner with the fixed
+  background's 1.001 overscan. Both meshes stay mounted for a roomed scene and
+  toggle `visible`, so a key landing mid-run never mounts anything. The room covers
+  the fixed background (−100) and opaque 3D look geometry (−50); transparent look
+  layers draw in three's transparent pass and stay in front.
+- **Export contract.** `ROOM_RENDER_ORDER`, `ROOM_FLOOD_SEGMENTS`, the cover
+  overscan, `ROOM_FLOOD_MS` and the default origin and ease re-render every roomed
+  project when changed. `ws:rooms-spike` (cuts, a flood with a tokened light, a wipe
+  while both sides flood) is the machine-local fixture: look at it after any room
+  change; it is not in any gate.
+
 ### Fonts
 
 - **Every rendered glyph comes from a file we control.** Theme typography is a
@@ -1062,6 +1130,16 @@ camera exactly:
   set only; system-font refs fall back to Inter there. The converter is
   byte-stable: regenerating Inter's typeface reproduced the committed file
   exactly.
+- **Text metrics parse the same files on their own.** `preloadAppFonts` ends by parsing
+  each face it preloaded (plus the fallback face) with troika's parser into
+  `theme/fontMetrics.ts`, after the atlas preloads; nothing reaches troika's atlas, so
+  no glyph cell moves. `measureText` mirrors troika's line maths, held to its typesetter
+  by `fontMetrics.test.ts`.
+- **One glyph size, so one atlas.** `SDF_GLYPH_SIZE = 64` (theme/fonts.ts,
+  re-exported from format.ts) is passed to `configureTextBuilder`, every
+  `preloadFont` and every `Text` site, and a static test fails on any site
+  that omits it. A second size would open a second atlas with its own cell
+  order; changing the constant re-rasterises every glyph (a full rebase).
 - **Adding a bundled font is a REBASE EVENT.** troika-three-text keeps ONE SDF
   atlas per `sdfGlyphSize`, SHARED ACROSS EVERY FONT (`atlases[sdfGlyphSize]`):
   glyph cells are allocated in first-typeset order, so expanding `BUNDLED_FONTS`
@@ -1094,10 +1172,11 @@ Emoji and text-default symbols route through two different mechanisms, neither
 of which can move pixels for text that uses neither (proven EQUAL on
 `showcase-tour` and `ws:launch-2026` when the feature landed):
 
-- **The wedge is patched away.** troika 0.52.4's fallback resolver had no
-  `.catch()`: any codepoint outside the loaded fonts CSP-blocked a CDN fetch
-  and left `_isSyncing` true forever, freezing the `<Text>` on its last-good
-  string. The pnpm patch (`patches/troika-three-text@0.52.4.patch`) degrades
+- **The wedge is patched away.** troika's fallback resolver (still in 0.52.5)
+  has no `.catch()`: any codepoint outside the loaded fonts CSP-blocked a CDN
+  fetch and left `_isSyncing` true forever, freezing the `<Text>` on its
+  last-good string. The pnpm patch (`patches/troika-three-text@0.52.5.patch`,
+  exact pin, guarded by `src/theme/troika.test.ts`) degrades
   every failure (fallback fetch, font-file 404, parse error) to `.notdef` tofu
   and keeps sync alive; `unicodeFontsURL` points at a dead same-origin path so
   the CDN is never consulted even under a loosened CSP.
@@ -1131,6 +1210,23 @@ of which can move pixels for text that uses neither (proven EQUAL on
 - **Bundled projects are cache-less by design.** The packaged app's resource dir
   is read-only, so bundled demos keep a session-only in-memory cache; emoji
   belongs in workspace projects (recorded non-goal, `docs/decisions.md`).
+
+## Text emphasis and the typewriter mask
+
+- **Markup never reaches troika.** `prepareDisplayText` (`toolkit/text/displayText.ts`)
+  strips `*word*` emphasis (markdown flanking rules) before emoji substitution, in every
+  path that typesets or measures (headlines, title and panel measures, `measureText`, the
+  decoration gizmo). Copy without a flanking pair returns `prepareEmojiText`'s exact
+  output, so no standing layout can move.
+- **Gated programs.** Emphasis and the typewriter mask are stagger-material features
+  (`emphasis`, `typeMask`) that only mount on text that uses them;
+  `staggerPrograms.test.ts` pins every pre-existing feature combination's GLSL by hash.
+  Emphasis weight rewrites troika 0.52.5's own edge-offset sites per glyph (the quad
+  grow and the edge alpha, the outline mechanism); the rewrite is pinned to troika's
+  exact bytes and warns if they move, so re-check it on any troika upgrade.
+- **Barriers.** Emphasis rects and the type head come from the first typeset's carets,
+  so both report text-derived pending (`textDerivedState.ts`) until the carets land: no
+  capture draws the pre-measure frame.
 
 ## Generative 3D primitives
 
@@ -1549,15 +1645,15 @@ rolling-gate project (`showcase-tour`):
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `ws:launch-2026` (legacy sentinel: must stay EQUAL) | `eb89826c…` | stale | stale | stale | — | — | — | — | — |
 | `showcase-tour` (rolling gate) | `13b5994d…` | stale | stale | stale | stale | stale (pre-trim) | — | — | — |
-| `transition-spike` (transition gate) | `fb727cac…` | `a6383707…` | — | — | — | — | — | — | — |
-| `transition-bg-spike` (animated-background transition gate) | `2df76336…` | — | — | — | — | — | — | — | — |
+| `transition-spike` (transition gate, image mask included) | `53b6c496…` | `892e8e10…` | — | — | — | — | — | — | — |
+| `transition-bg-spike` (animated-background transition gate) | `f16fe7c1…` | — | — | — | — | — | — | — | — |
 | `compare-spike` (before/after comparison gate) | `f425a9a8…` | stale | stale | stale | — | — | — | — | — |
 | `image-flip-spike` (image-orientation gate, eyeball it) | stale | — | — | — | — | — | — | — | — |
 | `ws:layered-screenshot-spike` (LS gate, machine-local) | `4ec7b223…` | — | — | — | — | — | — | — | — |
 | `ws:video-window-spike` (VideoWindow gate, machine-local) | `6dfe68a6…` | — | — | — | — | — | — | — | — |
-| `ws:lighting-spike-fable` (v9 lighting gate, machine-local) | stale | — | — | — | — | — | — | — | — |
+| `ws:lighting-spike-fable` (v9 lighting gate, machine-local) | `bf5021f2…` | — | — | — | — | — | — | — | — |
 | `ws:camera-rig-spike-opus` (camera rig gate, machine-local) | `81429136…` | — | — | — | — | — | — | — | — |
-| `ws:multi-device-spike` (deviceLayout gate, machine-local) | stale | stale | stale | — | — | — | — | — | — |
+| `ws:multi-device-spike` (deviceLayout gate, machine-local) | `fb5a182d…` | stale | stale | — | — | — | — | — | — |
 | `ws:dof-spike` (depth-of-field gate, machine-local) | stale | stale | — | — | — | — | — | — | — |
 | `ws:motion-blur-spike` (motion blur gate, machine-local) | `bb5b4682…` | `504c9591…` | — | — | — | — | — | — | — |
 | `ws:camera-kick-spike` (camera kicks, musical positions and `useBeatGrid`, machine-local; never in a gate) | `1ab8d22d…` | — | — | — | — | — | — | — | — |
@@ -1568,6 +1664,42 @@ rolling-gate project (`showcase-tour`):
 | `ws:device-video-spike` (device/media/camera gate, built-in-lit devices, machine-local) | `386c8419…` | — | — | — | — | — | — | — | — |
 | `ws:device-env-spike` (cold frame-0 repro: a built-in-lit handset's top edge, machine-local) | `9f3418a2…` | — | — | — | — | — | — | — | — |
 | `ws:text-outline-spike` (outlined text in the text barrier: neon, whole-block blur-in, machine-local) | `87bb6b3a…` | — | — | — | — | — | — | — | — |
+| `ws:rooms-spike` (room cuts, a flood with a tokened light, a wipe while both sides flood; machine-local, never gated) | `2768226b…` | `82d0f4ac…` | — | — | — | — | — | — | — |
+| `ws:mask-fx-spike` (an image-mask seam between two bloom scenes on the effects lane; machine-local, never gated) | `c93487c0…` | — | — | — | — | — | — | — | — |
+| `ws:motion-toolkit-spike` (the toolkit primitives: shapes, device anchors, text metrics and presets, stamps, dashes, mosaic, taps; machine-local, never gated) | `fec675ba…` | `99721e0c…` | — | — | — | — | — | — | — |
+
+> **2026-10-18 (image-mask transition, a fifth material generation):** with the
+> code in and the fixtures untouched, `transition-spike` stayed EQUAL at
+> `fb727cac…` (16:9) and `a6383707…` (9:16), the proof that every earlier
+> program is untouched, and `pnpm gate:merge` stayed EQUAL (`showcase-tour`
+> `13b5994d…`, `ws:launch-2026` `eb89826c…`). `transition-bg-spike` reads
+> `f16fe7c1…` on this change AND on its pristine base `33646df1`, so the
+> `2df76336…` record from #50 was earlier drift. `transition-spike` then gained
+> one seam (spin blur into a star `shape: "image"` luma, 700 ms smooth, mask
+> `assets/star-mask.png`, a procedurally drawn 1024 px alpha star), recording
+> `53b6c496…` (16:9) and `892e8e10…` (9:16), eyeballed at 4K: a crisp
+> one-pixel edge, sharp notches, tips rounding as the dilation grows, cover
+> complete before the seam. `ws:mask-fx-spike` (two bloom scenes, the same
+> mask) records `c93487c0…`. Leg order matters: `showcase-tour` read
+> `e36392de…` as the third leg of a boot after `transition-spike` and
+> `ws:mask-fx-spike`, and `13b5994d…` again first in its own boot, so gate
+> anchors run first or in their own boot.
+
+> **2026-10-18 (troika 0.52.5, one SDF size, opt-in exact text: hash-neutral):**
+> troika-three-text and troika-three-utils move to an exact `0.52.5` pin, one
+> copy in the tree (drei dedupes onto it). Upstream 0.52.5 ships our ANGLE Metal
+> `inout` fix verbatim, so the utils patch is gone, and
+> `patches/troika-three-text@0.52.5.patch` keeps only the wedge fix and the Typr
+> cmap fall-through. The patched 0.52.5 esm and umd text builds are
+> byte-identical to the patched 0.52.4 ones, and the utils builds differ by one
+> JS comment. `SDF_GLYPH_SIZE` pins the 64 every site already used, and no gate
+> project sets `render.exactText`. `pnpm gate:merge` stayed EQUAL
+> (`showcase-tour` `13b5994d…`, `ws:launch-2026` `eb89826c…`), as did
+> `ws:text-outline-spike` (`87bb6b3a…`). `ws:emoji-spike` reads `da3b7d53…` on
+> this change AND on pristine main `18538e02`, so its 2026-07-13 `fc772d5b…`
+> record is earlier drift, not this change (`da3b7d53…` is its current 16:9
+> value). With `exactText` on, an effect-free headline's `#F5F7FA` lands at
+> (245,247,250) instead of ACES's (223,224,225), with the layout unchanged.
 
 > **2026-10-18 (camera kicks and musical positions):** `ws:camera-kick-spike`
 > (a generated 128.4 BPM click soundtrack, an authored `audio.grid`, orbit and
@@ -2229,7 +2361,7 @@ the PNG zip's file hash must match too; a PDF's file hash is advisory only.
 > session (the legacy path never sets `clipRect`). This note was restored on
 > 2026-07-17 after the public-release history squash captured a tree from just
 > before the original doc commit.
-| `ws:emoji-spike` (emoji/symbol pipeline) | `fc772d5b…` | `3e0c8cfb…` | n/a | n/a |
+| `ws:emoji-spike` (emoji/symbol pipeline) | `da3b7d53…` (2026-10-18) | stale | n/a | n/a |
 | `ws:shader-spike` (animated background pack) | `9ed15e3e…` | n/a | n/a | n/a |
 
 > **2026-07-13 (emoji session): the pre-emoji 16:9 hashes had already drifted**

@@ -6,6 +6,7 @@ import {
   NeutralToneMapping,
 } from "three";
 import { type MotionBlurSettings, parseMotionBlurSettings } from "./motionBlur";
+import { parseWarn } from "./parseWarnings";
 
 /** The display transform (v9 · PR 8): an explicit, chosen contract instead of react-three-fiber's inherited default. TWO render paths apply tone mapping (the r3f pipeline for effect-free frames, the composer's ToneMappingEffect for effect frames) and they MUST switch together or they drift. ACES at exposure 1 is the default and matches the previous implicit behaviour exactly: CHANGING THE DEFAULT REBASES EVERY PROJECT. The transition composite's ACES blend pair (acesCurve.ts) deliberately does NOT switch: its seam-exactness rests on the pair being self-inverting, not on matching the display curve (see transitionShader.ts's rationale comment), so a non-ACES display curve only shifts a cross-fade's perceptual midpoint, not its endpoints. */
 
@@ -16,6 +17,8 @@ export interface RenderSettings {
   exposure: number;
   /** Absent means motion blur is off unless a scene switches it on (see engine/motionBlur.ts). */
   motionBlur?: MotionBlurSettings;
+  /** SDF text renders with tone mapping off, so theme colours land exactly on effect-free frames; a no-op under effects, where the composer tone-maps every pixel once. Absent keeps today's programs and bytes. */
+  exactText?: true;
 }
 
 export const DEFAULT_TONE_MAPPING: ToneMappingId = "aces";
@@ -36,7 +39,7 @@ export const EXPOSURE_MAX = 4;
 export function parseRenderSettings(raw: unknown, source: string): RenderSettings {
   if (raw === undefined) return DEFAULT_RENDER_SETTINGS;
   if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
-    console.warn(`[render] ${source}: "render" isn't an object — using defaults`);
+    parseWarn(`[render] ${source}: "render" isn't an object, using defaults`);
     return DEFAULT_RENDER_SETTINGS;
   }
   const block = raw as Record<string, unknown>;
@@ -45,7 +48,7 @@ export function parseRenderSettings(raw: unknown, source: string): RenderSetting
     if (MODES.includes(block.toneMapping as ToneMappingId)) {
       toneMapping = block.toneMapping as ToneMappingId;
     } else {
-      console.warn(`[render] ${source}: unknown toneMapping "${block.toneMapping}" — using aces`);
+      parseWarn(`[render] ${source}: unknown toneMapping "${block.toneMapping}", using aces`);
     }
   }
   let exposure = DEFAULT_EXPOSURE;
@@ -53,11 +56,18 @@ export function parseRenderSettings(raw: unknown, source: string): RenderSetting
     if (typeof block.exposure === "number" && Number.isFinite(block.exposure)) {
       exposure = Math.min(EXPOSURE_MAX, Math.max(EXPOSURE_MIN, block.exposure));
     } else {
-      console.warn(`[render] ${source}: invalid exposure — using 1`);
+      parseWarn(`[render] ${source}: invalid exposure, using 1`);
     }
   }
   const motionBlur = parseMotionBlurSettings(block.motionBlur, source);
-  return motionBlur ? { toneMapping, exposure, motionBlur } : { toneMapping, exposure };
+  const settings: RenderSettings = motionBlur
+    ? { toneMapping, exposure, motionBlur }
+    : { toneMapping, exposure };
+  if (block.exactText === true) settings.exactText = true;
+  else if (block.exactText !== undefined && block.exactText !== false) {
+    parseWarn(`[render] ${source}: exactText must be true or false; text stays tone-mapped`);
+  }
+  return settings;
 }
 
 /** The r3f-pipeline constant for a mode (three 0.185 ships all four). */

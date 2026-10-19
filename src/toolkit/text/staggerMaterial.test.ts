@@ -250,3 +250,22 @@ describe("writeGlintUniforms", () => {
     mat.dispose();
   });
 });
+
+describe("render.exactText", () => {
+  it("leaves the base tone-mapped when absent, so legacy programs never change", () => {
+    for (const features of [{}, { shine: true }, { pack: true }, { exactText: false }]) {
+      const mat = createStaggerTextMaterial(features);
+      expect(mat.material.toneMapped).toBe(true);
+      mat.dispose();
+    }
+  });
+
+  it("turns tone mapping off through the whole derived chain, outline pass included", () => {
+    for (const features of [{}, { shine: true }, { pack: true }, { echo: -1 as const }]) {
+      const mat = createStaggerTextMaterial({ ...features, exactText: true });
+      expect(mat.material.toneMapped).toBe(false);
+      expect(Object.create(mat.material).toneMapped).toBe(false);
+      mat.dispose();
+    }
+  });
+});

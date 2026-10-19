@@ -290,6 +290,51 @@ describe("listThemeChoices", () => {
   });
 });
 
+describe("theme variants in the listing", () => {
+  it("lists a variant as its merged theme, keys its previews on the merge and names dependents", async () => {
+    const base = workspaceDoc("Brand");
+    const variant = {
+      version: 3,
+      id: "variant",
+      name: "Brand light",
+      extends: "ws:brand",
+      mode: "light",
+      colors: { background: "#ffffff" },
+    };
+    const orphan = { version: 3, id: "orphan", name: "Orphan", extends: "ws:gone" };
+    mocks.invoke.mockResolvedValue([
+      { slug: "brand", json: JSON.stringify(base) },
+      { slug: "brand-light", json: JSON.stringify(variant) },
+      { slug: "orphan", json: JSON.stringify(orphan) },
+      {
+        slug: "paper-cut",
+        json: JSON.stringify({ ...variant, name: "Paper cut", extends: "kookaburra-paper" }),
+      },
+    ]);
+    mocks.themePreviewKey.mockImplementation(async (json: string) => json);
+    mocks.cachedThemePreviews.mockResolvedValue(null);
+
+    const choices = await listThemeChoices();
+    const light = choices.find(({ id }) => id === "ws:brand-light");
+    expect(light).toMatchObject({
+      name: "Brand light",
+      mode: "light",
+      background: "#ffffff",
+      accent: "#ff0000",
+      basedOn: "ws:brand",
+      fontTraits: ["Avenir Next", "Inter"],
+    });
+    const lightKey = mocks.themePreviewKey.mock.calls
+      .map(([json]) => JSON.parse(json as string))
+      .find((doc) => doc.name === "Brand light");
+    expect(lightKey.extends).toBeUndefined();
+    expect(lightKey.motion).toEqual(base.motion);
+    expect(choices.find(({ id }) => id === "ws:orphan")).toBeUndefined();
+    expect(choices.find(({ id }) => id === "ws:brand")?.dependents).toEqual(["Brand light"]);
+    expect(choices.find(({ id }) => id === "kookaburra-paper")?.dependents).toEqual(["Paper cut"]);
+  });
+});
+
 describe("workspace ordering and drag reorder", () => {
   it("sorts My themes on catalogue.order, alphabetically where there is none", async () => {
     const ordered = (name: string, order?: number) =>

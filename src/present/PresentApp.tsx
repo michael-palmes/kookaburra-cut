@@ -2,7 +2,7 @@ import { Canvas, useThree } from "@react-three/fiber";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow, LogicalPosition } from "@tauri-apps/api/window";
-import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { type ReactNode, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useClockStore } from "../engine/clock";
 import { useEffectsStore } from "../engine/effectsStore";
 import { FramePanel } from "../engine/FramePanel";
@@ -12,10 +12,13 @@ import { setPresentSlideshowActive } from "../engine/presentMode";
 import { setPreviewAudioProject, syncPreviewAudioPlaying } from "../engine/previewAudio";
 import { setPreviewClipStride, setPreviewPlaybackActive } from "../engine/previewMedia";
 import { type LoadedProject, loadProject, sceneMountKey } from "../engine/project";
+import { ProjectSharedContext } from "../engine/projectShared";
 import { revealApp } from "../engine/reveal";
 import { isSceneErrorCard } from "../engine/SceneErrorCard";
 import { SceneHost } from "../engine/SceneHost";
 import { sceneRenderErrorReporter } from "../engine/StageScenes";
+import { sceneCameraTiming } from "../engine/sceneCamera";
+import { SceneCameraTracksProvider } from "../engine/sceneCameraContext";
 import {
   ProjectIdContext,
   ProjectLightingContext,
@@ -23,6 +26,7 @@ import {
   projectMusicValue,
 } from "../engine/sceneContext";
 import { animatedFixtureLightIds, buildLightingTracks } from "../engine/sceneLighting";
+import { buildRoomTracks } from "../engine/sceneRoom";
 import { useEditorStore } from "../store/editorStore";
 import { useTrustStore } from "../store/trustStore";
 import { ChartFallback } from "../toolkit/chart/ChartFallback";
@@ -31,7 +35,10 @@ import { AssetBoundary } from "../toolkit/media/AssetBoundary";
 import { LayeredScreenshotFallback } from "../toolkit/media/LayeredScreenshot";
 import { SceneMediaFallback } from "../toolkit/media/SceneMedia";
 import { ObjectsFallback } from "../toolkit/objects/ObjectPrimitive";
+import { MosaicFallback } from "../toolkit/shapes/SplitField";
+import { TapsFallback } from "../toolkit/shapes/TapRing";
 import { SceneBackground } from "../toolkit/stage/FixedBackdrop";
+import { SceneRoom, SceneRoomScope } from "../toolkit/stage/Room";
 import { TextFallback } from "../toolkit/text/TitleBlock";
 import { PresentCompositorDriver } from "./PresentCompositorDriver";
 import { PresentTerminalOverlay } from "./PresentTerminalOverlay";
@@ -116,6 +123,18 @@ export function PresentApp() {
             animatedFixtureLightIds,
           )
         : [],
+    [project],
+  );
+  const roomTracks = useMemo(
+    () =>
+      project
+        ? buildRoomTracks(project.sceneDocs, {
+            sceneThemes: project.sceneThemes,
+            roomThemes: project.roomThemes,
+            projectLighting: project.projectLighting,
+            timing: sceneCameraTiming(project),
+          })
+        : null,
     [project],
   );
   const musicValue = useMemo(() => projectMusicValue(project), [project]);
@@ -367,7 +386,7 @@ export function PresentApp() {
             <color attach="background" args={[project.theme.colors.background]} />
             <PresentClock />
             <PresentCompositorDriver project={project} mode={mode} />
-            <ProjectIdContext.Provider value={project.id}>
+            <ProjectScope project={project}>
               <ProjectLightingContext.Provider value={project.projectLighting ?? null}>
                 <ProjectMusicContext.Provider value={musicValue}>
                   <Suspense fallback={null}>
@@ -401,16 +420,19 @@ export function PresentApp() {
                             {isSceneErrorCard(scene) ? (
                               <SceneComponent />
                             ) : (
-                              <>
+                              <SceneRoomScope track={roomTracks?.[i] ?? null}>
                                 <SceneBackground />
+                                <SceneRoom />
                                 <SceneComponent />
                                 <SceneMediaFallback />
                                 <DevicesFallback />
                                 <ObjectsFallback />
                                 <LayeredScreenshotFallback />
                                 <ChartFallback />
+                                <MosaicFallback />
+                                <TapsFallback />
                                 <TextFallback />
-                              </>
+                              </SceneRoomScope>
                             )}
                           </AssetBoundary>
                         </SceneHost>
@@ -455,7 +477,7 @@ export function PresentApp() {
                   </Suspense>
                 </ProjectMusicContext.Provider>
               </ProjectLightingContext.Provider>
-            </ProjectIdContext.Provider>
+            </ProjectScope>
           </Canvas>
           {mode === "slideshow" && stageReady && (
             <PresentTerminalOverlay project={project} aspect={aspect} />
@@ -509,5 +531,16 @@ export function PresentApp() {
         />
       )}
     </div>
+  );
+}
+
+/** The project id and `shared` contexts Present's scene tree reads, as StageScenes provides them. */
+function ProjectScope({ project, children }: { project: LoadedProject; children: ReactNode }) {
+  return (
+    <ProjectIdContext.Provider value={project.id}>
+      <ProjectSharedContext.Provider value={project.projectShared ?? null}>
+        <SceneCameraTracksProvider project={project}>{children}</SceneCameraTracksProvider>
+      </ProjectSharedContext.Provider>
+    </ProjectIdContext.Provider>
   );
 }

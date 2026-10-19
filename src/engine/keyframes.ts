@@ -97,12 +97,13 @@ export function sortKeys<K extends TimedKey>(track: readonly K[]): K[] {
   return [...track].sort((a, b) => a.tMs - b.tMs);
 }
 
-/** Interpolate one property across the keys that define it: linear between the surrounding keys, clamped before the first / after the last (later wins at equal times); `undefined` when no key defines the property (caller falls back to its base value). `keys` must be sorted (use `sortKeys`). */
+/** Interpolate one property across the keys that define it: linear between the surrounding keys (or `easeT` of the segment's progress), clamped before the first / after the last (later wins at equal times); `undefined` when no key defines the property (caller falls back to its base value). `keys` must be sorted (use `sortKeys`). */
 export function sampleKeyProperty<K extends TimedKey, T>(
   keys: readonly K[],
   globalMs: number,
   pick: (k: K) => T | undefined,
   mix: (a: T, b: T, t: number) => T,
+  easeT?: (t: number, before: K, after: K) => number,
 ): T | undefined {
   let before: K | null = null;
   let after: K | null = null;
@@ -118,7 +119,8 @@ export function sampleKeyProperty<K extends TimedKey, T>(
   const a = before ? pick(before) : undefined;
   const b = after ? pick(after) : undefined;
   if (a !== undefined && b !== undefined && before && after && after.tMs > before.tMs) {
-    return mix(a, b, (globalMs - before.tMs) / (after.tMs - before.tMs));
+    const t = (globalMs - before.tMs) / (after.tMs - before.tMs);
+    return mix(a, b, easeT ? easeT(t, before, after) : t);
   }
   return a !== undefined ? a : b; // clamp: before-first / after-last / single-key
 }

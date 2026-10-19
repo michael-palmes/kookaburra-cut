@@ -72,11 +72,13 @@ import { hasSceneCameraTracks } from "./sceneCamera";
 import { collectSceneDocFontRefs, type SceneDoc } from "./sceneDocSchema";
 import { getSceneHosts } from "./sceneHostRegistry";
 import { resolveSceneDocMedia } from "./sceneMedia";
+import { mosaicTileKind } from "./sceneMosaic";
 import { resolveAt, type SceneSlot } from "./sceneTimeline";
 import { snapshotSceneStageFloors } from "./stageRegistry";
 import { useTerminalEditStore } from "./terminalEditStore";
 import { configureDeterministicEngine } from "./timeline";
 import { awaitTitleMeasuresSettled } from "./titleBlockMeasure";
+import { preloadTransitionMasks } from "./transitionMask";
 import { useWebsiteEditStore } from "./websiteEditStore";
 
 export { awaitTextSync } from "./exportFrame";
@@ -111,6 +113,8 @@ export interface ExportOptions {
   /** Comparison side-B docs/themes (`LoadedProject.compareBDocs`/`compareBThemes`); absent (or all undefined) means the compare path never engages. */
   compareBDocs?: (SceneDoc | undefined)[];
   compareBThemes?: (Theme | undefined)[];
+  /** Themes room keys name (`LoadedProject.roomThemes`); absent reads every room key against its scene's theme. */
+  roomThemes?: Readonly<Record<string, Theme>>;
   /** Encoder; defaults to the deterministic libx264. */
   codec?: Codec;
   /** The resolved encode spec (presets/custom). Absent means the frozen legacy argv, byte-pinned in Rust; standing baselines and Verify never carry one. */
@@ -262,7 +266,7 @@ export async function awaitSceneHostsCommitted(expected: number): Promise<void> 
 }
 
 /**
- * Every sidecar-declared video per source, each with the frames its slot shows over the scene window `[−500, duration + 500]` ms (the consumers' near gate): device screens through `deviceClipFrameIndex`, media entries and layered-screenshot cards through `clipFrameIndex` with their loop semantics, on both comparison sides. Layered-screenshot cards and screens behind a model's suspense mount after the last barrier, so the barrier must already know them. A screen timed by a fold opening (`startOn: "open"`) is declared with no demand: its mounted consumer covers it, else it takes the whole clip.
+ * Every sidecar-declared video per source, each with the frames its slot shows over the scene window `[−500, duration + 500]` ms (the consumers' near gate): device screens through `deviceClipFrameIndex`, media entries, layered-screenshot cards and mosaic tiles through `clipFrameIndex` with their loop semantics, on both comparison sides. Layered-screenshot cards and screens behind a model's suspense mount after the last barrier, so the barrier must already know them. A screen timed by a fold opening (`startOn: "open"`) is declared with no demand: its mounted consumer covers it, else it takes the whole clip.
  */
 function declaredClipDemands(opts: ExportOptions): Map<string, ClipDemand[]> {
   const declared = new Map<string, ClipDemand[]>();
@@ -297,6 +301,11 @@ function declaredClipDemands(opts: ExportOptions): Map<string, ClipDemand[]> {
     for (const entry of resolveSceneDocMedia(doc)) {
       if (entry.kind === "video") {
         declare(entry.src, clip(entry.video?.startMs ?? 0, entry.video?.loop === true));
+      }
+    }
+    for (const tile of doc.mosaic?.tiles ?? []) {
+      if (mosaicTileKind(tile) === "video") {
+        declare(tile.src as string, clip(tile.startMs ?? 0, tile.loop === true));
       }
     }
     for (const device of doc.devices ?? []) {
@@ -373,6 +382,8 @@ export async function exportPreamble(
   // Staged library objects referenced by any scene (and compare side B), the same barrier over a dynamic id set.
   await preloadSceneObjects([...(opts.sceneDocs ?? []), ...(opts.compareBDocs ?? [])]);
   await preloadProjectImages(opts.projectId);
+  // Image-mask transitions sample their SDF at the render seam, so each one is built and uploaded here; a missing or unreadable mask fails the run.
+  await preloadTransitionMasks(opts.slots, gl);
   onStep?.(2);
   // Parses the bundled typeface JSON for ExtrudedText (synchronous today; the barrier is kept so a future fetched font can't race frame 0).
   await preloadText3dFonts();

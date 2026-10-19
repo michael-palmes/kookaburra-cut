@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_EASE, EASE_NAMES, ease, isEaseName } from "./ease";
+import { DEFAULT_EASE, EASE_NAMES, ease, easeFn, isEaseName } from "./ease";
 
 describe("ease", () => {
   it("hits the endpoints for every ease", () => {
@@ -26,6 +26,54 @@ describe("ease", () => {
   it("falls back to the default ease on unknown names", () => {
     expect(isEaseName("bounceInOut")).toBe(false);
     expect(ease("bounceInOut", 0.25)).toBe(ease(DEFAULT_EASE, 0.25));
+  });
+
+  it("only accepts own ease names as names", () => {
+    expect(isEaseName("outCubic")).toBe(true);
+    for (const value of ["toString", "constructor", 3, null, undefined, {}]) {
+      expect(isEaseName(value), String(value)).toBe(false);
+    }
+    expect(ease("toString", 0.25)).toBe(ease(DEFAULT_EASE, 0.25));
+  });
+
+  it("easeFn returns the raw table curve", () => {
+    expect(easeFn("outCubic")(0.5)).toBe(0.875);
+    expect(easeFn("outCubic")(2)).toBe(2); // unclamped: 1 - (1 - 2)^3
+    expect(easeFn("nope")).toBe(easeFn(DEFAULT_EASE));
+    expect(easeFn("outBack", {})).toBe(easeFn("outBack"));
+  });
+
+  // Custom overshoot is part of the export contract too (scenes bake pops from it).
+  it("matches the golden Back curves at overshoot 3", () => {
+    const opts = { overshoot: 3 };
+    const golden: Record<string, [number, number, number]> = {
+      inBack: [-0.125, -0.25, 0],
+      outBack: [1, 1.25, 1.125],
+      inOutBack: [-0.22343749999999996, 0.5, 1.2234375],
+    };
+    for (const [name, values] of Object.entries(golden)) {
+      expect(
+        [0.25, 0.5, 0.75].map((t) => ease(name, t, opts)),
+        name,
+      ).toEqual(values);
+      expect(
+        [0.25, 0.5, 0.75].map((t) => easeFn(name, opts)(t)),
+        name,
+      ).toEqual(values);
+    }
+  });
+
+  it("overshoot at the default constant reproduces the table, and other eases ignore it", () => {
+    for (const name of ["inBack", "outBack", "inOutBack"]) {
+      for (const t of [0.1, 0.25, 0.5, 0.75, 0.9]) {
+        expect(ease(name, t, { overshoot: 1.70158 }), `${name}(${t})`).toBe(ease(name, t));
+      }
+    }
+    for (const name of EASE_NAMES.filter((n) => !n.endsWith("Back"))) {
+      expect(ease(name, 0.3, { overshoot: 4 }), name).toBe(ease(name, 0.3));
+    }
+    expect(ease("outBack", 0.3, { overshoot: Number.NaN })).toBe(ease("outBack", 0.3));
+    expect(ease("inBack", 0.5, { overshoot: 0 })).toBe(0.125); // s = 0 is a plain cubic
   });
 
   it("exposes linear, jump, and in/out/inOut for all eight families", () => {

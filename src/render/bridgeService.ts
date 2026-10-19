@@ -788,6 +788,7 @@ function exportOptions(project: LoadedProject, format: FormatSpec) {
     sceneFrames: project.sceneFrames,
     compareBDocs: project.compareBDocs,
     compareBThemes: project.compareBThemes,
+    roomThemes: project.roomThemes,
     motionBlur: project.renderSettings.motionBlur,
     codec: "libx264" as const,
     format,

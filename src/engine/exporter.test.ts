@@ -16,6 +16,7 @@ import {
 import { isExporting } from "./exportState";
 import { FORMATS } from "./format";
 import type { SceneDoc } from "./sceneDocSchema";
+import { reportTextDerivedPending } from "./textDerivedState";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn(), Channel: class {} }));
 vi.mock("./exportBridge", async (original) => ({
@@ -394,6 +395,39 @@ describe("awaitTextSync", () => {
     scene.add(Object.assign(new Mesh(undefined, [new MeshBasicMaterial()]), { sync }));
     await awaitTextSync(scene);
     expect(sync).not.toHaveBeenCalled();
+  });
+
+  it("keeps settling text until text-derived layout reports nothing pending", async () => {
+    const { scene, text } = mountText(false);
+    const clear = reportTextDerivedPending();
+    const barrier = track(scene);
+    text.land();
+    await flush();
+    await flush();
+    expect(barrier.settled()).toBe(false);
+    // The commit that clears the layout also retypesets the text it moved.
+    text._needsSync = true;
+    clear();
+    for (let i = 0; i < 10 && text.syncs < 2; i++) await flush();
+    expect(text.syncs).toBe(2);
+    expect(barrier.settled()).toBe(false);
+    text.land();
+    await barrier.done;
+  });
+
+  it("fails when text-derived layout never settles", async () => {
+    vi.useFakeTimers();
+    const clear = reportTextDerivedPending();
+    try {
+      const failed = expect(awaitTextSync(new Scene())).rejects.toThrow(
+        "Text-derived layout never settled: 1 pending.",
+      );
+      await vi.runAllTimersAsync();
+      await failed;
+    } finally {
+      clear();
+      vi.useRealTimers();
+    }
   });
 
   it("fails, naming the text, when a typeset never lands", async () => {

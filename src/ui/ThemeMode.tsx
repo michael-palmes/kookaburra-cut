@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useRef, useState } from "react";
 import { nameCollision, nameCollisionWarning } from "../engine/nameCollision";
-import { WORKSPACE_THEME_PREFIX } from "../theme/registry";
+import { resolveTheme, WORKSPACE_THEME_PREFIX } from "../theme/registry";
 import type { FontRef } from "../theme/tokens";
 import { FontPicker } from "./FontPicker";
 import { LibraryModalHeader } from "./LibraryModalHeader";
@@ -17,7 +17,7 @@ import {
 import { ThemeEditorIcon } from "./theme-editor/icons";
 import { canEditTheme, onThemeSaved, openThemeEditor } from "./theme-editor/themeEditorIo";
 import { onThemeMoved } from "./theme-editor/themeMove";
-import { useThemeCardMenu } from "./themeCardMenu";
+import { dependentsNote, useThemeCardMenu } from "./themeCardMenu";
 import { useEscapeClose } from "./useEscapeClose";
 
 /** Main-window theme mode: browse the theme library, apply one to the project, start a new theme, or duplicate any theme into a workspace theme (the starting point for user themes, locked decision 11); modal shell per the MediaLibrary pattern. */
@@ -90,6 +90,7 @@ export function ThemeMode({
   useEffect(() => setConfirmReplace(false), [dupName]);
 
   const selectedIsWs = selected.startsWith(WORKSPACE_THEME_PREFIX);
+  const selectedDependents = dependentsNote(choices.find((c) => c.id === selected) ?? {});
   const dup = nameCollision(
     dupName,
     choices
@@ -100,22 +101,11 @@ export function ThemeMode({
   if (busy) duplicateLabel = "Creating…";
   else if (dup.collides) duplicateLabel = confirmReplace ? "Really replace?" : "Replace theme…";
 
-  // Entering the fonts pane seeds the draft from the theme document on disk; body may be authored as a bare family string (schema v2 allows it), normalise to a FontRef.
+  // Entering the fonts pane seeds the draft from the resolved theme, so a font string or a face a variant inherits reads as it renders.
   const openFonts = (themeId = selected) =>
     run(async () => {
-      const slug = themeId.slice(WORKSPACE_THEME_PREFIX.length);
-      const raw = JSON.parse(await invoke<string>("read_theme", { slug }));
-      const norm = (v: unknown, fallbackWeight: number): FontRef =>
-        typeof v === "string"
-          ? { family: v, weight: fallbackWeight }
-          : {
-              family: String((v as FontRef)?.family ?? "Inter"),
-              weight: (v as FontRef)?.weight ?? fallbackWeight,
-            };
-      setFontDraft({
-        headline: norm(raw?.typography?.headline, 600),
-        body: norm(raw?.typography?.body, 400),
-      });
+      const { headline, body } = (await resolveTheme(themeId)).typography;
+      setFontDraft({ headline: { ...headline }, body: { ...body } });
       setFontSlot("headline");
       setView("fonts");
     });
@@ -330,7 +320,11 @@ export function ThemeMode({
                 }
               >
                 <SceneMenuIcon id="delete" />
-                {confirmDelete ? "Really delete?" : "Delete…"}
+                {confirmDelete
+                  ? selectedDependents
+                    ? `Delete? ${selectedDependents}`
+                    : "Really delete?"
+                  : "Delete…"}
               </button>
               {onApply && (
                 <button

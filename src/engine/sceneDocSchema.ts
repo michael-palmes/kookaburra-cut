@@ -35,6 +35,7 @@ import type {
   DeviceShadowMode,
 } from "../toolkit/device/Device";
 import type { FrameOverrideSpec } from "../toolkit/frame/types";
+import { parseEmphasisValue } from "../toolkit/text/emphasis";
 import type { SceneDocDof } from "./dof";
 import { isEaseName } from "./ease";
 import type { DeviceFoldTransitionSpec } from "./foldTransition";
@@ -46,6 +47,7 @@ import {
   type SceneDocMotionBlur,
 } from "./motionBlur";
 import { isMusicPosition } from "./musicTime";
+import { parseWarn } from "./parseWarnings";
 import { normalizeLighting } from "./sceneLighting";
 import {
   DEFAULT_SCENE_IMAGE_OVERLAY,
@@ -55,6 +57,7 @@ import {
   DEFAULT_SCENE_MEDIA_WINDOW_RADIUS,
   sceneMediaFromLegacy,
 } from "./sceneMedia";
+import { type RoomTransition, validateRoomKeys } from "./sceneRoom";
 import { parseSceneTerminal, type SceneDocTerminal } from "./sceneTerminal";
 import { parseSceneWebsite, type SceneDocWebsite } from "./sceneWebsite";
 
@@ -494,6 +497,8 @@ export interface VideoWindowShadow {
   opacity: number;
   blur: number;
   offset: [number, number];
+  /** `#rrggbb`; absent is the black soft shadow. With `blur: 0` it is a hard shadow. */
+  colour?: string;
 }
 
 /** The window's edge stroke. `width` is a fraction of the short edge, `opacity` 0..1; `enabled: false` turns it off. */
@@ -599,7 +604,7 @@ export interface SceneDoc {
   text?: Record<string, string>;
   /** Layout for the scene's text block; consumed by TitleBlock (inert when a scene positions text by hand, the `backdrop` precedent). */
   textLayout?: { align?: SceneTextAlign };
-  /** Per-text-element overrides keyed `<textKey><Suffix>`: `Color` (raw hex fill, the one narrow exception to "colours stay tokens"), `Font` ("Family" or "Family@weight"), `Size` (multiplier of the element's default, 1 = unchanged), `OffsetX`/`OffsetY` (world-unit nudges from the scene's layout), `LineHeight` (line spacing as a multiple of the font size, clamped 0.8..2; absent means troika's own "normal") and `RotationDeg` (clockwise tilt in degrees about the block's anchor; absent or 0 is upright); consumed by text primitives given a matching `textKey`, inert otherwise. */
+  /** Per-text-element overrides keyed `<textKey><Suffix>`: `Color` (raw hex fill, the one narrow exception to "colours stay tokens"), `Font` ("Family" or "Family@weight"), `Size` (multiplier of the element's default, 1 = unchanged), `OffsetX`/`OffsetY` (world-unit nudges from the scene's layout), `LineHeight` (line spacing as a multiple of the font size, clamped 0.8..2; absent means troika's own "normal") `RotationDeg` (clockwise tilt in degrees about the block's anchor; absent or 0 is upright) and `Emphasis` (`*word*` emphasis: "<colour>" or "<colour>@<weight>", a token or hex and a CSS weight; absent is the accent one weight step bolder); consumed by text primitives given a matching `textKey`, inert otherwise. */
   textStyle?: Record<string, string | number>;
   /** Header icon for a plain (non-overlay) scene's text: an emoji or an `assets/` image path, drawn above the headline by `TextFallback`/`TitleBlock`. Overlay scenes carry their icon on `frame.icon` instead; both scale by `textStyle.iconSize`. */
   headerIcon?: string;
@@ -671,6 +676,102 @@ export interface SceneDoc {
   stills?: SceneDocStills;
   /** Motion blur override: each present field replaces the project's `render.motionBlur` (see engine/motionBlur.ts); absent inherits. */
   motionBlur?: SceneDocMotionBlur;
+  /** The room track: the backdrop colour cutting or flooding mid-scene with the staged lights following (see engine/sceneRoom.ts); absent renders exactly as before. */
+  room?: SceneDocRoom;
+  /** Tap pulses on the clock, in world space or on a sidecar device's screen (see engine/sceneTaps.ts); absent renders exactly as before. */
+  taps?: SceneDocTap[];
+  /** A frame split into tiles with a staggered reveal, drawn by `SplitField` or the host fallback (see engine/sceneMosaic.ts); absent renders exactly as before. */
+  mosaic?: SceneDocMosaic;
+}
+
+/** One tap: a ring pulse on the tap highlight curve, starting at `at`. Placed by `position` (world space) or by `screenUv` on the sidecar device `device`. */
+export interface SceneDocTap {
+  /** Scene-local ms the pulse starts. */
+  at: number;
+  /** World-space centre; the ring faces +z. */
+  position?: [number, number, number];
+  /** A point on the device's screen: u right, v down, 0..1 from the top-left (media pixel order). */
+  screenUv?: [number, number];
+  /** The sidecar device id `screenUv` is on. */
+  device?: string;
+  /** Hex or a theme colour token (background | text | accent | muted); absent is the accent. */
+  colour?: string;
+  /** Multiplier on the default ring size. */
+  size?: number;
+}
+
+/** One mosaic tile: a project image or video, or a flat colour when it has no `src`. */
+export interface SceneDocMosaicTile {
+  /** Project image (png, jpg, jpeg, webp) or video (mp4, mov, m4v, webm) under `assets/`. */
+  src?: string;
+  /** Video only: scene-local ms playback starts (default 0). */
+  startMs?: number;
+  /** Video only: wrap instead of holding the last frame. */
+  loop?: boolean;
+  /** Hex or a theme colour token; a colour tile's fill (default muted). */
+  colour?: string;
+}
+
+export type MosaicRevealOrder = "rows" | "columns" | "centre";
+
+/** Tile reveal timing: the tile ranked `n` lands over `durationMs` from `at + n * staggerMs`. */
+export interface SceneDocMosaicReveal {
+  at?: number;
+  staggerMs?: number;
+  durationMs?: number;
+  order?: MosaicRevealOrder;
+  /** An engine/ease.ts name. */
+  ease?: string;
+}
+
+/** Sidecar `mosaic` block: tiles fill the frame in reading order on a grid that reflows per aspect (or a fixed `columns`); a short last row stretches to fill. Defaults live in sceneMosaic.ts. */
+export interface SceneDocMosaic {
+  tiles: SceneDocMosaicTile[];
+  columns?: number;
+  /** Gap between tiles as a fraction of the frame's short side. */
+  gap?: number;
+  reveal?: SceneDocMosaicReveal;
+}
+
+/** A room key's light entry: intensity and a colour (kelvin, then token, then hex). */
+export interface SceneDocRoomLightEntry {
+  intensity?: number;
+  color?: string;
+  colorToken?: string;
+  kelvin?: number;
+}
+
+/** A room key's own lighting, layered over what its `themeId` brings. */
+export interface SceneDocRoomLighting {
+  sun?: SceneDocRoomLightEntry;
+  ambient?: number;
+  /** Hex or a theme colour token. */
+  ambientColor?: string;
+  /** By light id. */
+  lights?: Record<string, SceneDocRoomLightEntry>;
+}
+
+export interface SceneDocRoomKey {
+  /** Scene-local ms or a musical position, resolved at build (see `resolveRoomAt`). */
+  at: SceneDocTimePosition;
+  /** Hex or a theme colour token of the room's palette; absent takes the `themeId` theme's background, else the previous room. */
+  colour?: string;
+  /** Reads this theme's colours and lights; it never swaps the scene's theme. */
+  themeId?: string;
+  lighting?: SceneDocRoomLighting;
+  /** Absent = cut. */
+  transition?: RoomTransition;
+  /** Where a flood starts, in frame fractions: [0, 0] top-left to [1, 1] bottom-right; absent = the centre. */
+  origin?: [number, number];
+  /** Flood length; absent = 800. */
+  durationMs?: number;
+  /** An engine/ease.ts name shaping the flood's radius and light lerp. */
+  ease?: string;
+}
+
+/** Sidecar `room` block: keys pass through raw (the lighting keys precedent); `sceneRoom.ts` validates them. */
+export interface SceneDocRoom {
+  keys: SceneDocRoomKey[];
 }
 
 /** Sidecar `stills` block; absent means included with one automatic still. */
@@ -920,9 +1021,7 @@ function parseSceneImageOverlay(
   };
   if (finiteNum(raw.stackOrder)) overlay.stackOrder = raw.stackOrder;
   else if (raw.stackOrder !== undefined) {
-    console.warn(
-      `[sceneDoc] ${source}: ${label}.overlay.stackOrder isn't a finite number, dropped`,
-    );
+    parseWarn(`[sceneDoc] ${source}: ${label}.overlay.stackOrder isn't a finite number, dropped`);
   }
   return overlay;
 }
@@ -936,7 +1035,7 @@ function parseSceneMotion<T extends SceneMediaMotionPreset>(
 ): (SceneMotionFields & { preset: T }) | undefined {
   if (raw === undefined) return undefined;
   if (!isRecord(raw)) {
-    console.warn(`[sceneDoc] ${source}: ${label}.motion isn't an object, dropped`);
+    parseWarn(`[sceneDoc] ${source}: ${label}.motion isn't an object, dropped`);
     return undefined;
   }
 
@@ -944,7 +1043,7 @@ function parseSceneMotion<T extends SceneMediaMotionPreset>(
   if (presets.includes(raw.preset as T)) {
     preset = raw.preset as T;
   } else {
-    console.warn(`[sceneDoc] ${source}: ${label}.motion.preset isn't known, using none`);
+    parseWarn(`[sceneDoc] ${source}: ${label}.motion.preset isn't known, using none`);
   }
 
   const motion: SceneMotionFields & { preset: T } = { preset };
@@ -956,15 +1055,14 @@ function parseSceneMotion<T extends SceneMediaMotionPreset>(
       finiteNum(value) &&
       (field === "degPerSec" || (field === "durationMs" ? value > 0 : value >= 0));
     if (valid) motion[field] = value;
-    else
-      console.warn(`[sceneDoc] ${source}: ${label}.motion.${field} isn't a valid number, dropped`);
+    else parseWarn(`[sceneDoc] ${source}: ${label}.motion.${field} isn't a valid number, dropped`);
   }
   return motion;
 }
 
 function parseSceneImages(raw: unknown, source: string): SceneDocImageSpec[] | undefined {
   if (!Array.isArray(raw)) {
-    console.warn(`[sceneDoc] ${source}: images isn't an array, dropped`);
+    parseWarn(`[sceneDoc] ${source}: images isn't an array, dropped`);
     return undefined;
   }
   const images: SceneDocImageSpec[] = [];
@@ -972,15 +1070,15 @@ function parseSceneImages(raw: unknown, source: string): SceneDocImageSpec[] | u
   for (const [index, entry] of raw.entries()) {
     const label = `images[${index}]`;
     if (!isRecord(entry) || typeof entry.id !== "string" || entry.id.length === 0) {
-      console.warn(`[sceneDoc] ${source}: ${label} needs a non-empty string id, dropped`);
+      parseWarn(`[sceneDoc] ${source}: ${label} needs a non-empty string id, dropped`);
       continue;
     }
     if (seen.has(entry.id)) {
-      console.warn(`[sceneDoc] ${source}: duplicate image id "${entry.id}", later entry dropped`);
+      parseWarn(`[sceneDoc] ${source}: duplicate image id "${entry.id}", later entry dropped`);
       continue;
     }
     if (!isSceneImageSource(entry.src)) {
-      console.warn(`[sceneDoc] ${source}: ${label}.src isn't a supported project image, dropped`);
+      parseWarn(`[sceneDoc] ${source}: ${label}.src isn't a supported project image, dropped`);
       continue;
     }
     seen.add(entry.id);
@@ -1007,7 +1105,7 @@ function parseSceneMediaRadius(raw: unknown, source: string, label: string): Vid
   }
   if (isRecord(raw) && finiteNum(raw.custom)) return { custom: raw.custom };
   if (raw !== undefined) {
-    console.warn(`[sceneDoc] ${source}: ${label}.window.radius isn't known, using macos`);
+    parseWarn(`[sceneDoc] ${source}: ${label}.window.radius isn't known, using macos`);
   }
   return DEFAULT_SCENE_MEDIA_WINDOW_RADIUS;
 }
@@ -1019,20 +1117,26 @@ function parseSceneMediaWindow(
   label: string,
 ): SceneMediaWindow | undefined {
   if (!isRecord(raw)) {
-    console.warn(`[sceneDoc] ${source}: ${label}.window isn't an object, dropped`);
+    parseWarn(`[sceneDoc] ${source}: ${label}.window isn't an object, dropped`);
     return undefined;
   }
   const window: SceneMediaWindow = { radius: parseSceneMediaRadius(raw.radius, source, label) };
   if (typeof raw.recording === "boolean") window.recording = raw.recording;
   if (isRecord(raw.border)) window.border = raw.border as unknown as VideoWindowBorder;
-  if (isRecord(raw.shadow)) window.shadow = raw.shadow as unknown as VideoWindowShadow;
+  if (isRecord(raw.shadow)) {
+    window.shadow = raw.shadow as unknown as VideoWindowShadow;
+    const colour = raw.shadow.colour;
+    if (colour !== undefined && !(typeof colour === "string" && COMPARE_HEX.test(colour))) {
+      parseWarn(`[sceneDoc] ${source}: ${label}.window.shadow.colour isn't #rrggbb, ignored`);
+    }
+  }
   return window;
 }
 
 function parseSceneMediaVideo(raw: unknown, source: string, label: string): SceneMediaVideoSpec {
   if (raw === undefined) return {};
   if (!isRecord(raw)) {
-    console.warn(`[sceneDoc] ${source}: ${label}.video isn't an object, dropped`);
+    parseWarn(`[sceneDoc] ${source}: ${label}.video isn't an object, dropped`);
     return {};
   }
   const video: SceneMediaVideoSpec = {};
@@ -1060,7 +1164,7 @@ function parseSceneMediaHost(
     return raw === "overlay" ? "overlay" : "window";
   }
   if (raw === "window") {
-    console.warn(`[sceneDoc] ${source}: ${label}.host "window" is video-only, using overlay`);
+    parseWarn(`[sceneDoc] ${source}: ${label}.host "window" is video-only, using overlay`);
     return "overlay";
   }
   return raw === "overlay" ? "overlay" : "stage";
@@ -1069,7 +1173,7 @@ function parseSceneMediaHost(
 /** Sibling of `parseSceneImages`, same degrade-don't-crash contract: an entry without a usable source drops alone, everything else defaults. */
 function parseSceneMedia(raw: unknown, source: string): SceneDocMediaSpec[] | undefined {
   if (!Array.isArray(raw)) {
-    console.warn(`[sceneDoc] ${source}: media isn't an array, dropped`);
+    parseWarn(`[sceneDoc] ${source}: media isn't an array, dropped`);
     return undefined;
   }
   const media: SceneDocMediaSpec[] = [];
@@ -1077,18 +1181,18 @@ function parseSceneMedia(raw: unknown, source: string): SceneDocMediaSpec[] | un
   for (const [index, entry] of raw.entries()) {
     const label = `media[${index}]`;
     if (!isRecord(entry) || typeof entry.id !== "string" || entry.id.length === 0) {
-      console.warn(`[sceneDoc] ${source}: ${label} needs a non-empty string id, dropped`);
+      parseWarn(`[sceneDoc] ${source}: ${label} needs a non-empty string id, dropped`);
       continue;
     }
     if (seen.has(entry.id)) {
-      console.warn(`[sceneDoc] ${source}: duplicate media id "${entry.id}", later entry dropped`);
+      parseWarn(`[sceneDoc] ${source}: duplicate media id "${entry.id}", later entry dropped`);
       continue;
     }
     const kind: SceneMediaKind = entry.kind === "video" ? "video" : "image";
     const video = kind === "video";
     const src = sceneMediaSource(entry.src, kind);
     if (src === null) {
-      console.warn(`[sceneDoc] ${source}: ${label}.src isn't a supported project ${kind}, dropped`);
+      parseWarn(`[sceneDoc] ${source}: ${label}.src isn't a supported project ${kind}, dropped`);
       continue;
     }
     seen.add(entry.id);
@@ -1136,13 +1240,13 @@ function parseDeviceTrack(raw: unknown, source: string): SceneDoc["deviceTrack"]
   const keys: SceneDocDeviceKey[] = [];
   for (const entry of Array.isArray(track.keys) ? (track.keys as unknown[]) : []) {
     if (!isRecord(entry) || typeof entry.id !== "string" || !finiteNum(entry.tMs)) {
-      console.warn(`[sceneDoc] ${source}: deviceTrack key is malformed, dropped`);
+      parseWarn(`[sceneDoc] ${source}: deviceTrack key is malformed, dropped`);
       continue;
     }
     const pose: Record<string, SceneDocDevicePose> = {};
     for (const [deviceId, raw] of Object.entries(isRecord(entry.pose) ? entry.pose : {})) {
       if (!isRecord(raw)) {
-        console.warn(`[sceneDoc] ${source}: deviceTrack pose "${deviceId}" is malformed, dropped`);
+        parseWarn(`[sceneDoc] ${source}: deviceTrack pose "${deviceId}" is malformed, dropped`);
         continue;
       }
       const out: SceneDocDevicePose = {};
@@ -1164,7 +1268,7 @@ function parseDeviceTrack(raw: unknown, source: string): SceneDoc["deviceTrack"]
         typeof seg.from === "string" &&
         typeof seg.to === "string" &&
         typeof seg.ease === "string";
-      if (!ok) console.warn(`[sceneDoc] ${source}: deviceTrack segment is malformed, dropped`);
+      if (!ok) parseWarn(`[sceneDoc] ${source}: deviceTrack segment is malformed, dropped`);
       return ok;
     },
   );
@@ -1174,7 +1278,7 @@ function parseDeviceTrack(raw: unknown, source: string): SceneDoc["deviceTrack"]
 /** Field-level parse for the deviceLayout block (degrade-not-throw): an unknown preset falls back to `row` so the block survives, malformed deltas drop alone. Resolution maths lives in `toolkit/device/layout.ts`. */
 function parseDeviceLayout(raw: unknown, source: string): SceneDocDeviceLayout | undefined {
   if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
-    console.warn(`[sceneDoc] ${source}: deviceLayout isn't an object, dropped`);
+    parseWarn(`[sceneDoc] ${source}: deviceLayout isn't an object, dropped`);
     return undefined;
   }
   const l = raw as Record<string, unknown>;
@@ -1182,19 +1286,19 @@ function parseDeviceLayout(raw: unknown, source: string): SceneDocDeviceLayout |
   if (DEVICE_LAYOUT_PRESETS.includes(l.preset as DeviceLayoutPreset)) {
     preset = l.preset as DeviceLayoutPreset;
   } else {
-    console.warn(`[sceneDoc] ${source}: deviceLayout.preset isn't known, using row`);
+    parseWarn(`[sceneDoc] ${source}: deviceLayout.preset isn't known, using row`);
   }
   const out: SceneDocDeviceLayout = { preset };
   if (typeof l.gap === "number" && Number.isFinite(l.gap)) {
     out.gap = l.gap;
   } else if (l.gap !== undefined) {
-    console.warn(`[sceneDoc] ${source}: deviceLayout.gap isn't a finite number, dropped`);
+    parseWarn(`[sceneDoc] ${source}: deviceLayout.gap isn't a finite number, dropped`);
   }
   if (typeof l.devices === "object" && l.devices !== null && !Array.isArray(l.devices)) {
     const devices: Record<string, SceneDocDeviceLayoutDelta> = {};
     for (const [id, d] of Object.entries(l.devices as Record<string, unknown>)) {
       if (typeof d !== "object" || d === null || Array.isArray(d)) {
-        console.warn(`[sceneDoc] ${source}: deviceLayout.devices["${id}"] is malformed, dropped`);
+        parseWarn(`[sceneDoc] ${source}: deviceLayout.devices["${id}"] is malformed, dropped`);
         continue;
       }
       const delta = d as Record<string, unknown>;
@@ -1208,7 +1312,7 @@ function parseDeviceLayout(raw: unknown, source: string): SceneDocDeviceLayout |
     }
     if (Object.keys(devices).length > 0) out.devices = devices;
   } else if (l.devices !== undefined) {
-    console.warn(`[sceneDoc] ${source}: deviceLayout.devices isn't an object, dropped`);
+    parseWarn(`[sceneDoc] ${source}: deviceLayout.devices isn't an object, dropped`);
   }
   return out;
 }
@@ -1271,7 +1375,7 @@ const isCompareColour = (v: unknown): v is string =>
 /** Field-level parse for the compare block (the degrade-not-throw rule): a non-object drops the block whole, a malformed sub-field drops alone so one typo can't kill the comparison. Deep normalisation (mask defaults, key sort, value sampling) lives in `sceneCompare.ts`. */
 function parseCompare(raw: unknown, source: string): SceneDocCompare | undefined {
   if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
-    console.warn(`[sceneDoc] ${source}: compare isn't an object, dropped`);
+    parseWarn(`[sceneDoc] ${source}: compare isn't an object, dropped`);
     return undefined;
   }
   const c = raw as Record<string, unknown>;
@@ -1307,7 +1411,7 @@ function parseCompare(raw: unknown, source: string): SceneDocCompare | undefined
         ) {
           media[id] = parseDeviceMediaKeys(spec, source, `compare.b.${field}["${id}"]`);
         } else {
-          console.warn(`[sceneDoc] ${source}: compare.b.${field}["${id}"] is malformed, dropped`);
+          parseWarn(`[sceneDoc] ${source}: compare.b.${field}["${id}"] is malformed, dropped`);
         }
       }
       if (Object.keys(media).length > 0) side[field] = media;
@@ -1326,7 +1430,7 @@ function parseCompare(raw: unknown, source: string): SceneDocCompare | undefined
           rawAppearance === null ||
           Array.isArray(rawAppearance)
         ) {
-          console.warn(
+          parseWarn(
             `[sceneDoc] ${source}: compare.b.deviceAppearance["${id}"] is malformed, dropped`,
           );
           continue;
@@ -1337,7 +1441,7 @@ function parseCompare(raw: unknown, source: string): SceneDocCompare | undefined
         if (colour.length > 0) {
           appearance.colour = colour;
         } else if (raw.colour !== undefined) {
-          console.warn(
+          parseWarn(
             `[sceneDoc] ${source}: compare.b.deviceAppearance["${id}"].colour is malformed, dropped`,
           );
         }
@@ -1349,7 +1453,7 @@ function parseCompare(raw: unknown, source: string): SceneDocCompare | undefined
         ) {
           appearance.shadow = raw.shadow;
         } else if (raw.shadow !== undefined) {
-          console.warn(
+          parseWarn(
             `[sceneDoc] ${source}: compare.b.deviceAppearance["${id}"].shadow is malformed, dropped`,
           );
         }
@@ -1396,7 +1500,7 @@ function parseCompare(raw: unknown, source: string): SceneDocCompare | undefined
       }
       out.mask = m;
     } else {
-      console.warn(`[sceneDoc] ${source}: compare.mask type isn't known, dropped`);
+      parseWarn(`[sceneDoc] ${source}: compare.mask type isn't known, dropped`);
     }
   }
   if (c.chrome !== undefined) {
@@ -1413,7 +1517,7 @@ function parseCompare(raw: unknown, source: string): SceneDocCompare | undefined
         }
         if (isCompareColour(line.colour)) l.colour = line.colour;
         else if (line.colour !== undefined) {
-          console.warn(
+          parseWarn(
             `[sceneDoc] ${source}: compare.chrome.line.colour isn't a theme token or #rrggbb hex, dropped`,
           );
         }
@@ -1433,19 +1537,19 @@ function parseCompare(raw: unknown, source: string): SceneDocCompare | undefined
         if (typeof g.size === "number" && Number.isFinite(g.size) && g.size > 0) {
           grip.size = g.size;
         } else if (g.size !== undefined) {
-          console.warn(
+          parseWarn(
             `[sceneDoc] ${source}: compare.chrome.grip.size isn't a positive number, dropped`,
           );
         }
         if (COMPARE_GRIP_STYLES.includes(g.style as SceneDocCompareGripStyle)) {
           grip.style = g.style as SceneDocCompareGripStyle;
         } else if (g.style !== undefined) {
-          console.warn(`[sceneDoc] ${source}: compare.chrome.grip.style isn't known, dropped`);
+          parseWarn(`[sceneDoc] ${source}: compare.chrome.grip.style isn't known, dropped`);
         }
         // A grip that loses every field stays ON at the defaults: the handle was asked for.
         chrome.grip = grip.size === undefined && grip.style === undefined ? true : grip;
       } else if (raw.grip !== undefined) {
-        console.warn(`[sceneDoc] ${source}: compare.chrome.grip is malformed, dropped`);
+        parseWarn(`[sceneDoc] ${source}: compare.chrome.grip is malformed, dropped`);
       }
       if (typeof raw.chips === "boolean") chrome.chips = raw.chips;
       const tint = raw.tint as { a?: unknown; b?: unknown; amount?: unknown } | undefined;
@@ -1453,13 +1557,13 @@ function parseCompare(raw: unknown, source: string): SceneDocCompare | undefined
         const t: NonNullable<SceneDocCompareChrome["tint"]> = {};
         if (isCompareColour(tint.a)) t.a = tint.a;
         else if (tint.a !== undefined) {
-          console.warn(
+          parseWarn(
             `[sceneDoc] ${source}: compare.chrome.tint.a isn't a theme token or #rrggbb hex, dropped`,
           );
         }
         if (isCompareColour(tint.b)) t.b = tint.b;
         else if (tint.b !== undefined) {
-          console.warn(
+          parseWarn(
             `[sceneDoc] ${source}: compare.chrome.tint.b isn't a theme token or #rrggbb hex, dropped`,
           );
         }
@@ -1470,7 +1574,7 @@ function parseCompare(raw: unknown, source: string): SceneDocCompare | undefined
       }
       out.chrome = chrome;
     } else {
-      console.warn(`[sceneDoc] ${source}: compare.chrome isn't an object, dropped`);
+      parseWarn(`[sceneDoc] ${source}: compare.chrome isn't an object, dropped`);
     }
   }
   if (c.track !== undefined) {
@@ -1489,13 +1593,13 @@ function parseCompare(raw: unknown, source: string): SceneDocCompare | undefined
         typeof key.pose !== "object" ||
         !Number.isFinite(key.pose.value)
       ) {
-        console.warn(`[sceneDoc] ${source}: compare.track key is malformed, dropped`);
+        parseWarn(`[sceneDoc] ${source}: compare.track key is malformed, dropped`);
         continue;
       }
       const pose: SceneDocCompareKey["pose"] = { value: key.pose.value };
       if (finiteNum(key.pose.angleDeg)) pose.angleDeg = key.pose.angleDeg;
       else if (key.pose.angleDeg !== undefined) {
-        console.warn(`[sceneDoc] ${source}: compare.track key pose.angleDeg is malformed, dropped`);
+        parseWarn(`[sceneDoc] ${source}: compare.track key pose.angleDeg is malformed, dropped`);
       }
       keys.push({ id: key.id, tMs: key.tMs, pose });
     }
@@ -1509,7 +1613,7 @@ function parseCompare(raw: unknown, source: string): SceneDocCompare | undefined
         typeof seg.from === "string" &&
         typeof seg.to === "string" &&
         typeof seg.ease === "string";
-      if (!ok) console.warn(`[sceneDoc] ${source}: compare.track segment is malformed, dropped`);
+      if (!ok) parseWarn(`[sceneDoc] ${source}: compare.track segment is malformed, dropped`);
       return ok;
     });
     if (keys.length > 0) out.track = { keys, segments };
@@ -1531,7 +1635,7 @@ const CHART_TYPES: ChartType[] = [
 /** Field-level parse for a `DevicePlacement` (the deviceLayout delta pattern): bad scalars drop alone, and the layout stamp `resolvedLayout` is never authored so it is not read here. */
 function parsePlacement(raw: unknown, source: string, label: string): DevicePlacement | undefined {
   if (!isRecord(raw)) {
-    console.warn(`[sceneDoc] ${source}: ${label} isn't an object, dropped`);
+    parseWarn(`[sceneDoc] ${source}: ${label} isn't an object, dropped`);
     return undefined;
   }
   const out: DevicePlacement = {};
@@ -1551,7 +1655,7 @@ function parseChartValues(raw: readonly unknown[], source: string, label: string
     return 0;
   });
   if (zeroed > 0) {
-    console.warn(`[sceneDoc] ${source}: ${label} had ${zeroed} non-numeric value(s), zeroed`);
+    parseWarn(`[sceneDoc] ${source}: ${label} had ${zeroed} non-numeric value(s), zeroed`);
   }
   return values;
 }
@@ -1562,7 +1666,7 @@ function parseChartFormat(
   label: string,
 ): Partial<ChartValueFormat> | undefined {
   if (!isRecord(raw)) {
-    console.warn(`[sceneDoc] ${source}: ${label} isn't an object, dropped`);
+    parseWarn(`[sceneDoc] ${source}: ${label} isn't an object, dropped`);
     return undefined;
   }
   const out: Partial<ChartValueFormat> = {};
@@ -1581,14 +1685,14 @@ function parseChartValueBackground(
   source: string,
 ): Partial<ChartValueLabelBackground> | undefined {
   if (!isRecord(raw)) {
-    console.warn(`[sceneDoc] ${source}: chart.labels.values.background isn't an object, dropped`);
+    parseWarn(`[sceneDoc] ${source}: chart.labels.values.background isn't an object, dropped`);
     return undefined;
   }
   const out: Partial<ChartValueLabelBackground> = {};
   if (raw.colour === null || isChartColour(raw.colour)) {
     out.colour = raw.colour as string | null;
   } else if (raw.colour !== undefined) {
-    console.warn(
+    parseWarn(
       `[sceneDoc] ${source}: chart.labels.values.background.colour isn't a theme token or hex, dropped`,
     );
   }
@@ -1601,13 +1705,13 @@ function parseChartData(raw: unknown, source: string): SceneDocChartData | undef
   if (!isRecord(raw) || !Array.isArray(raw.series)) return undefined;
   const categories = (Array.isArray(raw.categories) ? raw.categories : []).map((c, i) => {
     if (typeof c === "string") return c;
-    console.warn(`[sceneDoc] ${source}: chart.data.categories[${i}] isn't a string, blanked`);
+    parseWarn(`[sceneDoc] ${source}: chart.data.categories[${i}] isn't a string, blanked`);
     return "";
   });
   const series: SceneDocChartSeries[] = [];
   for (const entry of raw.series as unknown[]) {
     if (!isRecord(entry) || typeof entry.id !== "string" || !Array.isArray(entry.values)) {
-      console.warn(
+      parseWarn(
         `[sceneDoc] ${source}: chart.data series entry needs string "id" + "values", dropped`,
       );
       continue;
@@ -1627,7 +1731,7 @@ function parseChartData(raw: unknown, source: string): SceneDocChartData | undef
 
 function parseChartStyle(raw: unknown, source: string): Partial<ChartStyle> | undefined {
   if (!isRecord(raw)) {
-    console.warn(`[sceneDoc] ${source}: chart.style isn't an object, dropped`);
+    parseWarn(`[sceneDoc] ${source}: chart.style isn't an object, dropped`);
     return undefined;
   }
   const out: Partial<ChartStyle> = {};
@@ -1650,7 +1754,7 @@ function parseChartStyle(raw: unknown, source: string): Partial<ChartStyle> | un
 
 function parseChartValueAxis(raw: unknown, source: string): SceneDocChartValueAxis | undefined {
   if (!isRecord(raw)) {
-    console.warn(`[sceneDoc] ${source}: chart.axis.value isn't an object, dropped`);
+    parseWarn(`[sceneDoc] ${source}: chart.axis.value isn't an object, dropped`);
     return undefined;
   }
   const out: SceneDocChartValueAxis = {};
@@ -1671,14 +1775,14 @@ function parseChartValueAxis(raw: unknown, source: string): SceneDocChartValueAx
     if (style === "hair" || style === "dashed" || style === "none") gridlines.style = style;
     if (Object.keys(gridlines).length > 0) out.gridlines = gridlines;
   } else if (raw.gridlines !== undefined) {
-    console.warn(`[sceneDoc] ${source}: chart.axis.value.gridlines isn't an object, dropped`);
+    parseWarn(`[sceneDoc] ${source}: chart.axis.value.gridlines isn't an object, dropped`);
   }
   return Object.keys(out).length > 0 ? out : undefined;
 }
 
 function parseChartAxis(raw: unknown, source: string): SceneDocChart["axis"] {
   if (!isRecord(raw)) {
-    console.warn(`[sceneDoc] ${source}: chart.axis isn't an object, dropped`);
+    parseWarn(`[sceneDoc] ${source}: chart.axis isn't an object, dropped`);
     return undefined;
   }
   const out: NonNullable<SceneDocChart["axis"]> = {};
@@ -1694,14 +1798,14 @@ function parseChartAxis(raw: unknown, source: string): SceneDocChart["axis"] {
     if (typeof raw.category.labels === "boolean") category.labels = raw.category.labels;
     if (Object.keys(category).length > 0) out.category = category;
   } else if (raw.category !== undefined) {
-    console.warn(`[sceneDoc] ${source}: chart.axis.category isn't an object, dropped`);
+    parseWarn(`[sceneDoc] ${source}: chart.axis.category isn't an object, dropped`);
   }
   return Object.keys(out).length > 0 ? out : undefined;
 }
 
 function parseChartLabels(raw: unknown, source: string): SceneDocChart["labels"] {
   if (!isRecord(raw)) {
-    console.warn(`[sceneDoc] ${source}: chart.labels isn't an object, dropped`);
+    parseWarn(`[sceneDoc] ${source}: chart.labels isn't an object, dropped`);
     return undefined;
   }
   const out: NonNullable<SceneDocChart["labels"]> = {};
@@ -1714,7 +1818,7 @@ function parseChartLabels(raw: unknown, source: string): SceneDocChart["labels"]
     }
     if (Object.keys(legend).length > 0) out.legend = legend;
   } else if (raw.legend !== undefined) {
-    console.warn(`[sceneDoc] ${source}: chart.labels.legend isn't an object, dropped`);
+    parseWarn(`[sceneDoc] ${source}: chart.labels.legend isn't an object, dropped`);
   }
   if (isRecord(raw.values)) {
     const values: SceneDocChartValueLabels = {};
@@ -1735,7 +1839,7 @@ function parseChartLabels(raw: unknown, source: string): SceneDocChart["labels"]
     }
     if (Object.keys(values).length > 0) out.values = values;
   } else if (raw.values !== undefined) {
-    console.warn(`[sceneDoc] ${source}: chart.labels.values isn't an object, dropped`);
+    parseWarn(`[sceneDoc] ${source}: chart.labels.values isn't an object, dropped`);
   }
   return Object.keys(out).length > 0 ? out : undefined;
 }
@@ -1745,7 +1849,7 @@ function parseChartAnimation(
   source: string,
 ): Partial<ChartAnimationConfig> | undefined {
   if (!isRecord(raw)) {
-    console.warn(`[sceneDoc] ${source}: chart.animation isn't an object, dropped`);
+    parseWarn(`[sceneDoc] ${source}: chart.animation isn't an object, dropped`);
     return undefined;
   }
   const out: Partial<ChartAnimationConfig> = {};
@@ -1783,7 +1887,7 @@ function parseChartTrack(raw: unknown, source: string): SceneDocChart["track"] {
       !Array.isArray(pose) ||
       !pose.every((row) => Array.isArray(row))
     ) {
-      console.warn(`[sceneDoc] ${source}: chart.track key is malformed, dropped`);
+      parseWarn(`[sceneDoc] ${source}: chart.track key is malformed, dropped`);
       continue;
     }
     const id = entry.id;
@@ -1806,7 +1910,7 @@ function parseChartTrack(raw: unknown, source: string): SceneDocChart["track"] {
       typeof seg.from === "string" &&
       typeof seg.to === "string" &&
       typeof seg.ease === "string";
-    if (!ok) console.warn(`[sceneDoc] ${source}: chart.track segment is malformed, dropped`);
+    if (!ok) parseWarn(`[sceneDoc] ${source}: chart.track segment is malformed, dropped`);
     return ok;
   });
   return keys.length > 0 ? { keys, segments } : undefined;
@@ -1815,33 +1919,33 @@ function parseChartTrack(raw: unknown, source: string): SceneDocChart["track"] {
 /** Field-level parse for the chart block (the degrade-not-throw rule): only a missing `data.series` array drops the block whole, an unknown `type` falls back to `column` (the deviceLayout precedent) and every other malformed field drops alone. Defaults are NOT applied here: `sceneChart.ts` owns them, so absence stays legible. A panel-mounted chart is always 2d, so a `3d` dimension coerces. */
 function parseChart(raw: unknown, source: string): SceneDocChart | undefined {
   if (!isRecord(raw)) {
-    console.warn(`[sceneDoc] ${source}: chart isn't an object, dropped`);
+    parseWarn(`[sceneDoc] ${source}: chart isn't an object, dropped`);
     return undefined;
   }
   const data = parseChartData(raw.data, source);
   if (!data) {
-    console.warn(`[sceneDoc] ${source}: chart.data needs a "series" array, block dropped`);
+    parseWarn(`[sceneDoc] ${source}: chart.data needs a "series" array, block dropped`);
     return undefined;
   }
   let type: ChartType = "column";
   if (CHART_TYPES.includes(raw.type as ChartType)) {
     type = raw.type as ChartType;
   } else {
-    console.warn(`[sceneDoc] ${source}: chart.type isn't known, using column`);
+    parseWarn(`[sceneDoc] ${source}: chart.type isn't known, using column`);
   }
   const out: SceneDocChart = { type, data };
   if (raw.mount === "hero" || raw.mount === "staged" || raw.mount === "panel") {
     out.mount = raw.mount;
   } else if (raw.mount !== undefined) {
-    console.warn(`[sceneDoc] ${source}: chart.mount isn't hero|staged|panel, dropped`);
+    parseWarn(`[sceneDoc] ${source}: chart.mount isn't hero|staged|panel, dropped`);
   }
   if (raw.dimension === "2d" || raw.dimension === "3d") {
     if (out.mount === "panel" && raw.dimension === "3d") {
-      console.warn(`[sceneDoc] ${source}: panel-mounted charts are 2d, dimension coerced`);
+      parseWarn(`[sceneDoc] ${source}: panel-mounted charts are 2d, dimension coerced`);
     }
     out.dimension = out.mount === "panel" ? "2d" : raw.dimension;
   } else if (raw.dimension !== undefined) {
-    console.warn(`[sceneDoc] ${source}: chart.dimension isn't 2d|3d, dropped`);
+    parseWarn(`[sceneDoc] ${source}: chart.dimension isn't 2d|3d, dropped`);
   }
   if (raw.placement !== undefined) {
     const placement = parsePlacement(raw.placement, source, "chart.placement");
@@ -1850,12 +1954,12 @@ function parseChart(raw: unknown, source: string): SceneDocChart | undefined {
   if (typeof raw.palette === "string" && raw.palette.trim().length > 0) {
     out.palette = raw.palette;
   } else if (raw.palette !== undefined) {
-    console.warn(`[sceneDoc] ${source}: chart.palette isn't a scheme id, dropped`);
+    parseWarn(`[sceneDoc] ${source}: chart.palette isn't a scheme id, dropped`);
   }
   if (typeof raw.font === "string" && raw.font.trim().length > 0) {
     out.font = raw.font.trim();
   } else if (raw.font !== undefined) {
-    console.warn(`[sceneDoc] ${source}: chart.font isn't a font string, dropped`);
+    parseWarn(`[sceneDoc] ${source}: chart.font isn't a font string, dropped`);
   }
   if (raw.style !== undefined) {
     const style = parseChartStyle(raw.style, source);
@@ -1890,6 +1994,186 @@ function validPresentLoop(raw: unknown): raw is SceneDocCameraPresentLoop {
   return true;
 }
 
+/** Warns about every room problem at load but keeps the raw keys, so a write never drops a key a later build can read. */
+function parseRoom(raw: unknown, source: string): SceneDocRoom | undefined {
+  if (!isRecord(raw) || !Array.isArray(raw.keys) || raw.keys.length === 0) {
+    parseWarn(`[sceneDoc] ${source}: room needs a non-empty keys array, dropped`);
+    return undefined;
+  }
+  for (const key of Object.keys(raw)) {
+    if (key !== "keys") parseWarn(`[sceneDoc] ${source}: room.${key} isn't a room field, ignored`);
+  }
+  validateRoomKeys(raw.keys, `[sceneDoc] ${source}: room`, parseWarn);
+  return { keys: raw.keys as SceneDocRoomKey[] };
+}
+
+const TAP_FIELDS = ["at", "position", "screenUv", "device", "colour", "size"];
+
+/** Keeps each well-formed tap (a bad entry drops alone, a bad optional field falls back); an empty result drops the block. */
+function parseTaps(raw: unknown, source: string): SceneDocTap[] | undefined {
+  if (!Array.isArray(raw)) {
+    parseWarn(`[sceneDoc] ${source}: taps isn't an array, dropped`);
+    return undefined;
+  }
+  const taps: SceneDocTap[] = [];
+  raw.forEach((entry, i) => {
+    const label = `taps[${i}]`;
+    if (!isRecord(entry)) {
+      parseWarn(`[sceneDoc] ${source}: ${label} isn't an object, dropped`);
+      return;
+    }
+    for (const key of Object.keys(entry)) {
+      if (!TAP_FIELDS.includes(key)) {
+        parseWarn(`[sceneDoc] ${source}: ${label}.${key} isn't a tap field, ignored`);
+      }
+    }
+    if (!finiteNum(entry.at) || entry.at < 0) {
+      parseWarn(`[sceneDoc] ${source}: ${label}.at isn't a non-negative number, dropped`);
+      return;
+    }
+    const tap: SceneDocTap = { at: entry.at };
+    const { screenUv, device } = entry;
+    if (finiteV2(screenUv) && typeof device === "string" && device.length > 0) {
+      tap.screenUv = [screenUv[0], screenUv[1]];
+      tap.device = device;
+      if (entry.position !== undefined) {
+        parseWarn(`[sceneDoc] ${source}: ${label} has screenUv and position, using screenUv`);
+      }
+    } else if (finiteV3(entry.position)) {
+      const [x, y, z] = entry.position;
+      tap.position = [x, y, z];
+    } else {
+      parseWarn(
+        `[sceneDoc] ${source}: ${label} needs a position [x, y, z] or screenUv [u, v] with a device, dropped`,
+      );
+      return;
+    }
+    if (isChartColour(entry.colour)) tap.colour = entry.colour;
+    else if (entry.colour !== undefined) {
+      parseWarn(`[sceneDoc] ${source}: ${label}.colour isn't a hex or theme colour, dropped`);
+    }
+    if (finiteNum(entry.size) && entry.size > 0) tap.size = entry.size;
+    else if (entry.size !== undefined) {
+      parseWarn(`[sceneDoc] ${source}: ${label}.size isn't a positive number, dropped`);
+    }
+    taps.push(tap);
+  });
+  return taps.length > 0 ? taps : undefined;
+}
+
+const MOSAIC_FIELDS = ["tiles", "columns", "gap", "reveal"];
+const MOSAIC_TILE_FIELDS = ["src", "startMs", "loop", "colour"];
+const MOSAIC_REVEAL_ORDERS: MosaicRevealOrder[] = ["rows", "columns", "centre"];
+const MOSAIC_VIDEO_EXTENSIONS = new Set(["mp4", "mov", "m4v", "webm"]);
+
+/** A mosaic tile source's kind from its extension, or null when it isn't a project image or video. */
+export function mosaicSourceKind(src: unknown): "image" | "video" | null {
+  if (isSceneImageSource(src)) return "image";
+  if (!isProjectAssetPath(src)) return null;
+  const extension = src.split(".").at(-1)?.toLowerCase();
+  return extension !== undefined && MOSAIC_VIDEO_EXTENSIONS.has(extension) ? "video" : null;
+}
+
+function parseMosaicTile(raw: unknown, source: string, label: string): SceneDocMosaicTile | null {
+  if (!isRecord(raw)) {
+    parseWarn(`[sceneDoc] ${source}: ${label} isn't an object, dropped`);
+    return null;
+  }
+  for (const key of Object.keys(raw)) {
+    if (!MOSAIC_TILE_FIELDS.includes(key)) {
+      parseWarn(`[sceneDoc] ${source}: ${label}.${key} isn't a mosaic tile field, ignored`);
+    }
+  }
+  const tile: SceneDocMosaicTile = {};
+  if (raw.src !== undefined) {
+    if (!mosaicSourceKind(raw.src)) {
+      parseWarn(`[sceneDoc] ${source}: ${label}.src isn't a project image or video, dropped`);
+      return null;
+    }
+    tile.src = raw.src as string;
+  }
+  if (finiteNum(raw.startMs) && raw.startMs >= 0) tile.startMs = raw.startMs;
+  else if (raw.startMs !== undefined) {
+    parseWarn(`[sceneDoc] ${source}: ${label}.startMs isn't a non-negative number, dropped`);
+  }
+  if (typeof raw.loop === "boolean") tile.loop = raw.loop;
+  else if (raw.loop !== undefined) {
+    parseWarn(`[sceneDoc] ${source}: ${label}.loop isn't a boolean, dropped`);
+  }
+  if (isChartColour(raw.colour)) tile.colour = raw.colour;
+  else if (raw.colour !== undefined) {
+    parseWarn(`[sceneDoc] ${source}: ${label}.colour isn't a hex or theme colour, dropped`);
+  }
+  return tile;
+}
+
+function parseMosaicReveal(raw: unknown, source: string): SceneDocMosaicReveal | undefined {
+  if (!isRecord(raw)) {
+    parseWarn(`[sceneDoc] ${source}: mosaic.reveal isn't an object, dropped`);
+    return undefined;
+  }
+  const reveal: SceneDocMosaicReveal = {};
+  for (const field of ["at", "staggerMs", "durationMs"] as const) {
+    const value = raw[field];
+    if (finiteNum(value) && value >= 0) reveal[field] = value;
+    else if (value !== undefined) {
+      parseWarn(
+        `[sceneDoc] ${source}: mosaic.reveal.${field} isn't a non-negative number, dropped`,
+      );
+    }
+  }
+  if (MOSAIC_REVEAL_ORDERS.includes(raw.order as MosaicRevealOrder)) {
+    reveal.order = raw.order as MosaicRevealOrder;
+  } else if (raw.order !== undefined) {
+    parseWarn(`[sceneDoc] ${source}: mosaic.reveal.order isn't rows|columns|centre, dropped`);
+  }
+  if (typeof raw.ease === "string" && isEaseName(raw.ease)) reveal.ease = raw.ease;
+  else if (raw.ease !== undefined) {
+    parseWarn(`[sceneDoc] ${source}: mosaic.reveal.ease isn't a known ease, dropped`);
+  }
+  for (const key of Object.keys(raw)) {
+    if (!["at", "staggerMs", "durationMs", "order", "ease"].includes(key)) {
+      parseWarn(`[sceneDoc] ${source}: mosaic.reveal.${key} isn't a reveal field, ignored`);
+    }
+  }
+  return Object.keys(reveal).length > 0 ? reveal : undefined;
+}
+
+/** Keeps the well-formed tiles and fields; a block left with no tiles drops, so absent stays the old path. */
+function parseMosaic(raw: unknown, source: string): SceneDocMosaic | undefined {
+  if (!isRecord(raw) || !Array.isArray(raw.tiles)) {
+    parseWarn(`[sceneDoc] ${source}: mosaic needs a tiles array, dropped`);
+    return undefined;
+  }
+  for (const key of Object.keys(raw)) {
+    if (!MOSAIC_FIELDS.includes(key)) {
+      parseWarn(`[sceneDoc] ${source}: mosaic.${key} isn't a mosaic field, ignored`);
+    }
+  }
+  const tiles = raw.tiles
+    .map((tile, i) => parseMosaicTile(tile, source, `mosaic.tiles[${i}]`))
+    .filter((tile): tile is SceneDocMosaicTile => tile !== null);
+  if (tiles.length === 0) {
+    parseWarn(`[sceneDoc] ${source}: mosaic has no usable tiles, dropped`);
+    return undefined;
+  }
+  const mosaic: SceneDocMosaic = { tiles };
+  if (Number.isInteger(raw.columns) && (raw.columns as number) >= 1) {
+    mosaic.columns = raw.columns as number;
+  } else if (raw.columns !== undefined) {
+    parseWarn(`[sceneDoc] ${source}: mosaic.columns isn't a whole number from 1, dropped`);
+  }
+  if (finiteNum(raw.gap) && raw.gap >= 0) mosaic.gap = raw.gap;
+  else if (raw.gap !== undefined) {
+    parseWarn(`[sceneDoc] ${source}: mosaic.gap isn't a non-negative number, dropped`);
+  }
+  if (raw.reveal !== undefined) {
+    const reveal = parseMosaicReveal(raw.reveal, source);
+    if (reveal) mosaic.reveal = reveal;
+  }
+  return mosaic;
+}
+
 /** Magnification range a kick's `zoom` may author. */
 export const CAMERA_KICK_ZOOM_MIN = 0.25;
 export const CAMERA_KICK_ZOOM_MAX = 4;
@@ -1899,7 +2183,7 @@ const nonNegativeMs = (v: unknown): v is number => finiteNum(v) && v >= 0;
 /** Warn and drop: a kick without a valid `at` or `releaseMs`, or with no channel left, drops whole; a bad optional field drops alone. A valid kick is kept verbatim (the same object), so a written sidecar keeps `bar:13` and any unknown fields. */
 function parseCameraKicks(raw: unknown, source: string): SceneDocCameraKick[] | undefined {
   if (!Array.isArray(raw)) {
-    console.warn(`[sceneDoc] ${source}: cameraKicks isn't an array, dropped`);
+    parseWarn(`[sceneDoc] ${source}: cameraKicks isn't an array, dropped`);
     return undefined;
   }
   const out: SceneDocCameraKick[] = [];
@@ -1912,21 +2196,21 @@ function parseCameraKicks(raw: unknown, source: string): SceneDocCameraKick[] | 
 
 function parseCameraKick(raw: unknown, where: string): SceneDocCameraKick | null {
   if (!isRecord(raw)) {
-    console.warn(`[sceneDoc] ${where} isn't an object, dropped`);
+    parseWarn(`[sceneDoc] ${where} isn't an object, dropped`);
     return null;
   }
   const at = raw.at;
   if (!nonNegativeMs(at) && !(typeof at === "string" && isMusicPosition(at))) {
-    console.warn(`[sceneDoc] ${where}.at isn't ms >= 0 or a musical position, kick dropped`);
+    parseWarn(`[sceneDoc] ${where}.at isn't ms >= 0 or a musical position, kick dropped`);
     return null;
   }
   if (!nonNegativeMs(raw.releaseMs)) {
-    console.warn(`[sceneDoc] ${where}.releaseMs must be ms >= 0, kick dropped`);
+    parseWarn(`[sceneDoc] ${where}.releaseMs must be ms >= 0, kick dropped`);
     return null;
   }
   let kick = raw;
   const drop = (field: string, why: string) => {
-    console.warn(`[sceneDoc] ${where}.${field} ${why}, dropped`);
+    parseWarn(`[sceneDoc] ${where}.${field} ${why}, dropped`);
     if (kick === raw) kick = { ...raw };
     delete kick[field];
   };
@@ -1946,7 +2230,7 @@ function parseCameraKick(raw: unknown, where: string): SceneDocCameraKick | null
     drop("ease", "isn't a known ease");
   }
   if (kick.zoom === undefined && kick.offset === undefined && kick.rollDeg === undefined) {
-    console.warn(`[sceneDoc] ${where} has no zoom, offset or rollDeg, kick dropped`);
+    parseWarn(`[sceneDoc] ${where} has no zoom, offset or rollDeg, kick dropped`);
     return null;
   }
   return kick as unknown as SceneDocCameraKick;
@@ -1955,13 +2239,13 @@ function parseCameraKick(raw: unknown, where: string): SceneDocCameraKick | null
 /** Keeps only `exclude: true` and finite, non-negative marks (rounded, unique, ascending); an empty block drops, so absent stays the default. */
 function parseStills(raw: unknown, source: string): SceneDocStills | undefined {
   if (!isRecord(raw)) {
-    console.warn(`[sceneDoc] ${source}: stills isn't an object, dropped`);
+    parseWarn(`[sceneDoc] ${source}: stills isn't an object, dropped`);
     return undefined;
   }
   const out: SceneDocStills = {};
   if (raw.exclude === true) out.exclude = true;
   else if (raw.exclude !== undefined && raw.exclude !== false) {
-    console.warn(`[sceneDoc] ${source}: stills.exclude isn't a boolean, dropped`);
+    parseWarn(`[sceneDoc] ${source}: stills.exclude isn't a boolean, dropped`);
   }
   if (Array.isArray(raw.marksMs)) {
     const marks = new Set<number>();
@@ -1969,21 +2253,21 @@ function parseStills(raw: unknown, source: string): SceneDocStills | undefined {
       if (typeof value === "number" && Number.isFinite(value) && value >= 0) {
         marks.add(Math.round(value));
       } else {
-        console.warn(
+        parseWarn(
           `[sceneDoc] ${source}: stills.marksMs entry isn't a non-negative number, dropped`,
         );
       }
     }
     if (marks.size > 0) out.marksMs = [...marks].sort((a, b) => a - b);
   } else if (raw.marksMs !== undefined) {
-    console.warn(`[sceneDoc] ${source}: stills.marksMs isn't an array, dropped`);
+    parseWarn(`[sceneDoc] ${source}: stills.marksMs isn't an array, dropped`);
   }
   return Object.keys(out).length > 0 ? out : undefined;
 }
 
 function parseManagedText(raw: unknown, source: string): SceneManagedTextBlock | undefined {
   if (!isRecord(raw) || !Array.isArray(raw.items)) {
-    console.warn(`[sceneDoc] ${source}: managedText needs an items array, dropped`);
+    parseWarn(`[sceneDoc] ${source}: managedText needs an items array, dropped`);
     return undefined;
   }
   const items: SceneManagedTextItem[] = [];
@@ -1995,11 +2279,11 @@ function parseManagedText(raw: unknown, source: string): SceneManagedTextBlock |
       entry.key.trim().length === 0 ||
       !MANAGED_TEXT_ITEM_TYPES.includes(entry.type as SceneManagedTextItemType)
     ) {
-      console.warn(`[sceneDoc] ${source}: managedText item needs a key and known type, dropped`);
+      parseWarn(`[sceneDoc] ${source}: managedText item needs a key and known type, dropped`);
       continue;
     }
     if (itemKeys.has(entry.key)) {
-      console.warn(`[sceneDoc] ${source}: duplicate managedText key "${entry.key}", dropped`);
+      parseWarn(`[sceneDoc] ${source}: duplicate managedText key "${entry.key}", dropped`);
       continue;
     }
     itemKeys.add(entry.key);
@@ -2009,15 +2293,15 @@ function parseManagedText(raw: unknown, source: string): SceneManagedTextBlock |
     };
     if (typeof entry.text === "string") item.text = entry.text;
     else if (entry.text !== undefined) {
-      console.warn(`[sceneDoc] ${source}: managedText item "${entry.key}" text isn't a string`);
+      parseWarn(`[sceneDoc] ${source}: managedText item "${entry.key}" text isn't a string`);
     }
     if (typeof entry.icon === "string") item.icon = entry.icon;
     else if (entry.icon !== undefined) {
-      console.warn(`[sceneDoc] ${source}: managedText item "${entry.key}" icon isn't a string`);
+      parseWarn(`[sceneDoc] ${source}: managedText item "${entry.key}" icon isn't a string`);
     }
     if (entry.points !== undefined) {
       if (!Array.isArray(entry.points)) {
-        console.warn(`[sceneDoc] ${source}: managedText item "${entry.key}" points isn't an array`);
+        parseWarn(`[sceneDoc] ${source}: managedText item "${entry.key}" points isn't an array`);
       } else {
         const points: SceneManagedTextPoint[] = [];
         const pointKeys = new Set<string>();
@@ -2029,7 +2313,7 @@ function parseManagedText(raw: unknown, source: string): SceneManagedTextBlock |
             typeof point.text !== "string" ||
             pointKeys.has(point.key)
           ) {
-            console.warn(
+            parseWarn(
               `[sceneDoc] ${source}: managedText item "${entry.key}" point is malformed or duplicated, dropped`,
             );
             continue;
@@ -2043,26 +2327,26 @@ function parseManagedText(raw: unknown, source: string): SceneManagedTextBlock |
     if (MANAGED_TEXT_MARKERS.includes(entry.marker as SceneManagedTextMarker)) {
       item.marker = entry.marker as SceneManagedTextMarker;
     } else if (entry.marker !== undefined) {
-      console.warn(`[sceneDoc] ${source}: managedText item "${entry.key}" marker isn't known`);
+      parseWarn(`[sceneDoc] ${source}: managedText item "${entry.key}" marker isn't known`);
     }
     if (finiteNum(entry.pointGap) && entry.pointGap >= 0) item.pointGap = entry.pointGap;
     else if (entry.pointGap !== undefined) {
-      console.warn(`[sceneDoc] ${source}: managedText item "${entry.key}" pointGap is invalid`);
+      parseWarn(`[sceneDoc] ${source}: managedText item "${entry.key}" pointGap is invalid`);
     }
     if (finiteNum(entry.indent) && entry.indent >= 0) item.indent = entry.indent;
     else if (entry.indent !== undefined) {
-      console.warn(`[sceneDoc] ${source}: managedText item "${entry.key}" indent is invalid`);
+      parseWarn(`[sceneDoc] ${source}: managedText item "${entry.key}" indent is invalid`);
     }
     items.push(item);
   }
   const layout = raw.layout;
   if (layout !== undefined && layout !== "template") {
-    console.warn(`[sceneDoc] ${source}: managedText.layout isn't known, dropped`);
+    parseWarn(`[sceneDoc] ${source}: managedText.layout isn't known, dropped`);
   }
   let groups: SceneManagedTextGroup[] | undefined;
   if (raw.groups !== undefined) {
     if (!Array.isArray(raw.groups)) {
-      console.warn(`[sceneDoc] ${source}: managedText.groups isn't an array, dropped`);
+      parseWarn(`[sceneDoc] ${source}: managedText.groups isn't an array, dropped`);
     } else {
       groups = [];
       const groupKeys = new Set<string>();
@@ -2075,15 +2359,13 @@ function parseManagedText(raw: unknown, source: string): SceneManagedTextBlock |
           groupKeys.has(entry.key) ||
           !Array.isArray(entry.itemKeys)
         ) {
-          console.warn(
-            `[sceneDoc] ${source}: managedText group is malformed or duplicated, dropped`,
-          );
+          parseWarn(`[sceneDoc] ${source}: managedText group is malformed or duplicated, dropped`);
           continue;
         }
         const groupItemKeys: string[] = [];
         for (const itemKey of entry.itemKeys) {
           if (typeof itemKey !== "string" || !itemKeys.has(itemKey) || claimedItems.has(itemKey)) {
-            console.warn(
+            parseWarn(
               `[sceneDoc] ${source}: managedText group "${entry.key}" item key is unknown or duplicated, dropped`,
             );
             continue;
@@ -2093,7 +2375,7 @@ function parseManagedText(raw: unknown, source: string): SceneManagedTextBlock |
         }
         const align = entry.align;
         if (align !== undefined && align !== "left" && align !== "center" && align !== "right") {
-          console.warn(
+          parseWarn(
             `[sceneDoc] ${source}: managedText group "${entry.key}" align isn't left|center|right, dropped`,
           );
         }
@@ -2138,17 +2420,17 @@ function bridgeSceneMedia(doc: SceneDoc, authoredMedia: SceneDocMediaSpec[] | un
 /** Validates a raw sidecar value, returning `undefined` (with a console warning) rather than throwing, since a bad document must degrade to "no doc" and never tear down the canvas tree (the bootTrap lesson); unknown extra fields pass through untouched, structurally wrong required fields drop the entry or the whole doc. */
 export function parseSceneDoc(raw: unknown, source: string): SceneDoc | undefined {
   if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
-    console.warn(`[sceneDoc] ${source}: not an object — ignored`);
+    parseWarn(`[sceneDoc] ${source}: not an object, ignored`);
     return undefined;
   }
   const doc = raw as Record<string, unknown>;
   if (typeof doc.version !== "number" || doc.version < 1) {
-    console.warn(`[sceneDoc] ${source}: missing/invalid "version" — ignored`);
+    parseWarn(`[sceneDoc] ${source}: missing/invalid "version", ignored`);
     return undefined;
   }
   if (doc.version > SCENE_DOC_VERSION) {
-    console.warn(
-      `[sceneDoc] ${source}: version ${doc.version} is newer than this Kookaburra Cut understands — ignored`,
+    parseWarn(
+      `[sceneDoc] ${source}: version ${doc.version} is newer than this Kookaburra Cut understands, ignored`,
     );
     return undefined;
   }
@@ -2163,7 +2445,7 @@ export function parseSceneDoc(raw: unknown, source: string): SceneDoc | undefine
     const text: Record<string, string> = {};
     for (const [key, value] of Object.entries(doc.text as Record<string, unknown>)) {
       if (typeof value === "string") text[key] = value;
-      else console.warn(`[sceneDoc] ${source}: text["${key}"] isn't a string — dropped`);
+      else parseWarn(`[sceneDoc] ${source}: text["${key}"] isn't a string, dropped`);
     }
     out.text = text;
   }
@@ -2180,7 +2462,7 @@ export function parseSceneDoc(raw: unknown, source: string): SceneDoc | undefine
     if (align === "left" || align === "center" || align === "right") {
       out.textLayout = { align };
     } else if (align !== undefined) {
-      console.warn(`[sceneDoc] ${source}: textLayout.align isn't left|center|right — dropped`);
+      parseWarn(`[sceneDoc] ${source}: textLayout.align isn't left|center|right, dropped`);
     }
   }
   if (
@@ -2193,32 +2475,38 @@ export function parseSceneDoc(raw: unknown, source: string): SceneDoc | undefine
     for (const [key, value] of Object.entries(raw)) {
       if (key.endsWith("Color") || key.endsWith("Font")) {
         if (typeof value === "string" && value.length > 0) textStyle[key] = value;
-        else
-          console.warn(`[sceneDoc] ${source}: textStyle.${key} isn't a non-empty string, dropped`);
+        else parseWarn(`[sceneDoc] ${source}: textStyle.${key} isn't a non-empty string, dropped`);
       } else if (key.endsWith("Size")) {
         if (typeof value === "number" && Number.isFinite(value) && value > 0) {
           textStyle[key] = value;
         } else {
-          console.warn(`[sceneDoc] ${source}: textStyle.${key} isn't a positive number, dropped`);
+          parseWarn(`[sceneDoc] ${source}: textStyle.${key} isn't a positive number, dropped`);
         }
       } else if (key.endsWith("OffsetX") || key.endsWith("OffsetY")) {
         if (typeof value === "number" && Number.isFinite(value)) textStyle[key] = value;
-        else console.warn(`[sceneDoc] ${source}: textStyle.${key} isn't a finite number, dropped`);
+        else parseWarn(`[sceneDoc] ${source}: textStyle.${key} isn't a finite number, dropped`);
       } else if (key.endsWith("LineHeight")) {
         if (typeof value === "number" && Number.isFinite(value)) {
           textStyle[key] = clampLineHeight(value);
         } else {
-          console.warn(`[sceneDoc] ${source}: textStyle.${key} isn't a finite number, dropped`);
+          parseWarn(`[sceneDoc] ${source}: textStyle.${key} isn't a finite number, dropped`);
         }
       } else if (key.endsWith("RotationDeg")) {
         if (typeof value === "number" && Number.isFinite(value)) {
           textStyle[key] = normaliseDeg(value);
         } else {
-          console.warn(`[sceneDoc] ${source}: textStyle.${key} isn't a finite number, dropped`);
+          parseWarn(`[sceneDoc] ${source}: textStyle.${key} isn't a finite number, dropped`);
+        }
+      } else if (key.endsWith("Emphasis")) {
+        if (parseEmphasisValue(value)) textStyle[key] = (value as string).trim();
+        else {
+          parseWarn(
+            `[sceneDoc] ${source}: textStyle.${key} isn't "<colour>" or "<colour>@<weight>", dropped`,
+          );
         }
       } else {
-        console.warn(
-          `[sceneDoc] ${source}: textStyle.${key} isn't a <textKey>Color|Font|Size|OffsetX|OffsetY|LineHeight|RotationDeg key, dropped`,
+        parseWarn(
+          `[sceneDoc] ${source}: textStyle.${key} isn't a <textKey>Color|Font|Size|OffsetX|OffsetY|LineHeight|RotationDeg|Emphasis key, dropped`,
         );
       }
     }
@@ -2247,7 +2535,7 @@ export function parseSceneDoc(raw: unknown, source: string): SceneDoc | undefine
           devices.push(motionBlur ? { ...rest, motionBlur } : rest);
         }
       } else {
-        console.warn(`[sceneDoc] ${source}: device entry needs string "id" + "model" — dropped`);
+        parseWarn(`[sceneDoc] ${source}: device entry needs string "id" + "model", dropped`);
       }
     }
     out.devices = devices;
@@ -2277,7 +2565,7 @@ export function parseSceneDoc(raw: unknown, source: string): SceneDoc | undefine
       ) {
         objects.push(object);
       } else {
-        console.warn(`[sceneDoc] ${source}: object entry needs string "id" + "objectId" — dropped`);
+        parseWarn(`[sceneDoc] ${source}: object entry needs string "id" + "objectId", dropped`);
       }
     }
     out.objects = objects;
@@ -2286,7 +2574,7 @@ export function parseSceneDoc(raw: unknown, source: string): SceneDoc | undefine
     const camera = doc.camera as NonNullable<SceneDoc["camera"]>;
     if (Array.isArray(camera?.keys) && Array.isArray(camera?.segments)) {
       if (camera.presentLoop !== undefined && !validPresentLoop(camera.presentLoop)) {
-        console.warn(`[sceneDoc] ${source}: camera.presentLoop is invalid, dropped`);
+        parseWarn(`[sceneDoc] ${source}: camera.presentLoop is invalid, dropped`);
         const { presentLoop: _dropped, ...rest } = camera;
         out.camera = rest;
       } else {
@@ -2297,13 +2585,13 @@ export function parseSceneDoc(raw: unknown, source: string): SceneDoc | undefine
   if (doc.cameraMode === "orbit" || doc.cameraMode === "rig") {
     out.cameraMode = doc.cameraMode;
   } else if (doc.cameraMode !== undefined) {
-    console.warn(`[sceneDoc] ${source}: cameraMode isn't orbit|rig, dropped`);
+    parseWarn(`[sceneDoc] ${source}: cameraMode isn't orbit|rig, dropped`);
   }
   if (typeof doc.cameraRig === "object" && doc.cameraRig !== null) {
     const rig = doc.cameraRig as NonNullable<SceneDoc["cameraRig"]>;
     if (Array.isArray(rig?.keys) && Array.isArray(rig?.segments)) {
       if (rig.presentLoop !== undefined && !validPresentLoop(rig.presentLoop)) {
-        console.warn(`[sceneDoc] ${source}: cameraRig.presentLoop is invalid, dropped`);
+        parseWarn(`[sceneDoc] ${source}: cameraRig.presentLoop is invalid, dropped`);
         const { presentLoop: _dropped, ...rest } = rig;
         out.cameraRig = rest;
       } else {
@@ -2338,7 +2626,7 @@ export function parseSceneDoc(raw: unknown, source: string): SceneDoc | undefine
     }
     if (Object.keys(overrides).length > 0) out.textAnimationOverrides = overrides;
   } else if (doc.textAnimationOverrides !== undefined) {
-    console.warn(`[sceneDoc] ${source}: textAnimationOverrides isn't an object, dropped`);
+    parseWarn(`[sceneDoc] ${source}: textAnimationOverrides isn't an object, dropped`);
   }
   if (doc.textLook !== undefined) {
     const textLook = parseTextLookSpec(doc.textLook, source);
@@ -2353,7 +2641,7 @@ export function parseSceneDoc(raw: unknown, source: string): SceneDoc | undefine
     }
     if (Object.keys(overrides).length > 0) out.textLookOverrides = overrides;
   } else if (doc.textLookOverrides !== undefined) {
-    console.warn(`[sceneDoc] ${source}: textLookOverrides isn't an object, dropped`);
+    parseWarn(`[sceneDoc] ${source}: textLookOverrides isn't an object, dropped`);
   }
   if (doc.lighting !== undefined) {
     const lighting = normalizeLighting(doc.lighting, source);
@@ -2369,14 +2657,14 @@ export function parseSceneDoc(raw: unknown, source: string): SceneDoc | undefine
       const motionBlur = parseMotionBlurOverride(rawBlur, `${source} layeredScreenshot`);
       out.layeredScreenshot = motionBlur ? { ...stack, motionBlur } : stack;
     } else {
-      console.warn(`[sceneDoc] ${source}: layeredScreenshot is malformed, dropped`);
+      parseWarn(`[sceneDoc] ${source}: layeredScreenshot is malformed, dropped`);
     }
   }
   if (authoredMedia === undefined && doc.videoWindow !== undefined) {
     if (validVideoWindow(doc.videoWindow)) {
       out.videoWindow = doc.videoWindow;
     } else {
-      console.warn(`[sceneDoc] ${source}: videoWindow is malformed, dropped`);
+      parseWarn(`[sceneDoc] ${source}: videoWindow is malformed, dropped`);
     }
   }
   if (doc.compare !== undefined) {
@@ -2403,6 +2691,18 @@ export function parseSceneDoc(raw: unknown, source: string): SceneDoc | undefine
     const motionBlur = parseSceneMotionBlur(doc.motionBlur, source);
     if (motionBlur) out.motionBlur = motionBlur;
   }
+  if (doc.room !== undefined) {
+    const room = parseRoom(doc.room, source);
+    if (room) out.room = room;
+  }
+  if (doc.taps !== undefined) {
+    const taps = parseTaps(doc.taps, source);
+    if (taps) out.taps = taps;
+  }
+  if (doc.mosaic !== undefined) {
+    const mosaic = parseMosaic(doc.mosaic, source);
+    if (mosaic) out.mosaic = mosaic;
+  }
   if (
     doc.animatedTrack === "camera" ||
     doc.animatedTrack === "layeredScreenshot" ||
@@ -2412,7 +2712,7 @@ export function parseSceneDoc(raw: unknown, source: string): SceneDoc | undefine
   ) {
     out.animatedTrack = doc.animatedTrack;
   } else if (doc.animatedTrack !== undefined) {
-    console.warn(
+    parseWarn(
       `[sceneDoc] ${source}: animatedTrack isn't camera|layeredScreenshot|compare|chart|lighting, dropped`,
     );
   }

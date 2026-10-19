@@ -1,7 +1,7 @@
 import { FPS } from "../../engine/format";
 import { nextKeyId } from "../../engine/keyedTrack";
 import type { SceneDoc } from "../../engine/sceneDocSchema";
-import { chainLightingSegments } from "../../engine/sceneLighting";
+import { chainLightingSegments, DEFAULT_SHADOW_SPEC } from "../../engine/sceneLighting";
 import type {
   LightingKey,
   LightingPose,
@@ -215,15 +215,7 @@ export function applyLightingShadowStyle(
   shadow: ThemeShadowSpec | undefined,
   style: LightingShadowStyle,
 ): ThemeShadowSpec {
-  const next: ThemeShadowSpec = structuredClone(
-    shadow ?? {
-      technique: "map",
-      softness: 0.5,
-      opacity: 0.3,
-      mapSize: 2048,
-      bias: -0.0005,
-    },
-  );
+  const next: ThemeShadowSpec = structuredClone(shadow ?? { ...DEFAULT_SHADOW_SPEC });
   if (style === "none") {
     next.technique = "none";
     return next;

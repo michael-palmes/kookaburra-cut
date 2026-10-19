@@ -87,6 +87,8 @@ export function degradedLoadNotice(
     ),
     ...warnings.map(errorHeadline),
   ];
+  // Parse warnings never block export, so a load whose only problems are ignored settings says just that.
+  const settingsOnly = (project.exportBlockers ?? []).length === 0;
   const title =
     scenes.length > 0
       ? scenes.length === 1
@@ -94,12 +96,16 @@ export function degradedLoadNotice(
         : `${scenes.length} scenes can’t load`
       : fonts.length > 0
         ? "Some fonts can’t be used here"
-        : "This project loaded with a problem";
+        : settingsOnly
+          ? "Some settings were ignored"
+          : "This project loaded with a problem";
   const hint =
     scenes.length > 0
       ? "They show an error card and export is off until they load. Fix the files, or ask Claude Code to."
       : fonts.length > 0
         ? "Those faces render in the stand-in shown. Pick another font, or ask Claude Code to."
-        : undefined;
+        : settingsOnly
+          ? "The project renders without them. Fix the files, or ask Claude Code to."
+          : undefined;
   return { key: `${project.id}\n${lines.join("\n")}`, title, lines, hint };
 }

@@ -97,7 +97,7 @@ function fixedQuadGeometry(crop: CropWindow): BufferGeometry {
   return geometry;
 }
 
-function FixedQuad({
+export function FixedQuad({
   material,
   crop = FULL_WINDOW,
   parallax = 0,
@@ -171,7 +171,7 @@ function FixedQuad({
   );
 }
 
-function configureFixed(m: MeshBasicMaterial) {
+export function configureFixed(m: MeshBasicMaterial) {
   m.depthTest = false;
   m.depthWrite = false;
 }

@@ -68,7 +68,11 @@ export interface NormalizedVideoWindowShadow {
   opacity: number;
   blur: number;
   offset: [number, number];
+  /** Present only when authored as `#rrggbb`: the coloured (hard at blur 0) shadow program. */
+  colour?: string;
 }
+
+const SHADOW_HEX = /^#[0-9a-fA-F]{6}$/;
 
 /** A validated, defaults-filled window chrome block: what both the legacy `videoWindow` and a media entry's optional `window` resolve to. */
 export interface NormalizedWindowChrome {
@@ -114,12 +118,14 @@ function normalizeShadow(raw: unknown): NormalizedVideoWindowShadow {
     Array.isArray(s.offset) && s.offset.length === 2 && s.offset.every((n) => Number.isFinite(n))
       ? ([s.offset[0], s.offset[1]] as [number, number])
       : ([...DEFAULT_SHADOW.offset] as [number, number]);
-  return {
+  const out: NormalizedVideoWindowShadow = {
     opacity: Number.isFinite(s.opacity) ? clamp(s.opacity as number, 0, 1) : DEFAULT_SHADOW.opacity,
     blur:
       Number.isFinite(s.blur) && (s.blur as number) >= 0 ? (s.blur as number) : DEFAULT_SHADOW.blur,
     offset,
   };
+  if (typeof s.colour === "string" && SHADOW_HEX.test(s.colour)) out.colour = s.colour;
+  return out;
 }
 
 function normalizeBorder(raw: unknown): VideoWindowBorder {

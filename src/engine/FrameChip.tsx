@@ -2,10 +2,11 @@ import { Text } from "@react-three/drei";
 import { useContext, useEffect, useId, useLayoutEffect, useMemo, useState } from "react";
 import { Color, MeshBasicMaterial, SRGBColorSpace, Vector2 } from "three";
 import { useTheme } from "../theme";
-import { fontUrl } from "../theme/fonts";
+import { fontUrl, SDF_GLYPH_SIZE } from "../theme/fonts";
 import type { Theme } from "../theme/tokens";
 import { resolveChipIconId } from "../toolkit/frame/chipIcons";
 import type { FrameChipSpec } from "../toolkit/frame/types";
+import { materialProp, useExactTextBase } from "../toolkit/text/exactText";
 import type { V3 } from "../toolkit/types";
 import { FrameIcon } from "./FrameIcon";
 import { FrameSymbol } from "./FrameSymbol";
@@ -102,6 +103,7 @@ export function FrameChip({
 
   const pill = useMemo(() => makePillMaterial(), []);
   useEffect(() => () => pill.material.dispose(), [pill]);
+  const exactBase = useExactTextBase();
 
   const fill = resolveChipColour(theme, chip.colour);
   const labelColour = contrastToken(theme, fill);
@@ -168,6 +170,8 @@ export function FrameChip({
         anchorY="middle"
         fillOpacity={fade}
         renderOrder={1}
+        {...materialProp(exactBase)}
+        sdfGlyphSize={SDF_GLYPH_SIZE}
         onSync={(troika: { textRenderInfo?: { blockBounds?: number[] } }) => {
           const b = troika.textRenderInfo?.blockBounds;
           if (b && b.length === 4) setBounds([b[0], b[1], b[2], b[3]]);

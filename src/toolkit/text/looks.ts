@@ -33,6 +33,10 @@ export const DEFAULT_LOOK_INTENSITY = 0.6;
 export const DEFAULT_LOOK_OFFSET_EM = 0.06;
 /** arc: total bend in degrees, positive arcs upward. */
 export const DEFAULT_LOOK_CURVE_DEG = 60;
+/** offset-print: the direction the classic down-right offset reads as, degrees clockwise from up (display only; absent keeps the legacy expression). */
+export const DEFAULT_LOOK_OFFSET_DIR_DEG = 135;
+/** offset-print: under-layer opacity (display only; absent passes no opacity at all). */
+export const DEFAULT_LOOK_OFFSET_OPACITY = 1;
 
 /** Clamp bounds, pinned beside the defaults (warn-once past them, the startScale pattern). */
 const ANGLE_DEG_MIN = -360;
@@ -79,6 +83,10 @@ export interface ResolvedTextLook {
   intensity: number;
   offsetEm: number;
   curveDeg: number;
+  /** offset-print: degrees clockwise from up, normalised to [0, 360); absent keeps the legacy down-right expression. */
+  offsetDir?: number;
+  /** offset-print: under-layer opacity, clamped 0..1; absent passes none. */
+  offsetOpacity?: number;
 }
 
 /** The primitives' look props: `look` names the preset, the params ride the spec's field names. */
@@ -102,6 +110,8 @@ export function resolveTextLook(
     props.intensity !== undefined ||
     props.offsetEm !== undefined ||
     props.curveDeg !== undefined ||
+    props.offsetDir !== undefined ||
+    props.offsetOpacity !== undefined ||
     spec !== undefined;
   if (!configured) return null;
 
@@ -113,10 +123,18 @@ export function resolveTextLook(
   const rawIntensity = props.intensity ?? spec?.intensity;
   const rawOffset = props.offsetEm ?? spec?.offsetEm;
   const rawCurve = props.curveDeg ?? spec?.curveDeg;
+  const rawDir = props.offsetDir ?? spec?.offsetDir;
+  const rawOpacity = props.offsetOpacity ?? spec?.offsetOpacity;
   return {
     preset,
     ...(colorA !== undefined ? { colorA } : {}),
     ...(colorB !== undefined ? { colorB } : {}),
+    ...(rawDir !== undefined && Number.isFinite(rawDir)
+      ? { offsetDir: ((rawDir % 360) + 360) % 360 }
+      : {}),
+    ...(rawOpacity !== undefined && Number.isFinite(rawOpacity)
+      ? { offsetOpacity: clampParam("offsetOpacity", rawOpacity, 0, 1) }
+      : {}),
     angleDeg:
       rawAngle === undefined
         ? DEFAULT_LOOK_ANGLE_DEG

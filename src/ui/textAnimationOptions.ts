@@ -1,5 +1,6 @@
 import type { TextAnimationSpec } from "../theme/tokens";
 import {
+  BUILD_SHIFT_EM,
   DEFAULT_START_SCALE,
   isTextPresetName,
   type TextDirection,
@@ -19,6 +20,8 @@ export interface TextPresetMeta {
   hasDirection?: boolean;
   /** scatter-scale and the per-glyph wave-2 presets: per-character by design, "all at once" would collapse it. */
   perCharacter?: boolean;
+  /** build: the word-slide slider applies. */
+  hasBuildShift?: boolean;
 }
 
 /** Card order = grid order (the Theme-default chip renders before all of these). */
@@ -122,6 +125,14 @@ export const TEXT_PRESET_CATALOG: readonly TextPresetMeta[] = [
     hint: "Text condenses out of drifting vapour",
     perCharacter: true,
   },
+  { preset: "stamp", label: "Stamp", hint: "Stamps down from oversize and settles" },
+  {
+    preset: "build",
+    label: "Build",
+    hint: "Words land one at a time as the line re-centres",
+    hasBuildShift: true,
+  },
+  { preset: "typewriter", label: "Typewriter", hint: "Types in one character at a time" },
 ] as const;
 
 /** How the text is delivered, one control folding stagger + delivery spellings. */
@@ -165,6 +176,8 @@ export interface TextAnimationDraft {
   startScale: number;
   shine: boolean;
   direction: TextDirection;
+  /** build: each word's slide, em. */
+  buildShiftEm: number;
 }
 
 export function defaultDraft(preset: TextPresetName): TextAnimationDraft {
@@ -177,12 +190,21 @@ export function defaultDraft(preset: TextPresetName): TextAnimationDraft {
     startScale: DEFAULT_START_SCALE,
     shine: false,
     direction: "from-left",
+    buildShiftEm: BUILD_SHIFT_EM,
   };
 }
 
 /** Spell a millisecond delay in seconds at ms precision, trailing zeroes trimmed ("0.5s", "1.234s"). */
 export function formatDelaySeconds(ms: number): string {
   return `${Number((ms / 1000).toFixed(3))}s`;
+}
+
+/** A spec with `staggerMs` written: an explicit 0 is stamped `staggerExact` so it never falls back to the granularity's default; any other value drops the stamp. */
+export function withStaggerMs(spec: TextAnimationSpec, staggerMs: number): TextAnimationSpec {
+  const next: TextAnimationSpec = { ...spec, staggerMs };
+  if (staggerMs === 0) next.staggerExact = true;
+  else delete next.staggerExact;
+  return next;
 }
 
 /** The whole-spec sidecar shape for a draft; what `doc.textAnimation` receives. */
@@ -192,6 +214,9 @@ export function draftToSpec(draft: TextAnimationDraft): TextAnimationSpec {
     out: draft.out,
     staggerMs: draft.staggerMs ?? DELIVERY_DEFAULT_MS[draft.delivery],
   };
+  if (spec.staggerMs === 0 && (draft.staggerMs === 0 || draft.delivery === "all-at-once")) {
+    spec.staggerExact = true;
+  }
   if (draft.delivery === "word" || draft.delivery === "char") spec.stagger = draft.delivery;
   else if (draft.delivery !== "default") spec.delivery = draft.delivery;
   if (draft.delayMs > 0) spec.delayMs = draft.delayMs;
@@ -205,6 +230,9 @@ export function draftToSpec(draft: TextAnimationDraft): TextAnimationSpec {
   ) {
     spec.direction = "from-right";
   }
+  if (draft.preset === "build" && draft.buildShiftEm !== BUILD_SHIFT_EM) {
+    spec.buildShiftEm = draft.buildShiftEm;
+  }
   return spec;
 }
 
@@ -216,11 +244,14 @@ export function specToDraft(spec: TextAnimationSpec): TextAnimationDraft {
   else if (spec.delivery) draft.delivery = spec.delivery;
   if (spec.staggerMs > 0 && spec.staggerMs !== DELIVERY_DEFAULT_MS[draft.delivery]) {
     draft.staggerMs = spec.staggerMs;
+  } else if (spec.staggerMs === 0 && spec.staggerExact && DELIVERY_DEFAULT_MS[draft.delivery] > 0) {
+    draft.staggerMs = 0;
   }
   if (spec.delayMs !== undefined && spec.delayMs > 0) draft.delayMs = spec.delayMs;
   if (spec.startScale !== undefined) draft.startScale = spec.startScale;
   if (spec.shine !== undefined) draft.shine = spec.shine;
   if (spec.direction !== undefined) draft.direction = spec.direction;
+  if (spec.buildShiftEm !== undefined) draft.buildShiftEm = spec.buildShiftEm;
   return draft;
 }
 

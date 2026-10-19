@@ -39,12 +39,13 @@ transitions with `./kb scene ...` (manifest-safe, atomic); other fields with
 | `typography` | | `{ headline, body, chart }`, each `"Family"` or `"Family@weight"`. Beats every theme; sidecar `textStyle` still wins. |
 | `audio` | | One soundtrack (below). |
 | `defaultTransition` | | Seeded onto new boundaries; `null` means hard cut. |
-| `render` | | `{ toneMapping, exposure }` (reference/lighting.md) and `motionBlur` (reference/camera.md). Absent is aces at 1, no blur. |
+| `render` | | `{ toneMapping, exposure, exactText }` (reference/lighting.md) and `motionBlur` (reference/camera.md). Absent is aces at 1, tone-mapped text, no blur. |
 | `lighting` | | Project lighting layer between theme and scene (reference/lighting.md). |
 | `frame` | | Deck-wide overlay merged into every scene (reference/sidecar.md). |
 | `camera` | | Project camera keys on the global clock (reference/camera.md). |
 | `persistent` | | Module path mounted once across all scenes (reference/scenes.md). |
 | `appliedBackground` | | `{ background?, backdrop? }` last applied to all scenes; new scenes inherit it. Nothing renders from it. |
+| `shared` | | Author constants every scene reads with `useProjectShared` (below). |
 
 Rules:
 
@@ -102,7 +103,7 @@ carries one. No transition is a hard cut. Unknown types render as `crossfade`.
 | `rackfocus` | dissolve | Defocus to bokeh, refocus | 800 | intensity, softness, shape linear/hex |
 | `flowmorph` | dissolve | Currents carry the frame | 900 | intensity, parallax |
 | `wipe` | reveal | Hard reveal line | 500 | direction |
-| `luma` | reveal | Iris wipe (shape iris; also linear, radial) | 600 | softness, center, shape |
+| `luma` | reveal | Iris wipe (shape iris; also linear, radial, image) | 600 | softness, center, shape, src |
 | `dip` | reveal | Out through a colour, back in | 600 | color (default theme background) |
 | `inkbleed` | reveal | Irregular wicking edge | 800 | direction, intensity, softness |
 | `halftone` | reveal | Print screens through an ink plate | 700 | direction, color, blocks[0], intensity, shape |
@@ -121,6 +122,15 @@ carries one. No transition is a hard cut. Unknown types render as `crossfade`.
 | `chromasplit` | digital | Channels peel and reconverge | 500 | direction, intensity, softness |
 | `pixelstretch` | digital | Luma-keyed smear collapse | 600 | direction, intensity, softness |
 | `shatter` | digital | Shards drift out, lit edges | 700 | direction, blocks[0], intensity, parallax |
+
+Image mask: `luma` with `"shape": "image"` and `"src": "assets/<file>.png"` reveals the
+next scene inside the image's shape, growing from `center` until it covers the frame.
+A PNG with transparency uses its alpha (opaque = inside); a fully opaque image uses its
+brightness (light = inside). png, jpg or webp under `assets/`, at least 1024 px on the
+long side for crisp 4K edges. The edge is always one pixel wide (`softness` does not
+apply). The picker only shows it, so write it by hand:
+`{ "type": "luma", "durationMs": 700, "shape": "image", "src": "assets/star.png" }`.
+A missing or unreadable mask fails export; a bad `src` renders the iris.
 
 Choosing one: DESIGN.md "Transitions by feel".
 
@@ -183,6 +193,29 @@ corners), `lighting`, `environment`, `backdrop`, `background` (no video), `effec
 An absent optional block keeps the simplest render path. A theme edit shows on the
 next project reload; `./kb check --app` and captures always load it fresh.
 
+### Theme variants (`extends`)
+
+A brand variant (a light cut, a launch accent) is a version 3 workspace theme that
+names its base and carries only what differs:
+
+```json
+{ "version": 3, "id": "acme-light", "name": "Acme Light", "extends": "ws:acme",
+  "mode": "light", "colors": { "background": "#f6f7fb", "text": "#0b1020" }, "background": null }
+```
+
+- `extends` takes `ws:<slug>` or a bundled id. Objects merge key by key, arrays and
+  plain values replace, the variant wins, and `null` clears an inherited block. The
+  base never lends its `version`, `id`, `name` or `catalogue`, so a variant writes its
+  own. Chains are fine; a loop or a missing base makes the app fall back to the
+  default theme.
+- Bundled themes cannot extend, and `extends` is ignored below version 3.
+- Set it with `./kb theme set extends ws:acme --theme ws:acme-light`; the write is
+  refused when the base is missing, loops or the merge still lacks a required block.
+- Theme fonts take the sidecar grammar (`"Inter@600"`); a radial gradient may leave
+  out `angleDeg`, a linear one may not; a `lighting.shadow` needs only `technique`.
+- `./kb check` flags dropped blocks, and the app lists what it ignored under "Some
+  settings were ignored" (`./kb status` shows the same lines).
+
 ## Typography overrides
 
 `project.json` `typography` replaces the theme faces project-wide; `chart` sets one
@@ -242,6 +275,24 @@ dropped with a warning (the scene renders ungraded).
 `camera` is a list of `{ tMs, position?, fov?, lookAt? }` keys on the GLOBAL clock,
 interpolated per property. It is the only owner of `fov` unless a rig key sets one.
 Prefer per-scene `camera` / `cameraRig` sidecar tracks (reference/camera.md).
+
+## Shared constants
+
+`shared` is an object of your own constants for scene TSX: a palette beyond the theme,
+beat timings, repeated sizes. Nothing renders from it directly.
+
+```json
+"shared": { "palette": { "highlight": "#ffcc4d" }, "timing": { "beatMs": 480 } }
+```
+
+- Read it with `useProjectShared("timing.beatMs", 500)` (dotted path, array indexes as
+  numbers, the fallback when missing); `useProjectShared()` returns the whole block.
+- Set values with `./kb project set shared.timing.beatMs 480`. Anything but an object is
+  an error and the app ignores it.
+- Theme tokens stay the source of brand colour; keep `shared` for values the theme has
+  no token for.
+- Copying a scene into another project (or inserting a preset) brings the `shared`
+  keys the destination lacks; existing keys are never overwritten.
 
 ## App icon and media library
 

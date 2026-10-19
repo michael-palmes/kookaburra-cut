@@ -1,11 +1,11 @@
-/** Real troika heights for the overlay panel's title and subtitle: an off-screen `Text` typesets each (text, font, size, wrap width) once into a write-once cache, so the panel lays out from measured blocks instead of estimates. Wrap count depends on font size, and font size depends on the fit-to-column scale, so `solvePanelLayout` iterates that fixpoint: measure at the candidate size, recompute fit, re-measure, until reserved and rendered agree. Deterministic: same inputs, same troika 0.52.4 layout, same heights, same iteration sequence. The export preamble pre-warms the cache along the same iteration path (`preloadPanelMeasures`, the emoji-raster pattern) so frame 0 renders the settled layout; the preview falls back to the estimate until measurements land, then re-renders. */
+/** Real troika heights for the overlay panel's title and subtitle: an off-screen `Text` typesets each (text, font, size, wrap width) once into a write-once cache, so the panel lays out from measured blocks instead of estimates. Wrap count depends on font size, and font size depends on the fit-to-column scale, so `solvePanelLayout` iterates that fixpoint: measure at the candidate size, recompute fit, re-measure, until reserved and rendered agree. Deterministic: same inputs, same troika 0.52.5 layout, same heights, same iteration sequence. The export preamble pre-warms the cache along the same iteration path (`preloadPanelMeasures`, the emoji-raster pattern) so frame 0 renders the settled layout; the preview falls back to the estimate until measurements land, then re-renders. */
 
 import { Text } from "troika-three-text";
 import { parseFontString } from "../theme/fontRef";
-import { fontUrl } from "../theme/fonts";
+import { fontUrl, SDF_GLYPH_SIZE } from "../theme/fonts";
 import type { Theme } from "../theme/tokens";
 import type { FrameSpec } from "../toolkit/frame/types";
-import { prepareEmojiText } from "../toolkit/text/emojiText";
+import { prepareDisplayText } from "../toolkit/text/displayText";
 import type { FormatInfo } from "../toolkit/types";
 import { framePanelLayout, frameTextAlign } from "./framePanelLayout";
 import { estimateTitleLines } from "./framePanelText";
@@ -110,6 +110,7 @@ export function requestPanelTextMeasure(spec: PanelTextSpec): void {
   if (blocks.has(key) || inflight.has(key)) return;
   const job = new Promise<void>((resolve) => {
     const t = new Text();
+    t.sdfGlyphSize = SDF_GLYPH_SIZE;
     t.text = spec.text;
     t.font = spec.font;
     t.fontSize = spec.fontSize;
@@ -192,7 +193,7 @@ function textInput(
   const sizeMul = doc?.textStyle?.[`${key}Size`];
   const lineHeight = doc?.textStyle?.[`${key}LineHeight`];
   return {
-    text: prepareEmojiText(text).text,
+    text: prepareDisplayText(text).text,
     font: fontUrl(
       typeof fontValue === "string" ? parseFontString(fontValue) : theme.typography[face],
     ),

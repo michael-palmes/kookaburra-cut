@@ -122,6 +122,18 @@
       "durationMs": 1600
     },
     {
+      "file": "scenes/tm-stamp.tsx",
+      "durationMs": 1600
+    },
+    {
+      "file": "scenes/tm-build.tsx",
+      "durationMs": 1600
+    },
+    {
+      "file": "scenes/tm-typewriter.tsx",
+      "durationMs": 1600
+    },
+    {
       "file": "scenes/tl-gradient.tsx",
       "durationMs": 1600
     },

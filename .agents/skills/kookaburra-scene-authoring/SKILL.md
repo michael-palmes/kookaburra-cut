@@ -105,7 +105,8 @@ it is:
   materials, lights) work.
 - One `export default defineScene({ id, durationMs, Scene })` per file, with a literal
   `id` unique in the project.
-- Motion is a pure function of `useTimeline().localMs` (scene-local ms). `progress` is
+- Motion is a pure function of `useTimeline().localMs` (scene-local ms), shaped with the
+  toolkit's `ramp`, `ease`, `sampleKeys` and `stampScale`. `progress` is
   PROJECT-wide; never use it for scene motion. No `Date`, `performance.now`,
   `requestAnimationFrame`, timers or `Math.random` (use `createSeededRandom`).
 - Text only through toolkit primitives (AnimatedHeadline, TitleBlock, BrandLockup,
@@ -151,6 +152,7 @@ since the user last allowed it), ask the user to open it once in the app.
 | Before/after wipe | `compare` | reference/devices.md | `compare.presets` |
 | Camera moves, kicks, depth of field, motion blur | `camera`, `cameraRig`, `cameraKicks`, key `dof`, `motionBlur` | reference/camera.md | `camera.presets`, `camera.motionBlur`, `eases` |
 | Images, videos, screen recordings, screenshot stacks | `./kb assets`, `media`, `layeredScreenshot`, video `background` | reference/media.md | `mediaMotion` |
+| Tiled split field, tap pulses on a scene or screen | `mosaic`, `taps` | reference/media.md | |
 | Trim, speed, freeze, taps, blur inside a video | `./kb video` | kookaburra-video-editing skill | |
 | Charts and numbers | `chart` | reference/charts.md | `charts.styles`, `charts.animations` |
 | Slide panel, overlay, stills, PDF | `frame`, `stills` | reference/sidecar.md | `chipIcons` |
@@ -158,6 +160,7 @@ since the user last allowed it), ask the user to open it once in the app.
 | Sync to the soundtrack | `./kb song`, `./kb beats`, `at` on keys, `cameraKicks` | reference/beats.md | |
 | New scene, custom 3D composition | `./kb scene add`, TSX | reference/scenes.md | `presets`, `toolkit.exports` |
 | The finished film, flash safety | `./kb export`, `./kb verify-export`, `./kb check film` | reference/export.md | `exportPresets` |
+| Constants shared by scenes (palette, timings) | `project.json` `shared`, `useProjectShared` | reference/project.md | |
 
 Ids: `./kb catalog <family>` (nested families are dotted, such as `backgrounds.shaders`
 or `lighting.presets`; `--json` prints full entries; `--search <word>` finds ids).

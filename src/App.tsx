@@ -204,7 +204,7 @@ import {
   updateBundledTemplatePreview,
 } from "./engine/templates";
 import { getLiveSession } from "./engine/terminal";
-import { ensureUserThemePreviews } from "./engine/themePreviews";
+import { ensureUserThemePreviews, themeVariantsOf } from "./engine/themePreviews";
 import { useUpdateCheck } from "./engine/updates";
 import {
   type AppSettings,
@@ -852,10 +852,17 @@ export default function App() {
       const manifestBefore = await readProjectManifestSnapshot(slug);
       const manifest = JSON.parse(manifestBefore);
       // ACES at 1.0 with no motion blur is the byte-identical default: stored as ABSENCE so untouched projects never carry the block.
-      const { motionBlur, ...display } = settings;
+      const { motionBlur, exactText, ...display } = settings;
       const blur = isDefaultMotionBlur(motionBlur) ? undefined : motionBlur;
-      if (display.toneMapping === "aces" && display.exposure === 1 && !blur) delete manifest.render;
-      else manifest.render = blur ? { ...display, motionBlur: blur } : display;
+      const isDefault = display.toneMapping === "aces" && display.exposure === 1;
+      if (isDefault && !blur && !exactText) delete manifest.render;
+      else {
+        manifest.render = {
+          ...display,
+          ...(blur ? { motionBlur: blur } : {}),
+          ...(exactText ? { exactText } : {}),
+        };
+      }
       await writeProjectManifestSnapshot(
         slug,
         JSON.stringify(manifest, null, 2),
@@ -1674,6 +1681,9 @@ export default function App() {
 
   const handleThemeEdited = useCallback(async (themeId: string, json: string) => {
     setPendingThemePreviews((pending) => ({ ...pending, [themeId]: json }));
+    const variants = await themeVariantsOf(themeId).catch(() => []);
+    if (variants.length > 0)
+      setPendingThemePreviews((pending) => ({ ...pending, ...Object.fromEntries(variants) }));
   }, []);
 
   const handleDuplicateTheme = useCallback(
@@ -2442,6 +2452,7 @@ export default function App() {
           sceneFrames: project.sceneFrames,
           compareBDocs: project.compareBDocs,
           compareBThemes: project.compareBThemes,
+          roomThemes: project.roomThemes,
           audio: project.audio,
           codec: "libx264",
           destination: toDownloads ? "downloads" : undefined,
@@ -2604,6 +2615,7 @@ export default function App() {
           sceneFrames: project.sceneFrames,
           compareBDocs: project.compareBDocs,
           compareBThemes: project.compareBThemes,
+          roomThemes: project.roomThemes,
           motionBlur: project.renderSettings.motionBlur,
           audio: project.audio,
           codec: "libx264",
@@ -2876,6 +2888,7 @@ export default function App() {
                       sceneFrames={project.sceneFrames}
                       compareBDocs={project.compareBDocs}
                       compareBThemes={project.compareBThemes}
+                      roomThemes={project.roomThemes}
                       motionBlur={project.renderSettings.motionBlur}
                       music={project.music}
                       commitStamp={project}

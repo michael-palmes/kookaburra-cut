@@ -163,6 +163,56 @@ void main() {
 }
 `;
 
+// language=GLSL
+/** The coloured shadow (hard at blur 0, antialiased by derivatives; a non-zero blur softens it like SHADOW_FRAG), a separate program so SHADOW_FRAG stays as it was; the stock colour-space chunk lands a token hex exactly (`toneMapped: false`). */
+export const SHADOW_FRAG_HARD = /* glsl */ `
+uniform vec2 uHalf;
+uniform float uRadius;
+uniform float uBlur;
+uniform float uOpacity;
+uniform vec3 uColor;
+varying vec2 vPos;
+float sdRoundBox(vec2 p, vec2 b, float r) {
+  vec2 q = abs(p) - b + r;
+  return length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - r;
+}
+void main() {
+  float d = sdRoundBox(vPos, uHalf, uRadius);
+  float edge = max(uBlur, max(fwidth(d), 1e-6));
+  float coverage = 1.0 - smoothstep(-edge, edge, d);
+  gl_FragColor = vec4(uColor, coverage * uOpacity);
+  #include <tonemapping_fragment>
+  #include <colorspace_fragment>
+}
+`;
+
+/** A hard (or coloured soft) shadow quad's material: `size` is the quad, `half` the shadow rect's half extents. */
+export function colouredShadowMaterial(opts: {
+  size: [number, number];
+  half: [number, number];
+  radius: number;
+  blur: number;
+  opacity: number;
+  colour: string;
+}): ShaderMaterial {
+  const material = new ShaderMaterial({
+    transparent: true,
+    depthWrite: false,
+    vertexShader: SHADOW_VERT,
+    fragmentShader: SHADOW_FRAG_HARD,
+    uniforms: {
+      uSize: { value: new Vector2(...opts.size) },
+      uHalf: { value: new Vector2(...opts.half) },
+      uRadius: { value: opts.radius },
+      uBlur: { value: opts.blur },
+      uOpacity: { value: opts.opacity },
+      uColor: { value: new Color(opts.colour) },
+    },
+  });
+  material.toneMapped = false;
+  return material;
+}
+
 /** The card's analytic soft shadow (the Device SunShadow technique, undirected): a slightly dropped black round-rect blur on a quad just behind the card. */
 function CardShadow({ rect, theme }: { rect: SolvedItemRect; theme: Theme }) {
   const short = Math.min(rect.width, rect.height);

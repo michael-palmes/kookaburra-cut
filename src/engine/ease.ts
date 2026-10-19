@@ -8,6 +8,24 @@ const BACK_INOUT = BACK_OVERSHOOT * 1.525;
 /** Maps eased progress `t ∈ [0, 1]` → eased value (0 → 0, 1 → 1; `jump` excepted at t < 1). */
 export type EaseFn = (t: number) => number;
 
+/** Per-call curve options; absent fields keep the table curves exactly. */
+export interface EaseOptions {
+  /** Back-family overshoot (Penner's `s`, default 1.70158); inOutBack scales it by 1.525. Other eases ignore it. */
+  overshoot?: number;
+}
+
+function backIn(s: number): EaseFn {
+  return (t) => (s + 1) * t * t * t - s * t * t;
+}
+
+// inOutBack composes with the wider overshoot constant, per the Penner canon that anime.js and CSS easings follow, not a straight mirror of inBack.
+function backInOut(k: number): EaseFn {
+  return (t) =>
+    t < 0.5
+      ? ((2 * t) ** 2 * ((k + 1) * 2 * t - k)) / 2
+      : ((2 * t - 2) ** 2 * ((k + 1) * (2 * t - 2) + k) + 2) / 2;
+}
+
 const IN: Record<string, EaseFn> = {
   Sine: (t) => 1 - Math.cos(t * HALF_PI),
   Quad: (t) => t * t,
@@ -16,7 +34,7 @@ const IN: Record<string, EaseFn> = {
   Quint: (t) => t * t * t * t * t,
   Expo: (t) => (t === 0 ? 0 : 2 ** (10 * t - 10)),
   Circ: (t) => 1 - Math.sqrt(1 - t * t),
-  Back: (t) => (BACK_OVERSHOOT + 1) * t * t * t - BACK_OVERSHOOT * t * t,
+  Back: backIn(BACK_OVERSHOOT),
 };
 
 function out(fn: EaseFn): EaseFn {
@@ -54,14 +72,7 @@ function buildTable(): Record<EaseName, EaseFn> {
     const base = IN[family];
     table[`in${family}`] = base;
     table[`out${family}`] = out(base);
-    // inOutBack composes with the wider overshoot constant, per the Penner canon that anime.js and CSS easings follow, not a straight mirror of inBack.
-    table[`inOut${family}`] =
-      family === "Back"
-        ? (t: number) =>
-            t < 0.5
-              ? ((2 * t) ** 2 * ((BACK_INOUT + 1) * 2 * t - BACK_INOUT)) / 2
-              : ((2 * t - 2) ** 2 * ((BACK_INOUT + 1) * (2 * t - 2) + BACK_INOUT) + 2) / 2
-        : inOut(base);
+    table[`inOut${family}`] = family === "Back" ? backInOut(BACK_INOUT) : inOut(base);
   }
   return table;
 }
@@ -69,14 +80,22 @@ function buildTable(): Record<EaseName, EaseFn> {
 const EASES: Record<EaseName, EaseFn> = buildTable();
 
 /** Every valid ease name (stable order: linear, jump, then in/out/inOut per family). */
-export const EASE_NAMES = Object.keys(EASES) as EaseName[];
+export const EASE_NAMES: readonly EaseName[] = Object.freeze(Object.keys(EASES) as EaseName[]);
 
-export function isEaseName(name: string): name is EaseName {
-  return name in EASES;
+export function isEaseName(name: unknown): name is EaseName {
+  return typeof name === "string" && Object.hasOwn(EASES, name);
+}
+
+/** The named curve as a function of raw progress (no clamping; `ease` and `ramp` clamp); unknown names fall back to `DEFAULT_EASE`. Without `overshoot` the table function itself is returned. */
+export function easeFn(name: string, opts?: EaseOptions): EaseFn {
+  const key = isEaseName(name) ? name : DEFAULT_EASE;
+  const s = opts?.overshoot;
+  if (s === undefined || !Number.isFinite(s) || !key.endsWith("Back")) return EASES[key];
+  if (key === "inBack") return backIn(s);
+  return key === "outBack" ? out(backIn(s)) : backInOut(s * 1.525);
 }
 
 /** Evaluates the named ease at progress `t`, clamped to [0, 1]; unknown names fall back to `DEFAULT_EASE` (a scene document edited by hand must degrade, not crash). */
-export function ease(name: string, t: number): number {
-  const fn = (isEaseName(name) ? EASES[name] : EASES[DEFAULT_EASE]) as EaseFn;
-  return fn(t < 0 ? 0 : t > 1 ? 1 : t);
+export function ease(name: string, t: number, opts?: EaseOptions): number {
+  return easeFn(name, opts)(t < 0 ? 0 : t > 1 ? 1 : t);
 }

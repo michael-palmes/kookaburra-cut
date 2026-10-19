@@ -1,6 +1,7 @@
 import { useGLTF, useTexture } from "@react-three/drei";
 import {
   type MutableRefObject,
+  type ReactNode,
   useCallback,
   useContext,
   useEffect,
@@ -60,6 +61,7 @@ import { useEditorStore } from "../../store/editorStore";
 import { useStudioEnvironment } from "../lighting/studioEnvironment";
 import { AssetBoundary } from "../media/AssetBoundary";
 import { useClipStandInTexture } from "../media/conformStandIn";
+import { DeviceScreenTaps, useHasScreenTaps } from "../shapes/TapRing";
 import { useSceneStaged, useStageFloorY, useStageMapShadows } from "../stage/context";
 import type { V3 } from "../types";
 import {
@@ -71,6 +73,7 @@ import {
   resolveAvailableDeviceId,
 } from "./catalog";
 import { DeviceGizmo } from "./DeviceGizmo";
+import { DeviceScreenContext } from "./DeviceScreenAnchor";
 import { DeviceShadow } from "./DeviceShadow";
 import { clampFoldDeg, foldCentreOffset, foldVisibleWidth } from "./foldPose";
 import {
@@ -167,6 +170,8 @@ export interface DeviceProps {
   foldTransition?: DeviceFoldTransitionSpec;
   /** Motion blur override; absent inherits the scene's Objects switch. */
   motionBlur?: MotionBlurOverride;
+  /** Content riding the device's pose in its fitted frame; `DeviceScreenAnchor` pins it to the screen. */
+  children?: ReactNode;
 }
 
 /** One sampled channel of a foldable's clip, bound to a node of this device's private clone. */
@@ -495,6 +500,7 @@ export function Device(props: DeviceProps) {
     bothScreensOn = false,
     foldTransition,
     motionBlur,
+    children,
   } = props;
   // The layout stamp wins over the scalar fields (see DevicePlacement.resolvedLayout).
   const position = placement.resolvedLayout?.position ?? placement.position ?? [0, 0, 0];
@@ -510,6 +516,7 @@ export function Device(props: DeviceProps) {
 
   const ctx = useSceneContext();
   const sceneIndex = ctx?.index;
+  const screenTaps = useHasScreenTaps(id);
   // The gizmo drives the pose through state, not the group directly: the clock re-renders this component every frame, which would stomp a mutated group. Never reaches an export (the gizmo unmounts when `exportPreamble` clears the selection, and `isExporting` is the belt to that brace).
   const [drag, setDrag] = useState<DevicePose | null>(null);
   const [gizmoResetKey, setGizmoResetKey] = useState(0);
@@ -915,6 +922,16 @@ export function Device(props: DeviceProps) {
           ]}
           scale={introScale}
         >
+          {(children != null || screenTaps) && (
+            <group scale={animatedScale}>
+              <DeviceScreenContext.Provider
+                value={{ model, renderModel, lidDeg: renderedLidDeg, foldDeg: renderedFoldDeg }}
+              >
+                {children}
+                {screenTaps && id !== undefined && <DeviceScreenTaps deviceId={id} />}
+              </DeviceScreenContext.Provider>
+            </group>
+          )}
           <group scale={animatedScale * fit}>
             {fold ? (
               // The fit scale sits outside, so a fitted-unit shift divides back into model units.

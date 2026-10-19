@@ -1,5 +1,7 @@
 import { parseMotionBlurOverride } from "../engine/motionBlur";
+import { parseWarn } from "../engine/parseWarnings";
 import { normalizeLighting, resolveLighting } from "../engine/sceneLighting";
+import { parseFontString } from "./fontRef";
 import type {
   EffectsConfig,
   FontRef,
@@ -16,16 +18,16 @@ import type {
 /** The theme document schema: `theme.json`, one format for bundled and user themes, parsed with the same degrade-don't-crash contract as `parseSceneDoc` - a malformed OPTIONAL block drops with a warning, a malformed REQUIRED block (colors/typography/motion) rejects the whole document so a bad theme file never tears down the canvas tree. Unknown fields are ignored. PURE module (types + validation only); IO lives in `theme/registry.ts`. See docs/decisions.md ("Themes & typography"). */
 
 /** Newest theme schema this build understands (newer docs are ignored with a warning). */
-export const THEME_DOC_VERSION = 2;
+export const THEME_DOC_VERSION = 3;
 
 const isRecord = (v: unknown): v is Record<string, unknown> =>
   typeof v === "object" && v !== null && !Array.isArray(v);
 const isNum = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
 const isStr = (v: unknown): v is string => typeof v === "string" && v.length > 0;
 
-/** `typography.headline`/`body` accept a plain family (weight 400) or `{family, weight}`. */
+/** `typography.headline`/`body` accept a font string (`"Family"` or `"Family@weight"`, the sidecar grammar) or `{family, weight}`. */
 function parseFontRef(v: unknown): FontRef | undefined {
-  if (isStr(v)) return { family: v, weight: 400 };
+  if (isStr(v)) return parseFontString(v);
   if (isRecord(v) && isStr(v.family)) {
     return { family: v.family, weight: isNum(v.weight) ? v.weight : 400 };
   }
@@ -39,7 +41,7 @@ function parseLighting(v: unknown, source: string): LightingSpec | undefined {
 
 function parseEnvironment(v: unknown, source: string): ThemeEnvironment | undefined {
   if (!isRecord(v) || !isStr(v.source)) {
-    console.warn(`[theme] ${source}: "environment" needs a string source — dropped`);
+    parseWarn(`[theme] ${source}: "environment" needs a string source, dropped`);
     return undefined;
   }
   return {
@@ -49,20 +51,39 @@ function parseEnvironment(v: unknown, source: string): ThemeEnvironment | undefi
   };
 }
 
-/** Exported: the background's inline gradient spec reuses this validator. */
-export function parseGradient(v: unknown): GradientSpec | undefined {
-  if (!isRecord(v)) return undefined;
-  if (v.type !== "linear" && v.type !== "radial") return undefined;
-  if (!isNum(v.angleDeg) || !Array.isArray(v.stops)) return undefined;
+/** Exported: the background's inline gradient spec reuses this validator. A radial gradient may omit `angleDeg` (0); a linear one may not. With a `source` the reason a spec drops is warned. */
+export function parseGradient(
+  v: unknown,
+  source?: string,
+  label = "gradient",
+): GradientSpec | undefined {
+  const drop = (why: string): undefined => {
+    if (source) parseWarn(`[theme] ${source}: ${label} ${why}, dropped`);
+    return undefined;
+  };
+  if (!isRecord(v)) return drop("isn't an object");
+  if (v.type !== "linear" && v.type !== "radial") return drop('needs a "type" of linear or radial');
+  let angleDeg: number;
+  if (isNum(v.angleDeg)) angleDeg = v.angleDeg;
+  else if (v.type === "radial" && v.angleDeg === undefined) angleDeg = 0;
+  else return drop('needs a numeric "angleDeg"');
+  if (!Array.isArray(v.stops)) return drop('needs a "stops" list');
   const stops: [string, number][] = [];
   for (const s of v.stops) {
     if (Array.isArray(s) && isStr(s[0]) && isNum(s[1])) stops.push([s[0], s[1]]);
-    else return undefined;
+    else return drop('has a stop that isn\'t ["colour", position]');
   }
-  if (stops.length < 2) return undefined;
-  const gradient: GradientSpec = { type: v.type, angleDeg: v.angleDeg, stops };
+  if (stops.length < 2) return drop("needs at least two stops");
+  const gradient: GradientSpec = { type: v.type, angleDeg, stops };
   if (v.space === "oklch") gradient.space = "oklch";
   return gradient;
+}
+
+/** A named gradient standing in for an inline spec that failed: the reference still renders, but not as written. */
+function warnInlineFallback(source: string, key: string, name: string): void {
+  parseWarn(
+    `[theme] ${source}: "${key}.spec" isn't a valid gradient, so the "${name}" gradient shows instead`,
+  );
 }
 
 const HEX_COLOR = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i;
@@ -70,13 +91,13 @@ const HEX_COLOR = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i;
 /** Chart series swatches: hex strings only, a malformed entry dropping alone (the palette then wraps over the survivors). Nothing valid leaves the theme without the field, so the derived accent ramp applies. */
 function parseChartColors(v: unknown, source: string): string[] | undefined {
   if (!Array.isArray(v)) {
-    console.warn(`[theme] ${source}: "chartColors" isn't an array, dropped`);
+    parseWarn(`[theme] ${source}: "chartColors" isn't an array, dropped`);
     return undefined;
   }
   const colors: string[] = [];
   for (const entry of v) {
     if (isStr(entry) && HEX_COLOR.test(entry)) colors.push(entry);
-    else console.warn(`[theme] ${source}: a "chartColors" entry isn't a hex colour, dropped`);
+    else parseWarn(`[theme] ${source}: a "chartColors" entry isn't a hex colour, dropped`);
   }
   return colors.length > 0 ? colors : undefined;
 }
@@ -104,7 +125,10 @@ export function parseBackdropSpec(v: unknown, source: string): ThemeBackdrop | u
         if (name) out.gradient = name;
         return out;
       }
-      if (name) return { type: "gradient", gradient: name };
+      if (name) {
+        if (v.spec !== undefined) warnInlineFallback(source, "backdrop", name);
+        return { type: "gradient", gradient: name };
+      }
       break;
     }
     case "image":
@@ -117,7 +141,7 @@ export function parseBackdropSpec(v: unknown, source: string): ThemeBackdrop | u
       }
       break;
   }
-  console.warn(`[theme] ${source}: invalid "backdrop" — dropped`);
+  parseWarn(`[theme] ${source}: invalid "backdrop", dropped`);
   return undefined;
 }
 
@@ -155,7 +179,10 @@ export function parseBackgroundSpec(
         if (name) out.gradient = name;
         return withParallax(out);
       }
-      if (name) return withParallax({ type: "gradient", gradient: name });
+      if (name) {
+        if (v.spec !== undefined) warnInlineFallback(source, "background", name);
+        return withParallax({ type: "gradient", gradient: name });
+      }
       break;
     }
     case "image":
@@ -163,7 +190,7 @@ export function parseBackgroundSpec(
       break;
     case "video":
       if (!opts.video) {
-        console.warn(`[theme] ${source}: video backgrounds are scene-doc only — dropped`);
+        parseWarn(`[theme] ${source}: video backgrounds are scene-doc only, dropped`);
         return undefined;
       }
       if (isStr(v.src)) {
@@ -229,7 +256,7 @@ export function parseBackgroundSpec(
       return withParallax(out);
     }
   }
-  console.warn(`[theme] ${source}: invalid "background" — dropped`);
+  parseWarn(`[theme] ${source}: invalid "background", dropped`);
   return undefined;
 }
 
@@ -250,7 +277,7 @@ export function mergeLighting(
 /** Text-animation spec parser, exported for the sidecar's whole-spec `textAnimation` override. Preset NAMES stay raw strings (validated later by `coercePreset` at resolve); other params validate per-field, drop-and-warn. */
 export function parseTextAnimationSpec(v: unknown, source: string): TextAnimationSpec | undefined {
   if (!isRecord(v) || !isStr(v.in) || !isStr(v.out)) {
-    console.warn(`[theme] ${source}: "textAnimation" needs "in" + "out" preset names — dropped`);
+    parseWarn(`[theme] ${source}: "textAnimation" needs "in" + "out" preset names, dropped`);
     return undefined;
   }
   const spec: TextAnimationSpec = {
@@ -258,22 +285,26 @@ export function parseTextAnimationSpec(v: unknown, source: string): TextAnimatio
     out: v.out,
     staggerMs: isNum(v.staggerMs) ? v.staggerMs : 0,
   };
+  if (v.staggerExact === true) spec.staggerExact = true;
+  else if (v.staggerExact !== undefined && v.staggerExact !== false) {
+    parseWarn(`[theme] ${source}: invalid "textAnimation.staggerExact", dropped`);
+  }
   if (v.stagger === "char" || v.stagger === "word") spec.stagger = v.stagger;
   if (isNum(v.delayMs)) spec.delayMs = v.delayMs;
   else if (v.delayMs !== undefined) {
-    console.warn(`[theme] ${source}: invalid "textAnimation.delayMs", dropped`);
+    parseWarn(`[theme] ${source}: invalid "textAnimation.delayMs", dropped`);
   }
   if (isNum(v.startScale)) spec.startScale = v.startScale;
   else if (v.startScale !== undefined) {
-    console.warn(`[theme] ${source}: invalid "textAnimation.startScale" — dropped`);
+    parseWarn(`[theme] ${source}: invalid "textAnimation.startScale", dropped`);
   }
   if (typeof v.shine === "boolean") spec.shine = v.shine;
   else if (v.shine !== undefined) {
-    console.warn(`[theme] ${source}: invalid "textAnimation.shine" — dropped`);
+    parseWarn(`[theme] ${source}: invalid "textAnimation.shine", dropped`);
   }
   if (v.direction === "from-left" || v.direction === "from-right") spec.direction = v.direction;
   else if (v.direction !== undefined) {
-    console.warn(`[theme] ${source}: invalid "textAnimation.direction" — dropped`);
+    parseWarn(`[theme] ${source}: invalid "textAnimation.direction", dropped`);
   }
   if (
     v.delivery === "all-at-once" ||
@@ -282,19 +313,23 @@ export function parseTextAnimationSpec(v: unknown, source: string): TextAnimatio
   ) {
     spec.delivery = v.delivery;
   } else if (v.delivery !== undefined) {
-    console.warn(`[theme] ${source}: invalid "textAnimation.delivery" — dropped`);
+    parseWarn(`[theme] ${source}: invalid "textAnimation.delivery", dropped`);
   }
   if (isNum(v.durationMs) && v.durationMs > 0) spec.durationMs = v.durationMs;
   else if (v.durationMs !== undefined) {
-    console.warn(`[theme] ${source}: invalid "textAnimation.durationMs", dropped`);
+    parseWarn(`[theme] ${source}: invalid "textAnimation.durationMs", dropped`);
   }
   if (isNum(v.distance) && v.distance >= 0) spec.distance = v.distance;
   else if (v.distance !== undefined) {
-    console.warn(`[theme] ${source}: invalid "textAnimation.distance", dropped`);
+    parseWarn(`[theme] ${source}: invalid "textAnimation.distance", dropped`);
+  }
+  if (isNum(v.buildShiftEm)) spec.buildShiftEm = v.buildShiftEm;
+  else if (v.buildShiftEm !== undefined) {
+    parseWarn(`[theme] ${source}: invalid "textAnimation.buildShiftEm", dropped`);
   }
   if (isStr(v.ease)) spec.ease = v.ease;
   else if (v.ease !== undefined) {
-    console.warn(`[theme] ${source}: invalid "textAnimation.ease", dropped`);
+    parseWarn(`[theme] ${source}: invalid "textAnimation.ease", dropped`);
   }
   const motionBlur = parseMotionBlurOverride(v.motionBlur, `${source} textAnimation`);
   if (motionBlur) spec.motionBlur = motionBlur;
@@ -304,41 +339,49 @@ export function parseTextAnimationSpec(v: unknown, source: string): TextAnimatio
 /** Text-look spec parser, exported for the sidecar's whole-spec `textLook` override. The preset NAME stays a raw string (validated later by `coerceLook` at resolve); params validate per-field, drop-and-warn, with range clamping left to resolve (the startScale pattern). */
 export function parseTextLookSpec(v: unknown, source: string): TextLookSpec | undefined {
   if (!isRecord(v) || !isStr(v.preset)) {
-    console.warn(`[theme] ${source}: "textLook" needs a "preset" name, dropped`);
+    parseWarn(`[theme] ${source}: "textLook" needs a "preset" name, dropped`);
     return undefined;
   }
   const spec: TextLookSpec = { preset: v.preset };
   if (isStr(v.colorA)) spec.colorA = v.colorA;
   else if (v.colorA !== undefined) {
-    console.warn(`[theme] ${source}: invalid "textLook.colorA", dropped`);
+    parseWarn(`[theme] ${source}: invalid "textLook.colorA", dropped`);
   }
   if (isStr(v.colorB)) spec.colorB = v.colorB;
   else if (v.colorB !== undefined) {
-    console.warn(`[theme] ${source}: invalid "textLook.colorB", dropped`);
+    parseWarn(`[theme] ${source}: invalid "textLook.colorB", dropped`);
   }
   if (isNum(v.angleDeg)) spec.angleDeg = v.angleDeg;
   else if (v.angleDeg !== undefined) {
-    console.warn(`[theme] ${source}: invalid "textLook.angleDeg", dropped`);
+    parseWarn(`[theme] ${source}: invalid "textLook.angleDeg", dropped`);
   }
   if (isNum(v.strokeEm)) spec.strokeEm = v.strokeEm;
   else if (v.strokeEm !== undefined) {
-    console.warn(`[theme] ${source}: invalid "textLook.strokeEm", dropped`);
+    parseWarn(`[theme] ${source}: invalid "textLook.strokeEm", dropped`);
   }
   if (typeof v.hollow === "boolean") spec.hollow = v.hollow;
   else if (v.hollow !== undefined) {
-    console.warn(`[theme] ${source}: invalid "textLook.hollow", dropped`);
+    parseWarn(`[theme] ${source}: invalid "textLook.hollow", dropped`);
   }
   if (isNum(v.intensity)) spec.intensity = v.intensity;
   else if (v.intensity !== undefined) {
-    console.warn(`[theme] ${source}: invalid "textLook.intensity", dropped`);
+    parseWarn(`[theme] ${source}: invalid "textLook.intensity", dropped`);
   }
   if (isNum(v.offsetEm)) spec.offsetEm = v.offsetEm;
   else if (v.offsetEm !== undefined) {
-    console.warn(`[theme] ${source}: invalid "textLook.offsetEm", dropped`);
+    parseWarn(`[theme] ${source}: invalid "textLook.offsetEm", dropped`);
+  }
+  if (isNum(v.offsetDir)) spec.offsetDir = v.offsetDir;
+  else if (v.offsetDir !== undefined) {
+    parseWarn(`[theme] ${source}: invalid "textLook.offsetDir", dropped`);
+  }
+  if (isNum(v.offsetOpacity)) spec.offsetOpacity = v.offsetOpacity;
+  else if (v.offsetOpacity !== undefined) {
+    parseWarn(`[theme] ${source}: invalid "textLook.offsetOpacity", dropped`);
   }
   if (isNum(v.curveDeg)) spec.curveDeg = v.curveDeg;
   else if (v.curveDeg !== undefined) {
-    console.warn(`[theme] ${source}: invalid "textLook.curveDeg", dropped`);
+    parseWarn(`[theme] ${source}: invalid "textLook.curveDeg", dropped`);
   }
   return spec;
 }
@@ -359,42 +402,42 @@ function parseEffects(v: unknown, source: string): EffectsConfig | undefined {
       luminanceThreshold: b.luminanceThreshold,
       luminanceSmoothing: b.luminanceSmoothing,
     };
-  } else if (b !== undefined) console.warn(`[theme] ${source}: invalid "effects.bloom" — dropped`);
+  } else if (b !== undefined) parseWarn(`[theme] ${source}: invalid "effects.bloom", dropped`);
   const g = v.vignette;
   if (isRecord(g) && isNum(g.offset) && isNum(g.darkness)) {
     out.vignette = { offset: g.offset, darkness: g.darkness };
   } else if (g !== undefined) {
-    console.warn(`[theme] ${source}: invalid "effects.vignette" — dropped`);
+    parseWarn(`[theme] ${source}: invalid "effects.vignette", dropped`);
   }
   const l = v.lut;
   if (isRecord(l) && isStr(l.url) && isNum(l.intensity)) {
     out.lut = { url: l.url, intensity: l.intensity };
-  } else if (l !== undefined) console.warn(`[theme] ${source}: invalid "effects.lut" — dropped`);
+  } else if (l !== undefined) parseWarn(`[theme] ${source}: invalid "effects.lut", dropped`);
   const n = v.grain;
   if (isRecord(n) && isNum(n.intensity)) {
     out.grain = { intensity: n.intensity };
-  } else if (n !== undefined) console.warn(`[theme] ${source}: invalid "effects.grain" — dropped`);
+  } else if (n !== undefined) parseWarn(`[theme] ${source}: invalid "effects.grain", dropped`);
   return Object.keys(out).length > 0 ? out : undefined;
 }
 
-/** Validates a raw theme document into a resolved `Theme`. Returns `undefined` (with a console warning) rather than throwing; callers fall back to the default theme. */
+/** Validates a raw theme document into a resolved `Theme`. Returns `undefined` (with a parse warning) rather than throwing; callers fall back to the default theme. */
 export function parseThemeDoc(raw: unknown, source: string): Theme | undefined {
   if (!isRecord(raw)) {
-    console.warn(`[theme] ${source}: not an object — ignored`);
+    parseWarn(`[theme] ${source}: not an object, ignored`);
     return undefined;
   }
   if (!isNum(raw.version) || raw.version < 1) {
-    console.warn(`[theme] ${source}: missing/invalid "version" — ignored`);
+    parseWarn(`[theme] ${source}: missing/invalid "version", ignored`);
     return undefined;
   }
   if (raw.version > THEME_DOC_VERSION) {
-    console.warn(
-      `[theme] ${source}: version ${raw.version} is newer than this Kookaburra Cut understands — ignored`,
+    parseWarn(
+      `[theme] ${source}: version ${raw.version} is newer than this Kookaburra Cut understands, ignored`,
     );
     return undefined;
   }
   if (!isStr(raw.id)) {
-    console.warn(`[theme] ${source}: missing/invalid "id" — ignored`);
+    parseWarn(`[theme] ${source}: missing/invalid "id", ignored`);
     return undefined;
   }
 
@@ -406,7 +449,7 @@ export function parseThemeDoc(raw: unknown, source: string): Theme | undefined {
     !isStr(colors.accent) ||
     !isStr(colors.muted)
   ) {
-    console.warn(`[theme] ${source}: "colors" needs background/text/accent/muted — ignored`);
+    parseWarn(`[theme] ${source}: "colors" needs background/text/accent/muted, ignored`);
     return undefined;
   }
 
@@ -414,7 +457,7 @@ export function parseThemeDoc(raw: unknown, source: string): Theme | undefined {
   const headline = isRecord(typography) ? parseFontRef(typography.headline) : undefined;
   const body = isRecord(typography) ? parseFontRef(typography.body) : undefined;
   if (!isRecord(typography) || !headline || !body || !isNum(typography.scale)) {
-    console.warn(`[theme] ${source}: "typography" needs headline/body/scale — ignored`);
+    parseWarn(`[theme] ${source}: "typography" needs headline/body/scale, ignored`);
     return undefined;
   }
 
@@ -430,7 +473,7 @@ export function parseThemeDoc(raw: unknown, source: string): Theme | undefined {
     !isStr(easings.standard) ||
     !isStr(easings.emphasized)
   ) {
-    console.warn(`[theme] ${source}: "motion" needs durations + easings — ignored`);
+    parseWarn(`[theme] ${source}: "motion" needs durations + easings, ignored`);
     return undefined;
   }
 
@@ -455,9 +498,8 @@ export function parseThemeDoc(raw: unknown, source: string): Theme | undefined {
   if (isRecord(raw.gradients)) {
     const gradients: Record<string, GradientSpec> = {};
     for (const [name, value] of Object.entries(raw.gradients)) {
-      const gradient = parseGradient(value);
+      const gradient = parseGradient(value, source, `gradient "${name}"`);
       if (gradient) gradients[name] = gradient;
-      else console.warn(`[theme] ${source}: gradient "${name}" is invalid — dropped`);
     }
     if (Object.keys(gradients).length > 0) theme.gradients = gradients;
   }
@@ -480,7 +522,7 @@ export function parseThemeDoc(raw: unknown, source: string): Theme | undefined {
     if (isRecord(card) && isNum(card.radius) && card.radius >= 0 && card.radius <= 0.5) {
       theme.card = { radius: card.radius };
     } else {
-      console.warn(`[theme] ${source}: invalid "card", dropped`);
+      parseWarn(`[theme] ${source}: invalid "card", dropped`);
     }
   }
   if (raw.lighting !== undefined) {

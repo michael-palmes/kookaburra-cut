@@ -198,9 +198,11 @@ Two per-kind overrides:
 `keep both` suffixes `-2`, `-3`, matching the media convention. When a theme
 resolves to keep-both, every project, template and preset in the same import that
 referenced it is rewritten to the new slug in the staging directory before
-anything moves, in both `project.json` and the scene sidecars. A kept-both
-project, template or preset also re-stamps its own `project.json` `id`. Anything
-not in the import is never touched.
+anything moves, in both `project.json` and the scene sidecars. A theme in the
+import that extends it has its `extends` rewritten the same way, and nothing else
+in that theme changes (its gradient names are its own). A kept-both project,
+template or preset also re-stamps its own `project.json` `id`. Anything not in the
+import is never touched.
 
 ## Apply order
 
@@ -257,6 +259,23 @@ A font whose OS/2 `fsType` says Restricted is never bundled. It travels as a
 name-only reference plus a message telling the recipient to install it. That
 gate is a floor, not a clearance: `fsType` describes document embedding, which
 is not the same question as redistribution, and the UI copy says so.
+
+## Theme variants
+
+A workspace theme can extend another (`"extends": "ws:<slug>"` or a bundled id,
+`docs/decisions.md`). Variants change the closure and the import in three ways:
+
+- **The base chain travels.** A variant requires its base (`requires.themes` on the
+  theme), whose own visit requires the next one, so picking one variant packs the
+  whole chain. A bundled base never travels: it ships with the app.
+- **Gradient names resolve chain-wide.** A name any theme in the chain defines is the
+  theme's own, not a saved preset. Rust cannot read bundled documents, so a name a
+  bundled base may define is not warned about. The contents screen's mode and
+  swatches come from the merged chain (`theme::resolve_theme_document`, which
+  replays the same `theme-merge-vectors.json` as the app and the kit).
+- **A base that does not arrive is named.** When a variant lands without its base,
+  the summary says what it binds to instead: the recipient's theme of that slug, or
+  nothing, in which case the variant falls back to the default theme.
 
 ## Adding a new entity kind
 

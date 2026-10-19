@@ -41,8 +41,14 @@ export const EXT2_MIN_TYPE = 10;
 /** Types >= this id render through the v15 (fourth-generation GLSL3) materials, keeping the earlier programs source-identical. */
 export const EXT3_MIN_TYPE = 13;
 
-/** Procedural ramp/aperture shapes: linear/radial/iris are the luma ramps; hex is the rack-focus aperture (ext3 reuses the shared `shape` uniform with per-type meanings). */
-export const SHAPE_ID: Record<TransitionShape, number> = { linear: 0, radial: 1, iris: 2, hex: 3 };
+/** Procedural ramp/aperture shapes: linear/radial/iris are the luma ramps; hex is the rack-focus aperture (ext3 reuses the shared `shape` uniform with per-type meanings). `image` renders through the mask material; on the extended luma branch it reads as the iris (the preview fallback while a mask loads). */
+export const SHAPE_ID: Record<TransitionShape, number> = {
+  linear: 0,
+  radial: 1,
+  iris: 2,
+  hex: 3,
+  image: 4,
+};
 
 export const vertexShader = /* glsl */ `
   varying vec2 vUv;
@@ -859,6 +865,103 @@ export const fragmentShaderExt3Hdr = /* glsl */ `
     vec3 outSelect = vec3(0.0);
     bool isSelect = false;
     ${ext3Body}
+    fragColor = vec4(isSelect ? outSelect : tmInv(outDisplay), 1.0);
+  }
+`;
+
+// The image mask (luma `shape: "image"`): a fifth generation so every earlier program stays source-identical. The field is the mask's precomputed SDF (engine/transitionMaskSdf.ts) in mask units; outside the stored box it extends by the box distance, and `min(..., |u| - maskInset)` caps it by the inscribed disc about the anchor, a bound the true SDF always meets, so the CPU schedule (maskReveal) can guarantee the cover. Scale, dilation and the pixel width are CPU uniforms; the endpoint guard keeps the seam frames exact selections.
+const maskCommon = /* glsl */ `
+  uniform sampler2D maskTex;
+  uniform vec2 maskHalf;
+  uniform float maskInset;
+  uniform float maskScale;
+  uniform float maskDilate;
+  uniform float maskPixel;
+`;
+
+const maskBody = /* glsl */ `
+  if (progress <= 0.0) {
+    outSelect = SEL_RAW(texA, vUv);
+    isSelect = true;
+  } else if (progress >= 1.0) {
+    outSelect = SEL_RAW(texB, vUv);
+    isSelect = true;
+  } else {
+    vec2 q = vec2((vUv.x - center.x) * aspect, vUv.y - center.y);
+    vec2 u = q / maskScale;
+    vec2 c = clamp(u, -maskHalf, maskHalf);
+    float f = texture(maskTex, c / (2.0 * maskHalf) + 0.5).r + length(u - c);
+    f = min(f, length(u) - maskInset);
+    float m = clamp(0.5 - (maskScale * f - maskDilate) / maskPixel, 0.0, 1.0);
+    if (m <= 0.0) {
+      outSelect = SEL_RAW(texA, vUv);
+      isSelect = true;
+    } else if (m >= 1.0) {
+      outSelect = SEL_RAW(texB, vUv);
+      isSelect = true;
+    } else {
+      outDisplay = mix(S(texA, vUv), S(texB, vUv), m);
+    }
+  }
+`;
+
+/** Image-mask SDR composite (GLSL3): the earlier packs' display-domain semantics, its own program. */
+export const fragmentShaderMask = /* glsl */ `
+  precision highp float;
+  in vec2 vUv;
+  out vec4 fragColor;
+  ${extCommon}
+  ${maskCommon}
+
+  vec3 linearToSrgb(vec3 c) {
+    c = clamp(c, 0.0, 1.0);
+    return mix(c * 12.92, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(vec3(0.0031308), c));
+  }
+  vec3 S(sampler2D t, vec2 uv) {
+    return linearToSrgb(texture(t, clamp(uv, vec2(0.0), vec2(1.0))).rgb);
+  }
+  vec3 SEL_RAW(sampler2D t, vec2 uv) { return S(t, uv); }
+
+  void main() {
+    vec3 outDisplay = vec3(0.0);
+    vec3 outSelect = vec3(0.0);
+    bool isSelect = false;
+    ${maskBody}
+    fragColor = vec4(isSelect ? outSelect : outDisplay, 1.0);
+  }
+`;
+
+/** Image-mask HDR composite (GLSL3, fx path): the ACES round-trip for the one-pixel edge mix, raw linear HDR selections everywhere else. */
+export const fragmentShaderMaskHdr = /* glsl */ `
+  precision highp float;
+  in vec2 vUv;
+  out vec4 fragColor;
+  ${extCommon}
+  ${maskCommon}
+
+  vec3 srgbToLinear(vec3 c) {
+    return mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(vec3(0.04045), c));
+  }
+  vec3 linearToSrgb(vec3 c) {
+    c = clamp(c, 0.0, 1.0);
+    return mix(c * 12.92, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(vec3(0.0031308), c));
+  }
+  ${ACES_FORWARD_GLSL}
+  ${ACES_INVERSE_GLSL}
+
+  vec3 S(sampler2D t, vec2 uv) {
+    return linearToSrgb(acesForward(texture(t, clamp(uv, vec2(0.0), vec2(1.0))).rgb));
+  }
+  vec3 SEL_RAW(sampler2D t, vec2 uv) {
+    return texture(t, clamp(uv, vec2(0.0), vec2(1.0))).rgb;
+  }
+  vec3 tmInv(vec3 e) { return acesInverse(srgbToLinear(clamp(e, 0.0, 0.999))); }
+
+  void main() {
+    vec3 outDisplay = vec3(0.0);
+    vec3 outSelect = vec3(0.0);
+    bool isSelect = false;
+    ${maskBody}
     fragColor = vec4(isSelect ? outSelect : tmInv(outDisplay), 1.0);
   }
 `;

@@ -234,6 +234,7 @@ const STYLE_SUFFIXES = [
   "OffsetY",
   "LineHeight",
   "RotationDeg",
+  "Emphasis",
 ] as const;
 
 export type ManagedTextStyleField = "size" | "x" | "y" | "rotation" | "spacing";

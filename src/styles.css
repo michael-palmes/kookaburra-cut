@@ -12802,6 +12802,19 @@ textarea.text-inspector-copy-input {
   gap: var(--space-2);
 }
 
+.theme-editor-based-on {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.theme-editor-based-on-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .theme-editor-tag-input {
   width: 140px;
 }

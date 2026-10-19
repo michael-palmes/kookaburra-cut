@@ -30,6 +30,8 @@ interface AmbientHandle {
   sceneIndex: number;
   light: Light;
   base: number;
+  /** Written back only on roomed samples; absent is three's white. */
+  baseColor?: string;
 }
 
 interface LightHandle {
@@ -98,17 +100,23 @@ export function applyFrameLighting(
         handle.light.position.set(...sunPosition(az, el));
         handle.light.intensity = sun?.intensity ?? handle.base.intensity;
         const kelvin = sun?.kelvin ?? handle.base.kelvin;
-        handle.light.color.set(kelvin !== undefined ? kelvinToHex(kelvin) : handle.baseColor);
+        handle.light.color.set(
+          sun?.color ?? (kelvin !== undefined ? kelvinToHex(kelvin) : handle.baseColor),
+        );
         break;
       }
       case "ambient":
         handle.light.intensity = pose.ambient ?? handle.base;
+        if (sample.roomed)
+          handle.light.color.set(pose.ambientColor ?? handle.baseColor ?? "#ffffff");
         break;
       case "light": {
         const entry = pose.lights?.[handle.id];
         handle.light.intensity = entry?.intensity ?? handle.base.intensity;
         const kelvin = entry?.kelvin ?? handle.base.kelvin;
-        handle.light.color.set(kelvin !== undefined ? kelvinToHex(kelvin) : handle.baseColor);
+        handle.light.color.set(
+          entry?.color ?? (kelvin !== undefined ? kelvinToHex(kelvin) : handle.baseColor),
+        );
         // Keyed placement drives WORLD lights only; camera/subject transforms belong to applyRelativeLights.
         if ((handle.base.space ?? "world") === "world") {
           const placement = entry?.placement ?? handle.base.placement;
