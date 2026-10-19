@@ -6,6 +6,46 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.19.0] - 2026-10-19
+
+### Added
+
+- Stills export: a PDF handout or a zip of PNG images, one page per scene at
+  its settled moment or at the stills you mark.
+- Motion blur for the camera and for moving objects.
+- Footage, camera moves and cuts can be timed to the soundtrack's beats.
+- A Cancel button that stops an export or Verify run at any stage, without
+  leaving a broken file or replacing the previous export.
+- Claude Code can edit a project's videos like the in-app editor, even with
+  the app closed: trims, cuts, speed changes, freeze frames, tap highlights
+  and privacy masks.
+- A motion toolkit for Claude Code scene authoring: shared motion helpers,
+  measured device screens, text metrics and rooms.
+
+### Changed
+
+- Claude Code is a safer editor of your projects: its edits can no longer stop
+  a project opening, the app never overwrites them, several agents can work at
+  once, and it can check and look at renders.
+- Claude Code's render checks and captures run several times faster on large
+  projects.
+- The pack Export window groups projects by their welcome-screen group, and
+  every tab has a search field.
+- The Background drill splits 3D and Animated fills into fixed bands that each
+  scroll on their own, so presets stay in reach.
+- Each project remembers its own preview aspect.
+
+### Fixed
+
+- Screen recordings with a variable frame rate, edit lists or P3 colour play
+  as recorded.
+- Transitions, comparisons and framed frames render with the canvas's colours,
+  so text no longer shifts colour mid transition.
+- Exports wait for outlined text (the neon look and whole-block blur-in) to
+  draw before capturing a frame.
+- Device screens no longer export black on the first frame of a fresh
+  install's first export.
+
 ## [0.18.0] - 2026-10-04
 
 ### Added
