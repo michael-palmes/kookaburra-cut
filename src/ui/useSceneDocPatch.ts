@@ -131,6 +131,53 @@ export function useSceneDocPatch(
   const patchQueue = sceneDocPatchQueue(queueIdentity, doc);
   const musicScope = sceneMusicScope(project, sceneIndex);
 
+  /** Re-sync a follow-media scene's length after `next` landed; the manifest write and any clamped tracks join `changes`, the caller's one history entry. */
+  async function resyncDuration(
+    slug: string,
+    sceneFile: string,
+    next: SceneDoc,
+    changes: HistoryChange[],
+  ): Promise<boolean> {
+    const manifestBefore = await readProjectManifestSnapshot(slug);
+    let failed = false;
+    const { wrote, clampedDoc } = await resyncFollowMediaDuration(
+      slug,
+      sceneIndex,
+      next,
+      scene.durationMs,
+      sceneFile,
+    ).catch((e) => {
+      console.warn("[scene-doc] duration re-sync failed:", e);
+      setError(`Saved, but the scene length didn't re-sync: ${String(e)}`);
+      failed = true;
+      return { wrote: false, clampedDoc: null };
+    });
+    if (wrote) {
+      onTimingChanged();
+      changes.push({
+        kind: "manifest",
+        slug,
+        before: manifestBefore,
+        after: await readProjectManifestSnapshot(slug),
+        reload: false,
+      });
+    }
+    if (clampedDoc) {
+      patchQueue.latestDoc = clampedDoc;
+      onDocChanged(sceneIndex, clampedDoc, sceneFile, project.id);
+      changes.push({
+        kind: "sceneDoc",
+        slug,
+        file: sceneFile,
+        sceneIndex,
+        before: structuredClone(next),
+        after: structuredClone(clampedDoc),
+        hash: sceneDocBase(clampedDoc),
+      });
+    }
+    return !failed;
+  }
+
   /** Write a patched copy of the doc, re-sync duration when asked, and report whether the complete operation succeeded. */
   async function patchDocResult(
     patch: (next: SceneDoc) => unknown,
@@ -173,44 +220,7 @@ export function useSceneDocPatch(
           reload: before.themeId !== next.themeId,
           hash: sceneDocBase(next),
         });
-        if (opts.resync) {
-          const manifestBefore = await readProjectManifestSnapshot(slug);
-          const { wrote, clampedDoc } = await resyncFollowMediaDuration(
-            slug,
-            sceneIndex,
-            next,
-            scene.durationMs,
-            sceneFile,
-          ).catch((e) => {
-            console.warn("[scene-doc] duration re-sync failed:", e);
-            setError(`Saved, but the scene length didn't re-sync: ${String(e)}`);
-            resyncFailed = true;
-            return { wrote: false, clampedDoc: null };
-          });
-          if (wrote) {
-            onTimingChanged();
-            changes.push({
-              kind: "manifest",
-              slug,
-              before: manifestBefore,
-              after: await readProjectManifestSnapshot(slug),
-              reload: false,
-            });
-          }
-          if (clampedDoc) {
-            patchQueue.latestDoc = clampedDoc;
-            onDocChanged(sceneIndex, clampedDoc, sceneFile, project.id);
-            changes.push({
-              kind: "sceneDoc",
-              slug,
-              file: sceneFile,
-              sceneIndex,
-              before: structuredClone(next),
-              after: structuredClone(clampedDoc),
-              hash: sceneDocBase(clampedDoc),
-            });
-          }
-        }
+        if (opts.resync) resyncFailed = !(await resyncDuration(slug, sceneFile, next, changes));
         // history === false: the text-motion panel's live writes; its Done records one session entry, Cancel already restores and must not be undoable noise.
         if (opts.history !== false) {
           pushHistory({ label: opts.history ?? "scene edit", changes });
@@ -232,12 +242,13 @@ export function useSceneDocPatch(
     await patchDocResult(patch, opts);
   }
 
-  /** Commit a drag/gesture as ONE history entry: writes `patch` applied to `baseline` (the doc snapshotted at drag start) and records before=baseline, after. Live ticks during the drag go through `patchDoc(..., { history: false })`; this reconciles the final value and records the single undo step on release. */
+  /** Commit a drag/gesture as ONE history entry: writes `patch` applied to `baseline` (the doc snapshotted at drag start) and records before=baseline, after. Live ticks during the drag go through `patchDoc(..., { history: false })`; this reconciles the final value and records the single undo step on release, with the follow-media re-sync in it when `resync` asks. */
   async function commitFromBaselineResult(
     baseline: SceneDoc,
     patch: (next: SceneDoc) => unknown,
+    opts: { resync?: boolean } = {},
   ): Promise<boolean> {
-    if (!slug || !sceneFile) return false;
+    if (!slug || !sceneFile || (opts.resync && !scene)) return false;
     const execute = async (): Promise<boolean> => {
       setError(null);
       try {
@@ -260,22 +271,21 @@ export function useSceneDocPatch(
         patchQueue.latestDoc = after;
         patchQueue.outsideBase = null;
         onDocChanged(sceneIndex, after, sceneFile, project.id);
-        pushHistory({
-          label: "scene edit",
-          changes: [
-            {
-              kind: "sceneDoc",
-              slug,
-              file: sceneFile,
-              sceneIndex,
-              before: before ? structuredClone(before) : null,
-              after: structuredClone(after),
-              reload: before?.themeId !== after.themeId,
-              hash: sceneDocBase(after),
-            },
-          ],
-        });
-        return true;
+        const changes: HistoryChange[] = [
+          {
+            kind: "sceneDoc",
+            slug,
+            file: sceneFile,
+            sceneIndex,
+            before: before ? structuredClone(before) : null,
+            after: structuredClone(after),
+            reload: before?.themeId !== after.themeId,
+            hash: sceneDocBase(after),
+          },
+        ];
+        const synced = !opts.resync || (await resyncDuration(slug, sceneFile, after, changes));
+        pushHistory({ label: "scene edit", changes });
+        return synced;
       } catch (e) {
         setError(String(e));
         return false;
@@ -287,8 +297,9 @@ export function useSceneDocPatch(
   async function commitFromBaseline(
     baseline: SceneDoc,
     patch: (next: SceneDoc) => void,
+    opts: { resync?: boolean } = {},
   ): Promise<void> {
-    await commitFromBaselineResult(baseline, patch);
+    await commitFromBaselineResult(baseline, patch, opts);
   }
 
   /** Finalise a live edit against the queued latest document while recording the drag-start document as the single undo baseline. */

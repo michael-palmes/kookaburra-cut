@@ -933,6 +933,45 @@ describe("DeviceDrillIn screen playback", () => {
     expect(edit.media()).toEqual({ ...demo, startMs: 300 });
   });
 
+  it("re-syncs a follow-media length on every commit, Before and After, never on a preview tick", () => {
+    for (const side of ["a", "b"] as const) {
+      const patches: Array<{ history?: string | false; resync?: boolean } | undefined> = [];
+      const commits: Array<{ resync?: boolean } | undefined> = [];
+      const patchDoc: DevicePatchDoc = async (_patch, options) => {
+        patches.push(options);
+      };
+      const commitFromBaseline: DeviceDrillInProps["commitFromBaseline"] = async (_b, _p, opts) => {
+        commits.push(opts);
+      };
+      captures.sliders.length = 0;
+      captures.toggles.length = 0;
+      renderToStaticMarkup(
+        <DeviceDrillIn
+          {...props(side === "b" ? comparisonDoc() : deviceDoc())}
+          comparison={side === "b" ? { side, onSideChange: () => undefined } : undefined}
+          patchDoc={patchDoc}
+          commitFromBaseline={commitFromBaseline}
+        />,
+      );
+      slider("Trim start")?.onCommit(1);
+      slider("Trim end")?.onInput?.(9);
+      slider("Trim end")?.onInput?.(8);
+      slider("Trim end")?.onCommit(8);
+      toggle("Loop")?.onChange(true);
+      slider("Poster frame")?.onCommit(2);
+      slider("Start delay")?.onCommit(0.5);
+      expect(patches, side).toEqual([
+        { history: "screen trim start", resync: true },
+        { history: false },
+        { history: false },
+        { history: "screen loop", resync: true },
+        { history: "screen poster frame", resync: true },
+        { history: "screen start delay", resync: true },
+      ]);
+      expect(commits, side).toEqual([{ resync: true }]);
+    }
+  });
+
   it("offers no playback rows for an image screen", () => {
     editable(withMedia({ src: "assets/screen.png", kind: "image" }));
     expect(captures.sliders.map((s) => s.label)).not.toContain("Trim start");
