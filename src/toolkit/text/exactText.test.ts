@@ -12,7 +12,7 @@ describe("exactText base material", () => {
     });
     expect(base.toneMapped).toBe(false);
     const { uuid: _a, toneMapped: _b, ...exact } = base.toJSON();
-    const { uuid: _c, ...stock } = troikaDefault.toJSON();
+    const { uuid: _c, toneMapped: _d, ...stock } = troikaDefault.toJSON();
     expect(exact).toEqual(stock);
   });
 
