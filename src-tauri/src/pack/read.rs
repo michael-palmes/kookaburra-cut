@@ -298,7 +298,10 @@ pub fn stage(
             return Err(PackError::Cancelled);
         }
         let mut entry = zip.by_index(i)?;
-        let raw = entry.name().to_string();
+        // Our writer only emits UTF-8 names, so never accept zip's CP437 fallback.
+        let raw = String::from_utf8(entry.name_raw().to_vec()).map_err(|e| {
+            PackError::PathNotUtf8(String::from_utf8_lossy(e.as_bytes()).into_owned())
+        })?;
 
         if raw == MANIFEST_ENTRY || raw == SIGNATURE_ENTRY || is_ignorable(&raw) {
             continue;
