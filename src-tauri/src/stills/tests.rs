@@ -758,6 +758,23 @@ fn a_reproducible_zip_is_byte_identical_across_writes() {
     assert_eq!(write_zip(&metas), write_zip(&metas));
 }
 
+/// Pins the container bytes, so a zip upgrade that changes the layout fails here rather than at an autorun.
+#[test]
+fn the_zip_container_bytes_are_pinned() {
+    let mut writer = PngZipWriter::new(Cursor::new(Vec::new()), zip_meta(2));
+    writer
+        .write_page(b"first page", &meta(0, "Intro", 0.0))
+        .unwrap();
+    writer
+        .write_page(b"second page", &meta(1, "Outro", 0.0))
+        .unwrap();
+    let bytes = writer.finish().unwrap().into_inner();
+    assert_eq!(
+        crate::pack::hash::sha256_bytes(&bytes),
+        "9f8071dd4442a78564e72fdb6a7098b07a9301ccc97c3833299cde97dfcb9142"
+    );
+}
+
 #[test]
 fn a_dated_zip_stamps_its_entries_with_local_time() {
     let now = Civil {

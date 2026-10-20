@@ -1454,6 +1454,46 @@ fn refuses_names_that_are_not_utf8() {
     );
 }
 
+/// Pins the container bytes, so a zip upgrade that changes the layout fails here rather than in the field.
+#[test]
+fn pack_container_bytes_are_pinned() {
+    let dir = TempDir::new("pinned");
+    let json = dir.path().join("project.json");
+    let png = dir.path().join("logo.png");
+    write_file(
+        &json,
+        b"{\"id\":\"acme\",\"scenes\":[\"one\",\"two\",\"three\"]}",
+    );
+    write_file(
+        &png,
+        &[0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a, 0, 1, 2, 3],
+    );
+    let entries = [
+        PackEntry {
+            archive_path: "payload/projects/acme/project.json".into(),
+            source: json,
+        },
+        PackEntry {
+            archive_path: "payload/projects/acme/assets/logo.png".into(),
+            source: png,
+        },
+    ];
+    let out = dir.path().join("pinned.kbpack");
+    write_pack(
+        &out,
+        b"{\"format\":\"kbpack\"}",
+        &[1u8; 64],
+        &entries,
+        |_, _| {},
+        &|| false,
+    )
+    .expect("write_pack");
+    assert_eq!(
+        sha256_file(&out).unwrap(),
+        "086dd8d5185eed7f0af31c550b4dc779e639a0c1bd561953a36d216889e20a4c"
+    );
+}
+
 #[test]
 fn refuses_huge_manifest() {
     let description = "a".repeat((MAX_MANIFEST_BYTES + 1024) as usize);
