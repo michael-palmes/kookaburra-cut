@@ -298,7 +298,7 @@ pub fn stage(
             return Err(PackError::Cancelled);
         }
         let mut entry = zip.by_index(i)?;
-        let raw = entry.name().to_string();
+        let raw = entry.name()?.into_owned();
 
         if raw == MANIFEST_ENTRY || raw == SIGNATURE_ENTRY || is_ignorable(&raw) {
             continue;

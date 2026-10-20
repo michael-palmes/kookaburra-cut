@@ -728,7 +728,7 @@ fn the_zip_holds_only_the_numbered_pages() {
     let bytes = write_zip(&metas);
     let mut archive = zip::ZipArchive::new(Cursor::new(bytes)).unwrap();
     let names: Vec<String> = (0..archive.len())
-        .map(|i| archive.by_index(i).unwrap().name().to_owned())
+        .map(|i| archive.by_index(i).unwrap().name().unwrap().into_owned())
         .collect();
     assert_eq!(
         names,
@@ -745,7 +745,7 @@ fn the_zip_holds_only_the_numbered_pages() {
             entry.compression(),
             zip::CompressionMethod::Stored,
             "{}",
-            entry.name()
+            entry.name().unwrap()
         );
         assert_eq!(entry.unix_mode().map(|m| m & 0o777), Some(0o644));
         assert_eq!(entry.last_modified(), Some(zip::DateTime::default()));
