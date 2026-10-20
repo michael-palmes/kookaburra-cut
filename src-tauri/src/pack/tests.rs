@@ -248,6 +248,8 @@ struct Fixture {
     contents: PackContents,
     /// Rewrites every payload entry's declared uncompressed size in the central directory.
     declared_size_override: Option<u32>,
+    /// Entry names swapped for raw bytes of the same length after writing.
+    raw_names: Vec<(String, Vec<u8>)>,
 }
 
 impl Fixture {
@@ -265,6 +267,7 @@ impl Fixture {
             signature: SigMode::Valid,
             contents: PackContents::default(),
             declared_size_override: None,
+            raw_names: Vec::new(),
         }
     }
 
@@ -300,6 +303,11 @@ impl Fixture {
 
     fn declared_sizes(mut self, bytes: u32) -> Self {
         self.declared_size_override = Some(bytes);
+        self
+    }
+
+    fn raw_name(mut self, name: &str, raw: &[u8]) -> Self {
+        self.raw_names.push((name.to_string(), raw.to_vec()));
         self
     }
 
@@ -385,6 +393,9 @@ impl Fixture {
         if let Some(bytes) = self.declared_size_override {
             overwrite_declared_sizes(&mut buffer, bytes);
         }
+        for (name, raw) in &self.raw_names {
+            overwrite_raw_name(&mut buffer, name, raw);
+        }
 
         let path = dir.join("fixture.kbpack");
         write_file(&path, &buffer);
@@ -406,9 +417,8 @@ fn deflated() -> SimpleFileOptions {
         .last_modified_time(zip::DateTime::default())
 }
 
-/// Make every `payload/` entry claim `bytes` uncompressed, so the pre-inflation total guard has something to catch.
-/// The central directory is what `inspect` reads, so only it needs rewriting.
-fn overwrite_declared_sizes(buffer: &mut [u8], bytes: u32) {
+/// Each central directory header's offset and its entry's name length.
+fn central_headers(buffer: &[u8]) -> Vec<(usize, usize)> {
     let eocd = buffer
         .windows(4)
         .rposition(|w| w == b"PK\x05\x06")
@@ -416,6 +426,7 @@ fn overwrite_declared_sizes(buffer: &mut [u8], bytes: u32) {
     let offset = u32::from_le_bytes(buffer[eocd + 16..eocd + 20].try_into().unwrap()) as usize;
     let count = u16::from_le_bytes(buffer[eocd + 10..eocd + 12].try_into().unwrap()) as usize;
 
+    let mut headers = Vec::with_capacity(count);
     let mut at = offset;
     for _ in 0..count {
         assert_eq!(
@@ -426,11 +437,37 @@ fn overwrite_declared_sizes(buffer: &mut [u8], bytes: u32) {
         let name_len = u16::from_le_bytes(buffer[at + 28..at + 30].try_into().unwrap()) as usize;
         let extra_len = u16::from_le_bytes(buffer[at + 30..at + 32].try_into().unwrap()) as usize;
         let comment_len = u16::from_le_bytes(buffer[at + 32..at + 34].try_into().unwrap()) as usize;
-        let name = String::from_utf8_lossy(&buffer[at + 46..at + 46 + name_len]).into_owned();
-        if name.starts_with("payload/") {
+        headers.push((at, name_len));
+        at += 46 + name_len + extra_len + comment_len;
+    }
+    headers
+}
+
+/// Make every `payload/` entry claim `bytes` uncompressed, so the pre-inflation total guard has something to catch.
+/// The central directory is what `inspect` reads, so only it needs rewriting.
+fn overwrite_declared_sizes(buffer: &mut [u8], bytes: u32) {
+    for (at, name_len) in central_headers(buffer) {
+        if buffer[at + 46..at + 46 + name_len].starts_with(b"payload/") {
             buffer[at + 24..at + 28].copy_from_slice(&bytes.to_le_bytes());
         }
-        at += 46 + name_len + extra_len + comment_len;
+    }
+}
+
+/// The writer only takes `&str` names, so non-UTF-8 ones are patched into both headers afterwards.
+fn overwrite_raw_name(buffer: &mut [u8], name: &str, raw: &[u8]) {
+    assert_eq!(name.len(), raw.len(), "a raw name must keep its length");
+    for (at, name_len) in central_headers(buffer) {
+        if &buffer[at + 46..at + 46 + name_len] != name.as_bytes() {
+            continue;
+        }
+        let local = u32::from_le_bytes(buffer[at + 42..at + 46].try_into().unwrap()) as usize;
+        assert_eq!(
+            &buffer[local..local + 4],
+            b"PK\x03\x04",
+            "local file header"
+        );
+        buffer[at + 46..at + 46 + name_len].copy_from_slice(raw);
+        buffer[local + 30..local + 30 + name_len].copy_from_slice(raw);
     }
 }
 
@@ -1399,6 +1436,21 @@ fn refuses_unicode_direction_tricks() {
             b"trick",
         )),
         "pathSuspicious",
+    );
+}
+
+/// zip would decode these bytes as CP437 (`café.json`); a pack name is UTF-8 or it is refused.
+#[test]
+fn refuses_names_that_are_not_utf8() {
+    assert_refused(
+        "not-utf8",
+        Fixture::valid()
+            .entry(Entry::new("payload/projects/acme/cafe.json", b"{}"))
+            .raw_name(
+                "payload/projects/acme/cafe.json",
+                b"payload/projects/acme/caf\x82.json",
+            ),
+        "pathNotUtf8",
     );
 }
 
