@@ -15,7 +15,7 @@ const ACME: BrandSummary = {
   gradients: [],
   fonts: [],
   hasGuidelines: true,
-  imageCount: 2,
+  hasImages: true,
 };
 
 const render = (brands: BrandSummary[] | null, value?: string) =>

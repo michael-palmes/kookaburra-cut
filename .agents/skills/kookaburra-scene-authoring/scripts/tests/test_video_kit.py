@@ -120,7 +120,7 @@ class HookStatusTests(KbTestCase):
         proc = self.kb(["hook", "pre-edit"], cwd=self.root, stdin=payload(self.root / "edits" / "rec.json"))
         self.assertExit(proc, 2)
         self.assertIn("edits/ holds video edit documents; change them only with kb video (kb video show rec)", proc.stderr)
-        for rel in (".claude/skills/kookaburra-video-editing/SKILL.md", ".claude/skills/kookaburra-scene-authoring/scripts/kb.py"):
+        for rel in (".claude/skills/kookaburra-video-editing/SKILL.md", ".claude/skills/kookaburra-scene-authoring/scripts/kb.py", ".claude/skills/kookaburra-brand-packs/scripts/brand.py"):
             proc = self.kb(["hook", "pre-edit"], cwd=self.root, stdin=payload(self.root / rel))
             self.assertExit(proc, 2)
             self.assertIn("managed kit", proc.stderr)

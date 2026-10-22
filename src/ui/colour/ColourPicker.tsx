@@ -6,7 +6,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { activeBrandColours } from "../../engine/brands";
+import { useActiveBrandColours } from "../../engine/brands";
 import { useTheme } from "../../theme";
 import type { Theme } from "../../theme/tokens";
 import { ContextMenu, type ContextMenuState } from "../ContextMenu";
@@ -140,7 +140,7 @@ function ColourPopover({
   const [menu, setMenu] = useState<ContextMenuState | null>(null);
   const [recents] = useState(loadColourRecents);
   const [projectColours] = useState(projectPaletteColours);
-  const [brandColours] = useState(activeBrandColours);
+  const brandColours = useActiveBrandColours();
   const [hsv, setHsv] = useState(() => hexToHsv(draft));
   const [sampling, setSampling] = useState(false);
   const [sampleError, setSampleError] = useState<string | null>(null);

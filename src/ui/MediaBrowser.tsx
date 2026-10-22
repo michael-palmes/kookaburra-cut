@@ -1107,8 +1107,7 @@ export function MediaBrowser({
   const [globalFailed, setGlobalFailed] = useState<ReadonlySet<string>>(new Set());
   // The open project's brand images ride the Library tab as a second source.
   const brand = useProjectBrand(globalToggle ? slug : undefined);
-  const brandSlug =
-    brand && brand.imageCount > 0 && (!kinds || kinds.includes("image")) ? brand.slug : null;
+  const brandSlug = brand?.hasImages && (!kinds || kinds.includes("image")) ? brand.slug : null;
   const [librarySource, setLibrarySource] = useState<"screenshots" | "brand">("screenshots");
   const showBrand = sourceTab === "global" && brandSlug !== null && librarySource === "brand";
   const [brandImages, setBrandImages] = useState<BrandImage[] | null>(null);
@@ -1120,6 +1119,7 @@ export function MediaBrowser({
   const [brandFailed, setBrandFailed] = useState<ReadonlySet<string>>(new Set());
   /** Copy-on-use failures must never be silent (the pick just wouldn't land). */
   const [pickError, setPickError] = useState<string | null>(null);
+  const [pickNotice, setPickNotice] = useState<string | null>(null);
   const pickBusyRef = useRef(false);
   const [pickBusy, setPickBusy] = useState(false);
   const [unusedOpen, setUnusedOpen] = useState(false);
@@ -1306,6 +1306,27 @@ export function MediaBrowser({
       });
     },
     [onPick, slug, brandMetas],
+  );
+
+  /** A brand image's "Add to project" (hosts without a pick): one copy at a time, then the project list and a confirmation. */
+  const addBrandImage = useCallback(
+    async (image: BrandImage) => {
+      await runMediaPickSingleFlight(pickBusyRef, async () => {
+        setPickBusy(true);
+        setPickError(null);
+        setPickNotice(null);
+        try {
+          const [rel] = await importMedia(slug, [image.path]);
+          refresh();
+          if (rel) setPickNotice(`Added ${rel} to this project.`);
+        } catch (e) {
+          setPickError(`Couldn't copy into the project: ${String(e)}`);
+        } finally {
+          setPickBusy(false);
+        }
+      });
+    },
+    [slug, refresh],
   );
 
   /** Copy-on-use: import the global file into this project's assets, then hand the pick to the host as a normal project rel. */
@@ -1787,6 +1808,7 @@ export function MediaBrowser({
         </div>
       )}
       {pickError && <MediaBrowserError message={pickError} />}
+      {pickNotice && !pickError && <p className="muted">{pickNotice}</p>}
       {sourceTab === "project" && (!allowedKinds || allowedKinds.includes("video")) && (
         <ConformQueue
           jobs={conformJobs}
@@ -1826,12 +1848,7 @@ export function MediaBrowser({
                               id: "add-to-project",
                               label: "Add to project",
                               title: "Copy into this project's assets",
-                              onSelect: () => {
-                                setPickError(null);
-                                importMedia(slug, [image.path]).catch((e) =>
-                                  setPickError(`Couldn't copy into the project: ${String(e)}`),
-                                );
-                              },
+                              onSelect: () => void addBrandImage(image),
                             },
                           ],
                       image.path,

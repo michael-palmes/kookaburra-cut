@@ -1474,8 +1474,6 @@ fn build_theme(
 /// How many colour hexes a brand's contents row carries; `color_count` keeps the full number.
 const BRAND_SWATCHES: usize = 8;
 
-const IMAGE_EXTENSIONS: [&str; 5] = ["png", "jpg", "jpeg", "webp", "svg"];
-
 /// The whole brand folder, through the same exclusion rule the recipient's conflict scan applies.
 fn build_brand(
     root: &Path,
@@ -1512,7 +1510,7 @@ fn build_brand(
         .filter(|f| {
             f.item_rel.starts_with("images/")
                 && f.item_rel.rsplit_once('.').is_some_and(|(_, ext)| {
-                    IMAGE_EXTENSIONS.contains(&ext.to_ascii_lowercase().as_str())
+                    crate::workspace::IMAGE_EXTENSIONS.contains(&ext.to_ascii_lowercase().as_str())
                 })
         })
         .count();
@@ -2031,7 +2029,7 @@ mod tests {
         assert_eq!(brand.description.as_deref(), Some("House style."));
         assert_eq!(brand.swatches, vec!["#151E29", "#F4F1EA"]);
         assert_eq!(brand.color_count, 2);
-        assert_eq!(brand.image_count, 3);
+        assert_eq!(brand.image_count, 2);
         assert_eq!(brand.base.content_hash.len(), 64);
         assert_eq!(brand.requires.themes, vec!["acme-dark", "acme-light"]);
         assert_eq!(

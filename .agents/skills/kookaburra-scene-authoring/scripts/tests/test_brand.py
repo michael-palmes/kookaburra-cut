@@ -38,6 +38,13 @@ class KbBrandTests(KbTestCase):
         self.assertEqual((self.root / "BRAND.md").read_text(), GUIDE)
         self.assertIn("wrote BRAND.md", run.stdout)
         self.assertIn("not hard rules", run.stdout)
+        self.assertNotIn("BRAND.md is missing", run.stdout + run.stderr)
+
+    def test_the_users_own_phrasing_names_the_brand(self) -> None:
+        for phrase in ("the Acme Co brand", "our acme-co brand pack", "ACME CO"):
+            with self.subTest(phrase=phrase):
+                self.assertExit(self.kb(["brand", "use", phrase], cwd=self.root), 0)
+                self.assertEqual(self.manifest()["brand"], "ws:acme-co")
 
     def test_clear_keeps_theme_and_fonts(self) -> None:
         self.assertExit(self.kb(["brand", "use", "ws:acme-co"], cwd=self.root), 0)

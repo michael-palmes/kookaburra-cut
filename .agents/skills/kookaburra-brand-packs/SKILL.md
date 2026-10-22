@@ -65,7 +65,7 @@ command overrides). Every command prints what it wrote.
 | `images SLUG SRC=CATEGORY[/SUB]... [--edge PX] [--clean]` | Copy images with kebab-case names; SVGs without a PNG twin get one (transparent, `--edge` long side, default 512) |
 | `gradient SLUG GSLUG --stops "#RRGGBB@0,#RRGGBB@1" [--angle DEG] [--type radial] [--name N]` | Workspace gradient, listed in the brand (angle 180 starts at the top, 135 top left) |
 | `check SLUG` | Themes, fonts, gradients, colours, guidelines stance and placeholders, image layout. Exit 1 lists problems |
-| `apply PROJECT_DIR SLUG\|none` | What the Project picker does, for a folder outside the kit (inside a project, use `./kb brand use NAME`) |
+| `apply PROJECT_DIR SLUG\|none` | Runs that project's `kb brand use` (or `clear`): what the Project picker does. Inside a project, call `./kb brand use NAME` directly |
 
 Guideline PDFs: `osascript -l JavaScript .claude/skills/kookaburra-brand-packs/scripts/pdf.js FILE.pdf OUTDIR [WIDTH]`
 writes `page-NN.jpg` for every page plus `text.txt`. Put OUTDIR in a scratch folder

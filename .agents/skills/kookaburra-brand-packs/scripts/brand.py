@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 HERE = Path(__file__).resolve().parent
+KB = HERE.parent.parent / "kookaburra-scene-authoring" / "scripts" / "kb.py"
 SVG2PNG = HERE / "svg2png.js"
 TEMPLATE = HERE.parent / "reference" / "guidelines-template.md"
 IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp"}
@@ -235,6 +236,7 @@ def cmd_images(args: argparse.Namespace) -> int:
     out = brand_dir(root, args.slug) / "images"
     svg_jobs: List[str] = []
     copied = 0
+    taken: set = set()
     for mapping in args.mappings:
         if "=" not in mapping:
             raise BrandError(f"expected SOURCE=CATEGORY[/SUB], got {mapping!r}")
@@ -252,7 +254,11 @@ def cmd_images(args: argparse.Namespace) -> int:
             target_dir = base.joinpath(*[p for p in parts if p])
             target_dir.mkdir(parents=True, exist_ok=True)
             ext = ".jpg" if path.suffix.lower() == ".jpeg" else path.suffix.lower()
-            target = target_dir / f"{slugify(path.stem) or 'image'}{ext}"
+            stem = slugify(path.stem) or "image"
+            target, n = target_dir / f"{stem}{ext}", 2
+            while target in taken:
+                target, n = target_dir / f"{stem}-{n}{ext}", n + 1
+            taken.add(target)
             shutil.copy2(path, target)
             copied += 1
             if ext == ".svg" and not path.with_suffix(".png").exists():
@@ -371,32 +377,13 @@ def cmd_check(args: argparse.Namespace) -> int:
 
 
 def cmd_apply(args: argparse.Namespace) -> int:
-    project = Path(args.project).expanduser().resolve()
-    manifest_path = project / "project.json"
-    manifest = load_json(manifest_path)
-    root = workspace_root(args.root) if args.root else project.parent
-    if args.slug == "none":
-        manifest.pop("brand", None)
-        (project / "BRAND.md").unlink(missing_ok=True)
-        write_json(manifest_path, manifest)
-        print(f"Cleared the brand from {project.name}")
-        return 0
-    out = brand_dir(root, args.slug)
-    brand = load_json(out / "brand.json")
-    manifest["brand"] = f"ws:{args.slug}"
-    if brand.get("defaultTheme"):
-        manifest["themeId"] = brand["defaultTheme"]
-    typography = brand.get("typography") or {}
-    if typography.get("headline") or typography.get("body"):
-        current = manifest.get("typography") if isinstance(manifest.get("typography"), dict) else {}
-        current.update({k: v for k, v in typography.items() if k in ("headline", "body") and v})
-        manifest["typography"] = current
-    guide = out / brand.get("guidelines", "guidelines.md")
-    if guide.is_file():
-        shutil.copyfile(guide, project / "BRAND.md")
-    write_json(manifest_path, manifest)
-    print(f"Applied {brand.get('name')} to {project.name}: theme {manifest['themeId']}, BRAND.md written")
-    return 0
+    """The project's own kb applies it (`kb brand use`), the one terminal path that mirrors the Project picker."""
+    if not KB.is_file():
+        raise BrandError(f"no kookaburra-scene-authoring kit beside this skill ({KB}); open the project in the app once")
+    if args.slug != "none":
+        brand_dir(Path("."), args.slug)
+    op = ["brand", "clear"] if args.slug == "none" else ["brand", "use", f"ws:{args.slug}"]
+    return subprocess.run([sys.executable, "-I", str(KB), "-C", str(Path(args.project).expanduser()), *op]).returncode
 
 
 def main(argv: Optional[List[str]] = None) -> int:
@@ -433,7 +420,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     p = sub.add_parser("check", help="validate a brand: themes, fonts, gradients, colours, guidelines, images")
     p.add_argument("slug")
     p.set_defaults(func=cmd_check)
-    p = sub.add_parser("apply", help="apply a brand to a project folder (what the Project picker does), or 'none'")
+    p = sub.add_parser("apply", help="apply a brand to a project folder through its kb (what the Project picker does), or 'none'")
     p.add_argument("project")
     p.add_argument("slug")
     p.set_defaults(func=cmd_apply)

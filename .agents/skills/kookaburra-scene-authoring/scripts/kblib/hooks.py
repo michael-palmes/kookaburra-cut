@@ -24,7 +24,7 @@ from .util import EXIT_OK, KbError, Report, ago
 
 BLOCK = 2
 SESSION_TTL_S = 14 * 86400
-MANAGED_SKILLS = (KIT_REL, ".claude/skills/kookaburra-video-editing")
+MANAGED_SKILLS = (KIT_REL, ".claude/skills/kookaburra-video-editing", ".claude/skills/kookaburra-brand-packs")
 KB_STATE = re.compile(r"^\.kb/(?:lock|\.gitignore|leases(?:/.*)?|events[^/]*\.jsonl|notes[^/]*\.md|agents/[^/]+/(?:identity|seen)\.json)$")
 
 

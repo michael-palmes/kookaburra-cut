@@ -693,12 +693,11 @@ def cmd_brand(ctx: Ctx) -> int:
         checker.manifest(data=m)
         return checker.report
 
-    code = guarded_write(ctx, "project.json", MANIFEST, edit, validate)
+    with brandmod.guide_staged(project, brand, write=not ctx.dry_run) as guide:
+        code = guarded_write(ctx, "project.json", MANIFEST, edit, validate)
     project.manifest(reload=True)
-    if not ctx.dry_run:
-        guide = brandmod.sync_guide(project, brand)
-        if guide and not ctx.json:
-            emit(guide)
+    if guide and not ctx.json:
+        emit(guide)
     if brand and not ctx.json:
         emit(f"Applied {brand['name']}. Read BRAND.md: safe defaults and guidance, not hard rules. Then kb check --app and capture.")
     return code

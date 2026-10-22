@@ -3,10 +3,23 @@
 use serde::{Deserialize, Serialize};
 
 pub const PACK_FORMAT: &str = "kookaburra-pack";
-/// v2 added `contents.templates` and `contents.presets`, v3 `contents.brands`. An older reader would parse a newer
-/// manifest and silently drop the new lists, so each bump exists to make it refuse the pack whole (`read::inspect`);
-/// older packs still read here, the new lists defaulting to empty.
+/// The newest version this build reads. v2 added `contents.templates` and `contents.presets`, v3 `contents.brands`. An
+/// older reader would parse a newer manifest and silently drop the new lists, so each bump exists to make it refuse the
+/// pack whole (`read::inspect`); older packs still read here, the new lists defaulting to empty. Packs are written at
+/// the lowest version that carries their contents (`format_version_for`), so a brandless pack still opens in a v2 app.
 pub const PACK_FORMAT_VERSION: u32 = 3;
+/// What a pack without brands is stamped: nothing in it needs a v3 reader.
+pub const PACK_FORMAT_VERSION_NO_BRANDS: u32 = 2;
+
+/// The `formatVersion` a pack carrying `contents` is written at: v3 only when it carries brands.
+pub fn format_version_for(contents: &PackContents) -> u32 {
+    if contents.brands.is_empty() {
+        PACK_FORMAT_VERSION_NO_BRANDS
+    } else {
+        PACK_FORMAT_VERSION
+    }
+}
+
 /// Oldest app that can read a v1 pack, stamped into every pack we write. Must never exceed the shipping version, or the
 /// app refuses its own packs (the round-trip gate caught exactly that), so it rises only with a release; the
 /// `formatVersion` gate is what turns a newer pack away in the meantime.
@@ -373,5 +386,18 @@ impl ConflictState {
             (Self::TheirsNewer, _) => Resolution::Replace,
             (Self::YoursNewer, _) | (Self::UnknownAge, _) => Resolution::Skip,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_pack_is_written_at_the_lowest_version_its_contents_need() {
+        let mut contents = PackContents::default();
+        assert_eq!(format_version_for(&contents), PACK_FORMAT_VERSION_NO_BRANDS);
+        contents.brands.push(PackBrand::default());
+        assert_eq!(format_version_for(&contents), PACK_FORMAT_VERSION);
     }
 }

@@ -15,7 +15,7 @@ class BrandPackTests(KbTestCase):
     """The brand-packs skill's tool builds a brand that checks clean and applies like the Project picker."""
 
     def brand(self, *args: str) -> subprocess.CompletedProcess:
-        return subprocess.run([sys.executable, "-I", str(BRAND_PY), "--root", str(self.tmp), *args], capture_output=True, text=True)
+        return subprocess.run([sys.executable, "-I", str(BRAND_PY), "--root", str(self.tmp), *args], capture_output=True, text=True, env=self.env)
 
     def setUp(self) -> None:
         super().setUp()
@@ -69,6 +69,15 @@ class BrandPackTests(KbTestCase):
         self.assertEqual(run.returncode, 0, run.stderr)
         self.assertTrue((self.dir / "images" / "logos" / "wordmark" / "acme-logo-white.png").is_file())
         self.assertTrue((self.dir / "images" / "logos" / "wordmark" / "acme-logo-white.svg").is_file())
+
+    def test_names_that_slugify_alike_never_overwrite(self) -> None:
+        src = self.tmp / "source" / "Backgrounds"
+        src.mkdir(parents=True)
+        for name in ("Hero Wide.png", "hero-wide.png", "hero wide.jpeg", "hero_wide.jpg"):
+            (src / name).write_bytes(PNG_1x1 + name.encode())
+        self.assertEqual(self.brand("images", "acme", f"{src}=backgrounds").returncode, 0)
+        names = sorted(p.name for p in (self.dir / "images" / "backgrounds").iterdir())
+        self.assertEqual(names, ["hero-wide-2.jpg", "hero-wide-2.png", "hero-wide.jpg", "hero-wide.png"])
 
     def test_apply_and_clear_match_the_project_picker(self) -> None:
         self.finish()

@@ -543,7 +543,7 @@ pub async fn build_pack(
     let publisher_block = publisher::manifest_publisher(&app, &settings)?;
     let manifest = PackManifest {
         format: PACK_FORMAT.into(),
-        format_version: PACK_FORMAT_VERSION,
+        format_version: format_version_for(&closure.contents),
         app_version: app.package_info().version.to_string(),
         min_app_version: PACK_MIN_APP_VERSION.into(),
         pack: PackMeta {

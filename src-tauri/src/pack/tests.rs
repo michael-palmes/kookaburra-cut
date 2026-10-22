@@ -861,7 +861,7 @@ fn write_pack_from(closure: &super::deps::Closure, out: &Path) {
         .collect();
     let manifest = PackManifest {
         format: PACK_FORMAT.into(),
-        format_version: PACK_FORMAT_VERSION,
+        format_version: super::model::format_version_for(&closure.contents),
         app_version: APP_VERSION.into(),
         min_app_version: "0.1.0".into(),
         pack: PackMeta {
