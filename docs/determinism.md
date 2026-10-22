@@ -1701,9 +1701,9 @@ rolling-gate project (`showcase-tour`):
 | `ws:launch-2026` (legacy sentinel: must stay EQUAL) | `1ad4b2e6…` | stale | stale | stale | — | — | — | — | — |
 | `showcase-tour` (rolling gate) | `13b5994d…` | stale | stale | stale | stale | stale (pre-trim) | — | — | — |
 | `transition-spike` (transition gate, image mask included) | `9aaa76b6…` | `40867f7d…` | — | — | — | — | — | — | — |
-| `transition-bg-spike` (animated-background transition gate) | `179521c0…` | — | — | — | — | — | — | — | — |
-| `compare-spike` (before/after comparison gate) | `3689575d…` | stale | stale | stale | — | — | — | — | — |
-| `compare-transition-spike` (comparisons through transitions) | `452c9f2c…` | — | — | — | — | — | — | — | — |
+| `transition-bg-spike` (animated-background transition gate) | stale | — | — | — | — | — | — | — | — |
+| `compare-spike` (before/after comparison gate) | stale | stale | stale | stale | — | — | — | — | — |
+| `compare-transition-spike` (comparisons through transitions) | stale | — | — | — | — | — | — | — | — |
 | `image-flip-spike` (image-orientation gate, eyeball it) | stale | — | — | — | — | — | — | — | — |
 | `ws:layered-screenshot-spike` (LS gate, machine-local) | `1b3cde02…` | — | — | — | — | — | — | — | — |
 | `ws:video-window-spike` (VideoWindow gate, machine-local) | `6dfe68a6…` | — | — | — | — | — | — | — | — |
