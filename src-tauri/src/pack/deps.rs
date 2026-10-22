@@ -8,8 +8,8 @@ use super::error::PackError;
 use super::fonts::{collect_pack_fonts, is_bundled_family};
 use super::hash::{content_hash, sha256_file};
 use super::model::{
-    ItemKind, PackContents, PackFont, PackItemBase, PackObject, PackProject, PackRequires,
-    PackScreenshot, PackSimpleItem, PackTheme, PackTotals,
+    ItemKind, PackBrand, PackContents, PackFont, PackItemBase, PackObject, PackProject,
+    PackRequires, PackScreenshot, PackSimpleItem, PackTheme, PackTotals, BRAND_MANIFEST,
 };
 use super::paths::validate_archive_path;
 use super::scan::rfc3339;
@@ -42,6 +42,8 @@ pub struct PackSelection {
     pub presets: Vec<String>,
     #[serde(default)]
     pub themes: Vec<String>,
+    #[serde(default)]
+    pub brands: Vec<String>,
     /// `"<family>@<weight>"`, the pack font key.
     #[serde(default)]
     pub fonts: Vec<String>,
@@ -70,6 +72,7 @@ impl Default for PackSelection {
             templates: Vec::new(),
             presets: Vec::new(),
             themes: Vec::new(),
+            brands: Vec::new(),
             fonts: Vec::new(),
             objects: Vec::new(),
             gradients: Vec::new(),
@@ -89,6 +92,7 @@ impl PackSelection {
             ItemKind::Template => &self.templates,
             ItemKind::Preset => &self.presets,
             ItemKind::Theme => &self.themes,
+            ItemKind::Brand => &self.brands,
             ItemKind::Font => &self.fonts,
             ItemKind::Object => &self.objects,
             ItemKind::Gradient => &self.gradients,
@@ -106,6 +110,7 @@ pub fn kind_tag(kind: ItemKind) -> &'static str {
         ItemKind::Template => "template",
         ItemKind::Preset => "preset",
         ItemKind::Theme => "theme",
+        ItemKind::Brand => "brand",
         ItemKind::Font => "font",
         ItemKind::Object => "object",
         ItemKind::Gradient => "gradient",
@@ -174,6 +179,10 @@ pub enum ClosureWarning {
         slug: String,
         required_by: String,
     },
+    MissingBrand {
+        slug: String,
+        required_by: String,
+    },
     MissingObject {
         slug: String,
         required_by: String,
@@ -202,7 +211,7 @@ pub enum ClosureWarning {
         path: String,
         required_by: String,
     },
-    /// A `ws:` id that matches no theme and no object.
+    /// A `ws:` id that matches no theme, object or brand.
     UnknownReference {
         id: String,
         required_by: String,
@@ -232,6 +241,9 @@ impl ClosureWarning {
             Self::MissingPreset { slug } => format!("No scene preset named \"{slug}\"."),
             Self::MissingTheme { slug, required_by } => {
                 format!("{required_by} uses the theme \"{slug}\", which is not in your workspace.")
+            }
+            Self::MissingBrand { slug, required_by } => {
+                format!("{required_by} uses the brand \"{slug}\", which is not in your workspace.")
             }
             Self::MissingObject { slug, required_by } => {
                 format!("{required_by} uses the object \"{slug}\", which is not in your workspace.")
@@ -318,6 +330,8 @@ fn split_font_key(key: &str) -> Option<(String, u32)> {
 #[derive(Default)]
 struct DocRefs {
     themes: BTreeSet<String>,
+    /// From a `brand` key, so a brand and a theme may share a slug.
+    brands: BTreeSet<String>,
     /// Bare slugs from `ws:` ids, classified against the workspace later.
     workspace_ids: BTreeSet<String>,
     /// Raw sidecar font strings, parsed with the `Family@weight` grammar.
@@ -340,6 +354,11 @@ fn scan_value(value: &Value, key: Option<&str>, out: &mut DocRefs) {
                 Some("themeId") => {
                     if let Some(slug) = strip_ws(s) {
                         out.themes.insert(slug.to_owned());
+                    }
+                }
+                Some("brand") => {
+                    if let Some(slug) = strip_ws(s) {
+                        out.brands.insert(slug.to_owned());
                     }
                 }
                 // `backdrop`/`background` name a theme gradient; a name the theme does not define is a workspace preset.
@@ -566,6 +585,7 @@ struct Resolver<'a> {
     templates: BTreeSet<String>,
     presets: BTreeSet<String>,
     themes: BTreeSet<String>,
+    brands: BTreeSet<String>,
     fonts: BTreeSet<String>,
     objects: BTreeSet<String>,
     gradients: BTreeSet<String>,
@@ -574,6 +594,7 @@ struct Resolver<'a> {
     /// Keyed `<kind>:<slug>`, because projects, templates and presets are all resolved the same way.
     project_requires: BTreeMap<String, PackRequires>,
     theme_requires: BTreeMap<String, PackRequires>,
+    brand_requires: BTreeMap<String, PackRequires>,
     environments: Vec<(String, String)>,
 }
 
@@ -590,6 +611,7 @@ impl<'a> Resolver<'a> {
             templates: BTreeSet::new(),
             presets: BTreeSet::new(),
             themes: BTreeSet::new(),
+            brands: BTreeSet::new(),
             fonts: BTreeSet::new(),
             objects: BTreeSet::new(),
             gradients: BTreeSet::new(),
@@ -597,6 +619,7 @@ impl<'a> Resolver<'a> {
             screenshots: BTreeSet::new(),
             project_requires: BTreeMap::new(),
             theme_requires: BTreeMap::new(),
+            brand_requires: BTreeMap::new(),
             environments: Vec::new(),
         }
     }
@@ -658,6 +681,9 @@ impl<'a> Resolver<'a> {
         for slug in &self.selection.themes.clone() {
             self.require(ItemKind::Theme, slug, None);
         }
+        for slug in &self.selection.brands.clone() {
+            self.require(ItemKind::Brand, slug, None);
+        }
         for key in &self.selection.fonts.clone() {
             self.require(ItemKind::Font, key, None);
         }
@@ -680,6 +706,7 @@ impl<'a> Resolver<'a> {
                     self.visit_project(kind, &key)
                 }
                 ItemKind::Theme => self.visit_theme(&key),
+                ItemKind::Brand => self.visit_brand(&key),
                 ItemKind::Font => self.visit_font(&key),
                 ItemKind::Object => self.visit_object(&key),
                 ItemKind::Gradient => self.visit_gradient(&key),
@@ -754,8 +781,12 @@ impl<'a> Resolver<'a> {
             requires.themes.push(theme.clone());
             self.require(ItemKind::Theme, &theme, Some(&label));
         }
+        for brand in refs.brands.clone() {
+            requires.brands.push(brand.clone());
+            self.require(ItemKind::Brand, &brand, Some(&label));
+        }
         for id in refs.workspace_ids.clone() {
-            if refs.themes.contains(&id) {
+            if refs.themes.contains(&id) || refs.brands.contains(&id) {
                 continue;
             }
             if self
@@ -774,6 +805,14 @@ impl<'a> Resolver<'a> {
             {
                 requires.themes.push(id.clone());
                 self.require(ItemKind::Theme, &id, Some(&label));
+            } else if self
+                .dir(ItemKind::Brand)
+                .join(&id)
+                .join(BRAND_MANIFEST)
+                .is_file()
+            {
+                requires.brands.push(id.clone());
+                self.require(ItemKind::Brand, &id, Some(&label));
             } else {
                 self.warnings.push(ClosureWarning::UnknownReference {
                     id: id.clone(),
@@ -795,6 +834,8 @@ impl<'a> Resolver<'a> {
         requires.objects.sort();
         requires.fonts.sort();
         requires.fonts.dedup();
+        requires.brands.sort();
+        requires.brands.dedup();
         self.project_requires.insert(label, requires);
     }
 
@@ -911,6 +952,96 @@ impl<'a> Resolver<'a> {
         requires.gradients.sort();
         requires.gradients.dedup();
         self.theme_requires.insert(slug.to_owned(), requires);
+    }
+
+    /// A brand names its themes, fonts and gradients by reference: each travels as its own item, bundled ones stay home.
+    fn visit_brand(&mut self, slug: &str) {
+        let file = self.dir(ItemKind::Brand).join(slug).join(BRAND_MANIFEST);
+        let doc = match read_json(&file) {
+            Ok(doc) => doc,
+            Err(detail) => {
+                if file.exists() {
+                    self.warnings.push(ClosureWarning::UnreadableDocument {
+                        path: format!("{}/{slug}/{BRAND_MANIFEST}", ItemKind::Brand.payload_dir()),
+                        detail,
+                    });
+                } else {
+                    let required_by = self
+                        .required_by
+                        .get(&item_key(ItemKind::Brand, slug))
+                        .and_then(|by| by.first().cloned())
+                        .unwrap_or_else(|| "This pack".to_owned());
+                    self.warnings.push(ClosureWarning::MissingBrand {
+                        slug: slug.to_owned(),
+                        required_by,
+                    });
+                }
+                return;
+            }
+        };
+        self.brands.insert(slug.to_owned());
+        let label = item_key(ItemKind::Brand, slug);
+        let mut requires = PackRequires::default();
+
+        let listed = |key: &str| -> Vec<Value> {
+            doc.get(key)
+                .and_then(Value::as_array)
+                .cloned()
+                .unwrap_or_default()
+        };
+        let themes = listed("themes")
+            .into_iter()
+            .chain(doc.get("defaultTheme").cloned());
+        for id in themes {
+            if let Some(theme) = id.as_str().and_then(strip_ws) {
+                requires.themes.push(theme.to_owned());
+            }
+        }
+
+        let typography = doc
+            .get("typography")
+            .and_then(Value::as_object)
+            .map(|t| t.values().cloned().collect::<Vec<_>>())
+            .unwrap_or_default();
+        for value in listed("fonts").into_iter().chain(typography) {
+            let (family, weight) = match &value {
+                Value::String(s) => parse_font_string(s),
+                other => (
+                    str_field(other, "family").unwrap_or_default(),
+                    other.get("weight").and_then(Value::as_u64).unwrap_or(400) as u32,
+                ),
+            };
+            if family.is_empty() || is_bundled_family(&family) {
+                continue;
+            }
+            requires.fonts.push(font_key(&family, weight));
+        }
+
+        for name in listed("gradients") {
+            if let Some(name) = name.as_str() {
+                let gradient = strip_ws(name).unwrap_or(name).trim();
+                if !gradient.is_empty() {
+                    requires.gradients.push(gradient.to_owned());
+                }
+            }
+        }
+
+        requires.themes.sort();
+        requires.themes.dedup();
+        requires.fonts.sort();
+        requires.fonts.dedup();
+        requires.gradients.sort();
+        requires.gradients.dedup();
+        for theme in &requires.themes {
+            self.require(ItemKind::Theme, theme, Some(&label));
+        }
+        for key in &requires.fonts {
+            self.require(ItemKind::Font, key, Some(&label));
+        }
+        for gradient in &requires.gradients {
+            self.require(ItemKind::Gradient, gradient, Some(&label));
+        }
+        self.brand_requires.insert(slug.to_owned(), requires);
     }
 
     fn visit_font(&mut self, key: &str) {
@@ -1107,6 +1238,11 @@ pub fn resolve_closure_with(
     for slug in resolver.themes.clone() {
         let (theme, staged) = build_theme(root, &slug, &resolver, &mut warnings, mode);
         contents.themes.push(theme);
+        push_files(&mut files, staged);
+    }
+    for slug in resolver.brands.clone() {
+        let (brand, staged) = build_brand(root, &slug, &resolver, &mut warnings, mode);
+        contents.brands.push(brand);
         push_files(&mut files, staged);
     }
     let (fonts, staged) = build_fonts(
@@ -1333,6 +1469,72 @@ fn build_theme(
             .unwrap_or_default(),
     };
     (theme, staged)
+}
+
+/// How many colour hexes a brand's contents row carries; `color_count` keeps the full number.
+const BRAND_SWATCHES: usize = 8;
+
+const IMAGE_EXTENSIONS: [&str; 5] = ["png", "jpg", "jpeg", "webp", "svg"];
+
+/// The whole brand folder, through the same exclusion rule the recipient's conflict scan applies.
+fn build_brand(
+    root: &Path,
+    slug: &str,
+    resolver: &Resolver<'_>,
+    warnings: &mut Vec<ClosureWarning>,
+    mode: HashMode,
+) -> (PackBrand, Vec<StagedFile>) {
+    let dir = root
+        .join(ItemKind::Brand.workspace_dir().unwrap_or_default())
+        .join(slug);
+    let doc = read_json(&dir.join(BRAND_MANIFEST)).unwrap_or(Value::Null);
+    let mut candidates: Vec<(String, PathBuf)> = Vec::new();
+    walk(&dir, "", &mut candidates);
+    candidates.retain(|(rel, _)| !super::scan::is_excluded(rel));
+    let staged = stage_all(
+        candidates
+            .into_iter()
+            .map(|(rel, path)| {
+                let archive = archive_path(ItemKind::Brand, &format!("{slug}/{rel}"));
+                (rel, archive, path)
+            })
+            .collect(),
+        warnings,
+        mode,
+    );
+    let colors: Vec<String> = doc
+        .get("colors")
+        .and_then(Value::as_array)
+        .map(|list| list.iter().filter_map(|c| str_field(c, "hex")).collect())
+        .unwrap_or_default();
+    let image_count = staged
+        .iter()
+        .filter(|f| {
+            f.item_rel.starts_with("images/")
+                && f.item_rel.rsplit_once('.').is_some_and(|(_, ext)| {
+                    IMAGE_EXTENSIONS.contains(&ext.to_ascii_lowercase().as_str())
+                })
+        })
+        .count();
+    let brand = PackBrand {
+        base: base_from(
+            slug,
+            &str_field(&doc, "name")
+                .filter(|name| !name.is_empty())
+                .unwrap_or_else(|| slug.to_owned()),
+            &staged,
+        ),
+        description: str_field(&doc, "description").filter(|d| !d.is_empty()),
+        swatches: colors.iter().take(BRAND_SWATCHES).cloned().collect(),
+        color_count: colors.len(),
+        image_count,
+        requires: resolver
+            .brand_requires
+            .get(slug)
+            .cloned()
+            .unwrap_or_default(),
+    };
+    (brand, staged)
 }
 
 /// Pinned faces for the required keys, through the one font resolver (`pack::fonts`). A key with no pin warns: its bytes are the recipient's determinism contract and cannot be invented.
@@ -1784,6 +1986,175 @@ mod tests {
             .map(|k| paper["colors"][k].as_str().unwrap().to_owned())
             .collect();
         assert_eq!(day.swatches, colours);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// The fixture plus an `acme` brand naming two workspace themes, a bundled one, two fonts and a saved gradient.
+    fn brand_fixture(tag: &str) -> PathBuf {
+        let root = fixture(tag);
+        write(
+            &root,
+            "brands/acme/brand.json",
+            r##"{"version":1,"name":"Acme","description":"House style.","guidelines":"guidelines.md",
+                "themes":["ws:acme-dark","ws:acme-light","kookaburra-paper"],"defaultTheme":"ws:acme-dark",
+                "typography":{"headline":"Acme Serif@400","body":"Acme Sans@500"},
+                "fonts":[{"family":"Acme Serif","weight":400},{"family":"Acme Sans","weight":500},{"family":"Inter"}],
+                "colors":[{"name":"Ink","hex":"#151E29","role":"primary"},{"name":"Paper","hex":"#F4F1EA"}],
+                "gradients":["acme-glow"]}"##,
+        );
+        write(&root, "brands/acme/guidelines.md", "# Acme\n");
+        write(&root, "brands/acme/images/logos/mark.png", "png-mark");
+        write(&root, "brands/acme/images/logos/mark.svg", "<svg/>");
+        write(
+            &root,
+            "brands/acme/images/backgrounds/wide/hero.jpg",
+            "jpg-hero",
+        );
+        write(&root, "brands/acme/images/logos/mark.pdf", "pdf");
+        write(&root, "brands/acme/.DS_Store", "finder");
+        root
+    }
+
+    #[test]
+    fn a_brand_carries_its_themes_fonts_and_gradients() {
+        let root = brand_fixture("brand");
+        let sel = PackSelection {
+            brands: vec!["acme".to_owned()],
+            ..Default::default()
+        };
+        let closure = resolve_closure(&root, &sel).unwrap();
+
+        assert_eq!(closure.contents.brands.len(), 1);
+        let brand = &closure.contents.brands[0];
+        assert_eq!(brand.base.slug, "acme");
+        assert_eq!(brand.base.name, "Acme");
+        assert_eq!(brand.description.as_deref(), Some("House style."));
+        assert_eq!(brand.swatches, vec!["#151E29", "#F4F1EA"]);
+        assert_eq!(brand.color_count, 2);
+        assert_eq!(brand.image_count, 3);
+        assert_eq!(brand.base.content_hash.len(), 64);
+        assert_eq!(brand.requires.themes, vec!["acme-dark", "acme-light"]);
+        assert_eq!(
+            brand.requires.fonts,
+            vec!["Acme Sans@500".to_owned(), "Acme Serif@400".to_owned()]
+        );
+        assert_eq!(brand.requires.gradients, vec!["acme-glow"]);
+
+        let slugs: Vec<&str> = closure
+            .contents
+            .themes
+            .iter()
+            .map(|t| t.base.slug.as_str())
+            .collect();
+        assert_eq!(slugs, vec!["acme-dark", "acme-light"]);
+        assert_eq!(
+            closure.required_by.get("theme:acme-light").unwrap(),
+            &vec!["brand:acme".to_owned()]
+        );
+        assert_eq!(
+            closure.required_by.get("gradient:acme-glow").unwrap(),
+            &vec!["brand:acme".to_owned(), "theme:acme-dark".to_owned()]
+        );
+        assert!(closure
+            .required_by
+            .get("font:Acme Serif@400")
+            .unwrap()
+            .contains(&"brand:acme".to_owned()));
+        assert!(!closure.required_by.contains_key("font:Inter@400"));
+
+        let paths = archive_paths(&closure);
+        for path in [
+            "payload/brands/acme/brand.json",
+            "payload/brands/acme/guidelines.md",
+            "payload/brands/acme/images/logos/mark.png",
+            "payload/brands/acme/images/logos/mark.svg",
+            "payload/brands/acme/images/backgrounds/wide/hero.jpg",
+            "payload/gradients/acme-glow.json",
+        ] {
+            assert!(paths.contains(&path.to_owned()), "{path} missing");
+        }
+        assert!(!paths.iter().any(|p| p.ends_with(".DS_Store")));
+        assert!(closure.warnings.iter().any(|w| matches!(
+            w,
+            ClosureWarning::FileSkipped { path, .. } if path == "payload/brands/acme/images/logos/mark.pdf"
+        )));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_project_brand_pulls_the_brand_and_its_closure() {
+        let root = brand_fixture("project-brand");
+        write(
+            &root,
+            "acme/project.json",
+            r#"{"id":"acme","name":"Acme","version":2,"themeId":"ws:acme-dark","brand":"ws:acme","formats":["16:9"],
+                "scenes":[{"file":"scenes/01-hero.tsx","durationMs":2000}]}"#,
+        );
+        let closure = resolve_closure(&root, &selection(&["acme"])).unwrap();
+        assert_eq!(closure.contents.brands.len(), 1);
+        assert_eq!(
+            closure.required_by.get("brand:acme").unwrap(),
+            &vec!["project:acme".to_owned()]
+        );
+        assert_eq!(closure.contents.projects[0].requires.brands, vec!["acme"]);
+        assert!(closure
+            .required_by
+            .get("theme:acme-light")
+            .unwrap()
+            .contains(&"brand:acme".to_owned()));
+        assert!(!closure
+            .warnings
+            .iter()
+            .any(|w| matches!(w, ClosureWarning::UnknownReference { id, .. } if id == "acme")));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// The `brand` key names a brand even when a theme owns the same slug.
+    #[test]
+    fn a_brand_and_a_theme_may_share_a_slug() {
+        let root = brand_fixture("shared-slug");
+        write(
+            &root,
+            "themes/acme/theme.json",
+            r#"{"version":2,"name":"Acme","mode":"dark"}"#,
+        );
+        write(
+            &root,
+            "acme/project.json",
+            r#"{"id":"acme","name":"Acme","version":2,"themeId":"ws:acme","brand":"ws:acme","formats":["16:9"],
+                "scenes":[{"file":"scenes/01-hero.tsx","durationMs":2000}]}"#,
+        );
+        let closure = resolve_closure(&root, &selection(&["acme"])).unwrap();
+        let project = &closure.contents.projects[0];
+        assert!(project.requires.themes.contains(&"acme".to_owned()));
+        assert_eq!(project.requires.brands, vec!["acme"]);
+        assert!(closure
+            .contents
+            .brands
+            .iter()
+            .any(|b| b.base.slug == "acme"));
+        assert!(closure
+            .contents
+            .themes
+            .iter()
+            .any(|t| t.base.slug == "acme"));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_missing_brand_warns() {
+        let root = fixture("missing-brand");
+        write(
+            &root,
+            "acme/project.json",
+            r#"{"id":"acme","name":"Acme","version":2,"brand":"ws:gone","scenes":[]}"#,
+        );
+        let closure = resolve_closure(&root, &selection(&["acme"])).unwrap();
+        assert!(closure.contents.brands.is_empty());
+        assert!(closure.warnings.iter().any(|w| matches!(
+            w,
+            ClosureWarning::MissingBrand { slug, required_by } if slug == "gone" && required_by == "project:acme"
+        )));
         let _ = std::fs::remove_dir_all(&root);
     }
 

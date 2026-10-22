@@ -1,13 +1,14 @@
 /** Mirrors `src-tauri/src/pack/model.rs`. Changing a shape here without changing it there is a silent wire break. */
 
 export const PACK_FORMAT = "kookaburra-pack";
-/** v2 carries templates and presets; a v1 reader refuses a v2 pack rather than half-importing it. */
-export const PACK_FORMAT_VERSION = 2;
+/** v2 carries templates and presets, v3 brands; an older reader refuses a newer pack rather than half-importing it. */
+export const PACK_FORMAT_VERSION = 3;
 
 export type ItemKind =
   | "project"
   | "template"
   | "preset"
+  | "brand"
   | "theme"
   | "font"
   | "object"
@@ -20,6 +21,7 @@ export const ITEM_KINDS: ItemKind[] = [
   "project",
   "template",
   "preset",
+  "brand",
   "theme",
   "font",
   "object",
@@ -32,6 +34,7 @@ export const KIND_LABELS: Record<ItemKind, { one: string; many: string }> = {
   project: { one: "Project", many: "Projects" },
   template: { one: "Template", many: "Templates" },
   preset: { one: "Scene preset", many: "Scene presets" },
+  brand: { one: "Brand", many: "Brands" },
   theme: { one: "Theme", many: "Themes" },
   font: { one: "Font", many: "Fonts" },
   object: { one: "3D object", many: "3D objects" },
@@ -58,6 +61,7 @@ export interface PackRequires {
   fonts: string[];
   objects: string[];
   gradients: string[];
+  brands: string[];
 }
 
 export interface PackProject extends PackItemBase {
@@ -80,6 +84,16 @@ export interface PackTheme extends PackItemBase {
   mode: "light" | "dark";
   docVersion: number;
   swatches: string[];
+  requires: PackRequires;
+}
+
+/** A brand folder; its themes, fonts and gradients travel as their own items. */
+export interface PackBrand extends PackItemBase {
+  description?: string;
+  /** The first few hexes of the brand's colour set. */
+  swatches: string[];
+  colorCount: number;
+  imageCount: number;
   requires: PackRequires;
 }
 
@@ -112,6 +126,7 @@ export interface PackContents {
   templates: PackTemplate[];
   presets: PackPreset[];
   themes: PackTheme[];
+  brands: PackBrand[];
   fonts: PackFont[];
   objects: PackObject[];
   gradients: PackItemBase[];

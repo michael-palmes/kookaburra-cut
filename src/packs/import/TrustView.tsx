@@ -17,6 +17,7 @@ export function TrustView({
   const itemCount =
     projects.length +
     manifest.contents.themes.length +
+    manifest.contents.brands.length +
     manifest.contents.fonts.length +
     manifest.contents.objects.length +
     manifest.contents.gradients.length +

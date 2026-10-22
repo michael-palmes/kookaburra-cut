@@ -385,8 +385,9 @@ pub(crate) fn slugify(name: &str) -> String {
 }
 
 /// Workspace folders owned by the app rather than by projects; a project taking one of these names would shadow a library, so creation and duplication both refuse them.
-const RESERVED_SLUGS: [&str; 8] = [
+const RESERVED_SLUGS: [&str; 9] = [
     "themes",
+    crate::brands::BRANDS_DIR_NAME,
     "fonts",
     "gradients",
     "export-presets",

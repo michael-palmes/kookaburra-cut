@@ -177,6 +177,18 @@ the rest). Those still render exactly as before but are hidden from pickers;
 Colour themes keep charts on the theme's own palette: the named `chart.palette` schemes
 are mid-tones that cannot clear 3:1 on a mid-tone fill.
 
+### Brands
+
+A brand is a workspace folder `~/Kookaburra Cut/brands/<slug>/` (id `ws:<slug>`):
+`brand.json` (themes, default theme, fonts, colours, gradients), `guidelines.md` and
+`images/<category>/`. Picking it under Project writes `"brand": "ws:<slug>"`, switches
+the project to the brand's default theme and fonts, and copies the guidelines to
+`BRAND.md`. The brand's images appear in the Library, its colours in the colour picker's
+Brand row, its gradients among the workspace gradients. Read `BRAND.md` as defaults and
+guidance, not hard rules. Applying a brand from the terminal
+is `./kb brand use <name>` (or `clear`); building or changing a brand belongs to the
+kookaburra-brand-packs skill. Never hand-edit `brand` or `BRAND.md`.
+
 ### Workspace themes (brand themes)
 
 User themes live at `~/Kookaburra Cut/themes/<slug>/theme.json`, id `ws:<slug>`,

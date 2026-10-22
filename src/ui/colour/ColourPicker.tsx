@@ -6,6 +6,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { activeBrandColours } from "../../engine/brands";
 import { useTheme } from "../../theme";
 import type { Theme } from "../../theme/tokens";
 import { ContextMenu, type ContextMenuState } from "../ContextMenu";
@@ -24,7 +25,7 @@ import { type Hsv, hexToHsv, hexToRgbString, hsvToHex, normaliseHex } from "./co
 import { projectPaletteColours } from "./projectPalette";
 import { sampleScreenColour } from "./screenSampler";
 
-/** The app-wide colour selector: a swatch trigger opening an anchored macOS-style popover (a saturation/brightness spectrum, hex field, a native eyedropper, the native NSColorPanel via "Show Colors…", theme tokens, the project's own colours, recents, a 96-swatch palette, live preview). Discrete picks commit immediately; spectrum and native-panel drags debounce ~250ms into one commit, so a gesture costs one undo entry and one recents entry. Right-clicking any square offers copy options. */
+/** The app-wide colour selector: a swatch trigger opening an anchored macOS-style popover (a saturation/brightness spectrum, hex field, a native eyedropper, the native NSColorPanel via "Show Colors…", theme tokens, the project's brand colours, the project's own colours, recents, a 96-swatch palette, live preview). Discrete picks commit immediately; spectrum and native-panel drags debounce ~250ms into one commit, so a gesture costs one undo entry and one recents entry. Right-clicking any square offers copy options. */
 
 export interface ColourPickerProps {
   /** Current colour, sRGB hex. */
@@ -139,6 +140,7 @@ function ColourPopover({
   const [menu, setMenu] = useState<ContextMenuState | null>(null);
   const [recents] = useState(loadColourRecents);
   const [projectColours] = useState(projectPaletteColours);
+  const [brandColours] = useState(activeBrandColours);
   const [hsv, setHsv] = useState(() => hexToHsv(draft));
   const [sampling, setSampling] = useState(false);
   const [sampleError, setSampleError] = useState<string | null>(null);
@@ -376,6 +378,20 @@ function ColourPopover({
             )}
           </div>
         </div>
+        {brandColours.length > 0 && (
+          <div className="colour-popover-section">
+            <span className="popover-group-label">Brand</span>
+            <div className="colour-popover-row">
+              {brandColours.map((colour, i) =>
+                chip(
+                  colour.hex,
+                  [`${colour.name} ${colour.hex}`, colour.note].filter(Boolean).join(": "),
+                  `b-${i}-${colour.hex}`,
+                ),
+              )}
+            </div>
+          </div>
+        )}
         {projectColours.length > 0 && (
           <div className="colour-popover-section">
             <span className="popover-group-label">Used in this project</span>

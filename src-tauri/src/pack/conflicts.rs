@@ -15,8 +15,9 @@ use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
 /// Folder names the workspace root already owns; a pack project claiming one would shadow a whole library.
-const RESERVED_PROJECT_SLUGS: [&str; 8] = [
+const RESERVED_PROJECT_SLUGS: [&str; 9] = [
     "themes",
+    crate::brands::BRANDS_DIR_NAME,
     "fonts",
     "gradients",
     "export-presets",
@@ -119,7 +120,7 @@ pub(crate) fn workspace_target(
                 marker: Some("theme.json"),
             })
         }
-        ItemKind::Object | ItemKind::Template | ItemKind::Preset => {
+        ItemKind::Object | ItemKind::Brand | ItemKind::Template | ItemKind::Preset => {
             validate_pack_slug(slug)?;
             Ok(Target {
                 path: library().join(slug),
@@ -256,6 +257,11 @@ pub fn plan_conflicts(
             items.push(plan_item(root, ItemKind::Theme, &theme.base)?);
         }
     }
+    for brand in &contents.brands {
+        if picked(&selection.brands, &brand.base.slug) {
+            items.push(plan_item(root, ItemKind::Brand, &brand.base)?);
+        }
+    }
     for template in &contents.templates {
         if picked(&selection.templates, &template.base.slug) {
             items.push(plan_item(root, ItemKind::Template, &template.base)?);
@@ -381,7 +387,7 @@ fn plan_fonts(
 pub(crate) mod tests {
     use super::*;
     use crate::pack::model::{
-        PackContents, PackManifest, PackMeta, PackObject, PackProject, PackPublisher,
+        PackBrand, PackContents, PackManifest, PackMeta, PackObject, PackProject, PackPublisher,
         PackScreenshot, PackSimpleItem, PackTheme, PackTotals,
     };
     use std::sync::atomic::{AtomicU32, Ordering};
@@ -508,6 +514,7 @@ pub(crate) mod tests {
             ItemKind::Template => selection.templates = list,
             ItemKind::Preset => selection.presets = list,
             ItemKind::Theme => selection.themes = list,
+            ItemKind::Brand => selection.brands = list,
             ItemKind::Font => selection.fonts = list,
             ItemKind::Object => selection.objects = list,
             ItemKind::Gradient => selection.gradients = list,
@@ -565,6 +572,15 @@ pub(crate) mod tests {
                     })
                     .collect()
             }
+            ItemKind::Brand => {
+                contents.brands = bases
+                    .into_iter()
+                    .map(|base| PackBrand {
+                        base,
+                        ..Default::default()
+                    })
+                    .collect()
+            }
             ItemKind::Object => {
                 contents.objects = bases
                     .into_iter()
@@ -613,6 +629,7 @@ pub(crate) mod tests {
             ItemKind::Template,
             ItemKind::Preset,
             ItemKind::Theme,
+            ItemKind::Brand,
             ItemKind::Object,
             ItemKind::Gradient,
             ItemKind::ExportPreset,
@@ -790,6 +807,8 @@ pub(crate) mod tests {
             );
         }
         assert!(workspace_target(&root, ItemKind::Project, "themes").is_err());
+        assert!(workspace_target(&root, ItemKind::Project, "brands").is_err());
+        assert!(workspace_target(&root, ItemKind::Brand, "../evil").is_err());
         assert!(workspace_target(&root, ItemKind::Screenshot, "../evil.png").is_err());
         let _ = std::fs::remove_dir_all(&root);
     }

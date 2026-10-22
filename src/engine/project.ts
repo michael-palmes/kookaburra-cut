@@ -83,6 +83,8 @@ export interface ProjectManifest {
   themeId: string;
   /** Project-wide font override ("Family" or "Family@weight" per slot); outranks every resolved theme, per-field sidecar overrides still win. `chart` is the project's default chart face (all chart text), which a block's own `chart.font` outranks. */
   typography?: { headline?: string; body?: string; chart?: string };
+  /** Workspace brand (`ws:<slug>`): guidelines copied to BRAND.md, brand images and colours offered in the pickers. Nothing renders from it. */
+  brand?: string;
   /** Aspect ratios this project targets. */
   formats: string[];
   /** Manifest schema version; absent = 1. v2 flips transition ownership to the outgoing scene. */
@@ -410,6 +412,8 @@ export interface LoadedProject {
   sceneThemes: Theme[];
   /** The manifest's raw typography override strings, for the inspector's Typography drill. */
   projectTypography?: { headline?: string; body?: string; chart?: string };
+  /** The manifest's `brand` id, for the inspector's Brand row and the brand-aware pickers. */
+  brandId?: string;
   /** The manifest's deck-wide overlay default (`project.json` `frame`), if declared; `undefined` means no overlay anywhere. The inspector reads this to know whether to offer the Overlay section (an override alone can't create a frame). */
   deckFrame?: FrameSpec;
   /** Each scene's RESOLVED overlay, index-parallel to `scenes`: the manifest's deck frame merged with the sidecar's override, `undefined` where the scene has no frame or opted out. Every entry undefined means the project never enters the overlay render path. */
@@ -1609,6 +1613,7 @@ export async function loadProject(
     sceneFiles: manifest.scenes.map((entry) => entry.file),
     sceneThemes,
     projectTypography: manifest.typography,
+    ...(typeof manifest.brand === "string" && manifest.brand ? { brandId: manifest.brand } : {}),
     deckFrame,
     sceneFrames,
     sceneEffectDefaults,

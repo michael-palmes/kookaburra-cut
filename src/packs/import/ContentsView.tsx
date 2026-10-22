@@ -1,7 +1,15 @@
 import { useMemo, useState } from "react";
 import { type PackSelection, selectionKey } from "../../engine/packs";
 import { restrictedFontNotice } from "../../ui/packs/fontCopy";
-import { formatBytes, ITEM_KINDS, type ItemKind, KIND_LABELS, type PackManifest } from "../types";
+import { KIND_ICONS } from "../kindIcons";
+import {
+  formatBytes,
+  ITEM_KINDS,
+  type ItemKind,
+  KIND_LABELS,
+  type PackManifest,
+  type PackRequires,
+} from "../types";
 
 interface Entry {
   kind: ItemKind;
@@ -11,8 +19,10 @@ interface Entry {
   detail?: string;
   swatches?: string[];
   referenceOnly?: boolean;
-  requires?: { themes: string[]; fonts: string[]; objects: string[]; gradients: string[] };
+  requires?: PackRequires;
 }
+
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
 /** Flatten the manifest into one uniform list so the rail and the rows share a shape. */
 export function entriesFrom(manifest: PackManifest): Entry[] {
@@ -44,6 +54,17 @@ export function entriesFrom(manifest: PackManifest): Entry[] {
       detail: t.mode,
       swatches: t.swatches,
       requires: t.requires,
+    });
+  }
+  for (const b of c.brands ?? []) {
+    out.push({
+      kind: "brand",
+      slug: b.slug,
+      name: b.name,
+      bytes: b.bytes,
+      detail: `${plural(b.imageCount, "image")} · ${plural(b.colorCount, "colour")}`,
+      swatches: b.swatches,
+      requires: b.requires,
     });
   }
   for (const f of c.fonts) {
@@ -121,6 +142,21 @@ export function ContentsView({
         warnings.push(`${project.name} will be missing the ${object} model.`);
       }
     }
+    for (const brand of req.brands ?? []) {
+      if (dropped[`brand:${brand}`]) {
+        warnings.push(`${project.name} will open without the ${brand} brand.`);
+      }
+    }
+  }
+  for (const brand of entries.filter((e) => e.kind === "brand" && !dropped[KEY(e)])) {
+    const req = brand.requires;
+    if (!req) continue;
+    const missing = [
+      ...req.themes.filter((t) => dropped[`theme:${t}`]),
+      ...req.fonts.filter((f) => dropped[`font:${f}`]),
+      ...req.gradients.filter((g) => dropped[`gradient:${g}`]),
+    ];
+    if (missing.length > 0) warnings.push(`${brand.name} will be missing ${missing.join(", ")}.`);
   }
 
   const selection: PackSelection = {
@@ -128,6 +164,7 @@ export function ContentsView({
     templates: [],
     presets: [],
     themes: [],
+    brands: [],
     fonts: [],
     objects: [],
     gradients: [],
@@ -152,7 +189,10 @@ export function ContentsView({
             aria-selected={k === tab}
             onClick={() => setTab(k)}
           >
-            <span>{KIND_LABELS[k].many}</span>
+            <span className="packs-rail-label">
+              {KIND_ICONS[k]}
+              <span>{KIND_LABELS[k].many}</span>
+            </span>
             <span className="packs-rail-count">{counts[k] ?? 0}</span>
           </button>
         ))}
@@ -178,7 +218,7 @@ export function ContentsView({
                   {e.name}
                   {e.swatches && e.swatches.length > 0 && (
                     <span className="packs-swatches">
-                      {e.swatches.slice(0, 4).map((c) => (
+                      {[...new Set(e.swatches)].slice(0, e.kind === "brand" ? 8 : 4).map((c) => (
                         <span key={c} className="packs-swatch" style={{ background: c }} />
                       ))}
                     </span>

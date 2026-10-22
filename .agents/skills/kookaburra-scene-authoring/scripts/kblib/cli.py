@@ -12,6 +12,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from . import KB_VERSION
 from . import assets_cli
+from . import brands as brandmod
 from . import bridge
 from . import capture as capturemod
 from . import catalog as catmod
@@ -639,6 +640,70 @@ def cmd_project(ctx: Ctx) -> int:
     return code
 
 
+def cmd_brand(ctx: Ctx) -> int:
+    a = ctx.args
+    project = ctx.project
+    manifest = project.manifest()
+    current = manifest.get("brand") if isinstance(manifest.get("brand"), str) else None
+    if a.op == "list":
+        rows = brandmod.all_brands(project)
+        if ctx.json:
+            ctx.out({"current": current, "brands": [{k: b.get(k) for k in ("id", "name", "description", "defaultTheme")} for b in rows]})
+            return EXIT_OK
+        emit(f"current: {current or 'none'}")
+        for b in rows:
+            emit(f"  {'*' if b['id'] == current else ' '} {b['id']}  {b['name']}  theme {b.get('defaultTheme') or '-'}  {b.get('description') or ''}".rstrip())
+        if not rows:
+            emit(f"  none in {brandmod.brands_root(project)} (the kookaburra-brand-packs skill builds one)")
+        else:
+            emit("apply one: kb brand use <name>")
+        return EXIT_OK
+    if a.op == "show":
+        if not a.name and not current:
+            raise KbError("this project has no brand; kb brand list shows the installed ones", 2, kind="usage")
+        brand = brandmod.match(project, a.name or current)
+        counts = brandmod.image_counts(project, brand["slug"])
+        if ctx.json:
+            ctx.out({"brand": brand, "images": counts, "folder": str(brandmod.brands_root(project) / brand["slug"])})
+            return EXIT_OK
+        emit(f"{brand['name']} ({brand['id']}){'  [this project]' if brand['id'] == current else ''}")
+        if brand.get("description"):
+            emit(f"  {brand['description']}")
+        emit(f"  themes: {', '.join(brand.get('themes') or []) or '-'} (default {brand.get('defaultTheme') or '-'})")
+        typo = brand.get("typography") or {}
+        emit(f"  fonts: headline {typo.get('headline', '-')}, body {typo.get('body', '-')}")
+        for c in brand.get("colors") or []:
+            emit(f"  colour {c.get('hex')} {c.get('name')}{' (' + c['role'] + ')' if c.get('role') else ''}{': ' + c['note'] if c.get('note') else ''}")
+        emit(f"  gradients: {', '.join(brand.get('gradients') or []) or '-'}")
+        emit(f"  images: {', '.join(f'{k} {v}' for k, v in sorted(counts.items())) or 'none'} in {brandmod.brands_root(project) / brand['slug'] / 'images'}")
+        emit("  guidelines: BRAND.md in a project that uses it; defaults and guidance, not hard rules")
+        return EXIT_OK
+    brand = brandmod.match(project, a.name) if a.op == "use" else None
+    changes: List[str] = []
+
+    def edit(m: Any) -> Tuple[Any, str]:
+        if not isinstance(m, dict):
+            raise KbError("project.json must be a JSON object; restore it with kb undo")
+        new, what = brandmod.applied(m, brand) if brand else brandmod.cleared(m)
+        changes[:] = what
+        return new, "; ".join(what) or "no change"
+
+    def validate(m: Any) -> Report:
+        checker = checkmod.Checker(checkmod.Context(project, heartbeat=bridge.read_heartbeat()))
+        checker.manifest(data=m)
+        return checker.report
+
+    code = guarded_write(ctx, "project.json", MANIFEST, edit, validate)
+    project.manifest(reload=True)
+    if not ctx.dry_run:
+        guide = brandmod.sync_guide(project, brand)
+        if guide and not ctx.json:
+            emit(guide)
+    if brand and not ctx.json:
+        emit(f"Applied {brand['name']}. Read BRAND.md: safe defaults and guidance, not hard rules. Then kb check --app and capture.")
+    return code
+
+
 def theme_entries() -> List[Dict[str, Any]]:
     return catmod.load_catalog().entries("themes") or []
 
@@ -1088,6 +1153,27 @@ def build_parser(video_extensions: bool = True) -> argparse.ArgumentParser:
     y.add_argument("--string", action="store_true")
     y.add_argument("--force", action="store_true")
     t.set_defaults(fn=cmd_theme)
+
+    b = add(
+        "brand",
+        "workspace brands: list, show, apply one to this project (as the Project picker does), clear",
+        epilog="  kb brand list\n"
+        "  kb brand show            this project's brand\n"
+        '  kb brand use "Acme"      by name or ws:<slug>: brand, its default theme and fonts, BRAND.md\n'
+        "  kb brand clear           drops the brand and BRAND.md; theme and fonts stay\n"
+        "A brand gives safe defaults and guidance, not hard rules. Building or changing one is the kookaburra-brand-packs skill.",
+    )
+    bsub = b.add_subparsers(dest="op", metavar="OP")
+    bsub.required = True
+    bsub.add_parser("list", help="installed brands; * marks this project's", parents=[common], formatter_class=Formatter)
+    y = bsub.add_parser("show", help="a brand's themes, fonts, colours, gradients and images (default: this project's)", parents=[common], formatter_class=Formatter)
+    y.add_argument("name", nargs="?")
+    y = bsub.add_parser("use", help="apply a brand: brand, default theme, headline and body fonts, BRAND.md", parents=writes, formatter_class=Formatter)
+    y.add_argument("name", help="brand name, slug or ws:<slug>")
+    y.add_argument("--force", action="store_true", help="write even if the result has new errors")
+    y = bsub.add_parser("clear", help="remove the brand and BRAND.md (theme and fonts stay)", parents=writes, formatter_class=Formatter)
+    y.add_argument("--force", action="store_true")
+    b.set_defaults(fn=cmd_brand)
 
     f = add(
         "fonts",

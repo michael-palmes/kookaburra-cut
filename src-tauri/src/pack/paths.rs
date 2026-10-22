@@ -15,6 +15,8 @@ fn allowed_extensions(kind: ItemKind) -> &'static [&'static str] {
         ],
         ItemKind::Font => &["ttf", "otf"],
         ItemKind::Object => &["json", "glb", "png", "jpg", "jpeg", "webp"],
+        // SVG originals sit beside the raster logos; nothing renders them from the pack.
+        ItemKind::Brand => &["json", "md", "png", "jpg", "jpeg", "webp", "svg"],
         ItemKind::Theme | ItemKind::Gradient | ItemKind::ExportPreset => &["json"],
         ItemKind::Screenshot => &[
             "png", "jpg", "jpeg", "webp", "gif", "mp4", "mov", "m4v", "webm",
@@ -152,6 +154,12 @@ mod tests {
         assert!(validate_archive_path("payload/objects/widget/model.glb").is_ok());
         assert!(validate_archive_path("payload/gradients/sunrise.json").is_ok());
         assert!(validate_archive_path("payload/screenshots/shot.png").is_ok());
+        assert!(validate_archive_path("payload/brands/acme/brand.json").is_ok());
+        assert!(validate_archive_path("payload/brands/acme/guidelines.md").is_ok());
+        assert!(validate_archive_path("payload/brands/acme/images/logos/mark.svg").is_ok());
+        assert!(
+            validate_archive_path("payload/brands/acme/images/backgrounds/wide/hero.webp").is_ok()
+        );
     }
 
     #[test]
@@ -194,6 +202,18 @@ mod tests {
         assert_eq!(err("payload/projects/a/.git/config"), "extensionNotAllowed");
         assert_eq!(err("payload/themes/a/theme.tsx"), "extensionNotAllowed");
         assert_eq!(err("payload/projects/a/noext"), "extensionNotAllowed");
+        assert_eq!(
+            err("payload/brands/acme/images/x.tsx"),
+            "extensionNotAllowed"
+        );
+        assert_eq!(
+            err("payload/brands/acme/guidelines.pdf"),
+            "extensionNotAllowed"
+        );
+        assert_eq!(
+            err("payload/brands/acme/.git/config.json"),
+            "extensionNotAllowed"
+        );
     }
 
     #[test]

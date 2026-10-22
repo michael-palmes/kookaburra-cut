@@ -3,14 +3,17 @@
 use serde::{Deserialize, Serialize};
 
 pub const PACK_FORMAT: &str = "kookaburra-pack";
-/// v2 added `contents.templates` and `contents.presets`. A v1 reader would parse a v2 manifest and silently drop both,
-/// so the bump exists to make it refuse the pack whole (`read::inspect`); v1 packs still read here, the new lists
-/// defaulting to empty.
-pub const PACK_FORMAT_VERSION: u32 = 2;
+/// v2 added `contents.templates` and `contents.presets`, v3 `contents.brands`. An older reader would parse a newer
+/// manifest and silently drop the new lists, so each bump exists to make it refuse the pack whole (`read::inspect`);
+/// older packs still read here, the new lists defaulting to empty.
+pub const PACK_FORMAT_VERSION: u32 = 3;
 /// Oldest app that can read a v1 pack, stamped into every pack we write. Must never exceed the shipping version, or the
 /// app refuses its own packs (the round-trip gate caught exactly that), so it rises only with a release; the
 /// `formatVersion` gate is what turns a newer pack away in the meantime.
 pub const PACK_MIN_APP_VERSION: &str = "0.6.0";
+
+/// The marker inside `brands/<slug>/`, in the workspace and under `payload/` alike.
+pub const BRAND_MANIFEST: &str = "brand.json";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -79,6 +82,8 @@ pub struct PackContents {
     #[serde(default)]
     pub themes: Vec<PackTheme>,
     #[serde(default)]
+    pub brands: Vec<PackBrand>,
+    #[serde(default)]
     pub fonts: Vec<PackFont>,
     #[serde(default)]
     pub objects: Vec<PackObject>,
@@ -113,6 +118,8 @@ pub struct PackRequires {
     pub objects: Vec<String>,
     #[serde(default)]
     pub gradients: Vec<String>,
+    #[serde(default)]
+    pub brands: Vec<String>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -147,6 +154,24 @@ pub struct PackTheme {
     /// Swatches for the contents screen, read from the theme's `colors` block.
     #[serde(default)]
     pub swatches: Vec<String>,
+    pub requires: PackRequires,
+}
+
+/// A brand folder: `brand.json`, its guidelines and images. Its themes, fonts and gradients travel as their own items.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PackBrand {
+    #[serde(flatten)]
+    pub base: PackItemBase,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub description: Option<String>,
+    /// The first few hexes of the brand's colour set, for the contents screen.
+    #[serde(default)]
+    pub swatches: Vec<String>,
+    #[serde(default)]
+    pub color_count: usize,
+    #[serde(default)]
+    pub image_count: usize,
     pub requires: PackRequires,
 }
 
@@ -238,7 +263,7 @@ pub struct PackScreenshot {
     pub height: Option<u32>,
 }
 
-/// The nine stores a pack can carry, in apply order: projects reference everything else, so they land last.
+/// The ten stores a pack can carry, in apply order: projects reference everything else, so they land last.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum ItemKind {
@@ -246,6 +271,7 @@ pub enum ItemKind {
     Gradient,
     Object,
     Theme,
+    Brand,
     Preset,
     Template,
     ExportPreset,
@@ -254,12 +280,14 @@ pub enum ItemKind {
 }
 
 impl ItemKind {
-    /// Presets and templates land after themes, because their `project.json` may name a theme a keep-both just renamed.
-    pub const APPLY_ORDER: [ItemKind; 9] = [
+    /// Brands land after the themes, fonts and gradients they name, and presets and templates after brands, because each
+    /// may name something a keep-both just renamed.
+    pub const APPLY_ORDER: [ItemKind; 10] = [
         ItemKind::Font,
         ItemKind::Gradient,
         ItemKind::Object,
         ItemKind::Theme,
+        ItemKind::Brand,
         ItemKind::Preset,
         ItemKind::Template,
         ItemKind::ExportPreset,
@@ -272,6 +300,7 @@ impl ItemKind {
         match self {
             Self::Project => "projects",
             Self::Theme => "themes",
+            Self::Brand => crate::brands::BRANDS_DIR_NAME,
             Self::Font => "fonts",
             Self::Object => "objects",
             Self::Gradient => "gradients",
@@ -287,6 +316,7 @@ impl ItemKind {
         match self {
             Self::Project => None,
             Self::Theme => Some("themes"),
+            Self::Brand => Some(crate::brands::BRANDS_DIR_NAME),
             Self::Font => Some("fonts"),
             Self::Object => Some("objects"),
             Self::Gradient => Some("gradients"),
@@ -302,6 +332,7 @@ impl ItemKind {
         match self {
             Self::Project => Some("project.json"),
             Self::Theme => Some("theme.json"),
+            Self::Brand => Some(BRAND_MANIFEST),
             Self::Object => Some("object.json"),
             Self::Template => Some(crate::library::TEMPLATE_MANIFEST),
             Self::Preset => Some(crate::library::PRESET_MANIFEST),

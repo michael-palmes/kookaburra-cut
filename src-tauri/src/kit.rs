@@ -10,8 +10,9 @@ use serde_json::{json, Value};
 /// The primary skill: CLAUDE.md imports its RULES and the managed hooks run its kb.
 pub(crate) const SKILL_NAME: &str = "kookaburra-scene-authoring";
 pub(crate) const VIDEO_SKILL_NAME: &str = "kookaburra-video-editing";
+pub(crate) const BRAND_SKILL_NAME: &str = "kookaburra-brand-packs";
 /// Every skill stamped into a project, primary first; each lands at `.claude/skills/<name>`.
-pub(crate) const SHIPPED_SKILLS: [&str; 2] = [SKILL_NAME, VIDEO_SKILL_NAME];
+pub(crate) const SHIPPED_SKILLS: [&str; 3] = [SKILL_NAME, VIDEO_SKILL_NAME, BRAND_SKILL_NAME];
 /// The kit contract version written to `kit.json` (bridge v3, Bash hooks, the `./kb` shim and `.kb/` state).
 pub(crate) const KIT_VERSION: u64 = 4;
 const KIT_FILE: &str = "kit.json";
@@ -271,6 +272,7 @@ pub(crate) fn managed_settings() -> Value {
                 "Bash(python3 -I .claude/skills/kookaburra-scene-authoring/scripts/kb.py *)",
                 "Read(~/Kookaburra Cut/_bridge/**)",
                 "Read(~/Kookaburra Cut/themes/**)",
+                "Read(~/Kookaburra Cut/brands/**)",
                 "Read(//Applications/Kookaburra Cut.app/Contents/Resources/**)"
             ]
         },
@@ -812,7 +814,7 @@ mod tests {
         assert_eq!(merged["model"], "opus");
         assert_eq!(merged["permissions"]["deny"], json!(["Read(.env)"]));
         assert_eq!(merged["permissions"]["allow"][0], "Bash(ls)");
-        assert_eq!(merged["permissions"]["allow"].as_array().unwrap().len(), 7);
+        assert_eq!(merged["permissions"]["allow"].as_array().unwrap().len(), 8);
         let pre = merged["hooks"]["PreToolUse"].as_array().unwrap();
         assert_eq!(pre.len(), 4);
         assert_eq!(pre[0]["hooks"][0]["command"], "echo mine");
@@ -1044,16 +1046,25 @@ mod tests {
     fn every_shipped_skill_is_stamped_with_its_own_kit_file() {
         let dir = scratch("multi");
         let (scene, video) = (skill_source(&dir), video_source(&dir));
+        let brand = dir.join("brand-source");
+        write(&brand.join("SKILL.md"), "brand");
         let project = dir.join("project");
         write(&project.join("project.json"), r#"{"name":"Demo"}"#);
         stamp_project(
-            &[(SKILL_NAME, &scene), (VIDEO_SKILL_NAME, &video)],
+            &[
+                (SKILL_NAME, &scene),
+                (VIDEO_SKILL_NAME, &video),
+                (BRAND_SKILL_NAME, &brand),
+            ],
             &project,
             &opts("0.19.0", false, 5),
         )
         .unwrap();
         let skills = project.join(".claude/skills");
-        assert_eq!(names_in(&skills), [SKILL_NAME, VIDEO_SKILL_NAME]);
+        assert_eq!(
+            names_in(&skills),
+            [BRAND_SKILL_NAME, SKILL_NAME, VIDEO_SKILL_NAME]
+        );
         assert_eq!(
             std::fs::read_to_string(skills.join(VIDEO_SKILL_NAME).join("SKILL.md")).unwrap(),
             "video"
@@ -1142,9 +1153,10 @@ mod tests {
         write(&dir.join(SKILL_NAME).join("SKILL.md"), "skill");
         let (found, missing) = shipped_skills_in(&dir);
         assert_eq!(found, vec![(SKILL_NAME, dir.join(SKILL_NAME))]);
-        assert_eq!(missing, vec![VIDEO_SKILL_NAME]);
+        assert_eq!(missing, vec![VIDEO_SKILL_NAME, BRAND_SKILL_NAME]);
         write(&dir.join(VIDEO_SKILL_NAME).join("SKILL.md"), "video");
-        assert_eq!(shipped_skills_in(&dir).0.len(), 2);
+        write(&dir.join(BRAND_SKILL_NAME).join("SKILL.md"), "brand");
+        assert_eq!(shipped_skills_in(&dir).0.len(), 3);
         assert!(shipped_skills_in(&dir).1.is_empty());
         let _ = std::fs::remove_dir_all(&dir);
     }

@@ -273,6 +273,12 @@ export function RowIcon({ id }: { id: string }) {
         <rect x="3" y="11" width="14" height="5.5" rx="1.5" />
       </>
     ),
+    brand: (
+      <>
+        <path d="M3.5 4.5a1 1 0 011-1h5.6l6.4 6.4-6.6 6.6-6.4-6.4z" />
+        <circle cx="7.5" cy="7.5" r="1.2" />
+      </>
+    ),
     theme: <path d="M10 3s5 5.5 5 8.5a5 5 0 01-10 0C5 8.5 10 3 10 3z" />,
     typography: (
       <>

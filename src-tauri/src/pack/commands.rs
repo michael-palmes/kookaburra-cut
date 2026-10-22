@@ -187,6 +187,26 @@ fn closure_to_view(closure: &deps::Closure, root: &Path) -> PackPlanView {
             group: None,
         });
     }
+    for b in &closure.contents.brands {
+        let plural = |n: usize| if n == 1 { "" } else { "s" };
+        items.push(SelectableItem {
+            kind: ItemKind::Brand,
+            slug: b.base.slug.clone(),
+            name: b.base.name.clone(),
+            bytes: b.base.bytes,
+            detail: Some(format!(
+                "{} image{} · {} colour{}",
+                b.image_count,
+                plural(b.image_count),
+                b.color_count,
+                plural(b.color_count)
+            )),
+            required_by: required(ItemKind::Brand, &b.base.slug),
+            embedding: None,
+            reference_only: None,
+            group: None,
+        });
+    }
     for f in &closure.contents.fonts {
         let key = f.key();
         items.push(SelectableItem {
@@ -341,6 +361,7 @@ fn enumerate_all(root: &Path) -> PackSelection {
             ItemKind::Preset.marker_file().unwrap_or_default(),
         ),
         themes: dirs_with("themes", "theme.json"),
+        brands: dirs_with(crate::brands::BRANDS_DIR_NAME, BRAND_MANIFEST),
         fonts,
         objects: dirs_with("objects", "object.json"),
         gradients: files_in("gradients", Some("json")),

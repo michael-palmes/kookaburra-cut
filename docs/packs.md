@@ -1,9 +1,9 @@
 # Packs (`.kbpack`)
 
-One file that carries projects, templates, scene presets, themes, fonts, 3D
-objects, gradient presets, export presets and screenshots from one Mac to
+One file that carries projects, templates, scene presets, brands, themes, fonts,
+3D objects, gradient presets, export presets and screenshots from one Mac to
 another. The use case is a company or an individual handing someone a starter
-kit: their projects, their brand theme, their brand font, their product model.
+kit: their projects, their brand, its theme and font, their product model.
 
 Format owner: `src-tauri/src/pack/`. UI: `src/packs/` in the `packs` window.
 
@@ -30,7 +30,7 @@ Per-entry method (`pack::write::method_for`):
 | Entries | Method |
 |---|---|
 | mp4, mov, m4v, webm, png, jpg, jpeg, webp, gif, glb, mp3, m4a, aac, ogg | Stored |
-| everything else (json, tsx, md, ttf, otf, hdr, exr) | Deflated |
+| everything else (json, tsx, md, svg, ttf, otf, hdr, exr) | Deflated |
 
 Entry order is fixed: `manifest.json`, `manifest.sig`, then payload sorted by
 path. Zip timestamps are fixed, so two packs of identical content are
@@ -42,6 +42,7 @@ manifest.sig                           store, entry 1, 64-byte Ed25519 detached
 payload/projects/<slug>/…
 payload/templates/<slug>/…             a project folder plus template.json
 payload/presets/<slug>/…               a single-scene project folder plus preset.json
+payload/brands/<slug>/…                brand.json, guidelines.md, images/<category>/…
 payload/themes/<slug>/theme.json
 payload/fonts/<postscript>.ttf|otf
 payload/objects/<slug>/…
@@ -79,15 +80,21 @@ clock). That is why hash decides first and date is only a tiebreak.
 a template is a project folder plus `template.json`, a preset a single-scene one
 plus `preset.json`, so neither records anything a project does not.
 
+`contents.brands` is `PackBrand`: the item base plus the description, the first
+eight colour hexes as swatches, the colour and image counts, and `requires`
+(themes, fonts, gradients). Every `requires` also carries `brands`, which only
+projects, templates and presets fill.
+
 ### Format version
 
-`formatVersion` is 2. v2 added `contents.templates` and `contents.presets`; a v1
-reader would parse a v2 manifest, silently drop both and half-import the pack, so
-the bump exists to make it refuse the file whole. The rule for the next kind is
-the same: bump when a reader that does not know the field would do the wrong
-thing with it, and leave it alone when the field is inert.
+`formatVersion` is 3. v2 added `contents.templates` and `contents.presets`, v3
+`contents.brands`; an older reader would parse a newer manifest, silently drop
+the new lists and half-import the pack, so each bump exists to make it refuse
+the file whole. The rule for the next kind is the same: bump when a reader that
+does not know the field would do the wrong thing with it, and leave it alone
+when the field is inert.
 
-v1 packs still read here, the two new lists defaulting to empty. `minAppVersion`
+v1 and v2 packs still read here, the newer lists defaulting to empty. `minAppVersion`
 is a separate, friendlier gate and can never exceed the shipping version (the
 app would refuse its own packs), so it rises only with a release; until then
 `formatVersion` is what turns a newer pack away.
@@ -185,8 +192,8 @@ Implemented in `pack::read` and `pack::paths`, one test per item in
 | `yours-newer` | differs, local is newer | keep mine |
 | `unknown-age` | differs, no usable local mtime | keep mine |
 
-Templates and presets take the table unchanged: they are folder items keyed by
-slug, exactly like projects.
+Templates, presets and brands take the table unchanged: they are folder items
+keyed by slug, exactly like projects.
 
 Two per-kind overrides:
 
@@ -200,17 +207,20 @@ resolves to keep-both, every project, template and preset in the same import tha
 referenced it is rewritten to the new slug in the staging directory before
 anything moves, in both `project.json` and the scene sidecars. A theme in the
 import that extends it has its `extends` rewritten the same way, and nothing else
-in that theme changes (its gradient names are its own). A kept-both project,
+in that theme changes (its gradient names are its own). A kept-both brand rewrites
+the `brand` key the same way, and a brand in the import follows a kept-both theme
+or gradient in its `themes`, `defaultTheme` and `gradients`. A kept-both project,
 template or preset also re-stamps its own `project.json` `id`. Anything not in the
 import is never touched.
 
 ## Apply order
 
-`ItemKind::APPLY_ORDER`: fonts, gradients, objects, themes, presets, templates,
-export presets, screenshots, projects. Things that get referenced go before
-things that reference them, which is why presets and templates land after themes
-(their `project.json` may name a `ws:` theme a keep-both just renamed) and why
-projects land last.
+`ItemKind::APPLY_ORDER`: fonts, gradients, objects, themes, brands, presets,
+templates, export presets, screenshots, projects. Things that get referenced go
+before things that reference them, which is why brands land after the themes,
+fonts and gradients they name, presets and templates after brands (their
+`project.json` may name a `ws:` theme or brand a keep-both just renamed), and
+projects last.
 
 An imported template or preset has `"source": "pack"` written into its
 `template.json` / `preset.json` while it is still in staging, so its provenance
@@ -277,6 +287,27 @@ A workspace theme can extend another (`"extends": "ws:<slug>"` or a bundled id,
   the summary says what it binds to instead: the recipient's theme of that slug, or
   nothing, in which case the variant falls back to the default theme.
 
+## Brands
+
+A brand is a folder, `brands/<slug>/`, marked by `brand.json` (id `ws:<slug>`),
+carrying `guidelines.md` and `images/<category>/…` (nested folders allowed). Its
+themes, fonts and gradients live in their usual workspace folders, so the brand
+names them and they travel as their own items:
+
+- **What it requires.** `themes` and `defaultTheme` (`ws:` ids only: a bundled
+  theme ships with the app), the `fonts` list plus every `typography` value
+  (bundled families never travel), and `gradients` (saved gradient slugs).
+- **What pulls it in.** A project, template or preset whose `project.json` says
+  `"brand": "ws:<slug>"`. That key is matched by name, like `themeId`, so a
+  brand and a theme may share a slug; a bare `ws:` id elsewhere falls back to a
+  brand only after an object and a theme.
+- **What travels.** The whole folder except dotted names, through the same
+  exclusion rule as the conflict scan. Images are `png`, `jpg`, `jpeg`, `webp`
+  and `svg`; anything else (a PDF guideline, a design file) is left out at export
+  with a review warning, and refused in an incoming pack.
+- **Reserved.** `brands` is a reserved project slug, at import and at project
+  creation alike, so a project can never shadow the library.
+
 ## Adding a new entity kind
 
 1. `model.rs`: add the `ItemKind` variant, its `payload_dir()`,
@@ -287,10 +318,15 @@ A workspace theme can extend another (`"extends": "ws:<slug>"` or a bundled id,
 3. `deps.rs`: its `PackSelection` field, its `kind_tag`, then enumerate it,
    resolve its references and build its `PackItemBase`.
 4. `conflicts.rs`: its `workspace_target`, its `plan_conflicts` loop, and a
-   per-kind default override only if it needs one.
+   per-kind default override only if it needs one. A new workspace folder also
+   joins `RESERVED_PROJECT_SLUGS` here and `RESERVED_SLUGS` in `workspace.rs`.
 5. `apply.rs`: its `flatten` arm, its `label`, its move and its keep-both rename.
 6. `commands.rs`: `enumerate_all` and `closure_to_view`.
 7. `src/packs/types.ts` (`ItemKind`, `ITEM_KINDS`, `KIND_LABELS`,
-   `PackContents`), `src/engine/packs.ts` (`PackSelection`, `selectionKey`) and
-   the two views that flatten contents.
+   `PackContents`), `src/packs/kindIcons.tsx`, `src/engine/packs.ts`
+   (`PackSelection`, `EMPTY_SELECTION`, `selectionKey`), every selection literal
+   (`selection.ts`, `packRoundTrip.ts`, the contents view) and the two views that
+   flatten contents.
 8. A hostile fixture in `pack::tests` if it introduces a new path shape.
+9. A new workspace folder joins the shared folders `scripts/kookaburra-run.sh`
+   copies into the pack round trip's throwaway root.

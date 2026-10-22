@@ -60,6 +60,7 @@ export function toPlanSelection(state: SelectionState): PackSelection {
     templates: [],
     presets: [],
     themes: [],
+    brands: [],
     fonts: [],
     objects: [],
     gradients: [],
@@ -121,6 +122,8 @@ export function breakageWarning(item: SelectableItem): string | null {
   switch (item.kind) {
     case "theme":
       return `${who} will fall back to the default theme.`;
+    case "brand":
+      return `${who} will open without this brand.`;
     case "font":
       return `Text in ${who} will render in a substitute face.`;
     case "object":

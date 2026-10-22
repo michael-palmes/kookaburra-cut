@@ -366,7 +366,7 @@ if [[ "$ACTION" == "packroundtrip" ]]; then
   rm -rf "$RT_ROOT"
   mkdir -p "$RT_ROOT"
   cp -R "$RT_SRC/$RT_SLUG" "$RT_ROOT/$RT_SLUG"
-  for shared in themes fonts objects gradients export-presets screenshots; do
+  for shared in themes brands fonts objects gradients export-presets screenshots; do
     [[ -d "$RT_SRC/$shared" ]] && cp -R "$RT_SRC/$shared" "$RT_ROOT/$shared"
   done
   mkdir -p "$RT_ROOT/_autorun/roundtrip"

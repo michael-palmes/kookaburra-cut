@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { type BrandSummary, listBrands, useProjectBrand } from "../../engine/brands";
 import { useClockStore } from "../../engine/clock";
 import { type AspectName, aspectLabel, FORMATS } from "../../engine/format";
 import {
@@ -35,6 +36,7 @@ import {
 import { commitFocusedInspectorEdit } from "../textEditFocus";
 import { useThemeCardMenu } from "../themeCardMenu";
 import { useEscapeClose } from "../useEscapeClose";
+import { BrandDrill, NO_BRANDS_HINT } from "./BrandDrill";
 import { InspectorNavigationShell } from "./InspectorNavigationShell";
 import { LibraryPreviewsSection } from "./LibraryPreviewsSection";
 import { MotionBlurProjectFields, motionBlurRowValue } from "./MotionBlurFields";
@@ -132,6 +134,7 @@ export function InspectorPanel({
   onTimingChanged,
   onSceneInserted,
   onApplyTheme,
+  onSetBrand,
   onDeleteScene,
   onReorderScenes,
   onDuplicateScenes,
@@ -182,6 +185,8 @@ export function InspectorPanel({
   onSceneInserted?: (file: string) => void;
   /** Apply a project theme (the picking drill-in; management stays in the ThemeMode modal behind "Manage themes…"). */
   onApplyTheme: (themeId: string) => Promise<void>;
+  /** Apply a workspace brand (`ws:<slug>`) or clear it (null); App owns the write, history and reload. */
+  onSetBrand: (brandId: string | null) => Promise<void>;
   /** Trash-recoverable scene removal (the Scene tab's bottom Delete). */
   onDeleteScene: (sceneIndex: number) => void;
   /** Scene manager: apply a full desired order (original indices) to the manifest. */
@@ -279,9 +284,38 @@ export function InspectorPanel({
     useUiStore.getState().jumpInspectorDrill(["project.scenes", "project.scenes.copyTo"]);
   }, [sceneCopyNonce, tab, setTab]);
 
+  // Workspace brands, re-read per project and whenever the Brand drill opens (an agent may have just built one).
+  const drillIn = useUiStore((s) => s.inspector.drillIn);
+  const [brands, setBrands] = useState<BrandSummary[] | null>(null);
+  useEffect(() => {
+    void project.id;
+    if (!editable) return;
+    if (drillIn !== null && drillIn !== "project.brand") return;
+    let cancelled = false;
+    listBrands()
+      .then((list) => {
+        if (!cancelled) setBrands(list);
+      })
+      .catch((e) => {
+        console.warn("[brands] listing failed:", e);
+        if (!cancelled) setBrands([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [editable, project.id, drillIn]);
+  const activeBrand = useProjectBrand(nativeProjectSlug(project.id));
+  const brandLabel = project.brandId
+    ? (activeBrand?.name ??
+      brands?.find((b) => b.id === project.brandId)?.name ??
+      project.brandId.replace(/^ws:/, ""))
+    : "None";
+
   const rows = projectRows({
     editable,
     themeName: project.theme.name,
+    brandLabel,
+    brandAvailable: !(brands !== null && brands.length === 0 && !project.brandId),
     typographyLabel:
       project.projectTypography?.headline ||
       project.projectTypography?.body ||
@@ -324,7 +358,6 @@ export function InspectorPanel({
     return () => window.removeEventListener("pointerdown", onPointerDown, true);
   }, [openRow]);
 
-  const drillIn = useUiStore((s) => s.inspector.drillIn);
   const openDrill = useUiStore((s) => s.openInspectorDrill);
   const closeDrill = useUiStore((s) => s.closeInspectorDrill);
   const setDrillIn = (id: string | null) => (id === null ? closeDrill() : openDrill(id));
@@ -375,6 +408,7 @@ export function InspectorPanel({
       setDrillIn("project.media");
     },
     scenes: () => setDrillIn("project.scenes"),
+    brand: editable ? () => setDrillIn("project.brand") : undefined,
     theme: editable
       ? () => {
           setThemeDraft(project.theme.id);
@@ -503,6 +537,13 @@ export function InspectorPanel({
             </div>
             {themeMenu.menuElement}
           </div>
+        ) : (tab === "project" || !editable) && drillIn === "project.brand" && editable ? (
+          <BrandDrill
+            brands={brands}
+            value={project.brandId}
+            onBack={() => setDrillIn(null)}
+            onApply={onSetBrand}
+          />
         ) : (tab === "project" || !editable) && drillIn === "project.typography" && editable ? (
           <div className="inspector-drill">
             <DrillBack label="Project" title="Typography" onClick={() => setDrillIn(null)} />
@@ -690,6 +731,9 @@ export function InspectorPanel({
                   disabled={!row.chevron}
                   onClick={row.chevron ? rowAction[row.id] : undefined}
                 />
+                {row.id === "brand" && !row.chevron && (
+                  <p className="modal-hint inspector-row-hint">{NO_BRANDS_HINT}</p>
+                )}
                 {row.id === "aspect" && openRow === "aspect" && (
                   <div className="inspector-popover" role="menu">
                     {(Object.keys(FORMATS) as AspectName[]).map((name) => (

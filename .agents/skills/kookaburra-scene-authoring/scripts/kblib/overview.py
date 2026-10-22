@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from . import bridge
 from . import git as gitmod
-from .project import MANIFEST, Project, find_root, scene_name, stem_of, worktree_of
+from .project import BRAND_GUIDE, MANIFEST, Project, find_root, scene_name, stem_of, worktree_of
 from .util import KbError, ago, fmt_secs, is_int, read_text
 
 CONTEXT_BUDGET = 4000
@@ -128,6 +128,31 @@ def checkpoint_line(project: Project) -> str:
         when = "?"
     tail = f"{len(dirty)} file(s) changed since" if dirty else "no changes since"
     return f"Last checkpoint: {h['rev']} {when} \"{h['subject']}\"; {tail}"
+
+
+def brand_line(project: Project) -> Optional[str]:
+    """The project's brand and where its guidelines are; they are defaults and guidance, never hard rules."""
+    try:
+        brand = project.brand_id()
+    except KbError:
+        return None
+    if not brand:
+        from .brands import all_brands
+
+        try:
+            installed = all_brands(project)
+        except Exception:
+            return None
+        if not installed:
+            return None
+        names = ", ".join(f"{b['name']} ({b['id']})" for b in installed[:6])
+        return f"Brand: none. Installed: {names}. When the user asks for one (\"use the {installed[0]['name']} brand\"), apply it with kb brand use <name>, or offer to"
+    try:
+        name = json.loads(read_text(project.brand_file(brand))).get("name") or brand
+    except Exception:
+        name = f"{brand} (not in this workspace's brands/)"
+    guide = BRAND_GUIDE if (project.root / BRAND_GUIDE).is_file() else f"no {BRAND_GUIDE} yet (re-pick the brand under Project)"
+    return f"Brand {name} ({brand}): read {guide} before designing; its colours, fonts, imagery and voice are safe defaults and guidance, not hard rules"
 
 
 def roster(project: Project) -> List[Dict[str, Any]]:
@@ -331,6 +356,7 @@ def status_data(project: Project) -> Dict[str, Any]:
         "worktree": {"path": str(worktree[0]), "main": str(worktree[1]) if worktree[1] else None} if worktree else None,
         "name": manifest.get("name"),
         "themeId": manifest.get("themeId"),
+        "brand": manifest.get("brand"),
         "formats": manifest.get("formats"),
         "scenes": len(entries),
         "totalMs": project.total_ms(),
@@ -375,6 +401,9 @@ def status_text(project: Project) -> str:
         f"Theme {manifest.get('themeId', '?')} · formats {' '.join(str(f) for f in fmts)} · {len(project.scene_entries())} scenes · {fmt_secs(project.total_ms())}",
         app_line(project, hb, rows),
     ]
+    brand = brand_line(project)
+    if brand:
+        lines.insert(len(lines) - 1, brand)
     lines += instance_lines(rows)
     from .capture import health_lines
 
@@ -413,6 +442,9 @@ def context_text(project: Project, check_summary: Optional[List[str]] = None, cw
         head.append(f"Kookaburra Cut project \"{manifest.get('name', '?')}\" ({project.project_id}) · theme {manifest.get('themeId', '?')} · {' '.join(str(f) for f in fmts)} · {len(project.scene_entries())} scenes · {fmt_secs(project.total_ms())}")
     except KbError as e:
         head.append(f"Kookaburra Cut project {project.project_id}: project.json problem: {e.message}")
+    brand = brand_line(project)
+    if brand:
+        head.append(brand)
     head.append(app_line(project, hb, None if hb else bridge.instance_rows(project)))
     head += load_lines(last_load_for(project, hb), limit=4)
     if check_summary:

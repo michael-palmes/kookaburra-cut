@@ -1,6 +1,7 @@
 //! Kookaburra Cut native shell: registers Tauri plugins and the deterministic-export bridge; the exporter streams raw RGBA frames from the webview to a bundled ffmpeg sidecar, whose argv is built HERE from a typed `ExportOptions` (the frontend never controls the command line) and spawned via the shell plugin's Rust API, not webview IPC, so no `shell:allow-execute` capability is needed.
 
 mod asset_meta;
+mod brands;
 mod bridge;
 mod bridge_export;
 mod bridge_health;
@@ -1397,6 +1398,10 @@ macro_rules! kookaburra_handler {
             gradients::list_gradients,
             gradients::write_gradient,
             gradients::delete_gradient,
+            brands::list_brands,
+            brands::list_brand_images,
+            brands::brand_image_meta,
+            brands::set_project_brand,
             export_presets::list_export_presets,
             export_presets::write_export_preset,
             export_presets::delete_export_preset,

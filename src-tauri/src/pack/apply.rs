@@ -11,7 +11,7 @@ use super::error::PackError;
 use super::fonts::{apply_font_merge, FontApplySummary};
 use super::hash::sha256_bytes;
 use super::limits::{BACKUP_DIR, PAYLOAD_PREFIX};
-use super::model::{ItemKind, PackFont, PackManifest, PackProject, Resolution};
+use super::model::{ItemKind, PackFont, PackManifest, PackProject, Resolution, BRAND_MANIFEST};
 use super::read::StagedPack;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -68,6 +68,7 @@ struct Renames {
     themes: HashMap<String, String>,
     objects: HashMap<String, String>,
     gradients: HashMap<String, String>,
+    brands: HashMap<String, String>,
 }
 
 /// Apply an import. `resolutions` is keyed `"<kind>:<slug>"`; an item with no entry was never selected and is not
@@ -224,6 +225,12 @@ fn flatten(manifest: &PackManifest) -> Vec<(ItemKind, String, String)> {
                     .iter()
                     .map(|t| (kind, t.base.slug.clone(), t.base.name.clone())),
             ),
+            ItemKind::Brand => out.extend(
+                contents
+                    .brands
+                    .iter()
+                    .map(|b| (kind, b.base.slug.clone(), b.base.name.clone())),
+            ),
             ItemKind::ExportPreset => out.extend(
                 contents
                     .export_presets
@@ -265,6 +272,7 @@ fn label(kind: ItemKind) -> &'static str {
         ItemKind::Template => "template",
         ItemKind::Preset => "scene preset",
         ItemKind::Theme => "theme",
+        ItemKind::Brand => "brand",
         ItemKind::Font => "font",
         ItemKind::Object => "3D object",
         ItemKind::Gradient => "gradient",
@@ -280,6 +288,7 @@ fn renames_from(work: &[Work]) -> Renames {
             ItemKind::Theme => &mut renames.themes,
             ItemKind::Object => &mut renames.objects,
             ItemKind::Gradient => &mut renames.gradients,
+            ItemKind::Brand => &mut renames.brands,
             _ => continue,
         };
         map.insert(item.slug.clone(), item.target_slug.clone());
@@ -313,6 +322,15 @@ fn rewrite_references(staging: &Path, work: &[Work], renames: &Renames) -> Resul
     {
         rewrite_theme_base(
             &staged_source(staging, ItemKind::Theme, &theme.slug).join("theme.json"),
+            renames,
+        )?;
+    }
+    for brand in work
+        .iter()
+        .filter(|w| w.kind == ItemKind::Brand && w.resolution != Resolution::Skip)
+    {
+        rewrite_brand_refs(
+            &staged_source(staging, ItemKind::Brand, &brand.slug).join(BRAND_MANIFEST),
             renames,
         )?;
     }
@@ -381,12 +399,64 @@ fn rewrite_theme_base(path: &Path, renames: &Renames) -> Result<(), PackError> {
     Ok(())
 }
 
+/// A staged brand follows the themes and gradients a keep-both moved. Its fonts never rename: they cannot keep both.
+fn rewrite_brand_refs(path: &Path, renames: &Renames) -> Result<(), PackError> {
+    let Ok(text) = std::fs::read_to_string(path) else {
+        return Ok(());
+    };
+    let Ok(mut doc) = serde_json::from_str::<Value>(&text) else {
+        return Ok(());
+    };
+    let follow = |value: &mut Value, map: &HashMap<String, String>, prefixed: bool| -> bool {
+        let Some(id) = value.as_str() else {
+            return false;
+        };
+        let (prefix, slug) = match id.strip_prefix("ws:") {
+            Some(slug) => ("ws:", slug),
+            None if !prefixed => ("", id),
+            None => return false,
+        };
+        let Some(to) = map.get(slug) else {
+            return false;
+        };
+        *value = Value::String(format!("{prefix}{to}"));
+        true
+    };
+    let mut changed = false;
+    if let Some(list) = doc.get_mut("themes").and_then(Value::as_array_mut) {
+        for theme in list.iter_mut() {
+            changed |= follow(theme, &renames.themes, true);
+        }
+    }
+    if let Some(theme) = doc.get_mut("defaultTheme") {
+        changed |= follow(theme, &renames.themes, true);
+    }
+    if let Some(list) = doc.get_mut("gradients").and_then(Value::as_array_mut) {
+        for gradient in list.iter_mut() {
+            changed |= follow(gradient, &renames.gradients, false);
+        }
+    }
+    if !changed {
+        return Ok(());
+    }
+    let pretty = serde_json::to_string_pretty(&doc).map_err(|e| PackError::Io(e.to_string()))?;
+    std::fs::write(path, pretty + "\n")?;
+    Ok(())
+}
+
 /// Keys carry the meaning, values carry the target: the `deps.rs` scanning grammar, applied in reverse.
 fn rewrite_value(value: &mut Value, key: Option<&str>, renames: &Renames) -> bool {
     match value {
         Value::String(s) => {
             if key == Some("themeId") {
                 if let Some(to) = s.strip_prefix("ws:").and_then(|k| renames.themes.get(k)) {
+                    *s = format!("ws:{to}");
+                    return true;
+                }
+                return false;
+            }
+            if key == Some("brand") {
+                if let Some(to) = s.strip_prefix("ws:").and_then(|k| renames.brands.get(k)) {
                     *s = format!("ws:{to}");
                     return true;
                 }
@@ -776,7 +846,9 @@ mod tests {
     use crate::pack::conflicts::tests::{
         manifest, put_local, scratch, stage_dir_item, stage_file_item, staged_pack, write, FUTURE,
     };
-    use crate::pack::model::{PackContents, PackItemBase, PackProject, PackSimpleItem, PackTheme};
+    use crate::pack::model::{
+        PackBrand, PackContents, PackItemBase, PackProject, PackSimpleItem, PackTheme,
+    };
 
     fn resolutions(pairs: &[(ItemKind, &str, Resolution)]) -> HashMap<String, Resolution> {
         pairs
@@ -916,6 +988,126 @@ mod tests {
         assert_eq!(kept.outcome, ItemOutcome::KeptBoth);
         assert_eq!(kept.slug, "acme-dark-2");
 
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A kept-both brand takes the projects that name it, and itself follows a kept-both theme and gradient.
+    #[test]
+    fn keep_both_rewrites_brand_references() {
+        let root = scratch("kb-brand-root");
+        let staging = scratch("kb-brand-staging");
+        let local_brand = r#"{"version":1,"name":"Mine","themes":["ws:acme-dark"]}"#;
+        put_local(&root, ItemKind::Brand, "acme", local_brand);
+        put_local(
+            &root,
+            ItemKind::Theme,
+            "acme-dark",
+            r#"{"version":2,"name":"Mine"}"#,
+        );
+        put_local(&root, ItemKind::Gradient, "acme-glow", "{}");
+        put_local(
+            &root,
+            ItemKind::Project,
+            "other-promo",
+            r#"{"id":"other-promo","name":"Other","brand":"ws:acme"}"#,
+        );
+
+        let brand = stage_dir_item(
+            &staging,
+            ItemKind::Brand,
+            "acme",
+            &[
+                (
+                    "brand.json",
+                    r#"{"version":1,"name":"Acme","themes":["ws:acme-dark","kookaburra-paper"],"defaultTheme":"ws:acme-dark","fonts":[{"family":"Acme Sans","weight":500}],"gradients":["acme-glow"]}"#,
+                ),
+                ("guidelines.md", "# Acme\n"),
+                ("images/logos/mark.png", "png"),
+            ],
+            FUTURE,
+        );
+        let theme = stage_dir_item(
+            &staging,
+            ItemKind::Theme,
+            "acme-dark",
+            &[("theme.json", r#"{"version":2,"name":"Acme Dark"}"#)],
+            FUTURE,
+        );
+        let gradient = stage_file_item(
+            &staging,
+            ItemKind::Gradient,
+            "acme-glow",
+            "{\"a\":1}",
+            FUTURE,
+        );
+        let project = stage_dir_item(
+            &staging,
+            ItemKind::Project,
+            "acme-promo",
+            &[(
+                "project.json",
+                r#"{"id":"acme-promo","name":"Acme Promo","themeId":"ws:acme-dark","brand":"ws:acme"}"#,
+            )],
+            FUTURE,
+        );
+        let contents = PackContents {
+            brands: vec![PackBrand {
+                base: brand,
+                ..Default::default()
+            }],
+            themes: vec![theme_of(theme)],
+            gradients: vec![PackSimpleItem { base: gradient }],
+            projects: vec![project_of(project, "ws:acme-dark")],
+            ..Default::default()
+        };
+        let outcome = apply_import(
+            &root,
+            staged_pack(staging.clone(), contents),
+            &resolutions(&[
+                (ItemKind::Brand, "acme", Resolution::KeepBoth),
+                (ItemKind::Theme, "acme-dark", Resolution::KeepBoth),
+                (ItemKind::Gradient, "acme-glow", Resolution::KeepBoth),
+                (ItemKind::Project, "acme-promo", Resolution::Replace),
+            ]),
+            |_, _, _| {},
+        )
+        .unwrap();
+        assert!(outcome.stopped_at.is_none(), "{:?}", outcome.results);
+
+        let kinds: Vec<ItemKind> = outcome.results.iter().map(|r| r.kind).collect();
+        let at = |kind: ItemKind| kinds.iter().position(|k| *k == kind).unwrap();
+        assert!(at(ItemKind::Theme) < at(ItemKind::Brand));
+        assert!(at(ItemKind::Brand) < at(ItemKind::Project));
+        let kept = outcome
+            .results
+            .iter()
+            .find(|r| r.kind == ItemKind::Brand)
+            .unwrap();
+        assert_eq!(kept.outcome, ItemOutcome::KeptBoth);
+        assert_eq!(kept.slug, "acme-2");
+
+        let landed: Value =
+            serde_json::from_str(&read(&root.join("brands/acme-2/brand.json"))).unwrap();
+        assert_eq!(
+            landed["themes"],
+            serde_json::json!(["ws:acme-dark-2", "kookaburra-paper"])
+        );
+        assert_eq!(landed["defaultTheme"], "ws:acme-dark-2");
+        assert_eq!(landed["gradients"], serde_json::json!(["acme-glow-2"]));
+        assert_eq!(landed["fonts"][0]["family"], "Acme Sans");
+        assert_eq!(
+            read(&root.join("brands/acme-2/images/logos/mark.png")),
+            "png"
+        );
+        assert_eq!(read(&root.join("brands/acme/brand.json")), local_brand);
+
+        let promo: Value =
+            serde_json::from_str(&read(&root.join("acme-promo/project.json"))).unwrap();
+        assert_eq!(promo["brand"], "ws:acme-2");
+        assert_eq!(promo["themeId"], "ws:acme-dark-2");
+        let other: Value =
+            serde_json::from_str(&read(&root.join("other-promo/project.json"))).unwrap();
+        assert_eq!(other["brand"], "ws:acme");
         let _ = std::fs::remove_dir_all(&root);
     }
 

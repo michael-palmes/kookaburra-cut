@@ -10,6 +10,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from .util import EXIT_ENV, KbError, is_int, load_json, read_text
 
 MANIFEST = "project.json"
+BRAND_GUIDE = "BRAND.md"
 KIT_REL = ".claude/skills/kookaburra-scene-authoring"
 APP_OWNED_DIRS = ("exports", "edits")
 DEFAULT_SCENE_DURATION_MS = 4000
@@ -217,6 +218,13 @@ class Project:
         if theme_id.startswith("ws:"):
             return self.workspace_root / "themes" / theme_id[3:] / "theme.json"
         return None
+
+    def brand_id(self) -> Optional[str]:
+        value = self.manifest().get("brand")
+        return value if isinstance(value, str) and value.startswith("ws:") and len(value) > 3 else None
+
+    def brand_file(self, brand_id: str) -> Path:
+        return self.workspace_root / "brands" / brand_id[3:] / "brand.json"
 
     def persistent_file(self) -> Optional[str]:
         value = self.manifest().get("persistent")

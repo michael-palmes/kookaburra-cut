@@ -27,6 +27,9 @@ before any edit or any answer about what is on screen.
 10. Never end a turn with the project failing to load: fix it or `./kb undo`.
 11. Fonts outside the bundled set need `./kb fonts check` first.
 12. No dev servers, installs or build commands. There is nothing to run here.
+13. When `./kb status` shows a Brand line, read `BRAND.md` before designing or writing copy.
+    It holds safe defaults and guidance, not hard rules: bend it when the brief needs it and
+    say what you bent and why.
 
 ## Exit codes and other agents
 

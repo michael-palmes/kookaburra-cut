@@ -23984,6 +23984,11 @@
         "type": "object"
       },
       {
+        "id": "brand",
+        "summary": "Workspace brand id (ws:<slug>): guidelines in BRAND.md, brand images in the Library, brand colours in the colour picker.",
+        "type": "string"
+      },
+      {
         "id": "audio",
         "summary": "Soundtrack { file, gainDb, fadeInMs, fadeOutMs, fadeOutCurve, startOffsetMs, markers } plus music: grid { bpm, offsetMs (track ms of bar 1), beatsPerBar }, cues { id: position | ms }, sections [{ id, from, to }]; keys take at: \"bar:13.3\".",
         "type": "object"

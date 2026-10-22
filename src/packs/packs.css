@@ -63,6 +63,13 @@
   color: var(--text, #e9edf2);
 }
 
+.packs-rail-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
 .packs-rail-count {
   font-variant-numeric: tabular-nums;
   font-size: 12px;
