@@ -6,6 +6,25 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.20.0] - 2026-10-23
+
+### Added
+
+- Workspace brand packs: pick a brand for a project to bring in its
+  guidelines, logos and images, colours, themes, fonts and gradients.
+- An Edit with Claude button that hands the project to the Claude app.
+- Four bundled typefaces: Instrument Serif, Jost, IBM Plex Sans and Fraunces.
+
+### Changed
+
+- A redesigned first-run welcome and new project wizard.
+- A calm, readable lineup of built-in themes, with templates and presets
+  moved onto it.
+
+### Fixed
+
+- Shader backgrounds render in their authored colours.
+
 ## [0.19.0] - 2026-10-19
 
 ### Added
