@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import re
 import shutil
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 from .project import BRAND_GUIDE, Project
 from .util import KbError
@@ -50,8 +51,14 @@ def image_counts(project: Project, slug: str) -> Dict[str, int]:
     return counts
 
 
+FILLER = {"the", "a", "an", "our", "my", "brand", "brands", "pack", "use"}
+
+
 def normalise(text: str) -> str:
-    return re.sub(r"[^a-z0-9]+", "", text.lower())
+    """Lowercase alphanumerics with filler words dropped, so "the Acme brand" matches a brand named Acme."""
+    words = [w for w in re.split(r"[^a-z0-9]+", text.lower()) if w]
+    kept = [w for w in words if w not in FILLER]
+    return "".join(kept or words)
 
 
 def match(project: Project, query: str) -> Dict[str, Any]:
@@ -115,3 +122,20 @@ def sync_guide(project: Project, brand: Optional[Dict[str, Any]]) -> Optional[st
         return f"the brand has no guidelines; no {BRAND_GUIDE}"
     shutil.copyfile(source, target)
     return f"wrote {BRAND_GUIDE}"
+
+
+@contextlib.contextmanager
+def guide_staged(project: Project, brand: Optional[Dict[str, Any]], write: bool = True) -> Iterator[Optional[str]]:
+    """Sync BRAND.md before the manifest write validates (so it never reports it missing), restoring it if the write fails."""
+    target = project.root / BRAND_GUIDE
+    previous = target.read_bytes() if target.is_file() else None
+    note = sync_guide(project, brand) if write else None
+    try:
+        yield note
+    except BaseException:
+        if write:
+            if previous is None:
+                target.unlink(missing_ok=True)
+            else:
+                target.write_bytes(previous)
+        raise

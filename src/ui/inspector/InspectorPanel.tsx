@@ -286,11 +286,13 @@ export function InspectorPanel({
 
   // Workspace brands, re-read per project and whenever the Brand drill opens (an agent may have just built one).
   const drillIn = useUiStore((s) => s.inspector.drillIn);
+  const brandDrillOpen = drillIn === "project.brand";
   const [brands, setBrands] = useState<BrandSummary[] | null>(null);
+  const brandsListedFor = useRef<string | null>(null);
   useEffect(() => {
-    void project.id;
     if (!editable) return;
-    if (drillIn !== null && drillIn !== "project.brand") return;
+    if (!brandDrillOpen && brandsListedFor.current === project.id) return;
+    brandsListedFor.current = project.id;
     let cancelled = false;
     listBrands()
       .then((list) => {
@@ -303,7 +305,7 @@ export function InspectorPanel({
     return () => {
       cancelled = true;
     };
-  }, [editable, project.id, drillIn]);
+  }, [editable, project.id, brandDrillOpen]);
   const activeBrand = useProjectBrand(nativeProjectSlug(project.id));
   const brandLabel = project.brandId
     ? (activeBrand?.name ??

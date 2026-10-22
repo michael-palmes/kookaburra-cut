@@ -87,10 +87,12 @@ projects, templates and presets fill.
 
 ### Format version
 
-`formatVersion` is 3. v2 added `contents.templates` and `contents.presets`, v3
-`contents.brands`; an older reader would parse a newer manifest, silently drop
-the new lists and half-import the pack, so each bump exists to make it refuse
-the file whole. The rule for the next kind is the same: bump when a reader that
+This build reads up to `formatVersion` 3. v2 added `contents.templates` and
+`contents.presets`, v3 `contents.brands`; an older reader would parse a newer
+manifest, silently drop the new lists and half-import the pack, so each bump
+exists to make it refuse the file whole. A pack is written at the lowest version
+its contents need (`format_version_for`): 3 only when it carries brands, so a
+brandless pack still opens in a v2 app. The rule for the next kind is the same: bump when a reader that
 does not know the field would do the wrong thing with it, and leave it alone
 when the field is inert.
 

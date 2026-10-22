@@ -74,6 +74,13 @@ describe("claudeGroundingPrompt", () => {
     expect(prompt).not.toContain(String.fromCharCode(0x2014));
   });
 
+  it("routes brand building to the brand-packs skill", () => {
+    const line = claudeGroundingPrompt(PROJECT)
+      .split("\n")
+      .find((l) => l.includes("kookaburra-brand-packs"));
+    expect(line).toMatch(/build, update or share a brand.*brands\//);
+  });
+
   it("asserts nothing that goes stale once the session outlives a project switch", () => {
     const prompt = claudeGroundingPrompt(PROJECT);
     expect(prompt).not.toMatch(/open in the app right now/i);

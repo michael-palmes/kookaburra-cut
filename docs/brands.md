@@ -59,7 +59,8 @@ and parsed leniently. The skill's SKILL.md has a full example.
   becomes one command. `kb check` warns when the brand is missing or `BRAND.md` is.
 - The managed permissions allow `Read(~/Kookaburra Cut/brands/**)`.
 - `kookaburra-brand-packs` (`scripts/brand.py`, stdlib): `list`, `scan`, `init`, `fonts`,
-  `images`, `gradient`, `check`, `apply`. `pdf.js` and `svg2png.js` run under
+  `images`, `gradient`, `check`, `apply` (which runs the project's `kb brand use`, so
+  the apply rules live in Rust and kb only). `pdf.js` and `svg2png.js` run under
   `osascript -l JavaScript`, so PDF pages and SVG icons need no installs. Its tests live
   in the scene skill's suite (`test_brand_pack.py`), which keeps them out of projects.
 

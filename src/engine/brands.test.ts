@@ -23,7 +23,7 @@ const ACME = {
   gradients: ["acme-ink-glow"],
   fonts: [{ family: "Acme Serif", weight: 400 }],
   hasGuidelines: true,
-  imageCount: 4,
+  hasImages: true,
 };
 
 describe("normaliseBrand", () => {
@@ -43,7 +43,7 @@ describe("normaliseBrand", () => {
       colors: [],
       fonts: [],
       hasGuidelines: false,
-      imageCount: 0,
+      hasImages: false,
     });
     expect(normaliseBrand({ slug: "nameless" })).toBeNull();
     expect(normaliseBrand(null)).toBeNull();

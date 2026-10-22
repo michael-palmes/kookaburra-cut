@@ -31,7 +31,8 @@ export interface BrandSummary {
   gradients: string[];
   fonts: BrandFont[];
   hasGuidelines: boolean;
-  imageCount: number;
+  /** Whether `images/` holds at least one listable image. */
+  hasImages: boolean;
 }
 
 export interface BrandImage {
@@ -101,7 +102,7 @@ export function normaliseBrand(raw: unknown): BrandSummary | null {
     gradients: strings(r.gradients),
     fonts,
     hasGuidelines: r.hasGuidelines === true,
-    imageCount: typeof r.imageCount === "number" ? r.imageCount : 0,
+    hasImages: r.hasImages === true,
   };
 }
 
@@ -113,7 +114,8 @@ export async function listBrands(): Promise<BrandSummary[]> {
     .filter((b): b is BrandSummary => b !== null);
   if (active?.brandId) {
     const fresh = brands.find((b) => b.id === active?.brandId) ?? null;
-    if (fresh !== active.brand) publish({ ...active, brand: fresh });
+    if (JSON.stringify(fresh) !== JSON.stringify(active.brand))
+      publish({ ...active, brand: fresh });
   }
   return brands;
 }
@@ -199,5 +201,13 @@ export function useProjectBrand(projectSlug: string | undefined): BrandSummary |
 
 /** The open project's brand colours, for the colour picker's Brand section. */
 export function activeBrandColours(): BrandColour[] {
-  return active?.brand?.colors ?? [];
+  return active?.brand?.colors ?? NO_COLOURS;
+}
+
+const NO_COLOURS: BrandColour[] = [];
+
+/** `activeBrandColours` as a subscription, so a brand that resolves after the picker opens still shows. */
+export function useActiveBrandColours(): BrandColour[] {
+  const current = useSyncExternalStore(subscribe, snapshot, snapshot);
+  return current?.brand?.colors ?? NO_COLOURS;
 }

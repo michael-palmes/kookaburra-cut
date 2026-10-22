@@ -64,7 +64,8 @@ pub struct BrandSummary {
     pub gradients: Vec<String>,
     pub fonts: Vec<BrandFont>,
     pub has_guidelines: bool,
-    pub image_count: usize,
+    /// Whether `images/` holds at least one listable image (the Library only offers a brand that does).
+    pub has_images: bool,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
@@ -239,19 +240,23 @@ fn parse_brand(slug: &str, text: &str) -> Result<ParsedBrand, String> {
             gradients: string_list(&doc, "gradients", slug),
             fonts: parse_fonts(&doc, slug),
             has_guidelines: false,
-            image_count: 0,
+            has_images: false,
         },
         guidelines,
     })
 }
 
-/// Read one brand folder: its parsed brand.json with the on-disk facts (guidelines present, image count) filled in.
-fn read_brand(dir: &Path, slug: &str) -> Result<ParsedBrand, String> {
+fn parse_brand_at(dir: &Path, slug: &str) -> Result<ParsedBrand, String> {
     let text = std::fs::read_to_string(dir.join(BRAND_FILENAME))
         .map_err(|e| format!("reading {BRAND_FILENAME}: {e}"))?;
-    let mut parsed = parse_brand(slug, &text)?;
+    parse_brand(slug, &text)
+}
+
+/// Read one brand folder: its parsed brand.json with the on-disk facts (guidelines present, any image) filled in.
+fn read_brand(dir: &Path, slug: &str) -> Result<ParsedBrand, String> {
+    let mut parsed = parse_brand_at(dir, slug)?;
     parsed.summary.has_guidelines = dir.join(&parsed.guidelines).is_file();
-    parsed.summary.image_count = list_images_in(dir).len();
+    parsed.summary.has_images = has_listable_image(&dir.join(IMAGES_DIR));
     Ok(parsed)
 }
 
@@ -342,6 +347,28 @@ fn walk_images(base: &Path, dir: &Path, out: &mut Vec<BrandImage>) {
     }
 }
 
+/// Whether `dir` holds a listable image at any depth (the `walk_images` rules), stopping at the first.
+fn has_listable_image(dir: &Path) -> bool {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return false;
+    };
+    entries.flatten().any(|entry| {
+        let Ok(kind) = entry.file_type() else {
+            return false;
+        };
+        if entry.file_name().to_string_lossy().starts_with('.') || kind.is_symlink() {
+            return false;
+        }
+        let path = entry.path();
+        if kind.is_dir() {
+            return has_listable_image(&path);
+        }
+        path.extension()
+            .and_then(|e| e.to_str())
+            .is_some_and(|ext| workspace::IMAGE_EXTENSIONS.contains(&ext.to_lowercase().as_str()))
+    })
+}
+
 /// Every listable image under `<brand>/images/`, sorted by category then path.
 fn list_images_in(brand_dir: &Path) -> Vec<BrandImage> {
     let base = brand_dir.join(IMAGES_DIR);
@@ -405,13 +432,6 @@ fn apply_brand_to_manifest(manifest: &mut Value, brand: &BrandSummary) {
     manifest["typography"] = Value::Object(block);
 }
 
-fn atomic_copy(source: &Path, dest: &Path) -> Result<(), String> {
-    let bytes = std::fs::read(source).map_err(|e| format!("reading {}: {e}", source.display()))?;
-    let tmp = dest.with_extension("md.tmp");
-    std::fs::write(&tmp, bytes).map_err(|e| e.to_string())?;
-    std::fs::rename(&tmp, dest).map_err(|e| e.to_string())
-}
-
 fn remove_brand_doc(project: &Path) -> Result<(), String> {
     let doc = project.join(PROJECT_BRAND_DOC);
     if doc.is_file() {
@@ -420,21 +440,35 @@ fn remove_brand_doc(project: &Path) -> Result<(), String> {
     Ok(())
 }
 
+/// BRAND.md lands only after the manifest write succeeds, so a failed apply never pairs one brand's guidelines with another's manifest.
 pub(crate) fn apply_brand_at(
     project: &Path,
     brand_dir: &Path,
     brand_slug: &str,
 ) -> Result<FileWrite, String> {
-    let parsed = read_brand(brand_dir, brand_slug)?;
+    let parsed = parse_brand_at(brand_dir, brand_slug)?;
     let mut manifest = read_manifest(project)?;
     let guidelines = brand_dir.join(&parsed.guidelines);
+    let doc = project.join(PROJECT_BRAND_DOC);
+    let staged = doc.with_extension("md.tmp");
     if guidelines.is_file() {
-        atomic_copy(&guidelines, &project.join(PROJECT_BRAND_DOC))?;
+        std::fs::copy(&guidelines, &staged)
+            .map_err(|e| format!("reading {}: {e}", guidelines.display()))?;
+    }
+    apply_brand_to_manifest(&mut manifest, &parsed.summary);
+    let write = match write_manifest(project, &manifest) {
+        Ok(write) => write,
+        Err(e) => {
+            let _ = std::fs::remove_file(&staged);
+            return Err(e);
+        }
+    };
+    if guidelines.is_file() {
+        std::fs::rename(&staged, &doc).map_err(|e| e.to_string())?;
     } else {
         remove_brand_doc(project)?; // never leave the previous brand's guidelines behind
     }
-    apply_brand_to_manifest(&mut manifest, &parsed.summary);
-    write_manifest(project, &manifest)
+    Ok(write)
 }
 
 pub(crate) fn clear_brand_at(project: &Path) -> Result<FileWrite, String> {
@@ -623,9 +657,10 @@ mod tests {
         assert_eq!(acme.fonts[1].weight, None);
         assert_eq!(acme.gradients, ["acme-ink-glow"]);
         assert!(acme.has_guidelines);
-        assert_eq!(acme.image_count, 4);
+        assert!(acme.has_images);
         let beta = &list[1];
         assert!(beta.themes.is_empty() && beta.colors.is_empty() && !beta.has_guidelines);
+        assert!(!beta.has_images);
         assert!(list_brands_in(&root.join("missing")).is_empty());
         let _ = std::fs::remove_dir_all(&root);
     }
