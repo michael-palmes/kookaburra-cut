@@ -2,7 +2,7 @@
   "id": "dark-mode-launch",
   "name": "Dark Mode Launch",
   "version": 2,
-  "themeId": "kookaburra-abyss",
+  "themeId": "kookaburra-onyx",
   "formats": ["1:1", "9:16", "16:9", "4:5"],
   "scenes": [
     {

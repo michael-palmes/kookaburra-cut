@@ -2,7 +2,7 @@
   "id": "feature-deep-dive",
   "name": "Feature Deep Dive",
   "version": 2,
-  "themeId": "kookaburra-midnight",
+  "themeId": "kookaburra-onyx",
   "formats": ["16:9", "9:16", "1:1", "4:5"],
   "scenes": [
     {

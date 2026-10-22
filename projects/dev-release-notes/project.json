@@ -2,7 +2,7 @@
   "id": "dev-release-notes",
   "name": "Dev Release Notes",
   "version": 2,
-  "themeId": "kookaburra-abyss",
+  "themeId": "kookaburra-afterglow",
   "formats": ["16:9", "9:16", "1:1", "4:5"],
   "scenes": [
     {

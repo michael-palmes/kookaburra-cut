@@ -1278,6 +1278,288 @@
   ],
   "themes": [
     {
+      "id": "kookaburra-balance-sheet-blue",
+      "label": "Balance-Sheet Blue",
+      "summary": "Banking and accounting",
+      "mode": "dark",
+      "category": "essentials",
+      "categoryLabel": "Essentials",
+      "tags": ["banking", "accounting", "finance", "reporting", "professional", "safe"],
+      "stage": "lighting-only",
+      "hidden": true,
+      "colors": {
+        "background": "#11111d",
+        "text": "#fafaff",
+        "accent": "#c8c7ff",
+        "muted": "#deddf2"
+      },
+      "chartColors": ["#c8c7ff", "#5eead4", "#f1ad69", "#f2b4dc", "#d2c76c", "#a9cdf7"],
+      "typography": {
+        "headline": "Libre Franklin@600",
+        "body": "JetBrains Mono",
+        "scale": 1.25
+      },
+      "motion": {
+        "durations": {
+          "fast": 180,
+          "base": 450,
+          "slow": 820
+        },
+        "easings": {
+          "standard": "outQuad",
+          "emphasized": "outCubic"
+        }
+      },
+      "gradients": [],
+      "textAnimation": {
+        "in": "fade-up",
+        "out": "fade",
+        "staggerMs": 42,
+        "stagger": "word"
+      },
+      "textLook": null,
+      "background": "shader:graph-grid",
+      "backdrop": null,
+      "environment": null,
+      "lighting": true,
+      "effects": []
+    },
+    {
+      "id": "kookaburra-daylight",
+      "label": "Daylight",
+      "summary": "Clean product launches",
+      "mode": "light",
+      "category": "essentials",
+      "categoryLabel": "Essentials",
+      "tags": ["clean", "minimal", "product", "bright", "keynote", "neutral"],
+      "stage": "lighting-only",
+      "colors": {
+        "background": "#f5f5f7",
+        "text": "#1d1d1f",
+        "accent": "#0066cc",
+        "muted": "#545458"
+      },
+      "chartColors": ["#0066cc", "#1d7a4f", "#b4460f", "#b3123d", "#8a5be6", "#0e6c80"],
+      "typography": {
+        "headline": "Inter@600",
+        "body": "Inter",
+        "scale": 1.2
+      },
+      "motion": {
+        "durations": {
+          "fast": 200,
+          "base": 520,
+          "slow": 940
+        },
+        "easings": {
+          "standard": "outCubic",
+          "emphasized": "outExpo"
+        }
+      },
+      "gradients": ["brand"],
+      "textAnimation": {
+        "in": "fade-up",
+        "out": "fade",
+        "staggerMs": 0
+      },
+      "textLook": null,
+      "background": "gradient",
+      "backdrop": null,
+      "environment": "kookaburra:monochrome-studio",
+      "lighting": true,
+      "effects": []
+    },
+    {
+      "id": "kookaburra-elastic-glyphs",
+      "label": "Elastic Glyphs",
+      "summary": "Expressive maker launches",
+      "mode": "light",
+      "category": "essentials",
+      "categoryLabel": "Essentials",
+      "tags": ["maker", "launch", "creative", "kinetic", "typography", "product"],
+      "stage": "lighting-only",
+      "hidden": true,
+      "colors": {
+        "background": "#dcf5f5",
+        "text": "#12302d",
+        "accent": "#006f68",
+        "muted": "#274a46"
+      },
+      "chartColors": ["#006f68", "#1f4d6b", "#77659c", "#a03329", "#3f6b3f", "#8f5000"],
+      "typography": {
+        "headline": "Space Grotesk@600",
+        "body": "Inter",
+        "scale": 1.25
+      },
+      "motion": {
+        "durations": {
+          "fast": 180,
+          "base": 450,
+          "slow": 850
+        },
+        "easings": {
+          "standard": "outCubic",
+          "emphasized": "outBack"
+        }
+      },
+      "gradients": [],
+      "textAnimation": {
+        "in": "fade-scale",
+        "out": "fade",
+        "staggerMs": 35,
+        "stagger": "char",
+        "startScale": 0.88,
+        "shine": true
+      },
+      "textLook": null,
+      "background": "scene3d:drift-slabs",
+      "backdrop": null,
+      "environment": null,
+      "lighting": true,
+      "effects": []
+    },
+    {
+      "id": "kookaburra-ember-ledger",
+      "label": "Ember Ledger",
+      "summary": "Retail digital asset launches",
+      "mode": "dark",
+      "category": "essentials",
+      "categoryLabel": "Essentials",
+      "tags": ["digital-assets", "retail", "exchange", "market", "ember", "safe"],
+      "stage": "lighting-only",
+      "hidden": true,
+      "colors": {
+        "background": "#19130e",
+        "text": "#fff4e8",
+        "accent": "#ffb36b",
+        "muted": "#f1ddc8"
+      },
+      "chartColors": ["#ffb36b", "#ffe08a", "#65c8b0", "#a8d1ff", "#d99cff", "#ffb0bc"],
+      "typography": {
+        "headline": "Barlow Condensed@600",
+        "body": "Libre Franklin@600",
+        "scale": 1.333
+      },
+      "motion": {
+        "durations": {
+          "fast": 190,
+          "base": 470,
+          "slow": 860
+        },
+        "easings": {
+          "standard": "outQuad",
+          "emphasized": "outCubic"
+        }
+      },
+      "gradients": [],
+      "textAnimation": {
+        "in": "fade-up",
+        "out": "fade",
+        "staggerMs": 45,
+        "stagger": "word"
+      },
+      "textLook": null,
+      "background": "shader:hex-grid",
+      "backdrop": null,
+      "environment": null,
+      "lighting": true,
+      "effects": []
+    },
+    {
+      "id": "kookaburra-linen-intelligence",
+      "label": "Linen Intelligence",
+      "summary": "Human AI stories",
+      "mode": "light",
+      "category": "essentials",
+      "categoryLabel": "Essentials",
+      "tags": ["ai", "editorial", "explainer", "human", "warm", "organic"],
+      "stage": "lighting-only",
+      "hidden": true,
+      "colors": {
+        "background": "#f7f3ec",
+        "text": "#241c1a",
+        "accent": "#964333",
+        "muted": "#594c47"
+      },
+      "chartColors": ["#964333", "#3f5a4c", "#1f3a5f", "#8c2f39", "#6a5515", "#4a4a52"],
+      "typography": {
+        "headline": "Cormorant Garamond@600",
+        "body": "Open Sans",
+        "scale": 1.333
+      },
+      "motion": {
+        "durations": {
+          "fast": 220,
+          "base": 560,
+          "slow": 1000
+        },
+        "easings": {
+          "standard": "outCubic",
+          "emphasized": "outExpo"
+        }
+      },
+      "gradients": [],
+      "textAnimation": {
+        "in": "mask-reveal",
+        "out": "fade",
+        "staggerMs": 0,
+        "delivery": "by-paragraph"
+      },
+      "textLook": null,
+      "background": "image",
+      "backdrop": null,
+      "environment": null,
+      "lighting": true,
+      "effects": []
+    },
+    {
+      "id": "kookaburra-porcelain-field",
+      "label": "Porcelain Field",
+      "summary": "Calm product systems",
+      "mode": "light",
+      "category": "essentials",
+      "categoryLabel": "Essentials",
+      "tags": ["calm", "product", "systems", "technology", "minimal", "professional"],
+      "stage": "lighting-only",
+      "hidden": true,
+      "colors": {
+        "background": "#e8eff4",
+        "text": "#152735",
+        "accent": "#17677d",
+        "muted": "#38505f"
+      },
+      "chartColors": ["#17677d", "#1f2937", "#3f6f7a", "#6b4f6b", "#7a5c3a", "#27508f"],
+      "typography": {
+        "headline": "Libre Franklin@600",
+        "body": "Open Sans",
+        "scale": 1.25
+      },
+      "motion": {
+        "durations": {
+          "fast": 200,
+          "base": 520,
+          "slow": 920
+        },
+        "easings": {
+          "standard": "outQuad",
+          "emphasized": "outCubic"
+        }
+      },
+      "gradients": [],
+      "textAnimation": {
+        "in": "fade-scale",
+        "out": "fade",
+        "staggerMs": 0,
+        "startScale": 0.96
+      },
+      "textLook": null,
+      "background": "shader:mesh-gradient",
+      "backdrop": null,
+      "environment": null,
+      "lighting": true,
+      "effects": []
+    },
+    {
       "id": "kookaburra-studio-white",
       "label": "Studio White",
       "summary": "Clean product showcases",
@@ -1286,6 +1568,7 @@
       "categoryLabel": "Essentials",
       "tags": ["clean", "minimal", "product", "presentation", "professional", "bright"],
       "stage": "lighting-only",
+      "hidden": true,
       "colors": {
         "background": "#f4f6f8",
         "text": "#1a1d21",
@@ -1324,6 +1607,246 @@
       "effects": []
     },
     {
+      "id": "kookaburra-velvet-physics",
+      "label": "Velvet Physics",
+      "summary": "Premium creative launches",
+      "mode": "dark",
+      "category": "essentials",
+      "categoryLabel": "Essentials",
+      "tags": ["premium", "creative", "launch", "sensory", "surreal", "luxury"],
+      "stage": "lighting-only",
+      "hidden": true,
+      "colors": {
+        "background": "#230818",
+        "text": "#fff4df",
+        "accent": "#d9879b",
+        "muted": "#d8c4b3"
+      },
+      "chartColors": ["#d9879b", "#d2a85f", "#8c82c9", "#6eafa8", "#c96f5d", "#9caf6d"],
+      "typography": {
+        "headline": "Cormorant Garamond@600",
+        "body": "Open Sans",
+        "scale": 1.333
+      },
+      "motion": {
+        "durations": {
+          "fast": 200,
+          "base": 520,
+          "slow": 940
+        },
+        "easings": {
+          "standard": "outCubic",
+          "emphasized": "outExpo"
+        }
+      },
+      "gradients": [],
+      "textAnimation": {
+        "in": "fade-scale",
+        "out": "fade",
+        "staggerMs": 0,
+        "startScale": 0.96
+      },
+      "textLook": null,
+      "background": "image",
+      "backdrop": null,
+      "environment": null,
+      "lighting": true,
+      "effects": []
+    },
+    {
+      "id": "kookaburra-chain-current",
+      "label": "Chain Current",
+      "summary": "Protocol and wallet launches",
+      "mode": "dark",
+      "category": "essentials",
+      "categoryLabel": "Essentials",
+      "tags": ["protocol", "wallet", "network", "digital-assets", "infrastructure", "bold"],
+      "stage": "lighting-only",
+      "hidden": true,
+      "colors": {
+        "background": "#0e1219",
+        "text": "#f4f8ff",
+        "accent": "#7eb8f2",
+        "muted": "#eedfd2"
+      },
+      "chartColors": ["#7eb8f2", "#ffd166", "#7ed6b4", "#d59cff", "#e87845", "#ff879b"],
+      "typography": {
+        "headline": "Libre Franklin@600",
+        "body": "JetBrains Mono",
+        "scale": 1.25
+      },
+      "motion": {
+        "durations": {
+          "fast": 160,
+          "base": 410,
+          "slow": 780
+        },
+        "easings": {
+          "standard": "outCubic",
+          "emphasized": "outExpo"
+        }
+      },
+      "gradients": [],
+      "textAnimation": {
+        "in": "fade-scale",
+        "out": "fade",
+        "staggerMs": 32,
+        "stagger": "char",
+        "startScale": 0.86,
+        "shine": true
+      },
+      "textLook": null,
+      "background": "scene3d:point-swell",
+      "backdrop": null,
+      "environment": null,
+      "lighting": true,
+      "effects": []
+    },
+    {
+      "id": "kookaburra-lucid-chrome",
+      "label": "Lucid Chrome",
+      "summary": "Immersive media launches",
+      "mode": "dark",
+      "category": "essentials",
+      "categoryLabel": "Essentials",
+      "tags": ["immersive", "media", "chrome", "orbital", "cinematic", "bold"],
+      "stage": "lighting-only",
+      "hidden": true,
+      "colors": {
+        "background": "#0e1219",
+        "text": "#f5fbff",
+        "accent": "#65d9ff",
+        "muted": "#c7d4df"
+      },
+      "chartColors": ["#65d9ff", "#ffe08a", "#d89cff", "#74e0b0", "#ff7d9c", "#b8c4d8"],
+      "typography": {
+        "headline": "Barlow Condensed@600",
+        "body": "Libre Franklin@600",
+        "scale": 1.333
+      },
+      "motion": {
+        "durations": {
+          "fast": 160,
+          "base": 420,
+          "slow": 800
+        },
+        "easings": {
+          "standard": "outCubic",
+          "emphasized": "outExpo"
+        }
+      },
+      "gradients": [],
+      "textAnimation": {
+        "in": "fade-scale",
+        "out": "fade",
+        "staggerMs": 42,
+        "stagger": "word",
+        "startScale": 0.84,
+        "shine": true
+      },
+      "textLook": null,
+      "background": "scene3d:orb-field",
+      "backdrop": null,
+      "environment": null,
+      "lighting": true,
+      "effects": []
+    },
+    {
+      "id": "kookaburra-obsidian-optic",
+      "label": "Obsidian Optic",
+      "summary": "Premium technical reveals",
+      "mode": "dark",
+      "category": "essentials",
+      "categoryLabel": "Essentials",
+      "tags": ["premium", "technical", "product", "dark", "cinematic", "reveal"],
+      "stage": "lighting-only",
+      "hidden": true,
+      "colors": {
+        "background": "#04100f",
+        "text": "#f5fbfa",
+        "accent": "#5eead4",
+        "muted": "#d9e8e5"
+      },
+      "chartColors": ["#5eead4", "#a8c7ff", "#c4a7ff", "#ffd166", "#ffb3c1", "#6fd8a8"],
+      "typography": {
+        "headline": "Barlow Condensed@600",
+        "body": "Inter",
+        "scale": 1.333
+      },
+      "motion": {
+        "durations": {
+          "fast": 160,
+          "base": 420,
+          "slow": 800
+        },
+        "easings": {
+          "standard": "outCubic",
+          "emphasized": "outExpo"
+        }
+      },
+      "gradients": [],
+      "textAnimation": {
+        "in": "fade-scale",
+        "out": "fade",
+        "staggerMs": 35,
+        "stagger": "char",
+        "startScale": 0.84,
+        "shine": true
+      },
+      "textLook": null,
+      "background": "shader:smoke-ring",
+      "backdrop": null,
+      "environment": null,
+      "lighting": true,
+      "effects": []
+    },
+    {
+      "id": "kookaburra-onyx",
+      "label": "Onyx",
+      "summary": "Keynote-style reveals",
+      "mode": "dark",
+      "category": "essentials",
+      "categoryLabel": "Essentials",
+      "tags": ["dark", "keynote", "premium", "product", "cinematic", "minimal"],
+      "stage": "lighting-only",
+      "colors": {
+        "background": "#000000",
+        "text": "#f5f5f7",
+        "accent": "#2997ff",
+        "muted": "#b0b0b5"
+      },
+      "chartColors": ["#2997ff", "#30d158", "#ff9f0a", "#bf5af2", "#ff6961", "#64d2ff"],
+      "typography": {
+        "headline": "Inter@600",
+        "body": "Inter",
+        "scale": 1.2
+      },
+      "motion": {
+        "durations": {
+          "fast": 200,
+          "base": 520,
+          "slow": 940
+        },
+        "easings": {
+          "standard": "outCubic",
+          "emphasized": "outExpo"
+        }
+      },
+      "gradients": ["brand"],
+      "textAnimation": {
+        "in": "fade-scale",
+        "out": "fade",
+        "staggerMs": 0,
+        "startScale": 0.96
+      },
+      "textLook": null,
+      "background": "gradient",
+      "backdrop": null,
+      "environment": "kookaburra:monochrome-studio",
+      "lighting": true,
+      "effects": []
+    },
+    {
       "id": "kookaburra-pacific",
       "label": "Pacific",
       "summary": "Calm product stories",
@@ -1332,6 +1855,7 @@
       "categoryLabel": "Essentials",
       "tags": ["calm", "coastal", "product", "technology", "blue", "soft"],
       "stage": "physical",
+      "hidden": true,
       "colors": {
         "background": "#ffffff",
         "text": "#0b1440",
@@ -1370,6 +1894,386 @@
       "effects": []
     },
     {
+      "id": "kookaburra-quiet-growth",
+      "label": "Quiet Growth",
+      "summary": "Wealth and sustainable finance",
+      "mode": "dark",
+      "category": "essentials",
+      "categoryLabel": "Essentials",
+      "tags": ["wealth", "sustainable-finance", "growth", "investment", "calm", "safe"],
+      "stage": "lighting-only",
+      "hidden": true,
+      "colors": {
+        "background": "#17110c",
+        "text": "#fff8f2",
+        "accent": "#d59b78",
+        "muted": "#eadcd2"
+      },
+      "chartColors": ["#d59b78", "#86c896", "#e1c36e", "#71b7d9", "#8d9ee8", "#d695c7"],
+      "typography": {
+        "headline": "Lora",
+        "body": "Open Sans",
+        "scale": 1.25
+      },
+      "motion": {
+        "durations": {
+          "fast": 220,
+          "base": 560,
+          "slow": 980
+        },
+        "easings": {
+          "standard": "outQuad",
+          "emphasized": "outCubic"
+        }
+      },
+      "gradients": [],
+      "textAnimation": {
+        "in": "fade-scale",
+        "out": "fade",
+        "staggerMs": 0,
+        "startScale": 0.96
+      },
+      "textLook": null,
+      "background": "scene3d:contour-field",
+      "backdrop": null,
+      "environment": null,
+      "lighting": true,
+      "effects": []
+    },
+    {
+      "id": "kookaburra-riso-logic",
+      "label": "Riso Logic",
+      "summary": "Indie creative launches",
+      "mode": "light",
+      "category": "essentials",
+      "categoryLabel": "Essentials",
+      "tags": ["riso", "indie", "creative", "launch", "print", "bold"],
+      "stage": "lighting-only",
+      "hidden": true,
+      "colors": {
+        "background": "#f5ecf2",
+        "text": "#24151e",
+        "accent": "#ad2055",
+        "muted": "#5d4552"
+      },
+      "chartColors": ["#ad2055", "#2563eb", "#08736c", "#7e22ce", "#b45309", "#3f6212"],
+      "typography": {
+        "headline": "Nunito@600",
+        "body": "Libre Franklin@600",
+        "scale": 1.25
+      },
+      "motion": {
+        "durations": {
+          "fast": 170,
+          "base": 440,
+          "slow": 820
+        },
+        "easings": {
+          "standard": "outCubic",
+          "emphasized": "outBack"
+        }
+      },
+      "gradients": [],
+      "textAnimation": {
+        "in": "scatter-scale",
+        "out": "fade",
+        "staggerMs": 28,
+        "stagger": "char"
+      },
+      "textLook": null,
+      "background": "shader:swirl",
+      "backdrop": null,
+      "environment": null,
+      "lighting": true,
+      "effects": []
+    },
+    {
+      "id": "kookaburra-thought-bloom",
+      "label": "Thought Bloom",
+      "summary": "Warm AI explainers",
+      "mode": "light",
+      "category": "essentials",
+      "categoryLabel": "Essentials",
+      "tags": ["ai", "explainer", "human", "warm", "learning", "optimistic"],
+      "stage": "lighting-only",
+      "hidden": true,
+      "colors": {
+        "background": "#ffffff",
+        "text": "#15261f",
+        "accent": "#22644d",
+        "muted": "#3e5149"
+      },
+      "chartColors": ["#22644d", "#2563eb", "#7c3aed", "#b45309", "#be123c", "#3f6212"],
+      "typography": {
+        "headline": "Nunito@600",
+        "body": "Open Sans",
+        "scale": 1.25
+      },
+      "motion": {
+        "durations": {
+          "fast": 220,
+          "base": 560,
+          "slow": 1000
+        },
+        "easings": {
+          "standard": "outCubic",
+          "emphasized": "outExpo"
+        }
+      },
+      "gradients": [],
+      "textAnimation": {
+        "in": "blur-in",
+        "out": "fade",
+        "staggerMs": 55,
+        "stagger": "word"
+      },
+      "textLook": null,
+      "background": "shader:neuro-noise",
+      "backdrop": null,
+      "environment": null,
+      "lighting": true,
+      "effects": []
+    },
+    {
+      "id": "kookaburra-brass-ledger",
+      "label": "Brass Ledger",
+      "summary": "Private wealth and insurance",
+      "mode": "dark",
+      "category": "essentials",
+      "categoryLabel": "Essentials",
+      "tags": ["private-wealth", "insurance", "premium", "heritage", "finance", "experimental"],
+      "stage": "lighting-only",
+      "hidden": true,
+      "colors": {
+        "background": "#0e1219",
+        "text": "#f8fbff",
+        "accent": "#79aee1",
+        "muted": "#dce7f2"
+      },
+      "chartColors": ["#79aee1", "#e5a56b", "#cb94e5", "#75cfad", "#e07b96", "#d9c769"],
+      "typography": {
+        "headline": "Cormorant Garamond@600",
+        "body": "Libre Franklin@600",
+        "scale": 1.333
+      },
+      "motion": {
+        "durations": {
+          "fast": 200,
+          "base": 500,
+          "slow": 900
+        },
+        "easings": {
+          "standard": "outCubic",
+          "emphasized": "outExpo"
+        }
+      },
+      "gradients": [],
+      "textAnimation": {
+        "in": "fade-scale",
+        "out": "fade",
+        "staggerMs": 36,
+        "stagger": "word",
+        "startScale": 0.9,
+        "shine": true
+      },
+      "textLook": null,
+      "background": "scene3d:grid-shell",
+      "backdrop": null,
+      "environment": null,
+      "lighting": true,
+      "effects": []
+    },
+    {
+      "id": "kookaburra-cut-paper-current",
+      "label": "Cut-Paper Current",
+      "summary": "Playful consumer campaigns",
+      "mode": "light",
+      "category": "essentials",
+      "categoryLabel": "Essentials",
+      "tags": ["consumer", "playful", "campaign", "paper", "colourful", "safe"],
+      "stage": "lighting-only",
+      "hidden": true,
+      "colors": {
+        "background": "#e4f2fe",
+        "text": "#102535",
+        "accent": "#136c8a",
+        "muted": "#294653"
+      },
+      "chartColors": ["#136c8a", "#1d4ed8", "#9333ea", "#b42318", "#0f766e", "#8a4f00"],
+      "typography": {
+        "headline": "Barlow Condensed@600",
+        "body": "Nunito@600",
+        "scale": 1.333
+      },
+      "motion": {
+        "durations": {
+          "fast": 200,
+          "base": 500,
+          "slow": 900
+        },
+        "easings": {
+          "standard": "outQuad",
+          "emphasized": "outCubic"
+        }
+      },
+      "gradients": [],
+      "textAnimation": {
+        "in": "fade-up",
+        "out": "fade",
+        "staggerMs": 55,
+        "stagger": "word"
+      },
+      "textLook": null,
+      "background": "scene3d:skyline-prisms",
+      "backdrop": null,
+      "environment": null,
+      "lighting": true,
+      "effects": []
+    },
+    {
+      "id": "kookaburra-dialogue-halo",
+      "label": "Dialogue Halo",
+      "summary": "Conversational product stories",
+      "mode": "dark",
+      "category": "essentials",
+      "categoryLabel": "Essentials",
+      "tags": ["conversation", "assistant", "ai", "product", "human", "cinematic"],
+      "stage": "lighting-only",
+      "hidden": true,
+      "colors": {
+        "background": "#17110d",
+        "text": "#fff8ef",
+        "accent": "#f2b879",
+        "muted": "#d8cbc0"
+      },
+      "chartColors": ["#f2b879", "#6b8afc", "#a9c6ff", "#c79bf5", "#73d6b0", "#ef8fa6"],
+      "typography": {
+        "headline": "Nunito@600",
+        "body": "Inter",
+        "scale": 1.25
+      },
+      "motion": {
+        "durations": {
+          "fast": 180,
+          "base": 460,
+          "slow": 850
+        },
+        "easings": {
+          "standard": "outCubic",
+          "emphasized": "outBack"
+        }
+      },
+      "gradients": [],
+      "textAnimation": {
+        "in": "twist-scale",
+        "out": "fade",
+        "staggerMs": 45,
+        "stagger": "word",
+        "direction": "from-right"
+      },
+      "textLook": null,
+      "background": "scene3d:halo-rings",
+      "backdrop": null,
+      "environment": null,
+      "lighting": true,
+      "effects": []
+    },
+    {
+      "id": "kookaburra-ivory",
+      "label": "Ivory",
+      "summary": "Thoughtful AI and research stories",
+      "mode": "light",
+      "category": "essentials",
+      "categoryLabel": "Essentials",
+      "tags": ["warm", "editorial", "serif", "ai", "calm", "paper"],
+      "stage": "lighting-only",
+      "colors": {
+        "background": "#f3f1ea",
+        "text": "#141413",
+        "accent": "#9f4527",
+        "muted": "#5a5954"
+      },
+      "chartColors": ["#9f4527", "#3e6a96", "#3f3e3a", "#8a5a12", "#5b7344", "#7b4a7a"],
+      "typography": {
+        "headline": "Instrument Serif",
+        "body": "Inter",
+        "scale": 1.2
+      },
+      "motion": {
+        "durations": {
+          "fast": 200,
+          "base": 520,
+          "slow": 940
+        },
+        "easings": {
+          "standard": "outCubic",
+          "emphasized": "outExpo"
+        }
+      },
+      "gradients": ["brand"],
+      "textAnimation": {
+        "in": "mask-reveal",
+        "out": "fade",
+        "staggerMs": 0,
+        "delivery": "by-paragraph"
+      },
+      "textLook": null,
+      "background": "gradient",
+      "backdrop": null,
+      "environment": "kookaburra:story-studio",
+      "lighting": true,
+      "effects": []
+    },
+    {
+      "id": "kookaburra-ledger-prism",
+      "label": "Ledger Prism",
+      "summary": "Institutional asset launches",
+      "mode": "dark",
+      "category": "essentials",
+      "categoryLabel": "Essentials",
+      "tags": ["institutional", "assets", "markets", "prism", "digital-assets", "safe"],
+      "stage": "lighting-only",
+      "hidden": true,
+      "colors": {
+        "background": "#0e1219",
+        "text": "#f7fbff",
+        "accent": "#78a7e5",
+        "muted": "#dce7f2"
+      },
+      "chartColors": ["#78a7e5", "#f0b36f", "#d19af2", "#73d1b4", "#f07f9d", "#d9cf6c"],
+      "typography": {
+        "headline": "Cormorant Garamond@600",
+        "body": "JetBrains Mono",
+        "scale": 1.333
+      },
+      "motion": {
+        "durations": {
+          "fast": 180,
+          "base": 460,
+          "slow": 840
+        },
+        "easings": {
+          "standard": "outCubic",
+          "emphasized": "outExpo"
+        }
+      },
+      "gradients": [],
+      "textAnimation": {
+        "in": "fade-scale",
+        "out": "fade",
+        "staggerMs": 32,
+        "stagger": "word",
+        "startScale": 0.9,
+        "shine": true
+      },
+      "textLook": null,
+      "background": "scene3d:grid-hall",
+      "backdrop": null,
+      "environment": null,
+      "lighting": true,
+      "effects": []
+    },
+    {
       "id": "kookaburra-paper",
       "label": "Paper",
       "summary": "Editorial explainers",
@@ -1378,6 +2282,7 @@
       "categoryLabel": "Essentials",
       "tags": ["editorial", "storytelling", "warm", "organic", "print", "education"],
       "stage": "physical",
+      "hidden": true,
       "colors": {
         "background": "#f7f1e3",
         "text": "#2b2119",
@@ -1415,6 +2320,289 @@
       "effects": []
     },
     {
+      "id": "kookaburra-paper-circuit",
+      "label": "Paper Circuit",
+      "summary": "Conceptual system maps",
+      "mode": "light",
+      "category": "essentials",
+      "categoryLabel": "Essentials",
+      "tags": ["systems", "mapping", "concept", "technology", "diagram", "experimental"],
+      "stage": "lighting-only",
+      "hidden": true,
+      "colors": {
+        "background": "#eef5f5",
+        "text": "#102b31",
+        "accent": "#08736c",
+        "muted": "#38565b"
+      },
+      "chartColors": ["#08736c", "#1333d4", "#7e22ce", "#b91c1c", "#15803d", "#8f5000"],
+      "typography": {
+        "headline": "JetBrains Mono",
+        "body": "Inter",
+        "scale": 1.2
+      },
+      "motion": {
+        "durations": {
+          "fast": 180,
+          "base": 460,
+          "slow": 860
+        },
+        "easings": {
+          "standard": "outCubic",
+          "emphasized": "outExpo"
+        }
+      },
+      "gradients": [],
+      "textAnimation": {
+        "in": "scatter-scale",
+        "out": "fade",
+        "staggerMs": 25,
+        "stagger": "char"
+      },
+      "textLook": null,
+      "background": "shader:horizon-grid",
+      "backdrop": null,
+      "environment": null,
+      "lighting": true,
+      "effects": []
+    },
+    {
+      "id": "kookaburra-strange-orchard",
+      "label": "Strange Orchard",
+      "summary": "Unexpected challenger campaigns",
+      "mode": "light",
+      "category": "essentials",
+      "categoryLabel": "Essentials",
+      "tags": ["challenger", "unexpected", "organic", "surreal", "campaign", "experimental"],
+      "stage": "lighting-only",
+      "hidden": true,
+      "colors": {
+        "background": "#f5f0dc",
+        "text": "#241d0c",
+        "accent": "#78611b",
+        "muted": "#30260e"
+      },
+      "chartColors": ["#78611b", "#9a3e2b", "#356b51", "#5f4b8b", "#1f6280", "#7b2f5b"],
+      "typography": {
+        "headline": "Cormorant Garamond@600",
+        "body": "Nunito@600",
+        "scale": 1.333
+      },
+      "motion": {
+        "durations": {
+          "fast": 210,
+          "base": 540,
+          "slow": 980
+        },
+        "easings": {
+          "standard": "outCubic",
+          "emphasized": "outBack"
+        }
+      },
+      "gradients": [],
+      "textAnimation": {
+        "in": "scatter-scale",
+        "out": "fade",
+        "staggerMs": 34,
+        "stagger": "char"
+      },
+      "textLook": null,
+      "background": "scene3d:dust-drift",
+      "backdrop": null,
+      "environment": null,
+      "lighting": true,
+      "effects": []
+    },
+    {
+      "id": "kookaburra-archive-future",
+      "label": "Archive Future",
+      "summary": "Editorial AI narratives",
+      "mode": "light",
+      "category": "essentials",
+      "categoryLabel": "Essentials",
+      "tags": ["editorial", "archive", "ai", "culture", "narrative", "experimental"],
+      "stage": "lighting-only",
+      "hidden": true,
+      "colors": {
+        "background": "#f0f4f8",
+        "text": "#182734",
+        "accent": "#335d83",
+        "muted": "#465766"
+      },
+      "chartColors": ["#335d83", "#1f2937", "#3f6f7a", "#6b4f6b", "#7a5c3a", "#27508f"],
+      "typography": {
+        "headline": "Cormorant Garamond@600",
+        "body": "Open Sans",
+        "scale": 1.333
+      },
+      "motion": {
+        "durations": {
+          "fast": 220,
+          "base": 560,
+          "slow": 1000
+        },
+        "easings": {
+          "standard": "outCubic",
+          "emphasized": "outExpo"
+        }
+      },
+      "gradients": [],
+      "textAnimation": {
+        "in": "mask-reveal",
+        "out": "fade",
+        "staggerMs": 0,
+        "delivery": "by-paragraph"
+      },
+      "textLook": null,
+      "background": "shader:dot-grid",
+      "backdrop": null,
+      "environment": null,
+      "lighting": true,
+      "effects": []
+    },
+    {
+      "id": "kookaburra-arctic-metric",
+      "label": "Arctic Metric",
+      "summary": "Clear analytical stories",
+      "mode": "light",
+      "category": "essentials",
+      "categoryLabel": "Essentials",
+      "tags": ["analytics", "data", "metrics", "clear", "professional", "technical"],
+      "stage": "lighting-only",
+      "hidden": true,
+      "colors": {
+        "background": "#f5f0dc",
+        "text": "#272313",
+        "accent": "#6d5612",
+        "muted": "#463e23"
+      },
+      "chartColors": ["#6d5612", "#3f5a4c", "#1f3a5f", "#8c2f39", "#8a6d1f", "#4a4a52"],
+      "typography": {
+        "headline": "Libre Franklin@600",
+        "body": "Inter",
+        "scale": 1.25
+      },
+      "motion": {
+        "durations": {
+          "fast": 200,
+          "base": 500,
+          "slow": 900
+        },
+        "easings": {
+          "standard": "outQuad",
+          "emphasized": "outCubic"
+        }
+      },
+      "gradients": [],
+      "textAnimation": {
+        "in": "fade-up",
+        "out": "fade",
+        "staggerMs": 50,
+        "stagger": "word"
+      },
+      "textLook": null,
+      "background": "scene3d:contour-field",
+      "backdrop": null,
+      "environment": null,
+      "lighting": true,
+      "effects": []
+    },
+    {
+      "id": "kookaburra-cashflow-pop",
+      "label": "Cashflow Pop",
+      "summary": "Expense and payment launches",
+      "mode": "light",
+      "category": "essentials",
+      "categoryLabel": "Essentials",
+      "tags": ["expenses", "payments", "cashflow", "launch", "energetic", "bold"],
+      "stage": "lighting-only",
+      "hidden": true,
+      "colors": {
+        "background": "#f4ede1",
+        "text": "#2c2113",
+        "accent": "#9b3f13",
+        "muted": "#5a4935"
+      },
+      "chartColors": ["#9b3f13", "#315d92", "#296953", "#783b78", "#7a5818", "#4d4d58"],
+      "typography": {
+        "headline": "Barlow Condensed@600",
+        "body": "Open Sans",
+        "scale": 1.333
+      },
+      "motion": {
+        "durations": {
+          "fast": 160,
+          "base": 410,
+          "slow": 760
+        },
+        "easings": {
+          "standard": "outCubic",
+          "emphasized": "outBack"
+        }
+      },
+      "gradients": [],
+      "textAnimation": {
+        "in": "twist-scale",
+        "out": "fade",
+        "staggerMs": 36,
+        "stagger": "word",
+        "direction": "from-left"
+      },
+      "textLook": null,
+      "background": "shader:warp",
+      "backdrop": null,
+      "environment": null,
+      "lighting": true,
+      "effects": []
+    },
+    {
+      "id": "kookaburra-community-mint",
+      "label": "Community Mint",
+      "summary": "Friendly crypto onboarding",
+      "mode": "light",
+      "category": "essentials",
+      "categoryLabel": "Essentials",
+      "tags": ["crypto", "onboarding", "community", "wallet", "friendly", "experimental"],
+      "stage": "lighting-only",
+      "hidden": true,
+      "colors": {
+        "background": "#eef6f3",
+        "text": "#132b26",
+        "accent": "#16705d",
+        "muted": "#354c47"
+      },
+      "chartColors": ["#16705d", "#315e9a", "#375f32", "#7a3f78", "#8b541d", "#594c84"],
+      "typography": {
+        "headline": "Nunito@600",
+        "body": "Open Sans",
+        "scale": 1.25
+      },
+      "motion": {
+        "durations": {
+          "fast": 190,
+          "base": 480,
+          "slow": 860
+        },
+        "easings": {
+          "standard": "outCubic",
+          "emphasized": "outBack"
+        }
+      },
+      "gradients": [],
+      "textAnimation": {
+        "in": "fade-up",
+        "out": "fade",
+        "staggerMs": 48,
+        "stagger": "word"
+      },
+      "textLook": null,
+      "background": "shader:simplex-noise",
+      "backdrop": null,
+      "environment": null,
+      "lighting": true,
+      "effects": []
+    },
+    {
       "id": "kookaburra-gallery",
       "label": "Gallery",
       "summary": "Minimal portfolios",
@@ -1423,6 +2611,7 @@
       "categoryLabel": "Essentials",
       "tags": ["portfolio", "minimal", "art", "architecture", "neutral", "presentation"],
       "stage": "physical",
+      "hidden": true,
       "colors": {
         "background": "#eef0f3",
         "text": "#23272c",
@@ -1460,6 +2649,147 @@
       "effects": []
     },
     {
+      "id": "kookaburra-ink",
+      "label": "Ink",
+      "summary": "Warm, considered dark stories",
+      "mode": "dark",
+      "category": "essentials",
+      "categoryLabel": "Essentials",
+      "tags": ["warm", "dark", "serif", "ai", "editorial", "calm"],
+      "stage": "lighting-only",
+      "colors": {
+        "background": "#141413",
+        "text": "#faf9f5",
+        "accent": "#d97757",
+        "muted": "#b5b3aa"
+      },
+      "chartColors": ["#d97757", "#6a9bcc", "#cfa55c", "#93a876", "#e6dccb", "#b48ead"],
+      "typography": {
+        "headline": "Instrument Serif",
+        "body": "Inter",
+        "scale": 1.2
+      },
+      "motion": {
+        "durations": {
+          "fast": 200,
+          "base": 520,
+          "slow": 940
+        },
+        "easings": {
+          "standard": "outCubic",
+          "emphasized": "outExpo"
+        }
+      },
+      "gradients": ["brand"],
+      "textAnimation": {
+        "in": "blur-in",
+        "out": "fade",
+        "staggerMs": 40,
+        "stagger": "word"
+      },
+      "textLook": null,
+      "background": "gradient",
+      "backdrop": null,
+      "environment": "kookaburra:story-studio",
+      "lighting": true,
+      "effects": []
+    },
+    {
+      "id": "kookaburra-neo-deco-signal",
+      "label": "Neo-Deco Signal",
+      "summary": "Premium event reveals",
+      "mode": "dark",
+      "category": "essentials",
+      "categoryLabel": "Essentials",
+      "tags": ["event", "premium", "deco", "architectural", "reveal", "safe"],
+      "stage": "lighting-only",
+      "hidden": true,
+      "colors": {
+        "background": "#17110d",
+        "text": "#fff8ee",
+        "accent": "#f0b56f",
+        "muted": "#f4e7da"
+      },
+      "chartColors": ["#f0b56f", "#a8d8ff", "#d5a5ff", "#7ed7a5", "#ff8f91", "#f0df72"],
+      "typography": {
+        "headline": "Cormorant Garamond@600",
+        "body": "Libre Franklin@600",
+        "scale": 1.333
+      },
+      "motion": {
+        "durations": {
+          "fast": 200,
+          "base": 500,
+          "slow": 920
+        },
+        "easings": {
+          "standard": "outQuad",
+          "emphasized": "outCubic"
+        }
+      },
+      "gradients": [],
+      "textAnimation": {
+        "in": "fade-up",
+        "out": "fade",
+        "staggerMs": 32,
+        "stagger": "word"
+      },
+      "textLook": null,
+      "background": "scene3d:grid-shell",
+      "backdrop": null,
+      "environment": null,
+      "lighting": true,
+      "effects": []
+    },
+    {
+      "id": "kookaburra-scribble-protocol",
+      "label": "Scribble Protocol",
+      "summary": "Rapid developer stories",
+      "mode": "light",
+      "category": "essentials",
+      "categoryLabel": "Essentials",
+      "tags": ["developer", "rapid", "technical", "hand-drawn", "prototype", "experimental"],
+      "stage": "lighting-only",
+      "hidden": true,
+      "colors": {
+        "background": "#e2f3fb",
+        "text": "#102b35",
+        "accent": "#006f8f",
+        "muted": "#294752"
+      },
+      "chartColors": ["#006f8f", "#243dc5", "#7e22ce", "#b91c1c", "#18733b", "#5f3000"],
+      "typography": {
+        "headline": "JetBrains Mono",
+        "body": "Libre Franklin@600",
+        "scale": 1.2
+      },
+      "motion": {
+        "durations": {
+          "fast": 150,
+          "base": 390,
+          "slow": 760
+        },
+        "easings": {
+          "standard": "outCubic",
+          "emphasized": "outExpo"
+        }
+      },
+      "gradients": [],
+      "textAnimation": {
+        "in": "twist-scale",
+        "out": "fade",
+        "staggerMs": 32,
+        "stagger": "char",
+        "direction": "from-left"
+      },
+      "textLook": null,
+      "background": "scene3d:grid-plain",
+      "backdrop": null,
+      "environment": null,
+      "lighting": true,
+      "effects": []
+    },
+    {
       "id": "kookaburra-sunrise",
       "label": "Sunrise",
       "summary": "Warm launch stories",
@@ -1468,6 +2798,7 @@
       "categoryLabel": "Essentials",
       "tags": ["launch", "optimistic", "warm", "friendly", "gradient", "marketing"],
       "stage": "physical",
+      "hidden": true,
       "colors": {
         "background": "#fff7f2",
         "text": "#3a2e35",
@@ -1514,6 +2845,7 @@
       "categoryLabel": "Essentials",
       "tags": ["lifestyle", "spatial", "interior", "product", "premium", "warm"],
       "stage": "physical",
+      "hidden": true,
       "colors": {
         "background": "#f6f1e9",
         "text": "#2d2a26",
@@ -1559,6 +2891,7 @@
       "categoryLabel": "Essentials",
       "tags": ["technology", "premium", "dark", "product", "cinematic", "ai"],
       "stage": "lighting-only",
+      "hidden": true,
       "colors": {
         "background": "#0a0e1a",
         "text": "#f2f5fa",
@@ -1606,6 +2939,7 @@
       "categoryLabel": "Essentials",
       "tags": ["digital", "developer", "code", "energetic", "futuristic", "dark"],
       "stage": "lighting-only",
+      "hidden": true,
       "colors": {
         "background": "#000000",
         "text": "#f5f7fa",
@@ -1651,6 +2985,7 @@
       "categoryLabel": "Essentials",
       "tags": ["cinematic", "immersive", "dark", "depth", "technology", "dramatic"],
       "stage": "physical",
+      "hidden": true,
       "colors": {
         "background": "#071021",
         "text": "#dce4f2",
@@ -1696,6 +3031,7 @@
       "categoryLabel": "Essentials",
       "tags": ["crafted", "human", "warm", "storytelling", "organic", "premium"],
       "stage": "physical",
+      "hidden": true,
       "colors": {
         "background": "#191512",
         "text": "#f5ede4",
@@ -1819,263 +3155,31 @@
       "effects": ["bloom", "vignette"]
     },
     {
-      "id": "kookaburra-porcelain-field",
-      "label": "Porcelain Field",
-      "summary": "Calm product systems",
-      "mode": "light",
-      "category": "quiet-technology",
-      "categoryLabel": "Quiet technology",
-      "tags": ["calm", "product", "systems", "technology", "minimal", "professional"],
-      "stage": "lighting-only",
-      "colors": {
-        "background": "#e8eff4",
-        "text": "#152735",
-        "accent": "#17677d",
-        "muted": "#38505f"
-      },
-      "chartColors": ["#17677d", "#1f2937", "#3f6f7a", "#6b4f6b", "#7a5c3a", "#27508f"],
-      "typography": {
-        "headline": "Libre Franklin@600",
-        "body": "Open Sans",
-        "scale": 1.25
-      },
-      "motion": {
-        "durations": {
-          "fast": 200,
-          "base": 520,
-          "slow": 920
-        },
-        "easings": {
-          "standard": "outQuad",
-          "emphasized": "outCubic"
-        }
-      },
-      "gradients": [],
-      "textAnimation": {
-        "in": "fade-scale",
-        "out": "fade",
-        "staggerMs": 0,
-        "startScale": 0.96
-      },
-      "textLook": null,
-      "background": "shader:mesh-gradient",
-      "backdrop": null,
-      "environment": null,
-      "lighting": true,
-      "effects": []
-    },
-    {
-      "id": "kookaburra-obsidian-optic",
-      "label": "Obsidian Optic",
-      "summary": "Premium technical reveals",
+      "id": "kookaburra-afterglow",
+      "label": "Afterglow",
+      "summary": "AI and developer tool launches",
       "mode": "dark",
-      "category": "quiet-technology",
-      "categoryLabel": "Quiet technology",
-      "tags": ["premium", "technical", "product", "dark", "cinematic", "reveal"],
+      "category": "studio",
+      "categoryLabel": "Studio",
+      "tags": ["ai", "developer", "dark", "glow", "software", "launch"],
       "stage": "lighting-only",
       "colors": {
-        "background": "#04100f",
-        "text": "#f5fbfa",
-        "accent": "#5eead4",
-        "muted": "#d9e8e5"
+        "background": "#08090b",
+        "text": "#f7f8f8",
+        "accent": "#9590ff",
+        "muted": "#a3a8b2"
       },
-      "chartColors": ["#5eead4", "#a8c7ff", "#c4a7ff", "#ffd166", "#ffb3c1", "#6fd8a8"],
+      "chartColors": ["#9590ff", "#4cc9f0", "#f7b267", "#f28ab2", "#7ee0a1", "#c3c7d0"],
       "typography": {
-        "headline": "Barlow Condensed@600",
-        "body": "Inter",
-        "scale": 1.333
-      },
-      "motion": {
-        "durations": {
-          "fast": 160,
-          "base": 420,
-          "slow": 800
-        },
-        "easings": {
-          "standard": "outCubic",
-          "emphasized": "outExpo"
-        }
-      },
-      "gradients": [],
-      "textAnimation": {
-        "in": "fade-scale",
-        "out": "fade",
-        "staggerMs": 35,
-        "stagger": "char",
-        "startScale": 0.84,
-        "shine": true
-      },
-      "textLook": null,
-      "background": "shader:smoke-ring",
-      "backdrop": null,
-      "environment": null,
-      "lighting": true,
-      "effects": []
-    },
-    {
-      "id": "kookaburra-paper-circuit",
-      "label": "Paper Circuit",
-      "summary": "Conceptual system maps",
-      "mode": "light",
-      "category": "quiet-technology",
-      "categoryLabel": "Quiet technology",
-      "tags": ["systems", "mapping", "concept", "technology", "diagram", "experimental"],
-      "stage": "lighting-only",
-      "colors": {
-        "background": "#eef5f5",
-        "text": "#102b31",
-        "accent": "#08736c",
-        "muted": "#38565b"
-      },
-      "chartColors": ["#08736c", "#1333d4", "#7e22ce", "#b91c1c", "#15803d", "#8f5000"],
-      "typography": {
-        "headline": "JetBrains Mono",
+        "headline": "Space Grotesk@600",
         "body": "Inter",
         "scale": 1.2
       },
       "motion": {
         "durations": {
-          "fast": 180,
-          "base": 460,
-          "slow": 860
-        },
-        "easings": {
-          "standard": "outCubic",
-          "emphasized": "outExpo"
-        }
-      },
-      "gradients": [],
-      "textAnimation": {
-        "in": "scatter-scale",
-        "out": "fade",
-        "staggerMs": 25,
-        "stagger": "char"
-      },
-      "textLook": null,
-      "background": "shader:horizon-grid",
-      "backdrop": null,
-      "environment": null,
-      "lighting": true,
-      "effects": []
-    },
-    {
-      "id": "kookaburra-arctic-metric",
-      "label": "Arctic Metric",
-      "summary": "Clear analytical stories",
-      "mode": "light",
-      "category": "quiet-technology",
-      "categoryLabel": "Quiet technology",
-      "tags": ["analytics", "data", "metrics", "clear", "professional", "technical"],
-      "stage": "lighting-only",
-      "colors": {
-        "background": "#f5f0dc",
-        "text": "#272313",
-        "accent": "#6d5612",
-        "muted": "#463e23"
-      },
-      "chartColors": ["#6d5612", "#3f5a4c", "#1f3a5f", "#8c2f39", "#8a6d1f", "#4a4a52"],
-      "typography": {
-        "headline": "Libre Franklin@600",
-        "body": "Inter",
-        "scale": 1.25
-      },
-      "motion": {
-        "durations": {
           "fast": 200,
-          "base": 500,
-          "slow": 900
-        },
-        "easings": {
-          "standard": "outQuad",
-          "emphasized": "outCubic"
-        }
-      },
-      "gradients": [],
-      "textAnimation": {
-        "in": "fade-up",
-        "out": "fade",
-        "staggerMs": 50,
-        "stagger": "word"
-      },
-      "textLook": null,
-      "background": "scene3d:contour-field",
-      "backdrop": null,
-      "environment": null,
-      "lighting": true,
-      "effects": []
-    },
-    {
-      "id": "kookaburra-linen-intelligence",
-      "label": "Linen Intelligence",
-      "summary": "Human AI stories",
-      "mode": "light",
-      "category": "human-centred-ai",
-      "categoryLabel": "Human-centred AI",
-      "tags": ["ai", "editorial", "explainer", "human", "warm", "organic"],
-      "stage": "lighting-only",
-      "colors": {
-        "background": "#f7f3ec",
-        "text": "#241c1a",
-        "accent": "#964333",
-        "muted": "#594c47"
-      },
-      "chartColors": ["#964333", "#3f5a4c", "#1f3a5f", "#8c2f39", "#6a5515", "#4a4a52"],
-      "typography": {
-        "headline": "Cormorant Garamond@600",
-        "body": "Open Sans",
-        "scale": 1.333
-      },
-      "motion": {
-        "durations": {
-          "fast": 220,
-          "base": 560,
-          "slow": 1000
-        },
-        "easings": {
-          "standard": "outCubic",
-          "emphasized": "outExpo"
-        }
-      },
-      "gradients": [],
-      "textAnimation": {
-        "in": "mask-reveal",
-        "out": "fade",
-        "staggerMs": 0,
-        "delivery": "by-paragraph"
-      },
-      "textLook": null,
-      "background": "image",
-      "backdrop": null,
-      "environment": null,
-      "lighting": true,
-      "effects": []
-    },
-    {
-      "id": "kookaburra-thought-bloom",
-      "label": "Thought Bloom",
-      "summary": "Warm AI explainers",
-      "mode": "light",
-      "category": "human-centred-ai",
-      "categoryLabel": "Human-centred AI",
-      "tags": ["ai", "explainer", "human", "warm", "learning", "optimistic"],
-      "stage": "lighting-only",
-      "colors": {
-        "background": "#ffffff",
-        "text": "#15261f",
-        "accent": "#22644d",
-        "muted": "#3e5149"
-      },
-      "chartColors": ["#22644d", "#2563eb", "#7c3aed", "#b45309", "#be123c", "#3f6212"],
-      "typography": {
-        "headline": "Nunito@600",
-        "body": "Open Sans",
-        "scale": 1.25
-      },
-      "motion": {
-        "durations": {
-          "fast": 220,
-          "base": 560,
-          "slow": 1000
+          "base": 520,
+          "slow": 940
         },
         "easings": {
           "standard": "outCubic",
@@ -2086,275 +3190,88 @@
       "textAnimation": {
         "in": "blur-in",
         "out": "fade",
-        "staggerMs": 55,
+        "staggerMs": 30,
         "stagger": "word"
       },
       "textLook": null,
-      "background": "shader:neuro-noise",
+      "background": "shader:mesh-gradient",
       "backdrop": null,
-      "environment": null,
+      "environment": "kookaburra:monochrome-studio",
       "lighting": true,
       "effects": []
     },
     {
-      "id": "kookaburra-dialogue-halo",
-      "label": "Dialogue Halo",
-      "summary": "Conversational product stories",
+      "id": "kookaburra-blue-hour",
+      "label": "Blue Hour",
+      "summary": "Calm, cinematic stories",
       "mode": "dark",
-      "category": "human-centred-ai",
-      "categoryLabel": "Human-centred AI",
-      "tags": ["conversation", "assistant", "ai", "product", "human", "cinematic"],
+      "category": "studio",
+      "categoryLabel": "Studio",
+      "tags": ["teal", "cinematic", "calm", "dark", "dusk", "wellbeing"],
       "stage": "lighting-only",
       "colors": {
-        "background": "#17110d",
-        "text": "#fff8ef",
-        "accent": "#f2b879",
-        "muted": "#d8cbc0"
+        "background": "#0b1f24",
+        "text": "#f5f3ee",
+        "accent": "#7fd1c7",
+        "muted": "#a9c2c0"
       },
-      "chartColors": ["#f2b879", "#6b8afc", "#a9c6ff", "#c79bf5", "#73d6b0", "#ef8fa6"],
+      "chartColors": ["#7fd1c7", "#f2c48d", "#9db7f5", "#c6e5a3", "#e9a6a1", "#d3c1f0"],
       "typography": {
-        "headline": "Nunito@600",
-        "body": "Inter",
-        "scale": 1.25
-      },
-      "motion": {
-        "durations": {
-          "fast": 180,
-          "base": 460,
-          "slow": 850
-        },
-        "easings": {
-          "standard": "outCubic",
-          "emphasized": "outBack"
-        }
-      },
-      "gradients": [],
-      "textAnimation": {
-        "in": "twist-scale",
-        "out": "fade",
-        "staggerMs": 45,
-        "stagger": "word",
-        "direction": "from-right"
-      },
-      "textLook": null,
-      "background": "scene3d:halo-rings",
-      "backdrop": null,
-      "environment": null,
-      "lighting": true,
-      "effects": []
-    },
-    {
-      "id": "kookaburra-archive-future",
-      "label": "Archive Future",
-      "summary": "Editorial AI narratives",
-      "mode": "light",
-      "category": "human-centred-ai",
-      "categoryLabel": "Human-centred AI",
-      "tags": ["editorial", "archive", "ai", "culture", "narrative", "experimental"],
-      "stage": "lighting-only",
-      "colors": {
-        "background": "#f0f4f8",
-        "text": "#182734",
-        "accent": "#335d83",
-        "muted": "#465766"
-      },
-      "chartColors": ["#335d83", "#1f2937", "#3f6f7a", "#6b4f6b", "#7a5c3a", "#27508f"],
-      "typography": {
-        "headline": "Cormorant Garamond@600",
-        "body": "Open Sans",
-        "scale": 1.333
-      },
-      "motion": {
-        "durations": {
-          "fast": 220,
-          "base": 560,
-          "slow": 1000
-        },
-        "easings": {
-          "standard": "outCubic",
-          "emphasized": "outExpo"
-        }
-      },
-      "gradients": [],
-      "textAnimation": {
-        "in": "mask-reveal",
-        "out": "fade",
-        "staggerMs": 0,
-        "delivery": "by-paragraph"
-      },
-      "textLook": null,
-      "background": "shader:dot-grid",
-      "backdrop": null,
-      "environment": null,
-      "lighting": true,
-      "effects": []
-    },
-    {
-      "id": "kookaburra-elastic-glyphs",
-      "label": "Elastic Glyphs",
-      "summary": "Expressive maker launches",
-      "mode": "light",
-      "category": "maker-energy",
-      "categoryLabel": "Maker energy",
-      "tags": ["maker", "launch", "creative", "kinetic", "typography", "product"],
-      "stage": "lighting-only",
-      "colors": {
-        "background": "#dcf5f5",
-        "text": "#12302d",
-        "accent": "#006f68",
-        "muted": "#274a46"
-      },
-      "chartColors": ["#006f68", "#1f4d6b", "#77659c", "#a03329", "#3f6b3f", "#8f5000"],
-      "typography": {
-        "headline": "Space Grotesk@600",
-        "body": "Inter",
-        "scale": 1.25
-      },
-      "motion": {
-        "durations": {
-          "fast": 180,
-          "base": 450,
-          "slow": 850
-        },
-        "easings": {
-          "standard": "outCubic",
-          "emphasized": "outBack"
-        }
-      },
-      "gradients": [],
-      "textAnimation": {
-        "in": "fade-scale",
-        "out": "fade",
-        "staggerMs": 35,
-        "stagger": "char",
-        "startScale": 0.88,
-        "shine": true
-      },
-      "textLook": null,
-      "background": "scene3d:drift-slabs",
-      "backdrop": null,
-      "environment": null,
-      "lighting": true,
-      "effects": []
-    },
-    {
-      "id": "kookaburra-riso-logic",
-      "label": "Riso Logic",
-      "summary": "Indie creative launches",
-      "mode": "light",
-      "category": "maker-energy",
-      "categoryLabel": "Maker energy",
-      "tags": ["riso", "indie", "creative", "launch", "print", "bold"],
-      "stage": "lighting-only",
-      "colors": {
-        "background": "#f5ecf2",
-        "text": "#24151e",
-        "accent": "#ad2055",
-        "muted": "#5d4552"
-      },
-      "chartColors": ["#ad2055", "#2563eb", "#08736c", "#7e22ce", "#b45309", "#3f6212"],
-      "typography": {
-        "headline": "Nunito@600",
-        "body": "Libre Franklin@600",
-        "scale": 1.25
-      },
-      "motion": {
-        "durations": {
-          "fast": 170,
-          "base": 440,
-          "slow": 820
-        },
-        "easings": {
-          "standard": "outCubic",
-          "emphasized": "outBack"
-        }
-      },
-      "gradients": [],
-      "textAnimation": {
-        "in": "scatter-scale",
-        "out": "fade",
-        "staggerMs": 28,
-        "stagger": "char"
-      },
-      "textLook": null,
-      "background": "shader:swirl",
-      "backdrop": null,
-      "environment": null,
-      "lighting": true,
-      "effects": []
-    },
-    {
-      "id": "kookaburra-cut-paper-current",
-      "label": "Cut-Paper Current",
-      "summary": "Playful consumer campaigns",
-      "mode": "light",
-      "category": "maker-energy",
-      "categoryLabel": "Maker energy",
-      "tags": ["consumer", "playful", "campaign", "paper", "colourful", "safe"],
-      "stage": "lighting-only",
-      "colors": {
-        "background": "#e4f2fe",
-        "text": "#102535",
-        "accent": "#136c8a",
-        "muted": "#294653"
-      },
-      "chartColors": ["#136c8a", "#1d4ed8", "#9333ea", "#b42318", "#0f766e", "#8a4f00"],
-      "typography": {
-        "headline": "Barlow Condensed@600",
-        "body": "Nunito@600",
-        "scale": 1.333
+        "headline": "IBM Plex Sans@600",
+        "body": "IBM Plex Sans",
+        "scale": 1.2
       },
       "motion": {
         "durations": {
           "fast": 200,
-          "base": 500,
-          "slow": 900
+          "base": 520,
+          "slow": 940
         },
         "easings": {
-          "standard": "outQuad",
-          "emphasized": "outCubic"
+          "standard": "outCubic",
+          "emphasized": "outExpo"
         }
       },
       "gradients": [],
       "textAnimation": {
         "in": "fade-up",
         "out": "fade",
-        "staggerMs": 55,
+        "staggerMs": 45,
         "stagger": "word"
       },
       "textLook": null,
-      "background": "scene3d:skyline-prisms",
+      "background": "shader:mesh-gradient",
       "backdrop": null,
-      "environment": null,
+      "environment": "kookaburra:dawn",
       "lighting": true,
       "effects": []
     },
     {
-      "id": "kookaburra-scribble-protocol",
-      "label": "Scribble Protocol",
-      "summary": "Rapid developer stories",
+      "id": "kookaburra-soft-field",
+      "label": "Soft Field",
+      "summary": "Friendly consumer launches",
       "mode": "light",
-      "category": "maker-energy",
-      "categoryLabel": "Maker energy",
-      "tags": ["developer", "rapid", "technical", "hand-drawn", "prototype", "experimental"],
+      "category": "studio",
+      "categoryLabel": "Studio",
+      "tags": ["pastel", "sky", "soft", "consumer", "friendly", "gradient"],
       "stage": "lighting-only",
       "colors": {
-        "background": "#e2f3fb",
-        "text": "#102b35",
-        "accent": "#006f8f",
-        "muted": "#294752"
+        "background": "#eef1f9",
+        "text": "#0a2540",
+        "accent": "#4f46e5",
+        "muted": "#3e5570"
       },
-      "chartColors": ["#006f8f", "#243dc5", "#7e22ce", "#b91c1c", "#18733b", "#5f3000"],
+      "chartColors": ["#4f46e5", "#0e7490", "#b4235a", "#15803d", "#334155", "#b45309"],
       "typography": {
-        "headline": "JetBrains Mono",
-        "body": "Libre Franklin@600",
+        "headline": "Jost@500",
+        "body": "Inter",
         "scale": 1.2
       },
       "motion": {
         "durations": {
-          "fast": 150,
-          "base": 390,
-          "slow": 760
+          "fast": 200,
+          "base": 520,
+          "slow": 940
         },
         "easings": {
           "standard": "outCubic",
@@ -2363,39 +3280,37 @@
       },
       "gradients": [],
       "textAnimation": {
-        "in": "twist-scale",
+        "in": "fade-up",
         "out": "fade",
-        "staggerMs": 32,
-        "stagger": "char",
-        "direction": "from-left"
+        "staggerMs": 0
       },
       "textLook": null,
-      "background": "scene3d:grid-plain",
+      "background": "shader:mesh-gradient",
       "backdrop": null,
-      "environment": null,
+      "environment": "kookaburra:cyclorama",
       "lighting": true,
       "effects": []
     },
     {
-      "id": "kookaburra-velvet-physics",
-      "label": "Velvet Physics",
-      "summary": "Premium creative launches",
-      "mode": "dark",
-      "category": "sensory-and-surreal",
-      "categoryLabel": "Sensory and surreal",
-      "tags": ["premium", "creative", "launch", "sensory", "surreal", "luxury"],
+      "id": "kookaburra-frost",
+      "label": "Frost",
+      "summary": "Hardware and device reveals",
+      "mode": "light",
+      "category": "studio",
+      "categoryLabel": "Studio",
+      "tags": ["glass", "hardware", "device", "clean", "cool", "depth"],
       "stage": "lighting-only",
       "colors": {
-        "background": "#230818",
-        "text": "#fff4df",
-        "accent": "#d9879b",
-        "muted": "#d8c4b3"
+        "background": "#eef2f5",
+        "text": "#0e171e",
+        "accent": "#0858b4",
+        "muted": "#44515b"
       },
-      "chartColors": ["#d9879b", "#d2a85f", "#8c82c9", "#6eafa8", "#c96f5d", "#9caf6d"],
+      "chartColors": ["#0858b4", "#0f766e", "#7c3aed", "#b45309", "#be123c", "#334155"],
       "typography": {
-        "headline": "Cormorant Garamond@600",
-        "body": "Open Sans",
-        "scale": 1.333
+        "headline": "Inter@600",
+        "body": "Inter",
+        "scale": 1.2
       },
       "motion": {
         "durations": {
@@ -2416,224 +3331,38 @@
         "startScale": 0.96
       },
       "textLook": null,
-      "background": "image",
+      "background": "scene3d:wash-dome",
       "backdrop": null,
-      "environment": null,
+      "environment": "kookaburra:cyclorama",
       "lighting": true,
       "effects": []
     },
     {
-      "id": "kookaburra-lucid-chrome",
-      "label": "Lucid Chrome",
-      "summary": "Immersive media launches",
-      "mode": "dark",
-      "category": "sensory-and-surreal",
-      "categoryLabel": "Sensory and surreal",
-      "tags": ["immersive", "media", "chrome", "orbital", "cinematic", "bold"],
-      "stage": "lighting-only",
-      "colors": {
-        "background": "#0e1219",
-        "text": "#f5fbff",
-        "accent": "#65d9ff",
-        "muted": "#c7d4df"
-      },
-      "chartColors": ["#65d9ff", "#ffe08a", "#d89cff", "#74e0b0", "#ff7d9c", "#b8c4d8"],
-      "typography": {
-        "headline": "Barlow Condensed@600",
-        "body": "Libre Franklin@600",
-        "scale": 1.333
-      },
-      "motion": {
-        "durations": {
-          "fast": 160,
-          "base": 420,
-          "slow": 800
-        },
-        "easings": {
-          "standard": "outCubic",
-          "emphasized": "outExpo"
-        }
-      },
-      "gradients": [],
-      "textAnimation": {
-        "in": "fade-scale",
-        "out": "fade",
-        "staggerMs": 42,
-        "stagger": "word",
-        "startScale": 0.84,
-        "shine": true
-      },
-      "textLook": null,
-      "background": "scene3d:orb-field",
-      "backdrop": null,
-      "environment": null,
-      "lighting": true,
-      "effects": []
-    },
-    {
-      "id": "kookaburra-strange-orchard",
-      "label": "Strange Orchard",
-      "summary": "Unexpected challenger campaigns",
+      "id": "kookaburra-lilac",
+      "label": "Lilac",
+      "summary": "Creative and lifestyle apps",
       "mode": "light",
-      "category": "sensory-and-surreal",
-      "categoryLabel": "Sensory and surreal",
-      "tags": ["challenger", "unexpected", "organic", "surreal", "campaign", "experimental"],
+      "category": "studio",
+      "categoryLabel": "Studio",
+      "tags": ["lavender", "purple", "soft", "creative", "lifestyle", "serif"],
       "stage": "lighting-only",
       "colors": {
-        "background": "#f5f0dc",
-        "text": "#241d0c",
-        "accent": "#78611b",
-        "muted": "#30260e"
+        "background": "#f2eef8",
+        "text": "#1d1530",
+        "accent": "#6236c9",
+        "muted": "#544a68"
       },
-      "chartColors": ["#78611b", "#9a3e2b", "#356b51", "#5f4b8b", "#1f6280", "#7b2f5b"],
+      "chartColors": ["#6236c9", "#b4235a", "#0e7490", "#a16207", "#334155", "#15803d"],
       "typography": {
-        "headline": "Cormorant Garamond@600",
-        "body": "Nunito@600",
-        "scale": 1.333
-      },
-      "motion": {
-        "durations": {
-          "fast": 210,
-          "base": 540,
-          "slow": 980
-        },
-        "easings": {
-          "standard": "outCubic",
-          "emphasized": "outBack"
-        }
-      },
-      "gradients": [],
-      "textAnimation": {
-        "in": "scatter-scale",
-        "out": "fade",
-        "staggerMs": 34,
-        "stagger": "char"
-      },
-      "textLook": null,
-      "background": "scene3d:dust-drift",
-      "backdrop": null,
-      "environment": null,
-      "lighting": true,
-      "effects": []
-    },
-    {
-      "id": "kookaburra-neo-deco-signal",
-      "label": "Neo-Deco Signal",
-      "summary": "Premium event reveals",
-      "mode": "dark",
-      "category": "sensory-and-surreal",
-      "categoryLabel": "Sensory and surreal",
-      "tags": ["event", "premium", "deco", "architectural", "reveal", "safe"],
-      "stage": "lighting-only",
-      "colors": {
-        "background": "#17110d",
-        "text": "#fff8ee",
-        "accent": "#f0b56f",
-        "muted": "#f4e7da"
-      },
-      "chartColors": ["#f0b56f", "#a8d8ff", "#d5a5ff", "#7ed7a5", "#ff8f91", "#f0df72"],
-      "typography": {
-        "headline": "Cormorant Garamond@600",
-        "body": "Libre Franklin@600",
-        "scale": 1.333
+        "headline": "Instrument Serif",
+        "body": "Inter",
+        "scale": 1.2
       },
       "motion": {
         "durations": {
           "fast": 200,
-          "base": 500,
-          "slow": 920
-        },
-        "easings": {
-          "standard": "outQuad",
-          "emphasized": "outCubic"
-        }
-      },
-      "gradients": [],
-      "textAnimation": {
-        "in": "fade-up",
-        "out": "fade",
-        "staggerMs": 32,
-        "stagger": "word"
-      },
-      "textLook": null,
-      "background": "scene3d:grid-shell",
-      "backdrop": null,
-      "environment": null,
-      "lighting": true,
-      "effects": []
-    },
-    {
-      "id": "kookaburra-ember-ledger",
-      "label": "Ember Ledger",
-      "summary": "Retail digital asset launches",
-      "mode": "dark",
-      "category": "digital-assets",
-      "categoryLabel": "Digital assets",
-      "tags": ["digital-assets", "retail", "exchange", "market", "ember", "safe"],
-      "stage": "lighting-only",
-      "colors": {
-        "background": "#19130e",
-        "text": "#fff4e8",
-        "accent": "#ffb36b",
-        "muted": "#f1ddc8"
-      },
-      "chartColors": ["#ffb36b", "#ffe08a", "#65c8b0", "#a8d1ff", "#d99cff", "#ffb0bc"],
-      "typography": {
-        "headline": "Barlow Condensed@600",
-        "body": "Libre Franklin@600",
-        "scale": 1.333
-      },
-      "motion": {
-        "durations": {
-          "fast": 190,
-          "base": 470,
-          "slow": 860
-        },
-        "easings": {
-          "standard": "outQuad",
-          "emphasized": "outCubic"
-        }
-      },
-      "gradients": [],
-      "textAnimation": {
-        "in": "fade-up",
-        "out": "fade",
-        "staggerMs": 45,
-        "stagger": "word"
-      },
-      "textLook": null,
-      "background": "shader:hex-grid",
-      "backdrop": null,
-      "environment": null,
-      "lighting": true,
-      "effects": []
-    },
-    {
-      "id": "kookaburra-chain-current",
-      "label": "Chain Current",
-      "summary": "Protocol and wallet launches",
-      "mode": "dark",
-      "category": "digital-assets",
-      "categoryLabel": "Digital assets",
-      "tags": ["protocol", "wallet", "network", "digital-assets", "infrastructure", "bold"],
-      "stage": "lighting-only",
-      "colors": {
-        "background": "#0e1219",
-        "text": "#f4f8ff",
-        "accent": "#7eb8f2",
-        "muted": "#eedfd2"
-      },
-      "chartColors": ["#7eb8f2", "#ffd166", "#7ed6b4", "#d59cff", "#e87845", "#ff879b"],
-      "typography": {
-        "headline": "Libre Franklin@600",
-        "body": "JetBrains Mono",
-        "scale": 1.25
-      },
-      "motion": {
-        "durations": {
-          "fast": 160,
-          "base": 410,
-          "slow": 780
+          "base": 520,
+          "slow": 940
         },
         "easings": {
           "standard": "outCubic",
@@ -2642,46 +3371,44 @@
       },
       "gradients": [],
       "textAnimation": {
-        "in": "fade-scale",
+        "in": "blur-in",
         "out": "fade",
-        "staggerMs": 32,
-        "stagger": "char",
-        "startScale": 0.86,
-        "shine": true
+        "staggerMs": 35,
+        "stagger": "word"
       },
       "textLook": null,
-      "background": "scene3d:point-swell",
+      "background": "shader:mesh-gradient",
       "backdrop": null,
-      "environment": null,
+      "environment": "kookaburra:cyclorama",
       "lighting": true,
       "effects": []
     },
     {
-      "id": "kookaburra-ledger-prism",
-      "label": "Ledger Prism",
-      "summary": "Institutional asset launches",
+      "id": "kookaburra-moss",
+      "label": "Moss",
+      "summary": "Health, climate and wellbeing",
       "mode": "dark",
-      "category": "digital-assets",
-      "categoryLabel": "Digital assets",
-      "tags": ["institutional", "assets", "markets", "prism", "digital-assets", "safe"],
+      "category": "studio",
+      "categoryLabel": "Studio",
+      "tags": ["green", "nature", "calm", "dark", "health", "climate"],
       "stage": "lighting-only",
       "colors": {
-        "background": "#0e1219",
-        "text": "#f7fbff",
-        "accent": "#78a7e5",
-        "muted": "#dce7f2"
+        "background": "#0d1813",
+        "text": "#eef3ea",
+        "accent": "#9be3a8",
+        "muted": "#a9bcae"
       },
-      "chartColors": ["#78a7e5", "#f0b36f", "#d19af2", "#73d1b4", "#f07f9d", "#d9cf6c"],
+      "chartColors": ["#9be3a8", "#8fc1e3", "#e8c77d", "#e3a08f", "#c9b6e8", "#d7e3a0"],
       "typography": {
-        "headline": "Cormorant Garamond@600",
-        "body": "JetBrains Mono",
-        "scale": 1.333
+        "headline": "Fraunces@600",
+        "body": "IBM Plex Sans",
+        "scale": 1.2
       },
       "motion": {
         "durations": {
-          "fast": 180,
-          "base": 460,
-          "slow": 840
+          "fast": 200,
+          "base": 520,
+          "slow": 940
         },
         "easings": {
           "standard": "outCubic",
@@ -2690,142 +3417,94 @@
       },
       "gradients": [],
       "textAnimation": {
-        "in": "fade-scale",
+        "in": "fade-up",
         "out": "fade",
-        "staggerMs": 32,
-        "stagger": "word",
-        "startScale": 0.9,
-        "shine": true
+        "staggerMs": 40,
+        "stagger": "word"
       },
       "textLook": null,
-      "background": "scene3d:grid-hall",
+      "background": "shader:mesh-gradient",
       "backdrop": null,
-      "environment": null,
+      "environment": "kookaburra:ferndale-studio",
       "lighting": true,
       "effects": []
     },
     {
-      "id": "kookaburra-community-mint",
-      "label": "Community Mint",
-      "summary": "Friendly crypto onboarding",
+      "id": "kookaburra-sage",
+      "label": "Sage",
+      "summary": "Calm health and wellbeing",
       "mode": "light",
-      "category": "digital-assets",
-      "categoryLabel": "Digital assets",
-      "tags": ["crypto", "onboarding", "community", "wallet", "friendly", "experimental"],
+      "category": "colour",
+      "categoryLabel": "Colour",
+      "tags": ["green", "subtle", "calm", "natural", "wellbeing", "tint"],
       "stage": "lighting-only",
       "colors": {
-        "background": "#eef6f3",
-        "text": "#132b26",
-        "accent": "#16705d",
-        "muted": "#354c47"
+        "background": "#e9efe7",
+        "text": "#16231a",
+        "accent": "#2e6a45",
+        "muted": "#45574a"
       },
-      "chartColors": ["#16705d", "#315e9a", "#375f32", "#7a3f78", "#8b541d", "#594c84"],
+      "chartColors": ["#2e6a45", "#1f4e79", "#9a3b2a", "#6b5a12", "#5a3f7a", "#2f3b33"],
       "typography": {
-        "headline": "Nunito@600",
-        "body": "Open Sans",
-        "scale": 1.25
+        "headline": "Jost@500",
+        "body": "Inter",
+        "scale": 1.2
       },
       "motion": {
         "durations": {
-          "fast": 190,
-          "base": 480,
-          "slow": 860
+          "fast": 200,
+          "base": 520,
+          "slow": 940
         },
         "easings": {
           "standard": "outCubic",
-          "emphasized": "outBack"
+          "emphasized": "outExpo"
         }
       },
       "gradients": [],
       "textAnimation": {
         "in": "fade-up",
         "out": "fade",
-        "staggerMs": 48,
+        "staggerMs": 40,
         "stagger": "word"
       },
       "textLook": null,
-      "background": "shader:simplex-noise",
+      "background": "shader:mesh-gradient",
       "backdrop": null,
-      "environment": null,
+      "environment": "kookaburra:cyclorama",
       "lighting": true,
       "effects": []
     },
     {
-      "id": "kookaburra-balance-sheet-blue",
-      "label": "Balance-Sheet Blue",
-      "summary": "Banking and accounting",
-      "mode": "dark",
-      "category": "modern-finance",
-      "categoryLabel": "Modern finance",
-      "tags": ["banking", "accounting", "finance", "reporting", "professional", "safe"],
+      "id": "kookaburra-sky",
+      "label": "Sky",
+      "summary": "Fresh product updates",
+      "mode": "light",
+      "category": "colour",
+      "categoryLabel": "Colour",
+      "tags": ["blue", "subtle", "fresh", "product", "airy", "tint"],
       "stage": "lighting-only",
       "colors": {
-        "background": "#11111d",
-        "text": "#fafaff",
-        "accent": "#c8c7ff",
-        "muted": "#deddf2"
+        "background": "#e8f1fb",
+        "text": "#0b1f35",
+        "accent": "#1d5bd6",
+        "muted": "#3a536e"
       },
-      "chartColors": ["#c8c7ff", "#5eead4", "#f1ad69", "#f2b4dc", "#d2c76c", "#a9cdf7"],
+      "chartColors": ["#1d5bd6", "#0f6b5c", "#b4235a", "#8a5a00", "#5b3fc4", "#24364b"],
       "typography": {
-        "headline": "Libre Franklin@600",
-        "body": "JetBrains Mono",
-        "scale": 1.25
+        "headline": "Inter@600",
+        "body": "Inter",
+        "scale": 1.2
       },
       "motion": {
         "durations": {
-          "fast": 180,
-          "base": 450,
-          "slow": 820
+          "fast": 200,
+          "base": 520,
+          "slow": 940
         },
         "easings": {
-          "standard": "outQuad",
-          "emphasized": "outCubic"
-        }
-      },
-      "gradients": [],
-      "textAnimation": {
-        "in": "fade-up",
-        "out": "fade",
-        "staggerMs": 42,
-        "stagger": "word"
-      },
-      "textLook": null,
-      "background": "shader:graph-grid",
-      "backdrop": null,
-      "environment": null,
-      "lighting": true,
-      "effects": []
-    },
-    {
-      "id": "kookaburra-quiet-growth",
-      "label": "Quiet Growth",
-      "summary": "Wealth and sustainable finance",
-      "mode": "dark",
-      "category": "modern-finance",
-      "categoryLabel": "Modern finance",
-      "tags": ["wealth", "sustainable-finance", "growth", "investment", "calm", "safe"],
-      "stage": "lighting-only",
-      "colors": {
-        "background": "#17110c",
-        "text": "#fff8f2",
-        "accent": "#d59b78",
-        "muted": "#eadcd2"
-      },
-      "chartColors": ["#d59b78", "#86c896", "#e1c36e", "#71b7d9", "#8d9ee8", "#d695c7"],
-      "typography": {
-        "headline": "Lora",
-        "body": "Open Sans",
-        "scale": 1.25
-      },
-      "motion": {
-        "durations": {
-          "fast": 220,
-          "base": 560,
-          "slow": 980
-        },
-        "easings": {
-          "standard": "outQuad",
-          "emphasized": "outCubic"
+          "standard": "outCubic",
+          "emphasized": "outExpo"
         }
       },
       "gradients": [],
@@ -2836,38 +3515,38 @@
         "startScale": 0.96
       },
       "textLook": null,
-      "background": "scene3d:contour-field",
+      "background": "shader:mesh-gradient",
       "backdrop": null,
-      "environment": null,
+      "environment": "kookaburra:cyclorama",
       "lighting": true,
       "effects": []
     },
     {
-      "id": "kookaburra-brass-ledger",
-      "label": "Brass Ledger",
-      "summary": "Private wealth and insurance",
-      "mode": "dark",
-      "category": "modern-finance",
-      "categoryLabel": "Modern finance",
-      "tags": ["private-wealth", "insurance", "premium", "heritage", "finance", "experimental"],
+      "id": "kookaburra-blush",
+      "label": "Blush",
+      "summary": "Beauty, fashion and lifestyle",
+      "mode": "light",
+      "category": "colour",
+      "categoryLabel": "Colour",
+      "tags": ["pink", "subtle", "warm", "lifestyle", "serif", "tint"],
       "stage": "lighting-only",
       "colors": {
-        "background": "#0e1219",
-        "text": "#f8fbff",
-        "accent": "#79aee1",
-        "muted": "#dce7f2"
+        "background": "#f8ebe6",
+        "text": "#2a1614",
+        "accent": "#a8352a",
+        "muted": "#61443e"
       },
-      "chartColors": ["#79aee1", "#e5a56b", "#cb94e5", "#75cfad", "#e07b96", "#d9c769"],
+      "chartColors": ["#a8352a", "#1f4e79", "#2e6a45", "#7a4a8a", "#3a2a28", "#8a5a00"],
       "typography": {
-        "headline": "Cormorant Garamond@600",
-        "body": "Libre Franklin@600",
-        "scale": 1.333
+        "headline": "Instrument Serif",
+        "body": "Inter",
+        "scale": 1.2
       },
       "motion": {
         "durations": {
           "fast": 200,
-          "base": 500,
-          "slow": 900
+          "base": 520,
+          "slow": 940
         },
         "easings": {
           "standard": "outCubic",
@@ -2876,64 +3555,424 @@
       },
       "gradients": [],
       "textAnimation": {
-        "in": "fade-scale",
+        "in": "blur-in",
         "out": "fade",
-        "staggerMs": 36,
-        "stagger": "word",
-        "startScale": 0.9,
-        "shine": true
+        "staggerMs": 35,
+        "stagger": "word"
       },
       "textLook": null,
-      "background": "scene3d:grid-shell",
+      "background": "shader:mesh-gradient",
       "backdrop": null,
-      "environment": null,
+      "environment": "kookaburra:story-studio",
       "lighting": true,
       "effects": []
     },
     {
-      "id": "kookaburra-cashflow-pop",
-      "label": "Cashflow Pop",
-      "summary": "Expense and payment launches",
+      "id": "kookaburra-citrus",
+      "label": "Citrus",
+      "summary": "Loud launches and announcements",
       "mode": "light",
-      "category": "modern-finance",
-      "categoryLabel": "Modern finance",
-      "tags": ["expenses", "payments", "cashflow", "launch", "energetic", "bold"],
+      "category": "colour",
+      "categoryLabel": "Colour",
+      "tags": ["yellow", "bold", "loud", "launch", "poster", "colour block"],
       "stage": "lighting-only",
       "colors": {
-        "background": "#f4ede1",
-        "text": "#2c2113",
-        "accent": "#9b3f13",
-        "muted": "#5a4935"
+        "background": "#ffd43b",
+        "text": "#121212",
+        "accent": "#1d3fd6",
+        "muted": "#45390a"
       },
-      "chartColors": ["#9b3f13", "#315d92", "#296953", "#783b78", "#7a5818", "#4d4d58"],
+      "chartColors": ["#1d3fd6", "#121212", "#b8321f", "#0f6b3f", "#6b2fb5", "#7a4500"],
       "typography": {
-        "headline": "Barlow Condensed@600",
-        "body": "Open Sans",
-        "scale": 1.333
+        "headline": "Inter@600",
+        "body": "Inter",
+        "scale": 1.2
       },
       "motion": {
         "durations": {
-          "fast": 160,
-          "base": 410,
-          "slow": 760
+          "fast": 200,
+          "base": 520,
+          "slow": 940
         },
         "easings": {
           "standard": "outCubic",
-          "emphasized": "outBack"
+          "emphasized": "outExpo"
+        }
+      },
+      "gradients": ["brand"],
+      "textAnimation": {
+        "in": "fade-up",
+        "out": "fade",
+        "staggerMs": 0
+      },
+      "textLook": null,
+      "background": "gradient",
+      "backdrop": null,
+      "environment": "kookaburra:cyclorama",
+      "lighting": true,
+      "effects": []
+    },
+    {
+      "id": "kookaburra-tangerine",
+      "label": "Tangerine",
+      "summary": "Energetic consumer and food apps",
+      "mode": "light",
+      "category": "colour",
+      "categoryLabel": "Colour",
+      "tags": ["orange", "bold", "warm", "energetic", "consumer", "colour block"],
+      "stage": "lighting-only",
+      "colors": {
+        "background": "#ffac68",
+        "text": "#170c04",
+        "accent": "#241f8f",
+        "muted": "#48280e"
+      },
+      "chartColors": ["#241f8f", "#170c04", "#7a1238", "#0d5c4f", "#2f4a00", "#5b2a8a"],
+      "typography": {
+        "headline": "IBM Plex Sans@600",
+        "body": "IBM Plex Sans",
+        "scale": 1.2
+      },
+      "motion": {
+        "durations": {
+          "fast": 200,
+          "base": 520,
+          "slow": 940
+        },
+        "easings": {
+          "standard": "outCubic",
+          "emphasized": "outExpo"
+        }
+      },
+      "gradients": ["brand"],
+      "textAnimation": {
+        "in": "fade-up",
+        "out": "fade",
+        "staggerMs": 0
+      },
+      "textLook": null,
+      "background": "gradient",
+      "backdrop": null,
+      "environment": "kookaburra:cyclorama",
+      "lighting": true,
+      "effects": []
+    },
+    {
+      "id": "kookaburra-lagoon",
+      "label": "Lagoon",
+      "summary": "Playful fintech and travel",
+      "mode": "light",
+      "category": "colour",
+      "categoryLabel": "Colour",
+      "tags": ["turquoise", "bold", "fresh", "playful", "travel", "colour block"],
+      "stage": "lighting-only",
+      "colors": {
+        "background": "#4fe0c9",
+        "text": "#021612",
+        "accent": "#3b1d8f",
+        "muted": "#11423a"
+      },
+      "chartColors": ["#3b1d8f", "#021612", "#8a1b4a", "#0b3f8a", "#6b4a00", "#24524a"],
+      "typography": {
+        "headline": "Space Grotesk@600",
+        "body": "Inter",
+        "scale": 1.2
+      },
+      "motion": {
+        "durations": {
+          "fast": 200,
+          "base": 520,
+          "slow": 940
+        },
+        "easings": {
+          "standard": "outCubic",
+          "emphasized": "outExpo"
+        }
+      },
+      "gradients": ["brand"],
+      "textAnimation": {
+        "in": "fade-up",
+        "out": "fade",
+        "staggerMs": 0
+      },
+      "textLook": null,
+      "background": "gradient",
+      "backdrop": null,
+      "environment": "kookaburra:cyclorama",
+      "lighting": true,
+      "effects": []
+    },
+    {
+      "id": "kookaburra-basel",
+      "label": "Basel",
+      "summary": "Swiss-style announcements",
+      "mode": "light",
+      "category": "retro",
+      "categoryLabel": "Retro",
+      "tags": ["swiss", "1960s", "grid", "typographic", "red", "modernist"],
+      "stage": "lighting-only",
+      "colors": {
+        "background": "#f6f6f4",
+        "text": "#111111",
+        "accent": "#b80e2a",
+        "muted": "#505050"
+      },
+      "chartColors": ["#b80e2a", "#111111", "#1f4e9c", "#8a5a00", "#2f6b3a", "#6b6b6b"],
+      "typography": {
+        "headline": "Inter@600",
+        "body": "Inter",
+        "scale": 1.2
+      },
+      "motion": {
+        "durations": {
+          "fast": 200,
+          "base": 520,
+          "slow": 940
+        },
+        "easings": {
+          "standard": "outCubic",
+          "emphasized": "outExpo"
         }
       },
       "gradients": [],
       "textAnimation": {
-        "in": "twist-scale",
+        "in": "mask-reveal",
         "out": "fade",
-        "staggerMs": 36,
-        "stagger": "word",
-        "direction": "from-left"
+        "staggerMs": 0
       },
       "textLook": null,
-      "background": "shader:warp",
+      "background": "shader:graph-grid",
       "backdrop": null,
-      "environment": null,
+      "environment": "kookaburra:monochrome-studio",
+      "lighting": true,
+      "effects": []
+    },
+    {
+      "id": "kookaburra-hi-fi",
+      "label": "Hi-Fi",
+      "summary": "Hardware and industrial design",
+      "mode": "light",
+      "category": "retro",
+      "categoryLabel": "Retro",
+      "tags": ["1960s", "1970s", "industrial", "hardware", "warm grey", "orange"],
+      "stage": "lighting-only",
+      "colors": {
+        "background": "#efede8",
+        "text": "#1a1a18",
+        "accent": "#a3370b",
+        "muted": "#4c4b46"
+      },
+      "chartColors": ["#a3370b", "#1a1a18", "#2f5d62", "#6b5b18", "#5f5f58", "#5a4a7a"],
+      "typography": {
+        "headline": "IBM Plex Sans@600",
+        "body": "IBM Plex Sans",
+        "scale": 1.2
+      },
+      "motion": {
+        "durations": {
+          "fast": 200,
+          "base": 520,
+          "slow": 940
+        },
+        "easings": {
+          "standard": "outCubic",
+          "emphasized": "outExpo"
+        }
+      },
+      "gradients": [],
+      "textAnimation": {
+        "in": "fade-up",
+        "out": "fade",
+        "staggerMs": 0
+      },
+      "textLook": null,
+      "background": "shader:dot-grid",
+      "backdrop": null,
+      "environment": "kookaburra:monochrome-studio",
+      "lighting": true,
+      "effects": []
+    },
+    {
+      "id": "kookaburra-mid-century",
+      "label": "Mid-Century",
+      "summary": "Warm lifestyle and travel",
+      "mode": "light",
+      "category": "retro",
+      "categoryLabel": "Retro",
+      "tags": ["1960s", "mid-century", "cream", "teal", "geometric", "warm"],
+      "stage": "lighting-only",
+      "colors": {
+        "background": "#f6f0e6",
+        "text": "#2b231d",
+        "accent": "#24635f",
+        "muted": "#62544a"
+      },
+      "chartColors": ["#24635f", "#a6491f", "#8a6410", "#5c4b8a", "#5e6f2f", "#8c3b4a"],
+      "typography": {
+        "headline": "Jost@500",
+        "body": "Jost",
+        "scale": 1.2
+      },
+      "motion": {
+        "durations": {
+          "fast": 200,
+          "base": 520,
+          "slow": 940
+        },
+        "easings": {
+          "standard": "outCubic",
+          "emphasized": "outExpo"
+        }
+      },
+      "gradients": ["brand"],
+      "textAnimation": {
+        "in": "fade-up",
+        "out": "fade",
+        "staggerMs": 50,
+        "stagger": "word"
+      },
+      "textLook": null,
+      "background": "gradient",
+      "backdrop": null,
+      "environment": "kookaburra:story-studio",
+      "lighting": true,
+      "effects": []
+    },
+    {
+      "id": "kookaburra-canyon",
+      "label": "Canyon",
+      "summary": "Warm, nostalgic storytelling",
+      "mode": "dark",
+      "category": "retro",
+      "categoryLabel": "Retro",
+      "tags": ["1970s", "earth", "brown", "amber", "warm", "film"],
+      "stage": "lighting-only",
+      "colors": {
+        "background": "#24170f",
+        "text": "#f6ead8",
+        "accent": "#e9a14f",
+        "muted": "#d0bba1"
+      },
+      "chartColors": ["#e9a14f", "#d9774a", "#8fb3a0", "#b9a6d6", "#c9b26b", "#d8a0a8"],
+      "typography": {
+        "headline": "Fraunces@600",
+        "body": "Jost",
+        "scale": 1.2
+      },
+      "motion": {
+        "durations": {
+          "fast": 200,
+          "base": 520,
+          "slow": 940
+        },
+        "easings": {
+          "standard": "outCubic",
+          "emphasized": "outExpo"
+        }
+      },
+      "gradients": ["brand"],
+      "textAnimation": {
+        "in": "fade-scale",
+        "out": "fade",
+        "staggerMs": 0,
+        "startScale": 0.95
+      },
+      "textLook": null,
+      "background": "gradient",
+      "backdrop": null,
+      "environment": "kookaburra:sunset",
+      "lighting": true,
+      "effects": []
+    },
+    {
+      "id": "kookaburra-mainframe",
+      "label": "Mainframe",
+      "summary": "Infrastructure and B2B software",
+      "mode": "dark",
+      "category": "retro",
+      "categoryLabel": "Retro",
+      "tags": ["1980s", "corporate", "grid", "blue", "enterprise", "technical"],
+      "stage": "lighting-only",
+      "colors": {
+        "background": "#141516",
+        "text": "#f4f4f4",
+        "accent": "#4589ff",
+        "muted": "#c6c6c6"
+      },
+      "chartColors": ["#4589ff", "#08bdba", "#d4bbff", "#ff7eb6", "#42be65", "#f1c21b"],
+      "typography": {
+        "headline": "IBM Plex Sans@600",
+        "body": "JetBrains Mono",
+        "scale": 1.2
+      },
+      "motion": {
+        "durations": {
+          "fast": 200,
+          "base": 520,
+          "slow": 940
+        },
+        "easings": {
+          "standard": "outCubic",
+          "emphasized": "outExpo"
+        }
+      },
+      "gradients": [],
+      "textAnimation": {
+        "in": "fade",
+        "out": "fade",
+        "staggerMs": 18,
+        "stagger": "char"
+      },
+      "textLook": null,
+      "background": "shader:graph-grid",
+      "backdrop": null,
+      "environment": "kookaburra:monochrome-studio",
+      "lighting": true,
+      "effects": []
+    },
+    {
+      "id": "kookaburra-night-drive",
+      "label": "Night Drive",
+      "summary": "Music, entertainment and nightlife",
+      "mode": "dark",
+      "category": "retro",
+      "categoryLabel": "Retro",
+      "tags": ["1980s", "city pop", "dusk", "indigo", "pink", "night"],
+      "stage": "lighting-only",
+      "colors": {
+        "background": "#15173a",
+        "text": "#f7f3ff",
+        "accent": "#f4a6b0",
+        "muted": "#c9cbe8"
+      },
+      "chartColors": ["#f4a6b0", "#f7d08a", "#8fd3f4", "#9ee6c1", "#b9a3f5", "#f2b6e0"],
+      "typography": {
+        "headline": "Barlow Condensed@600",
+        "body": "Inter",
+        "scale": 1.2
+      },
+      "motion": {
+        "durations": {
+          "fast": 200,
+          "base": 520,
+          "slow": 940
+        },
+        "easings": {
+          "standard": "outCubic",
+          "emphasized": "outExpo"
+        }
+      },
+      "gradients": [],
+      "textAnimation": {
+        "in": "fade-up",
+        "out": "fade",
+        "staggerMs": 45,
+        "stagger": "word"
+      },
+      "textLook": null,
+      "background": "shader:mesh-gradient",
+      "backdrop": null,
+      "environment": "kookaburra:night-city",
       "lighting": true,
       "effects": []
     }
@@ -22586,12 +23625,28 @@
         "weights": [600]
       },
       {
+        "id": "Fraunces",
+        "weights": [600]
+      },
+      {
+        "id": "IBM Plex Sans",
+        "weights": [400, 600]
+      },
+      {
+        "id": "Instrument Serif",
+        "weights": [400]
+      },
+      {
         "id": "Inter",
         "weights": [400, 600]
       },
       {
         "id": "JetBrains Mono",
         "weights": [400]
+      },
+      {
+        "id": "Jost",
+        "weights": [400, 500]
       },
       {
         "id": "Libre Franklin",
@@ -23887,7 +24942,7 @@
       "scene": "scenes/01-device.tsx",
       "durationMs": 3000,
       "aspects": ["16:9", "9:16", "1:1", "4:5"],
-      "themeId": "kookaburra-studio-white",
+      "themeId": "kookaburra-daylight",
       "blocks": ["backdrop", "devices", "managedText", "text", "textStyle"],
       "preview": "preset-previews/device.jpg"
     },
@@ -23902,7 +24957,7 @@
       "scene": "scenes/01-deviceonly.tsx",
       "durationMs": 3000,
       "aspects": ["16:9", "9:16", "1:1", "4:5"],
-      "themeId": "kookaburra-studio-white",
+      "themeId": "kookaburra-daylight",
       "blocks": ["devices"],
       "preview": "preset-previews/deviceonly.jpg"
     },
@@ -23917,7 +24972,7 @@
       "scene": "scenes/01-comparison.tsx",
       "durationMs": 3000,
       "aspects": ["16:9", "9:16", "1:1", "4:5"],
-      "themeId": "kookaburra-studio-white",
+      "themeId": "kookaburra-daylight",
       "blocks": ["deviceLayout", "devices", "managedText", "text", "textStyle"],
       "preview": "preset-previews/comparison.jpg"
     },
@@ -23932,7 +24987,7 @@
       "scene": "scenes/01-title.tsx",
       "durationMs": 3000,
       "aspects": ["16:9", "9:16", "1:1", "4:5"],
-      "themeId": "kookaburra-studio-white",
+      "themeId": "kookaburra-daylight",
       "blocks": ["managedText", "text"],
       "preview": "preset-previews/title.jpg"
     },
@@ -23947,7 +25002,7 @@
       "scene": "scenes/01-titleicon.tsx",
       "durationMs": 3000,
       "aspects": ["16:9", "9:16", "1:1", "4:5"],
-      "themeId": "kookaburra-studio-white",
+      "themeId": "kookaburra-daylight",
       "blocks": ["headerIcon", "managedText", "text", "textStyle"],
       "preview": "preset-previews/titleicon.jpg"
     },
@@ -23962,7 +25017,7 @@
       "scene": "scenes/01-appversion.tsx",
       "durationMs": 3000,
       "aspects": ["16:9", "9:16", "1:1", "4:5"],
-      "themeId": "kookaburra-studio-white",
+      "themeId": "kookaburra-daylight",
       "blocks": ["managedText", "text"],
       "preview": "preset-previews/appversion.jpg"
     },
@@ -23977,7 +25032,7 @@
       "scene": "scenes/01-layeredscreenshot.tsx",
       "durationMs": 3000,
       "aspects": ["16:9", "9:16", "1:1", "4:5"],
-      "themeId": "kookaburra-studio-white",
+      "themeId": "kookaburra-daylight",
       "blocks": ["backdrop", "camera", "layeredScreenshot", "managedText", "text"],
       "preview": "preset-previews/layeredscreenshot.jpg"
     },
@@ -23992,7 +25047,7 @@
       "scene": "scenes/01-chart.tsx",
       "durationMs": 3000,
       "aspects": ["16:9", "9:16", "1:1", "4:5"],
-      "themeId": "kookaburra-studio-white",
+      "themeId": "kookaburra-daylight",
       "blocks": ["chart", "managedText", "text"],
       "preview": "preset-previews/chart.jpg"
     },
@@ -24007,7 +25062,7 @@
       "scene": "scenes/01-video.tsx",
       "durationMs": 3650,
       "aspects": ["16:9", "9:16", "1:1", "4:5"],
-      "themeId": "kookaburra-studio-white",
+      "themeId": "kookaburra-daylight",
       "blocks": ["background", "duration"],
       "preview": "preset-previews/video.jpg"
     },
@@ -24022,7 +25077,7 @@
       "scene": "scenes/01-image.tsx",
       "durationMs": 3650,
       "aspects": ["16:9", "9:16", "1:1", "4:5"],
-      "themeId": "kookaburra-studio-white",
+      "themeId": "kookaburra-daylight",
       "blocks": ["background"],
       "preview": "preset-previews/image.jpg"
     },
@@ -24037,7 +25092,7 @@
       "scene": "scenes/01-videowindow.tsx",
       "durationMs": 3650,
       "aspects": ["16:9", "9:16", "1:1", "4:5"],
-      "themeId": "kookaburra-studio-white",
+      "themeId": "kookaburra-daylight",
       "blocks": ["backdrop", "duration", "managedText", "media", "text"],
       "preview": "preset-previews/videowindow.jpg"
     },
@@ -24052,7 +25107,7 @@
       "scene": "scenes/01-overlaystart.tsx",
       "durationMs": 3000,
       "aspects": ["16:9", "9:16", "1:1", "4:5"],
-      "themeId": "kookaburra-studio-white",
+      "themeId": "kookaburra-daylight",
       "blocks": ["frame", "managedText", "text"],
       "preview": "preset-previews/overlaystart.jpg"
     },
@@ -24067,7 +25122,7 @@
       "scene": "scenes/01-overlayend.tsx",
       "durationMs": 3000,
       "aspects": ["16:9", "9:16", "1:1", "4:5"],
-      "themeId": "kookaburra-studio-white",
+      "themeId": "kookaburra-daylight",
       "blocks": ["frame", "managedText", "text"],
       "preview": "preset-previews/overlayend.jpg"
     },
@@ -24082,7 +25137,7 @@
       "scene": "scenes/01-overlaypanel.tsx",
       "durationMs": 3000,
       "aspects": ["16:9", "9:16", "1:1", "4:5"],
-      "themeId": "kookaburra-studio-white",
+      "themeId": "kookaburra-daylight",
       "blocks": ["frame", "managedText", "text"],
       "preview": "preset-previews/overlaypanel.jpg"
     },
@@ -24097,7 +25152,7 @@
       "scene": "scenes/01-blank.tsx",
       "durationMs": 3000,
       "aspects": ["16:9", "9:16", "1:1", "4:5"],
-      "themeId": "kookaburra-studio-white",
+      "themeId": "kookaburra-daylight",
       "blocks": ["managedText"],
       "preview": "preset-previews/blank.jpg"
     },
@@ -24112,7 +25167,7 @@
       "scene": "scenes/01-title-opener.tsx",
       "durationMs": 2600,
       "aspects": ["16:9", "9:16", "1:1", "4:5"],
-      "themeId": "kookaburra-studio-white",
+      "themeId": "kookaburra-daylight",
       "blocks": ["backdrop", "background", "text", "textAnimation", "textLayout", "textStyle"],
       "preview": "preset-previews/title-opener.jpg"
     },
@@ -24127,7 +25182,7 @@
       "scene": "scenes/01-feature-compare.tsx",
       "durationMs": 4400,
       "aspects": ["16:9", "9:16", "1:1", "4:5"],
-      "themeId": "kookaburra-studio-white",
+      "themeId": "kookaburra-daylight",
       "blocks": ["animatedTrack", "backdrop", "background", "compare", "devices", "text"],
       "preview": "preset-previews/feature-compare.jpg"
     },
@@ -24142,7 +25197,7 @@
       "scene": "scenes/01-stat-counter.tsx",
       "durationMs": 3400,
       "aspects": ["16:9", "9:16", "1:1", "4:5"],
-      "themeId": "kookaburra-studio-white",
+      "themeId": "kookaburra-daylight",
       "blocks": ["backdrop", "background", "text", "textAnimation"],
       "preview": "preset-previews/stat-counter.jpg"
     },
@@ -24157,7 +25212,7 @@
       "scene": "scenes/01-chart-reveal.tsx",
       "durationMs": 4000,
       "aspects": ["16:9", "9:16", "1:1", "4:5"],
-      "themeId": "kookaburra-studio-white",
+      "themeId": "kookaburra-daylight",
       "blocks": ["backdrop", "background", "chart", "text", "textAnimation"],
       "preview": "preset-previews/chart-reveal.jpg"
     },
@@ -24172,7 +25227,7 @@
       "scene": "scenes/01-hero-device.tsx",
       "durationMs": 4200,
       "aspects": ["16:9", "9:16", "1:1", "4:5"],
-      "themeId": "kookaburra-studio-white",
+      "themeId": "kookaburra-daylight",
       "blocks": [
         "backdrop",
         "camera",
@@ -24195,7 +25250,7 @@
       "scene": "scenes/01-duo-unfold.tsx",
       "durationMs": 4600,
       "aspects": ["16:9", "9:16", "1:1", "4:5"],
-      "themeId": "kookaburra-studio-white",
+      "themeId": "kookaburra-daylight",
       "blocks": [
         "backdrop",
         "camera",
@@ -24219,7 +25274,7 @@
       "scene": "scenes/01-closing-cta.tsx",
       "durationMs": 3000,
       "aspects": ["16:9", "9:16", "1:1", "4:5"],
-      "themeId": "kookaburra-studio-white",
+      "themeId": "kookaburra-daylight",
       "blocks": ["backdrop", "background", "text", "textAnimation"],
       "preview": "preset-previews/closing-cta.jpg"
     }
@@ -24239,7 +25294,7 @@
       "sceneCount": 1,
       "durationMs": 4000,
       "aspects": ["16:9", "9:16", "1:1", "4:5"],
-      "themeId": "kookaburra-default",
+      "themeId": "kookaburra-onyx",
       "scenes": [
         {
           "file": "scenes/01-headline.tsx",
@@ -24267,7 +25322,7 @@
       "sceneCount": 6,
       "durationMs": 14260,
       "aspects": ["9:16", "16:9", "1:1", "4:5"],
-      "themeId": "kookaburra-midnight",
+      "themeId": "kookaburra-blue-hour",
       "scenes": [
         {
           "file": "scenes/01-version-hook.tsx",
@@ -24325,7 +25380,7 @@
       "sceneCount": 6,
       "durationMs": 20000,
       "aspects": ["9:16"],
-      "themeId": "kookaburra-studio-white",
+      "themeId": "kookaburra-daylight",
       "scenes": [
         {
           "file": "scenes/01-cold-open.tsx",
@@ -24383,7 +25438,7 @@
       "sceneCount": 6,
       "durationMs": 17250,
       "aspects": ["16:9", "9:16", "1:1", "4:5"],
-      "themeId": "kookaburra-abyss",
+      "themeId": "kookaburra-onyx",
       "scenes": [
         {
           "file": "scenes/01-release-header.tsx",
@@ -24452,12 +25507,12 @@
       "highlights": [
         "A rig fly-through cuts straight out of the orbit push, no transition",
         "Screen stack expands to isometric on its own animated track",
-        "Ember payoff scene, warm against the graphite the rest of the film runs on"
+        "Ink payoff scene, warm against the black the rest of the film runs on"
       ],
       "sceneCount": 7,
       "durationMs": 20850,
       "aspects": ["16:9", "9:16", "1:1", "4:5"],
-      "themeId": "kookaburra-midnight",
+      "themeId": "kookaburra-onyx",
       "scenes": [
         {
           "file": "scenes/01-problem.tsx",
@@ -24538,7 +25593,7 @@
       "sceneCount": 5,
       "durationMs": 13600,
       "aspects": ["16:9", "9:16", "1:1", "4:5"],
-      "themeId": "kookaburra-gallery",
+      "themeId": "kookaburra-hi-fi",
       "scenes": [
         {
           "file": "scenes/01-quiet-header.tsx",
@@ -24590,7 +25645,7 @@
       "sceneCount": 7,
       "durationMs": 22930,
       "aspects": ["16:9", "9:16", "1:1", "4:5"],
-      "themeId": "kookaburra-loft",
+      "themeId": "kookaburra-soft-field",
       "scenes": [
         {
           "file": "scenes/01-statement.tsx",
@@ -24681,7 +25736,7 @@
       "sceneCount": 6,
       "durationMs": 18220,
       "aspects": ["9:16", "1:1", "4:5", "16:9"],
-      "themeId": "kookaburra-paper",
+      "themeId": "kookaburra-ivory",
       "scenes": [
         {
           "file": "scenes/01-fewer-steps.tsx",
@@ -24747,7 +25802,7 @@
       "sceneCount": 6,
       "durationMs": 16210,
       "aspects": ["1:1", "9:16", "16:9", "4:5"],
-      "themeId": "kookaburra-abyss",
+      "themeId": "kookaburra-onyx",
       "scenes": [
         {
           "file": "scenes/01-lights-on.tsx",
@@ -24831,7 +25886,7 @@
       "sceneCount": 6,
       "durationMs": 19550,
       "aspects": ["16:9", "9:16", "1:1", "4:5"],
-      "themeId": "kookaburra-pacific",
+      "themeId": "kookaburra-basel",
       "scenes": [
         {
           "file": "scenes/01-claim.tsx",
@@ -24897,7 +25952,7 @@
       "sceneCount": 6,
       "durationMs": 17580,
       "aspects": ["9:16", "4:5", "1:1", "16:9"],
-      "themeId": "kookaburra-ember",
+      "themeId": "kookaburra-night-drive",
       "scenes": [
         {
           "file": "scenes/01-tease.tsx",
@@ -24970,7 +26025,7 @@
       "sceneCount": 7,
       "durationMs": 27120,
       "aspects": ["16:9", "9:16", "1:1", "4:5"],
-      "themeId": "kookaburra-abyss",
+      "themeId": "kookaburra-afterglow",
       "scenes": [
         {
           "file": "scenes/01-version-chip.tsx",
@@ -25042,7 +26097,7 @@
       "sceneCount": 5,
       "durationMs": 12980,
       "aspects": ["9:16", "16:9", "1:1", "4:5"],
-      "themeId": "kookaburra-neon",
+      "themeId": "kookaburra-afterglow",
       "scenes": [
         {
           "file": "scenes/01-old-way.tsx",
