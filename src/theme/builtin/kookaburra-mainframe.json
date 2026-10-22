@@ -1,0 +1,86 @@
+{
+  "version": 2,
+  "id": "kookaburra-mainframe",
+  "name": "Mainframe",
+  "mode": "dark",
+  "catalogue": {
+    "category": "retro",
+    "useLabel": "Infrastructure and B2B software",
+    "tags": ["1980s", "corporate", "grid", "blue", "enterprise", "technical"],
+    "stage": "lighting-only",
+    "order": 50
+  },
+  "colors": {
+    "background": "#141516",
+    "text": "#f4f4f4",
+    "accent": "#4589ff",
+    "muted": "#c6c6c6"
+  },
+  "chartColors": ["#4589ff", "#08bdba", "#d4bbff", "#ff7eb6", "#42be65", "#f1c21b"],
+  "typography": {
+    "headline": {
+      "family": "IBM Plex Sans",
+      "weight": 600
+    },
+    "body": "JetBrains Mono",
+    "scale": 1.2
+  },
+  "motion": {
+    "durations": {
+      "fast": 200,
+      "base": 520,
+      "slow": 940
+    },
+    "easings": {
+      "standard": "outCubic",
+      "emphasized": "outExpo"
+    }
+  },
+  "textAnimation": {
+    "in": "fade",
+    "out": "fade",
+    "staggerMs": 18,
+    "stagger": "char"
+  },
+  "lighting": {
+    "key": {
+      "azimuthDeg": -30,
+      "elevationDeg": 42,
+      "intensity": 1.9,
+      "color": "#e8eeff"
+    },
+    "fills": [
+      {
+        "azimuthDeg": 140,
+        "elevationDeg": 12,
+        "intensity": 0.5,
+        "color": "#2e3a52"
+      },
+      {
+        "azimuthDeg": 165,
+        "elevationDeg": 38,
+        "intensity": 0.85,
+        "color": "#9fb6e0"
+      }
+    ],
+    "ambient": 0.38
+  },
+  "environment": {
+    "source": "kookaburra:monochrome-studio",
+    "intensity": 0.55,
+    "rotationDeg": 0
+  },
+  "background": {
+    "type": "shader",
+    "shader": "graph-grid",
+    "colors": ["#141516", "#1f2022", "#23262b", "#18191b"],
+    "speed": 0.4,
+    "params": {
+      "density": 12,
+      "lineWeight": 0.3,
+      "highlightWidth": 0.2,
+      "fillDensity": 0.05,
+      "cadence": 0.12
+    }
+  }
+}

@@ -177,6 +177,8 @@ def entry_line(entry: Dict[str, Any]) -> str:
         parts.append(f"({label})")
     if summary:
         parts.append(f"- {summary}")
+    if entry.get("hidden") is True:
+        parts.append("[retired: still renders, hidden from pickers]")
     parts.extend(screen_notes(entry))
     return " ".join(parts)
 

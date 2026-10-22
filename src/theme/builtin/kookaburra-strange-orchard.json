@@ -4,10 +4,11 @@
   "name": "Strange Orchard",
   "mode": "light",
   "catalogue": {
-    "category": "sensory-and-surreal",
+    "category": "essentials",
     "useLabel": "Unexpected challenger campaigns",
     "tags": ["challenger", "unexpected", "organic", "surreal", "campaign", "experimental"],
     "stage": "lighting-only",
+    "hidden": true,
     "order": 30
   },
   "colors": {

@@ -1,0 +1,84 @@
+{
+  "version": 2,
+  "id": "kookaburra-blue-hour",
+  "name": "Blue Hour",
+  "mode": "dark",
+  "catalogue": {
+    "category": "studio",
+    "useLabel": "Calm, cinematic stories",
+    "tags": ["teal", "cinematic", "calm", "dark", "dusk", "wellbeing"],
+    "stage": "lighting-only",
+    "order": 20
+  },
+  "colors": {
+    "background": "#0b1f24",
+    "text": "#f5f3ee",
+    "accent": "#7fd1c7",
+    "muted": "#a9c2c0"
+  },
+  "chartColors": ["#7fd1c7", "#f2c48d", "#9db7f5", "#c6e5a3", "#e9a6a1", "#d3c1f0"],
+  "typography": {
+    "headline": {
+      "family": "IBM Plex Sans",
+      "weight": 600
+    },
+    "body": "IBM Plex Sans",
+    "scale": 1.2
+  },
+  "motion": {
+    "durations": {
+      "fast": 200,
+      "base": 520,
+      "slow": 940
+    },
+    "easings": {
+      "standard": "outCubic",
+      "emphasized": "outExpo"
+    }
+  },
+  "textAnimation": {
+    "in": "fade-up",
+    "out": "fade",
+    "staggerMs": 45,
+    "stagger": "word"
+  },
+  "lighting": {
+    "key": {
+      "azimuthDeg": -30,
+      "elevationDeg": 42,
+      "intensity": 1.9,
+      "color": "#e2f4f2"
+    },
+    "fills": [
+      {
+        "azimuthDeg": 140,
+        "elevationDeg": 12,
+        "intensity": 0.5,
+        "color": "#2d5a5c"
+      },
+      {
+        "azimuthDeg": 165,
+        "elevationDeg": 38,
+        "intensity": 0.85,
+        "color": "#8fc9c2"
+      }
+    ],
+    "ambient": 0.4
+  },
+  "environment": {
+    "source": "kookaburra:dawn",
+    "intensity": 0.5,
+    "rotationDeg": 0
+  },
+  "background": {
+    "type": "shader",
+    "shader": "mesh-gradient",
+    "colors": ["#09191e", "#0d262c", "#123139", "#0a1c22"],
+    "speed": 0.14,
+    "params": {
+      "distortion": 0.65,
+      "swirl": 0.08,
+      "grainOverlay": 0.04
+    }
+  }
+}

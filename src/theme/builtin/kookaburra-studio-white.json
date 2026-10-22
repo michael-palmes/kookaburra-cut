@@ -8,6 +8,7 @@
     "useLabel": "Clean product showcases",
     "tags": ["clean", "minimal", "product", "presentation", "professional", "bright"],
     "stage": "lighting-only",
+    "hidden": true,
     "order": 10
   },
   "colors": {

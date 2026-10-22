@@ -4,10 +4,11 @@
   "name": "Cut-Paper Current",
   "mode": "light",
   "catalogue": {
-    "category": "maker-energy",
+    "category": "essentials",
     "useLabel": "Playful consumer campaigns",
     "tags": ["consumer", "playful", "campaign", "paper", "colourful", "safe"],
     "stage": "lighting-only",
+    "hidden": true,
     "order": 30
   },
   "colors": {

@@ -3,12 +3,9 @@ import type { Theme } from "./tokens";
 
 export const THEME_CATEGORIES = [
   { id: "essentials", label: "Essentials" },
-  { id: "quiet-technology", label: "Quiet technology" },
-  { id: "human-centred-ai", label: "Human-centred AI" },
-  { id: "maker-energy", label: "Maker energy" },
-  { id: "sensory-and-surreal", label: "Sensory and surreal" },
-  { id: "digital-assets", label: "Digital assets" },
-  { id: "modern-finance", label: "Modern finance" },
+  { id: "studio", label: "Studio" },
+  { id: "colour", label: "Colour" },
+  { id: "retro", label: "Retro" },
 ] as const;
 
 export type ThemeCategoryId = (typeof THEME_CATEGORIES)[number]["id"];

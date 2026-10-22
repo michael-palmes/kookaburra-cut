@@ -4,10 +4,11 @@
   "name": "Elastic Glyphs",
   "mode": "light",
   "catalogue": {
-    "category": "maker-energy",
+    "category": "essentials",
     "useLabel": "Expressive maker launches",
     "tags": ["maker", "launch", "creative", "kinetic", "typography", "product"],
     "stage": "lighting-only",
+    "hidden": true,
     "order": 10
   },
   "colors": {

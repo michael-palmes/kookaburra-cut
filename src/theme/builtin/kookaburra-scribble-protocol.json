@@ -4,10 +4,11 @@
   "name": "Scribble Protocol",
   "mode": "light",
   "catalogue": {
-    "category": "maker-energy",
+    "category": "essentials",
     "useLabel": "Rapid developer stories",
     "tags": ["developer", "rapid", "technical", "hand-drawn", "prototype", "experimental"],
     "stage": "lighting-only",
+    "hidden": true,
     "order": 40
   },
   "colors": {

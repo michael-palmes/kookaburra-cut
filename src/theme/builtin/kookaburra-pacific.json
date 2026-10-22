@@ -8,6 +8,7 @@
     "useLabel": "Calm product stories",
     "tags": ["calm", "coastal", "product", "technology", "blue", "soft"],
     "stage": "physical",
+    "hidden": true,
     "order": 20
   },
   "colors": {

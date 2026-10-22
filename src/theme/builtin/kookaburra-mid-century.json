@@ -1,0 +1,88 @@
+{
+  "version": 2,
+  "id": "kookaburra-mid-century",
+  "name": "Mid-Century",
+  "mode": "light",
+  "catalogue": {
+    "category": "retro",
+    "useLabel": "Warm lifestyle and travel",
+    "tags": ["1960s", "mid-century", "cream", "teal", "geometric", "warm"],
+    "stage": "lighting-only",
+    "order": 30
+  },
+  "colors": {
+    "background": "#f6f0e6",
+    "text": "#2b231d",
+    "accent": "#24635f",
+    "muted": "#62544a"
+  },
+  "gradients": {
+    "brand": {
+      "type": "linear",
+      "angleDeg": 180,
+      "stops": [["#f9f5ee", 0.0], ["#f0e7d8", 1.0]],
+      "space": "oklch"
+    }
+  },
+  "chartColors": ["#24635f", "#a6491f", "#8a6410", "#5c4b8a", "#5e6f2f", "#8c3b4a"],
+  "typography": {
+    "headline": {
+      "family": "Jost",
+      "weight": 500
+    },
+    "body": "Jost",
+    "scale": 1.2
+  },
+  "motion": {
+    "durations": {
+      "fast": 200,
+      "base": 520,
+      "slow": 940
+    },
+    "easings": {
+      "standard": "outCubic",
+      "emphasized": "outExpo"
+    }
+  },
+  "textAnimation": {
+    "in": "fade-up",
+    "out": "fade",
+    "staggerMs": 50,
+    "stagger": "word"
+  },
+  "lighting": {
+    "key": {
+      "azimuthDeg": 35,
+      "elevationDeg": 55,
+      "intensity": 2.0,
+      "color": "#fff3e2"
+    },
+    "fills": [
+      {
+        "azimuthDeg": -120,
+        "elevationDeg": 18,
+        "intensity": 0.8,
+        "color": "#f3e8d6"
+      }
+    ],
+    "ambient": 0.85,
+    "shadow": {
+      "technique": "map",
+      "softness": 0.7,
+      "opacity": 0.24,
+      "mapSize": 2048,
+      "bias": -0.0005,
+      "color": "#3a2c20"
+    }
+  },
+  "environment": {
+    "source": "kookaburra:story-studio",
+    "intensity": 0.85,
+    "rotationDeg": 0
+  },
+  "background": {
+    "type": "gradient",
+    "gradient": "brand",
+    "parallax": 0.03
+  }
+}

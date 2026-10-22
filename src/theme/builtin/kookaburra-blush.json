@@ -1,0 +1,85 @@
+{
+  "version": 2,
+  "id": "kookaburra-blush",
+  "name": "Blush",
+  "mode": "light",
+  "catalogue": {
+    "category": "colour",
+    "useLabel": "Beauty, fashion and lifestyle",
+    "tags": ["pink", "subtle", "warm", "lifestyle", "serif", "tint"],
+    "stage": "lighting-only",
+    "order": 30
+  },
+  "colors": {
+    "background": "#f8ebe6",
+    "text": "#2a1614",
+    "accent": "#a8352a",
+    "muted": "#61443e"
+  },
+  "chartColors": ["#a8352a", "#1f4e79", "#2e6a45", "#7a4a8a", "#3a2a28", "#8a5a00"],
+  "typography": {
+    "headline": {
+      "family": "Instrument Serif",
+      "weight": 400
+    },
+    "body": "Inter",
+    "scale": 1.2
+  },
+  "motion": {
+    "durations": {
+      "fast": 200,
+      "base": 520,
+      "slow": 940
+    },
+    "easings": {
+      "standard": "outCubic",
+      "emphasized": "outExpo"
+    }
+  },
+  "textAnimation": {
+    "in": "blur-in",
+    "out": "fade",
+    "staggerMs": 35,
+    "stagger": "word"
+  },
+  "lighting": {
+    "key": {
+      "azimuthDeg": 35,
+      "elevationDeg": 55,
+      "intensity": 2.0,
+      "color": "#fff7f2"
+    },
+    "fills": [
+      {
+        "azimuthDeg": -120,
+        "elevationDeg": 18,
+        "intensity": 0.8,
+        "color": "#f7ebe6"
+      }
+    ],
+    "ambient": 0.85,
+    "shadow": {
+      "technique": "map",
+      "softness": 0.7,
+      "opacity": 0.24,
+      "mapSize": 2048,
+      "bias": -0.0005,
+      "color": "#3a2622"
+    }
+  },
+  "environment": {
+    "source": "kookaburra:story-studio",
+    "intensity": 0.9,
+    "rotationDeg": 0
+  },
+  "background": {
+    "type": "shader",
+    "shader": "mesh-gradient",
+    "colors": ["#fbf1ed", "#f4e2dc", "#f8e8e2", "#f2dfd8"],
+    "speed": 0.14,
+    "params": {
+      "distortion": 0.5,
+      "swirl": 0.04
+    }
+  }
+}

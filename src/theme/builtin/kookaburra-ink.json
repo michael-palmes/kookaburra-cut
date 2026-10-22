@@ -1,0 +1,86 @@
+{
+  "version": 2,
+  "id": "kookaburra-ink",
+  "name": "Ink",
+  "mode": "dark",
+  "catalogue": {
+    "category": "essentials",
+    "useLabel": "Warm, considered dark stories",
+    "tags": ["warm", "dark", "serif", "ai", "editorial", "calm"],
+    "stage": "lighting-only",
+    "order": 40
+  },
+  "colors": {
+    "background": "#141413",
+    "text": "#faf9f5",
+    "accent": "#d97757",
+    "muted": "#b5b3aa"
+  },
+  "gradients": {
+    "brand": {
+      "type": "radial",
+      "angleDeg": 0,
+      "stops": [["#201f1c", 0], ["#121211", 1]],
+      "space": "oklch"
+    }
+  },
+  "chartColors": ["#d97757", "#6a9bcc", "#cfa55c", "#93a876", "#e6dccb", "#b48ead"],
+  "typography": {
+    "headline": {
+      "family": "Instrument Serif",
+      "weight": 400
+    },
+    "body": "Inter",
+    "scale": 1.2
+  },
+  "motion": {
+    "durations": {
+      "fast": 200,
+      "base": 520,
+      "slow": 940
+    },
+    "easings": {
+      "standard": "outCubic",
+      "emphasized": "outExpo"
+    }
+  },
+  "textAnimation": {
+    "in": "blur-in",
+    "out": "fade",
+    "staggerMs": 40,
+    "stagger": "word"
+  },
+  "lighting": {
+    "key": {
+      "azimuthDeg": -30,
+      "elevationDeg": 42,
+      "intensity": 1.9,
+      "color": "#ffe9d6"
+    },
+    "fills": [
+      {
+        "azimuthDeg": 140,
+        "elevationDeg": 12,
+        "intensity": 0.5,
+        "color": "#5a4638"
+      },
+      {
+        "azimuthDeg": 165,
+        "elevationDeg": 38,
+        "intensity": 0.85,
+        "color": "#c9b39c"
+      }
+    ],
+    "ambient": 0.38
+  },
+  "environment": {
+    "source": "kookaburra:story-studio",
+    "intensity": 0.55,
+    "rotationDeg": 0
+  },
+  "background": {
+    "type": "gradient",
+    "gradient": "brand",
+    "parallax": 0.03
+  }
+}

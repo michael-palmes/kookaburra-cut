@@ -1,0 +1,87 @@
+{
+  "version": 2,
+  "id": "kookaburra-lagoon",
+  "name": "Lagoon",
+  "mode": "light",
+  "catalogue": {
+    "category": "colour",
+    "useLabel": "Playful fintech and travel",
+    "tags": ["turquoise", "bold", "fresh", "playful", "travel", "colour block"],
+    "stage": "lighting-only",
+    "order": 60
+  },
+  "colors": {
+    "background": "#4fe0c9",
+    "text": "#021612",
+    "accent": "#3b1d8f",
+    "muted": "#11423a"
+  },
+  "gradients": {
+    "brand": {
+      "type": "radial",
+      "angleDeg": 0,
+      "stops": [["#5fe6d0", 0], ["#46dac3", 1]],
+      "space": "oklch"
+    }
+  },
+  "chartColors": ["#3b1d8f", "#021612", "#8a1b4a", "#0b3f8a", "#6b4a00", "#24524a"],
+  "typography": {
+    "headline": {
+      "family": "Space Grotesk",
+      "weight": 600
+    },
+    "body": "Inter",
+    "scale": 1.2
+  },
+  "motion": {
+    "durations": {
+      "fast": 200,
+      "base": 520,
+      "slow": 940
+    },
+    "easings": {
+      "standard": "outCubic",
+      "emphasized": "outExpo"
+    }
+  },
+  "textAnimation": {
+    "in": "fade-up",
+    "out": "fade",
+    "staggerMs": 0
+  },
+  "lighting": {
+    "key": {
+      "azimuthDeg": 35,
+      "elevationDeg": 55,
+      "intensity": 2.0,
+      "color": "#f2fffc"
+    },
+    "fills": [
+      {
+        "azimuthDeg": -120,
+        "elevationDeg": 18,
+        "intensity": 0.8,
+        "color": "#d8fff7"
+      }
+    ],
+    "ambient": 0.85,
+    "shadow": {
+      "technique": "map",
+      "softness": 0.7,
+      "opacity": 0.24,
+      "mapSize": 2048,
+      "bias": -0.0005,
+      "color": "#06302a"
+    }
+  },
+  "environment": {
+    "source": "kookaburra:cyclorama",
+    "intensity": 0.9,
+    "rotationDeg": 0
+  },
+  "background": {
+    "type": "gradient",
+    "gradient": "brand",
+    "parallax": 0.03
+  }
+}

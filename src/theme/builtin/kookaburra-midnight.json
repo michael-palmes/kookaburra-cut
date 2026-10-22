@@ -8,6 +8,7 @@
     "useLabel": "Polished technology",
     "tags": ["technology", "premium", "dark", "product", "cinematic", "ai"],
     "stage": "lighting-only",
+    "hidden": true,
     "order": 70
   },
   "colors": {

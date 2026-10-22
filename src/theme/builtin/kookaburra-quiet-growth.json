@@ -4,10 +4,11 @@
   "name": "Quiet Growth",
   "mode": "dark",
   "catalogue": {
-    "category": "modern-finance",
+    "category": "essentials",
     "useLabel": "Wealth and sustainable finance",
     "tags": ["wealth", "sustainable-finance", "growth", "investment", "calm", "safe"],
     "stage": "lighting-only",
+    "hidden": true,
     "order": 20
   },
   "colors": {

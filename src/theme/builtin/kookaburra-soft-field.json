@@ -1,0 +1,84 @@
+{
+  "version": 2,
+  "id": "kookaburra-soft-field",
+  "name": "Soft Field",
+  "mode": "light",
+  "catalogue": {
+    "category": "studio",
+    "useLabel": "Friendly consumer launches",
+    "tags": ["pastel", "sky", "soft", "consumer", "friendly", "gradient"],
+    "stage": "lighting-only",
+    "order": 30
+  },
+  "colors": {
+    "background": "#eef1f9",
+    "text": "#0a2540",
+    "accent": "#4f46e5",
+    "muted": "#3e5570"
+  },
+  "chartColors": ["#4f46e5", "#0e7490", "#b4235a", "#15803d", "#334155", "#b45309"],
+  "typography": {
+    "headline": {
+      "family": "Jost",
+      "weight": 500
+    },
+    "body": "Inter",
+    "scale": 1.2
+  },
+  "motion": {
+    "durations": {
+      "fast": 200,
+      "base": 520,
+      "slow": 940
+    },
+    "easings": {
+      "standard": "outCubic",
+      "emphasized": "outExpo"
+    }
+  },
+  "textAnimation": {
+    "in": "fade-up",
+    "out": "fade",
+    "staggerMs": 0
+  },
+  "lighting": {
+    "key": {
+      "azimuthDeg": 35,
+      "elevationDeg": 55,
+      "intensity": 2.0,
+      "color": "#fdfbff"
+    },
+    "fills": [
+      {
+        "azimuthDeg": -120,
+        "elevationDeg": 18,
+        "intensity": 0.8,
+        "color": "#eef0ff"
+      }
+    ],
+    "ambient": 0.85,
+    "shadow": {
+      "technique": "map",
+      "softness": 0.7,
+      "opacity": 0.24,
+      "mapSize": 2048,
+      "bias": -0.0005,
+      "color": "#1f2a44"
+    }
+  },
+  "environment": {
+    "source": "kookaburra:cyclorama",
+    "intensity": 0.95,
+    "rotationDeg": 0
+  },
+  "background": {
+    "type": "shader",
+    "shader": "mesh-gradient",
+    "colors": ["#f4f6fc", "#e4eaf9", "#ece6f8", "#f8eeee"],
+    "speed": 0.16,
+    "params": {
+      "distortion": 0.5,
+      "swirl": 0.04
+    }
+  }
+}

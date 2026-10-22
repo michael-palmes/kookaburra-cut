@@ -1,0 +1,85 @@
+{
+  "version": 2,
+  "id": "kookaburra-sky",
+  "name": "Sky",
+  "mode": "light",
+  "catalogue": {
+    "category": "colour",
+    "useLabel": "Fresh product updates",
+    "tags": ["blue", "subtle", "fresh", "product", "airy", "tint"],
+    "stage": "lighting-only",
+    "order": 20
+  },
+  "colors": {
+    "background": "#e8f1fb",
+    "text": "#0b1f35",
+    "accent": "#1d5bd6",
+    "muted": "#3a536e"
+  },
+  "chartColors": ["#1d5bd6", "#0f6b5c", "#b4235a", "#8a5a00", "#5b3fc4", "#24364b"],
+  "typography": {
+    "headline": {
+      "family": "Inter",
+      "weight": 600
+    },
+    "body": "Inter",
+    "scale": 1.2
+  },
+  "motion": {
+    "durations": {
+      "fast": 200,
+      "base": 520,
+      "slow": 940
+    },
+    "easings": {
+      "standard": "outCubic",
+      "emphasized": "outExpo"
+    }
+  },
+  "textAnimation": {
+    "in": "fade-scale",
+    "out": "fade",
+    "staggerMs": 0,
+    "startScale": 0.96
+  },
+  "lighting": {
+    "key": {
+      "azimuthDeg": 35,
+      "elevationDeg": 55,
+      "intensity": 2.0,
+      "color": "#f6fbff"
+    },
+    "fills": [
+      {
+        "azimuthDeg": -120,
+        "elevationDeg": 18,
+        "intensity": 0.8,
+        "color": "#e8f1ff"
+      }
+    ],
+    "ambient": 0.85,
+    "shadow": {
+      "technique": "map",
+      "softness": 0.7,
+      "opacity": 0.24,
+      "mapSize": 2048,
+      "bias": -0.0005,
+      "color": "#1d2733"
+    }
+  },
+  "environment": {
+    "source": "kookaburra:cyclorama",
+    "intensity": 1.0,
+    "rotationDeg": 0
+  },
+  "background": {
+    "type": "shader",
+    "shader": "mesh-gradient",
+    "colors": ["#eef5fc", "#e0ebf8", "#e6eefa", "#dbe7f6"],
+    "speed": 0.14,
+    "params": {
+      "distortion": 0.5,
+      "swirl": 0.04
+    }
+  }
+}

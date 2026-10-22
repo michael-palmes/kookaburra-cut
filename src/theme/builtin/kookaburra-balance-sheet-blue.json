@@ -4,10 +4,11 @@
   "name": "Balance-Sheet Blue",
   "mode": "dark",
   "catalogue": {
-    "category": "modern-finance",
+    "category": "essentials",
     "useLabel": "Banking and accounting",
     "tags": ["banking", "accounting", "finance", "reporting", "professional", "safe"],
     "stage": "lighting-only",
+    "hidden": true,
     "order": 10
   },
   "colors": {

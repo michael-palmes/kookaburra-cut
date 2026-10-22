@@ -4,10 +4,11 @@
   "name": "Riso Logic",
   "mode": "light",
   "catalogue": {
-    "category": "maker-energy",
+    "category": "essentials",
     "useLabel": "Indie creative launches",
     "tags": ["riso", "indie", "creative", "launch", "print", "bold"],
     "stage": "lighting-only",
+    "hidden": true,
     "order": 20
   },
   "colors": {

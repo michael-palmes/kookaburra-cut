@@ -1,0 +1,85 @@
+{
+  "version": 2,
+  "id": "kookaburra-sage",
+  "name": "Sage",
+  "mode": "light",
+  "catalogue": {
+    "category": "colour",
+    "useLabel": "Calm health and wellbeing",
+    "tags": ["green", "subtle", "calm", "natural", "wellbeing", "tint"],
+    "stage": "lighting-only",
+    "order": 10
+  },
+  "colors": {
+    "background": "#e9efe7",
+    "text": "#16231a",
+    "accent": "#2e6a45",
+    "muted": "#45574a"
+  },
+  "chartColors": ["#2e6a45", "#1f4e79", "#9a3b2a", "#6b5a12", "#5a3f7a", "#2f3b33"],
+  "typography": {
+    "headline": {
+      "family": "Jost",
+      "weight": 500
+    },
+    "body": "Inter",
+    "scale": 1.2
+  },
+  "motion": {
+    "durations": {
+      "fast": 200,
+      "base": 520,
+      "slow": 940
+    },
+    "easings": {
+      "standard": "outCubic",
+      "emphasized": "outExpo"
+    }
+  },
+  "textAnimation": {
+    "in": "fade-up",
+    "out": "fade",
+    "staggerMs": 40,
+    "stagger": "word"
+  },
+  "lighting": {
+    "key": {
+      "azimuthDeg": 35,
+      "elevationDeg": 55,
+      "intensity": 2.0,
+      "color": "#fbfff6"
+    },
+    "fills": [
+      {
+        "azimuthDeg": -120,
+        "elevationDeg": 18,
+        "intensity": 0.8,
+        "color": "#eef5ea"
+      }
+    ],
+    "ambient": 0.85,
+    "shadow": {
+      "technique": "map",
+      "softness": 0.7,
+      "opacity": 0.24,
+      "mapSize": 2048,
+      "bias": -0.0005,
+      "color": "#1f2a22"
+    }
+  },
+  "environment": {
+    "source": "kookaburra:cyclorama",
+    "intensity": 0.95,
+    "rotationDeg": 0
+  },
+  "background": {
+    "type": "shader",
+    "shader": "mesh-gradient",
+    "colors": ["#eef3ec", "#e2eadf", "#e8eee5", "#dfe8dc"],
+    "speed": 0.14,
+    "params": {
+      "distortion": 0.5,
+      "swirl": 0.04
+    }
+  }
+}

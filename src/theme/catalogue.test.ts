@@ -40,15 +40,12 @@ function syntheticDoc(index: number) {
 }
 
 describe("theme catalogue definitions", () => {
-  it("keeps use-case collections in their decided order", () => {
+  it("keeps style collections in their decided order", () => {
     expect(THEME_CATEGORIES.map(({ label }) => label)).toEqual([
       "Essentials",
-      "Quiet technology",
-      "Human-centred AI",
-      "Maker energy",
-      "Sensory and surreal",
-      "Digital assets",
-      "Modern finance",
+      "Studio",
+      "Colour",
+      "Retro",
     ]);
     expect(MY_THEMES_COLLECTION).toEqual({ id: "my-themes", label: "My themes" });
   });
@@ -89,31 +86,45 @@ describe("theme catalogue definitions", () => {
 
 describe("bundled theme catalogue", () => {
   it("discovers every file with unique ids matching its filename", () => {
-    expect(BUILTIN_THEME_CATALOGUE).toHaveLength(36);
-    expect(new Set(BUILTIN_THEME_CATALOGUE.map(({ id }) => id))).toHaveLength(36);
+    expect(BUILTIN_THEME_CATALOGUE).toHaveLength(58);
+    expect(new Set(BUILTIN_THEME_CATALOGUE.map(({ id }) => id))).toHaveLength(58);
     for (const entry of BUILTIN_THEME_CATALOGUE) {
       expect(entry.filename).toBe(`${entry.id}.json`);
       expect(entry.theme.id).toBe(entry.id);
     }
   });
 
-  it("keeps only legacy fallbacks hidden", () => {
+  it("hides the fallbacks and every retired theme, which still resolve", () => {
     const hidden = filterThemeCatalogue(BUILTIN_THEME_CATALOGUE, { includeHidden: true })
       .filter(({ catalogue }) => catalogue.hidden)
       .map(({ id }) => id);
-    expect(hidden).toEqual(["kookaburra-default", "kookaburra-fx"]);
-    expect(THEME_LINEUP).toHaveLength(34);
-    expect(THEME_LINEUP.slice(0, 10)).toEqual([
-      "kookaburra-studio-white",
-      "kookaburra-pacific",
-      "kookaburra-paper",
-      "kookaburra-gallery",
-      "kookaburra-sunrise",
-      "kookaburra-loft",
-      "kookaburra-midnight",
-      "kookaburra-neon",
-      "kookaburra-abyss",
-      "kookaburra-ember",
+    expect(hidden).toHaveLength(36);
+    expect(hidden).toContain("kookaburra-default");
+    expect(hidden).toContain("kookaburra-studio-white");
+    expect(hidden).toContain("kookaburra-velvet-physics");
+    expect(THEME_LINEUP).toEqual([
+      "kookaburra-daylight",
+      "kookaburra-onyx",
+      "kookaburra-ivory",
+      "kookaburra-ink",
+      "kookaburra-afterglow",
+      "kookaburra-blue-hour",
+      "kookaburra-soft-field",
+      "kookaburra-frost",
+      "kookaburra-lilac",
+      "kookaburra-moss",
+      "kookaburra-sage",
+      "kookaburra-sky",
+      "kookaburra-blush",
+      "kookaburra-citrus",
+      "kookaburra-tangerine",
+      "kookaburra-lagoon",
+      "kookaburra-basel",
+      "kookaburra-hi-fi",
+      "kookaburra-mid-century",
+      "kookaburra-canyon",
+      "kookaburra-mainframe",
+      "kookaburra-night-drive",
     ]);
   });
 
@@ -145,15 +156,18 @@ describe("bundled theme catalogue", () => {
 
   it("searches names, labels, tags and categories with stable ordering", () => {
     expect(
-      searchThemeCatalogue(BUILTIN_THEME_CATALOGUE, "editorial explain", {
+      searchThemeCatalogue(BUILTIN_THEME_CATALOGUE, "editorial serif", {
         category: "essentials",
       }).map((e) => e.id),
-    ).toEqual(["kookaburra-paper"]);
-    expect(
-      searchThemeCatalogue(BUILTIN_THEME_CATALOGUE, "warm story", {
-        category: "essentials",
-      }).map((e) => e.id),
-    ).toEqual(["kookaburra-paper", "kookaburra-ember"]);
+    ).toEqual(["kookaburra-ivory", "kookaburra-ink"]);
+    expect(searchThemeCatalogue(BUILTIN_THEME_CATALOGUE, "1980s").map((e) => e.id)).toEqual([
+      "kookaburra-mainframe",
+      "kookaburra-night-drive",
+    ]);
+    expect(searchThemeCatalogue(BUILTIN_THEME_CATALOGUE, "1970s").map((e) => e.id)).toEqual([
+      "kookaburra-hi-fi",
+      "kookaburra-canyon",
+    ]);
     expect(searchThemeCatalogue(BUILTIN_THEME_CATALOGUE, "legacy")).toEqual([]);
     expect(
       searchThemeCatalogue(BUILTIN_THEME_CATALOGUE, "legacy", { includeHidden: true }).map(
@@ -165,21 +179,18 @@ describe("bundled theme catalogue", () => {
         category: "essentials",
         mode: "dark",
       }).map((e) => e.id),
-    ).toEqual(["kookaburra-midnight", "kookaburra-neon", "kookaburra-abyss", "kookaburra-ember"]);
+    ).toEqual(["kookaburra-onyx", "kookaburra-ink"]);
   });
 
   it("counts visible and hidden entries without dropping empty categories", () => {
     expect(countThemesByCategory(BUILTIN_THEME_CATALOGUE)).toEqual({
-      essentials: 10,
-      "quiet-technology": 4,
-      "human-centred-ai": 4,
-      "maker-energy": 4,
-      "sensory-and-surreal": 4,
-      "digital-assets": 4,
-      "modern-finance": 4,
+      essentials: 4,
+      studio: 6,
+      colour: 6,
+      retro: 6,
     });
     expect(countThemesByCategory(BUILTIN_THEME_CATALOGUE, { includeHidden: true }).essentials).toBe(
-      12,
+      40,
     );
   });
 });
@@ -196,9 +207,9 @@ describe("scalable bundled discovery", () => {
     expect(entries).toHaveLength(100);
     expect(new Set(entries.map(({ id }) => id))).toHaveLength(100);
     expect(entries.slice(0, 3).map(({ id }) => id)).toEqual([
-      "synthetic-098",
-      "synthetic-091",
-      "synthetic-084",
+      "synthetic-096",
+      "synthetic-092",
+      "synthetic-088",
     ]);
     expect(searchThemeCatalogue(entries, "batch-4 synthetic")).toHaveLength(20);
     expect(

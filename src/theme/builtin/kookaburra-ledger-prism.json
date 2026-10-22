@@ -4,10 +4,11 @@
   "name": "Ledger Prism",
   "mode": "dark",
   "catalogue": {
-    "category": "digital-assets",
+    "category": "essentials",
     "useLabel": "Institutional asset launches",
     "tags": ["institutional", "assets", "markets", "prism", "digital-assets", "safe"],
     "stage": "lighting-only",
+    "hidden": true,
     "order": 30
   },
   "colors": {

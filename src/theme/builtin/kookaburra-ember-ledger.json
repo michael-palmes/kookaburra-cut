@@ -4,10 +4,11 @@
   "name": "Ember Ledger",
   "mode": "dark",
   "catalogue": {
-    "category": "digital-assets",
+    "category": "essentials",
     "useLabel": "Retail digital asset launches",
     "tags": ["digital-assets", "retail", "exchange", "market", "ember", "safe"],
     "stage": "lighting-only",
+    "hidden": true,
     "order": 10
   },
   "colors": {

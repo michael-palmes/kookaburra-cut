@@ -4,10 +4,11 @@
   "name": "Archive Future",
   "mode": "light",
   "catalogue": {
-    "category": "human-centred-ai",
+    "category": "essentials",
     "useLabel": "Editorial AI narratives",
     "tags": ["editorial", "archive", "ai", "culture", "narrative", "experimental"],
     "stage": "lighting-only",
+    "hidden": true,
     "order": 40
   },
   "colors": {

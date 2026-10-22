@@ -1,0 +1,88 @@
+{
+  "version": 2,
+  "id": "kookaburra-ivory",
+  "name": "Ivory",
+  "mode": "light",
+  "catalogue": {
+    "category": "essentials",
+    "useLabel": "Thoughtful AI and research stories",
+    "tags": ["warm", "editorial", "serif", "ai", "calm", "paper"],
+    "stage": "lighting-only",
+    "order": 30
+  },
+  "colors": {
+    "background": "#f3f1ea",
+    "text": "#141413",
+    "accent": "#9f4527",
+    "muted": "#5a5954"
+  },
+  "gradients": {
+    "brand": {
+      "type": "radial",
+      "angleDeg": 0,
+      "stops": [["#faf9f5", 0], ["#ebe8de", 1]],
+      "space": "oklch"
+    }
+  },
+  "chartColors": ["#9f4527", "#3e6a96", "#3f3e3a", "#8a5a12", "#5b7344", "#7b4a7a"],
+  "typography": {
+    "headline": {
+      "family": "Instrument Serif",
+      "weight": 400
+    },
+    "body": "Inter",
+    "scale": 1.2
+  },
+  "motion": {
+    "durations": {
+      "fast": 200,
+      "base": 520,
+      "slow": 940
+    },
+    "easings": {
+      "standard": "outCubic",
+      "emphasized": "outExpo"
+    }
+  },
+  "textAnimation": {
+    "in": "mask-reveal",
+    "out": "fade",
+    "staggerMs": 0,
+    "delivery": "by-paragraph"
+  },
+  "lighting": {
+    "key": {
+      "azimuthDeg": 35,
+      "elevationDeg": 55,
+      "intensity": 2.0,
+      "color": "#fff6ea"
+    },
+    "fills": [
+      {
+        "azimuthDeg": -120,
+        "elevationDeg": 18,
+        "intensity": 0.8,
+        "color": "#f2ede4"
+      }
+    ],
+    "ambient": 0.85,
+    "shadow": {
+      "technique": "map",
+      "softness": 0.7,
+      "opacity": 0.24,
+      "mapSize": 2048,
+      "bias": -0.0005,
+      "color": "#3a2f26"
+    }
+  },
+  "environment": {
+    "source": "kookaburra:story-studio",
+    "intensity": 0.85,
+    "rotationDeg": 0
+  },
+  "background": {
+    "type": "gradient",
+    "gradient": "brand",
+    "parallax": 0.03
+  }
+}

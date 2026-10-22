@@ -651,6 +651,7 @@ def cmd_theme(ctx: Ctx) -> int:
     themes_root = project.workspace_root / "themes"
     if a.op == "list":
         bundled = theme_entries()
+        listed = [e for e in bundled if e.get("hidden") is not True or e.get("id") == current]
         workspace = []
         if themes_root.is_dir():
             for folder in sorted(themes_root.iterdir()):
@@ -660,9 +661,11 @@ def cmd_theme(ctx: Ctx) -> int:
             ctx.out({"current": current, "bundled": bundled, "workspace": workspace})
             return EXIT_OK
         emit(f"current: {current}")
-        emit(f"bundled ({len(bundled)}):" if bundled else "bundled: (catalog.json has no themes list)")
-        for e in bundled:
+        emit(f"bundled ({len(listed)}):" if bundled else "bundled: (catalog.json has no themes list)")
+        for e in listed:
             emit(f"  {'*' if e.get('id') == current else ' '} {catmod.entry_line(e)}")
+        if len(listed) < len(bundled):
+            emit(f"  ({len(bundled) - len(listed)} retired themes still render: kb catalog themes lists them)")
         emit(f"workspace ({len(workspace)}), editable with kb theme set --theme ID:")
         for w in workspace:
             emit(f"  {'*' if w == current else ' '} {w}")

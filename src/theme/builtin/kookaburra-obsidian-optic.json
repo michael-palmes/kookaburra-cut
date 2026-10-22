@@ -4,10 +4,11 @@
   "name": "Obsidian Optic",
   "mode": "dark",
   "catalogue": {
-    "category": "quiet-technology",
+    "category": "essentials",
     "useLabel": "Premium technical reveals",
     "tags": ["premium", "technical", "product", "dark", "cinematic", "reveal"],
     "stage": "lighting-only",
+    "hidden": true,
     "order": 20
   },
   "colors": {

@@ -4,10 +4,11 @@
   "name": "Chain Current",
   "mode": "dark",
   "catalogue": {
-    "category": "digital-assets",
+    "category": "essentials",
     "useLabel": "Protocol and wallet launches",
     "tags": ["protocol", "wallet", "network", "digital-assets", "infrastructure", "bold"],
     "stage": "lighting-only",
+    "hidden": true,
     "order": 20
   },
   "colors": {

@@ -4,10 +4,11 @@
   "name": "Lucid Chrome",
   "mode": "dark",
   "catalogue": {
-    "category": "sensory-and-surreal",
+    "category": "essentials",
     "useLabel": "Immersive media launches",
     "tags": ["immersive", "media", "chrome", "orbital", "cinematic", "bold"],
     "stage": "lighting-only",
+    "hidden": true,
     "order": 20
   },
   "colors": {

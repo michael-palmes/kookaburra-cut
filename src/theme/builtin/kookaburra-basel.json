@@ -1,0 +1,85 @@
+{
+  "version": 2,
+  "id": "kookaburra-basel",
+  "name": "Basel",
+  "mode": "light",
+  "catalogue": {
+    "category": "retro",
+    "useLabel": "Swiss-style announcements",
+    "tags": ["swiss", "1960s", "grid", "typographic", "red", "modernist"],
+    "stage": "lighting-only",
+    "order": 10
+  },
+  "colors": {
+    "background": "#f6f6f4",
+    "text": "#111111",
+    "accent": "#b80e2a",
+    "muted": "#505050"
+  },
+  "chartColors": ["#b80e2a", "#111111", "#1f4e9c", "#8a5a00", "#2f6b3a", "#6b6b6b"],
+  "typography": {
+    "headline": {
+      "family": "Inter",
+      "weight": 600
+    },
+    "body": "Inter",
+    "scale": 1.2
+  },
+  "motion": {
+    "durations": {
+      "fast": 200,
+      "base": 520,
+      "slow": 940
+    },
+    "easings": {
+      "standard": "outCubic",
+      "emphasized": "outExpo"
+    }
+  },
+  "textAnimation": {
+    "in": "mask-reveal",
+    "out": "fade",
+    "staggerMs": 0
+  },
+  "lighting": {
+    "key": {
+      "azimuthDeg": 35,
+      "elevationDeg": 55,
+      "intensity": 2.0
+    },
+    "fills": [
+      {
+        "azimuthDeg": -120,
+        "elevationDeg": 18,
+        "intensity": 0.8
+      }
+    ],
+    "ambient": 0.85,
+    "shadow": {
+      "technique": "map",
+      "softness": 0.7,
+      "opacity": 0.24,
+      "mapSize": 2048,
+      "bias": -0.0005,
+      "color": "#20242c"
+    }
+  },
+  "environment": {
+    "source": "kookaburra:monochrome-studio",
+    "intensity": 1.0,
+    "rotationDeg": 0
+  },
+  "background": {
+    "type": "shader",
+    "shader": "graph-grid",
+    "colors": ["#f6f6f4", "#e6e6e3", "#e1e1de", "#f0f0ee"],
+    "speed": 0.4,
+    "params": {
+      "density": 8,
+      "lineWeight": 0.3,
+      "highlightWidth": 0.15,
+      "fillDensity": 0,
+      "cadence": 0.12
+    }
+  }
+}

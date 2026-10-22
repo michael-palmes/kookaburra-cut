@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { hexToOklch } from "../../theme/oklch";
-import { builtinThemes } from "../../theme/registry";
+import { BUILTIN_THEME_CATALOGUE } from "../../theme/registry";
 import { CHART_PALETTE_SIZE } from "./palette";
 import {
   CHART_PALETTE_SCHEME_IDS,
@@ -47,10 +47,10 @@ const MIN_SCHEME_GAP = 0.045;
 const MIN_LIGHTNESS_STEP = 0.03;
 const MIN_CHROMA_STEP = 0.02;
 
-const backgrounds = Object.values(builtinThemes).map((t) => ({
-  id: t.id,
-  background: t.colors.background,
-}));
+/** Bold colour themes sit mid-tone, where only their own palettes clear 3:1. */
+const backgrounds = BUILTIN_THEME_CATALOGUE.filter(
+  ({ catalogue }) => !catalogue.tags.includes("bold"),
+).map(({ theme }) => ({ id: theme.id, background: theme.colors.background }));
 const schemes = CHART_PALETTE_SCHEME_IDS.map((id) => CHART_PALETTE_SCHEMES[id]);
 
 describe("chart palette schemes", () => {

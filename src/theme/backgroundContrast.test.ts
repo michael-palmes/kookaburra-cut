@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { SCENE3D_BACKGROUND_PRESETS, SCENE3D_BACKGROUNDS } from "../toolkit/stage/scene3d";
-import { SHADER_BACKGROUND_PRESETS, SHADER_BACKGROUNDS } from "../toolkit/stage/shaders";
+import { SCENE3D_BACKGROUNDS } from "../toolkit/stage/scene3d";
+import { SHADER_BACKGROUNDS } from "../toolkit/stage/shaders";
 import { filterThemeCatalogue, THEME_CATEGORIES, type ThemeCatalogueEntry } from "./catalogue";
 import { BUILTIN_THEME_CATALOGUE } from "./registry";
 
@@ -22,127 +22,97 @@ function contrast(a: string, b: string): number {
   return (Math.max(first, second) + 0.05) / (Math.min(first, second) + 0.05);
 }
 
-const newThemes = filterThemeCatalogue(BUILTIN_THEME_CATALOGUE).filter(
-  ({ catalogue }) => catalogue.category !== "essentials",
-);
+const lineup = filterThemeCatalogue(BUILTIN_THEME_CATALOGUE);
 
-function visibleColours(entry: ThemeCatalogueEntry): string[] {
-  const { theme } = entry;
+/** Readability first: headline text, secondary labels and accents hold these over every colour the background can show. */
+const MIN_TEXT = 10;
+const MIN_MUTED = { light: 5.5, dark: 7 } as const;
+const MIN_ACCENT = 4.5;
+const MIN_CHART = 3;
+/** A calm background: its darkest and lightest stops stay this close, so motion never competes with the copy. */
+const MAX_BACKGROUND_SPREAD = 1.35;
+
+function visibleColours({ theme }: ThemeCatalogueEntry): string[] {
   const colours = [theme.colors.background];
   const background = theme.background;
+  if (background?.type === "gradient") {
+    const spec = background.spec ?? theme.gradients?.[background.gradient ?? ""];
+    colours.push(...(spec?.stops.map(([colour]) => colour) ?? []));
+  }
   if (background?.type === "shader") colours.push(...(background.colors ?? []));
   if (background?.type === "scene3d") {
-    const slots = SCENE3D_BACKGROUNDS[background.look]?.colorSlots ?? [];
-    colours.push(...(background.colors ?? []).filter((_, i) => !slots[i]?.glow));
+    colours.push(...(background.colors ?? []));
     if (background.backing?.type === "color") colours.push(background.backing.color);
   }
   return [...new Set(colours)];
 }
 
-function chartSurfaceColours(entry: ThemeCatalogueEntry): string[] {
-  const background = entry.theme.background;
-  if (background?.type !== "scene3d") return visibleColours(entry);
-  const colours = [entry.theme.colors.background];
-  if (background.backing?.type === "color") colours.push(background.backing.color);
-  return [...new Set(colours)];
-}
-
-const STATIC_BACKGROUND_SOURCES = [
-  "kookaburra:linen-intelligence",
-  "kookaburra:velvet-physics",
-] as const;
-
-describe("expanded theme library", () => {
-  it("ships four stage-free themes in every new use-case category", () => {
-    expect(newThemes).toHaveLength(24);
-    for (const category of THEME_CATEGORIES.filter(({ id }) => id !== "essentials")) {
-      const entries = newThemes.filter(({ catalogue }) => catalogue.category === category.id);
-      expect(entries, category.label).toHaveLength(4);
-      expect(
-        entries.map(({ catalogue }) => catalogue.order),
-        category.label,
-      ).toEqual([10, 20, 30, 40]);
-    }
-    for (const { id, theme, catalogue } of newThemes) {
+describe("bundled theme lineup", () => {
+  it("ships twenty-two visible themes across Essentials, Studio, Colour and Retro", () => {
+    expect(lineup).toHaveLength(22);
+    const sizes = Object.fromEntries(
+      THEME_CATEGORIES.map(({ id }) => [
+        id,
+        lineup.filter(({ catalogue }) => catalogue.category === id).length,
+      ]),
+    );
+    expect(sizes).toEqual({ essentials: 4, studio: 6, colour: 6, retro: 6 });
+    expect(lineup.filter(({ theme }) => theme.mode === "light")).toHaveLength(14);
+    for (const { id, theme, catalogue } of lineup) {
       expect(catalogue.stage, id).toBe("lighting-only");
       expect(theme.lighting, id).toBeDefined();
-      expect(theme.environment, id).toBeUndefined();
+      expect(theme.environment, id).toBeDefined();
       expect(theme.backdrop, id).toBeUndefined();
+      expect(theme.effects, id).toBeUndefined();
     }
   });
 
-  it("uses every shader background, only known 3D looks and two static artworks", () => {
-    const shaders = new Set<string>();
-    const scene3d = new Set<string>();
-    const images = new Set<string>();
-    for (const { theme } of newThemes) {
-      if (theme.background?.type === "shader") shaders.add(theme.background.shader);
-      if (theme.background?.type === "scene3d") scene3d.add(theme.background.look);
-      if (theme.background?.type === "image") images.add(theme.background.src);
-    }
-    expect([...shaders].sort()).toEqual(Object.keys(SHADER_BACKGROUNDS).sort());
-    // 3D looks outnumber the themes, so a look needs no theme; one a theme uses must exist.
-    for (const look of scene3d) expect(SCENE3D_BACKGROUNDS[look], look).toBeDefined();
-    expect([...images].sort()).toEqual([...STATIC_BACKGROUND_SOURCES].sort());
-  });
-
-  it("copies every procedural preset exactly and matches its declared mode", () => {
-    for (const { id, theme } of newThemes) {
+  it("keeps animated backgrounds to known looks with every slot filled", () => {
+    for (const { id, theme } of lineup) {
       const background = theme.background;
+      expect(background, id).toBeDefined();
       if (background?.type === "shader") {
-        const preset = SHADER_BACKGROUND_PRESETS[background.shader]?.find(
-          ({ id }) => id === background.preset,
-        );
-        expect(preset, id).toBeDefined();
-        expect(theme.mode, id).toBe(preset?.mode);
-        expect(background.colors, id).toEqual(preset?.colors);
-        expect(background.speed, id).toBe(preset?.speed);
-        expect(background.scale, id).toBe(preset?.scale);
-        expect(background.params, id).toEqual(preset?.params);
         expect(background.colors, id).toHaveLength(
-          SHADER_BACKGROUNDS[background.shader]?.colorSlots.length,
+          SHADER_BACKGROUNDS[background.shader]?.colorSlots.length ?? -1,
         );
+        expect(background.speed ?? 1, id).toBeLessThanOrEqual(0.5);
       }
       if (background?.type === "scene3d") {
-        const preset = SCENE3D_BACKGROUND_PRESETS[background.look]?.find(
-          ({ id }) => id === background.preset,
-        );
-        expect(preset, id).toBeDefined();
-        expect(theme.mode, id).toBe(preset?.mode);
-        expect(background.colors, id).toEqual(preset?.colors);
-        expect(background.speed, id).toBe(preset?.speed);
-        expect(background.params, id).toEqual(preset?.params);
-        expect(background.backing, id).toEqual({ type: "color", color: preset?.backing });
         expect(background.colors, id).toHaveLength(
-          SCENE3D_BACKGROUNDS[background.look]?.colorSlots.length,
+          SCENE3D_BACKGROUNDS[background.look]?.colorSlots.length ?? -1,
         );
       }
+      expect(["gradient", "shader", "scene3d"], id).toContain(background?.type);
     }
   });
 
-  it("holds AA text and muted contrast over every procedural colour", () => {
+  it("holds text, labels, accents and charts over every background colour", () => {
     const failures: string[] = [];
-    for (const entry of newThemes) {
-      if (entry.theme.background?.type === "image") continue;
+    for (const entry of lineup) {
+      const { colors, chartColors = [], mode = "dark" } = entry.theme;
+      const checks: [string, string, number][] = [
+        ["text", colors.text, MIN_TEXT],
+        ["muted", colors.muted, MIN_MUTED[mode]],
+        ["accent", colors.accent, MIN_ACCENT],
+        ...chartColors.map((swatch): [string, string, number] => ["chart", swatch, MIN_CHART]),
+      ];
       for (const colour of visibleColours(entry)) {
-        const textContrast = contrast(entry.theme.colors.text, colour);
-        if (textContrast < 4.5) {
-          failures.push(`${entry.id} text on ${colour}: ${textContrast.toFixed(2)}`);
-        }
-        const mutedContrast = contrast(entry.theme.colors.muted, colour);
-        if (mutedContrast < 4.5) {
-          failures.push(`${entry.id} muted on ${colour}: ${mutedContrast.toFixed(2)}`);
-        }
-      }
-      for (const colour of chartSurfaceColours(entry)) {
-        for (const swatch of entry.theme.chartColors ?? []) {
-          const chartContrast = contrast(swatch, colour);
-          if (chartContrast < 3) {
-            failures.push(`${entry.id} chart ${swatch} on ${colour}: ${chartContrast.toFixed(2)}`);
+        for (const [role, value, minimum] of checks) {
+          const ratio = contrast(value, colour);
+          if (ratio < minimum) {
+            failures.push(`${entry.id} ${role} ${value} on ${colour}: ${ratio.toFixed(2)}`);
           }
         }
       }
     }
     expect(failures).toEqual([]);
+  });
+
+  it("keeps every background calm", () => {
+    for (const entry of lineup) {
+      const levels = visibleColours(entry).map(luminance);
+      const spread = (Math.max(...levels) + 0.05) / (Math.min(...levels) + 0.05);
+      expect(spread, entry.id).toBeLessThanOrEqual(MAX_BACKGROUND_SPREAD);
+    }
   });
 });
