@@ -71,7 +71,7 @@ export function TemplateCard({
   onSelect: () => void;
   interaction?: LibraryCardInteraction;
   previewFrame?: number;
-  /** The new-project wizard's card: name and scene count only, the tagline moved to the tooltip. */
+  /** The new-project wizard's card: name and scene count, flags on the poster, the tagline moved to the tooltip. */
   compact?: boolean;
 }) {
   // The card rests on the manifest's poster frame; hovering still sweeps all four stills.
@@ -125,6 +125,15 @@ export function TemplateCard({
             <span style={{ color: theme.colors.text }}>Aa</span>
             <span className="template-card-accent" style={{ background: theme.colors.accent }} />
           </div>
+        )}
+        {compact && flags.length > 0 && (
+          <span className="template-card-flags">
+            {flags.map((flag) => (
+              <span key={flag} className="template-chip flag">
+                {flag}
+              </span>
+            ))}
+          </span>
         )}
       </div>
       {compact ? (

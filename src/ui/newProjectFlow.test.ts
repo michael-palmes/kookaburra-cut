@@ -3,8 +3,10 @@ import {
   claudeStartMatches,
   DEFAULT_THEME_ID,
   defaultProjectName,
+  gridColumnCount,
   initialLookThemeId,
   lookChoices,
+  selectionAfterFilter,
   startGridStep,
 } from "./newProjectFlow";
 import type { ThemeChoice } from "./ThemePicker";
@@ -54,33 +56,62 @@ describe("claudeStartMatches", () => {
   });
 });
 
+describe("gridColumnCount", () => {
+  it("counts the computed tracks, falling back when there are none", () => {
+    expect(gridColumnCount("336px 336px 336px", 3)).toBe(3);
+    expect(gridColumnCount("250px 250px 250px 250px", 3)).toBe(4);
+    expect(gridColumnCount("none", 3)).toBe(3);
+    expect(gridColumnCount("", 3)).toBe(3);
+  });
+});
+
 describe("startGridStep", () => {
   // With the Claude card: row one is Claude (two cells) + index 1; row two is 2, 3, 4.
   it("moves down and up through the wide lead card", () => {
-    expect(startGridStep("ArrowDown", 0, 8, true)).toBe(2);
-    expect(startGridStep("ArrowDown", 1, 8, true)).toBe(4);
-    expect(startGridStep("ArrowUp", 3, 8, true)).toBe(0);
-    expect(startGridStep("ArrowUp", 4, 8, true)).toBe(1);
-    expect(startGridStep("ArrowUp", 1, 8, true)).toBe(1);
+    expect(startGridStep("ArrowDown", 0, 8, true, 3)).toBe(2);
+    expect(startGridStep("ArrowDown", 1, 8, true, 3)).toBe(4);
+    expect(startGridStep("ArrowUp", 3, 8, true, 3)).toBe(0);
+    expect(startGridStep("ArrowUp", 4, 8, true, 3)).toBe(1);
+    expect(startGridStep("ArrowUp", 1, 8, true, 3)).toBe(1);
   });
 
   it("walks a plain three-column grid", () => {
-    expect(startGridStep("ArrowDown", 1, 8, false)).toBe(4);
-    expect(startGridStep("ArrowDown", 6, 8, false)).toBe(7);
-    expect(startGridStep("End", 3, 8, false)).toBe(5);
-    expect(startGridStep("Home", 5, 8, false)).toBe(3);
+    expect(startGridStep("ArrowDown", 1, 8, false, 3)).toBe(4);
+    expect(startGridStep("ArrowDown", 6, 8, false, 3)).toBe(7);
+    expect(startGridStep("End", 3, 8, false, 3)).toBe(5);
+    expect(startGridStep("Home", 5, 8, false, 3)).toBe(3);
+  });
+
+  it("follows the column count it is given", () => {
+    // Two columns: Claude fills row one, so index 1 starts row two.
+    expect(startGridStep("ArrowDown", 0, 6, true, 2)).toBe(1);
+    expect(startGridStep("ArrowDown", 1, 8, false, 4)).toBe(5);
   });
 
   it("clamps at the ends and jumps with meta", () => {
-    expect(startGridStep("ArrowLeft", 0, 8, true)).toBe(0);
-    expect(startGridStep("ArrowRight", 7, 8, true)).toBe(7);
-    expect(startGridStep("End", 0, 8, true, true)).toBe(7);
-    expect(startGridStep("Home", 6, 8, true, true)).toBe(0);
+    expect(startGridStep("ArrowLeft", 0, 8, true, 3)).toBe(0);
+    expect(startGridStep("ArrowRight", 7, 8, true, 3)).toBe(7);
+    expect(startGridStep("End", 0, 8, true, 3, true)).toBe(7);
+    expect(startGridStep("Home", 6, 8, true, 3, true)).toBe(0);
   });
 
   it("starts at the first card when the selection is filtered out, and ignores other keys", () => {
-    expect(startGridStep("ArrowDown", -1, 8, true)).toBe(0);
-    expect(startGridStep("Enter", 2, 8, true)).toBeNull();
+    expect(startGridStep("ArrowDown", -1, 8, true, 3)).toBe(0);
+    expect(startGridStep("Enter", 2, 8, true, 3)).toBeNull();
+  });
+});
+
+describe("selectionAfterFilter", () => {
+  it("keeps a pick that is still listed", () => {
+    expect(selectionAfterFilter("b", ["a", "b"])).toBe("b");
+  });
+
+  it("moves to the first card when the filter hides the pick", () => {
+    expect(selectionAfterFilter("c", ["a", "b"])).toBe("a");
+  });
+
+  it("keeps the pick when nothing is listed", () => {
+    expect(selectionAfterFilter("c", [])).toBe("c");
   });
 });
 

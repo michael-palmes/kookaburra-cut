@@ -24,6 +24,7 @@ import { themeDocLookup, WORKSPACE_THEME_PREFIX } from "../theme/registry";
 import { parseThemeDoc } from "../theme/schema";
 import { THEME_CATEGORY_ICONS } from "./libraryIcons";
 import { canEditBundledThemes } from "./theme-editor/themeEditorIo";
+import { useSlashFocus } from "./useSlashFocus";
 
 export type ThemeChoiceSource = "bundled" | "workspace";
 
@@ -579,7 +580,7 @@ export function ThemeGrid({
   );
 }
 
-export interface ThemeBrowserProps extends Omit<ThemeGridProps, "onReorder"> {
+export interface ThemeBrowserProps extends Omit<ThemeGridProps, "onReorder" | "markOwn"> {
   layout?: "full" | "compact";
   initialCollection?: ThemeCollectionId;
   recentIds?: readonly string[];
@@ -710,18 +711,7 @@ export function ThemeBrowser({
     if (changed && searching) setActiveCollection("all");
   }, [searching, value]);
 
-  useEffect(() => {
-    const focusSearch = (event: KeyboardEvent) => {
-      if (event.key !== "/" || event.metaKey || event.ctrlKey || event.altKey) return;
-      const target = event.target as HTMLElement | null;
-      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA")) return;
-      event.preventDefault();
-      searchRef.current?.focus();
-      searchRef.current?.select();
-    };
-    window.addEventListener("keydown", focusSearch);
-    return () => window.removeEventListener("keydown", focusSearch);
-  }, [searchRef]);
+  useSlashFocus(searchRef);
 
   useEffect(() => {
     if (suppliedRecentIds) return;

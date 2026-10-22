@@ -16,6 +16,7 @@ import {
   subscribeTemplates,
   TEMPLATE_CATEGORIES,
   type TemplateCategoryId,
+  type TemplateEntry,
   templateCategoryCounts,
 } from "../engine/templates";
 import { listProjects, slugifyName } from "../engine/workspace";
@@ -30,9 +31,11 @@ import {
   claudeStartMatches,
   DEFAULT_THEME_ID,
   defaultProjectName,
+  gridColumnCount,
   initialLookThemeId,
   type LookFilter,
   lookChoices,
+  selectionAfterFilter,
   startGridStep,
 } from "./newProjectFlow";
 import { ClaudeComposerArt, ClaudeSpark } from "./startArt";
@@ -46,6 +49,7 @@ import {
   ThemeGrid,
 } from "./ThemePicker";
 import { useEscapeClose } from "./useEscapeClose";
+import { useSlashFocus } from "./useSlashFocus";
 
 type Step = "start" | "look" | "name";
 
@@ -91,20 +95,17 @@ const LOOK_FILTERS: { id: LookFilter; label: string; icon: ReactElement }[] = [
   },
 ];
 
-/** "/" reaches the step's search from anywhere in the dialog, unless the user is already typing. */
-function useSlashFocus(ref: RefObject<HTMLInputElement | null>) {
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "/" || e.metaKey || e.ctrlKey || e.altKey) return;
-      const target = e.target as HTMLElement | null;
-      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA")) return;
-      e.preventDefault();
-      ref.current?.focus();
-      ref.current?.select();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [ref]);
+/** Enter that commits an IME composition (keyCode 229 in WebKit) must not submit. */
+function isSubmitEnter(e: React.KeyboardEvent): boolean {
+  return e.key === "Enter" && !e.nativeEvent.isComposing && e.keyCode !== 229;
+}
+
+/** The footer buttons change meaning under the pointer, so the second click of a double-click is dropped rather than landing on the next step's action. */
+function singleClick(action: () => void) {
+  return (e: React.MouseEvent) => {
+    if (e.detail > 1) return;
+    action();
+  };
 }
 
 function SearchField({
@@ -205,21 +206,36 @@ function ClaudeStartCard({
   );
 }
 
+/** The cards one chip and search show. Create with Claude is pinned into every category, as Blank once was, so a chip never hides the default; only My templates leaves it out. */
+function startCards(entries: readonly TemplateEntry[], chip: StartChip, query: string) {
+  const templates = (
+    chip === MINE_CHIP
+      ? searchTemplates(entries, { query, source: "user" })
+      : searchTemplates(entries, { query, category: chip })
+  ).filter((entry) => entry.id !== BLANK_TEMPLATE_ID);
+  const withClaude = chip !== MINE_CHIP && claudeStartMatches(query);
+  const ids = [...(withClaude ? [CLAUDE_START_ID] : []), ...templates.map((entry) => entry.id)];
+  return { templates, withClaude, ids };
+}
+
 /** Step one: Create with Claude, recommended and first, then the template catalogue behind category chips and a search. The blank template sits behind the Claude card, so it is not listed on its own. */
 function StartGallery({
   value,
   onChange,
+  chip,
+  onChipChange,
   query,
   onQueryChange,
 }: {
   value: string;
   onChange: (id: string) => void;
-  /** Owned by the dialog so Escape can clear the search before it closes the modal. */
+  /** Chip and search are owned by the dialog, so Back returns to the same view and Escape can clear the search first. */
+  chip: StartChip;
+  onChipChange: (chip: StartChip) => void;
   query: string;
   onQueryChange: (query: string) => void;
 }) {
   const entries = useSyncExternalStore(subscribeTemplates, listAllTemplates);
-  const [chip, setChip] = useState<StartChip>(null);
   const [libraryError, setLibraryError] = useState<string | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const gridRef = useRef<HTMLDivElement>(null);
@@ -230,16 +246,10 @@ function StartGallery({
   }, []);
   const counts = useMemo(() => templateCategoryCounts(entries), [entries]);
   const mineCount = useMemo(() => searchTemplates(entries, { source: "user" }).length, [entries]);
-  const templates = useMemo(
-    () =>
-      (chip === MINE_CHIP
-        ? searchTemplates(entries, { query, source: "user" })
-        : searchTemplates(entries, { query, category: chip })
-      ).filter((entry) => entry.id !== BLANK_TEMPLATE_ID),
-    [entries, query, chip],
+  const { templates, withClaude, ids } = useMemo(
+    () => startCards(entries, chip, query),
+    [entries, chip, query],
   );
-  const withClaude = chip === null && claudeStartMatches(query);
-  const ids = [...(withClaude ? [CLAUDE_START_ID] : []), ...templates.map((entry) => entry.id)];
   const tabStopId = ids.includes(value) ? value : ids[0];
 
   const chips: { id: StartChip; label: string; icon: ReactElement }[] = [
@@ -254,9 +264,14 @@ function StartGallery({
       : []),
   ];
 
+  const pickChip = (next: StartChip) => {
+    onChipChange(next);
+    onChange(selectionAfterFilter(value, startCards(entries, next, query).ids));
+  };
+
   // Search is global: typing switches the chips back to All.
   const onQuery = (next: string) => {
-    if (next && chip) setChip(null);
+    if (next && chip) onChipChange(null);
     onQueryChange(next);
   };
 
@@ -269,7 +284,17 @@ function StartGallery({
     el?.scrollIntoView({ block: "nearest" });
   };
   const onGridKeyDown = (e: React.KeyboardEvent) => {
-    const next = startGridStep(e.key, ids.indexOf(value), ids.length, withClaude, e.metaKey);
+    const columns = gridRef.current
+      ? gridColumnCount(getComputedStyle(gridRef.current).gridTemplateColumns, 3)
+      : 3;
+    const next = startGridStep(
+      e.key,
+      ids.indexOf(value),
+      ids.length,
+      withClaude,
+      columns,
+      e.metaKey,
+    );
     if (next === null) return;
     e.preventDefault();
     moveTo(next);
@@ -283,7 +308,7 @@ function StartGallery({
         </p>
       )}
       <div className="new-project-filter">
-        <FilterChips label="Template categories" chips={chips} value={chip} onChange={setChip} />
+        <FilterChips label="Template categories" chips={chips} value={chip} onChange={pickChip} />
         <SearchField
           inputRef={searchRef}
           label="Search templates"
@@ -291,6 +316,9 @@ function StartGallery({
           onChange={onQuery}
         />
       </div>
+      <span className="visually-hidden" aria-live="polite">
+        {`${ids.length} ${ids.length === 1 ? "way to start" : "ways to start"}`}
+      </span>
       {ids.length === 0 ? (
         <div className="template-empty new-project-empty">
           <p>{query ? `No templates match “${query}”.` : "No templates here yet."}</p>
@@ -299,7 +327,7 @@ function StartGallery({
             className="btn"
             onClick={() => {
               onQueryChange("");
-              setChip(null);
+              onChipChange(null);
             }}
           >
             Clear filters
@@ -341,23 +369,35 @@ function LookStep({
   choices,
   value,
   onChange,
+  filter,
+  onFilterChange,
   query,
   onQueryChange,
 }: {
   choices: readonly ThemeChoice[];
   value: string;
   onChange: (id: string) => void;
+  filter: LookFilter;
+  onFilterChange: (filter: LookFilter) => void;
   query: string;
   onQueryChange: (query: string) => void;
 }) {
-  const [filter, setFilter] = useState<LookFilter>("all");
   const searchRef = useRef<HTMLInputElement>(null);
   useSlashFocus(searchRef);
   const hasOwn = choices.some(({ source }) => source === "workspace");
+  const listed = (next: LookFilter) => lookChoices(filterThemeChoices(choices, "all", query), next);
   const visible = useMemo(
     () => lookChoices(filterThemeChoices(choices, "all", query), filter),
     [choices, filter, query],
   );
+  const pickFilter = (next: LookFilter) => {
+    onFilterChange(next);
+    const id = selectionAfterFilter(
+      value,
+      listed(next).map((choice) => choice.id),
+    );
+    if (id !== value) onChange(id);
+  };
   return (
     <div className="new-project-step new-project-look">
       <div className="new-project-filter">
@@ -365,7 +405,7 @@ function LookStep({
           label="Theme filters"
           chips={LOOK_FILTERS.filter(({ id }) => id !== "yours" || hasOwn)}
           value={filter}
-          onChange={setFilter}
+          onChange={pickFilter}
         />
         <SearchField
           inputRef={searchRef}
@@ -374,6 +414,9 @@ function LookStep({
           onChange={onQueryChange}
         />
       </div>
+      <span className="visually-hidden" aria-live="polite">
+        {`${visible.length} ${visible.length === 1 ? "theme" : "themes"}`}
+      </span>
       {visible.length === 0 ? (
         <p className="theme-browser-empty new-project-empty">
           {query ? `No themes match “${query}”.` : "No themes here yet."}
@@ -430,7 +473,7 @@ function NameStep({
         value={name}
         onChange={(e) => onNameChange(e.target.value)}
         onKeyDown={(e) => {
-          if (e.key === "Enter") onSubmit();
+          if (isSubmitEnter(e)) onSubmit();
         }}
       />
       {collides && (
@@ -468,7 +511,7 @@ function NameStep({
             value={group}
             onChange={(e) => onGroupChange(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Enter") onSubmit();
+              if (isSubmitEnter(e)) onSubmit();
             }}
           />
         </div>
@@ -535,22 +578,30 @@ export function NewProjectDialog({
       ? CLAUDE_START_ID
       : initialTemplateId,
   );
+  const [templateChip, setTemplateChip] = useState<StartChip>(null);
+  const [templateQuery, setTemplateQuery] = useState("");
   const [themeId, setThemeId] = useState(DEFAULT_THEME_ID);
-  const themeTouched = useRef(false);
+  // Once the Look step has shown a selection, a late listing must never swap it.
+  const themeSettled = useRef(false);
   const [themes, setThemes] = useState<ThemeChoice[]>(builtinThemeChoices);
+  const [lookFilter, setLookFilter] = useState<LookFilter>("all");
+  const [themeQuery, setThemeQuery] = useState("");
   const [name, setName] = useState(() => defaultProjectName(new Date(), []));
   const nameTouched = useRef(false);
   const [group, setGroup] = useState(initialGroup ?? "");
   const [groupOpen, setGroupOpen] = useState(Boolean(initialGroup));
   const [groups, setGroups] = useState<string[]>([]);
   const [takenSlugs, setTakenSlugs] = useState<string[]>([]);
-  const [templateQuery, setTemplateQuery] = useState("");
-  const [themeQuery, setThemeQuery] = useState("");
+  const [slugsLoaded, setSlugsLoaded] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const slug = slugifyName(name);
   const collides = nameCollision(name, takenSlugs).collides;
   const stepIndex = STEPS.findIndex(({ id }) => id === step);
+
+  useEffect(() => {
+    if (step !== "start") themeSettled.current = true;
+  }, [step]);
 
   // Escape clears an active search first, then closes.
   useEscapeClose(() => {
@@ -571,7 +622,7 @@ export function NewProjectDialog({
     void listThemeChoices().then((choices) => {
       if (cancelled) return;
       setThemes(choices);
-      if (!themeTouched.current) setThemeId(initialLookThemeId(choices));
+      if (!themeSettled.current) setThemeId(initialLookThemeId(choices));
     });
     void listProjects()
       .then((list) => {
@@ -582,6 +633,7 @@ export function NewProjectDialog({
         const slugs = list.map((p) => p.slug);
         setGroups(names);
         setTakenSlugs(slugs);
+        setSlugsLoaded(true);
         if (!nameTouched.current) setName(defaultProjectName(new Date(), slugs));
       })
       .catch(() => {});
@@ -590,18 +642,41 @@ export function NewProjectDialog({
     };
   }, []);
 
+  const goTo = (index: number) => {
+    setError(null);
+    setStep(STEPS[index].id);
+  };
+
   const submit = async () => {
+    if (busy) return;
     if (!slug) {
       setError("Give the project a name.");
       return;
     }
-    if (collides || busy) return;
+    if (collides) return;
     setBusy(true);
     setError(null);
+    let finalName = name;
+    if (!slugsLoaded) {
+      // The listing failed or is still out: read it now, so the dated default renumbers instead of failing with "already exists".
+      const slugs = await listProjects()
+        .then((list) => list.map((p) => p.slug))
+        .catch(() => null);
+      if (slugs) {
+        setTakenSlugs(slugs);
+        setSlugsLoaded(true);
+        if (!nameTouched.current) finalName = defaultProjectName(new Date(), slugs);
+        else if (nameCollision(finalName, slugs).collides) {
+          setBusy(false);
+          return;
+        }
+        setName(finalName);
+      }
+    }
     const templateId = startId === CLAUDE_START_ID ? BLANK_TEMPLATE_ID : startId;
     try {
       await recordSuccessfulThemeUse(themeId, () =>
-        onCreate(name, templateId, themeId, group.trim() || null),
+        onCreate(finalName, templateId, themeId, group.trim() || null),
       );
     } catch (e) {
       setError(String(e));
@@ -628,6 +703,8 @@ export function NewProjectDialog({
           <StartGallery
             value={startId}
             onChange={setStartId}
+            chip={templateChip}
+            onChipChange={setTemplateChip}
             query={templateQuery}
             onQueryChange={setTemplateQuery}
           />
@@ -636,10 +713,9 @@ export function NewProjectDialog({
           <LookStep
             choices={themes}
             value={themeId}
-            onChange={(id) => {
-              themeTouched.current = true;
-              setThemeId(id);
-            }}
+            onChange={setThemeId}
+            filter={lookFilter}
+            onFilterChange={setLookFilter}
             query={themeQuery}
             onQueryChange={setThemeQuery}
           />
@@ -672,7 +748,7 @@ export function NewProjectDialog({
             <button
               type="button"
               className="btn"
-              onClick={() => setStep(STEPS[stepIndex - 1].id)}
+              onClick={singleClick(() => goTo(stepIndex - 1))}
               disabled={busy}
             >
               Back
@@ -682,7 +758,7 @@ export function NewProjectDialog({
             <button
               type="button"
               className="btn primary"
-              onClick={() => void submit()}
+              onClick={singleClick(() => void submit())}
               disabled={busy || collides}
             >
               {busy ? "Creating…" : "Create project"}
@@ -691,7 +767,7 @@ export function NewProjectDialog({
             <button
               type="button"
               className="btn primary"
-              onClick={() => setStep(STEPS[stepIndex + 1].id)}
+              onClick={singleClick(() => goTo(stepIndex + 1))}
             >
               Next
             </button>

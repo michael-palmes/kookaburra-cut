@@ -4,10 +4,10 @@ import { useEscapeClose } from "./useEscapeClose";
 
 /** The update lane's two modals, in their own module so the Settings window can import them without dragging in NewProjectDialog.tsx's theme-picker graph (40 bundled preview images). Both share the moonlit-kookaburra banner (chrome-only imagery; exported pixels never touch the DOM). */
 
-/** First-launch welcome, which carries the one-time update-check ask (shown while the tri-state preference is undecided). The switch starts on as the recommendation, Get started answers with it, and Escape answers off, same as the trust gate; either answer settles it and the ask never repeats. */
+/** First-launch welcome, which carries the one-time update-check ask (shown while the tri-state preference is undecided). The switch starts on as the recommendation; Get started and Escape both answer with what it shows, so dismissing never records the opposite. Either answer settles it and the ask never repeats. */
 export function WelcomeDialog({ onAnswer }: { onAnswer: (on: boolean) => void }) {
   const [checkUpdates, setCheckUpdates] = useState(true);
-  useEscapeClose(() => onAnswer(false));
+  useEscapeClose(() => onAnswer(checkUpdates));
   return (
     <div
       className="modal-overlay"
@@ -41,7 +41,7 @@ export function WelcomeDialog({ onAnswer }: { onAnswer: (on: boolean) => void })
               <span className="recommended-badge">Recommended</span>
             </span>
             <span className="settings-row-detail muted">
-              Anonymous. Nothing installs without asking.
+              An anonymous check with GitHub. Nothing installs without asking.
             </span>
           </span>
           <span className="toggle-switch">

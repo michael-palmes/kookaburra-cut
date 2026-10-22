@@ -42,9 +42,10 @@ embeds a Claude Code terminal that reads and rewrites your project's scene files
 > Status: early release, in active development. Two opt-in network exceptions
 > to "fully local": the optional embedded Claude Code terminal, which only ever
 > runs when you explicitly invoke it (it installs via a script shown in the
-> terminal and talks to Anthropic while you use it), and the update check, off
-> until you enable it, which asks GitHub whether a newer release exists and
-> sends no identifiers.
+> terminal and talks to Anthropic while you use it), and the update check, which
+> never runs before you answer the first-run welcome (recommended, so its switch
+> starts on; turn it off there or in Settings), asks GitHub whether a newer
+> release exists and sends no identifiers.
 
 ## Core features
 

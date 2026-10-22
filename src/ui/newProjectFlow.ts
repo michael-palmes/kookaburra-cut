@@ -8,9 +8,6 @@ export const DEFAULT_THEME_ID = "kookaburra-studio-white";
 
 const CLAUDE_START_HAYSTACK = "create with claude describe blank empty scratch start";
 
-/** The Start grid is three columns; the Claude card, when shown, spans the first two. */
-export const START_GRID_COLUMNS = 3;
-
 function pad(value: number): string {
   return String(value).padStart(2, "0");
 }
@@ -30,12 +27,19 @@ export function claudeStartMatches(query: string): boolean {
   return terms.every((term) => CLAUDE_START_HAYSTACK.includes(term));
 }
 
+/** Track count from a computed `grid-template-columns` (`"336px 336px 336px"`), so key movement follows the CSS rather than a copy of it. */
+export function gridColumnCount(template: string, fallback: number): number {
+  const tracks = template.trim().split(/\s+/).filter(Boolean).length;
+  return tracks > 0 && template !== "none" ? tracks : fallback;
+}
+
 /** Arrow-key movement over the Start grid, where a leading Claude card fills two cells. Returns the next index, or null for keys the grid does not handle. */
 export function startGridStep(
   key: string,
   index: number,
   count: number,
   leadSpansTwo: boolean,
+  columns: number,
   meta = false,
 ): number | null {
   const handled = ["ArrowRight", "ArrowLeft", "ArrowDown", "ArrowUp", "Home", "End"];
@@ -47,23 +51,26 @@ export function startGridStep(
     return Math.min(count - 1, Math.max(0, i));
   };
   const cell = cellOf(index);
-  const rowStart = cell - (cell % START_GRID_COLUMNS);
+  const rowStart = cell - (cell % columns);
   switch (key) {
     case "ArrowRight":
       return Math.min(count - 1, index + 1);
     case "ArrowLeft":
       return Math.max(0, index - 1);
     case "ArrowDown":
-      return cellOf(count - 1) < cell + START_GRID_COLUMNS
-        ? count - 1
-        : indexOf(cell + START_GRID_COLUMNS);
+      return cellOf(count - 1) < cell + columns ? count - 1 : indexOf(cell + columns);
     case "ArrowUp":
-      return cell < START_GRID_COLUMNS ? index : indexOf(cell - START_GRID_COLUMNS);
+      return cell < columns ? index : indexOf(cell - columns);
     case "Home":
       return meta ? 0 : indexOf(rowStart);
     default:
-      return meta ? count - 1 : indexOf(rowStart + START_GRID_COLUMNS - 1);
+      return meta ? count - 1 : indexOf(rowStart + columns - 1);
   }
+}
+
+/** A filter chip never leaves the selection hidden: it keeps the pick when still listed, else moves to the first card shown. */
+export function selectionAfterFilter(selected: string, visibleIds: readonly string[]): string {
+  return visibleIds.includes(selected) || visibleIds.length === 0 ? selected : visibleIds[0];
 }
 
 export type LookFilter = "all" | "yours" | "light" | "dark";
