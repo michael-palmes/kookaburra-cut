@@ -215,6 +215,14 @@ class Checker:
                 warn(file, "formats", "lists an aspect twice")
         if isinstance(m.get("themeId"), str) and m["themeId"]:
             self.theme_ref(file, "themeId", m["themeId"], warn)
+        if "brand" in m:
+            brand = m["brand"]
+            if not isinstance(brand, str) or not brand.startswith("ws:") or len(brand) < 4:
+                rep.error(file, "brand", 'must be a workspace brand id "ws:<slug>" (kb brand list; kb brand use <name>)')
+            elif not self.project.brand_file(brand).is_file():
+                warn(file, "brand", f"{brand} is not in this workspace's brands/; the app shows no brand images or colours (kb brand list)")
+            elif not (self.project.root / "BRAND.md").is_file():
+                warn(file, "brand", f"BRAND.md is missing; kb brand use {brand} writes it")
         self.manifest_scenes(m, warn)
         if "defaultTransition" in m and m["defaultTransition"] is not None:
             self.transition(file, "defaultTransition", m["defaultTransition"])

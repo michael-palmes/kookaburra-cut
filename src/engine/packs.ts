@@ -17,6 +17,7 @@ export interface PackSelection {
   templates: string[];
   presets: string[];
   themes: string[];
+  brands: string[];
   fonts: string[];
   objects: string[];
   gradients: string[];
@@ -31,6 +32,7 @@ export const EMPTY_SELECTION: PackSelection = {
   templates: [],
   presets: [],
   themes: [],
+  brands: [],
   fonts: [],
   objects: [],
   gradients: [],
@@ -48,6 +50,8 @@ export function selectionKey(kind: ItemKind): keyof PackSelection {
       return "presets";
     case "theme":
       return "themes";
+    case "brand":
+      return "brands";
     case "font":
       return "fonts";
     case "object":
@@ -67,6 +71,7 @@ export function selectionCount(selection: PackSelection): number {
     selection.templates.length +
     selection.presets.length +
     selection.themes.length +
+    selection.brands.length +
     selection.fonts.length +
     selection.objects.length +
     selection.gradients.length +

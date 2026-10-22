@@ -159,6 +159,18 @@ Plus 24 more in six collections (quiet technology, human-centred AI, maker energ
 sensory and surreal, digital assets, modern finance), most with an animated shader or
 3D background built in: `./kb catalog themes --search finance`.
 
+### Brands
+
+A brand is a workspace folder `~/Kookaburra Cut/brands/<slug>/` (id `ws:<slug>`):
+`brand.json` (themes, default theme, fonts, colours, gradients), `guidelines.md` and
+`images/<category>/`. Picking it under Project writes `"brand": "ws:<slug>"`, switches
+the project to the brand's default theme and fonts, and copies the guidelines to
+`BRAND.md`. The brand's images appear in the Library, its colours in the colour picker's
+Brand row, its gradients among the workspace gradients. Read `BRAND.md` as defaults and
+guidance, not hard rules. Applying a brand from the terminal
+is `./kb brand use <name>` (or `clear`); building or changing a brand belongs to the
+kookaburra-brand-packs skill. Never hand-edit `brand` or `BRAND.md`.
+
 ### Workspace themes (brand themes)
 
 User themes live at `~/Kookaburra Cut/themes/<slug>/theme.json`, id `ws:<slug>`,

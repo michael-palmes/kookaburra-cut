@@ -87,3 +87,28 @@ class StatusInstanceTests(KbTestCase):
         self.assertIn("App: not running", text)
         self.assertNotIn("Instances:", text)
         self.assertEqual((data["app"]["running"], data["instances"]), (False, []))
+
+
+class StatusBrandTests(KbTestCase):
+    """A branded project points every session at its guidelines, framed as guidance."""
+
+    def test_status_and_context_name_the_brand_and_its_guidelines(self) -> None:
+        root = make_project(self.tmp, brand="ws:acme")
+        (self.tmp / "brands" / "acme").mkdir(parents=True)
+        (self.tmp / "brands" / "acme" / "brand.json").write_text(json.dumps({"version": 1, "name": "Acme"}))
+        (root / "BRAND.md").write_text("# Acme brand guidelines\n")
+        status = self.kb(["status"], cwd=root)
+        self.assertExit(status, 0)
+        self.assertIn("Brand Acme (ws:acme): read BRAND.md before designing", status.stdout)
+        self.assertIn("not hard rules", status.stdout)
+        self.assertEqual(json.loads(self.kb(["status", "--json"], cwd=root).stdout)["brand"], "ws:acme")
+        self.assertIn("Brand Acme (ws:acme)", self.kb(["context"], cwd=root).stdout)
+
+    def test_a_missing_brand_folder_or_guide_still_reports(self) -> None:
+        root = make_project(self.tmp, brand="ws:gone")
+        text = self.kb(["status"], cwd=root).stdout
+        self.assertIn("Brand ws:gone (not in this workspace's brands/) (ws:gone): read no BRAND.md yet", text)
+
+    def test_an_unbranded_project_has_no_brand_line(self) -> None:
+        root = make_project(self.tmp)
+        self.assertNotIn("Brand ", self.kb(["status"], cwd=root).stdout)

@@ -35,6 +35,7 @@ import {
   withKeyAt,
 } from "./engine/beatCameraSync";
 import { effectiveKeyMoments, setBeatProject, useBeatStore } from "./engine/beatState";
+import { setActiveProjectBrand, setProjectBrand } from "./engine/brands";
 import type { VideoRun, VideoRunResult } from "./engine/bridgeExport";
 import { CompositorDriver } from "./engine/CompositorDriver";
 import { useCameraEditStore } from "./engine/cameraEditStore";
@@ -383,6 +384,7 @@ export default function App() {
   useEffect(() => {
     loadedProjectRef.current = project;
     setProjectPaletteSource(project);
+    setActiveProjectBrand(project ? nativeProjectSlug(project.id) : null, project?.brandId);
   }, [project]);
   // Scene file to land the playhead on after the next reload (set by create/duplicate).
   const focusSceneFileRef = useRef<string | null>(null);
@@ -1668,6 +1670,38 @@ export default function App() {
       armPollFiles(slug, [MANIFEST_FILE]);
       setLoadNonce((n) => n + 1);
       setThemeMode(null);
+    },
+    [project, armPollFiles],
+  );
+
+  // A brand apply writes brand + themeId + fonts (and BRAND.md) in one native call; one Undo reverts the manifest half.
+  const handleSetBrand = useCallback(
+    async (brandId: string | null) => {
+      if (!project || !isEditableProjectId(project.id)) return;
+      const slug = nativeProjectSlug(project.id);
+      try {
+        const manifestBefore = await readProjectManifestSnapshot(slug);
+        await setProjectBrand(slug, brandId);
+        const manifestAfter = await readProjectManifestSnapshot(slug);
+        if (manifestAfter !== manifestBefore) {
+          pushHistory({
+            label: brandId ? "project brand" : "clear brand",
+            changes: [
+              {
+                kind: "manifest",
+                slug,
+                before: manifestBefore,
+                after: manifestAfter,
+                reload: false,
+              },
+            ],
+          });
+        }
+        armPollFiles(slug, [MANIFEST_FILE]);
+        setLoadNonce((n) => n + 1);
+      } catch (e) {
+        setToast({ kind: "error", message: `Brand failed: ${String(e)}` });
+      }
     },
     [project, armPollFiles],
   );
@@ -3220,6 +3254,7 @@ export default function App() {
               onTimingChanged={handleTimingChanged}
               onSceneInserted={handleSceneInserted}
               onApplyTheme={handleApplyTheme}
+              onSetBrand={handleSetBrand}
               onDeleteScene={(i) => void handleDeleteScenes([i])}
               onReorderScenes={handleReorderScenes}
               onDuplicateScenes={handleDuplicateScenes}

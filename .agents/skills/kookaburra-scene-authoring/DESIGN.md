@@ -88,6 +88,9 @@ unit is about 261 px. The safe inset is 0.249 units (65 px).
 - Text over moving backgrounds: use shader or 3D presets whose mode matches the theme
   (light preset with a light theme), and keep busy looks behind, not under, copy.
 
+When the project has a brand (`BRAND.md`), start from its theme, fonts, colours and
+imagery instead of the recipe below, and treat them as guidance rather than rules.
+
 ### Brand from a website
 
 1. Get the palette: ask the user for brand hexes and logo, or fetch the site when web
@@ -242,6 +245,8 @@ or `b.background`. Templates: `before-after-update`, `dark-mode-launch`,
       backgrounds.
 - [ ] Durations give every line its reading time; nothing exits before it is read.
 - [ ] One theme, consistent transitions, accent used once per scene.
+- [ ] Branded project: checked against `BRAND.md`, and any guideline you bent is named
+      in your reply with the reason.
 - [ ] Fonts bundled or passed `./kb fonts check`; capture confirms the face.
 - [ ] Videos probed; follow-media durations match.
 - [ ] Told the user what changed, in plain words.

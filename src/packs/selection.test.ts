@@ -128,6 +128,24 @@ describe("selection", () => {
     }
     expect(ITEM_KINDS).toContain("template");
     expect(ITEM_KINDS).toContain("preset");
+    expect(ITEM_KINDS).toContain("brand");
+    expect(KIND_LABELS.brand.many).toBe("Brands");
+  });
+
+  it("routes a brand and the theme it pulls into their own selection lists", () => {
+    const items: SelectableItem[] = [
+      { kind: "brand", slug: "acme", name: "Acme", bytes: 40, requiredBy: [] },
+      theme("acme-dark", ["brand:acme"]),
+    ];
+    const state = toggle(EMPTY_STATE, items[0], true);
+    expect(toPlanSelection(state).brands).toEqual(["acme"]);
+    expect(toPlanSelection(state).themes).toEqual([]);
+    const build = toBuildSelection(state, items);
+    expect(build.brands).toEqual(["acme"]);
+    expect(build.themes).toEqual(["acme-dark"]);
+    expect(EMPTY_SELECTION.brands).toEqual([]);
+    const pulled = { ...items[0], requiredBy: ["project:acme-promo"] };
+    expect(breakageWarning(pulled)).toContain("without this brand");
   });
 
   it("routes a template and a preset into their own selection lists", () => {

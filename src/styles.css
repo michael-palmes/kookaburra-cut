@@ -8153,6 +8153,102 @@ button.beat-status {
   white-space: normal;
 }
 
+/* Project ▸ Brand: one card per workspace brand (icon, name, summary, colour strip), the theme-card selection treatment. */
+.brand-choices {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.brand-choice {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-4);
+  width: 100%;
+  padding: var(--space-4) var(--space-5);
+  font: inherit;
+  font-size: var(--text-base);
+  text-align: left;
+  color: var(--text-primary);
+  background: transparent;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+}
+
+.brand-choice:hover:not(:disabled) {
+  background: var(--surface-hover);
+}
+
+.brand-choice:disabled {
+  cursor: default;
+}
+
+.brand-choice.active {
+  border-color: var(--accent-border);
+  background: var(--accent-subtle);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.brand-choice-icon {
+  flex: none;
+  display: flex;
+  margin-top: 1px;
+  color: var(--text-tertiary);
+}
+
+.brand-choice.active .brand-choice-icon {
+  color: var(--accent-text);
+}
+
+.brand-choice-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.brand-choice-label {
+  font-weight: 510;
+}
+
+.brand-choice-desc {
+  font-size: var(--text-xs);
+  line-height: var(--lh-base);
+  color: var(--text-secondary);
+}
+
+.brand-choice-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 2px;
+}
+
+.brand-choice-swatch {
+  width: 14px;
+  height: 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+}
+
+/* The disabled Brand row's how-to line, tucked under the row label. */
+.inspector-row-hint {
+  margin: -6px 0 4px;
+  padding-left: 36px;
+  padding-right: 8px;
+}
+
+/* The media Library's brand category chips sit between the toolbar and the grid. */
+.group-chips.media-brand-chips {
+  flex: none;
+  margin: 0;
+}
+
 /* Scene-tab header (the M3 stub; M4 adds the cached thumb + sections). */
 .inspector-scene-head {
   display: flex;

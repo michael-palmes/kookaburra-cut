@@ -339,6 +339,11 @@ export const PROJECT_MANIFEST_KEYS: Record<
     summary: 'Project font overrides { headline, body, chart } as "Family" or "Family@weight".',
     type: "object",
   },
+  brand: {
+    summary:
+      "Workspace brand id (ws:<slug>): guidelines in BRAND.md, brand images in the Library, brand colours in the colour picker.",
+    type: "string",
+  },
   audio: {
     summary:
       'Soundtrack { file, gainDb, fadeInMs, fadeOutMs, fadeOutCurve, startOffsetMs, markers } plus music: grid { bpm, offsetMs (track ms of bar 1), beatsPerBar }, cues { id: position | ms }, sections [{ id, from, to }]; keys take at: "bar:13.3".',

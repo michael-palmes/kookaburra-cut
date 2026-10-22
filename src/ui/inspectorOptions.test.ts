@@ -18,6 +18,8 @@ describe("projectRows (the Project-tab pin)", () => {
     const rows = projectRows({
       editable: true,
       themeName: "Editorial",
+      brandLabel: "None",
+      brandAvailable: true,
       typographyLabel: "Theme fonts",
       aspect: "16:9",
       soundtrackName: null,
@@ -28,6 +30,7 @@ describe("projectRows (the Project-tab pin)", () => {
     });
     expect(rows.map((r) => r.id)).toEqual([
       "scenes",
+      "brand",
       "theme",
       "typography",
       "media",
@@ -43,6 +46,7 @@ describe("projectRows (the Project-tab pin)", () => {
     expect(rows.find((r) => r.id === "music")?.value).toBe("None");
     expect(rows.find((r) => r.id === "theme")?.value).toBe("Editorial");
     expect(rows.find((r) => r.id === "typography")?.value).toBe("Theme fonts");
+    expect(rows.find((r) => r.id === "brand")?.value).toBe("None");
     expect(rows.find((r) => r.id === "aspect")?.value).toBe("16:9");
     expect(rows.find((r) => r.id === "playback")?.value).toBe("Full quality");
   });
@@ -51,6 +55,8 @@ describe("projectRows (the Project-tab pin)", () => {
     const rows = projectRows({
       editable: true,
       themeName: "Pacific",
+      brandLabel: "Acme",
+      brandAvailable: true,
       typographyLabel: "Inter",
       aspect: "9:16",
       soundtrackName: "sunrise.mp3",
@@ -60,13 +66,33 @@ describe("projectRows (the Project-tab pin)", () => {
       scenesCount: 1,
     });
     expect(rows.find((r) => r.id === "music")?.value).toBe("sunrise.mp3");
+    expect(rows.find((r) => r.id === "brand")?.value).toBe("Acme");
     expect(rows.find((r) => r.id === "playback")?.value).toBe("Performance");
+  });
+
+  it("the Brand row reads disabled when the workspace has no brands", () => {
+    const rows = projectRows({
+      editable: true,
+      themeName: "Editorial",
+      brandLabel: "None",
+      brandAvailable: false,
+      typographyLabel: "Theme fonts",
+      aspect: "16:9",
+      soundtrackName: null,
+      playbackLabel: "Full quality",
+      renderLabel: "ACES",
+      motionBlurLabel: "Off",
+      scenesCount: 3,
+    });
+    expect(rows.find((r) => r.id === "brand")?.chevron).toBe(false);
   });
 
   it("bundled projects keep Aspect ratio, Playback options + a READ-ONLY Theme (decision 12)", () => {
     const rows = projectRows({
       editable: false,
       themeName: "Default",
+      brandLabel: "None",
+      brandAvailable: true,
       typographyLabel: "Theme fonts",
       aspect: "1:1",
       soundtrackName: null,

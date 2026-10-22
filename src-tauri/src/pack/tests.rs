@@ -8,9 +8,9 @@ use super::limits::{
     MANIFEST_ENTRY, MAX_ENTRIES, MAX_MANIFEST_BYTES, MAX_PATH_BYTES, SIGNATURE_ENTRY, STAGING_DIR,
 };
 use super::model::{
-    FontEmbedding, PackContents, PackFile, PackFont, PackItemBase, PackManifest, PackMeta,
-    PackObject, PackProject, PackPublisher, PackScreenshot, PackSimpleItem, PackTheme, PackTotals,
-    PACK_FORMAT, PACK_FORMAT_VERSION,
+    FontEmbedding, PackBrand, PackContents, PackFile, PackFont, PackItemBase, PackManifest,
+    PackMeta, PackObject, PackProject, PackPublisher, PackScreenshot, PackSimpleItem, PackTheme,
+    PackTotals, PACK_FORMAT, PACK_FORMAT_VERSION,
 };
 use super::read::{inspect, stage, sweep_stale};
 use super::write::{write_pack, PackEntry};
@@ -561,6 +561,15 @@ const SOURCE_TREE: &[(&str, &[u8])] = &[
         b"{\"id\":\"acme-dark\",\"version\":9}",
     ),
     (
+        "brands/acme/brand.json",
+        b"{\"version\":1,\"name\":\"Acme\"}",
+    ),
+    ("brands/acme/guidelines.md", b"# Acme\n"),
+    (
+        "brands/acme/images/logos/mark.svg",
+        b"<svg xmlns=\"http://www.w3.org/2000/svg\"/>",
+    ),
+    (
         "fonts/AcmeSans-Bold.ttf",
         b"\x00\x01\x00\x00 not really a font",
     ),
@@ -659,6 +668,14 @@ fn full_manifest(source: &Path) -> PackManifest {
                 mode: "dark".into(),
                 doc_version: 9,
                 swatches: vec!["#101014".into()],
+                requires: Default::default(),
+            }],
+            brands: vec![PackBrand {
+                base: base("acme"),
+                description: Some("House style.".into()),
+                swatches: vec!["#151E29".into()],
+                color_count: 1,
+                image_count: 1,
                 requires: Default::default(),
             }],
             fonts: vec![PackFont {
@@ -1092,6 +1109,172 @@ fn selection_with_theme() -> super::deps::PackSelection {
         themes: vec!["acme-dark".into()],
         ..Default::default()
     }
+}
+
+// Brands, end to end.
+
+/// One author workspace: a brand naming a workspace theme and a saved gradient, and a project that opts into it.
+fn build_brand_workspace(root: &Path) {
+    write_file(
+        &root.join("brands/acme/brand.json"),
+        br##"{"version":1,"name":"Acme","themes":["ws:acme-dark"],"defaultTheme":"ws:acme-dark",
+            "colors":[{"name":"Ink","hex":"#151E29","role":"primary"}],"gradients":["acme-glow"]}"##,
+    );
+    write_file(&root.join("brands/acme/guidelines.md"), b"# Acme\n");
+    write_file(&root.join("brands/acme/images/logos/mark.png"), b"png mark");
+    write_file(
+        &root.join("brands/acme/images/photography/team/office.webp"),
+        b"webp office",
+    );
+    write_file(
+        &root.join("themes/acme-dark/theme.json"),
+        br#"{"version":2,"name":"Acme Dark","mode":"dark"}"#,
+    );
+    write_file(
+        &root.join("gradients/acme-glow.json"),
+        br##"{"type":"linear","stops":[["#000",0],["#fff",1]]}"##,
+    );
+    write_file(
+        &root.join("acme-promo/project.json"),
+        br#"{"id":"acme-promo","name":"Acme Promo","version":2,"themeId":"ws:acme-dark","brand":"ws:acme",
+            "formats":["16:9"],"scenes":[{"file":"scenes/01-hero.tsx","durationMs":2000}]}"#,
+    );
+    write_file(
+        &root.join("acme-promo/scenes/01-hero.tsx"),
+        b"export default defineScene({});\n",
+    );
+}
+
+/// A project packs its brand, and the brand its theme and gradient; a recipient that owns the brand slug keeps both
+/// and the imported project follows the rename.
+#[test]
+fn a_brand_round_trips_with_the_project_that_names_it() {
+    use super::apply::{apply_import, ItemOutcome};
+    use super::conflicts::plan_conflicts;
+    use super::deps::{item_key, resolve_closure, PackSelection};
+    use super::model::{ItemKind, Resolution};
+    use std::collections::HashMap;
+
+    let author = TempDir::new("brand-author");
+    let out = TempDir::new("brand-out");
+    let recipient = TempDir::new("brand-recipient");
+    build_brand_workspace(author.path());
+
+    let closure = resolve_closure(
+        author.path(),
+        &PackSelection {
+            projects: vec!["acme-promo".into()],
+            ..Default::default()
+        },
+    )
+    .expect("closure");
+    assert_eq!(closure.contents.brands.len(), 1);
+    assert_eq!(closure.contents.brands[0].image_count, 2);
+    assert_eq!(closure.contents.themes.len(), 1);
+    assert_eq!(closure.contents.gradients.len(), 1);
+    let paths: Vec<&str> = closure
+        .files
+        .iter()
+        .map(|f| f.archive_path.as_str())
+        .collect();
+    assert!(paths.contains(&"payload/brands/acme/images/photography/team/office.webp"));
+
+    let archive = out.path().join("acme-brand.kbpack");
+    write_pack_from(&closure, &archive);
+    write_file(
+        &recipient.path().join("brands/acme/brand.json"),
+        br#"{"version":1,"name":"Mine"}"#,
+    );
+
+    let inspection = inspect(&archive).expect("inspect");
+    assert_eq!(inspection.manifest.format_version, PACK_FORMAT_VERSION);
+    let staged = stage(
+        &archive,
+        recipient.path(),
+        &inspection.manifest,
+        |_, _| {},
+        &|| false,
+    )
+    .expect("stage");
+    let selection = PackSelection {
+        projects: vec!["acme-promo".into()],
+        brands: vec!["acme".into()],
+        themes: vec!["acme-dark".into()],
+        gradients: vec!["acme-glow".into()],
+        ..Default::default()
+    };
+    let plan = plan_conflicts(recipient.path(), &staged, &selection).expect("plan");
+    let brand = plan
+        .items
+        .iter()
+        .find(|i| i.kind == ItemKind::Brand)
+        .expect("brand planned");
+    assert_eq!(brand.local.as_ref().map(|l| l.name.as_str()), Some("Mine"));
+    assert_eq!(brand.keep_both_slug.as_deref(), Some("acme-2"));
+
+    let resolutions: HashMap<String, Resolution> = plan
+        .items
+        .iter()
+        .map(|i| {
+            let resolution = if i.kind == ItemKind::Brand {
+                Resolution::KeepBoth
+            } else {
+                i.resolution
+            };
+            (item_key(i.kind, &i.slug), resolution)
+        })
+        .collect();
+    let outcome =
+        apply_import(recipient.path(), staged, &resolutions, |_, _, _| {}).expect("apply");
+    assert_eq!(outcome.stopped_at, None, "{:?}", outcome.results);
+    let brand = outcome
+        .results
+        .iter()
+        .find(|r| r.kind == ItemKind::Brand)
+        .expect("brand result");
+    assert_eq!(brand.outcome, ItemOutcome::KeptBoth);
+
+    let root = recipient.path();
+    assert_eq!(field(&root.join("brands/acme/brand.json"), "name"), "Mine");
+    assert_eq!(
+        field(&root.join("brands/acme-2/brand.json"), "name"),
+        "Acme"
+    );
+    assert_eq!(
+        std::fs::read(root.join("brands/acme-2/images/photography/team/office.webp")).unwrap(),
+        b"webp office"
+    );
+    assert!(root.join("brands/acme-2/guidelines.md").is_file());
+    assert!(root.join("themes/acme-dark/theme.json").is_file());
+    assert!(root.join("gradients/acme-glow.json").is_file());
+    assert_eq!(
+        field(&root.join("acme-promo/project.json"), "brand"),
+        "ws:acme-2"
+    );
+}
+
+/// An older pack has no `brands` list at all; it still reads, with the list empty.
+#[test]
+fn a_manifest_without_brands_still_reads() {
+    let source = TempDir::new("no-brands");
+    build_source_tree(source.path());
+    let mut value = serde_json::to_value(full_manifest(source.path())).expect("manifest");
+    value["formatVersion"] = serde_json::json!(2);
+    value["contents"]
+        .as_object_mut()
+        .expect("contents")
+        .remove("brands");
+    for list in ["projects", "templates", "presets", "themes"] {
+        for item in value["contents"][list].as_array_mut().expect(list) {
+            item["requires"]
+                .as_object_mut()
+                .expect("requires")
+                .remove("brands");
+        }
+    }
+    let parsed: PackManifest = serde_json::from_value(value).expect("an older manifest parses");
+    assert!(parsed.contents.brands.is_empty());
+    assert!(parsed.contents.projects[0].requires.brands.is_empty());
 }
 
 #[test]

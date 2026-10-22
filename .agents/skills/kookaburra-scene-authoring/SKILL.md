@@ -1,6 +1,6 @@
 ---
 name: kookaburra-scene-authoring
-description: Edit Kookaburra Cut video projects safely and see the result. Use for ANY change in this project folder (project.json, scenes/*.tsx, scenes/*.json sidecars, assets/) and for any question about what is on screen. Triggers on new scene, edit scene, text, title, font, theme, colour, brand, background, shader, 3D background, device, phone, laptop, mockup, screen recording, screenshot stack, image, video, chart, graph, camera move, depth of field, motion blur, lighting, transition, timing, duration, music, beats, overlay, slide, panel, before/after, comparison, stills, PDF handout, presentation, product demo, launch video, release notes, export, render the film, flashes, "what's in this scene", "how does it look", "check the video".
+description: Edit Kookaburra Cut video projects safely and see the result. Use for ANY change in this project folder (project.json, scenes/*.tsx, scenes/*.json sidecars, assets/) and for any question about what is on screen. Triggers on new scene, edit scene, text, title, font, theme, colour, brand, "use our brand", "use the <name> brand", "on brand", brand guidelines, background, shader, 3D background, device, phone, laptop, mockup, screen recording, screenshot stack, image, video, chart, graph, camera move, depth of field, motion blur, lighting, transition, timing, duration, music, beats, overlay, slide, panel, before/after, comparison, stills, PDF handout, presentation, product demo, launch video, release notes, export, render the film, flashes, "what's in this scene", "how does it look", "check the video".
 when_to_use: Load before editing any project file, before answering what a scene shows (capture a frame and look), and when planning a video, deck or demo (then read DESIGN.md).
 allowed-tools: Bash(./kb *), Bash(python3 ${CLAUDE_SKILL_DIR}/scripts/kb.py *)
 ---
@@ -17,6 +17,7 @@ watches this folder and reloads within about 2 s of a save. You edit files; the 
 - `scenes/<stem>.tsx`: composition (what is mounted where). `scenes/<stem>.json`: the
   sidecar, everything the app's inspector edits (copy, devices, camera, background...).
 - `assets/`: media, referenced as `assets/<file>`.
+- `BRAND.md`: the brand's guidelines, present when `project.json` names a `brand` (see Brand).
 - `edits/`: video edits, changed only through `./kb video` (load the kookaburra-video-editing skill).
 - `.kb/`: kb's own state (lock, leases, notes, events, capture copies); yours to write is
   only your scratch folder `.kb/agents/<name>/`.
@@ -59,6 +60,32 @@ ok; 1 problems (fix what it names); 2 usage or environment (tell the user); 3 tr
    each scene's first and last frames, the handoffs between them, and the flashes of a
    fresh export) and Read the sheets it lists. Never end a turn with the project failing
    to load: `./kb status` must be clean, or `./kb undo` back to the checkpoint and say so.
+
+## Brand
+
+When the user names an installed brand ("use the Acme brand", "make it on brand", "switch
+to our brand"): `./kb brand list` (`kb context` also names the installed ones), then
+`./kb brand use <name>`. It does what the Project picker does: sets `brand`, switches to
+the brand's default theme and fonts, writes `BRAND.md`. Checkpoint first, and when the
+project already has a hand-picked theme, fonts or another brand, say what will change
+and ask before applying; otherwise apply it and say so. A brand that isn't installed:
+say so and offer to build it (the kookaburra-brand-packs skill). After applying, capture
+every scene: a scene's own `background` or `textStyle.*Color` survives the theme switch, so
+a dark brand theme over a light scene background turns copy unreadable. List those
+overrides and offer to drop them (`./kb doc S unset background`) so the brand theme shows.
+`./kb brand clear`
+removes it (theme and fonts stay); `./kb brand show` lists its colours, gradients and
+image folders.
+
+When `./kb status` shows a Brand line naming this project's brand, read `BRAND.md` before
+planning, designing or writing copy. Start from it: its theme, fonts, colours, imagery and voice are the safe defaults.
+They are guidance, not law: the brief, the audience, the format and legibility win, so
+bend a guideline when the idea needs it and tell the user what you bent and why. Only what
+BRAND.md marks **Keep** (usually logo artwork) is fixed. Brand colours are in
+`~/Kookaburra Cut/brands/<slug>/brand.json` (`colors`); brand images in its `images/`
+(the app's Library shows them), added with `./kb assets add <path>`. Never edit
+`BRAND.md` or the brand folder from a project: re-picking the brand under Project
+refreshes `BRAND.md`, and changing a brand is the kookaburra-brand-packs skill's job.
 
 When the user asks what a scene shows or how it looks: capture and look. Never infer
 visuals from code. With no app running, kb checks are static only: ask the user to open
@@ -146,6 +173,7 @@ since the user last allowed it), ask the user to open it once in the app.
 | One line's font, size, colour, nudge | `textStyle.<key>Font/Size/Color/OffsetY` | reference/text.md | `./kb fonts safe` |
 | How text arrives, text style | `textAnimation`, `textLook` | reference/text.md | `textMotion`, `textLooks` |
 | Whole look | `themeId` (project or scene) | reference/project.md | `themes` |
+| Brand defaults (guidelines, colours, logos, imagery) | `./kb brand use NAME` (or the Project picker) | `BRAND.md`, reference/project.md | `./kb brand list` |
 | Background, floor | `background`, `backdrop` | reference/backgrounds.md | `backgrounds.shaders`, `backgrounds.scene3d` |
 | Lighting, exposure | `lighting`; project `render` | reference/lighting.md | `lighting.presets` |
 | Phones, laptops, tablets, screen timing | `devices`, `deviceLayout`, `deviceTrack` | reference/devices.md | `devices`, `deviceShadows`, `deviceMedia.keys` |
@@ -194,6 +222,7 @@ scenes under the app's Resources folder (`./kb status` prints it):
 | `./kb doc S get [path]`, `set path value [--string]`, `unset path`, `merge JSON` | Sidecar edits; values parse as JSON, else string; merge is a JSON merge patch |
 | `./kb project get [path]`, `./kb project set path value` | project.json fields other than scenes |
 | `./kb theme list`, `show [id]`, `set path value` | Themes and tokens |
+| `./kb brand list`, `show [NAME]`, `use NAME`, `clear` | Workspace brands; `use` applies one like the Project picker (theme, fonts, `BRAND.md`) |
 | `./kb fonts safe`, `check REF...`, `list` | Font safety |
 | `./kb presets [list \| show SLUG]` | Scene presets with preview images |
 | `./kb catalog [FAMILY] [--search Q]` | Ids and enums from the app's registries |

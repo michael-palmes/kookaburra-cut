@@ -26,6 +26,8 @@ contract for the kit, the bridge it talks to and the app behaviour it relies on.
 | `.claude/settings.json` | user, with managed keys | The app merges its managed hooks and permission rules in; user entries are never removed |
 | `.claude/skills/kookaburra-scene-authoring/` | app (managed) | Replaced wholesale on stamp; stale files disappear |
 | `.claude/skills/kookaburra-video-editing/` | app (managed) | Sibling skill (SKILL.md + `reference/`, no scripts; it drives `kb video`) |
+| `.claude/skills/kookaburra-brand-packs/` | app (managed) | Sibling skill that builds, checks and applies workspace brands (`scripts/brand.py`, stdlib; `pdf.js` and `svg2png.js` for `osascript`); see docs/brands.md |
+| `BRAND.md` | app | The project's brand guidelines, copied from `brands/<slug>/guidelines.md` when a brand is picked under Project; removed when it is cleared; never hand-edited |
 | `.claude/skills/<skill>/kit.json` | app | `{ "kitVersion", "appVersion", "stampedAtMs" }`, one per shipped skill |
 | `project.json`, `scenes/`, `assets/` | user (Claude edits) | The only folders Claude writes by hand |
 | `assets/.originals/`, `assets/<stem>.timing.json`, `assets/_meta.json` | app and kb | A conform's kept original (never packed: `pack/scan.rs` `is_excluded`), its frame map, and provenance records; written by the app's conform and `kb assets`, never by hand (the hooks block it) |
@@ -60,7 +62,7 @@ scripts/
 - Runs on the first load of each workspace project per app session (best effort, never
   blocks the load; live reloads skip it) and when the embedded terminal starts Claude.
 - Every shipped skill (`SHIPPED_SKILLS` in `kit.rs`: `kookaburra-scene-authoring`, then
-  `kookaburra-video-editing`) is stamped into `.claude/skills/<name>/` with its own
+  `kookaburra-video-editing` and `kookaburra-brand-packs`) is stamped into `.claude/skills/<name>/` with its own
   `kit.json` and stale-sibling prefixes; a failing skill never stops the others, and
   provisioning reports `present` only when all are there. Kit version 4 (Bash hooks, the
   `./kb` shim and `.kb/`).
@@ -102,6 +104,7 @@ Managed settings:
       "Bash(python3 -I .claude/skills/kookaburra-scene-authoring/scripts/kb.py *)",
       "Read(~/Kookaburra Cut/_bridge/**)",
       "Read(~/Kookaburra Cut/themes/**)",
+      "Read(~/Kookaburra Cut/brands/**)",
       "Read(//Applications/Kookaburra Cut.app/Contents/Resources/**)"
     ]
   },
@@ -152,6 +155,7 @@ under the project lock (`kblib.lock`) and re-validated after writing.
 | `doc S get [path]`, `doc S set path value`, `doc S unset path`, `doc S merge JSON` | Sidecar edits by dotted path; values parsed as JSON else string; enums validated against the catalogue; `get` prints the raw value (`--json`: `{ file, path, value }`). The detach rule: a camera, rig or lighting key whose `tMs` the write moved off its `at` loses the `at`, and every remaining `at` refreshes its `tMs` (`beats.model.settle_written`) |
 | `project get [path]`, `project set path value`, `project unset path` | `project.json` fields other than `scenes` (`get --json`: `{ path, value }`) |
 | `theme list`, `theme show [id]`, `theme set path value` | Bundled tokens from the catalogue; workspace themes editable (`show --json`: `{ id, bundled, path, theme }`) |
+| `brand list`, `brand show [NAME]`, `brand use NAME`, `brand clear` | Workspace brands (docs/brands.md); `use` matches a name, slug or `ws:` id and applies it as the Project picker does (`brand`, default theme, headline and body fonts, `BRAND.md`); `clear` drops `brand` and `BRAND.md` |
 | `fonts safe`, `fonts check REF...`, `fonts list` | Bundled faces are always safe; `check` and `list` use the app's real parser when it runs, else a static verdict (`--json`: `faces`, `results`, `families` or the static `bundled` and `pinned`) |
 | `presets [list \| show SLUG]` | Scene presets with what they show and a preview image path to Read (`--json`: `presets`) |
 | `catalog [FAMILY] [--search Q]` | Query `catalog.json` (`--json`: `families`; a family's raw entries as `{ family, items }`, or `{ family, value }` when it is not a list; a search's `items`) |

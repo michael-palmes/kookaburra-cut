@@ -12,6 +12,7 @@ import {
 import { LibraryRailIcon } from "../ui/libraryIcons";
 import { FONT_DISCLAIMER, fontEmbeddingNotice } from "../ui/packs/fontCopy";
 import { type ProjectGroupRow, UNGROUPED_PROJECTS } from "../ui/projectLibrary";
+import { DETAILS_ICON, KIND_ICONS } from "./kindIcons";
 import { PackGlyph } from "./PackGlyph";
 import { groupProjectItems, matchesPackSearch } from "./projectGroups";
 import { packProjectItems } from "./projectItems";
@@ -44,7 +45,7 @@ import {
   type UnreferencedGroup,
 } from "./types";
 
-/** The rail is the nine stores plus a details pane; only the stores are real item kinds. */
+/** The rail is the ten stores plus a details pane; only the stores are real item kinds. */
 type Tab = ItemKind | "details";
 
 type Phase =
@@ -267,7 +268,10 @@ export function ExportView({ onClose }: { onClose: () => void }) {
             aria-selected={k === tab}
             onClick={() => pickTab(k)}
           >
-            <span>{KIND_LABELS[k].many}</span>
+            <span className="packs-rail-label">
+              {KIND_ICONS[k]}
+              <span>{KIND_LABELS[k].many}</span>
+            </span>
             <span className="packs-rail-count">{counts[k] ?? 0}</span>
           </button>
         ))}
@@ -279,7 +283,10 @@ export function ExportView({ onClose }: { onClose: () => void }) {
           onClick={() => pickTab("details")}
           style={{ marginTop: 10 }}
         >
-          <span>Details</span>
+          <span className="packs-rail-label">
+            {DETAILS_ICON}
+            <span>Details</span>
+          </span>
         </button>
       </div>
 

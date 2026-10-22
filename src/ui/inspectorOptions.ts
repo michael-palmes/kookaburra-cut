@@ -27,6 +27,7 @@ export interface ProjectRowModel {
   id:
     | "media"
     | "scenes"
+    | "brand"
     | "theme"
     | "typography"
     | "appIcon"
@@ -46,6 +47,10 @@ export interface ProjectRowModel {
 export function projectRows(input: {
   editable: boolean;
   themeName: string;
+  /** The applied brand's name, or "None". */
+  brandLabel: string;
+  /** False once the workspace is known to hold no brands (and none is applied): the row reads disabled. */
+  brandAvailable: boolean;
   /** "Theme fonts" when no override; else the override summary. */
   typographyLabel: string;
   aspect: AspectName;
@@ -69,6 +74,7 @@ export function projectRows(input: {
       value: `${input.scenesCount} scene${input.scenesCount === 1 ? "" : "s"}`,
       chevron: true,
     },
+    { id: "brand", label: "Brand", value: input.brandLabel, chevron: input.brandAvailable },
     { id: "theme", label: "Theme", value: input.themeName, chevron: true },
     { id: "typography", label: "Typography", value: input.typographyLabel, chevron: true },
     { id: "media", label: "Media library", chevron: true },

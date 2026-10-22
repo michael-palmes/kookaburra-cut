@@ -4,6 +4,14 @@ import { type RefObject, useCallback, useEffect, useMemo, useRef, useState } fro
 import { createPortal } from "react-dom";
 import { formatBytes } from "../engine/appCache";
 import { useAssetRevision, withAssetRevision } from "../engine/assetRevisions";
+import {
+  type BrandImage,
+  brandCategories,
+  brandCategoryLabel,
+  brandImageMeta,
+  listBrandImages,
+  useProjectBrand,
+} from "../engine/brands";
 import { listEdits } from "../engine/edit";
 import {
   applyConformProgress,
@@ -41,6 +49,7 @@ import {
   revealPath,
 } from "../engine/media";
 import { projectIdForNativeSlug } from "../engine/project";
+import { BrandCategoryIcon } from "./brandIcons";
 import { ContextMenu, type ContextMenuItem, type ContextMenuState } from "./ContextMenu";
 import { SegmentedRow, ToggleFieldset } from "./inspector/rows";
 import { modalHost } from "./modalHost";
@@ -684,6 +693,29 @@ function LibraryIcon() {
   );
 }
 
+function ScreenshotsIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true">
+      <path
+        d="M2 4.5A1.5 1.5 0 0 1 3.5 3h9A1.5 1.5 0 0 1 14 4.5v5A1.5 1.5 0 0 1 12.5 11h-3v1.5H11V14H5v-1.5h1.5V11h-3A1.5 1.5 0 0 1 2 9.5v-5Z"
+        fill="currentColor"
+      />
+    </svg>
+  );
+}
+
+function BrandTagIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true">
+      <path
+        d="M2 3a1 1 0 0 1 1-1h4.6a1 1 0 0 1 .7.3l5.4 5.4a1 1 0 0 1 0 1.4l-4.6 4.6a1 1 0 0 1-1.4 0L2.3 8.3A1 1 0 0 1 2 7.6V3Zm3 3.25a1.25 1.25 0 1 0 0-2.5 1.25 1.25 0 0 0 0 2.5Z"
+        fill="currentColor"
+        fillRule="evenodd"
+      />
+    </svg>
+  );
+}
+
 function MoreIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
@@ -710,7 +742,7 @@ export interface MediaBrowserProps {
   hint?: string;
   /** Restrict the browser to these kinds (e.g. background images). Filters the grid and the Add-media file picker; no toggle is shown. */
   kinds?: ("video" | "image")[];
-  /** Show a Project/Global source toggle: Global browses ~/Kookaburra Cut/screenshots and picking copies the file into this project's assets first (copy-on-use). */
+  /** Show a Project/Global source toggle: Global browses ~/Kookaburra Cut/screenshots (plus the open project's brand images, when it has a brand) and picking copies the file into this project's assets first (copy-on-use). */
   globalToggle?: boolean;
   /** Show a Video/Images toggle in the toolbar, defaulting to video (Change media). Together with `globalToggle` the browser wraps in a ToggleFieldset, the source switch straddling its top edge. */
   kindToggle?: boolean;
@@ -1073,6 +1105,19 @@ export function MediaBrowser({
   const [globalShots, setGlobalShots] = useState<GlobalScreenshot[] | null>(null);
   const [globalMetas, setGlobalMetas] = useState<Record<string, MediaMeta>>({});
   const [globalFailed, setGlobalFailed] = useState<ReadonlySet<string>>(new Set());
+  // The open project's brand images ride the Library tab as a second source.
+  const brand = useProjectBrand(globalToggle ? slug : undefined);
+  const brandSlug =
+    brand && brand.imageCount > 0 && (!kinds || kinds.includes("image")) ? brand.slug : null;
+  const [librarySource, setLibrarySource] = useState<"screenshots" | "brand">("screenshots");
+  const showBrand = sourceTab === "global" && brandSlug !== null && librarySource === "brand";
+  const [brandImages, setBrandImages] = useState<BrandImage[] | null>(null);
+  /** The category chip; null shows every image. */
+  const [brandCategory, setBrandCategory] = useState<string | null>(null);
+  const [brandMetas, setBrandMetas] = useState<Record<string, MediaMeta>>({});
+  const brandMetasRef = useRef(brandMetas);
+  brandMetasRef.current = brandMetas;
+  const [brandFailed, setBrandFailed] = useState<ReadonlySet<string>>(new Set());
   /** Copy-on-use failures must never be silent (the pick just wouldn't land). */
   const [pickError, setPickError] = useState<string | null>(null);
   const pickBusyRef = useRef(false);
@@ -1101,6 +1146,9 @@ export function MediaBrowser({
   // The library grid honours the same kind filter, so an image-only picker never offers a video.
   const visibleGlobal = globalShots?.filter(
     (s) => !allowedKinds || allowedKinds.includes(kindOfRel(s.name)),
+  );
+  const visibleBrand = brandImages?.filter(
+    (image) => brandCategory === null || image.category === brandCategory,
   );
   // Imports still conforming have no file yet, so they get cards of their own (always videos).
   const pendingJobs = conformJobs.filter((job) => !rels?.includes(job.rel));
@@ -1184,6 +1232,81 @@ export function MediaBrowser({
       cancelled = true;
     };
   }, [globalShots, sourceTab]);
+
+  // A brand switch starts its view over.
+  useEffect(() => {
+    void brandSlug;
+    setBrandImages(null);
+    setBrandMetas({});
+    setBrandFailed(new Set());
+    setBrandCategory(null);
+  }, [brandSlug]);
+
+  useEffect(() => {
+    void refreshKey;
+    if (!showBrand || !brandSlug) return;
+    let cancelled = false;
+    listBrandImages(brandSlug)
+      .then((images) => {
+        if (!cancelled) setBrandImages(images);
+      })
+      .catch((e) => {
+        console.warn(`[media] brand images failed for ${brandSlug}:`, e);
+        if (!cancelled) setBrandImages([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [showBrand, brandSlug, refreshKey]);
+
+  // Posters for the visible brand images only, one at a time through the shared media cache: a brand holds hundreds of multi-MB originals, so the grid never decodes them.
+  useEffect(() => {
+    if (!showBrand || !brandSlug || !brandImages) return;
+    const wanted = brandImages.filter(
+      (image) => brandCategory === null || image.category === brandCategory,
+    );
+    let cancelled = false;
+    (async () => {
+      for (const image of wanted) {
+        if (cancelled) return;
+        if (brandMetasRef.current[image.rel]) continue;
+        try {
+          const meta = await brandImageMeta(brandSlug, image.rel);
+          if (cancelled) return;
+          setBrandMetas((prev) => ({ ...prev, [image.rel]: meta }));
+        } catch (e) {
+          console.warn(`[media] brand image metadata failed for ${image.rel}:`, e);
+          if (!cancelled) {
+            setBrandFailed((prev) => (prev.has(image.rel) ? prev : new Set(prev).add(image.rel)));
+          }
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [showBrand, brandSlug, brandImages, brandCategory]);
+
+  /** Copy-on-use for a brand image, the global screenshot contract. */
+  const pickBrand = useCallback(
+    async (image: BrandImage) => {
+      if (!onPick) return;
+      await runMediaPickSingleFlight(pickBusyRef, async () => {
+        setPickBusy(true);
+        setPickError(null);
+        try {
+          const [rel] = await importMedia(slug, [image.path]);
+          if (rel) await onPick(rel, brandMetas[image.rel] ?? null);
+        } catch (e) {
+          console.warn(`[media] copy-on-use failed for ${image.rel}:`, e);
+          setPickError(`Couldn't copy into the project: ${String(e)}`);
+        } finally {
+          setPickBusy(false);
+        }
+      });
+    },
+    [onPick, slug, brandMetas],
+  );
 
   /** Copy-on-use: import the global file into this project's assets, then hand the pick to the host as a normal project rel. */
   const pickGlobal = useCallback(
@@ -1410,14 +1533,18 @@ export function MediaBrowser({
   const previewPending =
     preview && sourceTab === "project" ? pendingJobs.find((job) => job.rel === preview) : undefined;
   const previewMeta = preview
-    ? ((sourceTab === "global"
-        ? globalMetas[preview]
-        : (metas[preview] ?? pendingMetas[preview])) ?? null)
+    ? ((showBrand
+        ? brandMetas[preview]
+        : sourceTab === "global"
+          ? globalMetas[preview]
+          : (metas[preview] ?? pendingMetas[preview])) ?? null)
     : null;
   const previewSrc = preview
-    ? sourceTab === "global"
-      ? (globalShots?.find((s) => s.name === preview)?.absPath ?? null)
-      : `${projectPath}/${previewPending?.original || preview}`
+    ? showBrand
+      ? (brandImages?.find((image) => image.rel === preview)?.path ?? null)
+      : sourceTab === "global"
+        ? (globalShots?.find((s) => s.name === preview)?.absPath ?? null)
+        : `${projectPath}/${previewPending?.original || preview}`
     : null;
   // A file replaced in place previews at its new revision.
   const previewRevision = useAssetRevision(
@@ -1429,8 +1556,11 @@ export function MediaBrowser({
 
   // The grid as the user sees it (current filter, Rust's newest-first sort), for prev/next; a ref so the key handler never re-registers mid-preview.
   const previewListRef = useRef<string[]>([]);
-  previewListRef.current =
-    sourceTab === "global" ? (visibleGlobal ?? []).map((shot) => shot.name) : (visibleRels ?? []);
+  previewListRef.current = showBrand
+    ? (visibleBrand ?? []).map((image) => image.rel)
+    : sourceTab === "global"
+      ? (visibleGlobal ?? []).map((shot) => shot.name)
+      : (visibleRels ?? []);
 
   const stepPreview = useCallback((delta: -1 | 1) => {
     setPreview((current) =>
@@ -1505,23 +1635,71 @@ export function MediaBrowser({
         { value: "video", label: "Video", icon: <VideoIcon /> },
         { value: "image", label: "Images", icon: <ImageIcon /> },
       ]}
-      value={kindTab}
-      disabled={pickBusy}
+      value={showBrand ? "image" : kindTab}
+      disabled={pickBusy || showBrand}
       onChange={setKindTab}
     />
   ) : null;
-  const addButton = hideAdd ? null : sourceTab === "global" ? (
-    <AddGlobalScreenshotButton
-      onImported={(names) => {
-        refreshGlobal();
-        // A library add stays on the Library tab, but the kind tab still follows the new file.
-        const first = names[0];
-        if (first && !kinds && kindToggle) setKindTab(kindOfRel(first));
-      }}
-    />
-  ) : (
-    <AddMediaButton slug={slug} kinds={kinds} onImported={refresh} />
-  );
+  const libraryRow =
+    sourceTab === "global" && brand && brandSlug ? (
+      <SegmentedRow
+        ariaLabel="Library source"
+        options={[
+          {
+            value: "screenshots",
+            label: "Screenshots",
+            icon: <ScreenshotsIcon />,
+            title: "Your media library folder",
+          },
+          {
+            value: "brand",
+            label: brand.name,
+            icon: <BrandTagIcon />,
+            title: `${brand.name} brand images; picking copies the file into this project`,
+          },
+        ]}
+        value={librarySource}
+        disabled={pickBusy}
+        onChange={(next) => {
+          setLibrarySource(next);
+          setPreview(null);
+        }}
+      />
+    ) : null;
+  const brandChips =
+    showBrand && brandImages && brandImages.length > 0 ? (
+      <fieldset className="group-chips media-brand-chips" aria-label="Brand image category">
+        {[null, ...brandCategories(brandImages)].map((category) => (
+          <button
+            key={category ?? "all"}
+            type="button"
+            className={`btn btn-small chip-with-icon${brandCategory === category ? " selected" : ""}`}
+            aria-pressed={brandCategory === category}
+            disabled={pickBusy}
+            onClick={() => {
+              setBrandCategory(category);
+              setPreview(null);
+            }}
+          >
+            <BrandCategoryIcon category={category} />
+            {category === null ? "All" : brandCategoryLabel(category)}
+          </button>
+        ))}
+      </fieldset>
+    ) : null;
+  const addButton =
+    hideAdd || showBrand ? null : sourceTab === "global" ? (
+      <AddGlobalScreenshotButton
+        onImported={(names) => {
+          refreshGlobal();
+          // A library add stays on the Library tab, but the kind tab still follows the new file.
+          const first = names[0];
+          if (first && !kinds && kindToggle) setKindTab(kindOfRel(first));
+        }}
+      />
+    ) : (
+      <AddMediaButton slug={slug} kinds={kinds} onImported={refresh} />
+    );
   // Library files live in ~/Kookaburra Cut/screenshots and have their own per-card Delete.
   const managing = Boolean(cleanupUnused) && sourceTab === "project";
   const freeOriginals = removableOriginals(originals);
@@ -1587,6 +1765,7 @@ export function MediaBrowser({
     <>
       {((!(sourceRow && kindRow) && sourceRow) ||
         kindRow ||
+        libraryRow ||
         hint ||
         addButton ||
         cleanupButton ||
@@ -1595,6 +1774,7 @@ export function MediaBrowser({
           <div className="media-browser-toggles">
             {!(sourceRow && kindRow) && sourceRow}
             {kindRow}
+            {libraryRow}
             {hint && <span className="muted media-browser-hint">{hint}</span>}
           </div>
           {(cleanupButton || actionsButton || addButton) && (
@@ -1616,7 +1796,56 @@ export function MediaBrowser({
         />
       )}
 
-      {sourceTab === "global" ? (
+      {brandChips}
+      {showBrand ? (
+        brandImages === null || visibleBrand === undefined ? (
+          <p className="muted">Reading brand images…</p>
+        ) : visibleBrand.length === 0 ? (
+          <p className="muted">No images in this brand yet.</p>
+        ) : (
+          <div className="media-grid">
+            {visibleBrand.map((image) => (
+              <MediaCard
+                key={image.rel}
+                rel={image.rel}
+                meta={brandMetas[image.rel] ?? null}
+                metaFailed={brandFailed.has(image.rel)}
+                edited={false}
+                canDrag={false}
+                selected={false}
+                disabled={pickBusy}
+                onMenu={(x, y) =>
+                  setMenu({
+                    x,
+                    y,
+                    items: withPathItems(
+                      onPick
+                        ? []
+                        : [
+                            {
+                              id: "add-to-project",
+                              label: "Add to project",
+                              title: "Copy into this project's assets",
+                              onSelect: () => {
+                                setPickError(null);
+                                importMedia(slug, [image.path]).catch((e) =>
+                                  setPickError(`Couldn't copy into the project: ${String(e)}`),
+                                );
+                              },
+                            },
+                          ],
+                      image.path,
+                      setPickError,
+                    ),
+                  })
+                }
+                onPreview={() => setPreview(image.rel)}
+                onPick={onPick ? () => void pickBrand(image) : undefined}
+              />
+            ))}
+          </div>
+        )
+      ) : sourceTab === "global" ? (
         globalShots === null || visibleGlobal === undefined ? (
           <p className="muted">Reading your library…</p>
         ) : globalShots.length === 0 ? (

@@ -50,6 +50,7 @@ export async function runPackRoundTrip(projectId: string): Promise<RoundTripResu
     ...EMPTY_SELECTION,
     projects: [],
     themes: [],
+    brands: [],
     fonts: [],
     objects: [],
     gradients: [],
