@@ -23,6 +23,10 @@ const FONTS = [
   { src: "src/assets/fonts/Nunito-SemiBold.woff", family: "Nunito" },
   { src: "src/assets/fonts/CormorantGaramond-SemiBold.woff", family: "Cormorant Garamond" },
   { src: "src/assets/fonts/LibreFranklin-SemiBold.woff", family: "Libre Franklin" },
+  { src: "src/assets/fonts/InstrumentSerif-Regular.woff", family: "Instrument Serif" },
+  { src: "src/assets/fonts/Jost-Regular.woff", family: "Jost" },
+  { src: "src/assets/fonts/IBMPlexSans-Regular.woff", family: "IBM Plex Sans" },
+  { src: "src/assets/fonts/Fraunces-SemiBold.woff", family: "Fraunces" },
 ];
 
 // Keep in sync with PRELOAD_CHARACTERS in src/theme/fonts.ts — the same glyph

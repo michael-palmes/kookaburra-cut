@@ -274,6 +274,10 @@ Bundled families are always safe (`./kb fonts safe`):
 | Nunito | 600 |
 | Cormorant Garamond | 600 |
 | Libre Franklin | 600 |
+| Instrument Serif | 400 |
+| Jost | 400, 500 |
+| IBM Plex Sans | 400, 600 |
+| Fraunces | 600 |
 
 A bundled family snaps to its nearest weight (ties go lighter): `Inter@700` renders 600.
 

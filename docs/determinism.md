@@ -1163,8 +1163,13 @@ camera exactly:
   drift in text pixels. Projects whose glyphs all sit inside the FIRST font's
   preloaded block (`PRELOAD_CHARACTERS` of Inter 400) are unaffected; projects
   using later fonts, pinned system fonts, or characters outside the preload set
-  rebase. When adding a face: expect these rebases, and PROVE attribution by
-  stashing the font change alone and reproducing the old hash.
+  rebase. So new faces join `LAZY_BUNDLED_FAMILIES` (theme/fonts.ts): the boot
+  preload skips them and only a project that references one typesets it, after
+  the boot block, so older projects keep their exact atlas (the 2026-10 theme
+  lineup added Instrument Serif, Jost, IBM Plex Sans and Fraunces this way, with
+  both gate projects EQUAL). A face added to the boot set instead rebases as
+  above: PROVE attribution by stashing the font change alone and reproducing
+  the old hash.
 - **Atlas insertion order is PINNED by sequential preload.** The corollary of the
   shared atlas: with a parallel preload, cells are claimed at preload
   COMPLETION (fetch-race order), so a multi-font project's text pixels become a
