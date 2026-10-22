@@ -4,10 +4,11 @@
   "name": "Neo-Deco Signal",
   "mode": "dark",
   "catalogue": {
-    "category": "sensory-and-surreal",
+    "category": "essentials",
     "useLabel": "Premium event reveals",
     "tags": ["event", "premium", "deco", "architectural", "reveal", "safe"],
     "stage": "lighting-only",
+    "hidden": true,
     "order": 40
   },
   "colors": {

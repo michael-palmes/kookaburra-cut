@@ -17,4 +17,8 @@ beside them are derived outline conversions (`pnpm assets:text3d-font`).
 | Nunito | Nunito-SemiBold.* | © The Nunito Project Authors (github.com/googlefonts/nunito) |
 | Cormorant Garamond | CormorantGaramond-SemiBold.* | © 2015 The Cormorant Project Authors (github.com/CatharsisFonts/Cormorant) |
 | Libre Franklin | LibreFranklin-SemiBold.* | © The Libre Franklin Project Authors (github.com/impallari/Libre-Franklin) |
+| Instrument Serif | InstrumentSerif-Regular.* | © 2022 The Instrument Serif Project Authors (github.com/Instrument/instrument-serif) |
+| Jost | Jost-*.woff, Jost-Regular.typeface.json | © 2020 The Jost Project Authors (github.com/indestructible-type/Jost) |
+| IBM Plex Sans | IBMPlexSans-*.woff, IBMPlexSans-Regular.typeface.json | © 2019 IBM Corp., with Reserved Font Name "Plex" (github.com/IBM/plex) |
+| Fraunces | Fraunces-SemiBold.* | © 2020 The Fraunces Project Authors (github.com/undercasetype/Fraunces) |
 | Kookaburra Fallback | KookaburraFallback.otf | Derived subset (`pnpm assets:emoji-fonts`) of Noto Sans Symbols 2, Noto Sans Symbols and Noto Sans Math, © The Noto Project Authors (github.com/notofonts), merged with empty private-use placeholder glyphs; renamed per the OFL reserved-name clause |

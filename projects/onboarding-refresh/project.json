@@ -2,7 +2,7 @@
   "id": "onboarding-refresh",
   "name": "Onboarding Refresh",
   "version": 2,
-  "themeId": "kookaburra-paper",
+  "themeId": "kookaburra-ivory",
   "formats": ["9:16", "1:1", "4:5", "16:9"],
   "scenes": [
     {

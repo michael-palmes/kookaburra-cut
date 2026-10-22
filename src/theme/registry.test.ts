@@ -34,7 +34,7 @@ function workspaceDoc() {
 
 describe("theme registry", () => {
   it("resolves all bundled ids and keeps the visible lineup compatible", async () => {
-    expect(Object.keys(builtinThemes)).toHaveLength(36);
+    expect(Object.keys(builtinThemes)).toHaveLength(58);
     expect(lineupThemes().map(({ id }) => id)).toEqual(THEME_LINEUP);
     for (const id of Object.keys(builtinThemes))
       expect(await resolveTheme(id)).toBe(builtinThemes[id]);

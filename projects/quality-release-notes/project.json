@@ -2,7 +2,7 @@
   "id": "quality-release-notes",
   "name": "Quality Release (bug fixes)",
   "version": 2,
-  "themeId": "kookaburra-gallery",
+  "themeId": "kookaburra-hi-fi",
   "formats": ["16:9", "9:16", "1:1", "4:5"],
   "scenes": [
     {

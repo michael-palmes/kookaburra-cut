@@ -1,8 +1,12 @@
 import { type Font, FontLoader } from "three/examples/jsm/loaders/FontLoader.js";
 import barlowCondensedTypeface from "../../assets/fonts/BarlowCondensed-SemiBold.typeface.json";
 import cormorantGaramondTypeface from "../../assets/fonts/CormorantGaramond-SemiBold.typeface.json";
+import frauncesTypeface from "../../assets/fonts/Fraunces-SemiBold.typeface.json";
+import ibmPlexSansTypeface from "../../assets/fonts/IBMPlexSans-Regular.typeface.json";
+import instrumentSerifTypeface from "../../assets/fonts/InstrumentSerif-Regular.typeface.json";
 import interTypeface from "../../assets/fonts/Inter-Regular.typeface.json";
 import jetbrainsMonoTypeface from "../../assets/fonts/JetBrainsMono-Regular.typeface.json";
+import jostTypeface from "../../assets/fonts/Jost-Regular.typeface.json";
 import libreFranklinTypeface from "../../assets/fonts/LibreFranklin-SemiBold.typeface.json";
 import loraTypeface from "../../assets/fonts/Lora-Regular.typeface.json";
 import nunitoTypeface from "../../assets/fonts/Nunito-SemiBold.typeface.json";
@@ -23,6 +27,10 @@ const TYPEFACE_DATA: Record<string, unknown> = {
   Nunito: nunitoTypeface,
   "Cormorant Garamond": cormorantGaramondTypeface,
   "Libre Franklin": libreFranklinTypeface,
+  "Instrument Serif": instrumentSerifTypeface,
+  Jost: jostTypeface,
+  "IBM Plex Sans": ibmPlexSansTypeface,
+  Fraunces: frauncesTypeface,
 };
 
 const parsed = new Map<string, Font>();

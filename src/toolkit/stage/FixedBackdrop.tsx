@@ -369,10 +369,10 @@ function FixedVideo({ spec }: { spec: Extract<ThemeBackground, { type: "video" }
   );
 }
 
-/** Hex → plain 0-1 sRGB RGBA (the paper-design convention: shaders mix and write display-domain values raw, no linear conversion, matching the exact-colour discipline). */
-function hexToRgba(hex: string): [number, number, number, number] {
-  const c = new Color(hex);
-  return [c.r, c.g, c.b, 1];
+/** Hex → plain 0-1 sRGB RGBA (the paper-design convention: shaders mix and write display-domain values raw, no linear conversion, matching the exact-colour discipline). `Color` stores linear light under colour management, so the bytes are read back in sRGB. */
+export function hexToRgba(hex: string): [number, number, number, number] {
+  const n = new Color(hex).getHex(SRGBColorSpace);
+  return [((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255, 1];
 }
 
 /** Animated GLSL fill: the vendored paper-design effect on the fixed quad. `u_time` reads the ABSOLUTE project clock per draw (scene hosts stay mounted, so the pattern runs continuously across cuts) scaled by `speed`; every other uniform is static per spec. Unknown shader ids degrade to nothing (the parser is schema-light by design). */

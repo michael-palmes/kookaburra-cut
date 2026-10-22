@@ -89,7 +89,7 @@ describe("theme choice collections", () => {
     choice({
       id: "kookaburra-calm",
       name: "Calm",
-      category: "quiet-technology",
+      category: "studio",
       tags: ["soft"],
       fontTraits: ["Space Grotesk"],
     }),
@@ -97,7 +97,7 @@ describe("theme choice collections", () => {
       id: "ws:personal",
       name: "Personal",
       source: "workspace",
-      category: "quiet-technology",
+      category: "studio",
       useLabel: "Private AI notes",
       tags: ["calm", "assistant"],
       fontTraits: ["Avenir Next"],
@@ -115,9 +115,7 @@ describe("theme choice collections", () => {
         ({ id }) => id,
       ),
     ).toEqual(["ws:personal", "kookaburra-clean"]);
-    expect(filterThemeChoices(choices, "quiet-technology").map(({ id }) => id)).toEqual([
-      "kookaburra-calm",
-    ]);
+    expect(filterThemeChoices(choices, "studio").map(({ id }) => id)).toEqual(["kookaburra-calm"]);
     expect(filterThemeChoices(choices, "my-themes").map(({ id }) => id)).toEqual(["ws:personal"]);
   });
 
@@ -125,9 +123,10 @@ describe("theme choice collections", () => {
     expect(filterThemeChoices(choices, "essentials", "private avenir").map(({ id }) => id)).toEqual(
       ["ws:personal"],
     );
-    expect(
-      filterThemeChoices(choices, "my-themes", "quiet technology").map(({ id }) => id),
-    ).toEqual(["kookaburra-calm", "ws:personal"]);
+    expect(filterThemeChoices(choices, "my-themes", "studio").map(({ id }) => id)).toEqual([
+      "kookaburra-calm",
+      "ws:personal",
+    ]);
   });
 
   it("counts every collection while keeping workspace themes out of use-case counts", () => {
@@ -135,7 +134,7 @@ describe("theme choice collections", () => {
       all: 3,
       recent: 1,
       essentials: 1,
-      "quiet-technology": 1,
+      studio: 1,
       "my-themes": 1,
     });
   });
@@ -237,7 +236,7 @@ describe("listThemeChoices", () => {
   it("keeps malformed workspace documents isolated and resolves previews concurrently", async () => {
     const rich = JSON.stringify(
       workspaceDoc("Personal Nebula", {
-        category: "human-centred-ai",
+        category: "retro",
         useLabel: "Thoughtful assistant stories",
         tags: ["calm", "assistant"],
         stage: "lighting-only",
@@ -275,7 +274,7 @@ describe("listThemeChoices", () => {
       name: "Personal Nebula",
       useLabel: "Thoughtful assistant stories",
       tags: ["calm", "assistant"],
-      category: "human-centred-ai",
+      category: "retro",
       stage: "lighting-only",
       fontTraits: ["Avenir Next", "Inter"],
       previews: ["rich-key-1.jpg"],
@@ -308,7 +307,7 @@ describe("theme variants in the listing", () => {
       { slug: "orphan", json: JSON.stringify(orphan) },
       {
         slug: "paper-cut",
-        json: JSON.stringify({ ...variant, name: "Paper cut", extends: "kookaburra-paper" }),
+        json: JSON.stringify({ ...variant, name: "Paper cut", extends: "kookaburra-ivory" }),
       },
     ]);
     mocks.themePreviewKey.mockImplementation(async (json: string) => json);
@@ -331,7 +330,7 @@ describe("theme variants in the listing", () => {
     expect(lightKey.motion).toEqual(base.motion);
     expect(choices.find(({ id }) => id === "ws:orphan")).toBeUndefined();
     expect(choices.find(({ id }) => id === "ws:brand")?.dependents).toEqual(["Brand light"]);
-    expect(choices.find(({ id }) => id === "kookaburra-paper")?.dependents).toEqual(["Paper cut"]);
+    expect(choices.find(({ id }) => id === "kookaburra-ivory")?.dependents).toEqual(["Paper cut"]);
   });
 });
 

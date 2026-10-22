@@ -2,7 +2,7 @@
   "id": "whats-new-social-cut",
   "name": "What's New (social cut)",
   "version": 2,
-  "themeId": "kookaburra-midnight",
+  "themeId": "kookaburra-blue-hour",
   "formats": ["9:16", "16:9", "1:1", "4:5"],
   "scenes": [
     {

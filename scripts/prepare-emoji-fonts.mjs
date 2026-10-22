@@ -46,6 +46,13 @@ const BUNDLED_FAMILY_FILES = {
   Nunito: ["src/assets/fonts/Nunito-SemiBold.woff"],
   "Cormorant Garamond": ["src/assets/fonts/CormorantGaramond-SemiBold.woff"],
   "Libre Franklin": ["src/assets/fonts/LibreFranklin-SemiBold.woff"],
+  "Instrument Serif": ["src/assets/fonts/InstrumentSerif-Regular.woff"],
+  Jost: ["src/assets/fonts/Jost-Regular.woff", "src/assets/fonts/Jost-Medium.woff"],
+  "IBM Plex Sans": [
+    "src/assets/fonts/IBMPlexSans-Regular.woff",
+    "src/assets/fonts/IBMPlexSans-SemiBold.woff",
+  ],
+  Fraunces: ["src/assets/fonts/Fraunces-SemiBold.woff"],
 };
 
 const EMOJI_PUA_START = 0xe000;

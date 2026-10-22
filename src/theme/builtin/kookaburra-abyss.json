@@ -8,6 +8,7 @@
     "useLabel": "Cinematic depth",
     "tags": ["cinematic", "immersive", "dark", "depth", "technology", "dramatic"],
     "stage": "physical",
+    "hidden": true,
     "order": 90
   },
   "colors": {

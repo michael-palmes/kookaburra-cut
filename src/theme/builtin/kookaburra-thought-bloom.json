@@ -4,10 +4,11 @@
   "name": "Thought Bloom",
   "mode": "light",
   "catalogue": {
-    "category": "human-centred-ai",
+    "category": "essentials",
     "useLabel": "Warm AI explainers",
     "tags": ["ai", "explainer", "human", "warm", "learning", "optimistic"],
     "stage": "lighting-only",
+    "hidden": true,
     "order": 20
   },
   "colors": {

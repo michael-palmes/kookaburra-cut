@@ -1,0 +1,87 @@
+{
+  "version": 2,
+  "id": "kookaburra-hi-fi",
+  "name": "Hi-Fi",
+  "mode": "light",
+  "catalogue": {
+    "category": "retro",
+    "useLabel": "Hardware and industrial design",
+    "tags": ["1960s", "1970s", "industrial", "hardware", "warm grey", "orange"],
+    "stage": "lighting-only",
+    "order": 20
+  },
+  "colors": {
+    "background": "#efede8",
+    "text": "#1a1a18",
+    "accent": "#a3370b",
+    "muted": "#4c4b46"
+  },
+  "chartColors": ["#a3370b", "#1a1a18", "#2f5d62", "#6b5b18", "#5f5f58", "#5a4a7a"],
+  "typography": {
+    "headline": {
+      "family": "IBM Plex Sans",
+      "weight": 600
+    },
+    "body": "IBM Plex Sans",
+    "scale": 1.2
+  },
+  "motion": {
+    "durations": {
+      "fast": 200,
+      "base": 520,
+      "slow": 940
+    },
+    "easings": {
+      "standard": "outCubic",
+      "emphasized": "outExpo"
+    }
+  },
+  "textAnimation": {
+    "in": "fade-up",
+    "out": "fade",
+    "staggerMs": 0
+  },
+  "lighting": {
+    "key": {
+      "azimuthDeg": 35,
+      "elevationDeg": 55,
+      "intensity": 2.0,
+      "color": "#fff8ee"
+    },
+    "fills": [
+      {
+        "azimuthDeg": -120,
+        "elevationDeg": 18,
+        "intensity": 0.8,
+        "color": "#f0ece4"
+      }
+    ],
+    "ambient": 0.85,
+    "shadow": {
+      "technique": "map",
+      "softness": 0.7,
+      "opacity": 0.24,
+      "mapSize": 2048,
+      "bias": -0.0005,
+      "color": "#2a2620"
+    }
+  },
+  "environment": {
+    "source": "kookaburra:monochrome-studio",
+    "intensity": 0.95,
+    "rotationDeg": 0
+  },
+  "background": {
+    "type": "shader",
+    "shader": "dot-grid",
+    "colors": ["#efede8", "#e4e2db", "#e0ddd5"],
+    "speed": 0.5,
+    "params": {
+      "density": 34,
+      "dotSize": 0.16,
+      "pulse": 0.15,
+      "waveWidth": 0.6,
+      "driftAngle": 70
+    }
+  }
+}

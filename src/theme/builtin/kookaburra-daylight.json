@@ -1,0 +1,85 @@
+{
+  "version": 2,
+  "id": "kookaburra-daylight",
+  "name": "Daylight",
+  "mode": "light",
+  "catalogue": {
+    "category": "essentials",
+    "useLabel": "Clean product launches",
+    "tags": ["clean", "minimal", "product", "bright", "keynote", "neutral"],
+    "stage": "lighting-only",
+    "order": 10
+  },
+  "colors": {
+    "background": "#f5f5f7",
+    "text": "#1d1d1f",
+    "accent": "#0066cc",
+    "muted": "#545458"
+  },
+  "gradients": {
+    "brand": {
+      "type": "radial",
+      "angleDeg": 0,
+      "stops": [["#ffffff", 0], ["#ebebef", 1]],
+      "space": "oklch"
+    }
+  },
+  "chartColors": ["#0066cc", "#1d7a4f", "#b4460f", "#b3123d", "#8a5be6", "#0e6c80"],
+  "typography": {
+    "headline": {
+      "family": "Inter",
+      "weight": 600
+    },
+    "body": "Inter",
+    "scale": 1.2
+  },
+  "motion": {
+    "durations": {
+      "fast": 200,
+      "base": 520,
+      "slow": 940
+    },
+    "easings": {
+      "standard": "outCubic",
+      "emphasized": "outExpo"
+    }
+  },
+  "textAnimation": {
+    "in": "fade-up",
+    "out": "fade",
+    "staggerMs": 0
+  },
+  "lighting": {
+    "key": {
+      "azimuthDeg": 35,
+      "elevationDeg": 55,
+      "intensity": 2.0
+    },
+    "fills": [
+      {
+        "azimuthDeg": -120,
+        "elevationDeg": 18,
+        "intensity": 0.8
+      }
+    ],
+    "ambient": 0.85,
+    "shadow": {
+      "technique": "map",
+      "softness": 0.7,
+      "opacity": 0.24,
+      "mapSize": 2048,
+      "bias": -0.0005,
+      "color": "#20242c"
+    }
+  },
+  "environment": {
+    "source": "kookaburra:monochrome-studio",
+    "intensity": 1.0,
+    "rotationDeg": 0
+  },
+  "background": {
+    "type": "gradient",
+    "gradient": "brand",
+    "parallax": 0.03
+  }
+}

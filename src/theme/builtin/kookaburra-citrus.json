@@ -1,0 +1,87 @@
+{
+  "version": 2,
+  "id": "kookaburra-citrus",
+  "name": "Citrus",
+  "mode": "light",
+  "catalogue": {
+    "category": "colour",
+    "useLabel": "Loud launches and announcements",
+    "tags": ["yellow", "bold", "loud", "launch", "poster", "colour block"],
+    "stage": "lighting-only",
+    "order": 40
+  },
+  "colors": {
+    "background": "#ffd43b",
+    "text": "#121212",
+    "accent": "#1d3fd6",
+    "muted": "#45390a"
+  },
+  "gradients": {
+    "brand": {
+      "type": "radial",
+      "angleDeg": 0,
+      "stops": [["#ffdc5c", 0], ["#ffcf2a", 1]],
+      "space": "oklch"
+    }
+  },
+  "chartColors": ["#1d3fd6", "#121212", "#b8321f", "#0f6b3f", "#6b2fb5", "#7a4500"],
+  "typography": {
+    "headline": {
+      "family": "Inter",
+      "weight": 600
+    },
+    "body": "Inter",
+    "scale": 1.2
+  },
+  "motion": {
+    "durations": {
+      "fast": 200,
+      "base": 520,
+      "slow": 940
+    },
+    "easings": {
+      "standard": "outCubic",
+      "emphasized": "outExpo"
+    }
+  },
+  "textAnimation": {
+    "in": "fade-up",
+    "out": "fade",
+    "staggerMs": 0
+  },
+  "lighting": {
+    "key": {
+      "azimuthDeg": 35,
+      "elevationDeg": 55,
+      "intensity": 2.0,
+      "color": "#fffbea"
+    },
+    "fills": [
+      {
+        "azimuthDeg": -120,
+        "elevationDeg": 18,
+        "intensity": 0.8,
+        "color": "#fff1c2"
+      }
+    ],
+    "ambient": 0.85,
+    "shadow": {
+      "technique": "map",
+      "softness": 0.7,
+      "opacity": 0.24,
+      "mapSize": 2048,
+      "bias": -0.0005,
+      "color": "#3a2e00"
+    }
+  },
+  "environment": {
+    "source": "kookaburra:cyclorama",
+    "intensity": 0.9,
+    "rotationDeg": 0
+  },
+  "background": {
+    "type": "gradient",
+    "gradient": "brand",
+    "parallax": 0.03
+  }
+}

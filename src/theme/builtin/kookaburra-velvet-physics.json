@@ -4,10 +4,11 @@
   "name": "Velvet Physics",
   "mode": "dark",
   "catalogue": {
-    "category": "sensory-and-surreal",
+    "category": "essentials",
     "useLabel": "Premium creative launches",
     "tags": ["premium", "creative", "launch", "sensory", "surreal", "luxury"],
     "stage": "lighting-only",
+    "hidden": true,
     "order": 10
   },
   "colors": {

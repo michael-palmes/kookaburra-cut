@@ -4,10 +4,11 @@
   "name": "Brass Ledger",
   "mode": "dark",
   "catalogue": {
-    "category": "modern-finance",
+    "category": "essentials",
     "useLabel": "Private wealth and insurance",
     "tags": ["private-wealth", "insurance", "premium", "heritage", "finance", "experimental"],
     "stage": "lighting-only",
+    "hidden": true,
     "order": 30
   },
   "colors": {

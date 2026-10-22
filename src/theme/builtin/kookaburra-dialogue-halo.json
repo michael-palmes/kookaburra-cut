@@ -4,10 +4,11 @@
   "name": "Dialogue Halo",
   "mode": "dark",
   "catalogue": {
-    "category": "human-centred-ai",
+    "category": "essentials",
     "useLabel": "Conversational product stories",
     "tags": ["conversation", "assistant", "ai", "product", "human", "cinematic"],
     "stage": "lighting-only",
+    "hidden": true,
     "order": 30
   },
   "colors": {

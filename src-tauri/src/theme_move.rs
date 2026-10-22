@@ -179,17 +179,7 @@ fn move_theme(
     if name.trim().is_empty() {
         return Err("Give the app theme a name.".into());
     }
-    if ![
-        "essentials",
-        "quiet-technology",
-        "human-centred-ai",
-        "maker-energy",
-        "sensory-and-surreal",
-        "digital-assets",
-        "modern-finance",
-    ]
-    .contains(&category)
-    {
+    if !["essentials", "studio", "colour", "retro"].contains(&category) {
         return Err("Choose a theme category.".into());
     }
     let workspace = workspace.canonicalize().map_err(|e| e.to_string())?;
@@ -458,7 +448,7 @@ mod tests {
                 "personal",
                 "new-app",
                 "New app",
-                "maker-energy",
+                "studio",
                 fail,
             )
         }

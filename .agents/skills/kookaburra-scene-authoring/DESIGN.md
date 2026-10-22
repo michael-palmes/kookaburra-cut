@@ -94,11 +94,14 @@ unit is about 261 px. The safe inset is 0.249 units (65 px).
    tools are available and pull the primary, a dark neutral, a light neutral.
 2. Map to tokens: `background` (the brand's darkest or lightest neutral), `text` (at
    least 7:1 against background), `accent` (the brand primary; at least 3:1),
-   `muted` (text mixed about 40% toward background).
+   `muted` (secondary labels and subtitles: at least 5.5:1 on a light background and
+   7:1 on a dark one, so mix text no more than about 25% toward background).
 3. Fonts: use the brand family only if `./kb fonts check` passes; otherwise the closest
-   bundled family: geometric sans to Space Grotesk or Inter; humanist sans to Open Sans
-   or Nunito; condensed to Barlow Condensed; editorial serif to Playfair Display, Lora
-   or Cormorant Garamond; corporate sans to Libre Franklin; mono to JetBrains Mono.
+   bundled family: neo-grotesk sans to Inter; geometric sans to Jost or Space Grotesk;
+   humanist sans to Open Sans or Nunito; technical or corporate sans to IBM Plex Sans
+   or Libre Franklin; condensed to Barlow Condensed; editorial serif to Instrument
+   Serif, Playfair Display, Lora or Cormorant Garamond; soft display serif to Fraunces;
+   mono to JetBrains Mono.
 4. Apply: for a whole video, a workspace theme (reference/project.md) so charts and
    backgrounds follow too; for a light touch, `project.json` `typography` plus a brand
    gradient `background` (oklch spec) and `textStyle` colours on key lines.
@@ -193,14 +196,14 @@ the user creates from the app's Welcome screen.
 
 **Product demo (20 to 40 s).** `title-opener`, then two or three `hero-device` scenes
 with real recordings and one-line captions, `feature-compare` for the key improvement,
-`stat-counter` for the payoff, `closing-cta`. Theme `kookaburra-studio-white` or
-`kookaburra-midnight`. `push` between feature scenes. Template: `feature-deep-dive`.
+`stat-counter` for the payoff, `closing-cta`. Theme `kookaburra-daylight` or
+`kookaburra-onyx`. `push` between feature scenes. Template: `feature-deep-dive`.
 
 **Launch video (30 to 60 s).** Hook `title-opener` with a shine, `layeredscreenshot`
 expanding to isometric, `hero-device` scenes cut on the beat, `comparison` with a
 `toe-in` layout, `chart-reveal` or `stat-counter`, `appversion`, `closing-cta`. Dark
-theme with bloom (`kookaburra-abyss`, `kookaburra-neon`, `kookaburra-lucid-chrome`),
-music with beats. Templates: `whats-new-social-cut`, `redesign-reveal`.
+theme (`kookaburra-onyx`, `kookaburra-afterglow`, `kookaburra-night-drive`), music
+with beats. Templates: `whats-new-social-cut`, `redesign-reveal`.
 
 **Slide deck presentation.** A deck `frame` in `project.json` for consistency, then
 `overlaystart` and `overlayend` for content slides (alternate sides), `overlaypanel`

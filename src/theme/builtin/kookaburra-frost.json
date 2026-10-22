@@ -1,0 +1,94 @@
+{
+  "version": 2,
+  "id": "kookaburra-frost",
+  "name": "Frost",
+  "mode": "light",
+  "catalogue": {
+    "category": "studio",
+    "useLabel": "Hardware and device reveals",
+    "tags": ["glass", "hardware", "device", "clean", "cool", "depth"],
+    "stage": "lighting-only",
+    "order": 40
+  },
+  "colors": {
+    "background": "#eef2f5",
+    "text": "#0e171e",
+    "accent": "#0858b4",
+    "muted": "#44515b"
+  },
+  "chartColors": ["#0858b4", "#0f766e", "#7c3aed", "#b45309", "#be123c", "#334155"],
+  "typography": {
+    "headline": {
+      "family": "Inter",
+      "weight": 600
+    },
+    "body": "Inter",
+    "scale": 1.2
+  },
+  "motion": {
+    "durations": {
+      "fast": 200,
+      "base": 520,
+      "slow": 940
+    },
+    "easings": {
+      "standard": "outCubic",
+      "emphasized": "outExpo"
+    }
+  },
+  "textAnimation": {
+    "in": "fade-scale",
+    "out": "fade",
+    "staggerMs": 0,
+    "startScale": 0.96
+  },
+  "lighting": {
+    "key": {
+      "azimuthDeg": 35,
+      "elevationDeg": 55,
+      "intensity": 2.0,
+      "color": "#f6fbff"
+    },
+    "fills": [
+      {
+        "azimuthDeg": -120,
+        "elevationDeg": 18,
+        "intensity": 0.8,
+        "color": "#e8f1ff"
+      }
+    ],
+    "ambient": 0.85,
+    "shadow": {
+      "technique": "map",
+      "softness": 0.7,
+      "opacity": 0.24,
+      "mapSize": 2048,
+      "bias": -0.0005,
+      "color": "#1d2733"
+    }
+  },
+  "environment": {
+    "source": "kookaburra:cyclorama",
+    "intensity": 1.0,
+    "rotationDeg": 0
+  },
+  "background": {
+    "type": "scene3d",
+    "look": "wash-dome",
+    "colors": ["#d9e2ea", "#e2e8ee", "#f6f8fa"],
+    "speed": 0.6,
+    "params": {
+      "coverage": 0.3,
+      "calmHeight": 10,
+      "edge": 0.5,
+      "granulation": 0.15,
+      "streak": 0.2,
+      "wind": 0.6,
+      "blooms": 3
+    },
+    "backing": {
+      "type": "color",
+      "color": "#eef2f5"
+    }
+  }
+}

@@ -8,6 +8,7 @@
     "useLabel": "Bold digital energy",
     "tags": ["digital", "developer", "code", "energetic", "futuristic", "dark"],
     "stage": "lighting-only",
+    "hidden": true,
     "order": 80
   },
   "colors": {

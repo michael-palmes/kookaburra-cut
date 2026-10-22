@@ -8,6 +8,7 @@
     "useLabel": "Lifestyle product scenes",
     "tags": ["lifestyle", "spatial", "interior", "product", "premium", "warm"],
     "stage": "physical",
+    "hidden": true,
     "order": 60
   },
   "colors": {

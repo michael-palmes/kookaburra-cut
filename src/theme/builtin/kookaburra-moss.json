@@ -1,0 +1,84 @@
+{
+  "version": 2,
+  "id": "kookaburra-moss",
+  "name": "Moss",
+  "mode": "dark",
+  "catalogue": {
+    "category": "studio",
+    "useLabel": "Health, climate and wellbeing",
+    "tags": ["green", "nature", "calm", "dark", "health", "climate"],
+    "stage": "lighting-only",
+    "order": 60
+  },
+  "colors": {
+    "background": "#0d1813",
+    "text": "#eef3ea",
+    "accent": "#9be3a8",
+    "muted": "#a9bcae"
+  },
+  "chartColors": ["#9be3a8", "#8fc1e3", "#e8c77d", "#e3a08f", "#c9b6e8", "#d7e3a0"],
+  "typography": {
+    "headline": {
+      "family": "Fraunces",
+      "weight": 600
+    },
+    "body": "IBM Plex Sans",
+    "scale": 1.2
+  },
+  "motion": {
+    "durations": {
+      "fast": 200,
+      "base": 520,
+      "slow": 940
+    },
+    "easings": {
+      "standard": "outCubic",
+      "emphasized": "outExpo"
+    }
+  },
+  "textAnimation": {
+    "in": "fade-up",
+    "out": "fade",
+    "staggerMs": 40,
+    "stagger": "word"
+  },
+  "lighting": {
+    "key": {
+      "azimuthDeg": -30,
+      "elevationDeg": 42,
+      "intensity": 1.9,
+      "color": "#f0f7e8"
+    },
+    "fills": [
+      {
+        "azimuthDeg": 140,
+        "elevationDeg": 12,
+        "intensity": 0.5,
+        "color": "#2f5240"
+      },
+      {
+        "azimuthDeg": 165,
+        "elevationDeg": 38,
+        "intensity": 0.85,
+        "color": "#a6cfa9"
+      }
+    ],
+    "ambient": 0.4
+  },
+  "environment": {
+    "source": "kookaburra:ferndale-studio",
+    "intensity": 0.55,
+    "rotationDeg": 0
+  },
+  "background": {
+    "type": "shader",
+    "shader": "mesh-gradient",
+    "colors": ["#0b1510", "#0f2118", "#152c21", "#0c1912"],
+    "speed": 0.14,
+    "params": {
+      "distortion": 0.6,
+      "swirl": 0.06,
+      "grainOverlay": 0.04
+    }
+  }
+}

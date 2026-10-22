@@ -1,0 +1,87 @@
+{
+  "version": 2,
+  "id": "kookaburra-tangerine",
+  "name": "Tangerine",
+  "mode": "light",
+  "catalogue": {
+    "category": "colour",
+    "useLabel": "Energetic consumer and food apps",
+    "tags": ["orange", "bold", "warm", "energetic", "consumer", "colour block"],
+    "stage": "lighting-only",
+    "order": 50
+  },
+  "colors": {
+    "background": "#ffac68",
+    "text": "#170c04",
+    "accent": "#241f8f",
+    "muted": "#48280e"
+  },
+  "gradients": {
+    "brand": {
+      "type": "radial",
+      "angleDeg": 0,
+      "stops": [["#ffb576", 0], ["#ffa75f", 1]],
+      "space": "oklch"
+    }
+  },
+  "chartColors": ["#241f8f", "#170c04", "#7a1238", "#0d5c4f", "#2f4a00", "#5b2a8a"],
+  "typography": {
+    "headline": {
+      "family": "IBM Plex Sans",
+      "weight": 600
+    },
+    "body": "IBM Plex Sans",
+    "scale": 1.2
+  },
+  "motion": {
+    "durations": {
+      "fast": 200,
+      "base": 520,
+      "slow": 940
+    },
+    "easings": {
+      "standard": "outCubic",
+      "emphasized": "outExpo"
+    }
+  },
+  "textAnimation": {
+    "in": "fade-up",
+    "out": "fade",
+    "staggerMs": 0
+  },
+  "lighting": {
+    "key": {
+      "azimuthDeg": 35,
+      "elevationDeg": 55,
+      "intensity": 2.0,
+      "color": "#fff4ea"
+    },
+    "fills": [
+      {
+        "azimuthDeg": -120,
+        "elevationDeg": 18,
+        "intensity": 0.8,
+        "color": "#ffe3cc"
+      }
+    ],
+    "ambient": 0.85,
+    "shadow": {
+      "technique": "map",
+      "softness": 0.7,
+      "opacity": 0.24,
+      "mapSize": 2048,
+      "bias": -0.0005,
+      "color": "#3a1e08"
+    }
+  },
+  "environment": {
+    "source": "kookaburra:cyclorama",
+    "intensity": 0.9,
+    "rotationDeg": 0
+  },
+  "background": {
+    "type": "gradient",
+    "gradient": "brand",
+    "parallax": 0.03
+  }
+}

@@ -1,0 +1,84 @@
+{
+  "version": 2,
+  "id": "kookaburra-night-drive",
+  "name": "Night Drive",
+  "mode": "dark",
+  "catalogue": {
+    "category": "retro",
+    "useLabel": "Music, entertainment and nightlife",
+    "tags": ["1980s", "city pop", "dusk", "indigo", "pink", "night"],
+    "stage": "lighting-only",
+    "order": 60
+  },
+  "colors": {
+    "background": "#15173a",
+    "text": "#f7f3ff",
+    "accent": "#f4a6b0",
+    "muted": "#c9cbe8"
+  },
+  "chartColors": ["#f4a6b0", "#f7d08a", "#8fd3f4", "#9ee6c1", "#b9a3f5", "#f2b6e0"],
+  "typography": {
+    "headline": {
+      "family": "Barlow Condensed",
+      "weight": 600
+    },
+    "body": "Inter",
+    "scale": 1.2
+  },
+  "motion": {
+    "durations": {
+      "fast": 200,
+      "base": 520,
+      "slow": 940
+    },
+    "easings": {
+      "standard": "outCubic",
+      "emphasized": "outExpo"
+    }
+  },
+  "textAnimation": {
+    "in": "fade-up",
+    "out": "fade",
+    "staggerMs": 45,
+    "stagger": "word"
+  },
+  "lighting": {
+    "key": {
+      "azimuthDeg": -30,
+      "elevationDeg": 42,
+      "intensity": 1.9,
+      "color": "#ffe6f0"
+    },
+    "fills": [
+      {
+        "azimuthDeg": 140,
+        "elevationDeg": 12,
+        "intensity": 0.5,
+        "color": "#3b3580"
+      },
+      {
+        "azimuthDeg": 165,
+        "elevationDeg": 38,
+        "intensity": 0.85,
+        "color": "#c0a8ff"
+      }
+    ],
+    "ambient": 0.4
+  },
+  "environment": {
+    "source": "kookaburra:night-city",
+    "intensity": 0.5,
+    "rotationDeg": 0
+  },
+  "background": {
+    "type": "shader",
+    "shader": "mesh-gradient",
+    "colors": ["#121433", "#1a1c45", "#26225a", "#15183b"],
+    "speed": 0.16,
+    "params": {
+      "distortion": 0.6,
+      "swirl": 0.08,
+      "grainOverlay": 0.04
+    }
+  }
+}

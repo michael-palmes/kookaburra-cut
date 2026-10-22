@@ -1,9 +1,15 @@
 import { configureTextBuilder, preloadFont } from "troika-three-text";
 import barlowCondensedSemiBoldUrl from "../assets/fonts/BarlowCondensed-SemiBold.woff?url";
 import cormorantGaramondSemiBoldUrl from "../assets/fonts/CormorantGaramond-SemiBold.woff?url";
+import frauncesSemiBoldUrl from "../assets/fonts/Fraunces-SemiBold.woff?url";
+import ibmPlexSansRegularUrl from "../assets/fonts/IBMPlexSans-Regular.woff?url";
+import ibmPlexSansSemiBoldUrl from "../assets/fonts/IBMPlexSans-SemiBold.woff?url";
+import instrumentSerifRegularUrl from "../assets/fonts/InstrumentSerif-Regular.woff?url";
 import interRegularUrl from "../assets/fonts/Inter-Regular.woff?url";
 import interSemiBoldUrl from "../assets/fonts/Inter-SemiBold.woff?url";
 import jetbrainsMonoRegularUrl from "../assets/fonts/JetBrainsMono-Regular.woff?url";
+import jostMediumUrl from "../assets/fonts/Jost-Medium.woff?url";
+import jostRegularUrl from "../assets/fonts/Jost-Regular.woff?url";
 import kookaburraFallbackUrl from "../assets/fonts/KookaburraFallback.otf?url";
 import libreFranklinSemiBoldUrl from "../assets/fonts/LibreFranklin-SemiBold.woff?url";
 import loraRegularUrl from "../assets/fonts/Lora-Regular.woff?url";
@@ -44,7 +50,19 @@ export const BUNDLED_FONTS: Record<string, Record<number, string>> = {
   Nunito: { 600: nunitoSemiBoldUrl },
   "Cormorant Garamond": { 600: cormorantGaramondSemiBoldUrl },
   "Libre Franklin": { 600: libreFranklinSemiBoldUrl },
+  "Instrument Serif": { 400: instrumentSerifRegularUrl },
+  Jost: { 400: jostRegularUrl, 500: jostMediumUrl },
+  "IBM Plex Sans": { 400: ibmPlexSansRegularUrl, 600: ibmPlexSansSemiBoldUrl },
+  Fraunces: { 600: frauncesSemiBoldUrl },
 };
+
+/** Faces added after the boot preload set froze: they typeset only when a project references them, so their atlas cells never shift an older project's glyphs (docs/determinism.md "Fonts"). Append every new bundled face here. */
+export const LAZY_BUNDLED_FAMILIES: ReadonlySet<string> = new Set([
+  "Instrument Serif",
+  "Jost",
+  "IBM Plex Sans",
+  "Fraunces",
+]);
 
 /** Workspace-pinned system fonts: family → weight → asset-protocol URL under `~/Kookaburra Cut/fonts/`, registered by `engine/systemFonts.ts`; pinning copies exact bytes so exports stay reproducible across macOS updates. */
 const workspaceFonts = new Map<string, Map<number, string>>();
@@ -169,7 +187,8 @@ export async function preloadAppFonts(refs?: readonly (FontRef | string)[]): Pro
     await substituteUnsafeFaces(refs);
     for (const ref of refs) urls.add(fontUrl(ref));
   } else {
-    for (const weights of Object.values(BUNDLED_FONTS)) {
+    for (const [family, weights] of Object.entries(BUNDLED_FONTS)) {
+      if (LAZY_BUNDLED_FAMILIES.has(family)) continue;
       for (const url of Object.values(weights)) urls.add(url);
     }
   }

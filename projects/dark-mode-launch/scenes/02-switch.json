@@ -37,7 +37,7 @@
           "src": "assets/home-dark-sample.jpg"
         }
       },
-      "themeId": "kookaburra-abyss"
+      "themeId": "kookaburra-onyx"
     },
     "chrome": {
       "chips": true,
@@ -106,6 +106,6 @@
     "subtitle": "",
     "title": ""
   },
-  "themeId": "kookaburra-studio-white",
+  "themeId": "kookaburra-daylight",
   "version": 1
 }

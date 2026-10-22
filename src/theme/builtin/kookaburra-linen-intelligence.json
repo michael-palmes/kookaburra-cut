@@ -4,10 +4,11 @@
   "name": "Linen Intelligence",
   "mode": "light",
   "catalogue": {
-    "category": "human-centred-ai",
+    "category": "essentials",
     "useLabel": "Human AI stories",
     "tags": ["ai", "editorial", "explainer", "human", "warm", "organic"],
     "stage": "lighting-only",
+    "hidden": true,
     "order": 10
   },
   "colors": {

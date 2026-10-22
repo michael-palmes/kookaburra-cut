@@ -8,6 +8,7 @@
     "useLabel": "Minimal portfolios",
     "tags": ["portfolio", "minimal", "art", "architecture", "neutral", "presentation"],
     "stage": "physical",
+    "hidden": true,
     "order": 40
   },
   "colors": {

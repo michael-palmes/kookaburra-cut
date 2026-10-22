@@ -136,22 +136,26 @@ export const THEME_CATEGORY_ICONS = {
       <path d="M8 12h8" />
     </>,
   ),
-  "quiet-technology": railIcon(
+  studio: railIcon(
     <>
-      <rect x="5" y="5" width="14" height="14" rx="3" />
-      <path d="M9 9h6v6H9zM9 2v3m6-3v3M9 19v3m6-3v3" />
+      <path d="M12 4l1.8 4.6L18.5 10l-4.7 1.8L12 16.5l-1.8-4.7L5.5 10l4.7-1.4z" />
+      <path d="M18 15.5l.8 1.9 1.7.6-1.7.7-.8 1.8-.7-1.8-1.8-.7 1.8-.6z" />
     </>,
   ),
-  "human-centred-ai": railIcon(
+  colour: railIcon(
     <>
-      <circle cx="12" cy="8" r="3" />
-      <path d="M6 20v-2a6 6 0 0112 0v2M3 8h2m14 0h2" />
+      <circle cx="9" cy="9" r="5" />
+      <circle cx="15" cy="9" r="5" />
+      <circle cx="12" cy="15" r="5" />
     </>,
   ),
-  "maker-energy": TEMPLATE_CATEGORY_ICONS["ai-developer"],
-  "sensory-and-surreal": PRESET_CATEGORY_ICONS.features,
-  "digital-assets": PRESET_CATEGORY_ICONS.devices,
-  "modern-finance": TEMPLATE_CATEGORY_ICONS["finance-crypto"],
+  retro: railIcon(
+    <>
+      <path d="M4 18a8 8 0 0116 0" />
+      <path d="M7.5 18a4.5 4.5 0 019 0" />
+      <path d="M3 18h18" />
+    </>,
+  ),
 };
 
 /** Dev-only card badge: the item's card art is older than its authored JSON. */

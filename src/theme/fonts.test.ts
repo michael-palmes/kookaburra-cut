@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BUNDLED_FONTS, collectThemeFontRefs } from "./fonts";
+import { BUNDLED_FONTS, collectThemeFontRefs, LAZY_BUNDLED_FAMILIES } from "./fonts";
 import { builtinThemes } from "./registry";
 import type { Theme } from "./tokens";
 
@@ -52,15 +52,28 @@ describe("collectThemeFontRefs", () => {
 });
 
 describe("bundled theme faces", () => {
-  it("appends the four theme-library display faces at their audited static weight", () => {
-    expect(Object.keys(BUNDLED_FONTS).slice(-4)).toEqual([
-      "Barlow Condensed",
-      "Nunito",
-      "Cormorant Garamond",
-      "Libre Franklin",
-    ]);
-    for (const family of Object.keys(BUNDLED_FONTS).slice(-4)) {
-      expect(Object.keys(BUNDLED_FONTS[family]).map(Number)).toEqual([600]);
-    }
+  it("bundles the theme-library display faces at their audited static weights", () => {
+    expect(
+      Object.fromEntries(
+        Object.entries(BUNDLED_FONTS)
+          .slice(-8)
+          .map(([family, weights]) => [family, Object.keys(weights).map(Number)]),
+      ),
+    ).toEqual({
+      "Barlow Condensed": [600],
+      Nunito: [600],
+      "Cormorant Garamond": [600],
+      "Libre Franklin": [600],
+      "Instrument Serif": [400],
+      Jost: [400, 500],
+      "IBM Plex Sans": [400, 600],
+      Fraunces: [600],
+    });
+  });
+
+  it("keeps every face added after the frozen boot set lazy", () => {
+    const families = Object.keys(BUNDLED_FONTS);
+    expect(families.slice(0, families.indexOf("Libre Franklin") + 1)).toHaveLength(10);
+    expect(families.slice(10)).toEqual([...LAZY_BUNDLED_FAMILIES]);
   });
 });

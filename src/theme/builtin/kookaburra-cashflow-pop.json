@@ -4,10 +4,11 @@
   "name": "Cashflow Pop",
   "mode": "light",
   "catalogue": {
-    "category": "modern-finance",
+    "category": "essentials",
     "useLabel": "Expense and payment launches",
     "tags": ["expenses", "payments", "cashflow", "launch", "energetic", "bold"],
     "stage": "lighting-only",
+    "hidden": true,
     "order": 40
   },
   "colors": {

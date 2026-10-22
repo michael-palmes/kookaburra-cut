@@ -11,7 +11,7 @@ transitions with `./kb scene ...` (manifest-safe, atomic); other fields with
   "id": "product-launch",
   "name": "Launch",
   "version": 2,
-  "themeId": "kookaburra-midnight",
+  "themeId": "kookaburra-onyx",
   "formats": ["16:9", "9:16"],
   "defaultTransition": { "type": "crossfade", "durationMs": 600 },
   "scenes": [
@@ -139,25 +139,43 @@ Choosing one: DESIGN.md "Transitions by feel".
 A theme sets colours, type, motion defaults, text motion, staging, lighting, background
 and effects. `./kb theme list` and `./kb catalog themes` show the bundled set with a mood
 line (`--json` adds palette and faces); `./kb theme show <id>` prints tokens. Set the project theme with
-`./kb project set themeId kookaburra-paper`, or one scene's with
-`./kb doc S set themeId kookaburra-neon`.
+`./kb project set themeId kookaburra-ivory`, or one scene's with
+`./kb doc S set themeId kookaburra-onyx`.
+
+Twenty-two themes in four collections, every one tuned for readability first: strong
+secondary-label contrast and calm, low-contrast backgrounds (slow mesh gradients, faint
+grids or one soft 3D dome at most).
 
 | Theme | Mode | Mood | Faces |
 | --- | --- | --- | --- |
-| `kookaburra-studio-white` | light | Clean product showcases | Inter |
-| `kookaburra-pacific` | light | Calm product stories | Inter |
-| `kookaburra-paper` | light | Editorial explainers | Playfair Display / Lora |
-| `kookaburra-gallery` | light | Minimal portfolios | Space Grotesk / Inter |
-| `kookaburra-sunrise` | light | Warm launch stories | Open Sans |
-| `kookaburra-loft` | light | Lifestyle product scenes | Space Grotesk / Open Sans |
-| `kookaburra-midnight` | dark | Polished technology | Space Grotesk / Inter |
-| `kookaburra-neon` | dark | Bold digital energy | JetBrains Mono / Inter |
-| `kookaburra-abyss` | dark | Cinematic depth | Inter |
-| `kookaburra-ember` | dark | Warm crafted stories | Space Grotesk / Open Sans |
+| `kookaburra-daylight` | light | Essentials: clean product launches | Inter |
+| `kookaburra-onyx` | dark | Essentials: keynote-style reveals | Inter |
+| `kookaburra-ivory` | light | Essentials: thoughtful AI and research stories | Instrument Serif / Inter |
+| `kookaburra-ink` | dark | Essentials: warm, considered dark stories | Instrument Serif / Inter |
+| `kookaburra-afterglow` | dark | Studio: AI and developer tool launches | Space Grotesk / Inter |
+| `kookaburra-blue-hour` | dark | Studio: calm, cinematic stories | IBM Plex Sans |
+| `kookaburra-soft-field` | light | Studio: friendly consumer launches | Jost / Inter |
+| `kookaburra-frost` | light | Studio: hardware and device reveals (pale 3D wash dome) | Inter |
+| `kookaburra-lilac` | light | Studio: creative and lifestyle apps | Instrument Serif / Inter |
+| `kookaburra-moss` | dark | Studio: health, climate and wellbeing | Fraunces / IBM Plex Sans |
+| `kookaburra-sage` | light | Colour (subtle green): calm health and wellbeing | Jost / Inter |
+| `kookaburra-sky` | light | Colour (subtle blue): fresh product updates | Inter |
+| `kookaburra-blush` | light | Colour (subtle pink): beauty, fashion and lifestyle | Instrument Serif / Inter |
+| `kookaburra-citrus` | light | Colour (bold yellow): loud launches and announcements | Inter |
+| `kookaburra-tangerine` | light | Colour (bold orange): energetic consumer and food apps | IBM Plex Sans |
+| `kookaburra-lagoon` | light | Colour (bold turquoise): playful fintech and travel | Space Grotesk / Inter |
+| `kookaburra-basel` | light | Retro (Swiss 1960s): announcements | Inter |
+| `kookaburra-hi-fi` | light | Retro (1960s to 70s): hardware and industrial design | IBM Plex Sans |
+| `kookaburra-mid-century` | light | Retro (1960s): warm lifestyle and travel | Jost |
+| `kookaburra-canyon` | dark | Retro (1970s): warm, nostalgic storytelling | Fraunces / Jost |
+| `kookaburra-mainframe` | dark | Retro (1980s): infrastructure and B2B software | IBM Plex Sans / JetBrains Mono |
+| `kookaburra-night-drive` | dark | Retro (1980s): music, entertainment and nightlife | Barlow Condensed / Inter |
 
-Plus 24 more in six collections (quiet technology, human-centred AI, maker energy,
-sensory and surreal, digital assets, modern finance), most with an animated shader or
-3D background built in: `./kb catalog themes --search finance`.
+Older projects may name a retired theme (`kookaburra-midnight`, `kookaburra-paper` and
+the rest). Those still render exactly as before but are hidden from pickers;
+`./kb catalog themes` lists them. Prefer the twenty-two above for new work. On the bold
+Colour themes keep charts on the theme's own palette: the named `chart.palette` schemes
+are mid-tones that cannot clear 3:1 on a mid-tone fill.
 
 ### Workspace themes (brand themes)
 

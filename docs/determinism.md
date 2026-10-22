@@ -39,6 +39,7 @@ GPU/driver, not across fleets.)
 | A mid-run window resize retriggering r3f's size handling (corrupts the export's fixed drawing buffer for every remaining frame) | The frame loop re-asserts the export size/camera aspect if drifted, after the awaits and immediately before the (synchronous) render + readback. |
 | Non-preloaded textures/assets | Await all asset loads before frame 0. |
 | **Rendering into a plain render target** (2026-10-19): three r185 tone-maps, encodes sRGB in-shader and converts the clear colour only for the canvas or an `isXRRenderTarget` target, so `toneMapped` materials land raw in a plain one, and hardware `SRGB8_ALPHA8` storage then blends and resolves MSAA in linear light. Transition frames showed raw-colour, bolder text; comparison and framed scenes were never tone-mapped, and a comparison inside a transition was encoded twice. | Every SDR compositor target is a display target (`engine/displayTarget.ts`: the XR flag plus `RGBA8` storage), and its samplers read raw; `displayTarget.test.ts` pins three's gate and every SDR sampler. On any three upgrade, re-check each `isXRRenderTarget` read in three's WebGL renderer (`node_modules/three/src/renderers` outside `common/`, `webgpu/`, `webgl-fallback/` and `webxr/`: six in r185) and eyeball `transition-spike` frames. |
+| **Shader colours read through three's `Color`** (2026-10-22): with colour management on, `new Color(hex)` holds linear light, so the 2D shader fills (which write display-domain values raw) rendered every hex as if decoded twice: `#efede8` landed `#dcd8ce` and dark glows crushed to black | `hexToRgba` (FixedBackdrop.tsx) reads the sRGB bytes back (`getHex(SRGBColorSpace)`), pinned by `shaderColours.test.ts`. A deliberate rebase for projects with 2D shader backgrounds only; 3D looks convert through `colorspace_fragment` and never had it. |
 | **A cold-mount suspense holding EVERY scene out of the canvas**: all scenes share one `<Suspense fallback={null}>` (App.tsx); a suspending primitive (`ImageCard`'s `useTexture`) keeps the whole boundary uncommitted until React's retry render lands, and that retry races the export preamble on the wall clock. Frame 0 rendered first captures a scene-less (white) frame. `awaitCanvasClockCommit` cannot catch it: the clock is already committed at its initial 0. | `awaitSceneHostsCommitted(slots.length)`: the preamble's LAST barrier spins until every scene's host has registered (registration is a `useEffect`, which only runs once the boundary's content commits). The preceding asset preloads resolve whatever the suspense was waiting on, so the wait is a few ticks. |
 | **A layout that depends on a measurement only the mounted tree can request**: `TitleBlock` cascades its header icon and subtitle off the title's MEASURED block height, but its props exist only once the scene is in the tree, so the preamble cannot pre-warm them the way `preloadPanelMeasures` does for overlay panels. A cold pass would render frame 0 pre-measure while a warm second pass renders it cascaded. | `awaitTitleMeasuresSettled()`, the barrier after `awaitSceneHostsCommitted`: mounted TitleBlocks report their outstanding typesets, and the spin exits only once they have landed AND the tree has re-rendered with them (`engine/titleBlockMeasure.ts`). Single-line text solves to a hard 0 growth, so standing layouts keep their authored constants bit-for-bit either way. |
 | **Layout derived from measured text** (a pill sized by `useTextMetrics`, a pinned `durationMs` reveal waiting on its unit count): the derived state lands one re-render after its face parses or its first typeset, so a frame captured in between draws the pre-measure layout. | Pending reports (`engine/textDerivedState.ts`, from layout effects): `awaitTextSync` settles typesets, spins (bounded at 5000) until nothing is outstanding, then settles once more for typesets the settling commit queued. A tree that reports nothing takes the old path exactly. Preview captures (`captureFrameAt`) also run the export's clip, text and emoji barriers, in that order. |
@@ -1162,8 +1163,13 @@ camera exactly:
   drift in text pixels. Projects whose glyphs all sit inside the FIRST font's
   preloaded block (`PRELOAD_CHARACTERS` of Inter 400) are unaffected; projects
   using later fonts, pinned system fonts, or characters outside the preload set
-  rebase. When adding a face: expect these rebases, and PROVE attribution by
-  stashing the font change alone and reproducing the old hash.
+  rebase. So new faces join `LAZY_BUNDLED_FAMILIES` (theme/fonts.ts): the boot
+  preload skips them and only a project that references one typesets it, after
+  the boot block, so older projects keep their exact atlas (the 2026-10 theme
+  lineup added Instrument Serif, Jost, IBM Plex Sans and Fraunces this way, with
+  both gate projects EQUAL). A face added to the boot set instead rebases as
+  above: PROVE attribution by stashing the font change alone and reproducing
+  the old hash.
 - **Atlas insertion order is PINNED by sequential preload.** The corollary of the
   shared atlas: with a parallel preload, cells are claimed at preload
   COMPLETION (fetch-race order), so a multi-font project's text pixels become a
@@ -1695,9 +1701,9 @@ rolling-gate project (`showcase-tour`):
 | `ws:launch-2026` (legacy sentinel: must stay EQUAL) | `1ad4b2e6…` | stale | stale | stale | — | — | — | — | — |
 | `showcase-tour` (rolling gate) | `13b5994d…` | stale | stale | stale | stale | stale (pre-trim) | — | — | — |
 | `transition-spike` (transition gate, image mask included) | `9aaa76b6…` | `40867f7d…` | — | — | — | — | — | — | — |
-| `transition-bg-spike` (animated-background transition gate) | `179521c0…` | — | — | — | — | — | — | — | — |
-| `compare-spike` (before/after comparison gate) | `3689575d…` | stale | stale | stale | — | — | — | — | — |
-| `compare-transition-spike` (comparisons through transitions) | `452c9f2c…` | — | — | — | — | — | — | — | — |
+| `transition-bg-spike` (animated-background transition gate) | stale | — | — | — | — | — | — | — | — |
+| `compare-spike` (before/after comparison gate) | stale | stale | stale | stale | — | — | — | — | — |
+| `compare-transition-spike` (comparisons through transitions) | stale | — | — | — | — | — | — | — | — |
 | `image-flip-spike` (image-orientation gate, eyeball it) | stale | — | — | — | — | — | — | — | — |
 | `ws:layered-screenshot-spike` (LS gate, machine-local) | `1b3cde02…` | — | — | — | — | — | — | — | — |
 | `ws:video-window-spike` (VideoWindow gate, machine-local) | `6dfe68a6…` | — | — | — | — | — | — | — | — |

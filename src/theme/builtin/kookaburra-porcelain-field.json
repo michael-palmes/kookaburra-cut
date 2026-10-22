@@ -4,10 +4,11 @@
   "name": "Porcelain Field",
   "mode": "light",
   "catalogue": {
-    "category": "quiet-technology",
+    "category": "essentials",
     "useLabel": "Calm product systems",
     "tags": ["calm", "product", "systems", "technology", "minimal", "professional"],
     "stage": "lighting-only",
+    "hidden": true,
     "order": 10
   },
   "colors": {

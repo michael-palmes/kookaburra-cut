@@ -8,6 +8,7 @@
     "useLabel": "Warm launch stories",
     "tags": ["launch", "optimistic", "warm", "friendly", "gradient", "marketing"],
     "stage": "physical",
+    "hidden": true,
     "order": 50
   },
   "colors": {

@@ -1,0 +1,86 @@
+{
+  "version": 2,
+  "id": "kookaburra-canyon",
+  "name": "Canyon",
+  "mode": "dark",
+  "catalogue": {
+    "category": "retro",
+    "useLabel": "Warm, nostalgic storytelling",
+    "tags": ["1970s", "earth", "brown", "amber", "warm", "film"],
+    "stage": "lighting-only",
+    "order": 40
+  },
+  "colors": {
+    "background": "#24170f",
+    "text": "#f6ead8",
+    "accent": "#e9a14f",
+    "muted": "#d0bba1"
+  },
+  "gradients": {
+    "brand": {
+      "type": "linear",
+      "angleDeg": 180,
+      "stops": [["#2c1d14", 0.0], ["#1f140d", 1.0]],
+      "space": "oklch"
+    }
+  },
+  "chartColors": ["#e9a14f", "#d9774a", "#8fb3a0", "#b9a6d6", "#c9b26b", "#d8a0a8"],
+  "typography": {
+    "headline": {
+      "family": "Fraunces",
+      "weight": 600
+    },
+    "body": "Jost",
+    "scale": 1.2
+  },
+  "motion": {
+    "durations": {
+      "fast": 200,
+      "base": 520,
+      "slow": 940
+    },
+    "easings": {
+      "standard": "outCubic",
+      "emphasized": "outExpo"
+    }
+  },
+  "textAnimation": {
+    "in": "fade-scale",
+    "out": "fade",
+    "staggerMs": 0,
+    "startScale": 0.95
+  },
+  "lighting": {
+    "key": {
+      "azimuthDeg": -30,
+      "elevationDeg": 42,
+      "intensity": 1.9,
+      "color": "#ffdcae"
+    },
+    "fills": [
+      {
+        "azimuthDeg": 140,
+        "elevationDeg": 12,
+        "intensity": 0.5,
+        "color": "#5b3a24"
+      },
+      {
+        "azimuthDeg": 165,
+        "elevationDeg": 38,
+        "intensity": 0.85,
+        "color": "#d9a46a"
+      }
+    ],
+    "ambient": 0.42
+  },
+  "environment": {
+    "source": "kookaburra:sunset",
+    "intensity": 0.5,
+    "rotationDeg": 0
+  },
+  "background": {
+    "type": "gradient",
+    "gradient": "brand",
+    "parallax": 0.03
+  }
+}

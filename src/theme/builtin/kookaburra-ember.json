@@ -8,6 +8,7 @@
     "useLabel": "Warm crafted stories",
     "tags": ["crafted", "human", "warm", "storytelling", "organic", "premium"],
     "stage": "physical",
+    "hidden": true,
     "order": 100
   },
   "colors": {

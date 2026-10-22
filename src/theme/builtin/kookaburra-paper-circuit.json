@@ -4,10 +4,11 @@
   "name": "Paper Circuit",
   "mode": "light",
   "catalogue": {
-    "category": "quiet-technology",
+    "category": "essentials",
     "useLabel": "Conceptual system maps",
     "tags": ["systems", "mapping", "concept", "technology", "diagram", "experimental"],
     "stage": "lighting-only",
+    "hidden": true,
     "order": 30
   },
   "colors": {
