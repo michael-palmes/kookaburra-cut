@@ -2087,14 +2087,6 @@ button.beat-status {
   margin-top: var(--space-2);
 }
 
-.modal-list {
-  margin: 0;
-  padding-left: var(--space-6);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
-
 /* Release notes in the update offer: plain text, clipped rather than unbounded. */
 .update-notes {
   max-height: 10rem;
@@ -2116,99 +2108,58 @@ button.beat-status {
   border-radius: var(--radius-lg) var(--radius-lg) 0 0;
 }
 
-/* ── Template gallery (v15): rail + search + scrolling card grid ───────────
-   One rhythm, set here in full rather than nudged per element: the modal's own
-   var(--space-5) separates the gallery from the name field; inside it the bar,
-   rail and grid step down space-6 → space-5 → space-4 → space-3 → space-2, so
-   the card's internals never read as loose as the frame around them. The poster
-   is a fixed 16:9 box (swatch placeholder at the same box), and the tagline is
-   clamped to two lines with a reserved min-height, so a row of cards keeps one
-   baseline whether or not its art or copy has landed. Selected reuses the
-   accent-border + accent-subtle pair every other picker uses. */
-/* Compound so it outweighs .wizard-wide, which sits later in the sheet at equal specificity. */
-.modal.wizard-template-wide {
-  width: min(96rem, calc(100vw - 4rem));
-}
-
-.template-gallery {
+/* First-launch welcome: a greeting and the one recommended setting, then Get started. */
+.welcome-modal-intro {
   display: flex;
   flex-direction: column;
-  gap: var(--space-5);
-  min-width: 0;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
 }
 
-.template-gallery-bar {
-  display: flex;
-  align-items: center;
-  gap: var(--space-4);
-  min-width: 0;
+.welcome-modal-intro h2 {
+  font-size: var(--text-xl);
+  line-height: var(--lh-xl);
+  font-weight: 620;
 }
 
-.template-gallery-search {
-  inline-size: min(320px, 100%);
-}
-
-.template-facet {
-  padding: 0.15rem 0.6rem;
-  font: inherit;
-  font-size: var(--text-sm);
-  color: var(--text-secondary);
-  background: var(--surface-raised);
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-full);
+.welcome-modal-update {
+  justify-content: flex-start;
   cursor: pointer;
 }
 
-.template-facet:hover {
-  color: var(--text-primary);
-  border-color: var(--border-strong);
+.welcome-modal-update .settings-row-text {
+  flex: 1;
 }
 
-.template-facet.selected {
-  color: var(--text-primary);
-  border-color: var(--accent-border);
-  background: var(--accent-subtle);
-}
-
-.template-gallery-count {
-  margin-left: auto;
-  font-size: var(--text-xs);
-  color: var(--text-tertiary);
-  white-space: nowrap;
-}
-
-.template-gallery-body {
-  display: grid;
-  grid-template-columns: 12rem minmax(0, 1fr);
-  gap: var(--space-6);
-  min-width: 0;
-}
-
-.template-rail {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  align-content: start;
-  margin: 0;
-  padding: 0;
-  border: 0;
-  min-width: 0;
-}
-
-.template-rail-row {
+.welcome-modal-update-title {
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  height: var(--row-h-list);
-  padding: 0 var(--space-3);
-  font: inherit;
-  font-size: var(--text-sm);
-  text-align: left;
+}
+
+.welcome-modal-update .toggle-switch {
+  margin-left: 0;
+}
+
+.welcome-modal-update-icon {
+  flex: none;
+  width: 16px;
+  height: 16px;
   color: var(--text-secondary);
-  background: none;
-  border: 0;
-  border-radius: var(--radius-sm);
-  cursor: pointer;
+}
+
+.recommended-badge {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 var(--space-4);
+  font-size: var(--text-2xs);
+  font-weight: 590;
+  white-space: nowrap;
+  color: var(--accent-text);
+  background: var(--accent-subtle);
+  border: 1px solid var(--accent-border);
+  border-radius: var(--radius-full);
 }
 
 .template-rail-icon {
@@ -2216,58 +2167,6 @@ button.beat-status {
   block-size: 15px;
   flex: none;
   opacity: 0.85;
-}
-
-.template-rail-label {
-  flex: 1;
-  min-width: 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-/* All sits apart from the six categories. */
-.template-rail-row:first-child {
-  margin-bottom: var(--space-3);
-}
-
-.template-rail-row:hover:not(:disabled) {
-  color: var(--text-primary);
-  background: var(--surface-hover);
-}
-
-.template-rail-row.selected {
-  color: var(--text-primary);
-  background: var(--accent-subtle);
-}
-
-.template-rail-row:disabled {
-  color: var(--text-disabled);
-  cursor: default;
-}
-
-.template-rail-count {
-  font-size: var(--text-xs);
-  color: var(--text-tertiary);
-  font-variant-numeric: tabular-nums;
-}
-
-.template-gallery-results {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
-  min-width: 0;
-}
-
-.template-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  align-content: start;
-  gap: var(--space-5);
-  max-height: 52vh;
-  overflow-y: auto;
-  padding: var(--space-1);
-  min-width: 0;
 }
 
 .template-card {
@@ -2390,22 +2289,6 @@ button.beat-status {
   color: var(--text-tertiary);
 }
 
-/* The create fields as one container: the name is the headline act, the group a quiet folder row. */
-.wizard-detail-card {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-  padding: var(--space-5);
-  background: var(--surface-raised);
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-sm);
-}
-
-.wizard-name-input {
-  font-size: var(--text-lg);
-  padding: 0.65rem 0.9rem;
-}
-
 .group-chips {
   display: flex;
   flex-wrap: wrap;
@@ -2416,28 +2299,381 @@ button.beat-status {
   border: 0;
 }
 
-.wizard-group-row {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  flex-wrap: wrap;
-  color: var(--text-tertiary);
+/* ── New project wizard: Start and Look share a fixed-height scroller so filters never resize it ── */
+.modal.new-project.wide {
+  width: min(86rem, calc(100vw - 4rem));
 }
 
-.wizard-group-row .group-chips {
+.modal.new-project.narrow {
+  width: min(46rem, calc(100vw - 4rem));
+}
+
+.new-project-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-5);
+}
+
+.new-project-step {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  min-width: 0;
+}
+
+.new-project-filter {
+  display: flex;
+  align-items: center;
+  gap: var(--space-5);
+  padding-bottom: var(--space-5);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.new-project-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  min-width: 0;
   margin: 0;
   padding: 0;
   border: 0;
-  display: flex;
-  gap: var(--space-2);
-  min-width: 0;
-  flex-wrap: wrap;
 }
 
-.wizard-group-input {
-  inline-size: 11rem;
+.new-project-chips .chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: var(--control-h-md);
+  padding: 0 var(--space-5) 0 var(--space-4);
   font-size: var(--text-sm);
-  padding: 0.35rem 0.6rem;
+}
+
+.new-project-search {
+  position: relative;
+  flex: none;
+  inline-size: 17rem;
+  margin-left: auto;
+}
+
+.new-project-search .modal-input {
+  box-sizing: border-box;
+  inline-size: 100%;
+  height: var(--control-h-md);
+  padding-left: 30px;
+}
+
+.new-project-search .template-rail-icon {
+  position: absolute;
+  top: 50%;
+  left: 10px;
+  transform: translateY(-50%);
+  color: var(--text-tertiary);
+  pointer-events: none;
+}
+
+.new-project-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-content: start;
+  gap: var(--space-6);
+  height: min(35rem, 52vh);
+  overflow-y: auto;
+  padding: var(--space-1);
+  min-width: 0;
+}
+
+.new-project-empty {
+  box-sizing: border-box;
+  height: min(35rem, 52vh);
+}
+
+.new-project-look .theme-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  height: min(35rem, 52vh);
+  max-height: none;
+}
+
+/* Create with Claude: wide, first and recommended, painted in Claude's own palette. Scoped to this card, which stands for Claude the way a template poster stands for its theme. */
+.template-card.claude-start {
+  --claude-clay: #d97757;
+  --claude-ground: #262624;
+  --claude-field: #30302e;
+  --claude-line: #3d3d3a;
+  --claude-tool: #4d4c48;
+  --claude-ivory: #f0eee6;
+  --claude-soft: #c2c0b6;
+  --claude-muted: #9c9a92;
+  --claude-badge: #1f1e1d;
+  grid-column: span 2;
+}
+
+.claude-start-art {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 10rem;
+  aspect-ratio: auto;
+  background: var(--claude-ground);
+}
+
+.claude-start-badge {
+  position: absolute;
+  top: var(--space-4);
+  left: var(--space-4);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: 22px;
+  padding: 0 var(--space-4) 0 var(--space-3);
+  font-size: var(--text-xs);
+  font-weight: 590;
+  color: var(--claude-clay);
+  background: var(--claude-badge);
+  border: 1px solid rgb(217 119 87 / 55%);
+  border-radius: var(--radius-full);
+}
+
+.claude-start .template-card-name {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.claude-spark {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  fill: none;
+  stroke: var(--claude-clay);
+  stroke-width: 3;
+  stroke-linecap: round;
+}
+
+.claude-art .c-ground {
+  fill: var(--claude-ground);
+}
+
+.claude-art .c-spark {
+  fill: none;
+  stroke: var(--claude-clay);
+  stroke-width: 3;
+  stroke-linecap: round;
+}
+
+.claude-art .c-greeting {
+  fill: var(--claude-ivory);
+  font-family: "Anthropic Serif", Georgia, "Times New Roman", serif;
+  font-size: 24px;
+}
+
+.claude-art .c-field {
+  fill: var(--claude-field);
+  stroke: var(--claude-line);
+}
+
+.claude-art .c-prompt {
+  fill: var(--claude-ivory);
+  font-family: var(--font-ui);
+  font-size: 15px;
+}
+
+.claude-art .c-caret,
+.claude-art .c-send {
+  fill: var(--claude-clay);
+}
+
+.claude-art .c-tool {
+  fill: none;
+  stroke: var(--claude-tool);
+}
+
+.claude-art .c-model {
+  fill: var(--claude-muted);
+  font-family: var(--font-ui);
+  font-size: 12px;
+}
+
+.claude-art .c-tool-glyph,
+.claude-art .c-model-glyph,
+.claude-art .c-send-glyph {
+  fill: none;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.claude-art .c-tool-glyph {
+  stroke: var(--claude-soft);
+}
+
+.claude-art .c-model-glyph {
+  stroke: var(--claude-muted);
+}
+
+.claude-art .c-send-glyph {
+  stroke: var(--claude-ivory);
+}
+
+.template-card-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: 0 var(--space-1) var(--space-1);
+  min-width: 0;
+}
+
+.template-card-row .template-card-name {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.template-card-row .template-card-meta {
+  flex: none;
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+.new-project-name {
+  gap: var(--space-6);
+}
+
+.new-project-name-input {
+  box-sizing: border-box;
+  inline-size: 100%;
+  height: 56px;
+  padding: 0 var(--space-6);
+  font-size: var(--text-xl);
+  font-weight: 590;
+  border-radius: var(--radius-sm);
+}
+
+.new-project-group-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  height: 36px;
+  padding: 0 var(--space-4);
+  font: inherit;
+  text-align: left;
+  color: var(--text-secondary);
+  background: transparent;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.new-project-group-toggle:hover {
+  color: var(--text-primary);
+  background: var(--surface-hover);
+}
+
+.new-project-group-toggle .template-rail-icon:last-child {
+  margin-left: auto;
+}
+
+.new-project-optional {
+  font-size: var(--text-sm);
+  color: var(--text-tertiary);
+}
+
+.new-project-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.new-project-group-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  color: var(--text-secondary);
+}
+
+.new-project-group-label {
+  font-size: var(--text-sm);
+  font-weight: 590;
+}
+
+.new-project-group .group-chips {
+  margin: 0;
+}
+
+.new-project-group .group-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.new-project-group-input {
+  box-sizing: border-box;
+  inline-size: 100%;
+}
+
+.new-project-actions {
+  align-items: center;
+}
+
+.wizard-steps {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  margin: 0 auto 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+.wizard-steps li {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.wizard-steps-sep {
+  width: 20px;
+  height: 1px;
+  margin-right: var(--space-2);
+  background: var(--border-strong);
+}
+
+.wizard-steps-dot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  font-size: var(--text-2xs);
+  font-weight: 590;
+  font-variant-numeric: tabular-nums;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-full);
+}
+
+.wizard-steps-dot svg {
+  width: 10px;
+  height: 10px;
+}
+
+.wizard-steps .now {
+  color: var(--text-primary);
+  font-weight: 590;
+}
+
+.wizard-steps .now .wizard-steps-dot {
+  color: var(--text-on-accent);
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.wizard-steps .done .wizard-steps-dot {
+  color: var(--accent-text);
+  border-color: var(--accent-border);
 }
 
 /* ── Theme library: scalable collections, search and hover previews ────────── */
@@ -2653,6 +2889,7 @@ button.beat-status {
 }
 
 .theme-card-thumb {
+  position: relative;
   width: 100%;
   aspect-ratio: 16 / 9;
   border-radius: var(--radius-xs);
@@ -2688,6 +2925,22 @@ button.beat-status {
   width: 14px;
   height: 14px;
   border-radius: 50%;
+}
+
+.theme-card-own {
+  position: absolute;
+  top: var(--space-3);
+  left: var(--space-3);
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 var(--space-3);
+  font-size: var(--text-2xs);
+  font-weight: 590;
+  color: var(--text-primary);
+  background: var(--surface-elevated);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-full);
 }
 
 .theme-card-meta {
@@ -3318,22 +3571,107 @@ button.beat-status {
   font-variant-numeric: tabular-nums;
 }
 
-/* "New project": a dashed affordance card (§8.6); the aspect floor keeps a tile-only row near card height. */
-.project-card.new-project {
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-3);
-  min-height: 100%;
-  aspect-ratio: 4 / 3;
-  background: transparent;
-  border: 1px dashed var(--border-strong);
-  color: var(--text-secondary);
+/* Home's start cards: New project leads in the accent outline (with Start here on an empty workspace), Import a pack sits quieter. */
+.project-card.start-card {
+  background: var(--surface-panel);
 }
 
-.project-card.new-project:hover {
-  color: var(--text-primary);
+.project-card.start-card.primary {
+  background: var(--surface-raised);
   border-color: var(--accent-border);
-  background: var(--surface-hover);
+}
+
+.project-card.start-card.primary:hover {
+  background: var(--surface-elevated);
+  border-color: var(--accent);
+}
+
+.project-card.start-card .project-card-meta {
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+}
+
+.start-card-badge {
+  position: absolute;
+  top: var(--space-4);
+  left: var(--space-4);
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 var(--space-4);
+  font-size: var(--text-xs);
+  font-weight: 590;
+  color: var(--accent-text);
+  background: var(--surface-elevated);
+  border: 1px solid var(--accent-border);
+  border-radius: var(--radius-full);
+}
+
+/* Threshold line art (startArt.tsx), absolutely inset: the WKWebView-safe way to fill a 16:9 cell. */
+.start-art {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.start-art .art-panel {
+  fill: var(--surface-panel);
+}
+
+.start-art .art-raised {
+  fill: var(--surface-raised);
+}
+
+.start-art .art-elevated {
+  fill: var(--surface-elevated);
+}
+
+.start-art .art-accent {
+  fill: var(--accent);
+}
+
+.start-art .art-text {
+  fill: var(--text-primary);
+}
+
+.start-art .art-faint {
+  fill: var(--text-tertiary);
+}
+
+.start-art .art-line,
+.start-art .art-line-accent,
+.start-art .art-line-faint {
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+}
+
+.start-art .art-line {
+  stroke: var(--border-strong);
+}
+
+.start-art .art-line-accent {
+  stroke: var(--accent);
+}
+
+.start-art .art-line-faint {
+  stroke: var(--text-tertiary);
+}
+
+.start-art .art-line-accent-text,
+.start-art .art-line-on-accent {
+  fill: none;
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.start-art .art-line-accent-text {
+  stroke: var(--accent-text);
+}
+
+.start-art .art-line-on-accent {
+  stroke: var(--text-on-accent);
 }
 
 /* Project-card management (v12 · M2 B4): hover-revealed ⋯ beside each card, opening
@@ -3361,11 +3699,6 @@ button.beat-status {
 .project-card-wrap:hover .project-card-menu-btn,
 .project-card-menu-btn[aria-expanded="true"] {
   opacity: 1;
-}
-.new-project-plus {
-  font-size: var(--text-xl);
-  line-height: 1;
-  font-weight: 510;
 }
 
 .welcome-footer {
