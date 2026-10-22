@@ -29,6 +29,9 @@ export interface InspectorOverviewSelection {
 
 export type PreviewQuality = "full" | "balanced" | "performance";
 
+/** The scene wizards SceneWizardHost opens: the two native editors and the prompt helpers. */
+export type SceneWizardRequest = "new-scene" | "edit-scene" | "pacing" | "look" | "media";
+
 const QUALITY_KEY = "kookaburra:preview-quality";
 const DETAILED_LANE_KEY = "kookaburra:detailed-animation-view";
 const MOTION_BLUR_PLAYBACK_KEY = "kookaburra:motion-blur-playback";
@@ -131,8 +134,8 @@ interface UiState {
   stillsSize: StillsSize;
   inspector: InspectorState;
   inspectorNavigation: InspectorNavigationEvent;
-  /** A pending "open this wizard" request for the Claude rail (consumed by TerminalPanel). */
-  railWizardRequest: "new-scene" | "edit-scene" | null;
+  /** A pending "open this wizard" request (consumed by SceneWizardHost). */
+  sceneWizardRequest: SceneWizardRequest | null;
   /** Bumped by the stage's slowdown badge; the inspector opens the Playback options popover. */
   playbackOptionsNonce: number;
   /** Manifest indices the Copy-to-project drill acts on; both entry points (the timeline menu and the scene manager) stash them here. */
@@ -165,7 +168,7 @@ interface UiState {
   jumpInspectorDrill: (ids: string[]) => void;
   /** Replace the current screen at the same depth without changing Back history. */
   replaceInspectorDrill: (id: string) => void;
-  requestRailWizard: (wizard: "new-scene" | "edit-scene" | null) => void;
+  requestSceneWizard: (wizard: SceneWizardRequest | null) => void;
   requestPlaybackOptions: () => void;
   /** Open the Copy-to-project drill on this selection. */
   requestSceneCopy: (indices: number[]) => void;
@@ -186,7 +189,7 @@ export const useUiStore = create<UiState>((set) => ({
   // Scene is the default tab: it's where editing happens; bundled projects heal back to Project.
   inspector: { tab: "scene", drillStack: [], drillIn: null, overviewSelection: null },
   inspectorNavigation: { sequence: 0, kind: "reset" },
-  railWizardRequest: null,
+  sceneWizardRequest: null,
   playbackOptionsNonce: 0,
   sceneCopyIndices: [],
   sceneCopyNonce: 0,
@@ -326,7 +329,7 @@ export const useUiStore = create<UiState>((set) => ({
         },
       };
     }),
-  requestRailWizard: (railWizardRequest) => set({ railWizardRequest }),
+  requestSceneWizard: (sceneWizardRequest) => set({ sceneWizardRequest }),
   requestPlaybackOptions: () => set((s) => ({ playbackOptionsNonce: s.playbackOptionsNonce + 1 })),
   requestSceneCopy: (sceneCopyIndices) =>
     set((s) => ({ sceneCopyIndices, sceneCopyNonce: s.sceneCopyNonce + 1 })),

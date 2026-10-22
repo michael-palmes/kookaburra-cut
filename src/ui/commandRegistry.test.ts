@@ -22,7 +22,8 @@ function ctx(overrides: Partial<CommandContext> = {}): CommandContext {
     hasWorkspaceRoot: true,
     playing: false,
     audioMuted: false,
-    railOpen: false,
+    claudeOpen: false,
+    canAddScenes: true,
     aspect: "16:9",
     projects: [
       { id: "ws:my-project", name: "My Project", source: "workspace" },
@@ -40,7 +41,9 @@ function ctx(overrides: Partial<CommandContext> = {}): CommandContext {
       editChartData: noop,
       setSoundtrack: noop,
       removeSoundtrack: noop,
-      toggleRail: noop,
+      toggleClaude: noop,
+      addScene: noop,
+      editScene: noop,
       setAspect: noop,
       togglePlay: noop,
       toggleMute: noop,
@@ -77,6 +80,9 @@ describe("buildCommands (the vocabulary pin)", () => {
       "export.pdf",
       "export.images",
       "scene.still.add",
+      // The scene wizards outlived the terminal rail that used to host them.
+      "scene.add",
+      "scene.edit",
       // Relocated rail Music menu: the inspector and the palette both own it now.
       "project.soundtrack.set",
       "project.soundtrack.remove",
@@ -87,6 +93,14 @@ describe("buildCommands (the vocabulary pin)", () => {
     ]) {
       expect(ids, `missing command ${required}`).toContain(required);
     }
+  });
+
+  it("keeps Add a scene off for scene presets", () => {
+    const byId = Object.fromEntries(
+      buildCommands(ctx({ canAddScenes: false })).map((c) => [c.id, c.enabled] as const),
+    );
+    expect(byId["scene.add"]).toBe(false);
+    expect(byId["scene.edit"]).toBe(true);
   });
 
   it("pairs the chart commands off the scene's chart block", () => {
@@ -168,14 +182,14 @@ describe("buildCommands (the vocabulary pin)", () => {
 
   it("titles flip with state (play/pause, mute/unmute, rail, soundtrack)", () => {
     const on = Object.fromEntries(
-      buildCommands(ctx({ playing: true, audioMuted: true, railOpen: true })).map((c) => [
+      buildCommands(ctx({ playing: true, audioMuted: true, claudeOpen: true })).map((c) => [
         c.id,
         c.title,
       ]),
     );
     expect(on["playback.toggle"]).toBe("Pause");
     expect(on["playback.mute"]).toBe("Unmute soundtrack");
-    expect(on["view.rail"]).toBe("Hide the Claude Code rail");
+    expect(on["view.rail"]).toBe("Close Edit with Claude");
     expect(on["project.soundtrack.set"]).toBe("Replace soundtrack…");
     const off = Object.fromEntries(
       buildCommands(ctx({ hasAudio: false })).map((c) => [c.id, c.title]),

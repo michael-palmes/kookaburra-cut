@@ -85,7 +85,7 @@ export function buildThemeCardMenu(
         ? [
             {
               id: "claude",
-              label: "Edit in Claude Code",
+              label: "Edit with Claude",
               onSelect: () => opts.onEditInClaude?.(choice),
             },
           ]

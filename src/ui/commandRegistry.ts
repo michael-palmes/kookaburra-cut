@@ -27,7 +27,10 @@ export interface CommandContext {
   hasWorkspaceRoot: boolean;
   playing: boolean;
   audioMuted: boolean;
-  railOpen: boolean;
+  /** The Claude launcher, or the legacy terminal rail when that is the chosen surface. */
+  claudeOpen: boolean;
+  /** Scene presets edit their one scene in place; every other editable project can gain scenes. */
+  canAddScenes: boolean;
   aspect: AspectName;
   projects: ProjectListing[];
   actions: {
@@ -41,7 +44,9 @@ export interface CommandContext {
     editChartData: () => void;
     setSoundtrack: () => void;
     removeSoundtrack: () => void;
-    toggleRail: () => void;
+    toggleClaude: () => void;
+    addScene: () => void;
+    editScene: () => void;
     setAspect: (name: AspectName) => void;
     togglePlay: () => void;
     toggleMute: () => void;
@@ -130,6 +135,22 @@ export function buildCommands(ctx: CommandContext): Command[] {
       run: a.editScreenshotStack,
     },
     {
+      id: "scene.add",
+      title: "Add a scene…",
+      group: "Project",
+      keywords: ["new", "scene", "preset", "insert"],
+      enabled: editor && ctx.editable && ctx.canAddScenes && !ctx.exporting,
+      run: a.addScene,
+    },
+    {
+      id: "scene.edit",
+      title: "Edit a scene…",
+      group: "Project",
+      keywords: ["scene", "text", "device", "media", "motion", "shadow", "wizard"],
+      enabled: editor && ctx.projectLoaded && ctx.editable && !ctx.exporting,
+      run: a.editScene,
+    },
+    {
       id: "scene.addChart",
       title: "Add chart",
       group: "Project",
@@ -188,12 +209,12 @@ export function buildCommands(ctx: CommandContext): Command[] {
     },
     {
       id: "view.rail",
-      title: ctx.railOpen ? "Hide the Claude Code rail" : "Edit in Claude Code",
+      title: ctx.claudeOpen ? "Close Edit with Claude" : "Edit with Claude",
       group: "View",
-      keywords: ["claude", "terminal", "rail", "panel", "ai", "chat"],
-      hint: "⌘E",
+      keywords: ["claude", "code", "desktop", "app", "terminal", "rail", "panel", "ai", "chat"],
+      hint: "⌥⌘E",
       enabled: editor && ctx.editable,
-      run: a.toggleRail,
+      run: a.toggleClaude,
     },
     ...(Object.keys(FORMATS) as AspectName[]).map<Command>((name) => ({
       id: `view.aspect:${name}`,

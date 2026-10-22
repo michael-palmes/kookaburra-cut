@@ -26,6 +26,10 @@ export interface AppSettings {
   lastUpdateCheckMs?: number | null;
   /** Last version offered and declined, so it isn't re-offered every launch. */
   lastOfferedVersion?: string | null;
+  /** Edit with Claude opens the legacy built-in terminal rail instead of the Claude app. */
+  claudeBuiltinTerminal?: boolean;
+  /** Inverted flag so its default (false) means the Claude launcher greets a project's first open. */
+  disableClaudeFirstOpen?: boolean;
   /** Last Present-modal pick per project id + the cross-project default. */
   presentOptionsByProject?: Record<string, PresentOptions>;
   presentOptionsDefault?: PresentOptions | null;

@@ -92,7 +92,8 @@ These are hard constraints, not suggestions. Re-read them before generating any 
    custom bars that override the OS setting.
 9. **No icon-only buttons without tooltips** in dense toolbars.
 10. **No more than one accent.** Dusty wing blue is the accent (§4.4); there is no alternate accent
-    set. Semantic colours (§4.5) are states, never accents.
+    set. Semantic colours (§4.5) are states, never accents. The one exception is the Claude guest
+    palette (§4.7), confined to the Edit with Claude surfaces.
 11. **Never tint or filter the WebGL preview stage.** No vibrancy, `backdrop-filter`, blend mode, or
     CSS filter touches the canvas: colour fidelity in the preview is a product requirement (§13).
 12. **No emoji or playful illustration in chrome.** Threshold surfaces (first-run, About) may carry
@@ -207,6 +208,28 @@ expectation.
 - `--text-tertiary` / `--text-disabled` are non-essential / decorative; never the sole carrier of
   meaning, never running text.
 
+### 4.7 Claude guest palette (Edit with Claude only)
+
+Edit with Claude hands the project to the Claude desktop app, so its surfaces borrow Claude's own
+look: that recognition is the point. The `--claude-*` tokens (§15) apply **only** to the titlebar
+Edit with Claude button, its launcher popover, the legacy rail's Use Claude app button and the
+Settings Claude section. Nothing else in the chrome may use them, and they never reach a rendered
+frame (§14).
+
+| Token | Hex | Role |
+|---|---|---|
+| `--claude-clay` | `#D97757` | The mark, the launcher's primary fill, the button outline (70% at rest) |
+| `--claude-clay-text` | `#E39A80` | Clay as text or icon on the warm surfaces (≈ 6.7:1 on `--claude-surface`) |
+| `--claude-surface` | `#262624` | Launcher body (warm charcoal, not the cool chrome tiers) |
+| `--claude-surface-deep` | `#1F1E1D` | Launcher footer |
+| `--claude-raised` / `--claude-control` | `#30302E` / `#3D3D3A` | Starter tiles, menu, close button |
+| `--claude-ink` | `#141413` | Text on a clay fill (≈ 5.9:1) |
+| `--claude-text` / `-secondary` / `-tertiary` | `#FAF9F5` / `#C2C0B6` / `#9C9A92` | Text tiers (tertiary ≈ 5.4:1) |
+
+The launcher title is the one place a serif appears (`--font-claude-display`, falling back to
+Georgia), matching Claude's own headings. The mark is a stand-in spark until the official asset is
+supplied under Anthropic's brand guidelines.
+
 ---
 
 ## 5. Typography
@@ -255,7 +278,8 @@ utility: mono, tabular, `--text-sm`, `letter-spacing: 0`.
 A bespoke display face buys almost nothing in a tool whose hero is the video preview, and it adds a
 load/licence variable. **Stay pure system.** The only brand moments (the About panel and the
 first-run splash) use the Kookaburra Cut **wordmark as a one-off SVG asset**,
-not a loaded text face. Record this so it doesn't get relitigated.
+not a loaded text face. Record this so it doesn't get relitigated. (The Edit with Claude launcher's
+serif title is a guest-brand exception, §4.7, not a chrome display face.)
 
 ---
 
@@ -268,7 +292,7 @@ superseded by the built layout below.)*
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│ ●●●  ⌂ project name / path      [Find an action ⌘K] [⤓] │ ← custom titlebar (46px)
+│ ●●●  ⌂ name / path [✳ Edit with Claude]  [Find ⌘K] [⤓] │ ← custom titlebar (46px)
 ├────────────┬───────────────────────────────┬────────────┤
 │ Claude     │   Preview stage               │ Inspector  │
 │ Code rail  │   (letterboxed canvas)        │ (342px,    │
@@ -281,10 +305,15 @@ superseded by the built layout below.)*
 ├────────────┴───────────────────────────────┴────────────┤
 ```
 
-- **Titlebar (46px, §13):** folder icon-button (projects) · name-over-path identity ·
-  "Find an action ⌘K" trigger · the Export CTA (the ONLY accent control).
-- **Claude Code rail (left):** the embedded terminal + native scene wizards; collapsible;
-  width `clamp(320px, 30vw, 460px)`.
+- **Titlebar (46px, §13):** folder icon-button (projects) · name-over-path identity · the
+  Edit with Claude button (§4.7) · "Find an action ⌘K" trigger · the Export CTA (the ONLY accent
+  control).
+- **Edit with Claude:** the titlebar button (⌥⌘E) opens a launcher popover that starts a Claude
+  desktop app session in the project folder (`claude://code/new`). It greets a project only on its
+  first open, so the stage normally runs the full width.
+- **Claude Code rail (left, legacy):** the embedded terminal, shown only when Settings ▸ Claude
+  picks the built-in terminal; collapsible; width `clamp(320px, 30vw, 460px)`. The scene wizards
+  live outside it, so Add a scene and Edit scene work in either mode.
 - **Preview stage:** the light; the camera pill floats bottom-left (idle "Animate scene" ↔
   active orbit/pan/zoom controller, z-7 over the tool overlay).
 - **Timeline dock (bottom):** the collapsible animation lane (camera keys/segments; open =
@@ -680,6 +709,17 @@ wing blue) and no alternate.
   /* ── Density / sizing (§11) ────────────────────────────────── */
   --control-h-sm: 22px; --control-h-md: 28px; --control-h-lg: 34px;
   --row-h-list: 28px;   --hit-min: 28px;      --titlebar-h: 46px;
+
+  /* ── Claude guest palette (§4.7): Edit with Claude surfaces only ── */
+  --claude-clay: #D97757; --claude-clay-hover: #E38A6C; --claude-clay-text: #E39A80;
+  --claude-clay-border: rgba(217,119,87,0.7); --claude-clay-subtle: rgba(217,119,87,0.16);
+  --claude-surface: #262624; --claude-surface-deep: #1F1E1D;
+  --claude-raised: #30302E; --claude-control: #3D3D3A; --claude-control-hover: #4D4C48;
+  --claude-ink: #141413;
+  --claude-text: #FAF9F5; --claude-text-secondary: #C2C0B6; --claude-text-tertiary: #9C9A92;
+  --claude-border: rgba(250,249,245,0.10); --claude-border-strong: rgba(250,249,245,0.16);
+  --claude-hover: rgba(250,249,245,0.07);
+  --font-claude-display: "Anthropic Serif", Georgia, "Times New Roman", serif;
 }
 
 @media (prefers-reduced-motion: reduce) {

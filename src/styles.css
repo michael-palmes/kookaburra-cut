@@ -115,6 +115,26 @@
   --z-stage-tool: 6;
   --z-stage-gizmo: 7;
 
+  /* ── Claude guest palette (§4.7): Edit with Claude surfaces only ── */
+  --claude-clay: #d97757;
+  --claude-clay-hover: #e38a6c;
+  --claude-clay-text: #e39a80;
+  --claude-clay-border: rgba(217, 119, 87, 0.7);
+  --claude-clay-subtle: rgba(217, 119, 87, 0.16);
+  --claude-surface: #262624;
+  --claude-surface-deep: #1f1e1d;
+  --claude-raised: #30302e;
+  --claude-control: #3d3d3a;
+  --claude-control-hover: #4d4c48;
+  --claude-ink: #141413;
+  --claude-text: #faf9f5;
+  --claude-text-secondary: #c2c0b6;
+  --claude-text-tertiary: #9c9a92;
+  --claude-border: rgba(250, 249, 245, 0.1);
+  --claude-border-strong: rgba(250, 249, 245, 0.16);
+  --claude-hover: rgba(250, 249, 245, 0.07);
+  --font-claude-display: "Anthropic Serif", Georgia, "Times New Roman", serif;
+
   color-scheme: dark;
   font-family: var(--font-ui);
   font-size: var(--text-base);
@@ -313,6 +333,368 @@ body {
   gap: 7px;
 }
 
+/* ── Edit with Claude (§4.7): the titlebar button and its launcher ─────────── */
+
+.titlebar-claude {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 7px;
+  height: 30px;
+  padding: 0 10px 0 9px;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 590;
+  color: var(--text-primary);
+  background: var(--surface-raised);
+  border: 1px solid var(--claude-clay-border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition:
+    background var(--dur-fast) var(--ease-standard),
+    border-color var(--dur-fast) var(--ease-standard);
+}
+
+.titlebar-claude:hover {
+  background: var(--surface-elevated);
+  border-color: var(--claude-clay);
+}
+
+.titlebar-claude.open {
+  background: var(--claude-clay-subtle);
+  border-color: var(--claude-clay);
+}
+
+.titlebar-claude > svg {
+  color: var(--text-secondary);
+}
+
+.titlebar-claude-mark {
+  display: inline-flex;
+  color: var(--claude-clay);
+}
+
+.titlebar-claude-anchor {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+}
+
+.claude-launcher {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: -6px;
+  /* Just under .modal-overlay, so a dialog opened by shortcut covers it. */
+  z-index: 19;
+  display: flex;
+  flex-direction: column;
+  width: 372px;
+  color: var(--claude-text);
+  background: var(--claude-surface);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--elev-dialog);
+  animation: claude-launcher-in var(--dur-base) var(--ease-emphasis);
+}
+
+.claude-launcher.first-run {
+  width: 400px;
+}
+
+@keyframes claude-launcher-in {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+}
+
+.claude-launcher h2 {
+  margin: 0;
+  font-family: var(--font-claude-display);
+  font-size: 19px;
+  font-weight: 500;
+  line-height: 1.25;
+}
+
+.claude-launcher p {
+  margin: 0;
+}
+
+.claude-launcher-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  color: var(--claude-text);
+  background: var(--claude-control);
+  border: 1px solid var(--claude-border-strong);
+  border-radius: var(--radius-full);
+  cursor: pointer;
+}
+
+.claude-launcher-close:hover {
+  background: var(--claude-control-hover);
+}
+
+.claude-launcher-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-5);
+  padding: var(--space-6) 52px 14px var(--space-6);
+  color: var(--claude-clay);
+}
+
+.claude-launcher-head h2 {
+  color: var(--claude-text);
+}
+
+.claude-launcher-head p {
+  font-size: var(--text-sm);
+  color: var(--claude-text-tertiary);
+}
+
+.claude-launcher-hero {
+  display: flex;
+  justify-content: center;
+  padding: 40px 0 var(--space-3);
+  color: var(--claude-clay);
+}
+
+.claude-launcher-title {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-5) 18px var(--space-6);
+  text-align: center;
+}
+
+.claude-launcher-title h2 {
+  font-size: 22px;
+}
+
+.claude-launcher-title p {
+  font-size: var(--text-base);
+  color: var(--claude-text-tertiary);
+}
+
+.claude-launcher-cta {
+  padding: 0 14px 14px;
+}
+
+.claude-cta {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  width: 100%;
+  height: 44px;
+  font: inherit;
+  font-size: 14.5px;
+  font-weight: 650;
+  color: var(--claude-ink);
+  background: var(--claude-clay);
+  border: 0;
+  border-radius: 9px;
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-standard);
+}
+
+.claude-cta:hover:not(:disabled) {
+  background: var(--claude-clay-hover);
+}
+
+.claude-cta:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.claude-launcher-starters {
+  padding: 10px var(--space-4) var(--space-4);
+  border-top: 1px solid var(--claude-border);
+}
+
+.claude-launcher-label {
+  display: block;
+  padding: 0 var(--space-3) var(--space-4);
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--claude-text-tertiary);
+}
+
+.claude-launcher-starter-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-3);
+  padding: 0 var(--space-3) var(--space-3);
+}
+
+.claude-starter {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 7px;
+  padding: 10px var(--space-2) 9px;
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 590;
+  color: var(--claude-text-secondary);
+  background: var(--claude-raised);
+  border: 0;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-standard);
+}
+
+.claude-starter:hover:not(:disabled) {
+  color: var(--claude-text);
+  background: var(--claude-control);
+}
+
+.claude-starter:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.claude-starter-icon,
+.claude-launcher-steps li > span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  color: var(--claude-clay-text);
+  background: var(--claude-clay-subtle);
+  border-radius: 9px;
+}
+
+.claude-launcher-steps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-4);
+  margin: 0;
+  padding: var(--space-2) 14px var(--space-6);
+  list-style: none;
+}
+
+.claude-launcher-steps li {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-4);
+  font-size: var(--text-sm);
+  font-weight: 590;
+  text-align: center;
+}
+
+.claude-launcher-steps li > span {
+  width: 46px;
+  height: 46px;
+  border-radius: 13px;
+}
+
+.claude-launcher-error {
+  padding: 0 14px 12px;
+  font-size: var(--text-sm);
+  color: #f07a62;
+}
+
+.claude-launcher-foot {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-4) 10px;
+  background: var(--claude-surface-deep);
+  border-top: 1px solid var(--claude-border);
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+}
+
+.claude-ghost,
+.claude-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 30px;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 510;
+  color: var(--claude-text-secondary);
+  background: transparent;
+  border: 1px solid var(--claude-border-strong);
+  border-radius: 7px;
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-standard);
+}
+
+.claude-ghost {
+  gap: 7px;
+  padding: 0 11px 0 9px;
+}
+
+.claude-icon-btn {
+  width: 30px;
+  padding: 0;
+}
+
+.claude-ghost:hover,
+.claude-icon-btn:hover,
+.claude-icon-btn.open {
+  color: var(--claude-text);
+  background: var(--claude-hover);
+}
+
+.claude-launcher-more {
+  position: relative;
+  margin-left: auto;
+}
+
+.claude-launcher-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  width: 240px;
+  padding: 5px;
+  background: var(--claude-raised);
+  border-radius: 10px;
+  box-shadow: var(--elev-popover);
+}
+
+.claude-launcher-menu button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 32px;
+  padding: 0 10px;
+  font: inherit;
+  font-size: var(--text-base);
+  color: var(--claude-text);
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.claude-launcher-menu button:hover {
+  background: var(--claude-hover);
+}
+
+.claude-launcher-menu svg {
+  color: var(--claude-text-secondary);
+}
+
+.claude-launcher-menu-hint {
+  margin-left: auto;
+  font-size: var(--text-xs);
+  color: var(--claude-text-tertiary);
+}
+
 /* ── Controls ──────────────────────────────────────────────────────────────── */
 
 /* Neutral raised button — the default control (§8). */
@@ -467,15 +849,49 @@ body {
 .rail-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: var(--space-4) var(--space-5);
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-3) var(--space-3) var(--space-5);
   border-bottom: 1px solid var(--border-subtle);
 }
 
 .rail-title {
   font-size: var(--text-sm);
   font-weight: 590;
-  color: var(--text-secondary);
+  color: var(--text-primary);
+}
+
+.rail-legacy-tag {
+  padding: 1px var(--space-3);
+  font-size: var(--text-2xs);
+  font-weight: 590;
+  color: var(--text-tertiary);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-full);
+}
+
+.rail-use-app {
+  margin-left: auto;
+}
+
+/* The legacy rail's close: a raised round button, easy to find since the rail is now often dismissed. */
+.rail-close {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  color: var(--text-primary);
+  background: var(--surface-raised);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-full);
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-standard);
+}
+
+.rail-close:hover {
+  background: var(--surface-elevated);
 }
 
 .terminal-panel {
@@ -4546,6 +4962,41 @@ button.beat-status {
   background: var(--surface-panel);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-sm);
+}
+
+/* Two-option picker on a settings row (Claude ▸ Edit with): the selected option raises, §8.5. */
+.settings-segmented {
+  display: grid;
+  flex: none;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 0;
+  padding: 3px;
+  background: var(--surface-recessed);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+}
+
+.settings-segmented button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  height: 26px;
+  padding: 0 var(--space-5);
+  font: inherit;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-xs);
+  cursor: pointer;
+}
+
+.settings-segmented button.active {
+  font-weight: 590;
+  color: var(--text-primary);
+  background: var(--surface-raised);
+  border-color: var(--border-default);
 }
 
 .settings-row + .settings-row {
