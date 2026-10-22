@@ -100,6 +100,12 @@ pub struct AppSettings {
     /// Last Claude Code version offered and dismissed, so the banner isn't re-shown for it.
     #[serde(default)]
     pub last_offered_claude_version: Option<String>,
+    /// Edit with Claude opens the legacy built-in terminal rail instead of handing the project to the Claude app.
+    #[serde(default)]
+    pub claude_builtin_terminal: bool,
+    /// Inverted so the serde/Default false means the Claude launcher shows on a project's first open.
+    #[serde(default)]
+    pub disable_claude_first_open: bool,
     /// Last Present-modal selection per project id, restored on modal open.
     #[serde(default)]
     pub present_options_by_project: HashMap<String, PresentOptionsDoc>,
@@ -996,6 +1002,26 @@ pub fn set_hardware_video(
         settings.disable_hardware_video = !enabled
     })?;
     let _ = app.emit("kookaburra://hardware-video-changed", enabled);
+    Ok(())
+}
+
+/// Choose what Edit with Claude opens and whether its launcher greets a project's first open; the main window follows live.
+#[tauri::command]
+pub fn set_claude_preferences(
+    app: AppHandle,
+    state: State<'_, SettingsState>,
+    builtin_terminal: Option<bool>,
+    first_open: Option<bool>,
+) -> Result<(), String> {
+    update_settings(&app, &state, |settings| {
+        if let Some(on) = builtin_terminal {
+            settings.claude_builtin_terminal = on;
+        }
+        if let Some(on) = first_open {
+            settings.disable_claude_first_open = !on;
+        }
+    })?;
+    let _ = app.emit("kookaburra://claude-preferences-changed", ());
     Ok(())
 }
 

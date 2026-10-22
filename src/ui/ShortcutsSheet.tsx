@@ -13,7 +13,7 @@ const GROUPS: { title: string; rows: [string, string][] }[] = [
   {
     title: "Editing",
     rows: [
-      ["⌘E", "Edit in Claude Code (workspace projects)"],
+      ["⌥⌘E", "Edit with Claude (workspace projects)"],
       ["⌫", "Animation lane: delete the selected keyframe or segment"],
       ["← / →", "Animation lane: nudge the selected keyframe (⇧ = 10 frames)"],
       ["Esc", "Animation lane: disarm the tool, then deselect"],

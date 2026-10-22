@@ -5,6 +5,7 @@ mod bridge;
 mod bridge_export;
 mod bridge_health;
 mod capture_service;
+mod claude_app;
 mod claude_update;
 pub mod cli;
 pub mod cli_check;
@@ -1303,6 +1304,7 @@ macro_rules! kookaburra_handler {
             workspace::file_revisions,
             workspace::set_last_project,
             workspace::set_hardware_video,
+            workspace::set_claude_preferences,
             workspace::set_export_to_downloads,
             workspace::set_lag_warning,
             workspace::rename_project,
@@ -1411,6 +1413,10 @@ macro_rules! kookaburra_handler {
             pty::pty_resume,
             pty::detect_claude,
             pty::has_claude_session,
+            claude_app::claude_app_status,
+            claude_app::open_in_claude,
+            claude_app::open_project_folder,
+            claude_app::open_claude_download,
             claude_update::claude_version_info,
             claude_update::dismiss_claude_update,
             media::import_media,
@@ -1433,6 +1439,7 @@ macro_rules! kookaburra_handler {
             global_screenshots::global_screenshot_meta,
             global_screenshots::copy_to_global_screenshots,
             global_screenshots::delete_global_screenshot,
+            settings_win::open_settings,
             settings_win::cache_stats,
             settings_win::clear_media_cache,
             settings_win::clear_clips_cache,
@@ -1582,7 +1589,7 @@ pub fn run() {
                         .build(),
                 )?;
             }
-            // Native menu: the stock menus (Edit must stay, webview copy/paste rides on it) plus a Project menu whose "Edit in Claude Code" opens the terminal rail, and "⚙ Settings…" (⌘,) in the app submenu's native spot (after About + ─).
+            // Native menu: the stock menus (Edit must stay, webview copy/paste rides on it) plus a Project menu whose "Edit with Claude" toggles the Claude launcher (or the legacy terminal rail), and "⚙ Settings…" (⌘,) in the app submenu's native spot (after About + ─).
             {
                 use tauri::menu::{
                     IconMenuItemBuilder, Menu, MenuItemBuilder, MenuItemKind, NativeIcon,
@@ -1591,7 +1598,7 @@ pub fn run() {
                 use tauri::Emitter;
                 // ⌥⌘E, not ⌘E: v13's File menu takes ⌘E for "Export Video…", the conventional macOS binding.
                 let edit_in_claude =
-                    MenuItemBuilder::with_id("edit-in-claude", "Edit in Claude Code")
+                    MenuItemBuilder::with_id("edit-in-claude", "Edit with Claude")
                         .accelerator("Alt+CmdOrCtrl+E")
                         .build(app)?;
                 // The ⌘K palette rides a menu accelerator like ⌘Z/⌘E/⌘/; AppKit delivers it regardless of webview focus (xterm included).

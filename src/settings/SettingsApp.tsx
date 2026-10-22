@@ -1,5 +1,6 @@
 import { getVersion } from "@tauri-apps/api/app";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { ask, open as openFolderPicker } from "@tauri-apps/plugin-dialog";
 import { useCallback, useEffect, useState } from "react";
 import {
@@ -16,6 +17,7 @@ import {
   setClipCacheCap,
   sidecarVersions,
 } from "../engine/appCache";
+import { claudeAppInstalled, openClaudeDownload, setClaudePreferences } from "../engine/claudeApp";
 import { setConformNewVideosSetting } from "../engine/media";
 import { revealApp } from "../engine/reveal";
 import {
@@ -35,6 +37,7 @@ import {
   shortenPath,
   userHomeDir,
 } from "../engine/workspace";
+import { ClaudeSpark, TerminalGlyph } from "../ui/ClaudeLauncher";
 import { UpdateAvailableDialog } from "../ui/updateDialogs";
 import { useNativeTextUndo } from "../ui/useNativeTextUndo";
 import { PublisherPane } from "./PublisherPane";
@@ -84,6 +87,21 @@ function CacheLimitIcon() {
   );
 }
 
+function DownloadIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true">
+      <path
+        d="M8 2.5v7.5M5 7l3 3 3-3M3 12v1.5h10V12"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 function ConformIcon() {
   return (
     <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
@@ -121,6 +139,9 @@ export function SettingsApp() {
   const [lagWarning, setLagWarning] = useState<LagWarningMode | null>(null);
   const [downloadsExport, setDownloadsExport] = useState<boolean | null>(null);
   const [conformNew, setConformNew] = useState<boolean | null>(null);
+  const [claudeBuiltin, setClaudeBuiltin] = useState<boolean | null>(null);
+  const [claudeFirstOpen, setClaudeFirstOpen] = useState<boolean | null>(null);
+  const [claudeInstalled, setClaudeInstalled] = useState<boolean | null>(null);
   const [websiteData, setWebsiteData] = useState<WebsiteDataRecord[] | null>(null);
   const [websiteDataBusy, setWebsiteDataBusy] = useState<string | null>(null);
   const [clipsClearDeferred, setClipsClearDeferred] = useState(false);
@@ -153,6 +174,8 @@ export function SettingsApp() {
         setLagWarning((s.lagWarning as LagWarningMode) ?? "off");
         setDownloadsExport(!s.keepExportsInProject);
         setConformNew(!s.disableConformNewVideos);
+        setClaudeBuiltin(s.claudeBuiltinTerminal ?? false);
+        setClaudeFirstOpen(!s.disableClaudeFirstOpen);
       })
       .catch(() => setWorkspace(null));
     defaultWorkspaceRoot()
@@ -187,6 +210,43 @@ export function SettingsApp() {
   const toggleConformNew = useCallback((enabled: boolean) => {
     setConformNew(enabled);
     setConformNewVideosSetting(enabled).catch((e) => setError(String(e)));
+  }, []);
+
+  const changeClaudeMode = useCallback((builtinTerminal: boolean) => {
+    setClaudeBuiltin(builtinTerminal);
+    setClaudePreferences({ builtinTerminal }).catch((e) => setError(String(e)));
+  }, []);
+
+  const toggleClaudeFirstOpen = useCallback((firstOpen: boolean) => {
+    setClaudeFirstOpen(firstOpen);
+    setClaudePreferences({ firstOpen }).catch((e) => setError(String(e)));
+  }, []);
+
+  // The main window changes these too (the launcher's ⋯ menu, the legacy rail's Use Claude app).
+  useEffect(() => {
+    const unlisten = listen("kookaburra://claude-preferences-changed", () => {
+      getSettings()
+        .then((s) => {
+          setClaudeBuiltin(s.claudeBuiltinTerminal ?? false);
+          setClaudeFirstOpen(!s.disableClaudeFirstOpen);
+        })
+        .catch(() => {});
+    });
+    return () => {
+      void unlisten.then((fn) => fn());
+    };
+  }, []);
+
+  // Re-checked on focus, so installing the app while this window waits shows up when the user returns.
+  useEffect(() => {
+    const check = () => {
+      claudeAppInstalled()
+        .then(setClaudeInstalled)
+        .catch(() => setClaudeInstalled(false));
+    };
+    check();
+    window.addEventListener("focus", check);
+    return () => window.removeEventListener("focus", check);
   }, []);
 
   const hwDetail = hwSupport
@@ -328,6 +388,88 @@ export function SettingsApp() {
               </button>
             )}
           </div>
+        </div>
+      </section>
+
+      <section className="settings-section">
+        <h2>Claude</h2>
+        <div className="settings-row">
+          <div className="settings-row-text">
+            <span className="settings-row-title">Edit with</span>
+            <span className="muted settings-row-detail">
+              What the titlebar's Edit with Claude opens. The built-in terminal is the legacy
+              option.
+            </span>
+          </div>
+          <fieldset className="settings-segmented" aria-label="Edit with">
+            <button
+              type="button"
+              aria-pressed={claudeBuiltin === false}
+              className={claudeBuiltin === false ? "active" : undefined}
+              disabled={claudeBuiltin === null}
+              onClick={() => changeClaudeMode(false)}
+            >
+              <span className="titlebar-claude-mark">
+                <ClaudeSpark size={13} />
+              </span>
+              Claude app
+            </button>
+            <button
+              type="button"
+              aria-pressed={claudeBuiltin === true}
+              className={claudeBuiltin === true ? "active" : undefined}
+              disabled={claudeBuiltin === null}
+              onClick={() => changeClaudeMode(true)}
+            >
+              <TerminalGlyph size={13} />
+              Built-in terminal
+            </button>
+          </fieldset>
+        </div>
+        <div className="settings-row">
+          <div className="settings-row-text">
+            <span className="settings-row-title">Claude app</span>
+            <span className="muted settings-row-detail">
+              {claudeInstalled === null
+                ? "Checking…"
+                : claudeInstalled
+                  ? "Installed"
+                  : "Not found. Edit with Claude opens projects in it."}
+            </span>
+          </div>
+          {claudeInstalled === false && (
+            <button
+              type="button"
+              className="btn"
+              onClick={() => void openClaudeDownload().catch((e) => setError(String(e)))}
+            >
+              <DownloadIcon />
+              Get Claude
+            </button>
+          )}
+        </div>
+        <div className="settings-row">
+          <div className="settings-row-text">
+            <span
+              className="settings-row-title"
+              style={{ display: "inline-flex", alignItems: "center", gap: "var(--space-2)" }}
+            >
+              <span className="titlebar-claude-mark">
+                <ClaudeSpark size={13} />
+              </span>
+              Show on a project's first open
+            </span>
+            <span className="muted settings-row-detail">
+              After that, open it from the titlebar or with ⌥⌘E.
+            </span>
+          </div>
+          <input
+            type="checkbox"
+            aria-label="Show on a project's first open"
+            checked={claudeFirstOpen ?? true}
+            disabled={claudeFirstOpen === null || claudeBuiltin === true}
+            onChange={(e) => toggleClaudeFirstOpen(e.target.checked)}
+          />
         </div>
       </section>
 

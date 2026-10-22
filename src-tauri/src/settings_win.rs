@@ -7,6 +7,12 @@ use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder
 
 use crate::{clip_cache, media, workspace};
 
+/// The webview's way in (the Claude launcher's Claude settings… item); the menu's ⌘, calls the helper directly.
+#[tauri::command]
+pub fn open_settings(app: AppHandle) -> Result<(), String> {
+    open_settings_window(&app)
+}
+
 /// Open (or focus) the settings window; native titlebar, should feel like a stock macOS Settings panel, not app chrome.
 pub(crate) fn open_settings_window(app: &AppHandle) -> Result<(), String> {
     if let Some(win) = app.get_webview_window("settings") {

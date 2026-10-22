@@ -1,8 +1,9 @@
 # Agent kit: Claude Code inside user projects
 
 Claude Code is the primary way projects get edited. It runs inside one workspace
-project folder (`~/Kookaburra Cut/<slug>`), from the app's embedded terminal or the
-user's own, with no app source on disk. Everything it knows and every tool it uses
+project folder (`~/Kookaburra Cut/<slug>`), from the Claude desktop app (the titlebar's
+Edit with Claude), the app's legacy embedded terminal or the user's own, with no app
+source on disk. Everything it knows and every tool it uses
 arrives through the kit the app stamps into that folder. This document is the
 contract for the kit, the bridge it talks to and the app behaviour it relies on.
 
@@ -58,7 +59,8 @@ scripts/
 ## Stamping
 
 - Runs on the first load of each workspace project per app session (best effort, never
-  blocks the load; live reloads skip it) and when the embedded terminal starts Claude.
+  blocks the load; live reloads skip it), when Edit with Claude opens the project in the
+  Claude app, and when the embedded terminal starts Claude.
 - Every shipped skill (`SHIPPED_SKILLS` in `kit.rs`: `kookaburra-scene-authoring`, then
   `kookaburra-video-editing`) is stamped into `.claude/skills/<name>/` with its own
   `kit.json` and stale-sibling prefixes; a failing skill never stops the others, and
