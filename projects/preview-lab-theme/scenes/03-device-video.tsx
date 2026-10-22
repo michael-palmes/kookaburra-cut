@@ -29,11 +29,11 @@ export default defineScene({
           textKey="headline"
           from={200}
           to={900}
-          position={[0, portrait ? 1.9 : 1.72, 0]}
+          position={[0, portrait ? 1.45 : 1.64, 0]}
           fontSize={portrait ? 0.23 : 0.42}
         />
         {devices.map((d) => {
-          const scale = (d.placement?.scale ?? 1) * (portrait ? 0.8 : 0.92);
+          const scale = (d.placement?.scale ?? 1) * (portrait ? 1 : 1.05);
           return (
             <Device
               key={d.id}
