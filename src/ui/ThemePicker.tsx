@@ -24,6 +24,7 @@ import { themeDocLookup, WORKSPACE_THEME_PREFIX } from "../theme/registry";
 import { parseThemeDoc } from "../theme/schema";
 import { THEME_CATEGORY_ICONS } from "./libraryIcons";
 import { canEditBundledThemes } from "./theme-editor/themeEditorIo";
+import { useSlashFocus } from "./useSlashFocus";
 
 export type ThemeChoiceSource = "bundled" | "workspace";
 
@@ -300,9 +301,12 @@ function ThemeCard({
   drag,
   dragging = false,
   dropTarget = false,
+  markOwn = false,
 }: {
   choice: ThemeChoice;
   selected: boolean;
+  /** Flag the user's own themes with a Yours badge on the poster. */
+  markOwn?: boolean;
   tabIndex: number;
   cardRef: (node: HTMLDivElement | null) => void;
   onFocus: () => void;
@@ -381,6 +385,7 @@ function ThemeCard({
             <span className="theme-card-accent" style={{ background: choice.accent }} />
           </div>
         )}
+        {markOwn && choice.source === "workspace" && <span className="theme-card-own">Yours</span>}
         {previewIntent &&
           previews
             ?.slice(1)
@@ -413,6 +418,7 @@ export interface ThemeGridProps {
   ariaLabel?: string;
   /** Present only where the listing has a writable order; a drag lands as one move (`from` lifted out, dropped at `to`). */
   onReorder?: (from: number, to: number) => void;
+  markOwn?: boolean;
 }
 
 const PAGE_JUMP = 6;
@@ -427,6 +433,7 @@ export function ThemeGrid({
   onCardContextMenu,
   ariaLabel = "Themes",
   onReorder,
+  markOwn = false,
 }: ThemeGridProps) {
   const initialFocus = choices.some(({ id }) => id === value) ? value : choices[0]?.id;
   const [focusId, setFocusId] = useState<string | undefined>(initialFocus);
@@ -554,6 +561,7 @@ export function ThemeGrid({
           choice={choice}
           selected={value === choice.id}
           tabIndex={focusId === choice.id ? 0 : -1}
+          markOwn={markOwn}
           drag={dragHandlers(index)}
           dragging={drag?.from === index}
           dropTarget={drag !== null && drag.over === index && drag.from !== index}
@@ -572,7 +580,7 @@ export function ThemeGrid({
   );
 }
 
-export interface ThemeBrowserProps extends Omit<ThemeGridProps, "onReorder"> {
+export interface ThemeBrowserProps extends Omit<ThemeGridProps, "onReorder" | "markOwn"> {
   layout?: "full" | "compact";
   initialCollection?: ThemeCollectionId;
   recentIds?: readonly string[];
@@ -703,18 +711,7 @@ export function ThemeBrowser({
     if (changed && searching) setActiveCollection("all");
   }, [searching, value]);
 
-  useEffect(() => {
-    const focusSearch = (event: KeyboardEvent) => {
-      if (event.key !== "/" || event.metaKey || event.ctrlKey || event.altKey) return;
-      const target = event.target as HTMLElement | null;
-      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA")) return;
-      event.preventDefault();
-      searchRef.current?.focus();
-      searchRef.current?.select();
-    };
-    window.addEventListener("keydown", focusSearch);
-    return () => window.removeEventListener("keydown", focusSearch);
-  }, [searchRef]);
+  useSlashFocus(searchRef);
 
   useEffect(() => {
     if (suppliedRecentIds) return;

@@ -62,6 +62,7 @@ export function TemplateCard({
   onSelect,
   interaction = {},
   previewFrame,
+  compact = false,
 }: {
   entry: TemplateEntry;
   selected: boolean;
@@ -70,6 +71,8 @@ export function TemplateCard({
   onSelect: () => void;
   interaction?: LibraryCardInteraction;
   previewFrame?: number;
+  /** The new-project wizard's card: name and scene count, flags on the poster, the tagline moved to the tooltip. */
+  compact?: boolean;
 }) {
   // The card rests on the manifest's poster frame; hovering still sweeps all four stills.
   const poster = Math.min(TEMPLATE_PREVIEW_COUNT - 1, Math.max(0, entry.manifest.preview.poster));
@@ -88,6 +91,7 @@ export function TemplateCard({
       data-template-id={entry.id}
       tabIndex={tabStop ? 0 : -1}
       className={libraryCardClass("", selected, interaction)}
+      title={compact ? entry.tagline : undefined}
       onClick={select ? onSelect : undefined}
       onContextMenu={interaction.onContextMenu}
       onPointerDown={interaction.onPointerDown}
@@ -122,20 +126,8 @@ export function TemplateCard({
             <span className="template-card-accent" style={{ background: theme.colors.accent }} />
           </div>
         )}
-      </div>
-      <div className="template-card-body">
-        <span className="template-card-name">{entry.name}</span>
-        <p className="template-card-tagline">{entry.tagline}</p>
-        <span className="template-card-meta">
-          {`${entry.sceneCount} ${entry.sceneCount === 1 ? "scene" : "scenes"} · ${formatTemplateDuration(entry.durationMs)} · ${entry.primaryAspect}`}
-        </span>
-        {(entry.uses.length > 0 || flags.length > 0) && (
-          <span className="template-card-chips">
-            {entry.uses.slice(0, 2).map((use) => (
-              <span key={use} className="template-chip">
-                {TEMPLATE_USE_LABELS[use]}
-              </span>
-            ))}
+        {compact && flags.length > 0 && (
+          <span className="template-card-flags">
             {flags.map((flag) => (
               <span key={flag} className="template-chip flag">
                 {flag}
@@ -144,6 +136,36 @@ export function TemplateCard({
           </span>
         )}
       </div>
+      {compact ? (
+        <div className="template-card-row">
+          <span className="template-card-name">{entry.name}</span>
+          <span className="template-card-meta">
+            {`${entry.sceneCount} ${entry.sceneCount === 1 ? "scene" : "scenes"}`}
+          </span>
+        </div>
+      ) : (
+        <div className="template-card-body">
+          <span className="template-card-name">{entry.name}</span>
+          <p className="template-card-tagline">{entry.tagline}</p>
+          <span className="template-card-meta">
+            {`${entry.sceneCount} ${entry.sceneCount === 1 ? "scene" : "scenes"} · ${formatTemplateDuration(entry.durationMs)} · ${entry.primaryAspect}`}
+          </span>
+          {(entry.uses.length > 0 || flags.length > 0) && (
+            <span className="template-card-chips">
+              {entry.uses.slice(0, 2).map((use) => (
+                <span key={use} className="template-chip">
+                  {TEMPLATE_USE_LABELS[use]}
+                </span>
+              ))}
+              {flags.map((flag) => (
+                <span key={flag} className="template-chip flag">
+                  {flag}
+                </span>
+              ))}
+            </span>
+          )}
+        </div>
+      )}
     </div>
   );
 }

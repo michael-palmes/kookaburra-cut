@@ -47,6 +47,7 @@ import {
   welcomeRailRows,
   welcomeRailSections,
 } from "./projectLibrary";
+import { ImportPackArt, NewProjectArt } from "./startArt";
 import { ThemeEditorIcon } from "./theme-editor/icons";
 import { useEscapeClose } from "./useEscapeClose";
 
@@ -640,23 +641,30 @@ export function Welcome({
                   ))}
                   <button
                     type="button"
-                    className="project-card new-project"
+                    className="project-card start-card primary"
                     onClick={() => onNewProject({ group: inheritedGroup })}
                   >
-                    <span className="new-project-plus" aria-hidden="true">
-                      +
+                    <span className="project-card-thumb">
+                      <NewProjectArt />
+                      {empty && <span className="start-card-badge">Start here</span>}
                     </span>
-                    <span>New project</span>
+                    <span className="project-card-body">
+                      <span className="project-card-name">New project</span>
+                      <span className="project-card-meta">With Claude or a template</span>
+                    </span>
                   </button>
                   <button
                     type="button"
-                    className="project-card new-project"
+                    className="project-card start-card"
                     onClick={() => void invoke("open_pack_import", { path: null })}
                   >
-                    <span className="new-project-plus" aria-hidden="true">
-                      ↓
+                    <span className="project-card-thumb">
+                      <ImportPackArt />
                     </span>
-                    <span>Import a pack</span>
+                    <span className="project-card-body">
+                      <span className="project-card-name">Import a pack</span>
+                      <span className="project-card-meta">Projects from another Mac</span>
+                    </span>
                   </button>
                 </div>
               </>

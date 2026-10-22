@@ -249,7 +249,7 @@ import { openChartDataModal } from "./ui/chartDataModalStore";
 import { setProjectPaletteSource } from "./ui/colour/projectPalette";
 import { DecorationGizmo } from "./ui/DecorationGizmo";
 import { DeviceAnimationLane } from "./ui/DeviceAnimationLane";
-import { NewProjectDialog, SetupFailedDialog, TrustGateModal } from "./ui/dialogs";
+import { SetupFailedDialog, TrustGateModal } from "./ui/dialogs";
 import {
   ExportModal,
   type ExportModalInitial,
@@ -270,6 +270,7 @@ import { LightingAnimationLane } from "./ui/LightingAnimationLane";
 import { degradedLoadNotice, LoadNotice } from "./ui/LoadNotices";
 import { animationLaneMasterOpen, clearSecondaryLaneSelections } from "./ui/laneSelection";
 import { MediaLibrary } from "./ui/MediaLibrary";
+import { NewProjectDialog } from "./ui/NewProjectDialog";
 import { PlaybackBar } from "./ui/PlaybackBar";
 import { PresentModal } from "./ui/PresentModal";
 import { ALL_PROJECTS } from "./ui/projectLibrary";
@@ -300,7 +301,7 @@ import {
 import { duplicateThemeDoc } from "./ui/theme-editor/themeDraft";
 import { onThemeSaved, readThemeSourceDoc } from "./ui/theme-editor/themeEditorIo";
 import { onThemeMoved } from "./ui/theme-editor/themeMove";
-import { UpdateAvailableDialog, UpdateConsentDialog } from "./ui/updateDialogs";
+import { UpdateAvailableDialog, WelcomeDialog } from "./ui/updateDialogs";
 import { useBridgeExport } from "./ui/useBridgeExport";
 import { commitSceneDuration, resolveDocPatchIndex, writeMusicCaches } from "./ui/useSceneDocPatch";
 import { WebsiteGizmo } from "./ui/WebsiteGizmo";
@@ -3510,9 +3511,9 @@ export default function App() {
           onChoose={handleChooseWorkspace}
         />
       )}
-      {/* Consent ask waits for a workspace so it never stacks on the setup-failure dialog. */}
+      {/* The welcome (and its consent ask) waits for a workspace so it never stacks on the setup-failure dialog. */}
       {settings?.workspaceRoot && updates.consent === "undecided" && !isAutoRun && (
-        <UpdateConsentDialog onAnswer={(on) => void updates.answerConsent(on)} />
+        <WelcomeDialog onAnswer={(on) => void updates.answerConsent(on)} />
       )}
       {updates.offerVisible && updates.available && !isAutoRun && (
         <UpdateAvailableDialog

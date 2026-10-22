@@ -1,36 +1,65 @@
+import { useState } from "react";
 import banner from "../assets/update-banner.jpg";
 import { useEscapeClose } from "./useEscapeClose";
 
-/** The update lane's two modals, in their own module so the Settings window can import them without dragging in dialogs.tsx's theme-picker graph (40 bundled preview images). Both share the moonlit-kookaburra banner (chrome-only imagery; exported pixels never touch the DOM). */
+/** The update lane's two modals, in their own module so the Settings window can import them without dragging in NewProjectDialog.tsx's theme-picker graph (40 bundled preview images). Both share the moonlit-kookaburra banner (chrome-only imagery; exported pixels never touch the DOM). */
 
-/** One-time update-check consent ask (shown while the tri-state preference is undecided). Escape answers Not now, same as the trust gate; either answer settles it and the ask never repeats. */
-export function UpdateConsentDialog({ onAnswer }: { onAnswer: (on: boolean) => void }) {
-  useEscapeClose(() => onAnswer(false));
+/** First-launch welcome, which carries the one-time update-check ask (shown while the tri-state preference is undecided). The switch starts on as the recommendation; Get started and Escape both answer with what it shows, so dismissing never records the opposite. Either answer settles it and the ask never repeats. */
+export function WelcomeDialog({ onAnswer }: { onAnswer: (on: boolean) => void }) {
+  const [checkUpdates, setCheckUpdates] = useState(true);
+  useEscapeClose(() => onAnswer(checkUpdates));
   return (
     <div
       className="modal-overlay"
       role="dialog"
       aria-modal="true"
-      aria-label="Check for updates on launch?"
+      aria-label="Welcome to Kookaburra Cut"
     >
-      <div className="modal modal-with-banner">
+      <div className="modal modal-with-banner welcome-modal">
         <img className="modal-banner" src={banner} alt="" />
-        <h2>Check for updates on launch?</h2>
-        <p className="muted">
-          Kookaburra Cut can ask GitHub when it starts whether a newer release exists.
-        </p>
-        <ul className="muted modal-list">
-          <li>Sends no identifiers and nothing about your usage</li>
-          <li>GitHub sees only an ordinary web request</li>
-          <li>Nothing downloads or installs without your say-so</li>
-        </ul>
-        <p className="muted">Change this any time in Settings.</p>
+        <div className="welcome-modal-intro">
+          <h2>Welcome to Kookaburra Cut</h2>
+          <p className="muted">Make polished product videos, right here on your Mac.</p>
+        </div>
+        <label className="settings-row welcome-modal-update">
+          <svg
+            className="welcome-modal-update-icon"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3" />
+            <path d="M19.5 4v4h-4" />
+          </svg>
+          <span className="settings-row-text">
+            <span className="settings-row-title welcome-modal-update-title">
+              Check for updates
+              <span className="recommended-badge">Recommended</span>
+            </span>
+            <span className="settings-row-detail muted">
+              An anonymous check with GitHub. Nothing installs without asking.
+            </span>
+          </span>
+          <span className="toggle-switch">
+            <input
+              type="checkbox"
+              role="switch"
+              aria-checked={checkUpdates}
+              checked={checkUpdates}
+              onChange={(e) => setCheckUpdates(e.target.checked)}
+            />
+            <span className="toggle-switch-track" aria-hidden="true">
+              <span className="toggle-switch-thumb" />
+            </span>
+          </span>
+        </label>
         <div className="modal-actions">
-          <button type="button" className="btn" onClick={() => onAnswer(false)}>
-            Not now
-          </button>
-          <button type="button" className="btn primary" onClick={() => onAnswer(true)}>
-            Enable (recommended)
+          <button type="button" className="btn primary" onClick={() => onAnswer(checkUpdates)}>
+            Get started
           </button>
         </div>
       </div>
