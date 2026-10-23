@@ -1694,35 +1694,61 @@ each recorded hash backticked in its own cell. Two projects anchor
 the set: the null-for-legacy sentinel (`ws:launch-2026`, a hash-identical
 workspace copy of the reel dropped from the bundled set on 2026-07-13, scene
 durations re-frozen 2026-07-25, see the splice note below) and the bundled
-rolling-gate project (`showcase-tour`):
+rolling-gate project (`showcase-tour`). A hash from another machine never
+compares: after a machine change every cell goes stale and re-records from a
+Verify ×2 here (the 2026-10-23 note):
 
 | Project | 16:9 | 9:16 | 1:1 | 4:5 | 5:4 | 3:2 | 2:3 | phone | phone-landscape |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `ws:launch-2026` (legacy sentinel: must stay EQUAL) | `1ad4b2e6…` | stale | stale | stale | — | — | — | — | — |
-| `showcase-tour` (rolling gate) | `13b5994d…` | stale | stale | stale | stale | stale (pre-trim) | — | — | — |
-| `transition-spike` (transition gate, image mask included) | `9aaa76b6…` | `40867f7d…` | — | — | — | — | — | — | — |
+| `ws:launch-2026` (legacy sentinel: must stay EQUAL) | `cc23761e…` | stale | stale | stale | — | — | — | — | — |
+| `showcase-tour` (rolling gate) | `bf85b127…` | stale | stale | stale | stale | stale (pre-trim) | — | — | — |
+| `transition-spike` (transition gate, image mask included) | stale | stale | — | — | — | — | — | — | — |
 | `transition-bg-spike` (animated-background transition gate) | stale | — | — | — | — | — | — | — | — |
 | `compare-spike` (before/after comparison gate) | stale | stale | stale | stale | — | — | — | — | — |
 | `compare-transition-spike` (comparisons through transitions) | stale | — | — | — | — | — | — | — | — |
 | `image-flip-spike` (image-orientation gate, eyeball it) | stale | — | — | — | — | — | — | — | — |
-| `ws:layered-screenshot-spike` (LS gate, machine-local) | `1b3cde02…` | — | — | — | — | — | — | — | — |
-| `ws:video-window-spike` (VideoWindow gate, machine-local) | `6dfe68a6…` | — | — | — | — | — | — | — | — |
-| `ws:lighting-spike-fable` (v9 lighting gate, machine-local) | `bf5021f2…` | — | — | — | — | — | — | — | — |
-| `ws:camera-rig-spike-opus` (camera rig gate, machine-local) | `81429136…` | — | — | — | — | — | — | — | — |
-| `ws:multi-device-spike` (deviceLayout gate, machine-local) | `fb5a182d…` | stale | stale | — | — | — | — | — | — |
-| `ws:dof-spike` (depth-of-field gate, machine-local) | `c9c48d7d…` | stale | — | — | — | — | — | — | — |
-| `ws:motion-blur-spike` (motion blur gate, machine-local) | `7c9b3662…` | `a8edaf27…` | — | — | — | — | — | — | — |
-| `ws:camera-kick-spike` (camera kicks, musical positions and `useBeatGrid`, machine-local; never in a gate) | `1ab8d22d…` | — | — | — | — | — | — | — | — |
-| `ws:chart-spike` (chart gate, machine-local) | `3e81edbd…` | stale | stale | stale | — | — | — | — | — |
+| `ws:layered-screenshot-spike` (LS gate, machine-local) | stale | — | — | — | — | — | — | — | — |
+| `ws:video-window-spike` (VideoWindow gate, machine-local) | stale | — | — | — | — | — | — | — | — |
+| `ws:lighting-spike-fable` (v9 lighting gate, machine-local) | `776ada6f…` | — | — | — | — | — | — | — | — |
+| `ws:camera-rig-spike-opus` (camera rig gate, machine-local) | stale | — | — | — | — | — | — | — | — |
+| `ws:multi-device-spike` (deviceLayout gate, machine-local) | stale | stale | stale | — | — | — | — | — | — |
+| `ws:dof-spike` (depth-of-field gate, machine-local) | stale | stale | — | — | — | — | — | — | — |
+| `ws:motion-blur-spike` (motion blur gate, machine-local) | stale | stale | — | — | — | — | — | — | — |
+| `ws:camera-kick-spike` (camera kicks, musical positions and `useBeatGrid`, machine-local; never in a gate) | stale | — | — | — | — | — | — | — | — |
+| `ws:chart-spike` (chart gate, machine-local) | stale | stale | stale | stale | — | — | — | — | — |
 | `ws:duplicate-spike` (scene-id heal gate, machine-local) | stale | — | — | — | — | — | — | — | — |
 | `ws:overlay-spike` (overlay gate, machine-local) | stale | — | — | — | — | — | — | — | — |
-| `ws:duo-spike` (foldable gate, machine-local) | `2e023390…` | `b28e7c7f…` | — | — | — | — | — | — | — |
-| `ws:device-video-spike` (device/media/camera gate, built-in-lit devices, machine-local) | `2d9882c6…` | — | — | — | — | — | — | — | — |
-| `ws:device-env-spike` (cold frame-0 repro: a built-in-lit handset's top edge, machine-local) | `9f3418a2…` | — | — | — | — | — | — | — | — |
-| `ws:text-outline-spike` (outlined text in the text barrier: neon, whole-block blur-in, machine-local) | `87bb6b3a…` | — | — | — | — | — | — | — | — |
-| `ws:rooms-spike` (room cuts, a flood with a tokened light, a wipe while both sides flood; machine-local, never gated) | `ea0da8bd…` | `2933616e…` | — | — | — | — | — | — | — |
-| `ws:mask-fx-spike` (an image-mask seam between two bloom scenes on the effects lane; machine-local, never gated) | `c93487c0…` | — | — | — | — | — | — | — | — |
-| `ws:motion-toolkit-spike` (the toolkit primitives: shapes, device anchors, text metrics and presets, stamps, dashes, mosaic, taps; machine-local, gated when motion or shape primitives change) | `fba8fa0e…` | `91bea026…` | — | — | — | — | — | — | — |
+| `ws:duo-spike` (foldable gate, machine-local) | stale | stale | — | — | — | — | — | — | — |
+| `ws:device-video-spike` (device/media/camera gate, built-in-lit devices, machine-local) | `248022d1…` | — | — | — | — | — | — | — | — |
+| `ws:device-env-spike` (cold frame-0 repro: a built-in-lit handset's top edge, machine-local) | stale | — | — | — | — | — | — | — | — |
+| `ws:text-outline-spike` (outlined text in the text barrier: neon, whole-block blur-in, machine-local) | stale | — | — | — | — | — | — | — | — |
+| `ws:rooms-spike` (room cuts, a flood with a tokened light, a wipe while both sides flood; machine-local, never gated) | stale | stale | — | — | — | — | — | — | — |
+| `ws:mask-fx-spike` (an image-mask seam between two bloom scenes on the effects lane; machine-local, never gated) | stale | — | — | — | — | — | — | — | — |
+| `ws:motion-toolkit-spike` (the toolkit primitives: shapes, device anchors, text metrics and presets, stamps, dashes, mosaic, taps; machine-local, gated when motion or shape primitives change) | stale | stale | — | — | — | — | — | — | — |
+
+> **2026-10-23 (a new dev machine: every baseline moved):** the dev machine
+> changed on 2026-10-20 (now an Apple M5 Max), and every gate leg moved with it
+> while staying Verify ×2 identical. `b6fdef67`, the code behind the last EQUAL
+> record (2026-10-19, previous machine), exports the new hashes here on all
+> four standing legs, so no commit up to `17c85b13` moved them. Nothing else
+> they read changed: the `ws:` fixtures and the licensed models predate that
+> record, the clip cache (re-extracted on 2026-10-22) writes byte-identical
+> PNGs under the pinned ffmpeg 8.1 sidecar and Homebrew's 9.0.2, and both
+> builds encode identical frames to identical bytes (x264 core 165 r3222).
+> Re-recorded here from a Verify ×2 at `17c85b13`: `showcase-tour`
+> `13b5994d…` → `bf85b127…` and the sentinel `ws:launch-2026` `1ad4b2e6…` →
+> `cc23761e…` (anchors first, one boot), `ws:device-video-spike` `2d9882c6…`
+> → `248022d1…` and `ws:lighting-spike-fable` `bf5021f2…` → `776ada6f…` (each
+> alone), and the `showcase-tour` stills (`stillsverify` EQUAL in both
+> formats, each matching a pristine `d5ec69b9` run on this machine from
+> 2026-10-20). Frames from all four exports were eyeballed: text, the licensed
+> handsets with their screen media and the light fixtures all draw. Every
+> other recorded cell came from the previous machine and now reads stale:
+> record it from its leg's next Verify ×2 here instead of attributing the
+> move. A trap that looks like a code move: a worktree without
+> `src/assets/models/licensed/` renders the Android fallback, and
+> `showcase-tour` then reads `f38ba89d…`, so copy the models in before any
+> gate.
 
 > **2026-10-19 (`ws:motion-toolkit-spike` trimmed to the fixture budget,
 > Michael):** its 13 scenes went from 3000 to 600 ms in the manifest (39 s to
@@ -1831,10 +1857,10 @@ the PNG zip's file hash must match too; a PDF's file hash is advisory only.
 
 | Project | Format | Pages | `pagesHash` | File SHA-256 |
 | --- | --- | --- | --- | --- |
-| `showcase-tour` | PDF | 7 | `f6da6cf4637416499984e0439c04b2973e79e4fcb489e66df5d41882e40be2c2` | `70af2d9934a5fb131a518f40a7cadcfab1b5660dbbae42ccd9047fff5016d2b8` (advisory) |
-| `showcase-tour` | PNG zip | 7 | `171c5a1c501aef6b2890c67a50fd0750716ece97c05574dd0e7c1b69aab2b98c` | `17d30425d2f0ce7569350db987b84b64054929560903e1ca10465e52e020b4db` |
-| `ws:stills-spike` (stills gate, machine-local) | PDF | 9 | `0c258a3aab29c4acb55350e0f549f6da7304155c95f822447e5355bc5403cc59` | `295e3a13f481dd63c0f8cf0e4bc59552e75607b4bda2521c460c1a0f1833816c` (advisory) |
-| `ws:stills-spike` (stills gate, machine-local) | PNG zip | 9 | `38d4d4721c323ccd45143a6b9400012afee3d2cd9d8ef7b8f1c0d2dda35c2b24` | `4b3da02d4cb6d3451452cbf6c8b08620e9cbcaed95e952a617293b029f347345` |
+| `showcase-tour` | PDF | 7 | `e783d43ebcfeb688a5e118c5e97a116c7491ed95fca37ec56bddf090100e65a8` | `2810fff66010bb512ed25cb4d6b2d0005b3840b6a0d03e47c0b52347c76575c3` (advisory) |
+| `showcase-tour` | PNG zip | 7 | `a7b9cd3ac7d36f96fdc9482003a80fec02a6ab68e6663f1fafa9de1960413085` | `202dc4b1109d1da0e52cf01442544227091a8990de8ee8966f338e322e582653` |
+| `ws:stills-spike` (stills gate, machine-local) | PDF | 9 | stale | stale |
+| `ws:stills-spike` (stills gate, machine-local) | PNG zip | 9 | stale | stale |
 
 > **2026-10-08 (stills export, a fresh record):** `showcase-tour` records its
 > first stills baselines (above), `stillsverify` EQUAL for both formats, every
