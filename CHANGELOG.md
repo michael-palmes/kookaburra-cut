@@ -6,6 +6,18 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.20.1] - 2026-10-23
+
+### Fixed
+
+- Opening a project again in the same session no longer shows a black
+  preview or dark reflections.
+- The Edit with Claude launcher opens by itself only on a new project's
+  first open, not on every project switch after upgrading.
+- Applying a brand writes BRAND.md only once the project saves, brand image
+  imports never overwrite similarly named files, and packs without a brand
+  open in older versions of the app.
+
 ## [0.20.0] - 2026-10-23
 
 ### Added
