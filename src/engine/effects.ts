@@ -75,6 +75,8 @@ interface DofEffects {
 }
 
 interface ComposerState extends DofEffects {
+  /** The renderer the chain was built on; a remounted canvas brings a new one. */
+  gl: WebGLRenderer;
   composer: EffectComposer;
   renderPass: RenderPass;
   /** Persistent-layer overlay pass, disabled except on transition frames. */
@@ -93,6 +95,7 @@ type RetargetableCopyPass = CopyPass & { renderTarget: WebGLRenderTarget };
 
 /** The dof-only side composer: on transition/compare frames each side renders through this (scene -> dof chain -> copy into the side's HDR target) BEFORE the composite, so both sides carry their own focus; the main chain's dof is zeroed on those frames. */
 interface DofSideState extends DofEffects {
+  gl: WebGLRenderer;
   composer: EffectComposer;
   renderPass: RenderPass;
   copyPass: RetargetableCopyPass;
@@ -244,7 +247,7 @@ export function resolveFrameEffects(resolved: Resolved): EffectsConfig | null {
   return resolveEffectParams(sceneBaseEffects(projectDefault, sceneDefaults, idx), overrides[idx]);
 }
 
-/** Lazily builds (and resizes/rebuilds, disposing the old) the composer for the project's effect set at the live drawing-buffer size; the RenderPass's scene/camera are set per-frame by the caller. `dofUnion` (the camera plan's, constant per project) adds the dof/tilt passes to the chain head. */
+/** Lazily builds (and rebuilds for a new renderer, size or effect set, disposing the old) the composer for the project's effect set at the live drawing-buffer size; the RenderPass's scene/camera are set per-frame by the caller. `dofUnion` (the camera plan's, constant per project) adds the dof/tilt passes to the chain head. */
 export function ensureComposer(
   gl: WebGLRenderer,
   w: number,
@@ -263,6 +266,7 @@ export function ensureComposer(
     `|dof:${dofKeyOf(dofUnion)}`;
   if (
     composerState &&
+    composerState.gl === gl &&
     composerState.size.x === w &&
     composerState.size.y === h &&
     composerState.key === key
@@ -317,6 +321,7 @@ export function ensureComposer(
   composer.addPass(new EffectPass(undefined, ...chain));
 
   composerState = {
+    gl,
     composer,
     renderPass,
     overlayPass,
@@ -541,6 +546,7 @@ function ensureDofSide(gl: WebGLRenderer, w: number, h: number, dofUnion: DofUni
   const key = dofKeyOf(dofUnion);
   if (
     dofSideState &&
+    dofSideState.gl === gl &&
     dofSideState.size.x === w &&
     dofSideState.size.y === h &&
     dofSideState.key === key
@@ -571,6 +577,7 @@ function ensureDofSide(gl: WebGLRenderer, w: number, h: number, dofUnion: DofUni
   composer.addPass(copyPass);
 
   dofSideState = {
+    gl,
     composer,
     renderPass,
     dof,
@@ -624,6 +631,7 @@ export function drawingBufferSize(gl: WebGLRenderer): Vector2 {
 // ---------------------------------------------------------------------------
 
 interface DofOverlayState extends DofEffects {
+  gl: WebGLRenderer;
   pass: EffectPass;
   /** Wraps the canvas copy (or nothing in target mode) as the pass's input protocol. */
   inputShim: WebGLRenderTarget;
@@ -652,6 +660,7 @@ function ensureDofOverlay(gl: WebGLRenderer, w: number, h: number, u: DofUnion):
   const key = dofKeyOf(u);
   if (
     dofOverlayState &&
+    dofOverlayState.gl === gl &&
     dofOverlayState.size.x === w &&
     dofOverlayState.size.y === h &&
     dofOverlayState.key === key
@@ -681,6 +690,7 @@ function ensureDofOverlay(gl: WebGLRenderer, w: number, h: number, u: DofUnion):
   }
 
   dofOverlayState = {
+    gl,
     ...effects,
     pass,
     inputShim: new WebGLRenderTarget(1, 1, { depthBuffer: false }),

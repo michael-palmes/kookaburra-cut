@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { Texture, type WebGLRenderer } from "three";
 import { describe, expect, it, vi } from "vitest";
 import type { FixtureSpec, Theme } from "../theme/tokens";
 import { refreshWorkspaceAssets } from "./assetRevisions";
@@ -8,7 +9,10 @@ import {
   collectMirrorRequests,
   collectMirrorRequestsWithCompare,
   environmentCacheKey,
+  getLoadedEnvironment,
+  preloadEnvironments,
   resolveSceneEnvironment,
+  SOFTBOX_SOURCE,
 } from "./environments";
 import { setProjectAssetRevision } from "./projectAssetRevision";
 
@@ -16,6 +20,17 @@ vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(),
   convertFileSrc: (path: string) => `asset://${path}`,
 }));
+
+vi.mock("three", async (importOriginal) => {
+  const three = await importOriginal<typeof import("three")>();
+  class PMREMGenerator {
+    fromScene() {
+      return { texture: new three.Texture() };
+    }
+    dispose() {}
+  }
+  return { ...three, PMREMGenerator };
+});
 
 function makeTheme(overrides: Partial<Theme> = {}): Theme {
   return {
@@ -65,6 +80,21 @@ describe("environmentCacheKey", () => {
     expect(environmentCacheKey("ws:a", "none")).toBe("none");
     expect(environmentCacheKey("ws:a", "assets/studio.hdr")).toBe("ws:a|assets/studio.hdr");
     expect(environmentCacheKey("ws:b", "assets/studio.hdr")).toBe("ws:b|assets/studio.hdr");
+  });
+});
+
+describe("environment cache", () => {
+  it("bakes per renderer, so a remounted canvas never samples a dead context's texture", async () => {
+    const first = {} as WebGLRenderer;
+    const second = {} as WebGLRenderer;
+    await preloadEnvironments(first, [SOFTBOX_SOURCE]);
+    const baked = getLoadedEnvironment(first, SOFTBOX_SOURCE);
+    expect(baked).toBeInstanceOf(Texture);
+    expect(getLoadedEnvironment(second, SOFTBOX_SOURCE)).toBeNull();
+    await preloadEnvironments(second, [SOFTBOX_SOURCE]);
+    expect(getLoadedEnvironment(second, SOFTBOX_SOURCE)).toBeInstanceOf(Texture);
+    expect(getLoadedEnvironment(second, SOFTBOX_SOURCE)).not.toBe(baked);
+    expect(getLoadedEnvironment(first, SOFTBOX_SOURCE)).toBe(baked);
   });
 });
 

@@ -730,7 +730,8 @@ export function renderComposited(
       }
     : null;
   const applyState = (s: SceneRenderState) => {
-    if (sharedEnv) applySceneRenderState(scene, s, sharedEnv, getLoadedEnvironment);
+    if (sharedEnv)
+      applySceneRenderState(scene, s, sharedEnv, (key) => getLoadedEnvironment(gl, key));
     // Perf-probe env-off pass only (preview diagnostics); exports never see it.
     if (previewEnvironmentOff() && !isExporting()) scene.environment = null;
   };

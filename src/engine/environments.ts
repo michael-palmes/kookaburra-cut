@@ -61,8 +61,23 @@ export const BUNDLED_ENVIRONMENT_IDS: readonly string[] = [
 ];
 
 /** Resolved textures by cache key; `null` marks a source that failed/isn't wired (warned once). */
-const loaded = new Map<string, Texture | null>();
-const inflight = new Map<string, Promise<Texture | null>>();
+interface EnvironmentCache {
+  loaded: Map<string, Texture | null>;
+  inflight: Map<string, Promise<Texture | null>>;
+}
+
+/** Per renderer: a PMREM target lives only in the context that rendered it, so a remounted canvas (back to the projects and in again) bakes its own. */
+const caches = new WeakMap<WebGLRenderer, EnvironmentCache>();
+
+function cacheFor(gl: WebGLRenderer): EnvironmentCache {
+  let cache = caches.get(gl);
+  if (!cache) {
+    cache = { loaded: new Map(), inflight: new Map() };
+    caches.set(gl, cache);
+  }
+  return cache;
+}
+
 const revisedSources = new Map<string, { projectId: string; rel: string }>();
 
 /** The environments cache key for an authored source: bundled ids and "none" pass through; project-relative user paths key per project so two projects' "assets/studio.hdr" never collide, plus the file's revision (`|r=`) so a map replaced in place loads afresh. */
@@ -77,9 +92,9 @@ export function environmentCacheKey(projectId: string | undefined, source: strin
   return key;
 }
 
-/** The PMREM texture for a cache key, or null while loading / for unknown or "none" sources. Sync, called per render target at the compositor seam. */
-export function getLoadedEnvironment(key: string): Texture | null {
-  return loaded.get(key) ?? null;
+/** `gl`'s PMREM texture for a cache key, or null while loading / for unknown or "none" sources. Sync, called per render target at the compositor seam. */
+export function getLoadedEnvironment(gl: WebGLRenderer, key: string): Texture | null {
+  return caches.get(gl)?.loaded.get(key) ?? null;
 }
 
 /** The softbox rig as a plain scene: the three Lightformer rects (Device's lit set). */
@@ -345,11 +360,12 @@ async function bakeMirrorEnvironment(gl: WebGLRenderer, request: MirrorRequest):
   }
 }
 
-/** Bake every mirror request not already cached (idempotent; shares the loaded/inflight maps with the plain sources, so `getLoadedEnvironment(key)` serves bakes at the seam identically). */
+/** Bake every mirror request not already cached (idempotent; shares the loaded/inflight maps with the plain sources, so `getLoadedEnvironment(gl, key)` serves bakes at the seam identically). */
 export async function preloadMirrorEnvironments(
   gl: WebGLRenderer,
   requests: readonly MirrorRequest[],
 ): Promise<void> {
+  const { loaded, inflight } = cacheFor(gl);
   await Promise.all(
     requests.map((request) => {
       if (loaded.has(request.key)) return Promise.resolve(loaded.get(request.key) ?? null);
@@ -378,6 +394,7 @@ export async function preloadEnvironments(
   gl: WebGLRenderer,
   keys: readonly string[],
 ): Promise<void> {
+  const { loaded, inflight } = cacheFor(gl);
   await Promise.all(
     keys.map((key) => {
       if (loaded.has(key)) return Promise.resolve(loaded.get(key) ?? null);
