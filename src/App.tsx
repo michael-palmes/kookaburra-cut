@@ -42,8 +42,10 @@ import { useCameraEditStore } from "./engine/cameraEditStore";
 import { ensureCaptureService } from "./engine/captureBridge";
 import {
   CLAUDE_APP_MISSING,
-  claimClaudeLauncherFirstOpen,
+  claimClaudeLauncherGreeting,
   openInClaude,
+  queueClaudeLauncherGreeting,
+  rearmClaudeLauncherGreeting,
   setClaudePreferences,
 } from "./engine/claudeApp";
 import {
@@ -480,7 +482,7 @@ export default function App() {
 
   // The legacy built-in terminal rail: what Edit with Claude opens once Settings (or the launcher's ⋯ menu) picks the built-in terminal; it still opens by itself on every editable load.
   const [railOpen, setRailOpen] = useState(false);
-  // The Claude launcher under the titlebar button; `firstRun` is the larger greeting a project's first open shows.
+  // The Claude launcher under the titlebar button; `firstRun` is the larger greeting a new project's first open (or a re-arm) shows.
   const [claudeLauncher, setClaudeLauncher] = useState<null | { firstRun: boolean }>(null);
   const claudeButtonRef = useRef<HTMLButtonElement>(null);
   const closeClaudeLauncher = useCallback(() => setClaudeLauncher(null), []);
@@ -551,7 +553,11 @@ export default function App() {
     if (isAutoRun) return;
     const unlisten = listen("kookaburra://claude-preferences-changed", () => {
       getSettings()
-        .then((s) =>
+        .then((s) => {
+          // Turning the greeting back on shows it once more, on the next project open.
+          if (!s.disableClaudeFirstOpen && !claudePrefsRef.current.firstOpen) {
+            rearmClaudeLauncherGreeting();
+          }
           setSettings((prev) =>
             prev
               ? {
@@ -560,8 +566,8 @@ export default function App() {
                   disableClaudeFirstOpen: s.disableClaudeFirstOpen,
                 }
               : prev,
-          ),
-        )
+          );
+        })
         .catch(() => {});
     });
     return () => {
@@ -1731,12 +1737,14 @@ export default function App() {
   const handleCreateProject = useCallback(
     async (name: string, templateId: string, themeId: string, group: string | null) => {
       const project = await createProject(name, templateId, group);
+      const id = `${WORKSPACE_PROJECT_PREFIX}${project.slug}`;
+      queueClaudeLauncherGreeting(id);
       // The theme step's pick lands in the copied project.json before the first load, so the project opens already themed.
       await invoke("set_project_theme", { slug: project.slug, themeId });
       await refreshProjects();
       setShowNewProject(false);
       setNewProjectTemplate(null);
-      openProject(`${WORKSPACE_PROJECT_PREFIX}${project.slug}`);
+      openProject(id);
     },
     [refreshProjects, openProject],
   );
@@ -2035,21 +2043,18 @@ export default function App() {
       rememberProjectAspect(loadedProjectId, format.name);
     }
   }, [loadedProjectId, projectId, format.name, isAutoRun, exporting]);
-  // Greet editable projects: the legacy rail opens on every load as it always has, the Claude launcher only on a project's first open; both close where they can't work. Keyed on the id: in-memory doc patches swap the project object per edit and must not reopen what the user closed.
+  // Greet editable projects: the legacy rail opens on every load as it always has, the Claude launcher only on a new project's first open; both close where they can't work. Keyed on the id: in-memory doc patches swap the project object per edit and must not reopen what the user closed.
   useEffect(() => {
     if (!loadedProjectId || isAutoRun) return;
     const editable = isEditableProjectId(loadedProjectId);
+    const greet = editable && claimClaudeLauncherGreeting(loadedProjectId);
     const prefs = claudePrefsRef.current;
     if (prefs.builtinTerminal) {
       setRailOpen(editable);
       return;
     }
     setRailOpen(false);
-    setClaudeLauncher(
-      editable && prefs.firstOpen && claimClaudeLauncherFirstOpen(loadedProjectId)
-        ? { firstRun: true }
-        : null,
-    );
+    setClaudeLauncher(greet && prefs.firstOpen ? { firstRun: true } : null);
   }, [loadedProjectId, isAutoRun]);
 
   // Camera-edit hygiene: a committed drag draft holds the new pose through the async reload, released once the reloaded project lands; the editor's whole state is per-project, so a project switch resets it.

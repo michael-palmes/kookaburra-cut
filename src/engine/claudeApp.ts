@@ -53,29 +53,44 @@ export function claudeStarterPrompt(kind: ClaudeStarter, sceneName: string | nul
   }
 }
 
-const LAUNCHER_SEEN_KEY = "kookaburra:claude-launcher-seen";
-const LAUNCHER_SEEN_CAP = 500;
+const LAUNCHER_PENDING_KEY = "kookaburra:claude-launcher-pending";
+const LAUNCHER_PENDING_CAP = 50;
+/** A pending entry that greets whichever project opens next. */
+const NEXT_OPEN = "*";
 
-function readSeen(): string[] {
+function readPending(): string[] {
   try {
-    const parsed: unknown = JSON.parse(localStorage.getItem(LAUNCHER_SEEN_KEY) ?? "[]");
+    const parsed: unknown = JSON.parse(localStorage.getItem(LAUNCHER_PENDING_KEY) ?? "[]");
     return Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === "string") : [];
   } catch {
     return [];
   }
 }
 
-/** The launcher opens by itself only on a project's first open; this records that it has. */
-export function claimClaudeLauncherFirstOpen(projectId: string): boolean {
-  const seen = readSeen();
-  if (seen.includes(projectId)) return false;
+function writePending(ids: string[]): boolean {
   try {
-    localStorage.setItem(
-      LAUNCHER_SEEN_KEY,
-      JSON.stringify([...seen, projectId].slice(-LAUNCHER_SEEN_CAP)),
-    );
+    localStorage.setItem(LAUNCHER_PENDING_KEY, JSON.stringify(ids.slice(-LAUNCHER_PENDING_CAP)));
+    return true;
   } catch {
-    // Storage blocked: greeting again next time beats never greeting.
+    // Storage blocked: a missed greeting costs nothing, the titlebar button still opens it.
+    return false;
   }
-  return true;
+}
+
+/** A project created here greets on its first open; any other project greets only after a re-arm. */
+export function queueClaudeLauncherGreeting(projectId: string): void {
+  writePending([...readPending().filter((id) => id !== projectId), projectId]);
+}
+
+/** Settings turning the greeting back on: the next project open greets once. */
+export function rearmClaudeLauncherGreeting(): void {
+  queueClaudeLauncherGreeting(NEXT_OPEN);
+}
+
+/** True once per queued greeting, and only when consuming it sticks, so a failed write never greets on every open. */
+export function claimClaudeLauncherGreeting(projectId: string): boolean {
+  const pending = readPending();
+  const rest = pending.filter((id) => id !== projectId && id !== NEXT_OPEN);
+  if (rest.length === pending.length) return false;
+  return writePending(rest);
 }

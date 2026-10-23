@@ -103,7 +103,7 @@ pub struct AppSettings {
     /// Edit with Claude opens the legacy built-in terminal rail instead of handing the project to the Claude app.
     #[serde(default)]
     pub claude_builtin_terminal: bool,
-    /// Inverted so the serde/Default false means the Claude launcher shows on a project's first open.
+    /// Inverted so the serde/Default false means the Claude launcher shows on a new project's first open.
     #[serde(default)]
     pub disable_claude_first_open: bool,
     /// Last Present-modal selection per project id, restored on modal open.
@@ -1006,7 +1006,7 @@ pub fn set_hardware_video(
     Ok(())
 }
 
-/// Choose what Edit with Claude opens and whether its launcher greets a project's first open; the main window follows live.
+/// Choose what Edit with Claude opens and whether its launcher greets a new project's first open; the main window follows live.
 #[tauri::command]
 pub fn set_claude_preferences(
     app: AppHandle,
