@@ -309,8 +309,9 @@ superseded by the built layout below.)*
   Edit with Claude button (§4.7) · "Find an action ⌘K" trigger · the Export CTA (the ONLY accent
   control).
 - **Edit with Claude:** the titlebar button (⌥⌘E) opens a launcher popover that starts a Claude
-  desktop app session in the project folder (`claude://code/new`). It greets a project only on its
-  first open, so the stage normally runs the full width.
+  desktop app session in the project folder (`claude://code/new`). It greets only a project created
+  in the app, on its first open (turning the greeting back on in Settings adds one more, on the next
+  project opened), so the stage normally runs the full width.
 - **Claude Code rail (left, legacy):** the embedded terminal, shown only when Settings ▸ Claude
   picks the built-in terminal; collapsible; width `clamp(320px, 30vw, 460px)`. The scene wizards
   live outside it, so Add a scene and Edit scene work in either mode.

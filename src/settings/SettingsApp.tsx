@@ -457,15 +457,16 @@ export function SettingsApp() {
               <span className="titlebar-claude-mark">
                 <ClaudeSpark size={13} />
               </span>
-              Show on a project's first open
+              Show on a new project's first open
             </span>
             <span className="muted settings-row-detail">
-              After that, open it from the titlebar or with ⌥⌘E.
+              Turning it on also shows it on the next project you open. Open it any time from the
+              titlebar or with ⌥⌘E.
             </span>
           </div>
           <input
             type="checkbox"
-            aria-label="Show on a project's first open"
+            aria-label="Show on a new project's first open"
             checked={claudeFirstOpen ?? true}
             disabled={claudeFirstOpen === null || claudeBuiltin === true}
             onChange={(e) => toggleClaudeFirstOpen(e.target.checked)}
