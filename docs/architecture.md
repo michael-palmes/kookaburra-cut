@@ -87,7 +87,7 @@ than restating versions.) Pins live in `package.json` and `src-tauri/Cargo.toml`
 | TypeScript | 7.0.x | Typed toolkit and scene files | Apache-2.0 |
 | Vite | 8.2.x | Dev server, HMR preview, prod bundle (Oxc transform/minify) | MIT |
 | @vitejs/plugin-react | 6.1.x | React fast-refresh / JSX for Vite | MIT |
-| three | 0.185.x | WebGL renderer and scene graph | MIT |
+| three | 0.186.x | WebGL renderer and scene graph | MIT |
 | @react-three/fiber | 9.7.x | React renderer for Three.js | MIT |
 | @react-three/drei | 10.7.x | Loaders, controls, `<Text>` helper | MIT |
 | @react-three/postprocessing | 3.1.x | Bloom, vignette, colour grading | MIT |
