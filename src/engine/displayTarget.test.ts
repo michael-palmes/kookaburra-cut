@@ -29,12 +29,14 @@ const Programs = WebGLPrograms as unknown as new (
 ) => { getParameters: (...args: unknown[]) => { toneMapping: number; outputColorSpace: string } };
 
 const noLights = {
+  sun: [],
   directional: [],
   point: [],
   spot: [],
   spotLightMap: [],
   rectArea: [],
   hemi: [],
+  sunShadowMap: [],
   directionalShadowMap: [],
   pointShadowMap: [],
   spotShadowMap: [],
