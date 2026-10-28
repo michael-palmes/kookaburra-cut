@@ -844,6 +844,58 @@ describe("parseSceneDoc", () => {
     vi.restoreAllMocks();
   });
 
+  it("keeps a sibling at on rebuilt keys and media starts, and adds nothing without one", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const raw = {
+      version: 1,
+      deviceTrack: {
+        keys: [
+          { id: "k1", tMs: 0, pose: {} },
+          { id: "k2", tMs: 8250, at: "bar:5", pose: { d1: { scale: 2 } } },
+          { id: "k3", tMs: 900, at: 900, pose: {} },
+        ],
+        segments: [],
+      },
+      compare: {
+        track: {
+          keys: [
+            { id: "c1", tMs: 0, pose: { value: 0 } },
+            { id: "c2", tMs: 2250, at: "cue:drop", pose: { value: 1 } },
+          ],
+          segments: [],
+        },
+      },
+      devices: [
+        {
+          id: "d1",
+          model: "iphone-17-pro",
+          media: { src: "assets/a.mp4", kind: "video", startMs: 250, at: "bar:1" },
+        },
+      ],
+      media: [
+        { id: "v1", kind: "video", src: "assets/b.mp4", video: { startMs: 600, at: "bar:2" } },
+        { id: "v2", kind: "video", src: "assets/c.mp4", video: { startMs: 600, loop: true } },
+      ],
+    };
+    const doc = parseSceneDoc(raw, "test");
+    const keys = doc?.deviceTrack?.keys ?? [];
+    expect(keys.map((k) => Object.keys(k))).toEqual([
+      ["id", "tMs", "pose"],
+      ["id", "tMs", "at", "pose"],
+      ["id", "tMs", "pose"],
+    ]);
+    expect(keys[1].at).toBe("bar:5");
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('deviceTrack key "k3".at'));
+    expect(doc?.compare?.track?.keys.map((k) => Object.keys(k))).toEqual([
+      ["id", "tMs", "pose"],
+      ["id", "tMs", "at", "pose"],
+    ]);
+    expect(doc?.devices?.[0].media).toEqual(raw.devices[0].media);
+    expect(doc?.media?.[0].video).toEqual({ startMs: 600, at: "bar:2" });
+    expect(Object.keys(doc?.media?.[1].video ?? {})).toEqual(["startMs", "loop"]);
+    warn.mockRestore();
+  });
+
   it("parses ordered scene images with both host placements retained", () => {
     const doc = parseSceneDoc(
       {

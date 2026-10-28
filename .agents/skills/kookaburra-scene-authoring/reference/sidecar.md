@@ -89,11 +89,11 @@ theme lighting and real shadows need a `<SceneStage>` in the TSX.
 ```
 
 - `tMs` is scene-local. Keys at least 17 ms apart.
-- Camera, rig and lighting keys (`compare.b.lighting` too) may carry a musical position:
-  `{ "id": "k2", "tMs": 21000, "at": "bar:13", "pose": { } }`. The `at` rules and `tMs`
-  caches where it lands; set it with `./kb doc S set camera.keys.1.at bar:13`, and never
-  hand-edit that key's `tMs` (the app puts it back on load). Other tracks take ms only
-  (reference/beats.md).
+- Camera, rig, lighting, `deviceTrack` and `compare.track` keys (`compare.b.lighting` too)
+  may carry a musical position: `{ "id": "k2", "tMs": 21000, "at": "bar:13", "pose": { } }`.
+  The `at` rules and `tMs` caches where it lands; set it with
+  `./kb doc S set camera.keys.1.at bar:13`, and never hand-edit that key's `tMs` (the app
+  puts it back on load). Chart and layered screenshot keys take ms only (reference/beats.md).
 - Between and outside segments the value HOLDS the latest key at or before t (before
   the first key: the first key). A lone key is a static pose.
 - Adjacent segments share their boundary key id; do not duplicate near-identical keys.

@@ -538,7 +538,7 @@ class Checker:
                 warn(MANIFEST, "audio.grid.source.sha256", f"the grid was fitted to another file (its SHA-256 differs from {rel}); refit with ./kb song analyse --accept, or keep it if the music is the same")
 
     def music_keys(self, file: str, doc: Dict[str, Any]) -> None:
-        """Positions on camera, rig and lighting keys and camera kicks that can't resolve, and `at` keys whose tMs cache is stale."""
+        """Positions on keys, screen and media video starts and camera kicks that can't resolve or apply, and `at` fields whose time cache is stale."""
         from .beats import model as beatmodel
 
         kicks = doc.get("cameraKicks") if isinstance(doc.get("cameraKicks"), list) else []
@@ -549,23 +549,23 @@ class Checker:
             return
         m, start = scope
         stem = stem_of(file[:-5] + ".tsx") if file.endswith(".json") else file
-        for path, keys in beatmodel.timed_tracks(doc):
-            dotted = ".".join(path)
-            for i, key in enumerate(keys):
-                if not isinstance(key, dict) or "at" not in key:
-                    continue
-                where = f"{dotted}.keys[{i}].at"
-                at = key["at"]
-                if not isinstance(at, str):
-                    self.report.warn(file, where, 'must be a position string like "bar:13" (the app ignores it)')
-                    continue
-                r = beatmodel.resolve_local(at, m, start)
-                if not r["ok"]:
-                    self.music_position_issue(file, where, at, r, "the key stays at its stored tMs")
-                    continue
-                t = key.get("tMs")
-                if is_number(t) and t != r["projectMs"]:
-                    self.report.warn(file, f"{dotted}.keys[{i}].tMs", f'{t} isn\'t where "{at}" lands ({r["projectMs"]} ms), so the app uses {r["projectMs"]}: fine after a grid or timing change (the app rewrites it on load); to keep {t}, ./kb doc {stem} unset {dotted}.keys.{i}.at')
+        for slot in beatmodel.timed_slots(doc):
+            if "at" not in slot.node:
+                continue
+            path = beatmodel.check_path(slot.steps)
+            where = f"{path}.at"
+            at = slot.node["at"]
+            if not isinstance(at, str):
+                self.report.warn(file, where, 'must be a position string like "bar:13" (the app ignores it)')
+                continue
+            r = beatmodel.slot_position(slot, m, start)
+            if not r["ok"]:
+                effect = "the key stays at its stored tMs" if slot.field == "tMs" else "the video keeps its stored startMs"
+                self.music_position_issue(file, where, at, r, effect)
+                continue
+            t = beatmodel.stored_ms(slot.node, slot.field)
+            if is_number(t) and t != r["projectMs"]:
+                self.report.warn(file, f"{path}.{slot.field}", f'{t} isn\'t where "{at}" lands ({r["projectMs"]} ms), so the app uses {r["projectMs"]}: fine after a grid or timing change (the app rewrites it on load); to keep {t}, ./kb doc {stem} unset {beatmodel.doc_path(slot.steps)}.at')
         for i, kick in enumerate(kicks):
             if isinstance(kick, dict) and isinstance(kick.get("at"), str):
                 r = beatmodel.resolve_local(kick["at"], m, start)

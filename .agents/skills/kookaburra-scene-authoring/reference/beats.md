@@ -94,20 +94,26 @@ and dashes. A cue or section never points at another cue or section, and a secti
 
 ## Keys that follow the music
 
-Camera, rig and lighting keys (and `compare.b.lighting` keys) take a sibling `at`:
-`{ "id": "k2", "tMs": 21000, "at": "bar:13" }`. The `at` rules; `tMs` caches where it
-lands in scene-local ms.
+Camera, rig, lighting, `deviceTrack` and `compare.track` keys (and `compare.b.lighting`
+keys) take a sibling `at`: `{ "id": "k2", "tMs": 21000, "at": "bar:13" }`. The `at` rules;
+`tMs` caches where it lands in scene-local ms.
+
+Screen and media videos start on the music the same way, with an `at` beside `startMs`:
+`devices[].media` and `coverMedia`, `compare.b.media` and `coverMedia`, and
+`media[].video` (any host). An `at` on a device screen needs a video that doesn't
+`startOn: "open"`, and can't land before the scene starts when the screen trims with `inMs`.
 
 ```bash
-./kb doc 03-drop set camera.keys.1.at bar:13    # kb sets tMs to match now
-./kb doc 03-drop set camera.keys.1.tMs 21400    # moves the key off the music: its at is dropped
-./kb doc 03-drop unset camera.keys.1.at         # keep tMs, stop following
+./kb doc 03-drop set camera.keys.1.at bar:13        # kb sets tMs to match now
+./kb doc 03-drop set camera.keys.1.tMs 21400        # moves the key off the music: its at is dropped
+./kb doc 03-drop unset camera.keys.1.at             # keep tMs, stop following
+./kb doc 03-drop set devices.0.media.at cue:drop    # the screen video starts on the drop
 ```
 
-Every `./kb doc` write refreshes the other keys' caches. Never hand-edit the `tMs` of a key
-with an `at`: the app puts it back on load (`./kb check` warns). Dragging the key in the
-app detaches it. Other tracks (`deviceTrack`, `compare`, `chart`, the layered screenshot),
-scene durations and device media take plain ms only.
+Every `./kb doc` write refreshes the other caches. Never hand-edit the time of a field with an
+`at`: the app puts it back on load (`./kb check` warns). Dragging the key, a new start in the
+inspector, `./kb video start` and `./kb video align` detach it. Chart and layered screenshot
+keys, taps, split-field reveals, scene durations and edit documents take plain ms.
 
 ## Kicks and pulses
 

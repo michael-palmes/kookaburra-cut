@@ -602,7 +602,7 @@ def cmd_doc(ctx: Ctx) -> int:
 
 
 def settle_music(project: Project, stem: str, before: Any, after: Any, summary: str) -> Tuple[Any, str]:
-    """The detach rule on a sidecar write: a key this write moved drops its `at`; every other `at` refreshes its tMs."""
+    """The detach rule on a sidecar write: a field this write moved drops its `at`; every other `at` refreshes its time."""
     from .beats import model as beatsmodel
 
     if not (beatsmodel.has_at(before) or beatsmodel.has_at(after)):

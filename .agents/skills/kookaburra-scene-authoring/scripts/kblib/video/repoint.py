@@ -213,6 +213,8 @@ def _video(raw: Any) -> Dict[str, Any]:
     out: Dict[str, Any] = {}
     if _num(raw.get("startMs")):
         out["startMs"] = raw["startMs"]
+    if isinstance(raw.get("at"), str):
+        out["at"] = raw["at"]
     if isinstance(raw.get("loop"), bool):
         out["loop"] = raw["loop"]
     if _num(raw.get("aspect")) and raw["aspect"] > 0:
@@ -451,12 +453,13 @@ def readable(raw: Any) -> bool:
 
 
 def _repointed_device_media(media: Any, rel: str) -> Dict[str, Any]:
-    """repointedDeviceMedia: the render owns the timing, so source-timing keys and a negative startMs go; a delay and startOn stay."""
+    """repointedDeviceMedia: the render owns the timing, so source-timing keys and a negative startMs (with its at) go; a delay and startOn stay."""
     nxt = dict(_spread(media), src=rel, kind="video")
     for key in PLAYBACK_KEYS:
         nxt.pop(key, None)
     if _num(nxt.get("startMs")) and nxt["startMs"] < 0:
         del nxt["startMs"]
+        nxt.pop("at", None)
     return js_json(nxt)
 
 
@@ -479,6 +482,7 @@ def apply_raw(raw: Dict[str, Any], slot: str, rel: str, target_id: Optional[str]
         entry["kind"] = "video"
         video = _spread(entry.get("video"))
         video.pop("startMs", None)
+        video.pop("at", None)
         entry["video"] = video
         nxt.pop("images", None)
         nxt.pop("videoWindow", None)
@@ -1053,12 +1057,18 @@ def set_start(project: Any, scene: str, slot: str, start_ms: int, *, force: bool
                 media["startMs"] = start_ms
             else:
                 media.pop("startMs", None)
+        notes: List[str] = []
+        from ..beats import model as beatsmodel
+
+        if beatsmodel.has_at(raw):
+            music, scene_start = beatsmodel.scene_scope(project, stem)
+            nxt, notes = beatsmodel.settle_written(raw, nxt, music, scene_start)
         validate = _validator(project, label)
         fresh = _new_errors(validate(raw), validate(nxt))
         if fresh and not force:
             raise KbError(f"nothing written: that start would add errors to {label}: " + "; ".join(i.message for i in fresh))
         out.clear()
-        out.update({"scene": stem, "index": idx, "slot": slot_ref(base, target), "fromMs": before, "toMs": start_ms})
+        out.update({"scene": stem, "index": idx, "slot": slot_ref(base, target), "fromMs": before, "toMs": start_ms, "notes": notes})
         return None if nxt == raw else nxt
 
     mutate_json(project, label, fn, op="kb video start")

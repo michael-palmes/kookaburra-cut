@@ -155,7 +155,7 @@ under the project lock (`kblib.lock`) and re-validated after writing.
 | `scene add <stem> [--preset P \| --copy S] [--after S \| --at N] [--duration MS] [--name N]` | New scene, unique stem and `defineScene` id, registered once; presets insert through the app when it runs, else copy from the app bundle |
 | `scene duplicate S`, `scene move S --to N`, `scene remove S`, `scene set S [--duration MS \| --duration-bars N \| --cut-at POS [--align end\|mid]] [--transition TYPE[:MS] [--ripple]]` | Manifest-safe scene operations; remove moves files to the macOS Trash. A `--cut-at` position pins the cut (`cutAt`, `align`: the app's `engine/sceneCuts.ts`, mirrored by `kblib/film/timeline.py` and pinned by `timeline-vectors.json`), so its length re-resolves on every grid, transition or scene-list write; a time, `--duration` and `--duration-bars` write whole ms and unpin. With a grid, `--transition` keeps later cuts in place (`keep_cuts_for_transition`, the transition picker's plan) unless `--ripple`, and the reply names any cut a write moved off the beat. `at` caches refresh in the same transaction |
 | `timeline`, `timeline apply PLAN [--ripple]` | Every scene's start, end, cut and transition in bars and ms, flagging off-beat cuts, scenes shorter than their transitions, keys outside their scene and cuts that left a beat since the last checkpoint (`kblib/cuts.py`; `check` and `status` share that drift lint). `apply` writes a JSON or markdown plan's cuts and transitions in one checkpointed write (the plan shape is in the kit's `reference/beats.md`) |
-| `doc S get [path]`, `doc S set path value`, `doc S unset path`, `doc S merge JSON` | Sidecar edits by dotted path; values parsed as JSON else string; enums validated against the catalogue; `get` prints the raw value (`--json`: `{ file, path, value }`). The detach rule: a camera, rig or lighting key whose `tMs` the write moved off its `at` loses the `at`, and every remaining `at` refreshes its `tMs` (`beats.model.settle_written`) |
+| `doc S get [path]`, `doc S set path value`, `doc S unset path`, `doc S merge JSON` | Sidecar edits by dotted path; values parsed as JSON else string; enums validated against the catalogue; `get` prints the raw value (`--json`: `{ file, path, value }`). The detach rule (`beats.model.settle_written` over `timed_slots`): a key `tMs` or a screen or media video `startMs` the write moved off its `at` loses the `at`, and every remaining `at` refreshes its time |
 | `project get [path]`, `project set path value`, `project unset path` | `project.json` fields other than `scenes` (`get --json`: `{ path, value }`) |
 | `theme list`, `theme show [id]`, `theme set path value` | Bundled tokens from the catalogue; workspace themes editable (`show --json`: `{ id, bundled, path, theme }`) |
 | `brand list`, `brand show [NAME]`, `brand use NAME`, `brand clear` | Workspace brands (docs/brands.md); `use` matches a name, slug or `ws:` id and applies it as the Project picker does (`brand`, default theme, headline and body fonts, `BRAND.md`); `clear` drops `brand` and `BRAND.md` |
@@ -274,9 +274,11 @@ scene whose sidecar has a `deviceLayout`. Errors exit 1; warnings print but pass
 
 - **Music.** `audio.grid`, `cues` and `sections` under `sanitiseAudioMusic`'s rules (what the
   app drops is an error); `bar:` values with no grid, and a grid whose `source.sha256` is not
-  the soundtrack's, warn. Each `at` on a camera, rig or lighting key: bad syntax or range is an
-  error, no grid or an unknown cue warns, and a `tMs` that is not where the `at` lands warns
-  (the app rewrites it on load).
+  the soundtrack's, warn. Each `at` on a camera, rig, lighting, device-track or comparison key,
+  or beside a screen or media video's `startMs`: bad syntax or range, or a start it can't apply
+  to (an image, `startOn: "open"`, a pre-roll beside `inMs`), is an error, no grid or an
+  unknown cue warns, and a time that is not where the `at` lands warns (the app rewrites it on
+  load).
 - **Device media keys** (`devices[].media`, `coverMedia`, `compare.b.media`/`coverMedia`), as
   `parseDeviceMediaKeys` judges them: a key the app drops is an error; an unknown key, a speed
   outside the inspector's 0.25 to 6, an inert `posterMs` and timing keys on an edit's render

@@ -97,6 +97,8 @@ export interface DeviceMediaSpec {
   kind: "video" | "image";
   /** Video only: when playback starts, in ms of scene-local time (default 0). */
   startMs?: number;
+  /** Sidecar video only: musical position the start sits on; `startMs` caches its resolved value and a move that disagrees drops it. */
+  at?: string;
   /** Cover-fit is the rule: fill the screen, keep the media's aspect, crop the overflow. */
   fit?: "cover";
   /** Foldable inside display only: count `startMs` from the moment the fold opens past the switch angle, so the app carries on as the device opens. Inert without a fold that opens. */
