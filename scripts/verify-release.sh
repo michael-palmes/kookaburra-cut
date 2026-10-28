@@ -97,7 +97,7 @@ mkdir -p "$WORK/tar"
 /usr/bin/tar -xzf "$UPDATER_TAR" -C "$WORK/tar"
 [[ -z "$(/usr/bin/tar -tzf "$UPDATER_TAR" | grep -E '(^|/)\._' || true)" ]] || die "the updater tar carries AppleDouble entries"
 verify_app "$WORK/tar/$APP_NAME.app"
-base64 -d <"$UPDATER_TAR.sig" | grep -Fq "version:$VERSION" || die "the updater signature is not bound to version $VERSION"
+base64 -d <"$UPDATER_TAR.sig" | sed -n 3p | tr '\t' '\n' | grep -Fxq "version:$VERSION" || die "the updater signature is not bound to version $VERSION"
 node -e '
   const m = require(process.argv[1]); const v = process.argv[2]; const sig = require("fs").readFileSync(process.argv[3], "utf8").trim();
   const p = m.platforms && m.platforms["darwin-aarch64"];
@@ -122,8 +122,8 @@ ATTACH=$(hdiutil attach -readonly -nobrowse -noautoopen -mountrandom "$WORK/mnt"
 MOUNT=$(awk -F'\t' 'END { print $NF }' <<<"$ATTACH")
 [[ -n "$MOUNT" && -d "$MOUNT/$APP_NAME.app" ]] || die "the DMG does not hold $APP_NAME.app (mounted at '${MOUNT:-nowhere}')"
 # The volume holds the app we unpacked from the zip, byte for byte.
-diff <(cd "$APP" && find . -type f | LC_ALL=C sort | xargs shasum -a 256) \
-     <(cd "$MOUNT/$APP_NAME.app" && find . -type f | LC_ALL=C sort | xargs shasum -a 256) \
+diff <(cd "$APP" && find . -type f -print0 | LC_ALL=C sort -z | xargs -0 shasum -a 256) \
+     <(cd "$MOUNT/$APP_NAME.app" && find . -type f -print0 | LC_ALL=C sort -z | xargs -0 shasum -a 256) \
   || die "the app inside the DMG differs from the zipped app"
 hdiutil detach "$MOUNT" >/dev/null 2>&1
 MOUNT=""

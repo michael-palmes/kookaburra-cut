@@ -62,9 +62,10 @@ if [[ "$LICENSE" == "gpl" ]]; then
     command -v "$tool" >/dev/null || die "$tool is needed to build x264/x265 (brew install nasm cmake)."
   done
 
-  echo "[sidecar] cloning x264 at ${X264_COMMIT:0:12}…"
-  git -c advice.detachedHead=false clone -q "$X264_URL" "$WORK/x264"
-  git -C "$WORK/x264" checkout -q "$X264_COMMIT"
+  echo "[sidecar] fetching x264 at ${X264_COMMIT:0:12}…"
+  git init -q "$WORK/x264"
+  git -C "$WORK/x264" fetch -q --depth 1 "$X264_URL" "$X264_COMMIT"
+  git -C "$WORK/x264" -c advice.detachedHead=false checkout -q "$X264_COMMIT"
   [[ "$(git -C "$WORK/x264" rev-parse HEAD)" == "$X264_COMMIT" ]] || die "x264 checkout is not $X264_COMMIT"
   echo "[sidecar] building x264…"
   (
@@ -84,16 +85,16 @@ if [[ "$LICENSE" == "gpl" ]]; then
   (
     cd "$WORK/x265"
     HIGH=(-DHIGH_BIT_DEPTH=ON -DEXPORT_C_API=OFF -DENABLE_SHARED=OFF -DENABLE_CLI=OFF)
-    cmake -S source -B 10bit -DENABLE_HDR10_PLUS=ON "${HIGH[@]}" >"$WORK/x265-10.log" 2>&1
+    cmake -S source -B 10bit -DENABLE_HDR10_PLUS=ON "${HIGH[@]}" >"$WORK/x265-10.log" 2>&1 || { tail -30 "$WORK/x265-10.log" >&2; exit 1; }
     cmake --build 10bit -j"$JOBS" >>"$WORK/x265-10.log" 2>&1 || { tail -30 "$WORK/x265-10.log" >&2; exit 1; }
-    cmake -S source -B 12bit -DMAIN12=ON "${HIGH[@]}" >"$WORK/x265-12.log" 2>&1
+    cmake -S source -B 12bit -DMAIN12=ON "${HIGH[@]}" >"$WORK/x265-12.log" 2>&1 || { tail -30 "$WORK/x265-12.log" >&2; exit 1; }
     cmake --build 12bit -j"$JOBS" >>"$WORK/x265-12.log" 2>&1 || { tail -30 "$WORK/x265-12.log" >&2; exit 1; }
     mkdir -p 8bit
     cp 10bit/libx265.a 8bit/libx265_main10.a
     cp 12bit/libx265.a 8bit/libx265_main12.a
     cmake -S source -B 8bit -DCMAKE_INSTALL_PREFIX="$PREFIX" -DENABLE_SHARED=OFF -DENABLE_CLI=OFF \
       -DLINKED_10BIT=ON -DLINKED_12BIT=ON -DEXTRA_LINK_FLAGS=-L. \
-      -DEXTRA_LIB="x265_main10.a;x265_main12.a" >"$WORK/x265-8.log" 2>&1
+      -DEXTRA_LIB="x265_main10.a;x265_main12.a" >"$WORK/x265-8.log" 2>&1 || { tail -30 "$WORK/x265-8.log" >&2; exit 1; }
     cmake --build 8bit -j"$JOBS" >>"$WORK/x265-8.log" 2>&1 || { tail -30 "$WORK/x265-8.log" >&2; exit 1; }
     cd 8bit
     mv libx265.a libx265_main.a

@@ -101,8 +101,7 @@ fi
 BUILT_VERSION=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP_IN/Contents/Info.plist")
 [[ "$BUILT_VERSION" == "$VERSION" ]] || die "the bundle is version $BUILT_VERSION but tauri.conf.json says $VERSION."
 
-# A dev sidecar (pnpm setup:ffmpeg) links Homebrew dylibs absent on other Macs: such a bundle
-# signs and notarises fine, then fails to encode for the user.
+# A dev sidecar (pnpm setup:ffmpeg) links Homebrew dylibs absent on other Macs: it signs, then fails to encode.
 for name in "${SIDECARS[@]}"; do
   bin="$APP_IN/Contents/MacOS/$name"
   [[ -f "$bin" ]] || die "sidecar missing from the bundle: $bin"
@@ -192,7 +191,7 @@ if [[ "$PLAIN_DMG" == 1 ]]; then
 else
   log "Building the styled DMG installer"
   if [[ "$ADHOC" == 1 ]]; then
-    "$ROOT/scripts/make-dmg.sh"
+    KOOKABURRA_SIGNING_IDENTITY="" "$ROOT/scripts/make-dmg.sh"
     codesign --force --timestamp=none --sign - "$DMG"
   else
     KOOKABURRA_SIGNING_IDENTITY="$SIGN_ID" "$ROOT/scripts/make-dmg.sh"
@@ -228,7 +227,7 @@ else
 fi
 [[ -f "$UPDATER_TAR.sig" ]] || die "expected signature missing at $UPDATER_TAR.sig"
 # requireSignedVersion makes the app refuse a signature without this binding.
-base64 -d <"$UPDATER_TAR.sig" | grep -Fq "version:$VERSION" || die "the updater signature is not bound to version $VERSION"
+base64 -d <"$UPDATER_TAR.sig" | sed -n 3p | tr '\t' '\n' | grep -Fxq "version:$VERSION" || die "the updater signature is not bound to version $VERSION"
 
 # The manifest the app polls at releases/latest/download/latest.json; it points at this tag's
 # versioned asset URL, so an already-downloaded manifest stays coherent after a newer release.

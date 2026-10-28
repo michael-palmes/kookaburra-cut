@@ -53,6 +53,7 @@ git fetch --quiet origin main "+refs/tags/*:refs/tags/*"
 [[ "$(git rev-parse HEAD)" == "$(git rev-parse origin/main)" ]] || die "main is not equal to origin/main; pull or push first."
 ! git rev-parse -q --verify "refs/tags/$TAG" >/dev/null || die "tag $TAG already exists; bump \"version\" in src-tauri/tauri.conf.json."
 [[ -n "$(git config user.signingkey)" ]] || die "no user.signingkey configured; the tag must be signed by a key in .github/allowed_signers."
+[[ "$(git config gpg.format)" == "ssh" ]] || die "set gpg.format to ssh (the keys in .github/allowed_signers are SSH keys)."
 
 echo "==> Tagging $TAG (signed)"
 git tag -s "$TAG" -m "Kookaburra Cut ${VERSION}"

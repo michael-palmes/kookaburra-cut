@@ -121,7 +121,7 @@ jobs:
 
       # Build tools only; every shipped byte of the sidecar comes from the pinned sources in the script.
       - name: Install sidecar build tools
-        run: brew install nasm
+        run: brew install nasm pkgconf
 
       - name: Build the ffmpeg sidecar from pinned source
         run: |
