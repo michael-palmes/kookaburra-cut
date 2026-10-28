@@ -3540,8 +3540,25 @@ mod tests {
         let stale = issue_trust_nonce(&mut pending, "demo", "fp-1", now);
         let later = now + TRUST_NONCE_TTL + Duration::from_secs(1);
         assert!(consume_trust_nonce(&mut pending, &stale, "demo", later).is_err());
+        // A value that was never issued: a real nonce with one character changed.
+        let issued = issue_trust_nonce(&mut pending, "demo", "fp-1", now);
+        let forged: String = issued
+            .chars()
+            .enumerate()
+            .map(|(i, c)| {
+                if i == 0 {
+                    if c == '0' {
+                        '1'
+                    } else {
+                        '0'
+                    }
+                } else {
+                    c
+                }
+            })
+            .collect();
         assert!(
-            consume_trust_nonce(&mut pending, "not-a-nonce", "demo", now).is_err(),
+            consume_trust_nonce(&mut pending, &forged, "demo", now).is_err(),
             "a made-up nonce never redeems"
         );
         // Issuing sweeps expired entries.
