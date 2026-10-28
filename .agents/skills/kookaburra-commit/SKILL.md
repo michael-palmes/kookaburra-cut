@@ -17,6 +17,7 @@ Reviews all uncommitted changes, groups them into logical conventional commits a
 1. **Gather.** `git status`, `git diff HEAD --stat`, `git ls-files --others --exclude-standard`, then read the full `git diff HEAD` and any untracked files. Nothing to commit: say so and stop. Merge conflicts: ask the user to resolve first and stop.
 2. **Validate.** `pnpm lint` always; `pnpm build` when TypeScript changed; `pnpm vitest related --run <changed src files>` when `src/` changed. Fix and rerun until clean. Never run full suites or verifies here: CI runs every hermetic test on push, and `pnpm ready` runs the verifies a branch needs once before its PR (`docs/determinism.md`, "Gate tiers").
 3. **Light review.** Scan the diff for red flags before planning:
+   - Focus drift (the Focus section of `AGENTS.md`): data or network leaving the Mac without explicit consent, weakened trust checks on imported projects, packs or web content, a flow with no default or no next step, slideshow-looking output, or wordy copy. Report each with the fix the Focus implies; where goals clash, its order decides (protect the user, exact exports, simplicity, polish)
    - Determinism: wall-clock APIs (`Date.now`, `performance.now`, `new Date`, `requestAnimationFrame`, `setTimeout`) in scenes, engine or toolkit; drive motion from `useTimeline()` instead
    - Hard-coded colours, type or motion in scenes; use `useTheme()` tokens instead
    - Licensed assets staged: nothing under `src/assets/models/licensed/` is ever committed

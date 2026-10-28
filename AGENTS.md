@@ -2,6 +2,12 @@
 
 Guidance for Codex and Claude Code when working in **Kookaburra Cut**, an AI driven, deterministic animated-video studio for macOS (Apple Silicon).
 
+## Focus
+
+Kookaburra Cut is a deterministic studio for product launch films that hold their own beside the best from leading tech and AI companies, with a human touch: the person's insight leads and AI does the heavy lifting. Draw that insight out first (what shipped, who it's for, why it matters) and build around their real product; motion carries the story, so nothing looks like a slideshow or PowerPoint, not even a deck. It runs on corporate machines holding confidential, unreleased work, so it protects the user at every step: local by default; nothing leaves the Mac without explicit consent; imported projects, packs and web content are untrusted; anything uncertain fails closed. It serves seasoned editors and first-timers alike: a finished-looking default and one obvious next step up front, depth a click further in, never a dead end. Words are sharp, concise and warm, in Australian English; comments and copy stay minimal. When these conflict, protect the user, then keep exports exact, then keep it simple, then polish.
+
+Hold every change and review to this.
+
 ## What this is
 
 A Tauri 2 desktop app that renders every visual (text, graphics, 3D) through **one** react-three-fiber WebGL canvas, and exports video by stepping a manual clock frame-by-frame → `gl.readPixels` → a bundled **ffmpeg sidecar** (H.264 / H.265 / ProRes). There is no Chromium fallback; it runs in pure WKWebView. Background and rationale: `docs/architecture.md`; the export contract: `docs/determinism.md`; every locked decision and why: `docs/decisions.md`.
@@ -81,7 +87,7 @@ pnpm release           # guards -> package:signed -> zip + checksum -> tag -> dr
 For native Computer Use verification, run `pnpm acceptance:app` and target only the full `.app` path it prints. Never use `Kookaburra Cut`, `com.mpalmes.kookaburracut` or `/Applications/Kookaburra Cut.app`; if the helper fails, stop rather than falling back.
 
 **Gate economy:** before a PR, run `pnpm ready` once, after the last code
-change. It maps the diff to exactly what it needs: Tier 0 checks for the areas
+change (code review fixes included, see "Code review"). It maps the diff to exactly what it needs: Tier 0 checks for the areas
 touched, then `pnpm gate:merge` (the ONE PR gate: showcase-tour +
 `ws:launch-2026`, which must be EQUAL as the null-for-legacy proof) only when
 the export path changed, plus a feature fixture only when its area changed.
@@ -173,6 +179,19 @@ Project skills are authored only in `.agents/skills`. Keep `.claude/skills` as t
 **ALWAYS use the `kookaburra-commit` skill to review and create commits.** It groups changes into clean conventional commits after a light review; never hand-roll `git commit` for substantive changes. Do not push unless asked.
 
 **Branch names are `type/short-kebab-description`** with a conventional type (`feat/`, `fix/`, `chore/`, `docs/`, `refactor/`, `perf/`, `test/`, `ci/`, `build/`), for example `fix/editor-tap-alignment`. NEVER a `claude/` prefix (or any other agent or tool prefix) and NEVER a generated suffix such as `-94cd0f`. If the tooling created a branch named that way, rename it before the first commit.
+
+## Code review
+
+**ALWAYS run `/code-review high` before opening a PR** (in Codex, `/review`; elsewhere, the closest high-effort review available). Run it again before pushing changes to an open PR, and at major checkpoints: a finished phase, a large refactor, or before handing work over.
+
+Never apply findings wholesale; triage each against the Focus:
+
+1. Confirm it is real by reading the code or reproducing it; drop any that don't hold up.
+2. Fix it when it protects the user, keeps exports exact, keeps a flow simple, or is a genuine bug.
+3. Skip it when it is speculative or churn with no benefit to the user; when it is real but out of scope, raise it as a follow-up.
+4. When findings conflict, the Focus's order decides.
+
+Report what you fixed and what you skipped, each with a one-line reason, then run `pnpm ready` once after the last fix.
 
 ## Writing rules
 
