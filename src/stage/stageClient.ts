@@ -13,6 +13,7 @@ import type { PerfRow } from "../engine/perfProbe";
 import {
   isWorkspaceBackedProjectId,
   type LoadedProject,
+  nativeProjectSlug,
   resolveAssetUrl,
   resolveProjectHdrUrl,
   workspaceEnvironmentRels,
@@ -43,6 +44,7 @@ import type {
   WorkerRequest,
 } from "../engine/stageProtocol";
 import { STAGE_PROTOCOL_VERSION } from "../engine/stageProtocol";
+import { parseClipSourceKey } from "../engine/stageRealm";
 import { useStageRegistry } from "../engine/stageRegistry";
 import type { StillPageDigest, StillsSettings } from "../engine/stillsExport";
 import { useTextKeyRegistry } from "../engine/textKeyRegistry";
@@ -84,7 +86,9 @@ export class StageClient implements StageHandle {
   private readonly pending = new Map<number, Pending>();
   private nextId = 1;
   private readyResolve!: () => void;
+  private readyReject!: (error: Error) => void;
   private isReady = false;
+  private failure: Error | null = null;
   private readyTimer: ReturnType<typeof setTimeout> | undefined;
   private readonly queued: (() => void)[] = [];
   private currentStamps: CommitStamps = {
@@ -121,17 +125,19 @@ export class StageClient implements StageHandle {
   ) {
     this.element = element;
     this.onCursor = options.onCursor ?? (() => {});
-    this.ready = new Promise((resolve) => {
+    this.ready = new Promise((resolve, reject) => {
       this.readyResolve = resolve;
+      this.readyReject = reject;
     });
     // A worker that never reports is a boot failure, not a wait: name it instead of hanging an autorun until its timeout.
     this.readyTimer = setTimeout(() => {
       if (this.isReady) return;
-      const text = `the ${role} stage worker did not report ready within ${READY_TIMEOUT_MS / 1000}s`;
-      console.error(`[stage] ${text}`);
-      reportAutoRunError(text);
+      this.fail(`the ${role} stage worker did not report ready within ${READY_TIMEOUT_MS / 1000}s`);
     }, READY_TIMEOUT_MS);
-    void this.ready.then(() => clearTimeout(this.readyTimer));
+    this.ready.then(
+      () => clearTimeout(this.readyTimer),
+      () => {},
+    );
     this.mirror = mirrorStores(
       {
         ...mirroredStores(),
@@ -194,6 +200,57 @@ export class StageClient implements StageHandle {
     return false;
   }
 
+  /** A worker that cannot serve: every waiting and future request fails with the cause, `ready` rejects, and the autorun hears it. */
+  private fail(text: string): void {
+    if (this.failure) return;
+    const error = new Error(text);
+    this.failure = error;
+    clearTimeout(this.readyTimer);
+    console.error(`[stage] ${text}`);
+    reportAutoRunError(text);
+    if (!this.isReady) this.readyReject(error);
+    this.queued.splice(0);
+    for (const p of this.pending.values()) p.reject(error);
+    this.pending.clear();
+  }
+
+  /** The project ids this window handed the stage; a port request naming any other project is refused. */
+  private assertHeldProject(projectId: unknown): void {
+    if (typeof projectId !== "string" || !this.projectsHold(projectId)) {
+      throw new Error(`project "${String(projectId)}" is not open in this window`);
+    }
+  }
+
+  private assertHeldSlug(slug: unknown): void {
+    for (const project of this.projects.values()) {
+      if (isWorkspaceBackedProjectId(project.id) && nativeProjectSlug(project.id) === slug) return;
+    }
+    throw new Error(`project "${String(slug)}" is not open in this window`);
+  }
+
+  /** The worker names projects by id (clip keys, emoji caches) or native slug (conform posters); each must be one this window loaded. Cache directories are checked by the port itself. */
+  private checkPortScope(method: PortMethod, args: unknown[]): void {
+    switch (method) {
+      case "clipRevisions":
+        for (const key of args[0] as string[])
+          this.assertHeldProject(parseClipSourceKey(key).projectId);
+        return;
+      case "clipInfo":
+      case "clipHash":
+      case "clipEnsureChunks":
+      case "clipConformPending":
+        this.assertHeldProject(parseClipSourceKey(String(args[0])).projectId);
+        return;
+      case "emojiRead":
+      case "emojiWrite":
+        this.assertHeldProject(args[0]);
+        return;
+      case "conformPoster":
+        this.assertHeldSlug(args[0]);
+        return;
+    }
+  }
+
   // ── Transport ──────────────────────────────────────────────────────────────
   private send(msg: WindowNotice | WindowRequest, transfer: Transferable[] = []): void {
     this.worker.postMessage(msg, transfer);
@@ -205,6 +262,10 @@ export class StageClient implements StageHandle {
     onProgress?: (value: unknown) => void,
   ): Promise<T> {
     return new Promise<T>((resolve, reject) => {
+      if (this.failure) {
+        reject(this.failure);
+        return;
+      }
       const go = () => {
         const id = this.nextId++;
         this.pending.set(id, { resolve: resolve as (v: unknown) => void, reject, onProgress });
@@ -245,8 +306,7 @@ export class StageClient implements StageHandle {
         else console.warn(`[stage] ${msg.text}`);
         return;
       case "fatal":
-        console.error(`[stage] fatal: ${msg.text}`);
-        reportAutoRunError(`stage worker: ${msg.text}`);
+        this.fail(`stage worker: ${msg.text}`);
         return;
       case "commit":
         this.currentStamps = msg.stamps;
@@ -299,10 +359,12 @@ export class StageClient implements StageHandle {
   /** The worker's native requests, answered by the window's validated port by method name; an unknown method or a throwing one answers an error, never silence. */
   private async servePort(req: Extract<WorkerRequest, { type: "port" }>): Promise<void> {
     try {
-      const method = windowNativePort[req.method as PortMethod];
-      if (typeof method !== "function")
+      if (!Object.hasOwn(windowNativePort, req.method)) {
         throw new Error(`unknown port method ${String(req.method)}`);
+      }
+      const method = windowNativePort[req.method as PortMethod];
       const args = [...req.args];
+      this.checkPortScope(req.method, args);
       if (req.method === "clipEnsureChunks") {
         args[3] = (value: unknown) => this.send({ type: "portProgress", id: req.id, value });
       }
@@ -377,10 +439,16 @@ export class StageClient implements StageHandle {
       seq,
     });
   }
-  /** Loads with a fresh sequence number; the window's project swap path. */
+  /** Loads with a fresh sequence number; the window's project swap path. A load the worker refuses is reported here, since no caller awaits a swap. */
   async applyProject(project: LoadedProject | null): Promise<number> {
     const seq = ++this.loadSeq;
-    await this.loadProject(project, seq);
+    try {
+      await this.loadProject(project, seq);
+    } catch (e) {
+      const text = `the stage could not load the project: ${e instanceof Error ? e.message : String(e)}`;
+      console.error(`[stage] ${text}`);
+      reportAutoRunError(text);
+    }
     return seq;
   }
   awaitHosts(expected: number): Promise<void> {
@@ -506,7 +574,11 @@ export class StageClient implements StageHandle {
     setSceneModuleProvider(null);
     setStage(null);
     this.worker.terminate();
-    for (const p of this.pending.values()) p.reject(new Error("the stage worker was closed"));
+    const closed = new Error("the stage worker was closed");
+    this.failure ??= closed;
+    if (!this.isReady) this.readyReject(closed);
+    this.queued.splice(0);
+    for (const p of this.pending.values()) p.reject(closed);
     this.pending.clear();
   }
 }
