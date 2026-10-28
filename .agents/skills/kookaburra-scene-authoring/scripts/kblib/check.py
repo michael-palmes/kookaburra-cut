@@ -1649,8 +1649,61 @@ def free_id(base: str, taken: Set[Any]) -> str:
     return f"{base}-{n}"
 
 
-def check_project(project: Project, files: Optional[List[str]] = None, heartbeat: Optional[Dict[str, Any]] = None, ctx: Optional[Context] = None) -> Report:
-    """Full check, or one scoped to `files` (project-relative) plus the manifest's errors."""
+THEME_FILE_PREFIX = "../themes/"
+THEME_NOTES = "theme-warnings.json"
+
+
+def file_stamp(path: Any) -> Optional[str]:
+    try:
+        st = os.stat(path)
+    except OSError:
+        return None
+    return f"{st.st_mtime_ns}:{st.st_size}"
+
+
+def collapse_theme_warnings(project: Project, report: Report, caller: Any = None) -> None:
+    """Workspace-theme warnings show once per agent session with the theme file's path; until that file changes, later checks in the session keep one info line instead."""
+    from . import identity, lock
+    from .util import atomic_write_json
+
+    groups: Dict[str, List[Any]] = {}
+    for issue in report.issues:
+        if issue.severity == "warning" and issue.file.startswith(THEME_FILE_PREFIX):
+            groups.setdefault(issue.file, []).append(issue)
+    caller = caller or identity.current()
+    if not groups or not caller.session:
+        return
+    try:
+        notes = lock.kb_dir(project) / "agents" / caller.name / THEME_NOTES
+    except Exception:
+        return
+    try:
+        seen = json.loads(read_text(notes))
+    except Exception:
+        seen = None
+    if not isinstance(seen, dict) or seen.get("session") != caller.session or not isinstance(seen.get("files"), dict):
+        seen = {"session": caller.session, "files": {}}
+    changed = False
+    for rel, issues in groups.items():
+        path = os.path.normpath(str(project.root / rel))
+        stamp = file_stamp(path)
+        if stamp is not None and seen["files"].get(path) == stamp:
+            report.issues = [i for i in report.issues if not any(i is j for j in issues)]
+            report.info(rel, "", f"{len(issues)} warning{'s' if len(issues) != 1 else ''} from this workspace theme already shown this session (unchanged since): {path}")
+            continue
+        report.info(rel, "", f"workspace theme file {path}, shared by every project that uses it; its warnings show once a session")
+        seen["files"][path] = stamp
+        changed = True
+    if changed:
+        try:
+            atomic_write_json(notes, seen)
+        except Exception:
+            pass
+
+
+def check_project(project: Project, files: Optional[List[str]] = None, heartbeat: Optional[Dict[str, Any]] = None, ctx: Optional[Context] = None,
+                  once: bool = False) -> Report:
+    """Full check, or one scoped to `files` (project-relative) plus the manifest's errors; `once` shows workspace-theme warnings once a session (only where the report reaches the agent)."""
     ctx = ctx or Context(project, heartbeat=heartbeat)
     checker = Checker(ctx)
     scoped = files is not None
@@ -1675,6 +1728,8 @@ def check_project(project: Project, files: Optional[List[str]] = None, heartbeat
         from . import assets_check
 
         assets_check.run(checker)
+        if once:
+            collapse_theme_warnings(project, checker.report)
         return checker.report
     for f in files or []:
         if f == MANIFEST:
@@ -1687,4 +1742,6 @@ def check_project(project: Project, files: Optional[List[str]] = None, heartbeat
             checker.sidecar(stem_of(f[:-5]))
         elif f.startswith("assets/"):
             continue
+    if once:
+        collapse_theme_warnings(project, checker.report)
     return checker.report

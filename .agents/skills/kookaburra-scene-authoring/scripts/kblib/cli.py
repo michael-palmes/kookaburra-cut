@@ -273,7 +273,7 @@ def cmd_check(ctx: Ctx) -> int:
         if not resp.get("error"):
             # Recorded before the static pass so fonts the app just vetted stop reading as unvetted.
             fontmod.record_verdicts([f for f in resp.get("fonts") or [] if isinstance(f, dict)], hb.get("appVersion") if hb else None)
-    report = checkmod.check_project(project, files=files, heartbeat=bridge.live_heartbeat())
+    report = checkmod.check_project(project, files=files, heartbeat=bridge.live_heartbeat(), once=True)
     notes: List[str] = []
     if resp is not None:
         if resp.get("error"):
@@ -1226,6 +1226,10 @@ def build_parser(video_extensions: bool = True) -> argparse.ArgumentParser:
 
     verify.register(sub, common, Formatter)
     plan.register(sub, common, Formatter)
+    from . import flashes_cli, preview
+
+    flashes_cli.register(sub, common, Formatter)
+    preview.register(sub, common, Formatter)
 
     from .beats import commands as beatsmod
 

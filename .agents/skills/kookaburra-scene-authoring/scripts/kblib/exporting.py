@@ -379,6 +379,16 @@ def wait_for_export(inst: bridge.Instance, project: Project, payload: Dict[str, 
         raise
 
 
+def film_tools() -> Any:
+    """The app's ffmpeg for flash strips, or None (strips are then skipped)."""
+    from .film import probe as pb
+
+    try:
+        return pb.tools()
+    except KbError:
+        return None
+
+
 def finish_success(kbctx: Any, project: Project, result: Dict[str, Any], allow_flashes: bool, surface: str) -> int:
     """The record, the flash gate and the last line, shared by the bridge and headless exports."""
     flashes = result.get("flashes") if isinstance(result.get("flashes"), dict) else None
@@ -387,6 +397,8 @@ def finish_success(kbctx: Any, project: Project, result: Dict[str, Any], allow_f
         slots = [dict(s) for s in result.get("timeline") or [] if isinstance(s, dict)] or tl.project_slots(project)
         flashes.setdefault("gate", "export")
         fl.place_issues(flashes, slots, poster_ms)
+        fl.settle(project, flashes, "export", film=Path(result["path"]), tools=film_tools(),
+                  fps=float(result.get("fps") or 60), poster_ms=poster_ms)
         result["flashes"] = flashes
     record = save_record(project, record_body(project, result, result.get("servedBy")))
     payload = dict(result)

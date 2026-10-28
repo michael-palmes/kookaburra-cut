@@ -14,6 +14,7 @@ from . import flashes as fl
 from . import handoffs as ho
 from . import pacing as pc
 from . import probe as pb
+from . import ranged as rg
 from . import report as rp
 from . import swatch as sw
 from . import timeline as tl
@@ -41,22 +42,30 @@ exit 2 without the app's ffmpeg.
 
 FILM_HELP = """\
 kb check film [CHECK...] [--file F] [--standard wcag|itu|both] [--allow-flashes] [--no-sheet] [--json]
+kb check film --range SPAN | --scene S [--aspect A] [--standard ...] [--allow-flashes] [--json]
 
 Film checks (default: all). flashes and handoffs read a finished export (--file); pacing and
 the colour tone-mapping note are static; colour adds corner swatches when --file is given.
+--range or --scene checks flashes only, with no export: the running app renders that span
+through the export path at 360p and 30 fps and runs the same detector (seconds a scene).
+SPAN is bar:13-16 (bars 13 to 16), 12-20 or 00:12-00:20 (film time), or bar:13..cue:drop;
+--scene S (repeatable) checks the scene plus a second either side. Each flagged moment gets
+a strip (the frames before, at and after it, the changing region boxed) to Read.
 
   flashes    flash gate: WCAG 2.3.1 / ITU-R BT.1702 general and red flashes (approximate),
              plus ffmpeg's photosensitivity pre-check; exit 1 on a failure unless --allow-flashes
   colour     effects under ACES tone mapping; corner swatches of flat backgrounds (ΔE over 2 warns)
   handoffs   each seam's last and first frames (or either side of its transition), the
              luminance step and picture change; hard steps next to short scenes warn
-  pacing     words per second (aim for 3), the longest stretch without a keyed move, scenes
-             under 334 ms
-  safe-areas not in this version (it needs text measurement from the app)
+  pacing     words above label size per second (aim for 3) and per beat, the longest stretch
+             without motion (measured on the film with --file), scenes under 334 ms
+  safe-areas runs in ./kb verify (text outside the safe area, by key and aspect)
 
   kb check film pacing
   kb check film --file exports/product-tour-16x9.mp4
-  kb check film flashes --file exports/product-tour-16x9.mp4 --standard wcag"""
+  kb check film flashes --file exports/product-tour-16x9.mp4 --standard wcag
+  kb check film --scene 04-flythrough
+  kb check film --range bar:13-16 --aspect 9:16"""
 
 
 # ── shared: the film and what it should be ───────────────────────────────────
@@ -94,11 +103,10 @@ def film_context(project: Project, film: Path, tools: Tools, catalog: Any) -> Di
             "totalFrames": actual or expected_frames, "width": int(video.get("width") or 0), "height": int(video.get("height") or 0)}
 
 
-def settled_frames(slots: List[Dict[str, Any]], ctx: Dict[str, Any]) -> Dict[int, int]:
-    """Each scene's first frame after its incoming transition, where swatches are read."""
+def settled_frames(slots: List[Dict[str, Any]], ctx: Dict[str, Any], project: Project) -> Dict[int, int]:
+    """Each scene's settled frame (swatch.settled_ms), where swatches are read."""
     last = max(0, ctx["totalFrames"] - 1)
-    return {s["index"]: min(last, tl.frame_at(s["startMs"] + (s.get("transitionIn") or {}).get("durationMs", 0), ctx["fps"], ctx["offset"]))
-            for s in slots}
+    return {s["index"]: min(last, tl.frame_at(sw.settled_ms(project, slots, n), ctx["fps"], ctx["offset"])) for n, s in enumerate(slots)}
 
 
 def _check(rows: List[Dict[str, Any]], cid: str, ok: bool, message: str, severity: str = "error", **extra: Any) -> None:
@@ -193,9 +201,10 @@ def cmd_verify_export(kbctx: Any) -> int:
     if not args.no_sheet and items:
         aspect = (ctx["width"] or 16) / float(ctx["height"] or 9)
         sheets, legend = rp.contact_sheets(tools.ffmpeg, film, items, out_dir, aspect, "verify")
-    settled = settled_frames(ctx["slots"], ctx)
+    settled = settled_frames(ctx["slots"], ctx, project)
     colour = sw.check(tools.ffmpeg, film, project, ctx["slots"], settled, ctx["width"], ctx["height"], catalog) if settled else {"swatches": [], "warnings": []}
     flash = None if args.no_flashes else fl.check(tools, film, fps, standard=args.standard, slots=ctx["slots"], poster_ms=ctx["posterMs"])
+    fl.settle(project, flash, "file", film=film, tools=tools, fps=fps, poster_ms=ctx["posterMs"])
     warnings = [r["message"] for r in rows if r["severity"] == "warn"] + colour["warnings"]
     problems = [r["message"] for r in rows if r["severity"] == "error"]
     payload = {
@@ -234,7 +243,8 @@ def emit_verify_text(film: Path, ctx: Dict[str, Any], rows: List[Dict[str, Any]]
         emit(f"  {line}")
     for s in colour["swatches"]:
         if s.get("expected"):
-            emit(f"  colour    {s['stem']}: corners {' '.join(s['corners'])} vs {s['expected']} (ΔE {max(s['deltaE'])})")
+            emit(f"  colour    {s['stem']}: corners {' '.join(s['corners'])} vs {s['expected']} (ΔE {s['worstDeltaE']})"
+                 + (f"; {s['note']}" if s.get("note") else ""))
     for w in colour["warnings"]:
         emit(f"  warn      {w}")
     for path in sheets:
@@ -252,8 +262,43 @@ def film_parser() -> argparse.ArgumentParser:
     p.add_argument("--standard", choices=fl.STANDARDS, default="both", help="flash standard (default both)")
     p.add_argument("--allow-flashes", action="store_true", help="report flash failures without failing")
     p.add_argument("--no-sheet", action="store_true", help="skip the handoff contact sheet")
+    p.add_argument("--range", metavar="SPAN", help="flashes over this span, rendered by the running app (no export)")
+    p.add_argument("--scene", action="append", metavar="S", help="flashes over this scene, a second either side (repeatable)")
+    p.add_argument("--aspect", metavar="A", help="the aspect a ranged check renders (default: the editor's)")
     p.add_argument("--json", action="store_true", default=argparse.SUPPRESS, help="machine-readable output")
     return p
+
+
+def ranged_spans(project: Project, args: argparse.Namespace) -> List[Dict[str, Any]]:
+    slots = tl.project_slots(project)
+    spans = [rg.scene_span(slots, project.resolve(s)[0]) for s in args.scene or []]
+    if args.range:
+        spans.append(rg.parse_span(args.range, project, tl.timeline_total_ms(slots)))
+    return spans
+
+
+def run_ranged(kbctx: Any, args: argparse.Namespace, json_out: bool) -> int:
+    """`kb check film --range SPAN | --scene S`: the flash check over a span the app renders, no export."""
+    if args.file:
+        raise KbError("--range and --scene render the span themselves; drop --file (or drop them to check the file)", EXIT_ENV, kind="usage")
+    if any(c != "flashes" for c in args.checks):
+        raise KbError("--range and --scene check flashes only", EXIT_ENV, kind="usage", hint="kb check film --scene S (or kb check film pacing, colour)")
+    report = rg.check(kbctx, ranged_spans(kbctx.project, args), args.aspect, args.standard)
+    payload = {"checks": ["flashes"], "file": None, "skipped": [], "flashes": report, "warnings": []}
+    if not json_out:
+        spans = ", ".join(f"{s['label']} ({s['startMs'] / 1000:.2f}-{s['endMs'] / 1000:.2f}s)" for s in report["spans"])
+        emit(f"flashes over {spans}: {report['frames']} frames at {report['fps']} fps, {report.get('size', {}).get('width')}x"
+             f"{report.get('size', {}).get('height')}, rendered in {report['renderMs'] / 1000:.1f}s")
+        for line in fl.summary_lines(report):
+            emit(line)
+        emit(f"report: {report['folder']}/flashes.json")
+    flash_error = _flash_fail(report, args.allow_flashes)
+    if flash_error:
+        raise KbError(flash_error, EXIT_PROBLEMS, kind="flashes", data=payload if json_out else None,
+                      hint="Read each strip, fix the flash, then rerun the same check")
+    if json_out:
+        emit_json(ok_envelope("check film", payload))
+    return EXIT_OK
 
 
 def run(kbctx: Any, rest: List[str]) -> int:
@@ -263,9 +308,11 @@ def run(kbctx: Any, rest: List[str]) -> int:
     except SystemExit as e:
         return EXIT_OK if e.code in (0, None) else EXIT_ENV
     json_out = bool(getattr(kbctx, "json", False) or getattr(args, "json", False))
+    if args.range or args.scene:
+        return run_ranged(kbctx, args, json_out)
     for name in args.checks:
         if name in LATER_CHECKS:
-            raise KbError(f"check film {name} is not in this version of kb", EXIT_ENV, kind="usage", hint="run kb check film --help for the checks available")
+            raise KbError(f"check film {name} runs in ./kb verify", EXIT_ENV, kind="usage", hint="./kb verify (add --formats for every aspect)")
         if name not in FILM_CHECKS:
             raise KbError(f"unknown film check {name!r}; use {', '.join(FILM_CHECKS)}", EXIT_ENV, kind="usage")
     wanted = [c for c in FILM_CHECKS if c in args.checks] or list(FILM_CHECKS)
@@ -292,11 +339,12 @@ def run(kbctx: Any, rest: List[str]) -> int:
     flash = None
     if "flashes" in wanted and film and tools and ctx:
         flash = fl.check(tools, film, ctx["fps"], standard=args.standard, slots=slots, poster_ms=ctx["posterMs"])
+        fl.settle(project, flash, "file", film=film, tools=tools, fps=ctx["fps"], poster_ms=ctx["posterMs"])
         payload["flashes"] = flash
         lines += fl.summary_lines(flash)
     if "colour" in wanted:
         if film and tools and ctx:
-            colour = sw.check(tools.ffmpeg, film, project, slots, settled_frames(slots, ctx), ctx["width"], ctx["height"], catalog)
+            colour = sw.check(tools.ffmpeg, film, project, slots, settled_frames(slots, ctx, project), ctx["width"], ctx["height"], catalog)
         else:
             tone = sw.tone_mapping_warning(project, catalog)
             colour = {"swatches": [], "warnings": [tone] if tone else []}
@@ -305,7 +353,8 @@ def run(kbctx: Any, rest: List[str]) -> int:
         flat = [s for s in colour["swatches"] if s.get("expected")]
         lines.append(f"colour: {len(flat)} flat background{'s' if len(flat) != 1 else ''} compared, {len(colour['swatches']) - len(flat)} measured only"
                      if film else "colour: static only (pass --file for swatches)")
-        lines += [f"  {s['stem']}: {' '.join(s['corners'])} vs {s['expected']} (ΔE {max(s['deltaE'])})" for s in flat]
+        lines += [f"  {s['stem']}: {' '.join(s['corners'])} vs {s['expected']} (ΔE {s['worstDeltaE']})" + (f"; {s['note']}" if s.get("note") else "")
+                  for s in flat]
         lines += [f"  warn  {w}" for w in colour["warnings"]]
     if "handoffs" in wanted and film and tools and ctx:
         out_dir = rp.film_dir(project, "handoffs")
@@ -333,12 +382,16 @@ def run(kbctx: Any, rest: List[str]) -> int:
         lines += [f"  warn  {w}" for w in result["warnings"]]
         lines += [f"  sheet {p} (Read it)" for p in result.get("sheets") or []]
     if "pacing" in wanted:
-        pace = pc.check(project, slots)
+        motion = pc.film_motion(tools.ffmpeg, film, ctx["fps"], ctx["offset"], slots) if film and tools and ctx else None
+        pace = pc.check(project, slots, motion)
         payload["pacing"] = pace
         warnings += pace["warnings"]
         still = pace["still"]
-        lines.append(f"pacing: {len(pace['scenes'])} scenes; longest stretch without a keyed move {still['longestStillMs'] / 1000:.1f}s")
-        lines += [f"  {r['stem']}: {r['words']} words in {r['durationMs'] / 1000:.1f}s ({r['wordsPerSecond']}/s)" + (f"  !! {r['flag']}" if r.get("flag") else "")
+        moved = "motion in the film" if motion is not None else "a keyed or TSX move"
+        lines.append(f"pacing: {len(pace['scenes'])} scenes; longest stretch without {moved} {still['longestStillMs'] / 1000:.1f}s")
+        lines += [f"  {r['stem']}: {r['words']} words in {r['durationMs'] / 1000:.1f}s ({r['wordsPerSecond']}/s"
+                  + (f", {r['wordsPerBeat']:g} a beat" if "wordsPerBeat" in r else "") + ")"
+                  + (f", {r['labelWords']} label words left out" if r.get("labelWords") else "") + (f"  !! {r['flag']}" if r.get("flag") else "")
                   for r in pace["scenes"]]
         lines += [f"  warn  {w}" for w in pace["warnings"]]
     if payload["skipped"]:

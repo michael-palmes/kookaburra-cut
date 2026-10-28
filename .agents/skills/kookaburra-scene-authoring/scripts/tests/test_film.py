@@ -198,22 +198,22 @@ class PacingTests(KbTestCase):
                                          {"key": "list", "type": "bullets", "points": [{"text": "One tap"}, {"text": "Two taps"}]},
                                          {"key": "i", "type": "icon", "icon": "star"}]},
                "text": {"title": "ignored, managed", "eyebrow": "New"}}
-        self.assertEqual(pc.scene_words(doc), 8)
+        self.assertEqual(pc.scene_words(doc), 7)
         project = film_project(self.tmp)
         write_json(project / "scenes" / "01-title.json", {"version": 1, "text": {"title": "one two three four five six seven"}})
         write_json(project / "scenes" / "02-strobe.json", {"version": 1, "camera": {"keys": [{"id": "k1", "tMs": 500, "pose": {}}]}})
         p = Project(project)
         result = pc.check(p, tl.project_slots(p))
         self.assertEqual(result["scenes"][0]["flag"], "too much to read")
-        self.assertEqual(result["still"], {"longestStillMs": 2000, "fromMs": 0, "toMs": 2000, "scenes": ["01-title", "02-strobe"]})
+        self.assertEqual(result["still"], {"longestStillMs": 2000, "fromMs": 0, "toMs": 2000, "scenes": ["01-title", "02-strobe"], "source": "static"})
         manifest = json.loads((project / "project.json").read_text())
         manifest["scenes"][1]["durationMs"] = 300
         manifest["scenes"][0]["transition"] = {"type": "crossfade", "durationMs": 0}
         write_json(project / "project.json", manifest)
         p = Project(project)
         short = pc.check(p, tl.project_slots(p))
-        self.assertEqual(short["scenes"][1]["flag"], "shorter than a flash")
-        self.assertTrue(any("under 334 ms" in w for w in short["warnings"]))
+        self.assertNotIn("flag", short["scenes"][1])
+        self.assertFalse(any("under 334 ms" in w for w in short["warnings"]))
 
 
 PRECHECK_LOG = "\n".join(
@@ -431,7 +431,9 @@ class CheckFilmTests(KbTestCase):
 
     def test_usage(self) -> None:
         ctx = self.ctx(film_project(self.tmp))
-        for rest, words in ((["safe-areas"], "not in this version"), (["sparkle"], "unknown film check"), (["flashes"], "pass --file")):
+        for rest, words in ((["safe-areas"], "runs in ./kb verify"), (["sparkle"], "unknown film check"), (["flashes"], "pass --file"),
+                            (["--scene", "0", "--file", "x.mp4"], "drop --file"), (["pacing", "--scene", "0"], "flashes only"),
+                            (["--range", "soon"], "not a span"), (["--range", "4-3"], "ends before it starts")):
             with self.assertRaises(KbError) as caught:
                 filmcli.run(ctx, rest)
             self.assertEqual(caught.exception.code, 2)
