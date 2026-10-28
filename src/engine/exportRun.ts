@@ -381,7 +381,10 @@ export async function renderExportFrame(
   fingerprint: RenderStateFingerprint | null;
 }> {
   const { rig, opts, poster, total } = run;
-  if (buffer && buffer.byteLength === rig.rgba.byteLength) rig.rgba = new Uint8Array(buffer);
+  // The previous frame's buffer left this realm (transferred to the window); adopt the one handed back, or a fresh one.
+  const bytes = rig.width * rig.height * 4;
+  if (buffer && buffer.byteLength === bytes) rig.rgba = new Uint8Array(buffer);
+  else if (rig.rgba.byteLength !== bytes) rig.rgba = new Uint8Array(bytes);
   const resolved = frame === 0 && poster ? poster.resolved : resolveAt(opts.slots, tMs);
   let fingerprint: RenderStateFingerprint | null = null;
   await renderFrameInto(
