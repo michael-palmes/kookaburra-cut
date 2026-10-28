@@ -382,8 +382,9 @@ Where the live Tauri-2 setup matters for working in the code:
    `capabilities/<window>.json` grants: a command a window's capability does not
    name is refused before the handler runs. Dev-only commands are registered under
    `cfg(debug_assertions)` and granted by `capabilities/dev/`, which `build.rs`
-   reads only under the debug profile. `src-tauri/src/acl.rs` tests that every
-   registered command sits in a set and spells out each window's list.
+   reads only under the debug profile; the same folder lets the main window run
+   the autorun pack round trip, a dev-build gate. `src-tauri/src/acl.rs` tests
+   that every registered command sits in a set and spells out each window's list.
 2. **Sidecar runtime name is the basename.** Spawn with
    `app.shell().sidecar("ffmpeg")`, *not* `"bin/ffmpeg"`. Tauri copies the dev
    binary to `target/debug/ffmpeg`, stripping both the `bin/` prefix (from
