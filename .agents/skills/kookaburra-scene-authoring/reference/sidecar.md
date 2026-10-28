@@ -18,7 +18,8 @@ drops alone with a warning.
 ./kb doc 02-demo unset textLook
 ```
 
-- Values parse as JSON, else as a string (`--string` keeps `"true"` or `"42"` a string).
+- Values parse as JSON, else as a string (`--string` keeps `"true"` or `"42"` a string, and
+  reads `\n`, `\t` and `\\` as a newline, a tab and a backslash).
 - Paths walk objects and array indexes: `./kb doc 02-demo set devices.0.media.src assets/new.mp4`.
 - `./kb doc S merge '<json>'` is a JSON merge patch: objects merge, `null` deletes, arrays
   replace whole (`@file.json` reads the patch from a file).

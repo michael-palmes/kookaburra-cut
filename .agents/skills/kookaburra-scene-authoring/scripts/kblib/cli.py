@@ -48,6 +48,8 @@ from .util import (
 
 SCRIPTS_DIR = Path(__file__).resolve().parent.parent
 
+STRING_HELP = r"keep VALUE as a string even if it parses as JSON; \n, \t and \\ become a newline, a tab and a backslash"
+
 MAIN_HELP = """\
 kb: the one tool for editing a Kookaburra Cut project safely. Run it from the project
 folder as ./kb <command> (never through a shell variable or alias); it also walks up from
@@ -89,7 +91,8 @@ the cwd, or uses $CLAUDE_PROJECT_DIR.
 
 S is a scene index (0-based) or file stem (03-pricing). PATH is dotted
 (textStyle.titleFont, devices.0.model, devices.+ appends). VALUE is parsed as
-JSON when it parses, else kept as a string (--string forces a string).
+JSON when it parses, else kept as a string (--string forces a string and reads
+\\n, \\t and \\\\ as a newline, a tab and a backslash).
 
 Every command takes --json (one object on stdout: { "ok", "command", ... }, failures
 too) and --agent NAME (who is asking; pass it on every command when several agents
@@ -1126,7 +1129,7 @@ def build_parser(video_extensions: bool = True) -> argparse.ArgumentParser:
     y = dsub.add_parser("set", help="set PATH to VALUE (JSON, else string)", parents=writes, formatter_class=Formatter)
     y.add_argument("path")
     y.add_argument("value")
-    y.add_argument("--string", action="store_true", help="keep VALUE as a string even if it parses as JSON")
+    y.add_argument("--string", action="store_true", help=STRING_HELP)
     y.add_argument("--force", action="store_true", help="write even if the result has new errors")
     y = dsub.add_parser("unset", help="remove PATH", parents=writes, formatter_class=Formatter)
     y.add_argument("path")
@@ -1150,7 +1153,7 @@ def build_parser(video_extensions: bool = True) -> argparse.ArgumentParser:
     y = psub.add_parser("set", help="set PATH to VALUE", parents=writes, formatter_class=Formatter)
     y.add_argument("path")
     y.add_argument("value")
-    y.add_argument("--string", action="store_true")
+    y.add_argument("--string", action="store_true", help=STRING_HELP)
     y.add_argument("--force", action="store_true")
     y = psub.add_parser("unset", help="remove PATH", parents=writes, formatter_class=Formatter)
     y.add_argument("path")
@@ -1168,7 +1171,7 @@ def build_parser(video_extensions: bool = True) -> argparse.ArgumentParser:
     y.add_argument("path")
     y.add_argument("value")
     y.add_argument("--theme", metavar="ID", help="ws:<slug> (default: the project's theme)")
-    y.add_argument("--string", action="store_true")
+    y.add_argument("--string", action="store_true", help=STRING_HELP)
     y.add_argument("--force", action="store_true")
     t.set_defaults(fn=cmd_theme)
 

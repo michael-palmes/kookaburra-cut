@@ -462,6 +462,11 @@ class DocDetachTests(MusicProjectCase):
         self.assertIn("deviceTrack", out["hint"])
         self.assertEqual(self.sidecar(), before)
 
+    def test_string_values_read_escapes(self) -> None:
+        self.j("doc", "02-hero", "set", "text.title", "Line one\\nLine two\\tend \\\\n", "--string")
+        self.assertEqual(self.sidecar()["text"]["title"], "Line one\nLine two\tend \\n")
+        self.assertIn("newline", self.kb(["doc", "02-hero", "set", "--help"], cwd=self.root).stdout)
+
     def test_kb_video_start_drops_the_at_it_moves(self) -> None:
         from kblib.video import repoint
 
