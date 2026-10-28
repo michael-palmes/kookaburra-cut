@@ -60,11 +60,11 @@ import { preloadOverlayPanelImages } from "./overlayPanelTexture";
 import { overlayPanelImageSources } from "./overlayPlan";
 import { hasSceneHolds } from "./presentHold";
 import {
+  assertProjectRelative,
   isWorkspaceBackedProjectId,
   nativeProjectSlug,
   type ProjectAudio,
   preloadProjectImages,
-  resolveAssetPath,
 } from "./project";
 import { assertContextHeld, readFrameOrThrow } from "./readback";
 import { type RenderStateFingerprint, renderStateFingerprint } from "./renderFingerprint";
@@ -74,6 +74,7 @@ import { getSceneHosts } from "./sceneHostRegistry";
 import { resolveSceneDocMedia } from "./sceneMedia";
 import { mosaicTileKind } from "./sceneMosaic";
 import { resolveAt, type SceneSlot } from "./sceneTimeline";
+import { clipSourceKey } from "./stageRealm";
 import { snapshotSceneStageFloors } from "./stageRegistry";
 import { useTerminalEditStore } from "./terminalEditStore";
 import { configureDeterministicEngine } from "./timeline";
@@ -271,10 +272,10 @@ export async function awaitSceneHostsCommitted(expected: number): Promise<void> 
 function declaredClipDemands(opts: ExportOptions): Map<string, ClipDemand[]> {
   const declared = new Map<string, ClipDemand[]>();
   const declare = (src: string, demand: ClipDemand | null) => {
-    const abs = resolveAssetPath(opts.projectId, src);
-    const list = declared.get(abs) ?? [];
+    const source = clipSourceKey({ projectId: opts.projectId, rel: assertProjectRelative(src) });
+    const list = declared.get(source) ?? [];
     if (demand) list.push(demand);
-    declared.set(abs, list);
+    declared.set(source, list);
   };
   const docs = [
     ...(opts.sceneDocs ?? []).map((doc, i) => ({ doc, slot: opts.slots[i] })),

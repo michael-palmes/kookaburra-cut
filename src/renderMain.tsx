@@ -5,8 +5,10 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import { installDevPerformanceDrain } from "./engine/devPerformance";
 import { setPreferUnthrottledYields } from "./engine/macrotask";
+import { installWindowNativePort } from "./engine/windowNativePort";
 import { RenderApp } from "./render/RenderApp";
 
+installWindowNativePort();
 installDevPerformanceDrain();
 // Hidden pages clamp nested timers to 1s alignment (R1 spike); barrier polls in this realm yield via MessageChannel instead.
 setPreferUnthrottledYields();

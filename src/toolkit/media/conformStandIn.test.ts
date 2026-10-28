@@ -1,37 +1,54 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
+import type { ConformProgressPayload, NativePort } from "../../engine/stageRealm";
 
 // The clip pipeline's native side, scripted: a conform job writes SRC until the test lands it.
-const SRC = "/ws/product-tour/assets/rec.mp4";
+const SRC = "ws:product-tour\u0001assets/rec.mp4";
 const job = { slug: "product-tour", rel: "assets/rec.mp4", frame: 30, total: 120 };
 let conforming = true;
 const shas = new Map<string, string>();
 const handlers = new Map<string, (event: { payload: unknown }) => void>();
 
-vi.mock("@tauri-apps/api/core", () => ({
-  Channel: class {},
-  convertFileSrc: (path: string) => `asset://${path}`,
-  invoke: vi.fn(async (cmd: string, args?: Record<string, unknown>) => {
-    if (cmd === "clip_conform_pending") return conforming ? job : null;
-    if (cmd === "file_revisions") {
-      return ((args?.paths ?? []) as string[]).map((path) => (shas.has(path) ? "10-1" : null));
-    }
-    if (cmd === "clip_info") {
-      const sha = shas.get(args?.srcAbs as string);
-      if (!sha) throw new Error("unreadable");
-      return { cacheDir: `/cache/${sha}`, frameCount: 10, width: 64, height: 64, fps: 60, sha };
-    }
-    if (cmd === "set_clip_cache_pins") return null;
-    throw new Error(`unexpected command ${cmd}`);
-  }),
-}));
-
-vi.mock("@tauri-apps/api/event", () => ({
-  emit: vi.fn(async () => {}),
-  listen: vi.fn(async (name: string, handler: (event: { payload: unknown }) => void) => {
-    handlers.set(name, handler);
-    return () => {};
-  }),
-}));
+const fakePort: NativePort = {
+  async clipRevisions(keys) {
+    return keys.map((key) => (shas.has(key) ? "10-1" : null));
+  },
+  async clipInfo(key) {
+    const sha = shas.get(key);
+    if (!sha) throw new Error("unreadable");
+    return { cacheDir: `/cache/${sha}`, frameCount: 10, width: 64, height: 64, fps: 60, sha };
+  },
+  async clipHash() {
+    throw new Error("unexpected");
+  },
+  async clipEnsureChunks() {},
+  async clipEnsurePreviews() {},
+  async clipReadFrame() {
+    return new ArrayBuffer(8);
+  },
+  async clipSetPins() {},
+  async clipConformPending() {
+    return conforming ? job : null;
+  },
+  async watchConforms(h) {
+    handlers.set("kookaburra://conform-progress", ({ payload }) =>
+      h.progress(payload as ConformProgressPayload),
+    );
+    handlers.set("kookaburra://media-changed", ({ payload }) => {
+      const p = payload as { slug?: string; paths?: string[]; origin?: string } | null;
+      if (p?.origin === "conform" && Array.isArray(p.paths)) h.mediaChanged(p.slug, p.paths);
+    });
+  },
+  async conformPoster() {
+    return null;
+  },
+  async emojiRead() {
+    return null;
+  },
+  async emojiWrite() {},
+  async readObject() {
+    throw new Error("no objects here");
+  },
+};
 
 const flush = () => new Promise((r) => setTimeout(r, 0));
 
@@ -41,6 +58,7 @@ let standIn: typeof import("./conformStandIn");
 
 // Transform the module graph once, outside the 5 s test timeout.
 beforeAll(async () => {
+  (await import("../../engine/stageRealm")).setNativePort(fakePort);
   clips = await import("../../engine/clips");
   exportState = await import("../../engine/exportState");
   standIn = await import("./conformStandIn");
