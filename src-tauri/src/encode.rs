@@ -770,6 +770,9 @@ fn raw_input_args(options: &ExportOptions) -> Vec<String> {
 }
 
 #[cfg(test)]
+mod av_sync_tests;
+
+#[cfg(test)]
 mod audio_graph_tests {
     use super::*;
 

@@ -170,6 +170,7 @@ under the project lock (`kblib.lock`) and re-validated after writing.
 | `plan COMMAND ...` | A structural command's dry run: `writes`, `refusals`, `notes`; writes nothing (below) |
 | `export [--aspect A] [--preset ID] [--fps 30\|60] [--short-edge N] [--poster-frame on\|off\|app] [--verify] [--headless] [--allow-flashes] [--timeout S] [--progress-every S]` | The finished film, exactly as the app's Export button makes it ("kb export") |
 | `verify-export FILE [--no-sheet] [--no-flashes] [--allow-flashes] [--loudness-target LUFS] [--standard wcag\|itu\|both]` | Check an exported film against what the project asked for ("Film checks and verify-export") |
+| `sync-check FILE [--bpm N [--offset MS]] [--poster-frame auto\|on\|off] [--threshold PCT] [--window MS]` | Each cut and big picture change against its nearest beat, in ms ("kb sync-check") |
 | `hook session-start \| pre-edit \| post-edit \| bash-pre \| bash-post` | Hook entry points (stdin JSON from Claude Code); any other event exits 0, so an older kit is safe with newer settings |
 | `beats [--scene S]`, `beats set-grid (--from-analysis [--force] \| --bpm B --offset MS) [--beats-per-bar N]`, `beats set-downbeat AT [--bar N]`, `beats clear-grid`, `beats cue set ID POS \| rm ID`, `beats section set ID --from POS --to POS [--label L] \| rm ID`, `beats resolve POS [--scene S]` | The authored beat grid (`audio.grid`, `cues`, `sections`) and musical positions (`kblib/beats/`, mirroring `src/engine/musicTime.ts` through `kblib/music.py`, pinned by `music-vectors.json` from `pnpm agent:vectors`). Without a grid it shows the analysis's detected beats (`beatSource: "detected"`). Every write validates as `sanitiseAudioMusic` does and rewrites each sidecar's `at` caches in the same transaction (a sidecar leased to someone else is left, with a note) |
 | `song analyse [--force] [--tracker nn\|dsp] [--lyrics] [--accept] [--dry-run]` | The app's song analyser through `<exe> song analyse` (works with the app closed): tempo fit, downbeat, sections, breaths, stabs, lyrics on request; cached by the audio's SHA-256 and copied to `.kb/song/<sha12>.json`; `project.json` changes only with `--accept` (`set-grid --from-analysis`, refused for a drifting tempo). Code: `kblib/song.py` |
@@ -694,6 +695,29 @@ never gates.
 - `fixtures/flash-spike` (dev-only: a title, a crossfade, one second of 100 ms full-frame
   cuts, a 2 Hz control) is the parity and flash fixture, copied into a throwaway root;
   it joins no gate.
+
+### kb sync-check
+
+`kb sync-check FILE [--bpm N [--offset MS]] [--poster-frame auto|on|off] [--threshold PCT]
+[--window MS] [--json]` (`kblib/film/sync.py`) times each cut and big picture change
+against its nearest beat, in ms (positive is late). Exit 0 whatever it finds.
+
+- **Clock.** Decoded presentation times (ffmpeg honours MP4 edit lists, so x264's B-frame
+  delay and AAC priming cancel) from the audio stream's start, minus a leading poster frame
+  (the record's `posterFrame`, else a frame count one over the project's at the file's rate).
+- **Events.** Each 54 px grey frame's mean absolute change from the one before: 8% or more
+  and twice the change before it, one per 120 ms. A timeline cut (the record's, else the
+  project's) within two frames labels it a cut; a quieter cut is the biggest change there.
+- **Beats.** The authored grid, else the analysed beats, else `--bpm` (none: exit 1, kind
+  `invalid`). Events within a quarter beat give the median, worst, per-scene rows and the
+  verdict: `in sync` inside the frame grid's 0 to 1000/fps ms (2 ms slack, 25 ms for
+  analysed beats), else `late` or `early` with a warning.
+- **Proof.** `cargo test --lib av_sync -- --nocapture` (`src-tauri/src/encode/av_sync_tests.rs`)
+  pipes flashes and a click track through every lane's real argv and sidecar (legacy,
+  spec with and without the poster, two-pass, x265, ProRes, VideoToolbox): each flash
+  lands where `ceil(B x fps)` puts it, 0 to 33.3 ms late at 30 fps and 0 to 16.7 at 60. A
+  reader that skips edit lists sees +45.3 ms more on 30 fps x264 (+12 at 60), and timing
+  against the grid without taking off the poster frame adds one frame; neither is in the file.
 
 ## kb export
 

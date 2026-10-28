@@ -391,6 +391,26 @@ the mix like every pixel. Rules:
   trivially deterministic; **AAC's run-to-run determinism is proven by the gate,
   not assumed** (recorded contingency if a future ffmpeg breaks it: encode the
   processed track once into the `$APPDATA` cache and stream-copy).
+- **ffmpeg reads a snapshot.** `start_export` copies the track into
+  `$APPDATA/cache/export-audio/<pid>-<ms>.<ext>` (an APFS clone) and points the
+  argv's `-i` at the copy, so music saved mid-export can't change the film; the
+  copy goes with the run's cleanup. The path never reaches the output (bitexact,
+  `-map_metadata -1`), so the bytes are unchanged and the argv goldens, which
+  build from the options, still hold.
+- **Sync is proven, not assumed.** `export_lanes_keep_cuts_on_the_beat`
+  (`src-tauri/src/encode/av_sync_tests.rs`, `cargo test --lib av_sync --
+  --nocapture`) pipes a flash on the first frame at or after each beat, with a
+  click track on the beats, through every lane's real argv and the real sidecar
+  (legacy, spec with `-bf 2`, poster frame, two-pass, x265, ProRes with PCM,
+  VideoToolbox; 30 and 60 fps) and times both from the file as a player does.
+  Every cut lands `ceil(B × fps) / fps − B` after its beat, 0 to 1 frame (33.3 ms
+  at 30 fps, 16.7 at 60), and every click within 1 ms. Larger numbers are the
+  reading, not the file: ignoring edit lists adds the B-frame delay minus AAC
+  priming (+45.3 ms at 30 fps, +12.0 at 60), and timing a poster-frame film
+  against the project grid without taking the poster off adds a frame (the
+  2026-10 field report's 37 to 65 ms). `kb sync-check` measures it right.
+  Snapping cuts to the nearest frame or dropping edit lists would change bytes:
+  a deliberate rebase.
 - **Load degrades, never crashes.** `loadProject` probes the track
   (`probe_audio`); missing/unprobeable → the project loads SILENT with a warning;
   shorter-than-project → the tail pads with silence (warned, not fatal).

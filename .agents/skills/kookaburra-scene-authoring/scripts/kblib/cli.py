@@ -76,6 +76,7 @@ the cwd, or uses $CLAUDE_PROJECT_DIR.
                     [--verify] [--headless] [--allow-flashes] [--timeout S] [--progress-every S]
              verify-export FILE [--no-sheet] [--no-flashes] [--allow-flashes] [--loudness-target LUFS]
              check film [flashes colour handoffs pacing] [--file F] [--standard wcag|itu|both]
+             sync-check FILE [--bpm N [--offset MS]] [--poster-frame auto|on|off]
   History    checkpoint [MESSAGE] [--scene S]... [--files P]... | history [--scene S]
              undo [REV] [--scene S | --all] | diff [REV] [--scene S] | plan COMMAND ...
   Agents     lease S [--ttl 2h] [--note T] [--for NAME] | lease S --release [--force] | leases [--all]
@@ -1219,6 +1220,9 @@ def build_parser(video_extensions: bool = True) -> argparse.ArgumentParser:
     from .film import cli as filmcli
 
     filmcli.register(sub, common, Formatter)
+    from .film import sync as syncmod
+
+    syncmod.register(sub, common, Formatter)
     from . import exporting
 
     exporting.register(sub, common, Formatter)

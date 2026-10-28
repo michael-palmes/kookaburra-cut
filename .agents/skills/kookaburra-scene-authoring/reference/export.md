@@ -39,6 +39,7 @@ the user's own Cancel.
 ./kb check film --file exports/<name>.mp4           flashes, colour, handoffs and pacing on the real film
 ./kb check film pacing                              static: words per second, long still stretches, very short scenes
 ./kb verify --film                                  a 720p 30 fps draft (kept in .kb/verify/, never exports/), then every film check on it
+./kb sync-check exports/<name>.mp4                  each cut against its nearest beat, in ms (--bpm N [--offset MS] without music)
 ```
 
 - `verify-export` compares the file with what the project asked for (the export record,
@@ -50,6 +51,10 @@ the user's own Cancel.
 - `check film colour` warns when effects tone-map flat colours (reference/gotchas.md).
 - `check film pacing` aims for about 3 words a second and flags stretches over 6 s with no
   keyed move.
+- `sync-check` times cuts and big picture changes as a player shows them, poster frame
+  taken off. 0 to one frame late (33 ms at 30 fps, 17 at 60) is the frame grid: a cut on a
+  beat shows on the first frame at or after it. Never nudge the beat grid to close that; a
+  median beyond it (verdict `late` or `early`) means the cuts are off the beat.
 
 ## The flash gate
 
