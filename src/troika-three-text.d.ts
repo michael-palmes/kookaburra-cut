@@ -14,6 +14,8 @@ declare module "troika-three-text" {
     defaultFontURL?: string;
     /** Base URL for the unicode-font-resolver data; we pin it to a dead same-origin path. */
     unicodeFontsURL?: string;
+    /** Upload the SDF atlas from a `readPixels` copy instead of its canvas (the Kookaburra Cut patch): a worker's OffscreenCanvas upload is not a raw copy. */
+    sdfAtlasReadback?: boolean;
   }): void;
   /** Fired when a typeset lands. */
   export interface TextEventMap extends Object3DEventMap {
