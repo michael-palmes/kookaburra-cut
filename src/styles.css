@@ -2513,13 +2513,6 @@ button.beat-status {
   margin-top: var(--space-2);
 }
 
-/* Release notes in the update offer: plain text, clipped rather than unbounded. */
-.update-notes {
-  max-height: 10rem;
-  overflow-y: auto;
-  white-space: pre-wrap;
-}
-
 /* Full-bleed banner art at the top of a modal (negative margins swallow the modal padding). */
 .modal-with-banner {
   overflow: hidden;

@@ -3575,7 +3575,6 @@ export default function App() {
       {updates.offerVisible && updates.available && !isAutoRun && (
         <UpdateAvailableDialog
           version={updates.available.version}
-          notes={updates.available.notes}
           installing={updates.phase === "installing"}
           installError={updates.installError}
           onLater={updates.dismissOffer}
