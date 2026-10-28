@@ -103,11 +103,22 @@ app would refuse its own packs), so it rises only with a release; until then
 
 ## Signing and trust on first use
 
-Each install generates an Ed25519 keypair on first export, stored 0600 at
-`$APPDATA/pack-key/ed25519.key`. The manifest is signed detached over its exact
-stored bytes, never a re-serialisation. The public key travels in the manifest,
-and its `keyId` (`hex(sha256(pubkey)[0..8])`) is what the app remembers in
+Each install generates an Ed25519 keypair on first export and keeps it in the
+login Keychain as a generic password (service "Kookaburra Cut pack signing
+key", account the bundle identifier, never synchronised to iCloud). macOS may
+ask once whether the app may use it. Where the Keychain cannot answer (a
+background autorun, no login keychain, `KOOKABURRA_PACK_KEY_FILE=1` in a dev
+session) the key lives 0600 at `$APPDATA/pack-key/ed25519.key` instead, and a
+file left by an earlier build is moved into the Keychain once and deleted. A
+declined Keychain prompt stops the export rather than minting a second key on
+disk. The manifest is signed detached over its exact stored bytes, never a
+re-serialisation. The public key travels in the manifest, and its `keyId`
+(`hex(sha256(pubkey)[0..8])`) is what the app remembers in
 `AppSettings.known_publishers`.
+
+The publisher name on a pack is the saved profile's. With no profile, the first
+export asks for a name in the packs window and saves it; nothing is ever
+guessed from the macOS account.
 
 What this proves, and what it does not. The import copy has to be honest about
 the second column:
@@ -121,15 +132,22 @@ the second column:
 | The scene code is safe | **No** |
 
 So the trust screen renders a publisher name as self-declared, always, with the
-sentence saying nothing has checked it. Verdicts:
+sentence saying nothing has checked it, and the publisher verdict sits above
+the "Contents verified" tick, never below it. The store is keyed by `keyId`
+and cross-checked by name (trimmed, case-folded, whitespace collapsed).
+Verdicts:
 
 | Signature | keyId | Name | Shown |
 |---|---|---|---|
-| valid | unknown | any | First time from this publisher |
+| valid | unknown | unknown | First time from this publisher |
+| valid | unknown | known under another key | Warning: a publisher you know as "<stored>" is using a different key |
 | valid | known | matches | Same publisher as "<last pack>" |
 | valid | known | differs | Warning: this key previously said "<stored>" |
 | invalid | any | any | Refused |
 | absent | any | any | Refused |
+
+Accepting a changed-key pack records the new key beside the old one, so both
+read as known afterwards; Settings can forget either.
 
 Unsigned is refused rather than softened: every producer is our own app and
 always has a key, so unsigned means hand-assembled.
@@ -173,7 +191,10 @@ Implemented in `pack::read` and `pack::paths`, one test per item in
 `pack::tests`. Limits live in `pack::limits`.
 
 1. Read the central directory only. Refuse over `MAX_ENTRIES` or a declared
-   total over `MAX_TOTAL_UNCOMPRESSED`, before inflating anything.
+   total over `MAX_TOTAL_UNCOMPRESSED`, before inflating anything, then any
+   entry whose header already breaks its kind's ceiling (`limits::kind_cap`:
+   fonts 64 MB, 3D models 512 MB, images 256 MB, audio 512 MB, text 16 MB,
+   video 4 GB), named by kind in the refusal.
 2. Inflate `manifest.json` capped at `MAX_MANIFEST_BYTES`. Refuse a wrong
    `format`, a `formatVersion` above ours, or a `minAppVersion` above ours.
 3. Validate every path in `files` **and every path in `contents`**. The second
@@ -193,12 +214,20 @@ Implemented in `pack::read` and `pack::paths`, one test per item in
 8. Skip `__MACOSX/`, `.DS_Store`, `._*` rather than refusing.
 9. Extract into a fresh `<root>/.kookaburra/import-staging/<random>/`, created
    with `create_dir` so it can never be an existing directory.
-10. Count inflated bytes as they stream. Headers lie.
+10. Count inflated bytes as they stream, each entry against its kind's ceiling
+    as well as the total. Headers lie.
 11. Recompute SHA-256 for every staged file and compare against `files`. One
     mismatch aborts the whole import.
 12. Only then resolve and move. `StagedPack` implements `Drop`, so every failure
     path removes the tree.
-13. Force `0644` on files and `0755` on directories, whatever the archive said.
+13. Force `0644` on files and `0755` on directories, whatever the archive said:
+    imported items are the user's documents, unlike the app's own caches.
+
+An `object.json` `glb` or `thumbnail` is validated like an asset rel on both
+sides (`objects::validate_object_rel`, `isObjectRel`): relative, at most one
+folder deep, no `..`, no dot folder. Export drops an offending path with a
+warning rather than carrying it; a manifest naming one is refused at import by
+the path checks above.
 
 ## Conflicts
 
