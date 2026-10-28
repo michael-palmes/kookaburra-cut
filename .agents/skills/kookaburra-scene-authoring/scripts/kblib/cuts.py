@@ -119,18 +119,17 @@ def key_flags(project: Project, i: int, slot: Dict[str, Any]) -> List[Dict[str, 
     except KbError:
         return []
     out = []
-    for path, keys in model.timed_tracks(doc):
-        for n, key in enumerate(keys):
-            t = key.get("tMs") if isinstance(key, dict) else None
-            if not isinstance(t, (int, float)) or isinstance(t, bool):
-                continue
-            name = f'{".".join(path)} key "{key.get("id", n)}"'
-            if t > slot["durationMs"]:
-                out.append({"kind": "key-past-end", "scene": i, "stem": slot["stem"],
-                            "message": f"scenes/{slot['stem']}.json {name} at {fmt_ms(t)} is past the scene's end ({fmt_ms(slot['durationMs'])})"})
-            elif t < 0:
-                out.append({"kind": "key-before-start", "scene": i, "stem": slot["stem"],
-                            "message": f"scenes/{slot['stem']}.json {name} at {fmt_ms(t)} is before the scene starts"})
+    for timed in model.timed_slots(doc):
+        t = timed.node.get("tMs")
+        if timed.field != "tMs" or not isinstance(t, (int, float)) or isinstance(t, bool):
+            continue
+        name = timed.where
+        if t > slot["durationMs"]:
+            out.append({"kind": "key-past-end", "scene": i, "stem": slot["stem"],
+                        "message": f"scenes/{slot['stem']}.json {name} at {fmt_ms(t)} is past the scene's end ({fmt_ms(slot['durationMs'])})"})
+        elif t < 0:
+            out.append({"kind": "key-before-start", "scene": i, "stem": slot["stem"],
+                        "message": f"scenes/{slot['stem']}.json {name} at {fmt_ms(t)} is before the scene starts"})
     return out
 
 
