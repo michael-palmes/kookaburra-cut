@@ -145,9 +145,11 @@ export class StageClient implements StageHandle {
     this.worker = new Worker(new URL("./stageWorker.ts", import.meta.url), { type: "module" });
     this.worker.onmessage = (ev: MessageEvent<ToWindow>) => this.onMessage(ev.data);
     this.worker.onerror = (ev) => {
-      console.error("[stage] worker error:", ev.message);
+      console.error("[stage] worker error:", ev.message, ev.filename, ev.lineno);
       reportAutoRunError(`stage worker error: ${ev.message}`);
     };
+    this.worker.onmessageerror = () =>
+      console.error("[stage] a worker message could not be deserialised");
     const offscreen = element.transferControlToOffscreen();
     this.worker.postMessage(
       {
@@ -237,9 +239,9 @@ export class StageClient implements StageHandle {
         this.pending.get(msg.id)?.onProgress?.(msg.value);
         return;
       case "log":
+        // info rides warn: only warn and error reach the dev harness's log.
         if (msg.level === "error") console.error(`[stage] ${msg.text}`);
-        else if (msg.level === "warn") console.warn(`[stage] ${msg.text}`);
-        else console.info(`[stage] ${msg.text}`);
+        else console.warn(`[stage] ${msg.text}`);
         return;
       case "fatal":
         console.error(`[stage] fatal: ${msg.text}`);

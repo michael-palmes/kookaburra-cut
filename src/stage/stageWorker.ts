@@ -64,6 +64,10 @@ const memStorage = (): Storage => {
 scope.sessionStorage = memStorage();
 scope.localStorage = memStorage();
 
+// anime.js takes its non-browser main loop here (there is no `window`); the loop itself stays off, the engine is driven by `seek`.
+scope.setImmediate ??= (fn: () => void) => setTimeout(fn, 0);
+scope.clearImmediate ??= (id: number) => clearTimeout(id);
+
 // ── OffscreenCanvas as the canvas element three, troika and TransformControls expect ──
 const OC = OffscreenCanvas.prototype as unknown as Record<string, unknown>;
 OC.toBlob = function (
@@ -220,5 +224,17 @@ class WorkerDocument extends EventTarget {
 }
 scope.document = new WorkerDocument();
 
+scope.addEventListener("messageerror", () =>
+  scope.postMessage({ type: "fatal", text: "a message from the window could not be deserialised" }),
+);
+
 // The server imports the engine, which must see the shims above at evaluation time.
-void import("./stageServer");
+scope.postMessage({ type: "log", level: "info", text: "stage worker entry evaluated" });
+import("./stageServer").then(
+  () => scope.postMessage({ type: "log", level: "info", text: "stage server module loaded" }),
+  (e) =>
+    scope.postMessage({
+      type: "fatal",
+      text: `server import failed: ${e instanceof Error ? (e.stack ?? e.message) : String(e)}`,
+    }),
+);
