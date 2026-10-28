@@ -1595,16 +1595,30 @@ fn build_object(
         warnings,
         mode,
     );
-    let in_archive =
-        |rel: Option<String>| rel.map(|r| archive_path(ItemKind::Object, &format!("{slug}/{r}")));
+    // A path the manifest cannot be allowed to make (outside the folder, or deeper than the pack reads) is dropped with a warning, never carried.
+    let mut in_archive = |rel: Option<String>| {
+        rel.filter(|r| match crate::objects::validate_object_rel(r) {
+            Ok(()) => true,
+            Err(detail) => {
+                warnings.push(ClosureWarning::UnreadableDocument {
+                    path: format!("objects/{slug}/object.json"),
+                    detail,
+                });
+                false
+            }
+        })
+        .map(|r| archive_path(ItemKind::Object, &format!("{slug}/{r}")))
+    };
+    let glb = in_archive(str_field(&doc, "glb")).unwrap_or_default();
+    let thumbnail = in_archive(str_field(&doc, "thumbnail"));
     let object = PackObject {
         base: base_from(
             slug,
             &str_field(&doc, "name").unwrap_or_else(|| slug.to_owned()),
             &staged,
         ),
-        glb: in_archive(str_field(&doc, "glb")).unwrap_or_default(),
-        thumbnail: in_archive(str_field(&doc, "thumbnail")),
+        glb,
+        thumbnail,
         licence: doc.get("licence").and_then(|l| str_field(l, "name")),
         tags: doc
             .get("tags")

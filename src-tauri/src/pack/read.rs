@@ -74,15 +74,27 @@ pub fn inspect(archive: &Path) -> Result<PackInspection, PackError> {
     }
 
     let mut declared_total: u64 = 0;
+    let mut over_kind_cap: Option<PackError> = None;
     for i in 0..zip.len() {
         let entry = zip.by_index_raw(i)?;
         declared_total = declared_total.saturating_add(entry.size());
+        // A per-kind ceiling the header already breaks is refused before consent; staging re-checks the stream.
+        if over_kind_cap.is_none() {
+            if let Ok(name) = std::str::from_utf8(entry.name_raw()) {
+                if name.starts_with(PAYLOAD_PREFIX) {
+                    over_kind_cap = check_kind_cap(name, entry.size()).err();
+                }
+            }
+        }
     }
     if declared_total > MAX_TOTAL_UNCOMPRESSED {
         return Err(PackError::TooLarge {
             bytes: declared_total,
             max: MAX_TOTAL_UNCOMPRESSED,
         });
+    }
+    if let Some(refusal) = over_kind_cap {
+        return Err(refusal);
     }
 
     let manifest_bytes = {
@@ -139,6 +151,20 @@ pub fn inspect(archive: &Path) -> Result<PackInspection, PackError> {
         signature,
         archive_bytes,
     })
+}
+
+/// Refuse an entry over the ceiling for its kind, naming the kind.
+fn check_kind_cap(path: &str, bytes: u64) -> Result<(), PackError> {
+    let (kind, max) = kind_cap(path);
+    if bytes > max {
+        return Err(PackError::KindTooLarge {
+            path: path.to_string(),
+            kind,
+            bytes,
+            max,
+        });
+    }
+    Ok(())
 }
 
 /// `manifest.contents` carries paths too, and apply joins them onto the staging root to find what to move. `Path::join`
@@ -345,6 +371,7 @@ pub fn stage(
                 max: MAX_SINGLE_UNCOMPRESSED,
             });
         }
+        check_kind_cap(&raw, entry.size().max(declared.bytes))?;
         let compressed = entry.compressed_size().max(1);
         let ratio = entry.size() / compressed;
         if ratio > MAX_RATIO_PER_ENTRY {
@@ -369,7 +396,7 @@ pub fn stage(
         let mut capped = CountingReader {
             inner: &mut entry,
             read: 0,
-            cap: declared.bytes.min(remaining),
+            cap: declared.bytes.min(remaining).min(kind_cap(&raw).1),
             path: &raw,
         };
         let mut out = std::fs::File::create(&destination)?;
@@ -455,6 +482,24 @@ pub fn sweep_stale(workspace_root: &Path) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn kind_caps_follow_the_extension() {
+        assert_eq!(kind_cap("payload/fonts/Acme.ttf"), ("font", MAX_FONT_BYTES));
+        assert_eq!(kind_cap("payload/objects/w/model.GLB"), ("3D model", MAX_MODEL_BYTES));
+        assert_eq!(kind_cap("payload/projects/a/assets/sky.exr").1, MAX_IMAGE_BYTES);
+        assert_eq!(kind_cap("payload/projects/a/assets/take.mov").1, MAX_VIDEO_BYTES);
+        assert_eq!(kind_cap("payload/projects/a/assets/bed.wav").1, MAX_AUDIO_BYTES);
+        assert_eq!(kind_cap("payload/projects/a/scenes/01.tsx").1, MAX_TEXT_BYTES);
+        assert_eq!(kind_cap("payload/projects/a/noext").1, MAX_SINGLE_UNCOMPRESSED);
+        assert!(check_kind_cap("payload/fonts/Acme.ttf", MAX_FONT_BYTES).is_ok());
+        assert_eq!(
+            check_kind_cap("payload/fonts/Acme.ttf", MAX_FONT_BYTES + 1)
+                .unwrap_err()
+                .variant(),
+            "kindTooLarge"
+        );
+    }
 
     #[test]
     fn version_compare_handles_prerelease() {

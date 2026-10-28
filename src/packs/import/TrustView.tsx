@@ -1,6 +1,6 @@
 import { formatBytes, formatDate, formatKeyId, type PackInspection } from "../types";
 
-/** Screen 1. The honesty rule: a publisher name is rendered as self-declared, always. No tick, no badge, no green for a name. */
+/** Screen 1. The honesty rule: a publisher name is rendered as self-declared, always. No tick, no badge, no green for a name. The publisher verdict comes first and the integrity tick below it, so "Contents verified" never heads a pack from a stranger or a changed key. */
 export function TrustView({
   inspection,
   onViewCode,
@@ -33,17 +33,18 @@ export function TrustView({
           <p className="packs-pack-desc">{manifest.pack.description}</p>
         )}
 
+        <PublisherBlock inspection={inspection} />
+
         <div className="packs-verdict packs-verdict-ok">
           <span className="packs-verdict-icon" aria-hidden="true">
             ✓
           </span>
           <div className="packs-verdict-body">
             <strong>Contents verified</strong>
-            Every file matches the signed list inside this pack.
+            Every file matches the signed list inside this pack. That proves the pack is whole, not
+            who made it.
           </div>
         </div>
-
-        <PublisherBlock inspection={inspection} />
 
         {projects.length > 0 && (
           <div className="packs-verdict packs-verdict-warn">
@@ -110,6 +111,25 @@ function PublisherBlock({ inspection }: { inspection: PackInspection }) {
           <div className="packs-verdict-note">
             First seen {formatDate(publisher.firstSeen)}. {publisher.packCount} pack
             {publisher.packCount === 1 ? "" : "s"} so far.
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (publisher.kind === "keyChanged") {
+    return (
+      <div className="packs-verdict packs-verdict-warn">
+        <span className="packs-verdict-icon" aria-hidden="true">
+          !
+        </span>
+        <div className="packs-verdict-body">
+          <strong>A publisher you know as {publisher.knownAs} is using a different key</strong>
+          {identity}
+          <div className="packs-verdict-note">
+            Packs from {publisher.knownAs} (last “{publisher.lastPack}”) were signed with key{" "}
+            {formatKeyId(publisher.previousKeyId)}. A new Mac or a rotated key looks like this, and
+            so does someone borrowing the name. Check with them before you continue.
           </div>
         </div>
       </div>
