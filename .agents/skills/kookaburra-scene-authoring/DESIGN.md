@@ -234,7 +234,8 @@ scene at its settled moment until they advance, so every slide still needs a mov
 hero. Set a deck `frame` in `project.json`: every scene then renders through its cutout,
 so build slides from the film presets (`hero-device` with a real recording,
 `layeredscreenshot`, `chart-reveal`, `stat-counter`) and let the panel carry one line and
-a chip, alternating the cutout's `side` for rhythm. `overlaypanel` (no window) only for
+a chip, alternating sides for rhythm (a sidecar `frame.cutout` replaces the deck's, so
+give it the `shape` too). `overlaypanel` (no window) only for
 the title and section breaks. Turn a bullet list into a run of slides, one point each on
 the product: the speaker says the detail. Calm copy (`fade-up`, `mask-reveal`), a slow
 `push-in` on the hero, `push` or `slide` in one direction. Size scenes for the film (the

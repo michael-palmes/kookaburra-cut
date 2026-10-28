@@ -40,7 +40,7 @@ contract for the kit, the bridge it talks to and the app behaviour it relies on.
 Skill tree (the source lives at `.agents/skills/kookaburra-scene-authoring/`):
 
 ```
-SKILL.md            brief first, the loop, capture etiquette, multi-agent habits, hard rules, capability map, routing (about 15 KB)
+SKILL.md            brief first, the loop, capture etiquette, multi-agent habits, hard rules, capability map, routing (about 18 KB)
 RULES.md            always-on rules imported by CLAUDE.md, the only rules subagents get (keep it under about 3.3 KB)
 DESIGN.md           playbook: the brief, presentations, product demos, launch videos
 catalog.json        GENERATED (pnpm agent:catalog); never hand-edited
