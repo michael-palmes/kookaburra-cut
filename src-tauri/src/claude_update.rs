@@ -101,7 +101,10 @@ pub async fn claude_version_info(
     app: AppHandle,
     state: State<'_, SettingsState>,
 ) -> Result<Option<ClaudeVersionInfo>, String> {
-    let Some(path) = crate::pty::detect_claude().await? else {
+    let Some(path) = tauri::async_runtime::spawn_blocking(crate::pty::detect_claude_blocking)
+        .await
+        .map_err(|e| e.to_string())?
+    else {
         return Ok(None);
     };
 

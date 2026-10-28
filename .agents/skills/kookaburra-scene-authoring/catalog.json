@@ -22487,6 +22487,11 @@
         "type": "number"
       },
       {
+        "id": "at",
+        "summary": "Video: musical position the start follows (bar:9.3, cue:drop); startMs caches it in scene ms, and moving startMs drops it. Not with startOn.",
+        "type": "string"
+      },
+      {
         "id": "fit",
         "summary": "Always cover: fills the screen and crops the overflow.",
         "type": "string",

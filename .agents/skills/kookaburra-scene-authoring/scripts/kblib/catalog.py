@@ -36,7 +36,7 @@ FALLBACK_MANIFEST_KEYS = [
     "camera", "persistent", "frame", "render", "lighting", "appliedBackground", "defaultTransition",
     "shared", "brand",
 ]
-FALLBACK_DEVICE_MEDIA_KEYS = ["src", "kind", "startMs", "fit", "rotateDeg", "startOn", "inMs", "outMs", "speed", "loop", "posterMs"]
+FALLBACK_DEVICE_MEDIA_KEYS = ["src", "kind", "startMs", "at", "fit", "rotateDeg", "startOn", "inMs", "outMs", "speed", "loop", "posterMs"]
 SCENE_DOC_VERSION = 1
 MANIFEST_VERSION = 2
 

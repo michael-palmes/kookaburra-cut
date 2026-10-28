@@ -99,6 +99,7 @@ describe("agent catalogue", () => {
       src: "assets/clip.mp4",
       kind: "video",
       startMs: 400,
+      at: "bar:2",
       fit: "cover",
       rotateDeg: "auto",
       startOn: "open",

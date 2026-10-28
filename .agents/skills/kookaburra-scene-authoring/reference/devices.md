@@ -26,7 +26,7 @@ scenes built from device presets read them with `useSceneDevices()` and
 | `id` | Stable, unique in the scene; tracks, layouts and camera aims reference it |
 | `model` | Device id (table); unknown or unavailable ids render as `android` without rewriting the file |
 | `colour` | A colour id for that model, or `custom:#rrggbb` (a tint that keeps the finish structure) |
-| `media` | `{ src, kind: "video" \| "image", startMs?, fit?: "cover", rotateDeg?, startOn?: "open" }` plus the video timing keys (below); cover-cropped to the screen |
+| `media` | `{ src, kind: "video" \| "image", startMs?, at?, fit?: "cover", rotateDeg?, startOn?: "open" }` plus the video timing keys (below); cover-cropped to the screen |
 | `placement` | `position` (world units), `rotationDeg` (DEGREES), `scale` (times the auto-fit), `ground` (stand on a staged floor) |
 | `motion` | `{ preset, ...params }` (table) |
 | `motionBlur` | `{ enabled, amount? }`: keep this device sharp or scale its trail under motion blur (reference/camera.md) |
@@ -41,6 +41,9 @@ scenes built from device presets read them with `useSceneDevices()` and
   and their last frame after, unless `loop` (below). Make the scene no longer than the
   clip, use `duration.mode: "follow-media"` (reference/media.md), or fit the clip to the
   scene with `./kb video fit <edit> --scene S --slot device:<id>` (kookaburra-video-editing).
+- `at` (a musical position, `"bar:9"`, `"cue:drop"`) starts a screen video on the music:
+  `startMs` caches it, and moving `startMs` drops it (reference/beats.md). Not with
+  `startOn: "open"`. `deviceTrack` keys take an `at` beside `tMs` too.
 - Rotation reads best small: front on `[0, 0, 0]`, editorial `[-6, 14, 0]`, mirrored
   `[-6, -14, 0]`.
 - `media.rotateDeg` turns the media clockwise on the screen before the cover fit: 0

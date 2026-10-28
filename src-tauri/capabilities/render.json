@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "render",
-  "description": "Capabilities for the Kookaburra Cut hidden render window",
+  "description": "Capabilities for the Kookaburra Cut hidden render window: read and render projects, serve thumbs, posters and bridge captures.",
   "windows": ["render"],
-  "permissions": ["core:default"]
+  "permissions": ["core:default", "project-read", "project-render", "render-window"]
 }

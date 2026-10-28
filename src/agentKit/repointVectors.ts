@@ -307,6 +307,37 @@ const REPOINT_CASES: Case[] = [
     paths: ["devices.0.media"],
   },
   {
+    id: "device-musical-delay-stays",
+    raw: doc({
+      devices: [
+        {
+          id: "d1",
+          model: "iphone-17-pro",
+          media: video("assets/a.mp4", { startMs: 1250, at: "bar:2", inMs: 400 }),
+        },
+      ],
+    }),
+    slot: "device",
+    targetId: "d1",
+    paths: ["devices.0.media"],
+  },
+  {
+    id: "device-musical-pre-roll-goes",
+    raw: doc({
+      devices: [
+        {
+          id: "d1",
+          model: "iphone-17-pro",
+          media: video("assets/a.mp4", { startMs: 1250, at: "bar:2" }),
+          coverMedia: video("assets/b.mp4", { startMs: -750, at: "bar:1" }),
+        },
+      ],
+    }),
+    slot: "deviceCover",
+    targetId: "d1",
+    paths: ["devices.0.media", "devices.0.coverMedia"],
+  },
+  {
     id: "device-drops-invalid-playback-keys",
     raw: doc({
       devices: [
@@ -392,6 +423,18 @@ const REPOINT_CASES: Case[] = [
     slot: "media",
     targetId: "vid1",
     paths: ["media", "images", "videoWindow"],
+  },
+  {
+    id: "media-musical-start-goes-and-a-neighbour-keeps-its-own",
+    raw: doc({
+      media: [
+        { id: "vid1", kind: "video", src: "assets/a.mp4", video: { startMs: 600, at: "cue:drop" } },
+        { id: "vid2", kind: "video", src: "assets/b.mp4", video: { at: "bar:3", loop: true } },
+      ],
+    }),
+    slot: "media",
+    targetId: "vid1",
+    paths: ["media"],
   },
   {
     id: "media-image-becomes-video",

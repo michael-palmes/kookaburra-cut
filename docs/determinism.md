@@ -128,6 +128,13 @@ model: a transition pulls the next scene's start back, so
 enclosing `<SceneHost>`'s start. All scenes mount at once; the compositor gates
 per-frame `visible`.
 
+A scene entry may pin its cut to the music (`cutAt` and `align`,
+`engine/sceneCuts.ts`): its `durationMs` caches the length that lands the cut
+there, and the loader re-resolves every pinned length in scene order before
+building the timeline. A project with no `cutAt` takes the same durations
+array unchanged (null-for-legacy), and the kit mirrors the resolver
+operation for operation (`timeline-vectors.json`).
+
 Transition ownership is manifest-versioned: v2 stores each transition on the
 OUTGOING scene (it plays at that scene's end); legacy unversioned manifests
 stored it on the incoming scene. `outgoingSceneTransitions` shifts legacy files
@@ -146,6 +153,17 @@ and the exporter, so they cannot drift. Two paths:
   to its own `WebGLRenderTarget`, then a fullscreen pass blends them.
 
 Determinism rules specific to the composite path:
+
+- **One owner per target.** `tgtA`/`tgtB` hold the two sides until the
+  composite samples them, and a comparison renders its own Before and After
+  through the same pair before flattening into a comp target. So an incoming
+  comparison after a plain outgoing scene renders FIRST; rendered second, it
+  overwrote the outgoing side and the transition played as a hard cut (fixed
+  2026-10-28). Verify ×2 can't see a wrong-but-stable frame, so
+  `kookaburra:run --action transitioncheck --project compare-transition-spike`
+  measures each crossfade's midpoint against the solo frames either side (the
+  outgoing scene's least-squares weight must sit within 0.15 of the eased
+  progress); `pnpm ready` runs it whenever the compositor or timeline changes.
 
 - **Tone-map once, encode once, per path.** No-effects: every SDR target is a
   **display target** (`engine/displayTarget.ts`): three (r185, r186) applies tone
@@ -1705,7 +1723,7 @@ Verify ×2 here (the 2026-10-23 note):
 | `transition-spike` (transition gate, image mask included) | `35c2cb0c…` | `0017f87f…` | — | — | — | — | — | — | — |
 | `transition-bg-spike` (animated-background transition gate) | `f7714f6b…` | — | — | — | — | — | — | — | — |
 | `compare-spike` (before/after comparison gate) | `03f4704d…` | `0c6b7166…` | `d4cac096…` | `ac586a05…` | — | — | — | — | — |
-| `compare-transition-spike` (comparisons through transitions) | `98132cf6…` | — | — | — | — | — | — | — | — |
+| `compare-transition-spike` (comparisons through transitions; `transitioncheck` proves its crossfades blend) | `48ee3fd8…` | — | — | — | — | — | — | — | — |
 | `image-flip-spike` (image-orientation gate, eyeball it) | `5753a093…` | — | — | — | — | — | — | — | — |
 | `ws:layered-screenshot-spike` (LS gate, machine-local) | `33c75ab8…` | — | — | — | — | — | — | — | — |
 | `ws:video-window-spike` (VideoWindow gate, machine-local) | `273e778c…` | — | — | — | — | — | — | — | — |
@@ -1740,6 +1758,19 @@ Verify ×2 here (the 2026-10-23 note):
 > `3955d599…` → `fa64bced…`. The contact shadow under a 3 to 6 degree lean moves by
 > under 1% of the device height; frames were eyeballed. The anchors and
 > `ws:multi-device-spike` (yaw only) stay EQUAL.
+
+> **2026-10-28 (a transition into a comparison renders: a deliberate rebase of
+> one fixture):** the incoming comparison composited its sides through the
+> same A/B pair the plain outgoing scene had just filled, so the crossfade
+> from `01-null` into `02-split` played as a hard cut, and the old
+> `compare-transition-spike` baseline `98132cf6…` recorded that bug. With the
+> incoming comparison rendered first, 16:9 re-recorded at `48ee3fd8…` (Verify
+> ×2 EQUAL). `transitioncheck` reads that crossfade's midpoint at an outgoing
+> weight of 0.505 against an expected 0.5 (0.026 with the fix switched off)
+> and `05-blend` into `06-chrome` (comparison into comparison, unchanged) at
+> 0.635; the midpoint frame was eyeballed: the title over the half-faded
+> comparison. No other gate project stages a comparison, so `ws:launch-2026`
+> and `showcase-tour` are untouched by construction.
 
 > **2026-10-24 (three r186: a deliberate rebase, the full matrix):** `three`
 > 0.185.1 → 0.186.1 (with `postprocessing` 6.39.5, the first release whose

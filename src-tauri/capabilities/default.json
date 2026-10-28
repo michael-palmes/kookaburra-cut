@@ -1,13 +1,26 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Capabilities for the Kookaburra Cut main window",
+  "description": "Capabilities for the Kookaburra Cut main window: the studio keeps every command the other windows do not own.",
   "windows": ["main"],
   "permissions": [
     "core:default",
     "core:window:allow-start-dragging",
     "core:window:allow-toggle-maximize",
     "core:window:allow-set-title",
-    "dialog:default"
+    "dialog:default",
+    "project-read",
+    "project-render",
+    "project-write",
+    "trust",
+    "media-library",
+    "library",
+    "export",
+    "capture-host",
+    "studio",
+    "terminal",
+    "claude-launcher",
+    "updater",
+    "website-editor"
   ]
 }
