@@ -1196,10 +1196,10 @@ Loads: the render window keeps one loaded project and reuses it for captures, ch
 and scene thumbnails while its id and source fingerprint are unchanged (so `check` then
 `capture` loads once); an aspect change switches the mounted tree's format in place.
 
-Trust: a request for the project open in the editor runs under the editor's session
-trust (the same re-stamp the editor already does on every load). Any other project
-loads stored-only; when its sources changed since the user allowed it, the response is
-`ok: false, needsTrust: true` with a sentence telling the user to open it once.
+Trust: every load is stored-only, since this window cannot show the consent sheet; the
+editor's own writes keep the open project's grant current natively. When a project's
+content changed since the user allowed it, the response is `ok: false, needsTrust: true`
+with a sentence telling the user to open it once.
 
 ## Load safety
 
@@ -1249,8 +1249,11 @@ Types: `src/engine/loadDiagnostics.ts`; `LoadedProject.sceneErrors`,
 - Undo and redo refuse an entry whose file changed outside the app since, and say so.
 - Index-based manifest commands also take the expected scene file and refuse on a
   mismatch, so a delete can never bin the wrong scene.
-- After its own writes in a trusted session the app re-stamps trust, so a restart does
-  not re-prompt for the user's own edits.
+- Every native writer of a consent-covered file (`project.json`, `scenes/**`, `CLAUDE.md`,
+  `.claude/settings.json`) re-stamps a standing trust grant as part of the write, and a
+  kb write landing while the project is open and trusted in this app session re-stamps on
+  the reload (Rust recomputes the hash in `check_project_trust`). Content that changed
+  while the project was closed asks again through the native sheet on the next open.
 - Edit documents work the same way. `save_edit` carries the base hash and refuses a
   stale one; the editor window polls its doc's stamp (1 s and on focus, applied once two
   polls agree) and takes an outside change as ONE "Claude edit" undo step, merging any

@@ -315,7 +315,7 @@ mod write_tests {
     }
 }
 
-/// Delete a workspace theme's folder (delete parity with export presets). Workspace themes only, bundled ids never reach this (the UI offers Delete for `ws:` themes alone, and the slug points inside `~/Kookaburra Cut/themes/`); projects still referencing the theme degrade to the default at resolve time. The content-hash preview cache entry is left behind, it is a cache, not state.
+/// Move a workspace theme's folder to the Trash (delete parity with export presets). Workspace themes only, bundled ids never reach this (the UI offers Delete for `ws:` themes alone, and the slug points inside `~/Kookaburra Cut/themes/`); projects still referencing the theme degrade to the default at resolve time. The content-hash preview cache entry is left behind, it is a cache, not state.
 #[tauri::command]
 pub fn delete_theme(
     app: AppHandle,
@@ -328,7 +328,7 @@ pub fn delete_theme(
     if !dir.join("theme.json").is_file() {
         return Err(format!("no workspace theme named \"{slug}\""));
     }
-    std::fs::remove_dir_all(&dir).map_err(|e| e.to_string())
+    crate::workspace::trash_path(&dir).map_err(|e| e.to_string())
 }
 
 // ── Theme previews ──────────────────────────────────────────────────

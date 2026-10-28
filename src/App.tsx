@@ -219,7 +219,7 @@ import {
   type AppSettings,
   createProject,
   getSettings,
-  initWorkspace,
+  initDefaultWorkspace,
   type LagWarningMode,
   setLastExportPreset,
   setLastProject,
@@ -233,7 +233,6 @@ import {
   rememberedProjectAspect,
   rememberProjectAspect,
 } from "./store/projectAspects";
-import { useTrustStore } from "./store/trustStore";
 import { useUiStore } from "./store/uiStore";
 import { WORKSPACE_THEME_PREFIX } from "./theme/registry";
 import { AnimationLane } from "./ui/AnimationLane";
@@ -252,7 +251,7 @@ import { openChartDataModal } from "./ui/chartDataModalStore";
 import { setProjectPaletteSource } from "./ui/colour/projectPalette";
 import { DecorationGizmo } from "./ui/DecorationGizmo";
 import { DeviceAnimationLane } from "./ui/DeviceAnimationLane";
-import { SetupFailedDialog, TrustGateModal } from "./ui/dialogs";
+import { SetupFailedDialog } from "./ui/dialogs";
 import {
   ExportModal,
   type ExportModalInitial,
@@ -1646,7 +1645,7 @@ export default function App() {
         let current = loaded;
         if (!current.workspaceRoot && !isAutoRun) {
           try {
-            current = { ...current, workspaceRoot: await initWorkspace(null) };
+            current = { ...current, workspaceRoot: await initDefaultWorkspace() };
             void refreshProjects();
           } catch (e) {
             setSetupError(String(e));
@@ -1686,17 +1685,14 @@ export default function App() {
     };
   }, [isAutoRun, backToProjects]);
 
-  const handleWorkspaceChosen = useCallback(
-    async (parent: string | null) => {
-      const root = await initWorkspace(parent);
-      setSettings((prev) => ({ ...(prev ?? {}), workspaceRoot: root }));
-      setWelcomeRowId(ALL_PROJECTS);
-      setWelcomeQuery("");
-      setWelcomeRefresh((n) => n + 1);
-      await refreshProjects();
-    },
-    [refreshProjects],
-  );
+  const retryDefaultWorkspace = useCallback(async () => {
+    const root = await initDefaultWorkspace();
+    setSettings((prev) => ({ ...(prev ?? {}), workspaceRoot: root }));
+    setWelcomeRowId(ALL_PROJECTS);
+    setWelcomeQuery("");
+    setWelcomeRefresh((n) => n + 1);
+    await refreshProjects();
+  }, [refreshProjects]);
 
   // The one project-swap path: the loader effect, the autorun theme-preview batch, and the user-theme preview borrow all apply a loaded project identically (canvas project, active theme, effects store, clock duration).
   const applyLoadedProject = useCallback(
@@ -1904,15 +1900,6 @@ export default function App() {
     [handleThemeEdited],
   );
 
-  const handleChooseWorkspace = useCallback(async () => {
-    const dir = await openFolderPicker({
-      directory: true,
-      multiple: false,
-      title: "Choose where Kookaburra Cut keeps your projects",
-    });
-    if (typeof dir === "string") await handleWorkspaceChosen(dir);
-  }, [handleWorkspaceChosen]);
-
   // Bumped by the error panel's Retry: workspace manifest fixes happen outside Vite's module graph, so nothing reloads automatically; the user retries once Claude fixed the file.
   const [loadNonce, setLoadNonce] = useState(0);
   // A bridge export waits until the source poll's last reload is on stage (or failed): `requested` counts the poll's reloads, `landed` the last one to land.
@@ -2084,8 +2071,6 @@ export default function App() {
   const screenshotStackSectionOpen = useGizmoSectionOpen("layeredScreenshot");
   const lsLaneOpen = useLayeredScreenshotEditStore((s) => s.laneOpen);
   const lsEditOpen = useLayeredScreenshotEditStore((s) => s.laneOpen || s.open);
-  // The F-001 consent request `loadProject` is currently blocked on, if any.
-  const pendingTrust = useTrustStore((s) => s.pending);
   const camSceneIndex = useClockStore((s) =>
     project ? activeSceneIndex(project.slots, s.currentMs) : 0,
   );
@@ -3547,8 +3532,8 @@ export default function App() {
       {settings && !settings.workspaceRoot && setupError && !isAutoRun && (
         <SetupFailedDialog
           error={setupError}
-          onRetry={() => handleWorkspaceChosen(null)}
-          onChoose={handleChooseWorkspace}
+          onRetry={retryDefaultWorkspace}
+          onOpenSettings={() => invoke("open_settings")}
         />
       )}
       {/* The welcome (and its consent ask) waits for a workspace so it never stacks on the setup-failure dialog. */}
@@ -3576,12 +3561,6 @@ export default function App() {
             Updating theme previews…
           </div>
         </div>
-      )}
-      {pendingTrust && (
-        <TrustGateModal
-          name={pendingTrust.name}
-          onAnswer={(allowed) => useTrustStore.getState().answer(allowed)}
-        />
       )}
       {showNewProject && (
         <NewProjectDialog
