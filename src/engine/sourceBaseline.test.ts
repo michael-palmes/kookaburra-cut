@@ -2,11 +2,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   invoke: vi.fn(),
-  scheduleTrustRestamp: vi.fn(),
 }));
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: mocks.invoke }));
-vi.mock("./projectTrust", () => ({ scheduleTrustRestamp: mocks.scheduleTrustRestamp }));
 
 import {
   armSourceFiles,
@@ -75,7 +73,8 @@ describe("the per-file reload baseline", () => {
       stamp: "2:31",
     });
     expect(settle("demo", stamps({ ...start, "scenes/01-a.json": "2:31" }))).toBeNull();
-    expect(mocks.scheduleTrustRestamp).toHaveBeenCalledWith("demo");
+    // Trust is the native writer's job now: nothing here reaches the IPC.
+    expect(mocks.invoke).not.toHaveBeenCalled();
   });
 
   it("still reloads an outside change to another file that lands in the same window", () => {

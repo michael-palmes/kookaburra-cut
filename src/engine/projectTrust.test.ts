@@ -1,32 +1,39 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-// The gate's three native commands, scripted per test; calls are recorded for order/count asserts.
-const calls: string[] = [];
+// The gate's native commands, scripted per test; calls are recorded for order/count asserts.
+const calls: { cmd: string; args: Record<string, unknown> | undefined }[] = [];
 let autorunAction: string | null = null;
 let autorunTrust: string | null = null;
 let storedGrantValid = false;
+/** What the native sheet answers: a nonce on Allow, null on Don't open. */
+let sheetAnswer: string | null = "nonce-1";
+let deferSheet: (() => void) | null = null;
 
 vi.mock("@tauri-apps/api/core", () => ({
-  invoke: vi.fn(async (cmd: string) => {
-    calls.push(cmd);
+  invoke: vi.fn(async (cmd: string, args?: Record<string, unknown>) => {
+    calls.push({ cmd, args });
     if (cmd === "get_autorun_config") return { action: autorunAction, trust: autorunTrust };
     if (cmd === "is_project_trusted") return storedGrantValid;
-    if (cmd === "trust_project") return undefined;
+    if (cmd === "request_project_trust") {
+      if (deferSheet) await new Promise<void>((resolve) => (deferSheet = resolve));
+      return sheetAnswer;
+    }
+    if (cmd === "trust_project") {
+      if (args?.nonce !== sheetAnswer)
+        throw new Error("trust can only be granted from the consent sheet");
+      storedGrantValid = true;
+      return undefined;
+    }
     throw new Error(`unexpected command ${cmd}`);
   }),
 }));
 
-// Fresh module state per test: sessionTrusted, the autorun cache and the store's inflight map are all module-level.
+const names = () => calls.map((c) => c.cmd);
+
+// Fresh module state per test: the autorun cache and the inflight map are module-level.
 async function freshGate() {
   vi.resetModules();
-  const gate = await import("./projectTrust");
-  const { useTrustStore } = await import("../store/trustStore");
-  return { ...gate, useTrustStore };
-}
-
-// The gate awaits its invokes before touching the store; a few microtask hops let it reach the modal request.
-async function flush(): Promise<void> {
-  for (let i = 0; i < 10; i++) await Promise.resolve();
+  return import("./projectTrust");
 }
 
 beforeEach(() => {
@@ -34,112 +41,98 @@ beforeEach(() => {
   autorunAction = null;
   autorunTrust = null;
   storedGrantValid = false;
+  sheetAnswer = "nonce-1";
+  deferSheet = null;
 });
 
 describe("ensureProjectTrusted", () => {
-  it("rejects changed sources in a background load without creating a hidden trust prompt", async () => {
-    const { ensureProjectTrusted, TrustDeniedError, useTrustStore } = await freshGate();
-    storedGrantValid = true;
-    await ensureProjectTrusted("ws-preset:demo", "Demo");
-    storedGrantValid = false;
-    autorunAction = "verify";
-    calls.length = 0;
+  it("rejects changed sources in a background load without asking", async () => {
+    const { ensureProjectTrusted, TrustDeniedError } = await freshGate();
     await expect(ensureProjectTrusted("ws-preset:demo", "Demo", "stored-only")).rejects.toThrow(
       TrustDeniedError,
     );
-    expect(useTrustStore.getState().pending).toBeNull();
-    expect(calls).toEqual(["is_project_trusted"]);
+    expect(names()).toEqual(["is_project_trusted"]);
   });
 
-  it("allows background loading only while the stored source grant matches", async () => {
-    const { ensureProjectTrusted, useTrustStore } = await freshGate();
+  it("allows background loading only while the stored grant matches", async () => {
+    const { ensureProjectTrusted } = await freshGate();
     storedGrantValid = true;
     await ensureProjectTrusted("ws-preset:demo", "Demo", "stored-only");
-    expect(useTrustStore.getState().pending).toBeNull();
-    expect(calls).toEqual(["is_project_trusted"]);
-  });
-  it("passes silently on a valid stored grant, without a modal", async () => {
-    const { ensureProjectTrusted, useTrustStore } = await freshGate();
-    storedGrantValid = true;
-    await ensureProjectTrusted("demo", "Demo");
-    expect(useTrustStore.getState().pending).toBeNull();
-    expect(calls).toContain("is_project_trusted");
-    expect(calls).not.toContain("trust_project");
+    expect(names()).toEqual(["is_project_trusted"]);
   });
 
-  it("re-stamps in-session edits without re-asking (session-sticky)", async () => {
-    const { ensureProjectTrusted, useTrustStore } = await freshGate();
+  it("passes silently on a valid stored grant, without a sheet", async () => {
+    const { ensureProjectTrusted } = await freshGate();
     storedGrantValid = true;
     await ensureProjectTrusted("demo", "Demo");
-    // An edit moved the fingerprint, so the stored grant no longer matches natively.
+    expect(names()).not.toContain("request_project_trust");
+    expect(names()).not.toContain("trust_project");
+  });
+
+  it("re-asks when the content changed, even in the same session", async () => {
+    const { ensureProjectTrusted } = await freshGate();
+    storedGrantValid = true;
+    await ensureProjectTrusted("demo", "Demo");
+    // An outside edit moved the content fingerprint: there is no session-sticky trust to fall back on.
     storedGrantValid = false;
     calls.length = 0;
     await ensureProjectTrusted("demo", "Demo");
-    expect(useTrustStore.getState().pending).toBeNull();
-    expect(calls).toEqual(["trust_project"]);
+    expect(names()).toEqual(["is_project_trusted", "request_project_trust", "trust_project"]);
   });
 
-  it("auto-trusts autorun launches so the headless Verify never blocks", async () => {
-    const { ensureProjectTrusted, useTrustStore } = await freshGate();
+  it("redeems the sheet's nonce, never a made-up one", async () => {
+    const { ensureProjectTrusted } = await freshGate();
+    await ensureProjectTrusted("demo", "Demo");
+    const grant = calls.find((c) => c.cmd === "trust_project");
+    expect(grant?.args).toEqual({ slug: "demo", nonce: "nonce-1" });
+  });
+
+  it("auto-trusts autorun launches through the same nonce path, so the headless Verify never blocks", async () => {
+    const { ensureProjectTrusted } = await freshGate();
     autorunAction = "verify";
     await ensureProjectTrusted("launch-2026", "Launch 2026");
-    expect(useTrustStore.getState().pending).toBeNull();
-    expect(calls).toContain("trust_project");
+    expect(names()).toEqual([
+      "get_autorun_config",
+      "is_project_trusted",
+      "request_project_trust",
+      "trust_project",
+    ]);
   });
 
-  it("never auto-trusts a stored-only autorun (kb's headless export)", async () => {
-    const { ensureProjectTrusted, NeedsTrustError, TrustDeniedError, useTrustStore } =
-      await freshGate();
+  it("never asks for a stored-only autorun (kb's headless export)", async () => {
+    const { ensureProjectTrusted, NeedsTrustError, TrustDeniedError } = await freshGate();
     autorunAction = "export";
     autorunTrust = "stored-only";
     const denied = ensureProjectTrusted("demo", "Demo");
     await expect(denied).rejects.toThrow(NeedsTrustError);
     await expect(denied).rejects.not.toThrow(TrustDeniedError);
-    expect(calls).not.toContain("trust_project");
-    expect(useTrustStore.getState().pending).toBeNull();
+    expect(names()).not.toContain("request_project_trust");
     storedGrantValid = true;
     calls.length = 0;
     await ensureProjectTrusted("demo", "Demo");
-    expect(calls).toEqual(["is_project_trusted"]);
+    expect(names()).toEqual(["is_project_trusted"]);
   });
 
-  it("persists the grant when the user allows", async () => {
-    const { ensureProjectTrusted, useTrustStore } = await freshGate();
-    const gate = ensureProjectTrusted("demo", "Demo");
-    await flush();
-    expect(useTrustStore.getState().pending?.slug).toBe("demo");
-    useTrustStore.getState().answer(true);
-    await gate;
-    expect(calls).toContain("trust_project");
-    // The slug is now session-trusted: the next load re-stamps instead of asking.
-    calls.length = 0;
-    await ensureProjectTrusted("demo", "Demo");
-    expect(useTrustStore.getState().pending).toBeNull();
-    expect(calls).toEqual(["trust_project"]);
-  });
-
-  it("throws TrustDeniedError on decline and asks again next time", async () => {
-    const { ensureProjectTrusted, TrustDeniedError, useTrustStore } = await freshGate();
-    const gate = ensureProjectTrusted("demo", "Demo");
-    await flush();
-    useTrustStore.getState().answer(false);
-    await expect(gate).rejects.toThrow(TrustDeniedError);
-    expect(calls).not.toContain("trust_project");
+  it("throws TrustDeniedError on Don't open and asks again next time", async () => {
+    const { ensureProjectTrusted, TrustDeniedError } = await freshGate();
+    sheetAnswer = null;
+    await expect(ensureProjectTrusted("demo", "Demo")).rejects.toThrow(TrustDeniedError);
+    expect(names()).not.toContain("trust_project");
     // Declining is not remembered: a second open asks again.
-    const again = ensureProjectTrusted("demo", "Demo");
-    await flush();
-    expect(useTrustStore.getState().pending?.slug).toBe("demo");
-    useTrustStore.getState().answer(false);
-    await expect(again).rejects.toThrow(TrustDeniedError);
+    calls.length = 0;
+    await expect(ensureProjectTrusted("demo", "Demo")).rejects.toThrow(TrustDeniedError);
+    expect(names()).toContain("request_project_trust");
   });
 
-  it("shares one modal between re-entrant requests for the same slug", async () => {
-    const { ensureProjectTrusted, useTrustStore } = await freshGate();
+  it("shares one sheet between re-entrant requests for the same slug", async () => {
+    const { ensureProjectTrusted } = await freshGate();
+    deferSheet = () => {};
     const first = ensureProjectTrusted("demo", "Demo");
-    await flush();
     const second = ensureProjectTrusted("demo", "Demo");
-    await flush();
-    useTrustStore.getState().answer(true);
+    for (let i = 0; i < 10; i++) await Promise.resolve();
+    expect(names().filter((c) => c === "request_project_trust")).toHaveLength(1);
+    deferSheet?.();
     await expect(Promise.all([first, second])).resolves.toBeDefined();
+    expect(names().filter((c) => c === "trust_project")).toHaveLength(1);
   });
 });

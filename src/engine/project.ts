@@ -1324,8 +1324,8 @@ export async function loadProject(
     if (options?.trustMode)
       await ensureProjectTrusted(slug, manifest.name || slug, options.trustMode);
     else await ensureProjectTrusted(slug, manifest.name || slug);
-    // Trust first: declining must mean zero writes. The bump evicts pre-heal modules from `wsCompiledModules` so the imports below compile the rewritten bytes.
-    const heal = await ensureUniqueSceneIds(slug);
+    // Trust first: declining must mean zero writes. The heal is the main window's (a stored-only load runs in a window that cannot write scenes). The bump evicts pre-heal modules from `wsCompiledModules` so the imports below compile the rewritten bytes.
+    const heal = options?.trustMode ? null : await ensureUniqueSceneIds(slug);
     if (heal?.renamed.length) {
       healedSceneIds = heal.renamed.map((r) => r.file);
       bumpWorkspaceReloadToken();
