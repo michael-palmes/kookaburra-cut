@@ -48,10 +48,17 @@ export function RenderApp() {
       }),
     [],
   );
-  // The stage's own losses (its context lives in the worker) report the same way.
+  // The stage's own losses (its context lives in the worker) report the same way, and a stage that never starts poisons the window as a failed canvas did, so Rust recycles it.
   useEffect(() => {
     const stage = stageOrNull();
     if (!stage) return;
+    stage.ready.catch((error: unknown) => {
+      console.warn("[render-gl] the stage failed to start:", error);
+      markCanvasFailed(error);
+      void invoke("render_report_gpu_event", { reason: "canvasFailed", deliberate: false }).catch(
+        () => {},
+      );
+    });
     return stage.subscribeContextLost(() => {
       markCanvasFailed("the stage lost its context");
       void invoke("render_report_gpu_event", { reason: "contextLost", deliberate: false }).catch(

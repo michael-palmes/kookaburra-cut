@@ -2355,10 +2355,12 @@ export default function App() {
       const stage = stageOrNull();
       if (stage) {
         autoRunRef.current.started = true;
-        void stage.ready.then(() => {
-          console.warn("[autorun] stage ready — starting run");
-          return runAutoRun(project, cfg, applyLoadedProject);
-        });
+        void stage.ready
+          .then(() => {
+            console.warn("[autorun] stage ready — starting run");
+            return runAutoRun(project, cfg, applyLoadedProject);
+          })
+          .catch((e) => console.error("[autorun] the stage did not start:", e));
         return;
       }
       // setTimeout, not requestAnimationFrame: WKWebView suspends rAF while occluded or the display sleeps (the AFK scenario the autorun serves), which silently stalled runs; timers keep firing.
