@@ -26,7 +26,7 @@ scenes built from device presets read them with `useSceneDevices()` and
 | `id` | Stable, unique in the scene; tracks, layouts and camera aims reference it |
 | `model` | Device id (table); unknown or unavailable ids render as `android` without rewriting the file |
 | `colour` | A colour id for that model, or `custom:#rrggbb` (a tint that keeps the finish structure) |
-| `media` | `{ src, kind: "video" \| "image", startMs?, fit?: "cover", startOn?: "open" }` plus the video timing keys (below); cover-cropped to the screen |
+| `media` | `{ src, kind: "video" \| "image", startMs?, fit?: "cover", rotateDeg?, startOn?: "open" }` plus the video timing keys (below); cover-cropped to the screen |
 | `placement` | `position` (world units), `rotationDeg` (DEGREES), `scale` (times the auto-fit), `ground` (stand on a staged floor) |
 | `motion` | `{ preset, ...params }` (table) |
 | `motionBlur` | `{ enabled, amount? }`: keep this device sharp or scale its trail under motion blur (reference/camera.md) |
@@ -43,6 +43,12 @@ scenes built from device presets read them with `useSceneDevices()` and
   scene with `./kb video fit <edit> --scene S --slot device:<id>` (kookaburra-video-editing).
 - Rotation reads best small: front on `[0, 0, 0]`, editorial `[-6, 14, 0]`, mirrored
   `[-6, -14, 0]`.
+- `media.rotateDeg` turns the media clockwise on the screen before the cover fit: 0
+  (default), 90, 180 or 270, or `"auto"` to stand it upright on the device's current pose
+  (placement and keys). A device on its side (`rotationDeg` z of 90) with `"auto"` shows a
+  portrait recording upright: never make a rotated copy of a recording.
+- `ground` and the floor shadows stand the device's lowest posed corner on the floor, so a
+  device on its side, laid flat or folding stays on its shadow.
 - Lighting: under `<SceneStage>` the theme lights devices. Without a stage each Device
   brings its own light set, so several devices over-light; stage the scene.
 
@@ -160,9 +166,10 @@ further forward and off centre).
 | `drop` | App-store card offset | plane behind |
 | `none` | No presentation shadow | |
 
-The presentation shadow follows the device's real silhouette, lid and float. It is
-independent of a staged floor's real shadows; use `none` when the stage's own shadow
-is enough.
+The presentation shadow follows the device's real silhouette, lid, fold and float. Floor
+modes sit under the lowest corner of the posed device (placement and keys, not the motion
+presets), so a float still lifts off its shadow. It is independent of a staged floor's real
+shadows; use `none` when the stage's own shadow is enough.
 
 ## Several devices: `deviceLayout`
 
@@ -198,8 +205,15 @@ is enough.
 ```
 
 Poses are DELTAS on the resolved placement or layout: `offset` and `rotationDeg` add,
-`scale` multiplies; `lidDeg` and `foldDeg` are absolute. Absent fields hold the rest
-value. Motion presets layer on top. Track rules: reference/sidecar.md.
+`scale` multiplies; `lidDeg`, `foldDeg`, `screenPower` and `coverPower` are absolute.
+Absent fields hold the rest value. Motion presets layer on top. Track rules:
+reference/sidecar.md.
+
+- `screenPower` (the screen, a foldable's inside one) and `coverPower` (a foldable's
+  outside one): 0 black to 1 lit, resting lit. Key a display dark until a beat, then ease
+  it to 1: `{ "hero": { "coverPower": 0 } }` to `{ "hero": { "coverPower": 1 } }`. Never
+  hand-fade a black rect over a screen. On a foldable it dims on top of the fold's own
+  handover.
 
 ## Foldables (`iphone-duo`)
 
@@ -212,6 +226,10 @@ value. Motion presets layer on top. Track rules: reference/sidecar.md.
   (0..1) shapes the blur handover between displays.
 - `media.startOn: "open"` counts the inside video's `startMs` from the moment the fold
   opens. Preset: `duo-unfold`.
+- Portrait shot: open (`foldDeg` 180), `rotationDeg` `[4, -16, 90]` (the camera half on
+  top), and `"rotateDeg": "auto"` on both `media` and `coverMedia`; the inspector's
+  Portrait pose sets all three. In a `deviceLayout`, put the turn in the device's delta
+  so the layout fits the turned width.
 
 ## 3D objects
 

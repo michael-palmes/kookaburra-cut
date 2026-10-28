@@ -1718,13 +1718,28 @@ Verify ×2 here (the 2026-10-23 note):
 | `ws:chart-spike` (chart gate, machine-local) | `01c32706…` | `7b706307…` | `f1820470…` | `d5611672…` | — | — | — | — | — |
 | `ws:duplicate-spike` (scene-id heal gate, machine-local) | `74cfca6c…` | — | — | — | — | — | — | — | — |
 | `ws:overlay-spike` (overlay gate, machine-local) | `f3d115a5…` | — | — | — | — | — | — | — | — |
-| `ws:duo-spike` (foldable gate, machine-local) | `8d28f65a…` | `b6a80fec…` | — | — | — | — | — | — | — |
-| `ws:device-video-spike` (device/media/camera gate, built-in-lit devices, machine-local) | `3068ea61…` | — | — | — | — | — | — | — | — |
+| `ws:duo-spike` (foldable gate, machine-local) | `c16be077…` | `372327a9…` | — | — | — | — | — | — | — |
+| `ws:device-video-spike` (device/media/camera gate, built-in-lit devices, machine-local) | `c1a9ff92…` | — | — | — | — | — | — | — | — |
 | `ws:device-env-spike` (cold frame-0 repro: a built-in-lit handset's top edge, machine-local) | `47d94e84…` | — | — | — | — | — | — | — | — |
 | `ws:text-outline-spike` (outlined text in the text barrier: neon, whole-block blur-in, machine-local) | `a644c039…` | — | — | — | — | — | — | — | — |
 | `ws:rooms-spike` (room cuts, a flood with a tokened light, a wipe while both sides flood; machine-local, never gated) | `fee706ac…` | `219c3507…` | — | — | — | — | — | — | — |
 | `ws:mask-fx-spike` (an image-mask seam between two bloom scenes on the effects lane; machine-local, never gated) | `6555ff7f…` | — | — | — | — | — | — | — | — |
-| `ws:motion-toolkit-spike` (the toolkit primitives: shapes, device anchors, text metrics and presets, stamps, dashes, mosaic, taps; machine-local, gated when motion or shape primitives change) | `8af90748…` | `3955d599…` | — | — | — | — | — | — | — |
+| `ws:motion-toolkit-spike` (the toolkit primitives: shapes, device anchors, text metrics and presets, stamps, dashes, mosaic, taps; machine-local, gated when motion or shape primitives change) | `06b79ae2…` | `fa64bced…` | — | — | — | — | — | — | — |
+
+> **2026-10-28 (the floor follows the posed device: a deliberate rebase of three
+> fixtures):** floor shadows and `ground` now stand a device's lowest posed corner on
+> the floor (`devicePoseFloorShift`, `docs/foldables.md`), so a device tilted or rolled
+> by its placement or keys moves its floor; upright and yaw-only devices are exactly
+> 0. First, with the shift forced to 0, the branch exported `ws:duo-spike`,
+> `ws:device-video-spike`, `ws:multi-device-spike` and `ws:motion-toolkit-spike`
+> EQUAL at 16:9 (media `rotateDeg`, the fold shader's turn, power keys and the rolled
+> layout fit are null for legacy). With the shift on, the three fixtures that stage
+> tilted devices moved and re-record from a Verify ×2: `ws:duo-spike` `8d28f65a…` →
+> `c16be077…` and 9:16 `b6a80fec…` → `372327a9…`, `ws:device-video-spike` `3068ea61…`
+> → `c1a9ff92…`, `ws:motion-toolkit-spike` `8af90748…` → `06b79ae2…` and 9:16
+> `3955d599…` → `fa64bced…`. The contact shadow under a 3 to 6 degree lean moves by
+> under 1% of the device height; frames were eyeballed. The anchors and
+> `ws:multi-device-spike` (yaw only) stay EQUAL.
 
 > **2026-10-24 (three r186: a deliberate rebase, the full matrix):** `three`
 > 0.185.1 → 0.186.1 (with `postprocessing` 6.39.5, the first release whose
