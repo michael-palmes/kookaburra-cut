@@ -228,6 +228,7 @@ describe("DeviceDrillIn", () => {
       "Depth",
     ]);
     expect(captures.toggles).toEqual([
+      expect.objectContaining({ label: "Rotate to match the device", checked: false }),
       expect.objectContaining({ label: "Loop", checked: false }),
       expect.objectContaining({ label: "Rest on floor", checked: true }),
       expect.objectContaining({ label: "Keyframes", checked: false }),
@@ -378,6 +379,13 @@ describe("DeviceDrillIn", () => {
     working = structuredClone(doc);
     captures.toggles.find((toggle) => toggle.label === "Start when opened")?.onChange(true);
     expect(working.devices?.[0].media?.startOn).toBe("open");
+
+    working = structuredClone(doc);
+    captures.toggles
+      .find((toggle) => toggle.label === "Rotate to match the device")
+      ?.onChange(true);
+    expect(working.devices?.[0].media?.rotateDeg).toBe("auto");
+    expect(html).toContain("Portrait");
 
     // The transition writes only what differs from its defaults, and an emptied block goes too.
     working = structuredClone(doc);

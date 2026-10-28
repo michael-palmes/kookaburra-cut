@@ -101,6 +101,7 @@ describe("agent catalogue", () => {
       startMs: 400,
       at: "bar:2",
       fit: "cover",
+      rotateDeg: "auto",
       startOn: "open",
       inMs: 1000,
       outMs: 4000,
