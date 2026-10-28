@@ -5,6 +5,7 @@ mod brands;
 mod bridge;
 mod bridge_export;
 mod bridge_health;
+mod bridge_range;
 mod capture_service;
 mod claude_app;
 mod claude_update;
@@ -230,7 +231,29 @@ fn flash_report_path(output: &std::path::Path) -> PathBuf {
     output.with_file_name(name)
 }
 
+/// kb's frame strips of the film's flagged moments (`<export>.flashes/strip-*.png`); a new export makes them stale.
+fn flash_strips_dir(output: &std::path::Path) -> PathBuf {
+    let mut name = output.file_name().unwrap_or_default().to_os_string();
+    name.push(".flashes");
+    output.with_file_name(name)
+}
+
+fn remove_flash_strips(output: &std::path::Path) {
+    let dir = flash_strips_dir(output);
+    let Ok(entries) = std::fs::read_dir(&dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if name.starts_with("strip-") && name.ends_with(".png") {
+            let _ = std::fs::remove_file(entry.path());
+        }
+    }
+    let _ = std::fs::remove_dir(&dir);
+}
+
 fn write_flash_report(output: &std::path::Path, report: Option<&flashes::FlashReport>) {
+    remove_flash_strips(output);
     let path = flash_report_path(output);
     match report.filter(|r| !r.issues.is_empty()) {
         Some(report) => {
@@ -1344,6 +1367,9 @@ macro_rules! kookaburra_handler {
             bridge::get_editor_context,
             bridge::set_last_load,
             bridge::bridge_write_sheet,
+            bridge_range::range_flash_begin,
+            bridge_range::range_flash_push,
+            bridge_range::range_flash_finish,
             bridge::bridge_check_assets,
             bridge::bridge_instance,
             bridge::bridge_request_live,
@@ -1537,6 +1563,7 @@ pub fn run() {
         .manage(FlashState::default())
         .manage(ScreenshotState(Mutex::new(None)))
         .manage(bridge::BridgeScreenshotState::default())
+        .manage(bridge_range::RangeFlashState::default())
         .manage(concurrency::BackgroundLimiter::default())
         .manage(clip_cache::ClipCacheState::default())
         .manage(media::ConformJobs::default())
@@ -2083,7 +2110,11 @@ mod tests {
             tap_flash_frame(&mut tap, if frame % 12 < 6 { &dark } else { &light });
         }
         let flagged = finish_flash_tap(tap).0.unwrap();
+        let strips = flash_strips_dir(&output);
+        std::fs::create_dir_all(&strips).unwrap();
+        std::fs::write(strips.join("strip-01-00m00.100s.png"), b"png").unwrap();
         write_flash_report(&output, Some(&flagged));
+        assert!(!strips.exists());
         let saved: serde_json::Value =
             serde_json::from_str(&std::fs::read_to_string(flash_report_path(&output)).unwrap())
                 .unwrap();

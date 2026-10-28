@@ -29,6 +29,7 @@ import {
   sceneFileStem,
 } from "../engine/project";
 import { setProjectAssetRevision } from "../engine/projectAssetRevision";
+import { renderRange, type SceneTextBox, safeAreaBox } from "../engine/rangeRender";
 import { GpuStallError } from "../engine/readback";
 import { awaitProjectCommitted } from "../engine/themePreviews";
 import { serveFontsRequest } from "./bridgeFonts";
@@ -39,17 +40,24 @@ import {
   type CheckAsset,
   captureFormat,
   collectAssetRefs,
+  frameLabel,
   frameScene,
   isNativeBridgeKind,
   MAX_REQUEST_UNITS,
   type ProbeSample,
   parseProbes,
+  RANGE_MAX_STRIPS,
+  rangeFormat,
+  rangePlan,
+  rangeUnits,
   requestCaptureFormat,
   requestFormat,
   requestFrames,
   resolvePresetRef,
   responseVersion,
   samplePixels,
+  shiftFlashReport,
+  stripFrames,
   trustDeniedSlug,
   trustSentence,
   unitsFor,
@@ -124,6 +132,22 @@ interface Liveness {
   live: boolean;
   reason?: string;
 }
+
+/** The client gave up or an export started mid-render: stop and answer it once. */
+class RenderStopped extends Error {
+  constructor(readonly reason: string | undefined) {
+    super(`render stopped: ${reason ?? "cancelled"}`);
+  }
+}
+
+const stoppedBody = (reason: string | undefined) =>
+  reason === "busy"
+    ? { ok: false, busy: true, error: "Kookaburra Cut started exporting; retry shortly" }
+    : {
+        ok: false,
+        cancelled: true,
+        error: "the client stopped waiting, so the app stopped rendering this request",
+      };
 
 interface LoadedState {
   project: LoadedProject;
@@ -278,31 +302,30 @@ export function startBridgeService(
       probes?: ProbeSample[];
     }[] = [];
     const renderStart = Date.now();
-    for (const [n, frame] of frames.entries()) {
-      const live = await invoke<Liveness | null>("bridge_request_live", {
-        id: request.id,
-        frame: n,
-      }).catch(() => null);
-      if (live && !live.live) {
-        await respond(
-          request,
-          live.reason === "busy"
-            ? { ok: false, busy: true, error: "Kookaburra Cut started exporting; retry shortly" }
-            : {
-                ok: false,
-                cancelled: true,
-                error: "the client stopped waiting, so the app stopped rendering this capture",
-              },
-        );
-        return;
-      }
-      const tMs = resolveScreenshotTimeMs(
+    const times = frames.map((frame) =>
+      resolveScreenshotTimeMs(
         project,
         frame.scene ?? undefined,
         frame.at ?? undefined,
         isOpen ? context?.currentMs : undefined,
-      );
-      const { rgba, width, height } = await captureFrameRgba(exportOptions(project, format), tMs);
+      ),
+    );
+    const live = async (n: number) => {
+      const state = await invoke<Liveness | null>("bridge_request_live", {
+        id: request.id,
+        frame: n,
+      }).catch(() => null);
+      if (state && !state.live) throw new RenderStopped(state.reason);
+    };
+    const keep = async (
+      n: number,
+      tMs: number,
+      rgba: Uint8Array,
+      width: number,
+      height: number,
+      texts?: SceneTextBox[],
+    ) => {
+      const frame = frames[n];
       // Probes read the readback already in memory, before the PNG save.
       const sampled = probes.length ? samplePixels(rgba, width, height, probes) : undefined;
       await invoke(BRIDGE_COMMANDS.begin, {
@@ -312,13 +335,7 @@ export function startBridgeService(
       });
       const path = await invoke<string>(BRIDGE_COMMANDS.save, rgba);
       const where = frameScene(project, frame.scene, tMs);
-      sheet?.draw(
-        n,
-        rgba,
-        width,
-        height,
-        `${where.index}  ${where.scene}  @ ${where.at.toFixed(2)}s`,
-      );
+      sheet?.draw(n, rgba, width, height, frameLabel(project, tMs, where));
       shots.push({
         scene: where.scene,
         at: where.at,
@@ -326,7 +343,35 @@ export function startBridgeService(
         path,
         index: where.index,
         ...(sampled ? { probes: sampled } : {}),
+        ...(texts ? { texts } : {}),
       });
+    };
+    try {
+      if (request.texts) {
+        // One frame at a time, so clips extract only each instant, as captureFrameRgba does; each frame also reports the text it shows.
+        for (const [n, tMs] of times.entries()) {
+          await live(n);
+          await renderRange(
+            exportOptions(project, format),
+            [tMs],
+            (f) => keep(n, f.tMs, f.rgba, f.width, f.height, f.texts),
+            { texts: true },
+          );
+        }
+      } else {
+        for (const [n, tMs] of times.entries()) {
+          await live(n);
+          const { rgba, width, height } = await captureFrameRgba(
+            exportOptions(project, format),
+            tMs,
+          );
+          await keep(n, tMs, rgba, width, height);
+        }
+      }
+    } catch (e) {
+      if (!(e instanceof RenderStopped)) throw e;
+      await respond(request, stoppedBody(e.reason));
+      return;
     }
     const renderMs = Date.now() - renderStart;
     let sheetPath: string | undefined;
@@ -348,12 +393,139 @@ export function startBridgeService(
       format: format.name,
       size: { width: format.width, height: format.height },
       nativeSize: { width: native.width, height: native.height },
+      ...(request.texts ? { safe: safeAreaBox(native) } : {}),
       timing: {
         queuedMs: request.requestedAtMs > 0 ? Math.max(0, servedAt - request.requestedAtMs) : null,
         renderMs,
         perFrameMs: Math.round(renderMs / shots.length),
       },
       // Provenance for hash disputes: this surface is visually exact but not hash-exact against the cold-boot screenshot (docs/determinism.md).
+      surface: "render-window",
+    });
+  };
+
+  /** A span through the export path at a check size: the flash detector over every frame, a preview clip of PNG frames, or both; flagged moments come back with before, at and after frames. */
+  const serveRange = async (request: BridgeRequest, context: EditorContext | null) => {
+    const targetId = request.project ?? context?.projectId ?? null;
+    if (!targetId) {
+      await respond(request, {
+        ok: false,
+        error: "no project is open in Kookaburra Cut; pass a project",
+      });
+      return;
+    }
+    const flashes = request.flashes !== false;
+    const clip = request.clip === true;
+    if (!flashes && !clip) {
+      await respond(request, { ok: false, error: "a ranged render needs flashes, clip or both" });
+      return;
+    }
+    const servedAt = Date.now();
+    const native = requestFormat(request.aspect, context?.aspect);
+    const format = rangeFormat(native, request.width);
+    const project = await ensureLoaded(targetId, native);
+    const plan = rangePlan(request, project.totalMs);
+    const units = rangeUnits(plan.frames.length, format);
+    if (units > MAX_REQUEST_UNITS) {
+      await respond(request, {
+        ok: false,
+        tooLarge: true,
+        units,
+        maxUnits: MAX_REQUEST_UNITS,
+        error: `this ranged render costs ${units} units (${plan.frames.length} frames at ${format.width}x${format.height}); one request takes at most ${MAX_REQUEST_UNITS}`,
+        hint: "check a shorter span (kb splits a long one), or drop --width",
+      });
+      return;
+    }
+    const opts = { ...exportOptions(project, format), fps: plan.fps };
+    const live = async (n: number) => {
+      const state = await invoke<Liveness | null>("bridge_request_live", {
+        id: request.id,
+        frame: n,
+      }).catch(() => null);
+      if (state && !state.live) throw new RenderStopped(state.reason);
+    };
+    const savePng = async (rgba: Uint8Array, width: number, height: number, n: number) => {
+      const png = await rgbaToPng(rgba, width, height);
+      if (!png) throw new Error("could not encode a ranged frame");
+      return await invoke<string>("bridge_write_sheet", png, {
+        headers: { "x-kookaburra-id": request.id, "x-kookaburra-frame": String(n) },
+      });
+    };
+    const clipPaths: string[] = [];
+    let report: Record<string, unknown> | null = null;
+    const renderStart = Date.now();
+    try {
+      if (flashes) {
+        await invoke("range_flash_begin", {
+          width: format.width,
+          height: format.height,
+          fps: plan.fps,
+          standard: request.standard ?? null,
+        });
+      }
+      await renderRange(opts, plan.times, async ({ index, rgba, width, height }) => {
+        await live(index);
+        if (flashes) await invoke("range_flash_push", rgba);
+        if (clip) clipPaths.push(await savePng(rgba, width, height, index));
+      });
+      if (flashes) {
+        report = shiftFlashReport(
+          await invoke<Record<string, unknown>>("range_flash_finish"),
+          plan.times[0],
+        );
+      }
+    } catch (e) {
+      if (flashes) await invoke("range_flash_finish").catch(() => null);
+      if (!(e instanceof RenderStopped)) throw e;
+      await respond(request, stoppedBody(e.reason));
+      return;
+    }
+    const renderMs = Date.now() - renderStart;
+    const issues = (report?.issues as { startMs: number }[] | undefined) ?? [];
+    const flagged = issues
+      .slice(0, RANGE_MAX_STRIPS)
+      .map((issue) => stripFrames(plan, issue.startMs));
+    const stripFrameSet = [...new Set(flagged.flat())].sort((a, b) => a - b);
+    const stripPaths = new Map<number, string>();
+    if (stripFrameSet.length > 0) {
+      // Frame numbers past the clip's own, so the two never share a name.
+      const base = plan.frames[plan.frames.length - 1] + 1;
+      await renderRange(
+        opts,
+        stripFrameSet.map((k) => (k * 1000) / plan.fps),
+        async ({ index, rgba, width, height }) => {
+          stripPaths.set(stripFrameSet[index], await savePng(rgba, width, height, base + index));
+        },
+      );
+    }
+    await respond(request, {
+      ok: true,
+      project: project.id,
+      format: format.name,
+      size: { width: format.width, height: format.height },
+      nativeSize: { width: native.width, height: native.height },
+      fps: plan.fps,
+      startMs: plan.startMs,
+      endMs: plan.endMs,
+      firstFrame: plan.frames[0],
+      frames: plan.frames.length,
+      ...(report ? { flashes: report } : {}),
+      ...(clip ? { clip: { paths: clipPaths, fps: plan.fps } } : {}),
+      strips: flagged.map((frames, issue) => ({
+        issue,
+        frames: frames.map((k, i) => ({
+          role: ["before", "at", "after"][i],
+          frame: k,
+          tMs: Math.round((k * 1000) / plan.fps),
+          path: stripPaths.get(k) ?? null,
+        })),
+      })),
+      timing: {
+        queuedMs: request.requestedAtMs > 0 ? Math.max(0, servedAt - request.requestedAtMs) : null,
+        renderMs,
+        perFrameMs: Math.round(renderMs / plan.frames.length),
+      },
       surface: "render-window",
     });
   };
@@ -551,6 +723,8 @@ export function startBridgeService(
           return await serveCapture(request, context);
         case "check":
           return await serveCheck(request, context);
+        case "range":
+          return await serveRange(request, context);
         case "fonts": {
           const result = await serveFontsRequest({
             refs: request.refs ?? undefined,

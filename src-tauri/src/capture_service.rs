@@ -13,7 +13,7 @@ use crate::bridge::{self, BridgeRequest, RESPONSE_CAP_BYTES, RESPONSE_TTL_MS};
 
 /// What kb may rely on from this build (`health.captureFeatures`).
 pub const CAPTURE_FEATURES: &[&str] = &[
-    "scale", "width", "probe", "client", "deadline", "recycle", "debug",
+    "scale", "width", "probe", "client", "deadline", "recycle", "debug", "range", "texts",
 ];
 const HEALTH_VERSION: u32 = 1;
 /// One unit is a 1280x720 frame's pixels; a 4K frame is 9.
@@ -26,6 +26,11 @@ const USAGE_WINDOW_MS: u64 = 60_000;
 const SAMPLE_CAP: usize = 32;
 /// Sheets and multi-frame captures default to this long edge.
 pub(crate) const SHEET_LONG_EDGE: u32 = 1280;
+/// A ranged render skips the per-frame preamble and PNG save, so this many of its frames cost one capture frame's pixels.
+pub(crate) const RANGE_FRAMES_PER_UNIT: u64 = 4;
+/// Ranged renders default to this short edge and rate (mirror of src/render/bridgeRequests.ts).
+pub(crate) const RANGE_SHORT_EDGE: f64 = 360.0;
+pub(crate) const RANGE_DEFAULT_FPS: f64 = 30.0;
 pub(crate) const MIN_CAPTURE_EDGE: u32 = 64;
 /// WebKit's live WebGL contexts per WebContent process.
 pub(crate) const WEBGL_CAP: u32 = 16;
@@ -54,6 +59,7 @@ pub(crate) const STALL_HINT: &str = "The app's GPU stalled during this capture; 
 pub(crate) const WEDGED_HINT: &str = "The GPU stalled 3 times in 10 minutes, so Kookaburra Cut stopped restarting its render window. Ask the user to quit and reopen Kookaburra Cut, or to press Retry captures in the editor.";
 const THROTTLE_HINT: &str = "capture fewer or smaller frames (--scale 0.5)";
 const TOO_LARGE_HINT: &str = "drop --scale/--width, use the default sheet size";
+const RANGE_TOO_LARGE_HINT: &str = "check a shorter span (kb splits a long one), or drop --width";
 
 /// Mirror of `FORMATS` in src/engine/format.ts (a vitest pins the two together).
 pub(crate) const CAPTURE_FORMATS: &[(&str, u32, u32)] = &[
@@ -140,6 +146,33 @@ pub(crate) fn units_for(frames: u32, width: u32, height: u32) -> u32 {
     frames.saturating_mul(px.div_ceil(UNIT_PIXELS).max(1) as u32)
 }
 
+/// A ranged render's size: a literal width, else the 360 px short edge (mirror of `rangeFormat`).
+pub(crate) fn range_size(native: (u32, u32), width: Option<f64>) -> (u32, u32) {
+    if width.is_some_and(|w| w.is_finite() && w > 0.0) {
+        return capture_size(native, width, None, false);
+    }
+    let short = f64::from(native.0.min(native.1)).max(1.0);
+    capture_size(native, None, Some(RANGE_SHORT_EDGE / short), false)
+}
+
+/// Frames in `[start, end)` at `fps`, at least one.
+pub(crate) fn range_frames(start_ms: Option<f64>, end_ms: Option<f64>, fps: Option<f64>) -> u32 {
+    let fps = fps
+        .filter(|f| f.is_finite() && *f > 0.0)
+        .unwrap_or(RANGE_DEFAULT_FPS);
+    let span = match (start_ms, end_ms) {
+        (Some(a), Some(b)) if a.is_finite() && b.is_finite() && b > a => b - a,
+        _ => 0.0,
+    };
+    ((span * fps / 1000.0).ceil() as u32).max(1)
+}
+
+/// A ranged render costs its pixels, four frames to a capture frame's unit.
+pub(crate) fn range_units(frames: u32, width: u32, height: u32) -> u32 {
+    let px = u64::from(width) * u64::from(height) * u64::from(frames);
+    px.div_ceil(UNIT_PIXELS * RANGE_FRAMES_PER_UNIT).max(1) as u32
+}
+
 /// What one pending request costs and who sent it.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct RequestPeek {
@@ -158,12 +191,21 @@ pub(crate) struct RequestPeek {
 pub(crate) fn peek(request: &BridgeRequest, editor_aspect: Option<&str>) -> RequestPeek {
     let kind = request.kind.clone().unwrap_or_else(|| "capture".into());
     let capture = kind == "capture";
+    let range = kind == "range";
     let frames = if capture {
         request.frames.as_ref().map_or(1, |f| f.len().max(1)) as u32
+    } else if range {
+        range_frames(request.start_ms, request.end_ms, request.fps)
     } else {
         1
     };
-    let units = if capture {
+    let units = if range {
+        let (w, h) = range_size(
+            native_size(request.aspect.as_deref().or(editor_aspect)),
+            request.width,
+        );
+        range_units(frames, w, h)
+    } else if capture {
         let native = native_size(request.aspect.as_deref().or(editor_aspect));
         let sized = request.width.is_some() || request.scale.is_some();
         let probe = request.probe.as_ref().is_some_and(|p| !p.is_null());
@@ -369,7 +411,7 @@ pub(crate) enum Verdict {
 }
 
 fn throttled_kind(kind: &str) -> bool {
-    matches!(kind, "capture" | "check")
+    matches!(kind, "capture" | "check" | "range")
 }
 
 /// One verdict per peek (given oldest first): wedged answers everything; a capture over 144 units is too large; a client's fifth pending capture or check, or one that would take it past 240 units a minute (counting what it already queued), is throttled.
@@ -387,7 +429,7 @@ pub(crate) fn verdicts(
             if wedged {
                 return Verdict::Wedged;
             }
-            if p.kind == "capture" && p.units > MAX_REQUEST_UNITS {
+            if matches!(p.kind.as_str(), "capture" | "range") && p.units > MAX_REQUEST_UNITS {
                 return Verdict::TooLarge;
             }
             if !throttled_kind(&p.kind) {
@@ -1163,10 +1205,16 @@ fn verdict_body(request: &BridgeRequest, p: &RequestPeek, verdict: &Verdict) -> 
             body["units"] = json!(p.units);
             body["maxUnits"] = json!(MAX_REQUEST_UNITS);
             body["error"] = json!(format!(
-                "this capture costs {} units ({} frame(s)); one request takes at most {MAX_REQUEST_UNITS} (a 4K frame is 9)",
-                p.units, p.frames
+                "this {} costs {} units ({} frame(s)); one request takes at most {MAX_REQUEST_UNITS} (a 4K frame is 9)",
+                if p.kind == "range" { "ranged render" } else { "capture" },
+                p.units,
+                p.frames
             ));
-            body["hint"] = json!(TOO_LARGE_HINT);
+            body["hint"] = json!(if p.kind == "range" {
+                RANGE_TOO_LARGE_HINT
+            } else {
+                TOO_LARGE_HINT
+            });
         }
         Verdict::Throttled {
             retry_after_ms,
@@ -1701,6 +1749,43 @@ mod tests {
             (140, 64)
         );
         assert_eq!(native_size(Some("nope")), (3840, 2160));
+    }
+
+    #[test]
+    fn ranged_renders_cost_a_quarter_unit_a_360p_frame() {
+        assert_eq!(range_size((3840, 2160), None), (640, 360));
+        assert_eq!(range_size((2160, 3840), None), (360, 640));
+        assert_eq!(range_size((2160, 2700), None), (360, 450));
+        assert_eq!(range_size((1206, 2622), None), (360, 782));
+        assert_eq!(range_size((3840, 2160), Some(480.0)), (480, 270));
+        assert_eq!(range_frames(Some(1000.0), Some(11_000.0), None), 300);
+        assert_eq!(range_frames(Some(0.0), Some(1000.0), Some(12.0)), 12);
+        assert_eq!(range_frames(Some(5.0), Some(5.0), None), 1);
+        assert_eq!(range_units(300, 640, 360), 19);
+        assert_eq!(range_units(1, 640, 360), 1);
+        let peek = peek(
+            &request(
+                "0001-1-a",
+                json!({ "kind": "range", "startMs": 0, "endMs": 60_000, "aspect": "16:9" }),
+            ),
+            None,
+        );
+        assert_eq!(
+            (peek.kind.as_str(), peek.frames, peek.units),
+            ("range", 1800, 113)
+        );
+        let long = peek_of(json!({ "kind": "range", "startMs": 0, "endMs": 90_000 }));
+        let est = Estimate {
+            unit_ms: 400.0,
+            overhead_ms: 1000.0,
+            samples: 0,
+        };
+        let verdict = verdicts(&[long], &Usage::new(), &est, 0, false);
+        assert_eq!(verdict[0], Verdict::TooLarge);
+    }
+
+    fn peek_of(fields: Value) -> RequestPeek {
+        peek(&request("0002-1-b", fields), Some("16:9"))
     }
 
     #[test]

@@ -45,6 +45,7 @@ pub const BRIDGE_KINDS: &[&str] = &[
     "debug",
     "export",
     "cancelExport",
+    "range",
 ];
 /// The kinds `spawn_native_bridge` serves from Rust; the render window never claims them (a `debug` request routes by its op, `RoutePeek::native`).
 pub const NATIVE_KINDS: &[&str] = &["mediaChanged", "openEdit", "export", "cancelExport"];
@@ -147,6 +148,23 @@ pub struct BridgeRequest {
     /// The dev-only `spawn-contexts` debug op's count.
     #[serde(default)]
     pub n: Option<u32>,
+    /// A `range` request's span in project ms, `[startMs, endMs)`, and its frame rate.
+    #[serde(default)]
+    pub start_ms: Option<f64>,
+    #[serde(default)]
+    pub end_ms: Option<f64>,
+    #[serde(default)]
+    pub fps: Option<f64>,
+    /// A `range` request runs the flash detector (`standard`: wcag, itu or both), saves its frames as a clip, or both.
+    #[serde(default)]
+    pub flashes: Option<bool>,
+    #[serde(default)]
+    pub standard: Option<String>,
+    #[serde(default)]
+    pub clip: Option<bool>,
+    /// A capture also reports each frame's visible text boxes and the safe area.
+    #[serde(default)]
+    pub texts: Option<bool>,
 }
 
 fn first_version() -> u32 {
@@ -1463,7 +1481,7 @@ pub async fn save_bridge_screenshot(
     Ok(pending.out.to_string_lossy().into_owned())
 }
 
-/// Write a capture's contact sheet (raw PNG body; header `x-kookaburra-id`) beside its response.
+/// Write a capture's contact sheet (raw PNG body; header `x-kookaburra-id`) beside its response, or with `x-kookaburra-frame: N` one of its numbered frames (`<id>-N.png`).
 #[tauri::command]
 pub fn bridge_write_sheet(app: AppHandle, request: tauri::ipc::Request) -> Result<String, String> {
     let id = request
@@ -1475,6 +1493,15 @@ pub fn bridge_write_sheet(app: AppHandle, request: tauri::ipc::Request) -> Resul
     if !valid_id(&id) {
         return Err(format!("invalid bridge id {id:?}"));
     }
+    let suffix = match request.headers().get("x-kookaburra-frame") {
+        None => "sheet".to_owned(),
+        Some(v) => v
+            .to_str()
+            .ok()
+            .and_then(|n| n.parse::<u32>().ok())
+            .map(|n| n.to_string())
+            .ok_or("x-kookaburra-frame must be a frame number")?,
+    };
     let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else {
         return Err("bridge_write_sheet expects a raw binary body".into());
     };
@@ -1487,8 +1514,8 @@ pub fn bridge_write_sheet(app: AppHandle, request: tauri::ipc::Request) -> Resul
     }
     let dir = bridge_root(&app)?.join("responses");
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    let path = dir.join(format!("{id}-sheet.png"));
-    let tmp = dir.join(format!(".{id}-sheet.png.tmp"));
+    let path = dir.join(format!("{id}-{suffix}.png"));
+    let tmp = dir.join(format!(".{id}-{suffix}.png.tmp"));
     std::fs::write(&tmp, bytes).map_err(|e| e.to_string())?;
     std::fs::rename(&tmp, &path).map_err(|e| e.to_string())?;
     Ok(path.to_string_lossy().into_owned())
@@ -2146,7 +2173,8 @@ mod tests {
                 "openEdit",
                 "debug",
                 "export",
-                "cancelExport"
+                "cancelExport",
+                "range"
             ])
         );
         assert_eq!(
