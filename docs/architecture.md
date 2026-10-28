@@ -7,27 +7,35 @@
 ## The core idea
 
 One WebGL surface for everything. Text (troika SDF), graphics, and 3D are all
-Three.js objects inside a single react-three-fiber `<Canvas>`. WebKit cannot
+Three.js objects inside a single react-three-fiber root. WebKit cannot
 deterministically capture the DOM, so nothing visual is ever DOM/CSS. That is
 the whole architecture in one sentence.
 
-Export steps a manual clock frame-by-frame, reads pixels with `gl.readPixels`,
-and pipes raw RGBA to a bundled ffmpeg sidecar that encodes H.264, H.265 and
-ProRes. It runs in pure WKWebView (Tauri 2), no Chromium fallback.
+That root lives in a Web Worker, the **stage worker**, drawing on an
+OffscreenCanvas the window transferred to it. Scene code (the project's own
+TSX, compiled at load) runs only there, in a realm with no `window`, no
+`document` and no Tauri IPC; the window keeps the chrome, the clock, the
+stores and every native call, and the two talk over one typed protocol
+(`src/engine/stageProtocol.ts`). Export steps a manual clock frame-by-frame,
+the worker renders and reads back each frame with `gl.readPixels`, and the
+window pipes the raw RGBA to a bundled ffmpeg sidecar that encodes H.264, H.265
+and ProRes. It runs in pure WKWebView (Tauri 2), no Chromium fallback.
 
 ## Data flow (export)
 
 ```
-global timeline (anime.js, autoplay off)
-        │  seek(tMs)              ← preview and export drive the SAME clock
-        ▼
-React commit  → Three.js objects (position, opacity, text, …)
-        │
-        ▼
-r3f advance(tMs)  (frameloop="never")  → renders exactly one frame
-        │
-        ▼
-gl.readPixels → one reused RGBA Uint8Array (3840×2160 ≈ 33 MB)
+window: exportFrame(frame, tMs)  ─────────────▶  stage worker
+                                                 global timeline (anime.js, autoplay off)
+                                                         │  seek(tMs)   ← preview and export drive the SAME clock
+                                                         ▼
+                                                 React commit → Three.js objects (position, opacity, text, …)
+                                                         │
+                                                         ▼
+                                                 r3f advance(tMs) (frameloop="never") → exactly one frame
+                                                         │
+                                                         ▼
+                                                 gl.readPixels → one RGBA Uint8Array (3840×2160 ≈ 33 MB)
+window  ◀──────── transferred back (no copy) ────────────┘
         │  invoke("push_frame", rgba)   ← zero-copy, InvokeBody::Raw
         ▼
 Rust handler → ffmpeg sidecar stdin  (-f rawvideo -pix_fmt rgba -vf vflip …)
@@ -39,13 +47,64 @@ Determinism holds because time is an explicit input (no `requestAnimationFrame`,
 no `Date.now`) and all fonts/assets are preloaded before frame 0. The full
 loop and its failure modes are in [determinism.md](./determinism.md).
 
+## The stage worker
+
+Every window that renders scenes (the editor, Present, the hidden render
+window) mounts one `StageView`, which creates a canvas, transfers it as an
+OffscreenCanvas to a module worker (`src/stage/stageWorker.ts`) and drives it
+through `StageClient` (`src/stage/stageClient.ts`), the window's implementation
+of the `StageHandle` the engine calls (`src/engine/stageHandle.ts`). Inside,
+`stageServer.tsx` owns the r3f root, the compositor, the export and stills
+frame bodies and the scene trees. The split, and why it is drawn where it is:
+
+- **The realm is the boundary.** A worker has no `window`, no `document` and
+  no `__TAURI_INTERNALS__`, so `invoke` fails closed there by construction; a
+  scene that reaches for either throws at runtime. The worker gets a small set
+  of stand-ins (an OffscreenCanvas that answers as a canvas element, a document
+  that can only make canvases, an image that decodes through
+  `createImageBitmap`, in-memory storage, `setImmediate` for anime.js) and
+  nothing that reaches the Mac.
+- **The window resolves, the worker consumes.** Asset URLs for the open
+  project are resolved in the window and shipped with the project
+  (`StageAssets`); clip frames, conform jobs, emoji rasters and 3D objects go
+  through a `NativePort` (`src/engine/stageRealm.ts`) whose window side
+  (`windowNativePort.ts`) validates every cache directory it issued. The worker
+  names clip sources by project id and relative path and never computes a
+  path.
+- **State is mirrored, not shared.** The zustand data fields the canvas tree
+  reads (editor, effects, clock, the edit stores, the sidecar registries) are
+  mirrored both ways over the protocol with echo suppression
+  (`src/stage/storeMirror.ts`); the export path reads none of them.
+- **Gizmo chrome stays in the DOM.** The worker projects every 2D gizmo target
+  per frame (world points, NDC and matrices) and posts them; hit tests against
+  the 3D handles are async requests. Terminal and website overlays stay DOM in
+  the window. See [gizmos.md](./gizmos.md).
+- **Orchestration stays in the window.** `exporter.ts` and `stillsExport.ts`
+  own `start_export`, `push_frame`, `push_still` and `finish_*`; the worker
+  renders one frame or page per request into a buffer that ping-pongs by
+  transfer. A frame body (`src/engine/exportRun.ts`, `stillsRun.ts`) is the
+  same code the main thread ran, moved verbatim.
+- **Fonts preload in the worker, in the window's order.** troika's shared SDF
+  atlas is per realm and its cell order is export contract, so the server
+  preloads the bundled faces at boot and the project's faces before a scene
+  mounts, exactly as the window did. Its atlas uploads through troika's
+  readback path (`sdfAtlasReadback`, the one patched option), since WebKit's
+  upload of a worker canvas is not a raw copy.
+
+The theme editor's `SpecimenCanvas` is the one r3f root still on a main
+thread: it draws bundled specimen scenes only, never a workspace scene, in a
+window that has no project IPC of its own.
+
 ## Modules
 
 | Path | Role |
 | --- | --- |
 | `src/engine/timeline.ts` | anime.js global timeline wrapper; `useTimeline()`; `configureDeterministicEngine()` |
 | `src/engine/format.ts` | `FormatInfo`, `FORMATS`, `useFormat()`, safe-area maths |
-| `src/engine/exporter.ts` | deterministic frame loop |
+| `src/engine/exporter.ts` | deterministic frame loop (window side: orchestration and IPC) |
+| `src/engine/exportRun.ts` | the per-frame render body, in the stage worker |
+| `src/engine/stageProtocol.ts` | the versioned window ↔ worker protocol |
+| `src/stage/` | the stage worker: `stageWorker.ts` (realm shims), `stageServer.tsx` (r3f root, trees), `stageClient.ts` (the window's handle), `StageView.tsx` |
 | `src/engine/compositor.ts` | `renderComposited`: single-scene direct render / two-scene transition composite |
 | `src/engine/sceneTimeline.ts` | global→local time mapping (`buildSceneTimeline` / `resolveAt`) |
 | `src/engine/project.ts` | project loading: manifest, sidecars, theme/audio resolution |
@@ -155,7 +214,7 @@ deterministic, frame-accurate, 4K, inside WKWebView (not Chromium).
 
 **The resolution: one WebGL surface.** Because WebKit cannot deterministically
 capture the DOM (finding 2), all visual content is authored as Three.js objects
-in a single `<Canvas>`:
+in a single r3f root, inside the stage worker:
 
 - Text (headlines, body, counters) → troika SDF meshes.
 - Static graphics (PNG/SVG) → textured planes/sprites, or SVG tessellated via `SVGLoader`.
@@ -169,7 +228,7 @@ counters, device demos, transitions) troika gives kerned, ligature-aware text.
 
 **The deterministic frame loop** never uses rAF: an export controller owns the
 clock, seeks the global timeline to `t`, renders exactly one frame directly and
-reads it back. (The editor's canvas mounts `frameloop="demand"` for interactive
+reads it back. (The editor's stage mounts `frameloop="demand"` for interactive
 preview; the hidden render window's mounts `frameloop="never"`; the export loop
 bypasses both.) The authoritative loop, its barriers, and the
 `preserveDrawingBuffer` requirement live in [determinism.md](./determinism.md).
@@ -402,7 +461,7 @@ Where the live Tauri-2 setup matters for working in the code:
    stable` suffices, no `rustup target add`.
 8. **The hidden render window** (label `render`, `render.html` →
    `src/renderMain.tsx`) serves live captures and scene thumbs off-screen: its
-   own realm mounts the shared `StageScenes` tree plus `ExportBridge`, so the
+   own realm, with its own stage worker, mounts the shared scene tree, so the
    editor's clock, stores and canvas are never touched by a capture. Created
    lazily by the editor's bridge pending-check, closes itself after ~5 idle
    minutes, stays alive (replying busy) during exports since it lives in its own

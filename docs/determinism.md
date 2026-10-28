@@ -44,6 +44,8 @@ GPU/driver, not across fleets.)
 | **A layout that depends on a measurement only the mounted tree can request**: `TitleBlock` cascades its header icon and subtitle off the title's MEASURED block height, but its props exist only once the scene is in the tree, so the preamble cannot pre-warm them the way `preloadPanelMeasures` does for overlay panels. A cold pass would render frame 0 pre-measure while a warm second pass renders it cascaded. | `awaitTitleMeasuresSettled()`, the barrier after `awaitSceneHostsCommitted`: mounted TitleBlocks report their outstanding typesets, and the spin exits only once they have landed AND the tree has re-rendered with them (`engine/titleBlockMeasure.ts`). Single-line text solves to a hard 0 growth, so standing layouts keep their authored constants bit-for-bit either way. |
 | **Layout derived from measured text** (a pill sized by `useTextMetrics`, a pinned `durationMs` reveal waiting on its unit count): the derived state lands one re-render after its face parses or its first typeset, so a frame captured in between draws the pre-measure layout. | Pending reports (`engine/textDerivedState.ts`, from layout effects): `awaitTextSync` settles typesets, spins (bounded at 5000) until nothing is outstanding, then settles once more for typesets the settling commit queued. A tree that reports nothing takes the old path exactly. Preview captures (`captureFrameAt`) also run the export's clip, text and emoji barriers, in that order. |
 | **Preview frames interleaving a Verify ×2**: between the two passes the preview driver rendered a wall-clock-varying number of frames (restored clock, preview size), leaking GPU/render state into pass B's first frames | `verifyDeterminism` holds the preview stand-down across BOTH passes; `engine/exportState` is depth-counted so the whole-run hold nests over each pass's own. Pass B starts from exactly the state pass A ended in. |
+| **The SDF atlas uploaded from a worker canvas** (2026-10-28): three uploads troika's atlas canvas as a texture, and WebKit's upload of a worker OffscreenCanvas is not the raw copy an HTMLCanvasElement's is; every glyph edge moved (jagged, speckled, up to 197 levels), on both anchors | The patched troika option `sdfAtlasReadback` (`patches/troika-three-text@0.52.5.patch`) routes the atlas through troika's own readPixels-to-DataTexture path (its Safari<15 workaround); the stage server sets it once in `configureTextBuilder`. Byte-identical to the main-thread baselines. |
+| **A realm that mounts scenes before its font preload**: the stage worker's atlas is its own, so a server that hydrated a project before preloading let the mount-time typesets claim the cells in scene order instead of the boot order (stills pages ±1/±2 on glyph edges) | The server runs `preloadAppFonts()` at boot and `preloadAppFonts(projectFaces)` plus the emoji preload inside `loadProject`, before the scenes mount: the window's barriers, in the realm that renders. |
 | **Parallel font preload**: troika claims shared-atlas cells at preload COMPLETION, i.e. fetch-race order, shifting multi-font projects' glyph cells per BOOT (a per-session hash lottery: every run internally consistent, every boot different) | `preloadAppFonts` preloads SEQUENTIALLY in canonical order (Inter Regular, then declaration/ref order), and `loadProject` pre-generates every project face's glyphs BEFORE the scenes mount. See "Fonts". |
 | Muxer writing a wall-clock `creation_time` / encoder version tag | ffmpeg `-flags:v +bitexact -fflags +bitexact -map_metadata -1` (set in `start_export`) so the container is reproducible. |
 | Hardware encoder (`h264_videotoolbox` / `hevc_videotoolbox` / `prores_videotoolbox`) bit-variance | Default to software `libx264` (deterministic); the VideoToolbox lanes are opt-in fast drafts excluded from Verify. |
@@ -60,7 +62,7 @@ GPU/driver, not across fleets.)
 | **Stills: a late-mounted media registration.** A settle input that only a mounted primitive can report would move an automatic still whenever it lands after the page plan. | Media motion ends come from the sidecar (`sceneMediaMotionEndMs`, pure), never a mount-time registry; registered timings are read only after the preamble's asset preloads and `awaitSceneHostsCommitted`, and after the pending barrier above. |
 | **Stills: capturing from `resolveAt(tMs)` instead of the page's plan.** An automatic still that settles in its outgoing transition is planned as the scene alone; resolving the clock time again composites the transition instead, and the text layer then describes a different frame. | `renderFrameInto` takes `resolved` as an argument, and the stills loop always passes `page.resolved` (the compare frame and text roots read the same value). |
 
-## The loop (as implemented in `src/engine/exporter.ts`)
+## The loop (as implemented in `src/engine/exporter.ts` and `src/engine/exportRun.ts`)
 
 ```
 configureDeterministicEngine();               // anime.js: no rAF
@@ -91,8 +93,21 @@ for (let frame = 0; frame < total; frame++) {
 }
 ```
 
-`gl={{ preserveDrawingBuffer: true }}` is mandatory on the `<Canvas>` or the
+`gl={{ preserveDrawingBuffer: true }}` is mandatory on the stage's root or the
 readback can come back cleared in WKWebView.
+
+**Two realms, one loop.** Since 2026-10-28 the body of the loop (the preamble
+and its barriers, the clock flush, the awaits, the composite and the readback)
+runs inside the stage worker (`exportRun.ts`, `beginExportRun` /
+`renderExportFrame`), where the scenes live; `exporter.ts` in the window owns
+the frame count, `start_export`, `push_frame` and `finish_export`, and asks the
+worker for one frame at a time over the stage protocol. The RGBA buffer is
+transferred to the window with each frame and handed back with the next
+request, so no frame is copied; a buffer that did not come back (a run
+abandoned mid-frame) is reallocated at its exact size. Nothing about the
+contract moved: `ws:launch-2026` and `showcase-tour` export byte-identical to
+their main-thread baselines (the 2026-10-28 proof below), and the window
+realm's own troika atlas no longer touches a pixel.
 
 **Why `awaitCanvasClockCommit`.** The scene lives in the **react-three-fiber
 reconciler**, and react-dom's `flushSync` does not flush it; the canvas subtree
@@ -1184,6 +1199,12 @@ camera exactly:
   session-history-dependent: an interactive session that previews other
   multi-font projects first can legitimately export ±LSB-different text than a
   fresh-boot gate (gates always run fresh-boot via `kookaburra:run`).
+- **The atlas is per realm.** The stage worker typesets every exported glyph,
+  so its atlas is the one that matters, and it fills in the window's order: the
+  server preloads the bundled faces at boot and each project's faces (themes,
+  per-scene themes, comparison B sides, sidecar overrides) sequentially before
+  the scenes mount. The window keeps its own preload for `measureText` and the
+  theme editor's specimens; nothing it typesets reaches an export.
 
 ## Emoji & symbol fallback
 
@@ -1532,8 +1553,9 @@ tier is under "Gate tiers" and the baselines under "Current baselines".
 
 Live captures (`kb capture` and `kb check --render` over bridge v2, the legacy
 `capture.py`, scene thumbs; docs/agent-kit.md) are served by the hidden `render`
-window: its own realm and WebContent process, the same `renderComposited` seam
-and export barriers, driven rAF-free so it renders while hidden. Three measured
+window: its own realm and WebContent process with its own stage worker, the
+same `renderComposited` seam and export barriers, driven rAF-free so it renders
+while hidden. Three measured
 facts (2026-08-07) define its contract:
 
 - **Per-surface deterministic.** Repeated bridge captures of the same frame hash
