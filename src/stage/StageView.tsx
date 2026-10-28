@@ -90,11 +90,15 @@ export function StageView({
           ...(e instanceof WheelEvent ? { deltaX: e.deltaX, deltaY: e.deltaY } : {}),
         });
       };
+    // A press on the canvas starts a drag the window follows wherever the pointer goes, as the document did for a real canvas; moves, ups and cancels are forwarded once each, from the window.
+    const pressed = new Set<number>();
+    const down = forward("pointerdown");
+    const onDown = (e: PointerEvent) => {
+      pressed.add(e.pointerId);
+      down(e);
+    };
     const entries: [keyof HTMLElementEventMap, (e: never) => void][] = [
-      ["pointerdown", forward("pointerdown")],
-      ["pointermove", forward("pointermove")],
-      ["pointerup", forward("pointerup")],
-      ["pointercancel", forward("pointercancel")],
+      ["pointerdown", onDown],
       ["pointerleave", forward("pointerleave")],
       ["click", forward("click")],
       ["dblclick", forward("dblclick")],
@@ -104,15 +108,26 @@ export function StageView({
     for (const [name, fn] of entries) {
       canvas.addEventListener(name, fn as EventListener, { passive: true });
     }
-    // A drag that leaves the canvas still ends: window-level up and cancel reach the worker too.
-    const up = forward("pointerup");
-    const cancel = forward("pointercancel");
-    window.addEventListener("pointerup", up);
-    window.addEventListener("pointercancel", cancel);
+    const tracked = (kind: "pointermove" | "pointerup" | "pointercancel") => {
+      const send = forward(kind);
+      return (e: PointerEvent) => {
+        const dragging = pressed.has(e.pointerId);
+        if (!dragging && e.target !== canvas) return;
+        if (kind !== "pointermove") pressed.delete(e.pointerId);
+        send(e);
+      };
+    };
+    const windowEntries: [keyof WindowEventMap, (e: PointerEvent) => void][] = [
+      ["pointermove", tracked("pointermove")],
+      ["pointerup", tracked("pointerup")],
+      ["pointercancel", tracked("pointercancel")],
+    ];
+    for (const [name, fn] of windowEntries) {
+      window.addEventListener(name, fn as EventListener, { passive: true });
+    }
     return () => {
       for (const [name, fn] of entries) canvas.removeEventListener(name, fn as EventListener);
-      window.removeEventListener("pointerup", up);
-      window.removeEventListener("pointercancel", cancel);
+      for (const [name, fn] of windowEntries) window.removeEventListener(name, fn as EventListener);
     };
   }, [client]);
 
