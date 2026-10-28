@@ -68,7 +68,6 @@ use sha2::{Digest, Sha256};
 use tauri::ipc::Channel;
 use tauri::{AppHandle, Manager, State};
 use tauri_plugin_shell::process::{CommandChild, CommandEvent};
-use tauri_plugin_shell::ShellExt;
 use tokio::sync::oneshot;
 
 use encode::{
@@ -517,10 +516,7 @@ fn start_export(
     };
 
     // Tauri places the sidecar next to the executable under its basename (the `bin/` prefix from `externalBin` and the target-triple suffix are both stripped), so the runtime name is just "ffmpeg".
-    let (mut rx, child) = app
-        .shell()
-        .sidecar("ffmpeg")
-        .map_err(|e| format!("ffmpeg sidecar not found: {e}"))?
+    let (mut rx, child) = tools::sidecar(&app, "ffmpeg")?
         .args(args)
         .spawn()
         .map_err(|e| format!("failed to start ffmpeg sidecar: {e}"))?;
@@ -809,10 +805,7 @@ async fn run_ffmpeg_to_completion(
     args: Vec<String>,
     on_spawn: impl FnOnce(u32),
 ) -> Result<(), String> {
-    let (mut rx, child) = app
-        .shell()
-        .sidecar("ffmpeg")
-        .map_err(|e| format!("ffmpeg sidecar not found: {e}"))?
+    let (mut rx, child) = tools::sidecar(app, "ffmpeg")?
         .args(args)
         .spawn()
         .map_err(|e| format!("failed to start ffmpeg sidecar: {e}"))?;

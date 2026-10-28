@@ -4,7 +4,6 @@ use serde::Serialize;
 use sha2::{Digest, Sha256};
 use tauri::{AppHandle, Manager};
 use tauri_plugin_shell::process::CommandEvent;
-use tauri_plugin_shell::ShellExt;
 
 use crate::encode::{audio_filter_graph_gained, AudioOptions};
 
@@ -23,6 +22,7 @@ pub struct LoudnessInfo {
 #[allow(clippy::too_many_arguments)]
 pub async fn measure_loudness(
     app: AppHandle,
+    settings: tauri::State<'_, crate::workspace::SettingsState>,
     file: String,
     gain_db: f64,
     fade_in_ms: u64,
@@ -74,7 +74,10 @@ pub async fn measure_loudness(
     // ebur128 prints its summary to STDERR; `-f null -` runs the graph without a file.
     let args: Vec<String> = vec![
         "-hide_banner".into(),
+        "-nostdin".into(),
         "-nostats".into(),
+        "-protocol_whitelist".into(),
+        "file,pipe".into(),
         "-i".into(),
         file,
         "-af".into(),
@@ -136,10 +139,7 @@ fn parse_ebur128_summary(stderr: &str) -> Option<LoudnessInfo> {
 
 /// Run the ffmpeg sidecar and capture STDERR (where ebur128 reports).
 async fn run_ffmpeg_stderr(app: &AppHandle, args: Vec<String>) -> Result<String, String> {
-    let (mut rx, _child) = app
-        .shell()
-        .sidecar("ffmpeg")
-        .map_err(|e| format!("ffmpeg sidecar not found: {e}"))?
+    let (mut rx, _child) = crate::tools::sidecar(app, "ffmpeg")?
         .args(args)
         .spawn()
         .map_err(|e| format!("failed to start ffmpeg: {e}"))?;

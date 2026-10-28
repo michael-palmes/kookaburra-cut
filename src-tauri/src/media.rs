@@ -1,5 +1,6 @@
 //! Media library backend: imports files into a project's `assets/` and maintains a content-hash-keyed thumbnail/metadata cache (probe JSON via the ffprobe sidecar, a poster and ~10 hover-scrub frames via the ffmpeg sidecar), stored APP-GLOBALLY in `$APPDATA/cache/media/<sha>/` (beside `cache/clips`) so identical files dedupe across projects and Settings can clear it in one shot; entries are guarded by a `.done` marker plus a `POSTER_VERSION` stamp (image posters regenerate when the pipeline changes), and a by-path stamp (size+mtime → sha) keeps warm views hash-free and regenerates automatically when a file changes.
 
+use std::collections::HashSet;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
@@ -7,7 +8,6 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tauri::{AppHandle, Manager, State};
 use tauri_plugin_shell::process::CommandEvent;
-use tauri_plugin_shell::ShellExt;
 
 use crate::workspace::{self, SettingsState, MANIFEST_FILENAME};
 
@@ -297,9 +297,12 @@ pub(crate) async fn write_rgba_png(
         "ffmpeg",
         vec![
             "-y".into(),
+            "-nostdin".into(),
             "-hide_banner".into(),
             "-loglevel".into(),
             "error".into(),
+            "-protocol_whitelist".into(),
+            "file,pipe".into(),
             "-f".into(),
             "rawvideo".into(),
             "-pix_fmt".into(),
@@ -336,10 +339,7 @@ pub(crate) async fn run_sidecar(
         ),
         SidecarPriority::Foreground => None,
     };
-    let (mut rx, child) = app
-        .shell()
-        .sidecar(name)
-        .map_err(|e| format!("{name} sidecar not found: {e}"))?
+    let (mut rx, child) = crate::tools::sidecar(app, name)?
         .args(args)
         .spawn()
         .map_err(|e| format!("failed to start {name}: {e}"))?;
@@ -468,8 +468,11 @@ pub async fn import_app_icon(
     } else {
         let args: Vec<String> = vec![
             "-y".into(),
+            "-nostdin".into(),
             "-loglevel".into(),
             "error".into(),
+            "-protocol_whitelist".into(),
+            "file,pipe".into(),
             "-i".into(),
             src.to_string_lossy().into_owned(),
             "-frames:v".into(),
@@ -547,11 +550,25 @@ pub async fn probe_audio(
     })
 }
 
+/// The head of every poster and scrub lane: no terminal, no protocol but a local file.
+fn media_lane_head() -> Vec<String> {
+    vec![
+        "-y".into(),
+        "-nostdin".into(),
+        "-loglevel".into(),
+        "error".into(),
+        "-protocol_whitelist".into(),
+        "file,pipe".into(),
+    ]
+}
+
 /// The ffprobe arguments every media probe runs.
 pub(crate) fn probe_args(abs: &Path) -> Vec<String> {
     vec![
         "-v".into(),
         "error".into(),
+        "-protocol_whitelist".into(),
+        "file,pipe".into(),
         "-print_format".into(),
         "json".into(),
         "-show_streams".into(),
@@ -619,7 +636,7 @@ pub(crate) fn parse_probe(stdout: &str, abs: &Path) -> Result<ProbeInfo, String>
 
 /// Probe one media file with the given ffprobe, blocking; stdin is closed so the tool can never wait on a terminal.
 pub(crate) fn probe_media_at(ffprobe: &Path, abs: &Path) -> Result<ProbeInfo, String> {
-    let out = std::process::Command::new(ffprobe)
+    let out = crate::tools::sidecar_command(ffprobe)
         .args(probe_args(abs))
         .stdin(std::process::Stdio::null())
         .output()
@@ -2188,7 +2205,7 @@ pub(crate) async fn ensure_media_cache(
 
     // Poster: 25% in for videos (skips black lead-ins), the image itself otherwise.
     let poster = staging.join(poster_name(if video { "video" } else { "image" }));
-    let mut poster_args: Vec<String> = vec!["-y".into(), "-loglevel".into(), "error".into()];
+    let mut poster_args: Vec<String> = media_lane_head();
     if hardware {
         poster_args.extend(["-hwaccel".into(), "videotoolbox".into()]);
     }
@@ -2214,7 +2231,7 @@ pub(crate) async fn ensure_media_cache(
     let mut scrub_count = 0u32;
     if video && duration_s > 0.0 {
         let rate = f64::from(SCRUB_FRAMES) / duration_s;
-        let mut scrub_args: Vec<String> = vec!["-y".into(), "-loglevel".into(), "error".into()];
+        let mut scrub_args: Vec<String> = media_lane_head();
         if hardware {
             scrub_args.extend(["-hwaccel".into(), "videotoolbox".into()]);
         }

@@ -330,6 +330,7 @@ pub(crate) fn count_args(src: &str, hardware: bool, probe_png: &Path) -> Vec<Str
         "pipe:1".into(),
     ];
     args.extend(lane_args(hardware));
+    args.extend(["-protocol_whitelist".into(), "file,pipe".into()]);
     args.extend(["-i".into(), src.to_owned()]);
     args.extend(
         [
@@ -378,6 +379,8 @@ pub(crate) fn chunk_args(
     ];
     args.extend(lane_args(hardware));
     args.extend([
+        "-protocol_whitelist".into(),
+        "file,pipe".into(),
         "-i".into(),
         src.to_owned(),
         "-vf".into(),
@@ -436,7 +439,7 @@ pub(crate) fn run_ffmpeg(
     background: bool,
     mut on_frame: impl FnMut(u32),
 ) -> Result<Option<u32>, String> {
-    let mut child = std::process::Command::new(ffmpeg)
+    let mut child = crate::tools::sidecar_command(ffmpeg)
         .args(args)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
@@ -1491,7 +1494,7 @@ mod tests {
         assert!(!joined.contains("hwaccel"));
         assert!(count_args("/s", true, Path::new("/p.png"))
             .join(" ")
-            .contains("-hwaccel videotoolbox -i /s"));
+            .contains("-hwaccel videotoolbox -protocol_whitelist file,pipe -i /s"));
     }
 
     #[test]
