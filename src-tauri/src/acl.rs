@@ -452,6 +452,7 @@ fn the_settings_window_owns_caches_the_workspace_location_updates_and_the_publis
             "note_picked_folder",
             "open_claude_download",
             "open_in_claude",
+            "open_privacy_page",
             "open_project_folder",
             "record_skipped_version",
             "reveal_in_finder",

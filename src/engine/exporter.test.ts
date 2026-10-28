@@ -197,6 +197,25 @@ describe("export readback guard", () => {
     expect(called("cancel_export")).toBe(true);
   });
 
+  it("hands the encoder its failure and names where the run stopped", async () => {
+    mountCanvas([1]);
+    vi.mocked(invoke).mockImplementation(async (cmd: string, args?: unknown) => {
+      if (cmd === "push_frame") pushed.push([]);
+      if (cmd === "cancel_export") {
+        expect((args as { reason?: string }).reason).toMatch(/^GPU stalled/);
+        return "frame 2/3 (33%), scene a, render 4.0 fps";
+      }
+      return undefined;
+    });
+    await expect(exportProject(opts)).rejects.toThrow(
+      "Kookaburra Cut (at frame 2/3 (33%), scene a, render 4.0 fps)",
+    );
+    const start = vi.mocked(invoke).mock.calls.find(([c]) => c === "start_export");
+    expect((start?.[1] as { scenes?: unknown } | undefined)?.scenes).toEqual(
+      opts.slots.map((s) => ({ id: s.id, startMs: s.startMs, endMs: s.endMs })),
+    );
+  });
+
   it("refuses to start on a canvas that lost its context earlier in the session", async () => {
     mountCanvas().loseContext();
     await expect(exportProject(opts)).rejects.toThrow("GPU stalled (before the export)");
@@ -277,6 +296,10 @@ describe("export cancel", () => {
     expect(called("cancel_export")).toBe(true);
     expect(called("finish_export")).toBe(false);
     expect(isExporting()).toBe(false);
+    const cancel = vi.mocked(invoke).mock.calls.filter(([c]) => c === "cancel_export");
+    expect(
+      cancel.every(([, args]) => (args as { reason?: string } | undefined)?.reason === undefined),
+    ).toBe(true);
   });
 
   it("never starts the encoder once already cancelled", async () => {

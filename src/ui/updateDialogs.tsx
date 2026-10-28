@@ -1,5 +1,6 @@
 import { useState } from "react";
 import banner from "../assets/update-banner.jpg";
+import { openPrivacyPage } from "../engine/claudeApp";
 import { ManagedLock } from "./ManagedLock";
 import { useEscapeClose } from "./useEscapeClose";
 
@@ -72,6 +73,16 @@ export function WelcomeDialog({
             </span>
           )}
         </Row>
+        <p className="muted welcome-modal-privacy">
+          Nothing else leaves your Mac unless you start it.{" "}
+          <button
+            type="button"
+            className="text-link"
+            onClick={() => void openPrivacyPage().catch((e) => console.error(e))}
+          >
+            What leaves your Mac
+          </button>
+        </p>
         <div className="modal-actions">
           <button type="button" className="btn primary" onClick={() => onAnswer(checkUpdates)}>
             Get started

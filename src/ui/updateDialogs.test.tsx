@@ -15,6 +15,7 @@ describe("WelcomeDialog", () => {
     expect(html).toContain("Recommended");
     expect(html).toContain('aria-checked="true"');
     expect(html).toContain('checked=""');
+    expect(html).toContain("What leaves your Mac");
   });
 
   it("saves off when Escape dismisses it, even with the switch on", () => {

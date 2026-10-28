@@ -1,4 +1,4 @@
-//! Edit with Claude: open a project in the Claude desktop app (`claude://code/new`), or Finder and the download page as fallbacks.
+//! Edit with Claude: open a project in the Claude desktop app (`claude://code/new`), or Finder and the download page as fallbacks; the privacy page opens the same fixed way.
 
 use std::path::Path;
 use std::process::Command;
@@ -10,6 +10,9 @@ use crate::workspace::{self, SettingsState};
 /// The desktop app truncates `q` here; capping first keeps the `open` argv small too.
 const MAX_PROMPT_CHARS: usize = 14_336;
 const DOWNLOAD_URL: &str = "https://claude.ai/download";
+/// docs/privacy.md on the default branch: what leaves the Mac, in plain words.
+const PRIVACY_URL: &str =
+    "https://github.com/michael-palmes/kookaburra-cut/blob/main/docs/privacy.md";
 
 /// `claude://code/new?folder=…&q=…`, form-encoded the way the app's URLSearchParams reads it back.
 fn code_session_link(folder: &Path, prompt: Option<&str>) -> String {
@@ -121,6 +124,12 @@ pub async fn open_project_folder(
 pub async fn open_claude_download() -> Result<(), String> {
     crate::managed::deny_claude()?;
     open_in_background(DOWNLOAD_URL.to_string()).await
+}
+
+/// The fixed privacy page, the same way: a constant URL, nothing from the caller.
+#[tauri::command]
+pub async fn open_privacy_page() -> Result<(), String> {
+    open_in_background(PRIVACY_URL.to_string()).await
 }
 
 #[cfg(test)]
