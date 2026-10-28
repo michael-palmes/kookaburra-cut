@@ -1311,11 +1311,14 @@ The packaged `.app` must reproduce dev-mode hashes on the standing projects:
 class, run for any packaging-adjacent change. What packaging changes (and why it
 stays deterministic):
 
-- **Static sidecar** (`scripts/build-ffmpeg-sidecar.sh`): pinned ffmpeg source
-  build (GPL: libx264 + libx265 + VideoToolbox + ProRes + FFV1), self-containment
-  gated by `otool -L` (system libs only). Same version ⇒ same bytes: proven by
-  dev/packaged hash parity. Note: the dev `pnpm setup:ffmpeg` copy OVERWRITES the
-  release sidecar; rerun `pnpm setup:ffmpeg:release` after.
+- **Static sidecar** (`scripts/build-ffmpeg-sidecar.sh`): ffmpeg, x264 and x265
+  built from source pinned by SHA-256 and commit (GPL: libx264 + libx265 +
+  VideoToolbox + ProRes + FFV1), self-containment gated by `otool -L` (system
+  libs only). The release workflow builds it the same way on a clean runner and
+  the verify job compares the signature-stripped digests with the build job's.
+  Same sources ⇒ same bytes: proven by dev/packaged hash parity. Note: the dev
+  `pnpm setup:ffmpeg` copy OVERWRITES the release sidecar; rerun
+  `pnpm setup:ffmpeg:release` after.
 - **Editor zoom guards are per ffmpeg build.** `cargo test --manifest-path
   src-tauri/Cargo.toml --lib zoom_frames_match -- --ignored` pins the zoom
   stage's frame counter (`in-1`) and its bytes on both decode lanes for whichever
