@@ -77,11 +77,12 @@ pnpm kookaburra:run --action preset-previews            # --project <slug,...> s
 # then confirm with one or two autorun screenshots (tools/look-lab/README.md).
 pnpm look-lab --look <id> --gpu                          # --compare 4,8 for motion, --grid for all 9 presets
 
-# Release. Needs KOOKABURRA_SIGNING_IDENTITY + KOOKABURRA_NOTARY_PROFILE, the pinned
-# static sidecar (pnpm setup:ffmpeg:release), and a GUI session (Finder styles the DMG).
-pnpm package:signed    # build + Developer ID sign + notarise + staple: app and DMG
-pnpm package:dmg       # DMG only, from an already-built release/Kookaburra Cut.app
-pnpm release           # guards -> package:signed -> zip + checksum -> tag -> draft GH release
+# Release: a signed v* tag on main; .github/workflows/release.yml builds, signs (protected
+# environment), verifies and drafts the GitHub release (kookaburra-release skill).
+pnpm release           # tag v<version> (signed, checked against .github/allowed_signers) and push it
+pnpm release:rehearse  # local ad-hoc rehearsal: build, sign ad hoc, plain DMG, verify; no key, no tag
+pnpm package:signed    # local Developer ID sign + notarise + staple (needs the identity and a notary profile)
+pnpm package:dmg       # styled DMG only, from release/Kookaburra Cut.app (needs a GUI session)
 ```
 
 For native Computer Use verification, run `pnpm acceptance:app` and target only the full `.app` path it prints. Never use `Kookaburra Cut`, `com.mpalmes.kookaburracut` or `/Applications/Kookaburra Cut.app`; if the helper fails, stop rather than falling back.
