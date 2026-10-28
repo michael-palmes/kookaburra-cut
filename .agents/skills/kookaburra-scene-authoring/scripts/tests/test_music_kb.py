@@ -209,6 +209,22 @@ class SettleTests(KbTestCase):
         del cleared["devices"][0]["media"]["startMs"]
         self.assertNotIn("at", model.settle_written(before, cleared, music(), 0)[0]["devices"][0]["media"])
 
+    def test_a_merge_keeps_each_at_unless_the_patch_nulls_it(self) -> None:
+        from kblib import docs
+
+        before = {"version": 1, "camera": camera([{"id": "k1", "tMs": 0}, {"id": "k2", "tMs": 8250, "at": "bar:5"}]),
+                  "compare": {"b": {"media": {"phone": {"src": "assets/a.mp4", "kind": "video", "startMs": 2250, "at": "bar:2"}}}}}
+        patch = {"camera": camera([{"id": "k1", "tMs": 0}, {"id": "k2", "tMs": 9000}])}
+        settled, notes = model.settle_written(before, docs.merge_patch(before, patch), music(), 0, patch)
+        self.assertEqual((settled["camera"]["keys"][1]["tMs"], settled["camera"]["keys"][1]["at"]), (8250, "bar:5"))
+        self.assertIn("kb doc merge keeps each at", notes[-1])
+        patch = {"camera": camera([{"id": "k1", "tMs": 0}, {"id": "k2", "tMs": 9000, "at": None}]), "compare": {"b": {"media": {"phone": {"at": None}}}}}
+        settled, _ = model.settle_written(before, docs.merge_patch(before, patch), music(), 0, patch)
+        self.assertEqual(settled["camera"]["keys"][1], camera([{"id": "k2", "tMs": 9000}])["keys"][0])
+        self.assertEqual(settled["compare"]["b"]["media"]["phone"], {"src": "assets/a.mp4", "kind": "video", "startMs": 2250})
+        untouched = {"name": "Renamed"}
+        self.assertEqual(model.settle_written(before, docs.merge_patch(before, untouched), music(), 0, untouched)[1], [])
+
     def test_a_new_at_wins_over_its_tms(self) -> None:
         before = {"version": 1, "camera": camera([{"id": "k2", "tMs": 4000}])}
         after = json.loads(json.dumps(before))
@@ -410,6 +426,16 @@ class DocDetachTests(MusicProjectCase):
         out = self.j("doc", "02-hero", "set", "devices.0.media.startMs", "400")
         self.assertNotIn("at", self.sidecar()["devices"][0]["media"])
         self.assertIn("no longer follows", out["summary"])
+
+    def test_a_merge_keeps_at_unless_it_nulls_it(self) -> None:
+        keys = camera([{"id": "k1", "tMs": 0}, {"id": "k2", "tMs": 900}])
+        out = self.j("doc", "02-hero", "merge", json.dumps({"camera": keys}))
+        self.assertEqual((self.keys()[1]["tMs"], self.keys()[1]["at"]), (1850, "bar:3"))
+        self.assertIn("kb doc merge keeps each at", out["summary"])
+        moved = dict(keys["keys"][1])
+        keys["keys"][1]["at"] = None
+        self.j("doc", "02-hero", "merge", json.dumps({"camera": keys}))
+        self.assertEqual(self.keys()[1], moved)
 
     def test_kb_video_start_drops_the_at_it_moves(self) -> None:
         from kblib.video import repoint

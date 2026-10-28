@@ -110,10 +110,11 @@ Screen and media videos start on the music the same way, with an `at` beside `st
 ./kb doc 03-drop set devices.0.media.at cue:drop    # the screen video starts on the drop
 ```
 
-Every `./kb doc` write refreshes the other caches. Never hand-edit the time of a field with an
-`at`: the app puts it back on load (`./kb check` warns). Dragging the key, a new start in the
-inspector, `./kb video start` and `./kb video align` detach it. Chart and layered screenshot
-keys, taps, split-field reveals, scene durations and edit documents take plain ms.
+Every `./kb doc` write refreshes the other caches. `./kb doc merge` keeps each `at` (its time
+follows the music) unless the patch gives `"at": null`. Never hand-edit the time of a field
+with an `at`: the app puts it back on load (`./kb check` warns). Dragging the key, a new start
+in the inspector, `./kb video start` and `./kb video align` detach it. Chart and layered
+screenshot keys, taps, split-field reveals, scene durations and edit documents take plain ms.
 
 ## Kicks and pulses
 

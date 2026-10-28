@@ -596,19 +596,20 @@ def cmd_doc(ctx: Ctx) -> int:
         if a.op == "unset" and doc is None:
             raise KbError(f"{label} does not exist")
         new, summary = docmod.edit(doc if doc is not None else {"version": version}, a.op, getattr(a, "path", "") or "", arg)
-        return settle_music(project, stem, doc, checkmod.stamp_stagger_exact(doc, new), summary)
+        patch = arg if a.op == "merge" else None
+        return settle_music(project, stem, doc, checkmod.stamp_stagger_exact(doc, new), summary, patch)
 
     return guarded_write(ctx, label, label, edit, sidecar_validator(ctx, label))
 
 
-def settle_music(project: Project, stem: str, before: Any, after: Any, summary: str) -> Tuple[Any, str]:
-    """The detach rule on a sidecar write: a field this write moved drops its `at`; every other `at` refreshes its time."""
+def settle_music(project: Project, stem: str, before: Any, after: Any, summary: str, patch: Optional[Dict[str, Any]] = None) -> Tuple[Any, str]:
+    """The detach rule on a sidecar write: a field this write moved drops its `at` (a merge keeps it unless nulled); every other `at` refreshes its time."""
     from .beats import model as beatsmodel
 
     if not (beatsmodel.has_at(before) or beatsmodel.has_at(after)):
         return after, summary
     music, start = beatsmodel.scene_scope(project, stem)
-    settled, notes = beatsmodel.settle_written(before, after, music, start)
+    settled, notes = beatsmodel.settle_written(before, after, music, start, patch)
     return settled, "; ".join([summary] + notes)
 
 

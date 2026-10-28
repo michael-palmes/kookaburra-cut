@@ -11,7 +11,7 @@ from __future__ import annotations
 import copy
 import math
 import re
-from typing import Any, Callable, Dict, List, NamedTuple, Optional, Tuple
+from typing import Any, Callable, Dict, List, NamedTuple, Optional, Set, Tuple
 
 from .. import music
 from ..film import timeline as tl
@@ -454,34 +454,79 @@ def refresh_doc(doc: Any, m: Optional[Dict[str, Any]], start_ms: float) -> Tuple
     return (out if out is not None else doc), changes, issues
 
 
-def settle_written(before: Any, after: Any, m: Optional[Dict[str, Any]], start_ms: float) -> Tuple[Any, List[str]]:
-    """The detach rule for a kb sidecar write: a field whose time this write moved (its `at` unchanged) loses its `at`,
-    unless it moved exactly onto that position; then every remaining `at` refreshes its time. Returns (doc, notes)."""
-    if not isinstance(after, dict):
-        return after, []
+def _patch_node(patch: Any, steps: Tuple[Any, ...]) -> Any:
+    node = patch
+    for part in steps:
+        if isinstance(part, int):
+            node = node[part] if isinstance(node, list) and -len(node) <= part < len(node) else None
+        else:
+            node = node.get(part) if isinstance(node, dict) else None
+        if node is None:
+            return None
+    return node
+
+
+def _merged_at(before: Any, after: Any, patch: Dict[str, Any]) -> Tuple[Any, Set[str]]:
+    """A merge patch replaces arrays whole, so a field it rewrites without naming `at` keeps the `at` it had, and an
+    `"at": null` inside a replaced array removes it. Returns (doc, where each field whose time the patch wrote)."""
     prior: Dict[Tuple[str, ...], Dict[str, Any]] = {}
     for s in timed_slots(before):
         prior.setdefault(s.ident, s.node)
     doc = after
-    notes: List[str] = []
+    timed: Set[str] = set()
     for s in timed_slots(after):
-        at = s.node.get("at")
+        node = _patch_node(patch, s.steps)
+        if not isinstance(node, dict):
+            continue
+        if s.field in node:
+            timed.add(s.where)
+        if "at" in node:
+            if node["at"] is None and "at" in s.node:
+                doc = doc if doc is not after else copy.deepcopy(after)
+                del _node_at(doc, s.steps)["at"]
+            continue
         old = prior.get(s.ident)
-        if not isinstance(at, str) or old is None or old.get("at") != at:
-            continue
-        was, now = stored_ms(old, s.field), stored_ms(s.node, s.field)
-        if not (is_number(was) and is_number(now)) or was == now:
-            continue
-        r = slot_position(s, m, start_ms)
-        if r["ok"] and r["projectMs"] == now:
-            continue
-        if doc is after:
-            doc = copy.deepcopy(after)
-        del _node_at(doc, s.steps)["at"]
-        notes.append(f'{s.where} moved to {js_json(now)} ms, so it no longer follows "{at}" (at dropped)')
+        if isinstance(old, dict) and isinstance(old.get("at"), str) and "at" not in s.node:
+            doc = doc if doc is not after else copy.deepcopy(after)
+            _node_at(doc, s.steps)["at"] = old["at"]
+    return doc, timed
+
+
+def settle_written(before: Any, after: Any, m: Optional[Dict[str, Any]], start_ms: float, patch: Optional[Dict[str, Any]] = None) -> Tuple[Any, List[str]]:
+    """The detach rule for a kb sidecar write: a field whose time this write moved (its `at` unchanged) loses its `at`,
+    unless it moved exactly onto that position; then every remaining `at` refreshes its time. A merge `patch` never
+    detaches: each `at` stays unless the patch nulls it, so its time follows the music. Returns (doc, notes)."""
+    if not isinstance(after, dict):
+        return after, []
+    doc = after
+    notes: List[str] = []
+    timed: Set[str] = set()
+    if patch is not None:
+        doc, timed = _merged_at(before, after, patch)
+    else:
+        prior: Dict[Tuple[str, ...], Dict[str, Any]] = {}
+        for s in timed_slots(before):
+            prior.setdefault(s.ident, s.node)
+        for s in timed_slots(after):
+            at = s.node.get("at")
+            old = prior.get(s.ident)
+            if not isinstance(at, str) or old is None or old.get("at") != at:
+                continue
+            was, now = stored_ms(old, s.field), stored_ms(s.node, s.field)
+            if not (is_number(was) and is_number(now)) or was == now:
+                continue
+            r = slot_position(s, m, start_ms)
+            if r["ok"] and r["projectMs"] == now:
+                continue
+            if doc is after:
+                doc = copy.deepcopy(after)
+            del _node_at(doc, s.steps)["at"]
+            notes.append(f'{s.where} moved to {js_json(now)} ms, so it no longer follows "{at}" (at dropped)')
     doc, changes, _issues = refresh_doc(doc, m, start_ms)
     for c in changes:
         notes.append(f'{c["where"]} {c["field"]} {js_json(c["fromMs"])} -> {c["toMs"]} from "{c["at"]}"')
+    if any(c["where"] in timed for c in changes):
+        notes.append("kb doc merge keeps each at, so its time follows the music; to move one off it, give \"at\": null in the patch or kb doc set its time")
     return doc, notes
 
 
