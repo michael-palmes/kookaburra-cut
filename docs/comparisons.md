@@ -151,6 +151,11 @@ Rules:
 - **Transitions** preserve each active scene's full comparison. Each scene
   composites its Before and After sides first, then the boundary transition
   blends the finished scene pixels. Hard cuts show the comparison to the edge.
+  A comparison's sides render through the A/B pair, so an incoming comparison
+  after a plain outgoing scene renders first; before 2026-10-28 it overwrote
+  the outgoing side and every transition into it played as a hard cut.
+  `kookaburra:run --action transitioncheck` proves each crossfade's midpoint
+  carries both scenes.
 - **Overlays (frames)** do not compose with the compare branch; a framed
   comparison renders full-bleed.
 - **Tone mapping/exposure** is the project's display transform on both
