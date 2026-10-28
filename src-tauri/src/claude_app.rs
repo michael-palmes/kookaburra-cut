@@ -80,6 +80,7 @@ pub async fn open_in_claude(
     slug: String,
     prompt: Option<String>,
 ) -> Result<(), String> {
+    crate::managed::deny_claude()?;
     let dir = workspace::project_dir_mut(&app, &state, &slug)?;
     if !dir.join(workspace::MANIFEST_FILENAME).is_file() {
         return Err(format!("\"{slug}\" is not a project folder"));
@@ -121,6 +122,7 @@ pub async fn open_project_folder(
 /// The fixed download page; nothing about the caller reaches the URL.
 #[tauri::command]
 pub async fn open_claude_download() -> Result<(), String> {
+    crate::managed::deny_claude()?;
     open_in_background(DOWNLOAD_URL.to_string()).await
 }
 

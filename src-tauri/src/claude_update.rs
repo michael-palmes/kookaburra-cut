@@ -101,6 +101,8 @@ pub async fn claude_version_info(
     app: AppHandle,
     state: State<'_, SettingsState>,
 ) -> Result<Option<ClaudeVersionInfo>, String> {
+    // Refused before the probe and the fetch: a managed install never asks the network about Claude.
+    crate::managed::deny_claude()?;
     let Some(path) = tauri::async_runtime::spawn_blocking(crate::pty::detect_claude_blocking)
         .await
         .map_err(|e| e.to_string())?

@@ -5420,6 +5420,17 @@ button.beat-status {
   gap: var(--space-2);
 }
 
+/* A control a configuration profile has taken over: the lock and the reason, nothing to press (docs/mdm.md). */
+.managed-lock {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
 .settings-error {
   margin: 0;
   color: var(--danger);
@@ -14446,6 +14457,10 @@ textarea.text-inspector-copy-input {
 
 .scene-website-activate:disabled {
   cursor: default;
+}
+
+.scene-website-activate.locked::before {
+  width: 320px;
 }
 
 .scene-website-toolbar-targets {

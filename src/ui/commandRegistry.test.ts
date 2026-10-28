@@ -22,6 +22,7 @@ function ctx(overrides: Partial<CommandContext> = {}): CommandContext {
     hasWorkspaceRoot: true,
     playing: false,
     audioMuted: false,
+    claudeAllowed: true,
     claudeOpen: false,
     canAddScenes: true,
     aspect: "16:9",
@@ -178,6 +179,13 @@ describe("buildCommands (the vocabulary pin)", () => {
     const cmds = buildCommands(ctx({ exporting: true }));
     const enabled = cmds.filter((c) => c.enabled).map((c) => c.id);
     expect(enabled.sort()).toEqual(["help.shortcuts", "playback.mute", "view.rail"].sort());
+  });
+
+  it("drops Edit with Claude where a configuration profile turns Claude off", () => {
+    const rail = (allowed: boolean) =>
+      buildCommands(ctx({ claudeAllowed: allowed })).find((c) => c.id === "view.rail");
+    expect(rail(false)?.enabled).toBe(false);
+    expect(rail(true)?.enabled).toBe(true);
   });
 
   it("titles flip with state (play/pause, mute/unmute, rail, soundtrack)", () => {

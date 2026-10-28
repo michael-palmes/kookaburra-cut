@@ -23,6 +23,7 @@ import {
   openPrivacyPage,
   setClaudePreferences,
 } from "../engine/claudeApp";
+import { useManagedPolicy } from "../engine/managed";
 import { setConformNewVideosSetting } from "../engine/media";
 import { notePickedFolder } from "../engine/pickedFolders";
 import { revealApp } from "../engine/reveal";
@@ -45,6 +46,7 @@ import {
   userHomeDir,
 } from "../engine/workspace";
 import { ClaudeSpark, TerminalGlyph } from "../ui/ClaudeLauncher";
+import { ManagedLock } from "../ui/ManagedLock";
 import { UpdateAvailableDialog } from "../ui/updateDialogs";
 import { useNativeTextUndo } from "../ui/useNativeTextUndo";
 import { PublisherPane } from "./PublisherPane";
@@ -370,6 +372,10 @@ export function SettingsApp() {
 
   // Manual checks only in this window; the launch check belongs to the main window.
   const updates = useUpdateCheck({ autoCheck: false });
+  // Rows a configuration profile governs show the lock in place of their control (docs/mdm.md).
+  const managed = useManagedPolicy();
+  const workspaceLocked = managed?.workspaceRootLocked ?? false;
+  const claudeLocked = managed?.disableClaude ?? false;
 
   return (
     <div className="settings-window">
@@ -397,29 +403,35 @@ export function SettingsApp() {
                 Show in Finder
               </button>
             )}
-            <button
-              type="button"
-              className="btn"
-              disabled={busy !== null}
-              onClick={() => void chooseLocation()}
-              title={
-                workspace
-                  ? "Moves your projects, themes and fonts to the folder you pick"
-                  : "Keeps your projects in the folder you pick"
-              }
-            >
-              {workspace ? "Change location…" : "Choose location…"}
-            </button>
-            {workspace && defaultRoot && workspace !== defaultRoot && (
-              <button
-                type="button"
-                className="btn"
-                disabled={busy !== null}
-                onClick={() => relocate(null)}
-                title={`Moves everything back to ${shortenPath(defaultRoot, home)}`}
-              >
-                Reset to default
-              </button>
+            {workspaceLocked ? (
+              <ManagedLock detail="A configuration profile sets where projects are kept (WorkspaceRoot)." />
+            ) : (
+              <>
+                <button
+                  type="button"
+                  className="btn"
+                  disabled={busy !== null}
+                  onClick={() => void chooseLocation()}
+                  title={
+                    workspace
+                      ? "Moves your projects, themes and fonts to the folder you pick"
+                      : "Keeps your projects in the folder you pick"
+                  }
+                >
+                  {workspace ? "Change location…" : "Choose location…"}
+                </button>
+                {workspace && defaultRoot && workspace !== defaultRoot && (
+                  <button
+                    type="button"
+                    className="btn"
+                    disabled={busy !== null}
+                    onClick={() => relocate(null)}
+                    title={`Moves everything back to ${shortenPath(defaultRoot, home)}`}
+                  >
+                    Reset to default
+                  </button>
+                )}
+              </>
             )}
           </div>
         </div>
@@ -435,51 +447,61 @@ export function SettingsApp() {
               option.
             </span>
           </div>
-          <fieldset className="settings-segmented" aria-label="Edit with">
-            <button
-              type="button"
-              aria-pressed={claudeBuiltin === false}
-              className={claudeBuiltin === false ? "active" : undefined}
-              disabled={claudeBuiltin === null}
-              onClick={() => changeClaudeMode(false)}
-            >
-              <span className="titlebar-claude-mark">
-                <ClaudeSpark size={13} />
-              </span>
-              Claude app
-            </button>
-            <button
-              type="button"
-              aria-pressed={claudeBuiltin === true}
-              className={claudeBuiltin === true ? "active" : undefined}
-              disabled={claudeBuiltin === null}
-              onClick={() => changeClaudeMode(true)}
-            >
-              <TerminalGlyph size={13} />
-              Built-in terminal
-            </button>
-          </fieldset>
+          {claudeLocked ? (
+            <ManagedLock detail="A configuration profile turns Claude off (DisableClaude)." />
+          ) : (
+            <fieldset className="settings-segmented" aria-label="Edit with">
+              <button
+                type="button"
+                aria-pressed={claudeBuiltin === false}
+                className={claudeBuiltin === false ? "active" : undefined}
+                disabled={claudeBuiltin === null}
+                onClick={() => changeClaudeMode(false)}
+              >
+                <span className="titlebar-claude-mark">
+                  <ClaudeSpark size={13} />
+                </span>
+                Claude app
+              </button>
+              <button
+                type="button"
+                aria-pressed={claudeBuiltin === true}
+                className={claudeBuiltin === true ? "active" : undefined}
+                disabled={claudeBuiltin === null}
+                onClick={() => changeClaudeMode(true)}
+              >
+                <TerminalGlyph size={13} />
+                Built-in terminal
+              </button>
+            </fieldset>
+          )}
         </div>
         <div className="settings-row">
           <div className="settings-row-text">
             <span className="settings-row-title">Claude app</span>
             <span className="muted settings-row-detail">
-              {claudeInstalled === null
-                ? "Checking…"
-                : claudeInstalled
-                  ? "Installed"
-                  : "Not found. Edit with Claude opens projects in it."}
+              {claudeLocked
+                ? "Turned off by your organisation."
+                : claudeInstalled === null
+                  ? "Checking…"
+                  : claudeInstalled
+                    ? "Installed"
+                    : "Not found. Edit with Claude opens projects in it."}
             </span>
           </div>
-          {claudeInstalled === false && (
-            <button
-              type="button"
-              className="btn"
-              onClick={() => void openClaudeDownload().catch((e) => setError(String(e)))}
-            >
-              <DownloadIcon />
-              Get Claude
-            </button>
+          {claudeLocked ? (
+            <ManagedLock />
+          ) : (
+            claudeInstalled === false && (
+              <button
+                type="button"
+                className="btn"
+                onClick={() => void openClaudeDownload().catch((e) => setError(String(e)))}
+              >
+                <DownloadIcon />
+                Get Claude
+              </button>
+            )
           )}
         </div>
         <div className="settings-row">
@@ -498,13 +520,17 @@ export function SettingsApp() {
               titlebar or with ⌥⌘E.
             </span>
           </div>
-          <input
-            type="checkbox"
-            aria-label="Show on a new project's first open"
-            checked={claudeFirstOpen ?? true}
-            disabled={claudeFirstOpen === null || claudeBuiltin === true}
-            onChange={(e) => toggleClaudeFirstOpen(e.target.checked)}
-          />
+          {claudeLocked ? (
+            <ManagedLock />
+          ) : (
+            <input
+              type="checkbox"
+              aria-label="Show on a new project's first open"
+              checked={claudeFirstOpen ?? true}
+              disabled={claudeFirstOpen === null || claudeBuiltin === true}
+              onChange={(e) => toggleClaudeFirstOpen(e.target.checked)}
+            />
+          )}
         </div>
       </section>
 
@@ -713,37 +739,47 @@ export function SettingsApp() {
               Asks GitHub whether a newer release exists. No identifiers, nothing about your usage.
             </span>
           </div>
-          <input
-            type="checkbox"
-            aria-label="Check for updates on launch"
-            checked={updates.consent === "on"}
-            disabled={updates.consent === "loading"}
-            onChange={(e) => void updates.toggleConsent(e.target.checked)}
-          />
+          {updates.managed ? (
+            <ManagedLock detail="A configuration profile turns update checks off (DisableUpdateCheck)." />
+          ) : (
+            <input
+              type="checkbox"
+              aria-label="Check for updates on launch"
+              checked={updates.consent === "on"}
+              disabled={updates.consent === "loading"}
+              onChange={(e) => void updates.toggleConsent(e.target.checked)}
+            />
+          )}
         </div>
         <div className="settings-row">
           <div className="settings-row-text">
             <span className="settings-row-title">Status</span>
             <span className="muted settings-row-detail">
-              {formatUpdateStatus({
-                phase: updates.phase,
-                devBuild: updates.devBuild,
-                error: updates.error,
-                availableVersion: updates.available?.version ?? null,
-                lastCheckedMs: updates.lastCheckedMs,
-                nowMs: Date.now(),
-              })}
+              {updates.managed
+                ? "Turned off by your organisation."
+                : formatUpdateStatus({
+                    phase: updates.phase,
+                    devBuild: updates.devBuild,
+                    error: updates.error,
+                    availableVersion: updates.available?.version ?? null,
+                    lastCheckedMs: updates.lastCheckedMs,
+                    nowMs: Date.now(),
+                  })}
             </span>
           </div>
-          <button
-            type="button"
-            className="btn"
-            disabled={updates.phase !== "idle"}
-            onClick={() => void updates.runCheck()}
-            title="A one-off check; works without the launch toggle and stores nothing when it's off"
-          >
-            {updates.phase === "checking" ? "Checking…" : "Check now"}
-          </button>
+          {updates.managed ? (
+            <ManagedLock />
+          ) : (
+            <button
+              type="button"
+              className="btn"
+              disabled={updates.phase !== "idle"}
+              onClick={() => void updates.runCheck()}
+              title="A one-off check; works without the launch toggle and stores nothing when it's off"
+            >
+              {updates.phase === "checking" ? "Checking…" : "Check now"}
+            </button>
+          )}
         </div>
       </section>
 

@@ -33,6 +33,7 @@ pub async fn check_for_update(
     settings: State<'_, SettingsState>,
     pending: State<'_, PendingUpdate>,
 ) -> Result<UpdateCheck, String> {
+    crate::managed::deny_update_check()?;
     // The local test manifest is a dev-only affordance: a release build never reads the variable, so no environment can repoint a shipped app's updater (the pinned pubkey bounds it either way).
     let override_endpoint = if cfg!(debug_assertions) {
         std::env::var("KOOKABURRA_UPDATE_ENDPOINT")
@@ -91,6 +92,8 @@ pub fn set_update_consent(
     settings: State<'_, SettingsState>,
     consent: bool,
 ) -> Result<(), String> {
+    // A profile that turns update checks off pins consent off, whatever the switch asked for.
+    let consent = consent && crate::managed::deny_update_check().is_ok();
     workspace::update_settings(&app, &settings, |s| {
         s.update_check_consent = Some(consent);
         if !consent {
@@ -123,6 +126,7 @@ pub async fn install_update_and_relaunch(
     app: AppHandle,
     pending: State<'_, PendingUpdate>,
 ) -> Result<(), String> {
+    crate::managed::deny_update_check()?;
     let update = pending
         .0
         .lock()

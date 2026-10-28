@@ -713,6 +713,7 @@ pub fn website_open(
     request: WebsiteOpenRequest,
 ) -> Result<WebsiteOpenResponse, String> {
     let owner = require_caller(&webview, &["main", "present"])?;
+    crate::managed::deny_live_websites()?;
     validate_scene_stem(&request.scene_stem)?;
     let bounds = request.bounds.validate()?;
     if !(320..=3_840).contains(&request.viewport_width) {
