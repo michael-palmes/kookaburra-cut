@@ -1053,6 +1053,8 @@ struct AutorunEnv {
     poster: Option<String>,
     /// `KOOKABURRA_PROGRESS=1`: the run reports progress through `autorun_progress`.
     progress: bool,
+    /// memory: the one change this run measures (`clip-cache=N`).
+    lever: Option<String>,
 }
 
 /// One `KOOKABURRA_*` env read under the single auto-run rule: trimmed, and empty/whitespace reads as unset.
@@ -1124,6 +1126,7 @@ fn get_autorun_config() -> AutorunEnv {
         trust: autorun_var("KOOKABURRA_TRUST"),
         poster: autorun_var("KOOKABURRA_POSTER"),
         progress: autorun_progress_enabled(),
+        lever: autorun_var("KOOKABURRA_LEVER"),
     }
 }
 

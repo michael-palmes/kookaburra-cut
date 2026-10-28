@@ -24,6 +24,7 @@ import {
   everydayClipLane,
   laneForCodec,
   prepareExportClips,
+  releaseIdleClipFrames,
   setClipLane,
 } from "./clips";
 import { useClockStore } from "./clock";
@@ -500,6 +501,7 @@ async function exportProjectHeld(
   const stopNativeEncode = () => void invoke("cancel_export").catch(() => {});
   // The exporter owns rendering for the whole run; the preview driver stands down (see engine/exportState) so no stray preview render interleaves with a capture.
   setExporting(true);
+  releaseIdleClipFrames();
   try {
     await exportPreamble(opts, gl, (step) => {
       onPrepareStep?.(step);
@@ -625,6 +627,7 @@ async function exportProjectHeld(
   } finally {
     signal?.removeEventListener("abort", stopNativeEncode);
     setExporting(false);
+    releaseIdleClipFrames();
     setClipLane(everydayClipLane());
     gl.setPixelRatio(prevPixelRatio);
     gl.setSize(prevSize.x, prevSize.y, false);
