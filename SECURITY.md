@@ -9,9 +9,10 @@ shown visibly in the terminal, and talks to Anthropic while in use (once you
 have started a session, the terminal panel also asks
 `downloads.claude.ai/claude-code-releases/latest` for the current Claude Code
 version, at most once a day, with no identifiers, to offer an update); and the
-update check, which never runs before you answer the first-run welcome (it
-recommends the check, so its switch starts on; turn it off there or any time in
-Settings), asks GitHub's release endpoint
+update check, which runs at launch only if you press Get started on the
+first-run welcome with its switch on (recommended, so it starts on; Escape
+declines it, and Settings changes it any time) or when you choose Check for
+updates, asks GitHub's release endpoint
 (`github.com/michael-palmes/kookaburra-cut/releases`) whether a newer version
 exists, sends no identifiers, and downloads nothing without your say-so.
 Updates install only after their ed25519 signature verifies against the key
