@@ -100,6 +100,7 @@ describe("agent catalogue", () => {
       kind: "video",
       startMs: 400,
       fit: "cover",
+      rotateDeg: "auto",
       startOn: "open",
       inMs: 1000,
       outMs: 4000,

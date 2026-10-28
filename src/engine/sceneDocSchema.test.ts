@@ -836,6 +836,29 @@ describe("parseSceneDoc", () => {
       segments: [],
     });
 
+    // Screen powers parse like the hinge angles, and a pose field this build does not know rides through.
+    const powered = parseSceneDoc(
+      {
+        version: 1,
+        deviceTrack: {
+          keys: [
+            {
+              id: "k1",
+              tMs: 0,
+              pose: { d1: { coverPower: 0, screenPower: "on", glow: { at: 2 }, foldDeg: 180 } },
+            },
+          ],
+          segments: [],
+        },
+      },
+      "test",
+    );
+    expect(powered?.deviceTrack?.keys[0].pose.d1).toEqual({
+      coverPower: 0,
+      glow: { at: 2 },
+      foldDeg: 180,
+    });
+
     // An empty or malformed track drops whole, so absence stays legible.
     expect(
       parseSceneDoc({ version: 1, deviceTrack: { keys: [] } }, "test")?.deviceTrack,
