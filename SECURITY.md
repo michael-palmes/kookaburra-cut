@@ -5,8 +5,9 @@ no cloud. Everything it reads and writes stays on your machine (the workspace
 at `~/Kookaburra Cut`, and app caches under the standard Application Support
 location). Two opt-in network exceptions: the optional embedded Claude Code
 terminal, which only runs when you explicitly invoke it, installs via a script
-shown visibly in the terminal, and talks to Anthropic while in use (once you
-have started a session, the terminal panel also asks
+shown visibly in the terminal, and sends the open project's files to Anthropic
+while in use (once you have started a session, and only while the update check
+below is on, the terminal panel also asks
 `downloads.claude.ai/claude-code-releases/latest` for the current Claude Code
 version, at most once a day, with no identifiers, to offer an update); and the
 update check, which runs at launch only if you press Get started on the
@@ -17,7 +18,11 @@ updates, asks GitHub's release endpoint
 exists, sends no identifiers, and downloads nothing without your say-so.
 Updates install only after their ed25519 signature verifies against the key
 baked into the app. Nothing else is contacted: opening a project, importing a
-pack or exporting a video never leaves the machine.
+pack or exporting a video never leaves the machine. Content that arrives with a
+project cannot configure the assistant: packs never carry Claude settings, an
+imported `CLAUDE.md` is saved as `NOTES.md` and replaced with the app's own,
+and every open strips hooks, permissions, env, commands, agents and skills the
+app did not ship.
 
 ## Reporting a vulnerability
 
