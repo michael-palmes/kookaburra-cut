@@ -442,7 +442,9 @@ def cmd_scene_set(ctx: Ctx) -> int:
         known = catmod.load_catalog().ids("transitions", catmod.FALLBACK_TRANSITIONS) or []
         if kind not in known:
             raise KbError(f'unknown transition "{kind}".{checkmod.did_you_mean(kind, known)} See kb catalog transitions', 2, kind="usage")
-    res = scenemod.set_scene(ctx.project, a.scene, a.duration, a.transition, a.ease, a.name, ctx.opts, timing=timing)
+    if a.ripple and a.transition is None:
+        raise KbError("--ripple goes with --transition", 2, kind="usage")
+    res = scenemod.set_scene(ctx.project, a.scene, a.duration, a.transition, a.ease, a.name, ctx.opts, timing=timing, ripple=a.ripple)
     idx, stem = res["index"], res["stem"]
     if ctx.dry_run:
         if ctx.json:
@@ -1073,15 +1075,18 @@ def build_parser(video_extensions: bool = True) -> argparse.ArgumentParser:
         "change a scene's duration, outgoing transition or name",
         epilog="  ./kb scene set 2 --duration 4500\n  ./kb scene set 02-hero --transition glasssweep:700 --ease smooth\n  ./kb scene set 02-hero --transition none      hard cut\n"
         "  ./kb scene set 02-hero --duration-bars 4     four bars at the grid's tempo\n"
-        "  ./kb scene set 02-hero --cut-at bar:9 --align mid   its outgoing transition centred on bar 9\n"
-        "Durations are written as ms: a later grid change does not move them. Keys with an \"at\" in this and later\n"
-        "scenes get their tMs caches refreshed in the same write.",
+        "  ./kb scene set 02-hero --cut-at bar:9 --align mid   pin the cut: its outgoing transition centred on bar 9\n"
+        "A --cut-at position pins the cut (cutAt in project.json): its length follows the grid and earlier\n"
+        "transitions from then on. --duration and --duration-bars unpin it. With a beat grid, --transition keeps\n"
+        "every later boundary where it is (the cut stays put, pinned when it sits on a beat); --ripple lets later\n"
+        "scenes move by the overlap instead. Keys with an \"at\" get their tMs caches refreshed in the same write.",
     )
     x.add_argument("scene", metavar="S")
     x.add_argument("--duration", type=int, metavar="MS")
     x.add_argument("--duration-bars", type=float, metavar="N", help="N bars at the beat grid's tempo (whole ms)")
-    x.add_argument("--cut-at", metavar="POS", help="end the scene at a position or time (bar:9, cue:drop, 12.5s)")
+    x.add_argument("--cut-at", metavar="POS", help="pin the scene's cut to a position (bar:9, cue:drop), or end it at a time once (12.5s)")
     x.add_argument("--align", choices=["end", "mid"], help="with --cut-at: end (the scene is gone at POS, default) or mid (its outgoing transition centred on POS)")
+    x.add_argument("--ripple", action="store_true", help="with --transition: let later scenes move by the overlap instead of keeping their boundaries")
     x.add_argument("--transition", metavar="TYPE[:MS]", help="outgoing transition (kb catalog transitions), or none")
     x.add_argument("--ease", metavar="E", help="transition ease: linear, smooth or snappy")
     x.add_argument("--name", metavar="N", help="display name")

@@ -169,16 +169,7 @@ def resolve_local(text: str, m: Optional[Dict[str, Any]], start_ms: float) -> Di
 def slots_of(project: Project, manifest: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
     """The timeline (SceneSlot dicts plus `stem` and `file`) for this manifest, the project's own by default."""
     manifest = manifest if manifest is not None else project.manifest()
-    entries = [e if isinstance(e, dict) else {} for e in manifest.get("scenes") or []]
-    outgoing = tl.outgoing_transitions(dict(manifest, scenes=entries))
-    stems = [stem_of(e.get("file") if isinstance(e.get("file"), str) else "") for e in entries]
-    slots = tl.build_scene_timeline([
-        {"id": stems[i], "durationMs": tl.scene_duration(project, e), "transition": outgoing[i]} for i, e in enumerate(entries)
-    ])
-    for slot, entry, stem in zip(slots, entries, stems):
-        slot["stem"] = stem
-        slot["file"] = entry.get("file")
-    return slots
+    return tl.manifest_slots(project, manifest, project_music(manifest))
 
 
 def attribution_starts(slots: List[Dict[str, Any]]) -> List[float]:
@@ -522,6 +513,40 @@ def downbeat_grid(raw_grid: Optional[Dict[str, Any]], analysis: Optional[Dict[st
     return js_json(out)
 
 
+# ── pinned cuts (src/engine/sceneCuts.ts) ────────────────────────────────────
+
+
+def manifest_durations(project: Project, manifest: Dict[str, Any]) -> List[float]:
+    """Each scene's stored length: the manifest's durationMs, else its TSX literal, else kb's default."""
+    return [tl.scene_duration(project, e if isinstance(e, dict) else {}) for e in manifest.get("scenes") or []]
+
+
+def settle_cuts(project: Project, manifest: Dict[str, Any]) -> List[str]:
+    """Writes every pinned scene's resolved length into its durationMs cache (a v2 manifest, in place). Returns notes."""
+    entries = [e if isinstance(e, dict) else {} for e in manifest.get("scenes") or []]
+    outgoing = tl.outgoing_transitions(dict(manifest, scenes=entries))
+    durations = manifest_durations(project, manifest)
+    cuts = tl.resolve_scene_cuts([
+        {"durationMs": durations[i], "transition": outgoing[i], "cutAt": e.get("cutAt"), "align": e.get("align")} for i, e in enumerate(entries)
+    ], project_music(manifest))
+    notes = []
+    for i in cuts["changed"]:
+        entry = entries[i]
+        was = entry.get("durationMs")
+        entry["durationMs"] = cuts["durations"][i]
+        how = "its transition centred on" if tl.cut_align(entry.get("align")) == "mid" else "ends at"
+        notes.append(f'scene {i} {stem_of(entry.get("file") or "")}: durationMs {js_json(was)} -> {cuts["durations"][i]} ({how} {entry["cutAt"]})')
+    return notes + cuts["issues"]
+
+
+def unpin(entry: Dict[str, Any]) -> bool:
+    """Drops a scene's pinned cut (an explicit length replaces it); True when there was one."""
+    had = "cutAt" in entry
+    entry.pop("cutAt", None)
+    entry.pop("align", None)
+    return had
+
+
 # ── scene timing (kb scene set --duration-bars / --cut-at) ───────────────────
 
 
@@ -541,10 +566,35 @@ def bars_timing(bars: float) -> Callable[[Project, Dict[str, Any], int], Tuple[i
 
 
 def cut_timing(text: str, align: str) -> Callable[[Project, Dict[str, Any], int], Tuple[int, str]]:
-    """A scene-set timing: the duration that ends the scene at a position (align end), or centres its outgoing transition on it (align mid)."""
+    """A scene-set timing: a position pins the cut (cutAt, align), so the length follows the grid and earlier transitions
+    from then on; a plain time writes the length that ends the scene there (align end) or centres its outgoing
+    transition on it (align mid), once."""
 
     def timing(project: Project, manifest: Dict[str, Any], index: int) -> Tuple[int, str]:
-        target = parse_time(text, project_music(manifest), "--cut-at")["projectMs"]
+        m = project_music(manifest)
+        target = parse_time(text, m, "--cut-at")["projectMs"]
+        entry = manifest["scenes"][index]
+        stem = stem_of(entry.get("file") or "")
+        if music.is_position(text):
+            entry["cutAt"] = text
+            if align == "mid":
+                entry["align"] = "mid"
+            else:
+                entry.pop("align", None)
+            entries = manifest["scenes"]
+            outgoing = tl.outgoing_transitions(manifest)
+            durations = manifest_durations(project, manifest)
+            cuts = tl.resolve_scene_cuts([
+                {"durationMs": durations[i], "transition": outgoing[i], "cutAt": e.get("cutAt"), "align": e.get("align")} for i, e in enumerate(entries)
+            ], m)
+            head = f'scene {index + 1} cutAt "{text}"'
+            failed = [issue[len(head):] for issue in cuts["issues"] if issue.startswith(head)]
+            if failed:
+                raise KbError(f'--cut-at "{text}"{failed[0]}', EXIT_PROBLEMS, kind="invalid", hint="cut at a later position; ./kb timeline lists each scene's bars")
+            duration = cuts["durations"][index]
+            where = "its transition centred on" if align == "mid" else "it ends at"
+            return duration, f"durationMs = {duration} (pinned: {where} {text}, {music.js_round(target)} ms in the film; it follows the grid and earlier transitions)"
+        unpin(entry)
         entries = manifest["scenes"]
 
         def placed(duration: Optional[int]) -> List[Dict[str, Any]]:
@@ -562,10 +612,9 @@ def cut_timing(text: str, align: str) -> Callable[[Project, Dict[str, Any], int]
             overlap = nxt["transitionIn"]["durationMs"] if nxt and isinstance(nxt.get("transitionIn"), dict) else 0
             want = music.js_round(target + (overlap / 2 if align == "mid" else 0) - start)
             if want <= 0:
-                stem = slots[index]["stem"]
                 raise KbError(
                     f'--cut-at "{text}" lands at {music.js_round(target)} ms, before scene {stem} starts ({js_json(start)} ms)',
-                    EXIT_PROBLEMS, kind="invalid", hint="cut at a later position; ./kb beats lists each scene's bars",
+                    EXIT_PROBLEMS, kind="invalid", hint="cut at a later position; ./kb timeline lists each scene's start",
                 )
             if want == duration:
                 break
@@ -573,6 +622,6 @@ def cut_timing(text: str, align: str) -> Callable[[Project, Dict[str, Any], int]
             slots = placed(duration)
         assert duration is not None
         where = f"its transition centred on {text}" if align == "mid" and overlap else f"it ends at {text}"
-        return duration, f"durationMs = {duration} ({where}, {music.js_round(target)} ms in the film)"
+        return duration, f"durationMs = {duration} ({where}, {music.js_round(target)} ms in the film; a time, so it stays put when the grid changes)"
 
     return timing

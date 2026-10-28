@@ -399,6 +399,40 @@ class SceneTimingTests(MusicProjectCase):
         self.assertEqual(self.j("scene", "set", "0", "--cut-at", "bar:3", "--duration", "4000", code=2)["code"], "usage")
         self.assertEqual(self.j("scene", "set", "0", "--align", "mid", code=2)["code"], "usage")
 
+    def test_a_pinned_cut_follows_the_grid_and_earlier_transitions(self) -> None:
+        self.j("scene", "set", "0", "--cut-at", "bar:3", "--align", "mid")
+        self.assertEqual({k: self.manifest()["scenes"][0][k] for k in ("cutAt", "align")}, {"cutAt": "bar:3", "align": "mid"})
+        # 100 bpm: bar 3 moves to 5050 ms, and the 600 ms crossfade stays centred on it.
+        self.kb(["beats", "set-grid", "--bpm", "100", "--offset", "250"], cwd=self.root)
+        self.assertEqual(self.durations()[0], 5350)
+        # A longer transition keeps the cut centred and scene 1 grows at its head, so scene 2 stays at 7150 ms.
+        out = self.j("scene", "set", "0", "--transition", "crossfade:1000")
+        self.assertEqual(self.durations()[:2], [5550, 3200])
+        self.assertIn("cut kept on bar:3", " ".join(out["changes"]))
+        out = self.j("scene", "set", "0", "--duration", "4000")
+        self.assertNotIn("cutAt", self.manifest()["scenes"][0])
+        self.assertIn("no longer pinned to bar:3", out["changes"][0])
+
+    def test_a_transition_on_the_beat_pins_its_cut_and_holds_later_scenes(self) -> None:
+        # Bar 1 at 200 ms: scene 0's crossfade is centred on 2700 ms, beat 2 of bar 2.
+        self.kb(["beats", "set-grid", "--bpm", "120", "--offset", "200"], cwd=self.root)
+        self.j("scene", "set", "0", "--transition", "crossfade:1000")
+        entry = self.manifest()["scenes"][0]
+        self.assertEqual((entry["cutAt"], entry["align"], entry["durationMs"]), ("bar:2.2", "mid", 3200))
+        self.assertEqual(self.durations()[1:], [3200, 3000])
+
+    def test_ripple_lets_later_scenes_move(self) -> None:
+        self.j("scene", "set", "1", "--transition", "crossfade:200", "--ripple")
+        self.assertEqual(self.durations(), [3000, 3000, 3000])
+        self.assertNotIn("cutAt", self.manifest()["scenes"][1])
+        self.assertEqual(self.j("scene", "set", "1", "--ripple", code=2)["code"], "usage")
+
+    def test_a_time_cut_is_not_pinned(self) -> None:
+        self.j("scene", "set", "0", "--cut-at", "bar:3")
+        self.j("scene", "set", "0", "--cut-at", "4.5s")
+        self.assertEqual(self.durations()[0], 4500)
+        self.assertNotIn("cutAt", self.manifest()["scenes"][0])
+
     def test_no_grid_is_exit_1(self) -> None:
         self.kb(["beats", "clear-grid"], cwd=self.root)
         out = self.j("scene", "set", "1", "--duration-bars", "4", code=1)

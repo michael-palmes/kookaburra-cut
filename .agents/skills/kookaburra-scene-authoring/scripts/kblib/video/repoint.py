@@ -942,6 +942,8 @@ def _write_durations(project: Any, changes: List[Dict[str, Any]]) -> None:
             if not isinstance(entry, dict) or entry.get("file") != f"scenes/{c['scene']}.tsx":
                 raise KbError(f"project.json changed under kb (scene {c['index']} is no longer {c['scene']}); rerun kb video durations", kind="conflict")
             entry["durationMs"] = int(c["toMs"])
+            entry.pop("cutAt", None)
+            entry.pop("align", None)
         return manifest
 
     mutate_json(project, "project.json", fn, op="kb video durations")

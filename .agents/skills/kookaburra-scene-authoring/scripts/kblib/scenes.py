@@ -12,7 +12,7 @@ from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 from . import lock as lockmod
 from . import tsx as tsxmod
 from .project import DEFAULT_SCENE_DURATION_MS, MANIFEST, Project, humanise, numeric_prefix, slugify, stem_of
-from .util import EXIT_PROBLEMS, KbError, is_int, load_json, read_text
+from .util import EXIT_PROBLEMS, KbError, is_int, js_json, load_json, read_text
 
 TEXT_STYLE_SUFFIXES = ("Color", "Font", "Size", "OffsetX", "OffsetY", "LineHeight", "RotationDeg", "Emphasis")
 FRAME_SHAPES = {"rect", "rounded-rect", "squircle", "circle", "capsule", "none"}
@@ -70,6 +70,13 @@ def migrate_manifest_transitions(manifest: Dict[str, Any]) -> bool:
                     scenes[i].pop("transition", None)
     manifest["version"] = 2
     return True
+
+
+def settle_cuts(project: Project, manifest: Dict[str, Any]) -> List[str]:
+    """Pinned scenes re-resolve their lengths whenever the scene list changes (kblib.beats.model.settle_cuts)."""
+    from .beats import model as beatsmodel
+
+    return beatsmodel.settle_cuts(project, manifest)
 
 
 def seed_inserted_scene_transitions(scenes: List[Dict[str, Any]], at: int, default: Optional[Dict[str, Any]]) -> None:
@@ -554,6 +561,7 @@ def add_blank(project: Project, stem: str, name: Optional[str], duration: Option
         at = len(scenes) if position is None else min(position, len(scenes))
         scenes.insert(at, entry)
         seed_inserted_scene_transitions(scenes, at, project_default_transition(manifest))
+        notes += settle_cuts(project, manifest)
         tx.write_json(MANIFEST, manifest)
         if final != requested:
             notes.append(f'stem "{requested}" became "{final}" (numbered and unique)')
@@ -583,6 +591,7 @@ def _register_existing(tx: lockmod.Txn, project: Project, manifest: Dict[str, An
     at = len(scenes) if position is None else min(position, len(scenes))
     scenes.insert(at, entry)
     seed_inserted_scene_transitions(scenes, at, project_default_transition(manifest))
+    notes += settle_cuts(project, manifest)
     tx.write_json(MANIFEST, manifest)
     doc = project.load_sidecar(stem)
     name = doc.get("name") if isinstance(doc, dict) and isinstance(doc.get("name"), str) else humanise(stem)
@@ -672,6 +681,7 @@ def _copy(
     at = len(scenes) if position is None else min(position, len(scenes))
     scenes.insert(at, new_entry)
     seed_inserted_scene_transitions(scenes, at, default_transition)
+    notes += settle_cuts(project, manifest)
     tx.write_json(MANIFEST, manifest)
     if copied:
         notes.append(f"{'would copy' if tx.dry_run else 'copied'} {', '.join(copied)}")
@@ -751,6 +761,7 @@ def move(project: Project, selector: str, to: Optional[int] = None, after: Optio
         if idx != target:
             entry = scenes.pop(idx)
             scenes.insert(target, entry)
+        settle_cuts(project, manifest)
         tx.write_json(MANIFEST, manifest)
         return idx, target
 
@@ -771,6 +782,7 @@ def remove(project: Project, selector: str, trash_fn: Any, opts: Optional[lockmo
         if len(scenes) <= 1:
             raise KbError("a project needs at least one scene; add another before removing this one")
         removed = scenes.pop(idx)
+        settle_cuts(project, manifest)
         tx.write_json(MANIFEST, manifest)
         trashed: List[str] = []
         file = removed.get("file") if isinstance(removed, dict) else None
@@ -790,6 +802,35 @@ def remove(project: Project, selector: str, trash_fn: Any, opts: Optional[lockmo
     return idx, trashed, tx.writes
 
 
+def manual_length(tx: lockmod.Txn, stem: str) -> Optional[str]:
+    """A pinned cut is an explicit length, so a follow-media scene flips to manual (the app's rule for a typed length)."""
+    rel = f"scenes/{stem}.json"
+    doc, _sha = tx.read_json(rel)
+    duration = doc.get("duration") if isinstance(doc, dict) else None
+    if not isinstance(duration, dict) or duration.get("mode") != "follow-media":
+        return None
+    doc["duration"] = {"mode": "manual"}
+    tx.write_json(rel, doc)
+    return f"{rel}: duration.mode = manual (the pinned cut sets its length, not its video)"
+
+
+def keep_cuts(project: Project, manifest: Dict[str, Any], index: int, spec: Optional[Dict[str, Any]]) -> str:
+    """Applies scene index's outgoing transition (None = hard cut) to a v2 manifest without moving later boundaries, and
+    says where the cut sits."""
+    from .beats import model as beatsmodel
+    from .film import timeline as tl
+
+    entries = manifest["scenes"]
+    before = [dict(e) for e in entries]
+    kept = tl.keep_cuts_for_transition(entries, beatsmodel.manifest_durations(project, manifest), index, spec, beatsmodel.project_music(manifest))
+    entries[:] = kept["entries"]
+    grown = [f"scene {i} {stem_of(e.get('file') or '')} durationMs {js_json(before[i].get('durationMs'))} -> {e['durationMs']}"
+             for i, e in enumerate(entries) if e.get("durationMs") != before[i].get("durationMs")]
+    where = f"on {kept['position']}" if kept["position"] else f"at {js_json(round(kept['cutMs']))} ms, off the beat"
+    pinned = " (pinned)" if "cutAt" in entries[index] and "cutAt" not in before[index] else ""
+    return f"cut kept {where}{pinned}, so later scenes stay put" + (f": {'; '.join(grown)}" if grown else "")
+
+
 def set_scene(
     project: Project,
     selector: str,
@@ -800,8 +841,11 @@ def set_scene(
     opts: Optional[lockmod.WriteOpts] = None,
     *,
     timing: Optional[Callable[[Project, Dict[str, Any], int], Tuple[int, str]]] = None,
+    ripple: bool = False,
 ) -> Dict[str, Any]:
-    """{ index, stem, changes, writes, dryRun }; timing(project, manifest, index) -> (durationMs, change) computes a musical duration."""
+    """{ index, stem, changes, writes, dryRun }; timing(project, manifest, index) -> (durationMs, change) computes a musical
+    duration. With a beat grid a transition change keeps every later boundary where it is (keepCutsForTransition) unless
+    ripple."""
     pins = Pins()
 
     def build(tx: lockmod.Txn) -> Dict[str, Any]:
@@ -811,17 +855,20 @@ def set_scene(
         if duration is not None or timing is not None or transition is not None or ease is not None:
             scenes = manifest["scenes"]
             entry = scenes[idx]
+            from .beats import model as beatsmodel
+
             if duration is not None:
                 if duration <= 0:
                     raise KbError("--duration must be a positive number of milliseconds", 2, kind="usage")
                 entry["durationMs"] = duration
-                changes.append(f"durationMs = {duration}")
+                changes.append(f"durationMs = {duration}" + (f' (no longer pinned to {entry["cutAt"]})' if "cutAt" in entry else ""))
+                beatsmodel.unpin(entry)
             if transition is not None or ease is not None:
                 if idx + 1 >= len(scenes) and (transition not in (None, "none", "cut")):
                     raise KbError("the last scene has no outgoing transition (nothing follows it); set it on the scene before")
                 spec = entry.get("transition") if isinstance(entry.get("transition"), dict) else None
                 if transition in ("none", "cut"):
-                    entry.pop("transition", None)
+                    spec = None
                     changes.append("transition removed (hard cut)")
                 else:
                     if transition is not None:
@@ -845,13 +892,21 @@ def set_scene(
                             spec.pop("ease", None)
                         else:
                             spec["ease"] = ease
-                    entry["transition"] = spec
                     changes.append(f"transition = {spec}")
+                if transition is not None and not ripple and idx + 1 < len(scenes) and beatsmodel.grid_of(beatsmodel.project_music(manifest)):
+                    changes.append(keep_cuts(project, manifest, idx, spec))
+                elif spec is None:
+                    entry.pop("transition", None)
+                else:
+                    entry["transition"] = spec
             if timing is not None:
                 entry["durationMs"], change = timing(project, manifest, idx)
                 changes.append(change)
+                manual = manual_length(tx, stem) if "cutAt" in entry else None
+                if manual:
+                    changes.append(manual)
+            changes += beatsmodel.settle_cuts(project, manifest)
             tx.write_json(MANIFEST, manifest)
-            from .beats import model as beatsmodel
 
             notes: List[str] = []
             moved = beatsmodel.refresh_sidecars(tx, project, manifest, notes)

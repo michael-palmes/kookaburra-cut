@@ -128,6 +128,13 @@ model: a transition pulls the next scene's start back, so
 enclosing `<SceneHost>`'s start. All scenes mount at once; the compositor gates
 per-frame `visible`.
 
+A scene entry may pin its cut to the music (`cutAt` and `align`,
+`engine/sceneCuts.ts`): its `durationMs` caches the length that lands the cut
+there, and the loader re-resolves every pinned length in scene order before
+building the timeline. A project with no `cutAt` takes the same durations
+array unchanged (null-for-legacy), and the kit mirrors the resolver
+operation for operation (`timeline-vectors.json`).
+
 Transition ownership is manifest-versioned: v2 stores each transition on the
 OUTGOING scene (it plays at that scene's end); legacy unversioned manifests
 stored it on the incoming scene. `outgoingSceneTransitions` shifts legacy files
