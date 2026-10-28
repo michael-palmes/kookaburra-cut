@@ -1297,6 +1297,8 @@ class Checker:
             if k["id"] in seen:
                 self.report.error(file, f"{path}.keys[{i}].id", f'duplicate key id "{k["id"]}"')
             seen.add(k["id"])
+            if "at" in k and path in ("chart.track", "layeredScreenshot.animation"):
+                self.report.warn(file, f"{path}.keys[{i}].at", "this track takes plain tMs, so the app ignores at (./kb beats --scene S lists each bar's ms)")
         eases = self.ctx.ids("eases")
         for i, seg in enumerate(segments):
             if not isinstance(seg, dict):

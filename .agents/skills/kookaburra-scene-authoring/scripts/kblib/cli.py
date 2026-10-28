@@ -596,6 +596,11 @@ def cmd_doc(ctx: Ctx) -> int:
         if a.op == "unset" and doc is None:
             raise KbError(f"{label} does not exist")
         new, summary = docmod.edit(doc if doc is not None else {"version": version}, a.op, getattr(a, "path", "") or "", arg)
+        from .beats import model as beatsmodel
+
+        stray = beatsmodel.stray_positions(doc, new)
+        if stray:
+            raise beatsmodel.stray_error(stray)
         patch = arg if a.op == "merge" else None
         return settle_music(project, stem, doc, checkmod.stamp_stagger_exact(doc, new), summary, patch)
 

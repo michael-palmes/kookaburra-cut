@@ -25,6 +25,11 @@ MAX_GRID_BEATS = 100000
 NO_MUSIC: Dict[str, Any] = {"startOffsetMs": 0, "cues": {}, "sections": {}}
 KEY_TRACKS = (("camera",), ("cameraRig",), ("lighting",), ("deviceTrack",))
 COMPARE_KEY_TRACKS = (("compare", "b", "lighting"), ("compare", "track"))
+POSITION_PLACES = (
+    "the at beside tMs on camera, cameraRig, lighting, deviceTrack, compare.track and compare.b.lighting keys, "
+    "the at beside startMs on device screen videos (devices[].media, coverMedia, compare.b) and media videos "
+    "(media[].video), and cameraKicks and room keys"
+)
 POSITION_HELP = "bar:B[.beat[.16th]], cue:ID or section:ID (optionally +40ms or -40ms), or a time like 12.5s or 12500ms"
 _TIME = re.compile(r"(-?\d+(?:\.\d+)?)(ms|s)?\Z", re.ASCII)
 _RANGE = re.compile(r"(bars|beats):(-?\d+)(?:-(-?\d+))?\Z", re.ASCII)
@@ -528,6 +533,46 @@ def settle_written(before: Any, after: Any, m: Optional[Dict[str, Any]], start_m
     if any(c["where"] in timed for c in changes):
         notes.append("kb doc merge keeps each at, so its time follows the music; to move one off it, give \"at\": null in the patch or kb doc set its time")
     return doc, notes
+
+
+def stray_positions(before: Any, after: Any) -> List[Tuple[str, Any]]:
+    """(dotted path, value) for each string `at` this write adds or changes where the app takes no musical position."""
+    allowed = {s.steps for s in timed_slots(after)}
+    out: List[Tuple[str, Any]] = []
+
+    def takes_position(steps: Tuple[Any, ...]) -> bool:
+        if steps in allowed:
+            return True
+        return (len(steps) == 2 and steps[0] == "cameraKicks" and isinstance(steps[1], int)) or (
+            len(steps) == 3 and steps[:2] == ("room", "keys") and isinstance(steps[2], int))
+
+    def walk(node: Any, steps: Tuple[Any, ...]) -> None:
+        if isinstance(node, dict):
+            at = node.get("at")
+            if isinstance(at, str) and not takes_position(steps):
+                old = _patch_node(before, steps + ("at",))
+                if old != at:
+                    out.append((doc_path(steps + ("at",)), at))
+            for key, child in node.items():
+                if steps or key not in ("text", "textStyle"):
+                    walk(child, steps + (key,))
+        elif isinstance(node, list):
+            for i, child in enumerate(node):
+                walk(child, steps + (i,))
+
+    walk(after, ())
+    return out
+
+
+def stray_error(stray: List[Tuple[str, Any]]) -> KbError:
+    """The refusal for musical positions where only ms work: exit 2 usage, naming the places that take one."""
+    path, value = stray[0]
+    more = f" (and {len(stray) - 1} more)" if len(stray) > 1 else ""
+    if path.startswith("taps."):
+        hint = "taps take scene-local ms (./kb beats --scene S lists each bar's ms); to land a recording's tap on a beat, ./kb video align NAME --tap ID --beat N --scene S"
+    else:
+        hint = f"positions work on {POSITION_PLACES}; give this field ms (./kb beats --scene S lists each bar's ms)"
+    return KbError(f'{path} = "{value}"{more}: this field takes plain ms, not a musical position', EXIT_ENV, kind="usage", hint=hint)
 
 
 def scene_scope(project: Project, stem: str, manifest: Optional[Dict[str, Any]] = None) -> Tuple[Optional[Dict[str, Any]], float]:

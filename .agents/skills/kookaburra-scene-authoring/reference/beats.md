@@ -114,7 +114,9 @@ Every `./kb doc` write refreshes the other caches. `./kb doc merge` keeps each `
 follows the music) unless the patch gives `"at": null`. Never hand-edit the time of a field
 with an `at`: the app puts it back on load (`./kb check` warns). Dragging the key, a new start
 in the inspector, `./kb video start` and `./kb video align` detach it. Chart and layered
-screenshot keys, taps, split-field reveals, scene durations and edit documents take plain ms.
+screenshot keys, taps, split-field reveals, scene durations and edit documents take plain ms:
+`./kb doc` refuses an `at` there (exit 2 `usage`). To land a recording's tap on a beat, use
+`./kb video align NAME --tap ID --beat N --scene S`.
 
 ## Kicks and pulses
 

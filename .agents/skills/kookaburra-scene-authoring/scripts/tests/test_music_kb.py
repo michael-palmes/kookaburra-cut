@@ -225,6 +225,20 @@ class SettleTests(KbTestCase):
         untouched = {"name": "Renamed"}
         self.assertEqual(model.settle_written(before, docs.merge_patch(before, untouched), music(), 0, untouched)[1], [])
 
+    def test_positions_where_only_ms_work(self) -> None:
+        before = {"version": 1, "chart": {"track": {"keys": [{"id": "k1", "tMs": 0, "at": "bar:1"}]}}}
+        after = json.loads(json.dumps(before))
+        after.update(
+            text={"at": "bar:2"}, cameraKicks=[{"at": "bar:2", "releaseMs": 300}], room={"keys": [{"at": "cue:drop"}]},
+            taps=[{"at": "bar:3", "position": [0, 0, 0]}], deviceTrack={"keys": [{"id": "d1", "tMs": 0, "at": "bar:2", "pose": {}}]},
+            layeredScreenshot={"animation": {"keys": [{"id": "k1", "tMs": 0, "at": "bar:4"}]}},
+        )
+        stray = model.stray_positions(before, after)
+        self.assertEqual(stray, [("taps.0.at", "bar:3"), ("layeredScreenshot.animation.keys.0.at", "bar:4")])
+        self.assertIn("kb video align", model.stray_error(stray).hint)  # type: ignore[operator]
+        self.assertIn("deviceTrack", model.stray_error(stray[1:]).hint)  # type: ignore[operator]
+        self.assertEqual(model.stray_error(stray).code, 2)
+
     def test_a_new_at_wins_over_its_tms(self) -> None:
         before = {"version": 1, "camera": camera([{"id": "k2", "tMs": 4000}])}
         after = json.loads(json.dumps(before))
@@ -437,6 +451,17 @@ class DocDetachTests(MusicProjectCase):
         self.j("doc", "02-hero", "merge", json.dumps({"camera": keys}))
         self.assertEqual(self.keys()[1], moved)
 
+    def test_positions_are_refused_where_only_ms_work(self) -> None:
+        before = self.sidecar()
+        out = self.j("doc", "02-hero", "set", "taps", json.dumps([{"at": "bar:3", "position": [0, 0, 0]}]), code=2)
+        self.assertEqual(out["code"], "usage")
+        self.assertIn("kb video align", out["hint"])
+        chart = {"track": {"keys": [{"id": "k1", "tMs": 0, "at": "bar:3"}], "segments": []}}
+        out = self.j("doc", "02-hero", "merge", json.dumps({"chart": chart}), code=2)
+        self.assertIn("chart.track.keys.0.at", out["error"])
+        self.assertIn("deviceTrack", out["hint"])
+        self.assertEqual(self.sidecar(), before)
+
     def test_kb_video_start_drops_the_at_it_moves(self) -> None:
         from kblib.video import repoint
 
@@ -563,6 +588,7 @@ class MusicCheckTests(MusicProjectCase):
         found = {(i["path"], i["severity"]): i["message"] for i in self.issues() if i["file"] == "scenes/03-outro.json"}
         self.assertIn("startOn open counts startMs", found[("devices[0].media.at", "error")])
         self.assertIn("./kb doc 03-outro unset media.0.video.at", found[("media[0].video.startMs", "warning")])
+        self.assertIn("takes plain tMs", found[("layeredScreenshot.animation.keys[0].at", "warning")])
         self.assertNotIn(("devices[0].media.at", "warning"), found)
 
     def test_a_grid_fitted_to_another_file_warns(self) -> None:
