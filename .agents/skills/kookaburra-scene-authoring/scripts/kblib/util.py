@@ -33,6 +33,7 @@ DEFAULT_HINTS: Dict[str, str] = {
     "bridge-timeout": "the app did not answer in time; check ./kb status, then rerun",
     "gpu-stalled": "the render window was recycled; rerun once, with fewer or smaller frames",
     "gpu-wedged": "ask the user to quit and reopen Kookaburra Cut",
+    "app-reloaded": "ask the user to quit and reopen Kookaburra Cut, then rerun",
     "throttled": "capture fewer or smaller frames (--scale 0.5), then rerun after retryAfterMs",
     "too-large": "use the default sheet size or --scale, and fewer frames",
     "flashes": "fix the flagged moments, or pass --allow-flashes after checking them",

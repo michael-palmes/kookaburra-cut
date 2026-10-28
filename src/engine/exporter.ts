@@ -558,6 +558,7 @@ async function exportProjectHeld(
           : null,
       },
       onProgress: channel,
+      scenes: opts.slots.map((s) => ({ id: s.id, startMs: s.startMs, endMs: s.endMs })),
     });
     started = true;
     signal?.addEventListener("abort", stopNativeEncode, { once: true });
@@ -608,7 +609,18 @@ async function exportProjectHeld(
     signal?.throwIfAborted();
     return await invoke<string>("finish_export");
   } catch (err) {
-    if (started) await invoke("cancel_export").catch(() => {});
+    if (started) {
+      // A real failure (not a cancel) leaves <export>.health.json and names where the run stopped.
+      const reason = signal?.aborted ? undefined : String(err instanceof Error ? err.message : err);
+      const where = await invoke<string | null>("cancel_export", { reason }).catch(() => null);
+      if (where && err instanceof Error) {
+        try {
+          err.message = `${err.message} (at ${where})`;
+        } catch {
+          // A DOMException's message is read-only; its own error still reaches the user.
+        }
+      }
+    }
     throw err;
   } finally {
     signal?.removeEventListener("abort", stopNativeEncode);

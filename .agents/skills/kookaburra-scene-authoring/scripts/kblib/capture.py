@@ -444,6 +444,40 @@ def cmd_debug(ctx: Any) -> int:
 # ── kb status ─────────────────────────────────────────────────────────────────
 
 
+def fmt_mb(mb: Any) -> str:
+    return f"{mb / 1000:.1f} GB" if mb >= 1000 else f"{int(mb)} MB"
+
+
+def editor_lines(editor: Dict[str, Any]) -> List[str]:
+    """The editor's reloads (any one means restart before exporting) and its processes' memory."""
+    out: List[str] = []
+    reloads = editor.get("reloads")
+    if isinstance(reloads, int) and reloads > 0 and editor.get("restartRecommended"):
+        last = editor.get("lastReload") if isinstance(editor.get("lastReload"), dict) else {}
+        what = "WebKit replaced its page process" if last.get("killed") else "its page reloaded"
+        if last.get("killed") and isinstance(last.get("editorMb"), (int, float)):
+            what += f" at {fmt_mb(last['editorMb'])}"
+        if isinstance(last.get("export"), str):
+            what += "; an export was running"
+        out.append(
+            f"EDITOR RELOADED {reloads} time{'s' if reloads != 1 else ''} (last: {what}). A reloaded editor slows down and "
+            "fails long exports: ask the user to quit and reopen Kookaburra Cut before exporting."
+        )
+    elif isinstance(reloads, int) and reloads > 0:
+        out.append(f"Editor: its page reloaded {reloads} time{'s' if reloads != 1 else ''} (no export lost)")
+    mem = editor.get("memoryMb") if isinstance(editor.get("memoryMb"), dict) else {}
+    bits = []
+    for key, label in (("editor", "editor page"), ("gpu", "WebKit GPU"), ("render", "render window"), ("app", "app")):
+        if isinstance(mem.get(key), (int, float)):
+            note = f"{label} {fmt_mb(mem[key])}"
+            if key == "editor" and isinstance(mem.get("editorPeak"), (int, float)) and mem["editorPeak"] > mem[key]:
+                note += f" (peak {fmt_mb(mem['editorPeak'])})"
+            bits.append(note)
+    if bits:
+        out.append("Memory: " + ", ".join(bits))
+    return out
+
+
 def health_lines(data: Optional[Dict[str, Any]], now: Optional[int] = None) -> List[str]:
     """The capture service's state for kb status, from a heartbeat (or status data) carrying `health`."""
     health = queue.health_of(data)
@@ -459,6 +493,8 @@ def health_lines(data: Optional[Dict[str, Any]], now: Optional[int] = None) -> L
         )
     elif gpu.get("stalled") and isinstance(gpu.get("stalledUntilMs"), (int, float)):
         out.append(f"GPU stalled: captures resume in about {max(1, int((gpu['stalledUntilMs'] - now) / 1000))} s; requests wait in the queue")
+    editor = health.get("editor") if isinstance(health.get("editor"), dict) else {}
+    out += editor_lines(editor)
     q = health.get("queue") if isinstance(health.get("queue"), dict) else {}
     bits = [f"{q.get('depth', 0)} queued"]
     if isinstance(q.get("oldestAgeMs"), (int, float)):

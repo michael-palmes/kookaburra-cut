@@ -738,6 +738,14 @@ finish and check its own work. Code: `scripts/kblib/exporting.py`, `src-tauri/sr
   waits up to 20 s until the reload poll's baseline matches the disk and the reload it asked for
   is on stage. A failed last reload refuses (`stale` with `reloadFailed`, exit 1); so does a source
   whose hash no longer matches kb's `sources` (exit 3, rerun).
+- **Edit safety.** kb first notes what the film renders from (project.json, the scene files and
+  the music, as the editor loads them now) and that editing is safe: the export renders the loaded
+  project, the reload poll pauses, and ffmpeg reads a copy of the music taken at the start
+  (`snapshot_audio`), so edits saved meanwhile land in the next export. Once the film is done kb
+  hashes the sources and the music again; any that changed come back as `staleSources` plus a
+  warning to rerun.
+- **A reloaded editor.** When the heartbeat's `health.editor.restartRecommended` is set, kb warns
+  before it starts that a long export may fail until the app restarts.
 - **The button's run.** The request maps through `choiceForRequest` (no flags = High quality, a
   preset row, or `--fps`/`--short-edge` as the Custom panel seeds them), `resolveVideoSelection`
   (loudness measured as the modal measures it, the poster frame from the app's setting unless
@@ -768,8 +776,10 @@ finish and check its own work. Code: `scripts/kblib/exporting.py`, `src-tauri/sr
   the file against what was asked for.
 - Other answers: `invalid` (bad aspect, preset or rate; exit 2), `refused` (error-card scenes or a
   dropped LUT; exit 1), `gpuStalled` (exit 3), `gpuWedged` (exit 2, quit and reopen),
-  `verifyMismatch` (exit 1), `acceptTimeout` and `interrupted` (exit 3). The envelope's `code` is
-  the kb kind; `appCode` keeps the app's.
+  `verifyMismatch` (exit 1), `acceptTimeout` (exit 3) and `interrupted` (exit 2, `app-reloaded`:
+  the editor's page died under the export, so rerunning without a restart fails again; the error
+  names the frame, scene and render-rate trend, see "Export health"). The envelope's `code` is the
+  kb kind; `appCode` keeps the app's.
 
 ### `--headless`
 
@@ -859,9 +869,9 @@ identity, role, effective root and `rootSource` (the app's "not found" errors na
   fails fast when the addressed pid exits while it waits.
 - **Health.** The serving instance's heartbeat carries `health`: queue depth and order,
   the in-flight request, render-window liveness and beat age, recycles, the GPU state
-  (`stalled`, `stalledUntilMs`, `wedged`), live WebGL contexts per window, and per-client
-  usage. kb prints the queue position and an estimate while it waits (shape and rules in
-  "The capture service").
+  (`stalled`, `stalledUntilMs`, `wedged`), live WebGL contexts per window, per-client
+  usage, and the editor's reloads and memory (`editor`, see "Export health"). kb prints the
+  queue position and an estimate while it waits (shape and rules in "The capture service").
 
 ### Heartbeat: `_bridge/apps/<pid>.json` and `app.json`
 
@@ -1035,8 +1045,10 @@ waits until it times out.
   hashB } | null, path, bytes, sha256, flashes, warnings, elapsedMs }`, where `path` is the file
   `finish_export` recorded and `sha256` Rust's hash of it. Failures are `{ ok: false, code,
   error, hint?, busy?, retryAfterMs?, cancelled?, by?, reloadFailed? }`. The client's death
-  (`clientPid`, unless `detach`) cancels the export; `bridge_export_reset`, which the main window
-  calls on mount, fails an export left in the slot by a reload (`interrupted`) and stops its encode.
+  (`clientPid`, unless `detach`) cancels the export. A main-window page load after the first
+  (`export_health::on_main_page_load`, from Tauri's `on_page_load`) fails the export in the slot
+  (`interrupted`, with `restartRecommended`) and stops its encode; `bridge_export_reset`, which the
+  main window calls on mount, stays as the backstop.
 - `cancelExport` (`target`: the export's id, absent = the running one): `{ ok, cancelled, state:
   idle | cancelled | cancelling, target? }`. An export the editor has not taken yet is answered
   `cancelled` at once; a running one is told through `kookaburra://bridge-export-cancel` (the
@@ -1048,6 +1060,39 @@ waits until it times out.
   served here, from the reported censuses and an event to the main window;
   `lose-context` on the render window (the default) and the dev-only `spawn-contexts`
   (`n`, at most 32) go to the render window. Details in "The capture service".
+
+### Export health
+
+Code: `src-tauri/src/export_health.rs`. A video export that dies with its page (WebKit replacing
+the editor's WebContent process, usually for memory) used to leave nothing behind and kept the
+native export busy until a restart. Now:
+
+- **Reloads stop the export.** Every main-window page load after the first cancels the native
+  video or stills export, fails the bridge slot and counts a reload. One whose old WebContent pid
+  is dead counts as `killed`. The new page shows the person a one-off notice
+  (`take_export_interruption`: `{ percent, cause: memory | crash | reload }`).
+- **The trace.** `start_export` takes the scene spans (`scenes: [{ id, startMs, endMs }]`) and
+  begins a trace: one rate point a second from `push_frame`, and the sampler's memory readings.
+  A failure's message names where it stopped: `frame 1235/2900 (42%), scene fold-open, render
+  8.4 → 2.6 → 1.2 fps` (the rate over the first, middle and last 10 s). The exporter passes a
+  real error to `cancel_export` as `reason` and appends the returned summary to the error; a
+  plain cancel passes none and leaves no report.
+- **`<export>.health.json`.** Written for every failure (editor reload, loop error, encode
+  failure) beside where the film would land in the project's `exports/` (never Downloads):
+  `{ version: 1, ok: false, reason: editorReloaded | failed | encodeFailed, error, output, fps,
+  frame, framesWritten, total, posterFrame, scenes, renderFps, elapsedMs, rate: [[frames, ms]],
+  peakMb: { editor, render, gpu, app }, memory: [...], hint, writtenAtMs }`. A later success at
+  the same name removes it.
+- **Memory.** A native sampler reads every 2 s the physical footprint (`proc_pid_rusage`, the
+  figure WebKit's ~4 GB WebContent limit uses) of the editor's and render window's WebContent
+  processes, WebKit's GPU process (`_gpuProcessIdentifier`), the app and the export's ffmpeg.
+- **`health.editor`** in the heartbeat: `{ reloads, lastReload: { atMs, killed, editorMb, export }
+  | null, restartRecommended, memoryMb: { editor, editorPeak, render, gpu, app }, sampledAtMs }`.
+  `kb status` prints `Memory: editor page 1.8 GB (peak 2.4 GB), WebKit GPU 950 MB, ...` and,
+  once a reload lost its page process or an export (`restartRecommended`), `EDITOR RELOADED n
+  times ... ask the user to quit and reopen Kookaburra Cut before exporting`: such an editor slows
+  down and fails long exports, and only a restart has been seen to fix it. A benign reload (a
+  dev server's, or Reload preview) only notes the count.
 
 ### The capture service
 

@@ -27,6 +27,14 @@ the user's own Cancel.
   read the output when it finishes. Ctrl-C or `--timeout` (3600 s) cancels it.
 - `--headless` needs the app closed and a project the user has opened since its code
   changed (else exit 2, `needs-trust`); it takes no `--fps` or `--short-edge`.
+- Editing during an export is safe: the film renders the project as the editor loaded it when
+  kb started (its first note says so), and edits you save meanwhile land in the next export. If
+  a source changed, the answer warns and lists it in `staleSources`: rerun to include it.
+- If it fails with `app-reloaded` (exit 2) the editor's page died under the export, usually for
+  memory, and the error names the frame, scene and render rate. Don't change the project to
+  work around it and don't rerun as is: ask the user to quit and reopen Kookaburra Cut, then
+  rerun. `exports/<name>.health.json` keeps the details; `./kb status` shows the editor's memory
+  and says when it has reloaded (any reload means restart before a long export).
 - Every export saves a record kb reads back, so `./kb verify-export` knows what was asked for.
 - Never record a baseline or compare hashes from `./kb export` against the app's own: a
   headless run and the editor may differ at glyph edges.
