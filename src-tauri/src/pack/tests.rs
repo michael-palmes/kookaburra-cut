@@ -773,22 +773,39 @@ fn round_trip_write_inspect_stage() {
     assert!(staged
         .root
         .starts_with(workspace.root().join(STATE_DIR_NAME).join(STAGING_DIR)));
-    assert_eq!(progress.len(), SOURCE_TREE.len());
+    // The fixture's `.claude/settings.json` (an older pack's agent config) is dropped at staging and named, never written.
     assert_eq!(
-        progress.last().copied(),
-        Some((
-            inspection.manifest.totals.bytes,
-            inspection.manifest.totals.bytes
-        ))
+        staged.dropped,
+        vec!["payload/projects/acme/.claude/settings.json".to_owned()]
     );
+    let staged_count = SOURCE_TREE.len() - 1;
+    assert_eq!(progress.len(), staged_count);
+    let dropped_bytes: u64 = inspection
+        .manifest
+        .files
+        .iter()
+        .filter(|f| staged.dropped.contains(&f.path))
+        .map(|f| f.bytes)
+        .sum();
+    assert!(dropped_bytes > 0);
+    // Dropped entries leave the total too, so the bar reaches full.
+    let staged_bytes = inspection.manifest.totals.bytes - dropped_bytes;
+    assert_eq!(progress.last().copied(), Some((staged_bytes, staged_bytes)));
 
     // Byte-identical, and nothing the manifest did not list.
     for (relative, _) in SOURCE_TREE {
+        if relative.contains("/.claude/") {
+            assert!(!staged.root.join("payload").join(relative).exists());
+            continue;
+        }
         let original = std::fs::read(source.path().join(relative)).expect("source");
         let extracted = std::fs::read(staged.root.join("payload").join(relative)).expect("staged");
         assert_eq!(extracted, original, "{relative} differs");
     }
     for file in &inspection.manifest.files {
+        if staged.dropped.contains(&file.path) {
+            continue;
+        }
         assert_eq!(
             sha256_file(&staged.root.join(&file.path)).expect("hash"),
             file.sha256,
@@ -796,7 +813,7 @@ fn round_trip_write_inspect_stage() {
             file.path
         );
     }
-    assert_eq!(snapshot(&staged.root).len(), SOURCE_TREE.len());
+    assert_eq!(snapshot(&staged.root).len(), staged_count);
 
     // The workspace itself is untouched: staging is the only thing `stage` may write.
     let mut outside = workspace.snapshot();

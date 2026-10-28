@@ -7,7 +7,7 @@ use super::error::PackError;
 use super::hash::sha256_file;
 use super::limits::*;
 use super::model::{PackManifest, PACK_FORMAT, PACK_FORMAT_VERSION};
-use super::paths::{is_ignorable, validate_archive_path};
+use super::paths::{is_agent_config, is_ignorable, validate_archive_path};
 use std::collections::{HashMap, HashSet};
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -23,6 +23,8 @@ pub struct PackInspection {
 pub struct StagedPack {
     pub root: PathBuf,
     pub manifest: PackManifest,
+    /// Archive paths of agent configuration the pack carried and staging left out (`paths::is_agent_config`).
+    pub dropped: Vec<String>,
 }
 
 impl Drop for StagedPack {
@@ -278,9 +280,10 @@ pub fn stage(
     }
     std::fs::create_dir(&root)?;
 
-    let staged = StagedPack {
+    let mut staged = StagedPack {
         root: root.clone(),
         manifest: manifest.clone(),
+        dropped: Vec::new(),
     };
 
     let expected: HashMap<&str, &super::model::PackFile> = manifest
@@ -288,7 +291,12 @@ pub fn stage(
         .iter()
         .map(|f| (f.path.as_str(), f))
         .collect();
-    let total_bytes: u64 = manifest.files.iter().map(|f| f.bytes).sum();
+    let total_bytes: u64 = manifest
+        .files
+        .iter()
+        .filter(|f| !is_agent_config(&f.path))
+        .map(|f| f.bytes)
+        .sum();
     let mut seen: HashSet<String> = HashSet::new();
     let mut written: u64 = 0;
 
@@ -307,6 +315,12 @@ pub fn stage(
             continue;
         }
         if entry.is_dir() {
+            continue;
+        }
+        // Agent configuration is never written: the app stamps its own. Listed in `files` or not, it is dropped and named.
+        if is_agent_config(&raw) {
+            seen.insert(raw.clone());
+            staged.dropped.push(raw);
             continue;
         }
         // A symlink earlier in the archive is how CVE-2025-29787 escapes: refuse them outright, and never create one.
@@ -384,6 +398,9 @@ pub fn stage(
     for file in &manifest.files {
         if is_cancelled() {
             return Err(PackError::Cancelled);
+        }
+        if staged.dropped.contains(&file.path) {
+            continue;
         }
         // `validate_archive_path` keeps the `payload/` segment, so staged paths mirror the archive exactly.
         let actual = sha256_file(&root.join(&file.path))?;
