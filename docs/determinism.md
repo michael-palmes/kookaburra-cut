@@ -1631,8 +1631,12 @@ it.
   unchanged leg is skipped, in any worktree; `--force` re-runs it.
 - **Tier 0: statics (free):** lint, build, `vitest related` on the changed
   `src/` files, the script tests, the kb suite and `cargo clippy` + `cargo
-  test`, each only when the diff touches its area. CI runs all of them on every
-  PR (`scripts/ci-scope.sh` scopes the rust job and the kb suite). Pure math
+  test`, each only when the diff touches its area, plus the workspace-name
+  check on every branch (`scripts/workspace-names.mjs`: no name from the
+  user's own `~/Kookaburra Cut` and no past leak shape in an added line). CI
+  runs all of them on every PR (`scripts/ci-scope.sh` scopes the rust job and
+  the kb suite; the name check runs on every pull request with no workspace
+  there, so the denylist alone). Pure math
   (eases, presets, schemas, edit math) belongs in unit tests, not in verify
   runs.
 - **The PR gate: `pnpm gate:merge`, once, when the render path changed.**
