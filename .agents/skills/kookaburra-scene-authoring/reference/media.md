@@ -300,7 +300,8 @@ fresh snapshot in the app.
 ```
 
 `viewport.preset`: `desktop` 1440 x 900, `tablet` 1024 x 768, `mobile` 390 x 844, or
-`custom` with `width`, `height`, `orientation`; `zoom` 0.5..2. `frame.appearance`
+`custom` with `width`, `height`, `orientation`; `zoom` 0.5..2. Use only a `url` the user
+gives you: never guess one from a product name. `frame.appearance`
 `match-theme`, `light`, `dark`; `shadow` `none`, `soft`, `strong`. Exports render the
 captured PNG (`capture`), which the app records after the user allows the site; ask the
 user to capture after changing the URL.
