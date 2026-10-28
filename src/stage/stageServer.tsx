@@ -54,6 +54,7 @@ import { RenderSettingsApplier } from "../engine/RenderSettingsApplier";
 import { sceneErrorCard } from "../engine/SceneErrorCard";
 import { StagePointer } from "../engine/StagePointer";
 import { StageScenes } from "../engine/StageScenes";
+import { collectSceneDocFontRefs } from "../engine/sceneDocSchema";
 import { getSceneHosts, subscribeSceneHosts } from "../engine/sceneHostRegistry";
 import {
   compilePersistentModule,
@@ -82,9 +83,15 @@ import { beginStillsRun, type StillsRun } from "../engine/stillsRun";
 import { useTextKeyRegistry } from "../engine/textKeyRegistry";
 import { PresentStageTree } from "../present/PresentStageTree";
 import { useEditorStore } from "../store/editorStore";
-import { registerWorkspaceFont, SDF_GLYPH_SIZE } from "../theme/fonts";
+import {
+  collectThemeFontRefs,
+  preloadAppFonts,
+  registerWorkspaceFont,
+  SDF_GLYPH_SIZE,
+} from "../theme/fonts";
 import {
   emojiRasterVersion,
+  preloadEmojiRasters,
   subscribeEmojiRasters,
   unrenderableEmojiClusters,
 } from "../toolkit/text/emojiRaster";
@@ -441,6 +448,14 @@ async function handle(req: WindowRequest): Promise<{ value: unknown; transfer?: 
       return { value: await compilePersistentModule(req.projectId, req.entry) };
     case "loadProject": {
       const loaded = req.project ? hydrate(req.project, req.seq) : null;
+      // Same barrier as the window's loadProject: troika's shared atlas assigns cells in typeset order, so every project face is generated here, sequentially, before a scene mounts (docs/determinism.md "Fonts").
+      if (loaded) {
+        await preloadAppFonts([
+          ...collectThemeFontRefs([loaded.theme, ...loaded.sceneThemes, ...loaded.compareBThemes]),
+          ...collectSceneDocFontRefs(loaded.sceneDocs),
+        ]);
+        await preloadEmojiRasters(loaded.id, loaded.sceneDocs);
+      }
       useStageStore.setState({ project: loaded });
       if (loaded) useClockStore.getState().setDurationMs(loaded.totalMs);
       return { value: null };
@@ -555,6 +570,8 @@ async function boot(init: Extract<WindowNotice, { type: "init" }>): Promise<void
   size = init.size;
   (canvas as OffscreenCanvas & { __css?: StageSize }).__css = size;
   for (const { name, patch } of init.stores) mirror.apply(name, patch);
+  // The window's boot order: the bundled faces claim their atlas cells before anything renders.
+  await preloadAppFonts();
   const root = createRoot(init.canvas);
   await root.configure({
     size: { width: size.width, height: size.height, top: 0, left: 0 },
