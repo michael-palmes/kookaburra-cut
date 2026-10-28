@@ -80,6 +80,14 @@ async function fileRevisions(paths: string[]): Promise<(string | null)[]> {
 
 /** Number of decoded frame textures kept resident per clip (LRU window). */
 const LRU_CAPACITY = 12;
+/** An export steps every clip forward and never back, so it keeps two frames a clip; twelve a clip across a long film was the leak that reloaded the editor mid-export (docs/determinism.md, "Memory probe"). */
+const EXPORT_LRU_CAPACITY = 2;
+let lruCapacity = LRU_CAPACITY;
+
+/** The memory probe's `clip-cache=N` lever; nothing else changes it. */
+export function setClipCacheCapacity(n: number): void {
+  lruCapacity = n;
+}
 
 /** Which frame set a consumer binds: `full` = the deterministic PNGs (export, paused, scrubbing); `preview` = the small JPEG set decoded during preview playback. */
 export type ClipTier = "full" | "preview";
@@ -838,6 +846,16 @@ export class ClipFrames {
     this.pinned.set(owner, pins);
   }
 
+  /** Resident decoded frames and their RGBA bytes (the memory probe's census). */
+  census(): { textures: number; bytes: number } {
+    let bytes = 0;
+    for (const tex of this.cache.values()) {
+      const img = tex.image as { width?: number; height?: number } | undefined;
+      bytes += (img?.width ?? 0) * (img?.height ?? 0) * 4;
+    }
+    return { textures: this.cache.size, bytes };
+  }
+
   /** Drop all of `owner`'s pins (call on unmount). */
   unpin(owner: object): void {
     this.pinned.delete(owner);
@@ -936,7 +954,8 @@ export class ClipFrames {
   private evict(): void {
     // Oldest-first, skipping pinned frames (a bound frame must never be closed under the renderer); if everything old is pinned we simply hold more than LRU_CAPACITY, bounded by the number of mounted consumers.
     let scan = 0;
-    while (this.order.length > LRU_CAPACITY && scan < this.order.length) {
+    const capacity = isExporting() ? Math.min(lruCapacity, EXPORT_LRU_CAPACITY) : lruCapacity;
+    while (this.order.length > capacity && scan < this.order.length) {
       const key = this.order[scan];
       if (this.isPinned(key)) {
         scan++;
@@ -971,6 +990,24 @@ function disposeTexture(tex?: Texture): void {
   if (!tex) return;
   (tex.image as ImageBitmap | undefined)?.close?.();
   tex.dispose();
+}
+
+/** Closes every resident frame no consumer binds, in every lane: an export starts without the preview's decoded frames and ends without its own (the software lane's would otherwise sit unused for the session). */
+export function releaseIdleClipFrames(): void {
+  for (const entry of registry.values()) entry.frames?.retire();
+}
+
+/** Every registered clip's resident frames, summed (the memory probe's census). */
+export function clipCacheCensus(): { clips: number; textures: number; bytes: number } {
+  let textures = 0;
+  let bytes = 0;
+  for (const entry of registry.values()) {
+    const c = entry.frames?.census();
+    if (!c) continue;
+    textures += c.textures;
+    bytes += c.bytes;
+  }
+  return { clips: registry.size, textures, bytes };
 }
 
 /** Resolves a project-relative clip `src` for the active project and subscribes the caller to its preparation: registers on-demand and forces a re-render when it resolves, so the primitive can read `entry.info`/`entry.frames` synchronously (including inside the export loop's `flushSync`). */

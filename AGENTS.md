@@ -57,6 +57,11 @@ pnpm kookaburra:run --action packroundtrip --project ws:launch-2026
 # (path printed + in last-run.json; --scene takes an index or file stem, --at seconds).
 pnpm kookaburra:run --action screenshot --project ws:test-4 --scene 2
 
+# Memory probe: each film through the real export, sampling render rate, every WebKit process's
+# memory and the clip cache; exit 1 when a film slows below 80% or the editor grows over 512 MB.
+# long-device-spike is the 60 s leak acceptance film; --lever L measures one change.
+pnpm kookaburra:run --action memory --project long-device-spike
+
 # Stills (PDF handout or PNG zip, one page per still) through the export path (docs/stills.md).
 pnpm kookaburra:run --action stills --project showcase-tour --stills pdf --size 1080p
 pnpm kookaburra:run --action stillsverify --project showcase-tour --stills png
@@ -286,3 +291,9 @@ intuition before the probe settled it).
   (`src/toolkit/lighting/studioEnvironment.ts`; a 40-device project exports at
   ~0.21 s/frame). Never mount a drei `<Environment>` with JSX children inside
   a component that re-renders per tick.
+- **Fourth measured impactor (2026-10-28): clip frame memory.** Each clip kept
+  12 decoded frames for the whole session, in both decode lanes, so a long
+  device film grew the editor past WebKit's WebContent limit (reloaded at about
+  half way; 7.1 GB measured over five spikes). Exports now keep two a clip and
+  release idle frames at start and end. Probe memory with `--action memory`
+  (`docs/determinism.md`, "Memory probe"), not fps alone: a big Mac hides it.

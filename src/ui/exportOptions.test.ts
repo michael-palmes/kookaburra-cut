@@ -10,6 +10,7 @@ import {
   fitToCap,
   groupPresets,
   highQualityEncode,
+  interruptedExportMessage,
   openingPosterFrameEnabled,
   presetAspects,
   railPresets,
@@ -380,5 +381,16 @@ describe("the Stills row", () => {
   it("names the footer button by format", () => {
     expect(stillsExportLabel("pdf")).toBe("Export PDF");
     expect(stillsExportLabel("png-zip")).toBe("Export images");
+  });
+});
+
+describe("interruptedExportMessage", () => {
+  it("says where it stopped, why, and that a restart is the fix", () => {
+    expect(interruptedExportMessage({ percent: 43, cause: "memory" })).toBe(
+      "The export stopped at 43% when the editor ran out of memory and reloaded, so nothing was saved. Quit and reopen Kookaburra Cut, then export again.",
+    );
+    expect(interruptedExportMessage({ percent: 0, cause: "reload" })).toContain(
+      "at 0% when the editor reloaded,",
+    );
   });
 });
