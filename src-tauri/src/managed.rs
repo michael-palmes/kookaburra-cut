@@ -546,11 +546,11 @@ mod tests {
     fn workspace_root_pins_an_absolute_path_and_locks_on_anything_else() {
         let pinned = forced(&[(
             "WorkspaceRoot",
-            PrefValue::String("/Users/Shared/Videos".into()),
+            PrefValue::String("/Users/x/Videos".into()),
         )]);
         assert_eq!(
             pinned.workspace_root.as_deref(),
-            Some("/Users/Shared/Videos")
+            Some("/Users/x/Videos")
         );
         assert!(pinned.workspace_root_locked);
         let refused = deny_workspace_change_in(&pinned).unwrap_err();
@@ -558,7 +558,7 @@ mod tests {
 
         for bad in [
             PrefValue::String("Videos".into()),
-            PrefValue::String("/Users/Shared/../Videos".into()),
+            PrefValue::String("/Users/x/../Videos".into()),
             PrefValue::String("   ".into()),
             PrefValue::String("/".into()),
             PrefValue::Bool(true),
@@ -598,7 +598,7 @@ mod tests {
             ("DisableUpdateCheck", PrefValue::Bool(true)),
             (
                 "WorkspaceRoot",
-                PrefValue::String("/Users/Shared/Videos".into()),
+                PrefValue::String("/Users/x/Videos".into()),
             ),
             ("AllowedPublisherKeyIds", strings(&["a1b2c3d4e5f60718"])),
         ]);
