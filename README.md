@@ -42,6 +42,17 @@ embeds a Claude Code terminal that reads and rewrites your project's scene files
   websites or update checks, limit packs to approved publishers and fix the
   workspace location ([`docs/mdm.md`](docs/mdm.md))
 
+Every release is built by this repository's release workflow from a signed tag,
+signed with a Developer ID certificate and notarised by Apple. To check a
+download against the release's `SHA256SUMS` and its build provenance:
+
+```bash
+shasum -a 256 -c SHA256SUMS --ignore-missing
+gh attestation verify KookaburraCut-<version>.dmg --repo michael-palmes/kookaburra-cut \
+  --signer-workflow michael-palmes/kookaburra-cut/.github/workflows/release.yml \
+  --source-ref refs/tags/v<version> --deny-self-hosted-runners
+```
+
 > Status: early release, in active development. Nothing leaves your Mac
 > unless you start it: the opt-in update check (asked once on the first-run
 > welcome, recommended there; Escape declines; Settings changes it any time)

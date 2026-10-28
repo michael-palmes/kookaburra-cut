@@ -97,7 +97,7 @@ exporting and presenting make no request.
 
 Dev-time only, never in the app: `pnpm setup:models` downloads the beat model
 from a pinned commit and checks its SHA-256 (`scripts/setup-models.sh`);
-`pnpm setup:ffmpeg:release` fetches the ffmpeg tarball (`scripts/build-ffmpeg-sidecar.sh`).
+`pnpm setup:ffmpeg:release` fetches the ffmpeg, x264 and x265 sources against their pins (`scripts/build-ffmpeg-sidecar.sh`).
 
 Managed preferences that force any of these off are in flight (see "Managed
 preferences").
@@ -390,57 +390,66 @@ profile, and Settings marks each affected row "Managed by your organisation".
 
 ## Release integrity
 
-Today's release is cut on the maintainer's Mac; the CI pipeline below is in
-flight.
+A release is a signed `v*` tag on `main`; `.github/workflows/release.yml`
+builds it in separate jobs, each on a fresh runner.
 
-- **Signing.** `scripts/sign-and-notarize.sh`: Tauri signs the app and its
-  sidecars with the Developer ID identity in `KOOKABURRA_SIGNING_IDENTITY`,
-  hardened runtime on (`bundle.macOS.hardenedRuntime` in `tauri.conf.json`),
-  no entitlements at all; `codesign --verify --deep --strict`, then
-  `notarytool submit --wait`, `stapler staple` and `spctl -a -t exec` on the
-  app, and the same notarise, staple and `spctl` on the DMG
-  (`scripts/make-dmg.sh`). The sidecar gate refuses an ffmpeg linked to
-  anything outside `/System` and `/usr/lib`.
-- **Updater artefacts.** The stapled app is tarred and signed with the
-  minisign-format ed25519 key (`pnpm tauri signer sign`); `latest.json` embeds
-  the signature and points at the versioned asset. `plugins.updater` has no
-  `requireSignedVersion`, so a manifest announcing a newer version over an
-  older signed archive would install today; binding version to signature is in
-  flight.
-- **Tagging and publishing.** `scripts/release.sh` refuses a dirty tree, a
-  taken tag, missing licensed models or a failed model pin, runs build, test
-  and lint, then creates an annotated (unsigned) tag and a draft GitHub release
-  with the DMG, the zip and its `.sha256`, the updater tar and `latest.json`.
-  No `SHA256SUMS`, no Team ID in the notes, no attestation yet.
-- **CI.** `.github/workflows/ci.yml` runs lint, build, tests, clippy and
-  `cargo test` with `contents: read`, frozen lockfiles and `--locked`, every
-  action pinned to a commit SHA and `persist-credentials: false`;
-  `codeql.yml`, `dependency-review.yml` and `scorecard.yml` beside it;
-  Dependabot weekly with a 7-day cooldown. There is no release workflow, no
-  signed-tag check and no scheduled `cargo audit` yet.
-- **Inputs.** The beat model is fetched from a pinned commit and checked
-  against a SHA-256 (`scripts/setup-models.sh`); the ffmpeg tarball is not
-  hash-pinned and x264/x265 come from Homebrew (`scripts/build-ffmpeg-sidecar.sh`).
-- **Verify an install today.** On the downloaded app:
+- **Build, with no signing secret in reach.** The build job checks that the tag
+  is signed by a key in `main`'s `.github/allowed_signers` (read from `main`,
+  never from the tagged tree) and sits on `main`, builds the ffmpeg sidecar from
+  sources pinned by SHA-256 and commit (`scripts/build-ffmpeg-sidecar.sh`),
+  fetches the beat model against its pins, unpacks the licensed device models
+  from a private repository's `age`-encrypted archive and refuses any glb that
+  does not match `src/assets/models/licensed.sha256`, runs
+  `pnpm tauri build --no-sign` and uploads the unsigned app with its SHA-256.
+  Its only secrets are the read-only token for that private repository and the
+  archive's decryption key; neither can sign anything.
+- **Sign, in the protected `release` environment.** Behind a required reviewer
+  and limited to `v*` tags, the sign job checks the payload's digest against the
+  build job, imports the Developer ID certificate into a temporary keychain,
+  signs the two sidecars and then the bundle (`scripts/sign-and-notarize.sh`:
+  hardened runtime, secure timestamp, no entitlements), notarises and staples
+  the app and the DMG through an App Store Connect API key, tars the stapled
+  app for the updater and signs it with the minisign-format ed25519 key bound to
+  the version (`--app-version`), then deletes the keychain and the keys. It
+  never builds or runs the payload, and never runs `pnpm install`: the updater
+  signature comes from a SHA-256 pinned `tauri-cli` binary.
+- **Verify, with no environment.** `scripts/verify-release.sh` on another fresh
+  runner: `codesign --verify --deep --strict`, the Developer ID chain, the Team
+  ID, no entitlements, `stapler validate` and `spctl` on the zip's app, the
+  updater tar's app and the DMG; the DMG holds the same bytes as the zip;
+  `latest.json` names the same signature and version; the signed binary runs
+  `edit caps` and `check flashes` on a film its bundled ffmpeg renders; and the
+  sidecars' signature-stripped digests equal the ones the build job recorded.
+- **Publish.** `SHA256SUMS` over the DMG, the zip, the updater tar and
+  `latest.json`; a GitHub build provenance attestation over the DMG, zip and
+  tar; a static notes body naming the Team ID; a draft release a person
+  publishes. The in-app updater sees a release only once it is published.
+- **Updater.** `plugins.updater.requireSignedVersion` is on: the app refuses a
+  signature whose trusted comment does not bind the announced version, so a
+  manifest re-pointed at an older signed archive cannot roll an install back.
+  The manifest's notes are never rendered.
+- **Repository controls.** `scripts/release.sh` only tags: it refuses unless on
+  `main` equal to `origin/main`, signs the tag and verifies it against
+  `.github/allowed_signers` before pushing. Every pull request's head commit
+  must be signed by a listed key (`.github/workflows/signers.yml`, run from the
+  base branch's copy); `CODEOWNERS` names the maintainer; `audit.yml` runs
+  `pnpm audit --prod` and `cargo deny check advisories` on every pull request
+  and weekly. Every workflow starts from `permissions: {}` or `contents: read`,
+  pins actions to a commit SHA and sets `persist-credentials: false`.
+- **Verify an install.** On the release page's files:
 
   ```bash
-  codesign -dvv "/Applications/Kookaburra Cut.app"
+  shasum -a 256 -c SHA256SUMS --ignore-missing
+  gh attestation verify KookaburraCut-<version>.dmg --repo michael-palmes/kookaburra-cut \
+    --signer-workflow michael-palmes/kookaburra-cut/.github/workflows/release.yml \
+    --source-ref refs/tags/v<version> --deny-self-hosted-runners
+  codesign -dvv "/Applications/Kookaburra Cut.app"       # flags=0x10000(runtime), Authority=Developer ID Application
+  spctl -a -t exec -vv "/Applications/Kookaburra Cut.app" # source=Notarized Developer ID
   ```
 
-  expects `flags=0x10000(runtime)` and `Authority=Developer ID Application`;
-  `codesign -d --entitlements - "/Applications/Kookaburra Cut.app"` expects
-  none; `spctl -a -t exec -vv "/Applications/Kookaburra Cut.app"` expects
-  `source=Notarized Developer ID`; and the zip's `.sha256` beside it on the
-  release page matches `shasum -a 256`.
-
-In flight (`.github/workflows/release.yml`, modelled on Offsider's): a build
-job without secrets that checks the tag is signed by a key in
-`.github/allowed_signers` and sits on `main`, a sign job in a protected
-environment behind a required reviewer, a verify job on a fresh runner, then
-`SHA256SUMS`, the Team ID in the notes, a static notes body, a GitHub build
-provenance attestation and `gh attestation verify` instructions in the README;
-`requireSignedVersion: true`; weekly `cargo audit`, `cargo deny` and
-`pnpm audit`.
+One maintainer holds admin rights on the repository; a hardware security key
+on the account and a hardware-backed tag key in `allowed_signers` are the
+backstop against an account takeover.
 
 ## Process
 

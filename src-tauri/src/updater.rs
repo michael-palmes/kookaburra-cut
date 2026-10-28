@@ -21,7 +21,6 @@ pub enum UpdateCheck {
     #[serde(rename_all = "camelCase")]
     Available {
         version: String,
-        notes: Option<String>,
         pub_date: Option<String>,
     },
 }
@@ -61,9 +60,9 @@ pub async fn check_for_update(
 
     let outcome = match found {
         Some(update) => {
+            // The manifest's notes are never surfaced: anyone holding the GitHub account could write them.
             let check = UpdateCheck::Available {
                 version: update.version.clone(),
-                notes: update.body.clone(),
                 pub_date: update.date.map(|d| d.to_string()),
             };
             *pending.0.lock().map_err(|_| "updater state poisoned")? = Some(update);

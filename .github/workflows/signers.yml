@@ -1,0 +1,48 @@
+name: Signers
+
+# Runs the base branch's copy of this file (pull_request_target), so a pull request cannot edit the
+# check away. The pull request's commits are fetched as data only and never executed.
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+
+permissions: {}
+
+jobs:
+  signed-head:
+    name: Head commit signed
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout the base branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Fetch the pull request head as data
+        env:
+          PR: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin "+refs/pull/${PR}/head:refs/remotes/pr/head"
+          [ "$(git rev-parse refs/remotes/pr/head)" = "$HEAD_SHA" ] || { echo "::error::the fetched head is not the event's head"; exit 1; }
+
+      # The head commit's signature covers the whole tree, so one check guards every path.
+      - name: Require an allowed signature on the head commit
+        env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          git show "${BASE_SHA}:.github/allowed_signers" > "$RUNNER_TEMP/allowed_signers"
+          if git -c gpg.ssh.allowedSignersFile="$RUNNER_TEMP/allowed_signers" -c gpg.minTrustLevel=fully verify-commit --verbose "$HEAD_SHA"; then
+            echo "The head commit is signed by an allowed key"
+          else
+            echo "::error::the head commit must be signed by a key in the base branch's .github/allowed_signers. Fix: git commit --amend --no-edit -S with that key, then push (for Dependabot, check out its branch, re-sign the head the same way and push)"
+            exit 1
+          fi

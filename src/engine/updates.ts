@@ -9,7 +9,6 @@ export type UpdateConsent = "loading" | "undecided" | "on" | "off";
 
 export interface AvailableUpdate {
   version: string;
-  notes: string | null;
   pubDate: string | null;
 }
 

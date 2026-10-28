@@ -96,14 +96,12 @@ export function WelcomeDialog({
 /** A newer release is ready: install in place and relaunch, or decline (Later also remembers the version so it isn't re-offered every launch). */
 export function UpdateAvailableDialog({
   version,
-  notes,
   installing,
   installError,
   onLater,
   onInstall,
 }: {
   version: string;
-  notes: string | null;
   installing: boolean;
   installError: string | null;
   onLater: () => void;
@@ -123,7 +121,6 @@ export function UpdateAvailableDialog({
         <p className="muted">
           Installing downloads the release, verifies its signature and relaunches the app.
         </p>
-        {notes && <p className="muted update-notes">{notes}</p>}
         {installError && <p className="modal-error">{installError}</p>}
         <div className="modal-actions">
           <button type="button" className="btn" onClick={onLater} disabled={installing}>
