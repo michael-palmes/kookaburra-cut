@@ -28,7 +28,7 @@
       "identifier": "dev-autorun",
       "description": "Dev builds only: the autorun pack round-trip gate builds, stages and applies a pack from the main window (docs/determinism.md, \"Pack round trip\").",
       "commands": {
-        "allow": ["workspace_root_path", "build_pack", "stage_pack", "apply_import"]
+        "allow": ["workspace_root_path", "plan_pack", "build_pack", "stage_pack", "apply_import"]
       }
     }
   ]
