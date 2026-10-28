@@ -4,15 +4,20 @@ from __future__ import annotations
 
 import copy
 import json
+import re
 from typing import Any, List, Tuple
 
 from .util import KbError
 
+_ESCAPE = re.compile(r"\\([\\nt])")
+_ESCAPED = {"\\": "\\", "n": "\n", "t": "\t"}
+
 
 def parse_value(raw: str, as_string: bool = False) -> Any:
-    """JSON when it parses, else the raw string (so `Inter@600` and `Ship faster` need no quoting)."""
+    """JSON when it parses, else the raw string (so `Inter@600` and `Ship faster` need no quoting). `as_string` keeps a
+    string and reads \\n, \\t and \\\\ as a newline, a tab and a backslash."""
     if as_string:
-        return raw
+        return _ESCAPE.sub(lambda m: _ESCAPED[m.group(1)], raw)
     try:
         return json.loads(raw)
     except ValueError:

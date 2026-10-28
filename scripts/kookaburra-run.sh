@@ -26,7 +26,7 @@
 #            so queued runs never clobber each other. last-run.json is copied back to the
 #            legacy ~/Kookaburra Cut/_autorun/last-run.json and dev.log is symlinked there.
 #
-# Flags:  --action verify|export|theme-previews|template-previews|preset-previews|option-previews|perf|memory|screenshot|packroundtrip|create|render-spike|stills|stillsverify (required)
+# Flags:  --action verify|export|theme-previews|template-previews|preset-previews|option-previews|perf|memory|screenshot|transitioncheck|packroundtrip|create|render-spike|stills|stillsverify (required)
 #         --project <id[,id...]>   (default: the app's default project; theme-previews →
 #                  preview-lab-theme (incremental via the theme-preview manifest; --all re-records
 #                  every theme), option-previews → the preview-lab-* fixtures (incremental
@@ -35,8 +35,8 @@
 #                  verify/export/stills/stillsverify accept a
 #                  comma list and run every project in ONE app boot, e.g. the gate pair)
 #         --aspect 16:9|9:16|1:1|4:5|5:4|3:2|2:3|phone|phone-landscape|all
-#                  (default: all = the standing three; perf, screenshot, stills and
-#                  stillsverify default to 16:9)
+#                  (default: all = the standing three; perf, screenshot, transitioncheck,
+#                  stills and stillsverify default to 16:9)
 #         --scene  <index|stem>    (screenshot: which scene; defaults to its midpoint)
 #         --at     <seconds>       (screenshot: seconds into the scene, or the project without --scene;
 #                  render-spike: sample duration, default 300; memory: render only the first N
@@ -62,6 +62,8 @@
 #                  exits 2 when the result lacks "cold": true (a build that predates the flag)
 #         --no-wait  don't queue: exit 2 straight away when another run holds the queue
 #
+#   pnpm kookaburra:run --action transitioncheck --project compare-transition-spike   # every
+#                  crossfade's midpoint must blend both scenes (a GPU check Verify can't make)
 #   pnpm kookaburra:run --action create --project blank   # create-from-template smoke in a
 #                  throwaway workspace root; pass --app to prove the packaged resource layout
 # Env:    KOOKABURRA_RUN_TIMEOUT    seconds to wait for a result (default 2400)
@@ -115,8 +117,8 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-if [[ "$ACTION" != "verify" && "$ACTION" != "export" && "$ACTION" != "theme-previews" && "$ACTION" != "template-previews" && "$ACTION" != "preset-previews" && "$ACTION" != "option-previews" && "$ACTION" != "perf" && "$ACTION" != "memory" && "$ACTION" != "screenshot" && "$ACTION" != "packroundtrip" && "$ACTION" != "create" && "$ACTION" != "render-spike" && "$ACTION" != "stills" && "$ACTION" != "stillsverify" ]]; then
-  echo "kookaburra:run: --action must be 'verify', 'export', 'theme-previews', 'template-previews', 'preset-previews', 'option-previews', 'perf', 'memory', 'screenshot', 'packroundtrip', 'create', 'render-spike', 'stills' or 'stillsverify'" >&2
+if [[ "$ACTION" != "verify" && "$ACTION" != "export" && "$ACTION" != "theme-previews" && "$ACTION" != "template-previews" && "$ACTION" != "preset-previews" && "$ACTION" != "option-previews" && "$ACTION" != "perf" && "$ACTION" != "memory" && "$ACTION" != "screenshot" && "$ACTION" != "transitioncheck" && "$ACTION" != "packroundtrip" && "$ACTION" != "create" && "$ACTION" != "render-spike" && "$ACTION" != "stills" && "$ACTION" != "stillsverify" ]]; then
+  echo "kookaburra:run: --action must be 'verify', 'export', 'theme-previews', 'template-previews', 'preset-previews', 'option-previews', 'perf', 'memory', 'screenshot', 'transitioncheck', 'packroundtrip', 'create', 'render-spike', 'stills' or 'stillsverify'" >&2
   exit 2
 fi
 if [[ "$ACTION" == "stills" || "$ACTION" == "stillsverify" ]]; then
@@ -136,8 +138,8 @@ elif [[ -n "$STILLS" || -n "$STILLS_SIZE" ]]; then
 fi
 if [[ "$COLD" == "1" ]]; then
   case "$ACTION" in
-    verify | export | screenshot | packroundtrip | stills | stillsverify) ;;
-    *) echo "kookaburra:run: --cold only applies to verify, export, screenshot, packroundtrip, stills or stillsverify" >&2; exit 2 ;;
+    verify | export | screenshot | transitioncheck | packroundtrip | stills | stillsverify) ;;
+    *) echo "kookaburra:run: --cold only applies to verify, export, screenshot, transitioncheck, packroundtrip, stills or stillsverify" >&2; exit 2 ;;
   esac
 fi
 # A packaged instance still shares $APPDATA caches with this run in an unmanaged way (it
