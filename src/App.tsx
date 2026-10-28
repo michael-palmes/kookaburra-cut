@@ -276,7 +276,7 @@ import { MediaLibrary } from "./ui/MediaLibrary";
 import { NewProjectDialog } from "./ui/NewProjectDialog";
 import { PlaybackBar } from "./ui/PlaybackBar";
 import { PresentModal } from "./ui/PresentModal";
-import { writeCutCaches } from "./ui/pinnedCuts";
+import { writeCutCaches, writeCutsForMusic } from "./ui/pinnedCuts";
 import { ALL_PROJECTS } from "./ui/projectLibrary";
 import { SceneTerminalOverlay } from "./ui/SceneTerminalOverlay";
 import { SceneWebsiteOverlay } from "./ui/SceneWebsiteOverlay";
@@ -927,6 +927,14 @@ export default function App() {
         Array.isArray(manifest.scenes) &&
         manifest.scenes.some((entry: { cutAt?: unknown }) => typeof entry?.cutAt === "string")
       ) {
+        await writeCutsForMusic(current, music);
+        changes[0] = {
+          kind: "manifest",
+          slug,
+          before: manifestBefore,
+          after: await readProjectManifestSnapshot(slug),
+          reload: false,
+        };
         updatePreviewAudioSpec(merged);
         pushHistory({ label: "music settings", changes });
         handleTimingChanged();

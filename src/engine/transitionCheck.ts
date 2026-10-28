@@ -26,10 +26,15 @@ export function crossfadeProbes(slots: readonly SceneSlot[], fps: number): Cross
     const spec = slot.transitionIn;
     const prev = slots[slot.index - 1];
     if (spec?.type !== "crossfade" || !prev) continue;
+    const beforeMs = Math.max(prev.startMs, slot.startMs - frameMs);
+    const after = slots[slot.index + 1];
+    // A scene eaten by its other transition has no solo frame to compare against.
+    if (beforeMs < prev.startMs + (prev.transitionIn?.durationMs ?? 0)) continue;
+    if (after && after.startMs <= prev.endMs) continue;
     probes.push({
       fromIndex: prev.index,
       toIndex: slot.index,
-      beforeMs: Math.max(prev.startMs, slot.startMs - frameMs),
+      beforeMs,
       midMs: slot.startMs + spec.durationMs / 2,
       afterMs: prev.endMs,
       expected: 1 - applyTransitionEase(spec.ease, 0.5),

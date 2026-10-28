@@ -40,6 +40,15 @@ describe("crossfadeProbes", () => {
     ]);
   });
 
+  it("skips a crossfade whose neighbours have no solo frame", () => {
+    const slots = buildSceneTimeline([
+      { id: "a", durationMs: 2000, transition: { type: "crossfade", durationMs: 600 } },
+      { id: "b", durationMs: 700, transition: { type: "crossfade", durationMs: 600 } },
+      { id: "c", durationMs: 2000 },
+    ]);
+    expect(crossfadeProbes(slots, 30)).toEqual([]);
+  });
+
   it("skips hard cuts", () => {
     expect(
       crossfadeProbes(

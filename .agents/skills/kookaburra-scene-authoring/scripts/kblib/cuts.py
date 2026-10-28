@@ -446,6 +446,7 @@ def cmd_apply(ctx: Any) -> int:
     rows = parse_plan(read_plan(ctx.args.plan))
     saved = None
     if not ctx.dry_run and gitmod.git_available() and gitmod.repo_state(project) != "foreign" and gitmod.dirty_files(project):
+        apply_plan(project, rows, lockmod.WriteOpts(True, ctx.wait, ctx.caller), ripple=ctx.args.ripple)
         saved = gitmod.checkpoint(project, "before kb timeline apply")
     changes, tx = apply_plan(project, rows, ctx.opts, ripple=ctx.args.ripple)
     if tx.dry_run:
