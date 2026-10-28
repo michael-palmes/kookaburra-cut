@@ -55,6 +55,7 @@
     "package:dmg": "bash scripts/make-dmg.sh",
     "package:signed": "bash scripts/sign-and-notarize.sh",
     "release": "bash scripts/release.sh",
+    "release:rehearse": "bash scripts/release.sh --adhoc",
     "tauri": "tauri"
   },
   "engines": {
