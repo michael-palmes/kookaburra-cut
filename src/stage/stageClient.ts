@@ -85,6 +85,7 @@ export class StageClient implements StageHandle {
   private nextId = 1;
   private readyResolve!: () => void;
   private isReady = false;
+  private readyTimer: ReturnType<typeof setTimeout> | undefined;
   private readonly queued: (() => void)[] = [];
   private currentStamps: CommitStamps = {
     clockMs: Number.NaN,
@@ -124,13 +125,13 @@ export class StageClient implements StageHandle {
       this.readyResolve = resolve;
     });
     // A worker that never reports is a boot failure, not a wait: name it instead of hanging an autorun until its timeout.
-    const readyTimer = setTimeout(() => {
+    this.readyTimer = setTimeout(() => {
       if (this.isReady) return;
       const text = `the ${role} stage worker did not report ready within ${READY_TIMEOUT_MS / 1000}s`;
       console.error(`[stage] ${text}`);
       reportAutoRunError(text);
     }, READY_TIMEOUT_MS);
-    void this.ready.then(() => clearTimeout(readyTimer));
+    void this.ready.then(() => clearTimeout(this.readyTimer));
     this.mirror = mirrorStores(
       {
         ...mirroredStores(),
@@ -499,6 +500,7 @@ export class StageClient implements StageHandle {
   }
 
   dispose(): void {
+    clearTimeout(this.readyTimer);
     for (const off of this.offs.splice(0)) off();
     this.mirror.stop();
     setSceneModuleProvider(null);
