@@ -447,6 +447,7 @@ fn the_settings_window_owns_caches_the_workspace_location_updates_and_the_publis
             "init_workspace",
             "install_update_and_relaunch",
             "list_known_publishers",
+            "managed_policy",
             "move_workspace",
             "note_picked_folder",
             "open_claude_download",

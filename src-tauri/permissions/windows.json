@@ -54,6 +54,13 @@
       }
     },
     {
+      "identifier": "managed",
+      "description": "The effective managed-preferences policy, so a window can hide or lock what a configuration profile governs.",
+      "commands": {
+        "allow": ["managed_policy"]
+      }
+    },
+    {
       "identifier": "updater",
       "description": "The consent-gated update check and install.",
       "commands": {

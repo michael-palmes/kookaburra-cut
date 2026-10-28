@@ -33,6 +33,7 @@ mod library;
 mod library_previews;
 mod live_edits;
 mod loudness;
+mod managed;
 mod media;
 mod mp4box;
 mod native_alert;
@@ -1433,6 +1434,7 @@ macro_rules! kookaburra_handler {
             claude_app::open_claude_download,
             claude_update::claude_version_info,
             claude_update::dismiss_claude_update,
+            managed::managed_policy,
             media::import_media,
             media::import_media_bytes,
             media::list_conform_jobs,
@@ -1581,6 +1583,7 @@ pub fn run() {
                     park_background_window(&main);
                 }
             }
+            managed::log_at_boot();
             bridge::init(app.handle());
             bridge::spawn_heartbeat(app.handle().clone());
             bridge::spawn_native_bridge(app.handle().clone());
@@ -1628,12 +1631,15 @@ pub fn run() {
                 let shortcuts = MenuItemBuilder::with_id("show-shortcuts", "Keyboard Shortcuts…")
                     .accelerator("CmdOrCtrl+/")
                     .build(app)?;
-                let project = SubmenuBuilder::new(app, "Project")
+                // A managed install with Claude turned off has no Edit with Claude anywhere, the menu included.
+                let managed = managed::policy();
+                let mut project = SubmenuBuilder::new(app, "Project")
                     .item(&find_action)
-                    .item(&find_project)
-                    .item(&edit_in_claude)
-                    .item(&shortcuts)
-                    .build()?;
+                    .item(&find_project);
+                if !managed.disable_claude {
+                    project = project.item(&edit_in_claude);
+                }
+                let project = project.item(&shortcuts).build()?;
                 // File: where macOS users look for Import/Export. Pack items are always enabled, since an empty picker explains itself better than a greyed-out item.
                 let new_project = MenuItemBuilder::with_id("new-project", "New Project…")
                     .accelerator("CmdOrCtrl+N")
@@ -1688,10 +1694,14 @@ pub fn run() {
                             pred.set_text(format!("Quit {APP_NAME}"))?;
                         }
                     }
-                    // Default macOS app submenu: About(0), ─(1), Services…; per the HIG the order becomes About, Check for Updates, ─, Settings, ─, Services.
-                    app_menu.insert(&check_updates_item, 1)?;
-                    app_menu.insert(&settings_item, 3)?;
-                    app_menu.insert(&PredefinedMenuItem::separator(app.handle())?, 4)?;
+                    // Default macOS app submenu: About(0), ─(1), Services…; per the HIG the order becomes About, Check for Updates, ─, Settings, ─, Services. Check for Updates is left out where a profile turns update checks off.
+                    let mut at = 1;
+                    if !managed.disable_update_check {
+                        app_menu.insert(&check_updates_item, at)?;
+                        at += 1;
+                    }
+                    app_menu.insert(&settings_item, at + 1)?;
+                    app_menu.insert(&PredefinedMenuItem::separator(app.handle())?, at + 2)?;
                 }
                 // Undo/Redo: the default Edit items send AppKit's undo: selector, which the menu swallows BEFORE the DOM sees ⌘Z, so the app history could never hear it; replace them with emitting items, and the frontend routes text-field focus back to the WebKit undo manager.
                 for item in menu.items()? {

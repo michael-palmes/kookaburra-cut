@@ -37,6 +37,11 @@ pub fn format_key_id(key_id: &str) -> String {
         .join(" ")
 }
 
+/// The id a published key really has, recomputed from the key itself rather than read from the manifest.
+pub fn key_id_of(public_key: &str) -> Option<String> {
+    parse_public_key(public_key).map(|key| key_id_for(&key.to_bytes()))
+}
+
 fn key_id_for(raw_pubkey: &[u8]) -> String {
     let mut hasher = Sha256::new();
     hasher.update(raw_pubkey);
@@ -253,6 +258,15 @@ mod tests {
         let path = scratch_key();
         assert_eq!(existing_identity_at(&path).unwrap(), None);
         assert!(!path.exists());
+    }
+
+    #[test]
+    fn key_id_of_recomputes_the_id_from_the_public_key_alone() {
+        let identity = ensure_identity_at(&scratch_key()).unwrap();
+        assert_eq!(key_id_of(&identity.public_key).as_deref(), Some(identity.key_id.as_str()));
+        assert_eq!(key_id_of("ed25519:not-base64!"), None);
+        assert_eq!(key_id_of("rsa:AAAA"), None);
+        assert_eq!(key_id_of(""), None);
     }
 
     #[test]
