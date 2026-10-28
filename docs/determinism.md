@@ -1775,6 +1775,7 @@ Verify ×2 here (the 2026-10-23 note):
 | `compare-spike` (before/after comparison gate) | `03f4704d…` | `0c6b7166…` | `d4cac096…` | `ac586a05…` | — | — | — | — | — |
 | `compare-transition-spike` (comparisons through transitions) | `98132cf6…` | — | — | — | — | — | — | — | — |
 | `image-flip-spike` (image-orientation gate, eyeball it) | `5753a093…` | — | — | — | — | — | — | — | — |
+| `long-device-spike` (long-film memory gate: devices, a fold, compare media, 61 s) | `9f4a603d…` | — | — | — | — | — | — | — | — |
 | `ws:layered-screenshot-spike` (LS gate, machine-local) | `33c75ab8…` | — | — | — | — | — | — | — | — |
 | `ws:video-window-spike` (VideoWindow gate, machine-local) | `273e778c…` | — | — | — | — | — | — | — | — |
 | `ws:lighting-spike-fable` (v9 lighting gate, machine-local) | `c3d51b40…` | — | — | — | — | — | — | — | — |
