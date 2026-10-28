@@ -564,6 +564,37 @@ function isRequest(msg: ToWorker): msg is WindowRequest {
   return "id" in msg && msg.type !== "reply";
 }
 
+/** Requests that read or change the loaded project run one at a time, in arrival order, so a request sent after `loadProject` never sees the project it replaced; the rest (sizing, compiles, hit tests, the census) answer at once. */
+const SERIAL_REQUESTS = new Set<WindowRequest["type"]>([
+  "loadProject",
+  "awaitHosts",
+  "settle",
+  "exportBegin",
+  "exportFrame",
+  "exportEnd",
+  "holdExport",
+  "captureFrame",
+  "stillsBegin",
+  "stillsPage",
+  "stillsEnd",
+  "snapshot",
+  "perfRun",
+  "releasePools",
+  "invalidateClips",
+  "evictClips",
+]);
+let serial: Promise<unknown> = Promise.resolve();
+
+function dispatch(req: WindowRequest): Promise<{ value: unknown; transfer?: Transferable[] }> {
+  if (!SERIAL_REQUESTS.has(req.type)) return handle(req);
+  const next = serial.then(
+    () => handle(req),
+    () => handle(req),
+  );
+  serial = next;
+  return next;
+}
+
 async function boot(init: Extract<WindowNotice, { type: "init" }>): Promise<void> {
   role = init.role;
   canvas = init.canvas;
@@ -626,7 +657,7 @@ takeWorkerInbox((ev: MessageEvent<ToWorker>) => {
     return;
   }
   if (isRequest(msg)) {
-    void handle(msg).then(
+    void dispatch(msg).then(
       ({ value, transfer }) => post({ type: "reply", id: msg.id, ok: true, value }, transfer),
       (e) =>
         post({

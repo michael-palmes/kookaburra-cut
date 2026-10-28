@@ -223,6 +223,21 @@ export async function exportProject(
   );
 }
 
+/** Resolves with `promise`, or rejects with the signal's reason the moment it aborts; the promise itself is left to settle. */
+function untilAborted<T>(promise: Promise<T>, signal: AbortSignal | undefined): Promise<T> {
+  if (!signal) return promise;
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => reject(signal.reason);
+    if (signal.aborted) {
+      onAbort();
+      promise.catch(() => {});
+      return;
+    }
+    signal.addEventListener("abort", onAbort, { once: true });
+    promise.then(resolve, reject).finally(() => signal.removeEventListener("abort", onAbort));
+  });
+}
+
 async function exportProjectHeld(
   opts: ExportOptions,
   onProgress?: (p: ExportProgress) => void,
@@ -239,12 +254,10 @@ async function exportProjectHeld(
   // A cancel that lands while Rust finalises or runs a two-pass pass has no frame boundary to stop at, so it kills the native encode directly.
   const stopNativeEncode = () => void invoke("cancel_export").catch(() => {});
   try {
-    const { total } = await s.exportBegin(stageExportOptions(opts), (step) => {
-      onPrepareStep?.(step);
-      signal?.throwIfAborted();
-    });
+    const begin = s.exportBegin(stageExportOptions(opts), (step) => onPrepareStep?.(step));
+    // The worker opens the run whether or not the wait below is cut short; the finally closes it either way.
     begun = true;
-    signal?.throwIfAborted();
+    const { total } = await untilAborted(begin, signal);
     const { width, height } = opts.format;
     const poster = opts.encode?.posterFrame ? posterFrameSample(opts.slots, opts.fps) : undefined;
 
