@@ -24,6 +24,18 @@ imported `CLAUDE.md` is saved as `NOTES.md` and replaced with the app's own,
 and every open strips hooks, permissions, env, commands, agents and skills the
 app did not ship.
 
+Scene code is the one thing a project can run, so running it needs your say-so
+and never more reach than the window needs. Each app window gets only the
+native commands it uses (an app permission manifest under
+`src-tauri/permissions/`, checked per window before any command runs), and the
+embedded terminal starts Claude Code from a fixed launch shape with an
+allow-listed environment, never a command string from the page. A project's
+scenes run only after you press Allow on a native macOS sheet that names the
+project and its folder (Return declines); that consent is bound to the content
+of the project's scenes, manifest and agent configuration, so content that
+changed while the project was closed asks again on the next open. Anything the
+app deletes goes to the Trash.
+
 ## Reporting a vulnerability
 
 If you believe you've found a security issue (for example in the Tauri IPC

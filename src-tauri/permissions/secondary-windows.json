@@ -1,0 +1,135 @@
+{
+  "permission": [
+    {
+      "identifier": "render-window",
+      "description": "The hidden render window: heartbeat, thumb and poster jobs, bridge requests and captures, and the one write a bridge preset insert makes.",
+      "commands": {
+        "allow": [
+          "render_heartbeat",
+          "render_take_thumb_job",
+          "render_report_gpu_event",
+          "render_reset_preset_posters",
+          "render_take_preset_poster",
+          "render_finish_preset_poster",
+          "write_preset_poster",
+          "write_scene_thumb",
+          "bridge_claim_request",
+          "bridge_write_response",
+          "begin_bridge_screenshot",
+          "save_bridge_screenshot",
+          "bridge_write_sheet",
+          "bridge_check_assets",
+          "bridge_request_live",
+          "bridge_confirm_project",
+          "get_editor_context",
+          "copy_scene_to_project"
+        ]
+      }
+    },
+    {
+      "identifier": "present-window",
+      "description": "The Present window's launch target.",
+      "commands": {
+        "allow": ["get_present_target"]
+      }
+    },
+    {
+      "identifier": "editor-window",
+      "description": "The video editor: edit documents, media metadata and the manifest snapshot it reads.",
+      "commands": {
+        "allow": [
+          "get_editor_target",
+          "load_edit",
+          "save_edit",
+          "reset_edit",
+          "list_edits",
+          "render_edit",
+          "load_edit_entry",
+          "edit_stamps",
+          "import_media_bytes",
+          "media_meta",
+          "read_project_manifest_snapshot",
+          "read_scene_doc",
+          "list_project_asset_stamps",
+          "project_assets_stamp",
+          "get_settings"
+        ]
+      }
+    },
+    {
+      "identifier": "packs-window",
+      "description": "The packs window: build, inspect, stage and apply .kbpack files, the publisher profile and the queued Open With paths.",
+      "commands": {
+        "allow": [
+          "get_packs_target",
+          "next_queued_pack",
+          "open_pack_import",
+          "open_imported_project",
+          "list_packables",
+          "plan_pack",
+          "build_pack",
+          "cancel_pack_build",
+          "reveal_pack",
+          "inspect_pack",
+          "read_pack_scene_source",
+          "stage_pack",
+          "apply_import",
+          "discard_staged_pack",
+          "workspace_root_path",
+          "note_picked_folder",
+          "get_publisher_profile",
+          "font_embedding_for",
+          "pin_fonts_for_pack",
+          "read_scene_doc",
+          "list_projects",
+          "reveal_in_finder",
+          "get_settings"
+        ]
+      }
+    },
+    {
+      "identifier": "settings-window",
+      "description": "Settings: caches, the hardware video switch, conform, the workspace location, website data and the pack publisher.",
+      "commands": {
+        "allow": [
+          "get_settings",
+          "cache_stats",
+          "clear_media_cache",
+          "clear_clips_cache",
+          "set_clip_cache_cap",
+          "sidecar_versions",
+          "hardware_video_support",
+          "set_hardware_video",
+          "set_conform_new_videos",
+          "set_export_to_downloads",
+          "set_lag_warning",
+          "default_workspace_root",
+          "user_home_dir",
+          "init_workspace",
+          "move_workspace",
+          "note_picked_folder",
+          "reveal_in_finder",
+          "website_list_data",
+          "website_clear_data",
+          "get_publisher_profile",
+          "set_publisher_profile",
+          "rotate_publisher_key",
+          "list_known_publishers",
+          "forget_publisher"
+        ]
+      }
+    },
+    {
+      "identifier": "theme-editor-window",
+      "description": "The theme editor: its target, saving the theme document, reopening itself and the colour picker's eyedropper.",
+      "commands": {
+        "allow": [
+          "get_theme_editor_target",
+          "open_theme_editor_window",
+          "write_theme",
+          "sample_screen_colour"
+        ]
+      }
+    }
+  ]
+}

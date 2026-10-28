@@ -30,6 +30,7 @@ import { formatUpdateStatus, useUpdateCheck } from "../engine/updates";
 import {
   defaultWorkspaceRoot,
   getSettings,
+  initWorkspace,
   type LagWarningMode,
   moveWorkspace,
   setExportToDownloadsSetting,
@@ -288,15 +289,21 @@ export function SettingsApp() {
     [refreshStats],
   );
 
-  // A move can take a while on a big workspace across volumes, so the whole row goes busy rather than one button.
-  const relocate = useCallback((parent: string | null) => {
-    setBusy("workspace");
-    setError(null);
-    moveWorkspace(parent)
-      .then(setWorkspace)
-      .catch((e) => setError(String(e)))
-      .finally(() => setBusy(null));
-  }, []);
+  // A move can take a while on a big workspace across volumes, so the whole row goes busy rather than one button. With no workspace yet (the default location failed at first run) the pick creates one instead; Rust confirms either natively, and a cancelled sheet answers null.
+  const relocate = useCallback(
+    (parent: string | null) => {
+      setBusy("workspace");
+      setError(null);
+      const change = workspace || parent === null ? moveWorkspace(parent) : initWorkspace(parent);
+      change
+        .then((root) => {
+          if (root) setWorkspace(root);
+        })
+        .catch((e) => setError(String(e)))
+        .finally(() => setBusy(null));
+    },
+    [workspace],
+  );
 
   const chooseLocation = useCallback(async () => {
     try {
@@ -374,11 +381,15 @@ export function SettingsApp() {
             <button
               type="button"
               className="btn"
-              disabled={busy !== null || !workspace}
+              disabled={busy !== null}
               onClick={() => void chooseLocation()}
-              title="Moves your projects, themes and fonts to the folder you pick"
+              title={
+                workspace
+                  ? "Moves your projects, themes and fonts to the folder you pick"
+                  : "Keeps your projects in the folder you pick"
+              }
             >
-              Change location…
+              {workspace ? "Change location…" : "Choose location…"}
             </button>
             {workspace && defaultRoot && workspace !== defaultRoot && (
               <button

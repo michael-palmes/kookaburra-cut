@@ -19,13 +19,16 @@ export interface TerminalSession {
   dispose(): void;
 }
 
+/** What a session runs, as data: Rust builds the argv (pty.rs `Launch`), so no command string ever crosses the IPC. A Claude session execs the natively detected binary with the app's fixed flags and this grounding; an interactive shell is the user's login shell with a prompt. */
+export type TerminalLaunch =
+  | { kind: "claudeSession"; continueLast: boolean; grounding: string }
+  | { kind: "interactiveShell" };
+
 export async function spawnTerminalSession(opts: {
   term: Terminal;
   cwd: string;
-  /** Optional command run via `shell -l -c …`; absent → interactive login shell. */
-  command?: string;
-  /** Directory prepended to the child's PATH (survives /etc/zprofile's path_helper); packaged apps inherit launchd's bare PATH, and the default Claude install adds its dir in ~/.zshrc, which a login non-interactive shell never sources. */
-  pathPrepend?: string;
+  /** Absent → interactive login shell. */
+  launch?: TerminalLaunch;
   /** Opts out of the F-006 workspace confinement (scene terminals open a user-chosen start path). */
   allowExternalCwd?: boolean;
   onExit?: (code: number) => void;
@@ -71,8 +74,7 @@ export async function spawnTerminalSession(opts: {
   id = await invoke<number>("pty_spawn", {
     options: {
       cwd: opts.cwd,
-      command: opts.command ?? null,
-      pathPrepend: opts.pathPrepend ?? null,
+      launch: opts.launch ?? { kind: "interactiveShell" },
       cols: term.cols,
       rows: term.rows,
       allowExternalCwd: opts.allowExternalCwd ?? false,
@@ -103,7 +105,7 @@ export async function spawnTerminalSession(opts: {
   };
 }
 
-/** Where the Claude Code CLI lives, or null when not installed (login-shell resolution). */
+/** Where the Claude Code CLI lives, or null when not installed (login-shell resolution). Rust keeps the result and launches that path; the string here only drives the panel's state. */
 export function detectClaude(): Promise<string | null> {
   return invoke<string | null>("detect_claude");
 }
@@ -116,12 +118,6 @@ export function hasClaudeSession(cwd: string): Promise<boolean> {
 /** Single-quote a string for zsh: safe against spaces and every metacharacter; embedded single quotes become the standard `'\''` splice. */
 export function shellQuote(value: string): string {
   return `'${value.replaceAll("'", `'\\''`)}'`;
-}
-
-/** The directory holding a detected binary, or null for a bare/relative name. */
-export function binaryDir(path: string): string | null {
-  const cut = path.lastIndexOf("/");
-  return cut > 0 ? path.slice(0, cut) : null;
 }
 
 /** The project a session is launched for. */
@@ -162,14 +158,12 @@ export function claudeSessionBanner(project: SessionProject): string {
   return `Claude Code is your editing assistant for ${name}: it already knows what you have open, so just ask for scene, text, colour, pacing or media changes in plain English.`;
 }
 
-/** The command the panel runs for a project session. `claudePath` is the detected binary (detect_claude), exec'd by full path since detection probes the filesystem while a login non-interactive shell resolves via zprofile PATH only, and the two disagree on a default install (~/.zshrc owns the PATH line), which is exactly the packaged-app case; `continueLast` resumes the folder's most recent conversation (only valid when `hasClaudeSession` is true); the grounding rides `--append-system-prompt`, which applies to resumed sessions too. */
-export function claudeSessionCommand(
+/** The launch for a project session: Rust execs the detected binary by full path (detection probes the filesystem while a login non-interactive shell resolves via zprofile PATH only, and the two disagree on a default install, where ~/.zshrc owns the PATH line, which is exactly the packaged-app case) with the app's fixed flags; `continueLast` resumes the folder's most recent conversation (only valid when `hasClaudeSession` is true); the grounding rides `--append-system-prompt` as one argv element, which applies to resumed sessions too. */
+export function claudeSessionLaunch(
   continueLast: boolean,
-  claudePath: string,
   project: SessionProject,
-): string {
-  const grounding = shellQuote(claudeGroundingPrompt(project));
-  return `exec ${shellQuote(claudePath)}${continueLast ? " --continue" : ""} --permission-mode auto --model claude-opus-5-5 --effort high --append-system-prompt ${grounding}`;
+): TerminalLaunch {
+  return { kind: "claudeSession", continueLast, grounding: claudeGroundingPrompt(project) };
 }
 
 /** The official installer, run VISIBLY inside the terminal for transparency. */
