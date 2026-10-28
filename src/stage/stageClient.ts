@@ -62,7 +62,7 @@ import { mirrorStores, type StoreMirror } from "./storeMirror";
  * protocol names, and every port call is checked against the open project.
  */
 
-const DEFAULT_PENDING_TIMEOUT_MS = 0;
+const READY_TIMEOUT_MS = 90_000;
 
 /** A request without its id: `Omit` distributes over the union here so each shape keeps its own fields. */
 type RequestBody = WindowRequest extends infer R
@@ -123,6 +123,14 @@ export class StageClient implements StageHandle {
     this.ready = new Promise((resolve) => {
       this.readyResolve = resolve;
     });
+    // A worker that never reports is a boot failure, not a wait: name it instead of hanging an autorun until its timeout.
+    const readyTimer = setTimeout(() => {
+      if (this.isReady) return;
+      const text = `the ${role} stage worker did not report ready within ${READY_TIMEOUT_MS / 1000}s`;
+      console.error(`[stage] ${text}`);
+      reportAutoRunError(text);
+    }, READY_TIMEOUT_MS);
+    void this.ready.then(() => clearTimeout(readyTimer));
     this.mirror = mirrorStores(
       {
         ...mirroredStores(),
@@ -282,8 +290,6 @@ export class StageClient implements StageHandle {
       case "port":
         void this.servePort(msg);
         return;
-      case "portProgress":
-        return;
     }
   }
 
@@ -295,8 +301,7 @@ export class StageClient implements StageHandle {
         throw new Error(`unknown port method ${String(req.method)}`);
       const args = [...req.args];
       if (req.method === "clipEnsureChunks") {
-        args[3] = (value: unknown) =>
-          this.send({ type: "portProgress", id: req.id, value } as unknown as WindowNotice);
+        args[3] = (value: unknown) => this.send({ type: "portProgress", id: req.id, value });
       }
       const value = await (method as (...a: unknown[]) => Promise<unknown>).apply(
         windowNativePort,
@@ -548,4 +553,3 @@ export function buildStageAssets(projectId: string): StageAssets {
 }
 
 export type { ExportOptions, MirroredStore };
-export const STAGE_REQUEST_TIMEOUT_MS = DEFAULT_PENDING_TIMEOUT_MS;

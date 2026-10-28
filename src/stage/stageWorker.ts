@@ -8,7 +8,10 @@
  * fails. See docs/architecture.md ("The stage worker").
  */
 
+import { installWorkerInbox } from "./workerInbox";
+
 const scope = self as unknown as DedicatedWorkerGlobalScope & Record<string, unknown>;
+installWorkerInbox(scope);
 
 const forward = (level: "warn" | "error") => {
   const original = console[level].bind(console);
@@ -219,5 +222,3 @@ scope.document = new WorkerDocument();
 
 // The server imports the engine, which must see the shims above at evaluation time.
 void import("./stageServer");
-
-export {};

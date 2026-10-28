@@ -204,6 +204,7 @@ export type WindowNotice =
       slideshowActive?: boolean;
       hardwareVideo?: boolean;
     }
+  | { type: "portProgress"; id: number; value: unknown }
   | { type: "reply"; id: number; ok: true; value: unknown }
   | { type: "reply"; id: number; ok: false; error: string };
 
@@ -249,9 +250,7 @@ export type WorkerNotice =
   | { type: "emoji"; version: number; unrenderable: [string, string][] };
 
 /** What the worker may ask the window for: a native port method by name (`engine/stageRealm.ts`). Every argument names a project-relative path or a handle the window issued; the window validates before it invokes. */
-export type WorkerRequest =
-  | { type: "port"; id: number; method: PortMethod; args: unknown[] }
-  | { type: "portProgress"; id: number; value: unknown };
+export type WorkerRequest = { type: "port"; id: number; method: PortMethod; args: unknown[] };
 
 export type PortMethod =
   | "clipRevisions"

@@ -3,7 +3,7 @@ import type { StagePointerEvent, StageRole } from "../engine/stageProtocol";
 import type { FrameRect } from "../toolkit/frame/frameLayout";
 import { StageClient } from "./stageClient";
 
-/** The stage as a window mounts it: one canvas the stage worker draws into, sized by its container, with pointer events forwarded to the worker's raycaster and the cursor the worker asks for. Replaces the editor's `<Canvas>`; the chrome around it is untouched. */
+/** The stage as a window mounts it: one canvas the stage worker draws into, sized by its container, with pointer events forwarded to the worker's raycaster and the cursor the worker asks for. Replaces the editor's `<Canvas>`; the chrome around it is untouched. The canvas element is made inside the mount effect, since a canvas whose control was transferred cannot be transferred again (StrictMode mounts twice). */
 export function StageView({
   stageRole,
   frameloop = "demand",
@@ -22,18 +22,20 @@ export function StageView({
   style?: CSSProperties;
   onClient?: (client: StageClient | null) => void;
 }) {
-  const ref = useRef<HTMLCanvasElement>(null);
+  const container = useRef<HTMLDivElement>(null);
   const [client, setClient] = useState<StageClient | null>(null);
   const [cursor, setCursor] = useState("");
-  // A canvas whose control was transferred cannot be transferred again, so the client lives as long as the element; the props it needs later are read through refs.
   const dprRef = useRef(dpr);
   const frameloopRef = useRef(frameloop);
   const onClientRef = useRef(onClient);
   onClientRef.current = onClient;
 
   useLayoutEffect(() => {
-    const canvas = ref.current;
-    if (!canvas) return;
+    const host = container.current;
+    if (!host) return;
+    const canvas = document.createElement("canvas");
+    canvas.style.cssText = "display:block;width:100%;height:100%";
+    host.appendChild(canvas);
     const size = measure(canvas, dprRef.current);
     const next = new StageClient(canvas, stageRole, size, frameloopRef.current, {
       onCursor: setCursor,
@@ -48,6 +50,7 @@ export function StageView({
       observer.disconnect();
       onClientRef.current?.(null);
       next.dispose();
+      canvas.remove();
       setClient(null);
     };
   }, [stageRole]);
@@ -55,8 +58,7 @@ export function StageView({
   useEffect(() => {
     dprRef.current = dpr;
     frameloopRef.current = frameloop;
-    const canvas = ref.current;
-    if (client && canvas) void client.configure(measure(canvas, dpr), frameloop);
+    if (client) void client.configure(measure(client.element, dpr), frameloop);
   }, [client, dpr, frameloop]);
 
   useEffect(() => {
@@ -64,8 +66,12 @@ export function StageView({
   }, [client, cutout]);
 
   useEffect(() => {
-    const canvas = ref.current;
-    if (!client || !canvas) return;
+    if (client) client.element.style.cursor = cursor;
+  }, [client, cursor]);
+
+  useEffect(() => {
+    if (!client) return;
+    const canvas = client.element;
     const forward =
       (kind: StagePointerEvent["kind"]) => (e: PointerEvent | MouseEvent | WheelEvent) => {
         const rect = canvas.getBoundingClientRect();
@@ -95,8 +101,9 @@ export function StageView({
       ["contextmenu", forward("contextmenu")],
       ["wheel", forward("wheel")],
     ];
-    for (const [name, fn] of entries)
+    for (const [name, fn] of entries) {
       canvas.addEventListener(name, fn as EventListener, { passive: true });
+    }
     // A drag that leaves the canvas still ends: window-level up and cancel reach the worker too.
     const up = forward("pointerup");
     const cancel = forward("pointercancel");
@@ -110,16 +117,10 @@ export function StageView({
   }, [client]);
 
   return (
-    <canvas
-      ref={ref}
+    <div
+      ref={container}
       className={className}
-      style={{
-        display: "block",
-        width: "100%",
-        height: "100%",
-        cursor: cursor || undefined,
-        ...style,
-      }}
+      style={{ position: "absolute", inset: 0, ...style }}
     />
   );
 }

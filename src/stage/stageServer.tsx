@@ -90,6 +90,7 @@ import {
 } from "../toolkit/text/emojiRaster";
 import { mirroredStores } from "./mirroredStores";
 import { mirrorStores } from "./storeMirror";
+import { takeWorkerInbox } from "./workerInbox";
 import { createWorkerNativePort } from "./workerNativePort";
 
 /**
@@ -584,8 +585,12 @@ async function boot(init: Extract<WindowNotice, { type: "init" }>): Promise<void
   events.connect?.(init.canvas as unknown as HTMLElement);
 }
 
-scope.addEventListener("message", (ev: MessageEvent<ToWorker>) => {
+takeWorkerInbox((ev: MessageEvent<ToWorker>) => {
   const msg = ev.data;
+  if (msg.type === "portProgress") {
+    pendingPort.get(msg.id)?.onProgress?.(msg.value);
+    return;
+  }
   if (msg.type === "reply") {
     const p = pendingPort.get(msg.id);
     if (!p) return;
@@ -647,12 +652,3 @@ scope.addEventListener("message", (ev: MessageEvent<ToWorker>) => {
       return;
   }
 });
-
-/** Port progress (a clip extraction's frames) rides a notice keyed by the request id. */
-scope.addEventListener(
-  "message",
-  (ev: MessageEvent<{ type?: string; id?: number; value?: unknown }>) => {
-    if (ev.data?.type !== "portProgress" || typeof ev.data.id !== "number") return;
-    pendingPort.get(ev.data.id)?.onProgress?.(ev.data.value);
-  },
-);
