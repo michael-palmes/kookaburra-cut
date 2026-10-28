@@ -258,7 +258,7 @@ import {
   type ExportSelection,
   type StillsExportSelection,
 } from "./ui/ExportModal";
-import { STILLS_ID } from "./ui/exportOptions";
+import { type ExportInterruption, interruptedExportMessage, STILLS_ID } from "./ui/exportOptions";
 import { clearExportCard, FlashWarning, noteExportFlashes } from "./ui/FlashWarning";
 import { GpuNotices } from "./ui/GpuNotices";
 import { OverlayImageGizmo } from "./ui/ImageOverlayGizmo";
@@ -2821,6 +2821,16 @@ export default function App() {
     runVideoExport,
     commitFormat,
   });
+
+  // An export the previous page died with (WebKit reclaiming memory, usually) is said once, with the restart that helps.
+  useEffect(() => {
+    if (isAutoRun) return;
+    void invoke<ExportInterruption | null>("take_export_interruption")
+      .then((stopped) => {
+        if (stopped) setToast({ kind: "error", message: interruptedExportMessage(stopped) });
+      })
+      .catch(() => {});
+  }, [isAutoRun]);
 
   function cancelExport() {
     if (!exportAbortRef.current || cancelling) return;

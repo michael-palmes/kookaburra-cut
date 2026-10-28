@@ -378,6 +378,23 @@ class StatusAndDebugTests(KbTestCase):
             wedged = self.kb(["status"], cwd=self.root)
         self.assertIn("GPU WEDGED", wedged.stdout)
         self.assertIn("quit and reopen Kookaburra Cut", wedged.stdout)
+        calm = health(editor={"reloads": 0, "lastReload": None, "restartRecommended": False,
+                              "memoryMb": {"editor": 1840, "editorPeak": 2410, "gpu": 950, "render": 310, "app": 120}})
+        with FakeApp(self.bridge, ok_frame, kinds=KINDS, health=calm):
+            text = self.kb(["status"], cwd=self.root)
+        self.assertIn("Memory: editor page 1.8 GB (peak 2.4 GB), WebKit GPU 950 MB, render window 310 MB, app 120 MB", text.stdout)
+        self.assertNotIn("EDITOR RELOADED", text.stdout)
+        benign = health(editor={"reloads": 1, "restartRecommended": False, "lastReload": {"atMs": 1, "killed": False}, "memoryMb": {}})
+        with FakeApp(self.bridge, ok_frame, kinds=KINDS, health=benign):
+            text = self.kb(["status"], cwd=self.root)
+        self.assertIn("Editor: its page reloaded 1 time (no export lost)", text.stdout)
+        self.assertNotIn("EDITOR RELOADED", text.stdout)
+        reloaded = health(editor={"reloads": 2, "restartRecommended": True, "memoryMb": {},
+                                  "lastReload": {"atMs": 1, "killed": True, "editorMb": 3920, "export": "WebKit replaced ..."}})
+        with FakeApp(self.bridge, ok_frame, kinds=KINDS, health=reloaded):
+            text = self.kb(["status"], cwd=self.root)
+        self.assertIn("EDITOR RELOADED 2 times (last: WebKit replaced its page process at 3.9 GB; an export was running)", text.stdout)
+        self.assertIn("quit and reopen Kookaburra Cut before exporting", text.stdout)
         with FakeApp(self.bridge, ok_frame):
             old = self.kb(["status"], cwd=self.root)
         self.assertNotIn("Captures:", old.stdout)

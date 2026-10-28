@@ -842,6 +842,9 @@ fn audio_input_args(file: &str) -> Vec<String> {
 }
 
 #[cfg(test)]
+mod av_sync_tests;
+
+#[cfg(test)]
 mod audio_graph_tests {
     use super::*;
 

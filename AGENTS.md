@@ -57,6 +57,11 @@ pnpm kookaburra:run --action packroundtrip --project ws:launch-2026
 # (path printed + in last-run.json; --scene takes an index or file stem, --at seconds).
 pnpm kookaburra:run --action screenshot --project ws:test-4 --scene 2
 
+# Memory probe: each film through the real export, sampling render rate, every WebKit process's
+# memory and the clip cache; exit 1 when a film slows below 80% or the editor grows over 512 MB.
+# long-device-spike is the 60 s leak acceptance film; --lever L measures one change.
+pnpm kookaburra:run --action memory --project long-device-spike
+
 # Stills (PDF handout or PNG zip, one page per still) through the export path (docs/stills.md).
 pnpm kookaburra:run --action stills --project showcase-tour --stills pdf --size 1080p
 pnpm kookaburra:run --action stillsverify --project showcase-tour --stills png
@@ -196,7 +201,7 @@ Report what you fixed and what you skipped, each with a one-line reason, then ru
 
 ## Writing rules
 
-- **Never commit anything from the user's own workspace.** Projects under `~/Kookaburra Cut` are private: no project, folder or scene names, slugs, on-screen copy, product, client or people's names, or local paths in committed code, tests, fixtures, docs, skills, commit messages or PR text. Use neutral placeholders instead (`product-tour`, "Highlights", `/Users/x`). This leaked once (a debugging session's project and product names reached test data and a design doc, and a pushed PR's history had to be rewritten), so before every commit run the workspace-name check in `kookaburra-commit` and grep for the names of any project opened that session. The gate fixtures this file already names (`ws:launch-2026`, the `ws:*-spike` projects) are test infrastructure; never add a new one without the user's say-so.
+- **Never commit anything from the user's own workspace.** Projects under `~/Kookaburra Cut` are private: no project, folder or scene names, slugs, on-screen copy, product, client or people's names, or local paths in committed code, tests, fixtures, docs, skills, commit messages or PR text. Use neutral placeholders instead (`product-tour`, "Highlights", `/Users/x`). This leaked once (a debugging session's project and product names reached test data and a design doc, and a pushed PR's history had to be rewritten), so `pnpm ready` and the `kookaburra-commit` skill both run `scripts/workspace-names.mjs` (the folder names under `~/Kookaburra Cut` on this Mac plus the leak shapes in `scripts/workspace-denylist.txt`, over every added line), and before every commit also grep for the names of any project opened that session, since the folder check cannot see scene copy or product names. The gate fixtures this file already names (`ws:launch-2026`, the `ws:*-spike` projects) are test infrastructure; never add a new one without the user's say-so.
 - **Keep `AGENTS.md` and `CLAUDE.md` byte-identical.** Update both in the same change and verify with `cmp -s AGENTS.md CLAUDE.md`.
 - **All text you write** (docs, comments, commit messages, PR descriptions, UI copy) is Australian English, short and concise, with no em dashes: use commas, colons, parentheses or full stops.
 - **IMPORTANT: comments are a last resort.** Keep them to a minimum, one line max, and only where they add context the code cannot show; remove any that do not.
@@ -286,3 +291,9 @@ intuition before the probe settled it).
   (`src/toolkit/lighting/studioEnvironment.ts`; a 40-device project exports at
   ~0.21 s/frame). Never mount a drei `<Environment>` with JSX children inside
   a component that re-renders per tick.
+- **Fourth measured impactor (2026-10-28): clip frame memory.** Each clip kept
+  12 decoded frames for the whole session, in both decode lanes, so a long
+  device film grew the editor past WebKit's WebContent limit (reloaded at about
+  half way; 7.1 GB measured over five spikes). Exports now keep two a clip and
+  release idle frames at start and end. Probe memory with `--action memory`
+  (`docs/determinism.md`, "Memory probe"), not fps alone: a big Mac hides it.
