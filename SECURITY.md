@@ -205,7 +205,7 @@ Rust by basename with argv built from typed structs, never a shell
 (`src-tauri/src/lib.rs`, `encode.rs`, `media.rs`), with `env_clear()` plus
 `HOME`, `PATH`, `TMPDIR`, `LANG`, `USER` and `LC_*` (`tools::sidecar`,
 `tools::sidecar_command`). Every lane whose stdin is not the frame pipe
-passes `-nostdin`, and the export, probe, loudness and clip lanes pass
+passes `-nostdin`, and the export, edit, probe, loudness and clip lanes pass
 `-protocol_whitelist file,pipe` before each input; the export soundtrack must
 be an absolute file with an audio extension inside the readable roots
 (`media::confine_soundtrack`), and preset `profile`, `level` and `entropy`

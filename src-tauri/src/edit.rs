@@ -1474,6 +1474,9 @@ pub(crate) fn build_render_args_for(
 
     let mut args: Vec<String> = vec![
         "-y".into(),
+        "-nostdin".into(),
+        "-protocol_whitelist".into(),
+        "file,pipe".into(),
         "-loglevel".into(),
         "error".into(),
         "-progress".into(),
@@ -2541,6 +2544,9 @@ mod tests {
         assert_eq!(total, 60);
         let expected: Vec<String> = [
             "-y",
+            "-nostdin",
+            "-protocol_whitelist",
+            "file,pipe",
             "-loglevel",
             "error",
             "-progress",
