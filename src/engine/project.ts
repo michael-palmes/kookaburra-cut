@@ -78,6 +78,7 @@ import {
   timelineTotalMs,
 } from "./sceneTimeline";
 import { cleanAssetRel, stageAssetTable } from "./stageAssets";
+import { stageOrNull } from "./stageHandle";
 import type { SceneCompileEntry } from "./stageProtocol";
 import { isStageWorker } from "./stageRealm";
 import { ensureFontRefsPinned } from "./systemFonts";
@@ -1479,7 +1480,7 @@ export async function loadProject(
   await preloadAppFonts(fontRefs);
 
   // Colour-emoji rasters for every sidecar string settle before scenes mount, and this pins which project's cache receives new rasters (mirrors the export preamble).
-  await preloadEmojiRasters(id, sceneDocs);
+  if (!stageOrNull()) await preloadEmojiRasters(id, sceneDocs);
 
   // Collect per-scene effect overrides (sparse, only scenes that declare `effects`), with any LUT urls resolved from project-relative to their project asset keys.
   const effectOverrides: Record<number, EffectsOverride> = {};

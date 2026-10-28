@@ -189,6 +189,13 @@ export function collectThemeFontRefs(themes: readonly (Theme | undefined)[]): Fo
 const PRELOAD_CHARACTERS =
   "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 .,:;!?'\"()[]{}%-+/&@#";
 
+let typesetsHere = true;
+
+/** A window that renders through the stage worker never typesets: its preloads keep the substitutions and metrics and skip the glyph generation (the worker owns the atlas). */
+export function setWindowTypesets(on: boolean): void {
+  typesetsHere = on;
+}
+
 /** Preloads SDF glyphs before frame 0 (bundled, plus `refs` for a project's actual fonts); awaited at boot, project load and the export preamble. Must run SEQUENTIALLY, never parallel: troika's shared SDF atlas assigns glyph cells in fetch-completion order, so racing preloads would shift atlas layout (and pixels) per boot; order is pinned to Inter Regular first, then declaration order. See docs/determinism.md ("Fonts"). */
 export async function preloadAppFonts(refs?: readonly (FontRef | string)[]): Promise<void> {
   const urls = new Set<string>([interRegularUrl]);
@@ -201,22 +208,27 @@ export async function preloadAppFonts(refs?: readonly (FontRef | string)[]): Pro
       for (const url of Object.values(weights)) urls.add(url);
     }
   }
-  for (const font of urls) {
+  if (typesetsHere) {
+    for (const font of urls) {
+      await new Promise<void>((resolve) => {
+        preloadFont(
+          { font, characters: PRELOAD_CHARACTERS, sdfGlyphSize: SDF_GLYPH_SIZE },
+          resolve,
+        );
+      });
+    }
+    // The fallback face always loads LAST so its atlas cells append after every existing glyph (docs/determinism.md "Fonts").
     await new Promise<void>((resolve) => {
-      preloadFont({ font, characters: PRELOAD_CHARACTERS, sdfGlyphSize: SDF_GLYPH_SIZE }, resolve);
+      preloadFont(
+        {
+          font: kookaburraFallbackUrl,
+          characters: FALLBACK_PRELOAD_CHARACTERS,
+          sdfGlyphSize: SDF_GLYPH_SIZE,
+        },
+        resolve,
+      );
     });
   }
-  // The fallback face always loads LAST so its atlas cells append after every existing glyph (docs/determinism.md "Fonts").
-  await new Promise<void>((resolve) => {
-    preloadFont(
-      {
-        font: kookaburraFallbackUrl,
-        characters: FALLBACK_PRELOAD_CHARACTERS,
-        sdfGlyphSize: SDF_GLYPH_SIZE,
-      },
-      resolve,
-    );
-  });
   // Our own parse of the same faces, for measureText; troika's atlas never sees it.
   await preloadFontMetrics(urls);
 }
