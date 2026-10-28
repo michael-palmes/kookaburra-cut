@@ -68,9 +68,17 @@ frame bodies and the scene trees. The split, and why it is drawn where it is:
   project are resolved in the window and shipped with the project
   (`StageAssets`); clip frames, conform jobs, emoji rasters and 3D objects go
   through a `NativePort` (`src/engine/stageRealm.ts`) whose window side
-  (`windowNativePort.ts`) validates every cache directory it issued. The worker
-  names clip sources by project id and relative path and never computes a
-  path.
+  (`windowNativePort.ts`) validates every cache directory it issued, and whose
+  client refuses any request naming a project this window has not loaded. The
+  worker names clip sources by project id and relative path and never computes
+  a path. Every message from the worker is data: a scene can post anything,
+  so the window acts only on what the protocol names and fails a worker that
+  reports a fatal error closed (every pending request rejects, `ready`
+  rejects, the hidden render window poisons itself so Rust recycles it).
+- **Requests that touch the loaded project run in order.** The server answers
+  sizing, compiles, hit tests and the census at once, but queues `loadProject`,
+  the barriers, exports, stills, snapshots and the probe one after another, so
+  a request sent after a project swap can never see the project it replaced.
 - **State is mirrored, not shared.** The zustand data fields the canvas tree
   reads (editor, effects, clock, the edit stores, the sidecar registries) are
   mirrored both ways over the protocol with echo suppression

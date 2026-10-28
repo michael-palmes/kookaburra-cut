@@ -1766,6 +1766,23 @@ Verify ×2 here (the 2026-10-23 note):
 | `ws:mask-fx-spike` (an image-mask seam between two bloom scenes on the effects lane; machine-local, never gated) | `6555ff7f…` | — | — | — | — | — | — | — | — |
 | `ws:motion-toolkit-spike` (the toolkit primitives: shapes, device anchors, text metrics and presets, stamps, dashes, mosaic, taps; machine-local, gated when motion or shape primitives change) | `8af90748…` | `3955d599…` | — | — | — | — | — | — | — |
 
+> **2026-10-28 (the stage worker: every scene renders in a Web Worker, no
+> baseline moved):** the whole canvas tree, compositor and export frame body
+> moved into the stage worker (`docs/architecture.md`, "The stage worker");
+> the window keeps the loop's orchestration and IPC. Two realm differences
+> moved pixels on the way and were closed before anything was recorded: the
+> troika atlas upload from a worker canvas (closed by `sdfAtlasReadback`) and
+> the worker's own atlas order (closed by preloading fonts in the worker in the
+> window's order), both in the failure catalogue above. With both in place the
+> anchors export byte-identical to their baselines in one boot (`cmp` on the
+> files), the stills pages reproduce their recorded hash, and every cell in the
+> tables above was re-run once through the stage against its baseline (the
+> matrix, `pnpm ready --legs` over every recorded leg, plus the four stills
+> legs and the pack round trip). Nothing was re-recorded: the stage is
+> null-for-legacy by construction, which is also why this entry carries no
+> hashes. Export wall time for the anchor pair fell from 96.0 s to 93.9 s on
+> the same busy machine; the preview holds 58 to 60 fps on every perf pass.
+
 > **2026-10-28 (a transition into a comparison renders: a deliberate rebase of
 > one fixture):** the incoming comparison composited its sides through the
 > same A/B pair the plain outgoing scene had just filled, so the crossfade
