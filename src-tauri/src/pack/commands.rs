@@ -98,6 +98,12 @@ pub struct PackMetaInput {
     name: String,
     #[serde(default)]
     description: Option<String>,
+    /// The publisher name for an install with no saved profile yet; ignored once a profile exists.
+    #[serde(default)]
+    publisher_name: Option<String>,
+    /// Save `publisher_name` as the profile, so the packs window asks once. The round trip never sets it.
+    #[serde(default)]
+    remember_publisher: bool,
 }
 
 #[derive(Serialize, Clone)]
@@ -540,7 +546,18 @@ pub async fn build_pack(
     }
     files.sort_by(|a, b| a.path.cmp(&b.path));
 
-    let publisher_block = publisher::manifest_publisher(&app, &settings)?;
+    let publisher_block =
+        publisher::manifest_publisher(&app, &settings, meta.publisher_name.as_deref())?;
+    if meta.remember_publisher
+        && workspace::load_settings(&app, &settings)?.publisher.is_none()
+    {
+        let profile = publisher::validate_profile(&workspace::PublisherProfile {
+            name: publisher_block.name.clone(),
+            organisation: None,
+            website: None,
+        })?;
+        workspace::update_settings(&app, &settings, |s| s.publisher = Some(profile))?;
+    }
     let manifest = PackManifest {
         format: PACK_FORMAT.into(),
         format_version: format_version_for(&closure.contents),

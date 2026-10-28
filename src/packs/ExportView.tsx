@@ -62,6 +62,7 @@ export function ExportView({ onClose }: { onClose: () => void }) {
   const [profile, setProfile] = useState<PublisherProfileView | null>(null);
   const [packName, setPackName] = useState("");
   const [description, setDescription] = useState("");
+  const [publisherName, setPublisherName] = useState("");
   const [warnedKey, setWarnedKey] = useState<string | null>(null);
   const [droppedAssets, setDroppedAssets] = useState<Record<string, string[]>>({});
   const [error, setError] = useState<string | null>(null);
@@ -78,7 +79,7 @@ export function ExportView({ onClose }: { onClose: () => void }) {
     getPublisherProfile()
       .then((p) => {
         setProfile(p);
-        setPackName(defaultPackName(p.organisation ?? undefined, p.effectiveName));
+        setPackName(defaultPackName(p.organisation ?? undefined, p.effectiveName ?? undefined));
       })
       .catch(() => undefined);
   }, []);
@@ -166,7 +167,13 @@ export function ExportView({ onClose }: { onClose: () => void }) {
       const result = await buildPack(
         toBuildSelection(state, items, droppedAssets),
         destination,
-        { name: packName.trim(), description: description.trim() || undefined },
+        {
+          name: packName.trim(),
+          description: description.trim() || undefined,
+          ...(profile?.profile
+            ? {}
+            : { publisherName: publisherName.trim(), rememberPublisher: true }),
+        },
         (progress) => setPhase({ step: "building", progress }),
       );
       setPhase({ step: "done", path: result.path, bytes: result.bytes });
@@ -178,7 +185,7 @@ export function ExportView({ onClose }: { onClose: () => void }) {
           : { step: "failed", message },
       );
     }
-  }, [state, items, droppedAssets, packName, description]);
+  }, [state, items, droppedAssets, packName, description, profile, publisherName]);
 
   if (loading) {
     return (
@@ -319,6 +326,8 @@ export function ExportView({ onClose }: { onClose: () => void }) {
               setPackName={setPackName}
               description={description}
               setDescription={setDescription}
+              publisherName={publisherName}
+              setPublisherName={setPublisherName}
             />
           ) : (
             <>
@@ -406,7 +415,12 @@ export function ExportView({ onClose }: { onClose: () => void }) {
             <button
               type="button"
               className="btn primary"
-              disabled={included.length === 0 || !packName.trim()}
+              disabled={
+                included.length === 0 ||
+                !packName.trim() ||
+                !profile ||
+                (!profile.profile && !publisherName.trim())
+              }
               onClick={() => void onExport()}
             >
               Export…
@@ -589,12 +603,16 @@ function DetailsPane({
   setPackName,
   description,
   setDescription,
+  publisherName,
+  setPublisherName,
 }: {
   profile: PublisherProfileView | null;
   packName: string;
   setPackName: (v: string) => void;
   description: string;
   setDescription: (v: string) => void;
+  publisherName: string;
+  setPublisherName: (v: string) => void;
 }) {
   return (
     <>
@@ -614,20 +632,32 @@ function DetailsPane({
       </label>
       <div className="packs-heading">Published by</div>
       {profile ? (
-        <div className="packs-row">
-          <span className="packs-row-main">
-            <span className="packs-row-title">
-              {profile.organisation ? `${profile.organisation} · ` : ""}
-              {profile.effectiveName}
-            </span>
-            <span className="packs-row-detail">{profile.device}</span>
-            {!profile.profile && (
-              <span className="packs-row-detail">
-                Set your publisher details in Settings so people know who sent this.
+        profile.profile ? (
+          <div className="packs-row">
+            <span className="packs-row-main">
+              <span className="packs-row-title">
+                {profile.organisation ? `${profile.organisation} · ` : ""}
+                {profile.effectiveName}
               </span>
-            )}
-          </span>
-        </div>
+              <span className="packs-row-detail">{profile.device}</span>
+            </span>
+          </div>
+        ) : (
+          <label className="packs-field">
+            <span>Your name or studio</span>
+            <input
+              value={publisherName}
+              onChange={(e) => setPublisherName(e.target.value)}
+              maxLength={64}
+              placeholder="Shown on every pack you export"
+            />
+            <span className="packs-row-detail">
+              People see this name on the pack; nothing checks it. Saved to Settings, where an
+              organisation and website can join it. Your first export also creates a signing key in
+              your login Keychain, and macOS may ask once to allow it.
+            </span>
+          </label>
+        )
       ) : (
         <div className="packs-empty">Loading publisher details…</div>
       )}
