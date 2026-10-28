@@ -130,7 +130,12 @@ class CheckTests(KbTestCase):
         warnings = messages(report, "warning")
         self.assertTrue(any('"Menlo@400" is not vetted yet' in w for w in warnings))
         self.assertTrue(any("extraThing" in w for w in warnings))
-        self.assertTrue(any("not a #rgb" in w for w in warnings))
+        self.assertTrue(any("is not a theme token" in w for w in warnings))
+
+    def test_text_colour_takes_theme_tokens(self) -> None:
+        doc = {"version": 1, "textStyle": {"titleColor": "text", "subtitleColor": "muted", "statColor": "accent", "bodyColor": "#ff5a36"}}
+        write_json(self.root / "scenes" / "02-hero.json", doc)
+        self.assertEqual(messages(self.run_check(["scenes/02-hero.json"]), "warning"), [])
 
     def test_a_clip_placed_while_it_conforms_is_info_until_it_lands(self) -> None:
         doc = {"version": 1, "devices": [{"id": "d1", "model": "android", "media": {"src": "assets/rec.mp4", "kind": "video"}}]}
