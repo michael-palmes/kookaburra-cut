@@ -14,7 +14,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from . import bridge
 from . import catalog as catmod
-from . import music, queue
+from . import music, queue, reach
 from .film import timeline as tl
 from .util import EXIT_ENV, EXIT_OK, EXIT_PROBLEMS, KbError, emit, emit_err, now_ms
 
@@ -739,7 +739,7 @@ def copied(ctx: Any, resp: Dict[str, Any], project: Any) -> Dict[str, Any]:
         return resp
     try:
         if args.out:
-            return copy_captures(resp, Path(args.out).expanduser().resolve())
+            return copy_captures(resp, reach.guard_write(project or ctx.project, args.out, "--out"))
         if project is None:
             project = ctx.project
         root = captures_root(project)

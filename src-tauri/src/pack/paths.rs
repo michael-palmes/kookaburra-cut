@@ -32,6 +32,13 @@ fn kind_for_dir(dir: &str) -> Option<ItemKind> {
 }
 
 /// Names macOS archivers add that carry no payload; ignored rather than refused.
+/// An entry under an item's `.claude/` folder: agent configuration a pack may still carry (older packs shipped
+/// `settings.json`) that is dropped at staging and reported, never written.
+pub fn is_agent_config(raw: &str) -> bool {
+    raw.strip_prefix(PAYLOAD_PREFIX)
+        .is_some_and(|rest| rest.split('/').skip(2).any(|segment| segment == ".claude"))
+}
+
 pub fn is_ignorable(raw: &str) -> bool {
     let name = raw.rsplit('/').next().unwrap_or(raw);
     raw.starts_with("__MACOSX/")
@@ -99,7 +106,8 @@ pub fn validate_archive_path(raw: &str) -> Result<PathBuf, PackError> {
     Ok(out)
 }
 
-/// `payload/<kind-dir>/…` must carry an extension the kind allows. `.claude/` is the only dotted directory accepted.
+/// `payload/<kind-dir>/…` must carry an extension the kind allows. No dotted directory is accepted (`.claude/` entries
+/// are dropped before validation, `is_agent_config`).
 fn check_extension(raw: &str) -> Result<(), PackError> {
     let rest = &raw[PAYLOAD_PREFIX.len()..];
     let mut parts = rest.split('/');
@@ -115,13 +123,12 @@ fn check_extension(raw: &str) -> Result<(), PackError> {
         return Err(PackError::PathOutsidePayload(raw.to_string()));
     }
     for segment in &tail[..tail.len() - 1] {
-        if segment.starts_with('.') && *segment != ".claude" {
+        if segment.starts_with('.') {
             return Err(PackError::ExtensionNotAllowed(raw.to_string()));
         }
     }
 
     let name = tail[tail.len() - 1];
-    // CLAUDE.md and .claude/settings.json are user content and carry allowed extensions already.
     let ext = name
         .rsplit_once('.')
         .map(|(_, e)| e.to_ascii_lowercase())
@@ -144,7 +151,12 @@ mod tests {
     fn accepts_ordinary_payload_paths() {
         assert!(validate_archive_path("payload/projects/acme/scenes/01-hero.tsx").is_ok());
         assert!(validate_archive_path("payload/projects/acme/CLAUDE.md").is_ok());
-        assert!(validate_archive_path("payload/projects/acme/.claude/settings.json").is_ok());
+        assert!(validate_archive_path("payload/projects/acme/NOTES.md").is_ok());
+        assert!(validate_archive_path("payload/projects/acme/.claude/settings.json").is_err());
+        assert!(is_agent_config("payload/projects/acme/.claude/settings.json"));
+        assert!(is_agent_config("payload/templates/promo/.claude/skills/x/SKILL.md"));
+        assert!(!is_agent_config("payload/projects/acme/CLAUDE.md"));
+        assert!(!is_agent_config("payload/projects/.claude/scenes/a.tsx"));
         assert!(validate_archive_path("payload/themes/acme-dark/theme.json").is_ok());
         assert!(validate_archive_path("payload/templates/acme-promo/template.json").is_ok());
         assert!(validate_archive_path("payload/templates/acme-promo/poster.jpg").is_ok());

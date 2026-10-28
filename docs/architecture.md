@@ -371,14 +371,20 @@ their render time.
 
 Where the live Tauri-2 setup matters for working in the code:
 
-1. **Sidecar permission.** In Tauri 2, `bundle.externalBin` stays in
+1. **Sidecar permission and the app ACL.** In Tauri 2, `bundle.externalBin` stays in
    `tauri.conf.json`; a sidecar permission would normally be a `shell:allow-execute`
    entry with `"sidecar": true` in `capabilities/default.json`. **Kookaburra Cut needs
    none**: it spawns the sidecars from Rust (`app.shell().sidecar("ffmpeg")`),
-   which bypasses the webview shell ACL, so `capabilities/default.json` carries
-   no fs or shell scope at all: `core:default`, three window permissions and
-   `dialog:default`. (Custom `#[tauri::command]`s like `start_export`/`push_frame`
-   are likewise un-gated by the ACL; only plugin/core commands need permissions.)
+   which bypasses the webview shell ACL, so no capability carries an fs or shell
+   scope. Custom `#[tauri::command]`s ARE gated, since 2026-10-28, by the app
+   permission manifest in `src-tauri/permissions/*.json` (one set per window role;
+   `project-read`, `render-window`, `settings-window` and so on) that each
+   `capabilities/<window>.json` grants: a command a window's capability does not
+   name is refused before the handler runs. Dev-only commands are registered under
+   `cfg(debug_assertions)` and granted by `capabilities/dev/`, which `build.rs`
+   reads only under the debug profile; the same folder lets the main window run
+   the autorun pack round trip, a dev-build gate. `src-tauri/src/acl.rs` tests
+   that every registered command sits in a set and spells out each window's list.
 2. **Sidecar runtime name is the basename.** Spawn with
    `app.shell().sidecar("ffmpeg")`, *not* `"bin/ffmpeg"`. Tauri copies the dev
    binary to `target/debug/ffmpeg`, stripping both the `bin/` prefix (from

@@ -20,7 +20,7 @@ from . import git as gitmod
 from . import leases
 from .hookfast import asset_record_reason, hook_caller
 from .project import KIT_REL, MANIFEST, Project, SAFE_SESSION, find_root, worktree_of
-from .util import EXIT_OK, KbError, Report, ago
+from .util import EXIT_OK, KbError, Report, ago, clean_lines
 
 BLOCK = 2
 SESSION_TTL_S = 14 * 86400
@@ -216,7 +216,7 @@ def pre_edit(payload: Dict[str, Any]) -> Tuple[int, str, str]:
 
     note = session_checkpoint(project, session, Caller(caller.get("name") or f"session-{session[:8]}", session, caller.get("agentId")))
     if note:
-        out = {"hookSpecificOutput": {"hookEventName": "PreToolUse", "additionalContext": note}}
+        out = {"hookSpecificOutput": {"hookEventName": "PreToolUse", "additionalContext": clean_lines(note)}}
         return EXIT_OK, json.dumps(out, ensure_ascii=False), ""
     return EXIT_OK, "", ""
 
@@ -313,7 +313,7 @@ def render_hook_report(report: Report, rel: str, before: Optional[set] = None) -
     if fresh.warnings:
         notes.append(f"kb check after editing {rel}: {fresh.summary()}\n{fresh.render()}")
     if notes:
-        out = {"hookSpecificOutput": {"hookEventName": "PostToolUse", "additionalContext": "\n".join(notes)}}
+        out = {"hookSpecificOutput": {"hookEventName": "PostToolUse", "additionalContext": clean_lines("\n".join(notes))}}
         return EXIT_OK, json.dumps(out, ensure_ascii=False), ""
     return EXIT_OK, "", ""
 
@@ -341,4 +341,4 @@ def session_start(payload: Dict[str, Any], project: Optional[Project] = None) ->
         text = overview.context_text(project, summary, cwd if isinstance(cwd, str) else None, caller=caller)
     except Exception as e:
         text = f"Kookaburra Cut project {project.project_id} (kb context failed: {e}). Run python3 .claude/skills/kookaburra-scene-authoring/scripts/kb.py status"
-    return EXIT_OK, text, ""
+    return EXIT_OK, clean_lines(text), ""

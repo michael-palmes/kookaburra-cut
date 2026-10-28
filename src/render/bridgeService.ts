@@ -169,16 +169,9 @@ export function startBridgeService(
   const dirtySlugs = new Set<string>();
   const ready = invoke("render_reset_preset_posters");
 
-  /** The editor's open project runs under its session trust (the re-stamp the editor's own reload makes); anything else loads stored-only, so this window never shows a trust prompt. */
-  const loadForBridge = async (targetId: string): Promise<LoadedProject> => {
-    if (isWorkspaceBackedProjectId(targetId)) {
-      const context = await invoke<EditorContext | null>("get_editor_context").catch(() => null);
-      if (context?.projectId === targetId) {
-        await invoke("trust_project", { slug: nativeProjectSlug(targetId) }).catch(() => {});
-      }
-    }
-    return loadProject(targetId, { trustMode: "stored-only" });
-  };
+  /** Every load is stored-only: this window cannot ask for consent, and the editor's own writes keep the open project's grant current natively. */
+  const loadForBridge = (targetId: string): Promise<LoadedProject> =>
+    loadProject(targetId, { trustMode: "stored-only" });
 
   /** Load (or reload) `targetId` unless the mounted tree already holds these sources (an unreadable fingerprint proves nothing, so it reloads). A load never depends on the aspect, so a format change re-applies the same load under a fresh identity: errored scene boundaries retry and the project stamp is the commit barrier. */
   const ensureLoaded = async (
@@ -253,6 +246,29 @@ export function startBridgeService(
       jsonText: JSON.stringify({ version: responseVersion(request), id: request.id, ...body }),
     }).catch((e) => console.warn("[render-bridge] response write failed:", e));
 
+  /** A workspace project the editor does not have open is served only once the person allows it (one native dialog per project per session, held in Rust); a refusal answers the request. */
+  const allowedProject = async (
+    request: BridgeRequest,
+    targetId: string,
+    context: EditorContext | null,
+    kind: string,
+  ): Promise<boolean> => {
+    if (!isWorkspaceProjectId(targetId) || targetId === context?.projectId) return true;
+    const slug = nativeProjectSlug(targetId);
+    const allowed = await invoke<boolean>("bridge_confirm_project", {
+      slug,
+      kind,
+      client: request.client ?? null,
+    }).catch(() => false);
+    if (allowed) return true;
+    await respond(request, {
+      ok: false,
+      declined: true,
+      error: `the person did not allow Claude to use "${targetId}" (it is not the project open in Kookaburra Cut); ask them to open it in the app, or to allow it when the app asks`,
+    });
+    return false;
+  };
+
   const serveCapture = async (request: BridgeRequest, context: EditorContext | null) => {
     const targetId = request.project ?? context?.projectId ?? null;
     if (!targetId) {
@@ -288,6 +304,7 @@ export function startBridgeService(
       return;
     }
     const probes = parseProbes(request.probe, format);
+    if (!(await allowedProject(request, targetId, context, "capture"))) return;
     // The store keeps the native format (layout, safe areas); only the capture buffer is scaled.
     const project = await ensureLoaded(targetId, native);
     const sheet = request.sheet
@@ -540,6 +557,7 @@ export function startBridgeService(
       return;
     }
     const format = requestFormat(request.aspect, context?.aspect);
+    if (!(await allowedProject(request, targetId, context, "check"))) return;
     let project: LoadedProject;
     try {
       project = await ensureLoaded(targetId, format);
@@ -611,6 +629,9 @@ export function startBridgeService(
       await respond(request, { ok: false, error: "insertPreset needs a preset" });
       return;
     }
+    if (!(await allowedProject(request, targetId, context, "insertPreset"))) {
+      return;
+    }
     await refreshUserPresets().catch(() => []);
     const entry = resolvePresetRef(request.preset, listAllPresets());
     if (!entry) {
@@ -625,10 +646,7 @@ export function startBridgeService(
       return;
     }
     const destSlug = nativeProjectSlug(targetId);
-    // An app write into a project the user had allowed keeps it allowed; the open project re-stamps on the editor's own reload.
-    const keepTrust =
-      targetId !== context?.projectId &&
-      (await invoke<boolean>("is_project_trusted", { slug: destSlug }).catch(() => false));
+    // An app write into a project the user had allowed keeps it allowed: Rust re-stamps the grant as part of the copy.
     const inserted = await insertPresetScene({
       destSlug,
       presetProjectId: entry.projectId,
@@ -636,7 +654,6 @@ export function startBridgeService(
       name: request.name?.trim() || undefined,
       trustMode: "stored-only",
     });
-    if (keepTrust) await invoke("trust_project", { slug: destSlug }).catch(() => {});
     await respond(request, {
       ok: true,
       project: targetId,

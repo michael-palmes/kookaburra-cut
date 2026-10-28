@@ -373,6 +373,7 @@ describe("bridge v2 requests", () => {
   let queue: Record<string, unknown>[];
   let editor: Record<string, unknown>;
   let trusted: boolean;
+  let allowOther: boolean;
   let assetChecks: unknown[];
 
   const demo = {
@@ -411,6 +412,7 @@ describe("bridge v2 requests", () => {
     queue = [];
     sheets.length = 0;
     trusted = true;
+    allowOther = true;
     assetChecks = [{ path: "assets/clip.mov", ok: true }];
     editor = {
       projectId: "ws:demo",
@@ -443,6 +445,8 @@ describe("bridge v2 requests", () => {
           return trusted;
         case "project_fingerprint":
           return "sources-1";
+        case "bridge_confirm_project":
+          return allowOther;
         default:
           return null;
       }
@@ -464,7 +468,8 @@ describe("bridge v2 requests", () => {
     });
     expect(resolveScreenshotTimeMs).toHaveBeenCalledWith(demo, undefined, undefined, 5000);
     expect(loadProject).toHaveBeenCalledWith("ws:demo", { trustMode: "stored-only" });
-    expect(invoke).toHaveBeenCalledWith("trust_project", { slug: "ws:demo" });
+    // This window never grants or re-stamps trust: the ACL does not even give it the command.
+    expect(invoke).not.toHaveBeenCalledWith("trust_project", expect.anything());
   });
 
   it("captures several frames at an overridden aspect with a contact sheet", async () => {
@@ -737,6 +742,26 @@ describe("bridge v2 requests", () => {
     expect(captureFrameRgba).not.toHaveBeenCalled();
   });
 
+  it("asks the person before touching a project the editor does not have open, and answers a refusal", async () => {
+    allowOther = false;
+    const response = await serve({ kind: "capture", project: "ws:other", scene: "0" });
+    expect(response).toMatchObject({ version: 2, ok: false, declined: true });
+    expect(String(response.error)).toContain('"ws:other"');
+    // `nativeProjectSlug` is mocked as identity here, as the check-assets expectation above relies on.
+    expect(invoke).toHaveBeenCalledWith("bridge_confirm_project", {
+      slug: "ws:other",
+      kind: "capture",
+      client: null,
+    });
+    expect(loadProject).not.toHaveBeenCalled();
+    expect(captureFrameRgba).not.toHaveBeenCalled();
+    // The open project never asks.
+    await serve({ kind: "capture", scene: "0" });
+    expect(invoke).toHaveBeenCalledTimes(
+      vi.mocked(invoke).mock.calls.filter(([c]) => c !== "bridge_confirm_project").length + 1,
+    );
+  });
+
   it("answers needsTrust for a project whose stored grant no longer matches, never prompting", async () => {
     vi.mocked(loadProject).mockRejectedValueOnce(new TrustDeniedError("other"));
     const response = await serve({ kind: "capture", project: "ws:other", scene: "0" });
@@ -793,7 +818,7 @@ describe("bridge v2 requests", () => {
     });
   });
 
-  it("inserts a preset through the app's copy path and keeps a closed project trusted", async () => {
+  it("inserts a preset through the app's copy path, leaving the grant to the native writer", async () => {
     vi.mocked(insertPresetScene).mockResolvedValue({
       file: "scenes/03-highlights.tsx",
       docFile: "scenes/03-highlights.json",
@@ -816,7 +841,7 @@ describe("bridge v2 requests", () => {
       name: "Highlights",
       trustMode: "stored-only",
     });
-    expect(invoke).toHaveBeenCalledWith("trust_project", { slug: "ws:closed" });
+    expect(invoke).not.toHaveBeenCalledWith("trust_project", expect.anything());
     expect(response).toMatchObject({
       version: 2,
       ok: true,

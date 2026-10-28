@@ -1,4 +1,4 @@
-"""Mirror of src/engine/sceneTimeline.ts (`buildSceneTimeline`, `resolveOverlapMs`, `resolveAt`) and `outgoingSceneTransitions`, pinned by tests/fixtures/timeline-vectors.json; plus the project's own timeline and the export frame grid."""
+"""Mirror of src/engine/sceneTimeline.ts (`buildSceneTimeline`, `resolveOverlapMs`, `resolveAt`), `outgoingSceneTransitions` and src/engine/sceneCuts.ts (`resolveSceneCuts`), pinned by tests/fixtures/timeline-vectors.json; plus the project's own timeline and the export frame grid."""
 
 from __future__ import annotations
 
@@ -6,8 +6,9 @@ import math
 import re
 from typing import Any, Dict, List, Optional, Tuple
 
+from .. import music as musicmod
 from ..project import DEFAULT_SCENE_DURATION_MS, Project, stem_of
-from ..util import is_number
+from ..util import is_number, js_json
 
 KNOWN_TYPES = (
     "crossfade", "dip", "slide", "wipe", "blur", "push", "zoom", "whip", "luma", "glitch", "slice", "dissolve", "warp",
@@ -38,6 +39,116 @@ def outgoing_transitions(manifest: Dict[str, Any]) -> List[Optional[Dict[str, An
         nxt = scenes[i + 1].get("transition") if i + 1 < len(scenes) else None
         out.append(nxt if isinstance(nxt, dict) else None)
     return out
+
+
+NO_MUSIC: Dict[str, Any] = {"startOffsetMs": 0, "cues": {}, "sections": {}}
+
+
+def cut_align(value: Any) -> str:
+    return "mid" if value == "mid" else "end"
+
+
+def resolve_scene_cuts(scenes: List[Dict[str, Any]], m: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """resolveSceneCuts: each `{ durationMs, transition?, cutAt?, align? }` (transition = outgoing) with its pinned cut
+    resolved. Returns { durations, changed, issues }."""
+    durations = [s["durationMs"] for s in scenes]
+    changed: List[int] = []
+    issues: List[str] = []
+    end: float = 0
+    for i, scene in enumerate(scenes):
+        cut = scene.get("cutAt")
+        pinned = isinstance(cut, str)
+        start = 0 if i == 0 else end - resolve_overlap_ms(scenes[i - 1].get("transition"), durations[i - 1], math.inf if pinned else durations[i])
+        if pinned:
+            r = musicmod.resolve(cut, m or NO_MUSIC)
+            if not r["ok"]:
+                issues.append(f'scene {i + 1} cutAt "{cut}": {r["message"]}')
+            else:
+                spec = scene.get("transition")
+                out = spec.get("durationMs") if isinstance(spec, dict) else None
+                half = max(0, out) / 2 if cut_align(scene.get("align")) == "mid" and i + 1 < len(scenes) and is_number(out) and math.isfinite(out) else 0
+                want = musicmod.js_round(r["projectMs"] + half - start)
+                if want <= 0:
+                    issues.append(f'scene {i + 1} cutAt "{cut}" lands at {musicmod.js_round(r["projectMs"])} ms, before the scene starts ({js_json(start)} ms)')
+                elif want != durations[i]:
+                    durations[i] = want
+                    changed.append(i)
+        end = start + durations[i]
+    return {"durations": durations, "changed": changed, "issues": issues}
+
+
+ON_BEAT_MS = 1
+
+
+def beat_at(m: Optional[Dict[str, Any]], project_ms: float) -> Optional[str]:
+    """beatAt: the grid beat a project time sits on (bar:9, bar:9.3), or None without a grid or off the beat."""
+    grid = m.get("grid") if m else None
+    if not grid:
+        return None
+    beat_ms = 60000 / grid["bpm"]
+    index = musicmod.js_round((project_ms + m["startOffsetMs"] - grid["offsetMs"]) / beat_ms)  # type: ignore[index]
+    if abs(grid["offsetMs"] + index * beat_ms - m["startOffsetMs"] - project_ms) > ON_BEAT_MS:  # type: ignore[index]
+        return None
+    bar = math.floor(index / grid["beatsPerBar"]) + 1
+    beat = index - (bar - 1) * grid["beatsPerBar"] + 1
+    return f"bar:{bar}" if beat == 1 else f"bar:{bar}.{beat}"
+
+
+def cut_timeline(entries: List[Dict[str, Any]], durations: List[float], m: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """cutTimeline: the slots v2 entries land on with their pinned cuts resolved."""
+    cuts = resolve_scene_cuts([
+        {"durationMs": durations[i], "transition": e.get("transition"), "cutAt": e.get("cutAt"), "align": e.get("align")} for i, e in enumerate(entries)
+    ], m)
+    return build_scene_timeline([
+        {"id": str(i), "durationMs": cuts["durations"][i], "transition": e.get("transition")} for i, e in enumerate(entries)
+    ])
+
+
+def boundary_cut_ms(slots: List[Dict[str, Any]], index: int) -> float:
+    """boundaryCutMs: the middle of boundary index's overlap (its end on a hard cut)."""
+    nxt = slots[index + 1].get("transitionIn") if index + 1 < len(slots) else None
+    return slots[index]["endMs"] - (nxt["durationMs"] if isinstance(nxt, dict) else 0) / 2
+
+
+def keep_cuts_for_transition(entries: List[Dict[str, Any]], durations: List[float], index: int, spec: Optional[Dict[str, Any]],
+                             m: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """keepCutsForTransition: sets scene index's outgoing transition (None = hard cut) without moving any later
+    boundary. Returns { entries (copies), cutMs, position }."""
+    before = cut_timeline(entries, durations, m)
+    cut_ms = boundary_cut_ms(before, index)
+    next_end = before[index + 1]["endMs"]
+    lengths = list(durations)
+    out = [dict(e) for e in entries]
+    entry = out[index]
+    if spec:
+        entry["transition"] = spec
+    else:
+        entry.pop("transition", None)
+    pinned = isinstance(entry.get("cutAt"), str)
+    position = entry["cutAt"] if pinned else beat_at(m, cut_ms)
+    if not pinned:
+        if position:
+            entry["cutAt"] = position
+            entry["align"] = "mid"
+        else:
+            was_in = before[index + 1].get("transitionIn")
+            was = was_in["durationMs"] if isinstance(was_in, dict) else 0
+            now = resolve_overlap_ms(spec, lengths[index], lengths[index + 1])
+            lengths[index] = musicmod.js_round(lengths[index] + (now - was) / 2)
+            entry["durationMs"] = lengths[index]
+    follower = out[index + 1]
+    if not isinstance(follower.get("cutAt"), str):
+        placed = cut_timeline(out, lengths, m)
+        length = musicmod.js_round(next_end - placed[index + 1]["startMs"])
+        if length > 0:
+            lengths[index + 1] = length
+            follower["durationMs"] = length
+    cuts = resolve_scene_cuts([
+        {"durationMs": lengths[i], "transition": e.get("transition"), "cutAt": e.get("cutAt"), "align": e.get("align")} for i, e in enumerate(out)
+    ], m)
+    for i in cuts["changed"]:
+        out[i]["durationMs"] = cuts["durations"][i]
+    return {"entries": out, "cutMs": cut_ms, "position": position}
 
 
 def build_scene_timeline(scenes: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -129,19 +240,30 @@ def scene_duration(project: Project, entry: Dict[str, Any]) -> float:
     return tsx_duration(project, stem) or DEFAULT_SCENE_DURATION_MS
 
 
-def project_slots(project: Project) -> List[Dict[str, Any]]:
-    """The project's timeline: slots keyed by stem, plus each scene's `file` and `stem`."""
-    manifest = project.manifest()
-    entries = [e if isinstance(e, dict) else {} for e in project.scene_entries()]
+def manifest_slots(project: Project, manifest: Dict[str, Any], m: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """A manifest's timeline with pinned cuts resolved against m: SceneSlot dicts plus each scene's `file` and `stem`."""
+    entries = [e if isinstance(e, dict) else {} for e in manifest.get("scenes") or []]
     outgoing = outgoing_transitions(dict(manifest, scenes=entries))
     stems = [stem_of(e.get("file") if isinstance(e.get("file"), str) else "") for e in entries]
+    cuts = resolve_scene_cuts([
+        {"durationMs": scene_duration(project, e), "transition": outgoing[i], "cutAt": e.get("cutAt"), "align": e.get("align")}
+        for i, e in enumerate(entries)
+    ], m)
     slots = build_scene_timeline([
-        {"id": stems[i], "durationMs": scene_duration(project, e), "transition": outgoing[i]} for i, e in enumerate(entries)
+        {"id": stems[i], "durationMs": cuts["durations"][i], "transition": outgoing[i]} for i in range(len(entries))
     ])
     for slot, entry, stem in zip(slots, entries, stems):
         slot["stem"] = stem
         slot["file"] = entry.get("file")
     return slots
+
+
+def project_slots(project: Project) -> List[Dict[str, Any]]:
+    """The project's timeline: slots keyed by stem, plus each scene's `file` and `stem`."""
+    from ..beats.model import project_music
+
+    manifest = dict(project.manifest(), scenes=project.scene_entries())
+    return manifest_slots(project, manifest, project_music(manifest))
 
 
 # ── the export's frame grid ──────────────────────────────────────────────────

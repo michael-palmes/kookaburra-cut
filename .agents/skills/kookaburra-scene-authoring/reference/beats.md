@@ -73,8 +73,8 @@ start), each with an optional `+40ms` or `-40ms` nudge. Where kb takes a time, `
 ./kb beats resolve bar:13.3+40ms [--scene S]   # project ms, the owning scene and its local ms, the nearest beat
 ```
 
-Errors: any `bar:` position (and `--duration-bars`, `--cut-at`) without a grid is exit 1
-`no-grid`; bad syntax or a beat past the bar is exit 2 `usage`; a position outside the film
+Errors: any `bar:` position (and `--duration-bars`, `--cut-at`, a plan's `cutAt`) without a
+grid is exit 1 `no-grid`; bad syntax or a beat past the bar is exit 2 `usage`; a position outside the film
 is exit 1 `invalid`.
 
 ## Cues and sections
@@ -94,20 +94,29 @@ and dashes. A cue or section never points at another cue or section, and a secti
 
 ## Keys that follow the music
 
-Camera, rig and lighting keys (and `compare.b.lighting` keys) take a sibling `at`:
-`{ "id": "k2", "tMs": 21000, "at": "bar:13" }`. The `at` rules; `tMs` caches where it
-lands in scene-local ms.
+Camera, rig, lighting, `deviceTrack` and `compare.track` keys (and `compare.b.lighting`
+keys) take a sibling `at`: `{ "id": "k2", "tMs": 21000, "at": "bar:13" }`. The `at` rules;
+`tMs` caches where it lands in scene-local ms.
+
+Screen and media videos start on the music the same way, with an `at` beside `startMs`:
+`devices[].media` and `coverMedia`, `compare.b.media` and `coverMedia`, and
+`media[].video` (any host). An `at` on a device screen needs a video that doesn't
+`startOn: "open"`, and can't land before the scene starts when the screen trims with `inMs`.
 
 ```bash
-./kb doc 03-drop set camera.keys.1.at bar:13    # kb sets tMs to match now
-./kb doc 03-drop set camera.keys.1.tMs 21400    # moves the key off the music: its at is dropped
-./kb doc 03-drop unset camera.keys.1.at         # keep tMs, stop following
+./kb doc 03-drop set camera.keys.1.at bar:13        # kb sets tMs to match now
+./kb doc 03-drop set camera.keys.1.tMs 21400        # moves the key off the music: its at is dropped
+./kb doc 03-drop unset camera.keys.1.at             # keep tMs, stop following
+./kb doc 03-drop set devices.0.media.at cue:drop    # the screen video starts on the drop
 ```
 
-Every `./kb doc` write refreshes the other keys' caches. Never hand-edit the `tMs` of a key
-with an `at`: the app puts it back on load (`./kb check` warns). Dragging the key in the
-app detaches it. Other tracks (`deviceTrack`, `compare`, `chart`, the layered screenshot),
-scene durations and device media take plain ms only.
+Every `./kb doc` write refreshes the other caches. `./kb doc merge` keeps each `at` (its time
+follows the music) unless the patch gives `"at": null`. Never hand-edit the time of a field
+with an `at`: the app puts it back on load (`./kb check` warns). Dragging the key, a new start
+in the inspector, `./kb video start` and `./kb video align` detach it. Chart and layered
+screenshot keys, taps, split-field reveals, scene durations and edit documents take plain ms:
+`./kb doc` refuses an `at` there (exit 2 `usage`). To land a recording's tap on a beat, use
+`./kb video align NAME --tap ID --beat N --scene S`.
 
 ## Kicks and pulses
 
@@ -130,13 +139,64 @@ Responses carry `position` and `projectMs` (per frame for `--frames`).
 
 ## Scene cuts on the beat
 
+Pin cuts to the music, never to ms: a transition pulls the next scene in by its overlap,
+so an unpinned length drifts every later scene off its bar.
+
 ```bash
-./kb scene set 03-drop --duration-bars 4                 # four bars at the grid's tempo, as whole ms
-./kb scene set 03-drop --cut-at bar:17 [--align mid]     # end at bar 17, or centre the outgoing transition on it
+./kb timeline                                            # every scene's start, end, cut and transition in bars and ms
+./kb scene set 03-drop --cut-at bar:17 [--align mid]     # pin: end on bar 17, or centre the outgoing transition on it
+./kb timeline apply cuts.json                            # every cut and transition from a plan, one checkpointed write
+./kb scene set 03-drop --duration-bars 4                 # four bars as whole ms (unpinned)
 ```
 
-Durations are written as ms and never follow the grid later: rerun after a grid change.
-Keys with an `at` in later scenes are refreshed in the same write.
+- A position in `--cut-at` (or a plan) pins the cut: `project.json` stores `cutAt` and
+  `align`, and `durationMs` caches the length that lands it. kb and the app re-resolve
+  it whenever the grid, an earlier transition or an earlier length changes, so later
+  cuts stay on their bars. A time (`12.5s`) writes the length once, unpinned.
+- `align`: `end` (default) means the scene is gone at the position; `mid` centres its
+  outgoing transition on it, the usual choice for a crossfade on a downbeat.
+- `--duration` and `--duration-bars` unpin. Keys with an `at` are refreshed in the same
+  write.
+- With a grid, `./kb scene set S --transition T:MS` keeps every later cut where it is
+  (the app's transition picker does the same). `--ripple` lets them move.
+- `./kb timeline` flags cuts off the beat, scenes shorter than their transitions, keys
+  past their scene's end or before its start, and cuts that sat on a beat at the last
+  checkpoint and no longer do. `./kb check` and `./kb status` repeat that last warning.
+
+### The cut plan
+
+A plan sets cuts and transitions for any scenes at once; rows apply in scene order, and
+nothing is written if any row is invalid. JSON:
+
+```json
+{
+  "version": 1,
+  "cuts": [
+    { "scene": "01-open", "cutAt": "bar:5", "align": "mid", "transition": { "type": "crossfade", "durationMs": 800 } },
+    { "scene": "02-hero", "cutAt": "bar:9", "transition": "push:500" },
+    { "scene": "03-demo", "cutAt": "cue:drop", "transition": null },
+    { "scene": "04-outro", "cutAt": "bar:21" }
+  ]
+}
+```
+
+| Field | Meaning |
+| --- | --- |
+| `scene` | Stem (best) or 0-based index. Required; once per plan. |
+| `cutAt` | A position (pins the cut), a time like `12.5s` (a length, once), or `null` to unpin. Absent leaves the cut alone. |
+| `align` | `end` (default) or `mid`. Alone, it changes an existing pin. |
+| `transition` | `{ type, durationMs, ease?, ... }` (project.json's shape), `"TYPE:MS"`, or `null`/`"none"` for a hard cut. Absent leaves it alone; the last scene takes none. A row that changes only a transition keeps later cuts in place, as `kb scene set` does (`--ripple` to let them move). |
+
+Or a markdown table with `scene`, `cut`, `transition`, `length` and `align` columns
+(`ease` optional; a bare number in `cut` is a bar, an empty cell leaves that field alone):
+
+```
+| Scene    | Cut | Transition | Length | Align |
+| -------- | --- | ---------- | ------ | ----- |
+| 01-open  | 5   | crossfade  | 800    | mid   |
+| 02-hero  | 9   | push       | 0.5s   |       |
+| 03-demo  | 13  | cut        |        |       |
+```
 
 ## Matching motion to the music
 
@@ -185,7 +245,8 @@ Placement rules:
   --beat N --scene S` lands it on the scene's Nth beat (the grid's, else the analysis's),
   shifting the video's start when that is enough, else retiming the edit (the
   kookaburra-video-editing skill).
-- Scene cuts: `./kb scene set S --cut-at bar:B [--align mid]` (above), not hand arithmetic.
+- Scene cuts: `./kb scene set S --cut-at bar:B [--align mid]` or a plan (above), not hand
+  arithmetic.
 - Key moments (strong onsets worth cutting on, 0..1 `strength`) come from the analysis;
   `project.json` `audio.markers` `{ "version": 1, "keyMoments": [ms, ...] }` in PROJECT ms
   replaces them (sorted, non-negative integers; delete the block to return to detection).

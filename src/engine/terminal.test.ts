@@ -1,18 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
-  binaryDir,
   claudeGroundingPrompt,
   claudeSessionBanner,
-  claudeSessionCommand,
+  claudeSessionLaunch,
   type SessionProject,
   shellQuote,
 } from "./terminal";
 
 const PROJECT: SessionProject = { slug: "launch-2026", name: "Launch 2026" };
-
-const FLAG = "--append-system-prompt ";
-
-// The spawn command is part of the packaged-app contract: the panel execs the detected binary by full path, since login non-interactive shells never source ~/.zshrc, where the default install writes its PATH line.
 
 describe("shellQuote", () => {
   it("wraps in single quotes", () => {
@@ -29,41 +24,26 @@ describe("shellQuote", () => {
   });
 });
 
-describe("binaryDir", () => {
-  it("returns the parent directory of an absolute path", () => {
-    expect(binaryDir("/Users/m/.local/bin/claude")).toBe("/Users/m/.local/bin");
-  });
-
-  it("returns null for a bare name (nothing to prepend)", () => {
-    expect(binaryDir("claude")).toBeNull();
-  });
-
-  it("returns null for a root-level file (never prepend an empty string)", () => {
-    expect(binaryDir("/claude")).toBeNull();
-  });
-});
-
-describe("claudeSessionCommand", () => {
-  it("execs the detected path quoted, with the pinned permission mode and the grounding", () => {
-    expect(claudeSessionCommand(false, "/Users/m/.local/bin/claude", PROJECT)).toBe(
-      `exec '/Users/m/.local/bin/claude' --permission-mode auto --model claude-opus-5-5 --effort high ${FLAG}${shellQuote(claudeGroundingPrompt(PROJECT))}`,
-    );
-  });
-
-  it("adds --continue when resuming, and grounds the resumed session too", () => {
-    expect(claudeSessionCommand(true, "/opt/homebrew/bin/claude", PROJECT)).toBe(
-      `exec '/opt/homebrew/bin/claude' --continue --permission-mode auto --model claude-opus-5-5 --effort high ${FLAG}${shellQuote(claudeGroundingPrompt(PROJECT))}`,
-    );
+describe("claudeSessionLaunch", () => {
+  it("is data for Rust to build the argv from: no path, no flags, no command string", () => {
+    expect(claudeSessionLaunch(false, PROJECT)).toEqual({
+      kind: "claudeSession",
+      continueLast: false,
+      grounding: claudeGroundingPrompt(PROJECT),
+    });
+    expect(claudeSessionLaunch(true, PROJECT)).toMatchObject({ continueLast: true });
   });
 });
 
 describe("claudeGroundingPrompt", () => {
-  it("names the project and its folder, and points at the skill and CLAUDE.md", () => {
+  it("names the project and its folder, and points at the skill and the stamped rules", () => {
     const prompt = claudeGroundingPrompt(PROJECT);
     expect(prompt).toContain('"Launch 2026"');
     expect(prompt).toContain("folder launch-2026");
     expect(prompt).toContain("kookaburra-scene-authoring");
-    expect(prompt).toContain("CLAUDE.md");
+    expect(prompt).toContain("RULES.md is the authority");
+    expect(prompt).toContain("NOTES.md");
+    expect(prompt).not.toContain("CLAUDE.md in this folder is the authority");
   });
 
   it("routes video editing to its own skill on the same grounding line", () => {
@@ -130,50 +110,24 @@ describe("claudeSessionBanner", () => {
   });
 });
 
-/** Read one word the way `sh` reads the tail of a command line, throwing on anything the shell would have expanded or run: inside `'…'` nothing is special, so the only escape route is text that lands OUTSIDE the quotes. */
-function readShellWord(tail: string): string {
-  let out = "";
-  let i = 0;
-  while (i < tail.length) {
-    if (tail[i] !== "'") throw new Error(`shell would interpret: ${tail.slice(i)}`);
-    const end = tail.indexOf("'", i + 1);
-    if (end < 0) throw new Error("unterminated quote: the shell would swallow the next line");
-    out += tail.slice(i + 1, end);
-    i = end + 1;
-    if (i >= tail.length) break;
-    if (tail.slice(i, i + 2) !== "\\'") throw new Error(`shell would interpret: ${tail.slice(i)}`);
-    out += "'";
-    i += 2;
-  }
-  return out;
-}
-
-// The launch line reaches the child as ONE string run by `sh -lc` (pty.rs) and it carries a user-supplied project name, so concatenating it would be a shell injection, not a cosmetic bug.
-describe("grounding survives the login-shell hop", () => {
+// The grounding reaches the child as ONE argv element behind a fixed exec script (pty.rs), so a hostile project name is inert; what the frontend must still do is keep it to plain text, since it lands in a system prompt and the terminal.
+describe("grounding stays plain text", () => {
   const HOSTILE: SessionProject = {
-    // The lone quote before `$(…)` is the payload: naive quoting ends the flag's quoting right there and the shell runs the substitution.
     slug: "o'brien launch",
-    name: "Demo o'$(echo PWNED)'x \"y\" `echo PWNED` ; & | $HOME",
+    name: "Demo o'$(echo PWNED)'x \"y\" `echo PWNED` ; & | $HOME \u001b]52;c;payload\u0007\nsecond line",
   };
 
-  it("hands a hostile project name to the shell as one inert word", () => {
-    const command = claudeSessionCommand(false, "/Users/m/.local/bin/claude", HOSTILE);
-    const word = readShellWord(command.slice(command.indexOf(FLAG) + FLAG.length));
-    expect(word).toBe(claudeGroundingPrompt(HOSTILE));
-    expect(word).toContain("o'$(echo PWNED)'x");
-    expect(word).toContain("`echo PWNED`");
-    expect(word).toContain("$HOME");
-    expect(word).toContain("o'brien launch");
-  });
-
-  it("catches the naive concatenation it is guarding against", () => {
-    const naive = `'${claudeGroundingPrompt(HOSTILE)}'`;
-    expect(() => readShellWord(naive)).toThrow(/shell would interpret/);
-  });
-
-  it("keeps the rest of the line intact around the quoted flag", () => {
-    const command = claudeSessionCommand(true, "/Users/m/My Tools/claude", HOSTILE);
-    expect(command.startsWith("exec '/Users/m/My Tools/claude' --continue ")).toBe(true);
-    expect(command).toContain(` ${FLAG}'`);
+  it("keeps shell metacharacters as text and strips control characters and newlines", () => {
+    const launch = claudeSessionLaunch(false, HOSTILE);
+    if (launch.kind !== "claudeSession") throw new Error("expected a Claude session");
+    const { grounding } = launch;
+    expect(grounding).toContain("o'$(echo PWNED)'x");
+    expect(grounding).toContain("`echo PWNED`");
+    expect(grounding).toContain("$HOME");
+    expect(grounding).toContain("o'brien launch");
+    expect(grounding).not.toContain("\u001b");
+    expect(grounding).not.toContain("]52;c;payload\nsecond");
+    // Line breaks in the grounding are the app's own, never the project's.
+    for (const line of grounding.split("\n")) expect(line.length).toBeGreaterThan(0);
   });
 });

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 import tempfile
 import time
@@ -16,6 +17,53 @@ EXIT_ENV = 2
 EXIT_TRANSIENT = 3
 
 WORKSPACE_DIR_NAME = "Kookaburra Cut"
+
+# ── Output escaping ───────────────────────────────────────────────────────────
+# Text from project files (scene names, copy, paths) reaches the agent's context and the terminal through kb, so every
+# output boundary escapes control and format characters as visible \uXXXX and caps one string. The app's bridge
+# (`clean_text.rs`) applies the same rule to its answers.
+
+CLEAN_CAP = 500
+_UNSAFE = re.compile(
+    "[\x00-\x08\x0b-\x1f\x7f-\x9f­؀-؅؜۝܏࢐࢑࣢᠎"
+    "​-‏‪-‮⁠-⁤⁦-⁯﻿￹-￻"
+    "\U000110bd\U000110cd\U00013430-\U0001343f\U0001bca0-\U0001bca3\U0001d173-\U0001d17a"
+    "\U000e0001\U000e0020-\U000e007f]"
+)
+
+
+def _escape(match: "re.Match[str]") -> str:
+    code = ord(match.group())
+    return f"\\u{code:04X}" if code <= 0xFFFF else f"\\U{code:08X}"
+
+
+def clean_text(text: Any, cap: Optional[int] = CLEAN_CAP) -> Any:
+    """Escape every control (newline and tab excepted) and format character, bidi and tag characters included, then
+    cap the string with a marker saying how much was dropped. Anything that is not a string passes through."""
+    if not isinstance(text, str):
+        return text
+    clean = _UNSAFE.sub(_escape, text) if _UNSAFE.search(text) else text
+    if cap is not None and len(clean) > cap:
+        clean = f"{clean[:cap]} …[+{len(clean) - cap} chars]"
+    return clean
+
+
+def clean_lines(text: str) -> str:
+    """`clean_text` line by line, so a long report keeps every line and each line keeps the cap."""
+    return "\n".join(clean_text(line) for line in text.split("\n"))
+
+
+def clean_value(value: Any) -> Any:
+    """Every string in a JSON-shaped value, keys included."""
+    if isinstance(value, str):
+        return clean_text(value)
+    if isinstance(value, list):
+        return [clean_value(v) for v in value]
+    if isinstance(value, tuple):
+        return [clean_value(v) for v in value]
+    if isinstance(value, dict):
+        return {clean_text(k) if isinstance(k, str) else k: clean_value(v) for k, v in value.items()}
+    return value
 
 DEFAULT_KIND = {EXIT_PROBLEMS: "failed", EXIT_ENV: "env", EXIT_TRANSIENT: "transient"}
 
@@ -59,10 +107,10 @@ class KbError(Exception):
         data: Optional[Dict[str, Any]] = None,
     ) -> None:
         super().__init__(message)
-        self.message = message
+        self.message = clean_text(message)
         self.code = code
         self.kind = kind or DEFAULT_KIND.get(code, "failed")
-        self.hint = hint if hint is not None else DEFAULT_HINTS.get(self.kind)
+        self.hint = clean_text(hint) if hint is not None else DEFAULT_HINTS.get(self.kind)
         self.retry_after_ms = retry_after_ms
         self.data = data or {}
 
@@ -306,16 +354,17 @@ class Issue:
 
     def __init__(self, severity: str, file: str, path: str, message: str) -> None:
         self.severity = severity
+        # `file` and `path` stay raw: `for_file` and the hooks match them against project-relative paths.
         self.file = file
         self.path = path
-        self.message = message
+        self.message = clean_text(message)
 
     def as_dict(self) -> Dict[str, str]:
-        return {"severity": self.severity, "file": self.file, "path": self.path, "message": self.message}
+        return {"severity": self.severity, "file": clean_text(self.file), "path": clean_text(self.path), "message": self.message}
 
     def line(self) -> str:
-        where = f"{self.path}: " if self.path else ""
-        return f"{self.file}: {where}{self.message}"
+        where = f"{clean_text(self.path)}: " if self.path else ""
+        return f"{clean_text(self.file)}: {where}{self.message}"
 
 
 class Report:
@@ -366,12 +415,12 @@ class Report:
                 files.append(issue.file)
         out: List[str] = []
         for file in files:
-            out.append(file)
+            out.append(clean_text(file))
             for issue in self.issues:
                 if issue.file != file or (only and issue.severity != only):
                     continue
                 tag = {"error": "error", "info": "info "}.get(issue.severity, "warn ")
-                where = f"{issue.path}: " if issue.path else ""
+                where = f"{clean_text(issue.path)}: " if issue.path else ""
                 out.append(f"  {tag}  {where}{issue.message}")
         return "\n".join(out)
 
@@ -385,12 +434,19 @@ class Report:
 
 
 def emit(text: str) -> None:
+    text = clean_lines(text)
     sys.stdout.write(text if text.endswith("\n") else text + "\n")
 
 
 def emit_err(text: str) -> None:
+    text = clean_lines(text)
     sys.stderr.write(text if text.endswith("\n") else text + "\n")
 
 
 def emit_json(value: Any) -> None:
-    sys.stdout.write(json.dumps(value, indent=2, ensure_ascii=False) + "\n")
+    sys.stdout.write(json.dumps(clean_value(value), indent=2, ensure_ascii=False) + "\n")
+
+
+def json_line(value: Any) -> str:
+    """One compact, cleaned JSON object for streaming commands."""
+    return json.dumps(clean_value(value), separators=(",", ":"), ensure_ascii=False) + "\n"

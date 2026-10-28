@@ -10,15 +10,19 @@ const REST: ResolvedDevicePose = {
   scale: 1,
   lidDeg: undefined,
   foldDeg: undefined,
+  screenPower: undefined,
+  coverPower: undefined,
 };
 
-/** A sampled pose with every field present: offsets and rotations ADD to the device's resting pose, scale MULTIPLIES it, and the hinge angles (`lidDeg`, `foldDeg`) replace the device's own when the track carries one. */
+/** A sampled pose with every field present: offsets and rotations ADD to the device's resting pose, scale MULTIPLIES it, and the hinge angles (`lidDeg`, `foldDeg`) and screen powers replace the device's own when the track carries one (an unkeyed power is undefined, which renders lit). */
 export interface ResolvedDevicePose {
   offset: [number, number, number];
   rotationDeg: [number, number, number];
   scale: number;
   lidDeg: number | undefined;
   foldDeg: number | undefined;
+  screenPower: number | undefined;
+  coverPower: number | undefined;
 }
 
 export interface ResolvedDeviceTrack {
@@ -62,10 +66,12 @@ function fill(pose: SceneDocDevicePose | undefined, base: ResolvedDevicePose): R
     scale: pose?.scale ?? base.scale,
     lidDeg: pose?.lidDeg ?? base.lidDeg,
     foldDeg: pose?.foldDeg ?? base.foldDeg,
+    screenPower: pose?.screenPower ?? base.screenPower,
+    coverPower: pose?.coverPower ?? base.coverPower,
   };
 }
 
-/** A hinge angle is absolute, so one absent on either end holds the other's: a single keyed angle still animates from the resting one. */
+/** A hinge angle or a power is absolute, so one absent on either end holds the other's: a single keyed angle still animates from the resting one. */
 function blendAbsolute(
   a: number | undefined,
   b: number | undefined,
@@ -90,6 +96,8 @@ function blend(a: ResolvedDevicePose, b: ResolvedDevicePose, t: number): Resolve
     scale: lerp(a.scale, b.scale, t),
     lidDeg: blendAbsolute(a.lidDeg, b.lidDeg, t),
     foldDeg: blendAbsolute(a.foldDeg, b.foldDeg, t),
+    screenPower: blendAbsolute(a.screenPower, b.screenPower, t),
+    coverPower: blendAbsolute(a.coverPower, b.coverPower, t),
   };
 }
 
@@ -147,7 +155,9 @@ export function deviceTrackPoseIsRest(
     pose.rotationDeg.every((v) => v === 0) &&
     pose.scale === 1 &&
     pose.lidDeg === baseLidDeg &&
-    pose.foldDeg === baseFoldDeg
+    pose.foldDeg === baseFoldDeg &&
+    pose.screenPower === undefined &&
+    pose.coverPower === undefined
   );
 }
 
@@ -167,6 +177,8 @@ export function deviceTrackSnapshotAt(
     };
     if (pose.lidDeg !== undefined) entry.lidDeg = pose.lidDeg;
     if (pose.foldDeg !== undefined) entry.foldDeg = pose.foldDeg;
+    if (pose.screenPower !== undefined) entry.screenPower = pose.screenPower;
+    if (pose.coverPower !== undefined) entry.coverPower = pose.coverPower;
     snapshot[device.id] = entry;
   }
   return snapshot;

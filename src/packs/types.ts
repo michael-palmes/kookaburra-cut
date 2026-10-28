@@ -200,12 +200,21 @@ export interface ImportPlan {
 
 export type ItemOutcome = "added" | "replaced" | "skipped" | "keptBoth" | "failed";
 
+/** Text a pack's author left in an item's `CLAUDE.md`, saved as its `NOTES.md` and shown for the person to read; never handed to the agent as instructions. */
+export interface AgentNote {
+  kind: ItemKind;
+  slug: string;
+  name: string;
+  text: string;
+}
+
 export interface ImportOutcome {
   results: { kind: ItemKind; slug: string; name: string; outcome: ItemOutcome; detail?: string }[];
   backupDir?: string;
   /// Set when a partial apply stopped early: names what did and did not land.
   stoppedAt?: string;
   notes: string[];
+  agentNotes?: AgentNote[];
 }
 
 /** One entry in the export picker, flattened across kinds so the list renders uniformly. */

@@ -1,5 +1,7 @@
 //! Kookaburra Cut native shell: registers Tauri plugins and the deterministic-export bridge; the exporter streams raw RGBA frames from the webview to a bundled ffmpeg sidecar, whose argv is built HERE from a typed `ExportOptions` (the frontend never controls the command line) and spawned via the shell plugin's Rust API, not webview IPC, so no `shell:allow-execute` capability is needed.
 
+#[cfg(test)]
+mod acl;
 mod asset_meta;
 mod brands;
 mod bridge;
@@ -9,6 +11,7 @@ mod bridge_range;
 mod capture_service;
 mod claude_app;
 mod claude_update;
+mod clean_text;
 pub mod cli;
 pub mod cli_check;
 pub mod cli_media;
@@ -33,6 +36,7 @@ mod live_edits;
 mod loudness;
 mod media;
 mod mp4box;
+mod native_alert;
 mod objects;
 mod pack;
 mod packs_win;
@@ -990,7 +994,7 @@ struct AutorunEnv {
 }
 
 /// One `KOOKABURRA_*` env read under the single auto-run rule: trimmed, and empty/whitespace reads as unset.
-fn autorun_var(key: &str) -> Option<String> {
+pub(crate) fn autorun_var(key: &str) -> Option<String> {
     std::env::var(key)
         .ok()
         .map(|v| v.trim().to_string())
@@ -1307,6 +1311,7 @@ macro_rules! kookaburra_handler {
             begin_screenshot,
             save_screenshot,
             workspace::get_settings,
+            workspace::init_default_workspace,
             workspace::init_workspace,
             workspace::default_workspace_root,
             workspace::user_home_dir,
@@ -1319,6 +1324,8 @@ macro_rules! kookaburra_handler {
             live_edits::project_file_stamps,
             live_edits::project_file_hashes,
             workspace::is_project_trusted,
+            workspace::check_project_trust,
+            workspace::request_project_trust,
             workspace::trust_project,
             workspace::list_project_assets,
             workspace::list_project_environments,
@@ -1360,6 +1367,8 @@ macro_rules! kookaburra_handler {
             scene_doc::ensure_unique_scene_ids,
             bridge::bridge_claim_request,
             bridge::bridge_write_response,
+            bridge::bridge_confirm_project,
+            bridge::note_picked_folder,
             bridge::begin_bridge_screenshot,
             bridge::save_bridge_screenshot,
             bridge::bridge_pending_count,
@@ -1568,6 +1577,7 @@ pub fn run() {
         .manage(clip_cache::ClipCacheState::default())
         .manage(media::ConformJobs::default())
         .manage(workspace::SettingsState::default())
+        .manage(workspace::TrustState::default())
         .manage(updater::PendingUpdate::default())
         .manage(pty::PtyState::default())
         .manage(edit::EditorState::default())
@@ -1578,6 +1588,8 @@ pub fn run() {
         .manage(preset_posters::PresetPosterQueueState::default())
         .manage(bridge::EditorContextState::default())
         .manage(bridge::HeartbeatState::default())
+        .manage(bridge::PickedFolders::default())
+        .manage(bridge::BridgeGrants::default())
         .manage(packs_win::PacksState::default())
         .manage(theme_editor_win::ThemeEditorState::default())
         .manage(pack::commands::PackState::default())

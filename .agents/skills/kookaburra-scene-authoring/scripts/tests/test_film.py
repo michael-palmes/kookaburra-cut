@@ -18,7 +18,7 @@ from kblib.film import swatch as sw
 from kblib.film import timeline as tl
 from kblib.catalog import load_catalog, reset_cache
 from kblib.project import Project
-from kblib.util import KbError
+from kblib.util import KbError, js_json
 from kblib.video.passes import Tools
 
 from . import video_synth as vs
@@ -74,7 +74,13 @@ class TimelineVectorTests(unittest.TestCase):
         for case in vectors["cases"]:
             with self.subTest(case=case["id"]):
                 out = tl.outgoing_transitions(case["manifest"])
-                scenes = [{"id": f"s{i}", "durationMs": s["durationMs"], "transition": out[i]} for i, s in enumerate(case["manifest"]["scenes"])]
+                entries = case["manifest"]["scenes"]
+                cuts = tl.resolve_scene_cuts([
+                    {"durationMs": s["durationMs"], "transition": out[i], "cutAt": s.get("cutAt"), "align": s.get("align")} for i, s in enumerate(entries)
+                ], case.get("music"))
+                if "cuts" in case:
+                    self.assertEqual(cuts, case["cuts"])
+                scenes = [{"id": f"s{i}", "durationMs": cuts["durations"][i], "transition": out[i]} for i in range(len(entries))]
                 slots = tl.build_scene_timeline(scenes)
                 self.assertEqual(slots, case["slots"])
                 self.assertEqual(tl.timeline_total_ms(slots), case["totalMs"])
@@ -87,6 +93,15 @@ class TimelineVectorTests(unittest.TestCase):
                         want, have = at["transition"], got["transition"]
                         self.assertEqual((have["type"], have["fromIndex"], have["toIndex"]), (want["type"], want["fromIndex"], want["toIndex"]))
                         self.assertAlmostEqual(have["progress"], want["progress"], places=12)
+
+
+    def test_the_mirror_keeps_cuts_like_the_transition_picker(self) -> None:
+        vectors = json.loads((FIXTURES / "timeline-vectors.json").read_text())
+        self.assertGreater(len(vectors["keeps"]), 3)
+        for case in vectors["keeps"]:
+            with self.subTest(case=case["id"]):
+                got = tl.keep_cuts_for_transition(case["entries"], case["durations"], case["index"], case["spec"], case.get("music"))
+                self.assertEqual(js_json(got), case["out"])
 
 
 class TimelineTests(KbTestCase):

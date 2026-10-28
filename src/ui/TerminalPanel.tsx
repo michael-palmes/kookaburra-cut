@@ -7,13 +7,12 @@ import "@xterm/xterm/css/xterm.css";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { parseProjectId } from "../engine/project";
 import {
-  binaryDir,
   CLAUDE_BREW_SWITCH_COMMAND,
   CLAUDE_INSTALL_COMMAND,
   type ClaudeVersionInfo,
   claudeDoctorCommand,
   claudeSessionBanner,
-  claudeSessionCommand,
+  claudeSessionLaunch,
   claudeUpdateCommand,
   claudeVersionInfo,
   detectClaude,
@@ -225,9 +224,8 @@ export function TerminalPanel({
         const session = await spawnTerminalSession({
           term,
           cwd,
-          // Exec the detected binary and put its dir on the child PATH: a login non-interactive shell never sources ~/.zshrc (where the default install writes its PATH line), and packaged apps have no interactive PATH to inherit.
-          command: claudeSessionCommand(continueLast, path, project),
-          pathPrepend: binaryDir(path) ?? undefined,
+          // Rust execs the binary detect_claude found and puts its dir on the child PATH: a login non-interactive shell never sources ~/.zshrc (where the default install writes its PATH line), and packaged apps have no interactive PATH to inherit.
+          launch: claudeSessionLaunch(continueLast, project),
           onExit: () => {
             const entry = getLiveSession(slug);
             if (entry?.session === session) {
@@ -447,8 +445,9 @@ export function TerminalPanel({
               <>
                 <h3>Edit with Claude Code</h3>
                 <p className="muted">
-                  Starts a Claude session in this project’s folder. Scene edits apply automatically;
-                  anything else still asks first.
+                  Starts a Claude session in this project’s folder. Sends this project’s files to
+                  Anthropic as you work. Scene edits and kb commands run without asking; other
+                  commands ask.
                 </p>
                 {status === "exited" && exitNote && (
                   <p className="terminal-exit-note" role="alert">

@@ -1,0 +1,104 @@
+{
+  "permission": [
+    {
+      "identifier": "studio",
+      "description": "The main window's own chrome: opening the other windows, the workspace's first-run default and path display.",
+      "commands": {
+        "allow": [
+          "open_present",
+          "open_edit",
+          "open_edit_named",
+          "list_edits",
+          "edit_stamps",
+          "open_settings",
+          "open_pack_import",
+          "open_pack_export",
+          "next_queued_pack",
+          "open_theme_editor_window",
+          "init_default_workspace",
+          "default_workspace_root",
+          "user_home_dir",
+          "note_picked_folder"
+        ]
+      }
+    },
+    {
+      "identifier": "terminal",
+      "description": "The embedded Claude Code terminal: a PTY whose launch shape Rust builds (never a free command string).",
+      "commands": {
+        "allow": [
+          "pty_spawn",
+          "pty_write",
+          "pty_resize",
+          "pty_kill",
+          "pty_pause",
+          "pty_resume",
+          "detect_claude",
+          "has_claude_session",
+          "claude_version_info",
+          "dismiss_claude_update"
+        ]
+      }
+    },
+    {
+      "identifier": "claude-launcher",
+      "description": "The Claude desktop app handoff and its preferences.",
+      "commands": {
+        "allow": [
+          "claude_app_status",
+          "open_in_claude",
+          "open_project_folder",
+          "open_claude_download",
+          "set_claude_preferences"
+        ]
+      }
+    },
+    {
+      "identifier": "updater",
+      "description": "The consent-gated update check and install.",
+      "commands": {
+        "allow": [
+          "check_for_update",
+          "set_update_consent",
+          "record_skipped_version",
+          "install_update_and_relaunch"
+        ]
+      }
+    },
+    {
+      "identifier": "website-editor",
+      "description": "Scene websites in the paused editor: approvals, the live child view and its capture.",
+      "commands": {
+        "allow": [
+          "website_open",
+          "website_grant_origin",
+          "website_revoke_origin",
+          "website_list_grants",
+          "website_resume_pending",
+          "website_set_bounds",
+          "website_set_zoom",
+          "website_show",
+          "website_action",
+          "website_capture",
+          "website_import_image",
+          "website_hide",
+          "website_close"
+        ]
+      }
+    },
+    {
+      "identifier": "website-present",
+      "description": "Scene websites during a Present hold: show, hide and drive an already approved origin.",
+      "commands": {
+        "allow": [
+          "website_open",
+          "website_show",
+          "website_hide",
+          "website_set_bounds",
+          "website_action",
+          "website_close"
+        ]
+      }
+    }
+  ]
+}

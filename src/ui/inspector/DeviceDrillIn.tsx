@@ -49,6 +49,7 @@ import {
   removeDevice,
   resetDeviceLayoutDelta,
   setDeviceRotationPose,
+  setScreenRotateToMatch,
 } from "./deviceEditorModel";
 import {
   addFoldAnimation,
@@ -368,7 +369,8 @@ function DeviceControlIcon({
     | "trimEnd"
     | "speed"
     | "loop"
-    | "poster";
+    | "poster"
+    | "rotate";
 }) {
   const glyph = {
     x: <path d="M2.6 8h10.8M4.8 5.8 2.6 8l2.2 2.2M11.2 5.8 13.4 8l-2.2 2.2" />,
@@ -441,6 +443,13 @@ function DeviceControlIcon({
       <>
         <rect x="2.4" y="3.4" width="11.2" height="9.2" rx="1.4" />
         <path d="m6.8 6.2 3.2 1.8-3.2 1.8z" />
+      </>
+    ),
+    rotate: (
+      <>
+        <rect x="2.4" y="6.2" width="6.4" height="7.4" rx="1.2" />
+        <path d="M8.6 2.6a4.8 4.8 0 0 1 4.8 4.8" />
+        <path d="m11.8 6.2 1.6 1.4 1.4-1.6" />
       </>
     ),
   }[type];
@@ -632,6 +641,7 @@ function FoldGlyph({
     | "fold"
     | "tent"
     | "back"
+    | "portrait"
     | "both"
     | "transition"
     | "intensity"
@@ -657,6 +667,12 @@ function FoldGlyph({
       </>
     ),
     tent: <path d="M2.6 12.2 8 3.8l5.4 8.4M1.8 12.2h12.4" />,
+    portrait: (
+      <>
+        <rect x="4.2" y="2.4" width="7.6" height="11.2" rx="1.4" />
+        <path d="M4.2 8h7.6" />
+      </>
+    ),
     back: (
       <>
         <rect x="2.6" y="3.6" width="10.8" height="8.8" rx="1.6" />
@@ -721,17 +737,21 @@ const FOLD_PRESET_OPTIONS: SegmentedOption<FoldPresetId | "custom">[] = FOLD_PRE
 
 /** Whole-device poses that only make sense with a hinge: a rotation and a fold angle together. */
 const FOLD_POSES: Array<{
-  id: "book" | "tent" | "back";
+  id: "book" | "tent" | "back" | "portrait";
   label: string;
   rotationDeg: V3;
   foldDeg: number;
   /** A tent faces its outside display out while folded past the power switch, so it needs both lit. */
   bothScreensOn?: true;
+  /** Turned on its side, so both displays rotate their media to match. */
+  rotateMedia?: true;
 }> = [
   { id: "book", label: "Book upright", rotationDeg: [4, -20, 0], foldDeg: 120 },
   // Solved, not eyeballed: hinge horizontal on top, the panels' bisector straight down, then a 20 degree turn.
   { id: "tent", label: "Tent", rotationDeg: [38, -20, -75], foldDeg: 70, bothScreensOn: true },
   { id: "back", label: "Back", rotationDeg: [4, 160, 0], foldDeg: 180 },
+  // Open and stood on its side, the camera half on top.
+  { id: "portrait", label: "Portrait", rotationDeg: [4, -16, 90], foldDeg: 180, rotateMedia: true },
 ];
 
 function DeviceGlyph() {
@@ -1161,9 +1181,16 @@ export function DeviceDrillIn({
         mutateDocDevice(next, device.id, (_next, candidate) =>
           setFoldPoseScreens(candidate, pose.bothScreensOn === true),
         );
+        if (pose.rotateMedia) setScreenRotateToMatch(next, device.id, true);
       },
       { history: "device pose" },
     );
+  };
+  const setRotateToMatch = (screen: DeviceScreenSlot, on: boolean) => {
+    if (settingsDisabled) return;
+    void patchDoc((next) => setScreenRotateToMatch(next, device.id, on, screen), {
+      history: "rotate screen media",
+    });
   };
   // Defaults are never written: a field at its default is removed, and an emptied block goes with it.
   const transition = resolveFoldTransition(device.foldTransition);
@@ -1365,6 +1392,21 @@ export function DeviceDrillIn({
               onEditScreenMedia ? () => onEditScreenMedia(device.id, group.screen) : undefined
             }
           >
+            {group.routing.media && (
+              <ToggleRow
+                icon={<DeviceControlIcon type="rotate" />}
+                label="Rotate to match the device"
+                description={
+                  typeof group.routing.media.rotateDeg === "number" &&
+                  group.routing.media.rotateDeg !== 0
+                    ? `Turned ${group.routing.media.rotateDeg}° by hand. Switch on to follow the device instead.`
+                    : "Turns the media upright when the device is on its side."
+                }
+                checked={group.routing.media.rotateDeg === "auto"}
+                disabled={settingsDisabled}
+                onChange={(on) => setRotateToMatch(group.screen, on)}
+              />
+            )}
             {group.routing.media?.kind === "video" && (
               <InspectorSliderRow
                 icon={<DeviceControlIcon type="delay" />}

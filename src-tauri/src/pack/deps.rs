@@ -557,19 +557,9 @@ fn walk(dir: &Path, prefix: &str, out: &mut Vec<(String, PathBuf)>) {
     }
 }
 
-/// The pack build exclusions (`02-data-model.md`), extending `duplicate_project`'s skip list. Shares `scan::is_excluded` with the import side, so an item exported and re-scanned hashes equal. `CLAUDE.md` and `.claude/settings.json` ride along: both are only written when missing, and users edit them.
+/// The pack build exclusions (`02-data-model.md`), extending `duplicate_project`'s skip list. Shares `scan::is_excluded` with the import side, so an item exported and re-scanned hashes equal. `CLAUDE.md` rides along (import swaps it for the app's default and keeps the text as `NOTES.md`); nothing under `.claude/` does.
 fn project_file_excluded(rel: &str) -> bool {
     super::scan::is_excluded(rel)
-}
-
-/// The dot-named entries a project carries that are still payload; `walk` skips dotted names, so these are re-added by hand.
-fn project_dot_files(dir: &Path) -> Vec<(String, PathBuf)> {
-    let settings = dir.join(".claude").join("settings.json");
-    if settings.is_file() {
-        vec![(".claude/settings.json".to_owned(), settings)]
-    } else {
-        Vec::new()
-    }
 }
 
 // - The resolver ---------------------------------------------------------------
@@ -1332,7 +1322,6 @@ fn build_project(
 
     let mut candidates: Vec<(String, PathBuf)> = Vec::new();
     walk(&dir, "", &mut candidates);
-    candidates.extend(project_dot_files(&dir));
     candidates.retain(|(rel, _)| !project_file_excluded(rel));
 
     let mut reviewed = Vec::new();
@@ -2226,8 +2215,8 @@ mod tests {
 
         assert!(has("payload/projects/acme/CLAUDE.md"), "CLAUDE.md travels");
         assert!(
-            has("payload/projects/acme/.claude/settings.json"),
-            ".claude/settings.json travels"
+            !has("payload/projects/acme/.claude/settings.json"),
+            ".claude/settings.json stays home"
         );
         assert!(has("payload/projects/acme/project.json"));
         assert!(has("payload/projects/acme/scenes/01-hero.tsx"));

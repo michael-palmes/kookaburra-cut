@@ -34,6 +34,7 @@ from .util import (
     emit_err,
     home,
     is_number,
+    json_line,
     now_ms,
     ok_envelope,
 )
@@ -183,7 +184,7 @@ class Reporter:
             line = {"event": "progress"}
             line.update({k: p[k] for k in ("stage", "run", "runs", "prepareLabel", "frame", "total", "percent", "renderFps",
                                            "etaMs", "elapsedMs") if k in p})
-            sys.stdout.write(json.dumps(line, separators=(",", ":")) + "\n")
+            sys.stdout.write(json_line(line))
         else:
             emit(f"kb export: {progress_text(p)}")
         sys.stdout.flush()
@@ -191,7 +192,7 @@ class Reporter:
 
     def note(self, text: str) -> None:
         if self.as_json:
-            sys.stdout.write(json.dumps({"event": "note", "message": text}, separators=(",", ":")) + "\n")
+            sys.stdout.write(json_line({"event": "note", "message": text}))
             sys.stdout.flush()
         else:
             emit_err(f"kb export: {text}")
@@ -417,7 +418,7 @@ def finish_success(kbctx: Any, project: Project, result: Dict[str, Any], allow_f
         raise KbError(f"{payload['file']} flashes: {len(fails)} failure{'s' if len(fails) != 1 else ''}, the first at {first.get('tc')}; "
                       "the file is kept", EXIT_PROBLEMS, kind="flashes", data=payload)
     if kbctx.json:
-        sys.stdout.write(json.dumps(ok_envelope("export", payload), separators=(",", ":"), ensure_ascii=False) + "\n")
+        sys.stdout.write(json_line(ok_envelope("export", payload)))
     return EXIT_OK
 
 
@@ -729,7 +730,7 @@ def cmd_export(kbctx: Any) -> int:
 def report_failure(kbctx: Any, e: KbError) -> int:
     """A stream's last line: the failure envelope as one compact object (the text on stderr either way)."""
     if kbctx.json:
-        sys.stdout.write(json.dumps(e.envelope("export"), separators=(",", ":"), ensure_ascii=False) + "\n")
+        sys.stdout.write(json_line(e.envelope("export")))
     emit_err(e.text())
     return e.code
 

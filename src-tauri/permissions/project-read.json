@@ -1,0 +1,64 @@
+{
+  "permission": [
+    {
+      "identifier": "project-read",
+      "description": "Read a project so a window can render it: manifests, scenes, sidecars, assets, themes, fonts, objects, clip frames and media metadata. No writes.",
+      "commands": {
+        "allow": [
+          "get_settings",
+          "get_autorun_config",
+          "list_projects",
+          "read_project_manifest",
+          "read_scene_source",
+          "project_fingerprint",
+          "project_file_stamps",
+          "is_project_trusted",
+          "list_project_assets",
+          "list_project_environments",
+          "list_project_media",
+          "list_project_asset_stamps",
+          "project_assets_stamp",
+          "file_revisions",
+          "hash_file",
+          "read_scene_doc",
+          "read_scene_doc_entry",
+          "read_project_manifest_snapshot",
+          "list_project_scenes",
+          "list_objects",
+          "read_object",
+          "list_themes",
+          "read_theme",
+          "list_theme_previews",
+          "read_builtin_theme",
+          "list_user_templates",
+          "list_user_presets",
+          "list_brands",
+          "list_brand_images",
+          "brand_image_meta",
+          "list_export_presets",
+          "list_workspace_fonts",
+          "list_system_fonts",
+          "clip_info",
+          "ensure_clip_chunks",
+          "read_clip_frame",
+          "ensure_clip_previews",
+          "set_clip_cache_pins",
+          "clip_cache_session_stats",
+          "clip_conform_pending",
+          "conform_status",
+          "media_meta",
+          "read_media_thumb",
+          "probe_audio",
+          "bridge_instance"
+        ]
+      }
+    },
+    {
+      "identifier": "project-render",
+      "description": "The two writes rendering needs: pinning a system font into the workspace and the write-once emoji raster cache.",
+      "commands": {
+        "allow": ["pin_system_font", "write_emoji_raster"]
+      }
+    }
+  ]
+}
