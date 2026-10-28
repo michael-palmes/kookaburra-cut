@@ -11,10 +11,6 @@ import { THEME_LINEUP } from "../theme/registry";
 import { preloadBundledBackdrops } from "../toolkit/stage/backdrops";
 import { highQualityEncode, openingPosterFrameEnabled, withPosterFrame } from "../ui/exportOptions";
 import { BridgeProgressTracker } from "./bridgeExport";
-import { releaseCompositorPools } from "./compositor";
-import { releaseComposer } from "./effects";
-import { collectEnvironmentSources, preloadEnvironments } from "./environments";
-import { canvasHandle } from "./exportBridge";
 import {
   awaitSceneHostsCommitted,
   type Codec,
@@ -35,6 +31,7 @@ import { listPresets, presetPreviewFrame } from "./presets";
 import { type LoadedProject, loadProject, previewLabProjectIds, sceneFileStem } from "./project";
 import type { RenderStateFingerprint } from "./renderFingerprint";
 import { assertScenesLoaded, sceneErrorRefusal } from "./sceneErrors";
+import { stage } from "./stageHandle";
 import type { StillsWarning } from "./stillPages";
 import {
   DEFAULT_STILLS_FORMAT,
@@ -678,19 +675,7 @@ export async function runAutoRun(
         console.warn(`[autorun] theme-previews ${themeId} starting`);
         const loaded = await loadProject(config.project, { themeId });
         assertScenesLoaded(loaded, "capture theme previews");
-        // The theme's PMREM environment resolves BEFORE the swap (the preloadBundledBackdrops rationale): headless windows never fire rAF, so a texture landing after the swap would otherwise stay unpainted into the first capture.
-        const gl = canvasHandle.current?.gl;
-        if (gl) {
-          await preloadEnvironments(
-            gl,
-            collectEnvironmentSources(
-              loaded.id,
-              [loaded.theme, ...loaded.sceneThemes],
-              loaded.projectLighting,
-              loaded.sceneDocs,
-            ),
-          ).catch((e) => console.warn(`[autorun] environment preload failed for ${themeId}:`, e));
-        }
+        // The theme's PMREM environment resolves inside the stage before its first capture (the snapshot barriers wait on it).
         applyProject(loaded);
         await nextCommit();
         // Two commit barriers: the project swap itself (concurrent-lane; without this the first capture reads the previous theme) then a cold-mount wait so the scenes are actually in the canvas.
@@ -729,8 +714,7 @@ export async function runAutoRun(
         if (!entry) throw new Error(`template-previews: unknown template "${templateId}"`);
         console.warn(`[autorun] template-previews ${templateId} starting`);
         const info = await createProject(`Template previews ${templateId}`, templateId, null);
-        releaseCompositorPools();
-        releaseComposer();
+        await stage().releasePools();
         const created = await loadProject(`ws:${info.slug}`);
         assertScenesLoaded(created, "capture template previews");
         applyProject(created);
@@ -816,8 +800,7 @@ export async function runAutoRun(
         const entry = bundled.find((preset) => preset.projectId === projectId);
         if (!entry) throw new Error(`preset-previews: unknown preset "${projectId}"`);
         console.warn(`[autorun] preset-previews ${entry.slug} starting`);
-        releaseCompositorPools();
-        releaseComposer();
+        await stage().releasePools();
         const loaded = await loadProject(entry.projectId);
         assertScenesLoaded(loaded, "capture preset previews");
         applyProject(loaded);
@@ -1036,8 +1019,7 @@ export async function runAutoRun(
       const templateId = config.projects[0];
       if (!applyProject) throw new Error("the create action needs the applyProject hook");
       const info = await createProject(`Create smoke ${templateId}`, templateId, null);
-      releaseCompositorPools();
-      releaseComposer();
+      await stage().releasePools();
       const created = await loadProject(`ws:${info.slug}`);
       assertScenesLoaded(created, "pass the create smoke");
       applyProject(created);
@@ -1097,8 +1079,7 @@ export async function runAutoRun(
       if (index > 0) {
         if (!applyProject) throw new Error("a multi-project run needs the applyProject hook");
         // One WebContent process hosts every leg, so the previous project's render-target pools and composer must not stack onto this leg's footprint (WebKit kills the process near 4 GB).
-        releaseCompositorPools();
-        releaseComposer();
+        await stage().releasePools();
         console.warn(`[autorun] loading "${projectId}"`);
         current = await loadProject(projectId);
         applyProject(current);
@@ -1179,12 +1160,9 @@ export async function runAutoRun(
           format,
         };
         // GPU-residency breadcrumb: three's texture/geometry/program counts localize footprint growth to a leg without a debugger attached.
-        const glInfo = canvasHandle.current?.gl.info;
-        if (glInfo) {
-          console.warn(
-            `[autorun] gl memory before ${current.id} ${format.name}: geometries ${glInfo.memory.geometries} textures ${glInfo.memory.textures} programs ${glInfo.programs?.length ?? 0}`,
-          );
-        }
+        console.warn(
+          `[autorun] stage census before ${current.id} ${format.name}: ${JSON.stringify(await stage().census())}`,
+        );
         if (config.action === "stills" || config.action === "stillsverify") {
           // Reproducible stills land in the run dir; the page-stage hash is the baseline, a PDF's file hash only advisory.
           const settings = {
@@ -1276,11 +1254,9 @@ export async function runAutoRun(
             ...(await writtenFacts(path)),
           });
         }
-        if (glInfo) {
-          console.warn(
-            `[autorun] gl memory after ${current.id} ${format.name}: geometries ${glInfo.memory.geometries} textures ${glInfo.memory.textures} programs ${glInfo.programs?.length ?? 0}`,
-          );
-        }
+        console.warn(
+          `[autorun] stage census after ${current.id} ${format.name}: ${JSON.stringify(await stage().census())}`,
+        );
       }
     }
   } catch (e) {

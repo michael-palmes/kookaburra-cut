@@ -1,4 +1,3 @@
-import { Canvas, useThree } from "@react-three/fiber";
 import { invoke } from "@tauri-apps/api/core";
 import { emit, listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -37,7 +36,6 @@ import {
 import { effectiveKeyMoments, setBeatProject, useBeatStore } from "./engine/beatState";
 import { setActiveProjectBrand, setProjectBrand } from "./engine/brands";
 import type { VideoRun, VideoRunResult } from "./engine/bridgeExport";
-import { CompositorDriver } from "./engine/CompositorDriver";
 import { useCameraEditStore } from "./engine/cameraEditStore";
 import { ensureCaptureService } from "./engine/captureBridge";
 import {
@@ -52,7 +50,6 @@ import {
   clipExtractionCount,
   clipExtractionProgress,
   evictAllClips,
-  invalidateChangedClips,
   setHardwareVideo,
   subscribeClipExtraction,
 } from "./engine/clips";
@@ -61,7 +58,6 @@ import { useCompareEditStore } from "./engine/compareEditStore";
 import { useDeviceTrackEditStore } from "./engine/deviceTrackEditStore";
 import { listEdits, openEdit, openEditNamed } from "./engine/edit";
 import { useEffectsStore } from "./engine/effectsStore";
-import { canvasHandle, ExportBridge } from "./engine/exportBridge";
 import {
   EXPORT_PREAMBLE_STEPS,
   type ExportProgress,
@@ -72,14 +68,7 @@ import {
   verifyDeterminism,
 } from "./engine/exporter";
 import { isExporting } from "./engine/exportState";
-import {
-  CAMERA,
-  FORMATS,
-  type FormatSpec,
-  FPS,
-  SHADOW_MAP_TYPE,
-  STANDING_ASPECTS,
-} from "./engine/format";
+import { FORMATS, type FormatSpec, FPS, STANDING_ASPECTS } from "./engine/format";
 import { mergeFrameSpec } from "./engine/frameSchema";
 import { useGizmoSectionOpen } from "./engine/gizmoSections";
 import {
@@ -97,7 +86,6 @@ import { useImageEditStore } from "./engine/imageEditStore";
 import { useImageReconciliationStore } from "./engine/imageReconciliationStore";
 import { useLayeredScreenshotEditStore } from "./engine/layeredScreenshotEditStore";
 import { useLightingEditStore } from "./engine/lightingEditStore";
-import { ensureRectAreaLightUniforms } from "./engine/lightingState";
 import { conformingAmong, importMedia } from "./engine/media";
 import {
   editRenderMatchesPending,
@@ -157,11 +145,8 @@ import {
   writeProjectManifestSnapshot,
 } from "./engine/projectEdit";
 import { TrustDeniedError } from "./engine/projectTrust";
-import { RenderSettingsApplier } from "./engine/RenderSettingsApplier";
 import type { RenderSettings } from "./engine/renderSettings";
 import { revealApp } from "./engine/reveal";
-import { StagePointer } from "./engine/StagePointer";
-import { StageScenes } from "./engine/StageScenes";
 import type { CameraDoc } from "./engine/sceneCameraEdit";
 import { deriveCompareBDoc } from "./engine/sceneCompare";
 import {
@@ -198,6 +183,7 @@ import {
   observeSourceStamps,
   projectFileStamps,
 } from "./engine/sourceBaseline";
+import { stageOrNull } from "./engine/stageHandle";
 import { frameWorldCutout } from "./engine/stageViewport";
 import {
   addStillMark,
@@ -227,6 +213,7 @@ import {
   slugifyName,
 } from "./engine/workspace";
 import { buildVideoExportOptions, type VideoExportSelection } from "./export/selection";
+import { StageView } from "./stage/StageView";
 import { useEditorStore } from "./store/editorStore";
 import {
   projectOpenAspect,
@@ -360,17 +347,6 @@ const TOAST_AUTO_CLOSE_MS = 4000;
 /** Once per page load: StrictMode mounts App twice. */
 let stillsJobCleared = false;
 
-/** Re-renders one frame per scrub change; the export path (exporter.ts) has its own frameloop controller reading the same clock store. */
-function PreviewClock() {
-  const invalidate = useThree((s) => s.invalidate);
-  useEffect(() => {
-    return useClockStore.subscribe((state, prev) => {
-      if (state.currentMs !== prev.currentMs) invalidate();
-    });
-  }, [invalidate]);
-  return null;
-}
-
 /** The manifest's project-relative path, as the source poll names it. */
 const MANIFEST_FILE = "project.json";
 
@@ -385,7 +361,6 @@ export default function App() {
   const extractionProgress = useSyncExternalStore(subscribeClipExtraction, clipExtractionProgress);
   const durationMs = useClockStore((s) => s.durationMs);
   const setCurrentMs = useClockStore((s) => s.setCurrentMs);
-  const theme = useEditorStore((s) => s.theme);
   const format = useEditorStore((s) => s.format);
   const projectId = useEditorStore((s) => s.projectId);
   const setFormat = useEditorStore((s) => s.setFormat);
@@ -729,7 +704,10 @@ export default function App() {
   // Settings cleared the clip-extraction cache on disk; drop every registered extraction so mounted videos re-extract (the clear is refused mid-export, so this can't race the export loop).
   useEffect(() => {
     if (isAutoRun) return;
-    const unlisten = listen("kookaburra://clips-cache-cleared", () => evictAllClips());
+    const unlisten = listen("kookaburra://clips-cache-cleared", () => {
+      evictAllClips();
+      void stageOrNull()?.evictAllClips();
+    });
     return () => {
       void unlisten.then((fn) => fn());
     };
@@ -737,11 +715,15 @@ export default function App() {
 
   // The everyday clip-decode lane follows the Settings hardware-video toggle: seeded at boot, live-updated from the Settings window (deferred to the export's lane restore mid-run).
   useEffect(() => {
+    const apply = (enabled: boolean) => {
+      setHardwareVideo(enabled);
+      stageOrNull()?.previewFlags({ hardwareVideo: enabled });
+    };
     getSettings()
-      .then((s) => setHardwareVideo(!s.disableHardwareVideo))
+      .then((s) => apply(!s.disableHardwareVideo))
       .catch(() => {});
     const unlisten = listen<boolean>("kookaburra://hardware-video-changed", (e) =>
-      setHardwareVideo(e.payload),
+      apply(e.payload),
     );
     return () => {
       void unlisten.then((fn) => fn());
@@ -1546,9 +1528,9 @@ export default function App() {
     void (async () => {
       await Promise.all([...batch.slugs].map((slug) => refreshWorkspaceAssets(`ws:${slug}`)));
       // Stale-extraction sweep first, so scenes re-bind against fresh frames (an edit render can overwrite an -edited.mp4 in place).
-      await invalidateChangedClips().catch((e) =>
-        console.warn("[clips] invalidation sweep failed:", e),
-      );
+      await stageOrNull()
+        ?.invalidateChangedClips()
+        .catch((e) => console.warn("[clips] invalidation sweep failed:", e));
       const pending = pendingRepointRef.current;
       if (
         pending &&
@@ -1702,6 +1684,7 @@ export default function App() {
   const applyLoadedProject = useCallback(
     (loaded: LoadedProject) => {
       setProject(loaded);
+      void stageOrNull()?.applyProject(loaded);
       if (!isAutoRun) {
         setPreviewAudioProject(loaded);
         setBeatProject(loaded);
@@ -2158,9 +2141,9 @@ export default function App() {
           if (!observeAssetStamp(projectId, stamp)) return;
           const paths = await refreshWorkspaceAssets(projectId);
           if (cancelled || isExporting() || paths.length === 0) return;
-          await invalidateChangedClips().catch((e) =>
-            console.warn("[clips] invalidation sweep failed:", e),
-          );
+          await stageOrNull()
+            ?.invalidateChangedClips()
+            .catch((e) => console.warn("[clips] invalidation sweep failed:", e));
           await emit("kookaburra://media-changed", { slug, paths, origin: "watch" });
           if (paths.some((rel) => /\.(cube|hdr|exr)$/i.test(rel))) setLoadNonce((n) => n + 1);
         })
@@ -2347,15 +2330,18 @@ export default function App() {
     if (!config || project.id !== config.project) return;
     const cfg = config;
 
-    console.warn(`[autorun] project "${project.id}" loaded — polling for the canvas handle`);
+    console.warn(`[autorun] project "${project.id}" loaded — polling for the stage`);
     let timer = 0;
     let cancelled = false;
     const waitForCanvas = () => {
       if (cancelled || autoRunRef.current.started) return;
-      if (canvasHandle.current) {
-        console.warn("[autorun] canvas handle ready — starting run");
+      const stage = stageOrNull();
+      if (stage) {
         autoRunRef.current.started = true;
-        void runAutoRun(project, cfg, applyLoadedProject);
+        void stage.ready.then(() => {
+          console.warn("[autorun] stage ready — starting run");
+          return runAutoRun(project, cfg, applyLoadedProject);
+        });
         return;
       }
       // setTimeout, not requestAnimationFrame: WKWebView suspends rAF while occluded or the display sleeps (the AFK scenario the autorun serves), which silently stalled runs; timers keep firing.
@@ -2405,20 +2391,24 @@ export default function App() {
 
   // Balanced/Performance thin preview clip decoding to every 2nd frame; pinned to full whenever an export could be running.
   useEffect(() => {
-    setPreviewClipStride(!exporting && previewQuality !== "full" ? 2 : 1);
+    const clipStride = !exporting && previewQuality !== "full" ? 2 : 1;
+    setPreviewClipStride(clipStride);
+    stageOrNull()?.previewFlags({ clipStride });
   }, [exporting, previewQuality]);
   const motionBlurWhilePlaying = useUiStore((s) => s.motionBlurWhilePlaying);
   const projectBlurSamples = project?.renderSettings.motionBlur?.samples ?? SHUTTER_SAMPLES_DEFAULT;
   useEffect(() => {
     const samples = previewQuality === "full" ? projectBlurSamples : 4;
-    setPreviewMotionBlurPlayback(
-      motionBlurWhilePlaying && previewQuality !== "performance" ? samples : 0,
-    );
+    const motionBlurSamples =
+      motionBlurWhilePlaying && previewQuality !== "performance" ? samples : 0;
+    setPreviewMotionBlurPlayback(motionBlurSamples);
+    stageOrNull()?.previewFlags({ motionBlurSamples });
   }, [motionBlurWhilePlaying, previewQuality, projectBlurSamples]);
 
   // Playback binds the small preview JPEGs; pausing flips every consumer back to exact full frames.
   useEffect(() => {
     setPreviewPlaybackActive(playing && !exporting);
+    stageOrNull()?.previewFlags({ playbackActive: playing && !exporting });
   }, [playing, exporting]);
 
   // Slowdown badge state: the EMA lives in refs (per-frame maths, no renders); the badge value updates at most every 200ms so the indicator never adds render work of its own.
@@ -3029,9 +3019,9 @@ export default function App() {
                 className="stage-frame"
                 style={{ "--stage-aspect": format.width / format.height } as CSSProperties}
               >
-                <Canvas
-                  frameloop="demand"
-                  // Preview-only pixel ratio; the exporter pins its own (setPixelRatio(1)) per run.
+                {/* The stage: one canvas the stage worker draws into (scene code and three live there, never in this realm); the preview pixel ratio is the exporter's own business per run. The scene tree itself is shared with the hidden render window (engine/StageScenes, mounted by the worker). */}
+                <StageView
+                  stageRole="editor"
                   dpr={
                     previewQuality === "performance"
                       ? 1
@@ -3039,49 +3029,8 @@ export default function App() {
                         ? 1.5
                         : [1, 2]
                   }
-                  // antialias is a request; WebKit decides silently (ANGLE/Metal). The onCreated truth log below records what the context actually granted, landing in the autorun dev.log on every gated run.
-                  gl={{ preserveDrawingBuffer: true, antialias: true }}
-                  // Shadow maps: enabled globally, inert until a SceneStage mounts a castShadow key light (see SHADOW_MAP_TYPE; regressions prove the inert case byte-neutral).
-                  shadows={{ enabled: true, type: SHADOW_MAP_TYPE }}
-                  onCreated={({ gl }) => {
-                    // Area lights need the LTC uniforms initialised once, at renderer creation, never lazily on first light (a first-frame init would race the export preamble). Global and idempotent.
-                    ensureRectAreaLightUniforms();
-                    console.warn(
-                      "[gl] context:",
-                      JSON.stringify(gl.getContext().getContextAttributes()),
-                      `maxSamples=${gl.capabilities.maxSamples}`,
-                      // The fx transition path renders into HalfFloat MSAA targets, so float renderability is part of the truth log.
-                      `extColorBufferFloat=${gl.extensions.has("EXT_color_buffer_float")}`,
-                    );
-                  }}
-                  camera={{ position: CAMERA.position, fov: CAMERA.fov }}
-                >
-                  <color attach="background" args={[theme.colors.background]} />
-                  <PreviewClock />
-                  <ExportBridge />
-                  <StagePointer cutout={sceneCutout} />
-                  <RenderSettingsApplier />
-                  {project && (
-                    <CompositorDriver
-                      projectId={project.id}
-                      slots={project.slots}
-                      cameraTrack={project.cameraTrack}
-                      sceneDocs={project.sceneDocs}
-                      theme={project.theme}
-                      sceneThemes={project.sceneThemes}
-                      projectLighting={project.projectLighting}
-                      sceneFrames={project.sceneFrames}
-                      compareBDocs={project.compareBDocs}
-                      compareBThemes={project.compareBThemes}
-                      roomThemes={project.roomThemes}
-                      motionBlur={project.renderSettings.motionBlur}
-                      music={project.music}
-                      commitStamp={project}
-                    />
-                  )}
-                  {/* The scene tree itself is shared with the hidden render window (engine/StageScenes): scenes resolve assets against the loaded project, which lags the store's projectId by a render during a switch (see ProjectIdContext). */}
-                  <StageScenes project={project} />
-                </Canvas>
+                  cutout={sceneCutout}
+                />
                 {/* The live scene terminal: below the tool and gizmo layers so their handles stay reachable, self-gated on the doc's terminal block and paused playback. */}
                 {project && isEditableProjectId(project.id) && !exporting && !isAutoRun && (
                   <SceneTerminalOverlay

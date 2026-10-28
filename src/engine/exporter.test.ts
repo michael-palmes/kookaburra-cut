@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { Mesh, MeshBasicMaterial, PerspectiveCamera, Scene } from "three";
 import { Text } from "troika-three-text";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createInlineStage } from "../stage/inlineStage";
 import { prepareExportClips } from "./clips";
 import { useClockStore } from "./clock";
 import { renderComposited } from "./compositor";
@@ -16,6 +17,7 @@ import {
 import { isExporting } from "./exportState";
 import { FORMATS } from "./format";
 import type { SceneDoc } from "./sceneDocSchema";
+import { setStage } from "./stageHandle";
 import { reportTextDerivedPending } from "./textDerivedState";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn(), Channel: class {} }));
@@ -141,6 +143,7 @@ let onPush: () => void = () => {};
 const called = (cmd: string) => vi.mocked(invoke).mock.calls.some(([c]) => c === cmd);
 
 beforeEach(() => {
+  setStage(createInlineStage());
   pushed = [];
   onPush = () => {};
   vi.mocked(invoke).mockReset();
@@ -155,6 +158,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  setStage(null);
   canvasHandle.current = null;
 });
 

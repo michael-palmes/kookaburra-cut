@@ -1,25 +1,21 @@
-import { useCallback, useMemo, useRef, useSyncExternalStore } from "react";
+import { useCallback, useMemo, useRef } from "react";
 import { useCameraEditStore } from "../engine/cameraEditStore";
 import { useChartEditStore } from "../engine/chartEditStore";
 import { computeFormat } from "../engine/format";
 import { resolveCutoutRender } from "../engine/frameFormat";
 import { type StageRect, stageCamera } from "../engine/gizmoRegistry";
-import {
-  type Gizmo2DTarget,
-  gizmoTargets,
-  subscribeGizmoTargets,
-} from "../engine/gizmoTargetRegistry";
-import { nodeDrawn } from "../engine/gizmoVisibility";
 import type { LoadedProject } from "../engine/project";
 import { resolveChart } from "../engine/sceneChart";
 import type { SceneDoc } from "../engine/sceneDocSchema";
+import type { Gizmo2DTargetFrame } from "../engine/stageProtocol";
 import { cutoutStageRect, frameWorldCutout, worldViewportRect } from "../engine/stageViewport";
 import { useEditorStore } from "../store/editorStore";
 import { chartOffsetWrite, chartScaleWrite } from "./gizmo/chartGizmoWrite";
 import { Gizmo2D, type Gizmo2DGesture, type Gizmo2DItem } from "./gizmo/Gizmo2D";
-import { frameFromQuad, frameGuideLines, type Pt } from "./gizmo/gizmo2dMath";
-import { projectWorldPoint, unprojectToZPlane, worldQuadOf } from "./gizmo/gizmo2dProject";
+import { frameGuideLines, type Pt } from "./gizmo/gizmo2dMath";
+import { unprojectToZPlane } from "./gizmo/gizmo2dProject";
 import { useGizmoDocWrite } from "./gizmo/gizmoDocWrite";
+import { stageTargetFrame, useStageTargets } from "./gizmo/stageTargets";
 
 /** Direct manipulation for a hero-mount chart: move (`chart.style.offset`) and scale about the plot's own origin (`chart.style.scale`), the same two fields the Chart drill's Placement group writes. Staged charts keep the 3D gizmo; a panel chart's position is entirely a function of the panel layout, so there is nothing to write. There is no rotate handle: `style.rotation` is the two-axis presentation tilt fed into `fitChart3d`, not a 2D roll. */
 
@@ -43,7 +39,7 @@ export function ChartHeroGizmo({
   sceneIndex: number;
   onDocChanged: (sceneIndex: number, doc: SceneDoc) => void;
 }) {
-  const targets = useSyncExternalStore(subscribeGizmoTargets, gizmoTargets);
+  const targets = useStageTargets();
   const selected = useChartEditStore((s) => s.selected);
   const cameraArmed = useCameraEditStore((s) => s.armedTool !== null);
   const formatSpec = useEditorStore((s) => s.format);
@@ -62,7 +58,7 @@ export function ChartHeroGizmo({
     [cutout, frameSpec, formatSpec, format],
   );
 
-  const target = useMemo<Gizmo2DTarget | null>(
+  const target = useMemo<Gizmo2DTargetFrame | null>(
     () =>
       chart?.mount === "hero"
         ? (targets.find(
@@ -73,21 +69,9 @@ export function ChartHeroGizmo({
   );
 
   const geometryOf = useCallback(
-    (entry: Gizmo2DTarget, rect: StageRect) => {
-      const node = entry.node();
-      const local = entry.localRect();
-      if (!node || !local || !nodeDrawn(node)) return null;
-      const camera = stageCamera();
-      if (!camera) return null;
-      const viewport = worldViewportRect(rect, cutout);
-      let worldZ = 0;
-      const { quad, pivot } = worldQuadOf(node, local, (w) => {
-        worldZ = w.z;
-        return projectWorldPoint(camera, viewport, w);
-      });
-      return { frame: frameFromQuad(quad, pivot), worldZ };
-    },
-    [cutout],
+    (entry: Gizmo2DTargetFrame, rect: StageRect) =>
+      stageTargetFrame(entry, worldViewportRect(rect, cutout), format.frame),
+    [cutout, format.frame],
   );
 
   const items = useMemo<Gizmo2DItem[]>(

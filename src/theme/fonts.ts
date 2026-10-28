@@ -76,6 +76,15 @@ export function registerWorkspaceFont(family: string, weight: number, url: strin
   weights.set(weight, url);
 }
 
+/** Every pinned face as the stage worker receives it. */
+export function workspaceFontEntries(): { family: string; weight: number; url: string }[] {
+  const out: { family: string; weight: number; url: string }[] = [];
+  for (const [family, weights] of workspaceFonts) {
+    for (const [weight, url] of weights) out.push({ family, weight, url });
+  }
+  return out;
+}
+
 /** Warn once per unresolved family; a per-frame render path must not spam. */
 const warnedFamilies = new Set<string>();
 

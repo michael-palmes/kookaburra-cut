@@ -1,0 +1,125 @@
+import type { PerspectiveCamera } from "three";
+import type { FrameRect } from "../toolkit/frame/frameLayout";
+import type { ExportOptions } from "./exporter";
+import type { GizmoDomain } from "./gizmoRegistry";
+import type { GlCensus } from "./glContexts";
+import type { PerfRow } from "./perfProbe";
+import type { LoadedProject } from "./project";
+import type { RenderStateFingerprint } from "./renderFingerprint";
+import type {
+  CameraFrame,
+  CommitStamps,
+  Gizmo2DTargetFrame,
+  GizmoPickerSummary,
+  SceneCompileEntry,
+  SceneCompileResult,
+  StageExportOptions,
+} from "./stageProtocol";
+import type { StillPageDigest, StillsSettings } from "./stillsExport";
+
+/** What the window realm's engine modules can ask of the stage worker (`stage/stageClient.ts` implements it). Engine code reaches the stage through `stage()` so it never imports the client, which would drag the worker bootstrap into the engine graph. */
+export interface StageHandle {
+  readonly ready: Promise<void>;
+  /** The last commit stamps the canvas tree posted. */
+  stamps(): CommitStamps;
+  subscribeStamps(listener: () => void): () => void;
+  /** The LoadedProject the stage last committed (identity: the object this window handed it). */
+  committedProject(): LoadedProject | null;
+  /** The last rendered frame's gizmo targets and camera. */
+  frame(): { targets: Gizmo2DTargetFrame[]; camera: CameraFrame | null };
+  subscribeFrame(listener: () => void): () => void;
+  pickers(): GizmoPickerSummary[];
+  subscribePickers(listener: () => void): () => void;
+  /** A camera whose matrices are the stage camera's last frame, for window-side projection maths; null before the first frame. */
+  camera(): PerspectiveCamera | null;
+  compileScenes(projectId: string, entries: SceneCompileEntry[]): Promise<SceneCompileResult[]>;
+  loadProject(project: LoadedProject | null, seq: number): Promise<void>;
+  /** Loads with a fresh sequence number: the window's project swap path. */
+  applyProject(project: LoadedProject | null): Promise<number>;
+  awaitHosts(expected: number): Promise<void>;
+  settle(projectId: string, onProgress?: (completed: number) => void): Promise<void>;
+  exportBegin(
+    opts: StageExportOptions,
+    onPrepareStep?: (step: number) => void,
+  ): Promise<{ total: number }>;
+  exportFrame(
+    frame: number,
+    tMs: number,
+    poster: boolean,
+    buffer: ArrayBuffer | null,
+    fingerprint: boolean,
+  ): Promise<{
+    rgba: Uint8Array;
+    boundClipFrame: number;
+    fingerprint: RenderStateFingerprint | null;
+  }>;
+  exportEnd(): Promise<void>;
+  /** Holds the worker's export flag across a Verify's two passes. */
+  holdExport(on: boolean): Promise<void>;
+  captureFrame(
+    opts: StageExportOptions,
+    tMs: number,
+  ): Promise<{ rgba: Uint8Array; width: number; height: number }>;
+  stillsBegin(
+    opts: StageExportOptions,
+    settings: StillsSettings,
+    onPrepareStep?: (step: number) => void,
+  ): Promise<{ total: number; pageTimesMs: number[]; warnings: unknown[]; pageMeta: string[] }>;
+  stillsPage(page: number): Promise<{
+    body: Uint8Array;
+    headers: Record<string, string>;
+    pageHash: string;
+    digest: StillPageDigest;
+  }>;
+  stillsEnd(): Promise<void>;
+  snapshot(tMs: number | null, width: number, format: "png" | "jpeg"): Promise<Uint8Array | null>;
+  perfRun(): Promise<PerfRow[]>;
+  perfColdWaits(): Promise<{ referenced: number; bound: number; waits: number[] }>;
+  hitTest(
+    ndcX: number,
+    ndcY: number,
+    domain?: GizmoDomain,
+    claim?: boolean,
+  ): Promise<GizmoPickerSummary | null>;
+  census(): Promise<GlCensus>;
+  forceContextLoss(): Promise<void>;
+  releasePools(): Promise<void>;
+  invalidateChangedClips(): Promise<void>;
+  evictAllClips(): Promise<void>;
+  setCutout(rect: FrameRect | null): void;
+  /** Preview-only knobs the worker's render path reads (engine/previewMedia.ts, the clip lane); never pixels an export sees. */
+  previewFlags(flags: {
+    clipStride?: number;
+    motionBlurSamples?: number;
+    playbackActive?: boolean;
+    slideshowActive?: boolean;
+    hardwareVideo?: boolean;
+  }): void;
+  /** Loss count on the stage canvas since the worker started. */
+  contextLosses(): number;
+  subscribeContextLost(listener: () => void): () => void;
+  /** The canvas element the stage draws into (its client box is the stage rect). */
+  readonly element: HTMLCanvasElement;
+}
+
+let current: StageHandle | null = null;
+
+export function setStage(handle: StageHandle | null): void {
+  current = handle;
+}
+
+/** The window's stage, or null before one is attached (the theme editor keeps a main-thread canvas and never asks). */
+export function stageOrNull(): StageHandle | null {
+  return current;
+}
+
+export function stage(): StageHandle {
+  if (!current) throw new Error("Export bridge not mounted: the stage is not ready.");
+  return current;
+}
+
+/** `ExportOptions` without the window-only abort signal, for the protocol. */
+export function stageExportOptions(opts: ExportOptions): StageExportOptions {
+  const { signal: _signal, ...rest } = opts;
+  return rest;
+}

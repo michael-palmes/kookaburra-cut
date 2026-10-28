@@ -8,7 +8,6 @@ import { initAutoRunConfig } from "./engine/autorun";
 import { installDevPerformanceDrain } from "./engine/devPerformance";
 import { revealFailsafe } from "./engine/reveal";
 import { installWindowNativePort } from "./engine/windowNativePort";
-import { startStageWorker } from "./stage/stageHost";
 import { preloadAppFonts } from "./theme/fonts";
 import "./styles.css";
 
@@ -24,11 +23,6 @@ initAutoRunConfig()
   .then(() => preloadAppFonts())
   .catch((e) => console.error("[boot] preload failed:", e))
   .finally(() => {
-    // SPIKE (scene isolation, Phase 1): `VITE_STAGE_WORKER=1 pnpm kookaburra:run …` hosts the engine in the stage worker instead of the editor.
-    if (import.meta.env.VITE_STAGE_WORKER === "1") {
-      startStageWorker(root);
-      return;
-    }
     ReactDOM.createRoot(root).render(
       <React.StrictMode>
         <App />

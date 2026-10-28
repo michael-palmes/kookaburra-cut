@@ -1,12 +1,11 @@
 import type { FrameRect } from "../toolkit/frame/frameLayout";
-import type { ClipInfo, ClipLane } from "./clips";
+import type { ClipInfo } from "./clips";
 import type { ExportOptions } from "./exporter";
 import type { GizmoDomain } from "./gizmoRegistry";
 import type { GlCensus } from "./glContexts";
 import type { SceneLoadPhase } from "./loadDiagnostics";
 import type { PerfRow } from "./perfProbe";
 import type { LoadedProject } from "./project";
-import type { RenderStateFingerprint } from "./renderFingerprint";
 import type { StillsSettings } from "./stillsExport";
 
 /**
@@ -14,12 +13,13 @@ import type { StillsSettings } from "./stillsExport";
  * zustand stores, every native effect) and its stage worker (three, react-three-fiber, the
  * toolkit, the compiled scene modules). Scene code runs only in the worker, which has no
  * Tauri IPC; the worker never names a filesystem path, it asks for what it needs by
- * project-relative name and the window resolves it against the open project.
+ * project-relative name or by a handle the window issued, and the window resolves it against
+ * the open project.
  *
- * Shapes: `WindowRequest` expects exactly one `WorkerReply` with the same `id`; `WindowNotice`
- * and `WorkerNotice` are fire-and-forget; `WorkerRequest` is answered by one `WindowReply`.
- * Everything crossing is structured-clone safe; frame bytes travel as transferred buffers.
- * See docs/architecture.md ("The stage worker") and docs/determinism.md.
+ * Shapes: a `WindowRequest` expects exactly one `WorkerReply` with the same `id`; a
+ * `WindowNotice` and a `WorkerNotice` are fire-and-forget; a `WorkerRequest` is answered by one
+ * `WindowReply`. Everything crossing is structured-clone safe; frame bytes travel as
+ * transferred buffers. See docs/architecture.md ("The stage worker") and docs/determinism.md.
  */
 export const STAGE_PROTOCOL_VERSION = 1;
 
@@ -43,8 +43,15 @@ export interface StageProject extends Omit<LoadedProject, "scenes" | "persistent
     errorCard?: { file: string; message: string };
   }[];
   persistentKey?: string;
-  /** Every project-relative asset the worker may load, resolved by the window: images, HDRs and panel sources, keyed by their clean relative path. */
-  assetUrls: Record<string, string>;
+  /** Every project-relative asset the worker may load, resolved by the window, keyed by clean relative path. */
+  assets: StageAssets;
+  /** Workspace-pinned faces the window registered, with the URLs troika fetches. */
+  fonts: { family: string; weight: number; url: string }[];
+}
+
+export interface StageAssets {
+  images: Record<string, string>;
+  environments: Record<string, string>;
 }
 
 export interface StageSize {
@@ -65,8 +72,11 @@ export interface Gizmo2DTargetFrame {
   world: [number, number, number][];
   /** The same five points in NDC through the live camera; absent for a panel item. */
   ndc?: [number, number][];
-  /** Depth-aware points for a screenshot stack. */
+  /** Depth-aware points for a screenshot stack, world space. */
   worldPoints?: [number, number, number][];
+  /** The node's world matrix and its parent's, column-major, for a drag that lands in the parent's space. */
+  matrixWorld: number[];
+  parentWorld?: number[];
 }
 
 export interface CameraFrame {
@@ -83,20 +93,29 @@ export interface GizmoPickerSummary {
   sceneIndex: number;
 }
 
+export interface SceneHostSummary {
+  index: number;
+  id: string;
+  startMs: number;
+  durationMs: number;
+  side?: "b";
+}
+
 export interface CommitStamps {
   clockMs: number;
   shutterSeq: number;
   holdsVersion: number;
-  /** The LoadedProject identity the canvas tree last committed, as the window's load sequence number. */
+  /** The load sequence number of the LoadedProject the canvas tree last committed. */
   projectSeq: number | null;
   primaryHosts: number;
 }
 
-/** The window's zustand stores the canvas tree reads (data fields only, actions stay realm-local). */
+/** The window's zustand stores the canvas tree reads or writes (data fields only, actions stay realm-local). The registries the canvas fills and the inspector reads ride the same mirror the other way. */
 export type MirroredStore =
   | "editor"
   | "ui"
   | "effects"
+  | "clock"
   | "cameraEdit"
   | "compareEdit"
   | "lightingEdit"
@@ -106,11 +125,19 @@ export type MirroredStore =
   | "chartEdit"
   | "imageEdit"
   | "layeredScreenshotEdit"
+  | "sceneText"
+  | "textKey"
+  | "stage"
+  | "depthStage"
   | "presentDeck";
+
+/** `ExportOptions` minus the window-only `signal`. */
+export type StageExportOptions = Omit<ExportOptions, "signal">;
 
 export type WindowRequest =
   | { type: "configure"; id: number; size: StageSize; frameloop: "demand" | "never" }
   | { type: "compileScenes"; id: number; projectId: string; entries: SceneCompileEntry[] }
+  | { type: "compilePersistent"; id: number; projectId: string; entry: SceneCompileEntry }
   | { type: "loadProject"; id: number; project: StageProject | null; seq: number }
   | { type: "awaitHosts"; id: number; expected: number }
   | { type: "settle"; id: number; projectId: string }
@@ -120,24 +147,32 @@ export type WindowRequest =
       id: number;
       frame: number;
       tMs: number;
+      poster: boolean;
       buffer: ArrayBuffer | null;
       fingerprint: boolean;
     }
   | { type: "exportEnd"; id: number }
+  | { type: "holdExport"; id: number; on: boolean }
   | { type: "captureFrame"; id: number; opts: StageExportOptions; tMs: number }
   | { type: "stillsBegin"; id: number; opts: StageExportOptions; settings: StillsSettings }
   | { type: "stillsPage"; id: number; page: number }
   | { type: "stillsEnd"; id: number }
   | { type: "snapshot"; id: number; tMs: number | null; width: number; format: "png" | "jpeg" }
-  | { type: "perfApply"; id: number; pass: string | null }
-  | { type: "perfStats"; id: number }
-  | { type: "hitTest"; id: number; ndcX: number; ndcY: number; domain?: GizmoDomain }
+  | { type: "perfRun"; id: number }
+  | { type: "perfColdWaits"; id: number }
+  | {
+      type: "hitTest";
+      id: number;
+      ndcX: number;
+      ndcY: number;
+      domain?: GizmoDomain;
+      claim: boolean;
+    }
   | { type: "census"; id: number }
   | { type: "forceContextLoss"; id: number }
-  | { type: "releasePools"; id: number };
-
-/** `ExportOptions` minus the window-only `signal`. */
-export type StageExportOptions = Omit<ExportOptions, "signal">;
+  | { type: "releasePools"; id: number }
+  | { type: "invalidateClips"; id: number }
+  | { type: "evictClips"; id: number };
 
 export type WorkerReply =
   | { type: "reply"; id: number; ok: true; value: unknown }
@@ -152,18 +187,37 @@ export type WindowNotice =
       size: StageSize;
       frameloop: "demand" | "never";
       dev: boolean;
+      /** Every mirrored store's data, so the first render sees the window's state. */
+      stores: { name: MirroredStore; patch: Record<string, unknown> }[];
     }
-  | { type: "clock"; currentMs?: number; durationMs?: number }
   | { type: "store"; name: MirroredStore; patch: Record<string, unknown> }
   | { type: "pointer"; event: StagePointerEvent }
   | { type: "cutout"; rect: FrameRect | null }
-  | { type: "assetsChanged"; projectId: string; urls: Record<string, string> }
-  | { type: "clipConform"; srcKey: string; state: unknown }
+  | { type: "assetsChanged"; projectId: string; assets: StageAssets | null }
+  | { type: "conformProgress"; payload: unknown }
+  | { type: "conformMediaChanged"; slug: unknown; paths: string[] }
+  | {
+      type: "previewFlags";
+      clipStride?: number;
+      motionBlurSamples?: number;
+      playbackActive?: boolean;
+      slideshowActive?: boolean;
+      hardwareVideo?: boolean;
+    }
   | { type: "reply"; id: number; ok: true; value: unknown }
   | { type: "reply"; id: number; ok: false; error: string };
 
 export interface StagePointerEvent {
-  kind: "pointerdown" | "pointermove" | "pointerup" | "pointercancel" | "pointerleave" | "wheel";
+  kind:
+    | "pointerdown"
+    | "pointermove"
+    | "pointerup"
+    | "pointercancel"
+    | "pointerleave"
+    | "wheel"
+    | "click"
+    | "contextmenu"
+    | "dblclick";
   /** Canvas-relative CSS pixels. */
   x: number;
   y: number;
@@ -186,35 +240,32 @@ export type WorkerNotice =
   | { type: "commit"; stamps: CommitStamps }
   | { type: "frame"; targets: Gizmo2DTargetFrame[]; camera: CameraFrame }
   | { type: "pickers"; pickers: GizmoPickerSummary[] }
+  | { type: "hosts"; hosts: SceneHostSummary[] }
   | { type: "store"; name: MirroredStore; patch: Record<string, unknown> }
   | { type: "cursor"; cursor: string }
-  | { type: "contextLost"; lossClass: string }
+  | { type: "contextLost"; lossClass: string; deliberate: boolean }
   | { type: "progress"; id: number; value: unknown }
-  | {
-      type: "exportFrameBytes";
-      id: number;
-      rgba: Uint8Array;
-      boundClipFrame: number;
-      fingerprint: RenderStateFingerprint | null;
-    };
+  | { type: "clips"; extracting: number; progress: number | null }
+  | { type: "emoji"; version: number; unrenderable: [string, string][] };
 
-/** What the worker may ask the window for: every item names a project-relative path or a handle the window issued; the window resolves, validates and performs the native call. */
+/** What the worker may ask the window for: a native port method by name (`engine/stageRealm.ts`). Every argument names a project-relative path or a handle the window issued; the window validates before it invokes. */
 export type WorkerRequest =
-  | { type: "clipInfo"; id: number; projectId: string; rel: string; lane: ClipLane }
-  | {
-      type: "clipChunks";
-      id: number;
-      cacheDir: string;
-      chunk: number;
-      lane: ClipLane;
-      count?: number;
-    }
-  | { type: "clipPreviews"; id: number; cacheDir: string; chunk: number }
-  | { type: "clipFrame"; id: number; cacheDir: string; index: number; tier: "full" | "preview" }
-  | { type: "clipPins"; id: number; dirs: string[] }
-  | { type: "clipConformPending"; id: number; projectId: string; rel: string }
-  | { type: "fontBytes"; id: number; url: string }
-  | { type: "emojiRaster"; id: number; op: string; payload: unknown };
+  | { type: "port"; id: number; method: PortMethod; args: unknown[] }
+  | { type: "portProgress"; id: number; value: unknown };
+
+export type PortMethod =
+  | "clipRevisions"
+  | "clipInfo"
+  | "clipHash"
+  | "clipEnsureChunks"
+  | "clipEnsurePreviews"
+  | "clipReadFrame"
+  | "clipSetPins"
+  | "clipConformPending"
+  | "conformPoster"
+  | "emojiRead"
+  | "emojiWrite"
+  | "readObject";
 
 export type WindowReply = Extract<WindowNotice, { type: "reply" }>;
 
@@ -222,6 +273,5 @@ export type ToWorker = WindowRequest | WindowNotice;
 export type ToWindow = WorkerReply | WorkerNotice | WorkerRequest;
 
 export type ClipInfoReply = ClipInfo;
-export type SettleProgress = number;
-export type PerfStatsReply = Pick<PerfRow, "drawCalls" | "triangles" | "texturesInMemory">;
+export type PerfRows = PerfRow[];
 export type CensusReply = GlCensus;

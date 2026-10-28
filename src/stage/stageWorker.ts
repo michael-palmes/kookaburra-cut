@@ -1,18 +1,30 @@
 /// <reference lib="webworker" />
-import type { HostToWorker, StageInitMessage, WorkerToHost } from "./spikeMessages";
 
-/** SPIKE (scene isolation, Phase 1): the stage worker's entry. Installs the realm shims the unmodified engine needs (a minimal `document`, storage, a Tauri IPC proxy that forwards every invoke to the editor realm), then imports the engine. Everything here is measurement scaffolding: Phase 2 replaces the proxy with the narrow stage protocol and decides which shims survive. */
+/**
+ * The stage worker's entry: the realm shims three, troika and the toolkit need in a worker
+ * (a document that can make canvases, an image that can decode, storage, an OffscreenCanvas
+ * that answers like a canvas element), then the server. Nothing here grants reach: there is
+ * no `window`, no `__TAURI_INTERNALS__` and no IPC in this realm; a scene that asks for either
+ * fails. See docs/architecture.md ("The stage worker").
+ */
 
 const scope = self as unknown as DedicatedWorkerGlobalScope & Record<string, unknown>;
-const post = (msg: WorkerToHost, transfer: Transferable[] = []) => scope.postMessage(msg, transfer);
 
-// Console forwarding: the dev harness only sees the editor realm's console.
-const format = (args: unknown[]) =>
-  args
-    .map((a) =>
-      a instanceof Error ? (a.stack ?? a.message) : typeof a === "string" ? a : safeJson(a),
-    )
-    .join(" ");
+const forward = (level: "warn" | "error") => {
+  const original = console[level].bind(console);
+  console[level] = (...args: unknown[]) => {
+    original(...args);
+    scope.postMessage({
+      type: "log",
+      level,
+      text: args
+        .map((a) =>
+          a instanceof Error ? (a.stack ?? a.message) : typeof a === "string" ? a : safeJson(a),
+        )
+        .join(" "),
+    });
+  };
+};
 function safeJson(v: unknown): string {
   try {
     return JSON.stringify(v) ?? String(v);
@@ -20,32 +32,19 @@ function safeJson(v: unknown): string {
     return String(v);
   }
 }
-for (const level of ["warn", "error"] as const) {
-  const original = console[level].bind(console);
-  console[level] = (...args: unknown[]) => {
-    original(...args);
-    post({ type: "log", level, text: format(args) });
-  };
-}
-scope.addEventListener("error", (ev) => post({ type: "fatal", text: `error: ${ev.message}` }));
+forward("warn");
+forward("error");
+scope.addEventListener("error", (ev) =>
+  scope.postMessage({ type: "fatal", text: `error: ${ev.message}` }),
+);
 scope.addEventListener("unhandledrejection", (ev) =>
-  post({ type: "fatal", text: `unhandledrejection: ${format([ev.reason])}` }),
+  scope.postMessage({
+    type: "fatal",
+    text: `unhandledrejection: ${ev.reason instanceof Error ? (ev.reason.stack ?? ev.reason.message) : String(ev.reason)}`,
+  }),
 );
 
-const probe: Record<string, unknown> = {
-  windowBefore: typeof (scope as { window?: unknown }).window,
-  documentBefore: typeof (scope as { document?: unknown }).document,
-  tauriInternals: typeof scope.__TAURI_INTERNALS__,
-  nativeRaf: typeof scope.requestAnimationFrame,
-  offscreenCanvas: typeof OffscreenCanvas,
-  createImageBitmap: typeof createImageBitmap,
-  fonts: typeof (scope as { fonts?: unknown }).fonts,
-};
-
-// ── Realm shims ──────────────────────────────────────────────────────────────
-// `window`: troika's typr factory aliases it to self anyway; libraries branch on it.
-scope.window = scope;
-
+// ── Storage: per-realm conveniences only (the preview-quality keys and the like never reach pixels) ──
 const memStorage = (): Storage => {
   const m = new Map<string, string>();
   return {
@@ -62,7 +61,7 @@ const memStorage = (): Storage => {
 scope.sessionStorage = memStorage();
 scope.localStorage = memStorage();
 
-// OffscreenCanvas stands in for HTMLCanvasElement: sync encoders become async-ish, style is inert.
+// ── OffscreenCanvas as the canvas element three, troika and TransformControls expect ──
 const OC = OffscreenCanvas.prototype as unknown as Record<string, unknown>;
 OC.toBlob = function (
   this: OffscreenCanvas,
@@ -72,55 +71,54 @@ OC.toBlob = function (
 ) {
   this.convertToBlob({ type, quality }).then(cb, () => cb(null));
 };
-OC.toDataURL = () => {
-  console.warn("[stage-worker] toDataURL is unavailable in the worker; returning an empty string");
-  return "";
-};
-Object.defineProperty(OffscreenCanvas.prototype, "style", {
-  get() {
-    if (!this.__style) this.__style = {};
-    return this.__style;
-  },
-  configurable: true,
-});
-OC.getBoundingClientRect = function (this: OffscreenCanvas) {
-  return {
-    left: 0,
-    top: 0,
-    right: this.width,
-    bottom: this.height,
-    width: this.width,
-    height: this.height,
-    x: 0,
-    y: 0,
-  };
+/** The box in CSS pixels, the frame pointer coordinates arrive in; the server records the window's size on the canvas (`__css`), since the drawing buffer carries the pixel ratio. */
+OC.getBoundingClientRect = function (
+  this: OffscreenCanvas & { __css?: { width: number; height: number } },
+) {
+  const width = this.__css?.width ?? this.width;
+  const height = this.__css?.height ?? this.height;
+  return { left: 0, top: 0, right: width, bottom: height, width, height, x: 0, y: 0 };
 };
 OC.setAttribute = () => {};
 OC.removeAttribute = () => {};
 OC.setPointerCapture = () => {};
 OC.releasePointerCapture = () => {};
+OC.hasPointerCapture = () => false;
 OC.focus = () => {};
-Object.defineProperty(OffscreenCanvas.prototype, "clientWidth", {
-  get() {
-    return this.width;
-  },
-  configurable: true,
+const define = (name: string, get: (this: OffscreenCanvas) => unknown) =>
+  Object.defineProperty(OffscreenCanvas.prototype, name, { get, configurable: true });
+define("clientWidth", function () {
+  return this.width;
 });
-Object.defineProperty(OffscreenCanvas.prototype, "clientHeight", {
-  get() {
-    return this.height;
-  },
-  configurable: true,
+define("clientHeight", function () {
+  return this.height;
 });
-Object.defineProperty(OffscreenCanvas.prototype, "ownerDocument", {
-  get() {
-    return scope.document;
-  },
-  configurable: true,
+define("ownerDocument", () => scope.document);
+define("parentElement", () => null);
+
+/** The one cursor the stage reports: the canvas stand-in's `style.cursor`, posted to the window when it changes. */
+const styles = new WeakMap<object, Record<string, string>>();
+define("style", function () {
+  let style = styles.get(this);
+  if (!style) {
+    style = {};
+    Object.defineProperty(style, "cursor", {
+      get: () => cursor,
+      set: (value: string) => {
+        if (value === cursor) return;
+        cursor = value;
+        scope.postMessage({ type: "cursor", cursor: value });
+      },
+      enumerable: true,
+    });
+    styles.set(this, style);
+  }
+  return style;
 });
+let cursor = "";
 scope.HTMLCanvasElement ??= OffscreenCanvas;
 
-/** `new Image()` stand-in: decodes through fetch + createImageBitmap and reports its size, enough for feature probes (three-stdlib's WebP check) and size reads. */
+/** `new Image()` stand-in: decodes through fetch + createImageBitmap and reports its size (three-stdlib's WebP probe, size reads). */
 class WorkerImage extends EventTarget {
   width = 0;
   height = 0;
@@ -169,193 +167,57 @@ class WorkerImage extends EventTarget {
 scope.Image = WorkerImage;
 scope.HTMLImageElement ??= WorkerImage;
 
+// ── A minimal document: canvases, fonts, an event target for pointer drags ──
 const noop = () => {};
-const element = (tag: string): unknown => {
-  if (tag === "canvas") return new OffscreenCanvas(1, 1);
-  if (tag === "img") return new WorkerImage();
-  if (tag === "video" || tag === "audio") {
-    throw new Error(`[stage-worker] <${tag}> elements are unavailable in the stage worker`);
-  }
-  return {
-    tagName: tag.toUpperCase(),
-    style: {},
-    setAttribute: noop,
-    appendChild: noop,
-    removeChild: noop,
-    addEventListener: noop,
-    removeEventListener: noop,
-    remove: noop,
-    href: "",
-  };
-};
-scope.document = {
-  createElement: (tag: string) => element(tag),
-  createElementNS: (_ns: string, tag: string) => element(tag),
-  createTextNode: (text: string) => ({ textContent: text }),
-  getElementById: () => null,
-  querySelector: () => null,
-  querySelectorAll: () => [],
+const inert = (tag: string) => ({
+  tagName: tag.toUpperCase(),
+  style: {},
+  setAttribute: noop,
+  appendChild: noop,
+  removeChild: noop,
   addEventListener: noop,
   removeEventListener: noop,
-  body: {
-    appendChild: noop,
-    removeChild: noop,
-    style: {},
-    classList: { add: noop, remove: noop, contains: () => false },
-  },
-  head: { appendChild: noop, removeChild: noop },
-  documentElement: { style: {}, classList: { add: noop, remove: noop, contains: () => false } },
-  fonts: (scope as { fonts?: unknown }).fonts,
-  visibilityState: "visible",
-  hidden: false,
-  hasFocus: () => true,
-};
-
-// ── requestAnimationFrame: native when the platform has it, else ticks the editor realm hands over ──
-let rafCallbacks: Array<{ id: number; cb: FrameRequestCallback }> = [];
-let rafNext = 1;
-let rafPending = false;
-if (typeof scope.requestAnimationFrame !== "function") {
-  scope.requestAnimationFrame = (cb: FrameRequestCallback) => {
-    const id = rafNext++;
-    rafCallbacks.push({ id, cb });
-    if (!rafPending) {
-      rafPending = true;
-      post({ type: "rafRequest" });
-    }
-    return id;
-  };
-  scope.cancelAnimationFrame = (id: number) => {
-    rafCallbacks = rafCallbacks.filter((r) => r.id !== id);
-  };
-}
-function onRaf(ts: number): void {
-  rafPending = false;
-  const batch = rafCallbacks;
-  rafCallbacks = [];
-  for (const { cb } of batch) cb(ts);
-}
-
-// ── Tauri IPC proxy (spike only) ─────────────────────────────────────────────
-const pending = new Map<number, { resolve: (v: unknown) => void; reject: (e: unknown) => void }>();
-const callbacks = new Map<number, { fn: (data: unknown) => void; once: boolean }>();
-let nextInvoke = 1;
-// Callback ids live far above anything a command argument would carry by chance.
-let nextCallback = 0x40000000;
-let convertPrefix = "asset://localhost/";
-
-const invokeProxy = (cmd: string, args: unknown = {}, options?: unknown): Promise<unknown> =>
-  new Promise((resolve, reject) => {
-    const id = nextInvoke++;
-    pending.set(id, { resolve, reject });
-    let payload = args;
-    const transfer: Transferable[] = [];
-    if (args instanceof Uint8Array) {
-      // The export reuses its readback buffer, so the copy, not the buffer, crosses the boundary.
-      const copy = args.slice();
-      payload = copy;
-      transfer.push(copy.buffer);
-    } else if (args instanceof ArrayBuffer) {
-      payload = args.slice(0);
-      transfer.push(payload as ArrayBuffer);
-    }
-    const callbackIds: number[] = [];
-    if (payload && typeof payload === "object" && !(payload instanceof Uint8Array)) {
-      const serialised = JSON.stringify(payload);
-      for (const id of callbacks.keys()) {
-        if (serialised.includes(String(id))) callbackIds.push(id);
-      }
-      // Channels serialise themselves (toJSON → "__CHANNEL__:<id>"); pass the serialised form.
-      payload = JSON.parse(serialised);
-    }
-    post({ type: "invoke", id, cmd, args: payload, options, callbackIds }, transfer);
-  });
-
-scope.__TAURI_INTERNALS__ = {
-  invoke: invokeProxy,
-  transformCallback(fn: (data: unknown) => void, once = false) {
-    const id = nextCallback++;
-    callbacks.set(id, { fn, once });
-    return id;
-  },
-  unregisterCallback(id: number) {
-    callbacks.delete(id);
-    post({ type: "unregisterCallback", id });
-  },
-  convertFileSrc(path: string, protocol = "asset") {
-    return `${convertPrefix.replace("asset", protocol)}${encodeURIComponent(path)}`;
-  },
-  metadata: { currentWindow: { label: "main" }, currentWebview: { label: "main" } },
-};
-
-scope.addEventListener("message", (ev: MessageEvent<HostToWorker>) => {
-  const msg = ev.data;
-  switch (msg.type) {
-    case "invokeResult": {
-      const p = pending.get(msg.id);
-      if (!p) return;
-      pending.delete(msg.id);
-      if (msg.ok) p.resolve(msg.value);
-      else p.reject(msg.error);
-      return;
-    }
-    case "callback": {
-      const cb = callbacks.get(msg.id);
-      if (!cb) return;
-      if (cb.once) callbacks.delete(msg.id);
-      cb.fn(msg.data);
-      return;
-    }
-    case "raf":
-      onRaf(msg.ts);
-      return;
-    case "init":
-      void boot(msg);
-      return;
-  }
+  remove: noop,
+  href: "",
 });
-
-async function boot(init: StageInitMessage): Promise<void> {
-  const expected = init.convertSample.url;
-  const idx = expected.indexOf(encodeURIComponent(init.convertSample.path));
-  if (idx > 0) convertPrefix = expected.slice(0, idx);
-  probe.convertPrefix = convertPrefix;
-  probe.convertMatches =
-    scope.__TAURI_INTERNALS__ &&
-    (scope.__TAURI_INTERNALS__ as { convertFileSrc: (p: string) => string }).convertFileSrc(
-      init.convertSample.path,
-    ) === expected;
-  // One WebGL2 context on the real canvas, before the engine, so the truth log carries the platform answer even if the engine fails to boot.
-  try {
-    const test = new OffscreenCanvas(8, 8);
-    const gl = test.getContext("webgl2", { antialias: true, preserveDrawingBuffer: true });
-    probe.webgl2 = gl ? JSON.stringify(gl.getContextAttributes()) : "unavailable";
-    if (gl) {
-      probe.maxSamples = gl.getParameter(gl.MAX_SAMPLES);
-      probe.extColorBufferFloat = !!gl.getExtension("EXT_color_buffer_float");
-      gl.getExtension("WEBGL_lose_context")?.loseContext();
+class WorkerDocument extends EventTarget {
+  createElement(tag: string): unknown {
+    if (tag === "canvas") return new OffscreenCanvas(1, 1);
+    if (tag === "img") return new WorkerImage();
+    if (tag === "video" || tag === "audio") {
+      throw new Error(`<${tag}> elements are unavailable in the stage worker`);
     }
-  } catch (e) {
-    probe.webgl2 = `error: ${String(e)}`;
+    return inert(tag);
   }
-  try {
-    const url = URL.createObjectURL(
-      new Blob(["export const probe = 42;"], { type: "text/javascript" }),
-    );
-    const mod = (await import(/* @vite-ignore */ url)) as { probe: number };
-    probe.blobImport = mod.probe === 42;
-    URL.revokeObjectURL(url);
-  } catch (e) {
-    probe.blobImport = `error: ${String(e)}`;
+  createElementNS(_ns: string, tag: string): unknown {
+    return this.createElement(tag);
   }
-  post({ type: "ready", probe });
-  try {
-    const app = await import("./stageWorkerApp");
-    await app.bootStage(init);
-  } catch (e) {
-    post({
-      type: "fatal",
-      text: `boot: ${e instanceof Error ? (e.stack ?? e.message) : String(e)}`,
-    });
+  createTextNode(text: string): unknown {
+    return { textContent: text };
+  }
+  getElementById(): null {
+    return null;
+  }
+  querySelector(): null {
+    return null;
+  }
+  querySelectorAll(): unknown[] {
+    return [];
+  }
+  body = inert("body");
+  head = inert("head");
+  documentElement = inert("html");
+  fonts = (scope as { fonts?: unknown }).fonts;
+  visibilityState = "visible";
+  hidden = false;
+  pointerLockElement = null;
+  hasFocus(): boolean {
+    return true;
   }
 }
+scope.document = new WorkerDocument();
+
+// The server imports the engine, which must see the shims above at evaluation time.
+void import("./stageServer");
+
+export {};

@@ -43,7 +43,15 @@ export function getEmojiTexture(key: string): Texture | null {
 
 /** Clusters the system font could not draw (key → cluster), for the inspector badge. */
 export function unrenderableEmojiClusters(): ReadonlyMap<string, string> {
-  return unrenderable;
+  return mirrored?.unrenderable ?? unrenderable;
+}
+
+let mirrored: { version: number; unrenderable: Map<string, string> } | null = null;
+
+/** A window rendering through the stage shows the worker's raster state. */
+export function applyMirroredEmoji(version: number, clusters: [string, string][]): void {
+  mirrored = { version, unrenderable: new Map(clusters) };
+  bump();
 }
 
 function configureTexture(tex: Texture): Texture {

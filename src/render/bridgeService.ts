@@ -3,7 +3,6 @@ import { emit, listen } from "@tauri-apps/api/event";
 import { projectAssetsStamp, refreshWorkspaceAssets } from "../engine/assetRevisions";
 import { resolveScreenshotTimeMs } from "../engine/autorun";
 import { invalidateChangedClips } from "../engine/clips";
-import { canvasHandle } from "../engine/exportBridge";
 import { captureFrameRgba } from "../engine/exporter";
 import { type AspectName, FORMATS, type FormatSpec, FPS } from "../engine/format";
 import { glContextCensus, tagGlCanvas } from "../engine/glContexts";
@@ -30,6 +29,7 @@ import {
 } from "../engine/project";
 import { setProjectAssetRevision } from "../engine/projectAssetRevision";
 import { GpuStallError } from "../engine/readback";
+import { stageOrNull } from "../engine/stageHandle";
 import { awaitProjectCommitted } from "../engine/themePreviews";
 import { serveFontsRequest } from "./bridgeFonts";
 import {
@@ -480,14 +480,14 @@ export function startBridgeService(
   const serveDebug = async (request: BridgeRequest) => {
     const op = request.op ?? "";
     if (op === "lose-context" && (request.window ?? "render") === "render") {
-      const gl = canvasHandle.current?.gl;
-      if (!gl) {
+      const stage = stageOrNull();
+      if (!stage) {
         await respond(request, { ok: false, error: "the render window's stage is not mounted" });
         return;
       }
       await respond(request, { ok: true, op, window: "render", lost: true, recycling: true });
       poisoned = "debug";
-      gl.forceContextLoss();
+      void stage.forceContextLoss();
       return;
     }
     if (op === "spawn-contexts") {

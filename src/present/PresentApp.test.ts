@@ -11,7 +11,7 @@ const testProcess = (
 ).process;
 const source = testProcess
   .getBuiltinModule("fs")
-  .readFileSync(new URL("./PresentApp.tsx", import.meta.url), "utf8");
+  .readFileSync(new URL("./PresentStageTree.tsx", import.meta.url), "utf8");
 
 describe("Present lighting scope", () => {
   it("provides project-only lighting to every scene host", () => {

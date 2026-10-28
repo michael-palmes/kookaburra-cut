@@ -10,6 +10,8 @@ import {
   setPreviewPlaybackActive,
 } from "./previewMedia";
 import { type LoadedProject, sceneFileStem } from "./project";
+import { stage } from "./stageHandle";
+import { isStageWorker } from "./stageRealm";
 
 /** Playback performance probe (`kookaburra:run --action perf`): plays a window of every scene under a matrix of elimination passes and reports frame-time stats plus renderer counters per pass, so regressions and hotspots (device glass, screen media, shadows, fill rate) can be pinned as scenes grow. Preview-only diagnostics; the export path never reads any of this. Needs a visible window: WKWebView suspends rAF while occluded. */
 
@@ -57,10 +59,20 @@ export interface ClipColdRow {
   clipCountPasses: number;
 }
 
+/** The worker's half of the cold metric: how many clips were referenced and bound, and each first-bind wait. */
+export function perfColdWaits(): { referenced: number; bound: number; waits: number[] } {
+  return {
+    referenced: clipReferencedAt.size,
+    bound: clipBoundAt.size,
+    waits: [...clipBoundAt.entries()].map(
+      ([key, bound]) => bound - (clipReferencedAt.get(key) ?? bound),
+    ),
+  };
+}
+
 export async function clipColdMetric(): Promise<ClipColdRow> {
-  const waits = [...clipBoundAt.entries()].map(
-    ([key, bound]) => bound - (clipReferencedAt.get(key) ?? bound),
-  );
+  const cold = isStageWorker() ? perfColdWaits() : await stage().perfColdWaits();
+  const waits = cold.waits;
   const stats = await invoke<{
     bytesWritten: number;
     chunksExtracted: number;
@@ -74,8 +86,8 @@ export async function clipColdMetric(): Promise<ClipColdRow> {
   return {
     scene: "all",
     pass: "cold-extraction",
-    clipsReferenced: clipReferencedAt.size,
-    clipsBound: waits.length,
+    clipsReferenced: cold.referenced,
+    clipsBound: cold.bound,
     firstBindMaxMs: waits.length ? round(Math.max(...waits)) : null,
     firstBindAvgMs: waits.length ? round(waits.reduce((a, b) => a + b, 0) / waits.length) : null,
     clipBytesWritten: stats.bytesWritten,
@@ -269,16 +281,16 @@ function measureWindow(
     let raf = 0;
     let stall = 0;
     const fail = (message: string) => {
-      window.clearTimeout(stall);
+      clearTimeout(stall);
       cancelAnimationFrame(raf);
       reject(new Error(message));
     };
     const bump = () => {
-      window.clearTimeout(stall);
-      stall = window.setTimeout(
+      clearTimeout(stall);
+      stall = setTimeout(
         () => fail("perf: rAF stalled, keep the app window visible and unoccluded for a perf run"),
         warming ? WARMUP_STALL_MS : RAF_STALL_MS,
-      );
+      ) as unknown as number;
     };
     const tick = (now: number) => {
       const dt = now - last;
@@ -309,7 +321,7 @@ function measureWindow(
       const clock = useClockStore.getState();
       clock.setCurrentMs(Math.min(clock.durationMs, slot.startMs + sceneLocal));
       if (sampledMs >= windowMs || samples.length >= 400) {
-        window.clearTimeout(stall);
+        clearTimeout(stall);
         const avgMs = sampledMs / samples.length;
         const sorted = [...samples].sort((a, b) => a - b);
         resolve({
@@ -334,6 +346,8 @@ function measureWindow(
 
 /** Runs every elimination pass over every scene; rows come back per scene × pass. Measures with the playback flag up so clips bind their preview tier exactly as real playback does. */
 export async function runPerfProbe(project: LoadedProject): Promise<PerfRow[]> {
+  // The probe measures the realm that renders: from a window it runs inside the stage worker, whose rAF paces the preview.
+  if (!isStageWorker()) return stage().perfRun();
   const handle = canvasHandle.current;
   if (!handle) throw new Error("perf: canvas handle unavailable");
   const { gl, scene } = handle;

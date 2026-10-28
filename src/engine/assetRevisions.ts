@@ -1,6 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
 import { isExporting } from "./exportState";
+import { stageAssetVersion, subscribeStageAssets } from "./stageAssets";
+import { isStageWorker } from "./stageRealm";
 
 /** Asset revisions: every workspace asset URL carries `?r=<size>-<mtimeNs>` from the native stamp walk (`list_project_asset_stamps`, separate from the trust fingerprint), so a file replaced in place under the same name is a new URL in every window, and every texture, decode and media cache keyed by URL re-fetches. The asset protocol ignores the query, so the bytes served never depend on it. Bundled projects stay bare (Vite fingerprints them) unless dev HMR replaced a file. Inventories refresh at project load, after the app's own imports, and on the editor poll's settled asset-stamp change; never mid-export (callers guard). Its own module, free of project.ts, so media.ts can refresh it without an import cycle. */
 
@@ -110,6 +112,12 @@ export function refreshWorkspaceAssets(projectId: string): Promise<string[]> {
   return next;
 }
 
+/** The stamped image rels the inventory lists for a project (empty before a listing). */
+export function inventoryImageRels(projectId: string): string[] {
+  const inventory = inventories.get(projectId);
+  return inventory ? [...inventory.revs.keys()].filter((rel) => IMAGE_REL.test(rel)) : [];
+}
+
 /** True only when the inventory is loaded AND the path is not one of its images. */
 export function workspaceAssetMissing(projectId: string, relPath: string): boolean {
   const inventory = inventories.get(projectId);
@@ -202,6 +210,8 @@ export function subscribeAssetRevision(
 /** A window that never loaded the project (the video editor) lists it on first use; never mid-export. */
 function useInventoryLoaded(projectId: string | null | undefined): void {
   useEffect(() => {
+    // The worker's revisions are baked into the asset table's URLs; the window lists.
+    if (isStageWorker()) return;
     if (!projectId || !WORKSPACE_BACKED.test(projectId) || isExporting()) return;
     if (!inventories.has(projectId) && !inflight.has(projectId)) {
       void refreshWorkspaceAssets(projectId);
@@ -219,10 +229,19 @@ export function useAssetRevision(
   useInventoryLoaded(projectId);
   const subscribe = useCallback(
     (listener: () => void) =>
-      projectId && rel ? subscribeAssetRevision(projectId, rel, listener) : noop,
+      isStageWorker()
+        ? subscribeStageAssets(listener)
+        : projectId && rel
+          ? subscribeAssetRevision(projectId, rel, listener)
+          : noop,
     [projectId, rel],
   );
-  const snapshot = () => (projectId && rel ? assetRevision(projectId, rel) : undefined);
+  const snapshot = () =>
+    isStageWorker()
+      ? `t${stageAssetVersion()}`
+      : projectId && rel
+        ? assetRevision(projectId, rel)
+        : undefined;
   return useSyncExternalStore(subscribe, snapshot, snapshot);
 }
 
@@ -235,6 +254,7 @@ export function useAssetRevisions(
   const joined = rels.join("\n");
   const subscribe = useCallback(
     (listener: () => void) => {
+      if (isStageWorker()) return subscribeStageAssets(listener);
       if (!projectId || !joined) return noop;
       const offs = joined
         .split("\n")
@@ -246,7 +266,11 @@ export function useAssetRevisions(
     [projectId, joined],
   );
   const snapshot = () =>
-    projectId ? rels.map((rel) => assetRevision(projectId, rel) ?? "").join("|") : "";
+    isStageWorker()
+      ? rels.map(() => `t${stageAssetVersion()}`).join("|")
+      : projectId
+        ? rels.map((rel) => assetRevision(projectId, rel) ?? "").join("|")
+        : "";
   return useSyncExternalStore(subscribe, snapshot, snapshot);
 }
 

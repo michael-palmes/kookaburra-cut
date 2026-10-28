@@ -141,7 +141,15 @@ export function subscribeClipExtraction(listener: () => void): () => void {
   return () => extractionListeners.delete(listener);
 }
 export function clipExtractionCount(): number {
-  return extracting;
+  return mirroredStatus?.extracting ?? extracting;
+}
+
+let mirroredStatus: { extracting: number; progress: number | null } | null = null;
+
+/** A window rendering through the stage shows the worker's extraction chip state. */
+export function applyMirroredClipStatus(count: number, progress: number | null): void {
+  mirroredStatus = { extracting: count, progress };
+  notifyExtraction();
 }
 
 /** Per-extraction ffmpeg progress (frames written vs the run's length), keyed per native request. */
@@ -150,6 +158,7 @@ let progressSeq = 0;
 
 /** Aggregate 0..1 progress across in-flight extractions, or null before any has reported (the chip falls back to indeterminate). */
 export function clipExtractionProgress(): number | null {
+  if (mirroredStatus) return mirroredStatus.progress;
   if (extractionProgress.size === 0) return null;
   let frames = 0;
   let total = 0;
