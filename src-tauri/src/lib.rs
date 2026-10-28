@@ -1300,6 +1300,7 @@ macro_rules! kookaburra_handler {
             live_edits::project_file_stamps,
             live_edits::project_file_hashes,
             workspace::is_project_trusted,
+            workspace::check_project_trust,
             workspace::request_project_trust,
             workspace::trust_project,
             workspace::list_project_assets,
@@ -1546,7 +1547,7 @@ pub fn run() {
         .manage(clip_cache::ClipCacheState::default())
         .manage(media::ConformJobs::default())
         .manage(workspace::SettingsState::default())
-        .manage(workspace::TrustNonces::default())
+        .manage(workspace::TrustState::default())
         .manage(updater::PendingUpdate::default())
         .manage(pty::PtyState::default())
         .manage(edit::EditorState::default())

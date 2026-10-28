@@ -1250,9 +1250,10 @@ Types: `src/engine/loadDiagnostics.ts`; `LoadedProject.sceneErrors`,
 - Index-based manifest commands also take the expected scene file and refuse on a
   mismatch, so a delete can never bin the wrong scene.
 - Every native writer of a consent-covered file (`project.json`, `scenes/**`, `CLAUDE.md`,
-  `.claude/settings.json`) re-stamps a standing trust grant as part of the write, so the
-  app's own edits never re-prompt. Writes made by anything else, kb included, move the
-  content fingerprint and the next load asks again through the native sheet.
+  `.claude/settings.json`) re-stamps a standing trust grant as part of the write, and a
+  kb write landing while the project is open and trusted in this app session re-stamps on
+  the reload (Rust recomputes the hash in `check_project_trust`). Content that changed
+  while the project was closed asks again through the native sheet on the next open.
 - Edit documents work the same way. `save_edit` carries the base hash and refuses a
   stale one; the editor window polls its doc's stamp (1 s and on focus, applied once two
   polls agree) and takes an outside change as ONE "Claude edit" undo step, merging any

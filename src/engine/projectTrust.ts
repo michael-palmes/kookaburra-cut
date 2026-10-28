@@ -49,7 +49,7 @@ function requestTrust(slug: string, name: string): Promise<void> {
   return request;
 }
 
-/** The F-001 consent gate: no workspace scene code compiles until the person has allowed the project's current content. A stored grant whose content fingerprint still matches passes silently; anything else asks through the native sheet, and a decline throws `TrustDeniedError`. The app's own writes re-stamp the grant natively, so only a change made outside the app re-asks. Autorun launches auto-trust (the run itself is the user's consent) unless `KOOKABURRA_TRUST=stored-only` (kb's headless export, which must not launder consent), which needs a matching stored grant. */
+/** The F-001 consent gate: no workspace scene code compiles until the person has allowed the project's current content. A stored grant whose content fingerprint still matches passes silently, and an edit landing while the project is open and trusted in this app session re-stamps natively (Rust computes the hash, this side only asks); content that changed while the project was closed asks through the native sheet, and a decline throws `TrustDeniedError`. Autorun launches auto-trust (the run itself is the user's consent) unless `KOOKABURRA_TRUST=stored-only` (kb's headless export, which must not launder consent), which needs a matching stored grant and never re-stamps. */
 export async function ensureProjectTrusted(
   slug: string,
   name: string,
@@ -65,6 +65,6 @@ export async function ensureProjectTrusted(
     if (!(await invoke<boolean>("is_project_trusted", { slug }))) throw new NeedsTrustError(slug);
     return;
   }
-  if (await invoke<boolean>("is_project_trusted", { slug })) return;
+  if (await invoke<boolean>("check_project_trust", { slug })) return;
   await requestTrust(slug, name);
 }

@@ -27,8 +27,9 @@ embedded terminal starts Claude Code from a fixed launch shape with an
 allow-listed environment, never a command string from the page. A project's
 scenes run only after you press Allow on a native macOS sheet that names the
 project and its folder (Return declines); that consent is bound to the content
-of the project's scenes, manifest and agent configuration, so a change made
-outside the app asks again. Anything the app deletes goes to the Trash.
+of the project's scenes, manifest and agent configuration, so content that
+changed while the project was closed asks again on the next open. Anything the
+app deletes goes to the Trash.
 
 ## Reporting a vulnerability
 

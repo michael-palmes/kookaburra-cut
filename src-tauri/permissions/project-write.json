@@ -42,9 +42,9 @@
     },
     {
       "identifier": "trust",
-      "description": "The F-001 consent: ask the person through the native sheet, then record the grant with the nonce the sheet issued.",
+      "description": "The F-001 consent: the main window's gate check (which re-stamps a project this session allowed), the native sheet, and the grant recorded with the nonce the sheet issued.",
       "commands": {
-        "allow": ["request_project_trust", "trust_project"]
+        "allow": ["check_project_trust", "request_project_trust", "trust_project"]
       }
     }
   ]

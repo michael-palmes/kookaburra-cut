@@ -1,6 +1,6 @@
 //! The user workspace: a folder of self-contained projects, chosen at first run (default `~/Kookaburra Cut`, moved out of ~/Documents for TCC) and remembered in `$APPDATA/settings.json`; commands are custom `#[tauri::command]`s that bypass the webview fs ACL, each re-asserting the on-disk layout first (`ensure_layout`) so a user deleting or rearranging folders mid-session degrades gracefully instead of crashing.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -2075,9 +2075,85 @@ struct PendingTrust {
     issued: Instant,
 }
 
-/// Outstanding consent nonces, keyed by nonce. Only `request_project_trust` writes here, so a `trust_project` call without a nonce from it has nothing to redeem.
+/// Trust state that lives only as long as this app process: the consent nonces `request_project_trust` issued and `trust_project` has not consumed (nothing else writes there, so a call without one of them has nothing to redeem), and the slugs this session has allowed, whose live edits re-stamp without asking.
 #[derive(Default)]
-pub struct TrustNonces(Mutex<HashMap<String, PendingTrust>>);
+pub struct TrustState {
+    nonces: Mutex<HashMap<String, PendingTrust>>,
+    session: Mutex<HashSet<String>>,
+}
+
+/// What the main window's gate check decides for a project.
+#[derive(Debug, PartialEq)]
+enum SessionTrust {
+    /// The stored grant matches the content: pass, and the slug is this session's.
+    Pass,
+    /// The content moved under a project this session allowed: Rust re-stamps the grant from the hash it just computed.
+    Restamp,
+    /// No usable grant: the sheet asks.
+    Ask,
+}
+
+/// The decision behind `check_project_trust`. A grant for another path never counts, and a slug this session has not allowed never re-stamps: the stored grant is only ever written from a session a person or an env-gated autorun allowed.
+fn session_trust_decision(
+    record: Option<&TrustRecord>,
+    dir: &Path,
+    fingerprint: &str,
+    session: &mut HashSet<String>,
+    slug: &str,
+) -> SessionTrust {
+    let Some(record) = record else {
+        return SessionTrust::Ask;
+    };
+    if record.path != dir.to_string_lossy() {
+        return SessionTrust::Ask;
+    }
+    if record.scenes_fingerprint == fingerprint {
+        session.insert(slug.to_owned());
+        return SessionTrust::Pass;
+    }
+    if session.contains(slug) {
+        SessionTrust::Restamp
+    } else {
+        SessionTrust::Ask
+    }
+}
+
+/// The main window's F-001 check, the one path that may re-stamp without asking. A stored grant that still matches passes and marks the slug trusted for this app session; a slug trusted this session whose content moved (Claude's edit landing under a person watching the reload) is re-stamped from the hash Rust computes here, never one the webview supplies; anything else answers false and the sheet asks. Content that changed while the project was closed therefore re-asks on the next open. Present and stored-only loads use `is_project_trusted` and never re-stamp.
+#[tauri::command]
+pub fn check_project_trust(
+    app: AppHandle,
+    window: tauri::Window,
+    state: State<'_, SettingsState>,
+    trust: State<'_, TrustState>,
+    slug: String,
+) -> Result<bool, String> {
+    require_window(&window, "main")?;
+    let dir = project_dir(&app, &state, &slug)?;
+    let fingerprint = trust_fingerprint(&dir);
+    let settings = load_settings(&app, &state)?;
+    let decision = {
+        let mut session = trust.session.lock().map_err(|_| "trust state poisoned")?;
+        session_trust_decision(
+            settings.trusted_projects.get(&slug),
+            &dir,
+            &fingerprint,
+            &mut session,
+            &slug,
+        )
+    };
+    match decision {
+        SessionTrust::Pass => Ok(true),
+        SessionTrust::Ask => Ok(false),
+        SessionTrust::Restamp => {
+            update_settings(&app, &state, |settings| {
+                if let Some(record) = settings.trusted_projects.get_mut(&slug) {
+                    record.scenes_fingerprint = fingerprint;
+                }
+            })?;
+            Ok(true)
+        }
+    }
+}
 
 /// A consent not redeemed within this long is void; the sheet's answer reaches `trust_project` within milliseconds.
 const TRUST_NONCE_TTL: Duration = Duration::from_secs(120);
@@ -2173,7 +2249,7 @@ pub async fn request_project_trust(
     app: AppHandle,
     window: tauri::Window,
     state: State<'_, SettingsState>,
-    nonces: State<'_, TrustNonces>,
+    trust: State<'_, TrustState>,
     slug: String,
 ) -> Result<Option<String>, String> {
     require_window(&window, "main")?;
@@ -2207,7 +2283,7 @@ pub async fn request_project_trust(
             return Ok(None);
         }
     }
-    let mut pending = nonces.0.lock().map_err(|_| "trust state poisoned")?;
+    let mut pending = trust.nonces.lock().map_err(|_| "trust state poisoned")?;
     Ok(Some(issue_trust_nonce(
         &mut pending,
         &slug,
@@ -2222,7 +2298,7 @@ pub fn trust_project(
     app: AppHandle,
     window: tauri::Window,
     state: State<'_, SettingsState>,
-    nonces: State<'_, TrustNonces>,
+    trust: State<'_, TrustState>,
     slug: String,
     nonce: String,
 ) -> Result<(), String> {
@@ -2232,7 +2308,7 @@ pub fn trust_project(
         return Err(format!("no project named \"{slug}\""));
     }
     let consented_for = {
-        let mut pending = nonces.0.lock().map_err(|_| "trust state poisoned")?;
+        let mut pending = trust.nonces.lock().map_err(|_| "trust state poisoned")?;
         consume_trust_nonce(&mut pending, &nonce, &slug, Instant::now())?
     };
     let fingerprint = trust_fingerprint(&dir);
@@ -2249,8 +2325,14 @@ pub fn trust_project(
         allowed_at_ms,
     };
     update_settings(&app, &state, |settings| {
-        settings.trusted_projects.insert(slug, record);
-    })
+        settings.trusted_projects.insert(slug.clone(), record);
+    })?;
+    trust
+        .session
+        .lock()
+        .map_err(|_| "trust state poisoned")?
+        .insert(slug);
+    Ok(())
 }
 
 /// Second layer behind the per-window ACL for the commands only one window may call.
@@ -3466,6 +3548,52 @@ mod tests {
         let old = issue_trust_nonce(&mut pending, "demo", "fp-1", now);
         issue_trust_nonce(&mut pending, "demo", "fp-2", later);
         assert!(!pending.contains_key(&old));
+    }
+
+    #[test]
+    fn edits_in_an_allowed_session_re_stamp_and_everything_else_asks() {
+        let dir = PathBuf::from("/ws/demo");
+        let record = TrustRecord {
+            scenes_fingerprint: "fp-1".into(),
+            path: dir.to_string_lossy().into_owned(),
+            allowed_at_ms: 0,
+        };
+        let mut session = HashSet::new();
+        // Content changed while the project was closed: this session never allowed it, so it asks.
+        assert_eq!(
+            session_trust_decision(Some(&record), &dir, "fp-2", &mut session, "demo"),
+            SessionTrust::Ask
+        );
+        assert!(session.is_empty());
+        // A matching grant passes and makes the slug this session's.
+        assert_eq!(
+            session_trust_decision(Some(&record), &dir, "fp-1", &mut session, "demo"),
+            SessionTrust::Pass
+        );
+        // Now an edit landing while open re-stamps instead of asking.
+        assert_eq!(
+            session_trust_decision(Some(&record), &dir, "fp-2", &mut session, "demo"),
+            SessionTrust::Restamp
+        );
+        // Never for another slug, a missing grant, or a grant for another path.
+        assert_eq!(
+            session_trust_decision(Some(&record), &dir, "fp-2", &mut session, "other"),
+            SessionTrust::Ask
+        );
+        assert_eq!(
+            session_trust_decision(None, &dir, "fp-1", &mut session, "demo"),
+            SessionTrust::Ask
+        );
+        assert_eq!(
+            session_trust_decision(
+                Some(&record),
+                Path::new("/elsewhere/demo"),
+                "fp-1",
+                &mut session,
+                "demo"
+            ),
+            SessionTrust::Ask
+        );
     }
 
     #[test]

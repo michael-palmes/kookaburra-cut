@@ -5,6 +5,8 @@ const calls: { cmd: string; args: Record<string, unknown> | undefined }[] = [];
 let autorunAction: string | null = null;
 let autorunTrust: string | null = null;
 let storedGrantValid = false;
+/** Slugs Rust has marked trusted for this app session (a matching grant seen, or a redeemed nonce). */
+const sessionTrusted = new Set<string>();
 /** What the native sheet answers: a nonce on Allow, null on Don't open. */
 let sheetAnswer: string | null = "nonce-1";
 let deferSheet: (() => void) | null = null;
@@ -14,6 +16,12 @@ vi.mock("@tauri-apps/api/core", () => ({
     calls.push({ cmd, args });
     if (cmd === "get_autorun_config") return { action: autorunAction, trust: autorunTrust };
     if (cmd === "is_project_trusted") return storedGrantValid;
+    if (cmd === "check_project_trust") {
+      const slug = String(args?.slug);
+      if (storedGrantValid) sessionTrusted.add(slug);
+      // A session-trusted slug re-stamps natively and answers true even though the content moved.
+      return storedGrantValid || sessionTrusted.has(slug);
+    }
     if (cmd === "request_project_trust") {
       if (deferSheet) await new Promise<void>((resolve) => (deferSheet = resolve));
       return sheetAnswer;
@@ -41,6 +49,7 @@ beforeEach(() => {
   autorunAction = null;
   autorunTrust = null;
   storedGrantValid = false;
+  sessionTrusted.clear();
   sheetAnswer = "nonce-1";
   deferSheet = null;
 });
@@ -65,19 +74,42 @@ describe("ensureProjectTrusted", () => {
     const { ensureProjectTrusted } = await freshGate();
     storedGrantValid = true;
     await ensureProjectTrusted("demo", "Demo");
-    expect(names()).not.toContain("request_project_trust");
-    expect(names()).not.toContain("trust_project");
+    expect(names()).toEqual(["get_autorun_config", "check_project_trust"]);
   });
 
-  it("re-asks when the content changed, even in the same session", async () => {
+  it("never re-stamps a stored-only load, even for a slug trusted this session", async () => {
+    const { ensureProjectTrusted, TrustDeniedError } = await freshGate();
+    storedGrantValid = true;
+    await ensureProjectTrusted("demo", "Demo");
+    storedGrantValid = false;
+    calls.length = 0;
+    await expect(ensureProjectTrusted("demo", "Demo", "stored-only")).rejects.toThrow(
+      TrustDeniedError,
+    );
+    expect(names()).toEqual(["is_project_trusted"]);
+  });
+
+  it("re-stamps natively, without a sheet, for an edit landing while trusted in this session", async () => {
     const { ensureProjectTrusted } = await freshGate();
     storedGrantValid = true;
     await ensureProjectTrusted("demo", "Demo");
-    // An outside edit moved the content fingerprint: there is no session-sticky trust to fall back on.
+    // An outside edit moved the content fingerprint under a project this session allowed.
     storedGrantValid = false;
     calls.length = 0;
     await ensureProjectTrusted("demo", "Demo");
-    expect(names()).toEqual(["is_project_trusted", "request_project_trust", "trust_project"]);
+    expect(names()).toEqual(["check_project_trust"]);
+  });
+
+  it("asks on the next open after content changed while the project was closed", async () => {
+    const { ensureProjectTrusted } = await freshGate();
+    // A fresh app session: the stored grant no longer matches and nothing marked the slug trusted here.
+    await ensureProjectTrusted("demo", "Demo");
+    expect(names()).toEqual([
+      "get_autorun_config",
+      "check_project_trust",
+      "request_project_trust",
+      "trust_project",
+    ]);
   });
 
   it("redeems the sheet's nonce, never a made-up one", async () => {
@@ -93,7 +125,7 @@ describe("ensureProjectTrusted", () => {
     await ensureProjectTrusted("launch-2026", "Launch 2026");
     expect(names()).toEqual([
       "get_autorun_config",
-      "is_project_trusted",
+      "check_project_trust",
       "request_project_trust",
       "trust_project",
     ]);
