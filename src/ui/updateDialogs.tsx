@@ -4,10 +4,10 @@ import { useEscapeClose } from "./useEscapeClose";
 
 /** The update lane's two modals, in their own module so the Settings window can import them without dragging in NewProjectDialog.tsx's theme-picker graph (40 bundled preview images). Both share the moonlit-kookaburra banner (chrome-only imagery; exported pixels never touch the DOM). */
 
-/** First-launch welcome, which carries the one-time update-check ask (shown while the tri-state preference is undecided). The switch starts on as the recommendation; Get started and Escape both answer with what it shows, so dismissing never records the opposite. Either answer settles it and the ask never repeats. */
+/** First-launch welcome, which carries the one-time update-check ask (shown while the tri-state preference is undecided). The switch starts on as the recommendation and Get started saves what it shows; Escape is a dismissal, not consent, so it saves off. Either answer settles it and the ask never repeats. */
 export function WelcomeDialog({ onAnswer }: { onAnswer: (on: boolean) => void }) {
   const [checkUpdates, setCheckUpdates] = useState(true);
-  useEscapeClose(() => onAnswer(checkUpdates));
+  useEscapeClose(() => onAnswer(false));
   return (
     <div
       className="modal-overlay"
