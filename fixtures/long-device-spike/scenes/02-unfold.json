@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "name": "Unfold",
+  "deviceTrack": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 800,
+        "pose": {
+          "d1": {
+            "foldDeg": 0
+          }
+        }
+      },
+      {
+        "id": "k2",
+        "tMs": 6500,
+        "pose": {
+          "d1": {
+            "foldDeg": 180
+          }
+        }
+      }
+    ],
+    "segments": [
+      {
+        "from": "k1",
+        "to": "k2",
+        "ease": "inOutCubic"
+      }
+    ]
+  }
+}

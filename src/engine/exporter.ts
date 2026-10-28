@@ -24,6 +24,7 @@ import {
   everydayClipLane,
   laneForCodec,
   prepareExportClips,
+  releaseIdleClipFrames,
   setClipLane,
 } from "./clips";
 import { useClockStore } from "./clock";
@@ -500,6 +501,7 @@ async function exportProjectHeld(
   const stopNativeEncode = () => void invoke("cancel_export").catch(() => {});
   // The exporter owns rendering for the whole run; the preview driver stands down (see engine/exportState) so no stray preview render interleaves with a capture.
   setExporting(true);
+  releaseIdleClipFrames();
   try {
     await exportPreamble(opts, gl, (step) => {
       onPrepareStep?.(step);
@@ -558,6 +560,7 @@ async function exportProjectHeld(
           : null,
       },
       onProgress: channel,
+      scenes: opts.slots.map((s) => ({ id: s.id, startMs: s.startMs, endMs: s.endMs })),
     });
     started = true;
     signal?.addEventListener("abort", stopNativeEncode, { once: true });
@@ -608,11 +611,23 @@ async function exportProjectHeld(
     signal?.throwIfAborted();
     return await invoke<string>("finish_export");
   } catch (err) {
-    if (started) await invoke("cancel_export").catch(() => {});
+    if (started) {
+      // A real failure (not a cancel) leaves <export>.health.json and names where the run stopped.
+      const reason = signal?.aborted ? undefined : String(err instanceof Error ? err.message : err);
+      const where = await invoke<string | null>("cancel_export", { reason }).catch(() => null);
+      if (where && err instanceof Error) {
+        try {
+          err.message = `${err.message} (at ${where})`;
+        } catch {
+          // A DOMException's message is read-only; its own error still reaches the user.
+        }
+      }
+    }
     throw err;
   } finally {
     signal?.removeEventListener("abort", stopNativeEncode);
     setExporting(false);
+    releaseIdleClipFrames();
     setClipLane(everydayClipLane());
     gl.setPixelRatio(prevPixelRatio);
     gl.setSize(prevSize.x, prevSize.y, false);

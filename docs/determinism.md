@@ -409,6 +409,26 @@ the mix like every pixel. Rules:
   trivially deterministic; **AAC's run-to-run determinism is proven by the gate,
   not assumed** (recorded contingency if a future ffmpeg breaks it: encode the
   processed track once into the `$APPDATA` cache and stream-copy).
+- **ffmpeg reads a snapshot.** `start_export` copies the track into
+  `$APPDATA/cache/export-audio/<pid>-<ms>.<ext>` (an APFS clone) and points the
+  argv's `-i` at the copy, so music saved mid-export can't change the film; the
+  copy goes with the run's cleanup. The path never reaches the output (bitexact,
+  `-map_metadata -1`), so the bytes are unchanged and the argv goldens, which
+  build from the options, still hold.
+- **Sync is proven, not assumed.** `export_lanes_keep_cuts_on_the_beat`
+  (`src-tauri/src/encode/av_sync_tests.rs`, `cargo test --lib av_sync --
+  --nocapture`) pipes a flash on the first frame at or after each beat, with a
+  click track on the beats, through every lane's real argv and the real sidecar
+  (legacy, spec with `-bf 2`, poster frame, two-pass, x265, ProRes with PCM,
+  VideoToolbox; 30 and 60 fps) and times both from the file as a player does.
+  Every cut lands `ceil(B × fps) / fps − B` after its beat, 0 to 1 frame (33.3 ms
+  at 30 fps, 16.7 at 60), and every click within 1 ms. Larger numbers are the
+  reading, not the file: ignoring edit lists adds the B-frame delay minus AAC
+  priming (+45.3 ms at 30 fps, +12.0 at 60), and timing a poster-frame film
+  against the project grid without taking the poster off adds a frame (the
+  2026-10 field report's 37 to 65 ms). `kb sync-check` measures it right.
+  Snapping cuts to the nearest frame or dropping edit lists would change bytes:
+  a deliberate rebase.
 - **Load degrades, never crashes.** `loadProject` probes the track
   (`probe_audio`); missing/unprobeable → the project loads SILENT with a warning;
   shorter-than-project → the tail pads with silence (warned, not fatal).
@@ -1593,8 +1613,56 @@ what ffmpeg receives, a panic drops the tap (report "unavailable") and never the
 and it costs about 4.3 ms per 4K frame. Any change to it gates with `pnpm gate`; bytes
 must stay EQUAL.
 
+`push_frame` also feeds the export trace (`export_health::frame`: the written count
+and one timestamp a second, under its own lock) after the write, so a failed run can
+name its frame, scene and render-rate trend (docs/agent-kit.md, "Export health"). It
+reads nothing from the frame.
+
 The autorun surface (env-gated, cold-boot, one run at a time via the FIFO run
 queue) is unchanged; neither surface may regress the other.
+
+### Memory probe
+
+`pnpm kookaburra:run --action memory --project P[,P...] [--aspect A] [--at N] [--lever L]`
+exports each film through the real path (30 fps unless a preset says otherwise; `--at N`
+renders the first N seconds) and every 2 s records the render rate, each process's
+footprint (`export_memory_sample`: the editor's and render window's WebContent, WebKit's
+GPU process, the app, ffmpeg), three's texture and geometry counts and the clip frame
+cache (`clipCacheCensus`). Each row's `memory` carries the rate over the first, middle and
+last 10 s, first, peak and last footprints, `editorGrowthMb` (the editor's median over
+the last third minus the first third: growth that stays, not a transition's MSAA pair
+coming and going) and `holds`. A film that slows below 80% of its start or keeps more than
+512 MB fails the run. `--lever clip-cache=N` changes one thing for an experiment.
+`fixtures/long-device-spike` (60 s of handsets, the foldable, a tablet, a laptop and a
+comparison over fourteen screen recordings) is the leak acceptance film. The probe reads;
+it never changes a byte.
+
+**The 2026-10-28 leak.** A 50 s foldable film failed eight exports at 43 to 53% with the
+editor reloaded. Measured on device-heavy spikes in one boot, 30 fps, 16:9 / 9:16 / 1:1:
+
+| Run | Editor at each leg's start (MB) | Editor peak | Clip cache peak | GPU process peak |
+| --- | --- | --- | --- | --- |
+| Before | 1951, 2945, 3175, 3847, 4512, 4897 (7113 by the fourth project) | 5544 | 1734 | 2372 |
+| `--lever clip-cache=2` | 1916, 1631, 1787, 1649, 3001, 3503 | 4143 | 457 | 1172 |
+| Fixed | 1856, 1814, 1317, 1782, 2348, 2222 | 3092 | 303 | 1045 |
+
+- **The cause: the clip frame cache never shrank.** Each clip kept 12 decoded frames
+  (`LRU_CAPACITY`, per clip, so the total grew with every clip the film reached), they
+  stayed through every aspect and project in the session, and the export's software lane
+  kept its own set beside the preview's hardware lane. Each cached megabyte cost the
+  editor's WebContent about two (the bitmap plus decode garbage) and WebKit's GPU process
+  one more (the uploaded texture). On a 64 GB Mac nothing died; on a smaller one WebKit
+  kills the WebContent process near its footprint limit, and the memory pressure before
+  that is the 8.4 → 2.6 → 1.2 fps slowdown the field saw.
+- **The fix** (`engine/clips.ts`): an export keeps two frames a clip
+  (`EXPORT_LRU_CAPACITY`; it steps forward and never back), and starts and ends by closing
+  every frame no consumer binds, in both lanes (`releaseIdleClipFrames`). A re-decoded PNG
+  is the same pixels, so bytes cannot move; the gate proves it.
+- **Not leaks:** a crossfade or comparison allocates its MSAA pair for its window and
+  `releaseIdlePools` frees it after (a +500 to 900 MB spike at 4K, measured coming back);
+  compositor targets are replaced, never stacked, on a size change; Verify's three raw
+  frame copies are freed as pass B matches them.
+- **The truth when it still happens:** `docs/agent-kit.md`, "Export health".
 
 ### Gate tiers: how much to run
 
@@ -1634,8 +1702,12 @@ it.
   unchanged leg is skipped, in any worktree; `--force` re-runs it.
 - **Tier 0: statics (free):** lint, build, `vitest related` on the changed
   `src/` files, the script tests, the kb suite and `cargo clippy` + `cargo
-  test`, each only when the diff touches its area. CI runs all of them on every
-  PR (`scripts/ci-scope.sh` scopes the rust job and the kb suite). Pure math
+  test`, each only when the diff touches its area, plus the workspace-name
+  check on every branch (`scripts/workspace-names.mjs`: no name from the
+  user's own `~/Kookaburra Cut` and no past leak shape in an added line). CI
+  runs all of them on every PR (`scripts/ci-scope.sh` scopes the rust job and
+  the kb suite; the name check runs on every pull request with no workspace
+  there, so the denylist alone). Pure math
   (eases, presets, schemas, edit math) belongs in unit tests, not in verify
   runs.
 - **The PR gate: `pnpm gate:merge`, once, when the render path changed.**
@@ -1728,6 +1800,7 @@ Verify ×2 here (the 2026-10-23 note):
 | `compare-spike` (before/after comparison gate) | `03f4704d…` | `0c6b7166…` | `d4cac096…` | `ac586a05…` | — | — | — | — | — |
 | `compare-transition-spike` (comparisons through transitions; `transitioncheck` proves its crossfades blend) | `48ee3fd8…` | — | — | — | — | — | — | — | — |
 | `image-flip-spike` (image-orientation gate, eyeball it) | `5753a093…` | — | — | — | — | — | — | — | — |
+| `long-device-spike` (long-film memory gate: devices, a fold, compare media, 61 s) | `9f4a603d…` | — | — | — | — | — | — | — | — |
 | `ws:layered-screenshot-spike` (LS gate, machine-local) | `33c75ab8…` | — | — | — | — | — | — | — | — |
 | `ws:video-window-spike` (VideoWindow gate, machine-local) | `273e778c…` | — | — | — | — | — | — | — | — |
 | `ws:lighting-spike-fable` (v9 lighting gate, machine-local) | `c3d51b40…` | — | — | — | — | — | — | — | — |

@@ -2567,6 +2567,27 @@ button.beat-status {
   color: var(--text-secondary);
 }
 
+.welcome-modal-privacy {
+  margin: 0;
+  font-size: var(--text-xs);
+}
+
+/* An inline link drawn by a button, for the fixed pages Rust opens (never an href the page controls). */
+.text-link {
+  padding: 0;
+  font: inherit;
+  color: var(--accent-text);
+  background: none;
+  border: none;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.text-link:hover {
+  color: var(--accent-hover);
+}
+
 .recommended-badge {
   display: inline-flex;
   align-items: center;

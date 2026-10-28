@@ -22,6 +22,11 @@ export function openClaudeDownload(): Promise<void> {
   return invoke<void>("open_claude_download");
 }
 
+/** docs/privacy.md in the browser: what leaves the Mac and how to turn each channel off. */
+export function openPrivacyPage(): Promise<void> {
+  return invoke<void>("open_privacy_page");
+}
+
 export function openSettingsWindow(): Promise<void> {
   return invoke<void>("open_settings");
 }

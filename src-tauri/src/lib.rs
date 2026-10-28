@@ -23,6 +23,7 @@ mod conform_av;
 mod edit;
 mod edit_masks;
 mod encode;
+mod export_health;
 mod export_presets;
 mod flashes;
 mod fonts;
@@ -292,14 +293,19 @@ struct ExportRun {
     /// Where ffmpeg writes until `finish_export` renames it onto `output`, so a cancelled or failed run never leaves a broken file or clobbers the previous export.
     partial: PathBuf,
     mezz_dir: Option<PathBuf>,
+    /// The soundtrack copy ffmpeg reads, so an edit to the music mid-export can't reach the film.
+    audio_snapshot: Option<PathBuf>,
 }
 
 impl ExportRun {
-    /// Removes the partial file (if still there) and the two-pass mezzanine.
+    /// Removes the partial file (if still there), the two-pass mezzanine and the soundtrack copy.
     fn clean_up(&self) {
         let _ = std::fs::remove_file(&self.partial);
         if let Some(dir) = &self.mezz_dir {
             let _ = std::fs::remove_dir_all(dir);
+        }
+        if let Some(audio) = &self.audio_snapshot {
+            let _ = std::fs::remove_file(audio);
         }
     }
 }
@@ -321,8 +327,13 @@ impl ExportState {
         self.run.lock().map(|guard| guard.is_some()).unwrap_or(true) || self.stills.busy()
     }
 
+    /// The ffmpeg working for the run, for the memory sampler.
+    pub(crate) fn ffmpeg_pid(&self) -> Option<u32> {
+        self.run.lock().ok()?.as_ref()?.pid
+    }
+
     /// Stops the run in whichever phase it is in; a no-op when idle (the autorun boot latch relies on that).
-    fn cancel(&self) -> Result<(), String> {
+    pub(crate) fn cancel(&self) -> Result<(), String> {
         let streaming = self
             .active
             .lock()
@@ -427,8 +438,9 @@ fn start_export(
     app: AppHandle,
     state: State<'_, ExportState>,
     settings: State<'_, workspace::SettingsState>,
-    options: ExportOptions,
+    mut options: ExportOptions,
     on_progress: Channel<Progress>,
+    scenes: Option<Vec<export_health::SceneSpan>>,
 ) -> Result<String, String> {
     if state
         .run
@@ -444,20 +456,29 @@ fn start_export(
         Some(spec) => spec.codec.container_ext(),
         None => options.codec.container_ext(),
     };
+    let target = |destination| ExportTarget {
+        project_id: &options.project_id,
+        project_slug: options.project_slug.as_deref(),
+        aspect: &options.aspect,
+        output_suffix: options.output_suffix.as_deref(),
+        destination,
+    };
     let output = resolve_export_output(
         &app,
         &settings,
-        &ExportTarget {
-            project_id: &options.project_id,
-            project_slug: options.project_slug.as_deref(),
-            aspect: &options.aspect,
-            output_suffix: options.output_suffix.as_deref(),
-            destination: options.destination.as_deref(),
-        },
+        &target(options.destination.as_deref()),
         ext,
         false,
     )?
     .path;
+    // A failure report lands in the project's own exports, even when the film goes to Downloads.
+    let health = export_health::health_path(
+        &options
+            .destination
+            .as_ref()
+            .and_then(|_| resolve_export_output(&app, &settings, &target(None), ext, false).ok())
+            .map_or_else(|| output.clone(), |canonical| canonical.path),
+    );
 
     // Validate the soundtrack up front so a bad path fails the export loudly, not as a cryptic ffmpeg exit late in the run.
     if let Some(audio) = &options.audio {
@@ -466,6 +487,14 @@ fn start_export(
             return Err(format!("audio file not found: {}", audio.file));
         }
     }
+    let audio_snapshot = match options.audio.as_mut() {
+        Some(audio) => {
+            let copy = snapshot_audio(&app, &audio.file)?;
+            audio.file = copy.to_string_lossy().into_owned();
+            Some(copy)
+        }
+        None => None,
+    };
 
     let partial = partial_output_path(&output);
     let _ = std::fs::remove_file(&partial);
@@ -555,6 +584,7 @@ fn start_export(
         output: output.clone(),
         partial,
         mezz_dir: run_mezz_dir,
+        audio_snapshot,
     });
     *state.active.lock().map_err(|_| "export state poisoned")? = Some(ActiveExport {
         child,
@@ -573,8 +603,49 @@ fn start_export(
         )),
     });
     bridge_export::native_job(Some(("render", 0, options.total_frames)));
+    export_health::begin(export_health::RunTrace::new(
+        options.fps,
+        options.total_frames,
+        options.encode.as_ref().is_some_and(|spec| spec.poster_frame),
+        scenes.unwrap_or_default(),
+        output.clone(),
+        health,
+        export_health::now_ms(),
+    ));
 
     Ok(output.to_string_lossy().into_owned())
+}
+
+/// ffmpeg reads the soundtrack from a copy taken at the start, so music saved mid-export can't change the film; copies left by a crashed instance are swept.
+fn snapshot_audio(app: &AppHandle, file: &str) -> Result<PathBuf, String> {
+    let dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| e.to_string())?
+        .join("cache")
+        .join("export-audio");
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let me = std::process::id();
+    for entry in std::fs::read_dir(&dir).into_iter().flatten().flatten() {
+        let name = entry.file_name();
+        let owner = name
+            .to_string_lossy()
+            .split('-')
+            .next()
+            .and_then(|pid| pid.parse::<u32>().ok());
+        if owner.map_or(true, |pid| pid != me && !bridge::pid_alive(pid)) {
+            let _ = std::fs::remove_file(entry.path());
+        }
+    }
+    let source = std::path::Path::new(file);
+    let ext = source
+        .extension()
+        .map(|e| format!(".{}", e.to_string_lossy()))
+        .unwrap_or_default();
+    let copy = dir.join(format!("{me}-{}{ext}", export_health::now_ms()));
+    std::fs::copy(source, &copy)
+        .map_err(|e| format!("couldn't copy the soundtrack for the export: {e}"))?;
+    Ok(copy)
 }
 
 /// What names an export's output file; shared by video and stills so both follow one set of destination rules.
@@ -694,6 +765,7 @@ fn push_frame(state: State<'_, ExportState>, request: tauri::ipc::Request) -> Re
     // Read-only, after the bytes reached ffmpeg: the tap never changes or delays what is encoded.
     tap_flash_frame(&mut active.flashes, bytes);
     active.written += 1;
+    export_health::frame(active.written);
     let _ = active.progress.send(Progress {
         frame: active.written,
         total: active.total,
@@ -736,6 +808,13 @@ async fn finish_export(
     };
     run.clean_up();
     bridge_export::native_job(None);
+    match &result {
+        Ok(()) => export_health::succeeded(),
+        Err(_) if run.cancelled => export_health::cancelled(),
+        Err(error) => {
+            export_health::failed("encodeFailed", error);
+        }
+    }
     if result.is_err() {
         flash.set(None);
     }
@@ -845,10 +924,20 @@ fn free_disk_bytes(path: &std::path::Path) -> Result<u64, String> {
     Ok(vfs.f_bavail as u64 * vfs.f_frsize as u64)
 }
 
-/// Stops an export in any phase (streaming, finalising or a two-pass pass): kills its ffmpeg and deletes the partial file, so the previous export at that path survives.
+/// Stops an export in any phase (streaming, finalising or a two-pass pass): kills its ffmpeg and deletes the partial file, so the previous export at that path survives. A `reason` (the error that stopped the loop) writes `<export>.health.json` and returns where the run stopped, for the error message.
 #[tauri::command]
-fn cancel_export(state: State<'_, ExportState>) -> Result<(), String> {
-    state.cancel()
+fn cancel_export(
+    state: State<'_, ExportState>,
+    reason: Option<String>,
+) -> Result<Option<String>, String> {
+    state.cancel()?;
+    Ok(match reason {
+        Some(reason) => export_health::failed("failed", &reason),
+        None => {
+            export_health::cancelled();
+            None
+        }
+    })
 }
 
 /// Lowercase hex of a digest; sha2 0.11 outputs no longer implement LowerHex.
@@ -968,6 +1057,8 @@ struct AutorunEnv {
     poster: Option<String>,
     /// `KOOKABURRA_PROGRESS=1`: the run reports progress through `autorun_progress`.
     progress: bool,
+    /// memory: the one change this run measures (`clip-cache=N`).
+    lever: Option<String>,
 }
 
 /// One `KOOKABURRA_*` env read under the single auto-run rule: trimmed, and empty/whitespace reads as unset.
@@ -1039,6 +1130,7 @@ fn get_autorun_config() -> AutorunEnv {
         trust: autorun_var("KOOKABURRA_TRUST"),
         poster: autorun_var("KOOKABURRA_POSTER"),
         progress: autorun_progress_enabled(),
+        lever: autorun_var("KOOKABURRA_LEVER"),
     }
 }
 
@@ -1357,6 +1449,8 @@ macro_rules! kookaburra_handler {
             bridge::bridge_instance,
             bridge::bridge_request_live,
             capture_service::capture_report_census,
+            export_health::export_memory_sample,
+            export_health::take_export_interruption,
             capture_service::capture_service_status,
             render_win::render_report_gpu_event,
             render_win::capture_service_reset,
@@ -1431,6 +1525,7 @@ macro_rules! kookaburra_handler {
             claude_app::open_in_claude,
             claude_app::open_project_folder,
             claude_app::open_claude_download,
+            claude_app::open_privacy_page,
             claude_update::claude_version_info,
             claude_update::dismiss_claude_update,
             media::import_media,
@@ -1567,6 +1662,13 @@ pub fn run() {
         .manage(theme_editor_win::ThemeEditorState::default())
         .manage(pack::commands::PackState::default())
         .manage(website::WebsiteState::default())
+        .on_page_load(|webview, payload| {
+            if webview.label() == "main"
+                && payload.event() == tauri::webview::PageLoadEvent::Started
+            {
+                export_health::on_main_page_load(webview.app_handle());
+            }
+        })
         .setup(move |app| {
             // The main window exists (config-created); strip its webview's white layer.
             #[cfg(target_os = "macos")]
@@ -1583,6 +1685,7 @@ pub fn run() {
             }
             bridge::init(app.handle());
             bridge::spawn_heartbeat(app.handle().clone());
+            export_health::spawn_sampler(app.handle().clone());
             bridge::spawn_native_bridge(app.handle().clone());
             // The headless CLI resolves app data without Tauri; a mismatch would split the tap frame cache and settings.
             #[cfg(debug_assertions)]
@@ -1950,6 +2053,7 @@ mod tests {
             output: PathBuf::from("/d/out.mp4"),
             partial: PathBuf::from("/d/.out.part.mp4"),
             mezz_dir: None,
+            audio_snapshot: None,
         }
     }
 

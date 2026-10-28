@@ -50,14 +50,15 @@ gh attestation verify KookaburraCut-<version>.dmg --repo michael-palmes/kookabur
   --source-ref refs/tags/v<version> --deny-self-hosted-runners
 ```
 
-> Status: early release, in active development. Two opt-in network exceptions
-> to "fully local": the optional embedded Claude Code terminal, which only ever
-> runs when you explicitly invoke it (it installs via a script shown in the
-> terminal and talks to Anthropic while you use it), and the update check, which
-> runs at launch only if you press Get started on the first-run welcome with its
-> switch on (recommended, so it starts on; Escape declines it, and Settings
-> changes it any time) or when you choose Check for updates, asks GitHub whether
-> a newer release exists and sends no identifiers.
+> Status: early release, in active development. Nothing leaves your Mac
+> unless you start it: the opt-in update check (asked once on the first-run
+> welcome, recommended there; Escape declines; Settings changes it any time)
+> asks GitHub whether a newer release exists and sends no identifiers; the
+> Claude integration (the Edit with Claude handoff to the Claude desktop app,
+> or the built-in terminal, each using your own Claude Code install) sends the
+> project's files to Anthropic as you work; a live website in a scene loads
+> only after you allow its origin. Every path, with its off switch, is in
+> [`docs/privacy.md`](docs/privacy.md) and [`SECURITY.md`](SECURITY.md).
 
 ## Core features
 
@@ -145,7 +146,9 @@ decision and why.
 
 This is a personal, source-available project. Issues and discussion are welcome;
 pull requests may be declined: see [`CONTRIBUTING.md`](CONTRIBUTING.md).
-Security reports: see [`SECURITY.md`](SECURITY.md).
+Security reports: see [`SECURITY.md`](SECURITY.md), which lists everything
+the app touches; [`docs/privacy.md`](docs/privacy.md) is the plain-words
+version.
 
 ## Licensing
 
