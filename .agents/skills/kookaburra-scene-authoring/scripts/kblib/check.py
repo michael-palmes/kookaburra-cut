@@ -11,11 +11,12 @@ from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
 
 from . import catalog as catmod
 from . import fonts as fontmod
+from . import music
 from . import themes as thememod
 from . import tsx as tsxmod
 from .catalog import Catalog
 from .project import MANIFEST, Project, stem_of
-from .util import Report, exact_case_exists, is_int, is_number, read_text
+from .util import KbError, Report, exact_case_exists, is_int, is_number, js_json, read_text
 
 SUPPORTED_ASSET_EXTS = {
     "png", "jpg", "jpeg", "webp", "gif",
@@ -224,6 +225,8 @@ class Checker:
             elif not (self.project.root / "BRAND.md").is_file():
                 warn(file, "brand", f"BRAND.md is missing; kb brand use {brand} writes it")
         self.manifest_scenes(m, warn)
+        if include_warnings:
+            self.cut_warnings(m, warn)
         if "defaultTransition" in m and m["defaultTransition"] is not None:
             self.transition(file, "defaultTransition", m["defaultTransition"])
         typography = m.get("typography")
@@ -305,9 +308,58 @@ class Checker:
             effects = entry.get("effects")
             if effects is not None and not isinstance(effects, dict):
                 rep.error(file, f"{path}.effects", "must be an object")
+            cut = entry.get("cutAt")
+            if "cutAt" in entry and not (isinstance(cut, str) and music.is_position(cut)):
+                rep.error(file, f"{path}.cutAt", "must be a position like bar:9, bar:9.3, cue:drop or section:chorus (kb scene set S --cut-at POS)")
+            if "align" in entry:
+                if entry["align"] not in ("end", "mid"):
+                    rep.error(file, f"{path}.align", 'must be "end" (the scene is gone at cutAt) or "mid" (its outgoing transition is centred on it)')
+                elif "cutAt" not in entry:
+                    warn(file, f"{path}.align", "has no cutAt to align, so it is inert")
             for key in entry:
-                if key not in ("file", "durationMs", "transition", "effects"):
-                    warn(file, f"{path}.{key}", "unknown scene-entry key (ignored); entries hold file, durationMs, transition, effects")
+                if key not in ("file", "durationMs", "transition", "effects", "cutAt", "align"):
+                    warn(file, f"{path}.{key}", "unknown scene-entry key (ignored); entries hold file, durationMs, transition, effects, cutAt, align")
+
+    def cut_warnings(self, m: Dict[str, Any], warn: Any) -> None:
+        """Pinned cuts whose cached length is stale or can't resolve, TSX lengths that differ from project.json, and cuts
+        that sat on a beat at the last checkpoint and no longer do."""
+        from . import cuts as cutsmod
+        from .beats import model
+        from .film import timeline as tl
+
+        scenes = m.get("scenes")
+        if not isinstance(scenes, list) or not scenes or not all(isinstance(e, dict) for e in scenes):
+            return
+        try:
+            durations = model.manifest_durations(self.project, m)
+            outgoing = tl.outgoing_transitions(m)
+            cuts = tl.resolve_scene_cuts([
+                {"durationMs": durations[i], "transition": outgoing[i] if isinstance(outgoing[i], dict) else None,
+                 "cutAt": e.get("cutAt") if music.is_position(e.get("cutAt")) else None, "align": e.get("align")}
+                for i, e in enumerate(scenes)
+            ], model.project_music(m))
+        except (KbError, TypeError, ValueError):
+            return
+        for i in cuts["changed"]:
+            warn(MANIFEST, f"scenes[{i}].durationMs", f'{js_json(scenes[i].get("durationMs"))} is stale: cutAt {scenes[i]["cutAt"]} lands this scene at {cuts["durations"][i]} ms, which is what plays; any kb scene or beats write refreshes it')
+        for issue in cuts["issues"]:
+            n = re.match(r"scene (\d+) ", issue)
+            warn(MANIFEST, f"scenes[{int(n.group(1)) - 1}].cutAt" if n else "scenes", f"{issue}, so its stored durationMs plays")
+        differ = []
+        for e in scenes:
+            dur, rel = e.get("durationMs"), e.get("file")
+            if not is_number(dur) or not isinstance(rel, str):
+                continue
+            try:
+                literal = tsxmod.defined_duration(self.project.read_tsx(stem_of(rel)))
+            except (OSError, UnicodeDecodeError, KbError):
+                continue
+            if literal is not None and literal != dur:
+                differ.append(f"{stem_of(rel)} ({js_json(literal)} in the TSX, {js_json(dur)} in project.json)")
+        if differ:
+            warn(MANIFEST, "scenes", f"project.json's durationMs is what plays, so the TSX durationMs of {', '.join(differ)} is ignored; change lengths with ./kb scene set or ./kb timeline apply, not in the TSX")
+        for d in cutsmod.drift_from_checkpoint(self.project, m):
+            warn(MANIFEST, f"scenes[{d['scene']}]", d["message"])
 
     def transition(self, file: str, path: str, spec: Any) -> None:
         if not isinstance(spec, dict) or not isinstance(spec.get("type"), str):

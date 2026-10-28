@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import json
 import re
 import subprocess
@@ -82,6 +83,7 @@ the cwd, or uses $CLAUDE_PROJECT_DIR.
              note TEXT [--scene S] | notes [--all]
              events [--follow] [--since 10m|CURSOR|all] [--kinds ...] [--all-agents] [--exit-after S]
   Music      beats [--scene S] | beats set-grid|set-downbeat|clear-grid|cue|section|resolve ...
+             timeline | timeline apply PLAN [--ripple]   (cuts and transitions in bars and ms)
              song analyse [--force] [--tracker nn|dsp] [--lyrics] [--accept]
   Helpers    chart ... (chart data) | hook EVENT (Claude Code)
 
@@ -444,8 +446,12 @@ def cmd_scene_set(ctx: Ctx) -> int:
             raise KbError(f'unknown transition "{kind}".{checkmod.did_you_mean(kind, known)} See kb catalog transitions', 2, kind="usage")
     if a.ripple and a.transition is None:
         raise KbError("--ripple goes with --transition", 2, kind="usage")
+    before = copy.deepcopy(ctx.project.manifest())
     res = scenemod.set_scene(ctx.project, a.scene, a.duration, a.transition, a.ease, a.name, ctx.opts, timing=timing, ripple=a.ripple)
     idx, stem = res["index"], res["stem"]
+    from . import cuts as cutsmod
+
+    res["drift"] = [] if ctx.dry_run else cutsmod.drift_between(ctx.project, before, ctx.project.manifest())
     if ctx.dry_run:
         if ctx.json:
             ctx.out(res)
@@ -461,6 +467,8 @@ def cmd_scene_set(ctx: Ctx) -> int:
         return EXIT_PROBLEMS if report.errors else EXIT_OK
     for c in res["changes"]:
         emit(f"scene {idx} {stem}: {c}")
+    for d in res["drift"]:
+        emit(f"! {d['message']}")
     if report.issues:
         emit(report.render())
     return EXIT_PROBLEMS if report.errors else EXIT_OK
@@ -1235,6 +1243,9 @@ def build_parser(video_extensions: bool = True) -> argparse.ArgumentParser:
     from .beats import commands as beatsmod
 
     beatsmod.register(sub, common, Formatter)
+    from . import cuts as cutsmod
+
+    cutsmod.register(sub, common, Formatter)
     from . import song as songmod
 
     songmod.register(sub, common, Formatter)
