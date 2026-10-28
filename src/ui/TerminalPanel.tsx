@@ -445,8 +445,9 @@ export function TerminalPanel({
               <>
                 <h3>Edit with Claude Code</h3>
                 <p className="muted">
-                  Starts a Claude session in this project’s folder. Scene edits apply automatically;
-                  anything else still asks first.
+                  Starts a Claude session in this project’s folder. Sends this project’s files to
+                  Anthropic as you work. Scene edits and kb commands run without asking; other
+                  commands ask.
                 </p>
                 {status === "exited" && exitNote && (
                   <p className="terminal-exit-note" role="alert">

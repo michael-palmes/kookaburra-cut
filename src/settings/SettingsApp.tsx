@@ -19,6 +19,7 @@ import {
 } from "../engine/appCache";
 import { claudeAppInstalled, openClaudeDownload, setClaudePreferences } from "../engine/claudeApp";
 import { setConformNewVideosSetting } from "../engine/media";
+import { notePickedFolder } from "../engine/pickedFolders";
 import { revealApp } from "../engine/reveal";
 import {
   clearWebsiteData,
@@ -311,7 +312,10 @@ export function SettingsApp() {
         multiple: false,
         title: "Choose where Kookaburra Cut keeps your projects",
       });
-      if (typeof picked === "string") relocate(picked);
+      if (typeof picked === "string") {
+        void notePickedFolder(picked);
+        relocate(picked);
+      }
     } catch (e) {
       setError(String(e));
     }

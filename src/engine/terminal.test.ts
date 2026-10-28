@@ -36,12 +36,14 @@ describe("claudeSessionLaunch", () => {
 });
 
 describe("claudeGroundingPrompt", () => {
-  it("names the project and its folder, and points at the skill and CLAUDE.md", () => {
+  it("names the project and its folder, and points at the skill and the stamped rules", () => {
     const prompt = claudeGroundingPrompt(PROJECT);
     expect(prompt).toContain('"Launch 2026"');
     expect(prompt).toContain("folder launch-2026");
     expect(prompt).toContain("kookaburra-scene-authoring");
-    expect(prompt).toContain("CLAUDE.md");
+    expect(prompt).toContain("RULES.md is the authority");
+    expect(prompt).toContain("NOTES.md");
+    expect(prompt).not.toContain("CLAUDE.md in this folder is the authority");
   });
 
   it("routes video editing to its own skill on the same grounding line", () => {

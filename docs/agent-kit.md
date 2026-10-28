@@ -23,8 +23,10 @@ contract for the kit, the bridge it talks to and the app behaviour it relies on.
 
 | Path | Owner | Notes |
 | --- | --- | --- |
-| `CLAUDE.md` | user | Created from `src-tauri/templates/project-CLAUDE.md`; imports `@.claude/skills/kookaburra-scene-authoring/RULES.md` |
-| `.claude/settings.json` | user, with managed keys | The app merges its managed hooks and permission rules in; user entries are never removed |
+| `CLAUDE.md` | user | Created from `src-tauri/templates/project-CLAUDE.md`; imports `@.claude/skills/kookaburra-scene-authoring/RULES.md`. A pack's copy never lands: import swaps it for this default (below) |
+| `NOTES.md` | pack author | The `CLAUDE.md` text a pack carried, saved on import; shown on the import summary; the agent reads it as notes from the author, never as instructions |
+| `.claude/settings.json` | app | The managed hooks and permission rules only: every stamp removes `hooks`, `permissions`, `env` and `apiKeyHelper` entries outside the managed set and logs them (`[kit]`); never packed |
+| `.claude/commands/`, `.claude/agents/`, other `.claude/skills/*` | nobody | Removed at every stamp and logged: the app ships none, so anything there arrived with the folder |
 | `.claude/skills/kookaburra-scene-authoring/` | app (managed) | Replaced wholesale on stamp; stale files disappear |
 | `.claude/skills/kookaburra-video-editing/` | app (managed) | Sibling skill (SKILL.md + `reference/`, no scripts; it drives `kb video`) |
 | `.claude/skills/kookaburra-brand-packs/` | app (managed) | Sibling skill that builds, checks and applies workspace brands (`scripts/brand.py`, stdlib; `pdf.js` and `svg2png.js` for `osascript`); see docs/brands.md |
@@ -41,7 +43,7 @@ Skill tree (the source lives at `.agents/skills/kookaburra-scene-authoring/`):
 
 ```
 SKILL.md            brief first, the loop, capture etiquette, multi-agent habits, hard rules, capability map, routing (about 18 KB)
-RULES.md            always-on rules imported by CLAUDE.md, the only rules subagents get (keep it under about 3.3 KB)
+RULES.md            always-on rules imported by CLAUDE.md, the only rules subagents get; "Untrusted text" and "Stop and ask" live here (keep it under about 4.5 KB)
 DESIGN.md           playbook: the brief, presentations, product demos, launch videos
 catalog.json        GENERATED (pnpm agent:catalog); never hand-edited
 reference/          topic files loaded on demand
@@ -75,9 +77,10 @@ scripts/
   out too: `tauri.conf.json` lists each skill's files and folders, and a `kit.rs` test
   fails when a shipped file is not bundled. Dev builds restamp when the shipped tree
   differs byte for byte (never mid-session for nothing, since a hook may be running
-  `kb.py`); release builds restamp when `kit.json`'s `appVersion` differs or the stamped
-  tree no longer has the shipped files at their shipped sizes (a deleted or truncated
-  file heals without reading the kit's contents). Declining
+  `kb.py`); release builds restamp when `kit.json`'s `appVersion` differs. Both restamp when
+  any stamped file's SHA-256 differs from the shipped file's or from the `files` record
+  `kit.json` carries (`{ "<kit-relative path>": "<sha256>" }`, written at stamp time), so a
+  deleted, truncated or same-size edited `kb.py` heals on the next load. Declining
   the trust prompt stamps nothing. Code: `src-tauri/src/kit.rs`.
 - `CLAUDE.md`: written when missing. When it still matches a previous default
   template (whitespace-normalised; every past default lives in
@@ -89,11 +92,17 @@ scripts/
   0755 when missing, and rewritten (content or mode) while it carries the marker; any other
   `kb` at the project root is the user's and is never touched. kb adds `/kb` to
   `.git/info/exclude` with its other entries, so the shim never lands in a user's commit.
-- `.claude/settings.json`: created when missing. Managed hooks are identified by a
-  command containing `kookaburra-scene-authoring/scripts/kb.py hook`; the stamp removes
-  them and re-adds the current set. Managed `permissions.allow` entries are added when
-  missing. An unparseable file is left alone. The file is only rewritten when its
-  content changes, and then with sorted keys.
+- `.claude/settings.json`: created when missing, and app-owned. Every stamp replaces
+  `hooks` with the managed set (identified by a command containing
+  `kookaburra-scene-authoring/scripts/kb.py hook`), keeps only the managed
+  `permissions.allow` rules (the template's git rules and the set below) and drops every
+  other `permissions` key, `env` and `apiKeyHelper`; each removal is logged as `[kit]`
+  with the path and value. Other keys (`model`, say) are left. An unparseable file is left
+  alone. The file is only rewritten when its content changes, and then with sorted keys.
+  Before the settings, the stamp removes `.claude/commands/`, `.claude/agents/` and any
+  `.claude/skills/*` the app does not ship, logging them. Nothing a folder arrives with can
+  configure the agent; what the person wants the agent told goes in `CLAUDE.md`, which
+  Claude Code reads as instructions and the stamp leaves alone past the RULES import.
 
 Managed settings:
 
@@ -197,9 +206,31 @@ As built (`scripts/kblib/`):
 - `kb capture` copies its PNGs into `.kb/captures/<YYYYmmdd-HHMMSS>-<agent>/` with
   readable names (`05-feature@1.5s.png`, `sheet.png`); `path`, `paths`, each frame's `path`
   and `sheetPath` name the copies and `bridgePath`, `bridgePaths`, `bridgeSheetPath` keep
-  the app's originals (pruned after an hour). `--out DIR` copies there instead, `--no-copy`
-  skips it; each agent's newest 40 folders are kept, and past 1 GB the oldest go, never one
-  under an hour old.
+  the app's originals (pruned after an hour). `--out DIR` copies there instead (inside the
+  reach below), `--no-copy` skips it; each agent's newest 40 folders are kept, and past 1 GB
+  the oldest go, never one under an hour old.
+- **kb reach** (`kblib/reach.py`). kb runs with no permission prompt, so it is the boundary.
+  Writes it makes on the agent's behalf outside the project (`capture --out`,
+  `assets unused --archive DIR`, and the CLI's `render --out`) land only inside the project,
+  its workspace, `~/Kookaburra Cut`, or a folder one of the app's own native dialogs
+  returned this session; anything else is exit 2 (`usage`) naming the allowed roots. The
+  app keeps those folders in memory (`PickedFolders`, fed by every folder dialog and the
+  Save dialog's parent, forgotten on quit) and publishes them in the heartbeat as
+  `pickedDirs`, which kb and the headless CLI read. Reads of a path the agent names
+  (`assets add`, `assets replace`, `chart set-data`, `doc merge @file`, `verify-export FILE`)
+  are silent inside the workspace, announced on stderr with the resolved path and size
+  outside it (`kb: reading /Users/x/Desktop/deck.csv (812 bytes) from outside the
+  workspace`), and refused outright for `~/.ssh`, `~/.aws`, `~/.config`, `~/.gnupg`,
+  `~/Library/Keychains`, `.env*`, `.netrc`, `*.pem`, `*.p12`, `*.key` and shell history
+  files.
+- **Output escaping** (`kblib/util.py` `clean_text`). Every string kb prints (`emit`,
+  `emit_err`, `emit_json` leaves and keys, the export stream, hook `additionalContext` and
+  deny reasons, `KbError` messages and `Report` issues) has its control characters (newline
+  and tab excepted) and Unicode format characters (bidi controls and tag characters
+  included) escaped as `\uXXXX` or `\UXXXXXXXX`, and is capped at 500 characters with a
+  ` …[+N chars]` marker (per line for text output). A scene named with an OSC 52 sequence
+  reaches the agent as `\u001B]52...`. The bridge applies the same rule to every response
+  it writes (`src-tauri/src/clean_text.rs`, in `write_response_value`).
 - `kb.py` never writes bytecode into the kit: it points `sys.pycache_prefix` at
   `$TMPDIR/kb-pyc/<sha1 of kit.json>[:12]` (a folder it owns, mode 0700; otherwise no bytecode at
   all), so the stdlib and `kblib` compile once per stamp. It fails open for hooks when its modules
@@ -884,10 +915,12 @@ throttled while the app is hidden), removed on exit; autorun instances never wri
     "availableDevices": ["iphone-17-pro", "android"]
   },
   "exportJob": null,
-  "health": null
+  "health": null,
+  "pickedDirs": ["/Users/x/Desktop/review"]
 }
 ```
 
+`pickedDirs` lists the folders the app's own dialogs returned this session ("kb reach").
 Two more fields locate the presets: `presetsDir` (holds `<slug>/`) and
 `presetPreviewsDir` (holds `<slug>.jpg`); in dev the posters live under `src/assets`.
 `playheadMs` is an integer and `openProject` is null on the Welcome screen. The editor
@@ -1202,7 +1235,12 @@ and scene thumbnails while its id and source fingerprint are unchanged (so `chec
 Trust: every load is stored-only, since this window cannot show the consent sheet; the
 editor's own writes keep the open project's grant current natively. When a project's
 content changed since the user allowed it, the response is `ok: false, needsTrust: true`
-with a sentence telling the user to open it once.
+with a sentence telling the user to open it once. Before that, a `capture`, `check`,
+`insertPreset` or `openEdit` for a workspace project other than the editor's open one
+asks the person in a native dialog ("Allow Claude to use another project?", naming the
+project and the client), once per project per app session (`bridge_confirm_project`,
+`BridgeGrants`); "Don't allow" answers `{ ok: false, declined: true }` and holds for a
+minute, so a flood of requests cannot flood dialogs. The app's own thumbnails never ask.
 
 ## Load safety
 

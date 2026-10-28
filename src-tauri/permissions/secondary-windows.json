@@ -20,6 +20,7 @@
           "bridge_write_sheet",
           "bridge_check_assets",
           "bridge_request_live",
+          "bridge_confirm_project",
           "get_editor_context",
           "copy_scene_to_project"
         ]
@@ -75,6 +76,7 @@
           "apply_import",
           "discard_staged_pack",
           "workspace_root_path",
+          "note_picked_folder",
           "get_publisher_profile",
           "font_embedding_for",
           "pin_fonts_for_pack",
@@ -105,6 +107,7 @@
           "user_home_dir",
           "init_workspace",
           "move_workspace",
+          "note_picked_folder",
           "reveal_in_finder",
           "website_list_data",
           "website_clear_data",

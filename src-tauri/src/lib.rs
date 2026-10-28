@@ -10,6 +10,7 @@ mod bridge_health;
 mod capture_service;
 mod claude_app;
 mod claude_update;
+mod clean_text;
 pub mod cli;
 pub mod cli_check;
 pub mod cli_media;
@@ -1343,6 +1344,8 @@ macro_rules! kookaburra_handler {
             scene_doc::ensure_unique_scene_ids,
             bridge::bridge_claim_request,
             bridge::bridge_write_response,
+            bridge::bridge_confirm_project,
+            bridge::note_picked_folder,
             bridge::begin_bridge_screenshot,
             bridge::save_bridge_screenshot,
             bridge::bridge_pending_count,
@@ -1558,6 +1561,8 @@ pub fn run() {
         .manage(preset_posters::PresetPosterQueueState::default())
         .manage(bridge::EditorContextState::default())
         .manage(bridge::HeartbeatState::default())
+        .manage(bridge::PickedFolders::default())
+        .manage(bridge::BridgeGrants::default())
         .manage(packs_win::PacksState::default())
         .manage(theme_editor_win::ThemeEditorState::default())
         .manage(pack::commands::PackState::default())

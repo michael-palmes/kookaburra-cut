@@ -29,8 +29,8 @@ pub fn is_excluded(rel: &str) -> bool {
     if rel == crate::kit::SHIM_NAME {
         return true;
     }
-    // `.claude/settings.json` is user content (only written when missing); the rest of the folder is provisioned.
-    if rel.starts_with(".claude/") && rel != ".claude/settings.json" {
+    // Agent configuration never travels: the app stamps its own on first open (docs/packs.md, "What travels").
+    if rel.starts_with(".claude/") {
         return true;
     }
     // Caches and conform originals stay home; a pack carries the mezzanine the project renders.
@@ -192,7 +192,9 @@ mod tests {
         assert!(is_excluded("assets/.DS_Store"));
         assert!(!is_excluded("assets/hero.mp4"));
         assert!(!is_excluded("CLAUDE.md"));
-        assert!(!is_excluded(".claude/settings.json"));
+        assert!(!is_excluded("NOTES.md"));
+        assert!(is_excluded(".claude/settings.json"));
+        assert!(is_excluded(".claude/commands/deploy.md"));
         assert!(!is_excluded("edits/clip.json"));
         assert!(!is_excluded("scenes/01-hero.tsx"));
         assert!(is_excluded("assets/.originals/rec.mov"));

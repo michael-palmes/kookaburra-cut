@@ -17,7 +17,8 @@
           "open_theme_editor_window",
           "init_default_workspace",
           "default_workspace_root",
-          "user_home_dir"
+          "user_home_dir",
+          "note_picked_folder"
         ]
       }
     },

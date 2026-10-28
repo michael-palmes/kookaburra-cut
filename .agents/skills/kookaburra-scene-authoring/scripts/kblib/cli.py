@@ -16,6 +16,7 @@ from . import assets_cli
 from . import brands as brandmod
 from . import bridge
 from . import capture as capturemod
+from . import reach
 from . import catalog as catmod
 from . import check as checkmod
 from . import coord_cli
@@ -480,9 +481,10 @@ def cmd_scene_set(ctx: Ctx) -> int:
 # ── documents ─────────────────────────────────────────────────────────────────
 
 
-def parse_json_arg(raw: str) -> Any:
+def parse_json_arg(raw: str, project: Optional[Project] = None) -> Any:
     if raw.startswith("@"):
-        return load_json(Path(raw[1:]).expanduser(), raw[1:])
+        path = reach.guard_read(project, raw[1:], "the JSON file") if project else Path(raw[1:]).expanduser()
+        return load_json(path, raw[1:])
     try:
         return json.loads(raw)
     except ValueError as e:
@@ -587,7 +589,7 @@ def cmd_doc(ctx: Ctx) -> int:
     if a.op == "set":
         arg: Any = docmod.parse_value(a.value, a.string)
     elif a.op == "merge":
-        arg = parse_json_arg(a.json_patch)
+        arg = parse_json_arg(a.json_patch, ctx.project)
         if not isinstance(arg, dict):
             raise KbError("merge needs a JSON object (RFC 7386 merge patch: null deletes a key)", 2, kind="usage")
     else:

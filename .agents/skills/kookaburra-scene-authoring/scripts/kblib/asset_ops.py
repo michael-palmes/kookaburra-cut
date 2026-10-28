@@ -16,6 +16,7 @@ from . import archive
 from . import asset_meta
 from . import assets as assetmod
 from . import lock as lockmod
+from . import reach
 from . import tsx as tsxmod
 from .asset_refs import AssetRefs, asset_files, glob_matches
 from .project import Project
@@ -325,7 +326,7 @@ def replace_asset(project: Project, ref: str, file: str, *, keep_old: str, as_ne
     new file in beside it and re-point every literal."""
     dry_run, wait, caller = _opts(opts)
     rel = assetmod.resolve(project, ref)
-    src = Path(file).expanduser()
+    src = reach.guard_read(project, file, "the new file")
     if not src.is_file():
         raise KbError(f"{file} is not a file", EXIT_PROBLEMS, kind="invalid")
     if assetmod.is_companion(rel):
@@ -537,6 +538,7 @@ def _archive_folder(project: Project, folder: str) -> str:
     root = Path(os.path.abspath(str(project.root)))
     if path == root:
         raise KbError("the project folder itself can't be the archive", EXIT_ENV, kind="usage")
+    reach.guard_write(project, str(path), "--archive")
     try:
         return path.relative_to(root).as_posix()
     except ValueError:

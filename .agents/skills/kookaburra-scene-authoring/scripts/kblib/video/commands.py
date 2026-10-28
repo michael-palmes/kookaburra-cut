@@ -83,10 +83,16 @@ def _mods() -> Any:
 
 
 def _emit(text: str) -> None:
+    from ..util import clean_lines
+
+    text = clean_lines(text)
     sys.stdout.write(text if text.endswith("\n") else text + "\n")
 
 
 def _err(text: str) -> None:
+    from ..util import clean_lines
+
+    text = clean_lines(text)
     sys.stderr.write(text if text.endswith("\n") else text + "\n")
 
 
