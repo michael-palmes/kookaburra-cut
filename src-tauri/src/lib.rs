@@ -1525,6 +1525,7 @@ macro_rules! kookaburra_handler {
             claude_app::open_in_claude,
             claude_app::open_project_folder,
             claude_app::open_claude_download,
+            claude_app::open_privacy_page,
             claude_update::claude_version_info,
             claude_update::dismiss_claude_update,
             media::import_media,

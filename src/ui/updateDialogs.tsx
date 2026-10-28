@@ -1,5 +1,6 @@
 import { useState } from "react";
 import banner from "../assets/update-banner.jpg";
+import { openPrivacyPage } from "../engine/claudeApp";
 import { useEscapeClose } from "./useEscapeClose";
 
 /** The update lane's two modals, in their own module so the Settings window can import them without dragging in NewProjectDialog.tsx's theme-picker graph (40 bundled preview images). Both share the moonlit-kookaburra banner (chrome-only imagery; exported pixels never touch the DOM). */
@@ -57,6 +58,16 @@ export function WelcomeDialog({ onAnswer }: { onAnswer: (on: boolean) => void })
             </span>
           </span>
         </label>
+        <p className="muted welcome-modal-privacy">
+          Nothing else leaves your Mac unless you start it.{" "}
+          <button
+            type="button"
+            className="text-link"
+            onClick={() => void openPrivacyPage().catch((e) => console.error(e))}
+          >
+            What leaves your Mac
+          </button>
+        </p>
         <div className="modal-actions">
           <button type="button" className="btn primary" onClick={() => onAnswer(checkUpdates)}>
             Get started

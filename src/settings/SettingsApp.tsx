@@ -17,7 +17,12 @@ import {
   setClipCacheCap,
   sidecarVersions,
 } from "../engine/appCache";
-import { claudeAppInstalled, openClaudeDownload, setClaudePreferences } from "../engine/claudeApp";
+import {
+  claudeAppInstalled,
+  openClaudeDownload,
+  openPrivacyPage,
+  setClaudePreferences,
+} from "../engine/claudeApp";
 import { setConformNewVideosSetting } from "../engine/media";
 import { notePickedFolder } from "../engine/pickedFolders";
 import { revealApp } from "../engine/reveal";
@@ -98,6 +103,20 @@ function DownloadIcon() {
         stroke="currentColor"
         strokeWidth="1.5"
         strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function PrivacyIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true">
+      <path
+        d="M8 1.5 3 3.5v4c0 3 2.2 5.4 5 6.5 2.8-1.1 5-3.5 5-6.5v-4L8 1.5Z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
         strokeLinejoin="round"
       />
     </svg>
@@ -732,6 +751,22 @@ export function SettingsApp() {
 
       <section className="settings-section">
         <h2>About</h2>
+        <div className="settings-row">
+          <div className="settings-row-text">
+            <span className="settings-row-title">Privacy</span>
+            <span className="muted settings-row-detail">
+              Nothing leaves your Mac unless you start it: an update check, Claude, a live website.
+            </span>
+          </div>
+          <button
+            type="button"
+            className="btn"
+            onClick={() => void openPrivacyPage().catch((e) => setError(String(e)))}
+          >
+            <PrivacyIcon />
+            What leaves your Mac
+          </button>
+        </div>
         <div className="settings-row">
           <div className="settings-row-text">
             <span className="settings-row-title">ffmpeg</span>
