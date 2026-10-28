@@ -112,10 +112,11 @@ unit is about 261 px. The safe inset is 0.249 units (65 px).
 When the project has a brand (`BRAND.md`), start from its theme, fonts, colours and
 imagery instead of the recipe below, and treat them as guidance rather than rules.
 
-### Brand from a website
+### Brand by hand
 
-1. Get the palette: ask the user for brand hexes and logo, or fetch the site when web
-   tools are available and pull the primary, a dark neutral, a light neutral.
+1. Get the palette: ask the user for brand hexes and logo. Fetch the brand's public site
+   only once they say yes (SKILL.md, Confidential by default), then pull the primary, a
+   dark neutral and a light neutral.
 2. Map to tokens: `background` (the brand's darkest or lightest neutral), `text` (at
    least 7:1 against background), `accent` (the brand primary; at least 3:1),
    `muted` (secondary labels and subtitles: at least 5.5:1 on a light background and
