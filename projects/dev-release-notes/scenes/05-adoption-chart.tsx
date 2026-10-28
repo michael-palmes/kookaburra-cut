@@ -9,7 +9,7 @@ import {
 } from "@kookaburra/toolkit";
 
 export default defineScene({
-  id: "dev-release-notes-06-adoption-chart",
+  id: "dev-release-notes-05-adoption-chart",
   durationMs: 4400,
   Scene() {
     const theme = useTheme();

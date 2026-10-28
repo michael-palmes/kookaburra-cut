@@ -25434,9 +25434,9 @@
       "personas": ["pm", "developer"],
       "level": "standard",
       "tier": "safe",
-      "uses": ["overlay", "video-window", "text-motion", "background"],
+      "uses": ["overlay", "device", "video-window", "text-motion", "background"],
       "highlights": [
-        "Added, changed and fixed as three overlay slides",
+        "Added, changed and fixed beside the app on a phone",
         "A floating window for the headline feature",
         "Version and date set in mono"
       ],
@@ -25463,7 +25463,15 @@
           "file": "scenes/02-added.tsx",
           "durationMs": 3600,
           "transition": "crossfade",
-          "blocks": ["backdrop", "background", "frame", "text", "textAnimation"]
+          "blocks": [
+            "backdrop",
+            "background",
+            "camera",
+            "devices",
+            "frame",
+            "text",
+            "textAnimation"
+          ]
         },
         {
           "file": "scenes/03-added-demo.tsx",
@@ -25475,13 +25483,29 @@
           "file": "scenes/04-changed.tsx",
           "durationMs": 3600,
           "transition": "dip",
-          "blocks": ["backdrop", "background", "frame", "text", "textAnimation"]
+          "blocks": [
+            "backdrop",
+            "background",
+            "camera",
+            "devices",
+            "frame",
+            "text",
+            "textAnimation"
+          ]
         },
         {
           "file": "scenes/05-fixed.tsx",
           "durationMs": 3600,
           "transition": "dip",
-          "blocks": ["backdrop", "background", "frame", "text", "textAnimation"]
+          "blocks": [
+            "backdrop",
+            "background",
+            "camera",
+            "devices",
+            "frame",
+            "text",
+            "textAnimation"
+          ]
         },
         {
           "file": "scenes/07-read-full.tsx",
@@ -25589,9 +25613,9 @@
       "personas": ["pm", "developer"],
       "level": "standard",
       "tier": "safe",
-      "uses": ["overlay", "chart", "text-motion", "background"],
+      "uses": ["overlay", "device", "chart", "text-motion", "background"],
       "highlights": [
-        "Fix list as an editable overlay panel",
+        "Fix list beside the app on a phone",
         "Crash-rate chart on a full axis from zero",
         "Cold-start counter for the payoff"
       ],
@@ -25610,7 +25634,7 @@
           "file": "scenes/02-fixed-list.tsx",
           "durationMs": 4000,
           "transition": "crossfade",
-          "blocks": ["background", "frame", "text", "textAnimation"]
+          "blocks": ["background", "camera", "devices", "frame", "text", "textAnimation"]
         },
         {
           "file": "scenes/03-crash-chart.tsx",
@@ -26023,12 +26047,12 @@
       "tier": "safe",
       "uses": ["overlay", "video-window", "chart", "text-motion", "background"],
       "highlights": [
-        "Breaking changes and migration steps as overlay slides",
+        "Breaking changes and migration steps as code beside the notes",
         "A real terminal recording in a floating window",
         "Adoption charted in the terminal look"
       ],
-      "sceneCount": 7,
-      "durationMs": 27120,
+      "sceneCount": 6,
+      "durationMs": 23100,
       "aspects": ["16:9", "9:16", "1:1", "4:5"],
       "themeId": "kookaburra-afterglow",
       "scenes": [
@@ -26048,7 +26072,7 @@
         },
         {
           "file": "scenes/02-breaking.tsx",
-          "durationMs": 4400,
+          "durationMs": 4800,
           "transition": "dip",
           "blocks": ["backdrop", "background", "frame", "text", "textAnimation", "textStyle"]
         },
@@ -26059,25 +26083,19 @@
           "blocks": ["backdrop", "background", "text", "videoWindow"]
         },
         {
-          "file": "scenes/04-api-diff.tsx",
-          "durationMs": 4800,
-          "transition": "dip",
-          "blocks": ["backdrop", "background", "frame", "text", "textAnimation", "textStyle"]
-        },
-        {
-          "file": "scenes/05-migration.tsx",
+          "file": "scenes/04-migration.tsx",
           "durationMs": 4600,
           "transition": "dip",
           "blocks": ["backdrop", "background", "frame", "text", "textAnimation", "textStyle"]
         },
         {
-          "file": "scenes/06-adoption-chart.tsx",
+          "file": "scenes/05-adoption-chart.tsx",
           "durationMs": 4400,
           "transition": "dip",
           "blocks": ["backdrop", "background", "chart", "text", "textAnimation"]
         },
         {
-          "file": "scenes/07-docs-cta.tsx",
+          "file": "scenes/06-docs-cta.tsx",
           "durationMs": 3600,
           "transition": null,
           "blocks": ["backdrop", "background", "text", "textStyle"]
