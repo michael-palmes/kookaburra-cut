@@ -54,7 +54,7 @@ fn plist_string(plist: &str, key: &str) -> Option<String> {
 }
 
 /// `$HOME` when set and non-empty, else the password database entry: the `dirs` crate's rule, which Tauri's path resolver uses.
-fn home_dir() -> Result<PathBuf, String> {
+pub(crate) fn home_dir() -> Result<PathBuf, String> {
     if let Some(home) = std::env::var_os("HOME").filter(|h| !h.is_empty()) {
         return Ok(PathBuf::from(home));
     }

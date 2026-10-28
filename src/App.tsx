@@ -105,6 +105,7 @@ import {
   noteMediaChange,
 } from "./engine/mediaChangedEvent";
 import { isDefaultMotionBlur } from "./engine/motionBlur";
+import { notePickedFolder } from "./engine/pickedFolders";
 import { canQueuePresetPoster, queuePresetPoster } from "./engine/presetPosters";
 import {
   refreshUserPresets,
@@ -1910,7 +1911,10 @@ export default function App() {
       multiple: false,
       title: "Choose where Kookaburra Cut keeps your projects",
     });
-    if (typeof dir === "string") await handleWorkspaceChosen(dir);
+    if (typeof dir === "string") {
+      void notePickedFolder(dir);
+      await handleWorkspaceChosen(dir);
+    }
   }, [handleWorkspaceChosen]);
 
   // Bumped by the error panel's Retry: workspace manifest fixes happen outside Vite's module graph, so nothing reloads automatically; the user retries once Claude fixed the file.

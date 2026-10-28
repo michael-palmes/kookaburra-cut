@@ -229,6 +229,29 @@ export function startBridgeService(
       jsonText: JSON.stringify({ version: responseVersion(request), id: request.id, ...body }),
     }).catch((e) => console.warn("[render-bridge] response write failed:", e));
 
+  /** A workspace project the editor does not have open is served only once the person allows it (one native dialog per project per session, held in Rust); a refusal answers the request. */
+  const allowedProject = async (
+    request: BridgeRequest,
+    targetId: string,
+    context: EditorContext | null,
+    kind: string,
+  ): Promise<boolean> => {
+    if (!isWorkspaceProjectId(targetId) || targetId === context?.projectId) return true;
+    const slug = nativeProjectSlug(targetId);
+    const allowed = await invoke<boolean>("bridge_confirm_project", {
+      slug,
+      kind,
+      client: request.client ?? null,
+    }).catch(() => false);
+    if (allowed) return true;
+    await respond(request, {
+      ok: false,
+      declined: true,
+      error: `the person did not allow Claude to use "${targetId}" (it is not the project open in Kookaburra Cut); ask them to open it in the app, or to allow it when the app asks`,
+    });
+    return false;
+  };
+
   const serveCapture = async (request: BridgeRequest, context: EditorContext | null) => {
     const targetId = request.project ?? context?.projectId ?? null;
     if (!targetId) {
@@ -264,6 +287,7 @@ export function startBridgeService(
       return;
     }
     const probes = parseProbes(request.probe, format);
+    if (!(await allowedProject(request, targetId, context, "capture"))) return;
     // The store keeps the native format (layout, safe areas); only the capture buffer is scaled.
     const project = await ensureLoaded(targetId, native);
     const sheet = request.sheet
@@ -368,6 +392,7 @@ export function startBridgeService(
       return;
     }
     const format = requestFormat(request.aspect, context?.aspect);
+    if (!(await allowedProject(request, targetId, context, "check"))) return;
     let project: LoadedProject;
     try {
       project = await ensureLoaded(targetId, format);
@@ -437,6 +462,9 @@ export function startBridgeService(
     }
     if (!request.preset?.trim()) {
       await respond(request, { ok: false, error: "insertPreset needs a preset" });
+      return;
+    }
+    if (!(await allowedProject(request, targetId, context, "insertPreset"))) {
       return;
     }
     await refreshUserPresets().catch(() => []);

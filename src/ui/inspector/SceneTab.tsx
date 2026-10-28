@@ -43,6 +43,7 @@ import { deriveManagedTextModel, resolveManagedTextGroups } from "../../engine/m
 import { formatMediaDuration, fsUrl, type MediaMeta, mediaMeta } from "../../engine/media";
 import { useObjectEditStore } from "../../engine/objectEditStore";
 import { optionPreviewClip, optionPreviewStill } from "../../engine/optionPreviews";
+import { notePickedFolder } from "../../engine/pickedFolders";
 import {
   assetFileUrl,
   type LoadedProject,
@@ -7548,6 +7549,7 @@ export function SceneTab({
         title: "Choose the session's start folder",
       });
       if (typeof picked === "string" && picked.length > 0) {
+        void notePickedFolder(picked);
         patchTerminal((t) => {
           t.startPath = picked;
         }, "set terminal start path");

@@ -373,6 +373,7 @@ describe("bridge v2 requests", () => {
   let queue: Record<string, unknown>[];
   let editor: Record<string, unknown>;
   let trusted: boolean;
+  let allowOther: boolean;
   let assetChecks: unknown[];
 
   const demo = {
@@ -411,6 +412,7 @@ describe("bridge v2 requests", () => {
     queue = [];
     sheets.length = 0;
     trusted = true;
+    allowOther = true;
     assetChecks = [{ path: "assets/clip.mov", ok: true }];
     editor = {
       projectId: "ws:demo",
@@ -443,6 +445,8 @@ describe("bridge v2 requests", () => {
           return trusted;
         case "project_fingerprint":
           return "sources-1";
+        case "bridge_confirm_project":
+          return allowOther;
         default:
           return null;
       }
@@ -735,6 +739,26 @@ describe("bridge v2 requests", () => {
     expect(response).toMatchObject({ ok: false });
     expect(String(response.error)).toContain('unknown aspect "21:9"');
     expect(captureFrameRgba).not.toHaveBeenCalled();
+  });
+
+  it("asks the person before touching a project the editor does not have open, and answers a refusal", async () => {
+    allowOther = false;
+    const response = await serve({ kind: "capture", project: "ws:other", scene: "0" });
+    expect(response).toMatchObject({ version: 2, ok: false, declined: true });
+    expect(String(response.error)).toContain('"ws:other"');
+    // `nativeProjectSlug` is mocked as identity here, as the check-assets expectation above relies on.
+    expect(invoke).toHaveBeenCalledWith("bridge_confirm_project", {
+      slug: "ws:other",
+      kind: "capture",
+      client: null,
+    });
+    expect(loadProject).not.toHaveBeenCalled();
+    expect(captureFrameRgba).not.toHaveBeenCalled();
+    // The open project never asks.
+    await serve({ kind: "capture", scene: "0" });
+    expect(invoke).toHaveBeenCalledTimes(
+      vi.mocked(invoke).mock.calls.filter(([c]) => c !== "bridge_confirm_project").length + 1,
+    );
   });
 
   it("answers needsTrust for a project whose stored grant no longer matches, never prompting", async () => {

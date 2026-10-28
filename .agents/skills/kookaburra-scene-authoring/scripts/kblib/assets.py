@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Set
 
 from . import lock as lockmod
+from . import reach
 from . import tsx as tsxmod
 from .check import SUPPORTED_ASSET_EXTS
 from .project import Project
@@ -268,10 +269,10 @@ def add(
     """Copy a file into assets/ (never overwriting). A video the probe flags (VFR, an edit list, P3 and so on) lands
     the way the app's import lands it: the original in assets/.originals/<stem>.<ext>, the conformed assets/<stem>.mp4
     and its timing record, with provenance in assets/_meta.json. conform=False, or no app, copies as before."""
-    src = Path(source).expanduser()
+    src = reach.guard_read(project, source, "the source")
     if not src.is_file():
         raise KbError(f"{source} is not a file")
-    final_name = name or src.name
+    final_name = name or Path(source).expanduser().name
     if "/" in final_name or final_name.startswith("."):
         raise KbError("--name must be a plain file name (no folders, not hidden)", 2)
     ext = ext_of(final_name)
