@@ -87,8 +87,9 @@ pnpm release           # guards -> package:signed -> zip + checksum -> tag -> dr
 For native Computer Use verification, run `pnpm acceptance:app` and target only the full `.app` path it prints. Never use `Kookaburra Cut`, `com.mpalmes.kookaburracut` or `/Applications/Kookaburra Cut.app`; if the helper fails, stop rather than falling back.
 
 **Gate economy:** before a PR, run `pnpm ready` once, after the last code
-change (code review fixes included, see "Code review"). It maps the diff to exactly what it needs: Tier 0 checks for the areas
-touched, then `pnpm gate:merge` (the ONE PR gate: showcase-tour +
+change (code review fixes included, see "Code review"). It maps the diff to
+exactly what it needs: Tier 0 checks for the areas touched, then
+`pnpm gate:merge` (the ONE PR gate: showcase-tour +
 `ws:launch-2026`, which must be EQUAL as the null-for-legacy proof) only when
 the export path changed, plus a feature fixture only when its area changed.
 Each leg exports ONCE against its recorded baseline and falls back to Verify ×2

@@ -11,6 +11,7 @@
 - [ ] `pnpm test` passes
 - [ ] `pnpm build` passes
 - [ ] `pnpm lint` passes
+- [ ] A code review ran (`/code-review high` or equivalent) and its findings were triaged against the Focus in [`AGENTS.md`](../AGENTS.md)
 - [ ] If this touches the render or export path, `pnpm ready` passes: exports must stay byte-identical to the recorded baselines (see [`docs/determinism.md`](../docs/determinism.md), "Gate tiers")
 
 Note: this is a personal, source-available project on a fairly opinionated internal
