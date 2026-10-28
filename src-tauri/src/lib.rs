@@ -37,6 +37,7 @@ mod mp4box;
 mod native_alert;
 mod objects;
 mod pack;
+mod png_decode;
 mod packs_win;
 mod present;
 mod preset_posters;
@@ -1445,6 +1446,7 @@ macro_rules! kookaburra_handler {
             media::import_chart_data,
             media::media_meta,
             media::read_media_thumb,
+            png_decode::decode_png,
             global_screenshots::list_global_screenshots,
             global_screenshots::import_global_screenshots,
             global_screenshots::global_screenshot_meta,

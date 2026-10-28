@@ -132,6 +132,9 @@ export const windowNativePort: NativePort = {
       ...(thumbnail ? { thumbnailUrl: fsUrl(`${listing.dir}/${thumbnail}`) } : {}),
     };
   },
+  decodePng(bytes) {
+    return invoke<ArrayBuffer>("decode_png", bytes);
+  },
 };
 
 /** Installs the port; every window entry calls it before anything renders. */

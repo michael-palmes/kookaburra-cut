@@ -39,6 +39,7 @@ export function createWorkerNativePort(
     emojiWrite: (projectId, key, bytes) =>
       call("emojiWrite", [projectId, key, bytes]) as Promise<void>,
     readObject: (slug) => call("readObject", [slug]) as Promise<never>,
+    decodePng: (bytes) => call("decodePng", [bytes]) as Promise<ArrayBuffer>,
     deliverConformProgress(payload) {
       for (const h of conformHandlers) h.progress(payload);
     },

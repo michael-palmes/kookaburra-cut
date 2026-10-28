@@ -47,6 +47,7 @@ GPU/driver, not across fleets.)
 | **The SDF atlas uploaded from a worker canvas** (2026-10-28): three uploads troika's atlas canvas as a texture, and WebKit's upload of a worker OffscreenCanvas is not the raw copy an HTMLCanvasElement's is; every glyph edge moved (jagged, speckled, up to 197 levels), on both anchors | The patched troika option `sdfAtlasReadback` (`patches/troika-three-text@0.52.5.patch`) routes the atlas through troika's own readPixels-to-DataTexture path (its Safari<15 workaround); the stage server sets it once in `configureTextBuilder`. Byte-identical to the main-thread baselines. |
 | **A realm that mounts scenes before its font preload**: the stage worker's atlas is its own, so a server that hydrated a project before preloading let the mount-time typesets claim the cells in scene order instead of the boot order (stills pages ±1/±2 on glyph edges) | The server runs `preloadAppFonts()` at boot and `preloadAppFonts(projectFaces)` plus the emoji preload inside `loadProject`, before the scenes mount: the window's barriers, in the realm that renders. |
 | **A bitmap clone that asks for the other `flipY`** (2026-10-28): the stage decodes images to ImageBitmaps with the orientation baked in, and WebGL ignores `flipY` for a bitmap upload, so a device screen's private clone (`flipY = false`) drew the plane's pre-flipped pixels: every image on a device screen rendered upside down (20 legs over devices and comparisons MOVED while main at the merge base held every baseline; a PNG on a plane and every video stayed EQUAL) | `engine/bitmapOrientation.ts`: the loader records the orientation it baked and `useScreenImageTexture` suspends on a row-reversed copy (straight alpha, no colour conversion) for the clone, one per bitmap and orientation. Attribute a MOVED device leg by exporting it on main at the merge base before reading the pixels. |
+| **A PNG decoded to an ImageBitmap** (2026-10-29): WebKit's `createImageBitmap` premultiplies and unmultiplies a PNG with alpha on the way in whatever `premultiplyAlpha` asks, so every semi-transparent texel lands off the file (a palette PNG's transparent texels lose their colour outright, which bleeds into every edge under linear filtering), and `colorSpaceConversion: "default"` applied an embedded profile that three's upload never did (it sets `UNPACK_COLORSPACE_CONVERSION_WEBGL = NONE`); the window's `<img>` upload was the file's bytes exactly. Eight legs staging a screenshot with a shadow on a device screen, frame chip icons or an app icon MOVED by 1 to 42 levels while every opaque JPEG held | The stage decodes PNG bytes natively, by signature (`decode_png`, the `png` crate, no gamma or profile, 16-bit to its high byte), and its `StageTexture` uploads the rows as data (`engine/stageTexture.ts`); every other format takes `createImageBitmap` with `colorSpaceConversion: "none"`. Measured with a probe page that uploads one PNG both ways under three's unpack settings and hashes the texels: the `<img>` path equals the file, the bitmap path does not. |
 | **Parallel font preload**: troika claims shared-atlas cells at preload COMPLETION, i.e. fetch-race order, shifting multi-font projects' glyph cells per BOOT (a per-session hash lottery: every run internally consistent, every boot different) | `preloadAppFonts` preloads SEQUENTIALLY in canonical order (Inter Regular, then declaration/ref order), and `loadProject` pre-generates every project face's glyphs BEFORE the scenes mount. See "Fonts". |
 | Muxer writing a wall-clock `creation_time` / encoder version tag | ffmpeg `-flags:v +bitexact -fflags +bitexact -map_metadata -1` (set in `start_export`) so the container is reproducible. |
 | Hardware encoder (`h264_videotoolbox` / `hevc_videotoolbox` / `prores_videotoolbox`) bit-variance | Default to software `libx264` (deterministic); the VideoToolbox lanes are opt-in fast drafts excluded from Verify. |
@@ -1770,19 +1771,28 @@ Verify ×2 here (the 2026-10-23 note):
 > **2026-10-28 (the stage worker: every scene renders in a Web Worker, no
 > baseline moved):** the whole canvas tree, compositor and export frame body
 > moved into the stage worker (`docs/architecture.md`, "The stage worker");
-> the window keeps the loop's orchestration and IPC. Two realm differences
-> moved pixels on the way and were closed before anything was recorded: the
-> troika atlas upload from a worker canvas (closed by `sdfAtlasReadback`) and
-> the worker's own atlas order (closed by preloading fonts in the worker in the
-> window's order), both in the failure catalogue above. With both in place the
-> anchors export byte-identical to their baselines in one boot (`cmp` on the
-> files), the stills pages reproduce their recorded hash, and every cell in the
-> tables above was re-run once through the stage against its baseline (the
-> matrix, `pnpm ready --legs` over every recorded leg, plus the four stills
-> legs and the pack round trip). Nothing was re-recorded: the stage is
-> null-for-legacy by construction, which is also why this entry carries no
-> hashes. Export wall time for the anchor pair fell from 96.0 s to 93.9 s on
-> the same busy machine; the preview holds 58 to 60 fps on every perf pass.
+> the window keeps the loop's orchestration and IPC. Four realm differences
+> moved pixels on the way, all in the failure catalogue above, none
+> re-recorded. Two showed on the anchors and were closed first: the troika
+> atlas upload from a worker canvas (`sdfAtlasReadback`) and the worker's own
+> atlas order (fonts preloaded in the window's order). With those in place the
+> anchors exported byte-identical in one boot (`cmp` on the files) and the
+> stills pages reproduced their hash, and the full matrix (`pnpm ready --legs`
+> over every recorded leg) then found the other two, which no anchor stages:
+> 20 legs over devices and comparisons MOVED because a device screen drew its
+> image upside down (a bitmap clone asking for the other `flipY`), and 8 of
+> them stayed MOVED by 1 to 42 levels because a PNG decoded to an ImageBitmap
+> rounds its semi-transparent texels. Both were attributed before they were
+> read: each MOVED leg exported on main at the merge base reproduced its
+> baseline, so the stage owned every difference; a frame diff put the pixels
+> on the device screens and the chip icons, and a probe page uploading one PNG
+> both ways under three's unpack settings showed the window's `<img>` path to
+> be the file's bytes and the bitmap path not. With the screen taking a
+> row-reversed copy and every PNG decoded natively, every leg in the tables
+> above holds EQUAL through the stage, plus the four stills legs. The stage is
+> null-for-legacy by construction, which is why this entry carries no hashes.
+> Export wall time for the anchor pair fell from 96.0 s to 93.9 s on the same
+> busy machine; the preview holds 58 to 60 fps on every perf pass.
 
 > **2026-10-28 (a transition into a comparison renders: a deliberate rebase of
 > one fixture):** the incoming comparison composited its sides through the

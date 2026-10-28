@@ -66,9 +66,10 @@ frame bodies and the scene trees. The split, and why it is drawn where it is:
   nothing that reaches the Mac.
 - **The window resolves, the worker consumes.** Asset URLs for the open
   project are resolved in the window and shipped with the project
-  (`StageAssets`); clip frames, conform jobs, emoji rasters and 3D objects go
-  through a `NativePort` (`src/engine/stageRealm.ts`) whose window side
-  (`windowNativePort.ts`) validates every cache directory it issued, and whose
+  (`StageAssets`); clip frames, conform jobs, emoji rasters, PNG decodes and
+  3D objects go through a `NativePort` (`src/engine/stageRealm.ts`) whose
+  window side (`windowNativePort.ts`) validates every cache directory it
+  issued, and whose
   client refuses any request naming a project this window has not loaded. The
   worker names clip sources by project id and relative path and never computes
   a path. Every message from the worker is data: a scene can post anything,
@@ -103,6 +104,11 @@ frame bodies and the scene trees. The split, and why it is drawn where it is:
   upload. A clone that wants the other orientation (a device screen's
   `flipY = false` copy of a plane's image) takes a row-reversed copy from
   `engine/bitmapOrientation.ts` instead of sharing the pixels.
+- **A PNG decodes natively.** WebKit's `createImageBitmap` rounds every
+  semi-transparent texel through a premultiply round trip, so PNG bytes go to
+  the port's `decode_png` and upload as straight rows (`engine/stageTexture.ts`),
+  the bytes the window's `<img>` upload had. Other formats decode to bitmaps
+  with no colour conversion, as three uploads them.
 
 The theme editor's `SpecimenCanvas` is the one r3f root still on a main
 thread: it draws bundled specimen scenes only, never a workspace scene, in a

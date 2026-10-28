@@ -264,7 +264,8 @@ export type PortMethod =
   | "conformPoster"
   | "emojiRead"
   | "emojiWrite"
-  | "readObject";
+  | "readObject"
+  | "decodePng";
 
 export type WindowReply = Extract<WindowNotice, { type: "reply" }>;
 

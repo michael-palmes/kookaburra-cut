@@ -2,7 +2,7 @@ import "../engine/glContexts";
 import { createRoot, extend, type RootStore, useFrame, useThree } from "@react-three/fiber";
 import { useEffect } from "react";
 import * as THREE from "three";
-import { type Camera, Texture, TextureLoader } from "three";
+import { type Camera, type Texture, TextureLoader } from "three";
 import { configureTextBuilder } from "troika-three-text";
 import { create } from "zustand";
 import { rememberBakedFlipY } from "../engine/bitmapOrientation";
@@ -80,6 +80,7 @@ import type {
 } from "../engine/stageProtocol";
 import { setNativePort } from "../engine/stageRealm";
 import { useStageRegistry } from "../engine/stageRegistry";
+import { type DecodedPng, isPngBytes, parseDecodedPng, StageTexture } from "../engine/stageTexture";
 import { beginStillsRun, type StillsRun } from "../engine/stillsRun";
 import { useTextKeyRegistry } from "../engine/textKeyRegistry";
 import { PresentStageTree } from "../present/PresentStageTree";
@@ -141,7 +142,7 @@ extend(THREE as unknown as Parameters<typeof extend>[0]);
 // The atlas canvas is a WebGL OffscreenCanvas here, and WebKit's upload of one is not the raw copy an HTMLCanvasElement's is (jagged, speckled glyph edges); troika reads the pixels back instead.
 configureTextBuilder({ sdfGlyphSize: SDF_GLYPH_SIZE, sdfAtlasReadback: true });
 
-/** Image textures decode through fetch + createImageBitmap: three's ImageLoader needs an `<img>`, which the worker has not. Orientation follows the texture's `flipY` (read after the synchronous caller settled it, so glTF's `flipY = false` holds) and is recorded for clones that want the other one (`engine/bitmapOrientation.ts`), alpha stays straight. Measured byte-identical to the `<img>` path on the gate projects (docs/determinism.md). */
+/** Image textures load without three's `<img>`, which the worker has not. PNG bytes decode natively through the port and upload as texture data, byte for byte (`engine/stageTexture.ts`): WebKit's bitmap decode rounds every semi-transparent texel. Anything else decodes to an ImageBitmap with no colour conversion (three uploads with `UNPACK_COLORSPACE_CONVERSION_WEBGL = NONE`, so the window ignored embedded profiles too), straight alpha, and the texture's `flipY` baked in (read after the synchronous caller settled it, so glTF's `flipY = false` holds) and recorded for clones that want the other one (`engine/bitmapOrientation.ts`). Both paths measured byte-identical to the window's upload (docs/determinism.md). */
 (TextureLoader.prototype as unknown as { load: unknown }).load = function load(
   this: TextureLoader,
   url: string,
@@ -149,28 +150,31 @@ configureTextBuilder({ sdfGlyphSize: SDF_GLYPH_SIZE, sdfAtlasReadback: true });
   _onProgress?: unknown,
   onError?: (err: unknown) => void,
 ) {
-  const texture = new Texture();
+  const texture = new StageTexture();
   const resolved = this.manager.resolveURL(this.path ? this.path + url : url);
   this.manager.itemStart(resolved);
+  const decode = (buffer: ArrayBuffer, type: string): Promise<DecodedPng | ImageBitmap> => {
+    const bytes = new Uint8Array(buffer);
+    if (isPngBytes(bytes)) return port.decodePng(bytes).then(parseDecodedPng);
+    const flipY = texture.flipY;
+    return createImageBitmap(new Blob([buffer], { type }), {
+      imageOrientation: flipY ? "flipY" : "none",
+      premultiplyAlpha: "none",
+      colorSpaceConversion: "none",
+    }).then((bitmap) => {
+      rememberBakedFlipY(bitmap, flipY);
+      return bitmap;
+    });
+  };
   fetch(resolved)
     .then((r) => {
       if (!r.ok) throw new Error(`fetch ${resolved}: HTTP ${r.status}`);
-      return r.blob();
-    })
-    .then((blob) => {
-      const flipY = texture.flipY;
-      return createImageBitmap(blob, {
-        imageOrientation: flipY ? "flipY" : "none",
-        premultiplyAlpha: "none",
-        colorSpaceConversion: "default",
-      }).then((bitmap) => {
-        rememberBakedFlipY(bitmap, flipY);
-        return bitmap;
-      });
+      const type = r.headers.get("content-type") ?? "";
+      return r.arrayBuffer().then((buffer) => decode(buffer, type));
     })
     .then(
-      (bitmap) => {
-        texture.image = bitmap;
+      (image) => {
+        texture.image = image;
         texture.needsUpdate = true;
         onLoad?.(texture);
         this.manager.itemEnd(resolved);

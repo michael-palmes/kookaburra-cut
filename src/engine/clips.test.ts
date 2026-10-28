@@ -77,6 +77,9 @@ const fakePort: NativePort = {
   async readObject() {
     throw new Error("no objects here");
   },
+  async decodePng() {
+    throw new Error("no PNGs here");
+  },
 };
 
 const flush = () => new Promise((r) => setTimeout(r, 0));

@@ -76,6 +76,8 @@ export interface NativePort {
   emojiWrite(projectId: string, key: string, bytes: Uint8Array): Promise<void>;
   /** A workspace 3D object's manifest text plus the URLs the window resolved for its glb and thumbnail. */
   readObject(slug: string): Promise<{ json: string; glbUrl: string; thumbnailUrl?: string }>;
+  /** A PNG's straight RGBA8 rows behind an 8-byte size header (`engine/stageTexture.ts`), decoded natively so no texel rounds. */
+  decodePng(bytes: Uint8Array): Promise<ArrayBuffer>;
 }
 
 let port: NativePort | null = null;

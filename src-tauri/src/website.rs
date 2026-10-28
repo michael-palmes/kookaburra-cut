@@ -353,48 +353,6 @@ fn hex_bytes(bytes: &[u8]) -> String {
     bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
-fn decode_png_rgba(bytes: &[u8]) -> Result<(Vec<u8>, u32, u32), String> {
-    let mut decoder = png::Decoder::new(std::io::Cursor::new(bytes));
-    decoder.set_transformations(png::Transformations::EXPAND | png::Transformations::STRIP_16);
-    let mut reader = decoder
-        .read_info()
-        .map_err(|_| "website snapshot is not a valid PNG")?;
-    let output_size = reader
-        .output_buffer_size()
-        .ok_or_else(|| "website snapshot is too large".to_string())?;
-    let mut decoded = vec![0; output_size];
-    let info = reader
-        .next_frame(&mut decoded)
-        .map_err(|_| "website snapshot could not be decoded")?;
-    if info.bit_depth != png::BitDepth::Eight {
-        return Err("website snapshot has an unsupported bit depth".into());
-    }
-    let source = &decoded[..info.buffer_size()];
-    let pixels = u64::from(info.width)
-        .checked_mul(u64::from(info.height))
-        .and_then(|value| value.checked_mul(4))
-        .and_then(|value| usize::try_from(value).ok())
-        .ok_or_else(|| "website snapshot dimensions are too large".to_string())?;
-    let mut rgba = Vec::with_capacity(pixels);
-    match info.color_type {
-        png::ColorType::Rgba => rgba.extend_from_slice(source),
-        png::ColorType::Rgb => source
-            .chunks_exact(3)
-            .for_each(|pixel| rgba.extend_from_slice(&[pixel[0], pixel[1], pixel[2], 255])),
-        png::ColorType::GrayscaleAlpha => source
-            .chunks_exact(2)
-            .for_each(|pixel| rgba.extend_from_slice(&[pixel[0], pixel[0], pixel[0], pixel[1]])),
-        png::ColorType::Grayscale => source
-            .iter()
-            .for_each(|value| rgba.extend_from_slice(&[*value, *value, *value, 255])),
-        png::ColorType::Indexed => return Err("website snapshot palette was not expanded".into()),
-    }
-    if rgba.len() != pixels {
-        return Err("website snapshot pixel data is incomplete".into());
-    }
-    Ok((rgba, info.width, info.height))
-}
-
 fn resize_rgba(
     source: &[u8],
     source_width: u32,
@@ -435,7 +393,7 @@ fn resize_rgba(
 }
 
 fn normalise_png(bytes: &[u8], width: u32, height: u32) -> Result<Vec<u8>, String> {
-    let (source, source_width, source_height) = decode_png_rgba(bytes)?;
+    let (source, source_width, source_height) = crate::png_decode::decode_png_rgba(bytes)?;
     let pixels = resize_rgba(&source, source_width, source_height, width, height);
     let mut output = Vec::new();
     {
