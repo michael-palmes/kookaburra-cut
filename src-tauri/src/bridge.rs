@@ -1142,9 +1142,12 @@ fn valid_name(name: &str, max: usize) -> bool {
         && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
 }
 
+/// Every answer an agent reads passes through `clean_text` first: names and messages from project files are escaped and capped.
 pub(crate) fn write_response_value(root: &Path, id: &str, body: &Value) -> Result<(), String> {
     let dir = root.join("responses");
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let mut body = body.clone();
+    crate::clean_text::clean_value(&mut body);
     write_atomic(&dir.join(format!("{id}.json")), &body.to_string())
 }
 
@@ -1400,9 +1403,7 @@ pub fn bridge_write_response(app: AppHandle, id: String, json_text: String) -> R
     if !crate::capture_service::on_response(&app, &id, &mut body) {
         return Ok(());
     }
-    let dir = bridge_root(&app)?.join("responses");
-    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    write_atomic(&dir.join(format!("{id}.json")), &body.to_string())
+    write_response_value(&bridge_root(&app)?, &id, &body)
 }
 
 /// Arm a bridge capture (the begin_screenshot shape, gated on a configured workspace instead of the autorun env; the PNG lands beside the response JSON).

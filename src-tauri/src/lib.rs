@@ -8,6 +8,7 @@ mod bridge_health;
 mod capture_service;
 mod claude_app;
 mod claude_update;
+mod clean_text;
 pub mod cli;
 pub mod cli_check;
 pub mod cli_media;

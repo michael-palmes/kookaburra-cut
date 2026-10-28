@@ -14,7 +14,7 @@ from . import identity
 from . import leases as leasemod
 from . import lock as lockmod
 from .project import MANIFEST, Project
-from .util import EXIT_ENV, EXIT_OK, KbError, ago, emit, safe_rel
+from .util import EXIT_ENV, EXIT_OK, KbError, ago, clean_lines, emit, safe_rel
 
 UNDO_NOTE = "Scene files that the checkpoint lacks go to the Trash; edit docs never do. Renders\n(assets/*-edited.mp4) are not versioned: re-render an edit that undo changed."
 
@@ -368,7 +368,8 @@ def cmd_hook(ctx: Any) -> int:
             code, out, err = hookmod.post_edit(payload)
     except Exception as e:  # a kb bug must never block the user's edit
         if event == "post-edit":
-            note = {"hookSpecificOutput": {"hookEventName": "PostToolUse", "additionalContext": f"kb post-edit check crashed ({type(e).__name__}: {e}); run kb check"}}
+            crashed = clean_lines(f"kb post-edit check crashed ({type(e).__name__}: {e}); run kb check")
+            note = {"hookSpecificOutput": {"hookEventName": "PostToolUse", "additionalContext": crashed}}
             sys.stdout.write(json.dumps(note) + "\n")
         return EXIT_OK
     if out:
