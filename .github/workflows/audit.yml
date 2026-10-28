@@ -22,6 +22,8 @@ jobs:
   audit:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    permissions:
+      contents: read
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -29,32 +31,22 @@ jobs:
           persist-credentials: false
 
       - name: Set up pnpm
-        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
 
       - name: Set up Node
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
           cache: pnpm
 
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
+      # No install: pnpm audit reads the lock file, so no package script runs here.
       - name: pnpm audit
-        run: pnpm audit --audit-level high --prod
+        run: pnpm audit --prod --audit-level high
 
-      - name: Set up Rust
-        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # stable
+      # cargo deny reads Cargo.lock against the RustSec advisory database (the same one cargo audit uses).
+      - name: cargo deny check advisories
+        uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
         with:
-          toolchain: stable
-
-      - name: Rust cache
-        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
-        with:
-          workspaces: "src-tauri -> target"
-
-      - name: Install cargo-audit
-        run: cargo install cargo-audit --locked
-
-      - name: cargo audit
-        run: cargo audit --file src-tauri/Cargo.lock
+          command: check advisories
+          manifest-path: src-tauri/Cargo.toml
+          rust-version: stable
