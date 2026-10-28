@@ -38,6 +38,9 @@ embeds a Claude Code terminal that reads and rewrites your project's scene files
 - A signed and notarised `.dmg`; macOS 26.0+ on **Apple Silicon** (arm64) only, no Intel build
 - Free and open source; everything runs locally (no accounts, no telemetry, no cloud)
 - The optional AI authoring path uses your own Claude Code install
+- Managed Macs: a configuration profile can turn off the Claude entry points, live
+  websites or update checks, limit packs to approved publishers and fix the
+  workspace location ([`docs/mdm.md`](docs/mdm.md))
 
 > Status: early release, in active development. Nothing leaves your Mac
 > unless you start it: the opt-in update check (asked once on the first-run

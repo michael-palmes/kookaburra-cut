@@ -648,6 +648,11 @@ pub fn cancel_pack_build(state: State<'_, PackState>) {
 
 // ------------------------------------------------------------------- import
 
+/// A managed allow-list is checked against the id the pack's public key really hashes to, before anything is staged; the declared `keyId` is never trusted.
+fn deny_managed_publisher(publisher: &super::model::PackPublisher) -> Result<(), String> {
+    crate::managed::deny_publisher(key::key_id_of(&publisher.public_key).as_deref())
+}
+
 #[tauri::command]
 pub async fn inspect_pack(
     app: AppHandle,
@@ -658,6 +663,7 @@ pub async fn inspect_pack(
     crate::packs_win::validate_incoming(archive)?;
     let running = app.package_info().version.to_string();
     let inspection = read::inspect(archive)?;
+    deny_managed_publisher(&inspection.manifest.publisher)?;
 
     let signature = match &inspection.signature {
         None => "missing",
@@ -737,6 +743,7 @@ pub async fn stage_pack(
     let running = app.package_info().version.to_string();
 
     let inspection = read::inspect(archive)?;
+    deny_managed_publisher(&inspection.manifest.publisher)?;
     if read::version_lt(&running, &inspection.manifest.min_app_version) {
         return Err(PackError::AppTooOld {
             needs: inspection.manifest.min_app_version.clone(),

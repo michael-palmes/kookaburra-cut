@@ -1,5 +1,12 @@
 # Security policy
 
+On a managed Mac, a configuration profile can pin the posture an organisation
+needs: turn off every Claude entry point, live scene websites or update checks,
+limit pack imports to approved publishers, and fix where projects are kept.
+The app honours a key only while macOS reports it as forced by a profile, so a
+user's own `defaults write` grants nothing, and a malformed key fails closed.
+The keys and a sample profile: [`docs/mdm.md`](docs/mdm.md).
+
 ## Reporting a vulnerability
 
 If you believe you have found a security issue (for example in the Tauri IPC

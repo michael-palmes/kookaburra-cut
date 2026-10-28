@@ -3,5 +3,12 @@
   "identifier": "settings",
   "description": "Capabilities for the Kookaburra Cut settings window (v6 · M5.6). Needs dialog for the workspace folder picker; the move itself is a path-confined Rust command behind a native confirmation, never an fs capability.",
   "windows": ["settings"],
-  "permissions": ["core:default", "dialog:default", "settings-window", "claude-launcher", "updater"]
+  "permissions": [
+    "core:default",
+    "dialog:default",
+    "settings-window",
+    "claude-launcher",
+    "updater",
+    "managed"
+  ]
 }

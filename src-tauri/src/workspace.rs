@@ -354,7 +354,11 @@ pub(crate) fn root_override() -> Option<PathBuf> {
 
 /// The configured workspace root, layout re-asserted. Errors if first-run hasn't completed.
 pub fn require_root(app: &AppHandle, state: &State<'_, SettingsState>) -> Result<PathBuf, String> {
-    let root = match root_override() {
+    // A profile's WorkspaceRoot outranks the gate override and the settings file alike.
+    let root = match crate::managed::policy()
+        .workspace_root_path()
+        .or_else(root_override)
+    {
         Some(over) => over,
         None => {
             let settings = load_settings(app, state)?;
@@ -737,7 +741,11 @@ pub fn get_settings(
     app: AppHandle,
     state: State<'_, SettingsState>,
 ) -> Result<AppSettings, String> {
-    load_settings(&app, &state)
+    let mut settings = load_settings(&app, &state)?;
+    if let Some(root) = &crate::managed::policy().workspace_root {
+        settings.workspace_root = Some(root.clone());
+    }
+    Ok(settings)
 }
 
 /// The root a chosen parent resolves to: picking a folder already named "Kookaburra Cut" adopts it rather than nesting another.
@@ -874,6 +882,7 @@ pub async fn move_workspace(
     parent: Option<String>,
 ) -> Result<Option<String>, String> {
     require_window(&window, "settings")?;
+    crate::managed::deny_workspace_change()?;
     if export.busy() {
         return Err("an export is running: move your workspace after it finishes".into());
     }
@@ -958,6 +967,7 @@ pub async fn init_workspace(
     parent: String,
 ) -> Result<Option<String>, String> {
     require_window(&window, "settings")?;
+    crate::managed::deny_workspace_change()?;
     let parent = PathBuf::from(parent);
     let root = root_under(parent.clone());
     let body = format!(
@@ -986,7 +996,9 @@ fn adopt_workspace(
     state: &State<'_, SettingsState>,
     parent: PathBuf,
 ) -> Result<String, String> {
-    let root = root_under(parent);
+    let root = crate::managed::policy()
+        .workspace_root_path()
+        .unwrap_or_else(|| root_under(parent));
     ensure_layout(&root)?;
     update_settings(app, state, |settings| {
         settings.workspace_root = Some(root.to_string_lossy().into_owned());

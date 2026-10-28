@@ -206,14 +206,19 @@ function ClaudeStartCard({
   );
 }
 
-/** The cards one chip and search show. Create with Claude is pinned into every category, as Blank once was, so a chip never hides the default; only My templates leaves it out. */
-function startCards(entries: readonly TemplateEntry[], chip: StartChip, query: string) {
+/** The cards one chip and search show. Create with Claude is pinned into every category, as Blank once was, so a chip never hides the default; only My templates leaves it out. Where a profile turns Claude off, Blank takes its place in the catalogue. */
+function startCards(
+  entries: readonly TemplateEntry[],
+  chip: StartChip,
+  query: string,
+  claudeStart: boolean,
+) {
   const templates = (
     chip === MINE_CHIP
       ? searchTemplates(entries, { query, source: "user" })
       : searchTemplates(entries, { query, category: chip })
-  ).filter((entry) => entry.id !== BLANK_TEMPLATE_ID);
-  const withClaude = chip !== MINE_CHIP && claudeStartMatches(query);
+  ).filter((entry) => !claudeStart || entry.id !== BLANK_TEMPLATE_ID);
+  const withClaude = claudeStart && chip !== MINE_CHIP && claudeStartMatches(query);
   const ids = [...(withClaude ? [CLAUDE_START_ID] : []), ...templates.map((entry) => entry.id)];
   return { templates, withClaude, ids };
 }
@@ -226,6 +231,7 @@ function StartGallery({
   onChipChange,
   query,
   onQueryChange,
+  claudeStart,
 }: {
   value: string;
   onChange: (id: string) => void;
@@ -234,6 +240,7 @@ function StartGallery({
   onChipChange: (chip: StartChip) => void;
   query: string;
   onQueryChange: (query: string) => void;
+  claudeStart: boolean;
 }) {
   const entries = useSyncExternalStore(subscribeTemplates, listAllTemplates);
   const [libraryError, setLibraryError] = useState<string | null>(null);
@@ -247,8 +254,8 @@ function StartGallery({
   const counts = useMemo(() => templateCategoryCounts(entries), [entries]);
   const mineCount = useMemo(() => searchTemplates(entries, { source: "user" }).length, [entries]);
   const { templates, withClaude, ids } = useMemo(
-    () => startCards(entries, chip, query),
-    [entries, chip, query],
+    () => startCards(entries, chip, query, claudeStart),
+    [entries, chip, query, claudeStart],
   );
   const tabStopId = ids.includes(value) ? value : ids[0];
 
@@ -266,7 +273,7 @@ function StartGallery({
 
   const pickChip = (next: StartChip) => {
     onChipChange(next);
-    onChange(selectionAfterFilter(value, startCards(entries, next, query).ids));
+    onChange(selectionAfterFilter(value, startCards(entries, next, query, claudeStart).ids));
   };
 
   // Search is global: typing switches the chips back to All.
@@ -555,11 +562,14 @@ function WizardSteps({ step }: { step: Step }) {
 
 /** Create-project wizard: how to start (Create with Claude or a template), the look (theme), then the name. The theme applies to the new project's `project.json` after the template copy (`set_project_theme`). */
 export function NewProjectDialog({
+  claudeStart = true,
   initialGroup,
   initialTemplateId,
   onCreate,
   onCancel,
 }: {
+  /** False where a configuration profile turns Claude off: no Create with Claude card, Blank listed instead. */
+  claudeStart?: boolean;
   /** Preselected welcome-screen group (from a group heading's "+"). */
   initialGroup?: string | null;
   /** Preselected template (the library's "New project from this…"). */
@@ -575,7 +585,9 @@ export function NewProjectDialog({
   const [step, setStep] = useState<Step>("start");
   const [startId, setStartId] = useState(
     !initialTemplateId || initialTemplateId === BLANK_TEMPLATE_ID
-      ? CLAUDE_START_ID
+      ? claudeStart
+        ? CLAUDE_START_ID
+        : BLANK_TEMPLATE_ID
       : initialTemplateId,
   );
   const [templateChip, setTemplateChip] = useState<StartChip>(null);
@@ -707,6 +719,7 @@ export function NewProjectDialog({
             onChipChange={setTemplateChip}
             query={templateQuery}
             onQueryChange={setTemplateQuery}
+            claudeStart={claudeStart}
           />
         )}
         {step === "look" && (
