@@ -5,6 +5,24 @@ reference/; this file is taste. When in doubt, copy what the bundled templates d
 were tuned by eye (`./kb catalog templates` lists their scenes; read them under the app's
 Resources folder, `projects/<template>/scenes/`).
 
+## Brief first
+
+The bar is a launch film that holds its own beside the best in tech, built on the
+person's insight: they lead, you do the heavy lifting. Before planning a new video, deck
+or demo, draw out three things in one short round of questions (multiple choice where
+you can), skipping whatever the request, `BRAND.md` or the folder already answers:
+
+1. What shipped: the change, in their words, and the real product that shows it
+   (screen recordings, screenshots, the app itself; add them with `./kb assets add`).
+2. Who it's for, and where they will see it (social, keynote, store page, all-hands):
+   that sets the aspects, length and tone.
+3. Why it matters: what the viewer should feel or do after. It becomes the hook and the
+   closing line.
+
+Then build around their answers: their product is the hero, their words lead the copy.
+Never invent features, numbers or quotes; ask, or flag a placeholder in your reply. When
+they say just start, propose a one-line brief from what is in the folder and confirm it.
+
 ## Principles
 
 1. One idea per scene. If a scene needs two sentences to describe, split it.
@@ -17,7 +35,10 @@ Resources folder, `projects/<template>/scenes/`).
    reveal), never happen at random.
 5. Real product beats illustration. A real screen recording on a device beats any
    amount of animated type about it.
-6. Legibility first: every word readable on a phone, in both aspects, for long enough.
+6. Motion carries the story. Each scene moves toward its point (a camera move, a device,
+   a build), so nothing reads as a slideshow or PowerPoint, a deck included. Bullets stay
+   at two or three short lines; a longer list becomes beats, one point per scene.
+7. Legibility first: every word readable on a phone, in both aspects, for long enough.
 
 ## Pacing
 
@@ -27,7 +48,7 @@ The shipped templates run 13 to 27 seconds with scenes of 2 to 5 seconds. Norms:
 | --- | --- | --- |
 | Hook or title | 1.8 to 3 s | Reveal done by 0.9 s; hold the rest |
 | Feature on a device | 3.2 to 4.5 s | Or the recording's length (follow-media) |
-| Bullet or panel slide | 2.5 s + 0.6 s per bullet | Presentations: 5 to 8 s, or Present mode holds |
+| Panel or overlay | 2.5 s + 0.6 s per line | Present holds it for the speaker, so never pad it |
 | Number or stat | 2.4 to 3.4 s | Count over 1 to 1.8 s, hold at least 1 s |
 | Chart | 3.6 to 5 s | Build-in about 0.9 s, then hold or morph |
 | Before/after | 4 to 4.5 s | Divider sweeps over most of the scene |
@@ -208,11 +229,18 @@ expanding to isometric, `hero-device` scenes cut on the beat, `comparison` with 
 theme (`kookaburra-onyx`, `kookaburra-afterglow`, `kookaburra-night-drive`), music
 with beats. Templates: `whats-new-social-cut`, `redesign-reveal`.
 
-**Slide deck presentation.** A deck `frame` in `project.json` for consistency, then
-`overlaystart` and `overlayend` for content slides (alternate sides), `overlaypanel`
-for section titles and bullet lists, `chart` with a panel mount for data. Calm motion
-(`fade-up`), `crossfade` or `slide`. 5 to 8 s per slide, or Present mode holds. Mark
-stills (`stills.marksMs`) and export a PDF handout.
+**Presentation deck.** A deck is a film that waits for the speaker: Present holds each
+scene at its settled moment until they advance, so every slide still needs a moving
+hero. Set a deck `frame` in `project.json`: every scene then renders through its cutout,
+so build slides from the film presets (`hero-device` with a real recording,
+`layeredscreenshot`, `chart-reveal`, `stat-counter`) and let the panel carry one line and
+a chip, alternating the cutout's `side` for rhythm. `overlaypanel` (no window) only for
+the title and section breaks. Turn a bullet list into a run of slides, one point each on
+the product: the speaker says the detail. Calm copy (`fade-up`, `mask-reveal`), a slow
+`push-in` on the hero, `push` or `slide` in one direction. Size scenes for the film (the
+Pacing table) and keep holds alive: `presentLoop` on the camera, `loop` on device media.
+The same scenes make the PDF handout: mark stills (`stills.marksMs`) where the automatic
+still misses the moment.
 
 **Feature explainer.** Problem on `overlaypanel` (two or three bullets), the feature
 named on `title-opener`, the flow on `hero-device` with captions, the screens in a

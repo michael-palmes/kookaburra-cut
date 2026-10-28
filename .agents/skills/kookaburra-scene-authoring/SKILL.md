@@ -35,6 +35,12 @@ script in place). Never put kb in a shell variable or alias: zsh does not split 
 ok; 1 problems (fix what it names); 2 usage or environment (tell the user); 3 transient
 (wait `retryAfterMs`, then rerun unchanged). `--json` on any command prints one object.
 
+## Brief first
+
+For a new video, deck or demo, the person's insight leads and you do the heavy lifting.
+Before planning, draw out what shipped, who it's for and why it matters (DESIGN.md, Brief
+first), then build around their real product. Small edits skip this.
+
 ## The loop (every change)
 
 1. `./kb status`: is the app running, which project and aspect it shows, last load
