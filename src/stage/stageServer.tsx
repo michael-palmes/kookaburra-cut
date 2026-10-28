@@ -5,6 +5,7 @@ import * as THREE from "three";
 import { type Camera, Texture, TextureLoader } from "three";
 import { configureTextBuilder } from "troika-three-text";
 import { create } from "zustand";
+import { rememberBakedFlipY } from "../engine/bitmapOrientation";
 import { CompositorDriver } from "../engine/CompositorDriver";
 import {
   clipExtractionCount,
@@ -140,7 +141,7 @@ extend(THREE as unknown as Parameters<typeof extend>[0]);
 // The atlas canvas is a WebGL OffscreenCanvas here, and WebKit's upload of one is not the raw copy an HTMLCanvasElement's is (jagged, speckled glyph edges); troika reads the pixels back instead.
 configureTextBuilder({ sdfGlyphSize: SDF_GLYPH_SIZE, sdfAtlasReadback: true });
 
-/** Image textures decode through fetch + createImageBitmap: three's ImageLoader needs an `<img>`, which the worker has not. Orientation follows the texture's `flipY` (read after the synchronous caller settled it, so glTF's `flipY = false` holds), alpha stays straight. Measured byte-identical to the `<img>` path on the gate projects (docs/determinism.md). */
+/** Image textures decode through fetch + createImageBitmap: three's ImageLoader needs an `<img>`, which the worker has not. Orientation follows the texture's `flipY` (read after the synchronous caller settled it, so glTF's `flipY = false` holds) and is recorded for clones that want the other one (`engine/bitmapOrientation.ts`), alpha stays straight. Measured byte-identical to the `<img>` path on the gate projects (docs/determinism.md). */
 (TextureLoader.prototype as unknown as { load: unknown }).load = function load(
   this: TextureLoader,
   url: string,
@@ -156,13 +157,17 @@ configureTextBuilder({ sdfGlyphSize: SDF_GLYPH_SIZE, sdfAtlasReadback: true });
       if (!r.ok) throw new Error(`fetch ${resolved}: HTTP ${r.status}`);
       return r.blob();
     })
-    .then((blob) =>
-      createImageBitmap(blob, {
-        imageOrientation: texture.flipY ? "flipY" : "none",
+    .then((blob) => {
+      const flipY = texture.flipY;
+      return createImageBitmap(blob, {
+        imageOrientation: flipY ? "flipY" : "none",
         premultiplyAlpha: "none",
         colorSpaceConversion: "default",
-      }),
-    )
+      }).then((bitmap) => {
+        rememberBakedFlipY(bitmap, flipY);
+        return bitmap;
+      });
+    })
     .then(
       (bitmap) => {
         texture.image = bitmap;

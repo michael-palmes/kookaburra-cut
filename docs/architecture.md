@@ -98,6 +98,11 @@ frame bodies and the scene trees. The split, and why it is drawn where it is:
   mounts, exactly as the window did. Its atlas uploads through troika's
   readback path (`sdfAtlasReadback`, the one patched option), since WebKit's
   upload of a worker canvas is not a raw copy.
+- **A bitmap carries its orientation.** Images decode to ImageBitmaps with
+  the texture's `flipY` baked in, because WebGL ignores `flipY` for a bitmap
+  upload. A clone that wants the other orientation (a device screen's
+  `flipY = false` copy of a plane's image) takes a row-reversed copy from
+  `engine/bitmapOrientation.ts` instead of sharing the pixels.
 
 The theme editor's `SpecimenCanvas` is the one r3f root still on a main
 thread: it draws bundled specimen scenes only, never a workspace scene, in a
