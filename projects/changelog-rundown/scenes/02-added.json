@@ -52,7 +52,8 @@
       "media": {
         "src": "assets/kooka-dark-loop-sample.mp4",
         "kind": "video",
-        "startMs": 0
+        "startMs": 0,
+        "loop": true
       },
       "placement": {
         "position": [0, -0.1, 0],
