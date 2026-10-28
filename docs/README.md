@@ -17,6 +17,7 @@ architecture → determinism → decisions.
 | --- | --- |
 | [design.md](./design.md) | Design language for the macOS application chrome (the editor UI) |
 | [voice.md](./voice.md) | Voice, tone, lexicon and the locked copy lines |
+| [mdm.md](./mdm.md) | Managed preferences: the keys a configuration profile can force, a sample profile, and how to verify |
 
 Scene-authoring rules and the toolkit reference live in the
 `kookaburra-scene-authoring` skill (`.agents/skills/`); `/new-scene` scaffolds a
