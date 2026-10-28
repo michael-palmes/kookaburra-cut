@@ -145,16 +145,9 @@ export function startBridgeService(
   const dirtySlugs = new Set<string>();
   const ready = invoke("render_reset_preset_posters");
 
-  /** The editor's open project runs under its session trust (the re-stamp the editor's own reload makes); anything else loads stored-only, so this window never shows a trust prompt. */
-  const loadForBridge = async (targetId: string): Promise<LoadedProject> => {
-    if (isWorkspaceBackedProjectId(targetId)) {
-      const context = await invoke<EditorContext | null>("get_editor_context").catch(() => null);
-      if (context?.projectId === targetId) {
-        await invoke("trust_project", { slug: nativeProjectSlug(targetId) }).catch(() => {});
-      }
-    }
-    return loadProject(targetId, { trustMode: "stored-only" });
-  };
+  /** Every load is stored-only: this window cannot ask for consent, and the editor's own writes keep the open project's grant current natively. */
+  const loadForBridge = (targetId: string): Promise<LoadedProject> =>
+    loadProject(targetId, { trustMode: "stored-only" });
 
   /** Load (or reload) `targetId` unless the mounted tree already holds these sources (an unreadable fingerprint proves nothing, so it reloads). A load never depends on the aspect, so a format change re-applies the same load under a fresh identity: errored scene boundaries retry and the project stamp is the commit barrier. */
   const ensureLoaded = async (
@@ -453,10 +446,7 @@ export function startBridgeService(
       return;
     }
     const destSlug = nativeProjectSlug(targetId);
-    // An app write into a project the user had allowed keeps it allowed; the open project re-stamps on the editor's own reload.
-    const keepTrust =
-      targetId !== context?.projectId &&
-      (await invoke<boolean>("is_project_trusted", { slug: destSlug }).catch(() => false));
+    // An app write into a project the user had allowed keeps it allowed: Rust re-stamps the grant as part of the copy.
     const inserted = await insertPresetScene({
       destSlug,
       presetProjectId: entry.projectId,
@@ -464,7 +454,6 @@ export function startBridgeService(
       name: request.name?.trim() || undefined,
       trustMode: "stored-only",
     });
-    if (keepTrust) await invoke("trust_project", { slug: destSlug }).catch(() => {});
     await respond(request, {
       ok: true,
       project: targetId,

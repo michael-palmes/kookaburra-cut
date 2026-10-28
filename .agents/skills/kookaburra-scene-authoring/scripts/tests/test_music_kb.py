@@ -181,6 +181,64 @@ class SettleTests(KbTestCase):
         settled, _ = model.settle_written(before, moved_home, music(), 0)
         self.assertEqual(settled["camera"]["keys"][0]["at"], "bar:5")
 
+    def test_device_comparison_and_media_times_refresh(self) -> None:
+        doc = {
+            "version": 1,
+            "deviceTrack": {"keys": [{"id": "d1", "tMs": 1, "at": "bar:5", "pose": {}}], "segments": []},
+            "devices": [{"id": "phone", "model": "m", "media": {"src": "assets/a.mp4", "kind": "video", "at": "bar:2"}}],
+            "media": [{"id": "v1", "kind": "video", "src": "assets/b.mp4", "video": {"startMs": 4, "at": "cue:drop"}}],
+            "compare": {"track": {"keys": [{"id": "c1", "tMs": 1, "at": "bar:3", "pose": {"value": 0}}], "segments": []},
+                        "b": {"media": {"phone": {"src": "assets/c.mp4", "kind": "video", "startOn": "open", "at": "bar:2"}}}},
+        }
+        new, changes, issues = model.refresh_doc(doc, music(), 1000)
+        self.assertEqual([(c["where"], c["fromMs"], c["toMs"]) for c in changes], [
+            ('deviceTrack key "d1"', 1, 7250), ('device "phone" media', 0, 1250), ('media "v1" video', 4, 7250), ('compare.track key "c1"', 1, 3250),
+        ])
+        self.assertEqual(issues, ['compare.b.media "phone" "bar:2": startOn open counts startMs from the fold opening'])
+        self.assertNotIn("startMs", new["compare"]["b"]["media"]["phone"])
+        self.assertNotIn("startMs", doc["devices"][0]["media"])
+
+    def test_moving_or_clearing_a_start_drops_its_at(self) -> None:
+        before = {"version": 1, "devices": [{"id": "phone", "model": "m", "media": {"src": "assets/a.mp4", "kind": "video", "startMs": 2250, "at": "bar:2"}}]}
+        moved = json.loads(json.dumps(before))
+        moved["devices"][0]["media"]["startMs"] = 900
+        settled, notes = model.settle_written(before, moved, music(), 0)
+        self.assertEqual(settled["devices"][0]["media"], {"src": "assets/a.mp4", "kind": "video", "startMs": 900})
+        self.assertIn('device "phone" media moved to 900 ms', notes[0])
+        cleared = json.loads(json.dumps(before))
+        del cleared["devices"][0]["media"]["startMs"]
+        self.assertNotIn("at", model.settle_written(before, cleared, music(), 0)[0]["devices"][0]["media"])
+
+    def test_a_merge_keeps_each_at_unless_the_patch_nulls_it(self) -> None:
+        from kblib import docs
+
+        before = {"version": 1, "camera": camera([{"id": "k1", "tMs": 0}, {"id": "k2", "tMs": 8250, "at": "bar:5"}]),
+                  "compare": {"b": {"media": {"phone": {"src": "assets/a.mp4", "kind": "video", "startMs": 2250, "at": "bar:2"}}}}}
+        patch = {"camera": camera([{"id": "k1", "tMs": 0}, {"id": "k2", "tMs": 9000}])}
+        settled, notes = model.settle_written(before, docs.merge_patch(before, patch), music(), 0, patch)
+        self.assertEqual((settled["camera"]["keys"][1]["tMs"], settled["camera"]["keys"][1]["at"]), (8250, "bar:5"))
+        self.assertIn("kb doc merge keeps each at", notes[-1])
+        patch = {"camera": camera([{"id": "k1", "tMs": 0}, {"id": "k2", "tMs": 9000, "at": None}]), "compare": {"b": {"media": {"phone": {"at": None}}}}}
+        settled, _ = model.settle_written(before, docs.merge_patch(before, patch), music(), 0, patch)
+        self.assertEqual(settled["camera"]["keys"][1], camera([{"id": "k2", "tMs": 9000}])["keys"][0])
+        self.assertEqual(settled["compare"]["b"]["media"]["phone"], {"src": "assets/a.mp4", "kind": "video", "startMs": 2250})
+        untouched = {"name": "Renamed"}
+        self.assertEqual(model.settle_written(before, docs.merge_patch(before, untouched), music(), 0, untouched)[1], [])
+
+    def test_positions_where_only_ms_work(self) -> None:
+        before = {"version": 1, "chart": {"track": {"keys": [{"id": "k1", "tMs": 0, "at": "bar:1"}]}}}
+        after = json.loads(json.dumps(before))
+        after.update(
+            text={"at": "bar:2"}, cameraKicks=[{"at": "bar:2", "releaseMs": 300}], room={"keys": [{"at": "cue:drop"}]},
+            taps=[{"at": "bar:3", "position": [0, 0, 0]}], deviceTrack={"keys": [{"id": "d1", "tMs": 0, "at": "bar:2", "pose": {}}]},
+            layeredScreenshot={"animation": {"keys": [{"id": "k1", "tMs": 0, "at": "bar:4"}]}},
+        )
+        stray = model.stray_positions(before, after)
+        self.assertEqual(stray, [("taps.0.at", "bar:3"), ("layeredScreenshot.animation.keys.0.at", "bar:4")])
+        self.assertIn("kb video align", model.stray_error(stray).hint)  # type: ignore[operator]
+        self.assertIn("deviceTrack", model.stray_error(stray[1:]).hint)  # type: ignore[operator]
+        self.assertEqual(model.stray_error(stray).code, 2)
+
     def test_a_new_at_wins_over_its_tms(self) -> None:
         before = {"version": 1, "camera": camera([{"id": "k2", "tMs": 4000}])}
         after = json.loads(json.dumps(before))
@@ -266,7 +324,7 @@ class BeatsWriteTests(MusicProjectCase):
         self.assertNotIn("grid", self.manifest()["audio"])
         out = self.j("beats", "set-grid", "--bpm", "120.00049", "--offset", "250")
         self.assertEqual(self.manifest()["audio"]["grid"], {"bpm": 120, "offsetMs": 250, "beatsPerBar": 4})
-        self.assertEqual(out["moved"][0]["keys"], [{"track": "camera", "id": "k2", "at": "bar:3", "fromMs": 1, "toMs": 1850}])
+        self.assertEqual(out["moved"][0]["keys"], [{"track": "camera", "id": "k2", "where": 'camera key "k2"', "field": "tMs", "at": "bar:3", "fromMs": 1, "toMs": 1850}])
         self.assertEqual(self.keys()[1], dict(self.keys()[1], tMs=1850, at="bar:3"))
         self.assertEqual(self.j("beats", "set-grid", "--bpm", "500", "--offset", "0", code=1)["code"], "invalid")
         self.assertEqual(self.j("beats", "set-grid", "--bpm", "120", code=2)["code"], "usage")
@@ -367,6 +425,58 @@ class DocDetachTests(MusicProjectCase):
         merged = self.j("doc", "02-hero", "merge", json.dumps({"camera": camera([{"id": "k1", "tMs": 0}, {"id": "k2", "tMs": 1850, "at": "bar:4"}])}))
         self.assertEqual(self.keys()[1]["tMs"], 3850, merged)
 
+    def sidecar(self) -> Dict[str, Any]:
+        return read_json(self.root / "scenes" / "02-hero.json")
+
+    def phone(self, **media: Any) -> List[Dict[str, Any]]:
+        (self.root / "assets" / "clip.mp4").write_bytes(b"not really a video")
+        return [{"id": "phone", "model": "iphone-17-pro", "media": dict({"src": "assets/clip.mp4", "kind": "video"}, **media)}]
+
+    def test_a_screen_video_start_follows_the_music(self) -> None:
+        self.j("doc", "02-hero", "set", "devices", json.dumps(self.phone()))
+        out = self.j("doc", "02-hero", "set", "devices.0.media.at", "bar:3")
+        self.assertEqual(self.sidecar()["devices"][0]["media"], {"src": "assets/clip.mp4", "kind": "video", "at": "bar:3", "startMs": 1850})
+        self.assertIn('device "phone" media startMs 0 -> 1850 from "bar:3"', out["summary"])
+        out = self.j("doc", "02-hero", "set", "devices.0.media.startMs", "400")
+        self.assertNotIn("at", self.sidecar()["devices"][0]["media"])
+        self.assertIn("no longer follows", out["summary"])
+
+    def test_a_merge_keeps_at_unless_it_nulls_it(self) -> None:
+        keys = camera([{"id": "k1", "tMs": 0}, {"id": "k2", "tMs": 900}])
+        out = self.j("doc", "02-hero", "merge", json.dumps({"camera": keys}))
+        self.assertEqual((self.keys()[1]["tMs"], self.keys()[1]["at"]), (1850, "bar:3"))
+        self.assertIn("kb doc merge keeps each at", out["summary"])
+        moved = dict(keys["keys"][1])
+        keys["keys"][1]["at"] = None
+        self.j("doc", "02-hero", "merge", json.dumps({"camera": keys}))
+        self.assertEqual(self.keys()[1], moved)
+
+    def test_positions_are_refused_where_only_ms_work(self) -> None:
+        before = self.sidecar()
+        out = self.j("doc", "02-hero", "set", "taps", json.dumps([{"at": "bar:3", "position": [0, 0, 0]}]), code=2)
+        self.assertEqual(out["code"], "usage")
+        self.assertIn("kb video align", out["hint"])
+        chart = {"track": {"keys": [{"id": "k1", "tMs": 0, "at": "bar:3"}], "segments": []}}
+        out = self.j("doc", "02-hero", "merge", json.dumps({"chart": chart}), code=2)
+        self.assertIn("chart.track.keys.0.at", out["error"])
+        self.assertIn("deviceTrack", out["hint"])
+        self.assertEqual(self.sidecar(), before)
+
+    def test_string_values_read_escapes(self) -> None:
+        self.j("doc", "02-hero", "set", "text.title", "Line one\\nLine two\\tend \\\\n", "--string")
+        self.assertEqual(self.sidecar()["text"]["title"], "Line one\nLine two\tend \\n")
+        self.assertIn("newline", self.kb(["doc", "02-hero", "set", "--help"], cwd=self.root).stdout)
+
+    def test_kb_video_start_drops_the_at_it_moves(self) -> None:
+        from kblib.video import repoint
+
+        doc = self.sidecar()
+        doc["devices"] = self.phone(startMs=1850, at="bar:3")
+        write_json(self.root / "scenes" / "02-hero.json", doc)
+        out = repoint.set_start(Project(self.root), "02-hero", "device:phone", 900)
+        self.assertNotIn("at", self.sidecar()["devices"][0]["media"])
+        self.assertIn("no longer follows", out["notes"][0])
+
     def test_a_sidecar_without_at_is_written_exactly_as_before(self) -> None:
         write_json(self.root / "scenes" / "01-intro.json", {"version": 1, "camera": camera([{"id": "k1", "tMs": 0}, {"id": "k2", "tMs": 50}])})
         self.j("doc", "01-intro", "set", "camera.keys.1.tMs", "75")
@@ -398,6 +508,40 @@ class SceneTimingTests(MusicProjectCase):
         self.assertEqual(self.j("scene", "set", "0", "--cut-at", "bar:0", code=1)["code"], "invalid")
         self.assertEqual(self.j("scene", "set", "0", "--cut-at", "bar:3", "--duration", "4000", code=2)["code"], "usage")
         self.assertEqual(self.j("scene", "set", "0", "--align", "mid", code=2)["code"], "usage")
+
+    def test_a_pinned_cut_follows_the_grid_and_earlier_transitions(self) -> None:
+        self.j("scene", "set", "0", "--cut-at", "bar:3", "--align", "mid")
+        self.assertEqual({k: self.manifest()["scenes"][0][k] for k in ("cutAt", "align")}, {"cutAt": "bar:3", "align": "mid"})
+        # 100 bpm: bar 3 moves to 5050 ms, and the 600 ms crossfade stays centred on it.
+        self.kb(["beats", "set-grid", "--bpm", "100", "--offset", "250"], cwd=self.root)
+        self.assertEqual(self.durations()[0], 5350)
+        # A longer transition keeps the cut centred and scene 1 grows at its head, so scene 2 stays at 7150 ms.
+        out = self.j("scene", "set", "0", "--transition", "crossfade:1000")
+        self.assertEqual(self.durations()[:2], [5550, 3200])
+        self.assertIn("cut kept on bar:3", " ".join(out["changes"]))
+        out = self.j("scene", "set", "0", "--duration", "4000")
+        self.assertNotIn("cutAt", self.manifest()["scenes"][0])
+        self.assertIn("no longer pinned to bar:3", out["changes"][0])
+
+    def test_a_transition_on_the_beat_pins_its_cut_and_holds_later_scenes(self) -> None:
+        # Bar 1 at 200 ms: scene 0's crossfade is centred on 2700 ms, beat 2 of bar 2.
+        self.kb(["beats", "set-grid", "--bpm", "120", "--offset", "200"], cwd=self.root)
+        self.j("scene", "set", "0", "--transition", "crossfade:1000")
+        entry = self.manifest()["scenes"][0]
+        self.assertEqual((entry["cutAt"], entry["align"], entry["durationMs"]), ("bar:2.2", "mid", 3200))
+        self.assertEqual(self.durations()[1:], [3200, 3000])
+
+    def test_ripple_lets_later_scenes_move(self) -> None:
+        self.j("scene", "set", "1", "--transition", "crossfade:200", "--ripple")
+        self.assertEqual(self.durations(), [3000, 3000, 3000])
+        self.assertNotIn("cutAt", self.manifest()["scenes"][1])
+        self.assertEqual(self.j("scene", "set", "1", "--ripple", code=2)["code"], "usage")
+
+    def test_a_time_cut_is_not_pinned(self) -> None:
+        self.j("scene", "set", "0", "--cut-at", "bar:3")
+        self.j("scene", "set", "0", "--cut-at", "4.5s")
+        self.assertEqual(self.durations()[0], 4500)
+        self.assertNotIn("cutAt", self.manifest()["scenes"][0])
 
     def test_no_grid_is_exit_1(self) -> None:
         self.kb(["beats", "clear-grid"], cwd=self.root)
@@ -436,6 +580,21 @@ class MusicCheckTests(MusicProjectCase):
         self.assertEqual(stale[0]["severity"], "warning")
         self.assertIn("the app rewrites it on load", stale[0]["message"])
         self.assertIn("./kb doc 02-hero unset camera.keys.1.at", stale[0]["message"])
+
+    def test_video_starts_and_tracks_that_ignore_at(self) -> None:
+        self.kb(["beats", "set-grid", "--bpm", "120", "--offset", "250"], cwd=self.root)
+        clip = {"src": "assets/logo.png", "kind": "video"}
+        write_json(self.root / "scenes" / "03-outro.json", {
+            "version": 1,
+            "devices": [{"id": "fold", "model": "iphone-17-pro", "media": dict(clip, startOn="open", at="bar:3")}],
+            "media": [dict(clip, id="v1", video={"startMs": 7, "at": "bar:3"})],
+            "layeredScreenshot": {"animation": {"keys": [{"id": "k1", "tMs": 0, "at": "bar:3"}], "segments": []}},
+        })
+        found = {(i["path"], i["severity"]): i["message"] for i in self.issues() if i["file"] == "scenes/03-outro.json"}
+        self.assertIn("startOn open counts startMs", found[("devices[0].media.at", "error")])
+        self.assertIn("./kb doc 03-outro unset media.0.video.at", found[("media[0].video.startMs", "warning")])
+        self.assertIn("takes plain tMs", found[("layeredScreenshot.animation.keys[0].at", "warning")])
+        self.assertNotIn(("devices[0].media.at", "warning"), found)
 
     def test_a_grid_fitted_to_another_file_warns(self) -> None:
         self.write_analysis()

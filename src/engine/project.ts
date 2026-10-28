@@ -55,6 +55,7 @@ import { parseRenderSettings, type RenderSettings } from "./renderSettings";
 import { sceneErrorCard } from "./SceneErrorCard";
 import { ensureSampleAssets } from "./sampleAssets";
 import { deriveCompareBDoc } from "./sceneCompare";
+import { type CutAlign, resolveSceneCuts } from "./sceneCuts";
 import { loadSceneDoc } from "./sceneDoc";
 import { resolveProjectDocsMusic } from "./sceneDocMusic";
 import { collectSceneDocFontRefs, type SceneDoc } from "./sceneDocSchema";
@@ -107,6 +108,9 @@ export interface ProjectManifest {
     transition?: TransitionSpec;
     /** Per-scene postprocessing overrides layered on the project-wide (theme) effects. */
     effects?: EffectsOverride;
+    /** A pinned cut: the musical position this scene's cut lands on, `durationMs` its cached length (engine/sceneCuts.ts). */
+    cutAt?: string;
+    align?: CutAlign;
   }[];
   /** Per-project camera keyframes on the GLOBAL clock, applied at the shared render seam (engine/cameraTrack.ts). Absent means the camera is never touched (the v0-v2 byte-identical path). */
   camera?: CameraKeyframe[];
@@ -437,6 +441,8 @@ export interface LoadedProject {
   music?: ProjectMusic;
   /** Scenes whose sidecar `tMs` caches the load re-resolved from `at` (a grid or slot moved since they were written); the editor writes them back. Absent when none did. */
   musicCacheRewrites?: number[];
+  /** Scenes whose pinned cut resolved to a length other than the manifest's cached `durationMs`; the editor writes them back. Absent when none did. */
+  cutCacheRewrites?: number[];
   /** BASE effect stacks for scenes whose sidecar swaps the theme (sparse, keyed by scene index); a wholesale replacement of the project default for that scene, LUT urls already resolved. See `sceneBaseEffects` (engine/effectParams.ts). */
   sceneEffectDefaults: Record<number, EffectsConfig>;
   /** The manifest's validated project-default lighting layer, if it declares one (manifest `lighting`); provided to the canvas tree via `ProjectLightingContext`. */
@@ -1303,8 +1309,8 @@ export async function loadProject(
     if (options?.trustMode)
       await ensureProjectTrusted(slug, manifest.name || slug, options.trustMode);
     else await ensureProjectTrusted(slug, manifest.name || slug);
-    // Trust first: declining must mean zero writes. The bump evicts pre-heal modules from `wsCompiledModules` so the imports below compile the rewritten bytes.
-    const heal = await ensureUniqueSceneIds(slug);
+    // Trust first: declining must mean zero writes. The heal is the main window's (a stored-only load runs in a window that cannot write scenes). The bump evicts pre-heal modules from `wsCompiledModules` so the imports below compile the rewritten bytes.
+    const heal = options?.trustMode ? null : await ensureUniqueSceneIds(slug);
     if (heal?.renamed.length) {
       healedSceneIds = heal.renamed.map((r) => r.file);
       bumpWorkspaceReloadToken();
@@ -1361,8 +1367,25 @@ export async function loadProject(
     noteParse(docFile, docFile, sceneDocWarnings[i]);
   });
 
-  // Overlap-aware placement: a transition pulls the next scene's start back, shortening the project.
+  // Authored music comes from the manifest alone, so a missing soundtrack never moves a visual; pinned cuts and sidecar `at` positions resolve against it before anything reads a time.
+  const audioSpec = isRecordValue(manifest.audio)
+    ? withSanitisedMusic(manifest.audio as ProjectAudioSpec)
+    : undefined;
+  const music = projectMusicOf(audioSpec);
+
+  // Pinned cuts first (a project without one keeps its durations untouched), then overlap-aware placement: a transition pulls the next scene's start back, shortening the project.
   const outgoing = outgoingSceneTransitions(manifest);
+  const cuts = resolveSceneCuts(
+    manifest.scenes.map((entry, i) => ({
+      durationMs: scenes[i].durationMs,
+      transition: outgoing[i],
+      cutAt: entry.cutAt,
+      align: entry.align,
+    })),
+    music,
+  );
+  for (const i of cuts.changed) scenes[i] = { ...scenes[i], durationMs: cuts.durations[i] };
+  for (const issue of cuts.issues) parseNotes.push(`project.json: ${issue}`);
   const timeline = buildSceneTimeline(
     manifest.scenes.map((_, i) => ({
       // TSX-authored, so it may collide: never key a mount off it, files are the identity (`sceneMountKey`).
@@ -1376,11 +1399,6 @@ export async function loadProject(
   );
   const totalMs = timelineTotalMs(slots);
 
-  // Authored music comes from the manifest alone, so a missing soundtrack never moves a visual; sidecar `at` positions resolve against it here, before anything reads a key time.
-  const audioSpec = isRecordValue(manifest.audio)
-    ? withSanitisedMusic(manifest.audio as ProjectAudioSpec)
-    : undefined;
-  const music = projectMusicOf(audioSpec);
   const resolved = resolveProjectDocsMusic(loadedDocs, music, slots);
   const sceneDocs = resolved.docs;
 
@@ -1580,6 +1598,7 @@ export async function loadProject(
     audio,
     music,
     ...(resolved.changed.length > 0 ? { musicCacheRewrites: resolved.changed } : {}),
+    ...(cuts.changed.length > 0 ? { cutCacheRewrites: cuts.changed } : {}),
     cameraTrack: manifest.camera,
     persistent,
     persistentKey,

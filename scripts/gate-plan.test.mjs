@@ -80,6 +80,13 @@ describe("gate plan", () => {
     );
   });
 
+  test("compositor changes add the crossfade midpoint check", () => {
+    assert.deepEqual(
+      plan(["src/engine/compositor.ts"], closure).actions.map((a) => `${a.action} ${a.project}`),
+      ["transitioncheck compare-transition-spike"],
+    );
+  });
+
   test("a bundled fixture's own files gate only that fixture", () => {
     assert.deepEqual(legsOf(plan(["fixtures/transition-spike/scenes/01.tsx"], closure)), [
       "transition-spike@16:9",

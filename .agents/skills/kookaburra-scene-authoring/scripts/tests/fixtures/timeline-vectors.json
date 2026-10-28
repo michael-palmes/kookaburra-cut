@@ -3507,6 +3507,1295 @@
           "transition": null
         }
       ]
+    },
+    {
+      "id": "pinned-cuts",
+      "manifest": {
+        "version": 2,
+        "scenes": [
+          {
+            "durationMs": 3000,
+            "transition": {
+              "type": "crossfade",
+              "durationMs": 800
+            },
+            "cutAt": "bar:3",
+            "align": "mid"
+          },
+          {
+            "durationMs": 1,
+            "transition": {
+              "type": "push",
+              "durationMs": 500
+            },
+            "cutAt": "cue:drop+40ms"
+          },
+          {
+            "durationMs": 2500,
+            "transition": {
+              "type": "dip",
+              "durationMs": 300
+            }
+          },
+          {
+            "durationMs": 1,
+            "cutAt": "bar:9.2.3",
+            "align": "mid"
+          }
+        ]
+      },
+      "music": {
+        "grid": {
+          "bpm": 120,
+          "offsetMs": 250,
+          "beatsPerBar": 4
+        },
+        "startOffsetMs": 100,
+        "cues": {
+          "drop": "bar:5.3"
+        },
+        "sections": {}
+      },
+      "cuts": {
+        "durations": [
+          4550,
+          5440,
+          2500,
+          6010
+        ],
+        "changed": [
+          0,
+          1,
+          3
+        ],
+        "issues": []
+      },
+      "slots": [
+        {
+          "index": 0,
+          "id": "s0",
+          "startMs": 0,
+          "durationMs": 4550,
+          "endMs": 4550
+        },
+        {
+          "index": 1,
+          "id": "s1",
+          "startMs": 3750,
+          "durationMs": 5440,
+          "endMs": 9190,
+          "transitionIn": {
+            "type": "crossfade",
+            "durationMs": 800
+          }
+        },
+        {
+          "index": 2,
+          "id": "s2",
+          "startMs": 8690,
+          "durationMs": 2500,
+          "endMs": 11190,
+          "transitionIn": {
+            "type": "push",
+            "durationMs": 500
+          }
+        },
+        {
+          "index": 3,
+          "id": "s3",
+          "startMs": 10890,
+          "durationMs": 6010,
+          "endMs": 16900,
+          "transitionIn": {
+            "type": "dip",
+            "durationMs": 300
+          }
+        }
+      ],
+      "totalMs": 16900,
+      "at": [
+        {
+          "tMs": -50,
+          "active": [
+            {
+              "index": 0,
+              "localMs": 0
+            }
+          ],
+          "transition": null
+        },
+        {
+          "tMs": 0,
+          "active": [
+            {
+              "index": 0,
+              "localMs": 0
+            }
+          ],
+          "transition": null
+        },
+        {
+          "tMs": 2275,
+          "active": [
+            {
+              "index": 0,
+              "localMs": 2275
+            }
+          ],
+          "transition": null
+        },
+        {
+          "tMs": 3750,
+          "active": [
+            {
+              "index": 0,
+              "localMs": 3750
+            },
+            {
+              "index": 1,
+              "localMs": 0
+            }
+          ],
+          "transition": {
+            "type": "crossfade",
+            "progress": 0,
+            "fromIndex": 0,
+            "toIndex": 1
+          }
+        },
+        {
+          "tMs": 4016.6666666666665,
+          "active": [
+            {
+              "index": 0,
+              "localMs": 4016.6666666666665
+            },
+            {
+              "index": 1,
+              "localMs": 266.6666666666665
+            }
+          ],
+          "transition": {
+            "type": "crossfade",
+            "progress": 0.33333333333333315,
+            "fromIndex": 0,
+            "toIndex": 1
+          }
+        },
+        {
+          "tMs": 4550,
+          "active": [
+            {
+              "index": 1,
+              "localMs": 800
+            }
+          ],
+          "transition": null
+        },
+        {
+          "tMs": 6470,
+          "active": [
+            {
+              "index": 1,
+              "localMs": 2720
+            }
+          ],
+          "transition": null
+        },
+        {
+          "tMs": 8690,
+          "active": [
+            {
+              "index": 1,
+              "localMs": 4940
+            },
+            {
+              "index": 2,
+              "localMs": 0
+            }
+          ],
+          "transition": {
+            "type": "push",
+            "progress": 0,
+            "fromIndex": 1,
+            "toIndex": 2
+          }
+        },
+        {
+          "tMs": 8856.666666666666,
+          "active": [
+            {
+              "index": 1,
+              "localMs": 5106.666666666666
+            },
+            {
+              "index": 2,
+              "localMs": 166.66666666666606
+            }
+          ],
+          "transition": {
+            "type": "push",
+            "progress": 0.3333333333333321,
+            "fromIndex": 1,
+            "toIndex": 2
+          }
+        },
+        {
+          "tMs": 9190,
+          "active": [
+            {
+              "index": 2,
+              "localMs": 500
+            }
+          ],
+          "transition": null
+        },
+        {
+          "tMs": 9940,
+          "active": [
+            {
+              "index": 2,
+              "localMs": 1250
+            }
+          ],
+          "transition": null
+        },
+        {
+          "tMs": 10890,
+          "active": [
+            {
+              "index": 2,
+              "localMs": 2200
+            },
+            {
+              "index": 3,
+              "localMs": 0
+            }
+          ],
+          "transition": {
+            "type": "dip",
+            "progress": 0,
+            "fromIndex": 2,
+            "toIndex": 3
+          }
+        },
+        {
+          "tMs": 10990,
+          "active": [
+            {
+              "index": 2,
+              "localMs": 2300
+            },
+            {
+              "index": 3,
+              "localMs": 100
+            }
+          ],
+          "transition": {
+            "type": "dip",
+            "progress": 0.3333333333333333,
+            "fromIndex": 2,
+            "toIndex": 3
+          }
+        },
+        {
+          "tMs": 11190,
+          "active": [
+            {
+              "index": 3,
+              "localMs": 300
+            }
+          ],
+          "transition": null
+        },
+        {
+          "tMs": 13895,
+          "active": [
+            {
+              "index": 3,
+              "localMs": 3005
+            }
+          ],
+          "transition": null
+        },
+        {
+          "tMs": 16900,
+          "active": [
+            {
+              "index": 3,
+              "localMs": 6010
+            }
+          ],
+          "transition": null
+        },
+        {
+          "tMs": 17900,
+          "active": [
+            {
+              "index": 3,
+              "localMs": 6010
+            }
+          ],
+          "transition": null
+        }
+      ]
+    },
+    {
+      "id": "pinned-cuts-odd-grid",
+      "manifest": {
+        "version": 2,
+        "scenes": [
+          {
+            "durationMs": 1777,
+            "transition": {
+              "type": "wipe",
+              "durationMs": 333
+            },
+            "cutAt": "bar:3.2",
+            "align": "mid"
+          },
+          {
+            "durationMs": 2222,
+            "transition": {
+              "type": "crossfade",
+              "durationMs": 901
+            },
+            "cutAt": "bar:5",
+            "align": "mid"
+          },
+          {
+            "durationMs": 1500
+          }
+        ]
+      },
+      "music": {
+        "grid": {
+          "bpm": 93.5,
+          "offsetMs": 1234.567,
+          "beatsPerBar": 3
+        },
+        "startOffsetMs": 0,
+        "cues": {},
+        "sections": {}
+      },
+      "cuts": {
+        "durations": [
+          5893,
+          3826,
+          1500
+        ],
+        "changed": [
+          0,
+          1
+        ],
+        "issues": []
+      },
+      "slots": [
+        {
+          "index": 0,
+          "id": "s0",
+          "startMs": 0,
+          "durationMs": 5893,
+          "endMs": 5893
+        },
+        {
+          "index": 1,
+          "id": "s1",
+          "startMs": 5560,
+          "durationMs": 3826,
+          "endMs": 9386,
+          "transitionIn": {
+            "type": "wipe",
+            "durationMs": 333
+          }
+        },
+        {
+          "index": 2,
+          "id": "s2",
+          "startMs": 8485,
+          "durationMs": 1500,
+          "endMs": 9985,
+          "transitionIn": {
+            "type": "crossfade",
+            "durationMs": 901
+          }
+        }
+      ],
+      "totalMs": 9985,
+      "at": [
+        {
+          "tMs": -50,
+          "active": [
+            {
+              "index": 0,
+              "localMs": 0
+            }
+          ],
+          "transition": null
+        },
+        {
+          "tMs": 0,
+          "active": [
+            {
+              "index": 0,
+              "localMs": 0
+            }
+          ],
+          "transition": null
+        },
+        {
+          "tMs": 2946.5,
+          "active": [
+            {
+              "index": 0,
+              "localMs": 2946.5
+            }
+          ],
+          "transition": null
+        },
+        {
+          "tMs": 5560,
+          "active": [
+            {
+              "index": 0,
+              "localMs": 5560
+            },
+            {
+              "index": 1,
+              "localMs": 0
+            }
+          ],
+          "transition": {
+            "type": "wipe",
+            "progress": 0,
+            "fromIndex": 0,
+            "toIndex": 1
+          }
+        },
+        {
+          "tMs": 5671,
+          "active": [
+            {
+              "index": 0,
+              "localMs": 5671
+            },
+            {
+              "index": 1,
+              "localMs": 111
+            }
+          ],
+          "transition": {
+            "type": "wipe",
+            "progress": 0.3333333333333333,
+            "fromIndex": 0,
+            "toIndex": 1
+          }
+        },
+        {
+          "tMs": 5893,
+          "active": [
+            {
+              "index": 1,
+              "localMs": 333
+            }
+          ],
+          "transition": null
+        },
+        {
+          "tMs": 7473,
+          "active": [
+            {
+              "index": 1,
+              "localMs": 1913
+            }
+          ],
+          "transition": null
+        },
+        {
+          "tMs": 8485,
+          "active": [
+            {
+              "index": 1,
+              "localMs": 2925
+            },
+            {
+              "index": 2,
+              "localMs": 0
+            }
+          ],
+          "transition": {
+            "type": "crossfade",
+            "progress": 0,
+            "fromIndex": 1,
+            "toIndex": 2
+          }
+        },
+        {
+          "tMs": 8785.333333333334,
+          "active": [
+            {
+              "index": 1,
+              "localMs": 3225.333333333334
+            },
+            {
+              "index": 2,
+              "localMs": 300.33333333333394
+            }
+          ],
+          "transition": {
+            "type": "crossfade",
+            "progress": 0.333333333333334,
+            "fromIndex": 1,
+            "toIndex": 2
+          }
+        },
+        {
+          "tMs": 9235,
+          "active": [
+            {
+              "index": 1,
+              "localMs": 3675
+            },
+            {
+              "index": 2,
+              "localMs": 750
+            }
+          ],
+          "transition": {
+            "type": "crossfade",
+            "progress": 0.832408435072142,
+            "fromIndex": 1,
+            "toIndex": 2
+          }
+        },
+        {
+          "tMs": 9386,
+          "active": [
+            {
+              "index": 2,
+              "localMs": 901
+            }
+          ],
+          "transition": null
+        },
+        {
+          "tMs": 9985,
+          "active": [
+            {
+              "index": 2,
+              "localMs": 1500
+            }
+          ],
+          "transition": null
+        },
+        {
+          "tMs": 10985,
+          "active": [
+            {
+              "index": 2,
+              "localMs": 1500
+            }
+          ],
+          "transition": null
+        }
+      ]
+    },
+    {
+      "id": "pinned-cuts-that-cannot-resolve",
+      "manifest": {
+        "version": 2,
+        "scenes": [
+          {
+            "durationMs": 6000,
+            "transition": {
+              "type": "crossfade",
+              "durationMs": 600
+            }
+          },
+          {
+            "durationMs": 2000,
+            "cutAt": "bar:2"
+          },
+          {
+            "durationMs": 2000,
+            "cutAt": "cue:missing"
+          },
+          {
+            "durationMs": 2000,
+            "cutAt": "bar:nine"
+          }
+        ]
+      },
+      "music": {
+        "grid": {
+          "bpm": 120,
+          "offsetMs": 250,
+          "beatsPerBar": 4
+        },
+        "startOffsetMs": 100,
+        "cues": {
+          "drop": "bar:5.3"
+        },
+        "sections": {}
+      },
+      "cuts": {
+        "durations": [
+          6000,
+          2000,
+          2000,
+          2000
+        ],
+        "changed": [],
+        "issues": [
+          "scene 2 cutAt \"bar:2\" lands at 2150 ms, before the scene starts (5400 ms)",
+          "scene 3 cutAt \"cue:missing\": no cue \"missing\"",
+          "scene 4 cutAt \"bar:nine\": \"bar:nine\" isn't bar:B[.beat[.16th]], cue:ID or section:ID"
+        ]
+      },
+      "slots": [
+        {
+          "index": 0,
+          "id": "s0",
+          "startMs": 0,
+          "durationMs": 6000,
+          "endMs": 6000
+        },
+        {
+          "index": 1,
+          "id": "s1",
+          "startMs": 5400,
+          "durationMs": 2000,
+          "endMs": 7400,
+          "transitionIn": {
+            "type": "crossfade",
+            "durationMs": 600
+          }
+        },
+        {
+          "index": 2,
+          "id": "s2",
+          "startMs": 7400,
+          "durationMs": 2000,
+          "endMs": 9400
+        },
+        {
+          "index": 3,
+          "id": "s3",
+          "startMs": 9400,
+          "durationMs": 2000,
+          "endMs": 11400
+        }
+      ],
+      "totalMs": 11400,
+      "at": [
+        {
+          "tMs": -50,
+          "active": [
+            {
+              "index": 0,
+              "localMs": 0
+            }
+          ],
+          "transition": null
+        },
+        {
+          "tMs": 0,
+          "active": [
+            {
+              "index": 0,
+              "localMs": 0
+            }
+          ],
+          "transition": null
+        },
+        {
+          "tMs": 3000,
+          "active": [
+            {
+              "index": 0,
+              "localMs": 3000
+            }
+          ],
+          "transition": null
+        },
+        {
+          "tMs": 5400,
+          "active": [
+            {
+              "index": 0,
+              "localMs": 5400
+            },
+            {
+              "index": 1,
+              "localMs": 0
+            }
+          ],
+          "transition": {
+            "type": "crossfade",
+            "progress": 0,
+            "fromIndex": 0,
+            "toIndex": 1
+          }
+        },
+        {
+          "tMs": 5600,
+          "active": [
+            {
+              "index": 0,
+              "localMs": 5600
+            },
+            {
+              "index": 1,
+              "localMs": 200
+            }
+          ],
+          "transition": {
+            "type": "crossfade",
+            "progress": 0.3333333333333333,
+            "fromIndex": 0,
+            "toIndex": 1
+          }
+        },
+        {
+          "tMs": 6000,
+          "active": [
+            {
+              "index": 1,
+              "localMs": 600
+            }
+          ],
+          "transition": null
+        },
+        {
+          "tMs": 6400,
+          "active": [
+            {
+              "index": 1,
+              "localMs": 1000
+            }
+          ],
+          "transition": null
+        },
+        {
+          "tMs": 7400,
+          "active": [
+            {
+              "index": 2,
+              "localMs": 0
+            }
+          ],
+          "transition": null
+        },
+        {
+          "tMs": 8400,
+          "active": [
+            {
+              "index": 2,
+              "localMs": 1000
+            }
+          ],
+          "transition": null
+        },
+        {
+          "tMs": 9400,
+          "active": [
+            {
+              "index": 3,
+              "localMs": 0
+            }
+          ],
+          "transition": null
+        },
+        {
+          "tMs": 10400,
+          "active": [
+            {
+              "index": 3,
+              "localMs": 1000
+            }
+          ],
+          "transition": null
+        },
+        {
+          "tMs": 11400,
+          "active": [
+            {
+              "index": 3,
+              "localMs": 2000
+            }
+          ],
+          "transition": null
+        },
+        {
+          "tMs": 12400,
+          "active": [
+            {
+              "index": 3,
+              "localMs": 2000
+            }
+          ],
+          "transition": null
+        }
+      ]
+    },
+    {
+      "id": "pinned-cuts-without-a-grid",
+      "manifest": {
+        "version": 2,
+        "scenes": [
+          {
+            "durationMs": 2000,
+            "transition": {
+              "type": "crossfade",
+              "durationMs": 400
+            },
+            "cutAt": "bar:2"
+          },
+          {
+            "durationMs": 2000
+          }
+        ]
+      },
+      "cuts": {
+        "durations": [
+          2000,
+          2000
+        ],
+        "changed": [],
+        "issues": [
+          "scene 1 cutAt \"bar:2\": the project has no audio.grid"
+        ]
+      },
+      "slots": [
+        {
+          "index": 0,
+          "id": "s0",
+          "startMs": 0,
+          "durationMs": 2000,
+          "endMs": 2000
+        },
+        {
+          "index": 1,
+          "id": "s1",
+          "startMs": 1600,
+          "durationMs": 2000,
+          "endMs": 3600,
+          "transitionIn": {
+            "type": "crossfade",
+            "durationMs": 400
+          }
+        }
+      ],
+      "totalMs": 3600,
+      "at": [
+        {
+          "tMs": -50,
+          "active": [
+            {
+              "index": 0,
+              "localMs": 0
+            }
+          ],
+          "transition": null
+        },
+        {
+          "tMs": 0,
+          "active": [
+            {
+              "index": 0,
+              "localMs": 0
+            }
+          ],
+          "transition": null
+        },
+        {
+          "tMs": 1000,
+          "active": [
+            {
+              "index": 0,
+              "localMs": 1000
+            }
+          ],
+          "transition": null
+        },
+        {
+          "tMs": 1600,
+          "active": [
+            {
+              "index": 0,
+              "localMs": 1600
+            },
+            {
+              "index": 1,
+              "localMs": 0
+            }
+          ],
+          "transition": {
+            "type": "crossfade",
+            "progress": 0,
+            "fromIndex": 0,
+            "toIndex": 1
+          }
+        },
+        {
+          "tMs": 1733.3333333333333,
+          "active": [
+            {
+              "index": 0,
+              "localMs": 1733.3333333333333
+            },
+            {
+              "index": 1,
+              "localMs": 133.33333333333326
+            }
+          ],
+          "transition": {
+            "type": "crossfade",
+            "progress": 0.33333333333333315,
+            "fromIndex": 0,
+            "toIndex": 1
+          }
+        },
+        {
+          "tMs": 2000,
+          "active": [
+            {
+              "index": 1,
+              "localMs": 400
+            }
+          ],
+          "transition": null
+        },
+        {
+          "tMs": 2600,
+          "active": [
+            {
+              "index": 1,
+              "localMs": 1000
+            }
+          ],
+          "transition": null
+        },
+        {
+          "tMs": 3600,
+          "active": [
+            {
+              "index": 1,
+              "localMs": 2000
+            }
+          ],
+          "transition": null
+        },
+        {
+          "tMs": 4600,
+          "active": [
+            {
+              "index": 1,
+              "localMs": 2000
+            }
+          ],
+          "transition": null
+        }
+      ]
+    }
+  ],
+  "keeps": [
+    {
+      "id": "on-beat-cut-gets-pinned",
+      "entries": [
+        {
+          "durationMs": 4150
+        },
+        {
+          "durationMs": 4000
+        },
+        {
+          "durationMs": 2000,
+          "transition": {
+            "type": "crossfade",
+            "durationMs": 500
+          }
+        },
+        {
+          "durationMs": 3000
+        }
+      ],
+      "durations": [
+        4150,
+        4000,
+        2000,
+        3000
+      ],
+      "index": 0,
+      "spec": {
+        "type": "crossfade",
+        "durationMs": 800,
+        "ease": "smooth"
+      },
+      "music": {
+        "grid": {
+          "bpm": 120,
+          "offsetMs": 250,
+          "beatsPerBar": 4
+        },
+        "startOffsetMs": 100,
+        "cues": {
+          "drop": "bar:5.3"
+        },
+        "sections": {}
+      },
+      "out": {
+        "entries": [
+          {
+            "durationMs": 4550,
+            "transition": {
+              "type": "crossfade",
+              "durationMs": 800,
+              "ease": "smooth"
+            },
+            "cutAt": "bar:3",
+            "align": "mid"
+          },
+          {
+            "durationMs": 4400
+          },
+          {
+            "durationMs": 2000,
+            "transition": {
+              "type": "crossfade",
+              "durationMs": 500
+            }
+          },
+          {
+            "durationMs": 3000
+          }
+        ],
+        "cutMs": 4150,
+        "position": "bar:3"
+      }
+    },
+    {
+      "id": "off-beat-cut-held-by-length",
+      "entries": [
+        {
+          "durationMs": 4250
+        },
+        {
+          "durationMs": 4000
+        },
+        {
+          "durationMs": 3000
+        }
+      ],
+      "durations": [
+        4250,
+        4000,
+        3000
+      ],
+      "index": 0,
+      "spec": {
+        "type": "push",
+        "durationMs": 601
+      },
+      "music": {
+        "grid": {
+          "bpm": 120,
+          "offsetMs": 250,
+          "beatsPerBar": 4
+        },
+        "startOffsetMs": 100,
+        "cues": {
+          "drop": "bar:5.3"
+        },
+        "sections": {}
+      },
+      "out": {
+        "entries": [
+          {
+            "durationMs": 4551,
+            "transition": {
+              "type": "push",
+              "durationMs": 601
+            }
+          },
+          {
+            "durationMs": 4300
+          },
+          {
+            "durationMs": 3000
+          }
+        ],
+        "cutMs": 4250,
+        "position": null
+      }
+    },
+    {
+      "id": "pinned-follower-re-resolves",
+      "entries": [
+        {
+          "durationMs": 4150
+        },
+        {
+          "durationMs": 4000,
+          "cutAt": "bar:5",
+          "align": "mid",
+          "transition": {
+            "type": "dip",
+            "durationMs": 400
+          }
+        },
+        {
+          "durationMs": 3000
+        }
+      ],
+      "durations": [
+        4150,
+        4000,
+        3000
+      ],
+      "index": 0,
+      "spec": {
+        "type": "wipe",
+        "durationMs": 700
+      },
+      "music": {
+        "grid": {
+          "bpm": 120,
+          "offsetMs": 250,
+          "beatsPerBar": 4
+        },
+        "startOffsetMs": 100,
+        "cues": {
+          "drop": "bar:5.3"
+        },
+        "sections": {}
+      },
+      "out": {
+        "entries": [
+          {
+            "durationMs": 4500,
+            "transition": {
+              "type": "wipe",
+              "durationMs": 700
+            },
+            "cutAt": "bar:3",
+            "align": "mid"
+          },
+          {
+            "durationMs": 4550,
+            "cutAt": "bar:5",
+            "align": "mid",
+            "transition": {
+              "type": "dip",
+              "durationMs": 400
+            }
+          },
+          {
+            "durationMs": 3000
+          }
+        ],
+        "cutMs": 4150,
+        "position": "bar:3"
+      }
+    },
+    {
+      "id": "removing-a-transition",
+      "entries": [
+        {
+          "durationMs": 4300,
+          "transition": {
+            "type": "crossfade",
+            "durationMs": 800
+          },
+          "cutAt": "bar:3",
+          "align": "mid"
+        },
+        {
+          "durationMs": 4400
+        },
+        {
+          "durationMs": 3000
+        }
+      ],
+      "durations": [
+        4300,
+        4400,
+        3000
+      ],
+      "index": 0,
+      "spec": null,
+      "music": {
+        "grid": {
+          "bpm": 120,
+          "offsetMs": 250,
+          "beatsPerBar": 4
+        },
+        "startOffsetMs": 100,
+        "cues": {
+          "drop": "bar:5.3"
+        },
+        "sections": {}
+      },
+      "out": {
+        "entries": [
+          {
+            "durationMs": 4150,
+            "cutAt": "bar:3",
+            "align": "mid"
+          },
+          {
+            "durationMs": 4000
+          },
+          {
+            "durationMs": 3000
+          }
+        ],
+        "cutMs": 4150,
+        "position": "bar:3"
+      }
+    },
+    {
+      "id": "no-grid",
+      "entries": [
+        {
+          "durationMs": 4000
+        },
+        {
+          "durationMs": 4000
+        },
+        {
+          "durationMs": 3000
+        }
+      ],
+      "durations": [
+        4000,
+        4000,
+        3000
+      ],
+      "index": 1,
+      "spec": {
+        "type": "crossfade",
+        "durationMs": 500
+      },
+      "out": {
+        "entries": [
+          {
+            "durationMs": 4000
+          },
+          {
+            "durationMs": 4250,
+            "transition": {
+              "type": "crossfade",
+              "durationMs": 500
+            }
+          },
+          {
+            "durationMs": 3250
+          }
+        ],
+        "cutMs": 8000,
+        "position": null
+      }
     }
   ]
 }

@@ -467,7 +467,8 @@ describe("bridge v2 requests", () => {
     });
     expect(resolveScreenshotTimeMs).toHaveBeenCalledWith(demo, undefined, undefined, 5000);
     expect(loadProject).toHaveBeenCalledWith("ws:demo", { trustMode: "stored-only" });
-    expect(invoke).toHaveBeenCalledWith("trust_project", { slug: "ws:demo" });
+    // This window never grants or re-stamps trust: the ACL does not even give it the command.
+    expect(invoke).not.toHaveBeenCalledWith("trust_project", expect.anything());
   });
 
   it("captures several frames at an overridden aspect with a contact sheet", async () => {
@@ -797,7 +798,7 @@ describe("bridge v2 requests", () => {
     });
   });
 
-  it("inserts a preset through the app's copy path and keeps a closed project trusted", async () => {
+  it("inserts a preset through the app's copy path, leaving the grant to the native writer", async () => {
     vi.mocked(insertPresetScene).mockResolvedValue({
       file: "scenes/03-highlights.tsx",
       docFile: "scenes/03-highlights.json",
@@ -820,7 +821,7 @@ describe("bridge v2 requests", () => {
       name: "Highlights",
       trustMode: "stored-only",
     });
-    expect(invoke).toHaveBeenCalledWith("trust_project", { slug: "ws:closed" });
+    expect(invoke).not.toHaveBeenCalledWith("trust_project", expect.anything());
     expect(response).toMatchObject({
       version: 2,
       ok: true,

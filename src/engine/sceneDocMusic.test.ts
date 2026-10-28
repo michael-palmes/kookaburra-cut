@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { DeviceMediaSpec } from "../toolkit/device/Device";
 import { moveKey } from "./keyedTrack";
 import type { ProjectMusic } from "./musicTime";
 import { rememberSceneDocHash, sceneDocBase } from "./sceneDocBase";
@@ -130,6 +131,149 @@ describe("resolveSceneDocMusic", () => {
     expect(
       resolveSceneDocMusic(docWith([{ id: "k1", tMs: 0, at: "bar:2" }]), music(), 0).issues,
     ).toEqual([]);
+  });
+});
+
+const video = (over: Record<string, unknown> = {}) =>
+  ({ src: "assets/a.mp4", kind: "video", ...over }) as DeviceMediaSpec;
+
+/** One of every other field that follows the music: device-track and divider keys, both screens of a device and of side B, and a media video. */
+function scenesWithEveryStart(): SceneDoc {
+  return {
+    version: 1,
+    deviceTrack: {
+      keys: [
+        { id: "d1", tMs: 0, pose: {} },
+        { id: "d2", tMs: 1, at: "bar:5", pose: { phone: { scale: 2 } } },
+      ],
+      segments: [{ from: "d1", to: "d2", ease: "linear" }],
+    },
+    devices: [
+      {
+        id: "phone",
+        model: "iphone-17-pro",
+        media: video({ at: "bar:2" }),
+        coverMedia: video({ startMs: 5, at: "cue:drop" }),
+      },
+    ] as SceneDoc["devices"],
+    media: [
+      {
+        id: "v1",
+        kind: "video",
+        src: "assets/b.mp4",
+        host: "overlay",
+        stage: { position: [0, 0, 0], size: 1, rotationDeg: [0, 0, 0] },
+        overlay: { position: [0, 0], size: 0.5, rotationDeg: 0, shape: "none", layer: "below" },
+        video: { startMs: 1, at: "bar:3", loop: true },
+      },
+    ] as SceneDoc["media"],
+    compare: {
+      b: { media: { phone: video({ at: "bar:4" }) }, coverMedia: { phone: video() } },
+      track: {
+        keys: [
+          { id: "c1", tMs: 0, pose: { value: 0 } },
+          { id: "c2", tMs: 1, at: "bar:6", pose: { value: 1 } },
+        ],
+        segments: [{ from: "c1", to: "c2", ease: "linear" }],
+      },
+    },
+  };
+}
+
+describe("device, comparison and media timing", () => {
+  it("resolves device-track and divider keys and every video start, in scene-local ms", () => {
+    const doc = scenesWithEveryStart();
+    const { doc: out, issues } = resolveSceneDocMusic(doc, music(), 1000);
+    expect(issues).toEqual([]);
+    expect(out.deviceTrack?.keys.map((k) => k.tMs)).toEqual([0, 7250]);
+    expect(out.devices?.[0].media).toEqual(video({ at: "bar:2", startMs: 1250 }));
+    expect(out.devices?.[0].coverMedia?.startMs).toBe(7250);
+    expect(out.media?.[0].video).toEqual({ startMs: 3250, at: "bar:3", loop: true });
+    expect(out.compare?.b?.media?.phone.startMs).toBe(5250);
+    expect(out.compare?.b?.coverMedia).toBe(doc.compare?.b?.coverMedia);
+    expect(out.compare?.track?.keys.map((k) => k.tMs)).toEqual([0, 9250]);
+    expect(out.media?.[0].stage).toBe(doc.media?.[0].stage);
+    expect(resolveSceneDocMusic(out, music(), 1000).doc).toBe(out);
+  });
+
+  it("leaves a doc with media and devices but no at as the same object", () => {
+    const doc: SceneDoc = {
+      version: 1,
+      devices: [{ id: "phone", model: "iphone-17-pro", media: video({ startMs: 400 }) }],
+      compare: { b: { media: { phone: video() } }, track: { keys: [], segments: [] } },
+    };
+    expect(resolveSceneDocMusic(doc, music(), 0).doc).toBe(doc);
+    expect(settleEditedSceneDocMusic(doc, music(), 0)).toBe(doc);
+  });
+
+  it("an absent start counts as 0, so a position on the scene's first frame changes nothing", () => {
+    const doc: SceneDoc = {
+      version: 1,
+      devices: [{ id: "phone", model: "iphone-17-pro", media: video({ at: "bar:1" }) }],
+    };
+    expect(resolveSceneDocMusic(doc, music(), 250).doc).toBe(doc);
+  });
+
+  it("keeps the stored start and reports a screen where the position can't apply", () => {
+    const doc: SceneDoc = {
+      version: 1,
+      devices: [
+        { id: "a", model: "m", media: { src: "assets/a.png", kind: "image", at: "bar:2" } },
+        { id: "b", model: "m", media: video({ startOn: "open", startMs: 40, at: "bar:2" }) },
+        { id: "c", model: "m", media: video({ inMs: 500, at: "bar:1" }) },
+        { id: "d", model: "m", media: video({ at: "bar:1" }) },
+      ],
+    };
+    const { doc: out, issues } = resolveSceneDocMusic(doc, music(), 1000);
+    expect(issues).toEqual([
+      `device "a" media "bar:2": only a video's start can follow the music`,
+      `device "b" media "bar:2": startOn open counts startMs from the fold opening`,
+      `device "c" media "bar:1": lands 750 ms before the scene starts, which can't combine with inMs`,
+    ]);
+    expect(out.devices?.slice(0, 3)).toEqual(doc.devices?.slice(0, 3));
+    expect(out.devices?.[3].media?.startMs).toBe(-750);
+    expect(detachSceneDocMusic(doc, music(), 1000).devices?.slice(0, 3)).toEqual(
+      doc.devices?.slice(0, 3),
+    );
+  });
+
+  it("an edit that moves or clears a start drops its at, and the move survives resolution", () => {
+    const doc = resolveSceneDocMusic(scenesWithEveryStart(), music(), 0).doc;
+    const [phone] = doc.devices ?? [];
+    const edited: SceneDoc = {
+      ...doc,
+      devices: [{ ...phone, media: { ...phone.media, startMs: 900 } as DeviceMediaSpec }],
+      media: doc.media?.map((m) => ({ ...m, video: { at: m.video?.at, loop: true } })),
+    };
+    const settled = settleEditedSceneDocMusic(edited, music(), 0);
+    expect(settled.devices?.[0].media).toEqual(video({ startMs: 900 }));
+    expect(settled.devices?.[0].coverMedia).toEqual(phone.coverMedia);
+    expect(settled.media?.[0].video).toEqual({ loop: true });
+    expect(settled.compare).toBe(doc.compare);
+  });
+
+  it("reports device-track and divider keys that cross under the grid", () => {
+    const doc: SceneDoc = {
+      version: 1,
+      deviceTrack: {
+        keys: [
+          { id: "d1", tMs: 1000, at: "bar:5", pose: {} },
+          { id: "d2", tMs: 2000, pose: {} },
+        ],
+        segments: [],
+      },
+      compare: {
+        track: {
+          keys: [
+            { id: "c1", tMs: 1000, at: "bar:5", pose: { value: 0 } },
+            { id: "c2", tMs: 2000, pose: { value: 1 } },
+          ],
+          segments: [],
+        },
+      },
+    };
+    const { issues } = resolveSceneDocMusic(doc, music(), 0);
+    expect(issues.map((i) => i.split(" keys")[0])).toEqual(["deviceTrack", "compare.track"]);
   });
 });
 

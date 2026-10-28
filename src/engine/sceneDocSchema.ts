@@ -213,6 +213,8 @@ export interface SceneDocDeviceKey {
   id: string;
   /** Scene-local time, ms. */
   tMs: number;
+  /** Musical position this key sits on; `tMs` caches its resolved value and a move that disagrees drops it. */
+  at?: string;
   pose: Record<string, SceneDocDevicePose>;
 }
 
@@ -569,6 +571,8 @@ export interface SceneMediaWindow {
 /** Playback fields for a `video` entry; `aspect` (width/height, recorded at pick time) sizes the entry before the clip's intrinsics arrive. */
 export interface SceneMediaVideoSpec {
   startMs?: number;
+  /** Musical position the start sits on; `startMs` caches its resolved scene-local value and a move that disagrees drops it. */
+  at?: string;
   loop?: boolean;
   aspect?: number;
 }
@@ -805,6 +809,8 @@ export interface SceneDocCompareKey {
   id: string;
   /** Scene-local time, ms. */
   tMs: number;
+  /** Musical position this key sits on; `tMs` caches its resolved value and a move that disagrees drops it. */
+  at?: string;
   pose: { value: number; angleDeg?: number };
 }
 
@@ -955,6 +961,13 @@ const finiteV3 = (v: unknown): v is [number, number, number] =>
 
 const finiteV2 = (v: unknown): v is [number, number] =>
   Array.isArray(v) && v.length === 2 && v.every((n) => typeof n === "number" && Number.isFinite(n));
+
+/** A rebuilt field's sibling `at`: any string passes (the music resolver reports what can't resolve), anything else warns and drops. */
+function musicAt(raw: unknown, source: string, label: string): string | undefined {
+  if (raw === undefined || typeof raw === "string") return raw;
+  parseWarn(`[sceneDoc] ${source}: ${label}.at isn't a position string, dropped`);
+  return undefined;
+}
 
 const isRecord = (v: unknown): v is Record<string, unknown> =>
   typeof v === "object" && v !== null && !Array.isArray(v);
@@ -1141,6 +1154,8 @@ function parseSceneMediaVideo(raw: unknown, source: string, label: string): Scen
   }
   const video: SceneMediaVideoSpec = {};
   if (finiteNum(raw.startMs)) video.startMs = raw.startMs;
+  const at = musicAt(raw.at, source, `${label}.video`);
+  if (at !== undefined) video.at = at;
   if (typeof raw.loop === "boolean") video.loop = raw.loop;
   if (finiteNum(raw.aspect) && raw.aspect > 0) video.aspect = raw.aspect;
   return video;
@@ -1257,7 +1272,12 @@ function parseDeviceTrack(raw: unknown, source: string): SceneDoc["deviceTrack"]
       if (finiteNum(raw.foldDeg)) out.foldDeg = raw.foldDeg;
       pose[deviceId] = out;
     }
-    keys.push({ id: entry.id, tMs: entry.tMs, pose });
+    const at = musicAt(entry.at, source, `deviceTrack key "${entry.id}"`);
+    keys.push(
+      at === undefined
+        ? { id: entry.id, tMs: entry.tMs, pose }
+        : { id: entry.id, tMs: entry.tMs, at, pose },
+    );
   }
   const segments = (Array.isArray(track.segments) ? (track.segments as unknown[]) : []).filter(
     (s): s is SceneDocDeviceSegment => {
@@ -1601,7 +1621,12 @@ function parseCompare(raw: unknown, source: string): SceneDocCompare | undefined
       else if (key.pose.angleDeg !== undefined) {
         parseWarn(`[sceneDoc] ${source}: compare.track key pose.angleDeg is malformed, dropped`);
       }
-      keys.push({ id: key.id, tMs: key.tMs, pose });
+      const at = musicAt(key.at, source, `compare.track key "${key.id}"`);
+      keys.push(
+        at === undefined
+          ? { id: key.id, tMs: key.tMs, pose }
+          : { id: key.id, tMs: key.tMs, at, pose },
+      );
     }
     const rawSegments =
       track && typeof track === "object" && Array.isArray(track.segments) ? track.segments : [];

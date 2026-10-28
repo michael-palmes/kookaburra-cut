@@ -1,4 +1,4 @@
-"""The authored music in project.json (`audio.grid`, `audio.cues`, `audio.sections`) and the sidecar `at` keys it moves.
+"""The authored music in project.json (`audio.grid`, `audio.cues`, `audio.sections`) and the sidecar `at` fields it moves.
 
 Mirrors the app: `sanitiseAudioMusic` and `projectMusicOf` (src/engine/project.ts), `resolveSceneDocMusic` and the
 detach rule (src/engine/sceneDocMusic.ts), the grid edits (src/engine/musicGridEdit.ts), `effectiveBeatGrid` and
@@ -11,7 +11,7 @@ from __future__ import annotations
 import copy
 import math
 import re
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, NamedTuple, Optional, Set, Tuple
 
 from .. import music
 from ..film import timeline as tl
@@ -23,7 +23,13 @@ BPM_MAX = 300
 BEATS_PER_BAR_MAX = 16
 MAX_GRID_BEATS = 100000
 NO_MUSIC: Dict[str, Any] = {"startOffsetMs": 0, "cues": {}, "sections": {}}
-TIMED_TRACKS = (("camera",), ("cameraRig",), ("lighting",), ("compare", "b", "lighting"))
+KEY_TRACKS = (("camera",), ("cameraRig",), ("lighting",), ("deviceTrack",))
+COMPARE_KEY_TRACKS = (("compare", "b", "lighting"), ("compare", "track"))
+POSITION_PLACES = (
+    "the at beside tMs on camera, cameraRig, lighting, deviceTrack, compare.track and compare.b.lighting keys, "
+    "the at beside startMs on device screen videos (devices[].media, coverMedia, compare.b) and media videos "
+    "(media[].video), and cameraKicks and room keys"
+)
 POSITION_HELP = "bar:B[.beat[.16th]], cue:ID or section:ID (optionally +40ms or -40ms), or a time like 12.5s or 12500ms"
 _TIME = re.compile(r"(-?\d+(?:\.\d+)?)(ms|s)?\Z", re.ASCII)
 _RANGE = re.compile(r"(bars|beats):(-?\d+)(?:-(-?\d+))?\Z", re.ASCII)
@@ -169,16 +175,7 @@ def resolve_local(text: str, m: Optional[Dict[str, Any]], start_ms: float) -> Di
 def slots_of(project: Project, manifest: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
     """The timeline (SceneSlot dicts plus `stem` and `file`) for this manifest, the project's own by default."""
     manifest = manifest if manifest is not None else project.manifest()
-    entries = [e if isinstance(e, dict) else {} for e in manifest.get("scenes") or []]
-    outgoing = tl.outgoing_transitions(dict(manifest, scenes=entries))
-    stems = [stem_of(e.get("file") if isinstance(e.get("file"), str) else "") for e in entries]
-    slots = tl.build_scene_timeline([
-        {"id": stems[i], "durationMs": tl.scene_duration(project, e), "transition": outgoing[i]} for i, e in enumerate(entries)
-    ])
-    for slot, entry, stem in zip(slots, entries, stems):
-        slot["stem"] = stem
-        slot["file"] = entry.get("file")
-    return slots
+    return tl.manifest_slots(project, manifest, project_music(manifest))
 
 
 def attribution_starts(slots: List[Dict[str, Any]]) -> List[float]:
@@ -310,99 +307,272 @@ def expand_range(text: str, m: Optional[Dict[str, Any]], limit: Optional[int] = 
     return out[:limit] if limit is not None else out
 
 
-# ── sidecar `at` keys: resolve and detach ─────────────────────────────────────
+# ── sidecar `at` fields: resolve and detach ───────────────────────────────────
 
 
-def timed_tracks(doc: Any) -> List[Tuple[Tuple[str, ...], List[Any]]]:
-    """(path, keys) for the camera, rig, lighting and comparison side B lighting tracks that have a keys list."""
-    out = []
-    for path in TIMED_TRACKS:
-        node = doc
-        for part in path:
-            node = node.get(part) if isinstance(node, dict) else None
-        keys = node.get("keys") if isinstance(node, dict) else None
-        if isinstance(keys, list):
-            out.append((path, keys))
-    return out
+class Slot(NamedTuple):
+    """One sidecar time that may follow the music: the dict holding `at` and its time field (tMs or startMs)."""
+
+    steps: Tuple[Any, ...]
+    ident: Tuple[str, ...]
+    where: str
+    track: str
+    id: Any
+    field: str
+    node: Dict[str, Any]
+    rule: Optional[Callable[[int], Optional[str]]]
 
 
-def has_at(doc: Any) -> bool:
-    """Whether any camera, rig or lighting key carries an `at` (else a write is the legacy one, untouched)."""
-    return any(isinstance(k, dict) and "at" in k for _path, keys in timed_tracks(doc) for k in keys)
-
-
-def _keys_at(doc: Any, path: Tuple[str, ...]) -> List[Any]:
+def _dig(doc: Any, path: Tuple[Any, ...]) -> Any:
     node = doc
     for part in path:
+        node = node.get(part) if isinstance(node, dict) else None
+    return node
+
+
+def _node_at(doc: Any, steps: Tuple[Any, ...]) -> Dict[str, Any]:
+    node = doc
+    for part in steps:
         node = node[part]
-    return node["keys"]
+    return node
 
 
 def _key_id(key: Dict[str, Any], i: int) -> str:
     return key["id"] if isinstance(key.get("id"), str) else f"#{i}"
 
 
-def _where(path: Tuple[str, ...], key: Dict[str, Any], i: int) -> str:
-    return f'{".".join(path)} key "{key.get("id", i)}"'
+def _screen_rule(spec: Dict[str, Any]) -> Callable[[int], Optional[str]]:
+    """deviceMediaRule: a screen's startMs is scene time only on a video not counted from a fold opening, and a parse
+    drops inMs beside a negative one."""
+
+    def rule(ms: int) -> Optional[str]:
+        from ..video import repoint
+
+        if spec.get("kind") != "video":
+            return "only a video's start can follow the music"
+        if spec.get("startOn") == "open":
+            return "startOn open counts startMs from the fold opening"
+        if ms < 0 and "inMs" in repoint.playback_timing(spec):
+            return f"lands {-ms} ms before the scene starts, which can't combine with inMs"
+        return None
+
+    return rule
+
+
+def timed_slots(doc: Any) -> List[Slot]:
+    """Every field that may carry an `at`, in the app's order: camera, rig, lighting and device-track keys, device
+    screens, media videos, then the comparison's side B lighting keys, side B screens and divider keys."""
+    out: List[Slot] = []
+    if not isinstance(doc, dict):
+        return out
+
+    def keys(path: Tuple[str, ...]) -> None:
+        items = _dig(doc, path + ("keys",))
+        track = ".".join(path)
+        for i, key in enumerate(items if isinstance(items, list) else []):
+            if isinstance(key, dict):
+                out.append(Slot(path + ("keys", i), (track, _key_id(key, i)), f'{track} key "{key.get("id", i)}"', track, key.get("id"), "tMs", key, None))
+
+    def screen(steps: Tuple[Any, ...], ident: Tuple[str, ...], where: str, track: str, sid: Any, spec: Any) -> None:
+        if isinstance(spec, dict):
+            out.append(Slot(steps, ident, where, track, sid, "startMs", spec, _screen_rule(spec)))
+
+    for path in KEY_TRACKS:
+        keys(path)
+    devices = doc.get("devices")
+    for i, d in enumerate(devices if isinstance(devices, list) else []):
+        if isinstance(d, dict) and isinstance(d.get("id"), str) and isinstance(d.get("model"), str):
+            for field in ("media", "coverMedia"):
+                screen(("devices", i, field), ("devices", d["id"], field), f'device "{d["id"]}" {field}', f"devices.{field}", d["id"], d.get(field))
+    media = doc.get("media")
+    for i, e in enumerate(media if isinstance(media, list) else []):
+        if isinstance(e, dict) and isinstance(e.get("id"), str) and e["id"] and e.get("kind") == "video" and isinstance(e.get("video"), dict):
+            out.append(Slot(("media", i, "video"), ("media", e["id"]), f'media "{e["id"]}" video', "media.video", e["id"], "startMs", e["video"], None))
+    keys(COMPARE_KEY_TRACKS[0])
+    side = _dig(doc, ("compare", "b"))
+    for field in ("media", "coverMedia"):
+        overrides = side.get(field) if isinstance(side, dict) else None
+        for ident, spec in (overrides.items() if isinstance(overrides, dict) else []):
+            if isinstance(spec, dict) and isinstance(spec.get("src"), str) and spec["src"] and spec.get("kind") in ("video", "image"):
+                screen(("compare", "b", field, ident), ("compare.b", field, ident), f'compare.b.{field} "{ident}"', f"compare.b.{field}", ident, spec)
+    keys(COMPARE_KEY_TRACKS[1])
+    return out
+
+
+def has_at(doc: Any) -> bool:
+    """Whether any field that may follow the music carries an `at` (else a write is the legacy one, untouched)."""
+    return any("at" in s.node for s in timed_slots(doc))
+
+
+def stored_ms(node: Dict[str, Any], field: str) -> Any:
+    """The stored time; a media start defaults to 0, as playback reads it."""
+    return node.get("startMs", 0) if field == "startMs" else node.get("tMs")
+
+
+def slot_position(slot: Slot, m: Optional[Dict[str, Any]], start_ms: float) -> Dict[str, Any]:
+    """The slot's `at` in scene-local integer ms, or a failure (code "rule" when it resolves but can't apply there)."""
+    r = resolve_local(slot.node["at"], m, start_ms)
+    problem = slot.rule(r["projectMs"]) if r["ok"] and slot.rule else None
+    return {"ok": False, "code": "rule", "message": problem} if problem else r
+
+
+def check_path(steps: Tuple[Any, ...]) -> str:
+    """kb check's path for a slot: camera.keys[1], devices[0].media, compare.b.media["d1"]."""
+    out = ""
+    for i, part in enumerate(steps):
+        if isinstance(part, int):
+            out += f"[{part}]"
+        elif i == 3 and steps[:3] in (("compare", "b", "media"), ("compare", "b", "coverMedia")):
+            out += f'["{part}"]'
+        else:
+            out += f".{part}" if out else part
+    return out
+
+
+def doc_path(steps: Tuple[Any, ...]) -> str:
+    """kb doc's dotted path for a slot: camera.keys.1, devices.0.media, compare.b.media.d1."""
+    return ".".join(str(p) for p in steps)
 
 
 def refresh_doc(doc: Any, m: Optional[Dict[str, Any]], start_ms: float) -> Tuple[Any, List[Dict[str, Any]], List[str]]:
-    """resolveSceneDocMusic: every key with an `at` gets tMs = the position in scene-local integer ms; an `at` that can't
-    resolve keeps its stored tMs. Returns (doc, or the same object when nothing moved; [{track, id, at, fromMs, toMs}]; issues)."""
+    """resolveSceneDocMusic: every field with an `at` gets its time = the position in scene-local integer ms; an `at`
+    that can't resolve or apply keeps its stored time. Returns (doc, or the same object when nothing moved;
+    [{track, id, where, field, at, fromMs, toMs}]; issues)."""
     out = None
     changes: List[Dict[str, Any]] = []
     issues: List[str] = []
-    for path, keys in timed_tracks(doc):
-        for i, key in enumerate(keys):
-            if not isinstance(key, dict) or not isinstance(key.get("at"), str):
-                continue
-            r = resolve_local(key["at"], m, start_ms)
-            if not r["ok"]:
-                issues.append(f'{_where(path, key, i)} "{key["at"]}": {r["message"]}')
-                continue
-            old = key.get("tMs")
-            if is_number(old) and old == r["projectMs"]:
-                continue
-            if out is None:
-                out = copy.deepcopy(doc)
-            _keys_at(out, path)[i]["tMs"] = r["projectMs"]
-            changes.append({"track": ".".join(path), "id": key.get("id"), "at": key["at"], "fromMs": old, "toMs": r["projectMs"]})
+    for s in timed_slots(doc):
+        at = s.node.get("at")
+        if not isinstance(at, str):
+            continue
+        r = slot_position(s, m, start_ms)
+        if not r["ok"]:
+            issues.append(f'{s.where} "{at}": {r["message"]}')
+            continue
+        old = stored_ms(s.node, s.field)
+        if is_number(old) and old == r["projectMs"]:
+            continue
+        if out is None:
+            out = copy.deepcopy(doc)
+        _node_at(out, s.steps)[s.field] = r["projectMs"]
+        changes.append({"track": s.track, "id": s.id, "where": s.where, "field": s.field, "at": at, "fromMs": old, "toMs": r["projectMs"]})
     return (out if out is not None else doc), changes, issues
 
 
-def settle_written(before: Any, after: Any, m: Optional[Dict[str, Any]], start_ms: float) -> Tuple[Any, List[str]]:
-    """The detach rule for a kb sidecar write: a key whose tMs this write moved (its `at` unchanged) loses its `at`, unless
-    it moved exactly onto that position; then every remaining `at` refreshes its tMs. Returns (doc, notes)."""
+def _patch_node(patch: Any, steps: Tuple[Any, ...]) -> Any:
+    node = patch
+    for part in steps:
+        if isinstance(part, int):
+            node = node[part] if isinstance(node, list) and -len(node) <= part < len(node) else None
+        else:
+            node = node.get(part) if isinstance(node, dict) else None
+        if node is None:
+            return None
+    return node
+
+
+def _merged_at(before: Any, after: Any, patch: Dict[str, Any]) -> Tuple[Any, Set[str]]:
+    """A merge patch replaces arrays whole, so a field it rewrites without naming `at` keeps the `at` it had, and an
+    `"at": null` inside a replaced array removes it. Returns (doc, where each field whose time the patch wrote)."""
+    prior: Dict[Tuple[str, ...], Dict[str, Any]] = {}
+    for s in timed_slots(before):
+        prior.setdefault(s.ident, s.node)
+    doc = after
+    timed: Set[str] = set()
+    for s in timed_slots(after):
+        node = _patch_node(patch, s.steps)
+        if not isinstance(node, dict):
+            continue
+        if s.field in node:
+            timed.add(s.where)
+        if "at" in node:
+            if node["at"] is None and "at" in s.node:
+                doc = doc if doc is not after else copy.deepcopy(after)
+                del _node_at(doc, s.steps)["at"]
+            continue
+        old = prior.get(s.ident)
+        if isinstance(old, dict) and isinstance(old.get("at"), str) and "at" not in s.node:
+            doc = doc if doc is not after else copy.deepcopy(after)
+            _node_at(doc, s.steps)["at"] = old["at"]
+    return doc, timed
+
+
+def settle_written(before: Any, after: Any, m: Optional[Dict[str, Any]], start_ms: float, patch: Optional[Dict[str, Any]] = None) -> Tuple[Any, List[str]]:
+    """The detach rule for a kb sidecar write: a field whose time this write moved (its `at` unchanged) loses its `at`,
+    unless it moved exactly onto that position; then every remaining `at` refreshes its time. A merge `patch` never
+    detaches: each `at` stays unless the patch nulls it, so its time follows the music. Returns (doc, notes)."""
     if not isinstance(after, dict):
         return after, []
-    prior: Dict[Tuple[Tuple[str, ...], str], Dict[str, Any]] = {}
-    for path, keys in timed_tracks(before):
-        for i, key in enumerate(keys):
-            if isinstance(key, dict):
-                prior.setdefault((path, _key_id(key, i)), key)
     doc = after
     notes: List[str] = []
-    for path, keys in timed_tracks(after):
-        for i, key in enumerate(keys):
-            if not isinstance(key, dict) or not isinstance(key.get("at"), str):
+    timed: Set[str] = set()
+    if patch is not None:
+        doc, timed = _merged_at(before, after, patch)
+    else:
+        prior: Dict[Tuple[str, ...], Dict[str, Any]] = {}
+        for s in timed_slots(before):
+            prior.setdefault(s.ident, s.node)
+        for s in timed_slots(after):
+            at = s.node.get("at")
+            old = prior.get(s.ident)
+            if not isinstance(at, str) or old is None or old.get("at") != at:
                 continue
-            old = prior.get((path, _key_id(key, i)))
-            if old is None or old.get("at") != key["at"]:
-                continue
-            was, now = old.get("tMs"), key.get("tMs")
+            was, now = stored_ms(old, s.field), stored_ms(s.node, s.field)
             if not (is_number(was) and is_number(now)) or was == now:
                 continue
-            r = resolve_local(key["at"], m, start_ms)
+            r = slot_position(s, m, start_ms)
             if r["ok"] and r["projectMs"] == now:
                 continue
             if doc is after:
                 doc = copy.deepcopy(after)
-            del _keys_at(doc, path)[i]["at"]
-            notes.append(f'{_where(path, key, i)} moved to {js_json(now)} ms, so it no longer follows "{key["at"]}" (at dropped)')
+            del _node_at(doc, s.steps)["at"]
+            notes.append(f'{s.where} moved to {js_json(now)} ms, so it no longer follows "{at}" (at dropped)')
     doc, changes, _issues = refresh_doc(doc, m, start_ms)
     for c in changes:
-        notes.append(f'{c["track"]} key "{c["id"]}" tMs {js_json(c["fromMs"])} -> {c["toMs"]} from "{c["at"]}"')
+        notes.append(f'{c["where"]} {c["field"]} {js_json(c["fromMs"])} -> {c["toMs"]} from "{c["at"]}"')
+    if any(c["where"] in timed for c in changes):
+        notes.append("kb doc merge keeps each at, so its time follows the music; to move one off it, give \"at\": null in the patch or kb doc set its time")
     return doc, notes
+
+
+def stray_positions(before: Any, after: Any) -> List[Tuple[str, Any]]:
+    """(dotted path, value) for each string `at` this write adds or changes where the app takes no musical position."""
+    allowed = {s.steps for s in timed_slots(after)}
+    out: List[Tuple[str, Any]] = []
+
+    def takes_position(steps: Tuple[Any, ...]) -> bool:
+        if steps in allowed:
+            return True
+        return (len(steps) == 2 and steps[0] == "cameraKicks" and isinstance(steps[1], int)) or (
+            len(steps) == 3 and steps[:2] == ("room", "keys") and isinstance(steps[2], int))
+
+    def walk(node: Any, steps: Tuple[Any, ...]) -> None:
+        if isinstance(node, dict):
+            at = node.get("at")
+            if isinstance(at, str) and not takes_position(steps):
+                old = _patch_node(before, steps + ("at",))
+                if old != at:
+                    out.append((doc_path(steps + ("at",)), at))
+            for key, child in node.items():
+                if steps or key not in ("text", "textStyle"):
+                    walk(child, steps + (key,))
+        elif isinstance(node, list):
+            for i, child in enumerate(node):
+                walk(child, steps + (i,))
+
+    walk(after, ())
+    return out
+
+
+def stray_error(stray: List[Tuple[str, Any]]) -> KbError:
+    """The refusal for musical positions where only ms work: exit 2 usage, naming the places that take one."""
+    path, value = stray[0]
+    more = f" (and {len(stray) - 1} more)" if len(stray) > 1 else ""
+    if path.startswith("taps."):
+        hint = "taps take scene-local ms (./kb beats --scene S lists each bar's ms); to land a recording's tap on a beat, ./kb video align NAME --tap ID --beat N --scene S"
+    else:
+        hint = f"positions work on {POSITION_PLACES}; give this field ms (./kb beats --scene S lists each bar's ms)"
+    return KbError(f'{path} = "{value}"{more}: this field takes plain ms, not a musical position', EXIT_ENV, kind="usage", hint=hint)
 
 
 def scene_scope(project: Project, stem: str, manifest: Optional[Dict[str, Any]] = None) -> Tuple[Optional[Dict[str, Any]], float]:
@@ -451,13 +621,17 @@ def refresh_sidecars(tx: Any, project: Project, manifest: Dict[str, Any], notes:
 def moved_notes(moved: List[Dict[str, Any]]) -> List[str]:
     out = []
     for item in moved:
-        keys = ", ".join(f'{k["track"]} "{k["id"]}" {js_json(k["fromMs"])} -> {k["toMs"]} ms' for k in item["keys"])
+        keys = ", ".join(f'{_change_label(k)} {js_json(k["fromMs"])} -> {k["toMs"]} ms' for k in item["keys"])
         out.append(f"{item['file']}: {keys}")
     return out
 
 
+def _change_label(change: Dict[str, Any]) -> str:
+    return f'{change["track"]} "{change["id"]}"' if change["field"] == "tMs" else change["where"]
+
+
 def keys_following(project: Project, prefix: str) -> List[str]:
-    """`scenes/<stem>.json: <track> "<id>"` for every key whose `at` starts with prefix (cue:drop, section:outro)."""
+    """`scenes/<stem>.json: <where>` for every field whose `at` starts with prefix (cue:drop, section:outro)."""
     out = []
     for slot in slots_of(project):
         doc = None
@@ -465,11 +639,10 @@ def keys_following(project: Project, prefix: str) -> List[str]:
             doc = project.load_sidecar(slot["stem"])
         except KbError:
             continue
-        for path, keys in timed_tracks(doc):
-            for i, key in enumerate(keys):
-                at = key.get("at") if isinstance(key, dict) else None
-                if isinstance(at, str) and (at == prefix or at.startswith(prefix + "+") or at.startswith(prefix + "-")):
-                    out.append(f'scenes/{slot["stem"]}.json: {_where(path, key, i)}')
+        for s in timed_slots(doc):
+            at = s.node.get("at")
+            if isinstance(at, str) and (at == prefix or at.startswith(prefix + "+") or at.startswith(prefix + "-")):
+                out.append(f'scenes/{slot["stem"]}.json: {s.where}')
     return out
 
 
@@ -522,6 +695,40 @@ def downbeat_grid(raw_grid: Optional[Dict[str, Any]], analysis: Optional[Dict[st
     return js_json(out)
 
 
+# ── pinned cuts (src/engine/sceneCuts.ts) ────────────────────────────────────
+
+
+def manifest_durations(project: Project, manifest: Dict[str, Any]) -> List[float]:
+    """Each scene's stored length: the manifest's durationMs, else its TSX literal, else kb's default."""
+    return [tl.scene_duration(project, e if isinstance(e, dict) else {}) for e in manifest.get("scenes") or []]
+
+
+def settle_cuts(project: Project, manifest: Dict[str, Any]) -> List[str]:
+    """Writes every pinned scene's resolved length into its durationMs cache (a v2 manifest, in place). Returns notes."""
+    entries = [e if isinstance(e, dict) else {} for e in manifest.get("scenes") or []]
+    outgoing = tl.outgoing_transitions(dict(manifest, scenes=entries))
+    durations = manifest_durations(project, manifest)
+    cuts = tl.resolve_scene_cuts([
+        {"durationMs": durations[i], "transition": outgoing[i], "cutAt": e.get("cutAt"), "align": e.get("align")} for i, e in enumerate(entries)
+    ], project_music(manifest))
+    notes = []
+    for i in cuts["changed"]:
+        entry = entries[i]
+        was = entry.get("durationMs")
+        entry["durationMs"] = cuts["durations"][i]
+        how = "its transition centred on" if tl.cut_align(entry.get("align")) == "mid" else "ends at"
+        notes.append(f'scene {i} {stem_of(entry.get("file") or "")}: durationMs {js_json(was)} -> {cuts["durations"][i]} ({how} {entry["cutAt"]})')
+    return notes + cuts["issues"]
+
+
+def unpin(entry: Dict[str, Any]) -> bool:
+    """Drops a scene's pinned cut (an explicit length replaces it); True when there was one."""
+    had = "cutAt" in entry
+    entry.pop("cutAt", None)
+    entry.pop("align", None)
+    return had
+
+
 # ── scene timing (kb scene set --duration-bars / --cut-at) ───────────────────
 
 
@@ -541,10 +748,35 @@ def bars_timing(bars: float) -> Callable[[Project, Dict[str, Any], int], Tuple[i
 
 
 def cut_timing(text: str, align: str) -> Callable[[Project, Dict[str, Any], int], Tuple[int, str]]:
-    """A scene-set timing: the duration that ends the scene at a position (align end), or centres its outgoing transition on it (align mid)."""
+    """A scene-set timing: a position pins the cut (cutAt, align), so the length follows the grid and earlier transitions
+    from then on; a plain time writes the length that ends the scene there (align end) or centres its outgoing
+    transition on it (align mid), once."""
 
     def timing(project: Project, manifest: Dict[str, Any], index: int) -> Tuple[int, str]:
-        target = parse_time(text, project_music(manifest), "--cut-at")["projectMs"]
+        m = project_music(manifest)
+        target = parse_time(text, m, "--cut-at")["projectMs"]
+        entry = manifest["scenes"][index]
+        stem = stem_of(entry.get("file") or "")
+        if music.is_position(text):
+            entry["cutAt"] = text
+            if align == "mid":
+                entry["align"] = "mid"
+            else:
+                entry.pop("align", None)
+            entries = manifest["scenes"]
+            outgoing = tl.outgoing_transitions(manifest)
+            durations = manifest_durations(project, manifest)
+            cuts = tl.resolve_scene_cuts([
+                {"durationMs": durations[i], "transition": outgoing[i], "cutAt": e.get("cutAt"), "align": e.get("align")} for i, e in enumerate(entries)
+            ], m)
+            head = f'scene {index + 1} cutAt "{text}"'
+            failed = [issue[len(head):] for issue in cuts["issues"] if issue.startswith(head)]
+            if failed:
+                raise KbError(f'--cut-at "{text}"{failed[0]}', EXIT_PROBLEMS, kind="invalid", hint="cut at a later position; ./kb timeline lists each scene's bars")
+            duration = cuts["durations"][index]
+            where = "its transition centred on" if align == "mid" else "it ends at"
+            return duration, f"durationMs = {duration} (pinned: {where} {text}, {music.js_round(target)} ms in the film; it follows the grid and earlier transitions)"
+        unpin(entry)
         entries = manifest["scenes"]
 
         def placed(duration: Optional[int]) -> List[Dict[str, Any]]:
@@ -562,10 +794,9 @@ def cut_timing(text: str, align: str) -> Callable[[Project, Dict[str, Any], int]
             overlap = nxt["transitionIn"]["durationMs"] if nxt and isinstance(nxt.get("transitionIn"), dict) else 0
             want = music.js_round(target + (overlap / 2 if align == "mid" else 0) - start)
             if want <= 0:
-                stem = slots[index]["stem"]
                 raise KbError(
                     f'--cut-at "{text}" lands at {music.js_round(target)} ms, before scene {stem} starts ({js_json(start)} ms)',
-                    EXIT_PROBLEMS, kind="invalid", hint="cut at a later position; ./kb beats lists each scene's bars",
+                    EXIT_PROBLEMS, kind="invalid", hint="cut at a later position; ./kb timeline lists each scene's start",
                 )
             if want == duration:
                 break
@@ -573,6 +804,6 @@ def cut_timing(text: str, align: str) -> Callable[[Project, Dict[str, Any], int]
             slots = placed(duration)
         assert duration is not None
         where = f"its transition centred on {text}" if align == "mid" and overlap else f"it ends at {text}"
-        return duration, f"durationMs = {duration} ({where}, {music.js_round(target)} ms in the film)"
+        return duration, f"durationMs = {duration} ({where}, {music.js_round(target)} ms in the film; a time, so it stays put when the grid changes)"
 
     return timing

@@ -16,6 +16,7 @@ import {
   type Codec,
   captureFrameRgba,
   captureScreenshot,
+  type ExportOptions,
   type ExportProgress,
   exportProject,
   type FrameDelta,
@@ -48,6 +49,7 @@ import {
   THEME_PREVIEW_PROJECT_ID,
   writeThemePreviews,
 } from "./themePreviews";
+import { CROSSFADE_TOLERANCE, crossfadeProbes, outgoingWeight } from "./transitionCheck";
 import { createProject, getSettings } from "./workspace";
 
 /** Headless auto-run: `pnpm kookaburra:run` sets `KOOKABURRA_*` env vars read via native `get_autorun_config` (process env, not `import.meta.env`, which is baked at build time and unreadable in a packaged app); drives the store then calls the same `verifyDeterminism`/`exportProject` the UI buttons call, so it never bypasses the real WebGL/ffmpeg export path. See docs/determinism.md. */
@@ -61,6 +63,7 @@ export type AutoRunAction =
   | "option-previews"
   | "perf"
   | "screenshot"
+  | "transitioncheck"
   | "packroundtrip"
   | "create"
   | "render-spike"
@@ -117,6 +120,11 @@ interface AutoRunResult {
   /** Render-state snapshot from verify's pass A; always present on verify rows, diffing it across builds/machines localizes hash divergence to a named value. */
   fingerprint?: RenderStateFingerprint;
   path?: string;
+  /** transitioncheck rows: which crossfade (1-based scenes), the outgoing scene's measured and expected weight at its midpoint, and whether they agree. */
+  transition?: string;
+  weight?: number | null;
+  expected?: number;
+  ok?: boolean;
   /** create: slot count of the created project after a full load-and-commit. */
   scenes?: number;
   /** perf rows: one per scene × elimination pass (see engine/perfProbe.ts). */
@@ -292,6 +300,29 @@ export async function initAutoRunConfig(): Promise<void> {
   }
 }
 
+/** A single frame's export options, exactly as the export path builds them minus the encode. */
+function frameOptions(project: LoadedProject, format: FormatSpec, codec: Codec): ExportOptions {
+  return {
+    projectId: project.id,
+    fps: FPS,
+    durationMs: project.totalMs,
+    slots: project.slots,
+    cameraTrack: project.cameraTrack,
+    sceneDocs: project.sceneDocs,
+    music: project.music,
+    theme: project.theme,
+    sceneThemes: project.sceneThemes,
+    projectLighting: project.projectLighting,
+    sceneFrames: project.sceneFrames,
+    compareBDocs: project.compareBDocs,
+    compareBThemes: project.compareBThemes,
+    roomThemes: project.roomThemes,
+    motionBlur: project.renderSettings.motionBlur,
+    codec,
+    format,
+  };
+}
+
 /** Reads the prefetched auto-run intent; returns `null` when unset so the app stays fully interactive under a normal launch, and throws on a malformed action/aspect/codec so the wrapper surfaces the mistake immediately. */
 export function getAutoRunConfig(): AutoRunConfig | null {
   const env = autoRunEnv;
@@ -306,6 +337,7 @@ export function getAutoRunConfig(): AutoRunConfig | null {
     action !== "option-previews" &&
     action !== "perf" &&
     action !== "screenshot" &&
+    action !== "transitioncheck" &&
     action !== "packroundtrip" &&
     action !== "create" &&
     action !== "render-spike" &&
@@ -313,7 +345,7 @@ export function getAutoRunConfig(): AutoRunConfig | null {
     action !== "stillsverify"
   ) {
     throw new Error(
-      `unknown KOOKABURRA_ACTION "${action}" (expected verify | export | theme-previews | template-previews | preset-previews | option-previews | perf | screenshot | packroundtrip | create | render-spike | stills | stillsverify)`,
+      `unknown KOOKABURRA_ACTION "${action}" (expected verify | export | theme-previews | template-previews | preset-previews | option-previews | perf | screenshot | transitioncheck | packroundtrip | create | render-spike | stills | stillsverify)`,
     );
   }
   const stills = parseStillsFormat(env.stills ?? undefined);
@@ -391,6 +423,7 @@ export function getAutoRunConfig(): AutoRunConfig | null {
         ? [FORMATS[preset.favouredAspect]]
         : (action === "perf" ||
               action === "screenshot" ||
+              action === "transitioncheck" ||
               action === "stills" ||
               action === "stillsverify") &&
             !env.aspect?.trim()
@@ -967,35 +1000,67 @@ export async function runAutoRun(
       await nextCommit();
       const tMs = resolveScreenshotTimeMs(project, config.scene, config.atSeconds);
       const name = `screenshot-${project.id.replace(/^ws:/, "")}-${Math.round(tMs)}ms-${format.name.replace(":", "x")}`;
-      const path = await captureScreenshot(
-        {
-          projectId: project.id,
-          fps: FPS,
-          durationMs: project.totalMs,
-          slots: project.slots,
-          cameraTrack: project.cameraTrack,
-          sceneDocs: project.sceneDocs,
-          music: project.music,
-          theme: project.theme,
-          sceneThemes: project.sceneThemes,
-          projectLighting: project.projectLighting,
-          sceneFrames: project.sceneFrames,
-          compareBDocs: project.compareBDocs,
-          compareBThemes: project.compareBThemes,
-          roomThemes: project.roomThemes,
-          motionBlur: project.renderSettings.motionBlur,
-          codec: config.codec,
-          format,
-        },
-        tMs,
-        name,
-      );
+      const path = await captureScreenshot(frameOptions(project, format, config.codec), tMs, name);
       results.push({ aspect: format.name, path });
       // The frame still lands (an error card is worth seeing), but the run fails so a gate never passes on one.
       const refusal = sceneErrorRefusal(project, "pass a screenshot run");
       if (refusal) {
         ok = false;
         error = refusal;
+      }
+    } catch (e) {
+      ok = false;
+      error = String(e);
+    }
+    await finish({
+      action: config.action,
+      project: config.project,
+      codec: config.codec,
+      ok,
+      durationMs: Math.round(performance.now() - startedAt),
+      results,
+      ...(error ? { error } : {}),
+    });
+    return;
+  }
+
+  if (config.action === "transitioncheck") {
+    // Each crossfade's midpoint must carry both scenes: a hard cut there still passes Verify ×2.
+    try {
+      const format = config.aspects[0];
+      useEditorStore.getState().setFormat(format);
+      await nextCommit();
+      const opts = frameOptions(project, format, config.codec);
+      const probes = crossfadeProbes(project.slots, FPS);
+      if (probes.length === 0) throw new Error(`${project.id} has no crossfade to check`);
+      const failed: string[] = [];
+      for (const probe of probes) {
+        const before = await captureFrameRgba(opts, probe.beforeMs);
+        const mid = await captureFrameRgba(opts, probe.midMs);
+        const after = await captureFrameRgba(opts, probe.afterMs);
+        const transition = `${probe.fromIndex + 1}→${probe.toIndex + 1}`;
+        const name = `transitioncheck-${project.id.replace(/^ws:/, "")}-${probe.fromIndex + 1}-${probe.toIndex + 1}-${format.name.replace(":", "x")}`;
+        await invoke("begin_screenshot", { width: mid.width, height: mid.height, name });
+        const path = await invoke<string>("save_screenshot", mid.rgba);
+        const weight = outgoingWeight(before.rgba, mid.rgba, after.rgba);
+        const rowOk = weight !== null && Math.abs(weight - probe.expected) <= CROSSFADE_TOLERANCE;
+        if (!rowOk) {
+          failed.push(
+            `crossfade ${transition}: ${weight === null ? "the scenes look alike, so no blend can be read" : `outgoing weight ${weight.toFixed(2)}, expected ${probe.expected.toFixed(2)}`}`,
+          );
+        }
+        results.push({
+          aspect: format.name,
+          transition,
+          weight: weight === null ? null : Math.round(weight * 1000) / 1000,
+          expected: probe.expected,
+          ok: rowOk,
+          path,
+        });
+      }
+      if (failed.length > 0) {
+        ok = false;
+        error = failed.join("; ");
       }
     } catch (e) {
       ok = false;

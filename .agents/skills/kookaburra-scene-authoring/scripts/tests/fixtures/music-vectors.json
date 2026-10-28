@@ -6096,5 +6096,820 @@
       "x": 4503599627370495.5,
       "out": 4503599627370496
     }
+  ],
+  "sidecars": [
+    {
+      "id": "every-field",
+      "music": {
+        "grid": {
+          "bpm": 120,
+          "offsetMs": 250,
+          "beatsPerBar": 4
+        },
+        "startOffsetMs": 0,
+        "cues": {
+          "drop": "bar:5",
+          "raw": 4321
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:9",
+            "to": "bar:11"
+          }
+        }
+      },
+      "sceneStartMs": 1000,
+      "raw": {
+        "version": 1,
+        "camera": {
+          "keys": [
+            {
+              "id": "k1",
+              "tMs": 0,
+              "pose": {
+                "target": [
+                  0,
+                  0,
+                  0
+                ],
+                "azimuthDeg": 0,
+                "elevationDeg": 0,
+                "distance": 6
+              }
+            },
+            {
+              "id": "k2",
+              "tMs": 1,
+              "at": "bar:5",
+              "pose": {
+                "target": [
+                  0,
+                  0,
+                  0
+                ],
+                "azimuthDeg": 9,
+                "elevationDeg": 0,
+                "distance": 6
+              }
+            }
+          ],
+          "segments": [
+            {
+              "from": "k1",
+              "to": "k2",
+              "ease": "linear"
+            }
+          ]
+        },
+        "cameraRig": {
+          "keys": [
+            {
+              "id": "r1",
+              "tMs": 1,
+              "at": "cue:drop",
+              "pose": {
+                "position": [
+                  0,
+                  0,
+                  5
+                ],
+                "aim": {
+                  "mode": "point",
+                  "at": [
+                    0,
+                    0,
+                    0
+                  ]
+                }
+              }
+            }
+          ],
+          "segments": []
+        },
+        "lighting": {
+          "keys": [
+            {
+              "id": "l1",
+              "tMs": 1,
+              "at": "bar:2",
+              "pose": {
+                "ambient": 1
+              }
+            }
+          ]
+        },
+        "deviceTrack": {
+          "keys": [
+            {
+              "id": "d1",
+              "tMs": 0,
+              "pose": {}
+            },
+            {
+              "id": "d2",
+              "tMs": 1,
+              "at": "bar:2.3",
+              "pose": {
+                "phone": {
+                  "scale": 2
+                }
+              }
+            }
+          ],
+          "segments": [
+            {
+              "from": "d1",
+              "to": "d2",
+              "ease": "linear"
+            }
+          ]
+        },
+        "devices": [
+          {
+            "id": "phone",
+            "model": "iphone-17-pro",
+            "media": {
+              "src": "assets/a.mp4",
+              "kind": "video",
+              "at": "bar:2"
+            },
+            "coverMedia": {
+              "src": "assets/a.mp4",
+              "kind": "video",
+              "startMs": 5,
+              "at": "cue:drop+40ms"
+            }
+          },
+          {
+            "id": "tab",
+            "model": "ipad-pro-13",
+            "media": {
+              "src": "assets/a.mp4",
+              "kind": "video",
+              "startMs": 300
+            }
+          }
+        ],
+        "media": [
+          {
+            "id": "v1",
+            "kind": "video",
+            "src": "assets/b.mp4",
+            "host": "overlay",
+            "video": {
+              "startMs": 1,
+              "at": "bar:3",
+              "loop": true
+            }
+          },
+          {
+            "id": "v2",
+            "kind": "video",
+            "src": "assets/b.mp4",
+            "host": "overlay",
+            "video": {
+              "startMs": 7
+            }
+          }
+        ],
+        "compare": {
+          "b": {
+            "lighting": {
+              "keys": [
+                {
+                  "id": "b1",
+                  "tMs": 1,
+                  "at": "bar:3",
+                  "pose": {
+                    "ambient": 0.5
+                  }
+                }
+              ]
+            },
+            "media": {
+              "phone": {
+                "src": "assets/a.mp4",
+                "kind": "video",
+                "at": "bar:4"
+              }
+            },
+            "coverMedia": {
+              "phone": {
+                "src": "assets/a.mp4",
+                "kind": "video"
+              }
+            }
+          },
+          "track": {
+            "keys": [
+              {
+                "id": "c1",
+                "tMs": 0,
+                "pose": {
+                  "value": 0
+                }
+              },
+              {
+                "id": "c2",
+                "tMs": 1,
+                "at": "section:outro+20ms",
+                "pose": {
+                  "value": 1
+                }
+              }
+            ],
+            "segments": [
+              {
+                "from": "c1",
+                "to": "c2",
+                "ease": "linear"
+              }
+            ]
+          }
+        }
+      },
+      "expect": {
+        "moved": true,
+        "fields": [
+          {
+            "where": "camera key \"k2\"",
+            "field": "tMs",
+            "at": "bar:5",
+            "ms": 7250
+          },
+          {
+            "where": "cameraRig key \"r1\"",
+            "field": "tMs",
+            "at": "cue:drop",
+            "ms": 7250
+          },
+          {
+            "where": "lighting key \"l1\"",
+            "field": "tMs",
+            "at": "bar:2",
+            "ms": 1250
+          },
+          {
+            "where": "deviceTrack key \"d2\"",
+            "field": "tMs",
+            "at": "bar:2.3",
+            "ms": 2250
+          },
+          {
+            "where": "device \"phone\" media",
+            "field": "startMs",
+            "at": "bar:2",
+            "ms": 1250
+          },
+          {
+            "where": "device \"phone\" coverMedia",
+            "field": "startMs",
+            "at": "cue:drop+40ms",
+            "ms": 7290
+          },
+          {
+            "where": "media \"v1\" video",
+            "field": "startMs",
+            "at": "bar:3",
+            "ms": 3250
+          },
+          {
+            "where": "compare.b.lighting key \"b1\"",
+            "field": "tMs",
+            "at": "bar:3",
+            "ms": 3250
+          },
+          {
+            "where": "compare.b.media \"phone\"",
+            "field": "startMs",
+            "at": "bar:4",
+            "ms": 5250
+          },
+          {
+            "where": "compare.track key \"c2\"",
+            "field": "tMs",
+            "at": "section:outro+20ms",
+            "ms": 15270
+          }
+        ],
+        "issues": []
+      }
+    },
+    {
+      "id": "no-at",
+      "music": {
+        "grid": {
+          "bpm": 120,
+          "offsetMs": 250,
+          "beatsPerBar": 4
+        },
+        "startOffsetMs": 0,
+        "cues": {
+          "drop": "bar:5",
+          "raw": 4321
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:9",
+            "to": "bar:11"
+          }
+        }
+      },
+      "sceneStartMs": 1000,
+      "raw": {
+        "version": 1,
+        "deviceTrack": {
+          "keys": [
+            {
+              "id": "d1",
+              "tMs": 0,
+              "pose": {}
+            }
+          ],
+          "segments": []
+        },
+        "devices": [
+          {
+            "id": "phone",
+            "model": "iphone-17-pro",
+            "media": {
+              "src": "assets/a.mp4",
+              "kind": "video",
+              "startMs": 400
+            }
+          }
+        ],
+        "media": [
+          {
+            "id": "v1",
+            "kind": "video",
+            "src": "assets/b.mp4",
+            "host": "overlay",
+            "video": {
+              "startMs": 7
+            }
+          }
+        ]
+      },
+      "expect": {
+        "moved": false,
+        "fields": [],
+        "issues": []
+      }
+    },
+    {
+      "id": "already-cached",
+      "music": {
+        "grid": {
+          "bpm": 120,
+          "offsetMs": 250,
+          "beatsPerBar": 4
+        },
+        "startOffsetMs": 0,
+        "cues": {
+          "drop": "bar:5",
+          "raw": 4321
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:9",
+            "to": "bar:11"
+          }
+        }
+      },
+      "sceneStartMs": 1000,
+      "raw": {
+        "version": 1,
+        "deviceTrack": {
+          "keys": [
+            {
+              "id": "d1",
+              "tMs": 7250,
+              "at": "bar:5",
+              "pose": {}
+            }
+          ],
+          "segments": []
+        },
+        "devices": [
+          {
+            "id": "phone",
+            "model": "iphone-17-pro",
+            "media": {
+              "src": "assets/a.mp4",
+              "kind": "video",
+              "startMs": 1250,
+              "at": "bar:2"
+            }
+          }
+        ],
+        "media": [
+          {
+            "id": "v1",
+            "kind": "video",
+            "src": "assets/b.mp4",
+            "host": "overlay",
+            "video": {
+              "startMs": 3250,
+              "at": "bar:3"
+            }
+          }
+        ]
+      },
+      "expect": {
+        "moved": false,
+        "fields": [
+          {
+            "where": "deviceTrack key \"d1\"",
+            "field": "tMs",
+            "at": "bar:5",
+            "ms": 7250
+          },
+          {
+            "where": "device \"phone\" media",
+            "field": "startMs",
+            "at": "bar:2",
+            "ms": 1250
+          },
+          {
+            "where": "media \"v1\" video",
+            "field": "startMs",
+            "at": "bar:3",
+            "ms": 3250
+          }
+        ],
+        "issues": []
+      }
+    },
+    {
+      "id": "absent-start-on-the-first-frame",
+      "music": {
+        "grid": {
+          "bpm": 120,
+          "offsetMs": 250,
+          "beatsPerBar": 4
+        },
+        "startOffsetMs": 0,
+        "cues": {
+          "drop": "bar:5",
+          "raw": 4321
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:9",
+            "to": "bar:11"
+          }
+        }
+      },
+      "sceneStartMs": 250,
+      "raw": {
+        "version": 1,
+        "devices": [
+          {
+            "id": "phone",
+            "model": "iphone-17-pro",
+            "media": {
+              "src": "assets/a.mp4",
+              "kind": "video",
+              "at": "bar:1"
+            }
+          }
+        ]
+      },
+      "expect": {
+        "moved": false,
+        "fields": [
+          {
+            "where": "device \"phone\" media",
+            "field": "startMs",
+            "at": "bar:1",
+            "ms": null
+          }
+        ],
+        "issues": []
+      }
+    },
+    {
+      "id": "screen-rules",
+      "music": {
+        "grid": {
+          "bpm": 120,
+          "offsetMs": 250,
+          "beatsPerBar": 4
+        },
+        "startOffsetMs": 0,
+        "cues": {
+          "drop": "bar:5",
+          "raw": 4321
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:9",
+            "to": "bar:11"
+          }
+        }
+      },
+      "sceneStartMs": 1000,
+      "raw": {
+        "version": 1,
+        "devices": [
+          {
+            "id": "a",
+            "model": "iphone-17-pro",
+            "media": {
+              "src": "assets/a.png",
+              "kind": "image",
+              "at": "bar:2"
+            }
+          },
+          {
+            "id": "b",
+            "model": "iphone-17-pro",
+            "media": {
+              "src": "assets/a.mp4",
+              "kind": "video",
+              "startOn": "open",
+              "startMs": 40,
+              "at": "bar:2"
+            }
+          },
+          {
+            "id": "c",
+            "model": "iphone-17-pro",
+            "media": {
+              "src": "assets/a.mp4",
+              "kind": "video",
+              "inMs": 500,
+              "at": "bar:1"
+            }
+          },
+          {
+            "id": "d",
+            "model": "iphone-17-pro",
+            "media": {
+              "src": "assets/a.mp4",
+              "kind": "video",
+              "at": "bar:1"
+            }
+          },
+          {
+            "id": "e",
+            "model": "iphone-17-pro",
+            "media": {
+              "src": "assets/a.mp4",
+              "kind": "video",
+              "inMs": -5,
+              "at": "bar:1"
+            }
+          },
+          {
+            "id": "f",
+            "model": "iphone-17-pro",
+            "media": {
+              "src": "assets/a.mp4",
+              "kind": "video",
+              "startMs": -750,
+              "inMs": 500,
+              "at": "bar:1"
+            }
+          },
+          {
+            "id": "nomodel",
+            "media": {
+              "src": "assets/a.mp4",
+              "kind": "video",
+              "at": "bar:3"
+            }
+          }
+        ],
+        "media": [
+          {
+            "id": "still",
+            "kind": "image",
+            "src": "assets/b.png",
+            "host": "overlay",
+            "video": {
+              "at": "bar:2"
+            }
+          }
+        ],
+        "compare": {
+          "b": {
+            "coverMedia": {
+              "a": {
+                "src": "assets/a.mp4",
+                "kind": "video",
+                "startOn": "open",
+                "at": "bar:3"
+              },
+              "b": {
+                "kind": "video",
+                "at": "bar:3"
+              }
+            }
+          }
+        }
+      },
+      "expect": {
+        "moved": true,
+        "fields": [
+          {
+            "where": "device \"a\" media",
+            "field": "startMs",
+            "at": "bar:2",
+            "ms": null
+          },
+          {
+            "where": "device \"b\" media",
+            "field": "startMs",
+            "at": "bar:2",
+            "ms": 40
+          },
+          {
+            "where": "device \"c\" media",
+            "field": "startMs",
+            "at": "bar:1",
+            "ms": null
+          },
+          {
+            "where": "device \"d\" media",
+            "field": "startMs",
+            "at": "bar:1",
+            "ms": -750
+          },
+          {
+            "where": "device \"e\" media",
+            "field": "startMs",
+            "at": "bar:1",
+            "ms": -750
+          },
+          {
+            "where": "device \"f\" media",
+            "field": "startMs",
+            "at": "bar:1",
+            "ms": -750
+          },
+          {
+            "where": "compare.b.coverMedia \"a\"",
+            "field": "startMs",
+            "at": "bar:3",
+            "ms": null
+          }
+        ],
+        "issues": [
+          "device \"a\" media \"bar:2\": only a video's start can follow the music",
+          "device \"b\" media \"bar:2\": startOn open counts startMs from the fold opening",
+          "device \"c\" media \"bar:1\": lands 750 ms before the scene starts, which can't combine with inMs",
+          "compare.b.coverMedia \"a\" \"bar:3\": startOn open counts startMs from the fold opening"
+        ]
+      }
+    },
+    {
+      "id": "unresolvable",
+      "music": {
+        "grid": {
+          "bpm": 120,
+          "offsetMs": 250,
+          "beatsPerBar": 4
+        },
+        "startOffsetMs": 0,
+        "cues": {
+          "drop": "bar:5",
+          "raw": 4321
+        },
+        "sections": {
+          "outro": {
+            "from": "bar:9",
+            "to": "bar:11"
+          }
+        }
+      },
+      "sceneStartMs": 0,
+      "raw": {
+        "version": 1,
+        "devices": [
+          {
+            "id": "phone",
+            "model": "iphone-17-pro",
+            "media": {
+              "src": "assets/a.mp4",
+              "kind": "video",
+              "startMs": 9,
+              "at": "cue:nowhere"
+            }
+          }
+        ],
+        "media": [
+          {
+            "id": "v1",
+            "kind": "video",
+            "src": "assets/b.mp4",
+            "host": "overlay",
+            "video": {
+              "startMs": 3,
+              "at": "bar 3"
+            }
+          }
+        ],
+        "compare": {
+          "track": {
+            "keys": [
+              {
+                "id": "c1",
+                "tMs": 2,
+                "at": "cue:raw",
+                "pose": {
+                  "value": 0
+                }
+              }
+            ],
+            "segments": []
+          }
+        }
+      },
+      "expect": {
+        "moved": true,
+        "fields": [
+          {
+            "where": "device \"phone\" media",
+            "field": "startMs",
+            "at": "cue:nowhere",
+            "ms": 9
+          },
+          {
+            "where": "media \"v1\" video",
+            "field": "startMs",
+            "at": "bar 3",
+            "ms": 3
+          },
+          {
+            "where": "compare.track key \"c1\"",
+            "field": "tMs",
+            "at": "cue:raw",
+            "ms": 4321
+          }
+        ],
+        "issues": [
+          "device \"phone\" media \"cue:nowhere\": no cue \"nowhere\"",
+          "media \"v1\" video \"bar 3\": \"bar 3\" isn't bar:B[.beat[.16th]], cue:ID or section:ID"
+        ]
+      }
+    },
+    {
+      "id": "no-grid",
+      "music": {
+        "startOffsetMs": 0,
+        "cues": {
+          "raw": 4321
+        },
+        "sections": {}
+      },
+      "sceneStartMs": 300,
+      "raw": {
+        "version": 1,
+        "deviceTrack": {
+          "keys": [
+            {
+              "id": "d1",
+              "tMs": 5,
+              "at": "bar:2",
+              "pose": {}
+            }
+          ],
+          "segments": []
+        },
+        "devices": [
+          {
+            "id": "phone",
+            "model": "iphone-17-pro",
+            "media": {
+              "src": "assets/a.mp4",
+              "kind": "video",
+              "at": "cue:raw"
+            }
+          }
+        ]
+      },
+      "expect": {
+        "moved": true,
+        "fields": [
+          {
+            "where": "deviceTrack key \"d1\"",
+            "field": "tMs",
+            "at": "bar:2",
+            "ms": 5
+          },
+          {
+            "where": "device \"phone\" media",
+            "field": "startMs",
+            "at": "cue:raw",
+            "ms": 4021
+          }
+        ],
+        "issues": [
+          "deviceTrack key \"d1\" \"bar:2\": the project has no audio.grid"
+        ]
+      }
+    }
   ]
 }

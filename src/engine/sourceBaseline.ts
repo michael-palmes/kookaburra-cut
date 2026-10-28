@@ -1,5 +1,4 @@
 import { invoke } from "@tauri-apps/api/core";
-import { scheduleTrustRestamp } from "./projectTrust";
 import type { FileWrite } from "./sceneDocBase";
 
 /** The editor's reload poll keeps one stamp per source file (`project.json`, `scenes/**`). An app write moves only its own file's entry, and only while that entry still holds the stamp the write replaced, so an outside change landing in the same window still reloads. */
@@ -74,10 +73,9 @@ export function observeSourceStamps(
   return changed;
 }
 
-/** An app write landed: adopt its stamp when the baseline still held the one it replaced (no entry for a new file), and re-stamp trust for the session. */
+/** An app write landed: adopt its stamp when the baseline still held the one it replaced (no entry for a new file). Trust needs nothing here: the native writer re-stamped the grant. */
 export function noteSourceWrite(slug: string, write: FileWrite | null | undefined): void {
   if (!write) return;
-  scheduleTrustRestamp(slug);
   if (!state || state.slug !== slug || !state.stamps) return;
   if ((state.stamps.get(write.file) ?? null) !== (write.before ?? null)) return;
   state.stamps.set(write.file, write.stamp);

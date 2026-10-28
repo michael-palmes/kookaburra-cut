@@ -34,7 +34,7 @@ transitions with `./kb scene ...` (manifest-safe, atomic); other fields with
 | `version` | | Write `2`: transitions live on the OUTGOING scene. Never mix placements. |
 | `themeId` | yes | `kookaburra-*` bundled or `ws:<slug>` workspace theme. Unknown ids fall back. |
 | `formats` | yes | Aspects the project targets; the first is the default preview aspect. |
-| `scenes` | yes | Ordered `{ file, durationMs, transition?, effects? }`. Order is timeline order. |
+| `scenes` | yes | Ordered `{ file, durationMs, transition?, effects?, cutAt?, align? }`. Order is timeline order. `cutAt` pins the cut (below). |
 | `group` | | Welcome screen group heading. |
 | `typography` | | `{ headline, body, chart }`, each `"Family"` or `"Family@weight"`. Beats every theme; sidecar `textStyle` still wins. |
 | `audio` | | One soundtrack (below). |
@@ -51,7 +51,15 @@ Rules:
 
 - Each scene file appears once. Two entries sharing a file fail the load. To repeat a
   scene, `./kb scene duplicate S` (fresh stem, fresh `defineScene` id).
-- The manifest `durationMs` wins over the TSX `durationMs`.
+- `project.json`'s `durationMs` is the length that plays; the TSX `durationMs` is only
+  the fallback for an entry without one. Change lengths with `./kb scene set` or
+  `./kb timeline apply`, never in the TSX (`./kb check` lists TSX values that differ).
+- A scene with `cutAt` (a position like `"bar:9"`) and `align` (`"end"`, the default,
+  or `"mid"`: its outgoing transition centred on the position) has a pinned cut: its
+  `durationMs` caches the length that lands the cut there, and the app and kb re-resolve
+  it whenever the grid or an earlier transition or length changes. Set it with
+  `./kb scene set S --cut-at bar:9 [--align mid]` or `./kb timeline apply`; an explicit
+  `--duration` unpins it (reference/beats.md).
 - A scene whose sidecar says `duration.mode: "follow-media"` has its `durationMs`
   kept equal to its video by the app. If you swap that video, update `durationMs`
   too (`./kb assets probe` gives the length).
@@ -86,7 +94,10 @@ duration)`, project length = sum of durations minus overlaps. The last scene nev
 carries one. No transition is a hard cut. Unknown types render as `crossfade`.
 
 `./kb scene set S --transition push:500 --ease smooth` writes the type, duration and ease;
-`--transition none` makes a hard cut. The other fields are hand edits of that scene's
+`--transition none` makes a hard cut. With a beat grid it keeps every later scene where
+it was: the cut stays put (pinned to its beat, the overlap centred, when it sits on one)
+and the next scene grows or shrinks at its head. `--ripple` lets later scenes move by the
+overlap instead; kb then names any cut it moved off the beat. The other fields are hand edits of that scene's
 `transition` object in `project.json`:
 `direction` (one of `[1,0]` incoming travels left, `[-1,0]` right, `[0,1]` up,
 `[0,-1]` down), `color` (dip, halftone, lightsweep), `ease` (`linear` default,

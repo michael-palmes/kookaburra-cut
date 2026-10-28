@@ -13,7 +13,6 @@ import { revealApp } from "../engine/reveal";
 import { stageOrNull } from "../engine/stageHandle";
 import { StageView } from "../stage/StageView";
 import { useEditorStore } from "../store/editorStore";
-import { useTrustStore } from "../store/trustStore";
 import { PresentTerminalOverlay } from "./PresentTerminalOverlay";
 import { PresentWebsiteOverlay } from "./PresentWebsiteOverlay";
 import { startPresentAmbience, stopPresentAmbience } from "./presentAmbience";
@@ -79,16 +78,6 @@ export function PresentApp() {
     };
   }, []);
 
-  // No trust UI exists in this window: deny any pending consent request so loadProject fails readably instead of hanging forever. The modal re-stamps trust before opening, so this only fires if the gate is genuinely stale.
-  useEffect(() => {
-    const deny = () => {
-      const trust = useTrustStore.getState();
-      if (trust.pending) trust.answer(false);
-    };
-    deny();
-    return useTrustStore.subscribe(deny);
-  }, []);
-
   // A re-present while the window is open lands a fresh target; a full reboot is the simplest correct restart.
   useEffect(() => {
     const un = listen("kookaburra://present-target", () => window.location.reload());
@@ -110,7 +99,8 @@ export function PresentApp() {
     usePresentStore.getState().setMode(target.mode);
     const spec = FORMATS[target.aspect as AspectName] ?? FORMATS["16:9"];
     useEditorStore.getState().setFormat(spec);
-    void loadProject(target.projectId)
+    // This window cannot ask for consent (the sheet is the main window's), so it loads only a project whose stored grant still matches; the editor's own writes keep that grant current.
+    void loadProject(target.projectId, { trustMode: "stored-only" })
       .then((loaded) => {
         if (!live) return;
         useEditorStore.getState().setTheme(loaded.theme);
