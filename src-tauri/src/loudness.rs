@@ -34,10 +34,7 @@ pub async fn measure_loudness(
     fps: u32,
     poster_frame: bool,
 ) -> Result<LoudnessInfo, String> {
-    let path = std::path::PathBuf::from(&file);
-    if !path.is_absolute() || !path.is_file() {
-        return Err(format!("audio file not found: {file}"));
-    }
+    let path = crate::media::confine_soundtrack(&app, &settings, &file)?;
     let audio = AudioOptions {
         file: file.clone(),
         gain_db,
@@ -90,7 +87,7 @@ pub async fn measure_loudness(
     let info = parse_ebur128_summary(&stderr)
         .ok_or_else(|| "could not parse the ebur128 summary".to_string())?;
 
-    let _ = std::fs::create_dir_all(&cache_dir);
+    let _ = crate::privacy::private_dir(&cache_dir);
     let _ = std::fs::write(
         &cache_file,
         format!(
@@ -98,6 +95,7 @@ pub async fn measure_loudness(
             info.integrated_lufs, info.true_peak_dbtp
         ),
     );
+    let _ = crate::privacy::private_file(&cache_file);
     Ok(info)
 }
 

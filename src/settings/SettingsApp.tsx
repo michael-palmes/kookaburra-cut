@@ -527,7 +527,7 @@ export function SettingsApp() {
             <span className="muted settings-row-detail">
               {clipsClearDeferred
                 ? "Clears once the terminal run using it finishes."
-                : "Video frames, extracted as scenes need them. Past the limit the least recently used go first; clips in an open project or a running export stay."}
+                : "Decoded frames of your footage, extracted as scenes need them and readable only by your account. Past the limit the least recently used go first; clips in an open project or a running export stay, and a deleted project's go with it."}
             </span>
           </div>
           <div className="settings-row-actions">

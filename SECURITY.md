@@ -24,6 +24,17 @@ imported `CLAUDE.md` is saved as `NOTES.md` and replaced with the app's own,
 and every open strips hooks, permissions, env, commands, agents and skills the
 app did not ship.
 
+What the app keeps for itself stays yours alone. Its own folder under
+Application Support (settings, the decoded frames and previews of your footage
+in `cache/`, the pack signing key's file fallback) and the `_bridge` and
+`_autorun` folders in your workspace are created readable by your account
+only, checked again at every launch, and marked so Spotlight never indexes
+them; the pack signing key itself lives in your login Keychain and is never
+synchronised. Deleting a project or an asset drops its frames and previews
+from those caches as it goes to the Trash (a project put back decodes again).
+Your projects are your documents and keep ordinary permissions. The bundled
+ffmpeg and ffprobe run with a bare environment and may open local files only.
+
 Scene code is the one thing a project can run, so running it needs your say-so
 and never more reach than the window needs. Each app window gets only the
 native commands it uses (an app permission manifest under

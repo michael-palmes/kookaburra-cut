@@ -271,6 +271,8 @@ write_ticket() {
 
 # FIFO across every worktree: write a ticket, then wait until it is the oldest live one.
 mkdir -p "$QUEUE_DIR"
+# The run sinks hold screenshots of confidential work: owner-only, like the app keeps them.
+chmod 700 "$AUTORUN_DIR" "$QUEUE_DIR"
 TICKET="$QUEUE_DIR/$(printf '%012d' "$(date -u +%s)")-$$.json"
 write_ticket
 waited=0
