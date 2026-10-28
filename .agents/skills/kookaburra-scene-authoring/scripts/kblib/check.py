@@ -11,11 +11,12 @@ from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
 
 from . import catalog as catmod
 from . import fonts as fontmod
+from . import music
 from . import themes as thememod
 from . import tsx as tsxmod
 from .catalog import Catalog
 from .project import MANIFEST, Project, stem_of
-from .util import Report, exact_case_exists, is_int, is_number, read_text
+from .util import KbError, Report, exact_case_exists, is_int, is_number, js_json, read_text
 
 SUPPORTED_ASSET_EXTS = {
     "png", "jpg", "jpeg", "webp", "gif",
@@ -224,6 +225,8 @@ class Checker:
             elif not (self.project.root / "BRAND.md").is_file():
                 warn(file, "brand", f"BRAND.md is missing; kb brand use {brand} writes it")
         self.manifest_scenes(m, warn)
+        if include_warnings:
+            self.cut_warnings(m, warn)
         if "defaultTransition" in m and m["defaultTransition"] is not None:
             self.transition(file, "defaultTransition", m["defaultTransition"])
         typography = m.get("typography")
@@ -305,9 +308,58 @@ class Checker:
             effects = entry.get("effects")
             if effects is not None and not isinstance(effects, dict):
                 rep.error(file, f"{path}.effects", "must be an object")
+            cut = entry.get("cutAt")
+            if "cutAt" in entry and not (isinstance(cut, str) and music.is_position(cut)):
+                rep.error(file, f"{path}.cutAt", "must be a position like bar:9, bar:9.3, cue:drop or section:chorus (kb scene set S --cut-at POS)")
+            if "align" in entry:
+                if entry["align"] not in ("end", "mid"):
+                    rep.error(file, f"{path}.align", 'must be "end" (the scene is gone at cutAt) or "mid" (its outgoing transition is centred on it)')
+                elif "cutAt" not in entry:
+                    warn(file, f"{path}.align", "has no cutAt to align, so it is inert")
             for key in entry:
-                if key not in ("file", "durationMs", "transition", "effects"):
-                    warn(file, f"{path}.{key}", "unknown scene-entry key (ignored); entries hold file, durationMs, transition, effects")
+                if key not in ("file", "durationMs", "transition", "effects", "cutAt", "align"):
+                    warn(file, f"{path}.{key}", "unknown scene-entry key (ignored); entries hold file, durationMs, transition, effects, cutAt, align")
+
+    def cut_warnings(self, m: Dict[str, Any], warn: Any) -> None:
+        """Pinned cuts whose cached length is stale or can't resolve, TSX lengths that differ from project.json, and cuts
+        that sat on a beat at the last checkpoint and no longer do."""
+        from . import cuts as cutsmod
+        from .beats import model
+        from .film import timeline as tl
+
+        scenes = m.get("scenes")
+        if not isinstance(scenes, list) or not scenes or not all(isinstance(e, dict) for e in scenes):
+            return
+        try:
+            durations = model.manifest_durations(self.project, m)
+            outgoing = tl.outgoing_transitions(m)
+            cuts = tl.resolve_scene_cuts([
+                {"durationMs": durations[i], "transition": outgoing[i] if isinstance(outgoing[i], dict) else None,
+                 "cutAt": e.get("cutAt") if music.is_position(e.get("cutAt")) else None, "align": e.get("align")}
+                for i, e in enumerate(scenes)
+            ], model.project_music(m))
+        except (KbError, TypeError, ValueError):
+            return
+        for i in cuts["changed"]:
+            warn(MANIFEST, f"scenes[{i}].durationMs", f'{js_json(scenes[i].get("durationMs"))} is stale: cutAt {scenes[i]["cutAt"]} lands this scene at {cuts["durations"][i]} ms, which is what plays; any kb scene or beats write refreshes it')
+        for issue in cuts["issues"]:
+            n = re.match(r"scene (\d+) ", issue)
+            warn(MANIFEST, f"scenes[{int(n.group(1)) - 1}].cutAt" if n else "scenes", f"{issue}, so its stored durationMs plays")
+        differ = []
+        for e in scenes:
+            dur, rel = e.get("durationMs"), e.get("file")
+            if not is_number(dur) or not isinstance(rel, str):
+                continue
+            try:
+                literal = tsxmod.defined_duration(self.project.read_tsx(stem_of(rel)))
+            except (OSError, UnicodeDecodeError, KbError):
+                continue
+            if literal is not None and literal != dur:
+                differ.append(f"{stem_of(rel)} ({js_json(literal)} in the TSX, {js_json(dur)} in project.json)")
+        if differ:
+            warn(MANIFEST, "scenes", f"project.json's durationMs is what plays, so the TSX durationMs of {', '.join(differ)} is ignored; change lengths with ./kb scene set or ./kb timeline apply, not in the TSX")
+        for d in cutsmod.drift_from_checkpoint(self.project, m):
+            warn(MANIFEST, f"scenes[{d['scene']}]", d["message"])
 
     def transition(self, file: str, path: str, spec: Any) -> None:
         if not isinstance(spec, dict) or not isinstance(spec.get("type"), str):
@@ -486,7 +538,7 @@ class Checker:
                 warn(MANIFEST, "audio.grid.source.sha256", f"the grid was fitted to another file (its SHA-256 differs from {rel}); refit with ./kb song analyse --accept, or keep it if the music is the same")
 
     def music_keys(self, file: str, doc: Dict[str, Any]) -> None:
-        """Positions on camera, rig and lighting keys and camera kicks that can't resolve, and `at` keys whose tMs cache is stale."""
+        """Positions on keys, screen and media video starts and camera kicks that can't resolve or apply, and `at` fields whose time cache is stale."""
         from .beats import model as beatmodel
 
         kicks = doc.get("cameraKicks") if isinstance(doc.get("cameraKicks"), list) else []
@@ -497,23 +549,23 @@ class Checker:
             return
         m, start = scope
         stem = stem_of(file[:-5] + ".tsx") if file.endswith(".json") else file
-        for path, keys in beatmodel.timed_tracks(doc):
-            dotted = ".".join(path)
-            for i, key in enumerate(keys):
-                if not isinstance(key, dict) or "at" not in key:
-                    continue
-                where = f"{dotted}.keys[{i}].at"
-                at = key["at"]
-                if not isinstance(at, str):
-                    self.report.warn(file, where, 'must be a position string like "bar:13" (the app ignores it)')
-                    continue
-                r = beatmodel.resolve_local(at, m, start)
-                if not r["ok"]:
-                    self.music_position_issue(file, where, at, r, "the key stays at its stored tMs")
-                    continue
-                t = key.get("tMs")
-                if is_number(t) and t != r["projectMs"]:
-                    self.report.warn(file, f"{dotted}.keys[{i}].tMs", f'{t} isn\'t where "{at}" lands ({r["projectMs"]} ms), so the app uses {r["projectMs"]}: fine after a grid or timing change (the app rewrites it on load); to keep {t}, ./kb doc {stem} unset {dotted}.keys.{i}.at')
+        for slot in beatmodel.timed_slots(doc):
+            if "at" not in slot.node:
+                continue
+            path = beatmodel.check_path(slot.steps)
+            where = f"{path}.at"
+            at = slot.node["at"]
+            if not isinstance(at, str):
+                self.report.warn(file, where, 'must be a position string like "bar:13" (the app ignores it)')
+                continue
+            r = beatmodel.slot_position(slot, m, start)
+            if not r["ok"]:
+                effect = "the key stays at its stored tMs" if slot.field == "tMs" else "the video keeps its stored startMs"
+                self.music_position_issue(file, where, at, r, effect)
+                continue
+            t = beatmodel.stored_ms(slot.node, slot.field)
+            if is_number(t) and t != r["projectMs"]:
+                self.report.warn(file, f"{path}.{slot.field}", f'{t} isn\'t where "{at}" lands ({r["projectMs"]} ms), so the app uses {r["projectMs"]}: fine after a grid or timing change (the app rewrites it on load); to keep {t}, ./kb doc {stem} unset {beatmodel.doc_path(slot.steps)}.at')
         for i, kick in enumerate(kicks):
             if isinstance(kick, dict) and isinstance(kick.get("at"), str):
                 r = beatmodel.resolve_local(kick["at"], m, start)
@@ -1245,6 +1297,8 @@ class Checker:
             if k["id"] in seen:
                 self.report.error(file, f"{path}.keys[{i}].id", f'duplicate key id "{k["id"]}"')
             seen.add(k["id"])
+            if "at" in k and path in ("chart.track", "layeredScreenshot.animation"):
+                self.report.warn(file, f"{path}.keys[{i}].at", "this track takes plain tMs, so the app ignores at (./kb beats --scene S lists each bar's ms)")
         eases = self.ctx.ids("eases")
         for i, seg in enumerate(segments):
             if not isinstance(seg, dict):

@@ -254,7 +254,7 @@ fn migrate_manifest_transitions(manifest: &mut Value) {
     manifest["version"] = json!(2);
 }
 
-/// Patch one scene's `durationMs` in `project.json` (atomic); project.json stays the sequencing source of truth, the sidecar's `duration.mode` only tells the app whether to keep it synced (duration-follow). `file` is the scene the caller saw at `index`; a mismatch is refused.
+/// Patch one scene's `durationMs` in `project.json` (atomic); project.json stays the sequencing source of truth, the sidecar's `duration.mode` only tells the app whether to keep it synced (duration-follow). An explicit length unpins the scene's cut (`cutAt`, `align`). `file` is the scene the caller saw at `index`; a mismatch is refused.
 #[tauri::command]
 pub fn update_project_scene(
     app: AppHandle,
@@ -287,6 +287,10 @@ pub(crate) fn update_scene_duration_at(
         .get_mut(index)
         .ok_or_else(|| format!("project.json has no scene at index {index}"))?;
     scene["durationMs"] = json!(duration_ms);
+    if let Some(entry) = scene.as_object_mut() {
+        entry.remove("cutAt");
+        entry.remove("align");
+    }
     tracked_write_json(project, MANIFEST_FILENAME, &manifest, None)
 }
 
@@ -3658,6 +3662,19 @@ mod live_edit_tests {
         let err = write_manifest_snapshot_at(&p.0, "demo", &before, Some(&base)).unwrap_err();
         assert!(err.starts_with(CONFLICT_PREFIX), "{err}");
         assert_eq!(p.manifest()["themeId"], json!("kookaburra-dark"));
+    }
+
+    #[test]
+    fn an_explicit_duration_unpins_the_cut() {
+        let p = Project::new();
+        let mut manifest = p.manifest();
+        manifest["scenes"][0]["cutAt"] = json!("bar:9");
+        manifest["scenes"][0]["align"] = json!("mid");
+        std::fs::write(p.0.join("project.json"), manifest.to_string()).unwrap();
+        update_scene_duration_at(&p.0, 0, Some("scenes/01-a.tsx"), 5000).unwrap();
+        let scene = &p.manifest()["scenes"][0];
+        assert_eq!(scene["durationMs"], json!(5000));
+        assert!(scene.get("cutAt").is_none() && scene.get("align").is_none());
     }
 
     #[test]

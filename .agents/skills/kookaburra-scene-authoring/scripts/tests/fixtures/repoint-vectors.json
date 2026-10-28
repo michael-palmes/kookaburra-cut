@@ -690,6 +690,77 @@
       }
     },
     {
+      "id": "device-musical-delay-stays",
+      "raw": {
+        "version": 1,
+        "name": "Scene",
+        "devices": [
+          {
+            "id": "d1",
+            "model": "iphone-17-pro",
+            "media": {
+              "src": "assets/a.mp4",
+              "kind": "video",
+              "startMs": 1250,
+              "at": "bar:2",
+              "inMs": 400
+            }
+          }
+        ]
+      },
+      "slot": "device",
+      "rel": "assets/clip-edited.mp4",
+      "targetId": "d1",
+      "expect": {
+        "devices.0.media": {
+          "src": "assets/clip-edited.mp4",
+          "kind": "video",
+          "startMs": 1250,
+          "at": "bar:2"
+        }
+      }
+    },
+    {
+      "id": "device-musical-pre-roll-goes",
+      "raw": {
+        "version": 1,
+        "name": "Scene",
+        "devices": [
+          {
+            "id": "d1",
+            "model": "iphone-17-pro",
+            "media": {
+              "src": "assets/a.mp4",
+              "kind": "video",
+              "startMs": 1250,
+              "at": "bar:2"
+            },
+            "coverMedia": {
+              "src": "assets/b.mp4",
+              "kind": "video",
+              "startMs": -750,
+              "at": "bar:1"
+            }
+          }
+        ]
+      },
+      "slot": "deviceCover",
+      "rel": "assets/clip-edited.mp4",
+      "targetId": "d1",
+      "expect": {
+        "devices.0.media": {
+          "src": "assets/a.mp4",
+          "kind": "video",
+          "startMs": 1250,
+          "at": "bar:2"
+        },
+        "devices.0.coverMedia": {
+          "src": "assets/clip-edited.mp4",
+          "kind": "video"
+        }
+      }
+    },
+    {
       "id": "device-drops-invalid-playback-keys",
       "raw": {
         "version": 1,
@@ -957,6 +1028,103 @@
         ],
         "images": null,
         "videoWindow": null
+      }
+    },
+    {
+      "id": "media-musical-start-goes-and-a-neighbour-keeps-its-own",
+      "raw": {
+        "version": 1,
+        "name": "Scene",
+        "media": [
+          {
+            "id": "vid1",
+            "kind": "video",
+            "src": "assets/a.mp4",
+            "video": {
+              "startMs": 600,
+              "at": "cue:drop"
+            }
+          },
+          {
+            "id": "vid2",
+            "kind": "video",
+            "src": "assets/b.mp4",
+            "video": {
+              "at": "bar:3",
+              "loop": true
+            }
+          }
+        ]
+      },
+      "slot": "media",
+      "rel": "assets/clip-edited.mp4",
+      "targetId": "vid1",
+      "expect": {
+        "media": [
+          {
+            "id": "vid1",
+            "kind": "video",
+            "src": "assets/clip-edited.mp4",
+            "host": "window",
+            "stage": {
+              "position": [
+                0,
+                0,
+                0
+              ],
+              "size": 5.3,
+              "rotationDeg": [
+                0,
+                0,
+                0
+              ]
+            },
+            "overlay": {
+              "position": [
+                0,
+                0
+              ],
+              "size": 0.72,
+              "rotationDeg": 0,
+              "shape": "none",
+              "layer": "below"
+            },
+            "video": {}
+          },
+          {
+            "id": "vid2",
+            "kind": "video",
+            "src": "assets/b.mp4",
+            "host": "window",
+            "stage": {
+              "position": [
+                0,
+                0,
+                0
+              ],
+              "size": 5.3,
+              "rotationDeg": [
+                0,
+                0,
+                0
+              ]
+            },
+            "overlay": {
+              "position": [
+                0,
+                0
+              ],
+              "size": 0.72,
+              "rotationDeg": 0,
+              "shape": "none",
+              "layer": "below"
+            },
+            "video": {
+              "at": "bar:3",
+              "loop": true
+            }
+          }
+        ]
       }
     },
     {

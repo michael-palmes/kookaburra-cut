@@ -297,6 +297,7 @@ def apply_music(ctx: Any, edit: Edit) -> Dict[str, Any]:
             raise KbError("project.json must be a JSON object; restore it with kb undo")
         require_soundtrack(project, manifest)
         summary = edit(manifest, manifest["audio"], notes)
+        notes += model.settle_cuts(project, manifest)
         changed = lockmod.encode_json(manifest) != data
         if changed:
             tx.write_json(MANIFEST, manifest)

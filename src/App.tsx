@@ -275,6 +275,7 @@ import { MediaLibrary } from "./ui/MediaLibrary";
 import { NewProjectDialog } from "./ui/NewProjectDialog";
 import { PlaybackBar } from "./ui/PlaybackBar";
 import { PresentModal } from "./ui/PresentModal";
+import { writeCutCaches, writeCutsForMusic } from "./ui/pinnedCuts";
 import { ALL_PROJECTS } from "./ui/projectLibrary";
 import { SceneTerminalOverlay } from "./ui/SceneTerminalOverlay";
 import { SceneWebsiteOverlay } from "./ui/SceneWebsiteOverlay";
@@ -919,6 +920,25 @@ export default function App() {
       // A mix-only patch keeps the music object, so nothing reading it re-renders.
       const music =
         JSON.stringify(rebuilt) === JSON.stringify(current.music) ? current.music : rebuilt;
+      // Pinned cuts move with the music, so their slots rebuild through a timing reload; the load writes every moved cache back.
+      if (
+        music !== current.music &&
+        Array.isArray(manifest.scenes) &&
+        manifest.scenes.some((entry: { cutAt?: unknown }) => typeof entry?.cutAt === "string")
+      ) {
+        await writeCutsForMusic(current, music);
+        changes[0] = {
+          kind: "manifest",
+          slug,
+          before: manifestBefore,
+          after: await readProjectManifestSnapshot(slug),
+          reload: false,
+        };
+        updatePreviewAudioSpec(merged);
+        pushHistory({ label: "music settings", changes });
+        handleTimingChanged();
+        return;
+      }
       setProject((prev) => {
         if (!prev?.audio) return prev;
         const r = resolveProjectDocsMusic(prev.sceneDocs, music, prev.slots);
@@ -1534,6 +1554,18 @@ export default function App() {
     musicCachesHandledRef.current = musicCacheRewrites;
     void writeMusicCaches(current, musicCacheRewrites, handleDocChanged);
   }, [musicCacheRewrites, isAutoRun, exporting, handleDocChanged]);
+
+  // The same for pinned cuts: a load that re-resolved a pinned scene's length writes it back to project.json.
+  const cutCacheRewrites = project?.cutCacheRewrites;
+  const cutCachesHandledRef = useRef<number[] | undefined>(undefined);
+  useEffect(() => {
+    const current = loadedProjectRef.current;
+    if (isAutoRun || exporting || historyBusyRef.current || !cutCacheRewrites) return;
+    if (cutCachesHandledRef.current === cutCacheRewrites) return;
+    if (current?.cutCacheRewrites !== cutCacheRewrites || !isEditableProjectId(current.id)) return;
+    cutCachesHandledRef.current = cutCacheRewrites;
+    void writeCutCaches(current, cutCacheRewrites);
+  }, [cutCacheRewrites, isAutoRun, exporting]);
 
   // A changed media library may change a follow-media scene's source length; re-probe and rewrite project.json. Keyed on the refresh counter alone since `project` here is just the snapshot the sync reads, and keying on it would loop. An agent's render (origin "agent") only refreshes: kb owns its re-point and durations, and this in-memory doc may be stale.
   const mediaRefreshRef = useRef(0);

@@ -589,7 +589,7 @@ def write_start_ms(project: Project, scene: str, info: Dict[str, Any], start: in
     """Shift the slot's scene-local video start through kb's hash-checked, guarded sidecar write."""
     repoint = need("repoint")
     res = repoint.set_start(project, scene, repoint.slot_ref(str(info.get("slot") or ""), info.get("targetId")), int(start))
-    return f"scenes/{res['scene']}.json {res['slot']} startMs {res['fromMs']} -> {res['toMs']}"
+    return "; ".join([f"scenes/{res['scene']}.json {res['slot']} startMs {res['fromMs']} -> {res['toMs']}"] + res.get("notes", []))
 
 
 def cmd_align(ctx: Any) -> int:

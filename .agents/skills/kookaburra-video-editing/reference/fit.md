@@ -75,7 +75,8 @@ stretch between anchors is fitted on its own, so every anchor lands within half 
 - Scene side first: when moving the slot's `startMs` (0 to 1500 ms) alone lands it, align writes
   that to the scene's sidecar and leaves the edit and its render untouched (no re-render). Not for
   follow-media scenes, and never into the outgoing transition. `--prefer edit` skips this,
-  `--prefer scene` insists on it. Retimed slots are refused, as in "Fit a scene".
+  `--prefer scene` insists on it. Retimed slots are refused, as in "Fit a scene". A start that
+  followed the music (an `at` beside `startMs`) stops following it, and the output says so.
 - Edit side: the stretch before the moment is fitted so it lands on the target. `--keep-length`
   also fits what follows so the total stays the same; otherwise the length changes by the shift.
 - After aligning, `./kb capture --scene S --at <target seconds>` and Read it: the touch should be on

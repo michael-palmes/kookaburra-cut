@@ -263,11 +263,14 @@ export type EditRepointSlot =
 
 const DEVICE_PLAYBACK_KEYS = ["inMs", "outMs", "speed", "loop", "posterMs"] as const;
 
-/** A device screen pointed at a render: the edit now owns the timing, so the source-timing keys and a negative `startMs` (a head trim) go, while a delay and `startOn` stay. */
+/** A device screen pointed at a render: the edit now owns the timing, so the source-timing keys and a negative `startMs` (a head trim, with any `at` it follows) go, while a delay and `startOn` stay. */
 function repointedDeviceMedia(media: DeviceMediaSpec, rel: string): DeviceMediaSpec {
   const next: DeviceMediaSpec = { ...media, src: rel, kind: "video" };
   for (const key of DEVICE_PLAYBACK_KEYS) delete next[key];
-  if (typeof next.startMs === "number" && next.startMs < 0) delete next.startMs;
+  if (typeof next.startMs === "number" && next.startMs < 0) {
+    delete next.startMs;
+    delete next.at;
+  }
   return next;
 }
 
@@ -295,6 +298,7 @@ export function applyEditRepoint(
     entry.kind = "video";
     const video = { ...entry.video };
     delete video.startMs;
+    delete video.at;
     entry.video = video;
     editSceneDocMedia(next, () => entries);
     return next;

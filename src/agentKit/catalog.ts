@@ -394,6 +394,11 @@ export const DEVICE_MEDIA_KEYS: Record<
       "Video: scene-time delay before playback, holding the first played frame; a negative value pre-rolls the clip on the scene clock.",
     type: "number",
   },
+  at: {
+    summary:
+      "Video: musical position the start follows (bar:9.3, cue:drop); startMs caches it in scene ms, and moving startMs drops it. Not with startOn.",
+    type: "string",
+  },
   fit: {
     summary: "Always cover: fills the screen and crops the overflow.",
     type: "string",

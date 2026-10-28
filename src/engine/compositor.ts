@@ -969,147 +969,160 @@ export function renderComposited(
   const overlayA = !hdrLane ? (overlays?.[tr.fromIndex] ?? null) : null;
   const overlayB = !hdrLane ? (overlays?.[tr.toIndex] ?? null) : null;
 
-  const sideDofA = dofUnion && cameras?.a?.dof ? cameras.a.dof : null;
-  if (planA && compA) {
-    const lightingA = lightingSampleForCompareSide(lighting, "a", "a");
-    const lightingB = lightingSampleForCompareSide(lighting, "a", "b");
-    if (cameras?.a) applyCameraPose(camera as PerspectiveCamera, cameras.a);
-    showOnly(tr.fromIndex);
-    if (planA.stateA) applyState(planA.stateA);
-    applyRelativeLights(camera as PerspectiveCamera, cameras?.a ?? null, lightingA);
-    applyFrameLighting(scene, lightingA);
-    renderCompareSide(
-      gl,
-      scene,
-      camera,
-      sideDofA,
-      tgtA,
-      size.x,
-      size.y,
-      dofUnion,
-      dofOnly,
-      hdrLane,
-    );
-    showOnly(tr.fromIndex, "b");
-    if (planA.stateB) applyState(planA.stateB);
-    applyRelativeLights(camera as PerspectiveCamera, cameras?.a ?? null, lightingB);
-    applyFrameLighting(scene, lightingB);
-    renderCompareSide(
-      gl,
-      scene,
-      camera,
-      sideDofA,
-      tgtB,
-      size.x,
-      size.y,
-      dofUnion,
-      dofOnly,
-      hdrLane,
-    );
-    st.mesh.material = compareMat;
-    setCompareUniforms(compareMat, planA, tgtA.texture, tgtB.texture, st.size.x / st.size.y);
-    gl.setRenderTarget(compA);
-    gl.render(st.quadScene, st.quadCamera);
-    const panelA = comparisonPanelFor(tr.fromIndex);
-    if (panelA) drawFramePanelOver(gl, scene, camera, hosts, persistent, panelA, compA);
-  } else {
-    showOnly(tr.fromIndex);
-    if (cameras?.a) applyCameraPose(camera as PerspectiveCamera, cameras.a);
-    if (states?.a) applyState(states.a);
-    // Target A resolves its own relative lights and its own sampled lighting: A and B use different cameras AND different scene-local times on a transition frame.
-    applyRelativeLights(camera as PerspectiveCamera, cameras?.a ?? null, lighting?.a);
-    applyFrameLighting(scene, lighting?.a);
-    if (overlayA) {
-      renderFramedScene(gl, scene, camera, st, overlayA, size.x, size.y, tgtA);
-      const panelA = panelFor(tr.fromIndex);
-      if (panelA) drawFramePanelOver(gl, scene, camera, hosts, persistent, panelA, tgtA);
-    } else if (hdrLane && dofUnion && cameras?.a?.dof) {
-      // Per-side dof: the side renders through the dof composer into its target, so a rack focus rides INTO the transition instead of releasing at the cut.
-      renderSideWithDof(gl, scene, camera, cameras.a.dof, tgtA, size.x, size.y, dofUnion);
-    } else if (dofOnly && dofUnion && cameras?.a?.dof && cameras.a.dof.blur > 0) {
-      // Dof-only lane: the side renders on the plain SDR contract into the scratch, then the dof chain writes the blurred side into the real target.
-      gl.setRenderTarget(dofSideScratch(gl, size.x, size.y, dofUnion));
-      gl.render(scene, camera);
-      renderDofOverTarget(gl, scene, camera, cameras.a.dof, dofUnion, tgtA, size.x, size.y);
+  const renderOutgoing = () => {
+    const sideDofA = dofUnion && cameras?.a?.dof ? cameras.a.dof : null;
+    if (planA && compA) {
+      const lightingA = lightingSampleForCompareSide(lighting, "a", "a");
+      const lightingB = lightingSampleForCompareSide(lighting, "a", "b");
+      if (cameras?.a) applyCameraPose(camera as PerspectiveCamera, cameras.a);
+      showOnly(tr.fromIndex);
+      if (planA.stateA) applyState(planA.stateA);
+      applyRelativeLights(camera as PerspectiveCamera, cameras?.a ?? null, lightingA);
+      applyFrameLighting(scene, lightingA);
+      renderCompareSide(
+        gl,
+        scene,
+        camera,
+        sideDofA,
+        tgtA,
+        size.x,
+        size.y,
+        dofUnion,
+        dofOnly,
+        hdrLane,
+      );
+      showOnly(tr.fromIndex, "b");
+      if (planA.stateB) applyState(planA.stateB);
+      applyRelativeLights(camera as PerspectiveCamera, cameras?.a ?? null, lightingB);
+      applyFrameLighting(scene, lightingB);
+      renderCompareSide(
+        gl,
+        scene,
+        camera,
+        sideDofA,
+        tgtB,
+        size.x,
+        size.y,
+        dofUnion,
+        dofOnly,
+        hdrLane,
+      );
+      st.mesh.material = compareMat;
+      setCompareUniforms(compareMat, planA, tgtA.texture, tgtB.texture, st.size.x / st.size.y);
+      gl.setRenderTarget(compA);
+      gl.render(st.quadScene, st.quadCamera);
+      const panelA = comparisonPanelFor(tr.fromIndex);
+      if (panelA) drawFramePanelOver(gl, scene, camera, hosts, persistent, panelA, compA);
     } else {
-      gl.setRenderTarget(tgtA);
-      gl.render(scene, camera);
+      showOnly(tr.fromIndex);
+      if (cameras?.a) applyCameraPose(camera as PerspectiveCamera, cameras.a);
+      if (states?.a) applyState(states.a);
+      // Target A resolves its own relative lights and its own sampled lighting: A and B use different cameras AND different scene-local times on a transition frame.
+      applyRelativeLights(camera as PerspectiveCamera, cameras?.a ?? null, lighting?.a);
+      applyFrameLighting(scene, lighting?.a);
+      if (overlayA) {
+        renderFramedScene(gl, scene, camera, st, overlayA, size.x, size.y, tgtA);
+        const panelA = panelFor(tr.fromIndex);
+        if (panelA) drawFramePanelOver(gl, scene, camera, hosts, persistent, panelA, tgtA);
+      } else if (hdrLane && dofUnion && cameras?.a?.dof) {
+        // Per-side dof: the side renders through the dof composer into its target, so a rack focus rides INTO the transition instead of releasing at the cut.
+        renderSideWithDof(gl, scene, camera, cameras.a.dof, tgtA, size.x, size.y, dofUnion);
+      } else if (dofOnly && dofUnion && cameras?.a?.dof && cameras.a.dof.blur > 0) {
+        // Dof-only lane: the side renders on the plain SDR contract into the scratch, then the dof chain writes the blurred side into the real target.
+        gl.setRenderTarget(dofSideScratch(gl, size.x, size.y, dofUnion));
+        gl.render(scene, camera);
+        renderDofOverTarget(gl, scene, camera, cameras.a.dof, dofUnion, tgtA, size.x, size.y);
+      } else {
+        gl.setRenderTarget(tgtA);
+        gl.render(scene, camera);
+      }
+      // Panel content on a scene with no overlay PLAN (the terminal block). Guarded on the raw plan, not `overlayA`, so a framed scene under the hdr lane keeps its no-panel fallback unchanged.
+      if (!(overlays?.[tr.fromIndex] ?? null)) {
+        const panelA = panelFor(tr.fromIndex);
+        if (panelA) drawFramePanelOver(gl, scene, camera, hosts, persistent, panelA, tgtA);
+      }
     }
-    // Panel content on a scene with no overlay PLAN (the terminal block). Guarded on the raw plan, not `overlayA`, so a framed scene under the hdr lane keeps its no-panel fallback unchanged.
-    if (!(overlays?.[tr.fromIndex] ?? null)) {
-      const panelA = panelFor(tr.fromIndex);
-      if (panelA) drawFramePanelOver(gl, scene, camera, hosts, persistent, panelA, tgtA);
-    }
-  }
+  };
 
-  const sideDofB = dofUnion && cameras?.b?.dof ? cameras.b.dof : null;
-  if (planB && compB) {
-    const lightingA = lightingSampleForCompareSide(lighting, "b", "a");
-    const lightingB = lightingSampleForCompareSide(lighting, "b", "b");
-    if (cameras?.b) applyCameraPose(camera as PerspectiveCamera, cameras.b);
-    showOnly(tr.toIndex);
-    if (planB.stateA) applyState(planB.stateA);
-    applyRelativeLights(camera as PerspectiveCamera, cameras?.b ?? null, lightingA);
-    applyFrameLighting(scene, lightingA);
-    renderCompareSide(
-      gl,
-      scene,
-      camera,
-      sideDofB,
-      tgtA,
-      size.x,
-      size.y,
-      dofUnion,
-      dofOnly,
-      hdrLane,
-    );
-    showOnly(tr.toIndex, "b");
-    if (planB.stateB) applyState(planB.stateB);
-    applyRelativeLights(camera as PerspectiveCamera, cameras?.b ?? null, lightingB);
-    applyFrameLighting(scene, lightingB);
-    renderCompareSide(
-      gl,
-      scene,
-      camera,
-      sideDofB,
-      tgtB,
-      size.x,
-      size.y,
-      dofUnion,
-      dofOnly,
-      hdrLane,
-    );
-    st.mesh.material = compareMat;
-    setCompareUniforms(compareMat, planB, tgtA.texture, tgtB.texture, st.size.x / st.size.y);
-    gl.setRenderTarget(compB);
-    gl.render(st.quadScene, st.quadCamera);
-    const panelB = comparisonPanelFor(tr.toIndex);
-    if (panelB) drawFramePanelOver(gl, scene, camera, hosts, persistent, panelB, compB);
-  } else {
-    showOnly(tr.toIndex);
-    if (cameras?.b) applyCameraPose(camera as PerspectiveCamera, cameras.b);
-    if (states?.b) applyState(states.b);
-    applyRelativeLights(camera as PerspectiveCamera, cameras?.b ?? null, lighting?.b);
-    applyFrameLighting(scene, lighting?.b);
-    if (overlayB) {
-      renderFramedScene(gl, scene, camera, st, overlayB, size.x, size.y, tgtB);
-      const panelB = panelFor(tr.toIndex);
-      if (panelB) drawFramePanelOver(gl, scene, camera, hosts, persistent, panelB, tgtB);
-    } else if (hdrLane && dofUnion && cameras?.b?.dof) {
-      renderSideWithDof(gl, scene, camera, cameras.b.dof, tgtB, size.x, size.y, dofUnion);
-    } else if (dofOnly && dofUnion && cameras?.b?.dof && cameras.b.dof.blur > 0) {
-      gl.setRenderTarget(dofSideScratch(gl, size.x, size.y, dofUnion));
-      gl.render(scene, camera);
-      renderDofOverTarget(gl, scene, camera, cameras.b.dof, dofUnion, tgtB, size.x, size.y);
+  const renderIncoming = () => {
+    const sideDofB = dofUnion && cameras?.b?.dof ? cameras.b.dof : null;
+    if (planB && compB) {
+      const lightingA = lightingSampleForCompareSide(lighting, "b", "a");
+      const lightingB = lightingSampleForCompareSide(lighting, "b", "b");
+      if (cameras?.b) applyCameraPose(camera as PerspectiveCamera, cameras.b);
+      showOnly(tr.toIndex);
+      if (planB.stateA) applyState(planB.stateA);
+      applyRelativeLights(camera as PerspectiveCamera, cameras?.b ?? null, lightingA);
+      applyFrameLighting(scene, lightingA);
+      renderCompareSide(
+        gl,
+        scene,
+        camera,
+        sideDofB,
+        tgtA,
+        size.x,
+        size.y,
+        dofUnion,
+        dofOnly,
+        hdrLane,
+      );
+      showOnly(tr.toIndex, "b");
+      if (planB.stateB) applyState(planB.stateB);
+      applyRelativeLights(camera as PerspectiveCamera, cameras?.b ?? null, lightingB);
+      applyFrameLighting(scene, lightingB);
+      renderCompareSide(
+        gl,
+        scene,
+        camera,
+        sideDofB,
+        tgtB,
+        size.x,
+        size.y,
+        dofUnion,
+        dofOnly,
+        hdrLane,
+      );
+      st.mesh.material = compareMat;
+      setCompareUniforms(compareMat, planB, tgtA.texture, tgtB.texture, st.size.x / st.size.y);
+      gl.setRenderTarget(compB);
+      gl.render(st.quadScene, st.quadCamera);
+      const panelB = comparisonPanelFor(tr.toIndex);
+      if (panelB) drawFramePanelOver(gl, scene, camera, hosts, persistent, panelB, compB);
     } else {
-      gl.setRenderTarget(tgtB);
-      gl.render(scene, camera);
+      showOnly(tr.toIndex);
+      if (cameras?.b) applyCameraPose(camera as PerspectiveCamera, cameras.b);
+      if (states?.b) applyState(states.b);
+      applyRelativeLights(camera as PerspectiveCamera, cameras?.b ?? null, lighting?.b);
+      applyFrameLighting(scene, lighting?.b);
+      if (overlayB) {
+        renderFramedScene(gl, scene, camera, st, overlayB, size.x, size.y, tgtB);
+        const panelB = panelFor(tr.toIndex);
+        if (panelB) drawFramePanelOver(gl, scene, camera, hosts, persistent, panelB, tgtB);
+      } else if (hdrLane && dofUnion && cameras?.b?.dof) {
+        renderSideWithDof(gl, scene, camera, cameras.b.dof, tgtB, size.x, size.y, dofUnion);
+      } else if (dofOnly && dofUnion && cameras?.b?.dof && cameras.b.dof.blur > 0) {
+        gl.setRenderTarget(dofSideScratch(gl, size.x, size.y, dofUnion));
+        gl.render(scene, camera);
+        renderDofOverTarget(gl, scene, camera, cameras.b.dof, dofUnion, tgtB, size.x, size.y);
+      } else {
+        gl.setRenderTarget(tgtB);
+        gl.render(scene, camera);
+      }
+      // The B-side twin of the A-side no-plan panel draw above.
+      if (!(overlays?.[tr.toIndex] ?? null)) {
+        const panelB = panelFor(tr.toIndex);
+        if (panelB) drawFramePanelOver(gl, scene, camera, hosts, persistent, panelB, tgtB);
+      }
     }
-    // The B-side twin of the A-side no-plan panel draw above.
-    if (!(overlays?.[tr.toIndex] ?? null)) {
-      const panelB = panelFor(tr.toIndex);
-      if (panelB) drawFramePanelOver(gl, scene, camera, hosts, persistent, panelB, tgtB);
-    }
+  };
+
+  // An incoming comparison composites its sides through tgtA and tgtB, so a plain outgoing scene renders after it or the comparison overwrites it.
+  if (planB && !planA) {
+    renderIncoming();
+    renderOutgoing();
+  } else {
+    renderOutgoing();
+    renderIncoming();
   }
 
   // The composite quad ignores `camera`; sets the dominant scene's pose here so both overlay branches below render the persistent layer with it, and the same for render state (which also feeds the dip-colour fallback in setCompositeUniforms below).
