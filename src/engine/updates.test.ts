@@ -17,6 +17,13 @@ describe("consentFromSettings", () => {
     expect(consentFromSettings(null)).toBe("undecided");
     expect(consentFromSettings(undefined)).toBe("undecided");
   });
+
+  it("reads off whatever is stored when a profile turns update checks off", () => {
+    expect(consentFromSettings(true, true)).toBe("off");
+    expect(consentFromSettings(null, true)).toBe("off");
+    expect(consentFromSettings(false, true)).toBe("off");
+    expect(consentFromSettings(true, false)).toBe("on");
+  });
 });
 
 describe("shouldAutoCheck", () => {

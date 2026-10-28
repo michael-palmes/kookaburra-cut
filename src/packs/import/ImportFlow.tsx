@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useCallback, useEffect, useState } from "react";
+import { plainError } from "../../engine/managed";
 import {
   applyImport,
   discardStagedPack,
@@ -82,7 +83,7 @@ export function ImportFlow({
         setStep({ name: "trust" });
       })
       .catch((e) => {
-        if (!cancelled) setStep({ name: "error", message: String(e) });
+        if (!cancelled) setStep({ name: "error", message: plainError(e) });
       });
     return () => {
       cancelled = true;

@@ -27,6 +27,8 @@ export interface CommandContext {
   hasWorkspaceRoot: boolean;
   playing: boolean;
   audioMuted: boolean;
+  /** False where a configuration profile turns Claude off: the command is gone, not greyed. */
+  claudeAllowed: boolean;
   /** The Claude launcher, or the legacy terminal rail when that is the chosen surface. */
   claudeOpen: boolean;
   /** Scene presets edit their one scene in place; every other editable project can gain scenes. */
@@ -213,7 +215,7 @@ export function buildCommands(ctx: CommandContext): Command[] {
       group: "View",
       keywords: ["claude", "code", "desktop", "app", "terminal", "rail", "panel", "ai", "chat"],
       hint: "⌥⌘E",
-      enabled: editor && ctx.editable,
+      enabled: editor && ctx.editable && ctx.claudeAllowed,
       run: a.toggleClaude,
     },
     ...(Object.keys(FORMATS) as AspectName[]).map<Command>((name) => ({
