@@ -9,6 +9,7 @@ name: Release
 on:
   push:
     tags: ["v*"]
+    branches: ["ci/release-pipeline"] # TEMPORARY: registers the workflow for the rehearsal; removed before merge
   workflow_dispatch:
     inputs:
       dry_run:
