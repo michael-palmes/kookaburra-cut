@@ -1829,6 +1829,15 @@ Verify ×2 here (the 2026-10-23 note):
 | `ws:mask-fx-spike` (an image-mask seam between two bloom scenes on the effects lane; machine-local, never gated) | `6555ff7f…` | — | — | — | — | — | — | — | — |
 | `ws:motion-toolkit-spike` (the toolkit primitives: shapes, device anchors, text metrics and presets, stamps, dashes, mosaic, taps; machine-local, gated when motion or shape primitives change) | `06b79ae2…` | `fa64bced…` | — | — | — | — | — | — | — |
 
+> **2026-10-29 (v0.21.1, the first CI release): packaged parity EQUAL on both
+> anchors** (`showcase-tour` `fe6b6c20…`, `ws:launch-2026` `cc23761e…`) for the
+> notarised DMG built, signed and verified on GitHub Actions. The 0.21.0
+> candidate MOVED both and was never published: its sidecar came from a shallow
+> x264 fetch and stamped a bare `x264 - core 165` SEI (see "Packaged-app
+> parity"); the fix pins the string and refuses any other. A branch dry run's
+> ad-hoc app proves only `ws:launch-2026`, since it fetches no licensed models
+> and so renders `showcase-tour` with the fallback device.
+
 > **2026-10-28 (the floor follows the posed device: a deliberate rebase of three
 > fixtures):** floor shadows and `ground` now stand a device's lowest posed corner on
 > the floor (`devicePoseFloorShift`, `docs/foldables.md`), so a device tilted or rolled
