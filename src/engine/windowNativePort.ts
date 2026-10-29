@@ -1,7 +1,7 @@
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { fsUrl, pendingConformMeta } from "./media";
-import { assetFileUrl, nativeProjectSlug, resolveAssetPath } from "./project";
+import { nativeProjectSlug, resolveAssetPath } from "./project";
 import {
   type ConformJobPayload,
   type ConformProgressPayload,
@@ -34,10 +34,6 @@ function srcAbs(key: string): string {
 function frameFile(index: number, tier: "full" | "preview"): string {
   const stem = `frame-${String(index).padStart(5, "0")}`;
   return tier === "preview" ? `preview/${stem}.jpg` : `${stem}.png`;
-}
-
-function emojiRasterFile(key: string): string {
-  return `assets/.emoji-cache/${key}`;
 }
 
 export const windowNativePort: NativePort = {
@@ -106,10 +102,12 @@ export const windowNativePort: NativePort = {
     return invoke<ArrayBuffer>("read_media_thumb", { path: meta.posterPath });
   },
   async emojiRead(projectId, file) {
+    // Through a command, not an asset URL: hidden folders are never served, and the bytes are the same write-once PNG.
     try {
-      const response = await fetch(assetFileUrl(projectId, emojiRasterFile(file)));
-      if (!response.ok) return null;
-      return await response.arrayBuffer();
+      return await invoke<ArrayBuffer>("read_emoji_raster", {
+        slug: nativeProjectSlug(projectId),
+        key: file.replace(/\.png$/, ""),
+      });
     } catch {
       return null;
     }

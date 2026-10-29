@@ -406,6 +406,8 @@ pub(crate) fn load_doc_bytes(
 
 /// Open the editor window for `(slug, name)`, retargeting and focusing it if it already exists, otherwise creating it; the `editor` label picks up `capabilities/editor.json` at runtime, so Rust-side creation needs no create-window capability on the main window.
 fn open_editor_window(app: &AppHandle, target: &EditTarget) -> Result<(), String> {
+    // The editor window never loads a manifest, so its asset reach is set here, on every target.
+    crate::asset_reach::open_project(app, "editor", Path::new(&target.path));
     if let Some(win) = app.get_webview_window("editor") {
         let _ = win.set_title(&format!("Kookaburra Cut — {}", target.name));
         let _ = win.emit("kookaburra://editor-target", target.clone());

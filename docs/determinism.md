@@ -1390,7 +1390,7 @@ stays deterministic):
   and the catalog preload throws if a device glb parses with zero textured
   materials.
 - **One file-URL seam.** Fonts, media, editor and workspace images all resolve
-  through the Tauri asset protocol in dev and packaged builds alike; workspace
+  through the app's `asset://` handler in dev and packaged builds alike; workspace
   scenes compile through the same esbuild loader everywhere: every dev verify
   exercises the shipping loader.
 - **Boot failures can't be silent** (`engine/bootTrap.ts`): any pre-render crash

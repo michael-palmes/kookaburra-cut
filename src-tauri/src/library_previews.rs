@@ -2,7 +2,7 @@ use crate::workspace::{self, ProjectScope, SettingsState};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::{AppHandle, Emitter, State};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -116,9 +116,7 @@ pub(crate) fn target(
         return Err("The library manifest is missing.".into());
     }
     for path in checked_preview_images(&dir)? {
-        app.asset_protocol_scope()
-            .allow_file(path)
-            .map_err(|e| format!("Allowing library preview image: {e}"))?;
+        crate::asset_reach::allow_file(app, &path);
     }
     Ok(dir)
 }

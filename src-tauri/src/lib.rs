@@ -3,6 +3,7 @@
 #[cfg(test)]
 mod acl;
 mod asset_meta;
+mod asset_reach;
 mod brands;
 mod bridge;
 mod bridge_export;
@@ -1384,6 +1385,7 @@ macro_rules! kookaburra_handler {
             workspace::list_projects,
             workspace::create_project,
             workspace::read_project_manifest,
+            workspace::release_project,
             workspace::read_scene_source,
             workspace::project_fingerprint,
             live_edits::project_file_stamps,
@@ -1414,6 +1416,7 @@ macro_rules! kookaburra_handler {
             workspace::list_scene_thumbs,
             workspace::write_scene_thumb,
             workspace::write_emoji_raster,
+            workspace::read_emoji_raster,
             scene_doc::read_scene_doc,
             scene_doc::read_scene_doc_entry,
             scene_doc::write_scene_doc,
@@ -1634,6 +1637,7 @@ pub fn run() {
     }
     let builder = builder
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .manage(asset_reach::AssetReach::default())
         .manage(ExportState::default())
         .manage(ExportHistory::default())
         .manage(FlashState::default())
@@ -1660,6 +1664,12 @@ pub fn run() {
         .manage(theme_editor_win::ThemeEditorState::default())
         .manage(pack::commands::PackState::default())
         .manage(website::WebsiteState::default())
+        .register_asynchronous_uri_scheme_protocol("asset", asset_reach::handler)
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::Destroyed = event {
+                asset_reach::close_project(window.app_handle(), window.label());
+            }
+        })
         .on_page_load(|webview, payload| {
             if webview.label() == "main"
                 && payload.event() == tauri::webview::PageLoadEvent::Started
@@ -1694,6 +1704,7 @@ pub fn run() {
                 privacy::seal_at_startup(app_data, sinks);
             }
             managed::log_at_boot();
+            asset_reach::init(app.handle());
             bridge::init(app.handle());
             bridge::spawn_heartbeat(app.handle().clone());
             export_health::spawn_sampler(app.handle().clone());
