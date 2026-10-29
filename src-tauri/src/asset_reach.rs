@@ -23,6 +23,8 @@ const SHARED_DIRS: [&str; 8] = [
     crate::global_screenshots::SCREENSHOTS_DIR,
 ];
 
+static OPEN_FILES: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(48);
+
 #[derive(Default)]
 struct Reach {
     caches: Option<PathBuf>,
@@ -59,11 +61,7 @@ impl Reach {
             return Ok(real);
         }
         let project = self.projects.get(label);
-        let roots = self
-            .caches
-            .iter()
-            .chain(self.shared.iter())
-            .chain(project);
+        let roots = self.caches.iter().chain(self.shared.iter()).chain(project);
         for root in roots {
             let Ok(below) = real.strip_prefix(root) else {
                 continue;
@@ -213,6 +211,8 @@ async fn get_response(
         }
     };
 
+    // A scene can ask for hundreds of images at once and the process has 256 descriptors: beyond this many open files, requests wait instead of failing with EMFILE.
+    let _slot = OPEN_FILES.acquire().await?;
     let mut file = match File::open(&file_path).await {
         Ok(file) => file,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
