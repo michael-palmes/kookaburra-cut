@@ -77,7 +77,9 @@ project as `NOTES.md` for you to read, not for the agent to obey.
   small git repository holding its scenes and settings only: footage and
   exports are never kept in it, so a removed asset is gone, and a project
   made before this rule has them removed from its history the next time it
-  opens. Your projects are backed up like any other folder.
+  opens, unless you connected that repository to a remote or started it
+  yourself, in which case it is left as it is. Your projects are backed up
+  like any other folder.
 - **Caches** under the app's Application Support folder: decoded video frames
   (the clip cache, with a size limit), media previews and thumbnails. Settings ▸
   Storage shows their size and clears them; they are rebuilt as you work, and

@@ -133,7 +133,9 @@ are backed up like any document. `$APPDATA` is
   renders never enter history and a trashed asset is gone; a project from
   before this rule has them rewritten out of its history, reflog expired and
   pruned, on its next open, off the load path, with one toast and one
-  `[history]` log line: `src-tauri/src/history.rs`), `CLAUDE.md`,
+  `[history]` log line, only when the app made the repository: one with a
+  remote, a root commit by someone else or a `.git` file is left as it is and
+  logged: `src-tauri/src/history.rs`), `CLAUDE.md`,
   `NOTES.md`, `BRAND.md`, the stamped `.claude/` and `./kb`, and `.kb/` (the
   agent's lock, leases and scratch). Workspace-level: `brands/`, `themes/`,
   `fonts/`, `gradients/`, `export-presets/`, `presets/`, `templates/`,

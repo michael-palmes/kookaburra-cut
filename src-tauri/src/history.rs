@@ -19,6 +19,7 @@ static INDEX_SEQ: AtomicU64 = AtomicU64::new(0);
 fn exclude_line(name: &str) -> String {
     format!("/{name}/")
 }
+const APP_EMAIL: &str = "kookaburra@localhost";
 const IDENTITY: [&str; 4] = [
     "-c",
     "user.name=Kookaburra Cut",
@@ -145,9 +146,33 @@ pub(crate) struct Purged {
     pub freed_bytes: u64,
 }
 
+/// Only a repository the app made is rewritten: one with a remote, a root commit by someone else, or a `.git` file (a
+/// worktree or submodule) has history people may have pushed or shared, so its hashes stay as they are.
+fn owned_by_app(dir: &Path) -> Result<(), String> {
+    if !dir.join(".git").is_dir() {
+        return Err("the folder is a worktree or submodule".into());
+    }
+    let remotes = git(dir, &["remote"])?;
+    if let Some(remote) = remotes.lines().next() {
+        return Err(format!("the repository has a remote ({remote})"));
+    }
+    let roots = git(dir, &["rev-list", "--max-parents=0", "--all"])?;
+    for root in roots.lines() {
+        let email = git(dir, &["show", "-s", "--format=%ae", root])?;
+        if email.trim() != APP_EMAIL {
+            return Err(format!(
+                "the first commit is by {}, not the app",
+                email.trim()
+            ));
+        }
+    }
+    Ok(())
+}
+
 /// Rewrites every branch and lightweight tag without the excluded folders (authors, dates and messages kept), untracks them in the
 /// index, expires the reflog and prunes. A ref another writer moved meanwhile is left alone and the next open tries again.
 pub(crate) fn purge_excluded(dir: &Path) -> Result<Purged, String> {
+    owned_by_app(dir)?;
     let before = crate::clip_cache::dir_bytes(&dir.join(".git"));
     ensure_excludes(dir).map_err(|e| format!("writing .git/info/exclude: {e}"))?;
     let refs = commit_refs(dir)?;
@@ -350,6 +375,47 @@ mod tests {
         std::fs::write(dir.join("assets/later.png"), b"x").unwrap();
         git(&dir, &["add", "-A"]).unwrap();
         assert_eq!(tracked(&dir).len(), 3, "add -A skips the excluded folders");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_repository_the_app_did_not_make_is_left_alone() {
+        let dir = temp("foreign");
+        git(&dir, &["init", "-q"]).unwrap();
+        git(&dir, &["add", "-A"]).unwrap();
+        git(
+            &dir,
+            &[
+                "-c",
+                "user.name=Someone",
+                "-c",
+                "user.email=someone@example.com",
+                "commit",
+                "-q",
+                "--no-verify",
+                "-m",
+                "their own first commit",
+            ],
+        )
+        .unwrap();
+        assert!(holds_excluded(&dir));
+        let refused = purge_excluded(&dir).unwrap_err();
+        assert!(refused.contains("someone@example.com"), "{refused}");
+        assert!(tracked(&dir).contains(&"assets/shot.png".to_owned()));
+
+        let dir = temp("remote");
+        init_repo(&dir, "chore: create project").unwrap();
+        git(&dir, &["add", "-f", "assets/shot.png"]).unwrap();
+        let mut args: Vec<&str> = IDENTITY.to_vec();
+        args.extend(["commit", "-q", "--no-verify", "-m", "footage"]);
+        git(&dir, &args).unwrap();
+        git(&dir, &["remote", "add", "origin", "/Users/x/shared.git"]).unwrap();
+        assert!(holds_excluded(&dir));
+        let head = git(&dir, &["rev-parse", "HEAD"]).unwrap();
+        let refused = purge_excluded(&dir).unwrap_err();
+        assert!(refused.contains("remote (origin)"), "{refused}");
+        assert_eq!(git(&dir, &["rev-parse", "HEAD"]).unwrap(), head);
+        assert!(tracked(&dir).contains(&"assets/shot.png".to_owned()));
         let _ = std::fs::remove_dir_all(&dir);
     }
 
