@@ -74,8 +74,15 @@ frame bodies and the scene trees. The split, and why it is drawn where it is:
   worker names clip sources by project id and relative path and never computes
   a path. Every message from the worker is data: a scene can post anything,
   so the window acts only on what the protocol names and fails a worker that
-  reports a fatal error closed (every pending request rejects, `ready`
-  rejects, the hidden render window poisons itself so Rust recycles it).
+  reports a fatal error closed (every waiting request rejects, `ready`
+  rejects, the hidden render window poisons itself so Rust recycles it). A
+  worker that misses its 90 s ready window fails the same way, but stays
+  recoverable: a ready that arrives late (the main thread sat behind a macOS
+  permission prompt) lifts the failure and the editor reloads the project,
+  and the editor's Retry bumps the `StageView` attempt, which terminates the
+  worker and mounts a fresh canvas and worker with a fresh window, since a
+  transferred canvas cannot be transferred again. `StageHandle.boot()` is the
+  current state; `ready` settles once.
 - **Requests that touch the loaded project run in order.** The server answers
   sizing, compiles, hit tests and the census at once, but queues `loadProject`,
   the barriers, exports, stills, snapshots and the probe one after another, so
