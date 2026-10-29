@@ -1339,6 +1339,15 @@ stays deterministic):
   Same sources ⇒ same bytes: proven by dev/packaged hash parity. Note: the dev
   `pnpm setup:ffmpeg` copy OVERWRITES the release sidecar; rerun
   `pnpm setup:ffmpeg:release` after.
+- **x264's version string is export bytes.** libx264 stamps
+  `x264 - core 165 r3222 b35605a` into every H.264 stream's SEI, and x264's
+  `version.sh` derives it from the git history at configure time. A shallow
+  fetch built a sidecar that stamped `x264 - core 165`, and the 0.21.0 candidate
+  MOVED both anchors (2026-10-29): a test encode from each sidecar differed by
+  exactly those 14 bytes with identical decoded frames, and the dev renderer
+  with the CI sidecar reproduced the packaged hash.
+  The build script fetches the full history, pins the string (`X264_SEI`) and
+  refuses a sidecar that stamps anything else.
 - **Editor zoom guards are per ffmpeg build.** `cargo test --manifest-path
   src-tauri/Cargo.toml --lib zoom_frames_match -- --ignored` pins the zoom
   stage's frame counter (`in-1`) and its bytes on both decode lanes for whichever

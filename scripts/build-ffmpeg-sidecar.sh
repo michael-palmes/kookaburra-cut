@@ -26,12 +26,14 @@ FFMPEG_SHA256="b072aed6871998cce9b36e7774033105ca29e33632be5b6347f3206898e0756a"
 # x264 has no releases; Homebrew's r3222 is this commit.
 X264_COMMIT="b35605ace3ddf7c1a5d67a2eb553f034aef41d55"
 X264_URL="https://code.videolan.org/videolan/x264.git"
+# libx264 stamps this into every H.264 stream's SEI, so it is part of the export bytes.
+X264_SEI="x264 - core 165 r3222 b35605a"
 X265_VERSION="4.3"
 X265_SHA256="83c53e4c8bbb8f1e33ed59e10a7d621d1d7801ca853910c3eb41f038b8ffb121"
 
 if [[ "${1:-}" == "--print-pins" ]]; then
-  printf 'FFMPEG_VERSION=%s\nFFMPEG_SHA256=%s\nX264_COMMIT=%s\nX265_VERSION=%s\nX265_SHA256=%s\n' \
-    "$FFMPEG_VERSION" "$FFMPEG_SHA256" "$X264_COMMIT" "$X265_VERSION" "$X265_SHA256"
+  printf 'FFMPEG_VERSION=%s\nFFMPEG_SHA256=%s\nX264_COMMIT=%s\nX264_SEI=%s\nX265_VERSION=%s\nX265_SHA256=%s\n' \
+    "$FFMPEG_VERSION" "$FFMPEG_SHA256" "$X264_COMMIT" "$X264_SEI" "$X265_VERSION" "$X265_SHA256"
   exit 0
 fi
 
@@ -63,8 +65,10 @@ if [[ "$LICENSE" == "gpl" ]]; then
   done
 
   echo "[sidecar] fetching x264 at ${X264_COMMIT:0:12}…"
+  # Full history and origin/master: x264's version.sh derives X264_SEI from both.
   git init -q "$WORK/x264"
-  git -C "$WORK/x264" fetch -q --depth 1 "$X264_URL" "$X264_COMMIT"
+  git -C "$WORK/x264" remote add origin "$X264_URL"
+  git -C "$WORK/x264" fetch -q origin master "$X264_COMMIT"
   git -C "$WORK/x264" -c advice.detachedHead=false checkout -q "$X264_COMMIT"
   [[ "$(git -C "$WORK/x264" rev-parse HEAD)" == "$X264_COMMIT" ]] || die "x264 checkout is not $X264_COMMIT"
   echo "[sidecar] building x264…"
@@ -143,6 +147,14 @@ for bin in ffmpeg ffprobe; do
     die "$bin has non-system dynamic dependencies (above), so it is not self-contained."
   fi
 done
+
+# SEI gate: a sidecar stamping anything but the pinned x264 string moves every export hash.
+if [[ "$LICENSE" == "gpl" ]]; then
+  ./ffmpeg -y -hide_banner -loglevel error -f lavfi -i color=black:s=64x64:r=30:d=0.1 \
+    -c:v libx264 -f h264 "$WORK/sei.h264"
+  sei="$(strings "$WORK/sei.h264" | grep -o 'x264 - core [^-]*' | sed -n '1s/ *$//p' || true)"
+  [[ "$sei" == "$X264_SEI" ]] || die "libx264 stamps '$sei' into H.264 streams, pinned '$X264_SEI'."
+fi
 
 PROBE_DEST="$(dirname "$DEST")/ffprobe-$TRIPLE"
 mkdir -p "$(dirname "$DEST")"
