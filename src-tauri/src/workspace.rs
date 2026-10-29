@@ -251,7 +251,11 @@ fn update_settings_at<T>(
     };
     let out = edit(&mut settings);
     let text = serde_json::to_string_pretty(&settings).map_err(|e| e.to_string())?;
+    if let Some(dir) = path.parent() {
+        crate::privacy::private_dir(dir).map_err(|e| e.to_string())?;
+    }
     crate::scene_doc::atomic_write_text(path, &text)?;
+    crate::privacy::private_file(path).map_err(|e| e.to_string())?;
     *guard = Some(settings);
     Ok(out)
 }
@@ -1294,9 +1298,9 @@ fn duplicate_skips(name: &std::ffi::OsStr) -> bool {
     matches!(name.to_str(), Some("exports" | ".kookaburra" | ".kb"))
 }
 
-/// Move a project to the TRASH, never `rm -rf`, so Finder's Put Back works; a matching `last_project` is cleared so the next boot lands on the welcome screen.
+/// Move a project to the TRASH, never `rm -rf`, so Finder's Put Back works; a matching `last_project` is cleared so the next boot lands on the welcome screen. The decoded frames and previews of its footage leave the caches with it (a project put back decodes again).
 #[tauri::command]
-pub fn delete_project(
+pub async fn delete_project(
     app: AppHandle,
     state: State<'_, SettingsState>,
     slug: String,
@@ -1307,6 +1311,14 @@ pub fn delete_project(
     if !dir.join(MANIFEST_FILENAME).is_file() {
         return Err(format!("no project named \"{slug}\""));
     }
+    // Content hashes are read before the folder moves: the caches are keyed by them and the Trash is another path.
+    let sources = {
+        let app = app.clone();
+        let dir = dir.clone();
+        tauri::async_runtime::spawn_blocking(move || crate::media::project_media_sources(&app, &dir))
+            .await
+            .map_err(|e| e.to_string())?
+    };
     trash_path(&dir).map_err(|e| format!("couldn't move the project to the Trash: {e}"))?;
     // The trust grant dies with the project, so a later same-slug project starts untrusted.
     update_settings(&app, &state, |settings| {
@@ -1314,7 +1326,9 @@ pub fn delete_project(
         if settings.last_project.as_deref() == Some(&format!("ws:{slug}")) {
             settings.last_project = None;
         }
-    })
+    })?;
+    crate::media::forget_media(&app, &root, &dir, sources);
+    Ok(())
 }
 
 /// Remember the export modal's selection, written on each successful export, restored per project with the global pick as fallback.

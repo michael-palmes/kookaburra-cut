@@ -44,6 +44,7 @@ mod png_decode;
 mod packs_win;
 mod present;
 mod preset_posters;
+mod privacy;
 mod pty;
 mod render_win;
 mod scene_doc;
@@ -70,7 +71,6 @@ use sha2::{Digest, Sha256};
 use tauri::ipc::Channel;
 use tauri::{AppHandle, Manager, State};
 use tauri_plugin_shell::process::{CommandChild, CommandEvent};
-use tauri_plugin_shell::ShellExt;
 use tokio::sync::oneshot;
 
 use encode::{
@@ -484,10 +484,10 @@ fn start_export(
 
     // Validate the soundtrack up front so a bad path fails the export loudly, not as a cryptic ffmpeg exit late in the run.
     if let Some(audio) = &options.audio {
-        let p = std::path::Path::new(&audio.file);
-        if !p.is_absolute() || !p.is_file() {
-            return Err(format!("audio file not found: {}", audio.file));
-        }
+        media::confine_soundtrack(&app, &settings, &audio.file)?;
+    }
+    if let Some(spec) = &options.encode {
+        spec.validate()?;
     }
     let audio_snapshot = match options.audio.as_mut() {
         Some(audio) => {
@@ -518,7 +518,7 @@ fn start_export(
                 .join("export-mezz");
             // Sweep leftovers from any crashed run, then guard the disk with the raw-frame ceiling (FFV1 stays under raw) plus a 2 GB margin; this is the one check that BLOCKS, since running out mid-encode corrupts the export.
             let _ = std::fs::remove_dir_all(&mezz_dir);
-            std::fs::create_dir_all(&mezz_dir).map_err(|e| e.to_string())?;
+            privacy::private_dir(&mezz_dir).map_err(|e| e.to_string())?;
             let (w, h) = spec.out_dims(options.width, options.height);
             let frames = spec.out_frames(options.total_frames, options.fps) as u64;
             let bytes_per_frame = (w as u64) * (h as u64) * if spec.ten_bit { 3 } else { 2 };
@@ -547,10 +547,7 @@ fn start_export(
     };
 
     // Tauri places the sidecar next to the executable under its basename (the `bin/` prefix from `externalBin` and the target-triple suffix are both stripped), so the runtime name is just "ffmpeg".
-    let (mut rx, child) = app
-        .shell()
-        .sidecar("ffmpeg")
-        .map_err(|e| format!("ffmpeg sidecar not found: {e}"))?
+    let (mut rx, child) = tools::sidecar(&app, "ffmpeg")?
         .args(args)
         .spawn()
         .map_err(|e| format!("failed to start ffmpeg sidecar: {e}"))?;
@@ -889,10 +886,7 @@ async fn run_ffmpeg_to_completion(
     args: Vec<String>,
     on_spawn: impl FnOnce(u32),
 ) -> Result<(), String> {
-    let (mut rx, child) = app
-        .shell()
-        .sidecar("ffmpeg")
-        .map_err(|e| format!("ffmpeg sidecar not found: {e}"))?
+    let (mut rx, child) = tools::sidecar(app, "ffmpeg")?
         .args(args)
         .spawn()
         .map_err(|e| format!("failed to start ffmpeg sidecar: {e}"))?;
@@ -1106,7 +1100,7 @@ pub(crate) fn autorun_result_dir(app: &AppHandle) -> Result<PathBuf, String> {
             .join(workspace::WORKSPACE_DIR_NAME)
             .join("_autorun"),
     };
-    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    privacy::private_dir(&dir).map_err(|e| e.to_string())?;
     Ok(dir)
 }
 
@@ -1686,6 +1680,18 @@ pub fn run() {
                 if let Some(main) = app.get_webview_window("main") {
                     park_background_window(&main);
                 }
+            }
+            // Confidential work on disk is the user's alone: the app's own folders go owner-only before anything writes.
+            if let Ok(app_data) = app.path().app_data_dir() {
+                let sinks = app
+                    .path()
+                    .home_dir()
+                    .map(|home| {
+                        let workspace = home.join(workspace::WORKSPACE_DIR_NAME);
+                        vec![workspace.join("_bridge"), workspace.join("_autorun")]
+                    })
+                    .unwrap_or_default();
+                privacy::seal_at_startup(app_data, sinks);
             }
             managed::log_at_boot();
             bridge::init(app.handle());

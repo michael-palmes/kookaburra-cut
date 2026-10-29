@@ -1,5 +1,4 @@
 import { invoke } from "@tauri-apps/api/core";
-import { ClipboardAddon } from "@xterm/addon-clipboard";
 import { FitAddon } from "@xterm/addon-fit";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { type ITheme, Terminal } from "@xterm/xterm";
@@ -24,6 +23,7 @@ import {
   setLiveSession,
   spawnTerminalSession,
 } from "../engine/terminal";
+import { writeOnlyClipboardAddon } from "../engine/terminalClipboard";
 import { type SceneWizardRequest, useUiStore } from "../store/uiStore";
 import type { WizardKind } from "./HelperWizards";
 import { railIcon } from "./libraryIcons";
@@ -134,7 +134,7 @@ export function TerminalPanel({
         term.unicode.activeVersion = "11";
         fit = new FitAddon();
         term.loadAddon(fit);
-        term.loadAddon(new ClipboardAddon());
+        term.loadAddon(writeOnlyClipboardAddon());
         term.open(containerRef.current);
       }
       termRef.current = term;

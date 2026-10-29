@@ -94,6 +94,10 @@ export function planPack(selection: PackSelection): Promise<PackPlan> {
 export interface PackMetaInput {
   name: string;
   description?: string;
+  /** The publisher name for an install with no saved profile; ignored once one exists. */
+  publisherName?: string;
+  /** Save `publisherName` as the profile, so the window asks once. */
+  rememberPublisher?: boolean;
 }
 
 /** The app's first Save dialog. The path is user-chosen through a native OS surface, and Rust re-validates it before writing. */
@@ -170,13 +174,15 @@ export interface PublisherKey {
   /** The same id in groups of four, for reading out loud. */
   keyIdDisplay: string;
   publicKey: string;
+  /** The login Keychain, or the owner-only file where the Keychain could not answer. */
+  storedIn: "keychain" | "file";
 }
 
 /** `get_publisher_profile` as Rust serialises it (`PublisherProfileView` in pack/publisher.rs): the saved profile rides nested under `profile`, absent until the pane has been saved once. */
 export interface PublisherProfileView {
   profile: PublisherProfile | null;
-  /** What a pack signed right now would carry (the macOS full name when nothing is set). */
-  effectiveName: string;
+  /** What a pack signed right now would carry; null until a profile is saved, when the packs window asks for a name. */
+  effectiveName: string | null;
   organisation: string | null;
   website: string | null;
   device: string;

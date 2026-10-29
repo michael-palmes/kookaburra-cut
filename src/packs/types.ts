@@ -160,7 +160,9 @@ export type SignatureVerdict = "valid" | "invalid" | "missing";
 export type PublisherVerdict =
   | { kind: "firstTime" }
   | { kind: "known"; lastPack: string; firstSeen: string; packCount: number }
-  | { kind: "nameChanged"; previous: string };
+  | { kind: "nameChanged"; previous: string }
+  /** An unknown key declaring a name this Mac already knows under another key. */
+  | { kind: "keyChanged"; knownAs: string; previousKeyId: string; lastPack: string };
 
 export type CompatibilityVerdict = { kind: "ok" } | { kind: "needsNewerApp"; min: string };
 

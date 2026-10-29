@@ -1474,6 +1474,9 @@ pub(crate) fn build_render_args_for(
 
     let mut args: Vec<String> = vec![
         "-y".into(),
+        "-nostdin".into(),
+        "-protocol_whitelist".into(),
+        "file,pipe".into(),
         "-loglevel".into(),
         "error".into(),
         "-progress".into(),
@@ -1769,8 +1772,8 @@ fn run_lane(
     on: &mut dyn FnMut(RenderEvent),
     cancel: &AtomicBool,
 ) -> Result<(), LaneFailure> {
-    use std::process::{Command, Stdio};
-    let mut child = Command::new(ffmpeg)
+    use std::process::Stdio;
+    let mut child = crate::tools::sidecar_command(ffmpeg)
         .args(args)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
@@ -1826,8 +1829,9 @@ fn run_lane(
 
 /// The first video stream's packet count (one per frame), demuxed without decoding.
 pub(crate) fn count_video_packets(ffprobe: &Path, file: &Path) -> Result<u64, String> {
-    let out = std::process::Command::new(ffprobe)
-        .args(["-v", "error", "-select_streams", "v:0", "-count_packets"])
+    let out = crate::tools::sidecar_command(ffprobe)
+        .args(["-v", "error", "-protocol_whitelist", "file,pipe"])
+        .args(["-select_streams", "v:0", "-count_packets"])
         .args(["-show_entries", "stream=nb_read_packets", "-of", "csv=p=0"])
         .arg(file)
         .stdin(std::process::Stdio::null())
@@ -2540,6 +2544,9 @@ mod tests {
         assert_eq!(total, 60);
         let expected: Vec<String> = [
             "-y",
+            "-nostdin",
+            "-protocol_whitelist",
+            "file,pipe",
             "-loglevel",
             "error",
             "-progress",

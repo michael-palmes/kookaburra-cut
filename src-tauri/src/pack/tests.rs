@@ -506,6 +506,56 @@ fn assert_refused(tag: &str, fixture: Fixture, expected: &str) {
     );
 }
 
+// Per-kind ceilings and the publisher name check.
+
+/// A font whose header claims more than a font may be is refused before consent, by kind, with the font named.
+#[test]
+fn refuses_a_font_over_its_kind_cap() {
+    let over = (super::limits::MAX_FONT_BYTES + 1) as u32;
+    let fixture = Fixture {
+        entries: vec![Entry::new("payload/fonts/Acme-Bold.ttf", b"not really a font")],
+        ..Fixture::valid()
+    }
+    .declared_sizes(over);
+    let source = TempDir::new("font-cap");
+    let archive = fixture.build(source.path());
+    let error = match inspect(&archive) {
+        Ok(_) => panic!("an oversized font should be refused"),
+        Err(error) => error,
+    };
+    assert_eq!(error.variant(), "kindTooLarge");
+    assert_eq!(error.path(), Some("payload/fonts/Acme-Bold.ttf"));
+    assert!(error.user_message().contains("font"), "{}", error.user_message());
+}
+
+/// A pack from a known name under a key this Mac has never seen is the changed-key verdict, never first time.
+#[test]
+fn a_known_name_under_a_new_key_reads_as_changed() {
+    use crate::workspace::KnownPublisher;
+    use std::collections::HashMap;
+    let theirs = publisher(PUBLISHER_SEED);
+    let mut known: HashMap<String, KnownPublisher> = HashMap::new();
+    super::publisher::record_import(
+        &mut known,
+        &publisher(IMPOSTER_SEED),
+        "Starter Kit",
+        "2026-07-01T00:00:00Z",
+    );
+    assert_eq!(known.len(), 1);
+    match super::publisher::publisher_verdict(&known, &theirs) {
+        super::publisher::PublisherVerdict::KeyChanged {
+            known_as,
+            previous_key_id,
+            last_pack,
+        } => {
+            assert_eq!(known_as, "Test Publisher");
+            assert_eq!(previous_key_id, publisher(IMPOSTER_SEED).key_id);
+            assert_eq!(last_pack, "Starter Kit");
+        }
+        other => panic!("expected a changed key, got {other:?}"),
+    }
+}
+
 // Happy path.
 
 /// One file per payload subtree, so the round trip covers every kind a pack can carry.

@@ -78,9 +78,12 @@ project as `NOTES.md` for you to read, not for the agent to obey.
   delete the project.
 - **Caches** under the app's Application Support folder: decoded video frames
   (the clip cache, with a size limit), media previews and thumbnails. Settings ▸
-  Storage shows their size and clears them; they are rebuilt as you work.
+  Storage shows their size and clears them; they are rebuilt as you work, and
+  deleting a project or an asset clears its own frames and previews.
 - **Settings**: your preferences, which publishers' keys you have imported from,
-  which projects you allowed to run, and the key that signs your own packs.
+  which projects you allowed to run. The key that signs your own packs lives
+  in your login Keychain and never synchronises; macOS may ask once to let the
+  app use it.
 - **Website data**: cookies and site storage for websites you allowed, in a
   profile separate from Safari. Settings ▸ Website data clears one site or all.
 - **Agent files**: the Claude Code skills and settings the app writes inside
@@ -90,8 +93,10 @@ project as `NOTES.md` for you to read, not for the agent to obey.
 - **Exports** land in `~/Downloads` by default (Settings ▸ Video changes that
   to the project's own `exports` folder).
 
-Your work stays as readable to other accounts on the Mac as any file in your
-home folder is; FileVault and your account password are the protection at rest.
+Your projects stay as readable to other accounts on the Mac as any file in
+your home folder is. The app's own caches, settings and the agent's `_bridge`
+and `_autorun` folders are readable by your account alone, and Spotlight skips
+them. FileVault and your account password are the protection at rest.
 
 ## For organisations
 

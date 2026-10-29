@@ -10,6 +10,27 @@ use crate::workspace::{self, require_root, validate_slug, SettingsState};
 /// The objects folder inside the workspace root; reserved as a project slug in `create_project`.
 pub const OBJECTS_DIR_NAME: &str = "objects";
 
+/// An `object.json` `glb` or `thumbnail` path is relative to the object's folder and at most one folder deep: never absolute, never `..`, never a backslash or a control character, so the manifest can only name files beside it (the asset-rel rule, `src/toolkit/objects/schema.ts` mirrors it).
+pub(crate) fn validate_object_rel(rel: &str) -> Result<(), String> {
+    if rel.is_empty() || rel.len() > 256 {
+        return Err("an object path must be 1 to 256 characters".into());
+    }
+    if rel.chars().any(char::is_control) || rel.contains('\\') {
+        return Err(format!("an object path cannot contain control characters or backslashes: {rel}"));
+    }
+    if rel.starts_with('/') || rel.starts_with('~') || rel.as_bytes().get(1) == Some(&b':') {
+        return Err(format!("an object path must be relative to the object's folder: {rel}"));
+    }
+    let parts: Vec<&str> = rel.split('/').collect();
+    if parts.len() > 2 {
+        return Err(format!("an object path may be at most one folder deep: {rel}"));
+    }
+    if parts.iter().any(|p| p.is_empty() || *p == "." || *p == ".." || p.starts_with('.')) {
+        return Err(format!("an object path cannot step outside the object's folder: {rel}"));
+    }
+    Ok(())
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ObjectListing {
@@ -123,6 +144,33 @@ pub fn import_object(
     std::fs::write(&tmp, pretty + "\n").map_err(|e| e.to_string())?;
     std::fs::rename(&tmp, &path).map_err(|e| e.to_string())?;
     Ok(slug)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::validate_object_rel;
+
+    #[test]
+    fn object_rels_stay_beside_the_manifest() {
+        for ok in ["model.glb", "thumbnail.png", "meshes/model.glb", "art/thumb.webp"] {
+            assert!(validate_object_rel(ok).is_ok(), "{ok}");
+        }
+        for bad in [
+            "",
+            "../model.glb",
+            "a/../model.glb",
+            "/Users/x/model.glb",
+            "~/model.glb",
+            "C:/model.glb",
+            "a/b/model.glb",
+            "a\\model.glb",
+            ".hidden/model.glb",
+            "model.glb\u{0}",
+            "./model.glb",
+        ] {
+            assert!(validate_object_rel(bad).is_err(), "{bad:?}");
+        }
+    }
 }
 
 /// Write an object's thumbnail.png from a raw PNG body (the write_theme_preview shape).

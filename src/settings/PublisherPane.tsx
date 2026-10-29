@@ -129,7 +129,7 @@ export function PublisherPane() {
             type="text"
             size={18}
             aria-label="Publisher name"
-            placeholder={view?.effectiveName ?? ""}
+            placeholder={view?.effectiveName ?? "Asked for on your first pack export"}
             value={name}
             onChange={(e) => setName(e.target.value)}
             onBlur={save}
@@ -179,8 +179,12 @@ export function PublisherPane() {
             <span className="settings-row-title">Signing key</span>
             <span className="muted settings-row-detail settings-path">
               {view?.key
-                ? view.key.keyIdDisplay
-                : "Created the first time you export a pack, and never leaves this Mac."}
+                ? `${view.key.keyIdDisplay} · ${
+                    view.key.storedIn === "keychain"
+                      ? "in your login Keychain, never synchronised"
+                      : "in a file only your account can read"
+                  }`
+                : "Created in your login Keychain the first time you export a pack, and never leaves this Mac."}
             </span>
           </div>
           {view?.key && (

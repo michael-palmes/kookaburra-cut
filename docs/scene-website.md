@@ -216,7 +216,14 @@ the feature does not ship with a weaker substitute.
 - Approved pages and their subresources have browser-equivalent network reach,
   including DNS-based access to local services.
 - Separately approved projects share same-origin login state through the
-  app-wide Website profile.
+  app-wide Website profile (F-033). Assessed 2026-10-28: a per-project
+  `WKWebsiteDataStore` is one identifier derived from the project key at view
+  creation, but it reverses the locked "Browser profile" decision above (logins
+  shared across projects by design), needs `allDataStoreIdentifiers` and
+  `removeDataStoreForIdentifier` bindings for Settings to list and clear
+  stores it no longer knows by name, and re-runs acceptance item 6. It stays a
+  residual until that decision is reopened; the mitigation today is Settings'
+  per-site clearing.
 - Captured pixels and authored query strings may contain secrets and may be
   committed or packed.
 - WebKit vulnerabilities remain possible.
