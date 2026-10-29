@@ -1779,18 +1779,19 @@ Verify ×2 here (the 2026-10-23 note):
 > anchors exported byte-identical in one boot (`cmp` on the files) and the
 > stills pages reproduced their hash, and the full matrix (`pnpm ready --legs`
 > over every recorded leg) then found the other two, which no anchor stages:
-> 20 legs over devices and comparisons MOVED because a device screen drew its
-> image upside down (a bitmap clone asking for the other `flipY`), and 8 of
-> them stayed MOVED by 1 to 42 levels because a PNG decoded to an ImageBitmap
-> rounds its semi-transparent texels. Both were attributed before they were
-> read: each MOVED leg exported on main at the merge base reproduced its
-> baseline, so the stage owned every difference; a frame diff put the pixels
-> on the device screens and the chip icons, and a probe page uploading one PNG
-> both ways under three's unpack settings showed the window's `<img>` path to
-> be the file's bytes and the bitmap path not. With the screen taking a
-> row-reversed copy and every PNG decoded natively, every leg in the tables
-> above holds EQUAL through the stage, plus the four stills legs. The stage is
-> null-for-legacy by construction, which is why this entry carries no hashes.
+> 20 legs over devices and comparisons, and the stills gate fixture, MOVED
+> because a device screen drew its image upside down (a bitmap clone asking
+> for the other `flipY`), and 8 of them stayed MOVED by 1 to 42 levels because
+> a PNG decoded to an ImageBitmap rounds its semi-transparent texels. Both
+> were attributed before they were read: each MOVED leg exported on main at
+> the merge base reproduced its baseline, so the stage owned every difference;
+> a frame diff put the pixels on the device screens and the chip icons, and a
+> probe page uploading one PNG both ways under three's unpack settings showed
+> the window's `<img>` path to be the file's bytes and the bitmap path not.
+> With the screen taking a row-reversed copy and every PNG decoded natively,
+> every leg in the tables above holds EQUAL through the stage, plus the four
+> stills legs. The stage is null-for-legacy by construction, which is why this
+> entry carries no hashes.
 > Export wall time for the anchor pair fell from 96.0 s to 93.9 s on the same
 > busy machine; the preview holds 58 to 60 fps on every perf pass.
 
