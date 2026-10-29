@@ -519,6 +519,7 @@ fn allowed_project_read_and_render() -> BTreeSet<String> {
         "conform_status",
         "media_meta",
         "read_media_thumb",
+        "decode_png",
         "probe_audio",
         "bridge_instance",
         "pin_system_font",

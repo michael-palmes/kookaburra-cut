@@ -13,7 +13,9 @@ import { withProjectAssetRevision } from "../engine/projectAssetRevision";
 import { TrustDeniedError } from "../engine/projectTrust";
 import { GpuStallError } from "../engine/readback";
 import { DEFAULT_RENDER_SETTINGS } from "../engine/renderSettings";
+import { setStage } from "../engine/stageHandle";
 import { awaitProjectCommitted } from "../engine/themePreviews";
+import { createInlineStage } from "../stage/inlineStage";
 import { startBridgeService } from "./bridgeService";
 
 const sheets = vi.hoisted(() => [] as { size: number[]; labels: string[] }[]);
@@ -145,6 +147,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  setStage(null);
   stop?.();
   vi.useRealTimers();
   vi.unstubAllGlobals();
@@ -642,6 +645,7 @@ describe("bridge v2 requests", () => {
   });
 
   it("forces a context loss on its own stage for debug lose-context", async () => {
+    setStage(createInlineStage());
     const forceContextLoss = vi.fn();
     canvasHandle.current = { gl: { forceContextLoss } } as unknown as NonNullable<
       typeof canvasHandle.current

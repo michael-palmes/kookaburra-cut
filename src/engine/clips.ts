@@ -1,13 +1,18 @@
-import { Channel, invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
 import { useContext, useEffect, useState, useSyncExternalStore } from "react";
 import { LinearFilter, type Object3D, type Scene, SRGBColorSpace, Texture } from "three";
 import { useEditorStore } from "../store/editorStore";
 import { allChunks, chunkCount, chunkOf, chunksForFrames, windowChunks } from "./clipChunks";
 import { isExporting, subscribeExporting } from "./exportState";
 import { noteClipReferenced } from "./perfProbe";
-import { resolveAssetPath } from "./project";
+import { assertProjectRelative } from "./project";
 import { ProjectIdContext } from "./sceneContext";
+import {
+  type ConformJobPayload,
+  clipSourceKey,
+  type ExtractProgress,
+  nativePort,
+  parseClipSourceKey,
+} from "./stageRealm";
 
 /** VideoClip frame pipeline: source videos are extracted by the ffmpeg sidecar to a deterministic CFR PNG sequence (cached under `$APPDATA`, keyed by source hash, filled in 120-frame chunks on demand), then sampled per frame off the manual clock with a small LRU so a long 4K clip never holds thousands of textures in memory. See docs/determinism.md. */
 
@@ -49,10 +54,10 @@ export interface ClipPendingState {
 
 /** Registry record for one source clip: its preparation promise and, once ready, its loader. */
 interface ClipEntry {
-  /** `<lane>:<absolute source path>`. */
+  /** `<lane>:<clip source key>`. */
   key: string;
-  /** Absolute source path (the registry key also carries the lane). */
-  srcAbs: string;
+  /** The clip source key (`clipSourceKey`): the owning project and the project-relative file; never a path. */
+  source: string;
   lane: ClipLane;
   promise: Promise<ClipInfo>;
   info?: ClipInfo;
@@ -66,16 +71,10 @@ interface ClipEntry {
   consumers: Map<object, () => ClipDemand>;
 }
 
-/** Each path's `<size>-<mtimeNs>` (null when unreadable); null for all of them when the command fails. */
-async function fileRevisions(paths: string[]): Promise<(string | null)[]> {
-  if (paths.length === 0) return [];
-  try {
-    const revs = await invoke<(string | null)[]>("file_revisions", { paths });
-    if (Array.isArray(revs) && revs.length === paths.length) return revs;
-  } catch {
-    // Unreadable stamps fall back to the full re-hash.
-  }
-  return paths.map(() => null);
+/** Each source's `<size>-<mtimeNs>` (null when unreadable). */
+function fileRevisions(sources: string[]): Promise<(string | null)[]> {
+  if (sources.length === 0) return Promise.resolve([]);
+  return nativePort().clipRevisions(sources);
 }
 
 /** Number of decoded frame textures kept resident per clip (LRU window). */
@@ -150,19 +149,24 @@ export function subscribeClipExtraction(listener: () => void): () => void {
   return () => extractionListeners.delete(listener);
 }
 export function clipExtractionCount(): number {
-  return extracting;
+  return mirroredStatus?.extracting ?? extracting;
+}
+
+let mirroredStatus: { extracting: number; progress: number | null } | null = null;
+
+/** A window rendering through the stage shows the worker's extraction chip state. */
+export function applyMirroredClipStatus(count: number, progress: number | null): void {
+  mirroredStatus = { extracting: count, progress };
+  notifyExtraction();
 }
 
 /** Per-extraction ffmpeg progress (frames written vs the run's length), keyed per native request. */
-interface ExtractProgress {
-  frame: number;
-  total: number;
-}
 const extractionProgress = new Map<string, ExtractProgress>();
 let progressSeq = 0;
 
 /** Aggregate 0..1 progress across in-flight extractions, or null before any has reported (the chip falls back to indeterminate). */
 export function clipExtractionProgress(): number | null {
+  if (mirroredStatus) return mirroredStatus.progress;
   if (extractionProgress.size === 0) return null;
   let frames = 0;
   let total = 0;
@@ -192,52 +196,40 @@ export class ClipConformError extends Error {}
 /** A frame load dropped because its consumer asked for another frame while the chunk extracted. */
 export class ClipLoadSuperseded extends Error {}
 
-function clipName(srcAbs: string): string {
-  return srcAbs.split("/").pop() ?? srcAbs;
+function clipName(source: string): string {
+  const { rel } = parseClipSourceKey(source);
+  return rel.split("/").pop() ?? rel;
 }
 
 /** Extracts missing chunks for one entry (the native side runs consecutive ones as one pass and makes a second request for the same chunk wait for the first). */
 function chunkSource(entry: ClipEntry, info: ClipInfo): ChunkSource {
   return {
-    label: clipName(entry.srcAbs),
+    label: clipName(entry.source),
     ensure: (chunks) =>
       tracked(async () => {
         const progressKey = `${entry.key}#${++progressSeq}`;
-        const onProgress = new Channel<ExtractProgress>();
-        onProgress.onmessage = (p) => {
-          extractionProgress.set(progressKey, p);
-          notifyExtraction();
-        };
         try {
-          await invoke("ensure_clip_chunks", {
-            srcAbs: entry.srcAbs,
-            cacheDir: info.cacheDir,
-            chunks,
-            onProgress,
+          await nativePort().clipEnsureChunks(entry.source, info.cacheDir, chunks, (p) => {
+            extractionProgress.set(progressKey, p);
+            notifyExtraction();
           });
         } finally {
           extractionProgress.delete(progressKey);
           notifyExtraction();
         }
       }),
-    previews: (chunk) => invoke("ensure_clip_previews", { cacheDir: info.cacheDir, chunk }),
+    previews: (chunk) => nativePort().clipEnsurePreviews(info.cacheDir, chunk),
   };
 }
 
 /** Readies an entry: waits out a conform still writing its file, then has the native side hash it and know its frame count (the decode-only pass on a cold entry). Frames themselves extract chunk by chunk as consumers ask. */
 async function prepare(entry: ClipEntry): Promise<ClipInfo> {
   // Stamped before hashing, so a write landing between the two reads as moved on the next sweep.
-  let [rev] = await fileRevisions([entry.srcAbs]);
-  if (rev === null && (await awaitConformLanding(entry.srcAbs))) {
-    [rev] = await fileRevisions([entry.srcAbs]);
+  let [rev] = await fileRevisions([entry.source]);
+  if (rev === null && (await awaitConformLanding(entry.source))) {
+    [rev] = await fileRevisions([entry.source]);
   }
-  const info = await tracked(() =>
-    invoke<ClipInfo>("clip_info", {
-      srcAbs: entry.srcAbs,
-      sha: null,
-      hardware: entry.lane === "hw",
-    }),
-  );
+  const info = await tracked(() => nativePort().clipInfo(entry.source, entry.lane));
   entry.info = info;
   entry.sha = info.sha;
   entry.rev = rev;
@@ -247,14 +239,14 @@ async function prepare(entry: ClipEntry): Promise<ClipInfo> {
 }
 
 /** Registers a clip in the active lane (idempotent) and starts preparing it once per unique source+lane; safe to call during render, it does no work when the entry already exists. */
-export function registerClip(srcAbs: string): ClipEntry {
+export function registerClip(source: string): ClipEntry {
   const lane = activeLane;
-  const key = `${lane}:${srcAbs}`;
+  const key = `${lane}:${source}`;
   const existing = registry.get(key);
   if (existing) return existing;
   const entry: ClipEntry = {
     key,
-    srcAbs,
+    source,
     lane,
     consumers: new Map(),
     promise: undefined as unknown as Promise<ClipInfo>,
@@ -310,14 +302,14 @@ export function evictAllClips(): void {
 /** The media-changed sweep: evicts every settled clip whose file changed on disk (an edit render or a replace overwrote it) plus any failed extraction, so consumers re-extract instead of serving stale frames. Rev-gated: one stat per clip, and a re-hash only where the size or modified time moved (a moved stamp over the same bytes just adopts the new stamp). */
 export async function invalidateChangedClips(): Promise<void> {
   const entries = [...registry.entries()].filter(([, entry]) => entry.info || entry.error);
-  const revs = await fileRevisions(entries.map(([, entry]) => entry.srcAbs));
+  const revs = await fileRevisions(entries.map(([, entry]) => entry.source));
   const evicted = await Promise.all(
     entries.map(async ([key, entry], i) => {
       if (!entry.error) {
         const rev = revs[i];
         if (rev !== null && rev === entry.rev) return false;
         try {
-          if ((await invoke<string>("hash_file", { path: entry.srcAbs })) === entry.sha) {
+          if ((await nativePort().clipHash(entry.source)) === entry.sha) {
             entry.rev = rev;
             return false;
           }
@@ -375,7 +367,7 @@ function schedulePins(): void {
     if (key === lastPins) return;
     lastPins = key;
     Promise.resolve()
-      .then(() => invoke("set_clip_cache_pins", { dirs: sorted }))
+      .then(() => nativePort().clipSetPins(sorted))
       .catch(() => {
         lastPins = null;
       });
@@ -411,10 +403,10 @@ async function settleForExport(
   onStatus: (line: string) => void,
   waitMs: number,
 ): Promise<ClipInfo | undefined> {
-  const name = clipName(entry.srcAbs);
+  const name = clipName(entry.source);
   let lastStep = -1;
   const report = () => {
-    const state = clipPendingState(entry.srcAbs);
+    const state = clipPendingState(entry.source);
     if (!state) return;
     const step = state.progress === null ? 0 : Math.floor(state.progress * 10);
     if (step === lastStep) return;
@@ -438,7 +430,7 @@ async function settleForExport(
     ]);
     if (outcome instanceof ClipConformError) throw outcome;
     if (outcome !== "timeout") return outcome;
-    if (clipPendingState(entry.srcAbs)) {
+    if (clipPendingState(entry.source)) {
       throw new Error(
         `"${name}" is still conforming after ${Math.round(waitMs / 60_000)} minutes; export again once it finishes.`,
       );
@@ -463,7 +455,7 @@ export async function prepareExportClips(
   },
 ): Promise<void> {
   // A lane switch may not have re-rendered consumers yet, so register every known source in the active lane here rather than trusting React's flush timing.
-  const sources = new Set([...registry.values()].map((e) => e.srcAbs));
+  const sources = new Set([...registry.values()].map((e) => e.source));
   for (const src of declared.keys()) sources.add(src);
   const entries = [...sources].map((src) => registerClip(src));
   for (const entry of entries) exportHeld.add(entry);
@@ -475,7 +467,7 @@ export async function prepareExportClips(
       const frames = entry.frames;
       if (!info || !frames) return;
       const chunks = new Set<number>();
-      const listed = declared.get(entry.srcAbs);
+      const listed = declared.get(entry.source);
       for (const demand of listed ?? []) addDemand(chunks, demand, info, options.atMs);
       let known = (listed?.length ?? 0) > 0;
       if (options.consumers) {
@@ -506,9 +498,9 @@ function notifyPending(): void {
   });
 }
 
-/** Whether a clip is waiting on a conform still writing its file, with the job's progress; null once it lands (or when it never was). Consumers show their own placeholder meanwhile. */
-export function clipPendingState(srcAbs: string): ClipPendingState | null {
-  return pendingBySrc.get(srcAbs) ?? null;
+/** Whether a clip (by source key) is waiting on a conform still writing its file, with the job's progress; null once it lands (or when it never was). Consumers show their own placeholder meanwhile. */
+export function clipPendingState(source: string): ClipPendingState | null {
+  return pendingBySrc.get(source) ?? null;
 }
 
 /** Subscribe to pending-conform changes (useSyncExternalStore shape). */
@@ -517,20 +509,13 @@ export function subscribeClipPending(listener: () => void): () => void {
   return () => pendingListeners.delete(listener);
 }
 
-/** The pending state for `srcAbs`, read reactively. */
-export function useClipPendingState(srcAbs: string): ClipPendingState | null {
-  return useSyncExternalStore(subscribeClipPending, () => clipPendingState(srcAbs));
+/** The pending state for a clip source key, read reactively. */
+export function useClipPendingState(source: string): ClipPendingState | null {
+  return useSyncExternalStore(subscribeClipPending, () => clipPendingState(source));
 }
 
-interface ConformJobPayload {
-  slug: string;
-  rel: string;
-  frame: number;
-  total: number;
-}
-
-function setPending(srcAbs: string, job: ConformJobPayload): void {
-  pendingBySrc.set(srcAbs, {
+function setPending(source: string, job: ConformJobPayload): void {
+  pendingBySrc.set(source, {
     slug: job.slug,
     rel: job.rel,
     frame: job.frame,
@@ -540,10 +525,10 @@ function setPending(srcAbs: string, job: ConformJobPayload): void {
   notifyPending();
 }
 
-function settleLanding(srcAbs: string, error?: Error): void {
-  const waiters = landingWaiters.get(srcAbs);
+function settleLanding(source: string, error?: Error): void {
+  const waiters = landingWaiters.get(source);
   if (!waiters) return;
-  landingWaiters.delete(srcAbs);
+  landingWaiters.delete(source);
   for (const done of waiters) done(error);
 }
 
@@ -559,36 +544,24 @@ let conformWatch: Promise<void> | null = null;
 function watchConforms(): Promise<void> {
   conformWatch ??= (async () => {
     try {
-      await listen<{
-        slug: string;
-        rel: string;
-        stage: string;
-        frame: number;
-        total: number;
-        error: string | null;
-      }>("kookaburra://conform-progress", ({ payload }) => {
-        for (const src of pendingMatching(payload.slug, (r) => r === payload.rel)) {
-          if (payload.stage === "done") settleLanding(src);
-          else if (payload.stage === "failed") {
-            settleLanding(
-              src,
-              new ClipConformError(
-                `Conforming "${payload.rel}" failed${payload.error ? `: ${payload.error}` : ""}`,
-              ),
-            );
-          } else setPending(src, payload);
-        }
-      });
-      await listen<{ slug?: string; paths?: string[]; origin?: string } | null>(
-        "kookaburra://media-changed",
-        ({ payload }) => {
-          if (payload?.origin !== "conform" || !Array.isArray(payload.paths)) return;
-          const paths = payload.paths;
-          for (const src of pendingMatching(payload.slug, (r) => paths.includes(r))) {
-            settleLanding(src);
+      await nativePort().watchConforms({
+        progress: (payload) => {
+          for (const src of pendingMatching(payload.slug, (r) => r === payload.rel)) {
+            if (payload.stage === "done") settleLanding(src);
+            else if (payload.stage === "failed") {
+              settleLanding(
+                src,
+                new ClipConformError(
+                  `Conforming "${payload.rel}" failed${payload.error ? `: ${payload.error}` : ""}`,
+                ),
+              );
+            } else setPending(src, payload);
           }
         },
-      );
+        mediaChanged: (slug, paths) => {
+          for (const src of pendingMatching(slug, (r) => paths.includes(r))) settleLanding(src);
+        },
+      });
     } catch (e) {
       console.warn("[clips] conform events unavailable; pending clips poll instead:", e);
     }
@@ -600,39 +573,39 @@ function watchConforms(): Promise<void> {
 const PENDING_POLL_MS = 5000;
 
 /** Holds a missing file that a conform job is writing until the job lands; returns whether it waited. A file nobody is writing returns at once, so `clip_info` reports it missing as before. */
-async function awaitConformLanding(srcAbs: string): Promise<boolean> {
+async function awaitConformLanding(source: string): Promise<boolean> {
   await watchConforms();
-  const job = await invoke<ConformJobPayload | null>("clip_conform_pending", { srcAbs }).catch(
-    () => null,
-  );
+  const job = await nativePort()
+    .clipConformPending(source)
+    .catch(() => null);
   if (!job) return false;
-  setPending(srcAbs, job);
+  setPending(source, job);
   let poll: ReturnType<typeof setTimeout> | undefined;
   try {
     await new Promise<void>((resolve, reject) => {
       const done = (error?: Error) => (error ? reject(error) : resolve());
-      let waiters = landingWaiters.get(srcAbs);
+      let waiters = landingWaiters.get(source);
       if (!waiters) {
         waiters = new Set();
-        landingWaiters.set(srcAbs, waiters);
+        landingWaiters.set(source, waiters);
       }
       waiters.add(done);
       const check = () => {
         poll = setTimeout(async () => {
-          const still = await invoke<ConformJobPayload | null>("clip_conform_pending", {
-            srcAbs,
-          }).catch(() => null);
+          const still = await nativePort()
+            .clipConformPending(source)
+            .catch(() => null);
           if (still) {
-            setPending(srcAbs, still);
+            setPending(source, still);
             check();
-          } else settleLanding(srcAbs);
+          } else settleLanding(source);
         }, PENDING_POLL_MS);
       };
       check();
     });
   } finally {
     clearTimeout(poll);
-    pendingBySrc.delete(srcAbs);
+    pendingBySrc.delete(source);
     notifyPending();
   }
   return true;
@@ -820,13 +793,6 @@ export class ClipFrames {
     return this.ensureChunks([chunk]);
   }
 
-  private path(i: number, tier: ClipTier): string {
-    const stem = `frame-${String(i).padStart(5, "0")}`;
-    return tier === "preview"
-      ? `${this.info.cacheDir}/preview/${stem}.jpg`
-      : `${this.info.cacheDir}/${stem}.png`;
-  }
-
   private key(i: number, tier: ClipTier): string {
     return `${tier}:${i}`;
   }
@@ -897,9 +863,8 @@ export class ClipFrames {
     return pending;
   }
 
-  private async read(i: number, tier: ClipTier): Promise<ArrayBuffer> {
-    // Reads via the Rust command (not the fs plugin) so it works regardless of webview fs scope; `invoke` resolves a raw byte response to an ArrayBuffer.
-    return invoke<ArrayBuffer>("read_clip_frame", { path: this.path(i, tier) });
+  private read(i: number, tier: ClipTier): Promise<ArrayBuffer> {
+    return nativePort().clipReadFrame(this.info.cacheDir, i, tier);
   }
 
   private async load(i: number, tier: ClipTier): Promise<Texture> {
@@ -1015,10 +980,13 @@ export function useClipEntry(src: string): ClipEntry {
   // Resolves against the project that owns this mounted scene (ProjectIdContext), not the live store: during a project switch the store's projectId flips one render before old scenes unmount, which used to resolve this clip against the wrong project's assets.
   const contextProjectId = useContext(ProjectIdContext);
   const storeProjectId = useEditorStore((s) => s.projectId);
-  const srcAbs = resolveAssetPath(contextProjectId ?? storeProjectId, src);
+  const source = clipSourceKey({
+    projectId: contextProjectId ?? storeProjectId,
+    rel: assertProjectRelative(src),
+  });
   // Re-registers after an eviction (the invalidation sweep), picking up the fresh extraction.
   useSyncExternalStore(subscribeClipRegistry, clipRegistryVersion);
-  const entry = registerClip(srcAbs);
+  const entry = registerClip(source);
   const [, force] = useState(0);
   // Keyed on what this render saw: an extraction settling between render and effect must still re-render, or the consumer (and a capture awaiting its first bind) stays pending.
   const settled = Boolean(entry.info || entry.error);

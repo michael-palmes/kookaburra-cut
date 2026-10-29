@@ -1,17 +1,16 @@
 import { invoke } from "@tauri-apps/api/core";
-import { clipCacheCensus, setClipCacheCapacity } from "./clips";
-import { canvasHandle } from "./exportBridge";
 import type { ExportProgress } from "./exporter";
 import type { SceneSlot } from "./sceneTimeline";
+import { stage } from "./stageHandle";
 
-/** Long-film memory probe (`kookaburra:run --action memory`): rides a real export's progress and every 2 s records the render rate, each WebKit process's footprint (native sampler), three's GPU residency and the clip frame cache, so growth is measured, not guessed (docs/determinism.md, "Memory probe"). Wall-clock reads stay in this diagnostics module; nothing on the render path reads them. */
+/** Long-film memory probe (`kookaburra:run --action memory`): rides a real export's progress and every 2 s records the render rate, each WebKit process's footprint (native sampler), and three's GPU residency and the clip frame cache as the stage worker counts them, so growth is measured, not guessed (docs/determinism.md, "Memory probe"). Wall-clock reads stay in this diagnostics module; nothing on the render path reads them. */
 
 /** One change per memory run (`kookaburra:run --action memory --lever L`), so a growth is pinned on one cause at a time. */
 export function applyMemoryLever(lever: string | undefined): void {
   if (!lever) return;
   const cache = /^clip-cache=(\d+)$/.exec(lever);
   if (cache) {
-    setClipCacheCapacity(Number(cache[1]));
+    stage().setClipCacheCapacity(Number(cache[1]));
     return;
   }
   throw new Error(`unknown memory lever "${lever}" (expected clip-cache=N)`);
@@ -103,8 +102,6 @@ export class MemoryRecorder {
     const fps = elapsed > 0 ? round1(((p.frame - this.lastFrame) * 1000) / elapsed) : null;
     this.lastAt = now;
     this.lastFrame = p.frame;
-    const info = canvasHandle.current?.gl.info;
-    const clips = clipCacheCensus();
     const point: MemoryPoint = {
       frame: p.frame,
       scene: this.sceneAt(p.frame),
@@ -115,14 +112,24 @@ export class MemoryRecorder {
       renderMb: null,
       appMb: null,
       ffmpegMb: null,
-      glTextures: info?.memory.textures ?? 0,
-      glGeometries: info?.memory.geometries ?? 0,
-      glPrograms: info?.programs?.length ?? 0,
-      clipTextures: clips.textures,
-      clipMb: mb(clips.bytes) ?? 0,
+      glTextures: 0,
+      glGeometries: 0,
+      glPrograms: 0,
+      clipTextures: 0,
+      clipMb: 0,
     };
     this.points.push(point);
     this.pending.push(
+      stage()
+        .memoryCensus()
+        .then((c) => {
+          point.glTextures = c.glTextures;
+          point.glGeometries = c.glGeometries;
+          point.glPrograms = c.glPrograms;
+          point.clipTextures = c.clipTextures;
+          point.clipMb = mb(c.clipBytes) ?? 0;
+        })
+        .catch(() => {}),
       invoke<NativeSample>("export_memory_sample")
         .then((s) => {
           point.editorMb = mb(s.editor);

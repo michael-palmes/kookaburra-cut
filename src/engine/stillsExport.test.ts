@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { PerspectiveCamera, Scene } from "three";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createInlineStage } from "../stage/inlineStage";
 import { preloadAppFonts } from "../theme/fonts";
 import { useClockStore } from "./clock";
 import { renderComposited } from "./compositor";
@@ -16,6 +17,7 @@ import {
   subscribeSceneHolds,
 } from "./presentHold";
 import { reportPresentTimingPending } from "./presentTimingRegistry";
+import { setStage } from "./stageHandle";
 import {
   awaitPresentTimingsSettled,
   compareStillsRuns,
@@ -180,6 +182,7 @@ const nativeResult = (pages: number, sha = "file") => ({
 let unsubscribe: (() => void)[] = [];
 
 beforeEach(() => {
+  setStage(createInlineStage());
   pushes = [];
   onPush = () => {};
   log = [];
@@ -212,6 +215,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  setStage(null);
   for (const off of unsubscribe) off();
   canvasHandle.current = null;
   clearSceneHolds();

@@ -1,11 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from "react";
-import { Matrix4, Vector3 } from "three";
+import { useCallback, useEffect, useMemo, useRef } from "react";
+import { type Matrix4, Vector3 } from "three";
 import { useCameraEditStore } from "../engine/cameraEditStore";
 import { computeFormat } from "../engine/format";
 import { resolveCutoutRender } from "../engine/frameFormat";
 import { type StageRect, stageCamera } from "../engine/gizmoRegistry";
-import { gizmoTargets, subscribeGizmoTargets } from "../engine/gizmoTargetRegistry";
-import { nodeDrawn } from "../engine/gizmoVisibility";
 import { useLayeredScreenshotEditStore } from "../engine/layeredScreenshotEditStore";
 import type { LoadedProject } from "../engine/project";
 import type { SceneDoc, SceneDocLayeredScreenshot } from "../engine/sceneDocSchema";
@@ -15,10 +13,8 @@ import { useEditorStore } from "../store/editorStore";
 import { Gizmo2D, type Gizmo2DGesture, type Gizmo2DItem } from "./gizmo/Gizmo2D";
 import { frameGuideLines, type Pt } from "./gizmo/gizmo2dMath";
 import { unprojectToZPlane } from "./gizmo/gizmo2dProject";
-import {
-  screenshotStackFrame,
-  screenshotStackPlacementWrite,
-} from "./gizmo/layeredScreenshotGizmoMath";
+import { screenshotStackPlacementWrite } from "./gizmo/layeredScreenshotGizmoMath";
+import { stageParentInverse, stageStackFrame, useStageTargets } from "./gizmo/stageTargets";
 import { useLayeredScreenshotDoc } from "./layeredScreenshotDoc";
 
 const ITEM_ID = "layeredScreenshot";
@@ -32,7 +28,7 @@ export function LayeredScreenshotGizmo({
   sceneIndex: number;
   onDocChanged: (sceneIndex: number, doc: SceneDoc) => void;
 }) {
-  const targets = useSyncExternalStore(subscribeGizmoTargets, gizmoTargets);
+  const targets = useStageTargets();
   const selected = useLayeredScreenshotEditStore((s) => s.selectedStack?.sceneIndex === sceneIndex);
   const writeError = useLayeredScreenshotEditStore((s) => s.writeError);
   const cameraArmed = useCameraEditStore((s) => s.armedTool !== null);
@@ -56,15 +52,9 @@ export function LayeredScreenshotGizmo({
   );
   const geometryOf = useCallback(
     (rect: StageRect) => {
-      const node = target?.node();
       const camera = stageCamera();
-      if (!node || !nodeDrawn(node) || !camera) return null;
-      return screenshotStackFrame(
-        node,
-        target?.localPoints?.() ?? [],
-        camera,
-        worldViewportRect(rect, cutout),
-      );
+      if (!target || !camera) return null;
+      return stageStackFrame(target, camera, worldViewportRect(rect, cutout));
     },
     [target, cutout],
   );
@@ -120,14 +110,13 @@ export function LayeredScreenshotGizmo({
     let started = run.current;
     if (!started) {
       const geometry = geometryOf(gesture.rect);
-      const node = target?.node();
-      if (!geometry || !node) return;
+      if (!geometry || !target) return;
       useEditorStore.getState().setPlaying(false);
       started = {
         block: structuredClone(block),
         pivot: geometry.pivot,
-        worldZ: node.getWorldPosition(new Vector3()).z,
-        inverseParent: node.parent ? node.parent.matrixWorld.clone().invert() : new Matrix4(),
+        worldZ: target.world[4][2],
+        inverseParent: stageParentInverse(target),
       };
       run.current = started;
     }

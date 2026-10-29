@@ -1,6 +1,7 @@
 import { type Camera, type Object3D, Raycaster, Vector2 } from "three";
 import { canvasHandle } from "./exportBridge";
 import type { GizmoMode } from "./gizmoMode";
+import { stageOrNull } from "./stageHandle";
 import { stageCutout, worldViewportRect } from "./stageViewport";
 
 /** Live handles onto each mounted gizmo's pickable geometry, published by `<SceneGizmo>` (the sceneHostRegistry idiom: a module Map, plain register/read functions, no store). DOM overlays read it to decide whether a pointer belongs to a gizmo handle or to them; the export path never imports it. */
@@ -59,8 +60,10 @@ export function gizmoPickerHandles(): GizmoPickerHandle[] {
   return [...handles.values()];
 }
 
-/** Whether any gizmo is mounted, optionally in one domain: the cheap early-out for a hover test that runs on every pointer move. */
+/** Whether any gizmo is mounted, optionally in one domain: the cheap early-out for a hover test that runs on every pointer move. A window rendering through the stage reads the worker's picker summaries. */
 export function hasGizmoPickers(domain?: GizmoDomain): boolean {
+  const stage = stageOrNull();
+  if (stage) return stage.pickers().some((p) => domain === undefined || p.domain === domain);
   if (domain === undefined) return handles.size > 0;
   for (const handle of handles.values()) {
     if (handle.domain === domain) return true;
@@ -70,6 +73,8 @@ export function hasGizmoPickers(domain?: GizmoDomain): boolean {
 
 /** Fires whenever the pickable set changes. Readers cache their hover truth off pointer moves, and a gizmo mounts or unmounts with the pointer parked, so they must re-test on this. */
 export function subscribeGizmoPickers(listener: () => void): () => void {
+  const stage = stageOrNull();
+  if (stage) return stage.subscribePickers(listener);
   listeners.add(listener);
   return () => {
     listeners.delete(listener);
@@ -94,12 +99,28 @@ export function hideGizmoHandles(): () => void {
 
 /** The live preview camera, i.e. the pose the last rendered frame applied (rig, keyframes and beat sync included). */
 export function stageCamera(): Camera | null {
+  const stage = stageOrNull();
+  if (stage) return stage.camera();
   return canvasHandle.current?.camera ?? null;
+}
+
+/** The window's hit test against the stage's handles: async, since the raycast runs where the handles live. `claim` hands a pointer-down to the handle (its host latches the drag); a hover test never claims. */
+export async function stageGizmoHandleAt(
+  ndcX: number,
+  ndcY: number,
+  claim: boolean,
+  domain?: GizmoDomain,
+): Promise<{ domain: GizmoDomain; itemId: string; sceneIndex: number } | null> {
+  const stage = stageOrNull();
+  if (stage) return stage.hitTest(ndcX, ndcY, domain, claim);
+  const hit = gizmoHandleAt(ndcX, ndcY, domain);
+  if (hit && claim) hit.claim?.();
+  return hit ? { domain: hit.domain, itemId: hit.itemId, sceneIndex: hit.sceneIndex } : null;
 }
 
 /** The canvas box, not an overlay's, so the NDC computed from it is the input r3f's own event raycaster would use. */
 export function stageCanvasRect(): StageRect | null {
-  const el = canvasHandle.current?.gl.domElement;
+  const el = stageOrNull()?.element ?? canvasHandle.current?.gl.domElement;
   if (!el) return null;
   const r = el.getBoundingClientRect();
   return { left: r.left, top: r.top, width: r.width, height: r.height };

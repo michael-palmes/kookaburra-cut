@@ -5,9 +5,11 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import { installDevPerformanceDrain } from "./engine/devPerformance";
 import { revealFailsafe } from "./engine/reveal";
+import { installWindowNativePort } from "./engine/windowNativePort";
 import { ThemeEditorApp } from "./ui/theme-editor/ThemeEditorApp";
 import "./styles.css";
 
+installWindowNativePort();
 installDevPerformanceDrain();
 revealFailsafe();
 

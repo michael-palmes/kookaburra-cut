@@ -12,7 +12,7 @@ import { registerClip } from "../../engine/clips";
 import { useClipTexture } from "../../engine/clipTexture";
 import { frameAtDepth, useFormat } from "../../engine/format";
 import { registerPresentTiming } from "../../engine/presentTimingRegistry";
-import { resolveAssetPath } from "../../engine/project";
+import { assertProjectRelative } from "../../engine/project";
 import { ProjectIdContext, SceneDocContext, useSceneContext } from "../../engine/sceneContext";
 import type { SceneDocMosaicReveal, SceneDocMosaicTile } from "../../engine/sceneDocSchema";
 import {
@@ -32,6 +32,7 @@ import {
   useSceneConsumesMosaic,
 } from "../../engine/sceneMosaic";
 import { coverCropRect, remapUv } from "../../engine/screenFit";
+import { clipSourceKey } from "../../engine/stageRealm";
 import { useTimeline } from "../../engine/timeline";
 import { useProjectAssetUrl } from "../../engine/useProjectAssetUrl";
 import { useEditorStore } from "../../store/editorStore";
@@ -228,7 +229,12 @@ function MountedSplitField({
   // Video tiles register here, before an image tile can suspend the subtree, so a cold export's extract barrier already knows them.
   for (const tile of tiles) {
     if (mosaicTileKind(tile) === "video") {
-      registerClip(resolveAssetPath(contextProjectId ?? storeProjectId, tile.src as string));
+      registerClip(
+        clipSourceKey({
+          projectId: contextProjectId ?? storeProjectId,
+          rel: assertProjectRelative(tile.src as string),
+        }),
+      );
     }
   }
   const origin: V3 = position ?? [0, 0, SPLIT_FIELD_Z];

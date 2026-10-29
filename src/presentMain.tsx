@@ -5,9 +5,13 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import { installDevPerformanceDrain } from "./engine/devPerformance";
 import { revealFailsafe } from "./engine/reveal";
+import { installWindowNativePort } from "./engine/windowNativePort";
 import { PresentApp } from "./present/PresentApp";
+import { setWindowTypesets } from "./theme/fonts";
 import "./styles.css";
 
+installWindowNativePort();
+setWindowTypesets(false);
 installDevPerformanceDrain();
 revealFailsafe();
 

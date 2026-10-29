@@ -12,11 +12,13 @@ import {
   preloadMirrorEnvironments,
 } from "./environments";
 import { canvasCommittedClockMs, canvasHandle } from "./exportBridge";
-import { awaitSceneHostsCommitted } from "./exporter";
+import { awaitSceneHostsCommitted } from "./exportRun";
 import { isExporting } from "./exportState";
 import { preloadOverlayPanelImages } from "./overlayPanelTexture";
 import { overlayPanelImageSources } from "./overlayPlan";
 import { type LoadedProject, preloadProjectImages } from "./project";
+import { stage } from "./stageHandle";
+import { isStageWorker } from "./stageRealm";
 import { awaitProjectCommitted, sceneMiddles } from "./themePreviews";
 import { preloadTransitionMasks } from "./transitionMask";
 
@@ -47,6 +49,8 @@ export async function settleProjectOpen(
   onProgress?: (completed: number) => void,
 ): Promise<void> {
   if (isExporting()) return; // export/autorun own the clock and their own preamble
+  // From a window the stage runs the sequence against its own canvas and reports each step.
+  if (!isStageWorker()) return stage().settle(loaded.id, onProgress);
   const run = (async () => {
     // 1 - the project swap has committed into the canvas tree.
     await awaitProjectCommitted(loaded);

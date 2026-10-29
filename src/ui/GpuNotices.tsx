@@ -2,8 +2,9 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { ask } from "@tauri-apps/plugin-dialog";
 import { type ReactNode, useEffect, useState } from "react";
-import { canvasContextLosses, canvasHandle, onCanvasContextLost } from "../engine/exportBridge";
+import { canvasContextLosses, onCanvasContextLost } from "../engine/exportBridge";
 import { runningSceneTerminalCount } from "../engine/sceneTerminalSession";
+import { stageOrNull } from "../engine/stageHandle";
 import { liveSessionCount } from "../engine/terminal";
 import { settleContentEdits } from "./settleContentEdits";
 
@@ -100,7 +101,7 @@ export function GpuNotices() {
   useEffect(() => {
     if (!import.meta.env.DEV) return;
     const unlisten = listen("kookaburra://debug-lose-context", () => {
-      canvasHandle.current?.gl.forceContextLoss();
+      void stageOrNull()?.forceContextLoss();
     });
     return () => {
       void unlisten.then((fn) => fn()).catch(() => {});

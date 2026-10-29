@@ -7,9 +7,12 @@ import App from "./App";
 import { initAutoRunConfig } from "./engine/autorun";
 import { installDevPerformanceDrain } from "./engine/devPerformance";
 import { revealFailsafe } from "./engine/reveal";
-import { preloadAppFonts } from "./theme/fonts";
+import { installWindowNativePort } from "./engine/windowNativePort";
+import { preloadAppFonts, setWindowTypesets } from "./theme/fonts";
 import "./styles.css";
 
+installWindowNativePort();
+setWindowTypesets(false);
 installDevPerformanceDrain();
 revealFailsafe();
 

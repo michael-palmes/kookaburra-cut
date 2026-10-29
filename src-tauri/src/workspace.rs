@@ -2277,7 +2277,7 @@ pub async fn request_project_trust(
     } else {
         let name = consent_project_name(&dir, &slug);
         let body = format!(
-            "Scenes in this project are code. Kookaburra Cut runs them with the app's own access to your Mac, so only allow projects you trust.\n\nFolder: {}\n\nIf the project changes outside the app, you will be asked again.",
+            "Scenes in this project are code. Kookaburra Cut runs them on a sealed stage, apart from the app's own access to your Mac, so only allow projects you trust.\n\nFolder: {}\n\nIf the project changes outside the app, you will be asked again.",
             display_path(&app, &dir)
         );
         let declined = crate::native_alert::ask(
