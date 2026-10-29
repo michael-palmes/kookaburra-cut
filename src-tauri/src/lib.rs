@@ -29,6 +29,7 @@ mod flashes;
 mod fonts;
 mod global_screenshots;
 mod gradients;
+mod history;
 mod kit;
 mod library;
 mod library_previews;
@@ -909,13 +910,13 @@ async fn run_ffmpeg_to_completion(
     }
 }
 
-/// Free bytes on the volume holding `path` (macOS statvfs, the mezzanine disk guard).
-fn free_disk_bytes(path: &std::path::Path) -> Result<u64, String> {
+/// Free bytes on the volume holding `path` (macOS statvfs): the mezzanine and clip-extraction disk guards.
+pub(crate) fn free_disk_bytes(path: &std::path::Path) -> Result<u64, String> {
     use std::os::unix::ffi::OsStrExt;
     let c = std::ffi::CString::new(path.as_os_str().as_bytes()).map_err(|e| e.to_string())?;
     let mut vfs: libc::statvfs = unsafe { std::mem::zeroed() };
     if unsafe { libc::statvfs(c.as_ptr(), &mut vfs) } != 0 {
-        return Err("statvfs failed for the mezzanine cache".into());
+        return Err(format!("statvfs failed for {}", path.display()));
     }
     Ok(vfs.f_bavail as u64 * vfs.f_frsize as u64)
 }

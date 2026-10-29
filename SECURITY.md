@@ -113,8 +113,12 @@ line when it had to correct anything, and `cache/`, `_bridge/` and
 `_autorun/` carry `.metadata_never_index` (`src-tauri/src/privacy.rs`;
 `scripts/kookaburra-run.sh` seals the queue it creates). Projects and the
 workspace folders are the user's documents and take the umask default; pack
-extraction forces 0644/0755 on what it lands. Nothing is excluded from Time
-Machine. `$APPDATA` is
+extraction forces 0644/0755 on what it lands. `cache/clips` and
+`cache/media` carry Time Machine's per-item exclusion attribute
+(`com.apple.metadata:com_apple_backup_excludeItem`, set at every launch by
+`privacy::exclude_from_backup`), so decoded frames and previews of
+confidential footage never reach a backup; projects, with their own `assets/`,
+are backed up like any document. `$APPDATA` is
 `~/Library/Application Support/com.mpalmes.kookaburracut` (`src-tauri/src/tools.rs`).
 
 - **The workspace, `~/Kookaburra Cut`** by default (`WORKSPACE_DIR_NAME` in
@@ -124,8 +128,14 @@ Machine. `$APPDATA` is
   One folder per project: `project.json`, `scenes/`, `assets/` (with
   `.originals/` for conformed footage, `website/` captures, `_meta.json`
   provenance holding bare file names only), `edits/`, `exports/`, a per-project
-  git repository (`create_project` runs `git init`, `git add -A` and one commit,
-  so a trashed asset stays in `.git` until the project is deleted), `CLAUDE.md`,
+  git repository (`create_project` runs `git init` with `/assets/` and
+  `/exports/` in `.git/info/exclude` before its one commit, so footage and
+  renders never enter history and a trashed asset is gone; a project from
+  before this rule has them rewritten out of its history, reflog expired and
+  pruned, on its next open, off the load path, with one toast and one
+  `[history]` log line, only when the app made the repository: one with a
+  remote, a root commit by someone else or a `.git` file is left as it is and
+  logged: `src-tauri/src/history.rs`), `CLAUDE.md`,
   `NOTES.md`, `BRAND.md`, the stamped `.claude/` and `./kb`, and `.kb/` (the
   agent's lock, leases and scratch). Workspace-level: `brands/`, `themes/`,
   `fonts/`, `gradients/`, `export-presets/`, `presets/`, `templates/`,
@@ -164,7 +174,9 @@ Machine. `$APPDATA` is
   is deleted. Control: `src-tauri/src/pack/key.rs`.
 - **`$APPDATA/cache/`**: `clips/` (decoded video frames per content hash,
   capped at 20 GB by default with least-recently-used eviction in 120-frame
-  chunks, never while pinned by an open project or a running export; Settings
+  chunks, never while pinned by an open project or a running export; an
+  extraction is refused up front when its raw-frame ceiling would leave the
+  volume under 2 GB, naming the space it needs; Settings
   ▸ Storage sets the cap and clears it; deleting a project or an asset drops
   its entries, except content another project, template or preset still maps
   to), `media/` (posters, scrub frames and probe data by content hash, brand
@@ -508,5 +520,4 @@ Deliberately deferred, recorded so nobody mistakes them for done:
 - A Homebrew cask, so MDM fleets can install and pin versions without the DMG.
 - A per-project website data store: approved projects share one login profile
   today (`docs/scene-website.md`, "Accepted residual risk").
-- A disk-free ceiling on single clip extractions.
 - The bridge queue has no authentication beyond the user account.
