@@ -1,14 +1,31 @@
-import { defineScene, SceneStage, TitleBlock, useSceneText } from "@kookaburra/toolkit";
+import {
+  AnimatedHeadline,
+  defineScene,
+  SceneStage,
+  useFormat,
+  useSceneText,
+} from "@kookaburra/toolkit";
 
 export default defineScene({
   id: "dev-release-notes-02-breaking",
-  durationMs: 4400,
+  durationMs: 4800,
   Scene() {
-    const title = useSceneText("title", "Ship faster");
-    const subtitle = useSceneText("subtitle", "Make it yours");
+    const format = useFormat();
+    const code = useSceneText("code", "", "embedded");
     return (
       <SceneStage>
-        <TitleBlock title={title} subtitle={subtitle} />
+        {code ? (
+          <AnimatedHeadline
+            text={code}
+            textKey="code"
+            managedTextRole="embedded"
+            from={300}
+            to={1000}
+            fontSize={format.frame.width * 0.055}
+            maxWidth={format.frame.width * 0.86}
+            textAlign="left"
+          />
+        ) : null}
       </SceneStage>
     );
   },

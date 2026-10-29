@@ -7,17 +7,18 @@ import {
 } from "@kookaburra/toolkit";
 
 export default defineScene({
-  id: "dev-release-notes-04-api-diff",
-  durationMs: 4800,
+  id: "dev-release-notes-04-migration",
+  durationMs: 4600,
   Scene() {
     const format = useFormat();
-    const code = useSceneText("code");
+    const code = useSceneText("code", "", "embedded");
     return (
       <SceneStage>
         {code ? (
           <AnimatedHeadline
             text={code}
             textKey="code"
+            managedTextRole="embedded"
             from={300}
             to={1000}
             fontSize={format.frame.width * 0.055}
