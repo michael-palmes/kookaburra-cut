@@ -232,10 +232,11 @@ and install. The app holds no API key and sends nothing to Anthropic itself.
   grounding as one argv element (`CLAUDE_FIXED_ARGS`); the cwd is confined to
   the workspace (`confine_terminal_cwd`); the child environment is
   `env_clear()` plus `HOME`, `USER`, `LOGNAME`, `SHELL`, `PATH`, `LANG`,
-  `TMPDIR`, `TERM`, `COLORTERM`, `SSH_AUTH_SOCK` and the prefixes `LC_`,
-  `TERM_`, `CLAUDE_` and `ANTHROPIC_` (`ENV_ALLOW`, `ENV_ALLOW_PREFIX`), so
-  `CLAUDE_CODE_OAUTH_TOKEN` and `ANTHROPIC_API_KEY` still reach every session,
-  including a scene's interactive shell. Only the main window holds the
+  `TMPDIR`, `TERM`, `COLORTERM`, `SSH_AUTH_SOCK` and the prefixes `LC_` and
+  `TERM_` (`ENV_ALLOW`, `ENV_ALLOW_PREFIX`); `Launch::ClaudeSession` alone also
+  keeps `CLAUDE_` and `ANTHROPIC_` (`ENV_CLAUDE_PREFIX`), so
+  `CLAUDE_CODE_OAUTH_TOKEN` and `ANTHROPIC_API_KEY` reach Claude Code but never
+  a scene's interactive shell. Only the main window holds the
   `terminal` permission set, and `Launch::ClaudeSession` is refused from any
   other (`CLAUDE_LAUNCH_WINDOWS`). Every session command checks the owning
   window (`owned_session`). The panel's copy says "Sends this project's files
@@ -408,7 +409,7 @@ SHA-256 and is signed Ed25519 over its exact stored bytes
 The app keeps one secret: the pack signing key, in the login Keychain and
 never synchronised, with the 0600 file fallback described above. Everything else is the
 user's: Claude Code's login lives in `~/.claude` and the `CLAUDE_*` and
-`ANTHROPIC_*` variables pass through to the terminal as described above;
+`ANTHROPIC_*` variables pass through to the Claude session only, as described above;
 website logins live in the Website data store. No password, token or key is
 printed by the app or written to its logs.
 
