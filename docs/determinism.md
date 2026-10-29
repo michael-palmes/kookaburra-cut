@@ -1833,7 +1833,7 @@ Verify ×2 here (the 2026-10-23 note):
 | `compare-spike` (before/after comparison gate) | `03f4704d…` | `0c6b7166…` | `d4cac096…` | `ac586a05…` | — | — | — | — | — |
 | `compare-transition-spike` (comparisons through transitions; `transitioncheck` proves its crossfades blend) | `48ee3fd8…` | — | — | — | — | — | — | — | — |
 | `image-flip-spike` (image-orientation gate, eyeball it) | `5753a093…` | — | — | — | — | — | — | — | — |
-| `long-device-spike` (long-film memory gate: devices, a fold, compare media, 61 s) | `9f4a603d…` | — | — | — | — | — | — | — | — |
+| `long-device-spike` (long-film memory gate: devices, a fold, compare media, 61 s) | `36ced02f…` | — | — | — | — | — | — | — | — |
 | `ws:layered-screenshot-spike` (LS gate, machine-local) | `33c75ab8…` | — | — | — | — | — | — | — | — |
 | `ws:video-window-spike` (VideoWindow gate, machine-local) | `273e778c…` | — | — | — | — | — | — | — | — |
 | `ws:lighting-spike-fable` (v9 lighting gate, machine-local) | `c3d51b40…` | — | — | — | — | — | — | — | — |
@@ -1876,6 +1876,12 @@ Verify ×2 here (the 2026-10-23 note):
 > `3955d599…` → `fa64bced…`. The contact shadow under a 3 to 6 degree lean moves by
 > under 1% of the device height; frames were eyeballed. The anchors and
 > `ws:multi-device-spike` (yaw only) stay EQUAL.
+
+> **2026-10-29 (`long-device-spike` re-recorded):** the memory gate's 16:9 baseline
+> `9f4a603d…` (#265) predates the entry above: its three foldable scenes pitch the
+> device 4 to 5 degrees, so #268's floor shift and screen-media turns moved its pixels
+> without re-recording it. Main exports `36ced02f…` at `d1c47226` and at `720cd35c`
+> alike, Verify ×2 identical, so the row re-records there; no other cell changes.
 
 > **2026-10-28 (the stage worker: every scene renders in a Web Worker, no
 > baseline moved):** the whole canvas tree, compositor and export frame body
