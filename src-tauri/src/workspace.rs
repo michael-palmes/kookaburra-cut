@@ -2125,6 +2125,30 @@ fn copy_source_needs_grant(scope: &ProjectScope) -> bool {
     )
 }
 
+/// Pure: a pack landed `id` (added or replaced), so whatever consent stood for that folder covered other content. The slug leaves this session's allow and its stored grant, and the next open asks.
+fn drop_trust(
+    trusted: &mut HashMap<String, TrustRecord>,
+    session: &mut HashSet<String>,
+    id: &str,
+) -> bool {
+    let stored = trusted.remove(id).is_some();
+    session.remove(id) | stored
+}
+
+/// Forget every grant for a project, user template or user preset a pack import just wrote. The pack is a publisher's content, whoever that publisher is, so the person meets the Allow sheet again on the next open.
+pub(crate) fn forget_project_trust(
+    app: &AppHandle,
+    state: &State<'_, SettingsState>,
+    trust: &TrustState,
+    id: &str,
+) -> Result<(), String> {
+    parse_project_id(id)?;
+    let mut session = trust.session.lock().map_err(|_| "trust state poisoned")?;
+    update_settings(app, state, |settings| {
+        drop_trust(&mut settings.trusted_projects, &mut session, id);
+    })
+}
+
 /// One consent the native sheet (or an autorun launch) issued and `trust_project` has not consumed yet.
 struct PendingTrust {
     slug: String,
@@ -3622,6 +3646,29 @@ mod tests {
         let old = issue_trust_nonce(&mut pending, "demo", "fp-1", now);
         issue_trust_nonce(&mut pending, "demo", "fp-2", later);
         assert!(!pending.contains_key(&old));
+    }
+
+    #[test]
+    fn a_pack_landing_drops_the_session_allow_and_the_stored_grant() {
+        let mut trusted = HashMap::new();
+        trusted.insert(
+            "demo".to_owned(),
+            TrustRecord {
+                scenes_fingerprint: "fp-1".to_owned(),
+                path: "/Users/x/Kookaburra Cut/demo".to_owned(),
+                allowed_at_ms: 1,
+            },
+        );
+        let mut session: HashSet<String> = ["demo".to_owned(), "other".to_owned()].into();
+        assert!(drop_trust(&mut trusted, &mut session, "demo"));
+        assert!(trusted.is_empty());
+        assert_eq!(session, ["other".to_owned()].into());
+        // The next check finds no grant, so it asks rather than re-stamping.
+        assert_eq!(
+            session_trust_decision(trusted.get("demo"), Path::new("/Users/x/Kookaburra Cut/demo"), "fp-2", &mut session, "demo"),
+            SessionTrust::Ask
+        );
+        assert!(!drop_trust(&mut trusted, &mut session, "demo"));
     }
 
     #[test]

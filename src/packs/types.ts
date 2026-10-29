@@ -166,6 +166,19 @@ export type PublisherVerdict =
 
 export type CompatibilityVerdict = { kind: "ok" } | { kind: "needsNewerApp"; min: string };
 
+/** One `scenes/**​/*.tsx` the pack would stage, as the reader built it from the signed file list (`read::SceneSource`). */
+export interface SceneSource {
+  kind: ItemKind;
+  slug: string;
+  name: string;
+  file: string;
+}
+
+/** A scene sidecar read from the pack before staging and checked against its signed hash (`PackSceneDoc`). */
+export interface PackSceneDoc extends SceneSource {
+  doc: unknown;
+}
+
 export interface PackInspection {
   manifest: PackManifest;
   signature: SignatureVerdict;
@@ -173,6 +186,8 @@ export interface PackInspection {
   compatibility: CompatibilityVerdict;
   archiveBytes: number;
   installBytes: number;
+  /** The scene code that would land: the trust and code screens count and list this, never `contents`. */
+  sceneSources: SceneSource[];
 }
 
 export type ConflictState = "new" | "identical" | "theirs-newer" | "yours-newer" | "unknown-age";

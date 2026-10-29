@@ -1590,6 +1590,7 @@ macro_rules! kookaburra_handler {
             pack::commands::reveal_pack,
             pack::commands::inspect_pack,
             pack::commands::read_pack_scene_source,
+            pack::commands::read_pack_scene_docs,
             pack::commands::stage_pack,
             pack::commands::apply_import,
             pack::commands::discard_staged_pack,

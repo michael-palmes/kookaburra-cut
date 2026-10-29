@@ -1146,6 +1146,38 @@ fn accept(path: &str, warnings: &mut Vec<ClosureWarning>) -> bool {
     }
 }
 
+/// Every `scenes/**/*.tsx` the item packs, in `project.json` order first (the film's order) and then any file the
+/// manifest does not list, sorted. Export and import build this set the same way (`read::staged_scene_sources`).
+fn scene_files_of<'a>(doc: &Value, packed: impl Iterator<Item = &'a str>) -> Vec<String> {
+    let packed: BTreeSet<&str> = packed
+        .filter(|rel| {
+            rel.starts_with("scenes/")
+                && rel
+                    .rsplit_once('.')
+                    .is_some_and(|(_, ext)| ext.eq_ignore_ascii_case("tsx"))
+        })
+        .collect();
+    let mut out: Vec<String> = Vec::new();
+    for file in doc
+        .get("scenes")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|s| str_field(s, "file"))
+    {
+        if packed.contains(file.as_str()) && !out.contains(&file) {
+            out.push(file);
+        }
+    }
+    let unlisted: Vec<String> = packed
+        .iter()
+        .filter(|rel| !out.iter().any(|f| f == *rel))
+        .map(|rel| (*rel).to_owned())
+        .collect();
+    out.extend(unlisted);
+    out
+}
+
 fn stage_all(
     files: Vec<(String, String, PathBuf)>,
     warnings: &mut Vec<ClosureWarning>,
@@ -1364,6 +1396,8 @@ fn build_project(
         });
     }
     candidates.retain(|(rel, _)| !dropped.contains(rel));
+    // What is listed is what is packed: the reader refuses any pack whose `sceneFiles` is not the staged set.
+    let scene_files = scene_files_of(&doc, candidates.iter().map(|(rel, _)| rel.as_str()));
 
     let staged = stage_all(
         candidates
@@ -1377,11 +1411,6 @@ fn build_project(
         mode,
     );
 
-    let scene_files: Vec<String> = doc
-        .get("scenes")
-        .and_then(Value::as_array)
-        .map(|scenes| scenes.iter().filter_map(|s| str_field(s, "file")).collect())
-        .unwrap_or_default();
     let formats: Vec<String> = doc
         .get("formats")
         .and_then(Value::as_array)

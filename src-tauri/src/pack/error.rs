@@ -14,6 +14,12 @@ pub enum PackError {
     ManifestUnreadable(String),
     SignatureMissing,
     SignatureInvalid,
+    /// The declared `keyId` is not the hash of the public key beside it.
+    KeyIdMismatch(String),
+    /// A project's `sceneFiles` is not the set of `scenes/**/*.tsx` the pack would stage for it.
+    SceneFilesMismatch(String),
+    /// A project-shaped item's `root` is not `payload/<kind>/<slug>`, or two items claim one root.
+    ItemRootMismatch(String),
     FormatTooNew { found: u32, supported: u32 },
     AppTooOld { needs: String, running: String },
     PathAbsolute(String),
@@ -77,6 +83,15 @@ impl PackError {
             }
             Self::SignatureInvalid => {
                 "This pack is damaged or has been modified since it was signed. It has not been imported and nothing on your Mac has changed.".into()
+            }
+            Self::KeyIdMismatch(id) => format!(
+                "This pack declares publisher key {id}, which is not the key it was signed with."
+            ),
+            Self::SceneFilesMismatch(root) => format!(
+                "This pack's list of scene files does not match the scene code it carries: {root}"
+            ),
+            Self::ItemRootMismatch(root) => {
+                format!("This pack lists an item whose folder does not match its name: {root}")
             }
             Self::FormatTooNew { found, supported } => format!(
                 "This pack uses format version {found}. This version of Kookaburra Cut understands up to {supported}."
@@ -155,6 +170,9 @@ impl PackError {
             Self::ManifestUnreadable(_) => "manifestUnreadable",
             Self::SignatureMissing => "signatureMissing",
             Self::SignatureInvalid => "signatureInvalid",
+            Self::KeyIdMismatch(_) => "keyIdMismatch",
+            Self::SceneFilesMismatch(_) => "sceneFilesMismatch",
+            Self::ItemRootMismatch(_) => "itemRootMismatch",
             Self::FormatTooNew { .. } => "formatTooNew",
             Self::AppTooOld { .. } => "appTooOld",
             Self::PathAbsolute(_) => "pathAbsolute",
@@ -201,6 +219,8 @@ impl PackError {
             | Self::EntryNotInManifest(p)
             | Self::ManifestEntryMissing(p)
             | Self::HashMismatch(p)
+            | Self::SceneFilesMismatch(p)
+            | Self::ItemRootMismatch(p)
             | Self::KeyPermissions(p) => Some(p),
             Self::EntryTooLarge { path, .. }
             | Self::KindTooLarge { path, .. }
