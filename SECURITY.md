@@ -240,10 +240,11 @@ and install. The app holds no API key and sends nothing to Anthropic itself.
   other (`CLAUDE_LAUNCH_WINDOWS`). Every session command checks the owning
   window (`owned_session`). The panel's copy says "Sends this project's files
   to Anthropic as you work. Scene edits and kb commands run without asking;
-  other commands ask." (`TerminalPanel.tsx`, `CLAUDE_DISCLOSURE` in
-  `ClaudeLauncher.tsx`); under `--permission-mode auto` Claude Code's own
-  classifier can approve a command outside the allow rules, so "ask" is
-  Anthropic's judgement, not the app's. "Continue last conversation" reads
+  Claude Code decides which other commands are safe to run and asks about the
+  rest." (`TerminalPanel.tsx`, `CLAUDE_DISCLOSURE` in `ClaudeLauncher.tsx`):
+  under `--permission-mode auto` Claude Code's own classifier approves the
+  commands it judges safe outside the allow rules, so that judgement is
+  Anthropic's, not the app's, and the copy says so. "Continue last conversation" reads
   `~/.claude/projects/<project>/` for an earlier session. The terminal's
   clipboard addon is write-only (`src/engine/terminalClipboard.ts`): a program
   may put text on the clipboard through OSC 52, never read it, in the panel
@@ -319,8 +320,11 @@ drop a request, which is the out-of-scope case above.
   (`KOOKABURRA_ACTION` set) mints its nonce without a sheet. All three commands
   are in the `trust` set, main window only. Deleting a project removes its
   grant. Declining stamps nothing. `copy_scene_to_project` (main and render
-  windows) writes into another project inside `restamping_trust` with no
-  consent step of its own; recorded as a follow-up.
+  windows) refuses a workspace project, user template or user preset as its
+  source unless that source's grant matches its content or this session
+  allowed it (`require_source_allowed`); bundled templates and presets ship
+  with the app and pass. The main window asks through the native sheet before
+  calling, so a person meets the sheet, never the refusal.
 - **Per-window ACL** (`src-tauri/permissions/*.json`, `src-tauri/capabilities/*.json`):
   every `#[tauri::command]` belongs to exactly one permission set, and each
   window gets only its sets. Main: project read, render and write, trust, media
@@ -371,7 +375,9 @@ SHA-256 and is signed Ed25519 over its exact stored bytes
   unknown key warns "a publisher you know as X is using a different key"
   (`publisher_verdict`). The trust screen draws the publisher verdict first
   and the "Contents verified" tick below it, saying it proves the pack is
-  whole, not who made it. Continue is the primary button; Cancel is secondary.
+  whole, not who made it. Continue is the primary button only for a publisher
+  this Mac already knows under this key; a first-time, renamed or re-keyed
+  publisher gets Cancel as the primary button.
 - **What is stripped on import.** Any entry with a `.claude` segment is dropped
   at staging and listed on the summary (`pack/paths.rs`, `pack/read.rs`); an
   imported `CLAUDE.md` is replaced by the app's default and the author's text
@@ -501,6 +507,5 @@ Deliberately deferred, recorded so nobody mistakes them for done:
 - A Homebrew cask, so MDM fleets can install and pin versions without the DMG.
 - A per-project website data store: approved projects share one login profile
   today (`docs/scene-website.md`, "Accepted residual risk").
-- A disk-free ceiling on single clip extractions, and eviction of a deleted
-  project's clip frames.
+- A disk-free ceiling on single clip extractions.
 - The bridge queue has no authentication beyond the user account.

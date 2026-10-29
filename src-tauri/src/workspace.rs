@@ -2094,6 +2094,37 @@ pub(crate) fn restamping_trust<T>(
     Ok(out)
 }
 
+/// Whether scene code may be copied out of `id` (`copy_scene_to_project`, whichever window calls it): bundled templates and presets ship with the app; a workspace project, user template or user preset needs a grant matching its content or this session's allow, the same F-001 gate that opening it applies.
+pub(crate) fn require_source_allowed(
+    app: &AppHandle,
+    state: &State<'_, SettingsState>,
+    trust: &TrustState,
+    id: &str,
+) -> Result<(), String> {
+    let (scope, _) = parse_project_id(id)?;
+    if !copy_source_needs_grant(&scope) {
+        return Ok(());
+    }
+    let dir = project_dir(app, state, id)?;
+    let stored = stored_trust_matches(app, state, id, &dir)?;
+    let in_session = trust
+        .session
+        .lock()
+        .map_err(|_| "trust state poisoned")?
+        .contains(id);
+    if stored || in_session {
+        return Ok(());
+    }
+    Err("open that project and allow its scene code before copying from it".into())
+}
+
+fn copy_source_needs_grant(scope: &ProjectScope) -> bool {
+    !matches!(
+        scope,
+        ProjectScope::BundledTemplate | ProjectScope::BundledPreset
+    )
+}
+
 /// One consent the native sheet (or an autorun launch) issued and `trust_project` has not consumed yet.
 struct PendingTrust {
     slug: String,
@@ -3663,6 +3694,22 @@ mod tests {
         std::fs::write(dir.join("project.json"), b"{}").unwrap();
         assert_eq!(consent_project_name(&dir, "demo"), "demo");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn only_bundled_sources_copy_without_a_grant() {
+        for id in ["template:launch", "preset:stat-hero"] {
+            assert!(
+                !copy_source_needs_grant(&parse_project_id(id).unwrap().0),
+                "{id}"
+            );
+        }
+        for id in ["demo", "ws-template:mine", "ws-preset:mine"] {
+            assert!(
+                copy_source_needs_grant(&parse_project_id(id).unwrap().0),
+                "{id}"
+            );
+        }
     }
 
     #[test]

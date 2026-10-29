@@ -8,7 +8,7 @@ use serde_json::{json, Value};
 use tauri::{AppHandle, State};
 
 use crate::live_edits::{self, FileWrite};
-use crate::workspace::{self, SettingsState, MANIFEST_FILENAME};
+use crate::workspace::{self, SettingsState, TrustState, MANIFEST_FILENAME};
 
 /// Newest sidecar schema this binary understands (`read`/`write` reject anything newer).
 const SCENE_DOC_VERSION: u64 = 1;
@@ -1140,6 +1140,7 @@ pub struct CopiedSceneResult {
 pub fn copy_scene_to_project(
     app: AppHandle,
     state: State<'_, SettingsState>,
+    trust: State<'_, TrustState>,
     slug: String,
     index: usize,
     dest_slug: String,
@@ -1152,6 +1153,7 @@ pub fn copy_scene_to_project(
         if slug == dest_slug {
             return Err("pick a different project to copy into".into());
         }
+        workspace::require_source_allowed(&app, &state, &trust, &slug)?;
         let project = workspace::project_dir(&app, &state, &slug)?;
         let dest = workspace::project_dir_mut(&app, &state, &dest_slug)?;
         let guard = guard.unwrap_or_default();
