@@ -476,3 +476,20 @@ export function slugifyPresetName(name: string): string {
     .replace(/^-+|-+$/g, "")
     .slice(0, 48);
 }
+
+/** What the native side kept about an export the last page died with. */
+export interface ExportInterruption {
+  percent: number;
+  cause: "memory" | "crash" | "reload";
+}
+
+/** The new page's one-off notice: what happened, that nothing was saved, and the restart that actually helps. */
+export function interruptedExportMessage({ percent, cause }: ExportInterruption): string {
+  const why =
+    cause === "memory"
+      ? "the editor ran out of memory and reloaded"
+      : cause === "crash"
+        ? "the editor's page crashed and reloaded"
+        : "the editor reloaded";
+  return `The export stopped at ${percent}% when ${why}, so nothing was saved. Quit and reopen Kookaburra Cut, then export again.`;
+}

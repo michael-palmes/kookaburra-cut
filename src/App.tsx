@@ -86,6 +86,7 @@ import { useImageEditStore } from "./engine/imageEditStore";
 import { useImageReconciliationStore } from "./engine/imageReconciliationStore";
 import { useLayeredScreenshotEditStore } from "./engine/layeredScreenshotEditStore";
 import { useLightingEditStore } from "./engine/lightingEditStore";
+import { plainError, useManagedPolicy } from "./engine/managed";
 import { conformingAmong, importMedia } from "./engine/media";
 import {
   editRenderMatchesPending,
@@ -245,7 +246,7 @@ import {
   type ExportSelection,
   type StillsExportSelection,
 } from "./ui/ExportModal";
-import { STILLS_ID } from "./ui/exportOptions";
+import { type ExportInterruption, interruptedExportMessage, STILLS_ID } from "./ui/exportOptions";
 import { clearExportCard, FlashWarning, noteExportFlashes } from "./ui/FlashWarning";
 import { GpuNotices } from "./ui/GpuNotices";
 import { OverlayImageGizmo } from "./ui/ImageOverlayGizmo";
@@ -462,6 +463,13 @@ export default function App() {
   const claudeButtonRef = useRef<HTMLButtonElement>(null);
   const closeClaudeLauncher = useCallback(() => setClaudeLauncher(null), []);
   const claudeBuiltinTerminal = settings?.claudeBuiltinTerminal ?? false;
+  // What a configuration profile forces; null until read, and every Claude entry point waits for it so nothing managed flashes open.
+  const managed = useManagedPolicy();
+  const claudeAllowed = managed !== null && !managed.disableClaude;
+  // Copy and the start card only: unknown reads as not yet turned off, so an unmanaged welcome never flashes the managed wording.
+  const claudeOffered = managed?.disableClaude !== true;
+  const claudeAllowedRef = useRef(false);
+  claudeAllowedRef.current = claudeAllowed;
   // Read by the load-time greeting and the stable callbacks below without re-running them.
   const claudePrefsRef = useRef({ builtinTerminal: false, firstOpen: true });
   claudePrefsRef.current = {
@@ -469,6 +477,7 @@ export default function App() {
     firstOpen: !settings?.disableClaudeFirstOpen,
   };
   const toggleClaude = useCallback(() => {
+    if (!claudeAllowedRef.current) return;
     if (claudeBuiltinTerminal) setRailOpen((v) => !v);
     else setClaudeLauncher((v) => (v ? null : { firstRun: false }));
   }, [claudeBuiltinTerminal]);
@@ -492,7 +501,7 @@ export default function App() {
   const promptInClaudeApp = useCallback((slug: string, prompt: string) => {
     openInClaude(slug, prompt).catch((e) => {
       if (String(e) === CLAUDE_APP_MISSING) setClaudeLauncher({ firstRun: false });
-      else setToast({ kind: "error", message: String(e) });
+      else setToast({ kind: "error", message: plainError(e) });
     });
   }, []);
 
@@ -566,7 +575,12 @@ export default function App() {
       if (write) {
         write
           .then(() =>
-            setToast({ kind: "success", message: `Path copied — paste it into Claude: ${rel}` }),
+            setToast({
+              kind: "success",
+              message: claudeAllowedRef.current
+                ? `Path copied — paste it into Claude: ${rel}`
+                : `Path copied: ${rel}`,
+            }),
           )
           .catch(() => setToast({ kind: "error", message: `Couldn't copy — the path is: ${rel}` }));
       } else {
@@ -2047,8 +2061,8 @@ export default function App() {
   }, [loadedProjectId, projectId, format.name, isAutoRun, exporting]);
   // Greet editable projects: the legacy rail opens on every load as it always has, the Claude launcher only on a new project's first open; both close where they can't work. Keyed on the id: in-memory doc patches swap the project object per edit and must not reopen what the user closed.
   useEffect(() => {
-    if (!loadedProjectId || isAutoRun) return;
-    const editable = isEditableProjectId(loadedProjectId);
+    if (!loadedProjectId || isAutoRun || !managed) return;
+    const editable = isEditableProjectId(loadedProjectId) && !managed.disableClaude;
     const greet = editable && claimClaudeLauncherGreeting(loadedProjectId);
     const prefs = claudePrefsRef.current;
     if (prefs.builtinTerminal) {
@@ -2057,7 +2071,7 @@ export default function App() {
     }
     setRailOpen(false);
     setClaudeLauncher(greet && prefs.firstOpen ? { firstRun: true } : null);
-  }, [loadedProjectId, isAutoRun]);
+  }, [loadedProjectId, isAutoRun, managed]);
 
   // Camera-edit hygiene: a committed drag draft holds the new pose through the async reload, released once the reloaded project lands; the editor's whole state is per-project, so a project switch resets it.
   useEffect(() => {
@@ -2814,6 +2828,16 @@ export default function App() {
     commitFormat,
   });
 
+  // An export the previous page died with (WebKit reclaiming memory, usually) is said once, with the restart that helps.
+  useEffect(() => {
+    if (isAutoRun) return;
+    void invoke<ExportInterruption | null>("take_export_interruption")
+      .then((stopped) => {
+        if (stopped) setToast({ kind: "error", message: interruptedExportMessage(stopped) });
+      })
+      .catch(() => {});
+  }, [isAutoRun]);
+
   function cancelExport() {
     if (!exportAbortRef.current || cancelling) return;
     setCancelling(true);
@@ -2860,7 +2884,7 @@ export default function App() {
               name={project?.name ?? projectId.replace(WORKSPACE_PROJECT_PREFIX, "")}
               path={projectDisplayPath}
             />
-            {project && isEditableProjectId(project.id) && (
+            {project && isEditableProjectId(project.id) && claudeAllowed && (
               <EditWithClaudeButton
                 buttonRef={claudeButtonRef}
                 legacy={claudeBuiltinTerminal}
@@ -2954,6 +2978,7 @@ export default function App() {
           }}
           refreshKey={welcomeRefresh}
           focusSearchNonce={welcomeSearchNonce}
+          claudeAvailable={claudeOffered}
           notice={
             trustDeclined ? (
               <LoadNotice
@@ -2996,41 +3021,45 @@ export default function App() {
             />
           )}
           {/* The rail hides during export (task 24): the live-session registry keeps the PTY and buffer alive through the unmount, so it restores intact when the export ends. */}
-          {railOpen && !exporting && project && isEditableProjectId(project.id) && (
-            <aside className="terminal-rail">
-              <div className="rail-header">
-                <span className="rail-title">Claude Code</span>
-                <span className="rail-legacy-tag">Legacy</span>
-                <button
-                  type="button"
-                  className="btn btn-small rail-use-app"
-                  title="Edit in the Claude app instead"
-                  onClick={() => switchClaudeMode(false)}
-                >
-                  <span className="titlebar-claude-mark">
-                    <ClaudeSpark size={12} strokeWidth={2.6} />
-                  </span>
-                  Use Claude app
-                </button>
-                <button
-                  type="button"
-                  className="rail-close"
-                  aria-label="Hide the Claude panel"
-                  title="Close (⌥⌘E)"
-                  onClick={() => setRailOpen(false)}
-                >
-                  <CloseGlyph />
-                </button>
-              </div>
-              <TerminalPanel
-                key={project.id}
-                slug={nativeProjectSlug(project.id)}
-                cwd={projectFolder ?? ""}
-                projectName={project.name}
-                sceneCount={project.slots.length}
-              />
-            </aside>
-          )}
+          {railOpen &&
+            claudeAllowed &&
+            !exporting &&
+            project &&
+            isEditableProjectId(project.id) && (
+              <aside className="terminal-rail">
+                <div className="rail-header">
+                  <span className="rail-title">Claude Code</span>
+                  <span className="rail-legacy-tag">Legacy</span>
+                  <button
+                    type="button"
+                    className="btn btn-small rail-use-app"
+                    title="Edit in the Claude app instead"
+                    onClick={() => switchClaudeMode(false)}
+                  >
+                    <span className="titlebar-claude-mark">
+                      <ClaudeSpark size={12} strokeWidth={2.6} />
+                    </span>
+                    Use Claude app
+                  </button>
+                  <button
+                    type="button"
+                    className="rail-close"
+                    aria-label="Hide the Claude panel"
+                    title="Close (⌥⌘E)"
+                    onClick={() => setRailOpen(false)}
+                  >
+                    <CloseGlyph />
+                  </button>
+                </div>
+                <TerminalPanel
+                  key={project.id}
+                  slug={nativeProjectSlug(project.id)}
+                  cwd={projectFolder ?? ""}
+                  projectName={project.name}
+                  sceneCount={project.slots.length}
+                />
+              </aside>
+            )}
           <div className="editor-main">
             <div className="stage">
               {/* Letterbox frame: contain-fit at the export aspect (design.md §7.2); the preview frames exactly like the export and can never overflow the window. */}
@@ -3520,13 +3549,15 @@ export default function App() {
         />
       )}
       {/* The welcome (and its consent ask) waits for a workspace so it never stacks on the setup-failure dialog. */}
-      {settings?.workspaceRoot && updates.consent === "undecided" && !isAutoRun && (
-        <WelcomeDialog onAnswer={(on) => void updates.answerConsent(on)} />
+      {settings?.workspaceRoot && updates.welcomeOwed && !isAutoRun && (
+        <WelcomeDialog
+          onAnswer={(on) => void updates.answerConsent(on)}
+          updatesManaged={updates.managed}
+        />
       )}
       {updates.offerVisible && updates.available && !isAutoRun && (
         <UpdateAvailableDialog
           version={updates.available.version}
-          notes={updates.available.notes}
           installing={updates.phase === "installing"}
           installError={updates.installError}
           onLater={updates.dismissOffer}
@@ -3547,6 +3578,7 @@ export default function App() {
       )}
       {showNewProject && (
         <NewProjectDialog
+          claudeStart={claudeOffered}
           initialGroup={newProjectGroup}
           initialTemplateId={newProjectTemplate}
           onCreate={handleCreateProject}
@@ -3567,7 +3599,9 @@ export default function App() {
       )}
       {themeMode && (
         <ThemeMode
-          onEditInClaude={editorView && project ? handleEditThemeInClaude : undefined}
+          onEditInClaude={
+            editorView && project && claudeAllowed ? handleEditThemeInClaude : undefined
+          }
           currentThemeId={
             editorView && project && isEditableProjectId(project.id) ? project.theme.id : undefined
           }
@@ -3599,6 +3633,7 @@ export default function App() {
             hasWorkspaceRoot: !!settings?.workspaceRoot,
             playing,
             audioMuted,
+            claudeAllowed,
             claudeOpen: claudeBuiltinTerminal ? railOpen : claudeLauncher !== null,
             canAddScenes:
               !!project && !["preset", "ws-preset"].includes(parseProjectId(project.id).scope),

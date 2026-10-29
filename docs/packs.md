@@ -145,6 +145,21 @@ imported project comes out untrusted. Templates and presets carry scene code the
 same way, and the project a user creates from one is a new project at a new path,
 so it is untrusted for the same reason.
 
+Agent configuration never lands. `.claude/**` entries (older packs shipped
+`settings.json`, which carries hooks and permission rules) are dropped at
+staging, listed as a note on the summary, and the app stamps its own settings
+when the project opens (`docs/agent-kit.md`, "Stamping"). A project, template
+or preset's `CLAUDE.md` travels, since authors write real notes there, but
+Claude Code would read it as instructions, so apply swaps it for the app's
+default (named after the project) and saves the author's text as `NOTES.md`
+(appended under a heading when the pack also carries one); a file that still
+matches one of the app's own defaults is replaced quietly. The summary shows
+each saved text under "The pack's author left notes for Claude"
+(`ImportOutcome.agentNotes`, the first 4 000 characters), so the person sees
+what the author wanted the agent told and moves what they agree with into
+`CLAUDE.md` themselves. The stamped RULES.md tells the agent `NOTES.md` is
+notes, not rules.
+
 Terminal scene content gets its own review: after apply, the summary screen
 reads the landed sidecars (never the author's manifest, which is
 self-declared) and lists every terminal block that pre-types a command or sets
@@ -172,8 +187,9 @@ Implemented in `pack::read` and `pack::paths`, one test per item in
    create a symlink. This is the CVE-2025-29787 shape: entry A a symlink, entry
    B underneath it.
 6. Reject an entry not in `files`, and a `files` entry with no zip entry.
-7. Per-subtree extension allowlist. `.claude/` is the only dotted directory
-   accepted; `.git/` is refused.
+7. Per-subtree extension allowlist. No dotted directory is accepted: `.claude/`
+   entries are dropped before validation and reported (`paths::is_agent_config`,
+   `StagedPack::dropped`), `.git/` and the rest are refused.
 8. Skip `__MACOSX/`, `.DS_Store`, `._*` rather than refusing.
 9. Extract into a fresh `<root>/.kookaburra/import-staging/<random>/`, created
    with `create_dir` so it can never be an existing directory.
@@ -253,8 +269,10 @@ Excluded, because it is generated (`pack::scan::is_excluded`, extending
 folders, so the same list applies to them; the unused-file review is not offered
 for either, because a template or preset carries only what it was saved with.
 
-Included despite looking generated: `CLAUDE.md` and `.claude/settings.json`,
-because both are only written when missing and users edit them.
+Included despite looking generated: `CLAUDE.md`, because authors write notes
+there; import swaps it for the app's default and keeps the text as `NOTES.md`
+("Pack trust is not code trust"). `.claude/settings.json` is app-owned and
+never travels.
 
 Reviewed rather than dropped: unreferenced assets and `*-edited.mp4` flattened
 renders appear in the picker with their size and a one-click drop. Nothing is

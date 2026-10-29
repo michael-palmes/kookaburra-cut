@@ -1,7 +1,7 @@
 //! Claude Code version checks for the embedded terminal. Everything runs locally
 //! except one anonymous HTTPS GET for the latest version string (the same endpoint
-//! the CLI's own updater polls), throttled to daily and cached in settings;
-//! offline or failed checks stay silent.
+//! the CLI's own updater polls), made only while the update-check consent is on,
+//! throttled to daily and cached in settings; offline or failed checks stay silent.
 
 use serde::Serialize;
 use tauri::{AppHandle, State};
@@ -101,6 +101,8 @@ pub async fn claude_version_info(
     app: AppHandle,
     state: State<'_, SettingsState>,
 ) -> Result<Option<ClaudeVersionInfo>, String> {
+    // Refused before the probe and the fetch: a managed install never asks the network about Claude.
+    crate::managed::deny_claude()?;
     let Some(path) = tauri::async_runtime::spawn_blocking(crate::pty::detect_claude_blocking)
         .await
         .map_err(|e| e.to_string())?
@@ -116,6 +118,17 @@ pub async fn claude_version_info(
     .map_err(|e| e.to_string())?;
 
     let snapshot = workspace::load_settings(&app, &state)?;
+    // The same consent as the app's own update check: without it nothing is fetched and nothing cached is offered.
+    if snapshot.update_check_consent != Some(true) {
+        return Ok(Some(ClaudeVersionInfo {
+            path,
+            method,
+            installed,
+            latest: None,
+            outdated: false,
+            dismissed: false,
+        }));
+    }
     let now = workspace::now_unix_ms();
     let stale = snapshot
         .last_claude_check_ms

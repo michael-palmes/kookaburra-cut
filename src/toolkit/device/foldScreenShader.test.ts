@@ -49,7 +49,7 @@ describe("the fold display shader", () => {
   it("writes the crop and the frame's state, and is inert on any other material", () => {
     const material = new MeshBasicMaterial();
     applyFoldScreenShader(material, 0.69);
-    setFoldScreenCrop(material, { u0: 0.1, v0: 1, u1: 0.9, v1: 0 });
+    setFoldScreenCrop(material, { rect: { u0: 0.1, v0: 1, u1: 0.9, v1: 0 } });
     setFoldScreenState(
       material,
       {
@@ -75,7 +75,7 @@ describe("the fold display shader", () => {
     expect(uniforms.uFoldEye.value.toArray()).toEqual([0.1, 0.2, 0.3]);
 
     const plain = new MeshBasicMaterial();
-    setFoldScreenCrop(plain, { u0: 0, v0: 0, u1: 1, v1: 1 });
+    setFoldScreenCrop(plain, { rect: { u0: 0, v0: 0, u1: 1, v1: 1 } });
     setFoldScreenState(
       plain,
       {

@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { managedPolicy } from "./managed";
 import { getSettings } from "./workspace";
 
 /** Frontend face of the opt-in update lane (src-tauri/src/updater.rs). All network and consent bookkeeping happens Rust-side; this module holds the pure launch-check policy and the per-window hook that drives the dialogs, the Settings rows and the manual-check surfaces. */
@@ -8,7 +9,6 @@ export type UpdateConsent = "loading" | "undecided" | "on" | "off";
 
 export interface AvailableUpdate {
   version: string;
-  notes: string | null;
   pubDate: string | null;
 }
 
@@ -38,7 +38,12 @@ export function installUpdateAndRelaunch(): Promise<void> {
 /** SturtBar's cadence: launch checks at most once per 20h; manual checks never throttle. */
 export const AUTO_CHECK_THROTTLE_MS = 20 * 60 * 60 * 1000;
 
-export function consentFromSettings(raw: boolean | null | undefined): UpdateConsent {
+/** A profile that turns update checks off pins consent off; the stored tri-state still says whether the welcome's ask is owed. */
+export function consentFromSettings(
+  raw: boolean | null | undefined,
+  managedOff = false,
+): UpdateConsent {
+  if (managedOff) return "off";
   if (raw === true) return "on";
   if (raw === false) return "off";
   return "undecided";
@@ -91,6 +96,10 @@ export function formatCheckedAgo(ms: number, nowMs: number): string {
 
 export interface UpdateCheckApi {
   consent: UpdateConsent;
+  /** Update checks are turned off by a configuration profile: no switch, no manual check. */
+  managed: boolean;
+  /** The first-run welcome is still owed (no answer stored yet, managed or not). */
+  welcomeOwed: boolean;
   phase: "idle" | "checking" | "installing";
   devBuild: boolean;
   error: string | null;
@@ -118,6 +127,8 @@ export function useUpdateCheck({
   onManualResult,
 }: UseUpdateCheckOptions): UpdateCheckApi {
   const [consent, setConsent] = useState<UpdateConsent>("loading");
+  const [managed, setManaged] = useState(false);
+  const [welcomeOwed, setWelcomeOwed] = useState(false);
   const [phase, setPhase] = useState<"idle" | "checking" | "installing">("idle");
   const [devBuild, setDevBuild] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -134,10 +145,12 @@ export function useUpdateCheck({
 
   useEffect(() => {
     let cancelled = false;
-    getSettings()
-      .then((s) => {
+    Promise.all([getSettings(), managedPolicy()])
+      .then(([s, policy]) => {
         if (cancelled) return;
-        setConsent(consentFromSettings(s.updateCheckConsent));
+        setManaged(policy.disableUpdateCheck);
+        setWelcomeOwed(consentFromSettings(s.updateCheckConsent) === "undecided");
+        setConsent(consentFromSettings(s.updateCheckConsent, policy.disableUpdateCheck));
         setLastCheckedMs(s.lastUpdateCheckMs ?? null);
         lastOfferedRef.current = s.lastOfferedVersion ?? null;
       })
@@ -193,6 +206,7 @@ export function useUpdateCheck({
 
   const answerConsent = useCallback(
     async (on: boolean) => {
+      setWelcomeOwed(false);
       consentRef.current = on ? "on" : "off";
       setConsent(consentRef.current);
       try {
@@ -250,6 +264,8 @@ export function useUpdateCheck({
 
   return {
     consent,
+    managed,
+    welcomeOwed,
     phase,
     devBuild,
     error,

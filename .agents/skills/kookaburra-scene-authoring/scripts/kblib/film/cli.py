@@ -10,6 +10,7 @@ from ..catalog import load_catalog
 from ..project import Project
 from ..util import EXIT_ENV, EXIT_OK, EXIT_PROBLEMS, KbError, emit, emit_json, ok_envelope
 from ..video.passes import Tools
+from .. import reach
 from . import flashes as fl
 from . import handoffs as ho
 from . import pacing as pc
@@ -67,7 +68,7 @@ def resolve_film(raw: str, project: Project) -> Path:
     candidates = [path] if path.is_absolute() else [Path.cwd() / path, project.root / path]
     for c in candidates:
         if c.is_file():
-            return c.resolve()
+            return reach.guard_read(project, str(c), "the film")
     raise KbError(f"{raw} is not a file; give the exported film's path", EXIT_ENV, kind="usage",
                   hint="look in exports/ or ~/Downloads for <project>-<aspect>.mp4")
 

@@ -410,17 +410,24 @@ runtime, notarised) for personal distribution. For development, `tauri dev`
 with Vite HMR is the working mode. The app and the bundled ffmpeg/ffprobe
 sidecars are signed and stapled together or Gatekeeper blocks them.
 
-Three scripts own the release, and the split between them is deliberate.
-`tauri build` does the **signing** only: it walks the bundle and signs the
-sidecars and nested code in the right inside-out order, which is the fiddly part.
-`scripts/sign-and-notarize.sh` does **all** the notarising, because Tauri's
-built-in notarisation cannot use a notarytool keychain profile and never
-notarises the DMG, only the `.app`. `scripts/make-dmg.sh` builds the installer
-itself (`bundle.targets` is `["app"]`) because Tauri's DMG bundler accepts only a
-png/jpg/gif background (no multi-resolution TIFF, so the artwork is blurry on
-Retina) and cannot set a volume icon. `scripts/release.sh` chains the lot behind
-the usual guards and cuts a draft GitHub release. Both artefacts land in
-`release/` (not `dist/`: that is Vite's output, and `vite build` empties it).
+The release is cut by `.github/workflows/release.yml` from a signed `v*` tag
+(`pnpm release` only tags). Its build job holds no signing secret: it checks the
+tag against `main`'s `.github/allowed_signers`, builds the ffmpeg sidecar from
+pinned source, fetches the licensed device models and runs `pnpm tauri build
+--no-sign`. A sign job in the protected `release` environment then runs
+`scripts/sign-and-notarize.sh` on that payload: it signs the two sidecars and
+the bundle inside-out with the hardened runtime, notarises and staples the app
+and the DMG, and signs the updater tar bound to the version. Tauri's own
+signing would need the identity at build time, and its notarisation can't use a
+keychain profile or an API key file and never notarises the DMG, which is why
+the script owns both. A verify job on a fresh runner checks the result and runs
+the signed binary's headless CLI; publish writes `SHA256SUMS`, attests
+provenance and drafts the release. `scripts/make-dmg.sh` still builds the
+styled Retina DMG for local use (`bundle.targets` is `["app"]`, since Tauri's
+DMG bundler accepts only a png/jpg/gif background and cannot set a volume
+icon); CI ships a plain `hdiutil` DMG because a headless runner has no Finder.
+Both artefacts land in `release/` (not `dist/`: that is Vite's output, and
+`vite build` empties it).
 
 Two traps are worth naming, since both produce a build that signs and notarises
 happily and then misbehaves on someone else's Mac. `pnpm setup:ffmpeg` provisions
@@ -460,8 +467,9 @@ Where the live Tauri-2 setup matters for working in the code:
    `capabilities/<window>.json` grants: a command a window's capability does not
    name is refused before the handler runs. Dev-only commands are registered under
    `cfg(debug_assertions)` and granted by `capabilities/dev/`, which `build.rs`
-   reads only under the debug profile. `src-tauri/src/acl.rs` tests that every
-   registered command sits in a set and spells out each window's list.
+   reads only under the debug profile; the same folder lets the main window run
+   the autorun pack round trip, a dev-build gate. `src-tauri/src/acl.rs` tests
+   that every registered command sits in a set and spells out each window's list.
 2. **Sidecar runtime name is the basename.** Spawn with
    `app.shell().sidecar("ffmpeg")`, *not* `"bin/ffmpeg"`. Tauri copies the dev
    binary to `target/debug/ffmpeg`, stripping both the `bin/` prefix (from

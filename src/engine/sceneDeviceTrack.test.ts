@@ -62,6 +62,8 @@ describe("deviceTrackPoseAt", () => {
       scale: 1,
       lidDeg: undefined,
       foldDeg: undefined,
+      screenPower: undefined,
+      coverPower: undefined,
     });
   });
 
@@ -284,5 +286,36 @@ describe("a foldable's keyed hinge angle", () => {
     );
     expect(parsed?.deviceTrack?.keys[0].pose.duo).toEqual({ foldDeg: 30, scale: 2 });
     expect(parsed?.deviceTrack?.keys[0].pose.bad).toEqual({});
+  });
+});
+
+describe("keyed screen power", () => {
+  const wake = resolveDeviceTrack(
+    doc({
+      keys: [
+        { id: "k1", tMs: 0, pose: { duo: { coverPower: 0, screenPower: 0.5 } } },
+        { id: "k2", tMs: 1000, pose: { duo: { coverPower: 1 } } },
+      ],
+      segments: [{ from: "k1", to: "k2", ease: "linear" }],
+    }),
+  );
+
+  it("eases each display's power and holds an end the other key omits", () => {
+    const mid = deviceTrackPoseAt(wake, "duo", 250);
+    expect(mid.coverPower).toBe(0.25);
+    expect(mid.screenPower).toBe(0.5);
+    expect(deviceTrackPoseAt(wake, "duo", 5000).coverPower).toBe(1);
+  });
+
+  it("leaves an unkeyed display undefined, which renders lit", () => {
+    expect(deviceTrackPoseAt(wake, "phone", 500).screenPower).toBeUndefined();
+    expect(deviceTrackPoseAt(resolveDeviceTrack(TRACK), "d1", 500).coverPower).toBeUndefined();
+  });
+
+  it("is never at rest while keyed, and seeds new keys with what is showing", () => {
+    expect(deviceTrackPoseIsRest(deviceTrackPoseAt(wake, "duo", 500))).toBe(false);
+    const snapshot = deviceTrackSnapshotAt(wake, [{ id: "duo" }, { id: "phone" }], 500);
+    expect(snapshot.duo).toMatchObject({ coverPower: 0.5, screenPower: 0.5 });
+    expect(snapshot.phone.coverPower).toBeUndefined();
   });
 });

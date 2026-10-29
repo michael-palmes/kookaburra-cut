@@ -274,6 +274,9 @@ pub fn pty_spawn(
     on_data: Channel<InvokeResponseBody>,
 ) -> Result<u32, String> {
     validate_launch(&options.launch, window.label())?;
+    if options.launch.is_command() {
+        crate::managed::deny_claude()?;
+    }
     // F-006: confine the terminal cwd to the workspace root unless the caller explicitly opts out (scene terminals open a user-chosen start path). Every path still has to resolve to a real directory, `~` expands against the user's home, and nothing is ever auto-run in it.
     let root = crate::workspace::require_root(&app, &settings)?
         .canonicalize()

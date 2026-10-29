@@ -1,0 +1,493 @@
+name: Release
+
+# A release is a signed v* tag on main. The build job holds no signing secret and packs an unsigned
+# payload; the sign job, in the protected release environment on a fresh runner, signs, notarises
+# and staples it; the verify job checks the result on a runner that never held a key; publish
+# attests it and drafts the GitHub release for a person to publish. Operator steps:
+# .agents/skills/kookaburra-release/SKILL.md.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Build, sign and verify only (no release). false is honoured only when dispatched on a v* tag. Dispatched from a branch, the run rehearses with an ad-hoc signature and never sees the signing secrets."
+        type: boolean
+        default: true
+
+permissions: {}
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  # The one tauri-cli binary the sign and rehearse jobs run (signer only; no pnpm install beside a key).
+  TAURI_CLI_VERSION: "2.12.2"
+  TAURI_CLI_SHA256: "4a27a61b06e688308a5c17333008b6df52fd5780fa7a313a9ce8fb4a80dfb9ac"
+  AGE_VERSION: "1.3.2"
+  AGE_SHA256: "e2020b073c44f692685a24d6abc378817eb81ffaaf49fd0531ef8565f767f2f5"
+
+jobs:
+  # Builds from pinned source with no signing secret in reach. Its output is an unsigned app and its digest.
+  build:
+    name: Build unsigned payload
+    runs-on: ${{ vars.MACOS_RUNNER || 'macos-26' }}
+    timeout-minutes: 120
+    permissions:
+      contents: read
+    env:
+      HOMEBREW_NO_AUTO_UPDATE: "1"
+      HOMEBREW_NO_ANALYTICS: "1"
+      HOMEBREW_NO_ENV_HINTS: "1"
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      tag: ${{ steps.meta.outputs.tag }}
+      publish: ${{ steps.meta.outputs.publish }}
+      payload_sha256: ${{ steps.payload.outputs.sha256 }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # tag verification and the ancestry check need full history
+          persist-credentials: false
+
+      - name: Resolve release metadata
+        id: meta
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+          INPUT_DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          version="$(node -p "require('./src-tauri/tauri.conf.json').version")"
+          re='^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'
+          [[ "$version" =~ $re ]] || { echo "::error::invalid version '$version' in tauri.conf.json"; exit 1; }
+          tag=""
+          if [ "$REF_TYPE" = tag ]; then
+            tag="$REF_NAME"
+            [ "$tag" = "v$version" ] || { echo "::error::tag $tag does not match tauri.conf.json version $version"; exit 1; }
+          fi
+          publish=false
+          if [ -n "$tag" ] && { [ "$EVENT_NAME" = push ] || [ "$INPUT_DRY_RUN" = false ]; }; then publish=true; fi
+          { echo "version=$version"; echo "tag=$tag"; echo "publish=$publish"; } >> "$GITHUB_OUTPUT"
+          echo "Kookaburra Cut $version (tag: ${tag:-none}, publish: $publish)"
+
+      # Pins the signer to the key in main's .github/allowed_signers (read from main, never from the
+      # tagged tree, so a tag cannot vouch for itself), and requires the tag to be on main.
+      - name: Verify tag signature and ancestry
+        if: steps.meta.outputs.tag != ''
+        env:
+          TAG: ${{ steps.meta.outputs.tag }}
+        run: |
+          set -euo pipefail
+          git fetch --force --no-tags origin "+refs/tags/${TAG}:refs/tags/${TAG}" "+refs/heads/main:refs/remotes/origin/main"
+          [ "$(git cat-file -t "refs/tags/${TAG}")" = tag ] || { echo "::error::${TAG} is not an annotated tag (use scripts/release.sh)"; exit 1; }
+          git show origin/main:.github/allowed_signers > "$RUNNER_TEMP/allowed_signers"
+          git -c gpg.ssh.allowedSignersFile="$RUNNER_TEMP/allowed_signers" -c gpg.minTrustLevel=fully verify-tag --verbose "$TAG"
+          commit="$(git rev-parse "${TAG}^{commit}")"
+          [ "$(git rev-parse HEAD)" = "$commit" ] || { echo "::error::checkout is not the tagged commit"; exit 1; }
+          git merge-base --is-ancestor "$commit" origin/main || { echo "::error::${TAG} is not on main"; exit 1; }
+
+      - name: Check the README states the bundle's macOS floor
+        run: |
+          set -euo pipefail
+          min_os="$(node -p "require('./src-tauri/tauri.conf.json').bundle.macOS.minimumSystemVersion")"
+          grep -q "macOS ${min_os}+" README.md || { echo "::error::README.md does not state the macOS ${min_os}+ floor"; exit 1; }
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+
+      - name: Set up Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # stable
+        with:
+          toolchain: stable
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Build tools only; every shipped byte of the sidecar comes from the pinned sources in the script.
+      - name: Install sidecar build tools
+        run: brew install nasm pkgconf
+
+      - name: Build the ffmpeg sidecar from pinned source
+        run: |
+          set -euo pipefail
+          bash scripts/build-ffmpeg-sidecar.sh --print-pins
+          pnpm setup:ffmpeg:release
+
+      - name: Fetch the beat-this model (SHA-256 pinned)
+        run: pnpm setup:models
+
+      # Licensed device models are compiled in at build time, so a tag build needs them. They come from a
+      # private repository as an age-encrypted archive and must match src/assets/models/licensed.sha256.
+      # The two secrets here are read-only to that repository and its decryption key, never a signing key;
+      # a branch rehearsal skips this step and ships the Android fallback for those devices.
+      - name: Fetch the licensed device models
+        if: steps.meta.outputs.tag != ''
+        env:
+          ASSETS_REPO: ${{ vars.LICENSED_ASSETS_REPO || 'michael-palmes/kookaburra-cut-assets' }}
+          ASSETS_TOKEN: ${{ secrets.LICENSED_ASSETS_TOKEN }}
+          AGE_KEY: ${{ secrets.LICENSED_ASSETS_AGE_KEY }}
+        run: |
+          set -euo pipefail
+          umask 077
+          [ -n "$ASSETS_TOKEN" ] || { echo "::error::LICENSED_ASSETS_TOKEN is not set"; exit 1; }
+          [ -n "$AGE_KEY" ] || { echo "::error::LICENSED_ASSETS_AGE_KEY is not set"; exit 1; }
+          tgz="$RUNNER_TEMP/age.tar.gz"
+          curl -fsSLo "$tgz" "https://github.com/FiloSottile/age/releases/download/v${AGE_VERSION}/age-v${AGE_VERSION}-darwin-arm64.tar.gz"
+          echo "${AGE_SHA256}  $tgz" | shasum -a 256 -c -
+          tar -xzf "$tgz" -C "$RUNNER_TEMP"
+          printf '%s\n' "$AGE_KEY" > "$RUNNER_TEMP/age-key.txt"
+          curl -fsSL -H "Authorization: Bearer $ASSETS_TOKEN" -H "Accept: application/vnd.github.raw+json" \
+            -o "$RUNNER_TEMP/licensed-models.tar.age" \
+            "https://api.github.com/repos/${ASSETS_REPO}/contents/licensed-models.tar.age"
+          "$RUNNER_TEMP/age/age" -d -i "$RUNNER_TEMP/age-key.txt" -o "$RUNNER_TEMP/licensed-models.tar" "$RUNNER_TEMP/licensed-models.tar.age"
+          rm -f "$RUNNER_TEMP/age-key.txt" "$RUNNER_TEMP/licensed-models.tar.age"
+          # Flat glb names only: nothing may write outside the licensed folder.
+          if /usr/bin/tar -tf "$RUNNER_TEMP/licensed-models.tar" | grep -Ev '^[0-9a-f-]+\.glb$'; then
+            echo "::error::the licensed archive holds entries other than flat glb files"; exit 1
+          fi
+          mkdir -p src/assets/models/licensed
+          /usr/bin/tar -xf "$RUNNER_TEMP/licensed-models.tar" -C src/assets/models/licensed
+          rm -f "$RUNNER_TEMP/licensed-models.tar"
+          bash scripts/check-licensed-models.sh
+
+      - name: Build the app (unsigned)
+        run: pnpm tauri build --ci --no-sign
+
+      - name: Pack the unsigned payload
+        id: payload
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          set -euo pipefail
+          app="src-tauri/target/release/bundle/macos/Kookaburra Cut.app"
+          [ -d "$app" ] || { echo "::error::no bundle at $app"; exit 1; }
+          [ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Contents/Info.plist")" = "$VERSION" ] \
+            || { echo "::error::the bundle is not version $VERSION"; exit 1; }
+          bash scripts/setup-models.sh --check "$app/Contents/Resources/models"
+          mkdir -p payload
+          bash scripts/sidecar-digest.sh "$app/Contents/MacOS/ffmpeg" "$app/Contents/MacOS/ffprobe" | tee payload/sidecar-digests.txt
+          find "$app" \( -name '._*' -o -name '.DS_Store' \) -delete
+          xattr -cr "$app"
+          COPYFILE_DISABLE=1 /usr/bin/tar --no-mac-metadata --no-xattrs --no-acls --no-fflags --uid 0 --gid 0 --numeric-owner \
+            -czf "payload/KookaburraCut-${VERSION}-unsigned.tar.gz" -C "$(dirname "$app")" "Kookaburra Cut.app"
+          sha="$(shasum -a 256 "payload/KookaburraCut-${VERSION}-unsigned.tar.gz" | cut -d' ' -f1)"
+          echo "sha256=$sha" >> "$GITHUB_OUTPUT"
+          echo "payload sha256 $sha"
+
+      - name: Upload the unsigned payload
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: kookaburra-cut-${{ steps.meta.outputs.version }}-unsigned
+          path: payload/
+          if-no-files-found: error
+          retention-days: 1
+
+  # The only job that can see the signing and notary secrets. It builds nothing and never runs the payload:
+  # it checks the payload's digest against the build job, signs, notarises, staples and packages.
+  sign:
+    name: Sign and notarise
+    needs: build
+    if: needs.build.outputs.tag != ''
+    runs-on: ${{ vars.MACOS_RUNNER || 'macos-26' }}
+    environment: release
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    env:
+      VERSION: ${{ needs.build.outputs.version }}
+      TAG: ${{ needs.build.outputs.tag }}
+      PAYLOAD_SHA256: ${{ needs.build.outputs.payload_sha256 }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check the checkout is the tagged commit
+        run: |
+          set -euo pipefail
+          git fetch --force --no-tags origin "+refs/tags/${TAG}:refs/tags/${TAG}"
+          [ "$(git rev-parse HEAD)" = "$(git rev-parse "refs/tags/${TAG}^{commit}")" ] || { echo "::error::checkout is not the tagged commit"; exit 1; }
+
+      - name: Download the unsigned payload
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: kookaburra-cut-${{ needs.build.outputs.version }}-unsigned
+          path: payload
+
+      - name: Verify the payload digest and unpack it
+        run: |
+          set -euo pipefail
+          payload="payload/KookaburraCut-${VERSION}-unsigned.tar.gz"
+          [[ "$PAYLOAD_SHA256" =~ ^[0-9a-f]{64}$ ]] || { echo "::error::the build job recorded no payload digest"; exit 1; }
+          echo "${PAYLOAD_SHA256}  ${payload}" | shasum -a 256 -c -
+          mkdir -p "$RUNNER_TEMP/unsigned"
+          /usr/bin/tar -xzf "$payload" -C "$RUNNER_TEMP/unsigned"
+          [ -d "$RUNNER_TEMP/unsigned/Kookaburra Cut.app/Contents/MacOS" ] || { echo "::error::the payload holds no app bundle"; exit 1; }
+
+      - name: Install tauri-cli (pinned, for the updater signature)
+        run: |
+          set -euo pipefail
+          zip="$RUNNER_TEMP/cargo-tauri.zip"
+          curl -fsSLo "$zip" "https://github.com/tauri-apps/tauri/releases/download/tauri-cli-v${TAURI_CLI_VERSION}/cargo-tauri-aarch64-apple-darwin.zip"
+          echo "${TAURI_CLI_SHA256}  $zip" | shasum -a 256 -c -
+          mkdir -p "$RUNNER_TEMP/tauri-cli"
+          unzip -q "$zip" -d "$RUNNER_TEMP/tauri-cli"
+          "$RUNNER_TEMP/tauri-cli/cargo-tauri" --version
+          echo "TAURI_CLI=$RUNNER_TEMP/tauri-cli/cargo-tauri" >> "$GITHUB_ENV"
+
+      - name: Import the Developer ID certificate into a temporary keychain
+        env:
+          P12_BASE64: ${{ secrets.DEVELOPER_ID_P12 }}
+          P12_PASSWORD: ${{ secrets.DEVELOPER_ID_P12_PASSWORD }}
+        run: |
+          set -euo pipefail
+          umask 077
+          kc="$RUNNER_TEMP/kookaburra-signing.keychain-db"
+          kc_pw="$(openssl rand -base64 32)"
+          p12="$RUNNER_TEMP/developer-id.p12"
+          printf '%s' "$P12_BASE64" | base64 --decode > "$p12"
+          security create-keychain -p "$kc_pw" "$kc"
+          security set-keychain-settings -lut 3600 "$kc"
+          security unlock-keychain -p "$kc_pw" "$kc"
+          security import "$p12" -k "$kc" -f pkcs12 -P "$P12_PASSWORD" -T /usr/bin/codesign
+          rm -f "$p12"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$kc_pw" "$kc" >/dev/null
+          existing="$(security list-keychains -d user | sed -E 's/^[[:space:]]*"(.*)"$/\1/')"
+          # shellcheck disable=SC2086
+          security list-keychains -d user -s "$kc" $existing
+          identity="$(security find-identity -v -p codesigning "$kc" | grep -F '"Developer ID Application:' | awk '{ print $2 }' | head -1)"
+          [ -n "$identity" ] || { echo "::error::no Developer ID Application identity in the imported p12"; exit 1; }
+          { echo "SIGNING_KEYCHAIN=$kc"; echo "KOOKABURRA_SIGNING_IDENTITY=$identity"; } >> "$GITHUB_ENV"
+
+      - name: Write the notary API key
+        env:
+          NOTARY_KEY_P8: ${{ secrets.NOTARY_KEY_P8 }}
+        run: |
+          set -euo pipefail
+          umask 077
+          key="$RUNNER_TEMP/AuthKey.p8"
+          case "$NOTARY_KEY_P8" in
+            *"BEGIN PRIVATE KEY"*) printf '%s\n' "$NOTARY_KEY_P8" > "$key" ;;
+            *) printf '%s' "$NOTARY_KEY_P8" | base64 --decode > "$key" ;;
+          esac
+          echo "KOOKABURRA_NOTARY_KEY_PATH=$key" >> "$GITHUB_ENV"
+
+      - name: Sign, notarise, staple and package
+        env:
+          KOOKABURRA_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
+          KOOKABURRA_NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
+          KOOKABURRA_NOTARY_ISSUER_ID: ${{ secrets.NOTARY_ISSUER_ID }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          [ -n "${KOOKABURRA_TEAM_ID:-}" ] || { echo "::error::APPLE_TEAM_ID is not set as a repository variable"; exit 1; }
+          bash scripts/sign-and-notarize.sh --app "$RUNNER_TEMP/unsigned/Kookaburra Cut.app" --plain-dmg
+          cp payload/sidecar-digests.txt release/sidecar-digests.txt
+          rm -rf "release/Kookaburra Cut.app"
+
+      - name: Remove signing material
+        if: always()
+        run: |
+          if [ -n "${SIGNING_KEYCHAIN:-}" ]; then security delete-keychain "$SIGNING_KEYCHAIN" || true; fi
+          rm -f "$RUNNER_TEMP/AuthKey.p8" "$RUNNER_TEMP/developer-id.p12"
+
+      - name: Upload the signed set
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: kookaburra-cut-${{ needs.build.outputs.version }}-signed
+          path: release/
+          if-no-files-found: error
+          retention-days: 30
+
+  # Checks the signed set on a runner that never held a secret, and runs the signed binary.
+  verify:
+    name: Verify
+    needs: [build, sign]
+    runs-on: ${{ vars.MACOS_RUNNER || 'macos-26' }}
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    env:
+      VERSION: ${{ needs.build.outputs.version }}
+      KOOKABURRA_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Download the signed set
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: kookaburra-cut-${{ needs.build.outputs.version }}-signed
+          path: release
+
+      - name: Verify signatures, notarisation, the CLI and the sidecar digests
+        run: bash scripts/verify-release.sh --dir release --sidecar-digests release/sidecar-digests.txt
+
+      - name: Summary
+        run: |
+          set -euo pipefail
+          {
+            echo "### Kookaburra Cut ${VERSION}"
+            echo '```'; (cd release && shasum -a 256 KookaburraCut-*.dmg KookaburraCut-*.zip KookaburraCut-*-updater.app.tar.gz latest.json); echo '```'
+            echo "Sidecars (signature stripped, equal to the build job's record):"
+            echo '```'; cat release/sidecar-digests.txt; echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload the verified set
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: kookaburra-cut-${{ needs.build.outputs.version }}
+          path: |
+            release/KookaburraCut-*.dmg
+            release/KookaburraCut-*.zip
+            release/KookaburraCut-*-updater.app.tar.gz
+            release/KookaburraCut-*-updater.app.tar.gz.sig
+            release/latest.json
+          if-no-files-found: error
+          retention-days: 30
+
+  # A dispatch from a branch: the same steps with an ad-hoc signature, no environment and no secrets.
+  rehearse:
+    name: Ad-hoc rehearsal
+    needs: build
+    if: needs.build.outputs.tag == ''
+    runs-on: ${{ vars.MACOS_RUNNER || 'macos-26' }}
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    env:
+      VERSION: ${{ needs.build.outputs.version }}
+      PAYLOAD_SHA256: ${{ needs.build.outputs.payload_sha256 }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Download the unsigned payload
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: kookaburra-cut-${{ needs.build.outputs.version }}-unsigned
+          path: payload
+
+      - name: Install tauri-cli (pinned, for the updater signature)
+        run: |
+          set -euo pipefail
+          zip="$RUNNER_TEMP/cargo-tauri.zip"
+          curl -fsSLo "$zip" "https://github.com/tauri-apps/tauri/releases/download/tauri-cli-v${TAURI_CLI_VERSION}/cargo-tauri-aarch64-apple-darwin.zip"
+          echo "${TAURI_CLI_SHA256}  $zip" | shasum -a 256 -c -
+          mkdir -p "$RUNNER_TEMP/tauri-cli"
+          unzip -q "$zip" -d "$RUNNER_TEMP/tauri-cli"
+          echo "TAURI_CLI=$RUNNER_TEMP/tauri-cli/cargo-tauri" >> "$GITHUB_ENV"
+
+      - name: Sign ad hoc, package and verify
+        run: |
+          set -euo pipefail
+          payload="payload/KookaburraCut-${VERSION}-unsigned.tar.gz"
+          echo "${PAYLOAD_SHA256}  ${payload}" | shasum -a 256 -c -
+          mkdir -p "$RUNNER_TEMP/unsigned"
+          /usr/bin/tar -xzf "$payload" -C "$RUNNER_TEMP/unsigned"
+          bash scripts/sign-and-notarize.sh --app "$RUNNER_TEMP/unsigned/Kookaburra Cut.app" --adhoc --plain-dmg
+          bash scripts/verify-release.sh --adhoc --dir release --sidecar-digests payload/sidecar-digests.txt
+          rm -rf "release/Kookaburra Cut.app"
+
+      - name: Upload the rehearsal set
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: kookaburra-cut-${{ needs.build.outputs.version }}-adhoc
+          path: release/
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: Attest and draft the GitHub release
+    needs: [build, verify]
+    if: needs.build.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    env:
+      TAG: ${{ needs.build.outputs.tag }}
+      VERSION: ${{ needs.build.outputs.version }}
+      TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Download the verified set
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: kookaburra-cut-${{ needs.build.outputs.version }}
+          path: release
+
+      - name: Write SHA256SUMS
+        working-directory: release
+        run: |
+          set -euo pipefail
+          for f in "KookaburraCut-${VERSION}.dmg" "KookaburraCut-${VERSION}.zip" "KookaburraCut-${VERSION}-updater.app.tar.gz" latest.json; do
+            [ -f "$f" ] || { echo "::error::missing $f"; exit 1; }
+          done
+          sha256sum "KookaburraCut-${VERSION}.dmg" "KookaburraCut-${VERSION}.zip" "KookaburraCut-${VERSION}-updater.app.tar.gz" latest.json > SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: |
+            release/KookaburraCut-${{ needs.build.outputs.version }}.dmg
+            release/KookaburraCut-${{ needs.build.outputs.version }}.zip
+            release/KookaburraCut-${{ needs.build.outputs.version }}-updater.app.tar.gz
+
+      # A draft: a person reads the run and publishes. The in-app updater sees the release only once published.
+      - name: Draft the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          min_os="$(node -p "require('./src-tauri/tauri.conf.json').bundle.macOS.minimumSystemVersion")"
+          notes="$RUNNER_TEMP/notes.md"
+          cat > "$notes" <<EOF
+          ## Install
+
+          Download \`KookaburraCut-${VERSION}.dmg\`, open it and drag Kookaburra Cut to Applications. macOS ${min_os}+ on Apple Silicon (arm64); no Intel build.
+
+          ## Verify
+
+              shasum -a 256 -c SHA256SUMS --ignore-missing
+              gh attestation verify KookaburraCut-${VERSION}.dmg --repo ${GITHUB_REPOSITORY} \\
+                --signer-workflow ${GITHUB_REPOSITORY}/.github/workflows/release.yml \\
+                --source-ref refs/tags/${TAG} --deny-self-hosted-runners
+
+          Signed with a Developer ID Application certificate (Team ID ${TEAM_ID}), hardened runtime, notarised by Apple. Built by this repository's release workflow from the signed tag \`${TAG}\`.
+
+          The bundled ffmpeg sidecar is a GPL build (libx264, libx265). Its recipe and source pins are \`scripts/build-ffmpeg-sidecar.sh\`; sources: ffmpeg.org, code.videolan.org/videolan/x264, github.com/Multicorewareinc/x265.
+          EOF
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --draft \
+            --title "Kookaburra Cut ${VERSION}" --notes-file "$notes" --generate-notes \
+            "release/KookaburraCut-${VERSION}.dmg" "release/KookaburraCut-${VERSION}.zip" \
+            "release/KookaburraCut-${VERSION}-updater.app.tar.gz" release/latest.json release/SHA256SUMS
+          echo "Draft release ${TAG} created; publish it on GitHub." >> "$GITHUB_STEP_SUMMARY"

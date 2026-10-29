@@ -197,7 +197,7 @@ export interface SceneDocDeviceLayout {
   devices?: Record<string, SceneDocDeviceLayoutDelta>;
 }
 
-/** One device's pose at a key: a DELTA on whatever the scene already resolves for it (the layout block, or its own placement), so the motion presets keep layering on top and deleting the track reverts exactly. Offsets and rotations add, scale multiplies, and the hinge angles (`lidDeg`, `foldDeg`) are the absolutes (an angle has no meaningful delta). Every field is optional and an absent one holds the device's resting value, the lighting-pose rule. */
+/** One device's pose at a key: a DELTA on whatever the scene already resolves for it (the layout block, or its own placement), so the motion presets keep layering on top and deleting the track reverts exactly. Offsets and rotations add, scale multiplies, and the hinge angles (`lidDeg`, `foldDeg`) and screen powers are the absolutes (an angle has no meaningful delta). Every field is optional and an absent one holds the device's resting value, the lighting-pose rule. */
 export interface SceneDocDevicePose {
   offset?: [number, number, number];
   rotationDeg?: [number, number, number];
@@ -206,6 +206,10 @@ export interface SceneDocDevicePose {
   lidDeg?: number;
   /** Foldables only: the hinge angle this key holds, in degrees. */
   foldDeg?: number;
+  /** The main display's power, 0 black to 1 lit (a foldable's inside one); rests lit. It dims on top of a foldable's own handover. */
+  screenPower?: number;
+  /** Foldables only: the outside display's power, 0 black to 1 lit; rests lit. */
+  coverPower?: number;
 }
 
 /** One device-track key: a time plus the poses it moves, by device id. A device absent from `pose` holds its resting pose through that key. */
@@ -1249,6 +1253,16 @@ const CHART_HEX = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
 const isChartColour = (v: unknown): v is string =>
   typeof v === "string" && (THEME_COLOUR_TOKENS.includes(v) || CHART_HEX.test(v));
 
+const DEVICE_POSE_FIELDS: string[] = [
+  "offset",
+  "rotationDeg",
+  "scale",
+  "lidDeg",
+  "foldDeg",
+  "screenPower",
+  "coverPower",
+];
+
 /** Field-level parse for the device animation track (degrade-not-throw): a malformed key or segment drops alone, and an empty key list drops the block so absence stays legible. */
 function parseDeviceTrack(raw: unknown, source: string): SceneDoc["deviceTrack"] {
   const track = isRecord(raw) ? raw : {};
@@ -1264,12 +1278,17 @@ function parseDeviceTrack(raw: unknown, source: string): SceneDoc["deviceTrack"]
         parseWarn(`[sceneDoc] ${source}: deviceTrack pose "${deviceId}" is malformed, dropped`);
         continue;
       }
-      const out: SceneDocDevicePose = {};
+      // Fields this build does not know ride through verbatim, so a newer pose field survives the next save.
+      const out = Object.fromEntries(
+        Object.entries(raw).filter(([field]) => !DEVICE_POSE_FIELDS.includes(field)),
+      ) as SceneDocDevicePose;
       if (finiteV3(raw.offset)) out.offset = [...raw.offset];
       if (finiteV3(raw.rotationDeg)) out.rotationDeg = [...raw.rotationDeg];
       if (finiteNum(raw.scale)) out.scale = raw.scale;
       if (finiteNum(raw.lidDeg)) out.lidDeg = raw.lidDeg;
       if (finiteNum(raw.foldDeg)) out.foldDeg = raw.foldDeg;
+      if (finiteNum(raw.screenPower)) out.screenPower = raw.screenPower;
+      if (finiteNum(raw.coverPower)) out.coverPower = raw.coverPower;
       pose[deviceId] = out;
     }
     const at = musicAt(entry.at, source, `deviceTrack key "${entry.id}"`);

@@ -116,6 +116,26 @@ describe("resolveDeviceLayout", () => {
     expect(centreGap).toBeCloseTo(((phoneWidth + laptopWidth) / 2) * 0.92 + 0.3);
   });
 
+  it("fits a device rolled on its side to its turned width, leaving the slots and unrolled ones alone", () => {
+    const one = [{ id: "d1", model: "android" }];
+    const spec = resolveAvailableDeviceSpec("android");
+    const avail = tall.frame.width - tall.safe.left - tall.safe.right;
+    const upright = resolveDeviceLayout(one, layout(), tall)[0];
+    const yawed = resolveDeviceLayout(
+      one,
+      layout({ devices: { d1: { rotationDeg: [0, 20, 0] } } }),
+      tall,
+    )[0];
+    const rolled = resolveDeviceLayout(
+      one,
+      layout({ devices: { d1: { rotationDeg: [0, 0, 90] } } }),
+      tall,
+    )[0];
+    expect(yawed.scale).toBe(upright.scale);
+    expect(upright.scale).toBeCloseTo(0.92 * Math.min(1, avail / (spec.layoutWidth * 0.92)), 12);
+    expect(rolled.scale).toBeCloseTo(0.92 * Math.min(1, avail / (spec.fittedHeight * 0.92)), 9);
+  });
+
   it("stamps the resolved pose so consumer spreads cannot drift it", () => {
     const [a] = resolveDeviceLayout(phones(2), layout({ preset: "toe-in" }), wide);
     expect(a.resolvedLayout).toEqual({

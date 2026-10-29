@@ -123,6 +123,10 @@ export function EditWithClaudeButton({
   );
 }
 
+/** What starting a session means for a confidential project, in one line (docs/agent-kit.md, "Stamping"). */
+const CLAUDE_DISCLOSURE =
+  "Sends this project’s files to Anthropic as you work. Scene edits and kb commands run without asking; other commands ask.";
+
 const STARTERS: { kind: ClaudeStarter; label: string; icon: ReactNode }[] = [
   { kind: "scene", label: "Scene", icon: <path d="M10 4v12M4 10h12" /> },
   {
@@ -247,6 +251,7 @@ export function ClaudeLauncher({
           <div className="claude-launcher-title">
             <h2>Edit with Claude</h2>
             <p>Ask there. See it here.</p>
+            <p className="claude-launcher-disclosure">{CLAUDE_DISCLOSURE}</p>
           </div>
         </>
       ) : (
@@ -255,6 +260,9 @@ export function ClaudeLauncher({
           <div>
             <h2>Edit with Claude</h2>
             <p>{installed === false ? "Get the Claude app to start" : "Ask there, see it here"}</p>
+            {installed !== false && (
+              <p className="claude-launcher-disclosure">{CLAUDE_DISCLOSURE}</p>
+            )}
           </div>
         </div>
       )}

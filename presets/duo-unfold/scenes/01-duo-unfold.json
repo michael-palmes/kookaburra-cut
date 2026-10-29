@@ -78,14 +78,14 @@
     "items": [
       {
         "key": "title",
-        "text": "Start typing",
+        "text": "",
         "type": "title"
       }
     ]
   },
   "name": "Duo unfold",
   "text": {
-    "title": "Start typing"
+    "title": ""
   },
   "textAnimation": {
     "in": "fade-up",

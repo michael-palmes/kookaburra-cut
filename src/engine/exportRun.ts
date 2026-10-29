@@ -21,6 +21,7 @@ import {
   everydayClipLane,
   laneForCodec,
   prepareExportClips,
+  releaseIdleClipFrames,
   setClipLane,
 } from "./clips";
 import { useClockStore } from "./clock";
@@ -319,9 +320,11 @@ export async function beginExportRun(
   const cam = camera as PerspectiveCamera;
   // The exporter owns rendering for the whole run; the preview driver stands down (see engine/exportState) so no stray preview render interleaves with a capture.
   setExporting(true);
+  releaseIdleClipFrames();
   let clockOwned: () => number | null = () => null;
   const restore = () => {
     setExporting(false);
+    releaseIdleClipFrames();
     const prevClockMs = restorePreview();
     // Give the playhead back only if this run wrote it and still owns it; an untouched or since-moved clock stays put.
     const owned = clockOwned();

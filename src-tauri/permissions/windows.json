@@ -17,7 +17,8 @@
           "open_theme_editor_window",
           "init_default_workspace",
           "default_workspace_root",
-          "user_home_dir"
+          "user_home_dir",
+          "note_picked_folder"
         ]
       }
     },
@@ -41,15 +42,23 @@
     },
     {
       "identifier": "claude-launcher",
-      "description": "The Claude desktop app handoff and its preferences.",
+      "description": "The Claude desktop app handoff, its preferences and the two fixed pages the app opens in the browser (the Claude download and the privacy page).",
       "commands": {
         "allow": [
           "claude_app_status",
           "open_in_claude",
           "open_project_folder",
           "open_claude_download",
+          "open_privacy_page",
           "set_claude_preferences"
         ]
+      }
+    },
+    {
+      "identifier": "managed",
+      "description": "The effective managed-preferences policy, so a window can hide or lock what a configuration profile governs.",
+      "commands": {
+        "allow": ["managed_policy"]
       }
     },
     {

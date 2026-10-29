@@ -25,6 +25,7 @@ import {
 import { setExporting } from "./exportState";
 import { type AspectName, FORMATS, type FormatSpec, FPS, STANDING_ASPECTS } from "./format";
 import { libraryPreviewFormat, resolveLibraryPreviewPoint } from "./libraryPreviewPoint";
+import { applyMemoryLever, MemoryRecorder, type MemorySummary } from "./memoryProbe";
 import { captureOptionPreviews, optionPreviewSetsOf } from "./optionPreviews";
 import { runPackRoundTrip } from "./packRoundTrip";
 import { clipColdMetric, runPerfProbe } from "./perfProbe";
@@ -62,6 +63,7 @@ export type AutoRunAction =
   | "preset-previews"
   | "option-previews"
   | "perf"
+  | "memory"
   | "screenshot"
   | "transitioncheck"
   | "packroundtrip"
@@ -96,6 +98,8 @@ export interface AutoRunConfig {
   stillsSize: StillsSize;
   /** `KOOKABURRA_PROGRESS=1`: report progress through `autorun_progress` (kb's headless export polls it). */
   progress: boolean;
+  /** memory: the one change this run measures (engine/memoryProbe.ts `applyMemoryLever`). */
+  lever?: string;
 }
 
 /** `KOOKABURRA_POSTER`: the Export modal's opening poster frame for export and verify runs (`app` reads its setting). */
@@ -127,6 +131,8 @@ interface AutoRunResult {
   ok?: boolean;
   /** create: slot count of the created project after a full load-and-commit. */
   scenes?: number;
+  /** memory rows: the long-film probe's render rate and memory growth (engine/memoryProbe.ts). */
+  memory?: MemorySummary;
   /** perf rows: one per scene × elimination pass (see engine/perfProbe.ts). */
   scene?: string;
   pass?: string;
@@ -246,6 +252,7 @@ interface AutoRunEnv {
   trust?: string | null;
   poster?: string | null;
   progress?: boolean;
+  lever?: string | null;
 }
 
 let autoRunEnv: AutoRunEnv | null = null;
@@ -336,6 +343,7 @@ export function getAutoRunConfig(): AutoRunConfig | null {
     action !== "preset-previews" &&
     action !== "option-previews" &&
     action !== "perf" &&
+    action !== "memory" &&
     action !== "screenshot" &&
     action !== "transitioncheck" &&
     action !== "packroundtrip" &&
@@ -345,7 +353,7 @@ export function getAutoRunConfig(): AutoRunConfig | null {
     action !== "stillsverify"
   ) {
     throw new Error(
-      `unknown KOOKABURRA_ACTION "${action}" (expected verify | export | theme-previews | template-previews | preset-previews | option-previews | perf | screenshot | transitioncheck | packroundtrip | create | render-spike | stills | stillsverify)`,
+      `unknown KOOKABURRA_ACTION "${action}" (expected verify | export | theme-previews | template-previews | preset-previews | option-previews | perf | memory | screenshot | transitioncheck | packroundtrip | create | render-spike | stills | stillsverify)`,
     );
   }
   const stills = parseStillsFormat(env.stills ?? undefined);
@@ -404,13 +412,14 @@ export function getAutoRunConfig(): AutoRunConfig | null {
     projects.length > 1 &&
     action !== "verify" &&
     action !== "export" &&
+    action !== "memory" &&
     action !== "stills" &&
     action !== "stillsverify" &&
     action !== "template-previews" &&
     action !== "preset-previews"
   ) {
     throw new Error(
-      `KOOKABURRA_PROJECT lists ${projects.length} projects; only verify, export, stills, stillsverify, template-previews and preset-previews accept a list`,
+      `KOOKABURRA_PROJECT lists ${projects.length} projects; only verify, export, memory, stills, stillsverify, template-previews and preset-previews accept a list`,
     );
   }
   return {
@@ -450,6 +459,7 @@ export function getAutoRunConfig(): AutoRunConfig | null {
     stills,
     stillsSize,
     progress: env.progress === true,
+    lever: env.lever?.trim() || undefined,
   };
 }
 
@@ -1170,8 +1180,8 @@ export async function runAutoRun(
         console.warn(`[autorun] ${format.name} format committed`);
         // Loudness is gain-only: measured through the exact export graph (cached native-side) and summed into the spec's volume slot.
         let encode = config.encode;
-        // Renders at the output rate: a 30fps spec steps the clock at 30 directly, so the export graph's frame count is computed at outFps too.
-        const outFps = encode?.fps ?? FPS;
+        // Renders at the output rate: a 30fps spec steps the clock at 30 directly, so the export graph's frame count is computed at outFps too. The memory probe renders at 30 (the drafts the field used) unless a preset says otherwise.
+        const outFps = encode?.fps ?? (config.action === "memory" ? 30 : FPS);
         if (encode && config.loudnessTarget !== undefined && current.audio) {
           const posterFrame = encode.posterFrame === true;
           const outFrames =
@@ -1301,6 +1311,26 @@ export async function runAutoRun(
               : {}),
           });
           if (!r.identical) ok = false;
+        } else if (config.action === "memory") {
+          applyMemoryLever(config.lever);
+          // --at caps the film at N seconds; the probe rides the real export's progress.
+          const durationMs = config.atSeconds
+            ? Math.min(current.totalMs, config.atSeconds * 1000)
+            : current.totalMs;
+          const recorder = new MemoryRecorder(current.slots, outFps);
+          const path = await exportProject({ ...base, durationMs }, (p) => {
+            onProgress(p);
+            recorder.onProgress(p);
+          });
+          const memory = await recorder.summary();
+          console.warn(
+            `[autorun] memory ${current.id} ${format.name}: fps ${memory.fps.join(" → ")}, editor ${memory.editorMb.first} → ${memory.editorMb.last} MB (peak ${memory.editorMb.peak}), gpu ${memory.gpuMb.first} → ${memory.gpuMb.last} MB, clips peak ${memory.clipMbPeak} MB`,
+          );
+          results.push({ aspect: format.name, project: current.id, path, fps: outFps, memory });
+          if (!memory.holds) {
+            ok = false;
+            error ??= `${current.id} ${format.name}: ${memory.failures.join("; ")}`;
+          }
         } else {
           const path = await exportProject(
             base,

@@ -426,6 +426,26 @@ the mix like every pixel. Rules:
   trivially deterministic; **AAC's run-to-run determinism is proven by the gate,
   not assumed** (recorded contingency if a future ffmpeg breaks it: encode the
   processed track once into the `$APPDATA` cache and stream-copy).
+- **ffmpeg reads a snapshot.** `start_export` copies the track into
+  `$APPDATA/cache/export-audio/<pid>-<ms>.<ext>` (an APFS clone) and points the
+  argv's `-i` at the copy, so music saved mid-export can't change the film; the
+  copy goes with the run's cleanup. The path never reaches the output (bitexact,
+  `-map_metadata -1`), so the bytes are unchanged and the argv goldens, which
+  build from the options, still hold.
+- **Sync is proven, not assumed.** `export_lanes_keep_cuts_on_the_beat`
+  (`src-tauri/src/encode/av_sync_tests.rs`, `cargo test --lib av_sync --
+  --nocapture`) pipes a flash on the first frame at or after each beat, with a
+  click track on the beats, through every lane's real argv and the real sidecar
+  (legacy, spec with `-bf 2`, poster frame, two-pass, x265, ProRes with PCM,
+  VideoToolbox; 30 and 60 fps) and times both from the file as a player does.
+  Every cut lands `ceil(B × fps) / fps − B` after its beat, 0 to 1 frame (33.3 ms
+  at 30 fps, 16.7 at 60), and every click within 1 ms. Larger numbers are the
+  reading, not the file: ignoring edit lists adds the B-frame delay minus AAC
+  priming (+45.3 ms at 30 fps, +12.0 at 60), and timing a poster-frame film
+  against the project grid without taking the poster off adds a frame (the
+  2026-10 field report's 37 to 65 ms). `kb sync-check` measures it right.
+  Snapping cuts to the nearest frame or dropping edit lists would change bytes:
+  a deliberate rebase.
 - **Load degrades, never crashes.** `loadProject` probes the track
   (`probe_audio`); missing/unprobeable → the project loads SILENT with a warning;
   shorter-than-project → the tail pads with silence (warned, not fatal).
@@ -1334,11 +1354,14 @@ The packaged `.app` must reproduce dev-mode hashes on the standing projects:
 class, run for any packaging-adjacent change. What packaging changes (and why it
 stays deterministic):
 
-- **Static sidecar** (`scripts/build-ffmpeg-sidecar.sh`): pinned ffmpeg source
-  build (GPL: libx264 + libx265 + VideoToolbox + ProRes + FFV1), self-containment
-  gated by `otool -L` (system libs only). Same version ⇒ same bytes: proven by
-  dev/packaged hash parity. Note: the dev `pnpm setup:ffmpeg` copy OVERWRITES the
-  release sidecar; rerun `pnpm setup:ffmpeg:release` after.
+- **Static sidecar** (`scripts/build-ffmpeg-sidecar.sh`): ffmpeg, x264 and x265
+  built from source pinned by SHA-256 and commit (GPL: libx264 + libx265 +
+  VideoToolbox + ProRes + FFV1), self-containment gated by `otool -L` (system
+  libs only). The release workflow builds it the same way on a clean runner and
+  the verify job compares the signature-stripped digests with the build job's.
+  Same sources ⇒ same bytes: proven by dev/packaged hash parity. Note: the dev
+  `pnpm setup:ffmpeg` copy OVERWRITES the release sidecar; rerun
+  `pnpm setup:ffmpeg:release` after.
 - **Editor zoom guards are per ffmpeg build.** `cargo test --manifest-path
   src-tauri/Cargo.toml --lib zoom_frames_match -- --ignored` pins the zoom
   stage's frame counter (`in-1`) and its bytes on both decode lanes for whichever
@@ -1614,8 +1637,56 @@ what ffmpeg receives, a panic drops the tap (report "unavailable") and never the
 and it costs about 4.3 ms per 4K frame. Any change to it gates with `pnpm gate`; bytes
 must stay EQUAL.
 
+`push_frame` also feeds the export trace (`export_health::frame`: the written count
+and one timestamp a second, under its own lock) after the write, so a failed run can
+name its frame, scene and render-rate trend (docs/agent-kit.md, "Export health"). It
+reads nothing from the frame.
+
 The autorun surface (env-gated, cold-boot, one run at a time via the FIFO run
 queue) is unchanged; neither surface may regress the other.
+
+### Memory probe
+
+`pnpm kookaburra:run --action memory --project P[,P...] [--aspect A] [--at N] [--lever L]`
+exports each film through the real path (30 fps unless a preset says otherwise; `--at N`
+renders the first N seconds) and every 2 s records the render rate, each process's
+footprint (`export_memory_sample`: the editor's and render window's WebContent, WebKit's
+GPU process, the app, ffmpeg), three's texture and geometry counts and the clip frame
+cache (`clipCacheCensus`). Each row's `memory` carries the rate over the first, middle and
+last 10 s, first, peak and last footprints, `editorGrowthMb` (the editor's median over
+the last third minus the first third: growth that stays, not a transition's MSAA pair
+coming and going) and `holds`. A film that slows below 80% of its start or keeps more than
+512 MB fails the run. `--lever clip-cache=N` changes one thing for an experiment.
+`fixtures/long-device-spike` (60 s of handsets, the foldable, a tablet, a laptop and a
+comparison over fourteen screen recordings) is the leak acceptance film. The probe reads;
+it never changes a byte.
+
+**The 2026-10-28 leak.** A 50 s foldable film failed eight exports at 43 to 53% with the
+editor reloaded. Measured on device-heavy spikes in one boot, 30 fps, 16:9 / 9:16 / 1:1:
+
+| Run | Editor at each leg's start (MB) | Editor peak | Clip cache peak | GPU process peak |
+| --- | --- | --- | --- | --- |
+| Before | 1951, 2945, 3175, 3847, 4512, 4897 (7113 by the fourth project) | 5544 | 1734 | 2372 |
+| `--lever clip-cache=2` | 1916, 1631, 1787, 1649, 3001, 3503 | 4143 | 457 | 1172 |
+| Fixed | 1856, 1814, 1317, 1782, 2348, 2222 | 3092 | 303 | 1045 |
+
+- **The cause: the clip frame cache never shrank.** Each clip kept 12 decoded frames
+  (`LRU_CAPACITY`, per clip, so the total grew with every clip the film reached), they
+  stayed through every aspect and project in the session, and the export's software lane
+  kept its own set beside the preview's hardware lane. Each cached megabyte cost the
+  editor's WebContent about two (the bitmap plus decode garbage) and WebKit's GPU process
+  one more (the uploaded texture). On a 64 GB Mac nothing died; on a smaller one WebKit
+  kills the WebContent process near its footprint limit, and the memory pressure before
+  that is the 8.4 → 2.6 → 1.2 fps slowdown the field saw.
+- **The fix** (`engine/clips.ts`): an export keeps two frames a clip
+  (`EXPORT_LRU_CAPACITY`; it steps forward and never back), and starts and ends by closing
+  every frame no consumer binds, in both lanes (`releaseIdleClipFrames`). A re-decoded PNG
+  is the same pixels, so bytes cannot move; the gate proves it.
+- **Not leaks:** a crossfade or comparison allocates its MSAA pair for its window and
+  `releaseIdlePools` frees it after (a +500 to 900 MB spike at 4K, measured coming back);
+  compositor targets are replaced, never stacked, on a size change; Verify's three raw
+  frame copies are freed as pass B matches them.
+- **The truth when it still happens:** `docs/agent-kit.md`, "Export health".
 
 ### Gate tiers: how much to run
 
@@ -1655,8 +1726,12 @@ it.
   unchanged leg is skipped, in any worktree; `--force` re-runs it.
 - **Tier 0: statics (free):** lint, build, `vitest related` on the changed
   `src/` files, the script tests, the kb suite and `cargo clippy` + `cargo
-  test`, each only when the diff touches its area. CI runs all of them on every
-  PR (`scripts/ci-scope.sh` scopes the rust job and the kb suite). Pure math
+  test`, each only when the diff touches its area, plus the workspace-name
+  check on every branch (`scripts/workspace-names.mjs`: no name from the
+  user's own `~/Kookaburra Cut` and no past leak shape in an added line). CI
+  runs all of them on every PR (`scripts/ci-scope.sh` scopes the rust job and
+  the kb suite; the name check runs on every pull request with no workspace
+  there, so the denylist alone). Pure math
   (eases, presets, schemas, edit math) belongs in unit tests, not in verify
   runs.
 - **The PR gate: `pnpm gate:merge`, once, when the render path changed.**
@@ -1749,6 +1824,7 @@ Verify ×2 here (the 2026-10-23 note):
 | `compare-spike` (before/after comparison gate) | `03f4704d…` | `0c6b7166…` | `d4cac096…` | `ac586a05…` | — | — | — | — | — |
 | `compare-transition-spike` (comparisons through transitions; `transitioncheck` proves its crossfades blend) | `48ee3fd8…` | — | — | — | — | — | — | — | — |
 | `image-flip-spike` (image-orientation gate, eyeball it) | `5753a093…` | — | — | — | — | — | — | — | — |
+| `long-device-spike` (long-film memory gate: devices, a fold, compare media, 61 s) | `9f4a603d…` | — | — | — | — | — | — | — | — |
 | `ws:layered-screenshot-spike` (LS gate, machine-local) | `33c75ab8…` | — | — | — | — | — | — | — | — |
 | `ws:video-window-spike` (VideoWindow gate, machine-local) | `273e778c…` | — | — | — | — | — | — | — | — |
 | `ws:lighting-spike-fable` (v9 lighting gate, machine-local) | `c3d51b40…` | — | — | — | — | — | — | — | — |
@@ -1760,13 +1836,28 @@ Verify ×2 here (the 2026-10-23 note):
 | `ws:chart-spike` (chart gate, machine-local) | `01c32706…` | `7b706307…` | `f1820470…` | `d5611672…` | — | — | — | — | — |
 | `ws:duplicate-spike` (scene-id heal gate, machine-local) | `74cfca6c…` | — | — | — | — | — | — | — | — |
 | `ws:overlay-spike` (overlay gate, machine-local) | `f3d115a5…` | — | — | — | — | — | — | — | — |
-| `ws:duo-spike` (foldable gate, machine-local) | `8d28f65a…` | `b6a80fec…` | — | — | — | — | — | — | — |
-| `ws:device-video-spike` (device/media/camera gate, built-in-lit devices, machine-local) | `3068ea61…` | — | — | — | — | — | — | — | — |
+| `ws:duo-spike` (foldable gate, machine-local) | `c16be077…` | `372327a9…` | — | — | — | — | — | — | — |
+| `ws:device-video-spike` (device/media/camera gate, built-in-lit devices, machine-local) | `c1a9ff92…` | — | — | — | — | — | — | — | — |
 | `ws:device-env-spike` (cold frame-0 repro: a built-in-lit handset's top edge, machine-local) | `47d94e84…` | — | — | — | — | — | — | — | — |
 | `ws:text-outline-spike` (outlined text in the text barrier: neon, whole-block blur-in, machine-local) | `a644c039…` | — | — | — | — | — | — | — | — |
 | `ws:rooms-spike` (room cuts, a flood with a tokened light, a wipe while both sides flood; machine-local, never gated) | `fee706ac…` | `219c3507…` | — | — | — | — | — | — | — |
 | `ws:mask-fx-spike` (an image-mask seam between two bloom scenes on the effects lane; machine-local, never gated) | `6555ff7f…` | — | — | — | — | — | — | — | — |
-| `ws:motion-toolkit-spike` (the toolkit primitives: shapes, device anchors, text metrics and presets, stamps, dashes, mosaic, taps; machine-local, gated when motion or shape primitives change) | `8af90748…` | `3955d599…` | — | — | — | — | — | — | — |
+| `ws:motion-toolkit-spike` (the toolkit primitives: shapes, device anchors, text metrics and presets, stamps, dashes, mosaic, taps; machine-local, gated when motion or shape primitives change) | `06b79ae2…` | `fa64bced…` | — | — | — | — | — | — | — |
+
+> **2026-10-28 (the floor follows the posed device: a deliberate rebase of three
+> fixtures):** floor shadows and `ground` now stand a device's lowest posed corner on
+> the floor (`devicePoseFloorShift`, `docs/foldables.md`), so a device tilted or rolled
+> by its placement or keys moves its floor; upright and yaw-only devices are exactly
+> 0. First, with the shift forced to 0, the branch exported `ws:duo-spike`,
+> `ws:device-video-spike`, `ws:multi-device-spike` and `ws:motion-toolkit-spike`
+> EQUAL at 16:9 (media `rotateDeg`, the fold shader's turn, power keys and the rolled
+> layout fit are null for legacy). With the shift on, the three fixtures that stage
+> tilted devices moved and re-record from a Verify ×2: `ws:duo-spike` `8d28f65a…` →
+> `c16be077…` and 9:16 `b6a80fec…` → `372327a9…`, `ws:device-video-spike` `3068ea61…`
+> → `c1a9ff92…`, `ws:motion-toolkit-spike` `8af90748…` → `06b79ae2…` and 9:16
+> `3955d599…` → `fa64bced…`. The contact shadow under a 3 to 6 degree lean moves by
+> under 1% of the device height; frames were eyeballed. The anchors and
+> `ws:multi-device-spike` (yaw only) stay EQUAL.
 
 > **2026-10-28 (the stage worker: every scene renders in a Web Worker, no
 > baseline moved):** the whole canvas tree, compositor and export frame body

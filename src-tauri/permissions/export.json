@@ -9,6 +9,8 @@
           "push_frame",
           "finish_export",
           "cancel_export",
+          "take_export_interruption",
+          "export_memory_sample",
           "notify_export_done",
           "export_flash_report",
           "begin_screenshot",

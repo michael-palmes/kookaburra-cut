@@ -619,6 +619,8 @@ class Checker:
     ROOM_KEY_FIELDS = ("at", "colour", "themeId", "lighting", "transition", "origin", "durationMs", "ease")
     ROOM_LIGHT_FIELDS = ("intensity", "color", "colorToken", "kelvin")
     ROOM_TOKENS = ("background", "text", "accent", "muted")
+    # The fills text resolves through the palette (resolveTokenFill); anything else is a raw colour.
+    TEXT_FILL_TOKENS = ("text", "muted", "accent")
 
     def room(self, file: str, doc: Dict[str, Any]) -> None:
         """The sidecar `room` track; a bad key is dropped by the app, a bad field falls back."""
@@ -910,9 +912,9 @@ class Checker:
                 self.font(file, path, value)
             elif suffix == "Color":
                 if not isinstance(value, str) or not value:
-                    rep.error(file, path, 'must be a hex colour string like "#ff5a36"')
-                elif not HEX_RE.match(value):
-                    rep.warn(file, path, f'"{value}" is not a #rgb or #rrggbb hex')
+                    rep.error(file, path, 'must be a theme token (text, muted, accent) or a hex like "#ff5a36"')
+                elif value not in self.TEXT_FILL_TOKENS and not HEX_RE.match(value):
+                    rep.warn(file, path, f'"{value}" is not a theme token (text, muted, accent) or a #rgb or #rrggbb hex')
             elif suffix == "Size":
                 if not is_number(value) or value <= 0:
                     rep.error(file, path, "must be a positive number (a multiplier; 1 = as designed)")

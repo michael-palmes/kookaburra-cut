@@ -11,6 +11,7 @@ import type {
   PackProgress,
   Resolution,
 } from "../packs/types";
+import { notePickedFolder } from "./pickedFolders";
 
 export interface PackSelection {
   projects: string[];
@@ -102,6 +103,7 @@ export async function chooseDestination(defaultName: string): Promise<string | n
     defaultPath: `${defaultName}.kbpack`,
     filters: [{ name: "Kookaburra Pack", extensions: ["kbpack"] }],
   });
+  await notePickedFolder(path);
   return path ?? null;
 }
 

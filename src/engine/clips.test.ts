@@ -533,6 +533,30 @@ describe("ClipFrames chunks", () => {
     expect(ensureCalls).toEqual([{ srcAbs: src("assets/a.mp4"), chunks: [1] }]);
   });
 
+  it("keeps twelve frames a clip in preview, two while exporting, and releases idle ones", async () => {
+    const { clips, frames } = await readyEntry();
+    const { setExporting } = await import("./exportState");
+    const owner = {};
+    const play = async (from: number, to: number) => {
+      for (let i = from; i < to; i++) {
+        frames.request(owner, i);
+        await frames.get(i);
+        frames.markBound(owner, i);
+      }
+    };
+    await play(0, 30);
+    expect(frames.census().textures).toBe(12);
+    setExporting(true);
+    try {
+      await play(30, 60);
+      expect(frames.census().textures).toBe(2);
+    } finally {
+      setExporting(false);
+    }
+    clips.releaseIdleClipFrames();
+    expect(frames.census()).toEqual({ textures: 1, bytes: 8 * 8 * 4 });
+  });
+
   it("maps frame indices to their chunks for ensureFrames", async () => {
     const { clips, entry } = await readyEntry(250);
     await clips.ensureFrames(entry, [0, 119, 120, 999]);

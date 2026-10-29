@@ -408,6 +408,30 @@ export function deviceShadowSlabs(spec: ShadowDeviceSpec, pose: ShadowPose): Sha
   });
 }
 
+/** The lowest point of the posed slabs: each rounded rect's inset box corners, less the corner radius along the in-plane drop. */
+function lowestSlabY(slabs: ShadowSlab[]): number {
+  let lowest = Number.POSITIVE_INFINITY;
+  for (const slab of slabs) {
+    const r = slab.radius;
+    const reach =
+      Math.abs(slab.u[1]) * (slab.half[0] - r) +
+      Math.abs(slab.v[1]) * (slab.half[1] - r) +
+      (Math.abs(slab.n[1]) * slab.thickness) / 2 +
+      r * Math.hypot(slab.u[1], slab.v[1]);
+    lowest = Math.min(lowest, slab.center[1] - reach);
+  }
+  return Number.isFinite(lowest) ? lowest : 0;
+}
+
+/** How far a pose moves the device's lowest point, against the same device stood upright: negative when a turn or fold drops an edge below the upright base, positive when it lifts. The floor receiver and `ground` both shift by it, so a portrait foldable or a phone laid flat sits on its shadow. Offsets are left out, so a float still lifts off; a yaw alone is exactly 0, so an upright device keeps its floor. */
+export function devicePoseFloorShift(spec: ShadowDeviceSpec, pose: ShadowPose): number {
+  if (pose.rotation[0] === 0 && pose.rotation[2] === 0) return 0;
+  const still: ShadowPose = { ...pose, offset: [0, 0, 0] };
+  const posed = lowestSlabY(deviceShadowSlabs(spec, still));
+  const upright = lowestSlabY(deviceShadowSlabs(spec, { ...still, rotation: [0, 0, 0] }));
+  return posed - upright;
+}
+
 /** Unit vector from the origin toward a light at (azimuth, elevation) degrees. */
 export function lightDirection(azimuthDeg: number, elevationDeg: number): V3 {
   const az = azimuthDeg * DEG2RAD;

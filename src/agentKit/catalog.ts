@@ -404,6 +404,12 @@ export const DEVICE_MEDIA_KEYS: Record<
     type: "string",
     values: ["cover"],
   },
+  rotateDeg: {
+    summary:
+      "Turns the media clockwise on the screen before the cover fit (0 default). auto stands it upright on the device's current pose, e.g. a portrait recording on a device turned on its side.",
+    type: "number|string",
+    values: ["0", "90", "180", "270", "auto"],
+  },
   startOn: {
     summary: "Foldable inside display: startMs counts from the moment the fold opens.",
     type: "string",

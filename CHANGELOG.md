@@ -6,6 +6,37 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.21.0] - 2026-10-29
+
+### Added
+
+- Releases are built, signed, notarised and verified on GitHub Actions from a
+  signed tag, with provenance attestations and a `SHA256SUMS` file to check
+  each download against (README, "Verify a download").
+- Cuts can pin to the music, so transition and grid edits keep later cuts on
+  the beat, and transitions into a comparison render both scenes.
+- A portrait shot of an unfolded foldable is one click: screen media turns
+  with the device, and floor shadows stay under a turned or folding device.
+- Administrators can pin settings for a fleet through a configuration
+  profile; managed rows show as locked with a one-line reason.
+
+### Changed
+
+- Updates install only forward: the app refuses an update whose signature is
+  not bound to its version, and release notes from the update feed are no
+  longer shown in the app.
+- Each window gets only the native commands it uses, and project trust is a
+  native sheet bound to the project's content.
+- Content arriving with a project can no longer configure or instruct the
+  agent, and `kb` cannot reach past the project without a person.
+
+### Fixed
+
+- Long device-heavy exports no longer grow the editor until WebKit reloads
+  it; an export the editor loses is reported instead of hanging.
+- Dismissing the first-run welcome saves update checks off; only Get started
+  saves what the switch shows.
+
 ## [0.20.1] - 2026-10-23
 
 ### Fixed
