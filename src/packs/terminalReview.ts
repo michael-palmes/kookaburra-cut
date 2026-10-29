@@ -1,10 +1,8 @@
-/** Review of terminal blocks in workspace projects, for the two sharing boundaries: the import summary lists every pre-typed command and custom start path a pack just wrote, and the export picker warns that snapshots and commands travel with the pack. Reads the sidecars off disk (what is on disk is what matters, never the archive or the publisher's manifest); any read failure degrades to no rows, since neither screen may fail on a review. */
+/** Review of terminal blocks in scene sidecars, for the two sharing boundaries: the pack trust screen lists every pre-typed command and custom start path a pack carries before anything lands (`packReview.ts`, over hash-checked sidecars read from the pack), and the export picker warns that snapshots and commands travel with the pack (read off disk; a read failure degrades to no rows, since the picker may not fail on a review). Never the publisher's manifest, which is self-declared. */
 
 import { invoke } from "@tauri-apps/api/core";
 import { readProjectManifestSnapshot } from "../engine/projectEdit";
 import { parseSceneTerminal } from "../engine/sceneTerminal";
-import { packProjectItems } from "./projectItems";
-import type { ImportOutcome } from "./types";
 
 export interface TerminalReviewRow {
   project: string;
@@ -68,15 +66,4 @@ export async function reviewProjectTerminals(
     }
   }
   return rows;
-}
-
-/** The import summary's slice: projects the import landed, commands and custom paths only (the recipient already sees the snapshot pixels on the slide). */
-export async function reviewImportedTerminals(
-  outcome: ImportOutcome,
-): Promise<TerminalReviewRow[]> {
-  const projects = packProjectItems(
-    outcome.results.filter((result) => ["added", "replaced", "keptBoth"].includes(result.outcome)),
-  );
-  const rows = await reviewProjectTerminals(projects);
-  return rows.filter((r) => r.command || r.startPath);
 }

@@ -1,14 +1,10 @@
-/** Post-import review of Website origins from the landed scene sidecars. Packs carry requests and poster pixels, never local grants or browser data. */
+/** Review of Website origins in scene sidecars, shown on the pack trust screen before anything lands (`packReview.ts`, over hash-checked sidecars read from the pack). Packs carry requests and poster pixels, never local grants or browser data. */
 
-import { invoke } from "@tauri-apps/api/core";
-import { readProjectManifestSnapshot } from "../engine/projectEdit";
 import {
   normaliseWebsiteOrigin,
   parseSceneWebsite,
   resolveSceneWebsite,
 } from "../engine/sceneWebsite";
-import { packProjectItems } from "./projectItems";
-import type { ImportOutcome } from "./types";
 
 export interface WebsiteOriginReview {
   origin: string;
@@ -49,39 +45,4 @@ export function websiteReviewRows(
     });
   }
   return rows;
-}
-
-async function reviewProjectWebsites(
-  projects: { slug: string; name: string }[],
-): Promise<WebsiteReviewRow[]> {
-  const rows: WebsiteReviewRow[] = [];
-  for (const project of projects) {
-    try {
-      const manifest = JSON.parse(await readProjectManifestSnapshot(project.slug)) as {
-        scenes?: { file?: unknown }[];
-      };
-      const files = (manifest.scenes ?? [])
-        .map((scene) => scene?.file)
-        .filter((file): file is string => typeof file === "string" && file.endsWith(".tsx"));
-      const scenes: { file: string; doc: unknown }[] = [];
-      for (const file of files) {
-        const text = await invoke<string | null>("read_scene_doc", {
-          slug: project.slug,
-          file: file.replace(/\.tsx$/, ".json"),
-        });
-        if (text != null) scenes.push({ file, doc: JSON.parse(text) });
-      }
-      rows.push(...websiteReviewRows(project.name, scenes));
-    } catch (error) {
-      console.warn(`[packs] Website review for "${project.slug}" failed:`, error);
-    }
-  }
-  return rows;
-}
-
-export async function reviewImportedWebsites(outcome: ImportOutcome): Promise<WebsiteReviewRow[]> {
-  const projects = packProjectItems(
-    outcome.results.filter((result) => ["added", "replaced", "keptBoth"].includes(result.outcome)),
-  );
-  return reviewProjectWebsites(projects);
 }

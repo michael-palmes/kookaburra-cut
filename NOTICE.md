@@ -31,15 +31,20 @@ Paper Design, licensed Apache-2.0. The adaptations are documented in
 ## ffmpeg / ffprobe sidecar
 
 The bundled `ffmpeg`/`ffprobe` binaries are a **GPL build** (`--enable-gpl
---enable-libx264 --enable-libx265`), produced by
-[`scripts/build-ffmpeg-sidecar.sh`](scripts/build-ffmpeg-sidecar.sh) from
-unmodified upstream source. The compiled binaries are **never committed to,
-or distributed with, this repository**: running the script builds them
-locally, from source, under ffmpeg's/x264's/x265's own licence terms. Should
-a future binary release of Kookaburra Cut include a compiled sidecar, that
-release will carry its own corresponding-source pointer (exact ffmpeg/x264/
-x265 versions plus a source link or written offer) alongside the GPL licence
-text, as required by GPLv2 §3.
+--enable-libx264 --enable-libx265`). The compiled binaries are **never
+committed to this repository**. Every release ships the pair that
+[`scripts/build-ffmpeg-sidecar.sh`](scripts/build-ffmpeg-sidecar.sh) builds
+in CI (`.github/workflows/release.yml`) from unmodified upstream source,
+pinned in that script: ffmpeg 8.1
+(`ffmpeg.org/releases/ffmpeg-8.1.tar.xz`, SHA-256 checked), x264 commit
+`b35605ace3ddf7c1a5d67a2eb553f034aef41d55` from
+`code.videolan.org/videolan/x264` and x265 4.3 (the release tarball, SHA-256
+checked). That script, at the tagged commit the release was built from, is
+the **corresponding source** GPLv2 §3 asks for: it names the exact versions,
+fetches them and holds every configure flag, so anyone can rebuild the
+sidecar; the release's GitHub build provenance attestation ties the shipped
+binaries to that commit. The GPL licence text ships beside them. A local
+`pnpm setup:ffmpeg:release` runs the same script.
 
 ## Trademarks
 

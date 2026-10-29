@@ -113,8 +113,12 @@ line when it had to correct anything, and `cache/`, `_bridge/` and
 `_autorun/` carry `.metadata_never_index` (`src-tauri/src/privacy.rs`;
 `scripts/kookaburra-run.sh` seals the queue it creates). Projects and the
 workspace folders are the user's documents and take the umask default; pack
-extraction forces 0644/0755 on what it lands. Nothing is excluded from Time
-Machine. `$APPDATA` is
+extraction forces 0644/0755 on what it lands. `cache/clips` and
+`cache/media` carry Time Machine's per-item exclusion attribute
+(`com.apple.metadata:com_apple_backup_excludeItem`, set at every launch by
+`privacy::exclude_from_backup`), so decoded frames and previews of
+confidential footage never reach a backup; projects, with their own `assets/`,
+are backed up like any document. `$APPDATA` is
 `~/Library/Application Support/com.mpalmes.kookaburracut` (`src-tauri/src/tools.rs`).
 
 - **The workspace, `~/Kookaburra Cut`** by default (`WORKSPACE_DIR_NAME` in
@@ -124,8 +128,14 @@ Machine. `$APPDATA` is
   One folder per project: `project.json`, `scenes/`, `assets/` (with
   `.originals/` for conformed footage, `website/` captures, `_meta.json`
   provenance holding bare file names only), `edits/`, `exports/`, a per-project
-  git repository (`create_project` runs `git init`, `git add -A` and one commit,
-  so a trashed asset stays in `.git` until the project is deleted), `CLAUDE.md`,
+  git repository (`create_project` runs `git init` with `/assets/` and
+  `/exports/` in `.git/info/exclude` before its one commit, so footage and
+  renders never enter history and a trashed asset is gone; a project from
+  before this rule has them rewritten out of its history, reflog expired and
+  pruned, on its next open, off the load path, with one toast and one
+  `[history]` log line, only when the app made the repository: one with a
+  remote, a root commit by someone else or a `.git` file is left as it is and
+  logged: `src-tauri/src/history.rs`), `CLAUDE.md`,
   `NOTES.md`, `BRAND.md`, the stamped `.claude/` and `./kb`, and `.kb/` (the
   agent's lock, leases and scratch). Workspace-level: `brands/`, `themes/`,
   `fonts/`, `gradients/`, `export-presets/`, `presets/`, `templates/`,
@@ -174,7 +184,9 @@ Machine. `$APPDATA` is
   is deleted. Control: `src-tauri/src/pack/key.rs`.
 - **`$APPDATA/cache/`**: `clips/` (decoded video frames per content hash,
   capped at 20 GB by default with least-recently-used eviction in 120-frame
-  chunks, never while pinned by an open project or a running export; Settings
+  chunks, never while pinned by an open project or a running export; an
+  extraction is refused up front when its raw-frame ceiling would leave the
+  volume under 2 GB, naming the space it needs; Settings
   ▸ Storage sets the cap and clears it; deleting a project or an asset drops
   its entries, except content another project, template or preset still maps
   to), `media/` (posters, scrub frames and probe data by content hash, brand
@@ -242,10 +254,11 @@ and install. The app holds no API key and sends nothing to Anthropic itself.
   grounding as one argv element (`CLAUDE_FIXED_ARGS`); the cwd is confined to
   the workspace (`confine_terminal_cwd`); the child environment is
   `env_clear()` plus `HOME`, `USER`, `LOGNAME`, `SHELL`, `PATH`, `LANG`,
-  `TMPDIR`, `TERM`, `COLORTERM`, `SSH_AUTH_SOCK` and the prefixes `LC_`,
-  `TERM_`, `CLAUDE_` and `ANTHROPIC_` (`ENV_ALLOW`, `ENV_ALLOW_PREFIX`), so
-  `CLAUDE_CODE_OAUTH_TOKEN` and `ANTHROPIC_API_KEY` still reach every session,
-  including a scene's interactive shell. Only the main window holds the
+  `TMPDIR`, `TERM`, `COLORTERM`, `SSH_AUTH_SOCK` and the prefixes `LC_` and
+  `TERM_` (`ENV_ALLOW`, `ENV_ALLOW_PREFIX`); `Launch::ClaudeSession` alone also
+  keeps `CLAUDE_` and `ANTHROPIC_` (`ENV_CLAUDE_PREFIX`), so
+  `CLAUDE_CODE_OAUTH_TOKEN` and `ANTHROPIC_API_KEY` reach Claude Code but never
+  a scene's interactive shell. Only the main window holds the
   `terminal` permission set, and `Launch::ClaudeSession` is refused from any
   other (`CLAUDE_LAUNCH_WINDOWS`). Every session command checks the owning
   window (`owned_session`). The panel's copy says "Sends this project's files
@@ -372,22 +385,44 @@ SHA-256 and is signed Ed25519 over its exact stored bytes
 (`src-tauri/src/pack/`; the format in [docs/packs.md](docs/packs.md)).
 
 - **Signature.** `verify_strict` against the `ed25519:<base64>` public key the
-  manifest carries, needing a 64-byte signature; unsigned or invalid is refused
-  at inspect and again at stage (`pack/key.rs`, `pack/commands.rs`). Every file
-  is re-hashed as it is extracted and one mismatch fails the import
-  (`pack/read.rs`, `HashMismatch`).
+  manifest carries, needing a 64-byte signature; `manifest.sig` is read to a
+  256-byte bound (`MAX_SIGNATURE_BYTES`) and a longer entry is refused as
+  invalid; unsigned or invalid is refused at inspect and again at stage
+  (`pack/key.rs`, `pack/commands.rs`). Every file is re-hashed as it is
+  extracted and one mismatch fails the import (`pack/read.rs`,
+  `HashMismatch`); anything read before staging (a scene source for the code
+  viewer, a sidecar for the review) is refused unless its bytes hash to the
+  signed value (`read_verified_entry`).
+- **The manifest's claims about itself.** The reader recomputes the publisher
+  key id from the public key and refuses a declared `keyId` that differs
+  (`KeyIdMismatch`); requires each project, template and preset's `root` to be
+  the folder apply lands for its kind and slug, once (`ItemRootMismatch`); and
+  builds that item's staged scene set (`scenes/**/*.tsx` in the signed file
+  list) and refuses the pack when its `sceneFiles` is not exactly that set
+  (`SceneFilesMismatch`), so the scene counts, the code viewer and the review
+  list what would land.
 - **TOFU and its limits.** The key id is `hex(sha256(pubkey)[0..8])`; the store
-  (`known_publishers` in `settings.json`) is keyed by the id the manifest
-  declares, and the verdict compares the stored public key with the manifest's,
-  so a declared id under another key is not that publisher. A publisher name
-  is self-declared and never verified; the same key under a new name warns,
-  and a known name (trimmed, case-folded, whitespace collapsed) under an
-  unknown key warns "a publisher you know as X is using a different key"
-  (`publisher_verdict`). The trust screen draws the publisher verdict first
-  and the "Contents verified" tick below it, saying it proves the pack is
-  whole, not who made it. Continue is the primary button only for a publisher
-  this Mac already knows under this key; a first-time, renamed or re-keyed
-  publisher gets Cancel as the primary button.
+  (`known_publishers` in `settings.json`) is keyed by the id recomputed from
+  the public key, never the declared one (a store an older build keyed by the
+  declared id is re-keyed once on first read), and the verdict compares the
+  stored public key with the manifest's. A publisher name is self-declared and
+  never verified; the same key under a new name warns, and a known name
+  (trimmed, case-folded, whitespace collapsed) under an unknown key warns "a
+  publisher you know as X is using a different key" (`publisher_verdict`). The
+  `device` on a pack is always `Mac`; the computer name is never read. The
+  trust screen draws the publisher verdict first and the "Manifest signature
+  valid" tick below it, saying files are checked against the signed list as
+  they are unpacked and that this proves the pack is whole, not who made it.
+  Continue is the primary button only for a publisher this Mac already knows
+  under this key; a first-time, renamed or re-keyed publisher gets Cancel as
+  the primary button.
+- **Review before Continue.** The trust screen lists every pre-typed terminal
+  command, custom start path and requested Website origin a pack carries,
+  read from its scene sidecars and hash-checked (`read_pack_scene_docs`,
+  `src/packs/packReview.ts`), so nothing is reviewed after the files land. A
+  project, template or preset a pack adds or replaces loses that slug's F-001
+  grant and its place in this session's allow set
+  (`workspace::forget_project_trust`), so the next open asks again.
 - **What is stripped on import.** Any entry with a `.claude` segment is dropped
   at staging and listed on the summary (`pack/paths.rs`, `pack/read.rs`); an
   imported `CLAUDE.md` is replaced by the app's default and the author's text
@@ -418,7 +453,7 @@ SHA-256 and is signed Ed25519 over its exact stored bytes
 The app keeps one secret: the pack signing key, in the login Keychain and
 never synchronised, with the 0600 file fallback described above. Everything else is the
 user's: Claude Code's login lives in `~/.claude` and the `CLAUDE_*` and
-`ANTHROPIC_*` variables pass through to the terminal as described above;
+`ANTHROPIC_*` variables pass through to the Claude session only, as described above;
 website logins live in the Website data store. No password, token or key is
 printed by the app or written to its logs.
 
@@ -517,5 +552,4 @@ Deliberately deferred, recorded so nobody mistakes them for done:
 - A Homebrew cask, so MDM fleets can install and pin versions without the DMG.
 - A per-project website data store: approved projects share one login profile
   today (`docs/scene-website.md`, "Accepted residual risk").
-- A disk-free ceiling on single clip extractions.
 - The bridge queue has no authentication beyond the user account.

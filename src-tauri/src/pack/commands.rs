@@ -11,13 +11,13 @@ use tauri::{AppHandle, Manager, State};
 
 use super::deps::{self, AssetGroup, ClosureFile, HashMode, PackSelection};
 use super::error::PackError;
-use super::limits::{MAX_SOURCE_VIEW_BYTES, PACK_EXTENSION};
+use super::limits::{MAX_SOURCE_VIEW_BYTES, MAX_TEXT_BYTES, PACK_EXTENSION};
 use super::model::*;
 use super::read::{self, StagedPack};
 use super::write::{self, PackEntry};
 use super::{key, publisher};
 
-use crate::workspace::{self, SettingsState};
+use crate::workspace::{self, SettingsState, TrustState};
 
 // ---------------------------------------------------------------- shared state
 
@@ -132,6 +132,20 @@ pub struct PackInspectionView {
     compatibility: CompatibilityView,
     archive_bytes: u64,
     install_bytes: u64,
+    /// The scene code the pack would stage, from `files`; the trust and code screens list this, never `contents`.
+    scene_sources: Vec<read::SceneSource>,
+}
+
+/// One scene sidecar as the pack carries it, read before staging and checked against its signed hash, so the trust
+/// screen reviews terminal commands and website origins from the bytes that would land.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PackSceneDoc {
+    kind: ItemKind,
+    slug: String,
+    name: String,
+    file: String,
+    doc: serde_json::Value,
 }
 
 #[derive(Serialize)]
@@ -680,9 +694,8 @@ pub async fn inspect_pack(
         }
     };
 
-    let settings_now = workspace::load_settings(&app, &settings)?;
     let verdict = publisher::publisher_verdict(
-        &settings_now.known_publishers,
+        &publisher::known_publishers(&app, &settings)?,
         &inspection.manifest.publisher,
     );
     let install_bytes = inspection.manifest.files.iter().map(|f| f.bytes).sum();
@@ -703,27 +716,63 @@ pub async fn inspect_pack(
         compatibility,
         archive_bytes: inspection.archive_bytes,
         install_bytes,
+        scene_sources: inspection.scene_sources,
     })
 }
 
 #[tauri::command]
 pub async fn read_pack_scene_source(
     path: String,
-    project_slug: String,
+    kind: ItemKind,
+    slug: String,
     scene_file: String,
 ) -> Result<String, String> {
     let archive = Path::new(&path);
     crate::packs_win::validate_incoming(archive)?;
-    workspace::validate_slug(&project_slug)?;
+    workspace::validate_slug(&slug)?;
     let inspection = read::inspect(archive)?;
-    // `sceneFile` is project-relative ("scenes/01-intro.tsx"); validate_archive_path is the gate, not this join.
-    let entry = format!("payload/projects/{project_slug}/{scene_file}");
+    // Only what the reader listed as staged scene code can be shown as it.
+    let source = inspection
+        .scene_sources
+        .iter()
+        .find(|s| s.kind == kind && s.slug == slug && s.file == scene_file)
+        .ok_or_else(|| PackError::EntryNotInManifest(scene_file.clone()))?;
     Ok(read::read_entry(
         archive,
         &inspection.manifest,
-        &entry,
+        &source.archive_path(),
         MAX_SOURCE_VIEW_BYTES,
     )?)
+}
+
+/// Every scene sidecar the pack carries beside a staged scene source, parsed, for the trust screen's terminal and
+/// website review. Each is checked against its signed hash on the way in; one mismatch refuses the pack.
+#[tauri::command]
+pub async fn read_pack_scene_docs(path: String) -> Result<Vec<PackSceneDoc>, String> {
+    let archive = Path::new(&path);
+    crate::packs_win::validate_incoming(archive)?;
+    let inspection = read::inspect(archive)?;
+    let manifest = &inspection.manifest;
+    let carried: Vec<(&read::SceneSource, String)> = inspection
+        .scene_sources
+        .iter()
+        .filter_map(|source| source.sidecar_path().map(|sidecar| (source, sidecar)))
+        .filter(|(_, sidecar)| manifest.files.iter().any(|f| &f.path == sidecar))
+        .collect();
+    let paths: Vec<String> = carried.iter().map(|(_, sidecar)| sidecar.clone()).collect();
+    let bodies = read::read_verified_entries(archive, manifest, &paths, MAX_TEXT_BYTES)?;
+    Ok(carried
+        .iter()
+        .zip(bodies)
+        .map(|((source, _), bytes)| PackSceneDoc {
+            kind: source.kind,
+            slug: source.slug.clone(),
+            name: source.name.clone(),
+            file: source.file.clone(),
+            // A sidecar that is not JSON holds nothing the app would honour either; the review skips it.
+            doc: serde_json::from_slice(&bytes).unwrap_or(serde_json::Value::Null),
+        })
+        .collect())
 }
 
 /// Extract and plan. Deliberately called from the CONTENTS screen, not earlier: nothing is written to disk until the
@@ -793,6 +842,7 @@ pub async fn apply_import(
     app: AppHandle,
     settings: State<'_, SettingsState>,
     state: State<'_, PackState>,
+    trust: State<'_, TrustState>,
     resolutions: std::collections::HashMap<String, Resolution>,
     on_progress: Channel<PackProgress>,
 ) -> Result<super::apply::ImportOutcome, String> {
@@ -817,6 +867,25 @@ pub async fn apply_import(
         });
         let _ = label;
     })?;
+
+    // A slug a pack wrote now holds a publisher's content, so its consent is gone; keep-both lands under a fresh slug.
+    for result in &outcome.results {
+        if !matches!(
+            result.outcome,
+            super::apply::ItemOutcome::Added | super::apply::ItemOutcome::Replaced
+        ) {
+            continue;
+        }
+        let id = match result.kind {
+            ItemKind::Project => result.slug.clone(),
+            ItemKind::Template => format!("ws-template:{}", result.slug),
+            ItemKind::Preset => format!("ws-preset:{}", result.slug),
+            _ => continue,
+        };
+        if let Err(e) = workspace::forget_project_trust(&app, &settings, &trust, &id) {
+            eprintln!("[packs] forgetting trust for {id} failed: {e}");
+        }
+    }
 
     // Trust on first use is recorded only after something actually landed.
     if outcome.results.iter().any(|r| {

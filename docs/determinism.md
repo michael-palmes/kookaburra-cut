@@ -334,6 +334,10 @@ the field lands.
     past while the chunk extracted is dropped before decode. The preview JPEG
     tier (`ensure_clip_previews`) is made per chunk, after playback first binds
     the chunk's PNGs.
+  - **The disk guard:** `ensure_clip_chunks` refuses before ffmpeg starts when
+    the raw RGB ceiling of the chunks it would extract plus a 2 GB floor
+    exceeds the volume's free space (`check_extraction_space`), naming the
+    space needed; present chunks cost nothing and the argv never changes.
   - **The cap:** Settings holds `clipCacheCapGb` (default 20). After an
     extraction pushes the cache past it, whole chunks go least recently used
     first (a chunk's marker mtime, touched on read at most once a minute) down to

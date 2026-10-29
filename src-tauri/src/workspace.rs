@@ -1802,28 +1802,11 @@ pub fn create_project(
     stamp_claude_provisioning(&app, &dir)?;
 
     // git init + initial commit gives Claude Code persisted workspace trust and history; best-effort since git may be missing (Xcode CLT prompt on a fresh Mac), in which case the project still works but Claude re-asks for trust each session.
-    let git = |args: &[&str]| {
-        std::process::Command::new("git")
-            .args(args)
-            .current_dir(&dir)
-            .output()
-    };
-    match git(&["init"]) {
-        Ok(out) if out.status.success() => {
-            let _ = git(&["add", "-A"]);
-            // Explicit identity so the commit succeeds without global git config.
-            let _ = git(&[
-                "-c",
-                "user.name=Kookaburra Cut",
-                "-c",
-                "user.email=kookaburra@localhost",
-                "commit",
-                "-m",
-                &format!("chore: create project from template {template_id}"),
-            ]);
-        }
-        Ok(out) => log::warn!("git init failed: {}", String::from_utf8_lossy(&out.stderr)),
-        Err(e) => log::warn!("git unavailable, skipping repo init: {e}"),
+    if let Err(e) = crate::history::init_repo(
+        &dir,
+        &format!("chore: create project from template {template_id}"),
+    ) {
+        log::warn!("[history] skipping repo init: {e}");
     }
 
     let duration_ms = manifest_summary(&dir).map(|(_, d, _)| d).unwrap_or(0);
@@ -1868,12 +1851,42 @@ pub async fn provision_project(
     }
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<SettingsState>();
-        restamping_trust(&app, &state, &slug, || {
+        let stamped = restamping_trust(&app, &state, &slug, || {
             stamp_claude_provisioning(&app, &dir)
-        })
+        });
+        trim_legacy_history(app.clone(), slug, dir);
+        stamped
     })
     .await
     .map_err(|e| e.to_string())?
+}
+
+/// A project created before footage was kept out of git loses it from its history on its own thread: seconds once, never on the load, one `kookaburra://history-trimmed` event and one log line when it ran.
+fn trim_legacy_history(app: AppHandle, slug: String, dir: PathBuf) {
+    std::thread::spawn(move || {
+        if !crate::history::holds_excluded(&dir) {
+            return;
+        }
+        let started = Instant::now();
+        match crate::history::purge_excluded_once(&dir) {
+            None => {}
+            Some(Ok(purged)) => {
+                log::info!(
+                    "[history] {slug}: footage removed from {} commits, {} bytes freed in {:.1} s",
+                    purged.commits_rewritten,
+                    purged.freed_bytes,
+                    started.elapsed().as_secs_f32()
+                );
+                let _ = app.emit(
+                    "kookaburra://history-trimmed",
+                    serde_json::json!({ "slug": slug, "freedBytes": purged.freed_bytes }),
+                );
+            }
+            Some(Err(e)) => {
+                log::warn!("[history] {slug}: footage stays in history for now: {e}")
+            }
+        }
+    });
 }
 
 /// Media the pool seeds; anything else in `_samples` (README, dotfiles) stays put.
@@ -2144,6 +2157,30 @@ fn copy_source_needs_grant(scope: &ProjectScope) -> bool {
         scope,
         ProjectScope::BundledTemplate | ProjectScope::BundledPreset
     )
+}
+
+/// Pure: a pack landed `id` (added or replaced), so whatever consent stood for that folder covered other content. The slug leaves this session's allow and its stored grant, and the next open asks.
+fn drop_trust(
+    trusted: &mut HashMap<String, TrustRecord>,
+    session: &mut HashSet<String>,
+    id: &str,
+) -> bool {
+    let stored = trusted.remove(id).is_some();
+    session.remove(id) | stored
+}
+
+/// Forget every grant for a project, user template or user preset a pack import just wrote. The pack is a publisher's content, whoever that publisher is, so the person meets the Allow sheet again on the next open.
+pub(crate) fn forget_project_trust(
+    app: &AppHandle,
+    state: &State<'_, SettingsState>,
+    trust: &TrustState,
+    id: &str,
+) -> Result<(), String> {
+    parse_project_id(id)?;
+    let mut session = trust.session.lock().map_err(|_| "trust state poisoned")?;
+    update_settings(app, state, |settings| {
+        drop_trust(&mut settings.trusted_projects, &mut session, id);
+    })
 }
 
 /// One consent the native sheet (or an autorun launch) issued and `trust_project` has not consumed yet.
@@ -3659,6 +3696,29 @@ mod tests {
         let old = issue_trust_nonce(&mut pending, "demo", "fp-1", now);
         issue_trust_nonce(&mut pending, "demo", "fp-2", later);
         assert!(!pending.contains_key(&old));
+    }
+
+    #[test]
+    fn a_pack_landing_drops_the_session_allow_and_the_stored_grant() {
+        let mut trusted = HashMap::new();
+        trusted.insert(
+            "demo".to_owned(),
+            TrustRecord {
+                scenes_fingerprint: "fp-1".to_owned(),
+                path: "/Users/x/Kookaburra Cut/demo".to_owned(),
+                allowed_at_ms: 1,
+            },
+        );
+        let mut session: HashSet<String> = ["demo".to_owned(), "other".to_owned()].into();
+        assert!(drop_trust(&mut trusted, &mut session, "demo"));
+        assert!(trusted.is_empty());
+        assert_eq!(session, ["other".to_owned()].into());
+        // The next check finds no grant, so it asks rather than re-stamping.
+        assert_eq!(
+            session_trust_decision(trusted.get("demo"), Path::new("/Users/x/Kookaburra Cut/demo"), "fp-2", &mut session, "demo"),
+            SessionTrust::Ask
+        );
+        assert!(!drop_trust(&mut trusted, &mut session, "demo"));
     }
 
     #[test]
