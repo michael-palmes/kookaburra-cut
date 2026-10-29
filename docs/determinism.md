@@ -1881,8 +1881,12 @@ Verify ×2 here (the 2026-10-23 note):
 > the window's `<img>` path to be the file's bytes and the bitmap path not.
 > With the screen taking a row-reversed copy and every PNG decoded natively,
 > every leg in the tables above holds EQUAL through the stage, plus the four
-> stills legs. The stage is null-for-legacy by construction, which is why this
-> entry carries no hashes.
+> stills legs. Re-gated after merging main through #268 (its screen-media turns
+> meet the stage's screen orientation at runtime): `pnpm ready`'s legs and the
+> foldable and device legs EQUAL; `long-device-spike` exports the same hash on
+> this branch and on main itself, so its recorded baseline predates #268 and
+> is main's to re-record. The stage is null-for-legacy by construction, which
+> is why this entry carries no hashes.
 > Export wall time for the anchor pair fell from 96.0 s to 93.9 s on the same
 > busy machine; the preview holds 58 to 60 fps on every perf pass.
 
