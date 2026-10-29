@@ -1652,7 +1652,7 @@ exports each film through the real path (30 fps unless a preset says otherwise; 
 renders the first N seconds) and every 2 s records the render rate, each process's
 footprint (`export_memory_sample`: the editor's and render window's WebContent, WebKit's
 GPU process, the app, ffmpeg), three's texture and geometry counts and the clip frame
-cache (`clipCacheCensus`). Each row's `memory` carries the rate over the first, middle and
+cache (`clipCacheCensus`, answered by the stage worker, which holds them). Each row's `memory` carries the rate over the first, middle and
 last 10 s, first, peak and last footprints, `editorGrowthMb` (the editor's median over
 the last third minus the first third: growth that stays, not a transition's MSAA pair
 coming and going) and `holds`. A film that slows below 80% of its start or keeps more than

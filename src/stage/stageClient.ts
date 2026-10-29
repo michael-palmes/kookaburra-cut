@@ -9,6 +9,7 @@ import type { ExportOptions } from "../engine/exporter";
 import { setExporting } from "../engine/exportState";
 import type { GizmoDomain } from "../engine/gizmoRegistry";
 import type { GlCensus } from "../engine/glContexts";
+import type { MemoryCensus } from "../engine/memoryCensus";
 import type { PerfRow } from "../engine/perfProbe";
 import {
   isWorkspaceBackedProjectId,
@@ -532,6 +533,9 @@ export class StageClient implements StageHandle {
   census(): Promise<GlCensus> {
     return this.request({ type: "census" });
   }
+  memoryCensus(): Promise<MemoryCensus> {
+    return this.request({ type: "memoryCensus" });
+  }
   forceContextLoss(): Promise<void> {
     return this.request({ type: "forceContextLoss" });
   }
@@ -549,6 +553,9 @@ export class StageClient implements StageHandle {
   }
   previewFlags(flags: Omit<Extract<WindowNotice, { type: "previewFlags" }>, "type">): void {
     this.send({ type: "previewFlags", ...flags });
+  }
+  setClipCacheCapacity(n: number): void {
+    this.send({ type: "clipCacheCapacity", n });
   }
   pointer(event: StagePointerEvent): void {
     this.send({ type: "pointer", event });

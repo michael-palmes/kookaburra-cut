@@ -4,11 +4,18 @@ import { MemoryRecorder } from "./memoryProbe";
 import type { SceneSlot } from "./sceneTimeline";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
-vi.mock("./clips", () => ({
-  clipCacheCensus: () => ({ clips: 2, textures: 4, bytes: 24e6 }),
-  setClipCacheCapacity: vi.fn(),
+vi.mock("./stageHandle", () => ({
+  stage: () => ({
+    memoryCensus: async () => ({
+      glTextures: 0,
+      glGeometries: 0,
+      glPrograms: 0,
+      clipTextures: 4,
+      clipBytes: 24e6,
+    }),
+    setClipCacheCapacity: vi.fn(),
+  }),
 }));
-vi.mock("./exportBridge", () => ({ canvasHandle: { current: null } }));
 
 const slots: SceneSlot[] = [
   { index: 0, id: "intro", startMs: 0, endMs: 30_000, durationMs: 30_000 },

@@ -169,6 +169,7 @@ export type WindowRequest =
       claim: boolean;
     }
   | { type: "census"; id: number }
+  | { type: "memoryCensus"; id: number }
   | { type: "forceContextLoss"; id: number }
   | { type: "releasePools"; id: number }
   | { type: "invalidateClips"; id: number }
@@ -204,6 +205,7 @@ export type WindowNotice =
       slideshowActive?: boolean;
       hardwareVideo?: boolean;
     }
+  | { type: "clipCacheCapacity"; n: number }
   | { type: "portProgress"; id: number; value: unknown }
   | { type: "reply"; id: number; ok: true; value: unknown }
   | { type: "reply"; id: number; ok: false; error: string };

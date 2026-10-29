@@ -12,6 +12,7 @@ import {
   clipExtractionProgress,
   evictAllClips,
   invalidateChangedClips,
+  setClipCacheCapacity,
   setHardwareVideo,
   subscribeClipExtraction,
 } from "../engine/clips";
@@ -42,6 +43,7 @@ import { gizmoHandleAt, gizmoPickerHandles, subscribeGizmoPickers } from "../eng
 import { cameraFrameOf, projectGizmoTargets } from "../engine/gizmoTargetFrames";
 import { glContextCensus, onGlContextLoss, tagGlCanvas } from "../engine/glContexts";
 import { ensureRectAreaLightUniforms } from "../engine/lightingState";
+import { memoryCensus } from "../engine/memoryCensus";
 import { perfColdWaits, runPerfProbe } from "../engine/perfProbe";
 import { setPresentSlideshowActive } from "../engine/presentMode";
 import {
@@ -553,6 +555,8 @@ async function handle(req: WindowRequest): Promise<{ value: unknown; transfer?: 
     }
     case "census":
       return { value: glContextCensus() };
+    case "memoryCensus":
+      return { value: memoryCensus() };
     case "forceContextLoss":
       canvasHandle.current?.gl.forceContextLoss();
       return { value: null };
@@ -699,6 +703,9 @@ takeWorkerInbox((ev: MessageEvent<ToWorker>) => {
       return;
     case "conformMediaChanged":
       port.deliverConformMediaChanged(msg.slug, msg.paths);
+      return;
+    case "clipCacheCapacity":
+      setClipCacheCapacity(msg.n);
       return;
     case "previewFlags":
       if (msg.clipStride !== undefined) setPreviewClipStride(msg.clipStride);

@@ -3,6 +3,7 @@ import type { FrameRect } from "../toolkit/frame/frameLayout";
 import type { ExportOptions } from "./exporter";
 import type { GizmoDomain } from "./gizmoRegistry";
 import type { GlCensus } from "./glContexts";
+import type { MemoryCensus } from "./memoryCensus";
 import type { PerfRow } from "./perfProbe";
 import type { LoadedProject } from "./project";
 import type { RenderStateFingerprint } from "./renderFingerprint";
@@ -82,6 +83,8 @@ export interface StageHandle {
     claim?: boolean,
   ): Promise<GizmoPickerSummary | null>;
   census(): Promise<GlCensus>;
+  /** The memory probe's count of three's residency and the clip frame cache, from the realm that holds them. */
+  memoryCensus(): Promise<MemoryCensus>;
   forceContextLoss(): Promise<void>;
   releasePools(): Promise<void>;
   invalidateChangedClips(): Promise<void>;
@@ -95,6 +98,8 @@ export interface StageHandle {
     slideshowActive?: boolean;
     hardwareVideo?: boolean;
   }): void;
+  /** The memory probe's `clip-cache=N` lever; nothing else changes it. */
+  setClipCacheCapacity(n: number): void;
   /** Loss count on the stage canvas since the worker started. */
   contextLosses(): number;
   subscribeContextLost(listener: () => void): () => void;

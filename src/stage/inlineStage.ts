@@ -1,4 +1,5 @@
 import type { PerspectiveCamera } from "three";
+import { setClipCacheCapacity } from "../engine/clips";
 import { canvasHandle, localCanvasContextLosses, localCommitStamps } from "../engine/exportBridge";
 import {
   awaitSceneHostsCommitted,
@@ -11,6 +12,7 @@ import {
 import { setExporting } from "../engine/exportState";
 import { gizmoHandleAt } from "../engine/gizmoRegistry";
 import { glContextCensus } from "../engine/glContexts";
+import { memoryCensus } from "../engine/memoryCensus";
 import { perfColdWaits } from "../engine/perfProbe";
 import type { LoadedProject } from "../engine/project";
 import { getSceneHosts } from "../engine/sceneHostRegistry";
@@ -96,6 +98,12 @@ export function createInlineStage(element?: HTMLCanvasElement): StageHandle {
     },
     async census() {
       return glContextCensus();
+    },
+    async memoryCensus() {
+      return memoryCensus();
+    },
+    setClipCacheCapacity(n) {
+      setClipCacheCapacity(n);
     },
     async forceContextLoss() {
       canvasHandle.current?.gl.forceContextLoss();
