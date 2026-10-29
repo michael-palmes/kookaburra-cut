@@ -1557,7 +1557,11 @@ tier is under "Gate tiers" and the baselines under "Current baselines".
   the legacy `~/Kookaburra Cut/_autorun/last-run.json` is still written as a
   copy. Runs queue behind each other (FIFO) instead of demanding the machine to
   themselves, dev runs pick their own port, and the launch is backgrounded: no
-  Dock icon, no focus steal.
+  Dock icon, no focus steal. Autoruns run with HMR off (`vite.config.ts`
+  drops `server.hmr` under `KOOKABURRA_ACTION`), so no gate can see a break in
+  the dev-only HMR path: after a change to the stage worker's module graph,
+  also boot `pnpm tauri dev` and open a project (2026-10-29: the stage never
+  booted under HMR while every gate passed).
 - **Cold runs (`--cold`):** a run is cold when no preview frame draws before
   it (`programs 0` or `1` in dev.log's `[autorun] gl memory before`
   breadcrumb). Without the flag that rides on the window and the boot: an
