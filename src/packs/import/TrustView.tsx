@@ -1,6 +1,6 @@
 import { formatBytes, formatDate, formatKeyId, type PackInspection } from "../types";
 
-/** Screen 1. The honesty rule: a publisher name is rendered as self-declared, always. No tick, no badge, no green for a name. The publisher verdict comes first and the integrity tick below it, so "Contents verified" never heads a pack from a stranger or a changed key. */
+/** Screen 1. The honesty rule: a publisher name is rendered as self-declared, always. No tick, no badge, no green for a name. The publisher verdict comes first and the integrity tick below it, so "Contents verified" never heads a pack from a stranger or a changed key. Continue is primary only for a publisher this Mac knows under this key; otherwise Cancel is. */
 export function TrustView({
   inspection,
   onViewCode,
@@ -24,6 +24,7 @@ export function TrustView({
     manifest.contents.exportPresets.length +
     manifest.contents.screenshots.length;
   const sceneFileCount = projects.reduce((n, p) => n + p.sceneCount, 0);
+  const knownPublisher = inspection.publisher.kind === "known";
 
   return (
     <div className="packs-main">
@@ -72,10 +73,18 @@ export function TrustView({
           {formatBytes(installBytes)} installed
         </div>
         <div className="packs-actions">
-          <button type="button" className="btn" onClick={onCancel}>
+          <button
+            type="button"
+            className={knownPublisher ? "btn" : "btn primary"}
+            onClick={onCancel}
+          >
             Cancel
           </button>
-          <button type="button" className="btn primary" onClick={onContinue}>
+          <button
+            type="button"
+            className={knownPublisher ? "btn primary" : "btn"}
+            onClick={onContinue}
+          >
             Continue
           </button>
         </div>
