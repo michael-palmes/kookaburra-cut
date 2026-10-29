@@ -74,12 +74,16 @@ project as `NOTES.md` for you to read, not for the agent to obey.
   it): every project with its scenes, assets, edits and exports, plus your
   themes, brands, fonts, gradients, export presets, scene presets and
   screenshots. Deleting a project moves it to the Trash. Each project is also a
-  small git repository, so a removed asset stays in its history until you
-  delete the project.
+  small git repository holding its scenes and settings only: footage and
+  exports are never kept in it, so a removed asset is gone, and a project
+  made before this rule has them removed from its history the next time it
+  opens. Your projects are backed up like any other folder.
 - **Caches** under the app's Application Support folder: decoded video frames
   (the clip cache, with a size limit), media previews and thumbnails. Settings ▸
   Storage shows their size and clears them; they are rebuilt as you work, and
-  deleting a project or an asset clears its own frames and previews.
+  deleting a project or an asset clears its own frames and previews. Time
+  Machine skips these two caches, since everything in them comes back from
+  your project's own footage.
 - **Settings**: your preferences, which publishers' keys you have imported from,
   which projects you allowed to run. The key that signs your own packs lives
   in your login Keychain and never synchronises; macOS may ask once to let the
