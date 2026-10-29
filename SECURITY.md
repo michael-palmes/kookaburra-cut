@@ -362,22 +362,44 @@ SHA-256 and is signed Ed25519 over its exact stored bytes
 (`src-tauri/src/pack/`; the format in [docs/packs.md](docs/packs.md)).
 
 - **Signature.** `verify_strict` against the `ed25519:<base64>` public key the
-  manifest carries, needing a 64-byte signature; unsigned or invalid is refused
-  at inspect and again at stage (`pack/key.rs`, `pack/commands.rs`). Every file
-  is re-hashed as it is extracted and one mismatch fails the import
-  (`pack/read.rs`, `HashMismatch`).
+  manifest carries, needing a 64-byte signature; `manifest.sig` is read to a
+  256-byte bound (`MAX_SIGNATURE_BYTES`) and a longer entry is refused as
+  invalid; unsigned or invalid is refused at inspect and again at stage
+  (`pack/key.rs`, `pack/commands.rs`). Every file is re-hashed as it is
+  extracted and one mismatch fails the import (`pack/read.rs`,
+  `HashMismatch`); anything read before staging (a scene source for the code
+  viewer, a sidecar for the review) is refused unless its bytes hash to the
+  signed value (`read_verified_entry`).
+- **The manifest's claims about itself.** The reader recomputes the publisher
+  key id from the public key and refuses a declared `keyId` that differs
+  (`KeyIdMismatch`); requires each project, template and preset's `root` to be
+  the folder apply lands for its kind and slug, once (`ItemRootMismatch`); and
+  builds that item's staged scene set (`scenes/**/*.tsx` in the signed file
+  list) and refuses the pack when its `sceneFiles` is not exactly that set
+  (`SceneFilesMismatch`), so the scene counts, the code viewer and the review
+  list what would land.
 - **TOFU and its limits.** The key id is `hex(sha256(pubkey)[0..8])`; the store
-  (`known_publishers` in `settings.json`) is keyed by the id the manifest
-  declares, and the verdict compares the stored public key with the manifest's,
-  so a declared id under another key is not that publisher. A publisher name
-  is self-declared and never verified; the same key under a new name warns,
-  and a known name (trimmed, case-folded, whitespace collapsed) under an
-  unknown key warns "a publisher you know as X is using a different key"
-  (`publisher_verdict`). The trust screen draws the publisher verdict first
-  and the "Contents verified" tick below it, saying it proves the pack is
-  whole, not who made it. Continue is the primary button only for a publisher
-  this Mac already knows under this key; a first-time, renamed or re-keyed
-  publisher gets Cancel as the primary button.
+  (`known_publishers` in `settings.json`) is keyed by the id recomputed from
+  the public key, never the declared one (a store an older build keyed by the
+  declared id is re-keyed once on first read), and the verdict compares the
+  stored public key with the manifest's. A publisher name is self-declared and
+  never verified; the same key under a new name warns, and a known name
+  (trimmed, case-folded, whitespace collapsed) under an unknown key warns "a
+  publisher you know as X is using a different key" (`publisher_verdict`). The
+  `device` on a pack is always `Mac`; the computer name is never read. The
+  trust screen draws the publisher verdict first and the "Manifest signature
+  valid" tick below it, saying files are checked against the signed list as
+  they are unpacked and that this proves the pack is whole, not who made it.
+  Continue is the primary button only for a publisher this Mac already knows
+  under this key; a first-time, renamed or re-keyed publisher gets Cancel as
+  the primary button.
+- **Review before Continue.** The trust screen lists every pre-typed terminal
+  command, custom start path and requested Website origin a pack carries,
+  read from its scene sidecars and hash-checked (`read_pack_scene_docs`,
+  `src/packs/packReview.ts`), so nothing is reviewed after the files land. A
+  project, template or preset a pack adds or replaces loses that slug's F-001
+  grant and its place in this session's allow set
+  (`workspace::forget_project_trust`), so the next open asks again.
 - **What is stripped on import.** Any entry with a `.claude` segment is dropped
   at staging and listed on the summary (`pack/paths.rs`, `pack/read.rs`); an
   imported `CLAUDE.md` is replaced by the app's default and the author's text
