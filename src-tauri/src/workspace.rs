@@ -1781,28 +1781,11 @@ pub fn create_project(
     stamp_claude_provisioning(&app, &dir)?;
 
     // git init + initial commit gives Claude Code persisted workspace trust and history; best-effort since git may be missing (Xcode CLT prompt on a fresh Mac), in which case the project still works but Claude re-asks for trust each session.
-    let git = |args: &[&str]| {
-        std::process::Command::new("git")
-            .args(args)
-            .current_dir(&dir)
-            .output()
-    };
-    match git(&["init"]) {
-        Ok(out) if out.status.success() => {
-            let _ = git(&["add", "-A"]);
-            // Explicit identity so the commit succeeds without global git config.
-            let _ = git(&[
-                "-c",
-                "user.name=Kookaburra Cut",
-                "-c",
-                "user.email=kookaburra@localhost",
-                "commit",
-                "-m",
-                &format!("chore: create project from template {template_id}"),
-            ]);
-        }
-        Ok(out) => log::warn!("git init failed: {}", String::from_utf8_lossy(&out.stderr)),
-        Err(e) => log::warn!("git unavailable, skipping repo init: {e}"),
+    if let Err(e) = crate::history::init_repo(
+        &dir,
+        &format!("chore: create project from template {template_id}"),
+    ) {
+        log::warn!("[history] skipping repo init: {e}");
     }
 
     let duration_ms = manifest_summary(&dir).map(|(_, d, _)| d).unwrap_or(0);
@@ -1847,12 +1830,42 @@ pub async fn provision_project(
     }
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<SettingsState>();
-        restamping_trust(&app, &state, &slug, || {
+        let stamped = restamping_trust(&app, &state, &slug, || {
             stamp_claude_provisioning(&app, &dir)
-        })
+        });
+        trim_legacy_history(app.clone(), slug, dir);
+        stamped
     })
     .await
     .map_err(|e| e.to_string())?
+}
+
+/// A project created before footage was kept out of git loses it from its history on its own thread: seconds once, never on the load, one `kookaburra://history-trimmed` event and one log line when it ran.
+fn trim_legacy_history(app: AppHandle, slug: String, dir: PathBuf) {
+    std::thread::spawn(move || {
+        if !crate::history::holds_excluded(&dir) {
+            return;
+        }
+        let started = Instant::now();
+        match crate::history::purge_excluded_once(&dir) {
+            None => {}
+            Some(Ok(purged)) => {
+                log::info!(
+                    "[history] {slug}: footage removed from {} commits, {} bytes freed in {:.1} s",
+                    purged.commits_rewritten,
+                    purged.freed_bytes,
+                    started.elapsed().as_secs_f32()
+                );
+                let _ = app.emit(
+                    "kookaburra://history-trimmed",
+                    serde_json::json!({ "slug": slug, "freedBytes": purged.freed_bytes }),
+                );
+            }
+            Some(Err(e)) => {
+                log::warn!("[history] {slug}: footage stays in history for now: {e}")
+            }
+        }
+    });
 }
 
 /// Media the pool seeds; anything else in `_samples` (README, dotfiles) stays put.

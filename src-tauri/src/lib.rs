@@ -29,6 +29,7 @@ mod flashes;
 mod fonts;
 mod global_screenshots;
 mod gradients;
+mod history;
 mod kit;
 mod library;
 mod library_previews;
