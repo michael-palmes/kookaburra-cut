@@ -9,6 +9,7 @@
           "get_autorun_config",
           "list_projects",
           "read_project_manifest",
+          "release_project",
           "read_scene_source",
           "project_fingerprint",
           "project_file_stamps",
@@ -50,7 +51,8 @@
           "read_media_thumb",
           "decode_png",
           "probe_audio",
-          "bridge_instance"
+          "bridge_instance",
+          "read_emoji_raster"
         ]
       }
     },

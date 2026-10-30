@@ -365,6 +365,12 @@ export class StageClient implements StageHandle {
         this.cursorValue = msg.cursor;
         this.onCursor(msg.cursor);
         return;
+      case "sourceChanged":
+        // Dev only: the worker cannot Fast Refresh, so the window reloads as Vite does for an unaccepted update.
+        if (!import.meta.env.DEV) return;
+        console.warn(`[stage] source changed, reloading: ${msg.paths.join(" ")}`);
+        location.reload();
+        return;
       case "contextLost":
         if (!msg.deliberate) {
           this.losses += 1;

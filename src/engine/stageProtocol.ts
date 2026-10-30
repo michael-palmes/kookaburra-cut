@@ -246,6 +246,7 @@ export type WorkerNotice =
   | { type: "hosts"; hosts: SceneHostSummary[] }
   | { type: "store"; name: MirroredStore; patch: Record<string, unknown> }
   | { type: "cursor"; cursor: string }
+  | { type: "sourceChanged"; paths: string[] }
   | { type: "contextLost"; lossClass: string; deliberate: boolean }
   | { type: "progress"; id: number; value: unknown }
   | { type: "clips"; extracting: number; progress: number | null }

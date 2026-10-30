@@ -242,13 +242,43 @@ pub(crate) fn forget_media(app: &AppHandle, root: &Path, gone_from: &Path, sourc
     });
 }
 
-/// Resolve an asset under the already resolved project folder, including scoped library items.
+/// Resolve an asset under the already resolved project folder, including scoped library items; refused when a link along the way leaves the project.
 pub(crate) fn resolve_asset_in(project: &Path, rel: &str) -> Result<PathBuf, String> {
     let clean = rel.trim_start_matches("./");
     if !clean.starts_with("assets/") || clean.split('/').any(|part| part == "..") {
         return Err(format!("not a project asset path: {rel}"));
     }
+    confine_to_project(project, clean)?;
     Ok(project.join(clean))
+}
+
+/// Where `project/rel` really leads, with every link followed: the deepest existing ancestor is what a link could redirect, so that is what is canonicalised, and whatever is missing below it is kept as written so a file about to be checked with `is_file` still resolves.
+fn confine_to_project(project: &Path, rel: &str) -> Result<PathBuf, String> {
+    let root = project
+        .canonicalize()
+        .map_err(|e| format!("project folder {}: {e}", project.display()))?;
+    let full = root.join(rel);
+    let mut existing = full.as_path();
+    let mut missing: Vec<&std::ffi::OsStr> = Vec::new();
+    while std::fs::symlink_metadata(existing).is_err() {
+        let (Some(parent), Some(name)) = (existing.parent(), existing.file_name()) else {
+            break;
+        };
+        missing.push(name);
+        existing = parent;
+    }
+    let real = existing
+        .canonicalize()
+        .map_err(|_| format!("\"{rel}\" is a link that leads nowhere"))?;
+    if !real.starts_with(&root) {
+        return Err(format!(
+            "\"{rel}\" links outside the project folder; links out of a project are not followed"
+        ));
+    }
+    Ok(missing
+        .into_iter()
+        .rev()
+        .fold(real, |path, name| path.join(name)))
 }
 
 /// The project soundtrack an export or a loudness pass may open: an absolute file inside the workspace-readable roots with an audio extension, so a planted playlist (an `.m3u8` named in `project.json`, say) never reaches ffmpeg.
@@ -2367,6 +2397,44 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         dir
+    }
+
+    /// A link out of the project is refused by name, a link within it is allowed, and a missing file still resolves so callers can say it is missing.
+    #[test]
+    fn assets_resolve_inside_the_project_only() {
+        let dir = scratch("confine");
+        let project = dir.join("project");
+        let outside = dir.join("outside");
+        std::fs::create_dir_all(project.join("assets/sub")).unwrap();
+        std::fs::create_dir_all(&outside).unwrap();
+        std::fs::write(project.join("assets/real.png"), b"x").unwrap();
+        std::fs::write(outside.join("secret.png"), b"x").unwrap();
+        std::os::unix::fs::symlink(outside.join("secret.png"), project.join("assets/theirs.png")).unwrap();
+        std::os::unix::fs::symlink(&outside, project.join("assets/out")).unwrap();
+        std::os::unix::fs::symlink(project.join("assets/real.png"), project.join("assets/alias.png")).unwrap();
+        std::os::unix::fs::symlink(dir.join("nothing"), project.join("assets/dangling.png")).unwrap();
+
+        assert_eq!(
+            resolve_asset_in(&project, "assets/real.png").unwrap(),
+            project.join("assets/real.png")
+        );
+        assert_eq!(
+            resolve_asset_in(&project, "./assets/alias.png").unwrap(),
+            project.join("assets/alias.png")
+        );
+        assert_eq!(
+            resolve_asset_in(&project, "assets/sub/missing.png").unwrap(),
+            project.join("assets/sub/missing.png")
+        );
+        for rel in ["assets/theirs.png", "assets/out/secret.png", "assets/out/missing.png"] {
+            let err = resolve_asset_in(&project, rel).unwrap_err();
+            assert!(err.contains(rel) && err.contains("outside the project"), "{rel}: {err}");
+        }
+        let err = resolve_asset_in(&project, "assets/dangling.png").unwrap_err();
+        assert!(err.contains("dangling.png"), "{err}");
+        assert!(resolve_asset_in(&project, "assets/../project.json").is_err());
+        assert!(resolve_asset_in(&project, "scenes/a.tsx").is_err());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// A playlist named as the soundtrack never reaches ffmpeg, whatever it is called in `project.json`.
