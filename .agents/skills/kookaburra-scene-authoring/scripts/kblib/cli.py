@@ -56,7 +56,7 @@ kb: the one tool for editing a Kookaburra Cut project safely. Run it from the pr
 folder as ./kb <command> (never through a shell variable or alias); it also walks up from
 the cwd, or uses $CLAUDE_PROJECT_DIR.
 
-  Look       status | context | scenes | check [--app] [--render] [FILE...]
+  Look       status | context [--md] | scenes | check [--app] [--render] [FILE...]
              capture [--scene S] [--at SEC] [--aspect A] [--frames S@SEC,...] [--sheet]
                      [--width N | --scale F] [--probe X,Y[,X,Y...]] [--out DIR | --no-copy]
              verify [--scene S]... [--aspect A] [--no-render] [--film]
@@ -172,7 +172,7 @@ def cmd_status(ctx: Ctx) -> int:
 
 
 def cmd_context(ctx: Ctx) -> int:
-    code, out, _err = hookmod.session_start({}, ctx.project)
+    code, out, _err = hookmod.session_start({"source": "compact"} if ctx.args.md else {}, ctx.project)
     if ctx.json:
         ctx.out({"text": out}, ok=code == EXIT_OK)
     else:
@@ -1025,6 +1025,7 @@ def build_parser(video_extensions: bool = True) -> argparse.ArgumentParser:
     s = add("status", "app state, this project's last load, kit and checkpoint state")
     s.set_defaults(fn=cmd_status)
     s = add("context", "the session-start briefing: status, scene roster, load errors, key rules (under 4 KB)")
+    s.add_argument("--md", action="store_true", help="headed markdown with recent history, what a compacted session gets (under 7 KB)")
     s.set_defaults(fn=cmd_context)
     s = add("scenes", "scene roster: index, stem, duration, name, transition, text and overrides")
     s.set_defaults(fn=cmd_scenes)
