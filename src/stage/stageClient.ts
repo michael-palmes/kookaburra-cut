@@ -23,7 +23,7 @@ import { isSceneErrorCard } from "../engine/SceneErrorCard";
 import { setMirroredSceneHosts } from "../engine/sceneHostRegistry";
 import { setSceneModuleProvider } from "../engine/sceneModules";
 import { useSceneTextRegistry } from "../engine/sceneTextRegistry";
-import { type StageHandle, setStage } from "../engine/stageHandle";
+import { type StageBoot, type StageHandle, setStage } from "../engine/stageHandle";
 import type {
   CameraFrame,
   CommitStamps,
@@ -90,8 +90,11 @@ export class StageClient implements StageHandle {
   private readyReject!: (error: Error) => void;
   private isReady = false;
   private failure: Error | null = null;
+  private timeout: Error | null = null;
   private readyTimer: ReturnType<typeof setTimeout> | undefined;
-  private readonly queued: (() => void)[] = [];
+  private readonly queued: { go: () => void; reject: (error: Error) => void }[] = [];
+  private bootState: StageBoot = { status: "starting" };
+  private readonly bootListeners = new Set<() => void>();
   private currentStamps: CommitStamps = {
     clockMs: Number.NaN,
     shutterSeq: Number.NaN,
@@ -130,10 +133,13 @@ export class StageClient implements StageHandle {
       this.readyResolve = resolve;
       this.readyReject = reject;
     });
-    // A worker that never reports is a boot failure, not a wait: name it instead of hanging an autorun until its timeout.
+    // A worker that never reports is a boot failure, not a wait: name it instead of hanging an autorun until its timeout. A ready that still arrives afterwards lifts the failure (onMessage).
     this.readyTimer = setTimeout(() => {
       if (this.isReady) return;
-      this.fail(`the ${role} stage worker did not report ready within ${READY_TIMEOUT_MS / 1000}s`);
+      this.timeout = new Error(
+        `the ${role} stage worker did not report ready within ${READY_TIMEOUT_MS / 1000}s`,
+      );
+      this.fail(this.timeout);
     }, READY_TIMEOUT_MS);
     this.ready.then(
       () => clearTimeout(this.readyTimer),
@@ -202,17 +208,26 @@ export class StageClient implements StageHandle {
   }
 
   /** A worker that cannot serve: every waiting and future request fails with the cause, `ready` rejects, and the autorun hears it. */
-  private fail(text: string): void {
+  private fail(error: Error): void {
     if (this.failure) return;
-    const error = new Error(text);
     this.failure = error;
     clearTimeout(this.readyTimer);
-    console.error(`[stage] ${text}`);
-    reportAutoRunError(text);
+    console.error(`[stage] ${error.message}`);
+    reportAutoRunError(error.message);
     if (!this.isReady) this.readyReject(error);
-    this.queued.splice(0);
+    this.rejectWaiting(error);
+    this.setBoot({ status: "failed", error });
+  }
+
+  private rejectWaiting(error: Error): void {
+    for (const q of this.queued.splice(0)) q.reject(error);
     for (const p of this.pending.values()) p.reject(error);
     this.pending.clear();
+  }
+
+  private setBoot(next: StageBoot): void {
+    this.bootState = next;
+    for (const l of this.bootListeners) l();
   }
 
   /** The project ids this window handed the stage; a port request naming any other project is refused. */
@@ -262,7 +277,7 @@ export class StageClient implements StageHandle {
     transfer: Transferable[] = [],
     onProgress?: (value: unknown) => void,
   ): Promise<T> {
-    return new Promise<T>((resolve, reject) => {
+    const result = new Promise<T>((resolve, reject) => {
       if (this.failure) {
         reject(this.failure);
         return;
@@ -273,17 +288,28 @@ export class StageClient implements StageHandle {
         this.send({ ...msg, id } as WindowRequest, transfer);
       };
       if (this.isReady) go();
-      else this.queued.push(go);
+      else this.queued.push({ go, reject });
     });
+    // A failed worker reports itself, so a fire-and-forget caller owes no handler: keep its rejection out of the window's boot trap.
+    result.catch(() => {});
+    return result;
   }
 
   private onMessage(msg: ToWindow): void {
     switch (msg.type) {
       case "ready": {
-        console.warn(`[stage] ${this.role} worker ready: ${msg.gl}`);
+        if (this.isReady) return;
+        // Only the ready window's own failure lifts: a fatal or a closed worker stays failed.
+        const late = this.failure !== null;
+        if (late && this.failure !== this.timeout) return;
+        this.failure = null;
         this.isReady = true;
-        for (const go of this.queued.splice(0)) go();
+        console.warn(
+          `[stage] ${this.role} worker ready${late ? " after its window" : ""}: ${msg.gl}`,
+        );
+        for (const q of this.queued.splice(0)) q.go();
         this.readyResolve();
+        this.setBoot({ status: "ready", late });
         return;
       }
       case "reply": {
@@ -307,7 +333,7 @@ export class StageClient implements StageHandle {
         else console.warn(`[stage] ${msg.text}`);
         return;
       case "fatal":
-        this.fail(`stage worker: ${msg.text}`);
+        this.fail(new Error(`stage worker: ${msg.text}`));
         return;
       case "commit":
         this.currentStamps = msg.stamps;
@@ -392,6 +418,15 @@ export class StageClient implements StageHandle {
   }
 
   // ── StageHandle ────────────────────────────────────────────────────────────
+  boot(): StageBoot {
+    return this.bootState;
+  }
+  subscribeBoot(listener: () => void): () => void {
+    this.bootListeners.add(listener);
+    return () => {
+      this.bootListeners.delete(listener);
+    };
+  }
   stamps(): CommitStamps {
     return this.currentStamps;
   }
@@ -590,9 +625,7 @@ export class StageClient implements StageHandle {
     const closed = new Error("the stage worker was closed");
     this.failure ??= closed;
     if (!this.isReady) this.readyReject(closed);
-    this.queued.splice(0);
-    for (const p of this.pending.values()) p.reject(closed);
-    this.pending.clear();
+    this.rejectWaiting(closed);
   }
 }
 

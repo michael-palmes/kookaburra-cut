@@ -18,9 +18,18 @@ import type {
 } from "./stageProtocol";
 import type { StillPageDigest, StillsSettings } from "./stillsExport";
 
+/** Where the worker's boot stands now. `ready` settles once; a worker that reports after its window fails and then recovers moves here from failed to ready with `late` set. */
+export type StageBoot =
+  | { status: "starting" }
+  | { status: "ready"; late: boolean }
+  | { status: "failed"; error: Error };
+
 /** What the window realm's engine modules can ask of the stage worker (`stage/stageClient.ts` implements it). Engine code reaches the stage through `stage()` so it never imports the client, which would drag the worker bootstrap into the engine graph. */
 export interface StageHandle {
+  /** Settles with the first boot outcome; `boot()` follows a late recovery. */
   readonly ready: Promise<void>;
+  boot(): StageBoot;
+  subscribeBoot(listener: () => void): () => void;
   /** The last commit stamps the canvas tree posted. */
   stamps(): CommitStamps;
   subscribeStamps(listener: () => void): () => void;
