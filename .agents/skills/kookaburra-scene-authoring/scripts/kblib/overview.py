@@ -383,7 +383,14 @@ def status_data(project: Project) -> Dict[str, Any]:
         "leases": coord[2],
         "notes": coord[3],
         "drift": drift_of(project),
+        "kitProblems": kit_problem_lines(project),
     }
+
+
+def kit_problem_lines(project: Project) -> List[str]:
+    from . import kitstate
+
+    return kitstate.problem_lines(str(project.root))
 
 
 def drift_of(project: Project) -> List[Dict[str, Any]]:
@@ -403,7 +410,7 @@ def status_text(project: Project) -> str:
     rows = bridge.instance_rows(project)
     manifest = project.manifest()
     fmts = manifest.get("formats") if isinstance(manifest.get("formats"), list) else []
-    lines = worktree_lines(project) + dev_build_lines(hb) + [
+    lines = worktree_lines(project) + kit_problem_lines(project) + dev_build_lines(hb) + [
         f"Project: {manifest.get('name', '?')} ({project.project_id}) at {project.root}",
         f"Theme {manifest.get('themeId', '?')} · formats {' '.join(str(f) for f in fmts)} · {len(project.scene_entries())} scenes · {fmt_secs(project.total_ms())}",
         app_line(project, hb, rows),
@@ -443,7 +450,7 @@ def coordination_context(project: Project, caller: Any = None) -> List[str]:
 def context_text(project: Project, check_summary: Optional[List[str]] = None, cwd: Optional[str] = None, caller: Any = None) -> str:
     """The SessionStart text: under 4 KB, most useful first (a worktree STOP banner leads)."""
     hb = bridge.live_heartbeat(project)
-    head: List[str] = worktree_lines(project, cwd)
+    head: List[str] = worktree_lines(project, cwd) + kit_problem_lines(project)
     try:
         manifest = project.manifest()
         fmts = manifest.get("formats") if isinstance(manifest.get("formats"), list) else []

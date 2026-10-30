@@ -195,7 +195,9 @@ def pre_edit(payload: Dict[str, Any]) -> Tuple[int, str, str]:
     rel = edited_rel(project, payload)
     if rel is None:
         return EXIT_OK, "", ""
-    reason = blocked_reason(rel)
+    from . import kitstate
+
+    reason = blocked_reason(rel) or kitstate.write_reason(str(project.root), rel)
     if reason:
         return BLOCK, "", f"kb: blocked: {reason}"
     denied = lease_decision(project, rel, payload)

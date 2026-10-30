@@ -209,6 +209,20 @@ def asset_record_write(root: str, command: str, cwd: Any) -> Optional[Tuple[str,
     return None
 
 
+def kit_write(root: str, command: str, cwd: Any) -> Optional[Tuple[str, str]]:
+    """(rel, reason) when the command visibly writes the shim or a managed skill: only the app restores those."""
+    if "kb" not in command and ".claude" not in command:
+        return None
+    from . import kitstate
+
+    for token in write_targets(command):
+        for rel in _project_rels(root, cwd, token.strip("\"'")):
+            reason = kitstate.write_reason(root, rel)
+            if reason:
+                return rel, reason
+    return None
+
+
 def writes_project(command: str) -> bool:
     """A visible write to scenes/ or project.json, or a kb write command: the session checkpoint goes first."""
     if KB_WRITE.search(command) and "--dry-run" not in command:
@@ -380,6 +394,9 @@ def bash_pre(payload: Dict[str, Any]) -> Tuple[int, str, str]:
     record = asset_record_write(root, command, payload.get("cwd"))
     if record:
         return deny(f"{record[1]} (kb denied this command: it writes {record[0]} by hand.)")
+    rebuilt = kit_write(root, command, payload.get("cwd"))
+    if rebuilt:
+        return deny(f"{rebuilt[1]} (kb denied this command: it writes {rebuilt[0]} by hand.)")
     call = payload.get("tool_use_id")
     if isinstance(call, str) and call and not ti.get("run_in_background") and not kb_only(command):
         body: Dict[str, Any] = {"v": 1, "root": root, "atMs": now_ms(), "stamps": stamps(root)}

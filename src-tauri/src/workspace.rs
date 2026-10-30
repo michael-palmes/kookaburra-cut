@@ -1861,6 +1861,33 @@ pub async fn provision_project(
     .map_err(|e| e.to_string())?
 }
 
+/// Restore a kit that went missing while the project stays open: called on every load after the first, so it only stats until something is gone, then stamps exactly as `provision_project` does (the same stripping and trust re-stamp). Answers whether it stamped.
+#[tauri::command]
+pub async fn heal_project_kit(
+    app: AppHandle,
+    state: State<'_, SettingsState>,
+    slug: String,
+) -> Result<bool, String> {
+    let dir = project_dir_mut(&app, &state, &slug)?;
+    if !dir.join(MANIFEST_FILENAME).is_file() {
+        return Ok(false);
+    }
+    tauri::async_runtime::spawn_blocking(move || {
+        let missing = crate::kit::missing_parts(&dir);
+        if missing.is_empty() {
+            return Ok(false);
+        }
+        log::warn!("[kit] {slug}: restoring {}", missing.join(", "));
+        let state = app.state::<SettingsState>();
+        restamping_trust(&app, &state, &slug, || {
+            stamp_claude_provisioning(&app, &dir)
+        })?;
+        Ok(true)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 /// A project created before footage was kept out of git loses it from its history on its own thread: seconds once, never on the load, one `kookaburra://history-trimmed` event and one log line when it ran.
 fn trim_legacy_history(app: AppHandle, slug: String, dir: PathBuf) {
     std::thread::spawn(move || {

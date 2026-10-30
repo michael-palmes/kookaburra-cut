@@ -1416,6 +1416,7 @@ macro_rules! kookaburra_handler {
             workspace::delete_project,
             workspace::write_snapshot,
             workspace::provision_project,
+            workspace::heal_project_kit,
             workspace::ensure_sample_assets,
             workspace::list_scene_thumbs,
             workspace::write_scene_thumb,
