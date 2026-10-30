@@ -34,6 +34,11 @@ export default defineScene({
   with `project.json`.
 - Register new files with `./kb scene add` (or `./kb scene duplicate`), never by hand-
   editing two places.
+- Housekeeping has commands, so don't hand-edit it: `./kb scene split S --at POS` (later scenes stay
+  put; the second part's code and text motion restart, so capture it), `./kb scene renumber`,
+  `./kb scene duplicate S --name N`, `./kb scene remove A B C`, `./kb scene add NAME --transition
+  none` and `./kb scene import PROJECT S` (from another project the person has allowed; with no
+  scene it lists them).
 
 ## Import surface
 
