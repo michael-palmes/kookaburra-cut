@@ -594,6 +594,13 @@ def _strip_jpeg_exif(path: Path) -> None:
     path.write_bytes(bytes(out))
 
 
+def lands_as(f: Dict[str, Any]) -> str:
+    """The format prepare() leaves a file in once it is conformed: sips can't write WebP or GIF."""
+    if not needs_conform(f):
+        return str(f["format"])
+    return "jpeg" if f["format"] == "jpeg" else "png"
+
+
 def prepare(src: Path, stage: Path, *, max_edge: Optional[int] = None, conform: bool = True) -> Dict[str, Any]:
     """The file to land: src itself when nothing needs doing, else a converted copy in stage. sips can't write WebP or GIF,
     so a converted one becomes a PNG. { path, facts, ext, conformed: [reasons], resized: bool, transforms }."""

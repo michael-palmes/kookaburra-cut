@@ -88,7 +88,7 @@ import { useImageReconciliationStore } from "./engine/imageReconciliationStore";
 import { useLayeredScreenshotEditStore } from "./engine/layeredScreenshotEditStore";
 import { useLightingEditStore } from "./engine/lightingEditStore";
 import { plainError, useManagedPolicy } from "./engine/managed";
-import { conformingAmong, importMedia } from "./engine/media";
+import { conformingAmong, importMedia, importSummary } from "./engine/media";
 import {
   editRenderMatchesPending,
   emptyMediaChangeBatch,
@@ -652,14 +652,10 @@ export default function App() {
       if (!isEditableProjectId(currentId) || paths.length === 0) return;
       const slug = nativeProjectSlug(currentId);
       importMedia(slug, paths)
-        .then(async (imported) => {
+        .then(async (report) => {
           // importMedia's media-changed broadcast handles the picker refreshes; a conform's landing broadcasts again.
-          if (imported.length === 0) return;
-          const conforming = await conformingAmong(slug, imported);
-          setToast({
-            kind: "success",
-            message: `Added ${imported.length} file${imported.length === 1 ? "" : "s"} to assets${conforming > 0 ? `; ${conforming} conforming (place ${conforming === 1 ? "it" : "them"} now, Media shows progress)` : ""}`,
-          });
+          const summary = importSummary(report, await conformingAmong(slug, report.rels));
+          if (summary) setToast(summary);
         })
         .catch((e) => setToast({ kind: "error", message: `Import failed: ${String(e)}` }));
     });

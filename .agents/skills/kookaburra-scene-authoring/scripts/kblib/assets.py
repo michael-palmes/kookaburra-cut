@@ -578,19 +578,24 @@ def _add_image(
     return result
 
 
-def _land_image(project: Project, out: Path, dest_dir: Path, final_name: str, dry_run: bool, source_sha: Optional[str], transforms: List[Dict[str, Any]]) -> Dict[str, Any]:
-    """_copy_plain, but a converted file that came from these same bytes the same way is the file already here."""
+def imported_this_way(project: Project, rel: str, source_sha: str, transforms: List[Dict[str, Any]]) -> bool:
+    """rel is what converting these source bytes this way made, and has not changed since."""
     from . import asset_meta
 
+    try:
+        record = asset_meta.read(project.root)["assets"].get(rel)
+    except KbError:
+        return False
+    origin = record.get("origin") if isinstance(record, dict) else None
+    return isinstance(origin, dict) and origin.get("sourceSha256") == source_sha and record.get("transforms") == transforms and not asset_meta.is_stale(record, asset_meta.file_hash(project.root, rel))
+
+
+def _land_image(project: Project, out: Path, dest_dir: Path, final_name: str, dry_run: bool, source_sha: Optional[str], transforms: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """_copy_plain, but a converted file that came from these same bytes the same way is the file already here."""
     dest = dest_dir / final_name
     if source_sha and dest.is_file():
         rel = dest.relative_to(project.root).as_posix()
-        try:
-            record = asset_meta.read(project.root)["assets"].get(rel)
-        except KbError:
-            record = None
-        origin = record.get("origin") if isinstance(record, dict) else None
-        if isinstance(origin, dict) and origin.get("sourceSha256") == source_sha and record.get("transforms") == transforms and not asset_meta.is_stale(record, asset_meta.file_hash(project.root, rel)):
+        if imported_this_way(project, rel, source_sha, transforms):
             return {"path": rel, "copied": False, "note": "the same file was already imported this way", "kind": "image", "bytes": dest.stat().st_size, "writes": [], "dryRun": dry_run}
     result = _copy_plain(project, out, dest_dir, final_name, dry_run)
     if transforms and result["writes"]:

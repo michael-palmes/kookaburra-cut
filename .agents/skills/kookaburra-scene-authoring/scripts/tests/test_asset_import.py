@@ -1,4 +1,4 @@
-"""kb assets add's still and SVG handling, the deep probe before a skipped conform, and kb assets add-folder. Test media is generated here."""
+"""kb assets add's and kb assets replace's still handling, SVGs, the deep probe before a skipped conform, and kb assets add-folder. Test media is generated here."""
 
 from __future__ import annotations
 
@@ -193,6 +193,21 @@ class FactsTests(ImportCase):
         self.assertEqual((info["image"]["format"], info["image"]["blank"]), ("png", "single-colour"))
 
 
+class SharedVectorTests(ImportCase):
+    def test_the_header_readers_agree_with_the_app(self) -> None:
+        """imagefile.rs replays these same cases."""
+        vectors = read_json(Path(__file__).parent / "fixtures" / "still-facts-vectors.json")
+        for case in vectors["cases"]:
+            path = self.source("case.bin", bytes.fromhex(case["hex"]))
+            try:
+                f = imagefile.facts(path)
+            except imagefile.Refused as e:
+                self.assertEqual(case.get("refused"), e.code, case["name"])
+                continue
+            self.assertEqual(case["facts"], {"format": f["format"], "width": f["width"], "height": f["height"], "space": f["space"], "profile": f.get("profile"), "orientation": f.get("orientation"), "animated": bool(f.get("animated"))}, case["name"])
+            self.assertEqual((case["reasons"], case["landsAs"]), (imagefile.needs_conform(f), imagefile.lands_as(f)), case["name"])
+
+
 class BlankTests(ImportCase):
     def test_fully_transparent_and_one_colour_are_refused(self) -> None:
         clear = self.add(str(self.source("clear.png", flat(32, 32, (0, 0, 0, 0)))), code=1)
@@ -317,6 +332,138 @@ class ConvertTests(ImportCase):
 
     def test_a_blank_result_of_a_resize_is_refused(self) -> None:
         self.assertEqual(self.add(str(self.source("clear.png", flat(400, 400, (0, 0, 0, 0)))), "--max-size", "100", code=1)["refused"], "blank")
+
+
+class ReplaceStillTests(ImportCase):
+    def setUp(self) -> None:
+        super().setUp()
+        self.logo = self.root / "assets" / "logo.png"
+        self.logo.write_bytes(png_bytes(4, 4))
+        self.old = self.logo.read_bytes()
+
+    def replace(self, *args: str, code: Optional[int] = 0) -> Any:
+        proc = self.kb(["assets", "replace", *args, "--json"], cwd=self.root)
+        if code is not None:
+            self.assertExit(proc, code)
+        return json.loads(proc.stdout)
+
+    def assert_untouched(self) -> None:
+        self.assertEqual(self.logo.read_bytes(), self.old)
+        self.assertFalse((self.root / ".kb" / "archive").exists())
+        self.assertEqual(sorted(p.name for p in (self.root / "assets").iterdir()), ["logo.png"])
+
+    def test_a_clean_still_lands_byte_for_byte(self) -> None:
+        src = self.source("new.png", png_bytes(6, 6))
+        res = self.replace("assets/logo.png", str(src))
+        self.assertEqual(self.logo.read_bytes(), src.read_bytes())
+        self.assertNotIn("conformed", res)
+        self.assertFalse((self.root / "assets" / "_meta.json").exists())
+
+    def test_what_isnt_an_image_never_lands(self) -> None:
+        cut_short = png_bytes(6, 6)[:20]
+        for name, data in (("garbage.png", b"not an image at all"), ("empty.png", b""), ("page.png", b"<html><body>hi</body></html>"), ("short.png", cut_short)):
+            res = self.replace("assets/logo.png", str(self.source(name, data)), code=1)
+            self.assertEqual((res["code"], res["refused"]), ("invalid", "unreadable"), name)
+            self.assert_untouched()
+
+    def test_a_bomb_is_refused_from_its_header(self) -> None:
+        huge = b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", 20000, 20000, 8, 6, 0, 0, 0)) + chunk(b"IDAT", b"")
+        res = self.replace("assets/logo.png", str(self.source("huge.png", huge)), code=1)
+        self.assertEqual((res["code"], res["refused"]), ("too-large", "too-large"))
+        self.assert_untouched()
+
+    def test_blank_is_refused_unless_allowed(self) -> None:
+        clear = self.source("clear.png", flat(16, 16, (0, 0, 0, 0)))
+        self.assertIn("fully transparent", self.replace("assets/logo.png", str(clear), code=1)["error"])
+        white = self.source("white.png", flat(16, 16, (255, 255, 255, 255)))
+        self.assertEqual(self.replace("assets/logo.png", str(white), code=1)["refused"], "blank")
+        self.assert_untouched()
+        self.replace("assets/logo.png", str(white), "--allow-blank")
+        self.assertEqual(self.logo.read_bytes(), white.read_bytes())
+
+    def test_a_refused_still_is_refused_on_a_dry_run_too(self) -> None:
+        self.replace("assets/logo.png", str(self.source("clear.png", flat(8, 8, (0, 0, 0, 0)))), "--dry-run", code=1)
+        self.assert_untouched()
+
+    def test_as_new_is_held_to_the_same_checks(self) -> None:
+        self.replace("assets/logo.png", str(self.source("garbage.png", b"nope")), "--as-new", code=1)
+        self.replace("assets/logo.png", str(self.source("clear.png", flat(8, 8, (0, 0, 0, 0)))), "--as-new", code=1)
+        self.assert_untouched()
+
+    def test_a_still_whose_bytes_are_another_format_keeps_the_type_only_as_new(self) -> None:
+        src = self.source("really-a-webp.png", TINY_WEBP)
+        res = self.replace("assets/logo.png", str(src), code=1)
+        self.assertIn("is really a WEBP", res["error"])
+        self.assertIn("--as-new", res["hint"])
+        self.assert_untouched()
+        moved = self.replace("assets/logo.png", str(src), "--as-new", "--allow-blank")
+        self.assertEqual(moved["path"], "assets/logo-2.webp")
+        self.assertEqual((self.root / "assets" / "logo-2.webp").read_bytes(), TINY_WEBP)
+        self.assertEqual(self.logo.read_bytes(), self.old)
+
+    def test_a_webp_that_has_to_change_is_refused_before_any_decode(self) -> None:
+        kept = self.root / "assets" / "wide.webp"
+        kept.write_bytes(TINY_WEBP)
+        src = self.source("wide2.webp", extended_webp(before=riff_chunk(b"ICCP", icc_profile("Display P3"))))
+        res = self.replace("assets/wide.webp", str(src), code=1)
+        self.assertIn("has to become a PNG", res["error"])
+        self.assertIn(".png", res["hint"])
+        self.assertEqual(kept.read_bytes(), TINY_WEBP)
+
+    def test_a_video_is_not_asked_to_be_a_still(self) -> None:
+        clip = self.root / "assets" / "clip.mp4"
+        clip.write_bytes(b"old video")
+        self.replace("assets/clip.mp4", str(self.source("clip2.mp4", b"new video")))
+        self.assertEqual(clip.read_bytes(), b"new video")
+
+    def test_an_svg_asset_is_refused_rather_than_copied_past_the_sanitiser(self) -> None:
+        kept = self.root / "assets" / "mark.svg"
+        kept.write_bytes(GOOD_SVG)
+        res = self.replace("assets/mark.svg", str(self.source("mark2.svg", GOOD_SVG.replace(b"<rect", b"<script>alert(1)</script><rect"))), code=1)
+        self.assertEqual(res["refused"], "unreadable")
+        self.assertEqual(kept.read_bytes(), GOOD_SVG)
+
+    @unittest.skipUnless(DARWIN, "needs macOS's sips")
+    def test_a_p3_still_is_baked_in_and_says_where_it_came_from(self) -> None:
+        plain = self.source("shot.png", png([[(200, (x * 11) % 255, 40, 255) for x in range(64)] for _ in range(32)]))
+        tagged = self.outside / "tagged.png"
+        subprocess.run([imagefile.SIPS, "--matchTo", "/System/Library/ColorSync/Profiles/Display P3.icc", str(plain), "--out", str(tagged)], check=True, capture_output=True)
+        res = self.replace("assets/logo.png", str(tagged))
+        self.assertTrue(res["conformed"])
+        self.assertIn("colour-profile", res["note"])
+        self.assertEqual(imagefile.needs_conform(imagefile.facts(self.logo)), [])
+        self.assertNotEqual(self.logo.read_bytes(), tagged.read_bytes())
+        self.assertEqual((self.root / res["old"]["to"]).read_bytes(), self.old)
+        record = read_json(self.root / "assets" / "_meta.json")["assets"]["assets/logo.png"]
+        self.assertEqual(record["transforms"][0]["to"], "srgb")
+        self.assertEqual((record["origin"]["tool"], record["origin"]["sourceName"]), ("kb assets replace", "tagged.png"))
+        again = self.replace("assets/logo.png", str(tagged))
+        self.assertTrue(again["unchanged"])
+
+    @unittest.skipUnless(DARWIN, "needs macOS's sips")
+    def test_a_p3_still_as_new_is_baked_and_recorded_too(self) -> None:
+        plain = self.source("shot.png", png([[(200, (x * 11) % 255, 40, 255) for x in range(64)] for _ in range(32)]))
+        tagged = self.outside / "tagged.png"
+        subprocess.run([imagefile.SIPS, "--matchTo", "/System/Library/ColorSync/Profiles/Display P3.icc", str(plain), "--out", str(tagged)], check=True, capture_output=True)
+        res = self.replace("assets/logo.png", str(tagged), "--as-new")
+        self.assertEqual((res["path"], res["replaced"], res["conformed"]), ("assets/logo-2.png", "assets/logo.png", True))
+        self.assertEqual(self.logo.read_bytes(), self.old)
+        self.assertEqual(imagefile.needs_conform(imagefile.facts(self.root / res["path"])), [])
+        self.assertEqual(read_json(self.root / "assets" / "_meta.json")["assets"][res["path"]]["origin"]["tool"], "kb assets replace")
+
+    @unittest.skipUnless(DARWIN, "needs macOS's sips")
+    def test_a_turned_jpeg_lands_upright_and_stays_a_jpeg(self) -> None:
+        rows = [[(255, 0, 0, 255)] * 20 + [(0, 255, 0, 255)] * 20 for _ in range(10)] + [[(0, 0, 255, 255)] * 40 for _ in range(10)]
+        jpeg = self.outside / "plain.jpg"
+        subprocess.run([imagefile.SIPS, "-s", "format", "jpeg", str(self.source("plain.png", png(rows))), "--out", str(jpeg)], check=True, capture_output=True)
+        data = jpeg.read_bytes()
+        block = b"Exif\x00\x00" + exif_block(6)
+        turned = self.source("turned.jpg", data[:2] + b"\xff\xe1" + struct.pack(">H", len(block) + 2) + block + data[2:])
+        kept = self.root / "assets" / "photo.jpg"
+        kept.write_bytes(data)
+        res = self.replace("assets/photo.jpg", str(turned))
+        self.assertEqual((res["path"], res["conformed"], res["probe"]["width"], res["probe"]["height"]), ("assets/photo.jpg", True, 20, 40))
+        self.assertIsNone(imagefile.facts(kept).get("orientation"))
 
 
 class SvgSanitiseTests(unittest.TestCase):

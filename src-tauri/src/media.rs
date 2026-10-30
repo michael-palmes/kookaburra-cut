@@ -1171,44 +1171,263 @@ fn media_stem_and_ext(path: &Path) -> Option<(String, String)> {
     Some((base, ext))
 }
 
-/// First free name in `assets`: base.ext, base-2.ext, base-3.ext, …
+/// First free name in `assets`: base.ext, base-2.ext, base-3.ext, … A dangling link holds its name: writing to it would land outside `assets/`, and placing a still over it could never succeed.
 fn free_asset_name(assets: &Path, base: &str, ext: &str) -> String {
     let mut candidate = format!("{base}.{ext}");
     let mut n = 1u32;
-    while assets.join(&candidate).exists() {
+    while assets.join(&candidate).symlink_metadata().is_ok() {
         n += 1;
         candidate = format!("{base}-{n}.{ext}");
     }
     candidate
 }
 
-/// Copy files into the project's `assets/` (slugged filenames, `-2`-style collision suffixes); non-media files are skipped with a warning. A video the conform probe flags (Settings: Conform new videos) lands as its original in `assets/.originals/` while a background job writes the mezzanine, so its returned rel names a file that appears when the job finishes. Returns the imported project-relative paths.
+/// What one import call did to each file: one file's trouble never stops the rest.
+#[derive(Debug, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportReport {
+    /// Project-relative paths; a flagged video's names a file that appears when its conform job finishes.
+    rels: Vec<String>,
+    /// How many stills were baked into plain sRGB, upright pixels on the way in.
+    converted: u32,
+    /// Landed, but worth saying: a blank still, an animated one, one that wasn't what its name said.
+    notes: Vec<String>,
+    /// Never landed, each with its reason.
+    refused: Vec<String>,
+}
+
+/// Copy files into the project's `assets/` (slugged filenames, `-2`-style collision suffixes); non-media files are skipped with a warning. A still is checked and cleaned on the way in (`imagefile.rs`). A video the conform probe flags (Settings: Conform new videos) lands as its original in `assets/.originals/` while a background job writes the mezzanine.
 #[tauri::command]
 pub async fn import_media(
     app: AppHandle,
     state: State<'_, SettingsState>,
     slug: String,
     paths: Vec<String>,
-) -> Result<Vec<String>, String> {
+) -> Result<ImportReport, String> {
     let project = workspace::project_dir_mut(&app, &state, &slug)?;
     std::fs::create_dir_all(project.join("assets")).map_err(|e| e.to_string())?;
-    let conform_on = conform_new_videos(&app);
-    let _serial = IMPORTS.lock().await;
-    let mut imported = Vec::new();
-    for source in paths {
-        let source = PathBuf::from(source);
-        let Some((base, ext)) = media_stem_and_ext(&source) else {
-            log::warn!("skipping non-media import: {}", source.display());
-            continue;
-        };
-        let incoming = Incoming::Path(source);
-        imported.push(import_one(&app, &slug, &project, incoming, &base, &ext, conform_on).await?);
-    }
-    Ok(imported)
+    let files = paths
+        .into_iter()
+        .filter_map(|source| {
+            let source = PathBuf::from(source);
+            let Some((base, ext)) = media_stem_and_ext(&source) else {
+                log::warn!("skipping non-media import: {}", source.display());
+                return None;
+            };
+            let shown = shown_name(&source);
+            Some(ImportFile {
+                incoming: Incoming::Path(source),
+                shown,
+                base,
+                ext,
+            })
+        })
+        .collect();
+    Ok(import_all(&app, &slug, &project, files).await)
 }
 
 /// Imports pick free names and then write them across an await (the probe), so they take turns, as they did when imports were synchronous.
 static IMPORTS: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+/// Stills a batch checks at once: a retina screenshot's bake is half a second of `sips`, and macOS tags nearly every screenshot with its display's profile, so ten of them should not take five seconds.
+const STILL_CHECKS: usize = 4;
+
+struct ImportFile {
+    incoming: Incoming,
+    /// The file's own name, for what the person reads.
+    shown: String,
+    base: String,
+    ext: String,
+}
+
+fn shown_name(path: &Path) -> String {
+    path.file_name().map_or_else(
+        || "the file".to_owned(),
+        |n| n.to_string_lossy().into_owned(),
+    )
+}
+
+fn is_still(ext: &str) -> bool {
+    workspace::IMAGE_EXTENSIONS.contains(&ext) || ext == "gif"
+}
+
+/// A batch in order: stills check side by side (nothing a check does touches an asset), then everything lands in turn.
+async fn import_all(
+    app: &AppHandle,
+    slug: &str,
+    project: &Path,
+    files: Vec<ImportFile>,
+) -> ImportReport {
+    enum Step {
+        Still {
+            shown: String,
+            base: String,
+            check: tauri::async_runtime::JoinHandle<Result<ReadyStill, String>>,
+        },
+        Other(ImportFile),
+    }
+    let conform_on = conform_new_videos(app);
+    let _serial = IMPORTS.lock().await;
+    let limit = std::sync::Arc::new(tokio::sync::Semaphore::new(STILL_CHECKS));
+    let mut steps = Vec::with_capacity(files.len());
+    for file in files {
+        if !is_still(&file.ext) {
+            steps.push(Step::Other(file));
+            continue;
+        }
+        let ImportFile {
+            incoming,
+            shown,
+            base,
+            ext,
+        } = file;
+        let (assets, limit, name) = (project.join("assets"), limit.clone(), shown.clone());
+        let check = tauri::async_runtime::spawn(async move {
+            let _permit = limit.acquire_owned().await.map_err(|e| e.to_string())?;
+            tauri::async_runtime::spawn_blocking(move || {
+                ready_still(&assets, &incoming, &name, &ext)
+            })
+            .await
+            .map_err(|e| format!("the check stopped: {e}"))?
+        });
+        steps.push(Step::Still { shown, base, check });
+    }
+    let mut report = ImportReport::default();
+    for step in steps {
+        match step {
+            Step::Still { shown, base, check } => {
+                let ready = check
+                    .await
+                    .map_err(|e| format!("{shown}: the check stopped: {e}"))
+                    .and_then(|ready| ready);
+                match ready.and_then(|ready| land_still(project, ready, &base, &mut report)) {
+                    Ok(()) => {}
+                    Err(why) => report.refused.push(why),
+                }
+            }
+            Step::Other(file) => {
+                let landed = import_one(
+                    app,
+                    slug,
+                    project,
+                    file.incoming,
+                    &file.base,
+                    &file.ext,
+                    conform_on,
+                )
+                .await;
+                match landed {
+                    Ok(rel) => report.rels.push(rel),
+                    Err(why) => report.refused.push(format!("{}: {why}", file.shown)),
+                }
+            }
+        }
+    }
+    report
+}
+
+/// A still parked in staging and checked; landing is all that's left. Fields drop in order, so a scratch file goes before the parked file's folder.
+struct ReadyStill {
+    checked: crate::imagefile::Checked,
+    parked: crate::edit::Staging,
+    shown: String,
+}
+
+/// Parks a copy and checks that copy, never the source, which could change underneath. The size is checked first so a huge file costs no copy.
+fn ready_still(
+    assets: &Path,
+    incoming: &Incoming,
+    shown: &str,
+    ext: &str,
+) -> Result<ReadyStill, String> {
+    crate::imagefile::check_size(incoming.size(shown)?, shown).map_err(|r| r.message)?;
+    let parked = crate::edit::Staging::create(assets, &format!("incoming.{ext}"))
+        .map_err(|e| format!("{shown}: {e}"))?;
+    incoming
+        .park_at(&parked.file)
+        .map_err(|e| format!("{shown}: {e}"))?;
+    let checked = crate::imagefile::check(&parked.file, shown, ext).map_err(|r| r.message)?;
+    Ok(ReadyStill {
+        checked,
+        parked,
+        shown: shown.to_owned(),
+    })
+}
+
+/// Into a name nothing holds: neither a link nor a create-new can overwrite, so an asset that appeared since the name was picked keeps its bytes. The copy is for a volume with no hard links.
+fn place_at_free_name(assets: &Path, from: &Path, base: &str, ext: &str) -> Result<String, String> {
+    use std::io::ErrorKind::AlreadyExists;
+    loop {
+        let candidate = free_asset_name(assets, base, ext);
+        let dest = assets.join(&candidate);
+        let linked = std::fs::hard_link(from, &dest);
+        let placed = linked.or_else(|e| {
+            if e.kind() == AlreadyExists {
+                return Err(e);
+            }
+            let mut out = std::fs::File::create_new(&dest)?;
+            std::io::copy(&mut std::fs::File::open(from)?, &mut out).map(|_| ())
+        });
+        match placed {
+            Ok(()) => return Ok(candidate),
+            Err(e) if e.kind() == AlreadyExists => continue,
+            Err(e) => return Err(e.to_string()),
+        }
+    }
+}
+
+fn land_still(
+    project: &Path,
+    ready: ReadyStill,
+    base: &str,
+    report: &mut ImportReport,
+) -> Result<(), String> {
+    let ReadyStill {
+        checked,
+        parked,
+        shown,
+    } = &ready;
+    let assets = project.join("assets");
+    let from = checked.converted.as_ref().map_or(&parked.file, |c| &c.0);
+    let candidate = place_at_free_name(&assets, from, base, &checked.ext)
+        .map_err(|e| format!("{shown}: {e}"))?;
+    let dest = assets.join(&candidate);
+    workspace::touch_now(&dest);
+    let rel = format!("assets/{candidate}");
+    if !checked.transforms.is_empty() {
+        record_still_origin(
+            project,
+            &rel,
+            &parked.file,
+            shown,
+            checked.transforms.clone(),
+        );
+        report.converted += 1;
+    }
+    report.notes.extend(checked.notes.iter().cloned());
+    report.rels.push(rel);
+    Ok(())
+}
+
+/// A baked still's provenance in `assets/_meta.json`, the shape `kb assets add` writes. A failed write only warns; the file itself stands.
+fn record_still_origin(
+    project: &Path,
+    rel: &str,
+    parked: &Path,
+    shown: &str,
+    transforms: Vec<serde_json::Value>,
+) {
+    let origin = serde_json::json!({
+        "kind": "import",
+        "sourceName": shown.replace(['/', '\\'], "_"),
+        "sourceSha256": sha256_file(parked).ok(),
+        "tool": "app import",
+        "atMs": now_ms(),
+    });
+    if let Err(e) = crate::asset_meta::record_asset_origin(project, rel, origin, transforms) {
+        log::warn!("[import] provenance for {rel} not recorded: {e}");
+    }
+}
 
 /// An import parked in `assets/.originals/` while it is probed; removed unless it moved on.
 struct Landing(PathBuf);
@@ -1226,6 +1445,37 @@ enum Incoming {
 }
 
 impl Incoming {
+    fn size(&self, shown: &str) -> Result<u64, String> {
+        match self {
+            Incoming::Path(source) => {
+                let meta =
+                    std::fs::metadata(source).map_err(|e| format!("{shown} can't be read: {e}"))?;
+                if !meta.is_file() {
+                    return Err(format!("{shown} is not a file"));
+                }
+                Ok(meta.len())
+            }
+            Incoming::Bytes(bytes) => Ok(bytes.len() as u64),
+        }
+    }
+
+    /// Just the bytes, capped past the still limit in case the file grew since its size was read: no xattrs (a quarantine flag, where it came from), no copied mode or times.
+    fn park_at(&self, dest: &Path) -> Result<(), String> {
+        use std::io::Read;
+        let mut out = std::fs::File::create(dest).map_err(|e| e.to_string())?;
+        match self {
+            Incoming::Path(source) => {
+                let file = std::fs::File::open(source).map_err(|e| e.to_string())?;
+                let mut capped = file.take(crate::imagefile::MAX_BYTES + 1);
+                std::io::copy(&mut capped, &mut out).map_err(|e| e.to_string())?;
+            }
+            Incoming::Bytes(bytes) => {
+                std::io::Write::write_all(&mut out, bytes).map_err(|e| e.to_string())?;
+            }
+        }
+        Ok(())
+    }
+
     fn write_to(&self, dest: &Path) -> Result<(), String> {
         match self {
             Incoming::Path(source) => std::fs::copy(source, dest)
@@ -1236,7 +1486,7 @@ impl Incoming {
     }
 }
 
-/// One file into `assets/`: today's copy, or (a flagged video with conform on) the original into `assets/.originals/` and a queued conform job.
+/// One clip into `assets/`: a copy, or (a flagged video with conform on) the original into `assets/.originals/` and a queued conform job.
 async fn import_one(
     app: &AppHandle,
     slug: &str,
@@ -2044,29 +2294,30 @@ fn plain_file_name(name: &str) -> Result<String, String> {
         .ok_or_else(|| "the file name must be a plain name".into())
 }
 
-/// One file's bytes into the project's `assets/`: the editor window's HTML5 drops, where WKWebView exposes content but no real paths. Headers carry the slug and the dropped file's name, the body is the raw content (`write_snapshot` pattern). A flagged video conforms as in `import_media`. Returns the project-relative path, or None for a non-media extension (mirrors `import_media`'s skip).
+/// One file's bytes into the project's `assets/`: the editor window's HTML5 drops, where WKWebView exposes content but no real paths. Headers carry the slug and the dropped file's name, the body is the raw content (`write_snapshot` pattern). Stills and flagged videos go as in `import_media`; a non-media extension reports nothing (mirrors its skip).
 #[tauri::command]
 pub async fn import_media_bytes(
     app: AppHandle,
     state: State<'_, SettingsState>,
     request: tauri::ipc::Request<'_>,
-) -> Result<Option<String>, String> {
+) -> Result<ImportReport, String> {
     let slug = request_header(&request, "x-kookaburra-slug")?;
     let name = plain_file_name(&request_header(&request, "x-kookaburra-name")?)?;
     let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else {
         return Err("import_media_bytes expects a raw binary body".into());
     };
     let Some((base, ext)) = media_stem_and_ext(Path::new(&name)) else {
-        return Ok(None);
+        return Ok(ImportReport::default());
     };
     let project = workspace::project_dir_mut(&app, &state, &slug)?;
     std::fs::create_dir_all(project.join("assets")).map_err(|e| e.to_string())?;
-    let incoming = Incoming::Bytes(bytes.clone());
-    let conform_on = conform_new_videos(&app);
-    let _serial = IMPORTS.lock().await;
-    import_one(&app, &slug, &project, incoming, &base, &ext, conform_on)
-        .await
-        .map(Some)
+    let file = ImportFile {
+        incoming: Incoming::Bytes(bytes.clone()),
+        shown: name,
+        base,
+        ext,
+    };
+    Ok(import_all(&app, &slug, &project, vec![file]).await)
 }
 
 /// One scene's terminal snapshot PNG into the project's `assets/`, OVERWRITING the canonical `terminal-<stem>.png` (the app-icon rule: an app-owned asset with one home, so recaptures never litter collision suffixes; `assetVersionStore` cache-busts readers). Headers carry the slug and the scene stem, the body is the raw PNG; temp-then-rename so a failed write never truncates the previous bake. Returns the project-relative path.
@@ -3039,6 +3290,239 @@ mod tests {
         let (error, _) = unwind_conform(&project, &plan, false, "boom".into(), true);
         assert_eq!(error, CONFORM_CANCELLED);
         assert_eq!(std::fs::read(project.join("assets/clip.mov")).unwrap(), b"source");
+        let _ = std::fs::remove_dir_all(&project);
+    }
+
+    fn checker_png() -> Vec<u8> {
+        let mut bytes = Vec::new();
+        let mut encoder = png::Encoder::new(&mut bytes, 4, 4);
+        encoder.set_color(png::ColorType::Rgb);
+        encoder.set_depth(png::BitDepth::Eight);
+        let mut writer = encoder.write_header().unwrap();
+        let rows: Vec<u8> = (0..48).map(|i| (i * 5) as u8).collect();
+        writer.write_image_data(&rows).unwrap();
+        writer.finish().unwrap();
+        bytes
+    }
+
+    fn land(project: &Path, incoming: Incoming, shown: &str, ext: &str) -> ImportReport {
+        let mut report = ImportReport::default();
+        let base = shown.rsplit_once('.').map_or(shown, |(stem, _)| stem);
+        let landed = ready_still(&project.join("assets"), &incoming, shown, ext)
+            .and_then(|ready| land_still(project, ready, base, &mut report));
+        if let Err(why) = landed {
+            report.refused.push(why);
+        }
+        report
+    }
+
+    fn assets_listing(project: &Path) -> Vec<String> {
+        let mut names: Vec<String> = std::fs::read_dir(project.join("assets"))
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .filter(|n| n != ".originals")
+            .collect();
+        names.sort();
+        names
+    }
+
+    #[test]
+    fn a_clean_still_lands_byte_for_byte_from_a_path_or_bytes() {
+        let project = scratch_assets("still-clean");
+        let source = project.join("source.png");
+        std::fs::write(&source, checker_png()).unwrap();
+        let from_path = land(&project, Incoming::Path(source), "shot.png", "png");
+        assert_eq!(from_path.rels, ["assets/shot.png"]);
+        let from_bytes = land(&project, Incoming::Bytes(checker_png()), "shot.png", "png");
+        assert_eq!(from_bytes.rels, ["assets/shot-2.png"]);
+        assert_eq!(from_bytes.converted, 0);
+        assert_eq!(
+            std::fs::read(project.join("assets/shot.png")).unwrap(),
+            checker_png()
+        );
+        assert_eq!(
+            std::fs::read(project.join("assets/shot-2.png")).unwrap(),
+            checker_png()
+        );
+        assert_eq!(assets_listing(&project), ["shot-2.png", "shot.png"]);
+        assert!(!project.join(crate::asset_meta::META_REL).exists());
+        let _ = std::fs::remove_dir_all(&project);
+    }
+
+    #[test]
+    fn a_refused_still_leaves_nothing_in_assets() {
+        let project = scratch_assets("still-refused");
+        let source = project.join("page.png");
+        std::fs::write(&source, b"<html><body>not a picture</body></html>").unwrap();
+        let report = land(&project, Incoming::Path(source), "page.png", "png");
+        assert_eq!(report.rels, Vec::<String>::new());
+        assert!(
+            report.refused[0].starts_with("page.png is not a readable image"),
+            "{:?}",
+            report.refused
+        );
+        assert_eq!(assets_listing(&project), Vec::<String>::new());
+        let gone = land(
+            &project,
+            Incoming::Path(project.join("nope.png")),
+            "nope.png",
+            "png",
+        );
+        assert!(
+            gone.refused[0].contains("can't be read"),
+            "{:?}",
+            gone.refused
+        );
+        let folder = project.join("folder.png");
+        std::fs::create_dir(&folder).unwrap();
+        let not_a_file = land(&project, Incoming::Path(folder), "folder.png", "png");
+        assert!(
+            not_a_file.refused[0].contains("is not a file"),
+            "{:?}",
+            not_a_file.refused
+        );
+        assert_eq!(assets_listing(&project), Vec::<String>::new());
+        let _ = std::fs::remove_dir_all(&project);
+    }
+
+    #[test]
+    fn a_still_over_the_cap_is_refused_before_a_byte_is_copied() {
+        let project = scratch_assets("still-huge");
+        let source = project.join("huge.png");
+        let file = std::fs::File::create(&source).unwrap();
+        file.set_len(crate::imagefile::MAX_BYTES + 1).unwrap();
+        let report = land(&project, Incoming::Path(source), "huge.png", "png");
+        assert!(
+            report.refused[0].contains("MB an image may be"),
+            "{:?}",
+            report.refused
+        );
+        assert_eq!(assets_listing(&project), Vec::<String>::new());
+        let _ = std::fs::remove_dir_all(&project);
+    }
+
+    #[test]
+    fn a_still_never_moves_an_asset_already_there() {
+        let project = scratch_assets("still-existing");
+        std::fs::write(project.join("assets/shot.png"), b"the old bytes").unwrap();
+        std::fs::write(project.join("assets/shot-2.png"), b"more old bytes").unwrap();
+        let report = land(&project, Incoming::Bytes(checker_png()), "shot.png", "png");
+        assert_eq!(report.rels, ["assets/shot-3.png"]);
+        assert_eq!(
+            std::fs::read(project.join("assets/shot.png")).unwrap(),
+            b"the old bytes"
+        );
+        assert_eq!(
+            std::fs::read(project.join("assets/shot-2.png")).unwrap(),
+            b"more old bytes"
+        );
+        let _ = std::fs::remove_dir_all(&project);
+    }
+
+    #[test]
+    fn a_dangling_link_holds_its_name() {
+        let project = scratch_assets("still-link");
+        let outside = project.join("outside.png");
+        std::os::unix::fs::symlink(&outside, project.join("assets/shot.png")).unwrap();
+        let report = land(&project, Incoming::Bytes(checker_png()), "shot.png", "png");
+        assert_eq!(report.rels, ["assets/shot-2.png"]);
+        assert!(!outside.exists());
+        let _ = std::fs::remove_dir_all(&project);
+    }
+
+    #[test]
+    fn a_still_named_for_another_format_lands_under_its_own() {
+        let project = scratch_assets("still-name");
+        let report = land(
+            &project,
+            Incoming::Bytes(checker_png()),
+            "shot.webp",
+            "webp",
+        );
+        assert_eq!(report.rels, ["assets/shot.png"]);
+        assert!(
+            report.notes[0].contains("really a PNG"),
+            "{:?}",
+            report.notes
+        );
+        let _ = std::fs::remove_dir_all(&project);
+    }
+
+    #[test]
+    fn a_blank_still_lands_with_a_note() {
+        let project = scratch_assets("still-blank");
+        let mut bytes = Vec::new();
+        let mut encoder = png::Encoder::new(&mut bytes, 4, 4);
+        encoder.set_color(png::ColorType::Rgb);
+        encoder.set_depth(png::BitDepth::Eight);
+        let mut writer = encoder.write_header().unwrap();
+        writer.write_image_data(&[90; 48]).unwrap();
+        writer.finish().unwrap();
+        let report = land(&project, Incoming::Bytes(bytes), "plate.png", "png");
+        assert_eq!(report.rels, ["assets/plate.png"]);
+        assert!(
+            report.notes[0].contains("flat colour"),
+            "{:?}",
+            report.notes
+        );
+        let _ = std::fs::remove_dir_all(&project);
+    }
+
+    #[test]
+    fn a_p3_still_lands_baked_with_where_it_came_from() {
+        const SIPS: &str = "/usr/bin/sips";
+        const P3: &str = "/System/Library/ColorSync/Profiles/Display P3.icc";
+        if !Path::new(SIPS).is_file() || !Path::new(P3).is_file() {
+            eprintln!("skipping: sips unavailable");
+            return;
+        }
+        let project = scratch_assets("still-p3");
+        std::fs::write(project.join("assets/old.png"), b"the old bytes").unwrap();
+        let plain = project.join("plain.png");
+        std::fs::write(&plain, checker_png()).unwrap();
+        let tagged = project.join("tagged.png");
+        let made = std::process::Command::new(SIPS)
+            .args(["--matchTo", P3])
+            .arg(&plain)
+            .arg("--out")
+            .arg(&tagged)
+            .output()
+            .unwrap();
+        assert!(made.status.success());
+        let source = std::fs::read(&tagged).unwrap();
+        let report = land(
+            &project,
+            Incoming::Path(tagged.clone()),
+            "tagged.png",
+            "png",
+        );
+        assert_eq!(
+            (report.rels.as_slice(), report.converted),
+            (&["assets/tagged.png".to_owned()][..], 1)
+        );
+        let landed = crate::imagefile::facts(&project.join("assets/tagged.png"), "t").unwrap();
+        assert!(crate::imagefile::needs_conform(&landed).is_empty());
+        assert_eq!(std::fs::read(&tagged).unwrap(), source);
+        assert_eq!(
+            std::fs::read(project.join("assets/old.png")).unwrap(),
+            b"the old bytes"
+        );
+        let meta: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(project.join(crate::asset_meta::META_REL)).unwrap(),
+        )
+        .unwrap();
+        let record = &meta["assets"]["assets/tagged.png"];
+        assert_eq!(record["origin"]["tool"], "app import");
+        assert_eq!(record["origin"]["sourceName"], "tagged.png");
+        assert_eq!(
+            record["origin"]["sourceSha256"].as_str().map(str::len),
+            Some(64)
+        );
+        assert_eq!(record["transforms"][0]["to"], "srgb");
+        assert_eq!(
+            assets_listing(&project),
+            ["_meta.json", "old.png", "tagged.png"]
+        );
         let _ = std::fs::remove_dir_all(&project);
     }
 

@@ -33,7 +33,11 @@
   3 (`app-busy`) while the app exports a project using it, unless `--wait SECONDS`. It warns
   when the file is an edit's source or its size changed. Follow-media scenes re-sync their
   length and the running app refreshes. `--as-new` keeps both: the new file comes in as
-  `<name>-2.<ext>` and the references move to it.
+  `<name>-2.<ext>` and the references move to it. A still is held to what `assets add` takes:
+  an unreadable one is refused, a blank one too unless `--allow-blank`, and a colour profile,
+  CMYK or an EXIF turn is baked into plain sRGB, upright pixels. A file that has to change format
+  (really a JPEG under a `.png` name, a WebP that needs baking) only comes in with `--as-new`,
+  which lands it under the right extension.
 - `./kb assets list` shows every file and who uses it. Before deleting or renaming one,
   also run `./kb video usages <asset>`: an edit may cut it. A dangling reference renders a
   missing card or screen.

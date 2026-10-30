@@ -29,9 +29,10 @@ Videos conform through the app's media CLI: the original goes to assets/.origina
 constant-rate mezzanine keeps the name scenes reference, and assets/<stem>.timing.json
 records which source frame every frame shows. Provenance lives in assets/_meta.json.
 
-Stills are decoded on the way in. A file that isn't what its name says lands under its real
-extension; a colour profile, CMYK pixels or an EXIF turn, which the stage ignores, are baked
-into plain sRGB pixels; a fully transparent or one-colour result is refused (--allow-blank)."""
+Stills are decoded on the way in, by add and replace alike. A file that isn't what its name says
+lands under its real extension; a colour profile, CMYK pixels or an EXIF turn, which the stage
+ignores, are baked into plain sRGB pixels; a fully transparent or one-colour result is refused
+(--allow-blank)."""
 
 
 def _warn(ctx: Any) -> Any:
@@ -215,7 +216,7 @@ def cmd_replace(ctx: Any) -> int:
     if a.as_new and a.keep_old is not None:
         raise KbError("--keep-old has no effect with --as-new (the old file stays where it is)", EXIT_ENV, kind="usage")
     warn = _warn(ctx)
-    res = asset_ops.replace_asset(ctx.project, a.name, a.file, keep_old=a.keep_old or "archive", as_new=a.as_new, opts=ctx.opts, warn=warn)
+    res = asset_ops.replace_asset(ctx.project, a.name, a.file, keep_old=a.keep_old or "archive", as_new=a.as_new, opts=ctx.opts, warn=warn, allow_blank=a.allow_blank)
     res["warnings"] = list(warn.sink)
     if ctx.json:
         ctx.out(res)
@@ -228,6 +229,8 @@ def cmd_replace(ctx: Any) -> int:
         _writes(res)
         return EXIT_OK
     emit(res["path"])
+    if res.get("note"):
+        emit_err(f"kb: {res['note']}")
     if res.get("replaced"):
         for r in res.get("rewrites") or []:
             emit_err(f"kb: re-pointed {r['count']} reference(s) in {r['file']}")
@@ -379,11 +382,15 @@ def register(sub: Any, common: argparse.ArgumentParser, Formatter: Any) -> None:
     y.set_defaults(fn=cmd_conform)
     y = op("replace", "new bytes under the same name (the old file to .kb/archive/), or --as-new beside it", writes,
            epilog="Refuses another extension, an editor render (*-edited.mp4) and a running export of a project\n"
-           "using it (unless --wait). Follow-media scene lengths re-sync and the running app refreshes.")
+           "using it (unless --wait). Follow-media scene lengths re-sync and the running app refreshes.\n"
+           "A still is held to what kb assets add takes: never unreadable or blank, baked into plain sRGB,\n"
+           "upright pixels. One that has to change format (a WebP with a colour profile, a JPEG named .png)\n"
+           "keeps its type only with --as-new, which lands it under the right extension.")
     y.add_argument("name", metavar="NAME", help="the asset to replace (assets/... or a name in assets/)")
     y.add_argument("file", metavar="FILE", help="the new file")
     y.add_argument("--keep-old", choices=["archive", "trash", "none"], default=None, help="where the old file goes (default archive: .kb/archive/)")
     y.add_argument("--as-new", action="store_true", help="keep both: copy FILE in under a new name and re-point the literals")
+    y.add_argument("--allow-blank", action="store_true", help="take a fully transparent or one-colour image, which is otherwise refused")
     y.set_defaults(fn=cmd_replace)
     y = op("unused", "files nothing uses, by the app's in-use rule (samples, timing records, patterns and themes kept)", writes,
            epilog="--archive moves them to .kb/archive/<id>/ (or DIR/<id>/, outside assets/); restore brings them back.")

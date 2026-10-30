@@ -171,7 +171,7 @@ under the project lock (`kblib.lock`) and re-validated after writing.
 | `fonts safe`, `fonts check REF...`, `fonts list` | Bundled faces are always safe; `check` and `list` use the app's real parser when it runs, else a static verdict (`--json`: `faces`, `results`, `families` or the static `bundled` and `pinned`) |
 | `presets [list \| show SLUG]` | Scene presets with what they show and a preview image path to Read (`--json`: `presets`) |
 | `catalog [FAMILY] [--search Q]` | Query `catalog.json` (`--json`: `families`; a family's raw entries as `{ family, items }`, or `{ family, value }` when it is not a list; a search's `items`) |
-| `assets list`, `assets add PATH [--name N] [--dir D] [--no-conform] [--max-size N] [--allow-blank]`, `assets add-folder DIR [--dedupe] [--thumbs WxH] [--limit N] [--dir D] [--no-conform] [--max-size N] [--allow-blank]`, `assets probe ASSET [--deep]`, `assets conform ASSET [--repoint]`, `assets replace NAME FILE [--keep-old archive\|trash\|none] [--as-new]`, `assets unused [--kind K] [--archive [DIR]]`, `assets restore [ID \| --list]`, `assets meta NAME [--set K=V]` | Media in (never overwrites, renames on collision; `--name` keeps the source's extension; a video the app's probe flags, or that both decoders disagree on once decoded, is conformed through `<exe> media conform`, gated on `edit caps.media`; stills and SVGs as in "Stills on the way in" below), a whole folder (`assets add-folder`, below), the decode verdict (`ok`, `suspect`, `ffmpeg-misdecodes`; the container's own `elst`/`stts`/`ctts` parse without the app, AVFoundation's view with it; an edit opening inside a sample is `ffmpeg-misdecodes` on both sides, `mp4box.rs` and `mp4box.py` replaying one `edit-start-vectors.json`), an in-place conform (`--repoint` turns a `.mov` into `<stem>.mp4` and rewrites literals), an in-place replace with the old bytes in `.kb/archive/`, the app's shared in-use rule (`unused`, archived and restorable; `media.rs` and `asset_refs.py` replay one `asset-ref-vectors.json`), and `assets/_meta.json` provenance (`list --json`: `assets`, each with a conformed clip's timing and provenance folded in). Code: `kblib/assets_cli.py`, `assets.py`, `asset_folder.py`, `asset_ops.py`, `imagefile.py`, `svgsafe.py`, `contact.py`, `conform.py`, `mp4box.py`, `asset_refs.py`, `archive.py`, `asset_meta.py` |
+| `assets list`, `assets add PATH [--name N] [--dir D] [--no-conform] [--max-size N] [--allow-blank]`, `assets add-folder DIR [--dedupe] [--thumbs WxH] [--limit N] [--dir D] [--no-conform] [--max-size N] [--allow-blank]`, `assets probe ASSET [--deep]`, `assets conform ASSET [--repoint]`, `assets replace NAME FILE [--keep-old archive\|trash\|none] [--as-new] [--allow-blank]`, `assets unused [--kind K] [--archive [DIR]]`, `assets restore [ID \| --list]`, `assets meta NAME [--set K=V]` | Media in (never overwrites, renames on collision; `--name` keeps the source's extension; a video the app's probe flags, or that both decoders disagree on once decoded, is conformed through `<exe> media conform`, gated on `edit caps.media`; stills and SVGs as in "Stills on the way in" below), a whole folder (`assets add-folder`, below), the decode verdict (`ok`, `suspect`, `ffmpeg-misdecodes`; the container's own `elst`/`stts`/`ctts` parse without the app, AVFoundation's view with it; an edit opening inside a sample is `ffmpeg-misdecodes` on both sides, `mp4box.rs` and `mp4box.py` replaying one `edit-start-vectors.json`), an in-place conform (`--repoint` turns a `.mov` into `<stem>.mp4` and rewrites literals), an in-place replace with the old bytes in `.kb/archive/`, the app's shared in-use rule (`unused`, archived and restorable; `media.rs` and `asset_refs.py` replay one `asset-ref-vectors.json`), and `assets/_meta.json` provenance (`list --json`: `assets`, each with a conformed clip's timing and provenance folded in). Code: `kblib/assets_cli.py`, `assets.py`, `asset_folder.py`, `asset_ops.py`, `imagefile.py`, `svgsafe.py`, `contact.py`, `conform.py`, `mp4box.py`, `asset_refs.py`, `archive.py`, `asset_meta.py` |
 | `checkpoint [MESSAGE] [--scene S]... [--files P]...`, `history [--scene S]`, `undo [REV] [--scene S \| --all]`, `diff [REV] [--scene S]` | Git checkpoints of `project.json`, `scenes/` and `edits/`, or only some scenes' files; `undo` checkpoints first, so it is itself undoable, never trashes `edits/`, and names any render it leaves stale (`history --json`: `checkpoints`, each with `atMs`). See Coordination |
 | `lease S [--ttl 2h] [--note T] [--for NAME]`, `lease S --release [--force]`, `leases [--all]` | Opt-in scene leases (`lease --json`: `scene`, `action`, `lease`; `leases --json`: `leases`) |
 | `note "TEXT" [--scene S]`, `notes [--all]` | Shared notes in `.kb/notes.md` (`notes --json`: `notes`, `total`) |
@@ -236,7 +236,24 @@ As built (`scripts/kblib/`):
   transparent or one-colour result is refused (`refuse_blank`, `--allow-blank`), measured on
   a 64 px reduction with a tolerance of 3 levels. Provenance is recorded only when kb changed
   the bytes, with `origin.sourceSha256`, so adding the same file the same way lands nothing
-  new. Images in the app's own drop path are not checked.
+  new.
+
+  `assets replace` holds a still to the same checks and bakes it too: a replacement is new bytes
+  from outside that the stage would draw just as wrong, and the old bytes stay in the archive. A
+  replace keeps its type, so a file that is really another format, or a WebP or GIF that has to
+  change, is refused before any decode; `--as-new` lands it under the right extension.
+
+  The app's drop (`import_media`, `import_media_bytes`, and so the Library's copy-on-use) follows
+  the same rules through `src-tauri/src/imagefile.rs`; `still-facts-vectors.json` keeps the two
+  header readers agreeing. A copy is parked in `assets/.kc-render/` and only that copy is checked,
+  so the source can't change underneath and no asset moves. A PNG is decoded in the app by the
+  stage's own decoder, so one that passes decodes in a frame (15 to 80 ms at 4K); anything else
+  goes through a `sips` child with a 60 s limit (70 ms for a 4K JPEG, 0.5 s for a bake). A batch
+  checks four at a time, since macOS tags nearly every screenshot with its display's profile, then
+  lands in turn under a name a link can't overwrite. One refused file never stops the rest
+  (`ImportReport`). Baked on drop, not flagged in the library: the stage can only draw the unbaked
+  file wrong, and the source is untouched. A blank still lands with a note rather than a refusal,
+  since a person is looking at it and has no `--allow-blank`.
 - **SVGs** (`kblib/svgsafe.py`). AppKit's parser reads a `file://` image straight off the disk
   into the raster, so the rasteriser (the brand skill's `svg2png.js`) never sees the source. The
   source is parsed with expat and rewritten to a temp copy from an allowlist of drawing
