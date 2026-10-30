@@ -141,6 +141,7 @@ export { type StampScaleOptions, stampScale } from "./motion/stampScale";
 export {
   type BeatGrid,
   type BeatPosition,
+  useBeatAt,
   useBeatGrid,
   useCues,
 } from "./music/useBeatGrid";
