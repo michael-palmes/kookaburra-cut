@@ -271,6 +271,28 @@ def caps(info: Optional[CliInfo] = None) -> Dict[str, Any]:
     return data
 
 
+def trust_allowed(folder: str, info: Optional[CliInfo] = None) -> bool:
+    """`trust check`: whether the person has allowed this folder's current content. Only asked of a binary whose caps list
+    it (an older one given `trust` would start the whole app); that binary's answer is the app's stored grant."""
+    info = info or locate()
+    listed = caps(info).get("trust")
+    if not isinstance(listed, dict) or "check" not in (listed.get("commands") or []):
+        raise KbError(f"Kookaburra Cut {info.app_version or '?'} can't answer that yet; {UPDATE_HINT}", EXIT_ENV)
+    try:
+        proc = subprocess.run([info.path, "trust", "check", "--dir", folder], stdin=subprocess.DEVNULL, capture_output=True, timeout=CAPS_TIMEOUT_S)
+    except subprocess.TimeoutExpired:
+        raise KbError(f"Kookaburra Cut's trust check did not answer within {int(CAPS_TIMEOUT_S)} s", EXIT_ENV) from None
+    except OSError as e:
+        raise KbError(f"could not run {info.path}: {e.strerror}", EXIT_ENV) from None
+    try:
+        data = json.loads(proc.stdout.decode("utf-8", "replace").strip())
+    except ValueError:
+        raise KbError("Kookaburra Cut's trust check gave no answer", EXIT_ENV) from None
+    if not isinstance(data, dict) or proc.returncode != 0 or data.get("ok") is not True:
+        raise KbError(str((data or {}).get("error") or "Kookaburra Cut's trust check failed"), EXIT_ENV)
+    return data.get("allowed") is True
+
+
 def _tool(name: str) -> str:
     data = caps()
     tool = data.get(name) if isinstance(data.get(name), dict) else {}

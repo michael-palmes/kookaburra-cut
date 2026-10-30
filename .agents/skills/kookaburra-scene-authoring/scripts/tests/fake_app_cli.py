@@ -7,7 +7,7 @@ FAKE_CLI_NOISE=1 mixes junk lines into render output, FAKE_CLI_RACE=marker makes
 is touched on every run. `check flashes` answers FAKE_CLI_FLASH_REPORT (a JSON file), else a clean report. `song
 analyse` answers FAKE_CLI_SONG (a JSON analysis), else a steady 120 bpm click; FAKE_CLI_SONG_CACHED=1 says it was cached.
 `media probe|conform` mirror cli_media.rs (caps lists `media` only when FAKE_CLI_CAPS adds MEDIA_CAPS);
-FAKE_CLI_FAIL=media-probe or media-conform fails them.
+FAKE_CLI_FAIL=media-probe or media-conform fails them. `trust check` answers allowed only for FAKE_CLI_TRUST_ALLOW (a folder).
 """
 
 from __future__ import annotations
@@ -543,6 +543,10 @@ def main() -> None:
         return
     if argv[:1] == ["media"]:
         cmd_media(argv[1:])
+        return
+    if argv[:2] == ["trust", "check"]:
+        folder = flags(argv[2:]).get("dir")
+        emit({"ok": True, "allowed": bool(folder) and folder == os.environ.get("FAKE_CLI_TRUST_ALLOW"), "dir": folder})
         return
     if len(argv) < 2 or argv[0] != "edit" or argv[1] not in COMMANDS:
         fail("usage", f"usage: kookaburra-cut edit <{'|'.join(COMMANDS)}>", 2)

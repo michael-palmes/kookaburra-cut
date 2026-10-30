@@ -13,7 +13,7 @@ from . import lock as lockmod
 from .util import EXIT_ENV, EXIT_OK, EXIT_PROBLEMS, KbError, emit, set_command
 
 PLANNABLE = (
-    "scene add", "scene duplicate", "scene move", "scene remove", "scene set",
+    "scene add", "scene duplicate", "scene move", "scene remove", "scene set", "scene split", "scene renumber", "scene import",
     "doc set", "doc unset", "doc merge", "project set", "project unset", "theme set",
     "assets add", "assets conform", "assets replace", "assets unused", "assets restore", "assets meta", "checkpoint", "undo", "lease",
 )

@@ -16,6 +16,7 @@ pub mod cli;
 pub mod cli_check;
 pub mod cli_media;
 pub mod cli_song;
+pub mod cli_trust;
 mod clip_cache;
 mod concurrency;
 mod conform;

@@ -583,6 +583,12 @@ class Txn:
             raise KbError(f"{rel} does not exist, so it can't be moved", EXIT_PROBLEMS, kind="invalid")
         self._ops[dest] = _Op(dest, "create" if dest_base == ABSENT else "modify", dest_base, move_from=rel, move_base=b)
 
+    def remove(self, rel: str) -> None:
+        """Delete rel at commit, after every write: for a file whose bytes this transaction wrote under another name."""
+        b = self._base(rel, False, None)
+        if b != ABSENT:
+            self._ops[rel] = _Op(rel, "delete", b)
+
     def trash(self, rel: str, trash_fn: Callable[[Path], Any]) -> None:
         """Move rel to the Trash at commit, after every write (a missing file is no change)."""
         b = self._base(rel, False, None)
@@ -609,8 +615,8 @@ class Txn:
 
     def _order(self) -> List[_Op]:
         ops = list(self._ops.values())
-        rank = {"create": 0, "modify": 1, "trash": 3}
-        return sorted(ops, key=lambda o: 2 if o.rel == MANIFEST and o.action != "trash" else rank[o.action])
+        rank = {"create": 0, "modify": 1, "trash": 3, "delete": 3}
+        return sorted(ops, key=lambda o: 2 if o.rel == MANIFEST and o.action not in ("trash", "delete") else rank[o.action])
 
     def _touched(self, ordered: List[_Op]) -> List[str]:
         return [o.rel for o in ordered] + [str(o.move_from) for o in self._vacated()]
@@ -643,6 +649,11 @@ class Txn:
                         self._undo(done)
                         raise Conflict(o.rel, o.base, current_hash(path))
                     o.trash_fn(path)
+                    continue
+                if o.action == "delete":
+                    # Its bytes already landed under the new name, so a file changed since stays beside them; undoing could lose both.
+                    if current_hash(path) == o.base:
+                        path.unlink(missing_ok=True)
                     continue
                 if o.move_from is not None:
                     ok = link_if_unchanged(self.root / o.move_from, path, o.base)
