@@ -214,6 +214,14 @@ class RangedCommandTests(KbTestCase):
         self.assertExit(allowed, 0)
         self.assertIn("Read ", allowed.stdout)
 
+    def test_a_check_with_no_answer_leaves_no_run_behind(self) -> None:
+        root = make_project(self.tmp)
+        refused = FakeApp(self.bridge, lambda req: {"ok": False, "error": "the render failed"}, kinds=KINDS, health=health(), openProject="ws:demo")
+        with refused:
+            proc = self.kb(["check", "film", "--range", "2-4"], cwd=root)
+        self.assertExit(proc, 1)
+        self.assertEqual([p for p in (root / ".kb" / "flashes").iterdir() if p.is_dir()], [])
+
     def test_no_app_and_an_old_app_exit_2(self) -> None:
         root = make_project(self.tmp)
         self.assertExit(self.kb(["check", "film", "--scene", "0"], cwd=root), 2)

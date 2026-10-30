@@ -98,7 +98,7 @@ frame bodies and the scene trees. The split, and why it is drawn where it is:
 - **Orchestration stays in the window.** `exporter.ts` and `stillsExport.ts`
   own `start_export`, `push_frame`, `push_still` and `finish_*`; the worker
   renders one frame or page per request into a buffer that ping-pongs by
-  transfer. A frame body (`src/engine/exportRun.ts`, `stillsRun.ts`) is the
+  transfer. A frame body (`src/engine/exportRun.ts`, `stillsRun.ts`, `rangeRun.ts`) is the
   same code the main thread ran, moved verbatim.
 - **Fonts preload in the worker, in the window's order.** troika's shared SDF
   atlas is per realm and its cell order is export contract, so the server
@@ -141,6 +141,7 @@ window that has no project IPC of its own.
 | `src/engine/format.ts` | `FormatInfo`, `FORMATS`, `useFormat()`, safe-area maths |
 | `src/engine/exporter.ts` | deterministic frame loop (window side: orchestration and IPC) |
 | `src/engine/exportRun.ts` | the per-frame render body, in the stage worker |
+| `src/engine/rangeRun.ts` | a ranged check's frames, the same body over a span, in the stage worker |
 | `src/engine/stageProtocol.ts` | the versioned window ↔ worker protocol |
 | `src/stage/` | the stage worker: `stageWorker.ts` (realm shims), `stageServer.tsx` (r3f root, trees), `stageClient.ts` (the window's handle), `StageView.tsx` |
 | `src/engine/compositor.ts` | `renderComposited`: single-scene direct render / two-scene transition composite |

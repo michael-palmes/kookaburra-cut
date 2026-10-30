@@ -440,6 +440,7 @@ export function startBridgeService(
     const servedAt = Date.now();
     const native = requestFormat(request.aspect, context?.aspect);
     const format = rangeFormat(native, request.width);
+    if (!(await allowedProject(request, targetId, context, "range"))) return;
     const project = await ensureLoaded(targetId, native);
     const plan = rangePlan(request, project.totalMs);
     const units = rangeUnits(plan.frames.length, format);
@@ -471,6 +472,9 @@ export function startBridgeService(
     };
     const clipPaths: string[] = [];
     let report: Record<string, unknown> | null = null;
+    let renderMs = 0;
+    let flagged: number[][] = [];
+    const stripPaths = new Map<number, string>();
     const renderStart = Date.now();
     try {
       if (flashes) {
@@ -492,29 +496,27 @@ export function startBridgeService(
           plan.times[0],
         );
       }
+      renderMs = Date.now() - renderStart;
+      const issues = (report?.issues as { startMs: number }[] | undefined) ?? [];
+      flagged = issues.slice(0, RANGE_MAX_STRIPS).map((issue) => stripFrames(plan, issue.startMs));
+      const stripFrameSet = [...new Set(flagged.flat())].sort((a, b) => a - b);
+      if (stripFrameSet.length > 0) {
+        // Frame numbers past the clip's own, so the two never share a name.
+        const base = plan.frames[plan.frames.length - 1] + 1;
+        await renderRange(
+          opts,
+          stripFrameSet.map((k) => (k * 1000) / plan.fps),
+          async ({ index, rgba, width, height }) => {
+            await live(plan.frames.length - 1);
+            stripPaths.set(stripFrameSet[index], await savePng(rgba, width, height, base + index));
+          },
+        );
+      }
     } catch (e) {
-      if (flashes) await invoke("range_flash_finish").catch(() => null);
+      if (flashes && !report) await invoke("range_flash_finish").catch(() => null);
       if (!(e instanceof RenderStopped)) throw e;
       await respond(request, stoppedBody(e.reason));
       return;
-    }
-    const renderMs = Date.now() - renderStart;
-    const issues = (report?.issues as { startMs: number }[] | undefined) ?? [];
-    const flagged = issues
-      .slice(0, RANGE_MAX_STRIPS)
-      .map((issue) => stripFrames(plan, issue.startMs));
-    const stripFrameSet = [...new Set(flagged.flat())].sort((a, b) => a - b);
-    const stripPaths = new Map<number, string>();
-    if (stripFrameSet.length > 0) {
-      // Frame numbers past the clip's own, so the two never share a name.
-      const base = plan.frames[plan.frames.length - 1] + 1;
-      await renderRange(
-        opts,
-        stripFrameSet.map((k) => (k * 1000) / plan.fps),
-        async ({ index, rgba, width, height }) => {
-          stripPaths.set(stripFrameSet[index], await savePng(rgba, width, height, base + index));
-        },
-      );
     }
     await respond(request, {
       ok: true,

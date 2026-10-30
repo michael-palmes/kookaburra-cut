@@ -469,7 +469,7 @@ const DECLINE_HOLD: Duration = Duration::from_secs(60);
 
 fn access_verb(kind: &str) -> &'static str {
     match kind {
-        "capture" => "render frames of",
+        "capture" | "range" => "render frames of",
         "check" => "load and check",
         "insertPreset" => "add a scene to",
         "openEdit" => "open the video editor for",

@@ -786,12 +786,14 @@ warning where two chunks saw the same moment). Exit 1 kind `flashes` on a failur
 The request is the render window's `range` kind: `{ project, aspect?, startMs, endMs, fps
 (30), width?, flashes (true), standard?, clip? }`. `rangePlan` puts its frames on the
 export's own grid (frame k at k x 1000 / fps, `[startMs, endMs)`, clamped to the film), so a
-ranged check sees exactly the frames a 30 fps export would. `renderRange`
-(`src/engine/rangeRender.ts`) runs the preamble once (clips extract only the span, the
-preamble's `spanMs`), then `renderFrameInto` per frame, handing each readback to
-`range_flash_push` (`src-tauri/src/bridge_range.rs`: a `FlashDetector` with `source:
-"range"`, `range_flash_begin` and `range_flash_finish` around it) and, with `clip`, a PNG per
-frame (`bridge_write_sheet` with `x-kookaburra-frame: N`, saved as `<id>-N.png`). Like a
+ranged check sees exactly the frames a 30 fps export would. The stage worker does the
+rendering (`src/engine/rangeRun.ts`, the protocol's `rangeBegin`, `rangeFrame` and
+`rangeEnd`): the preamble once (clips extract only the span, the preamble's `spanMs`), then
+`renderFrameInto` per frame. The window (`renderRange`, `src/engine/rangeRender.ts`) hands
+each readback to `range_flash_push` (`src-tauri/src/bridge_range.rs`: a `FlashDetector` with
+`source: "range"`, `range_flash_begin` and `range_flash_finish` around it) and, with `clip`,
+a PNG per frame (`bridge_write_sheet` with `x-kookaburra-frame: N`, saved as `<id>-N.png`).
+A project the editor does not have open asks the person first, as a capture does. Like a
 capture it gives the person's selection, camera pose and playhead back. The answer: `{ ok,
 format, size, nativeSize, fps, startMs, endMs, firstFrame, frames, flashes?, clip?: { paths,
 fps }, strips, timing, surface }`, its issues moved to project time (`offsetMs`). Its first 8
@@ -1273,8 +1275,8 @@ is `kblib/queue.py` and `kblib/capture.py`. Bridge captures are never baselines.
   `capture_service.rs` mirror `rangeFormat` and `rangePlan` in `bridgeRequests.ts`. It is
   throttled like a capture, checks `bridge_request_live` before every frame, and never feeds
   the capture duration samples.
-- **Text boxes.** A capture with `texts: true` renders its frames through `renderRange` (one
-  preamble) and adds each frame's `texts: [{ text, x, y, w, h, scene }]` (every visible troika
+- **Text boxes.** A capture with `texts: true` renders each frame through its own
+  `renderRange` (clips extract only that instant) and adds each frame's `texts: [{ text, x, y, w, h, scene }]` (every visible troika
   line, normalised, top-left origin, from the stills text layer's `collectPageText`) and the
   answer's `safe: { x, y, w, h }` (the format's safe area). A sheet cell mid-transition reads
   `A → B (type, 40%)` (`frameLabel`).

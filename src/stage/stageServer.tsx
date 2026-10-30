@@ -54,6 +54,7 @@ import {
 import { settleProjectOpen } from "../engine/previewSettle";
 import type { LoadedProject } from "../engine/project";
 import { RenderSettingsApplier } from "../engine/RenderSettingsApplier";
+import { beginRangeRun, endRangeRun, type RangeRun, renderRangeFrame } from "../engine/rangeRun";
 import { sceneErrorCard } from "../engine/SceneErrorCard";
 import { StagePointer } from "../engine/StagePointer";
 import { StageScenes } from "../engine/StageScenes";
@@ -204,6 +205,7 @@ let size: StageSize = { width: 1, height: 1, dpr: 1 };
 const projectSeqs = new WeakMap<object, number>();
 let activeExport: ExportRun | null = null;
 let activeStills: StillsRun | null = null;
+let activeRange: RangeRun | null = null;
 
 // ── Store mirror ─────────────────────────────────────────────────────────────
 const mirror = mirrorStores(
@@ -516,6 +518,22 @@ async function handle(req: WindowRequest): Promise<{ value: unknown; transfer?: 
       const out = await captureFrameRun(req.opts, req.tMs);
       return { value: out, transfer: [out.rgba.buffer as ArrayBuffer] };
     }
+    case "rangeBegin": {
+      if (activeRange) throw new Error("a ranged render is already open");
+      activeRange = await beginRangeRun(req.opts, req.spanMs);
+      return { value: null };
+    }
+    case "rangeFrame": {
+      if (!activeRange) throw new Error("no ranged render is open");
+      const out = await renderRangeFrame(activeRange, req.index, req.tMs, req.buffer, req.texts);
+      return { value: out, transfer: [out.rgba.buffer as ArrayBuffer] };
+    }
+    case "rangeEnd": {
+      const run = activeRange;
+      activeRange = null;
+      if (run) endRangeRun(run);
+      return { value: null };
+    }
     case "stillsBegin": {
       if (activeStills) throw new Error("a stills run is already open");
       activeStills = await beginStillsRun(req.opts, req.settings, (step) =>
@@ -587,6 +605,9 @@ const SERIAL_REQUESTS = new Set<WindowRequest["type"]>([
   "exportEnd",
   "holdExport",
   "captureFrame",
+  "rangeBegin",
+  "rangeFrame",
+  "rangeEnd",
   "stillsBegin",
   "stillsPage",
   "stillsEnd",

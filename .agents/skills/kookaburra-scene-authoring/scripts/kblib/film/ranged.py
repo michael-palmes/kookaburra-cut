@@ -185,8 +185,21 @@ def check(ctx: Any, spans: List[Dict[str, Any]], aspect: Optional[str], standard
         ffmpeg: Optional[str] = pb.tools().ffmpeg
     except KbError:
         ffmpeg = None
-    slots = tl.project_slots(project)
     folder = run_folder(project)
+    try:
+        return run_check(ctx, spans, aspect, standard, action, ffmpeg, folder)
+    except BaseException:
+        # Only an empty folder goes: a check with no answer must not crowd out real runs.
+        try:
+            folder.rmdir()
+        except OSError:
+            pass
+        raise
+
+
+def run_check(ctx: Any, spans: List[Dict[str, Any]], aspect: Optional[str], standard: str, action: str, ffmpeg: Optional[str], folder: Path) -> Dict[str, Any]:
+    project = ctx.project
+    slots = tl.project_slots(project)
     issues: List[Dict[str, Any]] = []
     head: Dict[str, Any] = {}
     frames = 0
