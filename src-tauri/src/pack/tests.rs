@@ -5,14 +5,15 @@
 use super::error::PackError;
 use super::hash::{sha256_bytes, sha256_file};
 use super::limits::{
-    MANIFEST_ENTRY, MAX_ENTRIES, MAX_MANIFEST_BYTES, MAX_PATH_BYTES, SIGNATURE_ENTRY, STAGING_DIR,
+    MANIFEST_ENTRY, MAX_ENTRIES, MAX_MANIFEST_BYTES, MAX_PATH_BYTES, MAX_TOTAL_UNCOMPRESSED,
+    SIGNATURE_ENTRY, STAGING_DIR,
 };
 use super::model::{
-    FontEmbedding, PackBrand, PackContents, PackFile, PackFont, PackItemBase, PackManifest,
-    PackMeta, PackObject, PackProject, PackPublisher, PackScreenshot, PackSimpleItem, PackTheme,
-    PackTotals, PACK_FORMAT, PACK_FORMAT_VERSION,
+    FontEmbedding, ItemKind, PackBrand, PackContents, PackFile, PackFont, PackItemBase,
+    PackManifest, PackMeta, PackObject, PackProject, PackPublisher, PackScreenshot,
+    PackSimpleItem, PackTheme, PackTotals, PACK_FORMAT, PACK_FORMAT_VERSION,
 };
-use super::read::{inspect, stage, sweep_stale};
+use super::read::{check_staging_space, inspect, stage, sweep_stale};
 use super::write::{write_pack, PackEntry};
 use crate::workspace::STATE_DIR_NAME;
 use base64::Engine as _;
@@ -178,6 +179,8 @@ enum SigMode {
     Valid,
     Forged,
     Absent,
+    /// A valid signature followed by padding: not 64 bytes, so not a signature.
+    Oversized,
 }
 
 struct Entry {
@@ -250,6 +253,8 @@ struct Fixture {
     declared_size_override: Option<u32>,
     /// Entry names swapped for raw bytes of the same length after writing.
     raw_names: Vec<(String, Vec<u8>)>,
+    /// A `keyId` other than the one the public key derives.
+    key_id: Option<String>,
 }
 
 impl Fixture {
@@ -268,7 +273,13 @@ impl Fixture {
             contents: PackContents::default(),
             declared_size_override: None,
             raw_names: Vec::new(),
+            key_id: None,
         }
+    }
+
+    fn key_id(mut self, key_id: &str) -> Self {
+        self.key_id = Some(key_id.to_string());
+        self
     }
 
     fn entry(mut self, entry: Entry) -> Self {
@@ -349,7 +360,13 @@ impl Fixture {
                 description: self.description.clone(),
                 created_at: "2026-07-26T00:00:00Z".into(),
             },
-            publisher: publisher(PUBLISHER_SEED),
+            publisher: PackPublisher {
+                key_id: self
+                    .key_id
+                    .clone()
+                    .unwrap_or_else(|| publisher(PUBLISHER_SEED).key_id),
+                ..publisher(PUBLISHER_SEED)
+            },
             contents: self.contents.clone(),
             files,
             totals,
@@ -373,6 +390,9 @@ impl Fixture {
                 let signature = signing_key(seed).sign(&manifest_bytes).to_bytes();
                 zip.start_file(SIGNATURE_ENTRY, stored()).unwrap();
                 zip.write_all(&signature).unwrap();
+                if self.signature == SigMode::Oversized {
+                    zip.write_all(&vec![0u8; 4096]).unwrap();
+                }
             }
 
             for entry in &self.entries {
@@ -506,6 +526,257 @@ fn assert_refused(tag: &str, fixture: Fixture, expected: &str) {
     );
 }
 
+// Per-kind ceilings and the publisher name check.
+
+/// A font whose header claims more than a font may be is refused before consent, by kind, with the font named.
+#[test]
+fn refuses_a_font_over_its_kind_cap() {
+    let over = (super::limits::MAX_FONT_BYTES + 1) as u32;
+    let fixture = Fixture {
+        entries: vec![Entry::new("payload/fonts/Acme-Bold.ttf", b"not really a font")],
+        ..Fixture::valid()
+    }
+    .declared_sizes(over);
+    let source = TempDir::new("font-cap");
+    let archive = fixture.build(source.path());
+    let error = match inspect(&archive) {
+        Ok(_) => panic!("an oversized font should be refused"),
+        Err(error) => error,
+    };
+    assert_eq!(error.variant(), "kindTooLarge");
+    assert_eq!(error.path(), Some("payload/fonts/Acme-Bold.ttf"));
+    assert!(error.user_message().contains("font"), "{}", error.user_message());
+}
+
+/// A pack from a known name under a key this Mac has never seen is the changed-key verdict, never first time.
+#[test]
+fn a_known_name_under_a_new_key_reads_as_changed() {
+    use crate::workspace::KnownPublisher;
+    use std::collections::HashMap;
+    let theirs = publisher(PUBLISHER_SEED);
+    let mut known: HashMap<String, KnownPublisher> = HashMap::new();
+    super::publisher::record_import(
+        &mut known,
+        &publisher(IMPOSTER_SEED),
+        "Starter Kit",
+        "2026-07-01T00:00:00Z",
+    );
+    assert_eq!(known.len(), 1);
+    match super::publisher::publisher_verdict(&known, &theirs) {
+        super::publisher::PublisherVerdict::KeyChanged {
+            known_as,
+            previous_key_id,
+            last_pack,
+        } => {
+            assert_eq!(known_as, "Test Publisher");
+            assert_eq!(previous_key_id, publisher(IMPOSTER_SEED).key_id);
+            assert_eq!(last_pack, "Starter Kit");
+        }
+        other => panic!("expected a changed key, got {other:?}"),
+    }
+}
+
+// The manifest's own claims about itself.
+
+fn project_item(root: &str, scene_files: &[&str]) -> PackProject {
+    PackProject {
+        base: PackItemBase {
+            slug: root.rsplit('/').next().unwrap_or(root).into(),
+            name: "Acme".into(),
+            ..Default::default()
+        },
+        root: root.into(),
+        scene_count: scene_files.len(),
+        scene_files: scene_files.iter().map(|s| (*s).to_string()).collect(),
+        has_scene_code: true,
+        ..Default::default()
+    }
+}
+
+/// `sceneFiles` is checked against the `scenes/**/*.tsx` the pack would stage, for a project, a template and a preset
+/// alike: a file it leaves out, a file it invents and a duplicate are each refused before consent.
+#[test]
+fn refuses_a_scene_file_list_that_is_not_the_staged_set() {
+    let roots = [
+        ("payload/projects/acme", "projects"),
+        ("payload/templates/acme", "templates"),
+        ("payload/presets/acme", "presets"),
+    ];
+    for (root, kind) in roots {
+        let with = |contents: fn(&mut PackContents, PackProject), listed: &[&str], tag: &str| {
+            let mut fixture = Fixture::valid()
+                .entry(Entry::new(
+                    &format!("{root}/scenes/01-hero.tsx"),
+                    b"export default defineScene({});\n",
+                ))
+                .entry(Entry::new(
+                    &format!("{root}/scenes/02-extra.tsx"),
+                    b"export default defineScene({});\n",
+                ));
+            let mut pack = PackContents::default();
+            contents(&mut pack, project_item(root, listed));
+            fixture = fixture.contents(pack);
+            assert_refused(&format!("{kind}-{tag}"), fixture, "sceneFilesMismatch");
+        };
+        let push: fn(&mut PackContents, PackProject) = match kind {
+            "projects" => |c, p| c.projects.push(p),
+            "templates" => |c, p| c.templates.push(p),
+            _ => |c, p| c.presets.push(p),
+        };
+        with(push, &["scenes/01-hero.tsx"], "left-out");
+        with(
+            push,
+            &["scenes/01-hero.tsx", "scenes/02-extra.tsx", "scenes/03-ghost.tsx"],
+            "invented",
+        );
+        with(
+            push,
+            &["scenes/01-hero.tsx", "scenes/02-extra.tsx", "scenes/02-extra.tsx"],
+            "duplicate",
+        );
+    }
+}
+
+/// The honest list: the reader hands back exactly the staged scene code, per item, in the manifest's order.
+#[test]
+fn inspect_lists_the_staged_scene_code() {
+    let source = TempDir::new("scene-list");
+    let mut contents = PackContents::default();
+    contents.projects.push(project_item(
+        "payload/projects/acme",
+        &["scenes/02-outro.tsx", "scenes/01-hero.tsx"],
+    ));
+    contents.presets.push(project_item(
+        "payload/presets/stat",
+        &["scenes/01-stat.tsx"],
+    ));
+    let fixture = Fixture::valid()
+        .entry(Entry::new("payload/projects/acme/scenes/01-hero.tsx", b"a"))
+        .entry(Entry::new("payload/projects/acme/scenes/02-outro.tsx", b"b"))
+        .entry(Entry::new("payload/projects/acme/scenes/01-hero.json", b"{}"))
+        .entry(Entry::new("payload/presets/stat/project.json", b"{}"))
+        .entry(Entry::new("payload/presets/stat/scenes/01-stat.tsx", b"c"))
+        .contents(contents);
+    let archive = fixture.build(source.path());
+    let inspection = inspect(&archive).expect("a matching list is accepted");
+    let listed: Vec<(ItemKind, &str, &str)> = inspection
+        .scene_sources
+        .iter()
+        .map(|s| (s.kind, s.slug.as_str(), s.file.as_str()))
+        .collect();
+    assert_eq!(
+        listed,
+        vec![
+            (ItemKind::Project, "acme", "scenes/02-outro.tsx"),
+            (ItemKind::Project, "acme", "scenes/01-hero.tsx"),
+            (ItemKind::Preset, "stat", "scenes/01-stat.tsx"),
+        ]
+    );
+}
+
+/// A declared `keyId` that is not the hash of the public key beside it is refused, however good the signature is.
+#[test]
+fn refuses_a_key_id_the_public_key_does_not_derive() {
+    let borrowed = publisher(IMPOSTER_SEED).key_id;
+    assert_refused(
+        "key-id",
+        Fixture::valid().key_id(&borrowed),
+        "keyIdMismatch",
+    );
+    assert_refused(
+        "key-id-garbage",
+        Fixture::valid().key_id("not-hex-at-all"),
+        "keyIdMismatch",
+    );
+}
+
+/// `manifest.sig` is read to a small bound, never to its end: a padded entry is not a signature.
+#[test]
+fn refuses_an_oversized_signature() {
+    assert_refused(
+        "sig-oversized",
+        Fixture::valid().signature(SigMode::Oversized),
+        "signatureInvalid",
+    );
+}
+
+/// A pre-staging read (the code viewer, the sidecar review) hands back only bytes that match the signed hash.
+#[test]
+fn a_pre_staging_read_refuses_tampered_bytes() {
+    let source = TempDir::new("verified-read");
+    let mut contents = PackContents::default();
+    contents
+        .projects
+        .push(project_item("payload/projects/acme", &["scenes/01-hero.tsx"]));
+    let fixture = Fixture::valid()
+        .entry(
+            Entry::new("payload/projects/acme/scenes/01-hero.tsx", b"fetch('https://evil')")
+                .tampered(b"export default defineScene({});\n"),
+        )
+        .entry(Entry::new("payload/projects/acme/scenes/01-hero.json", b"{}"))
+        .contents(contents);
+    let archive = fixture.build(source.path());
+    let inspection = inspect(&archive).expect("hashes are checked on read, not at inspect");
+    let error = super::read::read_entry(
+        &archive,
+        &inspection.manifest,
+        "payload/projects/acme/scenes/01-hero.tsx",
+        1024,
+    )
+    .expect_err("tampered bytes must not be shown as the signed code");
+    assert_eq!(error.variant(), "hashMismatch");
+    let clean = super::read::read_verified_entry(
+        &archive,
+        &inspection.manifest,
+        "payload/projects/acme/scenes/01-hero.json",
+        1024,
+    )
+    .expect("matching bytes read");
+    assert_eq!(clean, b"{}");
+    assert_eq!(
+        inspection.scene_sources[0].sidecar_path().as_deref(),
+        Some("payload/projects/acme/scenes/01-hero.json")
+    );
+    assert_eq!(
+        inspection.scene_sources[0].archive_path(),
+        "payload/projects/acme/scenes/01-hero.tsx"
+    );
+}
+
+/// An item's root must be the folder apply lands for its kind and slug, and no two items may claim one root: otherwise
+/// the trust and code screens describe one folder while apply moves another.
+#[test]
+fn refuses_an_item_root_that_is_not_its_slug() {
+    let mut contents = PackContents::default();
+    let mut other = project_item("payload/projects/other", &["scenes/01-hero.tsx"]);
+    other.base.slug = "acme".into();
+    contents.projects.push(other);
+    assert_refused(
+        "root-slug",
+        Fixture::valid()
+            .entry(Entry::new("payload/projects/other/scenes/01-hero.tsx", b"a"))
+            .contents(contents),
+        "itemRootMismatch",
+    );
+
+    let mut twice = PackContents::default();
+    twice.projects.push(project_item("payload/projects/acme", &[]));
+    twice.projects.push(project_item("payload/projects/acme", &[]));
+    assert_refused(
+        "root-twice",
+        Fixture::valid().contents(twice),
+        "itemRootMismatch",
+    );
+
+    let mut wrong_kind = PackContents::default();
+    wrong_kind.templates.push(project_item("payload/projects/acme", &[]));
+    assert_refused(
+        "root-kind",
+        Fixture::valid().contents(wrong_kind),
+        "itemRootMismatch",
+    );
+}
+
 // Happy path.
 
 /// One file per payload subtree, so the round trip covers every kind a pack can carry.
@@ -632,7 +903,7 @@ fn full_manifest(source: &Path) -> PackManifest {
                 root: "payload/projects/acme".into(),
                 manifest_version: 9,
                 scene_count: 1,
-                scene_files: vec!["01-hero.tsx".into()],
+                scene_files: vec!["scenes/01-hero.tsx".into()],
                 duration_ms: 4000,
                 formats: vec!["16:9".into()],
                 theme_id: "ws:acme-dark".into(),
@@ -644,7 +915,7 @@ fn full_manifest(source: &Path) -> PackManifest {
                 root: "payload/templates/acme-promo".into(),
                 manifest_version: 9,
                 scene_count: 1,
-                scene_files: vec!["01-hero.tsx".into()],
+                scene_files: vec!["scenes/01-hero.tsx".into()],
                 duration_ms: 4000,
                 formats: vec!["16:9".into()],
                 theme_id: "ws:acme-dark".into(),
@@ -656,7 +927,7 @@ fn full_manifest(source: &Path) -> PackManifest {
                 root: "payload/presets/stat-hero".into(),
                 manifest_version: 9,
                 scene_count: 1,
-                scene_files: vec!["01-stat.tsx".into()],
+                scene_files: vec!["scenes/01-stat.tsx".into()],
                 duration_ms: 4000,
                 formats: vec!["16:9".into()],
                 theme_id: "ws:acme-dark".into(),
@@ -773,22 +1044,39 @@ fn round_trip_write_inspect_stage() {
     assert!(staged
         .root
         .starts_with(workspace.root().join(STATE_DIR_NAME).join(STAGING_DIR)));
-    assert_eq!(progress.len(), SOURCE_TREE.len());
+    // The fixture's `.claude/settings.json` (an older pack's agent config) is dropped at staging and named, never written.
     assert_eq!(
-        progress.last().copied(),
-        Some((
-            inspection.manifest.totals.bytes,
-            inspection.manifest.totals.bytes
-        ))
+        staged.dropped,
+        vec!["payload/projects/acme/.claude/settings.json".to_owned()]
     );
+    let staged_count = SOURCE_TREE.len() - 1;
+    assert_eq!(progress.len(), staged_count);
+    let dropped_bytes: u64 = inspection
+        .manifest
+        .files
+        .iter()
+        .filter(|f| staged.dropped.contains(&f.path))
+        .map(|f| f.bytes)
+        .sum();
+    assert!(dropped_bytes > 0);
+    // Dropped entries leave the total too, so the bar reaches full.
+    let staged_bytes = inspection.manifest.totals.bytes - dropped_bytes;
+    assert_eq!(progress.last().copied(), Some((staged_bytes, staged_bytes)));
 
     // Byte-identical, and nothing the manifest did not list.
     for (relative, _) in SOURCE_TREE {
+        if relative.contains("/.claude/") {
+            assert!(!staged.root.join("payload").join(relative).exists());
+            continue;
+        }
         let original = std::fs::read(source.path().join(relative)).expect("source");
         let extracted = std::fs::read(staged.root.join("payload").join(relative)).expect("staged");
         assert_eq!(extracted, original, "{relative} differs");
     }
     for file in &inspection.manifest.files {
+        if staged.dropped.contains(&file.path) {
+            continue;
+        }
         assert_eq!(
             sha256_file(&staged.root.join(&file.path)).expect("hash"),
             file.sha256,
@@ -796,7 +1084,7 @@ fn round_trip_write_inspect_stage() {
             file.path
         );
     }
-    assert_eq!(snapshot(&staged.root).len(), SOURCE_TREE.len());
+    assert_eq!(snapshot(&staged.root).len(), staged_count);
 
     // The workspace itself is untouched: staging is the only thing `stage` may write.
     let mut outside = workspace.snapshot();
@@ -1423,6 +1711,25 @@ fn refuses_declared_total_over_the_limit() {
             .declared_sizes(u32::MAX - 1),
         "tooLarge",
     );
+}
+
+/// The signed total bounds what staging writes, so it is checked against the pack limit and the free disk before the staging folder exists.
+#[test]
+fn staging_refuses_a_total_the_disk_cannot_hold() {
+    let total = 300 * 1024 * 1024;
+    let need = total + crate::DISK_FLOOR;
+    assert!(check_staging_space(total, need).is_ok());
+    let short = check_staging_space(total, need - 1).unwrap_err();
+    assert_eq!(short.variant(), "notEnoughSpace");
+    assert!(
+        short
+            .user_message()
+            .contains("which has 2.3 GB. Free up at least 1 MB and try again"),
+        "{}",
+        short.user_message()
+    );
+    let over = check_staging_space(MAX_TOTAL_UNCOMPRESSED + 1, u64::MAX).unwrap_err();
+    assert_eq!(over.variant(), "tooLarge");
 }
 
 #[test]

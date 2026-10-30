@@ -1,15 +1,15 @@
 import { useState } from "react";
 import { useEscapeClose } from "./useEscapeClose";
 
-/** Setup-failure escape hatch, never seen on a healthy first run: the workspace is created silently at ~/Kookaburra Cut and only ever moved from Settings. This appears when that creation failed (unwritable home folder, full disk), so a blocked default is recoverable without a reinstall. (Default moved out of ~/Documents 2026-07-05: macOS TCC guards Documents and kept breaking headless gates and terminal-driven workflows.) */
+/** Setup-failure escape hatch, never seen on a healthy first run: the workspace is created silently at ~/Kookaburra Cut and only ever placed or moved from Settings, the one window that may pick a folder (behind a native confirmation). This appears when that creation failed (unwritable home folder, full disk), so a blocked default is recoverable without a reinstall. (Default moved out of ~/Documents 2026-07-05: macOS TCC guards Documents and kept breaking headless gates and terminal-driven workflows.) */
 export function SetupFailedDialog({
   error,
   onRetry,
-  onChoose,
+  onOpenSettings,
 }: {
   error: string;
   onRetry: () => Promise<void>;
-  onChoose: () => Promise<void>;
+  onOpenSettings: () => Promise<void>;
 }) {
   const [busy, setBusy] = useState(false);
   const [retryError, setRetryError] = useState<string | null>(null);
@@ -34,54 +34,15 @@ export function SetupFailedDialog({
         <h2>Kookaburra Cut could not set up your projects folder</h2>
         <p className="muted">
           It tried to create a <code>Kookaburra Cut</code> folder in your home folder. Try again, or
-          pick somewhere else to keep your projects.
+          choose another folder for your projects in Settings.
         </p>
         <p className="modal-error">{retryError ?? error}</p>
         <div className="modal-actions">
-          <button type="button" className="btn" onClick={run(onChoose)} disabled={busy}>
-            Choose folder…
+          <button type="button" className="btn" onClick={run(onOpenSettings)} disabled={busy}>
+            Open Settings…
           </button>
           <button type="button" className="btn primary" onClick={run(onRetry)} disabled={busy}>
             Try again
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/** F-001 trust gate: consent before a workspace project's scene code compiles. Escape declines, same as Don't open. */
-export function TrustGateModal({
-  name,
-  onAnswer,
-}: {
-  name: string;
-  onAnswer: (allowed: boolean) => void;
-}) {
-  useEscapeClose(() => onAnswer(false));
-  return (
-    <div
-      className="modal-overlay"
-      role="dialog"
-      aria-modal="true"
-      aria-label={`Allow project ${name}?`}
-    >
-      <div className="modal">
-        <h2>This project runs scene code on your Mac</h2>
-        <p className="muted">
-          Scenes in “{name}” are code that compiles and runs inside Kookaburra Cut, with the same
-          access as the app itself. Only allow projects you trust.
-        </p>
-        <p className="muted">
-          Changes made while it is open here, in the app or by Claude Code, stay trusted. If it
-          changes while closed, you will be asked again. Allowing is consent, not a sandbox.
-        </p>
-        <div className="modal-actions">
-          <button type="button" className="btn" onClick={() => onAnswer(false)}>
-            Don't open
-          </button>
-          <button type="button" className="btn primary" onClick={() => onAnswer(true)}>
-            Allow project
           </button>
         </div>
       </div>

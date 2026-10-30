@@ -1,5 +1,5 @@
 diff --git a/dist/troika-three-text.esm.js b/dist/troika-three-text.esm.js
-index 72c7a8b9e8911a669fd40b9a7d897a74197226ea..900f90d243d2188a122d3c3f85662cd6a1277bba 100644
+index 72c7a8b9e8911a669fd40b9a7d897a74197226ea..d7139c933f0acf8b14f3b369b6b974b254767948 100644
 --- a/dist/troika-three-text.esm.js
 +++ b/dist/troika-three-text.esm.js
 @@ -8,7 +8,7 @@ import { createDerivedMaterial, voidMainRegExp } from 'troika-three-utils';
@@ -73,6 +73,18 @@ index 72c7a8b9e8911a669fd40b9a7d897a74197226ea..900f90d243d2188a122d3c3f85662cd6
          });
        } else {
          allDone();
+@@ -2010,8 +2024,9 @@ function toAbsoluteURL(path) {
+ function safariPre15Workaround(atlas) {
+   // Use createImageBitmap support as a proxy for Safari<15, all other mainstream browsers
+   // have supported it for a long while so any false positives should be minimal.
+-  if (typeof createImageBitmap !== 'function') {
+-    console.info('Safari<15: applying SDF canvas workaround');
++  // Kookaburra Cut: `sdfAtlasReadback` opts a realm whose canvas-to-texture upload is not a raw copy (a worker's OffscreenCanvas) into the same readback path.
++  if (typeof createImageBitmap !== 'function' || CONFIG.sdfAtlasReadback) {
++    if (!CONFIG.sdfAtlasReadback) console.info('Safari<15: applying SDF canvas workaround');
+     const {sdfCanvas, sdfTexture} = atlas;
+     const {width, height} = sdfCanvas;
+     const gl = atlas.sdfCanvas.getContext('webgl');
 diff --git a/dist/troika-three-text.umd.js b/dist/troika-three-text.umd.js
 index 32c3dcbcd9b716fa61c62e783ed89a0d532e23f6..9e4ae46d6d422a83eb0842505f35dc5fa51843b4 100644
 --- a/dist/troika-three-text.umd.js

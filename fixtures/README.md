@@ -12,6 +12,7 @@ lists or loads one.
 | `transition-spike`, `transition-bg-spike` | Transition determinism fixtures with recorded verify baselines (`docs/determinism.md`) |
 | `compare-spike` | The before/after comparison fixture |
 | `image-flip-spike` | One image staged BOTH ways in one frame (device screen + plain stage plane), so an orientation regression is visible in a single `--action screenshot` |
+| `long-device-spike` | The leak acceptance film (about 60 s): eight scenes of handsets, the foldable opening and closing, a tablet, a laptop and a comparison, fourteen screen recordings (named copies of four pool loops, one git blob each). `pnpm kookaburra:run --action memory --project long-device-spike` must hold its frame rate and memory from the first frame to the last (docs/determinism.md, "Memory probe") |
 | `flash-spike` | The flash and kb export parity fixture (about 4 s): a title, a crossfade, one second of 100 ms full-frame cuts between two theme colours (fails the flash gate), then one second at 2 Hz (the control). Copied into a throwaway root for kb runs; never in `gate`, `gate:merge`, CI or release parity |
 
 Adding a background means adding its `preview-lab-bg-<id>` project here; a vitest

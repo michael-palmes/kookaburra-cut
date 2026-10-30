@@ -4,6 +4,7 @@ import json
 import unittest
 
 from kblib import music
+from kblib.beats import model
 
 from .helpers import FIXTURES
 
@@ -37,6 +38,17 @@ class MusicConformanceTests(unittest.TestCase):
         for r in self.vectors["rounding"]:
             with self.subTest(r["x"]):
                 self.assertEqual(music.round_ms(r["x"]), r["out"])
+
+    def test_sidecars_resolve_like_the_app(self) -> None:
+        for v in self.vectors["sidecars"]:
+            with self.subTest(v["id"]):
+                raw, want = v["raw"], v["expect"]
+                new, _changes, issues = model.refresh_doc(raw, v["music"], v["sceneStartMs"])
+                self.assertEqual(new is not raw, want["moved"])
+                fields = [{"where": s.where, "field": s.field, "at": s.node["at"], "ms": s.node.get(s.field)}
+                          for s in model.timed_slots(new) if isinstance(s.node.get("at"), str)]
+                self.assertEqual(fields, want["fields"])
+                self.assertEqual(issues, want["issues"])
 
 
 class MusicGrammarTests(unittest.TestCase):

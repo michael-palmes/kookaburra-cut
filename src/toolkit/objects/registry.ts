@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { fsUrl } from "../../engine/media";
+import { nativePort } from "../../engine/stageRealm";
 import avocadoDoc from "./builtin/avocado.json";
 import bitcoinCoinDoc from "./builtin/bitcoin-coin.json";
 import candlestickDoc from "./builtin/candlestick.json";
@@ -104,9 +105,15 @@ export async function resolveObjectAsset(
   if (isWorkspaceObjectId(id)) {
     const slug = id.slice(WORKSPACE_OBJECT_PREFIX.length);
     try {
-      const listing = await invoke<ObjectListing>("read_object", { slug });
-      const manifest = parseObjectManifest(JSON.parse(listing.json), id);
-      if (manifest) return workspaceAsset({ ...manifest, id }, listing.dir);
+      const read = await nativePort().readObject(slug);
+      const manifest = parseObjectManifest(JSON.parse(read.json), id);
+      if (manifest) {
+        return {
+          manifest: { ...manifest, id },
+          glbUrl: read.glbUrl,
+          ...(read.thumbnailUrl ? { thumbnailUrl: read.thumbnailUrl } : {}),
+        };
+      }
     } catch (e) {
       console.warn(`[objects] workspace object "${id}" failed to load:`, e);
     }

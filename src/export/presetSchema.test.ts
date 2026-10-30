@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { BUNDLED_EXPORT_PRESETS, findBundledPreset } from "./presetRegistry";
-import { parseExportPreset, resolvePresetToEncodeSpec } from "./presetSchema";
+import { encoderFieldProblem, parseExportPreset, resolvePresetToEncodeSpec } from "./presetSchema";
 
 /** A bundled preset the suite depends on; throws loudly rather than asserting non-null. */
 function bundled(id: string) {
@@ -111,5 +111,32 @@ describe("bundled export presets (the structure pin)", () => {
     expect(parseExportPreset(null, "t")).toBeUndefined();
     expect(parseExportPreset({ version: 99 }, "t")).toBeUndefined();
     expect(parseExportPreset({ version: 1, id: "x" }, "t")).toBeUndefined();
+  });
+
+  it("allow-lists profile, level and entropy, so a user preset cannot smuggle an ffmpeg option", () => {
+    const base = structuredClone(bundled("youtube")) as unknown as Record<string, unknown>;
+    const video = base.video as Record<string, unknown>;
+    expect(parseExportPreset(base, "t")).toBeDefined();
+    for (const [field, value] of [
+      ["profile", "high -x264opts evil"],
+      ["profile", "main10"],
+      ["level", "4.2;rm -rf"],
+      ["level", "7"],
+      ["entropy", "CABAC"],
+      ["entropy", 1],
+    ] as const) {
+      const doc = { ...base, video: { ...video, [field]: value } };
+      expect(parseExportPreset(doc, "t"), `${field}=${String(value)}`).toBeUndefined();
+    }
+    expect(
+      encoderFieldProblem({ codec: "libx264", profile: "high", level: "auto" }),
+    ).toBeUndefined();
+    expect(encoderFieldProblem({ codec: "prores_ks", profile: "4444xq" })).toBeUndefined();
+    expect(encoderFieldProblem({ codec: "hevc_videotoolbox", profile: "4444xq" })).toMatch(
+      /profile/,
+    );
+    for (const doc of BUNDLED_EXPORT_PRESETS) {
+      expect(encoderFieldProblem(doc.video), doc.id).toBeUndefined();
+    }
   });
 });

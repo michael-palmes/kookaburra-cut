@@ -5,7 +5,7 @@ export default defineScene({
   id: "quality-release-notes-02-fixed-list",
   durationMs: 4000,
   Scene() {
-    const title = useSceneText("title", "You reported these");
+    const title = useSceneText("title", "You told us");
     const subtitle = useSceneText("subtitle", "");
     return (
       <SceneStage>

@@ -345,6 +345,20 @@
   overflow-wrap: anywhere;
 }
 
+.packs-agent-note {
+  margin: 4px 0 0;
+  padding: 6px 10px;
+  max-height: 180px;
+  overflow: auto;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.3);
+  font-family: var(--font-mono, Menlo, monospace);
+  font-size: 12px;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .packs-pack-title {
   margin: 8px 0 2px;
   font-size: 20px;

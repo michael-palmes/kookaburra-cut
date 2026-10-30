@@ -103,11 +103,26 @@ app would refuse its own packs), so it rises only with a release; until then
 
 ## Signing and trust on first use
 
-Each install generates an Ed25519 keypair on first export, stored 0600 at
-`$APPDATA/pack-key/ed25519.key`. The manifest is signed detached over its exact
-stored bytes, never a re-serialisation. The public key travels in the manifest,
-and its `keyId` (`hex(sha256(pubkey)[0..8])`) is what the app remembers in
-`AppSettings.known_publishers`.
+Each install generates an Ed25519 keypair on first export and keeps it in the
+login Keychain as a generic password (service "Kookaburra Cut pack signing
+key", account the bundle identifier, never synchronised to iCloud). macOS may
+ask once whether the app may use it. Where the Keychain cannot answer (a
+background autorun, no login keychain, `KOOKABURRA_PACK_KEY_FILE=1` in a dev
+session) the key lives 0600 at `$APPDATA/pack-key/ed25519.key` instead, and a
+file left by an earlier build is moved into the Keychain once and deleted. A
+declined Keychain prompt stops the export rather than minting a second key on
+disk. The manifest is signed detached over its exact stored bytes, never a
+re-serialisation. The public key travels in the manifest with its `keyId`
+(`hex(sha256(pubkey)[0..8])`); the reader recomputes the id from the key and
+refuses a pack whose declared id differs (`KeyIdMismatch`), and
+`AppSettings.known_publishers` is keyed by the recomputed id, never the
+declared one (a store an older build keyed by the declared id is re-keyed once
+on first read, `publisher::migrate_known_publishers`).
+
+The publisher name on a pack is the saved profile's. With no profile, the first
+export asks for a name in the packs window and saves it; nothing is ever
+guessed from the macOS account. The `device` field is always `Mac`: a
+computer name is usually a person's name, and nobody chose to send it.
 
 What this proves, and what it does not. The import copy has to be honest about
 the second column:
@@ -116,20 +131,28 @@ the second column:
 |---|---|
 | The payload matches the manifest | Yes, per-file SHA-256 |
 | The manifest was not edited after signing | Yes, Ed25519 |
-| This pack came from the same install as a previous one | Yes, keyId |
+| This pack came from the same install as a previous one | Yes, the public key |
 | The publisher name is truthful | **No** |
 | The scene code is safe | **No** |
 
 So the trust screen renders a publisher name as self-declared, always, with the
-sentence saying nothing has checked it. Verdicts:
+sentence saying nothing has checked it, and the publisher verdict sits above
+the "Manifest signature valid" tick, never below it; the tick says files are
+checked against the signed list as they are unpacked, not that they have been.
+The store is keyed by the id the public key derives and cross-checked by name
+(trimmed, case-folded, whitespace collapsed). Verdicts:
 
-| Signature | keyId | Name | Shown |
+| Signature | Key | Name | Shown |
 |---|---|---|---|
-| valid | unknown | any | First time from this publisher |
+| valid | unknown | unknown | First time from this publisher |
+| valid | unknown | known under another key | Warning: a publisher you know as "<stored>" is using a different key |
 | valid | known | matches | Same publisher as "<last pack>" |
 | valid | known | differs | Warning: this key previously said "<stored>" |
 | invalid | any | any | Refused |
 | absent | any | any | Refused |
+
+Accepting a changed-key pack records the new key beside the old one, so both
+read as known afterwards; Settings can forget either.
 
 Unsigned is refused rather than softened: every producer is our own app and
 always has a key, so unsigned means hand-assembled.
@@ -143,14 +166,49 @@ project still hits the existing F-001 gate the first time it is opened
 fingerprint and an imported project has neither. There is a test asserting an
 imported project comes out untrusted. Templates and presets carry scene code the
 same way, and the project a user creates from one is a new project at a new path,
-so it is untrusted for the same reason.
+so it is untrusted for the same reason. A project, template or preset a pack
+lands over an existing slug (added or replaced) loses that slug's stored grant
+and its place in this session's allow set (`workspace::forget_project_trust`,
+called from `apply_import`): the folder now holds a publisher's content, so the
+next open asks again rather than re-stamping. The session allow goes first, so
+a failed settings write still asks. A keep-both lands under a fresh slug no
+grant names.
 
-Terminal scene content gets its own review: after apply, the summary screen
-reads the landed sidecars (never the author's manifest, which is
-self-declared) and lists every terminal block that pre-types a command or sets
-a custom start path (`src/packs/terminalReview.ts`). Nothing runs on
-its own either way: pre-typed commands are sanitised to a single line and only
-run on the presenter's Enter (`docs/scene-terminal.md`).
+What the trust screen counts and shows as scene code is the set the reader
+built from the signed `files` list (`PackInspection::scene_sources`: every
+`scenes/**/*.tsx` under each project, template or preset root), and the pack is
+refused when an item's `sceneFiles` is not exactly that set
+(`SceneFilesMismatch`). The code viewer lists that set and reads each file
+through `read_verified_entry`, which refuses bytes that do not match the signed
+hash, so a person never reads code the author described but did not pack, or
+packed under a different hash than they signed.
+
+Agent configuration never lands. `.claude/**` entries (older packs shipped
+`settings.json`, which carries hooks and permission rules) are dropped at
+staging, listed as a note on the summary, and the app stamps its own settings
+when the project opens (`docs/agent-kit.md`, "Stamping"). A project, template
+or preset's `CLAUDE.md` travels, since authors write real notes there, but
+Claude Code would read it as instructions, so apply swaps it for the app's
+default (named after the project) and saves the author's text as `NOTES.md`
+(appended under a heading when the pack also carries one); a file that still
+matches one of the app's own defaults is replaced quietly. The summary shows
+each saved text under "The pack's author left notes for Claude"
+(`ImportOutcome.agentNotes`, the first 4 000 characters), so the person sees
+what the author wanted the agent told and moves what they agree with into
+`CLAUDE.md` themselves. The stamped RULES.md tells the agent `NOTES.md` is
+notes, not rules.
+
+Terminal and Website scene content get their review before Continue, on the
+trust screen: `read_pack_scene_docs` reads every scene sidecar beside a staged
+scene source straight from the pack, checks each against its signed hash (one
+mismatch refuses the pack) and hands the parsed documents to
+`src/packs/packReview.ts`, which lists every terminal block that pre-types a
+command or sets a custom start path (`terminalReview.ts`) and every requested
+Website origin (`websiteReview.ts`). Never the author's manifest, which is
+self-declared, and never after the files land. Nothing runs on its own either
+way: pre-typed commands are sanitised to a single line and only run on the
+presenter's Enter (`docs/scene-terminal.md`), and no origin is approved by an
+import (`docs/scene-website.md`).
 
 ## Extraction checklist
 
@@ -158,31 +216,61 @@ Implemented in `pack::read` and `pack::paths`, one test per item in
 `pack::tests`. Limits live in `pack::limits`.
 
 1. Read the central directory only. Refuse over `MAX_ENTRIES` or a declared
-   total over `MAX_TOTAL_UNCOMPRESSED`, before inflating anything.
-2. Inflate `manifest.json` capped at `MAX_MANIFEST_BYTES`. Refuse a wrong
+   total over `MAX_TOTAL_UNCOMPRESSED`, before inflating anything, then any
+   entry whose header already breaks its kind's ceiling (`limits::kind_cap`:
+   fonts 64 MB, 3D models 512 MB, images 256 MB, audio 512 MB, text 16 MB,
+   video 4 GB), named by kind in the refusal.
+2. Inflate `manifest.json` capped at `MAX_MANIFEST_BYTES`, and `manifest.sig`
+   capped at `MAX_SIGNATURE_BYTES` (256; a signature is 64 bytes, so a longer
+   entry is refused as invalid rather than read to its end). Refuse a wrong
    `format`, a `formatVersion` above ours, or a `minAppVersion` above ours.
-3. Validate every path in `files` **and every path in `contents`**. The second
+3. Recompute the publisher `keyId` from the public key beside it and refuse a
+   declared id that differs. The trust store is keyed by the recomputed id.
+4. Validate every path in `files` **and every path in `contents`**. The second
    half matters because apply joins contents paths onto the staging root, and
-   `Path::join` with an absolute path discards the base.
-4. Reject absolute paths, `.` and `..` components, backslashes, drive letters,
+   `Path::join` with an absolute path discards the base. Then, for each
+   project-shaped item, require its `root` to be `payload/<kind>/<slug>` (the
+   folder apply lands) and unique (`ItemRootMismatch`), build its staged scene
+   set (`scenes/**/*.tsx` under that root in `files`) and refuse the pack when
+   its `sceneFiles` is not exactly that set (`SceneFilesMismatch`); the trust
+   and code screens list the staged set, not the manifest's.
+5. Reject absolute paths, `.` and `..` components, backslashes, drive letters,
    surrounding whitespace, control characters, bidi overrides, depth over
    `MAX_PATH_DEPTH`, length over `MAX_PATH_BYTES`, anything not under
    `payload/`.
-5. Reject any entry whose mode marks a symlink or a non-regular file. Never
+6. Reject any entry whose mode marks a symlink or a non-regular file. Never
    create a symlink. This is the CVE-2025-29787 shape: entry A a symlink, entry
    B underneath it.
-6. Reject an entry not in `files`, and a `files` entry with no zip entry.
-7. Per-subtree extension allowlist. `.claude/` is the only dotted directory
-   accepted; `.git/` is refused.
-8. Skip `__MACOSX/`, `.DS_Store`, `._*` rather than refusing.
-9. Extract into a fresh `<root>/.kookaburra/import-staging/<random>/`, created
-   with `create_dir` so it can never be an existing directory.
-10. Count inflated bytes as they stream. Headers lie.
-11. Recompute SHA-256 for every staged file and compare against `files`. One
+7. Reject an entry not in `files`, and a `files` entry with no zip entry.
+8. Per-subtree extension allowlist. No dotted directory is accepted: `.claude/`
+   entries are dropped before validation and reported (`paths::is_agent_config`,
+   `StagedPack::dropped`), `.git/` and the rest are refused.
+9. Skip `__MACOSX/`, `.DS_Store`, `._*` rather than refusing.
+10. Anything read from the pack before staging (a scene source for the code
+    viewer, a scene sidecar for the terminal and Website review) goes through
+    `read_verified_entry`: listed in `files`, capped, and refused when its bytes
+    do not hash to the signed value.
+11. Sum the signed sizes in `files` (agent config excluded). Each entry streams
+    capped at its signed size, so that total bounds what staging writes: refuse
+    it over `MAX_TOTAL_UNCOMPRESSED`, or when it would take the volume under the
+    app's 2 GB disk floor (`check_staging_space`, `NotEnoughSpace`), before the
+    staging folder exists.
+12. Extract into a fresh `<root>/.kookaburra/import-staging/<random>/`, created
+    with `create_dir` so it can never be an existing directory.
+13. Count inflated bytes as they stream, each entry against its kind's ceiling
+    as well as the total. Headers lie.
+14. Recompute SHA-256 for every staged file and compare against `files`. One
     mismatch aborts the whole import.
-12. Only then resolve and move. `StagedPack` implements `Drop`, so every failure
+15. Only then resolve and move. `StagedPack` implements `Drop`, so every failure
     path removes the tree.
-13. Force `0644` on files and `0755` on directories, whatever the archive said.
+16. Force `0644` on files and `0755` on directories, whatever the archive said:
+    imported items are the user's documents, unlike the app's own caches.
+
+An `object.json` `glb` or `thumbnail` is validated like an asset rel on both
+sides (`objects::validate_object_rel`, `isObjectRel`): relative, at most one
+folder deep, no `..`, no dot folder. Export drops an offending path with a
+warning rather than carrying it; a manifest naming one is refused at import by
+the path checks above.
 
 ## Conflicts
 
@@ -195,7 +283,10 @@ Implemented in `pack::read` and `pack::paths`, one test per item in
 | `unknown-age` | differs, no usable local mtime | keep mine |
 
 Templates, presets and brands take the table unchanged: they are folder items
-keyed by slug, exactly like projects.
+keyed by slug, exactly like projects. For a project, template or preset,
+`import` and `replace` both drop the slug's F-001 grant and this session's
+allow, so the next open asks (`keep both` lands under a fresh slug no grant
+names, and `skip` leaves the incumbent and its grant alone).
 
 Two per-kind overrides:
 
@@ -253,8 +344,10 @@ Excluded, because it is generated (`pack::scan::is_excluded`, extending
 folders, so the same list applies to them; the unused-file review is not offered
 for either, because a template or preset carries only what it was saved with.
 
-Included despite looking generated: `CLAUDE.md` and `.claude/settings.json`,
-because both are only written when missing and users edit them.
+Included despite looking generated: `CLAUDE.md`, because authors write notes
+there; import swaps it for the app's default and keeps the text as `NOTES.md`
+("Pack trust is not code trust"). `.claude/settings.json` is app-owned and
+never travels.
 
 Reviewed rather than dropped: unreferenced assets and `*-edited.mp4` flattened
 renders appear in the picker with their size and a one-click drop. Nothing is

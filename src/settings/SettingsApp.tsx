@@ -17,8 +17,15 @@ import {
   setClipCacheCap,
   sidecarVersions,
 } from "../engine/appCache";
-import { claudeAppInstalled, openClaudeDownload, setClaudePreferences } from "../engine/claudeApp";
+import {
+  claudeAppInstalled,
+  openClaudeDownload,
+  openPrivacyPage,
+  setClaudePreferences,
+} from "../engine/claudeApp";
+import { useManagedPolicy } from "../engine/managed";
 import { setConformNewVideosSetting } from "../engine/media";
+import { notePickedFolder } from "../engine/pickedFolders";
 import { revealApp } from "../engine/reveal";
 import {
   clearWebsiteData,
@@ -29,6 +36,7 @@ import { formatUpdateStatus, useUpdateCheck } from "../engine/updates";
 import {
   defaultWorkspaceRoot,
   getSettings,
+  initWorkspace,
   type LagWarningMode,
   moveWorkspace,
   setExportToDownloadsSetting,
@@ -38,6 +46,7 @@ import {
   userHomeDir,
 } from "../engine/workspace";
 import { ClaudeSpark, TerminalGlyph } from "../ui/ClaudeLauncher";
+import { ManagedLock } from "../ui/ManagedLock";
 import { UpdateAvailableDialog } from "../ui/updateDialogs";
 import { useNativeTextUndo } from "../ui/useNativeTextUndo";
 import { PublisherPane } from "./PublisherPane";
@@ -96,6 +105,20 @@ function DownloadIcon() {
         stroke="currentColor"
         strokeWidth="1.5"
         strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function PrivacyIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true">
+      <path
+        d="M8 1.5 3 3.5v4c0 3 2.2 5.4 5 6.5 2.8-1.1 5-3.5 5-6.5v-4L8 1.5Z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
         strokeLinejoin="round"
       />
     </svg>
@@ -287,15 +310,21 @@ export function SettingsApp() {
     [refreshStats],
   );
 
-  // A move can take a while on a big workspace across volumes, so the whole row goes busy rather than one button.
-  const relocate = useCallback((parent: string | null) => {
-    setBusy("workspace");
-    setError(null);
-    moveWorkspace(parent)
-      .then(setWorkspace)
-      .catch((e) => setError(String(e)))
-      .finally(() => setBusy(null));
-  }, []);
+  // A move can take a while on a big workspace across volumes, so the whole row goes busy rather than one button. With no workspace yet (the default location failed at first run) the pick creates one instead; Rust confirms either natively, and a cancelled sheet answers null.
+  const relocate = useCallback(
+    (parent: string | null) => {
+      setBusy("workspace");
+      setError(null);
+      const change = workspace || parent === null ? moveWorkspace(parent) : initWorkspace(parent);
+      change
+        .then((root) => {
+          if (root) setWorkspace(root);
+        })
+        .catch((e) => setError(String(e)))
+        .finally(() => setBusy(null));
+    },
+    [workspace],
+  );
 
   const chooseLocation = useCallback(async () => {
     try {
@@ -304,7 +333,10 @@ export function SettingsApp() {
         multiple: false,
         title: "Choose where Kookaburra Cut keeps your projects",
       });
-      if (typeof picked === "string") relocate(picked);
+      if (typeof picked === "string") {
+        void notePickedFolder(picked);
+        relocate(picked);
+      }
     } catch (e) {
       setError(String(e));
     }
@@ -340,6 +372,10 @@ export function SettingsApp() {
 
   // Manual checks only in this window; the launch check belongs to the main window.
   const updates = useUpdateCheck({ autoCheck: false });
+  // Rows a configuration profile governs show the lock in place of their control (docs/mdm.md).
+  const managed = useManagedPolicy();
+  const workspaceLocked = managed?.workspaceRootLocked ?? false;
+  const claudeLocked = managed?.disableClaude ?? false;
 
   return (
     <div className="settings-window">
@@ -367,25 +403,35 @@ export function SettingsApp() {
                 Show in Finder
               </button>
             )}
-            <button
-              type="button"
-              className="btn"
-              disabled={busy !== null || !workspace}
-              onClick={() => void chooseLocation()}
-              title="Moves your projects, themes and fonts to the folder you pick"
-            >
-              Change location…
-            </button>
-            {workspace && defaultRoot && workspace !== defaultRoot && (
-              <button
-                type="button"
-                className="btn"
-                disabled={busy !== null}
-                onClick={() => relocate(null)}
-                title={`Moves everything back to ${shortenPath(defaultRoot, home)}`}
-              >
-                Reset to default
-              </button>
+            {workspaceLocked ? (
+              <ManagedLock detail="A configuration profile sets where projects are kept (WorkspaceRoot)." />
+            ) : (
+              <>
+                <button
+                  type="button"
+                  className="btn"
+                  disabled={busy !== null}
+                  onClick={() => void chooseLocation()}
+                  title={
+                    workspace
+                      ? "Moves your projects, themes and fonts to the folder you pick"
+                      : "Keeps your projects in the folder you pick"
+                  }
+                >
+                  {workspace ? "Change location…" : "Choose location…"}
+                </button>
+                {workspace && defaultRoot && workspace !== defaultRoot && (
+                  <button
+                    type="button"
+                    className="btn"
+                    disabled={busy !== null}
+                    onClick={() => relocate(null)}
+                    title={`Moves everything back to ${shortenPath(defaultRoot, home)}`}
+                  >
+                    Reset to default
+                  </button>
+                )}
+              </>
             )}
           </div>
         </div>
@@ -401,51 +447,61 @@ export function SettingsApp() {
               option.
             </span>
           </div>
-          <fieldset className="settings-segmented" aria-label="Edit with">
-            <button
-              type="button"
-              aria-pressed={claudeBuiltin === false}
-              className={claudeBuiltin === false ? "active" : undefined}
-              disabled={claudeBuiltin === null}
-              onClick={() => changeClaudeMode(false)}
-            >
-              <span className="titlebar-claude-mark">
-                <ClaudeSpark size={13} />
-              </span>
-              Claude app
-            </button>
-            <button
-              type="button"
-              aria-pressed={claudeBuiltin === true}
-              className={claudeBuiltin === true ? "active" : undefined}
-              disabled={claudeBuiltin === null}
-              onClick={() => changeClaudeMode(true)}
-            >
-              <TerminalGlyph size={13} />
-              Built-in terminal
-            </button>
-          </fieldset>
+          {claudeLocked ? (
+            <ManagedLock detail="A configuration profile turns Claude off (DisableClaude)." />
+          ) : (
+            <fieldset className="settings-segmented" aria-label="Edit with">
+              <button
+                type="button"
+                aria-pressed={claudeBuiltin === false}
+                className={claudeBuiltin === false ? "active" : undefined}
+                disabled={claudeBuiltin === null}
+                onClick={() => changeClaudeMode(false)}
+              >
+                <span className="titlebar-claude-mark">
+                  <ClaudeSpark size={13} />
+                </span>
+                Claude app
+              </button>
+              <button
+                type="button"
+                aria-pressed={claudeBuiltin === true}
+                className={claudeBuiltin === true ? "active" : undefined}
+                disabled={claudeBuiltin === null}
+                onClick={() => changeClaudeMode(true)}
+              >
+                <TerminalGlyph size={13} />
+                Built-in terminal
+              </button>
+            </fieldset>
+          )}
         </div>
         <div className="settings-row">
           <div className="settings-row-text">
             <span className="settings-row-title">Claude app</span>
             <span className="muted settings-row-detail">
-              {claudeInstalled === null
-                ? "Checking…"
-                : claudeInstalled
-                  ? "Installed"
-                  : "Not found. Edit with Claude opens projects in it."}
+              {claudeLocked
+                ? "Turned off by your organisation."
+                : claudeInstalled === null
+                  ? "Checking…"
+                  : claudeInstalled
+                    ? "Installed"
+                    : "Not found. Edit with Claude opens projects in it."}
             </span>
           </div>
-          {claudeInstalled === false && (
-            <button
-              type="button"
-              className="btn"
-              onClick={() => void openClaudeDownload().catch((e) => setError(String(e)))}
-            >
-              <DownloadIcon />
-              Get Claude
-            </button>
+          {claudeLocked ? (
+            <ManagedLock />
+          ) : (
+            claudeInstalled === false && (
+              <button
+                type="button"
+                className="btn"
+                onClick={() => void openClaudeDownload().catch((e) => setError(String(e)))}
+              >
+                <DownloadIcon />
+                Get Claude
+              </button>
+            )
           )}
         </div>
         <div className="settings-row">
@@ -464,13 +520,17 @@ export function SettingsApp() {
               titlebar or with ⌥⌘E.
             </span>
           </div>
-          <input
-            type="checkbox"
-            aria-label="Show on a new project's first open"
-            checked={claudeFirstOpen ?? true}
-            disabled={claudeFirstOpen === null || claudeBuiltin === true}
-            onChange={(e) => toggleClaudeFirstOpen(e.target.checked)}
-          />
+          {claudeLocked ? (
+            <ManagedLock />
+          ) : (
+            <input
+              type="checkbox"
+              aria-label="Show on a new project's first open"
+              checked={claudeFirstOpen ?? true}
+              disabled={claudeFirstOpen === null || claudeBuiltin === true}
+              onChange={(e) => toggleClaudeFirstOpen(e.target.checked)}
+            />
+          )}
         </div>
       </section>
 
@@ -512,7 +572,7 @@ export function SettingsApp() {
             <span className="muted settings-row-detail">
               {clipsClearDeferred
                 ? "Clears once the terminal run using it finishes."
-                : "Video frames, extracted as scenes need them. Past the limit the least recently used go first; clips in an open project or a running export stay."}
+                : "Decoded frames of your footage, extracted as scenes need them and readable only by your account. Past the limit the least recently used go first; clips in an open project or a running export stay, and a deleted project's go with it."}
             </span>
           </div>
           <div className="settings-row-actions">
@@ -679,37 +739,47 @@ export function SettingsApp() {
               Asks GitHub whether a newer release exists. No identifiers, nothing about your usage.
             </span>
           </div>
-          <input
-            type="checkbox"
-            aria-label="Check for updates on launch"
-            checked={updates.consent === "on"}
-            disabled={updates.consent === "loading"}
-            onChange={(e) => void updates.toggleConsent(e.target.checked)}
-          />
+          {updates.managed ? (
+            <ManagedLock detail="A configuration profile turns update checks off (DisableUpdateCheck)." />
+          ) : (
+            <input
+              type="checkbox"
+              aria-label="Check for updates on launch"
+              checked={updates.consent === "on"}
+              disabled={updates.consent === "loading"}
+              onChange={(e) => void updates.toggleConsent(e.target.checked)}
+            />
+          )}
         </div>
         <div className="settings-row">
           <div className="settings-row-text">
             <span className="settings-row-title">Status</span>
             <span className="muted settings-row-detail">
-              {formatUpdateStatus({
-                phase: updates.phase,
-                devBuild: updates.devBuild,
-                error: updates.error,
-                availableVersion: updates.available?.version ?? null,
-                lastCheckedMs: updates.lastCheckedMs,
-                nowMs: Date.now(),
-              })}
+              {updates.managed
+                ? "Turned off by your organisation."
+                : formatUpdateStatus({
+                    phase: updates.phase,
+                    devBuild: updates.devBuild,
+                    error: updates.error,
+                    availableVersion: updates.available?.version ?? null,
+                    lastCheckedMs: updates.lastCheckedMs,
+                    nowMs: Date.now(),
+                  })}
             </span>
           </div>
-          <button
-            type="button"
-            className="btn"
-            disabled={updates.phase !== "idle"}
-            onClick={() => void updates.runCheck()}
-            title="A one-off check; works without the launch toggle and stores nothing when it's off"
-          >
-            {updates.phase === "checking" ? "Checking…" : "Check now"}
-          </button>
+          {updates.managed ? (
+            <ManagedLock />
+          ) : (
+            <button
+              type="button"
+              className="btn"
+              disabled={updates.phase !== "idle"}
+              onClick={() => void updates.runCheck()}
+              title="A one-off check; works without the launch toggle and stores nothing when it's off"
+            >
+              {updates.phase === "checking" ? "Checking…" : "Check now"}
+            </button>
+          )}
         </div>
       </section>
 
@@ -717,6 +787,22 @@ export function SettingsApp() {
 
       <section className="settings-section">
         <h2>About</h2>
+        <div className="settings-row">
+          <div className="settings-row-text">
+            <span className="settings-row-title">Privacy</span>
+            <span className="muted settings-row-detail">
+              Nothing leaves your Mac unless you start it: an update check, Claude, a live website.
+            </span>
+          </div>
+          <button
+            type="button"
+            className="btn"
+            onClick={() => void openPrivacyPage().catch((e) => setError(String(e)))}
+          >
+            <PrivacyIcon />
+            What leaves your Mac
+          </button>
+        </div>
         <div className="settings-row">
           <div className="settings-row-text">
             <span className="settings-row-title">ffmpeg</span>
@@ -743,7 +829,6 @@ export function SettingsApp() {
       {updates.offerVisible && updates.available && (
         <UpdateAvailableDialog
           version={updates.available.version}
-          notes={updates.available.notes}
           installing={updates.phase === "installing"}
           installError={updates.installError}
           onLater={updates.dismissOffer}

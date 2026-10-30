@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createInlineStage } from "../stage/inlineStage";
 import { awaitEmojiRastersIdle } from "../toolkit/text/emojiRaster";
 import { awaitVideoFramesReady } from "./clips";
 import { useClockStore } from "./clock";
@@ -17,6 +18,7 @@ import {
   captureSnapshot,
   withBorrowedClock,
 } from "./snapshots";
+import { setStage } from "./stageHandle";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("./exportBridge", () => ({
@@ -29,7 +31,10 @@ vi.mock("./exportBridge", () => ({
 }));
 vi.mock("./exporter", () => ({ awaitTextSync: vi.fn(async () => {}) }));
 vi.mock("./clips", () => ({ awaitVideoFramesReady: vi.fn(async () => {}) }));
-vi.mock("../toolkit/text/emojiRaster", () => ({ awaitEmojiRastersIdle: vi.fn(async () => {}) }));
+vi.mock("../toolkit/text/emojiRaster", async (original) => ({
+  ...(await original<typeof import("../toolkit/text/emojiRaster")>()),
+  awaitEmojiRastersIdle: vi.fn(async () => {}),
+}));
 vi.mock("./gizmoRegistry", () => ({ hideGizmoHandles: vi.fn(() => () => {}) }));
 vi.mock("./project", () => ({
   isWorkspaceBackedProjectId: (id: string) => /^(ws|ws-template|ws-preset):/.test(id),
@@ -40,6 +45,7 @@ vi.mock("./project", () => ({
 }));
 
 beforeEach(() => {
+  setStage(createInlineStage());
   vi.clearAllMocks();
   vi.stubGlobal("window", globalThis);
   setExporting(false);
@@ -49,6 +55,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  setStage(null);
   vi.useRealTimers();
   vi.unstubAllGlobals();
   setExporting(false);

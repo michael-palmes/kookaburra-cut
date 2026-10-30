@@ -1,6 +1,9 @@
 //! Kookaburra Cut native shell: registers Tauri plugins and the deterministic-export bridge; the exporter streams raw RGBA frames from the webview to a bundled ffmpeg sidecar, whose argv is built HERE from a typed `ExportOptions` (the frontend never controls the command line) and spawned via the shell plugin's Rust API, not webview IPC, so no `shell:allow-execute` capability is needed.
 
+#[cfg(test)]
+mod acl;
 mod asset_meta;
+mod asset_reach;
 mod brands;
 mod bridge;
 mod bridge_export;
@@ -8,6 +11,7 @@ mod bridge_health;
 mod capture_service;
 mod claude_app;
 mod claude_update;
+mod clean_text;
 pub mod cli;
 pub mod cli_check;
 pub mod cli_media;
@@ -20,23 +24,29 @@ mod conform_av;
 mod edit;
 mod edit_masks;
 mod encode;
+mod export_health;
 mod export_presets;
 mod flashes;
 mod fonts;
 mod global_screenshots;
 mod gradients;
+mod history;
 mod kit;
 mod library;
 mod library_previews;
 mod live_edits;
 mod loudness;
+mod managed;
 mod media;
 mod mp4box;
+mod native_alert;
 mod objects;
 mod pack;
+mod png_decode;
 mod packs_win;
 mod present;
 mod preset_posters;
+mod privacy;
 mod pty;
 mod render_win;
 mod scene_doc;
@@ -63,7 +73,6 @@ use sha2::{Digest, Sha256};
 use tauri::ipc::Channel;
 use tauri::{AppHandle, Manager, State};
 use tauri_plugin_shell::process::{CommandChild, CommandEvent};
-use tauri_plugin_shell::ShellExt;
 use tokio::sync::oneshot;
 
 use encode::{
@@ -288,14 +297,19 @@ struct ExportRun {
     /// Where ffmpeg writes until `finish_export` renames it onto `output`, so a cancelled or failed run never leaves a broken file or clobbers the previous export.
     partial: PathBuf,
     mezz_dir: Option<PathBuf>,
+    /// The soundtrack copy ffmpeg reads, so an edit to the music mid-export can't reach the film.
+    audio_snapshot: Option<PathBuf>,
 }
 
 impl ExportRun {
-    /// Removes the partial file (if still there) and the two-pass mezzanine.
+    /// Removes the partial file (if still there), the two-pass mezzanine and the soundtrack copy.
     fn clean_up(&self) {
         let _ = std::fs::remove_file(&self.partial);
         if let Some(dir) = &self.mezz_dir {
             let _ = std::fs::remove_dir_all(dir);
+        }
+        if let Some(audio) = &self.audio_snapshot {
+            let _ = std::fs::remove_file(audio);
         }
     }
 }
@@ -317,8 +331,13 @@ impl ExportState {
         self.run.lock().map(|guard| guard.is_some()).unwrap_or(true) || self.stills.busy()
     }
 
+    /// The ffmpeg working for the run, for the memory sampler.
+    pub(crate) fn ffmpeg_pid(&self) -> Option<u32> {
+        self.run.lock().ok()?.as_ref()?.pid
+    }
+
     /// Stops the run in whichever phase it is in; a no-op when idle (the autorun boot latch relies on that).
-    fn cancel(&self) -> Result<(), String> {
+    pub(crate) fn cancel(&self) -> Result<(), String> {
         let streaming = self
             .active
             .lock()
@@ -423,8 +442,9 @@ fn start_export(
     app: AppHandle,
     state: State<'_, ExportState>,
     settings: State<'_, workspace::SettingsState>,
-    options: ExportOptions,
+    mut options: ExportOptions,
     on_progress: Channel<Progress>,
+    scenes: Option<Vec<export_health::SceneSpan>>,
 ) -> Result<String, String> {
     if state
         .run
@@ -440,28 +460,45 @@ fn start_export(
         Some(spec) => spec.codec.container_ext(),
         None => options.codec.container_ext(),
     };
+    let target = |destination| ExportTarget {
+        project_id: &options.project_id,
+        project_slug: options.project_slug.as_deref(),
+        aspect: &options.aspect,
+        output_suffix: options.output_suffix.as_deref(),
+        destination,
+    };
     let output = resolve_export_output(
         &app,
         &settings,
-        &ExportTarget {
-            project_id: &options.project_id,
-            project_slug: options.project_slug.as_deref(),
-            aspect: &options.aspect,
-            output_suffix: options.output_suffix.as_deref(),
-            destination: options.destination.as_deref(),
-        },
+        &target(options.destination.as_deref()),
         ext,
         false,
     )?
     .path;
+    // A failure report lands in the project's own exports, even when the film goes to Downloads.
+    let health = export_health::health_path(
+        &options
+            .destination
+            .as_ref()
+            .and_then(|_| resolve_export_output(&app, &settings, &target(None), ext, false).ok())
+            .map_or_else(|| output.clone(), |canonical| canonical.path),
+    );
 
     // Validate the soundtrack up front so a bad path fails the export loudly, not as a cryptic ffmpeg exit late in the run.
     if let Some(audio) = &options.audio {
-        let p = std::path::Path::new(&audio.file);
-        if !p.is_absolute() || !p.is_file() {
-            return Err(format!("audio file not found: {}", audio.file));
-        }
+        media::confine_soundtrack(&app, &settings, &audio.file)?;
     }
+    if let Some(spec) = &options.encode {
+        spec.validate()?;
+    }
+    let audio_snapshot = match options.audio.as_mut() {
+        Some(audio) => {
+            let copy = snapshot_audio(&app, &audio.file)?;
+            audio.file = copy.to_string_lossy().into_owned();
+            Some(copy)
+        }
+        None => None,
+    };
 
     let partial = partial_output_path(&output);
     let _ = std::fs::remove_file(&partial);
@@ -483,7 +520,7 @@ fn start_export(
                 .join("export-mezz");
             // Sweep leftovers from any crashed run, then guard the disk with the raw-frame ceiling (FFV1 stays under raw) plus a 2 GB margin; this is the one check that BLOCKS, since running out mid-encode corrupts the export.
             let _ = std::fs::remove_dir_all(&mezz_dir);
-            std::fs::create_dir_all(&mezz_dir).map_err(|e| e.to_string())?;
+            privacy::private_dir(&mezz_dir).map_err(|e| e.to_string())?;
             let (w, h) = spec.out_dims(options.width, options.height);
             let frames = spec.out_frames(options.total_frames, options.fps) as u64;
             let bytes_per_frame = (w as u64) * (h as u64) * if spec.ten_bit { 3 } else { 2 };
@@ -512,10 +549,7 @@ fn start_export(
     };
 
     // Tauri places the sidecar next to the executable under its basename (the `bin/` prefix from `externalBin` and the target-triple suffix are both stripped), so the runtime name is just "ffmpeg".
-    let (mut rx, child) = app
-        .shell()
-        .sidecar("ffmpeg")
-        .map_err(|e| format!("ffmpeg sidecar not found: {e}"))?
+    let (mut rx, child) = tools::sidecar(&app, "ffmpeg")?
         .args(args)
         .spawn()
         .map_err(|e| format!("failed to start ffmpeg sidecar: {e}"))?;
@@ -551,6 +585,7 @@ fn start_export(
         output: output.clone(),
         partial,
         mezz_dir: run_mezz_dir,
+        audio_snapshot,
     });
     *state.active.lock().map_err(|_| "export state poisoned")? = Some(ActiveExport {
         child,
@@ -569,8 +604,49 @@ fn start_export(
         )),
     });
     bridge_export::native_job(Some(("render", 0, options.total_frames)));
+    export_health::begin(export_health::RunTrace::new(
+        options.fps,
+        options.total_frames,
+        options.encode.as_ref().is_some_and(|spec| spec.poster_frame),
+        scenes.unwrap_or_default(),
+        output.clone(),
+        health,
+        export_health::now_ms(),
+    ));
 
     Ok(output.to_string_lossy().into_owned())
+}
+
+/// ffmpeg reads the soundtrack from a copy taken at the start, so music saved mid-export can't change the film; copies left by a crashed instance are swept.
+fn snapshot_audio(app: &AppHandle, file: &str) -> Result<PathBuf, String> {
+    let dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| e.to_string())?
+        .join("cache")
+        .join("export-audio");
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let me = std::process::id();
+    for entry in std::fs::read_dir(&dir).into_iter().flatten().flatten() {
+        let name = entry.file_name();
+        let owner = name
+            .to_string_lossy()
+            .split('-')
+            .next()
+            .and_then(|pid| pid.parse::<u32>().ok());
+        if owner.map_or(true, |pid| pid != me && !bridge::pid_alive(pid)) {
+            let _ = std::fs::remove_file(entry.path());
+        }
+    }
+    let source = std::path::Path::new(file);
+    let ext = source
+        .extension()
+        .map(|e| format!(".{}", e.to_string_lossy()))
+        .unwrap_or_default();
+    let copy = dir.join(format!("{me}-{}{ext}", export_health::now_ms()));
+    std::fs::copy(source, &copy)
+        .map_err(|e| format!("couldn't copy the soundtrack for the export: {e}"))?;
+    Ok(copy)
 }
 
 /// What names an export's output file; shared by video and stills so both follow one set of destination rules.
@@ -690,6 +766,7 @@ fn push_frame(state: State<'_, ExportState>, request: tauri::ipc::Request) -> Re
     // Read-only, after the bytes reached ffmpeg: the tap never changes or delays what is encoded.
     tap_flash_frame(&mut active.flashes, bytes);
     active.written += 1;
+    export_health::frame(active.written);
     let _ = active.progress.send(Progress {
         frame: active.written,
         total: active.total,
@@ -732,6 +809,13 @@ async fn finish_export(
     };
     run.clean_up();
     bridge_export::native_job(None);
+    match &result {
+        Ok(()) => export_health::succeeded(),
+        Err(_) if run.cancelled => export_health::cancelled(),
+        Err(error) => {
+            export_health::failed("encodeFailed", error);
+        }
+    }
     if result.is_err() {
         flash.set(None);
     }
@@ -804,10 +888,7 @@ async fn run_ffmpeg_to_completion(
     args: Vec<String>,
     on_spawn: impl FnOnce(u32),
 ) -> Result<(), String> {
-    let (mut rx, child) = app
-        .shell()
-        .sidecar("ffmpeg")
-        .map_err(|e| format!("ffmpeg sidecar not found: {e}"))?
+    let (mut rx, child) = tools::sidecar(app, "ffmpeg")?
         .args(args)
         .spawn()
         .map_err(|e| format!("failed to start ffmpeg sidecar: {e}"))?;
@@ -830,21 +911,34 @@ async fn run_ffmpeg_to_completion(
     }
 }
 
-/// Free bytes on the volume holding `path` (macOS statvfs, the mezzanine disk guard).
-fn free_disk_bytes(path: &std::path::Path) -> Result<u64, String> {
+/// What a disk guard leaves free on the volume: a full disk mid-write fails the job and starves everything else.
+pub(crate) const DISK_FLOOR: u64 = 2 * 1024 * 1024 * 1024;
+
+/// Free bytes on the volume holding `path` (macOS statvfs): the mezzanine, clip-extraction and pack-staging disk guards.
+pub(crate) fn free_disk_bytes(path: &std::path::Path) -> Result<u64, String> {
     use std::os::unix::ffi::OsStrExt;
     let c = std::ffi::CString::new(path.as_os_str().as_bytes()).map_err(|e| e.to_string())?;
     let mut vfs: libc::statvfs = unsafe { std::mem::zeroed() };
     if unsafe { libc::statvfs(c.as_ptr(), &mut vfs) } != 0 {
-        return Err("statvfs failed for the mezzanine cache".into());
+        return Err(format!("statvfs failed for {}", path.display()));
     }
     Ok(vfs.f_bavail as u64 * vfs.f_frsize as u64)
 }
 
-/// Stops an export in any phase (streaming, finalising or a two-pass pass): kills its ffmpeg and deletes the partial file, so the previous export at that path survives.
+/// Stops an export in any phase (streaming, finalising or a two-pass pass): kills its ffmpeg and deletes the partial file, so the previous export at that path survives. A `reason` (the error that stopped the loop) writes `<export>.health.json` and returns where the run stopped, for the error message.
 #[tauri::command]
-fn cancel_export(state: State<'_, ExportState>) -> Result<(), String> {
-    state.cancel()
+fn cancel_export(
+    state: State<'_, ExportState>,
+    reason: Option<String>,
+) -> Result<Option<String>, String> {
+    state.cancel()?;
+    Ok(match reason {
+        Some(reason) => export_health::failed("failed", &reason),
+        None => {
+            export_health::cancelled();
+            None
+        }
+    })
 }
 
 /// Lowercase hex of a digest; sha2 0.11 outputs no longer implement LowerHex.
@@ -964,10 +1058,12 @@ struct AutorunEnv {
     poster: Option<String>,
     /// `KOOKABURRA_PROGRESS=1`: the run reports progress through `autorun_progress`.
     progress: bool,
+    /// memory: the one change this run measures (`clip-cache=N`).
+    lever: Option<String>,
 }
 
 /// One `KOOKABURRA_*` env read under the single auto-run rule: trimmed, and empty/whitespace reads as unset.
-fn autorun_var(key: &str) -> Option<String> {
+pub(crate) fn autorun_var(key: &str) -> Option<String> {
     std::env::var(key)
         .ok()
         .map(|v| v.trim().to_string())
@@ -1009,7 +1105,7 @@ pub(crate) fn autorun_result_dir(app: &AppHandle) -> Result<PathBuf, String> {
             .join(workspace::WORKSPACE_DIR_NAME)
             .join("_autorun"),
     };
-    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    privacy::private_dir(&dir).map_err(|e| e.to_string())?;
     Ok(dir)
 }
 
@@ -1035,6 +1131,7 @@ fn get_autorun_config() -> AutorunEnv {
         trust: autorun_var("KOOKABURRA_TRUST"),
         poster: autorun_var("KOOKABURRA_POSTER"),
         progress: autorun_progress_enabled(),
+        lever: autorun_var("KOOKABURRA_LEVER"),
     }
 }
 
@@ -1284,6 +1381,7 @@ macro_rules! kookaburra_handler {
             begin_screenshot,
             save_screenshot,
             workspace::get_settings,
+            workspace::init_default_workspace,
             workspace::init_workspace,
             workspace::default_workspace_root,
             workspace::user_home_dir,
@@ -1291,11 +1389,14 @@ macro_rules! kookaburra_handler {
             workspace::list_projects,
             workspace::create_project,
             workspace::read_project_manifest,
+            workspace::release_project,
             workspace::read_scene_source,
             workspace::project_fingerprint,
             live_edits::project_file_stamps,
             live_edits::project_file_hashes,
             workspace::is_project_trusted,
+            workspace::check_project_trust,
+            workspace::request_project_trust,
             workspace::trust_project,
             workspace::list_project_assets,
             workspace::list_project_environments,
@@ -1319,6 +1420,7 @@ macro_rules! kookaburra_handler {
             workspace::list_scene_thumbs,
             workspace::write_scene_thumb,
             workspace::write_emoji_raster,
+            workspace::read_emoji_raster,
             scene_doc::read_scene_doc,
             scene_doc::read_scene_doc_entry,
             scene_doc::write_scene_doc,
@@ -1337,6 +1439,8 @@ macro_rules! kookaburra_handler {
             scene_doc::ensure_unique_scene_ids,
             bridge::bridge_claim_request,
             bridge::bridge_write_response,
+            bridge::bridge_confirm_project,
+            bridge::note_picked_folder,
             bridge::begin_bridge_screenshot,
             bridge::save_bridge_screenshot,
             bridge::bridge_pending_count,
@@ -1348,6 +1452,8 @@ macro_rules! kookaburra_handler {
             bridge::bridge_instance,
             bridge::bridge_request_live,
             capture_service::capture_report_census,
+            export_health::export_memory_sample,
+            export_health::take_export_interruption,
             capture_service::capture_service_status,
             render_win::render_report_gpu_event,
             render_win::capture_service_reset,
@@ -1422,8 +1528,10 @@ macro_rules! kookaburra_handler {
             claude_app::open_in_claude,
             claude_app::open_project_folder,
             claude_app::open_claude_download,
+            claude_app::open_privacy_page,
             claude_update::claude_version_info,
             claude_update::dismiss_claude_update,
+            managed::managed_policy,
             media::import_media,
             media::import_media_bytes,
             media::list_conform_jobs,
@@ -1439,6 +1547,7 @@ macro_rules! kookaburra_handler {
             media::import_chart_data,
             media::media_meta,
             media::read_media_thumb,
+            png_decode::decode_png,
             global_screenshots::list_global_screenshots,
             global_screenshots::import_global_screenshots,
             global_screenshots::global_screenshot_meta,
@@ -1488,6 +1597,7 @@ macro_rules! kookaburra_handler {
             pack::commands::reveal_pack,
             pack::commands::inspect_pack,
             pack::commands::read_pack_scene_source,
+            pack::commands::read_pack_scene_docs,
             pack::commands::stage_pack,
             pack::commands::apply_import,
             pack::commands::discard_staged_pack,
@@ -1532,6 +1642,7 @@ pub fn run() {
     }
     let builder = builder
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .manage(asset_reach::AssetReach::default())
         .manage(ExportState::default())
         .manage(ExportHistory::default())
         .manage(FlashState::default())
@@ -1541,6 +1652,7 @@ pub fn run() {
         .manage(clip_cache::ClipCacheState::default())
         .manage(media::ConformJobs::default())
         .manage(workspace::SettingsState::default())
+        .manage(workspace::TrustState::default())
         .manage(updater::PendingUpdate::default())
         .manage(pty::PtyState::default())
         .manage(edit::EditorState::default())
@@ -1551,10 +1663,25 @@ pub fn run() {
         .manage(preset_posters::PresetPosterQueueState::default())
         .manage(bridge::EditorContextState::default())
         .manage(bridge::HeartbeatState::default())
+        .manage(bridge::PickedFolders::default())
+        .manage(bridge::BridgeGrants::default())
         .manage(packs_win::PacksState::default())
         .manage(theme_editor_win::ThemeEditorState::default())
         .manage(pack::commands::PackState::default())
         .manage(website::WebsiteState::default())
+        .register_asynchronous_uri_scheme_protocol("asset", asset_reach::handler)
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::Destroyed = event {
+                asset_reach::close_project(window.app_handle(), window.label());
+            }
+        })
+        .on_page_load(|webview, payload| {
+            if webview.label() == "main"
+                && payload.event() == tauri::webview::PageLoadEvent::Started
+            {
+                export_health::on_main_page_load(webview.app_handle());
+            }
+        })
         .setup(move |app| {
             // The main window exists (config-created); strip its webview's white layer.
             #[cfg(target_os = "macos")]
@@ -1569,8 +1696,23 @@ pub fn run() {
                     park_background_window(&main);
                 }
             }
+            // Confidential work on disk is the user's alone: the app's own folders go owner-only before anything writes.
+            if let Ok(app_data) = app.path().app_data_dir() {
+                let sinks = app
+                    .path()
+                    .home_dir()
+                    .map(|home| {
+                        let workspace = home.join(workspace::WORKSPACE_DIR_NAME);
+                        vec![workspace.join("_bridge"), workspace.join("_autorun")]
+                    })
+                    .unwrap_or_default();
+                privacy::seal_at_startup(app_data, sinks);
+            }
+            managed::log_at_boot();
+            asset_reach::init(app.handle());
             bridge::init(app.handle());
             bridge::spawn_heartbeat(app.handle().clone());
+            export_health::spawn_sampler(app.handle().clone());
             bridge::spawn_native_bridge(app.handle().clone());
             // The headless CLI resolves app data without Tauri; a mismatch would split the tap frame cache and settings.
             #[cfg(debug_assertions)]
@@ -1616,12 +1758,15 @@ pub fn run() {
                 let shortcuts = MenuItemBuilder::with_id("show-shortcuts", "Keyboard Shortcuts…")
                     .accelerator("CmdOrCtrl+/")
                     .build(app)?;
-                let project = SubmenuBuilder::new(app, "Project")
+                // A managed install with Claude turned off has no Edit with Claude anywhere, the menu included.
+                let managed = managed::policy();
+                let mut project = SubmenuBuilder::new(app, "Project")
                     .item(&find_action)
-                    .item(&find_project)
-                    .item(&edit_in_claude)
-                    .item(&shortcuts)
-                    .build()?;
+                    .item(&find_project);
+                if !managed.disable_claude {
+                    project = project.item(&edit_in_claude);
+                }
+                let project = project.item(&shortcuts).build()?;
                 // File: where macOS users look for Import/Export. Pack items are always enabled, since an empty picker explains itself better than a greyed-out item.
                 let new_project = MenuItemBuilder::with_id("new-project", "New Project…")
                     .accelerator("CmdOrCtrl+N")
@@ -1676,10 +1821,14 @@ pub fn run() {
                             pred.set_text(format!("Quit {APP_NAME}"))?;
                         }
                     }
-                    // Default macOS app submenu: About(0), ─(1), Services…; per the HIG the order becomes About, Check for Updates, ─, Settings, ─, Services.
-                    app_menu.insert(&check_updates_item, 1)?;
-                    app_menu.insert(&settings_item, 3)?;
-                    app_menu.insert(&PredefinedMenuItem::separator(app.handle())?, 4)?;
+                    // Default macOS app submenu: About(0), ─(1), Services…; per the HIG the order becomes About, Check for Updates, ─, Settings, ─, Services. Check for Updates is left out where a profile turns update checks off.
+                    let mut at = 1;
+                    if !managed.disable_update_check {
+                        app_menu.insert(&check_updates_item, at)?;
+                        at += 1;
+                    }
+                    app_menu.insert(&settings_item, at + 1)?;
+                    app_menu.insert(&PredefinedMenuItem::separator(app.handle())?, at + 2)?;
                 }
                 // Undo/Redo: the default Edit items send AppKit's undo: selector, which the menu swallows BEFORE the DOM sees ⌘Z, so the app history could never hear it; replace them with emitting items, and the frontend routes text-field focus back to the WebKit undo manager.
                 for item in menu.items()? {
@@ -1938,6 +2087,7 @@ mod tests {
             output: PathBuf::from("/d/out.mp4"),
             partial: PathBuf::from("/d/.out.part.mp4"),
             mezz_dir: None,
+            audio_snapshot: None,
         }
     }
 

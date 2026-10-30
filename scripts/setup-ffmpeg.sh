@@ -4,11 +4,11 @@
 # (`bundle.externalBin: ["bin/ffmpeg"]`). Tauri resolves the target-triple-suffixed
 # file `bin/ffmpeg-<triple>` and bundles it as `ffmpeg` inside the .app.
 #
-#   DEV (this script):  copies the system ffmpeg so the export path is testable now.
-#   RELEASE (manual):   replace with a signed LGPL VideoToolbox build that enables
-#                       h264_videotoolbox + prores_ks / prores_videotoolbox, then
-#                       codesign + staple it — otherwise Gatekeeper blocks the .app.
-#                       (libx264 makes the binary GPL; ship VideoToolbox by default.)
+#   DEV (this script):  copies the system ffmpeg so the export path is testable now. It links
+#                       Homebrew dylibs, so it never ships, and it OVERWRITES the release build.
+#   RELEASE:            `pnpm setup:ffmpeg:release` (scripts/build-ffmpeg-sidecar.sh) builds the
+#                       pinned static GPL sidecar (libx264 + libx265 + VideoToolbox) that the
+#                       release workflow signs with the app. Run it again after any dev copy.
 #
 set -euo pipefail
 
@@ -49,5 +49,5 @@ if [[ -n "$PROBE_SRC" ]]; then
   "$PROBE_DEST" -version | head -1
 fi
 echo
-echo "NOTE: this is a DEV copy of your system ffmpeg. For a shareable .app, replace"
-echo "      it with a signed LGPL VideoToolbox build (see header of this script)."
+echo "NOTE: this is a DEV copy of your system ffmpeg. For a shareable .app, run"
+echo "      pnpm setup:ffmpeg:release (the pinned static build) before signing."

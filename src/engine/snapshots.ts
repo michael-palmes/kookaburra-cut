@@ -15,6 +15,8 @@ import { isExporting } from "./exportState";
 import { hideGizmoHandles } from "./gizmoRegistry";
 import { type LoadedProject, nativeProjectSlug, parseProjectId } from "./project";
 import { assertContextHeld, readFrameOrThrow } from "./readback";
+import { stage } from "./stageHandle";
+import { isStageWorker } from "./stageRealm";
 
 /** Preview-frame capture off the live canvas, used by welcome snapshots and scene thumbs. UI niceties, not part of the export path: nothing here runs during an export/autorun, every failure is silent (cards keep their placeholders), and the determinism contract is untouched (the preview clock is borrowed and restored). */
 
@@ -37,19 +39,19 @@ function waitFor(predicate: () => boolean, timeoutMs: number): Promise<boolean> 
     const poll = () => {
       if (predicate()) return resolve(true);
       if (Date.now() - startedAt > timeoutMs) return resolve(false);
-      window.setTimeout(poll, 32);
+      setTimeout(poll, 32);
     };
     poll();
   });
 }
 
 function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => window.setTimeout(resolve, ms));
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 /** Borrows the preview clock for one or more captures: guards re-entrancy and exports, runs `fn`, then gives the scrub position back, but only while the clock still sits on this capture's own last seek. If anything else wrote it mid-capture (an export took it and writing would poison the run, the post-add focus seek landed, the user scrubbed), the newer position wins. Returns null when capture isn't possible right now. */
 export async function withBorrowedClock<T>(fn: () => Promise<T>): Promise<T | null> {
-  if (capturing || isExporting() || !canvasHandle.current) return null;
+  if (capturing || isExporting() || !stageReady()) return null;
   const prevMs = useClockStore.getState().currentMs;
   capturing = true;
   lastSeekMs = null;
@@ -75,8 +77,35 @@ export async function captureFrameAt(
   const clock = useClockStore.getState();
   clock.setCurrentMs(tMs);
   if (clock.shutter !== NO_SHUTTER) clock.setShutter(NO_SHUTTER);
-  const shutterSeq = useClockStore.getState().shutterSeq;
   noteBorrowedSeek(tMs);
+  // From a window the stage paints and encodes; the clock write above reaches it through the mirror before the request.
+  if (!isStageWorker()) {
+    const bytes = await stage().snapshot(tMs, width, format);
+    return isCurrent() ? bytes : null;
+  }
+  return snapshotRun(tMs, width, format, isCurrent);
+}
+
+/** True once a stage (or this realm's own canvas) can paint. */
+function stageReady(): boolean {
+  if (isStageWorker()) return !!canvasHandle.current;
+  try {
+    stage();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** The stage worker's capture: waits for the tree to commit `tMs` (null: paint what is there), settles streamed textures and text, paints one preview frame with the gizmos hidden and encodes the downscaled buffer. */
+export async function snapshotRun(
+  tMs: number | null,
+  width: number,
+  format: "png" | "jpeg",
+  isCurrent: () => boolean = () => true,
+): Promise<Uint8Array | null> {
+  if (tMs === null) return paintAndReadCanvas(width, format);
+  const shutterSeq = useClockStore.getState().shutterSeq;
   // A paused blur pass can leave objects mid-shutter at this same instant, where the clock stamp alone is already current.
   const committed = () =>
     canvasCommittedClockMs() === tMs && canvasCommittedShutterSeq() === shutterSeq;
@@ -139,7 +168,15 @@ async function paintAndReadCanvas(
 
 /** Captures the canvas as it is right now, no clock write, no seek, no borrow (the Scene-tab header preview's fallback when no cached thumb exists). Because nothing touches the playhead, the clock-borrow blip class can't occur; the export guards still apply. Null when capture isn't possible right now. */
 export async function captureCurrentFrame(width: number): Promise<Uint8Array | null> {
-  if (capturing || isExporting() || !canvasHandle.current) return null;
+  if (capturing || isExporting() || !stageReady()) return null;
+  if (!isStageWorker()) {
+    return stage()
+      .snapshot(null, width, "jpeg")
+      .catch((e) => {
+        console.warn("[snapshot] capture failed:", e);
+        return null;
+      });
+  }
   return paintAndReadCanvas(width, "jpeg").catch((e) => {
     console.warn("[snapshot] capture failed:", e);
     return null;

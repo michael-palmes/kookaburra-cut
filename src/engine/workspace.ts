@@ -61,9 +61,14 @@ export function getSettings(): Promise<AppSettings> {
   return invoke<AppSettings>("get_settings");
 }
 
-/** Create/adopt the workspace under `parent` (omit for ~/Kookaburra Cut) and persist it. */
-export function initWorkspace(parent?: string | null): Promise<string> {
-  return invoke<string>("init_workspace", { parent: parent ?? null });
+/** First run: create or adopt ~/Kookaburra Cut and persist it. */
+export function initDefaultWorkspace(): Promise<string> {
+  return invoke<string>("init_default_workspace");
+}
+
+/** Create or adopt the workspace under `parent` and persist it, when the default location failed. Settings window only; Rust confirms the folder with a native sheet first, and null is the cancel. */
+export function initWorkspace(parent: string): Promise<string | null> {
+  return invoke<string | null>("init_workspace", { parent });
 }
 
 /** Where a workspace lands with nothing chosen, and what "Reset to default" moves back to. */
@@ -83,9 +88,9 @@ export function shortenPath(path: string, home: string | null): string {
   return path.startsWith(`${home}/`) ? `~${path.slice(home.length)}` : path;
 }
 
-/** Move the whole workspace under `parent` (omit to reset to the default) and repoint settings at it. */
-export function moveWorkspace(parent?: string | null): Promise<string> {
-  return invoke<string>("move_workspace", { parent: parent ?? null });
+/** Move the whole workspace under `parent` (omit to reset to the default) and repoint settings at it. Settings window only; Rust names both folders in a native sheet before anything moves, and null is the cancel. */
+export function moveWorkspace(parent?: string | null): Promise<string | null> {
+  return invoke<string | null>("move_workspace", { parent: parent ?? null });
 }
 
 /** `templateId` is a bundled template slug or `ws:<slug>` for one of the user's own; the manifest itself (`template.json`) is never copied into the new project. Library commands live in engine/library.ts. */
@@ -133,6 +138,11 @@ export function deleteProject(slug: string): Promise<void> {
 
 export function setLastProject(projectId: string | null): Promise<void> {
   return invoke<void>("set_last_project", { projectId });
+}
+
+/** This window reads no project any more: its `asset://` URLs stop serving the one it had open. */
+export function releaseProject(): Promise<void> {
+  return invoke<void>("release_project");
 }
 
 /** Toggle hardware video for the everyday paths (thumbnails, clip extraction, editor render); emits `kookaburra://hardware-video-changed`. */

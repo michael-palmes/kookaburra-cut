@@ -44,6 +44,10 @@ GPU/driver, not across fleets.)
 | **A layout that depends on a measurement only the mounted tree can request**: `TitleBlock` cascades its header icon and subtitle off the title's MEASURED block height, but its props exist only once the scene is in the tree, so the preamble cannot pre-warm them the way `preloadPanelMeasures` does for overlay panels. A cold pass would render frame 0 pre-measure while a warm second pass renders it cascaded. | `awaitTitleMeasuresSettled()`, the barrier after `awaitSceneHostsCommitted`: mounted TitleBlocks report their outstanding typesets, and the spin exits only once they have landed AND the tree has re-rendered with them (`engine/titleBlockMeasure.ts`). Single-line text solves to a hard 0 growth, so standing layouts keep their authored constants bit-for-bit either way. |
 | **Layout derived from measured text** (a pill sized by `useTextMetrics`, a pinned `durationMs` reveal waiting on its unit count): the derived state lands one re-render after its face parses or its first typeset, so a frame captured in between draws the pre-measure layout. | Pending reports (`engine/textDerivedState.ts`, from layout effects): `awaitTextSync` settles typesets, spins (bounded at 5000) until nothing is outstanding, then settles once more for typesets the settling commit queued. A tree that reports nothing takes the old path exactly. Preview captures (`captureFrameAt`) also run the export's clip, text and emoji barriers, in that order. |
 | **Preview frames interleaving a Verify ×2**: between the two passes the preview driver rendered a wall-clock-varying number of frames (restored clock, preview size), leaking GPU/render state into pass B's first frames | `verifyDeterminism` holds the preview stand-down across BOTH passes; `engine/exportState` is depth-counted so the whole-run hold nests over each pass's own. Pass B starts from exactly the state pass A ended in. |
+| **The SDF atlas uploaded from a worker canvas** (2026-10-28): three uploads troika's atlas canvas as a texture, and WebKit's upload of a worker OffscreenCanvas is not the raw copy an HTMLCanvasElement's is; every glyph edge moved (jagged, speckled, up to 197 levels), on both anchors | The patched troika option `sdfAtlasReadback` (`patches/troika-three-text@0.52.5.patch`) routes the atlas through troika's own readPixels-to-DataTexture path (its Safari<15 workaround); the stage server sets it once in `configureTextBuilder`. Byte-identical to the main-thread baselines. |
+| **A realm that mounts scenes before its font preload**: the stage worker's atlas is its own, so a server that hydrated a project before preloading let the mount-time typesets claim the cells in scene order instead of the boot order (stills pages ±1/±2 on glyph edges) | The server runs `preloadAppFonts()` at boot and `preloadAppFonts(projectFaces)` plus the emoji preload inside `loadProject`, before the scenes mount: the window's barriers, in the realm that renders. |
+| **A bitmap clone that asks for the other `flipY`** (2026-10-28): the stage decodes images to ImageBitmaps with the orientation baked in, and WebGL ignores `flipY` for a bitmap upload, so a device screen's private clone (`flipY = false`) drew the plane's pre-flipped pixels: every image on a device screen rendered upside down (20 legs over devices and comparisons MOVED while main at the merge base held every baseline; a PNG on a plane and every video stayed EQUAL) | `engine/bitmapOrientation.ts`: the loader records the orientation it baked and `useScreenImageTexture` suspends on a row-reversed copy (straight alpha, no colour conversion) for the clone, one per bitmap and orientation. Attribute a MOVED device leg by exporting it on main at the merge base before reading the pixels. |
+| **A PNG decoded to an ImageBitmap** (2026-10-29): WebKit's `createImageBitmap` premultiplies and unmultiplies a PNG with alpha on the way in whatever `premultiplyAlpha` asks, so every semi-transparent texel lands off the file (a palette PNG's transparent texels lose their colour outright, which bleeds into every edge under linear filtering), and `colorSpaceConversion: "default"` applied an embedded profile that three's upload never did (it sets `UNPACK_COLORSPACE_CONVERSION_WEBGL = NONE`); the window's `<img>` upload was the file's bytes exactly. Eight legs staging a screenshot with a shadow on a device screen, frame chip icons or an app icon MOVED by 1 to 42 levels while every opaque JPEG held | The stage decodes PNG bytes natively, by signature (`decode_png`, the `png` crate, no gamma or profile, 16-bit to its high byte), and its `StageTexture` uploads the rows as data (`engine/stageTexture.ts`); every other format takes `createImageBitmap` with `colorSpaceConversion: "none"`. Measured with a probe page that uploads one PNG both ways under three's unpack settings and hashes the texels: the `<img>` path equals the file, the bitmap path does not. |
 | **Parallel font preload**: troika claims shared-atlas cells at preload COMPLETION, i.e. fetch-race order, shifting multi-font projects' glyph cells per BOOT (a per-session hash lottery: every run internally consistent, every boot different) | `preloadAppFonts` preloads SEQUENTIALLY in canonical order (Inter Regular, then declaration/ref order), and `loadProject` pre-generates every project face's glyphs BEFORE the scenes mount. See "Fonts". |
 | Muxer writing a wall-clock `creation_time` / encoder version tag | ffmpeg `-flags:v +bitexact -fflags +bitexact -map_metadata -1` (set in `start_export`) so the container is reproducible. |
 | Hardware encoder (`h264_videotoolbox` / `hevc_videotoolbox` / `prores_videotoolbox`) bit-variance | Default to software `libx264` (deterministic); the VideoToolbox lanes are opt-in fast drafts excluded from Verify. |
@@ -60,7 +64,7 @@ GPU/driver, not across fleets.)
 | **Stills: a late-mounted media registration.** A settle input that only a mounted primitive can report would move an automatic still whenever it lands after the page plan. | Media motion ends come from the sidecar (`sceneMediaMotionEndMs`, pure), never a mount-time registry; registered timings are read only after the preamble's asset preloads and `awaitSceneHostsCommitted`, and after the pending barrier above. |
 | **Stills: capturing from `resolveAt(tMs)` instead of the page's plan.** An automatic still that settles in its outgoing transition is planned as the scene alone; resolving the clock time again composites the transition instead, and the text layer then describes a different frame. | `renderFrameInto` takes `resolved` as an argument, and the stills loop always passes `page.resolved` (the compare frame and text roots read the same value). |
 
-## The loop (as implemented in `src/engine/exporter.ts`)
+## The loop (as implemented in `src/engine/exporter.ts` and `src/engine/exportRun.ts`)
 
 ```
 configureDeterministicEngine();               // anime.js: no rAF
@@ -91,8 +95,21 @@ for (let frame = 0; frame < total; frame++) {
 }
 ```
 
-`gl={{ preserveDrawingBuffer: true }}` is mandatory on the `<Canvas>` or the
+`gl={{ preserveDrawingBuffer: true }}` is mandatory on the stage's root or the
 readback can come back cleared in WKWebView.
+
+**Two realms, one loop.** Since 2026-10-28 the body of the loop (the preamble
+and its barriers, the clock flush, the awaits, the composite and the readback)
+runs inside the stage worker (`exportRun.ts`, `beginExportRun` /
+`renderExportFrame`), where the scenes live; `exporter.ts` in the window owns
+the frame count, `start_export`, `push_frame` and `finish_export`, and asks the
+worker for one frame at a time over the stage protocol. The RGBA buffer is
+transferred to the window with each frame and handed back with the next
+request, so no frame is copied; a buffer that did not come back (a run
+abandoned mid-frame) is reallocated at its exact size. Nothing about the
+contract moved: `ws:launch-2026` and `showcase-tour` export byte-identical to
+their main-thread baselines (the 2026-10-28 proof below), and the window
+realm's own troika atlas no longer touches a pixel.
 
 **Why `awaitCanvasClockCommit`.** The scene lives in the **react-three-fiber
 reconciler**, and react-dom's `flushSync` does not flush it; the canvas subtree
@@ -128,6 +145,13 @@ model: a transition pulls the next scene's start back, so
 enclosing `<SceneHost>`'s start. All scenes mount at once; the compositor gates
 per-frame `visible`.
 
+A scene entry may pin its cut to the music (`cutAt` and `align`,
+`engine/sceneCuts.ts`): its `durationMs` caches the length that lands the cut
+there, and the loader re-resolves every pinned length in scene order before
+building the timeline. A project with no `cutAt` takes the same durations
+array unchanged (null-for-legacy), and the kit mirrors the resolver
+operation for operation (`timeline-vectors.json`).
+
 Transition ownership is manifest-versioned: v2 stores each transition on the
 OUTGOING scene (it plays at that scene's end); legacy unversioned manifests
 stored it on the incoming scene. `outgoingSceneTransitions` shifts legacy files
@@ -146,6 +170,17 @@ and the exporter, so they cannot drift. Two paths:
   to its own `WebGLRenderTarget`, then a fullscreen pass blends them.
 
 Determinism rules specific to the composite path:
+
+- **One owner per target.** `tgtA`/`tgtB` hold the two sides until the
+  composite samples them, and a comparison renders its own Before and After
+  through the same pair before flattening into a comp target. So an incoming
+  comparison after a plain outgoing scene renders FIRST; rendered second, it
+  overwrote the outgoing side and the transition played as a hard cut (fixed
+  2026-10-28). Verify ×2 can't see a wrong-but-stable frame, so
+  `kookaburra:run --action transitioncheck --project compare-transition-spike`
+  measures each crossfade's midpoint against the solo frames either side (the
+  outgoing scene's least-squares weight must sit within 0.15 of the eased
+  progress); `pnpm ready` runs it whenever the compositor or timeline changes.
 
 - **Tone-map once, encode once, per path.** No-effects: every SDR target is a
   **display target** (`engine/displayTarget.ts`): three (r185, r186) applies tone
@@ -299,6 +334,10 @@ the field lands.
     past while the chunk extracted is dropped before decode. The preview JPEG
     tier (`ensure_clip_previews`) is made per chunk, after playback first binds
     the chunk's PNGs.
+  - **The disk guard:** `ensure_clip_chunks` refuses before ffmpeg starts when
+    the raw RGB ceiling of the chunks it would extract plus a 2 GB floor
+    exceeds the volume's free space (`check_extraction_space`), naming the
+    space needed; present chunks cost nothing and the argv never changes.
   - **The cap:** Settings holds `clipCacheCapGb` (default 20). After an
     extraction pushes the cache past it, whole chunks go least recently used
     first (a chunk's marker mtime, touched on read at most once a minute) down to
@@ -391,6 +430,26 @@ the mix like every pixel. Rules:
   trivially deterministic; **AAC's run-to-run determinism is proven by the gate,
   not assumed** (recorded contingency if a future ffmpeg breaks it: encode the
   processed track once into the `$APPDATA` cache and stream-copy).
+- **ffmpeg reads a snapshot.** `start_export` copies the track into
+  `$APPDATA/cache/export-audio/<pid>-<ms>.<ext>` (an APFS clone) and points the
+  argv's `-i` at the copy, so music saved mid-export can't change the film; the
+  copy goes with the run's cleanup. The path never reaches the output (bitexact,
+  `-map_metadata -1`), so the bytes are unchanged and the argv goldens, which
+  build from the options, still hold.
+- **Sync is proven, not assumed.** `export_lanes_keep_cuts_on_the_beat`
+  (`src-tauri/src/encode/av_sync_tests.rs`, `cargo test --lib av_sync --
+  --nocapture`) pipes a flash on the first frame at or after each beat, with a
+  click track on the beats, through every lane's real argv and the real sidecar
+  (legacy, spec with `-bf 2`, poster frame, two-pass, x265, ProRes with PCM,
+  VideoToolbox; 30 and 60 fps) and times both from the file as a player does.
+  Every cut lands `ceil(B × fps) / fps − B` after its beat, 0 to 1 frame (33.3 ms
+  at 30 fps, 16.7 at 60), and every click within 1 ms. Larger numbers are the
+  reading, not the file: ignoring edit lists adds the B-frame delay minus AAC
+  priming (+45.3 ms at 30 fps, +12.0 at 60), and timing a poster-frame film
+  against the project grid without taking the poster off adds a frame (the
+  2026-10 field report's 37 to 65 ms). `kb sync-check` measures it right.
+  Snapping cuts to the nearest frame or dropping edit lists would change bytes:
+  a deliberate rebase.
 - **Load degrades, never crashes.** `loadProject` probes the track
   (`probe_audio`); missing/unprobeable → the project loads SILENT with a warning;
   shorter-than-project → the tail pads with silence (warned, not fatal).
@@ -1184,6 +1243,12 @@ camera exactly:
   session-history-dependent: an interactive session that previews other
   multi-font projects first can legitimately export ±LSB-different text than a
   fresh-boot gate (gates always run fresh-boot via `kookaburra:run`).
+- **The atlas is per realm.** The stage worker typesets every exported glyph,
+  so its atlas is the one that matters, and it fills in the window's order: the
+  server preloads the bundled faces at boot and each project's faces (themes,
+  per-scene themes, comparison B sides, sidecar overrides) sequentially before
+  the scenes mount. The window keeps its own preload for `measureText` and the
+  theme editor's specimens; nothing it typesets reaches an export.
 
 ## Emoji & symbol fallback
 
@@ -1293,11 +1358,23 @@ The packaged `.app` must reproduce dev-mode hashes on the standing projects:
 class, run for any packaging-adjacent change. What packaging changes (and why it
 stays deterministic):
 
-- **Static sidecar** (`scripts/build-ffmpeg-sidecar.sh`): pinned ffmpeg source
-  build (GPL: libx264 + libx265 + VideoToolbox + ProRes + FFV1), self-containment
-  gated by `otool -L` (system libs only). Same version ⇒ same bytes: proven by
-  dev/packaged hash parity. Note: the dev `pnpm setup:ffmpeg` copy OVERWRITES the
-  release sidecar; rerun `pnpm setup:ffmpeg:release` after.
+- **Static sidecar** (`scripts/build-ffmpeg-sidecar.sh`): ffmpeg, x264 and x265
+  built from source pinned by SHA-256 and commit (GPL: libx264 + libx265 +
+  VideoToolbox + ProRes + FFV1), self-containment gated by `otool -L` (system
+  libs only). The release workflow builds it the same way on a clean runner and
+  the verify job compares the signature-stripped digests with the build job's.
+  Same sources ⇒ same bytes: proven by dev/packaged hash parity. Note: the dev
+  `pnpm setup:ffmpeg` copy OVERWRITES the release sidecar; rerun
+  `pnpm setup:ffmpeg:release` after.
+- **x264's version string is export bytes.** libx264 stamps
+  `x264 - core 165 r3222 b35605a` into every H.264 stream's SEI, and x264's
+  `version.sh` derives it from the git history at configure time. A shallow
+  fetch built a sidecar that stamped `x264 - core 165`, and the 0.21.0 candidate
+  MOVED both anchors (2026-10-29): a test encode from each sidecar differed by
+  exactly those 14 bytes with identical decoded frames, and the dev renderer
+  with the CI sidecar reproduced the packaged hash.
+  The build script fetches the full history, pins the string (`X264_SEI`) and
+  refuses a sidecar that stamps anything else.
 - **Editor zoom guards are per ffmpeg build.** `cargo test --manifest-path
   src-tauri/Cargo.toml --lib zoom_frames_match -- --ignored` pins the zoom
   stage's frame counter (`in-1`) and its bytes on both decode lanes for whichever
@@ -1317,7 +1394,7 @@ stays deterministic):
   and the catalog preload throws if a device glb parses with zero textured
   materials.
 - **One file-URL seam.** Fonts, media, editor and workspace images all resolve
-  through the Tauri asset protocol in dev and packaged builds alike; workspace
+  through the app's `asset://` handler in dev and packaged builds alike; workspace
   scenes compile through the same esbuild loader everywhere: every dev verify
   exercises the shipping loader.
 - **Boot failures can't be silent** (`engine/bootTrap.ts`): any pre-render crash
@@ -1484,7 +1561,11 @@ tier is under "Gate tiers" and the baselines under "Current baselines".
   the legacy `~/Kookaburra Cut/_autorun/last-run.json` is still written as a
   copy. Runs queue behind each other (FIFO) instead of demanding the machine to
   themselves, dev runs pick their own port, and the launch is backgrounded: no
-  Dock icon, no focus steal.
+  Dock icon, no focus steal. Autoruns run with HMR off (`vite.config.ts`
+  drops `server.hmr` under `KOOKABURRA_ACTION`), so no gate can see a break in
+  the dev-only HMR path: after a change to the stage worker's module graph,
+  also boot `pnpm tauri dev` and open a project (2026-10-29: the stage never
+  booted under HMR while every gate passed).
 - **Cold runs (`--cold`):** a run is cold when no preview frame draws before
   it (`programs 0` or `1` in dev.log's `[autorun] gl memory before`
   breadcrumb). Without the flag that rides on the window and the boot: an
@@ -1532,8 +1613,9 @@ tier is under "Gate tiers" and the baselines under "Current baselines".
 
 Live captures (`kb capture` and `kb check --render` over bridge v2, the legacy
 `capture.py`, scene thumbs; docs/agent-kit.md) are served by the hidden `render`
-window: its own realm and WebContent process, the same `renderComposited` seam
-and export barriers, driven rAF-free so it renders while hidden. Three measured
+window: its own realm and WebContent process with its own stage worker, the
+same `renderComposited` seam and export barriers, driven rAF-free so it renders
+while hidden. Three measured
 facts (2026-08-07) define its contract:
 
 - **Per-surface deterministic.** Repeated bridge captures of the same frame hash
@@ -1572,8 +1654,56 @@ what ffmpeg receives, a panic drops the tap (report "unavailable") and never the
 and it costs about 4.3 ms per 4K frame. Any change to it gates with `pnpm gate`; bytes
 must stay EQUAL.
 
+`push_frame` also feeds the export trace (`export_health::frame`: the written count
+and one timestamp a second, under its own lock) after the write, so a failed run can
+name its frame, scene and render-rate trend (docs/agent-kit.md, "Export health"). It
+reads nothing from the frame.
+
 The autorun surface (env-gated, cold-boot, one run at a time via the FIFO run
 queue) is unchanged; neither surface may regress the other.
+
+### Memory probe
+
+`pnpm kookaburra:run --action memory --project P[,P...] [--aspect A] [--at N] [--lever L]`
+exports each film through the real path (30 fps unless a preset says otherwise; `--at N`
+renders the first N seconds) and every 2 s records the render rate, each process's
+footprint (`export_memory_sample`: the editor's and render window's WebContent, WebKit's
+GPU process, the app, ffmpeg), three's texture and geometry counts and the clip frame
+cache (`clipCacheCensus`, answered by the stage worker, which holds them). Each row's `memory` carries the rate over the first, middle and
+last 10 s, first, peak and last footprints, `editorGrowthMb` (the editor's median over
+the last third minus the first third: growth that stays, not a transition's MSAA pair
+coming and going) and `holds`. A film that slows below 80% of its start or keeps more than
+512 MB fails the run. `--lever clip-cache=N` changes one thing for an experiment.
+`fixtures/long-device-spike` (60 s of handsets, the foldable, a tablet, a laptop and a
+comparison over fourteen screen recordings) is the leak acceptance film. The probe reads;
+it never changes a byte.
+
+**The 2026-10-28 leak.** A 50 s foldable film failed eight exports at 43 to 53% with the
+editor reloaded. Measured on device-heavy spikes in one boot, 30 fps, 16:9 / 9:16 / 1:1:
+
+| Run | Editor at each leg's start (MB) | Editor peak | Clip cache peak | GPU process peak |
+| --- | --- | --- | --- | --- |
+| Before | 1951, 2945, 3175, 3847, 4512, 4897 (7113 by the fourth project) | 5544 | 1734 | 2372 |
+| `--lever clip-cache=2` | 1916, 1631, 1787, 1649, 3001, 3503 | 4143 | 457 | 1172 |
+| Fixed | 1856, 1814, 1317, 1782, 2348, 2222 | 3092 | 303 | 1045 |
+
+- **The cause: the clip frame cache never shrank.** Each clip kept 12 decoded frames
+  (`LRU_CAPACITY`, per clip, so the total grew with every clip the film reached), they
+  stayed through every aspect and project in the session, and the export's software lane
+  kept its own set beside the preview's hardware lane. Each cached megabyte cost the
+  editor's WebContent about two (the bitmap plus decode garbage) and WebKit's GPU process
+  one more (the uploaded texture). On a 64 GB Mac nothing died; on a smaller one WebKit
+  kills the WebContent process near its footprint limit, and the memory pressure before
+  that is the 8.4 → 2.6 → 1.2 fps slowdown the field saw.
+- **The fix** (`engine/clips.ts`): an export keeps two frames a clip
+  (`EXPORT_LRU_CAPACITY`; it steps forward and never back), and starts and ends by closing
+  every frame no consumer binds, in both lanes (`releaseIdleClipFrames`). A re-decoded PNG
+  is the same pixels, so bytes cannot move; the gate proves it.
+- **Not leaks:** a crossfade or comparison allocates its MSAA pair for its window and
+  `releaseIdlePools` frees it after (a +500 to 900 MB spike at 4K, measured coming back);
+  compositor targets are replaced, never stacked, on a size change; Verify's three raw
+  frame copies are freed as pass B matches them.
+- **The truth when it still happens:** `docs/agent-kit.md`, "Export health".
 
 ### Gate tiers: how much to run
 
@@ -1613,8 +1743,12 @@ it.
   unchanged leg is skipped, in any worktree; `--force` re-runs it.
 - **Tier 0: statics (free):** lint, build, `vitest related` on the changed
   `src/` files, the script tests, the kb suite and `cargo clippy` + `cargo
-  test`, each only when the diff touches its area. CI runs all of them on every
-  PR (`scripts/ci-scope.sh` scopes the rust job and the kb suite). Pure math
+  test`, each only when the diff touches its area, plus the workspace-name
+  check on every branch (`scripts/workspace-names.mjs`: no name from the
+  user's own `~/Kookaburra Cut` and no past leak shape in an added line). CI
+  runs all of them on every PR (`scripts/ci-scope.sh` scopes the rust job and
+  the kb suite; the name check runs on every pull request with no workspace
+  there, so the denylist alone). Pure math
   (eases, presets, schemas, edit math) belongs in unit tests, not in verify
   runs.
 - **The PR gate: `pnpm gate:merge`, once, when the render path changed.**
@@ -1705,8 +1839,9 @@ Verify ×2 here (the 2026-10-23 note):
 | `transition-spike` (transition gate, image mask included) | `35c2cb0c…` | `0017f87f…` | — | — | — | — | — | — | — |
 | `transition-bg-spike` (animated-background transition gate) | `f7714f6b…` | — | — | — | — | — | — | — | — |
 | `compare-spike` (before/after comparison gate) | `03f4704d…` | `0c6b7166…` | `d4cac096…` | `ac586a05…` | — | — | — | — | — |
-| `compare-transition-spike` (comparisons through transitions) | `98132cf6…` | — | — | — | — | — | — | — | — |
+| `compare-transition-spike` (comparisons through transitions; `transitioncheck` proves its crossfades blend) | `48ee3fd8…` | — | — | — | — | — | — | — | — |
 | `image-flip-spike` (image-orientation gate, eyeball it) | `5753a093…` | — | — | — | — | — | — | — | — |
+| `long-device-spike` (long-film memory gate: devices, a fold, compare media, 61 s) | `36ced02f…` | — | — | — | — | — | — | — | — |
 | `ws:layered-screenshot-spike` (LS gate, machine-local) | `33c75ab8…` | — | — | — | — | — | — | — | — |
 | `ws:video-window-spike` (VideoWindow gate, machine-local) | `273e778c…` | — | — | — | — | — | — | — | — |
 | `ws:lighting-spike-fable` (v9 lighting gate, machine-local) | `c3d51b40…` | — | — | — | — | — | — | — | — |
@@ -1718,13 +1853,87 @@ Verify ×2 here (the 2026-10-23 note):
 | `ws:chart-spike` (chart gate, machine-local) | `01c32706…` | `7b706307…` | `f1820470…` | `d5611672…` | — | — | — | — | — |
 | `ws:duplicate-spike` (scene-id heal gate, machine-local) | `74cfca6c…` | — | — | — | — | — | — | — | — |
 | `ws:overlay-spike` (overlay gate, machine-local) | `f3d115a5…` | — | — | — | — | — | — | — | — |
-| `ws:duo-spike` (foldable gate, machine-local) | `8d28f65a…` | `b6a80fec…` | — | — | — | — | — | — | — |
-| `ws:device-video-spike` (device/media/camera gate, built-in-lit devices, machine-local) | `3068ea61…` | — | — | — | — | — | — | — | — |
+| `ws:duo-spike` (foldable gate, machine-local) | `c16be077…` | `372327a9…` | — | — | — | — | — | — | — |
+| `ws:device-video-spike` (device/media/camera gate, built-in-lit devices, machine-local) | `c1a9ff92…` | — | — | — | — | — | — | — | — |
 | `ws:device-env-spike` (cold frame-0 repro: a built-in-lit handset's top edge, machine-local) | `47d94e84…` | — | — | — | — | — | — | — | — |
 | `ws:text-outline-spike` (outlined text in the text barrier: neon, whole-block blur-in, machine-local) | `a644c039…` | — | — | — | — | — | — | — | — |
 | `ws:rooms-spike` (room cuts, a flood with a tokened light, a wipe while both sides flood; machine-local, never gated) | `fee706ac…` | `219c3507…` | — | — | — | — | — | — | — |
 | `ws:mask-fx-spike` (an image-mask seam between two bloom scenes on the effects lane; machine-local, never gated) | `6555ff7f…` | — | — | — | — | — | — | — | — |
-| `ws:motion-toolkit-spike` (the toolkit primitives: shapes, device anchors, text metrics and presets, stamps, dashes, mosaic, taps; machine-local, gated when motion or shape primitives change) | `8af90748…` | `3955d599…` | — | — | — | — | — | — | — |
+| `ws:motion-toolkit-spike` (the toolkit primitives: shapes, device anchors, text metrics and presets, stamps, dashes, mosaic, taps; machine-local, gated when motion or shape primitives change) | `06b79ae2…` | `fa64bced…` | — | — | — | — | — | — | — |
+
+> **2026-10-29 (v0.21.1, the first CI release): packaged parity EQUAL on both
+> anchors** (`showcase-tour` `fe6b6c20…`, `ws:launch-2026` `cc23761e…`) for the
+> notarised DMG built, signed and verified on GitHub Actions. The 0.21.0
+> candidate MOVED both and was never published: its sidecar came from a shallow
+> x264 fetch and stamped a bare `x264 - core 165` SEI (see "Packaged-app
+> parity"); the fix pins the string and refuses any other. A branch dry run's
+> ad-hoc app proves only `ws:launch-2026`, since it fetches no licensed models
+> and so renders `showcase-tour` with the fallback device.
+
+> **2026-10-28 (the floor follows the posed device: a deliberate rebase of three
+> fixtures):** floor shadows and `ground` now stand a device's lowest posed corner on
+> the floor (`devicePoseFloorShift`, `docs/foldables.md`), so a device tilted or rolled
+> by its placement or keys moves its floor; upright and yaw-only devices are exactly
+> 0. First, with the shift forced to 0, the branch exported `ws:duo-spike`,
+> `ws:device-video-spike`, `ws:multi-device-spike` and `ws:motion-toolkit-spike`
+> EQUAL at 16:9 (media `rotateDeg`, the fold shader's turn, power keys and the rolled
+> layout fit are null for legacy). With the shift on, the three fixtures that stage
+> tilted devices moved and re-record from a Verify ×2: `ws:duo-spike` `8d28f65a…` →
+> `c16be077…` and 9:16 `b6a80fec…` → `372327a9…`, `ws:device-video-spike` `3068ea61…`
+> → `c1a9ff92…`, `ws:motion-toolkit-spike` `8af90748…` → `06b79ae2…` and 9:16
+> `3955d599…` → `fa64bced…`. The contact shadow under a 3 to 6 degree lean moves by
+> under 1% of the device height; frames were eyeballed. The anchors and
+> `ws:multi-device-spike` (yaw only) stay EQUAL.
+
+> **2026-10-29 (`long-device-spike` re-recorded):** the memory gate's 16:9 baseline
+> `9f4a603d…` (#265) predates the entry above: its three foldable scenes pitch the
+> device 4 to 5 degrees, so #268's floor shift and screen-media turns moved its pixels
+> without re-recording it. Main exports `36ced02f…` at `d1c47226` and at `720cd35c`
+> alike, Verify ×2 identical, so the row re-records there; no other cell changes.
+
+> **2026-10-28 (the stage worker: every scene renders in a Web Worker, no
+> baseline moved):** the whole canvas tree, compositor and export frame body
+> moved into the stage worker (`docs/architecture.md`, "The stage worker");
+> the window keeps the loop's orchestration and IPC. Four realm differences
+> moved pixels on the way, all in the failure catalogue above, none
+> re-recorded. Two showed on the anchors and were closed first: the troika
+> atlas upload from a worker canvas (`sdfAtlasReadback`) and the worker's own
+> atlas order (fonts preloaded in the window's order). With those in place the
+> anchors exported byte-identical in one boot (`cmp` on the files) and the
+> stills pages reproduced their hash, and the full matrix (`pnpm ready --legs`
+> over every recorded leg) then found the other two, which no anchor stages:
+> 20 legs over devices and comparisons, and the stills gate fixture, MOVED
+> because a device screen drew its image upside down (a bitmap clone asking
+> for the other `flipY`), and 8 of them stayed MOVED by 1 to 42 levels because
+> a PNG decoded to an ImageBitmap rounds its semi-transparent texels. Both
+> were attributed before they were read: each MOVED leg exported on main at
+> the merge base reproduced its baseline, so the stage owned every difference;
+> a frame diff put the pixels on the device screens and the chip icons, and a
+> probe page uploading one PNG both ways under three's unpack settings showed
+> the window's `<img>` path to be the file's bytes and the bitmap path not.
+> With the screen taking a row-reversed copy and every PNG decoded natively,
+> every leg in the tables above holds EQUAL through the stage, plus the four
+> stills legs. Re-gated after merging main through #268 (its screen-media turns
+> meet the stage's screen orientation at runtime): `pnpm ready`'s legs and the
+> foldable and device legs EQUAL; `long-device-spike` exports the same hash on
+> this branch and on main itself, so its recorded baseline predates #268 and
+> is main's to re-record. The stage is null-for-legacy by construction, which
+> is why this entry carries no hashes.
+> Export wall time for the anchor pair fell from 96.0 s to 93.9 s on the same
+> busy machine; the preview holds 58 to 60 fps on every perf pass.
+
+> **2026-10-28 (a transition into a comparison renders: a deliberate rebase of
+> one fixture):** the incoming comparison composited its sides through the
+> same A/B pair the plain outgoing scene had just filled, so the crossfade
+> from `01-null` into `02-split` played as a hard cut, and the old
+> `compare-transition-spike` baseline `98132cf6…` recorded that bug. With the
+> incoming comparison rendered first, 16:9 re-recorded at `48ee3fd8…` (Verify
+> ×2 EQUAL). `transitioncheck` reads that crossfade's midpoint at an outgoing
+> weight of 0.505 against an expected 0.5 (0.026 with the fix switched off)
+> and `05-blend` into `06-chrome` (comparison into comparison, unchanged) at
+> 0.635; the midpoint frame was eyeballed: the title over the half-faded
+> comparison. No other gate project stages a comparison, so `ws:launch-2026`
+> and `showcase-tour` are untouched by construction.
 
 > **2026-10-24 (three r186: a deliberate rebase, the full matrix):** `three`
 > 0.185.1 → 0.186.1 (with `postprocessing` 6.39.5, the first release whose

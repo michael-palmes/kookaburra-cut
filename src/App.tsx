@@ -1,4 +1,3 @@
-import { Canvas, useThree } from "@react-three/fiber";
 import { invoke } from "@tauri-apps/api/core";
 import { emit, listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -12,6 +11,7 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
+import { formatBytes } from "./engine/appCache";
 import { lastLoadReport, reportLastLoad, stampProjectKit } from "./engine/appHeartbeat";
 import {
   noteAssetWritten,
@@ -37,7 +37,6 @@ import {
 import { effectiveKeyMoments, setBeatProject, useBeatStore } from "./engine/beatState";
 import { setActiveProjectBrand, setProjectBrand } from "./engine/brands";
 import type { VideoRun, VideoRunResult } from "./engine/bridgeExport";
-import { CompositorDriver } from "./engine/CompositorDriver";
 import { useCameraEditStore } from "./engine/cameraEditStore";
 import { ensureCaptureService } from "./engine/captureBridge";
 import {
@@ -52,7 +51,6 @@ import {
   clipExtractionCount,
   clipExtractionProgress,
   evictAllClips,
-  invalidateChangedClips,
   setHardwareVideo,
   subscribeClipExtraction,
 } from "./engine/clips";
@@ -61,7 +59,6 @@ import { useCompareEditStore } from "./engine/compareEditStore";
 import { useDeviceTrackEditStore } from "./engine/deviceTrackEditStore";
 import { listEdits, openEdit, openEditNamed } from "./engine/edit";
 import { useEffectsStore } from "./engine/effectsStore";
-import { canvasHandle, ExportBridge } from "./engine/exportBridge";
 import {
   EXPORT_PREAMBLE_STEPS,
   type ExportProgress,
@@ -72,14 +69,7 @@ import {
   verifyDeterminism,
 } from "./engine/exporter";
 import { isExporting } from "./engine/exportState";
-import {
-  CAMERA,
-  FORMATS,
-  type FormatSpec,
-  FPS,
-  SHADOW_MAP_TYPE,
-  STANDING_ASPECTS,
-} from "./engine/format";
+import { FORMATS, type FormatSpec, FPS, STANDING_ASPECTS } from "./engine/format";
 import { mergeFrameSpec } from "./engine/frameSchema";
 import { useGizmoSectionOpen } from "./engine/gizmoSections";
 import {
@@ -97,7 +87,7 @@ import { useImageEditStore } from "./engine/imageEditStore";
 import { useImageReconciliationStore } from "./engine/imageReconciliationStore";
 import { useLayeredScreenshotEditStore } from "./engine/layeredScreenshotEditStore";
 import { useLightingEditStore } from "./engine/lightingEditStore";
-import { ensureRectAreaLightUniforms } from "./engine/lightingState";
+import { plainError, useManagedPolicy } from "./engine/managed";
 import { conformingAmong, importMedia } from "./engine/media";
 import {
   editRenderMatchesPending,
@@ -157,11 +147,8 @@ import {
   writeProjectManifestSnapshot,
 } from "./engine/projectEdit";
 import { TrustDeniedError } from "./engine/projectTrust";
-import { RenderSettingsApplier } from "./engine/RenderSettingsApplier";
 import type { RenderSettings } from "./engine/renderSettings";
 import { revealApp } from "./engine/reveal";
-import { StagePointer } from "./engine/StagePointer";
-import { StageScenes } from "./engine/StageScenes";
 import type { CameraDoc } from "./engine/sceneCameraEdit";
 import { deriveCompareBDoc } from "./engine/sceneCompare";
 import {
@@ -198,6 +185,7 @@ import {
   observeSourceStamps,
   projectFileStamps,
 } from "./engine/sourceBaseline";
+import { stageOrNull } from "./engine/stageHandle";
 import { frameWorldCutout } from "./engine/stageViewport";
 import {
   addStillMark,
@@ -219,21 +207,23 @@ import {
   type AppSettings,
   createProject,
   getSettings,
-  initWorkspace,
+  initDefaultWorkspace,
   type LagWarningMode,
+  releaseProject,
   setLastExportPreset,
   setLastProject,
   setProjectTypography,
   slugifyName,
 } from "./engine/workspace";
 import { buildVideoExportOptions, type VideoExportSelection } from "./export/selection";
+import { StageView } from "./stage/StageView";
+import type { StageClient } from "./stage/stageClient";
 import { useEditorStore } from "./store/editorStore";
 import {
   projectOpenAspect,
   rememberedProjectAspect,
   rememberProjectAspect,
 } from "./store/projectAspects";
-import { useTrustStore } from "./store/trustStore";
 import { useUiStore } from "./store/uiStore";
 import { WORKSPACE_THEME_PREFIX } from "./theme/registry";
 import { AnimationLane } from "./ui/AnimationLane";
@@ -252,14 +242,14 @@ import { openChartDataModal } from "./ui/chartDataModalStore";
 import { setProjectPaletteSource } from "./ui/colour/projectPalette";
 import { DecorationGizmo } from "./ui/DecorationGizmo";
 import { DeviceAnimationLane } from "./ui/DeviceAnimationLane";
-import { SetupFailedDialog, TrustGateModal } from "./ui/dialogs";
+import { SetupFailedDialog } from "./ui/dialogs";
 import {
   ExportModal,
   type ExportModalInitial,
   type ExportSelection,
   type StillsExportSelection,
 } from "./ui/ExportModal";
-import { STILLS_ID } from "./ui/exportOptions";
+import { type ExportInterruption, interruptedExportMessage, STILLS_ID } from "./ui/exportOptions";
 import { clearExportCard, FlashWarning, noteExportFlashes } from "./ui/FlashWarning";
 import { GpuNotices } from "./ui/GpuNotices";
 import { OverlayImageGizmo } from "./ui/ImageOverlayGizmo";
@@ -276,6 +266,7 @@ import { MediaLibrary } from "./ui/MediaLibrary";
 import { NewProjectDialog } from "./ui/NewProjectDialog";
 import { PlaybackBar } from "./ui/PlaybackBar";
 import { PresentModal } from "./ui/PresentModal";
+import { writeCutCaches, writeCutsForMusic } from "./ui/pinnedCuts";
 import { ALL_PROJECTS } from "./ui/projectLibrary";
 import { SceneTerminalOverlay } from "./ui/SceneTerminalOverlay";
 import { SceneWebsiteOverlay } from "./ui/SceneWebsiteOverlay";
@@ -360,17 +351,6 @@ const TOAST_AUTO_CLOSE_MS = 4000;
 /** Once per page load: StrictMode mounts App twice. */
 let stillsJobCleared = false;
 
-/** Re-renders one frame per scrub change; the export path (exporter.ts) has its own frameloop controller reading the same clock store. */
-function PreviewClock() {
-  const invalidate = useThree((s) => s.invalidate);
-  useEffect(() => {
-    return useClockStore.subscribe((state, prev) => {
-      if (state.currentMs !== prev.currentMs) invalidate();
-    });
-  }, [invalidate]);
-  return null;
-}
-
 /** The manifest's project-relative path, as the source poll names it. */
 const MANIFEST_FILE = "project.json";
 
@@ -381,11 +361,12 @@ export default function App() {
   }, []);
 
   const currentMs = useClockStore((s) => s.currentMs);
+  // The stage worker's client, from the StageView; a Retry hands over a fresh one, so effects that send it preview flags depend on it.
+  const [stageClient, setStageClient] = useState<StageClient | null>(null);
   const clipsExtracting = useSyncExternalStore(subscribeClipExtraction, clipExtractionCount);
   const extractionProgress = useSyncExternalStore(subscribeClipExtraction, clipExtractionProgress);
   const durationMs = useClockStore((s) => s.durationMs);
   const setCurrentMs = useClockStore((s) => s.setCurrentMs);
-  const theme = useEditorStore((s) => s.theme);
   const format = useEditorStore((s) => s.format);
   const projectId = useEditorStore((s) => s.projectId);
   const setFormat = useEditorStore((s) => s.setFormat);
@@ -487,6 +468,13 @@ export default function App() {
   const claudeButtonRef = useRef<HTMLButtonElement>(null);
   const closeClaudeLauncher = useCallback(() => setClaudeLauncher(null), []);
   const claudeBuiltinTerminal = settings?.claudeBuiltinTerminal ?? false;
+  // What a configuration profile forces; null until read, and every Claude entry point waits for it so nothing managed flashes open.
+  const managed = useManagedPolicy();
+  const claudeAllowed = managed !== null && !managed.disableClaude;
+  // Copy and the start card only: unknown reads as not yet turned off, so an unmanaged welcome never flashes the managed wording.
+  const claudeOffered = managed?.disableClaude !== true;
+  const claudeAllowedRef = useRef(false);
+  claudeAllowedRef.current = claudeAllowed;
   // Read by the load-time greeting and the stable callbacks below without re-running them.
   const claudePrefsRef = useRef({ builtinTerminal: false, firstOpen: true });
   claudePrefsRef.current = {
@@ -494,6 +482,7 @@ export default function App() {
     firstOpen: !settings?.disableClaudeFirstOpen,
   };
   const toggleClaude = useCallback(() => {
+    if (!claudeAllowedRef.current) return;
     if (claudeBuiltinTerminal) setRailOpen((v) => !v);
     else setClaudeLauncher((v) => (v ? null : { firstRun: false }));
   }, [claudeBuiltinTerminal]);
@@ -517,7 +506,7 @@ export default function App() {
   const promptInClaudeApp = useCallback((slug: string, prompt: string) => {
     openInClaude(slug, prompt).catch((e) => {
       if (String(e) === CLAUDE_APP_MISSING) setClaudeLauncher({ firstRun: false });
-      else setToast({ kind: "error", message: String(e) });
+      else setToast({ kind: "error", message: plainError(e) });
     });
   }, []);
 
@@ -591,7 +580,12 @@ export default function App() {
       if (write) {
         write
           .then(() =>
-            setToast({ kind: "success", message: `Path copied — paste it into Claude: ${rel}` }),
+            setToast({
+              kind: "success",
+              message: claudeAllowedRef.current
+                ? `Path copied — paste it into Claude: ${rel}`
+                : `Path copied: ${rel}`,
+            }),
           )
           .catch(() => setToast({ kind: "error", message: `Couldn't copy — the path is: ${rel}` }));
       } else {
@@ -729,7 +723,29 @@ export default function App() {
   // Settings cleared the clip-extraction cache on disk; drop every registered extraction so mounted videos re-extract (the clear is refused mid-export, so this can't race the export loop).
   useEffect(() => {
     if (isAutoRun) return;
-    const unlisten = listen("kookaburra://clips-cache-cleared", () => evictAllClips());
+    const unlisten = listen("kookaburra://clips-cache-cleared", () => {
+      evictAllClips();
+      void stageOrNull()?.evictAllClips();
+    });
+    return () => {
+      void unlisten.then((fn) => fn());
+    };
+  }, [isAutoRun]);
+
+  // A project from before footage was kept out of git had it removed from its history on this open (workspace.rs `trim_legacy_history`); one line says so.
+  useEffect(() => {
+    if (isAutoRun) return;
+    const unlisten = listen<{ slug: string; freedBytes: number }>(
+      "kookaburra://history-trimmed",
+      (e) => {
+        const freed =
+          e.payload.freedBytes > 0 ? ` (${formatBytes(e.payload.freedBytes)} freed)` : "";
+        setToast({
+          kind: "info",
+          message: `Footage removed from this project's history${freed}; scenes keep theirs`,
+        });
+      },
+    );
     return () => {
       void unlisten.then((fn) => fn());
     };
@@ -737,16 +753,20 @@ export default function App() {
 
   // The everyday clip-decode lane follows the Settings hardware-video toggle: seeded at boot, live-updated from the Settings window (deferred to the export's lane restore mid-run).
   useEffect(() => {
+    const apply = (enabled: boolean) => {
+      setHardwareVideo(enabled);
+      stageClient?.previewFlags({ hardwareVideo: enabled });
+    };
     getSettings()
-      .then((s) => setHardwareVideo(!s.disableHardwareVideo))
+      .then((s) => apply(!s.disableHardwareVideo))
       .catch(() => {});
     const unlisten = listen<boolean>("kookaburra://hardware-video-changed", (e) =>
-      setHardwareVideo(e.payload),
+      apply(e.payload),
     );
     return () => {
       void unlisten.then((fn) => fn());
     };
-  }, []);
+  }, [stageClient]);
 
   // The slowdown badge's sensitivity follows Settings the same way: seeded at boot, live-updated from the Settings window. Off by default; the badge is opt-in.
   const [lagWarning, setLagWarningMode] = useState<LagWarningMode>("off");
@@ -920,6 +940,25 @@ export default function App() {
       // A mix-only patch keeps the music object, so nothing reading it re-renders.
       const music =
         JSON.stringify(rebuilt) === JSON.stringify(current.music) ? current.music : rebuilt;
+      // Pinned cuts move with the music, so their slots rebuild through a timing reload; the load writes every moved cache back.
+      if (
+        music !== current.music &&
+        Array.isArray(manifest.scenes) &&
+        manifest.scenes.some((entry: { cutAt?: unknown }) => typeof entry?.cutAt === "string")
+      ) {
+        await writeCutsForMusic(current, music);
+        changes[0] = {
+          kind: "manifest",
+          slug,
+          before: manifestBefore,
+          after: await readProjectManifestSnapshot(slug),
+          reload: false,
+        };
+        updatePreviewAudioSpec(merged);
+        pushHistory({ label: "music settings", changes });
+        handleTimingChanged();
+        return;
+      }
       setProject((prev) => {
         if (!prev?.audio) return prev;
         const r = resolveProjectDocsMusic(prev.sceneDocs, music, prev.slots);
@@ -1536,6 +1575,18 @@ export default function App() {
     void writeMusicCaches(current, musicCacheRewrites, handleDocChanged);
   }, [musicCacheRewrites, isAutoRun, exporting, handleDocChanged]);
 
+  // The same for pinned cuts: a load that re-resolved a pinned scene's length writes it back to project.json.
+  const cutCacheRewrites = project?.cutCacheRewrites;
+  const cutCachesHandledRef = useRef<number[] | undefined>(undefined);
+  useEffect(() => {
+    const current = loadedProjectRef.current;
+    if (isAutoRun || exporting || historyBusyRef.current || !cutCacheRewrites) return;
+    if (cutCachesHandledRef.current === cutCacheRewrites) return;
+    if (current?.cutCacheRewrites !== cutCacheRewrites || !isEditableProjectId(current.id)) return;
+    cutCachesHandledRef.current = cutCacheRewrites;
+    void writeCutCaches(current, cutCacheRewrites);
+  }, [cutCacheRewrites, isAutoRun, exporting]);
+
   // A changed media library may change a follow-media scene's source length; re-probe and rewrite project.json. Keyed on the refresh counter alone since `project` here is just the snapshot the sync reads, and keying on it would loop. An agent's render (origin "agent") only refreshes: kb owns its re-point and durations, and this in-memory doc may be stale.
   const mediaRefreshRef = useRef(0);
   useEffect(() => {
@@ -1546,9 +1597,9 @@ export default function App() {
     void (async () => {
       await Promise.all([...batch.slugs].map((slug) => refreshWorkspaceAssets(`ws:${slug}`)));
       // Stale-extraction sweep first, so scenes re-bind against fresh frames (an edit render can overwrite an -edited.mp4 in place).
-      await invalidateChangedClips().catch((e) =>
-        console.warn("[clips] invalidation sweep failed:", e),
-      );
+      await stageOrNull()
+        ?.invalidateChangedClips()
+        .catch((e) => console.warn("[clips] invalidation sweep failed:", e));
       const pending = pendingRepointRef.current;
       if (
         pending &&
@@ -1636,6 +1687,7 @@ export default function App() {
     setView("welcome");
     setWelcomeRefresh((n) => n + 1);
     setLastProject(null).catch(() => {});
+    releaseProject().catch(() => {});
     void refreshProjects();
   }, [refreshProjects]);
 
@@ -1646,7 +1698,7 @@ export default function App() {
         let current = loaded;
         if (!current.workspaceRoot && !isAutoRun) {
           try {
-            current = { ...current, workspaceRoot: await initWorkspace(null) };
+            current = { ...current, workspaceRoot: await initDefaultWorkspace() };
             void refreshProjects();
           } catch (e) {
             setSetupError(String(e));
@@ -1686,22 +1738,20 @@ export default function App() {
     };
   }, [isAutoRun, backToProjects]);
 
-  const handleWorkspaceChosen = useCallback(
-    async (parent: string | null) => {
-      const root = await initWorkspace(parent);
-      setSettings((prev) => ({ ...(prev ?? {}), workspaceRoot: root }));
-      setWelcomeRowId(ALL_PROJECTS);
-      setWelcomeQuery("");
-      setWelcomeRefresh((n) => n + 1);
-      await refreshProjects();
-    },
-    [refreshProjects],
-  );
+  const retryDefaultWorkspace = useCallback(async () => {
+    const root = await initDefaultWorkspace();
+    setSettings((prev) => ({ ...(prev ?? {}), workspaceRoot: root }));
+    setWelcomeRowId(ALL_PROJECTS);
+    setWelcomeQuery("");
+    setWelcomeRefresh((n) => n + 1);
+    await refreshProjects();
+  }, [refreshProjects]);
 
   // The one project-swap path: the loader effect, the autorun theme-preview batch, and the user-theme preview borrow all apply a loaded project identically (canvas project, active theme, effects store, clock duration).
   const applyLoadedProject = useCallback(
     (loaded: LoadedProject) => {
       setProject(loaded);
+      void stageOrNull()?.applyProject(loaded);
       if (!isAutoRun) {
         setPreviewAudioProject(loaded);
         setBeatProject(loaded);
@@ -1904,17 +1954,25 @@ export default function App() {
     [handleThemeEdited],
   );
 
-  const handleChooseWorkspace = useCallback(async () => {
-    const dir = await openFolderPicker({
-      directory: true,
-      multiple: false,
-      title: "Choose where Kookaburra Cut keeps your projects",
-    });
-    if (typeof dir === "string") await handleWorkspaceChosen(dir);
-  }, [handleWorkspaceChosen]);
-
   // Bumped by the error panel's Retry: workspace manifest fixes happen outside Vite's module graph, so nothing reloads automatically; the user retries once Claude fixed the file.
   const [loadNonce, setLoadNonce] = useState(0);
+  // The stage worker's boot: a failed boot makes Retry mount a fresh canvas and worker (`stageAttempt`), and a ready that arrives after its window reloads on its own.
+  const [stageAttempt, setStageAttempt] = useState(0);
+  const stageBoot = useSyncExternalStore(
+    useCallback(
+      (onChange: () => void) => stageClient?.subscribeBoot(onChange) ?? (() => {}),
+      [stageClient],
+    ),
+    () => stageClient?.boot() ?? null,
+  );
+  const stageFailed = stageBoot?.status === "failed";
+  useEffect(() => {
+    if (stageBoot?.status === "ready" && stageBoot.late) setLoadNonce((n) => n + 1);
+  }, [stageBoot]);
+  const retryLoad = useCallback(() => {
+    if (stageFailed) setStageAttempt((n) => n + 1);
+    setLoadNonce((n) => n + 1);
+  }, [stageFailed]);
   // A bridge export waits until the source poll's last reload is on stage (or failed): `requested` counts the poll's reloads, `landed` the last one to land.
   const sourceReloads = useRef({ requested: 0, landed: 0 });
   const [reloadLanded, setReloadLanded] = useState(0);
@@ -2045,8 +2103,8 @@ export default function App() {
   }, [loadedProjectId, projectId, format.name, isAutoRun, exporting]);
   // Greet editable projects: the legacy rail opens on every load as it always has, the Claude launcher only on a new project's first open; both close where they can't work. Keyed on the id: in-memory doc patches swap the project object per edit and must not reopen what the user closed.
   useEffect(() => {
-    if (!loadedProjectId || isAutoRun) return;
-    const editable = isEditableProjectId(loadedProjectId);
+    if (!loadedProjectId || isAutoRun || !managed) return;
+    const editable = isEditableProjectId(loadedProjectId) && !managed.disableClaude;
     const greet = editable && claimClaudeLauncherGreeting(loadedProjectId);
     const prefs = claudePrefsRef.current;
     if (prefs.builtinTerminal) {
@@ -2055,7 +2113,7 @@ export default function App() {
     }
     setRailOpen(false);
     setClaudeLauncher(greet && prefs.firstOpen ? { firstRun: true } : null);
-  }, [loadedProjectId, isAutoRun]);
+  }, [loadedProjectId, isAutoRun, managed]);
 
   // Camera-edit hygiene: a committed drag draft holds the new pose through the async reload, released once the reloaded project lands; the editor's whole state is per-project, so a project switch resets it.
   useEffect(() => {
@@ -2084,8 +2142,6 @@ export default function App() {
   const screenshotStackSectionOpen = useGizmoSectionOpen("layeredScreenshot");
   const lsLaneOpen = useLayeredScreenshotEditStore((s) => s.laneOpen);
   const lsEditOpen = useLayeredScreenshotEditStore((s) => s.laneOpen || s.open);
-  // The F-001 consent request `loadProject` is currently blocked on, if any.
-  const pendingTrust = useTrustStore((s) => s.pending);
   const camSceneIndex = useClockStore((s) =>
     project ? activeSceneIndex(project.slots, s.currentMs) : 0,
   );
@@ -2158,9 +2214,9 @@ export default function App() {
           if (!observeAssetStamp(projectId, stamp)) return;
           const paths = await refreshWorkspaceAssets(projectId);
           if (cancelled || isExporting() || paths.length === 0) return;
-          await invalidateChangedClips().catch((e) =>
-            console.warn("[clips] invalidation sweep failed:", e),
-          );
+          await stageOrNull()
+            ?.invalidateChangedClips()
+            .catch((e) => console.warn("[clips] invalidation sweep failed:", e));
           await emit("kookaburra://media-changed", { slug, paths, origin: "watch" });
           if (paths.some((rel) => /\.(cube|hdr|exr)$/i.test(rel))) setLoadNonce((n) => n + 1);
         })
@@ -2347,15 +2403,20 @@ export default function App() {
     if (!config || project.id !== config.project) return;
     const cfg = config;
 
-    console.warn(`[autorun] project "${project.id}" loaded — polling for the canvas handle`);
+    console.warn(`[autorun] project "${project.id}" loaded — polling for the stage`);
     let timer = 0;
     let cancelled = false;
     const waitForCanvas = () => {
       if (cancelled || autoRunRef.current.started) return;
-      if (canvasHandle.current) {
-        console.warn("[autorun] canvas handle ready — starting run");
+      const stage = stageOrNull();
+      if (stage) {
         autoRunRef.current.started = true;
-        void runAutoRun(project, cfg, applyLoadedProject);
+        void stage.ready
+          .then(() => {
+            console.warn("[autorun] stage ready — starting run");
+            return runAutoRun(project, cfg, applyLoadedProject);
+          })
+          .catch((e) => console.error("[autorun] the stage did not start:", e));
         return;
       }
       // setTimeout, not requestAnimationFrame: WKWebView suspends rAF while occluded or the display sleeps (the AFK scenario the autorun serves), which silently stalled runs; timers keep firing.
@@ -2405,21 +2466,25 @@ export default function App() {
 
   // Balanced/Performance thin preview clip decoding to every 2nd frame; pinned to full whenever an export could be running.
   useEffect(() => {
-    setPreviewClipStride(!exporting && previewQuality !== "full" ? 2 : 1);
-  }, [exporting, previewQuality]);
+    const clipStride = !exporting && previewQuality !== "full" ? 2 : 1;
+    setPreviewClipStride(clipStride);
+    stageClient?.previewFlags({ clipStride });
+  }, [exporting, previewQuality, stageClient]);
   const motionBlurWhilePlaying = useUiStore((s) => s.motionBlurWhilePlaying);
   const projectBlurSamples = project?.renderSettings.motionBlur?.samples ?? SHUTTER_SAMPLES_DEFAULT;
   useEffect(() => {
     const samples = previewQuality === "full" ? projectBlurSamples : 4;
-    setPreviewMotionBlurPlayback(
-      motionBlurWhilePlaying && previewQuality !== "performance" ? samples : 0,
-    );
-  }, [motionBlurWhilePlaying, previewQuality, projectBlurSamples]);
+    const motionBlurSamples =
+      motionBlurWhilePlaying && previewQuality !== "performance" ? samples : 0;
+    setPreviewMotionBlurPlayback(motionBlurSamples);
+    stageClient?.previewFlags({ motionBlurSamples });
+  }, [motionBlurWhilePlaying, previewQuality, projectBlurSamples, stageClient]);
 
   // Playback binds the small preview JPEGs; pausing flips every consumer back to exact full frames.
   useEffect(() => {
     setPreviewPlaybackActive(playing && !exporting);
-  }, [playing, exporting]);
+    stageClient?.previewFlags({ playbackActive: playing && !exporting });
+  }, [playing, exporting, stageClient]);
 
   // Slowdown badge state: the EMA lives in refs (per-frame maths, no renders); the badge value updates at most every 200ms so the indicator never adds render work of its own.
   const [lagFps, setLagFps] = useState<number | null>(null);
@@ -2805,6 +2870,16 @@ export default function App() {
     commitFormat,
   });
 
+  // An export the previous page died with (WebKit reclaiming memory, usually) is said once, with the restart that helps.
+  useEffect(() => {
+    if (isAutoRun) return;
+    void invoke<ExportInterruption | null>("take_export_interruption")
+      .then((stopped) => {
+        if (stopped) setToast({ kind: "error", message: interruptedExportMessage(stopped) });
+      })
+      .catch(() => {});
+  }, [isAutoRun]);
+
   function cancelExport() {
     if (!exportAbortRef.current || cancelling) return;
     setCancelling(true);
@@ -2851,7 +2926,7 @@ export default function App() {
               name={project?.name ?? projectId.replace(WORKSPACE_PROJECT_PREFIX, "")}
               path={projectDisplayPath}
             />
-            {project && isEditableProjectId(project.id) && (
+            {project && isEditableProjectId(project.id) && claudeAllowed && (
               <EditWithClaudeButton
                 buttonRef={claudeButtonRef}
                 legacy={claudeBuiltinTerminal}
@@ -2945,6 +3020,7 @@ export default function App() {
           }}
           refreshKey={welcomeRefresh}
           focusSearchNonce={welcomeSearchNonce}
+          claudeAvailable={claudeOffered}
           notice={
             trustDeclined ? (
               <LoadNotice
@@ -2987,41 +3063,45 @@ export default function App() {
             />
           )}
           {/* The rail hides during export (task 24): the live-session registry keeps the PTY and buffer alive through the unmount, so it restores intact when the export ends. */}
-          {railOpen && !exporting && project && isEditableProjectId(project.id) && (
-            <aside className="terminal-rail">
-              <div className="rail-header">
-                <span className="rail-title">Claude Code</span>
-                <span className="rail-legacy-tag">Legacy</span>
-                <button
-                  type="button"
-                  className="btn btn-small rail-use-app"
-                  title="Edit in the Claude app instead"
-                  onClick={() => switchClaudeMode(false)}
-                >
-                  <span className="titlebar-claude-mark">
-                    <ClaudeSpark size={12} strokeWidth={2.6} />
-                  </span>
-                  Use Claude app
-                </button>
-                <button
-                  type="button"
-                  className="rail-close"
-                  aria-label="Hide the Claude panel"
-                  title="Close (⌥⌘E)"
-                  onClick={() => setRailOpen(false)}
-                >
-                  <CloseGlyph />
-                </button>
-              </div>
-              <TerminalPanel
-                key={project.id}
-                slug={nativeProjectSlug(project.id)}
-                cwd={projectFolder ?? ""}
-                projectName={project.name}
-                sceneCount={project.slots.length}
-              />
-            </aside>
-          )}
+          {railOpen &&
+            claudeAllowed &&
+            !exporting &&
+            project &&
+            isEditableProjectId(project.id) && (
+              <aside className="terminal-rail">
+                <div className="rail-header">
+                  <span className="rail-title">Claude Code</span>
+                  <span className="rail-legacy-tag">Legacy</span>
+                  <button
+                    type="button"
+                    className="btn btn-small rail-use-app"
+                    title="Edit in the Claude app instead"
+                    onClick={() => switchClaudeMode(false)}
+                  >
+                    <span className="titlebar-claude-mark">
+                      <ClaudeSpark size={12} strokeWidth={2.6} />
+                    </span>
+                    Use Claude app
+                  </button>
+                  <button
+                    type="button"
+                    className="rail-close"
+                    aria-label="Hide the Claude panel"
+                    title="Close (⌥⌘E)"
+                    onClick={() => setRailOpen(false)}
+                  >
+                    <CloseGlyph />
+                  </button>
+                </div>
+                <TerminalPanel
+                  key={project.id}
+                  slug={nativeProjectSlug(project.id)}
+                  cwd={projectFolder ?? ""}
+                  projectName={project.name}
+                  sceneCount={project.slots.length}
+                />
+              </aside>
+            )}
           <div className="editor-main">
             <div className="stage">
               {/* Letterbox frame: contain-fit at the export aspect (design.md §7.2); the preview frames exactly like the export and can never overflow the window. */}
@@ -3029,9 +3109,11 @@ export default function App() {
                 className="stage-frame"
                 style={{ "--stage-aspect": format.width / format.height } as CSSProperties}
               >
-                <Canvas
-                  frameloop="demand"
-                  // Preview-only pixel ratio; the exporter pins its own (setPixelRatio(1)) per run.
+                {/* The stage: one canvas the stage worker draws into (scene code and three live there, never in this realm); the preview pixel ratio is the exporter's own business per run. The scene tree itself is shared with the hidden render window (engine/StageScenes, mounted by the worker). */}
+                <StageView
+                  stageRole="editor"
+                  attempt={stageAttempt}
+                  onClient={setStageClient}
                   dpr={
                     previewQuality === "performance"
                       ? 1
@@ -3039,49 +3121,8 @@ export default function App() {
                         ? 1.5
                         : [1, 2]
                   }
-                  // antialias is a request; WebKit decides silently (ANGLE/Metal). The onCreated truth log below records what the context actually granted, landing in the autorun dev.log on every gated run.
-                  gl={{ preserveDrawingBuffer: true, antialias: true }}
-                  // Shadow maps: enabled globally, inert until a SceneStage mounts a castShadow key light (see SHADOW_MAP_TYPE; regressions prove the inert case byte-neutral).
-                  shadows={{ enabled: true, type: SHADOW_MAP_TYPE }}
-                  onCreated={({ gl }) => {
-                    // Area lights need the LTC uniforms initialised once, at renderer creation, never lazily on first light (a first-frame init would race the export preamble). Global and idempotent.
-                    ensureRectAreaLightUniforms();
-                    console.warn(
-                      "[gl] context:",
-                      JSON.stringify(gl.getContext().getContextAttributes()),
-                      `maxSamples=${gl.capabilities.maxSamples}`,
-                      // The fx transition path renders into HalfFloat MSAA targets, so float renderability is part of the truth log.
-                      `extColorBufferFloat=${gl.extensions.has("EXT_color_buffer_float")}`,
-                    );
-                  }}
-                  camera={{ position: CAMERA.position, fov: CAMERA.fov }}
-                >
-                  <color attach="background" args={[theme.colors.background]} />
-                  <PreviewClock />
-                  <ExportBridge />
-                  <StagePointer cutout={sceneCutout} />
-                  <RenderSettingsApplier />
-                  {project && (
-                    <CompositorDriver
-                      projectId={project.id}
-                      slots={project.slots}
-                      cameraTrack={project.cameraTrack}
-                      sceneDocs={project.sceneDocs}
-                      theme={project.theme}
-                      sceneThemes={project.sceneThemes}
-                      projectLighting={project.projectLighting}
-                      sceneFrames={project.sceneFrames}
-                      compareBDocs={project.compareBDocs}
-                      compareBThemes={project.compareBThemes}
-                      roomThemes={project.roomThemes}
-                      motionBlur={project.renderSettings.motionBlur}
-                      music={project.music}
-                      commitStamp={project}
-                    />
-                  )}
-                  {/* The scene tree itself is shared with the hidden render window (engine/StageScenes): scenes resolve assets against the loaded project, which lags the store's projectId by a render during a switch (see ProjectIdContext). */}
-                  <StageScenes project={project} />
-                </Canvas>
+                  cutout={sceneCutout}
+                />
                 {/* The live scene terminal: below the tool and gizmo layers so their handles stay reachable, self-gated on the doc's terminal block and paused playback. */}
                 {project && isEditableProjectId(project.id) && !exporting && !isAutoRun && (
                   <SceneTerminalOverlay
@@ -3292,16 +3333,22 @@ export default function App() {
               {isAutoRun && <div className="stage-busy-chip">Automated run — hands off</div>}
               <BridgeExportOverlay state={bridgeExport.overlay} onCancel={bridgeExport.cancel} />
 
-              {error && !project && (
+              {stageBoot?.status === "failed" && (
+                <div className="stage-error" role="alert">
+                  <h2>The preview didn’t start</h2>
+                  <pre>{stageBoot.error.message}</pre>
+                  <p className="muted">Retry starts the preview again and reloads the project.</p>
+                  <button type="button" className="btn primary" onClick={retryLoad}>
+                    Retry
+                  </button>
+                </div>
+              )}
+              {error && !project && !stageFailed && (
                 <div className="stage-error" role="alert">
                   <h2>This project can’t load right now</h2>
                   <pre>{error}</pre>
                   <p className="muted">Fix the file — or ask Claude Code to — then retry.</p>
-                  <button
-                    type="button"
-                    className="btn primary"
-                    onClick={() => setLoadNonce((n) => n + 1)}
-                  >
+                  <button type="button" className="btn primary" onClick={retryLoad}>
                     Retry
                   </button>
                 </div>
@@ -3547,18 +3594,20 @@ export default function App() {
       {settings && !settings.workspaceRoot && setupError && !isAutoRun && (
         <SetupFailedDialog
           error={setupError}
-          onRetry={() => handleWorkspaceChosen(null)}
-          onChoose={handleChooseWorkspace}
+          onRetry={retryDefaultWorkspace}
+          onOpenSettings={() => invoke("open_settings")}
         />
       )}
       {/* The welcome (and its consent ask) waits for a workspace so it never stacks on the setup-failure dialog. */}
-      {settings?.workspaceRoot && updates.consent === "undecided" && !isAutoRun && (
-        <WelcomeDialog onAnswer={(on) => void updates.answerConsent(on)} />
+      {settings?.workspaceRoot && updates.welcomeOwed && !isAutoRun && (
+        <WelcomeDialog
+          onAnswer={(on) => void updates.answerConsent(on)}
+          updatesManaged={updates.managed}
+        />
       )}
       {updates.offerVisible && updates.available && !isAutoRun && (
         <UpdateAvailableDialog
           version={updates.available.version}
-          notes={updates.available.notes}
           installing={updates.phase === "installing"}
           installError={updates.installError}
           onLater={updates.dismissOffer}
@@ -3577,14 +3626,9 @@ export default function App() {
           </div>
         </div>
       )}
-      {pendingTrust && (
-        <TrustGateModal
-          name={pendingTrust.name}
-          onAnswer={(allowed) => useTrustStore.getState().answer(allowed)}
-        />
-      )}
       {showNewProject && (
         <NewProjectDialog
+          claudeStart={claudeOffered}
           initialGroup={newProjectGroup}
           initialTemplateId={newProjectTemplate}
           onCreate={handleCreateProject}
@@ -3605,7 +3649,9 @@ export default function App() {
       )}
       {themeMode && (
         <ThemeMode
-          onEditInClaude={editorView && project ? handleEditThemeInClaude : undefined}
+          onEditInClaude={
+            editorView && project && claudeAllowed ? handleEditThemeInClaude : undefined
+          }
           currentThemeId={
             editorView && project && isEditableProjectId(project.id) ? project.theme.id : undefined
           }
@@ -3637,6 +3683,7 @@ export default function App() {
             hasWorkspaceRoot: !!settings?.workspaceRoot,
             playing,
             audioMuted,
+            claudeAllowed,
             claudeOpen: claudeBuiltinTerminal ? railOpen : claudeLauncher !== null,
             canAddScenes:
               !!project && !["preset", "ws-preset"].includes(parseProjectId(project.id).scope),

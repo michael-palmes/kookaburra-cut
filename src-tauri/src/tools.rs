@@ -54,7 +54,7 @@ fn plist_string(plist: &str, key: &str) -> Option<String> {
 }
 
 /// `$HOME` when set and non-empty, else the password database entry: the `dirs` crate's rule, which Tauri's path resolver uses.
-fn home_dir() -> Result<PathBuf, String> {
+pub(crate) fn home_dir() -> Result<PathBuf, String> {
     if let Some(home) = std::env::var_os("HOME").filter(|h| !h.is_empty()) {
         return Ok(PathBuf::from(home));
     }
@@ -98,6 +98,40 @@ pub(crate) fn sidecar_path(name: &str) -> Result<PathBuf, String> {
 fn current_exe() -> std::io::Result<PathBuf> {
     tauri::utils::platform::current_exe()
         .or_else(|_| std::env::current_exe().and_then(|p| p.canonicalize()))
+}
+
+/// The names a media tool needs and nothing else: a sidecar never sees the rest of the app's environment (a token in `launchctl setenv`, say).
+const SIDECAR_ENV: [&str; 5] = ["HOME", "PATH", "TMPDIR", "LANG", "USER"];
+
+/// The allow-listed environment every sidecar spawn carries (`LC_*` rides with `LANG`).
+pub(crate) fn sidecar_env() -> Vec<(std::ffi::OsString, std::ffi::OsString)> {
+    std::env::vars_os()
+        .filter(|(key, _)| {
+            key.to_str()
+                .is_some_and(|key| SIDECAR_ENV.contains(&key) || key.starts_with("LC_"))
+        })
+        .collect()
+}
+
+/// A `std::process::Command` for a media tool with the allow-listed environment; callers set stdio.
+pub(crate) fn sidecar_command(tool: &Path) -> std::process::Command {
+    let mut cmd = std::process::Command::new(tool);
+    cmd.env_clear().envs(sidecar_env());
+    cmd
+}
+
+/// The bundled sidecar through the shell plugin, with the same allow-listed environment.
+pub(crate) fn sidecar(
+    app: &tauri::AppHandle,
+    name: &str,
+) -> Result<tauri_plugin_shell::process::Command, String> {
+    use tauri_plugin_shell::ShellExt;
+    Ok(app
+        .shell()
+        .sidecar(name)
+        .map_err(|e| format!("{name} sidecar not found: {e}"))?
+        .env_clear()
+        .envs(sidecar_env()))
 }
 
 /// The two media tools every edit core runs.
@@ -216,6 +250,18 @@ mod tests {
             "{}",
             path.display()
         );
+    }
+
+    #[test]
+    fn the_sidecar_environment_is_an_allow_list() {
+        let env = sidecar_env();
+        let keys: Vec<String> = env
+            .iter()
+            .map(|(k, _)| k.to_string_lossy().into_owned())
+            .collect();
+        assert!(keys.iter().all(|k| SIDECAR_ENV.contains(&k.as_str()) || k.starts_with("LC_")));
+        assert!(keys.contains(&"PATH".to_owned()) || std::env::var_os("PATH").is_none());
+        assert!(!keys.iter().any(|k| k.starts_with("CARGO") || k.starts_with("RUST")));
     }
 
     #[test]

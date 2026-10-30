@@ -77,6 +77,61 @@ const ASPECTS: readonly string[] = [
   "phone-landscape",
 ];
 
+/** `-profile:v` per encoder; anything else never reaches ffmpeg argv (Rust checks the same lists on the spec). */
+const PROFILES: Record<EncodeSpec["codec"], readonly string[]> = {
+  libx264: ["baseline", "main", "high", "high10", "high422", "high444"],
+  h264_videotoolbox: ["baseline", "main", "high", "extended"],
+  libx265: ["main", "main10", "main422-10", "main444-8", "main444-10"],
+  hevc_videotoolbox: ["main", "main10"],
+  prores_ks: ["proxy", "lt", "standard", "hq", "4444", "4444xq", "0", "1", "2", "3", "4", "5"],
+  prores_videotoolbox: [
+    "proxy",
+    "lt",
+    "standard",
+    "hq",
+    "4444",
+    "4444xq",
+    "0",
+    "1",
+    "2",
+    "3",
+    "4",
+    "5",
+  ],
+};
+
+/** `auto`, `1b`, or a major 1 to 6 with an optional `.0` to `.2` minor. */
+const LEVEL = /^(auto|1b|[1-6](\.[0-2])?)$/;
+
+const ENTROPY: readonly string[] = ["cabac", "cavlc", "ac", "vlc"];
+
+/** Why the three free-text encoder fields of a video block are not accepted, or undefined when they are. */
+export function encoderFieldProblem(video: {
+  codec: string;
+  profile?: unknown;
+  level?: unknown;
+  entropy?: unknown;
+}): string | undefined {
+  const profiles = PROFILES[video.codec as EncodeSpec["codec"]];
+  if (!profiles) return `unknown codec "${video.codec}"`;
+  if (video.profile !== undefined) {
+    if (typeof video.profile !== "string" || !profiles.includes(video.profile)) {
+      return `profile must be one of ${profiles.join(", ")}`;
+    }
+  }
+  if (video.level !== undefined) {
+    if (typeof video.level !== "string" || !LEVEL.test(video.level)) {
+      return "level must be auto, 1b, or 1 to 6.2";
+    }
+  }
+  if (video.entropy !== undefined) {
+    if (typeof video.entropy !== "string" || !ENTROPY.includes(video.entropy)) {
+      return "entropy must be cabac or cavlc";
+    }
+  }
+  return undefined;
+}
+
 function isRate(v: unknown): v is EncodeSpec["rate"] {
   if (typeof v !== "object" || v === null) return false;
   const r = v as Record<string, unknown>;
@@ -117,6 +172,11 @@ export function parseExportPreset(raw: unknown, source: string): ExportPresetDoc
     typeof audio.codec !== "object"
   ) {
     console.warn(`[export-preset] ${source}: missing/invalid required fields — ignored`);
+    return undefined;
+  }
+  const problem = encoderFieldProblem(video as { codec: string });
+  if (problem) {
+    console.warn(`[export-preset] ${source}: ${problem}, ignored`);
     return undefined;
   }
   return raw as ExportPresetDoc;

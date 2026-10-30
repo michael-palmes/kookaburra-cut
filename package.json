@@ -1,6 +1,6 @@
 {
   "name": "kookaburra-cut",
-  "version": "0.20.1",
+  "version": "0.21.1",
   "private": true,
   "type": "module",
   "license": "MIT OR Apache-2.0",
@@ -55,6 +55,7 @@
     "package:dmg": "bash scripts/make-dmg.sh",
     "package:signed": "bash scripts/sign-and-notarize.sh",
     "release": "bash scripts/release.sh",
+    "release:rehearse": "bash scripts/release.sh --adhoc",
     "tauri": "tauri"
   },
   "engines": {

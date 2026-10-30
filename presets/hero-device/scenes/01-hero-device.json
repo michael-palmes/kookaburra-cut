@@ -42,7 +42,7 @@
     "items": [
       {
         "key": "title",
-        "text": "Start typing",
+        "text": "",
         "type": "title"
       }
     ]
@@ -50,7 +50,7 @@
   "name": "Hero device",
   "text": {
     "subtitle": "",
-    "title": "Start typing"
+    "title": ""
   },
   "textAnimation": {
     "in": "fade-up",

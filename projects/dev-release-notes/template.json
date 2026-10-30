@@ -9,7 +9,7 @@
   "tier": "safe",
   "uses": ["overlay", "video-window", "chart", "text-motion", "background"],
   "highlights": [
-    "Breaking changes and migration steps as overlay slides",
+    "Breaking changes and migration steps as code beside the notes",
     "A real terminal recording in a floating window",
     "Adoption charted in the terminal look"
   ],
@@ -17,9 +17,9 @@
     "poster": 0,
     "frames": [
       { "scene": 0, "atMs": 1800 },
+      { "scene": 1, "atMs": 2600 },
       { "scene": 2, "atMs": 2600 },
-      { "scene": 3, "atMs": 2600 },
-      { "scene": 5, "atMs": 3200 }
+      { "scene": 4, "atMs": 3200 }
     ]
   },
   "order": 11,

@@ -6,8 +6,10 @@ import ReactDOM from "react-dom/client";
 import { EditorApp } from "./editor/EditorApp";
 import { installDevPerformanceDrain } from "./engine/devPerformance";
 import { revealFailsafe } from "./engine/reveal";
+import { installWindowNativePort } from "./engine/windowNativePort";
 import "./styles.css";
 
+installWindowNativePort();
 installDevPerformanceDrain();
 revealFailsafe();
 

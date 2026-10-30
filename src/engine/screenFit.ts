@@ -40,3 +40,52 @@ export function coverCropRect(mediaAspect: number, screenAspect: number, flipV: 
 export function remapUv(u: number, v: number, rect: UvRect): [number, number] {
   return [rect.u0 + u * (rect.u1 - rect.u0), rect.v0 + v * (rect.v1 - rect.v0)];
 }
+
+/** Quarter turns clockwise, as the media appears on the screen. */
+export type ScreenTurns = 0 | 1 | 2 | 3;
+
+/** A symmetry of the unit square applied after the crop, `[a b; c d] · uv + [e f]`: the quarter turn and, for video, the V flip. */
+export interface UvTurn {
+  a: number;
+  b: number;
+  c: number;
+  d: number;
+  e: number;
+  f: number;
+}
+
+/** The crop, plus the turn for turned media. Unturned media carries no turn and keeps `coverCropRect` exactly, flip included. */
+export interface ScreenUvMap {
+  rect: UvRect;
+  turn?: UvTurn;
+}
+
+/** Where a turned screen point samples in the unturned source, both top-down: [a, b, e, c, d, f]. */
+const TURNS: Record<1 | 2 | 3, [number, number, number, number, number, number]> = {
+  1: [0, 1, 0, -1, 0, 1],
+  2: [-1, 0, 1, 0, -1, 1],
+  3: [0, -1, 1, 1, 0, 0],
+};
+
+/** The cover-fit map for media turned `turns` quarter turns clockwise: the crop fits the turned media's aspect (fit applies after the turn), then the turn and any V flip map it back into the source. */
+export function screenUvMap(
+  mediaAspect: number,
+  screenAspect: number,
+  flipV: boolean,
+  turns: ScreenTurns,
+): ScreenUvMap {
+  if (turns === 0) return { rect: coverCropRect(mediaAspect, screenAspect, flipV) };
+  const aspect = turns % 2 === 1 && mediaAspect > 0 ? 1 / mediaAspect : mediaAspect;
+  const [a, b, e, c, d, f] = TURNS[turns];
+  return {
+    rect: coverCropRect(aspect, screenAspect, false),
+    turn: flipV ? { a, b, c: -c, d: -d, e, f: 1 - f } : { a, b, c, d, e, f },
+  };
+}
+
+/** `remapUv` through a whole map, turn included. */
+export function remapScreenUv(u: number, v: number, map: ScreenUvMap): [number, number] {
+  const [x, y] = remapUv(u, v, map.rect);
+  const t = map.turn;
+  return t ? [t.a * x + t.b * y + t.e, t.c * x + t.d * y + t.f] : [x, y];
+}

@@ -130,7 +130,8 @@ One array for stills and videos. Where an entry draws depends only on its `host`
   `{ "opacity": 1, "blur": 0, "offset": [0.03, -0.03], "colour": "#ff6a3d" }`.
 - `motion.preset`: `none`, `float`, `tilt-reveal`, `push-in` (both kinds), `turntable`
   (stills), `drift` (videos); tuning `amplitude`, `hz`, `degPerSec`, `durationMs`.
-- `video`: `startMs` (scene-local), `loop` (default false: holds the last frame).
+- `video`: `startMs` (scene-local), `at` (a musical position the start follows, cached in
+  `startMs`; reference/beats.md), `loop` (default false: holds the last frame).
 - `castShadow: true` for stage-hosted stills.
 - `motionBlur: { enabled, amount? }` keeps an item sharp or scales its trail under
   motion blur (reference/camera.md).
@@ -300,7 +301,8 @@ fresh snapshot in the app.
 ```
 
 `viewport.preset`: `desktop` 1440 x 900, `tablet` 1024 x 768, `mobile` 390 x 844, or
-`custom` with `width`, `height`, `orientation`; `zoom` 0.5..2. `frame.appearance`
+`custom` with `width`, `height`, `orientation`; `zoom` 0.5..2. Use only a `url` the user
+gives you: never guess one from a product name. `frame.appearance`
 `match-theme`, `light`, `dark`; `shadow` `none`, `soft`, `strong`. Exports render the
 captured PNG (`capture`), which the app records after the user allows the site; ask the
 user to capture after changing the URL.

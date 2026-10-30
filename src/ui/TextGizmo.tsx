@@ -1,28 +1,17 @@
-import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from "react";
-import type { Object3D } from "three";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useCameraEditStore } from "../engine/cameraEditStore";
 import { computeFormat } from "../engine/format";
-import { getFramePanels } from "../engine/framePanelRegistry";
 import { type StageRect, stageCamera } from "../engine/gizmoRegistry";
-import {
-  type Gizmo2DTarget,
-  gizmoTargets,
-  subscribeGizmoTargets,
-} from "../engine/gizmoTargetRegistry";
-import { nodeDrawn } from "../engine/gizmoVisibility";
 import type { LoadedProject } from "../engine/project";
 import type { SceneDoc } from "../engine/sceneDocSchema";
+import type { Gizmo2DTargetFrame } from "../engine/stageProtocol";
 import { useTextEditStore } from "../engine/textEditStore";
 import { useEditorStore } from "../store/editorStore";
 import { Gizmo2D, type Gizmo2DGesture, type Gizmo2DItem } from "./gizmo/Gizmo2D";
-import { frameFromQuad, frameGuideLines, type Pt } from "./gizmo/gizmo2dMath";
-import {
-  panelToStagePx,
-  projectWorldPoint,
-  unprojectToZPlane,
-  worldQuadOf,
-} from "./gizmo/gizmo2dProject";
+import { frameGuideLines, type Pt } from "./gizmo/gizmo2dMath";
+import { unprojectToZPlane } from "./gizmo/gizmo2dProject";
 import { useGizmoDocWrite } from "./gizmo/gizmoDocWrite";
+import { stageTargetFrame, useStageTargets } from "./gizmo/stageTargets";
 import { textOffsetWrite, textRotationWrite, textSizeWrite } from "./gizmo/textGizmoWrite";
 
 /** Direct manipulation for the active scene's text: a box per mounted text key while the Text section is open, then move (`textStyle.<key>OffsetX/Y`), size about the anchor (`<key>Size`) and tilt (`<key>RotationDeg`) on the selected one. Two spaces: an overlay panel's headlines are drawn from the base pose against the full frame, a linear map; everything else projects through the LIVE camera, so a box tracks a rig pose, a keyframe and a transition. Cutout-hosted text is deliberately excluded: it renders into a cutout-sized target at a different `camera.aspect` and is then keyed into the cutout's pixel rect, so `stageCamera()` is not the projection that put it on screen; the Text drill still edits it numerically. */
@@ -49,7 +38,7 @@ export function TextGizmo({
   sceneIndex: number;
   onDocChanged: (sceneIndex: number, doc: SceneDoc) => void;
 }) {
-  const targets = useSyncExternalStore(subscribeGizmoTargets, gizmoTargets);
+  const targets = useStageTargets();
   const selected = useTextEditStore((s) => s.selected);
   const select = useTextEditStore((s) => s.select);
   const cameraArmed = useCameraEditStore((s) => s.armedTool !== null);
@@ -64,7 +53,7 @@ export function TextGizmo({
 
   // One box per text key: a scene that mounts the same key twice gets the first, since both write the same fields.
   const mine = useMemo(() => {
-    const byKey = new Map<string, Gizmo2DTarget>();
+    const byKey = new Map<string, Gizmo2DTargetFrame>();
     for (const t of targets) {
       if (t.domain !== "text" || t.sceneIndex !== sceneIndex || t.side !== undefined) continue;
       if (!byKey.has(t.itemId)) byKey.set(t.itemId, t);
@@ -72,41 +61,14 @@ export function TextGizmo({
     return [...byKey.values()];
   }, [targets, sceneIndex]);
 
-  /** The panel group this node sits inside, if any: panel text is laid out against the full frame and drawn from the base pose. */
-  const panelOf = useCallback((node: Object3D): Object3D | null => {
-    const panels = getFramePanels();
-    if (panels.length === 0) return null;
-    for (let o: Object3D | null = node; o; o = o.parent) {
-      if (panels.some((p) => p.group === o)) return o;
-    }
-    return null;
-  }, []);
-
+  /** Panel text is laid out against the full frame and drawn from the base pose; everything else projects through the live camera (the stage did that after its last frame). */
   const geometryOf = useCallback(
-    (target: Gizmo2DTarget, rect: StageRect) => {
-      const node = target.node();
-      const local = target.localRect();
-      if (!node || !local) return null;
-      const panel = panelOf(node);
-      // The compositor leaves a panel group hidden between its passes, so its own subtree is judged below it.
-      if (!nodeDrawn(node, panel)) return null;
-      if (panel) {
-        const { quad, pivot } = worldQuadOf(node, local, (w) =>
-          panelToStagePx([w.x, w.y], format.frame, rect),
-        );
-        return { frame: frameFromQuad(quad, pivot), panel: true, worldZ: 0 };
-      }
-      if (cutout) return null;
-      const camera = stageCamera();
-      if (!camera) return null;
-      let worldZ = 0;
-      const { quad, pivot } = worldQuadOf(node, local, (w) => {
-        worldZ = w.z;
-        return projectWorldPoint(camera, rect, w);
-      });
-      return { frame: frameFromQuad(quad, pivot), panel: false, worldZ };
+    (target: Gizmo2DTargetFrame, rect: StageRect) => {
+      if (!target.panel && cutout) return null;
+      const geometry = stageTargetFrame(target, rect, format.frame);
+      return geometry ? { ...geometry, panel: target.panel } : null;
     },
-    [panelOf, format.frame, cutout],
+    [format.frame, cutout],
   );
 
   const items = useMemo<Gizmo2DItem[]>(

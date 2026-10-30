@@ -1,7 +1,8 @@
 //! Who a pack says it came from, and who this Mac has accepted packs from before.
 //!
 //! Two halves: the Settings-owned profile stamped into every pack we sign, and the trust-on-first-use store keyed by
-//! the manifest's key id. Neither half ever treats a declared name as verified: only the signature is evidence.
+//! the id derived from the pack's public key (never the id the manifest declares) and cross-checked by name. Neither
+//! half ever treats a declared name as verified: only the signature is evidence.
 
 use super::key;
 use super::model::PackPublisher;
@@ -22,12 +23,10 @@ const MAX_WEBSITE_CHARS: usize = 200;
 pub struct PublisherProfileView {
     /// Absent until the pane has been saved once.
     pub profile: Option<PublisherProfile>,
-    /// The name a pack signed right now would carry: the profile's, else the macOS full user name.
-    pub effective_name: String,
+    /// The name a pack signed right now would carry; absent until a profile is saved, and the packs window asks for one.
+    pub effective_name: Option<String>,
     pub organisation: Option<String>,
     pub website: Option<String>,
-    /// From macOS, shown read-only.
-    pub device: String,
     /// Absent until this install signs its first pack.
     pub key: Option<PublisherKeyView>,
 }
@@ -39,6 +38,8 @@ pub struct PublisherKeyView {
     /// The same id in groups of four, for reading out loud.
     pub key_id_display: String,
     pub public_key: String,
+    /// The login Keychain, or the 0600 file where the Keychain could not answer.
+    pub stored_in: key::KeyStorage,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -68,21 +69,55 @@ pub enum PublisherVerdict {
     NameChanged {
         previous: String,
     },
+    /// An unknown key declaring a name this Mac already knows under another key: the shape of someone borrowing a name.
+    KeyChanged {
+        known_as: String,
+        previous_key_id: String,
+        last_pack: String,
+    },
+}
+
+/// Names compare trimmed, case-folded and with runs of whitespace collapsed, so "Acme  Studio" cannot pose as "acme studio".
+pub fn same_publisher_name(a: &str, b: &str) -> bool {
+    let fold = |s: &str| {
+        s.split_whitespace()
+            .map(str::to_lowercase)
+            .collect::<Vec<_>>()
+            .join(" ")
+    };
+    !a.trim().is_empty() && fold(a) == fold(b)
 }
 
 // ── Verdicts and the trust store ────────────────────────────────────
 
-/// Pure: the verdict for a manifest publisher against the store. A stored record whose key differs reads as first time, since a key id is a truncated hash.
+/// The store's key for a publisher: the id its public key hashes to. `None` when the key does not parse, which the reader refuses before anything reaches here.
+fn store_key(publisher: &PackPublisher) -> Option<String> {
+    key::key_id_of(&publisher.public_key)
+}
+
+/// Pure: the verdict for a manifest publisher against the store. A key the store does not hold (or holds under another public key, since a key id is a truncated hash) is first time, unless the declared name is one a different key already uses here.
 pub fn publisher_verdict(
     known: &HashMap<String, KnownPublisher>,
     publisher: &PackPublisher,
 ) -> PublisherVerdict {
-    let Some(record) = known.get(&publisher.key_id) else {
-        return PublisherVerdict::FirstTime;
+    let record = store_key(publisher)
+        .and_then(|id| known.get(&id))
+        .filter(|record| record.public_key == publisher.public_key);
+    let Some(record) = record else {
+        let mut by_name: Vec<_> = known
+            .iter()
+            .filter(|(_, record)| same_publisher_name(&record.name, &publisher.name))
+            .collect();
+        by_name.sort_by(|a, b| b.1.last_seen.cmp(&a.1.last_seen));
+        return match by_name.first() {
+            Some((key_id, record)) => PublisherVerdict::KeyChanged {
+                known_as: record.name.clone(),
+                previous_key_id: (*key_id).clone(),
+                last_pack: record.last_pack_name.clone(),
+            },
+            None => PublisherVerdict::FirstTime,
+        };
     };
-    if record.public_key != publisher.public_key {
-        return PublisherVerdict::FirstTime;
-    }
     if record.name != publisher.name {
         return PublisherVerdict::NameChanged {
             previous: record.name.clone(),
@@ -102,9 +137,10 @@ pub fn record_import(
     pack_name: &str,
     now: &str,
 ) {
-    let record = known
-        .entry(publisher.key_id.clone())
-        .or_insert_with(|| KnownPublisher {
+    let Some(id) = store_key(publisher) else {
+        return;
+    };
+    let record = known.entry(id).or_insert_with(|| KnownPublisher {
             public_key: publisher.public_key.clone(),
             name: publisher.name.clone(),
             organisation: publisher.organisation.clone(),
@@ -121,6 +157,37 @@ pub fn record_import(
     record.last_pack_name = pack_name.to_owned();
 }
 
+/// Pure: re-key every record by the id its stored public key derives, once, for stores written when the manifest's declared id was the key. A record whose key does not parse can never match a verdict and is dropped; where two records derive one id, the one already under it stays. Returns whether anything changed.
+pub fn migrate_known_publishers(known: &mut HashMap<String, KnownPublisher>) -> bool {
+    let stale: Vec<String> = known
+        .iter()
+        .filter(|(id, record)| key::key_id_of(&record.public_key).as_ref() != Some(id))
+        .map(|(id, _)| id.clone())
+        .collect();
+    for id in &stale {
+        let Some(record) = known.remove(id) else {
+            continue;
+        };
+        if let Some(derived) = key::key_id_of(&record.public_key) {
+            known.entry(derived).or_insert(record);
+        }
+    }
+    !stale.is_empty()
+}
+
+/// The store as every reader sees it: migrated on first read and written back when that changed anything.
+pub fn known_publishers(
+    app: &AppHandle,
+    state: &State<'_, SettingsState>,
+) -> Result<HashMap<String, KnownPublisher>, String> {
+    let mut known = load_settings(app, state)?.known_publishers;
+    if migrate_known_publishers(&mut known) {
+        let migrated = known.clone();
+        update_settings(app, state, |settings| settings.known_publishers = migrated)?;
+    }
+    Ok(known)
+}
+
 /// Persist an accepted import. Called after the files land, never before.
 pub fn remember_publisher(
     app: &AppHandle,
@@ -130,6 +197,7 @@ pub fn remember_publisher(
 ) -> Result<(), String> {
     let now = now_rfc3339();
     update_settings(app, state, |settings| {
+        migrate_known_publishers(&mut settings.known_publishers);
         record_import(&mut settings.known_publishers, publisher, pack_name, &now);
     })
 }
@@ -196,16 +264,32 @@ fn is_web_url(value: &str) -> bool {
     !host.is_empty() && !host.chars().any(char::is_whitespace)
 }
 
-/// The publisher block for a pack this install is signing. Creates the key if there isn't one: this is the first-sign path.
+/// The publisher block for a pack this install is signing. Creates the key if there isn't one: this is the first-sign path. With no saved profile the name comes from `name_override` (the packs window asks for it, the round trip supplies one) and is never guessed from the account.
 pub fn manifest_publisher(
     app: &AppHandle,
     state: &State<'_, SettingsState>,
+    name_override: Option<&str>,
 ) -> Result<PackPublisher, String> {
     let settings = load_settings(app, state)?;
-    let identity = key::ensure_identity(app).map_err(String::from)?;
     let profile = settings.publisher.as_ref();
+    let name = match profile {
+        Some(profile) => profile.name.clone(),
+        None => {
+            let name = name_override.map(str::trim).unwrap_or_default();
+            if name.is_empty() {
+                return Err(super::error::PackError::PublisherNameMissing.into());
+            }
+            validate_profile(&PublisherProfile {
+                name: name.to_owned(),
+                organisation: None,
+                website: None,
+            })?
+            .name
+        }
+    };
+    let identity = key::ensure_identity(app).map_err(String::from)?;
     Ok(PackPublisher {
-        name: profile.map_or_else(os_full_name, |p| p.name.clone()),
+        name,
         organisation: profile.and_then(|p| p.organisation.clone()),
         website: profile.and_then(|p| p.website.clone()),
         device: device_name(),
@@ -221,19 +305,17 @@ fn profile_view(
     let settings = load_settings(app, state)?;
     let key = key::existing_identity(app)
         .map_err(String::from)?
-        .map(|identity| PublisherKeyView {
+        .map(|(identity, stored_in)| PublisherKeyView {
             key_id_display: key::format_key_id(&identity.key_id),
             key_id: identity.key_id,
             public_key: identity.public_key,
+            stored_in,
         });
     let profile = settings.publisher;
     Ok(PublisherProfileView {
-        effective_name: profile
-            .as_ref()
-            .map_or_else(os_full_name, |p| p.name.clone()),
+        effective_name: profile.as_ref().map(|p| p.name.clone()),
         organisation: profile.as_ref().and_then(|p| p.organisation.clone()),
         website: profile.as_ref().and_then(|p| p.website.clone()),
-        device: device_name(),
         profile,
         key,
     })
@@ -263,12 +345,16 @@ pub fn set_publisher_profile(
 /// Replace the signing key. `known_publishers` is deliberately untouched: rotating changes who *we* look like, not who we trust.
 #[tauri::command]
 pub fn rotate_publisher_key(app: AppHandle) -> Result<PublisherKeyView, String> {
-    let identity = key::rotate_identity(&app).map_err(String::from)?;
-    Ok(PublisherKeyView {
-        key_id_display: key::format_key_id(&identity.key_id),
-        key_id: identity.key_id,
-        public_key: identity.public_key,
-    })
+    key::rotate_identity(&app).map_err(String::from)?;
+    key::existing_identity(&app)
+        .map_err(String::from)?
+        .map(|(identity, stored_in)| PublisherKeyView {
+            key_id_display: key::format_key_id(&identity.key_id),
+            key_id: identity.key_id,
+            public_key: identity.public_key,
+            stored_in,
+        })
+        .ok_or_else(|| "the new signing key could not be read back".to_owned())
 }
 
 #[tauri::command]
@@ -276,9 +362,7 @@ pub fn list_known_publishers(
     app: AppHandle,
     state: State<'_, SettingsState>,
 ) -> Result<Vec<KnownPublisherRow>, String> {
-    let settings = load_settings(&app, &state)?;
-    let mut rows: Vec<KnownPublisherRow> = settings
-        .known_publishers
+    let mut rows: Vec<KnownPublisherRow> = known_publishers(&app, &state)?
         .into_iter()
         .map(|(key_id, publisher)| KnownPublisherRow {
             key_id_display: key::format_key_id(&key_id),
@@ -307,32 +391,11 @@ pub fn forget_publisher(
     })
 }
 
-// ── macOS identity, best effort ─────────────────────────────────────
+// ── Device ──────────────────────────────────────────────────────────
 
-fn shell_line(program: &str, args: &[&str]) -> Option<String> {
-    let output = std::process::Command::new(program)
-        .args(args)
-        .output()
-        .ok()?;
-    if !output.status.success() {
-        return None;
-    }
-    let text = String::from_utf8_lossy(&output.stdout).trim().to_owned();
-    (!text.is_empty()).then_some(text)
-}
-
-/// The macOS full user name, falling back to the login name and then a neutral label.
-pub fn os_full_name() -> String {
-    shell_line("id", &["-F"])
-        .or_else(|| std::env::var("USER").ok().filter(|s| !s.is_empty()))
-        .unwrap_or_else(|| "Kookaburra Cut user".to_owned())
-}
-
-/// The Sharing-panel computer name, falling back to the hostname.
+/// What a pack says it was made on. The computer name is often a person's name and never left by choice, so it is not read.
 pub fn device_name() -> String {
-    shell_line("scutil", &["--get", "ComputerName"])
-        .or_else(|| shell_line("hostname", &[]))
-        .unwrap_or_else(|| "This Mac".to_owned())
+    "Mac".to_owned()
 }
 
 // ── Timestamps ──────────────────────────────────────────────────────
@@ -388,14 +451,26 @@ mod tests {
         }
     }
 
-    fn packer(name: &str, key_id: &str, public_key: &str) -> PackPublisher {
+    /// A real key pair from a seed, so the store's derived id has something to derive.
+    fn keyed(seed: u8) -> (String, String) {
+        let key = ed25519_dalek::SigningKey::from_bytes(&[seed; 32]);
+        let public_key = format!(
+            "ed25519:{}",
+            base64::Engine::encode(&base64::engine::general_purpose::STANDARD, key.verifying_key().to_bytes())
+        );
+        let key_id = key::key_id_of(&public_key).expect("a real key derives an id");
+        (key_id, public_key)
+    }
+
+    fn packer(name: &str, seed: u8) -> PackPublisher {
+        let (key_id, public_key) = keyed(seed);
         PackPublisher {
             name: name.to_owned(),
             organisation: Some("Acme".to_owned()),
             website: None,
-            device: "Acme iMac".to_owned(),
-            public_key: public_key.to_owned(),
-            key_id: key_id.to_owned(),
+            device: "Mac".to_owned(),
+            public_key,
+            key_id,
         }
     }
 
@@ -433,7 +508,7 @@ mod tests {
     #[test]
     fn verdict_is_first_time_then_known_then_name_changed() {
         let mut known = HashMap::new();
-        let publisher = packer("Acme Studio", "a1b2c3d4e5f60718", "ed25519:AAAA");
+        let publisher = packer("Acme Studio", 1);
         assert_eq!(
             publisher_verdict(&known, &publisher),
             PublisherVerdict::FirstTime
@@ -454,7 +529,7 @@ mod tests {
             }
         );
 
-        let renamed = packer("Acme Creative", "a1b2c3d4e5f60718", "ed25519:AAAA");
+        let renamed = packer("Acme Creative", 1);
         assert_eq!(
             publisher_verdict(&known, &renamed),
             PublisherVerdict::NameChanged {
@@ -462,21 +537,97 @@ mod tests {
             }
         );
 
-        // Same id, different key: not the same publisher.
-        let collided = packer("Acme Studio", "a1b2c3d4e5f60718", "ed25519:BBBB");
+        // A different key declaring the known key's id: the store is keyed by what the key derives, so it is a stranger
+        // wearing a known name, never that publisher.
+        let mut collided = packer("Acme Studio", 2);
+        collided.key_id = publisher.key_id.clone();
         assert_eq!(
             publisher_verdict(&known, &collided),
+            PublisherVerdict::KeyChanged {
+                known_as: "Acme Studio".to_owned(),
+                previous_key_id: publisher.key_id.clone(),
+                last_pack: "Acme Brand Kit".to_owned(),
+            }
+        );
+    }
+
+    #[test]
+    fn the_store_is_keyed_by_the_derived_id_and_migrates_declared_ones() {
+        let mut known = HashMap::new();
+        let acme = packer("Acme Studio", 1);
+        let mut declared_wrong = acme.clone();
+        declared_wrong.key_id = "ffffffffffffffff".to_owned();
+        record_import(&mut known, &declared_wrong, "Kit", "2026-01-01T00:00:00Z");
+        assert!(known.contains_key(&acme.key_id), "recorded under the derived id");
+        assert!(!known.contains_key("ffffffffffffffff"));
+
+        // A store written by an older build keyed by the declared id, plus one record whose key does not parse.
+        let mut legacy = HashMap::new();
+        legacy.insert("ffffffffffffffff".to_owned(), known[&acme.key_id].clone());
+        legacy.insert(
+            "0000000000000000".to_owned(),
+            KnownPublisher {
+                public_key: "ed25519:not-a-key".to_owned(),
+                name: "Ghost".to_owned(),
+                organisation: None,
+                first_seen: "2026-01-01T00:00:00Z".to_owned(),
+                last_seen: "2026-01-01T00:00:00Z".to_owned(),
+                pack_count: 1,
+                last_pack_name: "Kit".to_owned(),
+            },
+        );
+        assert!(migrate_known_publishers(&mut legacy));
+        assert_eq!(legacy.len(), 1);
+        assert_eq!(legacy[&acme.key_id].name, "Acme Studio");
+        assert!(!migrate_known_publishers(&mut legacy), "a migrated store is left alone");
+        assert!(matches!(
+            publisher_verdict(&legacy, &acme),
+            PublisherVerdict::Known { .. }
+        ));
+    }
+
+    #[test]
+    fn a_known_name_under_a_new_key_is_a_key_change_not_a_first_time() {
+        let mut known = HashMap::new();
+        let acme = packer("Acme Studio", 1);
+        record_import(&mut known, &acme, "Acme Brand Kit", "2026-07-26T01:02:03Z");
+
+        let borrowed = packer("  acme   STUDIO ", 3);
+        assert_eq!(
+            publisher_verdict(&known, &borrowed),
+            PublisherVerdict::KeyChanged {
+                known_as: "Acme Studio".to_owned(),
+                previous_key_id: acme.key_id.clone(),
+                last_pack: "Acme Brand Kit".to_owned(),
+            }
+        );
+        let stranger = packer("Beta Films", 3);
+        assert_eq!(
+            publisher_verdict(&known, &stranger),
             PublisherVerdict::FirstTime
         );
+        // Accepting the new key records it beside the old one; both then read as known.
+        record_import(&mut known, &borrowed, "Acme Kit 2", "2026-08-01T00:00:00Z");
+        assert_eq!(known.len(), 2);
+        assert!(matches!(
+            publisher_verdict(&known, &borrowed),
+            PublisherVerdict::Known { .. }
+        ));
+        assert!(matches!(
+            publisher_verdict(&known, &acme),
+            PublisherVerdict::Known { .. }
+        ));
+        assert!(same_publisher_name("Acme Studio", "acme\tstudio"));
+        assert!(!same_publisher_name("", ""));
     }
 
     #[test]
     fn recording_keeps_first_seen_and_counts_packs() {
         let mut known = HashMap::new();
-        let publisher = packer("Acme Studio", "a1b2c3d4e5f60718", "ed25519:AAAA");
+        let publisher = packer("Acme Studio", 1);
         record_import(&mut known, &publisher, "Kit One", "2026-01-01T00:00:00Z");
         record_import(&mut known, &publisher, "Kit Two", "2026-03-04T05:06:07Z");
-        let record = &known["a1b2c3d4e5f60718"];
+        let record = &known[&publisher.key_id];
         assert_eq!(record.first_seen, "2026-01-01T00:00:00Z");
         assert_eq!(record.last_seen, "2026-03-04T05:06:07Z");
         assert_eq!(record.pack_count, 2);
@@ -507,6 +658,16 @@ mod tests {
         assert_eq!(
             serde_json::to_string(&PublisherVerdict::FirstTime).unwrap(),
             r#"{"kind":"firstTime"}"#
+        );
+        let borrowed = serde_json::to_string(&PublisherVerdict::KeyChanged {
+            known_as: "Acme Studio".to_owned(),
+            previous_key_id: "a1b2c3d4e5f60718".to_owned(),
+            last_pack: "Acme Brand Kit".to_owned(),
+        })
+        .unwrap();
+        assert_eq!(
+            borrowed,
+            r#"{"kind":"keyChanged","knownAs":"Acme Studio","previousKeyId":"a1b2c3d4e5f60718","lastPack":"Acme Brand Kit"}"#
         );
     }
 

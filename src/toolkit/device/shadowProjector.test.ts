@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   DEVICE_SHADOW_CHOICES,
   DEVICE_SHADOW_MODES,
+  devicePoseFloorShift,
   deviceShadowSlabs,
   lightDirection,
   SHADOW_FRAG,
@@ -625,5 +626,95 @@ describe("the mode catalogue", () => {
     expect(overhead[1]).toBeCloseTo(1, 12);
     const east = lightDirection(90, 0);
     expect(east[0]).toBeCloseTo(1, 12);
+  });
+});
+
+describe("devicePoseFloorShift", () => {
+  const DEG = Math.PI / 180;
+  type Spec = Parameters<typeof devicePoseFloorShift>[0];
+  /** The posed outline's lowest point, sampled degree by degree round every rounded corner of both faces. */
+  const lowest = (spec: Spec, pose: ShadowPose) => {
+    let low = Number.POSITIVE_INFINITY;
+    for (const slab of deviceShadowSlabs(spec, pose)) {
+      const r = slab.radius;
+      for (const [sx, sy] of [
+        [1, 1],
+        [-1, 1],
+        [-1, -1],
+        [1, -1],
+      ]) {
+        for (let deg = 0; deg < 360; deg++) {
+          const a = (slab.half[0] - r) * sx + r * Math.cos(deg * DEG);
+          const b = (slab.half[1] - r) * sy + r * Math.sin(deg * DEG);
+          for (const sn of [-1, 1]) {
+            const y =
+              slab.center[1] +
+              slab.u[1] * a +
+              slab.v[1] * b +
+              (slab.n[1] * sn * slab.thickness) / 2;
+            low = Math.min(low, y);
+          }
+        }
+      }
+    }
+    return low;
+  };
+  /** Where the floor receiver lands: the upright base, shifted by the pose. */
+  const floorOf = (spec: Spec, pose: ShadowPose) =>
+    -(spec.fittedHeight / 2) * pose.scale + devicePoseFloorShift(spec, pose);
+
+  it("is exactly zero upright and when only yawed, so an upright device keeps its floor", () => {
+    for (const spec of [PHONE, LAPTOP, FOLDABLE]) {
+      for (const yaw of [0, 0.3, -1.2, Math.PI]) {
+        for (const foldDeg of [0, 70, 180]) {
+          expect(devicePoseFloorShift(spec, { ...REST, rotation: [0, yaw, 0], foldDeg })).toBe(0);
+        }
+      }
+    }
+  });
+
+  it("drops the floor to the lowest edge of an unfolded foldable turned 90 degrees", () => {
+    const pose: ShadowPose = { ...REST, rotation: [0, 0, 90 * DEG], foldDeg: 180 };
+    // The unshifted floor cut through the device well above its lowest edge.
+    expect(lowest(FOLDABLE, pose)).toBeLessThan(-FOLDABLE.fittedHeight / 2 - 0.4);
+    expect(floorOf(FOLDABLE, pose)).toBeCloseTo(lowest(FOLDABLE, pose), 3);
+    expect(floorOf(FOLDABLE, pose)).toBeCloseTo(-FOLDABLE.fold.halfWidth, 3);
+  });
+
+  it("keeps a portrait foldable on its floor through the whole fold", () => {
+    for (const rotation of [
+      [0, 0, 90 * DEG],
+      [4 * DEG, -16 * DEG, 90 * DEG],
+      [0, 0, -90 * DEG],
+    ] as const) {
+      for (let foldDeg = 0; foldDeg <= 180; foldDeg += 5) {
+        const pose: ShadowPose = { ...REST, rotation: [...rotation], foldDeg, scale: 0.7 };
+        expect(floorOf(FOLDABLE, pose)).toBeCloseTo(lowest(FOLDABLE, pose), 3);
+      }
+    }
+  });
+
+  it("follows a phone onto its side, flat on its back and through an oblique roll", () => {
+    for (const rotation of [
+      [0, 0, 90 * DEG],
+      [-90 * DEG, 0, 0],
+      [0, 0, 45 * DEG],
+      [-6 * DEG, 14 * DEG, 0],
+    ] as const) {
+      const pose: ShadowPose = { ...REST, rotation: [...rotation] };
+      expect(floorOf(PHONE, pose)).toBeCloseTo(lowest(PHONE, pose), 3);
+    }
+    // On its side the phone's long edge is up, so the floor rises to meet it.
+    expect(devicePoseFloorShift(PHONE, { ...REST, rotation: [0, 0, 90 * DEG] })).toBeCloseTo(
+      PHONE.fittedHeight / 2 - PHONE.layoutWidth / 2,
+      9,
+    );
+  });
+
+  it("leaves a float out, so a floating device still lifts off its shadow", () => {
+    const pose: ShadowPose = { ...REST, rotation: [0, 0, 90 * DEG], foldDeg: 180 };
+    expect(devicePoseFloorShift(FOLDABLE, { ...pose, offset: [0, 0.5, 0] })).toBe(
+      devicePoseFloorShift(FOLDABLE, pose),
+    );
   });
 });

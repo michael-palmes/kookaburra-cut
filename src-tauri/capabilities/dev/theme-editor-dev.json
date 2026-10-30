@@ -1,0 +1,7 @@
+{
+  "$schema": "../../gen/schemas/desktop-schema.json",
+  "identifier": "theme-editor-dev",
+  "description": "Dev builds only: the theme editor moves themes between the bundled set and the workspace.",
+  "windows": ["theme-editor"],
+  "permissions": ["dev-theme-editor"]
+}

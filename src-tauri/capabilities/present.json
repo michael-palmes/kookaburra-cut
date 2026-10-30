@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "present",
-  "description": "Capabilities for the Kookaburra Cut present window",
+  "description": "Capabilities for the Kookaburra Cut present window: read and render the project, show approved websites during holds. No terminal, no writes.",
   "windows": ["present"],
   "permissions": [
     "core:default",
@@ -14,6 +14,10 @@
     "core:window:allow-set-cursor-visible",
     "core:window:allow-current-monitor",
     "core:window:allow-primary-monitor",
-    "core:window:allow-available-monitors"
+    "core:window:allow-available-monitors",
+    "project-read",
+    "project-render",
+    "present-window",
+    "website-present"
   ]
 }

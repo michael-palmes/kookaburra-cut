@@ -1,5 +1,6 @@
 import { listen } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { plainError } from "../engine/managed";
 import { type LoadedProject, projectFolderPath, sceneFileStem } from "../engine/project";
 import { resolveSceneWebsite, sceneWebsiteLayout } from "../engine/sceneWebsite";
 import {
@@ -15,10 +16,6 @@ import {
   websiteBoundsForFrame,
 } from "../engine/sceneWebsiteNative";
 import { usePresentStore } from "./presentStore";
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
 
 export function PresentWebsiteOverlay({
   project,
@@ -66,7 +63,7 @@ export function PresentWebsiteOverlay({
         setState("ready");
         void showWebsite(event.payload.viewId).catch((nextError) => {
           setState("failed");
-          setError(errorMessage(nextError));
+          setError(plainError(nextError));
         });
       } else if (
         event.payload.state === "blocked" ||
@@ -126,7 +123,7 @@ export function PresentWebsiteOverlay({
       .catch((nextError) => {
         if (!cancelled) {
           setState("failed");
-          setError(errorMessage(nextError));
+          setError(plainError(nextError));
         }
       });
     return () => {

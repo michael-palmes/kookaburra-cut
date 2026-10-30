@@ -2,6 +2,12 @@
 
 Guidance for Codex and Claude Code when working in **Kookaburra Cut**, an AI driven, deterministic animated-video studio for macOS (Apple Silicon).
 
+## Focus
+
+Kookaburra Cut is a deterministic studio for product launch films that hold their own beside the best from leading tech and AI companies, with a human touch: the person's insight leads and AI does the heavy lifting. Draw that insight out first (what shipped, who it's for, why it matters) and build around their real product; motion carries the story, so nothing looks like a slideshow or PowerPoint, not even a deck. It runs on corporate machines holding confidential, unreleased work, so it protects the user at every step: local by default; nothing leaves the Mac without explicit consent; imported projects, packs and web content are untrusted; anything uncertain fails closed. It serves seasoned editors and first-timers alike: a finished-looking default and one obvious next step up front, depth a click further in, never a dead end. Words are sharp, concise and warm, in Australian English; comments and copy stay minimal. When these conflict, protect the user, then keep exports exact, then keep it simple, then polish.
+
+Hold every change and review to this.
+
 ## What this is
 
 A Tauri 2 desktop app that renders every visual (text, graphics, 3D) through **one** react-three-fiber WebGL canvas, and exports video by stepping a manual clock frame-by-frame → `gl.readPixels` → a bundled **ffmpeg sidecar** (H.264 / H.265 / ProRes). There is no Chromium fallback; it runs in pure WKWebView. Background and rationale: `docs/architecture.md`; the export contract: `docs/determinism.md`; every locked decision and why: `docs/decisions.md`.
@@ -51,6 +57,11 @@ pnpm kookaburra:run --action packroundtrip --project ws:launch-2026
 # (path printed + in last-run.json; --scene takes an index or file stem, --at seconds).
 pnpm kookaburra:run --action screenshot --project ws:test-4 --scene 2
 
+# Memory probe: each film through the real export, sampling render rate, every WebKit process's
+# memory and the clip cache; exit 1 when a film slows below 80% or the editor grows over 512 MB.
+# long-device-spike is the 60 s leak acceptance film; --lever L measures one change.
+pnpm kookaburra:run --action memory --project long-device-spike
+
 # Stills (PDF handout or PNG zip, one page per still) through the export path (docs/stills.md).
 pnpm kookaburra:run --action stills --project showcase-tour --stills pdf --size 1080p
 pnpm kookaburra:run --action stillsverify --project showcase-tour --stills png
@@ -71,18 +82,20 @@ pnpm kookaburra:run --action preset-previews            # --project <slug,...> s
 # then confirm with one or two autorun screenshots (tools/look-lab/README.md).
 pnpm look-lab --look <id> --gpu                          # --compare 4,8 for motion, --grid for all 9 presets
 
-# Release. Needs KOOKABURRA_SIGNING_IDENTITY + KOOKABURRA_NOTARY_PROFILE, the pinned
-# static sidecar (pnpm setup:ffmpeg:release), and a GUI session (Finder styles the DMG).
-pnpm package:signed    # build + Developer ID sign + notarise + staple: app and DMG
-pnpm package:dmg       # DMG only, from an already-built release/Kookaburra Cut.app
-pnpm release           # guards -> package:signed -> zip + checksum -> tag -> draft GH release
+# Release: a signed v* tag on main; .github/workflows/release.yml builds, signs (protected
+# environment), verifies and drafts the GitHub release (kookaburra-release skill).
+pnpm release           # tag v<version> (signed, checked against .github/allowed_signers) and push it
+pnpm release:rehearse  # local ad-hoc rehearsal: build, sign ad hoc, plain DMG, verify; no key, no tag
+pnpm package:signed    # local Developer ID sign + notarise + staple (needs the identity and a notary profile)
+pnpm package:dmg       # styled DMG only, from release/Kookaburra Cut.app (needs a GUI session)
 ```
 
 For native Computer Use verification, run `pnpm acceptance:app` and target only the full `.app` path it prints. Never use `Kookaburra Cut`, `com.mpalmes.kookaburracut` or `/Applications/Kookaburra Cut.app`; if the helper fails, stop rather than falling back.
 
 **Gate economy:** before a PR, run `pnpm ready` once, after the last code
-change. It maps the diff to exactly what it needs: Tier 0 checks for the areas
-touched, then `pnpm gate:merge` (the ONE PR gate: showcase-tour +
+change (code review fixes included, see "Code review"). It maps the diff to
+exactly what it needs: Tier 0 checks for the areas touched, then
+`pnpm gate:merge` (the ONE PR gate: showcase-tour +
 `ws:launch-2026`, which must be EQUAL as the null-for-legacy proof) only when
 the export path changed, plus a feature fixture only when its area changed.
 Each leg exports ONCE against its recorded baseline and falls back to Verify ×2
@@ -166,6 +179,7 @@ Project skills are authored only in `.agents/skills`. Keep `.claude/skills` as t
 - Docs `docs/foldables.md`: folding devices (the inside and outside displays and the one screen-slot helper, the `foldDeg` track, the per-degree glb clip and its static camera half, auto-centre, auto screen power, Start when opened, the two-panel shadow, the Fold inspector group). Read it before touching `src/toolkit/device/foldPose.ts`, `src/engine/foldTransition.ts`, `src/engine/deviceScreens.ts`, `src/ui/inspector/foldEditorModel.ts` or `scripts/blender-duo-prepare.py`.
 - Docs `docs/gizmos.md`: the gizmo subsystem (the 3D and 2D families, section-scoped outlines and click-to-select, the pointer-routing contract, the registries and coordinate spaces, what each drag writes, the export guards). Read it before touching `src/engine/gizmo*`, `src/engine/SceneGizmo.tsx`/`SceneOutline.tsx`, `src/ui/gizmo/`, or any gizmo host (`src/ui/TextGizmo.tsx`, `ChartHeroGizmo.tsx`, `DecorationGizmo.tsx`, `src/toolkit/device/DeviceGizmo.tsx`, `src/toolkit/objects/ObjectPrimitive.tsx`, `src/toolkit/chart/Chart.tsx`).
 - Docs `docs/stills.md`: the stills export (the sidecar `stills` block and `still: true` camera keys, the automatic still's settled moment and Present holds, the page plan, the PDF and PNG zip writers, the IPC, the autorun gate). Read it before touching `src/engine/still*.ts`, `src/engine/exportFrame.ts`, `src/engine/presentHold*.ts`, `src/engine/presentTimingRegistry.ts` or `src-tauri/src/stills/`.
+- Docs `docs/mdm.md`: managed preferences (the forced keys a configuration profile can set, what each locks, the sample profile, how to verify). Read it before touching `src-tauri/src/managed.rs`, `src/engine/managed.ts` or any `managed::deny_*` call.
 - Commands `/new-scene <project> <name>`, `/preview [project]`, `/export <project> <format> <aspect>`.
 
 ## Committing
@@ -174,9 +188,22 @@ Project skills are authored only in `.agents/skills`. Keep `.claude/skills` as t
 
 **Branch names are `type/short-kebab-description`** with a conventional type (`feat/`, `fix/`, `chore/`, `docs/`, `refactor/`, `perf/`, `test/`, `ci/`, `build/`), for example `fix/editor-tap-alignment`. NEVER a `claude/` prefix (or any other agent or tool prefix) and NEVER a generated suffix such as `-94cd0f`. If the tooling created a branch named that way, rename it before the first commit.
 
+## Code review
+
+**ALWAYS run `/code-review high` before opening a PR** (in Codex, `/review`; elsewhere, the closest high-effort review available). Run it again before pushing changes to an open PR, and at major checkpoints: a finished phase, a large refactor, or before handing work over.
+
+Never apply findings wholesale; triage each against the Focus:
+
+1. Confirm it is real by reading the code or reproducing it; drop any that don't hold up.
+2. Fix it when it protects the user, keeps exports exact, keeps a flow simple, or is a genuine bug.
+3. Skip it when it is speculative or churn with no benefit to the user; when it is real but out of scope, raise it as a follow-up.
+4. When findings conflict, the Focus's order decides.
+
+Report what you fixed and what you skipped, each with a one-line reason, then run `pnpm ready` once after the last fix.
+
 ## Writing rules
 
-- **Never commit anything from the user's own workspace.** Projects under `~/Kookaburra Cut` are private: no project, folder or scene names, slugs, on-screen copy, product, client or people's names, or local paths in committed code, tests, fixtures, docs, skills, commit messages or PR text. Use neutral placeholders instead (`product-tour`, "Highlights", `/Users/x`). This leaked once (a debugging session's project and product names reached test data and a design doc, and a pushed PR's history had to be rewritten), so before every commit run the workspace-name check in `kookaburra-commit` and grep for the names of any project opened that session. The gate fixtures this file already names (`ws:launch-2026`, the `ws:*-spike` projects) are test infrastructure; never add a new one without the user's say-so.
+- **Never commit anything from the user's own workspace.** Projects under `~/Kookaburra Cut` are private: no project, folder or scene names, slugs, on-screen copy, product, client or people's names, or local paths in committed code, tests, fixtures, docs, skills, commit messages or PR text. Use neutral placeholders instead (`product-tour`, "Highlights", `/Users/x`). This leaked once (a debugging session's project and product names reached test data and a design doc, and a pushed PR's history had to be rewritten), so `pnpm ready` and the `kookaburra-commit` skill both run `scripts/workspace-names.mjs` (the folder names under `~/Kookaburra Cut` on this Mac plus the leak shapes in `scripts/workspace-denylist.txt`, over every added line), and before every commit also grep for the names of any project opened that session, since the folder check cannot see scene copy or product names. The gate fixtures this file already names (`ws:launch-2026`, the `ws:*-spike` projects) are test infrastructure; never add a new one without the user's say-so.
 - **Keep `AGENTS.md` and `CLAUDE.md` byte-identical.** Update both in the same change and verify with `cmp -s AGENTS.md CLAUDE.md`.
 - **All text you write** (docs, comments, commit messages, PR descriptions, UI copy) is Australian English, short and concise, with no em dashes: use commas, colons, parentheses or full stops.
 - **IMPORTANT: comments are a last resort.** Keep them to a minimum, one line max, and only where they add context the code cannot show; remove any that do not.
@@ -266,3 +293,9 @@ intuition before the probe settled it).
   (`src/toolkit/lighting/studioEnvironment.ts`; a 40-device project exports at
   ~0.21 s/frame). Never mount a drei `<Environment>` with JSX children inside
   a component that re-renders per tick.
+- **Fourth measured impactor (2026-10-28): clip frame memory.** Each clip kept
+  12 decoded frames for the whole session, in both decode lanes, so a long
+  device film grew the editor past WebKit's WebContent limit (reloaded at about
+  half way; 7.1 GB measured over five spikes). Exports now keep two a clip and
+  release idle frames at start and end. Probe memory with `--action memory`
+  (`docs/determinism.md`, "Memory probe"), not fps alone: a big Mac hides it.

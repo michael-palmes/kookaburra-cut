@@ -1,7 +1,5 @@
 import { revealInFinder } from "../../engine/packs";
-import type { TerminalReviewRow } from "../terminalReview";
 import { type ImportOutcome, type ItemOutcome, KIND_LABELS } from "../types";
-import type { WebsiteReviewRow } from "../websiteReview";
 
 const GROUPS: { outcome: ItemOutcome; label: string }[] = [
   { outcome: "added", label: "Added" },
@@ -11,19 +9,15 @@ const GROUPS: { outcome: ItemOutcome; label: string }[] = [
   { outcome: "failed", label: "Failed" },
 ];
 
-/** Screen 4. The primary action opens the first imported project, which is where F-001 asks. That second consent should feel like a normal project open, not another scary dialog. */
+/** Screen 4. The primary action opens the first imported project, which is where F-001 asks. That second consent should feel like a normal project open, not another scary dialog. Terminal commands and website origins were reviewed on the trust screen, before anything landed. */
 export function SummaryView({
   outcome,
-  terminals,
-  websites,
   queued,
   onOpenProject,
   onNextPack,
   onClose,
 }: {
   outcome: ImportOutcome;
-  terminals: TerminalReviewRow[];
-  websites: WebsiteReviewRow[];
   queued: number;
   onOpenProject: (slug: string) => void;
   onNextPack: () => void;
@@ -54,48 +48,22 @@ export function SummaryView({
           </div>
         )}
 
-        {terminals.length > 0 && (
+        {(outcome.agentNotes ?? []).length > 0 && (
           <div className="packs-verdict packs-verdict-warn">
             <span className="packs-verdict-icon" aria-hidden="true">
               !
             </span>
             <div className="packs-verdict-body">
-              <strong>Terminal scenes came with pre-typed commands</strong>
-              Nothing runs on its own: a pre-typed command only runs when you press Enter on it.
-              Review these before presenting, since they were written by the pack's author.
-              {terminals.map((row) => (
-                <div className="packs-terminal-review-row" key={`${row.project}:${row.file}`}>
+              <strong>The pack's author left notes for Claude</strong>
+              Each came as the project's CLAUDE.md, so Claude would have read it as instructions. It
+              was saved as NOTES.md instead and Claude treats it as notes, not rules. Read it here;
+              anything you want Claude to follow, add to CLAUDE.md yourself.
+              {(outcome.agentNotes ?? []).map((note) => (
+                <div className="packs-terminal-review-row" key={`${note.kind}:${note.slug}`}>
                   <span className="packs-verdict-note">
-                    {row.project} · {row.scene}
-                    {row.startPath ? ` · opens at ${row.startPath}` : ""}
+                    {note.name} · {KIND_LABELS[note.kind].one} · NOTES.md
                   </span>
-                  {row.command && <code className="packs-terminal-command">{row.command}</code>}
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {websites.length > 0 && (
-          <div className="packs-verdict packs-verdict-warn">
-            <span className="packs-verdict-icon" aria-hidden="true">
-              !
-            </span>
-            <div className="packs-verdict-body">
-              <strong>Website scenes request network access</strong>
-              Nothing has loaded and no approval travelled with the pack. Each origin asks for local
-              approval before its first request.
-              {websites.map((row) => (
-                <div className="packs-terminal-review-row" key={`${row.project}:${row.file}`}>
-                  <span className="packs-verdict-note">
-                    {row.project} · {row.scene}
-                  </span>
-                  {row.origins.map((origin) => (
-                    <code className="packs-terminal-command" key={origin.origin}>
-                      {origin.origin}
-                      {origin.loopback ? " · local address, session approval only" : ""}
-                    </code>
-                  ))}
+                  <pre className="packs-agent-note">{note.text}</pre>
                 </div>
               ))}
             </div>

@@ -330,6 +330,7 @@ pub(crate) fn count_args(src: &str, hardware: bool, probe_png: &Path) -> Vec<Str
         "pipe:1".into(),
     ];
     args.extend(lane_args(hardware));
+    args.extend(["-protocol_whitelist".into(), "file,pipe".into()]);
     args.extend(["-i".into(), src.to_owned()]);
     args.extend(
         [
@@ -378,6 +379,8 @@ pub(crate) fn chunk_args(
     ];
     args.extend(lane_args(hardware));
     args.extend([
+        "-protocol_whitelist".into(),
+        "file,pipe".into(),
         "-i".into(),
         src.to_owned(),
         "-vf".into(),
@@ -436,7 +439,7 @@ pub(crate) fn run_ffmpeg(
     background: bool,
     mut on_frame: impl FnMut(u32),
 ) -> Result<Option<u32>, String> {
-    let mut child = std::process::Command::new(ffmpeg)
+    let mut child = crate::tools::sidecar_command(ffmpeg)
         .args(args)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
@@ -490,10 +493,10 @@ pub(crate) struct Decode<'a> {
 
 /// The decode-only count pass into `count.json`.
 pub(crate) fn run_count(decode: Decode<'_>, dir: &Path) -> Result<CountRecord, String> {
-    std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    crate::privacy::private_dir(dir).map_err(|e| e.to_string())?;
     let staging = staging_dir(dir, "count");
     let _ = std::fs::remove_dir_all(&staging);
-    std::fs::create_dir_all(&staging).map_err(|e| e.to_string())?;
+    crate::privacy::private_dir(&staging).map_err(|e| e.to_string())?;
     let probe = staging.join("probe.png");
     let args = count_args(decode.src, decode.hardware, &probe);
     let outcome = run_ffmpeg(decode.ffmpeg, &args, decode.background, |_| {}).and_then(|frames| {
@@ -530,7 +533,7 @@ pub(crate) fn run_chunks(
     }
     let staging = staging_dir(dir, &start.to_string());
     let _ = std::fs::remove_dir_all(&staging);
-    std::fs::create_dir_all(&staging).map_err(|e| e.to_string())?;
+    crate::privacy::private_dir(&staging).map_err(|e| e.to_string())?;
     let outcome = (|| {
         let pattern = staging.join("frame-%05d.png");
         let args = chunk_args(decode.src, decode.hardware, start, end, &pattern);
@@ -550,6 +553,7 @@ pub(crate) fn run_chunks(
             let name = frame_name(index, "png");
             let from = staging.join(&name);
             bytes += std::fs::metadata(&from).map_err(|e| e.to_string())?.len();
+            crate::privacy::private_file(&from).map_err(|e| e.to_string())?;
             std::fs::rename(&from, dir.join(&name)).map_err(|e| e.to_string())?;
         }
         for chunk in first..=last {
@@ -570,10 +574,10 @@ pub(crate) fn run_chunks(
 fn run_preview(ffmpeg: &Path, dir: &Path, count: CountRecord, chunk: u32) -> Result<(), String> {
     let (start, end) = chunk_range(chunk, count.frames);
     let preview = dir.join(PREVIEW_DIR);
-    std::fs::create_dir_all(&preview).map_err(|e| e.to_string())?;
+    crate::privacy::private_dir(&preview).map_err(|e| e.to_string())?;
     let staging = staging_dir(&preview, &start.to_string());
     let _ = std::fs::remove_dir_all(&staging);
-    std::fs::create_dir_all(&staging).map_err(|e| e.to_string())?;
+    crate::privacy::private_dir(&staging).map_err(|e| e.to_string())?;
     let outcome = (|| {
         let pattern = staging.join("frame-%05d.jpg");
         run_ffmpeg(
@@ -584,6 +588,7 @@ fn run_preview(ffmpeg: &Path, dir: &Path, count: CountRecord, chunk: u32) -> Res
         )?;
         for index in start..end {
             let name = frame_name(index, "jpg");
+            let _ = crate::privacy::private_file(&staging.join(&name));
             std::fs::rename(staging.join(&name), preview.join(&name))
                 .map_err(|e| format!("preview frame {index}: {e}"))?;
         }
@@ -595,6 +600,30 @@ fn run_preview(ffmpeg: &Path, dir: &Path, count: CountRecord, chunk: u32) -> Res
     })();
     let _ = std::fs::remove_dir_all(&staging);
     outcome
+}
+
+/// The most `frames` PNGs can take: three bytes a pixel, the raw RGB ceiling the deflate never exceeds.
+pub(crate) fn extraction_ceiling(frames: u32, width: u32, height: u32) -> u64 {
+    u64::from(frames) * u64::from(width) * u64::from(height) * 3
+}
+
+/// Refuses an extraction whose ceiling would take the volume under the floor, naming the space it needs.
+pub(crate) fn check_extraction_space(
+    free: u64,
+    frames: u32,
+    count: CountRecord,
+) -> Result<(), String> {
+    let need = extraction_ceiling(frames, count.width, count.height) + crate::DISK_FLOOR;
+    if free >= need {
+        return Ok(());
+    }
+    let gb = |bytes: u64| bytes as f64 / 1e9;
+    Err(format!(
+        "extracting {frames} frames needs up to {:.1} GB free and {:.1} GB is available: free {:.1} GB, or lower the clip cache cap in Settings so older frames make room",
+        gb(need),
+        gb(free),
+        gb(need - free),
+    ))
 }
 
 /// Groups sorted chunk indices into consecutive runs, each one ffmpeg pass.
@@ -838,6 +867,16 @@ pub(crate) async fn ensure_clip_chunks(
                 _ => None,
             })
             .collect();
+        let frames: u32 = mine
+            .iter()
+            .map(|&c| {
+                let (start, end) = chunk_range(c, count.frames);
+                end - start
+            })
+            .sum();
+        if frames > 0 {
+            check_extraction_space(crate::free_disk_bytes(&root)?, frames, count)?;
+        }
         for (first, last) in chunk_runs(&mine) {
             let permit = background_permit(&app).await?;
             let ffmpeg = crate::tools::sidecar_path("ffmpeg")?;
@@ -1339,6 +1378,37 @@ fn schedule_maintenance(app: &AppHandle) {
     });
 }
 
+/// Removes every entry of `shas` on both decode lanes, except ones a window has pinned or a job is filling; the footage is gone with its project, so its frames go too. Returns what was removed.
+pub(crate) fn evict_entries(app: &AppHandle, shas: &[String]) -> Vec<String> {
+    let mut removed = Vec::new();
+    let Ok(root) = clips_root(app) else {
+        return removed;
+    };
+    let state = app.state::<ClipCacheState>();
+    let skip = pinned_and_busy(&state);
+    for sha in shas {
+        for hardware in [false, true] {
+            let name = entry_name(sha, hardware);
+            let dir = root.join(&name);
+            if skip.contains(&name) || !dir.is_dir() {
+                continue;
+            }
+            match std::fs::remove_dir_all(&dir) {
+                Ok(()) => removed.push(name),
+                Err(e) => log::warn!("[clips] could not remove {}: {e}", dir.display()),
+            }
+            let mut inner = state.lock();
+            inner.sources.retain(|_, stamp| stamp.dir != dir);
+            inner.touched.remove(&dir);
+            inner.size_estimate = None;
+        }
+    }
+    if !removed.is_empty() {
+        let _ = app.emit("kookaburra://clips-cache-cleared", ());
+    }
+    removed
+}
+
 /// Removes the whole clip cache and tells every window to drop its in-memory extractions.
 fn clear_now(app: &AppHandle) -> Result<(), String> {
     let dir = clips_root(app)?;
@@ -1392,6 +1462,31 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         dir
+    }
+
+    #[test]
+    fn the_extraction_guard_adds_the_floor_to_the_raw_ceiling_and_names_the_shortfall() {
+        let count = CountRecord {
+            frames: 600,
+            width: 1920,
+            height: 1080,
+        };
+        let one_chunk = extraction_ceiling(CHUNK_FRAMES, 1920, 1080);
+        assert_eq!(one_chunk, 120 * 1920 * 1080 * 3);
+        let need = one_chunk + crate::DISK_FLOOR;
+        assert!(check_extraction_space(need, CHUNK_FRAMES, count).is_ok());
+        assert!(check_extraction_space(u64::MAX, 0, count).is_ok());
+        let short = check_extraction_space(need - 1, CHUNK_FRAMES, count).unwrap_err();
+        assert!(
+            short.starts_with("extracting 120 frames needs up to 2.9 GB free"),
+            "{short}"
+        );
+        assert!(short.contains("free 0.0 GB"), "{short}");
+        let empty = check_extraction_space(0, 600, count).unwrap_err();
+        assert!(
+            empty.contains("needs up to 5.9 GB free and 0.0 GB is available: free 5.9 GB"),
+            "{empty}"
+        );
     }
 
     #[test]
@@ -1458,7 +1553,7 @@ mod tests {
         assert!(!joined.contains("hwaccel"));
         assert!(count_args("/s", true, Path::new("/p.png"))
             .join(" ")
-            .contains("-hwaccel videotoolbox -i /s"));
+            .contains("-hwaccel videotoolbox -protocol_whitelist file,pipe -i /s"));
     }
 
     #[test]

@@ -1,0 +1,63 @@
+{
+  "permission": [
+    {
+      "identifier": "export",
+      "description": "The deterministic export loop, stills, screenshots, autorun reporting and export presets.",
+      "commands": {
+        "allow": [
+          "start_export",
+          "push_frame",
+          "finish_export",
+          "cancel_export",
+          "take_export_interruption",
+          "export_memory_sample",
+          "notify_export_done",
+          "export_flash_report",
+          "begin_screenshot",
+          "save_screenshot",
+          "reveal_export",
+          "reveal_last_export",
+          "start_stills_export",
+          "push_still",
+          "finish_stills_export",
+          "cancel_stills_export",
+          "finish_autorun",
+          "autorun_progress",
+          "write_export_preset",
+          "delete_export_preset",
+          "bridge_export_accept",
+          "bridge_export_progress",
+          "bridge_export_finish",
+          "bridge_export_reset",
+          "show_character_palette",
+          "sample_screen_colour"
+        ]
+      }
+    },
+    {
+      "identifier": "capture-host",
+      "description": "The editor's side of the hidden render window: thumbs, posters, previews and the capture bridge status.",
+      "commands": {
+        "allow": [
+          "ensure_render_window",
+          "close_render_window",
+          "render_window_status",
+          "render_submit_thumbs",
+          "render_cancel_thumbs",
+          "thumbs_pending_count",
+          "bridge_pending_count",
+          "set_editor_context",
+          "set_last_load",
+          "capture_report_census",
+          "capture_service_status",
+          "capture_service_reset",
+          "render_submit_preset_poster",
+          "get_library_previews",
+          "set_library_preview",
+          "write_theme_preview",
+          "write_option_preview"
+        ]
+      }
+    }
+  ]
+}

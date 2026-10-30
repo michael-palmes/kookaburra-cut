@@ -1,0 +1,51 @@
+{
+  "permission": [
+    {
+      "identifier": "project-write",
+      "description": "Edit workspace projects: scenes, sidecars, the manifest, the kit stamp and per-project preferences.",
+      "commands": {
+        "allow": [
+          "write_scene_doc",
+          "update_project_scene",
+          "update_project_scene_transition",
+          "apply_project_transition_to_all",
+          "write_project_manifest_snapshot",
+          "remove_project_scene",
+          "move_project_scene",
+          "duplicate_scene",
+          "copy_scene_to_project",
+          "set_project_theme",
+          "set_project_audio",
+          "ensure_unique_scene_ids",
+          "create_project",
+          "rename_project",
+          "set_project_group",
+          "set_project_typography",
+          "duplicate_project",
+          "delete_project",
+          "write_snapshot",
+          "provision_project",
+          "ensure_sample_assets",
+          "set_last_project",
+          "set_last_export_preset",
+          "set_opening_poster_frame",
+          "set_present_options",
+          "set_project_brand",
+          "set_lag_warning",
+          "set_export_to_downloads",
+          "project_file_hashes",
+          "list_scene_thumbs",
+          "write_terminal_snapshot",
+          "import_chart_data"
+        ]
+      }
+    },
+    {
+      "identifier": "trust",
+      "description": "The F-001 consent: the main window's gate check (which re-stamps a project this session allowed), the native sheet, and the grant recorded with the nonce the sheet issued.",
+      "commands": {
+        "allow": ["check_project_trust", "request_project_trust", "trust_project"]
+      }
+    }
+  ]
+}

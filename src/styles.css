@@ -481,6 +481,16 @@ body {
   color: var(--claude-text-tertiary);
 }
 
+.claude-launcher-disclosure {
+  font-size: var(--text-sm);
+  line-height: 1.4;
+  color: var(--claude-text-tertiary);
+}
+
+.claude-launcher-title .claude-launcher-disclosure {
+  margin-top: var(--space-1);
+}
+
 .claude-launcher-cta {
   padding: 0 14px 14px;
 }
@@ -2503,13 +2513,6 @@ button.beat-status {
   margin-top: var(--space-2);
 }
 
-/* Release notes in the update offer: plain text, clipped rather than unbounded. */
-.update-notes {
-  max-height: 10rem;
-  overflow-y: auto;
-  white-space: pre-wrap;
-}
-
 /* Full-bleed banner art at the top of a modal (negative margins swallow the modal padding). */
 .modal-with-banner {
   overflow: hidden;
@@ -2562,6 +2565,27 @@ button.beat-status {
   width: 16px;
   height: 16px;
   color: var(--text-secondary);
+}
+
+.welcome-modal-privacy {
+  margin: 0;
+  font-size: var(--text-xs);
+}
+
+/* An inline link drawn by a button, for the fixed pages Rust opens (never an href the page controls). */
+.text-link {
+  padding: 0;
+  font: inherit;
+  color: var(--accent-text);
+  background: none;
+  border: none;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.text-link:hover {
+  color: var(--accent-hover);
 }
 
 .recommended-badge {
@@ -5387,6 +5411,17 @@ button.beat-status {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-2);
+}
+
+/* A control a configuration profile has taken over: the lock and the reason, nothing to press (docs/mdm.md). */
+.managed-lock {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  white-space: nowrap;
 }
 
 .settings-error {
@@ -14415,6 +14450,10 @@ textarea.text-inspector-copy-input {
 
 .scene-website-activate:disabled {
   cursor: default;
+}
+
+.scene-website-activate.locked::before {
+  width: 320px;
 }
 
 .scene-website-toolbar-targets {

@@ -1,9 +1,11 @@
 //! The user workspace: a folder of self-contained projects, chosen at first run (default `~/Kookaburra Cut`, moved out of ~/Documents for TCC) and remembered in `$APPDATA/settings.json`; commands are custom `#[tauri::command]`s that bypass the webview fs ACL, each re-asserting the on-disk layout first (`ensure_layout`) so a user deleting or rearranging folders mid-session degrades gracefully instead of crashing.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+
+use sha2::{Digest, Sha256};
 
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, State};
@@ -249,7 +251,11 @@ fn update_settings_at<T>(
     };
     let out = edit(&mut settings);
     let text = serde_json::to_string_pretty(&settings).map_err(|e| e.to_string())?;
+    if let Some(dir) = path.parent() {
+        crate::privacy::private_dir(dir).map_err(|e| e.to_string())?;
+    }
     crate::scene_doc::atomic_write_text(path, &text)?;
+    crate::privacy::private_file(path).map_err(|e| e.to_string())?;
     *guard = Some(settings);
     Ok(out)
 }
@@ -348,7 +354,11 @@ pub(crate) fn root_override() -> Option<PathBuf> {
 
 /// The configured workspace root, layout re-asserted. Errors if first-run hasn't completed.
 pub fn require_root(app: &AppHandle, state: &State<'_, SettingsState>) -> Result<PathBuf, String> {
-    let root = match root_override() {
+    // A profile's WorkspaceRoot outranks the gate override and the settings file alike.
+    let root = match crate::managed::policy()
+        .workspace_root_path()
+        .or_else(root_override)
+    {
         Some(over) => over,
         None => {
             let settings = load_settings(app, state)?;
@@ -360,8 +370,7 @@ pub fn require_root(app: &AppHandle, state: &State<'_, SettingsState>) -> Result
         }
     };
     ensure_layout(&root)?;
-    // Workspace files load in the webview as asset-protocol URLs (posters, pinned fonts, editor sources, snapshots; see engine/media.ts `fsUrl`); the static config scope only covers $APPDATA/cache + ~/Kookaburra Cut, so a user-chosen root elsewhere is allowed here at runtime instead, idempotent and best-effort since the read path reports its own errors if this fails.
-    let _ = app.asset_protocol_scope().allow_directory(&root, true);
+    crate::asset_reach::set_workspace(app, &root);
     Ok(root)
 }
 
@@ -642,10 +651,10 @@ pub(crate) fn copy_dir_recursive(from: &Path, to: &Path) -> Result<(), String> {
         let dst = to.join(entry.file_name());
         let meta = std::fs::symlink_metadata(&src).map_err(|e| e.to_string())?;
         if meta.file_type().is_symlink() {
-            let target = std::fs::read_link(&src).map_err(|e| e.to_string())?;
-            let _ = std::fs::remove_file(&dst);
-            std::os::unix::fs::symlink(&target, &dst)
-                .map_err(|e| format!("linking {}: {e}", src.display()))?;
+            return Err(format!(
+                "{} is a symbolic link; links are not copied, replace it with the file itself",
+                src.display()
+            ));
         } else if meta.is_dir() {
             copy_dir_recursive(&src, &dst)?;
         } else {
@@ -731,7 +740,11 @@ pub fn get_settings(
     app: AppHandle,
     state: State<'_, SettingsState>,
 ) -> Result<AppSettings, String> {
-    load_settings(&app, &state)
+    let mut settings = load_settings(&app, &state)?;
+    if let Some(root) = &crate::managed::policy().workspace_root {
+        settings.workspace_root = Some(root.clone());
+    }
+    Ok(settings)
 }
 
 /// The root a chosen parent resolves to: picking a folder already named "Kookaburra Cut" adopts it rather than nesting another.
@@ -857,15 +870,18 @@ fn retarget_trust(settings: &mut AppSettings, from: &Path, to: &Path) {
     }
 }
 
-/// Move the whole workspace to a new home and repoint settings at it. `parent` of `None` is the reset to default.
+/// Move the whole workspace to a new home and repoint settings at it. `parent` of `None` is the reset to default. Settings window only, behind a native sheet that names both folders: a webview can ask, only a person can confirm. Resolves to None when they cancel.
 #[tauri::command]
-pub fn move_workspace(
+pub async fn move_workspace(
     app: AppHandle,
+    window: tauri::Window,
     state: State<'_, SettingsState>,
     export: State<'_, crate::ExportState>,
     packs: State<'_, crate::pack::commands::PackState>,
     parent: Option<String>,
-) -> Result<String, String> {
+) -> Result<Option<String>, String> {
+    require_window(&window, "settings")?;
+    crate::managed::deny_workspace_change()?;
     if export.busy() {
         return Err("an export is running: move your workspace after it finishes".into());
     }
@@ -891,34 +907,99 @@ pub fn move_workspace(
         None => default_root(&app)?,
     };
     check_move(&from, &to)?;
-    perform_move(&from, &to)?;
+    let body = format!(
+        "Everything in {} (projects, themes, fonts, brands and exports) moves to {}. Kookaburra Cut then works from the new folder.",
+        display_path(&app, &from),
+        display_path(&app, &to)
+    );
+    let confirmed = crate::native_alert::ask(
+        &app,
+        "settings",
+        crate::native_alert::Prompt {
+            title: &format!("Move your projects to “{}”?", display_path(&app, &to)),
+            body: &body,
+            default_button: "Move",
+            other_button: "Cancel",
+        },
+    )
+    .await?;
+    if !confirmed {
+        return Ok(None);
+    }
+    // A cross-volume copy runs for minutes; off the async runtime, and reading state fresh from the handle.
+    tauri::async_runtime::spawn_blocking(move || perform_workspace_move(&app, &from, &to))
+        .await
+        .map_err(|e| e.to_string())?
+        .map(Some)
+}
 
-    ensure_layout(&to)?;
-    // Edited under the lock rather than from the clone above: a cross-volume copy runs for minutes, and saving a stale
-    // snapshot would silently revert anything the main window persisted meanwhile (last opened, a trust grant, consent).
-    update_settings(&app, &state, |settings| {
+fn perform_workspace_move(app: &AppHandle, from: &Path, to: &Path) -> Result<String, String> {
+    let state = app.state::<SettingsState>();
+    perform_move(from, to)?;
+    ensure_layout(to)?;
+    // Edited under the lock rather than from a clone taken before the copy: saving a stale snapshot would silently revert anything the main window persisted meanwhile (last opened, a trust grant, consent).
+    update_settings(app, &state, |settings| {
         settings.workspace_root = Some(to.to_string_lossy().into_owned());
-        retarget_trust(settings, &from, &to);
+        retarget_trust(settings, from, to);
     })?;
-    let _ = app.asset_protocol_scope().allow_directory(&to, true);
+    crate::asset_reach::set_workspace(app, to);
     let _ = app.emit("kookaburra://workspace-moved", to.to_string_lossy());
     Ok(to.to_string_lossy().into_owned())
 }
 
-/// Create (or adopt) the workspace under `parent` (default: the home folder) and persist it; picking a folder already named "Kookaburra Cut" adopts it rather than nesting another.
+/// First run: create (or adopt) `~/Kookaburra Cut` and persist it. No parameters, so nothing to confirm; the main window calls it once.
 #[tauri::command]
-pub fn init_workspace(
+pub fn init_default_workspace(
     app: AppHandle,
     state: State<'_, SettingsState>,
-    parent: Option<String>,
 ) -> Result<String, String> {
-    let parent = match parent {
-        Some(p) => PathBuf::from(p),
-        None => app.path().home_dir().map_err(|e| e.to_string())?,
-    };
-    let root = root_under(parent);
+    let parent = app.path().home_dir().map_err(|e| e.to_string())?;
+    adopt_workspace(&app, &state, parent)
+}
+
+/// Create (or adopt) the workspace under `parent` and persist it, when the default location failed: Settings window only, behind a native sheet naming the folder (None when cancelled). Picking a folder already named "Kookaburra Cut" adopts it rather than nesting another.
+#[tauri::command]
+pub async fn init_workspace(
+    app: AppHandle,
+    window: tauri::Window,
+    state: State<'_, SettingsState>,
+    parent: String,
+) -> Result<Option<String>, String> {
+    require_window(&window, "settings")?;
+    crate::managed::deny_workspace_change()?;
+    let parent = PathBuf::from(parent);
+    let root = root_under(parent.clone());
+    let body = format!(
+        "Kookaburra Cut will keep your projects, themes, fonts and brands in {}.",
+        display_path(&app, &root)
+    );
+    let confirmed = crate::native_alert::ask(
+        &app,
+        "settings",
+        crate::native_alert::Prompt {
+            title: &format!("Keep your projects in “{}”?", display_path(&app, &root)),
+            body: &body,
+            default_button: "Use this folder",
+            other_button: "Cancel",
+        },
+    )
+    .await?;
+    if !confirmed {
+        return Ok(None);
+    }
+    adopt_workspace(&app, &state, parent).map(Some)
+}
+
+fn adopt_workspace(
+    app: &AppHandle,
+    state: &State<'_, SettingsState>,
+    parent: PathBuf,
+) -> Result<String, String> {
+    let root = crate::managed::policy()
+        .workspace_root_path()
+        .unwrap_or_else(|| root_under(parent));
     ensure_layout(&root)?;
-    update_settings(&app, &state, |settings| {
+    update_settings(app, state, |settings| {
         settings.workspace_root = Some(root.to_string_lossy().into_owned());
     })?;
     Ok(root.to_string_lossy().into_owned())
@@ -1063,19 +1144,22 @@ pub fn rename_project(
     slug: String,
     name: String,
 ) -> Result<(), String> {
-    let display_name = name.trim().to_owned();
-    if display_name.is_empty() {
-        return Err("the project needs a name".into());
-    }
-    let path = project_dir_mut(&app, &state, &slug)?.join(MANIFEST_FILENAME);
-    let text = std::fs::read_to_string(&path).map_err(|e| format!("reading project.json: {e}"))?;
-    let mut manifest: serde_json::Value =
-        serde_json::from_str(&text).map_err(|e| format!("project.json isn't valid JSON: {e}"))?;
-    manifest["name"] = serde_json::Value::String(display_name);
-    let pretty = serde_json::to_string_pretty(&manifest).map_err(|e| e.to_string())?;
-    let tmp = path.with_extension("json.tmp");
-    std::fs::write(&tmp, pretty + "\n").map_err(|e| e.to_string())?;
-    std::fs::rename(&tmp, &path).map_err(|e| e.to_string())
+    restamping_trust(&app, &state, &slug, || {
+        let display_name = name.trim().to_owned();
+        if display_name.is_empty() {
+            return Err("the project needs a name".into());
+        }
+        let path = project_dir_mut(&app, &state, &slug)?.join(MANIFEST_FILENAME);
+        let text =
+            std::fs::read_to_string(&path).map_err(|e| format!("reading project.json: {e}"))?;
+        let mut manifest: serde_json::Value = serde_json::from_str(&text)
+            .map_err(|e| format!("project.json isn't valid JSON: {e}"))?;
+        manifest["name"] = serde_json::Value::String(display_name);
+        let pretty = serde_json::to_string_pretty(&manifest).map_err(|e| e.to_string())?;
+        let tmp = path.with_extension("json.tmp");
+        std::fs::write(&tmp, pretty + "\n").map_err(|e| e.to_string())?;
+        std::fs::rename(&tmp, &path).map_err(|e| e.to_string())
+    })
 }
 
 /// Set or clear the project's welcome-screen group (empty or missing clears the field).
@@ -1086,25 +1170,28 @@ pub fn set_project_group(
     slug: String,
     group: Option<String>,
 ) -> Result<(), String> {
-    validate_slug(&slug)?;
-    let group = group.map(|g| g.trim().to_owned()).filter(|g| !g.is_empty());
-    let root = require_root(&app, &state)?;
-    let path = root.join(&slug).join(MANIFEST_FILENAME);
-    let text = std::fs::read_to_string(&path).map_err(|e| format!("reading project.json: {e}"))?;
-    let mut manifest: serde_json::Value =
-        serde_json::from_str(&text).map_err(|e| format!("project.json isn't valid JSON: {e}"))?;
-    match group {
-        Some(g) => manifest["group"] = serde_json::Value::String(g),
-        None => {
-            if let Some(obj) = manifest.as_object_mut() {
-                obj.remove("group");
+    restamping_trust(&app, &state, &slug, || {
+        validate_slug(&slug)?;
+        let group = group.map(|g| g.trim().to_owned()).filter(|g| !g.is_empty());
+        let root = require_root(&app, &state)?;
+        let path = root.join(&slug).join(MANIFEST_FILENAME);
+        let text =
+            std::fs::read_to_string(&path).map_err(|e| format!("reading project.json: {e}"))?;
+        let mut manifest: serde_json::Value = serde_json::from_str(&text)
+            .map_err(|e| format!("project.json isn't valid JSON: {e}"))?;
+        match group {
+            Some(g) => manifest["group"] = serde_json::Value::String(g),
+            None => {
+                if let Some(obj) = manifest.as_object_mut() {
+                    obj.remove("group");
+                }
             }
         }
-    }
-    let pretty = serde_json::to_string_pretty(&manifest).map_err(|e| e.to_string())?;
-    let tmp = path.with_extension("json.tmp");
-    std::fs::write(&tmp, pretty + "\n").map_err(|e| e.to_string())?;
-    std::fs::rename(&tmp, &path).map_err(|e| e.to_string())
+        let pretty = serde_json::to_string_pretty(&manifest).map_err(|e| e.to_string())?;
+        let tmp = path.with_extension("json.tmp");
+        std::fs::write(&tmp, pretty + "\n").map_err(|e| e.to_string())?;
+        std::fs::rename(&tmp, &path).map_err(|e| e.to_string())
+    })
 }
 
 /// Set or clear the project's typography override ("Family" or "Family@weight" per slot, `chart` being the project's default chart face); every slot empty clears the whole block.
@@ -1117,36 +1204,39 @@ pub fn set_project_typography(
     body: Option<String>,
     chart: Option<String>,
 ) -> Result<(), String> {
-    let headline = headline
-        .map(|v| v.trim().to_owned())
-        .filter(|v| !v.is_empty());
-    let body = body.map(|v| v.trim().to_owned()).filter(|v| !v.is_empty());
-    let chart = chart.map(|v| v.trim().to_owned()).filter(|v| !v.is_empty());
-    let path = project_dir_mut(&app, &state, &slug)?.join(MANIFEST_FILENAME);
-    let text = std::fs::read_to_string(&path).map_err(|e| format!("reading project.json: {e}"))?;
-    let mut manifest: serde_json::Value =
-        serde_json::from_str(&text).map_err(|e| format!("project.json isn't valid JSON: {e}"))?;
-    if headline.is_none() && body.is_none() && chart.is_none() {
-        if let Some(obj) = manifest.as_object_mut() {
-            obj.remove("typography");
+    restamping_trust(&app, &state, &slug, || {
+        let headline = headline
+            .map(|v| v.trim().to_owned())
+            .filter(|v| !v.is_empty());
+        let body = body.map(|v| v.trim().to_owned()).filter(|v| !v.is_empty());
+        let chart = chart.map(|v| v.trim().to_owned()).filter(|v| !v.is_empty());
+        let path = project_dir_mut(&app, &state, &slug)?.join(MANIFEST_FILENAME);
+        let text =
+            std::fs::read_to_string(&path).map_err(|e| format!("reading project.json: {e}"))?;
+        let mut manifest: serde_json::Value = serde_json::from_str(&text)
+            .map_err(|e| format!("project.json isn't valid JSON: {e}"))?;
+        if headline.is_none() && body.is_none() && chart.is_none() {
+            if let Some(obj) = manifest.as_object_mut() {
+                obj.remove("typography");
+            }
+        } else {
+            let mut block = serde_json::Map::new();
+            if let Some(h) = headline {
+                block.insert("headline".into(), serde_json::Value::String(h));
+            }
+            if let Some(b) = body {
+                block.insert("body".into(), serde_json::Value::String(b));
+            }
+            if let Some(c) = chart {
+                block.insert("chart".into(), serde_json::Value::String(c));
+            }
+            manifest["typography"] = serde_json::Value::Object(block);
         }
-    } else {
-        let mut block = serde_json::Map::new();
-        if let Some(h) = headline {
-            block.insert("headline".into(), serde_json::Value::String(h));
-        }
-        if let Some(b) = body {
-            block.insert("body".into(), serde_json::Value::String(b));
-        }
-        if let Some(c) = chart {
-            block.insert("chart".into(), serde_json::Value::String(c));
-        }
-        manifest["typography"] = serde_json::Value::Object(block);
-    }
-    let pretty = serde_json::to_string_pretty(&manifest).map_err(|e| e.to_string())?;
-    let tmp = path.with_extension("json.tmp");
-    std::fs::write(&tmp, pretty + "\n").map_err(|e| e.to_string())?;
-    std::fs::rename(&tmp, &path).map_err(|e| e.to_string())
+        let pretty = serde_json::to_string_pretty(&manifest).map_err(|e| e.to_string())?;
+        let tmp = path.with_extension("json.tmp");
+        std::fs::write(&tmp, pretty + "\n").map_err(|e| e.to_string())?;
+        std::fs::rename(&tmp, &path).map_err(|e| e.to_string())
+    })
 }
 
 /// Duplicate a project into a fresh slug; copies everything except `exports/` (outputs) and `.kookaburra/` (per-project caches, since snapshots/thumbs regenerate), `.git` rides along so Claude Code's workspace trust and history survive, and the manifest id/name are rewritten to the new identity.
@@ -1207,9 +1297,9 @@ fn duplicate_skips(name: &std::ffi::OsStr) -> bool {
     matches!(name.to_str(), Some("exports" | ".kookaburra" | ".kb"))
 }
 
-/// Move a project to the TRASH, never `rm -rf`, so Finder's Put Back works; a matching `last_project` is cleared so the next boot lands on the welcome screen.
+/// Move a project to the TRASH, never `rm -rf`, so Finder's Put Back works; a matching `last_project` is cleared so the next boot lands on the welcome screen. The decoded frames and previews of its footage leave the caches with it (a project put back decodes again).
 #[tauri::command]
-pub fn delete_project(
+pub async fn delete_project(
     app: AppHandle,
     state: State<'_, SettingsState>,
     slug: String,
@@ -1220,6 +1310,14 @@ pub fn delete_project(
     if !dir.join(MANIFEST_FILENAME).is_file() {
         return Err(format!("no project named \"{slug}\""));
     }
+    // Content hashes are read before the folder moves: the caches are keyed by them and the Trash is another path.
+    let sources = {
+        let app = app.clone();
+        let dir = dir.clone();
+        tauri::async_runtime::spawn_blocking(move || crate::media::project_media_sources(&app, &dir))
+            .await
+            .map_err(|e| e.to_string())?
+    };
     trash_path(&dir).map_err(|e| format!("couldn't move the project to the Trash: {e}"))?;
     // The trust grant dies with the project, so a later same-slug project starts untrusted.
     update_settings(&app, &state, |settings| {
@@ -1227,7 +1325,9 @@ pub fn delete_project(
         if settings.last_project.as_deref() == Some(&format!("ws:{slug}")) {
             settings.last_project = None;
         }
-    })
+    })?;
+    crate::media::forget_media(&app, &root, &dir, sources);
+    Ok(())
 }
 
 /// Remember the export modal's selection, written on each successful export, restored per project with the global pick as fallback.
@@ -1558,15 +1658,7 @@ pub fn write_emoji_raster(
     };
     let slug = header("x-kookaburra-slug")?;
     let key = header("x-kookaburra-key")?;
-    // Key shape: hex codepoints dash-joined plus a @size suffix, e.g. `1f680-fe0f@256`.
-    let valid_key = !key.is_empty()
-        && key.len() <= 128
-        && key
-            .chars()
-            .all(|c| c.is_ascii_hexdigit() || c == '-' || c == '@')
-        && key.matches('@').count() == 1
-        && !key.starts_with(['-', '@']);
-    if !valid_key {
+    if !valid_raster_key(&key) {
         return Err(format!("invalid raster key \"{key}\""));
     }
     let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else {
@@ -1588,6 +1680,36 @@ pub fn write_emoji_raster(
     }
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     std::fs::write(&file, bytes).map_err(|e| e.to_string())
+}
+
+/// Key shape: hex codepoints dash-joined plus a @size suffix, e.g. `1f680-fe0f@256`.
+fn valid_raster_key(key: &str) -> bool {
+    !key.is_empty()
+        && key.len() <= 128
+        && key
+            .chars()
+            .all(|c| c.is_ascii_hexdigit() || c == '-' || c == '@')
+        && key.matches('@').count() == 1
+        && !key.starts_with(['-', '@'])
+}
+
+/// One cached emoji raster's bytes (`assets/.emoji-cache/<key>.png`) for the stage worker's native port: hidden folders are not served as `asset://` URLs, so the raster cache reads through here. A missing raster is an error, which the port reports as "not cached".
+#[tauri::command]
+pub fn read_emoji_raster(
+    app: AppHandle,
+    state: State<'_, SettingsState>,
+    slug: String,
+    key: String,
+) -> Result<tauri::ipc::Response, String> {
+    if !valid_raster_key(&key) {
+        return Err(format!("invalid raster key \"{key}\""));
+    }
+    let file = project_dir(&app, &state, &slug)?
+        .join("assets")
+        .join(".emoji-cache")
+        .join(format!("{key}.png"));
+    let bytes = std::fs::read(&file).map_err(|e| e.to_string())?;
+    Ok(tauri::ipc::Response::new(bytes))
 }
 
 /// A bundled folder is a TEMPLATE only when it carries a project manifest AND declares itself with a readable `template.json`, so gate fixtures, preview labs and the sample pool can never be created from. Presence plus valid JSON is the whole native contract; the manifest's schema is validated in TS (`engine/templates.ts`).
@@ -1680,28 +1802,11 @@ pub fn create_project(
     stamp_claude_provisioning(&app, &dir)?;
 
     // git init + initial commit gives Claude Code persisted workspace trust and history; best-effort since git may be missing (Xcode CLT prompt on a fresh Mac), in which case the project still works but Claude re-asks for trust each session.
-    let git = |args: &[&str]| {
-        std::process::Command::new("git")
-            .args(args)
-            .current_dir(&dir)
-            .output()
-    };
-    match git(&["init"]) {
-        Ok(out) if out.status.success() => {
-            let _ = git(&["add", "-A"]);
-            // Explicit identity so the commit succeeds without global git config.
-            let _ = git(&[
-                "-c",
-                "user.name=Kookaburra Cut",
-                "-c",
-                "user.email=kookaburra@localhost",
-                "commit",
-                "-m",
-                &format!("chore: create project from template {template_id}"),
-            ]);
-        }
-        Ok(out) => log::warn!("git init failed: {}", String::from_utf8_lossy(&out.stderr)),
-        Err(e) => log::warn!("git unavailable, skipping repo init: {e}"),
+    if let Err(e) = crate::history::init_repo(
+        &dir,
+        &format!("chore: create project from template {template_id}"),
+    ) {
+        log::warn!("[history] skipping repo init: {e}");
     }
 
     let duration_ms = manifest_summary(&dir).map(|(_, d, _)| d).unwrap_or(0);
@@ -1744,9 +1849,44 @@ pub async fn provision_project(
     if !dir.join(MANIFEST_FILENAME).is_file() {
         return Err(format!("\"{slug}\" is not a project folder"));
     }
-    tauri::async_runtime::spawn_blocking(move || stamp_claude_provisioning(&app, &dir))
-        .await
-        .map_err(|e| e.to_string())?
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<SettingsState>();
+        let stamped = restamping_trust(&app, &state, &slug, || {
+            stamp_claude_provisioning(&app, &dir)
+        });
+        trim_legacy_history(app.clone(), slug, dir);
+        stamped
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// A project created before footage was kept out of git loses it from its history on its own thread: seconds once, never on the load, one `kookaburra://history-trimmed` event and one log line when it ran.
+fn trim_legacy_history(app: AppHandle, slug: String, dir: PathBuf) {
+    std::thread::spawn(move || {
+        if !crate::history::holds_excluded(&dir) {
+            return;
+        }
+        let started = Instant::now();
+        match crate::history::purge_excluded_once(&dir) {
+            None => {}
+            Some(Ok(purged)) => {
+                log::info!(
+                    "[history] {slug}: footage removed from {} commits, {} bytes freed in {:.1} s",
+                    purged.commits_rewritten,
+                    purged.freed_bytes,
+                    started.elapsed().as_secs_f32()
+                );
+                let _ = app.emit(
+                    "kookaburra://history-trimmed",
+                    serde_json::json!({ "slug": slug, "freedBytes": purged.freed_bytes }),
+                );
+            }
+            Some(Err(e)) => {
+                log::warn!("[history] {slug}: footage stays in history for now: {e}")
+            }
+        }
+    });
 }
 
 /// Media the pool seeds; anything else in `_samples` (README, dotfiles) stays put.
@@ -1839,24 +1979,21 @@ pub fn ensure_sample_assets(
     Ok(())
 }
 
-/// Change fingerprint of a project's SOURCES (project.json + everything under scenes/); the frontend polls this to hot-reload the preview when Claude, or any external editor, writes files (workspace projects sit outside Vite's watch scope); returned as a hex string since u64 hashes don't survive JSON's f64 numbers.
+/// Change stamp of a project's SOURCES (project.json + everything under scenes/); the frontend polls this to hot-reload the preview when Claude, or any external editor, writes files (workspace projects sit outside Vite's watch scope); returned as a hex string since u64 hashes don't survive JSON's f64 numbers. A stat-based stamp is cheap enough to poll; consent uses `trust_fingerprint`, which reads content.
 #[tauri::command]
 pub fn project_fingerprint(
     app: AppHandle,
     state: State<'_, SettingsState>,
     slug: String,
 ) -> Result<String, String> {
-    Ok(compute_project_fingerprint(&project_dir(
-        &app, &state, &slug,
-    )?))
+    Ok(source_change_stamp(&project_dir(&app, &state, &slug)?))
 }
 
-/// The fingerprint behind `project_fingerprint`, shared with the trust gate so consent is bound to the exact sources it was given for.
-pub(crate) fn compute_project_fingerprint(dir: &Path) -> String {
+/// The stamp behind `project_fingerprint`: (path, mtime-nanos, size) for project.json + scenes/**, sorted for stability.
+pub(crate) fn source_change_stamp(dir: &Path) -> String {
     use std::collections::hash_map::DefaultHasher;
     use std::hash::{Hash, Hasher};
 
-    // (path, mtime-nanos, size) for project.json + scenes/**, sorted for stability.
     let mut entries: Vec<(String, u128, u64)> = Vec::new();
     let mut stat = |path: &Path| {
         if let Ok(meta) = std::fs::metadata(path) {
@@ -1890,13 +2027,73 @@ pub(crate) fn compute_project_fingerprint(dir: &Path) -> String {
     format!("{:016x}", hasher.finish())
 }
 
-/// A stored grant still stands only if both the project path and its live sources fingerprint match.
+/// The files the F-001 consent covers, relative to the project: the manifest, every non-hidden file under scenes/ (TSX and sidecars; symlinked folders are not followed), and the two agent-configuration files.
+fn trust_covered_files(dir: &Path) -> Vec<PathBuf> {
+    let mut files = vec![
+        dir.join(MANIFEST_FILENAME),
+        dir.join("CLAUDE.md"),
+        dir.join(".claude").join("settings.json"),
+    ];
+    let mut stack = vec![dir.join("scenes")];
+    while let Some(current) = stack.pop() {
+        let Ok(read) = std::fs::read_dir(&current) else {
+            continue;
+        };
+        for entry in read.flatten() {
+            if entry.file_name().to_string_lossy().starts_with('.') {
+                continue;
+            }
+            let path = entry.path();
+            let Ok(meta) = std::fs::symlink_metadata(&path) else {
+                continue;
+            };
+            if meta.is_dir() {
+                stack.push(path);
+            } else {
+                files.push(path);
+            }
+        }
+    }
+    files.sort();
+    files
+}
+
+/// The F-001 fingerprint: SHA-256 over the CONTENT of every covered file, each framed by its relative path and length so bytes cannot move between files unnoticed. Always read in full: an mtime can be put back (`touch -r`), bytes cannot. Kilobytes per project, so it runs on every open and after every app write.
+pub(crate) fn trust_fingerprint(dir: &Path) -> String {
+    let mut hasher = Sha256::new();
+    for path in trust_covered_files(dir) {
+        let Ok(bytes) = std::fs::read(&path) else {
+            continue;
+        };
+        let rel = path.strip_prefix(dir).unwrap_or(&path).to_string_lossy();
+        hasher.update(rel.as_bytes());
+        hasher.update([0u8]);
+        hasher.update((bytes.len() as u64).to_le_bytes());
+        hasher.update(&bytes);
+    }
+    crate::hex_digest(hasher.finalize().as_slice())
+}
+
+/// A stored grant still stands only if both the project path and its live content fingerprint match.
 pub(crate) fn trust_record_matches(
     record: &TrustRecord,
     dir: &Path,
     live_fingerprint: &str,
 ) -> bool {
     record.path == dir.to_string_lossy() && record.scenes_fingerprint == live_fingerprint
+}
+
+fn stored_trust_matches(
+    app: &AppHandle,
+    state: &State<'_, SettingsState>,
+    slug: &str,
+    dir: &Path,
+) -> Result<bool, String> {
+    let settings = load_settings(app, state)?;
+    Ok(settings
+        .trusted_projects
+        .get(slug)
+        .is_some_and(|record| trust_record_matches(record, dir, &trust_fingerprint(dir))))
 }
 
 /// Whether the user has consented to running this project's scene code and its sources are unchanged since (the F-001 trust gate).
@@ -1907,63 +2104,402 @@ pub fn is_project_trusted(
     slug: String,
 ) -> Result<bool, String> {
     let dir = project_dir(&app, &state, &slug)?;
-    let settings = load_settings(&app, &state)?;
-    let Some(record) = settings.trusted_projects.get(&slug) else {
-        return Ok(false);
-    };
-    Ok(trust_record_matches(
-        record,
-        &dir,
-        &compute_project_fingerprint(&dir),
-    ))
+    stored_trust_matches(&app, &state, &slug, &dir)
 }
 
-/// Record consent for a project's current sources; called on Allow, on autorun auto-trust, and to re-stamp in-session edits so your own work never re-asks.
-#[tauri::command]
-pub fn trust_project(
-    app: AppHandle,
-    state: State<'_, SettingsState>,
-    slug: String,
+/// Run `write`, an app-originated change to the files consent covers, keeping the F-001 grant current: a project the person had allowed stays allowed after the app's own edit, while a grant already stale (an outside change landed first) stays stale so the next open re-asks. Wrap every native writer of project.json, scenes/** , CLAUDE.md or .claude/settings.json in this.
+pub(crate) fn restamping_trust<T>(
+    app: &AppHandle,
+    state: &State<'_, SettingsState>,
+    slug: &str,
+    write: impl FnOnce() -> Result<T, String>,
+) -> Result<T, String> {
+    let dir = project_dir(app, state, slug)?;
+    let trusted = stored_trust_matches(app, state, slug, &dir)?;
+    let out = write()?;
+    if trusted {
+        let fingerprint = trust_fingerprint(&dir);
+        update_settings(app, state, |settings| {
+            if let Some(record) = settings.trusted_projects.get_mut(slug) {
+                record.scenes_fingerprint = fingerprint;
+            }
+        })?;
+    }
+    Ok(out)
+}
+
+/// Whether scene code may be copied out of `id` (`copy_scene_to_project`, whichever window calls it): bundled templates and presets ship with the app; a workspace project, user template or user preset needs a grant matching its content or this session's allow, the same F-001 gate that opening it applies.
+pub(crate) fn require_source_allowed(
+    app: &AppHandle,
+    state: &State<'_, SettingsState>,
+    trust: &TrustState,
+    id: &str,
 ) -> Result<(), String> {
+    let (scope, _) = parse_project_id(id)?;
+    if !copy_source_needs_grant(&scope) {
+        return Ok(());
+    }
+    let dir = project_dir(app, state, id)?;
+    let stored = stored_trust_matches(app, state, id, &dir)?;
+    let in_session = trust
+        .session
+        .lock()
+        .map_err(|_| "trust state poisoned")?
+        .contains(id);
+    if stored || in_session {
+        return Ok(());
+    }
+    Err("open that project and allow its scene code before copying from it".into())
+}
+
+fn copy_source_needs_grant(scope: &ProjectScope) -> bool {
+    !matches!(
+        scope,
+        ProjectScope::BundledTemplate | ProjectScope::BundledPreset
+    )
+}
+
+/// Forget every grant for a project, user template or user preset a pack import just wrote. The pack is a publisher's content, whoever that publisher is, so the person meets the Allow sheet again on the next open.
+pub(crate) fn forget_project_trust(
+    app: &AppHandle,
+    state: &State<'_, SettingsState>,
+    trust: &TrustState,
+    id: &str,
+) -> Result<(), String> {
+    parse_project_id(id)?;
+    drop_session_then(&trust.session, id, || {
+        update_settings(app, state, |settings| {
+            settings.trusted_projects.remove(id);
+        })
+    })
+}
+
+/// The session allow goes before the stored grant, so a failed settings write still leaves the next open asking.
+fn drop_session_then(
+    session: &Mutex<HashSet<String>>,
+    id: &str,
+    drop_stored: impl FnOnce() -> Result<(), String>,
+) -> Result<(), String> {
+    session
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .remove(id);
+    drop_stored()
+}
+
+/// One consent the native sheet (or an autorun launch) issued and `trust_project` has not consumed yet.
+struct PendingTrust {
+    slug: String,
+    fingerprint: String,
+    issued: Instant,
+}
+
+/// Trust state that lives only as long as this app process: the consent nonces `request_project_trust` issued and `trust_project` has not consumed (nothing else writes there, so a call without one of them has nothing to redeem), and the slugs this session has allowed, whose live edits re-stamp without asking.
+#[derive(Default)]
+pub struct TrustState {
+    nonces: Mutex<HashMap<String, PendingTrust>>,
+    session: Mutex<HashSet<String>>,
+}
+
+/// What the main window's gate check decides for a project.
+#[derive(Debug, PartialEq)]
+enum SessionTrust {
+    /// The stored grant matches the content: pass, and the slug is this session's.
+    Pass,
+    /// The content moved under a project this session allowed: Rust re-stamps the grant from the hash it just computed.
+    Restamp,
+    /// No usable grant: the sheet asks.
+    Ask,
+}
+
+/// The decision behind `check_project_trust`. A grant for another path never counts, and a slug this session has not allowed never re-stamps: the stored grant is only ever written from a session a person or an env-gated autorun allowed.
+fn session_trust_decision(
+    record: Option<&TrustRecord>,
+    dir: &Path,
+    fingerprint: &str,
+    session: &mut HashSet<String>,
+    slug: &str,
+) -> SessionTrust {
+    let Some(record) = record else {
+        return SessionTrust::Ask;
+    };
+    if record.path != dir.to_string_lossy() {
+        return SessionTrust::Ask;
+    }
+    if record.scenes_fingerprint == fingerprint {
+        session.insert(slug.to_owned());
+        return SessionTrust::Pass;
+    }
+    if session.contains(slug) {
+        SessionTrust::Restamp
+    } else {
+        SessionTrust::Ask
+    }
+}
+
+/// The main window's F-001 check, the one path that may re-stamp without asking. A stored grant that still matches passes and marks the slug trusted for this app session; a slug trusted this session whose content moved (Claude's edit landing under a person watching the reload) is re-stamped from the hash Rust computes here, never one the webview supplies; anything else answers false and the sheet asks. Content that changed while the project was closed therefore re-asks on the next open. Present and stored-only loads use `is_project_trusted` and never re-stamp.
+#[tauri::command]
+pub fn check_project_trust(
+    app: AppHandle,
+    window: tauri::Window,
+    state: State<'_, SettingsState>,
+    trust: State<'_, TrustState>,
+    slug: String,
+) -> Result<bool, String> {
+    require_window(&window, "main")?;
+    let dir = project_dir(&app, &state, &slug)?;
+    let fingerprint = trust_fingerprint(&dir);
+    let settings = load_settings(&app, &state)?;
+    let decision = {
+        let mut session = trust.session.lock().map_err(|_| "trust state poisoned")?;
+        session_trust_decision(
+            settings.trusted_projects.get(&slug),
+            &dir,
+            &fingerprint,
+            &mut session,
+            &slug,
+        )
+    };
+    match decision {
+        SessionTrust::Pass => Ok(true),
+        SessionTrust::Ask => Ok(false),
+        SessionTrust::Restamp => {
+            update_settings(&app, &state, |settings| {
+                if let Some(record) = settings.trusted_projects.get_mut(&slug) {
+                    record.scenes_fingerprint = fingerprint;
+                }
+            })?;
+            Ok(true)
+        }
+    }
+}
+
+/// A consent not redeemed within this long is void; the sheet's answer reaches `trust_project` within milliseconds.
+const TRUST_NONCE_TTL: Duration = Duration::from_secs(120);
+
+fn issue_trust_nonce(
+    pending: &mut HashMap<String, PendingTrust>,
+    slug: &str,
+    fingerprint: &str,
+    now: Instant,
+) -> String {
+    pending.retain(|_, p| now.duration_since(p.issued) < TRUST_NONCE_TTL);
+    let mut bytes = [0u8; 32];
+    getrandom::fill(&mut bytes).expect("operating system randomness");
+    let nonce = crate::hex_digest(&bytes);
+    pending.insert(
+        nonce.clone(),
+        PendingTrust {
+            slug: slug.to_owned(),
+            fingerprint: fingerprint.to_owned(),
+            issued: now,
+        },
+    );
+    nonce
+}
+
+/// Redeem `nonce` for `slug`: single use, slug-bound and time-limited. Returns the fingerprint the consent was given for.
+fn consume_trust_nonce(
+    pending: &mut HashMap<String, PendingTrust>,
+    nonce: &str,
+    slug: &str,
+    now: Instant,
+) -> Result<String, String> {
+    let entry = pending
+        .remove(nonce)
+        .ok_or("trust can only be granted from the consent sheet")?;
+    if entry.slug != slug {
+        return Err("that consent was given for another project".into());
+    }
+    if now.duration_since(entry.issued) > TRUST_NONCE_TTL {
+        return Err("the consent expired before it was recorded; open the project again".into());
+    }
+    Ok(entry.fingerprint)
+}
+
+/// `~`-abbreviated for the sheet.
+fn display_path(app: &AppHandle, path: &Path) -> String {
+    let text = path.to_string_lossy().into_owned();
+    match app.path().home_dir() {
+        Ok(home) => match path.strip_prefix(&home) {
+            Ok(rest) if rest.as_os_str().is_empty() => "~".into(),
+            Ok(rest) => format!("~/{}", rest.to_string_lossy()),
+            Err(_) => text,
+        },
+        Err(_) => text,
+    }
+}
+
+/// The manifest's display name, flattened and capped so a crafted name cannot forge the sheet's lines; the slug when there is none.
+fn consent_project_name(dir: &Path, slug: &str) -> String {
+    let name = std::fs::read_to_string(dir.join(MANIFEST_FILENAME))
+        .ok()
+        .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok())
+        .and_then(|doc| doc.get("name")?.as_str().map(str::to_owned))
+        .unwrap_or_default();
+    let flat: String = name
+        .chars()
+        .map(|c| {
+            if c.is_control() || c.is_whitespace() {
+                ' '
+            } else {
+                c
+            }
+        })
+        .collect::<String>()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    let flat = if flat.chars().count() > 80 {
+        format!("{}…", flat.chars().take(80).collect::<String>().trim_end())
+    } else {
+        flat
+    };
+    if flat.is_empty() {
+        slug.to_owned()
+    } else {
+        flat
+    }
+}
+
+/// The main window asks for the F-001 consent. In the app this shows a native sheet the webview cannot answer (Return declines); the person's Allow mints a single-use nonce for `trust_project`. An autorun launch is the user's own consent, so it mints the nonce without a sheet, except under `KOOKABURRA_TRUST=stored-only`, which never grants. Returns None when the person declines.
+#[tauri::command]
+pub async fn request_project_trust(
+    app: AppHandle,
+    window: tauri::Window,
+    state: State<'_, SettingsState>,
+    trust: State<'_, TrustState>,
+    slug: String,
+) -> Result<Option<String>, String> {
+    require_window(&window, "main")?;
     let dir = project_dir(&app, &state, &slug)?;
     if !dir.join(MANIFEST_FILENAME).is_file() {
         return Err(format!("no project named \"{slug}\""));
+    }
+    let fingerprint = trust_fingerprint(&dir);
+    if crate::is_autorun() {
+        if crate::autorun_var("KOOKABURRA_TRUST").as_deref() == Some("stored-only") {
+            return Err("this run only opens projects already allowed in the app".into());
+        }
+    } else {
+        let name = consent_project_name(&dir, &slug);
+        let body = format!(
+            "Scenes in this project are code. Kookaburra Cut runs them on a sealed stage, apart from the app's own access to your Mac, so only allow projects you trust.\n\nFolder: {}\n\nIf the project changes outside the app, you will be asked again.",
+            display_path(&app, &dir)
+        );
+        let declined = crate::native_alert::ask(
+            &app,
+            "main",
+            crate::native_alert::Prompt {
+                title: &format!("Allow “{name}” to run its scenes?"),
+                body: &body,
+                default_button: "Don't open",
+                other_button: "Allow project",
+            },
+        )
+        .await?;
+        if declined {
+            return Ok(None);
+        }
+    }
+    let mut pending = trust.nonces.lock().map_err(|_| "trust state poisoned")?;
+    Ok(Some(issue_trust_nonce(
+        &mut pending,
+        &slug,
+        &fingerprint,
+        Instant::now(),
+    )))
+}
+
+/// Record consent for a project's current sources. Only a nonce from `request_project_trust` redeems, once, for its slug, while the sources still match what the sheet described.
+#[tauri::command]
+pub fn trust_project(
+    app: AppHandle,
+    window: tauri::Window,
+    state: State<'_, SettingsState>,
+    trust: State<'_, TrustState>,
+    slug: String,
+    nonce: String,
+) -> Result<(), String> {
+    require_window(&window, "main")?;
+    let dir = project_dir(&app, &state, &slug)?;
+    if !dir.join(MANIFEST_FILENAME).is_file() {
+        return Err(format!("no project named \"{slug}\""));
+    }
+    let consented_for = {
+        let mut pending = trust.nonces.lock().map_err(|_| "trust state poisoned")?;
+        consume_trust_nonce(&mut pending, &nonce, &slug, Instant::now())?
+    };
+    let fingerprint = trust_fingerprint(&dir);
+    if fingerprint != consented_for {
+        return Err("the project changed while the consent sheet was open; open it again".into());
     }
     let allowed_at_ms = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_err(|e| e.to_string())?
         .as_millis() as u64;
     let record = TrustRecord {
-        scenes_fingerprint: compute_project_fingerprint(&dir),
+        scenes_fingerprint: fingerprint,
         path: dir.to_string_lossy().into_owned(),
         allowed_at_ms,
     };
     update_settings(&app, &state, |settings| {
-        settings.trusted_projects.insert(slug, record);
-    })
+        settings.trusted_projects.insert(slug.clone(), record);
+    })?;
+    trust
+        .session
+        .lock()
+        .map_err(|_| "trust state poisoned")?
+        .insert(slug);
+    Ok(())
 }
 
-/// A project's manifest text (the frontend parses + validates it); `slug` is a workspace slug or a scoped library id (`project_dir`).
+/// Second layer behind the per-window ACL for the commands only one window may call.
+pub(crate) fn require_window(window: &tauri::Window, label: &str) -> Result<(), String> {
+    if window.label() == label {
+        Ok(())
+    } else {
+        Err(format!(
+            "this command is only available to the {label} window"
+        ))
+    }
+}
+
+/// A project's manifest text (the frontend parses + validates it); `slug` is a workspace slug or a scoped library id (`project_dir`). Loading it makes the item's folder the one project the calling window's `asset://` URLs may read, in place of the last.
 #[tauri::command]
 pub fn read_project_manifest(
+    window: tauri::Window,
     app: AppHandle,
     state: State<'_, SettingsState>,
     slug: String,
 ) -> Result<String, String> {
     let (scope, item) = parse_project_id(&slug)?;
-    let text = project_manifest_for_loading(&project_dir(&app, &state, &slug)?, scope)?;
-    let bundled_root = match scope {
-        ProjectScope::BundledTemplate => Some(templates_root(&app)),
-        ProjectScope::BundledPreset => Some(presets_root(&app)),
-        _ => None,
+    let dir = project_dir(&app, &state, &slug)?;
+    let text = project_manifest_for_loading(&dir, scope)?;
+    let readable = match scope {
+        ProjectScope::BundledTemplate => bundled_assets_in_dev(&templates_root(&app), item)?,
+        ProjectScope::BundledPreset => bundled_assets_in_dev(&presets_root(&app), item)?,
+        _ => Some(dir),
     };
-    if let Some(root) = bundled_root {
-        let assets = bundled_project_assets_path(&root, item)?;
-        app.asset_protocol_scope()
-            .allow_directory(assets, true)
-            .map_err(|e| format!("allowing library assets: {e}"))?;
+    match readable {
+        Some(dir) => crate::asset_reach::open_project(&app, window.label(), &dir),
+        None => crate::asset_reach::close_project(&app, window.label()),
     }
     Ok(text)
+}
+
+/// A bundled item's assets are files on disk only in a dev checkout; the packaged app bundles them into the frontend.
+fn bundled_assets_in_dev(root: &Path, item: &str) -> Result<Option<PathBuf>, String> {
+    if !cfg!(debug_assertions) {
+        return Ok(None);
+    }
+    bundled_project_assets_path(root, item).map(Some)
+}
+
+/// The calling window reads no project any more: the main window back on the welcome screen.
+#[tauri::command]
+pub fn release_project(window: tauri::Window, app: AppHandle) {
+    crate::asset_reach::close_project(&app, window.label());
 }
 
 fn bundled_project_assets_path(root: &Path, slug: &str) -> Result<PathBuf, String> {
@@ -2263,7 +2799,15 @@ mod tests {
         for name in ["exports", ".kookaburra", ".kb"] {
             assert!(duplicate_skips(std::ffi::OsStr::new(name)), "{name}");
         }
-        for name in ["scenes", "assets", "edits", "project.json", ".claude", "kb", ".kbx"] {
+        for name in [
+            "scenes",
+            "assets",
+            "edits",
+            "project.json",
+            ".claude",
+            "kb",
+            ".kbx",
+        ] {
             assert!(!duplicate_skips(std::ffi::OsStr::new(name)), "{name}");
         }
     }
@@ -2440,27 +2984,29 @@ mod tests {
         let _ = std::fs::remove_dir_all(&base);
     }
 
-    /// Following a link that points at an ancestor never terminates, and a broken one aborts the whole move.
+    /// A link is neither followed (one pointing at an ancestor never terminates) nor recreated (the copy would carry a reach outside the project along): the copy stops and names it.
     #[test]
-    fn copying_recreates_symlinks_instead_of_following_them() {
+    fn copying_refuses_symlinks() {
         let base = scratch_dir();
         let from = base.join("from");
         let to = base.join("to");
         std::fs::create_dir_all(from.join("assets")).unwrap();
         std::fs::write(from.join("assets/real.mp4"), "bytes").unwrap();
-        std::os::unix::fs::symlink(&from, from.join("assets/loop")).unwrap();
-        std::os::unix::fs::symlink(base.join("nothing-here"), from.join("assets/broken")).unwrap();
+        std::os::unix::fs::symlink(base.join("elsewhere"), from.join("assets/out")).unwrap();
 
+        let err = copy_dir_recursive(&from, &to).unwrap_err();
+        assert!(
+            err.contains("assets/out") && err.contains("symbolic link"),
+            "{err}"
+        );
+        assert!(std::fs::symlink_metadata(to.join("assets/out")).is_err());
+
+        std::fs::remove_file(from.join("assets/out")).unwrap();
         copy_dir_recursive(&from, &to).unwrap();
-
         assert_eq!(
             std::fs::read_to_string(to.join("assets/real.mp4")).unwrap(),
             "bytes"
         );
-        for link in ["assets/loop", "assets/broken"] {
-            let meta = std::fs::symlink_metadata(to.join(link)).unwrap();
-            assert!(meta.file_type().is_symlink(), "{link} was followed");
-        }
 
         let _ = std::fs::remove_dir_all(&base);
     }
@@ -3040,20 +3586,231 @@ mod tests {
         let _ = std::fs::remove_dir_all(&outside);
     }
 
-    #[test]
-    fn project_fingerprint_tracks_source_changes() {
-        let dir = scratch_dir();
-        std::fs::write(dir.join("project.json"), b"{}").unwrap();
+    fn consent_project(dir: &Path) {
+        std::fs::write(dir.join("project.json"), b"{\"name\":\"Demo\"}").unwrap();
         std::fs::create_dir_all(dir.join("scenes")).unwrap();
-        std::fs::write(dir.join("scenes/intro.tsx"), b"a").unwrap();
+        std::fs::write(dir.join("scenes/intro.tsx"), b"export default 1;").unwrap();
+        std::fs::write(dir.join("scenes/intro.json"), b"{\"version\":1}").unwrap();
+    }
 
-        let before = compute_project_fingerprint(&dir);
-        // Stable while untouched, moves on a source edit (size change, mtime aside).
-        assert_eq!(before, compute_project_fingerprint(&dir));
-        std::fs::write(dir.join("scenes/intro.tsx"), b"ab").unwrap();
-        assert_ne!(before, compute_project_fingerprint(&dir));
-
+    #[test]
+    fn the_source_stamp_tracks_source_changes() {
+        let dir = scratch_dir();
+        consent_project(&dir);
+        let before = source_change_stamp(&dir);
+        assert_eq!(before, source_change_stamp(&dir));
+        std::fs::write(dir.join("scenes/intro.tsx"), b"export default 12;").unwrap();
+        assert_ne!(before, source_change_stamp(&dir));
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_trust_fingerprint_is_content_so_a_touch_r_rewrite_re_asks() {
+        let dir = scratch_dir();
+        consent_project(&dir);
+        let scene = dir.join("scenes/intro.tsx");
+        let before = trust_fingerprint(&dir);
+        assert_eq!(before, trust_fingerprint(&dir));
+        // Same size, same mtime put back (`touch -r`), different bytes: the stat stamp cannot tell, the content hash can.
+        let mtime = std::fs::metadata(&scene).unwrap().modified().unwrap();
+        std::fs::write(&scene, b"export default 2;").unwrap();
+        std::fs::File::options()
+            .write(true)
+            .open(&scene)
+            .unwrap()
+            .set_modified(mtime)
+            .unwrap();
+        assert_eq!(
+            std::fs::metadata(&scene).unwrap().modified().unwrap(),
+            mtime,
+            "the test needs the mtime restored"
+        );
+        assert_ne!(before, trust_fingerprint(&dir));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_trust_fingerprint_covers_agent_configuration_and_skips_dot_files_and_assets() {
+        let dir = scratch_dir();
+        consent_project(&dir);
+        std::fs::create_dir_all(dir.join("assets")).unwrap();
+        let base = trust_fingerprint(&dir);
+        std::fs::write(dir.join("CLAUDE.md"), b"# Rules").unwrap();
+        let with_claude_md = trust_fingerprint(&dir);
+        assert_ne!(base, with_claude_md);
+        std::fs::create_dir_all(dir.join(".claude")).unwrap();
+        std::fs::write(dir.join(".claude/settings.json"), b"{\"hooks\":{}}").unwrap();
+        let with_settings = trust_fingerprint(&dir);
+        assert_ne!(with_claude_md, with_settings);
+        // Finder metadata inside scenes/ and anything under assets/ are not consent.
+        std::fs::write(dir.join("scenes/.DS_Store"), b"finder").unwrap();
+        std::fs::write(dir.join("assets/shot.png"), b"png").unwrap();
+        assert_eq!(with_settings, trust_fingerprint(&dir));
+        // A sidecar edit is.
+        std::fs::write(dir.join("scenes/intro.json"), b"{\"version\":2}").unwrap();
+        assert_ne!(with_settings, trust_fingerprint(&dir));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_trust_nonce_is_single_use_slug_bound_and_time_limited() {
+        let mut pending = HashMap::new();
+        let now = Instant::now();
+        let nonce = issue_trust_nonce(&mut pending, "demo", "fp-1", now);
+        assert_eq!(nonce.len(), 64);
+        assert_eq!(
+            consume_trust_nonce(&mut pending, &nonce, "other", now).unwrap_err(),
+            "that consent was given for another project"
+        );
+        // The failed redeem consumed it: nothing is redeemable twice.
+        assert_eq!(
+            consume_trust_nonce(&mut pending, &nonce, "demo", now).unwrap_err(),
+            "trust can only be granted from the consent sheet"
+        );
+        let nonce = issue_trust_nonce(&mut pending, "demo", "fp-1", now);
+        assert_eq!(
+            consume_trust_nonce(&mut pending, &nonce, "demo", now).unwrap(),
+            "fp-1"
+        );
+        let stale = issue_trust_nonce(&mut pending, "demo", "fp-1", now);
+        let later = now + TRUST_NONCE_TTL + Duration::from_secs(1);
+        assert!(consume_trust_nonce(&mut pending, &stale, "demo", later).is_err());
+        // A value that was never issued: a real nonce with one character changed.
+        let issued = issue_trust_nonce(&mut pending, "demo", "fp-1", now);
+        let forged: String = issued
+            .chars()
+            .enumerate()
+            .map(|(i, c)| {
+                if i == 0 {
+                    if c == '0' {
+                        '1'
+                    } else {
+                        '0'
+                    }
+                } else {
+                    c
+                }
+            })
+            .collect();
+        assert!(
+            consume_trust_nonce(&mut pending, &forged, "demo", now).is_err(),
+            "a made-up nonce never redeems"
+        );
+        // Issuing sweeps expired entries.
+        let old = issue_trust_nonce(&mut pending, "demo", "fp-1", now);
+        issue_trust_nonce(&mut pending, "demo", "fp-2", later);
+        assert!(!pending.contains_key(&old));
+    }
+
+    #[test]
+    fn a_pack_landing_asks_even_when_its_stored_grant_survives() {
+        let dir = Path::new("/Users/x/Kookaburra Cut/demo");
+        let stale = TrustRecord {
+            scenes_fingerprint: "fp-1".to_owned(),
+            path: dir.to_string_lossy().into_owned(),
+            allowed_at_ms: 1,
+        };
+        let shared = Mutex::new(HashSet::from(["demo".to_owned(), "other".to_owned()]));
+        let failed = drop_session_then(&shared, "demo", || Err("disk full".to_owned()));
+        assert_eq!(failed, Err("disk full".to_owned()));
+        let mut session = shared.into_inner().unwrap();
+        assert_eq!(
+            session_trust_decision(Some(&stale), dir, "fp-2", &mut session, "demo"),
+            SessionTrust::Ask
+        );
+        assert_eq!(
+            session_trust_decision(None, dir, "fp-2", &mut session, "demo"),
+            SessionTrust::Ask
+        );
+        assert_eq!(session, ["other".to_owned()].into());
+    }
+
+    #[test]
+    fn edits_in_an_allowed_session_re_stamp_and_everything_else_asks() {
+        let dir = PathBuf::from("/ws/demo");
+        let record = TrustRecord {
+            scenes_fingerprint: "fp-1".into(),
+            path: dir.to_string_lossy().into_owned(),
+            allowed_at_ms: 0,
+        };
+        let mut session = HashSet::new();
+        // Content changed while the project was closed: this session never allowed it, so it asks.
+        assert_eq!(
+            session_trust_decision(Some(&record), &dir, "fp-2", &mut session, "demo"),
+            SessionTrust::Ask
+        );
+        assert!(session.is_empty());
+        // A matching grant passes and makes the slug this session's.
+        assert_eq!(
+            session_trust_decision(Some(&record), &dir, "fp-1", &mut session, "demo"),
+            SessionTrust::Pass
+        );
+        // Now an edit landing while open re-stamps instead of asking.
+        assert_eq!(
+            session_trust_decision(Some(&record), &dir, "fp-2", &mut session, "demo"),
+            SessionTrust::Restamp
+        );
+        // Never for another slug, a missing grant, or a grant for another path.
+        assert_eq!(
+            session_trust_decision(Some(&record), &dir, "fp-2", &mut session, "other"),
+            SessionTrust::Ask
+        );
+        assert_eq!(
+            session_trust_decision(None, &dir, "fp-1", &mut session, "demo"),
+            SessionTrust::Ask
+        );
+        assert_eq!(
+            session_trust_decision(
+                Some(&record),
+                Path::new("/elsewhere/demo"),
+                "fp-1",
+                &mut session,
+                "demo"
+            ),
+            SessionTrust::Ask
+        );
+    }
+
+    #[test]
+    fn the_consent_sheet_name_is_flattened_capped_and_falls_back_to_the_slug() {
+        let dir = scratch_dir();
+        consent_project(&dir);
+        assert_eq!(consent_project_name(&dir, "demo"), "Demo");
+        std::fs::write(
+            dir.join("project.json"),
+            format!(
+                "{{\"name\":\"Allow\\u001b]52;c;x\\u0007 \\n  this {}\"}}",
+                "x".repeat(100)
+            )
+            .as_bytes(),
+        )
+        .unwrap();
+        let name = consent_project_name(&dir, "demo");
+        assert!(!name.chars().any(char::is_control), "{name:?}");
+        assert!(name.starts_with("Allow ]52;c;x this "), "{name:?}");
+        assert!(
+            name.ends_with('…') && name.chars().count() <= 81,
+            "{name:?}"
+        );
+        std::fs::write(dir.join("project.json"), b"{}").unwrap();
+        assert_eq!(consent_project_name(&dir, "demo"), "demo");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn only_bundled_sources_copy_without_a_grant() {
+        for id in ["template:launch", "preset:stat-hero"] {
+            assert!(
+                !copy_source_needs_grant(&parse_project_id(id).unwrap().0),
+                "{id}"
+            );
+        }
+        for id in ["demo", "ws-template:mine", "ws-preset:mine"] {
+            assert!(
+                copy_source_needs_grant(&parse_project_id(id).unwrap().0),
+                "{id}"
+            );
+        }
     }
 
     #[test]
@@ -3134,9 +3891,9 @@ mod tests {
         std::fs::write(assets.join("shot.png"), b"two!").unwrap();
         assert_ne!(before, asset_stamps_in(&dir).stamp);
         // The trust fingerprint never sees assets.
-        let trust = compute_project_fingerprint(&dir);
+        let trust = trust_fingerprint(&dir);
         std::fs::write(assets.join("shot.png"), b"three").unwrap();
-        assert_eq!(trust, compute_project_fingerprint(&dir));
+        assert_eq!(trust, trust_fingerprint(&dir));
         let _ = std::fs::remove_dir_all(&dir);
     }
 

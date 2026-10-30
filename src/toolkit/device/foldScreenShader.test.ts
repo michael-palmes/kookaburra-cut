@@ -19,6 +19,22 @@ describe("the fold display shader", () => {
     expect(active.join("")).not.toContain("texture2D(");
   });
 
+  it("compiles with or without a map, since a display without media has none", () => {
+    // Everything that reads the sampler sits under three's USE_MAP guard, so the no-map program links.
+    const outsideGuard = (source: string) =>
+      source.replace(/#ifdef USE_MAP[\s\S]*?#endif/g, "").replace(/\/\/.*$/gm, "");
+    const spliced = `${FOLD_SCREEN_GLSL.pars}\n${FOLD_SCREEN_GLSL.fragment}`;
+    expect(outsideGuard(spliced)).not.toMatch(/\bmap\b|foldTap|texture/);
+    // Outside it, declarations only: no helper can slip out of the guard unnoticed.
+    for (const line of outsideGuard(spliced).split("\n")) {
+      expect(line).toMatch(/^(#include <\w+>|uniform \w+ \w+;|varying \w+ \w+;|\s*)$/);
+    }
+    expect(outsideGuard(spliced)).toContain("varying vec3 vFoldRootPos;");
+    // And the map program still carries the taps.
+    expect(spliced).toContain("textureGrad( map, uv, dx, dy )");
+    expect(spliced.match(/#ifdef USE_MAP/g)).toHaveLength(2);
+  });
+
   it("bakes the engine's contract constants, never its own copies", () => {
     expect(FOLD_SCREEN_GLSL.fragment).toContain(`i < ${FOLD_BLUR_TAPS};`);
     expect(FOLD_SCREEN_GLSL.fragment).toContain(
@@ -49,7 +65,7 @@ describe("the fold display shader", () => {
   it("writes the crop and the frame's state, and is inert on any other material", () => {
     const material = new MeshBasicMaterial();
     applyFoldScreenShader(material, 0.69);
-    setFoldScreenCrop(material, { u0: 0.1, v0: 1, u1: 0.9, v1: 0 });
+    setFoldScreenCrop(material, { rect: { u0: 0.1, v0: 1, u1: 0.9, v1: 0 } });
     setFoldScreenState(
       material,
       {
@@ -75,7 +91,7 @@ describe("the fold display shader", () => {
     expect(uniforms.uFoldEye.value.toArray()).toEqual([0.1, 0.2, 0.3]);
 
     const plain = new MeshBasicMaterial();
-    setFoldScreenCrop(plain, { u0: 0, v0: 0, u1: 1, v1: 1 });
+    setFoldScreenCrop(plain, { rect: { u0: 0, v0: 0, u1: 1, v1: 1 } });
     setFoldScreenState(
       plain,
       {

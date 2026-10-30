@@ -145,6 +145,11 @@ export const ACTION_LEGS = [
     match: [/^src-tauri\/src\/pack\//, /^src-tauri\/src\/fonts\.rs$/],
   },
   {
+    action: "transitioncheck",
+    project: "compare-transition-spike",
+    match: [/^src\/engine\/(compositor|transitionCheck|transitionShader|sceneTimeline)\.ts$/],
+  },
+  {
     action: "stillsverify",
     project: "showcase-tour",
     match: [

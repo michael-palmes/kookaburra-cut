@@ -19,6 +19,7 @@ import {
 } from "three";
 import { fsUrl } from "../engine/media";
 import type { LoadedProject } from "../engine/project";
+import { beatAt, boundaryCutMs } from "../engine/sceneCuts";
 import {
   applyTransitionEase,
   defaultDirection,
@@ -51,6 +52,7 @@ import {
   vertexShader300,
 } from "../engine/transitionShader";
 import { ColourPicker } from "./colour/ColourPicker";
+import { ToggleRow } from "./inspector/rows";
 import { DebouncedRange } from "./TextAnimationPicker";
 import { TransitionWriteQueue } from "./transitionWriteQueue";
 import { useEscapeClose } from "./useEscapeClose";
@@ -343,7 +345,14 @@ const PARAM_ICONS: Record<string, string> = {
   centerY: "M10 3 V8 M10 12 V17 M3 10 H8 M12 10 H17",
   shape: "M4 12 a4 4 0 1 0 8 0 a4 4 0 1 0 -8 0 M11 4 H17 V10 H11 Z",
   mask: "M10 3 L12 8 L17 8 L13 11 L14.5 16 L10 13 L5.5 16 L7 11 L3 8 L8 8 Z",
+  beat: "M6 17 L9 3 H11 L14 17 Z M10 12 L15 5",
 };
+
+/** `bar:9` as "bar 9", `bar:9.3` as "bar 9, beat 3". */
+function beatLabel(position: string): string {
+  const [bar, beat] = position.slice(4).split(".");
+  return beat ? `bar ${bar}, beat ${beat}` : `bar ${bar}`;
+}
 
 function ParamIcon({ id }: { id: string }) {
   return (
@@ -495,10 +504,10 @@ export function TransitionModal({
   /** Scene thumb paths by file stem (may be empty; flat fallbacks render instead). */
   thumbs: Record<string, string>;
   onCancel: () => void;
-  /** Persists the spec (null = remove) and refreshes timing; the modal awaits it. */
-  onApply: (spec: TransitionSpec | null) => Promise<void>;
+  /** Persists the spec (null = remove) and refreshes timing; the modal awaits it. `keepCuts` holds every later cut where it is (a project with a beat grid). */
+  onApply: (spec: TransitionSpec | null, keepCuts: boolean) => Promise<void>;
   /** Present on multi-boundary projects: persists the draft onto EVERY boundary (two-click confirm). */
-  onApplyAll?: (spec: TransitionSpec | null) => Promise<void>;
+  onApplyAll?: (spec: TransitionSpec | null, keepCuts: boolean) => Promise<void>;
   /** Render without the modal chrome; the inspector drill-in hosts the same body (decision 8) with a compact stacked layout. */
   embedded?: boolean;
 }) {
@@ -512,6 +521,11 @@ export function TransitionModal({
   const applyingAll = useRef(false);
   const [hoverType, setHoverType] = useState<TransitionType | "none" | null>(null);
   const hoverTimer = useRef<number | null>(null);
+  const onGrid = !!project.music?.grid;
+  const [keepCuts, setKeepCuts] = useState(true);
+  const keep = onGrid && keepCuts;
+  const cutMs = project.slots[boundaryIndex + 1] ? boundaryCutMs(project.slots, boundaryIndex) : 0;
+  const cutBeat = beatAt(project.music, cutMs);
   useEffect(
     () => () => {
       if (hoverTimer.current !== null) window.clearTimeout(hoverTimer.current);
@@ -535,7 +549,7 @@ export function TransitionModal({
     setDraft(next);
     setConfirmAll(false);
     setError(null);
-    const write = writeQueue.enqueue(() => onApply(next));
+    const write = writeQueue.enqueue(() => onApply(next, keep));
     void write.catch((cause) => setError(String(cause)));
   };
 
@@ -596,7 +610,7 @@ export function TransitionModal({
     setError(null);
     try {
       await writeQueue.settle();
-      await onApplyAll(draft);
+      await onApplyAll(draft, keep);
     } catch (e) {
       setError(String(e));
     } finally {
@@ -659,7 +673,9 @@ export function TransitionModal({
               onBlur={() => setHover(null)}
             >
               <span className="transition-card-label">None (cut)</span>
-              <span className="transition-card-hint">Hard cut — the project gets longer</span>
+              <span className="transition-card-hint">
+                {keep ? "Hard cut on the same beat" : "Hard cut: the project gets longer"}
+              </span>
             </div>
           </div>
           {FEEL_ORDER.map((feel) => {
@@ -782,6 +798,22 @@ export function TransitionModal({
                   />
                 </span>
               )}
+            </div>
+          )}
+
+          {onGrid && (
+            <div className="transition-advanced">
+              <ToggleRow
+                icon={<ParamIcon id="beat" />}
+                label="Keep later scenes on the beat"
+                description={
+                  cutBeat
+                    ? `The cut lands on ${beatLabel(cutBeat)}`
+                    : `The cut lands at ${(cutMs / 1000).toFixed(2)} s, off the beat`
+                }
+                checked={keepCuts}
+                onChange={setKeepCuts}
+              />
             </div>
           )}
 

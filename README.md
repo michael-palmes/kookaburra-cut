@@ -38,14 +38,30 @@ embeds a Claude Code terminal that reads and rewrites your project's scene files
 - A signed and notarised `.dmg`; macOS 26.0+ on **Apple Silicon** (arm64) only, no Intel build
 - Free and open source; everything runs locally (no accounts, no telemetry, no cloud)
 - The optional AI authoring path uses your own Claude Code install
+- Managed Macs: a configuration profile can turn off the Claude entry points, live
+  websites or update checks, limit packs to approved publishers and fix the
+  workspace location ([`docs/mdm.md`](docs/mdm.md))
 
-> Status: early release, in active development. Two opt-in network exceptions
-> to "fully local": the optional embedded Claude Code terminal, which only ever
-> runs when you explicitly invoke it (it installs via a script shown in the
-> terminal and talks to Anthropic while you use it), and the update check, which
-> never runs before you answer the first-run welcome (recommended, so its switch
-> starts on; turn it off there or in Settings), asks GitHub whether a newer
-> release exists and sends no identifiers.
+Every release is built by this repository's release workflow from a signed tag,
+signed with a Developer ID certificate and notarised by Apple. To check a
+download against the release's `SHA256SUMS` and its build provenance:
+
+```bash
+shasum -a 256 -c SHA256SUMS --ignore-missing
+gh attestation verify KookaburraCut-<version>.dmg --repo michael-palmes/kookaburra-cut \
+  --signer-workflow michael-palmes/kookaburra-cut/.github/workflows/release.yml \
+  --source-ref refs/tags/v<version> --deny-self-hosted-runners
+```
+
+> Status: early release, in active development. Nothing leaves your Mac
+> unless you start it: the opt-in update check (asked once on the first-run
+> welcome, recommended there; Escape declines; Settings changes it any time)
+> asks GitHub whether a newer release exists and sends no identifiers; the
+> Claude integration (the Edit with Claude handoff to the Claude desktop app,
+> or the built-in terminal, each using your own Claude Code install) sends the
+> project's files to Anthropic as you work; a live website in a scene loads
+> only after you allow its origin. Every path, with its off switch, is in
+> [`docs/privacy.md`](docs/privacy.md) and [`SECURITY.md`](SECURITY.md).
 
 ## Core features
 
@@ -133,7 +149,9 @@ decision and why.
 
 This is a personal, source-available project. Issues and discussion are welcome;
 pull requests may be declined: see [`CONTRIBUTING.md`](CONTRIBUTING.md).
-Security reports: see [`SECURITY.md`](SECURITY.md).
+Security reports: see [`SECURITY.md`](SECURITY.md), which lists everything
+the app touches; [`docs/privacy.md`](docs/privacy.md) is the plain-words
+version.
 
 ## Licensing
 

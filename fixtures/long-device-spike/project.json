@@ -1,0 +1,69 @@
+{
+  "id": "long-device-spike",
+  "name": "Long Device Spike (memory gate)",
+  "version": 2,
+  "themeId": "kookaburra-default",
+  "formats": ["16:9", "9:16", "1:1", "4:5"],
+  "scenes": [
+    {
+      "file": "scenes/01-pair.tsx",
+      "durationMs": 8000
+    },
+    {
+      "file": "scenes/02-unfold.tsx",
+      "durationMs": 8000,
+      "transition": {
+        "type": "crossfade",
+        "durationMs": 500
+      }
+    },
+    {
+      "file": "scenes/03-tablet.tsx",
+      "durationMs": 8000,
+      "transition": {
+        "type": "crossfade",
+        "durationMs": 500
+      }
+    },
+    {
+      "file": "scenes/04-laptop.tsx",
+      "durationMs": 8000,
+      "transition": {
+        "type": "crossfade",
+        "durationMs": 500
+      }
+    },
+    {
+      "file": "scenes/05-compare.tsx",
+      "durationMs": 8000,
+      "transition": {
+        "type": "crossfade",
+        "durationMs": 500
+      }
+    },
+    {
+      "file": "scenes/06-trio.tsx",
+      "durationMs": 8000,
+      "transition": {
+        "type": "crossfade",
+        "durationMs": 500
+      }
+    },
+    {
+      "file": "scenes/07-open.tsx",
+      "durationMs": 8000,
+      "transition": {
+        "type": "crossfade",
+        "durationMs": 500
+      }
+    },
+    {
+      "file": "scenes/08-fold-close.tsx",
+      "durationMs": 8000,
+      "transition": {
+        "type": "crossfade",
+        "durationMs": 500
+      }
+    }
+  ]
+}

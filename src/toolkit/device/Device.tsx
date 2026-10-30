@@ -55,7 +55,13 @@ import {
   resolveDeviceTrack,
 } from "../../engine/sceneDeviceTrack";
 import type { SceneDeviceProps } from "../../engine/sceneDoc";
-import { coverCropRect, remapUv, type UvRect } from "../../engine/screenFit";
+import {
+  coverCropRect,
+  remapScreenUv,
+  type ScreenTurns,
+  type ScreenUvMap,
+  screenUvMap,
+} from "../../engine/screenFit";
 import { useTimeline } from "../../engine/timeline";
 import { useEditorStore } from "../../store/editorStore";
 import { useStudioEnvironment } from "../lighting/studioEnvironment";
@@ -87,7 +93,8 @@ import { type DevicePose, deviceGizmoMovedY } from "./gizmoCommit";
 import { resolveDeviceLayout } from "./layout";
 import { HIDDEN_NODES } from "./models";
 import { useScreenImageTexture } from "./screenTexture";
-import type { DeviceShadowMode, ShadowPose } from "./shadowProjector";
+import { type DeviceMediaRotation, screenTurns } from "./screenTurns";
+import { type DeviceShadowMode, devicePoseFloorShift, type ShadowPose } from "./shadowProjector";
 import { deviceFittedHeight, resolveDeviceWorldAnchor } from "./worldAnchor";
 
 /** Media shown on the device screen. Videos ride the deterministic clip-frame pipeline. */
@@ -97,8 +104,12 @@ export interface DeviceMediaSpec {
   kind: "video" | "image";
   /** Video only: when playback starts, in ms of scene-local time (default 0). */
   startMs?: number;
+  /** Sidecar video only: musical position the start sits on; `startMs` caches its resolved value and a move that disagrees drops it. */
+  at?: string;
   /** Cover-fit is the rule: fill the screen, keep the media's aspect, crop the overflow. */
   fit?: "cover";
+  /** Turns the media clockwise on the screen before the fit; `"auto"` picks the turn that stands it upright on the device's current pose. */
+  rotateDeg?: DeviceMediaRotation;
   /** Foldable inside display only: count `startMs` from the moment the fold opens past the switch angle, so the app carries on as the device opens. Inert without a fold that opens. */
   startOn?: "open";
   /** Video only: source ms where playback begins (a trim-in); combines with a `startMs` delay. */
@@ -309,11 +320,12 @@ function materialName(material: Material | Material[]): string | undefined {
   return Array.isArray(material) ? material[0]?.name : material.name;
 }
 
-/** Bakes a cover-crop rect into the screen mesh's UVs; stashes the pristine UV set on first bake so a media change re-bakes from the original (re-baking the same rect is a no-op via `uvRectKey`), cloning geometry first since `Object3D.clone` shares geometry with drei's cache. */
-function bakeScreenUvs(mesh: Mesh, rect: UvRect): void {
-  // A foldable's display shader turns media UVs back into panel coordinates, so it needs the same rect.
-  if (!Array.isArray(mesh.material)) setFoldScreenCrop(mesh.material, rect);
-  const key = `${rect.u0}/${rect.v0}/${rect.u1}/${rect.v1}`;
+/** Bakes a cover-crop map into the screen mesh's UVs; stashes the pristine UV set on first bake so a media change re-bakes from the original (re-baking the same map is a no-op via `uvRectKey`), cloning geometry first since `Object3D.clone` shares geometry with drei's cache. */
+function bakeScreenUvs(mesh: Mesh, map: ScreenUvMap): void {
+  // A foldable's display shader turns media UVs back into panel coordinates, so it needs the same map.
+  if (!Array.isArray(mesh.material)) setFoldScreenCrop(mesh.material, map);
+  const { rect, turn } = map;
+  const key = `${rect.u0}/${rect.v0}/${rect.u1}/${rect.v1}${turn ? `/${turn.a}/${turn.b}/${turn.c}/${turn.d}/${turn.e}/${turn.f}` : ""}`;
   if (mesh.userData.uvRectKey === key) return;
   if (!mesh.userData.screenBaseUv) {
     mesh.geometry = mesh.geometry.clone();
@@ -330,7 +342,7 @@ function bakeScreenUvs(mesh: Mesh, rect: UvRect): void {
   const base = mesh.userData.screenBaseUv as Float32Array;
   const uv = mesh.geometry.getAttribute("uv") as BufferAttribute;
   for (let i = 0; i < uv.count; i++) {
-    const [u, v] = remapUv(base[i * 2], base[i * 2 + 1], rect);
+    const [u, v] = remapScreenUv(base[i * 2], base[i * 2 + 1], map);
     uv.setXY(i, u, v);
   }
   uv.needsUpdate = true;
@@ -345,15 +357,16 @@ function ScreenVideo(props: {
   material: MeshBasicMaterial;
   screens: Mesh[];
   screenAspect: number;
+  turns: ScreenTurns;
   levelRef: MutableRefObject<number>;
 }) {
-  const { src, startMs, frameAt, material, screens, screenAspect, levelRef } = props;
+  const { src, startMs, frameAt, material, screens, screenAspect, turns, levelRef } = props;
 
   // The readiness node lives in this component's own subtree since own-subtree refs attach before layout effects run; a parent's ref is still null during the mount commit, which previously left the binding effect bailing on stale deps and the screen black for the whole clamp window.
   const readyRef = useRef<Group>(null);
 
   // The clip's crop, baked once a frame binds in preview (frames can extract well after the size is known, and the card must not show through the clip's flipped UVs meanwhile); exports bake it as soon as the size is known.
-  const clipCropRef = useRef<UvRect | null>(null);
+  const clipCropRef = useRef<ScreenUvMap | null>(null);
   const boundRef = useRef(false);
 
   // Until the first frame binds, the screen shows the "Preparing video…" card (or, while a conform writes the clip, its poster and progress), except during export where it stays plain black (belt-and-braces atop the preamble/barrier guarantees; the frame bind overwrites `map`, so no cleanup is needed).
@@ -367,7 +380,7 @@ function ScreenVideo(props: {
       return;
     }
     const rect = coverCropRect(screenAspect, screenAspect, false); // identity, unflipped
-    for (const mesh of screens) bakeScreenUvs(mesh, rect);
+    for (const mesh of screens) bakeScreenUvs(mesh, { rect });
     material.map = standIn;
     material.color.set(0xffffff);
     material.needsUpdate = true;
@@ -393,10 +406,10 @@ function ScreenVideo(props: {
   useLayoutEffect(() => {
     if (!info) return;
     // Pre-flipped clip bitmaps put the source's bottom row at v=0, but glTF screens have v=0 at the top; flip V in the baked crop (see engine/screenFit.ts).
-    const rect = coverCropRect(info.width / info.height, screenAspect, true);
-    clipCropRef.current = rect;
-    if (boundRef.current || isExporting()) for (const mesh of screens) bakeScreenUvs(mesh, rect);
-  }, [info, screens, screenAspect]);
+    const map = screenUvMap(info.width / info.height, screenAspect, true, turns);
+    clipCropRef.current = map;
+    if (boundRef.current || isExporting()) for (const mesh of screens) bakeScreenUvs(mesh, map);
+  }, [info, screens, screenAspect, turns]);
 
   return <group ref={readyRef} />;
 }
@@ -407,6 +420,7 @@ function ScreenImage(props: {
   material: MeshBasicMaterial;
   screens: Mesh[];
   screenAspect: number;
+  turns: ScreenTurns;
   levelRef: MutableRefObject<number>;
   projectId: string;
 }) {
@@ -427,9 +441,10 @@ function ScreenImageLoaded(props: {
   material: MeshBasicMaterial;
   screens: Mesh[];
   screenAspect: number;
+  turns: ScreenTurns;
   levelRef: MutableRefObject<number>;
 }) {
-  const { url, material, screens, screenAspect, levelRef } = props;
+  const { url, material, screens, screenAspect, turns, levelRef } = props;
   const loaded = useTexture(url);
   const tex = useScreenImageTexture(loaded);
 
@@ -439,9 +454,9 @@ function ScreenImageLoaded(props: {
     material.needsUpdate = true;
     const image = tex.image as { width?: number; height?: number } | undefined;
     const aspect = image?.width && image?.height ? image.width / image.height : screenAspect;
-    const rect = coverCropRect(aspect, screenAspect, false);
-    for (const mesh of screens) bakeScreenUvs(mesh, rect);
-  }, [tex, material, screens, screenAspect, levelRef]);
+    const map = screenUvMap(aspect, screenAspect, false, turns);
+    for (const mesh of screens) bakeScreenUvs(mesh, map);
+  }, [tex, material, screens, screenAspect, turns, levelRef]);
 
   return null;
 }
@@ -452,6 +467,7 @@ function ScreenMedia(props: {
   material: MeshBasicMaterial;
   screens: Mesh[];
   screenAspect: number;
+  turns: ScreenTurns;
   levelRef: MutableRefObject<number>;
   projectId: string;
   /** Added to a video's own start delay: when a foldable opened, for `startOn: "open"`. */
@@ -759,6 +775,9 @@ export function Device(props: DeviceProps) {
     : null;
   const foldClosedDeg = foldRange?.closedDeg;
   const foldOpenDeg = foldRange?.openDeg;
+  // Keyed screen power dims each display towards black on top of the handover, the same fade.
+  const mainPower = Math.min(1, Math.max(0, keyed.screenPower ?? 1));
+  const coverPower = Math.min(1, Math.max(0, keyed.coverPower ?? 1));
   useLayoutEffect(() => {
     if (!fold || !foldEye || renderedFoldDeg === undefined) return;
     const state = foldScreensAt(
@@ -777,15 +796,15 @@ export function Device(props: DeviceProps) {
       fold.anchorSide,
       fold.coverHingeEdge === "left",
     );
-    screenLevel.current = state.main.level;
-    coverLevel.current = state.cover.level;
+    screenLevel.current = state.main.level * mainPower;
+    coverLevel.current = state.cover.level * coverPower;
     // The eye faces the device's visible centre, which the auto-centre keeps on the origin: the root's shift, undone.
     foldEye.x = -foldCentreOffset(fold, renderedFoldDeg) / fit;
     setFoldScreenState(screenMaterial, state.main, foldEye);
     setFoldScreenState(coverMaterial, state.cover, foldEye);
     // A display with no media stays black, so only a bound map takes the level.
-    if (screenMaterial.map) screenMaterial.color.setScalar(state.main.level);
-    if (coverMaterial.map) coverMaterial.color.setScalar(state.cover.level);
+    if (screenMaterial.map) screenMaterial.color.setScalar(screenLevel.current);
+    if (coverMaterial.map) coverMaterial.color.setScalar(coverLevel.current);
   }, [
     fold,
     foldEye,
@@ -799,9 +818,16 @@ export function Device(props: DeviceProps) {
     handoverBlur,
     handoverDarken,
     bothScreensOn,
+    mainPower,
+    coverPower,
     screenMaterial,
     coverMaterial,
   ]);
+  useLayoutEffect(() => {
+    if (fold) return;
+    screenLevel.current = mainPower;
+    if (screenMaterial.map) screenMaterial.color.setScalar(mainPower);
+  }, [fold, mainPower, screenMaterial]);
   // "Start when opened": a pure function of the track, so preview and export agree on the inside video's first frame.
   const openedAtMs = useMemo(() => {
     if (!fold || media?.startOn !== "open") return 0;
@@ -869,7 +895,27 @@ export function Device(props: DeviceProps) {
 
   // The keyed scale carries the device AND its grounding, so a scaled key still stands on the floor.
   const animatedScale = raw.scale * keyed.scale;
-  const groundY = -(fittedHeight / 2) * animatedScale - GROUND_EPSILON;
+  // The floor and grounding follow the pose's lowest point: the placement and keys, never the motion presets, which play above it.
+  const posedRotation = (pose: DevicePose): V3 => [
+    (pose.rotationDeg[0] + keyed.rotationDeg[0]) * DEG2RAD,
+    (pose.rotationDeg[1] + keyed.rotationDeg[1]) * DEG2RAD,
+    (pose.rotationDeg[2] + keyed.rotationDeg[2]) * DEG2RAD,
+  ];
+  const rawRotation = posedRotation(raw);
+  const floorShift = (pose: DevicePose): number =>
+    devicePoseFloorShift(activeSpec, {
+      scale: pose.scale * keyed.scale,
+      rotation: pose === raw ? rawRotation : posedRotation(pose),
+      offset: [0, 0, 0],
+      introScale: 1,
+      lidDeg: keyed.lidDeg ?? 0,
+      foldDeg: renderedFoldDeg ?? 0,
+    });
+  const groundY = -(fittedHeight / 2) * animatedScale - GROUND_EPSILON + floorShift(raw);
+  // "auto" media reads the same pose, so a device turned on its side shows its media upright.
+  const mainMedia = fallbackScreenMedia(model, renderModel, media, coverMedia);
+  const mainTurns = screenTurns(mainMedia?.rotateDeg, rawRotation);
+  const coverTurns = screenTurns(coverMedia?.rotateDeg, rawRotation);
   // Everything the inner group applies, handed to the shadow projector so the cast follows the pose.
   const shadowPose: ShadowPose = {
     scale: animatedScale,
@@ -894,6 +940,7 @@ export function Device(props: DeviceProps) {
         ground,
       },
       stageFloorY,
+      ground ? floorShift(pose) : 0,
     ) ?? pose.position;
   const renderedCommitted = { ...committed, position: grounded(committed) };
   const groupPosition =
@@ -956,10 +1003,11 @@ export function Device(props: DeviceProps) {
           </group>
         </group>
         <ScreenMedia
-          media={fallbackScreenMedia(model, renderModel, media, coverMedia)}
+          media={mainMedia}
           material={screenMaterial}
           screens={screens}
           screenAspect={activeSpec.screen.aspect}
+          turns={mainTurns}
           levelRef={screenLevel}
           projectId={projectId}
           startOffsetMs={openedAtMs}
@@ -970,6 +1018,7 @@ export function Device(props: DeviceProps) {
             material={coverMaterial}
             screens={coverScreens}
             screenAspect={activeSpec.coverScreen.aspect}
+            turns={coverTurns}
             levelRef={coverLevel}
             projectId={projectId}
           />

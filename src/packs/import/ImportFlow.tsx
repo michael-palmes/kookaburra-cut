@@ -1,17 +1,18 @@
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useCallback, useEffect, useState } from "react";
+import { plainError } from "../../engine/managed";
 import {
   applyImport,
   discardStagedPack,
   inspectPack,
   type PackSelection,
+  readPackSceneDocs,
   stageAndPlan,
 } from "../../engine/packs";
 import { PackGlyph } from "../PackGlyph";
-import { reviewImportedTerminals, type TerminalReviewRow } from "../terminalReview";
+import { type PackReview, reviewPackSceneDocs } from "../packReview";
 import type { ImportOutcome, ImportPlan, PackInspection, PackProgress, Resolution } from "../types";
-import { reviewImportedWebsites, type WebsiteReviewRow } from "../websiteReview";
 import { CodeView } from "./CodeView";
 import { ConflictsView } from "./ConflictsView";
 import { ContentsView } from "./ContentsView";
@@ -28,15 +29,10 @@ type Step =
   | { name: "staging"; progress: PackProgress | null }
   | { name: "conflicts"; plan: ImportPlan }
   | { name: "applying"; progress: PackProgress | null }
-  | {
-      name: "summary";
-      outcome: ImportOutcome;
-      terminals: TerminalReviewRow[];
-      websites: WebsiteReviewRow[];
-    }
+  | { name: "summary"; outcome: ImportOutcome }
   | { name: "error"; message: string };
 
-/** Trust, then contents, then conflicts. Nothing is written to disk until the user has seen what is inside: staging happens on Continue from the contents screen, not earlier. */
+/** Trust, then contents, then conflicts. Nothing is written to disk until the user has seen what is inside: staging happens on Continue from the contents screen, not earlier. The trust screen's review (scene code, terminal commands, website origins) is read from the pack's signed files during inspection, so it is all in front of the person before Continue and nothing is reviewed after the files land. */
 export function ImportFlow({
   initialPath,
   queued,
@@ -48,6 +44,7 @@ export function ImportFlow({
 }) {
   const [path, setPath] = useState<string | null>(initialPath);
   const [inspection, setInspection] = useState<PackInspection | null>(null);
+  const [review, setReview] = useState<PackReview>({ terminals: [], websites: [] });
   const [step, setStep] = useState<Step>(initialPath ? { name: "inspecting" } : { name: "choose" });
 
   useEffect(() => {
@@ -59,7 +56,7 @@ export function ImportFlow({
     if (step.name !== "inspecting" || !path) return;
     let cancelled = false;
     inspectPack(path)
-      .then((result) => {
+      .then(async (result) => {
         if (cancelled) return;
         setInspection(result);
         if (result.signature !== "valid") {
@@ -79,10 +76,13 @@ export function ImportFlow({
           });
           return;
         }
+        // A sidecar that does not match its signed hash refuses the pack here, before any screen offers Continue.
+        setReview(reviewPackSceneDocs(await readPackSceneDocs(path)));
+        if (cancelled) return;
         setStep({ name: "trust" });
       })
       .catch((e) => {
-        if (!cancelled) setStep({ name: "error", message: String(e) });
+        if (!cancelled) setStep({ name: "error", message: plainError(e) });
       });
     return () => {
       cancelled = true;
@@ -107,11 +107,7 @@ export function ImportFlow({
       const outcome = await applyImport(resolutions, (progress) =>
         setStep({ name: "applying", progress }),
       );
-      const [terminals, websites] = await Promise.all([
-        reviewImportedTerminals(outcome).catch(() => []),
-        reviewImportedWebsites(outcome).catch(() => []),
-      ]);
-      setStep({ name: "summary", outcome, terminals, websites });
+      setStep({ name: "summary", outcome });
     } catch (e) {
       setStep({ name: "error", message: String(e) });
     }
@@ -175,6 +171,7 @@ export function ImportFlow({
       return inspection ? (
         <TrustView
           inspection={inspection}
+          review={review}
           onViewCode={() => setStep({ name: "code" })}
           onCancel={onClose}
           onContinue={() => setStep({ name: "contents" })}
@@ -187,7 +184,7 @@ export function ImportFlow({
       return inspection && path ? (
         <CodeView
           path={path}
-          manifest={inspection.manifest}
+          sources={inspection.sceneSources}
           onBack={() => setStep({ name: "trust" })}
         />
       ) : null;
@@ -225,8 +222,6 @@ export function ImportFlow({
       return (
         <SummaryView
           outcome={step.outcome}
-          terminals={step.terminals}
-          websites={step.websites}
           queued={queued}
           onOpenProject={(slug) => {
             void invoke("open_imported_project", { slug }).catch(() => undefined);

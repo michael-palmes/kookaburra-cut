@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   type GizmoDomain,
-  gizmoHandleAt,
-  gizmoPickerHandles,
   hasGizmoPickers,
+  stageGizmoHandleAt,
   stageWorldRect,
   subscribeGizmoPickers,
 } from "../../engine/gizmoRegistry";
@@ -38,25 +37,35 @@ export function useGizmoYield(
       setGizmoLatched(false);
       return;
     }
-    const hitAt = (clientX: number, clientY: number) => {
-      if (gizmoPickerHandles().length === 0) return null;
+    // The handles live in the stage, so a hit test is a round trip: hover keeps the last answer current, and a press reads it rather than waiting (the pointer moved there first).
+    let over = false;
+    let testSeq = 0;
+    const hitAt = (clientX: number, clientY: number, claim: boolean) => {
+      if (!hasGizmoPickers()) return Promise.resolve(null);
       const rect = stageWorldRect();
-      if (!rect) return null;
+      if (!rect) return Promise.resolve(null);
       const ndc = pointerNdc(clientX, clientY, rect);
-      return ndc ? gizmoHandleAt(ndc.x, ndc.y) : null;
+      return ndc ? stageGizmoHandleAt(ndc.x, ndc.y, claim) : Promise.resolve(null);
+    };
+    const test = (clientX: number, clientY: number) => {
+      const seq = ++testSeq;
+      void hitAt(clientX, clientY, false).then((hit) => {
+        if (seq !== testSeq) return;
+        over = hit !== null;
+        setOverHandle(over);
+      });
     };
     const retest = () => {
       const at = pointerAt.current;
-      setOverHandle(at !== null && hitAt(at.x, at.y) !== null);
+      if (at) test(at.x, at.y);
+      else setOverHandle(false);
     };
     retest();
-    const onMove = (e: PointerEvent) => setOverHandle(hitAt(e.clientX, e.clientY) !== null);
+    const onMove = (e: PointerEvent) => test(e.clientX, e.clientY);
     // The latch holds until pointer-up, so a modifier pressed mid-drag can never yank an in-flight handle drag away.
     const onDown = (e: PointerEvent) => {
       if (e.button !== 0) return;
-      const hit = hitAt(e.clientX, e.clientY);
-      setOverHandle(hit !== null);
-      if (!hit) return;
+      if (!over) return;
       const owner = routePointer({
         cameraArmed: true,
         overHandle: true,
@@ -67,7 +76,7 @@ export function useGizmoYield(
       if (owner !== "gizmo") return;
       latched.current = true;
       setGizmoLatched(true);
-      hit.claim?.();
+      void hitAt(e.clientX, e.clientY, true);
     };
     const onUp = () => {
       latched.current = false;
@@ -101,13 +110,15 @@ export function useGizmoYield(
   return { inert, gizmoClaimedPointer };
 }
 
-/** The hit test the layer yield hangs off: a same-domain 3D handle under these client coordinates. */
-function sceneHandleAt(clientX: number, clientY: number, domain: GizmoDomain): boolean {
-  if (!hasGizmoPickers(domain)) return false;
+/** The hit test the layer yield hangs off: a same-domain 3D handle under these client coordinates, asked of the stage. */
+function sceneHandleAt(clientX: number, clientY: number, domain: GizmoDomain): Promise<boolean> {
+  if (!hasGizmoPickers(domain)) return Promise.resolve(false);
   const rect = stageWorldRect();
-  if (!rect) return false;
+  if (!rect) return Promise.resolve(false);
   const ndc = pointerNdc(clientX, clientY, rect);
-  return ndc !== null && gizmoHandleAt(ndc.x, ndc.y, domain) !== null;
+  return ndc === null
+    ? Promise.resolve(false)
+    : stageGizmoHandleAt(ndc.x, ndc.y, false, domain).then((hit) => hit !== null);
 }
 
 /** `useGizmoYield` mirrored for a 2D layer, which sits ABOVE the canvas rather than below it: while a 3D gizmo of the layer's OWN domain has a handle under the pointer, the layer's hit elements stand down so the press reaches `TransformControls`. Hover rides `window` in the capture phase and is re-tested whenever the pickable set changes, since a gizmo mounts from the inspector with the pointer parked. `atPointer` is the synchronous backstop the DOM cannot give: a stale hover then drops that press instead of hijacking it into a 2D selection. */
@@ -117,14 +128,24 @@ export function useSceneGizmoYield(
 ): { yielded: boolean; atPointer: (clientX: number, clientY: number) => boolean } {
   const [overHandle, setOverHandle] = useState(false);
 
+  const over = useRef(false);
   useEffect(() => {
     let parked: { x: number; y: number } | null = null;
+    let seq = 0;
+    const test = (x: number, y: number) => {
+      const mine = ++seq;
+      void sceneHandleAt(x, y, domain).then((hit) => {
+        if (mine !== seq) return;
+        over.current = hit;
+        setOverHandle(hit);
+      });
+    };
     const onMove = (e: PointerEvent) => {
       parked = { x: e.clientX, y: e.clientY };
-      setOverHandle(sceneHandleAt(e.clientX, e.clientY, domain));
+      test(e.clientX, e.clientY);
     };
     const retest = () => {
-      if (parked) setOverHandle(sceneHandleAt(parked.x, parked.y, domain));
+      if (parked) test(parked.x, parked.y);
     };
     const opts = { capture: true } as const;
     const unsubscribe = subscribeGizmoPickers(retest);
@@ -135,10 +156,8 @@ export function useSceneGizmoYield(
     };
   }, [domain]);
 
-  const atPointer = useCallback(
-    (clientX: number, clientY: number) => sceneHandleAt(clientX, clientY, domain),
-    [domain],
-  );
+  // A press reads the hover answer the stage last gave for this pointer; the next test is already in flight.
+  const atPointer = useCallback(() => over.current, []);
   const yielded =
     routeLayerPointer({ overSceneHandle: overHandle, layerDragging: dragging }) === "scene-gizmo";
   return { yielded, atPointer };

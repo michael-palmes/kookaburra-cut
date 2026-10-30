@@ -160,9 +160,24 @@ export type SignatureVerdict = "valid" | "invalid" | "missing";
 export type PublisherVerdict =
   | { kind: "firstTime" }
   | { kind: "known"; lastPack: string; firstSeen: string; packCount: number }
-  | { kind: "nameChanged"; previous: string };
+  | { kind: "nameChanged"; previous: string }
+  /** An unknown key declaring a name this Mac already knows under another key. */
+  | { kind: "keyChanged"; knownAs: string; previousKeyId: string; lastPack: string };
 
 export type CompatibilityVerdict = { kind: "ok" } | { kind: "needsNewerApp"; min: string };
+
+/** One `scenes/**​/*.tsx` the pack would stage, as the reader built it from the signed file list (`read::SceneSource`). */
+export interface SceneSource {
+  kind: ItemKind;
+  slug: string;
+  name: string;
+  file: string;
+}
+
+/** A scene sidecar read from the pack before staging and checked against its signed hash (`PackSceneDoc`). */
+export interface PackSceneDoc extends SceneSource {
+  doc: unknown;
+}
 
 export interface PackInspection {
   manifest: PackManifest;
@@ -171,6 +186,8 @@ export interface PackInspection {
   compatibility: CompatibilityVerdict;
   archiveBytes: number;
   installBytes: number;
+  /** The scene code that would land: the trust and code screens count and list this, never `contents`. */
+  sceneSources: SceneSource[];
 }
 
 export type ConflictState = "new" | "identical" | "theirs-newer" | "yours-newer" | "unknown-age";
@@ -200,12 +217,21 @@ export interface ImportPlan {
 
 export type ItemOutcome = "added" | "replaced" | "skipped" | "keptBoth" | "failed";
 
+/** Text a pack's author left in an item's `CLAUDE.md`, saved as its `NOTES.md` and shown for the person to read; never handed to the agent as instructions. */
+export interface AgentNote {
+  kind: ItemKind;
+  slug: string;
+  name: string;
+  text: string;
+}
+
 export interface ImportOutcome {
   results: { kind: ItemKind; slug: string; name: string; outcome: ItemOutcome; detail?: string }[];
   backupDir?: string;
   /// Set when a partial apply stopped early: names what did and did not land.
   stoppedAt?: string;
   notes: string[];
+  agentNotes?: AgentNote[];
 }
 
 /** One entry in the export picker, flattened across kinds so the list renders uniformly. */

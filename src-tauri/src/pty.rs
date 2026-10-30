@@ -3,9 +3,11 @@
 //! - `portable-pty` for the PTY pair; the slave is dropped right after spawn (or the reader never sees EOF) and the child is reaped by `wait()` on the reader thread.
 //! - Output streams to the webview over a `tauri::ipc::Channel` as RAW byte chunks (the event system is documented as unsuited to this throughput); raw bytes, not strings, let xterm.js reassemble codepoints split across chunk boundaries.
 //! - Flow control: the frontend applies the xterm.js watermark scheme and calls `pty_pause`/`pty_resume`; a paused reader stops draining, the kernel PTY buffer fills, and the child blocks, real backpressure.
-//! - The shell is spawned as a LOGIN shell so `/etc/zprofile` + `~/.zprofile` rebuild the user's PATH inside the terminal (GUI apps inherit launchd's bare PATH); that is NOT sufficient for `claude` itself, since the default install adds its dir in `~/.zshrc`, which a login non-interactive shell never sources, so the panel execs the DETECTED binary by full path and passes its dir as `path_prepend` (dev only worked because the dev process inherits the launching terminal's interactive PATH).
+//! - The shell is spawned as a LOGIN shell so `/etc/zprofile` + `~/.zprofile` rebuild the user's PATH inside the terminal (GUI apps inherit launchd's bare PATH); that is NOT sufficient for `claude` itself, since the default install adds its dir in `~/.zshrc`, which a login non-interactive shell never sources, so a Claude session execs the DETECTED binary by full path (the path `detect_claude` stored natively, never one the webview supplies) and prepends its dir to the child PATH.
+//! - The webview never supplies a command string. `Launch` is a closed enum: Claude Code with the app's fixed flags (the grounding rides as one argv element behind a fixed `exec "$0" "$@"` script, so no shell parsing touches it) or an interactive shell; only the main window may launch Claude.
+//! - The child environment is built from an allow-list (`child_environment`), not by scrubbing a few names: `launchctl setenv` variables outside `CLAUDE_*`/`ANTHROPIC_*` do not reach the terminal, and only a Claude session keeps those two prefixes, so a scene's shell carries no agent credential.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -51,6 +53,8 @@ type SessionMap = Arc<Mutex<HashMap<u32, PtySession>>>;
 pub struct PtyState {
     sessions: SessionMap,
     next_id: AtomicU32,
+    /// Where `detect_claude` last found the CLI; a Claude session launches this path and nothing the webview names.
+    claude_path: Mutex<Option<PathBuf>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -58,15 +62,156 @@ pub struct PtyState {
 pub struct SpawnOptions {
     /// Working directory for the shell (the project folder).
     pub cwd: String,
-    /// Optional command to exec via `shell -l -c <command>`; absent → interactive shell.
-    pub command: Option<String>,
-    /// Optional directory prepended to the child's PATH (e.g. the detected claude's dir) so the session, and anything it spawns, resolves it regardless of which rc file owns the user's PATH line; path_helper keeps prepended entries.
-    pub path_prepend: Option<String>,
+    /// What runs in the PTY; an interactive shell when absent.
+    #[serde(default)]
+    pub launch: Launch,
     pub cols: u16,
     pub rows: u16,
     /// Opts out of the F-006 workspace confinement: scene terminals may open a user-chosen start path (docs/decisions.md). The path must still resolve to a real directory, and commands are never auto-run there.
     #[serde(default)]
     pub allow_external_cwd: bool,
+}
+
+/// What a PTY session runs. Closed by design: the webview picks a shape and supplies data, Rust builds the argv.
+#[derive(Debug, Clone, Deserialize, PartialEq, Default)]
+#[serde(
+    tag = "kind",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
+pub enum Launch {
+    /// Claude Code at the natively detected path with the app's fixed flags; `grounding` is the system-prompt text the frontend supplies as data.
+    ClaudeSession {
+        #[serde(default)]
+        continue_last: bool,
+        grounding: String,
+    },
+    /// The user's login shell with a prompt; whatever runs there, the user typed.
+    #[default]
+    InteractiveShell,
+}
+
+impl Launch {
+    fn is_command(&self) -> bool {
+        matches!(self, Launch::ClaudeSession { .. })
+    }
+}
+
+/// The one window allowed to start Claude Code: the embedded terminal lives in the main window, and a scene terminal elsewhere only ever seats a prompt.
+const CLAUDE_LAUNCH_WINDOWS: [&str; 1] = ["main"];
+
+/// Longest grounding accepted; the app's own is well under a page.
+const GROUNDING_MAX_BYTES: usize = 16 * 1024;
+
+/// The flags every Claude session gets. Fixed here so the webview cannot vary them.
+const CLAUDE_FIXED_ARGS: [&str; 6] = [
+    "--permission-mode",
+    "auto",
+    "--model",
+    "claude-opus-5-5",
+    "--effort",
+    "high",
+];
+
+/// Refuses a launch the calling window may not make, or a grounding that is not plain text.
+fn validate_launch(launch: &Launch, window_label: &str) -> Result<(), String> {
+    let Launch::ClaudeSession { grounding, .. } = launch else {
+        return Ok(());
+    };
+    if !CLAUDE_LAUNCH_WINDOWS.contains(&window_label) {
+        return Err("only the main window can start Claude Code".into());
+    }
+    if grounding.trim().is_empty() || grounding.len() > GROUNDING_MAX_BYTES {
+        return Err("the Claude grounding must be a short plain-text prompt".into());
+    }
+    if grounding.chars().any(|c| c.is_control() && c != '\n') {
+        return Err("the Claude grounding cannot carry control characters".into());
+    }
+    Ok(())
+}
+
+/// Claude Code's argv after the binary: `--continue` when resuming, the fixed flags, then the grounding as one element.
+fn claude_argv(continue_last: bool, grounding: &str) -> Vec<String> {
+    let mut args = Vec::new();
+    if continue_last {
+        args.push("--continue".to_string());
+    }
+    args.extend(CLAUDE_FIXED_ARGS.iter().map(|a| a.to_string()));
+    args.push("--append-system-prompt".to_string());
+    args.push(grounding.to_string());
+    args
+}
+
+/// The fixed `-c` script that execs `$0` with the remaining argv untouched; the login shell still runs its profile first, so PATH is the user's. Fish has no `$0` and names the rest `$argv`.
+fn exec_script(shell: &str) -> &'static str {
+    let name = Path::new(shell)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or(shell);
+    if name == "fish" {
+        "exec $argv"
+    } else {
+        "exec \"$0\" \"$@\""
+    }
+}
+
+/// Inherited names the child keeps as they are.
+const ENV_ALLOW: [&str; 10] = [
+    "HOME",
+    "USER",
+    "LOGNAME",
+    "SHELL",
+    "PATH",
+    "LANG",
+    "TMPDIR",
+    "TERM",
+    "COLORTERM",
+    "SSH_AUTH_SOCK",
+];
+/// Inherited prefixes every child keeps (locale, terminal).
+const ENV_ALLOW_PREFIX: [&str; 2] = ["LC_", "TERM_"];
+/// Extra prefixes a Claude session keeps (settings such as `CLAUDE_CODE_OAUTH_TOKEN` and `ANTHROPIC_API_KEY`); a scene shell never gets them.
+const ENV_CLAUDE_PREFIX: [&str; 2] = ["CLAUDE_", "ANTHROPIC_"];
+/// Allowed by prefix but dropped anyway: the host terminal's identity (claude fingerprints it) and the markers of an enclosing Claude session, which would read as nesting.
+const ENV_DENY: [&str; 4] = [
+    "TERM_PROGRAM",
+    "TERM_PROGRAM_VERSION",
+    "CLAUDE_CODE_ENTRYPOINT",
+    "CLAUDE_CODE_SSE_PORT",
+];
+
+/// The child's whole environment: the allow-listed part of `inherited`, then the terminal's own values (`TERM_PROGRAM` names us so claude never adopts a host IDE; `FORCE_COLOR` declares the 24-bit colour xterm.js really renders; the IDE auto-install stays off) and `prepend` ahead of PATH.
+fn child_environment<I>(
+    inherited: I,
+    prepend: Option<&str>,
+    claude: bool,
+) -> BTreeMap<String, String>
+where
+    I: IntoIterator<Item = (String, String)>,
+{
+    let mut env: BTreeMap<String, String> = inherited
+        .into_iter()
+        .filter(|(key, _)| {
+            !ENV_DENY.contains(&key.as_str())
+                && (ENV_ALLOW.contains(&key.as_str())
+                    || ENV_ALLOW_PREFIX.iter().any(|p| key.starts_with(p))
+                    || (claude && ENV_CLAUDE_PREFIX.iter().any(|p| key.starts_with(p))))
+        })
+        .collect();
+    env.insert("TERM".into(), "xterm-256color".into());
+    env.insert("COLORTERM".into(), "truecolor".into());
+    env.insert("TERM_PROGRAM".into(), "KookaburraCut".into());
+    env.insert("FORCE_COLOR".into(), "3".into());
+    if claude {
+        env.insert("CLAUDE_CODE_IDE_SKIP_AUTO_INSTALL".into(), "1".into());
+    }
+    env.entry("LANG".into())
+        .or_insert_with(|| "en_US.UTF-8".into());
+    if let Some(dir) = prepend.filter(|d| !d.is_empty()) {
+        let path = prepended_path(dir, env.get("PATH").cloned());
+        env.insert("PATH".into(), path);
+    }
+    env
 }
 
 /// `prepend:inherited`, degrading to just `prepend` when nothing is inherited; a trailing `:` would put the CURRENT DIRECTORY on the PATH (POSIX empty-entry rule).
@@ -137,6 +282,10 @@ pub fn pty_spawn(
     options: SpawnOptions,
     on_data: Channel<InvokeResponseBody>,
 ) -> Result<u32, String> {
+    validate_launch(&options.launch, window.label())?;
+    if options.launch.is_command() {
+        crate::managed::deny_claude()?;
+    }
     // F-006: confine the terminal cwd to the workspace root unless the caller explicitly opts out (scene terminals open a user-chosen start path). Every path still has to resolve to a real directory, `~` expands against the user's home, and nothing is ever auto-run in it.
     let root = crate::workspace::require_root(&app, &settings)?
         .canonicalize()
@@ -156,7 +305,7 @@ pub fn pty_spawn(
         &root,
         &requested,
         options.allow_external_cwd,
-        options.command.is_some(),
+        options.launch.is_command(),
         &DENIED_ROOTS,
     )?;
 
@@ -169,45 +318,38 @@ pub fn pty_spawn(
         })
         .map_err(|e| format!("openpty failed: {e}"))?;
 
-    let mut cmd = CommandBuilder::new(user_shell());
+    let shell = user_shell();
+    let mut cmd = CommandBuilder::new(&shell);
     cmd.arg("-l"); // login shell → /etc/zprofile + ~/.zprofile rebuild the real PATH
-    if let Some(command) = &options.command {
+    let mut path_prepend = None;
+    if let Launch::ClaudeSession {
+        continue_last,
+        grounding,
+    } = &options.launch
+    {
+        let claude = claude_binary(&state)?;
+        path_prepend = claude
+            .parent()
+            .map(|dir| dir.to_string_lossy().into_owned());
         cmd.arg("-c");
-        cmd.arg(command);
-    }
-    cmd.cwd(&cwd);
-    if let Some(dir) = options.path_prepend.as_deref().filter(|d| !d.is_empty()) {
-        cmd.env("PATH", prepended_path(dir, std::env::var("PATH").ok()));
-    }
-    cmd.env("TERM", "xterm-256color");
-    cmd.env("COLORTERM", "truecolor");
-    if std::env::var("LANG").is_err() {
-        cmd.env("LANG", "en_US.UTF-8"); // GUI-spawned processes often lack a UTF-8 locale
-    }
-
-    // The PTY inherits THIS process's environment; in dev, leaked VS Code TERM_PROGRAM/VSCODE_* vars make the embedded claude auto-install the IDE extension, and CLAUDECODE markers read as a nested session, so scrub editor/session identity (CLAUDE_CODE_OAUTH_TOKEN is deliberately NOT scrubbed, token-based auth may ride it).
-    for (key, _) in std::env::vars() {
-        if key.starts_with("VSCODE_") || key.starts_with("CURSOR_") {
-            cmd.env_remove(&key);
+        cmd.arg(exec_script(&shell));
+        cmd.arg(&claude);
+        for arg in claude_argv(*continue_last, grounding) {
+            cmd.arg(arg);
         }
     }
-    for key in [
-        "TERM_PROGRAM_VERSION",
-        "GIT_ASKPASS",
-        "CLAUDECODE",
-        "CLAUDE_CODE_ENTRYPOINT",
-        "CLAUDE_CODE_SSE_PORT",
-        "ELECTRON_RUN_AS_NODE",
-        // launchd stamps the SPAWNING app's bundle id on every child; in dev that leaks the launching IDE (claude fingerprints the host terminal by this var before TERM_PROGRAM), and packaged it names our own bundle, an UNKNOWN id under which claude ignores COLORTERM and renders the TUI monochrome.
-        "__CFBundleIdentifier",
-    ] {
-        cmd.env_remove(key);
+    cmd.cwd(&cwd);
+    cmd.env_clear();
+    // `vars_os`, not `vars`: one non-UTF-8 value in the inherited environment must not panic the spawn.
+    let inherited = std::env::vars_os()
+        .filter_map(|(key, value)| Some((key.into_string().ok()?, value.into_string().ok()?)));
+    for (key, value) in child_environment(
+        inherited,
+        path_prepend.as_deref(),
+        options.launch.is_command(),
+    ) {
+        cmd.env(key, value);
     }
-    cmd.env("TERM_PROGRAM", "KookaburraCut");
-    // With the host identity scrubbed, claude has no terminal-DB entry to trust and ignores COLORTERM for the colour decision; declare the capability explicitly, xterm.js genuinely renders 24-bit colour, so forcing level 3 is honest.
-    cmd.env("FORCE_COLOR", "3");
-    // Belt-and-braces: even if an IDE signal slips through (e.g. a stale ~/.claude/ide lock file), claude must never auto-install an IDE extension from OUR terminal.
-    cmd.env("CLAUDE_CODE_IDE_SKIP_AUTO_INSTALL", "1");
 
     let mut child = pty
         .slave
@@ -359,6 +501,28 @@ fn set_session_paused(
     Ok(())
 }
 
+/// The Claude Code binary a session launches: the path `detect_claude` stored, re-detected when the panel skipped that step, and checked to still be a regular file.
+fn claude_binary(state: &PtyState) -> Result<PathBuf, String> {
+    let stored = state
+        .claude_path
+        .lock()
+        .map_err(|_| "pty state poisoned")?
+        .clone();
+    let path = match stored {
+        Some(path) => path,
+        None => {
+            let found =
+                PathBuf::from(detect_claude_blocking().ok_or("Claude Code is not installed")?);
+            *state.claude_path.lock().map_err(|_| "pty state poisoned")? = Some(found.clone());
+            found
+        }
+    };
+    if !path.is_absolute() || !path.canonicalize().map(|p| p.is_file()).unwrap_or(false) {
+        return Err("Claude Code is no longer where it was detected; start it again".into());
+    }
+    Ok(path)
+}
+
 /// Whether Claude Code has stored conversations for `cwd`; decides between offering "Continue last conversation" (`claude --continue`, which ERRORS when the folder has none) and a plain fresh start. Probes `~/.claude/projects/<encoded-path>/` for any `.jsonl` (the path encoding, non-alphanumerics → `-`, is documented-stable; file CONTENTS are internal and deliberately never parsed).
 #[tauri::command]
 pub fn has_claude_session(cwd: String) -> bool {
@@ -378,38 +542,46 @@ pub fn has_claude_session(cwd: String) -> bool {
         .any(|e| e.path().extension().and_then(|s| s.to_str()) == Some("jsonl"))
 }
 
-/// Locate the Claude Code CLI: fast path probes the known install locations; fallback asks a login shell (the user's real PATH, GUI apps don't inherit it). Returns the resolved binary path, or None when not installed; the caller must LAUNCH by this path (not bare `claude`), since file-probe detection and login-shell resolution disagree whenever ~/.zshrc owns the PATH line (the default install; see pty_spawn).
+/// Locate the Claude Code CLI: fast path probes the known install locations; fallback asks a login shell (the user's real PATH, GUI apps don't inherit it). Returns the resolved binary path, or None when not installed. The result is kept natively: a Claude session launches THIS path (file-probe detection and login-shell resolution disagree whenever ~/.zshrc owns the PATH line, the default install; see pty_spawn), never one the webview names.
 #[tauri::command]
-pub async fn detect_claude() -> Result<Option<String>, String> {
-    tauri::async_runtime::spawn_blocking(|| {
-        let home = std::env::var("HOME").unwrap_or_default();
-        let probes = [
-            format!("{home}/.local/bin/claude"),
-            "/opt/homebrew/bin/claude".to_string(),
-            "/usr/local/bin/claude".to_string(),
-        ];
-        for p in probes {
-            if PathBuf::from(&p).is_file() {
-                return Some(p);
-            }
+pub async fn detect_claude(state: State<'_, PtyState>) -> Result<Option<String>, String> {
+    let found = tauri::async_runtime::spawn_blocking(detect_claude_blocking)
+        .await
+        .map_err(|e| e.to_string())?;
+    *state.claude_path.lock().map_err(|_| "pty state poisoned")? =
+        found.as_deref().map(PathBuf::from);
+    Ok(found)
+}
+
+pub(crate) fn detect_claude_blocking() -> Option<String> {
+    let home = std::env::var("HOME").unwrap_or_default();
+    let probes = [
+        format!("{home}/.local/bin/claude"),
+        "/opt/homebrew/bin/claude".to_string(),
+        "/usr/local/bin/claude".to_string(),
+    ];
+    for p in probes {
+        if PathBuf::from(&p).is_file() {
+            return Some(p);
         }
-        let out = std::process::Command::new(user_shell())
-            .args(["-lc", "command -v claude"])
-            .output()
-            .ok()?;
-        if !out.status.success() {
-            return None;
-        }
-        let path = String::from_utf8_lossy(&out.stdout).trim().to_string();
-        (!path.is_empty()).then_some(path)
-    })
-    .await
-    .map_err(|e| e.to_string())
+    }
+    let out = std::process::Command::new(user_shell())
+        .args(["-lc", "command -v claude"])
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let path = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    (!path.is_empty()).then_some(path)
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{confine_terminal_cwd, prepended_path, DENIED_ROOTS};
+    use super::{
+        child_environment, claude_argv, confine_terminal_cwd, exec_script, prepended_path,
+        validate_launch, Launch, DENIED_ROOTS,
+    };
     use std::path::{Path, PathBuf};
 
     /// A fresh scratch tree per test: `<tmp>/kookaburra-pty-<name>/` with a canonical `Kookaburra Cut` root inside it.
@@ -498,5 +670,175 @@ mod tests {
         // An empty inherited PATH must NOT produce "/a/bin:"; a trailing colon is an empty entry, which POSIX resolves as the current directory.
         assert_eq!(prepended_path("/a/bin", Some(String::new())), "/a/bin");
         assert_eq!(prepended_path("/a/bin", None), "/a/bin");
+    }
+
+    fn inherited(pairs: &[(&str, &str)]) -> Vec<(String, String)> {
+        pairs
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect()
+    }
+
+    #[test]
+    fn the_child_environment_is_an_allow_list() {
+        let env = child_environment(
+            inherited(&[
+                ("HOME", "/Users/x"),
+                ("USER", "x"),
+                ("PATH", "/usr/bin:/bin"),
+                ("LC_ALL", "en_AU.UTF-8"),
+                ("SSH_AUTH_SOCK", "/tmp/agent"),
+                ("CLAUDE_CODE_OAUTH_TOKEN", "tok"),
+                ("ANTHROPIC_API_KEY", "key"),
+                ("AWS_SECRET_ACCESS_KEY", "leak"),
+                ("GITHUB_TOKEN", "leak"),
+                ("VSCODE_PID", "1"),
+                ("__CFBundleIdentifier", "com.example.ide"),
+                ("GIT_ASKPASS", "/x"),
+                ("ELECTRON_RUN_AS_NODE", "1"),
+                ("TERM_PROGRAM", "vscode"),
+                ("TERM_PROGRAM_VERSION", "1"),
+                ("CLAUDECODE", "1"),
+                ("CLAUDE_CODE_ENTRYPOINT", "cli"),
+                ("CLAUDE_CODE_SSE_PORT", "1"),
+            ]),
+            Some("/Users/x/.local/bin"),
+            true,
+        );
+        for kept in [
+            "HOME",
+            "USER",
+            "LC_ALL",
+            "SSH_AUTH_SOCK",
+            "CLAUDE_CODE_OAUTH_TOKEN",
+            "ANTHROPIC_API_KEY",
+        ] {
+            assert!(env.contains_key(kept), "{kept} should reach the terminal");
+        }
+        for dropped in [
+            "AWS_SECRET_ACCESS_KEY",
+            "GITHUB_TOKEN",
+            "VSCODE_PID",
+            "__CFBundleIdentifier",
+            "GIT_ASKPASS",
+            "ELECTRON_RUN_AS_NODE",
+            "TERM_PROGRAM_VERSION",
+            "CLAUDECODE",
+            "CLAUDE_CODE_ENTRYPOINT",
+            "CLAUDE_CODE_SSE_PORT",
+        ] {
+            assert!(
+                !env.contains_key(dropped),
+                "{dropped} must not reach the terminal"
+            );
+        }
+        assert_eq!(env["TERM_PROGRAM"], "KookaburraCut");
+        assert_eq!(env["TERM"], "xterm-256color");
+        assert_eq!(env["COLORTERM"], "truecolor");
+        assert_eq!(env["FORCE_COLOR"], "3");
+        assert_eq!(env["CLAUDE_CODE_IDE_SKIP_AUTO_INSTALL"], "1");
+        assert_eq!(env["PATH"], "/Users/x/.local/bin:/usr/bin:/bin");
+        assert_eq!(env["LANG"], "en_US.UTF-8");
+    }
+
+    #[test]
+    fn a_scene_shell_carries_no_agent_credential() {
+        let vars = [
+            ("HOME", "/Users/x"),
+            ("LC_ALL", "en_AU.UTF-8"),
+            ("CLAUDE_CODE_OAUTH_TOKEN", "tok"),
+            ("ANTHROPIC_API_KEY", "key"),
+        ];
+        let shell = child_environment(inherited(&vars), None, false);
+        assert!(shell.contains_key("HOME") && shell.contains_key("LC_ALL"));
+        assert!(
+            !shell
+                .keys()
+                .any(|k| k.starts_with("CLAUDE_") || k.starts_with("ANTHROPIC_")),
+            "a scene shell must not see agent variables"
+        );
+        let claude = child_environment(inherited(&vars), None, true);
+        assert_eq!(claude["CLAUDE_CODE_OAUTH_TOKEN"], "tok");
+        assert_eq!(claude["ANTHROPIC_API_KEY"], "key");
+    }
+
+    #[test]
+    fn an_inherited_lang_and_an_absent_path_are_handled() {
+        let env = child_environment(inherited(&[("LANG", "en_AU.UTF-8")]), Some("/a/bin"), true);
+        assert_eq!(env["LANG"], "en_AU.UTF-8");
+        assert_eq!(env["PATH"], "/a/bin");
+        let env = child_environment(inherited(&[("PATH", "/usr/bin")]), None, true);
+        assert_eq!(env["PATH"], "/usr/bin");
+    }
+
+    #[test]
+    fn claude_argv_is_the_fixed_flags_plus_the_grounding_as_one_element() {
+        let args = claude_argv(false, "You are the editing assistant.\nLine two");
+        assert_eq!(
+            args,
+            [
+                "--permission-mode",
+                "auto",
+                "--model",
+                "claude-opus-5-5",
+                "--effort",
+                "high",
+                "--append-system-prompt",
+                "You are the editing assistant.\nLine two",
+            ]
+        );
+        assert_eq!(claude_argv(true, "g")[0], "--continue");
+        // A grounding full of shell metacharacters stays one argv element: nothing parses it.
+        let hostile = "'; rm -rf ~ #";
+        assert_eq!(claude_argv(false, hostile).last().unwrap(), hostile);
+    }
+
+    #[test]
+    fn the_exec_script_is_fixed_per_shell_family() {
+        assert_eq!(exec_script("/bin/zsh"), "exec \"$0\" \"$@\"");
+        assert_eq!(exec_script("/bin/bash"), "exec \"$0\" \"$@\"");
+        assert_eq!(exec_script("/opt/homebrew/bin/fish"), "exec $argv");
+    }
+
+    #[test]
+    fn only_the_main_window_starts_claude_and_the_grounding_is_plain_text() {
+        let claude = Launch::ClaudeSession {
+            continue_last: false,
+            grounding: "Edit scenes.".into(),
+        };
+        assert!(validate_launch(&claude, "main").is_ok());
+        assert_eq!(
+            validate_launch(&claude, "present").unwrap_err(),
+            "only the main window can start Claude Code"
+        );
+        assert!(validate_launch(&Launch::InteractiveShell, "present").is_ok());
+        let escape = Launch::ClaudeSession {
+            continue_last: false,
+            grounding: "x\u{1b}]52;c;payload\u{7}".into(),
+        };
+        assert!(validate_launch(&escape, "main").is_err());
+        let empty = Launch::ClaudeSession {
+            continue_last: false,
+            grounding: "  ".into(),
+        };
+        assert!(validate_launch(&empty, "main").is_err());
+    }
+
+    #[test]
+    fn the_launch_shape_deserialises_from_the_frontend_and_defaults_to_a_shell() {
+        let claude: Launch =
+            serde_json::from_str(r#"{"kind":"claudeSession","continueLast":true,"grounding":"g"}"#)
+                .unwrap();
+        assert_eq!(
+            claude,
+            Launch::ClaudeSession {
+                continue_last: true,
+                grounding: "g".into()
+            }
+        );
+        let shell: Launch = serde_json::from_str(r#"{"kind":"interactiveShell"}"#).unwrap();
+        assert_eq!(shell, Launch::InteractiveShell);
+        // The old free-form shape is refused outright.
+        assert!(serde_json::from_str::<Launch>(r#"{"command":"rm -rf ~"}"#).is_err());
     }
 }
