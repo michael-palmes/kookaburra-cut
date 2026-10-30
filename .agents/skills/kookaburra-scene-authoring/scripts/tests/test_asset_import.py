@@ -310,6 +310,19 @@ class ConvertTests(ImportCase):
             self.assertEqual(seen, picture, orientation)
             self.assertEqual(size, (20, 40) if orientation >= 5 else (40, 20), orientation)
 
+    def test_every_exif_turn_on_a_png_comes_in_upright(self) -> None:
+        red, green, blue, white = (255, 0, 0, 255), (0, 255, 0, 255), (0, 0, 255, 255), (255, 255, 255, 255)
+        rows = [[red] * 20 + [green] * 20 for _ in range(10)] + [[blue] * 20 + [white] * 20 for _ in range(10)]
+        wanted = {2: "GR/WB", 3: "WB/GR", 4: "BW/RG", 5: "RB/GW", 6: "BR/WG", 7: "WG/BR", 8: "GW/RB"}
+        for orientation, picture in wanted.items():
+            res = self.add(str(self.source(f"turn{orientation}.png", png(rows, chunk(b"eXIf", exif_block(orientation))))))
+            self.assertEqual((res["conformed"], res["probe"]["why"]), (True, ["orientation"]), orientation)
+            landed = self.root / res["path"]
+            self.assertIsNone(imagefile.facts(landed).get("orientation"), orientation)
+            size, seen = self.corners(landed)
+            self.assertEqual(seen, picture, orientation)
+            self.assertEqual(size, (20, 40) if orientation >= 5 else (40, 20), orientation)
+
     def test_a_cmyk_jpeg_comes_in_as_rgb_and_stays_a_jpeg(self) -> None:
         cmyk = self.outside / "cmyk.jpg"
         subprocess.run([imagefile.SIPS, "--matchTo", "/System/Library/ColorSync/Profiles/Generic CMYK Profile.icc", str(self.source("plain.jpg", self.jpeg_of_four_quadrants())), "--out", str(cmyk)], check=True, capture_output=True)

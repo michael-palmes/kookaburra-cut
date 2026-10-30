@@ -344,7 +344,12 @@ function StageLoadingOverlay({
 }
 
 /** A transient export/verify notification. `path` (success exports) enables Show in Finder. */
-type Toast = { kind: "success" | "info" | "error"; message: string; path?: string };
+type Toast = {
+  kind: "success" | "info" | "error";
+  message: string;
+  path?: string;
+  sticky?: boolean;
+};
 
 const TOAST_AUTO_CLOSE_MS = 4000;
 
@@ -393,9 +398,9 @@ export default function App() {
   const exportAbortRef = useRef<AbortController | null>(null);
   const [cancelling, setCancelling] = useState(false);
   const [toast, setToast] = useState<Toast | null>(null);
-  // Plain confirmations self-dismiss (the corner-toast design); errors and toasts carrying a Show-in-Finder action wait for the user, and a new toast restarts the clock.
+  // Plain confirmations self-dismiss (the corner-toast design); errors, toasts carrying a Show-in-Finder action and an import's notes wait for the user, and a new toast restarts the clock.
   useEffect(() => {
-    if (!toast || toast.kind === "error" || toast.path) return;
+    if (!toast || toast.kind === "error" || toast.path || toast.sticky) return;
     const t = window.setTimeout(() => setToast(null), TOAST_AUTO_CLOSE_MS);
     return () => window.clearTimeout(t);
   }, [toast]);

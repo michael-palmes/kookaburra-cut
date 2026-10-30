@@ -34,6 +34,7 @@ describe("what an import says", () => {
     expect(importSummary(report({ rels: ["assets/a.png"] }))).toEqual({
       kind: "success",
       message: "Added 1 file to assets",
+      sticky: false,
     });
     expect(importSummary(report({ rels: ["a", "b", "c"], converted: 2 }), 1)?.message).toBe(
       "Added 3 files to assets; 1 conforming (place it now, Media shows progress); 2 converted to plain sRGB",
@@ -45,11 +46,13 @@ describe("what an import says", () => {
     expect(noted).toEqual({
       kind: "success",
       message: "Added 1 file to assets. plate.png is one flat colour",
+      sticky: true,
     });
     const mixed = importSummary(report({ rels: ["a"], refused: ["bad.png is not an image"] }));
     expect(mixed).toEqual({
       kind: "error",
       message: "Added 1 file to assets. bad.png is not an image",
+      sticky: false,
     });
     expect(importSummary(report({ refused: ["bad.png is not an image"] }))?.message).toBe(
       "bad.png is not an image",

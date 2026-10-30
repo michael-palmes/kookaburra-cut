@@ -576,6 +576,19 @@ def surface_of(seen: Dict[str, Any]) -> Optional[str]:
 # ── a clean copy ──────────────────────────────────────────────────────────────
 
 
+def _strip_png_exif(path: Path) -> None:
+    """Drop the eXIf chunks sips carries across, for the same reason as _strip_jpeg_exif."""
+    data = path.read_bytes()
+    out = bytearray(data[:8])
+    i = 8
+    while i + 8 <= len(data):
+        end = i + 12 + struct.unpack(">I", data[i:i + 4])[0]
+        if data[i + 4:i + 8] != b"eXIf":
+            out += data[i:end]
+        i = end
+    path.write_bytes(bytes(out))
+
+
 def _strip_jpeg_exif(path: Path) -> None:
     """Drop the APP1 EXIF blocks sips carries across, so an orientation already baked in isn't applied twice."""
     data = path.read_bytes()
@@ -633,8 +646,8 @@ def prepare(src: Path, stage: Path, *, max_edge: Optional[int] = None, conform: 
     if target == "jpeg":
         args += ["-s", "formatOptions", JPEG_QUALITY]
     _sips(args, src, out)
-    if target == "jpeg" and "orientation" in reasons:
-        _strip_jpeg_exif(out)
+    if "orientation" in reasons:
+        (_strip_jpeg_exif if target == "jpeg" else _strip_png_exif)(out)
     g = facts(out)
     if needs_conform(g) and conform:
         raise _unreadable(src, f"converting it still left {', '.join(needs_conform(g))}")

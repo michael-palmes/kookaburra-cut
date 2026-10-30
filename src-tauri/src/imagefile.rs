@@ -591,7 +591,7 @@ fn upright(orientation: u16) -> (u16, Option<&'static str>) {
     }
 }
 
-/// A scratch file beside the parked import; removed unless the caller moved it on.
+/// A file that is removed unless it moved on.
 pub(crate) struct Scratch(pub PathBuf);
 
 impl Drop for Scratch {
@@ -631,10 +631,27 @@ fn run_sips(args: &[String], src: &Path, out: &Path, shown: &str) -> Result<(), 
             Ok(None) => std::thread::sleep(Duration::from_millis(5)),
             Err(e) => {
                 let _ = child.kill();
+                let _ = child.wait();
                 return Err(unreadable(shown, e));
             }
         }
     }
+}
+
+/// Drop the `eXIf` chunks `sips` carries across, for the same reason as `strip_jpeg_exif`.
+fn strip_png_exif(path: &Path, shown: &str) -> Result<(), Refused> {
+    let data = std::fs::read(path).map_err(|e| unreadable(shown, e))?;
+    let mut out = data[..8.min(data.len())].to_vec();
+    let mut i = 8;
+    while i + 8 <= data.len() {
+        let length = u32_be(&data[i..]).unwrap_or(0) as usize;
+        let end = i.saturating_add(12).saturating_add(length).min(data.len());
+        if &data[i + 4..i + 8] != b"eXIf" {
+            out.extend_from_slice(&data[i..end]);
+        }
+        i = end;
+    }
+    std::fs::write(path, out).map_err(|e| unreadable(shown, e))
 }
 
 /// Drop the APP1 EXIF blocks `sips` carries across, so an orientation already baked in isn't applied twice.
@@ -798,8 +815,11 @@ pub(crate) fn check(parked: &Path, shown: &str, ext: &str) -> Result<Checked, Re
         &format!("converted.{}", lands.ext()),
     ));
     run_sips(&args, parked, &converted.0, shown)?;
-    if lands == Format::Jpeg && reasons.contains(&"orientation") {
-        strip_jpeg_exif(&converted.0, shown)?;
+    if reasons.contains(&"orientation") {
+        match lands {
+            Format::Jpeg => strip_jpeg_exif(&converted.0, shown)?,
+            _ => strip_png_exif(&converted.0, shown)?,
+        }
     }
     let g = facts(&converted.0, shown)?;
     let left = needs_conform(&g);
@@ -1244,6 +1264,75 @@ mod tests {
             assert_eq!(seen, picture, "{orientation}");
             assert_eq!(
                 size,
+                if orientation >= 5 { (20, 40) } else { (40, 20) },
+                "{orientation}"
+            );
+        }
+    }
+
+    #[test]
+    fn every_exif_turn_on_a_png_comes_in_upright_in_its_raw_pixels() {
+        if !have_sips() {
+            return;
+        }
+        let dir = scratch("png-turns");
+        let plain = rgba_png(40, 20, |x, y| match (x < 20, y < 10) {
+            (true, true) => [255, 0, 0, 255],
+            (false, true) => [0, 255, 0, 255],
+            (true, false) => [0, 0, 255, 255],
+            (false, false) => [255, 255, 255, 255],
+        });
+        let wanted = [
+            (2, "GR/WB"),
+            (3, "WB/GR"),
+            (4, "BW/RG"),
+            (5, "RB/GW"),
+            (6, "BR/WG"),
+            (7, "WG/BR"),
+            (8, "GW/RB"),
+        ];
+        for (orientation, picture) in wanted {
+            let exif = exif_turn(orientation);
+            let block = &exif[6..];
+            let mut chunk = (block.len() as u32).to_be_bytes().to_vec();
+            chunk.extend_from_slice(b"eXIf");
+            chunk.extend_from_slice(block);
+            let mut typed = b"eXIf".to_vec();
+            typed.extend_from_slice(block);
+            chunk.extend_from_slice(&crc32(&typed).to_be_bytes());
+            // After the signature and IHDR, before the pixels.
+            let mut turned = plain[..33].to_vec();
+            turned.extend_from_slice(&chunk);
+            turned.extend_from_slice(&plain[33..]);
+            let path = put(&dir, "turned.png", &turned);
+            let checked = check(&path, "turned.png", "png").unwrap();
+            assert_eq!(checked.transforms[0]["op"], "upright", "{orientation}");
+            let out = checked.converted.as_ref().unwrap();
+            assert_eq!(
+                facts(&out.0, "o").unwrap().orientation,
+                None,
+                "{orientation}"
+            );
+            let (rgba, width, height) = rgba_of(&out.0);
+            let name = |x: u32, y: u32| {
+                let at = ((y * width + x) * 4) as usize;
+                match (rgba[at] > 180, rgba[at + 1] > 180, rgba[at + 2] > 180) {
+                    (true, true, true) => 'W',
+                    (true, _, _) => 'R',
+                    (_, true, _) => 'G',
+                    _ => 'B',
+                }
+            };
+            let seen = format!(
+                "{}{}/{}{}",
+                name(width / 4, height / 4),
+                name(3 * width / 4, height / 4),
+                name(width / 4, 3 * height / 4),
+                name(3 * width / 4, 3 * height / 4)
+            );
+            assert_eq!(seen, picture, "{orientation}");
+            assert_eq!(
+                (width, height),
                 if orientation >= 5 { (20, 40) } else { (40, 20) },
                 "{orientation}"
             );

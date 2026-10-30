@@ -1300,10 +1300,7 @@ async fn import_all(
                     .await
                     .map_err(|e| format!("{shown}: the check stopped: {e}"))
                     .and_then(|ready| ready);
-                match ready.and_then(|ready| land_still(project, ready, &base, &mut report)) {
-                    Ok(()) => {}
-                    Err(why) => report.refused.push(why),
-                }
+                settle_still(project, ready, &base, &mut report);
             }
             Step::Other(file) => {
                 let landed = import_one(
@@ -1366,13 +1363,30 @@ fn place_at_free_name(assets: &Path, from: &Path, base: &str, ext: &str) -> Resu
                 return Err(e);
             }
             let mut out = std::fs::File::create_new(&dest)?;
-            std::io::copy(&mut std::fs::File::open(from)?, &mut out).map(|_| ())
+            let copied =
+                std::fs::File::open(from).and_then(|mut f| std::io::copy(&mut f, &mut out));
+            copied.map(|_| ()).inspect_err(|_| {
+                let _ = std::fs::remove_file(&dest);
+            })
         });
         match placed {
             Ok(()) => return Ok(candidate),
             Err(e) if e.kind() == AlreadyExists => continue,
             Err(e) => return Err(e.to_string()),
         }
+    }
+}
+
+/// One checked still into the report: it lands, or says why not, and the batch goes on either way.
+fn settle_still(
+    project: &Path,
+    ready: Result<ReadyStill, String>,
+    base: &str,
+    report: &mut ImportReport,
+) {
+    let landed = ready.and_then(|ready| land_still(project, ready, base, report));
+    if let Err(why) = landed {
+        report.refused.push(why);
     }
 }
 
@@ -1426,15 +1440,6 @@ fn record_still_origin(
     });
     if let Err(e) = crate::asset_meta::record_asset_origin(project, rel, origin, transforms) {
         log::warn!("[import] provenance for {rel} not recorded: {e}");
-    }
-}
-
-/// An import parked in `assets/.originals/` while it is probed; removed unless it moved on.
-struct Landing(PathBuf);
-
-impl Drop for Landing {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_file(&self.0);
     }
 }
 
@@ -1507,7 +1512,7 @@ async fn import_one(
     let originals = assets.join(crate::conform::ORIGINALS_DIR);
     std::fs::create_dir_all(&originals).map_err(|e| e.to_string())?;
     // Probed where it lands if it conforms, so a clean file costs one rename, never a second copy.
-    let landing = Landing(originals.join(format!(
+    let landing = crate::imagefile::Scratch(originals.join(format!(
         ".incoming-{}-{}.{ext}",
         std::process::id(),
         next_seq()
@@ -3308,11 +3313,8 @@ mod tests {
     fn land(project: &Path, incoming: Incoming, shown: &str, ext: &str) -> ImportReport {
         let mut report = ImportReport::default();
         let base = shown.rsplit_once('.').map_or(shown, |(stem, _)| stem);
-        let landed = ready_still(&project.join("assets"), &incoming, shown, ext)
-            .and_then(|ready| land_still(project, ready, base, &mut report));
-        if let Err(why) = landed {
-            report.refused.push(why);
-        }
+        let ready = ready_still(&project.join("assets"), &incoming, shown, ext);
+        settle_still(project, ready, base, &mut report);
         report
     }
 
@@ -3346,6 +3348,30 @@ mod tests {
         );
         assert_eq!(assets_listing(&project), ["shot-2.png", "shot.png"]);
         assert!(!project.join(crate::asset_meta::META_REL).exists());
+        let _ = std::fs::remove_dir_all(&project);
+    }
+
+    #[test]
+    fn a_refused_still_never_stops_the_rest_of_a_batch() {
+        let project = scratch_assets("still-batch");
+        let assets = project.join("assets");
+        let mut report = ImportReport::default();
+        for (shown, base, bytes) in [
+            ("one.png", "one", checker_png()),
+            ("bad.png", "bad", b"not a picture".to_vec()),
+            ("two.png", "two", checker_png()),
+        ] {
+            let ready = ready_still(&assets, &Incoming::Bytes(bytes), shown, "png");
+            settle_still(&project, ready, base, &mut report);
+        }
+        assert_eq!(report.rels, ["assets/one.png", "assets/two.png"]);
+        assert_eq!(report.refused.len(), 1);
+        assert!(
+            report.refused[0].starts_with("bad.png"),
+            "{:?}",
+            report.refused
+        );
+        assert_eq!(assets_listing(&project), ["one.png", "two.png"]);
         let _ = std::fs::remove_dir_all(&project);
     }
 

@@ -69,7 +69,7 @@ export function soleImport(report: ImportReport): string | undefined {
 export function importSummary(
   report: ImportReport,
   conforming = 0,
-): { kind: "success" | "error"; message: string } | null {
+): { kind: "success" | "error"; message: string; sticky: boolean } | null {
   const added = report.rels.length;
   const details = [
     conforming > 0 &&
@@ -83,7 +83,11 @@ export function importSummary(
     );
   }
   if (parts.length === 0) return null;
-  return { kind: report.refused.length > 0 ? "error" : "success", message: parts.join(". ") };
+  return {
+    kind: report.refused.length > 0 ? "error" : "success",
+    message: parts.join(". "),
+    sticky: report.notes.length > 0,
+  };
 }
 
 /** One scene's terminal snapshot PNG, overwriting the canonical `assets/terminal-<stem>.png` in place (recaptures re-bake at one home; its refreshed revision moves mounted readers to a new URL). Same inventory refresh and media-changed broadcast as the other imports. */

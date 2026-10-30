@@ -13,6 +13,7 @@ import {
   useProjectBrand,
 } from "../engine/brands";
 import { listEdits } from "../engine/edit";
+import { plainError } from "../engine/managed";
 import {
   applyConformProgress,
   CONFORM_PROGRESS_EVENT,
@@ -1302,7 +1303,7 @@ export function MediaBrowser({
           if (rel) await onPick(rel, brandMetas[image.rel] ?? null);
         } catch (e) {
           console.warn(`[media] copy-on-use failed for ${image.rel}:`, e);
-          setPickError(`Couldn't copy into the project: ${String(e)}`);
+          setPickError(`Couldn't copy into the project: ${plainError(e)}`);
         } finally {
           setPickBusy(false);
         }
@@ -1323,7 +1324,7 @@ export function MediaBrowser({
           refresh();
           if (rel) setPickNotice(`Added ${rel} to this project.`);
         } catch (e) {
-          setPickError(`Couldn't copy into the project: ${String(e)}`);
+          setPickError(`Couldn't copy into the project: ${plainError(e)}`);
         } finally {
           setPickBusy(false);
         }
@@ -1344,7 +1345,7 @@ export function MediaBrowser({
           if (rel) await onPick(rel, globalMetas[shot.name] ?? null);
         } catch (e) {
           console.warn(`[media] copy-on-use failed for ${shot.name}:`, e);
-          setPickError(`Couldn't copy into the project: ${String(e)}`);
+          setPickError(`Couldn't copy into the project: ${plainError(e)}`);
         } finally {
           setPickBusy(false);
         }
