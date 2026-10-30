@@ -5,7 +5,7 @@ settings:
   excludeLinksFromLockfile: false
 
 patchedDependencies:
-  troika-three-text@0.52.5: 9c932237c7b44082b0b2bfdd9409bfdab050b4ed2ce951596c4f09545acb483a
+  troika-three-text@0.52.5: 4287273bf0c537120e9a3063c3e10fc314a3312da8268bbaa9143926bb7cc20a
 
 importers:
 
@@ -79,7 +79,7 @@ importers:
         version: 0.186.1
       troika-three-text:
         specifier: 0.52.5
-        version: 0.52.5(patch_hash=9c932237c7b44082b0b2bfdd9409bfdab050b4ed2ce951596c4f09545acb483a)(three@0.186.1)
+        version: 0.52.5(patch_hash=4287273bf0c537120e9a3063c3e10fc314a3312da8268bbaa9143926bb7cc20a)(three@0.186.1)
       troika-three-utils:
         specifier: 0.52.5
         version: 0.52.5(three@0.186.1)
@@ -1345,7 +1345,7 @@ snapshots:
       three: 0.186.1
       three-mesh-bvh: 0.8.3(three@0.186.1)
       three-stdlib: 2.36.1(three@0.186.1)
-      troika-three-text: 0.52.5(patch_hash=9c932237c7b44082b0b2bfdd9409bfdab050b4ed2ce951596c4f09545acb483a)(three@0.186.1)
+      troika-three-text: 0.52.5(patch_hash=4287273bf0c537120e9a3063c3e10fc314a3312da8268bbaa9143926bb7cc20a)(three@0.186.1)
       tunnel-rat: 0.1.2(@types/react@19.3.0)(react@19.3.0)
       use-sync-external-store: 1.7.0(react@19.3.0)
       utility-types: 3.11.0
@@ -1961,7 +1961,7 @@ snapshots:
       fdir: 6.5.0(picomatch@4.0.7)
       picomatch: 4.0.7
 
-  troika-three-text@0.52.5(patch_hash=9c932237c7b44082b0b2bfdd9409bfdab050b4ed2ce951596c4f09545acb483a)(three@0.186.1):
+  troika-three-text@0.52.5(patch_hash=4287273bf0c537120e9a3063c3e10fc314a3312da8268bbaa9143926bb7cc20a)(three@0.186.1):
     dependencies:
       bidi-js: 1.0.3
       three: 0.186.1

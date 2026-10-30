@@ -12,6 +12,7 @@
 #   pnpm kookaburra:run --action preset-previews         # regenerate src/assets/preset-previews/
 #   pnpm kookaburra:run --action option-previews         # regenerate src/assets/option-previews/
 #   pnpm kookaburra:run --action render-spike --at 300   # hidden render window throttling spike
+#   pnpm kookaburra:run --action memory --project ws:duo-spike,ws:compare-spike   # long-film memory probe
 #   pnpm kookaburra:run --action stills --project showcase-tour --stills pdf   # PDF handout
 #   pnpm kookaburra:run --action stillsverify --project showcase-tour --stills png --size 720p
 #
@@ -25,7 +26,7 @@
 #            so queued runs never clobber each other. last-run.json is copied back to the
 #            legacy ~/Kookaburra Cut/_autorun/last-run.json and dev.log is symlinked there.
 #
-# Flags:  --action verify|export|theme-previews|template-previews|preset-previews|option-previews|perf|screenshot|transitioncheck|packroundtrip|create|render-spike|stills|stillsverify (required)
+# Flags:  --action verify|export|theme-previews|template-previews|preset-previews|option-previews|perf|memory|screenshot|transitioncheck|packroundtrip|create|render-spike|stills|stillsverify (required)
 #         --project <id[,id...]>   (default: the app's default project; theme-previews →
 #                  preview-lab-theme (incremental via the theme-preview manifest; --all re-records
 #                  every theme), option-previews → the preview-lab-* fixtures (incremental
@@ -38,7 +39,8 @@
 #                  stills and stillsverify default to 16:9)
 #         --scene  <index|stem>    (screenshot: which scene; defaults to its midpoint)
 #         --at     <seconds>       (screenshot: seconds into the scene, or the project without --scene;
-#                  render-spike: sample duration, default 300)
+#                  render-spike: sample duration, default 300; memory: render only the first N
+#                  seconds of each film)
 #         --codec  libx264|h264_videotoolbox|prores_ks (default: libx264)
 #         --preset <id>  export through a bundled/user export preset (v11 · M7);
 #                  without --aspect, the preset's favoured aspect is used
@@ -51,6 +53,7 @@
 #                  text layers and metadata (a PNG zip must also match byte for byte; a PDF's
 #                  file hash is advisory)
 #         --size   4k|1080p|720p  (stills/stillsverify only, default 1080p) page short edge
+#         --lever  <L>  (memory only) the one change this run measures: clip-cache=N
 #         --foreground  launch the app normally instead of in the background (no-focus-steal)
 #                  mode; always on for --action perf, which needs an honest visible window
 #         --cold   hold the preview stand-down from boot, so no preview frame draws before the
@@ -109,12 +112,13 @@ while [[ $# -gt 0 ]]; do
     --foreground) FOREGROUND=1; shift ;;
     --cold)       COLD=1;       shift ;;
     --no-wait)    NO_WAIT=1;    shift ;;
+    --lever)  LEVER="${2:-}";  shift 2 ;;
     *) echo "kookaburra:run: unknown argument '$1'" >&2; exit 2 ;;
   esac
 done
 
-if [[ "$ACTION" != "verify" && "$ACTION" != "export" && "$ACTION" != "theme-previews" && "$ACTION" != "template-previews" && "$ACTION" != "preset-previews" && "$ACTION" != "option-previews" && "$ACTION" != "perf" && "$ACTION" != "screenshot" && "$ACTION" != "transitioncheck" && "$ACTION" != "packroundtrip" && "$ACTION" != "create" && "$ACTION" != "render-spike" && "$ACTION" != "stills" && "$ACTION" != "stillsverify" ]]; then
-  echo "kookaburra:run: --action must be 'verify', 'export', 'theme-previews', 'template-previews', 'preset-previews', 'option-previews', 'perf', 'screenshot', 'transitioncheck', 'packroundtrip', 'create', 'render-spike', 'stills' or 'stillsverify'" >&2
+if [[ "$ACTION" != "verify" && "$ACTION" != "export" && "$ACTION" != "theme-previews" && "$ACTION" != "template-previews" && "$ACTION" != "preset-previews" && "$ACTION" != "option-previews" && "$ACTION" != "perf" && "$ACTION" != "memory" && "$ACTION" != "screenshot" && "$ACTION" != "transitioncheck" && "$ACTION" != "packroundtrip" && "$ACTION" != "create" && "$ACTION" != "render-spike" && "$ACTION" != "stills" && "$ACTION" != "stillsverify" ]]; then
+  echo "kookaburra:run: --action must be 'verify', 'export', 'theme-previews', 'template-previews', 'preset-previews', 'option-previews', 'perf', 'memory', 'screenshot', 'transitioncheck', 'packroundtrip', 'create', 'render-spike', 'stills' or 'stillsverify'" >&2
   exit 2
 fi
 if [[ "$ACTION" == "stills" || "$ACTION" == "stillsverify" ]]; then
@@ -271,6 +275,8 @@ write_ticket() {
 
 # FIFO across every worktree: write a ticket, then wait until it is the oldest live one.
 mkdir -p "$QUEUE_DIR"
+# The run sinks hold screenshots of confidential work: owner-only, like the app keeps them.
+chmod 700 "$AUTORUN_DIR" "$QUEUE_DIR"
 TICKET="$QUEUE_DIR/$(printf '%012d' "$(date -u +%s)")-$$.json"
 write_ticket
 waited=0
@@ -453,6 +459,7 @@ export KOOKABURRA_CODEC="$CODEC"
 [ -n "${ENCODE_JSON:-}" ] && export KOOKABURRA_ENCODE_JSON="$(cat "$ENCODE_JSON")"
 [ -n "${SCENE:-}" ] && export KOOKABURRA_SCENE="$SCENE"
 [ -n "${AT:-}" ] && export KOOKABURRA_AT="$AT"
+[ -n "${LEVER:-}" ] && export KOOKABURRA_LEVER="$LEVER"
 if [[ -n "$STILLS" ]]; then
   export KOOKABURRA_STILLS="$STILLS"
   export KOOKABURRA_STILLS_SIZE="$STILLS_SIZE"
@@ -479,7 +486,8 @@ launch_dev() {
   if [[ -n "$APP" ]]; then
     caffeinate -dimsu "$APP_BIN" >"$DEV_LOG" 2>&1 &
   else
-    caffeinate -dimsu pnpm tauri dev -c "$OVERRIDE" >"$DEV_LOG" 2>&1 &
+    # --no-watch: a run tests the build it started with; another agent's Rust edit must not restart it mid-run.
+    caffeinate -dimsu pnpm tauri dev --no-watch -c "$OVERRIDE" >"$DEV_LOG" 2>&1 &
   fi
   DEV_PID=$!
 }

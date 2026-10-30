@@ -1,85 +1,18 @@
 import { Channel, invoke } from "@tauri-apps/api/core";
-import { flushSync } from "react-dom";
-import type { Object3D, PerspectiveCamera, Scene, WebGLRenderer } from "three";
-import { Vector2 } from "three";
 import type { EncodeSpec } from "../export/presetSchema";
-import { collectThemeFontRefs, preloadAppFonts } from "../theme/fonts";
 import type { LightingSpec, Theme } from "../theme/tokens";
-import { preloadCatalogModels } from "../toolkit/device/catalog";
-import { preloadDeviceModels } from "../toolkit/device/models";
-import { preloadChipIcons } from "../toolkit/frame/chipIcons";
 import type { FrameSpec } from "../toolkit/frame/types";
-import { preloadHeroModels } from "../toolkit/hero/models";
-import { preloadSceneObjects } from "../toolkit/objects/preload";
-import { preloadBundledBackdrops } from "../toolkit/stage/backdrops";
-import { awaitEmojiRastersIdle, preloadEmojiRasters } from "../toolkit/text/emojiRaster";
-import { preloadText3dFonts } from "../toolkit/text3d/fonts";
-import { applyCameraPose, baseCameraPose, type CameraKeyframe } from "./cameraTrack";
-import { useChartEditStore } from "./chartEditStore";
-import { CLIP_ACTIVE_LEAD_MS } from "./clipChunks";
-import { clipFrameIndex, deviceClipFrameIndex } from "./clipFrame";
-import {
-  awaitVideoFramesReady,
-  type ClipDemand,
-  everydayClipLane,
-  laneForCodec,
-  prepareExportClips,
-  setClipLane,
-} from "./clips";
-import { useClockStore } from "./clock";
-import { useDeviceEditStore } from "./deviceEditStore";
-import { deviceVideoSlots } from "./deviceScreens";
-import { preloadEffectLuts } from "./effects";
-import {
-  collectEnvironmentSources,
-  collectMirrorRequestsWithCompare,
-  preloadEnvironments,
-  preloadMirrorEnvironments,
-} from "./environments";
-import { canvasHandle } from "./exportBridge";
-import {
-  awaitCanvasClockCommit,
-  awaitTextSync,
-  buildFramePlans,
-  clearShutterSample,
-  drawPlannedFrame,
-  type FrameRig,
-  renderFrameInto,
-} from "./exportFrame";
-import { exportFrameTimeMs, normalExportFrameCount, posterFrameSample } from "./exportFrames";
+import type { CameraKeyframe } from "./cameraTrack";
+import { exportFrameTimeMs, posterFrameSample } from "./exportFrames";
 import { setExporting, withExporting } from "./exportState";
-import { computeFormat, type FormatSpec } from "./format";
-import { preloadPanelMeasures } from "./framePanelMeasure";
-import { useImageEditStore } from "./imageEditStore";
-import { HELPER_LAYER } from "./lightEditStore";
-import { yieldMacrotask } from "./macrotask";
+import type { FormatSpec } from "./format";
 import type { MotionBlurSettings } from "./motionBlur";
 import type { ProjectMusic } from "./musicTime";
-import { useObjectEditStore } from "./objectEditStore";
-import { preloadOverlayPanelImages } from "./overlayPanelTexture";
-import { overlayPanelImageSources } from "./overlayPlan";
-import { hasSceneHolds } from "./presentHold";
-import {
-  isWorkspaceBackedProjectId,
-  nativeProjectSlug,
-  type ProjectAudio,
-  preloadProjectImages,
-  resolveAssetPath,
-} from "./project";
-import { assertContextHeld, readFrameOrThrow } from "./readback";
-import { type RenderStateFingerprint, renderStateFingerprint } from "./renderFingerprint";
-import { hasSceneCameraTracks } from "./sceneCamera";
-import { collectSceneDocFontRefs, type SceneDoc } from "./sceneDocSchema";
-import { getSceneHosts } from "./sceneHostRegistry";
-import { resolveSceneDocMedia } from "./sceneMedia";
-import { mosaicTileKind } from "./sceneMosaic";
-import { resolveAt, type SceneSlot } from "./sceneTimeline";
-import { snapshotSceneStageFloors } from "./stageRegistry";
-import { useTerminalEditStore } from "./terminalEditStore";
-import { configureDeterministicEngine } from "./timeline";
-import { awaitTitleMeasuresSettled } from "./titleBlockMeasure";
-import { preloadTransitionMasks } from "./transitionMask";
-import { useWebsiteEditStore } from "./websiteEditStore";
+import { isWorkspaceBackedProjectId, nativeProjectSlug, type ProjectAudio } from "./project";
+import type { RenderStateFingerprint } from "./renderFingerprint";
+import type { SceneDoc } from "./sceneDocSchema";
+import type { SceneSlot } from "./sceneTimeline";
+import { stage, stageExportOptions } from "./stageHandle";
 
 export { awaitTextSync } from "./exportFrame";
 
@@ -250,83 +183,6 @@ function frameDelta(frame: number, a: Uint8Array, b: Uint8Array, width: number):
   if (differing === 0) return null;
   return { frame, differing, maxAbs, d1, d2, dGt2, bbox: [x0, y0, x1, y1], samples };
 }
-
-/** Waits until every scene's host is registered, i.e. the canvas tree has actually committed the scenes. All scenes mount inside one shared `<Suspense fallback={null}>`; on a cold load a suspending primitive (ImageCard's `useTexture`) keeps the whole boundary out of the graph until React's retry commits, which races the export preamble on the wall clock, and frame 0 rendered before it lands captures a scene-less frame (the showcase-tour white-first-frame flake) that the clock barrier can't catch since the clock is already committed at its initial 0. Host registration runs in a `useEffect` after the boundary's content commits, so counting hosts observes exactly the state frame 0 needs; called after the asset preloads so the spin exits within a few ticks. Exported for the theme-preview batch, which swaps projects the same way. */
-export async function awaitSceneHostsCommitted(expected: number): Promise<void> {
-  const primaryHostCount = (): number =>
-    getSceneHosts().filter((host) => host.side === undefined).length;
-  for (let spins = 0; primaryHostCount() < expected; spins++) {
-    if (spins > 5000) {
-      throw new Error(
-        `Scene tree never committed: ${primaryHostCount()}/${expected} primary scene hosts registered.`,
-      );
-    }
-    await yieldMacrotask();
-  }
-}
-
-/**
- * Every sidecar-declared video per source, each with the frames its slot shows over the scene window `[−500, duration + 500]` ms (the consumers' near gate): device screens through `deviceClipFrameIndex`, media entries, layered-screenshot cards and mosaic tiles through `clipFrameIndex` with their loop semantics, on both comparison sides. Layered-screenshot cards and screens behind a model's suspense mount after the last barrier, so the barrier must already know them. A screen timed by a fold opening (`startOn: "open"`) is declared with no demand: its mounted consumer covers it, else it takes the whole clip.
- */
-function declaredClipDemands(opts: ExportOptions): Map<string, ClipDemand[]> {
-  const declared = new Map<string, ClipDemand[]>();
-  const declare = (src: string, demand: ClipDemand | null) => {
-    const abs = resolveAssetPath(opts.projectId, src);
-    const list = declared.get(abs) ?? [];
-    if (demand) list.push(demand);
-    declared.set(abs, list);
-  };
-  const docs = [
-    ...(opts.sceneDocs ?? []).map((doc, i) => ({ doc, slot: opts.slots[i] })),
-    ...(opts.compareBDocs ?? []).map((doc, i) => ({ doc, slot: opts.slots[i] })),
-  ];
-  for (const { doc, slot } of docs) {
-    if (!doc) continue;
-    const window: [number, number] | null = slot
-      ? [-CLIP_ACTIVE_LEAD_MS, slot.durationMs + CLIP_ACTIVE_LEAD_MS]
-      : null;
-    const clip = (startMs: number, loop: boolean): ClipDemand | null =>
-      window && {
-        window,
-        sceneStartMs: slot?.startMs ?? 0,
-        frameAt: (ms, info) => clipFrameIndex(ms, startMs, info.fps, info.frameCount, loop),
-      };
-    for (const layer of doc.layeredScreenshot?.layers ?? []) {
-      for (const item of layer.items ?? []) {
-        if (item.kind === "screen" && item.media === "video" && typeof item.src === "string") {
-          declare(item.src, clip(typeof item.startMs === "number" ? item.startMs : 0, false));
-        }
-      }
-    }
-    for (const entry of resolveSceneDocMedia(doc)) {
-      if (entry.kind === "video") {
-        declare(entry.src, clip(entry.video?.startMs ?? 0, entry.video?.loop === true));
-      }
-    }
-    for (const tile of doc.mosaic?.tiles ?? []) {
-      if (mosaicTileKind(tile) === "video") {
-        declare(tile.src as string, clip(tile.startMs ?? 0, tile.loop === true));
-      }
-    }
-    for (const device of doc.devices ?? []) {
-      for (const media of deviceVideoSlots(doc, device)) {
-        declare(
-          media.src,
-          window && media.startOn !== "open"
-            ? {
-                window,
-                sceneStartMs: slot?.startMs ?? 0,
-                frameAt: (ms, info) =>
-                  deviceClipFrameIndex(ms, 0, media, info.fps, info.frameCount),
-              }
-            : null,
-        );
-      }
-    }
-  }
-  return declared;
-}
-
 /**
  * Deterministic export loop: reuses the live preview canvas, sizing its drawing buffer to the export resolution, then for each frame seeks the clock, awaits typesetting, renders the frame, reads the pixels, and streams them to the ffmpeg sidecar. Frame N is a pure function of the frame index, no wall clock, no UI state. See docs/determinism.md.
  *
@@ -340,122 +196,16 @@ export const EXPORT_PREAMBLE_STEPS = [
   "Placing the scenes",
 ] as const;
 
-/** The deterministic preamble shared by exportProject, captureScreenshot and the stills export; barrier order is pinned (docs/determinism.md). `onStep` reports coarse-phase completion for the UI overlay only. */
-export async function exportPreamble(
-  opts: ExportOptions,
-  gl: WebGLRenderer,
-  onStep?: (step: number) => void,
-  /** A one-frame capture's project time: clips extract only the frames that instant shows. */
-  atMs?: number,
-  /** A ranged render's project span: clips extract only the frames it shows. */
-  spanMs?: readonly [number, number],
-): Promise<void> {
-  configureDeterministicEngine();
-  // Explicit, not incidental: an object, chart, device, image or terminal gizmo selected when an export starts must never reach a frame.
-  useObjectEditStore.getState().select(null);
-  useChartEditStore.getState().select(null);
-  useDeviceEditStore.getState().select(null);
-  useImageEditStore.getState().select(null);
-  useTerminalEditStore.getState().select(null);
-  useWebsiteEditStore.getState().select(null);
-  // With themes, preloads exactly the fonts the project renders (bundled and workspace-pinned system fonts, plus sidecar `<key>Font` overrides), comparison side-B themes included: a B-only face loaded at first typeset would land outside every barrier, the per-boot atlas lottery. The no-theme form preloads the bundled defaults.
-  await preloadAppFonts(
-    opts.theme
-      ? [
-          ...collectThemeFontRefs([
-            opts.theme,
-            ...(opts.sceneThemes ?? []),
-            ...(opts.compareBThemes ?? []),
-          ]),
-          ...collectSceneDocFontRefs(opts.sceneDocs ?? []),
-        ]
-      : undefined,
-  );
-  // Deterministic codecs read the software-decoded frame lane (the one baselines were recorded from); fast-draft hardware codecs keep the everyday hw lane. Restored in the run's finally, preamble throws included.
-  setClipLane(laneForCodec(opts.encode?.codec ?? opts.codec));
-  // Extracts, before frame 0, the chunks every sidecar-declared video needs over its scene window, mirroring font preload so no frame races an async decode; cached chunks make it a no-op after the first.
-  const declaredClips = declaredClipDemands(opts);
-  await prepareExportClips(declaredClips, { consumers: false, atMs, spanMs });
-  onStep?.(1);
-  // Fetches + parses bundled 3D models and this project's screen images (and warms drei's caches) before frame 0, so a cold export never captures a still-loading DeviceMockup; no-op once cached. See docs/determinism.md.
-  await preloadDeviceModels();
-  await preloadCatalogModels();
-  await preloadHeroModels();
-  // Staged library objects referenced by any scene (and compare side B), the same barrier over a dynamic id set.
-  await preloadSceneObjects([...(opts.sceneDocs ?? []), ...(opts.compareBDocs ?? [])]);
-  await preloadProjectImages(opts.projectId);
-  // Image-mask transitions sample their SDF at the render seam, so each one is built and uploaded here; a missing or unreadable mask fails the run.
-  await preloadTransitionMasks(opts.slots, gl);
-  onStep?.(2);
-  // Parses the bundled typeface JSON for ExtrudedText (synchronous today; the barrier is kept so a future fetched font can't race frame 0).
-  await preloadText3dFonts();
-  // Preloads the project's LUT textures (usually cached by loadProject already) and forces their GPU upload before frame 0, since a mid-run first-use upload is exactly the async-asset race this preamble exists to prevent. See docs/determinism.md.
-  await preloadEffectLuts({ gl });
-  // Resolves every environment source across the v8 theme blocks and the v9 lighting layers (RGBE/EXR decode + PMREM) before frame 0, since a themed frame must never find its environment texture still loading; a missing USER source rejects here and fails the run loudly. Env-mirror bakes ride the same barrier (one-shot fromScene, cached by content key).
-  if (opts.theme) {
-    await preloadEnvironments(
-      gl,
-      collectEnvironmentSources(
-        opts.projectId,
-        [
-          opts.theme,
-          ...(opts.sceneThemes ?? []),
-          ...(opts.compareBThemes ?? []).filter((t): t is Theme => !!t),
-        ],
-        opts.projectLighting,
-        [...(opts.sceneDocs ?? []), ...(opts.compareBDocs ?? []).filter(Boolean)],
-      ),
-    );
-    await preloadMirrorEnvironments(
-      gl,
-      collectMirrorRequestsWithCompare(
-        opts.projectId,
-        opts.sceneThemes ?? [],
-        opts.projectLighting,
-        opts.sceneDocs,
-        opts.compareBThemes,
-        opts.compareBDocs,
-      ),
-    );
-  }
-  // Bundled backdrop images load through an awaited module cache, never suspense (the loft-1 stale-capture lesson); settle them before frame 0.
-  await preloadBundledBackdrops();
-  // Bundled chip icon PNGs (the frame chip's mark) settle before frame 0, alongside the other bundled assets.
-  await preloadChipIcons();
-  // Colour-emoji rasters for every sidecar string settle before frame 0 (write-once per-project cache; docs/determinism.md "Emoji").
-  await preloadEmojiRasters(opts.projectId, opts.sceneDocs ?? []);
-  // Overlay panel title/subtitle measurements settle before frame 0, so the panel lays out from real troika blocks on every frame (framePanelMeasure.ts); image panel fills settle in the same block, since the compositor samples them at the render seam with no way to suspend.
-  if (opts.sceneFrames?.some(Boolean)) {
-    await preloadOverlayPanelImages(
-      opts.projectId,
-      overlayPanelImageSources(opts.sceneFrames ?? []),
-    );
-    const panelThemes = (opts.sceneFrames ?? []).map((_, i) => opts.sceneThemes?.[i] ?? opts.theme);
-    await preloadPanelMeasures(
-      computeFormat(opts.format),
-      opts.sceneFrames ?? [],
-      opts.sceneDocs ?? [],
-      panelThemes,
-    );
-  }
-  onStep?.(3);
-  // Last barrier: the scenes must actually be in the canvas tree. A cold-load suspense (shared boundary) can still be holding every scene out of the graph at this point, but the preloads above have resolved its assets so the retry commit is imminent; wait for it or frame 0 captures a scene-less frame. See awaitSceneHostsCommitted.
-  await awaitSceneHostsCommitted(opts.slots.length);
-  // A second extract pass over every mounted consumer's own window and held frame: clips registered by primitives that only mounted at the barrier above (a video background or code-authored VideoClip behind the shared suspense), plus the timing only a mounted consumer knows; a no-op when the first pass already covered them all.
-  await prepareExportClips(declaredClips, { consumers: true, atMs, spanMs });
-  // In-world TitleBlocks measure their own title/subtitle blocks, and their props only exist once the scenes are in the tree, so this barrier runs last: settle those typesets and let the tree re-render with them, or frame 0 captures the pre-measure layout (engine/titleBlockMeasure).
-  await awaitTitleMeasuresSettled();
+/** Waits until every scene's host is registered in the stage (the canvas tree has committed the scenes); asked of the worker from a window, answered from the registry inside it. See exportRun.ts. */
+export function awaitSceneHostsCommitted(expected: number): Promise<void> {
+  return stage().awaitHosts(expected);
 }
 
-/** Present holds freeze staged text mid-timeline, so a video frame or capture rendered while the stills export holds scenes would not be the pure function of `t` the contract promises. */
-function assertNoSceneHolds(run: "export" | "capture"): void {
-  if (hasSceneHolds()) {
-    throw new Error(
-      `Scene holds are active (a stills export is running), so the ${run} cannot start.`,
-    );
-  }
-}
-
+/**
+ * Deterministic export loop, the window half: the stage worker renders each frame through the shared per-frame body (`exportRun.ts`), the bytes cross once per frame and stream to the ffmpeg sidecar from here. Frame N is a pure function of the frame index, no wall clock, no UI state. See docs/determinism.md.
+ *
+ * @returns the output file path reported by the native side.
+ */
 export async function exportProject(
   opts: ExportOptions,
   onProgress?: (p: ExportProgress) => void,
@@ -473,6 +223,21 @@ export async function exportProject(
   );
 }
 
+/** Resolves with `promise`, or rejects with the signal's reason the moment it aborts; the promise itself is left to settle. */
+function untilAborted<T>(promise: Promise<T>, signal: AbortSignal | undefined): Promise<T> {
+  if (!signal) return promise;
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => reject(signal.reason);
+    if (signal.aborted) {
+      onAbort();
+      promise.catch(() => {});
+      return;
+    }
+    signal.addEventListener("abort", onAbort, { once: true });
+    promise.then(resolve, reject).finally(() => signal.removeEventListener("abort", onAbort));
+  });
+}
+
 async function exportProjectHeld(
   opts: ExportOptions,
   onProgress?: (p: ExportProgress) => void,
@@ -481,50 +246,20 @@ async function exportProjectHeld(
   onFingerprint?: (fp: RenderStateFingerprint) => void,
   onPrepareStep?: (step: number) => void,
 ): Promise<string> {
-  assertNoSceneHolds("export");
-  const handle = canvasHandle.current;
-  if (!handle) throw new Error("Export bridge not mounted: the canvas is not ready.");
-  const { gl, scene, camera } = handle;
+  const s = stage();
   const { signal } = opts;
   signal?.throwIfAborted();
-  assertContextHeld(gl.getContext(), "before the export");
-
-  // Snapshot preview state first: from the preamble on, everything runs inside one try/finally, so a failed preamble or start leaves no export-sized buffer, aspect or clip lane behind.
-  const prevSize = gl.getSize(new Vector2());
-  const prevPixelRatio = gl.getPixelRatio();
-  const prevClockMs = useClockStore.getState().currentMs;
-  let rig: FrameRig | null = null;
-  const cam = camera as PerspectiveCamera;
-  const prevAspect = cam.isPerspectiveCamera ? cam.aspect : 0;
-  const prevHelperLayer = cam.layers.isEnabled(HELPER_LAYER);
   let started = false;
+  let begun = false;
   // A cancel that lands while Rust finalises or runs a two-pass pass has no frame boundary to stop at, so it kills the native encode directly.
   const stopNativeEncode = () => void invoke("cancel_export").catch(() => {});
-  // The exporter owns rendering for the whole run; the preview driver stands down (see engine/exportState) so no stray preview render interleaves with a capture.
-  setExporting(true);
   try {
-    await exportPreamble(opts, gl, (step) => {
-      onPrepareStep?.(step);
-      signal?.throwIfAborted();
-    });
-    signal?.throwIfAborted();
-    const sceneFloorYs = snapshotSceneStageFloors(opts.slots.length);
-
+    const begin = s.exportBegin(stageExportOptions(opts), (step) => onPrepareStep?.(step));
+    // The worker opens the run whether or not the wait below is cut short; the finally closes it either way.
+    begun = true;
+    const { total } = await untilAborted(begin, signal);
     const { width, height } = opts.format;
-    const normalTotal = normalExportFrameCount(opts.durationMs, opts.fps);
     const poster = opts.encode?.posterFrame ? posterFrameSample(opts.slots, opts.fps) : undefined;
-    const total = normalTotal + (poster === undefined ? 0 : 1);
-    const ctx = gl.getContext();
-    const rgba = new Uint8Array(width * height * 4);
-    const sizeProbe = new Vector2();
-
-    // Size the renderer's drawing buffer to the export resolution (no CSS resize).
-    gl.setPixelRatio(1);
-    gl.setSize(width, height, false);
-    if (cam.isPerspectiveCamera) {
-      cam.aspect = width / height;
-      cam.updateProjectionMatrix();
-    }
 
     const channel = new Channel<ExportProgress>();
     if (onProgress) channel.onmessage = onProgress;
@@ -560,194 +295,52 @@ async function exportProjectHeld(
           : null,
       },
       onProgress: channel,
+      scenes: opts.slots.map((s) => ({ id: s.id, startMs: s.startMs, endMs: s.endMs })),
     });
     started = true;
     signal?.addEventListener("abort", stopNativeEncode, { once: true });
 
-    const plans = buildFramePlans(opts, sceneFloorYs);
-    rig = {
-      gl,
-      scene,
-      camera,
-      ctx,
-      width,
-      height,
-      rgba,
-      sizeProbe,
-      plans,
-      cameraTrack: opts.cameraTrack,
-      clockOwnedMs: null,
-    };
-
-    // Stale-pose healing: a fully trackless project never writes the camera inside the loop, and the shared camera persists across project switches, so heal it once before frame 0. Pristine case writes identical floats (fov unchanged, no projection update), so the gated no-track paths stay byte-identical. Mirrored in CompositorDriver.
-    if (
-      (!opts.cameraTrack || opts.cameraTrack.length === 0) &&
-      !hasSceneCameraTracks(plans.sceneTracks)
-    ) {
-      applyCameraPose(cam, baseCameraPose());
-    }
-
-    // Preview-only light helpers can never reach a capture: their layer is disabled on the camera for the whole run (the second guard on top of their mount gating) and given back in the finally.
-    cam.layers.disable(HELPER_LAYER);
+    // The frame buffer ping-pongs: the worker renders into it, the window pushes it, then hands it back for the next frame.
+    let buffer: ArrayBuffer | null = null;
     for (let frame = 0; frame < total; frame++) {
       signal?.throwIfAborted();
       const tMs = exportFrameTimeMs(frame, opts.fps, poster?.tMs);
-      const resolved = frame === 0 && poster ? poster.resolved : resolveAt(opts.slots, tMs);
-      await renderFrameInto(
-        rig,
-        tMs,
-        resolved,
-        frame === 0 ? 2 : 1,
-        `export frame ${frame + 1}/${total}`,
-        frame === total - 1 && onFingerprint
-          ? () => onFingerprint(renderStateFingerprint(gl, scene))
-          : undefined,
-      );
-      onBoundClipFrame?.(frame, sampleBoundClipFrame(scene));
-      onFrame?.(frame, rgba);
-      await invoke("push_frame", rgba);
+      const last = frame === total - 1;
+      const result = await s.exportFrame(frame, tMs, !!poster, buffer, last && !!onFingerprint);
+      if (result.fingerprint && onFingerprint) onFingerprint(result.fingerprint);
+      onBoundClipFrame?.(frame, result.boundClipFrame);
+      onFrame?.(frame, result.rgba);
+      await invoke("push_frame", result.rgba);
+      buffer = result.rgba.buffer as ArrayBuffer;
     }
     signal?.throwIfAborted();
     return await invoke<string>("finish_export");
   } catch (err) {
-    if (started) await invoke("cancel_export").catch(() => {});
+    if (started) {
+      // A real failure (not a cancel) leaves <export>.health.json and names where the run stopped.
+      const reason = signal?.aborted ? undefined : String(err instanceof Error ? err.message : err);
+      const where = await invoke<string | null>("cancel_export", { reason }).catch(() => null);
+      if (where && err instanceof Error) {
+        try {
+          err.message = `${err.message} (at ${where})`;
+        } catch {
+          // A DOMException's message is read-only; its own error still reaches the user.
+        }
+      }
+    }
     throw err;
   } finally {
     signal?.removeEventListener("abort", stopNativeEncode);
-    setExporting(false);
-    setClipLane(everydayClipLane());
-    gl.setPixelRatio(prevPixelRatio);
-    gl.setSize(prevSize.x, prevSize.y, false);
-    if (cam.isPerspectiveCamera) {
-      cam.aspect = prevAspect;
-      cam.updateProjectionMatrix();
-    }
-    if (prevHelperLayer) cam.layers.enable(HELPER_LAYER);
-    // Give the playhead back only if this run wrote it and still owns it; an untouched or since-moved clock stays put.
-    const clockOwnedMs = rig?.clockOwnedMs ?? null;
-    if (clockOwnedMs !== null && useClockStore.getState().currentMs === clockOwnedMs) {
-      flushSync(() => useClockStore.getState().setCurrentMs(prevClockMs));
-    }
+    if (begun) await s.exportEnd().catch(() => {});
   }
 }
 
-/** Renders one deterministic frame at tMs through the export path and returns its raw pixels (GL bottom-up row order). The shared core of `captureScreenshot` and the render window's thumb service. */
+/** Renders one deterministic frame at tMs through the export path in the stage and returns its raw pixels (GL bottom-up row order). The shared core of `captureScreenshot` and the render window's thumb service. */
 export async function captureFrameRgba(
   opts: ExportOptions,
   tMs: number,
 ): Promise<{ rgba: Uint8Array; width: number; height: number }> {
-  return withExporting(() => captureFrameRgbaHeld(opts, tMs));
-}
-
-async function captureFrameRgbaHeld(
-  opts: ExportOptions,
-  tMs: number,
-): Promise<{ rgba: Uint8Array; width: number; height: number }> {
-  assertNoSceneHolds("capture");
-  const handle = canvasHandle.current;
-  if (!handle) throw new Error("Export bridge not mounted: the canvas is not ready.");
-  const { gl, scene, camera } = handle;
-  assertContextHeld(gl.getContext(), `capture at ${tMs}ms`);
-
-  // Bridge captures run mid-edit: the preamble's selection clear (a gizmo must never reach a frame) is given back once the capture ends, unlike a user-initiated export.
-  const prevSelection = {
-    object: useObjectEditStore.getState().selected,
-    chart: useChartEditStore.getState().selected,
-    device: useDeviceEditStore.getState().selected,
-    image: useImageEditStore.getState().selected,
-  };
-  const restoreSelection = () => {
-    useObjectEditStore.getState().select(prevSelection.object);
-    useChartEditStore.getState().select(prevSelection.chart);
-    useDeviceEditStore.getState().select(prevSelection.device);
-    useImageEditStore.getState().select(prevSelection.image);
-  };
-  // Snapshot preview state first (the export loop's contract): preamble, sizing and capture all run inside one try/finally, so a failure at any step gives the preview back whole.
-  const prevSize = gl.getSize(new Vector2());
-  const prevPixelRatio = gl.getPixelRatio();
-  const prevClockMs = useClockStore.getState().currentMs;
-  const cam = camera as PerspectiveCamera;
-  const prevAspect = cam.isPerspectiveCamera ? cam.aspect : 0;
-  const prevHelperLayer = cam.layers.isEnabled(HELPER_LAYER);
-  let restoreCameraPose: (() => void) | null = null;
-  setExporting(true);
-  try {
-    await exportPreamble(opts, gl, undefined, tMs);
-    const sceneFloorYs = snapshotSceneStageFloors(opts.slots.length);
-
-    const { width, height } = opts.format;
-    const ctx = gl.getContext();
-    const rgba = new Uint8Array(width * height * 4);
-
-    gl.setPixelRatio(1);
-    gl.setSize(width, height, false);
-    if (cam.isPerspectiveCamera) {
-      cam.aspect = width / height;
-      cam.updateProjectionMatrix();
-    }
-
-    const plans = buildFramePlans(opts, sceneFloorYs);
-    // Trackless projects heal the shared camera to base for the frame; snapshot the live pose (a mid-orbit view stays where the user left it) and give it back afterwards.
-    if (
-      (!opts.cameraTrack || opts.cameraTrack.length === 0) &&
-      !hasSceneCameraTracks(plans.sceneTracks)
-    ) {
-      const pos = cam.position.clone();
-      const quat = cam.quaternion.clone();
-      const fov = cam.fov;
-      restoreCameraPose = () => {
-        cam.position.copy(pos);
-        cam.quaternion.copy(quat);
-        cam.fov = fov;
-        cam.updateProjectionMatrix();
-      };
-      applyCameraPose(cam, baseCameraPose());
-    }
-
-    cam.layers.disable(HELPER_LAYER);
-    // One iteration of the export loop's frame block, barrier for barrier.
-    flushSync(() => useClockStore.getState().setCurrentMs(tMs));
-    await awaitCanvasClockCommit(tMs);
-    await clearShutterSample(scene);
-    await awaitVideoFramesReady(scene);
-    await awaitTextSync(scene);
-    await awaitEmojiRastersIdle();
-    if (cam.isPerspectiveCamera && cam.aspect !== width / height) {
-      cam.aspect = width / height;
-      cam.updateProjectionMatrix();
-    }
-    const resolved = resolveAt(opts.slots, tMs);
-    await drawPlannedFrame(
-      gl,
-      scene,
-      camera,
-      width,
-      height,
-      plans,
-      opts.cameraTrack,
-      resolved,
-      tMs,
-      1,
-    );
-    readFrameOrThrow(ctx, width, height, rgba, `capture at ${tMs}ms`);
-    return { rgba, width, height };
-  } finally {
-    setExporting(false);
-    setClipLane(everydayClipLane());
-    gl.setPixelRatio(prevPixelRatio);
-    gl.setSize(prevSize.x, prevSize.y, false);
-    if (cam.isPerspectiveCamera) {
-      cam.aspect = prevAspect;
-      cam.updateProjectionMatrix();
-    }
-    if (prevHelperLayer) cam.layers.enable(HELPER_LAYER);
-    restoreCameraPose?.();
-    restoreSelection();
-    // Give the playhead back only while the capture still owns it; a scrub mid-capture wins.
-    if (useClockStore.getState().currentMs === tMs) {
-      flushSync(() => useClockStore.getState().setCurrentMs(prevClockMs));
-    }
-  }
+  return withExporting(() => stage().captureFrame(stageExportOptions(opts), tMs));
 }
 
 /** Renders one deterministic frame at tMs through the export path and writes it natively as a PNG (autorun `<run result dir>/<name>.png` by default, from `KOOKABURRA_RESULT_DIR` or the legacy `_autorun`; the bridge pair for capture requests). */
@@ -782,6 +375,7 @@ export async function verifyDeterminism(
   const rawB: (Uint8Array | undefined)[] = [];
   // Holds the preview stand-down across both passes (nested over each pass's own hold; the flag is depth-counted, see engine/exportState). Without this, a wall-clock-varying number of preview frames rendered between the passes at the preview size, with the restored preview clock, and their GPU residue leaked into pass B's first frames (the showcase-tour frames-0-1 ±LSB flake); with the hold, pass B starts from exactly the state pass A ended in, deterministic by construction. Each pass's own run disables HELPER_LAYER.
   setExporting(true);
+  await stage().holdExport(true);
   let hashA: string;
   let hashB: string;
   let fingerprint: RenderStateFingerprint | undefined;
@@ -819,6 +413,9 @@ export async function verifyDeterminism(
     );
     hashB = await invoke<string>("hash_file", { path: outB });
   } finally {
+    await stage()
+      .holdExport(false)
+      .catch(() => {});
     setExporting(false);
   }
   const identical = hashA === hashB;
@@ -931,18 +528,4 @@ export async function revealExport(path: string): Promise<void> {
 /** Reveal the most recent finished export. No path crosses the IPC boundary: exports default to ~/Downloads, outside `reveal_in_finder`'s confinement, so Rust reveals the destination it wrote itself. */
 export async function revealLastExport(): Promise<void> {
   await invoke("reveal_last_export");
-}
-
-/** Verify diagnostic: the clip-frame index stamped on the texture that is actually bound on the scene's clip material right now (-1 when no clip/map); read immediately after render so it reflects what the capture saw. A consumer's readiness node publishes its material (`clipMaterial`), since a Device's node is a bare group. */
-function sampleBoundClipFrame(scene: Scene): number {
-  type ClipMaterial = { map?: { userData?: { clipFrame?: number } } | null };
-  let bound = -1;
-  scene.traverse((obj: Object3D) => {
-    if (bound !== -1) return;
-    const ud = obj.userData as { videoFrameReady?: unknown; clipMaterial?: ClipMaterial };
-    if (!ud.videoFrameReady) return;
-    const material = ud.clipMaterial ?? (obj as unknown as { material?: ClipMaterial }).material;
-    bound = material?.map?.userData?.clipFrame ?? -1;
-  });
-  return bound;
 }

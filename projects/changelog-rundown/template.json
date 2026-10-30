@@ -7,9 +7,9 @@
   "personas": ["pm", "developer"],
   "level": "standard",
   "tier": "safe",
-  "uses": ["overlay", "video-window", "text-motion", "background"],
+  "uses": ["overlay", "device", "video-window", "text-motion", "background"],
   "highlights": [
-    "Added, changed and fixed as three overlay slides",
+    "Added, changed and fixed beside the app on a phone",
     "A floating window for the headline feature",
     "Version and date set in mono"
   ],

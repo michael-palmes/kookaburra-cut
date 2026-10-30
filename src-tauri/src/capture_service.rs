@@ -1429,6 +1429,16 @@ pub(crate) fn contexts_report(app: &AppHandle) -> Value {
     })
 }
 
+/// The editor's page reloaded: its WebContent process may be new, so the next census reads the pid again.
+pub(crate) fn forget_editor_pid() {
+    service().censuses.editor_pid = None;
+}
+
+/// The render window's WebContent pid, for the memory sampler.
+pub(crate) fn render_pid() -> Option<u32> {
+    service().window.web_content_pid
+}
+
 /// The editor's view of the service (the GPU notices).
 pub(crate) fn status(app: &AppHandle) -> Value {
     let now = now_ms();

@@ -16,6 +16,8 @@ export const RENDER_ENTRIES = [
   "src/engine/RenderSettingsApplier.tsx",
   "src/engine/project.ts",
   "src/toolkit/index.ts",
+  "src/stage/stageWorker.ts",
+  "src/stage/stageClient.ts",
 ];
 
 export async function renderClosure() {

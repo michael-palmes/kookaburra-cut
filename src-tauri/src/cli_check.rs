@@ -3,7 +3,7 @@
 use std::ffi::OsString;
 use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 use std::sync::atomic::Ordering;
 
 use serde_json::{json, Value};
@@ -123,6 +123,8 @@ fn decode_args(file: &Path, width: u32, height: u32, resample: Option<f64>) -> V
         "-v",
         "error",
         "-nostdin",
+        "-protocol_whitelist",
+        "file,pipe",
         "-i",
         &file.to_string_lossy(),
         "-an",
@@ -149,7 +151,7 @@ fn decode_into(
     resample: Option<f64>,
     detector: &mut FlashDetector,
 ) -> Result<(), Fail> {
-    let mut child = Command::new(ffmpeg)
+    let mut child = crate::tools::sidecar_command(ffmpeg)
         .args(decode_args(file, width, height, resample))
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
@@ -271,7 +273,7 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let film = dir.join("strobe.mp4");
         let graph = "color=c=black:s=640x360:r=60:d=2[a];color=c=white:s=640x360:r=60:d=2[b];[a][b]overlay=enable='gte(mod(n\\,12)\\,6)',format=yuv420p[out]";
-        let made = Command::new(&tools.ffmpeg)
+        let made = std::process::Command::new(&tools.ffmpeg)
             .args([
                 "-v",
                 "error",

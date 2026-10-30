@@ -251,7 +251,11 @@ fn update_settings_at<T>(
     };
     let out = edit(&mut settings);
     let text = serde_json::to_string_pretty(&settings).map_err(|e| e.to_string())?;
+    if let Some(dir) = path.parent() {
+        crate::privacy::private_dir(dir).map_err(|e| e.to_string())?;
+    }
     crate::scene_doc::atomic_write_text(path, &text)?;
+    crate::privacy::private_file(path).map_err(|e| e.to_string())?;
     *guard = Some(settings);
     Ok(out)
 }
@@ -350,7 +354,11 @@ pub(crate) fn root_override() -> Option<PathBuf> {
 
 /// The configured workspace root, layout re-asserted. Errors if first-run hasn't completed.
 pub fn require_root(app: &AppHandle, state: &State<'_, SettingsState>) -> Result<PathBuf, String> {
-    let root = match root_override() {
+    // A profile's WorkspaceRoot outranks the gate override and the settings file alike.
+    let root = match crate::managed::policy()
+        .workspace_root_path()
+        .or_else(root_override)
+    {
         Some(over) => over,
         None => {
             let settings = load_settings(app, state)?;
@@ -362,8 +370,7 @@ pub fn require_root(app: &AppHandle, state: &State<'_, SettingsState>) -> Result
         }
     };
     ensure_layout(&root)?;
-    // Workspace files load in the webview as asset-protocol URLs (posters, pinned fonts, editor sources, snapshots; see engine/media.ts `fsUrl`); the static config scope only covers $APPDATA/cache + ~/Kookaburra Cut, so a user-chosen root elsewhere is allowed here at runtime instead, idempotent and best-effort since the read path reports its own errors if this fails.
-    let _ = app.asset_protocol_scope().allow_directory(&root, true);
+    crate::asset_reach::set_workspace(app, &root);
     Ok(root)
 }
 
@@ -644,10 +651,10 @@ pub(crate) fn copy_dir_recursive(from: &Path, to: &Path) -> Result<(), String> {
         let dst = to.join(entry.file_name());
         let meta = std::fs::symlink_metadata(&src).map_err(|e| e.to_string())?;
         if meta.file_type().is_symlink() {
-            let target = std::fs::read_link(&src).map_err(|e| e.to_string())?;
-            let _ = std::fs::remove_file(&dst);
-            std::os::unix::fs::symlink(&target, &dst)
-                .map_err(|e| format!("linking {}: {e}", src.display()))?;
+            return Err(format!(
+                "{} is a symbolic link; links are not copied, replace it with the file itself",
+                src.display()
+            ));
         } else if meta.is_dir() {
             copy_dir_recursive(&src, &dst)?;
         } else {
@@ -733,7 +740,11 @@ pub fn get_settings(
     app: AppHandle,
     state: State<'_, SettingsState>,
 ) -> Result<AppSettings, String> {
-    load_settings(&app, &state)
+    let mut settings = load_settings(&app, &state)?;
+    if let Some(root) = &crate::managed::policy().workspace_root {
+        settings.workspace_root = Some(root.clone());
+    }
+    Ok(settings)
 }
 
 /// The root a chosen parent resolves to: picking a folder already named "Kookaburra Cut" adopts it rather than nesting another.
@@ -870,6 +881,7 @@ pub async fn move_workspace(
     parent: Option<String>,
 ) -> Result<Option<String>, String> {
     require_window(&window, "settings")?;
+    crate::managed::deny_workspace_change()?;
     if export.busy() {
         return Err("an export is running: move your workspace after it finishes".into());
     }
@@ -930,7 +942,7 @@ fn perform_workspace_move(app: &AppHandle, from: &Path, to: &Path) -> Result<Str
         settings.workspace_root = Some(to.to_string_lossy().into_owned());
         retarget_trust(settings, from, to);
     })?;
-    let _ = app.asset_protocol_scope().allow_directory(to, true);
+    crate::asset_reach::set_workspace(app, to);
     let _ = app.emit("kookaburra://workspace-moved", to.to_string_lossy());
     Ok(to.to_string_lossy().into_owned())
 }
@@ -954,6 +966,7 @@ pub async fn init_workspace(
     parent: String,
 ) -> Result<Option<String>, String> {
     require_window(&window, "settings")?;
+    crate::managed::deny_workspace_change()?;
     let parent = PathBuf::from(parent);
     let root = root_under(parent.clone());
     let body = format!(
@@ -982,7 +995,9 @@ fn adopt_workspace(
     state: &State<'_, SettingsState>,
     parent: PathBuf,
 ) -> Result<String, String> {
-    let root = root_under(parent);
+    let root = crate::managed::policy()
+        .workspace_root_path()
+        .unwrap_or_else(|| root_under(parent));
     ensure_layout(&root)?;
     update_settings(app, state, |settings| {
         settings.workspace_root = Some(root.to_string_lossy().into_owned());
@@ -1282,9 +1297,9 @@ fn duplicate_skips(name: &std::ffi::OsStr) -> bool {
     matches!(name.to_str(), Some("exports" | ".kookaburra" | ".kb"))
 }
 
-/// Move a project to the TRASH, never `rm -rf`, so Finder's Put Back works; a matching `last_project` is cleared so the next boot lands on the welcome screen.
+/// Move a project to the TRASH, never `rm -rf`, so Finder's Put Back works; a matching `last_project` is cleared so the next boot lands on the welcome screen. The decoded frames and previews of its footage leave the caches with it (a project put back decodes again).
 #[tauri::command]
-pub fn delete_project(
+pub async fn delete_project(
     app: AppHandle,
     state: State<'_, SettingsState>,
     slug: String,
@@ -1295,6 +1310,14 @@ pub fn delete_project(
     if !dir.join(MANIFEST_FILENAME).is_file() {
         return Err(format!("no project named \"{slug}\""));
     }
+    // Content hashes are read before the folder moves: the caches are keyed by them and the Trash is another path.
+    let sources = {
+        let app = app.clone();
+        let dir = dir.clone();
+        tauri::async_runtime::spawn_blocking(move || crate::media::project_media_sources(&app, &dir))
+            .await
+            .map_err(|e| e.to_string())?
+    };
     trash_path(&dir).map_err(|e| format!("couldn't move the project to the Trash: {e}"))?;
     // The trust grant dies with the project, so a later same-slug project starts untrusted.
     update_settings(&app, &state, |settings| {
@@ -1302,7 +1325,9 @@ pub fn delete_project(
         if settings.last_project.as_deref() == Some(&format!("ws:{slug}")) {
             settings.last_project = None;
         }
-    })
+    })?;
+    crate::media::forget_media(&app, &root, &dir, sources);
+    Ok(())
 }
 
 /// Remember the export modal's selection, written on each successful export, restored per project with the global pick as fallback.
@@ -1633,15 +1658,7 @@ pub fn write_emoji_raster(
     };
     let slug = header("x-kookaburra-slug")?;
     let key = header("x-kookaburra-key")?;
-    // Key shape: hex codepoints dash-joined plus a @size suffix, e.g. `1f680-fe0f@256`.
-    let valid_key = !key.is_empty()
-        && key.len() <= 128
-        && key
-            .chars()
-            .all(|c| c.is_ascii_hexdigit() || c == '-' || c == '@')
-        && key.matches('@').count() == 1
-        && !key.starts_with(['-', '@']);
-    if !valid_key {
+    if !valid_raster_key(&key) {
         return Err(format!("invalid raster key \"{key}\""));
     }
     let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else {
@@ -1663,6 +1680,36 @@ pub fn write_emoji_raster(
     }
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     std::fs::write(&file, bytes).map_err(|e| e.to_string())
+}
+
+/// Key shape: hex codepoints dash-joined plus a @size suffix, e.g. `1f680-fe0f@256`.
+fn valid_raster_key(key: &str) -> bool {
+    !key.is_empty()
+        && key.len() <= 128
+        && key
+            .chars()
+            .all(|c| c.is_ascii_hexdigit() || c == '-' || c == '@')
+        && key.matches('@').count() == 1
+        && !key.starts_with(['-', '@'])
+}
+
+/// One cached emoji raster's bytes (`assets/.emoji-cache/<key>.png`) for the stage worker's native port: hidden folders are not served as `asset://` URLs, so the raster cache reads through here. A missing raster is an error, which the port reports as "not cached".
+#[tauri::command]
+pub fn read_emoji_raster(
+    app: AppHandle,
+    state: State<'_, SettingsState>,
+    slug: String,
+    key: String,
+) -> Result<tauri::ipc::Response, String> {
+    if !valid_raster_key(&key) {
+        return Err(format!("invalid raster key \"{key}\""));
+    }
+    let file = project_dir(&app, &state, &slug)?
+        .join("assets")
+        .join(".emoji-cache")
+        .join(format!("{key}.png"));
+    let bytes = std::fs::read(&file).map_err(|e| e.to_string())?;
+    Ok(tauri::ipc::Response::new(bytes))
 }
 
 /// A bundled folder is a TEMPLATE only when it carries a project manifest AND declares itself with a readable `template.json`, so gate fixtures, preview labs and the sample pool can never be created from. Presence plus valid JSON is the whole native contract; the manifest's schema is validated in TS (`engine/templates.ts`).
@@ -1755,28 +1802,11 @@ pub fn create_project(
     stamp_claude_provisioning(&app, &dir)?;
 
     // git init + initial commit gives Claude Code persisted workspace trust and history; best-effort since git may be missing (Xcode CLT prompt on a fresh Mac), in which case the project still works but Claude re-asks for trust each session.
-    let git = |args: &[&str]| {
-        std::process::Command::new("git")
-            .args(args)
-            .current_dir(&dir)
-            .output()
-    };
-    match git(&["init"]) {
-        Ok(out) if out.status.success() => {
-            let _ = git(&["add", "-A"]);
-            // Explicit identity so the commit succeeds without global git config.
-            let _ = git(&[
-                "-c",
-                "user.name=Kookaburra Cut",
-                "-c",
-                "user.email=kookaburra@localhost",
-                "commit",
-                "-m",
-                &format!("chore: create project from template {template_id}"),
-            ]);
-        }
-        Ok(out) => log::warn!("git init failed: {}", String::from_utf8_lossy(&out.stderr)),
-        Err(e) => log::warn!("git unavailable, skipping repo init: {e}"),
+    if let Err(e) = crate::history::init_repo(
+        &dir,
+        &format!("chore: create project from template {template_id}"),
+    ) {
+        log::warn!("[history] skipping repo init: {e}");
     }
 
     let duration_ms = manifest_summary(&dir).map(|(_, d, _)| d).unwrap_or(0);
@@ -1821,12 +1851,42 @@ pub async fn provision_project(
     }
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<SettingsState>();
-        restamping_trust(&app, &state, &slug, || {
+        let stamped = restamping_trust(&app, &state, &slug, || {
             stamp_claude_provisioning(&app, &dir)
-        })
+        });
+        trim_legacy_history(app.clone(), slug, dir);
+        stamped
     })
     .await
     .map_err(|e| e.to_string())?
+}
+
+/// A project created before footage was kept out of git loses it from its history on its own thread: seconds once, never on the load, one `kookaburra://history-trimmed` event and one log line when it ran.
+fn trim_legacy_history(app: AppHandle, slug: String, dir: PathBuf) {
+    std::thread::spawn(move || {
+        if !crate::history::holds_excluded(&dir) {
+            return;
+        }
+        let started = Instant::now();
+        match crate::history::purge_excluded_once(&dir) {
+            None => {}
+            Some(Ok(purged)) => {
+                log::info!(
+                    "[history] {slug}: footage removed from {} commits, {} bytes freed in {:.1} s",
+                    purged.commits_rewritten,
+                    purged.freed_bytes,
+                    started.elapsed().as_secs_f32()
+                );
+                let _ = app.emit(
+                    "kookaburra://history-trimmed",
+                    serde_json::json!({ "slug": slug, "freedBytes": purged.freed_bytes }),
+                );
+            }
+            Some(Err(e)) => {
+                log::warn!("[history] {slug}: footage stays in history for now: {e}")
+            }
+        }
+    });
 }
 
 /// Media the pool seeds; anything else in `_samples` (README, dotfiles) stays put.
@@ -2068,6 +2128,65 @@ pub(crate) fn restamping_trust<T>(
     Ok(out)
 }
 
+/// Whether scene code may be copied out of `id` (`copy_scene_to_project`, whichever window calls it): bundled templates and presets ship with the app; a workspace project, user template or user preset needs a grant matching its content or this session's allow, the same F-001 gate that opening it applies.
+pub(crate) fn require_source_allowed(
+    app: &AppHandle,
+    state: &State<'_, SettingsState>,
+    trust: &TrustState,
+    id: &str,
+) -> Result<(), String> {
+    let (scope, _) = parse_project_id(id)?;
+    if !copy_source_needs_grant(&scope) {
+        return Ok(());
+    }
+    let dir = project_dir(app, state, id)?;
+    let stored = stored_trust_matches(app, state, id, &dir)?;
+    let in_session = trust
+        .session
+        .lock()
+        .map_err(|_| "trust state poisoned")?
+        .contains(id);
+    if stored || in_session {
+        return Ok(());
+    }
+    Err("open that project and allow its scene code before copying from it".into())
+}
+
+fn copy_source_needs_grant(scope: &ProjectScope) -> bool {
+    !matches!(
+        scope,
+        ProjectScope::BundledTemplate | ProjectScope::BundledPreset
+    )
+}
+
+/// Forget every grant for a project, user template or user preset a pack import just wrote. The pack is a publisher's content, whoever that publisher is, so the person meets the Allow sheet again on the next open.
+pub(crate) fn forget_project_trust(
+    app: &AppHandle,
+    state: &State<'_, SettingsState>,
+    trust: &TrustState,
+    id: &str,
+) -> Result<(), String> {
+    parse_project_id(id)?;
+    drop_session_then(&trust.session, id, || {
+        update_settings(app, state, |settings| {
+            settings.trusted_projects.remove(id);
+        })
+    })
+}
+
+/// The session allow goes before the stored grant, so a failed settings write still leaves the next open asking.
+fn drop_session_then(
+    session: &Mutex<HashSet<String>>,
+    id: &str,
+    drop_stored: impl FnOnce() -> Result<(), String>,
+) -> Result<(), String> {
+    session
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .remove(id);
+    drop_stored()
+}
+
 /// One consent the native sheet (or an autorun launch) issued and `trust_project` has not consumed yet.
 struct PendingTrust {
     slug: String,
@@ -2265,7 +2384,7 @@ pub async fn request_project_trust(
     } else {
         let name = consent_project_name(&dir, &slug);
         let body = format!(
-            "Scenes in this project are code. Kookaburra Cut runs them with the app's own access to your Mac, so only allow projects you trust.\n\nFolder: {}\n\nIf the project changes outside the app, you will be asked again.",
+            "Scenes in this project are code. Kookaburra Cut runs them on a sealed stage, apart from the app's own access to your Mac, so only allow projects you trust.\n\nFolder: {}\n\nIf the project changes outside the app, you will be asked again.",
             display_path(&app, &dir)
         );
         let declined = crate::native_alert::ask(
@@ -2346,27 +2465,41 @@ pub(crate) fn require_window(window: &tauri::Window, label: &str) -> Result<(), 
     }
 }
 
-/// A project's manifest text (the frontend parses + validates it); `slug` is a workspace slug or a scoped library id (`project_dir`).
+/// A project's manifest text (the frontend parses + validates it); `slug` is a workspace slug or a scoped library id (`project_dir`). Loading it makes the item's folder the one project the calling window's `asset://` URLs may read, in place of the last.
 #[tauri::command]
 pub fn read_project_manifest(
+    window: tauri::Window,
     app: AppHandle,
     state: State<'_, SettingsState>,
     slug: String,
 ) -> Result<String, String> {
     let (scope, item) = parse_project_id(&slug)?;
-    let text = project_manifest_for_loading(&project_dir(&app, &state, &slug)?, scope)?;
-    let bundled_root = match scope {
-        ProjectScope::BundledTemplate => Some(templates_root(&app)),
-        ProjectScope::BundledPreset => Some(presets_root(&app)),
-        _ => None,
+    let dir = project_dir(&app, &state, &slug)?;
+    let text = project_manifest_for_loading(&dir, scope)?;
+    let readable = match scope {
+        ProjectScope::BundledTemplate => bundled_assets_in_dev(&templates_root(&app), item)?,
+        ProjectScope::BundledPreset => bundled_assets_in_dev(&presets_root(&app), item)?,
+        _ => Some(dir),
     };
-    if let Some(root) = bundled_root {
-        let assets = bundled_project_assets_path(&root, item)?;
-        app.asset_protocol_scope()
-            .allow_directory(assets, true)
-            .map_err(|e| format!("allowing library assets: {e}"))?;
+    match readable {
+        Some(dir) => crate::asset_reach::open_project(&app, window.label(), &dir),
+        None => crate::asset_reach::close_project(&app, window.label()),
     }
     Ok(text)
+}
+
+/// A bundled item's assets are files on disk only in a dev checkout; the packaged app bundles them into the frontend.
+fn bundled_assets_in_dev(root: &Path, item: &str) -> Result<Option<PathBuf>, String> {
+    if !cfg!(debug_assertions) {
+        return Ok(None);
+    }
+    bundled_project_assets_path(root, item).map(Some)
+}
+
+/// The calling window reads no project any more: the main window back on the welcome screen.
+#[tauri::command]
+pub fn release_project(window: tauri::Window, app: AppHandle) {
+    crate::asset_reach::close_project(&app, window.label());
 }
 
 fn bundled_project_assets_path(root: &Path, slug: &str) -> Result<PathBuf, String> {
@@ -2851,27 +2984,29 @@ mod tests {
         let _ = std::fs::remove_dir_all(&base);
     }
 
-    /// Following a link that points at an ancestor never terminates, and a broken one aborts the whole move.
+    /// A link is neither followed (one pointing at an ancestor never terminates) nor recreated (the copy would carry a reach outside the project along): the copy stops and names it.
     #[test]
-    fn copying_recreates_symlinks_instead_of_following_them() {
+    fn copying_refuses_symlinks() {
         let base = scratch_dir();
         let from = base.join("from");
         let to = base.join("to");
         std::fs::create_dir_all(from.join("assets")).unwrap();
         std::fs::write(from.join("assets/real.mp4"), "bytes").unwrap();
-        std::os::unix::fs::symlink(&from, from.join("assets/loop")).unwrap();
-        std::os::unix::fs::symlink(base.join("nothing-here"), from.join("assets/broken")).unwrap();
+        std::os::unix::fs::symlink(base.join("elsewhere"), from.join("assets/out")).unwrap();
 
+        let err = copy_dir_recursive(&from, &to).unwrap_err();
+        assert!(
+            err.contains("assets/out") && err.contains("symbolic link"),
+            "{err}"
+        );
+        assert!(std::fs::symlink_metadata(to.join("assets/out")).is_err());
+
+        std::fs::remove_file(from.join("assets/out")).unwrap();
         copy_dir_recursive(&from, &to).unwrap();
-
         assert_eq!(
             std::fs::read_to_string(to.join("assets/real.mp4")).unwrap(),
             "bytes"
         );
-        for link in ["assets/loop", "assets/broken"] {
-            let meta = std::fs::symlink_metadata(to.join(link)).unwrap();
-            assert!(meta.file_type().is_symlink(), "{link} was followed");
-        }
 
         let _ = std::fs::remove_dir_all(&base);
     }
@@ -3568,6 +3703,29 @@ mod tests {
     }
 
     #[test]
+    fn a_pack_landing_asks_even_when_its_stored_grant_survives() {
+        let dir = Path::new("/Users/x/Kookaburra Cut/demo");
+        let stale = TrustRecord {
+            scenes_fingerprint: "fp-1".to_owned(),
+            path: dir.to_string_lossy().into_owned(),
+            allowed_at_ms: 1,
+        };
+        let shared = Mutex::new(HashSet::from(["demo".to_owned(), "other".to_owned()]));
+        let failed = drop_session_then(&shared, "demo", || Err("disk full".to_owned()));
+        assert_eq!(failed, Err("disk full".to_owned()));
+        let mut session = shared.into_inner().unwrap();
+        assert_eq!(
+            session_trust_decision(Some(&stale), dir, "fp-2", &mut session, "demo"),
+            SessionTrust::Ask
+        );
+        assert_eq!(
+            session_trust_decision(None, dir, "fp-2", &mut session, "demo"),
+            SessionTrust::Ask
+        );
+        assert_eq!(session, ["other".to_owned()].into());
+    }
+
+    #[test]
     fn edits_in_an_allowed_session_re_stamp_and_everything_else_asks() {
         let dir = PathBuf::from("/ws/demo");
         let record = TrustRecord {
@@ -3637,6 +3795,22 @@ mod tests {
         std::fs::write(dir.join("project.json"), b"{}").unwrap();
         assert_eq!(consent_project_name(&dir, "demo"), "demo");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn only_bundled_sources_copy_without_a_grant() {
+        for id in ["template:launch", "preset:stat-hero"] {
+            assert!(
+                !copy_source_needs_grant(&parse_project_id(id).unwrap().0),
+                "{id}"
+            );
+        }
+        for id in ["demo", "ws-template:mine", "ws-preset:mine"] {
+            assert!(
+                copy_source_needs_grant(&parse_project_id(id).unwrap().0),
+                "{id}"
+            );
+        }
     }
 
     #[test]

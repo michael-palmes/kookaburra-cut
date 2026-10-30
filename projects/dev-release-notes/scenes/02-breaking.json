@@ -3,11 +3,12 @@
   "name": "Breaking",
   "text": {
     "title": "Breaking changes",
-    "subtitle": "Read this before you upgrade",
-    "bullets": "createClient needs a region\nCallbacks return a Result"
+    "subtitle": "Two signatures moved",
+    "code": "- send(msg)\n+ send(msg, { region })\n- onDone(value)\n+ onDone(result.value)"
   },
   "textStyle": {
-    "bulletsFont": "JetBrains Mono"
+    "codeFont": "JetBrains Mono",
+    "titleSize": 0.82
   },
   "textAnimation": {
     "in": "fade",
@@ -17,15 +18,18 @@
   },
   "frame": {
     "cutout": {
-      "shape": "none"
+      "shape": "rect",
+      "side": "end",
+      "size": 0.46,
+      "inset": 0.075
     },
+    "background": "#0f141b",
+    "textAlign": "left",
     "chip": {
       "label": "Breaking",
       "icon": "triangle-alert",
       "colour": "#f5a524"
-    },
-    "background": "#0f141b",
-    "textAlign": "center"
+    }
   },
   "backdrop": {
     "type": "none"

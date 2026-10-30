@@ -3,6 +3,7 @@ import { useEffect, useLayoutEffect, useSyncExternalStore } from "react";
 import type { Camera, Scene, WebGLRenderer } from "three";
 import { useClockStore } from "./clock";
 import { sceneHoldsVersion, subscribeSceneHolds } from "./presentHold";
+import { stageOrNull } from "./stageHandle";
 
 /** Imperative handle onto the live r3f canvas, captured for the export loop. */
 export interface CanvasHandle {
@@ -29,8 +30,15 @@ export function isCapturingPreview(): boolean {
 /** WebGL context losses per canvas. WebKit relaunches a stalled GPU process and the restored context renders with every render target emptied (PMREM environments and mirror bakes, cached by content key and never rebuilt), so once a canvas has lost its context nothing it renders can be trusted. */
 const contextLosses = new WeakMap<HTMLCanvasElement, number>();
 
-/** Context losses on the live canvas since it opened; a fresh canvas starts at zero. */
+/** Context losses on the live canvas since it opened; a fresh canvas starts at zero. A window rendering through the stage reads the stage's count. */
 export function canvasContextLosses(): number {
+  const stage = stageOrNull();
+  if (stage) return stage.contextLosses();
+  return localCanvasContextLosses();
+}
+
+/** This realm's own canvas losses (the stage server's and the inline stage's answer). */
+export function localCanvasContextLosses(): number {
   const canvas = canvasHandle.current?.gl.domElement;
   return canvas ? (contextLosses.get(canvas) ?? 0) : 0;
 }
@@ -39,6 +47,8 @@ const lostListeners = new Set<(canvas: HTMLCanvasElement) => void>();
 
 /** Calls `listener` whenever a tracked (live stage) canvas loses its context; the returned function unsubscribes. */
 export function onCanvasContextLost(listener: (canvas: HTMLCanvasElement) => void): () => void {
+  const stage = stageOrNull();
+  if (stage) return stage.subscribeContextLost(() => listener(stage.element));
   lostListeners.add(listener);
   return () => {
     lostListeners.delete(listener);
@@ -59,38 +69,70 @@ export function trackContextLosses(canvas: HTMLCanvasElement): () => void {
 let committedClockMs = Number.NaN;
 
 export function canvasCommittedClockMs(): number {
-  return committedClockMs;
+  return stageOrNull()?.stamps().clockMs ?? committedClockMs;
+}
+
+const commitListeners = new Set<() => void>();
+
+/** Fires after every canvas-tree commit that stamped a value (clock, shutter, holds, project); the stage server posts the stamps to its window from here. */
+export function onCanvasCommit(listener: () => void): () => void {
+  commitListeners.add(listener);
+  return () => {
+    commitListeners.delete(listener);
+  };
+}
+
+function notifyCommit(): void {
+  for (const listener of commitListeners) listener();
 }
 
 /** The shutter sample sequence the canvas tree last committed, stamped in the same flush as every `useTimeline` reader of the sample (the clock stamp's guarantee). */
 let committedShutterSeq = Number.NaN;
 
 export function canvasCommittedShutterSeq(): number {
-  return committedShutterSeq;
+  return stageOrNull()?.stamps().shutterSeq ?? committedShutterSeq;
 }
 
 /** The scene-hold version the canvas tree last committed, stamped in the same reconciler flush as every `useHeldLocalMs` reader (the clock stamp's guarantee), so the stills export can wait for its holds to reach the scenes. */
 let committedHoldsVersion = Number.NaN;
 
 export function canvasCommittedHoldsVersion(): number {
-  return committedHoldsVersion;
+  return stageOrNull()?.stamps().holdsVersion ?? committedHoldsVersion;
 }
 
 /** The loaded project identity the canvas tree last committed (stamped by CompositorDriver's layout effect). A project/theme swap is a concurrent-lane update while the capture paths' clock writes are sync-lane, so the clock stamp can land on the old tree before the swap commits and a capture right after `applyLoadedProject` reads the previous theme's content (the stale scene-1 theme-preview bug); batch/preview capture paths wait for this stamp before seeking. */
 let committedProject: unknown = null;
 
 export function canvasCommittedProject(): unknown {
-  return committedProject;
+  const stage = stageOrNull();
+  return stage ? stage.committedProject() : committedProject;
 }
 
 export function stampCommittedProject(project: unknown): void {
   committedProject = project;
+  notifyCommit();
+}
+
+/** This realm's own stamps (never the stage's): what the stage server posts and the inline stage answers with. */
+export function localCommitStamps(): {
+  clockMs: number;
+  shutterSeq: number;
+  holdsVersion: number;
+  project: unknown;
+} {
+  return {
+    clockMs: committedClockMs,
+    shutterSeq: committedShutterSeq,
+    holdsVersion: committedHoldsVersion,
+    project: committedProject,
+  };
 }
 
 /** Render-window twin of CompositorDriver's commit stamp: mounts inside that window's `<Canvas>` (the same-flush guarantee needs the r3f reconciler) so `awaitProjectCommitted` works without the preview driver. */
 export function ProjectCommitStamp({ project }: { project: unknown }) {
   useLayoutEffect(() => {
     committedProject = project;
+    notifyCommit();
   }, [project]);
   return null;
 }
@@ -114,12 +156,15 @@ export function ExportBridge() {
   // Stamps the committed clock synchronously with this canvas-tree commit: every clock subscriber in the canvas tree re-renders in the same reconciler flush, so once this stamp equals a clock value, every scene primitive has committed for it too.
   useLayoutEffect(() => {
     committedClockMs = currentMs;
+    notifyCommit();
   }, [currentMs]);
   useLayoutEffect(() => {
     committedShutterSeq = shutterSeq;
+    notifyCommit();
   }, [shutterSeq]);
   useLayoutEffect(() => {
     committedHoldsVersion = holdsVersion;
+    notifyCommit();
   }, [holdsVersion]);
   return null;
 }

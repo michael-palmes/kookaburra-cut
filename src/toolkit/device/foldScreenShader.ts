@@ -77,6 +77,8 @@ uniform float uFoldHomeZ;
 uniform vec3 uFoldEye;
 varying vec3 vFoldRootPos;
 
+// The sampler exists only with a map; a display without media compiles without one.
+#ifdef USE_MAP
 // PCG-style integer hash: a pure function of the pixel, never a sine hash, whose bits drift between GPUs.
 float foldHash( uvec2 p ) {
 	uint h = p.x * 374761393u ^ p.y * 668265263u;
@@ -98,7 +100,8 @@ vec4 foldTap( vec2 panel, vec2 dx, vec2 dy ) {
 	vec2 inside = step( vec2( 0.0 ), panel ) * step( panel, vec2( 1.0 ) );
 	vec2 uv = foldTurn( uFoldCrop.xy + clamp( panel, 0.0, 1.0 ) * ( uFoldCrop.zw - uFoldCrop.xy ) );
 	return textureGrad( map, uv, dx, dy ) * ( inside.x * inside.y );
-}`;
+}
+#endif`;
 
 const FRAGMENT = /* glsl */ `#ifdef USE_MAP
 	vec4 sampledDiffuseColor;

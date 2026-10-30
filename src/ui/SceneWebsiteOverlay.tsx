@@ -1,6 +1,7 @@
 import { listen } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import { useCameraEditStore } from "../engine/cameraEditStore";
+import { plainError, useManagedPolicy } from "../engine/managed";
 import { type LoadedProject, projectFolderPath, sceneFileStem } from "../engine/project";
 import type { SceneDoc } from "../engine/sceneDocSchema";
 import { resolveSceneWebsite, sceneWebsiteLayout } from "../engine/sceneWebsite";
@@ -30,6 +31,7 @@ import {
 } from "../engine/sceneWebsiteSession";
 import { useEditorStore } from "../store/editorStore";
 import { useGizmoDocWrite } from "./gizmo/gizmoDocWrite";
+import { LockGlyph } from "./ManagedLock";
 import { useBlockingModalOverlay } from "./modalOverlayPresence";
 
 const OPEN_ICON = (
@@ -64,10 +66,6 @@ const POSTER_ICON = (
     />
   </svg>
 );
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
 
 function rectStyle(rect: { x: number; y: number; width: number; height: number }, aspect: number) {
   return {
@@ -107,6 +105,9 @@ export function SceneWebsiteOverlay({
   const wantsLiveRef = useRef(false);
   const suspendedRef = useRef(suspended);
   const { present: modalBlocked, presentRef: modalBlockedRef } = useBlockingModalOverlay();
+  // Locked until the policy is known: the native command refuses either way, so the panel never offers what it cannot open.
+  const managed = useManagedPolicy();
+  const websitesLocked = managed === null || managed.disableLiveWebsites;
   suspendedRef.current = suspended;
   const blocked = suspended || modalBlocked;
 
@@ -165,7 +166,7 @@ export function SceneWebsiteOverlay({
           await hideView(viewId);
           return;
         }
-        patchSession(key, { state: "failed", active: false, error: errorMessage(error) });
+        patchSession(key, { state: "failed", active: false, error: plainError(error) });
       }
     },
     [bounds, hideView, isSuspended, key, patchSession],
@@ -205,7 +206,7 @@ export function SceneWebsiteOverlay({
         }
       } catch (error) {
         wantsLiveRef.current = false;
-        patchSession(key, { state: "failed", active: false, error: errorMessage(error) });
+        patchSession(key, { state: "failed", active: false, error: plainError(error) });
       }
     },
     [website, projectPath, stem, bounds, patchSession, key, hideView, showReadyView],
@@ -373,7 +374,7 @@ export function SceneWebsiteOverlay({
       }
     } catch (error) {
       wantsLiveRef.current = false;
-      patchSession(key, { state: "failed", active: false, error: errorMessage(error) });
+      patchSession(key, { state: "failed", active: false, error: plainError(error) });
     }
   }, [key, projectPath, website, patchSession, commit, doc, activate]);
 
@@ -395,7 +396,13 @@ export function SceneWebsiteOverlay({
 
   return (
     <div ref={rootRef} className="scene-website-overlay">
-      {!current.active && !current.pendingOrigin && (
+      {!current.active && !current.pendingOrigin && websitesLocked && (
+        <button type="button" className="scene-website-activate locked" style={pageStyle} disabled>
+          <LockGlyph />
+          Live websites are managed by your organisation
+        </button>
+      )}
+      {!current.active && !current.pendingOrigin && !websitesLocked && (
         <button
           type="button"
           className={`scene-website-activate${website.capture?.src ? " quiet" : ""}`}

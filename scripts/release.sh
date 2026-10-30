@@ -1,181 +1,69 @@
 #!/usr/bin/env bash
 #
-# Cuts a release: guards, then sign + notarise + staple, zip, checksum, tag, publish.
+# Cuts a release by tagging it. The signed tag is the whole release trigger: the release
+# workflow builds, signs, notarises, verifies and drafts the GitHub release from it
+# (.github/workflows/release.yml, .agents/skills/kookaburra-release/SKILL.md).
 #
-# Usage: release.sh [--no-github]
-#   --no-github   build, tag locally, and stop; no push, no GitHub release
+# Usage: release.sh            tag v<version> on main (signed) and push the tag
+#        release.sh --adhoc    local rehearsal: build, sign ad hoc, plain DMG, verify; no tag
 #
-# Publishing is also skipped automatically when no git remote is configured.
-# Bump "version" in src-tauri/tauri.conf.json first; an already-tagged version is refused.
-#
-#   KOOKABURRA_SIGNING_IDENTITY   Developer ID Application cert
-#   KOOKABURRA_NOTARY_PROFILE     notarytool keychain profile
-#   TAURI_SIGNING_PRIVATE_KEY / _PATH (+ _PASSWORD)   updater keypair for the .sig/latest.json
+# Bump "version" in src-tauri/tauri.conf.json first and merge it; the tag step refuses unless
+# the checkout is main, equal to origin/main after a fetch, with that version still untagged.
 #
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 cd "$ROOT"
 
-PUBLISH=1
+ADHOC=0
 for arg in "$@"; do
   case "$arg" in
-    --no-github) PUBLISH=0 ;;
-    --help | -h) sed -n '2,13p' "${BASH_SOURCE[0]}"; exit 0 ;;
+    --adhoc) ADHOC=1 ;;
+    --help | -h) sed -n '2,12p' "${BASH_SOURCE[0]}"; exit 0 ;;
     *) echo "ERROR: unknown argument '$arg'" >&2; exit 2 ;;
   esac
 done
 
 VERSION=$(node -p "require('./src-tauri/tauri.conf.json').version")
 MIN_OS=$(node -p "require('./src-tauri/tauri.conf.json').bundle.macOS.minimumSystemVersion")
-APP_NAME="Kookaburra Cut"
 TAG="v${VERSION}"
-APP_BUNDLE="$ROOT/release/$APP_NAME.app"
-APP_DMG="$ROOT/release/KookaburraCut-${VERSION}.dmg"
-APP_ZIP="$ROOT/release/KookaburraCut-${VERSION}.zip"
-APP_ZIP_SHA="$ROOT/release/KookaburraCut-${VERSION}.zip.sha256"
-UPDATER_TAR="$ROOT/release/KookaburraCut-${VERSION}-updater.app.tar.gz"
-LATEST_JSON="$ROOT/release/latest.json"
-# Must match plugins.updater.endpoints in src-tauri/tauri.conf.json.
-REPO_SLUG="michael-palmes/kookaburra-cut"
+SIGNERS="$ROOT/.github/allowed_signers"
 
-if [[ -n "$(git status --porcelain)" ]]; then
-  echo "ERROR: working tree is dirty; commit or stash before releasing." >&2
-  exit 1
-fi
-if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
-  echo "ERROR: tag $TAG already exists; bump \"version\" in src-tauri/tauri.conf.json." >&2
-  exit 1
-fi
-
-# Licensed device models resolve through import.meta.glob at BUILD time, so a missing glb
-# silently HIDES that device in the shipped app instead of failing anywhere; 0.15.0 shipped
-# without the iPad for exactly this reason.
-echo "==> Checking licensed device models"
-MISSING_MODELS=""
-while IFS='|' read -r MODEL_CONST MODEL_GLB; do
-  [[ -n "$MODEL_GLB" ]] || continue
-  if [[ ! -f "$ROOT/src/assets/models/licensed/$MODEL_GLB" ]]; then
-    MISSING_MODELS="$MISSING_MODELS
-  $MODEL_CONST -> $MODEL_GLB"
-  fi
-done < <(sed -nE 's/^const ([A-Z0-9_]+)_GLB = "([^"]+\.glb)".*/\1|\2/p' "$ROOT/src/toolkit/device/modelUrl.ts")
-if [[ -n "$MISSING_MODELS" ]]; then
-  echo "ERROR: licensed device models missing from src/assets/models/licensed/:$MISSING_MODELS" >&2
-  echo "Those devices would be HIDDEN in the shipped app. Regenerate them first:" >&2
-  echo "  KOOKABURRA_ASSETS_DIR=<private assets folder> pnpm assets:devices" >&2
-  exit 1
-fi
-
-# The beat-this model is a gitignored bundle resource: a CI stub or a stale download would
-# ship with every song silently on the DSP fallback.
-echo "==> Checking the beat-this model"
-if ! bash "$ROOT/scripts/setup-models.sh" --check; then
-  echo "ERROR: the beat-this model is missing or not the pinned build; run pnpm setup:models." >&2
-  exit 1
-fi
+die() { echo "ERROR: $*" >&2; exit 1; }
 
 # The README and every release body state the floor the bundle enforces; 0.15 and 0.16 advertised
 # "macOS 13+" for a binary that refuses to launch below 26.
-if ! grep -q "macOS ${MIN_OS}+" "$ROOT/README.md"; then
-  echo "ERROR: README.md does not state the macOS ${MIN_OS}+ floor set in src-tauri/tauri.conf.json." >&2
-  exit 1
-fi
+grep -q "macOS ${MIN_OS}+" "$ROOT/README.md" || die "README.md does not state the macOS ${MIN_OS}+ floor set in src-tauri/tauri.conf.json."
 
-if [[ "$PUBLISH" == "1" ]] && ! git remote | grep -q .; then
-  echo "No git remote configured; building and tagging locally only."
-  PUBLISH=0
-fi
-# Fail on a missing gh now, not after a ten-minute notarisation run.
-if [[ "$PUBLISH" == "1" ]]; then
-  command -v gh >/dev/null || { echo "ERROR: gh CLI not installed." >&2; exit 1; }
-  gh auth status >/dev/null 2>&1 || { echo "ERROR: gh is not authenticated (gh auth login)." >&2; exit 1; }
-fi
-
-echo "==> Typecheck, tests and lint (release guards)"
-pnpm build
-pnpm test
-pnpm lint
-
-"$ROOT/scripts/sign-and-notarize.sh"
-[[ -f "$APP_DMG" ]] || { echo "ERROR: expected DMG missing at $APP_DMG" >&2; exit 1; }
-bash "$ROOT/scripts/setup-models.sh" --check "$APP_BUNDLE/Contents/Resources/models" >/dev/null || {
-  echo "ERROR: the signed bundle's beat-this model does not match the pins." >&2
-  exit 1
-}
-
-echo "==> Zipping artefacts"
-rm -f "$APP_ZIP" "$APP_ZIP_SHA"
-/usr/bin/ditto --norsrc -c -k --keepParent "$APP_BUNDLE" "$APP_ZIP"
-# cd so the checksum records a bare filename and verifies wherever it is downloaded.
-(cd "$ROOT/release" && /usr/bin/shasum -a 256 "$(basename "$APP_ZIP")" > "$(basename "$APP_ZIP_SHA")")
-
-# The updater manifest the app polls at releases/latest/download/latest.json; it points
-# at this tag's versioned asset URL, so an already-downloaded manifest stays coherent
-# even after a newer release supersedes it.
-echo "==> Writing the updater manifest"
-[[ -f "$UPDATER_TAR" && -f "$UPDATER_TAR.sig" ]] || {
-  echo "ERROR: updater archive or signature missing; sign-and-notarize.sh should have built both." >&2
-  exit 1
-}
-PUB_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-SIG=$(cat "$UPDATER_TAR.sig")
-cat > "$LATEST_JSON" <<EOF
-{
-  "version": "${VERSION}",
-  "notes": "See the GitHub release notes.",
-  "pub_date": "${PUB_DATE}",
-  "platforms": {
-    "darwin-aarch64": {
-      "signature": "${SIG}",
-      "url": "https://github.com/${REPO_SLUG}/releases/download/${TAG}/$(basename "$UPDATER_TAR")"
-    }
-  }
-}
-EOF
-
-NOTES_FILE=$(mktemp "${TMPDIR:-/tmp}/kookaburra-release-notes.XXXXXX")
-trap 'rm -f "$NOTES_FILE"' EXIT
-PREV_TAG=$(git describe --tags --abbrev=0 2>/dev/null || true)
-{
-  echo "## Kookaburra Cut ${VERSION}"
-  echo ""
-  echo "Apple Silicon (arm64), macOS ${MIN_OS}+. Developer ID signed and notarised."
-  echo ""
-  if [[ -n "$PREV_TAG" ]]; then
-    echo "Changes since ${PREV_TAG}:"
-    git log --pretty='- %s' "${PREV_TAG}..HEAD"
-  else
-    echo "Changes:"
-    git log --pretty='- %s' --max-count=30
-  fi
-  echo ""
-  # GPL compliance for the bundled libx264 ffmpeg sidecar.
-  echo "The bundled ffmpeg sidecar is a GPL build (libx264). Its exact build recipe is"
-  echo "\`scripts/build-ffmpeg-sidecar.sh\`; ffmpeg's source is available from ffmpeg.org."
-} > "$NOTES_FILE"
-
-echo "==> Tagging $TAG"
-git tag -a "$TAG" -m "Kookaburra Cut ${VERSION}"
-
-if [[ "$PUBLISH" != "1" ]]; then
-  echo
-  echo "Skipping push and GitHub release. Artefacts:"
-  echo "  $APP_DMG"
-  echo "  $APP_ZIP"
-  echo "  $APP_ZIP_SHA"
-  echo "  $UPDATER_TAR (+ .sig)"
-  echo "  $LATEST_JSON"
-  echo "Local tag $TAG created; push it when you are ready."
+if [[ "$ADHOC" == 1 ]]; then
+  echo "==> Rehearsal: the release workflow's steps, on this Mac, ad hoc"
+  bash "$ROOT/scripts/check-licensed-models.sh"
+  bash "$ROOT/scripts/setup-models.sh" --check
+  bash "$ROOT/scripts/sign-and-notarize.sh" --adhoc --plain-dmg
+  bash "$ROOT/scripts/setup-models.sh" --check "$ROOT/release/Kookaburra Cut.app/Contents/Resources/models" >/dev/null \
+    || die "the bundle's beat-this model does not match the pins."
+  bash "$ROOT/scripts/verify-release.sh" --adhoc
+  echo "Rehearsal complete. Nothing was tagged; artefacts are in release/."
   exit 0
 fi
 
-git push origin "$TAG"
+[[ -z "$(git status --porcelain)" ]] || die "working tree is dirty; commit first."
+[[ "$(git branch --show-current)" == "main" ]] || die "release from main, not '$(git branch --show-current)'."
+git fetch --quiet origin main "+refs/tags/*:refs/tags/*"
+[[ "$(git rev-parse HEAD)" == "$(git rev-parse origin/main)" ]] || die "main is not equal to origin/main; pull or push first."
+! git rev-parse -q --verify "refs/tags/$TAG" >/dev/null || die "tag $TAG already exists; bump \"version\" in src-tauri/tauri.conf.json."
+[[ -n "$(git config user.signingkey)" ]] || die "no user.signingkey configured; the tag must be signed by a key in .github/allowed_signers."
+[[ "$(git config gpg.format)" == "ssh" ]] || die "set gpg.format to ssh (the keys in .github/allowed_signers are SSH keys)."
 
-echo "==> Creating draft GitHub release $TAG"
-gh release create "$TAG" "$APP_DMG" "$APP_ZIP" "$APP_ZIP_SHA" "$UPDATER_TAR" "$LATEST_JSON" \
-  --draft \
-  --title "Kookaburra Cut ${VERSION}" \
-  --notes-file "$NOTES_FILE"
+echo "==> Tagging $TAG (signed)"
+git tag -s "$TAG" -m "Kookaburra Cut ${VERSION}"
+# The workflow verifies the tag against main's allowed_signers; prove it here before pushing.
+git -c gpg.ssh.allowedSignersFile="$SIGNERS" -c gpg.minTrustLevel=fully verify-tag "$TAG" \
+  || { git tag -d "$TAG" >/dev/null; die "the tag's signature is not from a key in $SIGNERS (tag removed)."; }
 
-echo "Done: draft release $TAG created. Review and publish on GitHub."
+echo "==> Pushing $TAG"
+git push origin "refs/tags/$TAG"
+echo
+echo "Pushed $TAG. The release workflow builds and signs it (about an hour, with one approval in"
+echo "the release environment), then drafts the GitHub release for you to publish:"
+echo "  https://github.com/$(git remote get-url origin | sed -E 's#.*github.com[:/]##; s#\.git$##')/actions/workflows/release.yml"

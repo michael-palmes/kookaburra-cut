@@ -3,6 +3,8 @@ import { type DeckEvent, type DeckState, initialDeckState, stepDeck } from "./pr
 
 /** Present-session state shared between the app shell, scene hosts and the driver. The clock stays monotonic for the whole session; each scene's local time is steered by its anchor (the clock value at which that scene's local 0 sits), so backgrounds never see time jump. */
 interface PresentStore {
+  /** The session's mode, set once from the present target; the stage's tree reads it. */
+  mode: "slideshow" | "video";
   deck: DeckState;
   sceneCount: number;
   /** Clock ms at which each mounted scene's local time is 0; unset falls back to the authored slot start. */
@@ -17,6 +19,7 @@ interface PresentStore {
   terminalFocused: boolean;
   /** True while a live Website child view owns input. */
   websiteFocused: boolean;
+  setMode: (mode: "slideshow" | "video") => void;
   setSceneCount: (n: number) => void;
   dispatch: (e: DeckEvent) => void;
   setAnchor: (sceneIndex: number, clockMs: number) => void;
@@ -29,6 +32,7 @@ interface PresentStore {
 }
 
 export const usePresentStore = create<PresentStore>((set, get) => ({
+  mode: "slideshow",
   deck: initialDeckState(),
   sceneCount: 0,
   anchors: {},
@@ -37,6 +41,7 @@ export const usePresentStore = create<PresentStore>((set, get) => ({
   scenesCommitted: false,
   terminalFocused: false,
   websiteFocused: false,
+  setMode: (mode) => set({ mode }),
   setSceneCount: (n) => set({ sceneCount: n }),
   dispatch: (e) => set({ deck: stepDeck(get().deck, e, get().sceneCount) }),
   setAnchor: (sceneIndex, clockMs) =>

@@ -15,7 +15,7 @@ import time
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from . import bridge, identity
+from . import bridge, identity, queue
 from .catalog import load_catalog
 from .film import flashes as fl
 from .film import report as rp
@@ -66,7 +66,7 @@ APP_CODES: Dict[str, Tuple[int, str]] = {
     "cancelled": (EXIT_PROBLEMS, "cancelled"),
     "gpuStalled": (EXIT_TRANSIENT, "gpu-stalled"),
     "gpuWedged": (EXIT_ENV, "gpu-wedged"),
-    "interrupted": (EXIT_TRANSIENT, "transient"),
+    "interrupted": (EXIT_ENV, "app-reloaded"),
     "acceptTimeout": (EXIT_TRANSIENT, "bridge-timeout"),
     "verifyMismatch": (EXIT_PROBLEMS, "verify-mismatch"),
     "failed": (EXIT_PROBLEMS, "failed"),
@@ -112,6 +112,32 @@ def source_hashes(project: Project) -> Dict[str, str]:
         except OSError:
             continue
     return out
+
+
+def music_file(project: Project) -> Optional[Path]:
+    audio = project.manifest(reload=True).get("audio")
+    rel = audio.get("file") if isinstance(audio, dict) else None
+    return project.root / rel if isinstance(rel, str) and rel else None
+
+
+def source_state(project: Project, sources: Optional[Dict[str, str]] = None) -> Dict[str, str]:
+    """The sources plus the music, as kb read them; compared again once the film is done."""
+    state = dict(sources) if sources is not None else source_hashes(project)
+    music = music_file(project)
+    if music is not None and music.is_file():
+        state[music.relative_to(project.root).as_posix()] = file_hash(music)
+    return state
+
+
+def changed_since(before: Dict[str, str], after: Dict[str, str]) -> List[str]:
+    return sorted(f for f in set(before) | set(after) if before.get(f) != after.get(f))
+
+
+def renders_from(sources: Dict[str, str], music: Optional[str]) -> str:
+    scenes = sum(1 for f in sources if f.startswith("scenes/"))
+    what = f"project.json and {scenes} scene file{'s' if scenes != 1 else ''}" + (f", music {music}" if music else "")
+    return (f"renders the project as the editor loads it now ({what}); editing is safe, "
+            "edits saved during the export land in the next one, not this film")
 
 
 def file_hash(path: Path) -> str:
@@ -422,11 +448,25 @@ def finish_success(kbctx: Any, project: Project, result: Dict[str, Any], allow_f
     return EXIT_OK
 
 
+def reload_warning(inst: bridge.Instance) -> Optional[str]:
+    editor = queue.health_of(inst.hb).get("editor")
+    if not isinstance(editor, dict) or not editor.get("restartRecommended"):
+        return None
+    return ("the editor has reloaded since Kookaburra Cut opened, and a reloaded editor slows down and fails long exports; "
+            "if this one fails, ask the user to quit and reopen Kookaburra Cut")
+
+
 def bridge_export(kbctx: Any, a: argparse.Namespace, reporter: Reporter) -> int:
     project: Project = kbctx.project
     inst = bridge._require_instance("export", "kb export", project)
     client = identity.current().name
     payload = bridge.address(dict(request_body(project, a), kind="export"), inst, project, client)
+    before = source_state(project, payload["sources"])
+    music = music_file(project)
+    reporter.note(renders_from(payload["sources"], music.relative_to(project.root).as_posix() if music else None))
+    warning = reload_warning(inst)
+    if warning:
+        reporter.note(f"warning: {warning}")
     resp = wait_for_export(inst, project, payload, float(a.timeout), reporter, client)
     if not resp.get("ok"):
         data = {k: resp[k] for k in ("path", "sha256", "verify", "by") if k in resp}
@@ -434,6 +474,11 @@ def bridge_export(kbctx: Any, a: argparse.Namespace, reporter: Reporter) -> int:
     for key in ("path", "sha256"):
         if not isinstance(resp.get(key), str):
             raise KbError(f"the app's export answer has no {key}", EXIT_PROBLEMS)
+    stale = changed_since(before, source_state(project))
+    if stale:
+        resp["staleSources"] = stale
+        resp["warnings"] = list(resp.get("warnings") or []) + [
+            f"{', '.join(stale)} changed during the export, so this film shows the version from before; rerun kb export to include it"]
     return finish_success(kbctx, project, resp, a.allow_flashes, "editor")
 
 

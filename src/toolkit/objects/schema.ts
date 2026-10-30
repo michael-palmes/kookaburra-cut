@@ -30,6 +30,17 @@ function isStr(v: unknown): v is string {
   return typeof v === "string" && v.length > 0;
 }
 
+/** A `glb` or `thumbnail` path stays beside the manifest: relative, at most one folder deep, no `..`, no dot folder, no backslash or control character (objects.rs mirrors this; a bundled glb key is a bare file name and passes too). */
+export function isObjectRel(v: unknown): v is string {
+  if (!isStr(v) || v.length > 256) return false;
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: control characters are exactly what is refused
+  if (/[\u0000-\u001f\u007f\\]/.test(v)) return false;
+  if (v.startsWith("/") || v.startsWith("~") || v[1] === ":") return false;
+  const parts = v.split("/");
+  if (parts.length > 2) return false;
+  return parts.every((p) => p.length > 0 && !p.startsWith("."));
+}
+
 /** Validates a raw manifest, returning `undefined` (with a console warning) rather than throwing; unknown extra fields are dropped, structurally wrong optional fields are dropped, wrong required fields reject the whole doc. */
 export function parseObjectManifest(raw: unknown, source: string): ObjectManifest | undefined {
   if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
@@ -49,8 +60,16 @@ export function parseObjectManifest(raw: unknown, source: string): ObjectManifes
     console.warn(`[objects] ${source}: needs string "id", "name" and "glb" — ignored`);
     return undefined;
   }
+  if (!isObjectRel(doc.glb)) {
+    console.warn(`[objects] ${source}: "glb" must be a file beside the manifest, ignored`);
+    return undefined;
+  }
   const out: ObjectManifest = { version: doc.version, id: doc.id, name: doc.name, glb: doc.glb };
-  if (isStr(doc.thumbnail)) out.thumbnail = doc.thumbnail;
+  if (isStr(doc.thumbnail)) {
+    if (isObjectRel(doc.thumbnail)) out.thumbnail = doc.thumbnail;
+    else
+      console.warn(`[objects] ${source}: "thumbnail" must be a file beside the manifest, dropped`);
+  }
   if (typeof doc.fitHeight === "number" && doc.fitHeight > 0) out.fitHeight = doc.fitHeight;
   if (typeof doc.licence === "object" && doc.licence !== null && !Array.isArray(doc.licence)) {
     const licence = doc.licence as Record<string, unknown>;

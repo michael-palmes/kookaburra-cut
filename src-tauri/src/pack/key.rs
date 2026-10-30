@@ -1,4 +1,7 @@
-//! The install's Ed25519 pack-signing identity: 32 raw private-key bytes at `$APPDATA/pack-key/ed25519.key`, mode 0600, written the first time something signs and never at boot.
+//! The install's Ed25519 pack-signing identity: 32 raw private-key bytes, created the first time something signs and
+//! never at boot. Its home is the login Keychain (a generic password that is never synchronised); the 0600 file at
+//! `$APPDATA/pack-key/ed25519.key` is the fallback where the Keychain cannot answer (a background autorun, no login
+//! keychain), and a file from an earlier build is moved into the Keychain once and deleted.
 //!
 //! A signature is always over the exact stored `manifest.json` bytes, never over a re-serialisation, so a reader can
 //! verify what it actually read.
@@ -14,6 +17,8 @@ use tauri::{AppHandle, Manager};
 
 const KEY_DIR: &str = "pack-key";
 const KEY_FILE: &str = "ed25519.key";
+/// The Keychain item's service; the account is the running bundle's identifier, so an acceptance build keeps its own key.
+const KEYCHAIN_SERVICE: &str = "Kookaburra Cut pack signing key";
 /// Wire prefix on every published key, so a future algorithm change is a parse failure rather than a silent mismatch.
 const PUBLIC_KEY_PREFIX: &str = "ed25519:";
 
@@ -27,6 +32,14 @@ pub struct PackIdentity {
     pub public_key: String,
 }
 
+/// Where the private half is kept, for the Settings pane.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum KeyStorage {
+    Keychain,
+    File,
+}
+
 /// Group the id in fours so someone can read it down a phone: `a1b2 c3d4 e5f6 0718`.
 pub fn format_key_id(key_id: &str) -> String {
     key_id
@@ -35,6 +48,11 @@ pub fn format_key_id(key_id: &str) -> String {
         .map(|c| String::from_utf8_lossy(c).into_owned())
         .collect::<Vec<_>>()
         .join(" ")
+}
+
+/// The id a published key really has, recomputed from the key itself rather than read from the manifest.
+pub fn key_id_of(public_key: &str) -> Option<String> {
+    parse_public_key(public_key).map(|key| key_id_for(&key.to_bytes()))
 }
 
 fn key_id_for(raw_pubkey: &[u8]) -> String {
@@ -69,22 +87,136 @@ pub fn key_path(app: &AppHandle) -> Result<PathBuf, PackError> {
 
 /// The identity, creating the key if this install has never signed anything.
 pub fn ensure_identity(app: &AppHandle) -> Result<PackIdentity, PackError> {
-    ensure_identity_at(&key_path(app)?)
+    Ok(identity_of(&load_or_create_key(app)?.0))
 }
 
 /// The identity if one exists, without creating it. Settings reads through here: opening a window is not signing.
-pub fn existing_identity(app: &AppHandle) -> Result<Option<PackIdentity>, PackError> {
-    existing_identity_at(&key_path(app)?)
+pub fn existing_identity(app: &AppHandle) -> Result<Option<(PackIdentity, KeyStorage)>, PackError> {
+    Ok(load_key(app)?.map(|(key, storage)| (identity_of(&key), storage)))
 }
 
 /// Sign the exact bytes that will be stored as `manifest.json`.
 pub fn sign_manifest(app: &AppHandle, bytes: &[u8]) -> Result<Vec<u8>, PackError> {
-    sign_at(&key_path(app)?, bytes)
+    let (key, _) = load_or_create_key(app)?;
+    Ok(key.sign(bytes).to_bytes().to_vec())
 }
 
 /// Replace the key. Recipients who trusted the old one will be asked again, which is the point.
 pub fn rotate_identity(app: &AppHandle) -> Result<PackIdentity, PackError> {
-    rotate_at(&key_path(app)?)
+    let key = generate_key()?;
+    store_key(app, &key)?;
+    Ok(identity_of(&key))
+}
+
+// ── Where the key lives ──
+
+/// The Keychain answers for an interactive app. A background autorun never asks it (a prompt there would hang a gate), and `KOOKABURRA_PACK_KEY_FILE=1` keeps a dev session on the file.
+fn keychain_allowed() -> bool {
+    !crate::is_autorun() && std::env::var_os("KOOKABURRA_PACK_KEY_FILE").is_none()
+}
+
+fn keychain_account() -> String {
+    crate::tools::bundle_identifier().to_owned()
+}
+
+enum KeychainMiss {
+    /// No item under our service and account.
+    Absent,
+    /// The person declined macOS's prompt, so signing cannot go on; a second key on disk would only confuse recipients.
+    Denied,
+    /// No usable login keychain here; the file carries on.
+    Unavailable(String),
+}
+
+/// Security.framework's OSStatus codes for the three outcomes that matter here.
+const ERR_SEC_ITEM_NOT_FOUND: i32 = -25300;
+const ERR_SEC_AUTH_FAILED: i32 = -25293;
+const ERR_SEC_USER_CANCELED: i32 = -128;
+
+fn keychain_miss(e: security_framework::base::Error) -> KeychainMiss {
+    match e.code() {
+        ERR_SEC_ITEM_NOT_FOUND => KeychainMiss::Absent,
+        ERR_SEC_USER_CANCELED | ERR_SEC_AUTH_FAILED => KeychainMiss::Denied,
+        _ => KeychainMiss::Unavailable(e.to_string()),
+    }
+}
+
+fn keychain_get() -> Result<SigningKey, KeychainMiss> {
+    let raw = security_framework::passwords::get_generic_password(
+        KEYCHAIN_SERVICE,
+        &keychain_account(),
+    )
+    .map_err(keychain_miss)?;
+    let raw: [u8; 32] = raw
+        .as_slice()
+        .try_into()
+        .map_err(|_| KeychainMiss::Unavailable("the Keychain item is not a 32-byte key".into()))?;
+    Ok(SigningKey::from_bytes(&raw))
+}
+
+fn keychain_set(key: &SigningKey) -> Result<(), KeychainMiss> {
+    security_framework::passwords::set_generic_password(
+        KEYCHAIN_SERVICE,
+        &keychain_account(),
+        &key.to_bytes(),
+    )
+    .map_err(keychain_miss)
+}
+
+/// The key this install signs with, if it has one: the Keychain first, then a file from an earlier build (moved into the Keychain on the way and deleted), then the file where the Keychain cannot answer.
+fn load_key(app: &AppHandle) -> Result<Option<(SigningKey, KeyStorage)>, PackError> {
+    let path = key_path(app)?;
+    if keychain_allowed() {
+        match keychain_get() {
+            Ok(key) => return Ok(Some((key, KeyStorage::Keychain))),
+            Err(KeychainMiss::Denied) => return Err(PackError::KeyDenied),
+            Err(KeychainMiss::Absent) => {
+                if !path.exists() {
+                    return Ok(None);
+                }
+                let key = read_key(&path)?;
+                return Ok(Some(match keychain_set(&key) {
+                    Ok(()) => {
+                        let _ = std::fs::remove_file(&path);
+                        log::info!("[pack] moved the signing key into the login Keychain");
+                        (key, KeyStorage::Keychain)
+                    }
+                    Err(KeychainMiss::Denied) => return Err(PackError::KeyDenied),
+                    Err(_) => (key, KeyStorage::File),
+                }));
+            }
+            Err(KeychainMiss::Unavailable(why)) => {
+                log::warn!("[pack] the Keychain is unavailable ({why}); using the key file");
+            }
+        }
+    }
+    Ok(existing_key_at(&path)?.map(|key| (key, KeyStorage::File)))
+}
+
+fn load_or_create_key(app: &AppHandle) -> Result<(SigningKey, KeyStorage), PackError> {
+    if let Some(found) = load_key(app)? {
+        return Ok(found);
+    }
+    let key = generate_key()?;
+    let storage = store_key(app, &key)?;
+    Ok((key, storage))
+}
+
+/// Keep a new key: in the Keychain when it answers, else the 0600 file. A file left from before is removed once the Keychain holds the key.
+fn store_key(app: &AppHandle, key: &SigningKey) -> Result<KeyStorage, PackError> {
+    let path = key_path(app)?;
+    if keychain_allowed() {
+        match keychain_set(key) {
+            Ok(()) => {
+                let _ = std::fs::remove_file(&path);
+                return Ok(KeyStorage::Keychain);
+            }
+            Err(KeychainMiss::Denied) => return Err(PackError::KeyDenied),
+            Err(_) => {}
+        }
+    }
+    write_key(&path, key)?;
+    Ok(KeyStorage::File)
 }
 
 /// True only if `sig` is this key's signature over exactly `bytes`.
@@ -100,30 +232,39 @@ pub fn verify_manifest(public_key: &str, bytes: &[u8], sig: &[u8]) -> bool {
         .is_ok()
 }
 
-// ── Path-level core (the AppHandle wrappers above are the only callers in the app) ──
+// ── Path-level core: the file store, exercised directly by the tests ──
 
+#[cfg(test)]
 pub fn ensure_identity_at(path: &Path) -> Result<PackIdentity, PackError> {
     Ok(identity_of(&load_or_create(path)?))
 }
 
+#[cfg(test)]
 pub fn existing_identity_at(path: &Path) -> Result<Option<PackIdentity>, PackError> {
+    Ok(existing_key_at(path)?.map(|key| identity_of(&key)))
+}
+
+fn existing_key_at(path: &Path) -> Result<Option<SigningKey>, PackError> {
     if !path.exists() {
         return Ok(None);
     }
-    Ok(Some(identity_of(&read_key(path)?)))
+    Ok(Some(read_key(path)?))
 }
 
+#[cfg(test)]
 pub fn sign_at(path: &Path, bytes: &[u8]) -> Result<Vec<u8>, PackError> {
     let key = load_or_create(path)?;
     Ok(key.sign(bytes).to_bytes().to_vec())
 }
 
+#[cfg(test)]
 pub fn rotate_at(path: &Path) -> Result<PackIdentity, PackError> {
     let key = generate_key()?;
     write_key(path, &key)?;
     Ok(identity_of(&key))
 }
 
+#[cfg(test)]
 fn load_or_create(path: &Path) -> Result<SigningKey, PackError> {
     if path.exists() {
         return read_key(path);
@@ -253,6 +394,15 @@ mod tests {
         let path = scratch_key();
         assert_eq!(existing_identity_at(&path).unwrap(), None);
         assert!(!path.exists());
+    }
+
+    #[test]
+    fn key_id_of_recomputes_the_id_from_the_public_key_alone() {
+        let identity = ensure_identity_at(&scratch_key()).unwrap();
+        assert_eq!(key_id_of(&identity.public_key).as_deref(), Some(identity.key_id.as_str()));
+        assert_eq!(key_id_of("ed25519:not-base64!"), None);
+        assert_eq!(key_id_of("rsa:AAAA"), None);
+        assert_eq!(key_id_of(""), None);
     }
 
     #[test]

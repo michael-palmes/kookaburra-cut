@@ -1,21 +1,18 @@
 import { useEffect, useState } from "react";
 import { readPackSceneSource } from "../../engine/packs";
-import type { PackManifest } from "../types";
+import { KIND_LABELS, type SceneSource } from "../types";
 
-/** Read-only source disclosure. No syntax highlighting library, no execution, no dangerouslySetInnerHTML. */
+/** Read-only source disclosure over the scene code the reader found in the signed file list, never the manifest's own description of itself. No syntax highlighting library, no execution, no dangerouslySetInnerHTML. */
 export function CodeView({
   path,
-  manifest,
+  sources,
   onBack,
 }: {
   path: string;
-  manifest: PackManifest;
+  sources: SceneSource[];
   onBack: () => void;
 }) {
-  const files = manifest.contents.projects.flatMap((p) =>
-    p.sceneFiles.map((file) => ({ project: p.slug, projectName: p.name, file })),
-  );
-  const [selected, setSelected] = useState(files[0] ?? null);
+  const [selected, setSelected] = useState(sources[0] ?? null);
   const [source, setSource] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
 
@@ -23,25 +20,28 @@ export function CodeView({
     if (!selected) return;
     setSource("");
     setError(null);
-    readPackSceneSource(path, selected.project, selected.file)
+    readPackSceneSource(path, selected)
       .then(setSource)
       .catch((e) => setError(String(e)));
   }, [path, selected]);
 
+  const isSelected = (s: SceneSource) =>
+    selected?.kind === s.kind && selected.slug === s.slug && selected.file === s.file;
+
   return (
     <div className="packs-body">
       <div className="packs-rail" role="tablist" aria-label="Scene files">
-        {files.map((f) => (
+        {sources.map((s) => (
           <button
-            key={`${f.project}/${f.file}`}
+            key={`${s.kind}:${s.slug}/${s.file}`}
             type="button"
             className="packs-rail-item"
             role="tab"
-            aria-selected={selected?.project === f.project && selected?.file === f.file}
-            onClick={() => setSelected(f)}
+            aria-selected={isSelected(s)}
+            onClick={() => setSelected(s)}
           >
             <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>
-              {f.projectName}/{f.file}
+              {s.kind === "project" ? s.name : `${s.name} (${KIND_LABELS[s.kind].one})`}/{s.file}
             </span>
           </button>
         ))}

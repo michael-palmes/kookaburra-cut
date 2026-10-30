@@ -15,7 +15,7 @@ from .project import MANIFEST, Project
 from .util import EXIT_ENV, EXIT_PROBLEMS, EXIT_TRANSIENT, KbError, ago, now_ms, trash_dir
 
 TRACKED = ["project.json", "scenes", "edits", "flashes.accepted.json"]
-EXCLUDES = ["edits/*.json.tmp", "edits/.*.tmp", "edits/.renders/", "assets/.kc-render/", ".kb/", "/kb"]
+EXCLUDES = ["/assets/", "/exports/", "edits/*.json.tmp", "edits/.*.tmp", "edits/.renders/", ".kb/", "/kb"]
 FALLBACK_IDENTITY = ["-c", "user.name=Kookaburra Cut", "-c", "user.email=kookaburra@localhost"]
 INDEX_LOCK_BACKOFF_MS = (50, 100, 200, 400, 800, 1600)
 STALE_LOCK_S = 60
@@ -119,7 +119,7 @@ def ensure_repo(project: Project) -> None:
 
 
 def ensure_excludes(project: Project) -> None:
-    """Edit temp files, render records and render staging never enter a checkpoint (renders are not versioned)."""
+    """Footage, renders, edit temp files and render records never enter a checkpoint (the app writes the same lines at `git init`)."""
     path = project.root / ".git" / "info" / "exclude"
     if not (project.root / ".git").is_dir():
         return

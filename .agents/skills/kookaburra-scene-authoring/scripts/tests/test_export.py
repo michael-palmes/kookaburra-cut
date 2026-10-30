@@ -98,10 +98,38 @@ class ExportViaBridgeTests(KbTestCase):
         self.assertExit(proc, 0)
         lines = [json.loads(line) for line in proc.stdout.splitlines()]
         self.assertTrue(all(len(line.splitlines()) == 1 for line in proc.stdout.splitlines()))
-        self.assertEqual(lines[0]["event"], "progress")
+        self.assertEqual([line["event"] for line in lines[:2]], ["note", "progress"])
         final = lines[-1]
         self.assertEqual((final["ok"], final["command"], final["file"], final["sha256"]), (True, "export", "exports/demo-16x9.mp4", SHA))
         self.assertTrue(final["record"].endswith(f"{SHA[:16]}.json"))
+
+    def test_it_says_what_it_renders_from_and_flags_files_edited_during_it(self) -> None:
+        def handler(r: Dict[str, Any]) -> Dict[str, Any]:
+            write(self.root / "scenes" / "02-hero.json", '{"text": {"title": "Edited"}}\n')
+            return self.success(r)
+
+        with self.app(handler):
+            proc = self.kb(["export", "--json"], cwd=self.root)
+        self.assertExit(proc, 0)
+        lines = [json.loads(line) for line in proc.stdout.splitlines()]
+        self.assertIn("project.json and 6 scene files", lines[0]["message"])
+        self.assertIn("editing is safe", lines[0]["message"])
+        final = lines[-1]
+        self.assertEqual(final["staleSources"], ["scenes/02-hero.json"])
+        self.assertIn("scenes/02-hero.json changed during the export", final["warnings"][-1])
+        with self.app(lambda r: self.success(r)):
+            calm = self.kb(["export", "--json"], cwd=self.root)
+        self.assertNotIn("staleSources", json.loads(calm.stdout.splitlines()[-1]))
+
+    def test_a_reloaded_editor_warns_before_the_export(self) -> None:
+        reloaded = {"editor": {"reloads": 1, "restartRecommended": True}}
+        with self.app(lambda r: self.success(r), health=reloaded):
+            proc = self.kb(["export"], cwd=self.root)
+        self.assertExit(proc, 0)
+        self.assertIn("ask the user to quit and reopen Kookaburra Cut", proc.stderr)
+        with self.app(lambda r: self.success(r)):
+            calm = self.kb(["export"], cwd=self.root)
+        self.assertNotIn("reloaded", calm.stderr)
 
     def test_the_request_carries_the_flags(self) -> None:
         with self.app(lambda r: self.success(r)) as app:
@@ -152,6 +180,8 @@ class ExportViaBridgeTests(KbTestCase):
             ({"code": "cancelled", "error": "cancelled", "by": "user"}, 1, "cancelled"),
             ({"code": "verifyMismatch", "error": "not identical", "path": str(self.film), "sha256": SHA}, 1, "verify-mismatch"),
             ({"code": "acceptTimeout", "error": "no editor"}, 3, "bridge-timeout"),
+            ({"code": "interrupted", "error": "WebKit replaced the editor's page process", "restartRecommended": True,
+              "hint": "ask the user to quit and reopen Kookaburra Cut, then rerun kb export"}, 2, "app-reloaded"),
         ]
         for answer, exit_code, kind in cases:
             with self.app(lambda r, a=answer: dict(a, ok=False)):

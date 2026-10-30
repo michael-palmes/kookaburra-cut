@@ -182,6 +182,7 @@ under the project lock (`kblib.lock`) and re-validated after writing.
 | `flashes [list]`, `flashes accept TIME --why TEXT`, `flashes forget TIME\|ID` | The last flash check at a glance, and accepted warnings ("Accepted flash warnings"; `--json`: `accepted`, `last`) |
 | `preview --range SPAN \| --scene S [--aspect A] [--fps N] [--width N] [--gif]` | A low-resolution MP4 or GIF of a span, rendered by the render window, plus a contact sheet to Read ("Ranged checks") |
 | `verify-export FILE [--no-sheet] [--no-flashes] [--allow-flashes] [--loudness-target LUFS] [--standard wcag\|itu\|both]` | Check an exported film against what the project asked for ("Film checks and verify-export") |
+| `sync-check FILE [--bpm N [--offset MS]] [--poster-frame auto\|on\|off] [--threshold PCT] [--window MS]` | Each cut and big picture change against its nearest beat, in ms ("kb sync-check") |
 | `hook session-start \| pre-edit \| post-edit \| bash-pre \| bash-post` | Hook entry points (stdin JSON from Claude Code); any other event exits 0, so an older kit is safe with newer settings |
 | `beats [--scene S]`, `beats set-grid (--from-analysis [--force] \| --bpm B --offset MS) [--beats-per-bar N]`, `beats set-downbeat AT [--bar N]`, `beats clear-grid`, `beats cue set ID POS \| rm ID`, `beats section set ID --from POS --to POS [--label L] \| rm ID`, `beats resolve POS [--scene S]` | The authored beat grid (`audio.grid`, `cues`, `sections`) and musical positions (`kblib/beats/`, mirroring `src/engine/musicTime.ts` through `kblib/music.py`, pinned by `music-vectors.json` from `pnpm agent:vectors`). Without a grid it shows the analysis's detected beats (`beatSource: "detected"`). Every write validates as `sanitiseAudioMusic` does and rewrites each sidecar's `at` caches in the same transaction (a sidecar leased to someone else is left, with a note) |
 | `song analyse [--force] [--tracker nn\|dsp] [--lyrics] [--accept] [--dry-run]` | The app's song analyser through `<exe> song analyse` (works with the app closed): tempo fit, downbeat, sections, breaths, stabs, lyrics on request; cached by the audio's SHA-256 and copied to `.kb/song/<sha12>.json`; `project.json` changes only with `--accept` (`set-grid --from-analysis`, refused for a drifting tempo). Code: `kblib/song.py` |
@@ -844,6 +845,29 @@ with `accepted: { id, why, by }`: summaries count it as accepted, verify lists i
 last check and the entries; `kb flashes forget TIME|ID` drops every entry at that moment. The file is tracked by
 checkpoints and blocked to Edit and Write (the pre-edit hook names the command).
 
+### kb sync-check
+
+`kb sync-check FILE [--bpm N [--offset MS]] [--poster-frame auto|on|off] [--threshold PCT]
+[--window MS] [--json]` (`kblib/film/sync.py`) times each cut and big picture change
+against its nearest beat, in ms (positive is late). Exit 0 whatever it finds.
+
+- **Clock.** Decoded presentation times (ffmpeg honours MP4 edit lists, so x264's B-frame
+  delay and AAC priming cancel) from the audio stream's start, minus a leading poster frame
+  (the record's `posterFrame`, else a frame count one over the project's at the file's rate).
+- **Events.** Each 54 px grey frame's mean absolute change from the one before: 8% or more
+  and twice the change before it, one per 120 ms. A timeline cut (the record's, else the
+  project's) within two frames labels it a cut; a quieter cut is the biggest change there.
+- **Beats.** The authored grid, else the analysed beats, else `--bpm` (none: exit 1, kind
+  `invalid`). Events within a quarter beat give the median, worst, per-scene rows and the
+  verdict: `in sync` inside the frame grid's 0 to 1000/fps ms (2 ms slack, 25 ms for
+  analysed beats), else `late` or `early` with a warning.
+- **Proof.** `cargo test --lib av_sync -- --nocapture` (`src-tauri/src/encode/av_sync_tests.rs`)
+  pipes flashes and a click track through every lane's real argv and sidecar (legacy,
+  spec with and without the poster, two-pass, x265, ProRes, VideoToolbox): each flash
+  lands where `ceil(B x fps)` puts it, 0 to 33.3 ms late at 30 fps and 0 to 16.7 at 60. A
+  reader that skips edit lists sees +45.3 ms more on 30 fps x264 (+12 at 60), and timing
+  against the grid without taking off the poster frame adds one frame; neither is in the file.
+
 ## kb export
 
 `./kb export` makes the finished film exactly as the app's Export button does, so Claude can
@@ -863,6 +887,14 @@ finish and check its own work. Code: `scripts/kblib/exporting.py`, `src-tauri/sr
   waits up to 20 s until the reload poll's baseline matches the disk and the reload it asked for
   is on stage. A failed last reload refuses (`stale` with `reloadFailed`, exit 1); so does a source
   whose hash no longer matches kb's `sources` (exit 3, rerun).
+- **Edit safety.** kb first notes what the film renders from (project.json, the scene files and
+  the music, as the editor loads them now) and that editing is safe: the export renders the loaded
+  project, the reload poll pauses, and ffmpeg reads a copy of the music taken at the start
+  (`snapshot_audio`), so edits saved meanwhile land in the next export. Once the film is done kb
+  hashes the sources and the music again; any that changed come back as `staleSources` plus a
+  warning to rerun.
+- **A reloaded editor.** When the heartbeat's `health.editor.restartRecommended` is set, kb warns
+  before it starts that a long export may fail until the app restarts.
 - **The button's run.** The request maps through `choiceForRequest` (no flags = High quality, a
   preset row, or `--fps`/`--short-edge` as the Custom panel seeds them), `resolveVideoSelection`
   (loudness measured as the modal measures it, the poster frame from the app's setting unless
@@ -893,8 +925,10 @@ finish and check its own work. Code: `scripts/kblib/exporting.py`, `src-tauri/sr
   the file against what was asked for.
 - Other answers: `invalid` (bad aspect, preset or rate; exit 2), `refused` (error-card scenes or a
   dropped LUT; exit 1), `gpuStalled` (exit 3), `gpuWedged` (exit 2, quit and reopen),
-  `verifyMismatch` (exit 1), `acceptTimeout` and `interrupted` (exit 3). The envelope's `code` is
-  the kb kind; `appCode` keeps the app's.
+  `verifyMismatch` (exit 1), `acceptTimeout` (exit 3) and `interrupted` (exit 2, `app-reloaded`:
+  the editor's page died under the export, so rerunning without a restart fails again; the error
+  names the frame, scene and render-rate trend, see "Export health"). The envelope's `code` is the
+  kb kind; `appCode` keeps the app's.
 
 ### `--headless`
 
@@ -984,9 +1018,9 @@ identity, role, effective root and `rootSource` (the app's "not found" errors na
   fails fast when the addressed pid exits while it waits.
 - **Health.** The serving instance's heartbeat carries `health`: queue depth and order,
   the in-flight request, render-window liveness and beat age, recycles, the GPU state
-  (`stalled`, `stalledUntilMs`, `wedged`), live WebGL contexts per window, and per-client
-  usage. kb prints the queue position and an estimate while it waits (shape and rules in
-  "The capture service").
+  (`stalled`, `stalledUntilMs`, `wedged`), live WebGL contexts per window, per-client
+  usage, and the editor's reloads and memory (`editor`, see "Export health"). kb prints the
+  queue position and an estimate while it waits (shape and rules in "The capture service").
 
 ### Heartbeat: `_bridge/apps/<pid>.json` and `app.json`
 
@@ -1162,8 +1196,10 @@ waits until it times out.
   hashB } | null, path, bytes, sha256, flashes, warnings, elapsedMs }`, where `path` is the file
   `finish_export` recorded and `sha256` Rust's hash of it. Failures are `{ ok: false, code,
   error, hint?, busy?, retryAfterMs?, cancelled?, by?, reloadFailed? }`. The client's death
-  (`clientPid`, unless `detach`) cancels the export; `bridge_export_reset`, which the main window
-  calls on mount, fails an export left in the slot by a reload (`interrupted`) and stops its encode.
+  (`clientPid`, unless `detach`) cancels the export. A main-window page load after the first
+  (`export_health::on_main_page_load`, from Tauri's `on_page_load`) fails the export in the slot
+  (`interrupted`, with `restartRecommended`) and stops its encode; `bridge_export_reset`, which the
+  main window calls on mount, stays as the backstop.
 - `cancelExport` (`target`: the export's id, absent = the running one): `{ ok, cancelled, state:
   idle | cancelled | cancelling, target? }`. An export the editor has not taken yet is answered
   `cancelled` at once; a running one is told through `kookaburra://bridge-export-cancel` (the
@@ -1175,6 +1211,39 @@ waits until it times out.
   served here, from the reported censuses and an event to the main window;
   `lose-context` on the render window (the default) and the dev-only `spawn-contexts`
   (`n`, at most 32) go to the render window. Details in "The capture service".
+
+### Export health
+
+Code: `src-tauri/src/export_health.rs`. A video export that dies with its page (WebKit replacing
+the editor's WebContent process, usually for memory) used to leave nothing behind and kept the
+native export busy until a restart. Now:
+
+- **Reloads stop the export.** Every main-window page load after the first cancels the native
+  video or stills export, fails the bridge slot and counts a reload. One whose old WebContent pid
+  is dead counts as `killed`. The new page shows the person a one-off notice
+  (`take_export_interruption`: `{ percent, cause: memory | crash | reload }`).
+- **The trace.** `start_export` takes the scene spans (`scenes: [{ id, startMs, endMs }]`) and
+  begins a trace: one rate point a second from `push_frame`, and the sampler's memory readings.
+  A failure's message names where it stopped: `frame 1235/2900 (42%), scene fold-open, render
+  8.4 → 2.6 → 1.2 fps` (the rate over the first, middle and last 10 s). The exporter passes a
+  real error to `cancel_export` as `reason` and appends the returned summary to the error; a
+  plain cancel passes none and leaves no report.
+- **`<export>.health.json`.** Written for every failure (editor reload, loop error, encode
+  failure) beside where the film would land in the project's `exports/` (never Downloads):
+  `{ version: 1, ok: false, reason: editorReloaded | failed | encodeFailed, error, output, fps,
+  frame, framesWritten, total, posterFrame, scenes, renderFps, elapsedMs, rate: [[frames, ms]],
+  peakMb: { editor, render, gpu, app }, memory: [...], hint, writtenAtMs }`. A later success at
+  the same name removes it.
+- **Memory.** A native sampler reads every 2 s the physical footprint (`proc_pid_rusage`, the
+  figure WebKit's ~4 GB WebContent limit uses) of the editor's and render window's WebContent
+  processes, WebKit's GPU process (`_gpuProcessIdentifier`), the app and the export's ffmpeg.
+- **`health.editor`** in the heartbeat: `{ reloads, lastReload: { atMs, killed, editorMb, export }
+  | null, restartRecommended, memoryMb: { editor, editorPeak, render, gpu, app }, sampledAtMs }`.
+  `kb status` prints `Memory: editor page 1.8 GB (peak 2.4 GB), WebKit GPU 950 MB, ...` and,
+  once a reload lost its page process or an export (`restartRecommended`), `EDITOR RELOADED n
+  times ... ask the user to quit and reopen Kookaburra Cut before exporting`: such an editor slows
+  down and fails long exports, and only a restart has been seen to fix it. A benign reload (a
+  dev server's, or Reload preview) only notes the count.
 
 ### The capture service
 

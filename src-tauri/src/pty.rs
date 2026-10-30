@@ -5,7 +5,7 @@
 //! - Flow control: the frontend applies the xterm.js watermark scheme and calls `pty_pause`/`pty_resume`; a paused reader stops draining, the kernel PTY buffer fills, and the child blocks, real backpressure.
 //! - The shell is spawned as a LOGIN shell so `/etc/zprofile` + `~/.zprofile` rebuild the user's PATH inside the terminal (GUI apps inherit launchd's bare PATH); that is NOT sufficient for `claude` itself, since the default install adds its dir in `~/.zshrc`, which a login non-interactive shell never sources, so a Claude session execs the DETECTED binary by full path (the path `detect_claude` stored natively, never one the webview supplies) and prepends its dir to the child PATH.
 //! - The webview never supplies a command string. `Launch` is a closed enum: Claude Code with the app's fixed flags (the grounding rides as one argv element behind a fixed `exec "$0" "$@"` script, so no shell parsing touches it) or an interactive shell; only the main window may launch Claude.
-//! - The child environment is built from an allow-list (`child_environment`), not by scrubbing a few names: `launchctl setenv` variables outside `CLAUDE_*`/`ANTHROPIC_*` do not reach the terminal.
+//! - The child environment is built from an allow-list (`child_environment`), not by scrubbing a few names: `launchctl setenv` variables outside `CLAUDE_*`/`ANTHROPIC_*` do not reach the terminal, and only a Claude session keeps those two prefixes, so a scene's shell carries no agent credential.
 
 use std::collections::{BTreeMap, HashMap};
 use std::io::{Read, Write};
@@ -168,8 +168,10 @@ const ENV_ALLOW: [&str; 10] = [
     "COLORTERM",
     "SSH_AUTH_SOCK",
 ];
-/// Inherited prefixes the child keeps (locale, terminal, Claude Code and Anthropic settings such as `CLAUDE_CODE_OAUTH_TOKEN` and `ANTHROPIC_API_KEY`).
-const ENV_ALLOW_PREFIX: [&str; 4] = ["LC_", "TERM_", "CLAUDE_", "ANTHROPIC_"];
+/// Inherited prefixes every child keeps (locale, terminal).
+const ENV_ALLOW_PREFIX: [&str; 2] = ["LC_", "TERM_"];
+/// Extra prefixes a Claude session keeps (settings such as `CLAUDE_CODE_OAUTH_TOKEN` and `ANTHROPIC_API_KEY`); a scene shell never gets them.
+const ENV_CLAUDE_PREFIX: [&str; 2] = ["CLAUDE_", "ANTHROPIC_"];
 /// Allowed by prefix but dropped anyway: the host terminal's identity (claude fingerprints it) and the markers of an enclosing Claude session, which would read as nesting.
 const ENV_DENY: [&str; 4] = [
     "TERM_PROGRAM",
@@ -179,7 +181,11 @@ const ENV_DENY: [&str; 4] = [
 ];
 
 /// The child's whole environment: the allow-listed part of `inherited`, then the terminal's own values (`TERM_PROGRAM` names us so claude never adopts a host IDE; `FORCE_COLOR` declares the 24-bit colour xterm.js really renders; the IDE auto-install stays off) and `prepend` ahead of PATH.
-fn child_environment<I>(inherited: I, prepend: Option<&str>) -> BTreeMap<String, String>
+fn child_environment<I>(
+    inherited: I,
+    prepend: Option<&str>,
+    claude: bool,
+) -> BTreeMap<String, String>
 where
     I: IntoIterator<Item = (String, String)>,
 {
@@ -188,14 +194,17 @@ where
         .filter(|(key, _)| {
             !ENV_DENY.contains(&key.as_str())
                 && (ENV_ALLOW.contains(&key.as_str())
-                    || ENV_ALLOW_PREFIX.iter().any(|p| key.starts_with(p)))
+                    || ENV_ALLOW_PREFIX.iter().any(|p| key.starts_with(p))
+                    || (claude && ENV_CLAUDE_PREFIX.iter().any(|p| key.starts_with(p))))
         })
         .collect();
     env.insert("TERM".into(), "xterm-256color".into());
     env.insert("COLORTERM".into(), "truecolor".into());
     env.insert("TERM_PROGRAM".into(), "KookaburraCut".into());
     env.insert("FORCE_COLOR".into(), "3".into());
-    env.insert("CLAUDE_CODE_IDE_SKIP_AUTO_INSTALL".into(), "1".into());
+    if claude {
+        env.insert("CLAUDE_CODE_IDE_SKIP_AUTO_INSTALL".into(), "1".into());
+    }
     env.entry("LANG".into())
         .or_insert_with(|| "en_US.UTF-8".into());
     if let Some(dir) = prepend.filter(|d| !d.is_empty()) {
@@ -274,6 +283,9 @@ pub fn pty_spawn(
     on_data: Channel<InvokeResponseBody>,
 ) -> Result<u32, String> {
     validate_launch(&options.launch, window.label())?;
+    if options.launch.is_command() {
+        crate::managed::deny_claude()?;
+    }
     // F-006: confine the terminal cwd to the workspace root unless the caller explicitly opts out (scene terminals open a user-chosen start path). Every path still has to resolve to a real directory, `~` expands against the user's home, and nothing is ever auto-run in it.
     let root = crate::workspace::require_root(&app, &settings)?
         .canonicalize()
@@ -331,7 +343,11 @@ pub fn pty_spawn(
     // `vars_os`, not `vars`: one non-UTF-8 value in the inherited environment must not panic the spawn.
     let inherited = std::env::vars_os()
         .filter_map(|(key, value)| Some((key.into_string().ok()?, value.into_string().ok()?)));
-    for (key, value) in child_environment(inherited, path_prepend.as_deref()) {
+    for (key, value) in child_environment(
+        inherited,
+        path_prepend.as_deref(),
+        options.launch.is_command(),
+    ) {
         cmd.env(key, value);
     }
 
@@ -687,6 +703,7 @@ mod tests {
                 ("CLAUDE_CODE_SSE_PORT", "1"),
             ]),
             Some("/Users/x/.local/bin"),
+            true,
         );
         for kept in [
             "HOME",
@@ -725,11 +742,32 @@ mod tests {
     }
 
     #[test]
+    fn a_scene_shell_carries_no_agent_credential() {
+        let vars = [
+            ("HOME", "/Users/x"),
+            ("LC_ALL", "en_AU.UTF-8"),
+            ("CLAUDE_CODE_OAUTH_TOKEN", "tok"),
+            ("ANTHROPIC_API_KEY", "key"),
+        ];
+        let shell = child_environment(inherited(&vars), None, false);
+        assert!(shell.contains_key("HOME") && shell.contains_key("LC_ALL"));
+        assert!(
+            !shell
+                .keys()
+                .any(|k| k.starts_with("CLAUDE_") || k.starts_with("ANTHROPIC_")),
+            "a scene shell must not see agent variables"
+        );
+        let claude = child_environment(inherited(&vars), None, true);
+        assert_eq!(claude["CLAUDE_CODE_OAUTH_TOKEN"], "tok");
+        assert_eq!(claude["ANTHROPIC_API_KEY"], "key");
+    }
+
+    #[test]
     fn an_inherited_lang_and_an_absent_path_are_handled() {
-        let env = child_environment(inherited(&[("LANG", "en_AU.UTF-8")]), Some("/a/bin"));
+        let env = child_environment(inherited(&[("LANG", "en_AU.UTF-8")]), Some("/a/bin"), true);
         assert_eq!(env["LANG"], "en_AU.UTF-8");
         assert_eq!(env["PATH"], "/a/bin");
-        let env = child_environment(inherited(&[("PATH", "/usr/bin")]), None);
+        let env = child_environment(inherited(&[("PATH", "/usr/bin")]), None, true);
         assert_eq!(env["PATH"], "/usr/bin");
     }
 

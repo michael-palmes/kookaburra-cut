@@ -179,9 +179,10 @@ browser frame.
 
 A pack includes the sidecar and capture PNG. It never includes cookies, WebKit
 storage, local origin grants, current navigation, history, forms or scroll.
-Import performs no network access and grants no origin. The post-import summary
-lists every requested Website origin and calls out loopback requests before the
-user configures live use in the editor.
+Import performs no network access and grants no origin. The pack trust screen
+lists every requested Website origin and calls out loopback requests before
+Continue, read from the pack's sidecars and checked against the signed hash
+(`src/packs/packReview.ts`), so the review is done before anything lands.
 
 Settings lists the dedicated Website store's WebKit site records and can clear
 one record or all Website data. Clearing data signs sites out but does not edit
@@ -216,7 +217,14 @@ the feature does not ship with a weaker substitute.
 - Approved pages and their subresources have browser-equivalent network reach,
   including DNS-based access to local services.
 - Separately approved projects share same-origin login state through the
-  app-wide Website profile.
+  app-wide Website profile (F-033). Assessed 2026-10-28: a per-project
+  `WKWebsiteDataStore` is one identifier derived from the project key at view
+  creation, but it reverses the locked "Browser profile" decision above (logins
+  shared across projects by design), needs `allDataStoreIdentifiers` and
+  `removeDataStoreForIdentifier` bindings for Settings to list and clear
+  stores it no longer knows by name, and re-runs acceptance item 6. It stays a
+  residual until that decision is reopened; the mitigation today is Settings'
+  per-site clearing.
 - Captured pixels and authored query strings may contain secrets and may be
   committed or packed.
 - WebKit vulnerabilities remain possible.

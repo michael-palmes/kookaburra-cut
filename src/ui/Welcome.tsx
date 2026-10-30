@@ -311,6 +311,7 @@ export function Welcome({
   refreshKey,
   focusSearchNonce,
   notice,
+  claudeAvailable = true,
 }: {
   activeRowId: string;
   onActiveRowChange: (rowId: string) => void;
@@ -319,6 +320,8 @@ export function Welcome({
   onOpenProject: (projectId: string) => void;
   onNewProject: (options?: { group?: string | null; templateId?: string }) => void;
   onOpenThemes: () => void;
+  /** False where a configuration profile turns Claude off, so the start card promises only a template. */
+  claudeAvailable?: boolean;
   /** Bump to re-scan the workspace (e.g. after a create). */
   refreshKey: number;
   /** Bump to focus and select the search field (⌘F). */
@@ -650,7 +653,9 @@ export function Welcome({
                     </span>
                     <span className="project-card-body">
                       <span className="project-card-name">New project</span>
-                      <span className="project-card-meta">With Claude or a template</span>
+                      <span className="project-card-meta">
+                        {claudeAvailable ? "With Claude or a template" : "From a template"}
+                      </span>
                     </span>
                   </button>
                   <button

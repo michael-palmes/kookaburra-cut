@@ -224,6 +224,8 @@ pub(crate) fn legacy_export_args(
     // gl.readPixels gives bottom-up rows, so vflip; output pixel format is codec-dependent (see `Codec::pix_fmt`), and the `bitexact` flags + `-map_metadata -1` strip the muxer's wall-clock creation_time and encoder version tag, which would otherwise differ run-to-run and defeat the byte-identical threshold.
     let mut args: Vec<String> = vec![
         "-y".into(),
+        "-protocol_whitelist".into(),
+        "file,pipe".into(),
         "-f".into(),
         "rawvideo".into(),
         "-pix_fmt".into(),
@@ -236,7 +238,7 @@ pub(crate) fn legacy_export_args(
         "pipe:0".into(),
     ];
     if let Some(audio) = &options.audio {
-        args.extend(["-i".into(), audio.file.clone()]);
+        args.extend(audio_input_args(&audio.file));
     }
     args.extend(["-vf".into(), "vflip".into()]);
     match &options.audio {
@@ -387,7 +389,58 @@ pub(crate) struct EncodeSpec {
     pub(crate) audio: Option<EncodeAudio>,
 }
 
+/// `-profile:v` values per encoder; anything else never reaches argv.
+fn allowed_profiles(codec: EncodeCodec) -> &'static [&'static str] {
+    match codec {
+        EncodeCodec::Libx264 => &["baseline", "main", "high", "high10", "high422", "high444"],
+        EncodeCodec::H264Videotoolbox => &["baseline", "main", "high", "extended"],
+        EncodeCodec::Libx265 => &["main", "main10", "main422-10", "main444-8", "main444-10"],
+        EncodeCodec::HevcVideotoolbox => &["main", "main10"],
+        EncodeCodec::ProresKs | EncodeCodec::ProresVideotoolbox => &[
+            "proxy", "lt", "standard", "hq", "4444", "4444xq", "0", "1", "2", "3", "4", "5",
+        ],
+    }
+}
+
+/// `-level` values: `auto`, `1b`, or a major with an optional `.0` to `.2` minor.
+fn is_allowed_level(level: &str) -> bool {
+    if matches!(level, "auto" | "1b") {
+        return true;
+    }
+    let (major, minor) = level.split_once('.').unwrap_or((level, "0"));
+    matches!(major, "1" | "2" | "3" | "4" | "5" | "6") && matches!(minor, "0" | "1" | "2")
+}
+
+const ALLOWED_ENTROPY: [&str; 4] = ["cabac", "cavlc", "ac", "vlc"];
+
 impl EncodeSpec {
+    /// The free-text fields a preset or `--encode-json` may carry, checked against what the encoders take, so a value never reaches ffmpeg as an option it did not expect.
+    pub(crate) fn validate(&self) -> Result<(), String> {
+        if let Some(profile) = &self.profile {
+            if !allowed_profiles(self.codec).contains(&profile.as_str()) {
+                return Err(format!(
+                    "\"{profile}\" is not a profile this encoder takes (one of {})",
+                    allowed_profiles(self.codec).join(", ")
+                ));
+            }
+        }
+        if let Some(level) = &self.level {
+            if !is_allowed_level(level) {
+                return Err(format!(
+                    "\"{level}\" is not an encoder level (auto, 1b, or 1 to 6.2)"
+                ));
+            }
+        }
+        if let Some(entropy) = &self.entropy {
+            if !ALLOWED_ENTROPY.contains(&entropy.as_str()) {
+                return Err(format!(
+                    "\"{entropy}\" is not an entropy coder (cabac or cavlc)"
+                ));
+            }
+        }
+        Ok(())
+    }
+
     pub(crate) fn two_pass(&self) -> bool {
         matches!(self.rate, RateControl::Bitrate { two_pass: true, .. })
     }
@@ -611,7 +664,7 @@ pub(crate) fn spec_export_args(
 ) -> Result<Vec<String>, String> {
     let mut args = raw_input_args(options);
     if let Some(audio) = &options.audio {
-        args.extend(["-i".into(), audio.file.clone()]);
+        args.extend(audio_input_args(&audio.file));
     }
     args.extend([
         "-vf".into(),
@@ -690,10 +743,17 @@ pub(crate) fn transcode_pass_args(
     pass: u32,
     passlog: &str,
 ) -> Result<Vec<String>, String> {
-    let mut args: Vec<String> = vec!["-y".into(), "-i".into(), mezz_path.to_string()];
+    let mut args: Vec<String> = vec![
+        "-y".into(),
+        "-nostdin".into(),
+        "-protocol_whitelist".into(),
+        "file,pipe".into(),
+        "-i".into(),
+        mezz_path.to_string(),
+    ];
     if pass == 2 {
         if let Some(audio) = &options.audio {
-            args.extend(["-i".into(), audio.file.clone()]);
+            args.extend(audio_input_args(&audio.file));
         }
     }
     match (&options.audio, pass) {
@@ -756,6 +816,8 @@ pub(crate) fn transcode_pass_args(
 fn raw_input_args(options: &ExportOptions) -> Vec<String> {
     vec![
         "-y".into(),
+        "-protocol_whitelist".into(),
+        "file,pipe".into(),
         "-f".into(),
         "rawvideo".into(),
         "-pix_fmt".into(),
@@ -768,6 +830,19 @@ fn raw_input_args(options: &ExportOptions) -> Vec<String> {
         "pipe:0".into(),
     ]
 }
+
+/// The soundtrack input: a local file and nothing a playlist could point at.
+fn audio_input_args(file: &str) -> Vec<String> {
+    vec![
+        "-protocol_whitelist".into(),
+        "file,pipe".into(),
+        "-i".into(),
+        file.to_owned(),
+    ]
+}
+
+#[cfg(test)]
+mod av_sync_tests;
 
 #[cfg(test)]
 mod audio_graph_tests {
@@ -906,6 +981,8 @@ mod legacy_argv_goldens {
         let args = legacy_export_args(&base_options(Codec::Libx264, None), "/out/x.mp4").unwrap();
         let expected: Vec<&str> = vec![
             "-y",
+            "-protocol_whitelist",
+            "file,pipe",
             "-f",
             "rawvideo",
             "-pix_fmt",
@@ -962,6 +1039,8 @@ mod legacy_argv_goldens {
         );
         let expected: Vec<&str> = vec![
             "-y",
+            "-protocol_whitelist",
+            "file,pipe",
             "-f",
             "rawvideo",
             "-pix_fmt",
@@ -972,6 +1051,8 @@ mod legacy_argv_goldens {
             "60",
             "-i",
             "pipe:0",
+            "-protocol_whitelist",
+            "file,pipe",
             "-i",
             "/abs/track.mp3",
             "-vf",
@@ -1015,6 +1096,8 @@ mod legacy_argv_goldens {
         let args = legacy_export_args(&base_options(Codec::ProresKs, None), "/out/x.mov").unwrap();
         let expected: Vec<&str> = vec![
             "-y",
+            "-protocol_whitelist",
+            "file,pipe",
             "-f",
             "rawvideo",
             "-pix_fmt",
@@ -1110,6 +1193,8 @@ mod spec_argv_goldens {
         let args = spec_export_args(&options_30fps(), &reels_1080p30(), "/out/r.mp4").unwrap();
         let expected: Vec<&str> = vec![
             "-y",
+            "-protocol_whitelist",
+            "file,pipe",
             "-f",
             "rawvideo",
             "-pix_fmt",
@@ -1188,6 +1273,8 @@ mod spec_argv_goldens {
         let args = spec_export_args(&options(), &spec, "/out/h.mp4").unwrap();
         let expected: Vec<&str> = vec![
             "-y",
+            "-protocol_whitelist",
+            "file,pipe",
             "-f",
             "rawvideo",
             "-pix_fmt",
@@ -1239,6 +1326,8 @@ mod spec_argv_goldens {
         let mezz = mezzanine_render_args(&opts, &spec, "/mezz/m.mkv");
         let expected_mezz: Vec<&str> = vec![
             "-y",
+            "-protocol_whitelist",
+            "file,pipe",
             "-f",
             "rawvideo",
             "-pix_fmt",
@@ -1271,6 +1360,14 @@ mod spec_argv_goldens {
         let p1 =
             transcode_pass_args(&opts, &spec, "/mezz/m.mkv", "/out/t.mp4", 1, "/mezz/log").unwrap();
         assert!(p1.ends_with(&["-f".into(), "null".into(), "/dev/null".into()]));
+        assert!(p1.starts_with(&[
+            "-y".into(),
+            "-nostdin".into(),
+            "-protocol_whitelist".into(),
+            "file,pipe".into(),
+            "-i".into(),
+            "/mezz/m.mkv".into(),
+        ]));
         assert!(p1.contains(&"-pass".to_string()) && p1.contains(&"1".to_string()));
         let p2 =
             transcode_pass_args(&opts, &spec, "/mezz/m.mkv", "/out/t.mp4", 2, "/mezz/log").unwrap();
@@ -1399,6 +1496,37 @@ mod spec_argv_goldens {
             transcode_pass_args(&opts, &spec, "/mezz/m.mkv", "/out/a.mp4", 2, "/mezz/log").unwrap();
         let pass_af = &pass[pass.iter().position(|a| a == "-af").unwrap() + 1];
         assert_eq!(pass_af, direct_af);
+    }
+
+    /// The three free-text encoder fields take listed values only; the rejection names the field and what it takes.
+    #[test]
+    fn free_text_encoder_fields_are_allow_listed() {
+        let mut spec = reels_1080p30();
+        assert!(spec.validate().is_ok());
+        spec.profile = Some("high".into());
+        spec.level = Some("4.2".into());
+        spec.entropy = Some("cabac".into());
+        assert!(spec.validate().is_ok());
+        spec.level = Some("auto".into());
+        assert!(spec.validate().is_ok());
+        spec.profile = Some("high -x264opts evil".into());
+        assert!(spec.validate().unwrap_err().contains("profile"));
+        spec.profile = Some("main10".into());
+        assert!(spec.validate().is_err(), "main10 is an HEVC profile, not H.264");
+        spec.profile = None;
+        spec.level = Some("4.2;rm".into());
+        assert!(spec.validate().unwrap_err().contains("level"));
+        spec.level = Some("7".into());
+        assert!(spec.validate().is_err());
+        spec.level = None;
+        spec.entropy = Some("CABAC".into());
+        assert!(spec.validate().unwrap_err().contains("entropy"));
+        spec.entropy = None;
+        spec.codec = EncodeCodec::ProresKs;
+        spec.profile = Some("4444xq".into());
+        assert!(spec.validate().is_ok());
+        spec.codec = EncodeCodec::HevcVideotoolbox;
+        assert!(spec.validate().is_err());
     }
 
     /// Odd totals ceil (frame 0 survives decimation); dims round to even; the decimation branch is DEFENCE since the app renders at the output rate, pinned here so a faster-than-spec input still decimates correctly.

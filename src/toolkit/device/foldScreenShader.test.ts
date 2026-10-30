@@ -19,6 +19,22 @@ describe("the fold display shader", () => {
     expect(active.join("")).not.toContain("texture2D(");
   });
 
+  it("compiles with or without a map, since a display without media has none", () => {
+    // Everything that reads the sampler sits under three's USE_MAP guard, so the no-map program links.
+    const outsideGuard = (source: string) =>
+      source.replace(/#ifdef USE_MAP[\s\S]*?#endif/g, "").replace(/\/\/.*$/gm, "");
+    const spliced = `${FOLD_SCREEN_GLSL.pars}\n${FOLD_SCREEN_GLSL.fragment}`;
+    expect(outsideGuard(spliced)).not.toMatch(/\bmap\b|foldTap|texture/);
+    // Outside it, declarations only: no helper can slip out of the guard unnoticed.
+    for (const line of outsideGuard(spliced).split("\n")) {
+      expect(line).toMatch(/^(#include <\w+>|uniform \w+ \w+;|varying \w+ \w+;|\s*)$/);
+    }
+    expect(outsideGuard(spliced)).toContain("varying vec3 vFoldRootPos;");
+    // And the map program still carries the taps.
+    expect(spliced).toContain("textureGrad( map, uv, dx, dy )");
+    expect(spliced.match(/#ifdef USE_MAP/g)).toHaveLength(2);
+  });
+
   it("bakes the engine's contract constants, never its own copies", () => {
     expect(FOLD_SCREEN_GLSL.fragment).toContain(`i < ${FOLD_BLUR_TAPS};`);
     expect(FOLD_SCREEN_GLSL.fragment).toContain(

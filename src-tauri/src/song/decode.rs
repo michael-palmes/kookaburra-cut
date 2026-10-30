@@ -2,7 +2,7 @@
 
 use std::io::Read;
 use std::path::Path;
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 
 use serde_json::Value;
 
@@ -27,6 +27,8 @@ pub fn decode_args(file: &Path) -> Vec<String> {
         "-v",
         "error",
         "-nostdin",
+        "-protocol_whitelist",
+        "file,pipe",
         "-i",
         &file.to_string_lossy(),
         "-map",
@@ -53,7 +55,7 @@ pub fn decode_pcm(
     file: &Path,
     cancelled: &dyn Fn() -> bool,
 ) -> Result<Vec<f32>, String> {
-    let mut child = Command::new(ffmpeg)
+    let mut child = crate::tools::sidecar_command(ffmpeg)
         .args(decode_args(file))
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
@@ -159,8 +161,9 @@ pub fn parse_ebur128(stderr: &str) -> Loudness {
 
 /// Run ebur128 over the first audio stream as the file stores it (every channel, its own rate).
 pub fn loudness(ffmpeg: &Path, file: &Path) -> Result<Loudness, String> {
-    let out = Command::new(ffmpeg)
-        .args(["-hide_banner", "-nostats", "-nostdin", "-i"])
+    let out = crate::tools::sidecar_command(ffmpeg)
+        .args(["-hide_banner", "-nostats", "-nostdin"])
+        .args(["-protocol_whitelist", "file,pipe", "-i"])
         .arg(file)
         .args([
             "-map",
@@ -226,10 +229,12 @@ pub fn pick_lyrics(probe: &Value) -> Option<Lyrics> {
 }
 
 pub fn lyrics(ffprobe: &Path, file: &Path) -> Result<Option<Lyrics>, String> {
-    let out = Command::new(ffprobe)
+    let out = crate::tools::sidecar_command(ffprobe)
         .args([
             "-v",
             "error",
+            "-protocol_whitelist",
+            "file,pipe",
             "-show_entries",
             "format_tags:stream_tags",
             "-of",
@@ -248,7 +253,7 @@ pub fn lyrics(ffprobe: &Path, file: &Path) -> Result<Option<Lyrics>, String> {
 
 /// `8.1.2` from `ffmpeg version 8.1.2 Copyright …`.
 pub fn ffmpeg_version(ffmpeg: &Path) -> Option<String> {
-    let out = Command::new(ffmpeg)
+    let out = crate::tools::sidecar_command(ffmpeg)
         .args(["-hide_banner", "-version"])
         .stdin(Stdio::null())
         .output()

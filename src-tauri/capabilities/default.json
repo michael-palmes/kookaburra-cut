@@ -21,6 +21,7 @@
     "terminal",
     "claude-launcher",
     "updater",
-    "website-editor"
+    "website-editor",
+    "managed"
   ]
 }
