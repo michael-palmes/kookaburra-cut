@@ -1,4 +1,4 @@
-/** Text-derived state that has not settled yet: a primitive whose layout or timing waits on measured text (a face still parsing for `useTextMetrics`, a pinned headline reveal still waiting on its unit count) reports here from a layout effect, and `awaitTextSync` keeps settling typesets until nothing is outstanding, so no frame captures the pre-measure layout. Pure module. */
+/** Text-derived state that has not settled yet: a primitive whose layout or timing waits on measured text (a face still parsing for `useTextMetrics`, a pinned headline reveal still waiting on its unit count, a TSX-placed 3D object still loading) reports here from a layout effect, and `awaitTextSync` keeps settling typesets until nothing is outstanding, so no frame captures the pre-measure layout. Pure module. */
 
 let outstanding = 0;
 

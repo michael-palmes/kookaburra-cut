@@ -146,7 +146,12 @@ export {
   useCues,
 } from "./music/useBeatGrid";
 // The 3D objects library: bundled + workspace manifests, staged by the sidecar `objects` array.
-export { ObjectsFallback, StagedObject } from "./objects/ObjectPrimitive";
+export {
+  ObjectsFallback,
+  type PlacedObjectProps,
+  StagedObject,
+  type StagedObjectProps,
+} from "./objects/ObjectPrimitive";
 export { preloadSceneObjects } from "./objects/preload";
 export {
   importObject,
