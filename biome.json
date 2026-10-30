@@ -15,6 +15,7 @@
     "includes": [
       "**",
       "!src/assets/fonts/*.typeface.json",
+      "!.agents/skills/kookaburra-scene-authoring/toolkit.d.ts",
       "!.agents/skills/kookaburra-scene-authoring/scripts/tests/fixtures/*-vectors.json"
     ]
   },
