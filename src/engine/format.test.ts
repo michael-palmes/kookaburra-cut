@@ -1,9 +1,46 @@
 import { describe, expect, it } from "vitest";
 import { fade } from "../toolkit/transitions/fade";
 import type { SceneTime } from "../toolkit/types";
-import { type AspectName, aspectLabel, computeFormat, FORMATS } from "./format";
+import {
+  type AspectName,
+  aspectLabel,
+  computeFormat,
+  FORMATS,
+  formatShape,
+  TALL_MAX_ASPECT,
+  WIDE_MIN_ASPECT,
+} from "./format";
 
 const at = (localMs: number): SceneTime => ({ localMs, globalMs: localMs, progress: 0 });
+
+describe("formatShape", () => {
+  it("names every export aspect, 1:1 alone as square", () => {
+    const shapes = Object.fromEntries(
+      (Object.keys(FORMATS) as AspectName[]).map((name) => [
+        name,
+        computeFormat(FORMATS[name]).shape,
+      ]),
+    );
+    expect(shapes).toEqual({
+      "16:9": "wide",
+      "9:16": "tall",
+      "1:1": "square",
+      "4:5": "tall",
+      "5:4": "wide",
+      "3:2": "wide",
+      "2:3": "tall",
+      phone: "tall",
+      "phone-landscape": "wide",
+    });
+  });
+
+  it("holds its documented thresholds", () => {
+    expect(formatShape(WIDE_MIN_ASPECT)).toBe("wide");
+    expect(formatShape(WIDE_MIN_ASPECT - 0.001)).toBe("square");
+    expect(formatShape(TALL_MAX_ASPECT)).toBe("tall");
+    expect(formatShape(TALL_MAX_ASPECT + 0.001)).toBe("square");
+  });
+});
 
 describe("computeFormat", () => {
   it("derives a 16:9 aspect for the 4K landscape format", () => {

@@ -37,6 +37,7 @@ const format = {
   width: 1600,
   height: 900,
   aspect: 16 / 9,
+  shape: "wide",
   frame: { width: 8, height: 4.5 },
   safe: { top: 0.2, right: 0.2, bottom: 0.2, left: 0.2 },
 } satisfies FormatInfo;

@@ -32,6 +32,7 @@ const landscape: FormatInfo = {
   width: 1920,
   height: 1080,
   aspect: 16 / 9,
+  shape: "wide",
   frame: { width: 5.33, height: 3 },
   safe: { top: 0.2, right: 0.25, bottom: 0.2, left: 0.25 },
 };
@@ -40,6 +41,7 @@ const portrait: FormatInfo = {
   width: 1080,
   height: 1920,
   aspect: 9 / 16,
+  shape: "wide",
   frame: { width: 1.69, height: 3 },
   safe: { top: 0.2, right: 0.12, bottom: 0.2, left: 0.12 },
 };

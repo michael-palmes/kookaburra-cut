@@ -227,4 +227,12 @@ export { ExtrudedText, type ExtrudedTextProps } from "./text3d/ExtrudedText";
 // Transition helpers
 export { fade } from "./transitions/fade";
 export { slide } from "./transitions/slide";
-export type { EaseName, FormatInfo, SceneModule, SceneProps, SceneTime, V3 } from "./types";
+export type {
+  EaseName,
+  FormatInfo,
+  FormatShape,
+  SceneModule,
+  SceneProps,
+  SceneTime,
+  V3,
+} from "./types";
