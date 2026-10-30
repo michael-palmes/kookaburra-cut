@@ -183,7 +183,10 @@ under the project lock (`kblib.lock`) and re-validated after writing.
 | `sync-check FILE [--bpm N [--offset MS]] [--poster-frame auto\|on\|off] [--threshold PCT] [--window MS]` | Each cut and big picture change against its nearest beat, in ms ("kb sync-check") |
 | `hook session-start \| pre-edit \| post-edit \| bash-pre \| bash-post` | Hook entry points (stdin JSON from Claude Code); any other event exits 0, so an older kit is safe with newer settings |
 | `beats [--scene S]`, `beats set-grid (--from-analysis [--force] \| --bpm B --offset MS) [--beats-per-bar N]`, `beats set-downbeat AT [--bar N]`, `beats clear-grid`, `beats cue set ID POS \| rm ID`, `beats section set ID --from POS --to POS [--label L] \| rm ID`, `beats resolve POS [--scene S]` | The authored beat grid (`audio.grid`, `cues`, `sections`) and musical positions (`kblib/beats/`, mirroring `src/engine/musicTime.ts` through `kblib/music.py`, pinned by `music-vectors.json` from `pnpm agent:vectors`). Without a grid it shows the analysis's detected beats (`beatSource: "detected"`). Every write validates as `sanitiseAudioMusic` does and rewrites each sidecar's `at` caches in the same transaction (a sidecar leased to someone else is left, with a note) |
-| `song analyse [--force] [--tracker nn\|dsp] [--lyrics] [--accept] [--dry-run]` | The app's song analyser through `<exe> song analyse` (works with the app closed): tempo fit, downbeat, sections, breaths, stabs, lyrics on request; cached by the audio's SHA-256 and copied to `.kb/song/<sha12>.json`; `project.json` changes only with `--accept` (`set-grid --from-analysis`, refused for a drifting tempo). Code: `kblib/song.py` |
+| `song analyse [--file PATH] [--force] [--tracker nn\|dsp] [--lyrics] [--accept] [--dry-run]` | The app's song analyser through `<exe> song analyse` (works with the app closed): tempo fit, downbeat, sections, form, breaths, audible end, stabs, lyrics on request; cached by the audio's SHA-256 and copied to `.kb/song/<sha12>.json`; `project.json` changes only with `--accept`: the fitted grid (refused past a 33 ms drift) plus the form's parts and moments as `audio.sections` and `audio.cues`, never over an id already there. `--file` reads any audio or video file through kb's reach and `kblib/untrusted.py`, and refuses `--accept`. Code: `kblib/song.py` |
+| `song hits [--bars A-B] [--band low\|mid\|high] [--min-strength N] [--file PATH]` | Strong onsets as `bar:B.beat.16th` with a strength, read from the saved analysis (one fresh pass when it has none), on the project's grid or else the fit (`--json`: `hits`, each with `position`, `bar`, `beat`, `sixteenth`, `offMs`, `trackMs`, `projectMs`, `strength`) |
+| `project fit --to song-end [--hold MS] [--dry-run]` | Sets the last scene's length (unpinning it) so the film ends at the audible end plus the hold, in one transaction with the sidecar caches; warns when the last hit would play inside the soundtrack's fade |
+| `reference analyse FILE [--compare] [--force] [--tracker nn\|dsp] [--dry-run]` | Reads a reference film on this Mac into `.kb/reference/<sha>/` ("Reference films") |
 | `chart ...` | Delegates to `scripts/chart.py`, arguments untouched |
 
 As built (`scripts/kblib/`):
@@ -461,6 +464,7 @@ packs and duplicates.
 .kb/agents/<name>/              identity.json, seen.json, the agent's scratch
 .kb/captures/<stamp>[-<agent>]/ capture copies, newest 40 per agent, 1 GB (never under 1 h old)
 .kb/song/<sha12>.json           kb song analyse's copy of the app's analysis
+.kb/reference/<sha>/            kb reference analyse: sheets, bar map, beat sheet, analysis, compare report
 .kb/footage/<name>.json         kb video log (sheets in .kb/footage/<name>/, pairs in .kb/footage/pairs/)
 .kb/archive/<id>/<rel>          files kb assets replace and unused moved aside; index.jsonl beside them
 ```
@@ -602,6 +606,46 @@ skill is its playbook. Code: `scripts/kblib/video/`.
   test) pin which source frame the render shows at every output frame.
 - Hooks keep Edit and Write out of `edits/` and both managed skill folders; `kb video`
   is the only way an agent changes an edit.
+
+## Reference films
+
+`kb reference analyse FILE [--compare] [--force] [--tracker nn|dsp] [--dry-run]` reads a film someone else made,
+so a launch film can be planned bar by bar against it. Code: `scripts/kblib/reference/`
+(stdlib Python over the bundled ffmpeg), `kblib/untrusted.py`, the song analyser and
+`<exe> media ocr`. Agent-facing doc: kit `reference/beats.md`.
+
+- **Untrusted input.** `untrusted.locate` applies kb's reach to the path (symlinks followed,
+  credentials refused, outside the workspace announced). `untrusted.facts` then has ffprobe
+  read it under `-protocol_whitelist file,pipe` and a demuxer whitelist (never hls or concat,
+  which read other files), requires a declared duration and allow-listed codecs, and caps it
+  at 16 GB, 30 minutes and 8192 px a side. Anything odd is exit 1 `invalid`, before ffmpeg or
+  the app decode a byte. `kb song analyse --file` and `kb song hits --file` take the same path.
+  A file can lie about its length, so the decodes hold the limit too: the frame pass refuses a
+  film 10 s past what it declared, and the analyser's PCM stops at two hours.
+- **Output stays under the project.** `.kb/reference/<sha>/` is refused if a link would take
+  it outside; it is built in `.work-*` beside it and moved into place whole, so a failed run
+  leaves nothing half written. A whole saved `analysis.json` of the same version and SHA is
+  reused, with the beat sheet rewritten against the project's scenes as they are now.
+- **Cuts** (`frames.py`). One decode to 48x27 RGB on a 30 fps grid (every channel: red to blue
+  has no green in it). A hard cut is a lone spike over at least 35% of the picture and four
+  times the frames around it; a flash comes back within a frame and is no cut. Sustained
+  change up to 2 s long that leaves a different picture and doesn't touch a hard cut is a
+  continuous boundary; anything else is a move inside its stretch.
+- **Sheets** (`sheets.py`). A row per bar and a cell per beat, 8 bars a sheet, with a cell every
+  few beats past 960 cells; labels come from `video/labels.py`, because the bundled ffmpeg has
+  no `drawtext`.
+- **Words** (`words.py`). Stills every half second plus the middle of each stretch, skipping a
+  picture that hasn't changed, at most 1200, go to `<exe> media ocr`, which only ever opens
+  kb's own decoded JPEGs. Each line under 0.4 confidence goes; the rest are cleaned
+  (`clean_text`), put on one line and capped at 200 characters before anything else sees them.
+  An app without OCR costs the words, nothing else.
+- **Beat sheet** (`beatsheet.py`). `beat-sheet.json` is exactly `kb timeline apply`'s plan,
+  a row per stretch against the project's scenes in order, with `scene-NN` past the last so
+  applying refuses rather than guesses. Recognised text never reaches it; `beat-sheet.md`
+  escapes it as data.
+- **Compare** (`compare.py`). `compare.html` lays both timelines on bars (each on its own grid)
+  or seconds. No script, no remote asset, a `default-src 'none'` CSP, and `html.escape` on every
+  string, because the recognised text and the file name come from the film.
 
 ## Film checks and verify-export
 
@@ -1278,7 +1322,7 @@ over the app-free cores in `edit.rs`, `media.rs`, `conform.rs`, `song/` and `too
 
 | Command | Does |
 | --- | --- |
-| `caps` | CLI version, app version, build, commands, `checks` (the `<exe> check` commands it serves), `autorun` (what a headless `kb export` may ask: actions, trust modes, poster, progress), `docVersion` (`read` 3, `write` [1, 2, 3]), `song` (`analysisVersion`, `trackers`), `media` (`version`, `commands`: probe, conform), `mask` (styles, `fades`), `crop`, `zoom`, ffmpeg/ffprobe paths and filters, hardware video, tap styles/colours/sizes, limits. kb gates every newer feature on these keys, never on the app version |
+| `caps` | CLI version, app version, build, commands, `checks` (the `<exe> check` commands it serves), `autorun` (what a headless `kb export` may ask: actions, trust modes, poster, progress), `docVersion` (`read` 3, `write` [1, 2, 3]), `song` (`analysisVersion`, `trackers`), `media` (`version`, `commands`: probe, conform, ocr), `mask` (styles, `fades`), `crop`, `zoom`, ffmpeg/ffprobe paths and filters, hardware video, tap styles/colours/sizes, limits. kb gates every newer feature on these keys, never on the app version |
 | `probe --project D --source R` (or `--file ABS`) | The app's probe (rotation-aware size, `vfr`, `editFps`, `nbFrames`) |
 | `create --project D --source R [--name N] [--reuse \| --force]` | The editor's default document for that source; an existing doc is `exists` unless `--reuse` or `--force` (backs up to `.json.bak`) |
 | `validate --project D (--name N \| --doc -)` | Parse, mask rules and a render dry run: `{ ok, hash, version, totalFrames, durationMs, fps, width, height, clips, taps, errors, warnings }` |
@@ -1288,8 +1332,9 @@ over the app-free cores in `edit.rs`, `media.rs`, `conform.rs`, `song/` and `too
 | `media caps` | `<exe> media`, same conventions (`src-tauri/src/cli_media.rs`): `{ cli, commands, timingVersion, fps: 60, keepOriginal: [move, copy], exitCodes }` |
 | `media probe --file ABS [--pts]` | `{ ok, file, kind, ffmpeg, avfoundation, verdict, reasons, conform: { recommended, why, refused } }`: each decoder's facts (frame rate, edit list, B-frames, colour, rotation) and the verdict (`ok`, `suspect`, `ffmpeg-misdecodes`); `refused` names why a file can't conform (HDR, 10-bit, an odd transform, unreadable). `--pts` decodes with both and adds their frame timestamps |
 | `media conform --project D --source REL [--name N] [--keep-original move\|copy] [--force]` | The ingest conform: JSON lines (`start`, `progress`, then `done` with `rel`, `original`, `timing`, `inPlace`, `frames`, `durationMs`, `verdict`, `reasons`); the mezzanine stages in `assets/.kc-render/`, the original goes to `assets/.originals/`, the frame map to `assets/<stem>.timing.json`. A move that would strand references is `in-use` (kb re-points first, or `--keep-original copy`) |
+| `media ocr --dir ABS` | Words in a folder of stills (png or jpg, plain files only, at most 4000) through Vision's on-device recogniser (`ocr.rs`): `{ engine: "vision", frames: [{ file, lines: [{ text, confidence }], error? }] }`, a still Vision can't open reporting its own `error` |
 | `song caps` | `<exe> song` (`cli_song.rs`): `{ commands, analysisVersion, trackers, model: { name, available }, ffmpeg, ffprobe }` |
-| `song analyse --file ABS [--force] [--tracker nn\|dsp]` | The beat lane's analyser, decoded with the bundled ffmpeg: `{ file, cached, cachePath, analysis }`, writing the same `<sha>-v2.json` cache the app reads |
+| `song analyse --file ABS [--force] [--tracker nn\|dsp]` | The beat lane's analyser, decoded with the bundled ffmpeg: `{ file, cached, cachePath, analysis }`, writing the same `<sha>-v3.json` cache the app reads. Beside the v2 fields, the document carries `hits` (`full`, `low`, `mid`, `high`: `[trackMs, strength]`), `ending` (`audibleEndMs`, `trailingSilenceMs`, `lastHitMs`, `lastHitStrength`) and `form` (`phrase`, `bars`, `parts`, `moments`; null without a fit), so nothing is recomputed |
 
 Renders (editor and CLI alike) stage in the hidden folder `<dir>/.kc-render/` and rename
 on success, so a failed render keeps the previous good file. A canonical render writes

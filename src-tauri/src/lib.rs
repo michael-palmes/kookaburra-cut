@@ -41,6 +41,8 @@ mod media;
 mod mp4box;
 mod native_alert;
 mod objects;
+#[cfg(target_os = "macos")]
+mod ocr;
 mod pack;
 mod png_decode;
 mod packs_win;

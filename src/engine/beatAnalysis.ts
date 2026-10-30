@@ -1,6 +1,6 @@
-/** Song analysis as the native analyser writes it (`src-tauri/src/song/`, cached as `<sha>-v2.json`): ffmpeg decode, beat-this or the DSP fit, refined against the track's own onsets. Editor and agent guidance only: the export path never reads any of this. This module validates the payload and shapes it for the lanes; anything off is null and the caller shows the error chip. */
+/** Song analysis as the native analyser writes it (`src-tauri/src/song/`, cached as `<sha>-v3.json`): ffmpeg decode, beat-this or the DSP fit, refined against the track's own onsets. Editor and agent guidance only: the export path never reads any of this. This module validates the payload and shapes it for the lanes; anything off is null and the caller shows the error chip. */
 
-export const BEAT_ANALYSIS_VERSION = 2;
+export const BEAT_ANALYSIS_VERSION = 3;
 
 export type BeatTracker = "nn" | "dsp";
 
@@ -9,7 +9,7 @@ export interface BeatKeyMoment {
   strength: number;
 }
 
-/** The fitted grid. `offsetMs` is track ms of bar 1 beat 1 (ffmpeg decode); `constantTempo` is false when the beats wander more than 15 ms off one line. */
+/** The fitted grid. `offsetMs` is track ms of bar 1 beat 1 (ffmpeg decode); `constantTempo` is false when the beats wander more than one frame at 30 fps (33 ms) off one line. */
 export interface BeatFit {
   bpm: number;
   offsetMs: number;
@@ -51,6 +51,12 @@ export interface SongEnergy {
   rangeLu: number | null;
 }
 
+/** One strong onset of the full band: track ms, strength 0..1 (the band's 99th-percentile peak is 1). */
+export interface SongHit {
+  ms: number;
+  strength: number;
+}
+
 export interface SongLyrics {
   source: string;
   lang: string | null;
@@ -79,6 +85,8 @@ export interface BeatAnalysis {
   breaths: SongBreath[];
   /** Hits per bar position in 16ths (16 in 4/4), the busiest slot 1. */
   stabs: number[];
+  /** The full band's strong onsets, in time order: the lane's ticks. */
+  hits: SongHit[];
   lyrics: SongLyrics | null;
 }
 
@@ -172,6 +180,17 @@ function parseBreaths(v: unknown): SongBreath[] {
     .map((b) => ({ fromMs: b.fromMs, toMs: b.toMs, kind: b.kind }));
 }
 
+function parseHits(v: unknown): SongHit[] {
+  const full = isObj(v) ? v.full : null;
+  if (!Array.isArray(full)) return [];
+  return full
+    .filter(
+      (h): h is [number, number] =>
+        Array.isArray(h) && isFiniteNumber(h[0]) && isFiniteNumber(h[1]),
+    )
+    .map(([ms, strength]) => ({ ms, strength }));
+}
+
 function parseLyrics(v: unknown): SongLyrics | null {
   if (!isObj(v) || typeof v.source !== "string" || typeof v.text !== "string") return null;
   return { source: v.source, lang: typeof v.lang === "string" ? v.lang : null, text: v.text };
@@ -225,6 +244,7 @@ export function parseBeatAnalysis(input: unknown): BeatAnalysis | null {
     sections: parseSections(v.sections),
     breaths: parseBreaths(v.breaths),
     stabs: stabs ?? [],
+    hits: parseHits(v.hits),
     lyrics: parseLyrics(v.lyrics),
   };
 }

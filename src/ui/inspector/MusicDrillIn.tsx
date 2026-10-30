@@ -104,6 +104,9 @@ function trackLengthLabel(durationMs: number): string {
 
 const round3 = (v: number) => Math.round(v * 1000) / 1000;
 
+/** Under this a fit reads as steady; over it (and within the 33 ms limit) the drill says the grid still holds. */
+const DRIFT_WORTH_NOTING_MS = 15;
+
 /** What the Use detected grid row says beside its label: the fit and its residual, or why there is none. */
 export function detectedGridLabel(status: BeatStatus, analysis: BeatAnalysis | null): string {
   if (status === "analysing") return "Analysing…";
@@ -230,6 +233,14 @@ export function BeatGridRows({
           on every beat.
         </p>
       )}
+      {detected &&
+        analysis?.fit?.constantTempo &&
+        analysis.fit.maxDriftMs > DRIFT_WORTH_NOTING_MS && (
+          <p className="modal-hint">
+            The tempo drifts by up to {Math.round(analysis.fit.maxDriftMs)} ms, under one frame at
+            30 fps, so the grid holds.
+          </p>
+        )}
       {grid && (
         <ActionRow
           icon={<MusicGridIcon type="clear" />}

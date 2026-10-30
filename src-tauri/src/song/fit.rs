@@ -2,11 +2,14 @@
 
 use super::onset::{onset_strength, rms_envelope, smooth3, ONSET_HOP};
 
-/// Above this drift (ms) the track is not treated as one constant tempo.
-pub const CONSTANT_TEMPO_MAX_DRIFT_MS: f64 = 15.0;
+/// Above this drift (ms, one frame at 30 fps) the track is not treated as one constant tempo. kb's `model.MAX_GRID_DRIFT_MS` mirrors it.
+pub const CONSTANT_TEMPO_MAX_DRIFT_MS: f64 = 33.0;
 /// The running-mean length (beats) that separates real drift from single-beat jitter.
 const DRIFT_WINDOW: usize = 8;
 const KICK_CUTOFF_HZ: f64 = 150.0;
+const INTERVAL_KEEP_SHARE: f64 = 0.25;
+/// A line must explain at least this share of the beats the widest candidate does before its residual counts.
+const MIN_POINT_SHARE: f64 = 0.5;
 /// Off-beats must out-weigh the beats by this much in the kick band before the grid moves.
 const HALF_BEAT_MARGIN: f64 = 1.5;
 /// An in-range tempo wins when its contrast is at least half an out-of-range winner's.
@@ -260,6 +263,45 @@ pub fn line_through(times: &[f64]) -> Option<(f64, f64)> {
     Some((p, phi - ((phi + PHASE_EDGE_MS) / p).floor() * p))
 }
 
+/// The line a tracker's beats agree on locally: the mean interval (those within a quarter of the median) and the circular mean phase. A beat skipped or doubled slips `line_through`'s count, and the whole line with it; this line never counts: (period, phase in [0, period)).
+pub fn interval_line(times: &[f64]) -> Option<(f64, f64)> {
+    if times.len() < 4 {
+        return None;
+    }
+    let mut intervals: Vec<f64> = times
+        .windows(2)
+        .map(|w| w[1] - w[0])
+        .filter(|d| *d > 0.0)
+        .collect();
+    if intervals.is_empty() {
+        return None;
+    }
+    intervals.sort_by(f64::total_cmp);
+    let mid = median(&intervals);
+    let kept: Vec<f64> = intervals
+        .into_iter()
+        .filter(|d| (d - mid).abs() <= mid * INTERVAL_KEEP_SHARE)
+        .collect();
+    let p = kept.iter().sum::<f64>() / kept.len() as f64;
+    if !(p.is_finite() && p > 0.0) {
+        return None;
+    }
+    let turn = 2.0 * std::f64::consts::PI / p;
+    let (sin, cos) = times.iter().fold((0.0, 0.0), |(s, c), t| {
+        (s + (t * turn).sin(), c + (t * turn).cos())
+    });
+    Some((p, wrap_phase(sin.atan2(cos) / turn, p)))
+}
+
+/// The candidate that fits tightest among those explaining a fair share of the beats: outlier rejection can leave a wrong line a tiny residual over a few points.
+pub fn best_line(candidates: Vec<LineFit>) -> Option<LineFit> {
+    let widest = candidates.iter().map(|l| l.points.len()).max()?;
+    candidates
+        .into_iter()
+        .filter(|l| l.points.len() as f64 >= widest as f64 * MIN_POINT_SHARE)
+        .min_by(|a, b| a.residual_ms.total_cmp(&b.residual_ms))
+}
+
 /// Two one-pole low-pass passes, then the onset chain: a kick-band onset signal.
 pub fn low_band_onset(samples: &[f32], sample_rate: u32) -> Vec<f64> {
     let a = (-2.0 * std::f64::consts::PI * KICK_CUTOFF_HZ / f64::from(sample_rate)).exp();
@@ -425,6 +467,60 @@ mod tests {
         let (period, phase) = line_through(&times).unwrap();
         assert!((period - p).abs() < 0.05, "{period}");
         assert!((phase - 213.7).abs() < 6.0, "{phase}");
+    }
+
+    #[test]
+    fn a_slipped_beat_tilts_the_counted_line_but_not_the_interval_line() {
+        let mut times: Vec<f64> = (0..130).map(|k| 500.0 + k as f64 * 500.0).collect();
+        // The tracker loses the plot through a breakdown: two beats land between grid lines, and one more goes missing.
+        times[60] += 240.0;
+        times[61] += 240.0;
+        times.remove(90);
+        times.remove(45);
+        let (counted, _) = line_through(&times).unwrap();
+        let (period, phase) = interval_line(&times).unwrap();
+        assert!((period - 500.0).abs() < 0.5, "{period}");
+        assert!(
+            phase.abs() < 25.0 || (phase - 500.0).abs() < 25.0,
+            "{phase}"
+        );
+        assert!(
+            (counted - 500.0).abs() > (period - 500.0).abs(),
+            "{counted} {period}"
+        );
+        assert!(interval_line(&[1.0, 2.0]).is_none());
+    }
+
+    #[test]
+    fn a_tight_fit_over_a_few_beats_does_not_beat_one_over_them_all() {
+        let line = |points: i64, residual_ms: f64| LineFit {
+            period_ms: 500.0,
+            phase_ms: 0.0,
+            residual_ms,
+            max_drift_ms: 0.0,
+            points: (0..points)
+                .map(|k| LinePoint {
+                    k,
+                    t: k as f64 * 500.0,
+                    w: 1.0,
+                })
+                .collect(),
+        };
+        assert_eq!(
+            best_line(vec![line(10, 2.0), line(100, 6.0)])
+                .unwrap()
+                .points
+                .len(),
+            100
+        );
+        assert_eq!(
+            best_line(vec![line(95, 1.0), line(102, 28.0)])
+                .unwrap()
+                .points
+                .len(),
+            95
+        );
+        assert!(best_line(Vec::new()).is_none());
     }
 
     #[test]

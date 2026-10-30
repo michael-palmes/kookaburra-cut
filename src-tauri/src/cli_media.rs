@@ -1,7 +1,8 @@
-//! `<app binary> media <command>`: the ingest conform's headless CLI, with the edit CLI's conventions (one JSON object on stdout, JSON lines for `conform`, diagnostics on stderr, exit 0 ok, 1 failed, 2 usage or environment, 130 interrupted). `media probe` reports what AVFoundation and ffmpeg each see and whether to conform; `media conform` writes the mezzanine and its timing record and keeps the original in `assets/.originals/`. Contract: docs/decisions.md (ingest conform).
+//! `<app binary> media <command>`: the ingest conform's headless CLI, with the edit CLI's conventions (one JSON object on stdout, JSON lines for `conform`, diagnostics on stderr, exit 0 ok, 1 failed, 2 usage or environment, 130 interrupted). `media probe` reports what AVFoundation and ffmpeg each see and whether to conform; `media conform` writes the mezzanine and its timing record and keeps the original in `assets/.originals/`; `media ocr` reads the words in a folder of stills, on this Mac (`ocr.rs`). Contract: docs/decisions.md (ingest conform), docs/agent-kit.md (headless CLI).
 
 use std::ffi::OsString;
 use std::path::PathBuf;
+use std::sync::atomic::Ordering;
 
 use serde_json::{json, Value};
 
@@ -11,9 +12,9 @@ use crate::cli::{
 use crate::conform::{self, ConformEvent, ConformTools, KeepOriginal};
 use crate::{media, workspace};
 
-const COMMANDS: &[&str] = &["caps", "probe", "conform"];
+const COMMANDS: &[&str] = &["caps", "probe", "conform", "ocr"];
 /// What `edit caps` lists under `media.commands`.
-pub const CAPS_COMMANDS: &[&str] = &["probe", "conform"];
+pub const CAPS_COMMANDS: &[&str] = &["probe", "conform", "ocr"];
 
 /// Entry point for `media …`; returns the process exit code.
 pub fn main(args: Vec<OsString>) -> i32 {
@@ -31,6 +32,7 @@ pub fn main(args: Vec<OsString>) -> i32 {
         "caps" => finish(caps(rest)),
         "probe" => finish(probe(rest)),
         "conform" => conform_command(rest),
+        "ocr" => finish(ocr(rest)),
         other => finish(Err(Fail::usage(format!(
             "unknown media command {other:?}: use one of {}",
             COMMANDS.join(", ")
@@ -115,6 +117,42 @@ fn probe(args: &[String]) -> Result<Value, Fail> {
         out.extend(report.clone());
     }
     Ok(out)
+}
+
+fn ocr(args: &[String]) -> Result<Value, Fail> {
+    let flags = Flags::parse(args, &["dir"], &[])?;
+    let raw = flags.require("dir")?;
+    let dir = PathBuf::from(raw);
+    if !dir.is_absolute() {
+        return Err(Fail::usage(format!(
+            "--dir must be an absolute path, not {raw:?}"
+        )));
+    }
+    if !dir.is_dir() {
+        return Err(Fail::new("missing", format!("no folder at {raw}")));
+    }
+    #[cfg(not(target_os = "macos"))]
+    return Err(Fail::new("env", "text recognition needs macOS"));
+    #[cfg(target_os = "macos")]
+    {
+        let stills = crate::ocr::stills(&dir).map_err(|e| Fail::new("invalid", e))?;
+        install_signal_handlers();
+        let mut frames = Vec::with_capacity(stills.len());
+        for still in &stills {
+            if CANCEL.load(Ordering::SeqCst) {
+                return Err(Fail::new(
+                    "interrupted",
+                    "the text recognition was interrupted",
+                ));
+            }
+            let name = still.file_name().map(|n| n.to_string_lossy().into_owned());
+            frames.push(match crate::ocr::recognise(still) {
+                Ok(lines) => json!({ "file": name, "lines": lines }),
+                Err(error) => json!({ "file": name, "lines": [], "error": error }),
+            });
+        }
+        Ok(json!({ "ok": true, "engine": "vision", "frames": frames }))
+    }
 }
 
 fn conform_command(args: &[String]) -> i32 {
@@ -238,6 +276,9 @@ mod tests {
         let p = dir.to_str().unwrap().to_owned();
         assert_eq!(code(&[]), 2);
         assert_eq!(code(&["frobnicate"]), 2);
+        assert_eq!(code(&["ocr"]), 2);
+        assert_eq!(code(&["ocr", "--dir", "relative"]), 2);
+        assert_eq!(code(&["ocr", "--dir", "/nonexistent/stills"]), 1);
         assert_eq!(code(&["probe"]), 2);
         assert_eq!(code(&["probe", "--file", "relative.mp4"]), 2);
         assert_eq!(code(&["probe", "--file", "/nonexistent/a.mp4"]), 1);
@@ -407,7 +448,7 @@ mod tests {
     fn caps_names_the_commands_and_exit_codes() {
         let caps = caps(&[]).unwrap();
         assert_eq!(caps["cli"], 1);
-        assert_eq!(caps["commands"], json!(["caps", "probe", "conform"]));
+        assert_eq!(caps["commands"], json!(["caps", "probe", "conform", "ocr"]));
         assert_eq!(caps["exitCodes"]["interrupted"], 130);
         assert_eq!(code(&["caps", "--bogus"]), 2);
     }

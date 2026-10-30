@@ -67,6 +67,7 @@ the cwd, or uses $CLAUDE_PROJECT_DIR.
                          [--transition TYPE[:MS]|none] [--ease E] [--name N]
   Documents  doc S get [PATH] | doc S set PATH VALUE | doc S unset PATH | doc S merge JSON
              project get [PATH] | project set PATH VALUE | project unset PATH
+             project fit --to song-end [--hold MS]   (the last scene ends with the music)
              theme list | theme show [ID] | theme set PATH VALUE
   Library    presets [list | show SLUG] | catalog [FAMILY] [--search Q]
              fonts safe | fonts check REF... | fonts list
@@ -88,7 +89,9 @@ the cwd, or uses $CLAUDE_PROJECT_DIR.
              events [--follow] [--since 10m|CURSOR|all] [--kinds ...] [--all-agents] [--exit-after S]
   Music      beats [--scene S] | beats set-grid|set-downbeat|clear-grid|cue|section|resolve ...
              timeline | timeline apply PLAN [--ripple]   (cuts and transitions in bars and ms)
-             song analyse [--force] [--tracker nn|dsp] [--lyrics] [--accept]
+             song analyse [--file PATH] [--force] [--tracker nn|dsp] [--lyrics] [--accept]
+             song hits [--bars A-B] [--band low|mid|high] [--min-strength N] [--file PATH]
+             reference analyse FILE [--compare] [--force]   (read a reference film, on this Mac)
   Helpers    chart ... (chart data) | hook EVENT (Claude Code)
 
 S is a scene index (0-based) or file stem (03-pricing). PATH is dotted
@@ -627,6 +630,10 @@ def settle_music(project: Project, stem: str, before: Any, after: Any, summary: 
 def cmd_project(ctx: Ctx) -> int:
     a = ctx.args
     project = ctx.project
+    if a.op == "fit":
+        from . import song as songmod
+
+        return songmod.cmd_fit(ctx)
     if a.op == "get":
         manifest = project.manifest()
         if a.path:
@@ -1161,6 +1168,11 @@ def build_parser(video_extensions: bool = True) -> argparse.ArgumentParser:
     y = psub.add_parser("unset", help="remove PATH", parents=writes, formatter_class=Formatter)
     y.add_argument("path")
     y.add_argument("--force", action="store_true")
+    y = psub.add_parser("fit", help="set the last scene so the film ends on the music", parents=writes, formatter_class=Formatter,
+                        epilog="  kb project fit --to song-end             the film ends at the song's audible end\n"
+                        "  kb project fit --to song-end --hold 400  and holds 400 ms past it")
+    y.add_argument("--to", required=True, choices=["song-end"], help="song-end: the audible end ./kb song analyse prints")
+    y.add_argument("--hold", type=float, default=0, metavar="MS", help="stay on screen this long past it (default 0)")
     pr.set_defaults(fn=cmd_project)
 
     t = add("theme", "list themes, show tokens, edit a workspace theme")
@@ -1264,6 +1276,9 @@ def build_parser(video_extensions: bool = True) -> argparse.ArgumentParser:
     from . import song as songmod
 
     songmod.register(sub, common, Formatter)
+    from .reference import commands as referencemod
+
+    referencemod.register(sub, common, Formatter)
     add("chart", "chart data and keyframes for a scene (every argument goes to chart.py)")
     return p
 

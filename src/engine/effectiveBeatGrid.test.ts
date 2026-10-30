@@ -6,7 +6,7 @@ import { type ProjectMusic, resolveMusicPosition, resolveSceneLocalMs } from "./
 import { defaultOrbitPose } from "./sceneCamera";
 
 const analysis: BeatAnalysis = {
-  version: 2,
+  version: 3,
   sha256: "abc",
   tracker: "dsp",
   fallbackReason: null,
@@ -22,6 +22,7 @@ const analysis: BeatAnalysis = {
   sections: [],
   breaths: [],
   stabs: [],
+  hits: [],
   lyrics: null,
 };
 

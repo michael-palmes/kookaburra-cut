@@ -14,7 +14,7 @@ from .util import EXIT_ENV, EXIT_OK, EXIT_PROBLEMS, KbError, emit, set_command
 
 PLANNABLE = (
     "scene add", "scene duplicate", "scene move", "scene remove", "scene set",
-    "doc set", "doc unset", "doc merge", "project set", "project unset", "theme set",
+    "doc set", "doc unset", "doc merge", "project set", "project unset", "project fit", "theme set",
     "assets add", "assets conform", "assets replace", "assets unused", "assets restore", "assets meta", "checkpoint", "undo", "lease",
 )
 # A dry run that fails with one of these exit-1 kinds is a refusal the plan reports, not a failure of the plan.
@@ -24,7 +24,7 @@ REFUSAL_FIELDS = ("holder", "untilMs", "scene", "file", "issues", "files", "by")
 EPILOG = """\
 Runs the command with --dry-run --json and reports what it would do; nothing is written,
 committed or leased. Covers scene add, duplicate, move, remove and set; doc set, unset and
-merge; project set and unset; theme set; assets add, conform, replace, unused, restore and
+merge; project set, unset and fit; theme set; assets add, conform, replace, unused, restore and
 meta; checkpoint; undo; lease.
 
   ./kb plan scene add pricing --preset title --after 02-hero
@@ -116,6 +116,9 @@ def notes_for(command: str, env: Dict[str, Any]) -> List[str]:
         out.insert(0, f"would remove scene {env.get('index')} from project.json" + (" after a checkpoint" if env.get("checkpoint") else ""))
     elif command == "scene set":
         out[:0] = [str(c) for c in env.get("changes") or []]
+    elif command == "project fit":
+        if env.get("summary"):
+            out.insert(0, f"project.json: {env['summary']}")
     elif command in ("doc set", "doc unset", "doc merge", "project set", "project unset", "theme set"):
         if env.get("summary"):
             out.insert(0, f"{env.get('file')}: {env['summary']}")

@@ -35,7 +35,7 @@ ASSET_TOKEN = re.compile(r"(?:[^\s\"'=;&|<>()]*/)?(?:assets/|\.originals/)[^\s\"
 RECORD_WORDS = ("assets", ".originals", "_meta.json", ".timing.json")
 KB_WRITE = re.compile(
     r"\bkb(?:\.py)?[\"']?\s+(?:--?[\w-]+(?:[= ][^\s-][^\s]*)?\s+)*"
-    r"(?:scene\s+(?:add|duplicate|move|remove|set)|doc\s+\S+\s+(?:set|unset|merge)|project\s+(?:set|unset)|theme\s+set|assets\s+(?:add|conform|replace)|"
+    r"(?:scene\s+(?:add|duplicate|move|remove|set)|doc\s+\S+\s+(?:set|unset|merge)|project\s+(?:set|unset|fit)|theme\s+set|assets\s+(?:add|conform|replace)|"
     r"beats\s+(?:set-grid|set-downbeat|clear-grid|cue\s+(?:set|rm)|section\s+(?:set|rm))|song\s+analyse\b[^;&|\n]*--accept|"
     r"video\s+(?!list|show|map|usages|validate|caps|frames|sheet|analyse|durations|open)\w+)"
 )

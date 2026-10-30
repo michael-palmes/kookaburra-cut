@@ -23,6 +23,11 @@ BPM_MAX = 300
 BEATS_PER_BAR_MAX = 16
 MAX_GRID_BEATS = 100000
 NO_MUSIC: Dict[str, Any] = {"startOffsetMs": 0, "cues": {}, "sections": {}}
+# One frame at 30 fps: the app's CONSTANT_TEMPO_MAX_DRIFT_MS. A wider drift can't take one grid; under STEADY nothing needs saying.
+MAX_GRID_DRIFT_MS = 33
+STEADY_DRIFT_MS = 15
+# A hit further than this from its 16th carries a +Nms nudge, so the position lands on the hit.
+NUDGE_MIN_MS = 5
 KEY_TRACKS = (("camera",), ("cameraRig",), ("lighting",), ("deviceTrack",))
 COMPARE_KEY_TRACKS = (("compare", "b", "lighting"), ("compare", "track"))
 POSITION_PLACES = (
@@ -232,6 +237,37 @@ def grid_beats(m: Dict[str, Any], end_ms: float) -> Tuple[List[float], List[Tupl
                 bars.append((k // per_bar + 1, t))
         k += 1
     return beats, bars
+
+
+def drift_holds(fit: Any) -> bool:
+    """Whether one grid holds for a fit: its max drift within a frame at 30 fps. The number decides, so a v2 copy that
+    called a 19 ms fit drifting holds too; without one, the fit's own verdict stands."""
+    if not isinstance(fit, dict):
+        return False
+    drift = fit.get("maxDriftMs")
+    if _finite(drift):
+        return drift <= MAX_GRID_DRIFT_MS
+    return fit.get("constantTempo") is not False
+
+
+def nearest_sixteenth(grid: Dict[str, Any], track_ms: float, compact: bool = False, nudge_min_ms: float = NUDGE_MIN_MS) -> Dict[str, Any]:
+    """The 16th of the grid nearest a track time: { position, bar, beat, sixteenth, offMs }. position is bar:B.beat.16th
+    (compact drops a trailing .1) with a +Nms nudge when the time sits further than nudge_min_ms off the 16th."""
+    step = 60000 / grid["bpm"] / 4
+    per_bar = grid["beatsPerBar"] * 4
+    n = music.js_round((track_ms - grid["offsetMs"]) / step)
+    bar = math.floor(n / per_bar) + 1
+    rest = n - (bar - 1) * per_bar
+    beat, sixteenth = rest // 4 + 1, rest % 4 + 1
+    off = track_ms - (grid["offsetMs"] + n * step)
+    if compact and sixteenth == 1:
+        text = f"bar:{bar}" if beat == 1 else f"bar:{bar}.{beat}"
+    else:
+        text = f"bar:{bar}.{beat}.{sixteenth}"
+    nudge = music.js_round(off)
+    if abs(off) > nudge_min_ms and nudge:
+        text += f"{nudge:+d}ms"
+    return {"position": text, "bar": bar, "beat": beat, "sixteenth": sixteenth, "offMs": round(off, 1)}
 
 
 def nearest_beat(m: Optional[Dict[str, Any]], project_ms: float) -> Optional[Dict[str, Any]]:

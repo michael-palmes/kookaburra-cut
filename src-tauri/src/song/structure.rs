@@ -1,14 +1,18 @@
-//! The song's shape on top of the beat grid: sections (Foote novelty over per-bar loudness, onset density and flux, so every boundary lands on a downbeat), breaths (silences and sharp dips in a K-weighted 100 ms loudness) and the stab histogram (where in the bar the hits fall).
+//! The song's shape on top of the beat grid: sections (Foote novelty over per-bar loudness, onset density and flux, so every boundary lands on a downbeat), breaths (silences and sharp dips in a K-weighted 100 ms loudness), the audible end and the stab histogram (where in the bar the hits fall).
 
 use serde::Serialize;
 
+use super::hits::Hit;
 use super::onset::pick_onset_peaks;
 
-/// The breath detector's loudness hop and window (ms).
-const BREATH_HOP_MS: f64 = 10.0;
+/// The short loudness series' hop (the breath detector's and the form's).
+pub const SHORT_HOP_MS: f64 = 10.0;
+const BREATH_HOP_MS: f64 = SHORT_HOP_MS;
 const BREATH_WINDOW_MS: f64 = 100.0;
 const BREATH_CONTEXT_MS: f64 = 3000.0;
 const SILENCE_LUFS: f64 = -50.0;
+/// The last hit worth naming as the music's end.
+const LAST_HIT_MIN_STRENGTH: f64 = 0.5;
 const DIP_DB: f64 = 15.0;
 /// A dip needs music around it: quieter context than this is a quiet passage, not a breath.
 const DIP_CONTEXT_MIN_LUFS: f64 = -40.0;
@@ -63,7 +67,7 @@ impl Bars {
     }
 }
 
-fn zscore(values: &mut [f64]) {
+pub(super) fn zscore(values: &mut [f64]) {
     let n = values.len() as f64;
     if n == 0.0 {
         return;
@@ -187,7 +191,7 @@ pub fn sections(bars: &Bars, momentary: &[f64], strength: &[f64], hop_ms: f64) -
 }
 
 /// A biquad in direct form I.
-struct Biquad {
+pub(super) struct Biquad {
     b: [f64; 3],
     a: [f64; 2],
     x: [f64; 2],
@@ -195,7 +199,38 @@ struct Biquad {
 }
 
 impl Biquad {
-    fn step(&mut self, x0: f64) -> f64 {
+    fn normalised(b: [f64; 3], a: [f64; 3]) -> Self {
+        Self {
+            b: [b[0] / a[0], b[1] / a[0], b[2] / a[0]],
+            a: [a[1] / a[0], a[2] / a[0]],
+            x: [0.0; 2],
+            y: [0.0; 2],
+        }
+    }
+
+    /// A Butterworth low-pass at `cutoff_hz` (RBJ's cookbook).
+    pub(super) fn low_pass(cutoff_hz: f64, sample_rate: f64) -> Self {
+        let w = 2.0 * std::f64::consts::PI * cutoff_hz / sample_rate;
+        let alpha = w.sin() * std::f64::consts::FRAC_1_SQRT_2;
+        let c = w.cos();
+        Self::normalised(
+            [(1.0 - c) / 2.0, 1.0 - c, (1.0 - c) / 2.0],
+            [1.0 + alpha, -2.0 * c, 1.0 - alpha],
+        )
+    }
+
+    /// A Butterworth high-pass at `cutoff_hz` (RBJ's cookbook).
+    pub(super) fn high_pass(cutoff_hz: f64, sample_rate: f64) -> Self {
+        let w = 2.0 * std::f64::consts::PI * cutoff_hz / sample_rate;
+        let alpha = w.sin() * std::f64::consts::FRAC_1_SQRT_2;
+        let c = w.cos();
+        Self::normalised(
+            [(1.0 + c) / 2.0, -(1.0 + c), (1.0 + c) / 2.0],
+            [1.0 + alpha, -2.0 * c, 1.0 - alpha],
+        )
+    }
+
+    pub(super) fn step(&mut self, x0: f64) -> f64 {
         let y0 = self.b[0] * x0 + self.b[1] * self.x[0] + self.b[2] * self.x[1]
             - self.a[0] * self.y[0]
             - self.a[1] * self.y[1];
@@ -249,8 +284,7 @@ fn windowed_lufs(prefix: &[f64], sample_rate: f64, window_ms: f64) -> Vec<f64> {
         .collect()
 }
 
-/// Breaths: spans of at least `BREATH_MIN_MS` below -50 LUFS ("silence") or 15 dB under the surrounding 3 s ("dip"), never touching the track's ends. Expects 48 kHz (the K-weighting coefficients).
-pub fn breaths(samples: &[f32], sample_rate: u32) -> Vec<Breath> {
+fn energy_prefix(samples: &[f32]) -> Vec<f64> {
     let weighted = k_weight(samples);
     let mut prefix = Vec::with_capacity(weighted.len() + 1);
     prefix.push(0.0);
@@ -259,6 +293,61 @@ pub fn breaths(samples: &[f32], sample_rate: u32) -> Vec<Breath> {
         acc += v * v;
         prefix.push(acc);
     }
+    prefix
+}
+
+/// The K-weighted loudness (LUFS) of centred 100 ms windows every `SHORT_HOP_MS`. Expects 48 kHz.
+pub fn short_lufs(samples: &[f32], sample_rate: u32) -> Vec<f64> {
+    windowed_lufs(
+        &energy_prefix(samples),
+        f64::from(sample_rate),
+        BREATH_WINDOW_MS,
+    )
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Ending {
+    pub audible_end_ms: f64,
+    pub trailing_silence_ms: f64,
+    pub last_hit: Option<Hit>,
+}
+
+impl Ending {
+    pub fn to_json(&self) -> serde_json::Value {
+        serde_json::json!({
+            "audibleEndMs": self.audible_end_ms,
+            "trailingSilenceMs": self.trailing_silence_ms,
+            "lastHitMs": self.last_hit.map(|h| h.t_ms.round()),
+            "lastHitStrength": self.last_hit.map(|h| h.strength),
+        })
+    }
+}
+
+/// Where the music stops: the first silent window's start after the last window with any sound in it, to the nearest hop; the last strong hit before it.
+pub fn ending(short: &[f64], duration_ms: f64, full_hits: &[Hit]) -> Ending {
+    let audible_end_ms = match short.iter().rposition(|&v| v >= SILENCE_LUFS) {
+        None => 0.0,
+        Some(last) if last + 1 == short.len() => duration_ms,
+        Some(last) => ((last + 1) as f64 * BREATH_HOP_MS + BREATH_HOP_MS / 2.0
+            - BREATH_WINDOW_MS / 2.0)
+            .clamp(0.0, duration_ms)
+            .round(),
+    };
+    let last_hit = full_hits
+        .iter()
+        .rev()
+        .copied()
+        .find(|h| h.strength >= LAST_HIT_MIN_STRENGTH && h.t_ms <= audible_end_ms);
+    Ending {
+        audible_end_ms,
+        trailing_silence_ms: (duration_ms - audible_end_ms).max(0.0),
+        last_hit,
+    }
+}
+
+/// Breaths: spans of at least `BREATH_MIN_MS` below -50 LUFS ("silence") or 15 dB under the surrounding 3 s ("dip"), never touching the track's ends. Expects 48 kHz (the K-weighting coefficients).
+pub fn breaths(samples: &[f32], sample_rate: u32) -> Vec<Breath> {
+    let prefix = energy_prefix(samples);
     let rate = f64::from(sample_rate);
     let short = windowed_lufs(&prefix, rate, BREATH_WINDOW_MS);
     let context = windowed_lufs(&prefix, rate, BREATH_CONTEXT_MS);
@@ -381,6 +470,37 @@ mod tests {
             .chain(noise(sec * 2, 0.3, &mut seed))
             .collect();
         assert!(breaths(&leading, SR).is_empty());
+    }
+
+    #[test]
+    fn the_audible_end_is_where_the_sound_stops_not_where_the_file_does() {
+        let mut seed = 5;
+        let sec = SR as usize;
+        let mut x = noise(sec * 3, 0.3, &mut seed);
+        x.extend(vec![0.0; sec * 2]);
+        let hit = Hit {
+            t_ms: 2500.0,
+            strength: 0.8,
+        };
+        let weak = Hit {
+            t_ms: 2900.0,
+            strength: 0.2,
+        };
+        let end = ending(&short_lufs(&x, SR), 5000.0, &[hit, weak]);
+        assert!((end.audible_end_ms - 3000.0).abs() <= 20.0, "{end:?}");
+        assert!((end.trailing_silence_ms - 2000.0).abs() <= 20.0, "{end:?}");
+        assert_eq!(end.last_hit, Some(hit));
+
+        let full = noise(sec * 2, 0.3, &mut seed);
+        let end = ending(&short_lufs(&full, SR), 2000.0, &[]);
+        assert_eq!(end.audible_end_ms, 2000.0);
+        assert_eq!(end.trailing_silence_ms, 0.0);
+        assert_eq!(end.last_hit, None);
+
+        let silent = ending(&short_lufs(&vec![0.0; sec], SR), 1000.0, &[hit]);
+        assert_eq!(silent.audible_end_ms, 0.0);
+        assert_eq!(silent.trailing_silence_ms, 1000.0);
+        assert_eq!(silent.last_hit, None);
     }
 
     #[test]

@@ -5,7 +5,7 @@ import type { ProjectAudio } from "../../engine/project";
 import { BeatGridGroup, BeatGridRows, detectedGridLabel, MusicDrillIn } from "./MusicDrillIn";
 
 const analysis: BeatAnalysis = {
-  version: 2,
+  version: 3,
   sha256: "sha",
   tracker: "nn",
   fallbackReason: null,
@@ -18,7 +18,7 @@ const analysis: BeatAnalysis = {
     periodMs: 468.75,
     phaseMs: 312.5,
     residualMs: 0.94,
-    maxDriftMs: 22,
+    maxDriftMs: 40,
     constantTempo: false,
   },
   beats: [],
@@ -30,6 +30,7 @@ const analysis: BeatAnalysis = {
   sections: [],
   breaths: [],
   stabs: [],
+  hits: [],
   lyrics: null,
 };
 
@@ -68,7 +69,26 @@ describe("Music drill Beat grid group", () => {
     expect(html).toContain("need a grid");
     expect(html).not.toContain("Clear grid");
     expect(html).not.toContain(">BPM<");
-    expect(html).toContain("drifts by up to 22 ms");
+    expect(html).toContain("drifts by up to 40 ms");
+    expect(html).toContain("sit on every beat");
+  });
+
+  it("says so when a fit drifts but holds within a frame", () => {
+    const fit = {
+      ...(analysis.fit as NonNullable<BeatAnalysis["fit"]>),
+      maxDriftMs: 19,
+      constantTempo: true,
+    };
+    const html = renderToStaticMarkup(
+      <BeatGridRows
+        audio={audio()}
+        status="ready"
+        analysis={{ ...analysis, fit }}
+        onPatch={vi.fn()}
+      />,
+    );
+    expect(html).toContain("drifts by up to 19 ms, under one frame at 30");
+    expect(html).not.toContain("sit on every beat");
   });
 
   it("reads the analysis from the beat store", () => {

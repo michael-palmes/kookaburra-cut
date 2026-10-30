@@ -1,13 +1,16 @@
-//! Song analysis v2: one analyser for the beat lane (`song_analysis`) and the headless `<exe> song analyse`. It decodes with the ffmpeg sidecar (the export's decoder), tracks beats and downbeats with the bundled beat-this model or the DSP fit, refines the grid against our own onsets, and adds loudness, sections, breaths, a stab histogram and any lyrics tag. Editor and agent guidance only: nothing here ever feeds a render. Results are cached by audio SHA-256 as `<sha>-v2.json` under `$APPDATA/cache/beats/`, the version in the name so two builds never fight over one file.
+//! Song analysis v3: one analyser for the beat lane (`song_analysis`) and the headless `<exe> song analyse`. It decodes with the ffmpeg sidecar (the export's decoder), tracks beats and downbeats with the bundled beat-this model or the DSP fit, refines the grid against our own onsets, and adds loudness, sections, breaths, a stab histogram, band-split hits, the audible end, the song's form and any lyrics tag. Editor and agent guidance only: nothing here ever feeds a render. Results are cached by audio SHA-256 as `<sha>-v3.json` under `$APPDATA/cache/beats/`, the version in the name so two builds never fight over one file.
 
 mod decode;
 mod fit;
+mod form;
+mod hits;
 mod nn;
 mod onset;
 mod structure;
 #[cfg(test)]
 mod synth;
 
+use std::io::Read;
 use std::path::{Path, PathBuf};
 
 use serde_json::{json, Value};
@@ -20,7 +23,7 @@ use onset::{ENVELOPE_HOP, ONSET_HOP};
 
 pub use nn::{candidate_dirs, locate as locate_model, ModelFiles, MODEL_NAME};
 
-pub const ANALYSIS_VERSION: u32 = 2;
+pub const ANALYSIS_VERSION: u32 = 3;
 /// The pinned decode rate: results never depend on the file's own rate or the output device.
 pub const SAMPLE_RATE: u32 = 48_000;
 /// What `edit caps` and `song caps` advertise under `trackers`.
@@ -301,8 +304,18 @@ pub fn analyse_pcm(
 
     let (tracker, fit, beats) = match &tracked {
         Some(t) => {
-            let line = fit::line_through(&t.beats_ms)
-                .and_then(|(p, phase)| fit::refine_grid_fit(&strength, hop, p, phase, duration_ms));
+            let line = fit::best_line(
+                [
+                    fit::line_through(&t.beats_ms),
+                    fit::interval_line(&t.beats_ms),
+                ]
+                .into_iter()
+                .flatten()
+                .filter_map(|(p, phase)| {
+                    fit::refine_grid_fit(&strength, hop, p, phase, duration_ms)
+                })
+                .collect(),
+            );
             let beats_per_bar = tracked_beats_per_bar(t);
             match line {
                 Some(line) => {
@@ -463,6 +476,23 @@ fn assemble(sha: &str, samples: &[f32], core: &Core, extras: Extras) -> Value {
     };
     let display = onset::rms_envelope(samples, ENVELOPE_HOP);
     let key_moments = onset::detect_key_moments(&core.fine_envelope, &core.strength, core.hop_ms);
+    let hits = hits::detect(samples, SAMPLE_RATE, &core.strength, core.hop_ms);
+    let short = structure::short_lufs(samples, SAMPLE_RATE);
+    let ending = structure::ending(&short, core.duration_ms, &hits.full);
+    let form = core.fit.as_ref().and_then(|fit| {
+        let starts: Vec<i64> = sections.iter().map(|s| s.from_bar).collect();
+        form::analyse(
+            &form::Grid {
+                offset_ms: fit.offset_ms,
+                period_ms: fit.line.period_ms,
+                beats_per_bar: fit.beats_per_bar,
+            },
+            &starts,
+            &short,
+            &hits,
+            ending.audible_end_ms,
+        )
+    });
     json!({
         "version": ANALYSIS_VERSION,
         "sha256": sha,
@@ -491,6 +521,9 @@ fn assemble(sha: &str, samples: &[f32], core: &Core, extras: Extras) -> Value {
         "sections": sections,
         "breaths": structure::breaths(samples, SAMPLE_RATE),
         "stabs": { "per16th": stabs },
+        "hits": hits.to_json(),
+        "ending": ending.to_json(),
+        "form": form.as_ref().map_or(Value::Null, form::Form::to_json),
         "lyrics": extras.lyrics.map(|l| json!({ "source": l.source, "lang": l.lang, "text": l.text })),
         "keyMoments": key_moments.iter().map(|m| json!({ "tMs": m.t_ms, "strength": m.strength })).collect::<Vec<_>>(),
         "envelope": {
@@ -500,8 +533,18 @@ fn assemble(sha: &str, samples: &[f32], core: &Core, extras: Extras) -> Value {
     })
 }
 
-fn sha256_hex(bytes: &[u8]) -> String {
-    crate::hex_digest(Sha256::digest(bytes).as_slice())
+/// The file's SHA-256, streamed: `--file` may name a whole video, which never has to fit in memory.
+fn sha256_file(path: &Path) -> std::io::Result<String> {
+    let mut file = std::fs::File::open(path)?;
+    let mut hasher = Sha256::new();
+    let mut buf = vec![0u8; 1 << 20];
+    loop {
+        match file.read(&mut buf)? {
+            0 => break,
+            n => hasher.update(&buf[..n]),
+        }
+    }
+    Ok(crate::hex_digest(hasher.finalize().as_slice()))
 }
 
 fn write_cache(path: &Path, value: &Value) -> Result<(), String> {
@@ -518,10 +561,8 @@ fn write_cache(path: &Path, value: &Value) -> Result<(), String> {
 
 /// Analyse one audio file, cache first. `cancelled` is polled through the decode and the model pass.
 pub fn analyse(req: &Request, cancelled: &dyn Fn() -> bool) -> Result<Outcome, SongError> {
-    let bytes = std::fs::read(req.file)
+    let sha = sha256_file(req.file)
         .map_err(|e| SongError::new("missing", format!("{}: {e}", req.file.display())))?;
-    let sha = sha256_hex(&bytes);
-    drop(bytes);
     let locate = || {
         if req.tracker == TrackerChoice::Dsp {
             Err("the DSP tracker was asked for".to_owned())

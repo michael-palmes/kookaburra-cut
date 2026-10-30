@@ -462,7 +462,7 @@ the mix like every pixel. Rules:
   envelope mirrors the qsin afade curves per clock tick. The mux is the only
   mixdown that counts.
 - **Song analysis never feeds render.** The beat lane's and `<exe> song
-  analyse`'s output (`src-tauri/src/song/`, cached as `<sha>-v2.json`) is
+  analyse`'s output (`src-tauri/src/song/`, cached as `<sha>-v3.json`) is
   editor and agent guidance only; an autorun never starts it, and only an
   authored `audio.grid` copied from it reaches a frame.
 
