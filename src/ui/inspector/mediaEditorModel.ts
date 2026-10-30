@@ -7,6 +7,7 @@ import {
   type SceneDocMediaSpec,
   type SceneMediaHost,
   type SceneMediaKind,
+  type SceneMediaMotionPreset,
 } from "../../engine/sceneDocSchema";
 import {
   createSceneMedia,
@@ -78,6 +79,27 @@ export function defaultSceneMediaHost(
 ): SceneMediaHost {
   if (kind === "video") return "window";
   return overlayAvailable ? "overlay" : "stage";
+}
+
+/** The presets each kind ever had: a still turns, a clip drifts. Offering the other one would fake motion the sampler leaves inert. */
+export const SCENE_MEDIA_KIND_MOTIONS: Record<SceneMediaKind, SceneMediaMotionPreset[]> = {
+  image: ["none", "turntable", "float", "tilt-reveal", "push-in"],
+  video: ["none", "float", "drift", "tilt-reveal", "push-in"],
+};
+
+/** Turns an entry into the other kind, taking everything only the old kind could use with it: playback, the window host (where a still would render through the frame layer anyway, the parse degrade), the cast shadow a clip never draws and a motion preset the new kind never had. A swap within a kind changes nothing here. */
+export function changeSceneMediaKind(entry: SceneDocMediaSpec, kind: SceneMediaKind): void {
+  if (entry.kind === kind) return;
+  entry.kind = kind;
+  if (kind === "image") {
+    delete entry.video;
+    if (entry.host === "window") entry.host = "overlay";
+  } else {
+    delete entry.castShadow;
+  }
+  if (entry.motion && !SCENE_MEDIA_KIND_MOTIONS[kind].includes(entry.motion.preset)) {
+    delete entry.motion;
+  }
 }
 
 export type MediaEditorReconciliation =
