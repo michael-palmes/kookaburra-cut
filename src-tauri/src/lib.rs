@@ -3,6 +3,7 @@
 #[cfg(test)]
 mod acl;
 mod asset_meta;
+mod asset_reach;
 mod brands;
 mod bridge;
 mod bridge_export;
@@ -29,6 +30,7 @@ mod flashes;
 mod fonts;
 mod global_screenshots;
 mod gradients;
+mod history;
 mod kit;
 mod library;
 mod library_previews;
@@ -44,6 +46,7 @@ mod png_decode;
 mod packs_win;
 mod present;
 mod preset_posters;
+mod privacy;
 mod pty;
 mod render_win;
 mod scene_doc;
@@ -70,7 +73,6 @@ use sha2::{Digest, Sha256};
 use tauri::ipc::Channel;
 use tauri::{AppHandle, Manager, State};
 use tauri_plugin_shell::process::{CommandChild, CommandEvent};
-use tauri_plugin_shell::ShellExt;
 use tokio::sync::oneshot;
 
 use encode::{
@@ -484,10 +486,10 @@ fn start_export(
 
     // Validate the soundtrack up front so a bad path fails the export loudly, not as a cryptic ffmpeg exit late in the run.
     if let Some(audio) = &options.audio {
-        let p = std::path::Path::new(&audio.file);
-        if !p.is_absolute() || !p.is_file() {
-            return Err(format!("audio file not found: {}", audio.file));
-        }
+        media::confine_soundtrack(&app, &settings, &audio.file)?;
+    }
+    if let Some(spec) = &options.encode {
+        spec.validate()?;
     }
     let audio_snapshot = match options.audio.as_mut() {
         Some(audio) => {
@@ -518,7 +520,7 @@ fn start_export(
                 .join("export-mezz");
             // Sweep leftovers from any crashed run, then guard the disk with the raw-frame ceiling (FFV1 stays under raw) plus a 2 GB margin; this is the one check that BLOCKS, since running out mid-encode corrupts the export.
             let _ = std::fs::remove_dir_all(&mezz_dir);
-            std::fs::create_dir_all(&mezz_dir).map_err(|e| e.to_string())?;
+            privacy::private_dir(&mezz_dir).map_err(|e| e.to_string())?;
             let (w, h) = spec.out_dims(options.width, options.height);
             let frames = spec.out_frames(options.total_frames, options.fps) as u64;
             let bytes_per_frame = (w as u64) * (h as u64) * if spec.ten_bit { 3 } else { 2 };
@@ -547,10 +549,7 @@ fn start_export(
     };
 
     // Tauri places the sidecar next to the executable under its basename (the `bin/` prefix from `externalBin` and the target-triple suffix are both stripped), so the runtime name is just "ffmpeg".
-    let (mut rx, child) = app
-        .shell()
-        .sidecar("ffmpeg")
-        .map_err(|e| format!("ffmpeg sidecar not found: {e}"))?
+    let (mut rx, child) = tools::sidecar(&app, "ffmpeg")?
         .args(args)
         .spawn()
         .map_err(|e| format!("failed to start ffmpeg sidecar: {e}"))?;
@@ -889,10 +888,7 @@ async fn run_ffmpeg_to_completion(
     args: Vec<String>,
     on_spawn: impl FnOnce(u32),
 ) -> Result<(), String> {
-    let (mut rx, child) = app
-        .shell()
-        .sidecar("ffmpeg")
-        .map_err(|e| format!("ffmpeg sidecar not found: {e}"))?
+    let (mut rx, child) = tools::sidecar(app, "ffmpeg")?
         .args(args)
         .spawn()
         .map_err(|e| format!("failed to start ffmpeg sidecar: {e}"))?;
@@ -915,13 +911,13 @@ async fn run_ffmpeg_to_completion(
     }
 }
 
-/// Free bytes on the volume holding `path` (macOS statvfs, the mezzanine disk guard).
-fn free_disk_bytes(path: &std::path::Path) -> Result<u64, String> {
+/// Free bytes on the volume holding `path` (macOS statvfs): the mezzanine and clip-extraction disk guards.
+pub(crate) fn free_disk_bytes(path: &std::path::Path) -> Result<u64, String> {
     use std::os::unix::ffi::OsStrExt;
     let c = std::ffi::CString::new(path.as_os_str().as_bytes()).map_err(|e| e.to_string())?;
     let mut vfs: libc::statvfs = unsafe { std::mem::zeroed() };
     if unsafe { libc::statvfs(c.as_ptr(), &mut vfs) } != 0 {
-        return Err("statvfs failed for the mezzanine cache".into());
+        return Err(format!("statvfs failed for {}", path.display()));
     }
     Ok(vfs.f_bavail as u64 * vfs.f_frsize as u64)
 }
@@ -1106,7 +1102,7 @@ pub(crate) fn autorun_result_dir(app: &AppHandle) -> Result<PathBuf, String> {
             .join(workspace::WORKSPACE_DIR_NAME)
             .join("_autorun"),
     };
-    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    privacy::private_dir(&dir).map_err(|e| e.to_string())?;
     Ok(dir)
 }
 
@@ -1390,6 +1386,7 @@ macro_rules! kookaburra_handler {
             workspace::list_projects,
             workspace::create_project,
             workspace::read_project_manifest,
+            workspace::release_project,
             workspace::read_scene_source,
             workspace::project_fingerprint,
             live_edits::project_file_stamps,
@@ -1420,6 +1417,7 @@ macro_rules! kookaburra_handler {
             workspace::list_scene_thumbs,
             workspace::write_scene_thumb,
             workspace::write_emoji_raster,
+            workspace::read_emoji_raster,
             scene_doc::read_scene_doc,
             scene_doc::read_scene_doc_entry,
             scene_doc::write_scene_doc,
@@ -1596,6 +1594,7 @@ macro_rules! kookaburra_handler {
             pack::commands::reveal_pack,
             pack::commands::inspect_pack,
             pack::commands::read_pack_scene_source,
+            pack::commands::read_pack_scene_docs,
             pack::commands::stage_pack,
             pack::commands::apply_import,
             pack::commands::discard_staged_pack,
@@ -1640,6 +1639,7 @@ pub fn run() {
     }
     let builder = builder
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .manage(asset_reach::AssetReach::default())
         .manage(ExportState::default())
         .manage(ExportHistory::default())
         .manage(FlashState::default())
@@ -1666,6 +1666,12 @@ pub fn run() {
         .manage(theme_editor_win::ThemeEditorState::default())
         .manage(pack::commands::PackState::default())
         .manage(website::WebsiteState::default())
+        .register_asynchronous_uri_scheme_protocol("asset", asset_reach::handler)
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::Destroyed = event {
+                asset_reach::close_project(window.app_handle(), window.label());
+            }
+        })
         .on_page_load(|webview, payload| {
             if webview.label() == "main"
                 && payload.event() == tauri::webview::PageLoadEvent::Started
@@ -1687,7 +1693,20 @@ pub fn run() {
                     park_background_window(&main);
                 }
             }
+            // Confidential work on disk is the user's alone: the app's own folders go owner-only before anything writes.
+            if let Ok(app_data) = app.path().app_data_dir() {
+                let sinks = app
+                    .path()
+                    .home_dir()
+                    .map(|home| {
+                        let workspace = home.join(workspace::WORKSPACE_DIR_NAME);
+                        vec![workspace.join("_bridge"), workspace.join("_autorun")]
+                    })
+                    .unwrap_or_default();
+                privacy::seal_at_startup(app_data, sinks);
+            }
             managed::log_at_boot();
+            asset_reach::init(app.handle());
             bridge::init(app.handle());
             bridge::spawn_heartbeat(app.handle().clone());
             export_health::spawn_sampler(app.handle().clone());

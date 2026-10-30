@@ -1,12 +1,12 @@
 /** Scene-terminal session registry: one live PTY per scene block, keyed `${slug}#${sceneStem}` and outliving the overlay component exactly as the rail's sessions outlive its panel (detach keeps the process and scrollback, re-attach restores them). Scene terminals differ from the rail in three ways: the grid is the LOGICAL size from the sidecar (no fit addon, the overlay scales visually), the theme is the block's resolved colour preset (full ANSI 16), and the start command is pre-typed but never run (docs/decisions.md). */
 
-import { ClipboardAddon } from "@xterm/addon-clipboard";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { type ITheme, Terminal } from "@xterm/xterm";
 import { type ResolvedSceneTerminal, sanitizeStartCommand } from "./sceneTerminal";
 import { TERMINAL_FONT_STACK } from "./sceneTerminalRaster";
 import type { SceneTerminalColours } from "./sceneTerminalTheme";
 import { spawnTerminalSession, type TerminalSession } from "./terminal";
+import { writeOnlyClipboardAddon } from "./terminalClipboard";
 
 export type SceneTerminalStatus = "running" | "exited";
 
@@ -131,7 +131,7 @@ export async function startSceneTerminalSession(opts: {
   });
   term.loadAddon(new Unicode11Addon());
   term.unicode.activeVersion = "11";
-  term.loadAddon(new ClipboardAddon());
+  term.loadAddon(writeOnlyClipboardAddon());
 
   const entry: SceneTerminalLive = {
     term,

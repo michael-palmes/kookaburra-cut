@@ -953,7 +953,7 @@ fn write_cli_marker(app: &AppHandle) {
         return;
     };
     let body = cli_marker_body(&path, &app.package_info().version.to_string(), now_ms());
-    let written = std::fs::create_dir_all(&root)
+    let written = crate::privacy::private_dir(&root)
         .map_err(|e| e.to_string())
         .and_then(|()| serde_json::to_string_pretty(&body).map_err(|e| e.to_string()))
         .and_then(|text| write_atomic(&root.join(CLI_MARKER_FILE), &text));

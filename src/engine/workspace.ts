@@ -140,6 +140,11 @@ export function setLastProject(projectId: string | null): Promise<void> {
   return invoke<void>("set_last_project", { projectId });
 }
 
+/** This window reads no project any more: its `asset://` URLs stop serving the one it had open. */
+export function releaseProject(): Promise<void> {
+  return invoke<void>("release_project");
+}
+
 /** Toggle hardware video for the everyday paths (thumbnails, clip extraction, editor render); emits `kookaburra://hardware-video-changed`. */
 export function setHardwareVideoSetting(enabled: boolean): Promise<void> {
   return invoke<void>("set_hardware_video", { enabled });

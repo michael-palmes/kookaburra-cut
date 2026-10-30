@@ -2,19 +2,23 @@
   "version": 1,
   "name": "Fixed list",
   "text": {
-    "title": "You reported these",
-    "bullets": "Sync no longer stalls\nWidgets refresh on wake\nAttachments open again\nEditor keeps your place"
+    "title": "You told us",
+    "bullets": "Sync no longer stalls\nWidgets refresh on wake\nAttachments open again"
   },
   "frame": {
     "cutout": {
-      "shape": "none"
+      "shape": "rounded-rect",
+      "side": "end",
+      "size": 0.4,
+      "inset": 0.06,
+      "radius": 0.1
     },
     "chip": {
       "label": "Fixed",
       "icon": "circle-check",
       "colour": "accent"
     },
-    "textAlign": "center"
+    "textAlign": "left"
   },
   "textAnimation": {
     "in": "fade",
@@ -37,5 +41,58 @@
         ["#DADCE0", 1]
       ]
     }
+  },
+  "devices": [
+    {
+      "id": "hero",
+      "model": "iphone-17-pro",
+      "colour": "silver",
+      "media": {
+        "src": "assets/kooka-feed-loop-sample.mp4",
+        "kind": "video",
+        "startMs": 0,
+        "loop": true
+      },
+      "placement": {
+        "position": [0, -0.1, 0],
+        "rotationDeg": [0, -8, 0],
+        "scale": 1.35
+      },
+      "motion": {
+        "preset": "none"
+      },
+      "shadow": "soft"
+    }
+  ],
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0, 0],
+          "azimuthDeg": 0,
+          "elevationDeg": 0,
+          "distance": 5.6
+        }
+      },
+      {
+        "id": "k2",
+        "tMs": 4000,
+        "pose": {
+          "target": [0, 0, 0],
+          "azimuthDeg": 0,
+          "elevationDeg": 0,
+          "distance": 4.6
+        }
+      }
+    ],
+    "segments": [
+      {
+        "from": "k1",
+        "to": "k2",
+        "ease": "inOutCubic"
+      }
+    ]
   }
 }

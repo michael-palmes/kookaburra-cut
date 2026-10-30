@@ -7,9 +7,9 @@
   "personas": ["pm", "developer"],
   "level": "standard",
   "tier": "safe",
-  "uses": ["overlay", "chart", "text-motion", "background"],
+  "uses": ["overlay", "device", "chart", "text-motion", "background"],
   "highlights": [
-    "Fix list as an editable overlay panel",
+    "Fix list beside the app on a phone",
     "Crash-rate chart on a full axis from zero",
     "Cold-start counter for the payoff"
   ],

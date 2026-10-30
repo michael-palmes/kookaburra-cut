@@ -14,6 +14,12 @@ pub enum PackError {
     ManifestUnreadable(String),
     SignatureMissing,
     SignatureInvalid,
+    /// The declared `keyId` is not the hash of the public key beside it.
+    KeyIdMismatch(String),
+    /// A project's `sceneFiles` is not the set of `scenes/**/*.tsx` the pack would stage for it.
+    SceneFilesMismatch(String),
+    /// A project-shaped item's `root` is not `payload/<kind>/<slug>`, or two items claim one root.
+    ItemRootMismatch(String),
     FormatTooNew { found: u32, supported: u32 },
     AppTooOld { needs: String, running: String },
     PathAbsolute(String),
@@ -32,11 +38,30 @@ pub enum PackError {
     TooManyEntries { found: usize, max: usize },
     TooLarge { bytes: u64, max: u64 },
     EntryTooLarge { path: String, bytes: u64, max: u64 },
+    /// A file over the ceiling for what it is (a font, a model, an image, a video, audio or text).
+    KindTooLarge { path: String, kind: &'static str, bytes: u64, max: u64 },
     RatioExceeded { path: String, ratio: u64, max: u64 },
     DestinationInvalid(String),
     NoWorkspace,
     KeyPermissions(String),
+    /// macOS asked whether the app may use its signing key and the person said no.
+    KeyDenied,
+    PublisherNameMissing,
     Cancelled,
+}
+
+/// `1.5 GB`, `64 MB`: a limit a person can compare with a file in Finder.
+fn human_bytes(bytes: u64) -> String {
+    const GB: f64 = 1024.0 * 1024.0 * 1024.0;
+    const MB: f64 = 1024.0 * 1024.0;
+    let b = bytes as f64;
+    if b >= GB {
+        format!("{:.1} GB", b / GB)
+    } else if b >= MB {
+        format!("{:.0} MB", b / MB)
+    } else {
+        format!("{bytes} bytes")
+    }
 }
 
 impl PackError {
@@ -58,6 +83,15 @@ impl PackError {
             }
             Self::SignatureInvalid => {
                 "This pack is damaged or has been modified since it was signed. It has not been imported and nothing on your Mac has changed.".into()
+            }
+            Self::KeyIdMismatch(id) => format!(
+                "This pack declares publisher key {id}, which is not the key it was signed with."
+            ),
+            Self::SceneFilesMismatch(root) => format!(
+                "This pack's list of scene files does not match the scene code it carries: {root}"
+            ),
+            Self::ItemRootMismatch(root) => {
+                format!("This pack lists an item whose folder does not match its name: {root}")
             }
             Self::FormatTooNew { found, supported } => format!(
                 "This pack uses format version {found}. This version of Kookaburra Cut understands up to {supported}."
@@ -97,6 +131,16 @@ impl PackError {
             Self::EntryTooLarge { path, bytes, max } => {
                 format!("A file in this pack unpacks to {bytes} bytes, over the {max} limit: {path}")
             }
+            Self::KindTooLarge {
+                path,
+                kind,
+                bytes,
+                max,
+            } => format!(
+                "A {kind} in this pack is {}, over the {} limit for a {kind}: {path}",
+                human_bytes(*bytes),
+                human_bytes(*max)
+            ),
             Self::RatioExceeded { path, ratio, max } => {
                 format!("A file in this pack expands {ratio} times, over the {max} limit: {path}")
             }
@@ -105,6 +149,12 @@ impl PackError {
             Self::KeyPermissions(p) => format!(
                 "Your signing key at {p} can be read by other accounts on this Mac. Run: chmod 600 {p}"
             ),
+            Self::KeyDenied => {
+                "Kookaburra Cut was not allowed to use its pack signing key in your Keychain. Allow it when macOS asks, then export again.".into()
+            }
+            Self::PublisherNameMissing => {
+                "Enter a publisher name so people know who this pack came from.".into()
+            }
             Self::Cancelled => "Cancelled.".into(),
         }
     }
@@ -120,6 +170,9 @@ impl PackError {
             Self::ManifestUnreadable(_) => "manifestUnreadable",
             Self::SignatureMissing => "signatureMissing",
             Self::SignatureInvalid => "signatureInvalid",
+            Self::KeyIdMismatch(_) => "keyIdMismatch",
+            Self::SceneFilesMismatch(_) => "sceneFilesMismatch",
+            Self::ItemRootMismatch(_) => "itemRootMismatch",
             Self::FormatTooNew { .. } => "formatTooNew",
             Self::AppTooOld { .. } => "appTooOld",
             Self::PathAbsolute(_) => "pathAbsolute",
@@ -138,10 +191,13 @@ impl PackError {
             Self::TooManyEntries { .. } => "tooManyEntries",
             Self::TooLarge { .. } => "tooLarge",
             Self::EntryTooLarge { .. } => "entryTooLarge",
+            Self::KindTooLarge { .. } => "kindTooLarge",
             Self::RatioExceeded { .. } => "ratioExceeded",
             Self::DestinationInvalid(_) => "destinationInvalid",
             Self::NoWorkspace => "noWorkspace",
             Self::KeyPermissions(_) => "keyPermissions",
+            Self::KeyDenied => "keyDenied",
+            Self::PublisherNameMissing => "publisherNameMissing",
             Self::Cancelled => "cancelled",
         }
     }
@@ -163,8 +219,12 @@ impl PackError {
             | Self::EntryNotInManifest(p)
             | Self::ManifestEntryMissing(p)
             | Self::HashMismatch(p)
+            | Self::SceneFilesMismatch(p)
+            | Self::ItemRootMismatch(p)
             | Self::KeyPermissions(p) => Some(p),
-            Self::EntryTooLarge { path, .. } | Self::RatioExceeded { path, .. } => Some(path),
+            Self::EntryTooLarge { path, .. }
+            | Self::KindTooLarge { path, .. }
+            | Self::RatioExceeded { path, .. } => Some(path),
             _ => None,
         }
     }

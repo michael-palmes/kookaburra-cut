@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { copySceneToProject, listProjectScenes } from "../../engine/projectEdit";
+import { ensureProjectTrusted, TrustDeniedError } from "../../engine/projectTrust";
 import type { WorkspaceProjectInfo } from "../../engine/workspace";
 import { formatSceneLengthMs } from "../durationText";
 import { SceneMenuIcon, sceneSelectionLabel } from "../sceneMenu";
@@ -62,6 +63,7 @@ export function ProjectCopyFromDrill({
     setBusy(true);
     setSceneError(null);
     try {
+      await ensureProjectTrusted(source.slug, source.name);
       for (const index of selection) {
         await copySceneToProject(source.slug, index, slug, undefined, {
           file: scenes?.find((row) => row.index === index)?.file,
@@ -69,7 +71,7 @@ export function ProjectCopyFromDrill({
       }
       onDone(source.name, selection.length);
     } catch (e) {
-      setSceneError(String(e));
+      if (!(e instanceof TrustDeniedError)) setSceneError(String(e));
       setBusy(false);
     }
   };

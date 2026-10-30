@@ -22,8 +22,10 @@ tauri-build = { version = "=2.7.2", features = [] }
 serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 log = "0.4"
-# protocol-asset: workspace/caches load in the webview as asset: URLs (v9 · M2).
-tauri = { version = "=2.12.3", features = ["protocol-asset", "unstable"] }
+tauri = { version = "=2.12.3", features = ["unstable"] }
+# The app serves `asset://` itself (asset_reach.rs): the scheme handler's range parsing and URL decoding are ours.
+http-range = "0.1"
+percent-encoding = "2"
 tauri-plugin-log = "2"
 tauri-plugin-shell = "2"
 tauri-plugin-dialog = "2"
@@ -52,6 +54,8 @@ beat-this = { version = "=1.1.0", default-features = false }
 # menu entry (Tauri/muda's NativeIcon can't reference systemSymbolName images).
 # Versions match the ones already in tauri's own dependency tree.
 [target.'cfg(target_os = "macos")'.dependencies]
+# The pack signing key lives in the login Keychain as a generic password (never synchronised); already in the lock via tauri.
+security-framework = "3"
 core-foundation = "0.10.1"
 core-text = "22.0.0"
 objc2 = "0.6"

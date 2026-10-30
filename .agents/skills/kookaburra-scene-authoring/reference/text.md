@@ -42,7 +42,8 @@ Read the sidecar first (`./kb doc S get`):
 - The host draws `text.title` / `text.subtitle` (or managed items) on any scene whose
   TSX does not render those keys, so a title can be added with no TSX change.
 - An overlay `frame` with `claimsSceneText` (default) takes title, subtitle and bullets
-  into its panel.
+  into its panel, and hides every in-world `AnimatedHeadline` left on the default role:
+  give copy drawn inside the window (a code diff, a caption) the embedded role above.
 
 ## textStyle (per text key)
 
