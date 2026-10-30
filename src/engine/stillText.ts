@@ -299,10 +299,10 @@ export function pageTextRoots(input: PageTextInput): TextRoot[] {
       roots.push({ root: host.group, rootVisibility: false, camera: posed, viewport: FULL });
     }
   }
-  const panel = input.framePanels.find(
+  const panels = input.framePanels.filter(
     (p) => p.index === sceneIndex && (!comparing || p.hasSceneImages),
   );
-  if (panel) {
+  for (const panel of panels) {
     const base = viewCamera(camera, aspect);
     applyCameraPose(base, baseCameraPose());
     base.updateMatrixWorld(true);

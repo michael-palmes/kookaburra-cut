@@ -203,8 +203,19 @@ export {
   useRoom,
 } from "./stage/Room";
 export { SceneStage } from "./stage/SceneStage";
+// A camera-locked layer in frame units, before or after the 3D pass, and the fills made for it.
+export { ScreenLayer, type ScreenLayerProps } from "./stage/ScreenLayer";
 // The scene camera's live pose, and the world rectangle it sees at a depth.
 export { type SceneCamera, useCameraFrame, useSceneCamera } from "./stage/sceneCamera";
+export {
+  Gradient,
+  type GradientProps,
+  type ScreenFillProps,
+  Scrim,
+  type ScrimProps,
+  Vignette,
+  type VignetteProps,
+} from "./stage/screenFills";
 export { AnimatedCounter, type AnimatedCounterProps } from "./text/AnimatedCounter";
 // Text primitives
 export { AnimatedHeadline, type AnimatedHeadlineProps } from "./text/AnimatedHeadline";
