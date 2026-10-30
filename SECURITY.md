@@ -422,7 +422,8 @@ SHA-256 and is signed Ed25519 over its exact stored bytes
   `src/packs/packReview.ts`), so nothing is reviewed after the files land. A
   project, template or preset a pack adds or replaces loses that slug's F-001
   grant and its place in this session's allow set
-  (`workspace::forget_project_trust`), so the next open asks again.
+  (`workspace::forget_project_trust`), so the next open asks again; the allow
+  goes first, so a failed settings write still asks.
 - **What is stripped on import.** Any entry with a `.claude` segment is dropped
   at staging and listed on the summary (`pack/paths.rs`, `pack/read.rs`); an
   imported `CLAUDE.md` is replaced by the app's default and the author's text

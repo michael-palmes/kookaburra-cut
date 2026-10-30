@@ -170,8 +170,9 @@ so it is untrusted for the same reason. A project, template or preset a pack
 lands over an existing slug (added or replaced) loses that slug's stored grant
 and its place in this session's allow set (`workspace::forget_project_trust`,
 called from `apply_import`): the folder now holds a publisher's content, so the
-next open asks again rather than re-stamping. A keep-both lands under a fresh
-slug no grant names.
+next open asks again rather than re-stamping. The session allow goes first, so
+a failed settings write still asks. A keep-both lands under a fresh slug no
+grant names.
 
 What the trust screen counts and shows as scene code is the set the reader
 built from the signed `files` list (`PackInspection::scene_sources`: every
