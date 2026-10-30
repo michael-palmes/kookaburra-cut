@@ -5,6 +5,26 @@ fn dsp(samples: &[f32]) -> Core {
     analyse_pcm(samples, TrackerChoice::Dsp, Err("dsp"), &|| false).unwrap()
 }
 
+/// Bursts at scattered times: music with no pulse to find.
+fn scattered(seconds: usize, bursts: usize) -> Vec<f32> {
+    let mut x = vec![0.0f32; SR as usize * seconds];
+    let mut state = 99u64;
+    let mut step = || {
+        state = state
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
+        (state >> 33) as usize
+    };
+    for _ in 0..bursts {
+        let at = step() % (x.len() - 2400);
+        for j in 0..2400 {
+            let tone = (j as f32 * 0.4).sin();
+            x[at + j] += 0.5 * (-(j as f32) / 400.0).exp() * tone;
+        }
+    }
+    x
+}
+
 fn fitted_beats(core: &Core) -> Vec<f64> {
     core.beats.iter().map(|b| b.ms).collect()
 }
@@ -18,6 +38,27 @@ fn assert_grid(core: &Core, truth: &[f64], bpm: f64, max_ms: f64) {
     );
     let err = synth::max_error(&fitted_beats(core), truth);
     assert!(err < max_ms, "max beat error {err:.2} ms at {bpm} BPM");
+}
+
+#[test]
+fn a_tracked_fit_carries_how_far_its_beats_stray() {
+    let (x, _) = synth::clicks(Clicks::new(120.0, 500.0, 20_000.0));
+    let mut fit = dsp(&x).fit.expect("a fit");
+    fit.beat_stray = Some((105.24, 43_500.2));
+    let v = fit_json(&fit);
+    assert_eq!(v["beatStrayMs"], 105.2);
+    assert_eq!(v["beatStrayAtMs"], 43_500.0);
+}
+
+#[test]
+fn scattered_hits_give_no_grid_to_trust() {
+    let core = dsp(&scattered(40, 120));
+    assert!(
+        core.fit.is_none(),
+        "{:?}",
+        core.fit.as_ref().map(|f| f.line.bpm())
+    );
+    assert!(core.beats.is_empty());
 }
 
 #[test]
@@ -220,6 +261,10 @@ fn the_v3_document_carries_every_contract_field() {
     ] {
         assert!(fit[key].is_f64(), "{key}");
     }
+    assert!(
+        fit["beatStrayMs"].is_null() && fit["beatStrayAtMs"].is_null(),
+        "no tracker, no stray: {fit}"
+    );
     assert_eq!(fit["beatsPerBar"], 4);
     assert_eq!(fit["constantTempo"], true);
     assert!((fit["periodMs"].as_f64().unwrap() - 500.0).abs() < 0.5);

@@ -34,7 +34,8 @@ grid in the app: the Music inspector's Beat grid group, or the beat lane's right
 - Runs the app's own analyser, with the app closed too; cached by the file's SHA-256, and
   copied to `.kb/song/<sha12>.json` (Read it for the per-beat data, hits and bars included).
   `project.json` changes only with `--accept`.
-- Prints the tempo (bpm, beat period, residual, max drift and whether one grid holds), the
+- Prints the tempo (bpm, beat period, residual, max drift and whether one grid holds, or
+  where the song's beats stray from a grid that fits its onsets: a slip one line absorbs), the
   downbeat (track and film ms), sections (bar ranges where the music changes), phrases,
   parts and moments (below), breaths (silences and sharp dips, worth holding on), the
   audible end and the stab histogram (where in the bar the hits fall, per sixteenth: kick

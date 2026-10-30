@@ -413,10 +413,15 @@ def cmd_set_grid(ctx: Any) -> int:
 def grid_note(analysis: Dict[str, Any]) -> Optional[str]:
     """What a fit that drifts yet holds says when it is accepted."""
     fit = analysis.get("fit")
-    drift = fit.get("maxDriftMs") if isinstance(fit, dict) else None
-    if not is_number(drift) or drift <= model.STEADY_DRIFT_MS or not model.drift_holds(fit):
+    if not model.drift_holds(fit):
         return None
-    return f"accepted a tempo that drifts by up to {drift:g} ms: under one frame at 30 fps ({model.MAX_GRID_DRIFT_MS} ms), so every bar stays within a frame"
+    stray = model.stray_note(fit)
+    if stray:
+        return f"accepted a grid, but {stray}"
+    drift = fit.get("maxDriftMs") if isinstance(fit, dict) else None
+    if not is_number(drift) or drift <= model.STEADY_DRIFT_MS:
+        return None
+    return f"accepted a tempo that drifts by up to {drift:g} ms: under one frame at 30 fps ({model.MAX_GRID_DRIFT_MS} ms)"
 
 
 def grid_summary(grid: Dict[str, Any]) -> str:

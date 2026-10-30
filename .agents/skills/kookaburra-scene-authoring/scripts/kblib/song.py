@@ -123,6 +123,9 @@ def summary(analysis: Dict[str, Any], start_offset_ms: float, lyrics: bool) -> D
 def drift_words(fit: Dict[str, Any]) -> str:
     if not model.drift_holds(fit):
         return f"over one frame at 30 fps ({model.MAX_GRID_DRIFT_MS} ms), so one grid won't hold"
+    stray = model.stray_note(fit)
+    if stray:
+        return f"its onsets fit one grid, but {stray}"
     drift = fit.get("maxDriftMs")
     if is_number(drift) and drift > model.STEADY_DRIFT_MS:
         return f"under one frame at 30 fps ({model.MAX_GRID_DRIFT_MS} ms), so one grid holds"
@@ -213,10 +216,10 @@ def merge_form(audio: Dict[str, Any], cues: Dict[str, str], sections: List[Dict[
 
 def print_summary(rel: str, s: Dict[str, Any], resp: Dict[str, Any], copy: Optional[str]) -> None:
     model_name = s["model"].get("name") if isinstance(s.get("model"), dict) else None
-    how = f"{s['tracker']} tracker" + (f" ({model_name})" if model_name else "")
+    how = f"{s['tracker']} tracker" + (f" ({model_name})" if model_name and s["tracker"] == "nn" else "")
     emit(f"Analysed {rel}{' (cached)' if resp.get('cached') else ''} with the {how}, {fmt_secs(s['durationMs'])} long")
     if s.get("fallbackReason"):
-        emit(f"  the beat model was not used ({s['fallbackReason']}); DSP downbeats are weaker on four-on-the-floor tracks")
+        emit(f"  the beat model was not used ({s['fallbackReason']})" + ("; DSP downbeats are weaker on four-on-the-floor tracks" if s["fit"] else ""))
     fit = s["fit"]
     if not fit:
         emit("  tempo: no steady beat found, so there is no grid to accept (./kb beats set-grid --bpm B --offset MS sets one by hand)")

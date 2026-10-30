@@ -24,6 +24,7 @@ const STOP_MIN_QUIET: f64 = 0.4;
 const STOP_MIN_CONTEXT_LUFS: f64 = -40.0;
 const SLOT_MIN_STRENGTH: f64 = 0.3;
 const FILL_CONTEXT_BARS: usize = 4;
+const FILL_MIN_CONTEXT_BARS: usize = 2;
 const FILL_MIN_EXTRA_SLOTS: f64 = 3.0;
 const FILL_MIN_RATIO: f64 = 1.5;
 const FILL_BEAT_EXTRA_SLOTS: f64 = 1.5;
@@ -333,7 +334,7 @@ fn parts_of(
     out
 }
 
-/// Bars with a gap in them while the bars around stay loud; a longer quiet stretch is a breakdown, not a stop, and the song's first and last bars have nothing to stop from or come back to.
+/// Bars with a gap in them while the bars around stay loud; a longer quiet stretch is a breakdown, not a stop, and a stop needs a loud bar to stop from and one to come back to.
 fn stops_of(quiet: &[f64], runs: &[(usize, usize)]) -> Vec<(usize, usize)> {
     let mut stops: Vec<(usize, usize)> = Vec::new();
     for (b, &share) in quiet
@@ -351,7 +352,9 @@ fn stops_of(quiet: &[f64], runs: &[(usize, usize)]) -> Vec<(usize, usize)> {
             _ => stops.push((b, b + 1)),
         }
     }
-    stops.retain(|&(a, z)| z - a <= STOP_MAX_BARS);
+    stops.retain(|&(a, z)| {
+        z - a <= STOP_MAX_BARS && quiet[a - 1] < STOP_MIN_QUIET && quiet[z] < STOP_MIN_QUIET
+    });
     stops
 }
 
@@ -388,13 +391,14 @@ fn quiet_shares(grid: &Grid, short: &[f64], count: usize, end_ms: f64) -> Vec<f6
         .collect()
 }
 
-/// A bar busier than the bars before it by a clear margin, that hands over to a strong next downbeat. The fill starts on the first beat of the busy stretch ending the bar.
+/// A bar busier than the bars before it in the same part by a clear margin, that hands over to a strong next downbeat. The first bars of a busier part are just that part. The fill starts on the first beat of the busy stretch ending the bar.
 fn fills_of(
     grid: &Grid,
     band_slots: &[(&'static str, Vec<Vec<bool>>)],
     band_counts: &[Vec<f64>],
     full: &[Hit],
     runs: &[(usize, usize)],
+    parts: &[Part],
     count: usize,
 ) -> Vec<(usize, usize, &'static str)> {
     let resolves = |bar: usize| -> bool {
@@ -408,9 +412,18 @@ fn fills_of(
         if runs.iter().any(|&(a, z)| b >= a && b < z) || !resolves(b + 1) {
             continue;
         }
+        let part_start = parts
+            .iter()
+            .rev()
+            .find(|p| p.from_bar <= b as i64 + 1)
+            .map_or(0, |p| p.from_bar as usize - 1);
+        let from = b.saturating_sub(FILL_CONTEXT_BARS).max(part_start);
+        if b - from < FILL_MIN_CONTEXT_BARS {
+            continue;
+        }
         let mut best: Option<(usize, &'static str, f64)> = None;
         for ((band, slots), counts) in band_slots.iter().zip(band_counts) {
-            let context = percentile(&counts[b.saturating_sub(FILL_CONTEXT_BARS)..b], 0.5);
+            let context = percentile(&counts[from..b], 0.5);
             let here = counts[b];
             if here < context + FILL_MIN_EXTRA_SLOTS
                 || here < context * FILL_MIN_RATIO
@@ -544,9 +557,10 @@ pub fn analyse(
     let phrase = phrase_of(&change);
     let parts = parts_of(section_starts, &lufs, &counts[0], body, &runs);
     let mut moments = Vec::new();
-    for (i, (b, beat, band)) in fills_of(grid, &band_slots, &counts, &hits.full, &runs, count)
-        .into_iter()
-        .enumerate()
+    for (i, (b, beat, band)) in
+        fills_of(grid, &band_slots, &counts, &hits.full, &runs, &parts, count)
+            .into_iter()
+            .enumerate()
     {
         moments.push(Moment {
             id: format!("fill-{}", i + 1),
@@ -645,7 +659,7 @@ mod tests {
             });
         }
         hits.mid.sort_by(|a, b| a.t_ms.total_cmp(&b.t_ms));
-        let form = analyse(&GRID, &[1], &short, &hits, end_of(16)).unwrap();
+        let form = analyse(&GRID, &[1, 9], &short, &hits, end_of(16)).unwrap();
         let fills: Vec<&Moment> = form.moments.iter().filter(|m| m.kind == "fill").collect();
         assert_eq!(fills.len(), 1, "{:?}", form.moments);
         assert_eq!(fills[0].id, "fill-1");
@@ -653,6 +667,26 @@ mod tests {
         assert_eq!(fills[0].to_bar, 9);
         assert_eq!(fills[0].band, Some("mid"));
         assert_eq!(fills[0].ms, GRID.beat_ms(7, 2));
+    }
+
+    #[test]
+    fn the_first_bars_of_a_busier_part_are_not_fills() {
+        let (short, mut hits) = song(&[-14.0; 16]);
+        for (bar, slots) in [(8, 16), (9, 12), (10, 10), (11, 10)] {
+            for slot in 0..slots {
+                hits.mid.push(Hit {
+                    t_ms: bar as f64 * GRID.bar_ms() + slot as f64 * 125.0,
+                    strength: 0.8,
+                });
+            }
+        }
+        hits.mid.sort_by(|a, b| a.t_ms.total_cmp(&b.t_ms));
+        let form = analyse(&GRID, &[1, 9], &short, &hits, end_of(16)).unwrap();
+        assert!(
+            !form.moments.iter().any(|m| m.kind == "fill"),
+            "{:?}",
+            form.moments
+        );
     }
 
     #[test]
@@ -710,6 +744,20 @@ mod tests {
         for v in &mut short[bar / 4..bar] {
             *v = -60.0;
         }
+        let form = analyse(&GRID, &[1], &short, &hits, end_of(12)).unwrap();
+        assert!(
+            !form.moments.iter().any(|m| m.kind == "stop"),
+            "{:?}",
+            form.moments
+        );
+    }
+
+    #[test]
+    fn a_soft_opening_over_two_bars_is_not_stop_time() {
+        let mut lufs = vec![-10.0; 12];
+        lufs[0] = -28.0;
+        lufs[1] = -26.0;
+        let (short, hits) = song(&lufs);
         let form = analyse(&GRID, &[1], &short, &hits, end_of(12)).unwrap();
         assert!(
             !form.moments.iter().any(|m| m.kind == "stop"),

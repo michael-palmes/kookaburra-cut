@@ -65,6 +65,14 @@ describe("parseBeatAnalysis", () => {
     expect(parsed?.bpm).toBe(120.002);
     expect(parsed?.fit?.periodMs).toBe(499.99);
     expect(parsed?.fit?.constantTempo).toBe(true);
+    expect(parsed?.fit?.beatStrayMs).toBeUndefined();
+    const strayed = parseBeatAnalysis(
+      songAnalysis({
+        fit: { ...(songAnalysis().fit as object), beatStrayMs: 105.2, beatStrayAtMs: 43500 },
+      }),
+    );
+    expect(strayed?.fit?.beatStrayMs).toBe(105.2);
+    expect(strayed?.fit?.beatStrayAtMs).toBe(43500);
     expect(parsed?.beats).toEqual([0.27, 500.26, 1000.25, 1500.24]);
     expect(parsed?.downbeats).toEqual([1000.25]);
     expect(parsed?.beatInfo[2]).toEqual({ ms: 1000.25, bar: 1, beat: 1, conf: 0.99 });

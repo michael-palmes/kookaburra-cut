@@ -26,6 +26,8 @@ NO_MUSIC: Dict[str, Any] = {"startOffsetMs": 0, "cues": {}, "sections": {}}
 # One frame at 30 fps: the app's CONSTANT_TEMPO_MAX_DRIFT_MS. A wider drift can't take one grid; under STEADY nothing needs saying.
 MAX_GRID_DRIFT_MS = 33
 STEADY_DRIFT_MS = 15
+# Past two frames at 30 fps a fit that holds on its onsets can't be trusted on every bar.
+BEAT_STRAY_NOTE_MS = 66
 # A hit further than this from its 16th carries a +Nms nudge, so the position lands on the hit.
 NUDGE_MIN_MS = 5
 KEY_TRACKS = (("camera",), ("cameraRig",), ("lighting",), ("deviceTrack",))
@@ -237,6 +239,16 @@ def grid_beats(m: Dict[str, Any], end_ms: float) -> Tuple[List[float], List[Tupl
                 bars.append((k // per_bar + 1, t))
         k += 1
     return beats, bars
+
+
+def stray_note(fit: Any) -> Optional[str]:
+    """Where the beat model's own beats leave a grid its onsets still fit: a slip in the song a line absorbs."""
+    if not isinstance(fit, dict):
+        return None
+    ms, at = fit.get("beatStrayMs"), fit.get("beatStrayAtMs")
+    if not _finite(ms) or not _finite(at) or ms <= BEAT_STRAY_NOTE_MS:
+        return None
+    return f"the song's beats stray up to {ms:g} ms from this grid near {at / 1000:.1f} s: check those bars by ear (./kb song hits stays exact)"
 
 
 def drift_holds(fit: Any) -> bool:

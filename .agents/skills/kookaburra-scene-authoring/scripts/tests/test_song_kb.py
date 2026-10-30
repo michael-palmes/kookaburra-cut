@@ -149,6 +149,33 @@ class SongAnalyseTests(SongCase):
         self.assertIn("grid", read_json(self.root / "project.json")["audio"])
         self.assertTrue(any("drifts by up to 19 ms: under one frame" in n for n in out["accepted"]["notes"]), out["accepted"]["notes"])
 
+    def test_a_song_that_slips_off_a_grid_that_holds_says_where(self) -> None:
+        from .fake_app_cli import fake_analysis
+
+        body = fake_analysis()
+        body["fit"].update(maxDriftMs=18, beatStrayMs=105.2, beatStrayAtMs=43500)
+        canned = self.tmp / "slips.json"
+        write_json(canned, body)
+        self.cli(song=canned)
+        shown = self.kb(["song", "analyse"], cwd=self.root)
+        self.assertIn("beats stray up to 105.2 ms from this grid near 43.5 s", shown.stdout)
+        self.assertNotIn("so one grid holds", shown.stdout)
+        out = self.j("--accept")
+        self.assertIn("grid", read_json(self.root / "project.json")["audio"])
+        self.assertTrue(any("beats stray up to 105.2 ms" in n for n in out["accepted"]["notes"]), out["accepted"]["notes"])
+
+    def test_a_stray_under_two_frames_says_nothing(self) -> None:
+        from .fake_app_cli import fake_analysis
+
+        body = fake_analysis()
+        body["fit"].update(maxDriftMs=10, beatStrayMs=47, beatStrayAtMs=62600)
+        canned = self.tmp / "tail.json"
+        write_json(canned, body)
+        self.cli(song=canned)
+        shown = self.kb(["song", "analyse"], cwd=self.root)
+        self.assertNotIn("stray", shown.stdout)
+        self.assertIn("steady tempo", shown.stdout)
+
     def test_analyse_prints_the_audible_end_and_the_form(self) -> None:
         self.cli()
         out = self.j()

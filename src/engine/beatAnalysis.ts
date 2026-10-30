@@ -19,6 +19,9 @@ export interface BeatFit {
   residualMs: number;
   maxDriftMs: number;
   constantTempo: boolean;
+  /** How far the beat model's own beats stray from this line, and at what track ms; absent without the model. */
+  beatStrayMs?: number;
+  beatStrayAtMs?: number;
 }
 
 /** One beat: track ms, 1-based bar (0 = pickup) and beat, tracker confidence 0..1. */
@@ -129,6 +132,9 @@ function parseFit(v: unknown): BeatFit | null | undefined {
     residualMs: v.residualMs as number,
     maxDriftMs: v.maxDriftMs as number,
     constantTempo: v.constantTempo,
+    ...(isFiniteNumber(v.beatStrayMs) && isFiniteNumber(v.beatStrayAtMs)
+      ? { beatStrayMs: v.beatStrayMs, beatStrayAtMs: v.beatStrayAtMs }
+      : {}),
   };
 }
 

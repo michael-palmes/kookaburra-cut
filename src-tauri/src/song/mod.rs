@@ -134,6 +134,8 @@ pub struct Fit {
     pub beats_per_bar: usize,
     /// Track ms of bar 1 beat 1.
     pub offset_ms: f64,
+    /// How far the tracker's own beats stray from the line and where, (ms, track ms); None without a tracker.
+    pub beat_stray: Option<(f64, f64)>,
 }
 
 /// The beat-tracking core over decoded PCM: everything the lane and the grid need.
@@ -315,6 +317,7 @@ pub fn analyse_pcm(
                     fit::refine_grid_fit(&strength, hop, p, phase, duration_ms)
                 })
                 .collect(),
+                &t.beats_ms,
             );
             let beats_per_bar = tracked_beats_per_bar(t);
             match line {
@@ -339,12 +342,14 @@ pub fn analyse_pcm(
                         tracked_beats(t, &strength, hop, line.period_ms / 8.0)
                     };
                     let offset_ms = line.phase_ms + downbeat as f64 * line.period_ms;
+                    let beat_stray = fit::beat_stray(&t.beats_ms, line.period_ms);
                     (
                         "nn",
                         Some(Fit {
                             line,
                             beats_per_bar,
                             offset_ms,
+                            beat_stray,
                         }),
                         beats,
                     )
@@ -352,7 +357,13 @@ pub fn analyse_pcm(
                 None => ("nn", None, tracked_beats(t, &strength, hop, 0.0)),
             }
         }
-        None => match dsp_line(&strength, &low, hop, duration_ms) {
+        None => match dsp_line(&strength, &low, hop, duration_ms).filter(|line| {
+            let hits: Vec<(f64, f64)> = hits::hits_of(&strength, hop)
+                .iter()
+                .map(|h| (h.t_ms, h.strength))
+                .collect();
+            fit::pulses_on(&hits, line.period_ms)
+        }) {
             Some(line) => {
                 let times = line.beat_times(duration_ms);
                 let downbeat =
@@ -368,6 +379,7 @@ pub fn analyse_pcm(
                         line,
                         beats_per_bar: DEFAULT_BEATS_PER_BAR,
                         offset_ms,
+                        beat_stray: None,
                     }),
                     beats,
                 )
@@ -436,6 +448,8 @@ fn fit_json(fit: &Fit) -> Value {
         "residualMs": round_to(line.residual_ms, 2),
         "maxDriftMs": round_to(line.max_drift_ms, 2),
         "constantTempo": line.constant_tempo(),
+        "beatStrayMs": fit.beat_stray.map(|(ms, _)| round_to(ms, 1)),
+        "beatStrayAtMs": fit.beat_stray.map(|(_, at)| round_to(at, 0)),
     })
 }
 

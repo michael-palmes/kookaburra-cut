@@ -127,7 +127,7 @@ def read_film(ctx: Any, film: Path, facts: Dict[str, Any], digest: str, folder: 
         bar_map = bar_map_of(analysis, grid)
         data: Dict[str, Any] = {
             "version": VERSION, "sha256": digest, "file": dict(facts, name=clean_text(film.name)), "grid": grid,
-            "gridNote": None if grid or not fit else f"the music drifts by up to {fit.get('maxDriftMs')} ms, over one frame at 30 fps, so cuts are times",
+            "gridNote": model.stray_note(fit) if grid else (f"the music drifts by up to {fit.get('maxDriftMs')} ms, over one frame at 30 fps, so cuts are times" if fit else None),
             "cuts": [{k: b[k] for k in ("ms", "kind", "durationMs")} for b in found], "moves": moves, "segments": segs,
             "words": word_block, "sheets": drawn, "barMap": bar_map, "hardCuts": sum(1 for b in found if b["kind"] == "hard"),
             "continuousChanges": sum(1 for b in found if b["kind"] == "continuous"),
@@ -162,7 +162,7 @@ def print_text(data: Dict[str, Any], folder: Path, cached: bool, compared: Optio
          f"{data['hardCuts']} hard cuts, {data['continuousChanges']} continuous changes, {len(data['moves'])} other moves")
     grid = data.get("grid")
     if grid:
-        emit(f"  grid: {grid['bpm']:g} bpm, {grid['beatsPerBar']} beats a bar, bar 1 at {grid['offsetMs']:g} ms")
+        emit(f"  grid: {grid['bpm']:g} bpm, {grid['beatsPerBar']} beats a bar, bar 1 at {grid['offsetMs']:g} ms" + (f"; {data['gridNote']}" if data.get("gridNote") else ""))
     elif data.get("gridNote"):
         emit(f"  grid: none: {data['gridNote']}")
     else:

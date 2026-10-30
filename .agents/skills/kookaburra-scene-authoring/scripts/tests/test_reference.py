@@ -196,6 +196,18 @@ class ReadingAFilmTests(ReferenceCase):
         self.assertIn("41.0 ms", out["gridNote"])
         self.assertRegex(out["beatSheet"][0]["cutAt"], r"s$")
 
+    def test_music_that_slips_off_its_grid_says_where(self) -> None:
+        from .fake_app_cli import fake_analysis
+
+        body = fake_analysis()
+        body["fit"].update(maxDriftMs=18, beatStrayMs=105.2, beatStrayAtMs=43500)
+        canned = self.tmp / "slips.json"
+        write_json(canned, body)
+        self.cli(song=canned)
+        out = self.read(four_shots())
+        self.assertIsNotNone(out["grid"])
+        self.assertIn("stray up to 105.2 ms", out["gridNote"])
+
     def test_an_app_without_ocr_loses_the_words_and_nothing_else(self) -> None:
         self.cli(caps=json.dumps({"song": {"analysisVersion": 3, "trackers": ["nn", "dsp"]}, "media": {"version": 1, "commands": ["probe", "conform"]}}))
         out = self.read(four_shots())
