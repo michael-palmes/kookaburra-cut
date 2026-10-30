@@ -41,6 +41,8 @@ pub enum PackError {
     /// A file over the ceiling for what it is (a font, a model, an image, a video, audio or text).
     KindTooLarge { path: String, kind: &'static str, bytes: u64, max: u64 },
     RatioExceeded { path: String, ratio: u64, max: u64 },
+    /// Staging would leave the volume under the app's disk floor.
+    NotEnoughSpace { need: u64, free: u64 },
     DestinationInvalid(String),
     NoWorkspace,
     KeyPermissions(String),
@@ -144,6 +146,12 @@ impl PackError {
             Self::RatioExceeded { path, ratio, max } => {
                 format!("A file in this pack expands {ratio} times, over the {max} limit: {path}")
             }
+            Self::NotEnoughSpace { need, free } => format!(
+                "Importing this pack needs {} free on your workspace's disk, which has {}. Free up at least {} and try again; nothing has been written.",
+                human_bytes(*need),
+                human_bytes(*free),
+                human_bytes(need.saturating_sub(*free).max(1024 * 1024))
+            ),
             Self::DestinationInvalid(e) => format!("That is not somewhere a pack can be saved: {e}"),
             Self::NoWorkspace => "Set up your workspace before importing a pack.".into(),
             Self::KeyPermissions(p) => format!(
@@ -193,6 +201,7 @@ impl PackError {
             Self::EntryTooLarge { .. } => "entryTooLarge",
             Self::KindTooLarge { .. } => "kindTooLarge",
             Self::RatioExceeded { .. } => "ratioExceeded",
+            Self::NotEnoughSpace { .. } => "notEnoughSpace",
             Self::DestinationInvalid(_) => "destinationInvalid",
             Self::NoWorkspace => "noWorkspace",
             Self::KeyPermissions(_) => "keyPermissions",

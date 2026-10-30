@@ -425,6 +425,21 @@ fn unique_name(seed: &[u8]) -> String {
     super::hash::sha256_bytes(&[seed, &nanos.to_le_bytes()].concat())[..24].to_string()
 }
 
+/// Every entry streams capped at its signed size, so the manifest total bounds what staging writes: refused over the pack limit, or when it would leave the volume under the disk floor.
+pub(super) fn check_staging_space(total: u64, free: u64) -> Result<(), PackError> {
+    if total > MAX_TOTAL_UNCOMPRESSED {
+        return Err(PackError::TooLarge {
+            bytes: total,
+            max: MAX_TOTAL_UNCOMPRESSED,
+        });
+    }
+    let need = total + crate::DISK_FLOOR;
+    if free < need {
+        return Err(PackError::NotEnoughSpace { need, free });
+    }
+    Ok(())
+}
+
 /// Full extraction into a fresh staging directory, hash-verified against the manifest. Never writes into the workspace tree.
 pub fn stage(
     archive: &Path,
@@ -433,6 +448,16 @@ pub fn stage(
     mut on_progress: impl FnMut(u64, u64),
     is_cancelled: &dyn Fn() -> bool,
 ) -> Result<StagedPack, PackError> {
+    let total_bytes = manifest
+        .files
+        .iter()
+        .filter(|f| !is_agent_config(&f.path))
+        .fold(0u64, |sum, f| sum.saturating_add(f.bytes));
+    check_staging_space(
+        total_bytes,
+        crate::free_disk_bytes(workspace_root).map_err(PackError::Write)?,
+    )?;
+
     let root =
         staging_root(workspace_root).join(unique_name(archive.as_os_str().as_encoded_bytes()));
     if let Some(parent) = root.parent() {
@@ -451,12 +476,6 @@ pub fn stage(
         .iter()
         .map(|f| (f.path.as_str(), f))
         .collect();
-    let total_bytes: u64 = manifest
-        .files
-        .iter()
-        .filter(|f| !is_agent_config(&f.path))
-        .map(|f| f.bytes)
-        .sum();
     let mut seen: HashSet<String> = HashSet::new();
     let mut written: u64 = 0;
 

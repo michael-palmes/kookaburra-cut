@@ -30,8 +30,6 @@ const RECENT_USE: Duration = Duration::from_secs(15 * 60);
 const MAINTENANCE_POLL: Duration = Duration::from_secs(5);
 /// Deferred maintenance gives up after this long (a stale queue ticket must not keep a task alive forever).
 const MAINTENANCE_LIMIT: Duration = Duration::from_secs(6 * 60 * 60);
-/// What an extraction must leave free on the volume, the two-pass mezzanine's margin: a full disk mid-extraction fails the chunk and starves everything else.
-const DISK_FLOOR: u64 = 2 * 1024 * 1024 * 1024;
 const COUNT_FILE: &str = "count.json";
 const DONE: &str = ".done";
 const PREVIEW_DIR: &str = "preview";
@@ -615,7 +613,7 @@ pub(crate) fn check_extraction_space(
     frames: u32,
     count: CountRecord,
 ) -> Result<(), String> {
-    let need = extraction_ceiling(frames, count.width, count.height) + DISK_FLOOR;
+    let need = extraction_ceiling(frames, count.width, count.height) + crate::DISK_FLOOR;
     if free >= need {
         return Ok(());
     }
@@ -1475,7 +1473,7 @@ mod tests {
         };
         let one_chunk = extraction_ceiling(CHUNK_FRAMES, 1920, 1080);
         assert_eq!(one_chunk, 120 * 1920 * 1080 * 3);
-        let need = one_chunk + DISK_FLOOR;
+        let need = one_chunk + crate::DISK_FLOOR;
         assert!(check_extraction_space(need, CHUNK_FRAMES, count).is_ok());
         assert!(check_extraction_space(u64::MAX, 0, count).is_ok());
         let short = check_extraction_space(need - 1, CHUNK_FRAMES, count).unwrap_err();

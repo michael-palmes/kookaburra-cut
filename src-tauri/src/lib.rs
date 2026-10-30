@@ -911,7 +911,10 @@ async fn run_ffmpeg_to_completion(
     }
 }
 
-/// Free bytes on the volume holding `path` (macOS statvfs): the mezzanine and clip-extraction disk guards.
+/// What a disk guard leaves free on the volume: a full disk mid-write fails the job and starves everything else.
+pub(crate) const DISK_FLOOR: u64 = 2 * 1024 * 1024 * 1024;
+
+/// Free bytes on the volume holding `path` (macOS statvfs): the mezzanine, clip-extraction and pack-staging disk guards.
 pub(crate) fn free_disk_bytes(path: &std::path::Path) -> Result<u64, String> {
     use std::os::unix::ffi::OsStrExt;
     let c = std::ffi::CString::new(path.as_os_str().as_bytes()).map_err(|e| e.to_string())?;

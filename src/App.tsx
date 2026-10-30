@@ -217,6 +217,7 @@ import {
 } from "./engine/workspace";
 import { buildVideoExportOptions, type VideoExportSelection } from "./export/selection";
 import { StageView } from "./stage/StageView";
+import type { StageClient } from "./stage/stageClient";
 import { useEditorStore } from "./store/editorStore";
 import {
   projectOpenAspect,
@@ -360,6 +361,8 @@ export default function App() {
   }, []);
 
   const currentMs = useClockStore((s) => s.currentMs);
+  // The stage worker's client, from the StageView; a Retry hands over a fresh one, so effects that send it preview flags depend on it.
+  const [stageClient, setStageClient] = useState<StageClient | null>(null);
   const clipsExtracting = useSyncExternalStore(subscribeClipExtraction, clipExtractionCount);
   const extractionProgress = useSyncExternalStore(subscribeClipExtraction, clipExtractionProgress);
   const durationMs = useClockStore((s) => s.durationMs);
@@ -752,7 +755,7 @@ export default function App() {
   useEffect(() => {
     const apply = (enabled: boolean) => {
       setHardwareVideo(enabled);
-      stageOrNull()?.previewFlags({ hardwareVideo: enabled });
+      stageClient?.previewFlags({ hardwareVideo: enabled });
     };
     getSettings()
       .then((s) => apply(!s.disableHardwareVideo))
@@ -763,7 +766,7 @@ export default function App() {
     return () => {
       void unlisten.then((fn) => fn());
     };
-  }, []);
+  }, [stageClient]);
 
   // The slowdown badge's sensitivity follows Settings the same way: seeded at boot, live-updated from the Settings window. Off by default; the badge is opt-in.
   const [lagWarning, setLagWarningMode] = useState<LagWarningMode>("off");
@@ -1953,6 +1956,23 @@ export default function App() {
 
   // Bumped by the error panel's Retry: workspace manifest fixes happen outside Vite's module graph, so nothing reloads automatically; the user retries once Claude fixed the file.
   const [loadNonce, setLoadNonce] = useState(0);
+  // The stage worker's boot: a failed boot makes Retry mount a fresh canvas and worker (`stageAttempt`), and a ready that arrives after its window reloads on its own.
+  const [stageAttempt, setStageAttempt] = useState(0);
+  const stageBoot = useSyncExternalStore(
+    useCallback(
+      (onChange: () => void) => stageClient?.subscribeBoot(onChange) ?? (() => {}),
+      [stageClient],
+    ),
+    () => stageClient?.boot() ?? null,
+  );
+  const stageFailed = stageBoot?.status === "failed";
+  useEffect(() => {
+    if (stageBoot?.status === "ready" && stageBoot.late) setLoadNonce((n) => n + 1);
+  }, [stageBoot]);
+  const retryLoad = useCallback(() => {
+    if (stageFailed) setStageAttempt((n) => n + 1);
+    setLoadNonce((n) => n + 1);
+  }, [stageFailed]);
   // A bridge export waits until the source poll's last reload is on stage (or failed): `requested` counts the poll's reloads, `landed` the last one to land.
   const sourceReloads = useRef({ requested: 0, landed: 0 });
   const [reloadLanded, setReloadLanded] = useState(0);
@@ -2448,8 +2468,8 @@ export default function App() {
   useEffect(() => {
     const clipStride = !exporting && previewQuality !== "full" ? 2 : 1;
     setPreviewClipStride(clipStride);
-    stageOrNull()?.previewFlags({ clipStride });
-  }, [exporting, previewQuality]);
+    stageClient?.previewFlags({ clipStride });
+  }, [exporting, previewQuality, stageClient]);
   const motionBlurWhilePlaying = useUiStore((s) => s.motionBlurWhilePlaying);
   const projectBlurSamples = project?.renderSettings.motionBlur?.samples ?? SHUTTER_SAMPLES_DEFAULT;
   useEffect(() => {
@@ -2457,14 +2477,14 @@ export default function App() {
     const motionBlurSamples =
       motionBlurWhilePlaying && previewQuality !== "performance" ? samples : 0;
     setPreviewMotionBlurPlayback(motionBlurSamples);
-    stageOrNull()?.previewFlags({ motionBlurSamples });
-  }, [motionBlurWhilePlaying, previewQuality, projectBlurSamples]);
+    stageClient?.previewFlags({ motionBlurSamples });
+  }, [motionBlurWhilePlaying, previewQuality, projectBlurSamples, stageClient]);
 
   // Playback binds the small preview JPEGs; pausing flips every consumer back to exact full frames.
   useEffect(() => {
     setPreviewPlaybackActive(playing && !exporting);
-    stageOrNull()?.previewFlags({ playbackActive: playing && !exporting });
-  }, [playing, exporting]);
+    stageClient?.previewFlags({ playbackActive: playing && !exporting });
+  }, [playing, exporting, stageClient]);
 
   // Slowdown badge state: the EMA lives in refs (per-frame maths, no renders); the badge value updates at most every 200ms so the indicator never adds render work of its own.
   const [lagFps, setLagFps] = useState<number | null>(null);
@@ -3092,6 +3112,8 @@ export default function App() {
                 {/* The stage: one canvas the stage worker draws into (scene code and three live there, never in this realm); the preview pixel ratio is the exporter's own business per run. The scene tree itself is shared with the hidden render window (engine/StageScenes, mounted by the worker). */}
                 <StageView
                   stageRole="editor"
+                  attempt={stageAttempt}
+                  onClient={setStageClient}
                   dpr={
                     previewQuality === "performance"
                       ? 1
@@ -3311,16 +3333,22 @@ export default function App() {
               {isAutoRun && <div className="stage-busy-chip">Automated run — hands off</div>}
               <BridgeExportOverlay state={bridgeExport.overlay} onCancel={bridgeExport.cancel} />
 
-              {error && !project && (
+              {stageBoot?.status === "failed" && (
+                <div className="stage-error" role="alert">
+                  <h2>The preview didn’t start</h2>
+                  <pre>{stageBoot.error.message}</pre>
+                  <p className="muted">Retry starts the preview again and reloads the project.</p>
+                  <button type="button" className="btn primary" onClick={retryLoad}>
+                    Retry
+                  </button>
+                </div>
+              )}
+              {error && !project && !stageFailed && (
                 <div className="stage-error" role="alert">
                   <h2>This project can’t load right now</h2>
                   <pre>{error}</pre>
                   <p className="muted">Fix the file — or ask Claude Code to — then retry.</p>
-                  <button
-                    type="button"
-                    className="btn primary"
-                    onClick={() => setLoadNonce((n) => n + 1)}
-                  >
+                  <button type="button" className="btn primary" onClick={retryLoad}>
                     Retry
                   </button>
                 </div>

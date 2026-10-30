@@ -422,7 +422,8 @@ SHA-256 and is signed Ed25519 over its exact stored bytes
   `src/packs/packReview.ts`), so nothing is reviewed after the files land. A
   project, template or preset a pack adds or replaces loses that slug's F-001
   grant and its place in this session's allow set
-  (`workspace::forget_project_trust`), so the next open asks again.
+  (`workspace::forget_project_trust`), so the next open asks again; the allow
+  goes first, so a failed settings write still asks.
 - **What is stripped on import.** Any entry with a `.claude` segment is dropped
   at staging and listed on the summary (`pack/paths.rs`, `pack/read.rs`); an
   imported `CLAUDE.md` is replaced by the app's default and the author's text
@@ -437,7 +438,9 @@ SHA-256 and is signed Ed25519 over its exact stored bytes
   and zero-width characters, absolute paths, `..`, dotted folders, drive
   letters and extensions outside each kind's allow-list; symlinks and any
   non-regular file are refused; staging is a fresh folder under
-  `<workspace>/.kookaburra/import-staging/` removed on drop. Per-kind payload
+  `<workspace>/.kookaburra/import-staging/` removed on drop, and refused before
+  it exists when the signed file total would take the volume under 2 GB
+  (`check_staging_space`). Per-kind payload
   caps (`limits::kind_cap`: fonts 64 MiB, 3D models 512 MiB, images 256 MiB,
   audio 512 MiB, text 16 MiB, video 4 GiB) are checked against the central
   directory before consent and against the stream while staging; an
