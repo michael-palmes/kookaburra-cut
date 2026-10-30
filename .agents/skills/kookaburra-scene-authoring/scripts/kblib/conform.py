@@ -35,6 +35,8 @@ VERDICT_RANK = {"ok": 0, "suspect": 1, "ffmpeg-misdecodes": 2}
 HDR_TRANSFERS = ("SMPTE_ST_2084_PQ", "ITU_R_2100_HLG", "smpte2084", "arib-std-b67")
 BT709 = ("ITU_R_709_2", "bt709")
 TRANSFORMS = [{"op": "conform", "fps": CONFORM_FPS, "colour": "bt709"}]
+# A video named on the command line is untrusted: never a playlist or concat demuxer, which read other files on the disk.
+UNTRUSTED_INPUT = ["-protocol_whitelist", "file,pipe", "-format_whitelist", "mov,matroska"]
 
 
 # ── tools ─────────────────────────────────────────────────────────────────────
@@ -131,7 +133,7 @@ def ff_facts(data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
 
 def ffprobe_facts(ffprobe: str, path: Path) -> Optional[Dict[str, Any]]:
     """The ffprobe facts plus the leading packets' discard (D) flags; no decode. None when ffprobe can't read it."""
-    proc = _run([ffprobe, "-v", "error", "-print_format", "json", "-show_streams", "-show_format", str(path)], PROBE_TIMEOUT_S)
+    proc = _run([ffprobe, "-v", "error", *UNTRUSTED_INPUT, "-print_format", "json", "-show_streams", "-show_format", str(path)], PROBE_TIMEOUT_S)
     if proc.returncode != 0:
         return None
     try:
@@ -140,7 +142,7 @@ def ffprobe_facts(ffprobe: str, path: Path) -> Optional[Dict[str, Any]]:
         return None
     if facts is None:
         return None
-    flags = _run([ffprobe, "-v", "error", "-select_streams", "v:0", "-read_intervals", f"%+#{PACKET_SCAN}",
+    flags = _run([ffprobe, "-v", "error", *UNTRUSTED_INPUT, "-select_streams", "v:0", "-read_intervals", f"%+#{PACKET_SCAN}",
                   "-show_entries", "packet=flags", "-of", "csv=p=0", str(path)], PROBE_TIMEOUT_S)
     if flags.returncode == 0:
         facts["discardedPackets"] = sum(1 for line in flags.stdout.splitlines() if line.strip()[1:2] == "D")
@@ -161,7 +163,7 @@ def showinfo_pts_ms(text: str) -> List[float]:
 
 def ffmpeg_decode(ffmpeg: str, path: Path, timeout: float = DEEP_TIMEOUT_S) -> Dict[str, Any]:
     """conform.rs ffmpeg_decode_timing: every frame ffmpeg's own pipeline passes (-fps_mode passthrough), summarised."""
-    proc = _run([ffmpeg, "-hide_banner", "-nostdin", "-nostats", "-loglevel", "info", "-i", str(path),
+    proc = _run([ffmpeg, "-hide_banner", "-nostdin", "-nostats", "-loglevel", "info", *UNTRUSTED_INPUT, "-i", str(path),
                  "-map", "0:v:0", "-vf", "showinfo", "-fps_mode", "passthrough", "-f", "null", "-"], timeout)
     if proc.returncode != 0:
         raise KbError(f"ffmpeg could not decode {path.name}: {proc.stderr.strip()[-300:]}", EXIT_PROBLEMS, kind="invalid")
@@ -526,19 +528,42 @@ def container_verdict(path: Path) -> Optional[Dict[str, Any]]:
     return None if box is None else evaluate(None, box, ext)
 
 
-def import_decision(path: Path) -> Dict[str, Any]:
+def import_decision(path: Path, *, deep: bool = True, say: Optional[Callable[[str], None]] = None) -> Dict[str, Any]:
     """Whether an import conforms: the app's static probe merged with the container check when the app's media CLI is
-    there (the drop path's rule), else kb's own check, which can only warn. { conform, checked, why, probe, refused, cli }."""
+    there, else kb's own check, which can only warn. A file the static probe passes only looks clean until both decoders
+    have read it, so it is decoded before the conform is skipped. { conform, checked, why, probe, refused, cli }."""
     cli, why_not = find_media_cli("conform")
     if cli is not None and not cli.has("probe"):
         cli, why_not = None, "the app's media CLI has no probe"
     box, ff = static_facts(path, cli)
     static = evaluate(ff, box, ext_of(path))
     if cli is None:
+        if deep and not static["recommended"] and box is not None and box.get("expected"):
+            static = evaluate(ff, box, ext_of(path), _container_mismatch(path, box, say))
         return {"conform": False, "checked": False, "why": why_not or "no app", "probe": summary(static), "refused": None, "cli": None}
     try:
         report = media_probe(cli, path)
     except KbError as e:
         return {"conform": False, "checked": False, "why": f"the app's probe failed: {e.message}", "probe": summary(static), "refused": None, "cli": None}
     merged = merge(report, static)
+    if deep and not merged["recommended"] and merged["refused"] is None:
+        if say is not None:
+            say(f"decoding {path.name} to check it plays the same in both decoders")
+        try:
+            merged = merge(media_probe(cli, path, pts=True), static)
+        except KbError as e:
+            return {"conform": False, "checked": False, "why": f"the app's deep probe failed: {e.message}", "probe": summary(merged), "refused": None, "cli": None}
     return {"conform": merged["recommended"], "checked": True, "why": None, "probe": summary(merged), "refused": merged["refused"], "cli": cli}
+
+
+def _container_mismatch(path: Path, box: Dict[str, Any], say: Optional[Callable[[str], None]]) -> Optional[List[str]]:
+    """Without the app: ffmpeg's decode against the timeline the container promises; None when it can't be read."""
+    ffmpeg = find_tool("ffmpeg")
+    if not ffmpeg:
+        return None
+    if say is not None:
+        say(f"decoding {path.name} to check it plays as its container says")
+    try:
+        return mp4box.span_reasons(box["expected"], ffmpeg_decode(ffmpeg, path))
+    except KbError:
+        return None

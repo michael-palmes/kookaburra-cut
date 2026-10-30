@@ -12,8 +12,8 @@ function run(argv) {
       continue;
     }
     const k = edge / Math.max(image.size.width, image.size.height);
-    const w = Math.round(image.size.width * k);
-    const h = Math.round(image.size.height * k);
+    const w = Math.max(1, Math.round(image.size.width * k));
+    const h = Math.max(1, Math.round(image.size.height * k));
     const rep =
       $.NSBitmapImageRep.alloc.initWithBitmapDataPlanesPixelsWidePixelsHighBitsPerSampleSamplesPerPixelHasAlphaIsPlanarColorSpaceNameBytesPerRowBitsPerPixel(
         null,

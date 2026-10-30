@@ -15,7 +15,7 @@ from .util import EXIT_ENV, EXIT_OK, EXIT_PROBLEMS, KbError, emit, set_command
 PLANNABLE = (
     "scene add", "scene duplicate", "scene move", "scene remove", "scene set",
     "doc set", "doc unset", "doc merge", "project set", "project unset", "theme set",
-    "assets add", "assets conform", "assets replace", "assets unused", "assets restore", "assets meta", "checkpoint", "undo", "lease",
+    "assets add", "assets add-folder", "assets conform", "assets replace", "assets unused", "assets restore", "assets meta", "checkpoint", "undo", "lease",
 )
 # A dry run that fails with one of these exit-1 kinds is a refusal the plan reports, not a failure of the plan.
 REFUSAL_KINDS = ("leased", "others-changed", "invalid", "conflict")
@@ -24,8 +24,8 @@ REFUSAL_FIELDS = ("holder", "untilMs", "scene", "file", "issues", "files", "by")
 EPILOG = """\
 Runs the command with --dry-run --json and reports what it would do; nothing is written,
 committed or leased. Covers scene add, duplicate, move, remove and set; doc set, unset and
-merge; project set and unset; theme set; assets add, conform, replace, unused, restore and
-meta; checkpoint; undo; lease.
+merge; project set and unset; theme set; assets add, add-folder, conform, replace, unused,
+restore and meta; checkpoint; undo; lease.
 
   ./kb plan scene add pricing --preset title --after 02-hero
   ./kb plan doc 03-pricing set textStyle.titleFont "Inter@600"

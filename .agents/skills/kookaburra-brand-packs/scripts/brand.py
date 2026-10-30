@@ -6,6 +6,7 @@ Usage: python3 -I brand.py <command> [args]   (run with --help for each command)
 from __future__ import annotations
 
 import argparse
+import fnmatch
 import json
 import os
 import re
@@ -13,12 +14,12 @@ import shutil
 import struct
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 HERE = Path(__file__).resolve().parent
 KB = HERE.parent.parent / "kookaburra-scene-authoring" / "scripts" / "kb.py"
-SVG2PNG = HERE / "svg2png.js"
 TEMPLATE = HERE.parent / "reference" / "guidelines-template.md"
 IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp"}
 COPY_EXTS = IMAGE_EXTS | {".svg"}
@@ -118,9 +119,29 @@ def font_info(path: Path) -> Dict[str, Any]:
 
 
 def iter_files(src: Path, exts: set) -> List[Path]:
+    """A brand folder is untrusted: a link inside it could point anywhere, so links are never followed."""
     if src.is_file():
         return [src] if src.suffix.lower() in exts else []
-    return sorted(p for p in src.rglob("*") if p.is_file() and p.suffix.lower() in exts)
+    found: List[Path] = []
+    for dirpath, dirnames, filenames in os.walk(src, followlinks=False):
+        dirnames[:] = sorted(d for d in dirnames if not d.startswith(".") and not (Path(dirpath) / d).is_symlink())
+        for name in filenames:
+            path = Path(dirpath) / name
+            if not name.startswith(".") and path.suffix.lower() in exts and not path.is_symlink() and path.is_file():
+                found.append(path)
+    return sorted(found)
+
+
+def kit() -> Tuple[Any, Any, Any, Any]:
+    """The checks kb assets add runs on an import (kblib, beside this skill), so a brand can't take in what a project wouldn't."""
+    if not KB.is_file():
+        raise BrandError(f"no kookaburra-scene-authoring kit beside this skill ({KB}); open the project in the app once")
+    sys.dont_write_bytecode = True
+    if str(KB.parent) not in sys.path:
+        sys.path.append(str(KB.parent))
+    from kblib import brandlib, imagefile, reach, svgsafe
+
+    return brandlib, imagefile, reach, svgsafe
 
 
 # ── commands ───────────────────────────────────────────────────────────────
@@ -231,17 +252,31 @@ def cmd_fonts(args: argparse.Namespace) -> int:
     return 0
 
 
+def split_tags(raw: Optional[str]) -> List[str]:
+    return [tag for tag in (slugify(part) for part in (raw or "").split(",")) if tag]
+
+
 def cmd_images(args: argparse.Namespace) -> int:
+    brandlib, imagefile, reach, svgsafe = kit()
     root = workspace_root(args.root)
-    out = brand_dir(root, args.slug) / "images"
-    svg_jobs: List[str] = []
+    home = brand_dir(root, args.slug)
+    out = home / "images"
+    edge = args.edge
+    svg_jobs: List[Tuple[Path, Path]] = []
     copied = 0
+    converted = 0
+    refused: List[str] = []
+    landed: List[Path] = []
     taken: set = set()
+    extra = split_tags(args.tags)
     for mapping in args.mappings:
         if "=" not in mapping:
             raise BrandError(f"expected SOURCE=CATEGORY[/SUB], got {mapping!r}")
         src_text, dest_text = mapping.rsplit("=", 1)
         src = Path(src_text).expanduser()
+        denied = reach.denied_reason(reach.resolve(str(src)))
+        if denied:
+            raise BrandError(f"{src} is not read: {denied}")
         dest_parts = [slugify(p) for p in dest_text.split("/") if p]
         if not dest_parts:
             raise BrandError(f"no category in {mapping!r}")
@@ -249,23 +284,161 @@ def cmd_images(args: argparse.Namespace) -> int:
         if args.clean and base.exists():
             shutil.rmtree(base)
         for path in iter_files(src, COPY_EXTS):
+            if reach.denied_reason(path):
+                continue
             rel = path.parent.relative_to(src) if src.is_dir() else Path()
             parts = [slugify(p) for p in rel.parts if p.lower() != "svg"]
             target_dir = base.joinpath(*[p for p in parts if p])
             target_dir.mkdir(parents=True, exist_ok=True)
             ext = ".jpg" if path.suffix.lower() == ".jpeg" else path.suffix.lower()
             stem = slugify(path.stem) or "image"
-            target, n = target_dir / f"{stem}{ext}", 2
-            while target in taken:
-                target, n = target_dir / f"{stem}-{n}{ext}", n + 1
-            taken.add(target)
-            shutil.copy2(path, target)
+            with tempfile.TemporaryDirectory(prefix="brand-image-") as tmp:
+                try:
+                    if ext == ".svg":
+                        clean, dropped = svgsafe.sanitise(path.read_bytes(), path.name)
+                        note = svgsafe.dropped_note(path.name, dropped)
+                        if note:
+                            print(f"  {note}")
+                        target = _free_target(target_dir, stem, ext, taken)
+                        target.write_bytes(clean)
+                    else:
+                        done = imagefile.prepare(path, Path(tmp))
+                        if not args.allow_blank:
+                            imagefile.refuse_blank(Path(done["path"]), done["facts"], path.name)
+                        target = _free_target(target_dir, stem, f".{done['ext']}", taken)
+                        shutil.copy2(done["path"], target)
+                        converted += 1 if done["conformed"] else 0
+                except imagefile.Refused as e:
+                    refused.append(f"{path.name}: {e.message}")
+                    continue
             copied += 1
-            if ext == ".svg" and not path.with_suffix(".png").exists():
-                svg_jobs += [str(target), str(target.with_suffix(".png"))]
-    for i in range(0, len(svg_jobs), 80):
-        subprocess.run(["osascript", "-l", "JavaScript", str(SVG2PNG), str(args.edge), *svg_jobs[i:i + 80]], check=True)
-    print(f"Copied {copied} files into {out}; rasterised {len(svg_jobs) // 2} SVGs at {args.edge}px")
+            if ext == ".svg":
+                if not path.with_suffix(".png").exists():
+                    svg_jobs.append((target, target.with_suffix(".png")))
+            else:
+                landed.append(target)
+    if svg_jobs:
+        try:
+            svgsafe.rasterise(svg_jobs, edge)
+        except imagefile.Refused as e:
+            raise BrandError(e.message)
+    rastered = 0
+    for svg, png in svg_jobs:
+        if not png.is_file():
+            refused.append(f"{svg.name}: did not rasterise; macOS could not draw it")
+            continue
+        try:
+            if not args.allow_blank:
+                imagefile.refuse_blank(png)
+        except imagefile.Refused as e:
+            png.unlink(missing_ok=True)
+            refused.append(f"{svg.name}: {e.message}")
+            continue
+        rastered += 1
+        landed.append(png)
+    print(f"Copied {copied} files into {out}; rasterised {rastered} SVGs at {edge}px; converted {converted} for the stage")
+    tags = {p.relative_to(out).as_posix(): extra for p in landed} if extra else {}
+    problems = build_library(home, args.scene_edge, tags)
+    for line in refused + problems:
+        print(f"REFUSED {line}")
+    return 1 if refused or problems else 0
+
+
+def _free_target(folder: Path, stem: str, ext: str, taken: set) -> Path:
+    target, n = folder / f"{stem}{ext}", 2
+    while target in taken:
+        target, n = folder / f"{stem}-{n}{ext}", n + 1
+    taken.add(target)
+    return target
+
+
+def build_library(home: Path, scene_edge: Optional[int], new_tags: Optional[Dict[str, List[str]]] = None) -> List[str]:
+    """library.json for every image the brand holds: what surface each suits, its light and dark partner, and a copy under
+    scene/ when it is larger than a scene needs. A person's tags and the last --scene-edge survive a rebuild. Returns what couldn't be read."""
+    brandlib, imagefile, _reach, _svgsafe = kit()
+    library = brandlib.read_library(home)
+    old = library["images"]
+    scene_edge = scene_edge or library.get("sceneEdge") or brandlib.DEFAULT_SCENE_EDGE
+    images: Dict[str, Dict[str, Any]] = {}
+    problems: List[str] = []
+    surfaces: Dict[str, Optional[str]] = {}
+    keep_scene: set = set()
+    scene_root = home / brandlib.SCENE
+    for rel in brandlib.walk_images(home):
+        path = home / brandlib.IMAGES / rel
+        try:
+            f = imagefile.facts(path)
+            seen = imagefile.look(path, f)
+        except imagefile.Refused as e:
+            problems.append(f"{rel}: {e.message}")
+            continue
+        named = brandlib.surface_from_name(rel)
+        record: Dict[str, Any] = {"width": f["width"], "height": f["height"]}
+        tags = list(dict.fromkeys(list((old.get(rel) or {}).get("tags") or []) + list((new_tags or {}).get(rel) or [])))
+        if tags:
+            record["tags"] = tags
+        surface = imagefile.surface_of(seen) or named
+        if surface:
+            record["surface"] = surface
+        surfaces[rel] = surface
+        if max(f["width"], f["height"]) > scene_edge:
+            copy = scene_root / rel if f["format"] in ("png", "jpeg") else (scene_root / rel).with_suffix(".png")
+            try:
+                fresh = copy.is_file() and copy.stat().st_mtime >= path.stat().st_mtime and max(_size(imagefile.facts(copy))) == scene_edge
+                if not fresh:
+                    copy.parent.mkdir(parents=True, exist_ok=True)
+                    with tempfile.TemporaryDirectory(prefix="brand-scene-") as tmp:
+                        shutil.copy2(imagefile.prepare(path, Path(tmp), max_edge=scene_edge)["path"], copy)
+                record["scene"] = copy.relative_to(home).as_posix()
+                keep_scene.add(copy)
+            except imagefile.Refused as e:
+                problems.append(f"{rel}: no copy for scenes: {e.message}")
+        images[rel] = record
+    for rel, other in brandlib.infer_pairs(surfaces).items():
+        if rel in images:
+            images[rel]["pair"] = other
+    if scene_root.is_dir():
+        for stale in [p for p in scene_root.rglob("*") if p.is_file() and p not in keep_scene]:
+            stale.unlink()
+    write_json(home / brandlib.LIBRARY, {"version": brandlib.VERSION, "sceneEdge": scene_edge, "images": dict(sorted(images.items()))})
+    pairs = sum(1 for r in images.values() if r.get("pair")) // 2
+    print(f"Library: {len(images)} images, light and dark pairs {pairs}, copies for scenes {len(keep_scene)} (past {scene_edge}px)")
+    return problems
+
+
+def _size(f: Dict[str, Any]) -> Tuple[int, int]:
+    return f["width"], f["height"]
+
+
+def cmd_library(args: argparse.Namespace) -> int:
+    root = workspace_root(args.root)
+    problems = build_library(brand_dir(root, args.slug), args.scene_edge)
+    for line in problems:
+        print(f"PROBLEM {line}")
+    return 1 if problems else 0
+
+
+def cmd_tag(args: argparse.Namespace) -> int:
+    brandlib, _imagefile, _reach, _svgsafe = kit()
+    home = brand_dir(workspace_root(args.root), args.slug)
+    if not (home / brandlib.LIBRARY).is_file():
+        raise BrandError(f"{args.slug} has no {brandlib.LIBRARY} yet; run brand.py library {args.slug} first")
+    tags = split_tags(args.tags)
+    if not tags:
+        raise BrandError("give at least one tag, comma-separated")
+    doc = load_json(home / brandlib.LIBRARY)
+    images = doc.get("images") if isinstance(doc, dict) and isinstance(doc.get("images"), dict) else {}
+    hits = [rel for rel in images if fnmatch.fnmatchcase(rel, args.pattern)]
+    if not hits:
+        raise BrandError(f"no image in the library matches {args.pattern!r} (paths are relative to images/)")
+    for rel in hits:
+        record = images[rel]
+        have = [t for t in (record.get("tags") or []) if isinstance(t, str)]
+        record["tags"] = [t for t in have if t not in tags] if args.remove else list(dict.fromkeys(have + tags))
+        if not record["tags"]:
+            del record["tags"]
+    write_json(home / brandlib.LIBRARY, doc)
+    print(f"{'Untagged' if args.remove else 'Tagged'} {len(hits)} image(s): {', '.join(tags)}")
     return 0
 
 
@@ -361,6 +534,22 @@ def check_brand(root: Path, slug: str) -> Tuple[List[str], List[str]]:
             problems.append("images must sit in a category folder (images/<category>/...)")
         if orphans:
             problems.append(f"{len(orphans)} SVGs have no PNG beside them (the Library lists png/jpg/webp only)")
+        brandlib, _imagefile, _reach, _svgsafe = kit()
+        if (out / brandlib.LIBRARY).is_file():
+            load_json(out / brandlib.LIBRARY)
+            indexed = brandlib.read_library(out)["images"]
+            listed = set(brandlib.walk_images(out))
+            gone = sorted(set(indexed) - listed)
+            if gone:
+                problems.append(f"{brandlib.LIBRARY} lists {len(gone)} images that are gone, like {gone[0]} (brand.py library {slug})")
+            missing_scene = sorted(rel for rel, r in indexed.items() if r.get("scene") and not (out / str(r["scene"])).is_file())
+            if missing_scene:
+                problems.append(f"{len(missing_scene)} copies for scenes are missing, like {missing_scene[0]} (brand.py library {slug})")
+            notes.append(f"library: {len(indexed)} of {len(listed)} images indexed")
+            if len(indexed) < len(listed):
+                notes.append(f"run brand.py library {slug} to index the rest")
+        elif counts:
+            notes.append(f"no {brandlib.LIBRARY} yet: brand.py library {slug} adds tags, pairs and copies for scenes")
     else:
         notes.append("images: none")
     return problems, notes
@@ -403,12 +592,25 @@ def main(argv: Optional[List[str]] = None) -> int:
     p.add_argument("slug")
     p.add_argument("files", nargs="+", help="font files or folders")
     p.set_defaults(func=cmd_fonts)
-    p = sub.add_parser("images", help="copy images as SOURCE=CATEGORY[/SUB]; SVGs also become PNGs")
+    p = sub.add_parser("images", help="copy images as SOURCE=CATEGORY[/SUB], checked as kb assets add checks them; SVGs also become PNGs; updates library.json")
     p.add_argument("slug")
     p.add_argument("mappings", nargs="+")
     p.add_argument("--edge", type=int, default=512, help="long edge in px for rasterised SVGs")
     p.add_argument("--clean", action="store_true", help="empty each target folder first")
+    p.add_argument("--tags", help="comma-separated tags for everything this call brings in")
+    p.add_argument("--scene-edge", type=int, help="images longer than this get a copy at this size under scene/ (default: the library's, else 2048)")
+    p.add_argument("--allow-blank", action="store_true", help="take fully transparent or one-colour images")
     p.set_defaults(func=cmd_images)
+    p = sub.add_parser("library", help="rebuild library.json: surfaces, light and dark pairs and copies for scenes; tags are kept")
+    p.add_argument("slug")
+    p.add_argument("--scene-edge", type=int, help="images longer than this get a copy at this size under scene/ (default: the library's, else 2048)")
+    p.set_defaults(func=cmd_library)
+    p = sub.add_parser("tag", help="add tags to the images whose path (relative to images/) matches a pattern, or --remove them")
+    p.add_argument("slug")
+    p.add_argument("pattern", help="a path or glob like icons/*wallet*")
+    p.add_argument("tags", help="comma-separated tags")
+    p.add_argument("--remove", action="store_true")
+    p.set_defaults(func=cmd_tag)
     p = sub.add_parser("gradient", help="write a workspace gradient and list it in the brand")
     p.add_argument("slug")
     p.add_argument("gradient", help="gradient slug, e.g. acme-ink-glow")

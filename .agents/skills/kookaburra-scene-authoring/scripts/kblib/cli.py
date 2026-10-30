@@ -1185,6 +1185,7 @@ def build_parser(video_extensions: bool = True) -> argparse.ArgumentParser:
         "  kb brand show            this project's brand\n"
         '  kb brand use "Acme"      by name or ws:<slug>: brand, its default theme and fonts, BRAND.md\n'
         "  kb brand clear           drops the brand and BRAND.md; theme and fonts stay\n"
+        "  kb brand icons --search wallet --sheet   find a picture in its library and look at it\n"
         "A brand gives safe defaults and guidance, not hard rules. Building or changing one is the kookaburra-brand-packs skill.",
     )
     bsub = b.add_subparsers(dest="op", metavar="OP")
@@ -1198,6 +1199,7 @@ def build_parser(video_extensions: bool = True) -> argparse.ArgumentParser:
     y = bsub.add_parser("clear", help="remove the brand and BRAND.md (theme and fonts stay)", parents=writes, formatter_class=Formatter)
     y.add_argument("--force", action="store_true")
     b.set_defaults(fn=cmd_brand)
+    brandmod.register_icons(bsub, common, Formatter)
 
     f = add(
         "fonts",

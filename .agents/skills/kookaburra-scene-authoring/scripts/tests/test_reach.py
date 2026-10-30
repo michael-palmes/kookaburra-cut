@@ -11,7 +11,7 @@ from kblib import reach
 from kblib.project import Project
 from kblib.util import KbError, clean_lines, clean_text, clean_value
 
-from .helpers import FakeApp, KbTestCase, make_project, write_json
+from .helpers import FakeApp, KbTestCase, make_project, png_bytes, write_json
 
 KINDS = ["capture", "check", "fonts", "insertPreset", "mediaChanged", "openEdit", "debug"]
 OSC52 = "Hero\x1b]52;c;aGVsbG8=\x07 title"
@@ -77,18 +77,18 @@ class ReadGuardTests(KbTestCase):
 
     def test_reads_inside_the_workspace_are_silent(self) -> None:
         inside = self.tmp / "clip.png"
-        inside.write_bytes(b"\x89PNG")
+        inside.write_bytes(png_bytes())
         proc = self.kb(["assets", "add", str(inside), "--no-conform", "--json"], cwd=self.root)
         self.assertExit(proc, 0)
         self.assertNotIn("outside the workspace", proc.stderr)
 
     def test_reads_outside_the_workspace_are_announced_with_the_resolved_path(self) -> None:
         outside = Path(os.path.realpath(self.tmp.parent)) / f"kbtest-outside-{os.getpid()}.png"
-        outside.write_bytes(b"\x89PNG")
+        outside.write_bytes(png_bytes())
         try:
             proc = self.kb(["assets", "add", str(outside), "--no-conform", "--json"], cwd=self.root)
             self.assertExit(proc, 0)
-            self.assertIn(f"kb: reading {outside} (4 bytes) from outside the workspace", proc.stderr)
+            self.assertIn(f"kb: reading {outside} ({len(png_bytes())} bytes) from outside the workspace", proc.stderr)
         finally:
             outside.unlink()
 
