@@ -244,7 +244,11 @@ Bundled: `avocado`, `bitcoin-coin`, `candlestick`, `candlestick-amber`,
 `ethereum-coin`. Workspace objects are `ws:<slug>` from
 `~/Kookaburra Cut/objects/<slug>/object.json` (imported in the app). Objects auto-fit
 to their manifest height; placement works like a device's. Unknown ids render nothing.
-TSX may render them with `useSceneObjects()` and `<StagedObject spec={o} />`.
+TSX may render them with `useSceneObjects()` and `<StagedObject spec={o} />`, or place one
+directly: `<StagedObject objectId="bitcoin-coin" position={[0, 0.3, 0]} rotationDeg={[0, 20, 0]} scale={1.2} ground />`.
+A placed object loads when it first mounts, even mid-film, and every capture waits for it,
+so no frame shows it missing and there's no need to hide a template offstage. It has no
+gizmo: use the sidecar `objects` array for one the inspector should move.
 
 ## Before and after: `compare`
 

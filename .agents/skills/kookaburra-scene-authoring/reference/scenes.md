@@ -55,7 +55,7 @@ needs no React import. Consequences:
 | Hook | Returns |
 | --- | --- |
 | `useTimeline()` | `{ localMs, globalMs, progress }`. `localMs` is scene time: drive ALL motion from it. `progress` is the whole PROJECT 0..1. |
-| `useFormat()` | `{ width, height, aspect, frame: { width, height }, safe: { top, right, bottom, left } }`; frame and safe in world units at z = 0 |
+| `useFormat()` | `{ width, height, aspect, shape, frame: { width, height }, safe: { top, right, bottom, left } }`; frame and safe in world units at z = 0; `shape` is `"wide"` from aspect 1.2 (16:9, 3:2, 5:4), `"tall"` at 0.85 and below (9:16, 2:3, 4:5, phone), else `"square"` (1:1) |
 | `useTheme()` | Tokens: `colors.{background,text,accent,muted}`, `typography.{headline,body,scale}`, `motion.durations.{fast,base,slow}`, `motion.easings`, `chartColors`, `gradients` |
 | `useSceneText(key, fallback?, role?)` | Sidecar copy for a text key; `role` `"embedded"` for positioned labels that must never become managed text |
 | `useSceneDevices()` | Sidecar devices as `<Device>` props, layout resolved per aspect |
@@ -64,7 +64,8 @@ needs no React import. Consequences:
 | `useSceneStaged()` | Whether a `SceneStage` owns lighting here |
 | `useRoom()` | The sidecar `room` now: `{ colour, key, flood: { colour, origin, progress, radius } \| null, pose }`, or null without a room. `colour` is null before the first key |
 | `useDepthBand()`, `useRigTrack()` | Inside `DepthStage`: the slot rect; the scene's rig track |
-| `useBeatGrid()` | The project's `audio.grid` in this scene's time, or null without one: `bar(13, 3)`, `at("cue:drop")`, `position(localMs)` (`{ bar, beat, sixteenth, beatPhase, barPhase }`), `local(projectMs)`, `project(localMs)`, `beatMs`, `barMs`, `bpm`, `beatsPerBar`. Times are integer scene-local ms (negative before the scene), the same frames a sidecar `"at": "bar:13"` lands on; `at()` throws on a position that can't resolve |
+| `useBeatAt()` | A function, `at(bar, beat?, sixteenth?)`: scene ms, or null with one log line when the project has no grid, so `at(13) ?? 4000` keeps the scene's own timing |
+| `useBeatGrid()` | The project's `audio.grid` in this scene's time, or null without one: `at(13, 3)`, `bar(13, 3)`, `at("cue:drop")`, `position(localMs)` (`{ bar, beat, sixteenth, beatPhase, barPhase }`), `local(projectMs)`, `project(localMs)`, `beatMs`, `barMs`, `bpm`, `beatsPerBar`. Times are integer scene-local ms (negative before the scene), the same frames a sidecar `"at": "bar:13"` lands on; `at()` throws on a position that can't resolve |
 | `useCues()` | `audio.cues` as `{ id: scene-local ms }`; `{}` without any |
 | `useProjectShared(path?, fallback?)` | `project.json` `shared` constants: `useProjectShared("palette.accent", theme.colors.accent)`; no path returns the whole block (reference/project.md) |
 | `useTextMetrics(textKey, text, opts?)` | `{ width, height, ascent, descent, lines }` of the block an `AnimatedHeadline` with those props draws (sidecar overrides included), or null for a frame while its font loads; size pills and underlines with it (reference/text.md) |
@@ -83,8 +84,12 @@ Plain helpers: `measureText(text, { font, fontSize })` measures without a text k
   clip (z = 1 sits 25% further from centre than its y suggests).
 - Safe rectangle: x within `frame.width / 2 - safe.left`, y within
   `frame.height / 2 - safe.top`.
-- One scene serves every aspect: branch on `aspect < 1` for portrait sizes and
-  positions; never write per-aspect files. Check both with `./kb capture --aspect`.
+- One scene serves every aspect: branch on `format.shape` (`"wide"`, `"square"`,
+  `"tall"`) for sizes and positions, not `aspect < 1`, which sends 1:1 to the landscape
+  layout; never write per-aspect files. Check each with `./kb capture --aspect`.
+- `kb toolkit show <Name>` prints any primitive's props, types, defaults, units, an
+  example and its timing rules, from the app's source; `toolkit.d.ts` in this skill holds
+  the same types.
 - Typical sizes: TitleBlock title 0.56 (landscape) / 0.34 (portrait); AnimatedHeadline
   default 0.6; body copy 0.2 to 0.28; a fitted phone is 2.6 units tall.
 
@@ -167,6 +172,7 @@ export default defineScene({
   180 ms (outCubic), back to 1 over 260 ms (inOutSine). Pass ms since the stamp starts.
 - `<Stamp at={600} rotateDeg={-8} position={[0, 0.4, 0.01]}>...</Stamp>` wraps children
   in that pop (hidden before `at`, pivot at the group origin, so centre children on it);
+  `hitAt` instead of `at` lands the pop on that ms (it first reaches full size 95 ms in);
   `rotateDeg` adds a small swing about Z that settles with a slight overshoot. It takes the
   `stampScale` options and a base `scale`. Prefer it to hand-copying the pop.
 - `clamp01(x)`, `lerp(a, b, t)` for the rest.
@@ -228,6 +234,7 @@ export default defineScene({
 | `SplitField` | The frame split into image, video or colour tiles (the sidecar `mosaic`, reference/media.md) |
 | `TapRing`, `Cursor` | Tap pulses and a travelling, clicking pointer (the sidecar `taps`, reference/media.md) |
 | `Stamp` | Stamps its children in (Motion helpers above) |
+| `ScreenLayer`, `Vignette`, `Scrim`, `Gradient` | A camera-locked layer in frame units and the fills for it (below) |
 | `Room`, `RoomFlood` | A camera-locked room colour and a flood of colour from a frame point, for floods the scene times itself (the sidecar `room` block draws its own) |
 | `SceneStage`, `DepthStage`, `LightRig` | Staging and light |
 
@@ -265,6 +272,41 @@ animates its children as ONE unit (the group origin is the pivot; place children
 symmetrically around [0, 0, 0]). `ImageCard`, `AnimatedHeadline` and `AnimatedCounter`
 inside it take the group's fade and shine, `RoundedRect` and `Pill` its fade; other
 primitives ride its transform only.
+
+## Screen layers
+
+`<ScreenLayer order="front" | "back">` locks its children to the camera, laid out in
+frame units: (0, 0) is the centre and `useFormat().frame` the full size, the same numbers
+as z = 0, whatever the scene camera does. Nothing in the 3D pass can hide it (no depth
+test), and children stack in JSX order. Use it instead of building a pose in front of
+`useSceneCamera()`.
+
+```tsx
+<ScreenLayer order="front">
+  <Vignette opacity={0.6} />
+  <Scrim to="background" start={0.5} keys={[{ tMs: 0, opacity: 0 }, { tMs: 400, opacity: 0.9, ease: "outCubic" }]} />
+  <AnimatedHeadline text={title} textKey="title" position={[0, -frame.height / 2 + 0.6, 0]} fit="width" />
+</ScreenLayer>
+```
+
+- `front` (the default) draws over the finished frame: past depth of field, so a title
+  stays sharp over a blurred scene. On a solo frame it sits past the effects too; during a
+  transition it crossfades with its scene and picks up the effects. A framed scene's front
+  layer covers the whole frame, not the cutout. A comparison draws it once over the
+  composite, from side A.
+- `back` draws over the background and under everything 3D, inside the scene's own pass:
+  effects, depth of field and transitions treat it like the backdrop, and glass refracts
+  it. A 3D look's transparent parts (grid lines) still draw over it.
+- Fills, each with `opacity` and `keys` (`{ tMs, ease?, opacity?, start?, end?, angleDeg? }`,
+  overriding the props they name; a keyed fill holds stills until its last key):
+  `Vignette` (`colour`, `start`, `end`; default 0.6 opacity), `Scrim` (`to`, `kind`:
+  `"linear"` or `"radial"`, `angleDeg` clockwise from up, `centre`, `start`, `end`) and
+  `Gradient` (`from`, `to`, the same shape). Colours are theme tokens (`background`,
+  `text`, `muted`, `accent`) or hex.
+- Keep layers flat: text, images, shapes and fills. A 3D model needs the depth test a layer
+  turns off, and its materials are shared with any copy in the world. Being locked, neither
+  order takes the camera's motion blur, only its children's own. A front layer needs a
+  scene: in a persistent module it draws nothing (one log line).
 
 ## Persistent module
 

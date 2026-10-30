@@ -1149,6 +1149,39 @@ camera exactly:
   while both sides flood) is the machine-local fixture: look at it after any room
   change; it is not in any gate.
 
+### Screen layers
+
+`<ScreenLayer>` adds no compositor pass of its own, so it can't drift between lanes.
+
+- **Front** registers a hidden root-level group as one more frame panel
+  (`framePanelRegistry`, `screenLayer: true`). The panel pass already draws at the base pose
+  with depth cleared, after depth of field and after the composer on a solo frame, and into
+  each side's target on a transition. Panels draw one at a time, the scene's own first, so
+  they never z-fight, and `beforeDraw` stacks the layer in JSX order: three breaks a
+  same-plane tie by object id, and an id follows when a child finished loading.
+- **Back** puts a zero-size mesh at `SCREEN_BACK_RENDER_ORDER` (-30, over the room, under all
+  content) in the host group. Its `onBeforeRender` renders the layer's own `Scene` with the
+  base camera into whatever target is current, with `autoClear` off and every material's
+  depth test off. It follows the host's visibility on every path: solo, composer, dof,
+  framed, both sides of a comparison, both sides of a transition. The scene hangs off the
+  root, invisible, so `awaitTextSync`'s traverse still settles its text. A nested render into
+  an MSAA target also resolves that target once more; the extra blit is harmless.
+- Neither mounts anything unless a scene asks: with none, `framePanelsFor` returns what it
+  always did and the pass draws the same calls, which `ws:launch-2026` EQUAL proves.
+- Known seam, shared with every frame panel: under declared effects, a solo frame's front
+  layer sits past the composer but a transition's goes through it, so its colour can shift
+  at the cut. A framed scene under effects drops panels on a transition, screen layers too.
+
+### Placed objects
+
+`<StagedObject objectId>` is named by no sidecar, so `preloadSceneObjects` can't see it, and a
+first use mid-film must not suspend: that drops every scene behind the shared boundary for a
+frame. It loads without suspending and reports pending from a layout effect, and
+`awaitTextSync` waits for the real load (`settleUsedObjects`, not the spin bound) before any
+capture, so frame N is the same however cold the cache was. An unknown id, or a glb that fails
+to load, resolves to nothing rendered, so a capture never hangs on a scene's bad id. A scene's id
+reaches the window only through `NativePort.readObject`, the same door a sidecar's takes.
+
 ### Fonts
 
 - **Every rendered glyph comes from a file we control.** Theme typography is a

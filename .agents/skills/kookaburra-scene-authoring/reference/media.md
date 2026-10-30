@@ -165,8 +165,11 @@ See reference/backgrounds.md.
 
 ## TSX media primitives
 
-- `<ImageCard src="assets/logo.png" width={1.2} maxHeight position from to />`: flat,
-  colour-exact plane; PNG alpha shapes it; optional linear fade window.
+- `<ImageCard src="assets/logo.png" width={1.2} maxHeight position from to opacity outAt outDurationMs tint />`:
+  flat, colour-exact plane; PNG alpha shapes it; optional linear fade window. `opacity`
+  multiplies in, `outAt` fades it out over `outDurationMs` (default the fade-in's length,
+  else 300 ms), and `tint` (a theme token or hex) replaces every pixel's colour, keeping the
+  alpha, for one-colour marks. Don't rewrite `from` and `to` per frame to fade it.
   `shadow={{ offset: [0.06, -0.06], colour: theme.colors.accent, opacity: 1, radius: 0.2 }}`
   adds a hard (unblurred) offset shadow behind it: offset and radius are fractions of the
   card's short edge (x right, y up), colour defaults to the theme text colour, and the
