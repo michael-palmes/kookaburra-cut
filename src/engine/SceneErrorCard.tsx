@@ -96,6 +96,7 @@ export function sceneErrorCard(input: {
   durationMs: number;
 }): SceneModule {
   const detail = errorHeadline(input.message);
+  // biome-ignore lint/correctness/noComponentHookFactories: one component per failed scene, its identity kept in cardComponents
   const Scene = () => <SceneErrorCardView file={input.file} detail={detail} />;
   cardComponents.add(Scene);
   return { id: `error:${input.file}`, durationMs: input.durationMs, Scene };

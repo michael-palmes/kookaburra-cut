@@ -1,5 +1,5 @@
 {
-  "$schema": "https://biomejs.dev/schemas/2.5.15/schema.json",
+  "$schema": "https://biomejs.dev/schemas/2.6.2/schema.json",
   "vcs": {
     "enabled": true,
     "clientKind": "git",
@@ -14,6 +14,7 @@
   "files": {
     "includes": [
       "**",
+      "!pnpm-lock.yaml",
       "!src/assets/fonts/*.typeface.json",
       "!.agents/skills/kookaburra-scene-authoring/scripts/tests/fixtures/*-vectors.json"
     ]
@@ -22,6 +23,9 @@
     "enabled": true,
     "rules": {
       "preset": "recommended",
+      "complexity": {
+        "useMathMinMax": "off"
+      },
       "style": {
         "noDescendingSpecificity": "off"
       }
@@ -31,6 +35,11 @@
     "formatter": {
       "quoteStyle": "double",
       "semicolons": "always"
+    }
+  },
+  "markdown": {
+    "formatter": {
+      "enabled": false
     }
   }
 }

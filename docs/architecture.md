@@ -180,14 +180,14 @@ than restating versions.) Pins live in `package.json` and `src-tauri/Cargo.toml`
 | tauri-plugin-window-state | 2.x | Remember window frames between launches | MIT / Apache-2.0 |
 | tauri-plugin-updater | 2.x | Opt-in update check and signed install (`updater.rs`) | MIT / Apache-2.0 |
 | tauri-plugin-log | 2.x | Native log sink | MIT / Apache-2.0 |
-| React + react-dom | 19.2.x | UI and scene component model; react-dom renders the chrome, fiber the canvas | MIT |
+| React + react-dom | 19.3.x | UI and scene component model; react-dom renders the chrome, fiber the canvas | MIT |
 | TypeScript | 7.0.x | Typed toolkit and scene files | Apache-2.0 |
-| Vite | 8.2.x | Dev server, HMR preview, prod bundle (Oxc transform/minify) | MIT |
+| Vite | 8.3.x | Dev server, HMR preview, prod bundle (Oxc transform/minify) | MIT |
 | @vitejs/plugin-react | 6.1.x | React fast-refresh / JSX for Vite | MIT |
 | three | 0.186.x | WebGL renderer and scene graph | MIT |
-| @react-three/fiber | 9.7.x | React renderer for Three.js | MIT |
+| @react-three/fiber | 9.8.x | React renderer for Three.js | MIT |
 | @react-three/drei | 10.7.x | Loaders, controls, `<Text>` helper | MIT |
-| @react-three/postprocessing | 3.1.x | Bloom, vignette, colour grading | MIT |
+| @react-three/postprocessing | 3.2.x | Bloom, vignette, colour grading | MIT |
 | troika-three-text + troika-three-utils | 0.52.5 (exact, one copy, patched) | SDF text in WebGL (the text engine) | MIT |
 | anime.js | 4.5.x | Global seekable timeline / sequencing | MIT |
 | d3-ease | 3.x | Permissive easing primitives | ISC |
@@ -195,8 +195,8 @@ than restating versions.) Pins live in `package.json` and `src-tauri/Cargo.toml`
 | zustand | 5.0.x | Editor / preview / timeline UI state | MIT |
 | esbuild-wasm | exact-pinned | In-webview compile of workspace scene TSX | MIT |
 | ffmpeg + ffprobe (sidecars) | 8.x (pinned source build) | Frame encoding (H.264 / H.265 / ProRes / FFV1) + media probing | LGPL / GPL (see note) |
-| Vitest | 4.x | Tests, incl. the determinism harness | MIT |
-| Biome | 2.5.x | Lint + format | MIT / Apache-2.0 |
+| Vitest | 5.x | Tests, incl. the determinism harness | MIT |
+| Biome | 2.6.x | Lint + format | MIT / Apache-2.0 |
 
 Rust crates (`src-tauri/Cargo.toml`): `tauri 2.12.x` (exact-pinned, `wry` pinned to its runtime's version) with the
 shell, dialog, window-state, updater and log plugins, `serde`/`serde_json`,
