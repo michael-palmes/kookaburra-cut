@@ -141,8 +141,18 @@ are backed up like any document. `$APPDATA` is
   `fonts/`, `gradients/`, `export-presets/`, `presets/`, `templates/`,
   `objects/`, `screenshots/`, and `.kookaburra/` (welcome snapshots and scene
   thumbs per project, pack import staging, and `import-backup/` holding what an
-  import replaced, hard-deleted after 24 h). The asset protocol scope is
-  `$HOME/Kookaburra Cut/**` and `$APPDATA/cache/**` (`tauri.conf.json`).
+  import replaced, hard-deleted after 24 h). Files reach the webview as
+  `asset://` URLs served by the app's own handler (`src-tauri/src/asset_reach.rs`,
+  registered in place of Tauri's): a window may read `$APPDATA/cache`, the
+  shared libraries (`templates/`, `presets/`, `fonts/`, `objects/`, `brands/`,
+  `screenshots/`, the snapshots and scene thumbs under `.kookaburra/`) and the
+  one project it loaded last (`read_project_manifest`), which it loses on
+  the welcome screen (`release_project`) or when the window closes. Paths are
+  canonicalised before the check, so a link inside a project that leads out of
+  it is refused, and no hidden folder below a root is served (`.emoji-cache`
+  reads through a command). Native reads of a project asset go through
+  `media::resolve_asset_in`, which refuses the same links by name, and
+  `copy_dir_recursive` refuses to copy a link at all.
 - **`~/Kookaburra Cut/_bridge/`** (always under the home folder, even when the
   workspace moves): the agent bridge's file queue. `responses/` holds answers
   cleaned through `clean_text`, capture PNGs, contact sheets and export

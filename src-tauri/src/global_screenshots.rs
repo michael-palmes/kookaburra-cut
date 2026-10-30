@@ -8,7 +8,7 @@ use tauri::{AppHandle, State};
 use crate::media::{self, MediaMeta};
 use crate::workspace::{self, SettingsState};
 
-const SCREENSHOTS_DIR: &str = "screenshots";
+pub(crate) const SCREENSHOTS_DIR: &str = "screenshots";
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]

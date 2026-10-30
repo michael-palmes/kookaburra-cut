@@ -482,6 +482,7 @@ fn allowed_project_read_and_render() -> BTreeSet<String> {
         "get_autorun_config",
         "list_projects",
         "read_project_manifest",
+        "release_project",
         "read_scene_source",
         "project_fingerprint",
         "project_file_stamps",
@@ -524,6 +525,7 @@ fn allowed_project_read_and_render() -> BTreeSet<String> {
         "decode_png",
         "probe_audio",
         "bridge_instance",
+        "read_emoji_raster",
         "pin_system_font",
         "write_emoji_raster",
     ])

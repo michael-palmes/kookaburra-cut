@@ -209,6 +209,7 @@ import {
   getSettings,
   initDefaultWorkspace,
   type LagWarningMode,
+  releaseProject,
   setLastExportPreset,
   setLastProject,
   setProjectTypography,
@@ -1683,6 +1684,7 @@ export default function App() {
     setView("welcome");
     setWelcomeRefresh((n) => n + 1);
     setLastProject(null).catch(() => {});
+    releaseProject().catch(() => {});
     void refreshProjects();
   }, [refreshProjects]);
 
