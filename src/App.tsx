@@ -11,6 +11,7 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
+import { formatBytes } from "./engine/appCache";
 import { lastLoadReport, reportLastLoad, stampProjectKit } from "./engine/appHeartbeat";
 import {
   noteAssetWritten,
@@ -208,6 +209,7 @@ import {
   getSettings,
   initDefaultWorkspace,
   type LagWarningMode,
+  releaseProject,
   setLastExportPreset,
   setLastProject,
   setProjectTypography,
@@ -722,6 +724,25 @@ export default function App() {
       evictAllClips();
       void stageOrNull()?.evictAllClips();
     });
+    return () => {
+      void unlisten.then((fn) => fn());
+    };
+  }, [isAutoRun]);
+
+  // A project from before footage was kept out of git had it removed from its history on this open (workspace.rs `trim_legacy_history`); one line says so.
+  useEffect(() => {
+    if (isAutoRun) return;
+    const unlisten = listen<{ slug: string; freedBytes: number }>(
+      "kookaburra://history-trimmed",
+      (e) => {
+        const freed =
+          e.payload.freedBytes > 0 ? ` (${formatBytes(e.payload.freedBytes)} freed)` : "";
+        setToast({
+          kind: "info",
+          message: `Footage removed from this project's history${freed}; scenes keep theirs`,
+        });
+      },
+    );
     return () => {
       void unlisten.then((fn) => fn());
     };
@@ -1663,6 +1684,7 @@ export default function App() {
     setView("welcome");
     setWelcomeRefresh((n) => n + 1);
     setLastProject(null).catch(() => {});
+    releaseProject().catch(() => {});
     void refreshProjects();
   }, [refreshProjects]);
 

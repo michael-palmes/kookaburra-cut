@@ -29,6 +29,54 @@ pub(crate) fn never_index(dir: &Path) -> std::io::Result<()> {
     private_file(&marker)
 }
 
+/// Time Machine's per-item exclusion, the attribute `tmutil addexclusion` sets.
+#[cfg(target_os = "macos")]
+const BACKUP_EXCLUDE_XATTR: &std::ffi::CStr = c"com.apple.metadata:com_apple_backup_excludeItem";
+#[cfg(target_os = "macos")]
+const BACKUP_EXCLUDE_VALUE: &[u8] = b"com.apple.backupd";
+
+/// Keeps `dir` out of Time Machine backups; `true` when the attribute had to be written. Projects are never excluded: the
+/// caches here hold only what a project's own footage decodes to again.
+#[cfg(target_os = "macos")]
+pub(crate) fn exclude_from_backup(dir: &Path) -> std::io::Result<bool> {
+    use std::os::unix::ffi::OsStrExt;
+    let path = std::ffi::CString::new(dir.as_os_str().as_bytes())
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
+    let mut current = [0u8; 64];
+    let read = unsafe {
+        libc::getxattr(
+            path.as_ptr(),
+            BACKUP_EXCLUDE_XATTR.as_ptr(),
+            current.as_mut_ptr().cast(),
+            current.len(),
+            0,
+            libc::XATTR_NOFOLLOW,
+        )
+    };
+    if read >= 0 && &current[..read as usize] == BACKUP_EXCLUDE_VALUE {
+        return Ok(false);
+    }
+    let wrote = unsafe {
+        libc::setxattr(
+            path.as_ptr(),
+            BACKUP_EXCLUDE_XATTR.as_ptr(),
+            BACKUP_EXCLUDE_VALUE.as_ptr().cast(),
+            BACKUP_EXCLUDE_VALUE.len(),
+            0,
+            libc::XATTR_NOFOLLOW,
+        )
+    };
+    if wrote != 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    Ok(true)
+}
+
+#[cfg(not(target_os = "macos"))]
+pub(crate) fn exclude_from_backup(_dir: &Path) -> std::io::Result<bool> {
+    Ok(false)
+}
+
 /// `true` when the mode had to change. A symlink is never followed: a planted link must not reach outside the tree.
 fn set_mode(path: &Path, mode: u32) -> std::io::Result<bool> {
     use std::os::unix::fs::PermissionsExt;
@@ -86,16 +134,28 @@ pub(crate) fn seal_tree(root: &Path) -> Sealed {
     sealed
 }
 
-/// The startup check: the roots are created and sealed at once, then the whole trees in the background (a clip cache
-/// holds hundreds of thousands of frames). One log line names what had to be corrected.
+/// The startup check: the roots are created and sealed at once, the decoded-footage caches leave Time Machine, then the
+/// whole trees in the background (a clip cache holds hundreds of thousands of frames). One log line names what had to be corrected.
 pub(crate) fn seal_at_startup(app_data: PathBuf, sinks: Vec<PathBuf>) {
     let cache = app_data.join("cache");
-    for dir in [&app_data, &cache] {
+    let clips = cache.join("clips");
+    let media = cache.join("media");
+    for dir in [&app_data, &cache, &clips, &media] {
         if let Err(e) = private_dir(dir) {
             log::warn!("[privacy] could not seal {}: {e}", dir.display());
         }
     }
     let _ = never_index(&cache);
+    for dir in [&clips, &media] {
+        match exclude_from_backup(dir) {
+            Ok(true) => log::info!("[privacy] {} now stays out of Time Machine", dir.display()),
+            Ok(false) => {}
+            Err(e) => log::warn!(
+                "[privacy] could not exclude {} from Time Machine: {e}",
+                dir.display()
+            ),
+        }
+    }
     for sink in &sinks {
         if sink.is_dir() {
             let _ = set_mode(sink, DIR_MODE);
@@ -148,6 +208,28 @@ mod tests {
         never_index(&nested).unwrap();
         assert_eq!(mode(&nested.join(NEVER_INDEX_MARKER)), 0o600);
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn backup_exclusion_is_written_once_and_reads_back_as_tmutil_sets_it() {
+        let dir = temp("backup");
+        private_dir(&dir).unwrap();
+        assert!(exclude_from_backup(&dir).unwrap());
+        assert!(
+            !exclude_from_backup(&dir).unwrap(),
+            "a second call finds it set"
+        );
+        let out = std::process::Command::new("xattr")
+            .args(["-p", "com.apple.metadata:com_apple_backup_excludeItem"])
+            .arg(&dir)
+            .output()
+            .unwrap();
+        assert_eq!(
+            String::from_utf8_lossy(&out.stdout).trim(),
+            "com.apple.backupd"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

@@ -9,7 +9,9 @@ import type {
   PackInspection,
   PackPlan,
   PackProgress,
+  PackSceneDoc,
   Resolution,
+  SceneSource,
 } from "../packs/types";
 import { notePickedFolder } from "./pickedFolders";
 
@@ -130,12 +132,15 @@ export function inspectPack(path: string): Promise<PackInspection> {
   return invoke<PackInspection>("inspect_pack", { path });
 }
 
-export function readPackSceneSource(
-  path: string,
-  projectSlug: string,
-  sceneFile: string,
-): Promise<string> {
-  return invoke<string>("read_pack_scene_source", { path, projectSlug, sceneFile });
+/** One staged scene source as text, hash-checked against the signed manifest on the way out. */
+export function readPackSceneSource(path: string, source: SceneSource): Promise<string> {
+  const { kind, slug, file } = source;
+  return invoke<string>("read_pack_scene_source", { path, kind, slug, sceneFile: file });
+}
+
+/** Every scene sidecar beside a staged scene source, hash-checked, for the trust screen's review. */
+export function readPackSceneDocs(path: string): Promise<PackSceneDoc[]> {
+  return invoke<PackSceneDoc[]>("read_pack_scene_docs", { path });
 }
 
 /** Stage and plan in one call: extraction happens only after the user has seen what is inside. */
@@ -185,7 +190,6 @@ export interface PublisherProfileView {
   effectiveName: string | null;
   organisation: string | null;
   website: string | null;
-  device: string;
   /** Absent until the first pack is signed: the key is created lazily. */
   key: PublisherKey | null;
 }

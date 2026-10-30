@@ -129,9 +129,9 @@ A terminal block travels in `.kbpack` projects like any sidecar data, so the
 author of a shared file chooses the command and the start path. Four layers
 keep that safe: the command is sanitised to one line at parse and at the paste
 boundary (above); no session exists until the user opens the project through
-the F-001 trust gate; the import summary lists every pre-typed command and
-custom start path read from the landed sidecars
-(`src/packs/terminalReview.ts`); and a custom start path never
+the F-001 trust gate; the pack trust screen lists every pre-typed command and
+custom start path before Continue, read from the pack's sidecars and checked
+against the signed hash (`src/packs/packReview.ts`); and a custom start path never
 auto-spawns in Present, the first click on the terminal starts that session
 (project-folder decks keep the spawn-on-entry magic). A start path runs
 nothing of the pack's, but a login shell still runs the user's own init files

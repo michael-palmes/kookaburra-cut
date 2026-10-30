@@ -42,6 +42,8 @@ pub fn kind_cap(path: &str) -> (&'static str, u64) {
 pub const MAX_PATH_DEPTH: usize = 16;
 pub const MAX_PATH_BYTES: usize = 512;
 pub const MAX_MANIFEST_BYTES: u64 = 8 * 1024 * 1024;
+/// An Ed25519 signature is 64 bytes; the entry is read to a small bound, never to its end.
+pub const MAX_SIGNATURE_BYTES: u64 = 256;
 /// One scene source inflated for the code-disclosure viewer.
 pub const MAX_SOURCE_VIEW_BYTES: u64 = 1024 * 1024;
 /// Staging and backup directories are swept past this age.

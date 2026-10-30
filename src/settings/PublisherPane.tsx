@@ -168,14 +168,6 @@ export function PublisherPane() {
         </div>
         <div className="settings-row">
           <div className="settings-row-text">
-            <span className="settings-row-title">Device</span>
-            <span className="muted settings-row-detail">
-              {`${view?.device ?? "…"} · read from macOS, travels with your packs`}
-            </span>
-          </div>
-        </div>
-        <div className="settings-row">
-          <div className="settings-row-text">
             <span className="settings-row-title">Signing key</span>
             <span className="muted settings-row-detail settings-path">
               {view?.key

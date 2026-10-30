@@ -22,8 +22,10 @@ tauri-build = { version = "=2.7.2", features = [] }
 serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 log = "0.4"
-# protocol-asset: workspace/caches load in the webview as asset: URLs (v9 · M2).
-tauri = { version = "=2.12.3", features = ["protocol-asset", "unstable"] }
+tauri = { version = "=2.12.3", features = ["unstable"] }
+# The app serves `asset://` itself (asset_reach.rs): the scheme handler's range parsing and URL decoding are ours.
+http-range = "0.1"
+percent-encoding = "2"
 tauri-plugin-log = "2"
 tauri-plugin-shell = "2"
 tauri-plugin-dialog = "2"

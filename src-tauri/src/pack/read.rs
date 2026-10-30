@@ -4,11 +4,13 @@
 //! created at all, and every staged byte is hashed against the signed manifest before anything can move into the workspace.
 
 use super::error::PackError;
-use super::hash::sha256_file;
+use super::hash::{sha256_bytes, sha256_file};
+use super::key;
 use super::limits::*;
-use super::model::{PackManifest, PACK_FORMAT, PACK_FORMAT_VERSION};
+use super::model::{ItemKind, PackManifest, PACK_FORMAT, PACK_FORMAT_VERSION};
 use super::paths::{is_agent_config, is_ignorable, validate_archive_path};
-use std::collections::{HashMap, HashSet};
+use serde::Serialize;
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
@@ -17,6 +19,33 @@ pub struct PackInspection {
     pub manifest_bytes: Vec<u8>,
     pub signature: Option<Vec<u8>>,
     pub archive_bytes: u64,
+    /// The scene code the pack would stage, built from `files` rather than read from `contents`.
+    pub scene_sources: Vec<SceneSource>,
+}
+
+/// One `scenes/**/*.tsx` a project, template or preset carries. `file` is item-relative, as `project.json` records it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SceneSource {
+    pub kind: ItemKind,
+    pub slug: String,
+    pub name: String,
+    pub file: String,
+    /// The item's archive root, checked to be `payload/<kind dir>/<slug>`: the folder apply lands.
+    #[serde(skip)]
+    pub root: String,
+}
+
+impl SceneSource {
+    pub fn archive_path(&self) -> String {
+        format!("{}/{}", self.root, self.file)
+    }
+
+    /// The sidecar beside this source, which the pack may or may not carry.
+    pub fn sidecar_path(&self) -> Option<String> {
+        let (stem, _) = self.file.rsplit_once('.')?;
+        Some(format!("{}/{stem}.json", self.root))
+    }
 }
 
 /// Owns its staging tree: dropping it removes the tree, so a panic or an early return cannot leak an extracted pack.
@@ -119,8 +148,20 @@ pub fn inspect(archive: &Path) -> Result<PackInspection, PackError> {
 
     let signature = match zip.by_name(SIGNATURE_ENTRY) {
         Ok(mut entry) => {
+            // A signature is 64 bytes; anything claiming more is not one, and the stream is bounded as well as the header.
+            if entry.size() > MAX_SIGNATURE_BYTES {
+                return Err(PackError::SignatureInvalid);
+            }
             let mut buf = Vec::new();
-            entry.read_to_end(&mut buf)?;
+            let mut capped = CountingReader {
+                inner: &mut entry,
+                read: 0,
+                cap: MAX_SIGNATURE_BYTES,
+                path: SIGNATURE_ENTRY,
+            };
+            capped
+                .read_to_end(&mut buf)
+                .map_err(|_| PackError::SignatureInvalid)?;
             // An empty entry is not a signature; treat it as absent rather than as an invalid one.
             if buf.is_empty() {
                 None
@@ -143,14 +184,69 @@ pub fn inspect(archive: &Path) -> Result<PackInspection, PackError> {
             supported: PACK_FORMAT_VERSION,
         });
     }
+    // The id is a hash of the key beside it, so a declared id that differs is a lie, whatever the signature says.
+    if key::key_id_of(&manifest.publisher.public_key).as_deref() != Some(&manifest.publisher.key_id) {
+        return Err(PackError::KeyIdMismatch(manifest.publisher.key_id.clone()));
+    }
     validate_contents_paths(&manifest)?;
+    let scene_sources = staged_scene_sources(&manifest)?;
 
     Ok(PackInspection {
         manifest,
         manifest_bytes,
         signature,
         archive_bytes,
+        scene_sources,
     })
+}
+
+fn is_scene_source(item_rel: &str) -> bool {
+    item_rel.starts_with("scenes/")
+        && item_rel
+            .rsplit_once('.')
+            .is_some_and(|(_, ext)| ext.eq_ignore_ascii_case("tsx"))
+}
+
+/// The scene code each project-shaped item would stage: every `scenes/**/*.tsx` under its root in `files`. The
+/// manifest's `sceneFiles` must be exactly that set, so the code screen and the trust screen count what lands, never
+/// what the author wrote down. The root must be the folder apply lands for that kind and slug, once per item, or the
+/// screens would describe one folder while apply moved another. Items keep `sceneFiles` order, which is the film's order.
+fn staged_scene_sources(manifest: &PackManifest) -> Result<Vec<SceneSource>, PackError> {
+    let contents = &manifest.contents;
+    let items = contents
+        .projects
+        .iter()
+        .map(|p| (ItemKind::Project, p))
+        .chain(contents.templates.iter().map(|p| (ItemKind::Template, p)))
+        .chain(contents.presets.iter().map(|p| (ItemKind::Preset, p)));
+    let mut sources = Vec::new();
+    let mut roots: HashSet<String> = HashSet::new();
+    for (kind, item) in items {
+        let root = item.root.trim_end_matches('/');
+        let expected = format!("{PAYLOAD_PREFIX}{}/{}", kind.payload_dir(), item.base.slug);
+        if root != expected || !roots.insert(expected) {
+            return Err(PackError::ItemRootMismatch(item.root.clone()));
+        }
+        let prefix = format!("{root}/");
+        let staged: BTreeSet<&str> = manifest
+            .files
+            .iter()
+            .filter_map(|f| f.path.strip_prefix(prefix.as_str()))
+            .filter(|rel| is_scene_source(rel))
+            .collect();
+        let declared: BTreeSet<&str> = item.scene_files.iter().map(String::as_str).collect();
+        if declared.len() != item.scene_files.len() || declared != staged {
+            return Err(PackError::SceneFilesMismatch(item.root.clone()));
+        }
+        sources.extend(item.scene_files.iter().map(|file| SceneSource {
+            kind,
+            slug: item.base.slug.clone(),
+            name: item.base.name.clone(),
+            file: file.clone(),
+            root: root.to_owned(),
+        }));
+    }
+    Ok(sources)
 }
 
 /// Refuse an entry over the ceiling for its kind, naming the kind.
@@ -243,18 +339,42 @@ pub fn version_lt(a: &str, b: &str) -> bool {
     false
 }
 
-/// Inflate one payload entry for the code-disclosure viewer. Refuses anything the manifest does not list.
-pub fn read_entry(
+/// Inflate one payload entry before staging, for the code and sidecar reviews. Refuses anything the manifest does not
+/// list, and anything whose bytes differ from the signed hash: what is reviewed is what staging would verify.
+pub fn read_verified_entry(
     archive: &Path,
     manifest: &PackManifest,
     archive_path: &str,
     cap: u64,
-) -> Result<String, PackError> {
-    if !manifest.files.iter().any(|f| f.path == archive_path) {
-        return Err(PackError::EntryNotInManifest(archive_path.to_string()));
-    }
-    validate_archive_path(archive_path)?;
+) -> Result<Vec<u8>, PackError> {
     let (mut zip, _) = open(archive)?;
+    read_verified_from(&mut zip, manifest, archive_path, cap)
+}
+
+/// Several entries through one open archive, each verified as `read_verified_entry` does.
+pub fn read_verified_entries(
+    archive: &Path,
+    manifest: &PackManifest,
+    archive_paths: &[String],
+    cap: u64,
+) -> Result<Vec<Vec<u8>>, PackError> {
+    let (mut zip, _) = open(archive)?;
+    archive_paths
+        .iter()
+        .map(|path| read_verified_from(&mut zip, manifest, path, cap))
+        .collect()
+}
+
+fn read_verified_from(
+    zip: &mut zip::ZipArchive<std::fs::File>,
+    manifest: &PackManifest,
+    archive_path: &str,
+    cap: u64,
+) -> Result<Vec<u8>, PackError> {
+    let Some(declared) = manifest.files.iter().find(|f| f.path == archive_path) else {
+        return Err(PackError::EntryNotInManifest(archive_path.to_string()));
+    };
+    validate_archive_path(archive_path)?;
     let mut entry = zip
         .by_name(archive_path)
         .map_err(|_| PackError::ManifestEntryMissing(archive_path.to_string()))?;
@@ -273,6 +393,20 @@ pub fn read_entry(
         path: archive_path,
     };
     capped.read_to_end(&mut buf)?;
+    if sha256_bytes(&buf) != declared.sha256 {
+        return Err(PackError::HashMismatch(archive_path.to_string()));
+    }
+    Ok(buf)
+}
+
+/// One scene source as text, for the code-disclosure viewer.
+pub fn read_entry(
+    archive: &Path,
+    manifest: &PackManifest,
+    archive_path: &str,
+    cap: u64,
+) -> Result<String, PackError> {
+    let buf = read_verified_entry(archive, manifest, archive_path, cap)?;
     Ok(String::from_utf8_lossy(&buf).into_owned())
 }
 

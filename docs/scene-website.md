@@ -179,9 +179,10 @@ browser frame.
 
 A pack includes the sidecar and capture PNG. It never includes cookies, WebKit
 storage, local origin grants, current navigation, history, forms or scroll.
-Import performs no network access and grants no origin. The post-import summary
-lists every requested Website origin and calls out loopback requests before the
-user configures live use in the editor.
+Import performs no network access and grants no origin. The pack trust screen
+lists every requested Website origin and calls out loopback requests before
+Continue, read from the pack's sidecars and checked against the signed hash
+(`src/packs/packReview.ts`), so the review is done before anything lands.
 
 Settings lists the dedicated Website store's WebKit site records and can clear
 one record or all Website data. Clearing data signs sites out but does not edit

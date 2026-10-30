@@ -3,6 +3,7 @@
 #[cfg(test)]
 mod acl;
 mod asset_meta;
+mod asset_reach;
 mod brands;
 mod bridge;
 mod bridge_export;
@@ -29,6 +30,7 @@ mod flashes;
 mod fonts;
 mod global_screenshots;
 mod gradients;
+mod history;
 mod kit;
 mod library;
 mod library_previews;
@@ -909,13 +911,13 @@ async fn run_ffmpeg_to_completion(
     }
 }
 
-/// Free bytes on the volume holding `path` (macOS statvfs, the mezzanine disk guard).
-fn free_disk_bytes(path: &std::path::Path) -> Result<u64, String> {
+/// Free bytes on the volume holding `path` (macOS statvfs): the mezzanine and clip-extraction disk guards.
+pub(crate) fn free_disk_bytes(path: &std::path::Path) -> Result<u64, String> {
     use std::os::unix::ffi::OsStrExt;
     let c = std::ffi::CString::new(path.as_os_str().as_bytes()).map_err(|e| e.to_string())?;
     let mut vfs: libc::statvfs = unsafe { std::mem::zeroed() };
     if unsafe { libc::statvfs(c.as_ptr(), &mut vfs) } != 0 {
-        return Err("statvfs failed for the mezzanine cache".into());
+        return Err(format!("statvfs failed for {}", path.display()));
     }
     Ok(vfs.f_bavail as u64 * vfs.f_frsize as u64)
 }
@@ -1384,6 +1386,7 @@ macro_rules! kookaburra_handler {
             workspace::list_projects,
             workspace::create_project,
             workspace::read_project_manifest,
+            workspace::release_project,
             workspace::read_scene_source,
             workspace::project_fingerprint,
             live_edits::project_file_stamps,
@@ -1414,6 +1417,7 @@ macro_rules! kookaburra_handler {
             workspace::list_scene_thumbs,
             workspace::write_scene_thumb,
             workspace::write_emoji_raster,
+            workspace::read_emoji_raster,
             scene_doc::read_scene_doc,
             scene_doc::read_scene_doc_entry,
             scene_doc::write_scene_doc,
@@ -1590,6 +1594,7 @@ macro_rules! kookaburra_handler {
             pack::commands::reveal_pack,
             pack::commands::inspect_pack,
             pack::commands::read_pack_scene_source,
+            pack::commands::read_pack_scene_docs,
             pack::commands::stage_pack,
             pack::commands::apply_import,
             pack::commands::discard_staged_pack,
@@ -1634,6 +1639,7 @@ pub fn run() {
     }
     let builder = builder
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .manage(asset_reach::AssetReach::default())
         .manage(ExportState::default())
         .manage(ExportHistory::default())
         .manage(FlashState::default())
@@ -1660,6 +1666,12 @@ pub fn run() {
         .manage(theme_editor_win::ThemeEditorState::default())
         .manage(pack::commands::PackState::default())
         .manage(website::WebsiteState::default())
+        .register_asynchronous_uri_scheme_protocol("asset", asset_reach::handler)
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::Destroyed = event {
+                asset_reach::close_project(window.app_handle(), window.label());
+            }
+        })
         .on_page_load(|webview, payload| {
             if webview.label() == "main"
                 && payload.event() == tauri::webview::PageLoadEvent::Started
@@ -1694,6 +1706,7 @@ pub fn run() {
                 privacy::seal_at_startup(app_data, sinks);
             }
             managed::log_at_boot();
+            asset_reach::init(app.handle());
             bridge::init(app.handle());
             bridge::spawn_heartbeat(app.handle().clone());
             export_health::spawn_sampler(app.handle().clone());
