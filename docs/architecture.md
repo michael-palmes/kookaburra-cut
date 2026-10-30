@@ -74,8 +74,15 @@ frame bodies and the scene trees. The split, and why it is drawn where it is:
   worker names clip sources by project id and relative path and never computes
   a path. Every message from the worker is data: a scene can post anything,
   so the window acts only on what the protocol names and fails a worker that
-  reports a fatal error closed (every pending request rejects, `ready`
-  rejects, the hidden render window poisons itself so Rust recycles it).
+  reports a fatal error closed (every waiting request rejects, `ready`
+  rejects, the hidden render window poisons itself so Rust recycles it). A
+  worker that misses its 90 s ready window fails the same way, but stays
+  recoverable: a ready that arrives late (the main thread sat behind a macOS
+  permission prompt) lifts the failure and the editor reloads the project,
+  and the editor's Retry bumps the `StageView` attempt, which terminates the
+  worker and mounts a fresh canvas and worker with a fresh window, since a
+  transferred canvas cannot be transferred again. `StageHandle.boot()` is the
+  current state; `ready` settles once.
 - **Requests that touch the loaded project run in order.** The server answers
   sizing, compiles, hit tests and the census at once, but queues `loadProject`,
   the barriers, exports, stills, snapshots and the probe one after another, so
@@ -109,6 +116,18 @@ frame bodies and the scene trees. The split, and why it is drawn where it is:
   the port's `decode_png` and upload as straight rows (`engine/stageTexture.ts`),
   the bytes the window's `<img>` upload had. Other formats decode to bitmaps
   with no colour conversion, as three uploads them.
+- **Dev HMR reaches the worker by a reload.** Vite serves the worker's modules
+  through the same client pipeline as the window's, so with HMR on the React
+  plugin's Fast Refresh runtime is imported by every component module in both
+  realms. That runtime assigns to `window` as it evaluates, which a worker has
+  not got, so `vite.worker-refresh.ts` points those references at `globalThis`
+  in that one virtual module (serve only; a build has no refresh). The
+  plugin's footer skips refresh registration in a worker, so a worker cannot
+  swap a module in place: `stageWorker.ts` listens to its Vite client for an
+  update to a module this realm holds and posts `sourceChanged`, and the
+  window reloads, as Vite does for an update nothing accepts. A module only
+  the window holds refreshes in place as before. Autoruns run with HMR off
+  (`vite.config.ts`), so none of this touches the export path.
 
 The theme editor's `SpecimenCanvas` is the one r3f root still on a main
 thread: it draws bundled specimen scenes only, never a workspace scene, in a
@@ -521,6 +540,18 @@ Where the live Tauri-2 setup matters for working in the code:
     `.<stem>.part.<ext>` temp file beside the destination
     (`resolve_export_output`, shared with video); `finish_stills_export` fsyncs
     it and renames it into place. Contract: [stills.md](./stills.md).
+
+11. **`asset://` is served by the app.** `src-tauri/src/asset_reach.rs`
+    registers the `asset` scheme itself (Tauri then skips its own handler, so
+    `convertFileSrc` and the CSP are unchanged) and ports Tauri's byte-range
+    serving over its own reach: `$APPDATA/cache`, the workspace's shared
+    libraries, and per window label the one project that window loaded last.
+    Tauri's scope was not an option because it can allow a folder but never
+    take it back, and a closed project must stop being readable. Every
+    request path is canonicalised and refused when it leaves its root or
+    crosses a hidden folder (the `requireLiteralLeadingDot` rule, kept here);
+    the emoji raster cache therefore reads through `read_emoji_raster` on the
+    stage worker's native port.
 
 `src-tauri/tauri.conf.json` sidecar wiring (Tauri 2, no `plugins.shell.sidecar`
 block; the permission is handled Rust-side per note 1):

@@ -15,7 +15,7 @@ use crate::workspace::{require_root, SettingsState};
 /// Recorded in provenance; bumping the pinned allsorts version can change instanced bytes, re-basing any project using the pin (`docs/determinism.md`).
 const INSTANCER: &str = "allsorts 0.17.0";
 
-const FONTS_DIR_NAME: &str = "fonts";
+pub(crate) const FONTS_DIR_NAME: &str = "fonts";
 const MANIFEST_NAME: &str = "fonts.json";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

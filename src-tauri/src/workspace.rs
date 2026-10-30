@@ -370,8 +370,7 @@ pub fn require_root(app: &AppHandle, state: &State<'_, SettingsState>) -> Result
         }
     };
     ensure_layout(&root)?;
-    // Workspace files load in the webview as asset-protocol URLs (posters, pinned fonts, editor sources, snapshots; see engine/media.ts `fsUrl`); the static config scope only covers $APPDATA/cache + ~/Kookaburra Cut, so a user-chosen root elsewhere is allowed here at runtime instead, idempotent and best-effort since the read path reports its own errors if this fails.
-    let _ = app.asset_protocol_scope().allow_directory(&root, true);
+    crate::asset_reach::set_workspace(app, &root);
     Ok(root)
 }
 
@@ -652,10 +651,10 @@ pub(crate) fn copy_dir_recursive(from: &Path, to: &Path) -> Result<(), String> {
         let dst = to.join(entry.file_name());
         let meta = std::fs::symlink_metadata(&src).map_err(|e| e.to_string())?;
         if meta.file_type().is_symlink() {
-            let target = std::fs::read_link(&src).map_err(|e| e.to_string())?;
-            let _ = std::fs::remove_file(&dst);
-            std::os::unix::fs::symlink(&target, &dst)
-                .map_err(|e| format!("linking {}: {e}", src.display()))?;
+            return Err(format!(
+                "{} is a symbolic link; links are not copied, replace it with the file itself",
+                src.display()
+            ));
         } else if meta.is_dir() {
             copy_dir_recursive(&src, &dst)?;
         } else {
@@ -943,7 +942,7 @@ fn perform_workspace_move(app: &AppHandle, from: &Path, to: &Path) -> Result<Str
         settings.workspace_root = Some(to.to_string_lossy().into_owned());
         retarget_trust(settings, from, to);
     })?;
-    let _ = app.asset_protocol_scope().allow_directory(to, true);
+    crate::asset_reach::set_workspace(app, to);
     let _ = app.emit("kookaburra://workspace-moved", to.to_string_lossy());
     Ok(to.to_string_lossy().into_owned())
 }
@@ -1659,15 +1658,7 @@ pub fn write_emoji_raster(
     };
     let slug = header("x-kookaburra-slug")?;
     let key = header("x-kookaburra-key")?;
-    // Key shape: hex codepoints dash-joined plus a @size suffix, e.g. `1f680-fe0f@256`.
-    let valid_key = !key.is_empty()
-        && key.len() <= 128
-        && key
-            .chars()
-            .all(|c| c.is_ascii_hexdigit() || c == '-' || c == '@')
-        && key.matches('@').count() == 1
-        && !key.starts_with(['-', '@']);
-    if !valid_key {
+    if !valid_raster_key(&key) {
         return Err(format!("invalid raster key \"{key}\""));
     }
     let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else {
@@ -1689,6 +1680,36 @@ pub fn write_emoji_raster(
     }
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     std::fs::write(&file, bytes).map_err(|e| e.to_string())
+}
+
+/// Key shape: hex codepoints dash-joined plus a @size suffix, e.g. `1f680-fe0f@256`.
+fn valid_raster_key(key: &str) -> bool {
+    !key.is_empty()
+        && key.len() <= 128
+        && key
+            .chars()
+            .all(|c| c.is_ascii_hexdigit() || c == '-' || c == '@')
+        && key.matches('@').count() == 1
+        && !key.starts_with(['-', '@'])
+}
+
+/// One cached emoji raster's bytes (`assets/.emoji-cache/<key>.png`) for the stage worker's native port: hidden folders are not served as `asset://` URLs, so the raster cache reads through here. A missing raster is an error, which the port reports as "not cached".
+#[tauri::command]
+pub fn read_emoji_raster(
+    app: AppHandle,
+    state: State<'_, SettingsState>,
+    slug: String,
+    key: String,
+) -> Result<tauri::ipc::Response, String> {
+    if !valid_raster_key(&key) {
+        return Err(format!("invalid raster key \"{key}\""));
+    }
+    let file = project_dir(&app, &state, &slug)?
+        .join("assets")
+        .join(".emoji-cache")
+        .join(format!("{key}.png"));
+    let bytes = std::fs::read(&file).map_err(|e| e.to_string())?;
+    Ok(tauri::ipc::Response::new(bytes))
 }
 
 /// A bundled folder is a TEMPLATE only when it carries a project manifest AND declares itself with a readable `template.json`, so gate fixtures, preview labs and the sample pool can never be created from. Presence plus valid JSON is the whole native contract; the manifest's schema is validated in TS (`engine/templates.ts`).
@@ -2440,27 +2461,41 @@ pub(crate) fn require_window(window: &tauri::Window, label: &str) -> Result<(), 
     }
 }
 
-/// A project's manifest text (the frontend parses + validates it); `slug` is a workspace slug or a scoped library id (`project_dir`).
+/// A project's manifest text (the frontend parses + validates it); `slug` is a workspace slug or a scoped library id (`project_dir`). Loading it makes the item's folder the one project the calling window's `asset://` URLs may read, in place of the last.
 #[tauri::command]
 pub fn read_project_manifest(
+    window: tauri::Window,
     app: AppHandle,
     state: State<'_, SettingsState>,
     slug: String,
 ) -> Result<String, String> {
     let (scope, item) = parse_project_id(&slug)?;
-    let text = project_manifest_for_loading(&project_dir(&app, &state, &slug)?, scope)?;
-    let bundled_root = match scope {
-        ProjectScope::BundledTemplate => Some(templates_root(&app)),
-        ProjectScope::BundledPreset => Some(presets_root(&app)),
-        _ => None,
+    let dir = project_dir(&app, &state, &slug)?;
+    let text = project_manifest_for_loading(&dir, scope)?;
+    let readable = match scope {
+        ProjectScope::BundledTemplate => bundled_assets_in_dev(&templates_root(&app), item)?,
+        ProjectScope::BundledPreset => bundled_assets_in_dev(&presets_root(&app), item)?,
+        _ => Some(dir),
     };
-    if let Some(root) = bundled_root {
-        let assets = bundled_project_assets_path(&root, item)?;
-        app.asset_protocol_scope()
-            .allow_directory(assets, true)
-            .map_err(|e| format!("allowing library assets: {e}"))?;
+    match readable {
+        Some(dir) => crate::asset_reach::open_project(&app, window.label(), &dir),
+        None => crate::asset_reach::close_project(&app, window.label()),
     }
     Ok(text)
+}
+
+/// A bundled item's assets are files on disk only in a dev checkout; the packaged app bundles them into the frontend.
+fn bundled_assets_in_dev(root: &Path, item: &str) -> Result<Option<PathBuf>, String> {
+    if !cfg!(debug_assertions) {
+        return Ok(None);
+    }
+    bundled_project_assets_path(root, item).map(Some)
+}
+
+/// The calling window reads no project any more: the main window back on the welcome screen.
+#[tauri::command]
+pub fn release_project(window: tauri::Window, app: AppHandle) {
+    crate::asset_reach::close_project(&app, window.label());
 }
 
 fn bundled_project_assets_path(root: &Path, slug: &str) -> Result<PathBuf, String> {
@@ -2945,27 +2980,29 @@ mod tests {
         let _ = std::fs::remove_dir_all(&base);
     }
 
-    /// Following a link that points at an ancestor never terminates, and a broken one aborts the whole move.
+    /// A link is neither followed (one pointing at an ancestor never terminates) nor recreated (the copy would carry a reach outside the project along): the copy stops and names it.
     #[test]
-    fn copying_recreates_symlinks_instead_of_following_them() {
+    fn copying_refuses_symlinks() {
         let base = scratch_dir();
         let from = base.join("from");
         let to = base.join("to");
         std::fs::create_dir_all(from.join("assets")).unwrap();
         std::fs::write(from.join("assets/real.mp4"), "bytes").unwrap();
-        std::os::unix::fs::symlink(&from, from.join("assets/loop")).unwrap();
-        std::os::unix::fs::symlink(base.join("nothing-here"), from.join("assets/broken")).unwrap();
+        std::os::unix::fs::symlink(base.join("elsewhere"), from.join("assets/out")).unwrap();
 
+        let err = copy_dir_recursive(&from, &to).unwrap_err();
+        assert!(
+            err.contains("assets/out") && err.contains("symbolic link"),
+            "{err}"
+        );
+        assert!(std::fs::symlink_metadata(to.join("assets/out")).is_err());
+
+        std::fs::remove_file(from.join("assets/out")).unwrap();
         copy_dir_recursive(&from, &to).unwrap();
-
         assert_eq!(
             std::fs::read_to_string(to.join("assets/real.mp4")).unwrap(),
             "bytes"
         );
-        for link in ["assets/loop", "assets/broken"] {
-            let meta = std::fs::symlink_metadata(to.join(link)).unwrap();
-            assert!(meta.file_type().is_symlink(), "{link} was followed");
-        }
 
         let _ = std::fs::remove_dir_all(&base);
     }

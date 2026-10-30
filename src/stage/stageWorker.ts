@@ -228,6 +228,22 @@ scope.addEventListener("messageerror", () =>
   scope.postMessage({ type: "fatal", text: "a message from the window could not be deserialised" }),
 );
 
+// With HMR on, a change to a module this realm holds is reported to the window; the React plugin skips Fast Refresh in a worker.
+if (import.meta.hot) {
+  const held = (import.meta.hot as unknown as { hmrClient?: { dataMap?: Map<string, unknown> } })
+    .hmrClient?.dataMap;
+  if (!held)
+    console.warn(
+      "[stage] the Vite client no longer lists its modules; every update reloads the window",
+    );
+  import.meta.hot.on("vite:beforeUpdate", ({ updates }) => {
+    const paths = updates
+      .filter((u) => !held || held.has(u.path) || held.has(u.acceptedPath))
+      .map((u) => u.path);
+    if (paths.length) scope.postMessage({ type: "sourceChanged", paths });
+  });
+}
+
 // The server imports the engine, which must see the shims above at evaluation time.
 scope.postMessage({ type: "log", level: "info", text: "stage worker entry evaluated" });
 import("./stageServer").then(

@@ -1394,7 +1394,7 @@ stays deterministic):
   and the catalog preload throws if a device glb parses with zero textured
   materials.
 - **One file-URL seam.** Fonts, media, editor and workspace images all resolve
-  through the Tauri asset protocol in dev and packaged builds alike; workspace
+  through the app's `asset://` handler in dev and packaged builds alike; workspace
   scenes compile through the same esbuild loader everywhere: every dev verify
   exercises the shipping loader.
 - **Boot failures can't be silent** (`engine/bootTrap.ts`): any pre-render crash
@@ -1561,7 +1561,11 @@ tier is under "Gate tiers" and the baselines under "Current baselines".
   the legacy `~/Kookaburra Cut/_autorun/last-run.json` is still written as a
   copy. Runs queue behind each other (FIFO) instead of demanding the machine to
   themselves, dev runs pick their own port, and the launch is backgrounded: no
-  Dock icon, no focus steal.
+  Dock icon, no focus steal. Autoruns run with HMR off (`vite.config.ts`
+  drops `server.hmr` under `KOOKABURRA_ACTION`), so no gate can see a break in
+  the dev-only HMR path: after a change to the stage worker's module graph,
+  also boot `pnpm tauri dev` and open a project (2026-10-29: the stage never
+  booted under HMR while every gate passed).
 - **Cold runs (`--cold`):** a run is cold when no preview frame draws before
   it (`programs 0` or `1` in dev.log's `[autorun] gl memory before`
   breadcrumb). Without the flag that rides on the window and the boot: an
