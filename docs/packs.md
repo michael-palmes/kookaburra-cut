@@ -170,8 +170,9 @@ so it is untrusted for the same reason. A project, template or preset a pack
 lands over an existing slug (added or replaced) loses that slug's stored grant
 and its place in this session's allow set (`workspace::forget_project_trust`,
 called from `apply_import`): the folder now holds a publisher's content, so the
-next open asks again rather than re-stamping. A keep-both lands under a fresh
-slug no grant names.
+next open asks again rather than re-stamping. The session allow goes first, so
+a failed settings write still asks. A keep-both lands under a fresh slug no
+grant names.
 
 What the trust screen counts and shows as scene code is the set the reader
 built from the signed `files` list (`PackInspection::scene_sources`: every
@@ -249,15 +250,20 @@ Implemented in `pack::read` and `pack::paths`, one test per item in
     viewer, a scene sidecar for the terminal and Website review) goes through
     `read_verified_entry`: listed in `files`, capped, and refused when its bytes
     do not hash to the signed value.
-11. Extract into a fresh `<root>/.kookaburra/import-staging/<random>/`, created
+11. Sum the signed sizes in `files` (agent config excluded). Each entry streams
+    capped at its signed size, so that total bounds what staging writes: refuse
+    it over `MAX_TOTAL_UNCOMPRESSED`, or when it would take the volume under the
+    app's 2 GB disk floor (`check_staging_space`, `NotEnoughSpace`), before the
+    staging folder exists.
+12. Extract into a fresh `<root>/.kookaburra/import-staging/<random>/`, created
     with `create_dir` so it can never be an existing directory.
-12. Count inflated bytes as they stream, each entry against its kind's ceiling
+13. Count inflated bytes as they stream, each entry against its kind's ceiling
     as well as the total. Headers lie.
-13. Recompute SHA-256 for every staged file and compare against `files`. One
+14. Recompute SHA-256 for every staged file and compare against `files`. One
     mismatch aborts the whole import.
-14. Only then resolve and move. `StagedPack` implements `Drop`, so every failure
+15. Only then resolve and move. `StagedPack` implements `Drop`, so every failure
     path removes the tree.
-15. Force `0644` on files and `0755` on directories, whatever the archive said:
+16. Force `0644` on files and `0755` on directories, whatever the archive said:
     imported items are the user's documents, unlike the app's own caches.
 
 An `object.json` `glb` or `thumbnail` is validated like an asset rel on both
